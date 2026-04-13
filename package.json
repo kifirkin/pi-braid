@@ -1,0 +1,36 @@
+{
+	"name": "pi-braid",
+	"version": "0.1.0",
+	"description": "Self-contained pi-coding-agent extension bundling all develop-branch functionality: cognitive systems, planning, enforcement, feedback, skills, and advanced tools.",
+	"type": "module",
+	"main": "./src/index.ts",
+	"pi": {
+		"extensions": [
+			"./src/index.ts"
+		]
+	},
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1"
+	},
+	"dependencies": {
+		"@sinclair/typebox": "^0.34.0"
+	},
+	"peerDependencies": {
+		"@mariozechner/pi-agent-core": ">=0.65.0",
+		"@mariozechner/pi-ai": ">=0.65.0",
+		"@mariozechner/pi-coding-agent": ">=0.65.0"
+	},
+	"keywords": [
+		"pi",
+		"pi-extension",
+		"coding-agent",
+		"cognitive-systems",
+		"enforcement",
+		"planning"
+	],
+	"license": "MIT",
+	"devDependencies": {
+		"@types/node": "25.6.0",
+		"typescript": "6.0.2"
+	}
+}
