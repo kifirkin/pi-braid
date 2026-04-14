@@ -22,6 +22,41 @@ import { KnowledgeIntegration } from "../../lib/knowledge-integration.js";
 import { createExplorePathsTool } from "../../tools/explore-paths.js";
 import { createKnowledgeIntegrationTools } from "../../tools/knowledge-integration.js";
 
+// Tool usage pattern tracking — lightweight, backed by cognitive memory
+interface ToolPattern {
+	toolName: string;
+	argKeys: string[];
+	successRate: number;
+	usageCount: number;
+	lastUsed: number;
+}
+
+const toolPatterns = new Map<string, ToolPattern>();
+
+function learnToolPattern(toolName: string, args: Record<string, unknown>, success: boolean): void {
+	const key = `${toolName}:${Object.keys(args).sort().join(",")}`;
+	const existing = toolPatterns.get(key);
+	if (existing) {
+		existing.usageCount++;
+		existing.successRate = (existing.successRate * (existing.usageCount - 1) + (success ? 1 : 0)) / existing.usageCount;
+		existing.lastUsed = Date.now();
+	} else {
+		toolPatterns.set(key, {
+			toolName,
+			argKeys: Object.keys(args).sort(),
+			successRate: success ? 1 : 0,
+			usageCount: 1,
+			lastUsed: Date.now(),
+		});
+	}
+}
+
+function getBestToolPatterns(limit = 5): ToolPattern[] {
+	return Array.from(toolPatterns.values())
+		.sort((a, b) => b.successRate - a.successRate || b.usageCount - a.usageCount)
+		.slice(0, limit);
+}
+
 export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
 	const memory = getCognitiveMemory();
 
@@ -172,5 +207,38 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
 		description: explorePathsTool.description,
 		parameters: explorePathsTool.parameters,
 		execute: explorePathsTool.execute,
+	});
+
+	// Tool usage pattern tracking
+	pi.registerTool({
+		name: "tool_usage_patterns",
+		label: "Tool Usage Patterns",
+		description: "Get learned tool usage patterns — which tool+arg combinations work best. Tracked automatically from tool calls.",
+		parameters: Type.Object({
+			toolName: Type.Optional(Type.String({ description: "Filter by tool name" })),
+			limit: Type.Optional(Type.Number({ description: "Max results (default 5)", default: 5 })),
+		}),
+		execute: async (_toolCallId, params) => {
+			let patterns = params.toolName
+				? Array.from(toolPatterns.values()).filter((p) => p.toolName === params.toolName)
+				: getBestToolPatterns(params.limit ?? 5);
+
+			if (patterns.length === 0) {
+				return {
+					content: [{ type: "text" as const, text: "No tool usage patterns recorded yet." }],
+					details: { count: 0, patterns: [] },
+				};
+			}
+
+			const lines = patterns.map(
+				(p) =>
+					`- ${p.toolName}(${p.argKeys.join(", ")}): ${(p.successRate * 100).toFixed(0)}% success over ${p.usageCount} uses`,
+			);
+
+			return {
+				content: [{ type: "text" as const, text: `Tool patterns:\n${lines.join("\n")}` }],
+				details: { count: patterns.length, patterns },
+			};
+		},
 	});
 }

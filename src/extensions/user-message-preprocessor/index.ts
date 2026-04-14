@@ -265,8 +265,8 @@ async function processMessage(
 ) {
 	state.isProcessing = true;
 
-	let model = ctx.getUtilityModel();
-	ctx.ui.setStatus("preprocessor", `⏳ Preprocessing with ${model?.id ?? "no model"}...`);
+	let model = (ctx as any).getUtilityModel?.();
+	ctx.ui.setStatus("preprocessor", `Preprocessing with ${model?.id ?? "no model"}...`)
 
 	if (model?.reasoning) {
 		if (ctx.model && !ctx.model.reasoning) {
@@ -341,7 +341,7 @@ async function processMessage(
 			state.errorCount++;
 			state.skippedCount++;
 			const origPreview = original.length > 100 ? `${original.slice(0, 100)}...` : original;
-			ctx.ui.setStatus("preprocessor", "❌ Preprocessing error!");
+			ctx.ui.setStatus("preprocessor", "Preprocessing error!");
 			ctx.ui.notify(`Error on: "${origPreview}"`, "error");
 			resolve({ action: "continue" });
 			processQueue(ctx);
@@ -391,7 +391,7 @@ async function processMessage(
 		state.skippedCount++;
 		const origPreview = original.length > 100 ? `${original.slice(0, 100)}...` : original;
 		const errorMsg = err instanceof Error ? err.message : "Unknown error";
-		ctx.ui.setStatus("preprocessor", "❌ Preprocessing error!");
+		ctx.ui.setStatus("preprocessor", "Preprocessing error!");
 		ctx.ui.notify(`Error on: "${origPreview}" - ${errorMsg}`, "error");
 		resolve({ action: "continue" });
 	}
@@ -410,7 +410,7 @@ function processQueue(ctx: ExtensionContext) {
 	processMessage(next.text, next.images, ctx, next.resolve);
 
 	if (state.queue.length > 0) {
-		ctx.ui.setStatus("preprocessor", `⏳ Queue: ${state.queue.length + 1} messages...`);
+		ctx.ui.setStatus("preprocessor", `Queue: ${state.queue.length + 1} messages...`);
 	}
 }
 
@@ -512,7 +512,7 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 
 		if (state.isProcessing) {
 			const queuePosition = state.queue.length + 1;
-			ctx.ui.setStatus("preprocessor", `⏳ Queue: ${queuePosition} messages waiting...`);
+			ctx.ui.setStatus("preprocessor", `Queue: ${queuePosition} messages waiting...`);
 
 			return new Promise<InputEventResult>((resolve) => {
 				state.queue.push({

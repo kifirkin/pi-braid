@@ -95,9 +95,9 @@ interface CognitiveMemoryStore {
 const MEMORY_DIR = path.join(os.homedir(), ".pi", "memory");
 const MEMORY_FILE = path.join(MEMORY_DIR, "memory.json");
 
-const MAX_ENTRIES = 100;
-const MIN_UTILITY_THRESHOLD = 0.3;
-const CONSOLIDATION_INTERVAL = 10;
+const MAX_ENTRIES = 200;
+const MIN_UTILITY_THRESHOLD = 0.15;
+const CONSOLIDATION_INTERVAL = 5;
 
 // Utility calculation per category
 const CATEGORY_BASE_UTILITY: Record<CognitiveMemoryType, number> = {
@@ -174,19 +174,57 @@ function generateId(): string {
 // Memory Logic
 // ============================================================================
 
+/**
+ * Compute Jaccard similarity between two strings (word-level).
+ * Returns 0-1 where 1 = identical word sets.
+ */
+function jaccardSimilarity(a: string, b: string): number {
+	const wordsA = new Set(a.toLowerCase().split(/\s+/).filter((w) => w.length > 3));
+	const wordsB = new Set(b.toLowerCase().split(/\s+/).filter((w) => w.length > 3));
+	if (wordsA.size === 0 && wordsB.size === 0) return 1;
+	if (wordsA.size === 0 || wordsB.size === 0) return 0;
+
+	let intersection = 0;
+	for (const w of wordsA) {
+		if (wordsB.has(w)) intersection++;
+	}
+	const union = wordsA.size + wordsB.size - intersection;
+	return union === 0 ? 0 : intersection / union;
+}
+
+/** Generic/template content patterns that add no value */
+const GENERIC_CONTENT_PATTERNS = [
+	/auto-captured memory from enforcement/i,
+	/auto-captured/i,
+];
+
 function shouldStore(content: string, type: CognitiveMemoryType, existingMemories: CognitiveMemoryEntry[]): boolean {
 	// Errors and goals are always stored
 	if (type === "error" || type === "goal") {
 		return true;
 	}
 
-	// Check for duplicates (first 50 chars)
-	const similar = existingMemories.find(
-		(m) =>
-			m.content.toLowerCase().includes(content.toLowerCase().substring(0, 50)) ||
-			content.toLowerCase().includes(m.content.toLowerCase().substring(0, 50)),
-	);
-	if (similar) {
+	// Reject generic/template content
+	if (GENERIC_CONTENT_PATTERNS.some((p) => p.test(content))) {
+		return false;
+	}
+
+	// Reject very short content (likely low-value)
+	if (content.trim().length < 20) {
+		return false;
+	}
+
+	// Check for duplicates using Jaccard similarity on full content
+	const SIMILARITY_THRESHOLD = 0.6;
+	const duplicate = existingMemories.find((m) => {
+		// Same type is more likely a true duplicate
+		if (m.type === type) {
+			return jaccardSimilarity(m.content, content) > SIMILARITY_THRESHOLD;
+		}
+		// Cross-type check with higher threshold
+		return jaccardSimilarity(m.content, content) > 0.8;
+	});
+	if (duplicate) {
 		return false;
 	}
 
@@ -255,9 +293,50 @@ function pruneMemories(memories: CognitiveMemoryEntry[]): CognitiveMemoryEntry[]
 function consolidate(store: CognitiveMemoryStore): CognitiveMemoryStore {
 	const now = Date.now();
 
-	// Apply time-based decay based on most-recent-of(creation, lastAccessed).
-	// This prevents recently-used memories from being decayed into oblivion.
-	const decayed = store.memories.map((m) => {
+	// Phase 1: Remove dead memories (utility decayed below meaningful threshold)
+	const DEAD_UTILITY_THRESHOLD = 0.05;
+	let alive = store.memories.filter(
+		(m) => m.utility >= DEAD_UTILITY_THRESHOLD || m.type === "goal" || m.type === "error",
+	);
+
+	// Phase 2: Merge near-duplicate memories (Jaccard > 0.7, same type)
+	const MERGE_THRESHOLD = 0.7;
+	const merged: CognitiveMemoryEntry[] = [];
+	const mergedIds = new Set<string>();
+
+	for (const memory of alive) {
+		if (mergedIds.has(memory.id)) continue;
+
+		// Find similar memories of the same type
+		const duplicates: CognitiveMemoryEntry[] = [memory];
+		for (const other of alive) {
+			if (other.id === memory.id || mergedIds.has(other.id)) continue;
+			if (other.type !== memory.type) continue;
+			if (jaccardSimilarity(memory.content, other.content) > MERGE_THRESHOLD) {
+				duplicates.push(other);
+				mergedIds.add(other.id);
+			}
+		}
+
+		if (duplicates.length > 1) {
+			// Merge: keep the one with highest utility, boost it
+			duplicates.sort((a, b) => b.utility - a.utility);
+			const best = { ...duplicates[0] };
+			// Boost merged memory
+			best.utility = Math.min(1.0, best.utility + 0.1 * (duplicates.length - 1));
+			// Merge tags
+			best.tags = [...new Set(duplicates.flatMap((d) => d.tags))];
+			// Track merge count in accessCount
+			best.accessCount = duplicates.reduce((sum, d) => sum + d.accessCount, 0);
+			merged.push(best);
+			mergedIds.add(memory.id);
+		} else if (!mergedIds.has(memory.id)) {
+			merged.push(memory);
+		}
+	}
+
+	// Phase 3: Apply time-based decay
+	const decayed = merged.map((m) => {
 		const effectiveTime = Math.max(m.timestamp, m.lastAccessed || m.timestamp);
 		const ageHours = (now - effectiveTime) / (1000 * 60 * 60);
 		const decayFactor = Math.max(0.1, 1 - ageHours / 168); // Decay over 1 week
@@ -1069,8 +1148,8 @@ export function getMemoryForPrompt(): string {
 	}
 
 	const sections: string[] = [];
-	const MAX_PER_CATEGORY = 2;
-	const UTILITY_CUTOFF = 0.4;
+	const MAX_PER_CATEGORY = 3;
+	const UTILITY_CUTOFF = 0.3;
 
 	type SectionDef = { type: CognitiveMemoryType; heading: string; sort: "timestamp" | "utility" };
 	const categories: SectionDef[] = [
