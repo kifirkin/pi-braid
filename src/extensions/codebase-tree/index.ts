@@ -290,6 +290,7 @@ function getFileCategory(name: string): string {
 }
 
 // Build tree recursively
+// isRoot indicates this is the explicitly requested root path (should never be truncated)
 function buildTree(
 	dirPath: string,
 	currentDepth: number,
@@ -298,6 +299,7 @@ function buildTree(
 	include: string[] | undefined,
 	showLines: boolean,
 	stats: TreeStats,
+	isRoot: boolean = false,
 ): TreeNode | null {
 	const stat = fastStat(dirPath);
 	if (!stat) return null;
@@ -306,19 +308,21 @@ function buildTree(
 
 	if (stat.isDirectory()) {
 		// Check if this directory should be truncated
+		// Note: Root path is never truncated - user explicitly requested it
 		const truncatedByName = isTruncatedDir(name);
 		// Also check gitignore patterns
 		const { patterns: gitignorePatterns } = getGitignorePatterns(dirPath);
 		const truncatedByGitignore = matchesGitignore(dirPath, name, gitignorePatterns);
-		const truncated = truncatedByName || truncatedByGitignore;
+		// Root directory is never truncated - user explicitly requested it
+		const truncated = !isRoot && (truncatedByName || truncatedByGitignore);
 		const shouldExpand = !truncated && currentDepth < maxDepth;
 
 		if (truncated) {
 			// Truncated directory - show it but don't recurse
 			stats.totalDirs++;
 			const reason = truncatedByGitignore
-				? "content hidden - matches .gitignore (request as root to see)"
-				: "content hidden - request as root to see actual structure";
+				? "content hidden - matches .gitignore"
+				: "content hidden - large/dot directory";
 			return {
 				name,
 				path: dirPath,
@@ -343,7 +347,7 @@ function buildTree(
 				const { patterns: gitignorePatterns } = getGitignorePatterns(dirPath);
 				if (matchesGitignore(childPath, entry.name, gitignorePatterns)) continue;
 
-				const childNode = buildTree(childPath, currentDepth + 1, maxDepth, exclude, include, showLines, stats);
+				const childNode = buildTree(childPath, currentDepth + 1, maxDepth, exclude, include, showLines, stats, false);
 
 				if (childNode) {
 					children.push(childNode);
@@ -536,7 +540,7 @@ export default function codebaseTreeExtension(pi: ExtensionAPI) {
 				typeBreakdown: {},
 			};
 
-			const tree = buildTree(rootPath, 0, maxDepth, exclude, params.include, showStats, stats);
+			const tree = buildTree(rootPath, 0, maxDepth, exclude, params.include, showStats, stats, true);
 
 			if (!tree) {
 				return {

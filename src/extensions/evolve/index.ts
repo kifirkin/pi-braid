@@ -2,18 +2,16 @@
  * Evolve Extension - Self-evolution commands for the agent
  *
  * Provides:
- * - evolve --status: Show current state and metrics
- * - evolve --health: Run healthcheck and validate
- * - evolve --check: Check degradation status
- * - evolve --commit: Create checkpoint with health validation
- * - evolve --rollback: Rollback to last good checkpoint
- * - evolve --config: Adjust degradation thresholds
- * - evolve --reset: Reset metrics and config
+ * - evolve: status, health, check, commit, rollback, config, reset, benchmark
+ * - check_resources: Budget tracking (tokens, cost, time)
+ * - time_status: Session timing and marks
  *
- * This extension integrates with:
- * - healthcheck: For validated health scores
- * - metrics: For performance tracking
- * - pijul: For version control and rollback
+ * Integrates:
+ * - metacognitive-state: Confidence, knowledge gaps, recommendations
+ * - degradation-detector: Error rate and tool success metrics
+ * - resource-manager: Token/cost/time budget enforcement
+ * - time-tracker: Session timing awareness
+ * - pijul: Version control and rollback
  */
 
 import { Type } from "@sinclair/typebox";
@@ -31,12 +29,22 @@ import {
 	updateConfig,
 } from "../../lib/degradation-detector.js";
 import {
+	initMetacognitiveState,
+	getMetacognitiveState,
+	recordSuccess as recordMetaSuccess,
+	recordFailure as recordMetaFailure,
+	getRecommendation,
+	resetMetacognitiveState,
+} from "../../lib/metacognitive-state.js";
+import { ResourceManager } from "../../lib/resource-manager.js";
+import {
 	getLatestCheckpoint,
 	getPijulStatus,
 	isPijulAvailable,
 	recordCheckpoint,
 	resetToPatch,
 } from "../../lib/pijul-utils.js";
+import { createTimeTracker, type TimeTrackerState } from "../../tools/time-tracker.js";
 
 const EVOLVE_ACTIONS = ["status", "health", "check", "commit", "rollback", "config", "reset", "benchmark"] as const;
 type EvolveActionType = (typeof EVOLVE_ACTIONS)[number];
@@ -72,8 +80,16 @@ interface EvolveResult {
 	error?: string;
 }
 
-// Load metrics on startup
+// Initialize subsystems on startup
 loadMetrics().catch(console.error);
+initMetacognitiveState();
+
+// Shared resource manager
+const resourceManager = new ResourceManager();
+resourceManager.initialize();
+
+// Shared time tracker
+const { tool: timeStatusTool, state: timeState } = createTimeTracker();
 
 // Periodic metrics save
 const METRICS_SAVE_INTERVAL = 30000; // 30 seconds
@@ -122,9 +138,82 @@ export default function evolveExtension(pi: ExtensionAPI) {
 		},
 	});
 
+	// Resource management tools
+	const setBudgetSchema = Type.Object({
+		maxTokens: Type.Optional(Type.Number()),
+		maxCost: Type.Optional(Type.Number()),
+		maxTime: Type.Optional(Type.Number()),
+	});
+
+	const checkResourcesSchema = Type.Object({});
+
+	const recordUsageSchema = Type.Object({
+		tokens: Type.Number(),
+		cost: Type.Number(),
+	});
+
+	const resourceToolDescriptions = {
+		set_budget: "Set resource budget (tokens, cost USD, time ms) for the session. The agent warns when approaching limits.",
+		check_resources: "Check current resource usage against budget. Shows token/cost/time ratios and whether session can continue.",
+		record_usage: "Record token and cost usage manually. Tracked against budget limits.",
+	};
+
+	pi.registerTool({
+		name: "set_budget",
+		label: "Set Budget",
+		description: resourceToolDescriptions.set_budget,
+		parameters: setBudgetSchema,
+		execute: async (_toolCallId, params) => {
+			const budget = resourceManager.setBudget(params);
+			return {
+				content: [{ type: "text" as const, text: `Budget set: ${budget.maxTokens.toLocaleString()} tokens, $${budget.maxCost.toFixed(2)}, ${Math.floor(budget.maxTime / 60000)}min` }],
+				details: budget,
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "check_resources",
+		label: "Check Resources",
+		description: resourceToolDescriptions.check_resources,
+		parameters: checkResourcesSchema,
+		execute: async () => {
+			const formatted = resourceManager.formatStatus();
+			const status = resourceManager.checkStatus();
+			return {
+				content: [{ type: "text" as const, text: formatted }],
+				details: { canContinue: resourceManager.canContinue(), isWarning: status.isWarning, isExhausted: status.isExhausted },
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "record_usage",
+		label: "Record Usage",
+		description: resourceToolDescriptions.record_usage,
+		parameters: recordUsageSchema,
+		execute: async (_toolCallId, params) => {
+			resourceManager.recordUsage(params.tokens, params.cost);
+			const status = resourceManager.checkStatus();
+			return {
+				content: [{ type: "text" as const, text: `Recorded: ${params.tokens} tokens, $${params.cost.toFixed(4)}` }],
+				details: { tokenRatio: status.tokenRatio, costRatio: status.costRatio },
+			};
+		},
+	});
+
+	// Time tracking tool
+	pi.registerTool({
+		name: timeStatusTool.name,
+		label: timeStatusTool.label,
+		description: timeStatusTool.description,
+		parameters: timeStatusTool.parameters,
+		execute: timeStatusTool.execute,
+	});
+
 	return {
 		name: "evolve",
-		version: "1.0.0",
+		version: "2.0.0",
 	};
 }
 
@@ -174,6 +263,8 @@ function executeStatus(): EvolveResult {
 	const summary = getMetricsSummary();
 	const config = getConfig();
 	const pijulStatus = getPijulStatus();
+	const meta = getMetacognitiveState();
+	const recommendation = getRecommendation();
 
 	return {
 		action: "status",
@@ -184,6 +275,13 @@ function executeStatus(): EvolveResult {
 			degraded: summary.degraded,
 			degradationReasons: summary.reasons,
 			pijulStatus,
+			metacognition: {
+				confidence: meta.confidence,
+				knowledgeGaps: meta.knowledgeGaps,
+				strengths: meta.strengths,
+				weaknesses: meta.weaknesses,
+				recommendation,
+			},
 		},
 	};
 }
@@ -528,6 +626,27 @@ function formatEvolveOutput(result: EvolveResult): string {
 				lines.push("No metrics recorded yet.");
 				lines.push("");
 				lines.push("Run `evolve --health` to perform first healthcheck.");
+			}
+
+			// Metacognitive state
+			const mc = (data as any)?.metacognition as { confidence: number; knowledgeGaps: string[]; strengths: string[]; weaknesses: string[]; recommendation: string | null } | undefined;
+			if (mc) {
+				lines.push("");
+				lines.push("**Metacognition:**");
+				const confIcon = mc.confidence >= 0.7 ? "🟢" : mc.confidence >= 0.4 ? "🟡" : "🔴";
+				lines.push(`- Confidence: ${confIcon} ${(mc.confidence * 100).toFixed(0)}%`);
+				if (mc.knowledgeGaps.length > 0) {
+					lines.push(`- Knowledge Gaps: ${mc.knowledgeGaps.join(", ")}`);
+				}
+				if (mc.strengths.length > 0) {
+					lines.push(`- Strengths: ${mc.strengths.join(", ")}`);
+				}
+				if (mc.weaknesses.length > 0) {
+					lines.push(`- Weaknesses: ${mc.weaknesses.join(", ")}`);
+				}
+				if (mc.recommendation) {
+					lines.push(`- ⚠️ ${mc.recommendation}`);
+				}
 			}
 			break;
 		}
