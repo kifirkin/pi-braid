@@ -11,10 +11,25 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { createThinkTool } from "../../tools/think.js";
 import { createHypothesizeTool } from "../../tools/utility-hypothesize.js";
+import { resolveUtilityModel } from "../../lib/model-resolver.js";
 
 export default function metacognitionExtension(pi: ExtensionAPI) {
-	// Think tool - stateless, can be registered directly
-	const thinkTool = createThinkTool();
+	// Think tool - passes ctx-getters for deep analysis support
+	const thinkTool = createThinkTool(
+		// Get utility model from ExtensionContext at execution time — direct resolution, no patching
+		(ctx) => {
+			if (!ctx) return undefined;
+			return resolveUtilityModel(ctx);
+		},
+		// Get API key from ctx at execution time
+		async (ctx) => {
+			if (!ctx) return undefined;
+			const model = resolveUtilityModel(ctx);
+			if (!model) return undefined;
+			const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+			return auth.ok && auth.apiKey ? auth.apiKey : undefined;
+		},
+	);
 	pi.registerTool({
 		name: thinkTool.name,
 		label: thinkTool.label,
@@ -25,16 +40,15 @@ export default function metacognitionExtension(pi: ExtensionAPI) {
 
 	// Hypothesize tool - accesses utility model from ctx at execution time
 	const hypothesizeTool = createHypothesizeTool(
-		// Get utility model from ExtensionContext at execution time
+		// Get utility model from ExtensionContext at execution time — direct resolution, no patching
 		(ctx) => {
 			if (!ctx) return undefined;
-			// Try utility model first, fall back to current model
-			return ctx.getUtilityModel() ?? ctx.model;
+			return resolveUtilityModel(ctx);
 		},
 		// Get API key from ctx at execution time
 		async (ctx) => {
 			if (!ctx) return undefined;
-			const model = ctx.getUtilityModel() ?? ctx.model;
+			const model = resolveUtilityModel(ctx);
 			if (!model) return undefined;
 			const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
 			return auth.ok && auth.apiKey ? auth.apiKey : undefined;
