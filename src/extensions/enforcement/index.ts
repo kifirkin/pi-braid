@@ -105,6 +105,46 @@ ${
 `;
 		}
 
+		// Inject scratchpad content if available
+		if (state.scratchpadContent) {
+			enforcementPrompt += `
+### Current Scratchpad
+${state.scratchpadContent}
+`;
+		} else {
+			// Try to read from shared scratchpad file
+			try {
+				const fs = await import("node:fs");
+				const path = await import("node:path");
+				const os = await import("node:os");
+				const slug = "--" + (process.cwd()?.split("/").filter(Boolean).join("-") || "default") + "--";
+				const filePath = path.join(os.homedir(), ".pi", "agent", "scratchpads", slug, "latest.json");
+				if (fs.existsSync(filePath)) {
+					const data = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+					if (data.goal || data.plan?.length > 0 || data.decisions?.length > 0) {
+						const lines = [`Goal: ${data.goal || "(none)"}`];
+						if (data.plan?.length > 0) {
+							lines.push("Plan:");
+							for (let i = 0; i < data.plan.length; i++) {
+								const step = data.plan[i];
+								const status = data.done?.includes(step) ? "[done]" : "[ ]";
+								lines.push("  " + status + " " + (i + 1) + ". " + step);
+							}
+						}
+						if (data.decisions?.length > 0) {
+							lines.push("Decisions: " + data.decisions.length);
+						}
+						enforcementPrompt += `
+### Current Scratchpad
+${lines.join("\n")}
+`;
+					}
+				}
+			} catch {
+				// Silent fail
+			}
+		}
+
 		// Add silent turn warning (only inject once)
 		if (state.silentTurns > 0 && !state.silentTurnWarned) {
 			state.silentTurnWarned = true;
@@ -237,7 +277,10 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 
 		const memoryUpdated = actualTools.some((t) => ["memory_store", "memory_recall", "memory_list"].includes(t));
 		if (!memoryUpdated) {
-			state.turnsSinceMemory++;
+			// Only count meaningful turns (with actual tools and no errors)
+			if (actualTools.length > 0 && !hadErrors) {
+				state.turnsSinceMemory++;
+			}
 		} else {
 			state.turnsSinceMemory = 0;
 		}
@@ -327,6 +370,83 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 			const { sent } = sendEscalatedNudge(pi, "memoryAnalysis", msg);
 			if (sent) {
 				state.lastNudgeTime = Date.now();
+			}
+		}
+
+		// =====================================================
+		// CONTEXT HYGIENE NUDGE
+		// =====================================================
+		// Check context usage periodically and nudge when high
+		const contextUpdated = actualTools.some((t) => 
+			["context_tag", "context_log", "context_checkout", "context_prune", "context_audit"].includes(t)
+		);
+		if (contextUpdated) {
+			state.lastContextCheckTurn = state.currentTurn;
+			state.contextNudgeSent = false;
+		}
+
+		// Time-based context check
+		if (
+			!hadErrors &&
+			actualTools.length > 0 &&
+			state.currentTurn - state.lastContextCheckTurn >= state.contextCheckInterval &&
+			!state.contextNudgeSent
+		) {
+			state.contextNudgeSent = true;
+
+			// Get context usage from session
+			let usagePercent = 0;
+			try {
+				// @ts-ignore - ctx may be available via event
+				const ctxFromEvent = (event as any)?.ctx;
+				const usage = ctxFromEvent?.getContextUsage?.();
+				if (usage) {
+					usagePercent = usage.percent ?? 0;
+				}
+			} catch { /* ignore */ }
+
+			if (usagePercent > 0) {
+				const turnsSince = state.currentTurn - state.lastContextCheckTurn;
+				let contextMsg = "";
+
+				if (usagePercent > 85) {
+					contextMsg = `🔴 **Critical: Context at ${usagePercent.toFixed(1)}%!**\n\n` +
+						`${turnsSince} turns since context check. Consider:\n` +
+						`1. \`context_audit\` to see hygiene recommendations\n` +
+						`2. \`context_tag\` to create a checkpoint\n` +
+						`3. Run \`/compact\` to summarize\n` +
+						`4. \`context_checkout\` to branch if exploring alternatives`;
+				} else if (usagePercent > 70) {
+					contextMsg = `🟡 **Context at ${usagePercent.toFixed(1)}%** — consider pruning soon.\n\n` +
+						`Run \`context_prune()\` to see obsolete entries.\n` +
+						`Run \`context_tag(name="checkpoint")\` to mark progress.`;
+				}
+
+				if (contextMsg && nudgeManager.shouldSendNudge("context", contextMsg).shouldSend) {
+					whispersToSend.push(contextMsg);
+				}
+			}
+		}
+
+		// High-context nudge on finalize
+		const isFinalizeTurn = actualTools.includes("finalize");
+		if (isFinalizeTurn && !state.highContextNudged) {
+			let usagePercent = 0;
+			try {
+				// @ts-ignore - ctx may be available via event
+				const ctxFromEvent = (event as any)?.ctx;
+				const usage = ctxFromEvent?.getContextUsage?.();
+				if (usage) {
+					usagePercent = usage.percent ?? 0;
+				}
+			} catch { /* ignore */ }
+
+			if (usagePercent > 70) {
+				state.highContextNudged = true;
+				whispersToSend.push(
+					`⚠️ **High context usage: ${usagePercent.toFixed(1)}%**\n\n` +
+					`Consider: \`context_audit()\` before finalizing to ensure context hygiene.`
+				);
 			}
 		}
 

@@ -60,7 +60,12 @@ export interface JudgeContext {
  * Get a suitable model for verification analysis
  */
 export function getVerificationModel(ctx: ExtensionContext): Model<Api> | undefined {
-	let model = ctx.getUtilityModel();
+	let model: Model<Api> | undefined;
+	try {
+		model = (ctx as any).getUtilityModel?.();
+	} catch {
+		// Polyfill not patched yet (no session_start in -p mode)
+	}
 
 	if (!model) {
 		model = ctx.model;

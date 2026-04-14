@@ -1,7 +1,7 @@
 /**
  * TaskScratchpad - Per-loop state that persists across turns.
  *
- * Similar to Hermes's TodoStore - dies when task completes.
+ * Dies when task completes.
  * Maintains continuity of thought without bloating context.
  */
 
@@ -38,7 +38,7 @@ export function formatScratchpad(pad: TaskScratchpad): string {
 		lines.push("\nPlan:");
 		for (let i = 0; i < pad.plan.length; i++) {
 			const step = pad.plan[i];
-			const status = pad.done.includes(step) ? "✅" : "⬜";
+			const status = pad.done.includes(step) ? "[done]" : "[ ]";
 			lines.push(`  ${status} ${i + 1}. ${step}`);
 		}
 	}

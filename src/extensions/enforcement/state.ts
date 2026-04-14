@@ -17,7 +17,7 @@ export const DEFAULT_CONFIG: EnforcementConfig = {
 	enforceMemoryOnFinalize: true,
 	enforceToolDiversity: true,
 	enforceExploreBeforeAct: true,
-	memoryNudgeThreshold: 15,
+	memoryNudgeThreshold: 50,
 	minToolCallsBeforeFinalize: 5,
 	maxSilentTurns: 2,
 	warnOnToolSequenceRepetition: 3,
@@ -94,6 +94,7 @@ export const state = {
 	lastScratchpadNudgeTurn: -100,
 	pendingToolErrors: null as { toolName: string; turn: number } | null,
 	hadToolErrors: false,
+	scratchpadContent: "" as string,
 	lastJudgeTime: 0,
 	judgeSkipCounter: 0,
 	lastJudgeAnalysis: null as JudgeAnalysis | null,
@@ -107,6 +108,12 @@ export const state = {
 	toolLog: [] as string[],
 	// Finalize validation context (set by agent/session setup)
 	goalAlignmentData: [] as unknown[],
+	// Context hygiene monitoring
+	lastContextCheckTurn: 0,
+	contextCheckInterval: 10, // Check every N turns
+	contextNudgeSent: false,
+	contextAuditThreshold: 0.7, // Nudge when usage > 70%
+	highContextNudged: false,
 	originalRequest: undefined as string | undefined,
 	planAlignmentData: null as {
 		id: string;
@@ -181,4 +188,10 @@ export function resetState(): void {
 	state.originalRequest = undefined;
 	state.goalAlignmentData = [];
 	state.planAlignmentData = null;
+	// Reset context hygiene monitoring
+	state.lastContextCheckTurn = 0;
+	state.contextCheckInterval = 10;
+	state.contextNudgeSent = false;
+	state.contextAuditThreshold = 0.7;
+	state.highContextNudged = false;
 }
