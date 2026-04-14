@@ -172,49 +172,11 @@ When auditing pi coding agent specifically, check these files:
 | High | `enforcement/humanizer-guidelines.ts` | Output style guidelines |
 | Medium | `*/SKILL.md` | Skill instructions |
 
-## A/B Test Design for Research
+## A/B Testing (Quick Reference)
 
-When the user wants to run experiments comparing prompt variants:
-
-### Minimum Viable Experiment
-
-1. **Control**: Current prompt (with MUST/ALWAYS/NEVER)
-2. **Treatment**: Identity-framed prompt (converted)
-3. **Task set**: Use the same coding tasks from the 2×2 study
-4. **Metrics**:
-   - Task completion rate (does it solve the problem?)
-   - Token usage (does it waste tokens on compliance rituals?)
-   - Compliance ratio (compliance behaviors / problem-directed behaviors)
-   - Code quality (lines of code, precision of edits)
-
-### Running Benchmarks
-
-Use release pi with CLI args to configure system prompts:
-
-```bash
-# Control condition (behavioral framing)
-pi --system-prompt-addition "You MUST use tools. You MUST explore before editing. CRITICAL: read files first."
-
-# Treatment condition (identity framing)
-pi --system-prompt-addition "You work through tools. You explore before making changes. You read files before editing."
-```
-
-This allows A/B testing without modifying the binary.
-
-### Models to Test
-
-Per the research paper, test across model architectures:
-- **Autoregressive**: Step 3.5 Flash, GPT-4, Claude, Gemini
-- **Diffusion**: Mercury-2 (different generation mechanism — tests if identity framing generalizes)
-
-### Statistical Tests
-
-Use **Fisher's exact test** for small samples (not chi-squared):
-```python
-from scipy.stats import fisher_exact
-# 2×2 contingency: [solved, not_solved] for each condition
-odds_ratio, p_value = fisher_exact([[a, b], [c, d]])
-```
+Control vs Treatment: behavioral framing (MUST/ALWAYS) vs identity framing ("You [verb]").
+Run via `pi --system-prompt-addition`. Metrics: completion rate, token usage, compliance ratio.
+Use Fisher's exact test for small samples.
 
 ## Common Mistakes
 

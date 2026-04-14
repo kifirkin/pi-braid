@@ -1,6 +1,6 @@
 ---
 name: healthcheck
-description: "Run agent self-diagnostic to validate all tools and capabilities are functioning. Use when troubleshooting tool failures, after setup, or to verify environment readiness."
+description: "Run agent self-diagnostic to validate all tools and capabilities, and clean up stale processes. Use when troubleshooting tool failures, after setup, verifying environment readiness, or when pi instances accumulate and slow down the system."
 disable-model-invocation: true
 ---
 
@@ -68,6 +68,28 @@ Run this skill to validate that the agent can fully operate on all required tool
 | repl | Timeout | Check system resources |
 | memory | Store fails | Verify ~/.pi writable |
 | snapshot | Create fails | Check disk space |
+
+## Process Cleanup
+
+Clean up stale pi instances and related processes that accumulate during long-running tasks.
+
+```bash
+# Kill all stale pi processes (older than 5 minutes)
+~/.pi/agent/skills/process-hygiene/cleanup.sh
+
+# Kill only pi-cli processes
+~/.pi/agent/skills/process-hygiene/cleanup.sh --pi-only
+
+# Dry run (show what would be killed)
+~/.pi/agent/skills/process-hygiene/cleanup.sh --dry-run
+
+# Show current stale processes
+~/.pi/agent/skills/process-hygiene/cleanup.sh --list
+```
+
+Cleans: `pi` processes, orphaned `node` children, stale `bash` subprocesses, old tmux sessions, temp dirs in `/tmp/modern-bench-*` and `/tmp/pi-*`.
+
+Safety: Never kills processes from last 5 minutes (unless `--force`). Use `--dry-run` to preview.
 
 ## Report Format
 

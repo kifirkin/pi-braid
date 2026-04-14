@@ -1,6 +1,6 @@
 ---
 name: software-engineer
-description: "Always read this skill when working on software tasks. Universal protocol: analyze > decompose > execute > verify. DEBUGGING: understand > trace > root cause > fix > verify"
+description: "Always read this skill when working on software tasks. Universal protocol: analyze > decompose > execute > verify > repeat. DEBUGGING: understand > trace > root cause > fix > verify > repeat"
 ---
 
 ## PROTOCOL
@@ -23,7 +23,6 @@ description: "Always read this skill when working on software tasks. Universal p
 | Git / Commits / Releases | GIT HYGIENE |
 | Security / Auth / Secrets | SECURITY |
 | Database / API design | DATA PERSISTENCE |
-| Workspace conflicts | workspace-manager skill |
 
 ---
 
