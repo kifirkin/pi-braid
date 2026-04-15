@@ -415,6 +415,9 @@ function processQueue(ctx: ExtensionContext) {
 }
 
 export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
+	// DEBUG: trace registration
+	console.log("[preprocessor] Extension loaded, registering handlers...");
+
 	pi.registerTool({
 		name: "preprocessor_config",
 		label: "Configure Message Preprocessor",
@@ -472,24 +475,32 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("input", async (event, ctx): Promise<InputEventResult> => {
+		console.log("[preprocessor] INPUT EVENT fired:", JSON.stringify({ textLength: event.text.length, text: event.text.slice(0, 50), source: event.source }));
+
 		if (!state.config.enabled) {
+			console.log("[preprocessor] Disabled, skipping");
 			return { action: "continue" };
 		}
 
 		const original = event.text;
 
+		console.log("[preprocessor] Processing text:", original.slice(0, 80));
+
 		if (original.length === 0) {
+			console.log("[preprocessor] Empty text, skipping");
 			return { action: "continue" };
 		}
 
 		if (original.length < state.config.minLength) {
 			state.skippedCount++;
+			console.log("[preprocessor] Too short (minLength), skipping");
 			return { action: "continue" };
 		}
 
 		// If preprocessing was already done in this agentic session, skip
 		// This handles both unchanged preprocessed text AND user modifications
 		if (state.preprocessingExhausted) {
+			console.log("[preprocessor] Already preprocessed in session, skipping");
 			return { action: "continue" };
 		}
 
@@ -528,10 +539,19 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 		});
 	});
 
+	// Reset preprocessing state on session start (new session, resume, fork)
+	// This ensures preprocessing runs for the FIRST user message in a session.
+	pi.on("session_start", async (_event, _ctx) => {
+		console.log("[preprocessor] session_start, resetting preprocessingExhausted");
+		state.preprocessingExhausted = false;
+		state.preprocessedText = undefined;
+	});
+
 	// Reset preprocessing state when agent finishes, so next user input
 	// can be processed. This ensures preprocessing runs once per user message,
 	// not on every agent turn in a conversation.
 	pi.on("agent_end", async (_event, _ctx) => {
+		console.log("[preprocessor] agent_end, resetting preprocessingExhausted");
 		state.preprocessingExhausted = false;
 		state.preprocessedText = undefined;
 	});
