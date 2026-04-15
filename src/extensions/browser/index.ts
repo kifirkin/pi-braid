@@ -33,6 +33,14 @@ let connectedTabId: string = "";
 let connectedUrl: string = "";
 let sessionCleanup: (() => void) | null = null;
 
+const DEBUG_PORTS = [9222, 9225];
+
+async function getBrowserUrl(port: number): Promise<{ wsUrl: string; tabWsUrl: string | null }> {
+	const resp = await fetch(`http://localhost:${port}/json/version`);
+	const data = (await resp.json()) as { webSocketDebuggerUrl: string };
+	return { wsUrl: data.webSocketDebuggerUrl, tabWsUrl: null };
+}
+
 async function ensureConnected(): Promise<CdpClient> {
 	if (cdp?.isConnected) return cdp;
 
@@ -46,10 +54,25 @@ async function ensureConnected(): Promise<CdpClient> {
 		sessionCleanup = null;
 	}
 
-	const available = await isBrowserAvailable();
-	if (!available) {
+	// Try each debug port
+	let browserWsUrl: string | null = null;
+	let usedPort: number | null = null;
+
+	for (const port of DEBUG_PORTS) {
+		const available = await isBrowserAvailable(port);
+		if (available) {
+			try {
+				const { wsUrl } = await getBrowserUrl(port);
+				browserWsUrl = wsUrl;
+				usedPort = port;
+				break;
+			} catch { /* try next port */ }
+		}
+	}
+
+	if (!browserWsUrl || usedPort === null) {
 		throw new Error(
-			"Chrome not reachable at localhost:9222.\n\n" +
+			"Chrome not reachable on localhost:9222 or :9225.\n\n" +
 			"Start Chrome with:\n" +
 			'  /Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome ' +
 			'--remote-debugging-port=9222\n\n' +
@@ -58,14 +81,35 @@ async function ensureConnected(): Promise<CdpClient> {
 		);
 	}
 
-	cdp = new CdpClient();
-	await cdp.connectToBrowser();
-
-	// Get active tab info
-	const tabs = await listTabs();
+	// Get tab list via HTTP
+	const tabs = await listTabs(usedPort);
 	const activeTab = tabs[tabs.length - 1];
 	connectedTabId = activeTab?.id ?? "";
 	connectedUrl = activeTab?.url ?? "";
+
+	// Connect to the active tab
+	if (!activeTab) {
+		// No tabs — create one via HTTP
+		const newResp = await fetch(`http://localhost:${usedPort}/json/new?url=` + encodeURIComponent("about:blank"), {
+			method: "PUT",
+		});
+		const newTab = (await newResp.json()) as { id: string; url: string; webSocketDebuggerUrl: string };
+		connectedTabId = newTab.id;
+		connectedUrl = newTab.url;
+		cdp = new CdpClient();
+		await cdp.connect(newTab.webSocketDebuggerUrl);
+	} else {
+		// Connect to the browser, then find the tab WS URL
+		const tabWsResp = await fetch(`http://localhost:${usedPort}/json`);
+		const allTabs = (await tabWsResp.json()) as Array<{ id: string; url: string; title: string; webSocketDebuggerUrl?: string }>;
+		const targetTab = allTabs.find((t) => t.id === connectedTabId) ?? allTabs[allTabs.length - 1];
+
+		cdp = new CdpClient();
+		await cdp.connect(targetTab.webSocketDebuggerUrl!);
+	}
+
+	// Enable required CDP domains
+	await cdp.enableDomains();
 
 	// Listen for Page.navigated events to track URL
 	sessionCleanup = cdp.onEvent((method, params) => {

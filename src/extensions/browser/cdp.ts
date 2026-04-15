@@ -61,6 +61,13 @@ export class CdpClient {
 		});
 	}
 
+	/** Enable required CDP domains after connecting to a tab. */
+	async enableDomains(): Promise<void> {
+		await this.send("DOM.enable");
+		await this.send("Runtime.enable");
+		await this.send("Page.enable");
+	}
+
 	async connectToBrowser(): Promise<void> {
 		const resp = await fetch("http://localhost:9222/json/version");
 		const data = (await resp.json()) as { webSocketDebuggerUrl?: string };
@@ -109,8 +116,8 @@ export interface TabInfo {
 /**
  * List all browser tabs.
  */
-export async function listTabs(): Promise<TabInfo[]> {
-	const resp = await fetch("http://localhost:9222/json");
+export async function listTabs(port = 9222): Promise<TabInfo[]> {
+	const resp = await fetch(`http://localhost:${port}/json`);
 	const data = (await resp.json()) as Array<{ id: string; url: string; title: string; webSocketDebuggerUrl?: string }>;
 	return data
 		.filter((t) => t.webSocketDebuggerUrl)
@@ -129,9 +136,9 @@ export async function connectToTab(wsUrl: string): Promise<CdpClient> {
 /**
  * Check if Chrome is reachable on the debugging port.
  */
-export async function isBrowserAvailable(): Promise<boolean> {
+export async function isBrowserAvailable(port = 9222): Promise<boolean> {
 	try {
-		const resp = await fetch("http://localhost:9222/json/version", { signal: AbortSignal.timeout(2000) });
+		const resp = await fetch(`http://localhost:${port}/json/version`, { signal: AbortSignal.timeout(2000) });
 		return resp.ok;
 	} catch {
 		return false;
