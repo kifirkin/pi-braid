@@ -69,7 +69,7 @@ skill-name/
 |-------|----------|-------------|
 | `name` | Yes | Lowercase, hyphens only, max 64 chars |
 | `description` | Yes | When to trigger + what it does, max 1024 chars |
-| `disable-model-invocation` | No | Skip auto-loading for expensive skills |
+| `disable-model-invocation` | No | Skip loding to agent system prompt |
 
 ### Writing the Description
 

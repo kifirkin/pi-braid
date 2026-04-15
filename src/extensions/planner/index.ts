@@ -10,8 +10,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { GoalManager } from "../../lib/goal-manager.js";
 import { Planner } from "../../lib/planner.js";
 
-import { createAutonomousControlTools } from "../../tools/autonomous-control.js";
-import { createFinalizeTool } from "../../tools/finalize.js";
+
 import { createGoalTool } from "../../tools/goals.js";
 import { createPlanTool } from "../../tools/planning.js";
 
@@ -41,31 +40,6 @@ export default function plannerExtension(pi: ExtensionAPI) {
 		parameters: planTool.parameters,
 		execute: async (toolCallId, params) => planTool.execute(toolCallId, params, {} as any),
 	});
-
-	// Finalize tool
-	const finalizeTool = createFinalizeTool();
-	pi.registerTool({
-		name: finalizeTool.name,
-		label: finalizeTool.label,
-		description: finalizeTool.description,
-		parameters: finalizeTool.parameters,
-		execute: finalizeTool.execute,
-	});
-
-// Autonomous control tools (signal_complete, signal_stuck)
-	const autonomousTools = createAutonomousControlTools({
-		onComplete: () => {},
-		onStuck: (_reason) => {},
-	});
-	for (const [name, tool] of Object.entries(autonomousTools)) {
-		pi.registerTool({
-			name,
-			label: tool.label ?? name,
-			description: tool.description,
-			parameters: tool.parameters,
-			execute: tool.execute,
-		});
-	}
 
 	// Retry command - abort and trigger new turn
 	pi.registerCommand("retry", {

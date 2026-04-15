@@ -1,7 +1,6 @@
 ---
 name: healthcheck
 description: "Run agent self-diagnostic to validate all tools and capabilities, and clean up stale processes. Use when troubleshooting tool failures, after setup, verifying environment readiness, or when pi instances accumulate and slow down the system."
-disable-model-invocation: true
 ---
 
 # Agent Healthcheck Protocol

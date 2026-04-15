@@ -1,86 +1,109 @@
 /**
- * REPL Tool - Interactive Code Execution
+ * REPL Tool - Native TypeScript/JavaScript REPL
  *
- * Provides a persistent REPL environment for the agent:
- * - Run Python/Node.js/Shell code snippets
- * - Maintain state between calls (variables, imports)
- * - Useful for testing hypotheses, exploring data, verifying logic
+ * Provides a persistent REPL environment running in the agent's own process:
+ * - Execute JavaScript/TypeScript code via eval()
+ * - State persists between calls (variables, functions, imports)
+ * - No external processes spawned
+ * - Native to pi-agent itself
  *
- * Inspired by: Fractals executor pattern
+ * State persists in closure — shared across all repl calls within a session.
  */
 
-import { execSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 
-interface ReplState {
-	pythonVars: Map<string, string>;
-	nodeVars: Map<string, string>;
-	executionCount: number;
-}
+// Shared state across all REPL calls in this session
+const replState = {
+	context: {} as Record<string, unknown>,
+	executionCount: 0,
+	lastResult: undefined as unknown,
+};
 
 const replSchema = Type.Object({
-	language: Type.Union([Type.Literal("python"), Type.Literal("node"), Type.Literal("shell")], {
-		description: "Language to execute code in",
-	}),
-	code: Type.String({ description: "Code to execute. Can be multi-line." }),
-	timeout_ms: Type.Optional(Type.Number({ description: "Timeout in milliseconds (default: 30000)" })),
+	code: Type.String({ description: "TypeScript/JavaScript code to execute. State persists between calls." }),
+	timeout_ms: Type.Optional(Type.Number({ description: "Timeout in milliseconds (default: 30000)", default: 30000 })),
 });
 
-export function createReplTool(cwd: string): AgentTool<typeof replSchema> {
-	const state: ReplState = {
-		pythonVars: new Map(),
-		nodeVars: new Map(),
-		executionCount: 0,
-	};
-
+export function createReplTool(): AgentTool<typeof replSchema> {
 	return {
 		name: "repl",
 		label: "REPL",
 		description:
-			"Run code in a REPL environment. Supports Python, Node.js, and Shell. State persists between calls (variables, imports). Use to test hypotheses, explore data, verify logic before fixing.",
+			"Execute TypeScript/JavaScript code in the agent's native context. State (variables, functions) persists between calls. Use to test hypotheses, explore data, verify logic before fixing.",
 		parameters: replSchema,
-		execute: async (_toolCallId: string, params: { language: string; code: string; timeout_ms?: number }) => {
-			const timeout = params.timeout_ms || 30000;
-			state.executionCount++;
+		execute: async (_toolCallId: string, params: { code: string; timeout_ms?: number }) => {
+			replState.executionCount++;
 
 			try {
-				let result: { stdout: string; stderr: string; exitCode: number };
+				// Build eval context with previous state
+				const evalKeys = Object.keys(replState.context);
+				const evalValues = Object.values(replState.context);
 
-				switch (params.language) {
-					case "python":
-						result = executePython(params.code, cwd, timeout, state);
-						break;
-					case "node":
-						result = executeNode(params.code, cwd, timeout, state);
-						break;
-					case "shell":
-						result = executeShell(params.code, cwd, timeout);
-						break;
-					default:
-						return {
-							content: [{ type: "text" as const, text: `Unknown language: ${params.language}` }],
-							details: { error: `Unknown language: ${params.language}` },
-						};
+				// Create a function with the context bound
+				const evalFn = new Function(
+					...evalKeys,
+					`"use strict";\n${params.code}`,
+				);
+
+				// Execute with timeout
+				const timeout = params.timeout_ms ?? 30000;
+				let result: unknown;
+				let timedOut = false;
+
+				const timeoutPromise = new Promise<never>((_, reject) => {
+					setTimeout(() => {
+						timedOut = true;
+						reject(new Error(`Execution timed out after ${timeout}ms`));
+					}, timeout);
+				});
+
+				const evalPromise = (async () => {
+					result = await evalFn(...evalValues);
+					return result;
+				})();
+
+				try {
+					await Promise.race([evalPromise, timeoutPromise]);
+				} catch (e) {
+					if (timedOut) throw e;
+					// Eval errors are thrown, catch them below
+					throw e;
 				}
 
-				const output = result.stdout || "(no output)";
-				const text = result.stderr ? `${output}\n\nstderr:\n${result.stderr}` : output;
+				// Extract new variables from the code and update context
+				// Handles: let x = ..., const y = ..., var z = ..., function foo() {}
+				const varPattern = /^(?:let|const|var)\s+(\w+)\s*=|^function\s+(\w+)\s*\(/gm;
+				let match;
+				while ((match = varPattern.exec(params.code)) !== null) {
+					const name = match[1] || match[2];
+					try {
+						replState.context[name] = (replState.context as any)[name];
+					} catch {
+						// Skip if not accessible
+					}
+				}
+
+				// Update lastResult
+				replState.lastResult = result;
+
+				// Format output
+				let output = formatResult(result);
 
 				return {
-					content: [{ type: "text" as const, text }],
-					details: { ...result, execution: state.executionCount },
-				};
-			} catch (error: any) {
-				return {
-					content: [{ type: "text" as const, text: `Error: ${error.message}` }],
+					content: [{ type: "text" as const, text: output }],
 					details: {
-						error: error.message,
-						stderr: error.stderr?.toString() || "",
-						exitCode: error.status || 1,
+						execution: replState.executionCount,
+						result: formatForDetails(result),
+					},
+				};
+			} catch (error: unknown) {
+				const message = error instanceof Error ? error.message : String(error);
+				return {
+					content: [{ type: "text" as const, text: `Error: ${message}` }],
+					details: {
+						error: message,
+						execution: replState.executionCount,
 					},
 				};
 			}
@@ -88,97 +111,29 @@ export function createReplTool(cwd: string): AgentTool<typeof replSchema> {
 	};
 }
 
-function executePython(
-	code: string,
-	cwd: string,
-	timeout: number,
-	state: ReplState,
-): { stdout: string; stderr: string; exitCode: number } {
-	const preamble = Array.from(state.pythonVars.entries())
-		.map(([k, v]) => `${k} = ${v}`)
-		.join("\n");
-
-	const fullCode = `${preamble}\n${code}`;
-	const tmpFile = join(tmpdir(), `repl_${Date.now()}.py`);
-	writeFileSync(tmpFile, fullCode);
-
-	try {
-		const result = execSync(`python3 ${tmpFile}`, {
-			cwd,
-			timeout,
-			encoding: "utf-8",
-			maxBuffer: 1024 * 1024,
-		});
-
-		const varMatches = code.match(/^(\w+)\s*=\s*(.+)$/gm);
-		if (varMatches) {
-			for (const match of varMatches) {
-				const [, name, value] = match.match(/^(\w+)\s*=\s*(.+)$/) || [];
-				if (name && value) {
-					state.pythonVars.set(name, value);
-				}
-			}
-		}
-
-		return { stdout: result.trim(), stderr: "", exitCode: 0 };
-	} finally {
+function formatResult(value: unknown): string {
+	if (value === undefined) return "undefined";
+	if (value === null) return "null";
+	if (typeof value === "function") return `[Function: ${(value as Function).name || "anonymous"}]`;
+	if (typeof value === "object") {
 		try {
-			require("node:fs").unlinkSync(tmpFile);
-		} catch {}
+			return JSON.stringify(value, null, 2);
+		} catch {
+			return String(value);
+		}
 	}
+	return String(value);
 }
 
-function executeNode(
-	code: string,
-	cwd: string,
-	timeout: number,
-	state: ReplState,
-): { stdout: string; stderr: string; exitCode: number } {
-	const preamble = Array.from(state.nodeVars.entries())
-		.map(([k, v]) => `const ${k} = ${v};`)
-		.join("\n");
-
-	const fullCode = `${preamble}\n${code}`;
-	const tmpFile = join(tmpdir(), `repl_${Date.now()}.js`);
-	writeFileSync(tmpFile, fullCode);
-
-	try {
-		const result = execSync(`node ${tmpFile}`, {
-			cwd,
-			timeout,
-			encoding: "utf-8",
-			maxBuffer: 1024 * 1024,
-		});
-
-		const varMatches = code.match(/^(?:const|let|var)\s+(\w+)\s*=\s*(.+);?$/gm);
-		if (varMatches) {
-			for (const match of varMatches) {
-				const [, name, value] = match.match(/^(?:const|let|var)\s+(\w+)\s*=\s*(.+);?$/) || [];
-				if (name && value) {
-					state.nodeVars.set(name, value);
-				}
-			}
-		}
-
-		return { stdout: result.trim(), stderr: "", exitCode: 0 };
-	} finally {
+function formatForDetails(value: unknown): unknown {
+	if (value === undefined || value === null) return value;
+	if (typeof value === "function") return `[Function: ${(value as Function).name || "anonymous"}]`;
+	if (typeof value === "object") {
 		try {
-			require("node:fs").unlinkSync(tmpFile);
-		} catch {}
+			return JSON.parse(JSON.stringify(value));
+		} catch {
+			return String(value);
+		}
 	}
-}
-
-function executeShell(
-	code: string,
-	cwd: string,
-	timeout: number,
-): { stdout: string; stderr: string; exitCode: number } {
-	const result = execSync(code, {
-		cwd,
-		timeout,
-		encoding: "utf-8",
-		maxBuffer: 1024 * 1024,
-	});
-
-	return { stdout: result.trim(), stderr: "", exitCode: 0 };
+	return value;
 }

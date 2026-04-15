@@ -248,7 +248,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
 		name: "session_search",
 		label: "Session Search",
 		description:
-			"Search past conversation sessions by keywords. Use when the user mentions something from a previous session. Returns matching sessions with conversation snippets. Follow up with session_query for detailed information.",
+			"Search past sessions by keywords. Returns matching sessions with snippets. Follow up with session_query for details.",
 		parameters: sessionSearchSchema,
 		execute: async (_toolCallId, params: any, _signal: any, _onUpdate: any, _ctx: any): Promise<any> => {
 			const sessionsDir = getSessionsDir();
@@ -320,7 +320,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
 		name: "session_query",
 		label: "Session Query",
 		description:
-			"Query a specific session file to get detailed information. Use after session_search, or when you already have a session path. Sends the conversation to an LLM for analysis.",
+			"Analyze a specific session file. Use after session_search, or with an existing session path.",
 		parameters: sessionQuerySchema,
 		execute: async (_toolCallId, params: any, _signal: any, _onUpdate: any, _ctx: any): Promise<any> => {
 			if (!params.sessionPath.endsWith(".jsonl")) {

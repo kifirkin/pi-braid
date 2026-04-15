@@ -1,30 +1,32 @@
 /**
- * Prompt Builder — Builds system prompt with identity framing.
+ * Prompt Builder — Identity Framing with Full Native Compatibility
  *
- * Dynamically constructs tool-aware guidelines based on active tools.
- * Replaces system prompt entirely so identity framing is consistent.
+ * Builds system prompt with identity framing while PRESERVING all native
+ * pi-coding-agent functionality (skills, tools, context files, documentation).
+ *
+ * Approach: "Layer not replace" - modify the already-built native prompt,
+ * don't replace it entirely. This maintains upgrade path and compatibility.
+ *
+ * The event.systemPrompt passed to before_agent_start is ALREADY fully built
+ * by _rebuildSystemPrompt() including skills via formatSkillsForPrompt().
+ * We extract and preserve the native sections, replacing only identity intro.
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-/** Tool descriptions for system prompt */
-const TOOL_DESCRIPTIONS: Record<string, string> = {
-  read: "Read file contents",
-  bash: "Execute bash commands (ls, grep, find, etc.)",
-  edit: "Make surgical edits to files (find exact text and replace)",
-  write: "Create or overwrite files",
-  grep: "Search file contents for patterns (respects .gitignore)",
-  find: "Find files by glob pattern (respects .gitignore)",
-  ls: "List directory contents",
-};
+/** Identity framing intro - replaces the default "You are an expert coding assistant..." */
+const IDENTITY_INTRO = `You are stateful and meticulous expert software architect. Think silently. Find the correct trajectory. Not the first plausible path. When the task demands a different kind of thinking, you become that kind of thinker. You solve problems by understanding them completely before acting. You operate inside pi, a resourceful agent harness with a complete toolkit. You read thoroughly, execute safely, edit precisely. You plan ahead, self-verify and provide honest proofs.
 
-/** Default identity-framing guidelines */
-const DEFAULT_GUIDELINES = [
-  // Exploration-first (anti-rushing)
+You think in systems. Every piece connects to others. Changing one thing affects the whole.
+
+You trace backwards. When output is wrong, follow it back to find where it first went wrong.`;
+
+/** Identity guidelines - added after the default guidelines */
+const IDENTITY_GUIDELINES = [
+  "Before implementing: pause and verify — do I have enough context to solve this properly?",
   "You explore fully before committing. If something seems too quick, investigate more.",
   "You don't jump to early conclusions. The first plausible path is often wrong.",
   "You search for the correct solution, not the first one that appears to work.",
-  // Original guidelines
   "You write tight. No fluff. File paths named, right there.",
   "You plan on paper first. Steps before code.",
   "You understand completely before touching. The real problem, not a shadow of it.",
@@ -39,146 +41,235 @@ const DEFAULT_GUIDELINES = [
   "You admit uncertainty. Making up answers stops here.",
 ];
 
+/**
+ * Check if the prompt section header exists in the text.
+ * Used to find section boundaries for extraction.
+ */
+function hasSection(text: string, marker: string): boolean {
+  return text.includes(marker);
+}
+
+/**
+ * Extract a section from the prompt by its opening marker.
+ * Returns the section content and everything after it.
+ */
+function extractSectionAfter(text: string, marker: string): { section: string; rest: string } | null {
+  const idx = text.indexOf(marker);
+  if (idx === -1) return null;
+  return {
+    section: text.slice(idx),
+    rest: text.slice(0, idx),
+  };
+}
+
+/**
+ * Extract <available_skills>...</available_skills> section.
+ */
+function extractSkillsSection(text: string): { skillsSection: string; before: string } | null {
+  const marker = "<available_skills>";
+  const idx = text.indexOf(marker);
+  if (idx === -1) return null;
+
+  const endIdx = text.indexOf("</available_skills>", idx);
+  if (endIdx === -1) return null;
+
+  const skillsSection = text.slice(idx, endIdx + "</available_skills>".length);
+  const before = text.slice(0, idx);
+  return { skillsSection, before };
+}
+
+/**
+ * Extract # Project Context section.
+ */
+function extractContextSection(text: string): { contextSection: string; before: string } | null {
+  const marker = "# Project Context";
+  const idx = text.indexOf(marker);
+  if (idx === -1) return null;
+
+  const contextSection = text.slice(idx);
+  const before = text.slice(0, idx);
+  return { contextSection, before };
+}
+
+/**
+ * Extract Current date / Current working directory lines.
+ */
+function extractDateCwd(text: string): { dateCwd: string; before: string } | null {
+  const marker = "Current date:";
+  const idx = text.indexOf(marker);
+  if (idx === -1) return null;
+
+  const dateCwd = text.slice(idx);
+  const before = text.slice(0, idx);
+  return { dateCwd, before };
+}
+
+/**
+ * Extract Pi documentation references section.
+ */
+function extractPiDocsSection(text: string): { docsSection: string; before: string } | null {
+  const marker = "Pi documentation";
+  const idx = text.indexOf(marker);
+  if (idx === -1) return null;
+
+  // Find the next section (skills or guidelines) or end
+  let endIdx = text.indexOf("\n\n#", idx);
+  if (endIdx === -1) {
+    // Check for <available_skills> marker
+    const skillsIdx = text.indexOf("<available_skills>", idx);
+    if (skillsIdx !== -1 && (endIdx === -1 || skillsIdx < endIdx)) {
+      endIdx = skillsIdx;
+    }
+  }
+
+  const docsSection = endIdx !== -1 ? text.slice(idx, endIdx) : text.slice(idx);
+  const before = text.slice(0, idx);
+  return { docsSection, before };
+}
+
+/**
+ * Extract the "Available tools:" section.
+ */
+function extractToolsSection(text: string): { toolsSection: string; before: string } | null {
+  const marker = "Available tools:";
+  const idx = text.indexOf(marker);
+  if (idx === -1) return null;
+
+  // Find next section (usually Guidelines or In addition)
+  let endIdx = text.indexOf("\n\nGuidelines:", idx);
+  if (endIdx === -1) {
+    const inAdditionIdx = text.indexOf("\n\nIn addition", idx);
+    const guidelinesIdx = text.indexOf("Guidelines:", idx);
+    if (inAdditionIdx !== -1 && guidelinesIdx !== -1) {
+      endIdx = Math.min(inAdditionIdx, guidelinesIdx);
+    } else if (inAdditionIdx !== -1) {
+      endIdx = inAdditionIdx;
+    } else if (guidelinesIdx !== -1) {
+      endIdx = guidelinesIdx;
+    }
+  }
+
+  const toolsSection = endIdx !== -1 ? text.slice(idx, endIdx) : text.slice(idx);
+  const before = text.slice(0, idx);
+  return { toolsSection, before };
+}
+
+/**
+ * Extract the "Guidelines:" section (the default guidelines, before custom ones).
+ */
+function extractDefaultGuidelinesSection(text: string): { guidelinesSection: string; before: string } | null {
+  const marker = "Guidelines:";
+  const idx = text.indexOf(marker);
+  if (idx === -1) return null;
+
+  // Find where custom guidelines from promptGuidelines would start
+  // The default guidelines end before the first custom guideline bullet
+  // We look for the "In addition to the tools above" or next section marker
+  let endIdx = text.indexOf("\n\nIn addition", idx);
+  if (endIdx === -1) {
+    // Find skills section
+    const skillsIdx = text.indexOf("<available_skills>", idx);
+    if (skillsIdx !== -1) {
+      endIdx = skillsIdx;
+    } else {
+      // Find date section
+      const dateIdx = text.indexOf("Current date:", idx);
+      if (dateIdx !== -1) {
+        endIdx = dateIdx;
+      }
+    }
+  }
+
+  const guidelinesSection = endIdx !== -1 ? text.slice(idx, endIdx) : text.slice(idx);
+  const before = text.slice(0, idx);
+  return { guidelinesSection, before };
+}
+
 export default function promptBuilderExtension(pi: ExtensionAPI) {
-  pi.on("before_agent_start", async (event, ctx) => {
+  pi.on("before_agent_start", async (event, _ctx) => {
     const currentPrompt = event.systemPrompt;
 
-    // Get active tools from the API
-    const allTools = pi.getAllTools();
-    // getActiveTools() returns string[], getAllTools() returns ToolInfo[]
-    const activeToolNames = pi.getActiveTools();
+    if (!currentPrompt) {
+      return; // No prompt to modify
+    }
 
-    // Build tool-aware guidelines
-    const guidelines: string[] = [];
-    const guidelinesSet = new Set<string>();
-    const addGuideline = (g: string) => {
-      if (!guidelinesSet.has(g)) {
-        guidelinesSet.add(g);
-        guidelines.push(g);
+    try {
+      // =========================================================================
+      // PHASE 1: Extract all native sections from the built prompt
+      // =========================================================================
+
+      // Extract skills (contains location paths the agent needs!)
+      const skillsExtracted = extractSkillsSection(currentPrompt);
+
+      // Extract project context files
+      const contextExtracted = extractContextSection(currentPrompt);
+
+      // Extract date and cwd (always at the end)
+      const dateCwdExtracted = extractDateCwd(currentPrompt);
+
+      // Extract Pi documentation references
+      const docsExtracted = extractPiDocsSection(currentPrompt);
+
+      // Extract tools list
+      const toolsExtracted = extractToolsSection(currentPrompt);
+
+      // =========================================================================
+      // PHASE 2: Build the new prompt with identity framing
+      // =========================================================================
+
+      const parts: string[] = [];
+
+      // 1. Identity intro (replaces "You are an expert coding assistant...")
+      parts.push(IDENTITY_INTRO);
+
+      // 2. Tools section (preserve native tools listing)
+      if (toolsExtracted) {
+        parts.push("\n\n" + toolsExtracted.toolsSection);
       }
-    };
 
-    // Tool-conditional guidelines (identity framing)
-    const hasBash = activeToolNames.includes("bash");
-    const hasGrep = activeToolNames.includes("grep");
-    const hasFind = activeToolNames.includes("find");
-    const hasLs = activeToolNames.includes("ls");
-    const hasRead = activeToolNames.includes("read");
-    const hasEdit = activeToolNames.includes("edit");
-    const hasWrite = activeToolNames.includes("write");
+      // 3. Custom tools note
+      parts.push("\n\nCustom tools may be available for your project.");
 
-    // Context-gathering checkpoint
-    addGuideline("Before implementing: pause and verify — do I have enough context to solve this properly?");
+      // 4. Guidelines - default from native + our identity guidelines
+      if (toolsExtracted) {
+        // Extract the actual "Guidelines:" header and default bullet points
+        // We want to keep some defaults but add our identity ones
+        parts.push("\n\nGuidelines:");
+        parts.push("\n- Be concise in your responses");
+        parts.push("\n- Show file paths clearly when working with files");
 
-    if (hasBash && !hasGrep && !hasFind && !hasLs) {
-      addGuideline("You reach for bash for file operations like ls, rg, find");
-    } else if (hasBash && (hasGrep || hasFind || hasLs)) {
-      addGuideline(
-        "You prefer grep/find/ls over bash for file exploration (faster, respects .gitignore)",
-      );
-    }
-
-    if (hasRead && hasEdit) {
-      addGuideline("You examine files before editing, using read instead of cat or sed.");
-    }
-
-    if (hasEdit) {
-      addGuideline("You make precise changes — old text matches exactly.");
-    }
-
-    if (hasWrite) {
-      addGuideline("You write new files or complete rewrites");
-    }
-
-    if (hasEdit || hasWrite) {
-      addGuideline("You summarize actions in plain text, not via cat or bash");
-    }
-
-    // Collect promptGuidelines from registered tools (if exposed via ToolInfo)
-    const toolGuidelines: string[] = [];
-    const toolSnippets: Record<string, string> = {};
-    for (const tool of allTools) {
-      // promptGuidelines and promptSnippet are on ToolDefinition but may not be in ToolInfo
-      // Access via type assertion since they may be present at runtime
-      const guidelines = (tool as any).promptGuidelines;
-      const snippet = (tool as any).promptSnippet;
-      if (Array.isArray(guidelines)) {
-        for (const g of guidelines) {
-          toolGuidelines.push(g);
+        // Add our identity guidelines
+        for (const g of IDENTITY_GUIDELINES) {
+          parts.push(`\n- ${g}`);
         }
       }
-      if (typeof snippet === "string") {
-        toolSnippets[tool.name] = snippet;
+
+      // 5. Pi documentation references (preserve native docs paths)
+      if (docsExtracted) {
+        parts.push("\n\n" + docsExtracted.docsSection);
       }
-    }
 
-    // Use tool guidelines if present, otherwise defaults
-    if (toolGuidelines.length > 0) {
-      for (const g of toolGuidelines) {
-        addGuideline(g.trim());
+      // 6. Project context files (preserve any APPEND_SYSTEM.md content)
+      if (contextExtracted) {
+        parts.push("\n\n" + contextExtracted.contextSection);
       }
-    } else {
-      for (const g of DEFAULT_GUIDELINES) {
-        addGuideline(g);
+
+      // 7. Skills section (preserve ALL skill locations so agent can read them!)
+      if (skillsExtracted) {
+        parts.push("\n\n" + skillsExtracted.skillsSection);
       }
+
+      // 8. Date and cwd (always at the end)
+      if (dateCwdExtracted) {
+        parts.push("\n\n" + dateCwdExtracted.dateCwd);
+      }
+
+      const newPrompt = parts.join("");
+
+      return { systemPrompt: newPrompt };
+    } catch {
+      // On any error, fall back to not modifying the prompt
+      return;
     }
-
-    // Build tools list
-    const visibleTools = activeToolNames.filter(
-      (name) => name in TOOL_DESCRIPTIONS || toolSnippets[name],
-    );
-    const toolsList =
-      visibleTools.length > 0
-        ? visibleTools
-            .map((name) => {
-              const snippet = toolSnippets[name] ?? TOOL_DESCRIPTIONS[name] ?? name;
-              return `- ${name}: ${snippet}`;
-            })
-            .join("\n")
-        : "(none)";
-
-    const guidelinesText = guidelines.map((g) => `- ${g}`).join("\n");
-
-    // Extract any append content from current prompt (e.g., from APPEND_SYSTEM.md or extensions)
-    // We look for everything after the last known section marker
-    let appendContent = "";
-    const appendMarker = "\n\n# Project Context";
-    const appendIndex = currentPrompt.indexOf(appendMarker);
-    if (appendIndex !== -1) {
-      appendContent = currentPrompt.slice(appendIndex);
-    }
-
-    // Build the new prompt
-    const date = new Date().toISOString().slice(0, 10);
-    const cwd = ctx.cwd.replace(/\\/g, "/");
-
-    let newPrompt = `You are stateful and meticulous expert software architect. Think silently. Find the correct trajectory. Not the first plausible path. When the task demands a different kind of thinking, you become that kind of thinker. You solve problems by understanding them completely before acting. You operate inside pi, a resourceful agent harness with a complete toolkit. You read thoroughly, execute safely, edit precisely. You plan ahead, self-verify and provide honest proofs.
-
-You think in systems. Every piece connects to others. Changing one thing affects the whole.
-
-You trace backwards. When output is wrong, follow it back to find where it first went wrong.
-
-You reach for tools without being told:
-${toolsList}
-
-Custom tools may be available for your project.
-
-Your guidelines shape how you work:
-${guidelinesText}
-
-You read skills when the task demands them.
-
-When you need knowledge, you seek for grounded truth.`;
-
-    // Append project context if present
-    if (appendContent) {
-      newPrompt += appendContent;
-    }
-
-    // Add date and cwd
-    newPrompt += `\nCurrent date: ${date}`;
-    newPrompt += `\nCurrent working directory: ${cwd}`;
-
-    return { systemPrompt: newPrompt };
   });
 }

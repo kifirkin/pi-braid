@@ -2,16 +2,13 @@
  * Evolve Extension - Self-evolution commands for the agent
  *
  * Provides:
- * - evolve: status, health, check, commit, rollback, config, reset, benchmark
- * - check_resources: Budget tracking (tokens, cost, time)
+ * - evolve: status, health, check, commit, config, reset, benchmark
  * - time_status: Session timing and marks
  *
  * Integrates:
  * - metacognitive-state: Confidence, knowledge gaps, recommendations
  * - degradation-detector: Error rate and tool success metrics
- * - resource-manager: Token/cost/time budget enforcement
  * - time-tracker: Session timing awareness
- * - pijul: Version control and rollback
  */
 
 import { Type } from "@sinclair/typebox";
@@ -36,14 +33,7 @@ import {
 	getRecommendation,
 	resetMetacognitiveState,
 } from "../../lib/metacognitive-state.js";
-import { ResourceManager } from "../../lib/resource-manager.js";
-import {
-	getLatestCheckpoint,
-	getPijulStatus,
-	isPijulAvailable,
-	recordCheckpoint,
-	resetToPatch,
-} from "../../lib/pijul-utils.js";
+
 import { createTimeTracker, type TimeTrackerState } from "../../tools/time-tracker.js";
 
 const EVOLVE_ACTIONS = ["status", "health", "check", "commit", "rollback", "config", "reset", "benchmark"] as const;
@@ -84,10 +74,6 @@ interface EvolveResult {
 loadMetrics().catch(console.error);
 initMetacognitiveState();
 
-// Shared resource manager
-const resourceManager = new ResourceManager();
-resourceManager.initialize();
-
 // Shared time tracker
 const { tool: timeStatusTool, state: timeState } = createTimeTracker();
 
@@ -111,10 +97,10 @@ export default function evolveExtension(pi: ExtensionAPI) {
 		label: "Evolve",
 		description:
 			"Self-evolution commands for the agent. " +
-			"Use to check health, create checkpoints, rollback on degradation, " +
-			"and monitor performance metrics. " +
+			"Use to check health, create checkpoints, track performance metrics. " +
 			"Actions: status (view state), health (run healthcheck), check (degradation), " +
-			"commit (checkpoint), rollback (revert), config (thresholds), reset (clear metrics).",
+			"commit (checkpoint), rollback (reset metrics), config (thresholds), reset (clear metrics).",
+
 		parameters: evolveSchema,
 
 		execute: async (_toolCallId, params): Promise<AgentToolResult<EvolveResult>> => {
@@ -139,69 +125,6 @@ export default function evolveExtension(pi: ExtensionAPI) {
 	});
 
 	// Resource management tools
-	const setBudgetSchema = Type.Object({
-		maxTokens: Type.Optional(Type.Number()),
-		maxCost: Type.Optional(Type.Number()),
-		maxTime: Type.Optional(Type.Number()),
-	});
-
-	const checkResourcesSchema = Type.Object({});
-
-	const recordUsageSchema = Type.Object({
-		tokens: Type.Number(),
-		cost: Type.Number(),
-	});
-
-	const resourceToolDescriptions = {
-		set_budget: "Set resource budget (tokens, cost USD, time ms) for the session. The agent warns when approaching limits.",
-		check_resources: "Check current resource usage against budget. Shows token/cost/time ratios and whether session can continue.",
-		record_usage: "Record token and cost usage manually. Tracked against budget limits.",
-	};
-
-	pi.registerTool({
-		name: "set_budget",
-		label: "Set Budget",
-		description: resourceToolDescriptions.set_budget,
-		parameters: setBudgetSchema,
-		execute: async (_toolCallId, params) => {
-			const budget = resourceManager.setBudget(params);
-			return {
-				content: [{ type: "text" as const, text: `Budget set: ${budget.maxTokens.toLocaleString()} tokens, $${budget.maxCost.toFixed(2)}, ${Math.floor(budget.maxTime / 60000)}min` }],
-				details: budget,
-			};
-		},
-	});
-
-	pi.registerTool({
-		name: "check_resources",
-		label: "Check Resources",
-		description: resourceToolDescriptions.check_resources,
-		parameters: checkResourcesSchema,
-		execute: async () => {
-			const formatted = resourceManager.formatStatus();
-			const status = resourceManager.checkStatus();
-			return {
-				content: [{ type: "text" as const, text: formatted }],
-				details: { canContinue: resourceManager.canContinue(), isWarning: status.isWarning, isExhausted: status.isExhausted },
-			};
-		},
-	});
-
-	pi.registerTool({
-		name: "record_usage",
-		label: "Record Usage",
-		description: resourceToolDescriptions.record_usage,
-		parameters: recordUsageSchema,
-		execute: async (_toolCallId, params) => {
-			resourceManager.recordUsage(params.tokens, params.cost);
-			const status = resourceManager.checkStatus();
-			return {
-				content: [{ type: "text" as const, text: `Recorded: ${params.tokens} tokens, $${params.cost.toFixed(4)}` }],
-				details: { tokenRatio: status.tokenRatio, costRatio: status.costRatio },
-			};
-		},
-	});
-
 	// Time tracking tool
 	pi.registerTool({
 		name: timeStatusTool.name,
@@ -220,7 +143,6 @@ export default function evolveExtension(pi: ExtensionAPI) {
 async function executeEvolveAction(
 	params: {
 		action: EvolveActionType;
-		checkpoint?: string;
 		config?: {
 			healthcheckMinScore?: number;
 			errorRateMax?: number;
@@ -247,7 +169,7 @@ async function executeEvolveAction(
 		case "commit":
 			return executeCommit(params.force ?? false, _pi);
 		case "rollback":
-			return executeRollback(params.checkpoint);
+			return executeRollback();
 		case "config":
 			return executeConfig(params.config);
 		case "reset":
@@ -262,7 +184,6 @@ async function executeEvolveAction(
 function executeStatus(): EvolveResult {
 	const summary = getMetricsSummary();
 	const config = getConfig();
-	const pijulStatus = getPijulStatus();
 	const meta = getMetacognitiveState();
 	const recommendation = getRecommendation();
 
@@ -274,7 +195,6 @@ function executeStatus(): EvolveResult {
 			config,
 			degraded: summary.degraded,
 			degradationReasons: summary.reasons,
-			pijulStatus,
 			metacognition: {
 				confidence: meta.confidence,
 				knowledgeGaps: meta.knowledgeGaps,
@@ -376,76 +296,27 @@ async function executeCommit(force: boolean, _pi: ExtensionAPI): Promise<EvolveR
 		metrics: getMetricsSummary(),
 	};
 
-	// Attempt Pijul checkpoint if available
-	let pijulHash: string | null = null;
-	if (isPijulAvailable()) {
-		const message = `evolve:health=${score}`;
-		pijulHash = recordCheckpoint(message);
-	}
-
 	const checkpointResult: EvolveResult = {
 		action: "commit",
 		success: true,
 		data: {
 			checkpoint: checkpointData,
-			pijulHash,
-			pijulStatus: getPijulStatus(),
-			note: pijulHash
-				? `Pijul checkpoint created: ${pijulHash}`
-				: "Metrics checkpoint created. Pijul not available - install for version control.",
+			note: "Metrics checkpoint created.",
 		},
 	};
 
 	return checkpointResult;
 }
 
-async function executeRollback(checkpointHash?: string): Promise<EvolveResult> {
-	// Check if Pijul is available
-	if (!isPijulAvailable()) {
-		// Fallback: just reset metrics
-		resetMetrics();
-		return {
-			action: "rollback",
-			success: false,
-			error: "Pijul not available. Metrics reset only. Install Pijul: cargo install pijul",
-		};
-	}
-
-	// If no specific checkpoint provided, find the latest good one
-	if (!checkpointHash) {
-		const latest = getLatestCheckpoint();
-		if (!latest) {
-			return {
-				action: "rollback",
-				success: false,
-				error: "No checkpoints available. Use `evolve --commit` to create checkpoints.",
-			};
-		}
-		checkpointHash = latest.hash;
-	}
-
-	// Attempt Pijul rollback
-	const success = resetToPatch(checkpointHash);
-
-	if (success) {
-		// Reset metrics as well
-		resetMetrics();
-
-		return {
-			action: "rollback",
-			success: true,
-			data: {
-				checkpoint: checkpointHash,
-				pijulStatus: getPijulStatus(),
-				note: "Rollback successful. Working directory reverted to checkpoint.",
-			},
-		};
-	}
-
+async function executeRollback(): Promise<EvolveResult> {
+	// Reset metrics to baseline
+	resetMetrics();
 	return {
 		action: "rollback",
-		success: false,
-		error: `Failed to rollback to checkpoint ${checkpointHash}. Check Pijul is working correctly.`,
+		success: true,
+		data: {
+			note: "Metrics reset to baseline. Degradation history cleared.",
+		},
 	};
 }
 

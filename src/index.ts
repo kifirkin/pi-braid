@@ -30,7 +30,6 @@ import feedbackExtension from "./extensions/feedback/index.js";
 import fileToolExtension from "./extensions/file-tool.js";
 import healthcheckExtension from "./extensions/healthcheck/index.js";
 import metacognitionExtension from "./extensions/metacognition/index.js";
-import pijulCheckpointExtension from "./extensions/pijul-checkpoint/index.js";
 import plannerExtension from "./extensions/planner/index.js";
 import promptGuardianExtension from "./extensions/prompt-guardian/index.js";
 import rateLimiterExtension from "./extensions/rate-limiter/index.js";
@@ -64,7 +63,6 @@ const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void 
 	{ name: "context-manager", factory: contextManagerExtension },
 	{ name: "session-recall", factory: sessionRecallExtension },
 	{ name: "docs", factory: docsExtension },
-	{ name: "pijul-checkpoint", factory: pijulCheckpointExtension },
 	{ name: "codebase-tree", factory: codebaseTreeExtension },
 	{ name: "healthcheck", factory: healthcheckExtension },
 	{ name: "prompt-guardian", factory: promptGuardianExtension },
