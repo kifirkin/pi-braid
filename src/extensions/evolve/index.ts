@@ -562,9 +562,7 @@ function executeBenchmark(params?: {
 	};
 }
 
-// ============================================================================
 // Output Formatting
-// ============================================================================
 
 function formatEvolveOutput(result: EvolveResult): string {
 	const lines: string[] = [];

@@ -11,9 +11,7 @@ import type {
 } from "@mariozechner/pi-coding-agent";
 import { resolveVisionModel } from "../../lib/model-resolver.js";
 
-// =======================================================================
 // Constants
-// =======================================================================
 
 const SUPPORTED_IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp"];
 const BYTES_PER_MB = 1024 * 1024;
@@ -67,9 +65,7 @@ If the image appears to be scaled-up pixel art (sharp blocky edges, repetitive c
 
 Format output clearly. Be precise with dimensions and color values.`;
 
-// =======================================================================
 // Types
-// =======================================================================
 
 /**
  * Image metadata extracted before LLM analysis
@@ -104,9 +100,7 @@ interface AnalysisResult {
   analysisWarning?: string;
 }
 
-// =======================================================================
 // Utility Functions
-// =======================================================================
 
 /**
  * Expand ~ to home directory
@@ -261,9 +255,7 @@ function readImageAsBase64(absolutePath: string): { data: string; mimeType: stri
   }
 }
 
-// =======================================================================
 // Core Analysis Logic
-// =======================================================================
 
 /**
  * Core image analysis - returns analysis result with optional image data
@@ -398,9 +390,7 @@ async function performImageAnalysis(
   };
 }
 
-// =======================================================================
 // Extension
-// =======================================================================
 
 /**
  * Vision Extension - Image Analysis
@@ -415,9 +405,7 @@ async function performImageAnalysis(
  *   /analyze-image <path> - User command for image analysis
  */
 export default function visionExtension(pi: ExtensionAPI) {
-  // =======================================================================
   // Tool: analyze_image
-  // =======================================================================
 
   pi.registerTool({
     name: "analyze_image",
@@ -507,9 +495,7 @@ export default function visionExtension(pi: ExtensionAPI) {
     },
   });
 
-  // =======================================================================
   // Command: /analyze-image
-  // =======================================================================
 
   pi.registerCommand("analyze-image", {
     description:

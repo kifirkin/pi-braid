@@ -6,7 +6,7 @@
  * - context_log: View history with token usage
  * - context_checkout: Navigate to previous state
  *
- * Rule-based context pruning (inspired by pi-dcp):
+ * Rule-based context pruning:
  * - deduplication: Removes duplicate tool outputs
  * - superseded_writes: Removes older writes when newer versions exist
  * - error_purging: Removes resolved errors
@@ -20,9 +20,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 
-// ============================================================================
 // Rule-Based Pruning Types
-// ============================================================================
 
 interface MessageWithMetadata {
 	message: AgentMessage;
@@ -54,9 +52,7 @@ interface PruneRule {
 	process?: (msg: MessageWithMetadata, ctx: PruneContext) => void;
 }
 
-// ============================================================================
 // Pruning State
-// ============================================================================
 
 interface PruningState {
 	enabled: boolean;
@@ -82,9 +78,7 @@ const pruningState: PruningState = {
 	},
 };
 
-// ============================================================================
 // Utility Functions
-// ============================================================================
 
 function hashMessage(msg: AgentMessage): string {
 	const content = extractMessageContent(msg);
@@ -163,9 +157,7 @@ function extractResultIds(msg: AgentMessage): string[] {
 	return [(msg as any).toolCallId].filter(Boolean);
 }
 
-// ============================================================================
 // Built-in Prune Rules
-// ============================================================================
 
 const deduplicationRule: PruneRule = {
 	name: "deduplication",
@@ -276,9 +268,7 @@ pruningState.rules = [
 	recencyRule,
 ];
 
-// ============================================================================
 // Pruning Workflow
-// ============================================================================
 
 function applyPruningWorkflow(messages: AgentMessage[]): AgentMessage[] {
 	if (!pruningState.enabled || messages.length === 0) {
@@ -394,9 +384,7 @@ function repairOrphanedToolPairs(messages: MessageWithMetadata[]): void {
 	}
 }
 
-// ============================================================================
 // Schemas
-// ============================================================================
 
 const contextTagSchema = Type.Object({
 	name: Type.String({ description: "The tag/milestone name" }),
@@ -430,9 +418,7 @@ const contextAuditSchema = Type.Object({
 	], { description: "How much detail (default: detailed)" })),
 });
 
-// ============================================================================
 // Helpers
-// ============================================================================
 
 const INTERNAL_TOOLS = ["context_tag", "context_log", "context_checkout", "context_prune", "context_audit"];
 
@@ -491,9 +477,7 @@ function resolveDefaultTarget(ctx: any): string | null {
 	return targetId;
 }
 
-// ============================================================================
 // Analysis Helpers
-// ============================================================================
 
 interface PruneCandidate {
 	id: string;
@@ -763,9 +747,7 @@ function formatPruneCandidates(candidates: PruneCandidate[], limit = 10): string
 	return lines.join("\n");
 }
 
-// ============================================================================
 // Extension
-// ============================================================================
 
 let _checkoutParams: any = null;
 
@@ -774,9 +756,7 @@ const state = {
 	compactionHappened: false,
 };
 
-// ============================================================================
 // Compaction Auto-Retry Configuration
-// ============================================================================
 
 const COMPACTION_RETRY_MAX_ATTEMPTS = 3;
 const COMPACTION_RETRY_BASE_DELAY_MS = 2000;
@@ -1659,7 +1639,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 	});
 
 	// ── Context Event Handler ─────────────────────────────────────────────
-	// Real pruning via message array transformation (inspired by pi-dcp)
+	// Real pruning via message array transformation
 	// This runs before each LLM call to filter/prune messages
 	pi.on("context", async (event: any, ctx: any) => {
 		try {

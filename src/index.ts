@@ -1,15 +1,8 @@
 /**
- * pi-braid — Self-contained pi-coding-agent extension
+ * pi-braid — pi-coding-agent extension
  *
- * Bundles all develop-branch functionality into a single installable extension:
- * - Planning: tasks, goals, plans, execution control
- * - Metacognition: think, hypothesize, time tracking
- * - Cognitive systems: memory, knowledge integration
- * - Enforcement: tool usage validation, nudge/whisper system
- * - Feedback: smart nudge and whisper system
- * - Evolution: self-evolution commands
- * - Skills: 16 specialized skill modules
- * - And more...
+ * Planning, metacognition, cognitive systems, enforcement, feedback,
+ * evolution, skills, and more...
  *
  * Usage:
  *   pi -e /path/to/pi-braid
@@ -23,11 +16,8 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 // Extension modules
-// NEW: polyfill must load FIRST — patches getUtilityModel/getVisionModel
 import polyfillExtension from "./extensions/polyfill/index.js";
-// NEW: error capture must load early to catch errors from other extensions
 import errorCaptureExtension from "./extensions/error-capture/index.js";
-// NEW: prompt builder replaces system prompt with develop-branch identity framing
 import promptBuilderExtension from "./extensions/prompt-builder/index.js";
 
 import codebaseTreeExtension from "./extensions/codebase-tree/index.js";
@@ -63,20 +53,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const SKILLS_DIR = join(__dirname, "..", "skills");
 
-/**
- * Ordered list of sub-extensions to load.
- *
- * Order matters: extensions that others depend on should come first.
- * - planner must load before others that use goals/tasks
- * - metacognition provides think/hypothesize tools used broadly
- * - enforcement and feedback are reactive — load later
- */
 const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void }> = [
-	// CRITICAL: polyfill loads first to patch context methods
 	{ name: "polyfill", factory: polyfillExtension },
-	// CRITICAL: error-capture loads early to catch errors from other extensions
 	{ name: "error-capture", factory: errorCaptureExtension },
-	// CRITICAL: prompt-builder replaces system prompt with identity framing
 	{ name: "prompt-builder", factory: promptBuilderExtension },
 	{ name: "planner", factory: plannerExtension },
 	{ name: "metacognition", factory: metacognitionExtension },

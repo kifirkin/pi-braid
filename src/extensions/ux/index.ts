@@ -1,15 +1,8 @@
 /**
- * UX Extension — Convenience commands, notifications, and input patterns
+ * UX Extension — Convenience commands, notifications, and input transforms.
  *
- * Combines UX patterns from pi-mono examples:
- * 1. /commands — list all slash commands with source filtering
- * 2. /bookmark — label entries for easy navigation in /tree
- * 3. Input transforms — ?quick prefix for brief responses, ping/time shortcuts
- * 4. /ask, /steer, /followup — send user messages with delivery control
- * 5. Session naming — setSessionName/getSessionName
- *
- * All patterns are additive (don't modify execution behavior) and
- * orthogonal to enforcement extension.
+ * /commands, /bookmark, /ask, /steer, /followup, /session-name,
+ * native notifications, ?quick prefix, ping/time shortcuts.
  */
 
 import type { ExtensionAPI, SlashCommandInfo } from "@mariozechner/pi-coding-agent";

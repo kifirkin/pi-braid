@@ -20,9 +20,7 @@ import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-// ============================================================================
 // Types
-// ============================================================================
 
 export interface TaskScratchpad {
 	/** Original goal/task */
@@ -43,9 +41,7 @@ export interface TaskScratchpad {
 	projectSlug: string;
 }
 
-// ============================================================================
 // Task Management (merged from task tools)
-// ============================================================================
 
 export interface TaskItem {
 	id: string;
@@ -67,9 +63,7 @@ interface TaskStore {
 	updatedAt: number;
 }
 
-// ============================================================================
 // Persistence
-// ============================================================================
 
 const SCRATCHPAD_BASE_DIR = path.join(os.homedir(), ".pi", "agent", "scratchpads");
 
@@ -126,9 +120,7 @@ function loadScratchpadFromDisk(projectSlug: string): TaskScratchpad | null {
 	return null;
 }
 
-// ============================================================================
 // Task Persistence
-// ============================================================================
 
 function taskFilePath(projectSlug: string): string {
 	return path.join(SCRATCHPAD_BASE_DIR, projectSlug, "tasks.json");
@@ -164,9 +156,7 @@ function generateTaskId(): string {
 	return "task-" + Date.now().toString(36) + "-" + Math.random().toString(36).substring(2, 6);
 }
 
-// ============================================================================
 // Display
-// ============================================================================
 
 export function formatScratchpad(pad: TaskScratchpad): string {
 	const lines = [`Goal: ${pad.goal}`];
@@ -204,9 +194,7 @@ export function formatScratchpad(pad: TaskScratchpad): string {
 	return lines.join("\n");
 }
 
-// ============================================================================
 // Module State
-// ============================================================================
 
 let _taskScratchpad: TaskScratchpad | null = null;
 let _currentProjectSlug: string = "";
@@ -233,11 +221,8 @@ function mutateAndSave(scratchpad: TaskScratchpad): void {
 	saveScratchpadToDisk(scratchpad);
 }
 
-// ============================================================================
 // Schema
-// ============================================================================
 // Schema
-// ============================================================================
 
 const scratchpadSchema = Type.Object({
 	action: Type.Union(
@@ -312,9 +297,7 @@ type ScratchpadToolInput = {
 	task_id?: string;
 };
 
-// ============================================================================
 // Extension
-// ============================================================================
 
 export default function scratchpadExtension(pi: ExtensionAPI): void {
 	/**
@@ -421,9 +404,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 						details: { notes: pad.notes },
 					};
 
-				// ====================================================================
 				// Elevation to formal systems
-				// ====================================================================
 
 				case "elevate_to_goal": {
 					if (!pad.goal) {
@@ -491,9 +472,7 @@ Provide success criteria as text parameter to complete the elevation.`,
 					};
 				}
 
-				// ====================================================================
 				// Task Management (merged from task tools)
-				// ====================================================================
 
 				case "task_add": {
 					const slug = resolveProjectSlug();

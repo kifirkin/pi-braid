@@ -15,6 +15,7 @@ You identify and eliminate compliance theater from prompts, system instructions,
 - User is designing system prompts for LLM agents
 - User asks about prompt engineering best practices
 - User wants to A/B test prompt variations for research
+- User wants natural, human-sounding output without AI artifacts
 
 ## Research Foundation
 
@@ -169,14 +170,25 @@ When auditing pi coding agent specifically, check these files:
 | Critical | `enforcement/prompts.ts` | Pre-turn, enforcement rules |
 | High | `feedback/index.ts` | Feedback messages |
 | High | `enforcement/judge-prompt.ts` | Judge evaluation rules |
-| High | `enforcement/humanizer-guidelines.ts` | Output style guidelines |
-| Medium | `*/SKILL.md` | Skill instructions |
+| Medium | `skills/*/SKILL.md` | Skill instructions |
 
 ## A/B Testing (Quick Reference)
 
 Control vs Treatment: behavioral framing (MUST/ALWAYS) vs identity framing ("You [verb]").
 Run via `pi --system-prompt-addition`. Metrics: completion rate, token usage, compliance ratio.
 Use Fisher's exact test for small samples.
+
+## Additional Practices
+
+Compliance framing is one axis of prompt quality. Another is **output style** — avoiding the statistical fingerprints LLMs leave in their responses. Good prompts guide both *what* the agent does and *how* it communicates:
+
+- **Signposting**: Avoid "Let's dive in", "Here's what I found" — start directly with content
+- **Filler phrases**: Replace "In order to" → "To", "Due to the fact that" → "Because"
+- **Chatbot artifacts**: No "Great question!", "I hope this helps!", "Certainly!"
+- **Inflated language**: Keep significance in proportion — avoid "pivotal moment", "vital role"
+- **Generic conclusions**: No "The future looks bright" — end with the actual point
+
+Apply identity framing to behavioral guidelines, and natural voice principles to communication style. Together they produce output that sounds like a person thinking, not a model sampling.
 
 ## Common Mistakes
 

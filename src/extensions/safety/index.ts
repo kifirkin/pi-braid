@@ -1,14 +1,7 @@
 /**
- * Safety Extension — Guardrails for dangerous operations and session safety
+ * Safety Extension — Guardrails for dangerous operations and session safety.
  *
- * Combines four safety patterns from pi-mono examples:
- * 1. Permission Gate — prompts for confirmation before dangerous bash commands
- * 2. Protected Paths — blocks write/edit to sensitive files
- * 3. Dirty Repo Guard — prevents session changes when there are uncommitted changes
- * 4. Auto-Commit on Exit — automatically commits changes when agent exits
- *
- * All patterns are low-complexity, self-contained, and orthogonal to
- * enforcement extension (which focuses on LLM tool usage patterns, not bash safety).
+ * Permission gate, protected paths, dirty repo guard, auto-commit on exit.
  */
 
 import type { ExtensionAPI, SessionMessageEntry } from "@mariozechner/pi-coding-agent";

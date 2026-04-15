@@ -111,9 +111,7 @@ const CATEGORY_BASE_UTILITY: Record<CognitiveMemoryType, number> = {
 	procedural: 0.5,
 };
 
-// ============================================================================
 // Storage Functions
-// ============================================================================
 
 function ensureMemoryDir(): void {
 	if (!fs.existsSync(MEMORY_DIR)) {
@@ -170,9 +168,7 @@ function generateId(): string {
 	return `mem-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 9)}`;
 }
 
-// ============================================================================
 // Memory Logic
-// ============================================================================
 
 /**
  * Compute Jaccard similarity between two strings (word-level).
@@ -352,9 +348,7 @@ function consolidate(store: CognitiveMemoryStore): CognitiveMemoryStore {
 	};
 }
 
-// ============================================================================
 // Public API
-// ============================================================================
 
 // Singleton instance for consistent state across tool calls
 let _singletonInstance: CognitiveMemory | null = null;
@@ -907,9 +901,7 @@ export class CognitiveMemory {
 		return [...this.memoryStore.memories].sort((a, b) => b.timestamp - a.timestamp).slice(0, limit);
 	}
 
-	// ============================================================================
 	// Query DSL - Minimal SQL-like querying without SQLite dependency
-	// ============================================================================
 
 	/**
 	 * Parse a query DSL string into structured filters.

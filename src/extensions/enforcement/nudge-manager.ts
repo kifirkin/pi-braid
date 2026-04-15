@@ -11,9 +11,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { sendEnforcementWhisper } from "./whisper.js";
 
-// ============================================================================
 // Nudge Types
-// ============================================================================
 
 export type NudgeType =
 	| "validation"
@@ -63,9 +61,7 @@ export const DEFAULT_NUDGE_CONFIGS: Record<NudgeType, NudgeConfig> = {
 	contextTool: { baseCooldownMs: 120_000, escalateAfter: 3, deduplicate: true },
 };
 
-// ============================================================================
 // Nudge State Tracking
-// ============================================================================
 
 interface NudgeHistory {
 	lastSent: number;
@@ -73,9 +69,7 @@ interface NudgeHistory {
 	lastMessageHash: string;
 }
 
-// ============================================================================
 // Smart Threshold Calculation
-// ============================================================================
 
 export function calculateAdaptiveAnalysisThreshold(totalToolCalls: number): number {
 	if (totalToolCalls < 10) return 0.1;
@@ -84,9 +78,7 @@ export function calculateAdaptiveAnalysisThreshold(totalToolCalls: number): numb
 	return 0.3;
 }
 
-// ============================================================================
 // Nudge Manager
-// ============================================================================
 
 export class NudgeManager {
 	private history: Map<NudgeType, NudgeHistory> = new Map();

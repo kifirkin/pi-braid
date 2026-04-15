@@ -17,9 +17,7 @@ import { join } from "node:path";
 import { Type } from "@sinclair/typebox";
 import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-// ============================================================================
 // Whisper System - Send feedback messages immediately
-// ============================================================================
 
 let pendingWhisper: string | null = null;
 
@@ -53,9 +51,7 @@ function _queueFeedbackWhisper(message: string): void {
 	}
 }
 
-// ============================================================================
 // Types
-// ============================================================================
 
 interface Nudge {
 	id: string;
@@ -113,9 +109,7 @@ interface FeedbackConfig {
 	thinkToolEnforcementTurns: number; // 0 to disable, N turns without think tool to nudge
 }
 
-// ============================================================================
 // Configuration
-// ============================================================================
 
 const DEFAULT_CONFIG: FeedbackConfig = {
 	nudgeCooldownMs: 3000,
@@ -133,9 +127,7 @@ const AB_TESTS_FILE = join(STORAGE_DIR, "ab-tests.json");
 const MODEL_PREFS_FILE = join(STORAGE_DIR, "model-preferences.json");
 const CONFIG_FILE = join(STORAGE_DIR, "config.json");
 
-// ============================================================================
 // State
-// ============================================================================
 
 const state = {
 	config: loadConfig(),
@@ -154,9 +146,7 @@ const state = {
 	thinkToolNudgeActive: false, // Prevent spam for think tool enforcement
 };
 
-// ============================================================================
 // Persistence
-// ============================================================================
 
 function ensureStorageDir(): void {
 	if (!existsSync(STORAGE_DIR)) {
@@ -260,9 +250,7 @@ function _saveModelPreferences(): void {
 	writeFileSync(MODEL_PREFS_FILE, JSON.stringify(state.modelPreferences, null, 2));
 }
 
-// ============================================================================
 // Smart Nudge Generator
-// ============================================================================
 
 /**
  * Generate a smart nudge based on context
@@ -403,9 +391,7 @@ function recordNudge(nudge: Nudge): void {
 	state.nudgeCountThisTurn++;
 }
 
-// ============================================================================
 // A/B Testing
-// ============================================================================
 
 /**
  * Get current A/B test variant configuration
@@ -451,20 +437,15 @@ function _recordABTestOutcome(success: boolean): void {
 	saveABTests();
 }
 
-// ============================================================================
 // Tool Definitions
-// ============================================================================
 
 const feedbackStatusSchema = Type.Object({
 	includeHistory: Type.Optional(Type.Boolean()),
 });
 
-// ============================================================================
 // Extension Factory
-// ============================================================================
 
 export default function feedbackExtension(pi: ExtensionAPI) {
-	// =======================================================================
 	// Admin-only tools — demoted from registerTool to registerCommand
 	// These are configuration/debug tools the LLM should not call
 
@@ -498,7 +479,6 @@ export default function feedbackExtension(pi: ExtensionAPI) {
 	});
 
 	// Tools
-	// =======================================================================
 
 	pi.registerTool({
 		name: "feedback_status",
@@ -576,9 +556,7 @@ export default function feedbackExtension(pi: ExtensionAPI) {
 		},
 	});
 
-	// =======================================================================
 	// Event Handlers
-	// =======================================================================
 
 	// Initialize state on start
 	pi.on("agent_start", async () => {
@@ -733,22 +711,17 @@ export default function feedbackExtension(pi: ExtensionAPI) {
 		}
 	});
 
-	// =======================================================================
 	// Before Agent Start: No-op (whispers are now sent immediately)
-	// =======================================================================
 	// NOTE: Feedback nudges are now sent IMMEDIATELY in message_end/turn_end via pi.sendMessage().
 	// This fixes the bug where whispers accumulated and only appeared when user sent a message.
 	// The before_agent_start handler is kept as a no-op for backward compatibility.
-	// =======================================================================
 
 	pi.on("before_agent_start", async (_event) => {
 		// Whispers are now sent immediately - nothing to do here
 		return undefined;
 	});
 
-	// =======================================================================
 	// Commands
-	// =======================================================================
 
 	pi.registerCommand("feedback-stats", {
 		description: "Show feedback system statistics",

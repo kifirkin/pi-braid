@@ -52,23 +52,14 @@ import {
 	startFinalizeBuffer,
 } from "./whisper.js";
 
-// ============================================================================
 // Extension Factory
-// ============================================================================
-
 export default function enforcementExtension(pi: ExtensionAPI) {
-	// Initialize the smart nudge manager
 	const nudgeManager = new NudgeManager();
-	// =======================================================================
-	// Tool Registrations
-	// =======================================================================
 
-	// Register enforcement tools, config, reset
+	// Tool Registrations
 	registerEnforcementTools(pi);
 
-	// =======================================================================
 	// Event Handlers
-	// =======================================================================
 
 	// Pre-agent: Inject enforcement prompt
 	pi.on("before_agent_start", async (event) => {
@@ -398,10 +389,7 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 			}
 		}
 
-		// =====================================================
-		// CONTEXT TOOL USAGE NUDGE — proactive enforcement
-		// =====================================================
-		// Proactively encourage context management tools before situation becomes critical
+		// Context tool usage nudge
 		const contextToolInterval = state.config.contextToolNudgeInterval ?? 20;
 		const contextUpdated = actualTools.some((t) =>
 			["context_tag", "context_log", "context_checkout", "context_prune", "context_audit"].includes(t),
@@ -442,10 +430,7 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 			}
 		}
 
-		// =====================================================
-		// CONTEXT HYGIENE NUDGE — usage-based (context% monitoring)
-		// =====================================================
-		// Check context usage periodically and nudge when high
+		// Context hygiene nudge
 		if (contextUpdated) {
 			state.lastContextCheckTurn = state.currentTurn;
 			state.contextNudgeSent = false;
@@ -638,9 +623,7 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 			detectMalformedToolCalls(textContent, pi);
 		}
 
-		// =====================================================
 		// VERIFICATION JUDGE CHECKPOINTS
-		// =====================================================
 
 		// Skip verification judge if already running (prevent recursion)
 		if (state.verificationJudgeRunning) {
@@ -788,9 +771,7 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 	});
 }
 
-// ============================================================================
 // Helpers
-// ============================================================================
 
 /** Classify a retry error message into a category for targeted guidance. */
 function _classifyRetryError(errorMsg: string): "rate_limit" | "server_error" | "network" | "unknown" {

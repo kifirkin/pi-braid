@@ -68,9 +68,7 @@ let state: DegradationState = {
 	lastHealthcheck: null,
 };
 
-// ============================================================================
 // Configuration
-// ============================================================================
 
 export function getConfig(): DegradationConfig {
 	return { ...state.config };
@@ -84,9 +82,7 @@ export function resetConfig(): void {
 	state.config = { ...DEFAULT_CONFIG };
 }
 
-// ============================================================================
 // Metrics Tracking
-// ============================================================================
 
 export function recordHealthcheckScore(score: number): void {
 	state.lastHealthcheck = {
@@ -132,9 +128,7 @@ export function recordToolSuccess(): void {
 	}
 }
 
-// ============================================================================
 // Analysis
-// ============================================================================
 
 function updateDegradationStatus(): void {
 	const recent = state.metrics.slice(-5);
@@ -212,9 +206,7 @@ export function getDegradationReasons(): string[] {
 	return reasons;
 }
 
-// ============================================================================
 // State Access
-// ============================================================================
 
 export function getCurrentMetrics(): PerformanceMetrics | null {
 	return state.metrics[state.metrics.length - 1] ?? null;
@@ -261,9 +253,7 @@ export function getMetricsSummary(): {
 	};
 }
 
-// ============================================================================
 // Persistence
-// ============================================================================
 
 export async function saveMetrics(): Promise<void> {
 	try {
@@ -299,9 +289,7 @@ export function resetMetrics(): void {
 	state.lastHealthcheck = null;
 }
 
-// ============================================================================
 // Quick Metrics Capture
-// ============================================================================
 
 export function captureSystemMetrics(): Pick<PerformanceMetrics, "memoryUsagePercent"> {
 	const freeMem = os.freemem();

@@ -4,9 +4,7 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-// ============================================================================
-// Whisper System - Queue enforcement messages for next agent turn
-// ============================================================================
+// Whisper System
 
 let pendingWhisper: string | null = null;
 let pendingBlockAction: { toolName: string; reason: string } | null = null;

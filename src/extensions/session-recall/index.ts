@@ -20,9 +20,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
-// ============================================================================
 // Config
-// ============================================================================
 
 interface SessionRecallConfig {
 	queryModel?: { provider: string; id: string };
@@ -40,9 +38,7 @@ function loadConfig(): SessionRecallConfig {
 	} catch { return {}; }
 }
 
-// ============================================================================
 // Schemas
-// ============================================================================
 
 const sessionSearchSchema = Type.Object({
 	query: Type.String({
@@ -55,9 +51,7 @@ const sessionQuerySchema = Type.Object({
 	question: Type.String({ description: "What to ask about the session" }),
 });
 
-// ============================================================================
 // Helpers
-// ============================================================================
 
 function getSessionsDir(): string {
 	return join(homedir(), ".pi", "agent", "sessions");
@@ -114,9 +108,7 @@ function estimateTokens(text: string): number {
 const MAX_SEARCH_RESULTS = 10;
 const MAX_SNIPPETS_PER_SESSION = 3;
 
-// ============================================================================
 // Search
-// ============================================================================
 
 type SearchBackend = "rg" | "grep" | "node";
 let cachedBackend: SearchBackend | undefined;
@@ -220,9 +212,7 @@ function searchLines(query: string, filePath: string, limit: number): string[] {
 	return results;
 }
 
-// ============================================================================
 // Session Loading (for query)
-// ============================================================================
 
 function loadSessionMessages(sessionPath: string): Array<{ role: string; content: string }> {
 	const messages: Array<{ role: string; content: string }> = [];
@@ -245,9 +235,7 @@ function serializeSession(messages: Array<{ role: string; content: string }>): s
 		.join("\n\n");
 }
 
-// ============================================================================
 // Extension
-// ============================================================================
 
 const QUERY_SYSTEM_PROMPT = `You are analyzing a past pi coding assistant conversation.
 Answer the user's question based on the conversation transcript.

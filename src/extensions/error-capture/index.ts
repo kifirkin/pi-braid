@@ -22,9 +22,7 @@ import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 
-// ============================================================================
 // Types
-// ============================================================================
 
 interface ErrorEntry {
 	id: string;
@@ -36,9 +34,7 @@ interface ErrorEntry {
 	handled: boolean;
 }
 
-// ============================================================================
 // Storage
-// ============================================================================
 
 const ERROR_DIR = path.join(os.homedir(), ".pi", "agent", "errors");
 const ERROR_FILE = path.join(ERROR_DIR, "error-log.jsonl");
@@ -80,9 +76,7 @@ function generateErrorId(): string {
 	return `err-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
 }
 
-// ============================================================================
 // Error Capture Logic
-// ============================================================================
 
 /** Capture an error from any source */
 function captureError(
@@ -104,9 +98,7 @@ function captureError(
 	return entry;
 }
 
-// ============================================================================
 // Schema
-// ============================================================================
 
 const errorListSchema = Type.Object({
 	limit: Type.Optional(Type.Number({ default: 10, description: "Max errors to return" })),
@@ -124,9 +116,7 @@ const errorClearSchema = Type.Object({
 
 const errorStatsSchema = Type.Object({});
 
-// ============================================================================
 // Extension
-// ============================================================================
 
 export default function errorCaptureExtension(pi: ExtensionAPI): void {
 	// Capture tool execution errors from turn_end

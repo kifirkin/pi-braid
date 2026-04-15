@@ -21,9 +21,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-// ============================================================================
 // Types
-// ============================================================================
 
 interface ToolMetrics {
 	toolName: string;
@@ -61,9 +59,7 @@ interface AnalyticsSummary {
 	sequences: ToolSequence[];
 }
 
-// ============================================================================
 // Tool Categories (for potential future use)
-// ============================================================================
 
 const TOOL_CATEGORIES: Record<string, string> = {
 	read: "read",
@@ -85,9 +81,7 @@ const TOOL_CATEGORIES: Record<string, string> = {
 	memory_recall: "memory",
 };
 
-// ============================================================================
 // Analytics State
-// ============================================================================
 
 interface AnalyticsState {
 	sessionId: string;
@@ -105,9 +99,7 @@ const state: AnalyticsState = {
 	storagePath: join(homedir(), ".pi/agent/analytics/tool-analytics.jsonl"),
 };
 
-// ============================================================================
 // Core Analytics Functions
-// ============================================================================
 
 function getOrCreateMetrics(toolName: string): ToolMetrics {
 	let metrics = state.toolMetrics.get(toolName);
@@ -380,9 +372,7 @@ function formatAllSessions(): string {
 	return lines.join("\n");
 }
 
-// ============================================================================
 // Extension
-// ============================================================================
 
 export default function analyticsExtension(pi: ExtensionAPI) {
 	// Initialize on session start

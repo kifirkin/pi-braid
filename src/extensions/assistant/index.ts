@@ -1,9 +1,8 @@
 /**
- * Assistant Extension — Tool management patterns from pi-mono examples.
+ * Assistant Extension — Tool management.
  *
- * Features:
- * - /tools: interactive tool enable/disable with fuzzy search and scrollable list
- * - /tool-status: show current tool configuration
+ * /tools: interactive tool enable/disable
+ * /tool-status: show current configuration
  */
 
 import * as os from "node:os";

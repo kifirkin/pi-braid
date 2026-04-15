@@ -198,9 +198,7 @@ export default function polyfillExtension(pi: ExtensionAPI) {
 	});
 }
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 /** Persist a model pattern for the given role key. Writes to disk + in-memory map. */
 async function setModelSetting(key: string, pattern: string): Promise<void> {
@@ -309,9 +307,7 @@ async function openModelSelectorUI(
 	ctx.ui.notify(`${settingKey === UTILITY_MODEL_KEY ? "Utility" : "Vision"} model set to: ${selectedModel.id}`, "info");
 }
 
-// ---------------------------------------------------------------------------
 // Session manager patches for --no-session mode
-// ---------------------------------------------------------------------------
 
 /**
  * Patch SessionManager methods onto the pi ExtensionAPI so context_tag/checkout commands
@@ -356,9 +352,7 @@ function patchSessionManagerMethods(pi: any, ctx: any): void {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // Retry tracking
-// ---------------------------------------------------------------------------
 
 let _lastUserMessage: { text: string; images?: any[] } | null = null;
 

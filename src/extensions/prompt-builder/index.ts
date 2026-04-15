@@ -1,29 +1,8 @@
 /**
- * Prompt Builder Extension — Replaces the default system prompt with
- * the develop-branch "identity framing" prompt.
+ * Prompt Builder — Builds system prompt with identity framing.
  *
- * The upstream main branch uses directive-style prompts:
- *   "You MUST read files before editing"
- *   "ALWAYS verify your changes"
- *   "NEVER fabricate data"
- *
- * The develop branch uses identity framing:
- *   "You examine files before editing"
- *   "You verify after every change"
- *   "You don't fabricate"
- *
- * Research shows explicit directives trigger compliance theater.
- * Identity framing channels behavior toward task-relevant actions.
- *
- * This extension uses `before_agent_start` to dynamically replace
- * the system prompt each turn. It:
- * - Constructs tool-aware guidelines based on active tools
- * - Incorporates promptSnippet/promptGuidelines from registered tools
- * - Injects the develop-branch identity framing
- * - Preserves any custom SYSTEM.md or append sections from the host
- *
- * The key design principle: we DON'T just append text — we REPLACE
- * the system prompt entirely so the identity framing is consistent.
+ * Dynamically constructs tool-aware guidelines based on active tools.
+ * Replaces system prompt entirely so identity framing is consistent.
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";

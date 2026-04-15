@@ -16,9 +16,7 @@
  * - Two-phase flow (plan → execute → validate)
  */
 
-// ========================================================================
 // Types
-// ========================================================================
 
 export interface ParsedRequirement {
 	id: string;
@@ -88,9 +86,7 @@ export interface CoverageResult {
 	suggestions: string[];
 }
 
-// ========================================================================
-// Layer 1: Request Parsing (heuristic-based, deterministic)
-// ========================================================================
+// Layer 1: Request Parsing
 
 export function parseUserRequest(request: string): ParsedRequest {
 	const requirements: ParsedRequirement[] = [];
@@ -181,9 +177,7 @@ export function parseUserRequest(request: string): ParsedRequest {
 	};
 }
 
-// ========================================================================
-// Layer 3: Coverage Computation (rule-based alignment check)
-// ========================================================================
+// Layer 3: Coverage Computation
 
 export function computeCoverage(args: {
 	parsedRequest: ParsedRequest | null;
@@ -342,9 +336,7 @@ function generateVerificationHints(reqText: string): string[] {
 	return hints;
 }
 
-// ========================================================================
 // Format coverage report
-// ========================================================================
 
 export function formatCoverageReport(result: CoverageResult): string {
 	const lines: string[] = [];

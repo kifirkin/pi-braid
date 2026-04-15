@@ -64,9 +64,7 @@ const DEFAULT_CONFIG: PreprocessorConfig = {
 	timeoutSeconds: 180,
 };
 
-// ============================================================================
 // Settings Persistence
-// ============================================================================
 
 const SETTINGS_KEY = "preprocessorEnabled";
 const CONFIG_DIR = join(homedir(), ".pi", "agent");
@@ -96,9 +94,7 @@ function saveGlobalSetting<T>(key: string, value: T): void {
 	writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), "utf-8");
 }
 
-// ============================================================================
 // Content Analysis Helpers
-// ============================================================================
 
 /** Characters that indicate code content */
 const CODE_CHARS = new Set("{}[]();=>+-*/|&<>@#$%^~`\\");
@@ -251,9 +247,7 @@ function isProseTooBrief(text: string): boolean {
 	return proseChars < 20;
 }
 
-// ============================================================================
 // State
-// ============================================================================
 
 const state = {
 	config: { ...DEFAULT_CONFIG, enabled: loadGlobalSetting(SETTINGS_KEY, DEFAULT_CONFIG.enabled) },
@@ -271,9 +265,7 @@ function clearPreprocessorWidget(ctx: ExtensionContext) {
 	ctx.ui.setStatus("preprocessor", undefined);
 }
 
-// ============================================================================
 // Preprocessing
-// ============================================================================
 
 async function preprocess(
 	original: string,
@@ -367,9 +359,7 @@ async function preprocess(
 	return cleaned && cleaned !== original && cleaned.length > 0 ? cleaned : null;
 }
 
-// ============================================================================
 // Extension Registration
-// ============================================================================
 
 export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 	pi.registerTool({
@@ -544,9 +534,7 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 	});
 }
 
-// ============================================================================
 // Diff Display
-// ============================================================================
 
 const colors = {
 	red: (text: string) => `\x1b[31m${text}\x1b[0m`,

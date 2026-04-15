@@ -65,9 +65,7 @@ function cleanupHcDir(): void {
 	} catch {}
 }
 
-// ============================================================================
 // Individual Check Functions
-// ============================================================================
 
 function check(
 	category: string,
@@ -454,9 +452,7 @@ function testAgentConfiguration(): CheckResult[] {
 	return checks;
 }
 
-// ============================================================================
 // Agent Tools Tests
-// ============================================================================
 
 function testAgentTools(pi: ExtensionAPI): CheckResult[] {
 	const checks: CheckResult[] = [];
@@ -544,9 +540,7 @@ function testAgentTools(pi: ExtensionAPI): CheckResult[] {
 	return checks;
 }
 
-// ============================================================================
 // Builtin Tools Tests
-// ============================================================================
 
 function testBuiltinTools(pi: ExtensionAPI): CheckResult[] {
 	const checks: CheckResult[] = [];
@@ -625,9 +619,7 @@ function testBuiltinTools(pi: ExtensionAPI): CheckResult[] {
 	return checks;
 }
 
-// ============================================================================
 // Extension System Tests
-// ============================================================================
 
 function testExtensionSystem(pi: ExtensionAPI): CheckResult[] {
 	const checks: CheckResult[] = [];
@@ -692,9 +684,7 @@ function testExtensionSystem(pi: ExtensionAPI): CheckResult[] {
 	return checks;
 }
 
-// ============================================================================
 // Report Generation
-// ============================================================================
 
 function generateReport(checks: CheckResult[]): HealthReport {
 	const passed = checks.filter((c) => c.status === "pass").length;
@@ -786,9 +776,7 @@ function formatReport(report: HealthReport): string {
 	return lines.join("\n");
 }
 
-// ============================================================================
 // Extension Registration
-// ============================================================================
 
 const healthcheckSchema = Type.Object({
 	verbose: Type.Optional(Type.Boolean({ default: false, description: "Include detailed output" })),

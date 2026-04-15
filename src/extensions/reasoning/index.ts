@@ -11,9 +11,7 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-// ============================================================================
 // Helper: Send Enforcement Message as Custom (for visual distinction in TUI)
-// ============================================================================
 
 /**
  * Send a enforcement/nudge message that will be visually distinct in the TUI.
@@ -31,9 +29,7 @@ function sendSteerMessage(pi: ExtensionAPI, message: string): void {
 	);
 }
 
-// ============================================================================
 // Types
-// ============================================================================
 
 interface ReasoningState {
 	step: number;
@@ -47,9 +43,7 @@ interface ExtensionState {
 	turnCount: number;
 }
 
-// ============================================================================
 // State
-// ============================================================================
 
 const state: ExtensionState = {
 	current: null,
@@ -57,9 +51,7 @@ const state: ExtensionState = {
 	turnCount: 0,
 };
 
-// ============================================================================
 // Malformed Tool Call Detection
-// ============================================================================
 
 const MALFORMED_REGEX =
 	/<(function|write|edit|read|bash|grep|find|ls|think|plan|scratchpad)[^>]*>[\s\S]*?<\/(function|write|edit|read|bash|grep|find|ls|think|plan|scratchpad)>/gi;
@@ -86,9 +78,7 @@ function detectMalformedToolCalls(text: string, pi: ExtensionAPI): void {
 	}
 }
 
-// ============================================================================
 // Simple Prompt
-// ============================================================================
 
 const THINK_STEP_BY_STEP = `
 ## Thinking
@@ -102,14 +92,10 @@ const VERIFICATION_REMINDER = `
 Run tests to verify your work. Call signal_complete when verified.
 `;
 
-// ============================================================================
 // Extension Factory
-// ============================================================================
 
 export default function reasoningExtension(pi: ExtensionAPI) {
-	// =======================================================================
 	// Pre-Turn: Inject simple prompts
-	// =======================================================================
 
 	pi.on("before_agent_start", async (event) => {
 		state.turnCount++;
@@ -138,9 +124,7 @@ export default function reasoningExtension(pi: ExtensionAPI) {
 		return { systemPrompt: prompt };
 	});
 
-	// =======================================================================
 	// Message End: Check for malformed tool calls
-	// =======================================================================
 
 	pi.on("message_end", async (event) => {
 		if (event.message.role !== "assistant") return;
@@ -160,9 +144,7 @@ export default function reasoningExtension(pi: ExtensionAPI) {
 		}
 	});
 
-	// =======================================================================
 	// Commands
-	// =======================================================================
 
 	pi.registerCommand("loop-status", {
 		description: "Show reasoning status",
@@ -193,9 +175,7 @@ export default function reasoningExtension(pi: ExtensionAPI) {
 	});
 }
 
-// ============================================================================
 // Utilities
-// ============================================================================
 
 export function getCurrentReasoning(): ReasoningState | null {
 	return state.current;
