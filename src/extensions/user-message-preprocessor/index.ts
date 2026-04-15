@@ -156,6 +156,36 @@ const FORMATTING_PATTERNS = [
 ];
 
 /**
+ * Common English words (stopwords) for language detection.
+ * If a high ratio of words are English stopwords, text is likely in English.
+ */
+const ENGLISH_STOPWORDS = new Set([
+	"the","be","to","of","and","a","in","that","have","i","it","for","not","on","with","he","as","you","do","at",
+	"this","but","his","by","from","they","we","say","her","she","or","an","will","my","one","all","would","there",
+	"their","what","so","up","out","if","about","who","get","which","go","me","when","make","can","like",
+	"time","no","just","him","know","take","people","into","year","your","good","some","could","them","see","other",
+	"than","then","now","look","only","come","its","over","think","also","back","after","use","two","how","our",
+	"work","first","well","way","even","new","want","because","any","these","give","day","most","us",
+	"is","are","was","were","been","has","had","does","did","been","being","here","there","where","when","what",
+	"how","why","can","could","should","would","may","might","must","shall","will","would","could","should",
+]);
+
+/**
+ * Detect if text is primarily English.
+ * Uses stopword ratio: count words matching English stopwords / total words.
+ * Returns true if ratio > 0.1 (10% English stopwords = likely English text).
+ */
+function isLikelyEnglish(text: string): boolean {
+	const words = text.toLowerCase().split(/[\s,.!?;:"'()\[\]{}]+/).filter((w) => w.length > 1);
+	if (words.length < 3) return false;
+	let englishCount = 0;
+	for (const w of words) {
+		if (ENGLISH_STOPWORDS.has(w)) englishCount++;
+	}
+	return englishCount / words.length > 0.1;
+}
+
+/**
  * Count how many formatting patterns match the text.
  */
 function countFormattingPatterns(text: string): number {
@@ -448,6 +478,12 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 
 		// Skip well-written text
 		if (looksWellWritten(original)) {
+			state.skippedCount++;
+			return { action: "continue" };
+		}
+
+		// Skip likely English text (even if not perfectly written) — translation isn't needed
+		if (isLikelyEnglish(prose)) {
 			state.skippedCount++;
 			return { action: "continue" };
 		}

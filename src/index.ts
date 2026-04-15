@@ -55,6 +55,7 @@ import visionExtension from "./extensions/vision/index.js";
 import watchdogExtension from "./extensions/watchdog/index.js";
 import safetyExtension from "./extensions/safety/index.js";
 import uxExtension from "./extensions/ux/index.js";
+import webFetchExtension from "./extensions/web-fetch/index.js";
 
 // Resolve the skills directory relative to this file
 const __filename = fileURLToPath(import.meta.url);
@@ -97,6 +98,7 @@ const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void 
 	{ name: "rate-limiter", factory: rateLimiterExtension },
 	{ name: "safety", factory: safetyExtension },
 	{ name: "ux", factory: uxExtension },
+	{ name: "web-fetch", factory: webFetchExtension },
 	{ name: "assistant", factory: assistantExtension },
 	{ name: "vision", factory: visionExtension },
 	{ name: "reasoning", factory: reasoningExtension },
