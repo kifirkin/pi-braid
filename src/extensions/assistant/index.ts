@@ -7,7 +7,8 @@
  */
 
 import type { ExtensionAPI, ExtensionContext, ToolInfo } from "@mariozechner/pi-coding-agent";
-import { Box, fuzzyFilter, Input, SelectItem, SelectList } from "@mariozechner/pi-tui";
+import { getSettingsListTheme } from "@mariozechner/pi-coding-agent";
+import { Container, type SettingItem, SettingsList } from "@mariozechner/pi-tui";
 
 const TOOLS_CONFIG_TYPE = "tools-config";
 
@@ -72,81 +73,66 @@ export default function assistantExtension(pi: ExtensionAPI) {
 		handler: async (_args, ctx) => {
 			toolList = pi.getAllTools();
 
-			// Build items with enabled/disabled state in description
-			const buildItems = (filter: string = ""): SelectItem[] => {
-				const items: SelectItem[] = toolList.map((tool) => ({
-					value: tool.name,
+			// Build settings items for each tool (SettingsList handles its own search)
+			const buildItems = (): SettingItem[] =>
+				toolList.map((tool) => ({
+					id: tool.name,
 					label: tool.name,
-					description: toolEnabled.has(tool.name) ? "enabled" : "disabled",
+					currentValue: toolEnabled.has(tool.name) ? "enabled" : "disabled",
+					values: ["enabled", "disabled"],
 				}));
-				if (!filter) return items;
-				return fuzzyFilter(items, filter, (item) => item.label);
-			};
 
-			let currentFilter = "";
-			const maxVisible = 15;
+			await ctx.ui.custom((tui, theme, _kb, done) => {
+				const container = new Container();
 
-			await ctx.ui.custom(
-				async (tui, _theme, _keybindings, done) => {
-					// Filter input at the top
-					const filterInput = new Input();
-					filterInput.onSubmit = () => {
-						currentFilter = filterInput.getValue();
-						refreshList();
-					};
+				// Title header
+				container.addChild(
+					new (class {
+						render(_width: number) {
+							return [theme.fg("accent", theme.bold("Tool Configuration"))];
+						}
+						invalidate() {}
+					})(),
+				);
 
-					// Scrollable tool list
-					let selectList = new SelectList(buildItems(""), maxVisible, {
-						selectedPrefix: (t) => t,
-						selectedText: (t) => t,
-						description: (t) => t,
-						scrollInfo: (t) => t,
-						noMatch: (t) => t,
-					});
-
-					// Container for filter input + list
-					const container = new Box();
-					container.addChild(filterInput);
-					container.addChild(selectList);
-
-					function refreshList() {
-						const newItems = buildItems(currentFilter);
-						const newList = new SelectList(newItems, maxVisible, {
-							selectedPrefix: (t) => t,
-							selectedText: (t) => t,
-							description: (t) => t,
-							scrollInfo: (t) => t,
-							noMatch: (t) => t,
-						});
-						newList.onSelect = handleSelect;
-						newList.onCancel = () => done(undefined);
-						container.removeChild(container.children[1]);
-						container.addChild(newList);
-						selectList = newList;
-						selectList.invalidate();
-					}
-
-					function handleSelect(item: SelectItem) {
-						// Toggle the tool
-						if (toolEnabled.has(item.value)) {
-							toolEnabled.delete(item.value);
+				const settingsList = new SettingsList(
+					buildItems(),
+					Math.min(toolList.length + 2, 15),
+					getSettingsListTheme(),
+					(id, newValue) => {
+						// Toggle tool on value change
+						if (newValue === "enabled") {
+							toolEnabled.add(id);
 						} else {
-							toolEnabled.add(item.value);
+							toolEnabled.delete(id);
 						}
 						applyToolState();
 						persistToolState();
-						ctx.ui.notify(`Tool ${item.value} ${toolEnabled.has(item.value) ? "enabled" : "disabled"}`, "info");
-						// Refresh list with updated state
-						refreshList();
-					}
+					},
+					() => {
+						// Close dialog
+						done(undefined);
+					},
+					{ enableSearch: true },
+				);
 
-					selectList.onSelect = handleSelect;
-					selectList.onCancel = () => done(undefined);
+				container.addChild(settingsList);
 
-					return container;
-				},
-				{ overlay: true },
-			);
+				// Return proper component interface — must delegate handleInput to SettingsList
+				return {
+					render(width: number) {
+						return container.render(width);
+					},
+					invalidate() {
+						container.invalidate();
+					},
+					handleInput(data: string) {
+						// CRITICAL: SettingsList only receives input when handleInput is called
+						settingsList.handleInput?.(data);
+						tui.requestRender();
+					},
+				};
+			});
 		},
 	});
 
