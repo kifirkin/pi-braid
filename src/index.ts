@@ -52,6 +52,8 @@ import analyticsExtension from "./extensions/analytics/index.js";
 import userMessagePreprocessorExtension from "./extensions/user-message-preprocessor/index.js";
 import visionExtension from "./extensions/vision/index.js";
 import watchdogExtension from "./extensions/watchdog/index.js";
+import safetyExtension from "./extensions/safety/index.js";
+import uxExtension from "./extensions/ux/index.js";
 
 // Resolve the skills directory relative to this file
 const __filename = fileURLToPath(import.meta.url);
@@ -92,6 +94,8 @@ const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void 
 	{ name: "user-message-preprocessor", factory: userMessagePreprocessorExtension },
 	{ name: "watchdog", factory: watchdogExtension },
 	{ name: "rate-limiter", factory: rateLimiterExtension },
+	{ name: "safety", factory: safetyExtension },
+	{ name: "ux", factory: uxExtension },
 	{ name: "vision", factory: visionExtension },
 	{ name: "reasoning", factory: reasoningExtension },
 	{ name: "repl", factory: replExtension },
