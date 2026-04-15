@@ -41,10 +41,11 @@ export function createReplTool(): AgentTool<typeof replSchema> {
 				const evalValues = Object.values(replState.context);
 
 				// Create a function with the context bound
-				const evalFn = new Function(
-					...evalKeys,
-					`"use strict";\n${params.code}`,
-				);
+				// Wrap in `return (...)` to capture expression results, not just statements
+				const code = params.code.trim().startsWith("return ") || params.code.trim().startsWith("{")
+					? params.code
+					: `return ${params.code}`;
+				const evalFn = new Function(...evalKeys, `"use strict";\n${code}`);
 
 				// Execute with timeout
 				const timeout = params.timeout_ms ?? 30000;

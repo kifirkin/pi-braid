@@ -31,7 +31,7 @@ import fileToolExtension from "./extensions/file-tool.js";
 import healthcheckExtension from "./extensions/healthcheck/index.js";
 import metacognitionExtension from "./extensions/metacognition/index.js";
 import plannerExtension from "./extensions/planner/index.js";
-// removed: promptGuardianExtension — tools removed (list_deleted_prompts, recover_prompt, save_current_prompt)
+import promptGuardianExtension from "./extensions/prompt-guardian/index.js";
 import rateLimiterExtension from "./extensions/rate-limiter/index.js";
 import reasoningExtension from "./extensions/reasoning/index.js";
 import replExtension from "./extensions/repl/index.js";
@@ -65,6 +65,7 @@ const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void 
 	{ name: "docs", factory: docsExtension },
 	{ name: "codebase-tree", factory: codebaseTreeExtension },
 	{ name: "healthcheck", factory: healthcheckExtension },
+	{ name: "prompt-guardian", factory: promptGuardianExtension },
 	{ name: "file-tool", factory: fileToolExtension },
 	{ name: "evolve", factory: evolveExtension },
 	{ name: "enforcement", factory: enforcementExtension },

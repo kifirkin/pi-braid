@@ -45,7 +45,8 @@ interface PruneContext {
 }
 
 interface PruneRule {
-	name: string;
+	/** Internal rule identifier (not a tool name) */
+	id: string;
 	description?: string;
 	enabled?: boolean;
 	prepare?: (msg: MessageWithMetadata, ctx: PruneContext) => void;
@@ -160,7 +161,7 @@ function extractResultIds(msg: AgentMessage): string[] {
 // Built-in Prune Rules
 
 const deduplicationRule: PruneRule = {
-	name: "deduplication",
+	id: "deduplication",
 	description: "Remove duplicate tool outputs based on content hash",
 	enabled: true,
 
@@ -188,7 +189,7 @@ const deduplicationRule: PruneRule = {
 };
 
 const supersededWritesRule: PruneRule = {
-	name: "superseded_writes",
+	id: "superseded_writes",
 	description: "Remove older file writes when newer versions exist",
 	enabled: true,
 
@@ -217,7 +218,7 @@ const supersededWritesRule: PruneRule = {
 };
 
 const errorPurgingRule: PruneRule = {
-	name: "error_purging",
+	id: "error_purging",
 	description: "Remove resolved errors from context",
 	enabled: true,
 
@@ -245,7 +246,7 @@ const errorPurgingRule: PruneRule = {
 };
 
 const recencyRule: PruneRule = {
-	name: "recency",
+	id: "recency",
 	description: "Protect recent messages from pruning",
 	enabled: true,
 
@@ -290,7 +291,7 @@ function applyPruningWorkflow(messages: AgentMessage[]): AgentMessage[] {
 			try {
 				rule.prepare!(msg, { messages: withMetadata, index });
 			} catch (err) {
-				console.error(`[context-manager] Rule "${rule.name}" prepare error:`, err);
+				console.error(`[context-manager] Rule "${rule.id}" prepare error:`, err);
 			}
 		});
 	}
@@ -304,7 +305,7 @@ function applyPruningWorkflow(messages: AgentMessage[]): AgentMessage[] {
 			try {
 				rule.process!(msg, { messages: withMetadata, index });
 			} catch (err) {
-				console.error(`[context-manager] Rule "${rule.name}" process error:`, err);
+				console.error(`[context-manager] Rule "${rule.id}" process error:`, err);
 			}
 		});
 	}
@@ -1714,7 +1715,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 		description: "Show context pruning statistics",
 		handler: async (_args: string | undefined, ctx: any) => {
 			const stats = pruningState.stats;
-			const rules = pruningState.rules.filter((r) => r.enabled).map((r) => r.name);
+			const rules = pruningState.rules.filter((r) => r.enabled).map((r) => r.id);
 
 			ctx.ui.notify(
 				[
