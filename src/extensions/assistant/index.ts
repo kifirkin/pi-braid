@@ -1,43 +1,11 @@
 /**
- * Assistant Extension — Tools and patterns that help the agent and user manage work
+ * Assistant Extension — Tool management patterns from pi-mono examples.
  *
- * Two patterns from pi-mono examples:
- * 1. Todo tool — LLM-callable todo list with custom renderer, state from session
- * 2. Tools command — interactive tool enable/disable via SettingsList
- *
- * Note: Summarize command excluded (requires `complete` from pi-ai).
+ * Currently:
+ * - /tools: interactive tool enable/disable via selector, state persisted to session
  */
 
-import { StringEnum } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext, ToolInfo } from "@mariozechner/pi-coding-agent";
-
-import { matchesKey, Text } from "@mariozechner/pi-tui";
-import type { Theme } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
-
-// ============================================================================
-// Todo Tool
-// ============================================================================
-
-interface Todo {
-	id: number;
-	text: string;
-	done: boolean;
-}
-
-interface TodoDetails {
-	action: "list" | "add" | "toggle" | "clear";
-	todos: Todo[];
-	nextId: number;
-	error?: string;
-}
-
-const TodoParams = Type.Object({
-	action: StringEnum(["list", "add", "toggle", "clear"] as const),
-	text: Type.Optional(Type.String({ description: "Todo text (for add)" })),
-	id: Type.Optional(Type.Number({ description: "Todo ID (for toggle)" })),
-});
-
 
 export default function assistantExtension(pi: ExtensionAPI) {
 	// ── /tools Command ─────────────────────────────────────────────────
