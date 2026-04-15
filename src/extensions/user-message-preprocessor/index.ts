@@ -4,12 +4,14 @@
  * Cleans up user messages before sending to main LLM:
  * - Translates non-English messages to English
  * - Corrects spelling/grammar in English messages
- * - Uses utility model via ctx.getUtilityModel() (respects /utility-model setting)
+ * - Uses utility model via resolveUtilityModel() (respects /utility-model setting)
  *
- * Smart content detection:
- * - Skips code-heavy messages (>30% code characters)
- * - Skips well-written English text
- * - Preserves markdown, code blocks, and formatting
+ * Smart content detection (skips processing when content is already clean):
+ * - Very long text (>maxChars, default 5000) — too expensive to preprocess
+ * - Code-heavy text (>30% code characters) — likely technical content
+ * - Well-written English with proper structure — no changes needed
+ * - Markdown content with good formatting — already structured
+ * - Short prose after stripping code blocks — likely just brief context
  *
  * Uses `transform` action so preprocessed text flows to the agent in the same
  * input cycle. The user sees the diff widget with cleaned text, but pressing
@@ -17,7 +19,7 @@
  *
  * Settings:
  * - Enabled state persists to ~/.pi/agent/settings.json
- * - Other config (minLength, skipCommands, etc.) stored in memory
+ * - Other config (minLength, maxChars, skipCommands, etc.) stored in memory
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -29,18 +31,25 @@ import { Type } from "@sinclair/typebox";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext, InputEventResult } from "@mariozechner/pi-coding-agent";
 import { resolveUtilityModel } from "../../lib/model-resolver.js";
 
-const SYSTEM_PROMPT = `You are a automatic message preprocessor. Your only task is to translate or correct the message sent by User and provide response strictly following these guidelines:
+const SYSTEM_PROMPT = `You are a message preprocessor. Your job is to translate or correct the message sent by User.
 
+Think silently before producing output.
+
+Guidelines:
 - Translate message to English if it is not already
-- Correct message if it has any spelling, grammar mistakes or meaning collisions
+- Correct spelling, grammar mistakes, or meaning collisions
 - Preserve technical terms, code, file paths, and markdown formatting
 - Keep code blocks, lists, and other structural elements intact
-- Respond with only the corrected message
+- Respond with ONLY the corrected message — no commentary, no explanation
 `;
 
 interface PreprocessorConfig {
 	enabled: boolean;
+	/** Skip text shorter than this (characters) */
 	minLength: number;
+	/** Skip text longer than this (characters) — protects against huge pastes */
+	maxChars: number;
+	/** Skip messages starting with / or ! (commands) */
 	skipCommands: boolean;
 	showDiff: boolean;
 	timeoutSeconds: number;
@@ -49,6 +58,7 @@ interface PreprocessorConfig {
 const DEFAULT_CONFIG: PreprocessorConfig = {
 	enabled: true,
 	minLength: 10,
+	maxChars: 5000,
 	skipCommands: true,
 	showDiff: true,
 	timeoutSeconds: 180,
@@ -87,11 +97,32 @@ function saveGlobalSetting<T>(key: string, value: T): void {
 }
 
 // ============================================================================
-// Smart Content Detection
+// Content Analysis Helpers
 // ============================================================================
 
 /** Characters that indicate code content */
 const CODE_CHARS = new Set("{}[]();=>+-*/|&<>@#$%^~`\\");
+
+/**
+ * Strip triple-backtick (```) and tilde (~~~) code blocks from text.
+ * Returns { prose, hadCodeBlocks, codeBlockCharCount }.
+ *
+ * The prose length tells us how much actual text content there is,
+ * independent of pasted code/examples.
+ */
+function stripCodeBlocks(text: string): { prose: string; hadCodeBlocks: boolean; codeBlockChars: number } {
+	const startLen = text.length;
+
+	// Remove fenced code blocks (```, ~~~, with optional language tags)
+	// Use non-greedy matching to handle multiple blocks
+	let prose = text.replace(/```[\s\S]*?```~~~?/gm, "");
+	prose = prose.replace(/~~~[\s\S]*?~~~/gm, "");
+
+	const hadCodeBlocks = prose.length < startLen;
+	const codeBlockChars = startLen - prose.length;
+
+	return { prose, hadCodeBlocks, codeBlockChars };
+}
 
 /**
  * Check if message is code-heavy and should be skipped.
@@ -110,16 +141,51 @@ function isCodeHeavy(text: string): boolean {
 }
 
 /**
- * Check if message looks already well-written.
- * Simple heuristic: proper sentence structure, capitalization, no obvious typos.
+ * Markdown/formatting patterns that indicate content is already well-structured.
+ * If text has several of these, it's likely already clean/properly formatted.
+ */
+const FORMATTING_PATTERNS = [
+	/```/, // Has inline code
+	/^#+\s/m, // Headings
+	/^\s*[-*+]\s/m, // Unordered list items
+	/^\s*\d+\.\s/m, // Ordered list items
+	/^\s*>\s/m, // Blockquotes
+	/\|.*\|/, // Tables
+	/\*\*.+?\*\*/, // Bold
+	/\*.+?\*/, // Italic
+];
+
+/**
+ * Count how many formatting patterns match the text.
+ */
+function countFormattingPatterns(text: string): number {
+	let count = 0;
+	for (const pattern of FORMATTING_PATTERNS) {
+		if (pattern.test(text)) count++;
+	}
+	return count;
+}
+
+/**
+ * Check if message looks already well-written / properly formatted.
+ * Skip if text appears to be already clean English.
+ *
+ * Uses multiple heuristics:
+ * - Multiple well-capitalized sentences
+ * - Few/no repeated character patterns (typos)
+ * - Substantial formatting (markdown structure)
+ * - Balanced brackets
  */
 function looksWellWritten(text: string): boolean {
-	// Must have multiple sentences
-	const sentenceCount = (text.match(/[.!?]+\s/g) || []).length;
+	// Strip code blocks first — they inflate content without being "writing"
+	const { prose: stripped } = stripCodeBlocks(text);
+
+	// Must have sentences
+	const sentenceCount = (stripped.match(/[.!?]+\s/g) || []).length;
 	if (sentenceCount < 2) return false;
 
-	// Check for basic capitalization (sentences start with capital letters)
-	const sentences = text.split(/[.!?]+\s/);
+	// Check capitalization
+	const sentences = stripped.split(/[.!?]+\s/);
 	let capitalizedCount = 0;
 	for (const s of sentences) {
 		const trimmed = s.trim();
@@ -130,7 +196,10 @@ function looksWellWritten(text: string): boolean {
 	// No excessive repeated characters (common typo pattern)
 	if (/(.)\1{4,}/.test(text)) return false;
 
-	// Check for balanced brackets (common in code/formatted text)
+	// If substantial formatting present, likely already structured
+	if (countFormattingPatterns(text) >= 3) return true;
+
+	// Balanced brackets — if well-balanced and has formatting, likely clean
 	const brackets = { "(": 0, ")": 0, "[": 0, "]": 0, "{": 0, "}": 0 };
 	for (const char of text) {
 		if (char in brackets) brackets[char as keyof typeof brackets]++;
@@ -138,8 +207,18 @@ function looksWellWritten(text: string): boolean {
 	const balanced =
 		brackets["("] === brackets[")"] && brackets["["] === brackets["]"] && brackets["{"] === brackets["}"];
 
-	// If brackets are balanced, likely well-structured
-	return balanced;
+	return balanced && countFormattingPatterns(text) >= 1;
+}
+
+/**
+ * Check if prose (text without code blocks) is too brief to warrant preprocessing.
+ * If the actual user text is just a few words after stripping code, skip it.
+ */
+function isProseTooBrief(text: string): boolean {
+	const { prose } = stripCodeBlocks(text);
+	// Count non-whitespace, non-code chars in prose
+	const proseChars = prose.replace(/\s/g, "").replace(/[`#*_~\[\](){}]/g, "").length;
+	return proseChars < 20;
 }
 
 // ============================================================================
@@ -163,7 +242,7 @@ function clearPreprocessorWidget(ctx: ExtensionContext) {
 }
 
 // ============================================================================
-// Preprocessing (runs before the input event returns)
+// Preprocessing
 // ============================================================================
 
 async function preprocess(
@@ -171,14 +250,14 @@ async function preprocess(
 	_images: ImageContent[] | undefined,
 	ctx: ExtensionContext,
 ): Promise<string | null> {
-	// Use model-resolver (which reads custom key from ~/.pi/agent/settings.json)
+	// Use model-resolver (reads utilityModel from ~/.pi/agent/settings.json)
 	let model = resolveUtilityModel(ctx);
 	if (!model) {
 		state.skippedCount++;
 		return null;
 	}
 
-	// If reasoning model, try to find non-reasoning model
+	// If reasoning model, prefer non-reasoning model for fast preprocessing
 	if (model?.reasoning) {
 		if (ctx.model && !ctx.model.reasoning) {
 			model = ctx.model;
@@ -247,7 +326,7 @@ async function preprocess(
 	const textContent = result.content.filter((c): c is { type: "text"; text: string } => c.type === "text");
 	let cleaned = textContent.length > 0 ? textContent[0].text.trim() : null;
 
-	// Strip <user_message> XML tags
+	// Strip <user_message> XML tags the LLM might echo back
 	if (cleaned) {
 		cleaned = cleaned
 			.replace(/^<user_message>/i, "")
@@ -270,6 +349,7 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 		parameters: Type.Object({
 			enabled: Type.Optional(Type.Boolean()),
 			minLength: Type.Optional(Type.Number()),
+			maxChars: Type.Optional(Type.Number()),
 			skipCommands: Type.Optional(Type.Boolean()),
 			showDiff: Type.Optional(Type.Boolean()),
 			timeoutSeconds: Type.Optional(Type.Number()),
@@ -283,6 +363,7 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 				saveGlobalSetting(SETTINGS_KEY, params.enabled);
 			}
 			if (params.minLength !== undefined) state.config.minLength = params.minLength;
+			if (params.maxChars !== undefined) state.config.maxChars = params.maxChars;
 			if (params.skipCommands !== undefined) state.config.skipCommands = params.skipCommands;
 			if (params.showDiff !== undefined) state.config.showDiff = params.showDiff;
 			if (params.timeoutSeconds !== undefined) state.config.timeoutSeconds = params.timeoutSeconds;
@@ -300,7 +381,7 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 		description: "Get preprocessing statistics.",
 		parameters: Type.Object({}),
 		execute: async (): Promise<
-			AgentToolResult<{ preprocessed: number; skipped: number; errors: number; queued: number }>
+			AgentToolResult<{ preprocessed: number; skipped: number; errors: number }>
 		> => {
 			return {
 				content: [
@@ -313,7 +394,6 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 					preprocessed: state.preprocessedCount,
 					skipped: state.skippedCount,
 					errors: state.errorCount,
-					queued: 0,
 				},
 			};
 		},
@@ -335,18 +415,38 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 			return { action: "continue" };
 		}
 
-		if (original.startsWith("/") || original.startsWith("!")) {
+		if (original.length > state.config.maxChars) {
 			state.skippedCount++;
 			return { action: "continue" };
 		}
 
-		// Smart content detection: skip code-heavy messages
-		if (isCodeHeavy(original)) {
+		if (state.config.skipCommands && (original.startsWith("/") || original.startsWith("!"))) {
 			state.skippedCount++;
 			return { action: "continue" };
 		}
 
-		// Smart content detection: skip well-written text
+		// Strip code blocks to analyze the actual prose
+		const { prose, hadCodeBlocks } = stripCodeBlocks(original);
+
+		// If code blocks were the bulk of content, treat as code-heavy
+		if (hadCodeBlocks && prose.trim().length < 30) {
+			state.skippedCount++;
+			return { action: "continue" };
+		}
+
+		// Prose too brief after stripping code
+		if (isProseTooBrief(original)) {
+			state.skippedCount++;
+			return { action: "continue" };
+		}
+
+		// Check code-heavy ratio on the stripped prose
+		if (isCodeHeavy(prose)) {
+			state.skippedCount++;
+			return { action: "continue" };
+		}
+
+		// Skip well-written text
 		if (looksWellWritten(original)) {
 			state.skippedCount++;
 			return { action: "continue" };
@@ -376,9 +476,6 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 					}, 15000);
 				}
 
-				// Use transform — the cleaned text goes to the agent in the same submit cycle.
-				// The UX extension's input handler runs after this and returns "continue"
-				// for non-special messages, so the transform is applied and flow continues.
 				return { action: "transform", text: cleaned };
 			} else {
 				state.skippedCount++;
@@ -412,7 +509,7 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 }
 
 // ============================================================================
-// Diff Display (minimal ANSI helpers)
+// Diff Display
 // ============================================================================
 
 const colors = {
