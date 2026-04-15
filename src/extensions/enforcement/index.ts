@@ -42,14 +42,10 @@ import { validateToolForPhase, validateTurn } from "./validation.js";
 import { formatVerificationNudge, type JudgeContext, runVerificationJudge } from "./verification-judge.js";
 // Whisper
 import {
-	bufferEnforcementWhisper,
 	clearPendingBlockAction,
-	flushEnforcementBuffer,
 	getPendingBlockAction,
 	queueEnforcementWhisper,
 	sendEnforcementWhisper,
-	shouldBufferWhisper,
-	startFinalizeBuffer,
 } from "./whisper.js";
 
 // Extension Factory
@@ -194,11 +190,6 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 
 		const toolName = event.toolName;
 		const input = event.input as Record<string, unknown> | undefined;
-
-		// When finalize is called, start buffering whispers for delivery after finalize
-		if (toolName === "finalize") {
-			startFinalizeBuffer();
-		}
 
 		// Track tool usage via extracted handler
 		recordToolCall(toolName);
@@ -367,28 +358,6 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 			}
 		}
 
-		// Memory Analysis Ratio Nudge
-		const threshold = state.config.toolAnalysisWarningThreshold ?? 0.15;
-		const warningInterval = state.config.toolAnalysisWarningTurns ?? 10;
-
-		if (
-			state.totalToolCalls > 5 &&
-			state.toolAnalysisRatio < threshold &&
-			state.currentTurn - state.lastAnalysisTurn > warningInterval
-		) {
-			const turnsSinceAnalysis = state.currentTurn - state.lastAnalysisTurn;
-			const analysisPercent = Math.round(state.toolAnalysisRatio * 100);
-			const msg =
-				`Memory analysis: Only ${analysisPercent}% of ${state.totalToolCalls} tool calls have been analyzed. ${turnsSinceAnalysis} turns since last analysis.\n` +
-				`Consider: memory_analyze_tool(toolName="bash", success=true) for each tool call used.\n` +
-				`This helps build cumulative intelligence and avoid repeating mistakes.`;
-
-			const { sent } = sendEscalatedNudge(pi, "memoryAnalysis", msg);
-			if (sent) {
-				state.lastNudgeTime = Date.now();
-			}
-		}
-
 		// Context tool usage nudge
 		const contextToolInterval = state.config.contextToolNudgeInterval ?? 20;
 		const contextUpdated = actualTools.some((t) =>
@@ -487,28 +456,6 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 			}
 		}
 
-		// High-context nudge on finalize
-		const isFinalizeTurn = actualTools.includes("finalize");
-		if (isFinalizeTurn && !state.highContextNudged) {
-			let usagePercent = 0;
-			try {
-				// @ts-ignore - ctx may be available via event
-				const ctxFromEvent = (event as any)?.ctx;
-				const usage = ctxFromEvent?.getContextUsage?.();
-				if (usage) {
-					usagePercent = usage.percent ?? 0;
-				}
-			} catch { /* ignore */ }
-
-			if (usagePercent > 70) {
-				state.highContextNudged = true;
-				whispersToSend.push(
-					`⚠️ **High context usage: ${usagePercent.toFixed(1)}%**\n\n` +
-					`Consider: \`context_audit()\` before finalizing to ensure context hygiene.`
-				);
-			}
-		}
-
 		// Record Failure Nudge
 		const FAILURE_RECORD_THRESHOLD_TURNS = 3;
 
@@ -528,21 +475,10 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 			}
 		}
 
-		// Flush any buffered enforcement whispers (e.g. from finalize context)
-		const flushMessage = flushEnforcementBuffer();
-		if (flushMessage) {
-			sendEnforcementWhisper(pi, flushMessage);
-		}
-
 		// Send all accumulated whispers
 		for (const whisper of whispersToSend) {
-			if (shouldBufferWhisper()) {
-				bufferEnforcementWhisper(whisper);
-			} else {
-				sendEnforcementWhisper(pi, whisper);
-			}
+			sendEnforcementWhisper(pi, whisper);
 		}
-	});
 
 	// ── Auto-Retry End ────────────────────────────────────────────────
 	// Catches non-overflow API retry failures (429 rate limits, 500s, network errors).
@@ -579,11 +515,7 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 			const nudgeMsg = `## ⚠️ API Retry Failed\n\n${msg}\n\n` +
 				`Store this error for future reference: memory_store(content="API error: ${finalError}", memoryType="error", tags=["error", "api"])`;
 
-			if (shouldBufferWhisper()) {
-				bufferEnforcementWhisper(nudgeMsg);
-			} else {
-				sendEnforcementWhisper(pi, nudgeMsg);
-			}
+			sendEnforcementWhisper(pi, nudgeMsg);
 		}
 	});
 
@@ -632,10 +564,7 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 
 		const userHasBash = Array.from(state.uniqueToolsUsed).includes("bash");
 
-		// Checkpoint 1: Pre-Finalize — full audit before allowing finish
-		const isFinalizeTurn = turnState?.actualTools.includes("finalize");
-
-		// Checkpoint 2: Verification gap — code changed, no verification run
+		// Checkpoint 1: Verification gap — code changed, no verification run
 		const VERIFICATION_GAP_TURNS = state.config.verifyAfterCodeChanges ? 8 : Infinity;
 		const turnsSinceCodeChange = state.currentTurn - state.lastVerificationJudgeTurn;
 		const hasVerificationGap = state.hasCodeChanges && !userHasBash && turnsSinceCodeChange >= VERIFICATION_GAP_TURNS;
@@ -649,13 +578,13 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 		if (
 			state.config.useVerificationJudge &&
 			!state.verificationJudgeRunning &&
-			(isFinalizeTurn || hasVerificationGap || isPeriodicCheck) &&
+			(hasVerificationGap || isPeriodicCheck) &&
 			state.uniqueToolsUsed.size > 0
 		) {
 			const now = Date.now();
 
-			// Cooldown between non-finalize checks
-			if (!isFinalizeTurn && now - state.lastJudgeTime < 60_000) {
+			// Cooldown between checks
+			if (now - state.lastJudgeTime < 60_000) {
 				return;
 			}
 
@@ -686,16 +615,7 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 
 			if (result) {
 				if (result.verdict === "fail" || result.verdict === "warn") {
-					const nudgeMsg = formatVerificationNudge(result);
-					if (isFinalizeTurn && result.verdict === "fail" && state.config.verifyBeforeFinalize) {
-						sendEnforcementWhisper(
-							pi,
-							`## FINALIZE BLOCKED\n\n${nudgeMsg}\n\nPlease address the issues above before finalizing.`,
-						);
-					} else {
-						sendEnforcementWhisper(pi, nudgeMsg);
-					}
-
+					sendEnforcementWhisper(pi, formatVerificationNudge(result));
 					if (result.verdict === "fail") {
 						state.validationFailures++;
 					}

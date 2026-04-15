@@ -9,10 +9,6 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 let pendingWhisper: string | null = null;
 let pendingBlockAction: { toolName: string; reason: string } | null = null;
 
-// Buffer for finalizing agent - collects whispers that should be delivered with finalize
-let finalizeBuffer: string[] = [];
-let isFinalizing = false;
-
 /**
  * Send an enforcement whisper immediately using pi.sendMessage().
  * This injects the whisper right away instead of waiting for before_agent_start,
@@ -66,50 +62,4 @@ export function getPendingBlockAction(): { toolName: string; reason: string } | 
  */
 export function clearPendingBlockAction(): void {
 	pendingBlockAction = null;
-}
-
-/**
- * Mark that the agent is finalizing - subsequent whispers will be buffered
- * instead of sent immediately, then delivered as a consolidated message.
- */
-export function startFinalizeBuffer(): void {
-	isFinalizing = true;
-	finalizeBuffer = [];
-}
-
-/**
- * Check if we are currently in finalize buffering mode.
- */
-export function shouldBufferWhisper(): boolean {
-	return isFinalizing;
-}
-
-/**
- * Add a whisper to the finalize buffer instead of sending it.
- */
-export function bufferEnforcementWhisper(message: string): void {
-	if (isFinalizing) {
-		finalizeBuffer.push(message);
-	}
-}
-
-/**
- * Flush all buffered whispers as a single consolidated message.
- * Returns the consolidated message or null if buffer was empty.
- */
-export function flushEnforcementBuffer(): string | null {
-	if (finalizeBuffer.length === 0) {
-		return null;
-	}
-	const messages = [...finalizeBuffer];
-	finalizeBuffer = [];
-	isFinalizing = false;
-	return messages.join("\n\n");
-}
-
-/**
- * Check if there are any pending buffered whispers.
- */
-export function hasBufferedWhispers(): boolean {
-	return finalizeBuffer.length > 0;
 }

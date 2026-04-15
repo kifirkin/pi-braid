@@ -73,61 +73,6 @@ export function checkBlocking(
 		);
 	}
 
-	// BLOCK: Finalize without meaningful memory usage
-	if (toolName === "finalize") {
-		const turnsSinceMemory = stateRef.currentTurn - stateRef.lastMemoryCall;
-		const hasUnverifiedClaims = stateRef.claimsWithoutVerification > 0;
-		const needsVerification =
-			stateRef.hasCodeChanges && stateRef.verificationsDone === 0 && stateRef.totalToolCalls > 20;
-		// Check if meaningful memory was stored (not just recall/list)
-		const meaningfulMemoryStored = stateRef.lastMemoryCall > 0 && turnsSinceMemory <= 3;
-
-		// STRONGER: Block if no memory at all, OR if significant work happened without storing learnings
-		if (stateRef.config.blockFinalizeWithoutMemory) {
-			const hasMemoryTools = stateRef.totalToolCalls > 0 && turnsSinceMemory < stateRef.config.memoryNudgeThreshold;
-
-			if (!hasMemoryTools) {
-				queueBlockAction(
-					toolName,
-					"No memory usage detected. Store key learnings before finalizing:\n" +
-						"- Patterns discovered\n" +
-						"- Errors encountered\n" +
-						"- Solutions that worked\n\n" +
-						"Example: memory_store(content=\"...\", tags=[\"pattern\", \"insight\"])",
-				);
-				return { blocked: true, reason: "Store key learnings with memory_store() before finalizing" };
-			}
-
-			// Also block if code changes were made but no memory of the fix/discovery
-			if (stateRef.hasCodeChanges && !meaningfulMemoryStored && turnsSinceMemory > 10) {
-				queueBlockAction(
-					toolName,
-					"Code was changed but no memory stored about the fix/discovery. " +
-						"Store what you learned: memory_store(content=\"Fixed X by doing Y because Z\", tags=[\"fix\", \"root-cause\"])",
-				);
-				return { blocked: true, reason: "Store fix insight with memory_store() before finalizing" };
-			}
-		}
-
-		if (stateRef.config.enforceVerificationBeforeFinalize && needsVerification) {
-			const verificationHint = stateRef.hasCodeChanges
-				? "Run tests to verify: bash pytest, npm test, cargo test, etc."
-				: "No code changes detected. If you modified code, run tests first.";
-
-			queueEnforcementWhisper(
-				`Finalize without verification. ` +
-					`Claims/Verifications: ${stateRef.claimsWithoutVerification}/${stateRef.verificationsDone}. ` +
-					verificationHint,
-			);
-		}
-
-		if (hasUnverifiedClaims) {
-			queueEnforcementWhisper(
-				`${stateRef.claimsWithoutVerification} unverified claim(s). Run tests and verify before finalizing.`,
-			);
-		}
-	}
-
 	// DANGEROUS COMMAND ENFORCEMENT: 2-stage handling
 	// Stage 1 (first time): Block with warning + explicit retry instruction
 	// Stage 2 (subsequent): Allow with warning

@@ -1,5 +1,5 @@
 ---
-description: Use this skill when asked to research, verify facts, or find current information online. Also use for questions that needs grounded knowledge.
+description: Use this skill when asked to research, verify facts, or find current information online using web search. Also use for questions that needs grounded knowledge.
 ---
 
 # Web Search
@@ -13,17 +13,17 @@ Use this skill when:
 - The user mentions "check", "verify", "confirm", or "look up"
 - Any question that can be answered by searching the web
 
-## Instructions
+## Workflow
 
-Use web_fetch to retrieve web pages containing the information you need.
-
-Available search instances:
-- https://search.sapti.me
-- https://searx.be
-- https://search.mdosch.de
+1. **Formulate a precise query** — specific terms beat broad ones
+2. **Fetch search results** — use the available search tool
+3. **Fetch the most relevant result page** — don't stop at the search results summary
+4. **Extract and synthesize** — answer the question from the actual content
+5. **Cite sources** — include the URL you extracted from
 
 ## Important
 
-- Use web_fetch when you need current or verified information
+- Use web search when you need current or verified information
+- Fetch the actual page, not just the search results
 - Include sources in your answers
-- If search fails, try alternative query terms or search instances
+- If search fails, try alternative query terms or instances

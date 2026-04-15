@@ -52,23 +52,7 @@ export function recordToolCall(toolName: string): void {
 		}
 	}
 
-	// Track memory_analyze_tool for analysis ratio enforcement
-	if (toolName === "memory_analyze_tool") {
-		state.memoryAnalysisCount++;
-		state.lastAnalysisTurn = state.currentTurn;
-		state.escalationCounts.memoryAnalysis = 0;
-	}
 
-	// Track memory_task_complete for task completion
-	if (toolName === "memory_task_complete" || toolName === "memory_goal_achieve") {
-		state.taskCompleteCount++;
-		state.hasCompletedTask = true;
-	}
-
-	// Update tool analysis ratio
-	if (state.totalToolCalls > 0) {
-		state.toolAnalysisRatio = state.memoryAnalysisCount / state.totalToolCalls;
-	}
 
 	// Track exploration (read, grep, find, ls)
 	const exploreTools = ["read", "grep", "find", "ls"];
