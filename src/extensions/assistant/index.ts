@@ -6,11 +6,17 @@
  * - /tool-status: show current tool configuration
  */
 
+import * as os from "node:os";
+import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext, ToolInfo } from "@mariozechner/pi-coding-agent";
 import { getSettingsListTheme } from "@mariozechner/pi-coding-agent";
 import { Container, type SettingItem, SettingsList } from "@mariozechner/pi-tui";
+import { loadState, saveState } from "../../lib/async-storage.js";
 
 const TOOLS_CONFIG_TYPE = "tools-config";
+
+/** Path to disk-persisted tools config — survives pi restarts */
+const TOOLS_DISK_PATH = path.join(os.homedir(), ".pi", "agent", "tools-config.json");
 
 interface ToolsConfigData {
 	enabledTools: string[];
@@ -27,7 +33,13 @@ export default function assistantExtension(pi: ExtensionAPI) {
 
 	const persistToolState = () => {
 		configVersion++;
+		// Persist to session (for branch navigation)
 		pi.appendEntry<ToolsConfigData>(TOOLS_CONFIG_TYPE, {
+			enabledTools: Array.from(toolEnabled),
+			version: configVersion,
+		});
+		// Persist to disk (survives pi restarts)
+		saveState(TOOLS_DISK_PATH, {
 			enabledTools: Array.from(toolEnabled),
 			version: configVersion,
 		});
@@ -37,8 +49,26 @@ export default function assistantExtension(pi: ExtensionAPI) {
 		pi.setActiveTools(Array.from(toolEnabled));
 	};
 
-	const restoreToolState = (ctx: ExtensionContext) => {
+	const restoreToolState = async (ctx: ExtensionContext) => {
 		toolList = pi.getAllTools();
+
+		// Priority 1: Load from disk (survives pi restarts)
+		let diskData: ToolsConfigData | null = null;
+		try {
+			diskData = await loadState<ToolsConfigData>(TOOLS_DISK_PATH);
+		} catch {
+			// Non-fatal — fallback to session entries
+		}
+
+		if (diskData?.enabledTools && typeof diskData.version === "number") {
+			const names = toolList.map((t) => t.name);
+			toolEnabled = new Set(diskData.enabledTools.filter((t) => names.includes(t)));
+			configVersion = diskData.version;
+			applyToolState();
+			return;
+		}
+
+		// Priority 2: Find latest config in session entries (for branch navigation)
 		let maxVersion = -1;
 		let saved: string[] | undefined;
 
@@ -58,11 +88,11 @@ export default function assistantExtension(pi: ExtensionAPI) {
 			const names = toolList.map((t) => t.name);
 			toolEnabled = new Set(saved.filter((t) => names.includes(t)));
 			configVersion = maxVersion;
-			applyToolState();
 		} else {
 			toolEnabled = new Set(pi.getActiveTools());
 			configVersion = 0;
 		}
+		applyToolState();
 	};
 
 	pi.on("session_start", async (_event, ctx) => restoreToolState(ctx));
