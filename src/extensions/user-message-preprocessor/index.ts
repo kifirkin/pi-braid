@@ -27,6 +27,7 @@ import type { Api, AssistantMessage, Context, ImageContent, Model } from "@mario
 import { completeSimple } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext, InputEventResult } from "@mariozechner/pi-coding-agent";
+import { resolveUtilityModel } from "../../lib/model-resolver.js";
 
 const SYSTEM_PROMPT = `You are a automatic message preprocessor. Your only task is to translate or correct the message sent by User and provide response strictly following these guidelines:
 
@@ -170,7 +171,8 @@ async function preprocess(
 	_images: ImageContent[] | undefined,
 	ctx: ExtensionContext,
 ): Promise<string | null> {
-	let model = (ctx as any).getUtilityModel?.();
+	// Use model-resolver (which reads custom key from ~/.pi/agent/settings.json)
+	let model = resolveUtilityModel(ctx);
 	if (!model) {
 		state.skippedCount++;
 		return null;
