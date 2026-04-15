@@ -103,7 +103,7 @@ Skills load in layers:
 **Output format:**
 ```markdown
 ## Output Format
-ALWAYS use this structure:
+Structure your output as:
 # [Title]
 ## Summary
 ## Details
