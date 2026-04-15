@@ -1221,8 +1221,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 	pi.on("turn_end", async (_event: any, ctx: any) => {
 		if (!_checkoutParams) return;
 		try {
-			const msg = `Checked out ${_checkoutParams.target}. Use context_log to see updated position.`;
-			console.log(`[context-manager] ${msg}`);
+			// Navigate silently - user already notified by the command handler
 		} catch (err) {
 			console.error("[context-manager] turn_end error:", err);
 		}
@@ -1529,12 +1528,8 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 		// Clear any existing retry state
 		clearCompactionRetry();
 
+		// Suppress console.log to avoid leaking to TUI prompt
 		const delayMs = getCompactionRetryDelay(attempt);
-		const delaySec = (delayMs / 1000).toFixed(0);
-
-		console.log(
-			`[context-manager] Compaction retry ${attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS} in ${delaySec}s: ${errorMessage}`,
-		);
 
 		compactionRetryState.retryTimeout = setTimeout(() => {
 			compactionRetryState.retryTimeout = null;
@@ -1676,7 +1671,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 			// Log stats if we pruned anything
 			const pruned = messages.length - filtered.length;
 			if (pruned > 0) {
-				console.log(`[context-manager] Pruned ${pruned} messages (${filtered.length} remaining)`);
+				// Debug logging suppressed to avoid leaking to TUI prompt
 			}
 
 			return { messages: filtered };

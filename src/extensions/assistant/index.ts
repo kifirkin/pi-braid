@@ -2,11 +2,12 @@
  * Assistant Extension — Tool management patterns from pi-mono examples.
  *
  * Features:
- * - /tools: interactive tool enable/disable via selector, state persisted to session
+ * - /tools: interactive tool enable/disable with fuzzy search and scrollable list
  * - /tool-status: show current tool configuration
  */
 
 import type { ExtensionAPI, ExtensionContext, ToolInfo } from "@mariozechner/pi-coding-agent";
+import { Box, fuzzyFilter, Input, SelectItem, SelectList } from "@mariozechner/pi-tui";
 
 const TOOLS_CONFIG_TYPE = "tools-config";
 
@@ -17,19 +18,13 @@ interface ToolsConfigData {
 
 export default function assistantExtension(pi: ExtensionAPI) {
 	// ── /tools Command ─────────────────────────────────────────────────
-	// Interactive tool enable/disable. State persisted to session so it survives
-	// reloads and branch navigation.
-	//
-	// Uses version-based approach: each tools-config entry has a version number.
-	// On restore, we find the entry with the highest version number (most recent).
-	// Old entries accumulate in the session file but are ignored during restore.
-	// During compaction, older entries are cleaned up.
+	// Interactive tool enable/disable with fuzzy search and scrollable list.
+	// State persisted to session so it survives reloads and branch navigation.
 	let toolEnabled: Set<string> = new Set();
 	let toolList: ToolInfo[] = [];
 	let configVersion = 0;
 
 	const persistToolState = () => {
-		// Increment version and append new config
 		configVersion++;
 		pi.appendEntry<ToolsConfigData>(TOOLS_CONFIG_TYPE, {
 			enabledTools: Array.from(toolEnabled),
@@ -43,8 +38,6 @@ export default function assistantExtension(pi: ExtensionAPI) {
 
 	const restoreToolState = (ctx: ExtensionContext) => {
 		toolList = pi.getAllTools();
-
-		// Find the tools-config entry with the highest version number
 		let maxVersion = -1;
 		let saved: string[] | undefined;
 
@@ -75,27 +68,85 @@ export default function assistantExtension(pi: ExtensionAPI) {
 	pi.on("session_tree", async (_event, ctx) => restoreToolState(ctx));
 
 	pi.registerCommand("tools", {
-		description: "Enable/disable tools interactively",
+		description: "Enable/disable tools with fuzzy search",
 		handler: async (_args, ctx) => {
 			toolList = pi.getAllTools();
-			const choice = await ctx.ui.select(
-				"Tool Configuration",
-				toolList.map((tool) => tool.name + ": " + (toolEnabled.has(tool.name) ? "enabled" : "disabled")),
+
+			// Build items with enabled/disabled state in description
+			const buildItems = (filter: string = ""): SelectItem[] => {
+				const items: SelectItem[] = toolList.map((tool) => ({
+					value: tool.name,
+					label: tool.name,
+					description: toolEnabled.has(tool.name) ? "enabled" : "disabled",
+				}));
+				if (!filter) return items;
+				return fuzzyFilter(items, filter, (item) => item.label);
+			};
+
+			let currentFilter = "";
+			const maxVisible = 15;
+
+			await ctx.ui.custom(
+				async (tui, _theme, _keybindings, done) => {
+					// Filter input at the top
+					const filterInput = new Input();
+					filterInput.onSubmit = () => {
+						currentFilter = filterInput.getValue();
+						refreshList();
+					};
+
+					// Scrollable tool list
+					let selectList = new SelectList(buildItems(""), maxVisible, {
+						selectedPrefix: (t) => t,
+						selectedText: (t) => t,
+						description: (t) => t,
+						scrollInfo: (t) => t,
+						noMatch: (t) => t,
+					});
+
+					// Container for filter input + list
+					const container = new Box();
+					container.addChild(filterInput);
+					container.addChild(selectList);
+
+					function refreshList() {
+						const newItems = buildItems(currentFilter);
+						const newList = new SelectList(newItems, maxVisible, {
+							selectedPrefix: (t) => t,
+							selectedText: (t) => t,
+							description: (t) => t,
+							scrollInfo: (t) => t,
+							noMatch: (t) => t,
+						});
+						newList.onSelect = handleSelect;
+						newList.onCancel = () => done(undefined);
+						container.removeChild(container.children[1]);
+						container.addChild(newList);
+						selectList = newList;
+						selectList.invalidate();
+					}
+
+					function handleSelect(item: SelectItem) {
+						// Toggle the tool
+						if (toolEnabled.has(item.value)) {
+							toolEnabled.delete(item.value);
+						} else {
+							toolEnabled.add(item.value);
+						}
+						applyToolState();
+						persistToolState();
+						ctx.ui.notify(`Tool ${item.value} ${toolEnabled.has(item.value) ? "enabled" : "disabled"}`, "info");
+						// Refresh list with updated state
+						refreshList();
+					}
+
+					selectList.onSelect = handleSelect;
+					selectList.onCancel = () => done(undefined);
+
+					return container;
+				},
+				{ overlay: true },
 			);
-			if (choice) {
-				const name = choice.split(":")[0].trim();
-				if (toolEnabled.has(name)) {
-					toolEnabled.delete(name);
-					applyToolState();
-					persistToolState();
-					ctx.ui.notify("Tool " + name + " disabled", "info");
-				} else {
-					toolEnabled.add(name);
-					applyToolState();
-					persistToolState();
-					ctx.ui.notify("Tool " + name + " enabled", "info");
-				}
-			}
 		},
 	});
 

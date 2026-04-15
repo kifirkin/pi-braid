@@ -179,7 +179,6 @@ export default function pijulCheckpointExtension(pi: ExtensionAPI) {
 		isPijulAvailable = checkPijul();
 
 		if (!isPijulAvailable) {
-			console.log("Pijul not available - checkpoint extension disabled");
 			return;
 		}
 
