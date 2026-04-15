@@ -34,10 +34,15 @@ const contextCheckoutSchema = Type.Object({
 });
 
 const contextPruneSchema = Type.Object({
-	dryRun: Type.Optional(Type.Boolean({ description: "Analyze without making changes (default: true)" })),
+	/** When true, only analyzes and reports candidates without taking action (default: true) */
+	analyzeOnly: Type.Optional(Type.Boolean()),
+	/** @deprecated Use analyzeOnly instead. Alias for backward compatibility. */
+	dryRun: Type.Optional(Type.Boolean()),
 	minAge: Type.Optional(Type.Number({ description: "Min turns since entry to consider (default: 5)" })),
 	summarize: Type.Optional(Type.Boolean({ description: "Suggest creating summary before pruning (default: true)" })),
 	toolFilter: Type.Optional(Type.Array(Type.String(), { description: "Focus on specific tool types (e.g. ['bash', 'read'])" })),
+	/** When true, triggers manual compaction to reduce context (default: false) */
+	compact: Type.Optional(Type.Boolean()),
 });
 
 const contextAuditSchema = Type.Object({
@@ -705,12 +710,14 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 		name: "context_prune",
 		label: "Context Prune",
 		description:
-			"Analyze session and identify obsolete entries for pruning/summarization. Shows prune candidates ranked by score, with recommendations for context hygiene before compaction.",
+			"Analyze session and identify obsolete entries for pruning/summarization. This is an analysis-only tool — entries cannot be deleted from the append-only session. Use `compact: true` to trigger context compaction.",
 		parameters: contextPruneSchema,
 		execute: async (_toolCallId: string, params: any, _signal: any, _onUpdate: any, ctx: any): Promise<any> => {
-			const dryRun = params.dryRun ?? true;
+			// Handle both analyzeOnly and deprecated dryRun parameter
+			const analyzeOnly = params.analyzeOnly ?? (params.dryRun !== undefined ? params.dryRun : true);
+			const shouldCompact = params.compact ?? false;
 			const minAge = params.minAge ?? 5;
-			const summarize = params.summarize ?? true;
+			const showRecommendations = params.summarize ?? true;
 			
 			const audit = analyzeSession(ctx);
 			
@@ -728,11 +735,17 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 			
 			const lines: string[] = [];
 			
-			if (dryRun) {
-				lines.push(`## Context Prune Analysis (DRY RUN)`);
-				lines.push("\nNo changes made. Set `dryRun: false` to proceed.");
+			// Always show analysis mode clearly
+			if (analyzeOnly) {
+				lines.push(`## Context Analysis`);
+				lines.push("\n📊 **Analysis mode** — Session is append-only, entries cannot be deleted.");
+				lines.push("Use `compact: true` to trigger context compaction.");
+			} else if (shouldCompact) {
+				lines.push(`## Context Compaction`);
+				lines.push("\n🔄 **Compaction triggered** — Summarizing old entries to reduce context.");
 			} else {
-				lines.push(`## Context Prune Results`);
+				lines.push(`## Context Analysis`);
+				lines.push("\n📊 **Analysis only** — No action taken (use `compact: true` to reduce context).");
 			}
 			
 			lines.push(`\n**Context Usage:** ${audit.usage.percent.toFixed(1)}% (${Math.round(audit.usage.tokens / 1024)}K tokens)`);
@@ -742,7 +755,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 				lines.push("\n✓ No prune candidates found (session is clean)");
 				return {
 					content: [{ type: "text" as const, text: lines.join("\n") }],
-					details: { dryRun, candidatesFound: 0, audit },
+					details: { analyzeOnly, candidatesFound: 0, audit },
 				};
 			}
 			
@@ -750,24 +763,53 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 			lines.push("\n" + formatPruneCandidates(topCandidates));
 			
 			// Summary recommendations
-			if (summarize && topCandidates.length > 0) {
+			if (showRecommendations && topCandidates.length > 0) {
 				const highScore = topCandidates.filter((c) => c.score >= 0.6);
 				if (highScore.length > 0) {
 					lines.push("\n## Recommendations");
-					lines.push("\n**Before pruning, consider:");
-					lines.push("1. `context_tag` to create a checkpoint");
-					lines.push("2. Store key learnings in memory");
-					lines.push("3. Update scratchpad with decisions");
+					
+					if (shouldCompact) {
+						lines.push("\n✅ Compaction in progress. The system will:");
+						lines.push("1. Summarize the oldest entries into a summary");
+						lines.push("2. Mark entries before the cut point as compacted");
+						lines.push("3. Reduce context usage significantly");
+					} else {
+						lines.push("\n**To reduce context, use one of:");
+						lines.push("1. `compact: true` — Trigger compaction to summarize old entries");
+						lines.push("2. `context_tag` — Create checkpoint before risky changes");
+						lines.push("3. `context_checkout` — Branch to a clean state");
+						lines.push("4. Store key learnings in memory for future recall");
+					}
 					
 					if (audit.usage.percent > 60) {
-						lines.push("\n**⚠ High context usage!** Run `/compact` or use `context_checkout` to branch.");
+						lines.push("\n**⚠ High context usage!** Consider `compact: true` or `/compact`.");
 					}
+				}
+			}
+			
+			// If compact requested, trigger it via event
+			let compactTriggered = false;
+			if (shouldCompact && !analyzeOnly) {
+				try {
+					// Emit a custom event that the compaction system can pick up
+					ctx.emit?.("force_compact", { candidates: topCandidates.map(c => c.id) });
+					compactTriggered = true;
+					lines.push("\n📝 Compaction requested. The agent will process it in the next turn.");
+				} catch {
+					lines.push("\n⚠ Could not trigger compaction automatically.");
+					lines.push("Use `/compact` command instead.");
 				}
 			}
 			
 			return {
 				content: [{ type: "text" as const, text: lines.join("\n") }],
-				details: { dryRun, candidatesFound: candidates.length, topCandidates: topCandidates.map((c) => ({ id: c.id, score: c.score, reason: c.reason })), audit },
+				details: { 
+					analyzeOnly, 
+					compactTriggered,
+					candidatesFound: candidates.length, 
+					topCandidates: topCandidates.map((c) => ({ id: c.id, score: c.score, reason: c.reason })), 
+					audit 
+				},
 			};
 		},
 	});
