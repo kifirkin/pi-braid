@@ -14,6 +14,9 @@ export interface EnforcementConfig {
 	enforceMemory: boolean;
 	enforceMemoryNudge: boolean;
 	enforceMemoryOnFinalize: boolean;
+	// Context tool enforcement
+	enforceContextTools: boolean;
+	contextToolNudgeInterval: number;
 	enforceToolDiversity: boolean;
 	enforceExploreBeforeAct: boolean;
 	memoryNudgeThreshold: number;

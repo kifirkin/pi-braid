@@ -21,10 +21,12 @@ let isFinalizing = false;
  * which only fires when user sends a message (causing whisper accumulation).
  */
 export function sendEnforcementWhisper(pi: ExtensionAPI, message: string): void {
+	// Tag all enforcement whispers as [auto] so the agent knows these are
+	// system-generated signals, not human messages.
 	pi.sendMessage(
 		{
 			customType: "enforcement",
-			content: [{ type: "text" as const, text: message }],
+			content: [{ type: "text" as const, text: `[auto] ${message}` }],
 			display: true,
 		},
 		{ triggerTurn: true },

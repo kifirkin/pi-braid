@@ -25,7 +25,7 @@ import { sendEscalatedNudge } from "./escalation.js";
 // Handlers
 import { checkBlocking } from "./handlers/blocking.js";
 import { registerEnforcementTools } from "./handlers/tool-registrations.js";
-import { recordBashDetails, recordToolCall } from "./handlers/tool-tracker.js";
+import { recordBashDetails, recordToolCall, recordToolInput } from "./handlers/tool-tracker.js";
 // Judge
 import { analyzeWithJudge } from "./judge.js";
 // Nudge Manager
@@ -202,6 +202,7 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 		}
 
 		const toolName = event.toolName;
+		const input = event.input as Record<string, unknown> | undefined;
 
 		// When finalize is called, start buffering whispers for delivery after finalize
 		if (toolName === "finalize") {
@@ -211,10 +212,12 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 		// Track tool usage via extracted handler
 		recordToolCall(toolName);
 
+		// Track file paths for re-read waste detection
+		recordToolInput(toolName, input);
+
 		// Track bash-specific details
 		if (toolName === "bash") {
-			const bashEvent = event as { input?: { command?: string } };
-			const cmd = bashEvent.input?.command || "";
+			const cmd = (input as { command?: string } | undefined)?.command || "";
 			recordBashDetails(cmd);
 		}
 
@@ -228,7 +231,6 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 		state.toolLog.push(`${toolName}`);
 
 		// Blocking enforcement via extracted handler
-		const input = event.input as Record<string, unknown> | undefined;
 		const blockResult = checkBlocking(toolName, input, state);
 		if (blockResult.blocked) {
 			return { block: true, reason: blockResult.reason };
@@ -285,6 +287,16 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 			state.turnsSinceMemory = 0;
 		}
 
+		// Track turns since context tool usage (for proactive nudging)
+		const contextToolUpdated = actualTools.some((t) =>
+			["context_tag", "context_log", "context_checkout", "context_prune", "context_audit"].includes(t),
+		);
+		if (contextToolUpdated) {
+			state.turnsSinceContextTool = 0;
+		} else if (actualTools.length > 0 && !hadErrors) {
+			state.turnsSinceContextTool++;
+		}
+
 		const turnState: TurnState = {
 			turnIndex: state.currentTurn,
 			plannedTools: [],
@@ -327,7 +339,7 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 			}
 		}
 
-		// Memory nudge
+		// Memory nudge — smarter, context-aware
 		const memoryThresholdReached =
 			!hadErrors &&
 			state.config.enforceMemory &&
@@ -338,13 +350,26 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 		if (memoryThresholdReached) {
 			state.memoryNudgeSent = true;
 
-			const memoryMsg = state.config.enforceMemoryNudge
-				? `Memory reminder: ${state.turnsSinceMemory} turns since you stored anything in memory.\n\nConsider executing:\nmemory_store(content="...", tags=["relevant"]) with what you learned.`
-				: `Memory reminder: ${state.turnsSinceMemory} turns since you stored anything in memory.\n\nStore important learnings:\n- Patterns you discovered\n- Errors you encountered and how you fixed them\n- Solutions that worked\n\nExample: memory_store(content="Found that X causes Y because Z", tags=["pattern", "error", "fix"])`;
+			// Build context-aware memory suggestion
+			const hasCodeChanges = state.hasCodeChanges;
+			const hasErrors = erroredTools.size > 0;
+			const hasVerification = state.verificationsDone > 0;
+			const hasExploration = state.hasExplored;
 
-			if (state.config.enforceMemoryNudge) {
-				// Removed auto-captured memory nudge — agents should store meaningful memories;
+			let memoryHint = "";
+			if (hasCodeChanges) {
+				memoryHint = "Store the key pattern or fix you discovered: `memory_store(content=\"...\", tags=[\"pattern\", \"fix\"])`";
+			} else if (hasExploration) {
+				memoryHint = "Store what you learned about the codebase: `memory_store(content=\"...\", tags=[\"codebase\", \"insight\"])`";
+			} else if (hasVerification) {
+				memoryHint = "Store verification results: `memory_store(content=\"...\", tags=[\"verification\"])`";
+			} else {
+				memoryHint = "Store key learnings: `memory_store(content=\"...\", tags=[\"insight\"])`";
 			}
+
+			const memoryMsg = `**Memory nudge:** ${state.turnsSinceMemory} turns since memory usage.\n\n` +
+				`You've made progress — capture it!\n${memoryHint}\n\n` +
+				`Example: memory_store(content="Discovered that X causes Y because Z", tags=["pattern", "root-cause"])`;
 
 			if (nudgeManager.shouldSendNudge("memory", memoryMsg).shouldSend) {
 				whispersToSend.push(memoryMsg);
@@ -374,18 +399,59 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 		}
 
 		// =====================================================
-		// CONTEXT HYGIENE NUDGE
+		// CONTEXT TOOL USAGE NUDGE — proactive enforcement
+		// =====================================================
+		// Proactively encourage context management tools before situation becomes critical
+		const contextToolInterval = state.config.contextToolNudgeInterval ?? 20;
+		const contextUpdated = actualTools.some((t) =>
+			["context_tag", "context_log", "context_checkout", "context_prune", "context_audit"].includes(t),
+		);
+		if (contextUpdated) {
+			state.lastContextToolCall = state.currentTurn;
+			state.turnsSinceContextTool = 0;
+			state.contextToolNudged = false;
+		}
+
+		// Proactive nudge: context tools haven't been used in a while
+		if (
+			!hadErrors &&
+			actualTools.length > 0 &&
+			state.config.enforceContextTools &&
+			state.turnsSinceContextTool >= contextToolInterval &&
+			!state.contextToolNudged
+		) {
+			state.contextToolNudged = true;
+
+			// Suggest the most appropriate context tool based on session state
+			let suggestion = "";
+			if (state.hasCodeChanges) {
+				suggestion = `After code changes, use \`context_tag(name="checkpoint")\` to mark progress, ` +
+					`or \`context_audit()\` to check hygiene.`;
+			} else if (state.hasExplored) {
+				suggestion = `After exploration, use \`context_tag(name="exploration-done")\` to mark what you learned.`;
+			} else {
+				suggestion = `Use \`context_log\` to review session history, or \`context_audit()\` for hygiene check.`;
+			}
+
+			const contextMsg = `**Context hygiene:** ${state.turnsSinceContextTool} turns since context tools.\n\n` +
+				`suggestion\n\n` +
+				`Context tools available: context_tag, context_log, context_checkout, context_prune, context_audit`;
+
+			if (nudgeManager.shouldSendNudge("contextTool", contextMsg).shouldSend) {
+				whispersToSend.push(contextMsg);
+			}
+		}
+
+		// =====================================================
+		// CONTEXT HYGIENE NUDGE — usage-based (context% monitoring)
 		// =====================================================
 		// Check context usage periodically and nudge when high
-		const contextUpdated = actualTools.some((t) => 
-			["context_tag", "context_log", "context_checkout", "context_prune", "context_audit"].includes(t)
-		);
 		if (contextUpdated) {
 			state.lastContextCheckTurn = state.currentTurn;
 			state.contextNudgeSent = false;
 		}
 
-		// Time-based context check
+		// Time-based context usage check (lower thresholds = more proactive)
 		if (
 			!hadErrors &&
 			actualTools.length > 0 &&
@@ -394,7 +460,6 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 		) {
 			state.contextNudgeSent = true;
 
-			// Get context usage from session
 			let usagePercent = 0;
 			try {
 				// @ts-ignore - ctx may be available via event
@@ -409,17 +474,26 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 				const turnsSince = state.currentTurn - state.lastContextCheckTurn;
 				let contextMsg = "";
 
+				// More granular thresholds with actionable suggestions
 				if (usagePercent > 85) {
 					contextMsg = `🔴 **Critical: Context at ${usagePercent.toFixed(1)}%!**\n\n` +
-						`${turnsSince} turns since context check. Consider:\n` +
-						`1. \`context_audit\` to see hygiene recommendations\n` +
-						`2. \`context_tag\` to create a checkpoint\n` +
+						`${turnsSince} turns since hygiene check. Urgent actions:\n` +
+						`1. \`context_audit()\` — see hygiene score + prune candidates\n` +
+						`2. \`context_tag(name="checkpoint")\` — mark progress before compact\n` +
 						`3. Run \`/compact\` to summarize\n` +
 						`4. \`context_checkout\` to branch if exploring alternatives`;
-				} else if (usagePercent > 70) {
-					contextMsg = `🟡 **Context at ${usagePercent.toFixed(1)}%** — consider pruning soon.\n\n` +
-						`Run \`context_prune()\` to see obsolete entries.\n` +
-						`Run \`context_tag(name="checkpoint")\` to mark progress.`;
+				} else if (usagePercent > 75) {
+					contextMsg = `🟠 **High: Context at ${usagePercent.toFixed(1)}%**\n\n` +
+						`Consider:\n` +
+						`1. \`context_prune(dryRun=true)\` to see obsolete entries\n` +
+						`2. \`context_tag(name="checkpoint")\` to create a milestone\n` +
+						`3. Run \`/compact\` if context grows further`;
+				} else if (usagePercent > 60) {
+					contextMsg = `🟡 **Moderate: Context at ${usagePercent.toFixed(1)}%**\n\n` +
+						`Proactively maintain hygiene:\n` +
+						`- \`context_tag(name="milestone")\` to mark progress\n` +
+						`- \`context_audit()\` for hygiene recommendations\n` +
+						`- \`memory_store\` for key learnings`;
 				}
 
 				if (contextMsg && nudgeManager.shouldSendNudge("context", contextMsg).shouldSend) {

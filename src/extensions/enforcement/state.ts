@@ -15,9 +15,12 @@ export const DEFAULT_CONFIG: EnforcementConfig = {
 	enforceMemory: true,
 	enforceMemoryNudge: true,
 	enforceMemoryOnFinalize: true,
+	// Context tool enforcement
+	enforceContextTools: true,
+	contextToolNudgeInterval: 20, // Nudge every N turns without context tools
 	enforceToolDiversity: true,
 	enforceExploreBeforeAct: true,
-	memoryNudgeThreshold: 50,
+	memoryNudgeThreshold: 15, // Lower threshold for proactive memory nudges
 	minToolCallsBeforeFinalize: 5,
 	maxSilentTurns: 2,
 	warnOnToolSequenceRepetition: 3,
@@ -53,6 +56,7 @@ export const state = {
 	currentTurn: 0,
 	recentToolSequences: [] as string[][],
 	toolSequencePatterns: new Map<string, ToolSequencePattern>(),
+	recentlyReadFiles: new Map<string, number>(), // path -> last turn read
 	silentTurns: 0,
 	enforcementActive: true,
 	validationFailures: 0 as number,
@@ -110,10 +114,18 @@ export const state = {
 	goalAlignmentData: [] as unknown[],
 	// Context hygiene monitoring
 	lastContextCheckTurn: 0,
-	contextCheckInterval: 10, // Check every N turns
+	contextCheckInterval: 8, // Check every N turns
 	contextNudgeSent: false,
 	contextAuditThreshold: 0.7, // Nudge when usage > 70%
 	highContextNudged: false,
+	// Context tool usage tracking
+	lastContextToolCall: 0,
+	turnsSinceContextTool: 0,
+	contextToolNudged: false,
+	// Memory hygiene: combined score (scratchpad + memory + context)
+	memoryHygieneScore: 1.0, // 0-1, derived from usage patterns
+	lastHygieneNudgeTurn: 0,
+	hygieneNudgeInterval: 25,
 	originalRequest: undefined as string | undefined,
 	planAlignmentData: null as {
 		id: string;
@@ -126,6 +138,7 @@ export const state = {
 export function resetState(): void {
 	state.turnHistory.clear();
 	state.recentToolSequences = [];
+	state.recentlyReadFiles.clear();
 	state.toolSequencePatterns.clear();
 	state.silentTurns = 0;
 	state.validationFailures = 0;
@@ -193,5 +206,8 @@ export function resetState(): void {
 	state.contextCheckInterval = 10;
 	state.contextNudgeSent = false;
 	state.contextAuditThreshold = 0.7;
+	state.lastContextToolCall = 0;
+	state.turnsSinceContextTool = 0;
+	state.contextToolNudged = false;
 	state.highContextNudged = false;
 }

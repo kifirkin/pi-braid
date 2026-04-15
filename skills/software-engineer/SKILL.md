@@ -1,6 +1,6 @@
 ---
 name: software-engineer
-description: "Always read this skill when working on software tasks. Universal protocol: analyze > decompose > execute > verify > repeat. DEBUGGING: understand > trace > root cause > fix > verify > repeat"
+description: "Always read this skill when working on software tasks. Universal protocol: analyze > decompose > execute > verify. DEBUGGING: understand > trace > root cause > fix > verify"
 ---
 
 ## PROTOCOL

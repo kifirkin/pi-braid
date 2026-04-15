@@ -1,12 +1,89 @@
 /**
  * Validation Logic
  *
- * Validates turns and tool usage patterns.
+ * Validates turns and tool usage patterns with smart detection that avoids
+ * false positives for legitimate workflows (e.g. reading different files).
  */
 
 import { POST_TURN_VALIDATION_TEMPLATE } from "./prompts.js";
 import { state } from "./state.js";
 import type { TurnState, ValidationResult } from "./types.js";
+
+// Tools that are cheap to repeat legitimately (different files/targets)
+const LEGIT_REPEATABLE = new Set<string>(["read", "grep", "find", "bash"]);
+// Tools that signal actual progress
+const PROGRESS_TOOLS = new Set<string>(["edit", "write", "bash"]);
+
+/**
+ * Check if a tool sequence is semantically repetitive.
+ * "read,read" on different files is fine. "read,read" on same file is wasteful.
+ *
+ * Returns:
+ *  - null  : not a repetition problem
+ *  - string: the issue message
+ */
+function checkSemanticRepetition(
+	currentTools: string[],
+	prevSeqs: string[][],
+	warnThreshold: number,
+): string | null {
+	const uniqueInSeq = new Set(currentTools);
+	// Single-tool repetition: "read,read", "bash,bash"
+	// These are NOT flagged as issues since read can hit different files,
+	// bash can run different commands. Only flag if same PATH is targeted
+	// (detected elsewhere via file path tracking).
+	if (currentTools.length === 1 || (currentTools.length === 2 && currentTools[0] === currentTools[1])) {
+		return null;
+	}
+
+	const currentSeq = currentTools.join(",");
+	const repetitions = prevSeqs.filter((s) => s.join(",") === currentSeq).length;
+
+	if (repetitions >= warnThreshold) {
+		// Build a contextual message instead of raw tool names
+		const tools = currentTools.join(" → ");
+		// If the sequence contains only cheap/repeatable tools, be softer
+		const allRepeatable = currentTools.every((t) => LEGIT_REPEATABLE.has(t));
+		if (allRepeatable) {
+			return `Exploration sequence "${tools}" repeated ${repetitions + 1} times without progress. ` +
+				`Consider: editing files, running commands, or using think() to plan next steps.`;
+		}
+		return `Tool sequence "${tools}" repeated ${repetitions + 1} times. Consider a different approach.`;
+	}
+
+	return null;
+}
+
+/**
+ * Detect wasteful re-reads: same file read without intervening progress.
+ * This is the real problem behind "read,read" false positives.
+ */
+function checkReReadWaste(currentTools: string[], prevTools: string[][], recentlyReadFiles: Map<string, number>): string | null {
+	// Only relevant for read-heavy turns
+	const readCount = currentTools.filter((t) => t === "read").length;
+	if (readCount < 2) return null;
+
+	// Check if we've seen a read-only streak recently (no progress tools in between)
+	let streak = 0;
+	for (let i = prevTools.length - 1; i >= 0; i--) {
+		const tools = prevTools[i];
+		if (tools.length === 1 && tools[0] === "read") {
+			streak++;
+		} else if (tools.some((t) => PROGRESS_TOOLS.has(t))) {
+			break;
+		} else {
+			streak++;
+			if (streak > 3) break;
+		}
+	}
+
+	if (streak >= 3 && readCount >= 2) {
+		return `You've spent ${streak + 1} turns mostly reading. Store what you've learned: ` +
+			`memory_store(content="...", tags=["pattern", "codebase"]) and update scratchpad before continuing.`;
+	}
+
+	return null;
+}
 
 /**
  * Validate a turn's tool usage
@@ -44,23 +121,30 @@ export function validateTurn(
 		}
 	}
 
-	// Check for tool sequence repetition - skip if tools had errors
+	// Check for tool sequence repetition — smart detection avoids false positives
 	if (!hadErrors && currentState.actualTools.length > 0) {
-		const currentSeq = currentState.actualTools.join(",");
 		const prevSeqs = state.recentToolSequences.slice(-state.config.warnOnToolSequenceRepetition);
-		const repetitions = prevSeqs.filter((s) => s.join(",") === currentSeq).length;
 
-		const isSingleToolSequence = currentState.actualTools.length === 1;
-
-		if (repetitions >= state.config.warnOnToolSequenceRepetition && !isSingleToolSequence) {
-			issues.push(`Tool sequence "${currentSeq}" repeated ${repetitions + 1} times. Consider a different approach.`);
+		// Semantic repetition check (handles read,read etc. properly)
+		const seqIssue = checkSemanticRepetition(
+			currentState.actualTools,
+			prevSeqs,
+			state.config.warnOnToolSequenceRepetition,
+		);
+		if (seqIssue) {
+			issues.push(seqIssue);
 		}
 
-		if (!isSingleToolSequence) {
-			state.recentToolSequences.push(currentState.actualTools);
-			if (state.recentToolSequences.length > 20) {
-				state.recentToolSequences.shift();
-			}
+		// Re-read waste detection
+		const readWasteIssue = checkReReadWaste(currentState.actualTools, prevSeqs, state.recentlyReadFiles);
+		if (readWasteIssue) {
+			issues.push(readWasteIssue);
+		}
+
+		// Track sequence (always, for next-turn analysis)
+		state.recentToolSequences.push([...currentState.actualTools]);
+		if (state.recentToolSequences.length > 20) {
+			state.recentToolSequences.shift();
 		}
 	}
 

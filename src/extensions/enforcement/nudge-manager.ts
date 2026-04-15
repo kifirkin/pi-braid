@@ -31,7 +31,8 @@ export type NudgeType =
 	| "dangerousCommand"
 	| "finalize"
 	| "judge"
-	| "context";
+	| "context"
+	| "contextTool";
 
 export interface NudgeConfig {
 	/** Base cooldown in ms (minimum between nudges of this type) */
@@ -59,6 +60,7 @@ export const DEFAULT_NUDGE_CONFIGS: Record<NudgeType, NudgeConfig> = {
 	finalize: { baseCooldownMs: 10_000, escalateAfter: 1, deduplicate: true },
 	judge: { baseCooldownMs: 30_000, escalateAfter: 2, deduplicate: true },
 	context: { baseCooldownMs: 90_000, escalateAfter: 2, deduplicate: true },
+	contextTool: { baseCooldownMs: 120_000, escalateAfter: 3, deduplicate: true },
 };
 
 // ============================================================================

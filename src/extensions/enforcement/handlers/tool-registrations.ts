@@ -26,6 +26,7 @@ export function registerEnforcementTools(pi: ExtensionAPI): void {
 			lines.push(`**Validation Failures:** ${state.validationFailures}`);
 			lines.push(`**Silent Turns:** ${state.silentTurns}`);
 			lines.push(`**Turns Since Memory:** ${state.turnsSinceMemory}`);
+			lines.push(`**Turns Since Context Tools:** ${state.turnsSinceContextTool}`);
 			lines.push("");
 
 			// Agentic Loop Metrics
@@ -59,6 +60,8 @@ export function registerEnforcementTools(pi: ExtensionAPI): void {
 			lines.push(`- Enforce Memory Nudge (force exec): ${state.config.enforceMemoryNudge}`);
 			lines.push(`- Memory Nudge Threshold: ${state.config.memoryNudgeThreshold} turns`);
 			lines.push(`- Enforce Verification Before Finalize: ${state.config.enforceVerificationBeforeFinalize}`);
+			lines.push(`- Enforce Context Tools: ${state.config.enforceContextTools}`);
+			lines.push(`- Context Tool Nudge Interval: ${state.config.contextToolNudgeInterval} turns`);
 			lines.push(`- Enforce Memory Recall on Start: ${state.config.enforceMemoryRecallOnStart}`);
 			lines.push(`- Track Claims/Verifications: ${state.config.trackClaimsVsVerifications}`);
 			lines.push(`- Max Claims Before Warning: ${state.config.maxClaimsBeforeVerification}`);
@@ -68,6 +71,16 @@ export function registerEnforcementTools(pi: ExtensionAPI): void {
 			for (const seq of state.recentToolSequences.slice(-5)) {
 				lines.push(`- ${seq.join(" → ")}`);
 			}
+			lines.push("");
+
+			lines.push("### Memory Hygiene Summary");
+			const hygieneEmoji =
+				state.turnsSinceMemory < 10 ? "🟢" : state.turnsSinceMemory < 20 ? "🟡" : "🔴";
+			const contextEmoji =
+				state.turnsSinceContextTool < 15 ? "🟢" : state.turnsSinceContextTool < 30 ? "🟡" : "🔴";
+			lines.push(`${hygieneEmoji} Memory: ${state.turnsSinceMemory} turns since use`);
+			lines.push(`${contextEmoji} Context tools: ${state.turnsSinceContextTool} turns since use`);
+			lines.push(`Memory analysis ratio: ${(state.toolAnalysisRatio * 100).toFixed(0)}%`);
 			lines.push("");
 
 			return {

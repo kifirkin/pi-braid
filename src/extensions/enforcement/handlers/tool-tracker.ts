@@ -4,6 +4,30 @@
 import { recordCodeChange as detectRecordCodeChange } from "../detection/verification.js";
 import { state } from "../state.js";
 
+/**
+ * Record file paths from read/edit operations for re-read detection.
+ * Called from tool_call event handler which has access to event.input.
+ */
+export function recordToolInput(toolName: string, input: Record<string, unknown> | undefined): void {
+	if (!input) return;
+
+	const path = (input.path as string) ?? (input.target as string) ?? "";
+	if (!path) return;
+
+	if (toolName === "read") {
+		// Normalize path for comparison: resolve relative paths
+		const normalized = path.startsWith("/") ? path : path;
+		state.recentlyReadFiles.set(normalized, state.currentTurn);
+		// Prune old entries (keep only last 50 files)
+		if (state.recentlyReadFiles.size > 50) {
+			const oldest = [...state.recentlyReadFiles.entries()]
+				.sort((a, b) => a[1] - b[1])
+				.slice(0, 10);
+			for (const [k] of oldest) state.recentlyReadFiles.delete(k);
+		}
+	}
+}
+
 export function recordToolCall(toolName: string): void {
 	// Track think
 	if (toolName === "think") {
@@ -53,6 +77,19 @@ export function recordToolCall(toolName: string): void {
 		state.config.exploreCalledInSession = true;
 		state.turnsSinceExplore = 0;
 		state.exploreBeforeActNudged = false;
+	}
+
+	// Track context management tools usage
+	const contextTools = ["context_tag", "context_log", "context_checkout", "context_prune", "context_audit"];
+	if (contextTools.includes(toolName)) {
+		state.lastContextToolCall = state.currentTurn;
+		state.turnsSinceContextTool = 0;
+		state.contextToolNudged = false;
+	}
+
+	// Track scratchpad usage as part of memory hygiene
+	if (toolName === "scratchpad") {
+		state.lastScratchpadNudgeTurn = -100; // Reset scratchpad nudge cooldown
 	}
 
 	// Track code changes (edit/write) for verification context
