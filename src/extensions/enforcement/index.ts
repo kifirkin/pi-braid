@@ -24,7 +24,7 @@ import {
 import { sendEscalatedNudge } from "./escalation.js";
 // Handlers
 import { checkBlocking } from "./handlers/blocking.js";
-import { registerEnforcementTools } from "./handlers/tool-registrations.js";
+// Tool registrations removed (2026-04-15): enforcement_status, enforcement_reset — use /enforcement-stats command
 import { recordBashDetails, recordToolCall, recordToolInput } from "./handlers/tool-tracker.js";
 // Judge
 import { analyzeWithJudge } from "./judge.js";
@@ -56,8 +56,8 @@ import {
 export default function enforcementExtension(pi: ExtensionAPI) {
 	const nudgeManager = new NudgeManager();
 
-	// Tool Registrations
-	registerEnforcementTools(pi);
+	// Tools removed: enforcement_status, enforcement_reset
+// registerEnforcementTools(pi); // removed
 
 	// Event Handlers
 

@@ -439,9 +439,7 @@ function _recordABTestOutcome(success: boolean): void {
 
 // Tool Definitions
 
-const feedbackStatusSchema = Type.Object({
-	includeHistory: Type.Optional(Type.Boolean()),
-});
+// feedback_status tool removed (2026-04-15) — use /feedback-stats command instead
 
 // Extension Factory
 
@@ -478,83 +476,7 @@ export default function feedbackExtension(pi: ExtensionAPI) {
 		},
 	});
 
-	// Tools
-
-	pi.registerTool({
-		name: "feedback_status",
-		label: "Feedback System Status",
-		description: "Get feedback system status including nudge history, A/B test results, and model preferences.",
-		parameters: feedbackStatusSchema,
-		execute: async (
-			_toolCallId,
-			params: { includeHistory?: boolean },
-		): Promise<AgentToolResult<Record<string, unknown>>> => {
-			const lines: string[] = ["## Feedback System Status"];
-			lines.push("");
-			lines.push(`**Config:**`);
-			lines.push(`- Nudge Cooldown: ${state.config.nudgeCooldownMs}ms`);
-			lines.push(`- Max Nudges/Turn: ${state.config.maxNudgesPerTurn}`);
-			lines.push(`- A/B Testing: ${state.config.enableABTesting ? "enabled" : "disabled"}`);
-			lines.push("");
-			lines.push(`**Stats:**`);
-			lines.push(`- Total Nudges: ${state.nudgeHistory.length}`);
-			lines.push(`- Nudges This Turn: ${state.nudgeCountThisTurn}`);
-			lines.push(`- Active Nudges: ${state.activeNudges.length}`);
-			lines.push("");
-
-			// A/B Tests
-			const activeTests = state.abTests.filter((t) => t.active);
-			if (activeTests.length > 0) {
-				lines.push("### Active A/B Tests");
-				for (const test of activeTests) {
-					const aRate =
-						test.results.variantA.impressions > 0
-							? ((test.results.variantA.success / test.results.variantA.impressions) * 100).toFixed(1)
-							: "0";
-					const bRate =
-						test.results.variantB.impressions > 0
-							? ((test.results.variantB.success / test.results.variantB.impressions) * 100).toFixed(1)
-							: "0";
-					lines.push(`- **${test.name}**`);
-					lines.push(`  - A: ${test.results.variantA.impressions} impressions, ${aRate}% success`);
-					lines.push(`  - B: ${test.results.variantB.impressions} impressions, ${bRate}% success`);
-				}
-				lines.push("");
-			}
-
-			// Recent nudges
-			if (params.includeHistory && state.nudgeHistory.length > 0) {
-				lines.push("### Recent Nudges");
-				for (const nudge of state.nudgeHistory.slice(-10).reverse()) {
-					const time = new Date(nudge.timestamp).toLocaleTimeString();
-					lines.push(`- [${nudge.severity}] ${time}: ${nudge.type}`);
-				}
-				lines.push("");
-			}
-
-			// Nudge breakdown
-			const nudgeTypes: Record<string, number> = {};
-			for (const n of state.nudgeHistory) {
-				nudgeTypes[n.type] = (nudgeTypes[n.type] || 0) + 1;
-			}
-			if (Object.keys(nudgeTypes).length > 0) {
-				lines.push("### Nudge Breakdown");
-				for (const [type, count] of Object.entries(nudgeTypes).sort((a, b) => b[1] - a[1])) {
-					lines.push(`- ${type}: ${count}`);
-				}
-			}
-
-			return {
-				content: [{ type: "text" as const, text: lines.join("\n") }],
-				details: {
-					config: state.config,
-					totalNudges: state.nudgeHistory.length,
-					nudgesThisTurn: state.nudgeCountThisTurn,
-					activeTests: activeTests.length,
-				},
-			};
-		},
-	});
+	// Tools removed (2026-04-15): feedback_status — use /feedback-stats command instead
 
 	// Event Handlers
 

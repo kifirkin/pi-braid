@@ -362,62 +362,7 @@ async function preprocess(
 // Extension Registration
 
 export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
-	pi.registerTool({
-		name: "preprocessor_config",
-		label: "Configure Message Preprocessor",
-		description: "Configure the user message preprocessor.",
-		parameters: Type.Object({
-			enabled: Type.Optional(Type.Boolean()),
-			minLength: Type.Optional(Type.Number()),
-			maxChars: Type.Optional(Type.Number()),
-			skipCommands: Type.Optional(Type.Boolean()),
-			showDiff: Type.Optional(Type.Boolean()),
-			timeoutSeconds: Type.Optional(Type.Number()),
-		}),
-		execute: async (
-			_toolCallId,
-			params: Partial<PreprocessorConfig>,
-		): Promise<AgentToolResult<{ config: PreprocessorConfig }>> => {
-			if (params.enabled !== undefined) {
-				state.config.enabled = params.enabled;
-				saveGlobalSetting(SETTINGS_KEY, params.enabled);
-			}
-			if (params.minLength !== undefined) state.config.minLength = params.minLength;
-			if (params.maxChars !== undefined) state.config.maxChars = params.maxChars;
-			if (params.skipCommands !== undefined) state.config.skipCommands = params.skipCommands;
-			if (params.showDiff !== undefined) state.config.showDiff = params.showDiff;
-			if (params.timeoutSeconds !== undefined) state.config.timeoutSeconds = params.timeoutSeconds;
-
-			return {
-				content: [{ type: "text" as const, text: `Preprocessor config: ${JSON.stringify(state.config, null, 2)}` }],
-				details: { config: state.config },
-			};
-		},
-	});
-
-	pi.registerTool({
-		name: "preprocessor_stats",
-		label: "Preprocessor Stats",
-		description: "Get preprocessing statistics.",
-		parameters: Type.Object({}),
-		execute: async (): Promise<
-			AgentToolResult<{ preprocessed: number; skipped: number; errors: number }>
-		> => {
-			return {
-				content: [
-					{
-						type: "text" as const,
-						text: `Preprocessor Stats:\n- Preprocessed: ${state.preprocessedCount}\n- Skipped: ${state.skippedCount}\n- Errors: ${state.errorCount}`,
-					},
-				],
-				details: {
-					preprocessed: state.preprocessedCount,
-					skipped: state.skippedCount,
-					errors: state.errorCount,
-				},
-			};
-		},
-	});
+	// Tools removed (2026-04-15): preprocessor_config, preprocessor_stats — use /preprocessor command instead
 
 	pi.on("input", async (event, ctx): Promise<InputEventResult> => {
 		if (!state.config.enabled) {
