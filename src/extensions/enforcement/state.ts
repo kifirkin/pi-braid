@@ -27,7 +27,7 @@ export const DEFAULT_CONFIG: EnforcementConfig = {
 	blockThinkBeforeEdit: false, // DEPRECATED: no longer blocks, kept for config compat
 	blockExploreBeforeWrite: true,
 	blockFinalizeWithoutMemory: true,
-	blockDangerousCommands: true,
+	blockDangerousCommands: false, // Changed: now warns instead of blocks (see warnDangerousCommandsFirst)
 	thinkCalledInSession: false,
 	exploreCalledInSession: false,
 	enforceVerificationBeforeFinalize: true,
@@ -48,6 +48,8 @@ export const DEFAULT_CONFIG: EnforcementConfig = {
 	enforceFinalizeValidation: true,
 	minFinalizeCoverageScore: 0.4,
 	blockFinalizeOnLowCoverage: false,
+	// Dangerous command enforcement
+	warnDangerousCommandsFirst: true, // First dangerous: block+warn with retry option. Then: warn only.
 };
 
 export const state = {
@@ -122,6 +124,8 @@ export const state = {
 	lastContextToolCall: 0,
 	turnsSinceContextTool: 0,
 	contextToolNudged: false,
+	// Track warned dangerous commands for 2-stage enforcement (command hash -> turn first warned)
+	warnedDangerousCommands: new Map<string, number>(),
 	// Memory hygiene: combined score (scratchpad + memory + context)
 	memoryHygieneScore: 1.0, // 0-1, derived from usage patterns
 	lastHygieneNudgeTurn: 0,
@@ -210,4 +214,6 @@ export function resetState(): void {
 	state.turnsSinceContextTool = 0;
 	state.contextToolNudged = false;
 	state.highContextNudged = false;
+	// Reset dangerous command warnings
+	state.warnedDangerousCommands = new Map();
 }

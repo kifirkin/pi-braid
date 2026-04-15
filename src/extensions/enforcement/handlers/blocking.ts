@@ -128,15 +128,60 @@ export function checkBlocking(
 		}
 	}
 
-	// BLOCK: Dangerous bash commands
-	if (toolName === "bash" && stateRef.config.blockDangerousCommands) {
+	// DANGEROUS COMMAND ENFORCEMENT: 2-stage handling
+	// Stage 1 (first time): Block with warning + explicit retry instruction
+	// Stage 2 (subsequent): Allow with warning
+	if (toolName === "bash") {
 		const command = (eventInput as { command?: string } | undefined)?.command || "";
 		if (isDangerousCommand(command)) {
-			queueBlockAction(
-				toolName,
-				`Dangerous command blocked: ${command}. Break it into safer steps or use a specific path.`,
-			);
-			return { blocked: true, reason: `Dangerous command blocked: ${command}` };
+			// Create a hash of the command for tracking (normalize whitespace)
+			const commandHash = command.trim().replace(/\s+/g, " ").toLowerCase().slice(0, 200);
+			const wasWarnedBefore = stateRef.warnedDangerousCommands.has(commandHash);
+
+			if (!wasWarnedBefore) {
+				// First time: block with explicit warning + retry instruction
+				stateRef.warnedDangerousCommands.set(commandHash, stateRef.currentTurn);
+				const warningMsg =
+					`⚠️ **DANGEROUS COMMAND DETECTED**
+
+` +
+					`Command: \`${command}\`
+
+` +
+					`This command matches patterns that could cause data loss or security issues.
+
+` +
+					`**Before proceeding, please:**
+` +
+					`1. Verify this is absolutely necessary and safe
+` +
+					`2. Consider safer alternatives (e.g., specific paths instead of wildcards)
+` +
+					`3. Back up important data if unsure
+
+` +
+					`**If you've verified this is safe**, retry the command and it will be allowed.
+
+` +
+					`Example safer approach: \`rm specific-file.txt\` instead of \`rm -rf *\``;
+				queueBlockAction(toolName, warningMsg);
+				return {
+					blocked: true,
+					reason: `⚠️ Dangerous command blocked — review warning above. Retry if verified safe.`,
+				};
+			} else {
+				// Subsequent time: warn only, allow execution
+				const firstWarnedTurn = stateRef.warnedDangerousCommands.get(commandHash);
+				queueEnforcementWhisper(
+					`⚠️ **Warning:** Running potentially dangerous command (warned at turn ${firstWarnedTurn}).
+` +
+					`Command: \`${command}\`
+` +
+					`Ensure you've verified this is safe before proceeding.`,
+				);
+				// Allow execution (don't block)
+				return { blocked: false, reason: "" };
+			}
 		}
 	}
 

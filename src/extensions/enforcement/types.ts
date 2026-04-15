@@ -28,6 +28,8 @@ export interface EnforcementConfig {
 	blockExploreBeforeWrite: boolean;
 	blockFinalizeWithoutMemory: boolean;
 	blockDangerousCommands: boolean;
+	// Dangerous command enforcement
+	warnDangerousCommandsFirst: boolean; // First dangerous: block+warn with retry option. Then: warn only.
 	// Session tracking for blocking decisions
 	thinkCalledInSession: boolean;
 	exploreCalledInSession: boolean;

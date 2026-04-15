@@ -393,6 +393,107 @@ const state = {
 	compactionHappened: false,
 };
 
+// ============================================================================
+// Compaction Auto-Retry Configuration
+// ============================================================================
+
+const COMPACTION_RETRY_MAX_ATTEMPTS = 3;
+const COMPACTION_RETRY_BASE_DELAY_MS = 2000;
+const COMPACTION_RETRY_CUSTOM_TYPE = "__compact_retry_trigger";
+
+/** Retryable error patterns for compaction failures */
+const COMPACTION_RETRYABLE_PATTERNS = [
+	/529/i,                    // Cerebras overloaded
+	/overloaded/i,             // Generic overloaded
+	/too many requests/i,      // Rate limit
+	/429/i,                    // HTTP 429
+	/500/i,                    // Internal server error
+	/502/i,                    // Bad gateway
+	/503/i,                    // Service unavailable
+	/504/i,                    // Gateway timeout
+	/server error/i,           // Generic server error
+	/service unavailable/i,    // Generic unavailable
+	/connection.?error/i,      // Network errors
+	/connection.?refused/i,    // Network errors
+	/fetch failed/i,           // Fetch errors
+	/upstream.?connect/i,      // Proxy errors
+	/reset before headers/i,   // Connection reset
+	/timeout/i,                // Timeout errors
+];
+
+/** Errors that should NOT be retried (likely permanent issues) */
+const COMPACTION_NON_RETRYABLE_PATTERNS = [
+	/invalid.*api.?key/i,
+	/authentication.*failed/i,
+	/unauthorized/i,
+	/forbidden/i,
+	/context.?window.*exceeded/i,
+	/token.*limit.*exceeded/i,
+	/maximum.*context/i,
+	/model.*not.*found/i,
+	/model.*does.*not.*exist/i,
+];
+
+/** Track compaction retry state */
+interface CompactionRetryState {
+	attempt: number;
+	lastError: string;
+	lastReason: string;
+	retryTimeout: ReturnType<typeof setTimeout> | null;
+}
+
+const compactionRetryState: CompactionRetryState = {
+	attempt: 0,
+	lastError: "",
+	lastReason: "",
+	retryTimeout: null,
+};
+
+/** Check if an error message matches retryable patterns */
+function isCompactionRetryable(errorMessage: string): boolean {
+	// Check if it's explicitly non-retryable first
+	for (const pattern of COMPACTION_NON_RETRYABLE_PATTERNS) {
+		if (pattern.test(errorMessage)) {
+			return false;
+		}
+	}
+	// Check if it's retryable
+	for (const pattern of COMPACTION_RETRYABLE_PATTERNS) {
+		if (pattern.test(errorMessage)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/** Get delay for current retry attempt with exponential backoff */
+function getCompactionRetryDelay(attempt: number): number {
+	return COMPACTION_RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
+}
+
+/** Clear any pending retry timeout */
+function clearCompactionRetry(): void {
+	if (compactionRetryState.retryTimeout) {
+		clearTimeout(compactionRetryState.retryTimeout);
+		compactionRetryState.retryTimeout = null;
+	}
+}
+
+/** Reset compaction retry state */
+function resetCompactionRetry(): void {
+	clearCompactionRetry();
+	compactionRetryState.attempt = 0;
+	compactionRetryState.lastError = "";
+	compactionRetryState.lastReason = "";
+}
+
+/**
+ * Deduplication set for compaction events.
+ * session_compact and compaction_end can both fire for the same compaction.
+ * We track entry IDs to avoid sending duplicate nudges.
+ */
+const _compactedEntries = new Set<string>();
+
 export default function contextManagerExtension(pi: ExtensionAPI) {
 	// ── context_tag ─────────────────────────────────────────────────────────
 	pi.registerTool({
@@ -758,6 +859,14 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 	});
 
 	// ── Compaction Integration ─────────────────────────────────────────
+	// Reset retry state on successful turns (user got a valid response)
+	pi.on("turn_end", async (_event: any, _ctx: any) => {
+		// Only reset if compaction wasn't happening
+		if (compactionRetryState.attempt > 0 && !compactionRetryState.retryTimeout) {
+			resetCompactionRetry();
+		}
+	});
+
 	// Provide custom instructions before compaction for smarter summarization
 	pi.on("session_before_compact" as any, async (event: any, ctx: any) => {
 		try {
@@ -836,8 +945,16 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 
 	// ── Session Compact Event ────────────────────────────────────────────
 	// Post-compaction: nudge agent to store key learnings
+	// NOTE: session_compact fires ONLY on successful compaction.
+	// For failure cases (overflow recovery failure, compaction throws), see compaction_end.
 	pi.on("session_compact" as any, async (_event: any, _ctx: any) => {
 		try {
+			// Track this compaction so compaction_end knows not to duplicate the nudge
+			const entry = _event.compactionEntry as any;
+			if (entry?.id) {
+				_compactedEntries.add(entry.id);
+			}
+
 			pi.sendMessage(
 				{
 					customType: "context",
@@ -848,6 +965,330 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 			);
 		} catch (err) {
 			console.error("[context-manager] session_compact error:", err);
+		}
+	});
+
+	// ── Compaction End Event ──────────────────────────────────────────────
+	// Handles ALL compaction outcomes including failures.
+	// session_compact only fires on success — this catches what it misses.
+	pi.on("compaction_end" as any, async (event: any, _ctx: any) => {
+		try {
+			const { reason, willRetry, aborted, errorMessage, result } = event;
+
+			// ── Overflow recovery failure ────────────────────────────────────
+			// The most critical case: compaction worked but the retry still failed.
+			// This means the underlying issue (wrong model, bad API key, or
+			// non-overflow 400) persists regardless of context size.
+			if (reason === "overflow" && !willRetry && !aborted) {
+				// Only send if session_compact didn't already handle this (via entry ID check)
+				const entryId = result?.firstKeptEntryId ?? (event as any).compactionEntry?.id;
+				const alreadyHandled = entryId && _compactedEntries.has(entryId);
+				const errMsg = errorMessage ?? "Compact succeeded but the retry still overflowed.";
+
+				// Check if error is retryable (e.g. 529 overloaded is transient)
+				if (!alreadyHandled && isCompactionRetryable(errMsg) && compactionRetryState.attempt < COMPACTION_RETRY_MAX_ATTEMPTS) {
+					compactionRetryState.attempt++;
+					compactionRetryState.lastError = errMsg;
+					compactionRetryState.lastReason = reason;
+
+					pi.sendMessage(
+						{
+							customType: "context",
+							content: [{
+								type: "text" as const,
+								text: `⚠️ Overflow recovery failed (${errMsg}). Auto-retrying... (${compactionRetryState.attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})`,
+							}],
+							display: true,
+						},
+						{ deliverAs: "steer" },
+					);
+
+					triggerCompactionRetry(pi, compactionRetryState.attempt, errMsg);
+					return;
+				}
+
+				// Non-retryable or exhausted retries - show permanent failure warning
+				if (!alreadyHandled) {
+					pi.sendMessage(
+						{
+							customType: "context",
+							content: [{
+								type: "text" as const,
+								text: [
+									"## ⚠️ Context overflow recovery failed",
+									errMsg,
+									"",
+									"The API returned an overflow error even after compaction. This usually means:",
+									"1. **Wrong model/provider** — the model ID doesn't match your API key",
+									"2. **API key invalid** — Cerebras API key is wrong or account is suspended",
+									"3. **Request format rejected** — the request itself violates the API's format rules",
+									"",
+									"**Immediate actions:**",
+									"- Run `/model` to switch to a different model (e.g. anthropic/claude-3-5-sonnet)",
+									"- Check your Cerebras API key in ~/.pi/settings.json",
+									"- Run `context_audit()` to see session hygiene before continuing",
+								].join("\n"),
+							}],
+							display: true,
+						},
+						{ deliverAs: "steer" },
+					);
+					_compactedEntries.add("overflow-failure-" + Date.now());
+				}
+				return;
+			}
+
+			// ── Aborted compaction ───────────────────────────────────────────
+			if (aborted) {
+				pi.sendMessage(
+					{
+						customType: "context",
+						content: [{
+							type: "text" as const,
+							text: "Context compaction was aborted (no changes made). You can continue normally or run `/compact` manually when ready.",
+						}],
+						display: true,
+					},
+					{ deliverAs: "steer" },
+				);
+				return;
+			}
+
+			// ── Threshold/manual compaction failure (uncaught exception) ─────
+			// result is undefined when compaction throws
+			if ((reason === "threshold" || reason === "manual") && !result) {
+				const errMsg = errorMessage ?? "Compaction threw an error.";
+
+				// Check if error is retryable
+				if (isCompactionRetryable(errMsg) && compactionRetryState.attempt < COMPACTION_RETRY_MAX_ATTEMPTS) {
+					// Start or continue retry sequence
+					compactionRetryState.attempt++;
+					compactionRetryState.lastError = errMsg;
+					compactionRetryState.lastReason = reason;
+
+					const delayMs = getCompactionRetryDelay(compactionRetryState.attempt);
+					pi.sendMessage(
+						{
+							customType: "context",
+							content: [{
+								type: "text" as const,
+								text: `⚠️ Compaction failed (${errMsg}). Auto-retrying... (${compactionRetryState.attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})`,
+							}],
+							display: true,
+						},
+						{ deliverAs: "steer" },
+					);
+
+					triggerCompactionRetry(pi, compactionRetryState.attempt, errMsg);
+					return;
+				}
+
+				// Non-retryable or exhausted retries - show warning
+				pi.sendMessage(
+					{
+						customType: "context",
+						content: [{
+							type: "text" as const,
+							text: [
+								"## ⚠️ Auto-compaction failed",
+								errMsg,
+								"",
+								"Your context is still large. Consider:",
+								"- Running `/compact` manually to control the summary focus",
+								"- Using `context_checkout` with `backupTag` to branch and preserve progress",
+								"- Storing key learnings in memory before continuing",
+							].join("\n"),
+						}],
+						display: true,
+					},
+					{ deliverAs: "steer" },
+				);
+				return;
+			}
+
+			// ── Successful compaction (willRetry=false, e.g. threshold/manual) ─
+			// session_compact handles willRetry=true (overflow recovery success).
+			// Here we handle successful non-recovery compaction.
+			if (result && willRetry === false) {
+				const entryId = result.firstKeptEntryId;
+				const alreadyHandled = _compactedEntries.has(entryId);
+				if (!alreadyHandled) {
+					pi.sendMessage(
+						{
+							customType: "context",
+							content: [{
+								type: "text" as const,
+								text: "Context was just compacted (auto-threshold). Consider storing key learnings in memory: memory_store(content=..., memoryType=\"insight\")",
+							}],
+							display: true,
+						},
+						{ deliverAs: "steer" },
+					);
+					_compactedEntries.add(entryId);
+				}
+			}
+		} catch (err) {
+			console.error("[context-manager] compaction_end error:", err);
+		}
+	});
+
+	// ── Compaction Auto-Retry Handler ──────────────────────────────────
+	// Intercepts our hidden retry triggers to clean them from context.
+	// This prevents the retry prompt from being seen by the LLM.
+	pi.on("context", async (event) => {
+		const messages = event.messages;
+		let cleaned = false;
+		const result = messages.map((msg: any) => {
+			if (msg.role === "custom" && msg.customType === COMPACTION_RETRY_CUSTOM_TYPE) {
+				cleaned = true;
+				return null; // Mark for filtering
+			}
+			return msg;
+		}).filter(Boolean);
+
+		if (cleaned) {
+			return { messages: result };
+		}
+	});
+
+	// ── Compaction Retry Trigger ────────────────────────────────────────
+	// Sends a hidden trigger message that causes the agent to retry compaction.
+	// This uses triggerTurn to kick off a new turn with a compact retry prompt.
+	function triggerCompactionRetry(pi: ExtensionAPI, attempt: number, errorMessage: string): void {
+		// Clear any existing retry state
+		clearCompactionRetry();
+
+		const delayMs = getCompactionRetryDelay(attempt);
+		const delaySec = (delayMs / 1000).toFixed(0);
+
+		console.log(
+			`[context-manager] Compaction retry ${attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS} in ${delaySec}s: ${errorMessage}`,
+		);
+
+		compactionRetryState.retryTimeout = setTimeout(() => {
+			compactionRetryState.retryTimeout = null;
+
+			// Send hidden trigger message that prompts retry
+			pi.sendMessage(
+				{
+					customType: COMPACTION_RETRY_CUSTOM_TYPE,
+					content: [
+						{
+							type: "text" as const,
+							text: attempt === 1
+								? `[Auto-retry] Compaction failed (${errorMessage}). Retrying... (${attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})`
+								: `[Auto-retry] Compaction retry ${attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS}: ${errorMessage}`,
+						},
+					],
+					display: false, // Hidden from user
+				},
+				{ triggerTurn: true },
+			);
+		}, delayMs);
+	}
+
+	// ── Compaction Retry Message Handler ────────────────────────────────
+	// When we receive our hidden trigger, check if we should retry compaction
+	// and if so, prompt the agent to run /compact again.
+	pi.on("agent_end", async (event: any, ctx: any) => {
+		// Only act if this was a compaction retry turn
+		const messages = event.messages;
+		let hasRetryTrigger = false;
+
+		for (const msg of messages) {
+			if (msg.role === "custom" && msg.customType === COMPACTION_RETRY_CUSTOM_TYPE) {
+				hasRetryTrigger = true;
+				break;
+			}
+		}
+
+		if (!hasRetryTrigger) return;
+
+		// Check if this turn's response was successful
+		let lastAssistant: any = null;
+		for (let i = messages.length - 1; i >= 0; i--) {
+			if (messages[i].role === "assistant") {
+				lastAssistant = messages[i];
+				break;
+			}
+		}
+
+		if (lastAssistant && lastAssistant.stopReason !== "error" && lastAssistant.stopReason !== "aborted") {
+			// Success! Reset retry state
+			if (compactionRetryState.attempt > 0) {
+				ctx.ui.notify(
+					`Compaction retry succeeded on attempt ${compactionRetryState.attempt}.`,
+					"info",
+				);
+			}
+			resetCompactionRetry();
+			return;
+		}
+
+		// This retry turn also failed - check if we should retry again
+		const errorMessage = lastAssistant?.errorMessage || compactionRetryState.lastError;
+
+		if (compactionRetryState.attempt >= COMPACTION_RETRY_MAX_ATTEMPTS) {
+			// Exhausted retries
+			console.error(
+				`[context-manager] Compaction retry exhausted after ${COMPACTION_RETRY_MAX_ATTEMPTS} attempts: ${errorMessage}`,
+			);
+
+			ctx.ui.notify(
+				`Compaction failed permanently after ${COMPACTION_RETRY_MAX_ATTEMPTS} retries: ${errorMessage}`,
+				"error",
+			);
+
+			ctx.ui.setStatus("context-manager", undefined);
+			resetCompactionRetry();
+			return;
+		}
+
+		// Increment attempt and schedule next retry
+		compactionRetryState.attempt++;
+		compactionRetryState.lastError = errorMessage;
+
+		const delayMs = getCompactionRetryDelay(compactionRetryState.attempt);
+		ctx.ui.setStatus(
+			"context-manager",
+			`Compaction failed "${errorMessage}", retrying (${compactionRetryState.attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS}) in ${(delayMs / 1000).toFixed(0)}s...`,
+		);
+
+		triggerCompactionRetry(pi, compactionRetryState.attempt, errorMessage);
+	});
+
+	// ── Auto-Retry End Event ──────────────────────────────────────────────
+	// Catches non-overflow retry failures (429 rate limits, 500s, network errors).
+	// NOTE: overflow errors do NOT use retry — they use compaction instead.
+	pi.on("auto_retry_end" as any, async (event: any, _ctx: any) => {
+		try {
+			const { success, attempt, finalError } = event;
+
+			if (!success) {
+				pi.sendMessage(
+					{
+						customType: "context",
+						content: [{
+							type: "text" as const,
+							text: [
+								"## ⚠️ API retry failed after " + attempt + " attempt(s)",
+								finalError ?? "Unknown error",
+								"",
+								"The API kept returning errors despite retries. Possible causes:",
+								"- Rate limit (429) — wait a moment or switch models",
+								"- Server error (500/502/503) — provider is having issues",
+								"- Network error — check your connection",
+								"",
+								"Actions: Run `/model` to switch models, or wait and retry.",
+							].join("\n"),
+						}],
+						display: true,
+					},
+					{ deliverAs: "steer" },
+				);
+			}
+		} catch (err) {
+			console.error("[context-manager] auto_retry_end error:", err);
 		}
 	});
 }

@@ -559,6 +559,49 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 		}
 	});
 
+	// ── Auto-Retry End ────────────────────────────────────────────────
+	// Catches non-overflow API retry failures (429 rate limits, 500s, network errors).
+	// Overflow errors use compaction + retry, NOT this path.
+	// See compaction_end for overflow recovery failures.
+	pi.on("auto_retry_end" as any, async (event: any, _ctx: any) => {
+		if (!state.enforcementActive) return;
+
+		const { success, attempt, finalError } = event;
+
+		if (!success) {
+			state.validationFailures++;
+
+			const now = Date.now();
+			if (now - state.lastNudgeTime < state.nudgeCooldownMs) return;
+			state.lastNudgeTime = now;
+
+			const errorType = _classifyRetryError(finalError ?? "");
+
+			let msg = "";
+			if (errorType === "rate_limit") {
+				msg = `API rate limit hit after ${attempt} retry(s). ` +
+					`Try switching models with /model, or wait before continuing.`;
+			} else if (errorType === "server_error") {
+				msg = `API server error after ${attempt} retry(s) (${finalError}). ` +
+					`The provider may be experiencing issues. Try again or switch models.`;
+			} else if (errorType === "network") {
+				msg = `Network error after ${attempt} retry(s). Check your connection and try again.`;
+			} else {
+				msg = `API error after ${attempt} retry(s): ${finalError ?? "unknown"}. ` +
+					`Try switching models with /model.`;
+			}
+
+			const nudgeMsg = `## ⚠️ API Retry Failed\n\n${msg}\n\n` +
+				`Store this error for future reference: memory_store(content="API error: ${finalError}", memoryType="error", tags=["error", "api"])`;
+
+			if (shouldBufferWhisper()) {
+				bufferEnforcementWhisper(nudgeMsg);
+			} else {
+				sendEnforcementWhisper(pi, nudgeMsg);
+			}
+		}
+	});
+
 	// Message End: LLM Judge analysis + verification checkpoints
 	pi.on("message_end", async (event, ctx) => {
 		if (!state.enforcementActive) {
@@ -743,4 +786,16 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 			);
 		},
 	});
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/** Classify a retry error message into a category for targeted guidance. */
+function _classifyRetryError(errorMsg: string): "rate_limit" | "server_error" | "network" | "unknown" {
+	if (/rate.?limit|too many requests|429/i.test(errorMsg)) return "rate_limit";
+	if (/500|502|503|504|server.?error|internal.?error|service.?unavailable/i.test(errorMsg)) return "server_error";
+	if (/network|connection|fetch failed|socket|timeout|timed out/i.test(errorMsg)) return "network";
+	return "unknown";
 }
