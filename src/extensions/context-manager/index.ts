@@ -1132,28 +1132,6 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 		}
 	});
 
-	// ── /compact Command ──────────────────────────────────────────────
-	// Manual compaction triggered by user. Uses ctx.compact() with callbacks
-	// for real-time feedback (vs pi.sendMessage + triggerTurn approach).
-	pi.registerCommand("compact", {
-		description: "Manually compact the session context. Accepts optional custom instructions for the summary focus.",
-		handler: async (args, ctx) => {
-			const customInstructions = args.trim() || undefined;
-
-			ctx.ui.notify("Compaction started...", "info");
-
-			ctx.compact({
-				customInstructions,
-				onComplete: () => {
-					ctx.ui.notify("Compaction completed.", "info");
-				},
-				onError: (error) => {
-					ctx.ui.notify(`Compaction failed: ${error.message}`, "error");
-				},
-			});
-		},
-	});
-
 	// ── Compaction Auto-Retry Handler ──────────────────────────────────
 	// Intercepts our hidden retry triggers to clean them from context.
 	// This prevents the retry prompt from being seen by the LLM.
