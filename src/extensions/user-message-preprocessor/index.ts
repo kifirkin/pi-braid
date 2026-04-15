@@ -11,10 +11,9 @@
  * - Skips well-written English text
  * - Preserves markdown, code blocks, and formatting
  *
- * Preprocessing happens ONCE per agentic session:
- * 1. User submits input -> preprocesses -> updates editor text
- * 2. User presses enter again -> no preprocessing, text goes straight to LLM
- * 3. Session ends (agent finishes) -> preprocessing enabled for next input
+ * Uses `transform` action so preprocessed text flows to the agent in the same
+ * input cycle. The user sees the diff widget with cleaned text, but pressing
+ * Enter sends the cleaned text directly — no second submit needed.
  *
  * Settings:
  * - Enabled state persists to ~/.pi/agent/settings.json
@@ -93,17 +92,6 @@ function saveGlobalSetting<T>(key: string, value: T): void {
 /** Characters that indicate code content */
 const CODE_CHARS = new Set("{}[]();=>+-*/|&<>@#$%^~`\\");
 
-/** Markdown/formatting indicators to preserve */
-const FORMATTING_PATTERNS = [
-	/^\s*[-*+]|\n\s*[-*+]/m, // List items
-	/^\s*\d+\.|\n\s*\d+\./m, // Numbered lists
-	/```[\s\S]*?```/, // Code blocks
-	/`[^`]+`/, // Inline code
-	/^\s*#/m, // Headings
-	/^\s*>\s/m, // Blockquotes
-	/\|.*\|/, // Tables
-];
-
 /**
  * Check if message is code-heavy and should be skipped.
  * Returns true if >30% of non-whitespace characters are code-like.
@@ -118,17 +106,6 @@ function isCodeHeavy(text: string): boolean {
 		}
 	}
 	return totalChars > 0 && codeChars / totalChars > 0.3;
-}
-
-/**
- * Check if message contains significant markdown/formatting.
- * Returns true if message has substantial formatting that should be preserved.
- */
-function hasSignificantFormatting(text: string): boolean {
-	for (const pattern of FORMATTING_PATTERNS) {
-		if (pattern.test(text)) return true;
-	}
-	return false;
 }
 
 /**
@@ -160,264 +137,130 @@ function looksWellWritten(text: string): boolean {
 	const balanced =
 		brackets["("] === brackets[")"] && brackets["["] === brackets["]"] && brackets["{"] === brackets["}"];
 
-	// If brackets are balanced and there's substantial formatting, likely well-structured
-	if (balanced && hasSignificantFormatting(text)) return true;
-
-	return false;
-}
-
-// ============================================================================
-// Enhanced Diff Display
-// ============================================================================
-
-// Minimal ANSI color helpers (no external dependency)
-const colors = {
-	red: (text: string) => `\x1b[31m${text}\x1b[0m`,
-	green: (text: string) => `\x1b[32m${text}\x1b[0m`,
-	dim: (text: string) => `\x1b[2m${text}\x1b[0m`,
-};
-
-/**
- * Generate unified diff lines with change indicators.
- * Returns lines with: additions (green +), deletions (red -), unchanged.
- */
-function generateDiffLines(original: string, cleaned: string): string[] {
-	const lines: string[] = [];
-	lines.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-	lines.push("  Preprocessed");
-	lines.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
-	const origLines = original.split("\n");
-	const cleanLines = cleaned.split("\n");
-
-	const additions: string[] = [];
-	const deletions: string[] = [];
-
-	// Simple line-by-line diff (show first 10 lines)
-	const maxLines = 10;
-	for (let i = 0; i < maxLines; i++) {
-		const origLine = origLines[i];
-		const cleanLine = cleanLines[i];
-
-		if (origLine === undefined && cleanLine !== undefined) {
-			additions.push(cleanLine);
-		} else if (cleanLine === undefined && origLine !== undefined) {
-			deletions.push(origLine);
-		} else if (origLine !== undefined && cleanLine !== undefined && origLine !== cleanLine) {
-			deletions.push(origLine);
-			additions.push(cleanLine);
-		}
-	}
-
-	// Show deletions first (red -)
-	for (const line of deletions.slice(0, 5)) {
-		const truncated = line.length > 60 ? `${line.slice(0, 60)}…` : line;
-		lines.push(`  ${colors.red("-")} ${truncated}`);
-	}
-
-	// Then additions (green +)
-	for (const line of additions.slice(0, 5)) {
-		const truncated = line.length > 60 ? `${line.slice(0, 60)}…` : line;
-		lines.push(`  ${colors.green("+")} ${truncated}`);
-	}
-
-	// Show truncation indicator if needed
-	const totalChanges = deletions.length + additions.length;
-	if (deletions.length + additions.length > 10) {
-		lines.push(`  ${colors.dim("…")} ${totalChanges} total changes`);
-	}
-
-	lines.push("");
-	lines.push(`  ${original.length} → ${cleaned.length} chars`);
-	lines.push(`  ${colors.green("✓")} Press Enter to send`);
-
-	return lines;
+	// If brackets are balanced, likely well-structured
+	return balanced;
 }
 
 // ============================================================================
 // State
 // ============================================================================
 
-interface QueuedMessage {
-	text: string;
-	images?: ImageContent[];
-	resolve: (result: InputEventResult) => void;
-}
-
 const state = {
 	config: { ...DEFAULT_CONFIG, enabled: loadGlobalSetting(SETTINGS_KEY, DEFAULT_CONFIG.enabled) },
 	preprocessedCount: 0,
 	skippedCount: 0,
 	errorCount: 0,
-	queue: [] as QueuedMessage[],
-	isProcessing: false,
-	/** Text that was already preprocessed in the current agentic session */
-	preprocessedText: "" as string | undefined,
-	/** Whether preprocessing is temporarily disabled (after preprocessing, until agent ends) */
-	preprocessingExhausted: false,
+	/** Last cleaned text (for diff display on submit) */
+	lastCleaned: null as string | null,
+	/** Last original text (for diff display on submit) */
+	lastOriginal: null as string | null,
 };
 
-async function processMessage(
+function clearPreprocessorWidget(ctx: ExtensionContext) {
+	ctx.ui.setWidget("preprocessor-diff", undefined);
+	ctx.ui.setStatus("preprocessor", undefined);
+}
+
+// ============================================================================
+// Preprocessing (runs before the input event returns)
+// ============================================================================
+
+async function preprocess(
 	original: string,
 	_images: ImageContent[] | undefined,
 	ctx: ExtensionContext,
-	resolve: (result: InputEventResult) => void,
-) {
-	state.isProcessing = true;
-
+): Promise<string | null> {
 	let model = (ctx as any).getUtilityModel?.();
-	ctx.ui.setStatus("preprocessor", `Preprocessing with ${model?.id ?? "no model"}...`)
+	if (!model) {
+		state.skippedCount++;
+		return null;
+	}
 
+	// If reasoning model, try to find non-reasoning model
 	if (model?.reasoning) {
 		if (ctx.model && !ctx.model.reasoning) {
 			model = ctx.model;
 		} else {
 			const availableModels = ctx.modelRegistry.getAvailable();
 			const nonReasoning = availableModels.filter((m) => !m.reasoning);
-			nonReasoning.sort((a, b) => a.cost.input + a.cost.output - (b.cost.input + b.cost.output));
+			nonReasoning.sort((a, b) => a.cost.input + b.cost.output - (b.cost.input + b.cost.output));
 			model = nonReasoning[0];
 			if (!model) {
 				state.skippedCount++;
-				resolve({ action: "continue" });
-				processQueue(ctx);
-				return;
+				return null;
 			}
 		}
-	}
-
-	if (!model) {
-		state.skippedCount++;
-		resolve({ action: "continue" });
-		processQueue(ctx);
-		return;
 	}
 
 	const apiKey = await ctx.modelRegistry.getApiKeyForProvider(model.provider);
 	if (!apiKey) {
 		state.skippedCount++;
-		resolve({ action: "continue" });
-		processQueue(ctx);
-		return;
+		return null;
 	}
 
+	const context: Context = {
+		systemPrompt: SYSTEM_PROMPT,
+		messages: [{ role: "user", content: `<user_message>${original}</user_message>`, timestamp: Date.now() }],
+	};
+
+	// Race between preprocessing and timeout
+	const timeoutMs = state.config.timeoutSeconds * 1000;
+	const timeoutPromise = new Promise<never>((_, reject) => {
+		const t = setTimeout(() => reject(new Error("timeout")), timeoutMs);
+		ctx.signal?.addEventListener("abort", () => clearTimeout(t), { once: true });
+	});
+
+	// Calculate sufficient output tokens
+	const outputTokens = Math.min(Math.max(500, Math.floor(original.length / 4)), 4096);
+	const preprocessPromise = completeSimple(model as Model<Api>, context, {
+		apiKey,
+		maxTokens: outputTokens,
+		temperature: 0.1,
+		signal: ctx.signal,
+	});
+
+	let result: AssistantMessage | null = null;
 	try {
-		const context: Context = {
-			systemPrompt: SYSTEM_PROMPT,
-			messages: [{ role: "user", content: `<user_message>${original}</user_message>`, timestamp: Date.now() }],
-		};
-
-		// Race between preprocessing and timeout
-		const timeoutMs = state.config.timeoutSeconds * 1000;
-		const timeoutPromise = new Promise<AssistantMessage>((_, reject) => {
-			setTimeout(() => reject(new Error("timeout")), timeoutMs);
-		});
-
-		// Calculate sufficient output tokens: ~1:1 with input length (4 chars/token), min 500, max 4096
-		const outputTokens = Math.min(Math.max(500, Math.floor(original.length / 4)), 4096);
-		const preprocessPromise = completeSimple(model as Model<Api>, context, {
-			apiKey,
-			maxTokens: outputTokens,
-			temperature: 0.1,
-		});
-
-		let result: AssistantMessage | null = null;
-		try {
-			result = await Promise.race([preprocessPromise, timeoutPromise]);
-		} catch (err: unknown) {
-			if (err instanceof Error && err.message === "timeout") {
-				state.errorCount++;
-				state.skippedCount++;
-				const origPreview = original.length > 100 ? `${original.slice(0, 100)}...` : original;
-				ctx.ui.setStatus("preprocessor", "⏱️ Preprocessing timeout!");
-				ctx.ui.notify(`Timeout on: "${origPreview}"`, "warning");
-				resolve({ action: "continue" });
-				processQueue(ctx);
-				return;
-			}
-			throw err;
-		}
-
-		if (result.errorMessage) {
-			state.errorCount++;
-			state.skippedCount++;
-			const origPreview = original.length > 100 ? `${original.slice(0, 100)}...` : original;
-			ctx.ui.setStatus("preprocessor", "Preprocessing error!");
-			ctx.ui.notify(`Error on: "${origPreview}"`, "error");
-			resolve({ action: "continue" });
-			processQueue(ctx);
-			return;
-		}
-
-		const textContent = result.content.filter((c): c is { type: "text"; text: string } => c.type === "text");
-		let cleaned = textContent.length > 0 ? textContent[0].text.trim() : null;
-
-		// Strip <user_message> XML tags that the LLM might echo back
-		if (cleaned) {
-			cleaned = cleaned
-				.replace(/^<user_message>/i, "")
-				.replace(/<\/user_message>$/i, "")
-				.trim();
-		}
-
-		if (cleaned && cleaned !== original && cleaned.length > 0) {
-			state.preprocessedCount++;
-			state.preprocessingExhausted = true;
-			state.preprocessedText = cleaned;
-
-			if (state.config.showDiff) {
-				const lines = generateDiffLines(original, cleaned);
-				ctx.ui.setWidget("preprocessor-diff", lines, { placement: "aboveEditor" });
-				setTimeout(() => {
-					ctx.ui.setWidget("preprocessor-diff", undefined);
-				}, 15000);
-			}
-
-			// Update editor text with cleaned version
-			ctx.ui.setEditorText(cleaned);
-			ctx.ui.setStatus("preprocessor", "✓ Preprocessed - press Enter to continue");
-
-			// Return "handled" to stop the current prompt cycle.
-			// User reviews the edited text in the editor and presses Enter to send it to the LLM.
-			resolve({ action: "handled" });
-		} else {
-			state.skippedCount++;
-			state.preprocessingExhausted = true;
-			state.preprocessedText = original;
-			// No change needed, proceed normally
-			resolve({ action: "continue" });
-		}
+		result = await Promise.race([preprocessPromise, timeoutPromise]);
 	} catch (err: unknown) {
+		if (err instanceof Error && err.message === "timeout") {
+			state.errorCount++;
+			ctx.ui.notify(`Preprocessing timeout on: "${original.slice(0, 80)}..."`, "warning");
+			return null;
+		}
+		// Abort — don't show error, just return original
+		if ((err as Error)?.name === "AbortError" || ctx.signal?.aborted) {
+			return null;
+		}
+		throw err;
+	}
+
+	if (!result || result.errorMessage) {
 		state.errorCount++;
-		state.skippedCount++;
-		const origPreview = original.length > 100 ? `${original.slice(0, 100)}...` : original;
-		const errorMsg = err instanceof Error ? err.message : "Unknown error";
-		ctx.ui.setStatus("preprocessor", "Preprocessing error!");
-		ctx.ui.notify(`Error on: "${origPreview}" - ${errorMsg}`, "error");
-		resolve({ action: "continue" });
+		const errorMsg = result?.errorMessage ?? "Unknown error";
+		ctx.ui.notify(`Preprocessing error: ${errorMsg}`, "error");
+		return null;
 	}
 
-	processQueue(ctx);
+	const textContent = result.content.filter((c): c is { type: "text"; text: string } => c.type === "text");
+	let cleaned = textContent.length > 0 ? textContent[0].text.trim() : null;
+
+	// Strip <user_message> XML tags
+	if (cleaned) {
+		cleaned = cleaned
+			.replace(/^<user_message>/i, "")
+			.replace(/<\/user_message>$/i, "")
+			.trim();
+	}
+
+	return cleaned && cleaned !== original && cleaned.length > 0 ? cleaned : null;
 }
 
-function processQueue(ctx: ExtensionContext) {
-	if (state.queue.length === 0) {
-		state.isProcessing = false;
-		ctx.ui.setStatus("preprocessor", undefined);
-		return;
-	}
-
-	const next = state.queue.shift()!;
-	processMessage(next.text, next.images, ctx, next.resolve);
-
-	if (state.queue.length > 0) {
-		ctx.ui.setStatus("preprocessor", `Queue: ${state.queue.length + 1} messages...`);
-	}
-}
+// ============================================================================
+// Extension Registration
+// ============================================================================
 
 export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
-	// DEBUG: trace registration
-	console.log("[preprocessor] Extension loaded, registering handlers...");
-
 	pi.registerTool({
 		name: "preprocessor_config",
 		label: "Configure Message Preprocessor",
@@ -461,50 +304,36 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 				content: [
 					{
 						type: "text" as const,
-						text: `Preprocessor Stats:\n- Preprocessed: ${state.preprocessedCount}\n- Skipped: ${state.skippedCount}\n- Errors: ${state.errorCount}\n- Queued: ${state.queue.length}`,
+						text: `Preprocessor Stats:\n- Preprocessed: ${state.preprocessedCount}\n- Skipped: ${state.skippedCount}\n- Errors: ${state.errorCount}`,
 					},
 				],
 				details: {
 					preprocessed: state.preprocessedCount,
 					skipped: state.skippedCount,
 					errors: state.errorCount,
-					queued: state.queue.length,
+					queued: 0,
 				},
 			};
 		},
 	});
 
 	pi.on("input", async (event, ctx): Promise<InputEventResult> => {
-		console.log("[preprocessor] INPUT EVENT fired:", JSON.stringify({ textLength: event.text.length, text: event.text.slice(0, 50), source: event.source }));
-
 		if (!state.config.enabled) {
-			console.log("[preprocessor] Disabled, skipping");
 			return { action: "continue" };
 		}
 
 		const original = event.text;
 
-		console.log("[preprocessor] Processing text:", original.slice(0, 80));
-
 		if (original.length === 0) {
-			console.log("[preprocessor] Empty text, skipping");
 			return { action: "continue" };
 		}
 
 		if (original.length < state.config.minLength) {
 			state.skippedCount++;
-			console.log("[preprocessor] Too short (minLength), skipping");
 			return { action: "continue" };
 		}
 
-		// If preprocessing was already done in this agentic session, skip
-		// This handles both unchanged preprocessed text AND user modifications
-		if (state.preprocessingExhausted) {
-			console.log("[preprocessor] Already preprocessed in session, skipping");
-			return { action: "continue" };
-		}
-
-		if (state.config.skipCommands && (original.startsWith("/") || original.startsWith("!"))) {
+		if (original.startsWith("/") || original.startsWith("!")) {
 			state.skippedCount++;
 			return { action: "continue" };
 		}
@@ -521,39 +350,53 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 			return { action: "continue" };
 		}
 
-		if (state.isProcessing) {
-			const queuePosition = state.queue.length + 1;
-			ctx.ui.setStatus("preprocessor", `Queue: ${queuePosition} messages waiting...`);
+		// Run preprocessing — await result and return transform
+		ctx.ui.setStatus("preprocessor", `Preprocessing...`);
+		ctx.ui.setWidget("preprocessor-diff", undefined);
 
-			return new Promise<InputEventResult>((resolve) => {
-				state.queue.push({
-					text: original,
-					images: event.images,
-					resolve,
-				});
-			});
+		try {
+			const cleaned = await preprocess(original, event.images, ctx);
+			clearPreprocessorWidget(ctx);
+
+			if (cleaned) {
+				state.preprocessedCount++;
+				state.lastOriginal = original;
+				state.lastCleaned = cleaned;
+
+				if (state.config.showDiff) {
+					const diffLines = generateDiffLines(original, cleaned);
+					ctx.ui.setWidget("preprocessor-diff", diffLines, { placement: "aboveEditor" });
+					// Auto-clear diff after 15s
+					setTimeout(() => {
+						if (state.lastCleaned === cleaned) {
+							ctx.ui.setWidget("preprocessor-diff", undefined);
+						}
+					}, 15000);
+				}
+
+				// Use transform — the cleaned text goes to the agent in the same submit cycle.
+				// The UX extension's input handler runs after this and returns "continue"
+				// for non-special messages, so the transform is applied and flow continues.
+				return { action: "transform", text: cleaned };
+			} else {
+				state.skippedCount++;
+				return { action: "continue" };
+			}
+		} catch (err: unknown) {
+			clearPreprocessorWidget(ctx);
+			state.errorCount++;
+			if ((err as Error)?.name !== "AbortError") {
+				const errorMsg = err instanceof Error ? err.message : "Unknown error";
+				ctx.ui.notify(`Preprocessor error: ${errorMsg}`, "error");
+			}
+			return { action: "continue" };
 		}
-
-		return new Promise<InputEventResult>((resolve) => {
-			processMessage(original, event.images, ctx, resolve);
-		});
 	});
 
-	// Reset preprocessing state on session start (new session, resume, fork)
-	// This ensures preprocessing runs for the FIRST user message in a session.
+	// Reset on session start
 	pi.on("session_start", async (_event, _ctx) => {
-		console.log("[preprocessor] session_start, resetting preprocessingExhausted");
-		state.preprocessingExhausted = false;
-		state.preprocessedText = undefined;
-	});
-
-	// Reset preprocessing state when agent finishes, so next user input
-	// can be processed. This ensures preprocessing runs once per user message,
-	// not on every agent turn in a conversation.
-	pi.on("agent_end", async (_event, _ctx) => {
-		console.log("[preprocessor] agent_end, resetting preprocessingExhausted");
-		state.preprocessingExhausted = false;
-		state.preprocessedText = undefined;
+		state.lastCleaned = null;
+		state.lastOriginal = null;
 	});
 
 	pi.registerCommand("preprocessor", {
@@ -564,4 +407,60 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 			ctx.ui.notify(`Message preprocessor ${state.config.enabled ? "enabled" : "disabled"}`, "info");
 		},
 	});
+}
+
+// ============================================================================
+// Diff Display (minimal ANSI helpers)
+// ============================================================================
+
+const colors = {
+	red: (text: string) => `\x1b[31m${text}\x1b[0m`,
+	green: (text: string) => `\x1b[32m${text}\x1b[0m`,
+	dim: (text: string) => `\x1b[2m${text}\x1b[0m`,
+};
+
+function generateDiffLines(original: string, cleaned: string): string[] {
+	const lines: string[] = [];
+	lines.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+	lines.push("  Preprocessed");
+	lines.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+	const origLines = original.split("\n");
+	const cleanLines = cleaned.split("\n");
+
+	const deletions: string[] = [];
+	const additions: string[] = [];
+
+	const maxLines = 10;
+	for (let i = 0; i < maxLines; i++) {
+		const origLine = origLines[i];
+		const cleanLine = cleanLines[i];
+		if (origLine === undefined && cleanLine !== undefined) {
+			additions.push(cleanLine);
+		} else if (cleanLine === undefined && origLine !== undefined) {
+			deletions.push(origLine);
+		} else if (origLine !== undefined && cleanLine !== undefined && origLine !== cleanLine) {
+			deletions.push(origLine);
+			additions.push(cleanLine);
+		}
+	}
+
+	for (const line of deletions.slice(0, 5)) {
+		const truncated = line.length > 60 ? `${line.slice(0, 60)}…` : line;
+		lines.push(`  ${colors.red("-")} ${truncated}`);
+	}
+	for (const line of additions.slice(0, 5)) {
+		const truncated = line.length > 60 ? `${line.slice(0, 60)}…` : line;
+		lines.push(`  ${colors.green("+")} ${truncated}`);
+	}
+
+	const totalChanges = deletions.length + additions.length;
+	if (totalChanges > 10) {
+		lines.push(`  ${colors.dim("…")} ${totalChanges} total changes`);
+	}
+
+	lines.push("");
+	lines.push(`  ${original.length} → ${cleaned.length} chars`);
+
+	return lines;
 }

@@ -49,6 +49,7 @@ import replExtension from "./extensions/repl/index.js";
 import scratchpadExtension from "./extensions/scratchpad/index.js";
 import sessionRecallExtension from "./extensions/session-recall/index.js";
 import analyticsExtension from "./extensions/analytics/index.js";
+import assistantExtension from "./extensions/assistant/index.js";
 import userMessagePreprocessorExtension from "./extensions/user-message-preprocessor/index.js";
 import visionExtension from "./extensions/vision/index.js";
 import watchdogExtension from "./extensions/watchdog/index.js";
@@ -96,6 +97,7 @@ const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void 
 	{ name: "rate-limiter", factory: rateLimiterExtension },
 	{ name: "safety", factory: safetyExtension },
 	{ name: "ux", factory: uxExtension },
+	{ name: "assistant", factory: assistantExtension },
 	{ name: "vision", factory: visionExtension },
 	{ name: "reasoning", factory: reasoningExtension },
 	{ name: "repl", factory: replExtension },
