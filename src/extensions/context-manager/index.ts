@@ -6,12 +6,393 @@
  * - context_log: View history with token usage
  * - context_checkout: Navigate to previous state
  *
+ * Rule-based context pruning (inspired by pi-dcp):
+ * - deduplication: Removes duplicate tool outputs
+ * - superseded_writes: Removes older writes when newer versions exist
+ * - error_purging: Removes resolved errors
+ * - recency: Protects recent messages from pruning
+ *
  * Key: pi in factory is ExtensionAPI (registration only).
  * Session manager methods accessed via ctx in tool execute and event handlers.
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
+
+// ============================================================================
+// Rule-Based Pruning Types
+// ============================================================================
+
+interface MessageWithMetadata {
+	message: AgentMessage;
+	metadata: PruneMetadata;
+}
+
+interface PruneMetadata {
+	hash?: string;
+	filePath?: string;
+	fileVersion?: string;
+	isError?: boolean;
+	errorResolved?: boolean;
+	recencyScore?: number;
+	shouldPrune?: boolean;
+	pruneReason?: string;
+	[key: string]: unknown;
+}
+
+interface PruneContext {
+	messages: MessageWithMetadata[];
+	index: number;
+}
+
+interface PruneRule {
+	name: string;
+	description?: string;
+	enabled?: boolean;
+	prepare?: (msg: MessageWithMetadata, ctx: PruneContext) => void;
+	process?: (msg: MessageWithMetadata, ctx: PruneContext) => void;
+}
+
+// ============================================================================
+// Pruning State
+// ============================================================================
+
+interface PruningState {
+	enabled: boolean;
+	rules: PruneRule[];
+	keepRecentCount: number;
+	protectedTools: Set<string>;
+	stats: {
+		totalPruned: number;
+		totalProcessed: number;
+		pruneReasons: Record<string, number>;
+	};
+}
+
+const pruningState: PruningState = {
+	enabled: true,
+	rules: [],
+	keepRecentCount: 10,
+	protectedTools: new Set(["write", "edit"]),
+	stats: {
+		totalPruned: 0,
+		totalProcessed: 0,
+		pruneReasons: {},
+	},
+};
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+function hashMessage(msg: AgentMessage): string {
+	const content = extractMessageContent(msg);
+	let hash = 0;
+	for (let i = 0; i < content.length; i++) {
+		const char = content.charCodeAt(i);
+		hash = ((hash << 5) - hash) + char;
+		hash = hash & hash;
+	}
+	return Math.abs(hash).toString(36);
+}
+
+function extractMessageContent(msg: AgentMessage): string {
+	// Handle messages without content (e.g., BashExecutionMessage)
+	if (!msg || !("content" in msg)) return "";
+	const content = (msg as any).content;
+	if (!content) return "";
+	if (typeof content === "string") return content;
+	if (Array.isArray(content)) {
+		return content
+			.map((p: any) => {
+				if (typeof p === "object" && p !== null) {
+					if ("text" in p) return p.text;
+					if ("thinking" in p) return p.thinking;
+				}
+				return "";
+			})
+			.join(" ");
+	}
+	return "";
+}
+
+function extractFilePath(msg: AgentMessage): string | undefined {
+	if (msg.role !== "toolResult") return undefined;
+	const details = (msg as any).details;
+	if (details && typeof details === "object" && "path" in details && typeof details.path === "string") {
+		return details.path;
+	}
+	return undefined;
+}
+
+function isErrorMessage(msg: AgentMessage): boolean {
+	return (msg as any).isError === true;
+}
+
+function isSameOperation(msg1: AgentMessage, msg2: AgentMessage): boolean {
+	const tool1 = (msg1 as any).toolName;
+	const tool2 = (msg2 as any).toolName;
+	if (tool1 !== tool2) return false;
+
+	const args1 = (msg1 as any).toolCallId;
+	const args2 = (msg2 as any).toolCallId;
+	return args1 === args2;
+}
+
+function hasToolUse(msg: AgentMessage): boolean {
+	if (msg.role !== "assistant") return false;
+	if (!Array.isArray(msg.content)) return false;
+	return msg.content.some((c: any) => c.type === "toolCall");
+}
+
+function hasToolResult(msg: AgentMessage): boolean {
+	return msg.role === "toolResult" || msg.role === "bashExecution";
+}
+
+function extractToolUseIds(msg: AgentMessage): string[] {
+	if (msg.role !== "assistant") return [];
+	if (!Array.isArray(msg.content)) return [];
+	return msg.content
+		.filter((c: any) => c.type === "toolCall" && typeof c.id === "string")
+		.map((c: any) => c.id as string);
+}
+
+function extractResultIds(msg: AgentMessage): string[] {
+	if (!hasToolResult(msg)) return [];
+	return [(msg as any).toolCallId].filter(Boolean);
+}
+
+// ============================================================================
+// Built-in Prune Rules
+// ============================================================================
+
+const deduplicationRule: PruneRule = {
+	name: "deduplication",
+	description: "Remove duplicate tool outputs based on content hash",
+	enabled: true,
+
+	prepare(msg: MessageWithMetadata) {
+		msg.metadata.hash = hashMessage(msg.message);
+	},
+
+	process(msg: MessageWithMetadata, ctx: PruneContext) {
+		if (msg.metadata.shouldPrune) return;
+		if (msg.message.role === "user") return;
+		if (hasToolUse(msg.message)) return;
+
+		const currentHash = msg.metadata.hash;
+		if (!currentHash) return;
+
+		const seenBefore = ctx.messages.slice(0, ctx.index).some(
+			(m) => m.metadata.hash === currentHash
+		);
+
+		if (seenBefore) {
+			msg.metadata.shouldPrune = true;
+			msg.metadata.pruneReason = "duplicate content";
+		}
+	},
+};
+
+const supersededWritesRule: PruneRule = {
+	name: "superseded_writes",
+	description: "Remove older file writes when newer versions exist",
+	enabled: true,
+
+	prepare(msg: MessageWithMetadata) {
+		const filePath = extractFilePath(msg.message);
+		if (filePath) {
+			msg.metadata.filePath = filePath;
+			msg.metadata.fileVersion = hashMessage(msg.message);
+		}
+	},
+
+	process(msg: MessageWithMetadata, ctx: PruneContext) {
+		if (msg.metadata.shouldPrune) return;
+		if (!msg.metadata.filePath) return;
+		if (msg.message.role === "user") return;
+
+		const laterWrite = ctx.messages.slice(ctx.index + 1).find(
+			(m) => m.metadata.filePath === msg.metadata.filePath
+		);
+
+		if (laterWrite) {
+			msg.metadata.shouldPrune = true;
+			msg.metadata.pruneReason = `superseded by later write to ${msg.metadata.filePath}`;
+		}
+	},
+};
+
+const errorPurgingRule: PruneRule = {
+	name: "error_purging",
+	description: "Remove resolved errors from context",
+	enabled: true,
+
+	prepare(msg: MessageWithMetadata, ctx: PruneContext) {
+		const isError = isErrorMessage(msg.message);
+		msg.metadata.isError = isError;
+
+		if (isError) {
+			const laterSuccess = ctx.messages.slice(ctx.index + 1).find(
+				(m: MessageWithMetadata) => isSameOperation(m.message, msg.message) && !isErrorMessage(m.message)
+			);
+			msg.metadata.errorResolved = !!laterSuccess;
+		}
+	},
+
+	process(msg: MessageWithMetadata) {
+		if (msg.metadata.shouldPrune) return;
+		if (msg.message.role === "user") return;
+
+		if (msg.metadata.isError && msg.metadata.errorResolved) {
+			msg.metadata.shouldPrune = true;
+			msg.metadata.pruneReason = "error resolved by later success";
+		}
+	},
+};
+
+const recencyRule: PruneRule = {
+	name: "recency",
+	description: "Protect recent messages from pruning",
+	enabled: true,
+
+	prepare(msg: MessageWithMetadata, ctx: PruneContext) {
+		msg.metadata.recencyScore = ctx.messages.length - 1 - ctx.index;
+	},
+
+	process(msg: MessageWithMetadata) {
+		if (msg.metadata.recencyScore !== undefined && msg.metadata.recencyScore < pruningState.keepRecentCount) {
+			msg.metadata.shouldPrune = false;
+		}
+	},
+};
+
+// Register built-in rules
+pruningState.rules = [
+	deduplicationRule,
+	supersededWritesRule,
+	errorPurgingRule,
+	recencyRule,
+];
+
+// ============================================================================
+// Pruning Workflow
+// ============================================================================
+
+function applyPruningWorkflow(messages: AgentMessage[]): AgentMessage[] {
+	if (!pruningState.enabled || messages.length === 0) {
+		return messages;
+	}
+
+	// Phase 1: Wrap messages with metadata
+	const withMetadata: MessageWithMetadata[] = messages.map((message) => ({
+		message,
+		metadata: {} as PruneMetadata,
+	}));
+
+	// Phase 2: Prepare - annotate metadata
+	for (const rule of pruningState.rules) {
+		if (!rule.enabled) continue;
+		if (!rule.prepare) continue;
+
+		withMetadata.forEach((msg, index) => {
+			try {
+				rule.prepare!(msg, { messages: withMetadata, index });
+			} catch (err) {
+				console.error(`[context-manager] Rule "${rule.name}" prepare error:`, err);
+			}
+		});
+	}
+
+	// Phase 3: Process - make pruning decisions
+	for (const rule of pruningState.rules) {
+		if (!rule.enabled) continue;
+		if (!rule.process) continue;
+
+		withMetadata.forEach((msg, index) => {
+			try {
+				rule.process!(msg, { messages: withMetadata, index });
+			} catch (err) {
+				console.error(`[context-manager] Rule "${rule.name}" process error:`, err);
+			}
+		});
+	}
+
+	// Phase 3.5: Repair orphaned tool pairs
+	repairOrphanedToolPairs(withMetadata);
+
+	// Phase 4: Filter
+	const filtered = withMetadata.filter((m) => !m.metadata.shouldPrune).map((m) => m.message);
+
+	// Update stats
+	const prunedCount = messages.length - filtered.length;
+	if (prunedCount > 0) {
+		pruningState.stats.totalPruned += prunedCount;
+		pruningState.stats.totalProcessed += messages.length;
+
+		withMetadata
+			.filter((m) => m.metadata.shouldPrune && m.metadata.pruneReason)
+			.forEach((m) => {
+				const reason = m.metadata.pruneReason!;
+				pruningState.stats.pruneReasons[reason] = (pruningState.stats.pruneReasons[reason] || 0) + 1;
+			});
+		}
+
+	return filtered;
+}
+
+function repairOrphanedToolPairs(messages: MessageWithMetadata[]): void {
+	// Collect tool_use IDs from kept assistant messages
+	const keptToolUseIds = new Set<string>();
+	for (const msg of messages) {
+		if (msg.metadata.shouldPrune) continue;
+		if (!hasToolUse(msg.message)) continue;
+		for (const id of extractToolUseIds(msg.message)) {
+			keptToolUseIds.add(id);
+		}
+	}
+
+	// Find orphaned tool_results and resurrect their assistants
+	const resurrected: MessageWithMetadata[] = [];
+	for (const msg of messages) {
+		if (msg.metadata.shouldPrune) continue;
+		if (!hasToolResult(msg.message)) continue;
+
+		const resultIds = extractResultIds(msg.message);
+		for (const id of resultIds) {
+			if (keptToolUseIds.has(id)) continue;
+
+			// Orphaned - find and resurrect the matching assistant
+			for (const candidate of messages) {
+				if (!candidate.metadata.shouldPrune) continue;
+				if (!hasToolUse(candidate.message)) continue;
+				const candidateIds = extractToolUseIds(candidate.message);
+				if (candidateIds.includes(id)) {
+					candidate.metadata.shouldPrune = false;
+					candidate.metadata.pruneReason = undefined;
+					resurrected.push(candidate);
+					for (const cid of candidateIds) keptToolUseIds.add(cid);
+					break;
+				}
+			}
+		}
+	}
+
+	// Second pass: un-prune tool_results paired with resurrected assistants
+	for (const assistant of resurrected) {
+		const assistantIds = extractToolUseIds(assistant.message);
+		for (const msg of messages) {
+			if (!msg.metadata.shouldPrune) continue;
+			if (!hasToolResult(msg.message)) continue;
+			const resultIds = extractResultIds(msg.message);
+			if (resultIds.some((id) => assistantIds.includes(id))) {
+				msg.metadata.shouldPrune = false;
+				msg.metadata.pruneReason = undefined;
+			}
+		}
+	}
+}
 
 // ============================================================================
 // Schemas
@@ -34,15 +415,10 @@ const contextCheckoutSchema = Type.Object({
 });
 
 const contextPruneSchema = Type.Object({
-	/** When true, only analyzes and reports candidates without taking action (default: true) */
-	analyzeOnly: Type.Optional(Type.Boolean()),
-	/** @deprecated Use analyzeOnly instead. Alias for backward compatibility. */
-	dryRun: Type.Optional(Type.Boolean()),
-	minAge: Type.Optional(Type.Number({ description: "Min turns since entry to consider (default: 5)" })),
-	summarize: Type.Optional(Type.Boolean({ description: "Suggest creating summary before pruning (default: true)" })),
-	toolFilter: Type.Optional(Type.Array(Type.String(), { description: "Focus on specific tool types (e.g. ['bash', 'read'])" })),
-	/** When true, triggers manual compaction to reduce context (default: false) */
-	compact: Type.Optional(Type.Boolean()),
+	/** Min turns since entry to consider for pruning analysis (default: 5) */
+	minAge: Type.Optional(Type.Number()),
+	/** Focus analysis on specific tool types (e.g. ['bash', 'read']) */
+	toolFilter: Type.Optional(Type.Array(Type.String())),
 });
 
 const contextAuditSchema = Type.Object({
@@ -706,18 +1082,19 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 	});
 
 	// ── context_prune ─────────────────────────────────────────────────
+	// Analysis tool - identifies candidates for pruning (not actual removal)
+	// Actual pruning happens via the `context` event handler
 	pi.registerTool({
 		name: "context_prune",
 		label: "Context Prune",
 		description:
-			"Analyze session and identify obsolete entries for pruning/summarization. This is an analysis-only tool — entries cannot be deleted from the append-only session. Use `compact: true` to trigger context compaction.",
+			"Analyze session and identify obsolete entries for potential pruning. " +
+			"This is ANALYSIS ONLY — it does not remove entries. " +
+			"Automatic pruning runs on every LLM call via rule-based filtering (dedup, superseded writes, errors, recency). " +
+			"Use `context_compress` for LLM-driven compression of specific ranges.",
 		parameters: contextPruneSchema,
 		execute: async (_toolCallId: string, params: any, _signal: any, _onUpdate: any, ctx: any): Promise<any> => {
-			// Handle both analyzeOnly and deprecated dryRun parameter
-			const analyzeOnly = params.analyzeOnly ?? (params.dryRun !== undefined ? params.dryRun : true);
-			const shouldCompact = params.compact ?? false;
 			const minAge = params.minAge ?? 5;
-			const showRecommendations = params.summarize ?? true;
 			
 			const audit = analyzeSession(ctx);
 			
@@ -730,85 +1107,37 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 				);
 			}
 			
-			// Take top candidates
 			const topCandidates = candidates.slice(0, 15);
 			
 			const lines: string[] = [];
 			
-			// Always show analysis mode clearly
-			if (analyzeOnly) {
-				lines.push(`## Context Analysis`);
-				lines.push("\n📊 **Analysis mode** — Session is append-only, entries cannot be deleted.");
-				lines.push("Use `compact: true` to trigger context compaction.");
-			} else if (shouldCompact) {
-				lines.push(`## Context Compaction`);
-				lines.push("\n🔄 **Compaction triggered** — Summarizing old entries to reduce context.");
-			} else {
-				lines.push(`## Context Analysis`);
-				lines.push("\n📊 **Analysis only** — No action taken (use `compact: true` to reduce context).");
-			}
+			lines.push(`## Context Prune Analysis`);
+			lines.push("\n📊 **Analysis mode** — This is analysis only.");
+			lines.push("Automatic rule-based pruning runs on every LLM call.");
+			lines.push("Use `context_compress` for LLM-driven compression.");
 			
 			lines.push(`\n**Context Usage:** ${audit.usage.percent.toFixed(1)}% (${Math.round(audit.usage.tokens / 1024)}K tokens)`);
 			lines.push(`**Session:** ${audit.branchLength} entries, ${audit.tagCount} tags, ${audit.summaryCount} summaries`);
+			lines.push(`**Auto-pruned:** ${pruningState.stats.totalPruned} messages (${pruningState.stats.totalProcessed} total processed)`);
 			
 			if (topCandidates.length === 0) {
 				lines.push("\n✓ No prune candidates found (session is clean)");
 				return {
 					content: [{ type: "text" as const, text: lines.join("\n") }],
-					details: { analyzeOnly, candidatesFound: 0, audit },
+					details: { candidatesFound: 0, audit, stats: pruningState.stats },
 				};
 			}
 			
 			lines.push(`\n## Prune Candidates (${topCandidates.length} of ${candidates.length} shown)`);
 			lines.push("\n" + formatPruneCandidates(topCandidates));
 			
-			// Summary recommendations
-			if (showRecommendations && topCandidates.length > 0) {
-				const highScore = topCandidates.filter((c) => c.score >= 0.6);
-				if (highScore.length > 0) {
-					lines.push("\n## Recommendations");
-					
-					if (shouldCompact) {
-						lines.push("\n✅ Compaction in progress. The system will:");
-						lines.push("1. Summarize the oldest entries into a summary");
-						lines.push("2. Mark entries before the cut point as compacted");
-						lines.push("3. Reduce context usage significantly");
-					} else {
-						lines.push("\n**To reduce context, use one of:");
-						lines.push("1. `compact: true` — Trigger compaction to summarize old entries");
-						lines.push("2. `context_tag` — Create checkpoint before risky changes");
-						lines.push("3. `context_checkout` — Branch to a clean state");
-						lines.push("4. Store key learnings in memory for future recall");
-					}
-					
-					if (audit.usage.percent > 60) {
-						lines.push("\n**⚠ High context usage!** Consider `compact: true` or `/compact`.");
-					}
-				}
-			}
-			
-			// If compact requested, trigger it via event
-			let compactTriggered = false;
-			if (shouldCompact && !analyzeOnly) {
-				try {
-					// Emit a custom event that the compaction system can pick up
-					ctx.emit?.("force_compact", { candidates: topCandidates.map(c => c.id) });
-					compactTriggered = true;
-					lines.push("\n📝 Compaction requested. The agent will process it in the next turn.");
-				} catch {
-					lines.push("\n⚠ Could not trigger compaction automatically.");
-					lines.push("Use `/compact` command instead.");
-				}
-			}
-			
 			return {
 				content: [{ type: "text" as const, text: lines.join("\n") }],
-				details: { 
-					analyzeOnly, 
-					compactTriggered,
-					candidatesFound: candidates.length, 
-					topCandidates: topCandidates.map((c) => ({ id: c.id, score: c.score, reason: c.reason })), 
-					audit 
+				details: {
+					candidatesFound: candidates.length,
+					topCandidates: topCandidates.map((c) => ({ id: c.id, score: c.score, reason: c.reason })),
+					audit,
+					stats: pruningState.stats,
 				},
 			};
 		},
@@ -1332,5 +1661,97 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 		} catch (err) {
 			console.error("[context-manager] auto_retry_end error:", err);
 		}
+	});
+
+	// ── Context Event Handler ─────────────────────────────────────────────
+	// Real pruning via message array transformation (inspired by pi-dcp)
+	// This runs before each LLM call to filter/prune messages
+	pi.on("context", async (event: any, ctx: any) => {
+		try {
+			const messages = event.messages as AgentMessage[];
+			if (!messages || messages.length === 0) return;
+
+			const filtered = applyPruningWorkflow(messages);
+
+			// Log stats if we pruned anything
+			const pruned = messages.length - filtered.length;
+			if (pruned > 0) {
+				console.log(`[context-manager] Pruned ${pruned} messages (${filtered.length} remaining)`);
+			}
+
+			return { messages: filtered };
+		} catch (err) {
+			console.error("[context-manager] context event error:", err);
+		}
+	});
+
+	// ── context_compress Tool ──────────────────────────────────────────────
+	// LLM-driven compression: remove ranges and inject synthetic summaries
+	pi.registerTool({
+		name: "context_compress",
+		label: "Compress Context",
+		description:
+			"Compress a range of conversation into a summary. The LLM generates a summary, " +
+			"and the original messages are marked for removal from context (not deleted from session). " +
+			"Use when a task is complete and the details are no longer needed in context.",
+		parameters: Type.Object({
+			topic: Type.String({ description: "Brief topic label (e.g., 'Auth Implementation', 'Bug Fix')" }),
+			startIndex: Type.Number({ description: "Index of first message to compress" }),
+			endIndex: Type.Number({ description: "Index of last message to compress" }),
+			summary: Type.String({ description: "Comprehensive summary of what was accomplished" }),
+		}),
+		execute: async (_toolCallId: string, params: any, _signal: any, _onUpdate: any, ctx: any): Promise<any> => {
+			const { topic, startIndex, endIndex, summary } = params;
+
+			if (startIndex < 0 || endIndex < startIndex) {
+				return {
+					content: [{ type: "text" as const, text: "Invalid range: startIndex must be >= 0 and endIndex must be >= startIndex" }],
+					details: { error: true },
+				};
+			}
+
+			// Store compression in session for persistence
+			const sm = ctx.sessionManager;
+			sm.appendCustomEntry("context_compression", {
+				topic,
+				startIndex,
+				endIndex,
+				summary,
+				timestamp: Date.now(),
+			});
+
+			return {
+				content: [{
+					type: "text" as const,
+					text: `Compressed ${endIndex - startIndex + 1} messages into summary: "${topic}"\n\n` +
+							`The summary will be visible in context. Original messages are preserved in session file.`,
+				}],
+				details: {
+					compressed: endIndex - startIndex + 1,
+					topic,
+				},
+			};
+		},
+	});
+
+	// ── context_prune_stats Command ───────────────────────────────────────
+	pi.registerCommand("context-stats", {
+		description: "Show context pruning statistics",
+		handler: async (_args: string | undefined, ctx: any) => {
+			const stats = pruningState.stats;
+			const rules = pruningState.rules.filter((r) => r.enabled).map((r) => r.name);
+
+			ctx.ui.notify(
+				[
+					"Context Pruning Stats:",
+					`  Total pruned: ${stats.totalPruned}`,
+					`  Total processed: ${stats.totalProcessed}`,
+					`  Active rules: ${rules.join(", ") || "none"}`,
+					`  Keep recent: ${pruningState.keepRecentCount} messages`,
+					`  Prune reasons: ${Object.entries(stats.pruneReasons).map(([k, v]) => `${k}=${v}`).join(", ") || "none"}`,
+				].join("\n"),
+				"info",
+			);
+		},
 	});
 }
