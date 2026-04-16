@@ -220,26 +220,21 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		// Collect signals for the bundled nudge
 		const sessionSignals: string[] = [];
 
-		// Memory signal
+		// Memory signal: fires on EVENT basis, not schedule.
+		// Trigger: code changed after last memory usage (not just turns elapsed).
+		// The session_compact handler fires the primary compaction memory signal.
 		if (
 			!hadErrors &&
 			state.config.enforceMemory &&
-			state.turnsSinceMemory >= state.config.memoryNudgeThreshold &&
-			actualTools.length > 0 &&
+			state.hasCodeChanges &&
+			state.turnsSinceMemory >= 20 && // only after substantial work without memory
 			!state.memoryNudgeSent
 		) {
 			state.memoryNudgeSent = true;
-
-			let hint = "Store key learnings: memory_store(content=\"...\", tags=[\"insight\"])";
-			if (state.hasCodeChanges) {
-				hint = "Store the key pattern or fix you discovered: memory_store(content=\"...\", tags=[\"pattern\", \"fix\"])";
-			} else if (state.hasExplored) {
-				hint = "Store what you learned: memory_store(content=\"...\", tags=[\"codebase\", \"insight\"])";
-			} else if (state.verificationsDone > 0) {
-				hint = "Store verification results: memory_store(content=\"...\", tags=[\"verification\"])";
-			}
-
-			sessionSignals.push(`Memory: ${state.turnsSinceMemory} turns — ${hint}`);
+			sessionSignals.push(
+				"Code changed but nothing stored. Capture the key pattern or fix: " +
+				"memory_store(content=\"...\", tags=[\"pattern\", \"fix\"])",
+			);
 		}
 
 		// Scratchpad signal: code changed but scratchpad not updated
@@ -322,6 +317,54 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 			if (shouldSend) {
 				sendEnforcementWhisper(pi, bundled);
 			}
+		}
+	});
+
+	// ── session_compact ────────────────────────────────────────────────────────
+	// L3: Compaction happened — harness-level minimum-fidelity trigger.
+	// Key learnings from scratchpad must be persisted before they get lost.
+	// Read scratchpad key_learnings and surface them to the agent.
+	pi.on("session_compact" as any, async (event: any, ctx: any) => {
+		if (!state.enforcementActive) return;
+
+		const compactTurn = state.currentTurn;
+
+		// Read scratchpad key_learnings before compaction wipes context
+		try {
+			const scratchpadResult = await ctx.tools.scratchpad?.({ action: "read" });
+			const details = (scratchpadResult as any)?.details;
+			const learnings = details?.key_learnings ?? [];
+			const unpersisted = (learnings as any[]).filter((l: any) => !l.persisted);
+
+			if (unpersisted.length > 0) {
+				// L3: Individual message — compaction means context is about to lose these
+				sendEnforcementWhisper(
+					pi,
+					`Context compacted at turn ${compactTurn}. ` +
+					`${unpersisted.length} key learning(s) not yet persisted — these will be harder to recover:
+
+` +
+					unpersisted
+						.map((l: any) => `- memory_store(content="${l.content}", memoryType="insight", tags=["${l.category}", "session"])`)
+						.join("\n") +
+					`
+
+Persist them now — this is the minimum-fidelity moment.`,
+				);
+			}
+
+			// Reset hygiene counters: compaction resets context, agent needs fresh start
+		// without immediately being told "use context tools"
+		state.turnsSinceContextTool = 0;
+		state.contextToolNudged = false;
+		state.contextNudgeSent = false;
+		state.lastCompactionTurn = compactTurn;
+
+		// Also reset memory nudge since it should fire on new code changes post-compaction
+		state.memoryNudgeSent = false;
+		state.turnsSinceMemory = 0;
+		} catch {
+			// Silent fail — don't block on scratchpad read
 		}
 	});
 

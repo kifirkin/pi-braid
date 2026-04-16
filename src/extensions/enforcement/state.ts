@@ -16,7 +16,7 @@ export const DEFAULT_CONFIG: EnforcementConfig = {
 	enforceMemoryNudge: true,
 	// Context tool enforcement
 	enforceContextTools: true,
-	contextToolNudgeInterval: 20, // Nudge every N turns without context tools
+	contextToolNudgeInterval: 40, // Nudge after N turns without context tools (raised from 20 — compaction resets the counter)
 	enforceToolDiversity: true,
 	enforceExploreBeforeAct: true,
 	memoryNudgeThreshold: 15, // Lower threshold for proactive memory nudges
@@ -97,6 +97,8 @@ export const state = {
 	lastContextToolCall: 0,
 	turnsSinceContextTool: 0,
 	contextToolNudged: false,
+	// Last compaction turn (for hygiene signal reset)
+	lastCompactionTurn: 0,
 	// Track warned dangerous commands for 2-stage enforcement (command hash -> turn first warned)
 	warnedDangerousCommands: new Map<string, number>(),
 	// Memory hygiene: combined score (scratchpad + memory + context)
@@ -167,6 +169,7 @@ export function resetState(): void {
 	state.contextAuditThreshold = 0.7;
 	state.lastContextToolCall = 0;
 	state.turnsSinceContextTool = 0;
+	state.lastCompactionTurn = 0;
 	state.contextToolNudged = false;
 	// Reset dangerous command warnings
 	state.warnedDangerousCommands = new Map();
