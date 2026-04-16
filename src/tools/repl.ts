@@ -291,11 +291,18 @@ export function createReplTool(): AgentTool<typeof replSchema> {
 				}
 
 				// Prepare code - wrap in return if needed
-				const code = params.code.trim().startsWith("return ") || params.code.trim().startsWith("{")
-					? params.code
-					: `return ${params.code}`;
+				// Only preserve 'return' prefix; bare expressions always need wrapping
+				const trimmed = params.code.trim();
+				const needsWrap = !trimmed.startsWith("return ");
+				const code = needsWrap ? `return ${params.code}` : params.code;
 
-				const evalFn = new Function(...evalKeys, `"use strict";\n${code}`);
+				// Auto-wrap bare objects/arrays in parentheses to avoid ambiguity with blocks
+				// e.g., `return ({ name: "x" })` instead of `return { name: "x" }`
+				const wrappedCode = needsWrap && (trimmed.startsWith("{") || trimmed.startsWith("["))
+					? code.replace(/^return /, "return (").replace(/\}$/, ")}")
+					: code;
+
+				const evalFn = new Function(...evalKeys, `"use strict";\n${wrappedCode}`);
 
 				// Execute with timeout
 				let result: unknown;
