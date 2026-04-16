@@ -113,13 +113,7 @@ export function validateTurn(
 		state.silentTurns = 0;
 	}
 
-	// Check for planned vs actual tools - skip if tools had errors
-	if (!hadErrors && previousState && previousState.plannedTools.length > 0) {
-		const missedTools = previousState.plannedTools.filter((t) => !currentState.actualTools.includes(t));
-		if (missedTools.length > 0) {
-			issues.push(`You planned to use ${missedTools.join(", ")} but didn't. Either use them or update your plan.`);
-		}
-	}
+
 
 	// Check for tool sequence repetition — smart detection avoids false positives
 	if (!hadErrors && currentState.actualTools.length > 0) {
@@ -148,22 +142,7 @@ export function validateTurn(
 		}
 	}
 
-	// Check for scratchpad requirement - skip if tools had errors
-	const scratchpadCooldownTurns = 5;
-	const recentlyNudgedForScratchpad = state.currentTurn - state.lastScratchpadNudgeTurn < scratchpadCooldownTurns;
 
-	if (
-		!hadErrors &&
-		state.config.enforceScratchpad &&
-		currentState.actualTools.some((t) => ["edit", "write"].includes(t)) &&
-		!currentState.scratchpadUpdated &&
-		!recentlyNudgedForScratchpad
-	) {
-		issues.push(
-			"You made file changes without updating scratchpad. Use `scratchpad()` to track: goal, plan, decisions.",
-		);
-		state.lastScratchpadNudgeTurn = state.currentTurn;
-	}
 
 	// Generate nudge message
 	let nudge: string | null = null;

@@ -242,6 +242,22 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 			sessionSignals.push(`Memory: ${state.turnsSinceMemory} turns — ${hint}`);
 		}
 
+		// Scratchpad signal: code changed but scratchpad not updated
+		if (
+			!hadErrors &&
+			state.config.enforceScratchpad &&
+			actualTools.some((t) => ["edit", "write"].includes(t)) &&
+			!scratchpadUpdated
+		) {
+			// Only signal if we haven't done so recently
+			if (state.currentTurn - state.lastScratchpadNudgeTurn >= 8) {
+				state.lastScratchpadNudgeTurn = state.currentTurn;
+				sessionSignals.push(
+					`Code changed without updating scratchpad — consider scratchpad(action="add_note", text="...") or scratchpad(action="add_decision", text="...")`,
+				);
+			}
+		}
+
 		// Context tool signal
 		const contextToolInterval = state.config.contextToolNudgeInterval ?? 20;
 		if (

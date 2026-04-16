@@ -20,7 +20,7 @@ export const DEFAULT_CONFIG: EnforcementConfig = {
 	enforceToolDiversity: true,
 	enforceExploreBeforeAct: true,
 	memoryNudgeThreshold: 15, // Lower threshold for proactive memory nudges
-	maxSilentTurns: 2,
+	maxSilentTurns: 6,
 	warnOnToolSequenceRepetition: 3,
 	blockThinkBeforeEdit: false, // DEPRECATED: no longer blocks, kept for config compat
 	blockExploreBeforeWrite: true,
