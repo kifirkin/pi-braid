@@ -96,6 +96,7 @@ export const state = {
 	// Context tool usage tracking
 	// Last compaction turn (for hygiene signal reset)
 	lastCompactionTurn: 0,
+	overflowRecently: 0,
 	// Track warned dangerous commands for 2-stage enforcement (command hash -> turn first warned)
 	warnedDangerousCommands: new Map<string, number>(),
 	// Memory hygiene: combined score (scratchpad + memory + context)

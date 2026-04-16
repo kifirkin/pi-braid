@@ -115,6 +115,31 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		);
 		const hadErrors = erroredTools.size > 0;
 
+		// Detect context overflow — suppress L2 signals during recovery so the agent
+		// gets breathing room to stabilize after compaction/retry.
+		const isOverflowTurn =
+			event.message.role === "assistant" &&
+			"stopReason" in event.message &&
+			(event.message as { stopReason?: string }).stopReason === "error" &&
+			((event.message as any).content || [])
+				.flat()
+				.filter((c: any) => c?.type === "text")
+				.map((c: any) => c?.text || "")
+				.join(" ")
+				.toLowerCase()
+				.includes("context") &&
+			((event.message as any).content || [])
+				.flat()
+				.filter((c: any) => c?.type === "text")
+				.map((c: any) => c?.text || "")
+				.join(" ")
+				.toLowerCase()
+				.includes("overflow");
+
+		if (isOverflowTurn) {
+			state.overflowRecently = state.currentTurn;
+		}
+
 		// Track code changes
 		if (actualTools.some((t) => ["edit", "write"].includes(t))) {
 			detectRecordCodeChange(state.currentTurn);
@@ -213,8 +238,13 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		// Memory signal: fires on EVENT basis, not schedule.
 		// Trigger: code changed after last memory usage (not just turns elapsed).
 		// The session_compact handler fires the primary compaction memory signal.
+		// Skip during overflow recovery — agent needs breathing room to stabilize.
+		const RECOVERY_GRACE_TURNS = 5;
+		const inOverflowRecovery = state.currentTurn - state.overflowRecently < RECOVERY_GRACE_TURNS;
+
 		if (
 			!hadErrors &&
+			!inOverflowRecovery &&
 			state.config.enforceMemory &&
 			state.hasCodeChanges &&
 			state.turnsSinceMemory >= 20 && // only after substantial work without memory
@@ -233,8 +263,10 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		// covered by the context usage nudge (75%/85%) below.
 
 		// Scratchpad signal: code changed but scratchpad not updated
+		// Skip during overflow recovery — agent needs breathing room to stabilize.
 		if (
 			!hadErrors &&
+			!inOverflowRecovery &&
 			state.config.enforceScratchpad &&
 			actualTools.some((t) => ["edit", "write"].includes(t)) &&
 			!scratchpadUpdated
@@ -333,6 +365,7 @@ Persist them now — this is the minimum-fidelity moment.`,
 			state.lastContextCheckTurn = state.currentTurn;
 			state.lastCompactionTurn = compactTurn;
 			state.lastScratchpadNudgeTurn = state.currentTurn;
+			state.overflowRecently = state.currentTurn; // Extend grace period through recovery
 
 			// Reset memory tracking — fire on NEW code changes post-compaction only
 			state.hasCodeChanges = false;

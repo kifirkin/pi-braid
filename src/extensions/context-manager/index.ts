@@ -806,6 +806,21 @@ function resetCompactionRetry(): void {
 const _compactedEntries = new Set<string>();
 
 export default function contextManagerExtension(pi: ExtensionAPI) {
+	// ── Session start: raise reserveTokens above the 16384 default. ────────
+	// The harness tracks text tokens but does not count tool schemas in usage,
+	// so a small reserve fires compaction too late. Tool schemas alone can be
+	// 8–15 K tokens; with tokenizer variance a 50 K reserve ensures compaction
+	// fires well before hitting the context limit (e.g. 154.8 K for a 204.8 K model).
+	pi.on("session_start", async (_event: any, ctx: any) => {
+		try {
+			const sm = ctx.sessionManager as any;
+			if (sm?.globalSettings?.compaction) {
+				sm.globalSettings.compaction.reserveTokens = 50_000;
+				sm.save?.();
+			}
+		} catch { /* non-fatal */ }
+	});
+
 	// ── context_tag ─────────────────────────────────────────────────────────
 	pi.registerTool({
 		name: "context_tag",
@@ -1255,20 +1270,14 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 				_compactedEntries.add(entry.id);
 			}
 
-			pi.sendMessage(
-				{
-					customType: "context",
-					content: [{ type: "text" as const, text: "Context was just compacted. Consider storing key learnings in memory: memory_store(content=..., memoryType=\"insight\")" }],
-					display: true,
-				},
-				{ deliverAs: "steer" },
-			);
+			// Memory nudge: enforcement session_compact handles this (reads scratchpad for
+		// unpersisted learnings, sends detailed memory_store() commands).
+		// _compactedEntries tracking above dedupes against compaction_end.
 		} catch (err) {
 			console.error("[context-manager] session_compact error:", err);
 		}
 	});
 
-	// ── Compaction End Event ──────────────────────────────────────────────
 	// ── Compaction End Event ──────────────────────────────────────────────
 	// Handles ALL compaction outcomes including failures.
 	// session_compact only fires on success — this catches what it misses.
@@ -1367,20 +1376,9 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 			}
 
 			// ── Successful compaction ──────────────────────────────────────────
-			if (result && willRetry === false) {
-				const entryId = result.firstKeptEntryId;
-				if (!_compactedEntries.has(entryId)) {
-					pi.sendMessage({
-						customType: "context",
-						content: [{
-							type: "text" as const,
-							text: "Context was just compacted (auto-threshold). Consider storing key learnings in memory: memory_store(content=..., memoryType=\"insight\")",
-						}],
-						display: true,
-					}, { deliverAs: "steer" });
-					_compactedEntries.add(entryId);
-				}
-			}
+			// Memory nudge for successful compaction is handled by enforcement session_compact
+			// (reads scratchpad, sends detailed memory_store() commands for unpersisted learnings).
+			// Nothing needed here — enforcement covers it.
 		} catch (err) {
 			console.error("[context-manager] compaction_end error:", err);
 		}
