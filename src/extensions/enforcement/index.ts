@@ -32,6 +32,15 @@ import {
 	sendEnforcementWhisper,
 } from "./whisper.js";
 
+// ── L1 Surfacing ─────────────────────────────────────────────────────────────
+// Shared signal state for prompt-builder. Writable object — prompt-builder reads
+// this directly (same process, no IPC needed). Turn-keyed so stale signals are
+// dropped when the turn advances without new signals.
+export const enforcementSignals: Record<
+	string, // signal type
+	{ turn: number; text: string; acted: boolean }
+> = {};
+
 // Extension Factory
 export default function enforcementExtension(pi: ExtensionAPI) {
 	const nudgeManager = new NudgeManager();
@@ -156,6 +165,12 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		const memoryUpdated = actualTools.some((t) =>
 			["memory_store", "memory_recall", "memory_list"].includes(t),
 		);
+
+		// Clear session_compact memory nudge once agent acts (uses any memory tool)
+		if (memoryUpdated && enforcementSignals["unpersisted_learnings"]) {
+			delete enforcementSignals["unpersisted_learnings"];
+		}
+
 		if (!memoryUpdated) {
 			if (actualTools.length > 0 && !hadErrors) {
 				state.turnsSinceMemory++;
@@ -316,8 +331,39 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 			// Below 75%: no signal — not actionable enough to bother
 		}
 
-		// Send bundled nudge if we have signals AND no L3 critical message just went out
+		// Send bundled nudge if we have signals AND no L3 critical message just went out.
+		// Also populate enforcementSignals for L1 surfacing in prompt-builder.
 		if (sessionSignals.length > 0) {
+			// Clear stale signals from previous turns before populating new ones
+			for (const key of Object.keys(enforcementSignals)) {
+				if (enforcementSignals[key].turn < state.currentTurn - 1) {
+					delete enforcementSignals[key];
+				}
+			}
+
+			// Populate L1 signal store — keyed by semantic type for easy lookup
+			// Also emit via event bus for cross-extension coordination (prompt-builder)
+			for (const signal of sessionSignals) {
+				const entry = { turn: state.currentTurn, text: signal, acted: false };
+				if (signal.includes("nothing stored") || signal.includes("memory_store")) {
+					enforcementSignals["memory"] = { ...entry, acted: state.memoryNudgeSent };
+				} else if (signal.includes("scratchpad")) {
+					enforcementSignals["scratchpad"] = entry;
+				} else if (signal.includes("critical")) {
+					enforcementSignals["context_critical"] = entry;
+				} else if (signal.includes("high") || signal.includes("getting high") || signal.includes("/compact") || signal.includes("context")) {
+					enforcementSignals["context_high"] = entry;
+				} else {
+					enforcementSignals["generic"] = entry;
+				}
+			}
+
+			// Emit for prompt-builder (and any other extension listening)
+			pi.events.emit("enforcement_signals", {
+				turn: state.currentTurn,
+				signals: { ...enforcementSignals },
+			});
+
 			const bundled = `[Session Signals]\n${sessionSignals.map((s) => `- ${s}`).join("\n")}`;
 			const { shouldSend } = nudgeManager.shouldSendNudge("scratchpad", bundled);
 			if (shouldSend) {
@@ -355,6 +401,16 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 
 Persist them now — this is the minimum-fidelity moment.`,
 				);
+				// Also emit for L1 surfacing in prompt-builder
+				enforcementSignals["unpersisted_learnings"] = {
+					turn: state.currentTurn,
+					text: `${unpersisted.length} key learning(s) not yet persisted — persist them now`,
+					acted: false,
+				};
+				pi.events.emit("enforcement_signals", {
+					turn: state.currentTurn,
+					signals: { ...enforcementSignals },
+				});
 			}
 
 			// Reset hygiene counters — compaction resets context, agent needs fresh start.

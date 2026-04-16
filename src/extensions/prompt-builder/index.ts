@@ -14,6 +14,45 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
+// ── L1: Enforcement Signal Surfacing ────────────────────────────────────────
+// Shared signal store populated by enforcement/turn_end. Module-level so it
+// persists across before_agent_start calls. Cleared on new session.
+let _enforcementSignals: Record<string, { turn: number; text: string; acted: boolean }> = {};
+let _lastSignalTurn = 0;
+
+/**
+ * Format the L1 enforcement signals block for injection into system prompt.
+ * Machine-readable, compact, actionable.
+ * Only includes signals that are still relevant (not acted on, not stale).
+ */
+function formatEnforcementL1(signals: Record<string, { turn: number; text: string; acted: boolean }>): string {
+	const keys = Object.keys(signals);
+	if (keys.length === 0) return "";
+
+	const lines = ["", "## Enforcement State", "```json"];
+	const signalEntries: Record<string, unknown> = {};
+
+	for (const key of keys) {
+		const s = signals[key];
+		// Skip stale signals (from turns before the current session or >5 turns old)
+		if (_lastSignalTurn - s.turn > 5) continue;
+		if (s.acted) continue;
+
+		signalEntries[key] = {
+			active: true,
+			turn: s.turn,
+			hint: s.text.split(" — ")[1] ?? s.text,
+		};
+	}
+
+	if (Object.keys(signalEntries).length === 0) return "";
+
+	lines.push(JSON.stringify({ signals: signalEntries }, null, 2));
+	lines.push("```");
+
+	return lines.join("\n");
+}
+
 /** Identity framing intro - replaces the default "You are an expert coding assistant..." */
 const IDENTITY_INTRO = `You are stateful and meticulous expert software architect. Think silently. Find the correct trajectory. Not the first plausible path. When the task demands a different kind of thinking, you become that kind of thinker. You solve problems by understanding them completely before acting. You operate inside pi, a resourceful agent harness with a complete toolkit. You read thoroughly, execute safely, edit precisely. You plan ahead, self-verify and provide honest proofs.
 
@@ -186,6 +225,19 @@ function extractDefaultGuidelinesSection(text: string): { guidelinesSection: str
 }
 
 export default function promptBuilderExtension(pi: ExtensionAPI) {
+  // ── L1: Listen for enforcement signals from the event bus ───────────────
+  // turn_end → enforcement emits "enforcement_signals" → we store them here
+  pi.events.on("enforcement_signals", (data: unknown) => {
+    const d = data as { turn: number; signals: Record<string, { turn: number; text: string; acted: boolean }> };
+    _enforcementSignals = d.signals;
+    _lastSignalTurn = d.turn;
+  });
+
+  pi.on("session_start", () => {
+    _enforcementSignals = {};
+    _lastSignalTurn = 0;
+  });
+
   pi.on("before_agent_start", async (event, _ctx) => {
     const currentPrompt = event.systemPrompt;
 
@@ -257,6 +309,12 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       // 7. Skills section (preserve ALL skill locations so agent can read them!)
       if (skillsExtracted) {
         parts.push("\n\n" + skillsExtracted.skillsSection);
+      }
+
+      // L1: Enforcement state — structured signals from last turn's analysis
+      const l1 = formatEnforcementL1(_enforcementSignals);
+      if (l1) {
+        parts.push(l1);
       }
 
       // 8. Date and cwd (always at the end)
