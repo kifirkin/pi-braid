@@ -21,7 +21,6 @@ import {
 	queueMemoryNudge,
 } from "./detection/verification.js";
 // Escalation
-import { sendEscalatedNudge } from "./escalation.js";
 // Handlers
 import { checkBlocking } from "./handlers/blocking.js";
 // Tool registrations removed (2026-04-15): enforcement_status, enforcement_reset — use /enforcement-stats command
@@ -479,6 +478,7 @@ Store important learnings with: memory_store(content="...", tags=["relevant", "t
 		for (const whisper of whispersToSend) {
 			sendEnforcementWhisper(pi, whisper);
 		}
+	});
 
 	// ── Auto-Retry End ────────────────────────────────────────────────
 	// Catches non-overflow API retry failures (429 rate limits, 500s, network errors).

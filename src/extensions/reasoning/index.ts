@@ -89,7 +89,7 @@ Think step by step. For complex tasks, think through the problem before acting.
 const VERIFICATION_REMINDER = `
 ## Before claiming done
 
-Run tests to verify your work. Call signal_complete when verified.
+Run tests to verify your work before finalizing.
 `;
 
 // Extension Factory

@@ -122,26 +122,24 @@ export function recordBashDetails(command: string): void {
 	}
 
 	// Record verification when tests are run
-	if (state.config.enforceVerificationBeforeFinalize) {
-		const testPatterns = [
-			"pytest",
-			"python -m pytest",
-			"python -m unittest",
-			"vitest",
-			"jest",
-			"npm test",
-			"npx tsx",
-			"npx vitest",
-			"npx jest",
-			"tsx",
-			"mocha",
-			"cargo test",
-			"go test",
-			"rspec",
-			"phpunit",
-		];
-		if (testPatterns.some((p) => cmd.includes(p))) {
-			state.verificationsDone++;
-		}
+	const testPatterns = [
+		"pytest",
+		"python -m pytest",
+		"python -m unittest",
+		"vitest",
+		"jest",
+		"npm test",
+		"npx tsx",
+		"npx vitest",
+		"npx jest",
+		"tsx",
+		"mocha",
+		"cargo test",
+		"go test",
+		"rspec",
+		"phpunit",
+	];
+	if (testPatterns.some((p) => cmd.includes(p))) {
+		state.verificationsDone++;
 	}
 }

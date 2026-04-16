@@ -283,9 +283,8 @@ function generateNudge(
 			const count = context.count as number;
 			return {
 				severity: "warning",
-				message: `You're repeating the same tool (${tool}) ${count} times in a row. Consider:\n- Is this the right approach?\n- Are you stuck in a loop?\n- Should you use signal_stuck to request help?`,
-				action: "Try a different approach or call signal_stuck if you need help.",
-			};
+				message: `You're repeating the same tool (${tool}) ${count} times in a row. Consider:\n- Is this the right approach?\n- Are you stuck in a loop?\n- Should you try a different approach?`,
+					};
 		}
 
 		case "tool_ineffective": {

@@ -16,7 +16,6 @@ import { sendEnforcementWhisper } from "./whisper.js";
 export type NudgeType =
 	| "validation"
 	| "memory"
-	| "memoryAnalysis"
 	| "recordFailure"
 	| "toolError"
 	| "lazy"
@@ -27,7 +26,6 @@ export type NudgeType =
 	| "scratchpad"
 	| "malformed"
 	| "dangerousCommand"
-	| "finalize"
 	| "judge"
 	| "context"
 	| "contextTool";
@@ -44,7 +42,6 @@ export interface NudgeConfig {
 export const DEFAULT_NUDGE_CONFIGS: Record<NudgeType, NudgeConfig> = {
 	validation: { baseCooldownMs: 20_000, escalateAfter: 3, deduplicate: true },
 	memory: { baseCooldownMs: 45_000, escalateAfter: 2, deduplicate: false },
-	memoryAnalysis: { baseCooldownMs: 120_000, escalateAfter: 3, deduplicate: true },
 	recordFailure: { baseCooldownMs: 20_000, escalateAfter: 1, deduplicate: true },
 	toolError: { baseCooldownMs: 15_000, escalateAfter: 2, deduplicate: true },
 	lazy: { baseCooldownMs: 15_000, escalateAfter: 2, deduplicate: false },
@@ -55,7 +52,6 @@ export const DEFAULT_NUDGE_CONFIGS: Record<NudgeType, NudgeConfig> = {
 	scratchpad: { baseCooldownMs: 60_000, escalateAfter: 2, deduplicate: true },
 	malformed: { baseCooldownMs: 10_000, escalateAfter: 1, deduplicate: false },
 	dangerousCommand: { baseCooldownMs: 5_000, escalateAfter: 1, deduplicate: false },
-	finalize: { baseCooldownMs: 10_000, escalateAfter: 1, deduplicate: true },
 	judge: { baseCooldownMs: 30_000, escalateAfter: 2, deduplicate: true },
 	context: { baseCooldownMs: 90_000, escalateAfter: 2, deduplicate: true },
 	contextTool: { baseCooldownMs: 120_000, escalateAfter: 3, deduplicate: true },

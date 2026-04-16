@@ -14,40 +14,29 @@ export const DEFAULT_CONFIG: EnforcementConfig = {
 	enforceHypothesisBeforeFix: true,
 	enforceMemory: true,
 	enforceMemoryNudge: true,
-	enforceMemoryOnFinalize: true,
 	// Context tool enforcement
 	enforceContextTools: true,
 	contextToolNudgeInterval: 20, // Nudge every N turns without context tools
 	enforceToolDiversity: true,
 	enforceExploreBeforeAct: true,
 	memoryNudgeThreshold: 15, // Lower threshold for proactive memory nudges
-	minToolCallsBeforeFinalize: 5,
 	maxSilentTurns: 2,
 	warnOnToolSequenceRepetition: 3,
 	blockThinkBeforeEdit: false, // DEPRECATED: no longer blocks, kept for config compat
 	blockExploreBeforeWrite: true,
-	blockFinalizeWithoutMemory: true,
 	blockDangerousCommands: false, // Changed: now warns instead of blocks (see warnDangerousCommandsFirst)
 	thinkCalledInSession: false,
 	exploreCalledInSession: false,
-	enforceVerificationBeforeFinalize: true,
 	enforceMemoryRecallOnStart: true,
 	trackClaimsVsVerifications: true,
 	maxClaimsBeforeVerification: 5,
 	useJudge: true,
 	judgeCooldownMs: 20000,
 	judgeSkipTurns: 1,
-	// Tool Analysis Nudge
-	toolAnalysisWarningThreshold: 0.15,
-	toolAnalysisWarningTurns: 10,
 	// Verification Judge (LLM-based work audit)
 	useVerificationJudge: true,
 	verificationJudgeInterval: 15,
-	verifyBeforeFinalize: true,
 	verifyAfterCodeChanges: true,
-	enforceFinalizeValidation: true,
-	minFinalizeCoverageScore: 0.4,
-	blockFinalizeOnLowCoverage: false,
 	// Dangerous command enforcement
 	warnDangerousCommandsFirst: true, // First dangerous: block+warn with retry option. Then: warn only.
 };
@@ -76,15 +65,9 @@ export const state = {
 	memoryNudgeSent: false,
 	totalToolCalls: 0,
 	toolCallsSinceLastMemory: 0,
-	finalizeBlocked: 0,
-	memoryAnalysisCount: 0,
-	toolAnalysisRatio: 0,
-	lastAnalysisTurn: 0,
 	recordFailureCount: 0,
 	hasRecordedFailure: false,
 	lastFailedToolTurn: -100,
-	taskCompleteCount: 0,
-	hasCompletedTask: false,
 	uniqueToolsUsed: new Set<string>(),
 	bashCalls: 0,
 	toolDiversityNudged: false,
@@ -112,14 +95,11 @@ export const state = {
 	lastVerificationJudgeTurn: 0,
 	verificationJudgeRunning: false,
 	toolLog: [] as string[],
-	// Finalize validation context (set by agent/session setup)
-	goalAlignmentData: [] as unknown[],
 	// Context hygiene monitoring
 	lastContextCheckTurn: 0,
 	contextCheckInterval: 8, // Check every N turns
 	contextNudgeSent: false,
 	contextAuditThreshold: 0.7, // Nudge when usage > 70%
-	highContextNudged: false,
 	// Context tool usage tracking
 	lastContextToolCall: 0,
 	turnsSinceContextTool: 0,
@@ -158,7 +138,6 @@ export function resetState(): void {
 	state.memoryNudgeSent = false;
 	state.totalToolCalls = 0;
 	state.toolCallsSinceLastMemory = 0;
-	state.finalizeBlocked = 0;
 	state.uniqueToolsUsed.clear();
 	state.bashCalls = 0;
 	state.toolDiversityNudged = false;
@@ -175,18 +154,10 @@ export function resetState(): void {
 	state.config.exploreCalledInSession = false;
 	state.pendingToolErrors = null;
 	state.hadToolErrors = false;
-	// Reset analysis tracking
-	state.memoryAnalysisCount = 0;
-	state.toolAnalysisRatio = 0;
-	state.lastAnalysisTurn = 0;
 	state.recordFailureCount = 0;
 	state.hasRecordedFailure = false;
 	state.lastFailedToolTurn = -100;
-	state.taskCompleteCount = 0;
-	state.hasCompletedTask = false;
 	state.lastScratchpadNudgeTurn = -100;
-	state.claimsWithoutVerification = 0;
-	state.verificationsDone = 0;
 	// Reset nudge/escalation tracking
 	state.lastNudgeTime = 0;
 	state.escalationCounts = {};
@@ -201,9 +172,6 @@ export function resetState(): void {
 	state.lastVerificationJudgeTurn = 0;
 	state.verificationJudgeRunning = false;
 	state.toolLog = [];
-	// Reset finalize validation context
-	state.originalRequest = undefined;
-	state.goalAlignmentData = [];
 	state.planAlignmentData = null;
 	// Reset context hygiene monitoring
 	state.lastContextCheckTurn = 0;
@@ -213,7 +181,6 @@ export function resetState(): void {
 	state.lastContextToolCall = 0;
 	state.turnsSinceContextTool = 0;
 	state.contextToolNudged = false;
-	state.highContextNudged = false;
 	// Reset dangerous command warnings
 	state.warnedDangerousCommands = new Map();
 }

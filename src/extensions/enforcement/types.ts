@@ -13,20 +13,17 @@ export interface EnforcementConfig {
 	enforceHypothesisBeforeFix: boolean;
 	enforceMemory: boolean;
 	enforceMemoryNudge: boolean;
-	enforceMemoryOnFinalize: boolean;
 	// Context tool enforcement
 	enforceContextTools: boolean;
 	contextToolNudgeInterval: number;
 	enforceToolDiversity: boolean;
 	enforceExploreBeforeAct: boolean;
 	memoryNudgeThreshold: number;
-	minToolCallsBeforeFinalize: number;
 	maxSilentTurns: number;
 	warnOnToolSequenceRepetition: number;
 	// Blocking behavior
 	blockThinkBeforeEdit: boolean; // DEPRECATED: no longer blocks, kept for config compat
 	blockExploreBeforeWrite: boolean;
-	blockFinalizeWithoutMemory: boolean;
 	blockDangerousCommands: boolean;
 	// Dangerous command enforcement
 	warnDangerousCommandsFirst: boolean; // First dangerous: block+warn with retry option. Then: warn only.
@@ -34,7 +31,6 @@ export interface EnforcementConfig {
 	thinkCalledInSession: boolean;
 	exploreCalledInSession: boolean;
 	// Agentic Loop Enforcement
-	enforceVerificationBeforeFinalize: boolean;
 	enforceMemoryRecallOnStart: boolean;
 	trackClaimsVsVerifications: boolean;
 	maxClaimsBeforeVerification: number;
@@ -42,18 +38,10 @@ export interface EnforcementConfig {
 	useJudge: boolean;
 	judgeCooldownMs: number;
 	judgeSkipTurns: number;
-	// Tool Analysis Nudge
-	toolAnalysisWarningThreshold: number;
-	toolAnalysisWarningTurns: number;
 	// Verification Judge (LLM-based work audit)
 	useVerificationJudge: boolean;
 	verificationJudgeInterval: number;
-	verifyBeforeFinalize: boolean;
 	verifyAfterCodeChanges: boolean;
-	// Finalize Validation (default: warn-only, not blocking)
-	enforceFinalizeValidation: boolean;
-	minFinalizeCoverageScore: number;
-	blockFinalizeOnLowCoverage: boolean;
 }
 
 export interface TurnState {

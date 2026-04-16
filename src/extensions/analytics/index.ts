@@ -75,8 +75,6 @@ const TOOL_CATEGORIES: Record<string, string> = {
 	goal_complete: "cognitive",
 	plan_create: "cognitive",
 	plan_start: "cognitive",
-	signal_complete: "control",
-	signal_stuck: "control",
 	memory_store: "memory",
 	memory_recall: "memory",
 };
