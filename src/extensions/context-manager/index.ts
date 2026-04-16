@@ -19,6 +19,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
+import { classifyError } from "../../lib/error-classifier.js";
 
 // Rule-Based Pruning Types
 
@@ -763,45 +764,6 @@ const COMPACTION_RETRY_MAX_ATTEMPTS = 3;
 const COMPACTION_RETRY_BASE_DELAY_MS = 2000;
 const COMPACTION_RETRY_CUSTOM_TYPE = "__compact_retry_trigger";
 
-/** Retryable error patterns for compaction failures */
-const COMPACTION_RETRYABLE_PATTERNS = [
-	/529/i,                    // Cerebras overloaded
-	/overloaded/i,             // Generic overloaded
-	/too many requests/i,      // Rate limit
-	/429/i,                    // HTTP 429
-	/500/i,                    // Internal server error
-	/502/i,                    // Bad gateway
-	/503/i,                    // Service unavailable
-	/504/i,                    // Gateway timeout
-	/server error/i,           // Generic server error
-	/service unavailable/i,    // Generic unavailable
-	/connection.?error/i,      // Network errors
-	/connection.?refused/i,    // Network errors
-	/fetch failed/i,           // Fetch errors
-	/upstream.?connect/i,      // Proxy errors
-	/reset before headers/i,   // Connection reset
-	/timeout/i,                // Timeout errors
-];
-
-/** Errors that should NOT be retried (likely permanent issues) */
-const COMPACTION_NON_RETRYABLE_PATTERNS = [
-	/invalid.*api.?key/i,
-	/authentication.*failed/i,
-	/unauthorized/i,
-	/forbidden/i,
-	/context.?window.*exceeded/i,
-	/token.*limit.*exceeded/i,
-	/maximum.*context/i,
-	/model.*not.*found/i,
-	/model.*does.*not.*exist/i,
-	/400.*status.*code/i,          // Client errors - request rejected permanently
-	/status.?code.?400/i,          // Client errors - malformed request
-	/4\s*0\s*0\b/i,                // HTTP 400
-	/no body/i,                    // Empty response body (often 400 without details)
-	/content.?type.*invalid/i,     // Malformed content type
-	/invalid.*request.*format/i,  // Request format issues
-];
-
 /** Track compaction retry state */
 interface CompactionRetryState {
 	attempt: number;
@@ -817,23 +779,6 @@ const compactionRetryState: CompactionRetryState = {
 	retryTimeout: null,
 };
 
-/** Check if an error message matches retryable patterns */
-function isCompactionRetryable(errorMessage: string): boolean {
-	// Check if it's explicitly non-retryable first
-	for (const pattern of COMPACTION_NON_RETRYABLE_PATTERNS) {
-		if (pattern.test(errorMessage)) {
-			return false;
-		}
-	}
-	// Check if it's retryable
-	for (const pattern of COMPACTION_RETRYABLE_PATTERNS) {
-		if (pattern.test(errorMessage)) {
-			return true;
-		}
-	}
-	return false;
-}
-
 /** Get delay for current retry attempt with exponential backoff */
 function getCompactionRetryDelay(attempt: number): number {
 	return COMPACTION_RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
@@ -847,7 +792,6 @@ function clearCompactionRetry(): void {
 	}
 }
 
-/** Reset compaction retry state */
 function resetCompactionRetry(): void {
 	clearCompactionRetry();
 	compactionRetryState.attempt = 0;
@@ -1342,8 +1286,9 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 				const alreadyHandled = entryId && _compactedEntries.has(entryId);
 				const errMsg = errorMessage ?? "Compact succeeded but the retry still overflowed.";
 
-				// Check if error is retryable (e.g. 529 overloaded is transient)
-				if (!alreadyHandled && isCompactionRetryable(errMsg) && compactionRetryState.attempt < COMPACTION_RETRY_MAX_ATTEMPTS) {
+				// Check retryability via structured error classification
+				const classification = classifyError(errMsg);
+				if (!alreadyHandled && classification.retryable && compactionRetryState.attempt < COMPACTION_RETRY_MAX_ATTEMPTS) {
 					compactionRetryState.attempt++;
 					compactionRetryState.lastError = errMsg;
 					compactionRetryState.lastReason = reason;
@@ -1416,8 +1361,9 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 			if ((reason === "threshold" || reason === "manual") && !result) {
 				const errMsg = errorMessage ?? "Compaction threw an error.";
 
-				// Check if error is retryable
-				if (isCompactionRetryable(errMsg) && compactionRetryState.attempt < COMPACTION_RETRY_MAX_ATTEMPTS) {
+				// Check retryability via structured error classification
+				const classification = classifyError(errMsg);
+				if (classification.retryable && compactionRetryState.attempt < COMPACTION_RETRY_MAX_ATTEMPTS) {
 					// Start or continue retry sequence
 					compactionRetryState.attempt++;
 					compactionRetryState.lastError = errMsg;
