@@ -19,7 +19,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
-import { classifyError } from "../../lib/error-classifier.js";
 
 // Rule-Based Pruning Types
 
@@ -1270,6 +1269,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 	});
 
 	// ── Compaction End Event ──────────────────────────────────────────────
+	// ── Compaction End Event ──────────────────────────────────────────────
 	// Handles ALL compaction outcomes including failures.
 	// session_compact only fires on success — this catches what it misses.
 	pi.on("compaction_end" as any, async (event: any, _ctx: any) => {
@@ -1277,156 +1277,107 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 			const { reason, willRetry, aborted, errorMessage, result } = event;
 
 			// ── Overflow recovery failure ────────────────────────────────────
-			// The most critical case: compaction worked but the retry still failed.
-			// This means the underlying issue (wrong model, bad API key, or
-			// non-overflow 400) persists regardless of context size.
+			// Compaction WORKED but the retry after compaction failed.
+			// Retrying compaction won't help — the underlying error persists.
 			if (reason === "overflow" && !willRetry && !aborted) {
-				// Only send if session_compact didn't already handle this (via entry ID check)
 				const entryId = result?.firstKeptEntryId ?? (event as any).compactionEntry?.id;
-				const alreadyHandled = entryId && _compactedEntries.has(entryId);
-				const errMsg = errorMessage ?? "Compact succeeded but the retry still overflowed.";
+				if (entryId && _compactedEntries.has(entryId)) return;
 
-				// Check retryability via structured error classification
-				const classification = classifyError(errMsg);
-				if (!alreadyHandled && classification.retryable && compactionRetryState.attempt < COMPACTION_RETRY_MAX_ATTEMPTS) {
-					compactionRetryState.attempt++;
-					compactionRetryState.lastError = errMsg;
-					compactionRetryState.lastReason = reason;
+				const errMsg = errorMessage ?? "Compaction succeeded but the retry overflowed.";
+				_compactedEntries.add(entryId ?? "overflow-" + Date.now());
 
-					pi.sendMessage(
-						{
-							customType: "context",
-							content: [{
-								type: "text" as const,
-								text: `⚠️ Overflow recovery failed (${errMsg}). Auto-retrying... (${compactionRetryState.attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})`,
-							}],
-							display: true,
-						},
-						{ deliverAs: "steer" },
-					);
-
-					triggerCompactionRetry(pi, compactionRetryState.attempt, errMsg);
-					return;
-				}
-
-				// Non-retryable or exhausted retries - show permanent failure warning
-				if (!alreadyHandled) {
-					pi.sendMessage(
-						{
-							customType: "context",
-							content: [{
-								type: "text" as const,
-								text: [
-									"## ⚠️ Context overflow recovery failed",
-									errMsg,
-									"",
-									"The API returned an overflow error even after compaction. This usually means:",
-									"1. **Wrong model/provider** — the model ID doesn't match your API key",
-									"2. **API key invalid** — Cerebras API key is wrong or account is suspended",
-									"3. **Request format rejected** — the request itself violates the API's format rules",
-									"",
-									"**Immediate actions:**",
-									"- Run `/model` to switch to a different model (e.g. anthropic/claude-3-5-sonnet)",
-									"- Check your Cerebras API key in ~/.pi/settings.json",
-									"- Run `context_audit()` to see session hygiene before continuing",
-								].join("\n"),
-							}],
-							display: true,
-						},
-						{ deliverAs: "steer" },
-					);
-					_compactedEntries.add("overflow-failure-" + Date.now());
-				}
+				pi.sendMessage({
+					customType: "context",
+					content: [{
+						type: "text" as const,
+						text: [
+							"## ⚠️ Context overflow recovery failed",
+							errMsg,
+							"",
+							"The API returned an overflow error even after compaction. This usually means:",
+							"1. **Wrong model/provider** — the model ID doesn't match your API key",
+							"2. **API key invalid** — Cerebras API key is wrong or account is suspended",
+							"3. **Request format rejected** — the request violates the API's format rules",
+							"",
+							"**Immediate actions:**",
+							"- Run `/model` to switch to a different model (e.g. anthropic/claude-3-5-sonnet)",
+							"- Check your Cerebras API key in ~/.pi/settings.json",
+							"- Run `context_audit()` to see session hygiene before continuing",
+						].join("\n"),
+					}],
+					display: true,
+				}, { deliverAs: "steer" });
 				return;
 			}
 
 			// ── Aborted compaction ───────────────────────────────────────────
 			if (aborted) {
-				pi.sendMessage(
-					{
-						customType: "context",
-						content: [{
-							type: "text" as const,
-							text: "Context compaction was aborted (no changes made). You can continue normally or run `/compact` manually when ready.",
-						}],
-						display: true,
-					},
-					{ deliverAs: "steer" },
-				);
+				pi.sendMessage({
+					customType: "context",
+					content: [{
+						type: "text" as const,
+						text: "Context compaction was aborted (no changes made). You can continue normally or run `/compact` manually when ready.",
+					}],
+					display: true,
+				}, { deliverAs: "steer" });
 				return;
 			}
 
-			// ── Threshold/manual compaction failure (uncaught exception) ─────
-			// result is undefined when compaction throws
+			// ── Threshold/manual compaction failure ────────────────────────────
+			// Compaction itself failed. Retry with backoff (max 3 attempts).
 			if ((reason === "threshold" || reason === "manual") && !result) {
 				const errMsg = errorMessage ?? "Compaction threw an error.";
 
-				// Check retryability via structured error classification
-				const classification = classifyError(errMsg);
-				if (classification.retryable && compactionRetryState.attempt < COMPACTION_RETRY_MAX_ATTEMPTS) {
-					// Start or continue retry sequence
+				if (compactionRetryState.attempt < COMPACTION_RETRY_MAX_ATTEMPTS) {
 					compactionRetryState.attempt++;
 					compactionRetryState.lastError = errMsg;
 					compactionRetryState.lastReason = reason;
 
-					const delayMs = getCompactionRetryDelay(compactionRetryState.attempt);
-					pi.sendMessage(
-						{
-							customType: "context",
-							content: [{
-								type: "text" as const,
-								text: `⚠️ Compaction failed (${errMsg}). Auto-retrying... (${compactionRetryState.attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})`,
-							}],
-							display: true,
-						},
-						{ deliverAs: "steer" },
-					);
+					pi.sendMessage({
+						customType: "context",
+						content: [{
+							type: "text" as const,
+							text: `⚠️ Compaction failed (${errMsg}). Auto-retrying... (${compactionRetryState.attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})`,
+						}],
+						display: true,
+					}, { deliverAs: "steer" });
 
 					triggerCompactionRetry(pi, compactionRetryState.attempt, errMsg);
 					return;
 				}
 
-				// Non-retryable or exhausted retries - show warning
-				pi.sendMessage(
-					{
-						customType: "context",
-						content: [{
-							type: "text" as const,
-							text: [
-								"## ⚠️ Auto-compaction failed",
-								errMsg,
-								"",
-								"Your context is still large. Consider:",
-								"- Running `/compact` manually to control the summary focus",
-								"- Using `context_checkout` with `backupTag` to branch and preserve progress",
-								"- Storing key learnings in memory before continuing",
-							].join("\n"),
-						}],
-						display: true,
-					},
-					{ deliverAs: "steer" },
-				);
+				// Exhausted retries
+				pi.sendMessage({
+					customType: "context",
+					content: [{
+						type: "text" as const,
+						text: [
+							"## ⚠️ Auto-compaction failed permanently",
+							errMsg,
+							"",
+							"Your context is still large. Consider:",
+							"- Running `/compact` manually to control the summary focus",
+							"- Using `context_checkout` with `backupTag` to branch and preserve progress",
+							"- Storing key learnings in memory before continuing",
+						].join("\n"),
+					}],
+					display: true,
+				}, { deliverAs: "steer" });
 				return;
 			}
 
-			// ── Successful compaction (willRetry=false, e.g. threshold/manual) ─
-			// session_compact handles willRetry=true (overflow recovery success).
-			// Here we handle successful non-recovery compaction.
+			// ── Successful compaction ──────────────────────────────────────────
 			if (result && willRetry === false) {
 				const entryId = result.firstKeptEntryId;
-				const alreadyHandled = _compactedEntries.has(entryId);
-				if (!alreadyHandled) {
-					pi.sendMessage(
-						{
-							customType: "context",
-							content: [{
-								type: "text" as const,
-								text: "Context was just compacted (auto-threshold). Consider storing key learnings in memory: memory_store(content=..., memoryType=\"insight\")",
-							}],
-							display: true,
-						},
-						{ deliverAs: "steer" },
-					);
+				if (!_compactedEntries.has(entryId)) {
+					pi.sendMessage({
+						customType: "context",
+						content: [{
+							type: "text" as const,
+							text: "Context was just compacted (auto-threshold). Consider storing key learnings in memory: memory_store(content=..., memoryType=\"insight\")",
+						}],
+						display: true,
+					}, { deliverAs: "steer" });
 					_compactedEntries.add(entryId);
 				}
 			}
