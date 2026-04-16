@@ -9,10 +9,11 @@
  * - Execute JavaScript/TypeScript code via eval()
  * - State persists between calls (variables, functions)
  * - RLM helpers: ctx.chunk(), ctx.search(), ctx.filter(), ctx.map(), ctx.reduce()
- * - Recursive sub-calls via ctx.call()
+ * - Recursive sub-calls via ctx.subCall()
  * - No external processes spawned
  *
- * State persists in closure — shared across all repl calls within a session.
+ * Note: For expressions that return values, use `return expr`.
+ * Statements (const, if, for, etc.) work as-is without return.
  */
 
 import type { AgentTool } from "@mariozechner/pi-agent-core";
@@ -31,7 +32,7 @@ const replState = {
 
 // Schema for dual-mode REPL
 const replSchema = Type.Object({
-	code: Type.String({ description: "JavaScript code to execute. In RLM mode, use 'ctx' to access context data." }),
+	code: Type.String({ description: "JavaScript code to execute. For expressions that return values, use `return expr`. Statements (const, if, for) work as-is. In RLM mode, use 'ctx' to access context data." }),
 	context: Type.Optional(Type.Any({ description: "Context data for RLM mode (documents, conversation, etc.). Automatically stored as 'ctx' in the REPL." })),
 	mode: Type.Optional(
 		Type.Union([Type.Literal("simple"), Type.Literal("rlm"), Type.Literal("auto")], {
@@ -57,10 +58,8 @@ type ReplParams = {
  * Create an RLM context object that provides helpers for working with context data.
  */
 function createRlmContext(data: unknown, depth: number, maxCalls: number) {
-	// Track if we're processing an array-like object
 	const items: unknown[] = Array.isArray(data) ? data : [];
 
-	// Helper to safely access nested properties
 	const safeAccess = (obj: unknown, path: string): unknown => {
 		try {
 			const parts = path.split(".");
@@ -75,12 +74,11 @@ function createRlmContext(data: unknown, depth: number, maxCalls: number) {
 		}
 	};
 
-	// Helper to search in text content
-	const searchText = (query: string, threshold = 0.3): unknown[] => {
+	const searchText = (query: string): Array<{ item: unknown; score: number; matched: string }> => {
 		const queryLower = query.toLowerCase();
 		const results: Array<{ item: unknown; score: number; matched: string }> = [];
 
-		const searchIn = (item: unknown, path = ""): void => {
+		const searchIn = (item: unknown): void => {
 			if (item === null || item === undefined) return;
 			if (typeof item === "string") {
 				const lower = item.toLowerCase();
@@ -93,10 +91,7 @@ function createRlmContext(data: unknown, depth: number, maxCalls: number) {
 					});
 				}
 			} else if (typeof item === "object") {
-				const obj = item as Record<string, unknown>;
-				for (const [key, value] of Object.entries(obj)) {
-					searchIn(value, path ? `${path}.${key}` : key);
-				}
+				Object.values(item as Record<string, unknown>).forEach(searchIn);
 			}
 		};
 
@@ -105,71 +100,47 @@ function createRlmContext(data: unknown, depth: number, maxCalls: number) {
 	};
 
 	return {
-		/** The raw context data */
 		data,
-
-		/** Number of items in array-like context, or 1 for object context */
 		get length(): number {
 			return items.length || (data !== null && data !== undefined ? 1 : 0);
 		},
-
-		/** Check if context has data */
 		get isEmpty(): boolean {
 			return this.length === 0;
 		},
-
-		/** Get all items as array */
 		get items(): unknown[] {
 			return items.length > 0 ? items : [data];
 		},
-
-		/** Get item at index */
 		get(n: number): unknown {
-			const arr = this.items;
-			return arr[n] ?? null;
+			return this.items[n] ?? null;
 		},
-
-		/** Get first N items */
 		first(n = 1): unknown[] {
 			return this.items.slice(0, n);
 		},
-
-		/** Get last N items */
 		last(n = 1): unknown[] {
 			return this.items.slice(-n);
 		},
-
-		/** Split context into chunks of given size */
 		chunk(size: number): unknown[][] {
-			const arr = this.items;
 			const chunks: unknown[][] = [];
-			for (let i = 0; i < arr.length; i += size) {
-				chunks.push(arr.slice(i, i + size));
+			for (let i = 0; i < this.items.length; i += size) {
+				chunks.push(this.items.slice(i, i + size));
 			}
 			return chunks;
 		},
-
-		/** Search for text in context (returns matches with context) */
-		search(query: string): Array<{ item: unknown; score: number; matched: string }> {
-			return searchText(query) as Array<{ item: unknown; score: number; matched: string }>;
+		search(query: string) {
+			return searchText(query);
 		},
-
-		/** Filter items using a predicate function (as string for eval) */
 		filter(predicate: string | ((item: unknown) => boolean)): unknown[] {
 			const arr = this.items;
 			if (typeof predicate === "function") {
 				return arr.filter(predicate as (item: unknown) => boolean);
 			}
-			// If predicate is a string, try to evaluate it with `item` variable
 			try {
 				const fn = new Function("item", `return ${predicate}`) as (item: unknown) => boolean;
 				return arr.filter(fn);
 			} catch {
-				return arr; // Return all on error
+				return arr;
 			}
 		},
-
-		/** Map/transform items */
 		map(transform: string | ((item: unknown) => unknown)): unknown[] {
 			const arr = this.items;
 			if (typeof transform === "function") {
@@ -182,8 +153,6 @@ function createRlmContext(data: unknown, depth: number, maxCalls: number) {
 				return arr;
 			}
 		},
-
-		/** Reduce/aggregate items to single value */
 		reduce(reducer: string | ((acc: unknown, item: unknown) => unknown), initial?: unknown): unknown {
 			const arr = this.items;
 			if (typeof reducer === "function") {
@@ -198,55 +167,30 @@ function createRlmContext(data: unknown, depth: number, maxCalls: number) {
 				return initial;
 			}
 		},
-
-		/** Access nested property by path (e.g., "results.0.name") */
 		access(path: string): unknown {
 			return safeAccess(data, path);
 		},
-
-		/** Create a summary of the context structure */
-		summary(): { type: string; length: number; keys?: string[]; sample?: unknown } {
+		summary() {
 			if (Array.isArray(data)) {
-				return {
-					type: "array",
-					length: data.length,
-					sample: data[0],
-				};
+				return { type: "array", length: data.length, sample: data[0] };
 			}
 			if (data !== null && typeof data === "object") {
 				const obj = data as Record<string, unknown>;
-				return {
-					type: "object",
-					length: Object.keys(obj).length,
-					keys: Object.keys(obj),
-					sample: obj[Object.keys(obj)[0]],
-				};
+				return { type: "object", length: Object.keys(obj).length, keys: Object.keys(obj) };
 			}
-			return {
-				type: typeof data,
-				length: 1,
-			};
+			return { type: typeof data, length: 1 };
 		},
-
-		/** Current recursion depth */
 		depth,
-
-		/** Maximum allowed calls */
 		maxCalls,
-
-		/** History of previous RLM operations */
 		history: replState.rlmHistory,
-
-		/** Execute a sub-call (for recursive processing) */
 		subCall(code: string): unknown {
 			if (replState.rlmDepth >= maxCalls) {
 				throw new Error(`Max recursion depth (${maxCalls}) exceeded`);
 			}
 			replState.rlmDepth++;
 			try {
-				// Create a new context with current result as data
 				const subCtx = createRlmContext(replState.lastResult, replState.rlmDepth, maxCalls);
-				const fn = new Function("ctx", `"use strict";\nreturn ${code}`);
+				const fn = new Function("ctx", code);
 				return fn(subCtx);
 			} finally {
 				replState.rlmDepth--;
@@ -260,17 +204,15 @@ export function createReplTool(): AgentTool<typeof replSchema> {
 		name: "repl",
 		label: "REPL",
 		description:
-			"Execute JavaScript code in the agent's native context. Supports dual-mode: Simple mode (direct eval) or RLM mode (context-aware with ctx helpers for recursive processing). Use 'ctx' object in RLM mode to access context.chunk(), ctx.search(), ctx.filter(), ctx.map(), ctx.reduce().",
+			"Execute JavaScript code. Use `return expr` for expressions. Statements (const, if, for) work as-is. RLM mode provides ctx helpers: chunk(), search(), filter(), map(), reduce().",
 		parameters: replSchema,
 		execute: async (_toolCallId: string, params: ReplParams) => {
 			replState.executionCount++;
 
-			// Determine mode
 			const mode = params.mode === "auto" ? (params.context !== undefined ? "rlm" : "simple") : params.mode ?? "simple";
 			const maxCalls = params.max_calls ?? 10;
 			const timeout = params.timeout_ms ?? 30000;
 
-			// Set RLM state if in RLM mode
 			if (mode === "rlm") {
 				replState.rlmContext = params.context;
 				replState.rlmDepth = 0;
@@ -278,11 +220,9 @@ export function createReplTool(): AgentTool<typeof replSchema> {
 			}
 
 			try {
-				// Build eval context with previous state
 				const evalKeys = Object.keys(replState.context);
 				const evalValues = Object.values(replState.context);
 
-				// Create the ctx object for RLM mode
 				let ctxObj: ReturnType<typeof createRlmContext> | undefined;
 				if (mode === "rlm") {
 					ctxObj = createRlmContext(params.context, 0, maxCalls);
@@ -290,21 +230,10 @@ export function createReplTool(): AgentTool<typeof replSchema> {
 					evalValues.push(ctxObj);
 				}
 
-				// Prepare code - wrap in return if needed
-				// Only preserve 'return' prefix; bare expressions always need wrapping
-				const trimmed = params.code.trim();
-				const needsWrap = !trimmed.startsWith("return ");
-				const code = needsWrap ? `return ${params.code}` : params.code;
+				// Simple approach: just eval the code as-is
+				// For values, user writes `return expr`
+				const evalFn = new Function(...evalKeys, params.code);
 
-				// Auto-wrap bare objects/arrays in parentheses to avoid ambiguity with blocks
-				// e.g., `return ({ name: "x" })` instead of `return { name: "x" }`
-				const wrappedCode = needsWrap && (trimmed.startsWith("{") || trimmed.startsWith("["))
-					? code.replace(/^return /, "return (").replace(/\}$/, ")}")
-					: code;
-
-				const evalFn = new Function(...evalKeys, `"use strict";\n${wrappedCode}`);
-
-				// Execute with timeout
 				let result: unknown;
 				let timedOut = false;
 
@@ -322,10 +251,8 @@ export function createReplTool(): AgentTool<typeof replSchema> {
 
 				await Promise.race([evalPromise, timeoutPromise]);
 
-				// Record in RLM history if applicable
 				if (mode === "rlm") {
 					replState.rlmHistory.push({ code: params.code, result });
-					// Keep history bounded
 					if (replState.rlmHistory.length > 100) {
 						replState.rlmHistory = replState.rlmHistory.slice(-100);
 					}
@@ -343,10 +270,8 @@ export function createReplTool(): AgentTool<typeof replSchema> {
 					}
 				}
 
-				// Update lastResult
 				replState.lastResult = result;
 
-				// Format output
 				const output = formatResult(result);
 
 				return {
