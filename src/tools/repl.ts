@@ -2,22 +2,29 @@
  * REPL Tool - Native TypeScript/JavaScript REPL with RLM Support
  *
  * Dual-mode execution:
- * - Simple mode: Execute code directly (legacy behavior)
+ * - Simple mode: Execute code directly
  * - RLM mode: Context-aware execution for Recursive Language Models
  *
- * Features:
- * - Execute JavaScript/TypeScript code via eval()
- * - State persists between calls (variables, functions)
- * - RLM helpers: ctx.chunk(), ctx.search(), ctx.filter(), ctx.map(), ctx.reduce()
- * - Recursive sub-calls via ctx.subCall()
- * - No external processes spawned
+ * Context sources (everything is a file):
+ * - Inline data (array or object)
+ * - File path (string) - auto-detects JSON/JSONL/text
+ * - Glob pattern: { pattern, baseDir } for loading multiple files
  *
- * Note: For expressions that return values, use `return expr`.
- * Statements (const, if, for, etc.) work as-is without return.
+ * Usage patterns:
+ *   repl(code: "return ctx.length", context: "/path/to/data.json")
+ *   repl(code: "ctx.search('error')", context: "/path/to/log.jsonl")
+ *   repl(code: "ctx.chunk(10)", context: { pattern: "md-files", baseDir: "." })
+ *   repl(code: "return [1,2,3].filter(x => x > 1)", context: [...inlineData])
  */
 
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
+import { readFileSync, existsSync } from "node:fs";
+import { resolve, relative } from "node:path";
+import { globSync } from "glob";
+
+// Maximum files to load from a glob pattern
+const MAX_GLOB_FILES = 1000;
 
 // Shared state across all REPL calls in this session
 const replState = {
@@ -30,29 +37,145 @@ const replState = {
 	rlmMaxCalls: 10,
 };
 
+/** Reset all REPL state to initial values */
+function resetReplState(): void {
+	replState.context = {};
+	replState.executionCount = 0;
+	replState.lastResult = undefined;
+	replState.rlmContext = undefined;
+	replState.rlmHistory = [];
+	replState.rlmDepth = 0;
+	replState.rlmMaxCalls = 10;
+}
+
 // Schema for dual-mode REPL
 const replSchema = Type.Object({
-	code: Type.String({ description: "JavaScript code to execute. For expressions that return values, use `return expr`. Statements (const, if, for) work as-is. In RLM mode, use 'ctx' to access context data." }),
-	context: Type.Optional(Type.Any({ description: "Context data for RLM mode (documents, conversation, etc.). Automatically stored as 'ctx' in the REPL." })),
+	code: Type.String({
+		description:
+			"JavaScript code to execute. For expressions that return values, use `return expr`. Statements (const, if, for) work as-is. In RLM mode, use 'ctx' to access context data. Use `lastResult` to access the previous call's result.",
+	}),
+	reset: Type.Optional(Type.Boolean({ description: "Reset all REPL state (lastResult, rlmHistory) before executing. Default: false.", default: false })),
+	context: Type.Optional(
+		Type.Any({
+			description:
+				"Context data for RLM mode. Can be: inline data (array/object), file path (string - auto-detects JSON/JSONL/text), or { pattern, baseDir } for glob patterns.",
+		}),
+	),
+	cwd: Type.Optional(Type.String({ description: "Working directory for relative file paths" })),
+	baseDir: Type.Optional(Type.String({ description: "Base directory for glob patterns" })),
 	mode: Type.Optional(
 		Type.Union([Type.Literal("simple"), Type.Literal("rlm"), Type.Literal("auto")], {
-			description: "Execution mode: 'simple' = direct eval, 'rlm' = context-aware with helpers, 'auto' = auto-detect based on context parameter (default: auto)",
+			description: "Execution mode: 'simple' = direct eval, 'rlm' = context-aware, 'auto' = auto-detect (default: auto)",
 			default: "auto",
 		}),
 	),
-	max_depth: Type.Optional(Type.Number({ description: "Maximum recursion depth for RLM sub-calls (default: 3)", default: 3 })),
-	max_calls: Type.Optional(Type.Number({ description: "Maximum number of recursive sub-calls per RLM invocation (default: 10)", default: 10 })),
+	max_calls: Type.Optional(Type.Number({ description: "Max recursive sub-calls per RLM invocation (default: 10)", default: 10 })),
 	timeout_ms: Type.Optional(Type.Number({ description: "Timeout in milliseconds (default: 30000)", default: 30000 })),
 });
 
 type ReplParams = {
 	code: string;
+	reset?: boolean;
 	context?: unknown;
+	cwd?: string;
+	baseDir?: string;
 	mode?: "simple" | "rlm" | "auto";
-	max_depth?: number;
 	max_calls?: number;
 	timeout_ms?: number;
 };
+
+/**
+ * Parse content, auto-detecting format:
+ * - JSONL (lines starting with { or [) → split into array
+ * - JSON → parse as object/array
+ * - Plain text → split by newlines into array
+ */
+function parseContent(content: string): unknown {
+	const trimmed = content.trim();
+
+	// Detect JSONL: multiple lines, each parseable as JSON
+	if (trimmed.includes("\n{") || trimmed.includes("\n[")) {
+		const lines = trimmed.split("\n").filter((l) => l.trim());
+		if (lines.every((l) => { try { JSON.parse(l); return true; } catch { return false; } })) {
+			return lines.map((l) => JSON.parse(l));
+		}
+	}
+
+	// Try JSON
+	try {
+		return JSON.parse(trimmed);
+	} catch {
+		// Plain text - split by newlines
+		const lines = trimmed.split("\n").filter((l) => l.trim());
+		return lines.length > 1 ? lines : trimmed;
+	}
+}
+
+/**
+ * Load data from a file path, auto-detecting format.
+ */
+function loadDataFromFile(filePath: string, baseDir?: string): unknown {
+	const resolvedPath = baseDir ? resolve(baseDir, filePath) : filePath;
+
+	if (!existsSync(resolvedPath)) {
+		throw new Error(`File not found: ${resolvedPath}`);
+	}
+
+	const content = readFileSync(resolvedPath, "utf-8");
+	return parseContent(content);
+}
+
+/**
+ * Load data from a glob pattern.
+ */
+function loadDataFromGlob(pattern: string, baseDir?: string): unknown {
+	const base = baseDir || ".";
+	const files = globSync(pattern, { cwd: base, absolute: true });
+
+	if (files.length === 0) {
+		throw new Error(`No files matching pattern: ${pattern} (in ${base})`);
+	}
+
+	if (files.length > MAX_GLOB_FILES) {
+		throw new Error(`Too many files (${files.length}) matching pattern: ${pattern}. Limit: ${MAX_GLOB_FILES}`);
+	}
+
+	const contents = files.map((file) => {
+		const content = readFileSync(file, "utf-8");
+		return { path: relative(base, file), content: parseContent(content) };
+	});
+
+	return contents;
+}
+
+/**
+ * Resolve context to actual data.
+ * - String → file path (load & parse)
+ * - Object with `pattern` → glob load
+ * - Otherwise → use as-is (inline data)
+ */
+function resolveContext(context: unknown, cwd?: string, baseDir?: string): unknown {
+	if (context === undefined || context === null) {
+		return undefined;
+	}
+
+	// Object with pattern (glob mode)
+	if (typeof context === "object" && !Array.isArray(context) && context !== null) {
+		const ctx = context as Record<string, unknown>;
+		if (typeof ctx.pattern === "string") {
+			return loadDataFromGlob(ctx.pattern as string, (ctx.baseDir as string) || baseDir);
+		}
+		return context;
+	}
+
+	// File path (string)
+	if (typeof context === "string") {
+		return loadDataFromFile(context, cwd);
+	}
+
+	// Already data - return as-is
+	return context;
+}
 
 /**
  * Create an RLM context object that provides helpers for working with context data.
@@ -190,6 +313,7 @@ function createRlmContext(data: unknown, depth: number, maxCalls: number) {
 			replState.rlmDepth++;
 			try {
 				const subCtx = createRlmContext(replState.lastResult, replState.rlmDepth, maxCalls);
+				// User must write `return expr` for sub-call values too
 				const fn = new Function("ctx", code);
 				return fn(subCtx);
 			} finally {
@@ -204,9 +328,14 @@ export function createReplTool(): AgentTool<typeof replSchema> {
 		name: "repl",
 		label: "REPL",
 		description:
-			"Execute JavaScript code. Use `return expr` for expressions. Statements (const, if, for) work as-is. RLM mode provides ctx helpers: chunk(), search(), filter(), map(), reduce().",
+			"Execute JavaScript code. Use `return expr` for values. RLM mode provides ctx helpers (chunk, search, filter, map, reduce). Context: inline data, file path (auto-detects JSON/JSONL/text), or { pattern, baseDir } for glob.",
 		parameters: replSchema,
 		execute: async (_toolCallId: string, params: ReplParams) => {
+			// Reset state if requested
+			if (params.reset) {
+				resetReplState();
+			}
+
 			replState.executionCount++;
 
 			const mode = params.mode === "auto" ? (params.context !== undefined ? "rlm" : "simple") : params.mode ?? "simple";
@@ -214,32 +343,39 @@ export function createReplTool(): AgentTool<typeof replSchema> {
 			const timeout = params.timeout_ms ?? 30000;
 
 			if (mode === "rlm") {
-				replState.rlmContext = params.context;
 				replState.rlmDepth = 0;
 				replState.rlmMaxCalls = maxCalls;
 			}
 
 			try {
+				// Resolve context data (file path, glob, or inline)
+				const resolvedData = resolveContext(params.context, params.cwd, params.baseDir);
+
+				if (mode === "rlm") {
+					replState.rlmContext = resolvedData;
+				}
+
 				const evalKeys = Object.keys(replState.context);
 				const evalValues = Object.values(replState.context);
 
+				// Always expose lastResult so agents can chain calls
+				evalKeys.push("lastResult");
+				evalValues.push(replState.lastResult);
+
 				let ctxObj: ReturnType<typeof createRlmContext> | undefined;
-				if (mode === "rlm") {
-					ctxObj = createRlmContext(params.context, 0, maxCalls);
+				if (mode === "rlm" && resolvedData !== undefined) {
+					ctxObj = createRlmContext(resolvedData, 0, maxCalls);
 					evalKeys.push("ctx");
 					evalValues.push(ctxObj);
 				}
 
-				// Simple approach: just eval the code as-is
-				// For values, user writes `return expr`
+				// Eval the code as-is. User writes `return expr` for values.
 				const evalFn = new Function(...evalKeys, params.code);
 
 				let result: unknown;
-				let timedOut = false;
 
 				const timeoutPromise = new Promise<never>((_, reject) => {
 					setTimeout(() => {
-						timedOut = true;
 						reject(new Error(`Execution timed out after ${timeout}ms`));
 					}, timeout);
 				});
@@ -258,17 +394,10 @@ export function createReplTool(): AgentTool<typeof replSchema> {
 					}
 				}
 
-				// Extract new variables from the code
-				const varPattern = /^(?:let|const|var)\s+(\w+)\s*=|^function\s+(\w+)\s*\(/gm;
-				let match;
-				while ((match = varPattern.exec(params.code)) !== null) {
-					const name = match[1] || match[2];
-					try {
-						replState.context[name] = (replState.context as Record<string, unknown>)[name];
-					} catch {
-						// Skip if not accessible
-					}
-				}
+				// Note: variable persistence across calls is limited since new Function()
+				// creates isolated scope. Variables declared with const/let won't persist.
+				// For stateful operations, store results in replState.lastResult or
+				// use RLM history.
 
 				replState.lastResult = result;
 
