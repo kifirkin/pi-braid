@@ -1,5 +1,12 @@
 /**
- * Enforcement prompts - Prompt templates and rules
+ * Enforcement prompts — Minimal, identity-aligned guidance
+ *
+ * The full enforcement rules are documented in this file. The system prompt
+ * only includes the core principle; detailed rules are available via
+ * enforcement tools and structured session signals (surfaced in prompt-builder).
+ *
+ * Principle: Enforcement guides through signals and structured nudges,
+ * not through verbose free-text rules injected every turn.
  */
 
 export const PRE_TURN_TEMPLATE = `
@@ -11,35 +18,11 @@ export const PRE_TURN_TEMPLATE = `
 - Use context tools to maintain hygiene (context_tag, context_log, context_audit)
 `;
 
-export const TOOL_ENFORCEMENT_RULES = `
-## Memory & Context Hygiene
-
-- Store learnings proactively: patterns, errors, solutions — not just at the end
-- Use memory_store with specific, actionable content: tags like [pattern], [error], [fix], [insight]
-- Call memory_recall() at session start to reconnect with prior context
-- Use context_tag after milestones, context_audit() for hygiene checks
-- Keep context clean: prune obsolete entries, tag checkpoints before branching
-
-## Tool Usage Best Practices
-
-- Read → plan → edit → test → verify → store in memory
-- You verify before claiming done
-
-## Enforcement Signals
-
-Enforcement will nudge you when:
-- No memory usage for 15+ turns
-- No context tool usage for 20+ turns
-- Repeated exploration without progress
-- Code changes without verification
-- finalize() without memory or verification
-`;
+/** @deprecated — Rules are now surfaced via structured session signals in prompt-builder */
+export const TOOL_ENFORCEMENT_RULES = ``;
 
 export const POST_TURN_VALIDATION_TEMPLATE = `
 ## Turn Validation Failed
 
-Your last turn had the following issues:
 {issues}
-
-This violates the enforcement rules. Review and correct your approach.
 `;

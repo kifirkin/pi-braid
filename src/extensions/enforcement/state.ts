@@ -65,7 +65,6 @@ export const state = {
 	memoryNudgeSent: false,
 	totalToolCalls: 0,
 	toolCallsSinceLastMemory: 0,
-	recordFailureCount: 0,
 	hasRecordedFailure: false,
 	lastFailedToolTurn: -100,
 	uniqueToolsUsed: new Set<string>(),
@@ -81,16 +80,10 @@ export const state = {
 	claimsDetectedThisTurn: false,
 	hasCodeChanges: false,
 	lastScratchpadNudgeTurn: -100,
-	pendingToolErrors: null as { toolName: string; turn: number } | null,
-	hadToolErrors: false,
-	scratchpadContent: "" as string,
 	lastJudgeTime: 0,
 	judgeSkipCounter: 0,
 	lastJudgeAnalysis: null as JudgeAnalysis | null,
 	lastLazyNudgeTime: 0,
-	// Track one-shot warnings injected into system prompt (avoid repetition)
-	memoryNudgeWarned: false,
-	silentTurnWarned: false,
 	// Verification judge tracking
 	lastVerificationJudgeTurn: 0,
 	verificationJudgeRunning: false,
@@ -152,9 +145,6 @@ export function resetState(): void {
 	state.hasCodeChanges = false;
 	state.config.thinkCalledInSession = false;
 	state.config.exploreCalledInSession = false;
-	state.pendingToolErrors = null;
-	state.hadToolErrors = false;
-	state.recordFailureCount = 0;
 	state.hasRecordedFailure = false;
 	state.lastFailedToolTurn = -100;
 	state.lastScratchpadNudgeTurn = -100;
@@ -165,9 +155,6 @@ export function resetState(): void {
 	state.judgeSkipCounter = 0;
 	state.lastJudgeAnalysis = null;
 	state.lastLazyNudgeTime = 0;
-	// Reset one-shot tracking
-	state.memoryNudgeWarned = false;
-	state.silentTurnWarned = false;
 	// Reset verification judge tracking
 	state.lastVerificationJudgeTurn = 0;
 	state.verificationJudgeRunning = false;

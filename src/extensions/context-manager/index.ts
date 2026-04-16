@@ -794,6 +794,12 @@ const COMPACTION_NON_RETRYABLE_PATTERNS = [
 	/maximum.*context/i,
 	/model.*not.*found/i,
 	/model.*does.*not.*exist/i,
+	/400.*status.*code/i,          // Client errors - request rejected permanently
+	/status.?code.?400/i,          // Client errors - malformed request
+	/4\s*0\s*0\b/i,                // HTTP 400
+	/no body/i,                    // Empty response body (often 400 without details)
+	/content.?type.*invalid/i,     // Malformed content type
+	/invalid.*request.*format/i,  // Request format issues
 ];
 
 /** Track compaction retry state */
