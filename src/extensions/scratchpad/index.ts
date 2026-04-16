@@ -633,7 +633,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 						content: [
 							{
 								type: "text" as const,
-								text: `${unpersisted.length} unpersisted learning(s). Persist them to survive compaction:\n\n${items}\n\nAfter calling memory_store, use scratchpad(action="remove_constraint", constraint_id="${unpersisted[0].id}") to mark as persisted.`,
+								text: `${unpersisted.length} unpersisted learning(s). Persist them to survive compaction:\n\n${items}\n\nThese will survive context compaction.`,
 							},
 						],
 						details: { count: unpersisted.length, learnings: unpersisted },

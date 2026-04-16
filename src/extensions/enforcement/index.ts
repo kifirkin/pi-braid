@@ -139,16 +139,6 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 			state.turnsSinceMemory = 0;
 		}
 
-		const contextToolUpdated = actualTools.some((t) =>
-			["context_tag", "context_log", "context_checkout", "context_prune", "context_audit"].includes(t),
-		);
-		if (contextToolUpdated) {
-			state.turnsSinceContextTool = 0;
-			state.contextToolNudged = false;
-		} else if (actualTools.length > 0 && !hadErrors) {
-			state.turnsSinceContextTool++;
-		}
-
 		const turnState: TurnState = {
 			turnIndex: state.currentTurn,
 			plannedTools: [],
@@ -237,6 +227,11 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 			);
 		}
 
+		// Context tool signal: REMOVED.
+		// Interval-based "use context tools" nudges are wrong signal — they fire on
+		// enforcement turn count, not user-perceived progress. Context hygiene is already
+		// covered by the context usage nudge (75%/85%) below.
+
 		// Scratchpad signal: code changed but scratchpad not updated
 		if (
 			!hadErrors &&
@@ -251,27 +246,6 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 					`Code changed without updating scratchpad — consider scratchpad(action="add_note", text="...") or scratchpad(action="add_decision", text="...")`,
 				);
 			}
-		}
-
-		// Context tool signal
-		const contextToolInterval = state.config.contextToolNudgeInterval ?? 20;
-		if (
-			!hadErrors &&
-			actualTools.length > 0 &&
-			state.config.enforceContextTools &&
-			state.turnsSinceContextTool >= contextToolInterval &&
-			!state.contextToolNudged
-		) {
-			state.contextToolNudged = true;
-
-			let suggestion = "context_log or context_audit()";
-			if (state.hasCodeChanges) {
-				suggestion = 'context_tag(name="checkpoint") or context_audit()';
-			} else if (state.hasExplored) {
-				suggestion = 'context_tag(name="exploration-done") or context_audit()';
-			}
-
-			sessionSignals.push(`Context hygiene: ${state.turnsSinceContextTool} turns since context tools — consider ${suggestion}`);
 		}
 
 		// Context usage signal (only at high usage — semantic, not metric)
@@ -323,13 +297,11 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 	// ── session_compact ────────────────────────────────────────────────────────
 	// L3: Compaction happened — harness-level minimum-fidelity trigger.
 	// Key learnings from scratchpad must be persisted before they get lost.
-	// Read scratchpad key_learnings and surface them to the agent.
 	pi.on("session_compact" as any, async (event: any, ctx: any) => {
 		if (!state.enforcementActive) return;
 
 		const compactTurn = state.currentTurn;
 
-		// Read scratchpad key_learnings before compaction wipes context
 		try {
 			const scratchpadResult = await ctx.tools.scratchpad?.({ action: "read" });
 			const details = (scratchpadResult as any)?.details;
@@ -353,16 +325,20 @@ Persist them now — this is the minimum-fidelity moment.`,
 				);
 			}
 
-			// Reset hygiene counters: compaction resets context, agent needs fresh start
-		// without immediately being told "use context tools"
-		state.turnsSinceContextTool = 0;
-		state.contextToolNudged = false;
-		state.contextNudgeSent = false;
-		state.lastCompactionTurn = compactTurn;
+			// Reset hygiene counters — compaction resets context, agent needs fresh start.
+			// Rebase turn-based cooldown anchors to currentTurn so agent isn't nudged
+			// before it starts working post-compaction.
 
-		// Also reset memory nudge since it should fire on new code changes post-compaction
-		state.memoryNudgeSent = false;
-		state.turnsSinceMemory = 0;
+			state.contextNudgeSent = false;
+			state.lastContextCheckTurn = state.currentTurn;
+			state.lastCompactionTurn = compactTurn;
+			state.lastScratchpadNudgeTurn = state.currentTurn;
+
+			// Reset memory tracking — fire on NEW code changes post-compaction only
+			state.hasCodeChanges = false;
+			state.lastCodeChangeTurn = 0;
+			state.memoryNudgeSent = false;
+			state.turnsSinceMemory = 0;
 		} catch {
 			// Silent fail — don't block on scratchpad read
 		}

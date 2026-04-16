@@ -13,9 +13,6 @@ export interface EnforcementConfig {
 	enforceHypothesisBeforeFix: boolean;
 	enforceMemory: boolean;
 	enforceMemoryNudge: boolean;
-	// Context tool enforcement
-	enforceContextTools: boolean;
-	contextToolNudgeInterval: number;
 	enforceToolDiversity: boolean;
 	enforceExploreBeforeAct: boolean;
 	memoryNudgeThreshold: number;

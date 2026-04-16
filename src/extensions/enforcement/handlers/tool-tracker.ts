@@ -66,9 +66,6 @@ export function recordToolCall(toolName: string): void {
 	// Track context management tools usage
 	const contextTools = ["context_tag", "context_log", "context_checkout", "context_prune", "context_audit"];
 	if (contextTools.includes(toolName)) {
-		state.lastContextToolCall = state.currentTurn;
-		state.turnsSinceContextTool = 0;
-		state.contextToolNudged = false;
 	}
 
 	// Track scratchpad usage as part of memory hygiene
