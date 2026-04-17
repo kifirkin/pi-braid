@@ -289,6 +289,9 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     parts.push(`Current date: ${date}`);
     parts.push(`Current working directory: ${promptCwd}`);
 
-    return { systemPrompt: parts.join("\n\n") };
+    const newPrompt = parts.join("\n\n");
+    console.error("PROMPT BUILDER: Generated prompt length:", newPrompt.length);
+    console.error("PROMPT BUILDER: First 200 chars:", newPrompt.substring(0, 200));
+    return { systemPrompt: newPrompt };
   });
 }
