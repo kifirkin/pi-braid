@@ -230,6 +230,7 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
+    console.error("=== PROMPT BUILDER before_agent_start CALLED ===");
     const cwd = ctx.cwd;
 
     // Get structured data
