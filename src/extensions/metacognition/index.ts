@@ -448,6 +448,25 @@ The task ends after finalize() is called.`,
 			_onUpdate: any,
 			_ctx: ExtensionContext | undefined,
 		): Promise<AgentToolResult<any>> => {
+			// Validate required params - prevent crash on empty finalize: {}
+			if (!params || params.summary === undefined || params.completed === undefined) {
+				return {
+					content: [{
+						type: "text" as const,
+						text: `🚫 **FINALIZE REQUIRES PARAMETERS**
+
+Missing required fields. Please provide:
+- completed: boolean (true if task succeeded, false if not)
+- summary: string (what was accomplished)
+- tasksRemaining?: string[] (optional follow-up tasks)
+
+Example:
+finalize(completed=true, summary="Fixed the bug", tasksRemaining=["write tests"])`,
+					}],
+					details: { finalized: false, blocked: true, error: "missing_params" },
+				};
+			}
+
 			onFinalize?.(params.summary, params.completed);
 
 			// Build session summary for verification
