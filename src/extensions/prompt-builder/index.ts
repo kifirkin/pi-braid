@@ -215,6 +215,8 @@ function formatL1Environment(env: Awaited<ReturnType<typeof gatherL1State>>): st
 
 // ── Main Extension ───────────────────────────────────────────────────────────
 
+console.error("=== PROMPT BUILDER EXTENSION LOADED ===");
+
 export default function promptBuilderExtension(pi: ExtensionAPI) {
   pi.events.on("enforcement_signals", (data: unknown) => {
     const d = data as { turn: number; signals: Record<string, { turn: number; text: string; acted: boolean }> };
