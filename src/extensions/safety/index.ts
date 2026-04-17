@@ -7,9 +7,9 @@
 import type { ExtensionAPI, SessionMessageEntry } from "@mariozechner/pi-coding-agent";
 
 const DANGEROUS_PATTERNS = [
-	/\brm\s+(-rf?|--recursive)/i,  // rm -rf, rm -r
-	/\bsudo\b/i,                     // sudo
-	/\b(chmod|chown)\b.*777/i,       // chmod/chown 777
+	/\brm\s+(-rf?|--recursive)/i, // rm -rf, rm -r
+	/\bsudo\b/i, // sudo
+	/\b(chmod|chown)\b.*777/i, // chmod/chown 777
 ];
 
 const PROTECTED_PATTERNS = [
@@ -30,11 +30,7 @@ function isProtectedPath(path: string): boolean {
 	return PROTECTED_PATTERNS.some((p) => p.test(path));
 }
 
-async function checkDirtyRepo(
-	pi: ExtensionAPI,
-	ctx: any,
-	action: string,
-): Promise<{ cancel: boolean } | undefined> {
+async function checkDirtyRepo(pi: ExtensionAPI, ctx: any, action: string): Promise<{ cancel: boolean } | undefined> {
 	const { stdout, code } = await pi.exec("git", ["status", "--porcelain"]);
 
 	if (code !== 0) return; // Not a git repo
@@ -53,6 +49,153 @@ async function checkDirtyRepo(
 		return { cancel: true };
 	}
 }
+
+// ── Auto-Commit Message Builder ──────────────────────────────────────────────
+
+interface CommitContext {
+	scratchpadGoal: string | null;
+	scratchpadPlan: string[];
+	scratchpadDecisions: string[];
+	scratchpadNotes: string[];
+	filesChanged: string[];
+	lastAssistantText: string;
+	turnCount: number;
+}
+
+async function gatherCommitContext(pi: ExtensionAPI, ctx: any): Promise<CommitContext> {
+	const entries = ctx.sessionManager.getEntries();
+
+	// Collect last assistant message
+	let lastAssistantText = "";
+	for (let i = entries.length - 1; i >= 0; i--) {
+		const entry = entries[i];
+		if (entry.type === "message" && entry.message.role === "assistant") {
+			const content = entry.message.content;
+			if (Array.isArray(content)) {
+				lastAssistantText = content
+					.filter((c): c is { type: "text"; text: string } => c.type === "text")
+					.map((c) => c.text)
+					.join("\n");
+			}
+			break;
+		}
+	}
+
+	// Collect scratchpad data from session entries
+	let scratchpadGoal: string | null = null;
+	const scratchpadPlan: string[] = [];
+	const scratchpadDecisions: string[] = [];
+	const scratchpadNotes: string[] = [];
+
+	for (const entry of entries) {
+		if (entry.type === "message" && entry.message.role === "assistant") {
+			const content = entry.message.content;
+			if (!Array.isArray(content)) continue;
+			for (const block of content) {
+				if (block.type !== "text") continue;
+				const text = block.text;
+
+				// Detect scratchpad goal references
+				const goalMatch = text.match(/Goal set: (.+?)(?:\n|$)/);
+				if (goalMatch && !scratchpadGoal) scratchpadGoal = goalMatch[1].trim();
+
+				// Detect plan steps
+				const planMatches = text.matchAll(/^\d+\)\s+(.+)$/gm);
+				for (const m of planMatches) {
+					const step = m[1].trim();
+					if (step && !scratchpadPlan.includes(step)) scratchpadPlan.push(step.slice(0, 80));
+				}
+
+				// Detect decisions
+				const decisionMatches = text.matchAll(/decision:?\s*(.+)/gi);
+				for (const m of decisionMatches) {
+					const d = m[1].trim().slice(0, 100);
+					if (d && !scratchpadDecisions.includes(d)) scratchpadDecisions.push(d);
+				}
+
+				// Detect notes
+				const noteMatches = text.matchAll(/note:?\s*(.+)/gi);
+				for (const m of noteMatches) {
+					const n = m[1].trim().slice(0, 100);
+					if (n && !scratchpadNotes.includes(n)) scratchpadNotes.push(n);
+				}
+			}
+		}
+	}
+
+	// Count turns from agent-environment (via session entries)
+	let turnCount = 0;
+	for (const entry of entries) {
+		if (entry.type === "message" && entry.message.role === "assistant") turnCount++;
+	}
+
+	// Get file change stats
+	const { stdout } = await pi.exec("git", ["diff", "--stat", "--summary"]);
+	const filesChanged: string[] = [];
+	for (const line of stdout.split("\n")) {
+		const m = line.match(/\s+(create|modify|delete|rename)\s+(.+)/i);
+		if (m) filesChanged.push(m[2]);
+	}
+
+	return { scratchpadGoal, scratchpadPlan, scratchpadDecisions, scratchpadNotes, filesChanged, lastAssistantText, turnCount };
+}
+
+function buildCommitMessage(ctx: CommitContext): string {
+	const parts: string[] = [];
+
+	// Primary: scratchpad goal (most descriptive)
+	if (ctx.scratchpadGoal) {
+		const goal = ctx.scratchpadGoal.slice(0, 80);
+		parts.push(`goal: ${goal}`);
+	}
+
+	// Secondary: files changed (if no goal, use this)
+	if (parts.length === 0 && ctx.filesChanged.length > 0) {
+		const topFiles = ctx.filesChanged.slice(0, 3);
+		if (topFiles.length === 1) {
+			parts.push(`file: ${topFiles[0]}`);
+		} else {
+			parts.push(`files: ${topFiles.join(", ")}`);
+		}
+	}
+
+	// Tertiary: plan steps completed
+	if (ctx.scratchpadPlan.length > 0) {
+		const planLine = ctx.scratchpadPlan.slice(0, 2).join(" → ");
+		if (planLine) parts.push(`plan: ${planLine}`);
+	}
+
+	// Fallback: first line of assistant message
+	if (parts.length === 0 && ctx.lastAssistantText.trim()) {
+		const firstLine = ctx.lastAssistantText.split("\n")[0].trim().slice(0, 80);
+		if (firstLine) parts.push(firstLine);
+	}
+
+	// Fallback: generic
+	if (parts.length === 0) {
+		parts.push("Work in progress");
+	}
+
+	// Turn count as secondary context
+	const meta = ctx.turnCount > 1 ? ` (${ctx.turnCount} turns)` : "";
+
+	// Compose the message
+	const primary = parts[0];
+	const secondary = parts.slice(1).join(" | ");
+
+	if (secondary) {
+		return `[pi] ${primary} | ${secondary}${meta}`;
+	}
+	return `[pi] ${primary}${meta}`;
+}
+
+function formatFilesSummary(files: string[]): string {
+	if (files.length === 0) return "";
+	if (files.length <= 5) return ` [+${files.length} files]`;
+	return ` [+${files.length} files]`;
+}
+
+// ── Extension ────────────────────────────────────────────────────────────────
 
 export default function safetyExtension(pi: ExtensionAPI) {
 	// ── Tool Call Interceptor ──────────────────────────────────────────
@@ -104,33 +247,45 @@ export default function safetyExtension(pi: ExtensionAPI) {
 	});
 
 	// ── Auto-Commit on Exit ─────────────────────────────────────────────
-	// Commits changes when the agent exits, using last assistant message as context.
+	// Commits changes when the agent exits, using rich context from scratchpad + session.
 	pi.on("session_shutdown", async (_event, ctx) => {
 		const { stdout: status, code } = await pi.exec("git", ["status", "--porcelain"]);
 		if (code !== 0 || !status.trim()) return; // No changes
 
-		// Find last assistant message for commit context
-		const entries = ctx.sessionManager.getEntries();
-		let lastAssistantText = "";
-		for (let i = entries.length - 1; i >= 0; i--) {
-			const entry = entries[i];
-			if (entry.type === "message" && entry.message.role === "assistant") {
-				const content = entry.message.content;
-				if (Array.isArray(content)) {
-					lastAssistantText = content
-						.filter((c): c is { type: "text"; text: string } => c.type === "text")
-						.map((c) => c.text)
-						.join("\n");
+		// Gather rich commit context
+		const commitCtx = await gatherCommitContext(pi, ctx);
+
+		// Build meaningful commit message
+		const msg = buildCommitMessage(commitCtx);
+		const fileSummary = formatFilesSummary(commitCtx.filesChanged);
+		const fullMsg = fileSummary ? `${msg}${fileSummary}` : msg;
+
+		// Also get diff stat for a more informative commit body
+		const { stdout: diffStat } = await pi.exec("git", ["diff", "--stat", "HEAD"]);
+		const bodyLines: string[] = [];
+		if (diffStat.trim()) {
+			bodyLines.push("---");
+			bodyLines.push("Changes:");
+			for (const line of diffStat.trim().split("\n").slice(0, 10)) {
+				if (line.trim()) bodyLines.push(`  ${line.trim()}`);
+			}
+			if (commitCtx.scratchpadGoal) {
+				bodyLines.push("");
+				bodyLines.push(`Goal: ${commitCtx.scratchpadGoal}`);
+			}
+			if (commitCtx.scratchpadDecisions.length > 0) {
+				bodyLines.push("");
+				bodyLines.push("Decisions:");
+				for (const d of commitCtx.scratchpadDecisions.slice(0, 3)) {
+					bodyLines.push(`  - ${d}`);
 				}
-				break;
 			}
 		}
 
-		const firstLine = lastAssistantText.split("\n")[0] || "Work in progress";
-		const msg = `[pi] ${firstLine.slice(0, 50)}${firstLine.length > 50 ? "..." : ""}`;
+		const fullBody = bodyLines.length > 0 ? `${fullMsg}\n\n${bodyLines.join("\n")}` : fullMsg;
 
 		await pi.exec("git", ["add", "-A"]);
-		const { code: commitCode } = await pi.exec("git", ["commit", "-m", msg]);
+		const { code: commitCode } = await pi.exec("git", ["commit", "-m", fullBody]);
 
 		if (commitCode === 0 && ctx.hasUI) {
 			ctx.ui.notify(`Auto-committed: ${msg}`, "info");
