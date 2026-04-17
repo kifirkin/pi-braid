@@ -310,7 +310,7 @@ export function createDefaultPolicies(): ContextPolicy[] {
 			trigger: { type: "signal", signal: "task_completion_candidate" },
 			action: {
 				type: "propose",
-				message: 'Task looks complete (explored, implemented, verified). finalize(completed=true, summary="...")?',
+				message: "Task looks complete (explored, implemented, verified). finalize(completed=true, summary='...')?",
 				priority: "medium",
 			},
 			suggested_action: "finalize",
