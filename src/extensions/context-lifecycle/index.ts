@@ -304,6 +304,14 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 		// ── COGNITION: Evaluate policies against signals ───────────────────
 		const redundancyCount = signals.filter((s) => s.type === "redundancy_detected").length;
 
+		// ── TASK COMPLETION DETECTION ────────────────────────────────────────
+		// Check if session looks like a completed task
+		_signalDetector.checkAndEmitCompletionSignal();
+		const completionSignals = _signalDetector.getPending();
+		if (completionSignals.length > 0) {
+			signals.push(...completionSignals);
+		}
+
 		const evaluated = _policyEngine.evaluate({
 			signals,
 			contextUsage: usage,

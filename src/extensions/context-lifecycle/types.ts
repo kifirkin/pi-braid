@@ -16,7 +16,8 @@ export type SemanticSignalType =
 	| "context_pressure"
 	| "task_boundary"
 	| "compaction_opportunity"
-	| "checkpoint_opportunity";
+	| "checkpoint_opportunity"
+	| "task_completion_candidate";
 
 export interface SemanticSignal {
 	id: string;
@@ -57,7 +58,8 @@ export type PolicyAction =
 	| { type: "propose"; message: string; priority: "low" | "medium" | "high" }
 	| { type: "snapshot"; reason: string }
 	| { type: "nudge"; message: string }
-	| { type: "govern"; constraint: string }; // Governance action: validate constraint
+	| { type: "govern"; constraint: string } // Governance action: validate constraint
+	| { type: "finalize_suggestion"; summary?: string }; // Suggest finalize to agent
 
 export interface ContextPolicy {
 	id: string;
@@ -298,6 +300,21 @@ export function createDefaultPolicies(): ContextPolicy[] {
 			cooldown_ms: 60_000,
 			trigger: { type: "signal", signal: "context_pressure" },
 			action: { type: "snapshot", reason: "pre-compaction" },
+		},
+		// ── Task Completion Suggestion ──────────────────────────────────────────
+		{
+			id: "finalize-suggestion",
+			name: "Suggest finalize when task appears complete",
+			priority: 30, // Lower than other policies - suggestion only
+			cooldown_ms: 120_000,
+			trigger: { type: "signal", signal: "task_completion_candidate" },
+			action: {
+				type: "propose",
+				message: 'Task looks complete (explored, implemented, verified). finalize(completed=true, summary="...")?',
+				priority: "medium",
+			},
+			suggested_action: "finalize",
+			min_confidence: 0.6,
 		},
 	];
 }

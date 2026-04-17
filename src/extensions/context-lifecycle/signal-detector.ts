@@ -244,6 +244,40 @@ export class SignalDetector {
 		return [...this.topicHistory];
 	}
 
+	/** Check if session looks like task completion pattern
+	 * Used by context-lifecycle to suggest finalize when appropriate
+	 */
+	detectCompletionPattern(): boolean {
+		// Task boundary detected (explore → implement → verify)
+		const hasTaskBoundary = this.topicHistory.length >= 2;
+
+		// Low redundancy = no repeated work
+		const lowRedundancy = this.recentHashes.size > 5;
+
+		// Has verification tools (meaning work was validated)
+		const hasVerification = this.toolSequence.some((t) =>
+			["bash", "test", "verify", "repl"].includes(t),
+		);
+
+		// Diverse tool usage (not stuck in one pattern)
+		const uniqueTools = new Set(this.toolSequence.slice(-10)).size;
+		const diverseTools = uniqueTools >= 4;
+
+		return hasTaskBoundary && lowRedundancy && hasVerification && diverseTools;
+	}
+
+	/** Emit completion candidate signal if pattern detected */
+	checkAndEmitCompletionSignal(): void {
+		if (this.detectCompletionPattern()) {
+			this.pendingSignals.push(
+				createSignal("task_completion_candidate", this.lastTurn, {
+					topicHistory: this.topicHistory.slice(-3),
+					uniqueTools: new Set(this.toolSequence.slice(-10)).size,
+				}),
+			);
+		}
+	}
+
 	/** Reset state */
 	reset(): void {
 		this.lastTopic = "";
