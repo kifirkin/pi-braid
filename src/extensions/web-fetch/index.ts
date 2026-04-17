@@ -5,6 +5,7 @@
  * - Fetches URLs and converts HTML to LLM-optimized markdown (pure Node.js)
  * - Scans outgoing requests for leaked API keys/tokens
  * - Detects prompt injection in fetched content
+ * - Rejects binary content (PDF, images, videos, etc.) with helpful error messages
  * - Truncates output to stay within context limits
  *
  * All logic uses Node.js built-ins only. No external dependencies.
@@ -294,7 +295,7 @@ export default function webFetchExtension(pi: ExtensionAPI) {
 		name: "web_fetch",
 		label: "Web Fetch",
 		description:
-			`Fetch a URL and return clean markdown content optimized for LLMs. Converts HTML pages to compact markdown (~50-99% size reduction). Includes secret scanning (blocks requests containing API keys/tokens) and prompt injection detection. Output truncated to ${DEFAULT_MAX_LINES} lines / ${formatSize(DEFAULT_MAX_BYTES)}. Use for reading web pages, documentation, articles, API responses.`,
+			`Fetch a URL and return clean markdown content optimized for LLMs. Converts HTML pages to compact markdown (~50-99% size reduction). Includes secret scanning (blocks requests containing API keys/tokens) and prompt injection detection. Binary content (PDFs, images, videos, etc.) is rejected with a helpful error message. Output truncated to ${DEFAULT_MAX_LINES} lines / ${formatSize(DEFAULT_MAX_BYTES)}. Use for reading web pages, documentation, articles, API responses.`,
 
 		parameters: fetchParams,
 
