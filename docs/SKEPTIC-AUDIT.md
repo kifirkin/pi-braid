@@ -10,21 +10,16 @@
 
 ## CRITICAL ISSUES (Must Fix)
 
-### 1. **BROKEN: `ctx.triggerCompaction` doesn't exist**
+### 1. **BROKEN: `ctx.triggerCompaction` doesn't exist** ✅ FIXED
 
 ```
-src/extensions/context-lifecycle/index.ts:173:
-  ctx.triggerCompaction?.();
+src/extensions/context-lifecycle/index.ts:180:
+  ctx.compact?.();  // Changed from ctx.triggerCompaction?.()
 ```
 
-**Problem**: context-lifecycle calls `ctx.triggerCompaction` which is NOT in the pi API. This will silently do nothing.
+**Problem**: context-lifecycle called non-existent `ctx.triggerCompaction`.
 
-**Evidence**:
-- `grep -rn "triggerCompaction" node_modules/@mariozechner/pi-coding-agent/dist/` → empty
-- context-manager has `triggerCompactionRetry()` as a LOCAL function, not on ctx
-- context-lifecycle has no way to trigger compaction
-
-**Impact**: Auto-compaction policies are dead code.
+**Fix**: Changed to `ctx.compact()` which is the proper pi API (ExtensionContext.compact).
 
 ---
 
@@ -206,7 +201,7 @@ evolve/index.ts:123: name: "evolve"  // <-- DUPLICATE
 
 ## LOW SEVERITY
 
-### 12. **GOVERNANCE: No proposal spam protection**
+### 12. **GOVERNANCE: No proposal spam protection** ✅ FIXED
 
 context-lifecycle creates proposals via CustomMessageEntry, but has no actual rate limiting:
 ```
@@ -215,6 +210,11 @@ context-lifecycle/index.ts:231:
 ```
 
 If a policy fires every turn, every turn gets a new CustomMessageEntry shown to the LLM.
+
+**FIX**: Added rate limiting in `queueProposal()`:
+- `MAX_PROPOSALS_PER_TURN = 2` - max 2 proposals per turn
+- `MAX_PROPOSALS_SESSION = 10` - max 10 proposals per session
+- Counters reset on turn start and session start
 
 ---
 
@@ -250,7 +250,7 @@ healthcheck skill:
 ## RECOMMENDED ACTIONS
 
 ### P0 (Must Fix)
-1. Remove or fix `ctx.triggerCompaction` call
+1. ~~Remove or fix `ctx.triggerCompaction` call~~ ✅ FIXED - now uses `ctx.compact()`
 2. Add explicit extension ordering or event-based handshake
 3. Make analytics/error-capture/feedback async
 
@@ -262,7 +262,7 @@ healthcheck skill:
 ### P2 (Nice to Have)
 7. Make startup lazy-load extensions
 8. Persist outcome tracking
-9. Add auth boundaries between extensions
+9. ~~Proposal spam protection~~ ✅ FIXED - rate limiting added
 
 ---
 
@@ -276,8 +276,8 @@ healthcheck skill:
 | Total tools | 47 |
 | Duplicate tools | 2 |
 | Lines of code | 13,681 |
-| Broken patterns | 4 |
+| Broken patterns | 2 (fixed: triggerCompaction, proposal crash) |
 | Sync I/O in handlers | 5 locations |
 
-**Technical Debt Score**: HIGH
+**Technical Debt Score**: HIGH (improved from CRITICAL)
 
