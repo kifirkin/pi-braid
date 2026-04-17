@@ -11,17 +11,13 @@
  * Don't duplicate native sections here.
  */
 
-import { createRequire } from "node:module";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getCognitiveMemory } from "../../lib/cognitive-memory.js";
 import { gatherL1Environment, formatL1EnvironmentSection } from "../agent-environment/index.js";
-
-// Create require for module resolution
-const _require = createRequire(import.meta.url);
 
 interface L1Environment {
 	contextPercent: number;
@@ -76,23 +72,61 @@ async function gatherL1State(pi: ExtensionAPI, ctx: ExtensionContext | undefined
 	return { contextPercent, memoryCount, stepsSinceCheckpoint, piRoot, agentEnv };
 }
 
-/** Discover pi-coding-agent package root using proper module resolution */
+/**
+ * Discover pi-coding-agent package root using multiple strategies.
+ * This replicates the logic from pi's internal config.ts for use in extensions.
+ * Handles global npm installs, linked packages, bun binaries, and local dev.
+ */
 function discoverPiRootPath(): string {
+	// Strategy 1: Find pi binary in PATH and walk up to package.json
+	// Most reliable for global installs
 	try {
-		const packageJsonPath = _require.resolve("@mariozechner/pi-coding-agent/package.json");
-		return dirname(packageJsonPath);
+		const { execSync } = require("child_process");
+		const piPath = execSync("which pi 2>/dev/null || echo ''", { encoding: "utf8", timeout: 5000 }).trim();
+		if (piPath && existsSync(piPath)) {
+			const realPath = realpathSync(piPath);
+			let dir = dirname(realPath);
+			for (let i = 0; i < 5; i++) {
+				const pkgPath = join(dir, "package.json");
+				if (existsSync(pkgPath)) {
+					const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+					if (pkg.name === "@mariozechner/pi-coding-agent") {
+						return dir;
+					}
+				}
+				dir = dirname(dir);
+			}
+		}
 	} catch {}
 
-	// Fallback: walk up from this extension's location
+	// Strategy 2: Walk up from extension's location (works for local dev and linked packages)
 	try {
 		const extensionDir = dirname(fileURLToPath(import.meta.url));
 		let dir = extensionDir;
-		for (let i = 0; i < 5; i++) {
+		for (let i = 0; i < 10; i++) {
 			const candidate = join(dir, "node_modules", "@mariozechner", "pi-coding-agent", "package.json");
-			if (existsSync(candidate)) return dirname(candidate);
+			if (existsSync(candidate)) {
+				const pkg = JSON.parse(readFileSync(candidate, "utf8"));
+				if (pkg.name === "@mariozechner/pi-coding-agent") {
+					return dirname(candidate);
+				}
+			}
 			const parent = resolve(dir, "..");
 			if (parent === dir) break;
 			dir = parent;
+		}
+	} catch {}
+
+	// Strategy 3: Check npm global prefix
+	try {
+		const { execSync } = require("child_process");
+		const npmPrefix = execSync("npm root -g", { encoding: "utf8", timeout: 5000 }).trim();
+		const candidate = join(npmPrefix, "@mariozechner", "pi-coding-agent", "package.json");
+		if (existsSync(candidate)) {
+			const pkg = JSON.parse(readFileSync(candidate, "utf8"));
+			if (pkg.name === "@mariozechner/pi-coding-agent") {
+				return dirname(candidate);
+			}
 		}
 	} catch {}
 
@@ -121,7 +155,7 @@ function formatL1Environment(env: L1Environment): string {
 	}
 
 	// Pi package root (environmental awareness)
-  if (env.piRoot) {
+	if (env.piRoot) {
 		lines.push(`Root: ${env.piRoot}`);
 	}
 
