@@ -15,6 +15,8 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 
+import { createLogger, taggedConsole } from "../../lib/logger.js";
+
 import type { SemanticSignal } from "./types.js";
 import {
 	createDefaultPolicies,
@@ -31,6 +33,9 @@ import { PolicyEngine, type EvaluatedAction } from "./policy-engine.js";
 import { SignalDetector } from "./signal-detector.js";
 
 // ── Module State ─────────────────────────────────────────────────────────────
+
+const log = createLogger("context-lifecycle");
+const _log = taggedConsole("context-lifecycle"); // verbose debug
 
 const _policyEngine = new PolicyEngine();
 const _signalDetector = new SignalDetector();
@@ -66,7 +71,7 @@ function evictOldOutcomes(): void {
 	}
 
 	if (_outcomes.length < before) {
-		console.log(`[context-lifecycle] Evicted ${before - _outcomes.length} old outcomes`);
+		log.info(`Evicted ${before - _outcomes.length} old outcomes`);
 	}
 }
 
@@ -127,8 +132,9 @@ function readProposalsFromSession(entries: any[]): ContextProposal[] {
 	const proposals: ContextProposal[] = [];
 	for (const entry of entries) {
 		if (isProposalEntry(entry)) {
-			const data = (entry as any).data as ContextProposal;
-			if (data && data.id) {
+			// Use details (set via appendCustomMessageEntry's 4th param)
+			const data = entry.details as ContextProposal;
+			if (data && data.id && data.created_at !== undefined) {
 				proposals.push(data);
 				_proposalsByEntryId.set(entry.id, data);
 			}
@@ -142,6 +148,7 @@ function readSnapshotsFromSession(entries: any[]): ContextSnapshot[] {
 	const snapshots: ContextSnapshot[] = [];
 	for (const entry of entries) {
 		if (isSnapshotEntry(entry)) {
+			// appendCustomEntry uses .data field
 			const data = (entry as any).data as ContextSnapshot;
 			if (data && data.id && data.expires_at > now) {
 				snapshots.push(data);
@@ -183,7 +190,7 @@ function executeAction(evaluated: EvaluatedAction, pi: ExtensionAPI, ctx: any, u
 				);
 				const sm = ctx.sessionManager;
 				sm.appendCustomEntry(SNAPSHOT_CUSTOM_TYPE, snapshot);
-				console.log(`[context-lifecycle] Created snapshot: ${snapshot.id}`);
+				_log.log(`Created snapshot: ${snapshot.id}`);
 			}
 			break;
 
@@ -239,7 +246,7 @@ function queueProposal(evaluated: EvaluatedAction, ctx: any, branchLength: numbe
 		true,
 		proposal,
 	);
-	console.log(`[context-lifecycle] Created proposal: ${proposal.id}`);
+	_log.log(`Created proposal: ${proposal.id}`);
 }
 
 // ── Extension Factory ────────────────────────────────────────────────────────
@@ -289,9 +296,9 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 		for (const ev of evaluated) {
 			// Log governance warnings
 			if (!ev.validation.valid) {
-				console.warn(`[context-lifecycle] Governance blocked: ${ev.validation.messages.join(", ")}`);
+				log.warn(`Governance blocked: ${ev.validation.messages.join(", ")}`);
 			} else if (ev.validation.severity === "warn") {
-				console.log(`[context-lifecycle] Governance warning: ${ev.validation.messages.join(", ")}`);
+				log.warn(`Governance warning: ${ev.validation.messages.join(", ")}`);
 			}
 
 			// ── ACTION: Execute or queue ───────────────────────────────────
@@ -305,7 +312,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 		// ── MEMORY: Track implicit approvals ───────────────────────────────
 		const proposalEntries = entries.filter(isProposalEntry);
 		for (const entry of proposalEntries) {
-			const proposal = (entry as any).data as ContextProposal;
+			const proposal = entry.details as ContextProposal;
 			if (proposal?.resolution) continue;
 
 			// Mark as implicit_approved if created > 2 turns ago

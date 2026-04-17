@@ -15,6 +15,12 @@ import { fileURLToPath } from "node:url";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
+import { taggedConsole } from "./lib/logger.js";
+
+// ── Root Logger ──────────────────────────────────────────────────────────────
+// Logger for the main extension loader - verbose debug only
+const _log = taggedConsole("pi-braid");
+
 // Extension modules
 import polyfillExtension from "./extensions/polyfill/index.js";
 import errorCaptureExtension from "./extensions/error-capture/index.js";
@@ -94,7 +100,7 @@ export default function piBraidExtension(pi: ExtensionAPI) {
 		try {
 			factory(pi);
 		} catch (err) {
-			console.error(`[pi-braid] Failed to load sub-extension "${name}": ${err}`);
+				_log.error(`Failed to load sub-extension "${name}":`, err);
 		}
 	}
 

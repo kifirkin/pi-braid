@@ -10,6 +10,9 @@ import type { Api, Context, Model } from "@mariozechner/pi-ai";
 import { completeSimple } from "@mariozechner/pi-ai";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { JUDGE_SYSTEM_PROMPT } from "./judge-prompt.js";
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("judge");
 
 /**
  * Multi-dimensional scores from judge analysis
@@ -277,7 +280,7 @@ function parseJudgeOutput(raw: string): JudgeAnalysis | null {
 			summary: parsed.summary ?? "Analysis complete",
 		};
 	} catch (err) {
-		console.error("[Judge] Failed to parse judge output:", err);
+		log.error("Failed to parse judge output:", err);
 		return null;
 	}
 }
@@ -520,7 +523,7 @@ export async function analyzeWithJudge(
 		]);
 
 		if (result.errorMessage) {
-			console.error("[Judge] LLM error:", result.errorMessage);
+			log.error("LLM error:", result.errorMessage);
 			return {
 				analysis: null,
 				action: { type: "none", reason: `Judge error: ${result.errorMessage}`, priority: "low" },
@@ -542,7 +545,7 @@ export async function analyzeWithJudge(
 		return { analysis, action };
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);
-		console.error("[Judge] Analysis failed:", message);
+		log.error("Analysis failed:", message);
 		return {
 			analysis: null,
 			action: { type: "none", reason: `Judge failed: ${message}`, priority: "low" },

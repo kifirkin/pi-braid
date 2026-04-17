@@ -13,6 +13,9 @@ import type { Api, Context, Model } from "@mariozechner/pi-ai";
 import { completeSimple } from "@mariozechner/pi-ai";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { VERIFICATION_JUDGE_SYSTEM_PROMPT } from "./judge-prompt.js";
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("verification-judge");
 
 /**
  * Result from the verification judge analysis
@@ -218,13 +221,13 @@ export async function runVerificationJudge(
 ): Promise<VerificationVerdict | null> {
 	const model = getVerificationModel(ctx);
 	if (!model) {
-		console.warn("[VerificationJudge] No model available");
+		log.warn("No model available");
 		return null;
 	}
 
 	const apiKey = await ctx.modelRegistry.getApiKeyForProvider(model.provider);
 	if (!apiKey) {
-		console.warn("[VerificationJudge] No API key available");
+		log.warn("No API key available");
 		return null;
 	}
 
@@ -252,7 +255,7 @@ export async function runVerificationJudge(
 		]);
 
 		if (result.errorMessage) {
-			console.error("[VerificationJudge] LLM error:", result.errorMessage);
+			log.error("LLM error:", result.errorMessage);
 			return null;
 		}
 
@@ -262,7 +265,7 @@ export async function runVerificationJudge(
 		return parseVerificationOutput(rawOutput);
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);
-		console.error("[VerificationJudge] Analysis failed:", message);
+		log.error("Analysis failed:", message);
 		return null;
 	}
 }

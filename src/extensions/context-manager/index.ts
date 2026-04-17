@@ -20,6 +20,12 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 
+import { createLogger } from "../../lib/logger.js";
+
+// ── Module Logger ────────────────────────────────────────────────────────────
+
+const log = createLogger("context-manager");
+
 // Rule-Based Pruning Types
 
 interface MessageWithMetadata {
@@ -291,7 +297,7 @@ function applyPruningWorkflow(messages: AgentMessage[]): AgentMessage[] {
 			try {
 				rule.prepare!(msg, { messages: withMetadata, index });
 			} catch (err) {
-				console.error(`[context-manager] Rule "${rule.id}" prepare error:`, err);
+				log.error(`Rule "${rule.id}" prepare error:`, err);
 			}
 		});
 	}
@@ -305,7 +311,7 @@ function applyPruningWorkflow(messages: AgentMessage[]): AgentMessage[] {
 			try {
 				rule.process!(msg, { messages: withMetadata, index });
 			} catch (err) {
-				console.error(`[context-manager] Rule "${rule.id}" process error:`, err);
+				log.error(`Rule "${rule.id}" process error:`, err);
 			}
 		});
 	}
@@ -1168,7 +1174,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 		try {
 			// Navigate silently - user already notified by the command handler
 		} catch (err) {
-			console.error("[context-manager] turn_end error:", err);
+			log.error("turn_end error:", err);
 		}
 		_checkoutParams = null;
 	});
@@ -1216,7 +1222,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 				};
 			}
 		} catch (err) {
-			console.error("[context-manager] session_before_compact error:", err);
+			log.error("session_before_compact error:", err);
 		}
 	});
 
@@ -1254,7 +1260,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 				};
 			}
 		} catch (err) {
-			console.error("[context-manager] session_before_tree error:", err);
+			log.error("session_before_tree error:", err);
 		}
 	});
 
@@ -1274,7 +1280,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 		// unpersisted learnings, sends detailed memory_store() commands).
 		// _compactedEntries tracking above dedupes against compaction_end.
 		} catch (err) {
-			console.error("[context-manager] session_compact error:", err);
+			log.error("session_compact error:", err);
 		}
 	});
 
@@ -1380,7 +1386,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 			// (reads scratchpad, sends detailed memory_store() commands for unpersisted learnings).
 			// Nothing needed here - enforcement covers it.
 		} catch (err) {
-			console.error("[context-manager] compaction_end error:", err);
+			log.error("compaction_end error:", err);
 		}
 	});
 
@@ -1410,7 +1416,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 		// Clear any existing retry state
 		clearCompactionRetry();
 
-		// Suppress console.log to avoid leaking to TUI prompt
+		// Schedule delayed retry with exponential backoff
 		const delayMs = getCompactionRetryDelay(attempt);
 
 		compactionRetryState.retryTimeout = setTimeout(() => {
@@ -1478,9 +1484,9 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 
 		if (compactionRetryState.attempt >= COMPACTION_RETRY_MAX_ATTEMPTS) {
 			// Exhausted retries
-			console.error(
-				`[context-manager] Compaction retry exhausted after ${COMPACTION_RETRY_MAX_ATTEMPTS} attempts: ${errorMessage}`,
-			);
+            log.error(
+                `Compaction retry exhausted after ${COMPACTION_RETRY_MAX_ATTEMPTS} attempts: ${errorMessage}`
+            );
 
 			ctx.ui.notify(
 				`Compaction failed permanently after ${COMPACTION_RETRY_MAX_ATTEMPTS} retries: ${errorMessage}`,
@@ -1536,7 +1542,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 				);
 			}
 		} catch (err) {
-			console.error("[context-manager] auto_retry_end error:", err);
+			log.error("auto_retry_end error:", err);
 		}
 	});
 
@@ -1558,7 +1564,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 
 			return { messages: filtered };
 		} catch (err) {
-			console.error("[context-manager] context event error:", err);
+			log.error("context event error:", err);
 		}
 	});
 
