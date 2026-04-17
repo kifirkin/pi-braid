@@ -389,6 +389,25 @@ function repairOrphanedToolPairs(messages: MessageWithMetadata[]): void {
 			}
 		}
 	}
+
+	// Third pass: mark orphaned tool_results for pruning (their assistants were compacted)
+	// This prevents "tool result's tool id not found" errors after compaction
+	for (const msg of messages) {
+		if (msg.metadata.shouldPrune) continue;
+		if (!hasToolResult(msg.message)) continue;
+
+		const resultIds = extractResultIds(msg.message);
+		for (const id of resultIds) {
+			if (keptToolUseIds.has(id)) continue;
+
+			// This tool_result's tool_call was compacted away
+			// Mark for pruning to prevent validation errors
+			msg.metadata.shouldPrune = true;
+			msg.metadata.pruneReason = "orphaned_tool_result";
+			log.debug(`Marking orphaned tool_result for pruning: ${id}`);
+			break;
+		}
+	}
 }
 
 // Schemas

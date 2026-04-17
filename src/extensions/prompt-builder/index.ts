@@ -25,7 +25,7 @@ import { SKILLS_DIR } from "../../index.js";
 import { gatherL1State, formatL1Environment } from "./l1-environment.js";
 
 // ── Thinking guidance (moved from reasoning extension) ──────────────────────
-const THINK_STEP_BY_STEP = `
+const THINK_SILENTLY = `
 ## Thinking
 
 Think silently. Find the correct trajectory. Not the first plausible path.
@@ -257,17 +257,17 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       }
     }
 
-    // 7. L1 environmental state (pi-braid addition)
+    // 7. L1 environmental state
     parts.push(formatL1Environment(l1Env));
 
-    // 8. Enforcement signals (pi-braid addition)
+    // 8. Enforcement signals
     const enforcement = formatEnforcementL1(_enforcementSignals);
     if (enforcement) {
       parts.push(enforcement);
     }
 
-    // 9. Thinking guidance (moved from reasoning extension)
-    parts.push(THINK_STEP_BY_STEP);
+    // 9. Thinking guidance
+    parts.push(THINK_SILENTLY);
     parts.push(VERIFICATION_REMINDER);
 
     // 10. Implicit budget - harness engineering for efficiency

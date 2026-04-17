@@ -15,7 +15,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 
-import { createLogger, taggedConsole } from "../../lib/logger.js";
+import { createLogger } from "../../lib/logger.js";
 
 import type { SemanticSignal } from "./types.js";
 import {
@@ -35,7 +35,6 @@ import { SignalDetector } from "./signal-detector.js";
 // ── Module State ─────────────────────────────────────────────────────────────
 
 const log = createLogger("context-lifecycle");
-const _log = taggedConsole("context-lifecycle"); // verbose debug
 
 // Proposal rate limiting
 const MAX_PROPOSALS_PER_TURN = 2;
@@ -196,7 +195,7 @@ function executeAction(evaluated: EvaluatedAction, pi: ExtensionAPI, ctx: any, u
 				);
 				const sm = ctx.sessionManager;
 				sm.appendCustomEntry(SNAPSHOT_CUSTOM_TYPE, snapshot);
-				_log.log(`Created snapshot: ${snapshot.id}`);
+				log.debug(`Created snapshot: ${snapshot.id}`);
 			}
 			break;
 
@@ -223,11 +222,11 @@ function queueProposal(evaluated: EvaluatedAction, ctx: any, branchLength: numbe
 	_proposalsThisTurn++;
 	_proposalsTotal++;
 	if (_proposalsThisTurn > MAX_PROPOSALS_PER_TURN) {
-		_log.warn(`Rate limited: ${_proposalsThisTurn} proposals this turn (max ${MAX_PROPOSALS_PER_TURN})`);
+		log.debug(`Rate limited: ${_proposalsThisTurn} proposals this turn (max ${MAX_PROPOSALS_PER_TURN})`);
 		return;
 	}
 	if (_proposalsTotal > MAX_PROPOSALS_SESSION) {
-		_log.warn(`Session limit reached: ${_proposalsTotal} proposals (max ${MAX_PROPOSALS_SESSION})`);
+		log.debug(`Session limit reached: ${_proposalsTotal} proposals (max ${MAX_PROPOSALS_SESSION})`);
 		return;
 	}
 
@@ -264,7 +263,7 @@ function queueProposal(evaluated: EvaluatedAction, ctx: any, branchLength: numbe
 		true,
 		proposal,
 	);
-	_log.log(`Created proposal: ${proposal.id}`);
+		log.debug(`Created proposal: ${proposal.id}`);
 }
 
 // ── Extension Factory ────────────────────────────────────────────────────────
