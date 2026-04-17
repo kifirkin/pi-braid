@@ -50,7 +50,7 @@ import latentActivatorExtension from "./extensions/latent-activator/index.js";
 // Resolve the skills directory relative to this file
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const SKILLS_DIR = join(__dirname, "..", "skills");
+export const SKILLS_DIR = join(__dirname, "..", "skills");
 
 const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void }> = [
 	{ name: "polyfill", factory: polyfillExtension },

@@ -21,6 +21,7 @@ import { dirname, join, resolve } from "path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import { formatSkillsForPrompt, loadSkills } from "@mariozechner/pi-coding-agent";
+import { SKILLS_DIR } from "../../index.js";
 import { gatherL1State } from "./l1-environment.js";
 
 // ── L1: Enforcement Signal Surfacing ────────────────────────────────────────
@@ -170,7 +171,9 @@ function reconstructProjectContextSection(cwd: string): string {
 }
 
 function reconstructSkillsSection(cwd: string): string {
-  const result = loadSkills({ cwd, includeDefaults: true });
+  // Include pi-braid's bundled skills via SKILLS_DIR
+  // plus default locations (~/.pi/agent/skills, ./.pi/skills)
+  const result = loadSkills({ cwd, skillPaths: [SKILLS_DIR], includeDefaults: true });
   return formatSkillsForPrompt(result.skills);
 }
 
