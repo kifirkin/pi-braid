@@ -37,6 +37,12 @@ import { SignalDetector } from "./signal-detector.js";
 const log = createLogger("context-lifecycle");
 const _log = taggedConsole("context-lifecycle"); // verbose debug
 
+// Proposal rate limiting
+const MAX_PROPOSALS_PER_TURN = 2;
+const MAX_PROPOSALS_SESSION = 10;
+let _proposalsThisTurn = 0;
+let _proposalsTotal = 0;
+
 const _policyEngine = new PolicyEngine();
 const _signalDetector = new SignalDetector();
 
@@ -177,7 +183,7 @@ function executeAction(evaluated: EvaluatedAction, pi: ExtensionAPI, ctx: any, u
 	switch (action.type) {
 		case "compact":
 			if (evaluated.canExecute) {
-				ctx.triggerCompaction?.();
+				ctx.compact?.();
 			}
 			break;
 
@@ -212,6 +218,18 @@ function executeAction(evaluated: EvaluatedAction, pi: ExtensionAPI, ctx: any, u
 
 function queueProposal(evaluated: EvaluatedAction, ctx: any, branchLength: number): void {
 	if (evaluated.action.type !== "propose") return;
+
+	// ── Rate limiting: prevent proposal spam ────────────────────────────────
+	_proposalsThisTurn++;
+	_proposalsTotal++;
+	if (_proposalsThisTurn > MAX_PROPOSALS_PER_TURN) {
+		_log.warn(`Rate limited: ${_proposalsThisTurn} proposals this turn (max ${MAX_PROPOSALS_PER_TURN})`);
+		return;
+	}
+	if (_proposalsTotal > MAX_PROPOSALS_SESSION) {
+		_log.warn(`Session limit reached: ${_proposalsTotal} proposals (max ${MAX_PROPOSALS_SESSION})`);
+		return;
+	}
 
 	const action = evaluated.action;
 	const existingEntries = getAllEntries(ctx);
@@ -260,20 +278,22 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 
 		_sessionStartMs = Date.now();
 		_turnCount = 0;
+		_proposalsThisTurn = 0;
+		_proposalsTotal = 0;
 		_proposalsByEntryId.clear();
 		_outcomes.length = 0;
 		_policyEngine.resetCooldowns();
 		_signalDetector.reset();
 	});
 
-
-		// Evict old outcomes on each turn (sliding window TTL)
-		evictOldOutcomes();
-
 	// ── before_agent_start ──────────────────────────────────────────────────
 	// R-CCAM loop: Retrieval → Cognition → Control → Action
 	pi.on("before_agent_start", async (_event: any, ctx: any) => {
 		_turnCount++;
+		_proposalsThisTurn = 0; // Reset per-turn counter
+
+		// Evict old outcomes on each turn (sliding window TTL)
+		evictOldOutcomes();
 
 		const usage = getContextUsage(ctx);
 		const entries = getAllEntries(ctx);
