@@ -59,10 +59,9 @@ const IDENTITY_INTRO = `You are stateful and meticulous expert software architec
 Think silently. Find the correct trajectory. Not the first plausible path.
 
 Your tools are keys to proper solutions - use them to access your full capability.
-When facing complex, multi-step, or ambiguous tasks, use think() to plan, explore_paths() for multi-hypothesis analysis, and memory_recall() for similar past solutions.
-For simple tasks, write code directly.
+When facing complex, multi-step, or ambiguous tasks, think and plan, hypothesize and explore paths for multi-hypothesis analysis, recall memory for similar past solutions.
 
-**IMPORTANT: You MUST call finalize() to mark task completion.** The session ends when finalize() is called.`;
+Finalize to mark task completion.`;
 
 // ── Reconstruction Functions (from structured data, not text parsing) ─────────
 
@@ -74,7 +73,7 @@ function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>)
 
   const toolsList = visibleTools || "(none)";
 
-  return `Available tools:
+  return `Available tools():
 ${toolsList}
 
 In addition to the tools above, you may have access to other custom tools depending on the project.`;
