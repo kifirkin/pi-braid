@@ -12,6 +12,7 @@
  */
 
 import * as os from "node:os";
+import * as process from "node:process";
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
@@ -50,6 +51,7 @@ const _state: AgentEnvironmentState = {
 // =============================================================================
 
 export interface L1EnvironmentData {
+	pid: number;
 	sessionElapsedMs: number;
 	turnCount: number;
 	sinceLastEventMs: number;
@@ -75,6 +77,7 @@ export function gatherL1Environment(_pi: ExtensionAPI, _ctx: ExtensionContext | 
 	const platformDisplay = rawPlatform === "win32" ? "Windows" : rawPlatform === "darwin" ? "macOS" : rawPlatform === "linux" ? "Linux" : rawPlatform;
 
 	return {
+		pid: process.pid,
 		sessionElapsedMs: sessionElapsed,
 		turnCount: _state.turnCount,
 		sinceLastEventMs: sinceLastEvent,
@@ -97,6 +100,7 @@ export function formatL1EnvironmentSection(data: L1EnvironmentData): string {
 
 	// Machine info
 	lines.push("## System State");
+	lines.push(`- PID: ${data.pid} (${data.machine.platform})`);
 	lines.push(`- Machine: ${data.machine.platform} (${data.machine.hostname})`);
 	lines.push(`- Session: ${minutes}m ${seconds}s`);
 	lines.push(`- Last event: ${sinceLast}s ago`);

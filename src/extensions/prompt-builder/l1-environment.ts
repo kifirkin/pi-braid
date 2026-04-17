@@ -26,6 +26,7 @@ interface L1Environment {
 	stepsSinceCheckpoint: number;
 	piRoot: string;
 	agentEnv: {
+		pid: number;
 		sessionElapsedMs: number;
 		turnCount: number;
 		sinceLastEventMs: number;
