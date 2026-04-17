@@ -170,6 +170,9 @@ const ENGLISH_STOPWORDS = new Set([
  * Detect if text is primarily English.
  * Uses stopword ratio: count words matching English stopwords / total words.
  * Returns true if ratio > 0.1 (10% English stopwords = likely English text).
+ *
+ * Note: Lowered from 0.2 to 0.1 because well-written English with technical terms
+ * (e.g., "Create a function that handles errors") has lower stopword ratios.
  */
 function isLikelyEnglish(text: string): boolean {
 	const words = text.toLowerCase().split(/[\s,.!?;:"'()\[\]{}]+/).filter((w) => w.length > 1);
@@ -178,7 +181,7 @@ function isLikelyEnglish(text: string): boolean {
 		if (ENGLISH_STOPWORDS.has(w)) englishCount++;
 	}
 	if (words.length < 3 && englishCount === 0) return false;
-	return englishCount / words.length > 0.2;
+	return englishCount / words.length > 0.1;
 }
 
 /**
