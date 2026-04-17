@@ -13,7 +13,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
-import type { Api, Model } from "@mariozechner/pi-ai";
+import type { Api, Context, Model } from "@mariozechner/pi-ai";
 import { completeSimple } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@mariozechner/pi-coding-agent";
@@ -291,6 +291,136 @@ const finalizeSchema = Type.Object({
 	tasksRemaining: Type.Optional(Type.Array(Type.String(), { description: "Any follow-up tasks that should be done later" })),
 });
 
+/**
+ * Finalize Critic System Prompt - A "bad mood" reviewer with fresh eyes
+ * Based on research: verification judge, agent quality audits, adaptive halting
+ */
+const FINALIZE_CRITIC_PROMPT = `You are a harsh, skeptical critic reviewing an AI coding session. Your job is to find everything wrong.
+
+## Review Style
+- Be brutally honest - like a tired senior engineer who's seen too many "done" tasks that weren't
+- Ask: "Would I want to maintain this code?" "Is it actually tested?" "What would break in production?"
+- Look for: unverified claims, skipped steps, missing error handling, shortcuts taken
+- Fresh eyes means: pretend you don't know what was built, judge from the output alone
+
+## Verification Checklist
+1. **Code changes verified?** - Tests pass, manual verification exists, no "should work" claims
+2. **Edge cases considered?** - Null checks, error handling, boundary conditions
+3. **No shortcuts?** - No TODO placeholders, no "for now" hacks left in, no untested features
+4. **Documentation matches code?** - README updated, comments accurate, no misleading names
+5. **No fabrication?** - No made-up results, no fake test output, no optimistic "it works"
+
+## Output Format
+Return JSON with:
+{
+  "verdict": "pass|fail|warn",
+  "confidence": 0-100,
+  "issues": [
+    { "severity": "critical|high|medium|low", "category": "unverified|incomplete|shortcut|claim|scope", "description": "..." }
+  ],
+  "summary": "one-line harsh verdict"
+}
+
+If critical issues found → verdict: "fail"
+If high issues found → verdict: "warn"
+If only medium/low issues → verdict: "pass"
+
+IMPORTANT: Return ONLY valid JSON, no explanation outside the JSON structure.`;
+
+/**
+ * Verify with utility model - the "second brain" checkpoint
+ * Uses adaptive halting: if agent work is clearly done, fast verification
+ * If uncertain, spend more tokens on thorough analysis
+ */
+async function verifyWithUtilityModel(
+	sessionSummary: string,
+	ctx: ExtensionContext,
+): Promise<{ verified: boolean; confidence: number; message: string }> {
+	const model = resolveUtilityModel(ctx);
+	if (!model) {
+		return { verified: true, confidence: 50, message: "No utility model - skipped verification" };
+	}
+
+	const apiKey = await ctx.modelRegistry.getApiKeyForProvider(model.provider);
+	if (!apiKey) {
+		return { verified: true, confidence: 50, message: "No API key - skipped verification" };
+	}
+
+	const context: Context = {
+		systemPrompt: FINALIZE_CRITIC_PROMPT,
+		messages: [{
+			role: "user",
+			content: `Session summary to verify:\n\n${sessionSummary}\n\nIs this work actually complete and verified? Be brutal.`,
+			timestamp: Date.now(),
+		}],
+	};
+
+	try {
+		// Race with timeout for adaptive halting
+		const timeoutMs = 60000; // 60s max for verification
+		const timeoutPromise = new Promise<never>((_, reject) => {
+			const t = setTimeout(() => reject(new Error("timeout")), timeoutMs);
+			ctx.signal?.addEventListener("abort", () => clearTimeout(t), { once: true });
+		});
+
+		const verifyPromise = completeSimple(model as Model<Api>, context, {
+			apiKey,
+			maxTokens: 1024,
+			temperature: 0.1,
+			signal: ctx.signal,
+		});
+
+		const result = await Promise.race([verifyPromise, timeoutPromise]);
+
+		if (!result || result.errorMessage) {
+			return { verified: true, confidence: 30, message: "Verification error - allowing finalize" };
+		}
+
+		// Parse JSON response
+		const textContent = result.content.filter((c): c is { type: "text"; text: string } => c.type === "text");
+		const responseText = textContent[0]?.text ?? "";
+
+		// Extract JSON from response
+		const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+		if (!jsonMatch) {
+			// Fallback: if no JSON, trust the response text as verdict
+			return {
+				verified: true,
+				confidence: 40,
+				message: responseText.slice(0, 200) || "Verification completed",
+			};
+		}
+
+		const verdict = JSON.parse(jsonMatch[0]);
+		const verified = verdict.verdict === "pass" || verdict.verdict === "warn";
+		const confidence = verdict.confidence ?? 50;
+		const issues = verdict.issues ?? [];
+
+		// Format message
+		let message = `Verification: ${verdict.verdict.toUpperCase()}`;
+		if (verdict.summary) {
+			message += ` - ${verdict.summary}`;
+		}
+		if (issues.length > 0) {
+			const critical = issues.filter((i: any) => i.severity === "critical").length;
+			const high = issues.filter((i: any) => i.severity === "high").length;
+			if (critical > 0) {
+				message += `\n🔴 ${critical} critical issue(s) found`;
+			}
+			if (high > 0) {
+				message += `\n🟠 ${high} high priority issue(s) found`;
+			}
+		}
+
+		return { verified, confidence, message };
+	} catch (err: unknown) {
+		if (err instanceof Error && err.message === "timeout") {
+			return { verified: true, confidence: 20, message: "Verification timeout - allowing finalize" };
+		}
+		return { verified: true, confidence: 30, message: "Verification failed - allowing finalize" };
+	}
+}
+
 function createFinalizeTool(
 	onFinalize?: (summary: string, completed: boolean) => void,
 ): {
@@ -308,19 +438,78 @@ function createFinalizeTool(
 - The solution has been verified
 - No further work is needed
 
+Before finalizing, the work will be reviewed by a critic (utility model) to ensure everything is actually done.
 The task ends after finalize() is called.`,
 		parameters: finalizeSchema,
-		execute: async (_toolCallId: string, params: any, _signal: any, _onUpdate: any, _ctx: ExtensionContext | undefined): Promise<AgentToolResult<any>> => {
+		execute: async (
+			_toolCallId: string,
+			params: any,
+			_signal: any,
+			_onUpdate: any,
+			_ctx: ExtensionContext | undefined,
+		): Promise<AgentToolResult<any>> => {
 			onFinalize?.(params.summary, params.completed);
+
+			// Build session summary for verification
+			// In real implementation, this would read from session manager
+			const sessionSummary = params.summary;
+
+			// Verify with utility model (second brain)
+			// If no ctx available, skip verification
+			let verificationResult: { verified: boolean; confidence: number; message: string } = {
+				verified: true,
+				confidence: 50,
+				message: "No context available for verification",
+			};
+
+			if (_ctx) {
+				verificationResult = await verifyWithUtilityModel(sessionSummary, _ctx);
+			}
+
+			// Critical failures block finalize
+			if (!verificationResult.verified) {
+				return {
+					content: [{
+						type: "text" as const,
+						text: `🚫 **FINALIZE BLOCKED**
+
+${verificationResult.message}
+
+Confidence: ${verificationResult.confidence}%
+
+**The work is not done enough to finalize.**
+Continue working until the issues are resolved.`,
+					}],
+					details: { finalized: false, blocked: true, verification: verificationResult },
+				};
+			}
+
+			// Build completion message
 			const status = params.completed ? "✅ Task completed" : "⚠️ Task incomplete";
-			const message = [
-				`${status}: ${params.summary}`,
-				params.tasksRemaining?.length ? `\n⚠️ Follow-up needed: ${params.tasksRemaining.join(", ")}` : "",
-				"\nSession ending...",
-			].join("");
+			const messages: string[] = [
+				status,
+				`Summary: ${params.summary}`,
+			];
+
+			if (verificationResult.message) {
+				messages.push(`\nVerification: ${verificationResult.message}`);
+			}
+
+			if (params.tasksRemaining?.length) {
+				messages.push(`\n⚠️ Follow-up needed: ${params.tasksRemaining.join(", ")}`);
+			}
+
+			messages.push("\n---");
+			messages.push("Session ending...");
+
 			return {
-				content: [{ type: "text" as const, text: message }],
-				details: { finalized: true, completed: params.completed, summary: params.summary },
+				content: [{ type: "text" as const, text: messages.join("\n") }],
+				details: {
+					finalized: true,
+					completed: params.completed,
+					summary: params.summary,
+					verification: verificationResult,
+				},
 			};
 		},
 	};

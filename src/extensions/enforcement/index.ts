@@ -18,7 +18,9 @@ import {
 	recordCodeChange as detectRecordCodeChange,
 } from "./detection/verification.js";
 import { checkBlocking } from "./handlers/blocking.js";
+import { checkComplexityMismatch, estimateComplexity, type ComplexityProbe } from "./handlers/probe-handler.js";
 import { recordBashDetails, recordToolCall, recordToolInput } from "./handlers/tool-tracker.js";
+import { checkRoutingMismatch, detectIntent, getRoutingHint, type TaskIntent } from "./handlers/routing-handler.js";
 import { analyzeWithJudge } from "./judge.js";
 import { NudgeManager } from "./nudge-manager.js";
 import { state } from "./state.js";
@@ -493,6 +495,66 @@ Persist them now - this is the minimum-fidelity moment.`,
 
 		if (textContent.length < 100) {
 			return;
+		}
+
+		// ── PROBE-BASED: Complexity signals ───────────────────────────────────
+		// Analyze task complexity and warn if mismatched
+		const recentTools: string[] = [];
+		for (const [, turn] of state.turnHistory) {
+			recentTools.push(...turn.actualTools);
+		}
+
+		const lastTool = recentTools[recentTools.length - 1];
+		let probeSuggestion = "";
+		if (lastTool) {
+			const probe = estimateComplexity(lastTool, undefined);
+			const complexityCheck = checkComplexityMismatch(probe, {
+				totalToolCalls: state.totalToolCalls,
+				contextUsage: 0,
+			});
+
+			if (complexityCheck.mismatch) {
+				probeSuggestion = complexityCheck.suggestion;
+			}
+		}
+
+		// ── ROUTING-BASED: Intent signals ─────────────────────────────────────
+		// Detect task intent and check if tools match
+		const intent = detectIntent(recentTools.slice(-10), fullContent);
+		const routingHint = getRoutingHint(intent.intent, recentTools);
+		let routingSuggestion = "";
+
+		if (routingHint) {
+			routingSuggestion = routingHint;
+		}
+
+		if (lastTool && intent.confidence > 0.5) {
+			const routingCheck = checkRoutingMismatch(lastTool, intent.intent);
+			if (routingCheck.mismatch) {
+				routingSuggestion = routingSuggestion
+					? routingSuggestion + ". " + routingCheck.suggestion
+				: routingCheck.suggestion;
+			}
+		}
+
+		// Send probe/routing signals as low-priority nudges (bundled in turn_end)
+		// These go through the existing nudge system to avoid creating new L2 signals here
+		if (probeSuggestion || routingSuggestion) {
+			// Store in enforcementSignals for prompt-builder to include in system prompt
+			if (probeSuggestion) {
+				enforcementSignals["probe"] = {
+					turn: state.currentTurn,
+					text: probeSuggestion,
+					acted: false,
+				};
+			}
+			if (routingSuggestion) {
+				enforcementSignals["routing"] = {
+					turn: state.currentTurn,
+					text: routingSuggestion,
+					acted: false,
+				};
+			}
 		}
 
 		const turnState = state.turnHistory.get(state.currentTurn);

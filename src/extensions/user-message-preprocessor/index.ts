@@ -417,10 +417,30 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 			return { action: "continue" };
 		}
 
-		// Skip likely English text (even if not perfectly written) - translation isn't needed
+		// ── NEW: Handle badly-written English messages ───────────────────────────────
+		// The preprocessor should clean BAD English, not skip it.
+		// If text is likely English but not well-written, PROCEED to preprocessing.
 		if (isLikelyEnglish(prose)) {
-			state.skippedCount++;
-			return { action: "continue" };
+			// Check if it needs cleaning (badly-written) vs already clean enough
+			const wordCount = prose.split(/\s+/).filter((w) => w.length > 0).length;
+			const shortWords = prose.split(/\s+/).filter((w) => w.length > 0 && w.length <= 4).length;
+			const missingPunctuation = (prose.match(/[.!?;:,]/g) || []).length / Math.max(1, prose.length);
+			const repeatedCharPatterns = (prose.match(/(.)\1{2,}/g) || []).length;
+			const missingCapitals = (prose.match(/\. [a-z]/g) || []).length; // lowercase after period = bad
+
+			// Indicators of badly-written English that needs cleaning:
+			const needsCleaning =
+				(shortWords > wordCount * 0.6 && wordCount > 5) || // Sentence fragments
+				missingPunctuation < 0.03 || // Very low punctuation (run-on sentences)
+				repeatedCharPatterns > 0 || // Has obvious typos
+				missingCapitals > 2; // Multiple missing capitalizations
+
+			if (!needsCleaning) {
+				// Well-written enough - skip preprocessing
+				state.skippedCount++;
+				return { action: "continue" };
+			}
+			// needsCleaning === true → proceed to preprocessing
 		}
 
 		// Run preprocessing - await result and return transform
