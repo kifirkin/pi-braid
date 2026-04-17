@@ -13,6 +13,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { saveStateImmediate } from "./async-storage.js";
+import { taggedConsole } from "./logger.js";
+
+const _log = taggedConsole("degradation-detector");
 
 export interface PerformanceMetrics {
 	timestamp: number;
@@ -263,7 +266,7 @@ export async function saveMetrics(): Promise<void> {
 		}
 		await saveStateImmediate(METRICS_FILE, state);
 	} catch (error) {
-		console.error("Failed to save degradation metrics:", error);
+		_log.error("Failed to save degradation metrics:", error);
 	}
 }
 
@@ -279,7 +282,7 @@ export async function loadMetrics(): Promise<void> {
 			};
 		}
 	} catch (error) {
-		console.error("Failed to load degradation metrics:", error);
+		_log.error("Failed to load degradation metrics:", error);
 	}
 }
 

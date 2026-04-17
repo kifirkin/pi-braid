@@ -7,6 +7,9 @@
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { taggedConsole } from "./logger.js";
+
+const _log = taggedConsole("async-storage");
 
 /** Pending writes to debounce */
 const pendingWrites = new Map<string, { data: unknown; timeout: NodeJS.Timeout }>();
@@ -45,7 +48,7 @@ export async function saveState<T>(path: string, data: T): Promise<void> {
 			await mkdir(dirname(path), { recursive: true });
 			await writeFile(path, JSON.stringify(data, null, 2), "utf-8");
 		} catch (err) {
-			console.error(`Failed to save state to ${path}:`, err);
+			_log.error(`Failed to save state to ${path}:`, err);
 		}
 	}, DEBOUNCE_MS);
 
@@ -67,7 +70,7 @@ export async function saveStateImmediate<T>(path: string, data: T): Promise<void
 		await mkdir(dirname(path), { recursive: true });
 		await writeFile(path, JSON.stringify(data, null, 2), "utf-8");
 	} catch (err) {
-		console.error(`Failed to save state to ${path}:`, err);
+		_log.error(`Failed to save state to ${path}:`, err);
 	}
 }
 

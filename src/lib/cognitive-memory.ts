@@ -20,6 +20,9 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { taggedConsole } from "./logger.js";
+
+const _log = taggedConsole("cognitive-memory");
 
 // Unified memory categories
 export type CognitiveMemoryType =
@@ -154,7 +157,7 @@ function loadMemory(): CognitiveMemoryStore {
 			return parsed;
 		}
 	} catch (e) {
-		console.error("[CognitiveMemory] Load error:", e);
+		_log.error("Load error:", e);
 	}
 	return { version: 1, memories: [], lastConsolidation: 0, turnCount: 0 };
 }

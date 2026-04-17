@@ -25,6 +25,7 @@ import {
 	saveMetrics,
 	updateConfig,
 } from "../../lib/degradation-detector.js";
+import { taggedConsole } from "../../lib/logger.js";
 import {
 	initMetacognitiveState,
 	getMetacognitiveState,
@@ -61,6 +62,8 @@ const evolveSchema = Type.Object({
 	force: Type.Optional(Type.Boolean({ default: false, description: "Force action without confirmation" })),
 });
 
+const _log = taggedConsole("evolve");
+
 interface EvolveResult {
 	action: EvolveActionType;
 	success: boolean;
@@ -69,7 +72,7 @@ interface EvolveResult {
 }
 
 // Initialize subsystems on startup
-loadMetrics().catch(console.error);
+loadMetrics().catch((err) => _log.error("Failed to load metrics:", err));
 initMetacognitiveState();
 
 // Periodic metrics save
@@ -79,7 +82,7 @@ let saveTimer: ReturnType<typeof setInterval> | null = null;
 function startMetricsPersistence(): void {
 	if (saveTimer) return;
 	saveTimer = setInterval(() => {
-		saveMetrics().catch(console.error);
+		saveMetrics().catch((err) => _log.error("Failed to save metrics:", err));
 	}, METRICS_SAVE_INTERVAL);
 }
 

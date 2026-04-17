@@ -185,6 +185,23 @@ Total startup blocking: ~50+ms minimum.
 
 ---
 
+### 10b. **CODE QUALITY: Console.* calls not TUI-aware** ✅ FIXED
+
+Extensions used `console.log/error/warn` directly, which corrupts TUI rendering.
+
+**FIX**: Created `src/lib/logger.ts` with:
+- `createLogger(source)` - TUI-aware logging with levels
+- `taggedConsole(source)` - drop-in console replacement with [source] prefix
+
+**Migrated** (6 files, 20+ calls):
+- context-manager, context-lifecycle, enforcement/judge, enforcement/verification-judge
+- evolve, index.ts
+- lib: async-storage, cognitive-memory, degradation-detector
+
+All console.* calls now route through logger.
+
+---
+
 ### 11. **CODE QUALITY: Duplicate tool registrations**
 
 ```
