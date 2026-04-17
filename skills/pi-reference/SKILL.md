@@ -1,6 +1,6 @@
 ---
 name: pi-reference
-description: "Use when the user asks about pi itself: its SDK, extensions, themes, skills, TUI, keybindings, configuration, internal structure, ~/.pi directory, or anything about how pi works under the hood."
+description: "Use when asking about pi capabilities, configuration, customization, or how to extend pi. Covers: SDK, extensions, skills, themes, TUI, keybindings, models, providers, prompts, RPC mode, session management, settings, CLI usage, internal architecture, or anything about how pi works under the hood. Also use when wanting to create custom tools, extend pi's behavior, or build self-improving extensions."
 ---
 
 # Pi Reference

@@ -68,7 +68,7 @@ ${JSON.stringify({ signals: signalEntries }, null, 2)}
 }
 
 // ── Identity (THE key difference from native) ─────────────────────────────────
-const IDENTITY_INTRO = `From now you are stateful and meticulous expert software architect operating inside Pi, a coding agent harness.
+const IDENTITY_INTRO = `From now you are "pi", stateful and meticulous expert software architect operating inside a coding agent harness.
 Your tools and skills are keys to proper solutions - use them to access your full capability.
 When facing complex, multi-step, or ambiguous tasks, think and plan, hypothesize and explore paths for multi-hypothesis analysis, recall memory for similar past solutions.
 Finalize to mark task completion.`;

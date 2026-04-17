@@ -6,11 +6,12 @@
  *   1. `time_status` tool - explicit time queries
  *   2. L1 system prompt injection - automatic context awareness
  *
- * L1 data: session time, turn count, last event, tool call metrics.
+ * L1 data: session time, turn count, last event, tool call metrics, machine info.
  * These are surfaced in the system prompt so the agent is always context-aware
  * without having to explicitly call tools.
  */
 
+import * as os from "node:os";
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
@@ -53,6 +54,11 @@ export interface L1EnvironmentData {
 	turnCount: number;
 	sinceLastEventMs: number;
 	avgToolTimeMs: number;
+	machine: {
+		platform: string;
+		type: string;
+		hostname: string;
+	};
 }
 
 export function gatherL1Environment(_pi: ExtensionAPI, _ctx: ExtensionContext | undefined): L1EnvironmentData {
@@ -64,11 +70,20 @@ export function gatherL1Environment(_pi: ExtensionAPI, _ctx: ExtensionContext | 
 			? Math.round(_state.metrics.totalToolTime / _state.metrics.totalToolCalls)
 			: 0;
 
+	// OS detection - normalize platform names for clarity
+	const rawPlatform = os.platform();
+	const platformDisplay = rawPlatform === "win32" ? "Windows" : rawPlatform === "darwin" ? "macOS" : rawPlatform === "linux" ? "Linux" : rawPlatform;
+
 	return {
 		sessionElapsedMs: sessionElapsed,
 		turnCount: _state.turnCount,
 		sinceLastEventMs: sinceLastEvent,
 		avgToolTimeMs: avgToolTime,
+		machine: {
+			platform: platformDisplay,
+			type: os.type(),
+			hostname: os.hostname(),
+		},
 	};
 }
 
@@ -80,8 +95,9 @@ export function formatL1EnvironmentSection(data: L1EnvironmentData): string {
 	const lines: string[] = [];
 	lines.push("");
 
-	// Session time
+	// Machine info
 	lines.push("## System State");
+	lines.push(`- Machine: ${data.machine.platform} (${data.machine.hostname})`);
 	lines.push(`- Session: ${minutes}m ${seconds}s`);
 	lines.push(`- Last event: ${sinceLast}s ago`);
 	lines.push(`- Turns: ${data.turnCount}`);
@@ -120,6 +136,10 @@ function createTimeStatusTool() {
 			const sessionElapsed = now - _state.sessionStart;
 			const sinceLastEvent = now - _state.lastEventTime;
 
+			// OS detection for status output
+			const rawPlatform = os.platform();
+			const platformDisplay = rawPlatform === "win32" ? "Windows" : rawPlatform === "darwin" ? "macOS" : rawPlatform === "linux" ? "Linux" : rawPlatform;
+
 			switch (params.action) {
 				case "status": {
 					const minutes = Math.floor(sessionElapsed / 60000);
@@ -129,11 +149,16 @@ function createTimeStatusTool() {
 							? Math.round(_state.metrics.totalToolTime / _state.metrics.totalToolCalls)
 							: 0;
 
-					const text = `Session: ${minutes}m ${seconds}s | Last event: ${Math.round(sinceLastEvent / 1000)}s ago | Tools: ${_state.metrics.totalToolCalls} calls (avg ${avgToolTime}ms) | Turns: ${_state.turnCount}`;
+					const text = `${platformDisplay} | Session: ${minutes}m ${seconds}s | Last event: ${Math.round(sinceLastEvent / 1000)}s ago | Tools: ${_state.metrics.totalToolCalls} calls (avg ${avgToolTime}ms) | Turns: ${_state.turnCount}`;
 
 					return {
 						content: [{ type: "text" as const, text }],
 						details: {
+							machine: {
+								platform: platformDisplay,
+								hostname: os.hostname(),
+								arch: os.arch(),
+							},
 							session_elapsed_ms: sessionElapsed,
 							session_elapsed_human: `${minutes}m ${seconds}s`,
 							time_since_last_event_ms: sinceLastEvent,

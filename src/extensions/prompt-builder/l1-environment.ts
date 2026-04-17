@@ -12,6 +12,7 @@
  */
 
 import { existsSync, realpathSync, readFileSync } from "node:fs";
+import * as os from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -29,6 +30,11 @@ interface L1Environment {
 		turnCount: number;
 		sinceLastEventMs: number;
 		avgToolTimeMs: number;
+		machine: {
+			platform: string;
+			type: string;
+			hostname: string;
+		};
 	};
 }
 
@@ -68,6 +74,9 @@ async function gatherL1State(pi: ExtensionAPI, ctx: ExtensionContext | undefined
 
 	// Pi package root path (for docs, examples, etc.)
 	const piRoot = discoverPiRootPath();
+
+	// Machine info (platform, hostname) - already in agentEnv from gatherL1Environment
+	// The OS is now included in agentEnv.machine
 
 	return { contextPercent, memoryCount, stepsSinceCheckpoint, piRoot, agentEnv };
 }
@@ -160,6 +169,18 @@ function formatL1Environment(env: L1Environment): string {
 	}
 
 	return lines.join("\n");
+}
+
+/**
+ * Get machine info for system prompt injection.
+ * Returns OS and hostname for L1 awareness.
+ */
+export function getMachineInfo(): { platform: string; hostname: string; arch: string } {
+	return {
+		platform: process.platform === "win32" ? "Windows" : process.platform === "darwin" ? "macOS" : process.platform === "linux" ? "Linux" : process.platform,
+		hostname: os.hostname(),
+		arch: process.arch,
+	};
 }
 
 export { formatL1Environment, gatherL1State };
