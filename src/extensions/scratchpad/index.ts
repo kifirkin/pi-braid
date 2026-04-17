@@ -1,10 +1,10 @@
 /**
- * Scratchpad Extension — Structured Session Memory (CCA L2)
+ * Scratchpad Extension - Structured Session Memory (CCA L2)
  *
  * Per-loop persistent state for continuity of thought across turns.
  * Persists to disk per-project so it survives process restarts.
  *
- * Structured sections (CCA L2 — Agent Working Memory):
+ * Structured sections (CCA L2 - Agent Working Memory):
  * - Session metadata: current turn, phase, mode
  * - Active constraints: enforcement blockers and rules
  * - Key learnings: root causes, patterns, fixes discovered this session
@@ -28,7 +28,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
-/** Session phase — the agent's current mode of operation */
+/** Session phase - the agent's current mode of operation */
 export type SessionPhase =
 	| "idle"
 	| "exploring"
@@ -57,7 +57,7 @@ export interface SessionMeta {
 	updated_at: number;
 }
 
-/** An active constraint — enforcement rule, blocker, or invariant */
+/** An active constraint - enforcement rule, blocker, or invariant */
 export interface Constraint {
 	id: string;
 	type: "blocker" | "enforcement_rule" | "invariant" | "custom";
@@ -71,7 +71,7 @@ export interface Constraint {
 	acknowledged: boolean;
 }
 
-/** A key learning — root cause, pattern, fix discovered during session */
+/** A key learning - root cause, pattern, fix discovered during session */
 export interface KeyLearning {
 	id: string;
 	/** Concise statement of the learning */
@@ -186,7 +186,7 @@ function saveScratchpadToDisk(scratchpad: TaskScratchpad): void {
 		}
 		fs.writeFileSync(filePath, JSON.stringify(scratchpad, null, 2));
 	} catch {
-		// Silent fail — operates in memory if disk write fails
+		// Silent fail - operates in memory if disk write fails
 	}
 }
 
@@ -404,7 +404,7 @@ const scratchpadSchema = Type.Object({
 			Type.Literal("remove_constraint", { description: "Remove an active constraint by id" }),
 			Type.Literal("add_learning", { description: "Record a key learning from this session" }),
 			Type.Literal("persist_learnings", { description: "Persist all unpersisted key learnings to memory_store" }),
-			Type.Literal("note_compact", { description: "Record that context was compacted at this turn — triggers write-through of key learnings" }),
+			Type.Literal("note_compact", { description: "Record that context was compacted at this turn - triggers write-through of key learnings" }),
 			// Elevation to formal systems
 			Type.Literal("elevate_to_goal", { description: "Promote scratchpad goal to formal goal with success criteria" }),
 			Type.Literal("elevate_to_plan", { description: "Promote scratchpad plan to formal execution plan" }),
@@ -648,7 +648,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 
 					const unpersisted = pad.key_learnings.filter((l) => !l.persisted);
 					if (unpersisted.length > 0) {
-						// Return explicit persist instructions — the agent should call memory_store
+						// Return explicit persist instructions - the agent should call memory_store
 						// before the scratchpad resets after compaction
 						const items = unpersisted
 							.map((l) => `memory_store(content="${l.content}", memoryType="insight", tags=["${l.category}", "session-turn-${currentTurn}"])`)
@@ -658,7 +658,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 							content: [
 								{
 									type: "text" as const,
-									text: `Context compacted at turn ${currentTurn}. ${unpersisted.length} key learning(s) not yet persisted — persist before continuing:\n\n${items}`,
+									text: `Context compacted at turn ${currentTurn}. ${unpersisted.length} key learning(s) not yet persisted - persist before continuing:\n\n${items}`,
 								},
 							],
 							details: {
@@ -721,7 +721,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 					};
 					_taskStore.tasks.push(task);
 					saveTaskStore(slug, _taskStore);
-					return { content: [{ type: "text" as const, text: `Task added: ${task.id} — ${task.description}` }], details: { id: task.id, total: _taskStore.tasks.length } };
+					return { content: [{ type: "text" as const, text: `Task added: ${task.id} - ${task.description}` }], details: { id: task.id, total: _taskStore.tasks.length } };
 				}
 
 				case "task_list": {
@@ -802,7 +802,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 					};
 					const hasWork = stats.pending > 0 || stats.running > 0;
 					return {
-						content: [{ type: "text" as const, text: `Tasks: ${stats.total} total (${stats.pending} pending, ${stats.running} running, ${stats.completed} done, ${stats.failed} failed)${hasWork ? " — work available" : " — no work remaining"}` }],
+						content: [{ type: "text" as const, text: `Tasks: ${stats.total} total (${stats.pending} pending, ${stats.running} running, ${stats.completed} done, ${stats.failed} failed)${hasWork ? " - work available" : " - no work remaining"}` }],
 						details: { ...stats, hasWork },
 					};
 				}

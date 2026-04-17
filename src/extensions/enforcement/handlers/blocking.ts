@@ -54,15 +54,15 @@ export function checkBlocking(
 		}
 	}
 
-	// L2: Edit without think() — track for Session Signals bundle
+	// L2: Edit without think() - track for Session Signals bundle
 	if (toolName === "edit" && stateRef.config.enforceThinkBeforeEdit) {
 		if (!stateRef.config.thinkCalledInSession) {
 			stateRef.toolChain.recentEditWithoutThink.push(stateRef.currentTurn);
-			// Bundled by index.ts turn_end — don't send individually
+			// Bundled by index.ts turn_end - don't send individually
 		}
 	}
 
-	// L2: First meaningful work without memory_recall — track for Session Signals bundle
+	// L2: First meaningful work without memory_recall - track for Session Signals bundle
 	if (
 		toolName === "edit" &&
 		stateRef.config.enforceMemoryRecallOnStart &&
@@ -70,7 +70,7 @@ export function checkBlocking(
 		!stateRef.firstWorkDone
 	) {
 		stateRef.firstWorkDone = true;
-		// Bundled by index.ts turn_end — don't send individually
+		// Bundled by index.ts turn_end - don't send individually
 	}
 
 	// DANGEROUS COMMAND ENFORCEMENT: 2-stage handling
@@ -98,10 +98,10 @@ export function checkBlocking(
 				queueBlockAction(toolName, warningMsg);
 				return {
 					blocked: true,
-					reason: "⚠️ Dangerous command blocked — review warning above. Retry if verified safe.",
+					reason: "⚠️ Dangerous command blocked - review warning above. Retry if verified safe.",
 				};
 			} else {
-				// Stage 2: L3 — dangerous command passed review, warn only
+				// Stage 2: L3 - dangerous command passed review, warn only
 				const firstWarnedTurn = stateRef.warnedDangerousCommands.get(commandHash);
 				sendEnforcementWhisper(
 					pi,
@@ -114,22 +114,22 @@ export function checkBlocking(
 		}
 	}
 
-	// L2: Edit without plan — track for Session Signals bundle
+	// L2: Edit without plan - track for Session Signals bundle
 	if (toolName === "edit" && stateRef.config.enforceHypothesisBeforeFix) {
 		const turnsSincePlan = stateRef.currentTurn - stateRef.toolChain.lastPlanCall;
 		if (turnsSincePlan > 3 && stateRef.config.thinkCalledInSession) {
 			stateRef.toolChain.recentEditWithoutPlan.push(stateRef.currentTurn);
-			// Bundled by index.ts turn_end — don't send individually
+			// Bundled by index.ts turn_end - don't send individually
 		}
 	}
 
-	// L2: Tool diversity low — track for Session Signals bundle
+	// L2: Tool diversity low - track for Session Signals bundle
 	const actionTools = ["bash", "read", "write", "edit", "grep", "find"];
 	if (stateRef.totalToolCalls >= 10 && stateRef.config.enforceToolDiversity) {
 		const actionToolCount = actionTools.filter((t) => stateRef.uniqueToolsUsed.has(t)).length;
 		if (actionToolCount <= 2 && !stateRef.toolDiversityNudged) {
 			stateRef.toolDiversityNudged = true;
-			// Bundled by index.ts turn_end — don't send individually
+			// Bundled by index.ts turn_end - don't send individually
 		}
 	}
 

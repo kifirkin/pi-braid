@@ -1,5 +1,5 @@
 /**
- * Native CDP (Chrome DevTools Protocol) client — no external deps.
+ * Native CDP (Chrome DevTools Protocol) client - no external deps.
  * Uses Node.js built-in WebSocket to connect to Chrome at localhost:9222.
  */
 

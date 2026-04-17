@@ -1,5 +1,5 @@
 /**
- * HTML content extraction — lightweight readability without external deps.
+ * HTML content extraction - lightweight readability without external deps.
  * Strips nav, header, footer, aside, scripts, styles,
  * then finds the main content area.
  */
@@ -54,7 +54,7 @@ function decodeEntities(html: string): string {
 		.replace(/&apos;/g, "'")
 		.replace(/&#39;/g, "'")
 		.replace(/&nbsp;/g, " ")
-		.replace(/&mdash;/g, "—")
+		.replace(/&mdash;/g, "-")
 		.replace(/&ndash;/g, "–")
 		.replace(/&hellip;/g, "…")
 		.replace(/&copy;/g, "©")

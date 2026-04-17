@@ -1,5 +1,5 @@
 /**
- * Polyfill Extension — Patches missing API methods on ExtensionContext
+ * Polyfill Extension - Patches missing API methods on ExtensionContext
  *
  * Two concerns:
  * 1. Model selection: /utility-model and /vision-model commands open the ModelSelectorComponent UI.
@@ -45,7 +45,7 @@ export function getCustomModelKey(key: string): string | undefined {
 	return getCustomModelKeys().get(key);
 }
 
-/** Path to the global settings file — ~/.pi/agent/settings.json */
+/** Path to the global settings file - ~/.pi/agent/settings.json */
 const SETTINGS_PATH = path.join(os.homedir(), ".pi", "agent", "settings.json");
 
 /**
@@ -230,7 +230,7 @@ function resolveModelPattern(ctx: ExtensionCommandContext, pattern: string): Mod
  *
  * Approach:
  * - Use SettingsManager.inMemory() for ModelSelectorComponent (its
- *   setDefaultModelAndProvider is a no-op for disk persistence — that's fine
+ *   setDefaultModelAndProvider is a no-op for disk persistence - that's fine
  *   since we call pi.setModel() afterwards which goes through AgentSession
  *   and persists via the real settings manager).
  * - Capture the selected model in the onSelect callback.
@@ -298,7 +298,7 @@ async function openModelSelectorUI(
 
 	if (!selectedModel) return;
 
-	// Store the role-specific key only. Do NOT call pi.setModel() — that would change
+	// Store the role-specific key only. Do NOT call pi.setModel() - that would change
 	// the default model, which is NOT what we want for utility/vision role selection.
 	// model-resolver.ts reads these custom keys and uses them directly.
 	const pattern = `${selectedModel.provider}/${selectedModel.id}`;

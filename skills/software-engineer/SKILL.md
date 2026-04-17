@@ -116,17 +116,17 @@ description: "Always read this skill when working on software tasks. Universal p
 
 ### Protocol (follow before fixing)
 
-1. **Understand** — Read test/error output. What is EXPECTED? What is ACTUAL?
-2. **Run tests** — See the actual error message and stack trace
-3. **Trace** — Read the file in the stack trace. Only read other files if needed.
-4. **Hypothesize** — Call `hypothesize()` to generate 2+ hypotheses from DIFFERENT files
-5. **Fix** — Minimal change that addresses ROOT CAUSE, not symptom
-6. **Test** — Run tests to confirm fix works and doesn't break anything
+1. **Understand** - Read test/error output. What is EXPECTED? What is ACTUAL?
+2. **Run tests** - See the actual error message and stack trace
+3. **Trace** - Read the file in the stack trace. Only read other files if needed.
+4. **Hypothesize** - Call `hypothesize()` to generate 2+ hypotheses from DIFFERENT files
+5. **Fix** - Minimal change that addresses ROOT CAUSE, not symptom
+6. **Test** - Run tests to confirm fix works and doesn't break anything
 
 ### Required tool calls
 
-- `think()` BEFORE any edit — record observation, decision, reason
-- `hypothesize()` for bugs — generate 2+ hypotheses about ROOT CAUSES
+- `think()` BEFORE any edit - record observation, decision, reason
+- `hypothesize()` for bugs - generate 2+ hypotheses about ROOT CAUSES
 - Run tests AFTER every fix
 
 ### Speed (invest in understanding)

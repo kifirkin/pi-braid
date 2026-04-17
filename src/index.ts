@@ -1,5 +1,5 @@
 /**
- * pi-braid — pi-coding-agent extension
+ * pi-braid - pi-coding-agent extension
  *
  * Planning, metacognition, cognitive systems, enforcement, feedback,
  * evolution, skills, and more...

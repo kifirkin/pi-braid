@@ -77,7 +77,7 @@ function decodeEntities(html: string): string {
 		.replace(/&apos;/g, "'")
 		.replace(/&#39;/g, "'")
 		.replace(/&nbsp;/g, " ")
-		.replace(/&mdash;/g, "—")
+		.replace(/&mdash;/g, "-")
 		.replace(/&ndash;/g, "–")
 		.replace(/&hellip;/g, "…")
 		.replace(/&copy;/g, "©")

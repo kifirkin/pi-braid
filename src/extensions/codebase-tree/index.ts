@@ -343,7 +343,7 @@ function buildTree(
 
 				const childPath = path.join(dirPath, entry.name);
 
-				// Check gitignore patterns — skips files like *.d.ts, *.js.map that are in .gitignore
+				// Check gitignore patterns - skips files like *.d.ts, *.js.map that are in .gitignore
 				const { patterns: gitignorePatterns } = getGitignorePatterns(dirPath);
 				if (matchesGitignore(childPath, entry.name, gitignorePatterns)) continue;
 

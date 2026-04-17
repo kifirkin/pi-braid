@@ -1,5 +1,5 @@
 /**
- * Assistant Extension — Tool management.
+ * Assistant Extension - Tool management.
  *
  * /tools: interactive tool enable/disable
  * /tool-status: show current configuration
@@ -14,7 +14,7 @@ import { loadState, saveState } from "../../lib/async-storage.js";
 
 const TOOLS_CONFIG_TYPE = "tools-config";
 
-/** Path to disk-persisted tools config — survives pi restarts */
+/** Path to disk-persisted tools config - survives pi restarts */
 const TOOLS_DISK_PATH = path.join(os.homedir(), ".pi", "agent", "tools-config.json");
 
 interface ToolsConfigData {
@@ -56,7 +56,7 @@ export default function assistantExtension(pi: ExtensionAPI) {
 		try {
 			diskData = await loadState<ToolsConfigData>(TOOLS_DISK_PATH);
 		} catch {
-			// Non-fatal — fallback to session entries
+			// Non-fatal - fallback to session entries
 		}
 
 		if (diskData?.enabledTools && typeof diskData.version === "number") {
@@ -147,7 +147,7 @@ export default function assistantExtension(pi: ExtensionAPI) {
 
 				container.addChild(settingsList);
 
-				// Return proper component interface — must delegate handleInput to SettingsList
+				// Return proper component interface - must delegate handleInput to SettingsList
 				return {
 					render(width: number) {
 						return container.render(width);

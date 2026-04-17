@@ -87,9 +87,9 @@ export function shouldRequestHelp(): boolean {
 }
 
 export function getRecommendation(): string | null {
-	if (state.confidence < 0.3) return "Low confidence — consider requesting help or switching approach";
-	if (state.knowledgeGaps.length > 5) return "Many knowledge gaps — consider research or learning phase";
-	if (state.weaknesses.length > 3) return "Multiple weaknesses identified — focus on addressing them";
+	if (state.confidence < 0.3) return "Low confidence - consider requesting help or switching approach";
+	if (state.knowledgeGaps.length > 5) return "Many knowledge gaps - consider research or learning phase";
+	if (state.weaknesses.length > 3) return "Multiple weaknesses identified - focus on addressing them";
 	return null;
 }
 

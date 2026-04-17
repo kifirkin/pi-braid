@@ -3,7 +3,7 @@
  *
  * Provides:
  * - evolve: status, health, check, commit, config, reset, benchmark
- * - time_status: Session timing and marks
+
  *
  * Integrates:
  * - metacognitive-state: Confidence, knowledge gaps, recommendations
@@ -33,8 +33,6 @@ import {
 	getRecommendation,
 	resetMetacognitiveState,
 } from "../../lib/metacognitive-state.js";
-
-import { createTimeTracker, type TimeTrackerState } from "../../tools/time-tracker.js";
 
 const EVOLVE_ACTIONS = ["status", "health", "check", "commit", "rollback", "config", "reset", "benchmark"] as const;
 type EvolveActionType = (typeof EVOLVE_ACTIONS)[number];
@@ -73,9 +71,6 @@ interface EvolveResult {
 // Initialize subsystems on startup
 loadMetrics().catch(console.error);
 initMetacognitiveState();
-
-// Shared time tracker
-const { tool: timeStatusTool, state: timeState } = createTimeTracker();
 
 // Periodic metrics save
 const METRICS_SAVE_INTERVAL = 30000; // 30 seconds
@@ -122,16 +117,6 @@ export default function evolveExtension(pi: ExtensionAPI) {
 				};
 			}
 		},
-	});
-
-	// Resource management tools
-	// Time tracking tool
-	pi.registerTool({
-		name: timeStatusTool.name,
-		label: timeStatusTool.label,
-		description: timeStatusTool.description,
-		parameters: timeStatusTool.parameters,
-		execute: timeStatusTool.execute,
 	});
 
 	return {

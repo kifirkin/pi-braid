@@ -57,7 +57,7 @@ The input may contain two sections:
 
 ## Evaluation Rules
 
-- When evaluating HALLUCINATION: Claims that are explained or derived in the AGENT REASONING section are NOT hallucinations, even if not explicitly cited in the visible text. The agent may know facts from skills, documentation, or prior context — if the reasoning shows a valid source, treat it as grounded.
+- When evaluating HALLUCINATION: Claims that are explained or derived in the AGENT REASONING section are NOT hallucinations, even if not explicitly cited in the visible text. The agent may know facts from skills, documentation, or prior context - if the reasoning shows a valid source, treat it as grounded.
 - Consider the FULL input (both reasoning and response) when extracting evidence for issues.
 - Evidence is an exact substring from the section being referenced.
 
@@ -115,7 +115,7 @@ Return ONLY valid JSON in this exact structure:
 - Output ONLY the JSON, no additional text
 - Use 0-100 integers for all scores
 - Be precise in evidence extraction
-- Evidence is an exact substring from the response being analyzed — if the exact quoted text is not present in the response, do not include it as evidence or omit the issue entirely
+- Evidence is an exact substring from the response being analyzed - if the exact quoted text is not present in the response, do not include it as evidence or omit the issue entirely
 - Fabricated or paraphrased evidence is not acceptable
 - Consider the FULL conversation context, not just the current message`;
 
@@ -194,9 +194,9 @@ Return ONLY valid JSON in this exact structure:
 
 ## Verdict Guidelines
 
-- "pass" — All changes verified, request fully addressed, no shortcuts detected
-- "warn" — Minor issues: some untested changes, partial coverage, or potential shortcuts
-- "fail" — Serious issues: unverified code changes, incomplete work, test gaming, or scope drift
+- "pass" - All changes verified, request fully addressed, no shortcuts detected
+- "warn" - Minor issues: some untested changes, partial coverage, or potential shortcuts
+- "fail" - Serious issues: unverified code changes, incomplete work, test gaming, or scope drift
 
 ## Important
 

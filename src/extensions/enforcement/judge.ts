@@ -115,7 +115,7 @@ export interface JudgeAction {
  * Prioritizes: utility model > current model > cheapest non-reasoning model
  */
 export function getJudgeModel(ctx: ExtensionContext): Model<Api> | undefined {
-	// Try utility model first (safe call — polyfill may not have patched yet)
+	// Try utility model first (safe call - polyfill may not have patched yet)
 	let model: Model<Api> | undefined;
 	try {
 		model = (ctx as any).getUtilityModel?.();

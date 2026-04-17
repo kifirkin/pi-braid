@@ -2,7 +2,7 @@
  * Prompt Guardian - Never lose a half-written prompt
  *
  * Automatically saves the current prompt buffer before submission.
- * Auto-save runs via event handlers — no tools exposed to LLM.
+ * Auto-save runs via event handlers - no tools exposed to LLM.
  *
  * Storage: ~/.pi/prompt-guardian/
  */

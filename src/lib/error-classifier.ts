@@ -1,5 +1,5 @@
 /**
- * Error Classifier — Structured error classification for API/compaction failures
+ * Error Classifier - Structured error classification for API/compaction failures
  *
  * Replaces fragile regex-based error detection with structured classification.
  * Extracts HTTP status codes and provider-specific error codes from error messages,
@@ -8,8 +8,8 @@
  * Error categories:
  * - TRANSIENT: Server-side issues that may succeed on retry (5xx, 429, overload)
  * - CLIENT_ERROR: Request format/auth issues that won't change (4xx, auth)
- * - CONTEXT_OVERFLOW: Token limit exceeded — needs compaction, not retry
- * - UNKNOWN: Unclassified — conservative retry
+ * - CONTEXT_OVERFLOW: Token limit exceeded - needs compaction, not retry
+ * - UNKNOWN: Unclassified - conservative retry
  */
 
 export type ErrorCategory =
@@ -172,7 +172,7 @@ export function classifyError(errorMessage: string): ErrorClassification {
 			};
 		}
 		if (HTTP_CLIENT_ERROR_NON_RETRYABLE.has(httpStatus)) {
-			// 429 is ambiguous — could be rate limit (retry) or quota exceeded (no retry)
+			// 429 is ambiguous - could be rate limit (retry) or quota exceeded (no retry)
 			if (httpStatus === 429) {
 				if (providerCode && CEREBRAS_OVERLOAD_CODES.has(providerCode)) {
 					return {
@@ -277,7 +277,7 @@ export function classifyError(errorMessage: string): ErrorClassification {
 		}
 	}
 
-	// 8. Unknown — conservative retry (better to retry and fail than not retry when we should)
+	// 8. Unknown - conservative retry (better to retry and fail than not retry when we should)
 	return {
 		category: "UNKNOWN",
 		httpStatus,
@@ -288,14 +288,14 @@ export function classifyError(errorMessage: string): ErrorClassification {
 }
 
 /**
- * Check if error is retryable — simplified boolean wrapper
+ * Check if error is retryable - simplified boolean wrapper
  */
 export function isRetryable(errorMessage: string): boolean {
 	return classifyError(errorMessage).retryable;
 }
 
 /**
- * Get error category — for logging/debugging
+ * Get error category - for logging/debugging
  */
 export function getErrorCategory(errorMessage: string): ErrorCategory {
 	return classifyError(errorMessage).category;

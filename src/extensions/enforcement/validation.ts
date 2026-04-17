@@ -106,7 +106,7 @@ export function validateTurn(
 		state.silentTurns++;
 		if (state.silentTurns >= state.config.maxSilentTurns) {
 			issues.push(
-				`${state.silentTurns} turns without tool calls. You work through tools — reach for read, bash, edit, write to make progress.`,
+				`${state.silentTurns} turns without tool calls. You work through tools - reach for read, bash, edit, write to make progress.`,
 			);
 		}
 	} else {
@@ -115,7 +115,7 @@ export function validateTurn(
 
 
 
-	// Check for tool sequence repetition — smart detection avoids false positives
+	// Check for tool sequence repetition - smart detection avoids false positives
 	if (!hadErrors && currentState.actualTools.length > 0) {
 		const prevSeqs = state.recentToolSequences.slice(-state.config.warnOnToolSequenceRepetition);
 

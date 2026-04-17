@@ -34,16 +34,16 @@ Pijul provides patch-level history with commutative properties, enabling surgica
 
 ### Tools
 
-- **`pijul_log`** — View patch history (limit, specific hash)
-- **`pijul_surgical_rewind`** — Un-apply a specific patch (atomic undo)
-- **`pijul_reset`** — Reset working directory to a specific patch
+- **`pijul_log`** - View patch history (limit, specific hash)
+- **`pijul_surgical_rewind`** - Un-apply a specific patch (atomic undo)
+- **`pijul_reset`** - Reset working directory to a specific patch
 
 ### Advantages over Git
 
-1. **Commutative** — Patches apply in any order
-2. **Lighter** — Delta-based vs full snapshots
-3. **Conflict handling** — First-class support
-4. **Trackable** — Agent knows its own changes
+1. **Commutative** - Patches apply in any order
+2. **Lighter** - Delta-based vs full snapshots
+3. **Conflict handling** - First-class support
+4. **Trackable** - Agent knows its own changes
 
 ### Usage
 
@@ -85,7 +85,7 @@ git worktree prune
 
 ## Pijul Channels
 
-Lighter than git worktrees — just a label + applied patches, same directory.
+Lighter than git worktrees - just a label + applied patches, same directory.
 
 ### Parallel Agent Workflow
 

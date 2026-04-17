@@ -7,15 +7,15 @@
  * - Uses utility model via resolveUtilityModel() (respects /utility-model setting)
  *
  * Smart content detection (skips processing when content is already clean):
- * - Very long text (>maxChars, default 5000) — too expensive to preprocess
- * - Code-heavy text (>30% code characters) — likely technical content
- * - Well-written English with proper structure — no changes needed
- * - Markdown content with good formatting — already structured
- * - Short prose after stripping code blocks — likely just brief context
+ * - Very long text (>maxChars, default 5000) - too expensive to preprocess
+ * - Code-heavy text (>30% code characters) - likely technical content
+ * - Well-written English with proper structure - no changes needed
+ * - Markdown content with good formatting - already structured
+ * - Short prose after stripping code blocks - likely just brief context
  *
  * Uses `transform` action so preprocessed text flows to the agent in the same
  * input cycle. The user sees the diff widget with cleaned text, but pressing
- * Enter sends the cleaned text directly — no second submit needed.
+ * Enter sends the cleaned text directly - no second submit needed.
  *
  * Settings:
  * - Enabled state persists to ~/.pi/agent/settings.json
@@ -40,14 +40,14 @@ Guidelines:
 - Correct spelling, grammar mistakes, or meaning collisions
 - Preserve technical terms, code, file paths, and markdown formatting
 - Keep code blocks, lists, and other structural elements intact
-- Respond with ONLY the corrected message — no commentary, no explanation
+- Respond with ONLY the corrected message - no commentary, no explanation
 `;
 
 interface PreprocessorConfig {
 	enabled: boolean;
 	/** Skip text shorter than this (characters) */
 	minLength: number;
-	/** Skip text longer than this (characters) — protects against huge pastes */
+	/** Skip text longer than this (characters) - protects against huge pastes */
 	maxChars: number;
 	/** Skip messages starting with / or ! (commands) */
 	skipCommands: boolean;
@@ -173,12 +173,12 @@ const ENGLISH_STOPWORDS = new Set([
  */
 function isLikelyEnglish(text: string): boolean {
 	const words = text.toLowerCase().split(/[\s,.!?;:"'()\[\]{}]+/).filter((w) => w.length > 1);
-	if (words.length < 3) return false;
 	let englishCount = 0;
 	for (const w of words) {
 		if (ENGLISH_STOPWORDS.has(w)) englishCount++;
 	}
-	return englishCount / words.length > 0.1;
+	if (words.length < 3 && englishCount === 0) return false;
+	return englishCount / words.length > 0.2;
 }
 
 /**
@@ -203,7 +203,7 @@ function countFormattingPatterns(text: string): number {
  * - Balanced brackets
  */
 function looksWellWritten(text: string): boolean {
-	// Strip code blocks first — they inflate content without being "writing"
+	// Strip code blocks first - they inflate content without being "writing"
 	const { prose: stripped } = stripCodeBlocks(text);
 
 	// Must have sentences
@@ -225,7 +225,7 @@ function looksWellWritten(text: string): boolean {
 	// If substantial formatting present, likely already structured
 	if (countFormattingPatterns(text) >= 3) return true;
 
-	// Balanced brackets — if well-balanced and has formatting, likely clean
+	// Balanced brackets - if well-balanced and has formatting, likely clean
 	const brackets = { "(": 0, ")": 0, "[": 0, "]": 0, "{": 0, "}": 0 };
 	for (const char of text) {
 		if (char in brackets) brackets[char as keyof typeof brackets]++;
@@ -331,7 +331,7 @@ async function preprocess(
 			ctx.ui.notify(`Preprocessing timeout on: "${original.slice(0, 80)}..."`, "warning");
 			return null;
 		}
-		// Abort — don't show error, just return original
+		// Abort - don't show error, just return original
 		if ((err as Error)?.name === "AbortError" || ctx.signal?.aborted) {
 			return null;
 		}
@@ -362,7 +362,7 @@ async function preprocess(
 // Extension Registration
 
 export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
-	// Tools removed (2026-04-15): preprocessor_config, preprocessor_stats — use /preprocessor command instead
+	// Tools removed (2026-04-15): preprocessor_config, preprocessor_stats - use /preprocessor command instead
 
 	pi.on("input", async (event, ctx): Promise<InputEventResult> => {
 		if (!state.config.enabled) {
@@ -417,13 +417,13 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 			return { action: "continue" };
 		}
 
-		// Skip likely English text (even if not perfectly written) — translation isn't needed
+		// Skip likely English text (even if not perfectly written) - translation isn't needed
 		if (isLikelyEnglish(prose)) {
 			state.skippedCount++;
 			return { action: "continue" };
 		}
 
-		// Run preprocessing — await result and return transform
+		// Run preprocessing - await result and return transform
 		ctx.ui.setStatus("preprocessor", `Preprocessing...`);
 		ctx.ui.setWidget("preprocessor-diff", undefined);
 

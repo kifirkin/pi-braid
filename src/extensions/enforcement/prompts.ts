@@ -1,5 +1,5 @@
 /**
- * Enforcement prompts — Minimal, identity-aligned guidance
+ * Enforcement prompts - Minimal, identity-aligned guidance
  *
  * The full enforcement rules are documented in this file. The system prompt
  * only includes the core principle; detailed rules are available via
@@ -18,7 +18,7 @@ export const PRE_TURN_TEMPLATE = `
 - Use context tools to maintain hygiene (context_tag, context_log, context_audit)
 `;
 
-/** @deprecated — Rules are now surfaced via structured session signals in prompt-builder */
+/** @deprecated - Rules are now surfaced via structured session signals in prompt-builder */
 export const TOOL_ENFORCEMENT_RULES = ``;
 
 export const POST_TURN_VALIDATION_TEMPLATE = `

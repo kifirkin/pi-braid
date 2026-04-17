@@ -1,5 +1,5 @@
 /**
- * Analytics Extension — Self-contained tool usage analytics
+ * Analytics Extension - Self-contained tool usage analytics
  *
  * Provides /analytics and /analytics:all commands that were previously
  * only available via the core ToolAnalytics class on the develop branch.
@@ -296,7 +296,7 @@ function formatCurrentSession(): string {
 	const sessionMetrics = getSessionMetrics();
 
 	const lines: string[] = [];
-	lines.push("## Tool Analytics — Current Session");
+	lines.push("## Tool Analytics - Current Session");
 	lines.push("");
 	lines.push(`**Session:** ${state.sessionId || "unknown"}`);
 	lines.push(`**Duration:** ${Math.round((Date.now() - state.sessionStartTime) / 1000)}s`);
@@ -336,7 +336,7 @@ function formatAllSessions(): string {
 	const summary = loadAnalytics();
 
 	const lines: string[] = [];
-	lines.push("## Tool Analytics — Historical Summary");
+	lines.push("## Tool Analytics - Historical Summary");
 	lines.push("");
 	lines.push(`**Total Sessions:** ${summary.totalSessions}`);
 	lines.push(`**Total Tool Calls:** ${summary.totalToolCalls}`);
@@ -416,7 +416,7 @@ pi.on("tool_execution_end", async (event) => {
 		}
 	});
 
-	// /analytics — current session stats
+	// /analytics - current session stats
 	pi.registerCommand("analytics", {
 		description: "Show tool analytics for the current session",
 		handler: async (_args, ctx) => {
@@ -425,7 +425,7 @@ pi.on("tool_execution_end", async (event) => {
 		},
 	});
 
-	// /analytics:all — historical stats
+	// /analytics:all - historical stats
 	pi.registerCommand("analytics:all", {
 		description: "Show tool analytics across all historical sessions",
 		handler: async (_args, ctx) => {

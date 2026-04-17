@@ -273,7 +273,7 @@ function generateNudge(
 			const silentCount = context.silentTurns as number;
 			return {
 				severity: "critical",
-				message: `You have ${silentCount} turn(s) without calling any tools. You work through tools — reach for: read, grep, find, bash, edit, write, think, scratchpad.\n\nYou don't describe what you would do — you do it with tools.`,
+				message: `You have ${silentCount} turn(s) without calling any tools. You work through tools - reach for: read, grep, find, bash, edit, write, think, scratchpad.\n\nYou don't describe what you would do - you do it with tools.`,
 				action: "Call at least one tool in your next response.",
 			};
 		}
@@ -438,12 +438,12 @@ function _recordABTestOutcome(success: boolean): void {
 
 // Tool Definitions
 
-// feedback_status tool removed (2026-04-15) — use /feedback-stats command instead
+// feedback_status tool removed (2026-04-15) - use /feedback-stats command instead
 
 // Extension Factory
 
 export default function feedbackExtension(pi: ExtensionAPI) {
-	// Admin-only tools — demoted from registerTool to registerCommand
+	// Admin-only tools - demoted from registerTool to registerCommand
 	// These are configuration/debug tools the LLM should not call
 
 	pi.registerCommand("feedback-config", {
@@ -475,7 +475,7 @@ export default function feedbackExtension(pi: ExtensionAPI) {
 		},
 	});
 
-	// Tools removed (2026-04-15): feedback_status — use /feedback-stats command instead
+	// Tools removed (2026-04-15): feedback_status - use /feedback-stats command instead
 
 	// Event Handlers
 

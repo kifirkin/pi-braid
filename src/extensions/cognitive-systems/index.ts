@@ -16,7 +16,112 @@ import {
 	formatMemoryTimestamp,
 	getCognitiveMemory,
 } from "../../lib/cognitive-memory.js";
-import { createExplorePathsTool } from "../../tools/explore-paths.js";
+// explore-paths tool - inlined from ../../tools/explore-paths.ts
+
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+
+async function findFile(pattern: string): Promise<string> {
+	try {
+		const { stdout } = await execFileAsync("find", [".", "-name", pattern, "-type", "f"], {
+			timeout: 5000,
+		});
+		return stdout.trim();
+	} catch {
+		return "";
+	}
+}
+
+async function readFileHead(path: string, lines = 20): Promise<string> {
+	try {
+		const { stdout } = await execFileAsync("head", [`-${lines}`, path], {
+			timeout: 5000,
+		});
+		return stdout;
+	} catch {
+		return "(could not read preview)";
+	}
+}
+
+function createExplorePathsTool() {
+	return {
+		name: "explore_paths",
+		label: "Explore Paths",
+		description:
+			"Spawn parallel sub-agents to explore MULTIPLE potential root causes. Use BEFORE fixing bugs to gather evidence. All hypotheses must lead to proper, well-designed solutions - never use monkey patching or workarounds.",
+		parameters: Type.Object({
+			hypothesis_1: Type.String({
+				description: "First potential root cause location: 'The bug might be in FILE because REASON'",
+			}),
+			hypothesis_2: Type.String({
+				description: "Second potential root cause location: 'The bug might be in OTHER_FILE because REASON'",
+			}),
+			hypothesis_3: Type.Optional(
+				Type.String({
+					description:
+						"Third potential root cause location (optional): 'The bug might be in ANOTHER_FILE because REASON'",
+				}),
+			),
+		}),
+
+		execute: async (_toolCallId: string, params: unknown) => {
+			const { hypothesis_1, hypothesis_2, hypothesis_3 } = params as {
+				hypothesis_1: string;
+				hypothesis_2: string;
+				hypothesis_3?: string;
+			};
+
+			const results: string[] = [];
+			const hypotheses = [hypothesis_1, hypothesis_2];
+			if (hypothesis_3) hypotheses.push(hypothesis_3);
+
+			const explorations = hypotheses.map(async (hyp, i) => {
+				const localResults: string[] = [];
+				const fileMatch = hyp.match(/(?:in|file)\s+([^\s]+\.\w+)/i);
+				const file = fileMatch ? fileMatch[1] : "unknown";
+
+				localResults.push(`### Hypothesis ${i + 1}: ${hyp.substring(0, 100)}...`);
+				localResults.push(`Target file: ${file}`);
+
+				const foundPath = await findFile(file);
+				if (foundPath) {
+					localResults.push(`✅ Found: ${foundPath}`);
+					const preview = await readFileHead(foundPath);
+					localResults.push(`Preview:\n${preview.substring(0, 500)}`);
+				} else {
+					localResults.push("❌ File not found");
+				}
+				localResults.push("");
+				return localResults;
+			});
+
+			const allResults = await Promise.all(explorations);
+			for (const r of allResults) {
+				results.push(...r);
+			}
+
+			results.push("**Next steps:**");
+			results.push("1. Review the evidence above");
+			results.push("2. Identify which hypothesis has supporting evidence");
+			results.push("3. Trace the code path for the most likely hypothesis");
+			results.push("4. Propose a PROPER fix (no shortcuts, no technical debt)");
+			results.push("");
+			results.push("**Quality requirement:** All solutions must be well-designed and maintainable.");
+
+			return {
+				details: {},
+				content: [
+					{
+						type: "text" as const,
+						text: results.join("\n"),
+					},
+				],
+			};
+		},
+	};
+}
 
 export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
 	const memory = getCognitiveMemory();
@@ -147,7 +252,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
 		},
 	});
 
-	// Explore paths tool
+	// Explore paths tool (inlined)
 	const explorePathsTool = createExplorePathsTool();
 	pi.registerTool({
 		name: explorePathsTool.name,

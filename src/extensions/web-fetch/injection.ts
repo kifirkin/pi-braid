@@ -1,6 +1,6 @@
 /**
  * Prompt injection detection via regex pattern matching.
- * Pure pattern-based — no ML dependencies. All Node.js built-ins.
+ * Pure pattern-based - no ML dependencies. All Node.js built-ins.
  */
 
 const PATTERN_CATEGORIES: Record<string, RegExp[]> = {

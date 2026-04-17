@@ -15,11 +15,11 @@ Use this skill when:
 
 ## Workflow
 
-1. **Formulate a precise query** — specific terms beat broad ones
-2. **Fetch search results** — use the available search tool
-3. **Fetch the most relevant result page** — don't stop at the search results summary
-4. **Extract and synthesize** — answer the question from the actual content
-5. **Cite sources** — include the URL you extracted from
+1. **Formulate a precise query** - specific terms beat broad ones
+2. **Fetch search results** - use the available search tool
+3. **Fetch the most relevant result page** - don't stop at the search results summary
+4. **Extract and synthesize** - answer the question from the actual content
+5. **Cite sources** - include the URL you extracted from
 
 ## Important
 

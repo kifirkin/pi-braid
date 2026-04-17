@@ -33,7 +33,7 @@ const GENERAL_PROMPT = `Please analyze this image comprehensively. Extract ALL i
 Format your response clearly with sections and bullet points. Be extremely thorough - the user needs to understand everything visible in this image to perform their task.`;
 
 /** Pixel art / spritesheet analysis prompt */
-const PIXEL_ART_PROMPT = `This is a pixel art image or spritesheet. Analyze it as such — do NOT treat it as a natural photograph.
+const PIXEL_ART_PROMPT = `This is a pixel art image or spritesheet. Analyze it as such - do NOT treat it as a natural photograph.
 
 **Dimensions**: {width}×{height} pixels
 {extremeRatioWarning}
@@ -266,7 +266,7 @@ async function performImageAnalysis(
   onUpdate?: (metadata: string) => void,
 ): Promise<AnalysisResult> {
   // Get vision model from core agent settings
-  // Resolve vision model — no patching required, reads settings + modelRegistry directly
+  // Resolve vision model - no patching required, reads settings + modelRegistry directly
   const model = resolveVisionModel(ctx);
   if (!model) {
     throw new Error(

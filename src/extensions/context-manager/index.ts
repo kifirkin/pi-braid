@@ -508,7 +508,7 @@ function analyzeSession(ctx: any): AuditResult {
 	const branch = sm.getBranch();
 	const tree = sm.getTree();
 	const currentLeafId = sm.getLeafId();
-	
+
 	let usage = { percent: 0, tokens: 0, contextWindow: 0 };
 	try {
 		const ctxUsage = ctx.getContextUsage?.();
@@ -525,7 +525,7 @@ function analyzeSession(ctx: any): AuditResult {
 	let tagCount = 0;
 	let summaryCount = 0;
 	const branchIds = new Set<string>();
-	
+
 	for (const node of tree) {
 		const label = sm.getLabel(node.entry.id);
 		if (label) tagCount++;
@@ -538,37 +538,37 @@ function analyzeSession(ctx: any): AuditResult {
 	// Build branch index
 	const entryIndex = new Map<string, number>();
 	branch.forEach((e: any, i: number) => entryIndex.set(e.id, i));
-	
+
 	// Find candidates for pruning
 	const candidates: PruneCandidate[] = [];
 	let oldestEntry: { id: string; age: number } | null = null;
-	
+
 	for (let i = 0; i < branch.length; i++) {
 		const entry = branch[i];
 		const age = branch.length - 1 - i; // Distance from leaf
-		
+
 		if (i === 0) {
 			oldestEntry = { id: entry.id, age };
 		}
-		
+
 		if (age < 3) continue; // Skip recent entries
-		
+
 		let score = 0;
 		let reason = "";
-		
+
 		if (entry.type === "message") {
 			const msg = entry.message as any;
-			
+
 			if (msg.role === "toolResult") {
 				// Check for obsolete tool calls
 				const toolName = msg.toolName;
-				
+
 				// Internal tools are low value
 				if (isInternal(toolName)) {
 					score += 0.3;
 					reason = "Internal tool result (low semantic value)";
 				}
-				
+
 				// bash/read without file changes in result are often obsolete
 				if (["bash", "read", "grep"].includes(toolName)) {
 					const details = msg.details as Record<string, any>;
@@ -578,20 +578,20 @@ function analyzeSession(ctx: any): AuditResult {
 						reason = reason || "Tool call with minimal output";
 					}
 				}
-				
+
 				// Think/hypothesize tools with no decisions
 				if (toolName === "think" || toolName === "hypothesize") {
 					score += 0.2;
 					reason = reason || "Reasoning tool (consider summarizing)";
 				}
-				
+
 				// Tool calls far from any tag
 				const nearestTag = findNearestTag(ctx, entry.id);
 				if (nearestTag.distance > 10) {
 					score += 0.3;
 					reason = reason || `Far from tag '${nearestTag.label}'`;
 				}
-				
+
 				candidates.push({
 					id: entry.id,
 					type: "toolResult",
@@ -619,28 +619,28 @@ function analyzeSession(ctx: any): AuditResult {
 			}
 		}
 	}
-	
+
 	// Sort by score descending
 	candidates.sort((a, b) => b.score - a.score);
-	
+
 	// Generate recommendations
 	const recommendations: AuditResult["recommendations"] = [];
-	
+
 	// High usage warning
 	if (usage.percent > 80) {
 		recommendations.push({
 			priority: "high",
 			action: "Prune or summarize before continuing",
-			reason: `Context at ${usage.percent.toFixed(1)}% — approaching limit`,
+			reason: `Context at ${usage.percent.toFixed(1)}% - approaching limit`,
 		});
 	} else if (usage.percent > 60) {
 		recommendations.push({
 			priority: "medium",
 			action: "Consider creating a checkpoint",
-			reason: `Context at ${usage.percent.toFixed(1)}% — moderate usage`,
+			reason: `Context at ${usage.percent.toFixed(1)}% - moderate usage`,
 		});
 	}
-	
+
 	// Many candidates
 	if (candidates.length > 10) {
 		recommendations.push({
@@ -649,19 +649,19 @@ function analyzeSession(ctx: any): AuditResult {
 			reason: `${candidates.length} entries are candidates for pruning/summarization`,
 		});
 	}
-	
+
 	// No tags
 	if (tagCount === 0 && branch.length > 10) {
 		recommendations.push({
 			priority: "medium",
 			action: "Create a checkpoint",
-			reason: "No tags in session — consider creating milestones for navigation",
+			reason: "No tags in session - consider creating milestones for navigation",
 		});
 	}
-	
+
 	// Branching triggers
 	const branchingTriggers: AuditResult["branchingTriggers"] = [];
-	
+
 	// High context with multiple directions
 	if (usage.percent > 70) {
 		branchingTriggers.push({
@@ -670,7 +670,7 @@ function analyzeSession(ctx: any): AuditResult {
 			current: `${usage.percent.toFixed(1)}%`,
 		});
 	}
-	
+
 	// Multiple off-branch children
 	const offBranchChildren = tree.filter((n: any) => {
 		const inBranch = entryIndex.has(n.entry.id);
@@ -683,7 +683,7 @@ function analyzeSession(ctx: any): AuditResult {
 			current: `${offBranchChildren.length} paths`,
 		});
 	}
-	
+
 	return {
 		usage,
 		branchLength: branch.length,
@@ -704,13 +704,13 @@ function findNearestTag(ctx: any, entryId: string): { label: string; distance: n
 	const branch = sm.getBranch();
 	const entryIndex = new Map<string, number>();
 	branch.forEach((e: any, i: number) => entryIndex.set(e.id, i));
-	
+
 	const targetIndex = entryIndex.get(entryId) ?? -1;
 	if (targetIndex === -1) return { label: "none", distance: 999 };
-	
+
 	let nearestLabel = "none";
 	let nearestDistance = 999;
-	
+
 	for (const node of tree) {
 		const label = sm.getLabel(node.entry.id);
 		if (label) {
@@ -724,14 +724,14 @@ function findNearestTag(ctx: any, entryId: string): { label: string; distance: n
 			}
 		}
 	}
-	
+
 	return { label: nearestLabel, distance: nearestDistance };
 }
 
 function formatPruneCandidates(candidates: PruneCandidate[], limit = 10): string {
 	const lines: string[] = [];
 	const shown = candidates.slice(0, limit);
-	
+
 	for (const c of shown) {
 		const scoreBar = "█".repeat(Math.round(c.score * 10)) + "░".repeat(10 - Math.round(c.score * 10));
 		const age = c.age > 0 ? `${c.age} turns ago` : "current";
@@ -740,11 +740,11 @@ function formatPruneCandidates(candidates: PruneCandidate[], limit = 10): string
 		lines.push(`[${scoreBar}] ${c.id.slice(0, 8)} ${age} ${tool}${content}`);
 		lines.push(`           └─ ${c.reason}`);
 	}
-	
+
 	if (candidates.length > limit) {
 		lines.push(`... and ${candidates.length - limit} more`);
 	}
-	
+
 	return lines.join("\n");
 }
 
@@ -1034,37 +1034,37 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 		label: "Context Prune",
 		description:
 			"Analyze session and identify obsolete entries for potential pruning. " +
-			"This is ANALYSIS ONLY — it does not remove entries. " +
+			"This is ANALYSIS ONLY - it does not remove entries. " +
 			"Automatic pruning runs on every LLM call via rule-based filtering (dedup, superseded writes, errors, recency). " +
 			"Use `context_compress` for LLM-driven compression of specific ranges.",
 		parameters: contextPruneSchema,
 		execute: async (_toolCallId: string, params: any, _signal: any, _onUpdate: any, ctx: any): Promise<any> => {
 			const minAge = params.minAge ?? 5;
-			
+
 			const audit = analyzeSession(ctx);
-			
+
 			// Filter candidates by minAge and optional tool filter
 			let candidates = audit.candidates.filter((c) => c.age >= minAge);
-			
+
 			if (params.toolFilter?.length) {
-				candidates = candidates.filter((c) => 
+				candidates = candidates.filter((c) =>
 					c.toolName && params.toolFilter.includes(c.toolName)
 				);
 			}
-			
+
 			const topCandidates = candidates.slice(0, 15);
-			
+
 			const lines: string[] = [];
-			
+
 			lines.push(`## Context Prune Analysis`);
-			lines.push("\n📊 **Analysis mode** — This is analysis only.");
+			lines.push("\n📊 **Analysis mode** - This is analysis only.");
 			lines.push("Automatic rule-based pruning runs on every LLM call.");
 			lines.push("Use `context_compress` for LLM-driven compression.");
-			
+
 			lines.push(`\n**Context Usage:** ${audit.usage.percent.toFixed(1)}% (${Math.round(audit.usage.tokens / 1024)}K tokens)`);
 			lines.push(`**Session:** ${audit.branchLength} entries, ${audit.tagCount} tags, ${audit.summaryCount} summaries`);
 			lines.push(`**Auto-pruned:** ${pruningState.stats.totalPruned} messages (${pruningState.stats.totalProcessed} total processed)`);
-			
+
 			if (topCandidates.length === 0) {
 				lines.push("\n✓ No prune candidates found (session is clean)");
 				return {
@@ -1072,10 +1072,10 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 					details: { candidatesFound: 0, audit, stats: pruningState.stats },
 				};
 			}
-			
+
 			lines.push(`\n## Prune Candidates (${topCandidates.length} of ${candidates.length} shown)`);
 			lines.push("\n" + formatPruneCandidates(topCandidates));
-			
+
 			return {
 				content: [{ type: "text" as const, text: lines.join("\n") }],
 				details: {
@@ -1098,9 +1098,9 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 		execute: async (_toolCallId: string, params: any, _signal: any, _onUpdate: any, ctx: any): Promise<any> => {
 			const includeRecs = params.includeRecommendations ?? true;
 			const detail = params.detailLevel ?? "detailed";
-			
+
 			const audit = analyzeSession(ctx);
-			
+
 			const lines: string[] = [];
 			lines.push("## Context Audit Report");
 			lines.push("\n### Usage Statistics");
@@ -1110,11 +1110,11 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 			lines.push(`- **Tags:** ${audit.tagCount}`);
 			lines.push(`- **Summaries:** ${audit.summaryCount}`);
 			lines.push(`- **Branches:** ${audit.branchCount}`);
-			
+
 			if (audit.oldestEntry) {
 				lines.push(`- **Oldest entry:** ${audit.oldestEntry.id.slice(0, 8)} (${audit.oldestEntry.age} turns ago)`);
 			}
-			
+
 			// Hygiene score (derived)
 			let hygieneScore = 1.0;
 			if (audit.usage.percent > 80) hygieneScore -= 0.3;
@@ -1123,10 +1123,10 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 			if (audit.candidates.length > 10) hygieneScore -= 0.15;
 			if (audit.summaryCount === 0 && audit.branchLength > 20) hygieneScore -= 0.2;
 			hygieneScore = Math.max(0, Math.min(1, hygieneScore));
-			
+
 			const scoreEmoji = hygieneScore >= 0.8 ? "✓" : hygieneScore >= 0.5 ? "⚠" : "✗";
 			lines.push(`\n### Hygiene Score: ${scoreEmoji} ${(hygieneScore * 100).toFixed(0)}%`);
-			
+
 			// Recommendations
 			if (includeRecs && audit.recommendations.length > 0) {
 				lines.push("\n### Recommendations");
@@ -1136,7 +1136,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 					lines.push(`   └─ ${rec.reason}`);
 				}
 			}
-			
+
 			// Branching triggers
 			if (audit.branchingTriggers.length > 0) {
 				lines.push("\n### Branching Triggers");
@@ -1145,7 +1145,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 					lines.push(`- ${trigger.reason}: ${trigger.current} (threshold: ${trigger.threshold})`);
 				}
 			}
-			
+
 			// Prune candidates (if detailed)
 			if (detail === "full" || detail === "detailed") {
 				const topPrune = audit.candidates.slice(0, detail === "full" ? 20 : 5);
@@ -1154,7 +1154,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 					lines.push(formatPruneCandidates(topPrune, topPrune.length));
 				}
 			}
-			
+
 			return {
 				content: [{ type: "text" as const, text: lines.join("\n") }],
 				details: { hygieneScore, audit },
@@ -1186,29 +1186,29 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 	pi.on("session_before_compact" as any, async (event: any, ctx: any) => {
 		try {
 			const audit = analyzeSession(ctx);
-			
+
 			// Build custom instructions that include hygiene insights
 			const instructions: string[] = [];
-			
+
 			// Tag summary
 			if (audit.tagCount > 0) {
 				instructions.push(`Session has ${audit.tagCount} checkpoint(s): preserve tag labels for navigation.`);
 			}
-			
+
 			// Prune candidates warning
 			const highPriorityPrune = audit.candidates.filter((c) => c.score >= 0.6);
 			if (highPriorityPrune.length > 3) {
-				instructions.push(`${highPriorityPrune.length} entries are prune candidates with low semantic value — summarize briefly.`);
+				instructions.push(`${highPriorityPrune.length} entries are prune candidates with low semantic value - summarize briefly.`);
 			}
-			
+
 			// Context usage context
 			if (audit.usage.percent > 70) {
-				instructions.push(`Context at ${audit.usage.percent.toFixed(0)}% — prioritize summarization of tool-heavy sections.`);
+				instructions.push(`Context at ${audit.usage.percent.toFixed(0)}% - prioritize summarization of tool-heavy sections.`);
 			}
-			
+
 			// Memory hint
 			instructions.push("After compaction: consider storing key learnings in memory for cross-session continuity.");
-			
+
 			if (instructions.length > 0) {
 				// Return custom instructions to enhance default summarization
 				return {
@@ -1226,14 +1226,14 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 		try {
 			const audit = analyzeSession(ctx);
 			const preparation = event.preparation;
-			
+
 			// Auto-generate summary if none provided
 			if (!preparation.summaryEntry && preparation.targetId) {
 				// Find nearest tag for context
 				const sm = ctx.sessionManager;
 				const branch = sm.getBranch();
 				const targetIndex = branch.findIndex((e: any) => e.id === preparation.targetId);
-				
+
 				let nearestTag = "checkpoint";
 				if (targetIndex >= 0) {
 					for (let i = targetIndex; i >= 0; i--) {
@@ -1241,7 +1241,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 						if (label) { nearestTag = label; break; }
 					}
 				}
-				
+
 				return {
 					summary: {
 						summary: `[Branch from ${nearestTag}] Session state before branching.`,
@@ -1280,14 +1280,14 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 
 	// ── Compaction End Event ──────────────────────────────────────────────
 	// Handles ALL compaction outcomes including failures.
-	// session_compact only fires on success — this catches what it misses.
+	// session_compact only fires on success - this catches what it misses.
 	pi.on("compaction_end" as any, async (event: any, _ctx: any) => {
 		try {
 			const { reason, willRetry, aborted, errorMessage, result } = event;
 
 			// ── Overflow recovery failure ────────────────────────────────────
 			// Compaction WORKED but the retry after compaction failed.
-			// Retrying compaction won't help — the underlying error persists.
+			// Retrying compaction won't help - the underlying error persists.
 			if (reason === "overflow" && !willRetry && !aborted) {
 				const entryId = result?.firstKeptEntryId ?? (event as any).compactionEntry?.id;
 				if (entryId && _compactedEntries.has(entryId)) return;
@@ -1304,9 +1304,9 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 							errMsg,
 							"",
 							"The API returned an overflow error even after compaction. This usually means:",
-							"1. **Wrong model/provider** — the model ID doesn't match your API key",
-							"2. **API key invalid** — Cerebras API key is wrong or account is suspended",
-							"3. **Request format rejected** — the request violates the API's format rules",
+							"1. **Wrong model/provider** - the model ID doesn't match your API key",
+							"2. **API key invalid** - Cerebras API key is wrong or account is suspended",
+							"3. **Request format rejected** - the request violates the API's format rules",
 							"",
 							"**Immediate actions:**",
 							"- Run `/model` to switch to a different model (e.g. anthropic/claude-3-5-sonnet)",
@@ -1378,7 +1378,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 			// ── Successful compaction ──────────────────────────────────────────
 			// Memory nudge for successful compaction is handled by enforcement session_compact
 			// (reads scratchpad, sends detailed memory_store() commands for unpersisted learnings).
-			// Nothing needed here — enforcement covers it.
+			// Nothing needed here - enforcement covers it.
 		} catch (err) {
 			console.error("[context-manager] compaction_end error:", err);
 		}
@@ -1507,7 +1507,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 
 	// ── Auto-Retry End Event ──────────────────────────────────────────────
 	// Catches non-overflow retry failures (429 rate limits, 500s, network errors).
-	// NOTE: overflow errors do NOT use retry — they use compaction instead.
+	// NOTE: overflow errors do NOT use retry - they use compaction instead.
 	pi.on("auto_retry_end" as any, async (event: any, _ctx: any) => {
 		try {
 			const { success, attempt, finalError } = event;
@@ -1523,9 +1523,9 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 								finalError ?? "Unknown error",
 								"",
 								"The API kept returning errors despite retries. Possible causes:",
-								"- Rate limit (429) — wait a moment or switch models",
-								"- Server error (500/502/503) — provider is having issues",
-								"- Network error — check your connection",
+								"- Rate limit (429) - wait a moment or switch models",
+								"- Server error (500/502/503) - provider is having issues",
+								"- Network error - check your connection",
 								"",
 								"Actions: Run `/model` to switch models, or wait and retry.",
 							].join("\n"),

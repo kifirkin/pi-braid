@@ -1,4 +1,4 @@
-# pi-braid — Gap Analysis & Implementation Documentation
+# pi-braid - Gap Analysis & Implementation Documentation
 
 ## Overview
 
@@ -56,8 +56,8 @@ These are changes to files deep in `src/core/` that are part of the pi runtime i
 #### A2. `extensions/types.ts` (+47 lines)
 
 **Change**: New `ExtensionContext` methods:
-- `ctx.getUtilityModel(): Model | undefined` — Resolve cheapest model for utility calls
-- `ctx.getVisionModel(): Model | undefined` — Resolve vision-capable model
+- `ctx.getUtilityModel(): Model | undefined` - Resolve cheapest model for utility calls
+- `ctx.getVisionModel(): Model | undefined` - Resolve vision-capable model
 
 **Impact**: 7 call sites in pi-braid extensions (vision, enforcement, evolve, metacognition).
 
@@ -81,7 +81,7 @@ These are changes to files deep in `src/core/` that are part of the pi runtime i
 
 **Impact**: On main, calling runtime methods during extension loading throws. The polyfill extension loads AFTER the runtime is initialized, so this isn't an issue.
 
-**Bridge**: ✅ No action needed — our extensions don't call runtime methods during factory loading.
+**Bridge**: ✅ No action needed - our extensions don't call runtime methods during factory loading.
 
 ---
 
@@ -109,12 +109,12 @@ These are changes to files deep in `src/core/` that are part of the pi runtime i
 
 #### B1. `read.ts` (+55/-23 lines)
 
-**Change**: Vision-aware image reading — checks `_ctx?.model?.input?.includes('image')` before sending images, shows fallback text for non-vision models.
+**Change**: Vision-aware image reading - checks `_ctx?.model?.input?.includes('image')` before sending images, shows fallback text for non-vision models.
 
 **Impact**: On main, images are always sent regardless of model capability. Wastes tokens on non-vision models.
 
 **Bridge**: ⚠️ Cannot override the core `read` tool from an extension. Options:
-1. Register a custom `read` tool that wraps the built-in (risky — conflicts with core)
+1. Register a custom `read` tool that wraps the built-in (risky - conflicts with core)
 2. **Propose upstream PR**: Add a simple filter in the core `read` tool
 3. **Accept the gap**: Most models handle image content gracefully even if they can't "see" it
 
@@ -126,7 +126,7 @@ These are changes to files deep in `src/core/` that are part of the pi runtime i
 
 **Change**: All tool factory functions gained `ctxFactory?: () => ExtensionContext | undefined` parameter for dynamic cwd resolution.
 
-**Impact**: On main, tools use the closure cwd (`process.cwd()` by default). Minor — affects session switching scenarios.
+**Impact**: On main, tools use the closure cwd (`process.cwd()` by default). Minor - affects session switching scenarios.
 
 **Bridge**: ⚠️ Accept the gap on main. When running on develop, the host provides the ctxFactory.
 
@@ -136,7 +136,7 @@ These are changes to files deep in `src/core/` that are part of the pi runtime i
 
 #### C1. `compaction/compaction.ts` (+205/-29 lines)
 
-**Change**: Major rewrite of compaction logic — better summarization, branch summarization fixes.
+**Change**: Major rewrite of compaction logic - better summarization, branch summarization fixes.
 
 **Bridge**: ⚠️ The core compaction function can't be overridden. BUT:
 - The `session_before_compact` event lets extensions provide custom summaries
@@ -151,7 +151,7 @@ These are changes to files deep in `src/core/` that are part of the pi runtime i
 
 #### D1. `utility-model-selector.ts` (+278 lines), `vision-model-selector.ts` (+254 lines)
 
-New interactive TUI components for model selection. Cannot be replicated as extension — they're Ink/React components.
+New interactive TUI components for model selection. Cannot be replicated as extension - they're Ink/React components.
 
 **Bridge**: ✅ `polyfill` extension provides `/utility-model` and `/vision-model` slash commands instead of TUI menus.
 
@@ -195,7 +195,7 @@ Mode-specific changes for streaming, compaction, etc.
 
 ---
 
-## 3. Bridge Extensions — Detailed Implementation
+## 3. Bridge Extensions - Detailed Implementation
 
 ### 3.1. `prompt-builder` Extension
 
@@ -216,12 +216,12 @@ Mode-specific changes for streaming, compaction, etc.
 5. Returns `{ systemPrompt: newPrompt }`
 
 **Key design decisions**:
-- Does NOT just append text — it REPLACES the prompt entirely
+- Does NOT just append text - it REPLACES the prompt entirely
 - Checks `pi.getActiveTools()` and `pi.getAllTools()` for tool-aware guidelines
 - Preserves any `# Project Context` sections from the original prompt
 - Only overrides default guidelines if tools provide `promptGuidelines`
 
-**Priority**: CRITICAL — This is the #1 behavioral difference between main and develop.
+**Priority**: CRITICAL - This is the #1 behavioral difference between main and develop.
 
 ---
 
@@ -230,23 +230,23 @@ Mode-specific changes for streaming, compaction, etc.
 **Purpose**: Patch missing `ExtensionContext` methods and provide model selector commands.
 
 **What it patches**:
-- `ctx.getUtilityModel()` — Falls back to `ctx.model` then cheapest available model
-- `ctx.getVisionModel()` — Falls back to `ctx.model` (if vision-capable) then first vision model
+- `ctx.getUtilityModel()` - Falls back to `ctx.model` then cheapest available model
+- `ctx.getVisionModel()` - Falls back to `ctx.model` (if vision-capable) then first vision model
 
 **What it adds**:
-- `/utility-model [pattern|clear]` — Set or show utility model
-- `/vision-model [pattern|clear]` — Set or show vision model
+- `/utility-model [pattern|clear]` - Set or show utility model
+- `/vision-model [pattern|clear]` - Set or show vision model
 
 **Model resolution priority**:
 1. Custom pattern from `.pi/settings.json` (e.g., `"utilityModel": "anthropic/claude-haiku-4-5"`)
 2. Current model (for utility) / current model if vision-capable (for vision)
 3. Cheapest non-reasoning available model (for utility) / first vision model (for vision)
 
-**Priority**: CRITICAL — Without this, 7 call sites in pi-braid crash on main.
+**Priority**: CRITICAL - Without this, 7 call sites in pi-braid crash on main.
 
 ---
 
-## 4. Git History Insights — Midway Extraction Attempts
+## 4. Git History Insights - Midway Extraction Attempts
 
 The develop branch shows a clear progression of attempting to extract core functionality into extensions:
 
@@ -312,19 +312,19 @@ This is a fresh review of ALL 17 commits between upstream_main (v0.66.1, the pub
 ### A. ExtensionContext API Surface
 
 Only ONE difference between upstream_main and develop:
-- `ctx.getUtilityModel()` — **NEW on develop only** → Polyfilled by pi-braid ✅
-- `ctx.getVisionModel()` — **NEW on develop only** → Polyfilled by pi-braid ✅
+- `ctx.getUtilityModel()` - **NEW on develop only** → Polyfilled by pi-braid ✅
+- `ctx.getVisionModel()` - **NEW on develop only** → Polyfilled by pi-braid ✅
 
 All other `ExtensionContext` methods are identical.
 
 ### B. ExtensionAPI Events
 
 Only ONE difference:
-- `session_directory` event — **NEW on develop only**. Custom session directory resolution via `before_agent_start` alternatives. **NOT on upstream_main**.
+- `session_directory` event - **NEW on develop only**. Custom session directory resolution via `before_agent_start` alternatives. **NOT on upstream_main**.
 
 All other events are identical.
 
-### C. Input Event — `confirm` Action
+### C. Input Event - `confirm` Action
 
 **Develop adds a new result type** to `InputEventResult`:
 ```typescript
@@ -335,7 +335,7 @@ This allows extensions to show a confirmation dialog to the user before proceedi
 
 pi-braid does NOT currently use this. Could be added as an enhancement.
 
-### D. Slash Commands — What Exists Where
+### D. Slash Commands - What Exists Where
 
 | Command | upstream_main | develop |
 |---------|-------------|---------|
@@ -346,21 +346,21 @@ pi-braid does NOT currently use this. Could be added as an enhancement.
 | `/analytics:all` | ❌ Not built-in | ✅ Built-in (needs ToolAnalytics) |
 | `/compact`, `/new`, `/resume`, etc. | ✅ | ✅ |
 
-**pi-braid provides `/utility-model` and `/vision-model`** as extension commands — works on upstream_main.
+**pi-braid provides `/utility-model` and `/vision-model`** as extension commands - works on upstream_main.
 
-### D.1. /analytics Commands — Implemented as Extension
+### D.1. /analytics Commands - Implemented as Extension
 
 **Develop branch**: `/analytics` and `/analytics:all` require the core `ToolAnalytics` class.
 
 **pi-braid workaround**: Created a self-contained `analytics` extension at `src/extensions/analytics/index.ts` that provides:
-- `/analytics` — current session stats (tool calls, durations, success rates, sequences)
-- `/analytics:all` — historical summary across all sessions
+- `/analytics` - current session stats (tool calls, durations, success rates, sequences)
+- `/analytics:all` - historical summary across all sessions
 - Uses `tool_execution_start` and `tool_execution_end` events to track timing and success
 - Persists to `~/.pi/agent/analytics/tool-analytics.jsonl`
 
 This is a simplified version of the core ToolAnalytics but provides the same commands.
 
-### D.2. /retry Command — Limitation and Workaround
+### D.2. /retry Command - Limitation and Workaround
 
 **Develop branch**: `/retry` uses `session.continue()` to remove the last assistant message and re-run that turn.
 
@@ -402,9 +402,9 @@ setModel: async () => false,
 getThinkingLevel: () => "medium",
 ```
 
-**Impact**: Extensions on upstream_main MUST NOT call `getCommands()`, `getActiveTools()`, `getAllTools()`, `sendMessage()`, etc. during the factory function (the synchronous initialization). All pi-braid extensions are written to handle this correctly — they use `session_start` event handlers for these calls, not factory-time calls.
+**Impact**: Extensions on upstream_main MUST NOT call `getCommands()`, `getActiveTools()`, `getAllTools()`, `sendMessage()`, etc. during the factory function (the synchronous initialization). All pi-braid extensions are written to handle this correctly - they use `session_start` event handlers for these calls, not factory-time calls.
 
-### F. Resource Loader — How Extensions Are Loaded
+### F. Resource Loader - How Extensions Are Loaded
 
 **On develop**: `resource-loader.ts` explicitly calls `loadBundledExtensions(BUILT_IN_EXTENSIONS, ...)` to load 18 built-in extensions from the bundled dist.
 
@@ -412,9 +412,9 @@ getThinkingLevel: () => "medium",
 - `additionalExtensionPaths` passed to `ResourceLoader`
 - `extensionFactories` passed to `ResourceLoader`
 
-**Both have the same files in `dist/core/builtin/extensions/`** — but upstream_main doesn't auto-load them. pi-braid provides these extensions as a directory extension, which fills this gap.
+**Both have the same files in `dist/core/builtin/extensions/`** - but upstream_main doesn't auto-load them. pi-braid provides these extensions as a directory extension, which fills this gap.
 
-### G. settings-manager.ts — getUtilityModel/setUtilityModel
+### G. settings-manager.ts - getUtilityModel/setUtilityModel
 
 These methods exist on `SettingsManager` (not just ExtensionContext):
 - `settingsManager.getUtilityModel()` → returns `settings.utilityModel`
@@ -429,15 +429,15 @@ pi-braid's polyfill reads `settingsManager.get("utilityModel")` which should wor
 - Then merges summaries into final summary
 - Better token estimation and chunking algorithm
 
-**Not extractable** — this is in `compaction.ts`. Extensions can influence compaction via `session_before_compact` event.
+**Not extractable** - this is in `compaction.ts`. Extensions can influence compaction via `session_before_compact` event.
 
-### I. model-registry.ts — getCheapModels()
+### I. model-registry.ts - getCheapModels()
 
 **NEW method on develop**: `modelRegistry.getCheapModels(maxInputCost = 0.5, maxOutputCost = 2.0)` returns non-reasoning models sorted by cost.
 
 pi-braid's polyfill reimplements this using `getAvailable()` and manual filtering. Functionally equivalent.
 
-### J. CLI Args — --utility-model
+### J. CLI Args - --utility-model
 
 **New on develop**: `--utility-model <pattern>` CLI argument. **Not in upstream_main.**
 
@@ -445,7 +445,7 @@ pi-braid provides `/utility-model` slash command instead, which works on upstrea
 
 ---
 
-## 8. Verified Completeness — All 17 upstream_main→develop Commits Reviewed
+## 8. Verified Completeness - All 17 upstream_main→develop Commits Reviewed
 
 ```
 5c12bbcde  chore: applied implicit framing + compliance-audit skill (captured)
@@ -487,7 +487,7 @@ pi-braid/
 │   ├── codebase-summary/SKILL.md
 │   ... (14 more)
 ├── src/
-│   ├── index.ts              # Main entry — loads all sub-extensions
+│   ├── index.ts              # Main entry - loads all sub-extensions
 │   ├── lib/                  # 13 utility modules
 │   │   ├── async-storage.ts
 │   │   ├── cognitive-memory.ts

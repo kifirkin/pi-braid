@@ -1,5 +1,5 @@
 /**
- * Safety Extension — Guardrails for dangerous operations and session safety.
+ * Safety Extension - Guardrails for dangerous operations and session safety.
  *
  * Permission gate, protected paths, dirty repo guard, auto-commit on exit.
  */

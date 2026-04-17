@@ -5,7 +5,7 @@ description: "Run and interact with long-running subprocesses: background tasks,
 
 # Process Control
 
-Run long-running subprocesses and interact with them over time. The core problem: `bash` tool calls are synchronous — once they return, the process is gone. This skill covers mechanisms that let processes persist across multiple tool calls so you can monitor, interact with, and control them.
+Run long-running subprocesses and interact with them over time. The core problem: `bash` tool calls are synchronous - once they return, the process is gone. This skill covers mechanisms that let processes persist across multiple tool calls so you can monitor, interact with, and control them.
 
 ## Choosing a Mechanism
 

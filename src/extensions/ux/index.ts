@@ -1,5 +1,5 @@
 /**
- * UX Extension — Convenience commands, notifications, and input transforms.
+ * UX Extension - Convenience commands, notifications, and input transforms.
  *
  * /commands, /bookmark, /ask, /steer, /followup, /session-name,
  * native notifications, ?quick prefix, ping/time shortcuts.

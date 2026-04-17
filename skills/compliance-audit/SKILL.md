@@ -28,7 +28,7 @@ Research on implicit framing reveals an interaction effect:
 | **Implicit** (no explicit directives) | 75% solve, 0% compliance theater | 75% solve, 73% compliance theater |
 | **Explicit** (with explicit directives) | 79% solve, 95% compliance theater | 62% solve, 100% compliance theater |
 
-**Key insight**: Identity framing acts as a behavioral filter. When identity is present, explicit directives still produce task-relevant behavior (95% compliance ratio). Without identity, explicit directives纯粹 produce compliance theater — performative adherence rather than task completion.
+**Key insight**: Identity framing acts as a behavioral filter. When identity is present, explicit directives still produce task-relevant behavior (95% compliance ratio). Without identity, explicit directives纯粹 produce compliance theater - performative adherence rather than task completion.
 
 ### The Behavioral Filter Mechanism
 
@@ -36,7 +36,7 @@ Identity words like "meticulous", "rigorous", "careful" create a filter that sel
 
 ### What This Means for Prompts
 
-Explicit directives ("You MUST do X") trigger compliance theater — the model demonstrates adherence rather than solving the problem. Identity statements ("You are meticulous") let the model filter for task-relevant behavior.
+Explicit directives ("You MUST do X") trigger compliance theater - the model demonstrates adherence rather than solving the problem. Identity statements ("You are meticulous") let the model filter for task-relevant behavior.
 
 ## The Audit Process
 
@@ -73,7 +73,7 @@ For each marker found, determine:
 - **Context**: Where does it appear? System prompt, enforcement message, skill file, tool description?
 - **Conversion difficulty**: Can it be directly converted to identity, or does it need restructuring?
 
-**Safety guardrails** (preventing harm, data loss, security issues) may legitimately need explicit framing. Use judgment — don't weaken "Never delete production databases" into "You avoid deleting production databases."
+**Safety guardrails** (preventing harm, data loss, security issues) may legitimately need explicit framing. Use judgment - don't weaken "Never delete production databases" into "You avoid deleting production databases."
 
 ### Step 3: Convert to Identity Framing
 
@@ -83,13 +83,13 @@ Apply these transformation rules:
 
 | Before (Behavioral) | After (Identity) | Pattern |
 |---|---|---|
-| "You MUST use tools to perform work" | "You work through tools — reach for them" | Must → identity verb |
+| "You MUST use tools to perform work" | "You work through tools - reach for them" | Must → identity verb |
 | "You MUST explore before making changes" | "You explore before making changes" | Must → you [verb] |
 | "You ALWAYS verify before claiming done" | "You verify before claiming done" | Drop ALWAYS |
 | "You NEVER skip tests" | "You don't skip tests" | NEVER → don't |
 | "CRITICAL: Call think() first" | "You think before you change" | CRITICAL → identity |
 | "think() → edit() is REQUIRED" | "You think before you change: think() → edit()" | REQUIRED → identity flow |
-| "Do NOT just describe what you would do" | "You don't describe what you would do — you do it" | Do NOT → don't |
+| "Do NOT just describe what you would do" | "You don't describe what you would do - you do it" | Do NOT → don't |
 | "VERIFICATION REQUIRED before finalize" | "You verify before finalizing" | VERIFICATION REQUIRED → you verify |
 | "You ruled by following guidelines" | "Your guidelines shape how you work" | External control → self-directed |
 
@@ -99,7 +99,7 @@ Apply these transformation rules:
 |---|---|---|
 | "Use read to examine files" | "You examine files before editing" | Use → You [verb] |
 | "Prefer grep/find over bash" | "You reach for grep/find/ls first for exploration" | Prefer → You reach for |
-| "Use edit for precise changes" | "You make precise changes — old text matches exactly" | Use → You make |
+| "Use edit for precise changes" | "You make precise changes - old text matches exactly" | Use → You make |
 | "Use write only for new files" | "You write new files or complete rewrites" | Use → You write |
 | "Store important learnings" | "You store important learnings in memory" | Imperative → You [verb] |
 
@@ -180,13 +180,13 @@ Use Fisher's exact test for small samples.
 
 ## Additional Practices
 
-Compliance framing is one axis of prompt quality. Another is **output style** — avoiding the statistical fingerprints LLMs leave in their responses. Good prompts guide both *what* the agent does and *how* it communicates:
+Compliance framing is one axis of prompt quality. Another is **output style** - avoiding the statistical fingerprints LLMs leave in their responses. Good prompts guide both *what* the agent does and *how* it communicates:
 
-- **Signposting**: Avoid "Let's dive in", "Here's what I found" — start directly with content
+- **Signposting**: Avoid "Let's dive in", "Here's what I found" - start directly with content
 - **Filler phrases**: Replace "In order to" → "To", "Due to the fact that" → "Because"
 - **Chatbot artifacts**: No "Great question!", "I hope this helps!", "Certainly!"
-- **Inflated language**: Keep significance in proportion — avoid "pivotal moment", "vital role"
-- **Generic conclusions**: No "The future looks bright" — end with the actual point
+- **Inflated language**: Keep significance in proportion - avoid "pivotal moment", "vital role"
+- **Generic conclusions**: No "The future looks bright" - end with the actual point
 
 Apply identity framing to behavioral guidelines, and natural voice principles to communication style. Together they produce output that sounds like a person thinking, not a model sampling.
 

@@ -18,7 +18,7 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { Model, Api } from "@mariozechner/pi-ai";
 
-/** Custom settings keys — must match polyfill extension */
+/** Custom settings keys - must match polyfill extension */
 const UTILITY_MODEL_KEY = "utilityModel";
 const VISION_MODEL_KEY = "visionModel";
 
@@ -118,7 +118,7 @@ export function resolveVisionModel(ctx: ExtensionContext): Model<Api> | undefine
 		if (resolved?.input?.includes("image")) return resolved;
 	}
 
-	// 2. defaultModel/defaultProvider — only if it supports image input
+	// 2. defaultModel/defaultProvider - only if it supports image input
 	const defaultProvider = (ctx as any).settingsManager?.getDefaultProvider?.();
 	const defaultModel = (ctx as any).settingsManager?.getDefaultModel?.();
 	if (defaultModel && defaultProvider) {

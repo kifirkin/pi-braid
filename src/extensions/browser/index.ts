@@ -1,5 +1,5 @@
 /**
- * Browser Extension — Native CDP browser automation, zero external deps.
+ * Browser Extension - Native CDP browser automation, zero external deps.
  *
  * Tools:
  * - browser_navigate: Navigate to URL
@@ -84,7 +84,7 @@ async function ensureConnected(opts: { autoStart?: boolean; useProfile?: boolean
 	const targetTab = allTabs.find((t) => t.id === connectedTabId) ?? allTabs[allTabs.length - 1];
 
 	if (!targetTab?.webSocketDebuggerUrl) {
-		// No tabs — create one
+		// No tabs - create one
 		const newResp = await fetch(`http://localhost:${port}/json/new?url=` + encodeURIComponent("about:blank"), { method: "PUT" });
 		const newTab = (await newResp.json()) as { id: string; url: string; webSocketDebuggerUrl: string };
 		connectedTabId = newTab.id;
@@ -159,7 +159,7 @@ const cookiesParams = Type.Object({});
 
 const contentParams = Type.Object({
 	...baseParams.properties,
-	url: Type.Optional(Type.String({ description: "URL to fetch content from (optional — uses current tab if omitted)" })),
+	url: Type.Optional(Type.String({ description: "URL to fetch content from (optional - uses current tab if omitted)" })),
 });
 
 // ── Tool implementations ─────────────────────────────────────────────
@@ -285,7 +285,7 @@ async function browserContent(input: Static<typeof contentParams>) {
 	return { content: [{ type: "text" as const, text: output }], details: { url: connectedUrl, tabId: connectedTabId } };
 }
 
-// ── browser_pick (interactive — for user command only) ─────────────
+// ── browser_pick (interactive - for user command only) ─────────────
 
 const PICK_SCRIPT = `
 (function() {
@@ -423,7 +423,7 @@ export default function browserExtension(pi: ExtensionAPI) {
 
 	// ── /browser-pick ────────────────────────────────────────────────
 	pi.registerCommand("browser-pick", {
-		description: "Launch interactive element picker — user clicks elements on the page. Returns CSS selectors and element info.",
+		description: "Launch interactive element picker - user clicks elements on the page. Returns CSS selectors and element info.",
 		handler: async (args, ctx) => {
 			const message = args[0] ?? "Click an element";
 			try {

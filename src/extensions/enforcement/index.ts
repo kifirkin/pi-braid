@@ -5,7 +5,7 @@
  * - L1 (Internal): Tool usage, context hygiene, turn validation tracked in state only
  * - L2 (Structured hints): Bundled per-turn into a SINGLE Session Signals nudge
  * - L3 (Critical): Overflow failures, infrastructure errors, dangerous commands
- *   that passed review — individual visible messages with semantic framing
+ *   that passed review - individual visible messages with semantic framing
  *
  * Key design: Agent gets ONE [auto] message per turn max for non-critical signals.
  * Critical signals (L3) get their own messages because they require immediate action.
@@ -33,7 +33,7 @@ import {
 } from "./whisper.js";
 
 // ── L1 Surfacing ─────────────────────────────────────────────────────────────
-// Shared signal state for prompt-builder. Writable object — prompt-builder reads
+// Shared signal state for prompt-builder. Writable object - prompt-builder reads
 // this directly (same process, no IPC needed). Turn-keyed so stale signals are
 // dropped when the turn advances without new signals.
 export const enforcementSignals: Record<
@@ -56,7 +56,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 
 		state.currentTurn++;
 
-		// Block action must surface via system prompt — whisper would trigger a new turn
+		// Block action must surface via system prompt - whisper would trigger a new turn
 		const pendingBlock = getPendingBlockAction();
 		clearPendingBlockAction();
 
@@ -124,7 +124,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		);
 		const hadErrors = erroredTools.size > 0;
 
-		// Detect context overflow — suppress L2 signals during recovery so the agent
+		// Detect context overflow - suppress L2 signals during recovery so the agent
 		// gets breathing room to stabilize after compaction/retry.
 		const isOverflowTurn =
 			event.message.role === "assistant" &&
@@ -197,13 +197,13 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 			state.turnHistory.delete(oldest);
 		}
 
-		// ── L3: Critical signals — individual, semantic ────────────────────────
+		// ── L3: Critical signals - individual, semantic ────────────────────────
 
 		if (erroredTools.size > 0) {
 			state.lastFailedToolTurn = state.currentTurn;
 		}
 
-		// Infrastructure error (no tools ran but assistant responded — not silent)
+		// Infrastructure error (no tools ran but assistant responded - not silent)
 		const isInfrastructureError =
 			actualTools.length === 0 &&
 			event.message.role === "assistant" &&
@@ -253,7 +253,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		// Memory signal: fires on EVENT basis, not schedule.
 		// Trigger: code changed after last memory usage (not just turns elapsed).
 		// The session_compact handler fires the primary compaction memory signal.
-		// Skip during overflow recovery — agent needs breathing room to stabilize.
+		// Skip during overflow recovery - agent needs breathing room to stabilize.
 		const RECOVERY_GRACE_TURNS = 5;
 		const inOverflowRecovery = state.currentTurn - state.overflowRecently < RECOVERY_GRACE_TURNS;
 
@@ -273,12 +273,12 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		}
 
 		// Context tool signal: REMOVED.
-		// Interval-based "use context tools" nudges are wrong signal — they fire on
+		// Interval-based "use context tools" nudges are wrong signal - they fire on
 		// enforcement turn count, not user-perceived progress. Context hygiene is already
 		// covered by the context usage nudge (75%/85%) below.
 
 		// Scratchpad signal: code changed but scratchpad not updated
-		// Skip during overflow recovery — agent needs breathing room to stabilize.
+		// Skip during overflow recovery - agent needs breathing room to stabilize.
 		if (
 			!hadErrors &&
 			!inOverflowRecovery &&
@@ -290,12 +290,12 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 			if (state.currentTurn - state.lastScratchpadNudgeTurn >= 8) {
 				state.lastScratchpadNudgeTurn = state.currentTurn;
 				sessionSignals.push(
-					`Code changed without updating scratchpad — consider scratchpad(action="add_note", text="...") or scratchpad(action="add_decision", text="...")`,
+					`Code changed without updating scratchpad - consider scratchpad(action="add_note", text="...") or scratchpad(action="add_decision", text="...")`,
 				);
 			}
 		}
 
-		// Context usage signal (only at high usage — semantic, not metric)
+		// Context usage signal (only at high usage - semantic, not metric)
 		if (actualTools.some((t) =>
 			["context_tag", "context_log", "context_checkout", "context_prune", "context_audit"].includes(t),
 		)) {
@@ -321,14 +321,14 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 
 			if (usagePercent > 85) {
 				sessionSignals.push(
-					"Context at critical levels — run /compact or use context_checkout to branch before continuing",
+					"Context at critical levels - run /compact or use context_checkout to branch before continuing",
 				);
 			} else if (usagePercent > 75) {
 				sessionSignals.push(
-					"Context getting high — consider /compact or context_tag to mark progress",
+					"Context getting high - consider /compact or context_tag to mark progress",
 				);
 			}
-			// Below 75%: no signal — not actionable enough to bother
+			// Below 75%: no signal - not actionable enough to bother
 		}
 
 		// Send bundled nudge if we have signals AND no L3 critical message just went out.
@@ -341,7 +341,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 				}
 			}
 
-			// Populate L1 signal store — keyed by semantic type for easy lookup
+			// Populate L1 signal store - keyed by semantic type for easy lookup
 			// Also emit via event bus for cross-extension coordination (prompt-builder)
 			for (const signal of sessionSignals) {
 				const entry = { turn: state.currentTurn, text: signal, acted: false };
@@ -373,7 +373,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 	});
 
 	// ── session_compact ────────────────────────────────────────────────────────
-	// L3: Compaction happened — harness-level minimum-fidelity trigger.
+	// L3: Compaction happened - harness-level minimum-fidelity trigger.
 	// Key learnings from scratchpad must be persisted before they get lost.
 	pi.on("session_compact" as any, async (event: any, ctx: any) => {
 		if (!state.enforcementActive) return;
@@ -387,11 +387,11 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 			const unpersisted = (learnings as any[]).filter((l: any) => !l.persisted);
 
 			if (unpersisted.length > 0) {
-				// L3: Individual message — compaction means context is about to lose these
+				// L3: Individual message - compaction means context is about to lose these
 				sendEnforcementWhisper(
 					pi,
 					`Context compacted at turn ${compactTurn}. ` +
-					`${unpersisted.length} key learning(s) not yet persisted — these will be harder to recover:
+					`${unpersisted.length} key learning(s) not yet persisted - these will be harder to recover:
 
 ` +
 					unpersisted
@@ -399,12 +399,12 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 						.join("\n") +
 					`
 
-Persist them now — this is the minimum-fidelity moment.`,
+Persist them now - this is the minimum-fidelity moment.`,
 				);
 				// Also emit for L1 surfacing in prompt-builder
 				enforcementSignals["unpersisted_learnings"] = {
 					turn: state.currentTurn,
-					text: `${unpersisted.length} key learning(s) not yet persisted — persist them now`,
+					text: `${unpersisted.length} key learning(s) not yet persisted - persist them now`,
 					acted: false,
 				};
 				pi.events.emit("enforcement_signals", {
@@ -413,7 +413,7 @@ Persist them now — this is the minimum-fidelity moment.`,
 				});
 			}
 
-			// Reset hygiene counters — compaction resets context, agent needs fresh start.
+			// Reset hygiene counters - compaction resets context, agent needs fresh start.
 			// Rebase turn-based cooldown anchors to currentTurn so agent isn't nudged
 			// before it starts working post-compaction.
 
@@ -423,13 +423,13 @@ Persist them now — this is the minimum-fidelity moment.`,
 			state.lastScratchpadNudgeTurn = state.currentTurn;
 			state.overflowRecently = state.currentTurn; // Extend grace period through recovery
 
-			// Reset memory tracking — fire on NEW code changes post-compaction only
+			// Reset memory tracking - fire on NEW code changes post-compaction only
 			state.hasCodeChanges = false;
 			state.lastCodeChangeTurn = 0;
 			state.memoryNudgeSent = false;
 			state.turnsSinceMemory = 0;
 		} catch {
-			// Silent fail — don't block on scratchpad read
+			// Silent fail - don't block on scratchpad read
 		}
 	});
 
@@ -564,7 +564,7 @@ Persist them now — this is the minimum-fidelity moment.`,
 			}
 		}
 
-		// Legacy LLM Judge — only for text-only responses
+		// Legacy LLM Judge - only for text-only responses
 		if (state.config.useJudge && turnState && turnState.actualTools.length === 0) {
 			const now = Date.now();
 

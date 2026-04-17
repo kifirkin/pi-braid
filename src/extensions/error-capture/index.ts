@@ -1,5 +1,5 @@
 /**
- * Error Capture Extension — Auto-catches and logs extension errors
+ * Error Capture Extension - Auto-catches and logs extension errors
  *
  * Intercepts extension errors via:
  * 1. tool_execution_end events with isError=true

@@ -1,5 +1,5 @@
 /**
- * Web Fetch Extension — pi-scurl reimplemented without external deps.
+ * Web Fetch Extension - pi-scurl reimplemented without external deps.
  *
  * Provides a `web_fetch` tool that:
  * - Fetches URLs and converts HTML to LLM-optimized markdown (pure Node.js)

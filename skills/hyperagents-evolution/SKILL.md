@@ -24,7 +24,7 @@ Quick probe before expensive full evaluation:
 - **Skip**: If probe score < threshold, skip full eval
 
 ### 3. Diversity-Preserving Selection
-Not just "pick the best" — penalize over-explored nodes:
+Not just "pick the best" - penalize over-explored nodes:
 ```
 combined_score = score_probability × child_penalty
 child_penalty = exp(-(child_count/8)³)
@@ -72,22 +72,22 @@ This prevents premature convergence on local optima.
 
 ## Tools
 
-- **`init_evolution`** — Initialize archive with config
-- **`run_variant`** — Run a single experiment variant (probe + optional full)
-- **`log_variant`** — Record result in archive
-- **`select_parent`** — Select next parent using specified method
-- **`show_archive`** — Display archive summary and lineage
-- **`run_evolution_loop`** — Run full evolution loop
+- **`init_evolution`** - Initialize archive with config
+- **`run_variant`** - Run a single experiment variant (probe + optional full)
+- **`log_variant`** - Record result in archive
+- **`select_parent`** - Select next parent using specified method
+- **`show_archive`** - Display archive summary and lineage
+- **`run_evolution_loop`** - Run full evolution loop
 
 ## Loop Rules
 
 **LOOP FOREVER** until interrupted.
 
-- **Primary metric is king** — improved → keep, worse → discard
-- **Annotate every run** — what was tried, what worked, what failed
-- **Watch confidence** — ≥2× noise floor = likely real improvement
-- **Don't thrash** — if reverting same idea repeatedly, try something different
-- **Diversity matters** — score_child_prop prevents local optima
+- **Primary metric is king** - improved → keep, worse → discard
+- **Annotate every run** - what was tried, what worked, what failed
+- **Watch confidence** - ≥2× noise floor = likely real improvement
+- **Don't thrash** - if reverting same idea repeatedly, try something different
+- **Diversity matters** - score_child_prop prevents local optima
 
 ## Example Session
 
