@@ -24,6 +24,7 @@ import metacognitionExtension from "./extensions/metacognition/index.js";
 import scratchpadExtension from "./extensions/scratchpad/index.js";
 import cognitiveSystemsExtension from "./extensions/cognitive-systems/index.js";
 import contextManagerExtension from "./extensions/context-manager/index.js";
+import contextLifecycleExtension from "./extensions/context-lifecycle/index.js";
 import sessionRecallExtension from "./extensions/session-recall/index.js";
 import docsExtension from "./extensions/docs/index.js";
 import codebaseTreeExtension from "./extensions/codebase-tree/index.js";
@@ -61,6 +62,8 @@ const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void 
 	{ name: "scratchpad", factory: scratchpadExtension },
 	{ name: "cognitive-systems", factory: cognitiveSystemsExtension },
 	{ name: "context-manager", factory: contextManagerExtension },
+	// context-lifecycle goes AFTER context-manager - it reads session entries and enhances with proposals
+	{ name: "context-lifecycle", factory: contextLifecycleExtension },
 	{ name: "session-recall", factory: sessionRecallExtension },
 	{ name: "docs", factory: docsExtension },
 	{ name: "codebase-tree", factory: codebaseTreeExtension },
