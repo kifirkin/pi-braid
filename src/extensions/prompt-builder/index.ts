@@ -8,11 +8,12 @@
  * - Tools: pi.getAllTools() (with promptSnippet)
  * - Skills: loadSkills() + formatSkillsForPrompt()
  * - Guidelines: fixed template based on tool availability
+ * - Docs paths: discovered from pi-coding-agent npm package
  * - Date/Cwd: computed directly
  *
  * Sections re-implemented locally:
  * - Project context: loads AGENTS.md/CLAUDE.md files
- * - Docs reference: simplified to skill reference
+ * - Docs reference: discovered paths to npm-installed docs
  */
 
 import { existsSync, readFileSync } from "fs";
@@ -71,10 +72,10 @@ function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>)
 
   const toolsList = visibleTools || "(none)";
 
-  return `Available tools():
+  return `Available tools:
 ${toolsList}
 
-In addition to the tools above, you may have access to other custom_tools() depending on the project.`;
+In addition to the tools above, you may have access to other custom_tools depending on the project.`;
 }
 
 function reconstructGuidelineSection(hasBash: boolean, hasGrep: boolean, hasFind: boolean, hasLs: boolean): string {
@@ -95,15 +96,63 @@ function reconstructGuidelineSection(hasBash: boolean, hasGrep: boolean, hasFind
 ${guidelines.map(g => `- ${g}`).join("\n")}`;
 }
 
+function getPiDocsPath(): string {
+  // Use proper module resolution to find pi-coding-agent package
+  // This works regardless of where pi is installed
+  try {
+    // require.resolve uses Node's module resolution algorithm
+    // It finds the package in node_modules without hardcoding paths
+    const packageJsonPath = require.resolve("@mariozechner/pi-coding-agent/package.json");
+    const packageDir = dirname(packageJsonPath);
+    const docsPath = join(packageDir, "docs");
+    if (existsSync(docsPath)) {
+      return docsPath;
+    }
+  } catch {}
+  
+  // Fallback: try using import.meta resolution from this extension's location
+  // Walk up to find the host package
+  try {
+    const extensionDir = dirname(fileURLToPath(import.meta.url));
+    // Extensions are in node_modules/pi-braid/src/extensions/
+    // Walk up: extensions -> src -> (package root) -> node_modules/@mariozechner/pi-coding-agent
+    let dir = extensionDir;
+    for (let i = 0; i < 5; i++) {
+      const candidate = join(dir, "node_modules", "@mariozechner", "pi-coding-agent", "docs");
+      if (existsSync(candidate)) {
+        return candidate;
+      }
+      const parent = resolve(dir, "..");
+      if (parent === dir) break; // reached root
+      dir = parent;
+    }
+  } catch {}
+  
+  // Last resort: empty string (agent won't have docs access)
+  return "";
+}
+
 function reconstructDocsSection(): string {
-  // Simplified: just reference the pi-reference skill
-  // The skill contains all documentation paths and cross-references
+  // Get the pi-coding-agent docs path
+  const docsPath = getPiDocsPath();
+
+  if (!docsPath) {
+    return "Pi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, TUI, keybindings, configuration, internal structure, ~/.pi directory, or anything about how pi works under the hood):\n\n" +
+           "Use the pi-reference skill for comprehensive documentation.\n" +
+           "Load it with: /skill:pi-reference";
+  }
+
+  const readmePath = join(docsPath, "..", "README.md").replace(/\\/g, "/");
+  const examplesPath = join(docsPath, "..", "examples").replace(/\\/g, "/");
+  const docsPathForward = docsPath.replace(/\\/g, "/");
+
   return `Pi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, TUI, keybindings, configuration, internal structure, ~/.pi directory, or anything about how pi works under the hood):
-
-Use the pi-reference skill for comprehensive documentation. Load it with:
-  /skill:pi-reference
-
-The skill covers: extensions, themes, skills, prompt templates, TUI components, keybindings, SDK integrations, custom providers, adding models, and pi packages.`;
+- Main documentation: ${readmePath}
+- Additional docs: ${docsPathForward}
+- Examples: ${examplesPath} (extensions, custom tools, SDK)
+- When asked about: extensions (${docsPathForward}/extensions.md, ${examplesPath}/extensions/), themes (${docsPathForward}/themes.md), skills (${docsPathForward}/skills.md), prompt templates (${docsPathForward}/prompt-templates.md), TUI components (${docsPathForward}/tui.md), keybindings (${docsPathForward}/keybindings.md), SDK integrations (${docsPathForward}/sdk.md), custom providers (${docsPathForward}/custom-provider.md), adding models (${docsPathForward}/models.md), pi packages (${docsPathForward}/packages.md)
+- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing
+- Always read pi .md files completely and follow links to related docs`;
 }
 
 function reconstructProjectContextSection(cwd: string): string {
@@ -253,9 +302,8 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     // 3. Guidelines (fixed template)
     parts.push(reconstructGuidelineSection(hasBash, hasGrep, hasFind, hasLs));
 
-    // 4. Pi documentation (skill reference)
-    // TODO: testing pi-braid environmental discovery
-    // parts.push(reconstructDocsSection());
+    // 4. Pi documentation (with path discovery)
+    parts.push(reconstructDocsSection());
 
     // 5. Project context (from file loading)
     const projectContext = reconstructProjectContextSection(cwd);
