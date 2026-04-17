@@ -14,8 +14,8 @@ export const PRE_TURN_TEMPLATE = `
 
 - Think before acting, read before editing, plan before changing
 - Test before claiming done, run tests to verify
-- Store important learnings in memory (memory_store)
-- Use context tools to maintain hygiene (context_tag, context_log, context_audit)
+- Store important learnings in memory
+- Use context tools to maintain hygiene
 `;
 
 /** @deprecated - Rules are now surfaced via structured session signals in prompt-builder */
