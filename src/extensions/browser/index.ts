@@ -18,7 +18,8 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { truncateHead } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+import { Text, Image as TUIImage } from "@mariozechner/pi-tui";
+import { getCapabilities, renderImage, getPngDimensions } from "@mariozechner/pi-tui";
 import { Type, type Static } from "@sinclair/typebox";
 import { CdpClient, isBrowserAvailable, listTabs, spawnChrome, waitForChrome } from "./cdp.js";
 import { extractReadableContent } from "./readability.js";
@@ -247,7 +248,44 @@ async function browserScreenshot(input: Static<typeof screenshotParams>) {
 	const result = (await client.send("Page.captureScreenshot", { format: input.format ?? "png", quality: input.quality ?? 80 })) as { data: string };
 	const mediaType = input.format === "jpeg" ? "image/jpeg" : "image/png";
 
-	return { content: [{ type: "text" as const, text: `[Screenshot captured (${mediaType}, ${(result.data.length * 0.75 / 1024).toFixed(1)}KB)]` }], details: { url: connectedUrl, tabId: connectedTabId, format: input.format ?? "png", base64Length: result.data.length } };
+	// ── Terminal image rendering ─────────────────────────────────────────────
+	// Render screenshot inline if terminal supports images (Kitty/iTerm2)
+	const caps = getCapabilities();
+	let terminalImage: string | undefined;
+
+	if (caps.images && result.data) {
+		const dims = input.format === "jpeg"
+			? { widthPx: 1920, heightPx: 1080 } // Estimate for jpeg
+			: getPngDimensions(result.data) ?? { widthPx: 1920, heightPx: 1080 };
+
+		const rendered = renderImage(result.data, dims, { maxWidthCells: 80 });
+		if (rendered) {
+			terminalImage = rendered.sequence;
+		}
+	}
+
+	// Build content with optional inline image
+	const baseText = `[Screenshot captured (${mediaType}, ${(result.data.length * 0.75 / 1024).toFixed(1)}KB)]`;
+	const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [
+		{ type: "text" as const, text: baseText },
+	];
+
+	// Add image content if terminal supports it
+	if (terminalImage) {
+		content.push({ type: "image" as const, data: result.data, mimeType: mediaType });
+	}
+
+	return {
+		content,
+		details: {
+			url: connectedUrl,
+			tabId: connectedTabId,
+			format: input.format ?? "png",
+			base64Length: result.data.length,
+			terminalImage: !!terminalImage,
+			protocol: caps.images ?? null,
+		},
+	};
 }
 
 async function browserCookies(_input: Static<typeof cookiesParams>) {
