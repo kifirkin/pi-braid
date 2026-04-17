@@ -8,22 +8,34 @@
  * - Tools: pi.getAllTools() (with promptSnippet)
  * - Skills: loadSkills() + formatSkillsForPrompt()
  * - Guidelines: fixed template based on tool availability
- * - Docs paths: discovered from pi-coding-agent npm package
+ * - Docs guidance: minimal reference to L1-discovered paths
  * - Date/Cwd: computed directly
  *
  * Sections re-implemented locally:
  * - Project context: loads AGENTS.md/CLAUDE.md files
- * - Docs reference: discovered paths to npm-installed docs
  */
 
 import { existsSync, readFileSync } from "fs";
-import { homedir } from "os";
 import { dirname, join, resolve } from "path";
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import { formatSkillsForPrompt, loadSkills } from "@mariozechner/pi-coding-agent";
 import { SKILLS_DIR } from "../../index.js";
-import { gatherL1State } from "./l1-environment.js";
+import { gatherL1State, formatL1Environment } from "./l1-environment.js";
+
+// ── Thinking guidance (moved from reasoning extension) ──────────────────────
+const THINK_STEP_BY_STEP = `
+## Thinking
+
+Think silently. Find the correct trajectory. Not the first plausible path.
+`;
+
+const VERIFICATION_REMINDER = `
+## Before claiming done
+
+Provide honest proofs and then finalize.
+`;
 
 // ── L1: Enforcement Signal Surfacing ────────────────────────────────────────
 let _enforcementSignals: Record<string, { turn: number; text: string; acted: boolean }> = {};
@@ -56,8 +68,7 @@ ${JSON.stringify({ signals: signalEntries }, null, 2)}
 }
 
 // ── Identity (THE key difference from native) ─────────────────────────────────
-const IDENTITY_INTRO = `You are stateful and meticulous expert software architect operating inside Pi, a coding agent harness.
-Think silently. Find the correct trajectory. Not the first plausible path.
+const IDENTITY_INTRO = `From now you are stateful and meticulous expert software architect operating inside Pi, a coding agent harness.
 Your tools and skills are keys to proper solutions - use them to access your full capability.
 When facing complex, multi-step, or ambiguous tasks, think and plan, hypothesize and explore paths for multi-hypothesis analysis, recall memory for similar past solutions.
 Finalize to mark task completion.`;
@@ -96,63 +107,12 @@ function reconstructGuidelineSection(hasBash: boolean, hasGrep: boolean, hasFind
 ${guidelines.map(g => `- ${g}`).join("\n")}`;
 }
 
-function getPiDocsPath(): string {
-  // Use proper module resolution to find pi-coding-agent package
-  // This works regardless of where pi is installed
-  try {
-    // require.resolve uses Node's module resolution algorithm
-    // It finds the package in node_modules without hardcoding paths
-    const packageJsonPath = require.resolve("@mariozechner/pi-coding-agent/package.json");
-    const packageDir = dirname(packageJsonPath);
-    const docsPath = join(packageDir, "docs");
-    if (existsSync(docsPath)) {
-      return docsPath;
-    }
-  } catch {}
-  
-  // Fallback: try using import.meta resolution from this extension's location
-  // Walk up to find the host package
-  try {
-    const extensionDir = dirname(fileURLToPath(import.meta.url));
-    // Extensions are in node_modules/pi-braid/src/extensions/
-    // Walk up: extensions -> src -> (package root) -> node_modules/@mariozechner/pi-coding-agent
-    let dir = extensionDir;
-    for (let i = 0; i < 5; i++) {
-      const candidate = join(dir, "node_modules", "@mariozechner", "pi-coding-agent", "docs");
-      if (existsSync(candidate)) {
-        return candidate;
-      }
-      const parent = resolve(dir, "..");
-      if (parent === dir) break; // reached root
-      dir = parent;
-    }
-  } catch {}
-  
-  // Last resort: empty string (agent won't have docs access)
-  return "";
-}
 
 function reconstructDocsSection(): string {
-  // Get the pi-coding-agent docs path
-  const docsPath = getPiDocsPath();
+  // Path is in L1 section. This is just guidance for when to read docs.
+  return `Pi documentation (read only when asked about pi, its SDK, extensions, themes, skills, TUI, keybindings, configuration, or ~/.pi directory):
 
-  if (!docsPath) {
-    return "Pi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, TUI, keybindings, configuration, internal structure, ~/.pi directory, or anything about how pi works under the hood):\n\n" +
-           "Use the pi-reference skill for comprehensive documentation.\n" +
-           "Load it with: /skill:pi-reference";
-  }
-
-  const readmePath = join(docsPath, "..", "README.md").replace(/\\/g, "/");
-  const examplesPath = join(docsPath, "..", "examples").replace(/\\/g, "/");
-  const docsPathForward = docsPath.replace(/\\/g, "/");
-
-  return `Pi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, TUI, keybindings, configuration, internal structure, ~/.pi directory, or anything about how pi works under the hood):
-- Main documentation: ${readmePath}
-- Additional docs: ${docsPathForward}
-- Examples: ${examplesPath} (extensions, custom tools, SDK)
-- When asked about: extensions (${docsPathForward}/extensions.md, ${examplesPath}/extensions/), themes (${docsPathForward}/themes.md), skills (${docsPathForward}/skills.md), prompt templates (${docsPathForward}/prompt-templates.md), TUI components (${docsPathForward}/tui.md), keybindings (${docsPathForward}/keybindings.md), SDK integrations (${docsPathForward}/sdk.md), custom providers (${docsPathForward}/custom-provider.md), adding models (${docsPathForward}/models.md), pi packages (${docsPathForward}/packages.md)
-- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing
-- Always read pi .md files completely and follow links to related docs`;
+Docs root is in ## System State. See pi-reference skill for doc index.`;
 }
 
 function reconstructProjectContextSection(cwd: string): string {
@@ -226,41 +186,6 @@ function reconstructSkillsSection(cwd: string): string {
   return formatSkillsForPrompt(result.skills);
 }
 
-function formatL1Environment(env: Awaited<ReturnType<typeof gatherL1State>>): string {
-  const lines: string[] = [];
-
-  // Session time
-  const minutes = Math.floor(env.agentEnv.sessionElapsedMs / 60000);
-  const seconds = Math.floor((env.agentEnv.sessionElapsedMs % 60000) / 1000);
-  const sinceLast = Math.round(env.agentEnv.sinceLastEventMs / 1000);
-
-  lines.push("## System State");
-  lines.push(`- Session: ${minutes}m ${seconds}s`);
-  lines.push(`- Last event: ${sinceLast}s ago`);
-  lines.push(`- Turns: ${env.agentEnv.turnCount}`);
-
-  if (env.agentEnv.avgToolTimeMs > 0) {
-    lines.push(`- Tool avg: ${env.agentEnv.avgToolTimeMs}ms`);
-  }
-
-  // Context warning
-  if (env.contextPercent > 75) {
-    lines.push(`Context: ${env.contextPercent.toFixed(0)}%`);
-  }
-
-  // Memory count
-  if (env.memoryCount > 0) {
-    lines.push(`${env.memoryCount} prior experience(s)`);
-  }
-
-  // Checkpoint awareness
-  if (env.stepsSinceCheckpoint > 20) {
-    lines.push("> Consider tagging context");
-  }
-
-  return lines.join("\n");
-}
-
 // ── Main Extension ───────────────────────────────────────────────────────────
 
 export default function promptBuilderExtension(pi: ExtensionAPI) {
@@ -302,8 +227,9 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     // 3. Guidelines (fixed template)
     parts.push(reconstructGuidelineSection(hasBash, hasGrep, hasFind, hasLs));
 
-    // 4. Pi documentation (with path discovery)
-    parts.push(reconstructDocsSection());
+    // 4. Pi documentation - commented out for testing environmental awareness
+    // Agent should discover docs path from L1 and skill guidance
+    // parts.push(reconstructDocsSection());
 
     // 5. Project context (from file loading)
     const projectContext = reconstructProjectContextSection(cwd);
@@ -328,10 +254,14 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       parts.push(enforcement);
     }
 
-    // 9. Date and cwd (always last)
-    const date = new Date().toISOString().slice(0, 10);
+    // 9. Thinking guidance (moved from reasoning extension)
+    parts.push(THINK_STEP_BY_STEP);
+    parts.push(VERIFICATION_REMINDER);
+
+    // 10. Date and cwd (always last)
+    const date = new Date().toISOString();
     const promptCwd = cwd.replace(/\\/g, "/");
-    parts.push(`Current date: ${date}`);
+    parts.push(`Current time: ${date}`);
     parts.push(`Current working directory: ${promptCwd}`);
 
     const newPrompt = parts.join("\n\n");

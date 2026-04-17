@@ -7,52 +7,41 @@ description: "Use when the user asks about pi itself: its SDK, extensions, theme
 
 Complete reference for pi's architecture, configuration, and internals.
 
-## Documentation Index
+## How to Find Docs
 
-| Topic | Location |
-|-------|----------|
-| Extensions | `docs/extensions.md`, `examples/extensions/` |
-| Themes | `docs/themes.md` |
-| Skills | `docs/skills.md` |
-| Prompt Templates | `docs/prompt-templates.md` |
-| TUI Components | `docs/tui.md` |
-| Keybindings | `docs/keybindings.md` |
-| SDK | `docs/sdk.md` |
-| Custom Providers | `docs/custom-provider.md` |
-| Adding Models | `docs/models.md` |
-| Package Overview | `docs/packages.md` |
-| Agent Package | `packages/agent/README.md` |
-| AI Package | `packages/ai/README.md` |
-| Coding Agent | `packages/coding-agent/README.md` |
-| TUI Package | `packages/tui/README.md` |
+1. Check the root path at top of prompt (after ## System State)
+2. Docs are under: `<root>/docs/*.md`
+3. Read the doc completely, follow cross-references
 
-Process: Read the relevant doc **completely** before implementing. Follow cross-references. Use `examples/` for working code.
+## Documentation Index (relative to `<root>/docs/`)
+
+| Topic | Path |
+|-------|------|
+| Extensions | `extensions.md`, `examples/extensions/` |
+| Themes | `themes.md` |
+| Skills | `skills.md` |
+| Prompt Templates | `prompt-templates.md` |
+| TUI Components | `tui.md` |
+| Keybindings | `keybindings.md` |
+| SDK | `sdk.md` |
+| Custom Providers | `custom-provider.md` |
+| Adding Models | `models.md` |
+| Package Overview | `packages.md` |
+| RPC Mode | `rpc.md` |
+| Session Management | `session.md` |
+| Settings | `settings.md` |
 
 ## Directory Structure
 
 ```
-~/.pi/
+~/.pi/                        # Agent home directory
 ├── agent/
 │   ├── settings.json         # Global settings (overridden per-project)
 │   ├── auth.json             # API keys and OAuth tokens
-│   ├── models.json           # Custom model definitions
-│   ├── AGENTS.md             # User-level agent instructions
-│   ├── agents/               # Custom agent definitions
 │   ├── extensions/           # Installed extensions
-│   ├── skills/               # User-installed skills
-│   ├── prompts/              # User prompt templates
-│   ├── themes/               # User themes
-│   ├── sessions/             # Session history (per-project, encoded cwd)
-│   │   └── <encoded-cwd>/
-│   │       ├── metadata.json
-│   │       └── messages/
-│   ├── presets.json           # Saved command presets
-│   ├── sandbox.json           # Sandbox extension config
-│   └── generated-images/     # AI-generated images
-├── memory/                    # Short-term conversation memory
-├── snapshots/                 # Agent state snapshots
-├── healthcheck/               # Health check temp files
-└── infinite-loop.lock         # Prevents runaway processes
+│   └── skills/               # User-installed skills
+├── memory/                   # Short-term conversation memory
+└── snapshots/                # Agent state snapshots
 ```
 
 ## Key Paths
@@ -61,26 +50,16 @@ Process: Read the relevant doc **completely** before implementing. Follow cross-
 |------|---------|
 | `~/.pi/agent/settings.json` | Global settings (model, tools, etc.) |
 | `~/.pi/agent/auth.json` | API keys and OAuth credentials |
-| `~/.pi/agent/sessions/` | Session history by project |
-| `~/.pi/agent/extensions/` | Installed extensions |
-| `~/.pi/agent/skills/` | Custom skills |
-| `<cwd>/.pi/` | Project-local settings (overrides global) |
+| `<cwd>/.pi/settings.json` | Project-local settings (overrides global) |
 
 ## Environment Variables
 
 | Variable | Purpose |
 |----------|---------|
 | `PI_CODING_AGENT_DIR` | Override agent directory (default: `~/.pi/agent`) |
-| `PI_SHARE_VIEWER_URL` | Override share viewer URL |
 
-## Project-Local Settings
+## Process
 
-Settings can be overridden per-project at `<project>/.pi/settings.json`. Project-local settings take precedence over global.
-
-## Backup
-
-```bash
-cp -r ~/.pi ~/pi-backup-$(date +%Y%m%d)
-```
-
-Key files: `settings.json`, `auth.json`, `models.json`, `extensions/`, `skills/`, `AGENTS.md`
+1. Read the relevant doc **completely** before implementing
+2. Follow cross-references to related docs
+3. Use `examples/` directory for working code

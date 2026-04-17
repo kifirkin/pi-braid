@@ -5,19 +5,29 @@
  * - Agent environment: session time, turn count, last event
  * - Memory: stored cognitive memories
  * - Context: context usage percentage
+ * - Pi paths: documentation locations (when discoverable)
  *
  * The native system already handles skill loading guidance.
  * Don't duplicate native sections here.
  */
 
+import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getCognitiveMemory } from "../../lib/cognitive-memory.js";
 import { gatherL1Environment, formatL1EnvironmentSection } from "../agent-environment/index.js";
+
+// Create require for module resolution
+const _require = createRequire(import.meta.url);
 
 interface L1Environment {
 	contextPercent: number;
 	memoryCount: number;
 	stepsSinceCheckpoint: number;
+	piRoot: string;
 	agentEnv: {
 		sessionElapsedMs: number;
 		turnCount: number;
@@ -60,7 +70,33 @@ async function gatherL1State(pi: ExtensionAPI, ctx: ExtensionContext | undefined
 	// Agent environment (session time, turns, etc.)
 	const agentEnv = gatherL1Environment(pi, ctx);
 
-	return { contextPercent, memoryCount, stepsSinceCheckpoint, agentEnv };
+	// Pi package root path (for docs, examples, etc.)
+	const piRoot = discoverPiRootPath();
+
+	return { contextPercent, memoryCount, stepsSinceCheckpoint, piRoot, agentEnv };
+}
+
+/** Discover pi-coding-agent package root using proper module resolution */
+function discoverPiRootPath(): string {
+	try {
+		const packageJsonPath = _require.resolve("@mariozechner/pi-coding-agent/package.json");
+		return dirname(packageJsonPath);
+	} catch {}
+
+	// Fallback: walk up from this extension's location
+	try {
+		const extensionDir = dirname(fileURLToPath(import.meta.url));
+		let dir = extensionDir;
+		for (let i = 0; i < 5; i++) {
+			const candidate = join(dir, "node_modules", "@mariozechner", "pi-coding-agent", "package.json");
+			if (existsSync(candidate)) return dirname(candidate);
+			const parent = resolve(dir, "..");
+			if (parent === dir) break;
+			dir = parent;
+		}
+	} catch {}
+
+	return "";
 }
 
 function formatL1Environment(env: L1Environment): string {
@@ -81,7 +117,12 @@ function formatL1Environment(env: L1Environment): string {
 
 	// Checkpoint awareness
 	if (env.stepsSinceCheckpoint > 20) {
-		lines.push("Consider context_tag()");
+		lines.push("Consider tagging context");
+	}
+
+	// Pi package root (environmental awareness)
+  if (env.piRoot) {
+		lines.push(`Root: ${env.piRoot}`);
 	}
 
 	return lines.join("\n");

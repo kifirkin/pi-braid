@@ -7,6 +7,7 @@
  * 3. Reminds to verify before claiming done
  *
  * Simple and helpful, not prescriptive.
+ * Note: System prompt modification is handled exclusively by prompt-builder.
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -78,50 +79,18 @@ function detectMalformedToolCalls(text: string, pi: ExtensionAPI): void {
 	}
 }
 
-// Simple Prompt
-
-const THINK_STEP_BY_STEP = `
-## Thinking
-
-Think step by step. For complex tasks, think through the problem before acting.
-`;
-
-const VERIFICATION_REMINDER = `
-## Before claiming done
-
-Provide honest proofs and then finalize.
-`;
-
 // Extension Factory
 
 export default function reasoningExtension(pi: ExtensionAPI) {
-	// Pre-Turn: Inject simple prompts
-
-	pi.on("before_agent_start", async (event) => {
+	// Pre-Turn: Track turn count and state (no system prompt modification)
+	// System prompt is now managed exclusively by prompt-builder extension
+	pi.on("before_agent_start", async () => {
 		state.turnCount++;
 
 		// Initialize state if needed
 		if (!state.current) {
 			state.current = { step: 1, goal: "", timestamp: Date.now() };
 		}
-
-		// Build minimal prompt
-		let prompt = event.systemPrompt;
-		prompt += `\n\n${THINK_STEP_BY_STEP}`;
-		prompt += `\n\n${VERIFICATION_REMINDER}`;
-
-		// Add previous state if available
-		if (state.current) {
-			prompt +=
-				"\n\n## Progress\n- Step: " +
-				state.current.step +
-				"\n- Goal: " +
-				(state.current.goal || "(not set)") +
-				"\n- Turns: " +
-				state.turnCount;
-		}
-
-		return { systemPrompt: prompt };
 	});
 
 	// Message End: Check for malformed tool calls
