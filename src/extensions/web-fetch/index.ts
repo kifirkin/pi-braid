@@ -24,6 +24,38 @@ import { htmlToMarkdown } from "./markdown.js";
 const DEFAULT_MAX_BYTES = 50 * 1024;
 const DEFAULT_MAX_LINES = 2000;
 
+// Binary content types that cannot be meaningfully converted to text
+const BINARY_CONTENT_TYPES = [
+	"application/pdf",
+	"application/postscript", // .ai, .eps
+	"application/zip",
+	"application/x-zip-compressed",
+	"application/x-rar-compressed",
+	"application/x-7z-compressed",
+	"application/x-tar",
+	"application/gzip",
+	"application/x-gzip",
+	"application/java-archive", // .jar
+	"application/octet-stream", // generic binary (often downloads)
+	"application/msword",
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
+	"application/vnd.ms-excel",
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
+	"application/vnd.ms-powerpoint",
+	"application/vnd.openxmlformats-officedocument.presentationml.presentation", // .pptx
+	"image/",
+	"audio/",
+	"video/",
+	"font/",
+];
+
+function isBinaryContentType(contentType: string): boolean {
+	const normalized = contentType.toLowerCase().trim().split(";")[0];
+	return BINARY_CONTENT_TYPES.some(
+		(binary) => normalized === binary || normalized.startsWith(binary),
+	);
+}
+
 const fetchParams = Type.Object({
 	url: Type.String({ description: "URL to fetch" }),
 	raw: Type.Optional(
@@ -184,8 +216,23 @@ async function secureFetch(url: string, options: {
 
 	const originalSize = new TextEncoder().encode(body).length;
 
-	// Non-HTML: return as-is with injection detection
+	// Non-HTML: check for binary content types
 	if (!contentType.includes("text/html") || raw) {
+		// Detect binary content and reject with helpful message
+		if (isBinaryContentType(contentType)) {
+			const ext = contentType.includes("pdf") ? "PDF" : "binary";
+			return {
+				content: "",
+				status: response.status,
+				contentType,
+				url,
+				converted: false,
+				originalSize,
+				outputSize: 0,
+				error: `Unsupported content type: ${contentType} (${formatSize(originalSize)}). Binary content like ${ext}s cannot be parsed as text. Consider downloading the file directly or using a PDF viewer service.`,
+			};
+		}
+
 		let content = body;
 		const injection = analyzeInjection(body);
 		if (injection.flagged) {
