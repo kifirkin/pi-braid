@@ -1,46 +1,59 @@
 /**
- * Prompt Builder - Identity Framing with 1:1 Native Structure Match
+ * Prompt Builder - Reconstruction from Structured Data
  *
- * MINIMAL identity intro only. All native sections preserved exactly.
+ * No fragile string extraction. Everything built from APIs and fixed templates.
+ * Only pi-braid additions (identity, L1, enforcement) are custom.
+ *
+ * Sections built from structured data:
+ * - Tools: pi.getAllTools() (with promptSnippet)
+ * - Skills: loadSkills() + formatSkillsForPrompt()
+ * - Guidelines: fixed template based on tool availability
+ * - Date/Cwd: computed directly
+ *
+ * Sections re-implemented locally:
+ * - Project context: loads AGENTS.md/CLAUDE.md files
+ * - Docs reference: simplified to skill reference
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-
-import { formatL1Environment, gatherL1State } from "./l1-environment.js";
+import { existsSync, readFileSync } from "fs";
+import { homedir } from "os";
+import { dirname, join, resolve } from "path";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { getAgentDir } from "@mariozechner/pi-coding-agent";
+import { formatSkillsForPrompt, loadSkills } from "@mariozechner/pi-coding-agent";
+import { gatherL1State } from "./l1-environment.js";
 
 // ── L1: Enforcement Signal Surfacing ────────────────────────────────────────
 let _enforcementSignals: Record<string, { turn: number; text: string; acted: boolean }> = {};
 let _lastSignalTurn = 0;
 
 function formatEnforcementL1(signals: Record<string, { turn: number; text: string; acted: boolean }>): string {
-	const keys = Object.keys(signals);
-	if (keys.length === 0) return "";
+  const keys = Object.keys(signals);
+  if (keys.length === 0) return "";
 
-	const lines = ["", "## Enforcement State", "```json"];
-	const signalEntries: Record<string, unknown> = {};
+  const signalEntries: Record<string, unknown> = {};
+  for (const key of keys) {
+    const s = signals[key];
+    if (_lastSignalTurn - s.turn > 5) continue;
+    if (s.acted) continue;
 
-	for (const key of keys) {
-		const s = signals[key];
-		if (_lastSignalTurn - s.turn > 5) continue;
-		if (s.acted) continue;
+    signalEntries[key] = {
+      active: true,
+      turn: s.turn,
+      hint: s.text.split(" - ")[1] ?? s.text,
+    };
+  }
 
-		signalEntries[key] = {
-			active: true,
-			turn: s.turn,
-			hint: s.text.split(" - ")[1] ?? s.text,
-		};
-	}
+  if (Object.keys(signalEntries).length === 0) return "";
 
-	if (Object.keys(signalEntries).length === 0) return "";
-
-	lines.push(JSON.stringify({ signals: signalEntries }, null, 2));
-	lines.push("```");
-
-	return lines.join("\n");
+  return `
+## Enforcement State
+\`\`\`json
+${JSON.stringify({ signals: signalEntries }, null, 2)}
+\`\`\``;
 }
 
-/** MINIMAL identity intro - just essential difference from native */
-// Tools = Knowledge Decompression: framing tools as essential cognition, not optional utilities
+// ── Identity (THE key difference from native) ─────────────────────────────────
 const IDENTITY_INTRO = `You are stateful and meticulous expert software architect.
 
 Think silently. Find the correct trajectory. Not the first plausible path.
@@ -49,76 +62,158 @@ Your tools are keys to proper solutions - use them to access your full capabilit
 When facing complex, multi-step, or ambiguous tasks, use think() to plan, explore_paths() for multi-hypothesis analysis, and memory_recall() for similar past solutions.
 For simple tasks, write code directly.
 
-**IMPORTANT: You MUST call finalize() to mark task completion.** The session ends when finalize() is called.`
+**IMPORTANT: You MUST call finalize() to mark task completion.** The session ends when finalize() is called.`;
 
-// =========================================================================
-// Native section extractors
-// =========================================================================
+// ── Reconstruction Functions (from structured data, not text parsing) ─────────
 
-function extractSkillsSection(text: string): { skillsSection: string; before: string } | null {
-  const marker = "<available_skills>";
-  const idx = text.indexOf(marker);
-  if (idx === -1) return null;
+function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>): string {
+  // Use description from ToolInfo (promptSnippet not available in getAllTools return type)
+  const visibleTools = tools
+    .map(t => `- ${t.name}: ${t.description}`)
+    .join("\n");
 
-  const endIdx = text.indexOf("</available_skills>", idx);
-  if (endIdx === -1) return null;
+  const toolsList = visibleTools || "(none)";
 
-  const skillsSection = text.slice(idx, endIdx + "</available_skills>".length);
-  const before = text.slice(0, idx);
-  return { skillsSection, before };
+  return `Available tools:
+${toolsList}
+
+In addition to the tools above, you may have access to other custom tools depending on the project.`;
 }
 
-function extractContextSection(text: string): { contextSection: string; before: string } | null {
-  const marker = "# Project Context";
-  const idx = text.indexOf(marker);
-  if (idx === -1) return null;
+function reconstructGuidelineSection(hasBash: boolean, hasGrep: boolean, hasFind: boolean, hasLs: boolean): string {
+  const guidelines: string[] = [];
 
-  const contextSection = text.slice(idx);
-  const before = text.slice(0, idx);
-  return { contextSection, before };
-}
-
-function extractDateCwd(text: string): { dateCwd: string; before: string } | null {
-  const marker = "Current date:";
-  const idx = text.indexOf(marker);
-  if (idx === -1) return null;
-
-  const dateCwd = text.slice(idx);
-  const before = text.slice(0, idx);
-  return { dateCwd, before };
-}
-
-function extractDocsSection(text: string): { docsSection: string; before: string } | null {
-  const marker = "Pi documentation";
-  const idx = text.indexOf(marker);
-  if (idx === -1) return null;
-
-  let endIdx = text.indexOf("\n\n#", idx);
-  if (endIdx === -1) {
-    const skillsIdx = text.indexOf("<available_skills>", idx);
-    if (skillsIdx !== -1) endIdx = skillsIdx;
+  // File exploration
+  if (hasBash && !hasGrep && !hasFind && !hasLs) {
+    guidelines.push("Use bash for file operations like ls, rg, find");
+  } else if (hasBash && (hasGrep || hasFind || hasLs)) {
+    guidelines.push("Prefer grep/find/ls tools over bash for file exploration (faster, respects .gitignore)");
   }
 
-  const docsSection = endIdx !== -1 ? text.slice(idx, endIdx) : text.slice(idx);
-  const before = text.slice(0, idx);
-  return { docsSection, before };
+  // Always include
+  guidelines.push("Be concise in your responses");
+  guidelines.push("Show file paths clearly when working with files");
+
+  return `Guidelines:
+${guidelines.map(g => `- ${g}`).join("\n")}`;
 }
 
-function extractToolsSection(text: string): { toolsSection: string; before: string } | null {
-  const marker = "Available tools:";
-  const idx = text.indexOf(marker);
-  if (idx === -1) return null;
+function reconstructDocsSection(): string {
+  // Simplified: just reference the pi-reference skill
+  // The skill contains all documentation paths and cross-references
+  return `Pi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, TUI, keybindings, configuration, internal structure, ~/.pi directory, or anything about how pi works under the hood):
 
-  let endIdx = text.indexOf("\n\nGuidelines:", idx);
-  if (endIdx === -1) {
-    const inAdditionIdx = text.indexOf("\n\nIn addition", idx);
-    if (inAdditionIdx !== -1) endIdx = inAdditionIdx;
+Use the pi-reference skill for comprehensive documentation. Load it with:
+  /skill:pi-reference
+
+The skill covers: extensions, themes, skills, prompt templates, TUI components, keybindings, SDK integrations, custom providers, adding models, and pi packages.`;
+}
+
+function reconstructProjectContextSection(cwd: string): string {
+  // Re-implemented from loadProjectContextFiles (not exported from pi)
+  // Searches for AGENTS.md or CLAUDE.md in cwd and ancestors
+
+  const contextFiles: Array<{ path: string; content: string }> = [];
+  const seenPaths = new Set<string>();
+
+  function loadContextFromDir(dir: string): { path: string; content: string } | null {
+    const candidates = ["AGENTS.md", "CLAUDE.md"];
+    for (const filename of candidates) {
+      const filePath = join(dir, filename);
+      if (existsSync(filePath)) {
+        try {
+          return {
+            path: filePath,
+            content: readFileSync(filePath, "utf-8"),
+          };
+        } catch {
+          // Skip files that can't be read
+        }
+      }
+    }
+    return null;
   }
 
-  const toolsSection = endIdx !== -1 ? text.slice(idx, endIdx) : text.slice(idx);
-  const before = text.slice(0, idx);
-  return { toolsSection, before };
+  // Global context (agent dir)
+  const agentDir = getAgentDir();
+  const globalContext = loadContextFromDir(agentDir);
+  if (globalContext) {
+    contextFiles.push(globalContext);
+    seenPaths.add(globalContext.path);
+  }
+
+  // Ancestor context files (from cwd up to root)
+  const root = resolve("/");
+  let currentDir = cwd;
+
+  while (true) {
+    const contextFile = loadContextFromDir(currentDir);
+    if (contextFile && !seenPaths.has(contextFile.path)) {
+      contextFiles.unshift(contextFile); // Prepend so closest is first
+      seenPaths.add(contextFile.path);
+    }
+
+    if (currentDir === root) break;
+
+    const parentDir = resolve(currentDir, "..");
+    if (parentDir === currentDir) break;
+    currentDir = parentDir;
+  }
+
+  if (contextFiles.length === 0) {
+    return "";
+  }
+
+  const lines = ["# Project Context", "", "Project-specific instructions and guidelines:", ""];
+
+  for (const { path: filePath, content } of contextFiles) {
+    lines.push(`## ${filePath}`, "", content, "");
+  }
+
+  return lines.join("\n");
 }
+
+function reconstructSkillsSection(cwd: string): string {
+  const result = loadSkills({ cwd, includeDefaults: true });
+  return formatSkillsForPrompt(result.skills);
+}
+
+function formatL1Environment(env: Awaited<ReturnType<typeof gatherL1State>>): string {
+  const lines: string[] = [];
+
+  // Session time
+  const minutes = Math.floor(env.agentEnv.sessionElapsedMs / 60000);
+  const seconds = Math.floor((env.agentEnv.sessionElapsedMs % 60000) / 1000);
+  const sinceLast = Math.round(env.agentEnv.sinceLastEventMs / 1000);
+
+  lines.push("## System State");
+  lines.push(`- Session: ${minutes}m ${seconds}s`);
+  lines.push(`- Last event: ${sinceLast}s ago`);
+  lines.push(`- Turns: ${env.agentEnv.turnCount}`);
+
+  if (env.agentEnv.avgToolTimeMs > 0) {
+    lines.push(`- Tool avg: ${env.agentEnv.avgToolTimeMs}ms`);
+  }
+
+  // Context warning
+  if (env.contextPercent > 75) {
+    lines.push(`Context: ${env.contextPercent.toFixed(0)}%`);
+  }
+
+  // Memory count
+  if (env.memoryCount > 0) {
+    lines.push(`${env.memoryCount} prior experience(s)`);
+  }
+
+  // Checkpoint awareness
+  if (env.stepsSinceCheckpoint > 20) {
+    lines.push("Consider context_tag()");
+  }
+
+  return lines.join("\n");
+}
+
+// ── Main Extension ───────────────────────────────────────────────────────────
 
 export default function promptBuilderExtension(pi: ExtensionAPI) {
   pi.events.on("enforcement_signals", (data: unknown) => {
@@ -133,73 +228,64 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
-    const currentPrompt = event.systemPrompt;
-    if (!currentPrompt) return;
+    const cwd = ctx.cwd;
 
-    try {
-      const l1Env = await gatherL1State(pi, ctx);
+    // Get structured data
+    const tools = pi.getAllTools();
+    const toolNames = tools.map(t => t.name);
+    const hasBash = toolNames.includes("bash");
+    const hasGrep = toolNames.includes("grep");
+    const hasFind = toolNames.includes("find");
+    const hasLs = toolNames.includes("ls");
+    const hasRead = toolNames.includes("read");
 
-      const skillsExtracted = extractSkillsSection(currentPrompt);
-      const contextExtracted = extractContextSection(currentPrompt);
-      const dateCwdExtracted = extractDateCwd(currentPrompt);
-      const docsExtracted = extractDocsSection(currentPrompt);
-      const toolsExtracted = extractToolsSection(currentPrompt);
+    // Gather L1 state
+    const l1Env = await gatherL1State(pi, ctx);
 
-      const parts: string[] = [];
+    // Build sections in order
+    const parts: string[] = [];
 
-      // 1. Identity intro (ONLY difference)
-      parts.push(IDENTITY_INTRO);
+    // 1. Custom identity (THE difference)
+    parts.push(IDENTITY_INTRO);
 
-      // 2. Available tools (native)
-      if (toolsExtracted) {
-        parts.push("\n\n" + toolsExtracted.toolsSection);
-        parts.push("\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.");
-      }
+    // 2. Available tools (structured)
+    parts.push(reconstructToolsSection(tools));
 
-      // 3. Guidelines (native only - NO identity guidelines)
-      if (toolsExtracted) {
-        parts.push("\n\nGuidelines:");
-        parts.push("\n- Be concise in your responses");
-        parts.push("\n- Show file paths clearly when working with files");
-      }
+    // 3. Guidelines (fixed template)
+    parts.push(reconstructGuidelineSection(hasBash, hasGrep, hasFind, hasLs));
 
-      // 4. Pi documentation (native)
-      if (docsExtracted) {
-        parts.push("\n\n" + docsExtracted.docsSection);
-      }
+    // 4. Pi documentation (skill reference)
+    parts.push(reconstructDocsSection());
 
-      // 5. Project Context (native)
-      if (contextExtracted) {
-        parts.push("\n\n" + contextExtracted.contextSection);
-      }
-
-      // 6. Available skills (native)
-      if (skillsExtracted) {
-        parts.push("\n\n" + skillsExtracted.skillsSection);
-      }
-
-      // L1: Environmental State (after native sections)
-      const l1State = formatL1Environment(l1Env);
-      if (l1State) {
-        parts.push(l1State);
-      }
-
-      // L1: Enforcement signals
-      const l1 = formatEnforcementL1(_enforcementSignals);
-      if (l1) {
-        parts.push(l1);
-      }
-
-      // Date and cwd (native, ALWAYS LAST)
-      if (dateCwdExtracted) {
-        parts.push("\n\n" + dateCwdExtracted.dateCwd);
-      }
-
-      const newPrompt = parts.join("");
-
-      return { systemPrompt: newPrompt };
-    } catch {
-      return;
+    // 5. Project context (from file loading)
+    const projectContext = reconstructProjectContextSection(cwd);
+    if (projectContext) {
+      parts.push(projectContext);
     }
+
+    // 6. Skills (from skill loading API)
+    if (hasRead) {
+      const skillsSection = reconstructSkillsSection(cwd);
+      if (skillsSection) {
+        parts.push(skillsSection);
+      }
+    }
+
+    // 7. L1 environmental state (pi-braid addition)
+    parts.push(formatL1Environment(l1Env));
+
+    // 8. Enforcement signals (pi-braid addition)
+    const enforcement = formatEnforcementL1(_enforcementSignals);
+    if (enforcement) {
+      parts.push(enforcement);
+    }
+
+    // 9. Date and cwd (always last)
+    const date = new Date().toISOString().slice(0, 10);
+    const promptCwd = cwd.replace(/\\/g, "/");
+    parts.push(`Current date: ${date}`);
+    parts.push(`Current working directory: ${promptCwd}`);
+
+    return { systemPrompt: parts.join("\n\n") };
   });
 }

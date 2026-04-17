@@ -45,6 +45,7 @@ import assistantExtension from "./extensions/assistant/index.js";
 import visionExtension from "./extensions/vision/index.js";
 import reasoningExtension from "./extensions/reasoning/index.js";
 import replExtension from "./extensions/repl/index.js";
+import latentActivatorExtension from "./extensions/latent-activator/index.js";
 
 // Resolve the skills directory relative to this file
 const __filename = fileURLToPath(import.meta.url);
@@ -81,6 +82,7 @@ const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void 
 	{ name: "vision", factory: visionExtension },
 	{ name: "reasoning", factory: reasoningExtension },
 	{ name: "repl", factory: replExtension },
+	{ name: "latent-activator", factory: latentActivatorExtension },
 ];
 
 export default function piBraidExtension(pi: ExtensionAPI) {
