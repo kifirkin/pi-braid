@@ -624,10 +624,12 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 					}, 15000);
 				}
 
-				// Use setEditorText to fill the editor with cleaned text
-				// Return 'continue' to NOT auto-submit - user presses Enter to send
+				// Fill editor with cleaned text
 				ctx.ui.setEditorText(cleaned);
-				return { action: "continue" };
+
+				// Return 'handled' to stop - nothing sent to agent
+				// Editor has cleaned text, user presses Enter to send
+				return { action: "handled" };
 			} else {
 				state.skippedCount++;
 				return { action: "continue" };
