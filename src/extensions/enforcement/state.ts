@@ -23,7 +23,6 @@ export const DEFAULT_CONFIG: EnforcementConfig = {
 	warnOnToolSequenceRepetition: 3,
 	blockThinkBeforeEdit: false, // DEPRECATED: no longer blocks, kept for config compat
 	blockExploreBeforeWrite: true,
-	blockDangerousCommands: false, // Changed: now warns instead of blocks (see warnDangerousCommandsFirst)
 	thinkCalledInSession: false,
 	exploreCalledInSession: false,
 	enforceMemoryRecallOnStart: true,
@@ -36,8 +35,6 @@ export const DEFAULT_CONFIG: EnforcementConfig = {
 	useVerificationJudge: true,
 	verificationJudgeInterval: 15,
 	verifyAfterCodeChanges: true,
-	// Dangerous command enforcement
-	warnDangerousCommandsFirst: true, // First dangerous: block+warn with retry option. Then: warn only.
 };
 
 export const state = {
@@ -97,8 +94,6 @@ export const state = {
 	// Last compaction turn (for hygiene signal reset)
 	lastCompactionTurn: 0,
 	overflowRecently: 0,
-	// Track warned dangerous commands for 2-stage enforcement (command hash -> turn first warned)
-	warnedDangerousCommands: new Map<string, number>(),
 	// Memory hygiene: combined score (scratchpad + memory + context)
 	memoryHygieneScore: 1.0, // 0-1, derived from usage patterns
 	lastHygieneNudgeTurn: 0,
@@ -167,6 +162,4 @@ export function resetState(): void {
 	state.contextNudgeSent = false;
 	state.contextAuditThreshold = 0.7;
 	state.lastCompactionTurn = 0;
-	// Reset dangerous command warnings
-	state.warnedDangerousCommands = new Map();
 }

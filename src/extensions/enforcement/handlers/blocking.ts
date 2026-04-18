@@ -1,15 +1,15 @@
 /**
  * Blocking enforcement - prevents tool execution that violates patterns
  *
- * L3 signals (dangerous commands): sent directly via sendEnforcementWhisper.
  * L2 signals (soft nudges): tracked in state, bundled by index.ts turn_end.
+ * 
+ * Note: Dangerous command handling is in safety extension with user-facing widget.
  */
 
 import * as fs from "node:fs";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { isDangerousCommand } from "../detection/dangerous.js";
 import type { state } from "../state.js";
-import { queueBlockAction, sendEnforcementWhisper } from "../whisper.js";
+import { queueBlockAction } from "../whisper.js";
 
 /** Result of a blocking check */
 export interface BlockResult {
@@ -71,47 +71,6 @@ export function checkBlocking(
 	) {
 		stateRef.firstWorkDone = true;
 		// Bundled by index.ts turn_end - don't send individually
-	}
-
-	// DANGEROUS COMMAND ENFORCEMENT: 2-stage handling
-	// Stage 1: Block with warning + explicit retry instruction
-	// Stage 2: Allow with L3 warning
-	if (toolName === "bash") {
-		const command = (eventInput as { command?: string } | undefined)?.command || "";
-		if (isDangerousCommand(command)) {
-			const commandHash = command.trim().replace(/\s+/g, " ").toLowerCase().slice(0, 200);
-			const wasWarnedBefore = stateRef.warnedDangerousCommands.has(commandHash);
-
-			if (!wasWarnedBefore) {
-				// Stage 1: Block
-				stateRef.warnedDangerousCommands.set(commandHash, stateRef.currentTurn);
-				const warningMsg =
-					`⚠️ **DANGEROUS COMMAND DETECTED**\n\n` +
-					`Command: \`${command}\`\n\n` +
-					`This command could cause data loss or security issues.\n\n` +
-					`**Before proceeding:**\n` +
-					`1. Verify this is necessary and safe\n` +
-					`2. Consider safer alternatives (e.g., specific paths instead of wildcards)\n` +
-					`3. Back up important data if unsure\n\n` +
-					`**If verified safe**, retry the command and it will be allowed.`;
-
-				queueBlockAction(toolName, warningMsg);
-				return {
-					blocked: true,
-					reason: "⚠️ Dangerous command blocked - review warning above. Retry if verified safe.",
-				};
-			} else {
-				// Stage 2: L3 - dangerous command passed review, warn only
-				const firstWarnedTurn = stateRef.warnedDangerousCommands.get(commandHash);
-				sendEnforcementWhisper(
-					pi,
-					`⚠️ Running potentially dangerous command (first warned turn ${firstWarnedTurn}).\n` +
-						`Command: \`${command}\`\n` +
-						`Ensure you've verified this is safe.`,
-				);
-				return { blocked: false, reason: "" };
-			}
-		}
 	}
 
 	// L2: Edit without plan - track for Session Signals bundle

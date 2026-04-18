@@ -21,9 +21,6 @@ export interface EnforcementConfig {
 	// Blocking behavior
 	blockThinkBeforeEdit: boolean; // DEPRECATED: no longer blocks, kept for config compat
 	blockExploreBeforeWrite: boolean;
-	blockDangerousCommands: boolean;
-	// Dangerous command enforcement
-	warnDangerousCommandsFirst: boolean; // First dangerous: block+warn with retry option. Then: warn only.
 	// Session tracking for blocking decisions
 	thinkCalledInSession: boolean;
 	exploreCalledInSession: boolean;

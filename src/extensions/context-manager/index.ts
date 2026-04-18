@@ -838,6 +838,31 @@ function clearCompactionRetry(): void {
 	}
 }
 
+/** Check if an error message indicates a transient server error that may succeed on retry */
+function isTransientCompactionError(errorMessage: string | null | undefined): boolean {
+	if (!errorMessage) return false;
+	
+	// 529 is Cerebras overload code
+	if (/\b529\b/.test(errorMessage)) return true;
+	
+	// overloaded_error is Anthropic/Cerebras
+	if (/overloaded_error/i.test(errorMessage)) return true;
+	
+	// Server overload indicators
+	if (/server.*(overload|cluster.*load|high.*load|under.*high.*load)/i.test(errorMessage)) return true;
+	
+	// Rate limiting
+	if (/rate.?limit|too.?many.?requests|429\b/i.test(errorMessage)) return true;
+	
+	// Server errors (5xx)
+	if (/\b5\d{2}\b.*server/i.test(errorMessage)) return true;
+	
+	// 503 service unavailable
+	if (/\b503\b/.test(errorMessage)) return true;
+	
+	return false;
+}
+
 function resetCompactionRetry(): void {
 	clearCompactionRetry();
 	compactionRetryState.attempt = 0;
@@ -1493,11 +1518,50 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 				return;
 			}
 
+			// ── Transient server error (529, overloaded, etc.) ─────────────────
+			// Retry with backoff for transient errors regardless of reason code.
+			// These errors indicate server overload, not session-specific issues.
+			const errMsg = errorMessage ?? "Compaction threw an error.";
+			if (isTransientCompactionError(errorMessage)) {
+				if (compactionRetryState.attempt < COMPACTION_RETRY_MAX_ATTEMPTS) {
+					compactionRetryState.attempt++;
+					compactionRetryState.lastError = errMsg;
+					compactionRetryState.lastReason = reason;
+
+					pi.sendMessage({
+						customType: "context",
+						content: [{
+							type: "text" as const,
+							text: `⚠️ Server overload (${errMsg}). Auto-retrying with backoff... (${compactionRetryState.attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})`,
+						}],
+						display: true,
+					}, { deliverAs: "steer" });
+
+					triggerCompactionRetry(pi, compactionRetryState.attempt, errMsg);
+					return;
+				}
+
+				// Exhausted retries
+				pi.sendMessage({
+					customType: "context",
+					content: [{
+						type: "text" as const,
+						text: [
+							"## ⚠️ Auto-compaction failed after retries (server overload)",
+							errMsg,
+							"",
+							"The summarization server is experiencing high load.",
+							"Consider waiting a moment and running `/compact` manually.",
+						].join("\n"),
+					}],
+					display: true,
+				}, { deliverAs: "steer" });
+				return;
+			}
+
 			// ── Threshold/manual compaction failure ────────────────────────────
 			// Compaction itself failed. Retry with backoff (max 3 attempts).
 			if ((reason === "threshold" || reason === "manual") && !result) {
-				const errMsg = errorMessage ?? "Compaction threw an error.";
-
 				if (compactionRetryState.attempt < COMPACTION_RETRY_MAX_ATTEMPTS) {
 					compactionRetryState.attempt++;
 					compactionRetryState.lastError = errMsg;
