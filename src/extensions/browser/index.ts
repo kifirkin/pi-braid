@@ -89,33 +89,16 @@ async function doConnect(opts: { autoStart?: boolean; useProfile?: boolean }): P
 		}
 	}
 
-	// Get tab list
-	const tabs = await listTabs(port);
-	const activeTab = tabs[tabs.length - 1];
-	connectedTabId = activeTab?.id ?? "";
-	connectedUrl = activeTab?.url ?? "";
-
-	// Get tab WS URL
-	const tabResp = await fetch(`http://localhost:${port}/json`);
-	const allTabs = (await tabResp.json()) as Array<{ id: string; url: string; title: string; webSocketDebuggerUrl?: string }>;
-	const targetTab = allTabs.find((t) => t.id === connectedTabId) ?? allTabs[allTabs.length - 1];
-
-	if (!targetTab?.webSocketDebuggerUrl) {
-		// No tabs - create one
-		const newResp = await fetch(`http://localhost:${port}/json/new?url=` + encodeURIComponent("about:blank"), { method: "PUT" });
-		const newTab = (await newResp.json()) as { id: string; url: string; webSocketDebuggerUrl: string };
-		connectedTabId = newTab.id;
-		connectedUrl = newTab.url;
-		cdp = new CdpClient();
-		cdp.setTargetId(newTab.id);
-		await cdp.connect(newTab.webSocketDebuggerUrl);
-	} else {
-		// Connect directly to tab's WebSocket URL
-		cdp = new CdpClient();
-		cdp.setTargetId(targetTab.id);
-		console.log(`[CDP] Connecting to: ${targetTab.webSocketDebuggerUrl}`);
-		await cdp.connect(targetTab.webSocketDebuggerUrl);
-	}
+	// Always create a fresh tab when auto-starting Chrome
+	// This ensures we get a page-level WebSocket with full CDP access
+	const newResp = await fetch(`http://localhost:${port}/json/new?url=` + encodeURIComponent("about:blank"), { method: "PUT" });
+	const newTab = (await newResp.json()) as { id: string; url: string; webSocketDebuggerUrl: string };
+	connectedTabId = newTab.id;
+	connectedUrl = newTab.url;
+	cdp = new CdpClient();
+	cdp.setTargetId(newTab.id);
+	console.log(`[CDP] New tab created: ${newTab.webSocketDebuggerUrl}`);
+	await cdp.connect(newTab.webSocketDebuggerUrl);
 
 	// Wait for connection to stabilize (Chrome DevTools needs time to warm up)
 	await new Promise((r) => setTimeout(r, 500));
