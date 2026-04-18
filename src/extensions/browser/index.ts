@@ -116,8 +116,8 @@ async function doConnect(opts: { autoStart?: boolean; useProfile?: boolean }): P
 		await cdp.connect(targetTab.webSocketDebuggerUrl);
 	}
 
-	// Small delay to ensure connection is ready
-	await new Promise((r) => setTimeout(r, 200));
+	// Wait for connection to stabilize (Chrome DevTools needs time to warm up)
+	await new Promise((r) => setTimeout(r, 500));
 
 	// Enable required domains
 	await cdp.enableDomains();
@@ -217,9 +217,10 @@ async function browserNavigate(input: Static<typeof navigateParams>) {
 		return { content: [{ type: "text" as const, text: `✓ Opened in new tab: ${input.url}\nTab ID: ${data.id}` }], details: { url: connectedUrl, tabId: connectedTabId } };
 	}
 
-	// Re-enable Page domain before navigating (in case tab was reused)
+	// Re-enable Page domain before navigating
 	try {
 		await client.send("Page.enable");
+		await new Promise((r) => setTimeout(r, 200));
 	} catch {
 		// Ignore - might already be enabled
 	}
