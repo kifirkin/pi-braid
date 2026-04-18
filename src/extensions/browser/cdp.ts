@@ -207,6 +207,16 @@ export async function spawnChrome(opts: { useProfile?: boolean; port?: number } 
 		? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 		: "google-chrome";
 
+	// Verify Chrome exists
+	try {
+		execSync(`test -x "${chromePath}"`, { stdio: "pipe" });
+	} catch {
+		throw new Error(`Chrome not found at: ${chromePath}`);
+	}
+
+	console.log(`[Chrome] Starting with: ${chromePath}`);
+	console.log(`[Chrome] Args: --remote-debugging-port=${port} --user-data-dir=${SCRAPING_DIR}`);
+
 	// Chrome with full DevTools support
 	const child = spawn(chromePath, [
 		`--remote-debugging-port=${port}`,
@@ -218,7 +228,18 @@ export async function spawnChrome(opts: { useProfile?: boolean; port?: number } 
 		"--remote-debugging-address=127.0.0.1",
 		"--disable-gpu",
 		"about:blank",
-	], { detached: true, stdio: "ignore" });
+	], { stdio: "pipe" });
+
+	child.on("error", (err) => {
+		console.error(`[Chrome] Spawn error: ${err.message}`);
+	});
+
+	child.on("exit", (code) => {
+		if (code !== 0 && code !== null) {
+			console.error(`[Chrome] Exit code: ${code}`);
+		}
+	});
+
 	child.unref();
 
 	// Give Chrome a moment to start
