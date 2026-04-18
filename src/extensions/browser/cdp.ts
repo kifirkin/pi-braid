@@ -27,6 +27,7 @@ export class CdpClient {
 	private nextId = 1;
 	private _isConnected = false;
 	private _sessionId: string | null = null;
+	private _targetId: string | null = null;
 
 	async connect(wsUrl: string): Promise<void> {
 		this.ws = new WebSocket(wsUrl);
@@ -59,29 +60,30 @@ export class CdpClient {
 
 	/**
 	 * Enable required CDP domains after connecting to a tab.
-	 * For attached sessions, we need to enable domains on the session.
+	 * The WebSocket URL from /json/<tab-id> already provides full CDP access.
 	 */
 	async enableDomains(): Promise<void> {
-		// Enable all required domains with proper sequencing
-		const domains = ["Log.enable", "Page.enable", "Runtime.enable", "DOM.enable", "Target.setAutoAttach"];
+		// Connected to tab WebSocket - should have full access
+		// Try to enable domains one at a time with delays
+		const domains = ["Log.enable", "Page.enable", "Runtime.enable", "DOM.enable"];
+
 		for (const domain of domains) {
 			try {
 				await this.send(domain);
+				// Small delay between enabling domains
+				await new Promise((r) => setTimeout(r, 50));
 			} catch (err) {
-				// Log but continue - some domains might not be available
+				// Log but continue
 				console.warn(`Failed to enable ${domain}: ${(err as Error).message}`);
 			}
 		}
-	}
 
-	/**
-	 * Attach to a specific target (tab) by ID.
-	 * This creates a new session for the target.
-	 */
-	async attachToTarget(targetId: string): Promise<void> {
-		const result = (await this.send("Target.attachToTarget", { targetId, flatten: true })) as { sessionId?: string };
-		if (result?.sessionId) {
-			this._sessionId = result.sessionId;
+		// Verify Page domain works by checking if we can get version
+		try {
+			const version = (await this.send("Browser.getVersion")) as { protocolVersion?: string };
+			console.log(`[CDP] Browser protocol: ${version?.protocolVersion}`);
+		} catch {
+			console.warn("[CDP] Could not get browser version");
 		}
 	}
 
@@ -136,6 +138,10 @@ export class CdpClient {
 
 	get sessionId(): string | null {
 		return this._sessionId;
+	}
+
+	setTargetId(targetId: string): void {
+		this._targetId = targetId;
 	}
 }
 

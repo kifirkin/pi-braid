@@ -107,15 +107,17 @@ async function doConnect(opts: { autoStart?: boolean; useProfile?: boolean }): P
 		connectedTabId = newTab.id;
 		connectedUrl = newTab.url;
 		cdp = new CdpClient();
+		cdp.setTargetId(newTab.id);
 		await cdp.connect(newTab.webSocketDebuggerUrl);
 	} else {
 		// Connect directly to tab's WebSocket URL
 		cdp = new CdpClient();
+		cdp.setTargetId(targetTab.id);
 		await cdp.connect(targetTab.webSocketDebuggerUrl);
 	}
 
 	// Small delay to ensure connection is ready
-	await new Promise((r) => setTimeout(r, 100));
+	await new Promise((r) => setTimeout(r, 200));
 
 	// Enable required domains
 	await cdp.enableDomains();
