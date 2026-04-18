@@ -56,11 +56,31 @@ export class CdpClient {
 		});
 	}
 
-	/** Enable required CDP domains after connecting to a tab. */
-	async enableDomains(): Promise<void> {
-		await this.send("DOM.enable");
-		await this.send("Runtime.enable");
-		await this.send("Page.enable");
+	/**
+	 * Enable required CDP domains after connecting to a tab.
+	 * Retries with exponential backoff on failure.
+	 */
+	async enableDomains(retries = 3): Promise<void> {
+		const domains = ["DOM", "Runtime", "Page", "Target"];
+		for (const domain of domains) {
+			let lastError: Error | null = null;
+			for (let attempt = 0; attempt < retries; attempt++) {
+				try {
+					await this.send(`${domain}.enable`);
+					lastError = null;
+					break;
+				} catch (err) {
+					lastError = err as Error;
+					if (attempt < retries - 1) {
+						await new Promise((r) => setTimeout(r, 100 * Math.pow(2, attempt)));
+					}
+				}
+			}
+			if (lastError) {
+				// Log but don't fail - some domains might not be available
+				console.warn(`Failed to enable ${domain}: ${lastError.message}`);
+			}
+		}
 	}
 
 	async connectToBrowser(): Promise<void> {
@@ -79,7 +99,12 @@ export class CdpClient {
 		const cmd: CdpCommand = { id, method, params };
 
 		return new Promise((resolve, reject) => {
-			this.pending.set(id, { resolve, reject });
+			const timeout = setTimeout(() => {
+				this.pending.delete(id);
+				reject(new Error(`CDP timeout: ${method}`));
+			}, 30000);
+
+			this.pending.set(id, { resolve: (v) => { clearTimeout(timeout); resolve(v); }, reject: (e) => { clearTimeout(timeout); reject(e); } });
 			this.ws!.send(JSON.stringify(cmd));
 		});
 	}

@@ -357,6 +357,8 @@ interface PreprocessorState {
 	isPreprocessing: boolean;
 	/** Abort controller for canceling preprocessing */
 	abortController: AbortController | null;
+	/** Last preprocessed text - to skip re-processing on submit */
+	lastPreprocessedText: string | null;
 }
 
 const state: PreprocessorState = {
@@ -368,6 +370,7 @@ const state: PreprocessorState = {
 	lastOriginal: null,
 	isPreprocessing: false,
 	abortController: null,
+	lastPreprocessedText: null,
 };
 
 function clearPreprocessorWidget(ctx: ExtensionContext) {
@@ -495,6 +498,12 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 			return { action: "continue" };
 		}
 
+		// Skip if text matches last preprocessed output (user submitting cleaned text)
+		if (state.lastPreprocessedText !== null && original === state.lastPreprocessedText) {
+			state.lastPreprocessedText = null; // Clear flag on use
+			return { action: "continue" };
+		}
+
 		// Cancel any ongoing preprocessing if user sends new input
 		if (state.isPreprocessing && state.abortController) {
 			state.abortController.abort();
@@ -602,6 +611,7 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 				state.preprocessedCount++;
 				state.lastOriginal = original;
 				state.lastCleaned = cleaned;
+				state.lastPreprocessedText = cleaned; // Mark for skip on resubmit
 
 				if (state.config.showDiff) {
 					const diffLines = generateDiffLines(original, cleaned);

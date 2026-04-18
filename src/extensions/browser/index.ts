@@ -34,6 +34,7 @@ let connectedTabId: string = "";
 let connectedUrl: string = "";
 let sessionCleanup: (() => void) | null = null;
 let autoStartDone = false; // only auto-spawn once per session
+let connectLock: Promise<CdpClient> | null = null; // prevents concurrent connections
 
 async function getBrowserUrl(port: number): Promise<string> {
 	const resp = await fetch(`http://localhost:${port}/json/version`);
@@ -43,9 +44,24 @@ async function getBrowserUrl(port: number): Promise<string> {
 
 /**
  * Connect to Chrome, auto-starting it if not already running.
+ * Uses a lock to prevent concurrent connections.
  */
 async function ensureConnected(opts: { autoStart?: boolean; useProfile?: boolean } = {}): Promise<CdpClient> {
+	// Fast path: already connected
 	if (cdp?.isConnected) return cdp;
+
+	// Wait for any in-progress connection attempt
+	if (connectLock) return connectLock;
+
+	connectLock = doConnect(opts);
+	try {
+		return await connectLock;
+	} finally {
+		connectLock = null;
+	}
+}
+
+async function doConnect(opts: { autoStart?: boolean; useProfile?: boolean }): Promise<CdpClient> {
 
 	// Clean up old session
 	if (cdp) { try { cdp.disconnect(); } catch { /* ok */ } cdp = null; }
