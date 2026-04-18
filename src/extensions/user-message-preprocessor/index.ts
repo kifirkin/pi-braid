@@ -7,19 +7,18 @@
  * - Uses utility model via resolveUtilityModel() (respects /utility-model setting)
  *
  * Smart content detection (skips processing when content is already clean):
- * - Very long text (>maxChars, default 5000) - too expensive to preprocess
+ * - Very long text (>maxChars, default 8000) - too expensive to preprocess
  * - Code-heavy text (>30% code characters) - likely technical content
  * - Well-written English with proper structure - no changes needed
  * - Markdown content with good formatting - already structured
  * - Short prose after stripping code blocks - likely just brief context
+ * - Detected paste patterns (JSON, stack traces, logs, etc.) - likely raw data
  *
- * Uses `transform` action so preprocessed text flows to the agent in the same
- * input cycle. The user sees the diff widget with cleaned text, but pressing
- * Enter sends the cleaned text directly - no second submit needed.
+ * Uses `transform` action to fill input field with cleaned text.
+ * The user sees the diff widget and presses Enter to send.
  *
  * Settings:
  * - Enabled state persists to ~/.pi/agent/settings.json
- * - Other config (minLength, maxChars, skipCommands, etc.) stored in memory
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -57,8 +56,8 @@ interface PreprocessorConfig {
 
 const DEFAULT_CONFIG: PreprocessorConfig = {
 	enabled: true,
-	minLength: 10,
-	maxChars: 5000,
+	minLength: 5,
+	maxChars: 8000,
 	skipCommands: true,
 	showDiff: true,
 	timeoutSeconds: 180,
@@ -134,6 +133,99 @@ function isCodeHeavy(text: string): boolean {
 		}
 	}
 	return totalChars > 0 && codeChars / totalChars > 0.3;
+}
+
+/**
+ * Paste detection patterns - detect common pasted content types.
+ * These indicate raw data that should NOT be preprocessed.
+ */
+const PASTE_PATTERNS = {
+	// JSON structure
+	json: /\{[\s\S]*["'][\w]+["']\s*:/,
+	// Array of objects
+	jsonArray: /^\s*\[\s*\{[\s\S]*\}\s*\]/,
+	// XML/HTML tags
+	xml: /<(?:[a-z][a-z0-9-]*|\?[a-z]+)\b[^>]*>/i,
+	// Stack trace (multi-line, has file:line patterns)
+	stackTrace: /(?:Error|Exception|Traceback):[\s\S]*(?:at\s+[\w.]+\s*\(|\/[^:\s]+:\d+)/i,
+	// Log lines (timestamp prefix)
+	logs: /^\d{4}[-/]\d{2}[-/]\d{2}[T\s]\d{2}:\d{2}:\d{2}/m,
+	// File paths with line numbers (src/file.ts:10:5)
+	fileLinePaths: /^[\w.\/-]+\.[\w]+\:\d+(?::\d+)?/m,
+	// Git diff/changes
+gitDiff: /^(?:[+-]{3}|@@|diff\s|---\s|\+\+\+\s)/m,
+	// Terminal output (ANSI codes, prompts)
+	terminal: /\x1b\[[0-9;]*[a-zA-Z]|\$[\s]|^[^\S\n]*(?:\||\$|>|»)\s/m,
+	// Columnar/tabular data (consistent separators)
+	tabular: /^\S+\s+(?:\|\s*)?\S+(?:\s+\|\s*)?\S+/m,
+	// HTTP headers/requests
+	http: /^(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s+\S+|HTTP\/\d\.\d\s+\d{3}/im,
+};
+
+/**
+ * Count how many paste patterns match the text.
+ */
+function countPastePatterns(text: string): number {
+	let count = 0;
+	if (PASTE_PATTERNS.json.test(text)) count++;
+	if (PASTE_PATTERNS.jsonArray.test(text)) count++;
+	if (PASTE_PATTERNS.xml.test(text)) count++;
+	if (PASTE_PATTERNS.stackTrace.test(text)) count++;
+	if (PASTE_PATTERNS.logs.test(text)) count++;
+	if (PASTE_PATTERNS.fileLinePaths.test(text)) count++;
+	if (PASTE_PATTERNS.gitDiff.test(text)) count++;
+	if (PASTE_PATTERNS.terminal.test(text)) count++;
+	if (PASTE_PATTERNS.tabular.test(text)) count++;
+	if (PASTE_PATTERNS.http.test(text)) count++;
+	return count;
+}
+
+/**
+ * Check for uniform line length patterns (code typically has consistent indentation/width).
+ */
+function hasUniformLineLength(text: string): boolean {
+	const lines = text.split("\n").filter((l) => l.trim().length > 20);
+	if (lines.length < 5) return false;
+
+	// Check for very consistent line lengths (code-like)
+	const lengths = lines.map((l) => l.length);
+	const avg = lengths.reduce((a, b) => a + b, 0) / lengths.length;
+	const variance = lengths.reduce((sum, len) => sum + Math.pow(len - avg, 2), 0) / lengths.length;
+	const stdDev = Math.sqrt(variance);
+
+	// If standard deviation is very low relative to average, it's uniform (code)
+	return stdDev / avg < 0.1 && avg > 40;
+}
+
+/**
+ * Detect if text appears to be a likely paste (raw data) vs user-written text.
+ * Returns true if content looks like pasted data that should skip preprocessing.
+ */
+function looksLikePaste(text: string): boolean {
+	// Must have substantial content
+	if (text.length < 100) return false;
+
+	// Count matching paste patterns
+	const patternCount = countPastePatterns(text);
+	if (patternCount >= 2) return true;
+
+	// Uniform line length suggests code
+	if (hasUniformLineLength(text)) return true;
+
+	// Check for high ratio of special characters (code indicators)
+	const specialChars = (text.match(/[{}()\[\];=<>]/g) || []).length;
+	if (specialChars / text.length > 0.15) return true;
+
+	// Contains many URLs on their own lines (scraped content)
+	const urlLines = (text.match(/^https?:\/\/[^\s]+$/gm) || []).length;
+	if (urlLines >= 3) return true;
+
+	// Contains consistent indentation (code)
+	const indentedLines = (text.match(/^[\t ]{4,}/gm) || []).length;
+	const totalLines = text.split("\n").length;
+	if (indentedLines / totalLines > 0.5 && totalLines > 10) return true;
+
+	return false;
 }
 
 /**
@@ -420,7 +512,14 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 			return { action: "continue" };
 		}
 
-		// ── NEW: Handle badly-written English messages ───────────────────────────────
+		// Skip likely paste content (raw data, logs, code snippets)
+		// These are typically pasted data that user wants analyzed, not cleaned
+		if (looksLikePaste(original)) {
+			state.skippedCount++;
+			return { action: "continue" };
+		}
+
+		// ── Handle badly-written English messages ────────────────────────────────────
 		// The preprocessor should clean BAD English, not skip it.
 		// If text is likely English but not well-written, PROCEED to preprocessing.
 		if (isLikelyEnglish(prose)) {
