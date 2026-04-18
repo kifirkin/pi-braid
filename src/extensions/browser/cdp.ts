@@ -26,6 +26,7 @@ export class CdpClient {
 	private eventHandlers: CdpEventHandler[] = [];
 	private nextId = 1;
 	private _isConnected = false;
+	private _sessionId: string | null = null;
 
 	async connect(wsUrl: string): Promise<void> {
 		this.ws = new WebSocket(wsUrl);
@@ -58,28 +59,29 @@ export class CdpClient {
 
 	/**
 	 * Enable required CDP domains after connecting to a tab.
-	 * Retries with exponential backoff on failure.
+	 * For attached sessions, we need to enable domains on the session.
 	 */
-	async enableDomains(retries = 3): Promise<void> {
-		const domains = ["DOM", "Runtime", "Page", "Target"];
+	async enableDomains(): Promise<void> {
+		// Enable all required domains with proper sequencing
+		const domains = ["Log.enable", "Page.enable", "Runtime.enable", "DOM.enable", "Target.setAutoAttach"];
 		for (const domain of domains) {
-			let lastError: Error | null = null;
-			for (let attempt = 0; attempt < retries; attempt++) {
-				try {
-					await this.send(`${domain}.enable`);
-					lastError = null;
-					break;
-				} catch (err) {
-					lastError = err as Error;
-					if (attempt < retries - 1) {
-						await new Promise((r) => setTimeout(r, 100 * Math.pow(2, attempt)));
-					}
-				}
+			try {
+				await this.send(domain);
+			} catch (err) {
+				// Log but continue - some domains might not be available
+				console.warn(`Failed to enable ${domain}: ${(err as Error).message}`);
 			}
-			if (lastError) {
-				// Log but don't fail - some domains might not be available
-				console.warn(`Failed to enable ${domain}: ${lastError.message}`);
-			}
+		}
+	}
+
+	/**
+	 * Attach to a specific target (tab) by ID.
+	 * This creates a new session for the target.
+	 */
+	async attachToTarget(targetId: string): Promise<void> {
+		const result = (await this.send("Target.attachToTarget", { targetId, flatten: true })) as { sessionId?: string };
+		if (result?.sessionId) {
+			this._sessionId = result.sessionId;
 		}
 	}
 
@@ -98,13 +100,18 @@ export class CdpClient {
 		const id = this.nextId++;
 		const cmd: CdpCommand = { id, method, params };
 
+		console.log(`[CDP] >>> ${method}`, params ? JSON.stringify(params).slice(0, 200) : "");
+
 		return new Promise((resolve, reject) => {
 			const timeout = setTimeout(() => {
 				this.pending.delete(id);
 				reject(new Error(`CDP timeout: ${method}`));
 			}, 30000);
 
-			this.pending.set(id, { resolve: (v) => { clearTimeout(timeout); resolve(v); }, reject: (e) => { clearTimeout(timeout); reject(e); } });
+			this.pending.set(id, {
+				resolve: (v) => { clearTimeout(timeout); console.log(`[CDP] <<< ${method}:`, JSON.stringify(v).slice(0, 200)); resolve(v); },
+				reject: (e) => { clearTimeout(timeout); console.log(`[CDP] !!! ${method}:`, e.message); reject(e); }
+			});
 			this.ws!.send(JSON.stringify(cmd));
 		});
 	}
@@ -125,6 +132,10 @@ export class CdpClient {
 
 	get isConnected(): boolean {
 		return this._isConnected;
+	}
+
+	get sessionId(): string | null {
+		return this._sessionId;
 	}
 }
 

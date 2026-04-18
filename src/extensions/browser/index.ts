@@ -109,10 +109,15 @@ async function doConnect(opts: { autoStart?: boolean; useProfile?: boolean }): P
 		cdp = new CdpClient();
 		await cdp.connect(newTab.webSocketDebuggerUrl);
 	} else {
+		// Connect directly to tab's WebSocket URL
 		cdp = new CdpClient();
 		await cdp.connect(targetTab.webSocketDebuggerUrl);
 	}
 
+	// Small delay to ensure connection is ready
+	await new Promise((r) => setTimeout(r, 100));
+
+	// Enable required domains
 	await cdp.enableDomains();
 
 	sessionCleanup = cdp.onEvent((method, params) => {
@@ -181,6 +186,24 @@ const contentParams = Type.Object({
 
 // ── Tool implementations ─────────────────────────────────────────────
 
+/**
+ * Send CDP command with retry and better error handling.
+ */
+async function sendWithRetry(client: CdpClient, method: string, params?: Record<string, unknown>, retries = 2): Promise<unknown> {
+	let lastError: Error | null = null;
+	for (let attempt = 0; attempt <= retries; attempt++) {
+		try {
+			return await client.send(method, params);
+		} catch (err) {
+			lastError = err as Error;
+			if (attempt < retries) {
+				await new Promise((r) => setTimeout(r, 100 * Math.pow(2, attempt)));
+			}
+		}
+	}
+	throw lastError;
+}
+
 async function browserNavigate(input: Static<typeof navigateParams>) {
 	const client = await ensureConnected();
 
@@ -192,11 +215,28 @@ async function browserNavigate(input: Static<typeof navigateParams>) {
 		return { content: [{ type: "text" as const, text: `✓ Opened in new tab: ${input.url}\nTab ID: ${data.id}` }], details: { url: connectedUrl, tabId: connectedTabId } };
 	}
 
-	await client.send("Page.navigate", { url: input.url });
-	connectedUrl = input.url;
-	await new Promise((r) => setTimeout(r, Math.min(input.timeout ?? 30000, 10000)));
+	// Re-enable Page domain before navigating (in case tab was reused)
+	try {
+		await client.send("Page.enable");
+	} catch {
+		// Ignore - might already be enabled
+	}
 
-	return { content: [{ type: "text" as const, text: `✓ Navigated to: ${input.url}` }], details: { url: connectedUrl, tabId: connectedTabId }, isError: false } as { content: { type: "text"; text: string }[]; details: Record<string, unknown>; isError?: boolean };
+	// Navigate with retry
+	try {
+		await sendWithRetry(client, "Page.navigate", { url: input.url });
+		connectedUrl = input.url;
+		// Wait for navigation to complete
+		await new Promise((r) => setTimeout(r, Math.min(input.timeout ?? 30000, 10000)));
+		return { content: [{ type: "text" as const, text: `✓ Navigated to: ${input.url}` }], details: { url: connectedUrl, tabId: connectedTabId }, isError: false } as { content: { type: "text"; text: string }[]; details: Record<string, unknown>; isError?: boolean };
+	} catch (err) {
+		const errorMsg = err instanceof Error ? err.message : String(err);
+		return {
+			content: [{ type: "text" as const, text: `Navigation failed: ${errorMsg}` }],
+			details: { url: connectedUrl, tabId: connectedTabId, error: errorMsg },
+			isError: true
+		};
+	}
 }
 
 async function browserSnapshot(input: Static<typeof snapshotParams>) {
