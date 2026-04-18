@@ -113,6 +113,7 @@ async function doConnect(opts: { autoStart?: boolean; useProfile?: boolean }): P
 		// Connect directly to tab's WebSocket URL
 		cdp = new CdpClient();
 		cdp.setTargetId(targetTab.id);
+		console.log(`[CDP] Connecting to: ${targetTab.webSocketDebuggerUrl}`);
 		await cdp.connect(targetTab.webSocketDebuggerUrl);
 	}
 
