@@ -450,6 +450,13 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 		ctx.ui.setStatus("preprocessor", `Preprocessing...`);
 		ctx.ui.setWidget("preprocessor-diff", undefined);
 
+		// Check abort BEFORE starting preprocessing
+		if (ctx.signal?.aborted) {
+			clearPreprocessorWidget(ctx);
+			state.skippedCount++;
+			return { action: "continue" };
+		}
+
 		try {
 			const cleaned = await preprocess(original, event.images, ctx);
 			clearPreprocessorWidget(ctx);
