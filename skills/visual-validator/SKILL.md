@@ -153,10 +153,22 @@ const FEATURE_COMPARE = {
 
 1. **CAPTURE** → `analyze_image` tool
 2. **MEASURE** → Extract dimensions, colors, positions
-3. **COMPARE** → Against reference (if available)
+3. **COMPARE** → `compare_images` tool (for side-by-side reference comparison)
 4. **AUDIT** → Apply design criteria
 5. **TRIAGE** → P0/P1/P2/P3 classification
 6. **PRESCRIBE** → Specific actionable fixes
+
+## Tools
+
+| Tool | Purpose | Usage |
+|------|---------|-------|
+| `analyze_image` | Single image analysis | `analyze_image(imagePath="sprite.png")` |
+| `compare_images` | Side-by-side comparison | `compare_images(imagePath="current.png", referencePath="expected.png")` |
+
+### When to Use Each
+
+- **`analyze_image`**: When you need detailed analysis of a single image (dimensions, colors, composition, domain detection)
+- **`compare_images`**: When you have a reference/expected image and need to identify differences, verify matches, or track changes between two versions
 
 ---
 

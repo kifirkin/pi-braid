@@ -300,6 +300,79 @@ Provide a structured final report:
 
 Format your response clearly with headers and tables. Be thorough but organized.`;
 
+/**
+ * Image Comparison Prompt
+ *
+ * Compares two images side-by-side:
+ * 1. Extracts measurements from both images
+ * 2. Compares dimensions, aspect ratios, color palettes
+ * 3. Identifies visual differences and similarities
+ * 4. Provides a structured comparison report
+ */
+const IMAGE_COMPARISON_PROMPT = `Compare these two images thoroughly. The first image is the "current/test" image, and the second is the "reference/expected" image.
+
+**Image 1 (CURRENT)**: {image1_name}
+**Dimensions**: {image1_width}×{image1_height} pixels
+
+**Image 2 (REFERENCE)**: {image2_name}
+**Dimensions**: {image2_width}×{image2_height} pixels
+
+---
+
+## COMPARISON REPORT
+
+### 1. DIMENSION ANALYSIS
+| Property | Image 1 | Image 2 | Match |
+|----------|---------|---------|-------|
+| Width | {image1_width}px | {image2_width}px | ✓/✗ |
+| Height | {image1_height}px | {image2_height}px | ✓/✗ |
+| Aspect Ratio | {image1_ratio}:1 | {image2_ratio}:1 | ✓/✗ |
+
+### 2. VISUAL DIFFERENCES
+
+#### Layout/Composition Changes
+[Describe any changes in element positions, alignment, spacing, or overall layout structure]
+
+#### Color Palette Comparison
+| Aspect | Image 1 | Image 2 |
+|--------|---------|---------|
+| Dominant Colors | [hex, hex, hex] | [hex, hex, hex] |
+| Overall Tone | [warm/cool/neutral] | [warm/cool/neutral] |
+| Contrast Level | [high/medium/low] | [high/medium/low] |
+
+#### Content Differences
+[Identify specific elements that differ: missing elements, added elements, changed elements]
+
+### 3. SIMILARITIES
+[Highlight elements that are consistent across both images]
+
+### 4. ISSUE IDENTIFICATION
+
+#### P0 - CRITICAL (Breaking changes)
+- [Content missing or fundamentally different]
+- [Broken layout or structure]
+
+#### P1 - MAJOR (Significant quality gaps)
+- [Visible differences in styling or appearance]
+- [Misaligned or offset elements]
+
+#### P2 - MINOR (Polish differences)
+- [Minor visual variations acceptable for tolerance]
+
+### 5. ACTIONABLE DELTA
+| Element | Image 1 | Image 2 | Change Needed |
+|---------|---------|---------|---------------|
+| [specific element] | [value] | [value] | [specific fix] |
+
+### 6. OVERALL VERDICT
+- **Match Score**: [0-100% based on visual similarity]
+- **Verdict**: [EXACT MATCH / CLOSE MATCH / MAJOR DIVERGENCE / WRONG ASSET]
+- **Recommendation**: [Next steps]
+
+---
+
+Format your response clearly with headers and tables. Provide specific measurements and actionable recommendations.`;
+
 // Types
 
 interface ImageMetadata {
@@ -690,6 +763,215 @@ export default function visionExtension(pi: ExtensionAPI) {
         const message = error instanceof Error ? error.message : String(error);
         return {
           content: [{ type: "text", text: `Image analysis failed: ${message}` }],
+          details: { error: message },
+        };
+      }
+    },
+  });
+
+  // Tool: compare_images
+
+  pi.registerTool({
+    name: "compare_images",
+    label: "Compare Images",
+    description:
+      "Compare two images side-by-side using a vision model. Analyzes both images and provides a detailed comparison report including dimension matching, color palette comparison, visual differences, and domain-specific analysis (UI elements, sprites, etc.).",
+    parameters: Type.Object({
+      imagePath: Type.String({
+        description: "Path to the first image (the 'current' or 'test' image)",
+      }),
+      referencePath: Type.String({
+        description: "Path to the second image (the 'reference' or 'expected' image to compare against)",
+      }),
+    }),
+
+    execute: async (
+      _toolCallId,
+      params: { imagePath: string; referencePath: string },
+      _signal,
+      onUpdate,
+      ctx,
+    ): Promise<AgentToolResult<unknown>> => {
+      const imagePathExpanded = expandHomeDir(params.imagePath);
+      const absolutePath = path.resolve(ctx.cwd, imagePathExpanded);
+      const referencePathExpanded = expandHomeDir(params.referencePath);
+      const referenceAbsPath = path.resolve(ctx.cwd, referencePathExpanded);
+
+      // Validate first image
+      if (!fs.existsSync(absolutePath)) {
+        return {
+          content: [{ type: "text", text: `Error: File not found: ${params.imagePath}` }],
+          details: { path: absolutePath, error: "file_not_found" },
+        };
+      }
+
+      if (!isImageFile(absolutePath)) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error: "${params.imagePath}" is not a supported image file. Supported formats: ${SUPPORTED_IMAGE_EXTENSIONS.join(", ")}`,
+            },
+          ],
+          details: { path: absolutePath, supported: SUPPORTED_IMAGE_EXTENSIONS },
+        };
+      }
+
+      // Validate reference image
+      if (!fs.existsSync(referenceAbsPath)) {
+        return {
+          content: [{ type: "text", text: `Error: Reference file not found: ${params.referencePath}` }],
+          details: { path: referenceAbsPath, error: "reference_file_not_found" },
+        };
+      }
+
+      if (!isImageFile(referenceAbsPath)) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error: "${params.referencePath}" is not a supported image file. Supported formats: ${SUPPORTED_IMAGE_EXTENSIONS.join(", ")}`,
+            },
+          ],
+          details: { path: referenceAbsPath, supported: SUPPORTED_IMAGE_EXTENSIONS },
+        };
+      }
+
+      try {
+        const model = resolveVisionModel(ctx);
+        if (!model) {
+          throw new Error(
+            "No vision-capable model available. Configure a vision model via /vision-model or set a model that supports image input.",
+          );
+        }
+
+        const apiKey = await ctx.modelRegistry.getApiKeyForProvider(model.provider);
+        if (!apiKey) {
+          throw new Error(
+            `No API key configured for provider ${model.provider}. Set ${model.provider.toUpperCase()}_API_KEY environment variable or use /login.`,
+          );
+        }
+
+        // Get metadata for both images
+        const imageMetadata = getImageMetadata(absolutePath);
+        const referenceMetadata = getImageMetadata(referenceAbsPath);
+        const imageSizeCheck = checkImageSize(absolutePath);
+        const referenceSizeCheck = checkImageSize(referenceAbsPath);
+
+        onUpdate?.({
+          content: [{ type: "text", text: `Preparing comparison...
+Image 1: ${path.basename(absolutePath)}
+Image 2: ${path.basename(referenceAbsPath)}` }],
+          details: { status: "preparing" },
+        });
+
+        // Read both images
+        const image1Data = readImageAsBase64(absolutePath);
+        const image2Data = readImageAsBase64(referenceAbsPath);
+
+        // Compute aspect ratios
+        const image1Ratio = imageMetadata ? (imageMetadata.width / imageMetadata.height).toFixed(1) : "?";
+        const image2Ratio = referenceMetadata ? (referenceMetadata.width / referenceMetadata.height).toFixed(1) : "?";
+
+        // Build comparison prompt
+        const comparisonPrompt = IMAGE_COMPARISON_PROMPT
+          .replace("{image1_name}", path.basename(absolutePath))
+          .replace("{image2_name}", path.basename(referenceAbsPath))
+          .replace("{image1_width}", String(imageMetadata?.width ?? "?"))
+          .replace("{image1_height}", String(imageMetadata?.height ?? "?"))
+          .replace("{image2_width}", String(referenceMetadata?.width ?? "?"))
+          .replace("{image2_height}", String(referenceMetadata?.height ?? "?"))
+          .replace("{image1_ratio}", image1Ratio)
+          .replace("{image2_ratio}", image2Ratio);
+
+        onUpdate?.({
+          content: [{ type: "text", text: "Analyzing both images..." }],
+          details: { status: "analyzing" },
+        });
+
+        const context = {
+          systemPrompt:
+            "You are an expert visual analyst specializing in comparative image analysis. Examine both images carefully, compare them thoroughly, and provide structured detailed reports highlighting similarities, differences, and actionable insights.",
+          messages: [
+            {
+              role: "user" as const,
+              content: [
+                { type: "text" as const, text: comparisonPrompt },
+                {
+                  type: "image" as const,
+                  data: image1Data?.data ?? "",
+                  mimeType: image1Data?.mimeType ?? "image/jpeg",
+                },
+                { type: "text" as const, text: "**REFERENCE IMAGE (compare against):**" },
+                {
+                  type: "image" as const,
+                  data: image2Data?.data ?? "",
+                  mimeType: image2Data?.mimeType ?? "image/jpeg",
+                },
+              ],
+              timestamp: Date.now(),
+            },
+          ],
+        };
+
+        const result = await completeSimple(model, context, {
+          apiKey,
+          maxTokens: 4096,
+          temperature: 0.3,
+        });
+
+        if (result.errorMessage) {
+          throw new Error(`Comparison failed: ${result.errorMessage}`);
+        }
+
+        const textContent = result.content.filter(
+          (c): c is { type: "text"; text: string } => c.type === "text",
+        );
+        const comparison = textContent.map((t) => t.text).join("\n");
+
+        const resultContent: (TextContent | ImageContent)[] = [];
+
+        // Include both images in the response
+        if (image1Data) {
+          resultContent.push({
+            type: "image" as const,
+            data: image1Data.data,
+            mimeType: image1Data.mimeType,
+          });
+        }
+        if (image2Data) {
+          resultContent.push({
+            type: "image" as const,
+            data: image2Data.data,
+            mimeType: image2Data.mimeType,
+          });
+        }
+
+        const header = `[Comparing: ${path.basename(absolutePath)} vs ${path.basename(referenceAbsPath)}]\n` +
+          `[Image 1: ${imageMetadata?.width ?? "?"}×${imageMetadata?.height ?? "?"}px]\n` +
+          `[Image 2: ${referenceMetadata?.width ?? "?"}×${referenceMetadata?.height ?? "?"}px]\n` +
+          `[Vision model: ${model.provider}/${model.id}]\n\n`;
+
+        resultContent.push({
+          type: "text" as const,
+          text: header + (comparison || "(No comparison produced)"),
+        });
+
+        return {
+          content: resultContent,
+          details: {
+            image1: { path: absolutePath, size: imageSizeCheck.size },
+            image2: { path: referenceAbsPath, size: referenceSizeCheck.size },
+            visionModel: model.id,
+            dimensionsMatch:
+              imageMetadata?.width === referenceMetadata?.width &&
+              imageMetadata?.height === referenceMetadata?.height,
+          },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          content: [{ type: "text", text: `Image comparison failed: ${message}` }],
           details: { error: message },
         };
       }
