@@ -344,15 +344,30 @@ function isProseTooBrief(text: string): boolean {
 
 // State
 
-const state = {
+interface PreprocessorState {
+	config: PreprocessorConfig;
+	preprocessedCount: number;
+	skippedCount: number;
+	errorCount: number;
+	/** Last cleaned text (for diff display on submit) */
+	lastCleaned: string | null;
+	/** Last original text (for diff display on submit) */
+	lastOriginal: string | null;
+	/** Currently preprocessing - set when async preprocessing starts */
+	isPreprocessing: boolean;
+	/** Abort controller for canceling preprocessing */
+	abortController: AbortController | null;
+}
+
+const state: PreprocessorState = {
 	config: { ...DEFAULT_CONFIG, enabled: loadGlobalSetting(SETTINGS_KEY, DEFAULT_CONFIG.enabled) },
 	preprocessedCount: 0,
 	skippedCount: 0,
 	errorCount: 0,
-	/** Last cleaned text (for diff display on submit) */
-	lastCleaned: null as string | null,
-	/** Last original text (for diff display on submit) */
-	lastOriginal: null as string | null,
+	lastCleaned: null,
+	lastOriginal: null,
+	isPreprocessing: false,
+	abortController: null,
 };
 
 function clearPreprocessorWidget(ctx: ExtensionContext) {
@@ -366,6 +381,7 @@ async function preprocess(
 	original: string,
 	_images: ImageContent[] | undefined,
 	ctx: ExtensionContext,
+	externalSignal?: AbortSignal,
 ): Promise<string | null> {
 	// Use model-resolver (reads utilityModel from ~/.pi/agent/settings.json)
 	let model = resolveUtilityModel(ctx);
@@ -406,15 +422,18 @@ async function preprocess(
 	const timeoutPromise = new Promise<never>((_, reject) => {
 		const t = setTimeout(() => reject(new Error("timeout")), timeoutMs);
 		ctx.signal?.addEventListener("abort", () => clearTimeout(t), { once: true });
+		externalSignal?.addEventListener("abort", () => clearTimeout(t), { once: true });
 	});
 
 	// Calculate sufficient output tokens
 	const outputTokens = Math.min(Math.max(500, Math.floor(original.length / 4)), 4096);
+	// Use external signal if provided (for cancellation), otherwise ctx.signal
+	const effectiveSignal = externalSignal ?? ctx.signal;
 	const preprocessPromise = completeSimple(model as Model<Api>, context, {
 		apiKey,
 		maxTokens: outputTokens,
 		temperature: 0.1,
-		signal: ctx.signal,
+		signal: effectiveSignal,
 	});
 
 	let result: AssistantMessage | null = null;
@@ -468,6 +487,19 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 
 		if (original.length === 0) {
 			return { action: "continue" };
+		}
+
+		// Skip if agent is busy - let the message be queued/steered
+		if (!ctx.isIdle()) {
+			state.skippedCount++;
+			return { action: "continue" };
+		}
+
+		// Cancel any ongoing preprocessing if user sends new input
+		if (state.isPreprocessing && state.abortController) {
+			state.abortController.abort();
+			state.isPreprocessing = false;
+			clearPreprocessorWidget(ctx);
 		}
 
 		if (original.length < state.config.minLength) {
@@ -545,7 +577,7 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 			// needsCleaning === true → proceed to preprocessing
 		}
 
-		// Run preprocessing - await result and return transform
+		// Run preprocessing - await result
 		ctx.ui.setStatus("preprocessor", `Preprocessing...`);
 		ctx.ui.setWidget("preprocessor-diff", undefined);
 
@@ -556,8 +588,14 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 			return { action: "continue" };
 		}
 
+		// Create abort controller for this preprocessing
+		state.abortController = new AbortController();
+		state.isPreprocessing = true;
+
 		try {
-			const cleaned = await preprocess(original, event.images, ctx);
+			const cleaned = await preprocess(original, event.images, ctx, state.abortController.signal);
+			state.isPreprocessing = false;
+			state.abortController = null;
 			clearPreprocessorWidget(ctx);
 
 			if (cleaned) {
@@ -576,12 +614,17 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 					}, 15000);
 				}
 
-				return { action: "transform", text: cleaned };
+				// Use setEditorText to fill the editor with cleaned text
+				// Return 'continue' to NOT auto-submit - user presses Enter to send
+				ctx.ui.setEditorText(cleaned);
+				return { action: "continue" };
 			} else {
 				state.skippedCount++;
 				return { action: "continue" };
 			}
 		} catch (err: unknown) {
+			state.isPreprocessing = false;
+			state.abortController = null;
 			clearPreprocessorWidget(ctx);
 			state.errorCount++;
 			if ((err as Error)?.name !== "AbortError") {
@@ -604,6 +647,19 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 			state.config.enabled = !state.config.enabled;
 			saveGlobalSetting(SETTINGS_KEY, state.config.enabled);
 			ctx.ui.notify(`Message preprocessor ${state.config.enabled ? "enabled" : "disabled"}`, "info");
+		},
+	});
+
+	// ESC key shortcut to cancel preprocessing
+	pi.registerShortcut("escape", {
+		description: "Cancel preprocessing",
+		handler: async (ctx) => {
+			if (state.isPreprocessing && state.abortController) {
+				state.abortController.abort();
+				state.isPreprocessing = false;
+				clearPreprocessorWidget(ctx);
+				ctx.ui.notify("Preprocessing cancelled", "info");
+			}
 		},
 	});
 }
