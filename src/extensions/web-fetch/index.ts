@@ -184,6 +184,33 @@ async function secureFetch(url: string, options: {
 		clearTimeout(timer);
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : String(err);
+		const cause = err instanceof Error ? err.cause : undefined;
+
+		let hint = "";
+		if (cause && typeof cause === "object" && "code" in cause) {
+			switch ((cause as { code: string }).code) {
+				case "ECONNREFUSED":
+					hint = " - server not accepting connections (check host/port)";
+					break;
+				case "ENOTFOUND":
+					hint = " - DNS lookup failed (check hostname)";
+					break;
+				case "ETIMEDOUT":
+					hint = " - connection timed out";
+					break;
+				case "ECONNRESET":
+					hint = " - connection reset by server (possible anti-bot blocking)";
+					break;
+				case "ENETUNREACH":
+					hint = " - network unreachable (check connectivity)";
+					break;
+				case "EAI_AGAIN":
+					hint = " - DNS temporary failure, retry later";
+					break;
+			}
+		}
+		if (!hint) hint = " - check URL and try again";
+
 		return {
 			content: "",
 			status: 0,
@@ -194,7 +221,7 @@ async function secureFetch(url: string, options: {
 			outputSize: 0,
 			error: err instanceof Error && err.name === "AbortError"
 				? "Request timed out or was cancelled"
-				: `Fetch error: ${message}`,
+				: message.replace(/^fetch failed:\s*/i, "") + hint,
 		};
 	}
 
