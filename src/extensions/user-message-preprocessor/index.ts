@@ -659,19 +659,6 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 			ctx.ui.notify(`Message preprocessor ${state.config.enabled ? "enabled" : "disabled"}`, "info");
 		},
 	});
-
-	// ESC key shortcut to cancel preprocessing
-	pi.registerShortcut("escape", {
-		description: "Cancel preprocessing",
-		handler: async (ctx) => {
-			if (state.isPreprocessing && state.abortController) {
-				state.abortController.abort();
-				state.isPreprocessing = false;
-				clearPreprocessorWidget(ctx);
-				ctx.ui.notify("Preprocessing cancelled", "info");
-			}
-		},
-	});
 }
 
 // Diff Display
