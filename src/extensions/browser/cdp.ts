@@ -100,7 +100,7 @@ export class CdpClient {
 		const id = this.nextId++;
 		const cmd: CdpCommand = { id, method, params };
 
-		console.log(`[CDP] >>> ${method}`, params ? JSON.stringify(params).slice(0, 200) : "");
+		console.log(`[CDP] >>> ${method}${params ? " " + JSON.stringify(params).slice(0, 100) : ""}`);
 
 		return new Promise((resolve, reject) => {
 			const timeout = setTimeout(() => {
@@ -109,8 +109,8 @@ export class CdpClient {
 			}, 30000);
 
 			this.pending.set(id, {
-				resolve: (v) => { clearTimeout(timeout); console.log(`[CDP] <<< ${method}:`, JSON.stringify(v).slice(0, 200)); resolve(v); },
-				reject: (e) => { clearTimeout(timeout); console.log(`[CDP] !!! ${method}:`, e.message); reject(e); }
+				resolve: (v) => { clearTimeout(timeout); console.log(`[CDP] <<< ${method}: OK`); resolve(v); },
+				reject: (e) => { clearTimeout(timeout); console.log(`[CDP] !!! ${method}: ${e.message}`); reject(e); }
 			});
 			this.ws!.send(JSON.stringify(cmd));
 		});
@@ -177,9 +177,11 @@ export async function spawnChrome(opts: { useProfile?: boolean; port?: number } 
 	const SCRAPING_DIR = `${home}/.cache/browser-tools`;
 	const port = opts.port ?? 9222;
 
-	// Clean up singleton locks
+	// Clean up singleton locks and old processes on that port
 	execSync(`mkdir -p "${SCRAPING_DIR}"`, { stdio: "ignore" });
 	execSync(`rm -f "${SCRAPING_DIR}/SingletonLock" "${SCRAPING_DIR}/SingletonSocket" "${SCRAPING_DIR}/SingletonCookie"`, { stdio: "ignore" });
+	// Kill any existing Chrome on this port
+	execSync(`lsof -ti :${port} | xargs kill -9 2>/dev/null || true`, { stdio: "ignore" });
 
 	if (opts.useProfile) {
 		// Sync Chrome profile (without session data)
@@ -199,13 +201,22 @@ export async function spawnChrome(opts: { useProfile?: boolean; port?: number } 
 		? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 		: "google-chrome";
 
+	// Chrome with full DevTools support
 	const child = spawn(chromePath, [
-		"--remote-debugging-port=" + port,
+		`--remote-debugging-port=${port}`,
 		`--user-data-dir=${SCRAPING_DIR}`,
 		"--no-first-run",
 		"--no-default-browser-check",
+		"--no-sandbox", // Required on some systems for DevTools
+		"--disable-dev-shm-usage",
+		"--remote-debugging-address=127.0.0.1",
+		"--headless=old", // Use old headless mode for stability
+		"about:blank", // Start with blank page
 	], { detached: true, stdio: "ignore" });
 	child.unref();
+
+	// Give Chrome a moment to start
+	await new Promise((r) => setTimeout(r, 500));
 
 	return port;
 }
