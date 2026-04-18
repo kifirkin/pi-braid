@@ -16,60 +16,292 @@ import { resolveVisionModel } from "../../lib/model-resolver.js";
 const SUPPORTED_IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp"];
 const BYTES_PER_MB = 1024 * 1024;
 const DEFAULT_MAX_IMAGE_SIZE_MB = 5;
-const IMAGE_PREVIEW_THRESHOLD_MB = 2; // Only include preview if under 2MB
+const IMAGE_PREVIEW_THRESHOLD_MB = 2;
 
-/** Standard image analysis prompt - for screenshots, photos, documents */
-const GENERAL_PROMPT = `Please analyze this image comprehensively. Extract ALL information from the image including:
+/**
+ * Universal Image Analysis Prompt
+ *
+ * This single prompt handles ALL content types internally. The LLM examines
+ * the image, detects its domain, and applies the appropriate analysis
+ * framework automatically. No pre-classification needed.
+ *
+ * Supported domains detected internally:
+ * - ui: User interfaces (buttons, forms, dashboards, menus)
+ * - game_screenshot: Games (HUD, characters, levels, enemies)
+ * - sprite_asset: Pixel art sprites, tilesets, icons
+ * - spritesheet: Grid of animation frames
+ * - document: Text documents, forms, slides
+ * - diagram: Charts, flowcharts, graphs, schematics
+ * - photo: Natural photography
+ * - other: Anything else
+ */
+const UNIVERSAL_ANALYSIS_PROMPT = `Analyze this image comprehensively. First determine its content domain, then apply the appropriate analysis framework.
 
-1. **Overall Description**: What type of content is this? (screenshot, diagram, document, photograph, UI, code, etc.)
-2. **Text Content**: ALL visible text in the image, preserving structure and formatting. Include labels, buttons, error messages, file paths, code snippets, etc. Be exhaustive.
-3. **Visual Elements**: Colors, layout, components, icons, graphical elements
-4. **Technical Details**: For code, UI, diagrams - include exact values, class names, IDs, parameters, configurations
-5. **Contextual Information**: Window titles, terminal prompts, file names, timestamps, status indicators
-6. **Structure**: How elements are organized, relationships between components
-7. **Actionable Information**: Any visible commands, settings, configurations, or parameters that could be useful
-8. **Layout Sketch**: If applicable, provide an ASCII art representation of the layout showing relative positions of key UI elements, text blocks, or visual components. Use box-drawing characters (┌─┐│└┘) for structure. This helps understand spatial relationships even without seeing the image.
-
-Format your response clearly with sections and bullet points. Be extremely thorough - the user needs to understand everything visible in this image to perform their task.`;
-
-/** Pixel art / spritesheet analysis prompt */
-const PIXEL_ART_PROMPT = `This is a pixel art image or spritesheet. Analyze it as such - do NOT treat it as a natural photograph.
-
+**Image**: {filename}
 **Dimensions**: {width}×{height} pixels
 {extremeRatioWarning}
 
-## Analysis Requirements
+---
 
-1. **Image Type**: Is this a single sprite, a spritesheet grid, a tilemap, game asset, or other pixel art?
-2. **Grid Detection**: If a spritesheet, identify the grid structure:
-   - Number of columns and rows
-   - Cell dimensions (width × height per cell)
-   - Spacing/gaps between cells
-   - Total number of sprites
-3. **Color Palette**: List all distinct colors used (with hex codes). Report approximate percentage coverage for dominant colors.
-4. **Per-Sprite Analysis**: For each detected sprite cell:
-   - Describe the visual content (character pose, animation frame, object)
-   - List colors present in that cell
-   - Estimate fill percentage (how much of the cell is non-transparent/non-background)
-5. **Anomaly Detection**: Flag cells that differ significantly from the others:
-   - Missing features (body parts, accessories, details present in other cells)
-   - Different color palette
-   - Significantly different fill percentage
-   - Misalignment or irregular borders
-6. **Quality Issues**: Report any artifacts like:
-   - Blurring or anti-aliasing (indicates the pixel art was scaled)
-   - Missing expected elements for the depicted scene
-   - Compression artifacts or color banding
+## Phase 1: Domain Detection
 
-If the image appears to be scaled-up pixel art (sharp blocky edges, repetitive color blocks), note the approximate scale multiplier.
+Examine the image and determine its content type:
+- **ui**: User interfaces (buttons, forms, dashboards, menus, navigation)
+- **game_screenshot**: Game in progress (HUD, characters, levels, enemies)
+- **sprite_asset**: Pixel art sprites, tilesets, icons, game assets
+- **spritesheet**: Grid of animation frames or multiple sprites
+- **document**: Text documents, forms, slides, reports
+- **diagram**: Charts, flowcharts, graphs, schematics
+- **photo**: Natural photography, screenshots of real-world content
+- **other**: Anything that doesn't fit above categories
 
-Format output clearly. Be precise with dimensions and color values.`;
+Choose ONE primary domain. If multiple apply, choose the most specific (e.g., a game HUD with character = game_screenshot).
+
+---
+
+## Phase 2: Universal Measurements
+
+Always extract these baseline measurements:
+
+| Metric | Value |
+|--------|-------|
+| Dimensions | {width}×{height}px |
+| Aspect Ratio | {ratio}:1 |
+| Dominant Colors | Top 5 hex codes with approximate % |
+| Information Density | high / medium / low |
+| Layout Quadrants | Q1, Q2, Q3, Q4 element summary |
+
+---
+
+## Phase 3: Domain-Specific Deep Analysis
+
+### For **ui** (User Interfaces):
+
+**Layout Structure**
+- Overall pattern: single column, grid, dashboard, sidebar layout, etc.
+- Content hierarchy zones (header, main, footer, sidebar)
+- Responsive indicators (mobile/tablet/desktop viewport)
+
+**Component Inventory** (list ALL visible):
+- Navigation: header, sidebar, tabs, breadcrumbs, hamburger menu
+- Content: cards, panels, modals, accordions
+- Interactive: buttons, inputs, toggles, dropdowns, sliders
+- Feedback: toasts, alerts, progress bars, badges, tooltips
+- Each component: position (approx), size (approx), state (normal/hover/disabled)
+
+**Typography**
+- Font sizes (relative hierarchy: H1/H2/H3/body/small)
+- Text colors (primary/secondary/muted/disabled)
+- Any truncation, overflow, or readability issues?
+
+**Color & Style**
+- Primary brand color (hex)
+- Accent/secondary color (hex)
+- Background scheme (light/dark/system)
+- Border radius style (sharp/rounded/pill)
+
+**Spacing & Alignment**
+- Grid system (if visible)
+- Consistent margins/padding (px estimate)
+- Element alignment (left/center/right)
+
+**Accessibility** (if assessable)
+- Contrast ratio (pass/fail for WCAG AA)
+- Focus indicators visible?
+- Error states rendered?
+
+
+### For **game_screenshot** (Game Screenshots):
+
+**Game Type Detection**
+- Genre: platformer, RPG, puzzle, shooter, strategy, adventure, etc.
+- Perspective: side-scrolling, top-down, isometric, first-person, third-person
+
+**Player/Character**
+- Visible? Description (sprite, model, silhouette)
+- Pose/state: idle, walking, running, jumping, attacking, etc.
+- Hitbox area (if discernible)
+- Animation frame (if sprite)
+
+**HUD/Interface Elements** (if present)
+- Health/vitals: style + current/max values
+- Score: visible value
+- Lives/continues: count
+- Timer: mm:ss format
+- Inventory slots: count and content
+- Mini-map: presence + style
+- Menu/pause accessible?
+
+**Environment/Level**
+- Environment type: forest, cave, city, interior, etc.
+- Platforms/terrain: visible collision surfaces
+- Background layers: parallax depth indicators
+- Interactive objects: doors, switches, collectibles
+- Exit points/checkpoints: visible goals
+
+**Game State Assessment**
+- Current state: playing, paused, menu, cutscene, inventory open
+- Enemies/NPCs: count, type, position
+- Projectiles/effects: visible action elements
+- Dialogue/text: on-screen text content
+
+### For **sprite_asset** (Single Sprite/Icon):
+
+**Sprite Overview**
+- Dimensions: {width}×{height}px
+- Scale factor: original / 2x / 3x / 4x (detect from blocky edges)
+- Style: character, item, tile, UI element, icon, effect
+
+**Visual Content**
+- Subject description: what the sprite depicts
+- Pose/action: idle, walk frame 1, attack, etc.
+- Detail level: 8-bit, 16-bit, modern pixel art
+
+**Color Analysis**
+- Full color palette (all unique colors with hex)
+- Dominant colors (top 5 with %)
+- Transparency: yes (alpha) / no (solid background)
+
+**Technical Quality**
+- Clean edges: yes (no anti-aliasing) / no (smoothing detected)
+- Consistent style: yes / no (mixed art styles)
+- Palette limit: appropriate for style / excessive
+
+### For **spritesheet** (Multiple Sprites Grid):
+
+**Grid Detection**
+- Columns × Rows
+- Cell dimensions: W×H per sprite
+- Inter-cell spacing/gaps: px
+- Total sprites: count
+- Bordered cells vs. tight pack
+
+**Per-Sprite Analysis** (sample the grid):
+- Frame 1 (top-left): content description + colors
+- Frame 2-N: compare to Frame 1 for consistency
+- Last frame (bottom-right): final pose/state
+
+**Animation Sequence** (if applicable):
+- Detected sequence: idle → walk → run → jump (for example)
+- Frame count per action
+- Pose progression logical?
+
+**Anomalies**
+- Missing frames
+- Duplicate frames
+- Color bleeding between cells
+- Misaligned cells
+- Inconsistent sprite dimensions
+
+### For **document** (Documents, Forms, Slides):
+
+**Document Type**
+- Type: report, form, slide, contract, manual, etc.
+- Estimated page count (if multi-page)
+- Intended audience/purpose
+
+**Complete Text Extraction**
+Extract ALL visible text:
+- Headers and subheaders
+- Body paragraphs (summarize if very long)
+- Lists (bullet/numbered)
+- Table content (with column headers)
+- Captions and footnotes
+- Footer/page numbers
+
+**Data Extraction** (for charts/tables):
+- Chart type: bar, line, pie, scatter, table
+- Axis labels and units
+- Data values (as many as visible)
+- Legend entries
+
+**Structural Integrity**
+- No cut-off content at edges
+- Tables aligned correctly
+- Figures properly positioned
+- Headers/footers consistent
+
+### For **diagram** (Charts, Flowcharts, Schematics):
+
+**Diagram Type**
+- Format: flowchart, org chart, network, circuit, UML, architectural
+- Complexity: simple / moderate / complex
+
+**Element Inventory**
+- Nodes/shapes: count + type (rectangle, diamond, oval, etc.)
+- Connections: arrows, lines, connectors
+- Labels: text on nodes and connections
+- Legend/key: present / absent
+
+**Flow/Logic**
+- Direction: top-to-bottom, left-to-right, bidirectional
+- Decision points: diamond nodes with yes/no branches
+- Terminals: start/end ovals
+
+**Data Values** (for charts/graphs):
+- Chart type with data series
+- Axis labels with units
+- Key data points with values
+- Trend indicators (increasing, decreasing, stable)
+
+### For **photo** (Natural Photography):
+
+**Scene Description**
+- Subject: what is the main focus
+- Setting: indoor, outdoor, urban, nature, etc.
+- Lighting: natural, artificial, harsh, soft, backlit
+
+**Composition**
+- Rule of thirds: applied / not applied
+- Leading lines: present / absent
+- Depth: shallow / deep / extreme
+- Framing: tight / balanced / cluttered
+
+**Technical Quality**
+- Focus: sharp / soft / selective
+- Exposure: correct / underexposed / overexposed
+- Color balance: natural / tinted / filtered
+- Noise/grain: minimal / moderate / heavy
+
+### For **other**:
+
+Provide general description covering:
+- What the image depicts
+- Dominant visual elements
+- Colors and mood
+- Any notable technical qualities
+
+---
+
+## Phase 4: Summary Report
+
+Provide a structured final report:
+
+### Detected Domain: [domain]
+
+### Key Findings
+[3-5 bullet points of most important observations]
+
+### Measurements
+| Element | Position | Size | Notes |
+|---------|----------|------|-------|
+| [element 1] | (x,y) | W×H | [notes] |
+| [element 2] | (x,y) | W×H | [notes] |
+
+### Issues (if any)
+- **Critical**: [breaking issues]
+- **Warning**: [quality concerns]
+- **Info**: [minor notes]
+
+### Recommendations (if requested context allows)
+[Suggestions for improvement, if applicable]
+
+---
+
+Format your response clearly with headers and tables. Be thorough but organized.`;
 
 // Types
 
-/**
- * Image metadata extracted before LLM analysis
- */
 interface ImageMetadata {
   width: number;
   height: number;
@@ -98,13 +330,11 @@ interface AnalysisResult {
   mimeType: string;
   sizeWarning?: string;
   analysisWarning?: string;
+  detectedDomain: string;
 }
 
 // Utility Functions
 
-/**
- * Expand ~ to home directory
- */
 function expandHomeDir(imagePath: string): string {
   if (imagePath.startsWith("~/") || imagePath === "~") {
     return imagePath.replace(/^~/, os.homedir());
@@ -112,17 +342,11 @@ function expandHomeDir(imagePath: string): string {
   return imagePath;
 }
 
-/**
- * Check if path is a supported image file
- */
 function isImageFile(imagePath: string): boolean {
-  const ext = path.extname(imagePath).toLowerCase().slice(1); // Remove leading dot
+  const ext = path.extname(imagePath).toLowerCase().slice(1);
   return SUPPORTED_IMAGE_EXTENSIONS.includes(ext);
 }
 
-/**
- * Get MIME type from file extension
- */
 function getMimeType(imagePath: string): string {
   const ext = path.extname(imagePath).toLowerCase().slice(1);
   const mimeTypes: Record<string, string> = {
@@ -135,9 +359,6 @@ function getMimeType(imagePath: string): string {
   return mimeTypes[ext] || "image/jpeg";
 }
 
-/**
- * Check image file size and return warnings
- */
 function checkImageSize(absolutePath: string): ImageSizeCheck {
   const stats = fs.statSync(absolutePath);
   const size = stats.size;
@@ -157,10 +378,6 @@ function checkImageSize(absolutePath: string): ImageSizeCheck {
   };
 }
 
-/**
- * Extract image dimensions and detect characteristics.
- * Reads minimal header bytes to determine dimensions without loading full image.
- */
 function getImageMetadata(absolutePath: string): ImageMetadata | null {
   try {
     const buffer = fs.readFileSync(absolutePath);
@@ -170,11 +387,9 @@ function getImageMetadata(absolutePath: string): ImageMetadata | null {
     const ext = path.extname(absolutePath).toLowerCase();
 
     if (ext === ".png" && buffer.length > 24) {
-      // PNG: IHDR width at byte 16 (4 bytes BE), height at byte 20
       width = buffer.readUInt32BE(16);
       height = buffer.readUInt32BE(20);
     } else if ((ext === ".jpg" || ext === ".jpeg") && buffer.length > 10) {
-      // JPEG: scan for SOF markers (0xFF 0xC0..0xC3) for dimensions
       let offset = 2;
       while (offset < buffer.length - 9 && offset < 10000) {
         if (buffer[offset] !== 0xff) {
@@ -195,7 +410,6 @@ function getImageMetadata(absolutePath: string): ImageMetadata | null {
         }
       }
     } else if (ext === ".gif" && buffer.length > 10) {
-      // GIF: width at offset 6 (2 bytes LE), height at offset 8 (2 bytes LE)
       width = buffer.readUInt16LE(6);
       height = buffer.readUInt16LE(8);
     } else if (ext === ".webp" && buffer.length > 30) {
@@ -233,18 +447,12 @@ function getImageMetadata(absolutePath: string): ImageMetadata | null {
   }
 }
 
-/**
- * Format file size for display
- */
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < BYTES_PER_MB) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / BYTES_PER_MB).toFixed(1)} MB`;
 }
 
-/**
- * Read image file and convert to base64
- */
 function readImageAsBase64(absolutePath: string): { data: string; mimeType: string } | null {
   try {
     const buffer = fs.readFileSync(absolutePath);
@@ -255,18 +463,20 @@ function readImageAsBase64(absolutePath: string): { data: string; mimeType: stri
   }
 }
 
-// Core Analysis Logic
-
 /**
  * Core image analysis - returns analysis result with optional image data
+ *
+ * Uses a single universal prompt that internally:
+ * 1. Detects the content domain (ui, game, sprite, document, etc.)
+ * 2. Extracts universal measurements (dimensions, colors, layout)
+ * 3. Applies domain-specific deep analysis
+ * 4. Produces a structured summary report
  */
 async function performImageAnalysis(
   ctx: ExtensionContext,
   absolutePath: string,
   onUpdate?: (metadata: string) => void,
 ): Promise<AnalysisResult> {
-  // Get vision model from core agent settings
-  // Resolve vision model - no patching required, reads settings + modelRegistry directly
   const model = resolveVisionModel(ctx);
   if (!model) {
     throw new Error(
@@ -274,31 +484,24 @@ async function performImageAnalysis(
     );
   }
 
-  // Check file exists
   if (!fs.existsSync(absolutePath)) {
     throw new Error(`File not found: ${absolutePath}`);
   }
 
-  // Check file is an image
   if (!isImageFile(absolutePath)) {
     throw new Error(
       `Not a supported image file. Supported formats: ${SUPPORTED_IMAGE_EXTENSIONS.join(", ")}`,
     );
   }
 
-  // Check image size
   const sizeCheck = checkImageSize(absolutePath);
-
-  // Read image for preview (only if small enough)
   const imageData = readImageAsBase64(absolutePath);
   const imageBase64 = sizeCheck.isPreviewable ? imageData : undefined;
-
-  // Detect image metadata for better analysis context
   const metadata = getImageMetadata(absolutePath);
 
-  // Send initial metadata update
   const mimeType = getMimeType(absolutePath);
-  const metadataLines = [`Analyzing: ${absolutePath}`];
+  const fileName = path.basename(absolutePath);
+  const metadataLines = [`Analyzing: ${fileName}`];
   if (metadata) {
     metadataLines.push(
       `Dimensions: ${metadata.width}×${metadata.height} (${metadata.aspectRatio.toFixed(1)}:1 ratio)`,
@@ -307,10 +510,9 @@ async function performImageAnalysis(
   metadataLines.push(`Size: ${formatFileSize(sizeCheck.size)} (${sizeCheck.sizeMB.toFixed(1)} MB)`);
   metadataLines.push(`MIME: ${mimeType}`);
   if (sizeCheck.warning) metadataLines.push(sizeCheck.warning);
-  metadataLines.push(`Using vision model: ${model.provider}/${model.id}`);
+  metadataLines.push(`Vision model: ${model.provider}/${model.id}`);
   onUpdate?.(metadataLines.filter(Boolean).join("\n"));
 
-  // Get API key
   const apiKey = await ctx.modelRegistry.getApiKeyForProvider(model.provider);
   if (!apiKey) {
     throw new Error(
@@ -318,24 +520,17 @@ async function performImageAnalysis(
     );
   }
 
-  // Build context with image
-  // Detect potential pixel art: small dimensions, PNG/GIF/WebP, likely blocky content
-  const ext = path.extname(absolutePath).toLowerCase();
-  const isLikelyPixelArt = metadata
-    ? metadata.width <= 384 && metadata.height <= 384 && [".png", ".gif", ".webp"].includes(ext)
-    : false;
-
-  // Select prompt based on image characteristics
-  const analysisPrompt = isLikelyPixelArt
-    ? PIXEL_ART_PROMPT.replace("{width}", String(metadata?.width ?? "?"))
-        .replace("{height}", String(metadata?.height ?? "?"))
-        .replace("{extremeRatioWarning}", metadata?.analysisWarning ?? "")
-    : GENERAL_PROMPT;
+  // Build the universal analysis prompt with dynamic values
+  const analysisPrompt = UNIVERSAL_ANALYSIS_PROMPT
+    .replace("{filename}", fileName)
+    .replace("{width}", String(metadata?.width ?? "?"))
+    .replace("{height}", String(metadata?.height ?? "?"))
+    .replace("{ratio}", metadata ? metadata.aspectRatio.toFixed(1) : "?")
+    .replace("{extremeRatioWarning}", metadata?.analysisWarning ?? "");
 
   const context = {
-    systemPrompt: isLikelyPixelArt
-      ? "You are an expert in pixel art, spritesheets, and game asset analysis. Provide precise, technical descriptions."
-      : "You are an image analysis assistant. Provide detailed, accurate descriptions of images.",
+    systemPrompt:
+      "You are an expert visual analyst. Analyze images thoroughly, detect their content domain, and apply the appropriate analysis framework. Provide structured, detailed reports.",
     messages: [
       {
         role: "user" as const,
@@ -352,14 +547,12 @@ async function performImageAnalysis(
     ],
   };
 
-  // Call the vision model
   const result = await completeSimple(model, context, {
     apiKey,
     maxTokens: 4096,
     temperature: 0.3,
   });
 
-  // Extract text content
   const textContent = result.content.filter(
     (c): c is { type: "text"; text: string } => c.type === "text",
   );
@@ -378,6 +571,9 @@ async function performImageAnalysis(
     }
   }
 
+  // Extract detected domain from analysis for the result
+  const detectedDomain = extractDetectedDomain(analysis) || "unknown";
+
   return {
     analysis: annotated,
     imageData: imageBase64 ?? undefined,
@@ -387,23 +583,32 @@ async function performImageAnalysis(
     mimeType,
     sizeWarning: sizeCheck.warning,
     analysisWarning: metadata?.analysisWarning,
+    detectedDomain,
   };
+}
+
+/**
+ * Extract the detected domain from the analysis text
+ */
+function extractDetectedDomain(analysis: string): string | null {
+  const domainPatterns = [
+    { pattern: /###\s*Detected\s*Domain:\s*(\w+)/i, name: "detected_domain_header" },
+    { pattern: /Detected\s*Domain:\s*\*\*(?:ui|game_screenshot|sprite_asset|spritesheet|document|diagram|photo|other)\*\*/i, name: "detected_domain_bold" },
+    { pattern: /Domain\s*Detection.*?(?:^|\n)\s*(ui|game_screenshot|sprite_asset|spritesheet|document|diagram|photo|other)/im, name: "domain_detection" },
+  ];
+
+  for (const { pattern } of domainPatterns) {
+    const match = analysis.match(pattern);
+    if (match) {
+      return match[1]?.toLowerCase() || null;
+    }
+  }
+
+  return null;
 }
 
 // Extension
 
-/**
- * Vision Extension - Image Analysis
- *
- * Provides the analyze_image tool for vision-capable image analysis.
- * Uses the vision model configured via the vision model selector.
- *
- * Tools:
- *   analyze_image - LLM-callable tool for image analysis
- *
- * Commands:
- *   /analyze-image <path> - User command for image analysis
- */
 export default function visionExtension(pi: ExtensionAPI) {
   // Tool: analyze_image
 
@@ -411,7 +616,7 @@ export default function visionExtension(pi: ExtensionAPI) {
     name: "analyze_image",
     label: "Analyze Image",
     description:
-      "Analyze an image file using a vision model. Automatically detects pixel art, spritesheets, and grid layouts for specialized analysis. Extracts text, visual elements, technical details, and color palettes. Reports image dimensions and aspect ratio warnings.",
+      "Analyze an image file using a vision model. Automatically detects the content domain (UI, game screenshot, sprite, document, etc.) and applies the appropriate analysis framework. Supports all visual content types with structured output.",
     parameters: Type.Object({
       imagePath: Type.String({
         description: "Path to the image file (jpg, jpeg, png, gif, webp)",
@@ -425,11 +630,9 @@ export default function visionExtension(pi: ExtensionAPI) {
       onUpdate,
       ctx,
     ): Promise<AgentToolResult<unknown>> => {
-      // Expand home directory and resolve path
       const imagePathExpanded = expandHomeDir(params.imagePath);
       const absolutePath = path.resolve(ctx.cwd, imagePathExpanded);
 
-      // Validate file exists
       if (!fs.existsSync(absolutePath)) {
         return {
           content: [{ type: "text", text: `Error: File not found: ${params.imagePath}` }],
@@ -437,7 +640,6 @@ export default function visionExtension(pi: ExtensionAPI) {
         };
       }
 
-      // Validate image format
       if (!isImageFile(absolutePath)) {
         return {
           content: [
@@ -450,7 +652,6 @@ export default function visionExtension(pi: ExtensionAPI) {
         };
       }
 
-      // Perform analysis with streaming updates
       try {
         const result = await performImageAnalysis(ctx, absolutePath, (metadata) => {
           onUpdate?.({
@@ -459,7 +660,6 @@ export default function visionExtension(pi: ExtensionAPI) {
           });
         });
 
-        // Build result content: image first (for display), then text
         const resultContent: (TextContent | ImageContent)[] = [];
 
         if (result.imageData) {
@@ -472,7 +672,7 @@ export default function visionExtension(pi: ExtensionAPI) {
 
         resultContent.push({
           type: "text" as const,
-          text: `[Image analyzed: ${absolutePath}]\n\n${result.analysis}`,
+          text: `[Image analyzed: ${path.basename(result.path)}]\n[Detected domain: ${result.detectedDomain}]\n\n${result.analysis}`,
         });
 
         return {
@@ -483,6 +683,7 @@ export default function visionExtension(pi: ExtensionAPI) {
             mimeType: result.mimeType,
             imageIncluded: !!result.imageData,
             visionModel: result.model?.id,
+            detectedDomain: result.detectedDomain,
           },
         };
       } catch (error) {
@@ -499,7 +700,7 @@ export default function visionExtension(pi: ExtensionAPI) {
 
   pi.registerCommand("analyze-image", {
     description:
-      "Analyze an image using a vision-capable model. Automatically detects pixel art and spritesheets. Usage: /analyze-image <path>",
+      "Analyze an image using a vision model. Automatically detects content domain and applies appropriate framework. Usage: /analyze-image <path>",
     handler: async (args: string, ctx: ExtensionContext) => {
       if (!ctx.hasUI) return;
 
@@ -509,11 +710,9 @@ export default function visionExtension(pi: ExtensionAPI) {
         return;
       }
 
-      // Expand home directory and resolve path
       const imagePathExpanded = expandHomeDir(imagePath);
       const absolutePath = path.resolve(ctx.cwd, imagePathExpanded);
 
-      // Validate image format
       if (!isImageFile(absolutePath)) {
         ctx.ui.notify(
           `Not a supported image file. Supported: ${SUPPORTED_IMAGE_EXTENSIONS.join(", ")}`,
@@ -522,7 +721,6 @@ export default function visionExtension(pi: ExtensionAPI) {
         return;
       }
 
-      // Check size and warn
       const sizeCheck = checkImageSize(absolutePath);
       if (sizeCheck.warning) {
         ctx.ui.notify(sizeCheck.warning, "warning");
@@ -530,9 +728,7 @@ export default function visionExtension(pi: ExtensionAPI) {
 
       try {
         const result = await performImageAnalysis(ctx, absolutePath);
-
-        // Show analysis in editor
-        const header = `[Image: ${absolutePath}]\n[Size: ${formatFileSize(result.size)}]\n\n`;
+        const header = `[Image: ${path.basename(result.path)}]\n[Domain: ${result.detectedDomain}]\n[Size: ${formatFileSize(result.size)}]\n\n`;
         await ctx.ui.editor("Image Analysis", header + result.analysis);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);

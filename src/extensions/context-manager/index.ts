@@ -788,6 +788,13 @@ const COMPACTION_RETRY_MAX_ATTEMPTS = 3;
 const COMPACTION_RETRY_BASE_DELAY_MS = 2000;
 const COMPACTION_RETRY_CUSTOM_TYPE = "__compact_retry_trigger";
 
+// Overflow Recovery Retry Configuration
+// When overflow retry fails, we need to try MORE aggressive compaction
+const OVERFLOW_RETRY_MAX_ATTEMPTS = 3;
+const OVERFLOW_RETRY_BASE_DELAY_MS = 3000;
+// Each retry keeps less context to ensure we fit in the model's limits
+const OVERFLOW_RETRY_KEEP_REDUCTION_FACTOR = 0.7; // Keep 30% less each retry
+
 /** Track compaction retry state */
 interface CompactionRetryState {
 	attempt: number;
@@ -796,11 +803,26 @@ interface CompactionRetryState {
 	retryTimeout: ReturnType<typeof setTimeout> | null;
 }
 
+/** Track overflow recovery retry state */
+interface OverflowRetryState {
+	attempt: number;
+	lastError: string;
+	retryTimeout: ReturnType<typeof setTimeout> | null;
+	aggressiveMode: boolean; // When true, keep less context each retry
+}
+
 const compactionRetryState: CompactionRetryState = {
 	attempt: 0,
 	lastError: "",
 	lastReason: "",
 	retryTimeout: null,
+};
+
+const overflowRetryState: OverflowRetryState = {
+	attempt: 0,
+	lastError: "",
+	retryTimeout: null,
+	aggressiveMode: false,
 };
 
 /** Get delay for current retry attempt with exponential backoff */
@@ -821,6 +843,65 @@ function resetCompactionRetry(): void {
 	compactionRetryState.attempt = 0;
 	compactionRetryState.lastError = "";
 	compactionRetryState.lastReason = "";
+}
+
+/** Get delay for overflow retry with exponential backoff */
+function getOverflowRetryDelay(attempt: number): number {
+	return OVERFLOW_RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
+}
+
+/** Clear any pending overflow retry timeout */
+function clearOverflowRetry(): void {
+	if (overflowRetryState.retryTimeout) {
+		clearTimeout(overflowRetryState.retryTimeout);
+		overflowRetryState.retryTimeout = null;
+	}
+}
+
+function resetOverflowRetry(): void {
+	clearOverflowRetry();
+	overflowRetryState.attempt = 0;
+	overflowRetryState.lastError = "";
+	overflowRetryState.aggressiveMode = false;
+}
+
+/**
+ * Trigger aggressive overflow recovery retry.
+ * Each retry keeps less context to ensure we fit in the model's limits.
+ * Uses hidden steer message to trigger manual /compact with reduced keepRecentTokens.
+ */
+function triggerOverflowRetry(pi: ExtensionAPI, attempt: number, errorMessage: string, ctx: any): void {
+	clearOverflowRetry();
+
+	const delayMs = getOverflowRetryDelay(attempt);
+	overflowRetryState.attempt = attempt;
+	overflowRetryState.lastError = errorMessage;
+	overflowRetryState.aggressiveMode = attempt > 1;
+
+	overflowRetryState.retryTimeout = setTimeout(() => {
+		overflowRetryState.retryTimeout = null;
+
+		// Calculate reduced keepRecentTokens for aggressive compaction
+		const baseKeep = 20000; // Default keepRecentTokens
+		const reducedKeep = Math.floor(baseKeep * Math.pow(OVERFLOW_RETRY_KEEP_REDUCTION_FACTOR, attempt - 1));
+
+		// Send hidden trigger message that prompts aggressive /compact
+		pi.sendMessage(
+			{
+				customType: "__overflow_retry_trigger",
+				content: [
+					{
+						type: "text" as const,
+						text: attempt === 1
+							? `[Overflow Recovery] Initial compaction failed (${errorMessage}). Retrying with reduced context... (${attempt}/${OVERFLOW_RETRY_MAX_ATTEMPTS})`
+							: `[Overflow Recovery] Retry ${attempt}/${OVERFLOW_RETRY_MAX_ATTEMPTS}: ${errorMessage}. Attempting more aggressive compaction (keep ≤${reducedKeep} tokens)...`,
+					},
+				],
+				display: false, // Hidden from user
+			},
+			{ triggerTurn: true },
+		);
+	}, delayMs);
 }
 
 /**
@@ -1312,12 +1393,61 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 
 			// ── Overflow recovery failure ────────────────────────────────────
 			// Compaction WORKED but the retry after compaction failed.
-			// Retrying compaction won't help - the underlying error persists.
+			// This could mean:
+			// 1. Compaction didn't reduce enough (most common)
+			// 2. Wrong model/provider configuration
+			// 3. API key or format issues
+			// We retry with MORE aggressive compaction instead of giving up.
 			if (reason === "overflow" && !willRetry && !aborted) {
 				const entryId = result?.firstKeptEntryId ?? (event as any).compactionEntry?.id;
-				if (entryId && _compactedEntries.has(entryId)) return;
 
 				const errMsg = errorMessage ?? "Compaction succeeded but the retry overflowed.";
+
+				// Check if this is a persistent 400 error (API issue, not context issue)
+				const isPersistent400 = /400|no body|status code/i.test(errMsg);
+
+				if (isPersistent400 && overflowRetryState.attempt === 0) {
+					// First overflow retry failure - check if it looks like API config issue
+					// 400 "no body" from Cerebras can mean either overflow OR API issues
+					// Give it one more chance with aggressive compaction
+					log.warn(`Overflow retry detected: ${errMsg}. Attempting recovery.`);
+				}
+
+				// Retry with more aggressive compaction (up to OVERFLOW_RETRY_MAX_ATTEMPTS)
+				if (overflowRetryState.attempt < OVERFLOW_RETRY_MAX_ATTEMPTS) {
+					_compactedEntries.add(entryId ?? "overflow-" + Date.now());
+
+					// Calculate reduced keepRecentTokens
+					const baseKeep = 20000;
+					const reducedKeep = Math.floor(baseKeep * Math.pow(OVERFLOW_RETRY_KEEP_REDUCTION_FACTOR, overflowRetryState.attempt));
+
+					pi.sendMessage({
+						customType: "context",
+						content: [{
+							type: "text" as const,
+							text: [
+								`## ⚠️ Context overflow recovery failed (attempt ${overflowRetryState.attempt + 1}/${OVERFLOW_RETRY_MAX_ATTEMPTS})`,
+								errMsg,
+								"",
+								overflowRetryState.attempt === 0
+									? "Retrying with more aggressive compaction..."
+									: `Retrying with keep ≤${reducedKeep} tokens (attempt ${overflowRetryState.attempt + 1}/${OVERFLOW_RETRY_MAX_ATTEMPTS})...`,
+								"",
+								"If this persists, possible causes:",
+								"1. **Model context limit exceeded** - Consider switching to a larger-context model",
+								"2. **API configuration issue** - Run `/model` to verify settings",
+								"3. **Tokenizer mismatch** - Local count differs from API",
+							].join("\n"),
+						}],
+						display: true,
+					}, { deliverAs: "steer" });
+
+					// Trigger overflow retry with context
+					triggerOverflowRetry(pi, overflowRetryState.attempt + 1, errMsg, undefined as any);
+					return;
+				}
+
+				// Exhausted overflow retries
 				_compactedEntries.add(entryId ?? "overflow-" + Date.now());
 
 				pi.sendMessage({
@@ -1325,22 +1455,28 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 					content: [{
 						type: "text" as const,
 						text: [
-							"## ⚠️ Context overflow recovery failed",
+							"## ⚠️ Context overflow recovery exhausted",
 							errMsg,
 							"",
-							"The API returned an overflow error even after compaction. This usually means:",
-							"1. **Wrong model/provider** - the model ID doesn't match your API key",
-							"2. **API key invalid** - Cerebras API key is wrong or account is suspended",
-							"3. **Request format rejected** - the request violates the API's format rules",
+							"After " + OVERFLOW_RETRY_MAX_ATTEMPTS + " attempts, compaction cannot reduce context enough.",
 							"",
-							"**Immediate actions:**",
+							isPersistent400
+								? "**Possible API configuration issue (400 error):**"
+								: "**Possible context limit exceeded:**",
+							isPersistent400
+								? "- Check API key in ~/.pi/settings.json\n- Verify model ID matches your API key\n- Try `/model` to switch models"
+								: "- Switch to a larger-context model\n- Start a new session\n- Store learnings in memory first",
+							"",
+							"**Manual intervention required:**",
 							"- Run `/model` to switch to a different model (e.g. anthropic/claude-3-5-sonnet)",
-							"- Check your Cerebras API key in ~/.pi/settings.json",
-							"- Run `context_audit()` to see session hygiene before continuing",
+							"- Run `context_audit()` to see session state",
+							"- Consider using `memory_store()` to preserve key learnings before switching",
 						].join("\n"),
 					}],
 					display: true,
 				}, { deliverAs: "steer" });
+
+				resetOverflowRetry();
 				return;
 			}
 
@@ -1420,6 +1556,10 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 				cleaned = true;
 				return null; // Mark for filtering
 			}
+			if (msg.role === "custom" && msg.customType === "__overflow_retry_trigger") {
+				cleaned = true;
+				return null; // Mark for filtering
+			}
 			return msg;
 		}).filter(Boolean);
 
@@ -1464,15 +1604,65 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 	// When we receive our hidden trigger, check if we should retry compaction
 	// and if so, prompt the agent to run /compact again.
 	pi.on("agent_end", async (event: any, ctx: any) => {
-		// Only act if this was a compaction retry turn
+		// Only act if this was a compaction retry turn or overflow retry turn
 		const messages = event.messages;
 		let hasRetryTrigger = false;
+		let hasOverflowRetryTrigger = false;
 
 		for (const msg of messages) {
 			if (msg.role === "custom" && msg.customType === COMPACTION_RETRY_CUSTOM_TYPE) {
 				hasRetryTrigger = true;
 				break;
 			}
+			if (msg.role === "custom" && msg.customType === "__overflow_retry_trigger") {
+				hasOverflowRetryTrigger = true;
+			}
+		}
+
+		// Handle overflow retry separately
+		if (hasOverflowRetryTrigger) {
+			// Check if this turn's response was successful
+			let lastAssistant: any = null;
+			for (let i = messages.length - 1; i >= 0; i--) {
+				if (messages[i].role === "assistant") {
+					lastAssistant = messages[i];
+					break;
+				}
+			}
+
+			if (lastAssistant && lastAssistant.stopReason !== "error" && lastAssistant.stopReason !== "aborted") {
+				// Success! Reset overflow retry state
+				if (overflowRetryState.attempt > 0) {
+					ctx.ui.notify(
+						`Overflow recovery succeeded on attempt ${overflowRetryState.attempt}!`,
+						"info",
+					);
+				}
+				resetOverflowRetry();
+				return;
+			}
+
+			// This overflow retry also failed
+			const errorMessage = lastAssistant?.errorMessage || overflowRetryState.lastError;
+
+			if (overflowRetryState.attempt >= OVERFLOW_RETRY_MAX_ATTEMPTS) {
+				// Exhausted overflow retries - this is handled in compaction_end
+				resetOverflowRetry();
+				return;
+			}
+
+			// Increment attempt and schedule next retry
+			overflowRetryState.attempt++;
+			overflowRetryState.lastError = errorMessage;
+
+			const delayMs = getOverflowRetryDelay(overflowRetryState.attempt);
+			ctx.ui.setStatus(
+				"context-manager",
+				`Overflow recovery "${errorMessage}", retrying (${overflowRetryState.attempt}/${OVERFLOW_RETRY_MAX_ATTEMPTS}) in ${(delayMs / 1000).toFixed(0)}s...`,
+			);
+
+			triggerOverflowRetry(pi, overflowRetryState.attempt, errorMessage, ctx);
+			return;
 		}
 
 		if (!hasRetryTrigger) return;
