@@ -213,11 +213,11 @@ export async function spawnChrome(opts: { useProfile?: boolean; port?: number } 
 		`--user-data-dir=${SCRAPING_DIR}`,
 		"--no-first-run",
 		"--no-default-browser-check",
-		"--no-sandbox", // Required on some systems for DevTools
+		"--no-sandbox",
 		"--disable-dev-shm-usage",
 		"--remote-debugging-address=127.0.0.1",
-		"--headless=old", // Use old headless mode for stability
-		"about:blank", // Start with blank page
+		"--disable-gpu",
+		"about:blank",
 	], { detached: true, stdio: "ignore" });
 	child.unref();
 
