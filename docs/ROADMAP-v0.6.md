@@ -52,10 +52,31 @@ ctx.ui.setStatus("preprocessor", `⏳ Preprocessing with ${model.id}...`);
 
 Delete ~15 lines of manual fallback logic. One import, one call.
 
-### Verification
-- Type check passes
-- Test with reasoning-only model config → should pick cheapest non-reasoning
-- Test with `/utility-model` set → should use that model
+### Verification (done)
+- [x] Type check passes
+- [x] `thinking: "none"` + `reasoning: "none"` set in `~/.pi/agent/settings.json`
+- [x] model-resolver step 3: current model only if `!ctx.model.reasoning`
+
+---
+
+## Researcher Review (2026-04-19)
+
+**Reviewer**: Research synthesis agent — `docs/ROADMAP-v0.6-review.md`
+**Verdict**: **STRUCTURALLY SOUND — 3 CRITICAL GAPS**
+
+| Gap | Status | Details |
+|-----|--------|---------|
+| Topic drift missing | ✅ Already done | `src/lib/topic-drift-detector.ts` (Jaccard + structural) |
+| Task 3 underestimated | 🔄 Will split | 3a (Source Tracking, 2h) + 3b (Conflict Detection, 3h) |
+| Research threads not referenced | ✅ Added | Research thread column per task |
+| Task 2 ctx propagation | ✅ Verified | `execute(toolCallId, params, signal, onUpdate, ctx)` |
+
+| Task | Thread | Paper | Key Insight |
+|------|--------|-------|-------------|
+| Task 2 | cognitive-control | 2604.14401 Credo | Belief-based state |
+| Task 3 | knowledge-conflicts | 2604.11209 XoT | Source tracking + faithful reasoning |
+| Task 5 | measurement | 2604.14525 Cross-Query | Threshold calibration |
+| Task 6 | cognitive-control | 2604.14178 Heartbeat | Adaptive scheduling |
 
 ---
 
