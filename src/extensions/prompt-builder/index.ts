@@ -13,11 +13,15 @@
  * Sections re-implemented locally:
  * - Identity: Braid agent identity
  * - Behavioral guidelines: consolidated from AGENTS.md
+ * - Project context: loads AGENTS.md/CLAUDE.md files (pi's native loading is overridden)
  * - L1 environmental state
  * - Enforcement signals
  */
 
+import { existsSync, readFileSync } from "fs";
+import { join, resolve } from "path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import { formatSkillsForPrompt, loadSkills } from "@mariozechner/pi-coding-agent";
 import { SKILLS_DIR } from "../../index.js";
 import { gatherL1State, formatL1Environment } from "./l1-environment.js";
@@ -152,6 +156,71 @@ function reconstructGuidelineSection(hasBash: boolean, hasGrep: boolean, hasFind
 ${guidelines.map(g => `- ${g}`).join("\n")}`;
 }
 
+function reconstructProjectContextSection(cwd: string): string {
+  // Re-implemented from loadProjectContextFiles (not exported from pi)
+  // Searches for AGENTS.md or CLAUDE.md in cwd and ancestors
+  // NOTE: pi's native loading is overridden by prompt-builder, so we must replicate here
+
+  const contextFiles: Array<{ path: string; content: string }> = [];
+  const seenPaths = new Set<string>();
+
+  function loadContextFromDir(dir: string): { path: string; content: string } | null {
+    const candidates = ["AGENTS.md", "CLAUDE.md"];
+    for (const filename of candidates) {
+      const filePath = join(dir, filename);
+      if (existsSync(filePath)) {
+        try {
+          return {
+            path: filePath,
+            content: readFileSync(filePath, "utf-8"),
+          };
+        } catch {
+          // Skip files that can't be read
+        }
+      }
+    }
+    return null;
+  }
+
+  // Global context (agent dir)
+  const agentDir = getAgentDir();
+  const globalContext = loadContextFromDir(agentDir);
+  if (globalContext) {
+    contextFiles.push(globalContext);
+    seenPaths.add(globalContext.path);
+  }
+
+  // Ancestor context files (from cwd up to root)
+  const root = resolve("/");
+  let currentDir = cwd;
+
+  while (true) {
+    const contextFile = loadContextFromDir(currentDir);
+    if (contextFile && !seenPaths.has(contextFile.path)) {
+      contextFiles.unshift(contextFile);
+      seenPaths.add(contextFile.path);
+    }
+
+    if (currentDir === root) break;
+
+    const parentDir = resolve(currentDir, "..");
+    if (parentDir === currentDir) break;
+    currentDir = parentDir;
+  }
+
+  if (contextFiles.length === 0) {
+    return "";
+  }
+
+  const lines = ["# Project Context", "", "Project-specific instructions and guidelines:", ""];
+
+  for (const { path: filePath, content } of contextFiles) {
+    lines.push(`## ${filePath}`, "", content, "");
+  }
+
+  return lines.join("\n");
+}
+
 function reconstructSkillsSection(cwd: string): string {
   const result = loadSkills({ cwd, skillPaths: [SKILLS_DIR], includeDefaults: true });
   return formatSkillsForPrompt(result.skills);
@@ -195,7 +264,13 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     // 3. Guidelines
     parts.push(reconstructGuidelineSection(hasBash, hasGrep, hasFind, hasLs));
 
-    // 4. Skills
+    // 4. Project context (from file loading - required since pi's native loading is overridden)
+    const projectContext = reconstructProjectContextSection(cwd);
+    if (projectContext) {
+      parts.push(projectContext);
+    }
+
+    // 5. Skills
     if (hasRead) {
       const skillsSection = reconstructSkillsSection(cwd);
       if (skillsSection) {
@@ -203,26 +278,26 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       }
     }
 
-    // 5. L1 environmental state
+    // 6. L1 environmental state
     parts.push(formatL1Environment(l1Env));
 
-    // 6. Enforcement signals
+    // 7. Enforcement signals
     const enforcement = formatEnforcementL1(_enforcementSignals);
     if (enforcement) {
       parts.push(enforcement);
     }
 
-    // 7. Thinking guidance
+    // 8. Thinking guidance
     parts.push(THINK_SILENTLY);
     parts.push(BEHAVIORAL_GUIDELINES);
     parts.push(KEY_TOOL_COMBINATIONS);
     parts.push(VERIFICATION_REMINDER);
     parts.push(INTERACTION_STYLE);
 
-    // 8. Implicit budget
+    // 9. Implicit budget
     parts.push(IMPLICIT_BUDGET);
 
-    // 9. Date and cwd
+    // 10. Date and cwd
     const date = new Date().toISOString();
     const promptCwd = cwd.replace(/\\/g, "/");
     parts.push(`Current time: ${date}`);
