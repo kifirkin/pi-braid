@@ -56,6 +56,7 @@ import latentActivatorExtension from "./extensions/latent-activator/index.js";
 import antiSlopExtension from "./extensions/anti-slop/index.js";
 import antiSlopInputExtension from "./extensions/anti-slop-input/index.js";
 import queryOptimizerExtension from "./extensions/query-optimizer/index.js";
+import abTestingExtension from "./extensions/ab-testing/index.js";
 
 // Resolve the skills directory relative to this file
 const __filename = fileURLToPath(import.meta.url);
@@ -98,6 +99,7 @@ const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void 
 	{ name: "anti-slop", factory: antiSlopExtension },
 	{ name: "anti-slop-input", factory: antiSlopInputExtension },
 	{ name: "query-optimizer", factory: queryOptimizerExtension },
+	{ name: "ab-testing", factory: abTestingExtension },
 ];
 
 export default function piBraidExtension(pi: ExtensionAPI) {

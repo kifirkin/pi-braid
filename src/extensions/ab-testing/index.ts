@@ -764,7 +764,7 @@ export default function abTestingExtension(pi: ExtensionAPI) {
 		state.currentRun.lastActivityTime = Date.now();
 
 		// Estimate input tokens (rough)
-		const inputStr = JSON.stringify(event.input || {});
+		const inputStr = JSON.stringify(event.args || {});
 		const inputTokens = Math.ceil(inputStr.length / 4);
 		state.currentRun.tokenCount += inputTokens;
 	});
@@ -851,10 +851,9 @@ export default function abTestingExtension(pi: ExtensionAPI) {
 
 	// ── Commands ──────────────────────────────────────────────────────────────
 
-	pi.registerCommand({
-		name: "ab-stats",
+	pi.registerCommand("ab-stats", {
 		description: "Show A/B test statistics",
-		handler: async (_args: any, ctx: any) => {
+		handler: async (_args, ctx) => {
 			if (!state.config.enabled) {
 				ctx.ui.notify("A/B testing is disabled. Enable with /ab-enable", "warning");
 				return;
@@ -866,30 +865,27 @@ export default function abTestingExtension(pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand({
-		name: "ab-enable",
+	pi.registerCommand("ab-enable", {
 		description: "Enable A/B testing",
-		handler: async (_args: any, ctx: any) => {
+		handler: async (_args, ctx) => {
 			state.config.enabled = true;
 			saveConfig();
 			ctx.ui.notify("A/B testing enabled", "info");
 		},
 	});
 
-	pi.registerCommand({
-		name: "ab-disable",
+	pi.registerCommand("ab-disable", {
 		description: "Disable A/B testing",
-		handler: async (_args: any, ctx: any) => {
+		handler: async (_args, ctx) => {
 			state.config.enabled = false;
 			saveConfig();
 			ctx.ui.notify("A/B testing disabled", "info");
 		},
 	});
 
-	pi.registerCommand({
-		name: "ab-reset",
+	pi.registerCommand("ab-reset", {
 		description: "Reset A/B test data",
-		handler: async (_args: any, ctx: any) => {
+		handler: async (_args, ctx) => {
 			ensureStorageDir();
 			try {
 				writeFileSync(RUNS_FILE, "");
@@ -901,10 +897,9 @@ export default function abTestingExtension(pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand({
-		name: "ab-config",
+	pi.registerCommand("ab-config", {
 		description: "Show A/B test configuration",
-		handler: async (_args: any, ctx: any) => {
+		handler: async (_args, ctx) => {
 			ctx.ui.notify(
 				`A/B Testing Config:\n- Enabled: ${state.config.enabled}\n- Treatment Probability: ${state.config.treatmentProbability}\n- Min Runs for Stats: ${state.config.minRunsForStats}`,
 				"info",
@@ -915,10 +910,9 @@ export default function abTestingExtension(pi: ExtensionAPI) {
 	// ── Tool: get_ab_stats ────────────────────────────────────────────────────
 	// Primary tool for querying stats (can be called by agent)
 
-	pi.registerCommand({
-		name: "get_ab_stats",
+	pi.registerCommand("get_ab_stats", {
 		description: "Get A/B test statistics as JSON",
-		handler: async (_args: any, ctx: any) => {
+		handler: async (_args, ctx) => {
 			if (!state.config.enabled) {
 				ctx.ui.notify(JSON.stringify({ error: "A/B testing disabled" }), "info");
 				return;
@@ -932,18 +926,7 @@ export default function abTestingExtension(pi: ExtensionAPI) {
 	// ── Expose helper for other extensions ────────────────────────────────────
 	// Other extensions can check if enforcement should be skipped
 
-	pi.registerTool({
-		name: "get_ab_variant",
-		description: "Get current A/B test variant (control or treatment)",
-		inputSchema: {},
-		handler: async () => {
-			return {
-				variant: state.currentRun?.variant || "treatment",
-				runId: state.currentRun?.runId || null,
-				skipEnforcement: state.skipEnforcement,
-			};
-		},
-	});
+
 }
 
 // ── Helper Functions ─────────────────────────────────────────────────────────
