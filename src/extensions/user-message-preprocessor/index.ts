@@ -266,32 +266,22 @@ async function processMessage(
 ) {
 	state.isProcessing = true;
 
-	let model = ctx.getUtilityModel();
-	ctx.ui.setStatus("preprocessor", `⏳ Preprocessing with ${model?.id ?? "no model"}...`);
-
+	// Get utility model for preprocessing (fallback: cheap non-reasoning model)
+	let model = ctx.model;
 	if (model?.reasoning) {
-		if (ctx.model && !ctx.model.reasoning) {
-			model = ctx.model;
-		} else {
-			const availableModels = ctx.modelRegistry.getAvailable();
-			const nonReasoning = availableModels.filter((m) => !m.reasoning);
-			nonReasoning.sort((a, b) => a.cost.input + a.cost.output - (b.cost.input + b.cost.output));
-			model = nonReasoning[0];
-			if (!model) {
-				state.skippedCount++;
-				resolve({ action: "continue" });
-				processQueue(ctx);
-				return;
-			}
-		}
+		// Reasoning model — try to get a non-reasoning one instead
+		const availableModels = ctx.modelRegistry.getAvailable();
+		const nonReasoning = availableModels.filter((m) => !m.reasoning);
+		nonReasoning.sort((a, b) => a.cost.input + a.cost.output - (b.cost.input + b.cost.output));
+		model = nonReasoning[0] || model; // fallback to reasoning model if none found
 	}
-
 	if (!model) {
 		state.skippedCount++;
 		resolve({ action: "continue" });
 		processQueue(ctx);
 		return;
 	}
+	ctx.ui.setStatus("preprocessor", `⏳ Preprocessing with ${model.id}...`);
 
 	const apiKey = await ctx.modelRegistry.getApiKeyForProvider(model.provider);
 	if (!apiKey) {
