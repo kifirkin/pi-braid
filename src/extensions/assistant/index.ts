@@ -88,7 +88,13 @@ export default function assistantExtension(pi: ExtensionAPI) {
 			toolEnabled = new Set(saved.filter((t) => names.includes(t)));
 			configVersion = maxVersion;
 		} else {
-			toolEnabled = new Set(pi.getActiveTools());
+			// Fallback: auto-enable extension tools + current active tools.
+			// This ensures extension tools (think, finalize, memory_*, etc.)
+			// are enabled by default even without saved config.
+			const activeTools = pi.getActiveTools();
+			const allTools = pi.getAllTools();
+			const extensionToolNames = allTools.map((t) => t.name);
+			toolEnabled = new Set([...activeTools, ...extensionToolNames]);
 			configVersion = 0;
 		}
 		applyToolState();
