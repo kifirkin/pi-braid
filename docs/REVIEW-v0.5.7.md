@@ -50,20 +50,55 @@
 - [x] Preprocessor flow: update editor → user presses Enter → text goes to LLM (no hints)
 - [x] Fixed enforcement crash: `session?.messages` null check
 
-### Metrics: 35 → 27 extensions, 0 type errors, 21,882 lines
+### Post-P5: Language Detection + Reply Instruction ✅
+- [x] `src/lib/language-hint.ts` — script-based detection (Cyrillic, Arabic, Chinese, Japanese, Korean, Hindi, Thai, Hebrew, Greek)
+- [x] Preprocessor detects language of original input → `setLanguage()`
+- [x] Enforcement `input` handler injects reply instruction into system prompt via `updateSystemPrompt`
+- [x] Never sends language hints in user messages — system prompt only
+
+### Post-P5: Preprocessor Fix ✅
+- [x] Removed `ctx.getUtilityModel()` (doesn't exist in current API) → replaced with `ctx.model` + non-reasoning fallback
+
+### Post-P5: Anti-Slop Merged Into Preprocessor ✅
+- [x] Deleted `src/extensions/anti-slop-input/` — merged into preprocessor
+- [x] Correct execution order: preprocessor translates → anti-slop checks cleaned text → editor update
+- [x] Added Russian code-request patterns (напиши/создай/реализуй + функци/класс/...)
+
+### Post-P5: Reasoning Stability Metrics ✅
+- [x] `src/lib/reasoning-metrics.ts` — measureStability() with anchor overlap, bigram entropy, contradiction detection
+- [x] Integrated into enforcement `message_end` → emits `[stability]` signal
+
+### Post-P5: Doc Archive ✅
+- [x] Archived 10 obsolete docs to `docs/archive/`
+- [x] Kept current: REVIEW-v0.5.7, TOOL_IMPROVEMENTS_PROPOSAL, TOOLS_ISSUES_REPORT
+
+### Post-P5: Code Quality ✅
+- [x] Fixed repetition detection FIXME (magic numbers → named constant, proper `every()` check)
+
+### Metrics: 26 extensions, 0 type errors, ~21,700 lines
 
 ---
 
-## Pending Proposals
+## Archived Proposals
 
-See `docs/PROPOSAL_*.md` for full details.
+Archived to `docs/archive/`:
+- AUDIT-2026-04-14.md, ABLATION_STUDY.md, CONTEXT-MANAGEMENT-DESIGN.md
+- CONTEXT-OVERFLOW-FIX.md, RESEARCH_SYNTHESIS_COMPLETE.md, SKEPTIC-AUDIT.md
+- VALIDATION_PROTOCOL.md, GAP-ANALYSIS.md
+- MEASUREMENT_GAP_SOLUTION.md (**IMPLEMENTED** → reasoning-metrics.ts)
+- PROPOSAL_TOPIC_DRIFT_DETECTOR.md (**IMPLEMENTED** → topic-drift-detector.ts)
+
+## Current Docs
 
 | File | Status |
 |------|--------|
-| `docs/PROPOSAL_TOPIC_DRIFT_DETECTOR.md` | **IMPLEMENTED** ✅ |
-| `docs/TOOL_IMPROVEMENTS_PROPOSAL.md` | Reviewed — think v2, hypothesis, confidence scoring deferred |
+| `docs/REVIEW-v0.5.7.md` | This file |
+| `docs/TOOL_IMPROVEMENTS_PROPOSAL.md` | Think v2 — partially implemented (depth, confidence, tags) |
 | `docs/TOOLS_ISSUES_REPORT.md` | Mostly fixed |
 
 ## Deferred (Low Frequency / Large Effort)
 - Session-scoped state refactor (needs ExtensionContext pattern)
 - MARS reflection (low frequency)
+- Think v2 full implementation (thought types: plan/execution/reflection)
+- Hypothesis confidence scoring
+- Reasoning metrics calibration (needs real-world testing)

@@ -187,15 +187,15 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 
 		state.toolLog.push(`${toolName}`);
 
-		// FIXME: sloppy monkey patch detected hardcoded magic numbers
 		// Sequence repetition detection: 9+ same tool in a row
-		if (state.toolLog.length >= 9) {
-			const last9 = state.toolLog.slice(-9);
-			if (last9[0] === last9[1] && last9[1] === last9[2]) {
+		const REPETITION_THRESHOLD = 9;
+		if (state.toolLog.length >= REPETITION_THRESHOLD) {
+			const lastN = state.toolLog.slice(-REPETITION_THRESHOLD);
+			if (lastN.every((t) => t === lastN[0])) {
 				const now = Date.now();
 				if (now - state.lastNudgeTime > state.nudgeCooldownMs) {
 					state.lastNudgeTime = now;
-					sendEnforcementWhisper(pi, `Repeating ${toolName} 9+ times - consider a different approach`);
+					sendEnforcementWhisper(pi, `Repeating ${toolName} ${REPETITION_THRESHOLD}+ times - consider a different approach`);
 				}
 			}
 		}
