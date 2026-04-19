@@ -29,11 +29,12 @@ export function measureStability(
 	const metrics: StabilityMetrics = { overlap, entropy, contradictions };
 
 	// Thresholds (conservative — warn-only, never block)
-	if (anchors.size > 0 && overlap < 0.15) {
-		return { stable: false, reason: "topic_drift", metrics };
-	}
+	// Entropy check first: repetitive is stronger signal than topic drift
 	if (entropy < 0.15) {
 		return { stable: false, reason: "repetitive", metrics };
+	}
+	if (anchors.size > 0 && overlap < 0.15) {
+		return { stable: false, reason: "topic_drift", metrics };
 	}
 	if (contradictions > 2) {
 		return { stable: false, reason: "self_contradiction", metrics };

@@ -194,7 +194,7 @@ export function detectConflicts(ctx: ExtensionContext): Conflict[] {
 			if (a.source === b.source) continue;
 
 			// Check overlap
-			const overlap = tokenOverlap(a.claim, b.claim);
+			const overlap = tokenOverlap(a.normalized, b.normalized);
 			if (overlap < 0.3) continue; // Not related claims
 
 			// Check confidence difference → potential conflict
@@ -242,7 +242,7 @@ function detectConflictsFor(ctx: ExtensionContext, evidenceId: string): Conflict
 		if (existing.id === evidenceId) continue;
 		if (existing.source === newEvidence.source) continue;
 
-		const overlap = tokenOverlap(newEvidence.claim, existing.claim);
+		const overlap = tokenOverlap(newEvidence.normalized, existing.normalized);
 		if (overlap < 0.3) continue;
 
 		const confidenceDiff = Math.abs(newEvidence.confidence - existing.confidence);

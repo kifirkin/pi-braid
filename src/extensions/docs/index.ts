@@ -16,7 +16,7 @@ import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
-import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 const execAsync = promisify(exec);
 
@@ -207,7 +207,7 @@ export default function docExtension(pi: ExtensionAPI) {
 			"For PDF: uses pdftotext if available, otherwise qlmanage (macOS native). " +
 			"Install pdftotext via: brew install poppler",
 		parameters: readDocSchema,
-		execute: async (_toolCallId, params): Promise<AgentToolResult<{ lines: number; format: string }>> => {
+		execute: async (_toolCallId, params, _signal, _onUpdate, ctx: ExtensionContext): Promise<AgentToolResult<{ lines: number; format: string }>> => {
 			if (!fsSync.existsSync(params.path)) {
 				return {
 					content: [{ type: "text" as const, text: `File not found: ${params.path}` }],

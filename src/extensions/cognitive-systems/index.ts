@@ -17,6 +17,8 @@ import {
 	formatMemoryTimestamp,
 	getCognitiveMemory,
 } from "../../lib/cognitive-memory.js";
+import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { addEvidence } from "../../lib/evidence-pool.js";
 // explore-paths tool - inlined from ../../tools/explore-paths.ts
 
 import { execFile } from "node:child_process";
@@ -67,7 +69,7 @@ function createExplorePathsTool() {
 			),
 		}),
 
-		execute: async (_toolCallId: string, params: unknown) => {
+		execute: async (_toolCallId: string, params: unknown, _signal: unknown, _onUpdate: unknown, _ctx: ExtensionContext) => {
 			const { hypothesis_1, hypothesis_2, hypothesis_3 } = params as {
 				hypothesis_1: string;
 				hypothesis_2: string;
@@ -144,7 +146,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
 			source: Type.Optional(Type.String({ description: "Where this came from" })),
 			ttl: Type.Optional(Type.Number({ description: "Time-to-live in milliseconds", minimum: 0 })),
 		}),
-		execute: async (_toolCallId, params): Promise<AgentToolResult<{ id?: string; stored: boolean }>> => {
+		execute: async (_toolCallId: string, params, _signal, _onUpdate, ctx): Promise<AgentToolResult<{ id?: string; stored: boolean }>> => {
 			await initPromise;
 			try {
 				const m = await memory.store(params.content, params.memoryType as CognitiveMemoryType, {
@@ -180,10 +182,18 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
 			limit: Type.Optional(Type.Number({ default: 5 })),
 			tags: Type.Optional(Type.Array(Type.String())),
 		}),
-		execute: async (_toolCallId, params): Promise<AgentToolResult<{ count: number }>> => {
+		execute: async (_toolCallId: string, params, _signal, _onUpdate, ctx): Promise<AgentToolResult<{ count: number }>> => {
 			await initPromise;
 			const type = params.memoryType === "all" ? undefined : (params.memoryType as CognitiveMemoryType);
 			const results = await memory.recall(params.query, { type, limit: params.limit, tags: params.tags });
+
+			// Add evidence to pool (Task 3b)
+			if (results.length > 0 && ctx) {
+				for (const r of results.slice(0, 3)) {
+					addEvidence(ctx, r.memory.content, "memory", r.memory.content, r.relevance);
+				}
+			}
+
 			const text =
 				results.length > 0
 					? `Found ${results.length} memories:\n` +
@@ -206,7 +216,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
 			limit: Type.Optional(Type.Number({ default: 20 })),
 			full: Type.Optional(Type.Boolean({ description: "Show full details including timestamps", default: false })),
 		}),
-		execute: async (_toolCallId, params): Promise<AgentToolResult<{ memories: CognitiveMemoryEntry[] }>> => {
+		execute: async (_toolCallId: string, params, _signal, _onUpdate, _ctx): Promise<AgentToolResult<{ memories: CognitiveMemoryEntry[] }>> => {
 			const memories = memory.getAll(params.limit ?? 20);
 			const showFull = params.full ?? false;
 			const text =
@@ -224,10 +234,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
 		parameters: Type.Object({
 			id: Type.String({ description: "Memory ID to retrieve" }),
 		}),
-		execute: async (
-			_toolCallId,
-			params,
-		): Promise<AgentToolResult<{ found: boolean; memory?: CognitiveMemoryEntry }>> => {
+		execute: async (_toolCallId: string, params, _signal, _onUpdate, _ctx): Promise<AgentToolResult<{ found: boolean; memory?: CognitiveMemoryEntry }>> => {
 			await initPromise;
 			const m = await memory.getById(params.id);
 			if (!m) {
