@@ -29,6 +29,7 @@ import { completeSimple } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext, InputEventResult } from "@mariozechner/pi-coding-agent";
 import { setLanguage, detectLanguage } from "../../lib/language-hint.js";
+import { resolveUtilityModel } from "../../lib/model-resolver.js";
 
 /** Anti-slop: detect code-writing requests (merged from anti-slop-input) */
 const CODE_REQUEST_PATTERNS: RegExp[] = [
@@ -285,15 +286,8 @@ async function processMessage(
 ) {
 	state.isProcessing = true;
 
-	// Get utility model for preprocessing (fallback: cheap non-reasoning model)
-	let model = ctx.model;
-	if (model?.reasoning) {
-		// Reasoning model — try to get a non-reasoning one instead
-		const availableModels = ctx.modelRegistry.getAvailable();
-		const nonReasoning = availableModels.filter((m) => !m.reasoning);
-		nonReasoning.sort((a, b) => a.cost.input + a.cost.output - (b.cost.input + b.cost.output));
-		model = nonReasoning[0] || model; // fallback to reasoning model if none found
-	}
+	// Resolve utility model (respects /utility-model setting)
+	const model = resolveUtilityModel(ctx);
 	if (!model) {
 		state.skippedCount++;
 		resolve({ action: "continue" });
