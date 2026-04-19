@@ -28,6 +28,7 @@ import type { Api, AssistantMessage, Context, ImageContent, Model } from "@mario
 import { completeSimple } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext, InputEventResult } from "@mariozechner/pi-coding-agent";
+import { setLanguage, detectLanguage } from "../../lib/language-hint.js";
 
 const SYSTEM_PROMPT = `You are a automatic message preprocessor. Your only task is to translate or correct the message sent by User and provide response strictly following these guidelines:
 
@@ -363,6 +364,10 @@ async function processMessage(
 			state.preprocessedCount++;
 			state.preprocessingExhausted = true;
 			state.preprocessedText = cleaned;
+
+			// Detect input language → set language hint for reply instruction
+			const lang = detectLanguage(original);
+			setLanguage(lang.code, lang.name);
 
 			if (state.config.showDiff) {
 				const lines = generateDiffLines(original, cleaned);

@@ -17,6 +17,7 @@ import * as path from "path";
 import type { ExtensionAPI, SessionCompactEvent, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { detectMalformedToolCalls } from "./detection/malformed.js";
 import { TopicDriftDetector } from "../../lib/topic-drift-detector.js";
+import { getReplyInstruction, setLanguage, detectLanguage } from "../../lib/language-hint.js";
 import {
 	detectMissingVerification,
 	recordCodeChange as detectRecordCodeChange,
@@ -111,10 +112,28 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 	// Minimal: only handle block actions. All verbose enforcement prose is gone.
 	// Non-critical signals → bundled Session Signals nudge (turn_end).
 	// Critical signals (L3) → individual sendEnforcementWhisper (turn_end).
-	pi.on("session_start", async (event, ctx) => {
+	// Language detection: detect from user text → set reply instruction in system prompt
+	pi.on("input", async (event: any, ctx: any) => {
 		if (!state.enforcementActive) return;
+		const text = event.text || "";
+		if (!text || text.startsWith("/") || (event as any).source === "extension") return;
 
-		// Initialize topic drift detector with the session's initial task
+		const lang = detectLanguage(text);
+		if (lang.code === "EN") return;
+
+		setLanguage(lang.code, lang.name);
+		const replyLang = getReplyInstruction();
+		if (!replyLang) return;
+
+		const session = (ctx.sessionManager as any)?.getCurrentSession?.();
+		if (session?.updateSystemPrompt) {
+			session.updateSystemPrompt({ append: replyLang });
+		}
+	});
+
+	// Topic drift: initialize on session_start, check on turn_end
+	pi.on("session_start", async (event) => {
+		if (!state.enforcementActive) return;
 		const task = (event as any).task || (event as any).prompt || state.originalRequest || "";
 		if (task) {
 			state.driftDetector?.setTaskContext(task);
