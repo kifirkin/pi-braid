@@ -596,9 +596,11 @@ export default function metacognitionExtension(pi: ExtensionAPI) {
 	// In --no-session mode, session_start/session_tree events don't fire,
 	// so the assistant extension's restoreToolState() never runs.
 	// This means extension tools (think, finalize, memory_*, etc.) are NOT enabled.
-	// Fix: Auto-enable all registered extension tools on first turn_start.
+	// Fix: Use before_agent_start instead of turn_start because turn_start fires AFTER
+	// the agent loop has already captured context.tools for the current turn.
+	// before_agent_start fires before createContextSnapshot, so new tools are included.
 	let extensionToolsAutoEnabled = false;
-	pi.on("turn_start", async () => {
+	pi.on("before_agent_start", async () => {
 		if (extensionToolsAutoEnabled) return;
 		extensionToolsAutoEnabled = true;
 
