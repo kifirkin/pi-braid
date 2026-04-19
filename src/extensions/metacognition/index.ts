@@ -13,6 +13,110 @@
 
 import { randomUUID } from "node:crypto";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
+
+// =============================================================================
+// Hypothesis Scoring (Task 7)
+// =============================================================================
+
+interface ScoredHypothesis {
+	index: number;
+	title: string;
+	score: number;
+	signals: string[];
+}
+
+/** Heuristic signals for hypothesis likelihood */
+function scoreHypothesis(hypothesisText: string, evidence: string): ScoredHypothesis {
+	const signals: string[] = [];
+	let score = 0.5; // baseline
+
+	// Signal: mentions specific file path (+0.15)
+	if (/src\/[\w/-]+\.(ts|js|json)/i.test(hypothesisText)) {
+		score += 0.15;
+		signals.push("specific_file");
+	}
+
+	// Signal: mentions specific error type (+0.1)
+	if (/TypeError|ReferenceError|SyntaxError|Error|crash|exception|throw/i.test(hypothesisText)) {
+		score += 0.1;
+		signals.push("specific_error");
+	}
+
+	// Signal: references evidence directly (+0.1)
+	const evidenceTokens = evidence.toLowerCase().split(/\W+/).filter((t) => t.length > 4);
+	const hypTokens = hypothesisText.toLowerCase().split(/\W+/);
+	const overlap = evidenceTokens.filter((t) => hypTokens.includes(t)).length;
+	if (overlap > 3) {
+		score += 0.1;
+		signals.push("evidence_overlap");
+	}
+
+	// Signal: proposes concrete verification (+0.1)
+	if (/verify|check|test|confirm|reproduce|log|debug/i.test(hypothesisText)) {
+		score += 0.1;
+		signals.push("verifiable");
+	}
+
+	// Signal: vague language penalty (-0.15)
+	if (/maybe|might|could be anything|unclear|not sure|possibly/i.test(hypothesisText)) {
+		score -= 0.15;
+		signals.push("vague");
+	}
+
+	// Signal: mentions root cause specifically (+0.05)
+	if (/root cause|underlying|actual.*issue|real.*problem/i.test(hypothesisText)) {
+		score += 0.05;
+		signals.push("root_cause_focus");
+	}
+
+	return {
+		index: 0,
+		title: hypothesisText.split("\n")[0].slice(0, 80),
+		score: Math.max(0.1, Math.min(0.95, score)),
+		signals,
+	};
+}
+
+/** Parse LLM hypothesis output into scored hypotheses */
+function scoreHypothesisOutput(llmOutput: string, evidence: string): { scored: ScoredHypothesis[]; annotated: string } {
+	// Split on "Hypothesis N:" pattern
+	const blocks = llmOutput.split(/(?=Hypothesis \d+)/i);
+	const scored: ScoredHypothesis[] = [];
+	let annotated = llmOutput;
+
+	if (blocks.length > 1) {
+		// Multiple hypotheses found — score each
+		const results = blocks
+			.filter((b) => b.trim().length > 10)
+			.map((block, i) => {
+				const s = scoreHypothesis(block, evidence);
+				s.index = i;
+				s.title = block.split("\n")[0].replace(/^Hypothesis \d+:\s*/i, "").trim().slice(0, 80);
+				return { block, scored: s };
+			});
+
+		// Sort by score descending
+		results.sort((a, b) => b.scored.score - a.scored.score);
+
+		// Build annotated output
+		annotated = results
+			.map((r, rank) => {
+				const s = r.scored;
+				return `${r.block}\n[Score: ${(s.score * 100).toFixed(0)}% | Signals: ${s.signals.join(", ")}]`;
+			})
+			.join("\n\n");
+
+		scored.push(...results.map((r) => r.scored));
+	} else {
+		// Single block — score as one
+		const s = scoreHypothesis(llmOutput, evidence);
+		s.index = 0;
+		annotated = `${llmOutput}\n[Score: ${(s.score * 100).toFixed(0)}% | Signals: ${s.signals.join(", ")}]`;
+		scored.push(s);
+	}
+
+	return { scored, annotated };
+}
 import type { Api, Context, Model } from "@mariozechner/pi-ai";
 import { completeSimple, StringEnum } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
@@ -261,7 +365,19 @@ Returns structured analysis with ranked hypotheses.`,
 					.filter((c): c is { type: "text"; text: string } => c.type === "text")
 					.map((c) => c.text)
 					.join("\n");
-				return { content: [{ type: "text" as const, text: textContent || "No analysis produced." }], details: { problem, hypotheses: maxHypotheses, modelUsed: model.id } };
+
+				// Score hypotheses with heuristic signals (Task 7)
+				const { scored, annotated } = scoreHypothesisOutput(textContent || "No analysis produced.", evidence);
+
+				return {
+					content: [{ type: "text" as const, text: annotated }],
+					details: {
+						problem,
+						hypotheses: maxHypotheses,
+						modelUsed: model.id,
+						scores: scored.map((s) => ({ rank: s.index, title: s.title, score: s.score, signals: s.signals })),
+					},
+				};
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
 				return { content: [{ type: "text" as const, text: `Hypothesis generation error: ${message}` }], details: { problem, hypotheses: maxHypotheses, modelUsed: model.id, error: message } };

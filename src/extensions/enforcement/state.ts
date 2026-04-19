@@ -85,6 +85,10 @@ export const state = {
 	// Verification judge tracking
 	lastVerificationJudgeTurn: 0,
 	lastUserMessage: "",
+	toolsSinceReflection: 0,
+	thoughtChains: [] as Array<{ id: string; parentId: string | null; type: string; timestamp: number }>,
+	calibrationPairs: [] as Array<{ predicted: number; actual: number; tool: string; turn: number }>,
+	lastThinkConfidence: 0.5,
 	verificationJudgeRunning: false,
 	toolLog: [] as string[],
 	// Context hygiene monitoring
@@ -159,6 +163,10 @@ export function resetState(): void {
 	// Reset verification judge tracking
 	state.lastVerificationJudgeTurn = 0;
 	state.lastUserMessage = "";
+	state.toolsSinceReflection = 0;
+	state.thoughtChains = [];
+	state.calibrationPairs = [];
+	state.lastThinkConfidence = 0.5;
 	state.verificationJudgeRunning = false;
 	state.toolLog = [];
 	state.planAlignmentData = null;

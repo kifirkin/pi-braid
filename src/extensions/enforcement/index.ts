@@ -187,6 +187,24 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 
 		state.toolLog.push(`${toolName}`);
 
+		// Task 4a: Reflection gap + Task 4b: Thought chain tracking
+		if (toolName === "think") {
+			const thinkType = (input as any)?.type || "unknown";
+			const parentId = (input as any)?.parent_id || null;
+			const confidence = (input as any)?.confidence;
+			if (typeof confidence === "number") state.lastThinkConfidence = confidence;
+			const thoughtId = `t${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+			state.thoughtChains.push({ id: thoughtId, parentId, type: thinkType, timestamp: Date.now() });
+
+			if (thinkType === "reflection" || thinkType === "conclusion") {
+				state.toolsSinceReflection = 0;
+			} else {
+				state.toolsSinceReflection++;
+			}
+		} else {
+			state.toolsSinceReflection++;
+		}
+
 		// Sequence repetition detection: 9+ same tool in a row
 		const REPETITION_THRESHOLD = 9;
 		if (state.toolLog.length >= REPETITION_THRESHOLD) {
@@ -217,6 +235,34 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		}
 
 		return undefined;
+	});
+
+	// ── tool_end: calibration tracking (Task 4c) ───────────────────────────
+	pi.on("tool_end" as any, async (event: any) => {
+		if (!state.enforcementActive) return;
+		const toolName = event?.tool || "";
+		if (toolName === "think") return;
+
+		const predicted = state.lastThinkConfidence;
+		const actual = event?.error ? 0 : 1;
+		state.calibrationPairs.push({ predicted, actual, tool: toolName, turn: state.currentTurn });
+
+		if (state.calibrationPairs.length > 50) {
+			state.calibrationPairs = state.calibrationPairs.slice(-50);
+		}
+
+		const error = Math.abs(predicted - actual);
+		if (state.calibrationPairs.length >= 10 && error > 0.4) {
+			const recent = state.calibrationPairs.slice(-10);
+			const avgError = recent.reduce((s, p) => s + Math.abs(p.predicted - p.actual), 0) / recent.length;
+			if (avgError > 0.3) {
+				sendEnforcementWhisper(
+					pi,
+					`[calibration] High prediction error: ${(error * 100).toFixed(0)}% off on last ${toolName}. ` +
+					`Avg error last 10 tools: ${(avgError * 100).toFixed(0)}%`,
+				);
+			}
+		}
 	});
 
 	// ── turn_end ─────────────────────────────────────────────────────────────
@@ -386,6 +432,42 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 							`memory_store(content="Error with ${errorList}: [what went wrong and fix]", tags=["error"])`,
 					);
 				}
+			}
+		}
+
+		// ── Task 4b: Orphan thought chain detection ────────────────────────────
+		// Find chains (grouped by parent_id) with length > 1 that lack a conclusion
+		const orphanChains: string[] = [];
+		if (state.thoughtChains.length > 0) {
+			// Group thoughts by root (follow parent chain to root)
+			const rootMap = new Map<string, string[]>(); // rootId -> thoughtIds
+			for (const thought of state.thoughtChains) {
+				let root = thought.parentId;
+				// Walk up the chain
+				const visited = new Set<string>();
+				while (root && !visited.has(root)) {
+					visited.add(root);
+					const parent = state.thoughtChains.find((t) => t.id === root);
+					root = parent?.parentId || null;
+				}
+				const chainRoot = root || thought.id;
+				if (!rootMap.has(chainRoot)) rootMap.set(chainRoot, []);
+				rootMap.get(chainRoot)!.push(thought.id);
+			}
+			// Orphan = chain with 3+ thoughts but no conclusion type
+			for (const [chainId, thoughtIds] of rootMap) {
+				if (thoughtIds.length >= 3) {
+					const hasConclusion = thoughtIds.some((id) => {
+						const t = state.thoughtChains.find((tc) => tc.id === id);
+						return t?.type === "conclusion" || t?.type === "reflection";
+					});
+					if (!hasConclusion) {
+						orphanChains.push(`chain ${thoughtIds.length} thoughts (no conclusion)`);
+					}
+				}
+			}
+			if (orphanChains.length > 0) {
+				sendEnforcementWhisper(pi, `[chains] ${orphanChains.length} reasoning chain(s) without conclusion: ${orphanChains[0]}`);
 			}
 		}
 
