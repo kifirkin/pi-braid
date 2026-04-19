@@ -24,6 +24,12 @@ import {
 	recordCodeChange as detectRecordCodeChange,
 } from "./detection/verification.js";
 import { checkBlocking } from "./handlers/blocking.js";
+import {
+	addEvidence,
+	getUnresolvedConflicts,
+	detectConflicts,
+	formatConflictMessage,
+} from "../../lib/evidence-pool.js";
 import { checkComplexityMismatch, estimateComplexity, type ComplexityProbe } from "./handlers/probe-handler.js";
 import { recordBashDetails, recordToolCall, recordToolInput } from "./handlers/tool-tracker.js";
 import { checkRoutingMismatch, detectIntent, getRoutingHint, type TaskIntent } from "./handlers/routing-handler.js";
@@ -235,6 +241,27 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		}
 
 		return undefined;
+	});
+
+	// ── message_end: conflict detection (Task 3) ────────────────────────────
+	pi.on("message_end", async (event: any, ctx: any) => {
+		if (!state.enforcementActive) return;
+
+		// Run conflict detection and surface unresolved conflicts
+		const newConflicts = detectConflicts(ctx);
+		if (newConflicts.length > 0) {
+			const msg = formatConflictMessage(newConflicts[0]);
+			queueEnforcementWhisper(msg);
+		}
+
+		const unresolved = getUnresolvedConflicts(ctx);
+		if (unresolved.length > 0 && unresolved.length % 5 === 0) {
+			// Every 5 unresolved conflicts, remind
+			queueEnforcementWhisper(
+				`[conflict] ${unresolved.length} unresolved source conflicts. ` +
+				`Consider resolving: memory_store content with conflict_verified tag.`,
+			);
+		}
 	});
 
 	// ── tool_end: calibration tracking (Task 4c) ───────────────────────────
