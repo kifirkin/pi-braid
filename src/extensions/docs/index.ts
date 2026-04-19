@@ -10,7 +10,8 @@
  */
 
 import { execSync } from "node:child_process";
-import * as fs from "node:fs";
+import * as fs from "node:fs/promises";
+import * as fsSync from "node:fs";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { StringEnum } from "@mariozechner/pi-ai";
@@ -95,7 +96,7 @@ function isValidDoc(path: string): { valid: boolean; format: string; isPdf: bool
 	const ext = path.toLowerCase().split(".").pop() || "";
 	const format = TEXTUTIL_FORMATS.includes(ext) ? ext : PDF_FORMATS.includes(ext) ? ext : "";
 	return {
-		valid: format.length > 0 && fs.existsSync(path),
+		valid: format.length > 0 && fsSync.existsSync(path),
 		format,
 		isPdf: PDF_FORMATS.includes(ext),
 	};
@@ -117,7 +118,7 @@ async function readPdf(path: string, maxLines: number): Promise<string> {
 				encoding: "utf-8",
 				maxBuffer: 10 * 1024 * 1024,
 			});
-			content = fs.readFileSync(tmpFile, "utf-8");
+			content = await fs.readFile(tmpFile, "utf-8");
 		} else if (qlmanage) {
 			// macOS native: Quick Look can extract text from PDFs
 			const { stdout } = await execAsync(
@@ -127,15 +128,15 @@ async function readPdf(path: string, maxLines: number): Promise<string> {
 			// qlmanage -t outputs to /tmp/<basename>.txt
 			const baseName = path.split("/").pop()?.replace(".pdf", "") || "document";
 			const qlOutput = `/tmp/${baseName}.txt`;
-			if (fs.existsSync(qlOutput)) {
-				content = fs.readFileSync(qlOutput, "utf-8");
+			if (fsSync.existsSync(qlOutput)) {
+				content = await fs.readFile(qlOutput, "utf-8");
 			} else {
 				// Fallback: try text extraction via macOS
 				execSync(`cupsfilter "${path}" 2>/dev/null | textutil -convert txt -stdin -stdout > "${tmpFile}"`, {
 					encoding: "utf-8",
 					maxBuffer: 10 * 1024 * 1024,
 				});
-				content = fs.readFileSync(tmpFile, "utf-8");
+				content = await fs.readFile(tmpFile, "utf-8");
 			}
 		} else {
 			// No PDF tools available
@@ -152,7 +153,7 @@ async function readPdf(path: string, maxLines: number): Promise<string> {
 		}
 
 		// Clean up temp file
-		if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+		if (fsSync.existsSync(tmpFile)) await fs.unlink(tmpFile);
 
 		// Truncate if needed
 		const lines = content.split("\n");
@@ -162,9 +163,9 @@ async function readPdf(path: string, maxLines: number): Promise<string> {
 
 		return content;
 	} catch (error) {
-		if (fs.existsSync(tmpFile)) {
+		if (fsSync.existsSync(tmpFile)) {
 			try {
-				fs.unlinkSync(tmpFile);
+				await fs.unlink(tmpFile);
 			} catch {}
 		}
 		throw error;
@@ -174,7 +175,7 @@ async function readPdf(path: string, maxLines: number): Promise<string> {
 /**
  * Read document using macOS textutil
  */
-function readWithTextutil(path: string, format: string, maxLines: number): string {
+async function readWithTextutil(path: string, format: string, maxLines: number): Promise<string> {
 	const tmpFile = `/tmp/doc_extract_${Date.now()}.txt`;
 
 	execSync(`textutil -convert ${format} "${path}" -output ${tmpFile}`, {
@@ -182,8 +183,12 @@ function readWithTextutil(path: string, format: string, maxLines: number): strin
 		maxBuffer: 10 * 1024 * 1024,
 	});
 
-	let content = fs.readFileSync(tmpFile, "utf-8");
-	fs.unlinkSync(tmpFile);
+	let content: string;
+	try {
+		content = await fs.readFile(tmpFile, "utf-8");
+	} finally {
+		try { await fs.unlink(tmpFile); } catch { /* ignore */ }
+	}
 
 	const lines = content.split("\n");
 	if (lines.length > maxLines) {
@@ -203,7 +208,7 @@ export default function docExtension(pi: ExtensionAPI) {
 			"Install pdftotext via: brew install poppler",
 		parameters: readDocSchema,
 		execute: async (_toolCallId, params): Promise<AgentToolResult<{ lines: number; format: string }>> => {
-			if (!fs.existsSync(params.path)) {
+			if (!fsSync.existsSync(params.path)) {
 				return {
 					content: [{ type: "text" as const, text: `File not found: ${params.path}` }],
 					details: { lines: 0, format: "none" },
@@ -235,7 +240,7 @@ export default function docExtension(pi: ExtensionAPI) {
 					content = await readPdf(params.path, maxLines);
 				} else {
 					const outputFormat = params.format || "txt";
-					content = readWithTextutil(params.path, outputFormat, maxLines);
+					content = await readWithTextutil(params.path, outputFormat, maxLines);
 				}
 
 				const lines = content.split("\n").filter((l) => l.trim().length > 0).length;

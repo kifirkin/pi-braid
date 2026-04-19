@@ -9,7 +9,8 @@
  * - Fast traversal for large codebases
  */
 
-import * as fs from "node:fs";
+import * as fs from "node:fs/promises";
+import * as fsSync from "node:fs";
 import * as path from "node:path";
 import { Type } from "@sinclair/typebox";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext, ToolDefinition } from "@mariozechner/pi-coding-agent";
@@ -121,13 +122,13 @@ const codebaseTreeSchema = Type.Object({
 });
 
 // Fast file stats with caching
-const statCache = new Map<string, fs.Stats | null>();
-function fastStat(filePath: string): fs.Stats | null {
+const statCache = new Map<string, fsSync.Stats | null>();
+async function fastStat(filePath: string): Promise<fsSync.Stats | null> {
 	if (statCache.has(filePath)) {
 		return statCache.get(filePath)!;
 	}
 	try {
-		const stat = fs.statSync(filePath);
+		const stat = await fs.stat(filePath);
 		statCache.set(filePath, stat);
 		return stat;
 	} catch {
@@ -169,52 +170,44 @@ function isTruncatedDir(name: string): boolean {
 	return false;
 }
 
-// Cache for parsed gitignore patterns per directory
-const gitignoreCache = new Map<string, string[] | null>();
+// Cache for parsed gitignore patterns per directory (async cache: path → promise of patterns)
+const gitignoreCache = new Map<string, Promise<string[] | null> | null>();
 
 // Parse a gitignore file and return directory patterns
-function parseGitignore(filePath: string): string[] | null {
+async function parseGitignore(filePath: string): Promise<string[] | null> {
 	if (gitignoreCache.has(filePath)) {
 		return gitignoreCache.get(filePath)!;
 	}
 
-	try {
-		const content = fs.readFileSync(filePath, "utf-8");
-		const patterns: string[] = [];
-
-		for (const line of content.split("\n")) {
-			const trimmed = line.trim();
-			// Skip comments and empty lines
-			if (!trimmed || trimmed.startsWith("#")) continue;
-			// Skip negation
-			if (trimmed.startsWith("!")) continue;
-			// Clean the pattern: remove trailing / and recursive glob markers
-			const pattern = trimmed
-				.replace(/\/$/, "")
-				.replace(/\/\*\*$/, "")
-				.replace(/\*\*$/, "");
-			// Keep all patterns (both glob and simple), including *.d.ts, dist/, etc.
-			if (pattern) {
-				patterns.push(pattern);
+	// Cache the pending promise so concurrent calls share it
+	const pending = (async () => {
+		try {
+			const content = await fs.readFile(filePath, "utf-8");
+			const patterns: string[] = [];
+			for (const line of content.split("\n")) {
+				const trimmed = line.trim();
+				if (!trimmed || trimmed.startsWith("#")) continue;
+				if (trimmed.startsWith("!")) continue;
+				const pattern = trimmed.replace(/\/$/, "").replace(/\/\*\*$/, "").replace(/\*\*$/, "");
+				if (pattern) patterns.push(pattern);
 			}
+			return patterns;
+		} catch {
+			return null;
 		}
-
-		gitignoreCache.set(filePath, patterns);
-		return patterns;
-	} catch {
-		gitignoreCache.set(filePath, null);
-		return null;
-	}
+	})();
+	gitignoreCache.set(filePath, pending);
+	return pending;
 }
 
 // Get gitignore patterns from current directory and all parent directories
-function getGitignorePatterns(dirPath: string): { patterns: string[]; baseDir: string } {
+async function getGitignorePatterns(dirPath: string): Promise<{ patterns: string[]; baseDir: string }> {
 	const patterns: string[] = [];
 	let baseDir = dirPath;
 
 	while (baseDir !== path.dirname(baseDir)) {
 		const gitignorePath = path.join(baseDir, ".gitignore");
-		const filePatterns = parseGitignore(gitignorePath);
+		const filePatterns = await parseGitignore(gitignorePath);
 		if (filePatterns) {
 			patterns.push(...filePatterns);
 		}
@@ -257,9 +250,9 @@ function matchesGitignore(filePath: string, entryName: string, patterns: string[
 }
 
 // Count lines in a file
-function countLines(filePath: string): number {
+async function countLines(filePath: string): Promise<number> {
 	try {
-		const content = fs.readFileSync(filePath, "utf-8");
+		const content = await fs.readFile(filePath, "utf-8");
 		return content.split("\n").length;
 	} catch {
 		return 0;
@@ -291,7 +284,7 @@ function getFileCategory(name: string): string {
 
 // Build tree recursively
 // isRoot indicates this is the explicitly requested root path (should never be truncated)
-function buildTree(
+async function buildTree(
 	dirPath: string,
 	currentDepth: number,
 	maxDepth: number,
@@ -300,8 +293,8 @@ function buildTree(
 	showLines: boolean,
 	stats: TreeStats,
 	isRoot: boolean = false,
-): TreeNode | null {
-	const stat = fastStat(dirPath);
+	): Promise<TreeNode | null> {
+	const stat = await fastStat(dirPath);
 	if (!stat) return null;
 
 	const name = path.basename(dirPath);
@@ -311,7 +304,7 @@ function buildTree(
 		// Note: Root path is never truncated - user explicitly requested it
 		const truncatedByName = isTruncatedDir(name);
 		// Also check gitignore patterns
-		const { patterns: gitignorePatterns } = getGitignorePatterns(dirPath);
+		const { patterns: gitignorePatterns } = await getGitignorePatterns(dirPath);
 		const truncatedByGitignore = matchesGitignore(dirPath, name, gitignorePatterns);
 		// Root directory is never truncated - user explicitly requested it
 		const truncated = !isRoot && (truncatedByName || truncatedByGitignore);
@@ -336,7 +329,7 @@ function buildTree(
 		const children: TreeNode[] = [];
 
 		try {
-			const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+			const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
 			for (const entry of entries) {
 				if (shouldExclude(entry.name, exclude)) continue;
@@ -344,10 +337,10 @@ function buildTree(
 				const childPath = path.join(dirPath, entry.name);
 
 				// Check gitignore patterns - skips files like *.d.ts, *.js.map that are in .gitignore
-				const { patterns: gitignorePatterns } = getGitignorePatterns(dirPath);
+				const { patterns: gitignorePatterns } = await getGitignorePatterns(dirPath);
 				if (matchesGitignore(childPath, entry.name, gitignorePatterns)) continue;
 
-				const childNode = buildTree(childPath, currentDepth + 1, maxDepth, exclude, include, showLines, stats, false);
+				const childNode = await buildTree(childPath, currentDepth + 1, maxDepth, exclude, include, showLines, stats, false);
 
 				if (childNode) {
 					children.push(childNode);
@@ -383,7 +376,7 @@ function buildTree(
 		}
 
 		const size = stat.size;
-		const lines = showLines ? countLines(dirPath) : undefined;
+		const lines = showLines ? await countLines(dirPath) : undefined;
 		const category = getFileCategory(name);
 
 		stats.totalFiles++;
@@ -507,7 +500,8 @@ export default function codebaseTreeExtension(pi: ExtensionAPI) {
 		execute: async (_toolCallId, params, _signal, _onUpdate, ctx: ExtensionContext): Promise<AgentToolResult<CodebaseTreeResult>> => {
 			statCache.clear();
 
-			const rootPath = params.path || ctx.cwd;
+			const isAbsolute = path.isAbsolute(params.path ?? "");
+			const rootPath = isAbsolute ? params.path! : path.join(ctx.cwd, params.path ?? ".");
 			const maxDepth = Math.min(params.maxDepth || 3, 10);
 			const exclude = [...DEFAULT_EXCLUDE, ...(params.exclude || [])];
 			const showStats = params.showStats !== false;
@@ -524,7 +518,7 @@ export default function codebaseTreeExtension(pi: ExtensionAPI) {
 			};
 
 			// Validate path
-			const rootStat = fastStat(rootPath);
+			const rootStat = await fastStat(rootPath);
 			if (!rootStat) {
 				return {
 					content: [{ type: "text" as const, text: `Path not found: ${rootPath}` }],
@@ -540,7 +534,7 @@ export default function codebaseTreeExtension(pi: ExtensionAPI) {
 				typeBreakdown: {},
 			};
 
-			const tree = buildTree(rootPath, 0, maxDepth, exclude, params.include, showStats, stats, true);
+			const tree = await buildTree(rootPath, 0, maxDepth, exclude, params.include, showStats, stats, true);
 
 			if (!tree) {
 				return {

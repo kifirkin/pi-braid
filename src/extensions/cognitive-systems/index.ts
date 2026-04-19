@@ -126,6 +126,8 @@ function createExplorePathsTool() {
 
 export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
 	const memory = getCognitiveMemory();
+	// Initialize async - tools will await before first use
+	let initPromise: Promise<void> | null = memory.init();
 
 	pi.registerTool({
 		name: "memory_store",
@@ -143,8 +145,9 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
 			ttl: Type.Optional(Type.Number({ description: "Time-to-live in milliseconds", minimum: 0 })),
 		}),
 		execute: async (_toolCallId, params): Promise<AgentToolResult<{ id?: string; stored: boolean }>> => {
+			await initPromise;
 			try {
-				const m = memory.store(params.content, params.memoryType as CognitiveMemoryType, {
+				const m = await memory.store(params.content, params.memoryType as CognitiveMemoryType, {
 					tags: params.tags,
 					importance: params.importance,
 					source: params.source,
@@ -178,8 +181,9 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
 			tags: Type.Optional(Type.Array(Type.String())),
 		}),
 		execute: async (_toolCallId, params): Promise<AgentToolResult<{ count: number }>> => {
+			await initPromise;
 			const type = params.memoryType === "all" ? undefined : (params.memoryType as CognitiveMemoryType);
-			const results = memory.recall(params.query, { type, limit: params.limit, tags: params.tags });
+			const results = await memory.recall(params.query, { type, limit: params.limit, tags: params.tags });
 			const text =
 				results.length > 0
 					? `Found ${results.length} memories:\n` +
@@ -224,7 +228,8 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
 			_toolCallId,
 			params,
 		): Promise<AgentToolResult<{ found: boolean; memory?: CognitiveMemoryEntry }>> => {
-			const m = memory.getById(params.id);
+			await initPromise;
+			const m = await memory.getById(params.id);
 			if (!m) {
 				return { content: [{ type: "text", text: `Memory ${params.id} not found` }], details: { found: false } };
 			}

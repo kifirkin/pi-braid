@@ -488,15 +488,15 @@ function resolveDefaultTarget(ctx: any): string | null {
 		if (entry.type === "message") {
 			const msg = entry.message;
 			if (msg.role === "toolResult") {
-				if (!isInternal(msg.toolName)) { targetId = entry.id; break; }
+				if (!isInternal(String((msg as any).toolName ?? ""))) { targetId = entry.id; break; }
 			} else if (msg.role === "assistant") {
 				const hasInternal = msg.content.some(
-					(c) => c.type === "toolCall" && isInternal((c as { name?: string }).name),
+					(c: any) => c.type === "toolCall" && isInternal(String(c.name ?? "")),
 				);
 				if (!hasInternal) { targetId = entry.id; break; }
 			}
 		}
-		if (!targetId) targetId = entry.id;
+		// Already handled above
 		break;
 	}
 	if (!targetId && branch.length > 0) {
@@ -592,7 +592,7 @@ function analyzeSession(ctx: any): AuditResult {
 				const toolName = toolResult.toolName;
 
 				// Internal tools are low value
-				if (isInternal(toolName)) {
+				if (isInternal(String(toolName))) {
 					score += 0.3;
 					reason = "Internal tool result (low semantic value)";
 				}
@@ -627,11 +627,11 @@ function analyzeSession(ctx: any): AuditResult {
 					reason: reason || "Old tool call",
 					score: Math.min(1, score),
 					toolName,
-					content: (toolResult.content?.[0]?.text ?? "").toString().slice(0, 100),
+					content: String((toolResult as any).content?.[0]?.text ?? "").slice(0, 100),
 				});
 			} else if (msg.role === "assistant") {
 				// Assistant messages with only tool calls (no text)
-				const hasText = msg.content?.some((c) => c.type === "text" && (c as { text?: string }).text?.length > 50);
+				const hasText = msg.content?.some((c: any) => c.type === "text" && (c.text?.length ?? 0) > 50);
 				if (!hasText) {
 					score = 0.4;
 					reason = "Assistant message with no substantive text";
@@ -1317,7 +1317,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 	});
 
 	// Provide custom instructions before compaction for smarter summarization
-	pi.on("session_before_compact", async (event, ctx) => {
+	pi.on("session_before_compact", async (event: SessionBeforeCompactEvent, ctx: ExtensionContext) => {
 		try {
 			const audit = analyzeSession(ctx);
 
@@ -1344,10 +1344,12 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 			instructions.push("After compaction: consider storing key learnings in memory for cross-session continuity.");
 
 			if (instructions.length > 0) {
-				// Return custom instructions to enhance default summarization
-				return {
-					customInstructions: instructions.join(" "),
-				};
+				// Send a context message with custom instructions to guide compaction
+				pi.sendMessage({
+					customType: "context",
+					display: true,
+					content: [{ type: "text", text: `[COMPACTION_INSTRUCTIONS] ${instructions.join(" ")}` }],
+				});
 			}
 		} catch (err) {
 			log.error("session_before_compact error:", err);
@@ -1362,11 +1364,11 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 			const preparation = event.preparation;
 
 			// Auto-generate summary if none provided
-			if (!preparation.summaryEntry && preparation.targetId) {
+			if (!(preparation as any).summaryEntry && (preparation as any).targetId) {
 				// Find nearest tag for context
 				const sm = ctx.sessionManager;
 				const branch = sm.getBranch();
-				const targetIndex = branch.findIndex((e: any) => e.id === preparation.targetId);
+				const targetIndex = branch.findIndex((e: any) => e.id === (preparation as any).targetId);
 
 				let nearestTag = "checkpoint";
 				if (targetIndex >= 0) {
@@ -1429,7 +1431,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 			if (reason === "overflow" && !willRetry && !aborted) {
 				const entryId = result?.firstKeptEntryId ?? event.compactionEntry?.id;
 
-				const errMsg = errorMessage ?? "Compaction succeeded but the retry overflowed.";
+				const errMsg: string = errorMessage ?? "Compaction succeeded but the retry overflowed.";;
 
 				// Retry with more aggressive compaction (up to OVERFLOW_RETRY_MAX_ATTEMPTS)
 				if (overflowRetryState.attempt < OVERFLOW_RETRY_MAX_ATTEMPTS) {
@@ -1511,12 +1513,12 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 			// ── Transient server error (529, overloaded, etc.) ─────────────────
 			// Retry with backoff for transient errors regardless of reason code.
 			// These errors indicate server overload, not session-specific issues.
-			const errMsg = errorMessage ?? "Compaction threw an error.";
+			const errMsg: string = errorMessage ?? "Compaction threw an error.";;
 			if (isTransientCompactionError(errorMessage)) {
 				if (compactionRetryState.attempt < COMPACTION_RETRY_MAX_ATTEMPTS) {
 					compactionRetryState.attempt++;
 					compactionRetryState.lastError = errMsg;
-					compactionRetryState.lastReason = reason;
+					compactionRetryState.lastReason = reason ?? "";
 
 					pi.sendMessage({
 						customType: "context",
@@ -1555,7 +1557,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 				if (compactionRetryState.attempt < COMPACTION_RETRY_MAX_ATTEMPTS) {
 					compactionRetryState.attempt++;
 					compactionRetryState.lastError = errMsg;
-					compactionRetryState.lastReason = reason;
+					compactionRetryState.lastReason = reason ?? "";
 
 					pi.sendMessage({
 						customType: "context",
@@ -1777,9 +1779,9 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 	// ── Auto-Retry End Event ──────────────────────────────────────────────
 	// Catches non-overflow retry failures (429 rate limits, 500s, network errors).
 	// NOTE: overflow errors do NOT use retry - they use compaction instead.
-	pi.on("auto_retry_end" as any, async (event: { error?: string; attempt?: number }, _ctx: ExtensionContext) => {
+	pi.on("auto_retry_end" as any, async (event: any, _ctx: ExtensionContext) => {
 		try {
-			const { success, attempt, finalError } = event;
+			const { success, attempt, finalError } = event as { success?: boolean; attempt?: number; finalError?: string };
 
 			if (!success) {
 				pi.sendMessage(

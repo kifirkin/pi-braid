@@ -18,7 +18,7 @@
  * Tasks:  ~/.pi/agent/scratchpads/{project-slug}/tasks.json
  */
 
-import * as fs from "node:fs";
+import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -178,43 +178,39 @@ function createScratchpad(goal: string, projectSlug: string): TaskScratchpad {
 	};
 }
 
-function saveScratchpadToDisk(scratchpad: TaskScratchpad): void {
+async function saveScratchpadToDisk(scratchpad: TaskScratchpad): Promise<void> {
 	try {
 		const filePath = scratchpadFilePath(scratchpad.projectSlug);
 		const dir = path.dirname(filePath);
-		if (!fs.existsSync(dir)) {
-			fs.mkdirSync(dir, { recursive: true });
-		}
-		fs.writeFileSync(filePath, JSON.stringify(scratchpad, null, 2));
+		await fs.mkdir(dir, { recursive: true });
+		await fs.writeFile(filePath, JSON.stringify(scratchpad, null, 2));
 	} catch {
 		// Silent fail - operates in memory if disk write fails
 	}
 }
 
-function loadScratchpadFromDisk(projectSlug: string): TaskScratchpad | null {
+async function loadScratchpadFromDisk(projectSlug: string): Promise<TaskScratchpad | null> {
 	try {
 		const filePath = scratchpadFilePath(projectSlug);
-		if (fs.existsSync(filePath)) {
-			const data = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-			if (!data.updatedAt) data.updatedAt = Date.now();
-			if (!data.projectSlug) data.projectSlug = projectSlug;
-			// Backfill new L2 fields for scratchpads created before this update
-			if (!data.session) {
-				data.session = {
-					turn: 0,
-					phase: "idle",
-					mode: "normal",
-					last_compact_turn: 0,
-					session_start: data.updatedAt,
-					updated_at: data.updatedAt,
-				};
-			}
-			if (!data.constraints) data.constraints = [];
-			if (!data.key_learnings) data.key_learnings = [];
-			return data as TaskScratchpad;
+		const data = JSON.parse(await fs.readFile(filePath, "utf-8"));
+		if (!data.updatedAt) data.updatedAt = Date.now();
+		if (!data.projectSlug) data.projectSlug = projectSlug;
+		// Backfill new L2 fields for scratchpads created before this update
+		if (!data.session) {
+			data.session = {
+				turn: 0,
+				phase: "idle",
+				mode: "normal",
+				last_compact_turn: 0,
+				session_start: data.updatedAt,
+				updated_at: data.updatedAt,
+			};
 		}
+		if (!data.constraints) data.constraints = [];
+		if (!data.key_learnings) data.key_learnings = [];
+		return data as TaskScratchpad;
 	} catch {
-		// Silent fail
+		// Silent fail (file doesn't exist or parse error)
 	}
 	return null;
 }
@@ -223,26 +219,22 @@ function taskFilePath(projectSlug: string): string {
 	return path.join(SCRATCHPAD_BASE_DIR, projectSlug, "tasks.json");
 }
 
-function saveTaskStore(slug: string, store: TaskStore): void {
+async function saveTaskStore(slug: string, store: TaskStore): Promise<void> {
 	try {
 		const filePath = taskFilePath(slug);
 		const dir = path.dirname(filePath);
-		if (!fs.existsSync(dir)) {
-			fs.mkdirSync(dir, { recursive: true });
-		}
+		await fs.mkdir(dir, { recursive: true });
 		store.updatedAt = Date.now();
-		fs.writeFileSync(filePath, JSON.stringify(store, null, 2));
+		await fs.writeFile(filePath, JSON.stringify(store, null, 2));
 	} catch {
 		// Silent fail
 	}
 }
 
-function loadTaskStore(projectSlug: string): TaskStore {
+async function loadTaskStore(projectSlug: string): Promise<TaskStore> {
 	try {
 		const filePath = taskFilePath(projectSlug);
-		if (fs.existsSync(filePath)) {
-			return JSON.parse(fs.readFileSync(filePath, "utf-8")) as TaskStore;
-		}
+		return JSON.parse(await fs.readFile(filePath, "utf-8")) as TaskStore;
 	} catch {
 		// Silent fail
 	}
@@ -357,12 +349,12 @@ let _taskScratchpad: TaskScratchpad | null = null;
 let _currentProjectSlug: string = "";
 let _taskStore: TaskStore = { tasks: [], updatedAt: Date.now() };
 
-function getOrCreateScratchpad(projectSlug: string): TaskScratchpad {
+async function getOrCreateScratchpad(projectSlug: string): Promise<TaskScratchpad> {
 	if (_taskScratchpad && _currentProjectSlug === projectSlug) {
 		return _taskScratchpad;
 	}
 
-	const loaded = loadScratchpadFromDisk(projectSlug);
+	const loaded = await loadScratchpadFromDisk(projectSlug);
 	if (loaded) {
 		_taskScratchpad = loaded;
 	} else {
@@ -372,10 +364,10 @@ function getOrCreateScratchpad(projectSlug: string): TaskScratchpad {
 	return _taskScratchpad;
 }
 
-function mutateAndSave(scratchpad: TaskScratchpad): void {
+async function mutateAndSave(scratchpad: TaskScratchpad): Promise<void> {
 	scratchpad.updatedAt = Date.now();
 	scratchpad.session.updated_at = Date.now();
-	saveScratchpadToDisk(scratchpad);
+	await saveScratchpadToDisk(scratchpad);
 }
 
 function resolveProjectSlug(cwd?: string): string {
@@ -462,7 +454,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 		parameters: scratchpadSchema,
 		execute: async (_toolCallId: string, params: unknown, _signal, _onUpdate, ctx: ExtensionContext): Promise<AgentToolResult<unknown>> => {
 			const { action, text } = params as ScratchpadToolInput;
-			const pad = getOrCreateScratchpad(resolveProjectSlug(ctx.cwd));
+			const pad = await getOrCreateScratchpad(resolveProjectSlug(ctx.cwd));
 
 			switch (action) {
 				// ── Core ──────────────────────────────────────────────────────────
@@ -487,37 +479,37 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 					if (!text) return { content: [{ type: "text" as const, text: "text required" }], details: { error: "missing_text" } };
 					pad.goal = text;
 					pad.session.phase = "planning";
-					mutateAndSave(pad);
+					await mutateAndSave(pad);
 					return { content: [{ type: "text" as const, text: `Goal set: ${text}` }], details: { goal: text } };
 
 				case "add_plan":
 					if (!text) return { content: [{ type: "text" as const, text: "text required" }], details: { error: "missing_text" } };
 					pad.plan.push(text);
-					mutateAndSave(pad);
+					await mutateAndSave(pad);
 					return { content: [{ type: "text" as const, text: `Plan step added: ${text}` }], details: { plan: pad.plan } };
 
 				case "mark_done":
 					if (!text) return { content: [{ type: "text" as const, text: "text required" }], details: { error: "missing_text" } };
 					if (!pad.done.includes(text)) pad.done.push(text);
-					mutateAndSave(pad);
+					await mutateAndSave(pad);
 					return { content: [{ type: "text" as const, text: `Marked done: ${text}` }], details: { done: pad.done } };
 
 				case "add_decision":
 					if (!text) return { content: [{ type: "text" as const, text: "text required" }], details: { error: "missing_text" } };
 					pad.decisions.push(text);
-					mutateAndSave(pad);
+					await mutateAndSave(pad);
 					return { content: [{ type: "text" as const, text: `Decision recorded: ${text}` }], details: { decisions: pad.decisions } };
 
 				case "add_hypothesis":
 					if (!text) return { content: [{ type: "text" as const, text: "text required" }], details: { error: "missing_text" } };
 					pad.hypotheses.push(text);
-					mutateAndSave(pad);
+					await mutateAndSave(pad);
 					return { content: [{ type: "text" as const, text: `Hypothesis added: ${text}` }], details: { hypotheses: pad.hypotheses } };
 
 				case "add_note":
 					if (!text) return { content: [{ type: "text" as const, text: "text required" }], details: { error: "missing_text" } };
 					pad.notes.push(text);
-					mutateAndSave(pad);
+					await mutateAndSave(pad);
 					return { content: [{ type: "text" as const, text: `Note added: ${text}` }], details: { notes: pad.notes } };
 
 				// ── CCA L2: Structured Session Memory ───────────────────────────────
@@ -539,7 +531,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 					if (updates.length === 0) {
 						return { content: [{ type: "text" as const, text: "No session fields provided (turn, phase, mode)" }], details: { error: "no_updates" } };
 					}
-					mutateAndSave(pad);
+					await mutateAndSave(pad);
 					return { content: [{ type: "text" as const, text: `Session updated: ${updates.join(", ")}` }], details: { session: pad.session } };
 				}
 
@@ -558,7 +550,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 						acknowledged: false,
 					};
 					pad.constraints.push(constraint);
-					mutateAndSave(pad);
+					await mutateAndSave(pad);
 					return { content: [{ type: "text" as const, text: `Constraint added [${constraint.id}]: ${constraint.description}` }], details: { constraint } };
 				}
 
@@ -568,7 +560,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 					const idx = pad.constraints.findIndex((c) => c.id === cid);
 					if (idx === -1) return { content: [{ type: "text" as const, text: `Constraint ${cid} not found` }], details: { error: "not_found" } };
 					pad.constraints.splice(idx, 1);
-					mutateAndSave(pad);
+					await mutateAndSave(pad);
 					return { content: [{ type: "text" as const, text: `Removed constraint ${cid}` }], details: { remaining: pad.constraints.length } };
 				}
 
@@ -590,7 +582,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 						persisted: false,
 					};
 					pad.key_learnings.push(learning);
-					mutateAndSave(pad);
+					await mutateAndSave(pad);
 					return { content: [{ type: "text" as const, text: `Learning recorded [${learning.id}]: [${learning.category}] ${learning.content}` }], details: { learning } };
 				}
 
@@ -620,7 +612,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 					// Record the compaction event
 					const currentTurn = pad.session.turn;
 					pad.session.last_compact_turn = currentTurn;
-					mutateAndSave(pad);
+					await mutateAndSave(pad);
 
 					const unpersisted = pad.key_learnings.filter((l) => !l.persisted);
 					if (unpersisted.length > 0) {
@@ -684,7 +676,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 
 				case "task_add": {
 					const slug = resolveProjectSlug();
-					_taskStore = loadTaskStore(slug);
+					_taskStore = await loadTaskStore(slug);
 					const task: TaskItem = {
 						id: generateTaskId(),
 						description: text ?? "",
@@ -696,13 +688,13 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 						maxAttempts: 3,
 					};
 					_taskStore.tasks.push(task);
-					saveTaskStore(slug, _taskStore);
+					await saveTaskStore(slug, _taskStore);
 					return { content: [{ type: "text" as const, text: `Task added: ${task.id} - ${task.description}` }], details: { id: task.id, total: _taskStore.tasks.length } };
 				}
 
 				case "task_list": {
 					const slug = resolveProjectSlug();
-					_taskStore = loadTaskStore(slug);
+					_taskStore = await loadTaskStore(slug);
 					if (_taskStore.tasks.length === 0) return { content: [{ type: "text" as const, text: "No tasks." }], details: { count: 0 } };
 					const lines = _taskStore.tasks.map((t) => {
 						const deps = t.dependencies.length > 0 ? ` [deps: ${t.dependencies.join(", ")}]` : "";
@@ -713,7 +705,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 
 				case "task_complete": {
 					const slug = resolveProjectSlug();
-					_taskStore = loadTaskStore(slug);
+					_taskStore = await loadTaskStore(slug);
 					const tid = (params as ScratchpadToolInput).task_id;
 					if (!tid) return { content: [{ type: "text" as const, text: "task_id required" }], details: { error: "missing_task_id" } };
 					const task = _taskStore.tasks.find((t) => t.id === tid);
@@ -721,13 +713,13 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 					task.status = "completed";
 					task.completedAt = Date.now();
 					task.result = text;
-					saveTaskStore(slug, _taskStore);
+					await saveTaskStore(slug, _taskStore);
 					return { content: [{ type: "text" as const, text: `Task ${tid} completed` }], details: { id: tid } };
 				}
 
 				case "task_fail": {
 					const slug = resolveProjectSlug();
-					_taskStore = loadTaskStore(slug);
+					_taskStore = await loadTaskStore(slug);
 					const tid = (params as ScratchpadToolInput).task_id;
 					if (!tid) return { content: [{ type: "text" as const, text: "task_id required" }], details: { error: "missing_task_id" } };
 					const task = _taskStore.tasks.find((t) => t.id === tid);
@@ -744,7 +736,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 
 				case "task_next": {
 					const slug = resolveProjectSlug();
-					_taskStore = loadTaskStore(slug);
+					_taskStore = await loadTaskStore(slug);
 					const pending = _taskStore.tasks
 						.filter((t) => t.status === "pending")
 						.filter((t) => t.dependencies.every((d) => _taskStore.tasks.find((dep) => dep.id === d)?.status === "completed"))
@@ -756,19 +748,19 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 
 				case "task_remove": {
 					const slug = resolveProjectSlug();
-					_taskStore = loadTaskStore(slug);
+					_taskStore = await loadTaskStore(slug);
 					const tid = (params as ScratchpadToolInput).task_id;
 					if (!tid) return { content: [{ type: "text" as const, text: "task_id required" }], details: { error: "missing_task_id" } };
 					const idx = _taskStore.tasks.findIndex((t) => t.id === tid);
 					if (idx === -1) return { content: [{ type: "text" as const, text: `Task ${tid} not found` }], details: { error: "not_found" } };
 					_taskStore.tasks.splice(idx, 1);
-					saveTaskStore(slug, _taskStore);
+					await saveTaskStore(slug, _taskStore);
 					return { content: [{ type: "text" as const, text: `Removed ${tid}` }], details: { id: tid, remaining: _taskStore.tasks.length } };
 				}
 
 				case "task_stats": {
 					const slug = resolveProjectSlug();
-					_taskStore = loadTaskStore(slug);
+					_taskStore = await loadTaskStore(slug);
 					const stats = {
 						total: _taskStore.tasks.length,
 						pending: _taskStore.tasks.filter((t) => t.status === "pending").length,
@@ -785,10 +777,10 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 
 				case "task_clear": {
 					const slug = resolveProjectSlug();
-					_taskStore = loadTaskStore(slug);
+					_taskStore = await loadTaskStore(slug);
 					const before = _taskStore.tasks.length;
 					_taskStore.tasks = _taskStore.tasks.filter((t) => t.status === "pending" || t.status === "running");
-					saveTaskStore(slug, _taskStore);
+					await saveTaskStore(slug, _taskStore);
 					return { content: [{ type: "text" as const, text: `Cleared ${before - _taskStore.tasks.length} completed/failed tasks` }], details: { removed: before - _taskStore.tasks.length, remaining: _taskStore.tasks.length } };
 				}
 
@@ -812,7 +804,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 			const slug = resolveProjectSlug(ctx.cwd);
 			_taskScratchpad = createScratchpad("", slug);
 			_currentProjectSlug = slug;
-			saveScratchpadToDisk(_taskScratchpad);
+			await saveScratchpadToDisk(_taskScratchpad);
 			ctx.ui.notify("Scratchpad cleared", "info");
 		},
 	});

@@ -14,7 +14,8 @@
  * - error_stats: Get error statistics by type/source
  */
 
-import * as fs from "node:fs";
+import * as fs from "node:fs/promises";
+import * as fsSync from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -40,17 +41,14 @@ const ERROR_DIR = path.join(os.homedir(), ".pi", "agent", "errors");
 const ERROR_FILE = path.join(ERROR_DIR, "error-log.jsonl");
 const MAX_ERRORS = 100;
 
-function ensureErrorDir(): void {
-	if (!fs.existsSync(ERROR_DIR)) {
-		fs.mkdirSync(ERROR_DIR, { recursive: true });
-	}
+async function ensureErrorDir(): Promise<void> {
+	await fs.mkdir(ERROR_DIR, { recursive: true });
 }
 
-function loadErrors(): ErrorEntry[] {
-	ensureErrorDir();
-	if (!fs.existsSync(ERROR_FILE)) return [];
+async function loadErrors(): Promise<ErrorEntry[]> {
+	await ensureErrorDir();
 	try {
-		const data = fs.readFileSync(ERROR_FILE, "utf-8");
+		const data = await fs.readFile(ERROR_FILE, "utf-8");
 		return data
 			.split("\n")
 			.filter((l) => l.trim())
@@ -60,15 +58,15 @@ function loadErrors(): ErrorEntry[] {
 	}
 }
 
-function saveError(entry: ErrorEntry): void {
-	ensureErrorDir();
-	fs.appendFileSync(ERROR_FILE, JSON.stringify(entry) + "\n");
+async function saveError(entry: ErrorEntry): Promise<void> {
+	await ensureErrorDir();
+	await fs.appendFile(ERROR_FILE, JSON.stringify(entry) + "\n");
 
 	// Prune if over limit
-	const entries = loadErrors();
+	const entries = await await loadErrors();
 	if (entries.length > MAX_ERRORS) {
 		const pruned = entries.slice(-MAX_ERRORS);
-		fs.writeFileSync(ERROR_FILE, pruned.map((e) => JSON.stringify(e)).join("\n") + "\n");
+		await fs.writeFile(ERROR_FILE, pruned.map((e) => JSON.stringify(e)).join("\n") + "\n");
 	}
 }
 
@@ -79,12 +77,12 @@ function generateErrorId(): string {
 // Error Capture Logic
 
 /** Capture an error from any source */
-function captureError(
+async function captureError(
 	source: string,
 	message: string,
 	stack?: string,
 	context?: Record<string, unknown>,
-): ErrorEntry {
+): Promise<ErrorEntry> {
 	const entry: ErrorEntry = {
 		id: generateErrorId(),
 		timestamp: Date.now(),
@@ -94,7 +92,7 @@ function captureError(
 		context,
 		handled: false,
 	};
-	saveError(entry);
+	await await saveError(entry);
 	return entry;
 }
 
@@ -124,7 +122,7 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
 		const results = event.toolResults || [];
 		for (const result of results) {
 			if (result.isError) {
-				captureError(
+				await captureError(
 					result.toolName,
 					`Tool failed: ${result.toolName}`,
 					undefined,
@@ -141,7 +139,7 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
 		description: "List recent errors captured by the system",
 		parameters: errorListSchema,
 		execute: async (_toolCallId: string, params: any) => {
-			const entries = loadErrors();
+			const entries = await loadErrors();
 			const limit = params.limit ?? 10;
 			const source = params.source;
 			const unhandledOnly = params.unhandledOnly ?? false;
@@ -185,7 +183,7 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
 		description: "Get detailed error by ID",
 		parameters: errorGetSchema,
 		execute: async (_toolCallId: string, params: any) => {
-			const entries = loadErrors();
+			const entries = await loadErrors();
 			const entry = entries.find((e) => e.id === params.id);
 
 			if (!entry) {
@@ -222,7 +220,7 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
 		description: "Mark an error as handled",
 		parameters: errorClearSchema,
 		execute: async (_toolCallId: string, params: any) => {
-			const entries = loadErrors();
+			const entries = await loadErrors();
 			const idx = entries.findIndex((e) => e.id === params.id);
 
 			if (idx === -1) {
@@ -233,7 +231,7 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
 			}
 
 			entries[idx].handled = true;
-			fs.writeFileSync(ERROR_FILE, entries.map((e) => JSON.stringify(e)).join("\n") + "\n");
+			await fs.writeFile(ERROR_FILE, entries.map((e) => JSON.stringify(e)).join("\n") + "\n");
 
 			return {
 				content: [{ type: "text" as const, text: `Error ${params.id} marked as handled.` }],
@@ -251,7 +249,7 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
 		description: "Get error statistics by source and type",
 		parameters: errorStatsSchema,
 		execute: async () => {
-			const entries = loadErrors();
+			const entries = await loadErrors();
 			const bySource: Record<string, number> = {};
 			const byType: Record<string, number> = {};
 

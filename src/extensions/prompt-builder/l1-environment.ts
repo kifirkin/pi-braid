@@ -65,6 +65,9 @@ async function gatherL1State(pi: ExtensionAPI, ctx: ExtensionContext | undefined
 	let memoryCount = 0;
 	try {
 		const memory = getCognitiveMemory();
+		try {
+			await memory.init();
+		} catch { /* already initialized or init failed - non-fatal */ }
 		memoryCount = memory.getAll(3).length;
 	} catch {
 		// Non-fatal

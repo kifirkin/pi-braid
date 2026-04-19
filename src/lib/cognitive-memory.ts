@@ -17,7 +17,7 @@
  * Storage: ~/.pi/memory/memory.json
  */
 
-import * as fs from "node:fs";
+import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { taggedConsole } from "./logger.js";
@@ -116,55 +116,54 @@ const CATEGORY_BASE_UTILITY: Record<CognitiveMemoryType, number> = {
 
 // Storage Functions
 
-function ensureMemoryDir(): void {
-	if (!fs.existsSync(MEMORY_DIR)) {
-		fs.mkdirSync(MEMORY_DIR, { recursive: true });
-	}
+async function ensureMemoryDir(): Promise<void> {
+	await fs.mkdir(MEMORY_DIR, { recursive: true });
 }
 
-function loadMemory(): CognitiveMemoryStore {
-	ensureMemoryDir();
+async function loadMemory(): Promise<CognitiveMemoryStore> {
+	await ensureMemoryDir();
 	try {
-		if (fs.existsSync(MEMORY_FILE)) {
-			const data = fs.readFileSync(MEMORY_FILE, "utf-8");
-			const parsed = JSON.parse(data);
+		const data = await fs.readFile(MEMORY_FILE, "utf-8");
+		const parsed = JSON.parse(data);
 
-			// Handle migration from old format (entries) to new format (memories)
-			if (parsed.entries && !parsed.memories) {
-				// Migrate old entries to new format
-				const migrated: CognitiveMemoryStore = {
-					version: 1,
-					memories: parsed.entries.map((e: any) => ({
-						id: e.id,
-						content: e.content,
-						type: e.category, // old category maps to new type
-						tags: e.tags || [],
-						timestamp: e.timestamp,
-						accessCount: 0,
-						lastAccessed: e.timestamp,
-						source: e.source,
-						importance: e.utility,
-						utility: e.utility,
-					})),
-					lastConsolidation: parsed.lastConsolidation || 0,
-					turnCount: parsed.turnCount || 0,
-				};
-				// Save migrated format
-				saveMemory(migrated);
-				return migrated;
-			}
-
-			return parsed;
+		// Handle migration from old format (entries) to new format (memories)
+		if (parsed.entries && !parsed.memories) {
+			// Migrate old entries to new format
+			const migrated: CognitiveMemoryStore = {
+				version: 1,
+				memories: parsed.entries.map((e: any) => ({
+					id: e.id,
+					content: e.content,
+					type: e.category, // old category maps to new type
+					tags: e.tags || [],
+					timestamp: e.timestamp,
+					accessCount: 0,
+					lastAccessed: e.timestamp,
+					source: e.source,
+					importance: e.utility,
+					utility: e.utility,
+				})),
+				lastConsolidation: parsed.lastConsolidation || 0,
+				turnCount: parsed.turnCount || 0,
+			};
+			// Save migrated format
+			await saveMemory(migrated);
+			return migrated;
 		}
+
+		return parsed;
 	} catch (e) {
-		_log.error("Load error:", e);
+		// File doesn't exist or parse error - return empty store
+		if ((e as any).code !== "ENOENT") {
+			_log.error("Load error:", e);
+		}
 	}
 	return { version: 1, memories: [], lastConsolidation: 0, turnCount: 0 };
 }
 
-function saveMemory(store: CognitiveMemoryStore): void {
-	ensureMemoryDir();
-	fs.writeFileSync(MEMORY_FILE, JSON.stringify(store, null, 2));
+async function saveMemory(store: CognitiveMemoryStore): Promise<void> {
+	await ensureMemoryDir();
+	await fs.writeFile(MEMORY_FILE, JSON.stringify(store, null, 2));
 }
 
 function generateId(): string {
@@ -495,14 +494,26 @@ export function generateAutoTags(content: string, context?: MemoryContext): stri
 
 export class CognitiveMemory {
 	private memoryStore: CognitiveMemoryStore;
+	private _initialized: boolean = false;
 
 	constructor() {
-		this.memoryStore = loadMemory();
+		// Start with empty store; call init() to load from disk
+		this.memoryStore = { version: 1, memories: [], lastConsolidation: 0, turnCount: 0 };
+	}
+
+	/**
+	 * Initialize by loading from disk. Must be called before any other method
+	 * if you need persisted data. The constructor starts with an empty store
+	 * for synchronous-compatible usage (e.g. getMemoryForPrompt).
+	 */
+	async init(): Promise<void> {
+		this.memoryStore = await loadMemory();
+		this._initialized = true;
 	}
 
 	initialize(_storageDir?: string): void {
-		// Always use global storage (~/.pi/memory/)
-		this.memoryStore = loadMemory();
+		// Synchronous init is a no-op; use init() for async disk loading
+		// This method exists for backward compatibility but doesn't load from disk
 	}
 
 	/**
@@ -539,7 +550,7 @@ export class CognitiveMemory {
 		return matchCount === 1 ? matchIndex : -1;
 	}
 
-	store(
+	async store(
 		content: string,
 		type: CognitiveMemoryType,
 		options?: {
@@ -553,7 +564,7 @@ export class CognitiveMemory {
 			/** TTL in milliseconds (optional) */
 			ttl?: number;
 		},
-	): CognitiveMemoryEntry {
+	): Promise<CognitiveMemoryEntry> {
 		const importance = options?.importance ?? 0.5;
 
 		if (!shouldStore(content, type, this.memoryStore.memories)) {
@@ -614,7 +625,7 @@ export class CognitiveMemory {
 			this.memoryStore = consolidate(this.memoryStore);
 		}
 
-		saveMemory(this.memoryStore);
+		await saveMemory(this.memoryStore);
 		return memory;
 	}
 
@@ -626,14 +637,14 @@ export class CognitiveMemory {
 		return memories.filter((m) => !m.expiresAt || m.expiresAt > now);
 	}
 
-	recall(
+	async recall(
 		query: string,
 		options?: {
 			type?: CognitiveMemoryType;
 			limit?: number;
 			tags?: string[];
 		},
-	): Array<{ memory: CognitiveMemoryEntry; relevance: number }> {
+	): Promise<Array<{ memory: CognitiveMemoryEntry; relevance: number }>> {
 		const lowerQuery = query.toLowerCase();
 		const queryWords = lowerQuery.split(/\s+/).filter((w) => w.length > 2);
 		const limit = options?.limit ?? 5;
@@ -682,7 +693,7 @@ export class CognitiveMemory {
 			r.memory.lastAccessed = Date.now();
 		}
 
-		saveMemory(this.memoryStore);
+		await saveMemory(this.memoryStore);
 		return results.slice(0, limit);
 	}
 
@@ -700,17 +711,17 @@ export class CognitiveMemory {
 		return [...this.memoryStore.memories].sort((a, b) => b.timestamp - a.timestamp).slice(0, limit);
 	}
 
-	getById(id: string): CognitiveMemoryEntry | undefined {
+	async getById(id: string): Promise<CognitiveMemoryEntry | undefined> {
 		const memory = this.findById(id);
 		if (memory) {
 			memory.accessCount++;
 			memory.lastAccessed = Date.now();
-			saveMemory(this.memoryStore);
+			await saveMemory(this.memoryStore);
 		}
 		return memory;
 	}
 
-	delete(id: string): boolean {
+	async delete(id: string): Promise<boolean> {
 		const index = this.findIndexById(id);
 		if (index === -1) {
 			return false;
@@ -723,14 +734,14 @@ export class CognitiveMemory {
 				m.related = m.related.filter((r) => r.id !== memory.id);
 			}
 		}
-		saveMemory(this.memoryStore);
+		await saveMemory(this.memoryStore);
 		return true;
 	}
 
 	/**
 	 * Link two memories together
 	 */
-	link(fromId: string, toId: string, type: MemoryLink["type"] = "related"): boolean {
+	async link(fromId: string, toId: string, type: MemoryLink["type"] = "related"): Promise<boolean> {
 		const from = this.findById(fromId);
 		const to = this.findById(toId);
 
@@ -751,14 +762,14 @@ export class CognitiveMemory {
 			to.related.push({ id: from.id, type: type === "fixes" ? "supersedes" : "related", auto: true });
 		}
 
-		saveMemory(this.memoryStore);
+		await saveMemory(this.memoryStore);
 		return true;
 	}
 
 	/**
 	 * Unlink two memories
 	 */
-	unlink(fromId: string, toId: string): boolean {
+	async unlink(fromId: string, toId: string): Promise<boolean> {
 		const from = this.findById(fromId);
 		const to = this.findById(toId);
 		let changed = false;
@@ -776,7 +787,7 @@ export class CognitiveMemory {
 		}
 
 		if (changed) {
-			saveMemory(this.memoryStore);
+			await saveMemory(this.memoryStore);
 		}
 		return changed;
 	}
@@ -799,31 +810,31 @@ export class CognitiveMemory {
 	/**
 	 * Set expiration for a memory
 	 */
-	setExpiration(id: string, ttlMs: number): boolean {
+	async setExpiration(id: string, ttlMs: number): Promise<boolean> {
 		const memory = this.findById(id);
 		if (!memory) return false;
 
 		memory.expiresAt = ttlMs > 0 ? Date.now() + ttlMs : undefined;
-		saveMemory(this.memoryStore);
+		await saveMemory(this.memoryStore);
 		return true;
 	}
 
 	/**
 	 * Remove expiration (make permanent)
 	 */
-	removeExpiration(id: string): boolean {
+	removeExpiration(id: string): Promise<boolean> {
 		return this.setExpiration(id, 0);
 	}
 
 	/**
 	 * Clean up expired memories
 	 */
-	cleanupExpired(): number {
+	async cleanupExpired(): Promise<number> {
 		const before = this.memoryStore.memories.length;
 		this.memoryStore.memories = this.filterExpired(this.memoryStore.memories);
 		const removed = before - this.memoryStore.memories.length;
 		if (removed > 0) {
-			saveMemory(this.memoryStore);
+			await saveMemory(this.memoryStore);
 		}
 		return removed;
 	}
@@ -848,27 +859,27 @@ export class CognitiveMemory {
 		return pairs;
 	}
 
-	consolidate(): { removed: number } {
+	async consolidate(): Promise<{ removed: number }> {
 		const before = this.memoryStore.memories.length;
 		this.memoryStore = consolidate(this.memoryStore);
 		const removed = before - this.memoryStore.memories.length;
-		saveMemory(this.memoryStore);
+		await saveMemory(this.memoryStore);
 		return { removed };
 	}
 
-	boost(id: string, amount: number = 0.2): boolean {
+	async boost(id: string, amount: number = 0.2): Promise<boolean> {
 		const memory = this.findById(id);
 		if (!memory) {
 			return false;
 		}
 		memory.utility = Math.min(1.0, memory.utility + amount);
-		saveMemory(this.memoryStore);
+		await saveMemory(this.memoryStore);
 		return true;
 	}
 
-	clear(): void {
+	async clear(): Promise<void> {
 		this.memoryStore = { version: 1, memories: [], lastConsolidation: 0, turnCount: 0 };
-		saveMemory(this.memoryStore);
+		await saveMemory(this.memoryStore);
 	}
 
 	getStats(): {
@@ -916,7 +927,7 @@ export class CognitiveMemory {
 	 * - "since:7d" - within last 7 days (7d, 24h, 1h)
 	 * - "utility:>0.7" - utility threshold
 	 * - "fix bug" - text search (AND matching)
-	 * - Combinations: "type:error source:memory fix bug"
+	 * Combinations: "type:error source:memory fix bug"
 	 */
 	parseQuery(queryStr: string): {
 		source?: string[];
@@ -1011,7 +1022,7 @@ export class CognitiveMemory {
 	 * // Full-text search with filters
 	 * query("type:error source:memory null pointer")
 	 */
-	query(queryStr: string): Array<{ memory: CognitiveMemoryEntry; relevance: number }> {
+	async query(queryStr: string): Promise<Array<{ memory: CognitiveMemoryEntry; relevance: number }>> {
 		const parsed = this.parseQuery(queryStr);
 		return this.queryWithFilters(parsed);
 	}
@@ -1019,9 +1030,9 @@ export class CognitiveMemory {
 	/**
 	 * Execute a query with pre-parsed filters.
 	 */
-	queryWithFilters(
+	async queryWithFilters(
 		filters: ReturnType<typeof this.parseQuery>,
-	): Array<{ memory: CognitiveMemoryEntry; relevance: number }> {
+	): Promise<Array<{ memory: CognitiveMemoryEntry; relevance: number }>> {
 		const limit = filters.limit ?? 10;
 		const sort = filters.sort ?? "recent";
 		const results: Array<{ memory: CognitiveMemoryEntry; relevance: number }> = [];
@@ -1102,7 +1113,7 @@ export class CognitiveMemory {
 			r.memory.lastAccessed = Date.now();
 		}
 
-		saveMemory(this.memoryStore);
+		await saveMemory(this.memoryStore);
 		return results.slice(0, limit);
 	}
 
@@ -1134,9 +1145,12 @@ export class CognitiveMemory {
  *
  * Only includes high-utility entries (>= MIN_UTILITY_THRESHOLD) capped at 2 per category
  * to keep the prompt lean. Enforcement system handles memory usage nudges.
+ *
+ * Note: This is a standalone function that loads from disk each call.
+ * For repeated access, use CognitiveMemory instance with init().
  */
-export function getMemoryForPrompt(): string {
-	const store = loadMemory();
+export async function getMemoryForPrompt(): Promise<string> {
+	const store = await loadMemory();
 
 	if (store.memories.length === 0) {
 		return "";

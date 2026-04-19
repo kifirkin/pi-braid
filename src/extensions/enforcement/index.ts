@@ -11,7 +11,8 @@
  * Critical signals (L3) get their own messages because they require immediate action.
  */
 
-import * as fs from "fs";
+import * as fs from "node:fs/promises";
+import * as fsSync from "node:fs";
 import * as path from "path";
 import type { ExtensionAPI, SessionCompactEvent, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { detectMalformedToolCalls } from "./detection/malformed.js";
@@ -67,10 +68,13 @@ async function loadFileContent(filePath: string): Promise<string | null> {
 			? filePath
 			: path.resolve(process.cwd(), filePath);
 
-		if (!fs.existsSync(resolvedPath)) return null;
-		const stat = fs.statSync(resolvedPath);
-		if (stat.isDirectory()) return null;
-		return fs.readFileSync(resolvedPath, "utf-8");
+		try {
+			const stat = await fs.stat(resolvedPath);
+			if (stat.isDirectory()) return null;
+		} catch {
+			return null; // File doesn't exist or not accessible
+		}
+		return await fs.readFile(resolvedPath, "utf-8");
 	} catch {
 		return null;
 	}
@@ -506,7 +510,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		const compactTurn = state.currentTurn;
 
 		try {
-			const scratchpadResult = await ctx.tools.scratchpad?.({ action: "read" });
+			const scratchpadResult = await (ctx as any).tools.scratchpad?.({ action: "read" });
 			const details = (scratchpadResult as { details?: { key_learnings?: Array<{ persisted?: boolean }> } } | undefined)?.details;
 			const learnings = details?.key_learnings ?? [];
 			const unpersisted = learnings.filter((l) => !l.persisted);

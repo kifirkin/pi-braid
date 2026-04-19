@@ -1,4 +1,5 @@
-import * as fs from "node:fs";
+import * as fs from "node:fs/promises";
+import * as fsSync from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ImageContent, TextContent, Model } from "@mariozechner/pi-ai";
@@ -432,8 +433,8 @@ function getMimeType(imagePath: string): string {
   return mimeTypes[ext] || "image/jpeg";
 }
 
-function checkImageSize(absolutePath: string): ImageSizeCheck {
-  const stats = fs.statSync(absolutePath);
+async function checkImageSize(absolutePath: string): Promise<ImageSizeCheck> {
+  const stats = await fs.stat(absolutePath);
   const size = stats.size;
   const sizeMB = size / BYTES_PER_MB;
   const threshold = DEFAULT_MAX_IMAGE_SIZE_MB;
@@ -451,9 +452,9 @@ function checkImageSize(absolutePath: string): ImageSizeCheck {
   };
 }
 
-function getImageMetadata(absolutePath: string): ImageMetadata | null {
+async function getImageMetadata(absolutePath: string): Promise<ImageMetadata | null> {
   try {
-    const buffer = fs.readFileSync(absolutePath);
+    const buffer = await fs.readFile(absolutePath);
     let width = 0;
     let height = 0;
 
@@ -501,7 +502,7 @@ function getImageMetadata(absolutePath: string): ImageMetadata | null {
 
     const aspectRatio = width / height;
     const isExtremeRatio = aspectRatio > 20 || aspectRatio < 1 / 20;
-    const sizeCheck = checkImageSize(absolutePath);
+    const sizeCheck = await checkImageSize(absolutePath);
 
     return {
       width,
@@ -526,9 +527,9 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / BYTES_PER_MB).toFixed(1)} MB`;
 }
 
-function readImageAsBase64(absolutePath: string): { data: string; mimeType: string } | null {
+async function readImageAsBase64(absolutePath: string): Promise<{ data: string; mimeType: string } | null> {
   try {
-    const buffer = fs.readFileSync(absolutePath);
+    const buffer = await fs.readFile(absolutePath);
     const mimeType = getMimeType(absolutePath);
     return { data: buffer.toString("base64"), mimeType };
   } catch {
@@ -557,7 +558,7 @@ async function performImageAnalysis(
     );
   }
 
-  if (!fs.existsSync(absolutePath)) {
+  if (!fsSync.existsSync(absolutePath)) {
     throw new Error(`File not found: ${absolutePath}`);
   }
 
@@ -567,10 +568,10 @@ async function performImageAnalysis(
     );
   }
 
-  const sizeCheck = checkImageSize(absolutePath);
-  const imageData = readImageAsBase64(absolutePath);
+  const sizeCheck = await checkImageSize(absolutePath);
+  const imageData = await readImageAsBase64(absolutePath);
   const imageBase64 = sizeCheck.isPreviewable ? imageData : undefined;
-  const metadata = getImageMetadata(absolutePath);
+  const metadata = await getImageMetadata(absolutePath);
 
   const mimeType = getMimeType(absolutePath);
   const fileName = path.basename(absolutePath);
@@ -706,7 +707,7 @@ export default function visionExtension(pi: ExtensionAPI) {
       const imagePathExpanded = expandHomeDir(params.imagePath);
       const absolutePath = path.resolve(ctx.cwd, imagePathExpanded);
 
-      if (!fs.existsSync(absolutePath)) {
+      if (!fsSync.existsSync(absolutePath)) {
         return {
           content: [{ type: "text", text: `Error: File not found: ${params.imagePath}` }],
           details: { path: absolutePath, error: "file_not_found" },
@@ -798,7 +799,7 @@ export default function visionExtension(pi: ExtensionAPI) {
       const referenceAbsPath = path.resolve(ctx.cwd, referencePathExpanded);
 
       // Validate first image
-      if (!fs.existsSync(absolutePath)) {
+      if (!fsSync.existsSync(absolutePath)) {
         return {
           content: [{ type: "text", text: `Error: File not found: ${params.imagePath}` }],
           details: { path: absolutePath, error: "file_not_found" },
@@ -818,7 +819,7 @@ export default function visionExtension(pi: ExtensionAPI) {
       }
 
       // Validate reference image
-      if (!fs.existsSync(referenceAbsPath)) {
+      if (!fsSync.existsSync(referenceAbsPath)) {
         return {
           content: [{ type: "text", text: `Error: Reference file not found: ${params.referencePath}` }],
           details: { path: referenceAbsPath, error: "reference_file_not_found" },
@@ -853,10 +854,10 @@ export default function visionExtension(pi: ExtensionAPI) {
         }
 
         // Get metadata for both images
-        const imageMetadata = getImageMetadata(absolutePath);
-        const referenceMetadata = getImageMetadata(referenceAbsPath);
-        const imageSizeCheck = checkImageSize(absolutePath);
-        const referenceSizeCheck = checkImageSize(referenceAbsPath);
+        const imageMetadata = await getImageMetadata(absolutePath);
+        const referenceMetadata = await getImageMetadata(referenceAbsPath);
+        const imageSizeCheck = await checkImageSize(absolutePath);
+        const referenceSizeCheck = await checkImageSize(referenceAbsPath);
 
         onUpdate?.({
           content: [{ type: "text", text: `Preparing comparison...
@@ -866,8 +867,8 @@ Image 2: ${path.basename(referenceAbsPath)}` }],
         });
 
         // Read both images
-        const image1Data = readImageAsBase64(absolutePath);
-        const image2Data = readImageAsBase64(referenceAbsPath);
+        const image1Data = await readImageAsBase64(absolutePath);
+        const image2Data = await readImageAsBase64(referenceAbsPath);
 
         // Compute aspect ratios
         const image1Ratio = imageMetadata ? (imageMetadata.width / imageMetadata.height).toFixed(1) : "?";
@@ -1003,7 +1004,7 @@ Image 2: ${path.basename(referenceAbsPath)}` }],
         return;
       }
 
-      const sizeCheck = checkImageSize(absolutePath);
+      const sizeCheck = await checkImageSize(absolutePath);
       if (sizeCheck.warning) {
         ctx.ui.notify(sizeCheck.warning, "warning");
       }
