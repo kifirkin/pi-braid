@@ -591,4 +591,22 @@ export default function metacognitionExtension(pi: ExtensionAPI) {
 	// Finalize tool
 	const finalizeTool = createFinalizeTool();
 	pi.registerTool({ name: finalizeTool.name, label: finalizeTool.label, description: finalizeTool.description, parameters: finalizeTool.parameters, execute: finalizeTool.execute });
+
+	// ── Auto-enable extension tools ─────────────────────────────────────────────
+	// In --no-session mode, session_start/session_tree events don't fire,
+	// so the assistant extension's restoreToolState() never runs.
+	// This means extension tools (think, finalize, memory_*, etc.) are NOT enabled.
+	// Fix: Auto-enable all registered extension tools on first turn_start.
+	let extensionToolsAutoEnabled = false;
+	pi.on("turn_start", async () => {
+		if (extensionToolsAutoEnabled) return;
+		extensionToolsAutoEnabled = true;
+
+		const activeTools = pi.getActiveTools();
+		const allToolNames = pi.getAllTools().map((t) => t.name);
+		const newTools = allToolNames.filter((n) => !activeTools.includes(n));
+		if (newTools.length > 0) {
+			pi.setActiveTools([...activeTools, ...newTools]);
+		}
+	});
 }
