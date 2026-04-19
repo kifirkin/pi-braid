@@ -11,6 +11,8 @@
  * Critical signals (L3) get their own messages because they require immediate action.
  */
 
+import * as fs from "fs";
+import * as path from "path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { detectMalformedToolCalls } from "./detection/malformed.js";
 import {
@@ -33,6 +35,59 @@ import {
 	queueEnforcementWhisper,
 	sendEnforcementWhisper,
 } from "./whisper.js";
+
+// ── Simple Text Similarity ────────────────────────────────────────────────────
+// Tokenize text into lines and compute Jaccard similarity
+function tokenize(text: string): Set<string> {
+	return new Set(text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0));
+}
+
+function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+	if (a.size === 0 && b.size === 0) return 0;
+	let intersection = 0;
+	for (const item of a) {
+		if (b.has(item)) intersection++;
+	}
+	const union = a.size + b.size - intersection;
+	return union === 0 ? 0 : intersection / union;
+}
+
+function computeSimilarity(text1: string, text2: string): number {
+	const set1 = tokenize(text1);
+	const set2 = tokenize(text2);
+	return jaccardSimilarity(set1, set2);
+}
+
+// Map of file path -> { content, turn }
+const knownFiles = new Map<string, { content: string; turn: number }>();
+
+async function loadFileContent(filePath: string): Promise<string | null> {
+	try {
+		const resolvedPath = path.isAbsolute(filePath)
+			? filePath
+			: path.resolve(process.cwd(), filePath);
+
+		if (!fs.existsSync(resolvedPath)) return null;
+		const stat = fs.statSync(resolvedPath);
+		if (stat.isDirectory()) return null;
+		return fs.readFileSync(resolvedPath, "utf-8");
+	} catch {
+		return null;
+	}
+}
+
+async function detectRedundancy(newContent: string, newPath: string): Promise<string | null> {
+	const SIMILARITY_THRESHOLD = 0.7;
+
+	for (const [existingPath, { content: existingContent }] of knownFiles) {
+		if (existingPath === newPath) continue;
+		const similarity = computeSimilarity(newContent, existingContent);
+		if (similarity >= SIMILARITY_THRESHOLD) {
+			return existingPath;
+		}
+	}
+	return null;
+}
 
 // ── L1 Surfacing ─────────────────────────────────────────────────────────────
 // Shared signal state for prompt-builder. Writable object - prompt-builder reads
@@ -89,6 +144,13 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		if (toolName === "edit" || toolName === "write") {
 			detectRecordCodeChange(state.currentTurn);
 			state.hasCodeChanges = true;
+		}
+
+		if (toolName === "edit" || toolName === "write") {
+			const filePath = (input as { path?: string } | undefined)?.path;
+			if (filePath) {
+				knownFiles.set(filePath, { content: "", turn: state.currentTurn });
+			}
 		}
 
 		state.toolLog.push(`${toolName}`);
@@ -197,6 +259,41 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		if (state.turnHistory.size > 50) {
 			const oldest = Math.min(...state.turnHistory.keys());
 			state.turnHistory.delete(oldest);
+		}
+
+		// ── Redundancy Detection ─────────────────────────────────────────────────
+		// Detect code >70% similar to existing files when edit/write tools run
+		if (actualTools.some((t) => ["edit", "write"].includes(t))) {
+			for (const [filePath, entry] of knownFiles) {
+				if (!entry.content) {
+					// Content not yet loaded - try to load now
+					const loaded = await loadFileContent(filePath);
+					if (loaded !== null) {
+						entry.content = loaded;
+					}
+				}
+			}
+
+			// Check new/updated files for similarity
+			for (const [filePath, entry] of knownFiles) {
+				if (entry.turn === state.currentTurn && entry.content === "") {
+					const loaded = await loadFileContent(filePath);
+					if (loaded !== null) {
+						entry.content = loaded;
+						const similarTo = await detectRedundancy(loaded, filePath);
+						if (similarTo) {
+							const now = Date.now();
+							if (now - state.lastNudgeTime > state.nudgeCooldownMs) {
+								state.lastNudgeTime = now;
+								sendEnforcementWhisper(
+									pi,
+									`[Quality] Similar code exists at \`${similarTo}\`. Reuse or deduplicate.`,
+								);
+							}
+						}
+					}
+				}
+			}
 		}
 
 		// ── L3: Critical signals - individual, semantic ────────────────────────
