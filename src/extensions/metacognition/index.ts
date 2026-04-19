@@ -539,6 +539,23 @@ Continue working until the issues are resolved.`,
 // =============================================================================
 
 export default function metacognitionExtension(pi: ExtensionAPI) {
+	// Auto-enable extension tools on first turn.
+	// In --no-session mode, session_start and session_tree events are NOT fired,
+	// so the assistant extension's restoreToolState() never runs.
+	// This causes extension tools (think, finalize, memory_*, etc.) to be missing
+	// from the active tools list, despite being registered.
+	// Solution: Listen to turn_start (which IS fired) and auto-enable all
+	// registered extension tools on the first turn.
+	let toolsAutoEnabled = false;
+	pi.on("turn_start", () => {
+		if (!toolsAutoEnabled) {
+			const allToolNames = pi.getAllTools().map((t: { name: string }) => t.name);
+			if (allToolNames.length > 0) {
+				pi.setActiveTools(allToolNames);
+			}
+			toolsAutoEnabled = true;
+		}
+	});
 	// Think tool
 	const thinkTool = createThinkTool(
 		(ctx) => {
