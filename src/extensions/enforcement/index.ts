@@ -18,6 +18,7 @@ import type { ExtensionAPI, SessionCompactEvent, ExtensionContext } from "@mario
 import { detectMalformedToolCalls } from "./detection/malformed.js";
 import { TopicDriftDetector } from "../../lib/topic-drift-detector.js";
 import { getReplyInstruction, setLanguage, detectLanguage } from "../../lib/language-hint.js";
+import { measureStability } from "../../lib/reasoning-metrics.js";
 import {
 	detectMissingVerification,
 	recordCodeChange as detectRecordCodeChange,
@@ -122,6 +123,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		if (lang.code === "EN") return;
 
 		setLanguage(lang.code, lang.name);
+		state.lastUserMessage = text;
 		const replyLang = getReplyInstruction();
 		if (!replyLang) return;
 
@@ -705,6 +707,20 @@ Persist them now - this is the minimum-fidelity moment.`,
 				enforcementSignals["routing"] = {
 					turn: state.currentTurn,
 					text: routingSuggestion,
+					acted: false,
+				};
+			}
+		}
+
+		// ── Reasoning stability check (MEASUREMENT_GAP_SOLUTION) ───────────
+		const lastUserMsg = state.lastUserMessage || "";
+		state.lastUserMessage = "";
+		if (lastUserMsg.length > 10 && textContent.length > 100) {
+			const stability = measureStability(lastUserMsg, textContent);
+			if (!stability.stable) {
+				enforcementSignals["stability"] = {
+					turn: state.currentTurn,
+					text: `[stability] Response ${stability.reason} (overlap=${stability.metrics.overlap.toFixed(2)}, entropy=${stability.metrics.entropy.toFixed(2)}, contradictions=${stability.metrics.contradictions})`,
 					acted: false,
 				};
 			}

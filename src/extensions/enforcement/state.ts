@@ -84,6 +84,7 @@ export const state = {
 	lastLazyNudgeTime: 0,
 	// Verification judge tracking
 	lastVerificationJudgeTurn: 0,
+	lastUserMessage: "",
 	verificationJudgeRunning: false,
 	toolLog: [] as string[],
 	// Context hygiene monitoring
@@ -157,6 +158,7 @@ export function resetState(): void {
 	state.lastLazyNudgeTime = 0;
 	// Reset verification judge tracking
 	state.lastVerificationJudgeTurn = 0;
+	state.lastUserMessage = "";
 	state.verificationJudgeRunning = false;
 	state.toolLog = [];
 	state.planAlignmentData = null;
