@@ -47,7 +47,7 @@ import browserExtension from "./extensions/browser/index.js";
 import assistantExtension from "./extensions/assistant/index.js";
 import visionExtension from "./extensions/vision/index.js";
 import replExtension from "./extensions/repl/index.js";
-import antiSlopInputExtension from "./extensions/anti-slop-input/index.js";
+
 
 // Resolve the skills directory relative to this file
 const __filename = fileURLToPath(import.meta.url);
@@ -81,7 +81,6 @@ const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void 
 	{ name: "assistant", factory: assistantExtension },
 	{ name: "vision", factory: visionExtension },
 	{ name: "repl", factory: replExtension },
-	{ name: "anti-slop", factory: antiSlopInputExtension },
 ];
 
 export default function piBraidExtension(pi: ExtensionAPI) {

@@ -30,6 +30,20 @@ import { Type } from "@sinclair/typebox";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext, InputEventResult } from "@mariozechner/pi-coding-agent";
 import { setLanguage, detectLanguage } from "../../lib/language-hint.js";
 
+/** Anti-slop: detect code-writing requests (merged from anti-slop-input) */
+const CODE_REQUEST_PATTERNS: RegExp[] = [
+	/\b(write|create|implement|build)\s+(a\s+)?(function|class|method|module|component|script|file|program|handler|service|util)/i,
+	/\b(write|show|give)\s+me\s+(the\s+)?code/i,
+	/\brefactor\b.*\bcode\b/i,
+	/\bfix\b.*\bfunction\b.*\breturn\b/i,
+];
+
+function matchesCodeRequest(text: string): boolean {
+	return CODE_REQUEST_PATTERNS.some((p) => p.test(text));
+}
+
+const CODE_SUFFIX = "\n\nOutput the code directly. Do not explain, analyze, or describe it — output only the code.";
+
 const SYSTEM_PROMPT = `You are a automatic message preprocessor. Your only task is to translate or correct the message sent by User and provide response strictly following these guidelines:
 
 - Translate message to English if it is not already
@@ -368,6 +382,11 @@ async function processMessage(
 			}
 
 			// Update editor text with cleaned version
+			// Anti-slop: detect code-writing requests → append suffix to prevent circular interpretation
+			if (matchesCodeRequest(cleaned)) {
+				cleaned += CODE_SUFFIX;
+			}
+
 			ctx.ui.setEditorText(cleaned);
 			ctx.ui.setStatus("preprocessor", "✓ Preprocessed - press Enter to continue");
 
