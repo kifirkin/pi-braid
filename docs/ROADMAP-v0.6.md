@@ -2,7 +2,9 @@
 
 **Date**: 2026-04-19
 **Base commit**: `d5c7519` (v0.5.7 + post-P5 complete)
-**Build**: 0 errors | 26 extensions | ~21,800 lines | 14/14 tests pass
+**Build**: 0 errors | 27 extensions | ~21,900 lines | 14/14 tests pass
+
+**Task 1**: ✅ DONE — preprocessor uses `resolveUtilityModel()`, thinking:none set
 
 ---
 
