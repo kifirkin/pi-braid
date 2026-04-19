@@ -117,5 +117,4 @@ export default function antiSlopExtension(pi: ExtensionAPI) {
 		},
 	});
 
-	console.log("[anti-slop] Extension registered");
 }

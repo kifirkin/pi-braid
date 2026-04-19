@@ -155,14 +155,15 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 
 		state.toolLog.push(`${toolName}`);
 
-		// Sequence repetition detection: 3+ same tool in a row
-		if (state.toolLog.length >= 3) {
-			const last3 = state.toolLog.slice(-3);
-			if (last3[0] === last3[1] && last3[1] === last3[2]) {
+		// FIXME: sloppy monkey patch detected hardcoded magic numbers
+		// Sequence repetition detection: 9+ same tool in a row
+		if (state.toolLog.length >= 9) {
+			const last9 = state.toolLog.slice(-9);
+			if (last9[0] === last9[1] && last9[1] === last9[2]) {
 				const now = Date.now();
 				if (now - state.lastNudgeTime > state.nudgeCooldownMs) {
 					state.lastNudgeTime = now;
-					sendEnforcementWhisper(pi, `Repeating ${toolName} 3+ times - consider a different approach`);
+					sendEnforcementWhisper(pi, `Repeating ${toolName} 9+ times - consider a different approach`);
 				}
 			}
 		}

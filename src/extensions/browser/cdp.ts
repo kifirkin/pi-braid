@@ -3,6 +3,9 @@
  * Uses Node.js built-in WebSocket to connect to Chrome at localhost:9222.
  */
 
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("cdp");
 interface CdpCommand {
 	id: number;
 	method: string;
@@ -74,16 +77,16 @@ export class CdpClient {
 				await new Promise((r) => setTimeout(r, 50));
 			} catch (err) {
 				// Log but continue
-				console.warn(`Failed to enable ${domain}: ${(err as Error).message}`);
+				log.warn(`Failed to enable ${domain}: ${(err as Error).message}`);
 			}
 		}
 
 		// Verify Page domain works by checking if we can get version
 		try {
 			const version = (await this.send("Browser.getVersion")) as { protocolVersion?: string };
-			console.log(`[CDP] Browser protocol: ${version?.protocolVersion}`);
+			log.debug(`Browser protocol: ${version?.protocolVersion}`);
 		} catch {
-			console.warn("[CDP] Could not get browser version");
+			log.warn("Could not get browser version");
 		}
 	}
 
@@ -102,7 +105,7 @@ export class CdpClient {
 		const id = this.nextId++;
 		const cmd: CdpCommand = { id, method, params };
 
-		console.log(`[CDP] >>> ${method}${params ? " " + JSON.stringify(params).slice(0, 100) : ""}`);
+		log.debug(`>>> ${method}${params ? " " + JSON.stringify(params).slice(0, 100) : ""}`);
 
 		return new Promise((resolve, reject) => {
 			const timeout = setTimeout(() => {
@@ -111,8 +114,8 @@ export class CdpClient {
 			}, 30000);
 
 			this.pending.set(id, {
-				resolve: (v) => { clearTimeout(timeout); console.log(`[CDP] <<< ${method}: OK`); resolve(v); },
-				reject: (e) => { clearTimeout(timeout); console.log(`[CDP] !!! ${method}: ${e.message}`); reject(e); }
+				resolve: (v) => { clearTimeout(timeout); log.debug(`<<< ${method}: OK`); resolve(v); },
+				reject: (e) => { clearTimeout(timeout); log.debug(`!!! ${method}: ${e.message}`); reject(e); },
 			});
 			this.ws!.send(JSON.stringify(cmd));
 		});
@@ -214,8 +217,8 @@ export async function spawnChrome(opts: { useProfile?: boolean; port?: number } 
 		throw new Error(`Chrome not found at: ${chromePath}`);
 	}
 
-	console.log(`[Chrome] Starting with: ${chromePath}`);
-	console.log(`[Chrome] Args: --remote-debugging-port=${port} --user-data-dir=${SCRAPING_DIR}`);
+	log.info(`Starting Chrome at ${chromePath}`);
+	log.debug(`Args: --remote-debugging-port=${port} --user-data-dir=${SCRAPING_DIR}`);
 
 	// Chrome with full DevTools support
 	const child = spawn(chromePath, [
@@ -231,12 +234,12 @@ export async function spawnChrome(opts: { useProfile?: boolean; port?: number } 
 	], { stdio: "pipe" });
 
 	child.on("error", (err) => {
-		console.error(`[Chrome] Spawn error: ${err.message}`);
+		log.error(`Chrome spawn error: ${err.message}`);
 	});
 
 	child.on("exit", (code) => {
 		if (code !== 0 && code !== null) {
-			console.error(`[Chrome] Exit code: ${code}`);
+			log.error(`Chrome exit code: ${code}`);
 		}
 	});
 

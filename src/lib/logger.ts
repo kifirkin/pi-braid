@@ -228,7 +228,7 @@ export class Logger {
 				console.debug(formatted);
 				break;
 			case "info":
-				console.debug(formatted);
+				console.info(formatted);
 				break;
 			case "warn":
 				console.warn(formatted);

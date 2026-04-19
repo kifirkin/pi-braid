@@ -49,7 +49,7 @@ export const state = {
 	validationFailures: 0 as number,
 	escalationCounts: {} as Record<string, number>,
 	lastNudgeTime: 0,
-	nudgeCooldownMs: 15000,
+	nudgeCooldownMs: 3600_000,
 	toolChain: {
 		lastThinkCall: 0,
 		lastPlanCall: 0,
@@ -87,9 +87,9 @@ export const state = {
 	toolLog: [] as string[],
 	// Context hygiene monitoring
 	lastContextCheckTurn: 0,
-	contextCheckInterval: 8, // Check every N turns
+	contextCheckInterval: 21, // Check every N turns
 	contextNudgeSent: false,
-	contextAuditThreshold: 0.7, // Nudge when usage > 70%
+	contextAuditThreshold: 0.66, // Nudge when usage > 70%
 	// Context tool usage tracking
 	// Last compaction turn (for hygiene signal reset)
 	lastCompactionTurn: 0,
@@ -97,7 +97,7 @@ export const state = {
 	// Memory hygiene: combined score (scratchpad + memory + context)
 	memoryHygieneScore: 1.0, // 0-1, derived from usage patterns
 	lastHygieneNudgeTurn: 0,
-	hygieneNudgeInterval: 25,
+	hygieneNudgeInterval: 55,
 	originalRequest: undefined as string | undefined,
 	planAlignmentData: null as {
 		id: string;
@@ -158,8 +158,8 @@ export function resetState(): void {
 	state.planAlignmentData = null;
 	// Reset context hygiene monitoring
 	state.lastContextCheckTurn = 0;
-	state.contextCheckInterval = 10;
+	state.contextCheckInterval = 34;
 	state.contextNudgeSent = false;
-	state.contextAuditThreshold = 0.7;
+	state.contextAuditThreshold = 0.66;
 	state.lastCompactionTurn = 0;
 }

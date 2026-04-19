@@ -16,7 +16,7 @@
  * Session manager methods accessed via ctx in tool execute and event handlers.
  */
 
-import type { ExtensionAPI, SessionBeforeCompactEvent, SessionBeforeCompactResult, SessionBeforeTreeEvent, SessionBeforeTreeResult, SessionCompactEvent, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, SessionBeforeCompactEvent, SessionBeforeTreeEvent, SessionCompactEvent, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { CompactionEntry } from "@mariozechner/pi-coding-agent";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { StringEnum } from "@mariozechner/pi-ai";
@@ -101,28 +101,29 @@ function hashMessage(msg: AgentMessage): string {
 }
 
 function extractMessageContent(msg: AgentMessage): string {
-	// Handle messages without content (e.g., BashExecutionMessage)
-	if (!msg || !("content" in msg)) return "";
-	const content = (msg as any).content;
-	if (!content) return "";
-	if (typeof content === "string") return content;
-	if (Array.isArray(content)) {
-		return content
-			.map((p: any) => {
-				if (typeof p === "object" && p !== null) {
-					if ("text" in p) return p.text;
-					if ("thinking" in p) return p.thinking;
-				}
-				return "";
-			})
-			.join(" ");
+	if (!msg) return "";
+	if (msg.role === "user" || msg.role === "assistant") {
+		const content = msg.content;
+		if (!content) return "";
+		if (typeof content === "string") return content;
+		if (Array.isArray(content)) {
+			return content
+				.map((p) => {
+					if (typeof p === "object" && p !== null) {
+						if ("text" in p) return (p as { text: string }).text;
+						if ("thinking" in p) return (p as { thinking: string }).thinking;
+					}
+					return "";
+				})
+				.join(" ");
+		}
 	}
 	return "";
 }
 
 function extractFilePath(msg: AgentMessage): string | undefined {
 	if (msg.role !== "toolResult") return undefined;
-	const details = (msg as any).details;
+	const details = (msg as { details?: { path?: string } }).details;
 	if (details && typeof details === "object" && "path" in details && typeof details.path === "string") {
 		return details.path;
 	}
@@ -130,16 +131,16 @@ function extractFilePath(msg: AgentMessage): string | undefined {
 }
 
 function isErrorMessage(msg: AgentMessage): boolean {
-	return (msg as any).isError === true;
+	return msg.role === "toolResult" && (msg as { isError?: boolean }).isError === true;
 }
 
 function isSameOperation(msg1: AgentMessage, msg2: AgentMessage): boolean {
-	const tool1 = (msg1 as any).toolName;
-	const tool2 = (msg2 as any).toolName;
+	const tool1 = (msg1 as { toolName?: string }).toolName;
+	const tool2 = (msg2 as { toolName?: string }).toolName;
 	if (tool1 !== tool2) return false;
 
-	const args1 = (msg1 as any).toolCallId;
-	const args2 = (msg2 as any).toolCallId;
+	const args1 = (msg1 as { toolCallId?: string }).toolCallId;
+	const args2 = (msg2 as { toolCallId?: string }).toolCallId;
 	return args1 === args2;
 }
 
@@ -163,7 +164,7 @@ function extractToolUseIds(msg: AgentMessage): string[] {
 
 function extractResultIds(msg: AgentMessage): string[] {
 	if (!hasToolResult(msg)) return [];
-	return [(msg as any).toolCallId].filter(Boolean);
+	return [(msg as { toolCallId?: string }).toolCallId].filter((id): id is string => Boolean(id));
 }
 
 // Built-in Prune Rules
@@ -489,8 +490,8 @@ function resolveDefaultTarget(ctx: any): string | null {
 			if (msg.role === "toolResult") {
 				if (!isInternal(msg.toolName)) { targetId = entry.id; break; }
 			} else if (msg.role === "assistant") {
-				const hasInternal = (msg.content as any[]).some(
-					(c: any) => c.type === "toolCall" && isInternal(c.name),
+				const hasInternal = msg.content.some(
+					(c) => c.type === "toolCall" && isInternal((c as { name?: string }).name),
 				);
 				if (!hasInternal) { targetId = entry.id; break; }
 			}
@@ -583,11 +584,12 @@ function analyzeSession(ctx: any): AuditResult {
 		let reason = "";
 
 		if (entry.type === "message") {
-			const msg = entry.message as any;
+			const msg = entry.message;
 
 			if (msg.role === "toolResult") {
+				const toolResult = msg as { toolName?: string; details?: Record<string, unknown>; content?: Array<{ text?: string }> };
 				// Check for obsolete tool calls
-				const toolName = msg.toolName;
+				const toolName = toolResult.toolName;
 
 				// Internal tools are low value
 				if (isInternal(toolName)) {
@@ -596,9 +598,9 @@ function analyzeSession(ctx: any): AuditResult {
 				}
 
 				// bash/read without file changes in result are often obsolete
-				if (["bash", "read", "grep"].includes(toolName)) {
-					const details = msg.details as Record<string, any>;
-					const hasOutput = details?.stdout || details?.content;
+				if (["bash", "read", "grep"].includes(toolName ?? "")) {
+					const details = toolResult.details;
+					const hasOutput = (details as Record<string, unknown>)?.stdout || (details as Record<string, unknown>)?.content;
 					if (!hasOutput || (typeof details === "object" && Object.keys(details).length === 0)) {
 						score += 0.4;
 						reason = reason || "Tool call with minimal output";
@@ -625,11 +627,11 @@ function analyzeSession(ctx: any): AuditResult {
 					reason: reason || "Old tool call",
 					score: Math.min(1, score),
 					toolName,
-					content: (msg.content?.[0]?.text ?? "").toString().slice(0, 100),
+					content: (toolResult.content?.[0]?.text ?? "").toString().slice(0, 100),
 				});
 			} else if (msg.role === "assistant") {
 				// Assistant messages with only tool calls (no text)
-				const hasText = (msg.content as any[])?.some((c: any) => c.type === "text" && c.text?.length > 50);
+				const hasText = msg.content?.some((c) => c.type === "text" && (c as { text?: string }).text?.length > 50);
 				if (!hasText) {
 					score = 0.4;
 					reason = "Assistant message with no substantive text";
@@ -896,7 +898,7 @@ function resetOverflowRetry(): void {
  * Each retry keeps less context to ensure we fit in the model's limits.
  * Uses hidden steer message to trigger manual /compact with reduced keepRecentTokens.
  */
-function triggerOverflowRetry(pi: ExtensionAPI, attempt: number, errorMessage: string, ctx: any): void {
+function triggerOverflowRetry(pi: ExtensionAPI, attempt: number, errorMessage: string, ctx: ExtensionContext | undefined): void {
 	clearOverflowRetry();
 
 	const delayMs = getOverflowRetryDelay(attempt);
@@ -943,9 +945,9 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 	// so a small reserve fires compaction too late. Tool schemas alone can be
 	// 8–15 K tokens; with tokenizer variance a 50 K reserve ensures compaction
 	// fires well before hitting the context limit (e.g. 154.8 K for a 204.8 K model).
-	pi.on("session_start", async (_event: any, ctx: any) => {
+	pi.on("session_start", async (_event, ctx) => {
 		try {
-			const sm = ctx.sessionManager as any;
+			const sm = ctx.sessionManager as { globalSettings?: { compaction?: { reserveTokens?: number } }; save?: () => void };
 			if (sm?.globalSettings?.compaction) {
 				sm.globalSettings.compaction.reserveTokens = 50_000;
 				sm.save?.();
@@ -1315,7 +1317,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 	});
 
 	// Provide custom instructions before compaction for smarter summarization
-	pi.on("session_before_compact", async (event: SessionBeforeCompactEvent, ctx: ExtensionContext): Promise<SessionBeforeCompactResult | undefined> => {
+	pi.on("session_before_compact", async (event, ctx) => {
 		try {
 			const audit = analyzeSession(ctx);
 
@@ -1354,7 +1356,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 
 	// ── Tree Navigation Integration ──────────────────────────────────────
 	// Provide intelligent defaults before tree navigation
-	pi.on("session_before_tree", async (event: SessionBeforeTreeEvent, ctx: ExtensionContext): Promise<SessionBeforeTreeResult | undefined> => {
+	pi.on("session_before_tree", async (event, ctx) => {
 		try {
 			const audit = analyzeSession(ctx);
 			const preparation = event.preparation;
@@ -1413,7 +1415,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 	// ── Compaction End Event ──────────────────────────────────────────────
 	// Handles ALL compaction outcomes including failures.
 	// session_compact only fires on success - this catches what it misses.
-	pi.on("compaction_end" as any, async (event: any, _ctx: any) => {
+	pi.on("compaction_end" as any, async (event: { reason?: string; willRetry?: boolean; aborted?: boolean; errorMessage?: string; result?: { firstKeptEntryId?: string }; compactionEntry?: { id?: string } }, _ctx: ExtensionContext) => {
 		try {
 			const { reason, willRetry, aborted, errorMessage, result } = event;
 
@@ -1425,7 +1427,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 			// 3. API key or format issues
 			// We retry with MORE aggressive compaction instead of giving up.
 			if (reason === "overflow" && !willRetry && !aborted) {
-				const entryId = result?.firstKeptEntryId ?? (event as any).compactionEntry?.id;
+				const entryId = result?.firstKeptEntryId ?? event.compactionEntry?.id;
 
 				const errMsg = errorMessage ?? "Compaction succeeded but the retry overflowed.";
 
@@ -1459,7 +1461,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 					}, { deliverAs: "steer" });
 
 					// Trigger overflow retry with context
-					triggerOverflowRetry(pi, overflowRetryState.attempt + 1, errMsg, undefined as any);
+					triggerOverflowRetry(pi, overflowRetryState.attempt + 1, errMsg, undefined);
 					return;
 				}
 
@@ -1775,7 +1777,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 	// ── Auto-Retry End Event ──────────────────────────────────────────────
 	// Catches non-overflow retry failures (429 rate limits, 500s, network errors).
 	// NOTE: overflow errors do NOT use retry - they use compaction instead.
-	pi.on("auto_retry_end" as any, async (event: any, _ctx: any) => {
+	pi.on("auto_retry_end" as any, async (event: { error?: string; attempt?: number }, _ctx: ExtensionContext) => {
 		try {
 			const { success, attempt, finalError } = event;
 

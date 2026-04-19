@@ -21,11 +21,14 @@ import { truncateHead } from "@mariozechner/pi-coding-agent";
 import { Text, Image as TUIImage } from "@mariozechner/pi-tui";
 import { getCapabilities, renderImage, getPngDimensions } from "@mariozechner/pi-tui";
 import { Type, type Static } from "@sinclair/typebox";
+import { createLogger } from "../../lib/logger.js";
 import { CdpClient, isBrowserAvailable, listTabs, spawnChrome, waitForChrome } from "./cdp.js";
 import { extractReadableContent } from "./readability.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+
+const log = createLogger("browser");
 
 const MAX_OUTPUT_BYTES = 50 * 1024;
 const MAX_OUTPUT_LINES = 2000;
@@ -100,7 +103,7 @@ async function doConnect(opts: { autoStart?: boolean; useProfile?: boolean }): P
 	connectedUrl = newTab.url;
 	cdp = new CdpClient();
 	cdp.setTargetId(newTab.id);
-	console.log(`[CDP] New tab created: ${newTab.webSocketDebuggerUrl}`);
+	log.debug(`New tab created: ${newTab.webSocketDebuggerUrl}`);
 	await cdp.connect(newTab.webSocketDebuggerUrl);
 
 	// Wait for connection to stabilize (Chrome DevTools needs time to warm up)
@@ -338,7 +341,7 @@ async function browserScreenshot(input: Static<typeof screenshotParams>) {
 	try {
 		filePath = saveScreenshotToFile(result.data, fileFormat);
 	} catch (err) {
-		console.error("[browser] Failed to save screenshot:", err);
+		log.error("Failed to save screenshot:", err);
 	}
 
 	// ── Terminal image rendering ─────────────────────────────────────────────
