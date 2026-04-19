@@ -32,10 +32,15 @@ import { setLanguage, detectLanguage } from "../../lib/language-hint.js";
 
 /** Anti-slop: detect code-writing requests (merged from anti-slop-input) */
 const CODE_REQUEST_PATTERNS: RegExp[] = [
+	// English
 	/\b(write|create|implement|build)\s+(a\s+)?(function|class|method|module|component|script|file|program|handler|service|util)/i,
 	/\b(write|show|give)\s+me\s+(the\s+)?code/i,
 	/\brefactor\b.*\bcode\b/i,
 	/\bfix\b.*\bfunction\b.*\breturn\b/i,
+	// Russian
+	/\b(напиши|создай|реализуй|сделай)\s+(функци|класс|метод|модул|компонент|скрипт|файл|программ|обработчик|сервис|утилит)/i,
+	/\b(напиши|покажи|дай)\s+мне\s+код/i,
+	/\bрефакторинг\b.*\bкод\b/i,
 ];
 
 function matchesCodeRequest(text: string): boolean {
