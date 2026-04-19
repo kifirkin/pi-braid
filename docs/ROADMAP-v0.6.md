@@ -71,6 +71,19 @@ Delete ~15 lines of manual fallback logic. One import, one call.
 | Research threads not referenced | ✅ Added | Research thread column per task |
 | Task 2 ctx propagation | ✅ Verified | `execute(toolCallId, params, signal, onUpdate, ctx)` |
 
+### Task Completion Status
+| Task | Status | Notes |
+|------|--------|-------|
+| Task 1 | ✅ DONE | preprocessor resolveUtilityModel, thinking:none |
+| Task 7 | ✅ DONE | scoreHypothesis heuristic, 6 signals, LLM output annotated |
+| Task 4a | ✅ DONE | reflection gap nudge at 6+ tools without reflection |
+| Task 4b | ✅ DONE | thought chain tracking, orphan detection |
+| Task 4c | ✅ DONE | calibration pairs, nudge when avg error > 30% |
+| Task 2 | ⏳ PENDING | session-scoped state (9 modules) |
+| Task 3 | ⏳ PENDING | conflict-aware knowledge (3a+3b) |
+| Task 5 | ⏳ PENDING | metrics calibration harness |
+| Task 6 | ⏳ PENDING | MARS reflector |
+
 | Task | Thread | Paper | Key Insight |
 |------|--------|-------|-------------|
 | Task 2 | cognitive-control | 2604.14401 Credo | Belief-based state |
@@ -499,7 +512,7 @@ Task 7 (Hypothesis Scoring)   ──[standalone]
 
 ```
 Phase 1 (Quick Wins — ~2 hours):
-  Task 1 → Task 7 → Task 4
+  Task 1 ✅ → Task 7 ✅ → Task 4 ✅
 
 Phase 2 (Core Refactor — ~3 hours):
   Task 2
