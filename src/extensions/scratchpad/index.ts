@@ -21,6 +21,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileMutationQueue } from "../../lib/file-mutation-queue.js";
 
 import type { AgentToolResult, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { StringEnum } from "@mariozechner/pi-ai";
@@ -181,9 +182,8 @@ function createScratchpad(goal: string, projectSlug: string): TaskScratchpad {
 async function saveScratchpadToDisk(scratchpad: TaskScratchpad): Promise<void> {
 	try {
 		const filePath = scratchpadFilePath(scratchpad.projectSlug);
-		const dir = path.dirname(filePath);
-		await fs.mkdir(dir, { recursive: true });
-		await fs.writeFile(filePath, JSON.stringify(scratchpad, null, 2));
+		// Use mutation queue for serialized, debounced writes
+		await fileMutationQueue.write(filePath, scratchpad);
 	} catch {
 		// Silent fail - operates in memory if disk write fails
 	}
@@ -222,10 +222,8 @@ function taskFilePath(projectSlug: string): string {
 async function saveTaskStore(slug: string, store: TaskStore): Promise<void> {
 	try {
 		const filePath = taskFilePath(slug);
-		const dir = path.dirname(filePath);
-		await fs.mkdir(dir, { recursive: true });
 		store.updatedAt = Date.now();
-		await fs.writeFile(filePath, JSON.stringify(store, null, 2));
+		await fileMutationQueue.write(filePath, store);
 	} catch {
 		// Silent fail
 	}

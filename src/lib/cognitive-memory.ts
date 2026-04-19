@@ -20,6 +20,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileMutationQueue } from "./file-mutation-queue.js";
 import { taggedConsole } from "./logger.js";
 
 const _log = taggedConsole("cognitive-memory");
@@ -163,7 +164,7 @@ async function loadMemory(): Promise<CognitiveMemoryStore> {
 
 async function saveMemory(store: CognitiveMemoryStore): Promise<void> {
 	await ensureMemoryDir();
-	await fs.writeFile(MEMORY_FILE, JSON.stringify(store, null, 2));
+	await fileMutationQueue.write(MEMORY_FILE, store);
 }
 
 function generateId(): string {

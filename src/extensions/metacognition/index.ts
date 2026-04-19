@@ -18,13 +18,14 @@ import { completeSimple, StringEnum } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { resolveUtilityModel } from "../../lib/model-resolver.js";
+import { Planner } from "../../lib/planner.js";
+import { GoalManager } from "../../lib/goal-manager.js";
 
 // =============================================================================
 // think.ts - inlined
 // =============================================================================
 
 const thinkSchema = Type.Object({
-	observation: Type.String({ description: "What you observed or discovered" }),
 	decision: Type.String({ description: "What you decided to do" }),
 	reason: Type.String({ description: "Why this decision" }),
 	thought_id: Type.Optional(Type.String({ description: "Unique identifier for this thought (auto-generated if not provided)" })),
@@ -277,7 +278,36 @@ const finalizeSchema = Type.Object({
 	completed: Type.Boolean({ description: "Whether the task was successfully completed" }),
 	summary: Type.String({ description: "Brief summary of what was accomplished" }),
 	tasksRemaining: Type.Optional(Type.Array(Type.String(), { description: "Any follow-up tasks that should be done later" })),
+	autoProceed: Type.Optional(Type.Boolean({ description: "Automatically propose next pending work on finalize" })),
 });
+
+const _planner = new Planner();
+const _goalManager = new GoalManager();
+
+/** Find next pending plan or goal to offer as continuation */
+async function findNextWork(): Promise<{ type: "plan" | "goal" | null; id?: string; description?: string }> {
+	try {
+		// Check pending plans
+		const plans = _planner.list();
+		const pendingPlan = plans.find((p) => p.status === "planning" || p.status === "executing");
+		if (pendingPlan) {
+			// Get plan's steps via Planner.get(planId)?.steps
+			const plan = _planner.get(pendingPlan.id);
+			const remaining = plan?.steps.filter((s) => s.status !== "completed" && s.status !== "failed").length ?? 0;
+			return { type: "plan", id: pendingPlan.id, description: `${pendingPlan.description || "Unnamed plan"} (${remaining} steps remaining)` };
+		}
+
+		// Check pending goals
+		const goals = _goalManager.list();
+		const pendingGoal = goals.find((g) => g.status === "pending");
+		if (pendingGoal) {
+			return { type: "goal", id: pendingGoal.id, description: pendingGoal.description };
+		}
+	} catch {
+		// Non-fatal: planner/goal might not be available
+	}
+	return { type: null };
+}
 
 /**
  * Finalize Critic System Prompt - A "bad mood" reviewer with fresh eyes
@@ -504,6 +534,17 @@ Continue working until the issues are resolved.`,
 
 			if (params.tasksRemaining?.length) {
 				messages.push(`\n⚠️ Follow-up needed: ${params.tasksRemaining.join(", ")}`);
+			}
+
+			// Auto-proceed: find next pending plan or goal
+			const nextWork = await findNextWork();
+			if (nextWork.type) {
+				const label = nextWork.type === "plan" ? "📋 Next Plan" : "🎯 Next Goal";
+				messages.push(`\n${label}: ${nextWork.description}`);
+				messages.push(`\n→ Type \`finalize(true, "...", [], true)\` to continue automatically, or continue manually.`);
+				if (params.autoProceed && nextWork.id) {
+					messages.push(`\n🔄 Auto-proceeding to next work...`);
+				}
 			}
 
 			messages.push("\n---");
