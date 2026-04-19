@@ -43,13 +43,11 @@
 - [x] Integrated into enforcement: `session_start` init + `turn_end` check
 - [x] Sends `[SUBTLE]` / `[WARN]` whispers
 
-### P5: Multilingual Anti-Slop Input Transform ✅
-- [x] Rewrote `anti-slop-input/index.ts` from TODO stub to full implementation
-- [x] Script-based detection: Arabic, Chinese, Japanese, Korean, Devanagari, Cyrillic, Greek, Hebrew, Thai, Tamil
-- [x] Pattern-based Latin detection: German, French, Spanish, Portuguese, Italian, Polish, Dutch, Vietnamese
-- [x] Forces reply in same language as query via `[Language: NAME (CODE)]` suffix
-- [x] Applies to ALL texts including one-word non-English inputs
-- [x] Code request detection (4 patterns)
+### P5: Simplify Anti-Slop + Restore Preprocessor ✅
+- [x] Simplified `anti-slop-input/index.ts` — removes multilingual hints (was sending to LLM), keeps ONLY code-request detection
+- [x] Anti-slop uses `action: "transform"` with code suffix ONLY — never sends hints to LLM
+- [x] Restored original `user-message-preprocessor/index.ts` from git (utility model text cleaning, editor text update)
+- [x] Preprocessor flow: update editor → user presses Enter → text goes to LLM (no hints)
 - [x] Fixed enforcement crash: `session?.messages` null check
 
 ### Metrics: 35 → 27 extensions, 0 type errors, 21,882 lines
