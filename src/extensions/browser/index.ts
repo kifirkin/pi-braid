@@ -23,6 +23,9 @@ import { getCapabilities, renderImage, getPngDimensions } from "@mariozechner/pi
 import { Type, type Static } from "@sinclair/typebox";
 import { CdpClient, isBrowserAvailable, listTabs, spawnChrome, waitForChrome } from "./cdp.js";
 import { extractReadableContent } from "./readability.js";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as os from "node:os";
 
 const MAX_OUTPUT_BYTES = 50 * 1024;
 const MAX_OUTPUT_LINES = 2000;
@@ -285,11 +288,44 @@ async function browserEval(input: Static<typeof evalParams>) {
 	return { content: [{ type: "text" as const, text: truncated.content }], details: { url: connectedUrl, tabId: connectedTabId } };
 }
 
+/**
+ * Get the screenshots directory, creating it if needed.
+ */
+function getScreenshotsDir(): string {
+	const dir = path.join(os.homedir(), ".pi", "screenshots");
+	if (!fs.existsSync(dir)) {
+		fs.mkdirSync(dir, { recursive: true });
+	}
+	return dir;
+}
+
+/**
+ * Save base64 image data to a file and return the path.
+ */
+function saveScreenshotToFile(base64Data: string, format: string): string {
+	const dir = getScreenshotsDir();
+	const timestamp = Date.now();
+	const filename = `screenshot_${timestamp}.${format}`;
+	const filepath = path.join(dir, filename);
+	const buffer = Buffer.from(base64Data, "base64");
+	fs.writeFileSync(filepath, buffer);
+	return filepath;
+}
+
 async function browserScreenshot(input: Static<typeof screenshotParams>) {
 	const client = await ensureConnected();
 
 	const result = (await client.send("Page.captureScreenshot", { format: input.format ?? "png", quality: input.quality ?? 80 })) as { data: string };
 	const mediaType = input.format === "jpeg" ? "image/jpeg" : "image/png";
+	const fileFormat = input.format ?? "png";
+
+	// ── Save to file for analyze_image tool ─────────────────────────────────
+	let filePath: string | undefined;
+	try {
+		filePath = saveScreenshotToFile(result.data, fileFormat);
+	} catch (err) {
+		console.error("[browser] Failed to save screenshot:", err);
+	}
 
 	// ── Terminal image rendering ─────────────────────────────────────────────
 	// Render screenshot inline if terminal supports images (Kitty/iTerm2)
@@ -308,7 +344,9 @@ async function browserScreenshot(input: Static<typeof screenshotParams>) {
 	}
 
 	// Build content with optional inline image
-	const baseText = `[Screenshot captured (${mediaType}, ${(result.data.length * 0.75 / 1024).toFixed(1)}KB)]`;
+	const sizeKB = (result.data.length * 0.75 / 1024).toFixed(1);
+	const filePathHint = filePath ? ` | Saved to: ${filePath}` : "";
+	const baseText = `[Screenshot captured (${mediaType}, ${sizeKB}KB)${filePathHint}]`;
 	const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [
 		{ type: "text" as const, text: baseText },
 	];
@@ -323,10 +361,11 @@ async function browserScreenshot(input: Static<typeof screenshotParams>) {
 		details: {
 			url: connectedUrl,
 			tabId: connectedTabId,
-			format: input.format ?? "png",
+			format: fileFormat,
 			base64Length: result.data.length,
 			terminalImage: !!terminalImage,
 			protocol: caps.images ?? null,
+			filePath,
 		},
 	};
 }
@@ -615,7 +654,7 @@ export default function browserExtension(pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "browser_screenshot", label: "Browser Screenshot",
-		description: "Capture a screenshot of the current browser viewport.",
+		description: "Capture a screenshot of the current browser viewport. Saves to ~/.pi/screenshots/ and returns the file path in result.details.filePath for use with analyze_image.",
 		parameters: screenshotParams,
 		async execute(_id, params) { return browserScreenshot(params); },
 		renderCall(_args, theme) { return new Text(theme.fg("toolTitle", theme.bold("browser_screenshot")), 0, 0); },
