@@ -923,7 +923,7 @@ function triggerOverflowRetry(pi: ExtensionAPI, attempt: number, errorMessage: s
 							: `[Overflow Recovery] Retry ${attempt}/${OVERFLOW_RETRY_MAX_ATTEMPTS}: ${errorMessage}. Attempting more aggressive compaction (keep ≤${reducedKeep} tokens)...`,
 					},
 				],
-				display: false, // Hidden from user
+				display: true, // Hidden from user
 			},
 			{ triggerTurn: true },
 		);
