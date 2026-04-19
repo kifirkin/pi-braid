@@ -370,7 +370,7 @@ async function processMessage(
 
 			// Detect input language → set language hint for reply instruction
 			const lang = detectLanguage(original);
-			setLanguage(lang.code, lang.name);
+			setLanguage(ctx, lang.code, lang.name);
 
 			if (state.config.showDiff) {
 				const lines = generateDiffLines(original, cleaned);

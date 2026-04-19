@@ -1,22 +1,47 @@
 /**
  * Language hint module — tracks detected language for reply instructions.
  *
+ * Session-scoped via ExtensionContext. All stateful functions take ctx.
+ *
  * Flow:
- * 1. Preprocessor detects language → setLanguage(code, name)
- * 2. Enforcement reads on session_start → inject into system prompt
+ * 1. Preprocessor detects language → setLanguage(ctx, code, name)
+ * 2. Enforcement reads on session_start → getReplyInstruction(ctx) → inject into system prompt
  */
 
-export let currentLanguage = "English";
-export let currentLanguageCode = "EN";
+import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { getExtensionState } from "./extension-state.js";
 
-export function setLanguage(code: string, name: string): void {
-	currentLanguage = name;
-	currentLanguageCode = code;
+/** State shape for language-hint */
+interface LanguageHintState {
+	currentLanguage: string;
+	currentLanguageCode: string;
 }
 
-export function getLanguage(): string {
-	return currentLanguage;
+function getState(ctx: ExtensionContext): LanguageHintState {
+	return getExtensionState(ctx, "language-hint", () => ({
+		currentLanguage: "English",
+		currentLanguageCode: "EN",
+	}));
 }
+
+// ── Stateful API (session-scoped) ─────────────────────────────────────────────
+
+export function setLanguage(ctx: ExtensionContext, code: string, name: string): void {
+	getState(ctx).currentLanguage = name;
+	getState(ctx).currentLanguageCode = code;
+}
+
+export function getLanguage(ctx: ExtensionContext): string {
+	return getState(ctx).currentLanguage;
+}
+
+export function getReplyInstruction(ctx: ExtensionContext): string {
+	const { currentLanguageCode, currentLanguage } = getState(ctx);
+	if (currentLanguageCode === "EN") return "";
+	return `\n\n### Reply Language\nRespond entirely in ${currentLanguage} unless the user writes in English.`;
+}
+
+// ── Pure API (no session state) ───────────────────────────────────────────────
 
 /** Script-based language detection for short/unknown texts */
 export function detectLanguage(text: string): { code: string; name: string } {
@@ -50,10 +75,4 @@ export function detectLanguage(text: string): { code: string; name: string } {
 	if (/[\u0370-\u03FF]/.test(text)) return { code: "EL", name: "Greek" };
 
 	return { code: "EN", name: "English" };
-}
-
-/** Generate reply instruction for system prompt */
-export function getReplyInstruction(): string {
-	if (currentLanguageCode === "EN") return "";
-	return `\n\n### Reply Language\nRespond entirely in ${currentLanguage} unless the user writes in English.`;
 }

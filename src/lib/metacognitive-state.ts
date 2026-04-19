@@ -1,116 +1,101 @@
 /**
- * Metacognitive State - Lightweight self-awareness for the evolve extension
+ * Metacognitive State — session-scoped via ExtensionContext
  *
- * Extracted from the full Metacognition class, keeping only what's unique:
- * - Confidence tracking (0-1, adjusts on success/failure)
- * - Knowledge gaps (tracked by error type)
- * - Self-assessment recommendations
- *
- * Everything else (error patterns, metrics, retry tracking) is already
- * covered by degradation-detector and error-capture extensions.
+ * Tracks: confidence, knowledge gaps, strengths, weaknesses.
+ * Supports ctx-scoped calls AND global fallback (for legacy tool handlers without ctx).
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { getExtensionState } from "./extension-state.js";
 
 export interface MetacognitiveState {
-	confidence: number; // 0-1
+	confidence: number;
 	knowledgeGaps: string[];
 	strengths: string[];
 	weaknesses: string[];
 	lastReviewAt?: number;
 }
 
-const DEFAULT_STATE: MetacognitiveState = {
+const DEFAULT_STATE = (): MetacognitiveState => ({
 	confidence: 0.8,
 	knowledgeGaps: [],
 	strengths: [],
 	weaknesses: [],
-};
+});
 
-let state: MetacognitiveState = { ...DEFAULT_STATE };
-let storagePath: string | null = null;
+// ── Global fallback (legacy — for tool handlers without ctx) ────────────────────
+const _globalState: MetacognitiveState = DEFAULT_STATE();
 
-export function initMetacognitiveState(storageDir?: string): void {
-	state = { ...DEFAULT_STATE };
-	if (storageDir) {
-		storagePath = join(storageDir, "metacognitive-state.json");
-		load();
+// ── State access ────────────────────────────────────────────────────────────────
+
+function getStateFrom(ctx: ExtensionContext | undefined): MetacognitiveState {
+	if (ctx) {
+		return getExtensionState(ctx, "metacognitive-state", DEFAULT_STATE);
+	}
+	return _globalState;
+}
+
+export function getMetacognitiveState(
+	ctx?: ExtensionContext,
+): MetacognitiveState {
+	return { ...getStateFrom(ctx) };
+}
+
+export function adjustConfidence(ctx: ExtensionContext | undefined, delta: number): void {
+	const s = getStateFrom(ctx);
+	s.confidence = Math.max(0, Math.min(1, s.confidence + delta));
+	s.lastReviewAt = Date.now();
+}
+
+export function recordSuccess(ctx?: ExtensionContext): void {
+	adjustConfidence(ctx, 0.02);
+}
+
+export function recordFailure(ctx: ExtensionContext | undefined, errorType: string): void {
+	adjustConfidence(ctx, -0.1);
+	const s = getStateFrom(ctx);
+	if (!s.knowledgeGaps.includes(errorType)) {
+		s.knowledgeGaps.push(errorType);
 	}
 }
 
-export function getMetacognitiveState(): MetacognitiveState {
-	return { ...state };
-}
-
-export function adjustConfidence(delta: number): void {
-	state.confidence = Math.max(0, Math.min(1, state.confidence + delta));
-	state.lastReviewAt = Date.now();
-	save();
-}
-
-export function recordSuccess(): void {
-	adjustConfidence(0.02);
-}
-
-export function recordFailure(errorType: string): void {
-	adjustConfidence(-0.1);
-	if (!state.knowledgeGaps.includes(errorType)) {
-		state.knowledgeGaps.push(errorType);
-	}
-	save();
-}
-
-export function addStrength(strength: string): void {
-	if (!state.strengths.includes(strength)) {
-		state.strengths.push(strength);
-		state.lastReviewAt = Date.now();
-		save();
+export function addStrength(ctx: ExtensionContext | undefined, strength: string): void {
+	const s = getStateFrom(ctx);
+	if (!s.strengths.includes(strength)) {
+		s.strengths.push(strength);
+		s.lastReviewAt = Date.now();
 	}
 }
 
-export function addWeakness(weakness: string): void {
-	if (!state.weaknesses.includes(weakness)) {
-		state.weaknesses.push(weakness);
-		state.lastReviewAt = Date.now();
-		save();
+export function addWeakness(ctx: ExtensionContext | undefined, weakness: string): void {
+	const s = getStateFrom(ctx);
+	if (!s.weaknesses.includes(weakness)) {
+		s.weaknesses.push(weakness);
+		s.lastReviewAt = Date.now();
 	}
 }
 
-export function resolveKnowledgeGap(gap: string): void {
-	state.knowledgeGaps = state.knowledgeGaps.filter((g) => g !== gap);
-	save();
+export function resolveKnowledgeGap(ctx: ExtensionContext | undefined, gap: string): void {
+	const s = getStateFrom(ctx);
+	s.knowledgeGaps = s.knowledgeGaps.filter((g) => g !== gap);
 }
 
-export function shouldRequestHelp(): boolean {
-	return state.confidence < 0.3;
+export function shouldRequestHelp(ctx?: ExtensionContext): boolean {
+	return getStateFrom(ctx).confidence < 0.3;
 }
 
-export function getRecommendation(): string | null {
-	if (state.confidence < 0.3) return "Low confidence - consider requesting help or switching approach";
-	if (state.knowledgeGaps.length > 5) return "Many knowledge gaps - consider research or learning phase";
-	if (state.weaknesses.length > 3) return "Multiple weaknesses identified - focus on addressing them";
+// ── Lifecycle (no-ops — storage removed) ────────────────────────────────────────
+
+/** @deprecated Storage removed — state is now ctx-scoped. No-op. */
+export function initMetacognitiveState(_storageDir?: string): void { /* no-op */ }
+
+/** @deprecated State is now ctx-scoped via getExtensionState. No-op. */
+export function resetMetacognitiveState(): void { /* no-op */ }
+
+export function getRecommendation(ctx?: ExtensionContext): string | null {
+	const s = getStateFrom(ctx);
+	if (s.confidence < 0.3) return "Low confidence - consider requesting help or switching approach";
+	if (s.knowledgeGaps.length > 5) return "Many knowledge gaps - consider research or learning phase";
+	if (s.weaknesses.length > 3) return "Multiple weaknesses identified - focus on addressing them";
 	return null;
-}
-
-export function resetMetacognitiveState(): void {
-	state = { ...DEFAULT_STATE };
-	save();
-}
-
-function save(): void {
-	if (!storagePath) return;
-	try {
-		const dir = dirname(storagePath);
-		if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-		writeFileSync(storagePath, JSON.stringify(state, null, 2));
-	} catch { /* silent */ }
-}
-
-function load(): void {
-	if (!storagePath || !existsSync(storagePath)) return;
-	try {
-		const loaded = JSON.parse(readFileSync(storagePath, "utf-8"));
-		state = { ...DEFAULT_STATE, ...loaded };
-	} catch { /* use defaults */ }
 }

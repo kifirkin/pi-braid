@@ -122,9 +122,9 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		const lang = detectLanguage(text);
 		if (lang.code === "EN") return;
 
-		setLanguage(lang.code, lang.name);
+		setLanguage(ctx, lang.code, lang.name);
 		state.lastUserMessage = text;
-		const replyLang = getReplyInstruction();
+		const replyLang = getReplyInstruction(ctx);
 		if (!replyLang) return;
 
 		const session = (ctx.sessionManager as any)?.getCurrentSession?.();

@@ -11,6 +11,7 @@
 
 import * as fs from "node:fs/promises";
 import * as fsSync from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { Type } from "@sinclair/typebox";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext, ToolDefinition } from "@mariozechner/pi-coding-agent";
@@ -500,8 +501,13 @@ export default function codebaseTreeExtension(pi: ExtensionAPI) {
 		execute: async (_toolCallId, params, _signal, _onUpdate, ctx: ExtensionContext): Promise<AgentToolResult<CodebaseTreeResult>> => {
 			statCache.clear();
 
-			const isAbsolute = path.isAbsolute(params.path ?? "");
-			const rootPath = isAbsolute ? params.path! : path.join(ctx.cwd, params.path ?? ".");
+			let resolvedPath = params.path ?? ".";
+			// Expand ~ to home directory
+			if (resolvedPath.startsWith("~/") || resolvedPath === "~") {
+				resolvedPath = resolvedPath.replace(/^~/, os.homedir());
+			}
+			const isAbsolute = path.isAbsolute(resolvedPath);
+			const rootPath = isAbsolute ? resolvedPath : path.join(ctx.cwd, resolvedPath);
 			const maxDepth = Math.min(params.maxDepth || 3, 10);
 			const exclude = [...DEFAULT_EXCLUDE, ...(params.exclude || [])];
 			const showStats = params.showStats !== false;
