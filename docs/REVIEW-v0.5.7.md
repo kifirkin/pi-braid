@@ -5,6 +5,8 @@
 **Scope**: Every file. All 34,869 lines across 110 files.  
 **Verdict**: ❌ FAIL — Architectural decay, API misuse, dead code, and pervasive antipatterns.
 
+**Updated**: 2026-04-19 (post-deletion status + consolidated implementation plan)
+
 ---
 
 ## 0. Executive Summary
@@ -48,6 +50,7 @@ This is not a review of intent — the ideas are sound. This is a review of exec
 | query-optimizer | Hardcoded medical body-part regexes in a coding tool | Wrong domain |
 | analytics | Fabricated success rates (hardcoded 0.9) | Useless data |
 | watchdog | Sets status to "active" and nothing else | Does nothing |
+| rate-limiter | Listens to an event that doesn't exist | Completely non-functional |
 
 ### 1.3 Inter-Extension Communication
 
@@ -273,16 +276,7 @@ The docs say: *"Returning a value never sets the error flag regardless of what p
 
 ### 7.1 Extensions That Do Nothing Useful
 
-| Extension | Lines | What It Actually Does |
-|---|---|---|
-| latent-activator | 444 | Registers 4 tools that toggle string labels. Nothing reads the labels. |
-| visual-dashboard | 315 | Renders ASCII boxes to `ctx.ui.notify()`. Nobody sees them. |
-| ab-testing | 954 | Complete statistical framework. No evidence of use. `shouldSkipEnforcement()` is exported but never imported. |
-| query-optimizer | 407 | Has body-part regexes (knee, back, head). Stores data on `(ctx as any).__queryOptimizer`. Nobody reads it. |
-| analytics | 442 | Fabricates success rates. JSONL file grows forever. |
-| watchdog | 75 | Sets status to "active" and counts messages. |
-| feedback | 690 | Has a deprecated `_queueFeedbackWhisper` function and overlap with enforcement's whisper system. |
-| reasoning | 155 | Duplicate of enforcement's malformed tool call detection. |
+See Appendix D for detailed analysis of 8 extensions marked for deletion.
 
 ### 7.2 Dead Code Within Extensions
 
@@ -440,3 +434,149 @@ latent-activator → anti-slop → anti-slop-input → query-optimizer → ab-te
 ```
 
 35 extensions. Load order is a global invariant.
+
+---
+
+## Appendix C: Research Papers with Harness-Level Solutions
+
+Research from `implicit-framing/docs/` that could fix review issues:
+
+### 1. Batch Prompting (2511.04108) - 76% Token Reduction
+**Problem**: Agent produces verbose output for simple tasks
+**Solution**: Batch related queries in shared context → pattern induction suppresses overthinking
+**Status**: Partially addressed via `IMPLICIT_BUDGET` constant
+
+### 2. ACE Evolving Playbooks (2510.04618) - State Management
+**Problem**: Module-level mutable singletons cause stale state on branch switch
+**Solution**: Treat state as "evolving playbook" - structured incremental updates that preserve knowledge atoms
+**Status**: Not implemented
+
+### 3. MARS Self-Improvement (2601.11974) - Single-Cycle Reflection
+**Problem**: Multi-turn improvement loops waste tokens
+**Solution**: Single-cycle principle-based + procedural reflection after task completion
+**Status**: `think` tool exists, latent-activator behaviors are dead
+
+### 4. BCR Implicit Budget (2604.02322) - Token Budget Enforcement
+**Problem**: Explicit limits ignored, context fills with verbose output
+**Solution**: Structural constraints create implicit budget - models self-regulate
+**Status**: `IMPLICIT_BUDGET` constant in prompt-builder
+
+### 5. SkipKV (2512.07993) - Async I/O Pattern
+**Problem**: 200+ sync fs calls block event loop
+**Insight**: `lib/async-storage.ts` exists but not used
+**Solution**: Replace sync calls with async-storage pattern
+**Status**: Not used
+
+---
+
+## Appendix D: Extension Revival Analysis
+
+After deep investigation, 8 extensions were marked for deletion. NOT all are truly dead:
+
+### DELETE Permanently (Non-salvageable)
+
+| Extension | Reason | Verdict |
+|---|---|---|
+| **rate-limiter** | Listens to `"context"` event that doesn't exist, accesses non-existent ctx properties | ❌ DELETE |
+
+### MERGE Into Existing (Duplicate/Trivial)
+
+| Extension | Action | Reason |
+|---|---|---|
+| **reasoning** | → enforcement | Duplicate `detectMalformedToolCalls()` |
+| **watchdog** | → analytics/healthcheck | Trivial session health tracking, does nothing useful |
+
+### PRESERVE + FIX (Valid Ideas, Broken Implementation)
+
+| Extension | What Works | What's Broken | Action |
+|---|---|---|---|
+| **ab-testing** | 954-line complete statistical framework | No variant assignment integration | Add `assignVariant()` call in before_agent_start |
+| **analytics** | Tool call tracking, JSONL storage, sequence detection | `successRate` hardcoded to 0.9 (fake data) | Track real errors from `tool_execution_end.isError` |
+| **visual-dashboard** | Phase detection logic, ASCII chart renderer | Output mechanism broken (`ctx.ui.notify()` doesn't render) | Rebuild with working `/dashboard` command |
+
+### RESEARCH Later (Valid Concept, Zero Integration)
+
+| Extension | Research Backing | Issue | Action |
+|---|---|---|---|
+| **latent-activator** | HER (2601.21459): IMPLICIT > EXPLICIT | 37 behaviors defined but nothing reads them | Keep deleted, document integration point |
+| **query-optimizer** | PriHA (2604.14215): Intent classification | Medical regexes in coding tool (wrong domain) | Keep deleted, refactor for coding domain |
+
+### Implementation Priority for Salvaged Extensions
+
+1. **analytics**: Fix `isError` tracking from tool_execution_end event (~2 hours)
+2. **visual-dashboard**: Rebuild with `/dashboard` command using working emit (~1 day)
+3. **ab-testing**: Add `assignVariant()` call + feature flag integration (~1 day)
+
+---
+
+## Appendix E: Consolidated Implementation Plan
+
+### Phase 1: DELETE (Do First)
+- [x] rate-limiter (already deleted from disk)
+- [ ] reasoning → enforcement merge (has duplicate malformed detection)
+- [ ] watchdog → analytics merge or delete
+
+### Phase 2: FIX Broken Extensions
+- [ ] analytics: Fix successRate tracking (real error data)
+- [ ] visual-dashboard: Rebuild with working output mechanism
+- [ ] ab-testing: Add variant assignment integration
+
+### Phase 3: Consolidate Duplicates
+- [ ] enforcement + feedback (two whisper systems)
+- [ ] enforcement/judge + enforcement/verification-judge
+- [ ] cognitive-systems + cognitive-memory
+
+### Phase 4: Critical Bugs
+- [ ] scratchpad: `process.cwd()` → `ctx.cwd`
+- [ ] Type.Union → StringEnum (all tool schemas)
+- [ ] Remove `as any` casts (~80 instances)
+- [ ] Session-scoped state (not module-level)
+
+### Phase 5: Performance
+- [ ] Sync FS → Async (200+ calls, use async-storage.ts)
+- [ ] analytics: Incremental stats (fix O(n) loadAnalytics)
+
+### Phase 6: Architecture
+- [ ] Dependency declaration for extensions
+- [ ] Extension health reporting on load
+- [ ] Event audit (verify pi.on() events exist)
+
+### Phase 7: Research Implementations
+- [ ] Batch Context (2511.04108)
+- [ ] ACE Playbooks (2510.04618)
+- [ ] MARS Reflection (2601.11974)
+
+---
+
+## Appendix F: Prior Art Reviews
+
+### AUDIT-2026-04-14
+Pre-cleanup state. Identified 25 extensions + 59 tools. Noted `model-selectors` was empty directory (removed).
+
+### SKEPTIC-AUDIT
+"WORST MOOD" review. Key findings:
+- 12/31 extensions provide zero user-facing functionality
+- `ctx.triggerCompaction` doesn't exist (now fixed to `ctx.compact()`)
+- Extension load order dependency without guarantees (prompt-builder must load AFTER enforcement)
+- Sync FS in event handlers blocks event loop
+- No auth boundaries between extensions
+
+### GAP-ANALYSIS
+Detailed bridge documentation. What pi-braid captures from `develop` vs `main`:
+- 18 extensions, 17 tool definitions, 13 library modules, 16 skills
+- System prompt identity framing is THE most impactful change
+- AGENTS.md removed, replaced by prompt-builder
+
+---
+
+## Appendix G: Evidence Files
+
+| File | Purpose |
+|---|---|
+| `docs/AUDIT-2026-04-14.md` | Pre-cleanup state |
+| `docs/SKEPTIC-AUDIT.md` | Architectural issues |
+| `docs/GAP-ANALYSIS.md` | Bridge documentation |
+| `docs/PI_BRAID_EXTENSION_REVIVAL_PROPOSAL.md` | Deep dive on 8 dead extensions |
+| `docs/CONTEXT_RESEARCH_PAPERS.md` | Research-backed improvements |
+| `docs/CONTEXT_RESEARCH_IMPLEMENTATION_PLAN.md` | Research implementation plan |
+| `implicit-framing/docs/PI_BRAID_IMPLEMENTATION_PLAN.md` | Full 7-phase implementation plan |

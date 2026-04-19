@@ -7,6 +7,7 @@
  */
 
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
+import { StringEnum } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
@@ -133,16 +134,9 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
 			"Store information in long-term memory. Supports structured content (files, errors, solutions), memory linking, and TTL-based expiration.",
 		parameters: Type.Object({
 			content: Type.String({ description: "The information to remember (can be JSON for structured content)" }),
-			memoryType: Type.Union([
-				Type.Literal("insight", { description: "Key learning or realization" }),
-				Type.Literal("pattern", { description: "Successful approach to reuse" }),
-				Type.Literal("preference", { description: "User preference or tendency" }),
-				Type.Literal("goal", { description: "Current objective" }),
-				Type.Literal("error", { description: "Mistake to avoid" }),
-				Type.Literal("episodic", { description: "Experience or event" }),
-				Type.Literal("semantic", { description: "Factual knowledge" }),
-				Type.Literal("procedural", { description: "How-to or process" }),
-			]),
+			memoryType: StringEnum(
+				["insight", "pattern", "preference", "goal", "error", "episodic", "semantic", "procedural"],
+			),
 			tags: Type.Optional(Type.Array(Type.String(), { description: "Tags for categorization" })),
 			importance: Type.Optional(Type.Number({ minimum: 0, maximum: 1, description: "Importance 0-1" })),
 			source: Type.Optional(Type.String({ description: "Where this came from" })),
@@ -176,17 +170,9 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
 		parameters: Type.Object({
 			query: Type.String({ description: "What to search for (natural language)" }),
 			memoryType: Type.Optional(
-				Type.Union([
-					Type.Literal("insight"),
-					Type.Literal("pattern"),
-					Type.Literal("preference"),
-					Type.Literal("goal"),
-					Type.Literal("error"),
-					Type.Literal("episodic"),
-					Type.Literal("semantic"),
-					Type.Literal("procedural"),
-					Type.Literal("all"),
-				]),
+				StringEnum(
+					["insight", "pattern", "preference", "goal", "error", "episodic", "semantic", "procedural", "all"],
+				),
 			),
 			limit: Type.Optional(Type.Number({ default: 5 })),
 			tags: Type.Optional(Type.Array(Type.String())),

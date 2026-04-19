@@ -12,7 +12,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Type } from "@sinclair/typebox";
-import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { AgentToolResult, ExtensionAPI, ExtensionContext, ToolDefinition } from "@mariozechner/pi-coding-agent";
 
 // Default patterns to exclude (small, non-informative files)
 const DEFAULT_EXCLUDE = [".DS_Store", "Thumbs.db", "*.log", ".env.local", ".env.*.local"];
@@ -504,10 +504,10 @@ export default function codebaseTreeExtension(pi: ExtensionAPI) {
 		description:
 			"Explore codebase directory structure with stats and filtering. Use when you need to understand the layout of a codebase, find files, or get an overview of a project structure.",
 		parameters: codebaseTreeSchema,
-		execute: async (_toolCallId, params): Promise<AgentToolResult<CodebaseTreeResult>> => {
+		execute: async (_toolCallId, params, _signal, _onUpdate, ctx: ExtensionContext): Promise<AgentToolResult<CodebaseTreeResult>> => {
 			statCache.clear();
 
-			const rootPath = params.path || process.cwd();
+			const rootPath = params.path || ctx.cwd;
 			const maxDepth = Math.min(params.maxDepth || 3, 10);
 			const exclude = [...DEFAULT_EXCLUDE, ...(params.exclude || [])];
 			const showStats = params.showStats !== false;

@@ -11,6 +11,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve, relative } from "node:path";
 import { globSync } from "glob";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
+import { StringEnum } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 
 // Maximum files to load from a glob pattern
@@ -45,7 +46,7 @@ const replSchema = Type.Object({
 	context: Type.Optional(Type.Any({ description: "Context data for RLM mode. Can be: inline data (array/object), file path (string - auto-detects JSON/JSONL/text), or { pattern, baseDir } for glob patterns." })),
 	cwd: Type.Optional(Type.String({ description: "Working directory for relative file paths" })),
 	baseDir: Type.Optional(Type.String({ description: "Base directory for glob patterns" })),
-	mode: Type.Optional(Type.Union([Type.Literal("simple"), Type.Literal("rlm"), Type.Literal("auto")], { description: "Execution mode: 'simple' = direct eval, 'rlm' = context-aware, 'auto' = auto-detect (default: auto)", default: "auto" })),
+	mode: Type.Optional(StringEnum(["simple", "rlm", "auto"], { description: "Execution mode: 'simple' = direct eval, 'rlm' = context-aware, 'auto' = auto-detect (default: auto)", default: "auto" })),
 	max_calls: Type.Optional(Type.Number({ description: "Max recursive sub-calls per RLM invocation (default: 10)", default: 10 })),
 	timeout_ms: Type.Optional(Type.Number({ description: "Timeout in milliseconds (default: 30000)", default: 30000 })),
 });

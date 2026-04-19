@@ -13,7 +13,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, SessionCompactEvent, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { detectMalformedToolCalls } from "./detection/malformed.js";
 import {
 	detectMissingVerification,
@@ -154,6 +154,18 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		}
 
 		state.toolLog.push(`${toolName}`);
+
+		// Sequence repetition detection: 3+ same tool in a row
+		if (state.toolLog.length >= 3) {
+			const last3 = state.toolLog.slice(-3);
+			if (last3[0] === last3[1] && last3[1] === last3[2]) {
+				const now = Date.now();
+				if (now - state.lastNudgeTime > state.nudgeCooldownMs) {
+					state.lastNudgeTime = now;
+					sendEnforcementWhisper(pi, `Repeating ${toolName} 3+ times - consider a different approach`);
+				}
+			}
+		}
 
 		// Blocking enforcement
 		const blockResult = checkBlocking(pi, toolName, input, state);
@@ -394,6 +406,19 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 			}
 		}
 
+		// Think tool enforcement: nudge if many turns without think()
+		if (
+			!hadErrors &&
+			!inOverflowRecovery &&
+			state.toolChain.lastThinkCall === 0 &&
+			state.currentTurn >= 5 &&
+			state.currentTurn % 5 === 0
+		) {
+			sessionSignals.push(
+				`${state.currentTurn} turns without think() - use think(observation, decision, reason) to track reasoning`,
+			);
+		}
+
 		// Context usage signal (only at high usage - semantic, not metric)
 		if (actualTools.some((t) =>
 			["context_tag", "context_log", "context_checkout", "context_prune", "context_audit"].includes(t),
@@ -474,16 +499,16 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 	// ── session_compact ────────────────────────────────────────────────────────
 	// L3: Compaction happened - harness-level minimum-fidelity trigger.
 	// Key learnings from scratchpad must be persisted before they get lost.
-	pi.on("session_compact" as any, async (event: any, ctx: any) => {
+	pi.on("session_compact", async (event: SessionCompactEvent, ctx: ExtensionContext) => {
 		if (!state.enforcementActive) return;
 
 		const compactTurn = state.currentTurn;
 
 		try {
 			const scratchpadResult = await ctx.tools.scratchpad?.({ action: "read" });
-			const details = (scratchpadResult as any)?.details;
+			const details = (scratchpadResult as { details?: { key_learnings?: Array<{ persisted?: boolean }> } } | undefined)?.details;
 			const learnings = details?.key_learnings ?? [];
-			const unpersisted = (learnings as any[]).filter((l: any) => !l.persisted);
+			const unpersisted = learnings.filter((l) => !l.persisted);
 
 			if (unpersisted.length > 0) {
 				// L3: Individual message - compaction means context is about to lose these

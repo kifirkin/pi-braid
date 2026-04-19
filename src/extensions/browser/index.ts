@@ -194,7 +194,17 @@ async function sendWithRetry(client: CdpClient, method: string, params?: Record<
 }
 
 async function browserNavigate(input: Static<typeof navigateParams>) {
-	const client = await ensureConnected();
+	let client: CdpClient;
+	try {
+		client = await ensureConnected();
+	} catch (err) {
+		const errorMsg = err instanceof Error ? err.message : String(err);
+		return {
+			content: [{ type: "text" as const, text: `Connection failed: ${errorMsg}` }],
+			details: { url: connectedUrl, tabId: connectedTabId, error: errorMsg },
+			isError: true
+		};
+	}
 
 	if (input.new_tab) {
 		const resp = await fetch("http://localhost:9222/json/new?url=" + encodeURIComponent(input.url), { method: "PUT" });
@@ -216,9 +226,13 @@ async function browserNavigate(input: Static<typeof navigateParams>) {
 	try {
 		await sendWithRetry(client, "Page.navigate", { url: input.url });
 		connectedUrl = input.url;
-		// Wait for navigation to complete
-		await new Promise((r) => setTimeout(r, Math.min(input.timeout ?? 30000, 10000)));
-		return { content: [{ type: "text" as const, text: `✓ Navigated to: ${input.url}` }], details: { url: connectedUrl, tabId: connectedTabId }, isError: false } as { content: { type: "text"; text: string }[]; details: Record<string, unknown>; isError?: boolean };
+		// Wait for navigation to complete (cap at 5 seconds for responsiveness)
+		await new Promise((r) => setTimeout(r, Math.min(input.timeout ?? 5000, 5000)));
+		return {
+			content: [{ type: "text" as const, text: `✓ Navigated to: ${input.url}` }],
+			details: { url: connectedUrl, tabId: connectedTabId, error: "" } as Record<string, unknown>,
+			isError: false
+		};
 	} catch (err) {
 		const errorMsg = err instanceof Error ? err.message : String(err);
 		return {
@@ -373,16 +387,30 @@ async function browserScreenshot(input: Static<typeof screenshotParams>) {
 async function browserCookies(_input: Static<typeof cookiesParams>) {
 	const client = await ensureConnected();
 
-	const result = (await client.send("Page.getCookies")) as { cookies: Array<{ name: string; value: string; domain: string; path: string; httpOnly: boolean; secure: boolean; session: boolean }> };
+	// Try Network.getAllCookies first (more reliable)
+	let cookies: Array<{ name: string; value: string; domain: string; path: string; httpOnly: boolean; secure: boolean; session: boolean; expires?: number }>;
+	try {
+		const networkResult = (await client.send("Network.getAllCookies")) as { cookies: typeof cookies };
+		cookies = networkResult.cookies;
+	} catch {
+		// Fallback to Page.getCookies with empty URLs (gets all)
+		try {
+			const pageResult = (await client.send("Page.getCookies", { urls: [] })) as { cookies: typeof cookies };
+			cookies = pageResult.cookies;
+		} catch {
+			return { content: [{ type: "text" as const, text: "(could not retrieve cookies - CDP access limited)" }], details: { url: connectedUrl, tabId: connectedTabId, count: 0 }, isError: false };
+		}
+	}
 
-	if (result.cookies.length === 0) return { content: [{ type: "text" as const, text: "(no cookies for this page)" }], details: { url: connectedUrl, tabId: connectedTabId, count: 0 } };
+	if (cookies.length === 0) return { content: [{ type: "text" as const, text: "(no cookies for this page)" }], details: { url: connectedUrl, tabId: connectedTabId, count: 0 } };
 
-	const lines = result.cookies.map((c) => {
+
+	const lines = cookies.map((c) => {
 		const flags = [c.httpOnly ? "HttpOnly" : "", c.secure ? "Secure" : "", c.session ? "Session" : ""].filter(Boolean).join(", ");
 		return `${c.name}=${c.value}\n  domain: ${c.domain}  path: ${c.path}${flags ? `  [${flags}]` : ""}`;
 	});
 
-	return { content: [{ type: "text" as const, text: lines.join("\n\n") }], details: { url: connectedUrl, tabId: connectedTabId, count: result.cookies.length } };
+	return { content: [{ type: "text" as const, text: lines.join("\n\n") }], details: { url: connectedUrl, tabId: connectedTabId, count: cookies.length } };
 }
 
 async function browserContent(input: Static<typeof contentParams>) {

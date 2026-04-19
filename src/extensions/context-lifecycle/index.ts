@@ -13,6 +13,7 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { StringEnum } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 
 import { createLogger } from "../../lib/logger.js";
@@ -86,21 +87,12 @@ const _proposalsByEntryId = new Map<string, ContextProposal>();
 // ── Schema ───────────────────────────────────────────────────────────────────
 
 const contextProposalsSchema = Type.Object({
-	action: Type.Union([
-		Type.Literal("list", { description: "List pending proposals" }),
-		Type.Literal("approve", { description: "Approve a proposal" }),
-		Type.Literal("reject", { description: "Reject/dismiss a proposal" }),
-		Type.Literal("snapshots", { description: "List available snapshots" }),
-		Type.Literal("stats", { description: "Show S-MMU statistics" }),
-	]),
+	action: StringEnum(["list", "approve", "reject", "snapshots", "stats"]),
 	id: Type.Optional(Type.String({ description: "Proposal ID to approve/reject" })),
 });
 
 const contextSignalSchema = Type.Object({
-	type: Type.Union([
-		Type.Literal("task_boundary", { description: "Mark current position as task boundary" }),
-		Type.Literal("topic_shift", { description: "Mark topic shift" }),
-	]),
+	type: StringEnum(["task_boundary", "topic_shift"], { description: "Signal type" }),
 	note: Type.Optional(Type.String({ description: "Optional note about the signal" })),
 });
 

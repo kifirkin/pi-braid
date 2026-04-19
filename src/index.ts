@@ -1,7 +1,7 @@
 /**
  * pi-braid - pi-coding-agent extension
  *
- * Planning, metacognition, cognitive systems, enforcement, feedback,
+ * Planning, metacognition, cognitive systems, enforcement,
  * evolution, skills, and more...
  *
  * Usage:
@@ -39,24 +39,15 @@ import promptGuardianExtension from "./extensions/prompt-guardian/index.js";
 import fileToolExtension from "./extensions/file-tool.js";
 import evolveExtension from "./extensions/evolve/index.js";
 import enforcementExtension from "./extensions/enforcement/index.js";
-import feedbackExtension from "./extensions/feedback/index.js";
-import analyticsExtension from "./extensions/analytics/index.js";
 import userMessagePreprocessorExtension from "./extensions/user-message-preprocessor/index.js";
-import watchdogExtension from "./extensions/watchdog/index.js";
-import rateLimiterExtension from "./extensions/rate-limiter/index.js";
 import safetyExtension from "./extensions/safety/index.js";
 import uxExtension from "./extensions/ux/index.js";
 import webFetchExtension from "./extensions/web-fetch/index.js";
 import browserExtension from "./extensions/browser/index.js";
 import assistantExtension from "./extensions/assistant/index.js";
 import visionExtension from "./extensions/vision/index.js";
-import reasoningExtension from "./extensions/reasoning/index.js";
 import replExtension from "./extensions/repl/index.js";
-import latentActivatorExtension from "./extensions/latent-activator/index.js";
-import antiSlopExtension from "./extensions/anti-slop/index.js";
 import antiSlopInputExtension from "./extensions/anti-slop-input/index.js";
-import queryOptimizerExtension from "./extensions/query-optimizer/index.js";
-import abTestingExtension from "./extensions/ab-testing/index.js";
 
 // Resolve the skills directory relative to this file
 const __filename = fileURLToPath(import.meta.url);
@@ -82,24 +73,15 @@ const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void 
 	{ name: "file-tool", factory: fileToolExtension },
 	{ name: "evolve", factory: evolveExtension },
 	{ name: "enforcement", factory: enforcementExtension },
-	{ name: "feedback", factory: feedbackExtension },
-	{ name: "analytics", factory: analyticsExtension },
 	{ name: "user-message-preprocessor", factory: userMessagePreprocessorExtension },
-	{ name: "watchdog", factory: watchdogExtension },
-	{ name: "rate-limiter", factory: rateLimiterExtension },
 	{ name: "safety", factory: safetyExtension },
 	{ name: "ux", factory: uxExtension },
 	{ name: "web-fetch", factory: webFetchExtension },
 	{ name: "browser", factory: browserExtension },
 	{ name: "assistant", factory: assistantExtension },
 	{ name: "vision", factory: visionExtension },
-	{ name: "reasoning", factory: reasoningExtension },
 	{ name: "repl", factory: replExtension },
-	{ name: "latent-activator", factory: latentActivatorExtension },
-	{ name: "anti-slop", factory: antiSlopExtension },
-	{ name: "anti-slop-input", factory: antiSlopInputExtension },
-	{ name: "query-optimizer", factory: queryOptimizerExtension },
-	{ name: "ab-testing", factory: abTestingExtension },
+	{ name: "anti-slop", factory: antiSlopInputExtension },
 ];
 
 export default function piBraidExtension(pi: ExtensionAPI) {

@@ -14,7 +14,7 @@
 import { randomUUID } from "node:crypto";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { Api, Context, Model } from "@mariozechner/pi-ai";
-import { completeSimple } from "@mariozechner/pi-ai";
+import { completeSimple, StringEnum } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { resolveUtilityModel } from "../../lib/model-resolver.js";
@@ -30,28 +30,16 @@ const thinkSchema = Type.Object({
 	thought_id: Type.Optional(Type.String({ description: "Unique identifier for this thought (auto-generated if not provided)" })),
 	parent_id: Type.Optional(Type.String({ description: "ID of parent thought to create threaded reasoning chains" })),
 	type: Type.Optional(
-		Type.Union(
-			[
-				Type.Literal("insight", { description: "Key learning or realization" }),
-				Type.Literal("question", { description: "Something to investigate" }),
-				Type.Literal("assumption", { description: "Assumed fact or constraint" }),
-				Type.Literal("conclusion", { description: "Final determination" }),
-				Type.Literal("hypothesis", { description: "Proposed explanation to test" }),
-				Type.Literal("plan", { description: "Implementation plan or approach" }),
-				Type.Literal("quick", { description: "Quick thinking without deep analysis" }),
-				Type.Literal("deep", { description: "Deep analysis with utility model review" }),
-			],
+		StringEnum(
+			["insight", "question", "assumption", "conclusion", "hypothesis", "plan", "quick", "deep"],
 			{ description: "Categorize the thought type", default: "insight" },
 		),
 	),
 	confidence: Type.Optional(Type.Number({ minimum: 0, maximum: 1, description: "Confidence level 0-1 (optional)" })),
 	tags: Type.Optional(Type.Array(Type.String(), { description: "Tags for categorization and search" })),
 	depth: Type.Optional(
-		Type.Union(
-			[
-				Type.Literal("quick", { description: "Quick thinking, agent's own analysis only" }),
-				Type.Literal("deep", { description: "Deep thinking - also invoke utility model for fresh-eyes review" }),
-			],
+		StringEnum(
+			["quick", "deep"],
 			{ description: "Analysis depth: 'quick' (default) or 'deep' (includes utility model perspective)", default: "quick" },
 		),
 	),

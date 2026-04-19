@@ -22,9 +22,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
+import type { AgentToolResult, ToolDefinition } from "@mariozechner/pi-coding-agent";
+import { StringEnum } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -377,9 +378,9 @@ function mutateAndSave(scratchpad: TaskScratchpad): void {
 	saveScratchpadToDisk(scratchpad);
 }
 
-function resolveProjectSlug(): string {
+function resolveProjectSlug(cwd?: string): string {
 	try {
-		return projectSlugFromCwd(process.cwd());
+		return projectSlugFromCwd(cwd ?? process.cwd());
 	} catch {
 		return "default";
 	}
@@ -388,36 +389,13 @@ function resolveProjectSlug(): string {
 // ── Schema ───────────────────────────────────────────────────────────────────
 
 const scratchpadSchema = Type.Object({
-	action: Type.Union(
-		[
-			// Core scratchpad
-			Type.Literal("read", { description: "Read current scratchpad with session summary" }),
-			Type.Literal("set_goal", { description: "Set or update goal" }),
-			Type.Literal("add_plan", { description: "Add step to plan" }),
-			Type.Literal("mark_done", { description: "Mark step as done" }),
-			Type.Literal("add_decision", { description: "Record a decision" }),
-			Type.Literal("add_hypothesis", { description: "Add hypothesis (for debugging)" }),
-			Type.Literal("add_note", { description: "Add a note" }),
-			// CCA L2: Structured session memory
-			Type.Literal("update_session", { description: "Update session metadata (turn, phase, mode)" }),
-			Type.Literal("add_constraint", { description: "Add an active constraint" }),
-			Type.Literal("remove_constraint", { description: "Remove an active constraint by id" }),
-			Type.Literal("add_learning", { description: "Record a key learning from this session" }),
-			Type.Literal("persist_learnings", { description: "Persist all unpersisted key learnings to memory_store" }),
-			Type.Literal("note_compact", { description: "Record that context was compacted at this turn - triggers write-through of key learnings" }),
-			// Elevation to formal systems
-			Type.Literal("elevate_to_goal", { description: "Promote scratchpad goal to formal goal with success criteria" }),
-			Type.Literal("elevate_to_plan", { description: "Promote scratchpad plan to formal execution plan" }),
-			// Task management
-			Type.Literal("task_add", { description: "Add a task to the queue" }),
-			Type.Literal("task_list", { description: "List all tasks" }),
-			Type.Literal("task_complete", { description: "Mark a task as completed" }),
-			Type.Literal("task_fail", { description: "Mark a task as failed" }),
-			Type.Literal("task_next", { description: "Get next ready task" }),
-			Type.Literal("task_remove", { description: "Remove a task by ID" }),
-			Type.Literal("task_stats", { description: "Get task counts by status" }),
-			Type.Literal("task_clear", { description: "Clear completed/failed tasks" }),
-		],
+	action: StringEnum(
+		["read", "set_goal", "add_plan", "mark_done", "add_decision", "add_hypothesis",
+		 "add_note", "update_session", "add_constraint", "remove_constraint",
+		 "add_learning", "persist_learnings", "note_compact",
+		 "elevate_to_goal", "elevate_to_plan",
+		 "task_add", "task_list", "task_complete", "task_fail",
+		 "task_next", "task_remove", "task_stats", "task_clear"],
 		{ description: "Action to perform on the scratchpad" },
 	),
 	text: Type.Optional(
@@ -437,16 +415,14 @@ const scratchpadSchema = Type.Object({
 	expires_in_ms: Type.Optional(Type.Number({ description: "TTL in ms for constraint expiry (default: 0 = no expiry)" })),
 	turn: Type.Optional(Type.Number({ description: "Current turn number (for update_session)" })),
 	phase: Type.Optional(
-		Type.Union(
-			[Type.Literal("idle"), Type.Literal("exploring"), Type.Literal("planning"),
-			 Type.Literal("implementing"), Type.Literal("verifying"), Type.Literal("debugging"),
-			 Type.Literal("documenting")],
+		StringEnum(
+			["idle", "exploring", "planning", "implementing", "verifying", "debugging", "documenting"],
 			{ description: "Session phase (for update_session)" },
 		),
 	),
 	mode: Type.Optional(
-		Type.Union(
-			[Type.Literal("normal"), Type.Literal("deep_think"), Type.Literal("recovery")],
+		StringEnum(
+			["normal", "deep_think", "recovery"],
 			{ description: "Agent mode (for update_session)" },
 		),
 	),
@@ -476,7 +452,7 @@ type ScratchpadToolInput = {
 // ── Extension ────────────────────────────────────────────────────────────────
 
 export default function scratchpadExtension(pi: ExtensionAPI): void {
-	const scratchpadTool: AgentTool<typeof scratchpadSchema> = {
+	const scratchpadTool: ToolDefinition<typeof scratchpadSchema> = {
 		name: "scratchpad",
 		label: "Scratchpad",
 		description:
@@ -484,9 +460,9 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 			"Read session state, update goal/plan, add decisions, " +
 			"record key learnings, manage constraints, track tasks.",
 		parameters: scratchpadSchema,
-		execute: async (_toolCallId: string, params: unknown): Promise<AgentToolResult<unknown>> => {
+		execute: async (_toolCallId: string, params: unknown, _signal, _onUpdate, ctx: ExtensionContext): Promise<AgentToolResult<unknown>> => {
 			const { action, text } = params as ScratchpadToolInput;
-			const pad = getOrCreateScratchpad(resolveProjectSlug());
+			const pad = getOrCreateScratchpad(resolveProjectSlug(ctx.cwd));
 
 			switch (action) {
 				// ── Core ──────────────────────────────────────────────────────────
@@ -833,7 +809,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("scratchpad-clear", {
 		description: "Clear the current project scratchpad",
 		handler: async (_args, ctx) => {
-			const slug = resolveProjectSlug();
+			const slug = resolveProjectSlug(ctx.cwd);
 			_taskScratchpad = createScratchpad("", slug);
 			_currentProjectSlug = slug;
 			saveScratchpadToDisk(_taskScratchpad);

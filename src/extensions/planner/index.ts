@@ -13,6 +13,7 @@ import { Planner } from "../../lib/planner.js";
 
 // goals.ts and planning.ts - inlined here
 
+import { StringEnum } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { GoalStatus } from "../../lib/goal-manager.js";
@@ -21,16 +22,8 @@ import type { StepType } from "../../lib/planner.js";
 // --- Goal Tool Factory (inlined from goals.ts) ---
 
 const goalSchema = Type.Object({
-	action: Type.Union(
-		[
-			Type.Literal("create", { description: "Create a new goal" }),
-			Type.Literal("decompose", { description: "Break a goal into subgoals" }),
-			Type.Literal("complete", { description: "Mark a goal as completed" }),
-			Type.Literal("fail", { description: "Mark a goal as failed" }),
-			Type.Literal("block", { description: "Mark a goal as blocked" }),
-			Type.Literal("list", { description: "List all goals or filter by status" }),
-			Type.Literal("current", { description: "Show active goal with progress" }),
-		],
+	action: StringEnum(
+		["create", "decompose", "complete", "fail", "block", "list", "current"],
 		{ description: "Action to perform" },
 	),
 	description: Type.Optional(Type.String({ description: "What to accomplish (for create)" })),
@@ -50,14 +43,8 @@ const goalSchema = Type.Object({
 	),
 	reason: Type.Optional(Type.String({ description: "Why it failed or was blocked" })),
 	status: Type.Optional(
-		Type.Union(
-			[
-				Type.Literal("pending"),
-				Type.Literal("active"),
-				Type.Literal("blocked"),
-				Type.Literal("completed"),
-				Type.Literal("failed"),
-			],
+		StringEnum(
+			["pending", "active", "blocked", "completed", "failed"],
 			{ description: "Filter by status (for list)" },
 		),
 	),
@@ -225,14 +212,8 @@ function createGoalTool(options: { manager: GoalManager }): AgentTool<typeof goa
 // --- Plan Tool Factory (inlined from planning.ts) ---
 
 const planSchema = Type.Object({
-	action: Type.Union(
-		[
-			Type.Literal("create", { description: "Create a plan with steps (auto-starts)" }),
-			Type.Literal("step", { description: "Advance current step (complete/fail)" }),
-			Type.Literal("adapt", { description: "Add new steps after failure" }),
-			Type.Literal("complete", { description: "Finalize plan with lessons" }),
-			Type.Literal("list", { description: "List all plans" }),
-		],
+	action: StringEnum(
+		["create", "step", "adapt", "complete", "list"],
 		{ description: "Action to perform" },
 	),
 	description: Type.Optional(Type.String({ description: "What the plan accomplishes (for create)" })),

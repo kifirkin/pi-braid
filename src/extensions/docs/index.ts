@@ -13,6 +13,7 @@ import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
+import { StringEnum } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
@@ -21,7 +22,7 @@ const execAsync = promisify(exec);
 const readDocSchema = Type.Object({
 	path: Type.String({ description: "Path to document file" }),
 	format: Type.Optional(
-		Type.Union([Type.Literal("txt"), Type.Literal("html"), Type.Literal("rtf")], {
+		StringEnum(["txt", "html", "rtf"], {
 			default: "txt",
 			description: "Output format",
 		}),

@@ -11,6 +11,7 @@
  * - time-tracker: Session timing awareness
  */
 
+import { StringEnum } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
@@ -39,7 +40,7 @@ const EVOLVE_ACTIONS = ["status", "health", "check", "commit", "rollback", "conf
 type EvolveActionType = (typeof EVOLVE_ACTIONS)[number];
 
 const evolveSchema = Type.Object({
-	action: Type.Union([...EVOLVE_ACTIONS.map((a) => Type.Literal(a))], {
+	action: StringEnum([...EVOLVE_ACTIONS], {
 		description: "Action to perform",
 	}),
 	checkpoint: Type.Optional(Type.String({ description: "Checkpoint hash for rollback" })),

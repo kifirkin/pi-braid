@@ -16,8 +16,10 @@
  * Session manager methods accessed via ctx in tool execute and event handlers.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, SessionBeforeCompactEvent, SessionBeforeCompactResult, SessionBeforeTreeEvent, SessionBeforeTreeResult, SessionCompactEvent, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { CompactionEntry } from "@mariozechner/pi-coding-agent";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import { StringEnum } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 
 import { createLogger } from "../../lib/logger.js";
@@ -437,11 +439,10 @@ const contextPruneSchema = Type.Object({
 
 const contextAuditSchema = Type.Object({
 	includeRecommendations: Type.Optional(Type.Boolean({ description: "Include action recommendations (default: true)" })),
-	detailLevel: Type.Optional(Type.Union([
-		Type.Literal("summary"),
-		Type.Literal("detailed"),
-		Type.Literal("full"),
-	], { description: "How much detail (default: detailed)" })),
+	detailLevel: Type.Optional(StringEnum(
+		["summary", "detailed", "full"],
+		{ description: "How much detail (default: detailed)" },
+	)),
 });
 
 // Helpers
@@ -841,25 +842,25 @@ function clearCompactionRetry(): void {
 /** Check if an error message indicates a transient server error that may succeed on retry */
 function isTransientCompactionError(errorMessage: string | null | undefined): boolean {
 	if (!errorMessage) return false;
-	
+
 	// 529 is Cerebras overload code
 	if (/\b529\b/.test(errorMessage)) return true;
-	
+
 	// overloaded_error is Anthropic/Cerebras
 	if (/overloaded_error/i.test(errorMessage)) return true;
-	
+
 	// Server overload indicators
 	if (/server.*(overload|cluster.*load|high.*load|under.*high.*load)/i.test(errorMessage)) return true;
-	
+
 	// Rate limiting
 	if (/rate.?limit|too.?many.?requests|429\b/i.test(errorMessage)) return true;
-	
+
 	// Server errors (5xx)
 	if (/\b5\d{2}\b.*server/i.test(errorMessage)) return true;
-	
+
 	// 503 service unavailable
 	if (/\b503\b/.test(errorMessage)) return true;
-	
+
 	return false;
 }
 
@@ -1314,7 +1315,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 	});
 
 	// Provide custom instructions before compaction for smarter summarization
-	pi.on("session_before_compact" as any, async (event: any, ctx: any) => {
+	pi.on("session_before_compact", async (event: SessionBeforeCompactEvent, ctx: ExtensionContext): Promise<SessionBeforeCompactResult | undefined> => {
 		try {
 			const audit = analyzeSession(ctx);
 
@@ -1353,7 +1354,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 
 	// ── Tree Navigation Integration ──────────────────────────────────────
 	// Provide intelligent defaults before tree navigation
-	pi.on("session_before_tree" as any, async (event: any, ctx: any) => {
+	pi.on("session_before_tree", async (event: SessionBeforeTreeEvent, ctx: ExtensionContext): Promise<SessionBeforeTreeResult | undefined> => {
 		try {
 			const audit = analyzeSession(ctx);
 			const preparation = event.preparation;
@@ -1393,10 +1394,10 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 	// Post-compaction: nudge agent to store key learnings
 	// NOTE: session_compact fires ONLY on successful compaction.
 	// For failure cases (overflow recovery failure, compaction throws), see compaction_end.
-	pi.on("session_compact" as any, async (_event: any, _ctx: any) => {
+	pi.on("session_compact", async (event: SessionCompactEvent, _ctx: ExtensionContext) => {
 		try {
 			// Track this compaction so compaction_end knows not to duplicate the nudge
-			const entry = _event.compactionEntry as any;
+			const entry = event.compactionEntry;
 			if (entry?.id) {
 				_compactedEntries.add(entry.id);
 			}
@@ -1427,16 +1428,6 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 				const entryId = result?.firstKeptEntryId ?? (event as any).compactionEntry?.id;
 
 				const errMsg = errorMessage ?? "Compaction succeeded but the retry overflowed.";
-
-				// Check if this is a persistent 400 error (API issue, not context issue)
-				const isPersistent400 = /400|no body|status code/i.test(errMsg);
-
-				if (isPersistent400 && overflowRetryState.attempt === 0) {
-					// First overflow retry failure - check if it looks like API config issue
-					// 400 "no body" from Cerebras can mean either overflow OR API issues
-					// Give it one more chance with aggressive compaction
-					log.warn(`Overflow retry detected: ${errMsg}. Attempting recovery.`);
-				}
 
 				// Retry with more aggressive compaction (up to OVERFLOW_RETRY_MAX_ATTEMPTS)
 				if (overflowRetryState.attempt < OVERFLOW_RETRY_MAX_ATTEMPTS) {
@@ -1485,12 +1476,9 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 							"",
 							"After " + OVERFLOW_RETRY_MAX_ATTEMPTS + " attempts, compaction cannot reduce context enough.",
 							"",
-							isPersistent400
-								? "**Possible API configuration issue (400 error):**"
-								: "**Possible context limit exceeded:**",
-							isPersistent400
-								? "- Check API key in ~/.pi/settings.json\n- Verify model ID matches your API key\n- Try `/model` to switch models"
-								: "- Switch to a larger-context model\n- Start a new session\n- Store learnings in memory first",
+
+							"**Possible context limit exceeded:**",
+							"- Switch to a larger-context model\n- Start a new session\n- Store learnings in memory first",
 							"",
 							"**Manual intervention required:**",
 							"- Run `/model` to switch to a different model (e.g. anthropic/claude-3-5-sonnet)",

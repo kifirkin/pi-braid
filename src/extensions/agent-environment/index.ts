@@ -13,6 +13,7 @@
 
 import * as os from "node:os";
 import * as process from "node:process";
+import { StringEnum } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
@@ -117,12 +118,8 @@ export function formatL1EnvironmentSection(data: L1EnvironmentData): string {
 // =============================================================================
 
 const timeStatusSchema = Type.Object({
-	action: Type.Union(
-		[
-			Type.Literal("status", { description: "Full time report" }),
-			Type.Literal("mark", { description: "Mark current time as last event" }),
-			Type.Literal("elapsed_since", { description: "Time since last event" }),
-		],
+	action: StringEnum(
+		["status", "mark", "elapsed_since"],
 		{ description: "Action: 'status' = full time report, 'mark' = mark current time as last event, 'elapsed_since' = time since last mark" },
 	),
 	label: Type.Optional(Type.String({ description: "Optional label for the time mark (e.g., 'started debugging', 'fixed first bug')" })),

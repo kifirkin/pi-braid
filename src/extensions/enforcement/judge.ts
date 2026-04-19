@@ -6,10 +6,9 @@
  * other behavioral issues.
  */
 
-import type { Api, Context, Model } from "@mariozechner/pi-ai";
-import { completeSimple } from "@mariozechner/pi-ai";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { JUDGE_SYSTEM_PROMPT } from "./judge-prompt.js";
+import { callLlm, extractJson } from "./judge-utils.js";
 import { createLogger } from "../../lib/logger.js";
 
 const log = createLogger("judge");
@@ -113,34 +112,7 @@ export interface JudgeAction {
 	nudgeMessage?: string;
 }
 
-/**
- * Get a suitable model for judge analysis
- * Prioritizes: utility model > current model > cheapest non-reasoning model
- */
-export function getJudgeModel(ctx: ExtensionContext): Model<Api> | undefined {
-	// Try utility model first (safe call - polyfill may not have patched yet)
-	let model: Model<Api> | undefined;
-	try {
-		model = (ctx as any).getUtilityModel?.();
-	} catch {
-		// Polyfill not patched (no session_start in -p mode)
-	}
-
-	if (!model) {
-		// Fall back to current model
-		model = ctx.model;
-
-		// If current model has reasoning, try to find a cheaper non-reasoning model
-		if (model?.reasoning) {
-			const availableModels = ctx.modelRegistry.getAvailable();
-			const nonReasoning = availableModels.filter((m) => !m.reasoning);
-			nonReasoning.sort((a, b) => a.cost.input + a.cost.output - (b.cost.input + b.cost.output));
-			model = nonReasoning[0];
-		}
-	}
-
-	return model;
-}
+export { getJudgeModel } from "./judge-utils.js";
 
 /**
  * Build the analysis prompt with conversation context
@@ -175,50 +147,21 @@ ${currentMessage}`;
  */
 function parseJudgeOutput(raw: string): JudgeAnalysis | null {
 	try {
-		// Handle empty or null input
-		if (!raw || typeof raw !== "string") {
-			return null;
-		}
-
-		// Try to extract JSON from the response (might have markdown code blocks)
-		let jsonStr = raw.trim();
-
-		// Remove markdown code blocks if present
-		const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-		if (jsonMatch?.[1]) {
-			jsonStr = jsonMatch[1].trim();
-		}
-
-		// Strip non-JSON prefix content (e.g., visual separators like "───..." or "═══════")
-		// Find the first '{' or '[' to locate actual JSON start
-		const jsonStartMatch = jsonStr.match(/[[{]/);
-		if (jsonStartMatch) {
-			jsonStr = jsonStr.slice(jsonStartMatch.index!);
-		}
-
-		// Strip non-JSON suffix content (e.g., trailing text after closing bracket)
-		// Find the last '}' or ']' to locate actual JSON end
-		const lastBrace = jsonStr.lastIndexOf("}");
-		const lastBracket = jsonStr.lastIndexOf("]");
-		const jsonEnd = Math.max(lastBrace, lastBracket);
-		if (jsonEnd > 0 && jsonEnd < jsonStr.length - 1) {
-			jsonStr = jsonStr.slice(0, jsonEnd + 1);
-		}
-
-		// Validate we have something to parse
-		if (!jsonStr || jsonStr.length < 10) {
-			return null;
-		}
+		const jsonStr = extractJson(raw);
+		if (!jsonStr) return null;
 
 		// Try to fix incomplete JSON by finding complete objects
 		try {
 			JSON.parse(jsonStr);
 		} catch {
-			// JSON might be incomplete - try to extract just the scores object
 			const scoresMatch = jsonStr.match(/"scores"\s*:\s*\{[^}]+\}/);
 			if (scoresMatch) {
 				const scoresContent = scoresMatch[0].replace('"scores":', "").trim();
-				jsonStr = `{"scores": ${scoresContent}}`;
+				try {
+					JSON.parse(`{"scores": ${scoresContent}}`);
+				} catch {
+					return null;
+				}
 			} else {
 				return null;
 			}
@@ -480,75 +423,24 @@ export async function analyzeWithJudge(
 		maxTokens?: number;
 	} = {},
 ): Promise<{ analysis: JudgeAnalysis | null; action: JudgeAction }> {
-	const model = getJudgeModel(ctx);
-	if (!model) {
-		return {
-			analysis: null,
-			action: { type: "none", reason: "No model available", priority: "low" },
-		};
-	}
-
-	const apiKey = await ctx.modelRegistry.getApiKeyForProvider(model.provider);
-	if (!apiKey) {
-		return {
-			analysis: null,
-			action: { type: "none", reason: "No API key available", priority: "low" },
-		};
-	}
-
 	const prompt = buildAnalysisPrompt(currentMessage, conversationHistory);
+	const result = await callLlm(ctx, JUDGE_SYSTEM_PROMPT, prompt, options);
 
-	// Calculate output tokens based on prompt length
-	const maxTokens = options.maxTokens ?? Math.min(Math.max(500, Math.floor(prompt.length / 8)), 2000);
-
-	const context: Context = {
-		systemPrompt: JUDGE_SYSTEM_PROMPT,
-		messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
-	};
-
-	// Set up timeout
-	const timeoutMs = options.timeoutMs ?? 30000;
-	const timeoutPromise = new Promise<never>((_, reject) => {
-		setTimeout(() => reject(new Error("Judge timeout")), timeoutMs);
-	});
-
-	try {
-		const result = await Promise.race([
-			completeSimple(model as Model<Api>, context, {
-				apiKey,
-				maxTokens,
-				temperature: 0.1,
-			}),
-			timeoutPromise,
-		]);
-
-		if (result.errorMessage) {
-			log.error("LLM error:", result.errorMessage);
-			return {
-				analysis: null,
-				action: { type: "none", reason: `Judge error: ${result.errorMessage}`, priority: "low" },
-			};
-		}
-
-		const textContent = result.content.filter((c): c is { type: "text"; text: string } => c.type === "text");
-		const rawOutput = textContent.length > 0 ? textContent[0].text : "";
-
-		const analysis = parseJudgeOutput(rawOutput);
-		if (!analysis) {
-			return {
-				analysis: null,
-				action: { type: "none", reason: "Failed to parse judge output", priority: "low" },
-			};
-		}
-
-		const action = determineAction(analysis, currentMessage);
-		return { analysis, action };
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		log.error("Analysis failed:", message);
+	if ("error" in result) {
 		return {
 			analysis: null,
-			action: { type: "none", reason: `Judge failed: ${message}`, priority: "low" },
+			action: { type: "none", reason: `Judge error: ${result.error}`, priority: "low" },
 		};
 	}
+
+	const analysis = parseJudgeOutput(result.text);
+	if (!analysis) {
+		return {
+			analysis: null,
+			action: { type: "none", reason: "Failed to parse judge output", priority: "low" },
+		};
+	}
+
+	const action = determineAction(analysis, currentMessage);
+	return { analysis, action };
 }

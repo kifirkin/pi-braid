@@ -9,10 +9,9 @@
  * are verified, and whether shortcuts were taken.
  */
 
-import type { Api, Context, Model } from "@mariozechner/pi-ai";
-import { completeSimple } from "@mariozechner/pi-ai";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { VERIFICATION_JUDGE_SYSTEM_PROMPT } from "./judge-prompt.js";
+import { callLlm, extractJson } from "./judge-utils.js";
 import { createLogger } from "../../lib/logger.js";
 
 const log = createLogger("verification-judge");
@@ -59,29 +58,6 @@ export interface JudgeContext {
 	thinking: string;
 }
 
-/**
- * Get a suitable model for verification analysis
- */
-export function getVerificationModel(ctx: ExtensionContext): Model<Api> | undefined {
-	let model: Model<Api> | undefined;
-	try {
-		model = (ctx as any).getUtilityModel?.();
-	} catch {
-		// Polyfill not patched yet (no session_start in -p mode)
-	}
-
-	if (!model) {
-		model = ctx.model;
-		if (model?.reasoning) {
-			const availableModels = ctx.modelRegistry.getAvailable();
-			const nonReasoning = availableModels.filter((m) => !m.reasoning);
-			nonReasoning.sort((a, b) => a.cost.input + a.cost.output - (b.cost.input + b.cost.output));
-			model = nonReasoning[0];
-		}
-	}
-
-	return model;
-}
 
 /**
  * Build the verification analysis prompt
@@ -126,30 +102,8 @@ function buildVerificationPrompt(context: JudgeContext): string {
  */
 export function parseVerificationOutput(raw: string): VerificationVerdict | null {
 	try {
-		if (!raw || typeof raw !== "string") return null;
-
-		let jsonStr = raw.trim();
-
-		// Remove markdown code blocks
-		const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-		if (jsonMatch?.[1]) {
-			jsonStr = jsonMatch[1].trim();
-		}
-
-		// Find JSON start/end
-		const jsonStartMatch = jsonStr.match(/[[{]/);
-		if (jsonStartMatch) {
-			jsonStr = jsonStr.slice(jsonStartMatch.index!);
-		}
-
-		const lastBrace = jsonStr.lastIndexOf("}");
-		const lastBracket = jsonStr.lastIndexOf("]");
-		const jsonEnd = Math.max(lastBrace, lastBracket);
-		if (jsonEnd > 0 && jsonEnd < jsonStr.length - 1) {
-			jsonStr = jsonStr.slice(0, jsonEnd + 1);
-		}
-
-		if (!jsonStr || jsonStr.length < 10) return null;
+		const jsonStr = extractJson(raw);
+		if (!jsonStr) return null;
 
 		const parsed = JSON.parse(jsonStr);
 
@@ -219,53 +173,13 @@ export async function runVerificationJudge(
 	judgeContext: JudgeContext,
 	options: { timeoutMs?: number } = {},
 ): Promise<VerificationVerdict | null> {
-	const model = getVerificationModel(ctx);
-	if (!model) {
-		log.warn("No model available");
-		return null;
-	}
-
-	const apiKey = await ctx.modelRegistry.getApiKeyForProvider(model.provider);
-	if (!apiKey) {
-		log.warn("No API key available");
-		return null;
-	}
-
 	const prompt = buildVerificationPrompt(judgeContext);
-	const maxTokens = Math.min(Math.max(500, Math.floor(prompt.length / 8)), 2000);
+	const result = await callLlm(ctx, VERIFICATION_JUDGE_SYSTEM_PROMPT, prompt, options);
 
-	const context: Context = {
-		systemPrompt: VERIFICATION_JUDGE_SYSTEM_PROMPT,
-		messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
-	};
-
-	const timeoutMs = options.timeoutMs ?? 30000;
-	const timeoutPromise = new Promise<never>((_, reject) => {
-		setTimeout(() => reject(new Error("Verification judge timeout")), timeoutMs);
-	});
-
-	try {
-		const result = await Promise.race([
-			completeSimple(model as Model<Api>, context, {
-				apiKey,
-				maxTokens,
-				temperature: 0.1,
-			}),
-			timeoutPromise,
-		]);
-
-		if (result.errorMessage) {
-			log.error("LLM error:", result.errorMessage);
-			return null;
-		}
-
-		const textContent = result.content.filter((c): c is { type: "text"; text: string } => c.type === "text");
-		const rawOutput = textContent.length > 0 ? textContent[0].text : "";
-
-		return parseVerificationOutput(rawOutput);
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		log.error("Analysis failed:", message);
+	if ("error" in result) {
+		log.error("Verification judge error:", result.error);
 		return null;
 	}
+
+	return parseVerificationOutput(result.text);
 }
