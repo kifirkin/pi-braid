@@ -29,7 +29,7 @@ export function getJudgeModel(ctx: ExtensionContext): Model<Api> | undefined {
 		if (model?.reasoning) {
 			const availableModels = ctx.modelRegistry.getAvailable();
 			const nonReasoning = availableModels.filter((m) => !m.reasoning);
-			nonReasoning.sort((a, b) => a.cost.input + a.cost.output - (b.cost.input + b.cost.output));
+			nonReasoning.sort((a, b) => (a.cost?.input ?? 0) + (a.cost?.output ?? 0) - ((b.cost?.input ?? 0) + (b.cost?.output ?? 0)));
 			model = nonReasoning[0];
 		}
 	}
