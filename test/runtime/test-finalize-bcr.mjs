@@ -117,7 +117,7 @@ await test("Planner.get returns plan with steps", async () => {
   await assertEqual(retrieved.steps.length, 1);
 });
 
-await test("startPlan + completeStep marks current step completed with outcome", async () => {
+await test("startPlan + completeStep marks current step completed with actualOutcome", async () => {
   const { Planner } = await import(PLANNER);
   const planner = new Planner();
   const plan = planner.createPlan("Multi-step", [
@@ -125,13 +125,11 @@ await test("startPlan + completeStep marks current step completed with outcome",
     { description: "Step 2", type: "action", expectedOutcome: "done" },
   ]);
   planner.startPlan(plan.id);
-  // completeStep completes the CURRENT step (by currentStepIndex), not by ID
   planner.completeStep("Step 1 done", plan.id);
   const updated = planner.get(plan.id);
   const step = updated.steps[0];
   await assertOk(step, "step found");
   await assertEqual(step.status, "completed");
-  // Note: outcome is stored in actualOutcome field
   await assertEqual(step.actualOutcome, "Step 1 done");
 });
 

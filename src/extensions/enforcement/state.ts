@@ -3,6 +3,7 @@
  */
 
 import type { JudgeAnalysis } from "./judge.js";
+import { TopicDriftDetector } from "../../lib/topic-drift-detector.js";
 import type { EnforcementConfig, ToolChainState, ToolSequencePattern, TurnState } from "./types.js";
 
 export const DEFAULT_CONFIG: EnforcementConfig = {
@@ -105,6 +106,8 @@ export const state = {
 		status: string;
 		steps: { description: string; status: string; expectedOutcome: string; actualOutcome?: string }[];
 	} | null,
+	// Topic drift detector (P4: PROPOSAL_TOPIC_DRIFT_DETECTOR)
+	driftDetector: new TopicDriftDetector({ topicThreshold: 0.15, minTurns: 4, enableStructural: true }),
 };
 
 export function resetState(): void {
@@ -112,6 +115,7 @@ export function resetState(): void {
 	state.recentToolSequences = [];
 	state.recentlyReadFiles.clear();
 	state.toolSequencePatterns.clear();
+	state.driftDetector?.reset();
 	state.silentTurns = 0;
 	state.validationFailures = 0;
 	state.currentTurn = 0;

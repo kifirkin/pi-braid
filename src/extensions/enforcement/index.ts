@@ -16,6 +16,7 @@ import * as fsSync from "node:fs";
 import * as path from "path";
 import type { ExtensionAPI, SessionCompactEvent, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { detectMalformedToolCalls } from "./detection/malformed.js";
+import { TopicDriftDetector } from "../../lib/topic-drift-detector.js";
 import {
 	detectMissingVerification,
 	recordCodeChange as detectRecordCodeChange,
@@ -110,21 +111,27 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 	// Minimal: only handle block actions. All verbose enforcement prose is gone.
 	// Non-critical signals → bundled Session Signals nudge (turn_end).
 	// Critical signals (L3) → individual sendEnforcementWhisper (turn_end).
-	pi.on("before_agent_start", async (event) => {
-		if (!state.enforcementActive) {
-			return;
+	pi.on("session_start", async (event, ctx) => {
+		if (!state.enforcementActive) return;
+
+		// Initialize topic drift detector with the session's initial task
+		const task = (event as any).task || (event as any).prompt || state.originalRequest || "";
+		if (task) {
+			state.driftDetector?.setTaskContext(task);
 		}
 
 		state.currentTurn++;
 
-		// Block action must surface via system prompt - whisper would trigger a new turn
+		// Block action must surface via system prompt
 		const pendingBlock = getPendingBlockAction();
 		clearPendingBlockAction();
 
 		if (pendingBlock) {
-			return {
-				systemPrompt: `${event.systemPrompt}\n\n### BLOCKED ACTION\n${pendingBlock.reason}`,
-			};
+			pi.sendMessage({
+				customType: "context",
+				display: true,
+				content: [{ type: "text", text: `[BLOCKED] ${pendingBlock.reason}` }],
+			});
 		}
 	});
 
@@ -821,16 +828,46 @@ Persist them now - this is the minimum-fidelity moment.`,
 			);
 		},
 	});
-}
+	// Helpers
+	function _classifyRetryError(
+		errorMsg: string,
+	): "rate_limit" | "server_error" | "network" | "unknown" {
+		if (/rate.?limit|too many requests|429/i.test(errorMsg)) return "rate_limit";
+		if (/500|502|503|504|server.?error|internal.?error|service.?unavailable/i.test(errorMsg))
+			return "server_error";
+		if (/network|connection|fetch failed|socket|timeout|timed out/i.test(errorMsg)) return "network";
+		return "unknown";
+	}
 
-// Helpers
+	function extractTextContent(msg: any): string {
+		if (typeof msg.content === "string") return msg.content;
+		if (Array.isArray(msg.content)) {
+			return msg.content
+				.map((c: any) => (c.type === "text" ? c.text : c.type === "toolCall" ? `tool:${c.name}` : ""))
+				.join(" ");
+		}
+		return "";
+	}
 
-function _classifyRetryError(
-	errorMsg: string,
-): "rate_limit" | "server_error" | "network" | "unknown" {
-	if (/rate.?limit|too many requests|429/i.test(errorMsg)) return "rate_limit";
-	if (/500|502|503|504|server.?error|internal.?error|service.?unavailable/i.test(errorMsg))
-		return "server_error";
-	if (/network|connection|fetch failed|socket|timeout|timed out/i.test(errorMsg)) return "network";
-	return "unknown";
+	// ── Topic Drift Detection (PROPOSAL_TOPIC_DRIFT_DETECTOR)
+	pi.on("turn_end", async (_event: any, ctx: ExtensionContext) => {
+		if (!state.enforcementActive || !state.driftDetector) return;
+		const session = (ctx.sessionManager as any)?.getCurrentSession?.() || null;
+		const recentMsgs = session?.messages?.slice(-4) ?? [];
+		for (let i = recentMsgs.length - 1; i >= 0; i--) {
+			const msg = recentMsgs[i];
+			const text = extractTextContent(msg);
+			if (msg?.role === "user" && text.length > 10) {
+				state.driftDetector.addTurn(text);
+				break;
+			}
+		}
+		const driftCheck = state.driftDetector.check();
+		if (driftCheck.drifted) {
+			const whisper = state.driftDetector.generateWhisper(driftCheck);
+			if (whisper) {
+				pi.sendMessage({ customType: "context", display: true, content: [{ type: "text", text: whisper }] });
+			}
+		}
+	});
 }
