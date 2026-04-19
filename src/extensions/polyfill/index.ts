@@ -136,7 +136,7 @@ export default function polyfillExtension(pi: ExtensionAPI) {
 			if (!args || args.trim() === "") {
 				if (ctx.hasUI) {
 					const visionFilter = (m: Model<Api>) =>
-						Array.isArray((m as any).input) && (m as any).input.includes("image");
+						Array.isArray((m as any)?.input) && (m as any)?.input.includes("image");
 					await openModelSelectorUI(ctx, VISION_MODEL_KEY, "Vision Model", visionFilter);
 				} else {
 					const model = resolveVisionModel(ctx);
@@ -278,7 +278,7 @@ async function openModelSelectorUI(
 					// Warn if a non-vision model was picked for the vision role
 					if (settingKey === VISION_MODEL_KEY) {
 						const hasImageInput =
-							Array.isArray((model as any).input) && (model as any).input.includes("image");
+							Array.isArray((model as any)?.input) && (model as any)?.input.includes("image");
 						if (!hasImageInput) {
 							ctx.ui.notify(
 								`⚠ ${model.id} does not support image input. Vision analysis may fail.`,

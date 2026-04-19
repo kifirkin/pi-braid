@@ -131,5 +131,5 @@ export function resolveVisionModel(ctx: ExtensionContext): Model<Api> | undefine
 
 	// 4. First available vision model
 	const available = ctx.modelRegistry.getAvailable();
-	return available.find((m) => m.input?.includes("image"));
+	return available.find((m) => m?.input?.includes("image"));
 }

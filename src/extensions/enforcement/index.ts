@@ -169,7 +169,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		}
 
 		const toolName = event.toolName;
-		const input = event.input as Record<string, unknown> | undefined;
+		const input = event?.input as Record<string, unknown> | undefined;
 
 		recordToolCall(toolName);
 		recordToolInput(toolName, input);

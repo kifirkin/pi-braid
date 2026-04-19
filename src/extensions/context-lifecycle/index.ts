@@ -354,7 +354,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 	// ── tool_call: Capture agent signals ────────────────────────────────────
 	pi.on("tool_call", async (event: any) => {
 		const toolName = event.toolName as string;
-		const input = event.input as Record<string, unknown> | undefined;
+		const input = event?.input as Record<string, unknown> | undefined;
 
 		if (toolName === "context_tag") {
 			_signalDetector.queueSignal("task_boundary", { action: "tag", target: input?.name });
