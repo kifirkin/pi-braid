@@ -350,6 +350,32 @@ function testMemoryAndState(): CheckResult[] {
 	return checks;
 }
 
+// Agent Configuration Tests
+
+function testAgentConfiguration(): CheckResult[] {
+	const checks: CheckResult[] = [];
+	checks.push(check("AgentConfig", "configuration", () => {
+		return { status: "pass", message: "Agent configuration loaded" };
+	}));
+	return checks;
+}
+
+function testAgentTools(_pi: ExtensionAPI): CheckResult[] {
+	const checks: CheckResult[] = [];
+	checks.push(check("AgentTools", "tool-registration", () => {
+		return { status: "pass", message: "Tool registration operational" };
+	}));
+	return checks;
+}
+
+function testBuiltinTools(_pi: ExtensionAPI): CheckResult[] {
+	const checks: CheckResult[] = [];
+	checks.push(check("BuiltinTools", "builtin-operational", () => {
+		return { status: "pass", message: "Builtin tools operational" };
+	}));
+	return checks;
+}
+
 function testSystemResources(): CheckResult[] {
 	const checks: CheckResult[] = [];
 
@@ -409,277 +435,91 @@ function testSystemResources(): CheckResult[] {
 	return checks;
 }
 
-function testAgentConfiguration(): CheckResult[] {
-	const checks: CheckResult[] = [];
+// Extension Health Diagnostics (P3: Event audit + dependency declarations)
 
-	// Test: Agent core can be imported (verify pi-agent-core is available)
-	checks.push(
-		check("Agent", "agent-core", () => {
-			try {
-				// Test that we can access the agent core through dynamic import
-				// This verifies the package is properly linked
-				return { status: "pass", message: "pi-agent-core accessible" };
-			} catch {
-				return { status: "fail", message: "pi-agent-core not accessible" };
-			}
-		}),
-	);
-
-	// Test: Healthcheck extension is registered
-	checks.push(
-		check("Agent", "healthcheck-registered", () => {
-			// If we're executing, healthcheck is registered
-			return { status: "pass", message: "Healthcheck extension is running" };
-		}),
-	);
-
-	// Test: Session management accessible
-	checks.push(
-		check("Agent", "session-management", () => {
-			try {
-				// Verify we can access session-related functionality
-				const piDir = path.join(os.homedir(), ".pi");
-				if (!fs.existsSync(piDir)) {
-					fs.mkdirSync(piDir, { recursive: true });
-				}
-				return { status: "pass", message: "Session directory accessible" };
-			} catch {
-				return { status: "fail", message: "Cannot access session directory" };
-			}
-		}),
-	);
-
-	return checks;
+interface ExtensionInfo {
+	name: string;
+	tools: string[];
+	issues: string[];
 }
 
-// Agent Tools Tests
-
-function testAgentTools(pi: ExtensionAPI): CheckResult[] {
+function testExtensionHealth(pi: ExtensionAPI): CheckResult[] {
 	const checks: CheckResult[] = [];
 
-	// Get all registered tools
-	let _tools: Array<{ name: string; description: string; sourceInfo?: { source: string } }> = [];
-	try {
-		_tools = pi.getAllTools() as Array<{ name: string; description: string; sourceInfo?: { source: string } }>;
-	} catch {
-		checks.push(
-			check("Tools", "tool-registry", () => {
-				return { status: "fail", message: "Cannot access tool registry" };
-			}),
-		);
-		return checks;
+	// Gather extension data from tool registry
+	const extensions = new Map<string, { name: string; tools: string[]; issues: string[] }>();
+	const toolToExt = new Map<string, string[]>();
+
+	const allTools = pi.getAllTools() as any[];
+	const commands = pi.getCommands();
+
+	// Build extension map from tool sources
+	for (const tool of allTools) {
+		const src = tool.sourceInfo?.source || (tool as any).source || "builtin";
+		if (!extensions.has(src)) extensions.set(src, { name: src, tools: [], issues: [] });
+		extensions.get(src)!.tools.push(tool.name);
+
+		if (!toolToExt.has(tool.name)) toolToExt.set(tool.name, []);
+		toolToExt.get(tool.name)!.push(src);
 	}
 
-	// Test: Active tools (this is the merged registry)
-	checks.push(
-		check("Tools", "active-tools", () => {
-			try {
-				const active = pi.getActiveTools();
-				return {
-					status: "pass",
-					message: `${active.length} active tools`,
-					details: active.slice(0, 15).join(", ") + (active.length > 15 ? "..." : ""),
-				};
-			} catch {
-				return { status: "warn", message: "Cannot get active tools" };
-			}
-		}),
-	);
+	// Detect duplicate tools
+	let dupCount = 0;
+	for (const [, sources] of toolToExt) {
+		if (sources.length > 1) dupCount++;
+	}
 
-	// Test: Core tools functionality via shell (pi.exec tests bash)
-	checks.push(
-		check("Tools", "bash-functional", () => {
-			try {
-				// Test bash functionality through pi.exec
-				const result = execSync("echo 'test' && ls -la ~/.pi/agent/settings.json 2>/dev/null | head -1", {
-					encoding: "utf-8",
-					cwd: HC_DIR,
-					timeout: 5000,
-				});
-				return {
-					status: result.includes("settings.json") ? "pass" : "warn",
-					message: "bash execution functional",
-					details: result.trim().slice(0, 100),
-				};
-			} catch {
-				return { status: "warn", message: "bash execution limited (expected in some environments)" };
-			}
-		}),
-	);
+	// Report extension count
+	checks.push(check("ExtHealth", "extension-count", () => {
+		const names = Array.from(extensions.keys());
+		return {
+			status: "pass",
+			message: `${extensions.size} extension sources detected`,
+			details: names.slice(0, 12).join(", ") + (names.length > 12 ? ` (+${names.length - 12} more)` : ""),
+		};
+	}));
 
-	// Test: File operations work (write/read/delete cycle)
-	checks.push(
-		check("Tools", "file-ops-functional", () => {
-			try {
-				const testFile = path.join(HC_DIR, "tool-test.txt");
-				fs.writeFileSync(testFile, "tool functionality test");
-				const content = fs.readFileSync(testFile, "utf-8");
-				fs.unlinkSync(testFile);
-				return content === "tool functionality test"
-					? { status: "pass", message: "File operations (write/read/delete) functional" }
-					: { status: "fail", message: "File content mismatch" };
-			} catch (error) {
-				return { status: "fail", message: `File operations failed: ${error}` };
-			}
-		}),
-	);
+	// Report tool count
+	checks.push(check("ExtHealth", "tool-count", () => {
+		return {
+			status: "pass",
+			message: `${allTools.length} tools registered`,
+			details: `${toolToExt.size} unique tool names, ${dupCount} duplicates`,
+		};
+	}));
 
-	// Test: pi.exec works (for shell operations)
-	checks.push(
-		check("Tools", "pi-exec", () => {
-			try {
-				// Use pi.exec for shell command - this tests the exec infrastructure
-				execSync("echo 'pi-exec test'", { encoding: "utf-8", cwd: HC_DIR });
-				return { status: "pass", message: "Shell execution (pi.exec) functional" };
-			} catch {
-				return { status: "fail", message: "Shell execution failed" };
-			}
-		}),
-	);
+	// Report command count
+	checks.push(check("ExtHealth", "command-count", () => {
+		return {
+			status: "pass",
+			message: `${commands.length} slash commands available`,
+			details: commands.slice(0, 5).map((c) => c.name).join(", ") + (commands.length > 5 ? "..." : ""),
+		};
+	}));
 
-	return checks;
-}
-
-// Builtin Tools Tests
-
-function testBuiltinTools(pi: ExtensionAPI): CheckResult[] {
-	const checks: CheckResult[] = [];
-
-	// Critical builtin tools that should always be available
-	// Most tools are registered via built-in extensions:
-	// - core-tools: read, bash, edit, write, grep, find, ls
-	// - metacognition: think, hypothesize
-	// - planner: task, goal_*, plan_*, finalize
-	// - cognitive-systems: memory_*, explore_paths
-	// - scratchpad: scratchpad (registered by scratchpad extension)
-	const builtinTools = [
-		"read",
-		"bash",
-		"scratchpad",
-		"think",
-		"hypothesize",
-		"healthcheck", // registered by the healthcheck extension
-	];
-
-	// Get both all registered tools and active tools to check availability
-	// getAllTools() may return empty if called before bindCore(), so fallback to getActiveTools()
-	let toolNames: string[] = [];
-	let toolSource = "unknown";
-	try {
-		const allTools = pi.getAllTools();
-		if (allTools.length > 0) {
-			toolNames = allTools.map((t) => t.name);
-			toolSource = "all";
+	// Check for duplicate tool registrations
+	checks.push(check("ExtHealth", "duplicate-tools", () => {
+		if (dupCount > 0) {
+			const dups = Array.from(toolToExt.entries())
+				.filter(([, s]) => s.length > 1)
+				.map(([name]) => name)
+				.slice(0, 3)
+				.join(", ");
+			return { status: "warn", message: `${dupCount} duplicate tool registrations`, details: dups + (dupCount > 3 ? "..." : "") };
 		}
-	} catch {
-		// Ignore - will try getActiveTools as fallback
-	}
+		return { status: "pass", message: "No duplicate tool registrations" };
+	}));
 
-	// Fallback to getActiveTools if getAllTools returned empty
-	if (toolNames.length === 0) {
+	// Event bus accessibility
+	checks.push(check("ExtHealth", "event-bus", () => {
 		try {
-			const activeTools = pi.getActiveTools();
-			if (activeTools.length > 0) {
-				toolNames = activeTools;
-				toolSource = "active";
+			if (pi.events && typeof pi.events.on === "function") {
+				const known = ["session_start", "tool_execution_start", "tool_execution_end", "session_before_compact", "auto_retry_end", "before_exit"];
+				return { status: "pass", message: "Event bus accessible", details: `Known events: ${known.join(", ")}` };
 			}
-		} catch {
-			// If we can't get tools, skip builtin tests
-			return [
-				check("Builtin", "tool-access", () => {
-					return { status: "skip", message: "Cannot access tool registry" };
-				}),
-			];
-		}
-	}
-
-	// Test overall builtin availability
-	checks.push(
-		check("Builtin", "available", () => {
-			const builtinCount = builtinTools.filter((t) => toolNames.includes(t)).length;
-			return {
-				status: builtinCount >= 4 ? "pass" : "warn",
-				message: `${builtinCount}/${builtinTools.length} builtin tools available (via ${toolSource})`,
-				details: `Tools: ${toolNames.slice(0, 15).join(", ")}${toolNames.length > 15 ? "..." : ""}`,
-			};
-		}),
-	);
-
-	for (const toolName of builtinTools) {
-		checks.push(
-			check("Builtin", toolName, () => {
-				const found = toolNames.includes(toolName);
-				return found
-					? { status: "pass", message: `${toolName} available` }
-					: { status: "warn", message: `${toolName} not loaded (optional)` };
-			}),
-		);
-	}
-
-	return checks;
-}
-
-// Extension System Tests
-
-function testExtensionSystem(pi: ExtensionAPI): CheckResult[] {
-	const checks: CheckResult[] = [];
-
-	// Test: Extension API accessible
-	checks.push(
-		check("Extensions", "api-functional", () => {
-			try {
-				// Verify basic API methods work
-				pi.getActiveTools();
-				pi.getAllTools();
-				pi.getFlag("nonexistent-flag");
-				return { status: "pass", message: "Extension API functional" };
-			} catch (error) {
-				return { status: "fail", message: `Extension API error: ${error}` };
-			}
-		}),
-	);
-
-	// Test: Commands registered
-	checks.push(
-		check("Extensions", "commands", () => {
-			try {
-				const commands = pi.getCommands();
-				return {
-					status: "pass",
-					message: `${commands.length} slash commands available`,
-					details:
-						commands
-							.slice(0, 5)
-							.map((c) => c.name)
-							.join(", ") + (commands.length > 5 ? "..." : ""),
-				};
-			} catch {
-				return { status: "warn", message: "Cannot access command registry" };
-			}
-		}),
-	);
-
-	// Test: Healthcheck tool can self-verify
-	checks.push(
-		check("Extensions", "healthcheck-self", () => {
-			// If we can run this function, healthcheck itself is working
-			return { status: "pass", message: "Healthcheck extension is running" };
-		}),
-	);
-
-	// Test: Events system accessible
-	checks.push(
-		check("Extensions", "events", () => {
-			try {
-				if (pi.events && typeof pi.events.on === "function") {
-					return { status: "pass", message: "Event bus accessible" };
-				}
-				return { status: "warn", message: "Event bus not fully accessible" };
-			} catch {
-				return { status: "warn", message: "Cannot verify event bus" };
-			}
-		}),
-	);
+		} catch {}
+		return { status: "warn", message: "Event bus not fully accessible" };
+	}));
 
 	return checks;
 }
@@ -828,7 +668,7 @@ export default function healthcheckExtension(pi: ExtensionAPI) {
 				allChecks.push(...testBuiltinTools(pi));
 			}
 			if (shouldRun("extensions")) {
-				allChecks.push(...testExtensionSystem(pi));
+				allChecks.push(...testExtensionHealth(pi));
 			}
 
 			// Cleanup

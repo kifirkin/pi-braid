@@ -95,11 +95,8 @@ export class FileMutationQueue {
 			}
 			this.queues.get(path)!.push(entry);
 
-			// Auto-flush if queue gets too deep (prevents memory bloat from stuck writes)
-			const queueDepth = this.queues.get(path)!.length;
-			if (queueDepth > this.options.maxQueueDepth) {
-				this.processQueue(path);
-			}
+			// Process immediately (non-blocking)
+			this.processQueue(path);
 		});
 	}
 

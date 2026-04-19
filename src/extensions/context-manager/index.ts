@@ -270,8 +270,67 @@ const recencyRule: PruneRule = {
 	},
 };
 
+// Batch Context Reduction (BCR) - P4
+// Collapse consecutive repeated tool call sequences into single entries with count.
+// E.g., three `read` calls on same file → one entry with count=3.
+
+interface BCRMetadata {
+	bcrCount?: number;
+	bcrCollapsed?: boolean;
+	bcrKey?: string;
+}
+
+const batchCollapseRule: PruneRule = {
+	id: "batch_collapse",
+	description: "Collapse consecutive repeated tool calls into single entries with count",
+	enabled: true,
+
+	prepare(msg: MessageWithMetadata) {
+		if (msg.message.role !== "assistant") return;
+		if (!Array.isArray(msg.message.content)) return;
+
+		const toolCalls = msg.message.content.filter((c: any) => c.type === "toolCall");
+		if (toolCalls.length !== 1) return; // Only collapse single-tool entries
+
+		const toolCall = toolCalls[0] as any;
+		const toolName = toolCall.name;
+		const toolArgs = JSON.stringify(toolCall.arguments ?? {});
+		msg.metadata.bcrKey = `${toolName}:${toolArgs}`;
+	},
+
+	process(msg: MessageWithMetadata, ctx: PruneContext) {
+		if (!msg.metadata.bcrKey) return;
+
+		// Look for previous consecutive entries with the same tool call
+		let count = 1;
+		let prevIndex = ctx.index - 1;
+
+		while (prevIndex >= 0) {
+			const prev = ctx.messages[prevIndex];
+			if (prev.metadata.bcrKey !== msg.metadata.bcrKey) break;
+
+			// Check if it's the same assistant message (consecutive)
+			if (prev.metadata.bcrCollapsed) {
+				count += (prev.metadata.bcrCount as number) ?? 1;
+			} else {
+				count += 1;
+			}
+			prevIndex--;
+		}
+
+		if (count > 1) {
+			// This is a repeated tool call - collapse it
+			msg.metadata.bcrCount = count;
+			msg.metadata.bcrCollapsed = true;
+			msg.metadata.shouldPrune = true;
+			msg.metadata.pruneReason = `collapsed ${count}x repeated tool call`;
+		}
+	},
+};
+
 // Register built-in rules
 pruningState.rules = [
+	batchCollapseRule,
 	deduplicationRule,
 	supersededWritesRule,
 	errorPurgingRule,

@@ -292,9 +292,9 @@ async function findNextWork(): Promise<{ type: "plan" | "goal" | null; id?: stri
 		const pendingPlan = plans.find((p) => p.status === "planning" || p.status === "executing");
 		if (pendingPlan) {
 			// Get plan's steps via Planner.get(planId)?.steps
-			const plan = _planner.get(pendingPlan.id);
-			const remaining = plan?.steps.filter((s) => s.status !== "completed" && s.status !== "failed").length ?? 0;
-			return { type: "plan", id: pendingPlan.id, description: `${pendingPlan.description || "Unnamed plan"} (${remaining} steps remaining)` };
+			const plan = _planner.get(pendingPlan.id)!;
+			const remaining = plan.steps.filter((s) => s.status !== "completed" && s.status !== "failed").length;
+			return { type: "plan", id: plan.id, description: `${pendingPlan.description || "Unnamed plan"} (${remaining} steps remaining)` };
 		}
 
 		// Check pending goals
