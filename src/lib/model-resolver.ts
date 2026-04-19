@@ -83,10 +83,10 @@ export function resolveUtilityModel(ctx: ExtensionContext): Model<Api> | undefin
 		if (resolved) return resolved;
 	}
 
-	// 3. Current model
-	if (ctx.model) return ctx.model;
+	// 3. Current model — ONLY if non-reasoning (reasoning models too expensive for preprocessing)
+	if (ctx.model && !ctx.model.reasoning) return ctx.model;
 
-	// 4. Cheapest available non-reasoning model
+	// 4. Cheapest available non-reasoning model (always filtered — never use reasoning for preprocessing)
 	const available = ctx.modelRegistry.getAvailable();
 	const nonReasoning = available.filter((m) => !m.reasoning);
 	if (nonReasoning.length > 0) {
@@ -98,7 +98,7 @@ export function resolveUtilityModel(ctx: ExtensionContext): Model<Api> | undefin
 		return nonReasoning[0];
 	}
 
-	// 5. Any available
+	// 5. Any available (exhausted non-reasoning options)
 	return available[0];
 }
 

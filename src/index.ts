@@ -47,6 +47,7 @@ import browserExtension from "./extensions/browser/index.js";
 import assistantExtension from "./extensions/assistant/index.js";
 import visionExtension from "./extensions/vision/index.js";
 import replExtension from "./extensions/repl/index.js";
+import waitReviewExtension from "./extensions/wait-review/index.js";
 
 
 // Resolve the skills directory relative to this file
@@ -81,6 +82,7 @@ const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void 
 	{ name: "assistant", factory: assistantExtension },
 	{ name: "vision", factory: visionExtension },
 	{ name: "repl", factory: replExtension },
+	{ name: "wait-review", factory: waitReviewExtension },
 ];
 
 export default function piBraidExtension(pi: ExtensionAPI) {
