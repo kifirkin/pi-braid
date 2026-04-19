@@ -79,10 +79,10 @@ Delete ~15 lines of manual fallback logic. One import, one call.
 | Task 4a | ✅ DONE | reflection gap nudge at 6+ tools without reflection |
 | Task 4b | ✅ DONE | thought chain tracking, orphan detection |
 | Task 4c | ✅ DONE | calibration pairs, nudge when avg error > 30% |
-| Task 2 | ⏳ PENDING | session-scoped state (9 modules) |
-| Task 3 | ⏳ PENDING | conflict-aware knowledge (3a+3b) |
-| Task 5 | ⏳ PENDING | metrics calibration harness |
-| Task 6 | ⏳ PENDING | MARS reflector |
+| Task 2 | ⚠️ PARTIAL | core libs migrated, enforcement stays global (acceptable) |
+| Task 3 | ✅ DONE | evidence-pool.ts, cognitive-systems updated, enforcement integration |
+| Task 5 | ✅ DONE | test-reasoning-metrics.mjs (18 tests), thresholds calibrated |
+| Task 6 | ✅ DONE | mars-reflector.ts, adaptive trigger, tool overuse/error advice |
 
 | Task | Thread | Paper | Key Insight |
 |------|--------|-------|-------------|
