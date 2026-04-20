@@ -16,9 +16,7 @@ import * as fsSync from "node:fs";
 import * as path from "path";
 import type { ExtensionAPI, SessionCompactEvent, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { detectMalformedToolCalls } from "./detection/malformed.js";
-import { TopicDriftDetector } from "../../lib/topic-drift-detector.js";
 import { getReplyInstruction, setLanguage, detectLanguage } from "../../lib/language-hint.js";
-import { measureStability } from "../../lib/reasoning-metrics.js";
 import {
 	detectMissingVerification,
 	recordCodeChange as detectRecordCodeChange,
@@ -42,7 +40,6 @@ import {
 import {
 	shouldAdvise as marsShouldAdvise,
 } from "../../lib/mars-reflector.js";
-import { checkComplexityMismatch, estimateComplexity, type ComplexityProbe } from "./handlers/probe-handler.js";
 import { recordBashDetails, recordToolCall, recordToolInput } from "./handlers/tool-tracker.js";
 import { analyzeMessage } from "./handlers/message-analysis.js";
 import {
@@ -55,7 +52,7 @@ import { classifyError as classifyErrorLib } from "../../lib/error-classifier.js
 import { checkRoutingMismatch, detectIntent, getRoutingHint, type TaskIntent } from "./handlers/routing-handler.js";
 import { analyzeWithJudge } from "./judge.js";
 import { NudgeManager } from "./nudge-manager.js";
-import { DEFAULT_CONFIG, resetState, getState } from "./state.js";
+import { getState } from "./state.js";
 
 import type { TurnState } from "./types.js";
 import { validateToolForPhase, validateTurn } from "./validation.js";
