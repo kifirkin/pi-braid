@@ -122,7 +122,7 @@ export function getState(ctx: ExtensionContext): EnforcementState {
 }
 
 // ── Legacy Global State ──────────────────────────────────────────────────────
-// TODO: Migrate all consumers to getState(ctx), then remove this.
+// Legacy fallback: callers in index.ts now pass getState(ctx) explicitly. Kept as default param safety net.
 
 export const state = createState();
 
