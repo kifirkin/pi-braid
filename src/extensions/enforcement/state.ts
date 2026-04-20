@@ -5,6 +5,8 @@
 import type { JudgeAnalysis } from "./judge.js";
 import { TopicDriftDetector } from "../../lib/topic-drift-detector.js";
 import type { EnforcementConfig, ToolChainState, ToolSequencePattern, TurnState } from "./types.js";
+import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { getExtensionState } from "../../lib/extension-state.js";
 
 export const DEFAULT_CONFIG: EnforcementConfig = {
 	requireReasoning: true,
@@ -38,142 +40,151 @@ export const DEFAULT_CONFIG: EnforcementConfig = {
 	verifyAfterCodeChanges: true,
 };
 
-export const state = {
-	config: { ...DEFAULT_CONFIG },
-	turnHistory: new Map<number, TurnState>(),
-	currentTurn: 0,
-	recentToolSequences: [] as string[][],
-	toolSequencePatterns: new Map<string, ToolSequencePattern>(),
-	recentlyReadFiles: new Map<string, number>(), // path -> last turn read
-	silentTurns: 0,
-	enforcementActive: true,
-	validationFailures: 0 as number,
-	escalationCounts: {} as Record<string, number>,
-	lastNudgeTime: 0,
-	nudgeCooldownMs: 3600_000,
-	toolChain: {
-		lastThinkCall: 0,
-		lastPlanCall: 0,
-		recentEditWithoutThink: [] as number[],
-		recentEditWithoutPlan: [] as number[],
-	} as ToolChainState,
-	lastMemoryCall: 0,
-	turnsSinceMemory: 0,
-	memoryNudgeSent: false,
-	totalToolCalls: 0,
-	toolCallsSinceLastMemory: 0,
-	hasRecordedFailure: false,
-	lastFailedToolTurn: -100,
-	uniqueToolsUsed: new Set<string>(),
-	bashCalls: 0,
-	toolDiversityNudged: false,
-	hasExplored: false,
-	turnsSinceExplore: 0,
-	exploreBeforeActNudged: false,
-	claimsWithoutVerification: 0,
-	verificationsDone: 0,
-	hasRecalledOnStart: false,
-	firstWorkDone: false,
-	claimsDetectedThisTurn: false,
-	hasCodeChanges: false,
-	lastCodeChangeTurn: 0,
-	lastScratchpadNudgeTurn: -100,
-	lastJudgeTime: 0,
-	judgeSkipCounter: 0,
-	lastJudgeAnalysis: null as JudgeAnalysis | null,
-	lastLazyNudgeTime: 0,
-	// Verification judge tracking
-	lastVerificationJudgeTurn: 0,
-	lastUserMessage: "",
-	toolsSinceReflection: 0,
-	thoughtChains: [] as Array<{ id: string; parentId: string | null; type: string; timestamp: number }>,
-	calibrationPairs: [] as Array<{ predicted: number; actual: number; tool: string; turn: number }>,
-	lastThinkConfidence: 0.5,
-	verificationJudgeRunning: false,
-	toolLog: [] as string[],
-	// Context hygiene monitoring
-	lastContextCheckTurn: 0,
-	contextCheckInterval: 21, // Check every N turns
-	contextNudgeSent: false,
-	contextAuditThreshold: 0.66, // Nudge when usage > 70%
-	// Context tool usage tracking
-	// Last compaction turn (for hygiene signal reset)
-	lastCompactionTurn: 0,
-	overflowRecently: 0,
-	// Memory hygiene: combined score (scratchpad + memory + context)
-	memoryHygieneScore: 1.0, // 0-1, derived from usage patterns
-	lastHygieneNudgeTurn: 0,
-	hygieneNudgeInterval: 55,
-	originalRequest: undefined as string | undefined,
-	planAlignmentData: null as {
-		id: string;
-		description: string;
-		status: string;
-		steps: { description: string; status: string; expectedOutcome: string; actualOutcome?: string }[];
-	} | null,
-	// Topic drift detector (P4: PROPOSAL_TOPIC_DRIFT_DETECTOR)
-	driftDetector: new TopicDriftDetector({ topicThreshold: 0.15, minTurns: 4, enableStructural: true }),
-};
+// ── State Factory ────────────────────────────────────────────────────────────
 
-export function resetState(): void {
-	state.turnHistory.clear();
-	state.recentToolSequences = [];
-	state.recentlyReadFiles.clear();
-	state.toolSequencePatterns.clear();
-	state.driftDetector?.reset();
-	state.silentTurns = 0;
-	state.validationFailures = 0;
-	state.currentTurn = 0;
-	state.toolChain = {
+export function createState() {
+	return {
+		config: { ...DEFAULT_CONFIG },
+		turnHistory: new Map<number, TurnState>(),
+		currentTurn: 0,
+		recentToolSequences: [] as string[][],
+		toolSequencePatterns: new Map<string, ToolSequencePattern>(),
+		recentlyReadFiles: new Map<string, number>(),
+		silentTurns: 0,
+		enforcementActive: true,
+		validationFailures: 0 as number,
+		escalationCounts: {} as Record<string, number>,
+		lastNudgeTime: 0,
+		nudgeCooldownMs: 3600_000,
+		toolChain: {
+			lastThinkCall: 0,
+			lastPlanCall: 0,
+			recentEditWithoutThink: [] as number[],
+			recentEditWithoutPlan: [] as number[],
+		} as ToolChainState,
+		lastMemoryCall: 0,
+		turnsSinceMemory: 0,
+		memoryNudgeSent: false,
+		totalToolCalls: 0,
+		toolCallsSinceLastMemory: 0,
+		hasRecordedFailure: false,
+		lastFailedToolTurn: -100,
+		uniqueToolsUsed: new Set<string>(),
+		bashCalls: 0,
+		toolDiversityNudged: false,
+		hasExplored: false,
+		turnsSinceExplore: 0,
+		exploreBeforeActNudged: false,
+		claimsWithoutVerification: 0,
+		verificationsDone: 0,
+		hasRecalledOnStart: false,
+		firstWorkDone: false,
+		claimsDetectedThisTurn: false,
+		hasCodeChanges: false,
+		lastCodeChangeTurn: 0,
+		lastScratchpadNudgeTurn: -100,
+		lastJudgeTime: 0,
+		judgeSkipCounter: 0,
+		lastJudgeAnalysis: null as JudgeAnalysis | null,
+		lastLazyNudgeTime: 0,
+		lastVerificationJudgeTurn: 0,
+		lastUserMessage: "",
+		toolsSinceReflection: 0,
+		thoughtChains: [] as Array<{ id: string; parentId: string | null; type: string; timestamp: number }>,
+		calibrationPairs: [] as Array<{ predicted: number; actual: number; tool: string; turn: number }>,
+		lastThinkConfidence: 0.5,
+		verificationJudgeRunning: false,
+		toolLog: [] as string[],
+		lastContextCheckTurn: 0,
+		contextCheckInterval: 21,
+		contextNudgeSent: false,
+		contextAuditThreshold: 0.66,
+		lastCompactionTurn: 0,
+		overflowRecently: 0,
+		memoryHygieneScore: 1.0,
+		lastHygieneNudgeTurn: 0,
+		hygieneNudgeInterval: 55,
+		originalRequest: undefined as string | undefined,
+		planAlignmentData: null as {
+			id: string;
+			description: string;
+			status: string;
+			steps: { description: string; status: string; expectedOutcome: string; actualOutcome?: string }[];
+		} | null,
+		driftDetector: new TopicDriftDetector({ topicThreshold: 0.15, minTurns: 4, enableStructural: true }),
+	};
+}
+
+export type EnforcementState = ReturnType<typeof createState>;
+
+export function getState(ctx: ExtensionContext): EnforcementState {
+	return getExtensionState(ctx, "enforcement", createState);
+}
+
+// ── Legacy Global State ──────────────────────────────────────────────────────
+// TODO: Migrate all consumers to getState(ctx), then remove this.
+
+export const state = createState();
+
+export function resetState(s: EnforcementState = state): void {
+	s.turnHistory.clear();
+	s.recentToolSequences = [];
+	s.recentlyReadFiles.clear();
+	s.toolSequencePatterns.clear();
+	s.driftDetector?.reset();
+	s.silentTurns = 0;
+	s.validationFailures = 0;
+	s.currentTurn = 0;
+	s.toolChain = {
 		lastThinkCall: 0,
 		lastPlanCall: 0,
 		recentEditWithoutThink: [],
 		recentEditWithoutPlan: [],
 	};
-	state.lastMemoryCall = 0;
-	state.turnsSinceMemory = 0;
-	state.memoryNudgeSent = false;
-	state.totalToolCalls = 0;
-	state.toolCallsSinceLastMemory = 0;
-	state.uniqueToolsUsed.clear();
-	state.bashCalls = 0;
-	state.toolDiversityNudged = false;
-	state.hasExplored = false;
-	state.turnsSinceExplore = 0;
-	state.exploreBeforeActNudged = false;
-	state.claimsWithoutVerification = 0;
-	state.verificationsDone = 0;
-	state.hasRecalledOnStart = false;
-	state.firstWorkDone = false;
-	state.claimsDetectedThisTurn = false;
-	state.hasCodeChanges = false;
-	state.lastCodeChangeTurn = 0;
-	state.config.thinkCalledInSession = false;
-	state.config.exploreCalledInSession = false;
-	state.hasRecordedFailure = false;
-	state.lastFailedToolTurn = -100;
-	state.lastScratchpadNudgeTurn = -100;
+	s.lastMemoryCall = 0;
+	s.turnsSinceMemory = 0;
+	s.memoryNudgeSent = false;
+	s.totalToolCalls = 0;
+	s.toolCallsSinceLastMemory = 0;
+	s.uniqueToolsUsed.clear();
+	s.bashCalls = 0;
+	s.toolDiversityNudged = false;
+	s.hasExplored = false;
+	s.turnsSinceExplore = 0;
+	s.exploreBeforeActNudged = false;
+	s.claimsWithoutVerification = 0;
+	s.verificationsDone = 0;
+	s.hasRecalledOnStart = false;
+	s.firstWorkDone = false;
+	s.claimsDetectedThisTurn = false;
+	s.hasCodeChanges = false;
+	s.lastCodeChangeTurn = 0;
+	s.config.thinkCalledInSession = false;
+	s.config.exploreCalledInSession = false;
+	s.hasRecordedFailure = false;
+	s.lastFailedToolTurn = -100;
+	s.lastScratchpadNudgeTurn = -100;
 	// Reset nudge/escalation tracking
-	state.lastNudgeTime = 0;
-	state.escalationCounts = {};
-	state.lastJudgeTime = 0;
-	state.judgeSkipCounter = 0;
-	state.lastJudgeAnalysis = null;
-	state.lastLazyNudgeTime = 0;
+	s.lastNudgeTime = 0;
+	s.escalationCounts = {};
+	s.lastJudgeTime = 0;
+	s.judgeSkipCounter = 0;
+	s.lastJudgeAnalysis = null;
+	s.lastLazyNudgeTime = 0;
 	// Reset verification judge tracking
-	state.lastVerificationJudgeTurn = 0;
-	state.lastUserMessage = "";
-	state.toolsSinceReflection = 0;
-	state.thoughtChains = [];
-	state.calibrationPairs = [];
-	state.lastThinkConfidence = 0.5;
-	state.verificationJudgeRunning = false;
-	state.toolLog = [];
-	state.planAlignmentData = null;
+	s.lastVerificationJudgeTurn = 0;
+	s.lastUserMessage = "";
+	s.toolsSinceReflection = 0;
+	s.thoughtChains = [];
+	s.calibrationPairs = [];
+	s.lastThinkConfidence = 0.5;
+	s.verificationJudgeRunning = false;
+	s.toolLog = [];
+	s.planAlignmentData = null;
 	// Reset context hygiene monitoring
-	state.lastContextCheckTurn = 0;
-	state.contextCheckInterval = 34;
-	state.contextNudgeSent = false;
-	state.contextAuditThreshold = 0.66;
-	state.lastCompactionTurn = 0;
+	s.lastContextCheckTurn = 0;
+	s.contextCheckInterval = 34;
+	s.contextNudgeSent = false;
+	s.contextAuditThreshold = 0.66;
+	s.lastCompactionTurn = 0;
 }
