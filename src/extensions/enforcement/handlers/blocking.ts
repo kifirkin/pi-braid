@@ -8,7 +8,7 @@
 
 import * as fs from "node:fs";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import type { state } from "../state.js";
+import type { EnforcementState } from "../state.js";
 import { queueBlockAction } from "../whisper.js";
 
 /** Result of a blocking check */
@@ -22,7 +22,7 @@ export function checkBlocking(
 	pi: ExtensionAPI,
 	toolName: string,
 	eventInput: Record<string, unknown> | undefined,
-	stateRef: typeof state,
+	stateRef: EnforcementState,
 ): BlockResult {
 	const writeTools = ["edit", "write"];
 

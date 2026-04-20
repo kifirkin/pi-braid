@@ -42,7 +42,8 @@ import { recordBashDetails, recordToolCall, recordToolInput } from "./handlers/t
 import { checkRoutingMismatch, detectIntent, getRoutingHint, type TaskIntent } from "./handlers/routing-handler.js";
 import { analyzeWithJudge } from "./judge.js";
 import { NudgeManager } from "./nudge-manager.js";
-import { state } from "./state.js";
+import { DEFAULT_CONFIG, resetState, getState } from "./state.js";
+
 import type { TurnState } from "./types.js";
 import { validateToolForPhase, validateTurn } from "./validation.js";
 import { formatVerificationNudge, type JudgeContext, runVerificationJudge } from "./verification-judge.js";
@@ -128,7 +129,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 	// Critical signals (L3) → individual sendEnforcementWhisper (turn_end).
 	// Language detection: detect from user text → set reply instruction in system prompt
 	pi.on("input", async (event: any, ctx: any) => {
-		if (!state.enforcementActive) return;
+		if (!getState(ctx).enforcementActive) return;
 		const text = event.text || "";
 		if (!text || text.startsWith("/") || (event as any).source === "extension") return;
 
@@ -136,7 +137,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		if (lang.code === "EN") return;
 
 		setLanguage(ctx, lang.code, lang.name);
-		state.lastUserMessage = text;
+		getState(ctx).lastUserMessage = text;
 		const replyLang = getReplyInstruction(ctx);
 		if (!replyLang) return;
 
@@ -147,14 +148,14 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 	});
 
 	// Topic drift: initialize on session_start, check on turn_end
-	pi.on("session_start", async (event) => {
-		if (!state.enforcementActive) return;
-		const task = (event as any).task || (event as any).prompt || state.originalRequest || "";
+	pi.on("session_start", async (event, ctx: ExtensionContext) => {
+		if (!getState(ctx).enforcementActive) return;
+		const task = (event as any).task || (event as any).prompt || getState(ctx).originalRequest || "";
 		if (task) {
-			state.driftDetector?.setTaskContext(task);
+			getState(ctx).driftDetector?.setTaskContext(task);
 		}
 
-		state.currentTurn++;
+		getState(ctx).currentTurn++;
 
 		// Block action must surface via system prompt
 		const pendingBlock = getPendingBlockAction();
@@ -170,8 +171,8 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 	});
 
 	// ── tool_call ────────────────────────────────────────────────────────────
-	pi.on("tool_call", async (event) => {
-		if (!state.enforcementActive) {
+	pi.on("tool_call", async (event, ctx: ExtensionContext) => {
+		if (!getState(ctx).enforcementActive) {
 			return undefined;
 		}
 
@@ -187,62 +188,62 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		}
 
 		if (toolName === "edit" || toolName === "write") {
-			detectRecordCodeChange(state.currentTurn);
-			state.hasCodeChanges = true;
+			detectRecordCodeChange(getState(ctx).currentTurn);
+			getState(ctx).hasCodeChanges = true;
 		}
 
 		if (toolName === "edit" || toolName === "write") {
 			const filePath = (input as { path?: string } | undefined)?.path;
 			if (filePath) {
-				knownFiles.set(filePath, { content: "", turn: state.currentTurn });
+				knownFiles.set(filePath, { content: "", turn: getState(ctx).currentTurn });
 			}
 		}
 
-		state.toolLog.push(`${toolName}`);
+		getState(ctx).toolLog.push(`${toolName}`);
 
 		// Task 4a: Reflection gap + Task 4b: Thought chain tracking
 		if (toolName === "think") {
 			const thinkType = (input as any)?.type || "unknown";
 			const parentId = (input as any)?.parent_id || null;
 			const confidence = (input as any)?.confidence;
-			if (typeof confidence === "number") state.lastThinkConfidence = confidence;
+			if (typeof confidence === "number") getState(ctx).lastThinkConfidence = confidence;
 			const thoughtId = `t${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-			state.thoughtChains.push({ id: thoughtId, parentId, type: thinkType, timestamp: Date.now() });
+			getState(ctx).thoughtChains.push({ id: thoughtId, parentId, type: thinkType, timestamp: Date.now() });
 
 			if (thinkType === "reflection" || thinkType === "conclusion") {
-				state.toolsSinceReflection = 0;
+				getState(ctx).toolsSinceReflection = 0;
 			} else {
-				state.toolsSinceReflection++;
+				getState(ctx).toolsSinceReflection++;
 			}
 		} else {
-			state.toolsSinceReflection++;
+			getState(ctx).toolsSinceReflection++;
 		}
 
 		// Sequence repetition detection: 9+ same tool in a row
 		const REPETITION_THRESHOLD = 9;
-		if (state.toolLog.length >= REPETITION_THRESHOLD) {
-			const lastN = state.toolLog.slice(-REPETITION_THRESHOLD);
+		if (getState(ctx).toolLog.length >= REPETITION_THRESHOLD) {
+			const lastN = getState(ctx).toolLog.slice(-REPETITION_THRESHOLD);
 			if (lastN.every((t) => t === lastN[0])) {
 				const now = Date.now();
-				if (now - state.lastNudgeTime > state.nudgeCooldownMs) {
-					state.lastNudgeTime = now;
+				if (now - getState(ctx).lastNudgeTime > getState(ctx).nudgeCooldownMs) {
+					getState(ctx).lastNudgeTime = now;
 					sendEnforcementWhisper(pi, `Repeating ${toolName} ${REPETITION_THRESHOLD}+ times - consider a different approach`);
 				}
 			}
 		}
 
 		// Blocking enforcement
-		const blockResult = checkBlocking(pi, toolName, input, state);
+		const blockResult = checkBlocking(pi, toolName, input, getState(ctx));
 		if (blockResult.blocked) {
 			return { block: true, reason: blockResult.reason };
 		}
 
 		// Phase validation nudge
-		const { message } = validateToolForPhase(toolName, state.currentTurn);
+		const { message } = validateToolForPhase(toolName, getState(ctx).currentTurn);
 		if (message) {
 			const now = Date.now();
-			if (now - state.lastNudgeTime > state.nudgeCooldownMs) {
-				state.lastNudgeTime = now;
+			if (now - getState(ctx).lastNudgeTime > getState(ctx).nudgeCooldownMs) {
+				getState(ctx).lastNudgeTime = now;
 				queueEnforcementWhisper(message);
 			}
 		}
@@ -252,7 +253,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 
 	// ── message_end: conflict detection (Task 3) ────────────────────────────
 	pi.on("message_end", async (event: any, ctx: any) => {
-		if (!state.enforcementActive) return;
+		if (!getState(ctx).enforcementActive) return;
 
 		// Run conflict detection and surface unresolved conflicts
 		const newConflicts = detectConflicts(ctx);
@@ -277,22 +278,22 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 	});
 
 	// ── tool_end: calibration tracking (Task 4c) ───────────────────────────
-	pi.on("tool_end" as any, async (event: any) => {
-		if (!state.enforcementActive) return;
+	pi.on("tool_end" as any, async (event: any, ctx: ExtensionContext) => {
+		if (!getState(ctx).enforcementActive) return;
 		const toolName = event?.tool || "";
 		if (toolName === "think") return;
 
-		const predicted = state.lastThinkConfidence;
+		const predicted = getState(ctx).lastThinkConfidence;
 		const actual = event?.error ? 0 : 1;
-		state.calibrationPairs.push({ predicted, actual, tool: toolName, turn: state.currentTurn });
+		getState(ctx).calibrationPairs.push({ predicted, actual, tool: toolName, turn: getState(ctx).currentTurn });
 
-		if (state.calibrationPairs.length > 50) {
-			state.calibrationPairs = state.calibrationPairs.slice(-50);
+		if (getState(ctx).calibrationPairs.length > 50) {
+			getState(ctx).calibrationPairs = getState(ctx).calibrationPairs.slice(-50);
 		}
 
 		const error = Math.abs(predicted - actual);
-		if (state.calibrationPairs.length >= 10 && error > 0.4) {
-			const recent = state.calibrationPairs.slice(-10);
+		if (getState(ctx).calibrationPairs.length >= 10 && error > 0.4) {
+			const recent = getState(ctx).calibrationPairs.slice(-10);
 			const avgError = recent.reduce((s, p) => s + Math.abs(p.predicted - p.actual), 0) / recent.length;
 			if (avgError > 0.3) {
 				sendEnforcementWhisper(
@@ -307,8 +308,8 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 	// ── turn_end ─────────────────────────────────────────────────────────────
 	// Bundle all non-critical signals into ONE structured nudge.
 	// L3 critical signals sent individually.
-	pi.on("turn_end", async (event) => {
-		if (!state.enforcementActive) {
+	pi.on("turn_end", async (event, ctx: ExtensionContext) => {
+		if (!getState(ctx).enforcementActive) {
 			return;
 		}
 
@@ -340,20 +341,20 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 				.includes("overflow");
 
 		if (isOverflowTurn) {
-			state.overflowRecently = state.currentTurn;
+			getState(ctx).overflowRecently = getState(ctx).currentTurn;
 		}
 
 		// Track code changes
 		if (actualTools.some((t) => ["edit", "write"].includes(t))) {
-			detectRecordCodeChange(state.currentTurn);
+			detectRecordCodeChange(getState(ctx).currentTurn);
 		}
 
 		// Track memory/context tools
-		detectMissingVerification(pi as never, state.currentTurn);
+		detectMissingVerification(pi as never, getState(ctx).currentTurn);
 
 		const scratchpadUpdated = actualTools.includes("scratchpad");
 		if (scratchpadUpdated) {
-			state.lastScratchpadNudgeTurn = -100;
+			getState(ctx).lastScratchpadNudgeTurn = -100;
 		}
 
 		const memoryUpdated = actualTools.some((t) =>
@@ -367,28 +368,28 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 
 		if (!memoryUpdated) {
 			if (actualTools.length > 0 && !hadErrors) {
-				state.turnsSinceMemory++;
+				getState(ctx).turnsSinceMemory++;
 			}
 		} else {
-			state.turnsSinceMemory = 0;
+			getState(ctx).turnsSinceMemory = 0;
 		}
 
 		const turnState: TurnState = {
-			turnIndex: state.currentTurn,
+			turnIndex: getState(ctx).currentTurn,
 			plannedTools: [],
 			actualTools,
 			scratchpadUpdated,
 			memoryUpdated,
 			sequenceRepetitionCount: 0,
-			thinkCalledBeforeEdit: state.toolChain.lastThinkCall >= state.currentTurn - 2,
-			planCalledForBugFix: state.toolChain.lastPlanCall >= state.currentTurn - 3,
+			thinkCalledBeforeEdit: getState(ctx).toolChain.lastThinkCall >= getState(ctx).currentTurn - 2,
+			planCalledForBugFix: getState(ctx).toolChain.lastPlanCall >= getState(ctx).currentTurn - 3,
 		};
 
-		state.turnHistory.set(state.currentTurn, turnState);
+		getState(ctx).turnHistory.set(getState(ctx).currentTurn, turnState);
 
-		if (state.turnHistory.size > 50) {
-			const oldest = Math.min(...state.turnHistory.keys());
-			state.turnHistory.delete(oldest);
+		if (getState(ctx).turnHistory.size > 50) {
+			const oldest = Math.min(...getState(ctx).turnHistory.keys());
+			getState(ctx).turnHistory.delete(oldest);
 		}
 
 		// ── Redundancy Detection ─────────────────────────────────────────────────
@@ -406,15 +407,15 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 
 			// Check new/updated files for similarity
 			for (const [filePath, entry] of knownFiles) {
-				if (entry.turn === state.currentTurn && entry.content === "") {
+				if (entry.turn === getState(ctx).currentTurn && entry.content === "") {
 					const loaded = await loadFileContent(filePath);
 					if (loaded !== null) {
 						entry.content = loaded;
 						const similarTo = await detectRedundancy(loaded, filePath);
 						if (similarTo) {
 							const now = Date.now();
-							if (now - state.lastNudgeTime > state.nudgeCooldownMs) {
-								state.lastNudgeTime = now;
+							if (now - getState(ctx).lastNudgeTime > getState(ctx).nudgeCooldownMs) {
+								getState(ctx).lastNudgeTime = now;
 								sendEnforcementWhisper(
 									pi,
 									`[Quality] Similar code exists at \`${similarTo}\`. Reuse or deduplicate.`,
@@ -429,7 +430,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		// ── L3: Critical signals - individual, semantic ────────────────────────
 
 		if (erroredTools.size > 0) {
-			state.lastFailedToolTurn = state.currentTurn;
+			getState(ctx).lastFailedToolTurn = getState(ctx).currentTurn;
 		}
 
 		// Infrastructure error (no tools ran but assistant responded - not silent)
@@ -440,7 +441,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 			(event.message as { stopReason?: string }).stopReason === "error";
 
 		// Validation failures → L3 if critical
-		const prevTurn = state.turnHistory.get(state.currentTurn - 1);
+		const prevTurn = getState(ctx).turnHistory.get(getState(ctx).currentTurn - 1);
 		const validation = validateTurn(prevTurn, turnState, erroredTools, isInfrastructureError);
 
 		if (!validation.passed && validation.nudge && !hadErrors) {
@@ -457,13 +458,13 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 
 		// Failure recording nudge → L3
 		const FAILURE_RECORD_THRESHOLD_TURNS = 3;
-		if (erroredTools.size > 0 && !state.hasRecordedFailure) {
-			const turnsSinceError = state.currentTurn - state.lastFailedToolTurn;
+		if (erroredTools.size > 0 && !getState(ctx).hasRecordedFailure) {
+			const turnsSinceError = getState(ctx).currentTurn - getState(ctx).lastFailedToolTurn;
 			if (turnsSinceError >= FAILURE_RECORD_THRESHOLD_TURNS) {
 				const now = Date.now();
-				if (now - state.lastNudgeTime > state.nudgeCooldownMs) {
-					state.lastNudgeTime = now;
-					state.hasRecordedFailure = true;
+				if (now - getState(ctx).lastNudgeTime > getState(ctx).nudgeCooldownMs) {
+					getState(ctx).lastNudgeTime = now;
+					getState(ctx).hasRecordedFailure = true;
 					const errorList = Array.from(erroredTools).join(", ");
 					sendEnforcementWhisper(
 						pi,
@@ -477,16 +478,16 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		// ── Task 4b: Orphan thought chain detection ────────────────────────────
 		// Find chains (grouped by parent_id) with length > 1 that lack a conclusion
 		const orphanChains: string[] = [];
-		if (state.thoughtChains.length > 0) {
+		if (getState(ctx).thoughtChains.length > 0) {
 			// Group thoughts by root (follow parent chain to root)
 			const rootMap = new Map<string, string[]>(); // rootId -> thoughtIds
-			for (const thought of state.thoughtChains) {
+			for (const thought of getState(ctx).thoughtChains) {
 				let root = thought.parentId;
 				// Walk up the chain
 				const visited = new Set<string>();
 				while (root && !visited.has(root)) {
 					visited.add(root);
-					const parent = state.thoughtChains.find((t) => t.id === root);
+					const parent = getState(ctx).thoughtChains.find((t) => t.id === root);
 					root = parent?.parentId || null;
 				}
 				const chainRoot = root || thought.id;
@@ -497,7 +498,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 			for (const [chainId, thoughtIds] of rootMap) {
 				if (thoughtIds.length >= 3) {
 					const hasConclusion = thoughtIds.some((id) => {
-						const t = state.thoughtChains.find((tc) => tc.id === id);
+						const t = getState(ctx).thoughtChains.find((tc) => tc.id === id);
 						return t?.type === "conclusion" || t?.type === "reflection";
 					});
 					if (!hasConclusion) {
@@ -520,17 +521,17 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		// The session_compact handler fires the primary compaction memory signal.
 		// Skip during overflow recovery - agent needs breathing room to stabilize.
 		const RECOVERY_GRACE_TURNS = 5;
-		const inOverflowRecovery = state.currentTurn - state.overflowRecently < RECOVERY_GRACE_TURNS;
+		const inOverflowRecovery = getState(ctx).currentTurn - getState(ctx).overflowRecently < RECOVERY_GRACE_TURNS;
 
 		if (
 			!hadErrors &&
 			!inOverflowRecovery &&
-			state.config.enforceMemory &&
-			state.hasCodeChanges &&
-			state.turnsSinceMemory >= 20 && // only after substantial work without memory
-			!state.memoryNudgeSent
+			getState(ctx).config.enforceMemory &&
+			getState(ctx).hasCodeChanges &&
+			getState(ctx).turnsSinceMemory >= 20 && // only after substantial work without memory
+			!getState(ctx).memoryNudgeSent
 		) {
-			state.memoryNudgeSent = true;
+			getState(ctx).memoryNudgeSent = true;
 			sessionSignals.push(
 				"Code changed but nothing stored. Capture the key pattern or fix: " +
 				"memory_store(content=\"...\", tags=[\"pattern\", \"fix\"])",
@@ -547,13 +548,13 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		if (
 			!hadErrors &&
 			!inOverflowRecovery &&
-			state.config.enforceScratchpad &&
+			getState(ctx).config.enforceScratchpad &&
 			actualTools.some((t) => ["edit", "write"].includes(t)) &&
 			!scratchpadUpdated
 		) {
 			// Only signal if we haven't done so recently
-			if (state.currentTurn - state.lastScratchpadNudgeTurn >= 8) {
-				state.lastScratchpadNudgeTurn = state.currentTurn;
+			if (getState(ctx).currentTurn - getState(ctx).lastScratchpadNudgeTurn >= 8) {
+				getState(ctx).lastScratchpadNudgeTurn = getState(ctx).currentTurn;
 				sessionSignals.push(
 					`Code changed without updating scratchpad - consider scratchpad(action="add_note", text="...") or scratchpad(action="add_decision", text="...")`,
 				);
@@ -564,12 +565,12 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		if (
 			!hadErrors &&
 			!inOverflowRecovery &&
-			state.toolChain.lastThinkCall === 0 &&
-			state.currentTurn >= 5 &&
-			state.currentTurn % 5 === 0
+			getState(ctx).toolChain.lastThinkCall === 0 &&
+			getState(ctx).currentTurn >= 5 &&
+			getState(ctx).currentTurn % 5 === 0
 		) {
 			sessionSignals.push(
-				`${state.currentTurn} turns without think() - use think(observation, decision, reason) to track reasoning`,
+				`${getState(ctx).currentTurn} turns without think() - use think(observation, decision, reason) to track reasoning`,
 			);
 		}
 
@@ -577,8 +578,8 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		if (actualTools.some((t) =>
 			["context_tag", "context_log", "context_checkout", "context_prune", "context_audit"].includes(t),
 		)) {
-			state.lastContextCheckTurn = state.currentTurn;
-			state.contextNudgeSent = false;
+			getState(ctx).lastContextCheckTurn = getState(ctx).currentTurn;
+			getState(ctx).contextNudgeSent = false;
 		}
 
 		let usagePercent = 0;
@@ -591,11 +592,11 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		if (
 			!hadErrors &&
 			actualTools.length > 0 &&
-			state.currentTurn - state.lastContextCheckTurn >= state.contextCheckInterval &&
-			!state.contextNudgeSent &&
+			getState(ctx).currentTurn - getState(ctx).lastContextCheckTurn >= getState(ctx).contextCheckInterval &&
+			!getState(ctx).contextNudgeSent &&
 			usagePercent > 0
 		) {
-			state.contextNudgeSent = true;
+			getState(ctx).contextNudgeSent = true;
 
 			if (usagePercent > 85) {
 				sessionSignals.push(
@@ -614,7 +615,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		if (sessionSignals.length > 0) {
 			// Clear stale signals from previous turns before populating new ones
 			for (const key of Object.keys(enforcementSignals)) {
-				if (enforcementSignals[key].turn < state.currentTurn - 1) {
+				if (enforcementSignals[key].turn < getState(ctx).currentTurn - 1) {
 					delete enforcementSignals[key];
 				}
 			}
@@ -622,9 +623,9 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 			// Populate L1 signal store - keyed by semantic type for easy lookup
 			// Also emit via event bus for cross-extension coordination (prompt-builder)
 			for (const signal of sessionSignals) {
-				const entry = { turn: state.currentTurn, text: signal, acted: false };
+				const entry = { turn: getState(ctx).currentTurn, text: signal, acted: false };
 				if (signal.includes("nothing stored") || signal.includes("memory_store")) {
-					enforcementSignals["memory"] = { ...entry, acted: state.memoryNudgeSent };
+					enforcementSignals["memory"] = { ...entry, acted: getState(ctx).memoryNudgeSent };
 				} else if (signal.includes("scratchpad")) {
 					enforcementSignals["scratchpad"] = entry;
 				} else if (signal.includes("critical")) {
@@ -638,7 +639,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 
 			// Emit for prompt-builder (and any other extension listening)
 			pi.events.emit("enforcement_signals", {
-				turn: state.currentTurn,
+				turn: getState(ctx).currentTurn,
 				signals: { ...enforcementSignals },
 			});
 
@@ -654,9 +655,9 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 	// L3: Compaction happened - harness-level minimum-fidelity trigger.
 	// Key learnings from scratchpad must be persisted before they get lost.
 	pi.on("session_compact", async (event: SessionCompactEvent, ctx: ExtensionContext) => {
-		if (!state.enforcementActive) return;
+		if (!getState(ctx).enforcementActive) return;
 
-		const compactTurn = state.currentTurn;
+		const compactTurn = getState(ctx).currentTurn;
 
 		try {
 			const scratchpadResult = await (ctx as any).tools.scratchpad?.({ action: "read" });
@@ -681,12 +682,12 @@ Persist them now - this is the minimum-fidelity moment.`,
 				);
 				// Also emit for L1 surfacing in prompt-builder
 				enforcementSignals["unpersisted_learnings"] = {
-					turn: state.currentTurn,
+					turn: getState(ctx).currentTurn,
 					text: `${unpersisted.length} key learning(s) not yet persisted - persist them now`,
 					acted: false,
 				};
 				pi.events.emit("enforcement_signals", {
-					turn: state.currentTurn,
+					turn: getState(ctx).currentTurn,
 					signals: { ...enforcementSignals },
 				});
 			}
@@ -695,17 +696,17 @@ Persist them now - this is the minimum-fidelity moment.`,
 			// Rebase turn-based cooldown anchors to currentTurn so agent isn't nudged
 			// before it starts working post-compaction.
 
-			state.contextNudgeSent = false;
-			state.lastContextCheckTurn = state.currentTurn;
-			state.lastCompactionTurn = compactTurn;
-			state.lastScratchpadNudgeTurn = state.currentTurn;
-			state.overflowRecently = state.currentTurn; // Extend grace period through recovery
+			getState(ctx).contextNudgeSent = false;
+			getState(ctx).lastContextCheckTurn = getState(ctx).currentTurn;
+			getState(ctx).lastCompactionTurn = compactTurn;
+			getState(ctx).lastScratchpadNudgeTurn = getState(ctx).currentTurn;
+			getState(ctx).overflowRecently = getState(ctx).currentTurn; // Extend grace period through recovery
 
 			// Reset memory tracking - fire on NEW code changes post-compaction only
-			state.hasCodeChanges = false;
-			state.lastCodeChangeTurn = 0;
-			state.memoryNudgeSent = false;
-			state.turnsSinceMemory = 0;
+			getState(ctx).hasCodeChanges = false;
+			getState(ctx).lastCodeChangeTurn = 0;
+			getState(ctx).memoryNudgeSent = false;
+			getState(ctx).turnsSinceMemory = 0;
 		} catch {
 			// Silent fail - don't block on scratchpad read
 		}
@@ -713,17 +714,17 @@ Persist them now - this is the minimum-fidelity moment.`,
 
 	// ── auto_retry_end ────────────────────────────────────────────────────────
 	// L3: Infrastructure errors from retry failures → individual, semantic
-	pi.on("auto_retry_end" as any, async (event: any, _ctx: any) => {
-		if (!state.enforcementActive) return;
+	pi.on("auto_retry_end" as any, async (event: any, ctx: any) => {
+		if (!getState(ctx).enforcementActive) return;
 
 		const { success, attempt, finalError } = event;
 
 		if (!success) {
-			state.validationFailures++;
+			getState(ctx).validationFailures++;
 
 			const now = Date.now();
-			if (now - state.lastNudgeTime < state.nudgeCooldownMs) return;
-			state.lastNudgeTime = now;
+			if (now - getState(ctx).lastNudgeTime < getState(ctx).nudgeCooldownMs) return;
+			getState(ctx).lastNudgeTime = now;
 
 			const errorType = _classifyRetryError(finalError ?? "");
 
@@ -747,7 +748,7 @@ Persist them now - this is the minimum-fidelity moment.`,
 
 	// ── message_end ────────────────────────────────────────────────────────────
 	pi.on("message_end", async (event, ctx) => {
-		if (!state.enforcementActive) {
+		if (!getState(ctx).enforcementActive) {
 			return;
 		}
 
@@ -776,7 +777,7 @@ Persist them now - this is the minimum-fidelity moment.`,
 		// ── PROBE-BASED: Complexity signals ───────────────────────────────────
 		// Analyze task complexity and warn if mismatched
 		const recentTools: string[] = [];
-		for (const [, turn] of state.turnHistory) {
+		for (const [, turn] of getState(ctx).turnHistory) {
 			recentTools.push(...turn.actualTools);
 		}
 
@@ -785,7 +786,7 @@ Persist them now - this is the minimum-fidelity moment.`,
 		if (lastTool) {
 			const probe = estimateComplexity(lastTool, undefined);
 			const complexityCheck = checkComplexityMismatch(probe, {
-				totalToolCalls: state.totalToolCalls,
+				totalToolCalls: getState(ctx).totalToolCalls,
 				contextUsage: 0,
 			});
 
@@ -819,14 +820,14 @@ Persist them now - this is the minimum-fidelity moment.`,
 			// Store in enforcementSignals for prompt-builder to include in system prompt
 			if (probeSuggestion) {
 				enforcementSignals["probe"] = {
-					turn: state.currentTurn,
+					turn: getState(ctx).currentTurn,
 					text: probeSuggestion,
 					acted: false,
 				};
 			}
 			if (routingSuggestion) {
 				enforcementSignals["routing"] = {
-					turn: state.currentTurn,
+					turn: getState(ctx).currentTurn,
 					text: routingSuggestion,
 					acted: false,
 				};
@@ -834,67 +835,67 @@ Persist them now - this is the minimum-fidelity moment.`,
 		}
 
 		// ── Reasoning stability check (MEASUREMENT_GAP_SOLUTION) ───────────
-		const lastUserMsg = state.lastUserMessage || "";
-		state.lastUserMessage = "";
+		const lastUserMsg = getState(ctx).lastUserMessage || "";
+		getState(ctx).lastUserMessage = "";
 		if (lastUserMsg.length > 10 && textContent.length > 100) {
 			const stability = measureStability(lastUserMsg, textContent);
 			if (!stability.stable) {
 				enforcementSignals["stability"] = {
-					turn: state.currentTurn,
+					turn: getState(ctx).currentTurn,
 					text: `[stability] Response ${stability.reason} (overlap=${stability.metrics.overlap.toFixed(2)}, entropy=${stability.metrics.entropy.toFixed(2)}, contradictions=${stability.metrics.contradictions})`,
 					acted: false,
 				};
 			}
 		}
 
-		const turnState = state.turnHistory.get(state.currentTurn);
+		const turnState = getState(ctx).turnHistory.get(getState(ctx).currentTurn);
 		if (turnState) {
 			detectMalformedToolCalls(textContent, pi);
 		}
 
 		// Skip verification judge if already running
-		if (state.verificationJudgeRunning) {
+		if (getState(ctx).verificationJudgeRunning) {
 			return;
 		}
 
-		const userHasBash = Array.from(state.uniqueToolsUsed).includes("bash");
+		const userHasBash = Array.from(getState(ctx).uniqueToolsUsed).includes("bash");
 
-		const VERIFICATION_GAP_TURNS = state.config.verifyAfterCodeChanges ? 8 : Infinity;
-		const turnsSinceCodeChange = state.currentTurn - state.lastVerificationJudgeTurn;
+		const VERIFICATION_GAP_TURNS = getState(ctx).config.verifyAfterCodeChanges ? 8 : Infinity;
+		const turnsSinceCodeChange = getState(ctx).currentTurn - getState(ctx).lastVerificationJudgeTurn;
 		const hasVerificationGap =
-			state.hasCodeChanges && !userHasBash && turnsSinceCodeChange >= VERIFICATION_GAP_TURNS;
+			getState(ctx).hasCodeChanges && !userHasBash && turnsSinceCodeChange >= VERIFICATION_GAP_TURNS;
 
 		const isPeriodicCheck =
-			state.config.verificationJudgeInterval > 0 &&
-			state.hasCodeChanges &&
-			state.currentTurn - state.lastVerificationJudgeTurn >= state.config.verificationJudgeInterval;
+			getState(ctx).config.verificationJudgeInterval > 0 &&
+			getState(ctx).hasCodeChanges &&
+			getState(ctx).currentTurn - getState(ctx).lastVerificationJudgeTurn >= getState(ctx).config.verificationJudgeInterval;
 
 		if (
-			state.config.useVerificationJudge &&
-			!state.verificationJudgeRunning &&
+			getState(ctx).config.useVerificationJudge &&
+			!getState(ctx).verificationJudgeRunning &&
 			(hasVerificationGap || isPeriodicCheck) &&
-			state.uniqueToolsUsed.size > 0
+			getState(ctx).uniqueToolsUsed.size > 0
 		) {
 			const now = Date.now();
 
-			if (now - state.lastJudgeTime < 60_000) {
+			if (now - getState(ctx).lastJudgeTime < 60_000) {
 				return;
 			}
 
-			state.verificationJudgeRunning = true;
+			getState(ctx).verificationJudgeRunning = true;
 
 			const toolLog: string[] = [];
-			for (const [, turn] of state.turnHistory) {
+			for (const [, turn] of getState(ctx).turnHistory) {
 				if (turn.actualTools.length > 0) {
 					toolLog.push(`Turn ${turn.turnIndex}: [${turn.actualTools.join(", ")}]`);
 				}
 			}
 
 			const judgeCtx: JudgeContext = {
-				userRequest: state.originalRequest,
-				toolsUsed: Array.from(state.uniqueToolsUsed),
+				userRequest: getState(ctx).originalRequest,
+				toolsUsed: Array.from(getState(ctx).uniqueToolsUsed),
 				toolLog,
-				hasCodeChanges: state.hasCodeChanges,
+				hasCodeChanges: getState(ctx).hasCodeChanges,
 				hasVerification: userHasBash,
 				lastResponse: fullContent,
 				thinking: thinkingContent,
@@ -902,37 +903,37 @@ Persist them now - this is the minimum-fidelity moment.`,
 
 			const result = await runVerificationJudge(ctx as never, judgeCtx, { timeoutMs: 30000 });
 
-			state.lastVerificationJudgeTurn = state.currentTurn;
-			state.verificationJudgeRunning = false;
+			getState(ctx).lastVerificationJudgeTurn = getState(ctx).currentTurn;
+			getState(ctx).verificationJudgeRunning = false;
 
 			if (result) {
 				if (result.verdict === "fail" || result.verdict === "warn") {
 					// L3: Verification judge is critical enough to warrant individual message
 					sendEnforcementWhisper(pi, formatVerificationNudge(result));
 					if (result.verdict === "fail") {
-						state.validationFailures++;
+						getState(ctx).validationFailures++;
 					}
 				}
 			}
 		}
 
 		// Legacy LLM Judge - only for text-only responses
-		if (state.config.useJudge && turnState && turnState.actualTools.length === 0) {
+		if (getState(ctx).config.useJudge && turnState && turnState.actualTools.length === 0) {
 			const now = Date.now();
 
-			if (now - state.lastJudgeTime < state.config.judgeCooldownMs) {
+			if (now - getState(ctx).lastJudgeTime < getState(ctx).config.judgeCooldownMs) {
 				return;
 			}
 
-			state.judgeSkipCounter++;
-			if (state.judgeSkipCounter < state.config.judgeSkipTurns) {
+			getState(ctx).judgeSkipCounter++;
+			if (getState(ctx).judgeSkipCounter < getState(ctx).config.judgeSkipTurns) {
 				return;
 			}
-			state.judgeSkipCounter = 0;
+			getState(ctx).judgeSkipCounter = 0;
 
 			const history: string[] = [];
-			for (const [turnIdx, turn] of state.turnHistory) {
-				if (turnIdx >= state.currentTurn) continue;
+			for (const [turnIdx, turn] of getState(ctx).turnHistory) {
+				if (turnIdx >= getState(ctx).currentTurn) continue;
 				const tools = turn.actualTools.length > 0 ? ` [Tools: ${turn.actualTools.join(", ")}]` : "";
 				history.push(`[Turn ${turnIdx}]${tools}`);
 			}
@@ -941,17 +942,17 @@ Persist them now - this is the minimum-fidelity moment.`,
 				timeoutMs: 30000,
 			});
 
-			state.lastJudgeTime = now;
-			state.lastJudgeAnalysis = analysis;
+			getState(ctx).lastJudgeTime = now;
+			getState(ctx).lastJudgeAnalysis = analysis;
 
 			if (action.type === "nudge" && action.nudgeMessage) {
-				const rateLimitOk = now - state.lastNudgeTime > state.nudgeCooldownMs;
+				const rateLimitOk = now - getState(ctx).lastNudgeTime > getState(ctx).nudgeCooldownMs;
 				if (rateLimitOk) {
-					state.lastNudgeTime = now;
+					getState(ctx).lastNudgeTime = now;
 					sendEnforcementWhisper(pi, action.nudgeMessage);
 
 					if (action.priority === "critical" || action.priority === "high") {
-						state.validationFailures++;
+						getState(ctx).validationFailures++;
 					}
 				}
 			}
@@ -962,7 +963,7 @@ Persist them now - this is the minimum-fidelity moment.`,
 	pi.registerCommand("enforcement-on", {
 		description: "Enable enforcement",
 		handler: async (_args, ctx) => {
-			state.enforcementActive = true;
+			getState(ctx).enforcementActive = true;
 			ctx.ui.notify("Enforcement enabled", "info");
 		},
 	});
@@ -970,7 +971,7 @@ Persist them now - this is the minimum-fidelity moment.`,
 	pi.registerCommand("enforcement-off", {
 		description: "Disable enforcement",
 		handler: async (_args, ctx) => {
-			state.enforcementActive = false;
+			getState(ctx).enforcementActive = false;
 			ctx.ui.notify("Enforcement disabled", "info");
 		},
 	});
@@ -979,7 +980,7 @@ Persist them now - this is the minimum-fidelity moment.`,
 		description: "Show enforcement stats",
 		handler: async (_args, ctx) => {
 			ctx.ui.notify(
-				`Turn ${state.currentTurn} | Failures: ${state.validationFailures} | Silent: ${state.silentTurns}`,
+				`Turn ${getState(ctx).currentTurn} | Failures: ${getState(ctx).validationFailures} | Silent: ${getState(ctx).silentTurns}`,
 				"info",
 			);
 		},
@@ -1007,20 +1008,20 @@ Persist them now - this is the minimum-fidelity moment.`,
 
 	// ── Topic Drift Detection (PROPOSAL_TOPIC_DRIFT_DETECTOR)
 	pi.on("turn_end", async (_event: any, ctx: ExtensionContext) => {
-		if (!state.enforcementActive || !state.driftDetector) return;
+		if (!getState(ctx).enforcementActive || !getState(ctx).driftDetector) return;
 		const session = (ctx.sessionManager as any)?.getCurrentSession?.() || null;
 		const recentMsgs = session?.messages?.slice(-4) ?? [];
 		for (let i = recentMsgs.length - 1; i >= 0; i--) {
 			const msg = recentMsgs[i];
 			const text = extractTextContent(msg);
 			if (msg?.role === "user" && text.length > 10) {
-				state.driftDetector.addTurn(text);
+				getState(ctx).driftDetector.addTurn(text);
 				break;
 			}
 		}
-		const driftCheck = state.driftDetector.check();
+		const driftCheck = getState(ctx).driftDetector.check();
 		if (driftCheck.drifted) {
-			const whisper = state.driftDetector.generateWhisper(driftCheck);
+			const whisper = getState(ctx).driftDetector.generateWhisper(driftCheck);
 			if (whisper) {
 				pi.sendMessage({ customType: "context", display: true, content: [{ type: "text", text: whisper }] });
 			}

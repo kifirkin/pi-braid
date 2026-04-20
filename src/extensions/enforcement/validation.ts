@@ -7,6 +7,7 @@
 
 import { POST_TURN_VALIDATION_TEMPLATE } from "./prompts.js";
 import { state } from "./state.js";
+import type { EnforcementState } from "./state.js";
 import type { TurnState, ValidationResult } from "./types.js";
 
 // Tools that are cheap to repeat legitimately (different files/targets)
@@ -93,6 +94,7 @@ export function validateTurn(
 	currentState: TurnState,
 	erroredTools: Set<string> = new Set(),
 	isInfrastructureError: boolean = false,
+	s: EnforcementState = state,
 ): ValidationResult {
 	const issues: string[] = [];
 	const hadErrors = erroredTools.size > 0;
@@ -101,44 +103,44 @@ export function validateTurn(
 	// Skip if infrastructure error (API timeout, rate-limit, etc.) - the agent tried to work but couldn't
 	if (isInfrastructureError) {
 		// Don't penalize the agent for infrastructure failures
-		state.silentTurns = 0;
+		s.silentTurns = 0;
 	} else if (currentState.actualTools.length === 0) {
-		state.silentTurns++;
-		if (state.silentTurns >= state.config.maxSilentTurns) {
+		s.silentTurns++;
+		if (s.silentTurns >= s.config.maxSilentTurns) {
 			issues.push(
-				`${state.silentTurns} turns without tool calls. You work through tools - reach for read, bash, edit, write to make progress.`,
+				`${s.silentTurns} turns without tool calls. You work through tools - reach for read, bash, edit, write to make progress.`,
 			);
 		}
 	} else {
-		state.silentTurns = 0;
+		s.silentTurns = 0;
 	}
 
 
 
 	// Check for tool sequence repetition - smart detection avoids false positives
 	if (!hadErrors && currentState.actualTools.length > 0) {
-		const prevSeqs = state.recentToolSequences.slice(-state.config.warnOnToolSequenceRepetition);
+		const prevSeqs = s.recentToolSequences.slice(-s.config.warnOnToolSequenceRepetition);
 
 		// Semantic repetition check (handles read,read etc. properly)
 		const seqIssue = checkSemanticRepetition(
 			currentState.actualTools,
 			prevSeqs,
-			state.config.warnOnToolSequenceRepetition,
+			s.config.warnOnToolSequenceRepetition,
 		);
 		if (seqIssue) {
 			issues.push(seqIssue);
 		}
 
 		// Re-read waste detection
-		const readWasteIssue = checkReReadWaste(currentState.actualTools, prevSeqs, state.recentlyReadFiles);
+		const readWasteIssue = checkReReadWaste(currentState.actualTools, prevSeqs, s.recentlyReadFiles);
 		if (readWasteIssue) {
 			issues.push(readWasteIssue);
 		}
 
 		// Track sequence (always, for next-turn analysis)
-		state.recentToolSequences.push([...currentState.actualTools]);
-		if (state.recentToolSequences.length > 20) {
-			state.recentToolSequences.shift();
+		s.recentToolSequences.push([...currentState.actualTools]);
+		if (s.recentToolSequences.length > 20) {
+			s.recentToolSequences.shift();
 		}
 	}
 
@@ -150,9 +152,9 @@ export function validateTurn(
 
 	if (issues.length > 0) {
 		if (!hadErrors) {
-			state.validationFailures++;
+		s.validationFailures++;
 		}
-		severity = state.validationFailures > 3 ? "critical" : state.validationFailures > 1 ? "warning" : "info";
+		severity = s.validationFailures > 3 ? "critical" : s.validationFailures > 1 ? "warning" : "info";
 		nudge = POST_TURN_VALIDATION_TEMPLATE.replace("{issues}", issues.map((i) => `- ${i}`).join("\n"));
 	}
 
@@ -167,8 +169,8 @@ export function validateTurn(
 /**
  * Check if tool call is appropriate for current phase
  */
-export function validateToolForPhase(toolName: string, _turnIndex: number): { valid: boolean; message: string | null } {
-	const recentTools = Array.from(state.turnHistory.values())
+export function validateToolForPhase(toolName: string, _turnIndex: number, s: EnforcementState = state): { valid: boolean; message: string | null } {
+	const recentTools = Array.from(s.turnHistory.values())
 		.slice(-5)
 		.flatMap((t) => t.actualTools);
 
