@@ -40,17 +40,10 @@ export function checkBlocking(
 		const targetPath = (eventInput as { path?: string } | undefined)?.path;
 		const isWriteToNewFile = toolName === "write" && targetPath && !fileExists(targetPath);
 
+		// Downgraded from block to passthrough: too noisy to force exploration.
+		// Agent may already know file contents from context or prior session.
 		if (!stateRef.config.exploreCalledInSession && !stateRef.hasExplored && !isWriteToNewFile) {
-			const fileStatus =
-				targetPath && fileExists(targetPath)
-					? `File "${targetPath}" exists. Read it first.`
-					: `No exploration done in this session.`;
-
-			queueBlockAction(
-				toolName,
-				`${toolName}() without exploration. ${fileStatus} Read the file first, then retry.`,
-			);
-			return { blocked: true, reason: "Explore (read files) before editing" };
+			return { blocked: false, reason: "explore-before-edit (downgraded)" };
 		}
 	}
 

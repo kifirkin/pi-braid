@@ -11,9 +11,9 @@ const thinkSchema = Type.Object({
 	thought_id: Type.Optional(Type.String({ description: "Unique identifier (auto-generated if omitted)" })),
 	parent_id: Type.Optional(Type.String({ description: "Parent thought ID for threaded reasoning chains" })),
 	type: Type.Optional(Type.String({ description: "Categorize the thought type", enum: ["insight", "question", "assumption", "conclusion", "hypothesis", "plan", "quick", "deep"] })),
-	observation: Type.String({ description: "What you decided to do" }),
+	observation: Type.Optional(Type.String({ description: "What you observed or decided to do" })),
 	decision: Type.String({ description: "What you decided to do" }),
-	reason: Type.String({ description: "Why this decision" }),
+	reason: Type.Optional(Type.String({ description: "Why this decision" })),
 	confidence: Type.Optional(Type.Number({ description: "Confidence level 0-1", minimum: 0, maximum: 1 })),
 	tags: Type.Optional(Type.Array(Type.String(), { description: "Tags for categorization" })),
 	depth: Type.Optional(Type.String({ enum: ["quick", "deep"], description: "Analysis depth" })),
@@ -46,10 +46,12 @@ export function createThinkTool(
 		name: "think" as const,
 		label: "Think",
 		description:
-			"Record structured thinking: observation, decision, reason. Use depth='deep' or ask_utility_model=true to also invoke the utility model for a fresh-eyes perspective.",
+			"Record structured thinking: decision (required), observation and reason (optional). Use depth='deep' or ask_utility_model=true to also invoke the utility model for a fresh-eyes perspective.",
 		parameters: thinkSchema,
 		execute: async (_toolCallId: string, params: any, _signal: unknown, _onUpdate: unknown, ctx: ExtensionContext | undefined) => {
-			const { observation, decision, reason } = params;
+			const observation = params.observation ?? params.decision ?? "";
+			const decision = params.decision ?? "";
+			const reason = params.reason ?? "";
 			const thoughtId = params.thought_id ?? crypto.randomUUID();
 			const depth = params.depth ?? "quick";
 			const useUtilityModel = params.ask_utility_model === true || depth === "deep";
