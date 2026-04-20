@@ -45,6 +45,11 @@ import {
 import { checkComplexityMismatch, estimateComplexity, type ComplexityProbe } from "./handlers/probe-handler.js";
 import { recordBashDetails, recordToolCall, recordToolInput } from "./handlers/tool-tracker.js";
 import { analyzeMessage } from "./handlers/message-analysis.js";
+import {
+	TurnAnalysisContext,
+	detectRedundancySignal,
+	handleCriticalSignals,
+} from "./handlers/turn-analysis.js";
 import { classifyError as classifyErrorLib } from "../../lib/error-classifier.js";
 import { checkRoutingMismatch, detectIntent, getRoutingHint, type TaskIntent } from "./handlers/routing-handler.js";
 import { analyzeWithJudge } from "./judge.js";
@@ -416,87 +421,39 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		}
 
 		// ── Redundancy Detection ─────────────────────────────────────────────────
-		// Detect code >70% similar to existing files when edit/write tools run
 		if (actualTools.some((t) => ["edit", "write"].includes(t))) {
-			for (const [filePath, entry] of knownFiles) {
-				if (!entry.content) {
-					// Content not yet loaded - try to load now
-					const loaded = await loadFileContent(filePath);
-					if (loaded !== null) {
-						entry.content = loaded;
-					}
-				}
-			}
-
-			// Check new/updated files for similarity
-			for (const [filePath, entry] of knownFiles) {
-				if (entry.turn === getState(ctx).currentTurn && entry.content === "") {
-					const loaded = await loadFileContent(filePath);
-					if (loaded !== null) {
-						entry.content = loaded;
-						const similarTo = await detectRedundancy(loaded, filePath);
-						if (similarTo) {
-							const now = Date.now();
-							if (now - getState(ctx).lastNudgeTime > getState(ctx).nudgeCooldownMs) {
-								getState(ctx).lastNudgeTime = now;
-								sendEnforcementWhisper(
-									pi,
-									`[Quality] Similar code exists at \`${similarTo}\`. Reuse or deduplicate.`,
-								);
-							}
-						}
-					}
-				}
-			}
+			const tac: TurnAnalysisContext = {
+				pi,
+				ctx,
+				state: getState(ctx),
+				event: { role: event.message.role, stopReason: (event.message as any).stopReason },
+				actualTools,
+				erroredTools,
+				hadErrors,
+				knownFiles,
+				enforcementSignals,
+				sendWhisper: (msg) => sendEnforcementWhisper(pi, msg),
+				loadFileContent,
+			};
+			await detectRedundancySignal(tac);
 		}
 
-		// ── L3: Critical signals - individual, semantic ────────────────────────
-
-		if (erroredTools.size > 0) {
-			getState(ctx).lastFailedToolTurn = getState(ctx).currentTurn;
-		}
-
-		// Infrastructure error (no tools ran but assistant responded - not silent)
-		const isInfrastructureError =
-			actualTools.length === 0 &&
-			event.message.role === "assistant" &&
-			"stopReason" in event.message &&
-			(event.message as { stopReason?: string }).stopReason === "error";
-
-		// Validation failures → L3 if critical
+		// ── L3: Critical signals ───────────────────────────────────────────────
 		const prevTurn = getState(ctx).turnHistory.get(getState(ctx).currentTurn - 1);
-		const validation = validateTurn(prevTurn, turnState, erroredTools, isInfrastructureError);
-
-		if (!validation.passed && validation.nudge && !hadErrors) {
-			const { shouldSend, escalated } = nudgeManager.shouldSendNudge("validation", validation.nudge);
-			if (shouldSend) {
-				sendEnforcementWhisper(
-					pi,
-					escalated
-						? `**Escalated:** ${validation.nudge}`
-						: validation.nudge,
-				);
-			}
-		}
-
-		// Failure recording nudge → L3
-		const FAILURE_RECORD_THRESHOLD_TURNS = 3;
-		if (erroredTools.size > 0 && !getState(ctx).hasRecordedFailure) {
-			const turnsSinceError = getState(ctx).currentTurn - getState(ctx).lastFailedToolTurn;
-			if (turnsSinceError >= FAILURE_RECORD_THRESHOLD_TURNS) {
-				const now = Date.now();
-				if (now - getState(ctx).lastNudgeTime > getState(ctx).nudgeCooldownMs) {
-					getState(ctx).lastNudgeTime = now;
-					getState(ctx).hasRecordedFailure = true;
-					const errorList = Array.from(erroredTools).join(", ");
-					sendEnforcementWhisper(
-						pi,
-						`${errorList} failed. Record this to avoid repeating: ` +
-							`memory_store(content="Error with ${errorList}: [what went wrong and fix]", tags=["error"])`,
-					);
-				}
-			}
-		}
+		const tac: TurnAnalysisContext = {
+			pi,
+			ctx,
+			state: getState(ctx),
+			event: { role: event.message.role, stopReason: (event.message as any).stopReason },
+			actualTools,
+			erroredTools,
+			hadErrors,
+			knownFiles,
+			enforcementSignals,
+			sendWhisper: (msg) => sendEnforcementWhisper(pi, msg),
+			loadFileContent,
+		};
+		handleCriticalSignals(tac, prevTurn, turnState, nudgeManager, validateTurn);
 
 		// ── Task 4b: Orphan thought chain detection ────────────────────────────
 		// Find chains (grouped by parent_id) with length > 1 that lack a conclusion
