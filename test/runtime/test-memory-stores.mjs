@@ -81,7 +81,7 @@ console.log("\n[2] Heuristics store");
 	assert(sorted[0].priority >= sorted[1].priority, `Sorted by priority`);
 
 	// Get applicable
-	const applicable = getApplicableHeuristics(state, "I need to write code");
+	const applicable = getApplicableHeuristics(state, "think before write is important");
 	assert(applicable.length >= 1, `Applicable heuristics: ${applicable.length}`);
 
 	// Evolve heuristic

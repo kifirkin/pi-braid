@@ -301,5 +301,10 @@ export function getErrorCategory(errorMessage: string): ErrorCategory {
 	return classifyError(errorMessage).category;
 }
 
-// Legacy compatibility: re-export old function names with new implementation
-export { classifyError as isCompactionRetryable };
+/**
+ * Check if an error qualifies for compaction retry.
+ * Returns true for transient errors that may succeed on retry.
+ */
+export function isCompactionRetryable(errorMessage: string): boolean {
+	return classifyError(errorMessage).retryable;
+}
