@@ -15,6 +15,7 @@ import { registerTools } from "./handlers/tools.js";
 import { registerBeforeCompactHandler, registerSessionCompactHandler, registerCompactionEndHandler, registerContextCleanupHandler, registerTurnEndRetryReset } from "./handlers/compaction.js";
 import { registerBeforeTreeHandler, registerTurnEndCheckoutHandler, registerAgentEndRetryHandler as registerNavAgentEndRetry } from "./handlers/navigation.js";
 import { registerAgentEndRetryHandler, registerAutoRetryEndHandler, registerContextPruningHandler } from "./handlers/events.js";
+import { registerRotationHandlers } from "./handlers/rotation.js";
 
 // ── Pruning state initialization ──────────────────────────────────────────────
 // The pruning state needs to be initialized per-session before any event handlers run.
@@ -51,6 +52,7 @@ export default function contextManagerExtension(pi: any): void {
 	registerAgentEndRetryHandler(pi);
 	registerAutoRetryEndHandler(pi);
 	registerContextPruningHandler(pi);
+	registerRotationHandlers(pi);
 
 	log.debug("Context-manager extension initialized");
 }
