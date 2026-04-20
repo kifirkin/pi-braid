@@ -1,10 +1,11 @@
 # pi-braid Roadmap — Remaining Large-Effort Tasks
 
-**Date**: 2026-04-19
-**Base commit**: `d5c7519` (v0.5.7 + post-P5 complete)
-**Build**: 0 errors | 27 extensions | ~21,900 lines | 14/14 tests pass
+**Date**: 2026-04-20
+**Base commit**: `367f8f6` (Phase 2 complete)
+**Build**: 0 errors | 29 extensions | ~22,200 lines | 14/14 tests pass
 
-**Task 1**: ✅ DONE — preprocessor uses `resolveUtilityModel()`, thinking:none set
+**All v0.6 tasks**: ✅ DONE
+**Phase 2 (Cognitive Core)**: ✅ DONE — heartbeat scheduler + three memory stores
 
 ---
 
@@ -83,6 +84,7 @@ Delete ~15 lines of manual fallback logic. One import, one call.
 | Task 3 | ✅ DONE | evidence-pool.ts, cognitive-systems updated, enforcement integration |
 | Task 5 | ✅ DONE | test-reasoning-metrics.mjs (18 tests), thresholds calibrated |
 | Task 6 | ✅ DONE | mars-reflector.ts, adaptive trigger, tool overuse/error advice |
+| Phase 2 | ✅ DONE | heartbeat-scheduler, three-memory-stores, context-lifecycle migration |
 
 | Task | Thread | Paper | Key Insight |
 |------|--------|-------|-------------|
