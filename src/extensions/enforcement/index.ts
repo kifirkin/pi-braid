@@ -307,7 +307,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		addEvidence(
 			ctx,
 			`Tool ${toolName} ${event?.error ? "failed" : "succeeded"}`,
-			event?.error ? "error" : "session",
+			"session",
 			`${toolName}: ${event?.error ? "failure" : "success"} (confidence: ${predicted.toFixed(2)})`,
 			predicted,
 		);

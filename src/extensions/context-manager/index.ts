@@ -628,7 +628,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 
 			// Record compaction as evidence about session state
 			if (entry) {
-				addEvidence(ctx, "context_compacted", "session",
+				addEvidence(_ctx, "context_compacted", "session",
 					`Context compressed: ${entry.summary?.slice(0, 80) ?? "no summary"}`, 0.8);
 			}
 

@@ -21,6 +21,8 @@ import { StringEnum } from "@mariozechner/pi-ai";
 import { createLogger } from "../../lib/logger.js";
 import { getExtensionState } from "../../lib/extension-state.js";
 import type { Episode, HeuristicRule } from "../three-memory-stores/index.js";
+import { isDegraded, getDegradationReasons, getMetricsSummary } from "../../lib/degradation-detector.js";
+import { measureBigramEntropy, countSelfContradictions } from "../../lib/reasoning-metrics.js";
 
 const log = createLogger("heartbeat");
 
@@ -203,6 +205,36 @@ const contextHygieneModule: CognitiveModule = {
 	},
 };
 
+const measurementModule: CognitiveModule = {
+	name: "measurement",
+	description: "Proactive degradation detection and reasoning quality measurement",
+	priority: 0.7,
+
+	shouldActivate(context: ModuleContext): boolean {
+		const lastCheck = context.lastActivation.get("measurement") ?? 0;
+		const turnsSinceCheck = context.turnCount - lastCheck;
+		return turnsSinceCheck >= 10;
+	},
+
+	async activate(context: ModuleContext): Promise<void> {
+		// Check degradation status
+		const degraded = isDegraded(context.ctx);
+		if (degraded) {
+			const reasons = getDegradationReasons(context.ctx);
+			log.warn(`Degradation detected: ${reasons.join(", ")}`);
+		}
+
+		// Get metrics summary
+		const summary = getMetricsSummary(context.ctx);
+		if (summary.totalTurns > 0) {
+			log.info(
+				`Metrics: ${summary.totalTurns} turns, error rate: ${(summary.avgErrorRate * 100).toFixed(0)}%, ` +
+				`tool success: ${(summary.avgToolSuccess * 100).toFixed(0)}%, degraded: ${summary.degraded}`,
+			);
+		}
+	},
+};
+
 // ── Heartbeat Engine ─────────────────────────────────────────────────────────
 
 const DEFAULT_CONFIG: HeartbeatConfig = {
@@ -298,7 +330,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 	const config = { ...DEFAULT_CONFIG };
 
 	// Register built-in modules
-	const builtInModules = [recallerModule, dreamerModule, contextHygieneModule];
+	const builtInModules = [recallerModule, dreamerModule, contextHygieneModule, measurementModule];
 
 	// ── heartbeat_status tool ─────────────────────────────────────────
 
