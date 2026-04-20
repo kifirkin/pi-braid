@@ -607,6 +607,52 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 		},
 	});
 
+	// ── heuristics_evaluate tool ────────────────────────────────────────
+	pi.registerTool({
+		name: "heuristics_evaluate",
+		label: "Heuristics Evaluate",
+		description:
+			"Evaluate which heuristics were followed in the current session.",
+		parameters: Type.Object({
+			action: StringEnum(["evaluate", "compliance"]),
+			task_type: Type.Optional(Type.String()),
+		}),
+		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
+			const state = getState(ctx);
+			const p = params as { action: string; task_type?: string };
+			const { action, task_type } = p;
+
+			if (action === "evaluate" || action === "compliance") {
+				const applicable = task_type
+					? getApplicableHeuristics(state, task_type)
+					: getPrioritizedHeuristics(state).slice(0, 5);
+
+				if (applicable.length === 0) {
+					return textResult("No applicable heuristics found.");
+				}
+
+				const lines: string[] = ["Heuristic Compliance:\n"];
+				for (const rule of applicable) {
+					const key = task_type ?? "general";
+					const stat = state.toolStats.get(`${rule.condition}:${key}`);
+					const toolRate = stat && stat.attempts > 0 ? stat.successes / stat.attempts : null;
+					const compliance = toolRate !== null
+						? rule.successRate * 0.6 + toolRate * 0.4
+						: rule.successRate;
+					const icon = compliance > 0.7 ? "yes" : compliance > 0.4 ? "partial" : "no";
+					lines.push(`[${icon}] ${rule.condition}`);
+					lines.push(`  -> ${rule.action}`);
+					lines.push(`  Uses: ${rule.uses}, Rate: ${(rule.successRate * 100).toFixed(0)}%`);
+					lines.push("");
+				}
+			return textResult(lines.join("\n"));
+			}
+
+			return textResult("Unknown action. Use evaluate.");
+		},
+	});
+
+
 	// ── Event: session_start ────────────────────────────────────────────
 
 	pi.on("session_start", async (_event: any, ctx: ExtensionContext) => {
