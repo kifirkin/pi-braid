@@ -275,6 +275,13 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 				`Consider resolving: memory_store content with conflict_verified tag.`,
 			);
 		}
+
+		// Conflict QA: classify conflicts and generate resolution questions
+		const newQAs = processConflictQAs(ctx);
+		if (newQAs.length > 0) {
+			const whisper = formatConflictWhisper(newQAs);
+			queueEnforcementWhisper(whisper);
+		}
 	});
 
 	// ── tool_end: calibration tracking (Task 4c) ───────────────────────────
