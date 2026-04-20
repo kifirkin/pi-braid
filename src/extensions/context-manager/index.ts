@@ -23,455 +23,38 @@ import { StringEnum } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 
 import { createLogger } from "../../lib/logger.js";
+import { getExtensionState } from "../../lib/extension-state.js";
+import { type PruningState, createPruningState, applyPruningWorkflow } from "./pruning.js";
+import { type PruneCandidate, type AuditResult, analyzeSession, formatPruneCandidates } from "./analysis.js";
+import {
+	compactionRetryState, overflowRetryState, compactedEntries as _compactedEntries,
+	COMPACTION_RETRY_MAX_ATTEMPTS, COMPACTION_RETRY_CUSTOM_TYPE, OVERFLOW_RETRY_MAX_ATTEMPTS,
+	OVERFLOW_RETRY_KEEP_REDUCTION_FACTOR,
+	getCompactionRetryDelay, clearCompactionRetry, resetCompactionRetry,
+	isTransientCompactionError, triggerCompactionRetry,
+	getOverflowRetryDelay, clearOverflowRetry, resetOverflowRetry,
+	triggerOverflowRetry,
+} from "./retry.js";
+
+// ── Session-Scoped State ──────────────────────────────────────────────────────
+
+interface CmState {
+	pruningState: PruningState;
+	checkoutParams: any;
+}
+
+function getCmState(ctx: ExtensionContext): CmState {
+	return getExtensionState(ctx, "context-manager", () => ({
+		pruningState: createPruningState(),
+		checkoutParams: null,
+	}));
+}
 
 // ── Module Logger ────────────────────────────────────────────────────────────
 
 const log = createLogger("context-manager");
 
-// Rule-Based Pruning Types
-
-interface MessageWithMetadata {
-	message: AgentMessage;
-	metadata: PruneMetadata;
-}
-
-interface PruneMetadata {
-	hash?: string;
-	filePath?: string;
-	fileVersion?: string;
-	isError?: boolean;
-	errorResolved?: boolean;
-	recencyScore?: number;
-	shouldPrune?: boolean;
-	pruneReason?: string;
-	[key: string]: unknown;
-}
-
-interface PruneContext {
-	messages: MessageWithMetadata[];
-	index: number;
-}
-
-interface PruneRule {
-	/** Internal rule identifier (not a tool name) */
-	id: string;
-	description?: string;
-	enabled?: boolean;
-	prepare?: (msg: MessageWithMetadata, ctx: PruneContext) => void;
-	process?: (msg: MessageWithMetadata, ctx: PruneContext) => void;
-}
-
-// Pruning State
-
-interface PruningState {
-	enabled: boolean;
-	rules: PruneRule[];
-	keepRecentCount: number;
-	protectedTools: Set<string>;
-	stats: {
-		totalPruned: number;
-		totalProcessed: number;
-		pruneReasons: Record<string, number>;
-	};
-}
-
-const pruningState: PruningState = {
-	enabled: true,
-	rules: [],
-	keepRecentCount: 10,
-	protectedTools: new Set(["write", "edit"]),
-	stats: {
-		totalPruned: 0,
-		totalProcessed: 0,
-		pruneReasons: {},
-	},
-};
-
-// Utility Functions
-
-function hashMessage(msg: AgentMessage): string {
-	const content = extractMessageContent(msg);
-	let hash = 0;
-	for (let i = 0; i < content.length; i++) {
-		const char = content.charCodeAt(i);
-		hash = ((hash << 5) - hash) + char;
-		hash = hash & hash;
-	}
-	return Math.abs(hash).toString(36);
-}
-
-function extractMessageContent(msg: AgentMessage): string {
-	if (!msg) return "";
-	if (msg.role === "user" || msg.role === "assistant") {
-		const content = msg.content;
-		if (!content) return "";
-		if (typeof content === "string") return content;
-		if (Array.isArray(content)) {
-			return content
-				.map((p) => {
-					if (typeof p === "object" && p !== null) {
-						if ("text" in p) return (p as { text: string }).text;
-						if ("thinking" in p) return (p as { thinking: string }).thinking;
-					}
-					return "";
-				})
-				.join(" ");
-		}
-	}
-	return "";
-}
-
-function extractFilePath(msg: AgentMessage): string | undefined {
-	if (msg.role !== "toolResult") return undefined;
-	const details = (msg as { details?: { path?: string } }).details;
-	if (details && typeof details === "object" && "path" in details && typeof details.path === "string") {
-		return details.path;
-	}
-	return undefined;
-}
-
-function isErrorMessage(msg: AgentMessage): boolean {
-	return msg.role === "toolResult" && (msg as { isError?: boolean }).isError === true;
-}
-
-function isSameOperation(msg1: AgentMessage, msg2: AgentMessage): boolean {
-	const tool1 = (msg1 as { toolName?: string }).toolName;
-	const tool2 = (msg2 as { toolName?: string }).toolName;
-	if (tool1 !== tool2) return false;
-
-	const args1 = (msg1 as { toolCallId?: string }).toolCallId;
-	const args2 = (msg2 as { toolCallId?: string }).toolCallId;
-	return args1 === args2;
-}
-
-function hasToolUse(msg: AgentMessage): boolean {
-	if (msg.role !== "assistant") return false;
-	if (!Array.isArray(msg.content)) return false;
-	return msg.content.some((c: any) => c.type === "toolCall");
-}
-
-function hasToolResult(msg: AgentMessage): boolean {
-	return msg.role === "toolResult" || msg.role === "bashExecution";
-}
-
-function extractToolUseIds(msg: AgentMessage): string[] {
-	if (msg.role !== "assistant") return [];
-	if (!Array.isArray(msg.content)) return [];
-	return msg.content
-		.filter((c: any) => c.type === "toolCall" && typeof c.id === "string")
-		.map((c: any) => c.id as string);
-}
-
-function extractResultIds(msg: AgentMessage): string[] {
-	if (!hasToolResult(msg)) return [];
-	return [(msg as { toolCallId?: string }).toolCallId].filter((id): id is string => Boolean(id));
-}
-
-// Built-in Prune Rules
-
-const deduplicationRule: PruneRule = {
-	id: "deduplication",
-	description: "Remove duplicate tool outputs based on content hash",
-	enabled: true,
-
-	prepare(msg: MessageWithMetadata) {
-		msg.metadata.hash = hashMessage(msg.message);
-	},
-
-	process(msg: MessageWithMetadata, ctx: PruneContext) {
-		if (msg.metadata.shouldPrune) return;
-		if (msg.message.role === "user") return;
-		if (hasToolUse(msg.message)) return;
-
-		const currentHash = msg.metadata.hash;
-		if (!currentHash) return;
-
-		const seenBefore = ctx.messages.slice(0, ctx.index).some(
-			(m) => m.metadata.hash === currentHash
-		);
-
-		if (seenBefore) {
-			msg.metadata.shouldPrune = true;
-			msg.metadata.pruneReason = "duplicate content";
-		}
-	},
-};
-
-const supersededWritesRule: PruneRule = {
-	id: "superseded_writes",
-	description: "Remove older file writes when newer versions exist",
-	enabled: true,
-
-	prepare(msg: MessageWithMetadata) {
-		const filePath = extractFilePath(msg.message);
-		if (filePath) {
-			msg.metadata.filePath = filePath;
-			msg.metadata.fileVersion = hashMessage(msg.message);
-		}
-	},
-
-	process(msg: MessageWithMetadata, ctx: PruneContext) {
-		if (msg.metadata.shouldPrune) return;
-		if (!msg.metadata.filePath) return;
-		if (msg.message.role === "user") return;
-
-		const laterWrite = ctx.messages.slice(ctx.index + 1).find(
-			(m) => m.metadata.filePath === msg.metadata.filePath
-		);
-
-		if (laterWrite) {
-			msg.metadata.shouldPrune = true;
-			msg.metadata.pruneReason = `superseded by later write to ${msg.metadata.filePath}`;
-		}
-	},
-};
-
-const errorPurgingRule: PruneRule = {
-	id: "error_purging",
-	description: "Remove resolved errors from context",
-	enabled: true,
-
-	prepare(msg: MessageWithMetadata, ctx: PruneContext) {
-		const isError = isErrorMessage(msg.message);
-		msg.metadata.isError = isError;
-
-		if (isError) {
-			const laterSuccess = ctx.messages.slice(ctx.index + 1).find(
-				(m: MessageWithMetadata) => isSameOperation(m.message, msg.message) && !isErrorMessage(m.message)
-			);
-			msg.metadata.errorResolved = !!laterSuccess;
-		}
-	},
-
-	process(msg: MessageWithMetadata) {
-		if (msg.metadata.shouldPrune) return;
-		if (msg.message.role === "user") return;
-
-		if (msg.metadata.isError && msg.metadata.errorResolved) {
-			msg.metadata.shouldPrune = true;
-			msg.metadata.pruneReason = "error resolved by later success";
-		}
-	},
-};
-
-const recencyRule: PruneRule = {
-	id: "recency",
-	description: "Protect recent messages from pruning",
-	enabled: true,
-
-	prepare(msg: MessageWithMetadata, ctx: PruneContext) {
-		msg.metadata.recencyScore = ctx.messages.length - 1 - ctx.index;
-	},
-
-	process(msg: MessageWithMetadata) {
-		if (msg.metadata.recencyScore !== undefined && msg.metadata.recencyScore < pruningState.keepRecentCount) {
-			msg.metadata.shouldPrune = false;
-		}
-	},
-};
-
-// Batch Context Reduction (BCR) - P4
-// Collapse consecutive repeated tool call sequences into single entries with count.
-// E.g., three `read` calls on same file → one entry with count=3.
-
-interface BCRMetadata {
-	bcrCount?: number;
-	bcrCollapsed?: boolean;
-	bcrKey?: string;
-}
-
-const batchCollapseRule: PruneRule = {
-	id: "batch_collapse",
-	description: "Collapse consecutive repeated tool calls into single entries with count",
-	enabled: true,
-
-	prepare(msg: MessageWithMetadata) {
-		if (msg.message.role !== "assistant") return;
-		if (!Array.isArray(msg.message.content)) return;
-
-		const toolCalls = msg.message.content.filter((c: any) => c.type === "toolCall");
-		if (toolCalls.length !== 1) return; // Only collapse single-tool entries
-
-		const toolCall = toolCalls[0] as any;
-		const toolName = toolCall.name;
-		const toolArgs = JSON.stringify(toolCall.arguments ?? {});
-		msg.metadata.bcrKey = `${toolName}:${toolArgs}`;
-	},
-
-	process(msg: MessageWithMetadata, ctx: PruneContext) {
-		if (!msg.metadata.bcrKey) return;
-
-		// Look for previous consecutive entries with the same tool call
-		let count = 1;
-		let prevIndex = ctx.index - 1;
-
-		while (prevIndex >= 0) {
-			const prev = ctx.messages[prevIndex];
-			if (prev.metadata.bcrKey !== msg.metadata.bcrKey) break;
-
-			// Check if it's the same assistant message (consecutive)
-			if (prev.metadata.bcrCollapsed) {
-				count += (prev.metadata.bcrCount as number) ?? 1;
-			} else {
-				count += 1;
-			}
-			prevIndex--;
-		}
-
-		if (count > 1) {
-			// This is a repeated tool call - collapse it
-			msg.metadata.bcrCount = count;
-			msg.metadata.bcrCollapsed = true;
-			msg.metadata.shouldPrune = true;
-			msg.metadata.pruneReason = `collapsed ${count}x repeated tool call`;
-		}
-	},
-};
-
-// Register built-in rules
-pruningState.rules = [
-	batchCollapseRule,
-	deduplicationRule,
-	supersededWritesRule,
-	errorPurgingRule,
-	recencyRule,
-];
-
-// Pruning Workflow
-
-function applyPruningWorkflow(messages: AgentMessage[]): AgentMessage[] {
-	if (!pruningState.enabled || messages.length === 0) {
-		return messages;
-	}
-
-	// Phase 1: Wrap messages with metadata
-	const withMetadata: MessageWithMetadata[] = messages.map((message) => ({
-		message,
-		metadata: {} as PruneMetadata,
-	}));
-
-	// Phase 2: Prepare - annotate metadata
-	for (const rule of pruningState.rules) {
-		if (!rule.enabled) continue;
-		if (!rule.prepare) continue;
-
-		withMetadata.forEach((msg, index) => {
-			try {
-				rule.prepare!(msg, { messages: withMetadata, index });
-			} catch (err) {
-				log.error(`Rule "${rule.id}" prepare error:`, err);
-			}
-		});
-	}
-
-	// Phase 3: Process - make pruning decisions
-	for (const rule of pruningState.rules) {
-		if (!rule.enabled) continue;
-		if (!rule.process) continue;
-
-		withMetadata.forEach((msg, index) => {
-			try {
-				rule.process!(msg, { messages: withMetadata, index });
-			} catch (err) {
-				log.error(`Rule "${rule.id}" process error:`, err);
-			}
-		});
-	}
-
-	// Phase 3.5: Repair orphaned tool pairs
-	repairOrphanedToolPairs(withMetadata);
-
-	// Phase 4: Filter
-	const filtered = withMetadata.filter((m) => !m.metadata.shouldPrune).map((m) => m.message);
-
-	// Update stats
-	const prunedCount = messages.length - filtered.length;
-	if (prunedCount > 0) {
-		pruningState.stats.totalPruned += prunedCount;
-		pruningState.stats.totalProcessed += messages.length;
-
-		withMetadata
-			.filter((m) => m.metadata.shouldPrune && m.metadata.pruneReason)
-			.forEach((m) => {
-				const reason = m.metadata.pruneReason!;
-				pruningState.stats.pruneReasons[reason] = (pruningState.stats.pruneReasons[reason] || 0) + 1;
-			});
-		}
-
-	return filtered;
-}
-
-function repairOrphanedToolPairs(messages: MessageWithMetadata[]): void {
-	// Collect tool_use IDs from kept assistant messages
-	const keptToolUseIds = new Set<string>();
-	for (const msg of messages) {
-		if (msg.metadata.shouldPrune) continue;
-		if (!hasToolUse(msg.message)) continue;
-		for (const id of extractToolUseIds(msg.message)) {
-			keptToolUseIds.add(id);
-		}
-	}
-
-	// Find orphaned tool_results and resurrect their assistants
-	const resurrected: MessageWithMetadata[] = [];
-	for (const msg of messages) {
-		if (msg.metadata.shouldPrune) continue;
-		if (!hasToolResult(msg.message)) continue;
-
-		const resultIds = extractResultIds(msg.message);
-		for (const id of resultIds) {
-			if (keptToolUseIds.has(id)) continue;
-
-			// Orphaned - find and resurrect the matching assistant
-			for (const candidate of messages) {
-				if (!candidate.metadata.shouldPrune) continue;
-				if (!hasToolUse(candidate.message)) continue;
-				const candidateIds = extractToolUseIds(candidate.message);
-				if (candidateIds.includes(id)) {
-					candidate.metadata.shouldPrune = false;
-					candidate.metadata.pruneReason = undefined;
-					resurrected.push(candidate);
-					for (const cid of candidateIds) keptToolUseIds.add(cid);
-					break;
-				}
-			}
-		}
-	}
-
-	// Second pass: un-prune tool_results paired with resurrected assistants
-	for (const assistant of resurrected) {
-		const assistantIds = extractToolUseIds(assistant.message);
-		for (const msg of messages) {
-			if (!msg.metadata.shouldPrune) continue;
-			if (!hasToolResult(msg.message)) continue;
-			const resultIds = extractResultIds(msg.message);
-			if (resultIds.some((id) => assistantIds.includes(id))) {
-				msg.metadata.shouldPrune = false;
-				msg.metadata.pruneReason = undefined;
-			}
-		}
-	}
-
-	// Third pass: mark orphaned tool_results for pruning (their assistants were compacted)
-	// This prevents "tool result's tool id not found" errors after compaction
-	for (const msg of messages) {
-		if (msg.metadata.shouldPrune) continue;
-		if (!hasToolResult(msg.message)) continue;
-
-		const resultIds = extractResultIds(msg.message);
-		for (const id of resultIds) {
-			if (keptToolUseIds.has(id)) continue;
-
-			// This tool_result's tool_call was compacted away
-			// Mark for pruning to prevent validation errors
-			msg.metadata.shouldPrune = true;
-			msg.metadata.pruneReason = "orphaned_tool_result";
-			log.debug(`Marking orphaned tool_result for pruning: ${id}`);
-			break;
-		}
-	}
-}
-
+// Pruning logic extracted to ./pruning.ts
 // Schemas
 
 const contextTagSchema = Type.Object({
@@ -566,437 +149,14 @@ function resolveDefaultTarget(ctx: any): string | null {
 
 // Analysis Helpers
 
-interface PruneCandidate {
-	id: string;
-	type: string;
-	age: number;
-	reason: string;
-	score: number; // Higher = more candidates for pruning
-	toolName?: string;
-	content?: string;
-}
-
-interface AuditResult {
-	usage: { percent: number; tokens: number; contextWindow: number };
-	branchLength: number;
-	treeDepth: number;
-	oldestEntry: { id: string; age: number } | null;
-	tagCount: number;
-	summaryCount: number;
-	branchCount: number;
-	candidates: PruneCandidate[];
-	recommendations: Array<{ priority: "high" | "medium" | "low"; action: string; reason: string }>;
-	branchingTriggers: Array<{ reason: string; threshold: string; current: string }>;
-}
-
-function analyzeSession(ctx: any): AuditResult {
-	const sm = ctx.sessionManager;
-	const branch = sm.getBranch();
-	const tree = sm.getTree();
-	const currentLeafId = sm.getLeafId();
-
-	let usage = { percent: 0, tokens: 0, contextWindow: 0 };
-	try {
-		const ctxUsage = ctx.getContextUsage?.();
-		if (ctxUsage) {
-			usage = {
-				percent: ctxUsage.percent ?? 0,
-				tokens: ctxUsage.tokens ?? 0,
-				contextWindow: ctxUsage.contextWindow ?? 200000,
-			};
-		}
-	} catch {}
-
-	// Count tags, summaries, branches
-	let tagCount = 0;
-	let summaryCount = 0;
-	const branchIds = new Set<string>();
-
-	for (const node of tree) {
-		const label = sm.getLabel(node.entry.id);
-		if (label) tagCount++;
-		if (node.entry.type === "branch_summary" || node.entry.type === "compaction") {
-			summaryCount++;
-		}
-		branchIds.add(node.entry.id);
-	}
-
-	// Build branch index
-	const entryIndex = new Map<string, number>();
-	branch.forEach((e: any, i: number) => entryIndex.set(e.id, i));
-
-	// Find candidates for pruning
-	const candidates: PruneCandidate[] = [];
-	let oldestEntry: { id: string; age: number } | null = null;
-
-	for (let i = 0; i < branch.length; i++) {
-		const entry = branch[i];
-		const age = branch.length - 1 - i; // Distance from leaf
-
-		if (i === 0) {
-			oldestEntry = { id: entry.id, age };
-		}
-
-		if (age < 3) continue; // Skip recent entries
-
-		let score = 0;
-		let reason = "";
-
-		if (entry.type === "message") {
-			const msg = entry.message;
-
-			if (msg.role === "toolResult") {
-				const toolResult = msg as { toolName?: string; details?: Record<string, unknown>; content?: Array<{ text?: string }> };
-				// Check for obsolete tool calls
-				const toolName = toolResult.toolName;
-
-				// Internal tools are low value
-				if (isInternal(String(toolName))) {
-					score += 0.3;
-					reason = "Internal tool result (low semantic value)";
-				}
-
-				// bash/read without file changes in result are often obsolete
-				if (["bash", "read", "grep"].includes(toolName ?? "")) {
-					const details = toolResult.details;
-					const hasOutput = (details as Record<string, unknown>)?.stdout || (details as Record<string, unknown>)?.content;
-					if (!hasOutput || (typeof details === "object" && Object.keys(details).length === 0)) {
-						score += 0.4;
-						reason = reason || "Tool call with minimal output";
-					}
-				}
-
-				// Think/hypothesize tools with no decisions
-				if (toolName === "think" || toolName === "hypothesize") {
-					score += 0.2;
-					reason = reason || "Reasoning tool (consider summarizing)";
-				}
-
-				// Tool calls far from any tag
-				const nearestTag = findNearestTag(ctx, entry.id);
-				if (nearestTag.distance > 10) {
-					score += 0.3;
-					reason = reason || `Far from tag '${nearestTag.label}'`;
-				}
-
-				candidates.push({
-					id: entry.id,
-					type: "toolResult",
-					age,
-					reason: reason || "Old tool call",
-					score: Math.min(1, score),
-					toolName,
-					content: String((toolResult as any).content?.[0]?.text ?? "").slice(0, 100),
-				});
-			} else if (msg.role === "assistant") {
-				// Assistant messages with only tool calls (no text)
-				const hasText = msg.content?.some((c: any) => c.type === "text" && (c.text?.length ?? 0) > 50);
-				if (!hasText) {
-					score = 0.4;
-					reason = "Assistant message with no substantive text";
-					candidates.push({
-						id: entry.id,
-						type: "assistant",
-						age,
-						reason,
-						score,
-						content: "(tool calls only)",
-					});
-				}
-			}
-		}
-	}
-
-	// Sort by score descending
-	candidates.sort((a, b) => b.score - a.score);
-
-	// Generate recommendations
-	const recommendations: AuditResult["recommendations"] = [];
-
-	// High usage warning
-	if (usage.percent > 80) {
-		recommendations.push({
-			priority: "high",
-			action: "Prune or summarize before continuing",
-			reason: `Context at ${usage.percent.toFixed(1)}% - approaching limit`,
-		});
-	} else if (usage.percent > 60) {
-		recommendations.push({
-			priority: "medium",
-			action: "Consider creating a checkpoint",
-			reason: `Context at ${usage.percent.toFixed(1)}% - moderate usage`,
-		});
-	}
-
-	// Many candidates
-	if (candidates.length > 10) {
-		recommendations.push({
-			priority: "medium",
-			action: `Review ${Math.min(5, candidates.length)} prune candidates`,
-			reason: `${candidates.length} entries are candidates for pruning/summarization`,
-		});
-	}
-
-	// No tags
-	if (tagCount === 0 && branch.length > 10) {
-		recommendations.push({
-			priority: "medium",
-			action: "Create a checkpoint",
-			reason: "No tags in session - consider creating milestones for navigation",
-		});
-	}
-
-	// Branching triggers
-	const branchingTriggers: AuditResult["branchingTriggers"] = [];
-
-	// High context with multiple directions
-	if (usage.percent > 70) {
-		branchingTriggers.push({
-			reason: "High context usage",
-			threshold: "> 70%",
-			current: `${usage.percent.toFixed(1)}%`,
-		});
-	}
-
-	// Multiple off-branch children
-	const offBranchChildren = tree.filter((n: any) => {
-		const inBranch = entryIndex.has(n.entry.id);
-		return !inBranch && n.entry.type !== "branch_summary";
-	});
-	if (offBranchChildren.length > 2) {
-		branchingTriggers.push({
-			reason: "Multiple exploration paths",
-			threshold: "> 2 off-branch paths",
-			current: `${offBranchChildren.length} paths`,
-		});
-	}
-
-	return {
-		usage,
-		branchLength: branch.length,
-		treeDepth: tree.length,
-		oldestEntry,
-		tagCount,
-		summaryCount,
-		branchCount: tree.filter((n: any) => sm.getChildren(n.entry.id).length > 1).length,
-		candidates: candidates.slice(0, 20), // Cap at 20
-		recommendations,
-		branchingTriggers,
-	};
-}
-
-function findNearestTag(ctx: any, entryId: string): { label: string; distance: number } {
-	const sm = ctx.sessionManager;
-	const tree = sm.getTree();
-	const branch = sm.getBranch();
-	const entryIndex = new Map<string, number>();
-	branch.forEach((e: any, i: number) => entryIndex.set(e.id, i));
-
-	const targetIndex = entryIndex.get(entryId) ?? -1;
-	if (targetIndex === -1) return { label: "none", distance: 999 };
-
-	let nearestLabel = "none";
-	let nearestDistance = 999;
-
-	for (const node of tree) {
-		const label = sm.getLabel(node.entry.id);
-		if (label) {
-			const idx = entryIndex.get(node.entry.id);
-			if (idx !== undefined) {
-				const dist = Math.abs(idx - targetIndex);
-				if (dist < nearestDistance) {
-					nearestDistance = dist;
-					nearestLabel = label;
-				}
-			}
-		}
-	}
-
-	return { label: nearestLabel, distance: nearestDistance };
-}
-
-function formatPruneCandidates(candidates: PruneCandidate[], limit = 10): string {
-	const lines: string[] = [];
-	const shown = candidates.slice(0, limit);
-
-	for (const c of shown) {
-		const scoreBar = "█".repeat(Math.round(c.score * 10)) + "░".repeat(10 - Math.round(c.score * 10));
-		const age = c.age > 0 ? `${c.age} turns ago` : "current";
-		const tool = c.toolName ? `(${c.toolName})` : "";
-		const content = c.content ? ` ${c.content.slice(0, 40)}` : "";
-		lines.push(`[${scoreBar}] ${c.id.slice(0, 8)} ${age} ${tool}${content}`);
-		lines.push(`           └─ ${c.reason}`);
-	}
-
-	if (candidates.length > limit) {
-		lines.push(`... and ${candidates.length - limit} more`);
-	}
-
-	return lines.join("\n");
-}
-
+// Session analysis extracted to ./analysis.ts
 // Extension
 
-let _checkoutParams: any = null;
+// getCmState(ctx).checkoutParams moved to CmState (via getCmState)
+// State and retry logic extracted to ./retry.ts
+// Pruning state extracted to ./pruning.ts
+// Session analysis extracted to ./analysis.ts
 
-/** Module state for cross-event tracking */
-const state = {
-	compactionHappened: false,
-};
-
-// Compaction Auto-Retry Configuration
-
-const COMPACTION_RETRY_MAX_ATTEMPTS = 3;
-const COMPACTION_RETRY_BASE_DELAY_MS = 2000;
-const COMPACTION_RETRY_CUSTOM_TYPE = "__compact_retry_trigger";
-
-// Overflow Recovery Retry Configuration
-// When overflow retry fails, we need to try MORE aggressive compaction
-const OVERFLOW_RETRY_MAX_ATTEMPTS = 3;
-const OVERFLOW_RETRY_BASE_DELAY_MS = 3000;
-// Each retry keeps less context to ensure we fit in the model's limits
-const OVERFLOW_RETRY_KEEP_REDUCTION_FACTOR = 0.7; // Keep 30% less each retry
-
-/** Track compaction retry state */
-interface CompactionRetryState {
-	attempt: number;
-	lastError: string;
-	lastReason: string;
-	retryTimeout: ReturnType<typeof setTimeout> | null;
-}
-
-/** Track overflow recovery retry state */
-interface OverflowRetryState {
-	attempt: number;
-	lastError: string;
-	retryTimeout: ReturnType<typeof setTimeout> | null;
-	aggressiveMode: boolean; // When true, keep less context each retry
-}
-
-const compactionRetryState: CompactionRetryState = {
-	attempt: 0,
-	lastError: "",
-	lastReason: "",
-	retryTimeout: null,
-};
-
-const overflowRetryState: OverflowRetryState = {
-	attempt: 0,
-	lastError: "",
-	retryTimeout: null,
-	aggressiveMode: false,
-};
-
-/** Get delay for current retry attempt with exponential backoff */
-function getCompactionRetryDelay(attempt: number): number {
-	return COMPACTION_RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
-}
-
-/** Clear any pending retry timeout */
-function clearCompactionRetry(): void {
-	if (compactionRetryState.retryTimeout) {
-		clearTimeout(compactionRetryState.retryTimeout);
-		compactionRetryState.retryTimeout = null;
-	}
-}
-
-/** Check if an error message indicates a transient server error that may succeed on retry */
-function isTransientCompactionError(errorMessage: string | null | undefined): boolean {
-	if (!errorMessage) return false;
-
-	// 529 is Cerebras overload code
-	if (/\b529\b/.test(errorMessage)) return true;
-
-	// overloaded_error is Anthropic/Cerebras
-	if (/overloaded_error/i.test(errorMessage)) return true;
-
-	// Server overload indicators
-	if (/server.*(overload|cluster.*load|high.*load|under.*high.*load)/i.test(errorMessage)) return true;
-
-	// Rate limiting
-	if (/rate.?limit|too.?many.?requests|429\b/i.test(errorMessage)) return true;
-
-	// Server errors (5xx)
-	if (/\b5\d{2}\b.*server/i.test(errorMessage)) return true;
-
-	// 503 service unavailable
-	if (/\b503\b/.test(errorMessage)) return true;
-
-	return false;
-}
-
-function resetCompactionRetry(): void {
-	clearCompactionRetry();
-	compactionRetryState.attempt = 0;
-	compactionRetryState.lastError = "";
-	compactionRetryState.lastReason = "";
-}
-
-/** Get delay for overflow retry with exponential backoff */
-function getOverflowRetryDelay(attempt: number): number {
-	return OVERFLOW_RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
-}
-
-/** Clear any pending overflow retry timeout */
-function clearOverflowRetry(): void {
-	if (overflowRetryState.retryTimeout) {
-		clearTimeout(overflowRetryState.retryTimeout);
-		overflowRetryState.retryTimeout = null;
-	}
-}
-
-function resetOverflowRetry(): void {
-	clearOverflowRetry();
-	overflowRetryState.attempt = 0;
-	overflowRetryState.lastError = "";
-	overflowRetryState.aggressiveMode = false;
-}
-
-/**
- * Trigger aggressive overflow recovery retry.
- * Each retry keeps less context to ensure we fit in the model's limits.
- * Uses hidden steer message to trigger manual /compact with reduced keepRecentTokens.
- */
-function triggerOverflowRetry(pi: ExtensionAPI, attempt: number, errorMessage: string, ctx: ExtensionContext | undefined): void {
-	clearOverflowRetry();
-
-	const delayMs = getOverflowRetryDelay(attempt);
-	overflowRetryState.attempt = attempt;
-	overflowRetryState.lastError = errorMessage;
-	overflowRetryState.aggressiveMode = attempt > 1;
-
-	overflowRetryState.retryTimeout = setTimeout(() => {
-		overflowRetryState.retryTimeout = null;
-
-		// Calculate reduced keepRecentTokens for aggressive compaction
-		const baseKeep = 20000; // Default keepRecentTokens
-		const reducedKeep = Math.floor(baseKeep * Math.pow(OVERFLOW_RETRY_KEEP_REDUCTION_FACTOR, attempt - 1));
-
-		// Send hidden trigger message that prompts aggressive /compact
-		pi.sendMessage(
-			{
-				customType: "__overflow_retry_trigger",
-				content: [
-					{
-						type: "text" as const,
-						text: attempt === 1
-							? `[Overflow Recovery] Initial compaction failed (${errorMessage}). Retrying with reduced context... (${attempt}/${OVERFLOW_RETRY_MAX_ATTEMPTS})`
-							: `[Overflow Recovery] Retry ${attempt}/${OVERFLOW_RETRY_MAX_ATTEMPTS}: ${errorMessage}. Attempting more aggressive compaction (keep ≤${reducedKeep} tokens)...`,
-					},
-				],
-				display: true, // Hidden from user
-			},
-			{ triggerTurn: true },
-		);
-	}, delayMs);
-}
-
-/**
- * Deduplication set for compaction events.
- * session_compact and compaction_end can both fire for the same compaction.
- * We track entry IDs to avoid sending duplicate nudges.
- */
-const _compactedEntries = new Set<string>();
 
 export default function contextManagerExtension(pi: ExtensionAPI) {
 	// ── Session start: raise reserveTokens above the 16384 default. ────────
@@ -1209,7 +369,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 			const enriched = `(summary from ${origin})\n${params.message}`;
 
 			const newId = sm.branchWithSummary(targetId, enriched);
-			_checkoutParams = { target: params.target, newId, targetId, backupTag: params.backupTag };
+			getCmState(ctx).checkoutParams = { target: params.target, newId, targetId, backupTag: params.backupTag };
 			ctx.abort();
 
 			return {
@@ -1256,13 +416,13 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 
 			lines.push(`\n**Context Usage:** ${audit.usage.percent.toFixed(1)}% (${Math.round(audit.usage.tokens / 1024)}K tokens)`);
 			lines.push(`**Session:** ${audit.branchLength} entries, ${audit.tagCount} tags, ${audit.summaryCount} summaries`);
-			lines.push(`**Auto-pruned:** ${pruningState.stats.totalPruned} messages (${pruningState.stats.totalProcessed} total processed)`);
+			lines.push(`**Auto-pruned:** ${getCmState(ctx).pruningState.stats.totalPruned} messages (${getCmState(ctx).pruningState.stats.totalProcessed} total processed)`);
 
 			if (topCandidates.length === 0) {
 				lines.push("\n✓ No prune candidates found (session is clean)");
 				return {
 					content: [{ type: "text" as const, text: lines.join("\n") }],
-					details: { candidatesFound: 0, audit, stats: pruningState.stats },
+					details: { candidatesFound: 0, audit, stats: getCmState(ctx).pruningState.stats },
 				};
 			}
 
@@ -1275,7 +435,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 					candidatesFound: candidates.length,
 					topCandidates: topCandidates.map((c) => ({ id: c.id, score: c.score, reason: c.reason })),
 					audit,
-					stats: pruningState.stats,
+					stats: getCmState(ctx).pruningState.stats,
 				},
 			};
 		},
@@ -1357,13 +517,13 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 
 	// ── Navigate on turn_end (after branchWithSummary updates leaf) ───
 	pi.on("turn_end", async (_event: any, ctx: any) => {
-		if (!_checkoutParams) return;
+		if (!getCmState(ctx).checkoutParams) return;
 		try {
 			// Navigate silently - user already notified by the command handler
 		} catch (err) {
 			log.error("turn_end error:", err);
 		}
-		_checkoutParams = null;
+		getCmState(ctx).checkoutParams = null;
 	});
 
 	// ── Compaction Integration ─────────────────────────────────────────
@@ -1878,7 +1038,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 			const messages = event.messages as AgentMessage[];
 			if (!messages || messages.length === 0) return;
 
-			const filtered = applyPruningWorkflow(messages);
+			const filtered = applyPruningWorkflow(getCmState(ctx).pruningState, messages);
 
 			// Log stats if we pruned anything
 			const pruned = messages.length - filtered.length;
@@ -1945,8 +1105,8 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 	pi.registerCommand("context-stats", {
 		description: "Show context pruning statistics",
 		handler: async (_args: string | undefined, ctx: any) => {
-			const stats = pruningState.stats;
-			const rules = pruningState.rules.filter((r) => r.enabled).map((r) => r.id);
+			const stats = getCmState(ctx).pruningState.stats;
+			const rules = getCmState(ctx).pruningState.rules.filter((r) => r.enabled).map((r) => r.id);
 
 			ctx.ui.notify(
 				[
@@ -1954,7 +1114,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 					`  Total pruned: ${stats.totalPruned}`,
 					`  Total processed: ${stats.totalProcessed}`,
 					`  Active rules: ${rules.join(", ") || "none"}`,
-					`  Keep recent: ${pruningState.keepRecentCount} messages`,
+					`  Keep recent: ${getCmState(ctx).pruningState.keepRecentCount} messages`,
 					`  Prune reasons: ${Object.entries(stats.pruneReasons).map(([k, v]) => `${k}=${v}`).join(", ") || "none"}`,
 				].join("\n"),
 				"info",

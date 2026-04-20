@@ -6,9 +6,10 @@
  * enforcement-style plan tool.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { GoalManager } from "../../lib/goal-manager.js";
 import { Planner } from "../../lib/planner.js";
+import { getExtensionState } from "../../lib/extension-state.js";
 
 
 // goals.ts and planning.ts - inlined here
@@ -405,31 +406,46 @@ function createPlanTool(options: { planner: Planner }): AgentTool<typeof planSch
 	};
 }
 
-// Shared state
-const state = {
-	goalManager: new GoalManager(),
-	planner: new Planner(),
-};
+// Session-scoped state factory
+interface PlannerState {
+	goalManager: GoalManager;
+	planner: Planner;
+}
+
+function getPlannerState(ctx: ExtensionContext): PlannerState {
+	return getExtensionState(ctx, "planner", () => ({
+		goalManager: new GoalManager(),
+		planner: new Planner(),
+	}));
+}
 
 export default function plannerExtension(pi: ExtensionAPI) {
 	// Goal tool (inlined from goals.ts)
-	const goalTool = createGoalTool({ manager: state.goalManager });
+	const goalTool = createGoalTool({ manager: {} as GoalManager }); // placeholder for schema
 	pi.registerTool({
 		name: goalTool.name,
 		label: goalTool.label,
 		description: goalTool.description,
 		parameters: goalTool.parameters,
-		execute: async (toolCallId, params) => goalTool.execute(toolCallId, params, {} as any),
+		execute: async (toolCallId, params, _signal, _onUpdate, ctx) => {
+			const { goalManager } = getPlannerState(ctx);
+			const tool = createGoalTool({ manager: goalManager });
+			return tool.execute(toolCallId, params);
+		},
 	});
 
 	// Plan tool (inlined from planning.ts)
-	const planTool = createPlanTool({ planner: state.planner });
+	const planTool = createPlanTool({ planner: {} as Planner }); // placeholder for schema
 	pi.registerTool({
 		name: planTool.name,
 		label: planTool.label,
 		description: planTool.description,
 		parameters: planTool.parameters,
-		execute: async (toolCallId, params) => planTool.execute(toolCallId, params, {} as any),
+		execute: async (toolCallId, params, _signal, _onUpdate, ctx) => {
+			const { planner } = getPlannerState(ctx);
+			const tool = createPlanTool({ planner });
+			return tool.execute(toolCallId, params);
+		},
 	});
 
 	// Retry command - abort and trigger new turn
