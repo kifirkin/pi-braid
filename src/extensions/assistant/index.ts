@@ -62,6 +62,12 @@ export default function assistantExtension(pi: ExtensionAPI) {
 		if (diskData?.enabledTools && typeof diskData.version === "number") {
 			const names = toolList.map((t) => t.name);
 			toolEnabled = new Set(diskData.enabledTools.filter((t) => names.includes(t)));
+			// Always enable newly registered tools not in saved config
+			for (const name of names) {
+				if (!diskData.enabledTools.includes(name)) {
+					toolEnabled.add(name);
+				}
+			}
 			configVersion = diskData.version;
 			applyToolState();
 			return;
@@ -86,6 +92,12 @@ export default function assistantExtension(pi: ExtensionAPI) {
 		if (saved) {
 			const names = toolList.map((t) => t.name);
 			toolEnabled = new Set(saved.filter((t) => names.includes(t)));
+			// Always enable newly registered tools not in saved config
+			for (const name of names) {
+				if (!saved.includes(name)) {
+					toolEnabled.add(name);
+				}
+			}
 			configVersion = maxVersion;
 		} else {
 			// Fallback: auto-enable extension tools + current active tools.
