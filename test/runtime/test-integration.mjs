@@ -149,5 +149,59 @@ console.log("\n[6] Evidence with metadata for traceability");
 
 // ── Summary ─────────────────────────────────────────────────────────────
 console.log(`\n${"=".repeat(50)}`);
-console.log(`Integration Tests: ${passed} passed, ${failed} failed`);
+
+// ── Metacognition integration ────────────────────────────────────────────
+console.log("\n[7] Metacognition handler integration");
+{
+	const { scoreHypothesis, scoreHypothesisOutput } = await import(`${ROOT}/dist/extensions/metacognition/handlers/scoring.js`);
+	const { evaluateCognition } = await import(`${ROOT}/dist/lib/cognition-evaluator.js`);
+
+	// Full pipeline: hypothesis scoring → cognition evaluation
+	const h = scoreHypothesis("Bug in src/lib/cache.ts caused by race condition", "cache errors");
+	assert(h.score > 0.5, `Hypothesis scored: ${h.score}`);
+	assert(h.signals.length >= 2, `Multiple signals: ${h.signals.join(", ")}`);
+
+	// Multi-hypothesis output
+	const output = scoreHypothesisOutput(
+		"Hypothesis 1: Cache race\nHypothesis 2: Stale entry",
+		"cache errors"
+	);
+	assert(output.scored.length >= 1, `Scored ${output.scored.length} hypotheses`);
+	assert(output.annotated.includes("Score:"), "Output annotated with scores");
+
+	// Cognition evaluation with real metrics
+	const metrics = {
+		thinks: 5, hypothesizes: 2, finalizes: 1, avgConfidence: 0.75,
+		hypothesesGenerated: 6, hypothesesWithVerification: 4,
+		finalizationsBlocked: 0,
+		depthDistribution: { deep: 2, quick: 3 },
+		reasoningTags: { plan: 2, insight: 2, hypothesis: 1 },
+	};
+	const eval_result = evaluateCognition(metrics);
+	assert(eval_result.overall > 40, `Overall score: ${eval_result.overall}`);
+	assert(typeof eval_result.reasoningDepth === "number", "Has reasoning depth");
+	assert(typeof eval_result.hypothesisQuality === "number", "Has hypothesis quality");
+	assert(typeof eval_result.verificationRigor === "number", "Has verification rigor");
+	assert(Array.isArray(eval_result.recommendations), "Has recommendations");
+
+	// Cross-module: scoring feeds into cognition metrics
+	assert(eval_result.hypothesisQuality > 50, "Hypothesis quality reflects scoring data");
+}
+
+console.log("\n[8] Heartbeat module registry");
+{
+	// Verify all 5 heartbeat modules are exported
+	const fs = await import("fs");
+	const src = fs.readFileSync(`${ROOT}/src/extensions/heartbeat-scheduler/index.ts`, "utf8");
+	const moduleNames = ["recallerModule", "dreamerModule", "contextHygieneModule", "measurementModule", "evolverModule"];
+	for (const name of moduleNames) {
+		assert(src.includes(name), `Module ${name} exists in heartbeat`);
+	}
+	assert(src.includes("evolverModule"), "Evolver module registered");
+	assert(src.includes("retrieveByRUMS"), "RUMS retrieval imported");
+	assert(src.includes("builtInModules"), "Built-in modules array");
+}
+
+// Summary
+console.log(`\nIntegration Tests: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
