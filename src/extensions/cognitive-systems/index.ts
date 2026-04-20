@@ -19,6 +19,7 @@ import {
 } from "../../lib/cognitive-memory.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { addEvidence } from "../../lib/evidence-pool.js";
+import { textResult } from "../../lib/extension-utils.js";
 import {
 	getPendingQAs as getPendingConflictQAs,
 	getAllQAs as getAllConflictQAs,
@@ -462,9 +463,8 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
 			),
 		}),
 		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
-			const { action, qa_id, verdict, topic } = params as any;
-
-			const textResult = (text: string) => ({ content: [{ type: "text" as const, text }], details: {} });
+			const p = params as { action: string; qa_id?: string; verdict?: string; topic?: string };
+			const { action, qa_id, verdict, topic } = p;
 
 			if (action === "list") {
 				const qas = getPendingConflictQAs(ctx);
