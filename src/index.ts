@@ -48,6 +48,8 @@ import assistantExtension from "./extensions/assistant/index.js";
 import visionExtension from "./extensions/vision/index.js";
 import replExtension from "./extensions/repl/index.js";
 import waitReviewExtension from "./extensions/wait-review/index.js";
+import heartbeatSchedulerExtension from "./extensions/heartbeat-scheduler/index.js";
+import threeMemoryStoresExtension from "./extensions/three-memory-stores/index.js";
 
 
 // Resolve the skills directory relative to this file
@@ -83,6 +85,8 @@ const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void 
 	{ name: "vision", factory: visionExtension },
 	{ name: "repl", factory: replExtension },
 	{ name: "wait-review", factory: waitReviewExtension },
+	{ name: "heartbeat-scheduler", factory: heartbeatSchedulerExtension },
+	{ name: "three-memory-stores", factory: threeMemoryStoresExtension },
 ];
 
 export default function piBraidExtension(pi: ExtensionAPI) {
