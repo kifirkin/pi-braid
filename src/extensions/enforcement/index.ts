@@ -50,6 +50,7 @@ import {
 	detectRedundancySignal,
 	handleCriticalSignals,
 } from "./handlers/turn-analysis.js";
+import { detectOrphanChains } from "./handlers/orphan-chains.js";
 import { classifyError as classifyErrorLib } from "../../lib/error-classifier.js";
 import { checkRoutingMismatch, detectIntent, getRoutingHint, type TaskIntent } from "./handlers/routing-handler.js";
 import { analyzeWithJudge } from "./judge.js";
@@ -456,39 +457,9 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		handleCriticalSignals(tac, prevTurn, turnState, nudgeManager, validateTurn);
 
 		// ── Task 4b: Orphan thought chain detection ────────────────────────────
-		// Find chains (grouped by parent_id) with length > 1 that lack a conclusion
-		const orphanChains: string[] = [];
-		if (getState(ctx).thoughtChains.length > 0) {
-			// Group thoughts by root (follow parent chain to root)
-			const rootMap = new Map<string, string[]>(); // rootId -> thoughtIds
-			for (const thought of getState(ctx).thoughtChains) {
-				let root = thought.parentId;
-				// Walk up the chain
-				const visited = new Set<string>();
-				while (root && !visited.has(root)) {
-					visited.add(root);
-					const parent = getState(ctx).thoughtChains.find((t) => t.id === root);
-					root = parent?.parentId || null;
-				}
-				const chainRoot = root || thought.id;
-				if (!rootMap.has(chainRoot)) rootMap.set(chainRoot, []);
-				rootMap.get(chainRoot)!.push(thought.id);
-			}
-			// Orphan = chain with 3+ thoughts but no conclusion type
-			for (const [chainId, thoughtIds] of rootMap) {
-				if (thoughtIds.length >= 3) {
-					const hasConclusion = thoughtIds.some((id) => {
-						const t = getState(ctx).thoughtChains.find((tc) => tc.id === id);
-						return t?.type === "conclusion" || t?.type === "reflection";
-					});
-					if (!hasConclusion) {
-						orphanChains.push(`chain ${thoughtIds.length} thoughts (no conclusion)`);
-					}
-				}
-			}
-			if (orphanChains.length > 0) {
-				sendEnforcementWhisper(pi, `[chains] ${orphanChains.length} reasoning chain(s) without conclusion: ${orphanChains[0]}`);
-			}
+		const orphanResult = detectOrphanChains(getState(ctx));
+		if (orphanResult) {
+			sendEnforcementWhisper(pi, orphanResult.suggestion);
 		}
 
 		// ── L2: Non-critical signals → bundled Session Signals nudge ─────────
