@@ -23,13 +23,14 @@ if not API_KEY:
     print("ERROR: OPENROUTER_API_KEY not set")
     sys.exit(1)
 
-MODEL = "openrouter/openai/gpt-4.1-mini"
+MODEL = "a0venice/mercury-2"
+PROVIDER = "a0venice"
 
 def run_pi_test(prompt, timeout=60):
     """Run pi with a prompt and collect tool execution events."""
     cmd = [
         "pi", "--mode", "rpc", "--no-session",
-        "--provider", "openrouter", "--model", MODEL,
+        "--provider", PROVIDER, "--model", MODEL,
         "-e", "/Users/kifir/projects/agents/pi-braid",
     ]
     
