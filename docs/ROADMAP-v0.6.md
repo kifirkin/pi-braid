@@ -1,11 +1,12 @@
 # pi-braid Roadmap — Remaining Large-Effort Tasks
 
 **Date**: 2026-04-20
-**Base commit**: `367f8f6` (Phase 2 complete)
-**Build**: 0 errors | 29 extensions | ~22,200 lines | 14/14 tests pass
+**Version**: v0.6.1
+**Build**: 0 errors | 30 extensions | ~24,944 lines | 76/76 runtime tests pass
 
 **All v0.6 tasks**: ✅ DONE
 **Phase 2 (Cognitive Core)**: ✅ DONE — heartbeat scheduler + three memory stores
+**Phase 3 (Evidence + Reflection)**: ✅ DONE — conflict QA + evidence integration
 
 ---
 
