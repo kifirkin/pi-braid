@@ -24,6 +24,7 @@ import { Type } from "@sinclair/typebox";
 
 import { createLogger } from "../../lib/logger.js";
 import { getExtensionState } from "../../lib/extension-state.js";
+import { addEvidence } from "../../lib/evidence-pool.js";
 import { type PruningState, createPruningState, applyPruningWorkflow } from "./pruning.js";
 import { type PruneCandidate, type AuditResult, analyzeSession, formatPruneCandidates } from "./analysis.js";
 import {
@@ -625,6 +626,12 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 				_compactedEntries.add(entry.id);
 			}
 
+			// Record compaction as evidence about session state
+			if (entry) {
+				addEvidence(ctx, "context_compacted", "session",
+					`Context compressed: ${entry.summary?.slice(0, 80) ?? "no summary"}`, 0.8);
+			}
+
 			// Memory nudge: enforcement session_compact handles this (reads scratchpad for
 		// unpersisted learnings, sends detailed memory_store() commands).
 		// _compactedEntries tracking above dedupes against compaction_end.
@@ -1043,6 +1050,8 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 			// Log stats if we pruned anything
 			const pruned = messages.length - filtered.length;
 			if (pruned > 0) {
+				addEvidence(ctx, "context_pruned", "session",
+					`Pruned ${pruned} messages from context`, 0.7);
 				// Debug logging suppressed to avoid leaking to TUI prompt
 			}
 

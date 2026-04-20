@@ -29,7 +29,12 @@ import {
 	getUnresolvedConflicts,
 	detectConflicts,
 	formatConflictMessage,
-} from "../../lib/evidence-pool.js";
+ } from "../../lib/evidence-pool.js";
+import {
+	processConflicts as processConflictQAs,
+	getPendingQAs,
+	formatConflictWhisper,
+} from "../../lib/conflict-qa.js";
 import {
 	emitSignal,
 	getNextRecommendation,
@@ -297,6 +302,15 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		if (getState(ctx).calibrationPairs.length > 50) {
 			getState(ctx).calibrationPairs = getState(ctx).calibrationPairs.slice(-50);
 		}
+
+		// Evidence tracking: record tool outcomes as evidence
+		addEvidence(
+			ctx,
+			`Tool ${toolName} ${event?.error ? "failed" : "succeeded"}`,
+			event?.error ? "error" : "session",
+			`${toolName}: ${event?.error ? "failure" : "success"} (confidence: ${predicted.toFixed(2)})`,
+			predicted,
+		);
 
 		const error = Math.abs(predicted - actual);
 		if (getState(ctx).calibrationPairs.length >= 10 && error > 0.4) {

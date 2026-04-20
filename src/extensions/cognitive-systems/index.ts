@@ -19,6 +19,13 @@ import {
 } from "../../lib/cognitive-memory.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { addEvidence } from "../../lib/evidence-pool.js";
+import {
+	getPendingQAs as getPendingConflictQAs,
+	getAllQAs as getAllConflictQAs,
+	resolveQA as resolveConflictQA,
+	getQAStats as getConflictQAStats,
+	getRelevantQA,
+} from "../../lib/conflict-qa.js";
 
 // explore-paths tool — parallel hypothesis investigation
 // Searches in pi-braid project root, uses glob for reliable file finding
@@ -432,5 +439,76 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
 		description: explorePathsTool.description,
 		parameters: explorePathsTool.parameters,
 		execute: explorePathsTool.execute,
+	});
+
+	// ── conflict_qa tool ──────────────────────────────────────────────────
+
+	pi.registerTool({
+		name: "conflict_qa",
+		label: "Conflict QA",
+		description:
+			"View and resolve knowledge conflicts detected by the evidence pool. " +
+			"Shows contradiction classification, resolution strategy, and source confidence.",
+		parameters: Type.Object({
+			action: StringEnum(["list", "stats", "resolve", "search"]),
+			qa_id: Type.Optional(
+				Type.String({ description: "QA ID to resolve (resolve action)" }),
+			),
+			verdict: Type.Optional(
+				Type.String({ description: "Resolution verdict (resolve action)" }),
+			),
+			topic: Type.Optional(
+				Type.String({ description: "Topic to search for relevant conflicts (search action)" }),
+			),
+		}),
+		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
+			const { action, qa_id, verdict, topic } = params as any;
+
+			const textResult = (text: string) => ({ content: [{ type: "text" as const, text }], details: {} });
+
+			if (action === "list") {
+				const qas = getPendingConflictQAs(ctx);
+				if (qas.length === 0) return textResult("No pending conflict QAs.");
+				const lines = [`Pending Conflict QAs (${qas.length}):
+`];
+				for (const qa of qas) {
+					lines.push(`[${qa.type}] ${qa.question.slice(0, 120)}...`);
+					lines.push(`  Strategy: ${qa.resolutionStrategy} | Sources: ${qa.sources.length}`);
+					lines.push("");
+				}
+				return textResult(lines.join("\n"));
+			}
+
+			if (action === "stats") {
+				const stats = getConflictQAStats(ctx);
+				const lines = [
+					"Conflict QA Statistics:",
+					`  Generated: ${stats.totalGenerated}`,
+					`  Resolved: ${stats.totalResolved}`,
+					`  Pending: ${stats.pendingCount}`,
+				];
+				for (const [strat, count] of Object.entries(stats.resolutionsByStrategy)) {
+					lines.push(`  ${strat}: ${count} resolutions`);
+				}
+				return textResult(lines.join("\n"));
+			}
+
+			if (action === "resolve") {
+				if (!qa_id || !verdict) return textResult("Error: qa_id and verdict required");
+				resolveConflictQA(ctx, qa_id, verdict);
+				return textResult(`Conflict QA resolved: ${qa_id} → "${verdict}"`);
+			}
+
+			if (action === "search") {
+				if (!topic) return textResult("Error: topic required for search");
+				const qa = getRelevantQA(ctx, topic);
+				if (!qa) return textResult("No relevant conflicts found for topic.");
+				return textResult(
+					`[${qa.type}] ${qa.question}\nStrategy: ${qa.resolutionStrategy}\nSources: ${qa.sources.length}`
+				);
+			}
+
+			return textResult(`Unknown action: ${action}. Use list, stats, resolve, or search.`);
+		},
 	});
 }
