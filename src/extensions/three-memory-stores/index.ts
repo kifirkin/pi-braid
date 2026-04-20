@@ -19,6 +19,12 @@ import { getExtensionState } from "../../lib/extension-state.js";
 
 const log = createLogger("three-memory-stores");
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function textResult(text: string) {
+	return { content: [{ type: "text" as const, text }], details: {} };
+}
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export interface Episode {
@@ -99,7 +105,6 @@ function addEpisode(
 	};
 	state.episodes.push(episode);
 
-	// Prune if over limit
 	if (state.episodes.length > 500) {
 		pruneEpisodes(state);
 	}
@@ -332,9 +337,9 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 			const { action, query, task, solution, outcome, limit = 3, tags = [] } = params as any;
 
 			if (action === "search") {
-				if (!query) return "Error: query is required for search action";
+				if (!query) return textResult("Error: query is required for search action");
 				const episodes = retrieveEpisodes(state, query, limit);
-				if (episodes.length === 0) return "No relevant episodes found.";
+				if (episodes.length === 0) return textResult("No relevant episodes found.");
 
 				const lines: string[] = [`Found ${episodes.length} relevant episodes:\n`];
 				for (const ep of episodes) {
@@ -345,29 +350,29 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 					lines.push(`   Similarity: ${(ep.similarity * 100).toFixed(0)}%`);
 					lines.push("");
 				}
-				return lines.join("\n");
+				return textResult(lines.join("\n"));
 			}
 
 			if (action === "add") {
 				if (!task || !solution || !outcome) {
-					return "Error: task, solution, and outcome are required for add action";
+					return textResult("Error: task, solution, and outcome are required for add action");
 				}
 				const episode = addEpisode(state, task, solution, outcome as any, [], tags);
-				return `Episode added: "${task.slice(0, 50)}..." (${outcome}) [${episode.id}]`;
+				return textResult(`Episode added: "${task.slice(0, 50)}..." (${outcome}) [${episode.id}]`);
 			}
 
 			if (action === "list") {
-				if (state.episodes.length === 0) return "No episodes stored.";
+				if (state.episodes.length === 0) return textResult("No episodes stored.");
 				const lines: string[] = [`Episodes (${state.episodes.length} total):\n`];
 				const recent = state.episodes.slice(-10).reverse();
 				for (const ep of recent) {
 					const outcomeIcon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
 					lines.push(`${outcomeIcon} ${ep.task.slice(0, 60)}...`);
 				}
-				return lines.join("\n");
+				return textResult(lines.join("\n"));
 			}
 
-			return `Unknown action: ${action}. Use search, add, or list.`;
+			return textResult(`Unknown action: ${action}. Use search, add, or list.`);
 		},
 	});
 
@@ -405,7 +410,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 					? getApplicableHeuristics(state, context)
 					: getPrioritizedHeuristics(state);
 
-				if (rules.length === 0) return "No heuristics found.";
+				if (rules.length === 0) return textResult("No heuristics found.");
 
 				const lines: string[] = [`Heuristics (${rules.length} total):\n`];
 				for (const rule of rules) {
@@ -414,26 +419,26 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 					lines.push(`   Success rate: ${(rule.successRate * 100).toFixed(0)}% (${rule.uses} uses)`);
 					lines.push("");
 				}
-				return lines.join("\n");
+				return textResult(lines.join("\n"));
 			}
 
 			if (action === "add") {
 				if (!condition || !action_text) {
-					return "Error: condition and action_text are required for add action";
+					return textResult("Error: condition and action_text are required for add action");
 				}
 				const rule = addHeuristicRule(state, condition, action_text);
-				return `Heuristic added: "${condition}" → "${action_text}" [${rule.id}]`;
+				return textResult(`Heuristic added: "${condition}" → "${action_text}" [${rule.id}]`);
 			}
 
 			if (action === "evolve") {
 				if (!rule_id || success === undefined) {
-					return "Error: rule_id and success are required for evolve action";
+					return textResult("Error: rule_id and success are required for evolve action");
 				}
 				evolveHeuristic(state, rule_id, success);
-				return `Heuristic evolved: ${rule_id} (success: ${success})`;
+				return textResult(`Heuristic evolved: ${rule_id} (success: ${success})`);
 			}
 
-			return `Unknown action: ${action}. Use list, add, or evolve.`;
+			return textResult(`Unknown action: ${action}. Use list, add, or evolve.`);
 		},
 	});
 
@@ -461,33 +466,33 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 			const { action, tool, task_type, candidates } = params as any;
 
 			if (action === "list") {
-				if (state.toolStats.size === 0) return "No tool stats recorded.";
+				if (state.toolStats.size === 0) return textResult("No tool stats recorded.");
 
 				const lines: string[] = ["Tool Reliability Stats:\n"];
 				for (const stat of state.toolStats.values()) {
 					const rate = stat.attempts > 0 ? ((stat.successes / stat.attempts) * 100).toFixed(0) : "N/A";
 					lines.push(`${stat.tool} (${stat.taskType}): ${rate}% success (${stat.attempts} attempts)`);
 				}
-				return lines.join("\n");
+				return textResult(lines.join("\n"));
 			}
 
 			if (action === "reliability") {
-				if (!tool || !task_type) return "Error: tool and task_type are required";
+				if (!tool || !task_type) return textResult("Error: tool and task_type are required");
 				const reliability = getToolReliability(state, tool, task_type);
-				return `${tool} reliability for "${task_type}": ${(reliability * 100).toFixed(0)}%`;
+				return textResult(`${tool} reliability for "${task_type}": ${(reliability * 100).toFixed(0)}%`);
 			}
 
 			if (action === "best") {
 				if (!task_type || !candidates || candidates.length === 0) {
-					return "Error: task_type and candidates are required";
+					return textResult("Error: task_type and candidates are required");
 				}
 				const best = selectBestTool(state, task_type, candidates);
-				if (!best) return "No tool stats available for candidates";
+				if (!best) return textResult("No tool stats available for candidates");
 				const reliability = getToolReliability(state, best, task_type);
-				return `Best tool for "${task_type}": ${best} (${(reliability * 100).toFixed(0)}% reliability)`;
+				return textResult(`Best tool for "${task_type}": ${best} (${(reliability * 100).toFixed(0)}% reliability)`);
 			}
 
-			return `Unknown action: ${action}. Use list, reliability, or best.`;
+			return textResult(`Unknown action: ${action}. Use list, reliability, or best.`);
 		},
 	});
 
@@ -496,7 +501,6 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 	pi.on("session_start", async (_event: any, ctx: ExtensionContext) => {
 		const state = getState(ctx);
 
-		// Seed built-in heuristics if empty
 		if (state.heuristics.length === 0) {
 			for (const h of BUILTIN_HEURISTICS) {
 				addHeuristicRule(state, h.condition, h.action, h.priority);
@@ -510,16 +514,14 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 
 	// ── Event: tool_end ─────────────────────────────────────────────────
 
-	pi.on("tool_end", async (event: any, ctx: ExtensionContext) => {
+	pi.on("tool_end" as any, async (event: any, ctx: ExtensionContext) => {
 		const state = getState(ctx);
 		const toolName = event?.toolName ?? event?.tool ?? "unknown";
 		const isError = event?.isError ?? event?.error != null;
 		const duration = event?.duration ?? 0;
 
-		// Track tool usage
 		state.currentSessionTools.push(toolName);
 
-		// Record in tool reliability
 		const taskType = inferTaskType(ctx, toolName);
 		recordToolCall(state, toolName, taskType, !isError, duration);
 
@@ -533,7 +535,6 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 	pi.on("agent_end", async (_event: any, ctx: ExtensionContext) => {
 		const state = getState(ctx);
 
-		// Log session summary
 		const uniqueTools = new Set(state.currentSessionTools);
 		const duration = Date.now() - state.sessionStartTime;
 
@@ -541,7 +542,6 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 			`Session ended: ${state.currentSessionTools.length} tool calls, ${uniqueTools.size} unique tools, ${state.episodes.length} episodes, ${state.heuristics.length} heuristics`,
 		);
 
-		// Log top heuristics
 		const topHeuristics = getPrioritizedHeuristics(state).slice(0, 3);
 		for (const h of topHeuristics) {
 			log.info(`  Top heuristic: "${h.condition}" (priority: ${h.priority.toFixed(2)})`);
@@ -552,8 +552,6 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function inferTaskType(_ctx: ExtensionContext, _toolName: string): string {
-	// Simple heuristic: map tool names to task types
-	// In a real implementation, this would use more context
 	const toolTypeMap: Record<string, string> = {
 		read: "file_read",
 		write: "file_write",
@@ -571,9 +569,6 @@ function inferTaskType(_ctx: ExtensionContext, _toolName: string): string {
 // ── Exports ──────────────────────────────────────────────────────────────────
 
 export {
-	Episode,
-	HeuristicRule,
-	ToolStat,
 	addEpisode,
 	retrieveEpisodes,
 	addHeuristicRule,

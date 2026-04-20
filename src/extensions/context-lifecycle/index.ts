@@ -12,11 +12,12 @@
  * - Memory: CustomEntry persistence with outcome tracking
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 
 import { createLogger } from "../../lib/logger.js";
+import { getExtensionState } from "../../lib/extension-state.js";
 
 import type { SemanticSignal } from "./types.js";
 import {
@@ -40,19 +41,13 @@ const log = createLogger("context-lifecycle");
 // Proposal rate limiting
 const MAX_PROPOSALS_PER_TURN = 2;
 const MAX_PROPOSALS_SESSION = 10;
-let _proposalsThisTurn = 0;
-let _proposalsTotal = 0;
 
 const _policyEngine = new PolicyEngine();
 const _signalDetector = new SignalDetector();
 
-let _initialized = false;
-let _sessionStartMs = 0;
-let _turnCount = 0;
-
-// Outcome tracking (closed-loop feedback) with TTL eviction
-const MAX_OUTCOMES = 100; // Sliding window: keep last 100 outcomes
-const OUTCOME_TTL_MS = 30 * 60 * 1000; // Evict after 30 minutes
+// Outcome tracking (closed-loop feedback) with TTL eviction — process-scoped cache
+const MAX_OUTCOMES = 100;
+const OUTCOME_TTL_MS = 30 * 60 * 1000;
 
 const _outcomes: Array<{
 	proposalId: string;
@@ -65,24 +60,58 @@ const _outcomes: Array<{
 function evictOldOutcomes(): void {
 	const now = Date.now();
 	const before = _outcomes.length;
-
-	// Remove expired outcomes
 	while (_outcomes.length > 0 && now - _outcomes[0].timestamp > OUTCOME_TTL_MS) {
 		_outcomes.shift();
 	}
-
-	// If still over limit, remove oldest
 	while (_outcomes.length > MAX_OUTCOMES) {
 		_outcomes.shift();
 	}
-
 	if (_outcomes.length < before) {
 		log.info(`Evicted ${before - _outcomes.length} old outcomes`);
 	}
 }
 
-// Per-session proposals tracked by CustomEntry ID → proposal
-const _proposalsByEntryId = new Map<string, ContextProposal>();
+// ── Session-scoped state ─────────────────────────────────────────────────────
+
+interface ContextLifecycleState {
+	proposalsThisTurn: number;
+	proposalsTotal: number;
+	initialized: boolean;
+	sessionStartMs: number;
+	turnCount: number;
+	proposalsByEntryId: Map<string, any>;
+}
+
+function createState(): ContextLifecycleState {
+	return {
+		proposalsThisTurn: 0,
+		proposalsTotal: 0,
+		initialized: false,
+		sessionStartMs: Date.now(),
+		turnCount: 0,
+		proposalsByEntryId: new Map(),
+	};
+}
+
+function getState(ctx: ExtensionContext): ContextLifecycleState {
+	return getExtensionState(ctx, "context-lifecycle", createState);
+}
+
+// Module-level reference to current session state (set on session_start/turn_end)
+// This allows functions without ctx access to use the current session's state.
+let _currentSessionState: ContextLifecycleState | null = null;
+
+function state(): ContextLifecycleState {
+	if (!_currentSessionState) {
+		_currentSessionState = createState();
+	}
+	return _currentSessionState;
+}
+
+function resetState(ctx: ExtensionContext): ContextLifecycleState {
+	_currentSessionState = createState();
+	return _currentSessionState;
+}
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
@@ -133,7 +162,7 @@ function readProposalsFromSession(entries: any[]): ContextProposal[] {
 			const data = entry.details as ContextProposal;
 			if (data && data.id && data.created_at !== undefined) {
 				proposals.push(data);
-				_proposalsByEntryId.set(entry.id, data);
+				state().proposalsByEntryId.set(entry.id, data);
 			}
 		}
 	}
@@ -211,14 +240,14 @@ function queueProposal(evaluated: EvaluatedAction, ctx: any, branchLength: numbe
 	if (evaluated.action.type !== "propose") return;
 
 	// ── Rate limiting: prevent proposal spam ────────────────────────────────
-	_proposalsThisTurn++;
-	_proposalsTotal++;
-	if (_proposalsThisTurn > MAX_PROPOSALS_PER_TURN) {
-		log.debug(`Rate limited: ${_proposalsThisTurn} proposals this turn (max ${MAX_PROPOSALS_PER_TURN})`);
+	state().proposalsThisTurn++;
+	state().proposalsTotal++;
+	if (state().proposalsThisTurn > MAX_PROPOSALS_PER_TURN) {
+		log.debug(`Rate limited: ${state().proposalsThisTurn} proposals this turn (max ${MAX_PROPOSALS_PER_TURN})`);
 		return;
 	}
-	if (_proposalsTotal > MAX_PROPOSALS_SESSION) {
-		log.debug(`Session limit reached: ${_proposalsTotal} proposals (max ${MAX_PROPOSALS_SESSION})`);
+	if (state().proposalsTotal > MAX_PROPOSALS_SESSION) {
+		log.debug(`Session limit reached: ${state().proposalsTotal} proposals (max ${MAX_PROPOSALS_SESSION})`);
 		return;
 	}
 
@@ -263,15 +292,7 @@ function queueProposal(evaluated: EvaluatedAction, ctx: any, branchLength: numbe
 export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 	// ── session_start ────────────────────────────────────────────────────────
 	pi.on("session_start", async (_event: any, ctx: any) => {
-		if (!_initialized) {
-			_initialized = true;
-		}
-
-		_sessionStartMs = Date.now();
-		_turnCount = 0;
-		_proposalsThisTurn = 0;
-		_proposalsTotal = 0;
-		_proposalsByEntryId.clear();
+		resetState(ctx);
 		_outcomes.length = 0;
 		_policyEngine.resetCooldowns();
 		_signalDetector.reset();
@@ -280,8 +301,8 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 	// ── before_agent_start ──────────────────────────────────────────────────
 	// R-CCAM loop: Retrieval → Cognition → Control → Action
 	pi.on("before_agent_start", async (_event: any, ctx: any) => {
-		_turnCount++;
-		_proposalsThisTurn = 0; // Reset per-turn counter
+		state().turnCount++;
+		state().proposalsThisTurn = 0; // Reset per-turn counter
 
 		// Evict old outcomes on each turn (sliding window TTL)
 		evictOldOutcomes();
@@ -338,13 +359,13 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 			if (Date.now() - proposal.created_at > 120_000) {
 				proposal.resolution = "implicit_approved";
 				proposal.resolved_at = Date.now();
-				_proposalsByEntryId.set(entry.id, proposal);
+				state().proposalsByEntryId.set(entry.id, proposal);
 
 				// Track outcome for closed-loop feedback
 				_outcomes.push({
 					proposalId: proposal.id,
 					resolution: "implicit_approved",
-					turnsToResolve: _turnCount - proposal.turn,
+					turnsToResolve: state().turnCount - proposal.turn,
 					timestamp: Date.now(),
 				});
 			}
@@ -422,12 +443,12 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 
 					proposal.resolution = "approved";
 					proposal.resolved_at = Date.now();
-					_proposalsByEntryId.set(id, proposal);
+					state().proposalsByEntryId.set(id, proposal);
 
 					_outcomes.push({
 						proposalId: id,
 						resolution: "approved",
-						turnsToResolve: _turnCount - proposal.turn,
+						turnsToResolve: state().turnCount - proposal.turn,
 						timestamp: Date.now(),
 					});
 
@@ -450,12 +471,12 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 
 					proposal.resolution = "rejected";
 					proposal.resolved_at = Date.now();
-					_proposalsByEntryId.set(id, proposal);
+					state().proposalsByEntryId.set(id, proposal);
 
 					_outcomes.push({
 						proposalId: id,
 						resolution: "rejected",
-						turnsToResolve: _turnCount - proposal.turn,
+						turnsToResolve: state().turnCount - proposal.turn,
 						timestamp: Date.now(),
 					});
 
@@ -500,7 +521,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 							type: "text" as const,
 							text: [
 								"## S-MMU Statistics",
-								`**Session:** ${_turnCount} turns | ${formatDuration(Date.now() - _sessionStartMs)}`,
+								`**Session:** ${state().turnCount} turns | ${formatDuration(Date.now() - state().sessionStartMs)}`,
 								`**Proposals:** ${pending.length} pending, ${proposals.filter((p) => p.resolution).length} resolved`,
 								`**Outcomes:** ${approved}/${total} approved (${avgTurns.toFixed(1)} turns avg)`,
 								`**Policies:** ${policies.length} active`,
@@ -511,7 +532,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 							].join("\n"),
 						}],
 						details: {
-							turns: _turnCount,
+							turns: state().turnCount,
 							proposals,
 							outcomes: _outcomes,
 							policies,
@@ -546,7 +567,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 			const type = params.type;
 			const note = params.note ?? "";
 
-			_signalDetector.queueSignal(type, { note, turn: _turnCount });
+			_signalDetector.queueSignal(type, { note, turn: state().turnCount });
 
 			return {
 				content: [{ type: "text" as const, text: `✓ Signal emitted: ${type}${note ? ` - ${note}` : ""}` }],

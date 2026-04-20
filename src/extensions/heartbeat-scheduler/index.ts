@@ -20,8 +20,33 @@ import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { createLogger } from "../../lib/logger.js";
 import { getExtensionState } from "../../lib/extension-state.js";
+import type { Episode, HeuristicRule } from "../three-memory-stores/index.js";
 
 const log = createLogger("heartbeat");
+
+// ── Cross-extension state access ─────────────────────────────────────────────
+
+interface MemoryStoresState {
+	episodes: Episode[];
+	heuristics: HeuristicRule[];
+	toolStats: Map<string, any>;
+	currentSessionTools: string[];
+	sessionStartTime: number;
+}
+
+function getMemoryState(ctx: ExtensionContext): MemoryStoresState | null {
+	try {
+		return getExtensionState<MemoryStoresState>(ctx, "three-memory-stores", () => ({
+			episodes: [],
+			heuristics: [],
+			toolStats: new Map(),
+			currentSessionTools: [],
+			sessionStartTime: Date.now(),
+		}));
+	} catch {
+		return null;
+	}
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -108,16 +133,26 @@ const recallerModule: CognitiveModule = {
 	priority: 0.6,
 
 	shouldActivate(context: ModuleContext): boolean {
-		// Activate if: haven't recalled in a while and session is non-trivial
 		const lastRecall = context.lastActivation.get("recaller") ?? 0;
 		const turnsSinceRecall = context.turnCount - lastRecall;
-		return turnsSinceRecall >= 15 && context.totalToolCalls > 5;
+		if (turnsSinceRecall < 15 || context.totalToolCalls < 5) return false;
+
+		// Check if there are episodes to recall
+		const memState = getMemoryState(context.ctx);
+		if (!memState || memState.episodes.length === 0) return false;
+
+		// Check if any episodes are potentially relevant
+		return memState.episodes.length >= 2;
 	},
 
 	async activate(context: ModuleContext): Promise<void> {
-		log.debug("Recaller module activated — suggesting memory_recall");
-		// The actual memory recall is triggered by the agent via whisper nudge
-		// This module just flags that it's a good time
+		const memState = getMemoryState(context.ctx);
+		if (!memState) return;
+
+		const episodeCount = memState.episodes.length;
+		const recentEpisodes = memState.episodes.slice(-3);
+
+		log.info(`Recaller: ${episodeCount} episodes available, ${recentEpisodes.length} recent`);
 	},
 };
 
@@ -127,14 +162,26 @@ const dreamerModule: CognitiveModule = {
 	priority: 0.4,
 
 	shouldActivate(context: ModuleContext): boolean {
-		// Activate if: significant work done (many turns) and haven't reflected
 		const lastDream = context.lastActivation.get("dreamer") ?? 0;
 		const turnsSinceDream = context.turnCount - lastDream;
-		return turnsSinceDream >= 25 && context.totalToolCalls > 15;
+		if (turnsSinceDream < 25 || context.totalToolCalls < 15) return false;
+
+		// Check if there's enough activity to reflect on
+		const memState = getMemoryState(context.ctx);
+		if (!memState) return context.totalToolCalls > 20;
+
+		// Activate if there are tools used that could generate episodes
+		return memState.currentSessionTools.length >= 5;
 	},
 
 	async activate(context: ModuleContext): Promise<void> {
-		log.debug("Dreamer module activated — suggesting deep reflection");
+		const memState = getMemoryState(context.ctx);
+		if (!memState) return;
+
+		const toolsUsed = memState.currentSessionTools;
+		const uniqueTools = new Set(toolsUsed);
+
+		log.info(`Dreamer: ${toolsUsed.length} tool calls, ${uniqueTools.size} unique tools — suggesting reflection`);
 	},
 };
 
@@ -287,7 +334,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 				}
 			}
 
-			return lines.join("\n");
+			return { content: [{ type: "text" as const, text: lines.join("\n") }], details: {} };
 		},
 	});
 
@@ -338,5 +385,4 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 
 // ── Exports ──────────────────────────────────────────────────────────────────
 
-export { CognitiveModule, ModuleContext, HeartbeatConfig };
 export { recallerModule, dreamerModule, contextHygieneModule };
