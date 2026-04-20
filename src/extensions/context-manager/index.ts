@@ -632,6 +632,12 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 					`Context compressed: ${entry.summary?.slice(0, 80) ?? "no summary"}`, 0.8);
 			}
 
+			// Record compaction as evidence about session state
+			if (entry) {
+				addEvidence(_ctx, "context_compacted", "session",
+					`Context compressed: ${entry.summary?.slice(0, 80) ?? "no summary"}`, 0.8);
+			}
+
 			// Memory nudge: enforcement session_compact handles this (reads scratchpad for
 		// unpersisted learnings, sends detailed memory_store() commands).
 		// _compactedEntries tracking above dedupes against compaction_end.
@@ -1050,6 +1056,8 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 			// Log stats if we pruned anything
 			const pruned = messages.length - filtered.length;
 			if (pruned > 0) {
+				addEvidence(ctx, "context_pruned", "session",
+					`Pruned ${pruned} messages from context`, 0.7);
 				addEvidence(ctx, "context_pruned", "session",
 					`Pruned ${pruned} messages from context`, 0.7);
 				// Debug logging suppressed to avoid leaking to TUI prompt
