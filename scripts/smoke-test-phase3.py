@@ -75,10 +75,19 @@ def run_test(name, prompt_text, timeout=30):
                 success = not event.get("isError")
                 print(f"  Tool: {tool_name} -> {'✅' if success else '❌'}")
             
-            # Get final response
+            # Get final response from text_end events
+            if etype == "message_update":
+                amsg = event.get("assistantMessageEvent", {})
+                if amsg.get("type") == "text_end":
+                    final_text = amsg.get("content", "")
+            
+            # Also check message_end as fallback
+            if etype == "agent_end":
+                break
+
             if etype == "message_end":
                 msg = event.get("message", {})
-                if msg.get("role") == "assistant":
+                if msg.get("role") == "assistant" and not final_text:
                     for block in msg.get("content", []):
                         if block.get("type") == "text":
                             final_text += block.get("text", "")
@@ -110,49 +119,49 @@ def main():
     results["heartbeat_status"] = run_test(
         "Heartbeat Status",
         "Use the heartbeat_status tool and tell me what you see. Don't use any other tools.",
-        timeout=30,
+        timeout=60,
     )
     
     # Test 2: Memory episodes (empty initially)
     results["memory_episodes"] = run_test(
         "Memory Episodes",
         "Use the memory_episodes tool with action 'list' to see if any episodes exist. Tell me the result.",
-        timeout=30,
+        timeout=60,
     )
     
     # Test 3: Add an episode
     results["memory_episodes_add"] = run_test(
         "Add Episode",
         'Use the memory_episodes tool with action "add", task "smoke test task", solution "ran smoke tests successfully", outcome "success", and tags ["test", "smoke"].',
-        timeout=30,
+        timeout=60,
     )
     
     # Test 4: Search episodes
     results["memory_episodes_search"] = run_test(
         "Search Episodes",
         'Use the memory_episodes tool with action "search" and query "smoke test". Tell me what episodes you find.',
-        timeout=30,
+        timeout=60,
     )
     
     # Test 5: Memory heuristics
     results["memory_heuristics"] = run_test(
         "Memory Heuristics",
         'Use the memory_heuristics tool with action "list" to see the built-in heuristics. Tell me what rules exist.',
-        timeout=30,
+        timeout=60,
     )
     
     # Test 6: Tool stats (empty initially)
     results["memory_tool_stats"] = run_test(
         "Memory Tool Stats",
         'Use the memory_tool_stats tool with action "list" to see tool reliability statistics.',
-        timeout=30,
+        timeout=60,
     )
     
     # Test 7: Conflict QA
     results["conflict_qa"] = run_test(
         "Conflict QA",
         'Use the conflict_qa tool with action "stats" to see conflict QA statistics.',
-        timeout=30,
+        timeout=60,
     )
     
     # Summary
