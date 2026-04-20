@@ -317,7 +317,7 @@ export default function contextManagerExtension(pi: ExtensionAPI) {
 					const pct = usage.percent?.toFixed(1) || "?";
 					usageStr = `${pct}% (${Math.round(usage.tokens / 1024)}K/${Math.round(usage.contextWindow / 1024)}K)`;
 				}
-			} catch {}
+			} catch { /* non-fatal: usage unavailable */ }
 
 			let steps = 0;
 			let nearestTag = "none";

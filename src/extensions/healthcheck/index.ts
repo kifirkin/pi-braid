@@ -62,7 +62,7 @@ function cleanupHcDir(): void {
 				fs.unlinkSync(path.join(HC_DIR, f));
 			}
 		}
-	} catch {}
+ } catch { /* Non-fatal: tool not available for healthcheck */ }
 }
 
 // Individual Check Functions

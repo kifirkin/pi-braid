@@ -271,7 +271,7 @@ function tick(
 			moduleContext.totalToolCalls = enforcementState.totalToolCalls ?? 0;
 			moduleContext.silentTurns = enforcementState.silentTurns ?? 0;
 		}
-	} catch {}
+	} catch { /* non-fatal: enforcement state not available */ }
 
 	// Evaluate which modules should activate
 	const candidates: Array<{ module: CognitiveModule; priority: number; reg: RegisteredModule }> = [];

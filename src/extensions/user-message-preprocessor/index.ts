@@ -89,7 +89,7 @@ function loadGlobalSetting<T>(key: string, defaultValue: T): T {
 		const content = readFileSync(SETTINGS_FILE, "utf-8");
 		const settings = JSON.parse(content);
 		if (key in settings) return settings[key] as T;
-	} catch {}
+ } catch { /* Non-fatal: JSON parse fallback not available */ }
 	return defaultValue;
 }
 

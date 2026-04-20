@@ -70,7 +70,7 @@ async function gatherL1State(pi: ExtensionAPI, ctx: ExtensionContext | undefined
 		} catch { /* already initialized or init failed - non-fatal */ }
 		memoryCount = memory.getAll(3).length;
 	} catch {
-		// Non-fatal
+		// Non-fatal - memory unavailable or init failed
 	}
 
 	// Agent environment (session time, turns, etc.)

@@ -166,7 +166,7 @@ async function readPdf(path: string, maxLines: number): Promise<string> {
 		if (fsSync.existsSync(tmpFile)) {
 			try {
 				await fs.unlink(tmpFile);
-			} catch {}
+   } catch { /* Non-fatal: temp file cleanup skipped */ }
 		}
 		throw error;
 	}

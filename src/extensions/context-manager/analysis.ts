@@ -86,7 +86,7 @@ export function analyzeSession(ctx: any): AuditResult {
 				contextWindow: ctxUsage.contextWindow ?? 200000,
 			};
 		}
-	} catch {}
+	} catch { /* non-fatal: ctx.getContextUsage unavailable */ }
 
 	// Count tags, summaries, branches
 	let tagCount = 0;

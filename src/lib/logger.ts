@@ -64,14 +64,18 @@ function formatSource(source: string): string {
 
 function formatMessage(entry: LogEntry): string {
 	let msg = `${formatLevel(entry.level)} ${formatSource(entry.source)} ${entry.message}`;
-	if (entry.data !== undefined) {
+	if (entry.data !== undefined && entry.data !== null) {
 		if (entry.data instanceof Error) {
-			msg += `\n  ${entry.data.message}`;
+			msg += ` ${entry.data.message}`;
 			if (entry.data.stack) {
-				msg += `\n  ${entry.data.stack.split("\n").slice(1).join("\n  ")}`;
+				msg += ` ${entry.data.stack.split("\n").slice(1).join(" ")}`;
 			}
 		} else if (typeof entry.data === "object") {
-			msg += ` ${JSON.stringify(entry.data)}`;
+			try {
+				msg += ` ${JSON.stringify(entry.data)}`;
+			} catch {
+				msg += ` [unstringifiable: ${typeof entry.data}]`;
+			}
 		} else {
 			msg += ` ${String(entry.data)}`;
 		}
