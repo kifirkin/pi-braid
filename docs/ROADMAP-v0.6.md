@@ -79,7 +79,7 @@ Delete ~15 lines of manual fallback logic. One import, one call.
 | Task 4a | ✅ DONE | reflection gap nudge at 6+ tools without reflection |
 | Task 4b | ✅ DONE | thought chain tracking, orphan detection |
 | Task 4c | ✅ DONE | calibration pairs, nudge when avg error > 30% |
-| Task 2 | ⚠️ PARTIAL | core libs migrated, enforcement stays global (acceptable) |
+| Task 2 | ⚠️ IN PROGRESS | planner migrated, context-manager decomposed, enforcement factory ready, index.ts pending |
 | Task 3 | ✅ DONE | evidence-pool.ts, cognitive-systems updated, enforcement integration |
 | Task 5 | ✅ DONE | test-reasoning-metrics.mjs (18 tests), thresholds calibrated |
 | Task 6 | ✅ DONE | mars-reflector.ts, adaptive trigger, tool overuse/error advice |
@@ -153,10 +153,11 @@ function getState(ctx: ExtensionContext) {
 1. `language-hint.ts` — 2 fields, trivial
 2. `metacognitive-state.ts` — 4 fields, simple
 3. `degradation-detector.ts` — medium complexity
-4. `planner/index.ts` — plans array, needs ctx in all tool handlers
-5. `user-message-preprocessor/index.ts` — config + counters
-6. `context-manager/index.ts` — prune rules + BCR
-7. `enforcement/state.ts` — 50+ fields, most complex
+4. ✅ `planner/index.ts` — plans array, migrated to getExtensionState
+5. `user-message-preprocessor/index.ts` — config + counters (acceptable as global: config is disk-persisted, queue is process-scoped)
+6. ✅ `context-manager/index.ts` — decomposed into analysis/pruning/retry, _checkoutParams + pruningState migrated to getExtensionState
+7. ✅ `enforcement/state.ts` — createState() + getState(ctx) factory added, legacy `export const state` alias remains for gradual migration
+8. ⏳ `enforcement/index.ts` — 147 state refs, needs ctx threading (biggest remaining task)
 
 **Key challenge**: Enforcement's event handlers receive `ctx` from the runner. All handlers need `ctx` as first arg (they already get it from `pi.on(event, (e, ctx) => ...)`). The tools (enforcement tools) need `ctx` passed through — **confirmed**: `execute(toolCallId, params, signal, onUpdate, ctx: ExtensionContext)` gives `ctx` in tool handlers. ✅
 
