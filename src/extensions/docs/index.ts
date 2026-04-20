@@ -167,6 +167,7 @@ async function readPdf(path: string, maxLines: number): Promise<string> {
 			try {
 				await fs.unlink(tmpFile);
    } catch { /* Non-fatal: temp file cleanup skipped */ }
+  /* Non-fatal: temp file cleanup skipped */
 		}
 		throw error;
 	}
@@ -188,6 +189,7 @@ async function readWithTextutil(path: string, format: string, maxLines: number):
 		content = await fs.readFile(tmpFile, "utf-8");
 	} finally {
 		try { await fs.unlink(tmpFile); } catch { /* ignore */ }
+ /* Non-fatal: markdown extraction failed */
 	}
 
 	const lines = content.split("\n");

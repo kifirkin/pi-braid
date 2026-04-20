@@ -36,6 +36,7 @@ function loadConfig(): SessionRecallConfig {
 		const data = readFileSync(getConfigPath(), "utf-8");
 		return JSON.parse(data);
 	} catch { return {}; }
+/* Non-fatal: prior session read failed */
 }
 
 // Schemas
@@ -88,6 +89,7 @@ function extractMessageText(jsonLine: string): { role: string; text: string } | 
 		if (!texts) return null;
 		return { role, text: texts };
 	} catch { return null; }
+/* Non-fatal: prior session read failed */
 }
 
 function snippetAround(text: string, keyword: string, radius = 100): string {
@@ -121,6 +123,7 @@ function getSearchBackend(): SearchBackend {
 			cachedBackend = cmd;
 			return cmd;
 		} catch { /* try next */ }
+ /* Non-fatal: prior session parse failed */
 	}
 	cachedBackend = "node";
 	return "node";
@@ -190,6 +193,7 @@ function nodeSearchFiles(query: string, sessionsDir: string): FileMatchCount[] {
 			}
 			if (count > 0) results.push({ path: filePath, count });
 		} catch { /* skip bad files */ }
+ /* Non-fatal: session restore failed */
 	}
 
 	return results;

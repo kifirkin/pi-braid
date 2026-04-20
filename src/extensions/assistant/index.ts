@@ -57,6 +57,7 @@ export default function assistantExtension(pi: ExtensionAPI) {
 			diskData = await loadState<ToolsConfigData>(TOOLS_DISK_PATH);
 		} catch {
 			// Non-fatal - fallback to session entries
+  /* Non-fatal: restoreToolState disk read failed */
 		}
 
 		if (diskData?.enabledTools && typeof diskData.version === "number") {

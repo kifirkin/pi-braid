@@ -334,7 +334,8 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 		}),
 		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
 			const state = getState(ctx);
-			const { action, query, task, solution, outcome, limit = 3, tags = [] } = params as any;
+			const p = params as { action: string; query?: string; task?: string; solution?: string; outcome?: string; limit?: number; tags?: string[] };
+			const { action, query, task, solution, outcome, limit = 3, tags = [] } = p;
 
 			if (action === "search") {
 				if (!query) return textResult("Error: query is required for search action");
@@ -357,7 +358,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 				if (!task || !solution || !outcome) {
 					return textResult("Error: task, solution, and outcome are required for add action");
 				}
-				const episode = addEpisode(state, task, solution, outcome as any, [], tags);
+				const episode = addEpisode(state, task, solution, outcome as Episode["outcome"], [], tags);
 				return textResult(`Episode added: "${task.slice(0, 50)}..." (${outcome}) [${episode.id}]`);
 			}
 
@@ -403,7 +404,8 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 		}),
 		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
 			const state = getState(ctx);
-			const { action, context, condition, action_text, rule_id, success } = params as any;
+			const hp = params as { action: string; context?: string; condition?: string; action_text?: string; rule_id?: string; success?: boolean };
+			const { action, context, condition, action_text, rule_id, success } = hp;
 
 			if (action === "list") {
 				const rules = context
@@ -463,7 +465,8 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 		}),
 		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
 			const state = getState(ctx);
-			const { action, tool, task_type, candidates } = params as any;
+			const tp = params as { action: string; tool?: string; task_type?: string; candidates?: string[] };
+			const { action, tool, task_type, candidates } = tp;
 
 			if (action === "list") {
 				if (state.toolStats.size === 0) return textResult("No tool stats recorded.");

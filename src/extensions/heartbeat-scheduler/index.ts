@@ -266,7 +266,7 @@ function tick(
 
 	// Try to get tool call info from enforcement state
 	try {
-		const enforcementState = (ctx as any).getExtensionState?.("enforcement");
+		const enforcementState = ((ctx as any)?.getExtensionState ?? (() => null))("enforcement");
 		if (enforcementState) {
 			moduleContext.totalToolCalls = enforcementState.totalToolCalls ?? 0;
 			moduleContext.silentTurns = enforcementState.silentTurns ?? 0;

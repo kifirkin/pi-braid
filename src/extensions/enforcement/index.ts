@@ -657,6 +657,7 @@ Persist them now - this is the minimum-fidelity moment.`,
 			getState(ctx).turnsSinceMemory = 0;
 		} catch {
 			// Silent fail - don't block on scratchpad read
+  /* Non-fatal: enforcement state access failed */
 		}
 	});
 

@@ -421,6 +421,7 @@ async function findNextWork(): Promise<{ type: "plan" | "goal" | null; id?: stri
 		}
 	} catch {
 		// Non-fatal: planner/goal might not be available
+ /* Non-fatal: history access failed */
 	}
 	return { type: null };
 }

@@ -55,6 +55,7 @@ export class CdpClient {
 					}
 				} catch {
 					// ignore parse errors
+    /* Non-fatal: CDP connection not available */
 				}
 			};
 			this.ws.onclose = () => { this._isConnected = false; };

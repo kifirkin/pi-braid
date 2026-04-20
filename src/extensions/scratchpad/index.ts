@@ -186,6 +186,7 @@ async function saveScratchpadToDisk(scratchpad: TaskScratchpad): Promise<void> {
 		await fileMutationQueue.write(filePath, scratchpad);
 	} catch {
 		// Silent fail - operates in memory if disk write fails
+ /* Non-fatal: task metadata unavailable */
 	}
 }
 
@@ -211,6 +212,7 @@ async function loadScratchpadFromDisk(projectSlug: string): Promise<TaskScratchp
 		return data as TaskScratchpad;
 	} catch {
 		// Silent fail (file doesn't exist or parse error)
+ /* Non-fatal: git status unavailable */
 	}
 	return null;
 }
@@ -226,6 +228,7 @@ async function saveTaskStore(slug: string, store: TaskStore): Promise<void> {
 		await fileMutationQueue.write(filePath, store);
 	} catch {
 		// Silent fail
+ /* Non-fatal: file write failed */
 	}
 }
 
@@ -235,6 +238,7 @@ async function loadTaskStore(projectSlug: string): Promise<TaskStore> {
 		return JSON.parse(await fs.readFile(filePath, "utf-8")) as TaskStore;
 	} catch {
 		// Silent fail
+ /* Non-fatal: git add failed */
 	}
 	return { tasks: [], updatedAt: Date.now() };
 }

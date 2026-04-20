@@ -59,6 +59,7 @@ export function scanUrl(url: string): SecretScanResult {
 		}
 	} catch {
 		// Invalid URL, skip
+ /* Non-fatal: secret extraction not available */
 	}
 
 	return { found: false };

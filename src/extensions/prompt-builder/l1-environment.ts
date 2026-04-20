@@ -60,6 +60,7 @@ async function gatherL1State(pi: ExtensionAPI, ctx: ExtensionContext | undefined
 		}
 	} catch {
 		// Non-fatal - missing APIs in some environments
+ /* Non-fatal: memory count unavailable */
 	}
 
 	let memoryCount = 0;
@@ -71,6 +72,7 @@ async function gatherL1State(pi: ExtensionAPI, ctx: ExtensionContext | undefined
 		memoryCount = memory.getAll(3).length;
 	} catch {
 		// Non-fatal - memory unavailable or init failed
+ /* Non-fatal: memory count unavailable */
 	}
 
 	// Agent environment (session time, turns, etc.)

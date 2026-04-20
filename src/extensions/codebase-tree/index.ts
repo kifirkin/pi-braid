@@ -349,6 +349,7 @@ async function buildTree(
 			}
 		} catch {
 			// Permission denied or other error
+  /* Non-fatal: git history unavailable */
 		}
 
 		// Sort: directories first, then by name

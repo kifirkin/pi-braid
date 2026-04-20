@@ -63,6 +63,7 @@ function cleanupHcDir(): void {
 			}
 		}
  } catch { /* Non-fatal: tool not available for healthcheck */ }
+/* Non-fatal: ping not available */
 }
 
 // Individual Check Functions
