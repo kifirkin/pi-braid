@@ -5,6 +5,7 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../lib/logger.js";
+import { classifyError } from "../../lib/error-classifier.js";
 
 const log = createLogger("context-manager:retry");
 
@@ -74,16 +75,8 @@ export function resetCompactionRetry(): void {
 
 export function isTransientCompactionError(errorMessage: string | null | undefined): boolean {
 	if (!errorMessage) return false;
-
-	// Common transient error patterns
-	if (/\b529\b/.test(errorMessage)) return true; // Anthropic overloaded
-	if (/overloaded_error/i.test(errorMessage)) return true;
-	if (/server.*(overload|cluster.*load|high.*load|under.*high.*load)/i.test(errorMessage)) return true;
-	if (/rate.?limit|too.?many.?requests|429\b/i.test(errorMessage)) return true;
-	if (/\b5\d{2}\b.*server/i.test(errorMessage)) return true; // 5xx server errors
-	if (/\b503\b/.test(errorMessage)) return true; // Service unavailable
-
-	return false;
+	const classification = classifyError(errorMessage);
+	return classification.retryable;
 }
 
 export function triggerCompactionRetry(pi: ExtensionAPI, attempt: number, errorMessage: string): void {

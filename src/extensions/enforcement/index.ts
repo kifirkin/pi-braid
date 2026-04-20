@@ -45,6 +45,7 @@ import {
 import { checkComplexityMismatch, estimateComplexity, type ComplexityProbe } from "./handlers/probe-handler.js";
 import { recordBashDetails, recordToolCall, recordToolInput } from "./handlers/tool-tracker.js";
 import { analyzeMessage } from "./handlers/message-analysis.js";
+import { classifyError as classifyErrorLib } from "../../lib/error-classifier.js";
 import { checkRoutingMismatch, detectIntent, getRoutingHint, type TaskIntent } from "./handlers/routing-handler.js";
 import { analyzeWithJudge } from "./judge.js";
 import { NudgeManager } from "./nudge-manager.js";
@@ -947,9 +948,11 @@ Persist them now - this is the minimum-fidelity moment.`,
 	function _classifyRetryError(
 		errorMsg: string,
 	): "rate_limit" | "server_error" | "network" | "unknown" {
-		if (/rate.?limit|too many requests|429/i.test(errorMsg)) return "rate_limit";
-		if (/500|502|503|504|server.?error|internal.?error|service.?unavailable/i.test(errorMsg))
+		const classification = classifyErrorLib(errorMsg);
+		if (classification.category === "TRANSIENT") {
+			if (/429|rate.?limit/i.test(errorMsg)) return "rate_limit";
 			return "server_error";
+		}
 		if (/network|connection|fetch failed|socket|timeout|timed out/i.test(errorMsg)) return "network";
 		return "unknown";
 	}
