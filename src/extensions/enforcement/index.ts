@@ -34,6 +34,9 @@ import {
 	emitSignal,
 	getNextRecommendation,
 } from "../../lib/belief-policy-engine.js";
+import {
+	shouldAdvise as marsShouldAdvise,
+} from "../../lib/mars-reflector.js";
 import { checkComplexityMismatch, estimateComplexity, type ComplexityProbe } from "./handlers/probe-handler.js";
 import { recordBashDetails, recordToolCall, recordToolInput } from "./handlers/tool-tracker.js";
 import { checkRoutingMismatch, detectIntent, getRoutingHint, type TaskIntent } from "./handlers/routing-handler.js";
@@ -1029,6 +1032,12 @@ Persist them now - this is the minimum-fidelity moment.`,
 		const bpeRec = getNextRecommendation(ctx);
 		if (bpeRec) {
 			pi.sendMessage({ customType: "context", display: true, content: [{ type: "text", text: `[policy] ${bpeRec.message}` }] });
+		}
+
+		// MARS — get self-reflection advice
+		const marsAdvice = marsShouldAdvise(ctx);
+		if (marsAdvice) {
+			pi.sendMessage({ customType: "context", display: true, content: [{ type: "text", text: marsAdvice.message }] });
 		}
 	});
 }
