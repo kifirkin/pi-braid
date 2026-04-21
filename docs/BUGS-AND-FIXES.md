@@ -1,236 +1,217 @@
 # Bug Report & Fixes — pi-braid Integration Session
 
-## Session Context
 **Date**: 2026-04-21  
-**Task**: Execute INTEGRATION-PLAN.md + add structured logging  
-**Branch**: `integration/harness-merge` → merged into `cleanup/refactor`
+**Branch**: `integration/harness-merge` → merged into `cleanup/refactor`  
+**Commit**: `c82b42c`  
 
 ---
 
-## Bug 1: `add-logging.mjs` Script Corrupted Multi-line Imports
+## Session 1: INTEGRATION-PLAN.md Execution
 
-**Severity**: HIGH  
-**Status**: FIXED (manual repair)
+### Bug 1: `add-logging.mjs` Script Corrupted Multi-line Imports [HIGH]
 
-### Root Cause
-The automated script `scripts/add-logging.mjs` naively inserted `import { createLogger }` and `const log = createLogger(...)` after the first import line. For files with multi-line import blocks, this broke the import statement:
+**Status**: FIXED (manual repair)  
+**Files**: 6 files in `src/extensions/context-manager/handlers/` and `src/extensions/vision/index.ts`
 
+**Root Cause**: Script inserted `import { createLogger }` inside multi-line import blocks:
 ```typescript
-// BEFORE (valid):
 import {
-  log, getCmState,
-} from "./shared.js";
-
-// AFTER (broken by script):
-import {
-import { createLogger } from "../../../lib/logger.js";
-const log = createLogger("context-manager");
-  log, getCmState,
+import { createLogger } from "...";
+const log = createLogger("...");
+  log, getCmState,  // ← broken: now outside the import block
 } from "./shared.js";
 ```
 
-### Files Affected
-- `src/extensions/context-manager/handlers/compaction.ts`
-- `src/extensions/context-manager/handlers/events.ts`
-- `src/extensions/context-manager/handlers/navigation.ts`
-- `src/extensions/context-manager/handlers/rotation.ts`
-- `src/extensions/context-manager/handlers/tools.ts`
-- `src/extensions/vision/index.ts`
-
-### Fix Applied
-Manually repaired all 6 files by:
-1. Removing the incorrectly inserted `import { createLogger }` and `const log = ...` lines
-2. For handlers that import `log` from `./shared.js`, keeping that import
-3. For `vision/index.ts`, adding the logger import correctly at the top
-
-### Prevention
-- **Script deleted** (`scripts/add-logging.mjs` removed in commit)
-- Future import-injection scripts must use an AST parser (e.g., `@babel/parser`) instead of regex/line insertion
+**Fix**: Manually repaired. Script deleted.  
+**Prevention**: Use AST-based refactoring (`@babel/parser`) for any future import injection.
 
 ---
 
-## Bug 2: bash Tool Silent Output Truncation
+### Bug 2: Git Worktree State Confusion [MEDIUM]
 
-**Severity**: MEDIUM  
-**Status**: MITIGATED (awareness)
+**Status**: RESOLVED  
+**Root Cause**: INTEGRATION-PLAN.md described stale divergence (`cleanup` vs `harness` at 605a0f9). In reality `cleanup/refactor` HEAD=`4bbc54e` already contained harness content.
 
-### Observation
-Multiple bash commands in the session returned `(no output)` or empty results when they should have produced output. Examples:
-- `echo "test"` → worked fine
-- `diff -u ...` → sometimes `(no output)`
-- `grep -rn ...` → `(no output)` with exit code 1 (grep found no matches)
-
-### Root Cause
-The bash tool returns `(no output)` in two distinct cases:
-1. **Genuinely empty stdout** — command produced nothing
-2. **Output truncated by context limits** — tool result was pruned
-
-The agent sometimes cannot distinguish these cases, leading to false assumptions.
-
-### Fix / Mitigation
-- Always use `wc -l` or `head -N` to verify output exists
-- Use `echo "marker"` as a canary in compound commands
-- Prefer `read` tool for file inspection over `cat` via bash
+**Fix**: Verified with `git log --graph --all` before proceeding.  
+**Prevention**: Always verify merge-base and graph before any git merge work.
 
 ---
 
-## Bug 3: edit Tool Opaque Failures
+### Bug 3: bash Tool Silent Truncation [MEDIUM]
 
-**Severity**: MEDIUM  
-**Status**: WORKAROUND (manual retry)
+**Status**: MITIGATED  
+**Root Cause**: bash returns `(no output)` for both genuinely empty stdout AND truncated output. Agent cannot distinguish.
 
-### Observation
-Multiple edit tool calls failed silently or with unhelpful error messages. The agent had to retry edits with slightly different `oldText` patterns.
-
-### Root Cause
-The edit tool uses exact string matching. When:
-- Line endings differ (LF vs CRLF)
-- Whitespace is subtly different
-- The file was already modified by a prior edit
-
-…the match fails with no clear indication of *why*.
-
-### Fix / Mitigation
-- Use shorter `oldText` snippets (3-5 lines max) to reduce whitespace sensitivity
-- Always verify file state with `read` before `edit`
-- Consider using `write` for large structural changes instead of incremental edits
+**Mitigation**: Use `wc -l`, `head -N`, or echo markers in compound commands. Prefer `read` tool for file inspection.
 
 ---
 
-## Bug 4: think Tool Silent Failures
+### Bug 4: edit Tool Opaque Failures [MEDIUM]
 
-**Severity**: LOW  
-**Status**: COSMETIC
+**Status**: WORKAROUND  
+**Root Cause**: Exact string matching fails on subtle whitespace/line-ending differences. Error messages unhelpful.
 
-### Observation
-Error `err-mo8jy52h-vnoy` and others: "Tool failed: think" with no further detail.
-
-### Root Cause
-The `think` tool occasionally fails due to backend transient errors. The error provides no context about what went wrong.
-
-### Fix / Mitigation
-- think tool failures are non-blocking; the agent should continue
-- Consider adding retry logic around think calls in the framework
+**Mitigation**: Use shorter `oldText` snippets, verify with `read` before `edit`, prefer `write` for large changes.
 
 ---
 
-## Bug 5: Git Worktree State Confusion
+## Session 2: PDF + Visual Analysis Issues (from prior sessions)
 
-**Severity**: MEDIUM  
-**Status**: RESOLVED
+### Bug 5: `read_document` Returns Raw PDF Binary [CRITICAL]
 
-### Observation
-Initial analysis of git state was incorrect. The agent assumed `harness/implicit-budget` was ahead of `cleanup/refactor`, but the reverse was true — `cleanup/refactor` had already merged harness content.
+**Status**: FIXED in harness, needs porting  
+**File**: `src/extensions/docs/index.ts`
 
-### Root Cause
-The INTEGRATION-PLAN.md described a stale state (branches diverged at 605a0f9). In reality:
-- `cleanup/refactor` HEAD = `4bbc54e` (already has harness content)
-- `harness/implicit-budget` HEAD = `bab6841` (older)
-- Merge base = `605a0f9`
+**Root Cause**: `readPdf()` function tried `pdftotext` → `qlmanage -t` → `cupsfilter` fallback. `qlmanage -t` generates PNG thumbnails, not text. `cupsfilter` fallback sometimes outputs raw PDF binary. No binary validation before returning.
 
-The agent wasted several turns verifying this before proceeding.
+**Evidence** (from session log):
+```
+read_document
+%PDF-1.4
+%"лйб
+1 0 obj
+<</Title (Quantstamp Audit Launcher)...
+```
 
-### Fix / Mitigation
-- Always run `git log --oneline --graph --all` at the start of any git operation
-- Verify merge-base before assuming divergence direction
+**Fix Applied in Harness**: Rewrote `readPdf()` with:
+1. `isBinaryContent()` validation (null byte + control char ratio check)
+2. `pdftotext -layout` → stdout (no temp file)
+3. `strings -n 4` fallback (never returns binary)
+4. Clear error message when extraction fails
 
----
-
-## Bug 6: Extension Registration Pattern Inconsistency
-
-**Severity**: LOW  
-**Status**: FIXED
-
-### Observation
-The 6 new extensions were copied to `src/extensions/` but not registered in `src/index.ts`. The `SUB_EXTENSIONS` array was missing entries for:
-- analytics, feedback, latent-activator, rate-limiter, reasoning, watchdog
-
-### Fix
-Added imports and SUB_ENTRIES for all 6 extensions in `src/index.ts`.
+**Action**: Port harness fix to `cleanup/refactor`.
 
 ---
 
-## Bug 7: Logger Import Path Inconsistency
+### Bug 6: `browser_screenshot` Missing `filePath` in Result [CRITICAL]
 
-**Severity**: LOW  
-**Status**: FIXED
+**Status**: FIXED in harness  
+**File**: `src/extensions/browser/index.ts`
 
-### Observation
-Extensions at different directory depths use inconsistent relative paths to `lib/logger.js`:
-- Root extensions: `../../lib/logger.js`
-- Sub-handlers: `../../../lib/logger.js`
-- Some files use `taggedConsole`, others use `createLogger`
+**Root Cause**: Screenshot saved to disk but result object omitted `details.filePath`:
+```json
+{"success":true,"status":"success","details":{}}
+```
 
-### Fix
-No code change needed — this is by design. The import paths are correct relative to each file's location. However, the inconsistency in factory choice (`taggedConsole` vs `createLogger`) could be unified.
-
-### Recommendation
-Standardize on `createLogger` for all new extension code. `taggedConsole` is deprecated per `lib/logger.ts` comments.
+**Fix**: Ensure `details.filePath` is populated from `result.details.filePath`.
 
 ---
 
-## Tool Conceptual Issues (from session analysis)
+### Bug 7: `browser_eval` Non-Native Selector Syntax [HIGH]
 
-### Issue A: `read_document` vs `read_pdf_screenshot` Confusion
+**Status**: DOCUMENTATION ISSUE  
+**File**: `src/extensions/browser/index.ts`
 
-**Problem**: The agent documentation states `read_document` extracts text from PDFs, but `read_pdf_screenshot` renders PDF pages as images. In practice:
-- `read_document` on PDF → extracts text only (no layout, no images, no diagrams)
-- `read_pdf_screenshot` on PDF → renders as PNG → then `analyze_image` on PNG
+**Root Cause**: Agent used Playwright/jQuery selectors (`:has-text()`) in `browser_eval`. These don't work in native `document.querySelector()`.
 
-**Confusion**: When should the agent use each? The current heuristic seems to be:
-1. Try `read_document` first (faster, gets text)
-2. If text is garbled or PDF is image-based, use `read_pdf_screenshot` + `analyze_image`
-
-**Fix needed**: Add a decision tree to `read_document` or `read_pdf_screenshot` tool descriptions.
-
-### Issue B: `analyze_image` Expectations
-
-**Problem**: `analyze_image` returns structured analysis, but agents often expect it to "understand" the image the way a human would. The output is actually:
-- Domain detection (UI, game, document, etc.)
-- Structured measurements
-- Specific framework application
-
-**Confusion**: Agents call `analyze_image` expecting it to replace reading text, but it's designed for visual analysis (UI elements, sprites, layout).
-
-**Fix needed**: Clarify in tool description that `analyze_image` is for VISUAL analysis, not OCR. For text extraction from images/screenshots, use `read_document` or OCR tools.
-
-### Issue C: Session Search Reliability
-
-**Problem**: `session_search` returned no results for queries that should match (`pdf screenshot analyze image`).
-
-**Possible causes**:
-- Search index not populated for recent sessions
-- Search operates on limited fields (only user messages?)
-- Keyword matching is too strict
-
-**Fix needed**: Document search scope and limitations. Consider adding session path directly from error context.
+**Fix**: Not a code bug — agent misunderstanding. Add tool description clarification:
+> "browser_eval executes code in the browser's native JS environment. Use standard DOM APIs (document.querySelector, etc.). Playwright/jQuery pseudo-selectors like :has-text() are not available."
 
 ---
 
-## Summary of Changes in This Session
+### Bug 8: `web_fetch` Blocked by Cloudflare/Anti-Bot [CRITICAL]
 
-| Change | Files | Lines |
-|--------|-------|-------|
-| Added 6 new extensions | 6 dirs | +1986 |
-| Added enforcement files | 6 files | +~400 |
-| Updated vision, healthcheck | 2 files | +~200/-900 |
-| Added createLogger imports | ~50 files | +~150 |
-| Fixed corrupted imports | 6 files | -~30/+~30 |
-| Updated src/index.ts | 1 file | +~20 |
-| Removed add-logging.mjs | 1 file | -~120 |
-| **Total** | **~63 files** | **+2676/-721** |
+**Status**: FIXED in harness  
+**File**: `src/extensions/web-fetch/index.ts`
+
+**Root Cause**: Default `fetch` headers identify as bot. Sites like immunefi.com return 404.
+
+**Fix Applied**: Added realistic browser headers:
+```typescript
+headers: {
+  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)...",
+  "Accept": "text/html,application/xhtml+xml,...",
+  "Sec-Ch-Ua": '"Chromium";v="122",...',
+  // ...
+}
+```
+
+**Action**: Port harness fix to `cleanup/refactor`.
+
+---
+
+### Bug 9: `analyze_image` 400 Status Code [MEDIUM]
+
+**Status**: UPSTREAM / EXTERNAL  
+**Root Cause**: Vision API returned 400 with no body. Likely: image format issue, size limit, or temporary API failure.
+
+**Fix**: Not fixable in pi-braid. Add retry logic with exponential backoff in `analyze_image` tool wrapper. Document fallback: use `browser_snapshot` or `read_pdf_screenshot` for manual inspection.
+
+---
+
+### Bug 10: `browser_navigate` Silent Failures [HIGH]
+
+**Status**: FIXED in harness  
+**File**: `src/extensions/browser/index.ts`
+
+**Root Cause**: Navigation errors swallowed, returned `No result provided`.
+
+**Fix**: Wrapped in try-catch, returns structured error:
+```typescript
+return {
+  content: [{ type: "text", text: `Connection failed: ${errorMsg}` }],
+  details: { url, tabId, error: errorMsg },
+  isError: true
+};
+```
+
+---
+
+### Bug 11: `browser_cookies` Wrong CDP Command [LOW]
+
+**Status**: FIXED in harness  
+**File**: `src/extensions/browser/index.ts`
+
+**Root Cause**: Used `Page.getCookies` (wrong API) instead of `Network.getAllCookies`.
+
+**Fix**: Try `Network.getAllCookies` first, fallback to `Page.getCookies` with `{ urls: [] }`.
+
+---
+
+## Tool Conceptual Issues
+
+### Issue A: PDF Tool Decision Tree Unclear
+
+**Problem**: Agents don't know when to use `read_document` vs `read_pdf_screenshot` vs `analyze_image`.
+
+**Decision Tree** (should be in tool descriptions):
+1. **Text-heavy PDF** → `read_document` (extracts text, fastest)
+2. **Image-based / scanned PDF** → `read_pdf_screenshot` + `analyze_image` (page-by-page visual)
+3. **Mixed content with diagrams** → Both: `read_document` for text + `read_pdf_screenshot` for figures
+
+### Issue B: `analyze_image` vs OCR Confusion
+
+**Problem**: Agents call `analyze_image` expecting text extraction. It's for visual analysis (UI elements, layout, sprites).
+
+**Clarification**: Add to description:
+> "analyze_image performs visual analysis (UI elements, layout, sprites, design critique). For text extraction from images or screenshots, use read_document or OCR tools."
+
+### Issue C: `read_document` Tool Description Misleads
+
+**Current**: "Read text from various document formats (doc, docx, rtf, html, txt, pdf)."
+**Problem**: Doesn't mention image-based PDFs will fail.
+
+**Improved**: "Read text from document formats. For PDF: text-based PDFs work well; image-based/scanned PDFs require read_pdf_screenshot + analyze_image instead."
+
+---
+
+## Summary of Fixes to Port from Harness
+
+| Fix | File | Priority |
+|-----|------|----------|
+| PDF binary safety | `src/extensions/docs/index.ts` | P0 |
+| Screenshot filePath | `src/extensions/browser/index.ts` | P0 |
+| web_fetch headers | `src/extensions/web-fetch/index.ts` | P0 |
+| browser_navigate errors | `src/extensions/browser/index.ts` | P1 |
+| browser_cookies CDP | `src/extensions/browser/index.ts` | P2 |
+| Tool description clarity | Multiple | P1 |
 
 ---
 
 ## Recommendations
 
-1. **Add a pre-merge verification script** that checks for:
-   - All extensions registered in `src/index.ts`
-   - No `console.*` in extensions (use createLogger)
-   - Import paths are valid (no broken relative paths)
-
-2. **Standardize logging** across all extensions using `createLogger`
-
-3. **Improve tool documentation** for PDF/image workflows with clear decision trees
-
-4. **Add AST-based refactoring scripts** instead of regex-based ones
+1. **Port harness fixes** listed above into `cleanup/refactor`
+2. **Add regression test** for PDF binary pollution: create a test PDF, call read_document, assert output doesn't start with `%PDF`
+3. **Add tool decision tree** to AGENTS.md or tool descriptions
+4. **Add retry logic** to analyze_image for transient vision API failures
+5. **Delete `scripts/add-logging.mjs`** — done
