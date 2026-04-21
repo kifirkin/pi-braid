@@ -218,10 +218,44 @@ All fixes verified through regression tests (14 test suites passing):
 
 ---
 
+### Bug 12: Goal State Lost Between Tool Calls [CRITICAL]
+
+**Status**: FIXED  
+**File**: `src/lib/extension-state.ts`
+
+**Root Cause**: `getExtensionState()` used a `WeakMap<ExtensionContext, ...>` keyed on the `ctx` object reference. The framework recreates `ctx` on each tool call, so each call got a fresh state bucket. Goals created in one `goal create` call were invisible to a subsequent `goal complete` call because the GoalManager instance was orphaned.
+
+**Impact**: 
+- `goal create` appeared to work but goal vanished on next tool call
+- `goal complete` returned "not found" for recently created goals
+- No error was raised — silent state loss
+- Affected planner, enforcement, context-manager — any extension using getExtensionState
+
+**Fix**: Rewrote `extension-state.ts` with session-stable keys:
+1. Primary: `ctx.sessionManager.getSessionFile()` or `getSessionId()` — stable across entire session
+2. Fallback: `ctx.agentId` or `ctx.runId` — stable per agent run
+3. Last resort: WeakMap on ctx (legacy behavior for backwards compat)
+
+Added helper functions:
+- `hasExtensionState(ctx, key)` — check without creating
+- `clearExtensionState(ctx, key)` — cleanup for testing
+- `clearAllExtensionState(ctx)` — session teardown
+- `getActiveSessionKeys()` / `getActiveSessionCount()` — monitoring
+
+**Verification**: `test-goal-state-persistence.mjs` — 6/6 tests pass:
+- Same session manager → same state across ctx recreation
+- Goal creation + completion persists across tool calls
+- Different sessions → isolated state
+- Legacy fallback still works
+
+---
+
 ## Recommendations
 
 1. ✅ **Port harness fixes** — already present, verified with tests
 2. ✅ **Add regression test** for PDF binary pollution — done
-3. **Add tool decision tree** to AGENTS.md or tool descriptions
-4. **Add retry logic** to analyze_image for transient vision API failures
-5. ✅ **Delete `scripts/add-logging.mjs`** — done
+3. ✅ **Fix goal state persistence** — done (session-stable keys in extension-state.ts)
+4. **Add tool decision tree** to AGENTS.md — done
+5. **Add retry logic** to analyze_image — done
+6. ✅ **Delete `scripts/add-logging.mjs`** — done
+7. Monitor `getActiveSessionCount()` in long-running processes to catch memory leaks
