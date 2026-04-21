@@ -7,9 +7,9 @@
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { taggedConsole } from "./logger.js";
+import { createLogger } from "./logger.js";
 
-const _log = taggedConsole("async-storage");
+const _log = createLogger("async-storage");
 
 /** Pending writes to debounce */
 const pendingWrites = new Map<string, { data: unknown; timeout: NodeJS.Timeout }>();

@@ -21,9 +21,9 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileMutationQueue } from "./file-mutation-queue.js";
-import { taggedConsole } from "./logger.js";
+import { createLogger } from "./logger.js";
 
-const _log = taggedConsole("cognitive-memory");
+const _log = createLogger("cognitive-memory");
 
 // Unified memory categories
 export type CognitiveMemoryType =

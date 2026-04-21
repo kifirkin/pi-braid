@@ -11,9 +11,9 @@ import * as path from "node:path";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "./extension-state.js";
 import { saveStateImmediate } from "./async-storage.js";
-import { taggedConsole } from "./logger.js";
+import { createLogger } from "./logger.js";
 
-const _log = taggedConsole("degradation-detector");
+const _log = createLogger("degradation-detector");
 
 export interface PerformanceMetrics {
 	timestamp: number;

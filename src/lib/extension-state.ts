@@ -134,3 +134,23 @@ export function getActiveSessionKeys(): string[] {
 export function getActiveSessionCount(): number {
 	return _sessionState.size;
 }
+
+/**
+ * Register automatic session cleanup on the `session_end` event.
+ *
+ * Call this once during extension registration:
+ *   pi.on("session_end", registerSessionCleanup());
+ * Or simply import and call from your main extension.
+ */
+export function registerSessionCleanup(): (event: any, ctx: ExtensionContext) => void {
+	return (_event: any, ctx: ExtensionContext) => {
+		clearAllExtensionState(ctx);
+	};
+}
+
+/**
+ * Force-clear all state for all sessions. Nuclear option for tests.
+ */
+export function clearAllSessions(): void {
+	_sessionState.clear();
+}

@@ -15,11 +15,11 @@ import { fileURLToPath } from "node:url";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { taggedConsole } from "./lib/logger.js";
+import { createLogger } from "./lib/logger.js";
 
 // ── Root Logger ──────────────────────────────────────────────────────────────
 // Logger for the main extension loader - verbose debug only
-const _log = taggedConsole("pi-braid");
+const _log = createLogger("pi-braid");
 
 // Extension modules
 import polyfillExtension from "./extensions/polyfill/index.js";

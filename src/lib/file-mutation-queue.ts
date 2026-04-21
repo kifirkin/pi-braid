@@ -8,9 +8,9 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { taggedConsole } from "./logger.js";
+import { createLogger } from "./logger.js";
 
-const _log = taggedConsole("file-mutation-queue");
+const _log = createLogger("file-mutation-queue");
 
 export interface FileMutationQueueOptions {
 	/** TTL for dedup: coalesce writes within this window (ms). Default: 100 */

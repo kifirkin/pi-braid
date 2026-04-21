@@ -1,30 +1,35 @@
 /**
- * Logger - Centralized logging for pi-braid extensions
+ * Logger — Unified logging for pi-braid extensions
  *
- * Routes output appropriately:
- * - TUI mode: Uses ctx.ui.notify() for user-visible messages, console for verbose
- * - Non-TUI mode: Falls back to console.log/error/warn
- * - Supports log levels with configurable minimum
- * - Per-source and global suppression
+ * Respects the pi Extension API:
+ * - No ctx available (load time, lib code) → plain console
+ * - ctx available with UI (interactive mode) → ctx.ui.notify() for warn/error
+ * - ctx available without UI (RPC/print mode) → console only
  *
- * Usage:
- *   import { createLogger } from "../../lib/logger.js";
- *
+ * Usage in extensions:
  *   const log = createLogger("my-extension");
- *   log.info("Starting up...");
- *   log.warn("Something unexpected");
- *   log.error("Failed to load", error);
- *   log.debug("Internal state", { count: 42 });
  *
- * Or import the taggedConsole helper for drop-in console replacement:
- *   import { taggedConsole } from "../../lib/logger.js";
- *   const log = taggedConsole("my-ext");
- *   log.log("Debug info");  // Outputs: [my-ext] Debug info
+ *   export default function myExt(pi: ExtensionAPI): void {
+ *     pi.registerTool("myTool", {
+ *       async execute(toolCallId, params, signal, onUpdate, ctx) {
+ *         log.bindContext(ctx);
+ *         log.warn("Something unexpected"); // routes through TUI
+ *         log.info("Progress update");      // console + status bar
+ *       }
+ *     });
+ *   }
+ *
+ * Usage in lib/ (no ctx):
+ *   const log = createLogger("evidence-pool");
+ *   log.info("Pool initialized"); // console only
  */
 
-import type { ExtensionContext, ExtensionUIContext } from "@mariozechner/pi-coding-agent";
+import type {
+	ExtensionContext,
+	ExtensionUIContext,
+} from "@mariozechner/pi-coding-agent";
 
-// Types
+// ── Types ──────────────────────────────────────────────────────────────────
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -36,7 +41,20 @@ interface LogEntry {
 	data?: unknown;
 }
 
-// Module state
+export interface Logger {
+	/** Bind a context for this execution scope. Call at start of handler/tool. */
+	bindContext(ctx: ExtensionContext | undefined): void;
+	/** Unbind the current context. Call at end if you want strict scoping. */
+	unbindContext(): void;
+	/** Check if a context is currently bound. */
+	hasContext(): boolean;
+	debug(message: string, data?: unknown): void;
+	info(message: string, data?: unknown): void;
+	warn(message: string, data?: unknown): void;
+	error(message: string, data?: unknown): void;
+}
+
+// ── Module state ───────────────────────────────────────────────────────────
 
 const _LEVEL_PRIORITY: Record<LogLevel, number> = {
 	debug: 0,
@@ -46,336 +64,236 @@ const _LEVEL_PRIORITY: Record<LogLevel, number> = {
 };
 
 const _suppressedSources = new Set<string>();
+let _globalMinLevel: LogLevel = "debug";
 let _globallySuppressed = false;
 
-/** In-memory log buffer for debugging (last 100 entries) */
+/** In-memory log buffer for the current session (last 200 entries) */
 const _logBuffer: LogEntry[] = [];
-const MAX_BUFFER_SIZE = 100;
+const MAX_BUFFER_SIZE = 200;
 
-// Format helpers
+// ── Format helpers ─────────────────────────────────────────────────────────
 
 function formatLevel(level: LogLevel): string {
 	return level.toUpperCase().padEnd(5);
 }
 
-function formatSource(source: string): string {
-	return `[${source}]`;
+function formatTimestamp(ts: number): string {
+	const d = new Date(ts);
+	return d.toISOString().slice(11, 23); // HH:mm:ss.mmm
 }
 
-function formatMessage(entry: LogEntry): string {
-	let msg = `${formatLevel(entry.level)} ${formatSource(entry.source)} ${entry.message}`;
-	if (entry.data !== undefined && entry.data !== null) {
-		if (entry.data instanceof Error) {
-			msg += ` ${entry.data.message}`;
-			if (entry.data.stack) {
-				msg += ` ${entry.data.stack.split("\n").slice(1).join(" ")}`;
-			}
-		} else if (typeof entry.data === "object") {
-			try {
-				msg += ` ${JSON.stringify(entry.data)}`;
-			} catch {
-				msg += ` [unstringifiable: ${typeof entry.data}]`;
-			}
-		} else {
-			msg += ` ${String(entry.data)}`;
+function formatData(data: unknown): string {
+	if (data === undefined || data === null) return "";
+	if (data instanceof Error) {
+		let s = ` ${data.message}`;
+		if (data.stack) s += ` | ${data.stack.split("\n").slice(1, 3).join(" | ")}`;
+		return s;
+	}
+	if (typeof data === "object") {
+		try {
+			const json = JSON.stringify(data);
+			return json.length > 200 ? ` ${json.slice(0, 197)}...` : ` ${json}`;
+		} catch {
+			return " [unstringifiable]";
 		}
 	}
-	return msg;
+	return ` ${String(data)}`;
 }
 
-/** Buffer entry for later retrieval */
-function bufferEntry(entry: LogEntry): void {
+function formatConsole(entry: LogEntry): string {
+	const ts = formatTimestamp(entry.timestamp);
+	return `${ts} ${formatLevel(entry.level)} [${entry.source}] ${entry.message}${formatData(entry.data)}`;
+}
+
+function formatNotify(entry: LogEntry): string {
+	return `[${entry.source}] ${entry.message}${formatData(entry.data)}`;
+}
+
+// ── Core sink ──────────────────────────────────────────────────────────────
+
+function writeToConsole(entry: LogEntry): void {
+	const line = formatConsole(entry);
+	switch (entry.level) {
+		case "debug":
+			console.debug(line);
+			break;
+		case "info":
+			console.info(line);
+			break;
+		case "warn":
+			console.warn(line);
+			break;
+		case "error":
+			console.error(line);
+			break;
+	}
+}
+
+function writeToUI(ui: ExtensionUIContext, entry: LogEntry): void {
+	const msg = formatNotify(entry);
+	switch (entry.level) {
+		case "debug":
+			// Debug goes to console only, not TUI
+			break;
+		case "info":
+			// Info sets status but doesn't notify (too noisy)
+			ui.setStatus?.(entry.source, msg);
+			break;
+		case "warn":
+			ui.notify(msg, "warning");
+			break;
+		case "error":
+			ui.notify(msg, "error");
+			break;
+	}
+}
+
+function addToBuffer(entry: LogEntry): void {
 	_logBuffer.push(entry);
 	if (_logBuffer.length > MAX_BUFFER_SIZE) {
 		_logBuffer.shift();
 	}
 }
 
-// Routing configuration
+// ── Logger factory ─────────────────────────────────────────────────────────
 
-/**
- * TUI log routing behavior.
- * Controls how different log levels are displayed in TUI mode.
- */
-export type TUIRouteMode = "all" | "alerts-only" | "silent";
+class LoggerImpl implements Logger {
+	private _source: string;
+	private _ctxStack: (ExtensionContext | undefined)[] = [];
 
-interface LoggerConfig {
-	/** Minimum log level to output (default: "info") */
-	minLevel: LogLevel;
-	/** How to route output in TUI mode (default: "alerts-only") */
-	tuiRoute: TUIRouteMode;
-	/** Suppress console.log in TUI mode even for info/debug (default: false) */
-	suppressTUIConsole: boolean;
-}
-
-const _defaultConfig: LoggerConfig = {
-	minLevel: "info",
-	tuiRoute: "alerts-only",
-	suppressTUIConsole: false,
-};
-
-let _globalConfig: LoggerConfig = { ..._defaultConfig };
-
-// Core logger class
-
-export class Logger {
-	private readonly source: string;
-	private readonly _config: LoggerConfig;
-	private readonly _ctx: ExtensionContext | undefined;
-	private readonly _ui: ExtensionUIContext | undefined;
-
-	constructor(
-		source: string,
-		minLevel: LogLevel = "info",
-		ctx?: ExtensionContext,
-		config?: Partial<LoggerConfig>,
-	) {
-		this.source = source;
-		this._config = { ..._defaultConfig, ..._globalConfig, ...config, minLevel };
-		this._ctx = ctx;
-		this._ui = ctx?.ui;
+	constructor(source: string) {
+		this._source = source;
 	}
 
-	/** Create a child logger with a combined source name */
-	child(suffix: string): Logger {
-		return new Logger(`${this.source}:${suffix}`, this._config.minLevel, this._ctx, this._config);
+	bindContext(ctx: ExtensionContext | undefined): void {
+		this._ctxStack.push(ctx);
 	}
 
-	/** Set minimum log level dynamically */
-	withLevel(level: LogLevel): Logger {
-		return new Logger(this.source, level, this._ctx, this._config);
+	unbindContext(): void {
+		this._ctxStack.pop();
 	}
 
-	/** Route output to a specific TUI mode */
-	withTUIRoute(mode: TUIRouteMode): Logger {
-		return new Logger(this.source, this._config.minLevel, this._ctx, {
-			...this._config,
-			tuiRoute: mode,
-		});
+	hasContext(): boolean {
+		return this._ctxStack.length > 0 && this._ctxStack[this._ctxStack.length - 1] !== undefined;
 	}
 
-	/** Suppress console output in TUI mode */
-	withSuppressConsole(suppress: boolean): Logger {
-		return new Logger(this.source, this._config.minLevel, this._ctx, {
-			...this._config,
-			suppressTUIConsole: suppress,
-		});
+	private _currentCtx(): ExtensionContext | undefined {
+		if (this._ctxStack.length === 0) return undefined;
+		return this._ctxStack[this._ctxStack.length - 1];
 	}
 
-	private shouldLog(level: LogLevel): boolean {
+	private _shouldLog(level: LogLevel): boolean {
 		if (_globallySuppressed) return false;
-		if (_suppressedSources.has(this.source)) return false;
-		return _LEVEL_PRIORITY[level] >= _LEVEL_PRIORITY[this._config.minLevel];
+		if (_suppressedSources.has(this._source)) return false;
+		if (_LEVEL_PRIORITY[level] < _LEVEL_PRIORITY[_globalMinLevel]) return false;
+		return true;
 	}
 
-	private log(level: LogLevel, message: string, data?: unknown): void {
-		if (!this.shouldLog(level)) return;
+	private _emit(level: LogLevel, message: string, data?: unknown): void {
+		if (!this._shouldLog(level)) return;
 
 		const entry: LogEntry = {
 			timestamp: Date.now(),
 			level,
-			source: this.source,
+			source: this._source,
 			message,
 			data,
 		};
 
+		addToBuffer(entry);
+		writeToConsole(entry);
 
-		bufferEntry(entry);
-
-		// Route to appropriate destination based on context
-		this.routeToDestination(entry);
-	}
-
-	private routeToDestination(entry: LogEntry): void {
-		const { level, message } = entry;
-		const hasUI = this._ctx?.hasUI ?? false;
-		const routeMode = this._config.tuiRoute;
-		const suppressConsole = this._config.suppressTUIConsole;
-
-		// Build the formatted message once
-		const formatted = formatMessage(entry);
-
-		if (hasUI) {
-			// TUI mode
-			if (routeMode === "silent") {
-				// No output at all - just buffer
-				return;
-			}
-
-
-			if (routeMode === "alerts-only") {
-				// Only notify for warnings/errors, console for info/debug
-				if (level === "error") {
-					this._ui?.notify(message, "error");
-				} else if (level === "warn") {
-					this._ui?.notify(message, "warning");
-				} else if (!suppressConsole) {
-					// Info/debug goes to console (for debugging)
-					this.emitToConsole(entry, formatted);
-				}
-				return;
-			}
-
-			// routeMode === "all" - everything goes to console
-			if (!suppressConsole) {
-				this.emitToConsole(entry, formatted);
-			}
-		} else {
-			// Non-TUI mode: always use console
-			this.emitToConsole(entry, formatted);
-		}
-	}
-
-	private emitToConsole(entry: LogEntry, formatted: string): void {
-		switch (entry.level) {
-			case "debug":
-				console.debug(formatted);
-				break;
-			case "info":
-				console.info(formatted);
-				break;
-			case "warn":
-				console.warn(formatted);
-			break;
-			case "error":
-				console.error(formatted);
-				break;
+		const ctx = this._currentCtx();
+		if (ctx?.hasUI && ctx.ui) {
+			writeToUI(ctx.ui, entry);
 		}
 	}
 
 	debug(message: string, data?: unknown): void {
-		this.log("debug", message, data);
+		this._emit("debug", message, data);
 	}
 
 	info(message: string, data?: unknown): void {
-		this.log("info", message, data);
+		this._emit("info", message, data);
 	}
 
 	warn(message: string, data?: unknown): void {
-		this.log("warn", message, data);
+		this._emit("warn", message, data);
 	}
 
 	error(message: string, data?: unknown): void {
-		this.log("error", message, data);
-	}
-
-	/** Log with explicit level (useful for dynamic levels) */
-	logAt(level: LogLevel, message: string, data?: unknown): void {
-		this.log(level, message, data);
+		this._emit("error", message, data);
 	}
 }
 
-// Factory
+// ── Public API ─────────────────────────────────────────────────────────────
+
+const _loggers = new Map<string, Logger>();
 
 /**
- * Create a logger for a given source name.
+ * Create (or retrieve) a named logger.
  *
- * @param source - Identifier for the logging extension/module
- * @param ctx - Extension context (optional, enables TUI-aware logging)
- * @param minLevel - Minimum log level (default: "info")
+ * Loggers are cached by name — calling createLogger("foo") twice returns the
+ * same instance. This lets lib/ code and extension code share a logger.
  */
-export function createLogger(
-	source: string,
-	ctx?: ExtensionContext,
-	minLevel: LogLevel = "info",
-): Logger {
-	return new Logger(source, minLevel, ctx);
-}
-
-// Global configuration
-
-/** Set global logger configuration */
-export function setLoggerConfig(config: Partial<LoggerConfig>): void {
-	_globalConfig = { ..._globalConfig, ...config };
-}
-
-/** Reset global config to defaults */
-export function resetLoggerConfig(): void {
-	_globalConfig = { ..._defaultConfig };
-}
-
-/** Suppress logging for a specific source (or all if no source provided) */
-export function suppressLogger(source?: string): void {
-	if (source) {
-		_suppressedSources.add(source);
-	} else {
-		_globallySuppressed = true;
+export function createLogger(source: string): Logger {
+	if (!_loggers.has(source)) {
+		_loggers.set(source, new LoggerImpl(source));
 	}
+	return _loggers.get(source)!;
 }
 
-/** Restore logging for a specific source (or all if no source provided) */
-export function restoreLogger(source?: string): void {
-	if (source) {
-		_suppressedSources.delete(source);
-	} else {
-		_globallySuppressed = false;
-	}
+/** Suppress a specific source (e.g. during tests). */
+export function suppressLogger(source: string): void {
+	_suppressedSources.add(source);
 }
 
-/** Get recent log entries for debugging */
-export function getLogBuffer(limit = 50): LogEntry[] {
-	return _logBuffer.slice(-limit);
+/** Unsuppress a previously suppressed source. */
+export function unsuppressLogger(source: string): void {
+	_suppressedSources.delete(source);
 }
 
-/** Clear the log buffer */
+/** Suppress ALL loggers. */
+export function suppressAllLoggers(): void {
+	_globallySuppressed = true;
+}
+
+/** Unsuppress all loggers. */
+export function unsuppressAllLoggers(): void {
+	_globallySuppressed = false;
+}
+
+/** Set the minimum log level globally. */
+export function setGlobalLogLevel(level: LogLevel): void {
+	_globalMinLevel = level;
+}
+
+/** Get the in-memory log buffer (for debugging / crash reports). */
+export function getLogBuffer(): readonly LogEntry[] {
+	return _logBuffer;
+}
+
+/** Clear the in-memory log buffer. */
 export function clearLogBuffer(): void {
 	_logBuffer.length = 0;
 }
 
-/**
- * Helper to wrap console.log/error/warn with source tagging.
- * Use this as a drop-in replacement for console in extensions.
- *
- * Returns an object with console-like methods that add [source] prefix.
- * Note: This bypasses TUI routing - use createLogger() for TUI-aware logging.
- * This is mainly for verbose debug output that should always go to console.
- */
-export interface TaggedConsole {
-	log: (...args: unknown[]) => void;
-	error: (...args: unknown[]) => void;
-	warn: (...args: unknown[]) => void;
-	info: (...args: unknown[]) => void;
-	debug: (...args: unknown[]) => void;
-	assert: (condition?: boolean, ...data: unknown[]) => void;
-	clear: () => void;
-	count: (label?: string) => void;
-	countReset: (label?: string) => void;
-	dir: (obj: unknown, options?: unknown) => void;
-	dirxml: (obj: unknown) => void;
-	group: (...label: unknown[]) => void;
-	groupEnd: () => void;
-	groupCollapsed: (...label: unknown[]) => void;
-	table: (tabularData: unknown) => void;
-	time: (label?: string) => void;
-	timeEnd: (label?: string) => void;
-	timeLog: (label?: string, ...data: unknown[]) => void;
-	trace: (...data: unknown[]) => void;
+/** Get formatted log buffer as string (for crash reports). */
+export function formatLogBuffer(): string {
+	return _logBuffer.map(formatConsole).join("\n");
 }
 
-export function taggedConsole(source: string): TaggedConsole {
-	const prefix = formatSource(source);
-	return {
-		log: (...args: unknown[]) => console.log(prefix, ...args),
-		error: (...args: unknown[]) => console.error(prefix, ...args),
-		warn: (...args: unknown[]) => console.warn(prefix, ...args),
-		info: (...args: unknown[]) => console.info(prefix, ...args),
-		debug: (...args: unknown[]) => console.debug(prefix, ...args),
-		assert: console.assert.bind(console),
-		clear: console.clear.bind(console),
-		count: console.count.bind(console),
-		countReset: console.countReset.bind(console),
-		dir: console.dir.bind(console),
-		dirxml: console.dirxml.bind(console),
-		group: console.group.bind(console),
-		groupEnd: console.groupEnd.bind(console),
-		groupCollapsed: console.groupCollapsed.bind(console),
-		table: console.table.bind(console),
-		time: console.time.bind(console),
-		timeEnd: console.timeEnd.bind(console),
-		timeLog: console.timeLog.bind(console),
-		trace: console.trace.bind(console),
-	};
+/** Get all active logger source names. */
+export function getActiveLoggerSources(): string[] {
+	return Array.from(_loggers.keys());
 }
 
-/** @deprecated Use createLogger() for TUI-aware logging. taggedConsole() is for verbose debug only. */
-export { taggedConsole as consoleTagged }
+// ── Backwards compatibility ────────────────────────────────────────────────
+// taggedConsole was a quick-and-dirty console wrapper. Removed in favor of
+// the proper Logger interface above. If you have code using taggedConsole,
+// replace:
+//   import { taggedConsole } from "../../lib/logger.js";
+//   const log = taggedConsole("source");
+// With:
+//   import { createLogger } from "../../lib/logger.js";
+//   const log = createLogger("source");
