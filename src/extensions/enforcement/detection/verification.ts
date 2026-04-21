@@ -19,9 +19,9 @@ export function detectMissingVerification(_pi: never, currentTurn: number): void
 	// If there were code changes but no bash command within threshold turns, nudge
 	if (pendingCodeChanges && turnsSinceCodeChange >= VERIFICATION_REMINDER_THRESHOLD) {
 		queueEnforcementWhisper(
-			"VERIFICATION MISSING: You modified code but haven't verified the changes work. " +
+			"You modified code but haven't verified it works. " +
 				"Run tests or commands to confirm your implementation is correct.\n\n" +
-				"IMPORTANT: Always verify code changes before declaring the task complete.",
+				"You verify code changes before declaring the task complete.",
 		);
 		pendingCodeChanges = false; // Only remind once per change session
 	}

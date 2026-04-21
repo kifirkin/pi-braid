@@ -1,21 +1,43 @@
 ---
 name: compliance-audit
-description: "Use when improving prompts, system instructions, or any text that guides LLM behavior. Identifies compliance theater patterns (MUST/ALWAYS/NEVER/CRITICAL/REQUIRED) and converts them to identity framing. Use when user mentions: compliance theater, prompt improvement, identity framing, behavioral framing, system prompt optimization, prompt engineering, MUST removal, directive reduction."
+description: "Use when improving prompts, system instructions, or any text that guides LLM behavior. Identifies compliance theater patterns (MUST/ALWAYS/NEVER/CRITICAL/REQUIRED) and converts them to identity framing. Triggers on: compliance theater, prompt improvement, identity framing, behavioral framing, system prompt optimization, MUST removal, directive reduction, any text with MUST/ALWAYS/NEVER/REQUIRED/CRITICAL/MANDATORY."
 ---
 
 # Compliance Audit
 
-You identify and eliminate compliance theater from prompts, system instructions, and any text that guides LLM behavior. You replace explicit behavioral directives with identity framing, based on research showing identity acts as a behavioral filter that channels directives toward task-relevant action.
+You identify and eliminate compliance theater from prompts, system instructions, skill files, and any text that guides LLM behavior. You replace explicit behavioral directives with identity framing, based on research showing identity acts as a behavioral filter that channels directives toward task-relevant action.
 
-## When to Use
+## When to Use — Concrete Triggers
 
-- User asks to improve a prompt or system instruction
-- User mentions compliance theater, identity framing, or behavioral framing
-- User wants to remove MUST/ALWAYS/NEVER/CRITICAL/REQUIRED from prompts
-- User is designing system prompts for LLM agents
-- User asks about prompt engineering best practices
-- User wants to A/B test prompt variations for research
-- User wants natural, human-sounding output without AI artifacts
+Activate this skill when any of these patterns appear:
+
+### Explicit Triggers (immediate activation)
+- User mentions: compliance theater, identity framing, behavioral framing, MUST removal, directive reduction
+- User says: "improve this prompt", "clean up these instructions", "make this less directive"
+- You see ANY of these in prompts, system instructions, skill files, or tool descriptions:
+  - `MUST`, `ALWAYS`, `NEVER`, `REQUIRED`, `CRITICAL`, `MANDATORY`
+  - `Do NOT`, `VERIFICATION REQUIRED`, `MUST CALL`
+  - `"ruled by"`, `"governed by"`, `"expected to"`, `"required to"` in identity-adjacent context
+
+### Contextual Triggers (evaluate, then activate)
+- Writing or editing enforcement handlers (messages must guide, not command)
+- Drafting feedback or nudge messages
+- Designing skill file instructions
+- Building tool descriptions for pi coding agent
+- Any task whose goal is "make the agent sound more natural" or "reduce directive tone"
+
+### Meta Triggers (research / investigation)
+- Auditing pi-braid extensions or other codebase for prompt quality
+- Running prompt comparison benchmarks
+- Designing A/B test for behavioral vs identity framing
+- Writing research documentation about agent communication
+
+## What This Skill Does
+
+1. **Scans** text for compliance theater markers (MUST/ALWAYS/NEVER/CRITICAL/REQUIRED + behavioral framing disguised as identity)
+2. **Classifies** each marker: task-relevant behavior, compliance ritual, or safety guardrail
+3. **Converts** directives to identity framing (or preserves safety guardrails)
+4. **Reports** findings with before/after table and A/B test suggestions
 
 ## Research Foundation
 
@@ -28,7 +50,7 @@ Research on implicit framing reveals an interaction effect:
 | **Implicit** (no explicit directives) | 75% solve, 0% compliance theater | 75% solve, 73% compliance theater |
 | **Explicit** (with explicit directives) | 79% solve, 95% compliance theater | 62% solve, 100% compliance theater |
 
-**Key insight**: Identity framing acts as a behavioral filter. When identity is present, explicit directives still produce task-relevant behavior (95% compliance ratio). Without identity, explicit directives纯粹 produce compliance theater - performative adherence rather than task completion.
+**Key insight**: Identity framing acts as a behavioral filter. When identity is present, explicit directives still produce task-relevant behavior. Without identity, explicit directives purely produce compliance theater — performative adherence rather than task completion.
 
 ### The Behavioral Filter Mechanism
 
@@ -36,13 +58,13 @@ Identity words like "meticulous", "rigorous", "careful" create a filter that sel
 
 ### What This Means for Prompts
 
-Explicit directives ("You MUST do X") trigger compliance theater - the model demonstrates adherence rather than solving the problem. Identity statements ("You are meticulous") let the model filter for task-relevant behavior.
+Explicit directives ("You MUST do X") trigger compliance theater — the model demonstrates adherence rather than solving the problem. Identity statements ("You are meticulous") let the model filter for task-relevant behavior.
 
 ## The Audit Process
 
 ### Step 1: Scan for Compliance Theater Markers
 
-Search for these patterns in prompts, system instructions, skill files, and any text that guides LLM behavior:
+Search for these patterns in any text that guides LLM behavior:
 
 | Marker | Example | Problem |
 |---|---|---|
@@ -55,7 +77,7 @@ Search for these patterns in prompts, system instructions, skill files, and any 
 | **Do NOT** | "Do NOT just describe what you would do" | Prohibition pattern |
 | **VERIFICATION REQUIRED** | "VERIFICATION REQUIRED before finalize" | Combined urgency + deontic |
 
-Also scan for **behavioral framing** disguised as identity:
+Also scan for **behavioral framing disguised as identity**:
 
 | Pattern | Example | Problem |
 |---|---|---|
@@ -73,7 +95,7 @@ For each marker found, determine:
 - **Context**: Where does it appear? System prompt, enforcement message, skill file, tool description?
 - **Conversion difficulty**: Can it be directly converted to identity, or does it need restructuring?
 
-**Safety guardrails** (preventing harm, data loss, security issues) may legitimately need explicit framing. Use judgment - don't weaken "Never delete production databases" into "You avoid deleting production databases."
+**Safety guardrails** (preventing harm, data loss, security issues) may legitimately need explicit framing. Use judgment — don't weaken "Never delete production databases" into "You avoid deleting production databases."
 
 ### Step 3: Convert to Identity Framing
 
@@ -83,13 +105,13 @@ Apply these transformation rules:
 
 | Before (Behavioral) | After (Identity) | Pattern |
 |---|---|---|
-| "You MUST use tools to perform work" | "You work through tools - reach for them" | Must → identity verb |
+| "You MUST use tools to perform work" | "You work through tools — reach for them" | Must → identity verb |
 | "You MUST explore before making changes" | "You explore before making changes" | Must → you [verb] |
 | "You ALWAYS verify before claiming done" | "You verify before claiming done" | Drop ALWAYS |
 | "You NEVER skip tests" | "You don't skip tests" | NEVER → don't |
 | "CRITICAL: Call think() first" | "You think before you change" | CRITICAL → identity |
 | "think() → edit() is REQUIRED" | "You think before you change: think() → edit()" | REQUIRED → identity flow |
-| "Do NOT just describe what you would do" | "You don't describe what you would do - you do it" | Do NOT → don't |
+| "Do NOT just describe what you would do" | "You don't describe what you would do — you do it" | Do NOT → don't |
 | "VERIFICATION REQUIRED before finalize" | "You verify before finalizing" | VERIFICATION REQUIRED → you verify |
 | "You ruled by following guidelines" | "Your guidelines shape how you work" | External control → self-directed |
 
@@ -99,7 +121,7 @@ Apply these transformation rules:
 |---|---|---|
 | "Use read to examine files" | "You examine files before editing" | Use → You [verb] |
 | "Prefer grep/find over bash" | "You reach for grep/find/ls first for exploration" | Prefer → You reach for |
-| "Use edit for precise changes" | "You make precise changes - old text matches exactly" | Use → You make |
+| "Use edit for precise changes" | "You make precise changes — old text matches exactly" | Use → You make |
 | "Use write only for new files" | "You write new files or complete rewrites" | Use → You write |
 | "Store important learnings" | "You store important learnings in memory" | Imperative → You [verb] |
 
@@ -148,7 +170,7 @@ Produce a structured audit report:
 
 | File | Before | After | Pattern |
 |------|--------|-------|---------|
-| system-prompt.ts | "You MUST use tools" | "You work through tools" | Must → identity |
+| enforcement/prompts.ts | "You MUST use tools" | "You work through tools" | Must → identity |
 
 ## Safety Guardrails Kept
 - [List any explicit directives intentionally preserved]
@@ -157,38 +179,42 @@ Produce a structured audit report:
 - [Suggest prompt variants for testing]
 ```
 
-## Skill Files as Audit Targets
+## Skill Differentiation
 
-When auditing pi coding agent specifically, check these files:
+This skill overlaps with two others. Here is how to decide:
 
-| Priority | File | Typical Marker Count |
-|----------|------|---------------------|
-| Critical | `system-prompt.ts` | Tool guidelines, default guidelines |
-| Critical | `enforcement/index.ts` | Silent turn warnings, tool chain warnings |
-| Critical | `enforcement/handlers/blocking.ts` | Block messages, reason strings |
-| Critical | `enforcement/validation.ts` | Validation failure messages |
-| Critical | `enforcement/prompts.ts` | Pre-turn, enforcement rules |
-| High | `feedback/index.ts` | Feedback messages |
-| High | `enforcement/judge-prompt.ts` | Judge evaluation rules |
-| Medium | `skills/*/SKILL.md` | Skill instructions |
+| Situation | Skill to Use |
+|-----------|-------------|
+| Text has MUST/ALWAYS/NEVER/CRITICAL | **compliance-audit** |
+| Text has "Great question!", signposting, filler phrases | **humanizer** |
+| Text makes confident claims without sources | **epistemic-hygiene** |
+| Text has directive tone AND AI artifacts | compliance-audit first, then humanizer |
+| Text has directive tone AND confident unsupported claims | compliance-audit first, then epistemic-hygiene |
+| Drafting software output (reviews, responses) | software-engineer's natural voice section |
 
-## A/B Testing (Quick Reference)
+**Rule of thumb**: If the problem is *what the agent is told to do*, use compliance-audit. If the problem is *how the agent sounds*, use humanizer. If the problem is *whether the agent's knowledge claims are warranted*, use epistemic-hygiene.
 
-Control vs Treatment: behavioral framing (MUST/ALWAYS) vs identity framing ("You [verb]").
-Run via `pi --system-prompt-addition`. Metrics: completion rate, token usage, compliance ratio.
-Use Fisher's exact test for small samples.
+## Pi-Braid Audit Targets
 
-## Additional Practices
+When auditing pi-braid extensions specifically, check these files in priority order:
 
-Compliance framing is one axis of prompt quality. Another is **output style** - avoiding the statistical fingerprints LLMs leave in their responses. Good prompts guide both *what* the agent does and *how* it communicates:
+| Priority | File | Typical Issues |
+|----------|------|----------------|
+| Critical | `src/extensions/enforcement/prompts.ts` | Silent turn warnings, tool chain warnings |
+| Critical | `src/extensions/enforcement/handlers/*.ts` | Block messages, reason strings |
+| Critical | `src/extensions/enforcement/whisper.ts` | Compliance theater in nudge messages |
+| Critical | `src/extensions/enforcement/validation.ts` | Validation failure messages |
+| High | `src/extensions/feedback/index.ts` | Feedback messages |
+| High | `src/extensions/enforcement/judge-prompt.ts` | Judge evaluation rules |
+| Medium | `src/extensions/*/SKILL.md` | Skill instructions |
+| Low | `src/system-prompt.ts` | Default guidelines |
 
-- **Signposting**: Avoid "Let's dive in", "Here's what I found" - start directly with content
-- **Filler phrases**: Replace "In order to" → "To", "Due to the fact that" → "Because"
-- **Chatbot artifacts**: No "Great question!", "I hope this helps!", "Certainly!"
-- **Inflated language**: Keep significance in proportion - avoid "pivotal moment", "vital role"
-- **Generic conclusions**: No "The future looks bright" - end with the actual point
+## When NOT to Use
 
-Apply identity framing to behavioral guidelines, and natural voice principles to communication style. Together they produce output that sounds like a person thinking, not a model sampling.
+- **Safety-critical systems**: "Never delete production databases" should stay explicit — safety guardrails are infrastructure, not prompts
+- **Legal/compliance requirements**: Regulatory text, audit requirements
+- **Infrastructure-level blocks**: Messages from enforcement handlers that the user never sees may not need conversion (but their reason strings should still be audited)
+- **Quick code-fix tasks**: If the user just wants a bug fixed, don't audit unless asked
 
 ## Common Mistakes
 

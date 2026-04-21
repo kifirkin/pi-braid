@@ -1,11 +1,13 @@
 ---
 name: pi-reference
-description: "Use when asking about pi capabilities, configuration, customization, or how to extend pi. Covers: SDK, extensions, skills, themes, TUI, keybindings, models, providers, prompts, RPC mode, session management, settings, CLI usage, internal architecture, or anything about how pi works under the hood. Also use when wanting to create custom tools, extend pi's behavior, or build self-improving extensions."
+description: "Use when asking about pi capabilities, configuration, customization, or extending pi. Covers SDK, extensions, skills, themes, TUI, keybindings, models, providers, prompts, RPC mode, session management, settings, CLI, and internal architecture. Also use when creating custom tools or building self-improving extensions."
 ---
 
 # Pi Reference
 
 Complete reference for pi's architecture, configuration, and internals.
+
+---
 
 ## How to Find Docs
 
@@ -57,6 +59,8 @@ Complete reference for pi's architecture, configuration, and internals.
 | Variable | Purpose |
 |----------|---------|
 | `PI_CODING_AGENT_DIR` | Override agent directory (default: `~/.pi/agent`) |
+
+---
 
 ## Process
 

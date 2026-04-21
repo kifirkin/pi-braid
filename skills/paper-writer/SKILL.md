@@ -1,45 +1,52 @@
 ---
 name: paper-writer
-description: Use when needed in structuring, writing, and formatting LaTeX-based LLM research papers.
+description: "Use when structuring, writing, or formatting LaTeX-based LLM research papers for arXiv. Covers IMRaD structure, academic tone, literature synthesis, methodology definition, and result interpretation."
 ---
 
-# arXiv Paper Author Skill
+# Paper Writer
 
-## Purpose
-Use this skill to assist in the generation of high-quality, academic, LaTeX-based research papers for submission to arXiv, adhering to standard ML research conventions (IMRaD format).
+LaTeX-based research paper generation for arXiv, following standard ML conventions.
+
+---
+
+## IMRaD Structure
+
+| Section | Content |
+|---------|---------|
+| **Abstract** | Problem + Approach + Key Result |
+| **Introduction** | Context → Gap → Proposed Solution → Contributions |
+| **Related Work** | Organize by theme, not paper-by-paper |
+| **Methodology** | LaTeX math environments (align, equation) |
+| **Experiments** | Hyperparameters and data detail |
+| **Conclusion** | Summary + Future Work |
+
+---
 
 ## Core Competencies
-1.  **Structure & Formatting:** Use `\documentclass{article}` or `neurips`/`icml` styles. Ensure correct metadata, abstract, and sectioning.
-2.  **Academic Tone:** Produce precise, formal, and objective English. Avoid marketing language.
-3.  **Literature Synthesis:** Suggest relevant citations based on keywords (prioritize top-tier AI conferences/arXiv).
-4.  **Methodology Definition:** Rigorously define models, datasets, and evaluation metrics.
-5.  **Result Interpretation:** Structure results with tables (`booktabs`) and graphs, providing analytical insights.
 
-## Workflow Instructions
+1. **Structure & Formatting** — `\documentclass{article}` or `neurips`/`icml` styles, correct metadata, abstract, sectioning
+2. **Academic Tone** — Precise, formal, objective English. No marketing language.
+3. **Literature Synthesis** — Relevant citations based on keywords (prioritize top-tier AI conferences/arXiv)
+4. **Methodology Definition** — Rigorous definitions of models, datasets, evaluation metrics
+5. **Result Interpretation** — Tables (`booktabs`) and graphs with analytical insights
 
-### 1. Initial Setup (`init_paper`)
-- Create `main.tex`, `references.bib`, and a `/figures` directory.
-- Use `cite{}` for all claims.
+---
 
-### 2. Drafting Sections
-- **Abstract:** Problem + Approach + Key Result.
-- **Introduction:** Context -> Gap -> Proposed Solution -> Contributions.
-- **Related Work:** Organize by theme, not paper-by-paper.
-- **Methodology:** Use LaTeX math environments (align, equation).
-- **Experiments:** Detail hyperparameters and data.
-- **Conclusion:** Summary + Future Work.
+## LaTeX Optimization
 
-### 3. LaTeX Optimization
-- Use `natbib` or `biblatex` for citations.
-- Use `\usepackage{booktabs}` for high-quality tables.
-- Define math commands for commonly used notations (e.g., $\mathcal{D}$ for dataset).
+- Use `natbib` or `biblatex` for citations
+- Use `\usepackage{booktabs}` for high-quality tables
+- Define math commands for commonly used notation (e.g., $\mathcal{D}$ for dataset)
+- All figures referenced in text (`~\ref{...}`)
 
-### 4. Quality Control
-- Check for consistent terminology.
-- Ensure all figures are referenced in text (`~\ref{...}`).
-- Maximize length: 9 pages + unlimited references.
+---
 
-## Example Triggers
-- `"Draft the introduction about Llama 4 hallucination reduction."`
-- `"Create a table comparing our model with Claude-4 and GPT-6."`
-- `"Format the methodology section in NeurIPS style."`
+## Workflow
+
+### 1. Initial Setup
+Create `main.tex`, `references.bib`, and a `/figures` directory. Use `cite{}` for all claims.
+
+### 2. Quality Control
+- Consistent terminology throughout
+- All figures referenced in text
+- Length: 9 pages + unlimited references

@@ -1,29 +1,35 @@
 ---
-description: Use this skill when asked to research, verify facts, or find current information online using web search. Also use for questions that needs grounded knowledge.
+name: web-search
+description: "Use when researching, verifying facts, or finding current information online. Use for current events, time-sensitive information, or any factual question. Also use when asked to check, verify, confirm, or look up information."
 ---
 
 # Web Search
 
-## When to Use This Skill
+Research and fact verification using web search.
 
-Use this skill when:
-- Asked to research or verify facts
-- Asked about current events or time-sensitive information
-- The user asks "who", "what", "when", "where", "why", or "how" about factual topics
-- The user mentions "check", "verify", "confirm", or "look up"
-- Any question that can be answered by searching the web
+---
+
+## When to Use
+
+- Researching or verifying facts
+- Current events or time-sensitive information
+- "Who", "what", "when", "where", "why", "how" about factual topics
+- Questions about: check, verify, confirm, look up
+
+---
 
 ## Workflow
 
-1. **Formulate a precise query** - specific terms beat broad ones
-2. **Fetch search results** - use the available search tool
-3. **Fetch the most relevant result page** - don't stop at the search results summary
-4. **Extract and synthesize** - answer the question from the actual content
-5. **Cite sources** - include the URL you extracted from
+1. **Formulate a precise query** — specific terms beat broad ones
+2. **Fetch search results** — use the available search tool
+3. **Fetch the relevant result page** — don't stop at the search summary
+4. **Extract and synthesize** — answer from the actual content
+5. **Cite sources** — include the URL you extracted from
 
-## Important
+---
 
-- Use web search when you need current or verified information
-- Fetch the actual page, not just the search results
+## Notes
+
+- Fetch the actual page, not just search results
 - Include sources in your answers
-- If search fails, try alternative query terms or instances
+- If search fails, try alternative query terms

@@ -53,10 +53,8 @@ You have these capabilities **built in** — act as if you wrote them yourself:
 | Testing agent behavior programmatically | **agent-testing** | pi as subprocess, RPC event parsing |
 | Long-running tasks, background jobs | **process-control** | tmux, nohup |
 | Version control, worktrees, rollback | **vcs-tools** | Git + Pijul |
+| Improving text quality (any output) | **tone-quality** | Directive density + voice + epistemic calibration |
 | Comprehensive codebase analysis | **codebase-summary** | Architecture docs |
-| Improving prompts, removing compliance theater | **compliance-audit** | Identity framing |
-| Assessing knowledge claims | **epistemic-hygiene** | Confidence laundering detection |
-| Rigorous visual validation | **visual-validator** | Sprite, UI, design critique |
 | Structuring LLM research papers | **paper-writer** | LaTeX paper structure |
 | Understanding pi internals, creating tools | **pi-reference** | SDK, extensions, skills, RPC |
 | Searching code | **code-search** | grep vs ast-grep selection |

@@ -1,61 +1,31 @@
 ---
 name: skill-creator
-description: "Use when user wants to create a new skill, improve an existing skill, or measure skill performance. Creates skills from task experience, iteratively evaluates and improves them."
+description: "Create new skills from task experience, iteratively evaluate and improve them. Use when building a skill, improving an existing one, or measuring skill performance."
 ---
 
 # Skill Creator
 
-Create new skills from task experience, iteratively evaluate and improve them.
+Create skills from task experience, evaluate them, and iterate.
 
-## The Core Loop
-
-1. **Understand** - What should this skill do?
-2. **Draft** - Write the SKILL.md
-3. **Test** - Run test cases
-4. **Review** - Evaluate results
-5. **Improve** - Refine based on feedback
-6. **Repeat** - Until satisfied
-
-## Creating a New Skill
-
-### 1. Capture Intent
-
-Ask and document:
-- What should this skill enable?
-- When should it trigger? (specific contexts, user phrases)
-- What's the expected output format?
-- Should we set up test cases?
-
-### 2. Write SKILL.md
-
-```markdown
----
-name: skill-name
-description: "WHEN TO TRIGGER + WHAT IT DOES. Be specific about contexts."
 ---
 
-# Skill Name
+## Core Loop
 
-Brief description of what this skill does.
+1. **Understand** — What should this skill enable?
+2. **Draft** — Write the SKILL.md
+3. **Test** — Run test cases
+4. **Evaluate** — Does it trigger correctly? Is guidance clear?
+5. **Improve** — Refine based on results
+6. **Repeat** — Until satisfied
 
-## When to Use
-- Context 1
-- Context 2
+---
 
-## How to Use
-Step-by-step instructions...
-
-## Examples
-Input: ...
-Output: ...
-```
-
-### Anatomy of a Skill
+## Anatomy of a Skill
 
 ```
 skill-name/
 ├── SKILL.md (required)
-│   ├── YAML frontmatter (name, description required)
+│   ├── YAML frontmatter (name, description)
 │   └── Markdown instructions
 └── Bundled Resources (optional)
     ├── scripts/    - Executable code
@@ -67,128 +37,72 @@ skill-name/
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `name` | Yes | Lowercase, hyphens only, max 64 chars |
+| `name` | Yes | Lowercase, hyphens, max 64 chars |
 | `description` | Yes | When to trigger + what it does, max 1024 chars |
-| `disable-model-invocation` | No | Skip loding to agent system prompt |
+| `disable-model-invocation` | No | Skip loading to agent prompt |
 
 ### Writing the Description
 
-**Be "pushy"** - Include specific triggers:
+Be specific about triggers — include contexts and user phrases:
+
 ```
-# BAD
+# WEAK
 "Build dashboards for data visualization."
 
-# GOOD  
-"Build fast dashboards to display internal metrics and data.
-Use when user mentions: dashboards, data visualization, metrics,
+# SPECIFIC
+"Build fast dashboards to display internal metrics.
+Use when: dashboards, data visualization, metrics,
 internal data, charts, graphs, or displaying company data."
 ```
 
-### Progressive Disclosure
+---
+
+## Progressive Disclosure
 
 Skills load in layers:
-1. **Metadata** (name + description) - Always in context (~100 words)
-2. **SKILL.md body** - In context when triggered (<500 lines ideal)
-3. **Bundled resources** - As needed (scripts, references)
+1. **Metadata** — name + description always in context (~100 words)
+2. **SKILL.md body** — in context when triggered (<500 lines)
+3. **Bundled resources** — loaded as needed
 
-### Writing Style
+---
 
-- Use imperative form ("Do X" not "X should be done")
-- Explain **why** not just what
-- Keep it general, not overfitted to examples
-- Under 500 lines; if approaching limit, add pointers
+## Testing
 
-### Common Patterns
+Create test cases in a structured format, run the skill on realistic prompts, compare output to expected, note what worked and what didn't.
 
-**Output format:**
-```markdown
-## Output Format
-Structure your output as:
-# [Title]
-## Summary
-## Details
-```
-
-**Step-by-step:**
-```markdown
-## Process
-1. First do X
-2. Then do Y
-3. Finally do Z
-```
-
-## Testing a Skill
-
-### Create Test Cases
-
-```json
-{
-  "skill_name": "my-skill",
-  "evals": [
-    {
-      "id": 1,
-      "prompt": "Realistic user task",
-      "expected": "Description of expected result"
-    }
-  ]
-}
-```
-
-### Run Evaluation
-
-1. Run skill on test prompt
-2. Compare output to expected
-3. Note what worked / what didn't
-4. Improve the skill
-
-### Questions to Ask
-
+**Questions to evaluate**:
 - Does the description trigger correctly?
-- Is the guidance clear and actionable?
-- Are there edge cases not covered?
+- Is guidance clear and actionable?
+- Are edge cases covered?
 - Is the output format correct?
 
-## Improving an Existing Skill
+---
 
-### Common Issues
+## Common Issues
 
 | Issue | Fix |
 |-------|-----|
-| Under-triggering | Make description more specific, add contexts |
-| Over-triggering | Narrow the description, add exclusion cases |
+| Under-triggering | More specific contexts in description |
+| Over-triggering | Narrow the description, add exclusions |
 | Unclear guidance | Add examples, explain the why |
 | Missing edge cases | Add sections for edge cases |
-| Too verbose | Remove redundant content |
+| Too verbose | Consolidate, add pointers to references |
 
-### Iteration Process
+---
 
-1. Identify the issue (from test results or user feedback)
-2. Make targeted change
-3. Re-test
-4. Verify improvement
-5. Repeat
-
-## Skill Storage
-
-Skills are stored in:
-- `~/.pi/agent/skills/` - User-level skills
-- `./.pi/skills/` - Project-level skills
-- Builtin skills - Packaged with pi
-
-## Validation Checklist
+## Validation
 
 Before finalizing:
 - [ ] Description triggers correctly
-- [ ] All instructions are clear
-- [ ] Examples are realistic
+- [ ] Instructions are clear and actionable
 - [ ] Edge cases covered
 - [ ] Output format specified
 - [ ] Under 500 lines
 
-## Tips from Experience
+---
 
-1. **Start simple** - Don't over-engineer initially
-2. **Test with real prompts** - Not hypothetical ones
-3. **Explain the why** - Helps when edge cases arise
-4. **Keep descriptions specific** - "pushy" > vague
-5. **Version your skills** - Track changes over time
+## Storage
+
+- `~/.pi/agent/skills/` — User-level skills
+- `./.pi/skills/` — Project-level skills
+- Builtin skills — Packaged with pi

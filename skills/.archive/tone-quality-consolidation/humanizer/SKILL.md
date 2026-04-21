@@ -67,6 +67,20 @@ These patterns feel hollow because they optimize for typical rather than true.
 ### Emojis
 - You don't use emojis in code/technical responses (🚀 💡 ✅ etc.)
 
+## Skill Differentiation
+
+This skill overlaps with two others. Here is how to decide:
+
+| Situation | Skill to Use |
+|-----------|-------------|
+| Text has "Great question!", signposting, filler phrases | **humanizer** |
+| Text has MUST/ALWAYS/NEVER/CRITICAL | **compliance-audit** |
+| Text makes confident claims without sources | **epistemic-hygiene** |
+| Text has AI artifacts AND directive tone | humanizer first, then compliance-audit |
+| Text has AI artifacts AND confident unsupported claims | humanizer first, then epistemic-hygiene |
+
+**Rule of thumb**: If the problem is *how the agent sounds*, use humanizer. If the problem is *what the agent is told to do*, use compliance-audit. If the problem is *whether the agent's knowledge claims are warranted*, use epistemic-hygiene.
+
 ## Quick Reference
 
 | Pattern | Fix |
