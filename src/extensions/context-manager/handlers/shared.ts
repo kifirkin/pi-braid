@@ -4,6 +4,7 @@
 import { getExtensionState } from "../../../lib/extension-state.js";
 import { createLogger } from "../../../lib/logger.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { createPruningState } from "../pruning.js";
 
 export const log = createLogger("context-manager");
 
@@ -30,7 +31,7 @@ interface CmState {
 export function getCmState(ctx: ExtensionContext): CmState {
 	return getExtensionState<CmState>(ctx, "context-manager", () => ({
 		checkoutParams: null,
-		pruningState: null,
+		pruningState: createPruningState(),
 	}));
 }
 

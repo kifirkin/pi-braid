@@ -10,26 +10,18 @@
 
 import { Type } from "@sinclair/typebox";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { log, getCmState } from "./handlers/shared.js";
+import { log } from "./handlers/shared.js";
 import { registerTools } from "./handlers/tools.js";
 import { registerBeforeCompactHandler, registerSessionCompactHandler, registerCompactionEndHandler, registerContextCleanupHandler, registerTurnEndRetryReset } from "./handlers/compaction.js";
 import { registerBeforeTreeHandler, registerTurnEndCheckoutHandler, registerAgentEndRetryHandler as registerNavAgentEndRetry } from "./handlers/navigation.js";
 import { registerAgentEndRetryHandler, registerAutoRetryEndHandler, registerContextPruningHandler } from "./handlers/events.js";
 import { registerRotationHandlers } from "./handlers/rotation.js";
 
-// ── Pruning state initialization ──────────────────────────────────────────────
-// The pruning state needs to be initialized per-session before any event handlers run.
-import { createPruningState } from "./pruning.js";
-
 export default function contextManagerExtension(pi: any): void {
 	// ── Session Start ──────────────────────────────────────────────────────
 	pi.on("session_start", async (_event: any, ctx: ExtensionContext) => {
 		try {
-			// Initialize pruning state for this session
-			const state = getCmState(ctx);
-			if (!state.pruningState) {
-				state.pruningState = createPruningState();
-			}
+			// Pruning state is initialized eagerly in getCmState factory
 			// Set compaction reserve tokens
 			const sm = ctx.sessionManager as { globalSettings?: { compaction?: { reserveTokens?: number } }; save?: () => void };
 			if (sm?.globalSettings?.compaction) {

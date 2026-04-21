@@ -135,7 +135,9 @@ export function registerContextPruningHandler(pi: any): void {
 		try {
 			const messages = event.messages;
 			if (!messages || messages.length === 0) return;
-			const filtered = applyPruningWorkflow(getCmState(ctx).pruningState, messages);
+			const { pruningState } = getCmState(ctx);
+			if (!pruningState) return;
+			const filtered = applyPruningWorkflow(pruningState, messages);
 			const pruned = messages.length - filtered.length;
 			if (pruned > 0) {
 				addEvidence(ctx, "context_pruned", "session", `Pruned ${pruned} messages from context`, 0.7);
