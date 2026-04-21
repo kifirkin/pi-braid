@@ -258,6 +258,67 @@ function readImageAsBase64(absolutePath: string): { data: string; mimeType: stri
   }
 }
 
+/**
+ * Retry wrapper with exponential backoff for transient API failures.
+ * Retries on network errors, rate limits (429), and server errors (5xx).
+ * Does NOT retry on auth errors (401), not found (404), or validation errors.
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  operationName: string,
+  maxRetries = 3,
+  baseDelayMs = 1000,
+): Promise<T> {
+  let lastError: Error | undefined;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      const message = lastError.message.toLowerCase();
+
+      // Don't retry auth or configuration errors
+      const nonRetryable =
+        message.includes("unauthorized") ||
+        message.includes("authentication") ||
+        message.includes("api key") ||
+        message.includes("not found") ||
+        message.includes("invalid api key") ||
+        message.includes("model not available") ||
+        message.includes("no api key") ||
+        message.includes("no vision-capable model");
+
+      if (nonRetryable || attempt === maxRetries) {
+        throw lastError;
+      }
+
+      // Check for rate limit or server errors
+      const isRateLimited = message.includes("429") || message.includes("rate limit") || message.includes("too many requests");
+      const isServerError = message.includes("500") || message.includes("502") || message.includes("503") || message.includes("504");
+      const isNetworkError = message.includes("econnreset") || message.includes("etimedout") || message.includes("enotfound") || message.includes("network");
+      const isTransient = isRateLimited || isServerError || isNetworkError || message.includes("timeout");
+
+      if (!isTransient) {
+        // Unknown error — retry once more just in case
+        if (attempt < maxRetries - 1) {
+          const delay = baseDelayMs * Math.pow(2, attempt);
+          log.warn(`${operationName} failed (attempt ${attempt + 1}/${maxRetries + 1}): ${lastError.message}. Retrying in ${delay}ms...`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+        throw lastError;
+      }
+
+      const delay = isRateLimited ? baseDelayMs * Math.pow(2, attempt) * 2 : baseDelayMs * Math.pow(2, attempt);
+      log.warn(`${operationName} transient error (attempt ${attempt + 1}/${maxRetries + 1}): ${lastError.message}. Retrying in ${delay}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError ?? new Error(`${operationName} failed after ${maxRetries} retries`);
+}
+
 // Core Analysis Logic
 
 /**
@@ -355,12 +416,16 @@ async function performImageAnalysis(
     ],
   };
 
-  // Call the vision model
-  const result = await completeSimple(model, context, {
-    apiKey,
-    maxTokens: 4096,
-    temperature: 0.3,
-  });
+  // Call the vision model with retry for transient failures
+  const result = await withRetry(
+    () =>
+      completeSimple(model, context, {
+        apiKey,
+        maxTokens: 4096,
+        temperature: 0.3,
+      }),
+    `Vision analysis (${model.provider}/${model.id})`,
+  );
 
   // Extract text content
   const textContent = result.content.filter(

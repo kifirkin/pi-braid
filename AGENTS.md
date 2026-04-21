@@ -42,6 +42,28 @@ test/runtime/      # Runtime tests (.mjs)
 - Event handlers receive `(event, ctx: ExtensionContext)` as parameters
 - Tool execute functions receive `(toolCallId, params, signal, onUpdate, ctx)`
 
+## Document & Visual Tool Decision Tree
+
+When working with PDFs, images, or screenshots, use this decision tree:
+
+```
+Is it a PDF?
+├── YES → Is it text-based (selectable text)?
+│   ├── YES → read_document (extracts text, fastest)
+│   └── NO / UNSURE → read_pdf_screenshot (renders page as PNG)
+│       → analyze_image (visual analysis of the PNG)
+└── NO → Is it an image/screenshot?
+    ├── YES → analyze_image (visual/UI/layout analysis)
+    └── NO → read_document (doc, docx, html, txt, rtf)
+```
+
+**Key rules:**
+- `read_document` → **TEXT EXTRACTION** from documents. Never use for visual analysis.
+- `read_pdf_screenshot` → **RENDER** PDF page as image. Use when PDF is image-based or has complex layouts.
+- `analyze_image` → **VISUAL ANALYSIS** (UI elements, sprites, layout, design critique). NOT OCR. For text in images, use `read_document` first.
+- `browser_screenshot` → **CAPTURE** browser viewport as image. Returns `details.filePath` for follow-up `analyze_image`.
+- `web_fetch` → **FETCH** web page as markdown. Has browser headers to bypass anti-bot. Returns clean markdown.
+
 ## Key Conventions
 
 - Extensions register via `pi.registerTool()` and `pi.on("event", handler)`
