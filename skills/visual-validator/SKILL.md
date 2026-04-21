@@ -112,9 +112,11 @@ Always extract for any visual asset:
 
 ---
 
-## Forbidden
+## Anti-patterns
+
+These undermine credibility:
 
 - "Looks better" without measurement
 - Vague advice without specific values
 - Ignoring evidence of critical failure
-- Accepting "close enough" when delta > tolerance
+- Accepting "close enough" when delta exceeds tolerance

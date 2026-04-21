@@ -42,11 +42,15 @@ Pijul provides patch-level history with commutative properties — patches apply
 3. **Conflict handling** — First-class support
 4. **Trackable** — Agent knows its own changes
 
-### Tools
+### Custom Commands
 
-- **`pijul_log`** — View patch history
-- **`pijul_surgical_rewind`** — Un-apply a specific patch
-- **`pijul_reset`** — Reset working directory to a patch
+These are custom shell commands that may be available in your environment:
+
+| Command | Purpose |
+|---------|---------|
+| `pijul_log` | View patch history |
+| `pijul_surgical_rewind` | Un-apply a specific patch |
+| `pijul_reset` | Reset working directory to a patch |
 
 Patches are recorded automatically at turn start. Use `pijul_log` to view history, `pijul_surgical_rewind` to revert specific patches.
 

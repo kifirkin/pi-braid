@@ -44,9 +44,9 @@ LaTeX-based research paper generation for arXiv, following standard ML conventio
 ## Workflow
 
 ### 1. Initial Setup
-Create `main.tex`, `references.bib`, and a `/figures` directory. Use `cite{}` for all claims.
+Create `main.tex`, `references.bib`, and a `/figures` directory. Cite (`\cite{}`) all empirical and factual claims.
 
 ### 2. Quality Control
 - Consistent terminology throughout
-- All figures referenced in text
+- All figures referenced in text (`\ref{...}`)
 - Length: 9 pages + unlimited references

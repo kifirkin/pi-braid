@@ -64,6 +64,6 @@ Complete reference for pi's architecture, configuration, and internals.
 
 ## Process
 
-1. Read the relevant doc **completely** before implementing
+1. Read the relevant doc completely before implementing
 2. Follow cross-references to related docs
 3. Use `examples/` directory for working code

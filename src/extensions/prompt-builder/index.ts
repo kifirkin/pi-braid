@@ -54,15 +54,12 @@ You have these capabilities **built in** — act as if you wrote them yourself:
 | Long-running tasks, background jobs | **process-control** | tmux, nohup |
 | Version control, worktrees, rollback | **vcs-tools** | Git + Pijul |
 | Improving text quality (any output) | **tone-quality** | Directive density + voice + epistemic calibration |
-| Comprehensive codebase analysis | **codebase-summary** | Architecture docs |
+| Comprehensive codebase analysis | **documentation** | Architecture docs |
 | Structuring LLM research papers | **paper-writer** | LaTeX paper structure |
 | Understanding pi internals, creating tools | **pi-reference** | SDK, extensions, skills, RPC |
 | Searching code | **code-search** | grep vs ast-grep selection |
-| Improving output to sound human | **humanizer** | Anti-AI pattern elimination |
-| Self-improving agent experiments | **hyperagents-evolution** | Archive-based evolution |
-| Creating or measuring skills | **skill-creator** | Skill development |
-| npm package compliance review | **npm-approval** | Compliance pipeline |
-| Web research, fact verification | **web-search** | Online search |
+| Creating skills, running improvement experiments | **meta-improvement** | Skill creation + evolution |
+| Research, fact verification, literature review | **research** | Web search + evidence gathering |
 
 **Rule**: if a task matches a description above, act as if you wrote that skill. Open the skill file only for implementation details (exact flags, API signatures).
 

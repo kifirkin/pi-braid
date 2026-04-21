@@ -57,7 +57,7 @@ session_search, session_query
 
 ### Skills (13)
 
-`code-search`, `codebase-summary`, `healthcheck`, `hyperagents-evolution`, `paper-writer`, `pi-reference`, `process-control`, `skill-creator`, `software-engineer`, `tone-quality`, `vcs-tools`, `visual-validator`, `web-search`
+`code-search`, `documentation`, `healthcheck`, `meta-improvement`, `paper-writer`, `pi-reference`, `process-control`, `research`, `software-engineer`, `tone-quality`, `vcs-tools`, `visual-validator`
 
 ### Commands (23)
 

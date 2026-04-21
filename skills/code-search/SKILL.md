@@ -18,7 +18,7 @@ Search the codebase for patterns, run refactors, and choose the right tool for e
 | File discovery | find | Glob patterns, path-based |
 | Rename symbol safely | lang tool (tsc --rename) or ast-grep | Preserves scope |
 
-**Default to ripgrep for most searches.** Use ast-grep when you need to match structure, not text.
+Most searches → ripgrep. ast-grep for structural patterns.
 
 ---
 

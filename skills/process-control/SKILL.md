@@ -42,7 +42,7 @@ tmux -S $SOCKET kill-session -t <name>
 1. Create session
 2. Send startup command
 3. Loop: sleep → capture → parse → respond
-4. Kill session (always, even on error)
+4. Kill session (even on error)
 ```
 
 **Keybindings** (for manual attach): `Ctrl+b d` detach · `Ctrl+b [` scroll · `Ctrl+b c` new window
