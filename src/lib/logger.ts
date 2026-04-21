@@ -64,8 +64,11 @@ const _LEVEL_PRIORITY: Record<LogLevel, number> = {
 };
 
 const _suppressedSources = new Set<string>();
-let _globalMinLevel: LogLevel = "debug";
+let _globalMinLevel: LogLevel = "info";
 let _globallySuppressed = false;
+
+/** Minimum level that writes to the process console. info/debug are TUI/buffer only. */
+let _consoleMinLevel: LogLevel = "warn";
 
 /** In-memory log buffer for the current session (last 200 entries) */
 const _logBuffer: LogEntry[] = [];
@@ -112,19 +115,19 @@ function formatNotify(entry: LogEntry): string {
 // ── Core sink ──────────────────────────────────────────────────────────────
 
 function writeToConsole(entry: LogEntry): void {
+	if (_LEVEL_PRIORITY[entry.level] < _LEVEL_PRIORITY[_consoleMinLevel]) {
+		return; // info/debug stay in buffer / TUI, don't spam the raw terminal
+	}
 	const line = formatConsole(entry);
 	switch (entry.level) {
-		case "debug":
-			console.debug(line);
-			break;
-		case "info":
-			console.info(line);
-			break;
 		case "warn":
 			console.warn(line);
 			break;
 		case "error":
 			console.error(line);
+			break;
+		default:
+			console.log(line);
 			break;
 	}
 }
@@ -266,6 +269,11 @@ export function unsuppressAllLoggers(): void {
 /** Set the minimum log level globally. */
 export function setGlobalLogLevel(level: LogLevel): void {
 	_globalMinLevel = level;
+}
+
+/** Set the minimum level that reaches the process console. */
+export function setConsoleLogLevel(level: LogLevel): void {
+	_consoleMinLevel = level;
 }
 
 /** Get the in-memory log buffer (for debugging / crash reports). */
