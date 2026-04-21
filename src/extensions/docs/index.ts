@@ -3,7 +3,7 @@
  *
  * Supports formats via macOS native tools:
  * - doc, docx, rtf, rtfd, html, htm, txt: via textutil
- * - pdf: via pdftotext (poppler) or strings fallback
+ * - pdf: via pdf-parse (primary), pdftotext (enhancement), strings (last resort)
  *
  * NEVER returns raw binary content to the agent.
  */
@@ -11,13 +11,11 @@
 import { execSync } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as fsSync from "node:fs";
-import { promisify } from "node:util";
-import { exec } from "node:child_process";
+// pdf-parse v2 API
+import { PDFParse } from "pdf-parse";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-
-const execAsync = promisify(exec);
 
 const readDocSchema = Type.Object({
 	path: Type.String({ description: "Path to document file" }),
@@ -34,24 +32,7 @@ const TEXTUTIL_FORMATS = ["doc", "docx", "rtf", "rtfd", "html", "htm", "txt"];
 const PDF_FORMATS = ["pdf"];
 const ALL_FORMATS = [...TEXTUTIL_FORMATS, ...PDF_FORMATS];
 
-/** Check if a command exists in PATH */
-function commandExists(cmd: string): boolean {
-	try {
-		execSync(`which ${cmd}`, { stdio: "ignore" });
-		return true;
-	} catch {
-		return false;
-	}
-}
 
-/** Detect available PDF text extraction tools */
-function detectPdfTools(): { pdftotext: boolean } {
-	return {
-		pdftotext: commandExists("pdftotext"),
-	};
-}
-
-const pdfTools = detectPdfTools();
 
 /**
  * Check if content looks like binary (not readable text).
@@ -88,11 +69,34 @@ function truncateLines(content: string, maxLines: number): string {
 }
 
 /**
- * Read PDF text using pdftotext (from poppler).
+ * Read PDF text using pdf-parse (pure JS, no native deps).
+ * Returns extracted text or null if extraction failed.
+ */
+async function extractPdfWithPdfParse(path: string): Promise<string | null> {
+	try {
+		const buf = fsSync.readFileSync(path);
+		const parser = new PDFParse({ data: buf });
+		const result = await parser.getText();
+
+		if (result?.text && result.text.trim().length > 0 && !isBinaryContent(result.text)) {
+			return result.text;
+		}
+		return null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Read PDF text using pdftotext (from poppler) — enhancement when available.
  * Returns extracted text or null if extraction failed.
  */
 function extractPdfWithPdftotext(path: string): string | null {
-	if (!pdfTools.pdftotext) return null;
+	try {
+		execSync("which pdftotext", { stdio: "ignore" });
+	} catch {
+		return null; // pdftotext not installed
+	}
 
 	try {
 		const result = execSync(`pdftotext -layout "${path}" -`, {
@@ -141,35 +145,46 @@ function extractPdfWithStrings(path: string): string | null {
 }
 
 /**
- * Read PDF — tries pdftotext, falls back to strings.
- * NEVER returns raw binary. Returns null if no text could be extracted.
+ * Read PDF — three-tier extraction:
+ *   1. pdf-parse  (pure JS, always available, cross-platform)
+ *   2. pdftotext  (macOS CLI enhancement, installed separately)
+ *   3. strings    (last resort, crude but never binary)
+ *
+ * NEVER returns raw binary. Throws clear error if all methods fail.
  */
-function readPdf(path: string, maxLines: number): { content: string; method: string } {
-	// Try pdftotext first (best quality)
+async function readPdf(path: string, maxLines: number): Promise<{ content: string; method: string }> {
+	// Tier 1: pdf-parse (primary — pure JS, no native deps)
+	const pdfParseResult = await extractPdfWithPdfParse(path);
+	if (pdfParseResult) {
+		return { content: truncateLines(pdfParseResult, maxLines), method: "pdf-parse" };
+	}
+
+	// Tier 2: pdftotext (enhancement, e.g. from poppler)
 	const pdftotextResult = extractPdfWithPdftotext(path);
 	if (pdftotextResult) {
 		return { content: truncateLines(pdftotextResult, maxLines), method: "pdftotext" };
 	}
 
-	// Fallback: strings extraction (safe, no binary pollution)
+	// Tier 3: strings (last resort — filters PDF structure, never binary)
 	const stringsResult = extractPdfWithStrings(path);
 	if (stringsResult) {
 		return {
 			content: truncateLines(
-				`[Note: pdftotext not available, extracted using 'strings' — formatting may be rough]\n\n${stringsResult}`,
+				`[Note: text extraction produced limited output — PDF may be image-based or heavily compressed.\n` +
+				`For best results, install pdftotext: brew install poppler]\n\n${stringsResult}`,
 				maxLines,
 			),
 			method: "strings",
 		};
 	}
 
-	// Complete failure — return helpful error, never binary
+	// All tiers failed — return helpful error, never binary
 	throw new Error(
-		"Could not extract text from PDF. " +
-		(pdfTools.pdftotext
-			? "pdftotext ran but produced no output (possibly image-only PDF)."
-			: "Install pdftotext for better PDF support: brew install poppler") +
-		"\nFor image-based PDFs, use analyze_image on each page screenshot instead.",
+		"Could not extract text from PDF. All extractors failed:\n" +
+		"  - pdf-parse: could not parse PDF structure\n" +
+		"  - pdftotext: not installed (run: brew install poppler)\n" +
+		"  - strings: output was mostly PDF structure (image-based or encrypted PDF)\n" +
+		"For image-based/scanned PDFs, use analyze_image on each page screenshot instead.",
 	);
 }
 
@@ -205,8 +220,8 @@ export default function docExtension(pi: ExtensionAPI) {
 		label: "Read Document",
 		description:
 			"Read text from various document formats (doc, docx, rtf, html, txt, pdf). " +
-			"For PDF: uses pdftotext if available, otherwise 'strings' fallback. " +
-			"Install pdftotext via: brew install poppler",
+			"For PDF: pdf-parse (primary, always available) → pdftotext (if installed) → " +
+			"strings (last resort). For image-based PDFs, use analyze_image on screenshots.",
 		parameters: readDocSchema,
 		execute: async (_toolCallId, params, _signal, _onUpdate, ctx: ExtensionContext): Promise<AgentToolResult<{ lines: number; format: string; method?: string }>> => {
 			if (!fsSync.existsSync(params.path)) {
@@ -234,7 +249,7 @@ export default function docExtension(pi: ExtensionAPI) {
 
 			try {
 				if (isPdf) {
-					const { content, method } = readPdf(params.path, maxLines);
+					const { content, method } = await readPdf(params.path, maxLines);
 					const lines = content.split("\n").filter((l) => l.trim().length > 0).length;
 					return {
 						content: [{ type: "text" as const, text: content }],
