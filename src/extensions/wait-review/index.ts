@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("wait-review");
 /**
  * Wait for researcher review — polls docs/ until new .md appears.
  * Use: /wait-review [interval_seconds]

@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("prompt-builder");
 /**
  * Prompt Builder - Reconstruction from Structured Data
  *

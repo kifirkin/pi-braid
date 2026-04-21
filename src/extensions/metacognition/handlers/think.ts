@@ -6,6 +6,9 @@ import { Type, Static } from "@sinclair/typebox";
 import type { AgentToolResult, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { Model, Api, Context } from "@mariozechner/pi-ai";
 import { completeSimple } from "@mariozechner/pi-ai";
+import { createLogger } from "../../../lib/logger.js";
+
+const log = createLogger("metacognition");
 
 const thinkSchema = Type.Object({
 	thought_id: Type.Optional(Type.String({ description: "Unique identifier (auto-generated if omitted)" })),

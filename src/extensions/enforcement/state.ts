@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("enforcement");
 /**
  * Enforcement state - Central state management
  */

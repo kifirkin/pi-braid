@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("scratchpad");
 /**
  * Scratchpad Extension - Structured Session Memory (CCA L2)
  *

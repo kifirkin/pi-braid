@@ -1,3 +1,6 @@
+import { createLogger } from "../../../lib/logger.js";
+
+const log = createLogger("enforcement");
 /**
  * Turn Analysis Context — shared context for turn_end handler subroutines.
  *

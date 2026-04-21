@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("enforcement");
 /**
  * LLM Judge System Prompt for Enforcement Analysis
  *

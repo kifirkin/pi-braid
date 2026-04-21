@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("repl");
 /**
  * REPL Extension - Native TypeScript/JavaScript code execution
  *

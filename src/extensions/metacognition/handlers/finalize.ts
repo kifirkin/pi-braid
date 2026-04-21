@@ -7,6 +7,9 @@ import type { AgentToolResult, ExtensionContext } from "@mariozechner/pi-coding-
 import type { Model, Api, Context } from "@mariozechner/pi-ai";
 import { resolveUtilityModel } from "../../../lib/model-resolver.js";
 import { completeSimple } from "@mariozechner/pi-ai";
+import { createLogger } from "../../../lib/logger.js";
+
+const log = createLogger("metacognition");
 
 const finalizeSchema = Type.Object({
 	completed: Type.Boolean({ description: "Whether the task was successfully completed" }),

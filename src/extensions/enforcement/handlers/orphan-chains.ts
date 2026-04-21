@@ -1,3 +1,6 @@
+import { createLogger } from "../../../lib/logger.js";
+
+const log = createLogger("enforcement");
 /**
  * Orphan Chain Detector — extracted from enforcement/index.ts
  *

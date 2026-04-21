@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("web-fetch");
 /**
  * Secret pattern detection for outgoing requests.
  * Ported from scurl's SecretDefender.

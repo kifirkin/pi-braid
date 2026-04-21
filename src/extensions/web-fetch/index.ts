@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("web-fetch");
 /**
  * Web Fetch Extension - pi-scurl reimplemented without external deps.
  *

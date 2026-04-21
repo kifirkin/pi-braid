@@ -1,3 +1,6 @@
+import { createLogger } from "../../../lib/logger.js";
+
+const log = createLogger("enforcement");
 /**
  * Routing Handler - Route to correct tools based on task intent
  *

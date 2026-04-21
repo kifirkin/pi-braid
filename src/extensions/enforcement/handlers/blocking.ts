@@ -1,3 +1,6 @@
+import { createLogger } from "../../../lib/logger.js";
+
+const log = createLogger("enforcement");
 /**
  * Blocking enforcement - prevents tool execution that violates patterns
  *

@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("error-capture");
 /**
  * Error Capture Extension - Auto-catches and logs extension errors
  *

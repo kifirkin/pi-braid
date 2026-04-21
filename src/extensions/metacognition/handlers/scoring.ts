@@ -1,3 +1,6 @@
+import { createLogger } from "../../../lib/logger.js";
+
+const log = createLogger("metacognition");
 // ── Hypothesis Scoring ────────────────────────────────────────────────────────
 // Heuristic signals for ranking hypotheses by quality.
 // Extracted from metacognition/index.ts for decomposition.

@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("browser");
 /**
  * HTML content extraction - lightweight readability without external deps.
  * Strips nav, header, footer, aside, scripts, styles,

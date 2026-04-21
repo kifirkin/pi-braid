@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("safety");
 /**
  * Safety Extension - Guardrails for dangerous operations and session safety.
  *

@@ -50,6 +50,12 @@ import replExtension from "./extensions/repl/index.js";
 import waitReviewExtension from "./extensions/wait-review/index.js";
 import heartbeatSchedulerExtension from "./extensions/heartbeat-scheduler/index.js";
 import threeMemoryStoresExtension from "./extensions/three-memory-stores/index.js";
+import watchdogExtension from "./extensions/watchdog/index.js";
+import rateLimiterExtension from "./extensions/rate-limiter/index.js";
+import reasoningExtension from "./extensions/reasoning/index.js";
+import latentActivatorExtension from "./extensions/latent-activator/index.js";
+import analyticsExtension from "./extensions/analytics/index.js";
+import feedbackExtension from "./extensions/feedback/index.js";
 
 
 // Resolve the skills directory relative to this file
@@ -87,6 +93,12 @@ const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void 
 	{ name: "wait-review", factory: waitReviewExtension },
 	{ name: "heartbeat-scheduler", factory: heartbeatSchedulerExtension },
 	{ name: "three-memory-stores", factory: threeMemoryStoresExtension },
+	{ name: "watchdog", factory: watchdogExtension },
+	{ name: "rate-limiter", factory: rateLimiterExtension },
+	{ name: "reasoning", factory: reasoningExtension },
+	{ name: "latent-activator", factory: latentActivatorExtension },
+	{ name: "analytics", factory: analyticsExtension },
+	{ name: "feedback", factory: feedbackExtension },
 ];
 
 export default function piBraidExtension(pi: ExtensionAPI) {

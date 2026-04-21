@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("prompt-builder");
 /**
  * L1 Environmental Awareness System - merged from agent-environment
  *

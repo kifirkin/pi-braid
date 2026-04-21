@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("ux");
 /**
  * UX Extension - Convenience commands, notifications, and input transforms.
  *

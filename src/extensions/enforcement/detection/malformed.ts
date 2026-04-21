@@ -1,3 +1,6 @@
+import { createLogger } from "../../../lib/logger.js";
+
+const log = createLogger("enforcement");
 /**
  * Malformed Tool Call Detection
  *

@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("codebase-tree");
 /**
  * Codebase Tree Explorer - Fast directory tree visualization for agents
  *

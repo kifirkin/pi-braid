@@ -11,6 +11,9 @@ import { createThinkTool } from "./handlers/think.js";
 import { createHypothesizeTool } from "./handlers/hypothesize.js";
 import { createFinalizeTool } from "./handlers/finalize.js";
 import { evaluateCognition } from "../../lib/cognition-evaluator.js";
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("metacognition");
 
 function getUtilityModel(ctx: ExtensionContext | undefined): Model<any> | undefined {
 	if (!ctx) return undefined;

@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("docs");
 /**
  * Document tools - read various document formats
  *

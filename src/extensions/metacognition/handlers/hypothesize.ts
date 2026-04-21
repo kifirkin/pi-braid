@@ -7,6 +7,9 @@ import type { AgentToolResult, ExtensionContext } from "@mariozechner/pi-coding-
 import type { Model, Api, Context } from "@mariozechner/pi-ai";
 import { completeSimple } from "@mariozechner/pi-ai";
 import { scoreHypothesisOutput } from "./scoring.js";
+import { createLogger } from "../../../lib/logger.js";
+
+const log = createLogger("metacognition");
 
 type ModelGetter = (ctx: ExtensionContext | undefined) => Model<any> | undefined;
 type ApiKeyGetter = (ctx: ExtensionContext | undefined) => Promise<string | undefined>;
