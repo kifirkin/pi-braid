@@ -3,7 +3,7 @@
  *
  * Supports formats via macOS native tools:
  * - doc, docx, rtf, rtfd, html, htm, txt: via textutil
- * - pdf: via pdf-parse (primary), pdftotext (enhancement), strings (last resort)
+ * - pdf: text via pdf-parse, screenshots via pdf-parse getScreenshot
  *
  * NEVER returns raw binary content to the agent.
  */
@@ -26,6 +26,12 @@ const readDocSchema = Type.Object({
 		}),
 	),
 	maxLines: Type.Optional(Type.Number({ default: 500, description: "Max lines to return" })),
+});
+
+const pdfScreenshotSchema = Type.Object({
+	path: Type.String({ description: "Path to PDF file" }),
+	page: Type.Optional(Type.Number({ description: "Page number (1-indexed). Default: 1." })),
+	scale: Type.Optional(Type.Number({ description: "DPI scale factor. 1=72dpi, 1.5=108dpi, 2=144dpi. Default: 1.5." })),
 });
 
 const TEXTUTIL_FORMATS = ["doc", "docx", "rtf", "rtfd", "html", "htm", "txt"];
@@ -220,9 +226,9 @@ export default function docExtension(pi: ExtensionAPI) {
 		label: "Read Document",
 		description:
 			"Read text from various document formats (doc, docx, rtf, html, txt, pdf). " +
-			"For PDF: pdf-parse (primary, always available) → pdftotext (if installed) → " +
-			"strings (last resort). Extracts text only — images are not extracted. " +
-			"For image-based PDFs, use analyze_image on page screenshots instead.",
+			"For PDF: pdf-parse (primary) → pdftotext (if installed) → strings (last resort). " +
+			"Extracts text only — images are not extracted. " +
+			"For image-based PDFs, use read_pdf_screenshot instead.",
 		parameters: readDocSchema,
 		execute: async (_toolCallId, params, _signal, _onUpdate, ctx: ExtensionContext): Promise<AgentToolResult<{ lines: number; format: string; method?: string }>> => {
 			if (!fsSync.existsSync(params.path)) {
@@ -270,6 +276,74 @@ export default function docExtension(pi: ExtensionAPI) {
 				return {
 					content: [{ type: "text" as const, text: `Error reading document: ${message}` }],
 					details: { lines: 0, format: isPdf ? "pdf" : ext },
+				};
+			}
+		},
+	});
+
+	// ── PDF Screenshot ────────────────────────────────────────────────────────
+	pi.registerTool({
+		name: "read_pdf_screenshot",
+		label: "Read PDF Screenshot",
+		description:
+			"Render a PDF page as a PNG image. Use for image-based/scanned PDFs " +
+			"where read_document returns no text. Also useful for checking layout, " +
+			"figures, and formatting that text extraction misses.",
+		parameters: pdfScreenshotSchema,
+		execute: async (_toolCallId, params, _signal, _onUpdate, ctx: ExtensionContext): Promise<AgentToolResult<{ page: number; width: number; height: number; scale: number }>> => {
+			if (!fsSync.existsSync(params.path)) {
+				return {
+					content: [{ type: "text" as const, text: `File not found: ${params.path}` }],
+					details: { page: 0, width: 0, height: 0, scale: params.scale || 1.5 },
+				};
+			}
+			const page = params.page ?? 1;
+			const scale = params.scale ?? 1.5;
+
+			try {
+				const buf = fsSync.readFileSync(params.path);
+				const parser = new PDFParse({ data: buf });
+				const result = await parser.getScreenshot({
+					scale,
+					partial: [page],
+				});
+
+				const pageData = result.pages?.[0];
+				if (!pageData?.data) {
+					return {
+						content: [{ type: "text" as const, text: `Failed to render page ${page}` }],
+						details: { page, width: 0, height: 0, scale },
+					};
+				}
+
+				const tmpPath = `/tmp/pdf_page_${Date.now()}.png`;
+				fsSync.writeFileSync(tmpPath, pageData.data);
+
+				return {
+					content: [
+						{
+							type: "image" as const,
+							data:
+							pageData.data instanceof Uint8Array
+								? Buffer.from(pageData.data).toString("base64")
+								: typeof pageData.data === "string"
+										? pageData.data
+										: Buffer.from(pageData.data as any).toString("base64"),
+							mimeType: "image/png",
+						},
+						{ type: "text" as const, text: `Page ${page} screenshot (${scale}x scale)` },
+					],
+					details: {
+						page,
+						width: pageData.width ?? 0,
+						height: pageData.height ?? 0,
+						scale,
+					},
+				};
+			} catch (error) {
+				return {
+					content: [{ type: "text" as const, text: `Error rendering PDF page: ${(error as Error).message}` }],
+					details: { page, width: 0, height: 0, scale },
 				};
 			}
 		},
