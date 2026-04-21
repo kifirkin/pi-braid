@@ -221,7 +221,8 @@ export default function docExtension(pi: ExtensionAPI) {
 		description:
 			"Read text from various document formats (doc, docx, rtf, html, txt, pdf). " +
 			"For PDF: pdf-parse (primary, always available) → pdftotext (if installed) → " +
-			"strings (last resort). For image-based PDFs, use analyze_image on screenshots.",
+			"strings (last resort). Extracts text only — images are not extracted. " +
+			"For image-based PDFs, use analyze_image on page screenshots instead.",
 		parameters: readDocSchema,
 		execute: async (_toolCallId, params, _signal, _onUpdate, ctx: ExtensionContext): Promise<AgentToolResult<{ lines: number; format: string; method?: string }>> => {
 			if (!fsSync.existsSync(params.path)) {
