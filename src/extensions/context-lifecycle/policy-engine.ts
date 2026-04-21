@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("context-lifecycle");
 /**
  * Policy Engine - Declarative rule evaluation for S-MMU
  *

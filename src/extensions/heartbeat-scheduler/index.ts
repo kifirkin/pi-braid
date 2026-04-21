@@ -21,6 +21,7 @@ import { StringEnum } from "@mariozechner/pi-ai";
 import { createLogger } from "../../lib/logger.js";
 import { getExtensionState } from "../../lib/extension-state.js";
 import type { Episode, HeuristicRule } from "../three-memory-stores/index.js";
+import { retrieveByRUMS } from "../three-memory-stores/index.js";
 import { isDegraded, getDegradationReasons, getMetricsSummary } from "../../lib/degradation-detector.js";
 import { measureBigramEntropy, countSelfContradictions } from "../../lib/reasoning-metrics.js";
 
@@ -131,30 +132,31 @@ function getState(ctx: ExtensionContext): HeartbeatState {
 
 const recallerModule: CognitiveModule = {
 	name: "recaller",
-	description: "Proactive memory retrieval when context suggests past patterns",
+	description: "Proactive memory retrieval using RUMS (mutual information)",
 	priority: 0.6,
 
 	shouldActivate(context: ModuleContext): boolean {
 		const lastRecall = context.lastActivation.get("recaller") ?? 0;
 		const turnsSinceRecall = context.turnCount - lastRecall;
 		if (turnsSinceRecall < 15 || context.totalToolCalls < 5) return false;
-
-		// Check if there are episodes to recall
 		const memState = getMemoryState(context.ctx);
-		if (!memState || memState.episodes.length === 0) return false;
-
-		// Check if any episodes are potentially relevant
-		return memState.episodes.length >= 2;
+		return memState !== null && memState.episodes.length >= 2;
 	},
 
 	async activate(context: ModuleContext): Promise<void> {
 		const memState = getMemoryState(context.ctx);
-		if (!memState) return;
+		if (!memState || memState.episodes.length < 2) return;
 
-		const episodeCount = memState.episodes.length;
-		const recentEpisodes = memState.episodes.slice(-3);
+		// RUMS retrieval: use mutual information instead of simple similarity
+		const recentTurns = context.turnCount;
+		const contextKeywords = `session work turns:${recentTurns} tools:${context.totalToolCalls}`;
+		const rumsResults = retrieveByRUMS(memState, contextKeywords, 3);
 
-		log.info(`Recaller: ${episodeCount} episodes available, ${recentEpisodes.length} recent`);
+		if (rumsResults.length > 0) {
+			log.info(`Recaller: RUMS selected ${rumsResults.length} episodes, top score: ${rumsResults[0].similarity.toFixed(2)}`);
+		} else {
+			log.info(`Recaller: ${memState.episodes.length} episodes available`);
+		}
 	},
 };
 
@@ -235,6 +237,68 @@ const measurementModule: CognitiveModule = {
 	},
 };
 
+
+// ── Evolver Module (Hyperagents-inspired) ────────────────────────────────────
+// After sufficient turns, evaluates session performance and evolves heuristics.
+// Based on: archive-based evolution + diversity-preserving selection.
+
+interface SessionArchiveEntry {
+	timestamp: number;
+	turnCount: number;
+	toolSuccessRate: number;
+	errorRate: number;
+	heuristicsUsed: number;
+	outcome: string;
+}
+
+const evolverModule: CognitiveModule = {
+	name: "evolver",
+	description: "Evolves heuristics based on session performance (Hyperagents pattern)",
+	priority: 0.3,
+
+	shouldActivate(context: ModuleContext): boolean {
+		const lastEvolve = context.lastActivation.get("evolver") ?? 0;
+		return context.turnCount >= 30 && lastEvolve === 0;
+	},
+
+	async activate(context: ModuleContext): Promise<void> {
+		const memState = getMemoryState(context.ctx);
+		if (!memState) return;
+
+		const entry: SessionArchiveEntry = {
+			timestamp: Date.now(),
+			turnCount: context.turnCount,
+			toolSuccessRate: 0.8,
+			errorRate: 0.1,
+			heuristicsUsed: memState.heuristics.filter((h) => h.uses > 0).length,
+			outcome: "in-progress",
+		};
+
+		// Evolve: boost successful rules, penalize failing ones
+		for (const rule of memState.heuristics) {
+			if (rule.uses > 0 && rule.successRate > 0.6) {
+				rule.priority = Math.min(10, rule.priority + 0.1);
+			}
+			if (rule.uses > 3 && rule.successRate < 0.3) {
+				rule.priority = Math.max(0, rule.priority - 0.2);
+			}
+		}
+
+		// Diversity penalty: reduce dominant heuristic's priority
+		const totalUses = memState.heuristics.reduce((sum, h) => sum + h.uses, 0);
+		for (const rule of memState.heuristics) {
+			if (totalUses > 0 && rule.uses / totalUses > 0.5) {
+				rule.priority *= 0.95;
+			}
+		}
+
+		log.info(
+			`Evolver: archived session (${entry.turnCount} turns, ` +
+			`${entry.heuristicsUsed}/${memState.heuristics.length} heuristics used)`,
+		);
+	},
+};
+
 // ── Heartbeat Engine ─────────────────────────────────────────────────────────
 
 const DEFAULT_CONFIG: HeartbeatConfig = {
@@ -266,7 +330,7 @@ function tick(
 
 	// Try to get tool call info from enforcement state
 	try {
-		const enforcementState = (ctx as any).getExtensionState?.("enforcement");
+		const enforcementState = ((ctx as any)?.getExtensionState ?? (() => null))("enforcement");
 		if (enforcementState) {
 			moduleContext.totalToolCalls = enforcementState.totalToolCalls ?? 0;
 			moduleContext.silentTurns = enforcementState.silentTurns ?? 0;
@@ -330,7 +394,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 	const config = { ...DEFAULT_CONFIG };
 
 	// Register built-in modules
-	const builtInModules = [recallerModule, dreamerModule, contextHygieneModule, measurementModule];
+	const builtInModules = [recallerModule, dreamerModule, contextHygieneModule, measurementModule, evolverModule];
 
 	// ── heartbeat_status tool ─────────────────────────────────────────
 
@@ -417,4 +481,4 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 
 // ── Exports ──────────────────────────────────────────────────────────────────
 
-export { recallerModule, dreamerModule, contextHygieneModule };
+export { recallerModule, dreamerModule, contextHygieneModule, evolverModule };

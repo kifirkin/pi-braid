@@ -149,6 +149,114 @@ function computeSimilarity(query: string, episode: Episode): number {
 	return matches / (queryWords.size * 3);
 }
 
+// ── RUMS Retrieval (paper 2604.14473) ────────────────────────────────────────
+// Select memories by mutual information with response, not just semantic similarity.
+// Key insight: select memories that MINIMIZE RESPONSE ENTROPY.
+
+/**
+ * Estimate pointwise mutual information between a query word and the episode.
+ * PMI(word; episode) ≈ log(P(word | episode) / P(word))
+ * High PMI = word is informative about this episode context.
+ */
+function estimatePMI(
+	queryWord: string,
+	episode: Episode,
+	backgroundFreq: Map<string, number>,
+	totalDocs: number,
+): number {
+	const pWord = backgroundFreq.get(queryWord) ?? 1;
+	let pWordGivenEpisode = 0;
+	if (queryWord.length >= 3) {
+		if (episode.task.toLowerCase().includes(queryWord)) pWordGivenEpisode += 0.7;
+		if (episode.solution.toLowerCase().includes(queryWord)) pWordGivenEpisode += 0.5;
+		if (episode.tags.some((t) => t.toLowerCase().includes(queryWord))) pWordGivenEpisode += 0.3;
+	}
+	if (pWordGivenEpisode === 0) return 0;
+	return Math.log((pWordGivenEpisode * totalDocs) / Math.max(pWord, 1));
+}
+
+/**
+ * Compute RUMS score for an episode given a query.
+ * Combines PMI with outcome consistency and recency.
+ *
+ * RUMS theory: select memories that maximize I(Response; Memory | Query)
+ * which ≈ minimize entropy of expected response conditioned on memory.
+ */
+function computeRUMS(
+	query: string,
+	episode: Episode,
+	backgroundFreq: Map<string, number>,
+	totalDocs: number,
+): number {
+	const queryWords = query.toLowerCase().split(/\W+/).filter((w) => w.length > 2);
+	if (queryWords.length === 0) return 0;
+
+	// 1. PMI-based information gain (60% weight)
+	let pmiSum = 0;
+	let validWords = 0;
+	for (const word of queryWords) {
+		const pmi = estimatePMI(word, episode, backgroundFreq, totalDocs);
+		if (pmi > 0) { pmiSum += pmi; validWords++; }
+	}
+	const avgPMI = validWords > 0 ? pmiSum / validWords : 0;
+	const pmiScore = Math.min(avgPMI / 5, 1) * 0.6; // [0, 0.6]
+
+	// 2. Outcome consistency bonus (20% weight)
+	const outcomeScore = episode.outcome === "success" ? 0.2 :
+		episode.outcome === "partial" ? 0.1 : 0.0;
+
+	// 3. Recency bonus (20% weight)
+	const ageDays = (Date.now() - episode.timestamp) / (24 * 60 * 60 * 1000);
+	const recencyScore = Math.max(0, 1 - ageDays / 30) * 0.2;
+
+	// 4. Solution specificity bonus (10% weight)
+	const solutionTokens = episode.solution.split(/\W+/).filter((w) => w.length > 3).length;
+	const specificityScore = Math.min(solutionTokens / 20, 1) * 0.1;
+
+	return pmiScore + outcomeScore + recencyScore + specificityScore;
+}
+
+/**
+ * RUMS-based episode retrieval — information-theoretic selection.
+ * Replaces simple token overlap with mutual information scoring.
+ */
+function retrieveByRUMS(
+	state: MemoryStoresState,
+	query: string,
+	limit: number = 3,
+): Episode[] {
+	if (state.episodes.length === 0) return [];
+
+	// Build background frequency distribution from all episodes
+	const backgroundFreq = new Map<string, number>();
+	const totalDocs = state.episodes.length;
+	for (const ep of state.episodes) {
+		const words = new Set(
+			(ep.task + " " + ep.solution + " " + ep.tags.join(" "))
+			.toLowerCase().split(/\W+/).filter((w) => w.length > 2),
+		);
+		for (const word of words) {
+			backgroundFreq.set(word, (backgroundFreq.get(word) ?? 0) + 1);
+		}
+	}
+
+	// Score each episode by RUMS
+	const scored = state.episodes.map((ep) => ({
+		ep,
+		score: computeRUMS(query, ep, backgroundFreq, totalDocs),
+	}));
+
+	const results = scored
+		.filter((s) => s.score > 0.05)
+		.sort((a, b) => b.score - a.score)
+		.slice(0, limit)
+		.map((s) => ({ ...s.ep, similarity: s.score }));
+
+	log.debug(`RUMS retrieved ${results.length} episodes for "${query.slice(0, 30)}..."`);
+	return results;
+}
+
+
 function pruneEpisodes(state: MemoryStoresState): void {
 	const outcomeScore = (ep: Episode) =>
 		(ep.outcome === "success" ? 2 : ep.outcome === "partial" ? 1 : 0) * 0.5 +
@@ -334,7 +442,8 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 		}),
 		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
 			const state = getState(ctx);
-			const { action, query, task, solution, outcome, limit = 3, tags = [] } = params as any;
+			const p = params as { action: string; query?: string; task?: string; solution?: string; outcome?: string; limit?: number; tags?: string[] };
+			const { action, query, task, solution, outcome, limit = 3, tags = [] } = p;
 
 			if (action === "search") {
 				if (!query) return textResult("Error: query is required for search action");
@@ -357,7 +466,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 				if (!task || !solution || !outcome) {
 					return textResult("Error: task, solution, and outcome are required for add action");
 				}
-				const episode = addEpisode(state, task, solution, outcome as any, [], tags);
+				const episode = addEpisode(state, task, solution, outcome as Episode["outcome"], [], tags);
 				return textResult(`Episode added: "${task.slice(0, 50)}..." (${outcome}) [${episode.id}]`);
 			}
 
@@ -403,7 +512,8 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 		}),
 		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
 			const state = getState(ctx);
-			const { action, context, condition, action_text, rule_id, success } = params as any;
+			const hp = params as { action: string; context?: string; condition?: string; action_text?: string; rule_id?: string; success?: boolean };
+			const { action, context, condition, action_text, rule_id, success } = hp;
 
 			if (action === "list") {
 				const rules = context
@@ -463,7 +573,8 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 		}),
 		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
 			const state = getState(ctx);
-			const { action, tool, task_type, candidates } = params as any;
+			const tp = params as { action: string; tool?: string; task_type?: string; candidates?: string[] };
+			const { action, tool, task_type, candidates } = tp;
 
 			if (action === "list") {
 				if (state.toolStats.size === 0) return textResult("No tool stats recorded.");
@@ -495,6 +606,52 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 			return textResult(`Unknown action: ${action}. Use list, reliability, or best.`);
 		},
 	});
+
+	// ── heuristics_evaluate tool ────────────────────────────────────────
+	pi.registerTool({
+		name: "heuristics_evaluate",
+		label: "Heuristics Evaluate",
+		description:
+			"Evaluate which heuristics were followed in the current session.",
+		parameters: Type.Object({
+			action: StringEnum(["evaluate", "compliance"]),
+			task_type: Type.Optional(Type.String()),
+		}),
+		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
+			const state = getState(ctx);
+			const p = params as { action: string; task_type?: string };
+			const { action, task_type } = p;
+
+			if (action === "evaluate" || action === "compliance") {
+				const applicable = task_type
+					? getApplicableHeuristics(state, task_type)
+					: getPrioritizedHeuristics(state).slice(0, 5);
+
+				if (applicable.length === 0) {
+					return textResult("No applicable heuristics found.");
+				}
+
+				const lines: string[] = ["Heuristic Compliance:\n"];
+				for (const rule of applicable) {
+					const key = task_type ?? "general";
+					const stat = state.toolStats.get(`${rule.condition}:${key}`);
+					const toolRate = stat && stat.attempts > 0 ? stat.successes / stat.attempts : null;
+					const compliance = toolRate !== null
+						? rule.successRate * 0.6 + toolRate * 0.4
+						: rule.successRate;
+					const icon = compliance > 0.7 ? "yes" : compliance > 0.4 ? "partial" : "no";
+					lines.push(`[${icon}] ${rule.condition}`);
+					lines.push(`  -> ${rule.action}`);
+					lines.push(`  Uses: ${rule.uses}, Rate: ${(rule.successRate * 100).toFixed(0)}%`);
+					lines.push("");
+				}
+			return textResult(lines.join("\n"));
+			}
+
+			return textResult("Unknown action. Use evaluate.");
+		},
+	});
+
 
 	// ── Event: session_start ────────────────────────────────────────────
 
@@ -578,4 +735,5 @@ export {
 	recordToolCall,
 	getToolReliability,
 	selectBestTool,
+	retrieveByRUMS,
 };

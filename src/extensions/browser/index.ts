@@ -223,6 +223,7 @@ async function browserNavigate(input: Static<typeof navigateParams>) {
 		await new Promise((r) => setTimeout(r, 200));
 	} catch {
 		// Ignore - might already be enabled
+ /* Non-fatal: browser history unavailable */
 	}
 
 	// Navigate with retry

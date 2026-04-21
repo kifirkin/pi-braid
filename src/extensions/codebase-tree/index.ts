@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("codebase-tree");
 /**
  * Codebase Tree Explorer - Fast directory tree visualization for agents
  *
@@ -349,6 +352,7 @@ async function buildTree(
 			}
 		} catch {
 			// Permission denied or other error
+  /* Non-fatal: git history unavailable */
 		}
 
 		// Sort: directories first, then by name

@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("polyfill");
 /**
  * Polyfill Extension - Patches missing API methods on ExtensionContext
  *
@@ -67,6 +70,7 @@ async function persistCustomKeys(): Promise<void> {
 		await fs.writeFile(SETTINGS_PATH, JSON.stringify(settings, null, 2), "utf-8");
 	} catch {
 		// Non-fatal: settings won't persist but everything else still works
+ /* Non-fatal: input normalization unavailable */
 	}
 }
 
@@ -83,6 +87,7 @@ async function loadCustomKeysFromDisk(): Promise<void> {
 		}
 	} catch {
 		// Non-fatal: no prior settings or parse error
+ /* Non-fatal: tool registry access unavailable */
 	}
 }
 

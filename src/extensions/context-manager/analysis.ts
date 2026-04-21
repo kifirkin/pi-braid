@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("context-manager");
 /**
  * Session analysis utilities for context-manager.
  * Pure functions — no module-level mutable state.

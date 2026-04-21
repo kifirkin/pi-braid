@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("web-fetch");
 /**
  * Prompt injection detection via regex pattern matching.
  * Pure pattern-based - no ML dependencies. All Node.js built-ins.

@@ -65,17 +65,43 @@ session_search, session_query
 
 ## Installation
 
+### Quick Start
+
 ```bash
 pi -e /path/to/pi-braid
 ```
 
-Or in settings.json:
+### Settings (recommended)
+
+In `~/.pi/agent/settings.json`:
 
 ```json
 {
   "extensions": ["/path/to/pi-braid"]
 }
 ```
+
+### Development vs Release
+
+**Development** — point to source directory for live development:
+```json
+{
+  "extensions": ["/path/to/pi-braid"]
+}
+```
+
+**Release** — build and point to the bundle:
+```bash
+npx esbuild src/index.ts --bundle --format=esm --outdir=dist --platform=node
+```
+
+```json
+{
+  "extensions": ["/path/to/pi-braid/dist/index.js"]
+}
+```
+
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for full details.
 
 ## Architecture
 

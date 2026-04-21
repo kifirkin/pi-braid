@@ -26,7 +26,7 @@ import {
 	saveMetrics,
 	updateConfig,
 } from "../../lib/degradation-detector.js";
-import { taggedConsole } from "../../lib/logger.js";
+import { createLogger } from "../../lib/logger.js";
 import {
 	initMetacognitiveState,
 	getMetacognitiveState,
@@ -63,7 +63,7 @@ const evolveSchema = Type.Object({
 	force: Type.Optional(Type.Boolean({ default: false, description: "Force action without confirmation" })),
 });
 
-const _log = taggedConsole("evolve");
+const _log = createLogger("evolve");
 
 interface EvolveResult {
 	action: EvolveActionType;

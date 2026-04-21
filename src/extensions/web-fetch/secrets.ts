@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("web-fetch");
 /**
  * Secret pattern detection for outgoing requests.
  * Ported from scurl's SecretDefender.
@@ -59,6 +62,7 @@ export function scanUrl(url: string): SecretScanResult {
 		}
 	} catch {
 		// Invalid URL, skip
+ /* Non-fatal: secret extraction not available */
 	}
 
 	return { found: false };

@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("prompt-guardian");
 /**
  * Prompt Guardian - Never lose a half-written prompt
  *

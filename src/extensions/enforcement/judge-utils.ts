@@ -22,6 +22,7 @@ export function getJudgeModel(ctx: ExtensionContext): Model<Api> | undefined {
 		model = (ctx as any).getUtilityModel?.();
 	} catch {
 		// Polyfill not patched yet (no session_start in -p mode)
+ /* Non-fatal: tool description unavailable */
 	}
 
 	if (!model) {

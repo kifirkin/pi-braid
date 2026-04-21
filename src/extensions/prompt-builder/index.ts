@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("prompt-builder");
 /**
  * Prompt Builder - Reconstruction from Structured Data
  *
@@ -199,6 +202,7 @@ function reconstructProjectContextSection(cwd: string): string {
           };
         } catch {
           // Skip files that can't be read
+        /* Non-fatal: prompt parsing failed */
         }
       }
     }

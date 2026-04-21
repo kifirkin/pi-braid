@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("user-message-preprocessor");
 /**
  * User Message Preprocessor Extension
  *
@@ -99,6 +102,7 @@ function saveGlobalSetting<T>(key: string, value: T): void {
 		try {
 			settings = JSON.parse(readFileSync(SETTINGS_FILE, "utf-8"));
 		} catch {}
+ /* Non-fatal: preprocess function unavailable */
 	}
 	settings[key] = value;
 	if (!existsSync(CONFIG_DIR)) {

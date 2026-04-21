@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("web-fetch");
 /**
  * HTML-to-markdown converter using only Node.js built-ins.
  * Strips scripts/styles, converts common elements to markdown,

@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("repl");
 /**
  * REPL Extension - Native TypeScript/JavaScript code execution
  *
@@ -193,7 +196,20 @@ function createReplTool(): AgentTool<typeof replSchema> {
 			const evalFn = new Function(...evalKeys, params.code);
 			let result: unknown;
 			const timeoutPromise = new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`Execution timed out after ${timeout}ms`)), timeout));
-			const evalPromise = (async () => { result = await evalFn(...evalValues); return result; })();
+			const evalPromise = (async () => {
+				try {
+					result = await evalFn(...evalValues);
+					return result;
+				} catch (err: any) {
+					if (err?.code === "ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING") {
+						throw new Error(
+							"Dynamic import() is not supported in the REPL tool. " +
+							"Use static imports at the top of your code or access values via the context parameter."
+						);
+					}
+					throw err;
+				}
+			})();
 			await Promise.race([evalPromise, timeoutPromise]);
 
 			if (mode === "rlm") { replState.rlmHistory.push({ code: params.code, result }); if (replState.rlmHistory.length > 100) replState.rlmHistory = replState.rlmHistory.slice(-100); }

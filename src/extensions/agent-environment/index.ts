@@ -1,3 +1,6 @@
+import { createLogger } from "../../lib/logger.js";
+
+const log = createLogger("agent-environment");
 /**
  * Agent Environment Extension - L1 Environmental Awareness
  *

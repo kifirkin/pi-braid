@@ -18,9 +18,9 @@
  * ```
  */
 
-import { taggedConsole } from "./logger.js";
+import { createLogger } from "./logger.js";
 
-const _log = taggedConsole("topic-drift");
+const _log = createLogger("topic-drift");
 
 export interface DriftCheck {
 	drifted: boolean;

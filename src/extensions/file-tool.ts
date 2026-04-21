@@ -1,5 +1,8 @@
 import * as fs from "node:fs";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { createLogger } from "../lib/logger.js";
+
+const log = createLogger("file-tool.ts");
 
 interface FileInfo {
 	exists: boolean;
