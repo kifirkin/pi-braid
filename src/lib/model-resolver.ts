@@ -17,32 +17,7 @@
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { Model, Api } from "@mariozechner/pi-ai";
-
-/** Custom settings keys - must match polyfill extension */
-const UTILITY_MODEL_KEY = "utilityModel";
-const VISION_MODEL_KEY = "visionModel";
-
-/**
- * Cross-module shared map for custom model role keys (utilityModel / visionModel).
- *
- * The polyfill extension (/utility-model and /vision-model commands) stores
- * selections here because SettingsManager is not accessible from ExtensionContext.
- * This module reads them to resolve the effective model.
- *
- * Using a unique Symbol key on the global to avoid collisions.
- */
-const CUSTOM_KEYS_MAP = Symbol.for("pi-braid:custom-model-keys");
-
-function getCustomModelKeys(): Map<string, string> {
-	if (!(globalThis as any)[CUSTOM_KEYS_MAP]) {
-		(globalThis as any)[CUSTOM_KEYS_MAP] = new Map<string, string>();
-	}
-	return (globalThis as any)[CUSTOM_KEYS_MAP];
-}
-
-function getCustomModelKey(key: string): string | undefined {
-	return getCustomModelKeys().get(key);
-}
+import { getCustomModelKey, UTILITY_MODEL_KEY, VISION_MODEL_KEY } from "./global-state.js";
 
 /**
  * Resolve a model from a pattern like "provider/model-id" or just "model-id".
@@ -76,8 +51,8 @@ export function resolveUtilityModel(ctx: ExtensionContext): Model<Api> | undefin
 	}
 
 	// 2. defaultModel/defaultProvider (set by built-in model selector or /model command)
-	const defaultProvider = (ctx as any).settingsManager?.getDefaultProvider?.();
-	const defaultModel = (ctx as any).settingsManager?.getDefaultModel?.();
+	const defaultProvider = ctx.settingsManager?.getDefaultProvider?.();
+	const defaultModel = ctx.settingsManager?.getDefaultModel?.();
 	if (defaultModel && defaultProvider) {
 		const resolved = ctx.modelRegistry.find(defaultProvider, defaultModel);
 		if (resolved) return resolved;
@@ -119,8 +94,8 @@ export function resolveVisionModel(ctx: ExtensionContext): Model<Api> | undefine
 	}
 
 	// 2. defaultModel/defaultProvider - only if it supports image input
-	const defaultProvider = (ctx as any).settingsManager?.getDefaultProvider?.();
-	const defaultModel = (ctx as any).settingsManager?.getDefaultModel?.();
+	const defaultProvider = ctx.settingsManager?.getDefaultProvider?.();
+	const defaultModel = ctx.settingsManager?.getDefaultModel?.();
 	if (defaultModel && defaultProvider) {
 		const resolved = ctx.modelRegistry.find(defaultProvider, defaultModel);
 		if (resolved?.input?.includes("image")) return resolved;

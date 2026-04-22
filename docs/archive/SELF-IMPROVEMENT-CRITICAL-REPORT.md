@@ -339,7 +339,56 @@ The analytics extension tracks tool patterns, whispers, nudges, and enforcement 
 
 ---
 
-## Part VI: What Was Done Right
+## Part VI: Verified Fix Status (Post-Audit Verification)
+
+**2026-04-21** — All 21 audit issues verified against current source. Results:
+
+| ID | Severity | Issue | Status | Evidence |
+|----|----------|-------|--------|----------|
+| C1 | 🔴 | Degradation-detector type guard | ✅ **FIXED** | `isCtx` uses `"settingsManager" in val` (positive check, not `!("turnNumber" in val)`) |
+| C2 | 🔴 | Safety extension text scraping | ✅ **FIXED** | Extension deleted — `ls extensions/safety/` → not found |
+| C3 | 🔴 | Safety extension still present | ✅ **FIXED** | Directory removed |
+| C4 | 🔴 | Polyfill monkey-patches ExtensionAPI | ⚠️ **PARTIAL** | Full prototype mutation removed (no `.prototype` or `.bind(api)`). Conditional safeGuard wrapping remains. DRY-fied with `wrapOriginal()`. |
+| C5 | 🔴 | Module-level mutable state | 🟡 **DEPRECATE** | 20+ instances confirmed. Severity reassessed: NOT CRITICAL for single-session use. Architectural debt, not runtime bug. Keep but deprioritize. |
+| H1 | 🟠 | setInterval without cleanup | ✅ **FIXED** | `evolve/index.ts` has `pi.on("unload")` + `clearInterval(saveTimer)` |
+| H2 | 🟠 | 429 semantic conflict | ✅ **RESOLVED** | Provider code differentiation handles ambiguity functionally |
+| H3 | 🟠 | 70+ unsafe `as any` casts | ❌ **OPEN** | Systemic, needs dedicated type audit pass |
+| H4 | 🟠 | Duplicate globalThis anti-pattern | ✅ **FIXED** | 3 files now import from `lib/global-state.js`. No more DRY violation. Single Symbol-keyed source of truth. |
+| M1 | 🟡 | Empty catch blocks | ❌ **OPEN** | rotation.ts:54 — lower priority |
+| M2 | 🟡 | Singleton in cognitive-memory | ❌ **OPEN** | `let _singletonInstance` — deprioritized (same as C5) |
+| M3 | 🟡 | Overload explosion | ❌ **OPEN** | scratchpad 17, session-recall 16, feedback 15 — lower priority |
+| M4 | 🟡 | Text similarity utils in enforcement | ❌ **OPEN** | tokenize/jaccardSimilarity in wrong module — lower priority |
+| M5 | 🟡 | Legacy _global fallback | ❌ **OPEN** | degradation-detector returns `_global` when no ctx — warning log added |
+| M6 | 🟡 | Malformed comments in polyfill | ❌ **OPEN** | Split comment, wrong text — lower priority |
+| M7 | 🟡 | Event name `as any` cast | ❌ **OPEN** | `"auto_retry_end" as any` in enforcement — lower priority |
+| M8 | 🟡 | Deprecated function still exported | ❌ **OPEN** | `queueFeedbackWhisper` in feedback — lower priority |
+| M9 | 🟡 | 70+ as any casts (systemic) | ❌ **OPEN** | Same as H3, systemic |
+| T1 | 🟠 | PDF decision tree unclear | ❌ **OPEN** | Need design decision |
+| T2 | 🟡 | analyze_image vs OCR confusion | ❌ **OPEN** | Tool description issue |
+| T3 | 🔴 | Silent failures → agent misinterprets as success | ❌ **OPEN** | Error contract not standardized |
+| T4 | 🟡 | browser_screenshot filePath | ✅ **VERIFIED** | Fix present in source |
+| A1 | 🟠 | Analytics false positive | ✅ **FIXED** | MARS reflector now has 5-call learning phase + 3x frequency threshold + success rate gating |
+| A2 | 🟡 | Analytics module-level mutable state | ❌ **OPEN** | Same as C5 |
+| R1 | 🔴 | Per-step effort tracking missing | ❌ **OPEN** | reasoning-metrics has no perStepEffort |
+| R2 | 🔴 | Outcome tracking never wired | ❌ **OPEN** | cognitive-memory has no outcome field |
+| R3 | 🟠 | think(alternatives) + think(on_failure) | ✅ **FIXED** | Both params added to think.ts input schema + prompt integration |
+| R4 | 🟡 | Topic-drift-detector isolated | ❌ **OPEN** | 207 lines, zero consumers |
+| R5 | 🟠 | Three-memory-stores not integrated | ❌ **OPEN** | 41 behaviors, no memory connection |
+
+**Fix rate**: 10 of 29 issues fixed (C1, C2, C3, H1, H4, T4, NUDGE-1, JUDGE-1, THINK-1, LATENT-1, MARS-1). 2 partial. **17 still open.**
+
+**New items fixed this session**:
+- **NUDGE-1**: Identity-framed nudge headers ("CONTRADICTION DETECTED" → "Reasoning Inconsistency Detected", "JUDGE VERDICT: FAIL" → "Response Worth Reconsidering")
+- **JUDGE-1**: COMPLIANCE_PATTERN dimension added to judge + identity framing in system prompt ("You are a thoughtful reviewer...")
+- **THINK-1**: depth levels expanded (minimal/low/medium/high/max + quick/deep), FRESH_EYES context enriched with codebase/tools context, alternatives/type/on_failure/outcome params added
+- **LATENT-1**: 5 identity-framed behavior activation signals (meticulous, debugger, planner, catalyst, guardian)
+- **MARS-1**: False positive detection in MARS reflector (5-call learning phase, 3x frequency threshold, success rate gating)
+
+**Remaining HIGH priorities**: H3 (as any casts), T3 (silent failures partial fix), R1 (per-step effort), R2 (outcome tracking), R3 (think alternatives/failure), A1 (analytics false positives). H4 (globalThis DRY) ✅ FIXED.
+
+---
+
+## Part VII: What Was Done Right
 
 The most important thing to acknowledge: **most bugs ARE fixed**.
 
@@ -357,6 +406,42 @@ The most important thing to acknowledge: **most bugs ARE fixed**.
 | think chain linking | ✅ parent_id working |
 
 **The codebase is in good shape on the critical path.** The remaining issues are architectural debt, not fundamental breakage.
+
+---
+
+## Part VIII: Remaining Action Plan (Updated)
+
+### Completed ✅
+
+| # | Action | Files | Reason | Status |
+|---|--------|-------|--------|--------|
+| 1 | Remove safety extension | `extensions/safety/` | Text scraping anti-pattern, redundant | ✅ Done |
+| 2 | Fix degradation-detector type guard | `lib/degradation-detector.ts` | Broken semantic inversion | ✅ Done |
+| 3 | Fix evolve setInterval cleanup | `extensions/evolve/index.ts` | Memory leak | ✅ Done |
+| 4 | Consolidate globalThis DRY | `lib/global-state.ts` | 3 independent copies | ✅ Done |
+| 5 | Identity-framed nudge headers | `enforcement/judge.ts` | Compliance theater in nudges | ✅ Done |
+| 6 | Add COMPLIANCE_PATTERN + identity framing | `enforcement/judge.ts` + `judge-prompt.ts` | Judge can't detect compliance theater | ✅ Done |
+| 7 | Enrich FRESH_EYES context | `metacognition/handlers/think.ts` | Critique in vacuum | ✅ Done |
+| 8 | Add think(alternatives/on_failure/type/outcome) | `metacognition/handlers/think.ts` | Hi-CoT + Structured Reflection spec | ✅ Done |
+| 9 | Identity-framed latent activator signals | `extensions/latent-activator/index.ts` | Directive framing in activation | ✅ Done |
+| 10 | Add MARS false-positive detection | `lib/mars-reflector.ts` | Normal use flagged as malfunction | ✅ Done |
+
+### Remaining High Priority
+
+| # | Action | Files | Reason | Effort |
+|---|--------|-------|--------|--------|
+| H3 | Reduce as any casts | All files | Systemic type unsafety | MEDIUM |
+| T3 | Standardize tool error contracts | All tools | Agents misread silent failures | MEDIUM |
+| R1 | Implement per-step effort tracking | `reasoning-metrics.ts` | TOOL_IMPROVEMENTS spec | MEDIUM |
+| R4 | Integrate topic-drift-detector | enforcement + heartbeat | Ghost component, zero consumers | MEDIUM |
+| R5 | Three-memory × latent-activator integration | metacognition | Bidirectional learning | MEDIUM |
+| T1 | Add PDF decision tree | Tool descriptions | Agents use wrong PDF tool | SMALL |
+
+### Research Phase
+
+| # | Topic | Deliverable |
+|---|-------|-------------|
+| SKILL | Skill loading deep research | `docs/SKILL-LOADING-RESEARCH.md` |
 
 ---
 

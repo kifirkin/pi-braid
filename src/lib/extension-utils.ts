@@ -38,7 +38,7 @@ export function getExtensionStateOrNull<T>(
 	key: string,
 ): T | null {
 	try {
-		const fn = (ctx as any)?.getExtensionState;
+		const fn = (ctx as unknown as { getExtensionState?(key: string): unknown })?.getExtensionState;
 		if (typeof fn === "function") {
 			return fn(key) as T | null;
 		}

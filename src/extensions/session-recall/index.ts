@@ -17,6 +17,7 @@ const log = createLogger("session-recall");
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { Model, Api } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -83,11 +84,11 @@ function extractMessageText(jsonLine: string): { role: string; text: string } | 
 	try {
 		const entry = JSON.parse(jsonLine);
 		if (entry.type !== "message") return null;
-		const msg = entry.message as any;
-		const role = msg.role as string;
+		const msg = entry.message as { role: string; content?: Array<{ type?: string; text?: string }> };
+		const role = msg.role;
 		const texts = (msg.content ?? [])
-			.filter((c: any) => c.type === "text")
-			.map((c: any) => c.text)
+			.filter((c) => c.type === "text")
+			.map((c) => c.text)
 			.join(" ");
 		if (!texts) return null;
 		return { role, text: texts };
@@ -354,7 +355,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
 			}
 
 			// Get available model from ctx
-			const ctx = _ctx as any;
+			const ctx = _ctx as unknown as { getModel?(): Model<Api> | undefined; modelRegistry?: { getApiKeyAndHeaders(m: Model<Api>): Promise<{ ok: boolean; apiKey?: string }> } };
 			const model = ctx.getModel?.();
 			if (!model) {
 				return {
@@ -411,7 +412,8 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
 					};
 				}
 
-				const apiKey = (ctx.modelRegistry as any)?.getApiKey?.(model) ?? undefined;
+				const auth = await ctx.modelRegistry?.getApiKeyAndHeaders(model);
+				const apiKey = auth?.ok ? (auth as { apiKey?: string }).apiKey : undefined;
 				const response = await complete(
 					model,
 					{ systemPrompt: QUERY_SYSTEM_PROMPT, messages: [{ role: "user" as const, content: userMessage, timestamp: Date.now() }] },

@@ -66,12 +66,13 @@ let _global: DegradationState = {
 
 function getStateFrom(ctx?: ExtensionContext): DegradationState {
 	if (ctx) return getExtensionState(ctx, "degradation-detector", () => ({ ..._global }));
+	console.warn("[degradation-detector] No ExtensionContext available, using global state");
 	return _global;
 }
 
 /** Runtime type guard: is this an ExtensionContext? */
 function isCtx(val: unknown): val is ExtensionContext {
-	return typeof val === "object" && val !== null && !("turnNumber" in val);
+	return typeof val === "object" && val !== null && "settingsManager" in val;
 }
 
 function updateDegradationStatusFrom(state: DegradationState): void {
@@ -136,10 +137,8 @@ export function recordTurnMetrics(
 	ctxOrMetrics: ExtensionContext | Omit<PerformanceMetrics, "timestamp" | "healthcheckScore">,
 	metrics?: Omit<PerformanceMetrics, "timestamp" | "healthcheckScore">,
 ): void {
-	const ctx = typeof ctxOrMetrics === "object" && "turnNumber" in ctxOrMetrics ? undefined : ctxOrMetrics as ExtensionContext | undefined;
-	const actualMetrics = typeof ctxOrMetrics === "object" && "turnNumber" in ctxOrMetrics
-		? ctxOrMetrics as Omit<PerformanceMetrics, "timestamp" | "healthcheckScore">
-		: metrics!;
+	const ctx = isCtx(ctxOrMetrics) ? ctxOrMetrics : undefined;
+	const actualMetrics = isCtx(ctxOrMetrics) ? metrics! : ctxOrMetrics as Omit<PerformanceMetrics, "timestamp" | "healthcheckScore">;
 	const s = getStateFrom(ctx);
 	const entry: PerformanceMetrics = {
 		...actualMetrics,

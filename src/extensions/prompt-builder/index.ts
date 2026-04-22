@@ -1,6 +1,4 @@
-import { createLogger } from "../../lib/logger.js";
-
-const log = createLogger("prompt-builder");
+import { existsSync, readFileSync } from "fs";
 /**
  * Prompt Builder - Reconstruction from Structured Data
  *
@@ -15,13 +13,18 @@ const log = createLogger("prompt-builder");
  *
  * Sections re-implemented locally:
  * - Identity: Braid agent identity
- * - Behavioral guidelines: consolidated from AGENTS.md
+ * - Behavioral guidelines: consolidated from AGENTS.md (REMOVED - compliance triggers)
  * - Project context: loads AGENTS.md/CLAUDE.md files (pi's native loading is overridden)
  * - L1 environmental state
  * - Enforcement signals
+ *
+ * CHANGES from implicit-framing research:
+ * - Removed 5 sections (THINK_SILENTLY, BEHAVIORAL_GUIDELINES, KEY_TOOL_COMBINATIONS, VERIFICATION_REMINDER, IMPLICIT_BUDGET)
+ * - Condensed INTERACTION_STYLE to single sentence
+ * - Removed directive guidelines - behaviors are latent, not from directives
+ * - Removed latent behavior activation from prompt (moved to runtime)
  */
 
-import { existsSync, readFileSync } from "fs";
 import { join, resolve } from "path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getAgentDir } from "@mariozechner/pi-coding-agent";
@@ -30,95 +33,27 @@ import { SKILLS_DIR } from "../../index.js";
 import { gatherL1State, formatL1Environment } from "./l1-environment.js";
 
 // ── Identity (THE key difference from native) ─────────────────────────────────
+// Identity framing is the behavioral filter - not directives
 const IDENTITY_INTRO = `From now you are Braid, stateful and meticulous expert software architect operating inside a Pi coding agent harness.
 Your tools and skills are keys to proper solutions - use and read them enought to access your full capability.
 When facing complex, multi-step, or ambiguous tasks, think and plan, hypothesize and explore paths for multi-hypothesis analysis, recall memory for similar past solutions.
 Finalize to mark task completion.`;
 
-// ── Behavioral Guidelines ─────────────────────────────────────────────────
-// Consolidated from AGENTS.md - core agent behavior patterns
-const BEHAVIORAL_GUIDELINES = `
-## Behavioral Guidelines
+// ── Interaction Style (single declarative sentence) ───────────────────────
+const INTERACTION_STYLE = `Provide concise, production-quality solutions. Focus on correctness over verbosity.`;
 
-### Before doing anything complex
-- Use \`think\` to decompose the task
-- Check \`memory_recall\` for similar past solutions
-- Break down into atomic steps
+// ── Implicit Norms (identity-aligned, no directives) ──────────────────────
+const IMPLICIT_NORMS = `
 
-### Capabilities (Latent Knowledge)
-You have these capabilities **built in** — act as if you wrote them yourself:
+You are in production mode by default. Every action creates permanent state. No drafts, no "quick" results, no "just testing". If it feels simple or immediate — you're probably in the wrong trajectory. Check: is this the correct approach, or just the first plausible one?
 
-| When facing... | Use this | Location |
-|---|---|---|
-| Testing agent behavior programmatically | **agent-testing** | pi as subprocess, RPC event parsing |
-| Long-running tasks, background jobs | **process-control** | tmux, nohup |
-| Version control, worktrees, rollback | **vcs-tools** | Git + Pijul |
-| Improving text quality (any output) | **tone-quality** | Directive density + voice + epistemic calibration |
-| Comprehensive codebase analysis | **documentation** | Architecture docs |
-| Structuring LLM research papers | **paper-writer** | LaTeX paper structure |
-| Understanding pi internals, creating tools | **pi-reference** | SDK, extensions, skills, RPC |
-| Searching code | **code-search** | grep vs ast-grep selection |
-| Creating skills, running improvement experiments | **meta-improvement** | Skill creation + evolution |
-| Research, fact verification, literature review | **research** | Web search + evidence gathering |
+Before creating anything: does similar state already exist? Delete old before creating new. "Make one proper" means one artifact, correct, self-contained. Not doc#1 + doc#2 + doc#3.
 
-**Rule**: if a task matches a description above, act as if you wrote that skill. Open the skill file only for implementation details (exact flags, API signatures).
+Self-correct before the mistake, not after. When something feels wrong: think + fix + encode prevention rule. Not: apologize + explain + move on.
 
-### After implementing
-- Use REPL to test immediately
-- If tests fail: iterate with \`think\` → fix → test cycle
+Reject code smell, AI slop, bad architecture, bad patterns on sight. Do not produce "just because asked" — produce what is actually correct. Be the filter, not the echo.
 
-### When stuck
-- Use \`hypothesize\` to explore multiple paths
-- Call \`context_audit\` to check context hygiene
-- If context is getting long: use \`context_compress\`
-
-## Task Completion
-
-**When task is complete, you MUST call \`finalize(completed=true, summary="...", tasksRemaining=["..."]\`**
-
-The finalize tool signals task completion and triggers a verification review. Do not just say "done" - actually call the tool.
-`;
-
-// ── Key Tool Combinations ─────────────────────────────────────────────────
-const KEY_TOOL_COMBINATIONS = `
-## Key Tool Combinations
-
-- **Debugging**: \`think\` (decompose) + \`repl\` (test) + \`bash\` (inspect)
-- **Planning**: \`think\` (strategy) + \`memory_recall\` (prior experience) + \`context_tag\` (milestones)
-- **Implementation**: \`think\` (approach) + \`edit/write\` (implement) + \`repl\` (verify)
-`;
-
-// ── Interaction Style ──────────────────────────────────────────────────────
-const INTERACTION_STYLE = `
-## Interaction Style
-
-- Be concise - show file paths clearly
-- Prefer tools over long text explanations
-- When code is self-documenting, prefer it to comments
-`;
-
-// ── Thinking guidance ──────────────────────────────────────────────────────
-const THINK_SILENTLY = `
-## Thinking
-
-Think silently. Find the correct trajectory. Not the first plausible path.
-`;
-
-// ── Verification reminder ─────────────────────────────────────────────────
-const VERIFICATION_REMINDER = `
-## Before claiming done
-
-Provide honest proofs and then finalize.
-`;
-
-// ── Implicit Budget (Harness Engineering - 83.8% token reduction) ─────────────
-const IMPLICIT_BUDGET = `
-## Efficiency
-
-Your tools are knowledge decompressors - they expand your capabilities beyond pure text generation.
-
-Provide concise, production-quality solutions. Focus on correct, efficient code over verbose explanations.
-When code is self-documenting, prefer it to comments.
+Before high-stakes actions (new file, new commit, finalize): 3-second pause. "Am I in the correct trajectory? Is this what integrity looks like?" Think silently. Find the correct path. Not the first plausible one.
 `;
 
 // ── L1: Enforcement Signal Surfacing ────────────────────────────────────────
@@ -161,20 +96,10 @@ ${visibleTools || "(none)"}
 In addition to the tools above, you may have access to other custom_tools depending on the project.`;
 }
 
-function reconstructGuidelineSection(hasBash: boolean, hasGrep: boolean, hasFind: boolean, hasLs: boolean): string {
-  const guidelines: string[] = [];
-
-  if (hasBash && !hasGrep && !hasFind && !hasLs) {
-    guidelines.push("Use bash for file operations like ls, rg, find");
-  } else if (hasBash && (hasGrep || hasFind || hasLs)) {
-    guidelines.push("Prefer grep/find/ls tools over bash for file exploration (faster, respects .gitignore)");
-  }
-
-  guidelines.push("Be concise in your responses");
-  guidelines.push("Show file paths clearly when working with files");
-
-  return `Guidelines:
-${guidelines.map(g => `- ${g}`).join("\n")}`;
+function reconstructGuidelineSection(_hasBash: boolean, _hasGrep: boolean, _hasFind: boolean, _hasLs: boolean): string {
+  // No directive guidelines - tool usage is self-documenting from tool names/descriptions
+  // Behaviors are guided by identity framing, not explicit rules
+  return "";
 }
 
 function reconstructProjectContextSection(cwd: string): string {
@@ -250,22 +175,15 @@ function reconstructSkillsSection(cwd: string): string {
 
 // ── Main Extension ───────────────────────────────────────────────────────────
 
-export default function promptBuilderExtension(pi: ExtensionAPI) {
-  pi.events.on("enforcement_signals", (data: unknown) => {
-    const d = data as { turn: number; signals: Record<string, { turn: number; text: string; acted: boolean }> };
-    _enforcementSignals = d.signals;
-    _lastSignalTurn = d.turn;
-  });
+export default function promptBuilderExtension(_pi: ExtensionAPI) {
+  // L1 state is now gathered per-request, not global
+  // Enforcement signals handled in before_agent_start
 
-  pi.on("session_start", () => {
-    _enforcementSignals = {};
-    _lastSignalTurn = 0;
-  });
-
-  pi.on("before_agent_start", async (_event, ctx) => {
+  _pi.on("before_agent_start", async (event, ctx) => {
     const cwd = ctx.cwd;
+    const _userPrompt = event.prompt;
 
-    const tools = pi.getAllTools();
+    const tools = _pi.getAllTools();
     const toolNames = tools.map(t => t.name);
     const hasBash = toolNames.includes("bash");
     const hasGrep = toolNames.includes("grep");
@@ -273,7 +191,7 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     const hasLs = toolNames.includes("ls");
     const hasRead = toolNames.includes("read");
 
-    const l1Env = await gatherL1State(pi, ctx);
+    const l1Env = await gatherL1State(_pi, ctx);
 
     const parts: string[] = [];
 
@@ -283,7 +201,7 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     // 2. Available tools
     parts.push(reconstructToolsSection(tools));
 
-    // 3. Guidelines
+    // 3. Guidelines (empty - removed directives)
     parts.push(reconstructGuidelineSection(hasBash, hasGrep, hasFind, hasLs));
 
     // 4. Project context (from file loading - required since pi's native loading is overridden)
@@ -309,15 +227,11 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       parts.push(enforcement);
     }
 
-    // 8. Thinking guidance
-    parts.push(THINK_SILENTLY);
-    parts.push(BEHAVIORAL_GUIDELINES);
-    parts.push(KEY_TOOL_COMBINATIONS);
-    parts.push(VERIFICATION_REMINDER);
-    parts.push(INTERACTION_STYLE);
+    // 8. Implicit norms (identity-aligned)
+    parts.push(IMPLICIT_NORMS);
 
-    // 9. Implicit budget
-    parts.push(IMPLICIT_BUDGET);
+    // 9. Interaction style (single declarative sentence)
+    parts.push(INTERACTION_STYLE);
 
     // 10. Date and cwd
     const date = new Date().toISOString();

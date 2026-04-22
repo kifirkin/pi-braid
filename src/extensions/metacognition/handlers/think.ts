@@ -10,17 +10,35 @@ import { createLogger } from "../../../lib/logger.js";
 
 const log = createLogger("metacognition");
 
+/** Per-step effort calibration: depth → (maxTokens, guidance) */
+const DEPTH_BUDGETS: Record<string, { tokens: number; guidance: string }> = {
+	minimal: { tokens: 128, guidance: "One-line summary only." },
+	low: { tokens: 256, guidance: "Brief: 1-2 sentences." },
+	quick: { tokens: 512, guidance: "Concise reasoning." },
+	medium: { tokens: 1024, guidance: "Standard analysis." },
+	high: { tokens: 2048, guidance: "Thorough analysis with alternatives." },
+	max: { tokens: 4096, guidance: "Deep analysis with critique, alternatives, and failure modes." },
+	deep: { tokens: 4096, guidance: "Deep analysis with critique, alternatives, and failure modes." },
+};
+
+function getBudget(depth: string) {
+	return DEPTH_BUDGETS[depth] ?? DEPTH_BUDGETS.quick;
+}
+
 const thinkSchema = Type.Object({
 	thought_id: Type.Optional(Type.String({ description: "Unique identifier (auto-generated if omitted)" })),
 	parent_id: Type.Optional(Type.String({ description: "Parent thought ID for threaded reasoning chains" })),
-	type: Type.Optional(Type.String({ description: "Categorize the thought type", enum: ["insight", "question", "assumption", "conclusion", "hypothesis", "plan", "quick", "deep"] })),
+	type: Type.Optional(Type.String({ description: "Type of thinking", enum: ["observation", "planning", "execution", "reflection", "conclusion", "debugging", "design"] })),
 	observation: Type.Optional(Type.String({ description: "What you observed or decided to do" })),
 	decision: Type.String({ description: "What you decided to do" }),
 	reason: Type.Optional(Type.String({ description: "Why this decision" })),
 	confidence: Type.Optional(Type.Number({ description: "Confidence level 0-1", minimum: 0, maximum: 1 })),
 	tags: Type.Optional(Type.Array(Type.String(), { description: "Tags for categorization" })),
-	depth: Type.Optional(Type.String({ enum: ["quick", "deep"], description: "Analysis depth" })),
+	depth: Type.Optional(Type.String({ enum: ["minimal", "low", "medium", "high", "max", "quick", "deep"], description: "Analysis depth" })),
 	ask_utility_model: Type.Optional(Type.Boolean({ description: "Explicit opt-in to utility model" })),
+	alternatives: Type.Optional(Type.Array(Type.String(), { description: "Alternative approaches considered" })),
+	on_failure: Type.Optional(Type.String({ enum: ["diagnose", "propose_fix"], description: "What to do on failure" })),
+	outcome: Type.Optional(Type.String({ enum: ["success", "failure", "pending"], description: "Task outcome for closed-loop learning" })),
 });
 
 type ModelGetter = (ctx: ExtensionContext | undefined) => Model<any> | undefined;
@@ -28,18 +46,23 @@ type ApiKeyGetter = (ctx: ExtensionContext | undefined) => Promise<string | unde
 
 const FRESH_EYES_PROMPT = `You are a sharp, critical thinker who reviews the reasoning of other agents.
 
-Review this thinking entry:
+## Context
+You are reviewing thinking from an agent working on a TypeScript/Node.js codebase (pi-braid agent framework at /Users/kifir/projects/agents/pi-braid/).
+Available tools include: think, hypothesize, read, write, edit, bash, grep, browser_*, memory_*, evolve tools.
+
+## Thinking Entry
 - Observation: {observation}
 - Decision: {decision}
 - Reason: {reason}
 
+## Critique
 Provide a brief, honest critique:
-1. Is the reasoning sound?
-2. What assumptions might be wrong?
-3. What could go wrong with this decision?
-4. Any better alternatives?
+1. Is the reasoning sound given the codebase context?
+2. What assumptions might be wrong given the tools and patterns?
+3. What could go wrong with this decision in practice?
+4. Any better alternatives given what's been tried?
 
-Keep it concise - 3-5 sentences max.`;
+Keep it concise - 4-6 sentences max. Focus on what matters for a TypeScript codebase.`;
 
 export function createThinkTool(
 	modelGetter: ModelGetter,
@@ -57,19 +80,24 @@ export function createThinkTool(
 			const reason = params.reason ?? "";
 			const thoughtId = params.thought_id ?? crypto.randomUUID();
 			const depth = params.depth ?? "quick";
+			const budget = getBudget(depth);
 			const useUtilityModel = params.ask_utility_model === true || depth === "deep";
 
 			const result: Record<string, unknown> = { thought_id: thoughtId };
 			if (params.parent_id) result.parent_id = params.parent_id;
 			if (params.type) result.type = params.type;
 			if (params.confidence !== undefined) result.confidence = params.confidence;
-			if (params.tags) result.tags = params.tags;
+			if (params.alternatives) result.alternatives = params.alternatives;
+
+			// outcome: pending by default (updated by cognitive-memory on task completion)
+			result.outcome = "pending";
 
 			const lines: string[] = [
 				`Thinking recorded (${params.type ?? "insight"}):`,
 				`- Observed: ${observation}`,
 				`- Decided: ${decision}`,
 				`- Reason: ${reason}`,
+				`- Depth: ${depth} (${budget.guidance})`,
 				`- ID: ${thoughtId}${params.parent_id ? `\n- Parent: ${params.parent_id}` : ""}`,
 			];
 
@@ -88,7 +116,7 @@ export function createThinkTool(
 					};
 
 					try {
-						const response = await completeSimple(utilityModel as Model<Api>, context, { apiKey, maxTokens: 1024, temperature: 0.4 });
+						const response = await completeSimple(utilityModel as Model<Api>, context, { apiKey, maxTokens: budget.tokens, temperature: 0.4 });
 						if (!response.errorMessage) {
 							const utilityText = response.content
 								.filter((c): c is { type: "text"; text: string } => c.type === "text")

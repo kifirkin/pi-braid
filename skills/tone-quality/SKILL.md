@@ -1,6 +1,6 @@
 ---
 name: tone-quality
-description: "Use whenever you create, shape, or revise any meaningful text — not just when asked to improve. Covers prompts, responses, documentation, skill files, messages, system instructions, reviews, comments, and explanations. The three dimensions (directive density, voice artifacts, epistemic calibration) apply whether drafting from scratch, editing existing text, reviewing output, or auditing code. Activate by default: when writing any text, apply these principles proactively."
+description: "Load before writing any text that humans or agents will read — documentation, prompts, messages, skills, comments, and explanations. Ask yourself: 'Am I writing meaningful text?' If yes, activate this skill first. Not a post-hoc review step; apply these principles while drafting. Covers directive density, voice artifacts, and epistemic calibration."
 ---
 
 # Tone Quality

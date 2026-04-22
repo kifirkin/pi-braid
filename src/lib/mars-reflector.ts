@@ -44,6 +44,17 @@ function getState(ctx: ExtensionContext): MARSState {
 	}));
 }
 
+// ── Constants ────────────────────────────────────────────────────────────────//
+
+/** First N calls of each tool = learning phase, not flagged as pattern */
+const LEARNING_PHASE_CALLS = 5;
+
+/** Flag as overused only if > this multiple of average tool usage */
+const OVERUSE_MULTIPLIER = 3;
+
+/** Flag as overused only if success rate below this threshold */
+const MIN_SUCCESS_RATE_FOR_OVERUSE = 0.5;
+
 // ── Pattern analysis ──────────────────────────────────────────────────────────
 
 /** Build current session pattern from enforcement state */
@@ -78,11 +89,9 @@ export function buildPattern(ctx: ExtensionContext): SessionPattern {
 
 	// Build stability trend from recent stability signals
 	const stabilityTrend: number[] = [];
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const signals = (eState as any).enforcementSignals || {};
+	const signals = (eState as { enforcementSignals?: Record<string, unknown> }).enforcementSignals || {};
 	for (const [, signal] of Object.entries(signals)) {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const s = signal as any;
+		const s = signal as { turn?: number; text?: string };
 		if (s?.turn !== undefined && s?.text?.includes("[stability]")) {
 			const match = s.text.match(/overlap=([0-9.]+)/);
 			if (match) stabilityTrend.push(parseFloat(match[1]));
@@ -95,22 +104,52 @@ export function buildPattern(ctx: ExtensionContext): SessionPattern {
 		confidenceTrend: [],
 		stabilityTrend,
 		errorRate: 0,
-		consecutiveErrors: (eState as any).consecutiveErrors || 0,
+		consecutiveErrors: (eState as { consecutiveErrors?: number }).consecutiveErrors || 0,
 	};
 }
 
-/** Generate actionable advice based on pattern */
-export function generateAdvice(current: SessionPattern, previous: SessionPattern | null): MARSAdvice | null {
-	const now = Date.now();
-
-	// Tool over-reliance: one tool > 60% of calls
+/**
+ * Generate actionable advice based on pattern.
+ *
+ * Smart over-use detection:
+ * 1. Learning phase: first LEARNING_PHASE_CALLS of each tool = normal (not flagged)
+ * 2. Success-adjusted: only flag if tool is failing AND overused
+ * 3. Frequency-based: flag only if count > average * OVERUSE_MULTIPLIER
+ */
+export function generateAdvice(
+	current: SessionPattern,
+	previous: SessionPattern | null,
+	toolSuccessRates?: Map<string, number>,
+): MARSAdvice | null {
+	// Tool over-reliance: one tool > OVERUSE_MULTIPLIER * average AND failing
+	// AND not in learning phase (first N calls)
 	if (current.toolDistribution.size > 0) {
 		const total = [...current.toolDistribution.values()].reduce((a, b) => a + b, 0);
+		const avgPerTool = total / current.toolDistribution.size;
+
 		for (const [tool, count] of current.toolDistribution) {
-			if (count / total > 0.6) {
+			// Learning phase: first N calls = normal behavior
+			if (count <= LEARNING_PHASE_CALLS) continue;
+
+			// Frequency check: flag only if significantly above average
+			const isOverused = count > avgPerTool * OVERUSE_MULTIPLIER;
+			if (!isOverused) continue;
+
+			// Success check: flag only if tool is failing (not just being used a lot)
+			const successRate = toolSuccessRates?.get(tool) ?? 1.0;
+			const isFailing = successRate < MIN_SUCCESS_RATE_FOR_OVERUSE;
+
+
+			// Only flag if both overused AND failing, or severely overused (>10x average)
+			const severeOveruse = count > avgPerTool * 10;
+			if (isOverused && (isFailing || severeOveruse)) {
+				const successStr = toolSuccessRates ? `${Math.round(successRate * 100)}% success` : "";
+				const suggestion = isFailing
+					? "Consider: alternative tools, grep/find vs bash, or step back to verify approach."
+					: "Verify this is intentional before continuing.";
 				return {
 					type: "tool_overuse",
-					message: `[mars] ${tool} used ${count}/${total} times (${Math.round(count / total * 100)}%). Consider: alternative tools, grep/find vs bash, or step back to verify approach.`,
+					message: `[mars] ${tool} used ${count}/${total} times (${Math.round(count / total * 100)}%${successStr ? `, ${successStr}` : ""}). ${suggestion}`,
 					severity: "warn",
 				};
 			}

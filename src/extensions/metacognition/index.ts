@@ -24,8 +24,8 @@ async function getApiKey(ctx: ExtensionContext | undefined): Promise<string | un
 	if (!ctx) return undefined;
 	const model = getUtilityModel(ctx);
 	if (!model) return undefined;
-	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model as any);
-	return auth.ok ? (auth as any).apiKey : undefined;
+	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model as unknown as Model<Api>);
+	return auth.ok ? (auth as { apiKey?: string }).apiKey : undefined;
 }
 
 // ── Per-session metrics tracking ──────────────────────────────────────────────

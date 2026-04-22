@@ -1,4 +1,5 @@
 import { createLogger } from "../../lib/logger.js";
+import { resetState } from "./state.js";
 
 const log = createLogger("enforcement");
 /**
@@ -141,10 +142,10 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 	// Non-critical signals → bundled Session Signals nudge (turn_end).
 	// Critical signals (L3) → individual sendEnforcementWhisper (turn_end).
 	// Language detection: detect from user text → set reply instruction in system prompt
-	pi.on("input", async (event: any, ctx: any) => {
+	pi.on("input", async (event: { text?: string; source?: string }, ctx: ExtensionContext) => {
 		if (!getState(ctx).enforcementActive) return;
 		const text = event.text || "";
-		if (!text || text.startsWith("/") || (event as any).source === "extension") return;
+		if (!text || text.startsWith("/") || event.source === "extension") return;
 
 		const lang = detectLanguage(text);
 		if (lang.code === "EN") return;
@@ -154,7 +155,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		const replyLang = getReplyInstruction(ctx);
 		if (!replyLang) return;
 
-		const session = (ctx.sessionManager as any)?.getCurrentSession?.();
+		const session = (ctx as unknown as { sessionManager?: { getCurrentSession?(): { updateSystemPrompt?(opts: { append: string }): void } } }).sessionManager?.getCurrentSession?.();
 		if (session?.updateSystemPrompt) {
 			session.updateSystemPrompt({ append: replyLang });
 		}
@@ -163,7 +164,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 	// Topic drift: initialize on session_start, check on turn_end
 	pi.on("session_start", async (event, ctx: ExtensionContext) => {
 		if (!getState(ctx).enforcementActive) return;
-		const task = (event as any).task || (event as any).prompt || getState(ctx).originalRequest || "";
+		const task = (event as unknown as { task?: string; prompt?: string }).task || (event as unknown as { task?: string; prompt?: string }).prompt || getState(ctx).originalRequest || "";
 		if (task) {
 			getState(ctx).driftDetector?.setTaskContext(task);
 		}
@@ -216,9 +217,9 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 
 		// Task 4a: Reflection gap + Task 4b: Thought chain tracking
 		if (toolName === "think") {
-			const thinkType = (input as any)?.type || "unknown";
-			const parentId = (input as any)?.parent_id || null;
-			const confidence = (input as any)?.confidence;
+			const thinkType = (input as { type?: string })?.type || "unknown";
+			const parentId = (input as { parent_id?: string })?.parent_id || null;
+			const confidence = (input as { confidence?: number })?.confidence;
 			if (typeof confidence === "number") getState(ctx).lastThinkConfidence = confidence;
 			const thoughtId = `t${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 			getState(ctx).thoughtChains.push({ id: thoughtId, parentId, type: thinkType, timestamp: Date.now() });
@@ -298,7 +299,8 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 	});
 
 	// ── tool_end: calibration tracking (Task 4c) ───────────────────────────
-	pi.on("tool_end" as any, async (event: any, ctx: ExtensionContext) => {
+	// @ts-expect-error custom event not in ExtensionAPI types
+	pi.on("tool_end", async (event: { tool?: string; error?: unknown }, ctx: ExtensionContext) => {
 		if (!getState(ctx).enforcementActive) return;
 		const toolName = event?.tool || "";
 		if (toolName === "think") return;
@@ -350,21 +352,20 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 
 		// Detect context overflow - suppress L2 signals during recovery so the agent
 		// gets breathing room to stabilize after compaction/retry.
+		const msgContent = (event.message as unknown as { content?: Array<{ type: string; text?: string }> })?.content ?? [];
 		const isOverflowTurn =
 			event.message.role === "assistant" &&
 			"stopReason" in event.message &&
-			(event.message as { stopReason?: string }).stopReason === "error" &&
-			((event.message as any).content || [])
-				.flat()
-				.filter((c: any) => c?.type === "text")
-				.map((c: any) => c?.text || "")
+			(event.message as unknown as { stopReason?: string }).stopReason === "error" &&
+			msgContent
+				.filter((c) => c?.type === "text")
+				.map((c) => c?.text || "")
 				.join(" ")
 				.toLowerCase()
 				.includes("context") &&
-			((event.message as any).content || [])
-				.flat()
-				.filter((c: any) => c?.type === "text")
-				.map((c: any) => c?.text || "")
+			msgContent
+				.filter((c) => c?.type === "text")
+				.map((c) => c?.text || "")
 				.join(" ")
 				.toLowerCase()
 				.includes("overflow");
@@ -427,7 +428,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 				pi,
 				ctx,
 				state: getState(ctx),
-				event: { role: event.message.role, stopReason: (event.message as any).stopReason },
+				event: { role: event.message.role, stopReason: (event.message as unknown as { stopReason?: string }).stopReason },
 				actualTools,
 				erroredTools,
 				hadErrors,
@@ -445,7 +446,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 			pi,
 			ctx,
 			state: getState(ctx),
-			event: { role: event.message.role, stopReason: (event.message as any).stopReason },
+			event: { role: event.message.role, stopReason: (event.message as unknown as { stopReason?: string }).stopReason },
 			actualTools,
 			erroredTools,
 			hadErrors,
@@ -535,7 +536,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 
 		let usagePercent = 0;
 		try {
-			const ctxFromEvent = (event as any)?.ctx;
+				const ctxFromEvent = (event as unknown as { ctx?: { getContextUsage?(): { percent?: number } } })?.ctx;
 			const usage = ctxFromEvent?.getContextUsage?.();
 			if (usage) usagePercent = usage.percent ?? 0;
 		} catch { /* ignore */ }
@@ -611,7 +612,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		const compactTurn = getState(ctx).currentTurn;
 
 		try {
-			const scratchpadResult = await (ctx as any).tools.scratchpad?.({ action: "read" });
+			const scratchpadResult = await (ctx as unknown as { tools?: { scratchpad?(params: { action: string }): Promise<unknown> } }).tools?.scratchpad?.({ action: "read" });
 			const details = (scratchpadResult as { details?: { key_learnings?: Array<{ persisted?: boolean }> } } | undefined)?.details;
 			const learnings = details?.key_learnings ?? [];
 			const unpersisted = learnings.filter((l) => !l.persisted);
@@ -666,7 +667,8 @@ Persist them now - this is the minimum-fidelity moment.`,
 
 	// ── auto_retry_end ────────────────────────────────────────────────────────
 	// L3: Infrastructure errors from retry failures → individual, semantic
-	pi.on("auto_retry_end" as any, async (event: any, ctx: any) => {
+	// @ts-expect-error custom event not in ExtensionAPI types
+	pi.on("auto_retry_end", async (event: { success: boolean; attempt: number; finalError?: string }, ctx: ExtensionContext) => {
 		if (!getState(ctx).enforcementActive) return;
 
 		const { success, attempt, finalError } = event;
@@ -899,7 +901,7 @@ Persist them now - this is the minimum-fidelity moment.`,
 	// ── Topic Drift Detection (PROPOSAL_TOPIC_DRIFT_DETECTOR)
 	pi.on("turn_end", async (_event: any, ctx: ExtensionContext) => {
 		if (!getState(ctx).enforcementActive || !getState(ctx).driftDetector) return;
-		const session = (ctx.sessionManager as any)?.getCurrentSession?.() || null;
+			const session = (ctx as unknown as { sessionManager?: { getCurrentSession?(): { messages?: Array<{ role?: string; content?: unknown }> } } }).sessionManager?.getCurrentSession?.() || null;
 		const recentMsgs = session?.messages?.slice(-4) ?? [];
 		for (let i = recentMsgs.length - 1; i >= 0; i--) {
 			const msg = recentMsgs[i];
@@ -913,7 +915,11 @@ Persist them now - this is the minimum-fidelity moment.`,
 		if (driftCheck.drifted) {
 			const whisper = getState(ctx).driftDetector.generateWhisper(driftCheck);
 			if (whisper) {
-				pi.sendMessage({ customType: "context", display: true, content: [{ type: "text", text: whisper }] });
+				pi.sendMessage({
+					customType: "context",
+					display: true,
+					content: [{ type: "text", text: whisper }],
+				});
 			}
 			// Emit to Belief Policy Engine
 			emitSignal(ctx, "topic-drift", "detected", driftCheck.severity === "strong" ? "warn" : "info", { severity: driftCheck.severity });
@@ -922,13 +928,39 @@ Persist them now - this is the minimum-fidelity moment.`,
 		// Belief Policy Engine — get actionable recommendations and surface them
 		const bpeRec = getNextRecommendation(ctx);
 		if (bpeRec) {
-			pi.sendMessage({ customType: "context", display: true, content: [{ type: "text", text: `[policy] ${bpeRec.message}` }] });
+			pi.sendMessage({
+				customType: "context",
+				display: true,
+				content: [{ type: "text", text: `[policy] ${bpeRec.message}` }],
+			});
 		}
 
 		// MARS — get self-reflection advice
 		const marsAdvice = marsShouldAdvise(ctx);
 		if (marsAdvice) {
-			pi.sendMessage({ customType: "context", display: true, content: [{ type: "text", text: marsAdvice.message }] });
+			pi.sendMessage({
+				customType: "context",
+				display: true,
+				content: [{ type: "text", text: marsAdvice.message }],
+			});
 		}
+	});
+
+	// ── Session shutdown: reset state for session isolation (D1) ─────────────
+	pi.on("session_shutdown", async (_event: any, ctx: ExtensionContext) => {
+		const state = getState(ctx);
+		const sessionId = ctx.cwd ?? "default";
+
+		// Log session summary before cleanup
+		log.info(
+			`[session_shutdown] Session ${sessionId}: ` +
+				`${state.totalToolCalls} tool calls, ${state.uniqueToolsUsed.size} unique tools, ` +
+				`${state.verificationsDone} verifications, ${state.validationFailures} failures`,
+		);
+
+		// Reset state for this session (clears turnHistory, toolSequences, etc.)
+		resetState(state);
+
+		log.info(`[session_shutdown] Enforcement state reset for session ${sessionId}`);
 	});
 }

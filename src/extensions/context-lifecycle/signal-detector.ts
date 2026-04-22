@@ -22,14 +22,14 @@ import { createSignal } from "./types.js";
 
 function extractTextContent(entry: SessionEntry): string {
 	if (entry.type !== "message") return "";
-	const msg = (entry as any).message;
+	const msg = (entry as unknown as { message?: { content?: string | Array<{ type?: string; text?: string; name?: string }> } }).message;
 	if (!msg?.content) return "";
 	const content = msg.content;
 
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) {
 		return content
-			.map((p: any) => {
+			.map((p) => {
 				if (typeof p === "object" && p !== null) {
 					if (p.type === "text") return p.text ?? "";
 					if (p.type === "toolCall") return `[tool: ${p.name}]`;
@@ -128,15 +128,15 @@ export class SignalDetector {
 
 			// Track tool calls
 			if (entry.type === "message") {
-				const msg = (entry as any).message;
-				if (msg.role === "assistant" && Array.isArray(msg.content)) {
+				const msg = (entry as unknown as { message?: { role?: string; toolName?: string; content?: Array<{ type?: string; name?: string }> } }).message;
+				if (msg?.role === "assistant" && Array.isArray(msg.content)) {
 					for (const block of msg.content) {
 						if (block?.type === "toolCall" && block?.name) {
 							toolCalls.push(block.name);
 						}
 					}
 				}
-				if (msg.role === "toolResult" && msg.toolName) {
+				if (msg?.role === "toolResult" && msg?.toolName) {
 					toolCalls.push(msg.toolName);
 				}
 			}

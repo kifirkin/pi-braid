@@ -91,6 +91,15 @@ export default function evolveExtension(pi: ExtensionAPI) {
 	// Start metrics persistence
 	startMetricsPersistence();
 
+	// Cleanup on session shutdown
+	pi.on("session_shutdown", async () => {
+		if (saveTimer) {
+			clearInterval(saveTimer);
+			saveTimer = null;
+		}
+		await saveMetrics().catch((err) => _log.error("Final metrics save failed:", err));
+	});
+
 	pi.registerTool({
 		name: "evolve",
 		label: "Evolve",
@@ -487,7 +496,7 @@ function formatEvolveOutput(result: EvolveResult): string {
 			}
 
 			// Metacognitive state
-			const mc = (data as any)?.metacognition as { confidence: number; knowledgeGaps: string[]; strengths: string[]; weaknesses: string[]; recommendation: string | null } | undefined;
+			const mc = (data as { metacognition?: { confidence: number; knowledgeGaps: string[]; strengths: string[]; weaknesses: string[]; recommendation: string | null } })?.metacognition;
 			if (mc) {
 				lines.push("");
 				lines.push("**Metacognition:**");

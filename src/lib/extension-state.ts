@@ -22,7 +22,7 @@ const _stateBuckets = new WeakMap<ExtensionContext, Map<string, unknown>>();
 
 function getSessionKey(ctx: ExtensionContext): string | undefined {
 	// Prefer sessionManager's file path — stable across the whole session
-	const sm = (ctx as any).sessionManager;
+	const sm = ctx.sessionManager;
 	if (sm) {
 		try {
 			const file = sm.getSessionFile?.() ?? sm.getSessionId?.();
@@ -33,7 +33,7 @@ function getSessionKey(ctx: ExtensionContext): string | undefined {
 	}
 
 	// Fallback: use ctx.agentId if present
-	const agentId = (ctx as any).agentId ?? (ctx as any).runId;
+	const agentId = ctx.agentId ?? ctx.runId;
 	if (agentId) return String(agentId);
 
 	return undefined;

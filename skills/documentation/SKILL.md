@@ -1,6 +1,6 @@
 ---
 name: documentation
-description: "Analyze a repository and generate architecture documentation, AGENTS.md, README.md, or a full documentation ecosystem. Use when documenting a codebase, generating AGENTS.md, summarizing architecture, or creating project docs."
+description: "Analyze a repository and generate architecture documentation, README.md, or a full documentation ecosystem. Use when documenting a codebase, summarizing architecture, or creating project docs."
 ---
 
 # Codebase Summary
@@ -38,6 +38,8 @@ Create these files in `output_dir/`:
 | `workflows.md` | Key processes and workflows |
 | `dependencies.md` | External dependencies and usage |
 
+Write all documentation in clear, direct prose. Avoid filler signposting, inflated language, and uncalibrated certainty. Prefer specific statements to vague intensifiers.
+
 Use **Mermaid diagrams** for visual representations (never ASCII art).
 
 ### 4. Review
@@ -48,15 +50,18 @@ Use **Mermaid diagrams** for visual representations (never ASCII art).
 ### 5. Consolidate
 Merge with existing content (don't overwrite manually-curated sections):
 
-| Target | Focus |
-|--------|-------|
-| `AGENTS.md` | AI assistant context, project structure, dev patterns, test instructions |
-| `README.md` | Project overview, installation, usage |
-| `CONTRIBUTING.md` | Dev setup, coding standards, contribution workflow |
+| Target | Location | Focus |
+|--------|----------|--------|
+| `AGENTS.md` | Project root | AI assistant context, project structure, dev patterns, test instructions |
+| `README.md` | Project root | Project overview, installation, usage |
+| `CONTRIBUTING.md` | Project root | Dev setup, coding standards, contribution workflow |
+
+The summary files in `.agents/summary/` feed into these root-level files. `index.md` remains the primary AI context file for ongoing sessions.
 
 ### 6. Finalize
 - Save git HEAD to `{output_dir}/.last_commit`
-- Point to `index.md` as primary AI context file
+- `index.md` → primary AI context file (referenced in prompt or loaded at session start)
+- `AGENTS.md` → updated at project root with consolidated AI context
 
 ---
 

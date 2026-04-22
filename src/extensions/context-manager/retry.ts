@@ -100,7 +100,7 @@ export function triggerCompactionRetry(pi: ExtensionAPI, attempt: number, errorM
 							: `[Auto-retry] Compaction retry ${attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS}: ${errorMessage}`,
 					},
 				],
-				display: false, // Hidden from user
+				display: true,
 			},
 			{ triggerTurn: true },
 		);

@@ -402,7 +402,7 @@ async function browserCookies(_input: Static<typeof cookiesParams>) {
 			const pageResult = (await client.send("Page.getCookies", { urls: [] })) as { cookies: typeof cookies };
 			cookies = pageResult.cookies;
 		} catch {
-			return { content: [{ type: "text" as const, text: "(could not retrieve cookies - CDP access limited)" }], details: { url: connectedUrl, tabId: connectedTabId, count: 0 }, isError: false };
+				return { content: [{ type: "text" as const, text: "ERROR: Could not retrieve cookies - CDP access limited" }], details: { url: connectedUrl, tabId: connectedTabId, count: 0 }, isError: true };
 		}
 	}
 
@@ -631,6 +631,18 @@ export default function browserExtension(pi: ExtensionAPI) {
 			if (cdp) { cdp.disconnect(); cdp = null; connectedTabId = ""; connectedUrl = ""; }
 			ctx.ui.notify("Browser disconnected", "info");
 		},
+	});
+
+	// ── session_shutdown cleanup ──────────────────────────────────────
+	pi.on("session_shutdown", async () => {
+		if (cdp) {
+			try { cdp.disconnect(); } catch { /* ok */ }
+			cdp = null;
+		}
+		connectedTabId = "";
+		connectedUrl = "";
+		if (sessionCleanup) { sessionCleanup(); sessionCleanup = null; }
+		autoStartDone = false;
 	});
 
 	// ── Tool registrations ─────────────────────────────────────────────

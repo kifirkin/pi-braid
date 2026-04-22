@@ -33,7 +33,7 @@ export type AtomicBehavior =
   | "hammer" | "detective" | "teacher" | "mentor" | "witness"
   | "artist" | "scientist" | "engineer" | "translator" | "referee"
   | "pioneer" | "curator" | "warrior" | "healer" | "messenger"
-  | "keeper" | "wanderer";
+  | "keeper" | "wanderer" | "reflection";
 
 /**
  * Implicit activation signals for each behavior
@@ -44,7 +44,7 @@ const LATENT_SIGNALS: Record<AtomicBehavior, {
   priority: number;
 }> = {
   meticulous: {
-    activation: ["pay attention to details", "find the subtle issue", "spot the edge case"],
+    activation: ["you are meticulous — you notice the small things that matter", "find the subtle issue", "spot the edge case"],
     deactivation: ["move fast", "rough draft", "good enough"],
     priority: 0.8,
   },
@@ -59,7 +59,7 @@ const LATENT_SIGNALS: Record<AtomicBehavior, {
     priority: 0.85,
   },
   debugger: {
-    activation: ["why is this broken", "find the root cause", "investigate the failure"],
+    activation: ["you are a debugger — you trace problems to their source", "why is this broken", "investigate the failure"],
     deactivation: ["works fine", "ignore it", "probably nothing"],
     priority: 0.9,
   },
@@ -79,7 +79,7 @@ const LATENT_SIGNALS: Record<AtomicBehavior, {
     priority: 0.95,
   },
   planner: {
-    activation: ["think step by step", "what's the trajectory", "find the correct path"],
+    activation: ["you are a planner — you think step by step toward the correct path", "what's the trajectory", "find the correct path"],
     deactivation: ["just start coding", "figure it out as we go"],
     priority: 0.9,
   },
@@ -99,7 +99,7 @@ const LATENT_SIGNALS: Record<AtomicBehavior, {
     priority: 0.75,
   },
   catalyst: {
-    activation: ["break the deadlock", "move forward", "unblock this"],
+    activation: ["you are a catalyst — you break deadlocks and move things forward", "move forward", "unblock this"],
     deactivation: ["still blocked", "need more discussion"],
     priority: 0.9,
   },
@@ -109,7 +109,7 @@ const LATENT_SIGNALS: Record<AtomicBehavior, {
     priority: 0.7,
   },
   guardian: {
-    activation: ["protect against risk", "prevent the bug", "safety check"],
+    activation: ["you are a guardian — you protect against what could go wrong", "prevent the bug", "safety check"],
     deactivation: ["just ship it", "move fast", "risky is fine"],
     priority: 0.85,
   },
@@ -228,6 +228,11 @@ const LATENT_SIGNALS: Record<AtomicBehavior, {
     deactivation: ["stay on path", "focused mission"],
     priority: 0.6,
   },
+  reflection: {
+    activation: ["step back and look", "what are we really doing", "question assumptions"],
+    deactivation: ["just follow instructions", "don't overthink"],
+    priority: 0.85,
+  },
 };
 
 /**
@@ -279,9 +284,17 @@ function getActiveBehaviors(): AtomicBehavior[] {
 }
 
 /**
- * Generate implicit activation prompt from current behaviors
+ * Generate implicit activation prompt from current behaviors.
+ * Optionally accepts a task hint to infer and activate relevant behaviors first.
  */
-function generateLatentActivation(): string {
+function generateLatentActivation(taskHint?: string): string {
+  if (taskHint) {
+    const inferred = inferBehaviorsFromTask(taskHint);
+    for (const b of inferred) {
+      activateBehavior(b);
+    }
+  }
+  
   if (_currentBehaviors.size === 0) return "";
   
   const sorted = Array.from(_currentBehaviors)
@@ -299,9 +312,25 @@ function generateLatentActivation(): string {
 /**
  * Check if task hints suggest certain behaviors
  */
+const COMPLIANCE_PATTERNS = [
+  "must", "required", "ensure", "verify", "always",
+  "never", "critical", "strictly", "mandatory", "obligatory",
+  "shall", "will be", "is expected to", "it is essential",
+];
+
+function hasComplianceFraming(text: string): boolean {
+  const lower = text.toLowerCase();
+  return COMPLIANCE_PATTERNS.some(p => lower.includes(p));
+}
+
 function inferBehaviorsFromTask(task: string): AtomicBehavior[] {
   const lowerTask = task.toLowerCase();
   const inferred: AtomicBehavior[] = [];
+
+  // Detect compliance framing and inject reflection to counter compliance theater
+  if (hasComplianceFraming(task)) {
+    inferred.push("reflection");
+  }
   
   const keywordMap: Array<[string, AtomicBehavior[]]> = [
     ["bug", ["detective", "debugger", "forensic"]],

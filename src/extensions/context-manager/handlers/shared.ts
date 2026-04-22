@@ -5,6 +5,7 @@ import { getExtensionState } from "../../../lib/extension-state.js";
 import { createLogger } from "../../../lib/logger.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { createPruningState } from "../pruning.js";
+import { getSessionManager } from "../../../lib/session-manager.js";
 
 export const log = createLogger("context-manager");
 
@@ -26,12 +27,14 @@ export function isInternal(toolName: string): boolean {
 interface CmState {
 	checkoutParams: { target: string; newId: string; targetId: string; backupTag?: string } | null;
 	pruningState: any;
+	overflowNotified?: boolean;
 }
 
 export function getCmState(ctx: ExtensionContext): CmState {
 	return getExtensionState<CmState>(ctx, "context-manager", () => ({
 		checkoutParams: null,
 		pruningState: createPruningState(),
+		overflowNotified: false,
 	}));
 }
 
@@ -60,47 +63,50 @@ export const OVERFLOW_RETRY_KEEP_REDUCTION_FACTOR = 0.6;
 export const COMPACTION_RETRY_CUSTOM_TYPE = "__compaction_retry_trigger";
 
 // ── Navigation helpers ────────────────────────────────────────────────────────
-export function resolveTarget(ctx: any, target?: string): string | null {
+export function resolveTarget(ctx: ExtensionContext, target?: string): string | null {
 	if (!target) return null;
+	const sm = getSessionManager(ctx);
 	if (target.toLowerCase() === "root") {
-		const tree = ctx.sessionManager.getTree();
+		const tree = sm.getTree();
 		return tree.length > 0 ? tree[0].entry.id : target;
 	}
 	if (/^[0-9a-f]{8,}$/i.test(target)) return target;
-	const tree = ctx.sessionManager.getTree();
+	const tree = sm.getTree();
 	for (const node of tree) {
-		if (ctx.sessionManager.getLabel(node.entry.id) === target) return node.entry.id;
+		if (sm.getLabel(node.entry.id) === target) return node.entry.id;
 	}
 	return target;
 }
 
-export function findByLabel(ctx: any, label: string): string | null {
-	const tree = ctx.sessionManager.getTree();
+export function findByLabel(ctx: ExtensionContext, label: string): string | null {
+	const sm = getSessionManager(ctx);
+	const tree = sm.getTree();
 	for (const node of tree) {
-		if (ctx.sessionManager.getLabel(node.entry.id) === label) return node.entry.id;
+		if (sm.getLabel(node.entry.id) === label) return node.entry.id;
 	}
 	return null;
 }
 
-export function resolveDefaultTarget(ctx: any): string | null {
-	const branch = ctx.sessionManager.getBranch();
+export function resolveDefaultTarget(ctx: ExtensionContext): string | null {
+	const sm = getSessionManager(ctx);
+	const branch = sm.getBranch();
 	let targetId: string | null = null;
 	for (let i = branch.length - 1; i >= 0; i--) {
 		const entry = branch[i];
 		if (entry.type === "message") {
 			const msg = entry.message;
-			if (msg.role === "toolResult") {
-				if (!isInternal(String((msg as any).toolName ?? ""))) { targetId = entry.id; break; }
-			} else if (msg.role === "assistant") {
-				const hasInternal = msg.content.some(
-					(c: any) => c.type === "toolCall" && isInternal(String(c.name ?? "")),
+			if (msg?.role === "toolResult") {
+				if (!isInternal(String(msg.toolName ?? ""))) { targetId = entry.id; break; }
+			} else if (msg?.role === "assistant") {
+				const hasInternal = Array.isArray(msg.content) && msg.content.some(
+					(c: { type?: string; name?: string }) => c.type === "toolCall" && isInternal(String(c.name ?? "")),
 				);
 				if (!hasInternal) { targetId = entry.id; break; }
 			}
 		}
 		break;
 	}
-	if (!targetId && branch.length > 0) targetId = ctx.sessionManager.getLeafId();
+	if (!targetId && branch.length > 0) targetId = sm.getLeafId();
 	return targetId;
 }
 

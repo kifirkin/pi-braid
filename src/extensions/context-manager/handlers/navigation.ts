@@ -4,6 +4,7 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { analyzeSession } from "../analysis.js";
 import { log, getCmState, overflowRetryState, resetOverflowRetry } from "./shared.js";
+import { getSessionManager } from "../../../lib/session-manager.js";
 
 // ── Session Before Tree ───────────────────────────────────────────────────────
 export function registerBeforeTreeHandler(pi: any): void {
@@ -12,10 +13,11 @@ export function registerBeforeTreeHandler(pi: any): void {
 			const audit = analyzeSession(ctx);
 			const preparation = event.preparation;
 
-			if (!(preparation as any).summaryEntry && (preparation as any).targetId) {
-				const sm = ctx.sessionManager;
+			const prep = preparation as { summaryEntry?: unknown; targetId?: string };
+			if (!prep.summaryEntry && prep.targetId) {
+				const sm = getSessionManager(ctx);
 				const branch = sm.getBranch();
-				const targetIndex = branch.findIndex((e: any) => e.id === (preparation as any).targetId);
+				const targetIndex = branch.findIndex((e) => e.id === prep.targetId);
 
 				let nearestTag = "checkpoint";
 				if (targetIndex >= 0) {

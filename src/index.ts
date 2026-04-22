@@ -36,11 +36,10 @@ import docsExtension from "./extensions/docs/index.js";
 import codebaseTreeExtension from "./extensions/codebase-tree/index.js";
 import healthcheckExtension from "./extensions/healthcheck/index.js";
 import promptGuardianExtension from "./extensions/prompt-guardian/index.js";
-import fileToolExtension from "./extensions/file-tool.js";
 import evolveExtension from "./extensions/evolve/index.js";
 import enforcementExtension from "./extensions/enforcement/index.js";
 import userMessagePreprocessorExtension from "./extensions/user-message-preprocessor/index.js";
-import safetyExtension from "./extensions/safety/index.js";
+
 import uxExtension from "./extensions/ux/index.js";
 import webFetchExtension from "./extensions/web-fetch/index.js";
 import browserExtension from "./extensions/browser/index.js";
@@ -79,11 +78,9 @@ const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void 
 	{ name: "codebase-tree", factory: codebaseTreeExtension },
 	{ name: "healthcheck", factory: healthcheckExtension },
 	{ name: "prompt-guardian", factory: promptGuardianExtension },
-	{ name: "file-tool", factory: fileToolExtension },
 	{ name: "evolve", factory: evolveExtension },
 	{ name: "enforcement", factory: enforcementExtension },
 	{ name: "user-message-preprocessor", factory: userMessagePreprocessorExtension },
-	{ name: "safety", factory: safetyExtension },
 	{ name: "ux", factory: uxExtension },
 	{ name: "web-fetch", factory: webFetchExtension },
 	{ name: "browser", factory: browserExtension },

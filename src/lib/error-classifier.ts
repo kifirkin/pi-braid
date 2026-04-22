@@ -92,6 +92,7 @@ const RETRYABLE_MARKERS = [
 	"temporary",
 	"unavailable",
 	"try again",
+	"enginecore",
 ].map((m) => new RegExp(m, "i"));
 
 /**

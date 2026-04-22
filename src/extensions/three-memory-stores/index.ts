@@ -671,7 +671,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 
 	// ── Event: tool_end ─────────────────────────────────────────────────
 
-	pi.on("tool_end" as any, async (event: any, ctx: ExtensionContext) => {
+	pi.on("tool_end" as never, async (event: { toolName?: string; tool?: string; isError?: boolean; error?: unknown; duration?: number }, ctx: ExtensionContext) => {
 		const state = getState(ctx);
 		const toolName = event?.toolName ?? event?.tool ?? "unknown";
 		const isError = event?.isError ?? event?.error != null;

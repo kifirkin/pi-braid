@@ -262,7 +262,7 @@ const batchCollapseRule: PruneRule = {
 		const toolCalls = msg.message.content.filter((c: any) => c.type === "toolCall");
 		if (toolCalls.length !== 1) return; // Only collapse single-tool entries
 
-		const toolCall = toolCalls[0] as any;
+		const toolCall = toolCalls[0] as { name?: string; arguments?: Record<string, unknown> };
 		const toolName = toolCall.name;
 		const toolArgs = JSON.stringify(toolCall.arguments ?? {});
 		msg.metadata.bcrKey = `${toolName}:${toolArgs}`;

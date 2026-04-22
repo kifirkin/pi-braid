@@ -82,8 +82,8 @@ export default function assistantExtension(pi: ExtensionAPI) {
 		let saved: string[] | undefined;
 
 		for (const entry of ctx.sessionManager.getEntries()) {
-			if (entry.type === "custom" && (entry as any).customType === TOOLS_CONFIG_TYPE) {
-				const data = (entry as any).data as ToolsConfigData | undefined;
+			if (entry.type === "custom" && (entry as { customType?: string }).customType === TOOLS_CONFIG_TYPE) {
+				const data = (entry as { data?: ToolsConfigData }).data;
 				if (data?.enabledTools && typeof data.version === "number") {
 					if (data.version > maxVersion) {
 						maxVersion = data.version;

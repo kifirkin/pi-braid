@@ -34,7 +34,7 @@ const readDocSchema = Type.Object({
 const pdfScreenshotSchema = Type.Object({
 	path: Type.String({ description: "Path to PDF file" }),
 	page: Type.Optional(Type.Number({ description: "Page number (1-indexed). Default: 1." })),
-	scale: Type.Optional(Type.Number({ description: "DPI scale factor. 1=72dpi, 1.5=108dpi, 2=144dpi. Default: 1.5." })),
+	scale: Type.Optional(Type.Number({ description: "DPI scale factor. 1=72dpi (readable, compact), 1.5=108dpi, 2=144dpi. Default: 1.0." })),
 });
 
 const TEXTUTIL_FORMATS = ["doc", "docx", "rtf", "rtfd", "html", "htm", "txt"];
@@ -231,7 +231,7 @@ export default function docExtension(pi: ExtensionAPI) {
 			"Read text from various document formats (doc, docx, rtf, html, txt, pdf). " +
 			"For PDF: pdf-parse (primary) → pdftotext (if installed) → strings (last resort). " +
 			"Extracts text only — images are not extracted. " +
-			"For image-based PDFs, use read_pdf_screenshot instead.",
+			"For image-based/scanned PDFs, use render_pdf_page instead.",
 		parameters: readDocSchema,
 		execute: async (_toolCallId, params, _signal, _onUpdate, ctx: ExtensionContext): Promise<AgentToolResult<{ lines: number; format: string; method?: string }>> => {
 			if (!fsSync.existsSync(params.path)) {
@@ -284,24 +284,26 @@ export default function docExtension(pi: ExtensionAPI) {
 		},
 	});
 
-	// ── PDF Screenshot ────────────────────────────────────────────────────────
+	// ── PDF Page Renderer ──────────────────────────────────────────────────────
 	pi.registerTool({
-		name: "read_pdf_screenshot",
-		label: "Read PDF Screenshot",
+		name: "render_pdf_page",
+		label: "Render PDF Page",
 		description:
-			"Render a PDF page as a PNG image. Use for image-based/scanned PDFs " +
-			"where read_document returns no text. Also useful for checking layout, " +
-			"figures, and formatting that text extraction misses.",
+			"Render a PDF page as a PNG image for visual analysis. " +
+			"Use when read_document returns no text (scanned/image PDFs) or when " +
+			"you need to inspect layout, figures, tables, or formatting. " +
+			"Returns the image inline AND saves it to a temp path (exposed in details). " +
+			"If you lacks vision, use the saved path with analyze_image.",
 		parameters: pdfScreenshotSchema,
-		execute: async (_toolCallId, params, _signal, _onUpdate, ctx: ExtensionContext): Promise<AgentToolResult<{ page: number; width: number; height: number; scale: number }>> => {
+		execute: async (_toolCallId, params, _signal, _onUpdate, ctx: ExtensionContext): Promise<AgentToolResult<{ page: number; width: number; height: number; scale: number; path: string }>> => {
 			if (!fsSync.existsSync(params.path)) {
 				return {
 					content: [{ type: "text" as const, text: `File not found: ${params.path}` }],
-					details: { page: 0, width: 0, height: 0, scale: params.scale || 1.5 },
+					details: { page: 0, width: 0, height: 0, scale: params.scale ?? 1.0, path: "" },
 				};
 			}
 			const page = params.page ?? 1;
-			const scale = params.scale ?? 1.5;
+			const scale = params.scale ?? 1.0; // 1.0 = 72dpi (readable, ~50% smaller than 1.5x)
 
 			try {
 				const buf = fsSync.readFileSync(params.path);
@@ -314,39 +316,42 @@ export default function docExtension(pi: ExtensionAPI) {
 				const pageData = result.pages?.[0];
 				if (!pageData?.data) {
 					return {
-						content: [{ type: "text" as const, text: `Failed to render page ${page}` }],
-						details: { page, width: 0, height: 0, scale },
+						content: [{ type: "text" as const, text: `Failed to render page ${page} of "${params.path}": ${result.pages?.length ? "page returned no image data" : "page not found in document"}` }],
+						details: { page, width: 0, height: 0, scale, path: "" },
 					};
 				}
 
 				const tmpPath = `/tmp/pdf_page_${Date.now()}.png`;
 				fsSync.writeFileSync(tmpPath, pageData.data);
 
+				const imageBase64 =
+					pageData.data instanceof Uint8Array
+						? Buffer.from(pageData.data).toString("base64")
+						: typeof pageData.data === "string"
+							? pageData.data
+							: Buffer.from(pageData.data as ArrayBufferLike).toString("base64");
+
 				return {
 					content: [
+						{ type: "image" as const, data: imageBase64, mimeType: "image/png" },
 						{
-							type: "image" as const,
-							data:
-							pageData.data instanceof Uint8Array
-								? Buffer.from(pageData.data).toString("base64")
-								: typeof pageData.data === "string"
-										? pageData.data
-										: Buffer.from(pageData.data as any).toString("base64"),
-							mimeType: "image/png",
+							type: "text" as const,
+							text: `Page ${page} rendered at ${scale}x scale (${pageData.width ?? 0}x${pageData.height ?? 0}px). ` +
+								`Saved to: ${tmpPath}. If your model can't view images, use analyze_image("${tmpPath}") with a vision-capable model.`,
 						},
-						{ type: "text" as const, text: `Page ${page} screenshot (${scale}x scale)` },
 					],
 					details: {
 						page,
 						width: pageData.width ?? 0,
 						height: pageData.height ?? 0,
 						scale,
+						path: tmpPath,
 					},
 				};
 			} catch (error) {
 				return {
-					content: [{ type: "text" as const, text: `Error rendering PDF page: ${(error as Error).message}` }],
-					details: { page, width: 0, height: 0, scale },
+					content: [{ type: "text" as const, text: `Error rendering "${params.path}" page ${page}: ${(error as Error).message}` }],
+					details: { page, width: 0, height: 0, scale, path: "" },
 				};
 			}
 		},

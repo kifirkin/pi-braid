@@ -24,29 +24,10 @@ const asApi = (pi: ExtensionAPI) => pi as ExtensionAPI & {
 };
 
 /** Custom settings keys managed by /utility-model and /vision-model commands */
-const UTILITY_MODEL_KEY = "utilityModel";
-const VISION_MODEL_KEY = "visionModel";
+import { getCustomModelKeys, getCustomModelKey, UTILITY_MODEL_KEY, VISION_MODEL_KEY } from "../../lib/global-state.js";
 
-/** Shared sessionManager reference */
+/** Shared sessionManager reference — used by patchSessionManagerMethods */
 let _sessionManager: any = undefined;
-
-/**
- * Cross-module shared map for custom model role keys (utilityModel / visionModel).
- * Uses a Symbol-keyed global so model-resolver.ts and polyfill/index.ts share the same map.
- */
-const CUSTOM_KEYS_MAP = Symbol.for("pi-braid:custom-model-keys");
-
-function getCustomModelKeys(): Map<string, string> {
-	if (!(globalThis as any)[CUSTOM_KEYS_MAP]) {
-		(globalThis as any)[CUSTOM_KEYS_MAP] = new Map<string, string>();
-	}
-	return (globalThis as any)[CUSTOM_KEYS_MAP];
-}
-
-/** Read a custom model key (utilityModel / visionModel). Shared with model-resolver.ts. */
-export function getCustomModelKey(key: string): string | undefined {
-	return getCustomModelKeys().get(key);
-}
 
 /** Path to the global settings file - ~/.pi/agent/settings.json */
 const SETTINGS_PATH = path.join(os.homedir(), ".pi", "agent", "settings.json");
@@ -141,7 +122,7 @@ export default function polyfillExtension(pi: ExtensionAPI) {
 			if (!args || args.trim() === "") {
 				if (ctx.hasUI) {
 					const visionFilter = (m: Model<Api>) =>
-						Array.isArray((m as any)?.input) && (m as any)?.input.includes("image");
+						Array.isArray((m as any).input) && (m as any).input.includes("image");
 					await openModelSelectorUI(ctx, VISION_MODEL_KEY, "Vision Model", visionFilter);
 				} else {
 					const model = resolveVisionModel(ctx);
@@ -191,14 +172,27 @@ export default function polyfillExtension(pi: ExtensionAPI) {
 				return;
 			}
 
-			ctx.abort();
+			log.debug("/retry: initiating abort");
+			await ctx.abort();
+
+			// Ensure abort's waitForIdle() has fully settled before sending.
+			// Without this, the agent's activeRun / isStreaming state may still be
+			// in flux, causing the next prompt to bypass context pruning.
+			await new Promise(resolve => setTimeout(resolve, 0));
+			log.debug("/retry: abort settled, sending message");
 
 			const content = _lastUserMessage.images
 				? [_lastUserMessage.text, ..._lastUserMessage.images]
 				: _lastUserMessage.text;
 
-			pi.sendUserMessage(content);
-			ctx.ui.notify("/retry: Aborted and re-sending last message.", "info");
+			try {
+				await pi.sendUserMessage(content);
+				log.debug("/retry: message sent successfully");
+				ctx.ui.notify("/retry: Aborted and re-sending last message.", "info");
+			} catch (err) {
+				log.error("/retry: sendUserMessage failed", err);
+				ctx.ui.notify(`/retry failed: ${(err as Error).message}`, "error");
+			}
 		},
 	});
 }
@@ -283,7 +277,7 @@ async function openModelSelectorUI(
 					// Warn if a non-vision model was picked for the vision role
 					if (settingKey === VISION_MODEL_KEY) {
 						const hasImageInput =
-							Array.isArray((model as any)?.input) && (model as any)?.input.includes("image");
+							Array.isArray((model as any).input) && (model as any).input.includes("image");
 						if (!hasImageInput) {
 							ctx.ui.notify(
 								`⚠ ${model.id} does not support image input. Vision analysis may fail.`,

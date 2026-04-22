@@ -18,8 +18,20 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
+import {
+    createBeliefStore,
+    getBeliefStore,
+    createPolicyEngine,
+    getPolicyEngine,
+    cleanupSession,
+    type BeliefStore,
+    type Policy,
+    type PolicyContext,
+} from "../../lib/belief-store.js";
+import { addEpisode as addMemoryEpisode } from "../three-memory-stores/index.js";
 import { createLogger } from "../../lib/logger.js";
 import { getExtensionState } from "../../lib/extension-state.js";
+import { sendEnforcementWhisper } from "../enforcement/whisper.js";
 import type { Episode, HeuristicRule } from "../three-memory-stores/index.js";
 import { retrieveByRUMS } from "../three-memory-stores/index.js";
 import { isDegraded, getDegradationReasons, getMetricsSummary } from "../../lib/degradation-detector.js";
@@ -90,6 +102,10 @@ interface HeartbeatState {
 		totalActivations: number;
 		activationsByModule: Record<string, number>;
 	};
+	// D0.3: Policy engine integration
+	policyEngineReady: boolean;
+	policyTurnCount: number;
+	policyLastFire: Map<string, number>;
 }
 
 interface RegisteredModule {
@@ -121,6 +137,9 @@ function createHeartbeatState(): HeartbeatState {
 			totalActivations: 0,
 			activationsByModule: {},
 		},
+		policyEngineReady: false,
+		policyTurnCount: 0,
+		policyLastFire: new Map(),
 	};
 }
 
@@ -145,17 +164,40 @@ const recallerModule: CognitiveModule = {
 
 	async activate(context: ModuleContext): Promise<void> {
 		const memState = getMemoryState(context.ctx);
-		if (!memState || memState.episodes.length < 2) return;
+		if (!memState) return;
 
-		// RUMS retrieval: use mutual information instead of simple similarity
+		// ── Episode retrieval ───────────────────────────────────────────
 		const recentTurns = context.turnCount;
 		const contextKeywords = `session work turns:${recentTurns} tools:${context.totalToolCalls}`;
-		const rumsResults = retrieveByRUMS(memState, contextKeywords, 3);
 
-		if (rumsResults.length > 0) {
-			log.info(`Recaller: RUMS selected ${rumsResults.length} episodes, top score: ${rumsResults[0].similarity.toFixed(2)}`);
-		} else {
-			log.info(`Recaller: ${memState.episodes.length} episodes available`);
+		if (memState.episodes.length >= 2) {
+			const rumsResults = retrieveByRUMS(memState, contextKeywords, 3);
+			if (rumsResults.length > 0) {
+				log.info(`Recaller: RUMS selected ${rumsResults.length} episodes, top score: ${rumsResults[0].similarity.toFixed(2)}`);
+			} else {
+				log.info(`Recaller: ${memState.episodes.length} episodes available`);
+			}
+		}
+
+		// ── Heuristic retrieval (R5) ────────────────────────────────────
+		if (memState.heuristics.length > 0) {
+			// Get applicable heuristics for current context
+			const contextLower = contextKeywords.toLowerCase();
+			const applicableHeuristics = memState.heuristics
+				.filter((h) => {
+					// Match heuristics based on condition keywords
+					const condLower = h.condition.toLowerCase();
+					return (
+						contextLower.includes(condLower) ||
+						condLower.split(" ").some((word) => word.length > 3 && contextLower.includes(word))
+					);
+				})
+				.sort((a, b) => b.priority - a.priority)
+				.slice(0, 2);
+
+			if (applicableHeuristics.length > 0) {
+				log.info(`Recaller: ${applicableHeuristics.length} applicable heuristics for task suggestion`);
+			}
 		}
 	},
 };
@@ -185,7 +227,39 @@ const dreamerModule: CognitiveModule = {
 		const toolsUsed = memState.currentSessionTools;
 		const uniqueTools = new Set(toolsUsed);
 
-		log.info(`Dreamer: ${toolsUsed.length} tool calls, ${uniqueTools.size} unique tools — suggesting reflection`);
+		// ── Analyze tool usage patterns ─────────────────────────────────
+		const verificationTools = ["grep", "find", "read", "read_document", "browser_content", "web_fetch"];
+		const verificationCount = toolsUsed.filter((t: string) => verificationTools.includes(t)).length;
+		const codeTools = ["bash", "write", "edit"];
+		const codeCount = toolsUsed.filter((t: string) => codeTools.includes(t)).length;
+
+		// ── Generate reflection insights ────────────────────────────────
+		const insights: string[] = [];
+		if (verificationCount < 3 && codeCount > 10) {
+			insights.push("Code-heavy session with minimal verification.");
+		}
+		if (codeCount > 15) {
+			insights.push("Significant code generation. Verify correctness.");
+		}
+		if (uniqueTools.size < 5 && toolsUsed.length > 20) {
+			insights.push("Repetitive tool usage. Consider alternative approaches.");
+		}
+
+		// ── Add memory episode for dreamer reflection ───────────────────
+		const task = `${toolsUsed.length} tool calls (${uniqueTools.size} unique), ` +
+			`${verificationCount} verifications, ${codeCount} code ops in ${context.turnCount} turns`;
+		const solution = insights.join(" ") || "Self-reflection on tool usage patterns";
+
+		addMemoryEpisode(memState, task, solution, "partial", toolsUsed, [
+			"self-reflection",
+			"dreamer",
+			`turns-${context.turnCount}`,
+		]);
+
+		log.info(
+			`Dreamer: ${toolsUsed.length} tool calls, ${uniqueTools.size} unique tools, ` +
+			`${verificationCount} verifications, ${codeCount} code ops — added reflection episode`,
+		);
 	},
 };
 
@@ -299,6 +373,106 @@ const evolverModule: CognitiveModule = {
 	},
 };
 
+// ── Default Policies ──────────────────────────────────────────────────────
+
+const VERIFICATION_TOOLS = new Set(["grep", "find", "read", "read_document", "browser_content", "web_fetch"]);
+const WEB_TOOLS = new Set(["web_fetch", "browser_navigate", "browser_content"]);
+const CODE_TOOLS = new Set(["bash", "write", "edit"]);
+
+interface ToolTracking {
+	verificationCount: number;
+	lastVerificationTurn: number;
+	lastWebFetchTurn: number;
+	lastCodeExecutionTurn: number;
+	totalToolsUsed: number;
+}
+
+function createDefaultPolicies(
+	getToolTracking: () => ToolTracking,
+	onSignal: (type: string, data: Record<string, unknown>) => void,
+): Policy[] {
+	return [
+		// ── Verification hint ───────────────────────────────────────────
+		{
+			id: "verify-hint",
+			name: "Verification Hint",
+			description: "Whisper if no verification activity in 10+ turns",
+			priority: 50,
+			cooldownMs: 30_000,
+			enabled: true,
+			lastActivated: 0,
+			trigger: async (_store: BeliefStore, ctx: PolicyContext) => {
+				const t = getToolTracking();
+				const turnsSince = ctx.turnNumber - t.lastVerificationTurn;
+				return turnsSince >= 10 && t.totalToolsUsed > 3;
+			},
+			action: async (ctx: PolicyContext) => {
+				const t = getToolTracking();
+				sendEnforcementWhisper(
+					(globalThis as Record<string, unknown>).__pi_api as ExtensionAPI,
+					"No verification (grep/read/search) in 10+ turns. " +
+					"Consider: Are you sure the implementation is correct? " +
+					"Verify with grep or read to confirm.",
+				);
+				onSignal("verification_reminder", {
+					turn: ctx.turnNumber,
+					turnsSinceVerification: ctx.turnNumber - t.lastVerificationTurn,
+				});
+			},
+		},
+
+		// ── Long silence warning ─────────────────────────────────────────
+		{
+			id: "reflection-reminder",
+			name: "Reflection Reminder",
+			description: "Suggest thinking if no progress for 8+ turns",
+			priority: 40,
+			cooldownMs: 45_000,
+			enabled: true,
+			lastActivated: 0,
+			trigger: async (_store: BeliefStore, ctx: PolicyContext) => {
+				const t = getToolTracking();
+				const turnsSinceLastTool = ctx.turnNumber - t.totalToolsUsed;
+				return turnsSinceLastTool >= 8 && t.totalToolsUsed > 2;
+			},
+			action: async (ctx: PolicyContext) => {
+				sendEnforcementWhisper(
+					(globalThis as Record<string, unknown>).__pi_api as ExtensionAPI,
+					"8+ turns with no tool calls. Consider using /think to reflect " +
+					"on progress or /finalize if the task is complete.",
+				);
+				onSignal("reflection_reminder", { turn: ctx.turnNumber });
+			},
+		},
+
+		// ── Web verification hint ────────────────────────────────────────
+		{
+			id: "web-verification-hint",
+			name: "Web Verification Hint",
+			description: "Suggest web verification if using web beliefs without fetches",
+			priority: 35,
+			cooldownMs: 90_000,
+			enabled: true,
+			lastActivated: 0,
+			trigger: async (store: BeliefStore, ctx: PolicyContext) => {
+				const t = getToolTracking();
+				const webBeliefs = store.query({ source: "web", maxAge: 3_600_000 });
+				const turnsSinceWeb = ctx.turnNumber - t.lastWebFetchTurn;
+				return webBeliefs.length > 2 && turnsSinceWeb >= 15;
+			},
+			action: async (ctx: PolicyContext) => {
+				sendEnforcementWhisper(
+					(globalThis as Record<string, unknown>).__pi_api as ExtensionAPI,
+					"You have recent web-based beliefs but haven't fetched " +
+					"documentation in 15+ turns. Consider verifying claims " +
+					"with web_fetch or browser_navigate.",
+				);
+				onSignal("web_verification_reminder", { turn: ctx.turnNumber });
+			},
+		},
+	];
+}
+
 // ── Heartbeat Engine ─────────────────────────────────────────────────────────
 
 const DEFAULT_CONFIG: HeartbeatConfig = {
@@ -315,6 +489,28 @@ function tick(
 	ctx: ExtensionContext,
 ): void {
 	state.stats.totalTicks++;
+	state.policyTurnCount++;
+
+	// D0.3: Evaluate policies on each tick
+	if (state.policyEngineReady) {
+		const sessionId = ctx.cwd ?? String(process.pid);
+		const engine = getPolicyEngine(sessionId);
+		if (engine) {
+			const policyCtx: PolicyContext = {
+				sessionId,
+				turnNumber: state.policyTurnCount,
+				toolStats: new Map(),
+				cwd: ctx.cwd ?? ".",
+			};
+			engine.evaluate(policyCtx).then((fired) => {
+				if (fired.length > 0) {
+					log.info(`Policies fired: ${fired.map((p) => p.id).join(", ")}`);
+				}
+			}).catch((err) => {
+				log.error("Policy evaluation error:", err);
+			});
+		}
+	}
 
 	// Build module context
 	const moduleContext: ModuleContext = {
@@ -330,7 +526,7 @@ function tick(
 
 	// Try to get tool call info from enforcement state
 	try {
-		const enforcementState = ((ctx as any)?.getExtensionState ?? (() => null))("enforcement");
+		const enforcementState = (ctx as unknown as { getExtensionState?(name: string): { totalToolCalls?: number; silentTurns?: number } | undefined }).getExtensionState?.("enforcement");
 		if (enforcementState) {
 			moduleContext.totalToolCalls = enforcementState.totalToolCalls ?? 0;
 			moduleContext.silentTurns = enforcementState.silentTurns ?? 0;
@@ -447,11 +643,33 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 		tick(pi, state, config, ctx);
 	});
 
+	// D0.3: Track tool calls for policy evaluation
+	pi.on("tool_call", (event: any, ctx: ExtensionContext) => {
+		const state = getState(ctx);
+		if (!state.policyEngineReady) return;
+
+		const sessionId = ctx.cwd ?? String(process.pid);
+		const toolName = event?.toolName as string;
+		if (!toolName) return;
+
+		// Update belief store with tool usage belief
+		const store = getBeliefStore(sessionId);
+		if (store) {
+			store.add({
+				id: `tool-${toolName}-${Date.now()}`,
+				content: `Tool ${toolName} executed at turn ${state.policyTurnCount}`,
+				source: "observation",
+				confidence: 0.9,
+				timestamp: Date.now(),
+				tags: ["tool", toolName],
+			});
+		}
+	});
+
 	// ── Event: session_start ──────────────────────────────────────────
 
 	pi.on("session_start", async (_event: any, ctx: ExtensionContext) => {
 		const state = getState(ctx);
-
 		// Register built-in modules if not already registered
 		for (const module of builtInModules) {
 			if (!state.modules.has(module.name)) {
@@ -465,6 +683,36 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 				log.info(`Registered module "${module.name}"`);
 			}
 		}
+
+		// D0.3: Initialize policy engine with default policies
+		const sessionId = ctx.cwd ?? String(process.pid);
+		const engine = createPolicyEngine(sessionId);
+		state.policyTurnCount = 0;
+		state.policyEngineReady = true;
+
+		// Track tool usage for policy triggers
+		const toolTracking: ToolTracking = {
+			verificationCount: 0,
+			lastVerificationTurn: 0,
+			lastWebFetchTurn: 0,
+			lastCodeExecutionTurn: 0,
+			totalToolsUsed: 0,
+		};
+
+		const onSignal = (type: string, data: Record<string, unknown>) => {
+			state.activationHistory.push({
+				tick: state.stats.totalTicks,
+				moduleName: type,
+				timestamp: Date.now(),
+				reason: "policy",
+			});
+		};
+
+		const defaultPolicies = createDefaultPolicies(() => toolTracking, onSignal);
+		for (const policy of defaultPolicies) {
+			engine.register(policy);
+		}
+		log.info(`Policy engine initialized with ${defaultPolicies.length} default policies`);
 	});
 
 	// ── Event: agent_end ──────────────────────────────────────────────
@@ -476,6 +724,13 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 		for (const [name, count] of Object.entries(state.stats.activationsByModule)) {
 			log.info(`  ${name}: ${count} activations`);
 		}
+	});
+
+	// ── Event: session_shutdown ───────────────────────────────────────
+
+	pi.on("session_shutdown", async (_event: any, ctx: ExtensionContext) => {
+		cleanupSession(ctx.cwd);
+		log.info("Heartbeat scheduler shutting down");
 	});
 }
 

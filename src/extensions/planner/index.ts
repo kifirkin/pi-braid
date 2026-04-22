@@ -461,7 +461,7 @@ export default function plannerExtension(pi: ExtensionAPI) {
 				{
 					customType: "retry",
 					content: [{ type: "text" as const, text: "" }],
-					display: false,
+					display: true,
 				},
 				{ triggerTurn: true },
 			);

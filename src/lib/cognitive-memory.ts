@@ -155,7 +155,7 @@ async function loadMemory(): Promise<CognitiveMemoryStore> {
 		return parsed;
 	} catch (e) {
 		// File doesn't exist or parse error - return empty store
-		if ((e as any).code !== "ENOENT") {
+		if ((e as { code?: string }).code !== "ENOENT") {
 			_log.error("Load error:", e);
 		}
 	}

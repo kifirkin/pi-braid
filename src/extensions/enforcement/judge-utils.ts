@@ -19,7 +19,7 @@ const log = createLogger("judge-utils");
 export function getJudgeModel(ctx: ExtensionContext): Model<Api> | undefined {
 	let model: Model<Api> | undefined;
 	try {
-		model = (ctx as any).getUtilityModel?.();
+		model = (ctx as unknown as { getUtilityModel?(): Model<Api> | undefined }).getUtilityModel?.();
 	} catch {
 		// Polyfill not patched yet (no session_start in -p mode)
  /* Non-fatal: tool description unavailable */

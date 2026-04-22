@@ -13,39 +13,25 @@
 // - Key context is carried forward as a "continuation summary"
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { getCmState } from "./shared.js";
 import { log } from "./shared.js";
+import { getRotationState } from "../../../lib/global-state.js";
+import type { RotationState } from "../../../lib/global-state.js";
 
 // ── Rotation configuration ───────────────────────────────────────────────────
 const MAX_SESSION_SIZE_BYTES = 50 * 1024 * 1024;  // 50 MB
 const MAX_SESSION_AGE_MS = 7 * 24 * 60 * 60 * 1000;  // 7 days
 const MAX_TURNS_SINCE_ROTATION = 500; // 500 turns
 
-interface RotationState {
-	lastRotationTimestamp: number;
-	turnsSinceRotation: number;
-	rotationCount: number;
-	pendingRotation: boolean;
-	continuationSummary: string;
-}
-
-function getRotationState(ctx: ExtensionContext): RotationState {
-	// Use process-scoped state since rotation spans sessions
-	if (!(globalThis as any).__cmRotationState) {
-		(globalThis as any).__cmRotationState = {
-			lastRotationTimestamp: Date.now(),
-			turnsSinceRotation: 0,
-			rotationCount: 0,
-			pendingRotation: false,
-			continuationSummary: "",
-		};
-	}
-	return (globalThis as any).__cmRotationState;
+// Rotation state provided by global-state.ts (Symbol-keyed, DRY)
+function _sessionRotationState(): RotationState {
+	return getRotationState();
 }
 
 // ── Size estimation ──────────────────────────────────────────────────────────
 function estimateSessionSize(ctx: ExtensionContext): number {
 	try {
-		const sm = ctx.sessionManager as any;
+		const sm = ctx.sessionManager as { session?: { filePath?: string }; getBranch?(): Array<unknown> };
 		if (sm.session?.filePath) {
 			const fs = require("fs");
 			const stat = fs.statSync(sm.session.filePath);
@@ -61,7 +47,7 @@ function estimateSessionSize(ctx: ExtensionContext): number {
 
 // ── Rotation check ───────────────────────────────────────────────────────────
 function shouldRotate(ctx: ExtensionContext): { needed: boolean; reason: string } {
-	const state = getRotationState(ctx);
+	const state = _sessionRotationState();
 	const size = estimateSessionSize(ctx);
 	const age = Date.now() - state.lastRotationTimestamp;
 
@@ -80,7 +66,7 @@ function shouldRotate(ctx: ExtensionContext): { needed: boolean; reason: string 
 // ── Build continuation summary ───────────────────────────────────────────────
 function buildContinuationSummary(ctx: ExtensionContext): string {
 	try {
-		const sm = ctx.sessionManager as any;
+		const sm = ctx.sessionManager as { getBranch?(): Array<{ id: string; type?: string; message?: { role?: string; content?: string | Array<{ text?: string }> } }>; getLabel?(id: string): string | undefined };
 		const branch = sm.getBranch?.() ?? [];
 		const tags: string[] = [];
 
@@ -129,45 +115,117 @@ function buildContinuationSummary(ctx: ExtensionContext): string {
 	}
 }
 
+// ── Emergency rotation trigger ─────────────────────────────────────────────
+// Called when context overflow is imminent to force rotation before cascade
+function triggerEmergencyRotation(pi: any, ctx: ExtensionContext): void {
+	try {
+		const state = _sessionRotationState();
+		if (state.pendingRotation) {
+			log.info("[Emergency] Rotation already pending, skipping duplicate trigger");
+			return;
+		}
+
+		state.pendingRotation = true;
+		state.emergencyRotation = true;
+		state.continuationSummary = buildContinuationSummary(ctx);
+
+		// Send immediate notification to agent
+		pi.sendMessage({
+			customType: "context",
+			content: [{
+				type: "text" as const,
+				text: [
+					"## Session Rotation Required",
+					"",
+					"Context overflow detected. Automatic rotation triggered to prevent data loss.",
+					"",
+					"Please call `finalize()` to complete this task and start fresh.",
+					"",
+					"Rotation will happen automatically on next `finalize()`.",
+				].join("\n"),
+			}],
+			display: true,
+		}, { deliverAs: "hint" });
+
+		log.info("[Emergency] Rotation triggered due to context overflow risk");
+	} catch (err) {
+		log.error("[Emergency] Rotation trigger failed:", err);
+	}
+}
+
 // ── Register rotation handlers ───────────────────────────────────────────────
 export function registerRotationHandlers(pi: any): void {
 	// Check rotation need on each turn_end
 	pi.on("turn_end", async (_event: any, ctx: ExtensionContext) => {
 		try {
-			const state = getRotationState(ctx);
+			const state = _sessionRotationState();
 			state.turnsSinceRotation++;
 
 			const { needed, reason } = shouldRotate(ctx);
 			if (!needed) return;
 
-			log.info(`Session rotation needed: ${reason}`);
+			// NUDGE DEDUPLICATION: suppress duplicate nudges within cooldown
+			const currentTurn = state.turnsSinceRotation;
+
+			// If we already nudged this turn, skip (prevents rapid-fire during single turn)
+			if (state.lastNudgeTurn === currentTurn) return;
+
+			// Suppress nudge if: not enough turns passed (<50) AND too soon since last nudge (<5 min)
+			const timeSinceNudge = state.lastNudgeTimestamp ? Date.now() - state.lastNudgeTimestamp : Infinity;
+			const turnsSinceNudge = currentTurn - state.lastNudgeTurn;
+			if (turnsSinceNudge < 50 && timeSinceNudge < 5 * 60 * 1000) {
+				log.debug(`Nudge suppressed: ${turnsSinceNudge} turns, ${Math.round(timeSinceNudge / 1000)}s since last`);
+				return;
+			}
+
+			// Track this nudge
+			state.lastNudgeTurn = currentTurn;
+			state.lastNudgeTimestamp = Date.now();
+			state.nudgeCount++;
+			state.actionTaken = false; // reset for next cycle
+
+			log.info(`Session rotation nudge #${state.nudgeCount}: ${reason}`);
 
 			// Build continuation summary before rotation
 			state.continuationSummary = buildContinuationSummary(ctx);
 			state.pendingRotation = true;
 
-			// Notify agent that rotation is needed
+			// Notify agent — ONCE — with identity-framed language (not compliance directives)
 			pi.sendMessage({
 				customType: "context",
+				display: true,
 				content: [{
 					type: "text" as const,
 					text: [
-						"## 🔄 Session Rotation Recommended",
+						"## Session Size Notice",
 						"",
 						reason,
 						"",
-						"The session is getting large. Consider:",
-						"1. Store important context in memory (`memory_store`)",
-						"2. Tag the current position (`context_tag`)",
-						"3. The next `finalize()` call will trigger rotation",
+						"You are managing a long session. Consider:",
+						"1. Store key context in memory (`memory_store`)",
+						"2. Tag milestones (`context_tag`) for easy return",
+						"3. Call `finalize()` when ready — rotation happens automatically",
 						"",
-						"Memory and tags will be preserved across the rotation.",
+						"This notice appears once per 50-turn window after you act.",
 					].join("\n"),
 				}],
-				display: true,
-			}, { deliverAs: "steer" });
+			});
 		} catch (err) {
 			log.error("turn_end rotation check error:", err);
+		}
+	});
+
+	// Track when agent takes rotation-relevant action
+	pi.on("tool_end", async (event: any, _ctx: ExtensionContext) => {
+		try {
+			if (!event?.toolName) return;
+			const state = _sessionRotationState();
+			if (event.toolName === "memory_store" || event.toolName === "context_tag" || event.toolName === "finalize" || event.toolName === "context_compress") {
+				state.actionTaken = true;
+				log.info(`Rotation action recorded: ${event.toolName}`);
+			}
+		} catch (err) {
+			log.error("tool_end action tracking error:", err);
 		}
 	});
 
@@ -176,7 +234,7 @@ export function registerRotationHandlers(pi: any): void {
 		try {
 			if (event?.toolName !== "finalize") return;
 
-			const state = getRotationState(ctx);
+			const state = _sessionRotationState();
 			if (!state.pendingRotation) return;
 
 			// Rotation triggered by finalize — task boundary detected
@@ -184,6 +242,15 @@ export function registerRotationHandlers(pi: any): void {
 			state.rotationCount++;
 			state.lastRotationTimestamp = Date.now();
 			state.turnsSinceRotation = 0;
+			state.lastNudgeTurn = 0;
+			state.lastNudgeTimestamp = 0;
+			state.nudgeCount = 0;
+			state.actionTaken = false;
+
+			// Reset compaction retry guards to prevent stale state
+			const cmState = getCmState(ctx);
+			(cmState as any).compactionRetryActive = false;
+			(cmState as any).overflowRetryActive = false;
 
 			log.info(`Session rotation triggered at task boundary (rotation #${state.rotationCount})`);
 
@@ -201,9 +268,12 @@ export function registerRotationHandlers(pi: any): void {
 					].join("\n"),
 				}],
 				display: true,
-			}, { deliverAs: "steer" });
+			}, { deliverAs: "hint" });
 		} catch (err) {
 			log.error("tool_end rotation error:", err);
 		}
 	});
 }
+
+// Export for use in compaction retry guard
+export { triggerEmergencyRotation };

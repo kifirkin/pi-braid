@@ -297,7 +297,8 @@ async function withRetry<T>(
       const isRateLimited = message.includes("429") || message.includes("rate limit") || message.includes("too many requests");
       const isServerError = message.includes("500") || message.includes("502") || message.includes("503") || message.includes("504");
       const isNetworkError = message.includes("econnreset") || message.includes("etimedout") || message.includes("enotfound") || message.includes("network");
-      const isTransient = isRateLimited || isServerError || isNetworkError || message.includes("timeout");
+      const isGpuEngineError = message.includes("enginecore") || message.includes("upstream error") || message.includes("nvidia") && message.includes("error");
+      const isTransient = isRateLimited || isServerError || isNetworkError || isGpuEngineError || message.includes("timeout");
 
       if (!isTransient) {
         // Unknown error — retry once more just in case

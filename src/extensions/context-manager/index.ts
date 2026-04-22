@@ -12,7 +12,7 @@ import { Type } from "@sinclair/typebox";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { log } from "./handlers/shared.js";
 import { registerTools } from "./handlers/tools.js";
-import { registerBeforeCompactHandler, registerSessionCompactHandler, registerCompactionEndHandler, registerContextCleanupHandler, registerTurnEndRetryReset } from "./handlers/compaction.js";
+import { registerBeforeCompactHandler, registerSessionCompactHandler, registerCompactionEndHandler, registerTurnEndRetryReset } from "./handlers/compaction.js";
 import { registerBeforeTreeHandler, registerTurnEndCheckoutHandler, registerAgentEndRetryHandler as registerNavAgentEndRetry } from "./handlers/navigation.js";
 import { registerAgentEndRetryHandler, registerAutoRetryEndHandler, registerContextPruningHandler } from "./handlers/events.js";
 import { registerRotationHandlers } from "./handlers/rotation.js";
@@ -36,7 +36,6 @@ export default function contextManagerExtension(pi: any): void {
 	registerBeforeCompactHandler(pi);
 	registerSessionCompactHandler(pi);
 	registerCompactionEndHandler(pi);
-	registerContextCleanupHandler(pi);
 	registerTurnEndRetryReset(pi);
 	registerBeforeTreeHandler(pi);
 	registerTurnEndCheckoutHandler(pi);

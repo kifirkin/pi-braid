@@ -170,11 +170,11 @@ export function analyzeSession(ctx: any): AuditResult {
 					reason: reason || "Old tool call",
 					score: Math.min(1, score),
 					toolName,
-					content: String((toolResult as any).content?.[0]?.text ?? "").slice(0, 100),
+					content: String((toolResult as { content?: Array<{ text?: string }> })?.content?.[0]?.text ?? "").slice(0, 100),
 				});
 			} else if (msg.role === "assistant") {
 				// Assistant messages with only tool calls (no text)
-				const hasText = msg.content?.some((c: any) => c.type === "text" && (c.text?.length ?? 0) > 50);
+				const hasText = msg.content?.some((c: { type?: string; text?: string }) => c.type === "text" && (c.text?.length ?? 0) > 50);
 				if (!hasText) {
 					score = 0.4;
 					reason = "Assistant message with no substantive text";

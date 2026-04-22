@@ -97,7 +97,7 @@ export function registerAgentEndRetryHandler(pi: any): void {
 
 // ── Auto-Retry End Event ──────────────────────────────────────────────────────
 export function registerAutoRetryEndHandler(pi: any): void {
-	pi.on("auto_retry_end" as any, async (event: any, _ctx: ExtensionContext) => {
+	pi.on("auto_retry_end" as never, async (event: { success?: boolean; attempt?: number; finalError?: string }, _ctx: ExtensionContext) => {
 		try {
 			const { success, attempt, finalError } = event as { success?: boolean; attempt?: number; finalError?: string };
 			if (!success) {
@@ -129,22 +129,63 @@ export function registerAutoRetryEndHandler(pi: any): void {
 	});
 }
 
-// ── Context Event Handler (real pruning) ──────────────────────────────────────
+// ── Context Event Handler (pruning + hidden trigger cleanup) ────────────────
+// NOTE: Merged cleanup of hidden retry triggers into this handler.
+// Both pruning and cleanup run on the same "context" event, but only the last
+// return { messages } takes effect. Previously cleanup was in compaction.ts but
+// its return was always ignored because pruning returned first. Merging ensures
+// BOTH filters apply to the same message array.
+
 export function registerContextPruningHandler(pi: any): void {
 	pi.on("context", async (event: any, ctx: any) => {
 		try {
+			log.bindContext(ctx);
 			const messages = event.messages;
-			if (!messages || messages.length === 0) return;
-			const { pruningState } = getCmState(ctx);
-			if (!pruningState) return;
-			const filtered = applyPruningWorkflow(pruningState, messages);
-			const pruned = messages.length - filtered.length;
-			if (pruned > 0) {
-				addEvidence(ctx, "context_pruned", "session", `Pruned ${pruned} messages from context`, 0.7);
+			if (!messages || messages.length === 0) {
+				log.debug("context: no messages, skipping");
+				return;
 			}
-			return { messages: filtered };
+			const beforeCount = messages.length;
+
+			// Step 1: Semantic pruning (high-value / low-semantic-value filtering)
+			let filtered = messages;
+			const { pruningState } = getCmState(ctx);
+			if (pruningState) {
+				log.debug(`context: ${beforeCount} messages before pruning`);
+				filtered = applyPruningWorkflow(pruningState, messages);
+				const pruned = beforeCount - filtered.length;
+				if (pruned > 0) {
+					log.info(`context: pruned ${pruned}/${beforeCount} messages → ${filtered.length} remain`);
+					addEvidence(ctx, "context_pruned", "session", `Pruned ${pruned} messages from context`, 0.7);
+				} else {
+					log.debug(`context: no pruning needed (${filtered.length} messages)`);
+				}
+			} else {
+				log.debug("context: no pruning state initialized, skipping semantic pruning");
+			}
+
+			// Step 2: Remove hidden retry trigger messages from compacted context.
+			// These accumulate across retry attempts and bloat context if not cleaned.
+			let cleanedCount = 0;
+			const cleaned = filtered.map((msg: any) => {
+				if (msg.role === "custom" && (
+					msg.customType === COMPACTION_RETRY_CUSTOM_TYPE ||
+					msg.customType === "__overflow_retry_trigger"
+				)) {
+					cleanedCount++;
+					return null;
+				}
+				return msg;
+			}).filter(Boolean);
+			if (cleanedCount > 0) {
+				log.info(`context: removed ${cleanedCount} hidden retry triggers → ${cleaned.length} messages`);
+			}
+
+			return { messages: cleaned };
 		} catch (err) {
 			log.error("context event error:", err);
+		} finally {
+			log.unbindContext();
 		}
 	});
 }
@@ -159,7 +200,7 @@ function triggerCompactionRetryFromAgentEnd(pi: any, attempt: number, errorMessa
 			{
 				customType: COMPACTION_RETRY_CUSTOM_TYPE,
 				content: [{ type: "text" as const, text: `[Auto-retry] Compaction failed (${errorMessage}). Retrying... (${attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})` }],
-				display: false,
+				display: true,
 			},
 			{ triggerTurn: true },
 		);
@@ -175,7 +216,7 @@ function triggerOverflowRetryFromAgentEnd(pi: any, attempt: number, errorMessage
 			{
 				customType: "__overflow_retry_trigger",
 				content: [{ type: "text" as const, text: `[Auto-retry] Overflow recovery (${errorMessage}). Retrying... (${attempt}/${OVERFLOW_RETRY_MAX_ATTEMPTS})` }],
-				display: false,
+				display: true,
 			},
 			{ triggerTurn: true },
 		);

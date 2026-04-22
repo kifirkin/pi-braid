@@ -5,8 +5,7 @@ const log = createLogger("enforcement");
  * Blocking enforcement - prevents tool execution that violates patterns
  *
  * L2 signals (soft nudges): tracked in state, bundled by index.ts turn_end.
- * 
- * Note: Dangerous command handling is in safety extension with user-facing widget.
+ *
  */
 
 import * as fs from "node:fs";

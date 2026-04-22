@@ -175,7 +175,7 @@ function readSnapshotsFromSession(entries: any[]): ContextSnapshot[] {
 	for (const entry of entries) {
 		if (isSnapshotEntry(entry)) {
 			// appendCustomEntry uses .data field
-			const data = (entry as any).data as ContextSnapshot;
+			const data = (entry as unknown as { data?: ContextSnapshot }).data;
 			if (data && data.id && data.expires_at > now) {
 				snapshots.push(data);
 			}
@@ -227,7 +227,7 @@ function executeAction(evaluated: EvaluatedAction, pi: ExtensionAPI, ctx: any, u
 					{
 						customType: "context-lifecycle",
 						content: [{ type: "text" as const, text: msg }],
-						display: false,
+						display: true,
 					},
 					{ deliverAs: "steer" },
 				);

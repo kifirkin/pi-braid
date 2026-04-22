@@ -23,6 +23,7 @@ export interface JudgeScores {
 	overconfidence: number; // 0-100: Claims vs verification
 	logicalCoherence: number; // 0-100: Logical consistency
 	completeness: number; // 0-100: Task completion
+	compliancePattern: number; // 0-100: Compliance theater (0=strong compliance theater, 100=genuine reasoning)
 }
 
 /**
@@ -177,6 +178,7 @@ function parseJudgeOutput(raw: string): JudgeAnalysis | null {
 			overconfidence: Math.min(100, Math.max(0, parsed.scores?.overconfidence ?? 100)),
 			logicalCoherence: Math.min(100, Math.max(0, parsed.scores?.logicalCoherence ?? 100)),
 			completeness: Math.min(100, Math.max(0, parsed.scores?.completeness ?? 100)),
+			compliancePattern: Math.min(100, Math.max(0, parsed.scores?.compliancePattern ?? 0)),
 		};
 
 		// Normalize claims
@@ -285,6 +287,13 @@ export function determineAction(analysis: JudgeAnalysis, responseText?: string):
 		criticalIssues.push(`Logical errors: ${analysis.scores.logicalCoherence}/100`);
 	}
 
+	// Compliance pattern check (compliance theater detection)
+	if (analysis.scores.compliancePattern < 40) {
+		criticalIssues.push(`Compliance pattern: ${analysis.scores.compliancePattern}/100 — following instructions at letter, ignoring intent`);
+	} else if (analysis.scores.compliancePattern < 60) {
+		highIssues.push(`Directive-following without reasoning: ${analysis.scores.compliancePattern}/100`);
+	}
+
 	// Filter issues with evidence not found in the response (hallucinated evidence)
 	let filteredIssues = analysis.issues;
 	if (responseText) {
@@ -339,18 +348,17 @@ export function determineAction(analysis: JudgeAnalysis, responseText?: string):
  * Format contradiction nudge message
  */
 function formatContradictionNudge(contradictions: Contradiction[]): string {
-	const lines = ["## CONTRADICTION DETECTED"];
+	const lines = ["## Reasoning Inconsistency Detected"];
 
 	for (const c of contradictions.slice(0, 3)) {
 		lines.push("");
 		lines.push(`**Claim 1:** ${c.claim1}`);
 		lines.push(`**Claim 2:** ${c.claim2}`);
-		lines.push(`**Severity:** ${c.severity}`);
 		lines.push(`**Explanation:** ${c.explanation}`);
 	}
 
 	lines.push("");
-	lines.push("Review your response and correct the contradiction.");
+	lines.push("What would make these claims consistent with each other?");
 
 	return lines.join("\n");
 }
@@ -359,7 +367,7 @@ function formatContradictionNudge(contradictions: Contradiction[]): string {
  * Format verdict-based nudge
  */
 function formatVerdictNudge(analysis: JudgeAnalysis): string {
-	const lines = ["## JUDGE VERDICT: FAIL"];
+	const lines = ["## Response Worth Reconsidering"];
 
 	if (analysis.summary) {
 		lines.push("");
@@ -367,7 +375,7 @@ function formatVerdictNudge(analysis: JudgeAnalysis): string {
 	}
 
 	lines.push("");
-	lines.push("**Issues found:**");
+	lines.push("**Areas worth examining:**");
 
 	for (const issue of analysis.issues.slice(0, 5)) {
 		lines.push(`- [${issue.dimension}] ${issue.description}`);
@@ -378,7 +386,7 @@ function formatVerdictNudge(analysis: JudgeAnalysis): string {
 	}
 
 	lines.push("");
-	lines.push("Please review and correct your response.");
+	lines.push("What evidence would strengthen these claims?");
 
 	return lines.join("\n");
 }
@@ -387,7 +395,7 @@ function formatVerdictNudge(analysis: JudgeAnalysis): string {
  * Format score-based nudge
  */
 function formatScoreNudge(analysis: JudgeAnalysis): string {
-	const lines = ["## Response Quality Advisory"];
+	const lines = ["## Response Quality Check"];
 
 	if (analysis.summary) {
 		lines.push(`**Summary:** ${analysis.summary}`);

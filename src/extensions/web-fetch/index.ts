@@ -413,13 +413,13 @@ export default function webFetchExtension(pi: ExtensionAPI) {
 
 		renderResult(result, { expanded, isPartial }, theme) {
 			if (isPartial) {
-				const text = (result.content?.[0] as any)?.text ?? "Fetching...";
+				const text = (result.content?.[0] as { text?: string })?.text ?? "Fetching...";
 				return new Text(theme.fg("warning", text), 0, 0);
 			}
 
 			const d = result.details as FetchDetails | undefined;
 			if (!d) {
-				const raw = (result.content?.[0] as any)?.text ?? "";
+				const raw = (result.content?.[0] as { text?: string })?.text ?? "";
 				return new Text(raw, 0, 0);
 			}
 
@@ -437,7 +437,7 @@ export default function webFetchExtension(pi: ExtensionAPI) {
 			}
 
 			if (expanded) {
-				const content = (result.content?.[0] as any)?.text ?? "";
+				const content = (result.content?.[0] as { text?: string })?.text ?? "";
 				const lines = content.split("\n").slice(0, 20);
 				text += "\n" + theme.fg("dim", lines.join("\n"));
 				if (content.split("\n").length > 20) {
