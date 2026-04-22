@@ -81,7 +81,7 @@ function checkReReadWaste(currentTools: string[], prevTools: string[][], recentl
 		}
 	}
 
-	if (streak >= 3 && readCount >= 2) {
+	if (streak >= 8 && readCount >= 5) {
 		return `You've spent ${streak + 1} turns mostly reading. Store what you've learned: ` +
 			`memory_store(content="...", tags=["pattern", "codebase"]) and update scratchpad before continuing.`;
 	}

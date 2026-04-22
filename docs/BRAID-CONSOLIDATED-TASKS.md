@@ -262,7 +262,7 @@ PB4 (benchmark) ← PB2, PB3
 | R5 (Three-memory) | 1/1 | 0 | |
 | R6 (Recall) | 1/1 | 0 | Proactive recall done |
 | R8 (Planner) | 1/1 | 0 | Keep separate |
-| R9 (Analytics) | 0/1 | 1 | Partial - metrics done |
+| R9 (Analytics) | 1/1 | 0 | ✅ Partial - metrics done |
 | BR1 (Reflection) | 0/1 | 1 | Prompt updated, needs validation |
 | BR4 (Latent test) | 0/1 | 1 | Benchmark created, needs runs |
 | PB1 (Simplify) | 1/1 | 0 | |
@@ -276,7 +276,7 @@ PB4 (benchmark) ← PB2, PB3
 | H6 (Error-capture) | 1/1 | 0 | |
 | H7 (Verify) | 1/1 | 0 | |
 | H8 (Docs) | 1/1 | 0 | |
-| H9 (README) | 0/1 | 1 | |
+| H9 (README) | 1/1 | 0 | ✅ |
 
 | **Total** | **17/22** | **5** | |
 *Consolidated from BRAID-WORK-TRACKER.md + BRAID-NEXT-PROPOSAL.md + prompt-builder-refactor.md*
