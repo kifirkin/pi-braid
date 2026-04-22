@@ -20,7 +20,7 @@ const log = createLogger("latent-activator");
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 
 /**
  * Atomic behaviors that can be activated

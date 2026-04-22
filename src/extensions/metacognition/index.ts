@@ -4,7 +4,7 @@
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { Model, Api } from "@mariozechner/pi-ai";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { resolveUtilityModel } from "../../lib/model-resolver.js";
 import { getExtensionState } from "../../lib/extension-state.js";
 import { createThinkTool } from "./handlers/think.js";

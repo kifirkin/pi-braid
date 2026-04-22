@@ -120,7 +120,7 @@ pi-braid/
 
 ## Dependencies
 
-- `@sinclair/typebox`
+- `typebox`
 - `@mariozechner/pi-coding-agent` (peer)
 - `@mariozechner/pi-agent-core` (peer)
 - `@mariozechner/pi-ai` (peer)

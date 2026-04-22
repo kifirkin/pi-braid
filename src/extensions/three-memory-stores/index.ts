@@ -12,7 +12,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { createLogger } from "../../lib/logger.js";
 import { getExtensionState } from "../../lib/extension-state.js";

@@ -169,7 +169,7 @@ function reconstructProjectContextSection(cwd: string): string {
 }
 
 function reconstructSkillsSection(cwd: string): string {
-  const result = loadSkills({ cwd, skillPaths: [SKILLS_DIR], includeDefaults: true });
+  const result = loadSkills({ cwd, agentDir: getAgentDir(), skillPaths: [SKILLS_DIR], includeDefaults: true });
   return formatSkillsForPrompt(result.skills);
 }
 

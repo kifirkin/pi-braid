@@ -8,7 +8,7 @@
 //   navigation.ts — tree navigation + checkout
 //   events.ts   — agent_end retry, auto_retry_end, context pruning
 
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { log } from "./handlers/shared.js";
 import { registerTools } from "./handlers/tools.js";

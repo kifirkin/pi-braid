@@ -12,7 +12,7 @@
  */
 
 import { StringEnum } from "@mariozechner/pi-ai";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
 	getConfig,

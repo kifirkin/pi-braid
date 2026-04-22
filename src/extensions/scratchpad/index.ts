@@ -28,7 +28,7 @@ import { fileMutationQueue } from "../../lib/file-mutation-queue.js";
 
 import type { AgentToolResult, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { StringEnum } from "@mariozechner/pi-ai";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 // ── Types ───────────────────────────────────────────────────────────────────

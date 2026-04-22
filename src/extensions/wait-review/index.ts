@@ -5,7 +5,7 @@ const log = createLogger("wait-review");
  * Wait for researcher review — polls docs/ until new .md appears.
  * Use: /wait-review [interval_seconds]
  */
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";

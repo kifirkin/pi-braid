@@ -2,7 +2,7 @@
 // Generate structured hypotheses about root causes using utility model.
 // Extracted from metacognition/index.ts for decomposition.
 
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import type { AgentToolResult, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { Model, Api, Context } from "@mariozechner/pi-ai";
 import { completeSimple } from "@mariozechner/pi-ai";
@@ -35,7 +35,7 @@ For each hypothesis:
 5. How to fix it (proper solution, not a workaround)
 
 Rank hypotheses by likelihood (most likely first).
-All hypotheses must lead to PROPER, well-designed solutions - never suggest monkey patching or workarounds.`;
+You aim for proper, well-designed solutions — not quick patches or workarounds.`;
 
 export function createHypothesizeTool(
 	modelGetter: ModelGetter,
@@ -52,7 +52,7 @@ export function createHypothesizeTool(
 			"- Analyze error messages and stack traces\n" +
 			"- Identify potential issues in code paths\n" +
 			"- Brainstorm PROPER solutions before implementing\n\n" +
-			"All hypotheses must lead to PROPER, well-designed solutions (no shortcuts, no monkey patching).\n" +
+			"Hypotheses should lead to proper solutions.\n" +
 			"Returns structured analysis with ranked hypotheses.",
 		parameters: hypothesizeSchema,
 		execute: async (_toolCallId: string, params: any, _signal: unknown, _onUpdate: unknown, ctx: ExtensionContext | undefined): Promise<AgentToolResult<any>> => {
@@ -66,7 +66,7 @@ export function createHypothesizeTool(
 					`### Hypotheses (generate ${maxHypotheses} and rank by likelihood)`,
 					...Array.from({ length: maxHypotheses }, (_, i) => `${i + 1}. `), "",
 					"For each hypothesis, explain: why it's likely, and why the solution is proper.",
-					"Do NOT suggest monkey patches, workarounds, or quick fixes.", "",
+					"Focus on proper solutions over quick fixes.", "",
 					"_Note: No utility model configured. This is a template - use your own analysis._",
 				];
 				return { content: [{ type: "text" as const, text: lines.join("\n") }], details: { problem, hypotheses: maxHypotheses, modelUsed: "template" } };
@@ -80,7 +80,7 @@ export function createHypothesizeTool(
 					`### Hypotheses (generate ${maxHypotheses} and rank by likelihood)`,
 					...Array.from({ length: maxHypotheses }, (_, i) => `${i + 1}. `), "",
 					"For each hypothesis, explain: why it's likely, and why the solution is proper.",
-					"Do NOT suggest monkey patches, workarounds, or quick fixes.", "",
+					"Focus on proper solutions over quick fixes.", "",
 					`_Note: No API key available for utility model (${model.provider}/${model.id}). Use your own analysis._`,
 				];
 				return { content: [{ type: "text" as const, text: lines.join("\n") }], details: { problem, hypotheses: maxHypotheses, modelUsed: model.id, error: "no_api_key" } };

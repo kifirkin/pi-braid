@@ -17,7 +17,7 @@ import * as fsSync from "node:fs";
 // pdf-parse v2 API
 import { PDFParse } from "pdf-parse";
 import { StringEnum } from "@mariozechner/pi-ai";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 const readDocSchema = Type.Object({

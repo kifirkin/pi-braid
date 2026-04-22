@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { ImageContent, TextContent, Model } from "@mariozechner/pi-ai";
 import { completeSimple } from "@mariozechner/pi-ai";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { createLogger } from "../../lib/logger.js";
 
 const log = createLogger("vision");

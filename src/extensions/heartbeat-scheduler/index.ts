@@ -16,7 +16,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import {
     createBeliefStore,
@@ -106,7 +106,28 @@ interface HeartbeatState {
 	policyEngineReady: boolean;
 	policyTurnCount: number;
 	policyLastFire: Map<string, number>;
+	// D0.5: Meta-learning optimizer
+	metaLearning: MetaLearningState;
 }
+
+interface MetaLearningState {
+	tickInterval: number;            // Current adaptive interval
+	baseInterval: number;            // Starting interval (from config)
+	effectivenessHistory: number[];  // Rolling effectiveness scores (0-1)
+	activationSignalWindow: Map<string, number>; // module → turn activated
+	postActivationToolCount: number; // Tools called in N turns after activation
+	pendingSignals: Map<string, number>; // module → activation turn (awaiting outcome)
+}
+
+const META_LEARNING = {
+	MIN_INTERVAL: 3,
+	MAX_INTERVAL: 10,
+	effectivenessWindowSize: 10,   // Rolling window for effectiveness
+	signalWindow: 3,               // Turns to wait for signal after activation
+	speedUpThreshold: 0.7,        // Effectiveness above this → faster ticking
+	slowDownThreshold: 0.3,       // Effectiveness below this → slower ticking
+	intervalStep: 1,              // How much to adjust interval by
+};
 
 interface RegisteredModule {
 	module: CognitiveModule;
@@ -140,6 +161,14 @@ function createHeartbeatState(): HeartbeatState {
 		policyEngineReady: false,
 		policyTurnCount: 0,
 		policyLastFire: new Map(),
+		metaLearning: {
+			tickInterval: DEFAULT_CONFIG.interval,
+			baseInterval: DEFAULT_CONFIG.interval,
+			effectivenessHistory: [],
+			activationSignalWindow: new Map(),
+			postActivationToolCount: 0,
+			pendingSignals: new Map(),
+		},
 	};
 }
 
@@ -482,6 +511,60 @@ const DEFAULT_CONFIG: HeartbeatConfig = {
 	enabled: true,
 };
 
+// ── Meta-learning: Tick interval adjustment ───────────────────────────────────
+
+function updateMetaLearning(state: HeartbeatState): void {
+	const ml = state.metaLearning;
+
+	// 1. Resolve pending signals: check if activated modules produced tool activity
+	if (ml.pendingSignals.size > 0) {
+		const resolved: Array<{ module: string; effective: boolean }> = [];
+
+		for (const [moduleName, activationTurn] of ml.pendingSignals) {
+			const turnsSinceActivation = state.turnCount - activationTurn;
+
+			if (turnsSinceActivation >= META_LEARNING.signalWindow) {
+				// Signal window closed: check if tools were called in this window
+				// We use the activationHistory to detect if the module was actually useful
+				const recentActivations = ml.activationSignalWindow.get(moduleName);
+				// Effective = module activated + there was activity after (tracked via pendingSignals resolution)
+				// We use tool call count in the window as proxy for effectiveness
+				const effective = ml.postActivationToolCount > 0;
+				resolved.push({ module: moduleName, effective });
+				ml.pendingSignals.delete(moduleName);
+			}
+		}
+
+		// 2. Update rolling effectiveness score
+		if (resolved.length > 0) {
+			const batchEffectiveness = resolved.filter((r) => r.effective).length / resolved.length;
+			ml.effectivenessHistory.push(batchEffectiveness);
+			if (ml.effectivenessHistory.length > META_LEARNING.effectivenessWindowSize) {
+				ml.effectivenessHistory.shift();
+			}
+
+			// 3. Adjust tick interval based on rolling effectiveness
+			const avgEffectiveness = ml.effectivenessHistory.reduce((a, b) => a + b, 0) /
+				ml.effectivenessHistory.length;
+
+			if (avgEffectiveness >= META_LEARNING.speedUpThreshold && ml.tickInterval > META_LEARNING.MIN_INTERVAL) {
+				ml.tickInterval = Math.max(META_LEARNING.MIN_INTERVAL, ml.tickInterval - META_LEARNING.intervalStep);
+				log.info(`Meta: effectiveness ${(avgEffectiveness * 100).toFixed(0)}% → speeding up interval to ${ml.tickInterval}`);
+			} else if (avgEffectiveness <= META_LEARNING.slowDownThreshold && ml.tickInterval < META_LEARNING.MAX_INTERVAL) {
+				ml.tickInterval = Math.min(META_LEARNING.MAX_INTERVAL, ml.tickInterval + META_LEARNING.intervalStep);
+				log.info(`Meta: effectiveness ${(avgEffectiveness * 100).toFixed(0)}% → slowing down interval to ${ml.tickInterval}`);
+			}
+
+			// Reset tool count proxy after evaluation
+			ml.postActivationToolCount = 0;
+		}
+	}
+}
+
+function getAdaptiveInterval(state: HeartbeatState, config: HeartbeatConfig): number {
+	return state.metaLearning.tickInterval;
+}
+
 function tick(
 	pi: ExtensionAPI,
 	state: HeartbeatState,
@@ -490,6 +573,9 @@ function tick(
 ): void {
 	state.stats.totalTicks++;
 	state.policyTurnCount++;
+
+	// D0.5: Update meta-learning before processing tick
+	updateMetaLearning(state);
 
 	// D0.3: Evaluate policies on each tick
 	if (state.policyEngineReady) {
@@ -577,6 +663,10 @@ function tick(
 					state.activationHistory.shift();
 				}
 
+				// D0.5: Register pending signal for meta-learning
+				state.metaLearning.pendingSignals.set(module.name, state.turnCount);
+				state.metaLearning.activationSignalWindow.set(module.name, state.turnCount);
+
 				log.info(`Activated module "${module.name}" (priority ${module.priority.toFixed(1)})`);
 			} catch (err) {
 				log.error(`Module "${module.name}" activate error:`, err);
@@ -617,6 +707,18 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 				lines.push(`  ${status} ${name} (priority: ${reg.module.priority.toFixed(1)}, activated: ${reg.activations}x, last: ${last})`);
 			}
 
+			// D0.5: Meta-learning stats
+			lines.push("");
+			lines.push("Meta-Learning:");
+			lines.push(`  Interval: ${state.metaLearning.tickInterval} (base: ${state.metaLearning.baseInterval}, range: ${META_LEARNING.MIN_INTERVAL}-${META_LEARNING.MAX_INTERVAL})`);
+			if (state.metaLearning.effectivenessHistory.length > 0) {
+				const avgEff = state.metaLearning.effectivenessHistory.reduce((a, b) => a + b, 0) / state.metaLearning.effectivenessHistory.length;
+				lines.push(`  Effectiveness: ${(avgEff * 100).toFixed(0)}% (window: ${state.metaLearning.effectivenessHistory.length}/${META_LEARNING.effectivenessWindowSize})`);
+			} else {
+				lines.push("  Effectiveness: collecting...");
+			}
+			lines.push(`  Pending signals: ${state.metaLearning.pendingSignals.size}`);
+
 			if (state.activationHistory.length > 0) {
 				lines.push("");
 				lines.push("Recent activations:");
@@ -638,14 +740,23 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 
 		state.turnCount++;
 
-		if (state.turnCount % config.interval !== 0) return;
+		// D0.5: Use adaptive interval from meta-learning
+		const interval = getAdaptiveInterval(state, config);
+		if (state.turnCount % interval !== 0) return;
 
 		tick(pi, state, config, ctx);
 	});
 
 	// D0.3: Track tool calls for policy evaluation
+	// D0.5: Track for meta-learning signal detection
 	pi.on("tool_call", (event: any, ctx: ExtensionContext) => {
 		const state = getState(ctx);
+
+		// D0.5: Increment tool count for signal detection
+		if (state.metaLearning.pendingSignals.size > 0) {
+			state.metaLearning.postActivationToolCount++;
+		}
+
 		if (!state.policyEngineReady) return;
 
 		const sessionId = ctx.cwd ?? String(process.pid);

@@ -16,7 +16,7 @@ import * as fs from "node:fs/promises";
 import * as fsSync from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext, ToolDefinition } from "@mariozechner/pi-coding-agent";
 
 // Default patterns to exclude (small, non-informative files)

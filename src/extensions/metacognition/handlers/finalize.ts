@@ -2,7 +2,7 @@
 // Marks task complete with utility model verification.
 // Extracted from metacognition/index.ts for decomposition.
 
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import type { AgentToolResult, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { Model, Api, Context } from "@mariozechner/pi-ai";
 import { resolveUtilityModel } from "../../../lib/model-resolver.js";

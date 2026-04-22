@@ -29,7 +29,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Api, AssistantMessage, Context, ImageContent, Model } from "@mariozechner/pi-ai";
 import { completeSimple } from "@mariozechner/pi-ai";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext, InputEventResult } from "@mariozechner/pi-coding-agent";
 import { setLanguage, detectLanguage } from "../../lib/language-hint.js";
 import { resolveUtilityModel } from "../../lib/model-resolver.js";

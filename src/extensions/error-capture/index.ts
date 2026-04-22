@@ -24,7 +24,7 @@ import * as path from "node:path";
 
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 
 // Types
 

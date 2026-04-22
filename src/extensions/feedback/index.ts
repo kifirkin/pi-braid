@@ -17,7 +17,7 @@ const log = createLogger("feedback");
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 // Whisper System - Send feedback messages immediately

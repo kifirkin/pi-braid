@@ -11,7 +11,7 @@ const log = createLogger("cognitive-systems");
 
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import { StringEnum } from "@mariozechner/pi-ai";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
 	type CognitiveMemoryEntry,

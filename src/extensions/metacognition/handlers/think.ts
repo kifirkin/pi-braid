@@ -2,7 +2,7 @@
 // Records structured thinking with optional utility model "fresh eyes" review.
 // Extracted from metacognition/index.ts for decomposition.
 
-import { Type, Static } from "@sinclair/typebox";
+import { Type, Static } from "typebox";
 import type { AgentToolResult, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { Model, Api, Context } from "@mariozechner/pi-ai";
 import { completeSimple } from "@mariozechner/pi-ai";

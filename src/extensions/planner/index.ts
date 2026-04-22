@@ -18,7 +18,7 @@ import { getExtensionState } from "../../lib/extension-state.js";
 // goals.ts and planning.ts - inlined here
 
 import { StringEnum } from "@mariozechner/pi-ai";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { GoalStatus } from "../../lib/goal-manager.js";
 import type { StepType } from "../../lib/planner.js";

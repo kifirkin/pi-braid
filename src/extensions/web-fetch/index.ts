@@ -18,7 +18,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { truncateHead } from "@mariozechner/pi-coding-agent";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { Text } from "@mariozechner/pi-tui";
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 
 import { scanUrl, scanHeaders } from "./secrets.js";
 import { analyzeInjection, wrapInjection } from "./injection.js";

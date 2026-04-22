@@ -13,6 +13,7 @@ const log = createLogger("analytics");
  * - Tool sequences and patterns
  * - Session-level metrics
  * - Basic recommendations
+ * - A/B experiment variant tracking (R9)
  *
  * Note: This is a simplified version of the core ToolAnalytics.
  * The core version has deeper integration with session management and
@@ -23,6 +24,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
 
 // Types
 
@@ -90,6 +92,7 @@ interface AnalyticsState {
 	toolMetrics: Map<string, ToolMetrics>;
 	toolCallSequence: string[];
 	storagePath: string;
+	abVariant: string; // R9: A/B experiment variant tracking
 }
 
 const state: AnalyticsState = {
@@ -97,7 +100,9 @@ const state: AnalyticsState = {
 	sessionStartTime: Date.now(),
 	toolMetrics: new Map(),
 	toolCallSequence: [],
-	storagePath: join(homedir(), ".pi/agent/analytics/tool-analytics.jsonl"),
+	// R9: Export to ~/.pi/logs/braid-metrics.jsonl
+	storagePath: join(homedir(), ".pi/logs/braid-metrics.jsonl"),
+	abVariant: "control",
 };
 
 // Core Analytics Functions
@@ -182,9 +187,10 @@ function getSessionMetrics(): SessionMetrics {
 }
 
 function flushAnalytics(taskCompleted = false): void {
-	const storageDir = join(homedir(), ".pi/agent/analytics");
-	if (!existsSync(storageDir)) {
-		mkdirSync(storageDir, { recursive: true });
+	// R9: Ensure logs directory exists for metrics export
+	const logsDir = join(homedir(), ".pi/logs");
+	if (!existsSync(logsDir)) {
+		mkdirSync(logsDir, { recursive: true });
 	}
 
 	const sessionMetrics = getSessionMetrics();
@@ -197,6 +203,8 @@ function flushAnalytics(taskCompleted = false): void {
 		toolMetrics: toolMetricsList,
 		sequences,
 		taskCompleted,
+		// R9: Include A/B variant in exported data
+		abVariant: state.abVariant,
 	};
 
 	try {
@@ -305,6 +313,7 @@ function formatCurrentSession(): string {
 	lines.push(`**Duration:** ${Math.round((Date.now() - state.sessionStartTime) / 1000)}s`);
 	lines.push(`**Total Tool Calls:** ${sessionMetrics.totalToolCalls}`);
 	lines.push(`**Unique Tools Used:** ${sessionMetrics.uniqueToolsUsed}`);
+	lines.push(`**A/B Variant:** ${state.abVariant}`);
 	lines.push("");
 
 	if (metrics.length > 0) {
@@ -373,6 +382,15 @@ function formatAllSessions(): string {
 	return lines.join("\n");
 }
 
+// R9: Export analytics state for feedback loop (used by evolve extension)
+export function getAnalyticsState() {
+	return {
+		toolMetrics: state.toolMetrics,
+		toolCallSequence: state.toolCallSequence,
+		abVariant: state.abVariant,
+	};
+}
+
 // Extension
 
 export default function analyticsExtension(pi: ExtensionAPI) {
@@ -384,33 +402,33 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 		state.toolCallSequence = [];
 		pendingToolCalls.clear();
 
-		// Ensure storage directory exists
-		const storageDir = join(homedir(), ".pi/agent/analytics");
-		if (!existsSync(storageDir)) {
-			mkdirSync(storageDir, { recursive: true });
+		// R9: Ensure logs directory exists for metrics export
+		const logsDir = join(homedir(), ".pi/logs");
+		if (!existsSync(logsDir)) {
+			mkdirSync(logsDir, { recursive: true });
 		}
 	});
 
-// Track tool calls for analytics - need both start and end for timing
-let pendingToolCalls: Map<string, { toolName: string; startTime: number }> = new Map();
+	// Track tool calls for analytics - need both start and end for timing
+	let pendingToolCalls: Map<string, { toolName: string; startTime: number }> = new Map();
 
-// Record tool execution start
-pi.on("tool_execution_start", async (event) => {
-	pendingToolCalls.set(event.toolCallId, {
-		toolName: event.toolName,
-		startTime: Date.now(),
+	// Record tool execution start
+	pi.on("tool_execution_start", async (event) => {
+		pendingToolCalls.set(event.toolCallId, {
+			toolName: event.toolName,
+			startTime: Date.now(),
+		});
 	});
-});
 
-// Record tool execution end - capture timing and success
-pi.on("tool_execution_end", async (event) => {
-	const pending = pendingToolCalls.get(event.toolCallId);
-	if (pending) {
-		const durationMs = Date.now() - pending.startTime;
-		recordToolCall(pending.toolName, durationMs, !event.isError);
-		pendingToolCalls.delete(event.toolCallId);
-	}
-});
+	// Record tool execution end - capture timing and success
+	pi.on("tool_execution_end", async (event) => {
+		const pending = pendingToolCalls.get(event.toolCallId);
+		if (pending) {
+			const durationMs = Date.now() - pending.startTime;
+			recordToolCall(pending.toolName, durationMs, !event.isError);
+			pendingToolCalls.delete(event.toolCallId);
+		}
+	});
 
 	// Cleanup on session shutdown
 	pi.on("session_shutdown", async () => {
@@ -435,6 +453,16 @@ pi.on("tool_execution_end", async (event) => {
 			const output = formatAllSessions();
 			ctx.ui.notify(output, "info");
 		},
+	});
+
+	// R9: A/B experiment variant tracking - allow evolve extension to assign experiment groups
+	pi.registerCommand("analytics:setVariant", {
+		description: "Set A/B experiment variant for this session",
+		handler: async (args, _ctx) => {
+			// args is a JSON string: { "variant": "treatment_a" }
+			const parsed = typeof args === "string" ? JSON.parse(args) : args;
+			state.abVariant = parsed.variant;
+		}, 
 	});
 
 	// Note: Tool call end recording would ideally use a tool_end event

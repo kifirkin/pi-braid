@@ -17,7 +17,7 @@ const log = createLogger("agent-environment");
 import * as os from "node:os";
 import * as process from "node:process";
 import { StringEnum } from "@mariozechner/pi-ai";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 // =============================================================================

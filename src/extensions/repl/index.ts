@@ -15,7 +15,7 @@ import { resolve, relative } from "node:path";
 import { globSync } from "glob";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { StringEnum } from "@mariozechner/pi-ai";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 
 // Maximum files to load from a glob pattern
 const MAX_GLOB_FILES = 1000;

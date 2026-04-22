@@ -20,7 +20,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { truncateHead } from "@mariozechner/pi-coding-agent";
 import { Text, Image as TUIImage } from "@mariozechner/pi-tui";
 import { getCapabilities, renderImage, getPngDimensions } from "@mariozechner/pi-tui";
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import { createLogger } from "../../lib/logger.js";
 import { CdpClient, isBrowserAvailable, listTabs, spawnChrome, waitForChrome } from "./cdp.js";
 import { extractReadableContent } from "./readability.js";
