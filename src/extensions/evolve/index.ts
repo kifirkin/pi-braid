@@ -3,12 +3,12 @@
  *
  * Provides:
  * - evolve: status, health, check, commit, config, reset, benchmark
-
  *
  * Integrates:
  * - metacognitive-state: Confidence, knowledge gaps, recommendations
  * - degradation-detector: Error rate and tool success metrics
  * - time-tracker: Session timing awareness
+ * - analytics: Tool usage patterns + A/B variant (R9)
  */
 
 import { StringEnum } from "@mariozechner/pi-ai";
@@ -35,6 +35,50 @@ import {
 	getRecommendation,
 	resetMetacognitiveState,
 } from "../../lib/metacognitive-state.js";
+
+// ── R9: Analytics feedback loop helpers ──────────────────────────────────────────
+
+// R9: Wire analytics into evolve feedback loop
+import { getAnalyticsState } from "../analytics/index.js";
+function getAnalyticsMetrics() {
+	const analytics = getAnalyticsState();
+	const toolList: Array<{ name: string; calls: number; successRate: number }> = [];
+	for (const [name, metrics] of analytics.toolMetrics) {
+		toolList.push({
+			name,
+			calls: metrics.totalCalls,
+			successRate: metrics.totalCalls > 0 ? (metrics.successfulCalls / metrics.totalCalls) * 100 : 0,
+		});
+	}
+	const totalCalls = toolList.reduce((sum, t) => sum + t.calls, 0);
+	const topCallCount = toolList.length > 0 ? Math.max(...toolList.map((t) => t.calls)) : 0;
+	// R9: Tool addiction detection (>50% of calls = addiction)
+	const toolAddictionScore = totalCalls > 10 && topCallCount / totalCalls > 0.5 ? 0.3 : 1.0;
+	const abReady = analytics.abVariant !== "control";
+	return {
+		totalToolCalls: totalCalls,
+		toolCount: toolList.length,
+		abVariant: analytics.abVariant,
+		abReady,
+		topTools: toolList.sort((a, b) => b.calls - a.calls).slice(0, 5),
+		toolAddictionScore,
+		recommendation: getAnalyticsRecommendation(toolList, toolAddictionScore, abReady),
+	};
+}
+function getAnalyticsRecommendation(
+	toolList: Array<{ name: string; calls: number; successRate: number }>,
+	toolAddictionScore: number,
+	abReady: boolean,
+): string | null {
+	if (toolAddictionScore < 0.5) {
+		const addictiveTool = toolList.sort((a, b) => b.calls - a.calls)[0];
+		return `Tool addiction: ${addictiveTool?.name ?? "unknown"} used in >50% of calls. Consider varying approach.`;
+	}
+	if (!abReady) {
+		return "A/B experiment not configured. Run /analytics:setVariant to enable measurement.";
+	}
+	return null;
+}
 
 const EVOLVE_ACTIONS = ["status", "health", "check", "commit", "rollback", "config", "reset", "benchmark"] as const;
 type EvolveActionType = (typeof EVOLVE_ACTIONS)[number];
@@ -184,6 +228,8 @@ function executeStatus(): EvolveResult {
 	const config = getConfig();
 	const meta = getMetacognitiveState();
 	const recommendation = getRecommendation();
+	// R9: Wire analytics into evolve status for feedback loop
+	const analytics = getAnalyticsMetrics();
 
 	return {
 		action: "status",
@@ -193,6 +239,8 @@ function executeStatus(): EvolveResult {
 			config,
 			degraded: summary.degraded,
 			degradationReasons: summary.reasons,
+			// R9: Analytics metrics for feedback loop
+			analytics,
 			metacognition: {
 				confidence: meta.confidence,
 				knowledgeGaps: meta.knowledgeGaps,
