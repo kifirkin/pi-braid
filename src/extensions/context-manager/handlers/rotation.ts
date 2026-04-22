@@ -249,8 +249,8 @@ export function registerRotationHandlers(pi: any): void {
 
 			// Reset compaction retry guards to prevent stale state
 			const cmState = getCmState(ctx);
-			(cmState as any).compactionRetryActive = false;
-			(cmState as any).overflowRetryActive = false;
+			cmState.compactionRetryActive = false;
+			cmState.overflowRetryActive = false;
 
 			log.info(`Session rotation triggered at task boundary (rotation #${state.rotationCount})`);
 

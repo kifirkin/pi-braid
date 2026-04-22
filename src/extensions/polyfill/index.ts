@@ -26,6 +26,35 @@ const asApi = (pi: ExtensionAPI) => pi as ExtensionAPI & {
 /** Custom settings keys managed by /utility-model and /vision-model commands */
 import { getCustomModelKeys, getCustomModelKey, UTILITY_MODEL_KEY, VISION_MODEL_KEY } from "../../lib/global-state.js";
 
+interface SessionManagerLike {
+	getSessionFile(): string | null;
+	getSessionDir(): string;
+	getSessionId(): string;
+	getHistory(): unknown[];
+	getContext(): unknown;
+	getTurnCount(): number;
+	setTurnCount(n: number): void;
+	// Session tree management methods (may not exist on all versions)
+	getBranch?(sessionId?: string): unknown;
+	getLeafId?(): string;
+	getTree?(): unknown;
+	getLabel?(nodeId?: string): string | null;
+	setLabel?(nodeId: string, label: string): void;
+	getChildren?(nodeId: string): unknown[];
+	branchWithSummary?(label?: string): string;
+	navigateTree?(targetId: string): void;
+	abort?(reason?: string): void;
+	getContextUsage?(): unknown;
+}
+
+
+// Type guard for checking if a model has image input capability
+function hasImageInput(model: { input?: unknown }): boolean {
+	const input = model.input;
+	return Array.isArray(input) && (input as unknown[]).includes("image");
+}
+
+
 /** Shared sessionManager reference — used by patchSessionManagerMethods */
 let _sessionManager: any = undefined;
 
@@ -122,7 +151,7 @@ export default function polyfillExtension(pi: ExtensionAPI) {
 			if (!args || args.trim() === "") {
 				if (ctx.hasUI) {
 					const visionFilter = (m: Model<Api>) =>
-						Array.isArray((m as any).input) && (m as any).input.includes("image");
+						hasImageInput(m as unknown as { input?: unknown });
 					await openModelSelectorUI(ctx, VISION_MODEL_KEY, "Vision Model", visionFilter);
 				} else {
 					const model = resolveVisionModel(ctx);
@@ -276,9 +305,8 @@ async function openModelSelectorUI(
 
 					// Warn if a non-vision model was picked for the vision role
 					if (settingKey === VISION_MODEL_KEY) {
-						const hasImageInput =
-							Array.isArray((model as any).input) && (model as any).input.includes("image");
-						if (!hasImageInput) {
+						const supportsImage = hasImageInput(model as { input?: unknown });
+						if (!supportsImage) {
 							ctx.ui.notify(
 								`⚠ ${model.id} does not support image input. Vision analysis may fail.`,
 								"warning",
@@ -288,7 +316,7 @@ async function openModelSelectorUI(
 
 					done(model);
 				},
-				() => done(undefined as any),
+				() => done(undefined as unknown),
 			);
 
 			return selector;
@@ -313,41 +341,40 @@ async function openModelSelectorUI(
  * work in --no-session mode (where AgentSession doesn't bind them).
  */
 function patchSessionManagerMethods(pi: any, ctx: any): void {
-	const sm = ctx?.sessionManager as any;
+	const sm = ctx?.sessionManager as SessionManagerLike;
 	if (!sm) return;
 
 	_sessionManager = sm;
 
 	if (typeof pi.getBranch !== "function" && typeof sm.getBranch === "function") {
-		pi.getBranch = () => sm.getBranch();
+		pi.getBranch = () => sm.getBranch?.();
 	}
 	if (typeof pi.getLeafId !== "function" && typeof sm.getLeafId === "function") {
-		pi.getLeafId = () => sm.getLeafId();
+		pi.getLeafId = () => sm.getLeafId?.();
 	}
 	if (typeof pi.getTree !== "function" && typeof sm.getTree === "function") {
-		pi.getTree = () => sm.getTree();
+		pi.getTree = () => sm.getTree?.();
 	}
 	if (typeof pi.getLabel !== "function" && typeof sm.getLabel === "function") {
-		pi.getLabel = (id: string) => sm.getLabel(id);
+		pi.getLabel = (id: string) => sm.getLabel?.(id);
 	}
 	if (typeof pi.setLabel !== "function" && typeof sm.setLabel === "function") {
-		pi.setLabel = (id: string, label: string) => sm.setLabel(id, label);
+		pi.setLabel = (id: string, label: string) => sm.setLabel?.(id, label);
 	}
 	if (typeof pi.getChildren !== "function" && typeof sm.getChildren === "function") {
-		pi.getChildren = (id: string) => sm.getChildren(id);
+		pi.getChildren = (id: string) => sm.getChildren?.(id);
 	}
 	if (typeof pi.branchWithSummary !== "function" && typeof sm.branchWithSummary === "function") {
-		pi.branchWithSummary = async (targetId: string, summary: string) =>
-			sm.branchWithSummary(targetId, summary);
+		pi.branchWithSummary = async (summary: string) => sm.branchWithSummary?.(summary);
 	}
 	if (typeof pi.navigateTree !== "function" && typeof sm.navigateTree === "function") {
-		pi.navigateTree = async (id: string, options?: any) => sm.navigateTree(id, options);
+		pi.navigateTree = async (id: string) => sm.navigateTree?.(id);
 	}
 	if (typeof pi.abort !== "function" && typeof sm.abort === "function") {
-		pi.abort = () => sm.abort();
+		pi.abort = (reason?: string) => { sm.abort?.(); };
 	}
 	if (typeof pi.getContextUsage !== "function" && typeof sm.getContextUsage === "function") {
-		pi.getContextUsage = () => sm.getContextUsage();
+		pi.getContextUsage = () => sm.getContextUsage?.();
 	}
 }
 

@@ -28,6 +28,9 @@ interface CmState {
 	checkoutParams: { target: string; newId: string; targetId: string; backupTag?: string } | null;
 	pruningState: any;
 	overflowNotified?: boolean;
+	// H5: Retry guards for compaction/overflow (prevents double-trigger)
+	compactionRetryActive?: boolean;
+	overflowRetryActive?: boolean;
 }
 
 export function getCmState(ctx: ExtensionContext): CmState {
@@ -35,6 +38,9 @@ export function getCmState(ctx: ExtensionContext): CmState {
 		checkoutParams: null,
 		pruningState: createPruningState(),
 		overflowNotified: false,
+		// H5: Retry guards initialized to false (prevents double-trigger)
+		compactionRetryActive: false,
+		overflowRetryActive: false,
 	}));
 }
 

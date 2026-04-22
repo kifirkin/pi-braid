@@ -110,8 +110,8 @@ export function registerSessionCompactHandler(pi: any): void {
 			// Clear overflow notification flag and retry guards on successful compaction
 			const cmState = getCmState(ctx);
 			cmState.overflowNotified = false;
-			(cmState as any).compactionRetryActive = false;
-			(cmState as any).overflowRetryActive = false;
+			cmState.compactionRetryActive = false;
+			cmState.overflowRetryActive = false;
 		} catch (err) {
 			log.error("session_compact error:", err);
 		}
@@ -173,7 +173,7 @@ async function handleOverflowFailure(pi: any, event: any, ctx: ExtensionContext,
 			log.warn(`[Critical] Context at ${analysis.usage.percent.toFixed(1)}% - triggering emergency rotation (overflow)`);
 
 			const rotationModule = await import("./rotation.js");
-			const triggerEmergencyRotation = (rotationModule as any).triggerEmergencyRotation;
+			const triggerEmergencyRotation = rotationModule?.triggerEmergencyRotation;
 			if (triggerEmergencyRotation) {
 				triggerEmergencyRotation(pi, ctx);
 			}
@@ -242,7 +242,7 @@ async function handleTransientError(pi: any, event: any, ctx: ExtensionContext, 
 			log.warn(`[Critical] Context at ${analysis.usage.percent.toFixed(1)}% - triggering emergency rotation (transient error)`);
 
 			const rotationModule = await import("./rotation.js");
-			const triggerEmergencyRotation = (rotationModule as any).triggerEmergencyRotation;
+			const triggerEmergencyRotation = rotationModule?.triggerEmergencyRotation;
 			if (triggerEmergencyRotation) {
 				triggerEmergencyRotation(pi, ctx);
 			}
@@ -293,7 +293,7 @@ async function handleThresholdFailure(pi: any, event: any, ctx: ExtensionContext
 			log.warn(`[Critical] Context at ${analysis.usage.percent.toFixed(1)}% - triggering emergency rotation (threshold)`);
 
 			const rotationModule = await import("./rotation.js");
-			const triggerEmergencyRotation = (rotationModule as any).triggerEmergencyRotation;
+			const triggerEmergencyRotation = rotationModule?.triggerEmergencyRotation;
 			if (triggerEmergencyRotation) {
 				triggerEmergencyRotation(pi, ctx);
 			}
@@ -347,12 +347,12 @@ function triggerCompactionRetry(pi: any, ctx: ExtensionContext, attempt: number,
 
 		// Guard: if another retry is already active, skip this one
 		const cmState = getCmState(ctx);
-		if ((cmState as any).compactionRetryActive) {
+		if (cmState.compactionRetryActive) {
 			log.info("[Compaction] Retry skipped - already active");
 			resetCompactionRetry();
 			return;
 		}
-		(cmState as any).compactionRetryActive = true;
+		cmState.compactionRetryActive = true;
 
 		pi.compact();
 	}, delayMs);
@@ -367,12 +367,12 @@ function triggerOverflowRetry(pi: any, ctx: ExtensionContext, attempt: number, e
 
 		// Guard: if another retry is already active, skip this one
 		const cmState = getCmState(ctx);
-		if ((cmState as any).overflowRetryActive) {
+		if (cmState.overflowRetryActive) {
 			log.info("[Overflow] Retry skipped - already active");
 			resetOverflowRetry();
 			return;
 		}
-		(cmState as any).overflowRetryActive = true;
+		cmState.overflowRetryActive = true;
 
 		pi.compact();
 	}, delayMs);
@@ -393,8 +393,8 @@ export function registerContextCleanupHandler(pi: any): void {
 	pi.on("context_cleanup", async (_event: any, ctx: ExtensionContext) => {
 		// Reset retry guards when context is cleaned up to prevent stale state
 		const cmState = getCmState(ctx);
-		(cmState as any).compactionRetryActive = false;
-		(cmState as any).overflowRetryActive = false;
+		cmState.compactionRetryActive = false;
+		cmState.overflowRetryActive = false;
 		log.debug("[Cleanup] Retry guards reset on context cleanup");
 	});
 }

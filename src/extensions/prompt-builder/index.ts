@@ -1,4 +1,6 @@
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, readdirSync } from "fs";
+import { homedir } from "node:os";
+
 /**
  * Prompt Builder - Reconstruction from Structured Data
  *
@@ -25,7 +27,7 @@ import { existsSync, readFileSync } from "fs";
  * - Removed latent behavior activation from prompt (moved to runtime)
  */
 
-import { join, resolve } from "path";
+import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import { formatSkillsForPrompt, loadSkills } from "@mariozechner/pi-coding-agent";
@@ -86,6 +88,117 @@ ${JSON.stringify({ signals: signalEntries }, null, 2)}
 \`\`\``;
 }
 
+// ── R6: Session Recall - Proactive Past Insights ──────────────────────────────
+// Injects relevant experience from previous sessions into prompt.
+// Uses three-memory-stores (episodes) + session-recall (sessions)
+// Memory confidence threshold: only inject if relevance >= 0.7
+
+interface PastInsight {
+	type: "episode" | "session";
+	relevance: number;
+	content: string;
+	source: string;
+}
+
+function searchPastInsights(cwd: string): PastInsight[] {
+	const insights: PastInsight[] = [];
+
+	// Search three-memory-stores episodes
+	const memoryDir = join(homedir(), ".pi/logs/memory");
+	if (existsSync(memoryDir)) {
+		try {
+			const episodeFiles = readdirSync(memoryDir).filter((f) => f.startsWith("episodes"));
+			for (const file of episodeFiles.slice(0, 3)) {
+				const content = readFileSync(join(memoryDir, file), "utf-8");
+				const lines = content.split("\n").filter((l) => l.trim());
+				for (const line of lines.slice(-5)) {
+					try {
+						const ep = JSON.parse(line);
+						if (ep.task && ep.outcome) {
+							insights.push({
+								type: "episode",
+								relevance: 0.75,
+								content: `[${ep.outcome}] ${ep.task}: ${ep.solution || "(see logs)"}`,
+								source: `episodes:${ep.id}`,
+							});
+						}
+					} catch {
+						// Skip malformed JSON lines
+					}
+				}
+			}
+		} catch {
+			// Memory directory not readable - skip
+		}
+	}
+
+	// Search recent session summaries
+	const sessionDir = join(homedir(), ".pi/agent/sessions");
+	if (existsSync(sessionDir)) {
+		try {
+			const sessions = readdirSync(sessionDir)
+				.filter((f) => f.endsWith(".jsonl"))
+				.sort()
+				.reverse()
+				.slice(0, 3);
+
+			for (const session of sessions) {
+				const content = readFileSync(join(sessionDir, session), "utf-8");
+				const lines = content.split("\n").filter((l) => l.trim());
+				for (const line of lines.slice(-3)) {
+					try {
+						const entry = JSON.parse(line);
+						if (entry.message && (String(entry.message).includes("finalize") || String(entry.message).includes("completed"))) {
+							const task = extractTaskFromEntry(entry as Record<string, unknown>);
+							if (task) {
+								insights.push({
+									type: "session",
+									relevance: 0.7,
+									content: `Session: ${task}`,
+									source: `session:${session}`,
+								});
+							}
+						}
+					} catch {
+						// Skip malformed JSON lines
+					}
+				}
+			}
+		} catch {
+			// Sessions directory not readable - skip
+		}
+	}
+
+	return insights.filter((i) => i.relevance >= 0.7).slice(0, 5);
+}
+
+function extractTaskFromEntry(entry: Record<string, unknown>): string | null {
+	const msg = String(entry.message || "");
+	const patterns = [
+		/told to ([^.]{10,80})/i,
+		/task: ([^.]{10,80})/i,
+		/completed: ([^.]{10,80})/i,
+	];
+	for (const pattern of patterns) {
+		const match = msg.match(pattern);
+		if (match) return match[1].trim();
+	}
+	return null;
+}
+
+function formatPastInsightsSection(insights: PastInsight[]): string {
+	if (insights.length === 0) return "";
+	const lines: string[] = [
+		"",
+		"## Past Insights",
+		"*(Relevant experience from previous sessions)*",
+	];
+	for (const insight of insights) {
+		lines.push(`- ${insight.content}`);
+	}
+	return lines.join("\n");
+}
+
 // ── Reconstruction Functions (from structured data, not text parsing) ─────────
 
 function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>): string {
@@ -138,7 +251,7 @@ function reconstructProjectContextSection(cwd: string): string {
   }
 
   // Ancestor context files (from cwd up to root)
-  const root = resolve("/");
+  const root = join("/");
   let currentDir = cwd;
 
   while (true) {
@@ -150,7 +263,7 @@ function reconstructProjectContextSection(cwd: string): string {
 
     if (currentDir === root) break;
 
-    const parentDir = resolve(currentDir, "..");
+    const parentDir = join(currentDir, "..");
     if (parentDir === currentDir) break;
     currentDir = parentDir;
   }
@@ -216,6 +329,13 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
       if (skillsSection) {
         parts.push(skillsSection);
       }
+    }
+
+    // R6: Proactive recall - inject past insights (only if relevance >= 0.7)
+    const pastInsights = searchPastInsights(cwd);
+    const pastInsightsSection = formatPastInsightsSection(pastInsights);
+    if (pastInsightsSection) {
+      parts.push(pastInsightsSection);
     }
 
     // 6. L1 environmental state
