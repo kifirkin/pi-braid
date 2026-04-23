@@ -32,9 +32,6 @@ function getSessionKey(ctx: ExtensionContext): string | undefined {
 		}
 	}
 
-	// Fallback: use ctx.agentId if present
-	const agentId = ctx.agentId ?? ctx.runId;
-	if (agentId) return String(agentId);
 
 	return undefined;
 }

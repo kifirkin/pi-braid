@@ -7,6 +7,25 @@
 
 import type { ExtensionContext as BaseExtensionContext } from "@mariozechner/pi-coding-agent";
 
+// Extended with pi-braid's own session state helpers
+declare module "@mariozechner/pi-coding-agent" {
+	interface ExtensionContext {
+		/** Whisper a low-priority hint without blocking execution */
+		whisper?(message: string, opts?: WhisperOptions): void;
+		/** Send enforcement signal for compliance verification */
+		enforcer?: {
+			sendEnforcementWhisper?(message: string): void;
+			verifyCompliance?(response: string): Promise<EnforcementSignal[]>;
+		};
+		/** Analytics for tracking metrics, tool calls, session data */
+		analytics?: {
+			recordToolCall?(toolName: string, timestamp: number, metadata?: Record<string, unknown>): void;
+			recordSignal?(signal: EnforcementSignal): void;
+			recordDegradation?(event: DegradationEvent): void;
+		};
+	}
+}
+
 /**
  * The agent's ExtensionContext object exposes these fields:
  *
@@ -35,4 +54,28 @@ export interface ExtensionApi {
 	on(event: string, handler: (...args: unknown[]) => void): void;
 	model?: unknown;
 	modelRegistry?: unknown;
+}
+
+// ── Supporting types ────────────────────────────────────────────────────────
+
+interface WhisperOptions {
+	category?: "enforcement" | "quality" | "safety" | "cognitive";
+	priority?: "low" | "medium" | "high";
+}
+
+interface EnforcementSignal {
+	type: "compliance" | "deception" | "incomplete" | "hallucination" | "scope_violation";
+	severity: number;
+	confidence: number;
+	evidence: string;
+	remediation: string;
+	nudgeType: "whisper" | "warn" | "block";
+	category: "enforcement" | "quality" | "safety";
+}
+
+interface DegradationEvent {
+	timestamp: number;
+	reason: string;
+	severity: number;
+	action?: string;
 }

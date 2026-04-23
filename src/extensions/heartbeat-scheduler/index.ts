@@ -117,6 +117,8 @@ interface MetaLearningState {
 	activationSignalWindow: Map<string, number>; // module → turn activated
 	postActivationToolCount: number; // Tools called in N turns after activation
 	pendingSignals: Map<string, number>; // module → activation turn (awaiting outcome)
+	// TIER 1: Persistent tool tracking (was local variable in session_start)
+	toolTracking: ToolTracking;
 }
 
 const META_LEARNING = {
@@ -168,6 +170,15 @@ function createHeartbeatState(): HeartbeatState {
 			activationSignalWindow: new Map(),
 			postActivationToolCount: 0,
 			pendingSignals: new Map(),
+			// TIER 1: Persistent tool tracking (was local variable in session_start)
+			toolTracking: {
+				verificationCount: 0,
+				lastVerificationTurn: 0,
+				lastWebFetchTurn: 0,
+				lastCodeExecutionTurn: 0,
+				totalToolsUsed: 0,
+				lastToolCallTurn: 0,
+			},
 		},
 	};
 }
@@ -414,6 +425,7 @@ interface ToolTracking {
 	lastWebFetchTurn: number;
 	lastCodeExecutionTurn: number;
 	totalToolsUsed: number;
+	lastToolCallTurn: number;
 }
 
 function createDefaultPolicies(
@@ -757,11 +769,25 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 			state.metaLearning.postActivationToolCount++;
 		}
 
-		if (!state.policyEngineReady) return;
+		// TIER 1: Update persistent tool tracking (removed early return)
+		state.metaLearning.toolTracking.totalToolsUsed++;
+		state.metaLearning.toolTracking.lastToolCallTurn = state.policyTurnCount;
 
 		const sessionId = ctx.cwd ?? String(process.pid);
 		const toolName = event?.toolName as string;
 		if (!toolName) return;
+
+		// Update specific tracking categories
+		if (VERIFICATION_TOOLS.has(toolName)) {
+			state.metaLearning.toolTracking.verificationCount++;
+			state.metaLearning.toolTracking.lastVerificationTurn = state.policyTurnCount;
+		}
+		if (WEB_TOOLS.has(toolName)) {
+			state.metaLearning.toolTracking.lastWebFetchTurn = state.policyTurnCount;
+		}
+		if (CODE_TOOLS.has(toolName)) {
+			state.metaLearning.toolTracking.lastCodeExecutionTurn = state.policyTurnCount;
+		}
 
 		// Update belief store with tool usage belief
 		const store = getBeliefStore(sessionId);
@@ -801,15 +827,6 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 		state.policyTurnCount = 0;
 		state.policyEngineReady = true;
 
-		// Track tool usage for policy triggers
-		const toolTracking: ToolTracking = {
-			verificationCount: 0,
-			lastVerificationTurn: 0,
-			lastWebFetchTurn: 0,
-			lastCodeExecutionTurn: 0,
-			totalToolsUsed: 0,
-		};
-
 		const onSignal = (type: string, data: Record<string, unknown>) => {
 			state.activationHistory.push({
 				tick: state.stats.totalTicks,
@@ -819,11 +836,15 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 			});
 		};
 
-		const defaultPolicies = createDefaultPolicies(() => toolTracking, onSignal);
+		const defaultPolicies = createDefaultPolicies(() => state.metaLearning.toolTracking, onSignal);
 		for (const policy of defaultPolicies) {
 			engine.register(policy);
 		}
-		log.info(`Policy engine initialized with ${defaultPolicies.length} default policies`);
+		log.info(`Policy engine initialized with ${defaultPolicies.length} default policies (tool tracking active)`);
+
+		// TIER 1 CRITICAL: Activate the policy engine - was defined but never called!
+		// Without this, cognitive modules (recaller, dreamer, contextHygiene, evolver) never fire.
+		activatePolicyEngine(engine, state, ctx);
 	});
 
 	// ── Event: agent_end ──────────────────────────────────────────────
@@ -843,6 +864,39 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 		cleanupSession(ctx.cwd);
 		log.info("Heartbeat scheduler shutting down");
 	});
+
+	// ── Policy Engine (inside heartbeatExtension) ────────────────────────────────
+
+	/** TIER 1 CRITICAL FIX: activatePolicyEngine was defined but never called.
+	 *  Without this, the policy engine is instantiated but never activated,
+	 *  meaning cognitive modules never fire on turns.
+	 */
+	function activatePolicyEngine(
+		engine: PolicyEngine,
+		state: HeartbeatState,
+		_ctx: ExtensionContext,
+	): void {
+		const originalEvaluate = engine.evaluate.bind(engine);
+		engine.evaluate = async (context: PolicyContext) => {
+			state.policyTurnCount++;
+			const fired = await originalEvaluate(context);
+			if (fired.length > 0) {
+				for (const policy of fired) {
+					state.policyLastFire.set(policy.id, state.policyTurnCount);
+				}
+			}
+			return fired;
+		};
+		log.info("[heartbeat] Policy engine activated - cognitive modules will fire on turns");
+	}
+}
+
+// ── Module-level: PolicyEngine interface ────────────────────────────────────
+
+interface PolicyEngine {
+	register(policy: Policy): void;
+	unregister(id: string): boolean;
+	evaluate(context: PolicyContext): Promise<Policy[]>;
 }
 
 // ── Exports ──────────────────────────────────────────────────────────────────
