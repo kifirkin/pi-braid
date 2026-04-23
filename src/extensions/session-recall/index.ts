@@ -251,6 +251,12 @@ Be specific and reference relevant parts of the conversation.
 If the conversation doesn't contain enough information, say so.`;
 
 export default function sessionRecallExtension(pi: ExtensionAPI) {
+	// Track the current model for use in tools (extension tools don't receive ctx via _ctx)
+	let currentModel: Model<any> | undefined;
+	pi.on("model_select", (event) => {
+		currentModel = event.model;
+	});
+
 	// ── session_search ────────────────────────────────────────────────────
 	pi.registerTool({
 		name: "session_search",
@@ -354,15 +360,14 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
 				};
 			}
 
-			// Get available model from ctx
-			const ctx = _ctx as unknown as { getModel?(): Model<Api> | undefined; modelRegistry?: { getApiKeyAndHeaders(m: Model<Api>): Promise<{ ok: boolean; apiKey?: string }> } };
-			const model = ctx.getModel?.();
-			if (!model) {
+			// Extension tools don't receive ctx via _ctx — use currentModel captured from model_select events
+			if (!currentModel) {
 				return {
 					content: [{ type: "text" as const, text: "No model available to analyze session." }],
 					details: { error: true },
 				};
 			}
+			const model = currentModel;
 
 			// Serialize
 			const fullText = serializeSession(messages);
@@ -412,12 +417,10 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
 					};
 				}
 
-				const auth = await ctx.modelRegistry?.getApiKeyAndHeaders(model);
-				const apiKey = auth?.ok ? (auth as { apiKey?: string }).apiKey : undefined;
 				const response = await complete(
 					model,
 					{ systemPrompt: QUERY_SYSTEM_PROMPT, messages: [{ role: "user" as const, content: userMessage, timestamp: Date.now() }] },
-					{ apiKey, signal: _signal },
+					{ signal: _signal },
 				);
 
 				if (response.stopReason === "aborted") {
