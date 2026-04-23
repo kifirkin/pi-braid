@@ -1,11 +1,6 @@
-/**
- * Finalize Tool — marks task complete with session model verification.
- *
- * Uses the session's current model (ctx.model) for critical review.
- * Research (docs/research/bicameral-mind-analysis.md) shows maintaining
- * a separate utility model is overhead — the default model handles
- * both main reasoning and structured review tasks effectively.
- */
+// ── Finalize Tool ─────────────────────────────────────────────────────────────
+// Marks task complete with session model verification.
+// Uses the session's current model (ctx.model) for critical review.
 
 import { Type } from "typebox";
 import { complete } from "@mariozechner/pi-ai";
@@ -15,10 +10,10 @@ import { createLogger } from "../../../lib/logger.js";
 const log = createLogger("metacognition");
 
 const finalizeSchema = Type.Object({
-	completed: Type.Boolean({ description: "Whether the task was successfully completed" }),
-	summary: Type.String({ description: "Brief summary of what was accomplished" }),
+	completed:     Type.Boolean({ description: "Whether the task was successfully completed" }),
+	summary:       Type.String({ description: "Brief summary of what was accomplished" }),
 	tasksRemaining: Type.Optional(Type.Array(Type.String(), { description: "Follow-up tasks" })),
-	autoProceed: Type.Optional(Type.Boolean({ description: "Automatically propose next pending work on finalize" })),
+	autoProceed:   Type.Optional(Type.Boolean({ description: "Automatically propose next pending work on finalize" })),
 });
 
 // Simple in-memory planner/goal state for findNextWork
@@ -61,13 +56,7 @@ async function verifyWithSessionModel(summary: string, ctx: ExtensionContext): P
 			ctx.model,
 			{
 				systemPrompt: FINALIZE_CRITIC_PROMPT,
-				messages: [
-					{
-						role: "user" as const,
-						content: `Work summary: ${summary}`,
-						timestamp: Date.now(),
-					},
-				],
+				messages: [{ role: "user" as const, content: [{ type: "text" as const, text: `Work summary: ${summary}` }], timestamp: Date.now() }],
 			},
 			{ maxTokens: 256, temperature: 0.1 },
 		);
@@ -93,28 +82,26 @@ async function verifyWithSessionModel(summary: string, ctx: ExtensionContext): P
 	}
 }
 
-export function registerFinalize(
-	pi: ExtensionContext,
+export function createFinalizeTool(
 	onFinalize?: (summary: string, completed: boolean) => void,
 ) {
-	(pi as unknown as { registerTool: (name: string, def: unknown) => void }).registerTool(
-		"finalize",
-		{
-			name: "finalize",
-			description: `Mark the current task as complete. You MUST call this when:
+	return {
+		name: "finalize" as const,
+		label: "Finalize",
+		description: `Mark the current task as complete. You MUST call this when:
 - All code is written and tested
 - The solution has been verified
 - No further work is needed
 
 Before finalizing, the work will be reviewed to ensure everything is actually done.
 The task ends after finalize() is called.`,
-			inputSchema: finalizeSchema,
-			execute: async (_toolCallId: string, params: any, _signal: unknown, _onUpdate: unknown, _ctx: ExtensionContext | undefined) => {
-				if (!params || params.summary === undefined || params.completed === undefined) {
-					return {
-						content: [{
-							type: "text" as const,
-							text: `**FINALIZE REQUIRES PARAMETERS**
+		parameters: finalizeSchema,
+		execute: async (_toolCallId: string, params: any, _signal: unknown, _onUpdate: unknown, _ctx: ExtensionContext | undefined) => {
+			if (!params || params.summary === undefined || params.completed === undefined) {
+				return {
+					content: [{
+						type: "text" as const,
+						text: `**FINALIZE REQUIRES PARAMETERS**
 
 Missing required fields. Please provide:
 - completed: boolean (true if task succeeded, false if not)
@@ -123,25 +110,25 @@ Missing required fields. Please provide:
 
 Example:
 finalize(completed=true, summary="Fixed the bug", tasksRemaining=["write tests"])`,
-						}],
-						details: { finalized: false, blocked: true, error: "missing_params" },
-					};
-				}
+					}],
+					details: { finalized: false, blocked: true, error: "missing_params" },
+				};
+			}
 
-				onFinalize?.(params.summary, params.completed);
+			onFinalize?.(params.summary, params.completed);
 
-				const sessionSummary = params.summary;
-				let verificationResult = { verified: true, confidence: 50, message: "No context available for verification" };
+			const sessionSummary = params.summary;
+			let verificationResult = { verified: true, confidence: 50, message: "No context available for verification" };
 
-				if (_ctx) {
-					verificationResult = await verifyWithSessionModel(sessionSummary, _ctx);
-				}
+			if (_ctx) {
+				verificationResult = await verifyWithSessionModel(sessionSummary, _ctx);
+			}
 
-				if (!verificationResult.verified) {
-					return {
-						content: [{
-							type: "text" as const,
-							text: `**FINALIZE BLOCKED**
+			if (!verificationResult.verified) {
+				return {
+					content: [{
+						type: "text" as const,
+						text: `**FINALIZE BLOCKED**
 
 ${verificationResult.message}
 
@@ -149,40 +136,39 @@ Confidence: ${verificationResult.confidence}%
 
 **The work is not done enough to finalize.**
 Continue working until the issues are resolved.`,
-						}],
-						details: { finalized: false, blocked: true, verification: verificationResult },
-					};
-				}
-
-				const status = params.completed ? "Task completed" : "Task incomplete";
-				const messages: string[] = [status, `Summary: ${params.summary}`];
-
-				if (verificationResult.message) {
-					messages.push(`\nVerification: ${verificationResult.message}`);
-				}
-
-				if (params.tasksRemaining?.length) {
-					messages.push(`\nFollow-up needed: ${params.tasksRemaining.join(", ")}`);
-				}
-
-				const nextWork = await findNextWork();
-				if (nextWork.type) {
-					const label = nextWork.type === "plan" ? "Next Plan" : "Next Goal";
-					messages.push(`\n${label}: ${nextWork.description}`);
-					messages.push(`\nType \`finalize(true, "...", [], true)\` to continue automatically, or continue manually.`);
-					if (params.autoProceed && nextWork.id) {
-						messages.push(`\nAuto-proceeding to next work...`);
-					}
-				}
-
-				messages.push("\n---");
-				messages.push("Session ending...");
-
-				return {
-					content: [{ type: "text" as const, text: messages.join("\n") }],
-					details: { finalized: true, completed: params.completed, summary: params.summary, verification: verificationResult },
+					}],
+					details: { finalized: false, blocked: true, verification: verificationResult },
 				};
-			},
+			}
+
+			const status = params.completed ? "Task completed" : "Task incomplete";
+			const messages: string[] = [status, `Summary: ${params.summary}`];
+
+			if (verificationResult.message) {
+				messages.push(`\nVerification: ${verificationResult.message}`);
+			}
+
+			if (params.tasksRemaining?.length) {
+				messages.push(`\nFollow-up needed: ${params.tasksRemaining.join(", ")}`);
+			}
+
+			const nextWork = await findNextWork();
+			if (nextWork.type) {
+				const label = nextWork.type === "plan" ? "Next Plan" : "Next Goal";
+				messages.push(`\n${label}: ${nextWork.description}`);
+				messages.push(`\nType \`finalize(true, "...", [], true)\` to continue automatically, or continue manually.`);
+				if (params.autoProceed && nextWork.id) {
+					messages.push(`\nAuto-proceeding to next work...`);
+				}
+			}
+
+			messages.push("\n---");
+			messages.push("Session ending...");
+
+			return {
+				content: [{ type: "text" as const, text: messages.join("\n") }],
+				details: { finalized: true, completed: params.completed, summary: params.summary, verification: verificationResult },
+			};
 		},
-	);
+	};
 }

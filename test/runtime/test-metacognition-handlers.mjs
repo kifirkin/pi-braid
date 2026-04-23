@@ -106,9 +106,11 @@ async function main() {
 
 	check("index.ts registers all tools", () => {
 		const src = readFileSync(`${ROOT}/src/extensions/metacognition/index.ts`, "utf8");
-		assert(src.includes("registerThink"));
-		assert(src.includes("registerHypothesize"));
-		assert(src.includes("registerFinalize"));
+		assert(src.includes("createThinkTool"));
+		assert(src.includes("createHypothesizeTool"));
+		assert(src.includes("createFinalizeTool"));
+		assert(src.includes("registerTool(createThinkTool()"));
+		assert(src.includes("registerTool(createFinalizeTool()"));
 	});
 
 	const { evaluateCognition } = await import(`${ROOT}/dist/lib/cognition-evaluator.js`);
