@@ -872,10 +872,30 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 
 	pi.on("agent_end", async (_event: any, ctx: ExtensionContext) => {
 		const state = getState(ctx);
-		// Log final stats
-		log.info(`Session ended. Ticks: ${state.stats.totalTicks}, Activations: ${state.stats.totalActivations}`);
+		const outcome = _event?.outcome as string | undefined;
+		log.info(`Session ended. Ticks: ${state.stats.totalTicks}, ` +
+			`Activations: ${state.stats.totalActivations}, ` +
+			`Tools: ${state.metaLearning.toolTracking.totalToolsUsed}, ` +
+			`Outcome: ${outcome ?? "unknown"}`);
 		for (const [name, count] of Object.entries(state.stats.activationsByModule)) {
 			log.info(`  ${name}: ${count} activations`);
+		}
+		// TIER 1: Record outcome episode for future recall
+		try {
+			const { addEpisode } = await import("../three-memory-stores/index.js");
+			const memState = getMemoryState(ctx);
+			if (memState) {
+				const success = outcome === "success" || !_event?.error;
+				addEpisode(memState, "session_outcome",
+					`Ticks:${state.stats.totalTicks} Tools:${state.metaLearning.toolTracking.totalToolsUsed} Outcome:${outcome ?? "unknown"}`,
+					success ? "success" : "partial",
+					[],
+					["session", "outcome"],
+				);
+				log.info(`[heartbeat] Outcome episode recorded: ${success ? "success" : "partial"}`);
+			}
+		} catch (err) {
+			log.warn(`[heartbeat] Could not record outcome episode: ${err}`);
 		}
 	});
 
