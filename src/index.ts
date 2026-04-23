@@ -27,6 +27,7 @@ import errorCaptureExtension from "./extensions/error-capture/index.js";
 import promptBuilderExtension from "./extensions/prompt-builder/index.js";
 import plannerExtension from "./extensions/planner/index.js";
 import metacognitionExtension from "./extensions/metacognition/index.js";
+import verificationExtension from "./extensions/verification/index.js";
 import scratchpadExtension from "./extensions/scratchpad/index.js";
 import cognitiveSystemsExtension from "./extensions/cognitive-systems/index.js";
 import contextManagerExtension from "./extensions/context-manager/index.js";
@@ -68,6 +69,7 @@ const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void 
 	{ name: "prompt-builder", factory: promptBuilderExtension },
 	{ name: "planner", factory: plannerExtension },
 	{ name: "metacognition", factory: metacognitionExtension },
+	{ name: "verification", factory: verificationExtension },
 	{ name: "scratchpad", factory: scratchpadExtension },
 	{ name: "cognitive-systems", factory: cognitiveSystemsExtension },
 	{ name: "context-manager", factory: contextManagerExtension },
