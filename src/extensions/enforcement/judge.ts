@@ -1,7 +1,7 @@
 /**
- * LLM Judge - Analyzes responses using a utility model
+ * LLM Judge - Analyzes responses using the session model
  *
- * Uses completeSimple() to call the utility model with structured analysis.
+ * Uses completeSimple() with the session model (ctx.model) for structured analysis.
  * The judge evaluates responses for contradictions, hallucinations, and
  * other behavioral issues.
  */

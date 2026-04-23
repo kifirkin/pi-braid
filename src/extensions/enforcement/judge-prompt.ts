@@ -4,7 +4,7 @@ const log = createLogger("enforcement");
 /**
  * LLM Judge System Prompt for Enforcement Analysis
  *
- * This prompt instructs the utility model to analyze assistant responses
+ * This prompt instructs the session model to analyze assistant responses
  * for behavioral issues like contradictions, hallucinations, and self-interference.
  */
 

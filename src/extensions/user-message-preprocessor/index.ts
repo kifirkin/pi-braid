@@ -7,7 +7,8 @@ const log = createLogger("user-message-preprocessor");
  * Cleans up user messages before sending to main LLM:
  * - Translates non-English messages to English
  * - Corrects spelling/grammar in English messages
- * - Uses utility model via ctx.getUtilityModel() (respects /utility-model setting)
+ * - Uses session model (ctx.model) for preprocessing — research shows separate
+ *   utility model is overhead (docs/research/bicameral-mind-analysis.md)
  *
  * Smart content detection:
  * - Skips code-heavy messages (>30% code characters)
@@ -32,7 +33,7 @@ import { completeSimple } from "@mariozechner/pi-ai";
 import { Type } from "typebox";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext, InputEventResult } from "@mariozechner/pi-coding-agent";
 import { setLanguage, detectLanguage } from "../../lib/language-hint.js";
-import { resolveUtilityModel } from "../../lib/model-resolver.js";
+// No utility model resolution — uses ctx.model directly
 
 /** Anti-slop: detect code-writing requests (merged from anti-slop-input) */
 const CODE_REQUEST_PATTERNS: RegExp[] = [
@@ -290,8 +291,8 @@ async function processMessage(
 ) {
 	state.isProcessing = true;
 
-	// Resolve utility model (respects /utility-model setting)
-	const model = resolveUtilityModel(ctx);
+	// Use session model for preprocessing (no separate utility model)
+	const model = ctx.model;
 	if (!model) {
 		state.skippedCount++;
 		resolve({ action: "continue" });

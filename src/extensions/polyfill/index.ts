@@ -16,7 +16,7 @@ import * as os from "node:os";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { ModelSelectorComponent, SettingsManager } from "@mariozechner/pi-coding-agent";
 import type { Model, Api } from "@mariozechner/pi-ai";
-import { resolveUtilityModel, resolveVisionModel } from "../../lib/model-resolver.js";
+import { resolveVisionModel } from "../../lib/model-resolver.js";
 
 // Type assertion helpers for events that may not be in TypeScript definitions
 const asApi = (pi: ExtensionAPI) => pi as ExtensionAPI & {
@@ -24,7 +24,7 @@ const asApi = (pi: ExtensionAPI) => pi as ExtensionAPI & {
 };
 
 /** Custom settings keys managed by /utility-model and /vision-model commands */
-import { getCustomModelKeys, getCustomModelKey, UTILITY_MODEL_KEY, VISION_MODEL_KEY } from "../../lib/global-state.js";
+import { getCustomModelKeys, VISION_MODEL_KEY } from "../../lib/global-state.js";
 
 interface SessionManagerLike {
 	getSessionFile(): string | null;
@@ -90,7 +90,7 @@ async function loadCustomKeysFromDisk(): Promise<void> {
 		const content = await fs.readFile(SETTINGS_PATH, "utf-8");
 		const settings = JSON.parse(content);
 		const map = getCustomModelKeys();
-		for (const key of [UTILITY_MODEL_KEY, VISION_MODEL_KEY]) {
+		for (const key of [VISION_MODEL_KEY]) {
 			if (typeof settings[key] === "string" && settings[key]) {
 				map.set(key, settings[key]);
 			}
@@ -113,38 +113,6 @@ export default function polyfillExtension(pi: ExtensionAPI) {
 	});
 
 	// Register settings commands for model selection
-	pi.registerCommand("utility-model", {
-		description: "Set or show the utility model for cheap LLM calls. No args = open model selector UI.",
-		handler: async (args, ctx) => {
-			if (!args || args.trim() === "") {
-				if (ctx.hasUI) {
-					await openModelSelectorUI(ctx, UTILITY_MODEL_KEY, "Utility Model", null);
-				} else {
-					// Non-interactive: show auto-detected model
-					const model = resolveUtilityModel(ctx);
-					ctx.ui.notify(`Utility model: ${model?.id ?? "none"} (auto-detected)`, "info");
-				}
-				return;
-			}
-
-			const text = args.trim();
-			if (text === "clear" || text === "reset") {
-				await clearModelSetting(UTILITY_MODEL_KEY);
-				ctx.ui.notify("Utility model cleared (will auto-detect)", "info");
-				return;
-			}
-
-			// Text-based set: "provider/model-id" or just "model-id"
-			const model = resolveModelPattern(ctx, text);
-			if (!model) {
-				ctx.ui.notify(`Model not found: ${text}`, "error");
-				return;
-			}
-			await setModelSetting(UTILITY_MODEL_KEY, text);
-			ctx.ui.notify(`Utility model set to: ${model.id}`, "info");
-		},
-	});
-
 	pi.registerCommand("vision-model", {
 		description: "Set or show the vision model for image analysis. No args = open model selector UI (filtered to vision-capable models).",
 		handler: async (args, ctx) => {
@@ -283,11 +251,8 @@ async function openModelSelectorUI(
 			? modelRegistry.getAvailable().filter(scopeFilter).map((m) => ({ model: m }))
 			: [];
 
-	// Pre-select the currently configured model
-	const currentModel =
-		settingKey === UTILITY_MODEL_KEY
-			? resolveUtilityModel(ctx)
-			: resolveVisionModel(ctx);
+	// Pre-select the currently configured model (vision model only — no utility model)
+	const currentModel = resolveVisionModel(ctx);
 
 	// Capture selected model from the dialog
 	let selectedModel: Model<Api> | undefined;
@@ -304,14 +269,11 @@ async function openModelSelectorUI(
 					selectedModel = model;
 
 					// Warn if a non-vision model was picked for the vision role
-					if (settingKey === VISION_MODEL_KEY) {
-						const supportsImage = hasImageInput(model as { input?: unknown });
-						if (!supportsImage) {
-							ctx.ui.notify(
-								`⚠ ${model.id} does not support image input. Vision analysis may fail.`,
-								"warning",
-							);
-						}
+					if (!hasImageInput(model as { input?: unknown })) {
+						ctx.ui.notify(
+							`⚠ ${model.id} does not support image input. Vision analysis may fail.`,
+							"warning",
+						);
 					}
 
 					done(model);
@@ -331,7 +293,7 @@ async function openModelSelectorUI(
 	const pattern = `${selectedModel.provider}/${selectedModel.id}`;
 	await setModelSetting(settingKey, pattern);
 
-	ctx.ui.notify(`${settingKey === UTILITY_MODEL_KEY ? "Utility" : "Vision"} model set to: ${selectedModel.id}`, "info");
+	ctx.ui.notify(`Vision model set to: ${selectedModel.id}`, "info");
 }
 
 // Session manager patches for --no-session mode

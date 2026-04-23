@@ -1,53 +1,38 @@
 /**
- * Local type augmentation for ExtensionContext.
+ * @fileoverview Extension context type augmentations for pi-braid.
  *
- * Adds commonly accessed properties that exist at runtime but are not declared
- * in the upstream type definitions. This eliminates `as any` casts across the
- * codebase.
+ * Centralizes knowledge of @mariozechner/pi-coding-agent's ExtensionContext
+ * structure — what is directly accessible vs. what must be obtained via ctx.
  */
 
-import type { Model, Api } from "@mariozechner/pi-ai";
+import type { ExtensionContext as BaseExtensionContext } from "@mariozechner/pi-coding-agent";
 
-declare module "@mariozechner/pi-coding-agent" {
-	interface ExtensionContext {
-		/** Session-scoped key-value store. */
-		getState<T = unknown>(key: string): T | undefined;
-		/** Global (cross-session) key-value store. */
-		getGlobalState<T = unknown>(key: string): T | undefined;
-		/** Logger instance. */
-		logger: {
-			info(...args: unknown[]): void;
-			warn(...args: unknown[]): void;
-			error(...args: unknown[]): void;
-			debug?(msg: string, data?: unknown): void;
-		};
-		/** Raw mutable state object (legacy). */
-		state: Record<string, unknown>;
-		/** Settings manager for default provider / model. */
-		settingsManager: {
-			getDefaultProvider(): string | undefined;
-			getDefaultModel(): string | undefined;
-		};
-		/** Session manager for stable session identifiers. */
-		sessionManager: {
-			getSessionFile(): string | undefined;
-			getSessionId(): string | undefined;
-		};
-		/** Agent / run identifiers. */
-		agentId: string;
-		runId: string;
-		/** Model registry. */
-		modelRegistry: {
-			find(provider: string, modelId: string): Model<Api> | undefined;
-			getAll(): Model<Api>[];
-			getAvailable(): Model<Api>[];
-		};
-		/** Current model. */
-		model: Model<Api> | undefined;
+/**
+ * The agent's ExtensionContext object exposes these fields:
+ *
+ * - model: the currently active Model<Api>
+ * - modelRegistry: provider registry (find(provider, modelId), getAvailable(), getAll())
+ * - settingsManager: user settings (getDefaultProvider(), getDefaultModel(), etc.)
+ * - toolRegistry: registered tools
+ *
+ * Tool execute functions DO NOT receive ctx directly — they only get:
+ *   (toolCallId, params, signal, onUpdate, _ctx)
+ * where _ctx is undefined for extension tools (only builtin tools get it).
+ *
+ * So extension tools should NOT rely on _ctx for model resolution.
+ * Instead:
+ *   - Listen to "model_select" events and cache the model
+ *   - Or use pi.model if the ExtensionApi exposes it
+ */
+export type { BaseExtensionContext as ExtensionContext };
 
-		/** Get the configured utility model (cheapest model for non-critical calls). Patched by polyfill extension. */
-		getUtilityModel(): Model<Api> | undefined;
-		/** Get the configured vision model (vision-capable model for image analysis). Patched by polyfill extension. */
-		getVisionModel(): Model<Api> | undefined;
-	}
+/**
+ * Type for the `pi` object (ExtensionApi) used in extensions.
+ * Note: this is NOT the same as ExtensionContext.
+ */
+export interface ExtensionApi {
+	registerTool(name: string, definition: unknown): void;
+	on(event: string, handler: (...args: unknown[]) => void): void;
+	model?: unknown;
+	modelRegistry?: unknown;
 }

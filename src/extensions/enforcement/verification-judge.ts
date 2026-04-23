@@ -4,7 +4,7 @@
  * Replaces regex-based claim/lazy detection with structured LLM analysis
  * at strategic checkpoints (pre-finalize, verification gap, periodic drift).
  *
- * Uses completeSimple() to call the utility model. Evaluates whether
+ * Uses completeSimple() with the session model (ctx.model). Evaluates whether
  * the agent's work aligns with the user's request, whether code changes
  * are verified, and whether shortcuts were taken.
  */

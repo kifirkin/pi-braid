@@ -14,27 +14,18 @@ const log = createLogger("judge-utils");
 
 /**
  * Get a suitable model for judge analysis.
- * Prioritizes: utility model > current model > cheapest non-reasoning model
+ * Uses the session's current model (ctx.model).
+ * If the current model is a reasoning model, falls back to the cheapest
+ * non-reasoning model to avoid expensive judge calls.
  */
 export function getJudgeModel(ctx: ExtensionContext): Model<Api> | undefined {
-	let model: Model<Api> | undefined;
-	try {
-		model = (ctx as unknown as { getUtilityModel?(): Model<Api> | undefined }).getUtilityModel?.();
-	} catch {
-		// Polyfill not patched yet (no session_start in -p mode)
- /* Non-fatal: tool description unavailable */
+	let model = ctx.model;
+	if (model?.reasoning) {
+		const availableModels = ctx.modelRegistry.getAvailable();
+		const nonReasoning = availableModels.filter((m) => !m.reasoning);
+		nonReasoning.sort((a, b) => (a.cost?.input ?? 0) + (a.cost?.output ?? 0) - ((b.cost?.input ?? 0) + (b.cost?.output ?? 0)));
+		model = nonReasoning[0];
 	}
-
-	if (!model) {
-		model = ctx.model;
-		if (model?.reasoning) {
-			const availableModels = ctx.modelRegistry.getAvailable();
-			const nonReasoning = availableModels.filter((m) => !m.reasoning);
-			nonReasoning.sort((a, b) => (a.cost?.input ?? 0) + (a.cost?.output ?? 0) - ((b.cost?.input ?? 0) + (b.cost?.output ?? 0)));
-			model = nonReasoning[0];
-		}
-	}
-
 	return model;
 }
 

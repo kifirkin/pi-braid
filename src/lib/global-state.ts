@@ -18,7 +18,7 @@ const CUSTOM_KEYS_MAP = Symbol.for("pi-braid:custom-model-keys");
 
 /**
  * Get the shared custom model keys map.
- * polyfill writes to it (/utility-model, /vision-model commands).
+ * polyfill writes to it (/vision-model command).
  * model-resolver reads from it (model resolution).
  */
 export function getCustomModelKeys(): Map<string, string> {
@@ -35,7 +35,6 @@ export function getCustomModelKey(key: string): string | undefined {
 
 // ── Custom Settings Keys (polyfill) ─────────────────────────────────────────
 
-export const UTILITY_MODEL_KEY = "utilityModel";
 export const VISION_MODEL_KEY = "visionModel";
 
 // ── Rotation State (rotation.ts) ─────────────────────────────────────────────

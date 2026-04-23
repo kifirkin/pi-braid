@@ -101,15 +101,14 @@ async function main() {
 		assert(src.includes("from \"./handlers/think.js\""));
 		assert(src.includes("from \"./handlers/hypothesize.js\""));
 		assert(src.includes("from \"./handlers/finalize.js\""));
-		assert(src.includes("from \"../../lib/cognition-evaluator.js\""));
+		// No cognition-evaluator import (removed with utility model)
 	});
 
 	check("index.ts registers all tools", () => {
 		const src = readFileSync(`${ROOT}/src/extensions/metacognition/index.ts`, "utf8");
-		assert(src.includes("pi.registerTool(thinkTool)"));
-		assert(src.includes("pi.registerTool(hypothesizeTool)"));
-		assert(src.includes("pi.registerTool(finalizeTool)"));
-		assert(src.includes("cognition_evaluate"));
+		assert(src.includes("registerThink"));
+		assert(src.includes("registerHypothesize"));
+		assert(src.includes("registerFinalize"));
 	});
 
 	const { evaluateCognition } = await import(`${ROOT}/dist/lib/cognition-evaluator.js`);
