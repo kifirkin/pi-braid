@@ -31,7 +31,6 @@ import {
 import { addEpisode as addMemoryEpisode } from "../three-memory-stores/index.js";
 import { createLogger } from "../../lib/logger.js";
 import { getExtensionState } from "../../lib/extension-state.js";
-import { sendEnforcementWhisper } from "../enforcement/whisper.js";
 import type { Episode, HeuristicRule } from "../three-memory-stores/index.js";
 import { retrieveByRUMS } from "../three-memory-stores/index.js";
 import { isDegraded, getDegradationReasons, getMetricsSummary } from "../../lib/degradation-detector.js";
@@ -197,6 +196,23 @@ const recallerModule: CognitiveModule = {
 	shouldActivate(context: ModuleContext): boolean {
 		const lastRecall = context.lastActivation.get("recaller") ?? 0;
 		const turnsSinceRecall = context.turnCount - lastRecall;
+
+		// ── Proactive triggers (TIER 1) ──────────────────────────────
+		// High tool failure count → recall error recovery
+		const failureCount = (context.metadata?.toolFailures as number) ?? 0;
+		if (failureCount >= 3) return true;
+
+		// Deep decomposition → recall complex task episodes
+		const depth = (context.metadata?.decompositionDepth as number) ?? 0;
+		if (depth >= 4) return true;
+
+		// Silent turns (no progress) → recall strategic episodes
+		if (context.silentTurns >= 8) return true;
+
+		// High tool usage without results → recall relevant episodes
+		if (context.totalToolCalls >= 20 && context.totalToolCalls % 10 === 0) return true;
+
+		// ── Time-based fallback ──────────────────────────────────
 		if (turnsSinceRecall < 15 || context.totalToolCalls < 5) return false;
 		const memState = getMemoryState(context.ctx);
 		return memState !== null && memState.episodes.length >= 2;
@@ -237,6 +253,7 @@ const recallerModule: CognitiveModule = {
 
 			if (applicableHeuristics.length > 0) {
 				log.info(`Recaller: ${applicableHeuristics.length} applicable heuristics for task suggestion`);
+				context.ctx.whisper?.(`Proactive memory: ${applicableHeuristics.length} heuristics may apply to your current task. Consider: ${applicableHeuristics.map((h: any) => h.condition).slice(0, 2).join(", ")}`, { category: "cognitive" });
 			}
 		}
 	},
@@ -300,6 +317,10 @@ const dreamerModule: CognitiveModule = {
 			`Dreamer: ${toolsUsed.length} tool calls, ${uniqueTools.size} unique tools, ` +
 			`${verificationCount} verifications, ${codeCount} code ops — added reflection episode`,
 		);
+		// TIER 1: Surface dreamer insights to agent
+		if (insights.length > 0) {
+			context.ctx.whisper?.(`Self-reflection: ${insights.join(" ")}`, { category: "cognitive" });
+		}
 	},
 };
 
@@ -338,6 +359,7 @@ const measurementModule: CognitiveModule = {
 		if (degraded) {
 			const reasons = getDegradationReasons(context.ctx);
 			log.warn(`Degradation detected: ${reasons.join(", ")}`);
+			context.ctx.whisper?.(`Degradation detected: ${reasons.join(", ")}. Consider: context audit, session recall, or wrapping up.`, { category: "cognitive", priority: "medium" });
 		}
 
 		// Get metrics summary
@@ -410,6 +432,8 @@ const evolverModule: CognitiveModule = {
 			`Evolver: archived session (${entry.turnCount} turns, ` +
 			`${entry.heuristicsUsed}/${memState.heuristics.length} heuristics used)`,
 		);
+		// TIER 1: Surface evolver results to agent
+		context.ctx.whisper?.(`Meta-learning: session archived. ${entry.heuristicsUsed}/${memState.heuristics.length} heuristics applied. ${memState.heuristics.length} total active.`, { category: "cognitive" });
 	},
 };
 
@@ -431,6 +455,7 @@ interface ToolTracking {
 function createDefaultPolicies(
 	getToolTracking: () => ToolTracking,
 	onSignal: (type: string, data: Record<string, unknown>) => void,
+	sendWhisper: (msg: string) => void,
 ): Policy[] {
 	return [
 		// ── Verification hint ───────────────────────────────────────────
@@ -449,8 +474,7 @@ function createDefaultPolicies(
 			},
 			action: async (ctx: PolicyContext) => {
 				const t = getToolTracking();
-				sendEnforcementWhisper(
-					(globalThis as Record<string, unknown>).__pi_api as ExtensionAPI,
+				sendWhisper(
 					"No verification (grep/read/search) in 10+ turns. " +
 					"Consider: Are you sure the implementation is correct? " +
 					"Verify with grep or read to confirm.",
@@ -473,12 +497,11 @@ function createDefaultPolicies(
 			lastActivated: 0,
 			trigger: async (_store: BeliefStore, ctx: PolicyContext) => {
 				const t = getToolTracking();
-				const turnsSinceLastTool = ctx.turnNumber - t.totalToolsUsed;
+				const turnsSinceLastTool = ctx.turnNumber - t.lastToolCallTurn;
 				return turnsSinceLastTool >= 8 && t.totalToolsUsed > 2;
 			},
 			action: async (ctx: PolicyContext) => {
-				sendEnforcementWhisper(
-					(globalThis as Record<string, unknown>).__pi_api as ExtensionAPI,
+				sendWhisper(
 					"8+ turns with no tool calls. Consider using /think to reflect " +
 					"on progress or /finalize if the task is complete.",
 				);
@@ -502,8 +525,7 @@ function createDefaultPolicies(
 				return webBeliefs.length > 2 && turnsSinceWeb >= 15;
 			},
 			action: async (ctx: PolicyContext) => {
-				sendEnforcementWhisper(
-					(globalThis as Record<string, unknown>).__pi_api as ExtensionAPI,
+				sendWhisper(
 					"You have recent web-based beliefs but haven't fetched " +
 					"documentation in 15+ turns. Consider verifying claims " +
 					"with web_fetch or browser_navigate.",
@@ -610,26 +632,21 @@ function tick(
 		}
 	}
 
-	// Build module context
+	// Build module context from heartbeat state (TIER 1: wire real data)
 	const moduleContext: ModuleContext = {
 		ctx,
 		turnCount: state.turnCount,
 		lastActivation: state.lastActivation,
 		sessionAge: state.turnCount,
 		toolCallsSinceLastTick: [],
-		totalToolCalls: 0,  // Filled by enforcement state if available
-		silentTurns: 0,
-		metadata: {},
+		totalToolCalls: state.metaLearning.toolTracking.totalToolsUsed,
+		silentTurns: state.stats.totalTicks > 0 ? Math.max(0, state.stats.totalTicks - (state.metaLearning.toolTracking.lastToolCallTurn || 0)) : 0,
+		// TIER 1: Real metadata from heartbeat state
+		metadata: {
+			toolFailures: (state as any).recentErrors?.length ?? 0,
+			decompositionDepth: (state as any).decompositionDepth ?? 0,
+		},
 	};
-
-	// Try to get tool call info from enforcement state
-	try {
-		const enforcementState = (ctx as unknown as { getExtensionState?(name: string): { totalToolCalls?: number; silentTurns?: number } | undefined }).getExtensionState?.("enforcement");
-		if (enforcementState) {
-			moduleContext.totalToolCalls = enforcementState.totalToolCalls ?? 0;
-			moduleContext.silentTurns = enforcementState.silentTurns ?? 0;
-		}
-	} catch { /* non-fatal: enforcement state not available */ }
 
 	// Evaluate which modules should activate
 	const candidates: Array<{ module: CognitiveModule; priority: number; reg: RegisteredModule }> = [];
@@ -836,7 +853,11 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 			});
 		};
 
-		const defaultPolicies = createDefaultPolicies(() => state.metaLearning.toolTracking, onSignal);
+		const defaultPolicies = createDefaultPolicies(
+			() => state.metaLearning.toolTracking,
+			onSignal,
+			(msg: string) => ctx.whisper?.(msg, { category: "cognitive", priority: "low" }),
+		);
 		for (const policy of defaultPolicies) {
 			engine.register(policy);
 		}

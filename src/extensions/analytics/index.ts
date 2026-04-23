@@ -26,6 +26,8 @@ import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 
+import { Type } from "typebox";
+
 // Types
 
 interface ToolMetrics {
@@ -455,15 +457,72 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 		},
 	});
 
-	// R9: A/B experiment variant tracking - allow evolve extension to assign experiment groups
+	// R9: A/B experiment variant tracking
 	pi.registerCommand("analytics:setVariant", {
 		description: "Set A/B experiment variant for this session",
 		handler: async (args, _ctx) => {
-			// args is a JSON string: { "variant": "treatment_a" }
 			const parsed = typeof args === "string" ? JSON.parse(args) : args;
 			state.abVariant = parsed.variant;
-		}, 
+		},
 	});
+
+	// TIER 1: Programmatic analytics tools — structured JSON instead of formatted text
+	pi.registerTool({
+		name: "get-session-metrics",
+		label: "Get Session Metrics",
+		description: "Get structured current session analytics: tool counts, timing, sequences, success rates.",
+		parameters: Type.Object({}),
+		execute: async (): Promise<any> => {
+			const metrics = Array.from(state.toolMetrics.values()).sort((a, b) => b.totalCalls - a.totalCalls);
+			const sessionMetrics = getSessionMetrics();
+			const sequences = getToolSequences(2, 3).slice(0, 10);
+			const duration = Math.round((Date.now() - state.sessionStartTime) / 1000);
+			return {
+				content: `Session: ${state.sessionId || "unknown"}, ${sessionMetrics.totalToolCalls} tool calls, ${duration}s.`,
+				details: {
+					sessionId: state.sessionId || "unknown",
+					durationSeconds: duration,
+					totalToolCalls: sessionMetrics.totalToolCalls,
+					uniqueToolsUsed: sessionMetrics.uniqueToolsUsed,
+					abVariant: state.abVariant,
+					toolCounts: Object.fromEntries(metrics.map((m) => [m.toolName, m.totalCalls])),
+					topTools: metrics.slice(0, 10).map((m) => ({
+						tool: m.toolName,
+						calls: m.totalCalls,
+						successRate: m.totalCalls > 0 ? m.successfulCalls / m.totalCalls : 0,
+						avgDurationMs: m.totalCalls > 0 ? m.totalDurationMs / m.totalCalls : 0,
+					})),
+					sequences: sequences.map((s) => ({ pattern: s.pattern, count: s.count })),
+				},
+			};
+		},
+	} as any);
+
+	pi.registerTool({
+		name: "get-tool-reliability",
+		label: "Get Tool Reliability",
+		description: "Get tool success rates from historical analytics data.",
+		parameters: Type.Object({
+			topN: Type.Optional(Type.Number({ description: "Max results. Default: 10" })),
+		}),
+		execute: async (_id: string, params: any): Promise<any> => {
+			const topN = params?.topN ?? 10;
+			const summary = loadAnalytics();
+			const reliability = summary.topTools.slice(0, topN).map((t: any) => ({
+				tool: t.toolName,
+				totalCalls: t.totalCalls,
+				recentSessions: t.recentSessions,
+			}));
+			return {
+				content: `${reliability.length} tools tracked.`,
+				details: {
+					totalSessions: summary.totalSessions,
+					totalToolCalls: summary.totalToolCalls,
+					tools: reliability,
+				},
+			};
+		},
+	} as any);
 
 	// Note: Tool call end recording would ideally use a tool_end event
 	// which may not be available on all versions. For now, we track
