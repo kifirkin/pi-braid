@@ -118,6 +118,8 @@ interface MetaLearningState {
 	pendingSignals: Map<string, number>; // module → activation turn (awaiting outcome)
 	// TIER 1: Persistent tool tracking (was local variable in session_start)
 	toolTracking: ToolTracking;
+	// TIER 1: Token warning thresholds already fired (prevents spam)
+	tokenWarningFired: Set<number>;
 }
 
 const META_LEARNING = {
@@ -169,6 +171,7 @@ function createHeartbeatState(): HeartbeatState {
 			activationSignalWindow: new Map(),
 			postActivationToolCount: 0,
 			pendingSignals: new Map(),
+    tokenWarningFired: new Set<number>(),
 			// TIER 1: Persistent tool tracking (was local variable in session_start)
 			toolTracking: {
 				verificationCount: 0,
@@ -531,6 +534,51 @@ function createDefaultPolicies(
 					"with web_fetch or browser_navigate.",
 				);
 				onSignal("web_verification_reminder", { turn: ctx.turnNumber });
+			},
+		},
+
+		// ── Proactive context monitoring ──────────────────────────────────
+		{
+			id: "context-monitor",
+			name: "Context Monitor",
+			description: "Monitor token usage and warn before overflow",
+			priority: 80,
+			cooldownMs: 30_000,
+			enabled: true,
+			lastActivated: 0,
+			trigger: async (_store: BeliefStore, ctx: PolicyContext) => {
+				// Always eligible — we check usage inside action
+				return true;
+			},
+			action: async (ctx: PolicyContext) => {
+				const usage = ((ctx as any).ctx as any)?.getContextUsage?.();
+				if (!usage) return;
+				const { percent, tokens, contextWindow } = usage;
+				const state = getState((ctx as any).ctx);
+				const fired = state?.metaLearning?.tokenWarningFired;
+
+				const thresholds: Array<{ pct: number; priority: "low" | "medium" | "high"; msg: string }> = [
+					{ pct: 70, priority: "low", msg: "Context at 70%. Consider using /finalize or /context_compress to reduce context." },
+					{ pct: 80, priority: "medium", msg: "Context at 80%. Use /context_compress or /finalize NOW." },
+					{ pct: 90, priority: "high", msg: "CRITICAL: Context at 90%. Stop and compress immediately." },
+				];
+
+				for (const { pct, priority, msg } of thresholds) {
+					if (percent >= pct && !fired.has(pct)) {
+						fired.add(pct);
+						(ctx as any).ctx.whisper?.(
+							`${msg} (${tokens?.toLocaleString()} / ${contextWindow?.toLocaleString()} tokens, ${percent?.toFixed(1)}%)`,
+							{ category: "cognitive", priority },
+						);
+						log.warn(`[heartbeat] Token warning: ${percent?.toFixed(1)}% (${tokens}/${contextWindow} tokens)`);
+						break; // One warning per tick
+					}
+				}
+
+				// Reset warnings if context usage drops
+				if (percent < 50 && fired && fired.size > 0) {
+					fired.clear();
+				}
 			},
 		},
 	];
