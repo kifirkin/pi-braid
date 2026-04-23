@@ -1,5 +1,7 @@
 # What Braid Has Missed: Complete Gap Analysis
 
+> **This is a detailed extract from [RESEARCH-MASTER.md](RESEARCH-MASTER.md) Parts 3-4. For the single source of truth, see that document.**
+
 **Date**: 2026-04-23
 **Sources**: BRAID-NEXT-PROPOSAL.md, BRAID-CONSOLIDATED-TASKS.md, STATUS.md, today's work, looped architecture research
 

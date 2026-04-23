@@ -1,4 +1,7 @@
 # pi-braid Nudge Quality Research — The Meta-Irony
+
+> **For latest project state**: See [RESEARCH-MASTER.md](RESEARCH-MASTER.md) — Part 4 (Gap H8: whisper stakes audit), Part 6 (Research Cross-Reference: papers 2604.15224, 2604.10980)
+
 **Date**: 2026-04-21
 **Focus**: The tools built to eliminate slop sometimes produce slop. Why enforcement and think "fresh eyes" give sloppy advice.
 **Meta-level**: Even the self-auditing tools need auditing.

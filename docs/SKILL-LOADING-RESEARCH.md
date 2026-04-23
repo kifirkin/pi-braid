@@ -1,5 +1,7 @@
 # Skill Loading Research
 
+> **For latest project state**: See [RESEARCH-MASTER.md](RESEARCH-MASTER.md)
+
 ## Overview
 
 Pi's skill system allows the agent to dynamically load specialized instructions (SKILL.md files) at runtime. Understanding the resolution mechanism is critical for creating and troubleshooting skills.
@@ -85,4 +87,13 @@ skills/
 2. Can skills declare dependencies on other skills?
 3. Is there a skill registry API for listing loaded skills?
 
+## Open Questions
+
+1. Does pi support skill versioning or hot-reloading?
+2. Can skills declare dependencies on other skills?
+3. Is there a skill registry API for listing loaded skills?
+4. Should skills be auto-loaded based on task type (see [RESEARCH-MASTER.md Part 7](RESEARCH-MASTER.md) — Fast/Slow Routing)?
+5. Can skills inject behavior patterns that survive context rotation?
+
 *Generated: 2026-04-22*
+*Updated: 2026-04-23*
