@@ -196,6 +196,23 @@ const recallerModule: CognitiveModule = {
 	shouldActivate(context: ModuleContext): boolean {
 		const lastRecall = context.lastActivation.get("recaller") ?? 0;
 		const turnsSinceRecall = context.turnCount - lastRecall;
+
+		// ── Proactive triggers (TIER 1) ──────────────────────────────
+		// High tool failure count → recall error recovery
+		const failureCount = (context.metadata?.toolFailures as number) ?? 0;
+		if (failureCount >= 3) return true;
+
+		// Deep decomposition → recall complex task episodes
+		const depth = (context.metadata?.decompositionDepth as number) ?? 0;
+		if (depth >= 4) return true;
+
+		// Silent turns (no progress) → recall strategic episodes
+		if (context.silentTurns >= 8) return true;
+
+		// High tool usage without results → recall relevant episodes
+		if (context.totalToolCalls >= 20 && context.totalToolCalls % 10 === 0) return true;
+
+		// ── Time-based fallback ──────────────────────────────────
 		if (turnsSinceRecall < 15 || context.totalToolCalls < 5) return false;
 		const memState = getMemoryState(context.ctx);
 		return memState !== null && memState.episodes.length >= 2;
@@ -480,7 +497,7 @@ function createDefaultPolicies(
 			lastActivated: 0,
 			trigger: async (_store: BeliefStore, ctx: PolicyContext) => {
 				const t = getToolTracking();
-				const turnsSinceLastTool = ctx.turnNumber - t.totalToolsUsed;
+				const turnsSinceLastTool = ctx.turnNumber - t.lastToolCallTurn;
 				return turnsSinceLastTool >= 8 && t.totalToolsUsed > 2;
 			},
 			action: async (ctx: PolicyContext) => {
@@ -615,26 +632,21 @@ function tick(
 		}
 	}
 
-	// Build module context
+	// Build module context from heartbeat state (TIER 1: wire real data)
 	const moduleContext: ModuleContext = {
 		ctx,
 		turnCount: state.turnCount,
 		lastActivation: state.lastActivation,
 		sessionAge: state.turnCount,
 		toolCallsSinceLastTick: [],
-		totalToolCalls: 0,  // Filled by enforcement state if available
-		silentTurns: 0,
-		metadata: {},
+		totalToolCalls: state.metaLearning.toolTracking.totalToolsUsed,
+		silentTurns: state.stats.totalTicks > 0 ? Math.max(0, state.stats.totalTicks - (state.metaLearning.toolTracking.lastToolCallTurn || 0)) : 0,
+		// TIER 1: Real metadata from heartbeat state
+		metadata: {
+			toolFailures: (state as any).recentErrors?.length ?? 0,
+			decompositionDepth: (state as any).decompositionDepth ?? 0,
+		},
 	};
-
-	// Try to get tool call info from enforcement state
-	try {
-		const enforcementState = (ctx as unknown as { getExtensionState?(name: string): { totalToolCalls?: number; silentTurns?: number } | undefined }).getExtensionState?.("enforcement");
-		if (enforcementState) {
-			moduleContext.totalToolCalls = enforcementState.totalToolCalls ?? 0;
-			moduleContext.silentTurns = enforcementState.silentTurns ?? 0;
-		}
-	} catch { /* non-fatal: enforcement state not available */ }
 
 	// Evaluate which modules should activate
 	const candidates: Array<{ module: CognitiveModule; priority: number; reg: RegisteredModule }> = [];
