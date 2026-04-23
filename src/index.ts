@@ -12,16 +12,13 @@
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-
 import { createLogger } from "./lib/logger.js";
 
 // ── Root Logger ──────────────────────────────────────────────────────────────
-// Logger for the main extension loader - verbose debug only
 const _log = createLogger("pi-braid");
 
-// Extension modules
+// ── Extension modules ───────────────────────────────────────────────────────
 import polyfillExtension from "./extensions/polyfill/index.js";
 import errorCaptureExtension from "./extensions/error-capture/index.js";
 import promptBuilderExtension from "./extensions/prompt-builder/index.js";
@@ -41,7 +38,6 @@ import promptGuardianExtension from "./extensions/prompt-guardian/index.js";
 import evolveExtension from "./extensions/evolve/index.js";
 import enforcementExtension from "./extensions/enforcement/index.js";
 import userMessagePreprocessorExtension from "./extensions/user-message-preprocessor/index.js";
-
 import uxExtension from "./extensions/ux/index.js";
 import webFetchExtension from "./extensions/web-fetch/index.js";
 import browserExtension from "./extensions/browser/index.js";
@@ -58,12 +54,12 @@ import latentActivatorExtension from "./extensions/latent-activator/index.js";
 import analyticsExtension from "./extensions/analytics/index.js";
 import feedbackExtension from "./extensions/feedback/index.js";
 
-
-// Resolve the skills directory relative to this file
+// ── Skills directory ────────────────────────────────────────────────────────
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 export const SKILLS_DIR = join(__dirname, "..", "skills");
 
+// ── Sub-extensions in dependency order ────────────────────────────────────
 const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void }> = [
 	{ name: "polyfill", factory: polyfillExtension },
 	{ name: "error-capture", factory: errorCaptureExtension },
@@ -75,7 +71,7 @@ const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void 
 	{ name: "scratchpad", factory: scratchpadExtension },
 	{ name: "cognitive-systems", factory: cognitiveSystemsExtension },
 	{ name: "context-manager", factory: contextManagerExtension },
-	// context-lifecycle goes AFTER context-manager - it reads session entries and enhances with proposals
+	// context-lifecycle goes AFTER context-manager — reads session entries and enhances with proposals
 	{ name: "context-lifecycle", factory: contextLifecycleExtension },
 	{ name: "session-recall", factory: sessionRecallExtension },
 	{ name: "docs", factory: docsExtension },
@@ -102,20 +98,19 @@ const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void 
 	{ name: "feedback", factory: feedbackExtension },
 ];
 
+// ── Main extension entry ───────────────────────────────────────────────────
 export default function piBraidExtension(pi: ExtensionAPI) {
 	// 1. Load all sub-extensions in dependency order
 	for (const { name, factory } of SUB_EXTENSIONS) {
 		try {
 			factory(pi);
 		} catch (err) {
-				_log.error(`Failed to load sub-extension "${name}":`, err);
+			_log.error(`Failed to load sub-extension "${name}":`, err);
 		}
 	}
 
 	// 2. Contribute bundled skills via resources_discover
-	pi.on("resources_discover", async (_event, _ctx) => {
-		return {
-			skillPaths: [SKILLS_DIR],
-		};
+	pi.on("resources_discover", async () => {
+		return { skillPaths: [SKILLS_DIR] };
 	});
 }
