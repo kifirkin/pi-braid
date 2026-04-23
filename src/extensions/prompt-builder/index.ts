@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from "fs";
+import type { Skill } from "@mariozechner/pi-coding-agent";
 import { homedir } from "node:os";
 
 /**
@@ -9,7 +10,7 @@ import { homedir } from "node:os";
  *
  * Sections built from structured data:
  * - Tools: pi.getAllTools() (with promptSnippet)
- * - Skills: loadSkills() + formatSkillsForPrompt()
+ * - Skills: loadSkills() + formatSkillsWithLineCounts() (pi-braid enhanced)
  * - Guidelines: fixed template based on tool availability
  * - Date/Cwd: computed directly
  *
@@ -32,7 +33,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getAgentDir } from "@mariozechner/pi-coding-agent";
-import { formatSkillsForPrompt, loadSkills } from "@mariozechner/pi-coding-agent";
+import { loadSkills } from "@mariozechner/pi-coding-agent";
 import { SKILLS_DIR } from "../../index.js";
 import { gatherL1State, formatL1Environment } from "./l1-environment.js";
 
@@ -297,9 +298,82 @@ function reconstructProjectContextSection(cwd: string): string {
   return lines.join("\n");
 }
 
+/**
+ * Enhanced skill formatter that adds file metadata (line count, section preview)
+ * so the agent knows the scope of each skill before reading it.
+ *
+ * This augments the native formatSkillsForPrompt with structural awareness
+ * — the agent knows "this is a 200-line file with sections X, Y, Z"
+ * and can decide whether to read it fully or target specific sections.
+ */
+interface SkillMeta {
+  totalLines: number;
+  sections: string[];
+}
+
+function getSkillMeta(skill: Skill): SkillMeta {
+  try {
+    const content = readFileSync(skill.filePath, "utf-8");
+    const lines = content.split("\n");
+    const sections: string[] = [];
+
+    // Extract markdown heading names (## Section Title)
+    for (const line of lines) {
+      const match = line.match(/^#{2,3}\s+(.+)$/);
+      if (match) {
+        sections.push(match[1].trim());
+      }
+    }
+
+    return { totalLines: lines.length, sections: sections.slice(0, 8) };
+  } catch {
+    return { totalLines: 0, sections: [] };
+  }
+}
+
+function formatSkillsWithLineCounts(skills: Skill[]): string {
+  const visibleSkills = skills.filter((s) => !s.disableModelInvocation);
+  if (visibleSkills.length === 0) {
+    return "";
+  }
+
+  const lines = [
+    "\n\nThe following skills provide specialized instructions for specific tasks.",
+    "Use the read tool to load a skill's file when the task matches its description.",
+    "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
+    "",
+    "<available_skills>",
+  ];
+
+  for (const skill of visibleSkills) {
+    const meta = getSkillMeta(skill);
+    lines.push("  <skill>");
+    lines.push(`    <name>${escapeXml(skill.name)}</name>`);
+    lines.push(`    <description>${escapeXml(skill.description)}</description>`);
+    lines.push(`    <location>${escapeXml(skill.filePath)}</location>`);
+    lines.push(`    <lines>${meta.totalLines}</lines>`);
+    if (meta.sections.length > 0) {
+      lines.push(`    <sections>${meta.sections.join(" | ")}</sections>`);
+    }
+    lines.push("  </skill>");
+  }
+
+  lines.push("</available_skills>");
+  return lines.join("\n");
+}
+
+function escapeXml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 function reconstructSkillsSection(cwd: string): string {
   const result = loadSkills({ cwd, agentDir: getAgentDir(), skillPaths: [SKILLS_DIR], includeDefaults: true });
-  return formatSkillsForPrompt(result.skills);
+  return formatSkillsWithLineCounts(result.skills);
 }
 
 // ── Main Extension ───────────────────────────────────────────────────────────
