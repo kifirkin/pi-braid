@@ -1,6 +1,6 @@
 # Prompt Builder Refactor Proposal
 
-**Status**: Draft  
+**Status**: **HISTORICAL — See RESEARCH-MASTER.md Part 5 for actual implementation**  
 **Based on**: `implicit-framing` research findings + Layered Mutability + Context Over Content papers  
 **Problem**: Current prompt has 15+ sections with high directive density → compliance theater + enforcement may cause stakes signaling
 
