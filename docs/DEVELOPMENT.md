@@ -1,5 +1,7 @@
 # pi-braid Developer Guide
 
+> **Start here**: [RESEARCH-MASTER.md](RESEARCH-MASTER.md) is the single source of truth for all research, gaps, proposals, and execution plans. This document is the technical companion.
+
 ## Project Overview
 
 pi-braid is an extension layer on top of the pi coding agent. It adds cognitive capabilities:
@@ -210,6 +212,23 @@ git tag -a v0.X.Y -m "v0.X.Y — changelog summary"
 git tag -a v0.X.Y-stable -m "v0.X.Y stable baseline"
 ```
 
+## Research Integration
+
+Before implementing new features, check [RESEARCH-MASTER.md](RESEARCH-MASTER.md) for:
+- Part 4: Whether the gap is already identified
+- Part 6: Whether relevant research papers have been analyzed
+- Part 7: Recommended execution order
+
+### Quick Research Lookup
+
+| Want to add | See RESEARCH-MASTER |
+|-------------|---------------------|
+| New extension | Part 4 (Gap Registry) |
+| New behavior | Part 6 (Research Cross-Reference) |
+| Prompt change | Part 5 (Today's Work) + implicit-framing docs |
+| Benchmark | Part 8 (Metrics & Success Criteria) |
+| Bug fix | Part 3 (Infrastructure Theater) |
+
 ## Extension Loading Order
 
 Extensions load in order defined in `src/index.ts`. Order matters:
@@ -226,6 +245,8 @@ prompt-builder → user-message-preprocessor → scratchpad → context-lifecycl
 ```
 
 Note: `heartbeat-scheduler` and `three-memory-stores` run last — they depend on other extensions' state.
+
+> ⚠️ **Infrastructure Theater Warning**: `heartbeat-scheduler` loads but `policy engine`, `dreamer`, and `meta-learning` modules never activate (see [RESEARCH-MASTER.md Part 3](RESEARCH-MASTER.md#part-3-infrastructure-theater-analysis)).
 
 ## Common Patterns
 
