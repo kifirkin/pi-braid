@@ -13,7 +13,7 @@ const log = createLogger("timer");
 
 // ── Timer Manager ─────────────────────────────────────────────────────────────
 
-interface ScheduledTimer {
+export interface ScheduledTimer {
 	id: string;
 	firesAt: number; // Unix timestamp (ms)
 	reason: string;
@@ -63,24 +63,17 @@ class TimerManager {
 
 const timerManager = new TimerManager();
 
-// ── Fire Handlers ─────────────────────────────────────────────────────────────
+// ── Fire Handlers (via shared bus) ───────────────────────────────────
+// We import the shared bus to bridge timer fires → heartbeat surfacing
+import { emitTimerReminder } from "../../lib/timer-bus.js";
 
+// Internal handler count (kept for API compat)
 type TimerFireHandler = (timer: ScheduledTimer) => void;
 const fireHandlers: Set<TimerFireHandler> = new Set();
 
 export function onTimerFire(handler: TimerFireHandler): () => void {
 	fireHandlers.add(handler);
 	return () => fireHandlers.delete(handler);
-}
-
-function emitTimerFire(timer: ScheduledTimer): void {
-	for (const handler of fireHandlers) {
-		try {
-			handler(timer);
-		} catch (err) {
-			log.error(`[timer] handler error:`, err);
-		}
-	}
 }
 
 // ── Extension ───────────────────────────────────────────────────────────────
@@ -177,7 +170,9 @@ export default function timerExtension(pi: ExtensionAPI): void {
 	pi.on("turn_end", () => {
 		const expired = timerManager.checkExpired(Date.now());
 		for (const timer of expired) {
-			emitTimerFire(timer);
+			// Fire both: local handlers (for any internal use) + shared bus (for heartbeat surfacing)
+			for (const h of fireHandlers) { try { h(timer); } catch {} }
+			emitTimerReminder(timer); // → heartbeat bus → agent reminder
 		}
 	});
 
