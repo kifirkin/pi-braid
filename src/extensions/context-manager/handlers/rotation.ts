@@ -51,6 +51,18 @@ function shouldRotate(ctx: ExtensionContext): { needed: boolean; reason: string 
 	const size = estimateSessionSize(ctx);
 	const age = Date.now() - state.lastRotationTimestamp;
 
+	// If the agent recently took context-preserving action, suppress nudges for a grace period
+	// (25 turns / ~5 min) to avoid spam during legitimate long tasks.
+	if (state.actionTaken) {
+		const turnsSinceAction = state.turnsSinceRotation - state.actionTakenAtTurn;
+		if (turnsSinceAction < 25) {
+			log.debug(`Rotation nudge suppressed: actionTaken=true, grace period (${turnsSinceAction}/25 turns since action)`);
+			return { needed: false, reason: "" };
+		}
+		// Grace period expired — reset actionTaken so nudges can resume if still needed
+		state.actionTaken = false;
+	}
+
 	if (size > MAX_SESSION_SIZE_BYTES) {
 		return { needed: true, reason: `Session file ${Math.round(size / 1024 / 1024)}MB exceeds ${Math.round(MAX_SESSION_SIZE_BYTES / 1024 / 1024)}MB limit` };
 	}
@@ -201,12 +213,12 @@ export function registerRotationHandlers(pi: any): void {
 						"",
 						reason,
 						"",
-						"You are managing a long session. Consider:",
-						"1. Store key context in memory (`memory_store`)",
-						"2. Tag milestones (`context_tag`) for easy return",
-						"3. Call `finalize()` when ready — rotation happens automatically",
+						"The session has grown large. To keep working smoothly:",
+						"1. **`finalize()`** — when done with current work; rotates session with summary",
+						"2. **`context_compress(start, end, summary)`** — archive completed work mid-session",
+						"3. **`memory_store(...)`** — preserve critical facts before compression",
 						"",
-						"This notice appears once per 50-turn window after you act.",
+						"Taking any of these actions will reset the session counter for 25 turns.",
 					].join("\n"),
 				}],
 			});
@@ -220,9 +232,11 @@ export function registerRotationHandlers(pi: any): void {
 		try {
 			if (!event?.toolName) return;
 			const state = _sessionRotationState();
-			if (event.toolName === "memory_store" || event.toolName === "context_tag" || event.toolName === "finalize" || event.toolName === "context_compress") {
+			const contextTools = new Set(["memory_store", "context_tag", "context_compress", "scratchpad", "finalize"]);
+			if (contextTools.has(event.toolName)) {
 				state.actionTaken = true;
-				log.info(`Rotation action recorded: ${event.toolName}`);
+				state.actionTakenAtTurn = state.turnsSinceRotation;
+				log.info(`Rotation action recorded: ${event.toolName} at turn ${state.turnsSinceRotation}`);
 			}
 		} catch (err) {
 			log.error("tool_end action tracking error:", err);

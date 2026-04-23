@@ -373,10 +373,66 @@ The #1 mistake so far: building new infrastructure while existing infrastructure
 
 ---
 
-## Part 10: Archive of Decisions
+## Part 10: Proposals & Research Threads
+
+### Activation Hook Testing (2026-04-23)
+
+| Provider | logprobs | hidden states | embeddings | Verdict |
+|----------|----------|---------------|------------|---------|
+| **stepfun** | ❌ Not supported | ❌ Not exposed | ⚠️ Quota exceeded | **API-only, no activation access** |
+| **minimax** | ❌ Not supported | ❌ Not exposed | ✅ Works (embo-01, 1024 dim) | **API-only, no activation access** |
+
+**Consequence**: RepE contrast injection, SAE steering, UniR logit addition — ALL BLOCKED. Only prompt-level approaches work for pi-braid.
+
+### Active Proposals
+
+| Proposal | Path | Priority | Status |
+|----------|------|----------|--------|
+| Bidirectional Verifier | `docs/proposals/BIDIRECTIONAL-VERIFIER-PROPOSAL.md` | P1 | Not started |
+| SAE Steering | `docs/proposals/SAE-STEERING-PROPOSAL.md` | P1 | **Obsolete for API providers** — blocked by no activation access |
+| RepE Prompt Contrast | `docs/proposals/REPE-PROMPT-CONTRAST-PROPOSAL.md` | **P0** | **Ready to start** — API-only approach to RepE principles |
+| OpenMythos Loop Analysis | `implicit-framing/docs/research/agent-architecture/OPENMYTHOS-LOOP-ANALYSIS-PROPOSAL.md` | P1 | Not started |
+
+### New Research (2026-04-23)
+
+| Research | Path | Key Finding |
+|----------|------|-------------|
+| Benchmark contamination + latent steering | `implicit-framing/docs/research/agent-architecture/BENCHMARK-CONTAMINATION-AND-LATENT-STEERING.md` | Most benchmark problems are in LLM training data; SAE steering could provide circuit-level behavioral control |
+| New papers synthesis | `implicit-framing/docs/research/agent-architecture/NEW_PAPERS_20260423.md` | BeHonest (2406.13261), HWE-Bench (2604.14709), AgentV-RL (2604.16004), DeepInsightTheorem (2604.16278) |
+
+### New Papers (2026-04-23)
+
+| Paper | arXiv | Key Contribution |
+|-------|-------|-----------------|
+| BeHonest | 2406.13261 | 3-dimension honesty benchmark (self-knowledge, non-deceptiveness, consistency) |
+| HWE-Bench | 2604.14709 | 3 failure modes: localization, reasoning, coordination |
+| AgentV-RL | 2604.16004 | Bidirectional forward+backward verification with RL |
+| DeepInsightTheorem | 2604.16278 | Hierarchical dataset structuring for informal proof reasoning |
+| VAR-MATH | 2507.12885 | RL-trained models drop 48-73% on variabilized benchmarks |
+| YaPO | 2601.08441 | Sparse steering vectors via DPO in SAE latent space |
+| FGAA | 2501.09929 | Feature Guided Activation Additions in SAE space |
+| RepE | 2310.01405 | Representation Engineering: top-down transparency via population-level representations |
+| SAE Features | 2310.01405 | Sparse autoencoders extract monosemantic features from residual stream |
+| UniR | 2505.19075 | Universal Reasoner: plug-and-play reasoning module for frozen LLMs |
+| AntiLeakBench | 2412.13670 | Contamination-free benchmark construction |
+
+### Deep Latent Space Research (2026-04-23)
+
+| Research | Path | Key Finding |
+|----------|------|-------------|
+| Latent space + novel capability | `implicit-framing/docs/research/agent-architecture/LATENT-SPACE-AND-NOVEL-CAPABILITY.md` | Confirmed: Latent space manipulation enhances Level 2 recombination, not Level 3 novelty. RepE contrast vectors suppress unwanted behaviors. UniR modules add new capabilities. Three-level capability model. |
+| Benchmark contamination | `implicit-framing/docs/research/agent-architecture/BENCHMARK-CONTAMINATION-AND-LATENT-STEERING.md` | VAR-MATH: 48-73% drop on variabilized benchmarks. Most benchmark problems in training data. |
+
+---
+
+## Part 11: Archive of Decisions
 
 | Decision | Date | Rationale |
 |----------|------|-----------|
+| Single model default for utility/judge | 2026-04-23 | Bicameral research: 85-90% of dual-model benefits at 1× cost |
+| Benchmark: remove `--no-extensions` | 2026-04-23 | Extensions load via settings.json; flag was blocking provider initialization |
+| Prompt-builder: rewrite IMPLICIT_NORMS | 2026-04-23 | 25+ directives → 5 declarative principles; reduces compliance theater |
+| 4 research blocks added to prompt-builder | 2026-04-23 | Sycophancy resistance, stakes awareness, epistemic stability, drift self-audit |
 | Remove 5 prompt sections | 2026-04-23 | Compliance theater from implicit-framing research |
 | Add sycophancy resistance | 2026-04-23 | 2604.19117 — same circuit as lying |
 | Add stakes awareness | 2026-04-23 | 2604.15224 — stakes corrupt reasoning |

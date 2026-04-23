@@ -53,6 +53,7 @@ export interface RotationState {
 	lastNudgeTurn: number;
 	nudgeCount: number;
 	actionTaken: boolean;
+	actionTakenAtTurn: number; // turn count when action was taken (for grace period)
 	emergencyRotation: boolean;
 }
 
@@ -68,6 +69,8 @@ export function getRotationState(): RotationState {
 			lastNudgeTimestamp: 0,
 			lastNudgeTurn: 0,
 			nudgeCount: 0,
+			actionTaken: false,
+			actionTakenAtTurn: 0,
 			emergencyRotation: false,
 		};
 	}

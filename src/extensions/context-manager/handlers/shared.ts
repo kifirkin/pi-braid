@@ -151,6 +151,19 @@ export function isTransientCompactionError(errorMessage?: string): boolean {
 	return transientPatterns.some((p) => p.test(errorMessage));
 }
 
+export function isContextWindowError(errorMessage?: string): boolean {
+	if (!errorMessage) return false;
+	const contextWindowPatterns = [
+		/context window exceeds limit/i,
+		/context length exceeded/i,
+		/maximum context length/i,
+		/token limit exceeded/i,
+		/too many tokens/i,
+		/invalid_request_error.*context/i,
+	];
+	return contextWindowPatterns.some((p) => p.test(errorMessage));
+}
+
 export function formatPruneCandidates(candidates: any[], count?: number): string {
 	const lines: string[] = [];
 	for (let i = 0; i < (count ?? candidates.length); i++) {

@@ -18,6 +18,7 @@ import {
 	resetCompactionRetry, resetOverflowRetry,
 	getCompactionRetryDelay, getOverflowRetryDelay,
 	isTransientCompactionError,
+	isContextWindowError,
 } from "./shared.js";
 import { getRotationState } from "../../../lib/global-state.js";
 
@@ -139,6 +140,12 @@ export function registerCompactionEndHandler(pi: any): void {
 					content: [{ type: "text" as const, text: "Context compaction was aborted (no changes made)." }],
 					display: true,
 				}, { deliverAs: "hint" });
+				return;
+			}
+
+			// Context window exceeded — LLM can't process the summary prompt itself
+			if (isContextWindowError(errorMessage)) {
+				handleContextWindowError(pi, event, _ctx, errorMessage);
 				return;
 			}
 
@@ -277,6 +284,43 @@ async function handleTransientError(pi: any, event: any, ctx: ExtensionContext, 
 		content: [{
 			type: "text" as const,
 			text: `⚠️ Auto-compaction failed after retries (server overload): ${errMsg}`,
+		}],
+		display: true,
+	}, { deliverAs: "hint" });
+}
+
+// ── Context Window Error Handler ──────────────────────────────────────────────
+// When the LLM cannot even receive the compaction prompt because the session is too long,
+// we skip LLM summarization and fall back to hard truncation + emergency rotation.
+async function handleContextWindowError(pi: any, _event: any, ctx: ExtensionContext, errorMessage?: string): Promise<void> {
+	const errMsg = errorMessage ?? "Context window limit exceeded during compaction.";
+	log.warn(`[Critical] ${errMsg}`);
+
+	// Attempt emergency rotation immediately — this branches the session with a summary
+	// and truncates the conversation, freeing up context.
+	try {
+		const rotationModule = await import("./rotation.js");
+		const triggerEmergencyRotation = rotationModule?.triggerEmergencyRotation;
+		if (triggerEmergencyRotation) {
+			triggerEmergencyRotation(pi, ctx);
+			log.info("[ContextWindow] Emergency rotation triggered successfully");
+			return;
+		}
+	} catch (e) {
+		log.error("[ContextWindow] Failed to trigger emergency rotation:", e);
+	}
+
+	// If emergency rotation fails, inform the user
+	pi.sendMessage({
+		customType: "context",
+		content: [{
+			type: "text" as const,
+			text: [
+				"## ⚠️ Session too large",
+				errMsg, "",
+				"The session cannot be compacted because it exceeds the model's context limit.",
+				"Please use `finalize()` to rotate the session, or `context_compress(start, end, summary)` to archive older work.",
+			].join("\n"),
 		}],
 		display: true,
 	}, { deliverAs: "hint" });
