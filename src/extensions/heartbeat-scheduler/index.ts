@@ -878,7 +878,6 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 	): void {
 		const originalEvaluate = engine.evaluate.bind(engine);
 		engine.evaluate = async (context: PolicyContext) => {
-			state.policyTurnCount++;
 			const fired = await originalEvaluate(context);
 			if (fired.length > 0) {
 				for (const policy of fired) {

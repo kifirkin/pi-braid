@@ -282,3 +282,19 @@ git stash  # Save current changes
 git log --oneline -5  # Find last good commit
 git checkout <good-commit-hash>  # Revert to known good state
 ```
+
+---
+
+## Parallel Agent Inputs Incorporated
+
+Added from parallel agent audits (`mem-mo342dag`, `mem-mo91o7ja`) + proposal docs:
+
+| Source | Key Findings |
+|--------|-------------|
+| `mem-mo91o7ja` (codebase audit) | 4 CRITICAL issues: monkey patches, globalThis duplicates, broken type guard, HTTP 429 conflict |
+| `mem-mo342dag` (tool audit) | 2 duplicate tool names found |
+| `TOOL_IMPROVEMENTS_PROPOSAL.md` | Tool v2: think() depth+chains, hypothesize() ranked, memory_recall() relevance, memory_store() TTL |
+| `PROPOSAL_TOPIC_DRIFT_DETECTOR.md` | Semantic drift detection before generation |
+| `CODEBASE-AUDIT-FULL.md` | 4 CRITICAL + 4 HIGH + 9 MODERATE issues across codebase |
+
+Full consolidated plan: `docs/OVERNIGHT-PLAN-UPDATED.md`
