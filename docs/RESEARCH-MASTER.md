@@ -249,10 +249,13 @@ Infrastructure theater = code that exists, compiles, tests pass, but never activ
 |-------|-----|-----------------|----------|
 | Agentic Verifier | 2604.10980 | Recursive verification tool | 1 |
 | BAVT | 2604.13408 | Budget-aware planning | 2 |
-| ODAR | 2604.08890 | Fast/slow routing | 3 |
-| Decocted Experience | 2604.03213 | Memory condensation | 4 |
-| Loop Think Generalize | 2604.07822 | Process supervision | 5 |
-| Poly-EPO | 2604.17094 | Exploratory reasoning | 6 |
+| Asymmetric Verification | 2510.06135 | Dual verification strategies at test-time | 1 |
+| Hippocampus | 2602.13594 | Wavelet-matrix memory with binary signatures | 2 |
+| Muse | 2510.08002 | Self-evolving agent with experience replay | 3 |
+| ODAR | 2604.08890 | Fast/slow routing | 4 |
+| Decocted Experience | 2604.03213 | Memory condensation | 5 |
+| Loop Think Generalize | 2604.07822 | Process supervision | 6 |
+| Poly-EPO | 2604.17094 | Exploratory reasoning | 7 |
 | Single Agent = Multi | 2604.08734 | Justify single-agent approach | — |
 
 ---
