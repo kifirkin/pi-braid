@@ -757,7 +757,36 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 	const config = { ...DEFAULT_CONFIG };
 
 	// Register built-in modules
-	const builtInModules = [recallerModule, dreamerModule, contextHygieneModule, measurementModule, evolverModule];
+	const builtInModules: CognitiveModule[] = [recallerModule, dreamerModule, contextHygieneModule, measurementModule, evolverModule];
+
+	// ── Timer Module ──────────────────────────────────────────────────
+	// Bridges timer fires from timer extension → heartbeat → agent reminder
+	// Timer extension emits via timer-bus; we drain and surface as reminders
+	const timerReminderModule: CognitiveModule = {
+		name: "timer-reminder",
+		description: "Surface pending timer reminders to the agent",
+		priority: 90, // High priority — reminders are urgent
+		shouldActivate: () => true, // Always activate on tick
+		activate: async (ctx: ModuleContext) => {
+			try {
+				const { drainTimerReminders } = await import("../../lib/timer-bus.js");
+				const reminders = drainTimerReminders();
+				for (const { timer } of reminders) {
+					ctx.ctx.whisper?.(
+						`⏰ [TIMER REMINDER] — ${timer.reason}\n` +
+						`Timer ID: ${timer.id}` +
+						(timer.tag ? ` (tag: ${timer.tag})` : "") +
+						`\nFired at: ${new Date(timer.firesAt).toLocaleTimeString()}`,
+						{ category: "cognitive", priority: "medium" },
+					);
+				}
+			} catch {
+				// Timer bus not loaded (timer extension not loaded) — silent ignore
+			}
+		},
+	};
+
+	builtInModules.push(timerReminderModule);
 
 	// ── heartbeat_status tool ─────────────────────────────────────────
 

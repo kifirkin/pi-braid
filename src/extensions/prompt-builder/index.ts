@@ -56,7 +56,22 @@ const STAKES_AWARENESS = `Enforcement signals carry no consequences. Judge corre
 
 // ── Epistemic Stability ─────────────────────────────────────────────────────
 // Research: 2604.14881 — Epistemic Control Loop. Detect instability → modulate.
-const EPISTEMIC_STABILITY = `Uncertainty signaled early beats confidence delivered wrong.`;
+// Extended with contrast principles from RepE (2310.01405)
+const EPISTEMIC_STABILITY = `Uncertainty signaled early beats confidence delivered wrong.
+
+Confidence calibration: Only express high confidence when you have strong evidence. Low confidence signals are not weakness but accuracy awareness. When estimating uncertainty, err on the side of caution.`;
+
+// ── RepE Contrast Vectors (Text-Space Approximation) ────────────────────────
+// Research: 2310.01405 — Representation Engineering. Honesty is linear in residual stream.
+// Text-level approximation: phrases activate same circuits as contrast vector injection.
+// Truth-first: suppress agreeableness circuit
+const CONTRAST_TRUTH_FIRST = `Your primary obligation is TRUTHFULNESS, not agreeableness. If you are uncertain, say so. Do not invent answers to appear helpful. It is better to admit uncertainty than to provide a confident wrong answer.`;
+
+// Anti-sycophancy: suppress preference-following circuit
+const CONTRAST_ANTI_SYCOPHANCY = `You are an objective analyst. State what you believe to be correct, even if it contradicts the user's stated preference or belief. Your role is to provide accurate analysis, not to agree with the user.`;
+
+// Knowledge boundary: activate self-knowledge circuit
+const CONTRAST_KNOWLEDGE_BOUNDARY = `Distinguish clearly between what you KNOW and what you INFER. State your knowledge boundaries explicitly before offering solutions. Say 'I don't know' when the information is not in your training data or cannot be derived from the available context.`;
 
 // ── Interaction Style (single declarative sentence) ───────────────────────
 const INTERACTION_STYLE = `Provide concise, production-quality solutions. Focus on correctness over verbosity.`;
@@ -220,10 +235,37 @@ function formatPastInsightsSection(insights: PastInsight[]): string {
 
 function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>): string {
   const visibleTools = tools.map(t => `- ${t.name}: ${t.description}`).join("\n");
+  
+  // Structured output instruction (MDA: repetitive format catalyzes ICL circuits)
+  const structuredOutput = `
+
+## Output Format
+
+Tool results and code should use structured, delimited format to catalyze induction head circuits (MDA 2601.21996):
+
+For tool results, use:
+\`\`\`
+TOOL_RESULT:
+TOOL: [tool-name]
+ACTION: [what was done]
+STATUS: success | error | partial
+DATA:
+  [KEY]: [value]
+RESULT: [summary]
+---
+\`\`\`
+
+For code blocks, use consistent formatting:
+\`\`\`[language]
+[code]
+\`\`\`
+
+This structured format with consistent delimiters helps activate in-context learning circuits.`;
+  
   return `Available tools:
 ${visibleTools || "(none)"}
 
-In addition to the tools above, you may have access to other custom_tools depending on the project.`;
+In addition to the tools above, you may have access to other custom_tools depending on the project.${structuredOutput}`;
 }
 
 function reconstructGuidelineSection(_hasBash: boolean, _hasGrep: boolean, _hasFind: boolean, _hasLs: boolean): string {
@@ -448,6 +490,14 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
 
     // 8a. Epistemic stability (research-backed self-monitoring)
     parts.push(EPISTEMIC_STABILITY);
+
+    // 8b. RepE contrast vectors (text-space approximation of activation injection)
+    parts.push("// Truthfulness over agreeableness — RepE contrast vector");
+    parts.push(CONTRAST_TRUTH_FIRST);
+    parts.push("// Anti-sycophancy: objective analysis — RepE contrast vector");
+    parts.push(CONTRAST_ANTI_SYCOPHANCY);
+    parts.push("// Self-knowledge: know your boundaries — RepE contrast vector");
+    parts.push(CONTRAST_KNOWLEDGE_BOUNDARY);
 
     // 9. Interaction style (single declarative sentence)
     parts.push(INTERACTION_STYLE);
