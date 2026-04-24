@@ -44,7 +44,7 @@ import browserExtension from "./extensions/browser/index.js";
 import assistantExtension from "./extensions/assistant/index.js";
 import visionExtension from "./extensions/vision/index.js";
 import replExtension from "./extensions/repl/index.js";
-// import waitReviewExtension from "./extensions/wait-review/index.js";
+
 import heartbeatSchedulerExtension from "./extensions/heartbeat-scheduler/index.js";
 import threeMemoryStoresExtension from "./extensions/three-memory-stores/index.js";
 import watchdogExtension from "./extensions/watchdog/index.js";
@@ -86,9 +86,7 @@ const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void 
 	{ name: "browser", factory: browserExtension },
 	{ name: "assistant", factory: assistantExtension },
 	{ name: "vision", factory: visionExtension },
-  { name: "repl", factory: replExtension },
-	// FIXME: marked deprecated
-	// { name: "wait-review", factory: waitReviewExtension },
+	{ name: "repl", factory: replExtension },
 	{ name: "heartbeat-scheduler", factory: heartbeatSchedulerExtension },
 	{ name: "three-memory-stores", factory: threeMemoryStoresExtension },
 	{ name: "watchdog", factory: watchdogExtension },
