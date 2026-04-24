@@ -16,6 +16,9 @@ import { Type } from "typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { createLogger } from "../../lib/logger.js";
 import { getExtensionState } from "../../lib/extension-state.js";
+import * as os from "node:os";
+import { readFile as fsReadFilePromise } from "node:fs/promises";
+import * as path from "node:path";
 
 const log = createLogger("three-memory-stores");
 
@@ -658,6 +661,14 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 	pi.on("session_start", async (_event: any, ctx: ExtensionContext) => {
 		const state = getState(ctx);
 
+		// Load past episodes from disk so recaller has data from previous sessions
+		if (state.episodes.length === 0) {
+			const loaded = await loadPastEpisodes(state);
+			if (loaded > 0) {
+				log.info(`Loaded ${loaded} past episodes from disk`);
+			}
+		}
+
 		if (state.heuristics.length === 0) {
 			for (const h of BUILTIN_HEURISTICS) {
 				addHeuristicRule(state, h.condition, h.action, h.priority);
@@ -721,6 +732,54 @@ function inferTaskType(_ctx: ExtensionContext, _toolName: string): string {
 	};
 
 	return toolTypeMap[_toolName] || "general";
+}
+
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Load episodes from cognitive-memory's disk store on session start.
+ * This fixes the write-only read bug: episodes from previous sessions are now
+ * available to the recaller module immediately, instead of only after the agent
+ * explicitly calls memory_episodes.
+ */
+async function loadPastEpisodes(state: MemoryStoresState): Promise<number> {
+	const diskPath = path.join(os.homedir(), ".pi", "memory", "memory.json");
+	try {
+		const data = await fsReadFilePromise(diskPath, "utf-8");
+		const parsed = JSON.parse(data);
+		const episodicItems: Array<{
+			id: string;
+			type: string;
+			text: string;
+			timestamp?: number;
+			task?: string;
+			outcome?: "success" | "failure" | "partial";
+		}> = Array.isArray(parsed.episodic)
+			? parsed.episodic
+			: Array.isArray(parsed)
+				? parsed
+				: [];
+
+		let loaded = 0;
+		for (const item of episodicItems) {
+			if (state.episodes.some((e) => e.id === item.id)) continue;
+			state.episodes.push({
+				id: item.id || `disk-${Date.now()}-${loaded}`,
+				task: item.task || item.text?.substring(0, 200) || "",
+				solution: item.text || "",
+				outcome: item.outcome || "partial",
+				similarity: 0.5,
+				timestamp: item.timestamp || Date.now() - 86400000,
+				toolSequence: [],
+				tags: ["loaded-from-disk"],
+			});
+			loaded++;
+		}
+		return loaded;
+	} catch {
+		return 0;
+	}
 }
 
 // ── Exports ──────────────────────────────────────────────────────────────────

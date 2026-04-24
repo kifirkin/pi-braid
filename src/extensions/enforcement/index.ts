@@ -508,7 +508,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 			if (getState(ctx).currentTurn - getState(ctx).lastScratchpadNudgeTurn >= 8) {
 				getState(ctx).lastScratchpadNudgeTurn = getState(ctx).currentTurn;
 				sessionSignals.push(
-					`Code changed without updating scratchpad - consider scratchpad(action="add_note", text="...") or scratchpad(action="add_decision", text="...")`,
+					`Code changed without updating scratchpad. Consider updating scratchpad(action="add_note", text="...")`,
 				);
 			}
 		}
@@ -522,7 +522,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 			getState(ctx).currentTurn % 5 === 0
 		) {
 			sessionSignals.push(
-				`${getState(ctx).currentTurn} turns without think() - use think(observation, decision, reason) to track reasoning`,
+				`${getState(ctx).currentTurn} turns without think() - consider think(observation, decision, reason) to track reasoning`,
 			);
 		}
 

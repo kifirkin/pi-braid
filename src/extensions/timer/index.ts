@@ -104,7 +104,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
 			const firesAt = Date.now() + delayMs;
 
 			return {
-				content: `Timer set for ${delay_seconds}s. Will fire at ${new Date(firesAt).toLocaleTimeString()}. Continue working — reminder will arrive automatically.`,
+				content: [{ type: "text" as const, text: `Timer set for ${delay_seconds}s. Will fire at ${new Date(firesAt).toLocaleTimeString()}. Continue working — reminder will arrive automatically.` }],
 				details: {
 					timer_id: id,
 					fires_at: new Date(firesAt).toISOString(),
@@ -127,7 +127,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
 
 			if (timers.length === 0) {
 				return {
-					content: "No active timers.",
+					content: [{ type: "text" as const, text: "No active timers." }],
 					details: { active_timers: 0, timers: [] },
 				};
 			}
@@ -141,7 +141,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
 			}));
 
 			return {
-				content: `${timers.length} active timer(s). ${formatted.map((t) => `[${t.tag}] fires in ${t.fires_in_seconds}s: ${t.reason}`).join("; ")}`,
+				content: [{ type: "text" as const, text: `${timers.length} active timer(s). ${formatted.map((t) => `[${t.tag}] fires in ${t.fires_in_seconds}s: ${t.reason}`).join("; ")}` }],
 				details: { active_timers: timers.length, timers: formatted },
 			};
 		},
@@ -160,7 +160,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
 				throw new Error(`Timer "${timer_id}" not found or already fired.`);
 			}
 			return {
-				content: `Timer "${timer_id}" cancelled.`,
+				content: [{ type: "text" as const, text: `Timer "${timer_id}" cancelled.` }],
 				details: { cancelled: true, timer_id, active_timers: timerManager.getActiveCount() },
 			};
 		},

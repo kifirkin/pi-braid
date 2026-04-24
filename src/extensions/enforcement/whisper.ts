@@ -50,7 +50,7 @@ export function queueEnforcementWhisper(message: string): void {
  */
 export function queueBlockAction(toolName: string, reason: string): void {
 	pendingBlockAction = { toolName, reason };
-	queueEnforcementWhisper(`BLOCKED: ${reason}\n\nYou must address this issue before proceeding.`);
+	queueEnforcementWhisper(`BLOCKED: ${reason}\n\nConsider addressing this before continuing.`);
 }
 
 /**

@@ -328,16 +328,15 @@ The #1 mistake so far: building new infrastructure while existing infrastructure
 
 | Metric | Value |
 |--------|-------|
-| Benchmark pass rate (all configs) | 94-100% (stepfun & minimax) |
-| Config variations | 4 configs all pass 94-100% |
+| Benchmark pass rate (standard problems) | 100% (144/144 — saturated) |
+| Variant benchmark pass rate | 13% (2/15 on 5 JS variants) |
+| Config variations | 4 configs all pass 100% on standard, 0-20% on variants |
 | Problem saturation | 5/6 problems at 100% (saturated) |
 | Infrastructure theater items | 8/8 (not yet wired) |
 | Auto-recalled memories | 0% (not wired yet) |
 | Feedback loop closure | 0% (not wired yet) |
-| Token usage per task | Unknown |
-| Tool usage distribution | Unknown |
 
-**Key finding**: Standard benchmark problems are saturated. Need variant problems or harder tasks for differentiation.
+**Key finding**: Standard = 100% (saturated), variants = 13% (same skill, different structure → 87pp drop). Confirms VAR-MATH contamination model. Variants needed for differentiation.
 
 ### Targets (After Phase 1)
 
