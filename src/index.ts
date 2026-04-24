@@ -53,6 +53,7 @@ import reasoningExtension from "./extensions/reasoning/index.js";
 import latentActivatorExtension from "./extensions/latent-activator/index.js";
 import analyticsExtension from "./extensions/analytics/index.js";
 import feedbackExtension from "./extensions/feedback/index.js";
+import timerExtension from "./extensions/timer/index.js";
 
 // ── Skills directory ────────────────────────────────────────────────────────
 const __filename = fileURLToPath(import.meta.url);
@@ -96,6 +97,7 @@ const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void 
 	{ name: "latent-activator", factory: latentActivatorExtension },
 	{ name: "analytics", factory: analyticsExtension },
 	{ name: "feedback", factory: feedbackExtension },
+	{ name: "timer", factory: timerExtension },
 ];
 
 // ── Main extension entry ───────────────────────────────────────────────────
