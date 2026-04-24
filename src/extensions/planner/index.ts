@@ -135,8 +135,9 @@ export default function plannerExtension(pi: ExtensionAPI) {
         warnings.push(`High token estimate: ~${cost.tokens}. Will require careful context management.`);
       }
 
+      const planText = `Plan for: "${p.task.substring(0, 80)}..."\n${plan.phases.map((ph, i) => `  ${i + 1}. [${ph.name}] ${ph.goal} (~${ph.estimatedCalls} calls)`).join("\n")}\n\nBudget: ${cost.calls}/${budget} calls (${Math.round((cost.calls / budget) * 100)}%)`;
       return {
-        content: `Plan for: "${p.task.substring(0, 80)}..."\n${plan.phases.map((ph, i) => `  ${i + 1}. [${ph.name}] ${ph.goal} (~${ph.estimatedCalls} calls)`).join("\n")}\n\nBudget: ${cost.calls}/${budget} calls (${Math.round((cost.calls / budget) * 100)}%)`,
+        content: [{ type: "text" as const, text: planText }],
         details: {
           task: p.task,
           budget,
@@ -161,14 +162,14 @@ export default function plannerExtension(pi: ExtensionAPI) {
     description: "Check remaining budget and spending rate for the current session.",
     parameters: Type.Object({}),
     execute: async (_toolCallId: string, _params: any, _signal: unknown, _onUpdate: unknown, ctx: ExtensionContext | undefined): Promise<any> => {
-      if (!ctx) return { content: "No context available.", details: {} };
+      if (!ctx) return { content: [{ type: "text" as const, text: "No context available." }], details: {} };
       const state = getExtensionState(ctx, "planner-budget", createBudgetState);
 
       const remaining = Math.max(0, state.budget - state.spent);
       const percentUsed = state.budget > 0 ? (state.spent / state.budget) * 100 : 100;
 
       return {
-        content: `Budget: ${state.spent}/${state.budget} calls used (${Math.round(percentUsed)}%). ${remaining} remaining.`,
+        content: [{ type: "text" as const, text: `Budget: ${state.spent}/${state.budget} calls used (${Math.round(percentUsed)}%). ${remaining} remaining.` }],
         details: {
           budget: state.budget,
           spent: state.spent,
@@ -192,7 +193,7 @@ export default function plannerExtension(pi: ExtensionAPI) {
       reset: Type.Optional(Type.Boolean({ description: "Reset spent counter" })),
     }),
     execute: async (_toolCallId: string, params: any, _signal: unknown, _onUpdate: unknown, ctx: ExtensionContext | undefined): Promise<any> => {
-      if (!ctx) return { content: "No context available.", details: {} };
+      if (!ctx) return { content: [{ type: "text" as const, text: "No context available." }], details: {} };
       const state = getExtensionState(ctx, "planner-budget", createBudgetState);
 
       const p = params as { budget: number; reset?: boolean };
@@ -204,7 +205,7 @@ export default function plannerExtension(pi: ExtensionAPI) {
       }
 
       return {
-        content: `Budget set to ${state.budget} calls. Spent: ${state.spent}. Remaining: ${Math.max(0, state.budget - state.spent)}.`,
+        content: [{ type: "text" as const, text: `Budget set to ${state.budget} calls. Spent: ${state.spent}. Remaining: ${Math.max(0, state.budget - state.spent)}.` }],
         details: { budget: state.budget, spent: state.spent, remaining: Math.max(0, state.budget - state.spent) },
       };
     },

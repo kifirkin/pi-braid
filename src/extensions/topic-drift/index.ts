@@ -231,10 +231,11 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
           : [],
       };
 
+      const text = result.drifted
+        ? `Topic drift detected (similarity: ${details.similarity}). Missing anchors: ${details.missingAnchors.slice(0, 5).join(", ")}.`
+        : `No topic drift (similarity: ${details.similarity}). All anchors present.`;
       return {
-        content: result.drifted
-          ? `Topic drift detected (similarity: ${details.similarity}). Missing anchors: ${details.missingAnchors.slice(0, 5).join(", ")}.`
-          : `No topic drift (similarity: ${details.similarity}). All anchors present.`,
+        content: [{ type: "text" as const, text }],
         details,
       };
     },
@@ -252,7 +253,7 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
       resetAnchors(state, request);
 
       return {
-        content: `Topic anchors reset: ${state.anchors.size} tokens extracted.`,
+        content: [{ type: "text" as const, text: `Topic anchors reset: ${state.anchors.size} tokens extracted.` }],
         details: {
           success: true,
           anchorCount: state.anchors.size,

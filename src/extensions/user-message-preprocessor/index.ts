@@ -357,7 +357,8 @@ async function processMessage(
 			return;
 		}
 
-		const textContent = result.content.filter((c): c is { type: "text"; text: string } => c.type === "text");
+		const content = Array.isArray(result.content) ? result.content : [];
+		const textContent = content.filter((c): c is { type: "text"; text: string } => c.type === "text");
 		let cleaned = textContent.length > 0 ? textContent[0].text.trim() : null;
 
 		// Strip <user_message> XML tags that the LLM might echo back

@@ -328,12 +328,16 @@ The #1 mistake so far: building new infrastructure while existing infrastructure
 
 | Metric | Value |
 |--------|-------|
-| Benchmark pass rate (braid-full) | 33% (pre-fix), 100% (post-fix, limited test) |
-| Infrastructure theater items | 8/8 |
-| Auto-recalled memories | 0% |
-| Feedback loop closure | 0% |
+| Benchmark pass rate (all configs) | 94-100% (stepfun & minimax) |
+| Config variations | 4 configs all pass 94-100% |
+| Problem saturation | 5/6 problems at 100% (saturated) |
+| Infrastructure theater items | 8/8 (not yet wired) |
+| Auto-recalled memories | 0% (not wired yet) |
+| Feedback loop closure | 0% (not wired yet) |
 | Token usage per task | Unknown |
 | Tool usage distribution | Unknown |
+
+**Key finding**: Standard benchmark problems are saturated. Need variant problems or harder tasks for differentiation.
 
 ### Targets (After Phase 1)
 

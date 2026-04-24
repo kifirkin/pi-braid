@@ -477,8 +477,9 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 			const sessionMetrics = getSessionMetrics();
 			const sequences = getToolSequences(2, 3).slice(0, 10);
 			const duration = Math.round((Date.now() - state.sessionStartTime) / 1000);
+			const text = `Session: ${state.sessionId || "unknown"}, ${sessionMetrics.totalToolCalls} tool calls, ${duration}s.`;
 			return {
-				content: `Session: ${state.sessionId || "unknown"}, ${sessionMetrics.totalToolCalls} tool calls, ${duration}s.`,
+				content: [{ type: "text" as const, text }],
 				details: {
 					sessionId: state.sessionId || "unknown",
 					durationSeconds: duration,
@@ -514,7 +515,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 				recentSessions: t.recentSessions,
 			}));
 			return {
-				content: `${reliability.length} tools tracked.`,
+				content: [{ type: "text" as const, text: `${reliability.length} tools tracked.` }],
 				details: {
 					totalSessions: summary.totalSessions,
 					totalToolCalls: summary.totalToolCalls,
