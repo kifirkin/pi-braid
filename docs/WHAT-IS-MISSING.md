@@ -57,6 +57,21 @@
 | BR3 nudge effectiveness | 🟡 "Rotation nudge experiment needed" | 🟡 Nudge dedup exists (50-turn/5-min cooldown), but **NO A/B measurement** | Don't know if nudges change behavior |
 | BR4 latent activator | 🟡 "Multi-turn benchmark created" | 🟡 `benchmark_multi_turn.py` exists, but **NOT run with latent ON/OFF comparison** | Single-shot failed (78%), multi-turn untested |
 
+### 🆕 Completed 2026-04-24 (Session Fixes + Integration)
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Auto-finalize at 90% via sendUserMessage | ✅ Done | heartbeat-scheduler now sends steer message at 90% context, forcing finalize |
+| Compaction window fix | ✅ Done | `pi.compact({ keep: reducedKeep })` now passes keep on retry, vs `pi.compact()` before |
+| Structured enforcement signals | ✅ Done | `SystemSignal.autoProceed` added, `emitSignal` updated, enforcement handlers wired |
+| `result.content` array fix | ✅ Done | 7 tools fixed (planner, topic-drift, analytics), 3 pi-core patches applied |
+| Extension docs (4) | ✅ Done | enforcement, three-memory-stores, planner, context-lifecycle docs created |
+| Skills catalog | ✅ Done | `docs/skills/README.md` created |
+| Lib catalog | ✅ Done | `docs/lib/README.md` created |
+| Testing guide | ✅ Done | `docs/TESTING.md` created |
+| Doc consolidation | ✅ Done | 21→13 top-level docs, 37 in archive |
+| Extension doc framework | ✅ Done | `docs/extensions/` dir created (4 docs, 29 remaining) |
+
 **Key insight**: All behavior research is either unvalidated or unmeasured. We have hypotheses but no evidence.
 
 ---
@@ -121,9 +136,9 @@
 
 ### Critical (Do First)
 
-1. **🔴 D0 dreamer/policy/meta-learning**: Code exists but never activates
+1. ~~**🔴 D0 dreamer/policy/meta-learning**: Code exists but never activates~~ → ✅ Wired (structured signals)
 2. **🔴 D1 session cleanup**: Memory leaks across sessions
-3. **🔴 R5 three-memory auto-recall**: Stores work but agent doesn't use them
+3. ~~**🔴 R5 three-memory auto-recall**: Stores work but agent doesn't use them~~ → Documented (write-only read gap noted)
 4. **🔴 BR1 validation**: Self-reflection prompt claims, no evidence
 5. **🔴 BM1 true multi-turn debugging**: Current benchmark is single-shot
 6. **🔴 R9 feedback loop**: Analytics export to file, no behavior adjustment
@@ -136,18 +151,20 @@
 10. **🟡 BR4 latent multi-turn test**: Benchmark exists, not run
 11. **🟡 BR2 tool addiction measurement**: Suspected, unmeasured
 12. **🆕 Recursive verification tool**: New research, high impact
+13. **🟡 29 extension docs**: `docs/extensions/` created, 4 done, 29 remaining
 
-### Medium (Do Later)
+### Medium/ (Do Later)
 
 13. **🟡 D5 XoT reasoning**: Evidence pool missing two-stage decomposition
 14. **🟡 PB2 latent runtime**: Some behaviors still in prompt
 15. **🟡 BM2/BM3 quality/real-world**: Metrics and tasks undefined
 16. **🆕 Budget-aware planning**: New research, additive
 17. **🆕 Memory condensation**: New research, additive
+18. **🟡 Prompt guardian policy integration**: prompt-guardian unused
 
 ---
 
-## The Real Problem
+## The Real Problem/
 
 Braid has built **infrastructure** (extensions, stores, tests) but hasn't built **integration** (wiring, feedback loops, validation). The result is:
 
