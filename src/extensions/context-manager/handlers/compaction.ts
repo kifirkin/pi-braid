@@ -519,7 +519,7 @@ function triggerOverflowRetry(pi: any, ctx: ExtensionContext, attempt: number, e
 		}
 		cmState.overflowRetryActive = true;
 
-		pi.compact();
+		pi.compact({ keep: reducedKeep });
 	}, delayMs);
 }
 

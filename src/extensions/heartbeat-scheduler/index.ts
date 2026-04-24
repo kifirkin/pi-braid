@@ -571,6 +571,19 @@ function createDefaultPolicies(
 							{ category: "cognitive", priority },
 						);
 						log.warn(`[heartbeat] Token warning: ${percent?.toFixed(1)}% (${tokens}/${contextWindow} tokens)`);
+						// Auto-finalize at 90%: force a turn with finalize directive
+						if (pct === 90) {
+							const finalizationMessage =
+								`[SYSTEM] Context critical at ${percent?.toFixed(1)}%. Auto-finalizing to prevent overflow. ` +
+								`Stop all work and call finalize(completed=false, autoProceed=true) now. ` +
+								`Provide a summary of what was accomplished and what remains.`;
+							try {
+								(ctx as any).pi.sendUserMessage?.(finalizationMessage, { deliverAs: "steer" });
+								log.warn(`[heartbeat] Auto-finalize triggered at 90%`);
+							} catch (err) {
+								log.error(`[heartbeat] sendUserMessage failed: ${err}`);
+							}
+						}
 						break; // One warning per tick
 					}
 				}

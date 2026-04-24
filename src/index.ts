@@ -38,7 +38,7 @@ import promptGuardianExtension from "./extensions/prompt-guardian/index.js";
 import evolveExtension from "./extensions/evolve/index.js";
 import enforcementExtension from "./extensions/enforcement/index.js";
 import userMessagePreprocessorExtension from "./extensions/user-message-preprocessor/index.js";
-import uxExtension from "./extensions/ux/index.js";
+// import uxExtension from "./extensions/ux/index.js"; // DISABLED: logs nothing useful
 import webFetchExtension from "./extensions/web-fetch/index.js";
 import browserExtension from "./extensions/browser/index.js";
 import assistantExtension from "./extensions/assistant/index.js";
@@ -48,7 +48,7 @@ import replExtension from "./extensions/repl/index.js";
 import heartbeatSchedulerExtension from "./extensions/heartbeat-scheduler/index.js";
 import threeMemoryStoresExtension from "./extensions/three-memory-stores/index.js";
 import watchdogExtension from "./extensions/watchdog/index.js";
-import rateLimiterExtension from "./extensions/rate-limiter/index.js";
+// import rateLimiterExtension from "./extensions/rate-limiter/index.js"; // DISABLED: no tool exposes it
 import reasoningExtension from "./extensions/reasoning/index.js";
 import latentActivatorExtension from "./extensions/latent-activator/index.js";
 import analyticsExtension from "./extensions/analytics/index.js";
@@ -82,7 +82,7 @@ const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void 
 	{ name: "evolve", factory: evolveExtension },
 	{ name: "enforcement", factory: enforcementExtension },
 	{ name: "user-message-preprocessor", factory: userMessagePreprocessorExtension },
-	{ name: "ux", factory: uxExtension },
+	// { name: "ux", factory: uxExtension }, // DISABLED
 	{ name: "web-fetch", factory: webFetchExtension },
 	{ name: "browser", factory: browserExtension },
 	{ name: "assistant", factory: assistantExtension },
@@ -90,8 +90,8 @@ const SUB_EXTENSIONS: Array<{ name: string; factory: (pi: ExtensionAPI) => void 
 	{ name: "repl", factory: replExtension },
 	{ name: "heartbeat-scheduler", factory: heartbeatSchedulerExtension },
 	{ name: "three-memory-stores", factory: threeMemoryStoresExtension },
-	{ name: "watchdog", factory: watchdogExtension },
-	{ name: "rate-limiter", factory: rateLimiterExtension },
+	// { name: "watchdog", factory: watchdogExtension }, // DISABLED
+	// { name: "rate-limiter", factory: rateLimiterExtension }, // DISABLED
 	{ name: "reasoning", factory: reasoningExtension },
 	{ name: "latent-activator", factory: latentActivatorExtension },
 	{ name: "analytics", factory: analyticsExtension },

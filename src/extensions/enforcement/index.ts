@@ -275,12 +275,12 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 			const msg = formatConflictMessage(newConflicts[0]);
 			queueEnforcementWhisper(msg);
 			// Emit to Belief Policy Engine
-			emitSignal(ctx, "conflict", "detected", newConflicts[0]?.for[0]?.confidence > 0.7 ? "warn" : "info", { conflictId: newConflicts[0]?.id });
+			emitSignal(ctx, "conflict", "detected", newConflicts[0]?.for[0]?.confidence > 0.7 ? "warn" : "info", false, { conflictId: newConflicts[0]?.id });
 		}
 
 		const unresolved = getUnresolvedConflicts(ctx);
 		if (unresolved.length > 0) {
-			emitSignal(ctx, "conflict", "unresolved", "info", { count: unresolved.length });
+			emitSignal(ctx, "conflict", "unresolved", "info", false, { count: unresolved.length });
 		}
 		if (unresolved.length > 0 && unresolved.length % 5 === 0) {
 			// Every 5 unresolved conflicts, remind
@@ -922,7 +922,7 @@ Persist them now - this is the minimum-fidelity moment.`,
 				});
 			}
 			// Emit to Belief Policy Engine
-			emitSignal(ctx, "topic-drift", "detected", driftCheck.severity === "strong" ? "warn" : "info", { severity: driftCheck.severity });
+			emitSignal(ctx, "topic-drift", "detected", driftCheck.severity === "strong" ? "warn" : "info", false, { severity: driftCheck.severity });
 		}
 
 		// Belief Policy Engine — get actionable recommendations and surface them

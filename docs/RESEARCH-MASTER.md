@@ -32,11 +32,11 @@ This document consolidates ALL research and development work on pi-braid into a 
 | `prompt-builder` | 8 files | ✅ Done | ✅ Functional, recently refactored | Manual |
 | `enforcement` | 5 files | ✅ Done | ✅ Judge/whisper/nudge work | 17/17 pass |
 | `analytics` | 2 files | 🟡 Partial | 🟡 Exports to file, no feedback loop | Manual |
-| `rate-limiter` | 1 module | ✅ Done | ✅ Works | Unit tests |
+| `rate-limiter` | 1 module | ❌ Disabled | ❌ Disabled — no tool exposes it | — |
 | `latent-activator` | 1 module | ✅ Done | ✅ Works, manual activation | Manual |
 | `feedback` | 2 files | ✅ Done | ✅ Works | Manual |
-| `watchdog` | 1 module | ✅ Done | ✅ Works | Unit tests |
-| `ux` | 1 module | ✅ Done | 🟡 Works interactively, **pollutes stdout in print mode** | Manual |
+| `watchdog` | 1 module | ❌ Disabled | ❌ Disabled — feature never materialized | — |
+| `ux` | 1 module | ❌ Disabled | ❌ Disabled — logs nothing useful | — |
 | `metacognition` | 2 files | ✅ Done | ✅ think/hypothesize/finalize work | Manual |
 | `planner` | 1 module | ✅ Done | ✅ Goal/plan management | Manual |
 | `session-recall` | 1 module | ✅ Done | 🟡 Triggers on rotation only | Manual |

@@ -1,6 +1,26 @@
-node_modules/
+# Build output
 dist/
+
+# TypeScript incremental build
 *.tsbuildinfo
-.DS_Store
-__pycache__/
+
+# Evaluation results (non-deterministic, machine-specific)
 evaluation/results/
+evaluation/results/**/results/
+evaluation/**/*.json
+
+# Test results
+test/runtime/results/
+
+# Session data
+*.jsonl
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo

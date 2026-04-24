@@ -380,7 +380,7 @@ python evaluation/pi_rpc_fixed.py --problems reverse_words --trials 5
 ### Phase 3: Enforcement Audit (High Risk)
 
 1. [ ] Audit `l1-environment.ts` for stakes language
-2. [ ] Audit `watchdog/index.ts` whisper patterns
+2. ~~Audit `watchdog/index.ts` whisper patterns~~ → DISABLED
 3. [ ] Audit `enforcement/` for consequence framing
 4. [ ] Replace "if you don't" with identity framing
 5. [ ] Test enforcement effectiveness without stakes
@@ -421,7 +421,7 @@ The research from Context Over Content (2604.15224) shows that **stakes signalin
 | File | Issue | Action |
 |------|-------|--------|
 | `l1-environment.ts` | Contains enforcement signals | Check for consequence framing |
-| `watchdog/index.ts` | Whisper generation | Audit for stakes language |
+| `watchdog/index.ts` | ~~Whisper generation~~ | DISABLED — audit no longer needed |
 | `latent-activator/index.ts` | 40 behavior definitions | Simplify to identity-based |
 | `enforcement/` | Judge/nudge patterns | Remove consequence framing |
 

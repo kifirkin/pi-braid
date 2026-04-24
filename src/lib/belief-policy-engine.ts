@@ -33,6 +33,7 @@ export interface SystemSignal {
 	source: SignalSource;
 	type: string;
 	severity: SignalSeverity;
+	autoProceed: boolean;  // if true, signal should force a turn (auto-finalize, auto-next-step)
 	data: Record<string, unknown>;
 	timestamp: number;
 }
@@ -220,6 +221,7 @@ export function emitSignal(
 	source: SignalSource,
 	type: string,
 	severity: SignalSeverity = "info",
+	autoProceed: boolean = false,
 	data: Record<string, unknown> = {},
 ): void {
 	const state = getState(ctx);
@@ -228,6 +230,7 @@ export function emitSignal(
 		source,
 		type,
 		severity,
+		autoProceed,
 		data,
 		timestamp: Date.now(),
 	};
