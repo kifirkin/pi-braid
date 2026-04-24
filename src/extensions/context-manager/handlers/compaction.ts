@@ -80,17 +80,27 @@ function buildCompactionInstructions(audit: any): string[] {
 export function registerBeforeCompactHandler(pi: any): void {
 	pi.on("session_before_compact", async (event: any, ctx: ExtensionContext) => {
 		try {
-			const audit = analyzeSession(ctx);
-			const instructions = buildCompactionInstructions(audit);
-
-			if (instructions.length > 0) {
-				// Inject into event so pi core picks it up in compact():
-				//   const finalCustomInstructions = event.customInstructions ?? customInstructions;
-				event.customInstructions = instructions.join(" ");
-			}
-		} catch (err) {
-			log.error("session_before_compact error:", err);
+			// CRITICAL FIX: Estimate context size before adding analysis instructions.
+			// The error showed: 738 messages ≈ 224K tokens. Adding a 32K analysis
+			// prompt → 256K total → overflow at the ANALYSIS step itself.
+			// If context is ≥ 200K tokens, SKIP LLM summarization — it can't analyze itself.
+			const usage = (ctx as any).getContextUsage?.();
+			if (usage && usage.tokens >= 200_000) {
+				log.warn(`[context-manager] Context too large for LLM analysis (${usage.tokens} tokens). Skipping summarization — will use hard truncation.`);
+			return; // Don't add instructions — let compact() do hard truncation
 		}
+
+		const audit = analyzeSession(ctx);
+		const instructions = buildCompactionInstructions(audit);
+
+		if (instructions.length > 0) {
+			// Inject into event so pi core picks it up in compact():
+			//   const finalCustomInstructions = event.customInstructions ?? customInstructions;
+			event.customInstructions = instructions.join(" ");
+		}
+	} catch (err) {
+		log.error("session_before_compact error:", err);
+	}
 	});
 }
 
