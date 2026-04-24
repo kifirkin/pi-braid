@@ -137,6 +137,16 @@ export function registerCompactionEndHandler(pi: any): void {
 		try {
 			const { reason, willRetry, aborted, errorMessage, result } = event;
 
+			// CRITICAL FIX: Check context window errors BEFORE overflow check.
+			// Previously, reason="overflow" was checked first, so context window errors
+			// went to handleOverflowFailure which tried to analyzeSession() (fails at 104%)
+			// and kept retrying compact() which also failed. Now we catch context window
+			// errors first and trigger emergency rotation immediately.
+			if (isContextWindowError(errorMessage)) {
+				handleContextWindowError(pi, event, _ctx, errorMessage);
+				return;
+			}
+
 			// Overflow recovery failure
 			if (reason === "overflow" && !willRetry && !aborted) {
 				handleOverflowFailure(pi, event, _ctx, errorMessage);
@@ -199,6 +209,17 @@ async function handleOverflowFailure(pi: any, event: any, ctx: ExtensionContext,
 			return;
 		}
 	} catch (e) {
+		// Analysis failed — but check error message directly for context window error
+		if (isContextWindowError(errMsg)) {
+			log.warn(`[Critical] Context window error detected directly — triggering emergency rotation`);
+			const rotationModule = await import("./rotation.js");
+			const triggerEmergencyRotation = rotationModule?.triggerEmergencyRotation;
+			if (triggerEmergencyRotation) {
+				triggerEmergencyRotation(pi, ctx);
+				log.warn("[Critical] Emergency rotation triggered from overflow handler");
+				return;
+			}
+		}
 		log.debug("[Overflow] Analysis skipped (state not available yet)");
 	}
 
