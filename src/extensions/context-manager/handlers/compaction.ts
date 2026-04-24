@@ -22,6 +22,55 @@ import {
 } from "./shared.js";
 import { getRotationState } from "../../../lib/global-state.js";
 
+// ── Hard Truncation Summary Builder ───────────────────────────────────────────
+// When the context is too large for the LLM to even receive the summarization
+// prompt, we build a minimal summary locally from preparation data (previous
+// summary + file ops) and return it as a custom compaction. This bypasses the
+// LLM call entirely and prevents the death-spiral where retries add messages.
+
+function buildHardTruncationSummary(previousSummary: string | undefined, fileOps: { readFiles?: string[]; modifiedFiles?: string[] }): string {
+	const lines: string[] = [];
+
+	if (previousSummary && previousSummary.trim().length > 0) {
+		lines.push("## Previous Context");
+		const trimmed = previousSummary.slice(0, 3000);
+		lines.push(trimmed);
+		if (previousSummary.length > 3000) {
+			lines.push("... (truncated)");
+		}
+		lines.push("");
+	}
+
+	lines.push("## Note");
+	lines.push("Session context exceeded model limits. Earlier work was compacted without LLM summarization to preserve recent context.");
+	lines.push("");
+
+	const readFiles = fileOps?.readFiles ?? [];
+	const modifiedFiles = fileOps?.modifiedFiles ?? [];
+
+	if (readFiles.length > 0 || modifiedFiles.length > 0) {
+		lines.push("## File Activity");
+		if (readFiles.length > 0) {
+			lines.push("### Read");
+			for (const f of readFiles.slice(-30)) {
+				lines.push(`- ${f}`);
+			}
+		}
+		if (modifiedFiles.length > 0) {
+			lines.push("### Modified");
+			for (const f of modifiedFiles.slice(-30)) {
+				lines.push(`- ${f}`);
+			}
+		}
+		lines.push("");
+	}
+
+	lines.push("## Next Steps");
+	lines.push("Continue from the most recent context. Use `memory_recall` if specific details from earlier work are needed.");
+
+	return lines.join("\n");
+}
+
 // ── Compaction Instructions Builder ───────────────────────────────────────────
 // Generates smarter instructions for the summarization model.
 // The key insight: tell the model WHAT to preserve, not just "summarize".
@@ -80,27 +129,48 @@ function buildCompactionInstructions(audit: any): string[] {
 export function registerBeforeCompactHandler(pi: any): void {
 	pi.on("session_before_compact", async (event: any, ctx: ExtensionContext) => {
 		try {
-			// CRITICAL FIX: Estimate context size before adding analysis instructions.
-			// The error showed: 738 messages ≈ 224K tokens. Adding a 32K analysis
-			// prompt → 256K total → overflow at the ANALYSIS step itself.
-			// If context is ≥ 200K tokens, SKIP LLM summarization — it can't analyze itself.
-			const usage = (ctx as any).getContextUsage?.();
-			if (usage && usage.tokens >= 200_000) {
-				log.warn(`[context-manager] Context too large for LLM analysis (${usage.tokens} tokens). Skipping summarization — will use hard truncation.`);
-			return; // Don't add instructions — let compact() do hard truncation
-		}
+			const usage = ctx.getContextUsage();
+			const model = (ctx as any).model;
+			const contextWindow = model?.contextWindow ?? usage?.contextWindow ?? 262_144;
+			// If context is > 85 % of the model's window, the LLM likely cannot even
+			// receive the summarization prompt (input + output budget > contextWindow).
+			// Bypass the LLM entirely and return a locally-built summary.
+			const threshold = Math.floor(contextWindow * 0.85);
+			const usageTokens = usage?.tokens ?? 0;
 
-		const audit = analyzeSession(ctx);
-		const instructions = buildCompactionInstructions(audit);
+			if (usage && usageTokens >= threshold) {
+				log.warn(
+					`[context-manager] Context too large for LLM analysis (${usageTokens}/${contextWindow} tokens, ${(usageTokens / contextWindow * 100).toFixed(1)}%). ` +
+					`Using local summary instead of LLM summarization.`
+				);
 
-		if (instructions.length > 0) {
-			// Inject into event so pi core picks it up in compact():
-			//   const finalCustomInstructions = event.customInstructions ?? customInstructions;
-			event.customInstructions = instructions.join(" ");
+				const previousSummary = event.preparation?.previousSummary ?? "";
+				const fileOps = event.preparation?.fileOps ?? { read: new Set<string>(), written: new Set<string>(), edited: new Set<string>() };
+				const readFiles = [...(fileOps.read ?? new Set())];
+				const modifiedFiles = [...(fileOps.written ?? new Set()), ...(fileOps.edited ?? new Set())];
+				const summary = buildHardTruncationSummary(previousSummary, { readFiles, modifiedFiles });
+
+				return {
+					compaction: {
+						summary,
+						firstKeptEntryId: event.preparation?.firstKeptEntryId,
+						tokensBefore: event.preparation?.tokensBefore ?? usageTokens,
+						details: { readFiles, modifiedFiles },
+					},
+				};
+			}
+
+			const audit = analyzeSession(ctx);
+			const instructions = buildCompactionInstructions(audit);
+
+			if (instructions.length > 0) {
+				// Inject into event so pi core picks it up in compact():
+				//   const finalCustomInstructions = event.customInstructions ?? customInstructions;
+				event.customInstructions = instructions.join(" ");
+			}
+		} catch (err) {
+			log.error("session_before_compact error:", err);
 		}
-	} catch (err) {
-		log.error("session_before_compact error:", err);
-	}
 	});
 }
 

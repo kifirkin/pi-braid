@@ -14,6 +14,8 @@ const SCRIPT = join(process.cwd(), "scripts/wait-for-review.sh");
 const DOCS = join(process.cwd(), "docs");
 const DEFAULT_INTERVAL = 30;
 
+// FIXME: is this tool meaningful? do pi-braid need it? seem not so. and unclear to me.
+// @deprecated
 export function registerWaitReview(pi: any) {
 	pi.registerTool({
 		name: "wait_review",
