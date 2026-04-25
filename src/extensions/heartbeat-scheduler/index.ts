@@ -28,7 +28,7 @@ import {
     type Policy,
     type PolicyContext,
 } from "../../lib/belief-store.js";
-import { addEpisode as addMemoryEpisode } from "../three-memory-stores/index.js";
+import { addEpisode as addMemoryEpisode, addHeuristicRule } from "../three-memory-stores/index.js";
 import { createLogger } from "../../lib/logger.js";
 import { getExtensionState } from "../../lib/extension-state.js";
 import type { Episode, HeuristicRule } from "../three-memory-stores/index.js";
@@ -324,6 +324,28 @@ const dreamerModule: CognitiveModule = {
 		if (insights.length > 0) {
 			context.ctx.whisper?.(`Self-reflection: ${insights.join(" ")}`, { category: "cognitive" });
 		}
+
+		// ── Cross-session pattern learning ────────────────────────────
+		// Compare current tool pattern with past episodes to detect recurring patterns
+		try {
+			const episodes = memState.episodes ?? [];
+			if (episodes.length > 3) {
+				const sessionSig = `${toolsUsed.slice(0, 10).join(",")}`;
+				const matches = episodes.filter((ep: Episode) =>
+					ep.task?.includes(toolsUsed[0] ?? "") ||
+					ep.tags?.some((t: string) => t === `turns-${context.turnCount}`)
+				);
+				if (matches.length >= 2) {
+					const recurringPattern = `Recurring pattern: ${toolsUsed.slice(0, 3).join(", ")}... — seen ${matches.length} times across sessions`;
+					// Add as heuristic rule so the pattern is actively recommended
+					addHeuristicRule(memState, sessionSig, `Consider a different approach: pattern repeats across ${matches.length} sessions`, 0.3);
+					log.info(`Cross-session pattern: ${recurringPattern}`);
+				}
+			}
+		} catch {
+			// Non-fatal
+		}
+
 	},
 };
 

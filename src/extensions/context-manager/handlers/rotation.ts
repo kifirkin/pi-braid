@@ -174,6 +174,16 @@ export function registerRotationHandlers(pi: any): void {
 			state.turnsSinceRotation++;
 
 			const { needed, reason } = shouldRotate(ctx);
+
+			// Session tree auto-compaction: warn on deep branch
+			try {
+				const sm = ctx.sessionManager as any;
+				const branch = sm.getBranch?.() ?? [];
+				if (branch.length > 150) {
+					log.warn(`Branch ${branch.length} entries deep — consider context_tag + session_compact`);
+				}
+			} catch { /* non-fatal */ }
+
 			if (!needed) return;
 
 			// NUDGE DEDUPLICATION: suppress duplicate nudges within cooldown

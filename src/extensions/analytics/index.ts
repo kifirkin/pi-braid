@@ -438,6 +438,30 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 		}
 	});
 
+	// Auto-trigger addiction analysis every ~10 turns
+	pi.on("turn_end", async (_event: any, ctx: any) => {
+		const calls = state.toolCallSequence.length;
+		if (calls > 0 && calls % 10 === 0) {
+			const toolCounts = new Map<string, number>();
+			for (const t of state.toolCallSequence) {
+				toolCounts.set(t, (toolCounts.get(t) ?? 0) + 1);
+			}
+			const total = calls;
+			const avg = total / Math.max(toolCounts.size, 1);
+			const warnings: string[] = [];
+			for (const [tool, count] of toolCounts) {
+				if (count > avg * 5) warnings.push(`${tool} (${count}x, ${(count / avg).toFixed(1)}x avg)`);
+			}
+			if (warnings.length > 0) {
+				pi.sendMessage({
+					customType: "memory",
+					display: false,
+					content: [{ type: "text", text: `[analytics] Tool addiction pattern detected: ${warnings.join("; ")}` }],
+				});
+			}
+		}
+	});
+
 	// Cleanup on session shutdown
 	pi.on("session_shutdown", async () => {
 		if (state.toolCallSequence.length > 0) {
