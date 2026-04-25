@@ -69,6 +69,7 @@ export function createState() {
 		turnsSinceMemory: 0,
 		memoryNudgeSent: false,
 		totalToolCalls: 0,
+		toolCallsAtLastRecommendation: 0,
 		toolCallsSinceLastMemory: 0,
 		hasRecordedFailure: false,
 		lastFailedToolTurn: -100,
@@ -149,6 +150,7 @@ export function resetState(s: EnforcementState = state): void {
 	s.turnsSinceMemory = 0;
 	s.memoryNudgeSent = false;
 	s.totalToolCalls = 0;
+	s.toolCallsAtLastRecommendation = 0;
 	s.toolCallsSinceLastMemory = 0;
 	s.uniqueToolsUsed.clear();
 	s.bashCalls = 0;

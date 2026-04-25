@@ -40,6 +40,7 @@ import {
 import {
 	emitSignal,
 	getNextRecommendation,
+	reportRecommendationOutcome,
 } from "../../lib/belief-policy-engine.js";
 import {
 	shouldAdvise as marsShouldAdvise,
@@ -952,9 +953,21 @@ Persist them now - this is the minimum-fidelity moment.`,
 			emitSignal(ctx, "topic-drift", "detected", driftCheck.severity === "strong" ? "warn" : "info", false, { severity: driftCheck.severity });
 		}
 
+		// D0: Report previous recommendation outcome before fetching new one
+		// If the agent made tool calls since the recommendation was surfaced,
+		// mark it as effective (the agent did something in response)
+		const enState = getState(ctx);
+		const lastRecType = (pi as any).__lastRecommendationType;
+		if (lastRecType) {
+			const madeProgress = enState.totalToolCalls > (enState.toolCallsAtLastRecommendation ?? 0);
+			reportRecommendationOutcome(ctx, lastRecType, madeProgress);
+		}
+
 		// Belief Policy Engine — get actionable recommendations and surface them
 		const bpeRec = getNextRecommendation(ctx);
 		if (bpeRec) {
+			(pi as any).__lastRecommendationType = bpeRec.type;
+			enState.toolCallsAtLastRecommendation = enState.totalToolCalls;
 			pi.sendMessage({
 				customType: "context",
 				display: true,
