@@ -124,6 +124,8 @@ async function detectRedundancy(newContent: string, newPath: string): Promise<st
 	return null;
 }
 
+const ERROR_BURST_THRESHOLD = 3;
+
 // ── L1 Surfacing ─────────────────────────────────────────────────────────────
 // Shared signal state for prompt-builder. Writable object - prompt-builder reads
 // this directly (same process, no IPC needed). Turn-keyed so stale signals are
@@ -268,6 +270,8 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 	// ── message_end: conflict detection (Task 3) ────────────────────────────
 	pi.on("message_end", async (event: any, ctx: any) => {
 		if (!getState(ctx).enforcementActive) return;
+		const isBurst = getState(ctx).consecutiveErrorTurns >= ERROR_BURST_THRESHOLD;
+		if (isBurst) return;
 
 		// Run conflict detection and surface unresolved conflicts
 		const newConflicts = detectConflicts(ctx);
@@ -291,10 +295,11 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		}
 
 		// Conflict QA: classify conflicts and generate resolution questions
-		const newQAs = processConflictQAs(ctx);
-		if (newQAs.length > 0) {
-			const whisper = formatConflictWhisper(newQAs);
-			queueEnforcementWhisper(whisper);
+		if (!isBurst) {
+			const newQAs = processConflictQAs(ctx);
+			for (const qa of newQAs) {
+				queueEnforcementWhisper(formatConflictWhisper(qa));
+			}
 		}
 	});
 
@@ -302,6 +307,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 	// @ts-expect-error custom event not in ExtensionAPI types
 	pi.on("tool_end", async (event: { tool?: string; error?: unknown }, ctx: ExtensionContext) => {
 		if (!getState(ctx).enforcementActive) return;
+		const isBurst = getState(ctx).consecutiveErrorTurns >= ERROR_BURST_THRESHOLD;
 		const toolName = event?.tool || "";
 		if (toolName === "think") return;
 
@@ -323,7 +329,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		);
 
 		const error = Math.abs(predicted - actual);
-		if (getState(ctx).calibrationPairs.length >= 10 && error > 0.4) {
+		if (!isBurst && getState(ctx).calibrationPairs.length >= 10 && error > 0.4) {
 			const recent = getState(ctx).calibrationPairs.slice(-10);
 			const avgError = recent.reduce((s, p) => s + Math.abs(p.predicted - p.actual), 0) / recent.length;
 			if (avgError > 0.3) {
@@ -349,6 +355,19 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 			(event.toolResults || []).filter((r) => r.isError).map((r) => r.toolName),
 		);
 		const hadErrors = erroredTools.size > 0;
+
+	// Error burst detection: increment counter on error, emit warning at threshold, and determine burst state
+	if (hadErrors) {
+		const state = getState(ctx);
+		state.consecutiveErrorTurns++;
+		if (state.consecutiveErrorTurns === ERROR_BURST_THRESHOLD) {
+			sendEnforcementWhisper(pi, `Error burst detected: ${state.consecutiveErrorTurns} consecutive errors. Consider stepping back.`);
+		}
+	} else {
+		const s = getState(ctx);
+		s.consecutiveErrorTurns = 0;
+	}
+	const isBurst = getState(ctx).consecutiveErrorTurns >= ERROR_BURST_THRESHOLD;
 
 		// Detect context overflow - suppress L2 signals during recovery so the agent
 		// gets breathing room to stabilize after compaction/retry.
@@ -380,7 +399,9 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 		}
 
 		// Track memory/context tools
-		detectMissingVerification(pi as never, getState(ctx).currentTurn);
+		if (!isBurst) {
+			detectMissingVerification(pi as never, getState(ctx).currentTurn);
+		}
 
 		const scratchpadUpdated = actualTools.includes("scratchpad");
 		if (scratchpadUpdated) {
@@ -437,7 +458,9 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 				sendWhisper: (msg) => sendEnforcementWhisper(pi, msg),
 				loadFileContent,
 			};
-			await detectRedundancySignal(tac);
+			if (!isBurst) {
+				await detectRedundancySignal(tac);
+			}
 		}
 
 		// ── L3: Critical signals ───────────────────────────────────────────────
@@ -459,7 +482,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 
 		// ── Task 4b: Orphan thought chain detection ────────────────────────────
 		const orphanResult = detectOrphanChains(getState(ctx));
-		if (orphanResult) {
+		if (!isBurst && orphanResult) {
 			sendEnforcementWhisper(pi, orphanResult.suggestion);
 		}
 
@@ -564,6 +587,10 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 
 		// Send bundled nudge if we have signals AND no L3 critical message just went out.
 		// Also populate enforcementSignals for L1 surfacing in prompt-builder.
+		// Suppress L2 signals during error burst
+		if (isBurst) {
+			sessionSignals.length = 0;
+		}
 		if (sessionSignals.length > 0) {
 			// Clear stale signals from previous turns before populating new ones
 			for (const key of Object.keys(enforcementSignals)) {

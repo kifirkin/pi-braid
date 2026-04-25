@@ -611,6 +611,11 @@ const DEFAULT_CONFIG: HeartbeatConfig = {
 function updateMetaLearning(state: HeartbeatState): void {
 	const ml = state.metaLearning;
 
+	// Reset tool count if no signals are pending (prevents accumulation between windows)
+	if (ml.pendingSignals.size === 0) {
+		ml.postActivationToolCount = 0;
+	}
+
 	// 1. Resolve pending signals: check if activated modules produced tool activity
 	if (ml.pendingSignals.size > 0) {
 		const resolved: Array<{ module: string; effective: boolean }> = [];

@@ -289,5 +289,18 @@ export function registerRotationHandlers(pi: any): void {
 	});
 }
 
+// ── Session Shutdown Cleanup ────────────────────────────────────────
+// Cleans up retry guards and compaction state when session ends.
+// Prevents stale state from leaking between sessions.
+
+export function registerSessionShutdownHandler(pi: any): void {
+	pi.on("session_shutdown", async (_event: unknown, ctx: ExtensionContext) => {
+		log.debug("Session shutdown: clearing compaction retry state");
+		const cmState = getCmState(ctx);
+		cmState.compactionRetryActive = false;
+		cmState.overflowRetryActive = false;
+	});
+}
+
 // Export for use in compaction retry guard
 export { triggerEmergencyRotation };

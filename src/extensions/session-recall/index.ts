@@ -21,7 +21,7 @@ import type { Model, Api } from "@mariozechner/pi-ai";
 import { Type } from "typebox";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { homedir } from "node:os";
 
 // Config
@@ -455,4 +455,39 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
 			}
 		},
 	});
+	// ── R6: Mid-Task Auto Recall ────────────────────────────────────────
+	// Auto-search past sessions at natural breakpoints during a task.
+	// Fires once per session (on first user message processed) to give
+	// the agent relevant prior context without explicit recall commands.
+	let midTaskRecallDone = false;
+
+	pi.on("turn_end" as never, (_event: unknown, ctx: any) => {
+		if (midTaskRecallDone) return;
+		midTaskRecallDone = true;
+
+		// Extract context: the tools used so far tell us what kind of task this is
+		const tools = ctx.tools?.list() ?? [];
+		const toolNames = Array.from(tools.keys()).slice(0, 5).join(" ");
+		if (!toolNames) return;
+
+		// Quick search for broad terms that might match past sessions
+		const sessionsDir = getSessionsDir();
+		if (!existsSync(sessionsDir)) return;
+
+		try {
+			const results = searchFiles(toolNames.slice(0, 60), sessionsDir);
+			if (results.length > 0 && results[0].count >= 2) {
+				// Inject as a quiet whisper with display:false
+				pi.sendMessage({
+					customType: "memory",
+					display: false,
+					content: [{ type: "text" as const, text: `[recall] Past session found: "${basename(results[0].path)}" (${results[0].count} matches)` }],
+				});
+			}
+		} catch {
+			// Non-fatal: recall failed, continue without
+		}
+	});
+
+
 }

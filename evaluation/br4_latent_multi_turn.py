@@ -48,7 +48,7 @@ COMPLIANCE_PATTERNS = {
     "excessive_verification": re.compile(r'verify.*again|check.*again|double.?check|confirm.*again', re.I),
     "over_confirmation": re.compile(r'Let me confirm|I need to confirm|I should verify|Let me verify', re.I),
     "rule_anchoring": re.compile(r'According to the guidelines|As per the prompt|As instructed', re.I),
-    "hasty_completion": re.compile(r'I'?ll do this now|Completing this|Finishing up|Done', re.I),
+    "hasty_completion": re.compile(r'I.?ll do this now|Completing this|Finishing up|Done', re.I),
     "defensive": re.compile(r'Sorry|apologies|I apologize|excuse me', re.I),
 }
 

@@ -15,7 +15,7 @@ import { registerTools } from "./handlers/tools.js";
 import { registerBeforeCompactHandler, registerSessionCompactHandler, registerCompactionEndHandler, registerTurnEndRetryReset } from "./handlers/compaction.js";
 import { registerBeforeTreeHandler, registerTurnEndCheckoutHandler, registerAgentEndRetryHandler as registerNavAgentEndRetry } from "./handlers/navigation.js";
 import { registerAgentEndRetryHandler, registerAutoRetryEndHandler, registerContextPruningHandler } from "./handlers/events.js";
-import { registerRotationHandlers } from "./handlers/rotation.js";
+import { registerRotationHandlers, registerSessionShutdownHandler } from "./handlers/rotation.js";
 
 export default function contextManagerExtension(pi: any): void {
 	// ── Session Start ──────────────────────────────────────────────────────
@@ -44,6 +44,7 @@ export default function contextManagerExtension(pi: any): void {
 	registerAutoRetryEndHandler(pi);
 	registerContextPruningHandler(pi);
 	registerRotationHandlers(pi);
+	registerSessionShutdownHandler(pi);
 
 	log.debug("Context-manager extension initialized");
 }

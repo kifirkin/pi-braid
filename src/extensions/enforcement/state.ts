@@ -85,6 +85,7 @@ export function createState() {
 		claimsDetectedThisTurn: false,
 		hasCodeChanges: false,
 		lastCodeChangeTurn: 0,
+		consecutiveErrorTurns: 0,
 		lastScratchpadNudgeTurn: -100,
 		lastJudgeTime: 0,
 		judgeSkipCounter: 0,
@@ -162,6 +163,7 @@ export function resetState(s: EnforcementState = state): void {
 	s.claimsDetectedThisTurn = false;
 	s.hasCodeChanges = false;
 	s.lastCodeChangeTurn = 0;
+s.consecutiveErrorTurns = 0;
 	s.config.thinkCalledInSession = false;
 	s.config.exploreCalledInSession = false;
 	s.hasRecordedFailure = false;

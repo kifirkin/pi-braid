@@ -18,6 +18,7 @@ import { createLogger } from "../../lib/logger.js";
 import { getExtensionState } from "../../lib/extension-state.js";
 import * as os from "node:os";
 import { readFile as fsReadFilePromise } from "node:fs/promises";
+import * as fs from "node:fs";
 import * as path from "node:path";
 
 const log = createLogger("three-memory-stores");
@@ -676,11 +677,81 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 			log.info(`Seeded ${BUILTIN_HEURISTICS.length} built-in heuristics`);
 		}
 
+		// R9: Load analytics data to pre-populate tool-reliability stats
+		// This closes the feedback loop: analytics → tool reliability → agent behavior
+		const analyticsPath = path.join(os.homedir(), ".pi", "logs", "braid-metrics.jsonl");
+		try {
+			if (fs.existsSync(analyticsPath)) {
+				const raw = fs.readFileSync(analyticsPath, "utf-8");
+				const lines = raw.trim().split("\n").filter(Boolean);
+				// Use last N sessions for relevance
+				for (const line of lines.slice(-20)) {
+					try {
+						const entry = JSON.parse(line);
+						if (entry.toolMetrics) {
+							for (const [toolName, metrics] of Object.entries(entry.toolMetrics)) {
+								const m = metrics as any;
+								if (m.successCount !== undefined && m.totalCalls !== undefined) {
+									// Populate tool stats using the toolName as key across all task types
+									// (analytics doesn't break down by task type, so we use "*" as generic)
+									const key = `${toolName}:*`;
+									if (!state.toolStats.has(key)) {
+										state.toolStats.set(key, { tool: toolName, taskType: "*", successes: 0, attempts: 0, lastAttempt: 0, avgDuration: 0 });
+									}
+									const stat = state.toolStats.get(key)!;
+									stat.successes += m.successCount;
+									stat.attempts += m.totalCalls;
+								}
+							}
+						}
+					} catch {
+						// Skip malformed lines
+					}
+				}
+				log.debug(`Loaded ${lines.length} analytics entries for tool reliability pre-population`);
+			}
+		} catch (err) {
+			log.warn(`Could not load analytics data: ${err}`);
+		}
+
 		state.sessionStartTime = Date.now();
 		state.currentSessionTools = [];
 	});
 
-	// ── Event: tool_end ─────────────────────────────────────────────────
+
+	// ── Auto-Recall Cooldown ──────────────────────────────────────────
+	// Prevents noise: minimum gap between proactive recall whispers
+	const RECALL_COOLDOWN_MS = 10_000; // 10 seconds
+	let lastRecallTime = 0;
+	const AUTO_RECALL_ENABLED = true; // Master toggle for auto-recall
+
+	// ── Auto-Recall Helper ────────────────────────────────────────────
+	function whisperRecall(
+		ctx: ExtensionContext,
+		title: string,
+		episodes: Episode[],
+	): void {
+		if (!AUTO_RECALL_ENABLED || episodes.length === 0) return;
+
+		const now = Date.now();
+		if (now - lastRecallTime < RECALL_COOLDOWN_MS) return;
+		lastRecallTime = now;
+
+		const lines: string[] = [`[recall] ${title}`];
+		for (const ep of episodes.slice(0, 2)) {
+			const icon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
+			lines.push(`  ${icon} ${ep.task.slice(0, 80)}`);
+			lines.push(`    Solution: ${ep.solution.slice(0, 120)}`);
+		}
+
+		pi.sendMessage({
+			customType: "memory",
+			display: false,
+			content: [{ type: "text", text: lines.join("\n") }],
+		});
+	}
+
+	// ── Event: tool_end (enhanced with auto-recall) ────────────────────
 
 	pi.on("tool_end" as never, async (event: { toolName?: string; tool?: string; isError?: boolean; error?: unknown; duration?: number }, ctx: ExtensionContext) => {
 		const state = getState(ctx);
@@ -695,6 +766,64 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 
 		if (isError) {
 			log.debug(`Tool "${toolName}" failed for task "${taskType}"`);
+
+			// ── R5: Auto-recall on tool error ───────────────────────
+			// When a tool fails, search past episodes for similar failures
+			// and solutions. This gives the agent immediate prior art.
+			const errorQuery = `${toolName} ${taskType} failure error`;
+			const similarFailures = retrieveByRUMS(state, errorQuery, 2);
+			if (similarFailures.length > 0 && similarFailures[0].similarity > 0.15) {
+				whisperRecall(
+					ctx,
+					`Similar past issue with ${toolName}:`,
+					similarFailures,
+				);
+			}
+
+			// ── R5: Tool-reliability-based alternative suggestion ──
+			// If this tool has low reliability for this task type, suggest a better one
+			if (toolName !== "bash") {
+				const currentReliability = getToolReliability(state, toolName, taskType);
+				if (currentReliability < 0.4 && state.toolStats.size > 3) {
+					// Find any tool with better reliability for this task type
+					let bestAlt: string | null = null;
+					let bestRel = 0;
+					for (const [key, stat] of state.toolStats) {
+						const [t, tt] = key.split(":");
+						if (t !== toolName && tt === taskType && stat.successes / stat.attempts > bestRel) {
+							bestRel = stat.successes / stat.attempts;
+							bestAlt = t;
+						}
+					}
+					if (bestAlt && bestRel > currentReliability + 0.2) {
+						pi.sendMessage({
+							customType: "memory",
+							display: false,
+							content: [{ type: "text", text: `[recall] ${bestAlt} has better reliability (${(bestRel * 100).toFixed(0)}%) for "${taskType}" than ${toolName} (${(currentReliability * 100).toFixed(0)}%)` }],
+						});
+					}
+				}
+			}
+		}
+	});
+
+	// ── Event: turn_end auto-recall ────────────────────────────────────
+
+	pi.on("turn_end", async (_event: unknown, ctx: ExtensionContext) => {
+		const state = getState(ctx);
+		if (!AUTO_RECALL_ENABLED || state.currentSessionTools.length === 0) return;
+
+		const now = Date.now();
+		if (now - lastRecallTime < RECALL_COOLDOWN_MS) return;
+
+		// Build a query from the current tool sequence + session context
+		const recentTools = state.currentSessionTools.slice(-5);
+		const query = recentTools.join(" ") + " task solution";
+
+		const relevant = retrieveByRUMS(state, query, 1);
+		if (relevant.length > 0 && relevant[0].similarity > 0.3) {
+			lastRecallTime = now;
+			whisperRecall(ctx, `Past solution might apply:`, relevant);
 		}
 	});
 
@@ -713,6 +842,26 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 		const topHeuristics = getPrioritizedHeuristics(state).slice(0, 3);
 		for (const h of topHeuristics) {
 			log.info(`  Top heuristic: "${h.condition}" (priority: ${h.priority.toFixed(2)})`);
+		}
+	});
+
+	/* ── Event: session_shutdown ──────────────────────────────────────────── */
+	// Persist episodes to disk so they survive session rotation
+	pi.on("session_shutdown", async (_event: any, ctx: ExtensionContext) => {
+		const state = getState(ctx);
+		if (state.episodes.length > 0) {
+			const diskPath = path.join(os.homedir(), ".pi", "agent", "memory", "episodes.jsonl");
+			try {
+				const dir = path.dirname(diskPath);
+				if (!fs.existsSync(dir)) {
+					fs.mkdirSync(dir, { recursive: true });
+				}
+				const lines = state.episodes.map((e: any) => JSON.stringify(e)).join("\n");
+				fs.writeFileSync(diskPath, lines, "utf-8");
+				log.debug(`Persisted ${state.episodes.length} episodes to disk`);
+			} catch (err) {
+				log.warn(`Failed to persist episodes: ${err}`);
+			}
 		}
 	});
 }

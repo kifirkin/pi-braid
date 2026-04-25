@@ -393,6 +393,12 @@ export function getAnalyticsState() {
 	};
 }
 
+// R9: Export histrical analytics summary for feedback loop
+// Used by enforcement extension for data-driven tool suggestions
+export function getAnalyticsSummary(): any {
+	return loadAnalytics();
+}
+
 // Extension
 
 export default function analyticsExtension(pi: ExtensionAPI) {
@@ -520,6 +526,126 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 					totalSessions: summary.totalSessions,
 					totalToolCalls: summary.totalToolCalls,
 					tools: reliability,
+				},
+			};
+		},
+	} as any);
+
+	// BR2: Tool addiction measurement — detects tools that are overused
+	// relative to task complexity, appearing in bursts or persistently
+	// across sessions ("addictive" patterns like think-spam, read-binging)
+	pi.registerTool({
+		name: "get-tool-addiction",
+		label: "Get Tool Addiction",
+		description: "Detect tool addiction patterns: overuse relative to task complexity, burst repetition, cross-session persistence.",
+		parameters: Type.Object({
+			sessionOnly: Type.Optional(Type.Boolean({ description: "Only analyze current session (default: false)" })),
+		}),
+		execute: async (_id: string, params: any): Promise<any> => {
+			const sessionOnly = params?.sessionOnly ?? false;
+			const now = Date.now();
+			const startTime = state.sessionStartTime ?? now;
+			const sessionAge = (now - startTime) / 1000;
+
+			// ── Compute session-level stats ──────────────────────────
+			const sessionToolNames = state.toolCallSequence;
+			const toolCounts = new Map<string, { count: number; clusters: number }>();
+			for (let i = 0; i < sessionToolNames.length; i++) {
+				const tool = sessionToolNames[i];
+				const entry = toolCounts.get(tool) ?? { count: 0, clusters: 0 };
+				entry.count++;
+				// Detect clusters: same tool repeated consecutively
+				if (i > 0 && sessionToolNames[i - 1] === tool) {
+					entry.clusters++;
+				}
+				toolCounts.set(tool, entry);
+			}
+
+			// ── Load historical data ─────────────────────────────────
+			const summary = sessionOnly ? null : loadAnalytics();
+			const histToolTotals = new Map<string, number>();
+			const histSessionCount = new Map<string, number>();
+			let totalHistSessions = 0;
+
+			if (summary && Array.isArray(summary.topTools)) {
+				for (const t of summary.topTools) {
+					if (t.toolName && t.count) {
+						histToolTotals.set(t.toolName, t.count);
+						histSessionCount.set(t.toolName, 1);
+					}
+				}
+				totalHistSessions = summary.totalSessions ?? 0;
+			}
+
+			// ── Compute addiction scores ─────────────────────────────
+			interface AddictionEntry {
+				tool: string;
+				frequency: number;
+				burstRatio: number;
+				persistence: number;
+				addictionScore: number;
+				note?: string;
+			}
+
+			const results: AddictionEntry[] = [];
+			const totalSessionCalls = sessionToolNames.length;
+			const avgCallsPerTool = totalSessionCalls / Math.max(toolCounts.size, 1);
+
+			for (const [tool, { count, clusters }] of toolCounts) {
+				// Frequency: how many std deviations above average
+				const frequency = totalSessionCalls > 0 ? count / Math.max(avgCallsPerTool, 1) : 0;
+
+				// Burst ratio: cluster-to-count ratio (0-1)
+				const burstRatio = count > 1 ? clusters / (count - 1) : 0;
+
+				// Persistence: tool appears across sessions (0-1)
+				const histCount = histToolTotals.get(tool) ?? 0;
+				const histSessions = histSessionCount.get(tool) ?? 0;
+				const persistence =
+					totalHistSessions > 0 && histCount > 0
+						? Math.min(histSessions / Math.max(totalHistSessions, 1), 1)
+						: 0;
+
+				// Composite addiction score (0-1)
+				// Weights: frequency 0.5, burst 0.3, persistence 0.2
+				const freqScore = Math.min(frequency / 5, 1); // normalize: 5x avg = 1.0
+				const addictionScore = Math.min(
+					freqScore * 0.5 + burstRatio * 0.3 + persistence * 0.2,
+					1,
+				);
+
+				// Generate note for high-addiction tools
+				let note: string | undefined;
+				const reasons: string[] = [];
+				if (freqScore > 0.6) reasons.push(`high frequency (${count}x vs ${avgCallsPerTool.toFixed(1)}x avg)`);
+				if (burstRatio > 0.4) reasons.push(`bursty (${clusters} consecutive repeats)`);
+				if (persistence > 0.5) reasons.push(`persistent across ${histSessions} sessions`);
+				if (reasons.length > 0) note = reasons.join("; ");
+
+				results.push({
+					tool,
+					frequency: parseFloat(frequency.toFixed(2)),
+					burstRatio: parseFloat(burstRatio.toFixed(2)),
+					persistence: parseFloat(persistence.toFixed(2)),
+					addictionScore: parseFloat(addictionScore.toFixed(3)),
+					note,
+				});
+			}
+
+			// Sort by addiction score descending
+			results.sort((a, b) => b.addictionScore - a.addictionScore);
+
+			return {
+				content: [
+					{
+						type: "text" as const,
+						text: `Tool addiction analysis: ${results.length} tools tracked. Top addiction: ${results.length > 0 ? results[0].tool : "n/a"} (score: ${results.length > 0 ? results[0].addictionScore : 0})`,
+					},
+				],
+				details: {
+					sessionAge: parseFloat(sessionAge.toFixed(0)),
+					totalCalls: totalSessionCalls,
+					tools: results,
 				},
 			};
 		},
