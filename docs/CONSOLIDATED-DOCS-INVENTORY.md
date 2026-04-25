@@ -254,3 +254,16 @@ docs/archive/
 | `test-topic-drift` | 124 | Topic drift |
 
 **Note**: ✅ `docs/TESTING.md` exists.
+
+---
+
+## Evaluation Benchmarks (3 scripts)
+
+| Script | Purpose | Status |
+|--------|---------|--------|
+| `benchmark_comprehensive.py` | Unified feature test runner (12 tests) | ✅ 100% pass |
+| `br4_latent_multi_turn.py` | BR4: latent activator ON/OFF comparison | ✅ Fixed |
+| `bm1_multi_turn_debug.py` | BM1: multi-turn debugging quality | ✅ Fixed |
+
+**Coverage**: Core, metacognition, memory, policy, infrastructure, research
+**Latest**: v0.18.0
