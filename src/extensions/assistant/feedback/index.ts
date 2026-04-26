@@ -20,9 +20,16 @@ import { join } from "node:path";
 import { Type } from "typebox";
 import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
+import { getExtensionState } from "../../../lib/extension-state.js";
+import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+
 // Whisper System - Send feedback messages immediately
 
-let pendingWhisper: string | null = null;
+function getFeedbackWhisperState(ctx?: ExtensionContext): { pendingWhisper: string | null } {
+	if (ctx) return getExtensionState(ctx, "feedback-whisper", () => ({ pendingWhisper: null }));
+	return _whisperDefault;
+}
+const _whisperDefault = { pendingWhisper: null };
 
 /**
  * Send a feedback whisper immediately using pi.sendMessage().
@@ -46,11 +53,11 @@ function sendFeedbackWhisper(pi: ExtensionAPI, message: string): void {
  * Kept for backward compatibility.
  */
 function _queueFeedbackWhisper(message: string): void {
-	// Just store for potential debugging/audit purposes
-	if (pendingWhisper) {
-		pendingWhisper = `${pendingWhisper}\n\n${message}`;
+	const s = getFeedbackWhisperState();
+	if (s.pendingWhisper) {
+		s.pendingWhisper = `${s.pendingWhisper}\n\n${message}`;
 	} else {
-		pendingWhisper = message;
+		s.pendingWhisper = message;
 	}
 }
 

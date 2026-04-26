@@ -8,28 +8,40 @@ const log = createLogger("enforcement");
  */
 
 import { queueEnforcementWhisper } from "../whisper.js";
+import { getExtensionState } from "../../../../lib/extension-state.js";
+import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-let pendingCodeChanges = false;
-let lastCodeChangeTurn = -100;
+interface VerificationState {
+	pendingCodeChanges: boolean;
+	lastCodeChangeTurn: number;
+}
+
+function getVerificationState(ctx?: ExtensionContext): VerificationState {
+	if (ctx) return getExtensionState(ctx, "enforcement-verification", () => ({ pendingCodeChanges: false, lastCodeChangeTurn: -100 }));
+	return _default;
+}
+const _default: VerificationState = { pendingCodeChanges: false, lastCodeChangeTurn: -100 };
 export const VERIFICATION_REMINDER_THRESHOLD = 12; // turns
 
 export function detectMissingVerification(_pi: never, currentTurn: number): void {
-	const turnsSinceCodeChange = currentTurn - lastCodeChangeTurn;
+	const s = getVerificationState();
+	const turnsSinceCodeChange = currentTurn - s.lastCodeChangeTurn;
 
 	// If there were code changes but no bash command within threshold turns, nudge
-	if (pendingCodeChanges && turnsSinceCodeChange >= VERIFICATION_REMINDER_THRESHOLD) {
+	if (s.pendingCodeChanges && turnsSinceCodeChange >= VERIFICATION_REMINDER_THRESHOLD) {
 		queueEnforcementWhisper(
 			"You modified code but haven't verified it works. " +
 				"Run tests or commands to confirm your implementation is correct.\n\n" +
 				"You verify code changes before declaring the task complete.",
 		);
-		pendingCodeChanges = false; // Only remind once per change session
+		s.pendingCodeChanges = false; // Only remind once per change session
 	}
 }
 
 export function recordCodeChange(turn: number): void {
-	lastCodeChangeTurn = turn;
-	pendingCodeChanges = true;
+	const s = getVerificationState();
+	s.lastCodeChangeTurn = turn;
+	s.pendingCodeChanges = true;
 }
 
 /**

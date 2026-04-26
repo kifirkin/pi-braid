@@ -53,7 +53,14 @@ function hasImageInput(model: { input?: unknown }): boolean {
 
 
 /** Shared sessionManager reference — used by patchSessionManagerMethods */
-let _sessionManager: any = undefined;
+import { getExtensionState } from "../../../lib/extension-state.js";
+import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+
+function getPolyfillState(ctx?: ExtensionContext): { sessionManager: any } {
+	if (ctx) return getExtensionState(ctx, "polyfill", () => ({ sessionManager: undefined }));
+	return _default;
+}
+const _default = { sessionManager: undefined as any };
 
 /** Path to the global settings file - ~/.pi/agent/settings.json */
 const SETTINGS_PATH = path.join(os.homedir(), ".pi", "agent", "settings.json");
@@ -259,7 +266,7 @@ function patchSessionManagerMethods(pi: any, ctx: any): void {
 	const sm = ctx?.sessionManager as SessionManagerLike;
 	if (!sm) return;
 
-	_sessionManager = sm;
+	getPolyfillState().sessionManager = sm;
 
 	if (typeof pi.getBranch !== "function" && typeof sm.getBranch === "function") {
 		pi.getBranch = () => sm.getBranch?.();

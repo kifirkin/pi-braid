@@ -45,29 +45,28 @@ const MAX_PROPOSALS_SESSION = 10;
 const _policyEngine = new PolicyEngine();
 const _signalDetector = new SignalDetector();
 
-// Outcome tracking (closed-loop feedback) with TTL eviction — process-scoped cache
+// Outcome tracking (closed-loop feedback) with TTL eviction — now session-scoped
 const MAX_OUTCOMES = 100;
 const OUTCOME_TTL_MS = 30 * 60 * 1000;
 
-const _outcomes: Array<{
+interface Outcome {
 	proposalId: string;
 	resolution: string;
 	turnsToResolve: number;
 	timestamp: number;
-}> = [];
+}
 
-/** Evict old outcomes to prevent unbounded growth */
-function evictOldOutcomes(): void {
+function evictOldOutcomes(s: ContextLifecycleState): void {
 	const now = Date.now();
-	const before = _outcomes.length;
-	while (_outcomes.length > 0 && now - _outcomes[0].timestamp > OUTCOME_TTL_MS) {
-		_outcomes.shift();
+	const before = s.outcomes.length;
+	while (s.outcomes.length > 0 && now - s.outcomes[0].timestamp > OUTCOME_TTL_MS) {
+		s.outcomes.shift();
 	}
-	while (_outcomes.length > MAX_OUTCOMES) {
-		_outcomes.shift();
+	while (s.outcomes.length > MAX_OUTCOMES) {
+		s.outcomes.shift();
 	}
-	if (_outcomes.length < before) {
-		log.info(`Evicted ${before - _outcomes.length} old outcomes`);
+	if (s.outcomes.length < before) {
+		log.info(`Evicted ${before - s.outcomes.length} old outcomes`);
 	}
 }
 
@@ -80,6 +79,7 @@ interface ContextLifecycleState {
 	sessionStartMs: number;
 	turnCount: number;
 	proposalsByEntryId: Map<string, any>;
+	outcomes: Outcome[];
 }
 
 function createState(): ContextLifecycleState {
@@ -90,6 +90,7 @@ function createState(): ContextLifecycleState {
 		sessionStartMs: Date.now(),
 		turnCount: 0,
 		proposalsByEntryId: new Map(),
+		outcomes: [],
 	};
 }
 
@@ -293,7 +294,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 	// ── session_start ────────────────────────────────────────────────────────
 	pi.on("session_start", async (_event: any, ctx: any) => {
 		resetState(ctx);
-		_outcomes.length = 0;
+		state().outcomes.length = 0;
 		_policyEngine.resetCooldowns();
 		_signalDetector.reset();
 	});
@@ -305,7 +306,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 		state().proposalsThisTurn = 0; // Reset per-turn counter
 
 		// Evict old outcomes on each turn (sliding window TTL)
-		evictOldOutcomes();
+		evictOldOutcomes(state());
 
 		const usage = getContextUsage(ctx);
 		const entries = getAllEntries(ctx);
@@ -362,7 +363,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 				state().proposalsByEntryId.set(entry.id, proposal);
 
 				// Track outcome for closed-loop feedback
-				_outcomes.push({
+				state().outcomes.push({
 					proposalId: proposal.id,
 					resolution: "implicit_approved",
 					turnsToResolve: state().turnCount - proposal.turn,
@@ -445,7 +446,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 					proposal.resolved_at = Date.now();
 					state().proposalsByEntryId.set(id, proposal);
 
-					_outcomes.push({
+					state().outcomes.push({
 						proposalId: id,
 						resolution: "approved",
 						turnsToResolve: state().turnCount - proposal.turn,
@@ -473,7 +474,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 					proposal.resolved_at = Date.now();
 					state().proposalsByEntryId.set(id, proposal);
 
-					_outcomes.push({
+					state().outcomes.push({
 						proposalId: id,
 						resolution: "rejected",
 						turnsToResolve: state().turnCount - proposal.turn,
@@ -510,10 +511,10 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 					const governance = _policyEngine.getGovernance();
 
 					// Calculate outcome stats
-					const total = _outcomes.length;
-					const approved = _outcomes.filter((o) => o.resolution === "approved" || o.resolution === "implicit_approved").length;
+					const total = state().outcomes.length;
+					const approved = state().outcomes.filter((o) => o.resolution === "approved" || o.resolution === "implicit_approved").length;
 					const avgTurns = total > 0
-						? _outcomes.reduce((sum, o) => sum + o.turnsToResolve, 0) / total
+						? state().outcomes.reduce((sum, o) => sum + o.turnsToResolve, 0) / total
 						: 0;
 
 					return {
@@ -534,7 +535,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 						details: {
 							turns: state().turnCount,
 							proposals,
-							outcomes: _outcomes,
+							outcomes: state().outcomes,
 							policies,
 							governance,
 							topicHistory: _signalDetector.getTopicHistory(),

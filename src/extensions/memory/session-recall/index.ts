@@ -117,19 +117,26 @@ const MAX_SNIPPETS_PER_SESSION = 3;
 // Search
 
 type SearchBackend = "rg" | "grep" | "node";
-let cachedBackend: SearchBackend | undefined;
+import { getExtensionState } from "../../../lib/extension-state.js";
+import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+
+function getRecallState(ctx?: ExtensionContext): { cachedBackend: SearchBackend | undefined } {
+	if (ctx) return getExtensionState(ctx, "session-recall", () => ({ cachedBackend: undefined }));
+	return _default;
+}
+const _default: { cachedBackend: SearchBackend | undefined } = { cachedBackend: undefined };
 
 function getSearchBackend(): SearchBackend {
-	if (cachedBackend !== undefined) return cachedBackend;
+	const s = getRecallState();
+	if (s.cachedBackend !== undefined) return s.cachedBackend;
 	for (const cmd of ["rg", "grep"] as const) {
 		try {
 			execFileSync(cmd, ["--version"], { stdio: "ignore", timeout: 5000 });
-			cachedBackend = cmd;
+			s.cachedBackend = cmd;
 			return cmd;
 		} catch { /* try next */ }
- /* Non-fatal: prior session parse failed */
 	}
-	cachedBackend = "node";
+	s.cachedBackend = "node";
 	return "node";
 }
 

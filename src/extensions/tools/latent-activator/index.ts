@@ -251,21 +251,33 @@ const BEHAVIOR_MIXES: Record<string, AtomicBehavior[]> = {
   "handover": ["witness", "translator", "archivist"],
 };
 
-/**
- * State for latent activation
- */
-let _currentBehaviors: Set<AtomicBehavior> = new Set(["planner", "executor"]);
-let _activationHistory: Array<{ behavior: AtomicBehavior; timestamp: number }> = [];
+import { getExtensionState } from "../../../lib/extension-state.js";
+import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+
+interface ActivatorState {
+	currentBehaviors: Set<AtomicBehavior>;
+	activationHistory: Array<{ behavior: AtomicBehavior; timestamp: number }>;
+}
+
+function getActivatorState(ctx?: ExtensionContext): ActivatorState {
+	if (ctx) return getExtensionState(ctx, "latent-activator", () => ({
+		currentBehaviors: new Set(["planner", "executor"] as AtomicBehavior[]),
+		activationHistory: [],
+	}));
+	return _default;
+}
+const _default: ActivatorState = { currentBehaviors: new Set(["planner", "executor"] as AtomicBehavior[]), activationHistory: [] };
 
 /**
  * Activate a behavior
  */
 function activateBehavior(behavior: AtomicBehavior): void {
-  _currentBehaviors.add(behavior);
-  _activationHistory.push({ behavior, timestamp: Date.now() });
+  const s = getActivatorState();
+  s.currentBehaviors.add(behavior);
+  s.activationHistory.push({ behavior, timestamp: Date.now() });
   
-  if (_activationHistory.length > 100) {
-    _activationHistory = _activationHistory.slice(-50);
+  if (s.activationHistory.length > 100) {
+    s.activationHistory = s.activationHistory.slice(-50);
   }
 }
 
@@ -273,14 +285,14 @@ function activateBehavior(behavior: AtomicBehavior): void {
  * Deactivate a behavior
  */
 function deactivateBehavior(behavior: AtomicBehavior): void {
-  _currentBehaviors.delete(behavior);
+  getActivatorState().currentBehaviors.delete(behavior);
 }
 
 /**
  * Get active behaviors
  */
 function getActiveBehaviors(): AtomicBehavior[] {
-  return Array.from(_currentBehaviors);
+  return Array.from(getActivatorState().currentBehaviors);
 }
 
 /**
@@ -288,16 +300,18 @@ function getActiveBehaviors(): AtomicBehavior[] {
  * Optionally accepts a task hint to infer and activate relevant behaviors first.
  */
 function generateLatentActivation(taskHint?: string): string {
+  const s = getActivatorState();
   if (taskHint) {
     const inferred = inferBehaviorsFromTask(taskHint);
     for (const b of inferred) {
-      activateBehavior(b);
+      s.currentBehaviors.add(b);
+      s.activationHistory.push({ behavior: b, timestamp: Date.now() });
     }
   }
   
-  if (_currentBehaviors.size === 0) return "";
+  if (s.currentBehaviors.size === 0) return "";
   
-  const sorted = Array.from(_currentBehaviors)
+  const sorted = Array.from(s.currentBehaviors)
     .map(b => ({ behavior: b, signal: LATENT_SIGNALS[b] }))
     .sort((a, b) => b.signal.priority - a.signal.priority)
     .slice(0, 3);
@@ -379,8 +393,9 @@ const activateMixSchema = Type.Object({
 
 export default function latentActivatorExtension(pi: ExtensionAPI) {
   pi.on("session_start", () => {
-    _currentBehaviors = new Set(["planner", "executor"]);
-    _activationHistory = [];
+    const s = getActivatorState();
+    s.currentBehaviors = new Set(["planner", "executor"] as AtomicBehavior[]);
+    s.activationHistory = [];
   });
   
   // Behavior inference disabled - use manual activate_behavior tool instead

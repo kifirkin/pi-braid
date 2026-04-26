@@ -9,8 +9,19 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 // Whisper System
 
-let pendingWhisper: string | null = null;
-let pendingBlockAction: { toolName: string; reason: string } | null = null;
+import { getExtensionState } from "../../../lib/extension-state.js";
+import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+
+interface WhisperState {
+	pendingWhisper: string | null;
+	pendingBlockAction: { toolName: string; reason: string } | null;
+}
+
+function getWhisperState(ctx?: ExtensionContext): WhisperState {
+	if (ctx) return getExtensionState(ctx, "enforcement-whisper", () => ({ pendingWhisper: null, pendingBlockAction: null }));
+	return _default;
+}
+const _default: WhisperState = { pendingWhisper: null, pendingBlockAction: null };
 
 /**
  * Send an enforcement whisper immediately using pi.sendMessage().
@@ -37,10 +48,11 @@ export function sendEnforcementWhisper(pi: ExtensionAPI, message: string): void 
  */
 export function queueEnforcementWhisper(message: string): void {
 	// No longer append - just store single message for block actions
-	if (pendingWhisper) {
-		pendingWhisper = `${pendingWhisper}\n\n${message}`;
+	const s = getWhisperState();
+	if (s.pendingWhisper) {
+		s.pendingWhisper = `${s.pendingWhisper}\n\n${message}`;
 	} else {
-		pendingWhisper = message;
+		s.pendingWhisper = message;
 	}
 }
 
@@ -49,7 +61,8 @@ export function queueEnforcementWhisper(message: string): void {
  * will receive a whisper explaining why.
  */
 export function queueBlockAction(toolName: string, reason: string): void {
-	pendingBlockAction = { toolName, reason };
+	const s = getWhisperState();
+	s.pendingBlockAction = { toolName, reason };
 	queueEnforcementWhisper(`BLOCKED: ${reason}\n\nConsider addressing this before continuing.`);
 }
 
@@ -57,12 +70,12 @@ export function queueBlockAction(toolName: string, reason: string): void {
  * Get the pending block action (called from index.ts event handlers).
  */
 export function getPendingBlockAction(): { toolName: string; reason: string } | null {
-	return pendingBlockAction;
+	return getWhisperState().pendingBlockAction;
 }
 
 /**
  * Clear the pending block action after it's been sent.
  */
 export function clearPendingBlockAction(): void {
-	pendingBlockAction = null;
+	getWhisperState().pendingBlockAction = null;
 }
