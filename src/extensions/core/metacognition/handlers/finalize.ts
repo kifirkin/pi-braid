@@ -1,13 +1,10 @@
 // ── Finalize Tool ─────────────────────────────────────────────────────────────
 // Marks task complete with session model verification.
-// Uses the session's current model (ctx.model) for critical review.
+// Auto-proceed chains to next pending task from scratchpad.
 
 import { Type } from "typebox";
 import { complete } from "@mariozechner/pi-ai";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { createLogger } from "../../../../lib/logger.js";
-
-const log = createLogger("metacognition");
 
 const finalizeSchema = Type.Object({
 	completed:     Type.Boolean({ description: "Whether the task was successfully completed" }),
@@ -15,23 +12,6 @@ const finalizeSchema = Type.Object({
 	tasksRemaining: Type.Optional(Type.Array(Type.String(), { description: "Follow-up tasks" })),
 	autoProceed:   Type.Optional(Type.Boolean({ description: "Automatically propose next pending work on finalize" })),
 });
-
-// Simple in-memory planner/goal state for findNextWork
-interface PendingItem { type: "plan" | "goal"; id: string; description: string; }
-const _planner: PendingItem[] = [];
-const _goalManager: PendingItem[] = [];
-
-async function findNextWork(): Promise<{ type: string; id?: string; description?: string }> {
-	if (_planner.length > 0) {
-		const next = _planner.shift()!;
-		return { type: next.type, id: next.id, description: next.description };
-	}
-	if (_goalManager.length > 0) {
-		const next = _goalManager.shift()!;
-		return { type: next.type, id: next.id, description: next.description };
-	}
-	return { type: "" };
-}
 
 const FINALIZE_CRITIC_PROMPT = `You are a critical reviewer verifying whether a task is truly complete.
 
@@ -82,9 +62,39 @@ async function verifyWithSessionModel(summary: string, ctx: ExtensionContext): P
 	}
 }
 
-export function createFinalizeTool(
-	onFinalize?: (summary: string, completed: boolean) => void,
-) {
+/**
+ * Find the next pending task from scratchpad's task store.
+ * Returns the first incomplete task, or null if none.
+ */
+async function findNextWork(ctx?: ExtensionContext): Promise<{ id: string; description: string } | null> {
+	if (!ctx) return null;
+
+	try {
+		// Access scratchpad's session-scoped task store
+		const { getExtensionState } = await import("../../../../lib/extension-state.js");
+		const scratchpad = getExtensionState(ctx, "scratchpad", () => null as any);
+		if (!scratchpad?.taskStore?.tasks) return null;
+
+		// Find first pending task
+		const pending = scratchpad.taskStore.tasks.find(
+			(t: any) => t.status === "pending" || t.status === "in_progress"
+		);
+		if (!pending) return null;
+
+		return { id: pending.id, description: pending.text || pending.description || pending.id };
+	} catch {
+		return null;
+	}
+}
+
+export interface FinalizeCallbacks {
+	onFinalize?: (summary: string, completed: boolean) => void;
+	sendNextTask?: (description: string) => void;
+}
+
+export function createFinalizeTool(callbacks: FinalizeCallbacks = {}) {
+	const { onFinalize, sendNextTask } = callbacks;
+
 	return {
 		name: "finalize" as const,
 		label: "Finalize",
@@ -152,14 +162,22 @@ Continue working until the issues are resolved.`,
 				messages.push(`\nFollow-up needed: ${params.tasksRemaining.join(", ")}`);
 			}
 
-			const nextWork = await findNextWork();
-			if (nextWork.type) {
-				const label = nextWork.type === "plan" ? "Next Plan" : "Next Goal";
-				messages.push(`\n${label}: ${nextWork.description}`);
-				messages.push(`\nType \`finalize(true, "...", [], true)\` to continue automatically, or continue manually.`);
-				if (params.autoProceed && nextWork.id) {
-					messages.push(`\nAuto-proceeding to next work...`);
+			// Check for next pending work from scratchpad
+			const nextWork = await findNextWork(_ctx);
+			if (nextWork) {
+				messages.push(`\n📋 **Next pending task:** ${nextWork.description}`);
+				if (params.autoProceed) {
+					messages.push(`\n✅ Auto-proceeding to next task...`);
+					// Schedule the next task injection after a short delay
+					// (allows the current finalize response to be processed first)
+					setTimeout(() => {
+						sendNextTask?.(nextWork.description);
+					}, 500);
+				} else {
+					messages.push(`\n💡 Set \`autoProceed: true\` to continue automatically.`);
 				}
+			} else {
+				messages.push(`\n✅ No pending tasks remaining.`);
 			}
 
 			messages.push("\n---");
@@ -167,7 +185,7 @@ Continue working until the issues are resolved.`,
 
 			return {
 				content: [{ type: "text" as const, text: messages.join("\n") }],
-				details: { finalized: true, completed: params.completed, summary: params.summary, verification: verificationResult },
+				details: { finalized: true, completed: params.completed, summary: params.summary, verification: verificationResult, nextWork: nextWork?.id ?? null },
 			};
 		},
 	};

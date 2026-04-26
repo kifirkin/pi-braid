@@ -44,7 +44,14 @@ export default function metacognitionExtension(pi: ExtensionAPI) {
 	// Register tools
 	pi.registerTool(createThinkTool() as any);
 	pi.registerTool(createHypothesizeTool() as any);
-	pi.registerTool(createFinalizeTool() as any);
+	pi.registerTool(createFinalizeTool({
+		onFinalize: (_summary, _completed) => {
+			// Logging handled by the finalize tool's own execution
+		},
+		sendNextTask: (description) => {
+			pi.sendUserMessage([{ type: "text", text: `Continue with the next pending task: ${description}` }]);
+		},
+	}) as any);
 
 	// Track tool usage
 	pi.on("tool_execution_end", (event: any, ctx: ExtensionContext) => {
