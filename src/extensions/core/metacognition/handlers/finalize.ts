@@ -1,6 +1,7 @@
 // ── Finalize Tool ─────────────────────────────────────────────────────────────
 // Marks task complete with session model verification.
 // Auto-proceed chains to next pending task from scratchpad.
+// Records calibration when confidence is provided.
 
 import { Type } from "typebox";
 import { complete } from "@mariozechner/pi-ai";
@@ -90,10 +91,11 @@ async function findNextWork(ctx?: ExtensionContext): Promise<{ id: string; descr
 export interface FinalizeCallbacks {
 	onFinalize?: (summary: string, completed: boolean) => void;
 	sendNextTask?: (description: string) => void;
+	recordCalibration?: (ctx: ExtensionContext, confidence: number, outcome: "success" | "failure") => void;
 }
 
 export function createFinalizeTool(callbacks: FinalizeCallbacks = {}) {
-	const { onFinalize, sendNextTask } = callbacks;
+	const { onFinalize, sendNextTask, recordCalibration } = callbacks;
 
 	return {
 		name: "finalize" as const,
@@ -126,6 +128,10 @@ finalize(completed=true, summary="Fixed the bug", tasksRemaining=["write tests"]
 			}
 
 			onFinalize?.(params.summary, params.completed);
+			if (recordCalibration && _ctx) {
+				// Default confidence = 0.7 if not explicitly predicted; agent can set higher
+				recordCalibration(_ctx, 0.7, params.completed ? "success" : "failure");
+			}
 
 			const sessionSummary = params.summary;
 			let verificationResult = { verified: true, confidence: 50, message: "No context available for verification" };

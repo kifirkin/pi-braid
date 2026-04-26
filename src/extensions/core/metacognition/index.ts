@@ -8,7 +8,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "../../../lib/extension-state.js";
-import { createThinkTool } from "./handlers/think.js";
+import { createThinkTool, recordCalibration } from "./handlers/think.js";
 import { createHypothesizeTool } from "./handlers/hypothesize.js";
 import { createFinalizeTool } from "./handlers/finalize.js";
 import { evaluateCognition } from "../../../lib/cognition-evaluator.js";
@@ -51,6 +51,7 @@ export default function metacognitionExtension(pi: ExtensionAPI) {
 		sendNextTask: (description) => {
 			pi.sendUserMessage([{ type: "text", text: `Continue with the next pending task: ${description}` }]);
 		},
+		recordCalibration,
 	}) as any);
 
 	// Track tool usage
