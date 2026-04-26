@@ -135,7 +135,8 @@ export default function plannerExtension(pi: ExtensionAPI) {
         warnings.push(`High token estimate: ~${cost.tokens}. Will require careful context management.`);
       }
 
-      const planText = `Plan for: "${p.task.substring(0, 80)}..."\n${plan.phases.map((ph, i) => `  ${i + 1}. [${ph.name}] ${ph.goal} (~${ph.estimatedCalls} calls)`).join("\n")}\n\nBudget: ${cost.calls}/${budget} calls (${Math.round((cost.calls / budget) * 100)}%)`;
+      const planText = `${plan.phases.length} phases | ~${cost.calls} calls | ${Math.round((cost.calls / budget) * 100)}% budget
+${plan.phases.map((ph: any, i: number) => `${i + 1}. ${ph.name}: ${ph.goal}`).join("\n")}${warnings.length > 0 ? `\n⚠️ ${warnings.join("\n⚠️ ")}` : ""}`;
       return {
         content: [{ type: "text" as const, text: planText }],
         details: {

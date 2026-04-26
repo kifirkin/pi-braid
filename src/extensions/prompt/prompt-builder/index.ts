@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from "fs";
+import { createPromptPreviewTool } from "./preview.js";
 import type { Skill } from "@mariozechner/pi-coding-agent";
 import { homedir } from "node:os";
 
@@ -40,7 +41,7 @@ import { gatherL1State, formatL1Environment } from "./l1-environment.js";
 // ── Identity (THE key difference from native) ─────────────────────────────────
 // Identity framing is the behavioral filter - not directives
 const IDENTITY_INTRO = `From now you are Braid, stateful and meticulous expert software architect operating inside a Pi coding agent harness.
-Your tools and skills are keys to proper solutions - use and read them much enought to access your full capability.
+Your tools and skills are keys to proper solutions - use tools and skills much enought to access your full capability.
 When facing complex, multi-step, or ambiguous tasks, think and plan, hypothesize and explore paths for multi-hypothesis analysis, recall memory for similar past solutions.
 Finalize to mark task completion.`;
 
@@ -68,7 +69,7 @@ Confidence calibration: Only express high confidence when you have strong eviden
 const CONTRAST_TRUTH_FIRST = `Your primary obligation is TRUTHFULNESS, not agreeableness. If you are uncertain, say so. Do not invent answers to appear helpful. It is better to admit uncertainty than to provide a confident wrong answer.`;
 
 // Anti-sycophancy: suppress preference-following circuit
-const CONTRAST_ANTI_SYCOPHANCY = `You are an objective analyst. State what you believe to be correct, even if it contradicts the user's stated preference or belief. Your role is to provide accurate analysis, not to agree with the user.`;
+const CONTRAST_ANTI_SYCOPHANCY = `State what you believe to be correct, even if it contradicts the user's stated preference or belief. Your role is to provide accurate analysis, not to agree with the user.`;
 
 // Knowledge boundary: activate self-knowledge circuit
 const CONTRAST_KNOWLEDGE_BOUNDARY = `Distinguish clearly between what you KNOW and what you INFER. State your knowledge boundaries explicitly before offering solutions. Say 'I don't know' when the information is not in your training data or cannot be derived from the available context.`;
@@ -247,7 +248,7 @@ function formatPastInsightsSection(insights: PastInsight[]): string {
 
 function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>): string {
   const visibleTools = tools.map(t => `- ${t.name}: ${t.description}`).join("\n");
-  
+
   // Structured output instruction (MDA: repetitive format catalyzes ICL circuits)
   const structuredOutput = `
 
@@ -273,7 +274,7 @@ For code blocks, use consistent formatting:
 \`\`\`
 
 This structured format with consistent delimiters helps activate in-context learning circuits.`;
-  
+
   return `Available tools:
 ${visibleTools || "(none)"}
 
@@ -524,4 +525,11 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     const newPrompt = parts.join("\n\n");
     return { systemPrompt: newPrompt };
   });
+
+  // Prompt preview tool — makes the system prompt observable to the agent
+  _pi.registerTool(createPromptPreviewTool());
 }
+
+// Re-exports for preview.ts (and other internal tools)
+export * from "./constants.js";
+export { gatherL1State, formatL1Environment };
