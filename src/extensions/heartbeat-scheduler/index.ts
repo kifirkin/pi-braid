@@ -326,20 +326,29 @@ const dreamerModule: CognitiveModule = {
 		}
 
 		// ── Cross-session pattern learning ────────────────────────────
-		// Compare current tool pattern with past episodes to detect recurring patterns
+		// Compare current tool SET with past episodes using Jaccard similarity
 		try {
 			const episodes = memState.episodes ?? [];
 			if (episodes.length > 3) {
-				const sessionSig = `${toolsUsed.slice(0, 10).join(",")}`;
-				const matches = episodes.filter((ep: Episode) =>
-					ep.task?.includes(toolsUsed[0] ?? "") ||
-					ep.tags?.some((t: string) => t === `turns-${context.turnCount}`)
-				);
-				if (matches.length >= 2) {
-					const recurringPattern = `Recurring pattern: ${toolsUsed.slice(0, 3).join(", ")}... — seen ${matches.length} times across sessions`;
-					// Add as heuristic rule so the pattern is actively recommended
-					addHeuristicRule(memState, sessionSig, `Consider a different approach: pattern repeats across ${matches.length} sessions`, 0.3);
-					log.info(`Cross-session pattern: ${recurringPattern}`);
+				const currentSet = new Set(toolsUsed);
+				const similarEpisodes: Episode[] = [];
+
+				for (const ep of episodes) {
+					if (!ep.tags || ep.tags.length === 0) continue;
+					// Compute Jaccard similarity between current tool set and episode tags
+					const epSet = new Set(ep.tags);
+					let intersection = 0;
+					for (const t of currentSet) { if (epSet.has(t)) intersection++; }
+					const union = currentSet.size + epSet.size - intersection;
+					const jaccard = union > 0 ? intersection / union : 0;
+					if (jaccard >= 0.5) similarEpisodes.push(ep); // ≥50% overlap
+				}
+
+				if (similarEpisodes.length >= 2) {
+					const toolNames = [...currentSet].slice(0, 5).join(", ");
+					const msg = `Consider a different approach: tool pattern {${toolNames}} repeats across ${similarEpisodes.length} sessions`;
+					addHeuristicRule(memState, toolNames, msg, 0.3);
+					log.info(`Cross-session pattern: ${msg}`);
 				}
 			}
 		} catch {

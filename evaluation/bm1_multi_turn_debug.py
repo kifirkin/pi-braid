@@ -291,7 +291,7 @@ def check_fix_quality(task_id: str, workspace_dir: str, final_text: str) -> tupl
 	Fix quality: 0-1 based on whether it addressed the root cause.
 	Over-fix: True if it changed significantly more than necessary.
 	"""
-	task = TASKS[TASKS.index(task_id)] if task_id in [t["id"] for t in TASKS] else None
+	task = next((t for t in TASKS if t["id"] == task_id), None)
 	if not task:
 		return 0.5, False
 
