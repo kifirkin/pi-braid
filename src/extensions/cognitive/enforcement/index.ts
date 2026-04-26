@@ -877,33 +877,7 @@ Persist them now - this is the minimum-fidelity moment.`,
 		}
 	});
 
-	// ── Commands ───────────────────────────────────────────────────────────────
-	pi.registerCommand("enforcement-on", {
-		description: "Enable enforcement",
-		handler: async (_args, ctx) => {
-			getState(ctx).enforcementActive = true;
-			ctx.ui.notify("Enforcement enabled", "info");
-		},
-	});
-
-	pi.registerCommand("enforcement-off", {
-		description: "Disable enforcement",
-		handler: async (_args, ctx) => {
-			getState(ctx).enforcementActive = false;
-			ctx.ui.notify("Enforcement disabled", "info");
-		},
-	});
-
-	pi.registerCommand("enforcement-stats", {
-		description: "Show enforcement stats",
-		handler: async (_args, ctx) => {
-			ctx.ui.notify(
-				`Turn ${getState(ctx).currentTurn} | Failures: ${getState(ctx).validationFailures} | Silent: ${getState(ctx).silentTurns}`,
-				"info",
-			);
-		},
-	});
-	// Helpers
+	// Helpers (exported for other extensions to import)
 	function _classifyRetryError(
 		errorMsg: string,
 	): "rate_limit" | "server_error" | "network" | "unknown" {

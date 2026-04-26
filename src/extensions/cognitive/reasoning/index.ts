@@ -118,36 +118,11 @@ export default function reasoningExtension(pi: ExtensionAPI) {
 
 	// Commands
 
-	pi.registerCommand("loop-status", {
-		description: "Show reasoning status",
-		handler: async (_args, ctx) => {
-			if (state.current) {
-				ctx.ui.notify(`Step ${state.current.step} | Turns: ${state.turnCount}`, "info");
-			} else {
-				ctx.ui.notify("No active reasoning. Start a task!", "info");
-			}
-		},
-	});
-
-	pi.registerCommand("loop-reset", {
-		description: "Reset reasoning state",
-		handler: async (_args, ctx) => {
-			state.current = null;
-			state.history = [];
-			state.turnCount = 0;
-			ctx.ui.notify("Reasoning reset.", "info");
-		},
-	});
-
-	pi.registerCommand("loop-help", {
-		description: "Show reasoning help",
-		handler: async (_args, ctx) => {
-			ctx.ui.notify("Think step by step. Run tests before claiming done.", "info");
-		},
-	});
+	// No agent-facing commands — reasoning works via event handlers
+	// (malformed tool call detection, step tracking, verify-before-done nudge)
 }
 
-// Utilities
+// Utilities (used by other extensions via direct import)
 
 export function getCurrentReasoning(): ReasoningState | null {
 	return state.current;

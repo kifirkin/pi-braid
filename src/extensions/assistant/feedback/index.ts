@@ -453,47 +453,14 @@ function _recordABTestOutcome(success: boolean): void {
 // Extension Factory
 
 export default function feedbackExtension(pi: ExtensionAPI) {
-	// Admin-only tools - demoted from registerTool to registerCommand
-	// These are configuration/debug tools the LLM should not call
-
-	pi.registerCommand("feedback-config", {
-		description: "Configure feedback system",
-		handler: async (_args, ctx) => {
-			ctx.ui.notify(`Feedback: ${JSON.stringify(state.config)}`, "info");
-		},
-	});
-
-	pi.registerCommand("feedback-abtest", {
-		description: "Manage A/B tests",
-		handler: async (_args, ctx) => {
-			const lines = state.abTests.map((t) => `${t.id}: ${t.active ? "active" : "inactive"} - ${t.name}`);
-			ctx.ui.notify(lines.join("\n"), "info");
-		},
-	});
-
-	pi.registerCommand("feedback-model-prefs", {
-		description: "View model preferences",
-		handler: async (_args, ctx) => {
-			ctx.ui.notify(JSON.stringify(state.modelPreferences), "info");
-		},
-	});
-
-	pi.registerCommand("feedback-test-nudge", {
-		description: "Test nudge generation",
-		handler: async (_args, ctx) => {
-			ctx.ui.notify("Nudge testing via command", "info");
-		},
-	});
-
-	// Tools removed (2026-04-15): feedback_status - use /feedback-stats command instead
+	// Feedback operates entirely via event handlers — no agent-facing commands.
 
 	// Event Handlers
 
 	// Initialize state on start
-	pi.on("agent_start", async () => {
-		state.nudgeHistory = loadNudgeHistory();
-		state.abTests = loadABTests();
-		state.modelPreferences = loadModelPreferences();
+	pi.on("session_start", async () => {
+		state.recentNudges = [];
+		state.nudgeCountThisTurn = 0;
 	});
 
 	// Reset turn counter at turn start
@@ -654,46 +621,4 @@ export default function feedbackExtension(pi: ExtensionAPI) {
 
 	// Commands
 
-	pi.registerCommand("feedback-stats", {
-		description: "Show feedback system statistics",
-		handler: async (_args, ctx) => {
-			ctx.ui.notify(`Nudges: ${state.nudgeHistory.length} total, ${state.nudgeCountThisTurn} this turn`, "info");
-		},
-	});
-
-	pi.registerCommand("feedback-reset", {
-		description: "Reset feedback system state",
-		handler: async (_args, ctx) => {
-			state.nudgeHistory = [];
-			state.activeNudges = [];
-			state.recentNudges = [];
-			state.nudgeCountThisTurn = 0;
-			state.lastNudgeTime = 0;
-			ctx.ui.notify("Feedback system state reset", "info");
-		},
-	});
-
-	pi.registerCommand("feedback-report", {
-		description: "Generate full feedback report",
-		handler: async (_args, ctx) => {
-			const lines: string[] = ["# Feedback System Report"];
-			lines.push(`Generated: ${new Date().toLocaleString()}`);
-			lines.push("");
-			lines.push("## Configuration");
-			lines.push(JSON.stringify(state.config, null, 2));
-			lines.push("");
-			lines.push("## Nudge Statistics");
-
-			const nudgeTypes: Record<string, number> = {};
-			for (const n of state.nudgeHistory) {
-				nudgeTypes[n.type] = (nudgeTypes[n.type] || 0) + 1;
-			}
-
-			for (const [type, count] of Object.entries(nudgeTypes).sort((a, b) => b[1] - a[1])) {
-				lines.push(`- ${type}: ${count}`);
-			}
-
-			ctx.ui.notify(lines.join("\n"), "info");
-		},
-	});
 }
