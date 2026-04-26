@@ -36,28 +36,22 @@ import {
 
 const log = createLogger("retry");
 
-let _wired = false;
-
 // ── Extension Factory ────────────────────────────────────────────────────────
 
 export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
-	if (_wired) { log.info("Already wired — skipping duplicate registration"); return; }
-	_wired = true;
-	initState();
-
 	// ── Events ───────────────────────────────────────────────────────────
 
 	// Recover persisted retry state on session start
 	pi.on("session_start", (_event: SessionStartEvent, ctx: ExtensionContext) => {
-		recoverState(ctx.sessionManager);
-		const state = getState();
+		recoverState(ctx.sessionManager, ctx);
+		const state = getState(ctx);
 		if (state.lastUserMessage) log.info(`Recovered retry state: "${truncate(state.lastUserMessage.text, 60)}"`);
 	});
 
 	// Capture user input for potential retry (skip commands and shell invocations)
-	pi.on("input", (event: InputEvent, _ctx: ExtensionContext) => {
+	pi.on("input", (event: InputEvent, ctx: ExtensionContext) => {
 		if (event.text.startsWith("/") || event.text.startsWith("!")) return;
-		captureUserInput(pi, event.text, event.images as any, undefined);
+		captureUserInput(pi, event.text, event.images as any, undefined, ctx);
 	});
 
 	// Detect errors on agent_end, record turn result, trigger auto-retry
@@ -65,20 +59,19 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
 		const messages = (event as any).messages as any[];
 		if (!messages || messages.length === 0) return;
 
-		// Fallback capture of last user message (only if `input` event was missed,
-		// e.g. after reload+retry — primary capture is from the `input` event)
+		// Fallback capture of last user message (only if `input` event was missed)
 		let lastUserMsg: any = null;
 		for (let i = messages.length - 1; i >= 0; i--) {
 			if (messages[i].role === "user") { lastUserMsg = messages[i]; break; }
 		}
-		if (lastUserMsg && !getState().lastUserMessage) {
+		if (lastUserMsg && !getState(ctx).lastUserMessage) {
 			const text = typeof lastUserMsg.content === "string"
 				? lastUserMsg.content
 				: lastUserMsg.content?.find((c: any) => c.type === "text" && c.text)?.text ?? "";
 			const imgs = Array.isArray(lastUserMsg.content)
 				? lastUserMsg.content.filter((c: any) => c.type === "image")
 				: undefined;
-			if (text) captureUserInput(pi, text, imgs, lastUserMsg.id ?? null);
+			if (text) captureUserInput(pi, text, imgs, lastUserMsg.id ?? null, ctx);
 		}
 
 		// Detect error from tool results (Priority 1) or assistant text (Priority 2)
@@ -104,7 +97,7 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
 			}
 		}
 
-		// Detect mid-chain: are there assistant/tool messages after the last user message?
+		// Detect mid-chain: assistant/tool messages after the last user message?
 		let hasPostUserAssistantMsgs = false;
 		if (lastUserMsg) {
 			const lastUserIdx = messages.lastIndexOf(lastUserMsg);
@@ -116,7 +109,7 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
 			}
 		}
 
-		recordAgentEnd(pi, lastUserMsg?.id ?? null, errorMsg !== null, errorMsg, null, hasPostUserAssistantMsgs);
+		recordAgentEnd(pi, lastUserMsg?.id ?? null, errorMsg !== null, errorMsg, null, hasPostUserAssistantMsgs, ctx);
 		if (errorMsg) {
 			const delay = scheduleAutoRetry(pi, ctx);
 			if (delay > 0) log.info(`Auto-retry scheduled in ${delay}ms: ${truncate(errorMsg, 80)}`);
@@ -124,9 +117,9 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
 	});
 
 	// Capture HTTP status codes from provider responses
-	pi.on("after_provider_response", (event: any) => {
+	pi.on("after_provider_response", (event: any, ctx: ExtensionContext) => {
 		if (event.status >= 400) {
-			const state = getState();
+			const state = getState(ctx);
 			if (state.lastError) state.lastError.httpStatus = event.status;
 		}
 	});
@@ -143,16 +136,14 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
 	});
 
 	// ── Command: /retry ─────────────────────────────────────────────────
-	// Re-sends the last user message with steer semantics (preserves tool
-	// call context instead of restarting from scratch).
 
 	pi.registerCommand("retry", {
 		description: "Retry the last turn as a steer continuation.",
 		handler: async (_args: string, ctx: ExtensionCommandContext) => {
-			const state = getState();
+			const state = getState(ctx);
 
-			if (isAutoRetryPending()) {
-				ctx.ui.notify?.(`Auto-retry in progress (attempt ${getAutoRetryAttempt()}), waiting for it to finish.`, "warning");
+			if (isAutoRetryPending(ctx)) {
+				ctx.ui.notify?.(`Auto-retry in progress (attempt ${getAutoRetryAttempt(ctx)}), waiting for it to finish.`, "warning");
 				return;
 			}
 			if (!state.lastUserMessage) {
@@ -185,9 +176,9 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
 				if (!ctx.isIdle()) { ctx.abort(); await new Promise((r) => setTimeout(r, 0)); await ctx.waitForIdle(); }
 			} catch { /* best-effort */ }
 
-			clearAutoRetry();
+			clearAutoRetry(ctx);
 			try {
-				if (!continueRetry(pi)) { ctx.ui.notify?.("Retry failed — no message to send.", "error"); return; }
+				if (!continueRetry(pi, ctx)) { ctx.ui.notify?.("Retry failed — no message to send.", "error"); return; }
 				ctx.ui.notify?.("Re-sending last message as steer continuation.", "info");
 			} catch (sendErr) {
 				log.error(`Retry send failed: ${(sendErr as Error).message}`);
@@ -201,7 +192,7 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
 	pi.registerCommand("retry-status", {
 		description: "Show current retry state.",
 		handler: async (_args: string, ctx: ExtensionCommandContext) => {
-			const state = getState();
+			const state = getState(ctx);
 			const parts: string[] = [];
 			if (state.lastUserMessage) {
 				parts.push(`Last message: "${truncate(state.lastUserMessage.text, 80)}"`);
@@ -213,7 +204,7 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
 			} else { parts.push("No last error."); }
 			if (state.lastTurn) parts.push(`Last turn: ${state.lastTurn.hadError ? "FAILED" : "OK"} — entry: ${state.lastTurn.entryId}`);
 			parts.push(`Failures: ${state.failureCount}`);
-			parts.push(`Auto-retry pending: ${isAutoRetryPending()}`);
+			parts.push(`Auto-retry pending: ${isAutoRetryPending(ctx)}`);
 			parts.push(`Version: ${state.version}`);
 			ctx.ui.notify?.(parts.join("\n"), "info");
 		},
