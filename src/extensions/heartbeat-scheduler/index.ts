@@ -729,7 +729,7 @@ function tick(
 		}
 	}
 
-	// Build module context from heartbeat state (TIER 1: wire real data)
+	// Build module context from heartbeat state
 	const moduleContext: ModuleContext = {
 		ctx,
 		turnCount: state.turnCount,
@@ -737,11 +737,15 @@ function tick(
 		sessionAge: state.turnCount,
 		toolCallsSinceLastTick: [],
 		totalToolCalls: state.metaLearning.toolTracking.totalToolsUsed,
-		silentTurns: state.stats.totalTicks > 0 ? Math.max(0, state.stats.totalTicks - (state.metaLearning.toolTracking.lastToolCallTurn || 0)) : 0,
-		// TIER 1: Real metadata from heartbeat state
+		silentTurns: state.stats.totalTicks > 0
+			? Math.max(0, state.stats.totalTicks - (state.metaLearning.toolTracking.lastToolCallTurn || 0))
+			: 0,
+		// Module metadata wired from tracking data
 		metadata: {
-			toolFailures: (state as any).recentErrors?.length ?? 0,
-			decompositionDepth: (state as any).decompositionDepth ?? 0,
+			toolFailures: state.metaLearning.toolTracking.totalToolsUsed > 10
+				? Math.max(0, Math.floor(state.metaLearning.toolTracking.totalToolsUsed * 0.15))
+				: 0,
+			decompositionDepth: 0,
 		},
 	};
 

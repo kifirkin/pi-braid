@@ -18,10 +18,7 @@ import { ModelSelectorComponent, SettingsManager } from "@mariozechner/pi-coding
 import type { Model, Api } from "@mariozechner/pi-ai";
 import { resolveVisionModel } from "../../lib/model-resolver.js";
 
-// Type assertion helpers for events that may not be in TypeScript definitions
-const asApi = (pi: ExtensionAPI) => pi as ExtensionAPI & {
-	on(event: string, handler: (event: any, ctx: any) => Promise<any>): void;
-};
+
 
 /** Custom settings keys managed by /utility-model and /vision-model commands */
 import { getCustomModelKeys, VISION_MODEL_KEY } from "../../lib/global-state.js";
@@ -145,53 +142,9 @@ export default function polyfillExtension(pi: ExtensionAPI) {
 		},
 	});
 
-	// Track agent_end to capture user messages for retry
-	const piTyped = asApi(pi);
-	piTyped.on("agent_end", async (event: any) => {
-		if (event.messages && Array.isArray(event.messages)) {
-			for (let i = event.messages.length - 1; i >= 0; i--) {
-				const msg = event.messages[i];
-				if (msg.role === "user") {
-					trackUserMessage(msg);
-					break;
-				}
-			}
-		}
-		return {};
-	});
 
-	// Retry command - abort current turn and re-send last user message
-	pi.registerCommand("retry", {
-		description: "Retry the last turn (abort and re-send)",
-		handler: async (_args, ctx) => {
-			if (!_lastUserMessage) {
-				ctx.ui.notify("/retry: No previous turn to retry.", "warning");
-				return;
-			}
 
-			log.debug("/retry: initiating abort");
-			await ctx.abort();
 
-			// Ensure abort's waitForIdle() has fully settled before sending.
-			// Without this, the agent's activeRun / isStreaming state may still be
-			// in flux, causing the next prompt to bypass context pruning.
-			await new Promise(resolve => setTimeout(resolve, 0));
-			log.debug("/retry: abort settled, sending message");
-
-			const content = _lastUserMessage.images
-				? [_lastUserMessage.text, ..._lastUserMessage.images]
-				: _lastUserMessage.text;
-
-			try {
-				await pi.sendUserMessage(content);
-				log.debug("/retry: message sent successfully");
-				ctx.ui.notify("/retry: Aborted and re-sending last message.", "info");
-			} catch (err) {
-				log.error("/retry: sendUserMessage failed", err);
-				ctx.ui.notify(`/retry failed: ${(err as Error).message}`, "error");
-			}
-		},
-	});
 }
 
 // Helpers
@@ -340,26 +293,3 @@ function patchSessionManagerMethods(pi: any, ctx: any): void {
 	}
 }
 
-// Retry tracking
-
-let _lastUserMessage: { text: string; images?: any[] } | null = null;
-
-function trackUserMessage(msg: any): void {
-	const content = msg.content;
-	if (Array.isArray(content)) {
-		const textParts: string[] = [];
-		const images: any[] = [];
-		for (const c of content) {
-			if (c.type === "text") textParts.push(c.text);
-			else if (c.type === "image") images.push(c);
-		}
-		if (textParts.length > 0) {
-			_lastUserMessage = {
-				text: textParts.join("\n"),
-				images: images.length > 0 ? images : undefined,
-			};
-		}
-	} else if (typeof content === "string") {
-		_lastUserMessage = { text: content };
-	}
-}

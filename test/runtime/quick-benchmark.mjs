@@ -150,9 +150,9 @@ test("verify_claim detects hedge words", () => {
   deepEqual(src.includes("always"), true);
 });
 
-test("Extension registered in index.ts", () => {
-  const src = readFileSync("src/index.ts", "utf-8");
-  deepEqual(src.includes("verificationExtension"), true);
+test("Extension registered in module definitions", () => {
+  const src = readFileSync("src/modules/definitions.ts", "utf-8");
+  deepEqual(src.includes("verificationFn"), true);
 });
 
 console.log("\n=== VERIFICATION: Topic Drift Detector ===");
@@ -178,9 +178,9 @@ test("anchor extraction logic exists", () => {
   deepEqual(src.includes("measureAnchorPresence"), true);
 });
 
-test("topic-drift registered in index.ts", () => {
-  const src = readFileSync("src/index.ts", "utf-8");
-  deepEqual(src.includes("topicDriftExtension"), true);
+test("topic-drift registered in module definitions", () => {
+  const src = readFileSync("src/modules/definitions.ts", "utf-8");
+  deepEqual(src.includes("topicDriftFn"), true);
 });
 
 test("topic-drift whispers on severe drift", () => {
