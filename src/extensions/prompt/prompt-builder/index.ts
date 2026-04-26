@@ -91,17 +91,29 @@ High-stakes actions deserve a 3-second pause. Drift is invisible — check your 
 `;
 
 // ── L1: Enforcement Signal Surfacing ────────────────────────────────────────
-let _enforcementSignals: Record<string, { turn: number; text: string; acted: boolean }> = {};
-let _lastSignalTurn = 0;
+// Session-scoped state (migrated from module-level singletons)
+import { getExtensionState } from "../../../lib/extension-state.js";
 
-function formatEnforcementL1(signals: Record<string, { turn: number; text: string; acted: boolean }>): string {
+interface PromptBuilderState {
+	enforcementSignals: Record<string, { turn: number; text: string; acted: boolean }>;
+	lastSignalTurn: number;
+}
+
+function getPromptState(ctx: ExtensionContext): PromptBuilderState {
+	return getExtensionState(ctx, "prompt-builder", () => ({
+		enforcementSignals: {},
+		lastSignalTurn: 0,
+	}));
+}
+
+function formatEnforcementL1(signals: Record<string, { turn: number; text: string; acted: boolean }>, lastSignalTurn: number): string {
   const keys = Object.keys(signals);
   if (keys.length === 0) return "";
 
   const signalEntries: Record<string, unknown> = {};
   for (const key of keys) {
     const s = signals[key];
-    if (_lastSignalTurn - s.turn > 5) continue;
+    if (lastSignalTurn - s.turn > 5) continue;
     if (s.acted) continue;
 
     signalEntries[key] = {
@@ -425,6 +437,7 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
   // Enforcement signals handled in before_agent_start
 
   _pi.on("before_agent_start", async (event, ctx) => {
+    const ps = getPromptState(ctx);
     const cwd = ctx.cwd;
     const _userPrompt = event.prompt;
 
@@ -477,7 +490,7 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     parts.push(formatL1Environment(l1Env));
 
     // 7. Enforcement signals
-    const enforcement = formatEnforcementL1(_enforcementSignals);
+    const enforcement = formatEnforcementL1(ps.enforcementSignals, ps.lastSignalTurn);
     if (enforcement) {
       parts.push(enforcement);
     }
