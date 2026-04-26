@@ -452,10 +452,14 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 				toolCounts.set(t, (toolCounts.get(t) ?? 0) + 1);
 			}
 			const total = window.length;
-			const avg = total / Math.max(toolCounts.size, 1);
 			const warnings: string[] = [];
 			for (const [tool, count] of toolCounts) {
-				if (count > avg * 5) warnings.push(`${tool} (${count}/${total}, ${(count / avg).toFixed(1)}x avg)`);
+				const ratio = count / total;
+				// Flag if single tool >60% of window, or >3x fair share
+				const fairShare = total / Math.max(toolCounts.size, 1);
+				if (ratio > 0.6 || (toolCounts.size > 1 && count > fairShare * 3)) {
+					warnings.push(`${tool} (${count}/${total}, ${(ratio * 100).toFixed(0)}%)`);
+				}
 			}
 			if (warnings.length > 0) {
 				pi.sendMessage({

@@ -10,6 +10,7 @@
 		]
 	},
 	"scripts": {
+		"build": "npx esbuild src/index.ts --bundle --format=cjs --platform=node --out-extension:.js=.cjs --outdir=dist",
 		"test": "node scripts/run-tests.mjs"
 	},
 	"dependencies": {

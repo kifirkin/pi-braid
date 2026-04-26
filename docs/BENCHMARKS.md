@@ -1,95 +1,75 @@
 # Benchmark Suite
 
-## Overview
+## Test Coverage
 
-pi-braid's benchmark suite validates all core features across 5 categories. Run with:
+pi-braid has **51 real unit tests** across 5 test files. Each test asserts specific behavior.
 
-```bash
-python3 evaluation/benchmark_comprehensive.py --all
-```
+| Test File | Tests | Scope |
+|-----------|-------|-------|
+| `test-mars-reflector.mjs` | 13 | MARS reflection engine |
+| `test-belief-policy.mjs` | 19 | Belief policy engine |
+| `test-features.mjs` | 22 | Addiction detection, cross-session learning, branch monitoring, daemon, documentation, bundle integrity |
+| `scripts/run-tests.mjs` | — | Orchestrator: runs all test files, reports summary |
 
-**Latest run**: v0.18.0 (commit `e12c536`)
-**Model**: openrouter/qwen/qwen3.5-flash-02-23
-**Pass rate**: **12/12 (100%)**
-
-## Benchmark Categories
-
-| Category | Tests | Status |
-|----------|-------|--------|
-| **Core** | tool_execution, self_reflection, memory_episodes | ✅ 3/3 |
-| **Metacognition** | cross_session_learning, tool_addiction_detection | ✅ 2/2 |
-| **Policy** | latent_activator_on, multi_turn_debugging | ✅ 2/2 |
-| **Infrastructure** | session_rotation, npm_test_suite, typescript_check | ✅ 3/3 |
-| **Research** | BR4 (latent), BM1 (multi-turn debug) | ✅ 2/2 |
+**Latest run**: All 51 tests pass (0 failures)
 
 ## Feature Test Details
 
-### Core Tests
+### Addiction Detection (4 tests)
+| Test | Input | Expected |
+|------|-------|----------|
+| Single-tool overuse | 15/15 grep calls | Warning (ratio >60%) |
+| Balanced usage | 10 calls, even distribution | No warning |
+| Rolling window | 100 calls: 50 old grep + 50 recent balanced | No warning (old burst excluded) |
+| Trigger intervals | Simulate calls 1–25 | Triggers at 10 and 20 |
 
-| Test | Description | Expected |
-|------|-------------|----------|
-| `core_tool_execution` | Basic read/grep/think workflow | Success, tool calls logged |
-| `self_reflection` | MARS reflector + belief policy recommendations | Reflection signals emitted |
-| `memory_episodes` | Cognitive memory episode recording | Episodes persisted |
+### Cross-Session Learning (3 tests)
+| Test | Input | Expected |
+|------|-------|----------|
+| Jaccard similarity | `{read,grep,edit}` vs episodes | 2 similar matches (≥50%) |
+| Dissimilar rejection | Read-only vs web tools | 0 matches |
+| Edge cases | Identical/disjoint/partial sets | 1.0 / 0.0 / 1/3 |
 
-### Metacognition Tests
+### Branch Depth Monitoring (2 tests)
+| Test | Input | Expected |
+|------|-------|----------|
+| Alarm threshold | 151 entries | Triggers (>150) |
+| Below threshold | 100 entries | No trigger |
 
-| Test | Description | Expected |
-|------|-------------|----------|
-| `cross_session_learning` | Dreamer detects recurring patterns | Pattern insight added |
-| `tool_addiction_detection` | Analytics auto-trigger on turn % 10 === 0 | Addiction warning whispered |
+### Daemon Orchestrator (2 tests)
+| Test | Expected |
+|------|----------|
+| Source file exports | `DaemonOrchestrator` + `spawnWorker` + `killWorker` + `healthCheck` |
+| Shell script lifecycle | Commands: `start`, `stop`, `status`, `logs`, `restart` |
 
-### Policy Tests
+### BM1 / BR4 Regression (2 tests)
+| Test | Expected |
+|------|----------|
+| BM1 task lookup | Uses `next()` generator, not `TASKS.index()` |
+| BR4 CLI | Accepts `--extensions` argument |
 
-| Test | Description | Expected |
-|------|-------------|----------|
-| `latent_activator_on` | Latent activator strategic nudges | At least 1 nudge triggered |
-| `multi_turn_debugging` | BM1: bug diagnosis → fix → verification loop | Fix quality >= 0.5 |
+### Bundle Integrity (4 tests)
+| Test | Expected |
+|------|----------|
+| Bundle exists | `dist/index.cjs` present |
+| Feature markers | `session_shutdown`, `turn_end`, `addiction` in bundle |
+| Daemon excluded | `DaemonOrchestrator` NOT in bundle (standalone) |
+| No dead imports | `getAllConflicts` removed |
 
-### Infrastructure Tests
+## Research Benchmarks (RPC-based, unreliable)
 
-| Test | Description | Expected |
-|------|-------------|----------|
-| `session_rotation` | Deep conversation triggers rotation | New session created |
-| `npm_test_suite` | All 18 runtime tests | 0 failures |
-| `typescript_check` | `tsc --noEmit --skipLibCheck` | 0 errors |
+The evaluation scripts (`br4_latent_multi_turn.py`, `bm1_multi_turn_debug.py`, `pi_rpc_benchmark.py`) send prompts through `pi --mode rpc`. **This harness is broken** — the model returns empty content (`assistant: []`), so no tools execute. These scripts produce meaningless pass rates.
 
-## Research Benchmark Scripts
+**Root cause**: pi's `openai-completions` API type doesn't capture responses correctly for this model. This is a pi framework / LLM integration issue, not fixable in pi-braid.
 
-### BR4: Latent Activator Multi-Turn Test
-Evaluates whether identity-based latent activation affects multi-turn problem-solving. Compares 3 trials across `A_braid_latent` vs `C_baseline` configurations.
-
-**Output**: `evaluation/results/br4_<timestamp>.md`
-**Latest**: v0.18.0 — 100% solve rate, no compliance regression
-
-### BM1: Multi-Turn Debugging Benchmark
-Measures multi-turn debugging capability on 3 bug classes: race conditions, memory leaks, null references. Tracks fix quality and turn count.
-
-**Output**: `evaluation/results/bm1_<timestamp>.md`
-**Latest**: v0.18.0 — 100% success, 50% fix quality avg
-
-## CI Integration
-
-Add to CI pipeline:
-
-```yaml
-- name: Run benchmarks
-  run: |
-    python3 evaluation/benchmark_comprehensive.py --all
-    # Fail if pass rate < 100%
-```
-
-## Interpreting Results
-
-- **PASS**: Feature works end-to-end
-- **FAIL**: Script error or timeout — check stderr in output file
-- **TIMEOUT**: Increase `--timeout` for slower models
+**Workaround**: All features are validated through the 51 real unit tests above.
 
 ## Version History
 
-| Version | Benchmark Status | Notes |
-|---------|-----------------|-------|
-| v0.15.0–v0.15.1 | BR4/BM1 syntax fixes | Scripts compile |
-| v0.16.0 | Lib docs complete | Infrastructure |
-| v0.17.0 | Features added | Addiction, tree, dreamer, daemon |
-| **v0.18.0** | **12/12 passed** | **Comprehensive suite established** |
+| Version | Test Count | Pass Rate | Notes |
+|---------|-----------|-----------|-------|
+| v0.15.0–v0.15.1 | 32 (BR1) | 100% | MARS + belief policy |
+| v0.16.0 | 32 | 100% | Lib docs |
+| v0.17.0 | 32 | 100% | Features added |
+| v0.18.0 | 51 | 100% | Benchmark suite with 22 real feature tests |
+| **v0.19.0–v0.19.1** | **51** | **100%** | Fixed BM1 crash, analytics bug, cross-session matching |
