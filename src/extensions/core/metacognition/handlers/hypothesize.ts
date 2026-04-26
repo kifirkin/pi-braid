@@ -84,8 +84,8 @@ export function createHypothesizeTool() {
 						? response
 						: "";
 
-				// Score hypotheses with heuristic signals
-				const { scored, annotated } = scoreHypothesisOutput(text || "No analysis produced.", evidence);
+				// Score hypotheses with heuristic signals + evidence pool
+				const { scored, annotated } = scoreHypothesisOutput(text || "No analysis produced.", evidence, ctx ?? undefined);
 
 				return {
 					content: [{ type: "text" as const, text: annotated }],
