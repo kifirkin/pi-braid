@@ -51,6 +51,8 @@ export interface Evidence {
 	confidence: number;        // Caller-provided confidence (0-1)
 	confidenceType: EvidenceConfidenceType;
 	reliability: number;        // Computed: SOURCE_RELIABILITY[source] × confidence
+	/** Project path where this evidence was created. Used for provenance tagging (HaluMem, 2511.03506). */
+	project: string;
 	timestamp: number;
 	turn?: number;
 }
@@ -171,6 +173,7 @@ export function addEvidence(
 		confidence,
 		confidenceType,
 		reliability: SOURCE_RELIABILITY[source] * confidence,
+		project: ctx.cwd ?? "unknown",
 		timestamp: Date.now(),
 	};
 	state.evidence.push(evidence);
@@ -210,6 +213,32 @@ export function getUnresolvedConflicts(ctx: ExtensionContext): Conflict[] {
  */
 export function getAllConflicts(ctx: ExtensionContext): Conflict[] {
 	return [...getState(ctx).conflicts];
+}
+
+/**
+ * Format evidence with provenance tags for safe injection into context.
+ *
+ * HaluMem (2511.03506): Memory hallucinations propagate between projects when
+ * evidence is injected without source/TTL tags. This formatter adds markers so the
+ * agent can distinguish memory from fresh context.
+ */
+export function formatEvidenceWithProvenance(
+	evidence: Evidence[],
+	includeProject = true,
+): string {
+	if (!evidence.length) return "(no relevant evidence)";
+	return evidence.map((e) => {
+		const ageMs = Date.now() - e.timestamp;
+		const ageLabel = ageMs < 60000
+			? `${Math.round(ageMs / 1000)}s ago`
+			: ageMs < 3600000
+				? `${Math.round(ageMs / 60000)}m ago`
+				: `${Math.round(ageMs / 3600000)}h ago`;
+		const provenance = includeProject && e.project && e.project !== "unknown"
+			? `[EVIDENCE ${e.source} project=${e.project} ${ageLabel}] `
+			: `[EVIDENCE ${e.source} ${ageLabel}] `;
+		return `${provenance}${e.claim}`;
+	}).join("\n");
 }
 
 /**

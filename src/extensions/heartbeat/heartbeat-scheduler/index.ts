@@ -359,19 +359,47 @@ const dreamerModule: CognitiveModule = {
 
 const contextHygieneModule: CognitiveModule = {
 	name: "context-hygiene",
-	description: "Proactive context management before overflow",
-	priority: 0.8,
+	description: "Proactive context management (SimpleMem 2601.02553, GenericAgent 2604.17091)",
+	priority: 0.9,
 
 	shouldActivate(context: ModuleContext): boolean {
-		// Activate if: context is getting large and hasn't been checked
-		const lastCheck = context.lastActivation.get("context-hygiene") ?? 0;
-		const turnsSinceCheck = context.turnCount - lastCheck;
-		// Check every ~20 turns
-		return turnsSinceCheck >= 20;
+		// Activate every 10 turns initially, every 5 turns after turn 30
+		const turns = context.turnCount;
+		const threshold = turns < 30 ? 10 : 5;
+		const last = context.lastActivation.get("context-hygiene") ?? 0;
+		return turns - last >= threshold;
 	},
 
 	async activate(context: ModuleContext): Promise<void> {
-		log.debug("Context hygiene module activated — suggesting context_audit");
+		const ctx = context.ctx;
+		const { evaluateContextDensity } = await import("../../../lib/context-density.js");
+		const density = evaluateContextDensity(ctx);
+
+		if (density.density < 0.4) {
+			// Low density: context is noisy
+			ctx.whisper?.(
+				"Low context density (" + Math.round(density.density * 100) + "% signal). " +
+				"Noisy: " + density.noisyMessages + ", Signal: " + density.signalMessages + ". " +
+				"Consider: context_compress() or context_prune().",
+				{ category: "cognitive", priority: density.density < 0.25 ? "high" : "medium" }
+			);
+		} else if (density.tokenRatio > 0.6) {
+			// High density but large context: suggest semantic compression
+			ctx.whisper?.(
+				"High density (" + Math.round(density.density * 100) + "%) but large context (" +
+				Math.round(density.tokenRatio * 100) + "% of limit). " +
+				"Semantic compression could preserve meaning at 30% token cost (SimpleMem).",
+				{ category: "cognitive", priority: "low" }
+			);
+		}
+
+		if (density.duplicates > 2) {
+			ctx.whisper?.(
+				density.duplicates + " near-duplicate messages in context. " +
+				"Consider: context_prune() to remove redundant context.",
+				{ category: "cognitive", priority: "medium" }
+			);
+		}
 	},
 };
 
