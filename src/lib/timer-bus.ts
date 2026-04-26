@@ -6,7 +6,7 @@
  * without direct imports (separate extension loading contexts).
  */
 
-import type { ScheduledTimer } from "../extensions/timer/index.js";
+import type { ScheduledTimer } from "../extensions/tools/timer/index.js";
 
 export interface TimerReminder {
 	timer: ScheduledTimer;

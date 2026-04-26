@@ -230,12 +230,12 @@ test("codebase-tree: readFile uses async fs.readFile", async () => {
 
 const MODULE_PATHS = [
   "src/lib/cognitive-memory.ts",
-  "src/extensions/scratchpad/index.ts",
-  "src/extensions/enforcement/index.ts",
-  "src/extensions/error-capture/index.ts",
-  "src/extensions/docs/index.ts",
-  "src/extensions/vision/index.ts",
-  "src/extensions/codebase-tree/index.ts",
+  "src/extensions/core/scratchpad/index.ts",
+  "src/extensions/cognitive/enforcement/index.ts",
+  "src/extensions/retry/error-capture/index.ts",
+  "src/extensions/tools/docs/index.ts",
+  "src/extensions/browser/vision/index.ts",
+  "src/extensions/tools/codebase-tree/index.ts",
 ];
 
 for (const modPath of MODULE_PATHS) {

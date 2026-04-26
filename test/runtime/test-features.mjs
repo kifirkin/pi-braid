@@ -5,9 +5,9 @@
  * Run: node test/runtime/test-features.mjs
  */
 import { strict as assert } from "node:assert";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -16,7 +16,21 @@ const ROOT = join(__dirname, "../..");
 
 // Load CommonJS bundle
 const require = createRequire(import.meta.url);
-const BUNDLE_PATH = join(ROOT, "dist/index.cjs");
+const BUNDLE_PATH = join(ROOT, "dist/index.js");
+
+// tsc tree output: aggregate all JS in dist/ for content checks
+function readDistTree() {
+	const parts = [];
+	function walk(dir) {
+		for (const e of readdirSync(dir, { withFileTypes: true })) {
+			const full = join(dir, e.name);
+			if (e.isDirectory()) walk(full);
+			else if (e.name.endsWith(".js")) parts.push(readFileSync(full, "utf-8"));
+		}
+	}
+	try { walk(join(ROOT, "dist")); } catch { /* dist may not exist */ }
+	return parts.join("\n");
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -307,22 +321,22 @@ async function main() {
 	// ══════════════════════════════════════════════════════════════════════════
 	console.log("\n── Bundle Integrity ──");
 
-	test("bundle exists as dist/index.cjs", () => {
-		assert.ok(existsSync(BUNDLE_PATH), "dist/index.cjs should exist");
+	test("bundle exists as dist/index.js", () => {
+		assert.ok(existsSync(BUNDLE_PATH), "dist/index.js should exist");
 	});
 
-	test("bundle includes key feature markers", () => {
+	test("dist tree includes key feature markers", () => {
 		assert.ok(existsSync(BUNDLE_PATH));
-		const bundle = readFileSync(BUNDLE_PATH, "utf-8");
+		const tree = readDistTree();
 		for (const marker of ["session_shutdown", "turn_end", "addiction"]) {
-			assert.ok(bundle.includes(marker), `Bundle should contain '${marker}'`);
+			assert.ok(tree.includes(marker), `Dist tree should contain '${marker}'`);
 		}
 	});
 
-	test("daemon is NOT in main bundle (standalone)", () => {
+	test("daemon is NOT in dist tree (standalone)", () => {
 		assert.ok(existsSync(BUNDLE_PATH));
-		const bundle = readFileSync(BUNDLE_PATH, "utf-8");
-		assert.ok(!bundle.includes("DaemonOrchestrator"),
+		const tree = readDistTree();
+		assert.ok(!tree.includes("DaemonOrchestrator"),
 			"Daemon should be standalone, not in main bundle");
 	});
 

@@ -66,7 +66,8 @@ let _global: DegradationState = {
 
 function getStateFrom(ctx?: ExtensionContext): DegradationState {
 	if (ctx) return getExtensionState(ctx, "degradation-detector", () => ({ ..._global }));
-	console.warn("[degradation-detector] No ExtensionContext available, using global state");
+	// FIXME: use logger instead
+	// console.warn("[degradation-detector] No ExtensionContext available, using global state");
 	return _global;
 }
 

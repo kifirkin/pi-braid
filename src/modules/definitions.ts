@@ -11,50 +11,50 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 // ── Extension imports ────────────────────────────────────────────────────────
 
-import corePolyfillFn from "../extensions/polyfill/index.js";
-import coreMetacognitionFn from "../extensions/metacognition/index.js";
-import corePlannerFn from "../extensions/planner/index.js";
-import coreScratchpadFn from "../extensions/scratchpad/index.js";
-import corePreprocessorFn from "../extensions/user-message-preprocessor/index.js";
+import corePolyfillFn from "../extensions/core/polyfill/index.js";
+import coreMetacognitionFn from "../extensions/core/metacognition/index.js";
+import corePlannerFn from "../extensions/core/planner/index.js";
+import coreScratchpadFn from "../extensions/core/scratchpad/index.js";
+import corePreprocessorFn from "../extensions/core/user-message-preprocessor/index.js";
 
-import cognitiveSystemsFn from "../extensions/cognitive-systems/index.js";
-import reasoningFn from "../extensions/reasoning/index.js";
-import enforcementFn from "../extensions/enforcement/index.js";
-import verificationFn from "../extensions/verification/index.js";
-import topicDriftFn from "../extensions/topic-drift/index.js";
+import cognitiveSystemsFn from "../extensions/cognitive/cognitive-systems/index.js";
+import reasoningFn from "../extensions/cognitive/reasoning/index.js";
+import enforcementFn from "../extensions/cognitive/enforcement/index.js";
+import verificationFn from "../extensions/cognitive/verification/index.js";
+import topicDriftFn from "../extensions/cognitive/topic-drift/index.js";
 
-import memoryStoresFn from "../extensions/three-memory-stores/index.js";
-import sessionRecallFn from "../extensions/session-recall/index.js";
-import contextManagerFn from "../extensions/context-manager/index.js";
-import contextLifecycleFn from "../extensions/context-lifecycle/index.js";
+import memoryStoresFn from "../extensions/memory/three-memory-stores/index.js";
+import sessionRecallFn from "../extensions/memory/session-recall/index.js";
+import contextManagerFn from "../extensions/memory/context-manager/index.js";
+import contextLifecycleFn from "../extensions/memory/context-lifecycle/index.js";
 
-import heartbeatSchedulerFn from "../extensions/heartbeat-scheduler/index.js";
-import analyticsFn from "../extensions/analytics/index.js";
+import heartbeatSchedulerFn from "../extensions/heartbeat/heartbeat-scheduler/index.js";
+import analyticsFn from "../extensions/heartbeat/analytics/index.js";
 
-import retryFn from "../extensions/retry/index.js";
-import errorCaptureFn from "../extensions/error-capture/index.js";
+import retryFn from "../extensions/retry/retry/index.js";
+import errorCaptureFn from "../extensions/retry/error-capture/index.js";
 
-import promptBuilderFn from "../extensions/prompt-builder/index.js";
-import promptGuardianFn from "../extensions/prompt-guardian/index.js";
+import promptBuilderFn from "../extensions/prompt/prompt-builder/index.js";
+import promptGuardianFn from "../extensions/prompt/prompt-guardian/index.js";
 
-import codebaseTreeFn from "../extensions/codebase-tree/index.js";
-import replFn from "../extensions/repl/index.js";
-import docsFn from "../extensions/docs/index.js";
-import healthcheckFn from "../extensions/healthcheck/index.js";
-import timerFn from "../extensions/timer/index.js";
-import latentActivatorFn from "../extensions/latent-activator/index.js";
+import codebaseTreeFn from "../extensions/tools/codebase-tree/index.js";
+import replFn from "../extensions/tools/repl/index.js";
+import docsFn from "../extensions/tools/docs/index.js";
+import healthcheckFn from "../extensions/tools/healthcheck/index.js";
+import timerFn from "../extensions/tools/timer/index.js";
+import latentActivatorFn from "../extensions/tools/latent-activator/index.js";
 
-import browserFn from "../extensions/browser/index.js";
-import webFetchFn from "../extensions/web-fetch/index.js";
-import visionFn from "../extensions/vision/index.js";
+import browserFn from "../extensions/browser/browser/index.js";
+import webFetchFn from "../extensions/browser/web-fetch/index.js";
+import visionFn from "../extensions/browser/vision/index.js";
 
-import assistantFn from "../extensions/assistant/index.js";
-import feedbackFn from "../extensions/feedback/index.js";
+import assistantFn from "../extensions/assistant/assistant/index.js";
+import feedbackFn from "../extensions/assistant/feedback/index.js";
 
-import evolveFn from "../extensions/evolve/index.js";
-import watchdogFn from "../extensions/watchdog/index.js";
-import rateLimiterFn from "../extensions/rate-limiter/index.js";
-import agentEnvFn from "../extensions/agent-environment/index.js";
+import evolveFn from "../extensions/evolve/evolve/index.js";
+import watchdogFn from "../extensions/watchdog/watchdog/index.js";
+import rateLimiterFn from "../extensions/rate-limiter/rate-limiter/index.js";
+import agentEnvFn from "../extensions/agent-environment/agent-environment/index.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 

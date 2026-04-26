@@ -81,17 +81,17 @@ Session file not found: <path>
 
 ## Compilation / Build Errors
 
-### esbuild: Could not resolve "fs"
+### Build Error: Could not resolve "fs"
 
 ```
 error: Could not resolve "fs"
 ```
 
-**Cause**: Building without `--platform=node`. Browser platform doesn't have Node builtins.
+**Cause**: Build tool configured for browser instead of Node.
 
-**Resolution**: Add `--platform=node`:
+**Resolution**: Use `tsc` (Node by default):
 ```bash
-npx esbuild src/index.ts --bundle --format=esm --platform=node --outdir=dist
+npm run build
 ```
 
 ### TypeScript: Property 'xxx' does not exist on type

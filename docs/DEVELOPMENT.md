@@ -182,16 +182,11 @@ python3 scripts/smoke-test-decomposition.py
 ### Build first (for runtime tests)
 Runtime tests import from `dist/`. Build before running:
 ```bash
-for f in src/lib/*.ts src/extensions/*/index.ts; do
-  dir=$(dirname "$f" | sed 's/src/dist/')
-  mkdir -p "$dir"
-  npx esbuild "$f" --bundle --format=esm --outdir="$dir"
-done
+npm run build
 ```
-
-Or use the full esbuild:
+Or run tests directly (builds automatically):
 ```bash
-npx esbuild src/index.ts --bundle --format=esm --platform=node --external:@mariozechner/pi-coding-agent --external:@sinclair/typebox --external:@mariozechner/pi-ai --outdir=dist
+npm test
 ```
 
 ## Releasing

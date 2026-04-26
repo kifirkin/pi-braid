@@ -9,14 +9,20 @@ src/
     definitions.ts      # Module definitions + extension groupings
     loader.ts           # Config-driven module loader
     api.ts              # Subagent API for runtime toggling
-  extensions/           # 35 sub-extensions organized into modules
-    enforcement/        # Signal enforcement (cognitive module)
-    heartbeat-scheduler/  # Proactive cognitive scheduling — paper 2604.14178
-    three-memory-stores/   # Episodes + heuristics + tool reliability — paper 2604.14475
-    metacognition/      # Think/hypothesize/finalize tools (core module)
-    context-manager/    # Context compaction, pruning, overflow (memory module)
-    retry/              # Error recovery with backoff (retry module)
-    ... (29 more)
+  extensions/           # Extensions grouped by module (mirrors definitions.ts)
+    core/               # Foundation (always on): polyfill, metacognition, planner, scratchpad, preprocessor
+    cognitive/          # RepE enforcement, reasoning, evidence, verification, topic-drift
+    memory/             # Three stores, session recall, context compaction + lifecycle
+    heartbeat/          # Proactive cognitive scheduling — paper 2604.14178
+    retry/              # Error recovery with backoff
+    prompt/             # System prompt builder + injection defence
+    tools/              # Utility: codebase-tree, repl, docs, healthcheck, timer, latent-activator
+    browser/            # CDP automation, web fetch, vision
+    assistant/          # Identity state, feedback whisper
+    watchdog/           # Error monitoring (opt-in)
+    evolve/             # Self-maintenance (opt-in)
+    rate-limiter/       # Usage throttling (opt-in)
+    agent-environment/  # Runtime context (opt-in)
   lib/                  # Shared libraries
     extension-state.ts      # Session-scoped state factory
     evidence-pool.ts        # Evidence tracking + conflict detection
@@ -80,10 +86,11 @@ This enables A/B testing of feature sets without editing config.
 
 ## Build & Test
 
-- **Type check**: `npx tsc --noEmit --skipLibCheck`
-- **Build**: `npx esbuild src/index.ts --bundle --format=esm --outdir=dist`
+- **Type check**: `npm run typecheck`
+- **Build**: `npm run build` (tsc tree output to `dist/`)
 - **Run locally**: `pi -e /Users/kifir/projects/agents/pi-braid/src/index.ts`
-- **Runtime tests**: `node test/runtime/test-*.mjs`
+- **Run tests**: `npm test`
+- **Clean**: `npm run clean`
 
 ## State Management
 

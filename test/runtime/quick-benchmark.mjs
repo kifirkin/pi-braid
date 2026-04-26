@@ -69,84 +69,84 @@ function test(name, fn) {
 console.log("\n=== VERIFICATION: Heartbeat Scheduler ===");
 
 test("activatePolicyEngine called in session_start", () => {
-  const src = readFileSync("src/extensions/heartbeat-scheduler/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/heartbeat/heartbeat-scheduler/index.ts", "utf-8");
   deepEqual(src.includes("activatePolicyEngine(engine, state, ctx)"), true);
 });
 
 test("Tool tracking uses state.metaLearning.toolTracking", () => {
-  const src = readFileSync("src/extensions/heartbeat-scheduler/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/heartbeat/heartbeat-scheduler/index.ts", "utf-8");
   deepEqual(src.includes("state.metaLearning.toolTracking.totalToolsUsed++"), true);
 });
 
 test("recallerModule surfaces via ctx.whisper", () => {
-  const src = readFileSync("src/extensions/heartbeat-scheduler/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/heartbeat/heartbeat-scheduler/index.ts", "utf-8");
   deepEqual(src.includes("context.ctx.whisper?.(`Proactive memory:"), true);
 });
 
 test("dreamerModule surfaces via ctx.whisper", () => {
-  const src = readFileSync("src/extensions/heartbeat-scheduler/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/heartbeat/heartbeat-scheduler/index.ts", "utf-8");
   deepEqual(src.includes("context.ctx.whisper?.(`Self-reflection:"), true);
 });
 
 test("evolverModule surfaces via ctx.whisper", () => {
-  const src = readFileSync("src/extensions/heartbeat-scheduler/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/heartbeat/heartbeat-scheduler/index.ts", "utf-8");
   deepEqual(src.includes("ctx.whisper?.(`Meta-learning:"), true);
 });
 
 test("measurementModule whispers on degradation", () => {
-  const src = readFileSync("src/extensions/heartbeat-scheduler/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/heartbeat/heartbeat-scheduler/index.ts", "utf-8");
   deepEqual(src.includes("ctx.whisper?.(`Degradation detected:"), true);
 });
 
 test("Trigger bug fixed: turnsSince uses lastVerificationTurn", () => {
-  const src = readFileSync("src/extensions/heartbeat-scheduler/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/heartbeat/heartbeat-scheduler/index.ts", "utf-8");
   deepEqual(src.includes("ctx.turnNumber - t.lastVerificationTurn"), true);
 });
 
 test("Trigger bug fixed: webTurns uses lastWebFetchTurn", () => {
-  const src = readFileSync("src/extensions/heartbeat-scheduler/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/heartbeat/heartbeat-scheduler/index.ts", "utf-8");
   deepEqual(src.includes("ctx.turnNumber - t.lastWebFetchTurn"), true);
 });
 
 test("Trigger bug fixed: tool-use-pattern uses lastToolCallTurn", () => {
-  const src = readFileSync("src/extensions/heartbeat-scheduler/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/heartbeat/heartbeat-scheduler/index.ts", "utf-8");
   deepEqual(src.includes("ctx.turnNumber - t.lastToolCallTurn"), true);
 });
 
 test("sendWhisper replaces globalThis hack", () => {
-  const src = readFileSync("src/extensions/heartbeat-scheduler/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/heartbeat/heartbeat-scheduler/index.ts", "utf-8");
   deepEqual(src.includes("(globalThis as Record"), false);
 });
 
 test("sendEnforcementWhisper import removed", () => {
-  const src = readFileSync("src/extensions/heartbeat-scheduler/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/heartbeat/heartbeat-scheduler/index.ts", "utf-8");
   deepEqual(src.includes("sendEnforcementWhisper"), false);
 });
 
 test("ctx.whisper wired in session_start", () => {
-  const src = readFileSync("src/extensions/heartbeat-scheduler/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/heartbeat/heartbeat-scheduler/index.ts", "utf-8");
   deepEqual(src.includes("ctx.whisper?.(msg, { category: \"cognitive\""), true);
 });
 
 console.log("\n=== VERIFICATION: Verification Tool ===");
 
 test("verify_claim tool registered", () => {
-  const src = readFileSync("src/extensions/verification/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/cognitive/verification/index.ts", "utf-8");
   deepEqual(src.includes('name: "verify_claim"'), true);
 });
 
 test("verify_decomposition tool registered", () => {
-  const src = readFileSync("src/extensions/verification/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/cognitive/verification/index.ts", "utf-8");
   deepEqual(src.includes('name: "verify_decomposition"'), true);
 });
 
 test("verify_claim detects contradictions", () => {
-  const src = readFileSync("src/extensions/verification/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/cognitive/verification/index.ts", "utf-8");
   deepEqual(src.includes("doesn't work"), true);
 });
 
 test("verify_claim detects hedge words", () => {
-  const src = readFileSync("src/extensions/verification/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/cognitive/verification/index.ts", "utf-8");
   deepEqual(src.includes("always"), true);
 });
 
@@ -158,22 +158,22 @@ test("Extension registered in module definitions", () => {
 console.log("\n=== VERIFICATION: Topic Drift Detector ===");
 
 test("check_topic_drift tool registered", () => {
-  const src = readFileSync("src/extensions/topic-drift/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/cognitive/topic-drift/index.ts", "utf-8");
   deepEqual(src.includes('name: "check_topic_drift"'), true);
 });
 
 test("reset_topic_anchors tool registered", () => {
-  const src = readFileSync("src/extensions/topic-drift/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/cognitive/topic-drift/index.ts", "utf-8");
   deepEqual(src.includes('name: "reset_topic_anchors"'), true);
 });
 
 test("topic-drift uses getExtensionState", () => {
-  const src = readFileSync("src/extensions/topic-drift/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/cognitive/topic-drift/index.ts", "utf-8");
   deepEqual(src.includes("getExtensionState"), true);
 });
 
 test("anchor extraction logic exists", () => {
-  const src = readFileSync("src/extensions/topic-drift/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/cognitive/topic-drift/index.ts", "utf-8");
   deepEqual(src.includes("extractAnchors"), true);
   deepEqual(src.includes("measureAnchorPresence"), true);
 });
@@ -184,7 +184,7 @@ test("topic-drift registered in module definitions", () => {
 });
 
 test("topic-drift whispers on severe drift", () => {
-  const src = readFileSync("src/extensions/topic-drift/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/cognitive/topic-drift/index.ts", "utf-8");
   deepEqual(src.includes("ctx.whisper"), true);
   deepEqual(src.includes("similarity < 0.3"), true);
 });
@@ -192,17 +192,17 @@ test("topic-drift whispers on severe drift", () => {
 console.log("\n=== VERIFICATION: Analytics Readable ===");
 
 test("get-session-metrics tool registered", () => {
-  const src = readFileSync("src/extensions/analytics/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/heartbeat/analytics/index.ts", "utf-8");
   deepEqual(src.includes('name: "get-session-metrics"'), true);
 });
 
 test("get-tool-reliability tool registered", () => {
-  const src = readFileSync("src/extensions/analytics/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/heartbeat/analytics/index.ts", "utf-8");
   deepEqual(src.includes('name: "get-tool-reliability"'), true);
 });
 
 test("analytics Type import added", () => {
-  const src = readFileSync("src/extensions/analytics/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/heartbeat/analytics/index.ts", "utf-8");
   deepEqual(src.includes('import { Type } from "typebox"'), true);
 });
 
@@ -252,18 +252,18 @@ test("no drift on-topic output", () => {
 console.log("\n=== FUNCTIONAL: Verification Logic ===");
 
 test("contradiction: works vs fails detected", () => {
-  const src = readFileSync("src/extensions/verification/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/cognitive/verification/index.ts", "utf-8");
   deepEqual(src.includes('"works", "fails"'), true);
 });
 
 test("unsupported claim detected", () => {
-  const src = readFileSync("src/extensions/verification/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/cognitive/verification/index.ts", "utf-8");
   deepEqual(src.includes("checkSupport"), true);
   deepEqual(src.includes("semanticOverlap"), true);
 });
 
 test("decomposition coverage logic exists", () => {
-  const src = readFileSync("src/extensions/verification/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/cognitive/verification/index.ts", "utf-8");
   deepEqual(src.includes("checkDecompositionCoverage"), true);
 });
 
@@ -271,9 +271,9 @@ console.log("\n=== STATIC: No Common Bugs ===");
 
 test("No TODO comments in new extensions", () => {
   const files = [
-    "src/extensions/verification/index.ts",
-    "src/extensions/topic-drift/index.ts",
-    "src/extensions/heartbeat-scheduler/index.ts",
+    "src/extensions/cognitive/verification/index.ts",
+    "src/extensions/cognitive/topic-drift/index.ts",
+    "src/extensions/heartbeat/heartbeat-scheduler/index.ts",
   ];
   for (const file of files) {
     const src = readFileSync(file, "utf-8");
@@ -284,8 +284,8 @@ test("No TODO comments in new extensions", () => {
 
 test("No console.log in production code", () => {
   const files = [
-    "src/extensions/verification/index.ts",
-    "src/extensions/topic-drift/index.ts",
+    "src/extensions/cognitive/verification/index.ts",
+    "src/extensions/cognitive/topic-drift/index.ts",
   ];
   for (const file of files) {
     const src = readFileSync(file, "utf-8");
@@ -297,8 +297,8 @@ test("No console.log in production code", () => {
 
 test("All new extensions have JSDoc", () => {
   const files = [
-    "src/extensions/verification/index.ts",
-    "src/extensions/topic-drift/index.ts",
+    "src/extensions/cognitive/verification/index.ts",
+    "src/extensions/cognitive/topic-drift/index.ts",
   ];
   for (const file of files) {
     const src = readFileSync(file, "utf-8");

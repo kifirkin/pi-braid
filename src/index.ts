@@ -27,7 +27,7 @@ import modulesApiExtension from "./modules/api.js";
 
 // ── Shared constants (imported by extensions) ────────────────────────────────
 
-// esbuild CJS output provides __dirname — use it as-is.
+// pi loads via -e src/index.ts; __dirname resolves to src/ at runtime.
 /** Directory where agent skill files are stored. */
 export const SKILLS_DIR = join(
 	typeof __dirname !== "undefined" ? __dirname : ".",
