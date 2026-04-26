@@ -12,19 +12,9 @@ const root = resolve(__dirname, "..");
 const testDir = resolve(root, "test/runtime");
 
 const SKIP = new Set([
-	// Pre-existing failures (module resolution or test rot):
-	"test-finalize-bcr.mjs", // 0/14 pass — test rot
 	"test-all.mjs",           // aggregator, duplicates individual
-	"test-d5-xot.mjs",        // module resolution
-	"test-cognition-evaluator.mjs", // module resolution
-	"test-integration.mjs",   // module resolution
 	"test-async.mjs",         // file does not exist
-	"test-conflict-qa.mjs",   // 10/12 pass — pre-existing
-	"test-metacognition-handlers.mjs", // module resolution
 ]);
-
-// FIXME: finalize-bcr.mjs has files in test/ but all 14 tests fail.
-// Re-enable when the test file or module resolution is fixed.
 
 const tests = readdirSync(testDir)
 	.filter((f) => f.endsWith(".mjs") && !SKIP.has(f))

@@ -146,6 +146,7 @@ const _qaRegistry = new Map<string, ConflictQA>();
  * Returns ConflictQA[] for the conflict-qa tool.
  */
 export function processConflicts(ctx: unknown): ConflictQA[] {
+	_qaRegistry.clear();
 	const conflicts = getUnresolvedConflicts(ctx as ExtensionContext);
 	const qaResults: ConflictQA[] = [];
 
@@ -185,8 +186,17 @@ export function processConflicts(ctx: unknown): ConflictQA[] {
  * Generate a faithful conflict acknowledgment whisper.
  * XoT Stage 2: Surfaces disagreement rather than silently selecting one side.
  */
-export function formatConflictWhisper(conflict: ConflictQA): string {
-	return conflict.question;
+export function formatConflictWhisper(
+	conflicts: ConflictQA | ConflictQA[],
+): string {
+	if (!conflicts) return "";
+	if (Array.isArray(conflicts)) {
+		if (conflicts.length === 0) return "";
+		return conflicts
+			.map((c) => `[conflict-qa] ${c.question}`)
+			.join("\n");
+	}
+	return `[conflict-qa] ${conflicts.question}`;
 }
 
 /**
@@ -235,10 +245,10 @@ export function getConflictQAStats(_ctx: unknown): {
 	};
 }
 
-export function getRelevantQA(_ctx: unknown, topic: string): ConflictQA | undefined {
+export function getRelevantQA(_ctx: unknown, topic: string): ConflictQA | null {
 	const qas = [..._qaRegistry.values()].slice(-5);
 	const topicTokens = new Set(topic.toLowerCase().split(/\W+/).filter((t) => t.length > 2));
-	let best: ConflictQA | undefined;
+	let best: ConflictQA | null = null;
 	let bestScore = 0;
 
 	for (const qa of qas) {
@@ -253,7 +263,7 @@ export function getRelevantQA(_ctx: unknown, topic: string): ConflictQA | undefi
 		}
 	}
 
-	return bestScore > 0 ? best : undefined;
+	return bestScore > 0 ? best : null;
 }
 
 // ── Legacy aliases for existing callers ──────────────────────────────────────────
@@ -264,13 +274,13 @@ export function getPendingQAs(_ctx: unknown): ConflictQA[] {
 }
 
 /** Alias for all QA records */
-export function getAllQAs(_ctx: unknown): ConflictQA[] {
+export function getAllQAs(ctx: unknown): ConflictQA[] {
 	return [..._qaRegistry.values()];
 }
 
-/** Alias for answerQA */
+/** Alias for answerQA (deprecated: use answerQA with ctx) */
 export function resolveQAText(qaId: string, answer: string): void {
-	answerQA(qaId, answer);
+	answerQA(qaId, answer)
 }
 
 /**
@@ -301,4 +311,6 @@ export function resolveQA(
 	verdict: string,
 ): void {
 	epResolve(_ctx as ExtensionContext, conflictId, verdict as "resolved_for" | "resolved_against" | "uncertain", "agent");
+	// Mark QA as answered using existing answerQA helper
+	answerQA(conflictId, verdict);
 }
