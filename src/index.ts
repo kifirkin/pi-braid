@@ -27,13 +27,12 @@ import modulesApiExtension from "./modules/api.js";
 
 // ── Shared constants (imported by extensions) ────────────────────────────────
 
-// pi loads via -e src/index.ts; __dirname resolves to src/ at runtime.
-/** Directory where agent skill files are stored. */
-export const SKILLS_DIR = join(
-	typeof __dirname !== "undefined" ? __dirname : ".",
-	"..",
-	"skills",
-);
+// ESM-safe: use import.meta.url to resolve skills dir reliably.
+// __dirname is undefined in ESM — using it as fallback caused skills to resolve
+// to a non-existent directory outside the project.
+import { fileURLToPath } from "node:url";
+const _skillsUrl = new URL(".", import.meta.url);
+export const SKILLS_DIR = join(fileURLToPath(_skillsUrl), "..", "skills");
 
 const log = createLogger("braid");
 

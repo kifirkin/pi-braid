@@ -1,10 +1,9 @@
 /**
- * Heartbeat Scheduler Extension
+ * Heartbeat Scheduler — proactive cognitive scheduling based on paper 2604.14178.
  *
- * Proactive cognitive scheduling based on turn patterns.
- * Paper: 2604.14178 Heartbeat Scheduling
- *
- * Key insight: Reactive control (post-hoc correction) causes impulsivity.
+ * Triggers interventions before problems arise: silence, context overflow, error accumulation.
+ * Unlike reactive correction (which causes impulsivity), heartbeat scheduling
+ * fires gentle reminders at natural turn boundaries to keep the agent on track.
  * Proactive heartbeat-driven scheduling activates cognitive modules based on
  * temporal patterns and historical context.
  *

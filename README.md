@@ -1,6 +1,9 @@
 # pi-braid
 
-A self-improving coding agent harness for [pi](https://github.com/mariozechner/pi-coding-agent). Built on extension architecture with cognitive memory, enforcement signals, and structured nudges.
+A self-improving coding agent harness for [pi](https://github.com/mariozechner/pi-coding-agent). Built on extension architecture with cognitive memory, enforcement signals, structured nudges, and a session-scoped state model.
+
+For developers: see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+For architecture overview: see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Quick Start
 
