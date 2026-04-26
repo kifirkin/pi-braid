@@ -350,23 +350,35 @@ export function formatSessionSummary(pad: TaskScratchpad): {
 
 // ── Module State ─────────────────────────────────────────────────────────────
 
-let _taskScratchpad: TaskScratchpad | null = null;
-let _currentProjectSlug: string = "";
-let _taskStore: TaskStore = { tasks: [], updatedAt: Date.now() };
+import { getExtensionState } from "../../../lib/extension-state.js";
 
-async function getOrCreateScratchpad(projectSlug: string): Promise<TaskScratchpad> {
-	if (_taskScratchpad && _currentProjectSlug === projectSlug) {
-		return _taskScratchpad;
+interface ScratchpadCache {
+	taskScratchpad: TaskScratchpad | null;
+	currentProjectSlug: string;
+	taskStore: TaskStore;
+}
+
+function getCache(ctx?: ExtensionContext): ScratchpadCache {
+	if (ctx) return getExtensionState(ctx, "scratchpad", () => ({ taskScratchpad: null, currentProjectSlug: "", taskStore: { tasks: [], updatedAt: Date.now() } }));
+	return _defaultCache;
+}
+
+const _defaultCache: ScratchpadCache = { taskScratchpad: null, currentProjectSlug: "", taskStore: { tasks: [], updatedAt: Date.now() } };
+
+async function getOrCreateScratchpad(projectSlug: string, ctx?: ExtensionContext): Promise<TaskScratchpad> {
+	const cache = getCache(ctx);
+	if (cache.taskScratchpad && cache.currentProjectSlug === projectSlug) {
+		return cache.taskScratchpad;
 	}
 
 	const loaded = await loadScratchpadFromDisk(projectSlug);
 	if (loaded) {
-		_taskScratchpad = loaded;
+		cache.taskScratchpad = loaded;
 	} else {
-		_taskScratchpad = createScratchpad("", projectSlug);
+		cache.taskScratchpad = createScratchpad("", projectSlug);
 	}
-	_currentProjectSlug = projectSlug;
-	return _taskScratchpad;
+	cache.currentProjectSlug = projectSlug;
+	return cache.taskScratchpad;
 }
 
 async function mutateAndSave(scratchpad: TaskScratchpad): Promise<void> {
@@ -459,7 +471,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 		parameters: scratchpadSchema,
 		execute: async (_toolCallId: string, params: unknown, _signal, _onUpdate, ctx: ExtensionContext): Promise<AgentToolResult<unknown>> => {
 			const { action, text } = params as ScratchpadToolInput;
-			const pad = await getOrCreateScratchpad(resolveProjectSlug(ctx.cwd));
+			const pad = await getOrCreateScratchpad(resolveProjectSlug(ctx.cwd), ctx);
 
 			switch (action) {
 				// ── Core ──────────────────────────────────────────────────────────
@@ -681,7 +693,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 
 				case "task_add": {
 					const slug = resolveProjectSlug();
-					_taskStore = await loadTaskStore(slug);
+					getCache(ctx).taskStore = await loadTaskStore(slug);
 					const task: TaskItem = {
 						id: generateTaskId(),
 						description: text ?? "",
@@ -692,42 +704,42 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 						attempts: 0,
 						maxAttempts: 3,
 					};
-					_taskStore.tasks.push(task);
-					await saveTaskStore(slug, _taskStore);
-					return { content: [{ type: "text" as const, text: `Task added: ${task.id} - ${task.description}` }], details: { id: task.id, total: _taskStore.tasks.length } };
+					getCache(ctx).taskStore.tasks.push(task);
+					await saveTaskStore(slug, getCache(ctx).taskStore);
+					return { content: [{ type: "text" as const, text: `Task added: ${task.id} - ${task.description}` }], details: { id: task.id, total: getCache(ctx).taskStore.tasks.length } };
 				}
 
 				case "task_list": {
 					const slug = resolveProjectSlug();
-					_taskStore = await loadTaskStore(slug);
-					if (_taskStore.tasks.length === 0) return { content: [{ type: "text" as const, text: "No tasks." }], details: { count: 0 } };
-					const lines = _taskStore.tasks.map((t) => {
+					getCache(ctx).taskStore = await loadTaskStore(slug);
+					if (getCache(ctx).taskStore.tasks.length === 0) return { content: [{ type: "text" as const, text: "No tasks." }], details: { count: 0 } };
+					const lines = getCache(ctx).taskStore.tasks.map((t) => {
 						const deps = t.dependencies.length > 0 ? ` [deps: ${t.dependencies.join(", ")}]` : "";
 						return `[${t.status}] ${t.id}: ${t.description}${deps}`;
 					});
-					return { content: [{ type: "text" as const, text: lines.join("\n") }], details: { count: _taskStore.tasks.length, tasks: _taskStore.tasks } };
+					return { content: [{ type: "text" as const, text: lines.join("\n") }], details: { count: getCache(ctx).taskStore.tasks.length, tasks: getCache(ctx).taskStore.tasks } };
 				}
 
 				case "task_complete": {
 					const slug = resolveProjectSlug();
-					_taskStore = await loadTaskStore(slug);
+					getCache(ctx).taskStore = await loadTaskStore(slug);
 					const tid = (params as ScratchpadToolInput).task_id;
 					if (!tid) return { content: [{ type: "text" as const, text: "task_id required" }], details: { error: "missing_task_id" } };
-					const task = _taskStore.tasks.find((t) => t.id === tid);
+					const task = getCache(ctx).taskStore.tasks.find((t) => t.id === tid);
 					if (!task) return { content: [{ type: "text" as const, text: `Task ${tid} not found` }], details: { error: "not_found" } };
 					task.status = "completed";
 					task.completedAt = Date.now();
 					task.result = text;
-					await saveTaskStore(slug, _taskStore);
+					await saveTaskStore(slug, getCache(ctx).taskStore);
 					return { content: [{ type: "text" as const, text: `Task ${tid} completed` }], details: { id: tid } };
 				}
 
 				case "task_fail": {
 					const slug = resolveProjectSlug();
-					_taskStore = await loadTaskStore(slug);
+					getCache(ctx).taskStore = await loadTaskStore(slug);
 					const tid = (params as ScratchpadToolInput).task_id;
 					if (!tid) return { content: [{ type: "text" as const, text: "task_id required" }], details: { error: "missing_task_id" } };
-					const task = _taskStore.tasks.find((t) => t.id === tid);
+					const task = getCache(ctx).taskStore.tasks.find((t) => t.id === tid);
 					if (!task) return { content: [{ type: "text" as const, text: `Task ${tid} not found` }], details: { error: "not_found" } };
 					task.attempts++;
 					if (task.attempts >= task.maxAttempts) {
@@ -741,10 +753,10 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 
 				case "task_next": {
 					const slug = resolveProjectSlug();
-					_taskStore = await loadTaskStore(slug);
-					const pending = _taskStore.tasks
+					getCache(ctx).taskStore = await loadTaskStore(slug);
+					const pending = getCache(ctx).taskStore.tasks
 						.filter((t) => t.status === "pending")
-						.filter((t) => t.dependencies.every((d) => _taskStore.tasks.find((dep) => dep.id === d)?.status === "completed"))
+						.filter((t) => t.dependencies.every((d) => getCache(ctx).taskStore.tasks.find((dep) => dep.id === d)?.status === "completed"))
 						.sort((a, b) => b.priority - a.priority);
 					if (pending.length === 0) return { content: [{ type: "text" as const, text: "No ready tasks." }], details: null };
 					const next = pending[0];
@@ -753,25 +765,25 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 
 				case "task_remove": {
 					const slug = resolveProjectSlug();
-					_taskStore = await loadTaskStore(slug);
+					getCache(ctx).taskStore = await loadTaskStore(slug);
 					const tid = (params as ScratchpadToolInput).task_id;
 					if (!tid) return { content: [{ type: "text" as const, text: "task_id required" }], details: { error: "missing_task_id" } };
-					const idx = _taskStore.tasks.findIndex((t) => t.id === tid);
+					const idx = getCache(ctx).taskStore.tasks.findIndex((t) => t.id === tid);
 					if (idx === -1) return { content: [{ type: "text" as const, text: `Task ${tid} not found` }], details: { error: "not_found" } };
-					_taskStore.tasks.splice(idx, 1);
-					await saveTaskStore(slug, _taskStore);
-					return { content: [{ type: "text" as const, text: `Removed ${tid}` }], details: { id: tid, remaining: _taskStore.tasks.length } };
+					getCache(ctx).taskStore.tasks.splice(idx, 1);
+					await saveTaskStore(slug, getCache(ctx).taskStore);
+					return { content: [{ type: "text" as const, text: `Removed ${tid}` }], details: { id: tid, remaining: getCache(ctx).taskStore.tasks.length } };
 				}
 
 				case "task_stats": {
 					const slug = resolveProjectSlug();
-					_taskStore = await loadTaskStore(slug);
+					getCache(ctx).taskStore = await loadTaskStore(slug);
 					const stats = {
-						total: _taskStore.tasks.length,
-						pending: _taskStore.tasks.filter((t) => t.status === "pending").length,
-						running: _taskStore.tasks.filter((t) => t.status === "running").length,
-						completed: _taskStore.tasks.filter((t) => t.status === "completed").length,
-						failed: _taskStore.tasks.filter((t) => t.status === "failed").length,
+						total: getCache(ctx).taskStore.tasks.length,
+						pending: getCache(ctx).taskStore.tasks.filter((t) => t.status === "pending").length,
+						running: getCache(ctx).taskStore.tasks.filter((t) => t.status === "running").length,
+						completed: getCache(ctx).taskStore.tasks.filter((t) => t.status === "completed").length,
+						failed: getCache(ctx).taskStore.tasks.filter((t) => t.status === "failed").length,
 					};
 					const hasWork = stats.pending > 0 || stats.running > 0;
 					return {
@@ -782,11 +794,11 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 
 				case "task_clear": {
 					const slug = resolveProjectSlug();
-					_taskStore = await loadTaskStore(slug);
-					const before = _taskStore.tasks.length;
-					_taskStore.tasks = _taskStore.tasks.filter((t) => t.status === "pending" || t.status === "running");
-					await saveTaskStore(slug, _taskStore);
-					return { content: [{ type: "text" as const, text: `Cleared ${before - _taskStore.tasks.length} completed/failed tasks` }], details: { removed: before - _taskStore.tasks.length, remaining: _taskStore.tasks.length } };
+					getCache(ctx).taskStore = await loadTaskStore(slug);
+					const before = getCache(ctx).taskStore.tasks.length;
+					getCache(ctx).taskStore.tasks = getCache(ctx).taskStore.tasks.filter((t) => t.status === "pending" || t.status === "running");
+					await saveTaskStore(slug, getCache(ctx).taskStore);
+					return { content: [{ type: "text" as const, text: `Cleared ${before - getCache(ctx).taskStore.tasks.length} completed/failed tasks` }], details: { removed: before - getCache(ctx).taskStore.tasks.length, remaining: getCache(ctx).taskStore.tasks.length } };
 				}
 
 				default:
@@ -807,9 +819,10 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 		description: "Clear the current project scratchpad",
 		handler: async (_args, ctx) => {
 			const slug = resolveProjectSlug(ctx.cwd);
-			_taskScratchpad = createScratchpad("", slug);
-			_currentProjectSlug = slug;
-			await saveScratchpadToDisk(_taskScratchpad);
+			const cache = getCache(ctx);
+			cache.taskScratchpad = createScratchpad("", slug);
+			cache.currentProjectSlug = slug;
+			await saveScratchpadToDisk(cache.taskScratchpad);
 			ctx.ui.notify("Scratchpad cleared", "info");
 		},
 	});
