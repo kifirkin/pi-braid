@@ -1,6 +1,21 @@
 import { createLogger } from "../../../lib/logger.js";
 
 const log = createLogger("analytics");
+
+import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+
+
+/**
+ * Update context density metric for heartbeat reporting.
+ * Called on each context event with current density value.
+ */
+export function updateContextDensity(ctx: ExtensionContext, density: number) {
+	state.contextDensity = Math.round(density * 1000) / 10;
+	state.lastDensityTurn = (ctx as any).turnCount ?? 0;
+	log.debug(`analytics: context_density=${state.contextDensity.toFixed(1)}%`);
+}
+
+
 /**
  * Analytics Extension - Self-contained tool usage analytics
  *
@@ -95,6 +110,8 @@ interface AnalyticsState {
 	toolCallSequence: string[];
 	storagePath: string;
 	abVariant: string; // R9: A/B experiment variant tracking
+	contextDensity: number;
+	lastDensityTurn: number;
 }
 
 const state: AnalyticsState = {
@@ -105,6 +122,8 @@ const state: AnalyticsState = {
 	// R9: Export to ~/.pi/logs/braid-metrics.jsonl
 	storagePath: join(homedir(), ".pi/logs/braid-metrics.jsonl"),
 	abVariant: "control",
+	contextDensity: 0,
+	lastDensityTurn: 0,
 };
 
 // Core Analytics Functions
@@ -390,6 +409,8 @@ export function getAnalyticsState() {
 		toolMetrics: state.toolMetrics,
 		toolCallSequence: state.toolCallSequence,
 		abVariant: state.abVariant,
+		contextDensity: state.contextDensity,
+		lastDensityTurn: state.lastDensityTurn,
 	};
 }
 

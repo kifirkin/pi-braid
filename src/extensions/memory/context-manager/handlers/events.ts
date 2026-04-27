@@ -6,7 +6,7 @@ import { addEvidence } from "../../../../lib/evidence-pool.js";
 import { applyPruningWorkflow } from "../pruning.js";
 import { findReasoningBlocks, recordSummarization, shouldSummarizeReasoning, estimateTokensSaved } from "../../../../lib/reasoning-summary.js";
 import { determineCompressionLevel } from "../../../../lib/compression-strategy.js";
-
+import { semanticCompress } from "../semantic-compress.js";
 import {
 	log, getCmState,
 	compactionRetryState, overflowRetryState,
@@ -132,13 +132,7 @@ export function registerAutoRetryEndHandler(pi: any): void {
 	});
 }
 
-// ── Context Event Handler (pruning + hidden trigger cleanup) ────────────────
-// NOTE: Merged cleanup of hidden retry triggers into this handler.
-// Both pruning and cleanup run on the same "context" event, but only the last
-// return { messages } takes effect. Previously cleanup was in compaction.ts but
-// its return was always ignored because pruning returned first. Merging ensures
-// BOTH filters apply to the same message array.
-
+// ── Context Event Handler (pruning + semantic compression + trigger cleanup) ──
 export function registerContextPruningHandler(pi: any): void {
 	pi.on("context", async (event: any, ctx: any) => {
 		try {
@@ -149,60 +143,74 @@ export function registerContextPruningHandler(pi: any): void {
 				return;
 			}
 			const beforeCount = messages.length;
-		// Step 1: Semantic pruning with adaptive compression level (2604.15877)
-		let filtered = messages;
-		const { pruningState } = getCmState(ctx);
-		if (pruningState) {
-			log.debug(`context: ${beforeCount} messages before pruning`);
 
-			// Determine compression level (Experience Compression Spectrum)
-			const decision = determineCompressionLevel(ctx as ExtensionContext, {
-				turnCount: ctx.turnCount ?? beforeCount / 2,
-				turnsSinceCompression: pruningState.turnsSinceCompression ?? Infinity,
-				consecutiveFailures: pruningState.consecutiveFailures ?? 0,
-				reasoningChainDepth: (pruningState as any).reasoningChainDepth ?? 0,
-				messageCount: beforeCount,
-			});
-			if (decision.estimatedSavings > 0) {
-				log.info(`context: compression ${decision.level} (${decision.trigger}) — ${decision.reason}`);
-			}
+			// Step 1: Semantic pruning with adaptive compression level (2604.15877)
+			let filtered = messages;
+			const { pruningState } = getCmState(ctx);
+			if (pruningState) {
+				log.debug(`context: ${beforeCount} messages before pruning`);
 
-			filtered = applyPruningWorkflow(pruningState, messages);
-			const pruned = beforeCount - filtered.length;
-			if (pruned > 0) {
-				log.info(`context: pruned ${pruned}/${beforeCount} messages → ${filtered.length} remain`);
-				addEvidence(ctx, "context_pruned", "session", `Pruned ${pruned} messages from context`, 0.7);
+				// Determine compression level (Experience Compression Spectrum)
+				const decision = determineCompressionLevel(ctx as ExtensionContext, {
+					turnCount: ctx.turnCount ?? beforeCount / 2,
+					turnsSinceCompression: pruningState.turnsSinceCompression ?? Infinity,
+					consecutiveFailures: pruningState.consecutiveFailures ?? 0,
+					reasoningChainDepth: (pruningState as any).reasoningChainDepth ?? 0,
+					messageCount: beforeCount,
+				});
+				if (decision.estimatedSavings > 0) {
+					log.info(`context: compression ${decision.level} (${decision.trigger}) — ${decision.reason}`);
+				}
+
+				filtered = applyPruningWorkflow(pruningState, messages);
+				const pruned = beforeCount - filtered.length;
+				if (pruned > 0) {
+					log.info(`context: pruned ${pruned}/${beforeCount} messages → ${filtered.length} remain`);
+					addEvidence(ctx, "context_pruned", "session", `Pruned ${pruned} messages from context`, 0.7);
+				} else {
+					log.debug(`context: no pruning needed (${filtered.length} messages)`);
+				}
 			} else {
-				log.debug(`context: no pruning needed (${filtered.length} messages)`);
+				log.debug("context: no pruning state initialized, skipping semantic pruning");
 			}
-		} else {
-			log.debug("context: no pruning state initialized, skipping semantic pruning");
-		}
 
-		// Step 2: Medium-term reasoning chain detection (2604.15877)
-		if (shouldSummarizeReasoning(ctx as ExtensionContext)) {
-			try {
-				const blocks = findReasoningBlocks(
-					filtered.map((m: any, i: number) => ({ ...m, turn: m.turn ?? i })),
-					3, // min 3 consecutive reasoning messages
-				);
-				if (blocks.length > 0) {
-					log.info(`context: ${blocks.length} reasoning block(s) — medium-term compression opportunity`);
-					for (const block of blocks) {
-						recordSummarization(ctx as ExtensionContext, block, estimateTokensSaved(block));
+			// Step 2: Medium-term reasoning chain detection (2604.15877)
+			if (shouldSummarizeReasoning(ctx as ExtensionContext)) {
+				try {
+					const blocks = findReasoningBlocks(
+						filtered.map((m: any, i: number) => ({ ...m, turn: m.turn ?? i })),
+						3, // min 3 consecutive reasoning messages
+					);
+					if (blocks.length > 0) {
+						log.info(`context: ${blocks.length} reasoning block(s) found — medium-term compression opportunity`);
+						for (const block of blocks) {
+							recordSummarization(ctx as ExtensionContext, block, estimateTokensSaved(block));
+						}
+						if (pruningState) (pruningState as any).reasoningChainDepth = Math.max(...blocks.map((b: any) => b.messages.length));
 					}
-					if (pruningState) (pruningState as any).reasoningChainDepth = Math.max(...blocks.map((b: any) => b.messages.length));
+				} catch (err) {
+					log.error("context: reasoning block detection error:", err);
+				}
+			}
+
+			// Step 2.5: Semantic compression prototype (2604.15877)
+			let summarized = filtered;
+			try {
+				const { compressed, stats } = semanticCompress(filtered);
+				if (stats.messagesOut < stats.messagesIn) {
+					summarized = compressed;
+					log.debug(
+						`context: semantic compress ${stats.messagesIn}→${stats.messagesOut} ` +
+						`(${stats.unitsCollapsed} collapsed, ${stats.unitsDropped} dropped)`,
+					);
 				}
 			} catch (err) {
-				log.error("context: reasoning block detection error:", err);
+				log.error("context: semantic compression error:", err);
 			}
-		}
 
-		// Step 3: Remove hidden retry trigger messages from compacted context.
-			// Step 2: Remove hidden retry trigger messages from compacted context.
-			// These accumulate across retry attempts and bloat context if not cleaned.
+			// Step 3: Remove hidden retry trigger messages from compacted context.
 			let cleanedCount = 0;
-			const cleaned = filtered.map((msg: any) => {
+			const cleaned = summarized.map((msg: any) => {
 				if (msg.role === "custom" && (
 					msg.customType === COMPACTION_RETRY_CUSTOM_TYPE ||
 					msg.customType === "__overflow_retry_trigger"
@@ -212,6 +220,7 @@ export function registerContextPruningHandler(pi: any): void {
 				}
 				return msg;
 			}).filter(Boolean);
+
 			if (cleanedCount > 0) {
 				log.info(`context: removed ${cleanedCount} hidden retry triggers → ${cleaned.length} messages`);
 			}
