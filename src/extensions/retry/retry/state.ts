@@ -25,6 +25,9 @@ import {
 } from "./types.js";
 
 import { getExtensionState } from "../../../lib/extension-state.js";
+import { createLogger } from "../../../lib/logger.js";
+
+const log = createLogger("retry");
 
 // ── Session-Scoped State Shape ───────────────────────────────────────────────
 
@@ -273,25 +276,30 @@ export function scheduleAutoRetry(pi: ExtensionAPI, ctx: ExtensionContext): numb
 	s.autoRetryStrategy = strategy;
 	const delay = strategy.getDelay(s.autoRetryAttempt);
 	ctx.ui.notify?.(`Auto-retry in ${(delay / 1000).toFixed(1)}s (attempt ${s.autoRetryAttempt}/${strategy.maxAttempts})`, "info");
-	s.autoRetryTimer = setTimeout(() => {
+	s.autoRetryTimer = setTimeout(async () => {
 		s.autoRetryTimer = null;
-		continueRetry(pi, ctx);
+		try {
+			await continueRetry(pi, ctx);
+		} catch (e) {
+			log.error("Auto-retry send failed:", e);
+			ctx.ui.notify?.("Auto-retry failed: " + String(e), "error");
+		}
 	}, delay);
 	return delay;
 }
 
-export function executeRetry(pi: ExtensionAPI, ctx?: ExtensionContext): boolean {
+export async function executeRetry(pi: ExtensionAPI, ctx?: ExtensionContext): Promise<boolean> {
 	const s = getS(ctx);
 	if (!s.state.lastUserMessage) return false;
-	const content: (import("@mariozechner/pi-ai").TextContent | import("@mariozechner/pi-ai").ImageContent)[] = [
+	const content: (ImageContent | import("@mariozechner/pi-ai").TextContent)[] = [
 		{ type: "text", text: s.state.lastUserMessage.text },
 	];
 	if (s.state.lastUserMessage.images?.length) content.push(...s.state.lastUserMessage.images);
-	pi.sendUserMessage(content);
+	await pi.sendUserMessage(content);
 	return true;
 }
 
-export function continueRetry(pi: ExtensionAPI, ctx?: ExtensionContext): boolean {
+export async function continueRetry(pi: ExtensionAPI, ctx?: ExtensionContext): Promise<boolean> {
 	const s = getS(ctx);
 	if (!s.state.lastUserMessage) return false;
 
@@ -305,13 +313,13 @@ export function continueRetry(pi: ExtensionAPI, ctx?: ExtensionContext): boolean
 			{ type: "text", text },
 		];
 
-		pi.sendUserMessage(content, { deliverAs: "steer" });
+		await pi.sendUserMessage(content, { deliverAs: "steer" });
 	} else {
 		const content: (import("@mariozechner/pi-ai").TextContent | import("@mariozechner/pi-ai").ImageContent)[] = [
 			{ type: "text", text: s.state.lastUserMessage.text },
 		];
 		if (s.state.lastUserMessage.images?.length) content.push(...s.state.lastUserMessage.images);
-		pi.sendUserMessage(content, { deliverAs: "steer" });
+		await pi.sendUserMessage(content, { deliverAs: "steer" });
 	}
 
 	return true;

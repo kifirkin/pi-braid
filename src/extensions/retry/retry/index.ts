@@ -178,7 +178,7 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
 
 			clearAutoRetry(ctx);
 			try {
-				if (!continueRetry(pi, ctx)) { ctx.ui.notify?.("Retry failed — no message to send.", "error"); return; }
+				if (!(await continueRetry(pi, ctx))) { ctx.ui.notify?.("Retry failed — no message to send.", "error"); return; }
 				ctx.ui.notify?.("Re-sending last message as steer continuation.", "info");
 			} catch (sendErr) {
 				log.error(`Retry send failed: ${(sendErr as Error).message}`);
