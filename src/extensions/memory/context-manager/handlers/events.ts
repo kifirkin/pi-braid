@@ -4,6 +4,9 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { addEvidence } from "../../../../lib/evidence-pool.js";
 import { applyPruningWorkflow } from "../pruning.js";
+import { findReasoningBlocks, recordSummarization, shouldSummarizeReasoning, estimateTokensSaved } from "../../../../lib/reasoning-summary.js";
+import { determineCompressionLevel } from "../../../../lib/compression-strategy.js";
+
 import {
 	log, getCmState,
 	compactionRetryState, overflowRetryState,
@@ -146,24 +149,56 @@ export function registerContextPruningHandler(pi: any): void {
 				return;
 			}
 			const beforeCount = messages.length;
+		// Step 1: Semantic pruning with adaptive compression level (2604.15877)
+		let filtered = messages;
+		const { pruningState } = getCmState(ctx);
+		if (pruningState) {
+			log.debug(`context: ${beforeCount} messages before pruning`);
 
-			// Step 1: Semantic pruning (high-value / low-semantic-value filtering)
-			let filtered = messages;
-			const { pruningState } = getCmState(ctx);
-			if (pruningState) {
-				log.debug(`context: ${beforeCount} messages before pruning`);
-				filtered = applyPruningWorkflow(pruningState, messages);
-				const pruned = beforeCount - filtered.length;
-				if (pruned > 0) {
-					log.info(`context: pruned ${pruned}/${beforeCount} messages → ${filtered.length} remain`);
-					addEvidence(ctx, "context_pruned", "session", `Pruned ${pruned} messages from context`, 0.7);
-				} else {
-					log.debug(`context: no pruning needed (${filtered.length} messages)`);
-				}
-			} else {
-				log.debug("context: no pruning state initialized, skipping semantic pruning");
+			// Determine compression level (Experience Compression Spectrum)
+			const decision = determineCompressionLevel(ctx as ExtensionContext, {
+				turnCount: ctx.turnCount ?? beforeCount / 2,
+				turnsSinceCompression: pruningState.turnsSinceCompression ?? Infinity,
+				consecutiveFailures: pruningState.consecutiveFailures ?? 0,
+				reasoningChainDepth: (pruningState as any).reasoningChainDepth ?? 0,
+				messageCount: beforeCount,
+			});
+			if (decision.estimatedSavings > 0) {
+				log.info(`context: compression ${decision.level} (${decision.trigger}) — ${decision.reason}`);
 			}
 
+			filtered = applyPruningWorkflow(pruningState, messages);
+			const pruned = beforeCount - filtered.length;
+			if (pruned > 0) {
+				log.info(`context: pruned ${pruned}/${beforeCount} messages → ${filtered.length} remain`);
+				addEvidence(ctx, "context_pruned", "session", `Pruned ${pruned} messages from context`, 0.7);
+			} else {
+				log.debug(`context: no pruning needed (${filtered.length} messages)`);
+			}
+		} else {
+			log.debug("context: no pruning state initialized, skipping semantic pruning");
+		}
+
+		// Step 2: Medium-term reasoning chain detection (2604.15877)
+		if (shouldSummarizeReasoning(ctx as ExtensionContext)) {
+			try {
+				const blocks = findReasoningBlocks(
+					filtered.map((m: any, i: number) => ({ ...m, turn: m.turn ?? i })),
+					3, // min 3 consecutive reasoning messages
+				);
+				if (blocks.length > 0) {
+					log.info(`context: ${blocks.length} reasoning block(s) — medium-term compression opportunity`);
+					for (const block of blocks) {
+						recordSummarization(ctx as ExtensionContext, block, estimateTokensSaved(block));
+					}
+					if (pruningState) (pruningState as any).reasoningChainDepth = Math.max(...blocks.map((b: any) => b.messages.length));
+				}
+			} catch (err) {
+				log.error("context: reasoning block detection error:", err);
+			}
+		}
+
+		// Step 3: Remove hidden retry trigger messages from compacted context.
 			// Step 2: Remove hidden retry trigger messages from compacted context.
 			// These accumulate across retry attempts and bloat context if not cleaned.
 			let cleanedCount = 0;

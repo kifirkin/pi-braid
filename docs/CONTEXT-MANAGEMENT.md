@@ -181,41 +181,27 @@ Episodes tagged with project path. Retrieved memories display provenance:
    Similarity: 78%
 ```
 
+## Implemented ✅
+
+| Item | Status | Implementation |
+|------|--------|----------------|
+| Context density monitoring | ✅ v0.28.0 | `src/lib/context-density.ts`: signal/noise eval, density %, strategy recommendation |
+| Density-aware heartbeat | ✅ v0.28.0 | `contextHygieneModule`: density-aware warnings, turns-to-limit projection, duplicate detection |
+| Evidence provenance | ✅ v0.28.0 | `Evidence.project` field + `formatEvidenceWithProvenance()` (HaluMem) |
+| Density-aware S-MMU policies | ✅ v0.28.1 | `generateDensitySignals()` + `evaluatePolicies()` — emit density signals into lifecycle |
+| Cross-session memory isolation | ✅ v0.28.1 | `Episode.project` + `Evidence.project` — cross-project filtering in queryEvidence + retrieveEpisodes |
+| Memory provenance display | ✅ v0.28.1 | `[MEMORY project=X ttl=Ym ago]` prefix in search results |
+
 ## Remaining Work
 
-### High Priority
+### P1 (High Priority)
 
-1. **Density-aware compression proposals** — S-MMU proposals should use `recommendCompressionStrategy()` to choose between:
-   - `aggressive`: Remove noise, keep signal (density < 0.4)
-   - `semantic`: Summarize without losing meaning (density 0.4-0.7, large)
-   - `conservative`: Only compress if critical (density > 0.7)
-
-2. **Adaptive compression levels** — Implement the Experience Compression Spectrum:
-   - Short-term: Prune repeated tool results after 3+ failures
-   - Medium-term: Summarize reasoning chains into conclusions
-   - Long-term: Convert to episodic summaries in three-memory-stores
-
-3. **Cross-session memory isolation** — Filter evidence/memories by `project` field to prevent cross-contamination (HaluMem)
-
-### Medium Priority
-
-4. **Semantic compression prototype** — Implement `semanticCompress()` in `context-manager/`:
-   - Identify semantic units (code, reasoning, tool results)
-   - Remove redundancy within each unit
-   - Preserve: problem statements, key decisions, critical failures
-   - Drop: repeated patterns, verbose outputs, boilerplate
-
-5. **Information density metrics dashboard** — Expose `context_density` as a heartbeat metric:
-   ```typescript
-   // heartbeat analytics
-   densityHistory: Array<{ turn: number; density: number; noise: number }>
-   ```
-
-### Lower Priority
-
-6. **Semantic embeddings for retrieval** — Beyond BM25/keyword search, use embeddings for better memory retrieval
-
-7. **Memory confidence decay** — Evidence reliability should decay over time; old memories should contribute less to reasoning
+- [x] Density-aware compression proposals — `evaluatePolicies()` + heartbeat integration
+- [x] Cross-session memory isolation — project field filtering (HaluMem)
+- [ ] **Adaptive compression levels** — Experience Compression Spectrum (2604.15877):
+  - Short-term: Prune repeated tool results after 3+ failures
+  - Medium-term: Summarize reasoning chains into conclusions
+  - Long-term: Convert to episodic summaries in three-memory-stores
 
 ## Architecture Decision
 

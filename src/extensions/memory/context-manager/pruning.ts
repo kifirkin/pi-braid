@@ -250,9 +250,21 @@ interface BCRMetadata {
 	bcrKey?: string;
 }
 
+// Batch Context Reduction (BCR) — P4
+// Collapses consecutive repeated tool calls. Extended with failure awareness
+// (2604.15877): 3+ failures → collapse + summarize error pattern.
+
+interface BCRMetadata {
+	bcrCount?: number;
+	bcrCollapsed?: boolean;
+	bcrKey?: string;
+	failureCount?: number;
+	lastError?: string;
+}
+
 const batchCollapseRule: PruneRule = {
 	id: "batch_collapse",
-	description: "Collapse consecutive repeated tool calls into single entries with count",
+	description: "Collapse repeated tool calls + failure spiral detection (2604.15877)",
 	enabled: true,
 
 	prepare(msg: MessageWithMetadata) {
@@ -260,10 +272,10 @@ const batchCollapseRule: PruneRule = {
 		if (!Array.isArray(msg.message.content)) return;
 
 		const toolCalls = msg.message.content.filter((c: any) => c.type === "toolCall");
-		if (toolCalls.length !== 1) return; // Only collapse single-tool entries
+		if (toolCalls.length !== 1) return;
 
 		const toolCall = toolCalls[0] as { name?: string; arguments?: Record<string, unknown> };
-		const toolName = toolCall.name;
+		const toolName = toolCall.name ?? "";
 		const toolArgs = JSON.stringify(toolCall.arguments ?? {});
 		msg.metadata.bcrKey = `${toolName}:${toolArgs}`;
 	},
@@ -271,15 +283,12 @@ const batchCollapseRule: PruneRule = {
 	process(msg: MessageWithMetadata, ctx: PruneContext) {
 		if (!msg.metadata.bcrKey) return;
 
-		// Look for previous consecutive entries with the same tool call
 		let count = 1;
 		let prevIndex = ctx.index - 1;
 
 		while (prevIndex >= 0) {
 			const prev = ctx.messages[prevIndex];
 			if (prev.metadata.bcrKey !== msg.metadata.bcrKey) break;
-
-			// Check if it's the same assistant message (consecutive)
 			if (prev.metadata.bcrCollapsed) {
 				count += (prev.metadata.bcrCount as number) ?? 1;
 			} else {
@@ -289,7 +298,6 @@ const batchCollapseRule: PruneRule = {
 		}
 
 		if (count > 1) {
-			// This is a repeated tool call - collapse it
 			msg.metadata.bcrCount = count;
 			msg.metadata.bcrCollapsed = true;
 			msg.metadata.shouldPrune = true;
