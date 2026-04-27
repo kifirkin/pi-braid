@@ -4,46 +4,25 @@ const log = createLogger("analytics");
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-
-/**
- * Update context density metric for heartbeat reporting.
- * Called on each context event with current density value.
- */
-export function updateContextDensity(ctx: ExtensionContext, density: number) {
-	state.contextDensity = Math.round(density * 1000) / 10;
-	state.lastDensityTurn = (ctx as any).turnCount ?? 0;
-	log.debug(`analytics: context_density=${state.contextDensity.toFixed(1)}%`);
-}
-
-
 /**
  * Analytics Extension - Self-contained tool usage analytics
  *
- * Provides /analytics and /analytics:all commands that were previously
- * only available via the core ToolAnalytics class on the develop branch.
+ * Tracks tool call counts, durations, success/failure rates,
+ * tool sequences and patterns, session-level metrics, and
+ * basic recommendations with A/B experiment variant tracking (R9).
  *
- * This extension implements a simplified but functional analytics system
- * that tracks:
- * - Tool call counts, durations, success/failure rates
- * - Tool sequences and patterns
- * - Session-level metrics
- * - Basic recommendations
- * - A/B experiment variant tracking (R9)
- *
- * Note: This is a simplified version of the core ToolAnalytics.
- * The core version has deeper integration with session management and
- * additional features like phase detection and correlation analysis.
+ * State is session-scoped via getExtensionState to prevent
+ * cross-session contamination in multi-session processes.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-
-
+import { getExtensionState } from "../../../lib/extension-state.js";
 import { Type } from "typebox";
 
-// Types
+// ── Types ──────────────────────────────────────────────────────────────────
 
 interface ToolMetrics {
 	toolName: string;
@@ -81,27 +60,7 @@ interface AnalyticsSummary {
 	sequences: ToolSequence[];
 }
 
-// Tool Categories (for potential future use)
-
-const TOOL_CATEGORIES: Record<string, string> = {
-	read: "read",
-	grep: "search",
-	find: "search",
-	ls: "read",
-	edit: "write",
-	write: "write",
-	bash: "exec",
-	think: "cognitive",
-	scratchpad: "cognitive",
-	goal_create: "cognitive",
-	goal_complete: "cognitive",
-	plan_create: "cognitive",
-	plan_start: "cognitive",
-	memory_store: "memory",
-	memory_recall: "memory",
-};
-
-// Analytics State
+// ── Session-scoped State ───────────────────────────────────────────────────
 
 interface AnalyticsState {
 	sessionId: string;
@@ -109,27 +68,65 @@ interface AnalyticsState {
 	toolMetrics: Map<string, ToolMetrics>;
 	toolCallSequence: string[];
 	storagePath: string;
-	abVariant: string; // R9: A/B experiment variant tracking
+	abVariant: string;
 	contextDensity: number;
 	lastDensityTurn: number;
 }
 
-const state: AnalyticsState = {
-	sessionId: "",
-	sessionStartTime: Date.now(),
-	toolMetrics: new Map(),
-	toolCallSequence: [],
-	// R9: Export to ~/.pi/logs/braid-metrics.jsonl
-	storagePath: join(homedir(), ".pi/logs/braid-metrics.jsonl"),
-	abVariant: "control",
-	contextDensity: 0,
-	lastDensityTurn: 0,
-};
+function createAnalyticsState(): AnalyticsState {
+	return {
+		sessionId: "",
+		sessionStartTime: Date.now(),
+		toolMetrics: new Map(),
+		toolCallSequence: [],
+		storagePath: join(homedir(), ".pi/logs/braid-metrics.jsonl"),
+		abVariant: "control",
+		contextDensity: 0,
+		lastDensityTurn: 0,
+	};
+}
 
-// Core Analytics Functions
+let _lastState: AnalyticsState | null = null;
 
-function getOrCreateMetrics(toolName: string): ToolMetrics {
-	let metrics = state.toolMetrics.get(toolName);
+function getAnalyticsStateInternal(ctx: ExtensionContext): AnalyticsState {
+	const s = getExtensionState(ctx, "analytics", createAnalyticsState);
+	_lastState = s;
+	return s;
+}
+
+// ── Exported helpers (for evolve/enforcement extensions) ───────────────────
+
+/**
+ * Update context density metric for heartbeat reporting.
+ */
+export function updateContextDensity(ctx: ExtensionContext, density: number) {
+	const state = getAnalyticsStateInternal(ctx);
+	state.contextDensity = Math.round(density * 1000) / 10;
+	state.lastDensityTurn = (ctx as any).turnCount ?? 0;
+	log.debug(`analytics: context_density=${state.contextDensity.toFixed(1)}%`);
+}
+
+/**
+ * Get analytics state for feedback loop (used by evolve extension).
+ * Accepts optional ctx — falls back to last session's state.
+ */
+export function getAnalyticsState(ctx?: ExtensionContext) {
+	if (ctx) return getAnalyticsStateInternal(ctx);
+	if (_lastState) return _lastState;
+	return createAnalyticsState();
+}
+
+/**
+ * Get historical analytics summary (used by enforcement for tool suggestions).
+ */
+export function getAnalyticsSummary(): any {
+	return loadAnalytics();
+}
+
+// ── Core Analytics Functions ───────────────────────────────────────────────
+
+function getOrCreateMetrics(s: AnalyticsState, toolName: string): ToolMetrics {
+	let metrics = s.toolMetrics.get(toolName);
 	if (!metrics) {
 		metrics = {
 			toolName,
@@ -143,16 +140,15 @@ function getOrCreateMetrics(toolName: string): ToolMetrics {
 			errorRate: 0,
 			lastUsed: Date.now(),
 		};
-		state.toolMetrics.set(toolName, metrics);
+		s.toolMetrics.set(toolName, metrics);
 	}
 	return metrics;
 }
 
-function recordToolCall(toolName: string, durationMs: number, success: boolean): void {
-	// Track sequence
-	state.toolCallSequence.push(toolName);
+function recordToolCall(s: AnalyticsState, toolName: string, durationMs: number, success: boolean): void {
+	s.toolCallSequence.push(toolName);
 
-	const metrics = getOrCreateMetrics(toolName);
+	const metrics = getOrCreateMetrics(s, toolName);
 	metrics.totalCalls++;
 	if (success) {
 		metrics.successfulCalls++;
@@ -167,17 +163,16 @@ function recordToolCall(toolName: string, durationMs: number, success: boolean):
 	metrics.lastUsed = Date.now();
 }
 
-function getToolSequences(minLength = 2, minSupport = 2): ToolSequence[] {
+function getToolSequences(s: AnalyticsState, minLength = 2, minSupport = 2): ToolSequence[] {
 	const sequences: Map<string, { count: number; successCount: number }> = new Map();
 
-	for (let i = 0; i < state.toolCallSequence.length - minLength + 1; i++) {
-		const pattern = state.toolCallSequence.slice(i, i + minLength).join(" → ");
-		const subSequence = state.toolCallSequence.slice(i, i + minLength);
+	for (let i = 0; i < s.toolCallSequence.length - minLength + 1; i++) {
+		const pattern = s.toolCallSequence.slice(i, i + minLength).join(" → ");
+		const subSequence = s.toolCallSequence.slice(i, i + minLength);
 
 		const existing = sequences.get(pattern) || { count: 0, successCount: 0 };
 		existing.count++;
-		// Simplified: assume success if tools are common
-		const successRate = subSequence.every((t) => state.toolMetrics.has(t)) ? 0.9 : 0.5;
+		const successRate = subSequence.every((t) => s.toolMetrics.has(t)) ? 0.9 : 0.5;
 		existing.successCount += successRate;
 		sequences.set(pattern, existing);
 	}
@@ -196,27 +191,26 @@ function getToolSequences(minLength = 2, minSupport = 2): ToolSequence[] {
 	return result.sort((a, b) => b.count - a.count);
 }
 
-function getSessionMetrics(): SessionMetrics {
-	const uniqueTools = new Set(state.toolCallSequence).size;
+function getSessionMetrics(s: AnalyticsState): SessionMetrics {
+	const uniqueTools = new Set(s.toolCallSequence).size;
 	return {
-		sessionId: state.sessionId,
-		startTime: state.sessionStartTime,
-		totalToolCalls: state.toolCallSequence.length,
+		sessionId: s.sessionId,
+		startTime: s.sessionStartTime,
+		totalToolCalls: s.toolCallSequence.length,
 		uniqueToolsUsed: uniqueTools,
-		toolCallSequence: [...state.toolCallSequence],
+		toolCallSequence: [...s.toolCallSequence],
 	};
 }
 
-function flushAnalytics(taskCompleted = false): void {
-	// R9: Ensure logs directory exists for metrics export
+function flushAnalytics(s: AnalyticsState, taskCompleted = false): void {
 	const logsDir = join(homedir(), ".pi/logs");
 	if (!existsSync(logsDir)) {
 		mkdirSync(logsDir, { recursive: true });
 	}
 
-	const sessionMetrics = getSessionMetrics();
-	const toolMetricsList = Array.from(state.toolMetrics.values());
-	const sequences = getToolSequences();
+	const sessionMetrics = getSessionMetrics(s);
+	const toolMetricsList = Array.from(s.toolMetrics.values());
+	const sequences = getToolSequences(s);
 
 	const entry = {
 		timestamp: Date.now(),
@@ -224,30 +218,24 @@ function flushAnalytics(taskCompleted = false): void {
 		toolMetrics: toolMetricsList,
 		sequences,
 		taskCompleted,
-		// R9: Include A/B variant in exported data
-		abVariant: state.abVariant,
+		abVariant: s.abVariant,
 	};
 
 	try {
-		writeFileSync(state.storagePath, `${JSON.stringify(entry)}\n`, { flag: "a" });
+		writeFileSync(s.storagePath, `${JSON.stringify(entry)}\n`, { flag: "a" });
 	} catch (e) {
 		// Silently fail - analytics is non-critical
 	}
 }
 
-function loadAnalytics(): AnalyticsSummary {
-	if (!existsSync(state.storagePath)) {
-		return {
-			totalSessions: 0,
-			totalToolCalls: 0,
-			avgToolsPerSession: 0,
-			topTools: [],
-			sequences: [],
-		};
+function loadAnalytics(storagePath?: string): AnalyticsSummary {
+	const path = storagePath ?? join(homedir(), ".pi/logs/braid-metrics.jsonl");
+	if (!existsSync(path)) {
+		return { totalSessions: 0, totalToolCalls: 0, avgToolsPerSession: 0, topTools: [], sequences: [] };
 	}
 
 	try {
-		const content = readFileSync(state.storagePath, "utf-8");
+		const content = readFileSync(path, "utf-8");
 		const lines = content.trim().split("\n");
 
 		const toolCounts: Record<string, number> = {};
@@ -283,7 +271,6 @@ function loadAnalytics(): AnalyticsSummary {
 			.sort((a, b) => b.count - a.count)
 			.slice(0, 10);
 
-		// Aggregate sequences from stored entries
 		const sequenceMap = new Map<string, ToolSequence>();
 		for (const line of lines) {
 			try {
@@ -312,29 +299,25 @@ function loadAnalytics(): AnalyticsSummary {
 				.slice(0, 20),
 		};
 	} catch {
-		return {
-			totalSessions: 0,
-			totalToolCalls: 0,
-			avgToolsPerSession: 0,
-			topTools: [],
-			sequences: [],
-		};
+		return { totalSessions: 0, totalToolCalls: 0, avgToolsPerSession: 0, topTools: [], sequences: [] };
 	}
 }
 
-function formatCurrentSession(): string {
-	const metrics = Array.from(state.toolMetrics.values()).sort((a, b) => b.totalCalls - a.totalCalls);
-	const sequences = getToolSequences(2, 2);
-	const sessionMetrics = getSessionMetrics();
+// ── Formatting (for /analytics commands) ───────────────────────────────────
+
+function formatCurrentSession(s: AnalyticsState): string {
+	const metrics = Array.from(s.toolMetrics.values()).sort((a, b) => b.totalCalls - a.totalCalls);
+	const sequences = getToolSequences(s, 2, 2);
+	const sessionMetrics = getSessionMetrics(s);
 
 	const lines: string[] = [];
 	lines.push("## Tool Analytics - Current Session");
 	lines.push("");
-	lines.push(`**Session:** ${state.sessionId || "unknown"}`);
-	lines.push(`**Duration:** ${Math.round((Date.now() - state.sessionStartTime) / 1000)}s`);
+	lines.push(`**Session:** ${s.sessionId || "unknown"}`);
+	lines.push(`**Duration:** ${Math.round((Date.now() - s.sessionStartTime) / 1000)}s`);
 	lines.push(`**Total Tool Calls:** ${sessionMetrics.totalToolCalls}`);
 	lines.push(`**Unique Tools Used:** ${sessionMetrics.uniqueToolsUsed}`);
-	lines.push(`**A/B Variant:** ${state.abVariant}`);
+	lines.push(`**A/B Variant:** ${s.abVariant}`);
 	lines.push("");
 
 	if (metrics.length > 0) {
@@ -403,43 +386,26 @@ function formatAllSessions(): string {
 	return lines.join("\n");
 }
 
-// R9: Export analytics state for feedback loop (used by evolve extension)
-export function getAnalyticsState() {
-	return {
-		toolMetrics: state.toolMetrics,
-		toolCallSequence: state.toolCallSequence,
-		abVariant: state.abVariant,
-		contextDensity: state.contextDensity,
-		lastDensityTurn: state.lastDensityTurn,
-	};
-}
-
-// R9: Export histrical analytics summary for feedback loop
-// Used by enforcement extension for data-driven tool suggestions
-export function getAnalyticsSummary(): any {
-	return loadAnalytics();
-}
-
-// Extension
+// ── Extension ──────────────────────────────────────────────────────────────
 
 export default function analyticsExtension(pi: ExtensionAPI) {
+	// Pending tool calls — timing tracker (closure-scoped, not stateful)
+	let pendingToolCalls: Map<string, { toolName: string; startTime: number }> = new Map();
+
 	// Initialize on session start
 	pi.on("session_start", async (_event, ctx) => {
+		const state = getAnalyticsStateInternal(ctx);
 		state.sessionId = ctx.sessionManager.getSessionFile() ?? `session-${Date.now()}`;
 		state.sessionStartTime = Date.now();
 		state.toolMetrics.clear();
 		state.toolCallSequence = [];
 		pendingToolCalls.clear();
 
-		// R9: Ensure logs directory exists for metrics export
 		const logsDir = join(homedir(), ".pi/logs");
 		if (!existsSync(logsDir)) {
 			mkdirSync(logsDir, { recursive: true });
 		}
 	});
-
-	// Track tool calls for analytics - need both start and end for timing
-	let pendingToolCalls: Map<string, { toolName: string; startTime: number }> = new Map();
 
 	// Record tool execution start
 	pi.on("tool_execution_start", async (event) => {
@@ -449,24 +415,24 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 		});
 	});
 
-	// Record tool execution end - capture timing and success
-	pi.on("tool_execution_end", async (event) => {
+	// Record tool execution end
+	pi.on("tool_execution_end", async (event, ctx) => {
 		const pending = pendingToolCalls.get(event.toolCallId);
 		if (pending) {
 			const durationMs = Date.now() - pending.startTime;
-			recordToolCall(pending.toolName, durationMs, !event.isError);
+			const state = getAnalyticsStateInternal(ctx);
+			recordToolCall(state, pending.toolName, durationMs, !event.isError);
 			pendingToolCalls.delete(event.toolCallId);
 		}
 	});
 
-	// Auto-trigger addiction analysis every ~10 turns
 	// Auto-trigger addiction analysis — rolling window, fires every 10+ calls
 	let lastAddictionCheck = 0;
 	pi.on("turn_end", async (_event: any, ctx: any) => {
+		const state = getAnalyticsStateInternal(ctx);
 		const calls = state.toolCallSequence.length;
 		if (calls >= 10 && calls - lastAddictionCheck >= 10) {
 			lastAddictionCheck = calls;
-			// Analyze last 50 calls (rolling window)
 			const window = state.toolCallSequence.slice(-50);
 			const toolCounts = new Map<string, number>();
 			for (const t of window) {
@@ -477,12 +443,8 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 			for (const [tool, count] of toolCounts) {
 				const ratio = count / total;
 				const toolCount = toolCounts.size;
-				// Fair share: if 3 tools and 50 calls, each gets ~16.7
 				const fairShare = total / Math.max(toolCount, 1);
-				// Skip 'read' — reading docs is normal, not addiction
 				if (tool === "read") continue;
-				// Flag: tool dominates (>80%) in a monoculture session (≤2 tools)
-				// OR massively over-represented (>4x fair share) in diverse session
 				if ((ratio > 0.8 && toolCount <= 2) || (toolCount > 1 && count > fairShare * 4)) {
 					warnings.push(`${tool} (${count}/${total}, ${(ratio * 100).toFixed(0)}%)`);
 				}
@@ -498,49 +460,53 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 	});
 
 	// Cleanup on session shutdown
-	pi.on("session_shutdown", async () => {
+	pi.on("session_shutdown", async (_event, ctx) => {
+		const state = getAnalyticsStateInternal(ctx);
 		if (state.toolCallSequence.length > 0) {
-			flushAnalytics(false);
+			flushAnalytics(state, false);
 		}
 	});
 
-	// /analytics - current session stats
+	// ── Commands ────────────────────────────────────────────────────────
+
 	pi.registerCommand("analytics", {
 		description: "Show tool analytics for the current session",
 		handler: async (_args, ctx) => {
-			const output = formatCurrentSession();
+			const state = getAnalyticsStateInternal(ctx);
+			const output = formatCurrentSession(state);
 			ctx.ui.notify(output, "info");
 		},
 	});
 
-	// /analytics:all - historical stats
 	pi.registerCommand("analytics:all", {
 		description: "Show tool analytics across all historical sessions",
-		handler: async (_args, ctx) => {
+		handler: async (_args, _ctx) => {
 			const output = formatAllSessions();
-			ctx.ui.notify(output, "info");
+			_ctx.ui.notify(output, "info");
 		},
 	});
 
-	// R9: A/B experiment variant tracking
 	pi.registerCommand("analytics:setVariant", {
 		description: "Set A/B experiment variant for this session",
-		handler: async (args, _ctx) => {
+		handler: async (args, ctx) => {
 			const parsed = typeof args === "string" ? JSON.parse(args) : args;
+			const state = getAnalyticsStateInternal(ctx);
 			state.abVariant = parsed.variant;
 		},
 	});
 
-	// TIER 1: Programmatic analytics tools — structured JSON instead of formatted text
+	// ── Programmatic Tools ──────────────────────────────────────────────
+
 	pi.registerTool({
 		name: "get-session-metrics",
 		label: "Get Session Metrics",
 		description: "Get structured current session analytics: tool counts, timing, sequences, success rates.",
 		parameters: Type.Object({}),
-		execute: async (): Promise<any> => {
+		execute: async (_id: any, _params: any, _signal: any, _onUpdate: any, ctx: ExtensionContext): Promise<any> => {
+			const state = getAnalyticsStateInternal(ctx);
 			const metrics = Array.from(state.toolMetrics.values()).sort((a, b) => b.totalCalls - a.totalCalls);
-			const sessionMetrics = getSessionMetrics();
-			const sequences = getToolSequences(2, 3).slice(0, 10);
+			const sessionMetrics = getSessionMetrics(state);
+			const sequences = getToolSequences(state, 2, 3).slice(0, 10);
 			const duration = Math.round((Date.now() - state.sessionStartTime) / 1000);
 			const text = `Session: ${state.sessionId || "unknown"}, ${sessionMetrics.totalToolCalls} tool calls, ${duration}s.`;
 			return {
@@ -571,9 +537,10 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 		parameters: Type.Object({
 			topN: Type.Optional(Type.Number({ description: "Max results. Default: 10" })),
 		}),
-		execute: async (_id: string, params: any): Promise<any> => {
+		execute: async (_id: any, params: any, _signal: any, _onUpdate: any, ctx: ExtensionContext): Promise<any> => {
+			const state = getAnalyticsStateInternal(ctx);
 			const topN = params?.topN ?? 10;
-			const summary = loadAnalytics();
+			const summary = loadAnalytics(state.storagePath);
 			const reliability = summary.topTools.slice(0, topN).map((t: any) => ({
 				tool: t.toolName,
 				totalCalls: t.totalCalls,
@@ -590,9 +557,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 		},
 	} as any);
 
-	// BR2: Tool addiction measurement — detects tools that are overused
-	// relative to task complexity, appearing in bursts or persistently
-	// across sessions ("addictive" patterns like think-spam, read-binging)
+	// Tool addiction measurement
 	pi.registerTool({
 		name: "get-tool-addiction",
 		label: "Get Tool Addiction",
@@ -600,28 +565,26 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 		parameters: Type.Object({
 			sessionOnly: Type.Optional(Type.Boolean({ description: "Only analyze current session (default: false)" })),
 		}),
-		execute: async (_id: string, params: any): Promise<any> => {
+		execute: async (_id: any, params: any, _signal: any, _onUpdate: any, ctx: ExtensionContext): Promise<any> => {
+			const state = getAnalyticsStateInternal(ctx);
 			const sessionOnly = params?.sessionOnly ?? false;
 			const now = Date.now();
 			const startTime = state.sessionStartTime ?? now;
 			const sessionAge = (now - startTime) / 1000;
 
-			// ── Compute session-level stats ──────────────────────────
 			const sessionToolNames = state.toolCallSequence;
 			const toolCounts = new Map<string, { count: number; clusters: number }>();
 			for (let i = 0; i < sessionToolNames.length; i++) {
 				const tool = sessionToolNames[i];
 				const entry = toolCounts.get(tool) ?? { count: 0, clusters: 0 };
 				entry.count++;
-				// Detect clusters: same tool repeated consecutively
 				if (i > 0 && sessionToolNames[i - 1] === tool) {
 					entry.clusters++;
 				}
 				toolCounts.set(tool, entry);
 			}
 
-			// ── Load historical data ─────────────────────────────────
-			const summary = sessionOnly ? null : loadAnalytics();
+			const summary = sessionOnly ? null : loadAnalytics(state.storagePath);
 			const histToolTotals = new Map<string, number>();
 			const histSessionCount = new Map<string, number>();
 			let totalHistSessions = 0;
@@ -636,7 +599,6 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 				totalHistSessions = summary.totalSessions ?? 0;
 			}
 
-			// ── Compute addiction scores ─────────────────────────────
 			interface AddictionEntry {
 				tool: string;
 				frequency: number;
@@ -651,29 +613,20 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 			const avgCallsPerTool = totalSessionCalls / Math.max(toolCounts.size, 1);
 
 			for (const [tool, { count, clusters }] of toolCounts) {
-				// Frequency: how many std deviations above average
 				const frequency = totalSessionCalls > 0 ? count / Math.max(avgCallsPerTool, 1) : 0;
-
-				// Burst ratio: cluster-to-count ratio (0-1)
 				const burstRatio = count > 1 ? clusters / (count - 1) : 0;
-
-				// Persistence: tool appears across sessions (0-1)
-				const histCount = histToolTotals.get(tool) ?? 0;
 				const histSessions = histSessionCount.get(tool) ?? 0;
 				const persistence =
-					totalHistSessions > 0 && histCount > 0
+					totalHistSessions > 0 && (histToolTotals.get(tool) ?? 0) > 0
 						? Math.min(histSessions / Math.max(totalHistSessions, 1), 1)
 						: 0;
 
-				// Composite addiction score (0-1)
-				// Weights: frequency 0.5, burst 0.3, persistence 0.2
-				const freqScore = Math.min(frequency / 5, 1); // normalize: 5x avg = 1.0
+				const freqScore = Math.min(frequency / 5, 1);
 				const addictionScore = Math.min(
 					freqScore * 0.5 + burstRatio * 0.3 + persistence * 0.2,
 					1,
 				);
 
-				// Generate note for high-addiction tools
 				let note: string | undefined;
 				const reasons: string[] = [];
 				if (freqScore > 0.6) reasons.push(`high frequency (${count}x vs ${avgCallsPerTool.toFixed(1)}x avg)`);
@@ -691,7 +644,6 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 				});
 			}
 
-			// Sort by addiction score descending
 			results.sort((a, b) => b.addictionScore - a.addictionScore);
 
 			return {
@@ -709,9 +661,4 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 			};
 		},
 	} as any);
-
-	// Note: Tool call end recording would ideally use a tool_end event
-	// which may not be available on all versions. For now, we track
-	// on tool_call for sequence, and rely on the user's session context
-	// for timing information.
 }

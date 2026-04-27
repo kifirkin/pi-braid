@@ -13,7 +13,8 @@ const log = createLogger("reasoning");
  * Note: System prompt modification is handled exclusively by prompt-builder.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { getExtensionState } from "../../../lib/extension-state.js";
 
 // Helper: Send Enforcement Message as Custom (for visual distinction in TUI)
 
@@ -47,20 +48,22 @@ interface ExtensionState {
 	turnCount: number;
 }
 
-// State
+// ── Session-scoped State ────────────────────────────────────────────────────
 
-const state: ExtensionState = {
-	current: null,
-	history: [],
-	turnCount: 0,
-};
+function createReasoningState(): ExtensionState {
+	return { current: null, history: [], turnCount: 0 };
+}
+
+function getReasoningState(ctx: ExtensionContext): ExtensionState {
+	return getExtensionState(ctx, "reasoning", createReasoningState);
+}
 
 // Malformed Tool Call Detection
 
 const MALFORMED_REGEX =
 	/<(function|write|edit|read|bash|grep|find|ls|think|plan|scratchpad)[^>]*>[\s\S]*?<\/(function|write|edit|read|bash|grep|find|ls|think|plan|scratchpad)>/gi;
 
-function detectMalformedToolCalls(text: string, pi: ExtensionAPI): void {
+function detectMalformedToolCalls(text: string, pi: ExtensionAPI, s: ExtensionState): void {
 	MALFORMED_REGEX.lastIndex = 0;
 	const match = MALFORMED_REGEX.exec(text);
 	MALFORMED_REGEX.lastIndex = 0;
@@ -69,8 +72,8 @@ function detectMalformedToolCalls(text: string, pi: ExtensionAPI): void {
 		const toolNameMatch = text.match(/<(function|write|edit|read|bash|grep|find|ls|think|plan|scratchpad)/i);
 		const detectedTool = toolNameMatch ? toolNameMatch[1].toLowerCase() : "unknown";
 
-		if (state.current) {
-			state.current.step++;
+		if (s.current) {
+			s.current.step++;
 		}
 
 		sendSteerMessage(
@@ -87,7 +90,8 @@ function detectMalformedToolCalls(text: string, pi: ExtensionAPI): void {
 export default function reasoningExtension(pi: ExtensionAPI) {
 	// Pre-Turn: Track turn count and state (no system prompt modification)
 	// System prompt is now managed exclusively by prompt-builder extension
-	pi.on("before_agent_start", async () => {
+	pi.on("before_agent_start", async (_event, ctx) => {
+		const state = getReasoningState(ctx);
 		state.turnCount++;
 
 		// Initialize state if needed
@@ -98,8 +102,10 @@ export default function reasoningExtension(pi: ExtensionAPI) {
 
 	// Message End: Check for malformed tool calls
 
-	pi.on("message_end", async (event) => {
+	pi.on("message_end", async (event, ctx) => {
 		if (event.message.role !== "assistant") return;
+
+		const state = getReasoningState(ctx);
 
 		// Extract text content
 		const textContent = event.message.content
@@ -108,7 +114,7 @@ export default function reasoningExtension(pi: ExtensionAPI) {
 			.join("\n");
 
 		// Always check for malformed tool calls
-		detectMalformedToolCalls(textContent, pi);
+		detectMalformedToolCalls(textContent, pi, state);
 
 		// Increment step count for tracking
 		if (state.current) {
@@ -122,12 +128,12 @@ export default function reasoningExtension(pi: ExtensionAPI) {
 	// (malformed tool call detection, step tracking, verify-before-done nudge)
 }
 
-// Utilities (used by other extensions via direct import)
+// Utilities (used by other extensions — require ctx for session-scoped state)
 
-export function getCurrentReasoning(): ReasoningState | null {
-	return state.current;
+export function getCurrentReasoning(ctx: ExtensionContext): ReasoningState | null {
+	return getReasoningState(ctx).current;
 }
 
-export function getReasoningHistory(): ReasoningState[] {
-	return [...state.history];
+export function getReasoningHistory(ctx: ExtensionContext): ReasoningState[] {
+	return [...getReasoningState(ctx).history];
 }

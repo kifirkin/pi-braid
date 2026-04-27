@@ -18,50 +18,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { Type } from "typebox";
-import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import { getExtensionState } from "../../../lib/extension-state.js";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-// Whisper System - Send feedback messages immediately
-
-function getFeedbackWhisperState(ctx?: ExtensionContext): { pendingWhisper: string | null } {
-	if (ctx) return getExtensionState(ctx, "feedback-whisper", () => ({ pendingWhisper: null }));
-	return _whisperDefault;
-}
-const _whisperDefault = { pendingWhisper: null };
-
-/**
- * Send a feedback whisper immediately using pi.sendMessage().
- * This injects the whisper right away instead of waiting for before_agent_start,
- * which only fires when user sends a message (causing whisper accumulation).
- */
-function sendFeedbackWhisper(pi: ExtensionAPI, message: string): void {
-	pi.sendMessage(
-		{
-			customType: "feedback",
-			content: [{ type: "text" as const, text: message }],
-			display: true,
-		},
-		{ deliverAs: "steer" },
-	);
-}
-
-/**
- * Queue a feedback whisper to be injected on the next agent turn.
- * DEPRECATED: Now sends immediately via sendFeedbackWhisper.
- * Kept for backward compatibility.
- */
-function _queueFeedbackWhisper(message: string): void {
-	const s = getFeedbackWhisperState();
-	if (s.pendingWhisper) {
-		s.pendingWhisper = `${s.pendingWhisper}\n\n${message}`;
-	} else {
-		s.pendingWhisper = message;
-	}
-}
-
-// Types
+// ── Types ──────────────────────────────────────────────────────────────────
 
 interface Nudge {
 	id: string;
@@ -114,12 +75,11 @@ interface FeedbackConfig {
 	maxNudgesPerTurn: number;
 	enableABTesting: boolean;
 	enableModelPreferences: boolean;
-	smartNudgeThreshold: number; // 0-1, only nudge if confidence > threshold
-	// Think tool enforcement - nudge every N turns without think tool call
-	thinkToolEnforcementTurns: number; // 0 to disable, N turns without think tool to nudge
+	smartNudgeThreshold: number;
+	thinkToolEnforcementTurns: number;
 }
 
-// Configuration
+// ── Configuration ──────────────────────────────────────────────────────────
 
 const DEFAULT_CONFIG: FeedbackConfig = {
 	nudgeCooldownMs: 3000,
@@ -127,8 +87,7 @@ const DEFAULT_CONFIG: FeedbackConfig = {
 	enableABTesting: false,
 	enableModelPreferences: true,
 	smartNudgeThreshold: 0.6,
-	// Modern models use think() tool - enforce every N turns
-	thinkToolEnforcementTurns: 5, // 0 to disable, 5 turns without think tool to nudge
+	thinkToolEnforcementTurns: 5,
 };
 
 const STORAGE_DIR = join(homedir(), ".pi/agent/feedback");
@@ -137,26 +96,45 @@ const AB_TESTS_FILE = join(STORAGE_DIR, "ab-tests.json");
 const MODEL_PREFS_FILE = join(STORAGE_DIR, "model-preferences.json");
 const CONFIG_FILE = join(STORAGE_DIR, "config.json");
 
-// State
+// ── Session-scoped State ───────────────────────────────────────────────────
 
-const state = {
-	config: loadConfig(),
-	nudgeHistory: [] as Nudge[],
-	activeNudges: [] as Nudge[],
-	recentNudges: [] as string[], // Recent nudge message hashes
-	abTests: loadABTests(),
-	modelPreferences: loadModelPreferences(),
-	lastNudgeTime: 0,
-	nudgeCountThisTurn: 0,
-	currentTurn: 0,
-	// Analytics integration
-	analyticsPath: join(homedir(), ".pi/agent/analytics/tool-analytics.jsonl"),
-	// Track think tool usage for enforcement
-	lastThinkToolTurn: -1, // Turn index when think tool was last called
-	thinkToolNudgeActive: false, // Prevent spam for think tool enforcement
-};
+interface FeedbackState {
+	config: FeedbackConfig;
+	nudgeHistory: Nudge[];
+	activeNudges: Nudge[];
+	recentNudges: string[];
+	abTests: ABTest[];
+	modelPreferences: Record<string, ModelPreferences["preferences"]>;
+	lastNudgeTime: number;
+	nudgeCountThisTurn: number;
+	currentTurn: number;
+	analyticsPath: string;
+	lastThinkToolTurn: number;
+	thinkToolNudgeActive: boolean;
+}
 
-// Persistence
+function createFeedbackState(): FeedbackState {
+	return {
+		config: loadConfig(),
+		nudgeHistory: [],
+		activeNudges: [],
+		recentNudges: [],
+		abTests: loadABTests(),
+		modelPreferences: loadModelPreferences(),
+		lastNudgeTime: 0,
+		nudgeCountThisTurn: 0,
+		currentTurn: 0,
+		analyticsPath: join(homedir(), ".pi/agent/analytics/tool-analytics.jsonl"),
+		lastThinkToolTurn: -1,
+		thinkToolNudgeActive: false,
+	};
+}
+
+function getFeedbackState(ctx: ExtensionContext): FeedbackState {
+	return getExtensionState(ctx, "feedback", createFeedbackState);
+}
+
+// ── Persistence ────────────────────────────────────────────────────────────
 
 function ensureStorageDir(): void {
 	if (!existsSync(STORAGE_DIR)) {
@@ -166,45 +144,23 @@ function ensureStorageDir(): void {
 
 function loadConfig(): FeedbackConfig {
 	ensureStorageDir();
-	const path = CONFIG_FILE;
-	if (!existsSync(path)) {
+	if (!existsSync(CONFIG_FILE)) {
 		return { ...DEFAULT_CONFIG };
 	}
 	try {
-		return { ...DEFAULT_CONFIG, ...JSON.parse(readFileSync(path, "utf-8")) };
+		return { ...DEFAULT_CONFIG, ...JSON.parse(readFileSync(CONFIG_FILE, "utf-8")) };
 	} catch {
 		return { ...DEFAULT_CONFIG };
-	}
-}
-
-function _saveConfig(): void {
-	ensureStorageDir();
-	writeFileSync(CONFIG_FILE, JSON.stringify(state.config, null, 2));
-}
-
-function loadNudgeHistory(): Nudge[] {
-	ensureStorageDir();
-	const path = NUDGE_HISTORY_FILE;
-	if (!existsSync(path)) {
-		return [];
-	}
-	try {
-		const content = readFileSync(path, "utf-8");
-		const lines = content.trim().split("\n");
-		return lines.map((l) => JSON.parse(l)).slice(-100); // Keep last 100
-	} catch {
-		return [];
 	}
 }
 
 function loadABTests(): ABTest[] {
 	ensureStorageDir();
-	const path = AB_TESTS_FILE;
-	if (!existsSync(path)) {
+	if (!existsSync(AB_TESTS_FILE)) {
 		return getDefaultABTests();
 	}
 	try {
-		return JSON.parse(readFileSync(path, "utf-8"));
+		return JSON.parse(readFileSync(AB_TESTS_FILE, "utf-8"));
 	} catch {
 		return getDefaultABTests();
 	}
@@ -237,34 +193,38 @@ function getDefaultABTests(): ABTest[] {
 	];
 }
 
-function saveABTests(): void {
+function saveABTests(s: FeedbackState): void {
 	ensureStorageDir();
-	writeFileSync(AB_TESTS_FILE, JSON.stringify(state.abTests, null, 2));
+	writeFileSync(AB_TESTS_FILE, JSON.stringify(s.abTests, null, 2));
 }
 
 function loadModelPreferences(): Record<string, ModelPreferences["preferences"]> {
 	ensureStorageDir();
-	const path = MODEL_PREFS_FILE;
-	if (!existsSync(path)) {
+	if (!existsSync(MODEL_PREFS_FILE)) {
 		return {};
 	}
 	try {
-		return JSON.parse(readFileSync(path, "utf-8"));
+		return JSON.parse(readFileSync(MODEL_PREFS_FILE, "utf-8"));
 	} catch {
 		return {};
 	}
 }
 
-function _saveModelPreferences(): void {
-	ensureStorageDir();
-	writeFileSync(MODEL_PREFS_FILE, JSON.stringify(state.modelPreferences, null, 2));
+// ── Whisper System ─────────────────────────────────────────────────────────
+
+function sendFeedbackWhisper(pi: ExtensionAPI, message: string): void {
+	pi.sendMessage(
+		{
+			customType: "feedback",
+			content: [{ type: "text" as const, text: message }],
+			display: true,
+		},
+		{ deliverAs: "steer" },
+	);
 }
 
-// Smart Nudge Generator
+// ── Smart Nudge Generator ──────────────────────────────────────────────────
 
-/**
- * Generate a smart nudge based on context
- */
 function generateNudge(
 	type: NudgeType,
 	context: Record<string, unknown>,
@@ -294,7 +254,7 @@ function generateNudge(
 			return {
 				severity: "warning",
 				message: `You're repeating the same tool (${tool}) ${count} times in a row. Consider:\n- Is this the right approach?\n- Are you stuck in a loop?\n- Should you try a different approach?`,
-					};
+			};
 		}
 
 		case "tool_ineffective": {
@@ -303,7 +263,6 @@ function generateNudge(
 			return {
 				severity: "info",
 				message: `Note: ${ineffectiveTool} has low effectiveness. ${tip || "Consider using a different approach."}`,
-				action: undefined,
 			};
 		}
 
@@ -329,7 +288,6 @@ function generateNudge(
 			return {
 				severity: "info",
 				message: `Unusual tool for current phase: ${received}\nExpected tools: ${expected.join(", ") || "any"}\n\nThis is informational only. Continue if intentional.`,
-				action: undefined,
 			};
 		}
 
@@ -338,8 +296,7 @@ function generateNudge(
 			const successRate = context.successRate as number;
 			return {
 				severity: "info",
-				message: `💡 Tip: ${tipTool} has ${((successRate as number) * 100).toFixed(0)}% success rate in similar tasks.\n\nConsider using it if appropriate.`,
-				action: undefined,
+				message: `Tip: ${tipTool} has ${((successRate as number) * 100).toFixed(0)}% success rate in similar tasks.\n\nConsider using it if appropriate.`,
 			};
 		}
 
@@ -347,31 +304,23 @@ function generateNudge(
 			return {
 				severity: "info",
 				message: (context.message as string) || "General feedback",
-				action: undefined,
 			};
 	}
 }
 
-/**
- * Check if we should send this nudge (rate limiting, deduplication)
- */
-function shouldSendNudge(nudge: Nudge): boolean {
+function shouldSendNudge(s: FeedbackState, nudge: Nudge): boolean {
 	const now = Date.now();
 
-	// Cooldown check
-	if (now - state.lastNudgeTime < state.config.nudgeCooldownMs) {
+	if (now - s.lastNudgeTime < s.config.nudgeCooldownMs) {
 		return false;
 	}
 
-	// Max nudges per turn check
-	if (state.nudgeCountThisTurn >= state.config.maxNudgesPerTurn) {
+	if (s.nudgeCountThisTurn >= s.config.maxNudgesPerTurn) {
 		return false;
 	}
 
-	// Deduplication check (don't repeat same nudge type within 5 turns)
-	const recentTypes = state.nudgeHistory.slice(-5).map((n) => n.type);
+	const recentTypes = s.nudgeHistory.slice(-5).map((n) => n.type);
 	if (recentTypes.includes(nudge.type)) {
-		// Allow critical nudges to repeat
 		if (nudge.severity !== "critical") {
 			return false;
 		}
@@ -380,97 +329,60 @@ function shouldSendNudge(nudge: Nudge): boolean {
 	return true;
 }
 
-/**
- * Record nudge for analytics
- */
-function recordNudge(nudge: Nudge): void {
-	state.nudgeHistory.push(nudge);
-	state.activeNudges.push(nudge);
+function recordNudge(s: FeedbackState, nudge: Nudge): void {
+	s.nudgeHistory.push(nudge);
+	s.activeNudges.push(nudge);
 
-	// Keep history manageable
-	if (state.nudgeHistory.length > 500) {
-		state.nudgeHistory = state.nudgeHistory.slice(-500);
+	if (s.nudgeHistory.length > 500) {
+		s.nudgeHistory = s.nudgeHistory.slice(-500);
 	}
 
-	// Write to file
 	ensureStorageDir();
 	writeFileSync(NUDGE_HISTORY_FILE, `${JSON.stringify(nudge)}\n`, { flag: "a" });
 
-	state.lastNudgeTime = Date.now();
-	state.nudgeCountThisTurn++;
+	s.lastNudgeTime = Date.now();
+	s.nudgeCountThisTurn++;
 }
 
-// A/B Testing
+// ── A/B Testing ────────────────────────────────────────────────────────────
 
-/**
- * Get current A/B test variant configuration
- */
-function getABTestConfig(): Record<string, unknown> {
-	const activeTests = state.abTests.filter((t) => t.active);
+function getABTestConfig(s: FeedbackState): Record<string, unknown> {
+	const activeTests = s.abTests.filter((t) => t.active);
 	if (activeTests.length === 0) {
 		return {};
 	}
 
-	// Use deterministic assignment based on turn number
-	const turnMod = state.currentTurn % 2;
+	const turnMod = s.currentTurn % 2;
 	const variant = turnMod === 0 ? "variantA" : "variantB";
 
-	const _config: Record<string, unknown> = {};
 	for (const test of activeTests) {
-		const result = test.results[variant];
+		const result = test.results[variant as "variantA" | "variantB"];
 		result.impressions++;
-		saveABTests();
+		saveABTests(s);
 	}
 
 	return Object.assign({}, ...activeTests.map((t) => t[variant === "variantA" ? "variantA" : "variantB"]));
 }
 
-/**
- * Record A/B test outcome
- */
-function _recordABTestOutcome(success: boolean): void {
-	const activeTests = state.abTests.filter((t) => t.active);
-	if (activeTests.length === 0) {
-		return;
-	}
-
-	const turnMod = state.currentTurn % 2;
-	const variant = turnMod === 0 ? "variantA" : "variantB";
-
-	for (const test of activeTests) {
-		if (success) {
-			test.results[variant].success++;
-		}
-	}
-
-	saveABTests();
-}
-
-// Tool Definitions
-
-// feedback_status tool removed (2026-04-15) - use /feedback-stats command instead
-
-// Extension Factory
+// ── Extension Factory ──────────────────────────────────────────────────────
 
 export default function feedbackExtension(pi: ExtensionAPI) {
-	// Feedback operates entirely via event handlers — no agent-facing commands.
-
-	// Event Handlers
 
 	// Initialize state on start
-	pi.on("session_start", async () => {
+	pi.on("session_start", async (_event, ctx) => {
+		const state = getFeedbackState(ctx);
 		state.recentNudges = [];
 		state.nudgeCountThisTurn = 0;
 	});
 
 	// Reset turn counter at turn start
-	pi.on("turn_start", async () => {
+	pi.on("turn_start", async (_event, ctx) => {
+		const state = getFeedbackState(ctx);
 		state.currentTurn++;
 		state.nudgeCountThisTurn = 0;
 
-		// Apply A/B test config
 		if (state.config.enableABTesting) {
-			const abConfig = getABTestConfig();
+			const abConfig = getABTestConfig(state);
 			if (abConfig.nudgeCooldownMs) {
 				state.config.nudgeCooldownMs = abConfig.nudgeCooldownMs as number;
 			}
@@ -481,16 +393,14 @@ export default function feedbackExtension(pi: ExtensionAPI) {
 	});
 
 	// Monitor for issues and generate nudges
-	pi.on("message_end", async (event) => {
+	pi.on("message_end", async (event, ctx) => {
 		if (event.message.role !== "assistant") {
 			return;
 		}
 
-		// Hallucination detection is handled by the verification judge in enforcement.
-		// This regex-based approach is disabled to avoid false positives on informational responses.
+		const state = getFeedbackState(ctx);
 		const issues: { type: NudgeType; context: Record<string, unknown> }[] = [];
 
-		// Send nudges
 		for (const issue of issues) {
 			const nudgeDef = generateNudge(issue.type, issue.context);
 			const nudge: Nudge = {
@@ -504,29 +414,25 @@ export default function feedbackExtension(pi: ExtensionAPI) {
 				acknowledged: false,
 			};
 
-			if (shouldSendNudge(nudge)) {
-				recordNudge(nudge);
+			if (shouldSendNudge(state, nudge)) {
+				recordNudge(state, nudge);
 				sendFeedbackWhisper(pi, nudgeDef.message);
 			}
 		}
 	});
 
 	// Track tool usage for sequence repetition detection
-	// Only track meaningful exploratory tools, not system tools.
-	// Threshold 5 for consecutive calls avoids false positives on legitimate read sessions.
-	pi.on("tool_call", async (event) => {
+	pi.on("tool_call", async (event, ctx) => {
 		const toolName = event.toolName;
+		const state = getFeedbackState(ctx);
 
-		// Skip system/meta tools — they are not exploration
 		if (["feedback", "enforcement_status", "scratchpad", "memory_recall", "memory_store", "context_prune", "context_audit", "get-tool-addiction"].includes(toolName)) {
 			return;
 		}
 
-		// Push FIRST so consecutive count reflects current position
 		state.recentNudges.push(toolName);
 		if (state.recentNudges.length > 20) state.recentNudges.shift();
 
-		// Count CONSECUTIVE calls of the same tool (not total in last N)
 		let consecutiveCount = 0;
 		for (let i = state.recentNudges.length - 1; i >= 0; i--) {
 			if (state.recentNudges[i] === toolName) consecutiveCount++;
@@ -534,25 +440,22 @@ export default function feedbackExtension(pi: ExtensionAPI) {
 		}
 
 		if (consecutiveCount >= 5) {
+			const nudgeDef = generateNudge("sequence_repetition", { toolName, count: consecutiveCount });
 			const nudge: Nudge = {
 				id: `repetition-${Date.now()}`,
 				timestamp: Date.now(),
 				type: "sequence_repetition",
 				severity: "warning",
-				message: "",
+				message: nudgeDef.message,
 				triggeredBy: "tool_call",
 				acknowledged: false,
 			};
-			const nudgeDef = generateNudge("sequence_repetition", { toolName, count: consecutiveCount });
-			nudge.message = nudgeDef.message;
-			nudge.action = nudgeDef.action;
-			if (shouldSendNudge(nudge)) {
-				recordNudge(nudge);
+			if (shouldSendNudge(state, nudge)) {
+				recordNudge(state, nudge);
 				sendFeedbackWhisper(pi, nudgeDef.message);
 			}
 		}
 
-		// Track think tool usage
 		if (toolName === "think") {
 			state.lastThinkToolTurn = state.currentTurn;
 			state.thinkToolNudgeActive = false;
@@ -560,10 +463,10 @@ export default function feedbackExtension(pi: ExtensionAPI) {
 	});
 
 	// Track scratchpad usage and enforce think tool cadence
-	pi.on("turn_end", async (event) => {
+	pi.on("turn_end", async (event, ctx) => {
+		const state = getFeedbackState(ctx);
 		const tools = (event.toolResults || []).map((r) => r.toolName);
 
-		// Scratchpad missing nudge
 		const madeFileChanges = tools.some((t) => ["edit", "write"].includes(t));
 		const usedScratchpad = tools.includes("scratchpad");
 
@@ -580,13 +483,12 @@ export default function feedbackExtension(pi: ExtensionAPI) {
 				acknowledged: false,
 			};
 
-			if (shouldSendNudge(nudge)) {
-				recordNudge(nudge);
+			if (shouldSendNudge(state, nudge)) {
+				recordNudge(state, nudge);
 				sendFeedbackWhisper(pi, nudgeDef.message);
 			}
 		}
 
-		// Think tool enforcement - nudge every N turns without think tool
 		const turnsSinceThink = state.currentTurn - state.lastThinkToolTurn;
 		if (
 			state.config.thinkToolEnforcementTurns > 0 &&
@@ -606,23 +508,15 @@ export default function feedbackExtension(pi: ExtensionAPI) {
 				acknowledged: false,
 			};
 
-			if (shouldSendNudge(nudge)) {
-				recordNudge(nudge);
+			if (shouldSendNudge(state, nudge)) {
+				recordNudge(state, nudge);
 				sendFeedbackWhisper(pi, nudgeDef.message);
 			}
 		}
 	});
 
 	// Before Agent Start: No-op (whispers are now sent immediately)
-	// NOTE: Feedback nudges are now sent IMMEDIATELY in message_end/turn_end via pi.sendMessage().
-	// This fixes the bug where whispers accumulated and only appeared when user sent a message.
-	// The before_agent_start handler is kept as a no-op for backward compatibility.
-
 	pi.on("before_agent_start", async (_event) => {
-		// Whispers are now sent immediately - nothing to do here
 		return undefined;
 	});
-
-	// Commands
-
 }

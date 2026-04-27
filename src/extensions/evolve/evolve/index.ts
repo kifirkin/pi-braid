@@ -40,8 +40,8 @@ import {
 
 // R9: Wire analytics into evolve feedback loop
 import { getAnalyticsState } from "../../heartbeat/analytics/index.js";
-function getAnalyticsMetrics() {
-	const analytics = getAnalyticsState();
+function getAnalyticsMetrics(ctx?: ExtensionContext) {
+	const analytics = getAnalyticsState(ctx);
 	const toolList: Array<{ name: string; calls: number; successRate: number }> = [];
 	for (const [name, metrics] of analytics.toolMetrics) {
 		toolList.push({
@@ -162,9 +162,9 @@ export default function evolveExtension(pi: ExtensionAPI) {
 
 		parameters: evolveSchema,
 
-		execute: async (_toolCallId, params): Promise<AgentToolResult<EvolveResult>> => {
+		execute: async (_toolCallId, params, _signal, _onUpdate, ctx): Promise<AgentToolResult<EvolveResult>> => {
 			try {
-				const result = await executeEvolveAction(params, pi);
+				const result = await executeEvolveAction(params, pi, ctx);
 				return {
 					content: [{ type: "text" as const, text: formatEvolveOutput(result) }],
 					details: result,
@@ -207,10 +207,11 @@ async function executeEvolveAction(
 		force?: boolean;
 	},
 	_pi: ExtensionAPI,
+	_ctx?: any,
 ): Promise<EvolveResult> {
 	switch (params.action) {
 		case "status":
-			return executeStatus();
+			return executeStatus(_ctx);
 		case "health":
 			return executeHealth(_pi);
 		case "check":
@@ -230,13 +231,13 @@ async function executeEvolveAction(
 	}
 }
 
-function executeStatus(): EvolveResult {
+function executeStatus(ctx?: any): EvolveResult {
 	const summary = getMetricsSummary();
 	const config = getConfig();
 	const meta = getMetacognitiveState();
 	const recommendation = getRecommendation();
 	// R9: Wire analytics into evolve status for feedback loop
-	const analytics = getAnalyticsMetrics();
+	const analytics = getAnalyticsMetrics(ctx);
 
 	return {
 		action: "status",
