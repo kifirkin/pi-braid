@@ -204,57 +204,50 @@ export function registerSessionCompactHandler(pi: any): void {
 
 // ── Compaction End (all outcomes) ─────────────────────────────────────────────
 // Handles ALL compaction outcomes including failures.
+// Key insight: pi core handles retry internally (willRetry flag). We only step in
+// for cases where pi does NOT retry (permanent failure, user needs guidance).
 
 export function registerCompactionEndHandler(pi: any): void {
 	pi.on("compaction_end" as never, async (event: { reason?: string; willRetry?: boolean; aborted?: boolean; errorMessage?: string; result?: unknown; compactionEntry?: { id?: string; summary?: string }; firstKeptEntryId?: string }, _ctx: ExtensionContext) => {
 		try {
 			const { reason, willRetry, aborted, errorMessage, result } = event;
 
-			// CRITICAL FIX: Check context window errors BEFORE overflow check.
-			// Previously, reason="overflow" was checked first, so context window errors
-			// went to handleOverflowFailure which tried to analyzeSession() (fails at 104%)
-			// and kept retrying compact() which also failed. Now we catch context window
-			// errors first and trigger emergency rotation immediately.
-			if (isContextWindowError(errorMessage)) {
-				handleContextWindowError(pi, event, _ctx, errorMessage);
+			// pi core is retrying — nothing to do, let pi handle it
+			if (willRetry) {
 				return;
 			}
 
-			// Overflow recovery failure
-			if (reason === "overflow" && !willRetry && !aborted) {
-				handleOverflowFailure(pi, event, _ctx, errorMessage);
-				return;
-			}
-
-			// Aborted
+			// Aborted — user cancelled, no action needed
 			if (aborted) {
-				pi.sendMessage({
-					customType: "context",
-					content: [{ type: "text" as const, text: "Context compaction was aborted (no changes made)." }],
-					display: true,
-				}, { deliverAs: "hint" });
 				return;
 			}
 
-			// Context window exceeded — LLM can't process the summary prompt itself
+			// Context window error — context too large even for LLM summarization
+			// Triggers emergency rotation immediately (handled inside)
 			if (isContextWindowError(errorMessage)) {
 				handleContextWindowError(pi, event, _ctx, errorMessage);
 				return;
 			}
 
-			// Transient server error
-			if (isTransientCompactionError(errorMessage)) {
-				handleTransientError(pi, event, _ctx, errorMessage);
-				return;
-			}
-
-			// Threshold/manual compaction failure
+			// Threshold/manual compaction failure (no result means it didn't succeed)
 			if ((reason === "threshold" || reason === "manual") && !result) {
 				handleThresholdFailure(pi, event, _ctx, errorMessage);
 				return;
 			}
 
-			// Success — enforcement handles memory nudge via session_compact
+			// Overflow recovery failure — pi couldn't reduce context enough
+			if (reason === "overflow") {
+				handleOverflowFailure(pi, event, _ctx, errorMessage);
+				return;
+			}
+
+			// Transient server error (529, 500, network) — pi didn't retry
+			if (isTransientCompactionError(errorMessage)) {
+				handleTransientError(pi, event, _ctx, errorMessage);
+				return;
+			}
+
+			// Success — enforcement handles memory nudge via session_compact event
 		} catch (err) {
 			log.error("compaction_end error:", err);
 		}

@@ -235,34 +235,16 @@ export function registerContextPruningHandler(pi: any): void {
 }
 
 // ── Retry trigger helpers (for agent_end) ─────────────────────────────────────
-function triggerCompactionRetryFromAgentEnd(pi: any, attempt: number, errorMessage: string): void {
-	if (compactionRetryState.retryTimeout) clearTimeout(compactionRetryState.retryTimeout);
-	const delayMs = getCompactionRetryDelay(attempt);
-	compactionRetryState.retryTimeout = setTimeout(() => {
-		compactionRetryState.retryTimeout = null;
-		pi.sendMessage(
-			{
-				customType: COMPACTION_RETRY_CUSTOM_TYPE,
-				content: [{ type: "text" as const, text: `[Auto-retry] Compaction failed (${errorMessage}). Retrying... (${attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})` }],
-				display: true,
-			},
-			{ triggerTurn: true },
-		);
-	}, delayMs);
+// These helpers are kept for backward compatibility but now simply update status.
+// Actual compaction retries are handled by compaction.ts via pi.compact() calls.
+// No more triggerTurn:true hidden turns — they caused context bloat.
+function triggerCompactionRetryFromAgentEnd(_pi: any, _attempt: number, _errorMessage: string): void {
+	// Intentionally empty — compaction.ts handles retries via pi.compact()
+	// The agent_end handler just updates the retry counter above
+	log.debug("[Compaction] agent_end retry signal received, compaction.ts handles actual retry");
 }
 
-function triggerOverflowRetryFromAgentEnd(pi: any, attempt: number, errorMessage: string, _ctx: any): void {
-	if (overflowRetryState.retryTimeout) clearTimeout(overflowRetryState.retryTimeout);
-	const delayMs = getOverflowRetryDelay(attempt);
-	overflowRetryState.retryTimeout = setTimeout(() => {
-		overflowRetryState.retryTimeout = null;
-		pi.sendMessage(
-			{
-				customType: "__overflow_retry_trigger",
-				content: [{ type: "text" as const, text: `[Auto-retry] Overflow recovery (${errorMessage}). Retrying... (${attempt}/${OVERFLOW_RETRY_MAX_ATTEMPTS})` }],
-				display: true,
-			},
-			{ triggerTurn: true },
-		);
-	}, delayMs);
+function triggerOverflowRetryFromAgentEnd(_pi: any, _attempt: number, _errorMessage: string, _ctx: any): void {
+	// Intentionally empty — compaction.ts handles retries via pi.compact({ keep })
+	log.debug("[Overflow] agent_end overflow signal received, compaction.ts handles actual retry");
 }

@@ -512,14 +512,28 @@ export default function feedbackExtension(pi: ExtensionAPI) {
 	});
 
 	// Track tool usage for sequence repetition detection
+	// Only track meaningful exploratory tools, not system tools.
+	// Threshold 5 for consecutive calls avoids false positives on legitimate read sessions.
 	pi.on("tool_call", async (event) => {
 		const toolName = event.toolName;
 
-		// Track repetition
-		const recentTools = state.recentNudges.slice(-10);
-		const repetitionCount = recentTools.filter((t) => t === toolName).length;
+		// Skip system/meta tools — they are not exploration
+		if (["feedback", "enforcement_status", "scratchpad", "memory_recall", "memory_store", "context_prune", "context_audit", "get-tool-addiction"].includes(toolName)) {
+			return;
+		}
 
-		if (repetitionCount >= 3) {
+		// Push FIRST so consecutive count reflects current position
+		state.recentNudges.push(toolName);
+		if (state.recentNudges.length > 20) state.recentNudges.shift();
+
+		// Count CONSECUTIVE calls of the same tool (not total in last N)
+		let consecutiveCount = 0;
+		for (let i = state.recentNudges.length - 1; i >= 0; i--) {
+			if (state.recentNudges[i] === toolName) consecutiveCount++;
+			else break;
+		}
+
+		if (consecutiveCount >= 5) {
 			const nudge: Nudge = {
 				id: `repetition-${Date.now()}`,
 				timestamp: Date.now(),
@@ -529,29 +543,19 @@ export default function feedbackExtension(pi: ExtensionAPI) {
 				triggeredBy: "tool_call",
 				acknowledged: false,
 			};
-
-			const nudgeDef = generateNudge("sequence_repetition", {
-				toolName,
-				count: repetitionCount,
-			});
+			const nudgeDef = generateNudge("sequence_repetition", { toolName, count: consecutiveCount });
 			nudge.message = nudgeDef.message;
 			nudge.action = nudgeDef.action;
-
 			if (shouldSendNudge(nudge)) {
 				recordNudge(nudge);
 				sendFeedbackWhisper(pi, nudgeDef.message);
 			}
 		}
 
-		state.recentNudges.push(toolName);
-		if (state.recentNudges.length > 20) {
-			state.recentNudges.shift();
-		}
-
 		// Track think tool usage
 		if (toolName === "think") {
 			state.lastThinkToolTurn = state.currentTurn;
-			state.thinkToolNudgeActive = false; // Reset when think tool is called
+			state.thinkToolNudgeActive = false;
 		}
 	});
 
