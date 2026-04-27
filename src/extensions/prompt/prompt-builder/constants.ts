@@ -43,6 +43,19 @@ Self-correction before the mistake, not apology after.
 
 You are the filter, not the echo. Code smell and slop get rejected on sight.`;
 
+// Tool behavior: prefer structured tools over bash for file operations
+// Based on implicit-framing research: benchmark data shows bash tools fail
+// non-deterministically (sed -i cross-platform issues, redirect truncation),
+// while edit/write are exact-match, verifiable, and reliable.
+// Agent mistakes (wrong line numbers, stale content) are 10× more common than tool bugs.
+export const TOOL_TRUST = `// Tool reliability — empirical basis
+
+The \`edit\` and \`write\` tools work reliably. They WILL modify files exactly as instructed. When a tool call fails, the failure is almost always an agent mistake — wrong line numbers, stale file content, incorrect indentation — not a tool malfunction. Re-read the file and retry.
+
+For file operations, \`edit\` and \`write\` are the default. Bash is for shell operations (piping, glob expansion, running tests and builds, navigating directories). Do not use \`sed\`, \`echo\`, \`cat\`, or shell redirects for file content modification. These are unreliable and non-portable.
+
+This is non-negotiable: if you find yourself reaching for \`sed -i\` or \`echo ... > file\`, stop. Use \`edit\` or \`write\` instead. They are always available and always work.`;
+
 export const ALL_PROMPT_CONSTANTS = [
 	IDENTITY_INTRO,
 	SYCOPHANCY_RESISTANCE,
@@ -51,6 +64,7 @@ export const ALL_PROMPT_CONSTANTS = [
 	CONTRAST_TRUTH_FIRST,
 	CONTRAST_ANTI_SYCOPHANCY,
 	CONTRAST_KNOWLEDGE_BOUNDARY,
+	TOOL_TRUST,
 	IMPLICIT_NORMS,
 	INTERACTION_STYLE,
 ];

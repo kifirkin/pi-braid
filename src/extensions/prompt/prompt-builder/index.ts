@@ -77,6 +77,24 @@ const CONTRAST_KNOWLEDGE_BOUNDARY = `Distinguish clearly between what you KNOW a
 // ── Interaction Style (single declarative sentence) ───────────────────────
 const INTERACTION_STYLE = `Provide concise, production-quality solutions. Focus on correctness over verbosity.`;
 
+// ── Tool Trust (empirical — based on benchmark data) ──────────────────────
+// bash tools fail non-deterministically (sed -i cross-platform, redirect truncation);
+// edit/write are exact-match and verifiable. Agent mistakes >> tool bugs.
+const TOOL_TRUST = `
+// Tool reliability — empirical basis
+
+The \`edit\` and \`write\` tools work reliably. They WILL modify files exactly as instructed.
+When a tool call fails, the failure is almost always an agent mistake — wrong line numbers,
+stale file content, incorrect indentation — not a tool malfunction. Re-read the file and retry.
+
+For file operations, \`edit\` and \`write\` are the default. Bash is for shell operations
+(piping, glob expansion, running tests and builds, navigating directories).
+Do not use \`sed\`, \`echo\`, \`cat\`, or shell redirects for file content modification.
+These are unreliable and non-portable.
+
+Non-negotiable: if you find yourself reaching for \`sed -i\` or \`echo ... > file\`,
+stop. Use \`edit\` or \`write\` instead. They are always available and always work.`;
+
 // ── Implicit Norms (identity-aligned, no directives) ──────────────────────
 const IMPLICIT_NORMS = `
 
@@ -501,6 +519,9 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
 
     // 8. Implicit norms (identity-aligned)
     parts.push(IMPLICIT_NORMS);
+
+    // 8. Tool trust (empirical — prevent bash hack anti-pattern)
+    parts.push(TOOL_TRUST);
 
     // 8a. Epistemic stability (research-backed self-monitoring)
     parts.push(EPISTEMIC_STABILITY);

@@ -198,10 +198,24 @@ Episodes tagged with project path. Retrieved memories display provenance:
 
 - [x] Density-aware compression proposals — `evaluatePolicies()` + heartbeat integration
 - [x] Cross-session memory isolation — project field filtering (HaluMem)
-- [ ] **Adaptive compression levels** — Experience Compression Spectrum (2604.15877):
+- [x] **Adaptive compression levels** — ✅ v0.30.0: `determineCompressionLevel()` short/medium/long
   - Short-term: Prune repeated tool results after 3+ failures
   - Medium-term: Summarize reasoning chains into conclusions
   - Long-term: Convert to episodic summaries in three-memory-stores
+
+### P2 (Medium Priority)
+- [x] **Semantic compression prototype** — ✅ v0.31.0: `semanticCompress()` in `context-manager/semantic-compress.ts`
+  - ⚠️ **NOTE:** Currently in wrong event handler (`"context"` — per-streaming, no return value effect)
+  - **FIX:** Move to `session_before_compact` where return value is respected
+- [ ] **Semantic compression in session_before_compact** — Move `semanticCompress()` from `"context"` handler to pre-compaction hook
+- [ ] **Remove "context" event handler** — It fires per-streaming-message, not pre-compaction. Return value is ignored. Migrate logic to `session_before_compact`
+- [ ] **Density metrics dashboard** — `getMetrics()` output includes contextDensity, lastDensityTurn (✅ v0.31.0 implementation)
+- [ ] **Episodic extraction** — Convert high-value reasoning chains to episodic memories in three-memory-stores for cross-session retention
+- [ ] **Memory eviction policies** — TTL + recency weighting for long-term store (currently unbounded)
+- [ ] **Remove `(ctx as any).turnCount` usages** — Track turns via `message_end` events instead (unstable API)
+
+### P3 (Research Findings)
+- [x] **PI API research** — `docs/PI-API-RESEARCH.md`: event types, ExtensionContext properties, compaction lifecycle, session_before_compact patterns, known issues
 
 ## Architecture Decision
 
