@@ -45,6 +45,7 @@ import {
 import {
 	shouldAdvise as marsShouldAdvise,
 } from "../../../lib/mars-reflector.js";
+import { dream } from "../../../lib/dreamer.js";
 import { recordBashDetails, recordToolCall, recordToolInput } from "./handlers/tool-tracker.js";
 import { analyzeMessage } from "./handlers/message-analysis.js";
 import {
@@ -334,6 +335,13 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 			const recent = getState(ctx).calibrationPairs.slice(-10);
 			const avgError = recent.reduce((s, p) => s + Math.abs(p.predicted - p.actual), 0) / recent.length;
 			if (avgError > 0.3) {
+				// D0: Emit calibration signal for belief-policy-engine
+				emitSignal(ctx, "calibration", "high-error", "warn", false, {
+					error: avgError,
+					tool: toolName,
+					pairCount: getState(ctx).calibrationPairs.length,
+				});
+
 				sendEnforcementWhisper(
 					pi,
 					`[calibration] High prediction error: ${(error * 100).toFixed(0)}% off on last ${toolName}. ` +
@@ -763,6 +771,13 @@ Persist them now - this is the minimum-fidelity moment.`,
 		for (const [key, signal] of Object.entries(signalEntries)) {
 			if (signal?.text) {
 				enforcementSignals[key] = signal;
+				// D0: Emit stability signal for belief-policy-engine
+				if (key === "stability") {
+					emitSignal(ctx, "stability", "decline", "warn", false, {
+						overlap: signal.text.match(/overlap=([0-9.]+)/)?.[1] ?? 0,
+						reason: signal.text,
+					});
+				}
 			}
 		}
 
@@ -956,6 +971,23 @@ Persist them now - this is the minimum-fidelity moment.`,
 				customType: "context",
 				display: true,
 				content: [{ type: "text", text: marsAdvice.message }],
+			});
+		}
+
+		// D0: Dreamer — proactive simulation of likely future paths
+		const dreamAdvice = dream(ctx, getState(ctx).toolLog);
+		if (dreamAdvice) {
+			pi.sendMessage({
+				customType: "context",
+				display: true,
+				content: [{ type: "text", text: dreamAdvice.message }],
+			});
+		}
+
+		// D0: Emit reflection gap signal for belief-policy-engine
+		if (getState(ctx).toolsSinceReflection >= 8) {
+			emitSignal(ctx, "reflection", "absent", "info", false, {
+				toolsSince: getState(ctx).toolsSinceReflection,
 			});
 		}
 	});

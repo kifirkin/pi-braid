@@ -2,8 +2,6 @@ import { createLogger } from "../../../lib/logger.js";
 
 const log = createLogger("analytics");
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-
 /**
  * Analytics Extension - Self-contained tool usage analytics
  *
@@ -18,8 +16,9 @@ import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "../../../lib/extension-state.js";
+import { emitSignal } from "../../../lib/belief-policy-engine.js";
 import { Type } from "typebox";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -450,6 +449,12 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 				}
 			}
 			if (warnings.length > 0) {
+				// D0: Emit tool-use signal for belief-policy-engine
+				emitSignal(ctx, "tool-use", "overuse", "warn", false, {
+					tools: warnings,
+					windowSize: total,
+				});
+
 				pi.sendMessage({
 					customType: "memory",
 					display: true,
