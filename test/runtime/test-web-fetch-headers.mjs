@@ -7,7 +7,7 @@ let fail = 0;
 
 // Test 1: Verify that web-fetch tool description mentions headers
 const fs = require("fs");
-const webFetchSource = fs.readFileSync("src/extensions/web-fetch/index.ts", "utf-8");
+const webFetchSource = fs.readFileSync("src/extensions/browser/web-fetch/index.ts", "utf-8");
 
 const hasUserAgent = webFetchSource.includes("User-Agent");
 const hasSecHeaders = webFetchSource.includes("Sec-Ch-Ua");

@@ -13,7 +13,7 @@ const {
 	recordToolCall,
 	getToolReliability,
 	selectBestTool,
-} = await import(`${ROOT}/dist/extensions/three-memory-stores/index.js`);
+} = await import(`${ROOT}/dist/extensions/memory/three-memory-stores/index.js`);
 
 let passed = 0;
 let failed = 0;
@@ -159,7 +159,7 @@ console.log("\n[5] RUMS mutual information retrieval");
 	// Note: retrieveByRUMS needs to be exported first
 	// For now, test the PMI scoring logic indirectly via source analysis
 	const fs = await import("fs");
-	const src = fs.readFileSync(`${ROOT}/src/extensions/three-memory-stores/index.ts`, "utf8");
+	const src = fs.readFileSync(`${ROOT}/src/extensions/memory/three-memory-stores/index.ts`, "utf8");
 	assert(src.includes("function retrieveByRUMS"), "retrieveByRUMS defined");
 	assert(src.includes("estimatePMI"), "estimatePMI function exists");
 	assert(src.includes("computeRUMS"), "computeRUMS scoring function exists");

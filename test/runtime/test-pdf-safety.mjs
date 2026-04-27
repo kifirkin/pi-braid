@@ -4,7 +4,7 @@ const require = createRequire(import.meta.url);
 const fs = require("fs");
 const path = require("path");
 
-// Inline isBinaryContent matching src/extensions/docs/index.ts logic
+// Inline isBinaryContent matching src/extensions/tools/docs/index.ts logic
 function isBinaryContent(content) {
   if (content.includes("\0")) return true;
   const sampleSize = Math.min(content.length, 8192);

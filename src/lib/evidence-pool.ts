@@ -1,15 +1,19 @@
 /**
  * Evidence Pool — Tracks knowledge from multiple sources with conflict detection.
+ * XoT (Cross-observational Thinking) two-stage decomposition:
  *
- * Based on: docs/RESEARCH_CONFLICT_QA.md
- * Key insight: "acknowledging conflict > arbitrary selection"
+ * Stage 1 — Evidence Explanation:
+ *   Identify sources, classify conflict type (direct | implication | reliability).
+ *   Use SOURCE_RELIABILITY scores to weight evidence.
+ *
+ * Stage 2 — Faithful Reasoning:
+ *   Generate acknowledgments that surface disagreement rather than
+ *   silently picking one side.
  *
  * Flow:
- * 1. memory_recall, web search, docs reading → addEvidence()
- * 2. message_end → detectConflicts() → unresolved → enforcement whisper
- * 3. resolveConflict() → verdict stored, conflict marked resolved
- *
- * Conflict detection: token-overlap based (no LLM needed for detection).
+ * 1. memory_recall, web search, docs reading, code execution → addEvidence()
+ * 2. message_end → detectConflicts() → XoT Stage 1 classification
+ * 3. conflict-qa → Stage 2: question generation + enforcement whisper
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
@@ -19,26 +23,51 @@ import { getExtensionState } from "./extension-state.js";
 
 export type EvidenceSource = "memory" | "web" | "docs" | "code" | "session" | "unknown";
 
+/** How the confidence was derived — affects reliability weighting (XoT Stage 1) */
+export type EvidenceConfidenceType = "parametric" | "retrieved" | "observed";
+
+/** XoT Stage 1: Conflict classification */
+export type ConflictClassification = "direct" | "implication" | "reliability";
+
+/**
+ * Source reliability baseline scores — prior probability that source is accurate.
+ * Used as multiplicative factor when computing evidence reliability.
+ */
+const SOURCE_RELIABILITY: Record<EvidenceSource, number> = {
+	code: 0.95,    // Executed code is ground truth
+	docs: 0.85,    // Documentation is highly reliable
+	memory: 0.7,   // Memory is moderate reliability
+	web: 0.6,      // Web is variable quality
+	session: 0.5,   // Session knowledge may be outdated
+	unknown: 0.4,
+};
+
 export interface Evidence {
 	id: string;
-	claim: string;            // Normalized claim text
-	normalized: string;         // lowercase, stopwords removed
-	content: string;            // Original content
+	claim: string;
+	normalized: string;
+	content: string;
 	source: EvidenceSource;
-	confidence: number;         // 0-1
+	confidence: number;        // Caller-provided confidence (0-1)
+	confidenceType: EvidenceConfidenceType;
+	reliability: number;        // Computed: SOURCE_RELIABILITY[source] × confidence
+	/** Project path where this evidence was created. Used for provenance tagging (HaluMem, 2511.03506). */
+	project: string;
 	timestamp: number;
-	turn?: number;             // Turn when added
+	turn?: number;
 }
 
 export interface Conflict {
 	id: string;
-	claim: string;             // The claim being contradicted
-	for: Evidence[];            // Evidence supporting
-	against: Evidence[];       // Evidence contradicting
+	claim: string;
+	for: Evidence[];
+	against: Evidence[];
 	verdict: "unresolved" | "resolved_for" | "resolved_against" | "uncertain";
-	resolvedBy?: string;       // How it was resolved
+	resolvedBy?: string;
 	resolvedAt?: number;
 	detectedAt: number;
+	/** XoT Stage 1 result — how the conflict was classified */
+	classification: ConflictClassification;
 }
 
 export interface EvidencePoolState {
@@ -57,7 +86,7 @@ function getState(ctx: ExtensionContext): EvidencePoolState {
 	}));
 }
 
-// ── Normalization helpers ───────────────────────────────────────────────────────
+// ── Normalization helpers ─────────────────────────────────────────────────────
 
 const STOP_WORDS = new Set([
 	"the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
@@ -78,8 +107,8 @@ function normalize(text: string): string {
 	return tokens.sort().join(" ");
 }
 
-/** Token overlap ratio between two texts */
-function tokenOverlap(a: string, b: string): number {
+/** Token overlap ratio between two texts. Exported for conflict-qa reuse. */
+export function tokenOverlap(a: string, b: string): number {
 	const tokensA = new Set(normalize(a).split(" "));
 	const tokensB = new Set(normalize(b).split(" "));
 	if (tokensA.size === 0 || tokensB.size === 0) return 0;
@@ -96,11 +125,34 @@ function extractClaim(text: string, maxLen = 80): string {
 	return first.length > maxLen ? first.slice(0, maxLen) + "..." : first;
 }
 
+// ── XoT Stage 1: Conflict Classification ─────────────────────────────────────
+
+/**
+ * Classify a conflict using source reliability and claim overlap.
+ * XoT Stage 1: Evidence Explanation.
+ */
+function classifyConflict(forEvidence: Evidence[], againstEvidence: Evidence[]): ConflictClassification {
+	const forText = forEvidence.map((e) => e.normalized).join(" ");
+	const againstText = againstEvidence.map((e) => e.normalized).join(" ");
+	const overlap = tokenOverlap(forText, againstText);
+
+	// Direct: High overlap between the claims (same topic being contradicted)
+	if (overlap > 0.5) return "direct";
+
+	// Reliability: Source reliability difference > 0.2
+	const forReliability = forEvidence[0]?.reliability ?? 0.5;
+	const againstReliability = againstEvidence[0]?.reliability ?? 0.5;
+	if (Math.abs(forReliability - againstReliability) > 0.2) return "reliability";
+
+	// Default: implication-based (one claim may logically contradict another)
+	return "implication";
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 /**
  * Add evidence to the pool from a knowledge source.
- * Call after memory_recall, web search, docs reading, code reading.
+ * Reliability is computed as: SOURCE_RELIABILITY[source] × confidence.
  */
 export function addEvidence(
 	ctx: ExtensionContext,
@@ -108,8 +160,10 @@ export function addEvidence(
 	source: EvidenceSource,
 	content: string,
 	confidence = 0.7,
+	confidenceType: EvidenceConfidenceType = "retrieved",
 ): string {
 	const state = getState(ctx);
+
 	const evidence: Evidence = {
 		id: `e${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
 		claim: extractClaim(claim),
@@ -117,6 +171,9 @@ export function addEvidence(
 		content: content.slice(0, 500),
 		source,
 		confidence,
+		confidenceType,
+		reliability: SOURCE_RELIABILITY[source] * confidence,
+		project: ctx.cwd ?? "unknown",
 		timestamp: Date.now(),
 	};
 	state.evidence.push(evidence);
@@ -137,11 +194,31 @@ export function addEvidence(
  */
 export function getEvidence(
 	ctx: ExtensionContext,
-	source?: EvidenceSource,
+	{ source, project, minConfidence, maxAgeMs }:
+		{ source?: EvidenceSource; project?: string; minConfidence?: number; maxAgeMs?: number } = {},
 ): Evidence[] {
 	const state = getState(ctx);
-	if (source) return state.evidence.filter((e) => e.source === source);
-	return [...state.evidence];
+	const currentProject = ctx.cwd ?? "unknown";
+	let result = state.evidence;
+
+	if (source) result = result.filter((e) => e.source === source);
+	if (minConfidence !== undefined) result = result.filter((e) => e.confidence >= minConfidence);
+	if (maxAgeMs !== undefined) result = result.filter((e) => Date.now() - e.timestamp <= maxAgeMs);
+
+	// HaluMem (2511.03506): Cross-session isolation — project-aware filtering
+	if (project !== undefined) {
+		result = result.filter((e) => e.project === project);
+	} else if (source === undefined) {
+		// Default: prefer current project, allow legacy (project="unknown"), allow recent cross-project
+		result = result.filter((e) => {
+			if (!e.project || e.project === currentProject || e.project === "unknown") return true;
+			// Cross-project: only if <1h old and high confidence
+			const ageMs = Date.now() - e.timestamp;
+			return ageMs < 3600000 && e.confidence >= 0.8;
+		});
+	}
+
+	return result;
 }
 
 /**
@@ -156,6 +233,32 @@ export function getUnresolvedConflicts(ctx: ExtensionContext): Conflict[] {
  */
 export function getAllConflicts(ctx: ExtensionContext): Conflict[] {
 	return [...getState(ctx).conflicts];
+}
+
+/**
+ * Format evidence with provenance tags for safe injection into context.
+ *
+ * HaluMem (2511.03506): Memory hallucinations propagate between projects when
+ * evidence is injected without source/TTL tags. This formatter adds markers so the
+ * agent can distinguish memory from fresh context.
+ */
+export function formatEvidenceWithProvenance(
+	evidence: Evidence[],
+	includeProject = true,
+): string {
+	if (!evidence.length) return "(no relevant evidence)";
+	return evidence.map((e) => {
+		const ageMs = Date.now() - e.timestamp;
+		const ageLabel = ageMs < 60000
+			? `${Math.round(ageMs / 1000)}s ago`
+			: ageMs < 3600000
+				? `${Math.round(ageMs / 60000)}m ago`
+				: `${Math.round(ageMs / 3600000)}h ago`;
+		const provenance = includeProject && e.project && e.project !== "unknown"
+			? `[EVIDENCE ${e.source} project=${e.project} ${ageLabel}] `
+			: `[EVIDENCE ${e.source} ${ageLabel}] `;
+		return `${provenance}${e.claim}`;
+	}).join("\n");
 }
 
 /**
@@ -177,6 +280,7 @@ export function resolveConflict(
 
 /**
  * Detect conflicts among all evidence in the pool.
+ * Uses reliability-based conflict detection (XoT Stage 1).
  * Returns newly detected conflicts.
  */
 export function detectConflicts(ctx: ExtensionContext): Conflict[] {
@@ -184,24 +288,19 @@ export function detectConflicts(ctx: ExtensionContext): Conflict[] {
 	const evidence = state.evidence;
 	const newConflicts: Conflict[] = [];
 
-	// For each pair of evidence from different sources with overlapping claims
 	for (let i = 0; i < evidence.length; i++) {
 		for (let j = i + 1; j < evidence.length; j++) {
 			const a = evidence[i];
 			const b = evidence[j];
 
-			// Skip same source (internal consistency assumed)
 			if (a.source === b.source) continue;
 
-			// Check overlap
 			const overlap = tokenOverlap(a.normalized, b.normalized);
-			if (overlap < 0.3) continue; // Not related claims
+			if (overlap < 0.3) continue;
 
-			// Check confidence difference → potential conflict
-			const confidenceDiff = Math.abs(a.confidence - b.confidence);
-			if (confidenceDiff < 0.15) continue; // Both low confidence, not a conflict
+			const reliabilityDiff = Math.abs(a.reliability - b.reliability);
+			if (reliabilityDiff < 0.02) continue;
 
-			// Found a potential conflict — check if already tracked
 			const existing = state.conflicts.find(
 				(c) =>
 					c.for.some((e) => e.id === a.id || e.id === b.id) ||
@@ -209,21 +308,24 @@ export function detectConflicts(ctx: ExtensionContext): Conflict[] {
 			);
 			if (existing) continue;
 
-			// Create conflict
+			// Higher reliability goes in "for"
+			const forEvidence = a.reliability > b.reliability ? [a] : [b];
+			const againstEvidence = a.reliability > b.reliability ? [b] : [a];
+
 			const conflict: Conflict = {
 				id: `c${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
 				claim: overlap >= 0.5 ? a.claim : `${a.claim.slice(0, 40)}... vs ${b.claim.slice(0, 40)}...`,
-				for: confidenceDiff > 0 ? [a] : [b],
-				against: confidenceDiff > 0 ? [b] : [a],
+				for: forEvidence,
+				against: againstEvidence,
 				verdict: "unresolved",
 				detectedAt: Date.now(),
+				classification: classifyConflict(forEvidence, againstEvidence),
 			};
 			state.conflicts.push(conflict);
 			newConflicts.push(conflict);
 		}
 	}
 
-	// Cleanup old resolved conflicts (>20 → keep last 10)
 	if (state.conflicts.length > 20) {
 		state.conflicts = state.conflicts.slice(-10);
 	}
@@ -245,10 +347,9 @@ function detectConflictsFor(ctx: ExtensionContext, evidenceId: string): Conflict
 		const overlap = tokenOverlap(newEvidence.normalized, existing.normalized);
 		if (overlap < 0.3) continue;
 
-		const confidenceDiff = Math.abs(newEvidence.confidence - existing.confidence);
-		if (confidenceDiff < 0.15) continue;
+		const reliabilityDiff = Math.abs(newEvidence.reliability - existing.reliability);
+		if (reliabilityDiff < 0.02) continue;
 
-		// Check not already tracked
 		const existingConflict = state.conflicts.find(
 			(c) =>
 				c.for.some((e) => e.id === evidenceId || e.id === existing.id) ||
@@ -256,15 +357,19 @@ function detectConflictsFor(ctx: ExtensionContext, evidenceId: string): Conflict
 		);
 		if (existingConflict) continue;
 
+		const forEvidence = newEvidence.reliability > existing.reliability ? [newEvidence] : [existing];
+		const againstEvidence = newEvidence.reliability > existing.reliability ? [existing] : [newEvidence];
+
 		const conflict: Conflict = {
 			id: `c${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
 			claim: overlap >= 0.5
 				? newEvidence.claim
 				: `${newEvidence.claim.slice(0, 40)}... vs ${existing.claim.slice(0, 40)}...`,
-			for: newEvidence.confidence > existing.confidence ? [newEvidence] : [existing],
-			against: newEvidence.confidence > existing.confidence ? [existing] : [newEvidence],
+			for: forEvidence,
+			against: againstEvidence,
 			verdict: "unresolved",
 			detectedAt: Date.now(),
+			classification: classifyConflict(forEvidence, againstEvidence),
 		};
 		state.conflicts.push(conflict);
 		newConflicts.push(conflict);
@@ -275,14 +380,17 @@ function detectConflictsFor(ctx: ExtensionContext, evidenceId: string): Conflict
 
 /**
  * Generate a faithful conflict acknowledgment message for enforcement.
+ * XoT Stage 2: Faithful reasoning — surfaces disagreement rather than picking sides.
  */
 export function formatConflictMessage(conflict: Conflict): string {
 	const forSource = conflict.for[0]?.source || "unknown";
 	const againstSource = conflict.against[0]?.source || "unknown";
+	const forRel = (conflict.for[0]?.reliability ?? 0).toFixed(2);
+	const againstRel = (conflict.against[0]?.reliability ?? 0).toFixed(2);
+
 	return (
-		`[conflict] Sources disagree: "${conflict.claim.slice(0, 60)}". ` +
-		`${forSource} (conf ${(conflict.for[0]?.confidence ?? 0).toFixed(1)}) ` +
-		`vs ${againstSource} (conf ${(conflict.against[0]?.confidence ?? 0).toFixed(1)}). ` +
+		`[conflict:${conflict.classification}] Sources disagree: "${conflict.claim.slice(0, 60)}". ` +
+		`${forSource} (rel ${forRel}) vs ${againstSource} (rel ${againstRel}). ` +
 		`Consider acknowledging: "Sources disagree on X. Based on Y, I conclude Z."`
 	);
 }

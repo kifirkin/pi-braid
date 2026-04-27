@@ -102,7 +102,7 @@ Total existing archive: ~37 items (research syntheses, old roadmaps, historical 
 
 ## Skills Documentation (docs/skills/)
 
-**Status**: All 12 skills have SKILL.md. `docs/skills/README.md` catalog does not exist.
+**Status**: ✅ All 12 skills have SKILL.md. `docs/skills/README.md` catalog exists.
 
 | Skill | File | Purpose |
 |-------|------|---------|
@@ -126,7 +126,7 @@ Need: `docs/skills/README.md` — one-liner catalog per skill.
 
 ## Library Documentation (docs/lib/)
 
-**Status**: 23 lib files, 0 docs.
+**Status**: 23 lib files, `docs/lib/README.md` exists (overview only).
 
 | Lib File | Purpose | Documented? |
 |----------|---------|-------------|
@@ -160,12 +160,12 @@ Need: `docs/skills/README.md` — one-liner catalog per skill.
 
 | Category | Status | Action |
 |----------|--------|--------|
-| Extension docs | 0/33 exist | Create `docs/extensions/` + 33 docs |
+| Extension docs | ✅ 35/35 exist | All extensions documented |
 | Skills catalog | 0 exist | Create `docs/skills/README.md` |
 | Lib docs | 0/23 exist | Create `docs/lib/README.md` |
 | Runtime test guide | 0 exist | Create `docs/TESTING.md` |
-| Version history | 0 exist | Create `docs/CHANGELOG.md` |
-| Error reference | 0 exist | Create `docs/ERRORS.md` |
+| Version history | ✅ Created | `docs/CHANGELOG.md` |
+| Error reference | ✅ Created | `docs/ERRORS.md` |
 
 ---
 
@@ -174,7 +174,7 @@ Need: `docs/skills/README.md` — one-liner catalog per skill.
 | Version | Date | Notes |
 |---------|------|-------|
 | v0.13.0 | Apr 20 | Enforcement refactor, 17 enforcement tests, 85 total tests |
-| v0.14.0 | pending | Structured signals wiring, compaction fix, auto-finalize, extension docs |
+| v0.14.0 | Apr 23 | Structured signals wiring, compaction fix, auto-finalize, extension docs (35/35), CHANGELOG, ERRORS |
 | v1.0.0 | future | Full integration, theater items wired |
 
 ---
@@ -253,4 +253,17 @@ docs/archive/
 | `test-all` | 61 | Run all tests |
 | `test-topic-drift` | 124 | Topic drift |
 
-**Note**: No TESTING.md guide exists. Create one.
+**Note**: ✅ `docs/TESTING.md` exists.
+
+---
+
+## Evaluation Benchmarks (3 scripts)
+
+| Script | Purpose | Status |
+|--------|---------|--------|
+| `benchmark_comprehensive.py` | Unified feature test runner (12 tests) | ✅ 100% pass |
+| `br4_latent_multi_turn.py` | BR4: latent activator ON/OFF comparison | ✅ Fixed |
+| `bm1_multi_turn_debug.py` | BM1: multi-turn debugging quality | ✅ Fixed |
+
+**Coverage**: Core, metacognition, memory, policy, infrastructure, research
+**Latest**: v0.18.0

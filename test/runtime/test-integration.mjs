@@ -153,7 +153,7 @@ console.log(`\n${"=".repeat(50)}`);
 // ── Metacognition integration ────────────────────────────────────────────
 console.log("\n[7] Metacognition handler integration");
 {
-	const { scoreHypothesis, scoreHypothesisOutput } = await import(`${ROOT}/dist/extensions/metacognition/handlers/scoring.js`);
+	const { scoreHypothesis, scoreHypothesisOutput } = await import(`${ROOT}/dist/extensions/core/metacognition/handlers/scoring.js`);
 	const { evaluateCognition } = await import(`${ROOT}/dist/lib/cognition-evaluator.js`);
 
 	// Full pipeline: hypothesis scoring → cognition evaluation
@@ -192,7 +192,7 @@ console.log("\n[8] Heartbeat module registry");
 {
 	// Verify all 5 heartbeat modules are exported
 	const fs = await import("fs");
-	const src = fs.readFileSync(`${ROOT}/src/extensions/heartbeat-scheduler/index.ts`, "utf8");
+	const src = fs.readFileSync(`${ROOT}/src/extensions/heartbeat/heartbeat-scheduler/index.ts`, "utf8");
 	const moduleNames = ["recallerModule", "dreamerModule", "contextHygieneModule", "measurementModule", "evolverModule"];
 	for (const name of moduleNames) {
 		assert(src.includes(name), `Module ${name} exists in heartbeat`);

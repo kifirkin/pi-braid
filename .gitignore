@@ -15,6 +15,9 @@ test/runtime/results/
 # Session data
 *.jsonl
 
+# Archives
+.archive/
+
 # OS
 .DS_Store
 Thumbs.db
@@ -27,3 +30,4 @@ Thumbs.db
 
 # modules
 node_modules/
+__pycache__/

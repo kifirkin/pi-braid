@@ -17,7 +17,7 @@ async function main() {
 	// ── Scoring handler (pure functions, can import directly) ──────────────
 	console.log("\n[1] Scoring handler — scoreHypothesis");
 	const { scoreHypothesis, scoreHypothesisOutput } = await import(
-		`${ROOT}/dist/extensions/metacognition/handlers/scoring.js`
+		`${ROOT}/dist/extensions/core/metacognition/handlers/scoring.js`
 	);
 
 	check("scoreHypothesis returns scored object", () => {
@@ -85,7 +85,7 @@ async function main() {
 	for (const name of ["scoring", "think", "hypothesize", "finalize"]) {
 		check(`${name}.ts exists and is valid module`, () => {
 			const src = readFileSync(
-				`${ROOT}/src/extensions/metacognition/handlers/${name}.ts`, "utf8"
+				`${ROOT}/src/extensions/core/metacognition/handlers/${name}.ts`, "utf8"
 			);
 			assert(src.length > 100, `${name}.ts is too short (${src.length} chars)`);
 			// Check for error handling
@@ -97,7 +97,7 @@ async function main() {
 	}
 
 	check("index.ts imports all handlers", () => {
-		const src = readFileSync(`${ROOT}/src/extensions/metacognition/index.ts`, "utf8");
+		const src = readFileSync(`${ROOT}/src/extensions/core/metacognition/index.ts`, "utf8");
 		assert(src.includes("from \"./handlers/think.js\""));
 		assert(src.includes("from \"./handlers/hypothesize.js\""));
 		assert(src.includes("from \"./handlers/finalize.js\""));
@@ -105,12 +105,12 @@ async function main() {
 	});
 
 	check("index.ts registers all tools", () => {
-		const src = readFileSync(`${ROOT}/src/extensions/metacognition/index.ts`, "utf8");
+		const src = readFileSync(`${ROOT}/src/extensions/core/metacognition/index.ts`, "utf8");
 		assert(src.includes("createThinkTool"));
 		assert(src.includes("createHypothesizeTool"));
 		assert(src.includes("createFinalizeTool"));
 		assert(src.includes("registerTool(createThinkTool()"));
-		assert(src.includes("registerTool(createFinalizeTool()"));
+		assert(src.includes("registerTool(createFinalizeTool"), "index.ts should register finalize tool");
 	});
 
 	const { evaluateCognition } = await import(`${ROOT}/dist/lib/cognition-evaluator.js`);

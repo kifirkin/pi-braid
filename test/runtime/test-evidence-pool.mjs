@@ -35,8 +35,8 @@ console.log("\n[2] Source filtering");
     addEvidence(ctx, "Use regex", "web", "Regex is best", 0.8);
     addEvidence(ctx, "Use string", "docs", "String recommended", 0.7);
     assert(getEvidence(ctx).length === 2, `all 2: ${getEvidence(ctx).length}`);
-    assert(getEvidence(ctx, "memory").length === 0, `memory filter: 0`);
-    assert(getEvidence(ctx, "web").length === 1, `web filter: 1`);
+    assert(getEvidence(ctx, { source: "memory" }).length === 0, `memory filter: 0`);
+    assert(getEvidence(ctx, { source: "web" }).length === 1, `web filter: 1`);
 }
 
 // ── Conflict detection (via addEvidence) ─────────────────────────────────

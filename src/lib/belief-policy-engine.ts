@@ -199,6 +199,7 @@ interface BPEState {
 	recommendations: PolicyRecommendation[];
 	lastRecommendationAt: number;
 	recommendationCooldownMs: number;
+	outcomes: Map<string, OutcomeEntry>;
 }
 
 function getState(ctx: ExtensionContext): BPEState {
@@ -208,6 +209,7 @@ function getState(ctx: ExtensionContext): BPEState {
 		recommendations: [],
 		lastRecommendationAt: 0,
 		recommendationCooldownMs: 30_000, // 30s between recommendations
+		outcomes: new Map(),
 	}));
 }
 
@@ -349,6 +351,69 @@ export function getSignals(ctx: ExtensionContext, count = 20): SystemSignal[] {
 	return getState(ctx).signals.slice(-count);
 }
 
+// ── D0: Outcome Tracking ───────────────────────────────────────────────
+// Closes the feedback loop: recommendations → action → outcome → adaption
+
+interface OutcomeEntry {
+	type: string;
+	effective: number;
+	ineffective: number;
+	lastReportedAt: number;
+}
+
+/**
+ * Report whether a recommendation type was effective.
+ * This adjusts policy parameters so the system self-tunes:
+ * - Effective recommendations get shorter cooldowns
+ * - Ineffective recommendations get stricter thresholds
+ * - Consistently ignored types are deprioritized
+ */
+export function reportRecommendationOutcome(
+	ctx: ExtensionContext,
+	type: string,
+	wasEffective: boolean,
+): void {
+	const state = getState(ctx);
+
+	let entry = state.outcomes.get(type);
+	if (!entry) {
+		entry = { type, effective: 0, ineffective: 0, lastReportedAt: 0 };
+		state.outcomes.set(type, entry);
+	}
+
+	if (wasEffective) {
+		entry.effective++;
+	} else {
+		entry.ineffective++;
+	}
+	entry.lastReportedAt = Date.now();
+
+	// Auto-tune: adjust cooldown based on effectiveness ratio
+	const total = entry.effective + entry.ineffective;
+	if (total >= 3) {
+		const ratio = entry.effective / total;
+		// Adjust recommendationCooldownMs dynamically
+		if (ratio > 0.7) {
+			// Highly effective → reduce cooldown (suggest more often)
+			state.recommendationCooldownMs = Math.max(
+				10_000,
+				state.recommendationCooldownMs - 2_000,
+			);
+		} else if (ratio < 0.3) {
+			// Ineffective → increase cooldown (suggest less often)
+			state.recommendationCooldownMs = Math.min(
+				120_000,
+				state.recommendationCooldownMs + 5_000,
+			);
+		}
+	}
+}
+
+/** Get outcome tracking summary */
+export function getOutcomes(ctx: ExtensionContext): OutcomeEntry[] {
+	return [...getState(ctx).outcomes.values()];
+}
+
 /** Clear all state (for testing or session reset) */
 export function clearBeliefEngine(ctx: ExtensionContext): void {
 	const state = getState(ctx);
@@ -356,4 +421,5 @@ export function clearBeliefEngine(ctx: ExtensionContext): void {
 	state.beliefs.clear();
 	state.recommendations = [];
 	state.lastRecommendationAt = 0;
+	state.outcomes.clear();
 }

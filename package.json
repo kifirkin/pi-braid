@@ -10,16 +10,24 @@
 		]
 	},
 	"scripts": {
-		"test": "echo \"Error: no test specified\" && exit 1"
+		"typecheck": "tsc --noEmit",
+		"build": "tsc",
+		"test": "npm run build && node scripts/run-tests.mjs",
+		"clean": "rm -rf dist *.tsbuildinfo"
 	},
 	"dependencies": {
+		"typebox": "1.1.34"
+	},
+	"devDependencies": {
+		"@types/node": "25.6.0",
+		"@types/pdf-parse": "1.1.5",
 		"pdf-parse": "2.4.5",
-		"typebox": "^1.0.0"
+		"typescript": "6.0.2"
 	},
 	"peerDependencies": {
-		"@mariozechner/pi-agent-core": ">=0.65.0",
-		"@mariozechner/pi-ai": ">=0.65.0",
-		"@mariozechner/pi-coding-agent": "0.69.0"
+		"@mariozechner/pi-agent-core": ">=0.70.0",
+		"@mariozechner/pi-ai": ">=0.70.0",
+		"@mariozechner/pi-coding-agent": ">=0.70.0"
 	},
 	"keywords": [
 		"pi",
@@ -29,10 +37,5 @@
 		"enforcement",
 		"planning"
 	],
-	"license": "MIT",
-	"devDependencies": {
-		"@types/node": "25.6.0",
-		"@types/pdf-parse": "1.1.5",
-		"typescript": "6.0.2"
-	}
+	"license": "MIT"
 }

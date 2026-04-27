@@ -9,7 +9,7 @@ const assert = (cond, msg) => cond ? (passed++, console.log("  ✅ "+msg)) : (fa
 console.log("\n[1] Module can be loaded");
 {
 	try {
-		const mod = await import(`${ROOT}/dist/extensions/heartbeat-scheduler/index.js`);
+		const mod = await import(`${ROOT}/dist/extensions/heartbeat/heartbeat-scheduler/index.js`);
 		// Default is the factory function — can't call without ExtensionAPI
 		assert(typeof mod.recallerModule === "object", "recallerModule exported");
 		assert(mod.dreamerModule != null, "dreamerModule exported");
@@ -24,7 +24,7 @@ console.log("\n[2] Heartbeat logic via source analysis");
 {
 	// Test the shouldActivate logic by inspecting the source
 	const fs = await import("fs");
-	const src = fs.readFileSync(`${ROOT}/src/extensions/heartbeat-scheduler/index.ts`, "utf8");
+	const src = fs.readFileSync(`${ROOT}/src/extensions/heartbeat/heartbeat-scheduler/index.ts`, "utf8");
 	
 	assert(src.includes("shouldActivate(context"), "has shouldActivate method");
 	assert(src.includes("lastActivation.get(\"recaller\")"), "recaller checks lastActivation");
@@ -41,7 +41,7 @@ console.log("\n[2] Heartbeat logic via source analysis");
 console.log("\n[3] Three memory stores source analysis");
 {
 	const fs = await import("fs");
-	const src = fs.readFileSync(`${ROOT}/src/extensions/three-memory-stores/index.ts`, "utf8");
+	const src = fs.readFileSync(`${ROOT}/src/extensions/memory/three-memory-stores/index.ts`, "utf8");
 	
 	assert(src.includes("addEpisode"), "has addEpisode");
 	assert(src.includes("retrieveEpisodes"), "has retrieveEpisodes");
@@ -61,7 +61,7 @@ console.log("\n[4] Cross-store integration");
 {
 	const fs = await import("fs");
 	// Check that heartbeat imports from three-memory-stores
-	const hbSrc = fs.readFileSync(`${ROOT}/src/extensions/heartbeat-scheduler/index.ts`, "utf8");
+	const hbSrc = fs.readFileSync(`${ROOT}/src/extensions/heartbeat/heartbeat-scheduler/index.ts`, "utf8");
 	assert(hbSrc.includes("three-memory-stores"), "heartbeat imports from three-memory-stores");
 }
 

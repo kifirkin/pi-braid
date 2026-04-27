@@ -1,6 +1,9 @@
 # pi-braid
 
-A self-improving coding agent harness for [pi](https://github.com/mariozechner/pi-coding-agent). Built on extension architecture with cognitive memory, enforcement signals, and structured nudges.
+A self-improving coding agent harness for [pi](https://github.com/mariozechner/pi-coding-agent). Built on extension architecture with cognitive memory, enforcement signals, structured nudges, and a session-scoped state model.
+
+For developers: see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+For architecture overview: see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Quick Start
 
@@ -8,11 +11,14 @@ A self-improving coding agent harness for [pi](https://github.com/mariozechner/p
 # Install
 npm install
 
-# Build
-npx esbuild src/index.ts --bundle --format=esm --platform=node --outdir=dist
+# Type-check
+npm run typecheck
+
+# Build (tree output to dist/)
+npm run build
 
 # Run
-pi -e /path/to/pi-braid/dist/index.js
+pi -e /path/to/pi-braid/src/index.ts
 ```
 
 ## What It Does
@@ -111,14 +117,14 @@ On overflow, `pi.compact({ keep: reducedKeep })` is called with progressively sm
 ## Development
 
 ```bash
-# Type check
-npx tsc --noEmit --skipLibCheck
+# Type-check
+npm run typecheck
 
-# Build
-npx esbuild src/index.ts --bundle --format=esm --platform=node --outdir=dist
+# Build (tree output to dist/)
+npm run build
 
 # Tests
-node test/runtime/test-all.mjs
+npm test
 
 # Individual test
 node test/runtime/test-<name>.mjs
