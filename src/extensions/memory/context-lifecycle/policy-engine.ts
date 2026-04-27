@@ -1,4 +1,7 @@
 import { createLogger } from "../../../lib/logger.js";
+import { getExtensionState } from "../../../lib/extension-state.js";
+import { evaluateContextDensity, recommendCompressionStrategy } from "../../../lib/context-density.js";
+import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 const log = createLogger("context-lifecycle");
 /**
@@ -188,3 +191,100 @@ export interface GovernanceResult {
 	severity: "ok" | "warn" | "block";
 	messages: string[];
 }
+
+// ── Context Density Signal Generator ────────────────────────────────────────────
+
+/**
+ * Evaluate context information density and emit signals.
+ * Based on: SimpleMem (2601.02553), GenericAgent (2604.17091)
+ *
+ * density < 0.4  → noisy context → aggressive pruning
+ * density 0.4-0.7 → mixed → semantic compression
+ * density > 0.7 + large context → semantic compression opportunity
+ * duplicates > 2 → dedup signal
+ */
+export function generateDensitySignals(ctx: ExtensionContext): SemanticSignal[] {
+	const signals: SemanticSignal[] = [];
+	const density = evaluateContextDensity(ctx);
+	const strategy = recommendCompressionStrategy(density);
+
+	if (density.density < 0.4) {
+		signals.push({ id: `sig-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, type: "context_density_low", data: { density: density.density, signal: density.signalMessages, noise: density.noisyMessages }, timestamp: Date.now(), turn: undefined as any, confidence: 0.8 });
+	} else if (density.density >= 0.7 && density.tokenRatio > 0.6) {
+		signals.push({ id: `sig-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, type: "context_density_high", data: { density: density.density, token_ratio: density.tokenRatio }, timestamp: Date.now(), turn: undefined as any, confidence: 0.8 });
+	}
+
+	if (density.duplicates > 2) {
+		signals.push({ id: `sig-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, type: "context_duplicates", data: { count: density.duplicates }, timestamp: Date.now(), turn: undefined as any, confidence: 0.8 });
+	}
+
+	// Also add to extension state for policy evaluation
+	const state = getExtensionState(ctx, "context-density", () => ({
+		density: density.density,
+		tokenRatio: density.tokenRatio,
+		duplicates: density.duplicates,
+		strategy,
+		timestamp: Date.now(),
+	}));
+	state.density = density.density;
+	state.tokenRatio = density.tokenRatio;
+	state.duplicates = density.duplicates;
+	state.strategy = strategy;
+	state.timestamp = Date.now();
+
+	return signals;
+}
+
+// ── Policy Evaluation for Density Signals ───────────────────────────────────────
+
+export function evaluatePolicies(
+	ctx: ExtensionContext,
+	signals: SemanticSignal[],
+): any[] {
+	const proposals: any[] = [];
+
+	for (const signal of signals) {
+		const signalType = signal.type;
+
+		// Map signal type to matching policies
+		const policy_map: Record<string, { priority: number; message: string; suggested_action: string; min_confidence: number }> = {
+			context_density_low: {
+				priority: 65,
+				message: "Context density low. Noisy: {noise} | Signal: {signal}. Consider context_prune().",
+				suggested_action: "context_prune",
+				min_confidence: 0.5,
+			},
+			context_density_high: {
+				priority: 58,
+				message: "High density ({density}%) but context large ({ratio}% of limit). Semantic compression (SimpleMem): 30% token cost, preserves meaning.",
+				suggested_action: "context_compress",
+				min_confidence: 0.5,
+			},
+			context_duplicates: {
+				priority: 62,
+				message: "{count} near-duplicate messages. context_prune() to remove.",
+				suggested_action: "context_prune",
+				min_confidence: 0.5,
+			},
+		};
+
+		const policy = policy_map[signalType];
+		if (policy && (signal.confidence ?? 1) >= policy.min_confidence) {
+			proposals.push({
+			
+				id: `policy-${signalType}`,
+				policy_id: signalType,
+				action: { type: "propose", message: policy.message, priority: "medium" as const },
+				priority: policy.priority,
+				canExecute: true,
+				signal,
+				confidence: signal.confidence ?? 1,
+			});
+		}
+	}
+
+	// Sort by priority descending
+	proposals.sort((a, b) => b.priority - a.priority);
+	return proposals;
+}
+

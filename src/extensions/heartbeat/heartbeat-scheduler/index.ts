@@ -29,6 +29,7 @@ import {
 } from "../../../lib/belief-store.js";
 import { addEpisode as addMemoryEpisode, addHeuristicRule } from "../../memory/three-memory-stores/index.js";
 import { createLogger } from "../../../lib/logger.js";
+import { generateDensitySignals, evaluatePolicies } from "../../memory/context-lifecycle/policy-engine.js";
 import { getExtensionState } from "../../../lib/extension-state.js";
 import type { Episode, HeuristicRule } from "../../memory/three-memory-stores/index.js";
 import { retrieveByRUMS } from "../../memory/three-memory-stores/index.js";
@@ -374,6 +375,36 @@ const contextHygieneModule: CognitiveModule = {
 		const ctx = context.ctx;
 		const { evaluateContextDensity } = await import("../../../lib/context-density.js");
 		const density = evaluateContextDensity(ctx);
+
+		// Emit density signals into S-MMU lifecycle (for density-aware policies)
+		const signals = generateDensitySignals(ctx);
+
+		// Route signals through context-lifecycle queue
+		try {
+			for (const signal of signals) {
+				// Queue signal into lifecycle controller for policy evaluation
+				const state = getExtensionState(ctx, "context-lifecycle", () => ({ signalQueue: [] as any[] }));
+				state.signalQueue.push(signal);
+			}
+			// Evaluate density policies with current signals
+			const proposals = evaluatePolicies(ctx, signals);
+			for (const proposal of proposals) {
+				if (proposal.action.type === "propose" && proposal.priority > 55) {
+					// High-priority proposal — whisper to agent
+					const msg = interpolateMessage(proposal.action.message, {
+						density: Math.round(density.density * 100),
+						noise: density.noisyMessages,
+						signal: density.signalMessages,
+						ratio: Math.round(density.tokenRatio * 100),
+						count: density.duplicates,
+					});
+						ctx.whisper?.(msg, { category: "cognitive", priority: "medium" });
+				}
+			}
+		} catch {
+			// Policy engine not available — just whisper based on density
+			log.debug("Density policies not available, using direct whisper");
+		}
 
 		if (density.density < 0.4) {
 			// Low density: context is noisy
@@ -1097,5 +1128,21 @@ interface PolicyEngine {
 }
 
 // ── Exports ──────────────────────────────────────────────────────────────────
+
+
+// ── Message Interpolation ─────────────────────────────────────────────────────────
+
+/** Replace {placeholder} in message with values from context dict. */
+function interpolateMessage(message: string, ctx: Record<string, number | string>): string {
+	let result = message;
+	for (const [key, value] of Object.entries(ctx)) {
+		result = result.replace(new RegExp(`\{${key}(?:%|\}|[^a-zA-Z])`, "g"), String(value));
+	}
+	// Fallback: simple {key} replacement
+	for (const [key, value] of Object.entries(ctx)) {
+		result = result.replace(new RegExp(`\{${key}\}`, "g"), String(value));
+	}
+	return result;
+}
 
 export { recallerModule, dreamerModule, contextHygieneModule, evolverModule };

@@ -20,7 +20,11 @@ export type SemanticSignalType =
 	| "task_boundary"
 	| "compaction_opportunity"
 	| "checkpoint_opportunity"
-	| "task_completion_candidate";
+	| "task_completion_candidate"
+	// ── Context Density Signals (SimpleMem 2601.02553, GenericAgent 2604.17091) ──────
+	| "context_density_low"
+	| "context_density_high"
+	| "context_duplicates";
 
 export interface SemanticSignal {
 	id: string;
@@ -269,6 +273,49 @@ export function createDefaultPolicies(): ContextPolicy[] {
 			},
 			suggested_action: "context_compress",
 		},
+		{
+			id: "density-low-prune",
+			name: "Low context density — suggest pruning",
+			priority: 65,
+			cooldown_ms: 60_000,
+			trigger: { type: "signal", signal: "context_density_low" },
+			action: {
+				type: "propose",
+				message: "Context density low. Noisy: {noise} | Signal: {signal}. Consider context_prune().",
+				priority: "medium",
+			},
+			suggested_action: "context_prune",
+			min_confidence: 0.5,
+		},
+		{
+			id: "density-high-semantic",
+			name: "High density + large context — semantic compression opportunity",
+			priority: 58,
+			cooldown_ms: 90_000,
+			trigger: { type: "signal", signal: "context_density_high" },
+			action: {
+				type: "propose",
+				message: "High density ({density}%) but context large ({ratio}% of limit). Semantic compression (SimpleMem): 30% token cost, preserves meaning.",
+				priority: "low",
+			},
+			suggested_action: "context_compress",
+			min_confidence: 0.5,
+		},
+		{
+			id: "duplicates-dedup",
+			name: "Duplicate messages — suggest dedup",
+			priority: 62,
+			cooldown_ms: 45_000,
+			trigger: { type: "signal", signal: "context_duplicates" },
+			action: {
+				type: "propose",
+				message: "{count} near-duplicate messages. context_prune() to remove.",
+				priority: "medium",
+			},
+			suggested_action: "context_prune",
+			min_confidence: 0.5,
+		},
+
 		{
 			id: "topic-shift-proposal",
 			name: "Propose checkpoint on topic shift",
