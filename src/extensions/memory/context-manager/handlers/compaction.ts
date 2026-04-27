@@ -132,16 +132,19 @@ export function registerBeforeCompactHandler(pi: any): void {
 			const usage = ctx.getContextUsage();
 			const model = (ctx as any).model;
 			const contextWindow = model?.contextWindow ?? usage?.contextWindow ?? 262_144;
-			// If context is > 85 % of the model's window, the LLM likely cannot even
-			// receive the summarization prompt (input + output budget > contextWindow).
-			// Bypass the LLM entirely and return a locally-built summary.
-			const threshold = Math.floor(contextWindow * 0.85);
+			// Hard truncation threshold: 50% of context window.
+			// At 50%+, the LLM summarization prompt (entries to summarize + system + summary output)
+			// may exceed the remaining safe budget, causing "context window exceeds limit" errors.
+			// Bypass the LLM entirely. Critical: firstKeptEntryId=null keeps ONLY the summary
+			// in context — no kept entries. Keeping old entries alongside the new summary is
+			// what causes "context window exceeds limit" in summarization (bug from v0.30.0).
+			const threshold = Math.floor(contextWindow * 0.50);
 			const usageTokens = usage?.tokens ?? 0;
 
 			if (usage && usageTokens >= threshold) {
 				log.warn(
-					`[context-manager] Context too large for LLM analysis (${usageTokens}/${contextWindow} tokens, ${(usageTokens / contextWindow * 100).toFixed(1)}%). ` +
-					`Using local summary instead of LLM summarization.`
+					`[context-manager] Hard truncation at ${(usageTokens / contextWindow * 100).toFixed(1)}% ` +
+					`(${usageTokens}/${contextWindow} tokens) — firstKeptEntryId=null (summary only)`
 				);
 
 				const previousSummary = event.preparation?.previousSummary ?? "";
@@ -153,7 +156,7 @@ export function registerBeforeCompactHandler(pi: any): void {
 				return {
 					compaction: {
 						summary,
-						firstKeptEntryId: event.preparation?.firstKeptEntryId,
+						firstKeptEntryId: null, // null = no kept entries, summary is new head
 						tokensBefore: event.preparation?.tokensBefore ?? usageTokens,
 						details: { readFiles, modifiedFiles },
 					},

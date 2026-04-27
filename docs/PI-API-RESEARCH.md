@@ -149,9 +149,90 @@ interface ExtensionContext {
 
 ---
 
+## Session Corruption Incident (2026-04-27)
+
+### Symptoms
+- Error: `400 invalid_request_error: tool result's tool id(call_function_p4eurevxj24t_1) not found`
+- Session file: 6.9MB, 3,976 entries, **187 compaction entries** (should be 1-2)
+- Compaction entries with empty content (no summary text)
+- Multiple compaction entries within seconds of each other
+
+### Root Cause
+The `registerContextPruningHandler` (`pi.on("context", handler)`) was running during every streaming message event (per-message, not per-session). It was:
+1. Calling `applyPruningWorkflow()` + `semanticCompress()` on every streaming message
+2. Calling `addEvidence()` (file write to evidence pool) during streaming
+3. Returning `{messages: cleaned}` which pi's streaming event system **ignores**
+
+Concurrent writes during streaming interfered with pi's own session file writes. This created:
+- Duplicate compaction entry writes (187 compaction entries)
+- Entries with empty content
+- Potential tool call/result pairing breakage
+
+### Fix Applied
+- `registerContextPruningHandler` **disabled** in `context-manager/index.ts`
+- All pruning/compression logic must migrate to `session_before_compact` handler
+  where `SessionBeforeCompactResult` return value is respected by pi
+
+### Lesson
+The `"context"` event is NOT safe for session-level mutations. pi's streaming event system does not route return values. Any file writes or session modifications in streaming handlers risk session corruption.
+
+---
+
 ## Recommended Changes
 
-### Priority 1: Remove `"context"` Handler + Move Logic to `session_before_compact`
+### Priority 1: Move Pruning to `session_before_compact` (CRITICAL)
+
+```typescript
+// compaction.ts — move all logic from events.ts "context" handler here:
+pi.on("session_before_compact", async (event, ctx) => {
+    const msgs = event.preparation?.messagesToSummarize ?? [];
+    if (msgs.length === 0) return;
+
+    // Step 1: BCR pruning
+    const { pruningState } = getCmState(ctx);
+    const pruned = applyPruningWorkflow(pruningState, msgs);
+
+    // Step 2: Semantic compression
+    const { compressed } = semanticCompress(pruned);
+
+    // Step 3: Reasoning block detection
+    if (shouldSummarizeReasoning(ctx)) {
+        const blocks = findReasoningBlocks(compressed.map(...), 3);
+        for (const block of blocks) {
+            recordSummarization(ctx, block, estimateTokensSaved(block));
+        }
+    }
+
+    // Step 4: If compression is substantial, substitute the compaction
+    if (compressed.length < msgs.length * 0.6) {
+        return {
+            compaction: {
+                summary: buildHardTruncationSummary(compressed),
+                substitute: true,
+            },
+        };
+    }
+
+    // Otherwise: let pi's compact() run with custom instructions
+    event.customInstructions = buildCompactionInstructions(audit);
+});
+```
+
+### Priority 2: Remove `(ctx as any).turnCount` Usages
+
+```typescript
+// Track turns via message_end instead
+let turnCount = 0;
+pi.on("message_end", async (event: MessageEndEvent, _ctx) => {
+    if (event.message?.role === "assistant") turnCount++;
+});
+```
+
+### Priority 3: Update Events.ts
+
+Remove `registerContextPruningHandler` entirely. Keep only:
+- `registerAgentEndRetryHandler` (agent_end)
+- `registerAutoRetryEndHandler` (auto_retry_end)
 
 ```typescript
 // IN compaction.ts — session_before_compact handler:
