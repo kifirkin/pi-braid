@@ -476,9 +476,14 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 			const warnings: string[] = [];
 			for (const [tool, count] of toolCounts) {
 				const ratio = count / total;
-				// Flag if single tool >60% of window, or >3x fair share
-				const fairShare = total / Math.max(toolCounts.size, 1);
-				if (ratio > 0.6 || (toolCounts.size > 1 && count > fairShare * 3)) {
+				const toolCount = toolCounts.size;
+				// Fair share: if 3 tools and 50 calls, each gets ~16.7
+				const fairShare = total / Math.max(toolCount, 1);
+				// Skip 'read' — reading docs is normal, not addiction
+				if (tool === "read") continue;
+				// Flag: tool dominates (>80%) in a monoculture session (≤2 tools)
+				// OR massively over-represented (>4x fair share) in diverse session
+				if ((ratio > 0.8 && toolCount <= 2) || (toolCount > 1 && count > fairShare * 4)) {
 					warnings.push(`${tool} (${count}/${total}, ${(ratio * 100).toFixed(0)}%)`);
 				}
 			}
