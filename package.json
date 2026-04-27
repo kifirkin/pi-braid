@@ -16,8 +16,13 @@
 		"clean": "rm -rf dist *.tsbuildinfo"
 	},
 	"dependencies": {
-		"pdf-parse": "2.4.5",
 		"typebox": "1.1.34"
+	},
+	"devDependencies": {
+		"@types/node": "25.6.0",
+		"@types/pdf-parse": "1.1.5",
+		"pdf-parse": "2.4.5",
+		"typescript": "6.0.2"
 	},
 	"peerDependencies": {
 		"@mariozechner/pi-agent-core": ">=0.70.0",
@@ -32,10 +37,5 @@
 		"enforcement",
 		"planning"
 	],
-	"license": "MIT",
-	"devDependencies": {
-		"@types/node": "25.6.0",
-		"@types/pdf-parse": "1.1.5",
-		"typescript": "6.0.2"
-	}
+	"license": "MIT"
 }
