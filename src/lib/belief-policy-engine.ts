@@ -24,7 +24,8 @@ export type SignalSource =
 	| "reasoning"
 	| "reflection"
 	| "calibration"
-	| "tool-use";
+	| "tool-use"
+	| "sycophancy";
 
 export type SignalSeverity = "info" | "warn" | "critical";
 

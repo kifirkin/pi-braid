@@ -22,6 +22,7 @@ import reasoningFn from "../extensions/cognitive/reasoning/index.js";
 import enforcementFn from "../extensions/cognitive/enforcement/index.js";
 import verificationFn from "../extensions/cognitive/verification/index.js";
 import topicDriftFn from "../extensions/cognitive/topic-drift/index.js";
+import sycophancyDetectorFn from "../extensions/cognitive/sycophancy-detector/index.js";
 
 import memoryStoresFn from "../extensions/memory/three-memory-stores/index.js";
 import sessionRecallFn from "../extensions/memory/session-recall/index.js";
@@ -123,8 +124,8 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
 	{
 		name: "cognitive",
 		label: "Cognitive Systems",
-		description: "RepE enforcement, structured reasoning, evidence pool, verification, topic-drift",
-		paper: "RepE Contrast / Evidence-Based Reasoning",
+		description: "RepE enforcement, structured reasoning, evidence pool, verification, topic-drift, sycophancy detection",
+		paper: "RepE Contrast / Evidence-Based Reasoning / Silicon Mirror (2604.19117)",
 		dependencies: ["core"],
 		extensions: [
 			{ name: "cognitive-systems",     fn: cognitiveSystemsFn },
@@ -132,6 +133,7 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
 			{ name: "enforcement",           fn: enforcementFn },
 			{ name: "verification",          fn: verificationFn },
 			{ name: "topic-drift",           fn: topicDriftFn },
+			{ name: "sycophancy-detector",   fn: sycophancyDetectorFn },
 		],
 		listensTo: [
 			"session_start", "session_shutdown", "input", "agent_end",

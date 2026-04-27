@@ -1,6 +1,6 @@
 # Silicon Mirror — Anti-Sycophancy Extension for pi-braid
 
-> **Status**: Design draft. Implementation not started.
+> **Status**: MVI implemented. `src/extensions/cognitive/sycophancy-detector/index.ts`.
 > **Research base**: arxiv:2604.00478 "The Silicon Mirror" (K&W 2026) + arxiv:2604.19117 (Pandey 2026)
 > **Design note**: This document reflects pi-braid's ExtensionAPI constraints, not the paper's architecture verbatim. Key difference: no pre-response interception → no response rewrite.
 
