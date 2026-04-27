@@ -40,6 +40,8 @@ export interface Episode {
 	timestamp: number;
 	toolSequence: string[];
 	tags: string[];
+	/** Project path where this episode was created. Provenance tag (HaluMem 2511.03506). */
+	project: string;
 }
 
 export interface HeuristicRule {
@@ -96,6 +98,7 @@ function addEpisode(
 	outcome: Episode["outcome"],
 	toolSequence: string[],
 	tags: string[] = [],
+	project?: string,
 ): Episode {
 	const episode: Episode = {
 		id: `ep-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -106,6 +109,7 @@ function addEpisode(
 		timestamp: Date.now(),
 		toolSequence,
 		tags,
+		project: project ?? "unknown",
 	};
 	state.episodes.push(episode);
 
@@ -121,13 +125,19 @@ function retrieveEpisodes(
 	state: MemoryStoresState,
 	query: string,
 	limit: number = 3,
+	currentProject?: string,
 ): Episode[] {
 	const queryLower = query.toLowerCase();
+	const now = Date.now();
 	const scored = state.episodes
-		.map((ep) => ({
-			ep,
-			score: computeSimilarity(queryLower, ep),
-		}))
+		.map((ep) => {
+			// HaluMem (2511.03506): Cross-session isolation — same-project bonus
+			const baseScore = computeSimilarity(queryLower, ep);
+			const projectBonus = (currentProject && ep.project === currentProject) ? 0.2 : 0;
+			const ageHours = (now - ep.timestamp) / 3600000;
+			const ageBonus = Math.max(0, 1 - ageHours / 168) * 0.1; // Decay over 7 days
+			return { ep, score: baseScore + projectBonus + ageBonus };
+		})
 		.filter((s) => s.score > 0.1)
 		.sort((a, b) => b.score - a.score)
 		.slice(0, limit);
@@ -451,13 +461,14 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 
 			if (action === "search") {
 				if (!query) return textResult("Error: query is required for search action");
-				const episodes = retrieveEpisodes(state, query, limit);
+				const episodes = retrieveEpisodes(state, query, limit, ctx?.cwd ?? "unknown");
 				if (episodes.length === 0) return textResult("No relevant episodes found.");
 
 				const lines: string[] = [`Found ${episodes.length} relevant episodes:\n`];
 				for (const ep of episodes) {
 					const outcomeIcon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
-					lines.push(`${outcomeIcon} [${ep.outcome}] ${ep.task}`);
+					const ageMinutes = Math.round((Date.now() - ep.timestamp) / 60000);
+					const provenance = `[MEMORY project=${ep.project || "unknown"} ttl=${ageMinutes}m ago]`;					lines.push(`${provenance} ${outcomeIcon} [${ep.outcome}] ${ep.task}`);
 					lines.push(`   Solution: ${ep.solution.slice(0, 200)}${ep.solution.length > 200 ? "..." : ""}`);
 					lines.push(`   Tools: ${ep.toolSequence.join(" → ")}`);
 					lines.push(`   Similarity: ${(ep.similarity * 100).toFixed(0)}%`);
@@ -470,7 +481,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 				if (!task || !solution || !outcome) {
 					return textResult("Error: task, solution, and outcome are required for add action");
 				}
-				const episode = addEpisode(state, task, solution, outcome as Episode["outcome"], [], tags);
+				const episode = addEpisode(state, task, solution, outcome as Episode["outcome"], [], tags, ctx?.cwd ?? "unknown");
 				return textResult(`Episode added: "${task.slice(0, 50)}..." (${outcome}) [${episode.id}]`);
 			}
 
@@ -922,6 +933,7 @@ async function loadPastEpisodes(state: MemoryStoresState): Promise<number> {
 				timestamp: item.timestamp || Date.now() - 86400000,
 				toolSequence: [],
 				tags: ["loaded-from-disk"],
+								project: (item as any).project ?? "unknown",
 			});
 			loaded++;
 		}

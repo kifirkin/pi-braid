@@ -194,11 +194,31 @@ export function addEvidence(
  */
 export function getEvidence(
 	ctx: ExtensionContext,
-	source?: EvidenceSource,
+	{ source, project, minConfidence, maxAgeMs }:
+		{ source?: EvidenceSource; project?: string; minConfidence?: number; maxAgeMs?: number } = {},
 ): Evidence[] {
 	const state = getState(ctx);
-	if (source) return state.evidence.filter((e) => e.source === source);
-	return [...state.evidence];
+	const currentProject = ctx.cwd ?? "unknown";
+	let result = state.evidence;
+
+	if (source) result = result.filter((e) => e.source === source);
+	if (minConfidence !== undefined) result = result.filter((e) => e.confidence >= minConfidence);
+	if (maxAgeMs !== undefined) result = result.filter((e) => Date.now() - e.timestamp <= maxAgeMs);
+
+	// HaluMem (2511.03506): Cross-session isolation — project-aware filtering
+	if (project !== undefined) {
+		result = result.filter((e) => e.project === project);
+	} else if (source === undefined) {
+		// Default: prefer current project, allow legacy (project="unknown"), allow recent cross-project
+		result = result.filter((e) => {
+			if (!e.project || e.project === currentProject || e.project === "unknown") return true;
+			// Cross-project: only if <1h old and high confidence
+			const ageMs = Date.now() - e.timestamp;
+			return ageMs < 3600000 && e.confidence >= 0.8;
+		});
+	}
+
+	return result;
 }
 
 /**
