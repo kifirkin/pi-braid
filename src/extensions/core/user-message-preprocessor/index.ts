@@ -33,6 +33,7 @@ import { completeSimple } from "@mariozechner/pi-ai";
 import { Type } from "typebox";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext, InputEventResult } from "@mariozechner/pi-coding-agent";
 import { setLanguage, detectLanguage } from "../../../lib/language-hint.js";
+import { getExtensionState } from "../../../lib/extension-state.js";
 // No utility model resolution — uses ctx.model directly
 
 /** Anti-slop: detect code-writing requests (merged from anti-slop-input) */
@@ -261,7 +262,7 @@ function generateDiffLines(original: string, cleaned: string): string[] {
 }
 
 // ============================================================================
-// State
+// Session-scoped State
 // ============================================================================
 
 interface QueuedMessage {
@@ -270,18 +271,33 @@ interface QueuedMessage {
 	resolve: (result: InputEventResult) => void;
 }
 
-const state = {
-	config: { ...DEFAULT_CONFIG, enabled: loadGlobalSetting(SETTINGS_KEY, DEFAULT_CONFIG.enabled) },
-	preprocessedCount: 0,
-	skippedCount: 0,
-	errorCount: 0,
-	queue: [] as QueuedMessage[],
-	isProcessing: false,
-	/** Text that was already preprocessed in the current agentic session */
-	preprocessedText: "" as string | undefined,
-	/** Whether preprocessing is temporarily disabled (after preprocessing, until agent ends) */
-	preprocessingExhausted: false,
-};
+interface PreprocessorState {
+	config: PreprocessorConfig;
+	preprocessedCount: number;
+	skippedCount: number;
+	errorCount: number;
+	queue: QueuedMessage[];
+	isProcessing: boolean;
+	preprocessedText: string | undefined;
+	preprocessingExhausted: boolean;
+}
+
+function createPreprocessorState(): PreprocessorState {
+	return {
+		config: { ...DEFAULT_CONFIG, enabled: loadGlobalSetting(SETTINGS_KEY, DEFAULT_CONFIG.enabled) },
+		preprocessedCount: 0,
+		skippedCount: 0,
+		errorCount: 0,
+		queue: [],
+		isProcessing: false,
+		preprocessedText: undefined,
+		preprocessingExhausted: false,
+	};
+}
+
+function getPreprocessorState(ctx: ExtensionContext): PreprocessorState {
+	return getExtensionState(ctx, "preprocessor", createPreprocessorState);
+}
 
 async function processMessage(
 	original: string,
@@ -289,6 +305,7 @@ async function processMessage(
 	ctx: ExtensionContext,
 	resolve: (result: InputEventResult) => void,
 ) {
+	const state = getPreprocessorState(ctx);
 	state.isProcessing = true;
 
 	// Use session model for preprocessing (no separate utility model)
@@ -419,6 +436,7 @@ async function processMessage(
 }
 
 function processQueue(ctx: ExtensionContext) {
+	const state = getPreprocessorState(ctx);
 	if (state.queue.length === 0) {
 		state.isProcessing = false;
 		ctx.ui.setStatus("preprocessor", undefined);
@@ -448,7 +466,11 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 		execute: async (
 			_toolCallId,
 			params: Partial<PreprocessorConfig>,
+			_signal: any,
+			_onUpdate: any,
+			ctx: ExtensionContext,
 		): Promise<AgentToolResult<{ config: PreprocessorConfig }>> => {
+			const state = getPreprocessorState(ctx);
 			if (params.enabled !== undefined) {
 				state.config.enabled = params.enabled;
 				saveGlobalSetting(SETTINGS_KEY, params.enabled);
@@ -470,9 +492,10 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 		label: "Preprocessor Stats",
 		description: "Get preprocessing statistics.",
 		parameters: Type.Object({}),
-		execute: async (): Promise<
+		execute: async (_id: any, _params: any, _signal: any, _onUpdate: any, ctx: ExtensionContext): Promise<
 			AgentToolResult<{ preprocessed: number; skipped: number; errors: number; queued: number }>
 		> => {
+			const state = getPreprocessorState(ctx);
 			return {
 				content: [
 					{
@@ -491,6 +514,7 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("input", async (event, ctx): Promise<InputEventResult> => {
+		const state = getPreprocessorState(ctx);
 		if (!state.config.enabled) {
 			return { action: "continue" };
 		}
@@ -507,7 +531,6 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 		}
 
 		// If preprocessing was already done in this agentic session, skip
-		// This handles both unchanged preprocessed text AND user modifications
 		if (state.preprocessingExhausted) {
 			return { action: "continue" };
 		}
@@ -517,13 +540,11 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 			return { action: "continue" };
 		}
 
-		// Smart content detection: skip code-heavy messages
 		if (isCodeHeavy(original)) {
 			state.skippedCount++;
 			return { action: "continue" };
 		}
 
-		// Smart content detection: skip well-written text
 		if (looksWellWritten(original)) {
 			state.skippedCount++;
 			return { action: "continue" };
@@ -550,7 +571,8 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 	// Reset preprocessing state when agent finishes, so next user input
 	// can be processed. This ensures preprocessing runs once per user message,
 	// not on every agent turn in a conversation.
-	pi.on("agent_end", async (_event, _ctx) => {
+	pi.on("agent_end", async (_event, ctx) => {
+		const state = getPreprocessorState(ctx);
 		state.preprocessingExhausted = false;
 		state.preprocessedText = undefined;
 	});
@@ -558,6 +580,7 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 	pi.registerCommand("preprocessor", {
 		description: "Toggle message preprocessing",
 		handler: async (_args, ctx) => {
+			const state = getPreprocessorState(ctx);
 			state.config.enabled = !state.config.enabled;
 			saveGlobalSetting(SETTINGS_KEY, state.config.enabled);
 			ctx.ui.notify(`Message preprocessor ${state.config.enabled ? "enabled" : "disabled"}`, "info");
