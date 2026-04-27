@@ -98,19 +98,17 @@ function loadGlobalSetting<T>(key: string, defaultValue: T): T {
 	return defaultValue;
 }
 
-function saveGlobalSetting<T>(key: string, value: T): void {
+async function saveGlobalSetting<T>(key: string, value: T): Promise<void> {
+	const fs = await import("node:fs");
 	let settings: Record<string, unknown> = {};
-	if (existsSync(SETTINGS_FILE)) {
-		try {
-			settings = JSON.parse(readFileSync(SETTINGS_FILE, "utf-8"));
-		} catch {}
- /* Non-fatal: preprocess function unavailable */
-	}
+	try {
+		settings = JSON.parse(await fs.promises.readFile(SETTINGS_FILE, "utf-8"));
+	} catch { /* file may not exist */ }
 	settings[key] = value;
-	if (!existsSync(CONFIG_DIR)) {
-		mkdirSync(CONFIG_DIR, { recursive: true });
-	}
-	writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), "utf-8");
+	try {
+		await fs.promises.mkdir(CONFIG_DIR, { recursive: true });
+		await fs.promises.writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2), "utf-8");
+	} catch { /* non-fatal */ }
 }
 
 // ============================================================================
@@ -473,7 +471,7 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 			const state = getPreprocessorState(ctx);
 			if (params.enabled !== undefined) {
 				state.config.enabled = params.enabled;
-				saveGlobalSetting(SETTINGS_KEY, params.enabled);
+				await saveGlobalSetting(SETTINGS_KEY, params.enabled);
 			}
 			if (params.minLength !== undefined) state.config.minLength = params.minLength;
 			if (params.skipCommands !== undefined) state.config.skipCommands = params.skipCommands;
@@ -582,7 +580,7 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
 		handler: async (_args, ctx) => {
 			const state = getPreprocessorState(ctx);
 			state.config.enabled = !state.config.enabled;
-			saveGlobalSetting(SETTINGS_KEY, state.config.enabled);
+			await saveGlobalSetting(SETTINGS_KEY, state.config.enabled);
 			ctx.ui.notify(`Message preprocessor ${state.config.enabled ? "enabled" : "disabled"}`, "info");
 		},
 	});
