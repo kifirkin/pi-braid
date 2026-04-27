@@ -13,8 +13,13 @@ import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { log } from "./handlers/shared.js";
 import { registerTools } from "./handlers/tools.js";
 import { registerBeforeCompactHandler, registerSessionCompactHandler, registerCompactionEndHandler, registerTurnEndRetryReset } from "./handlers/compaction.js";
+import { registerAgentEndRetryHandler, registerAutoRetryEndHandler } from "./handlers/events.js";
 import { registerBeforeTreeHandler, registerTurnEndCheckoutHandler, registerAgentEndRetryHandler as registerNavAgentEndRetry } from "./handlers/navigation.js";
-import { registerAgentEndRetryHandler, registerAutoRetryEndHandler, registerContextPruningHandler } from "./handlers/events.js";
+
+// NOTE: registerContextPruningHandler DISABLED — the "context" event fires per-streaming-message
+// (not pre-compaction). Its return value is ignored by pi. Logic to be migrated to
+// session_before_compact handler in compaction.ts where return value is respected.
+// import { registerContextPruningHandler } from "./handlers/events.js";
 import { registerRotationHandlers, registerSessionShutdownHandler } from "./handlers/rotation.js";
 
 export default function contextManagerExtension(pi: any): void {
@@ -42,7 +47,8 @@ export default function contextManagerExtension(pi: any): void {
 	registerNavAgentEndRetry(pi);
 	registerAgentEndRetryHandler(pi);
 	registerAutoRetryEndHandler(pi);
-	registerContextPruningHandler(pi);
+	// ⚠️ DISABLED: causes session corruption via concurrent file writes during streaming.
+	// registerContextPruningHandler(pi); // ← "context" event return value is ignored by pi
 	registerRotationHandlers(pi);
 	registerSessionShutdownHandler(pi);
 
