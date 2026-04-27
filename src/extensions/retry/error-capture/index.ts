@@ -66,7 +66,7 @@ async function saveError(entry: ErrorEntry): Promise<void> {
 	await fs.appendFile(ERROR_FILE, JSON.stringify(entry) + "\n");
 
 	// Prune if over limit
-	const entries = await await loadErrors();
+	const entries = await loadErrors();
 	if (entries.length > MAX_ERRORS) {
 		const pruned = entries.slice(-MAX_ERRORS);
 		await fs.writeFile(ERROR_FILE, pruned.map((e) => JSON.stringify(e)).join("\n") + "\n");
@@ -95,7 +95,7 @@ async function captureError(
 		context,
 		handled: false,
 	};
-	await await saveError(entry);
+	await saveError(entry);
 	return entry;
 }
 

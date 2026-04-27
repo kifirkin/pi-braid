@@ -33,7 +33,7 @@ export type AtomicBehavior =
   | "hammer" | "detective" | "teacher" | "mentor" | "witness"
   | "artist" | "scientist" | "engineer" | "translator" | "referee"
   | "pioneer" | "curator" | "warrior" | "healer" | "messenger"
-  | "keeper" | "wanderer" | "reflection";
+  | "keeper" | "wanderer" | "reflection" | "research";
 
 /**
  * Implicit activation signals for each behavior
@@ -233,6 +233,11 @@ const LATENT_SIGNALS: Record<AtomicBehavior, {
     deactivation: ["just follow instructions", "don't overthink"],
     priority: 0.85,
   },
+  research: {
+    activation: ["search thoroughly", "verify before claiming", "find the evidence"],
+    deactivation: ["assume it's true", "skip verification", "obvious"],
+    priority: 0.9,
+  },
 };
 
 /**
@@ -246,7 +251,8 @@ const BEHAVIOR_MIXES: Record<string, AtomicBehavior[]> = {
   "exploration": ["explorer", "wanderer", "bridge", "lens"],
   "reflection": ["mirror", "archivist", "witness", "mentor"],
   "crisis": ["catalyst", "warrior", "guardian", "hammer"],
-  "learning": ["scientist", "teacher", "explorer"],
+  "learning": ["scientist", "research", "teacher", "explorer"],
+  "research": ["research", "scientist", "detective", "archivist"],
   "refactoring": ["architectural", "meticulous", "artist", "scalpel"],
   "handover": ["witness", "translator", "archivist"],
 };
@@ -261,12 +267,12 @@ interface ActivatorState {
 
 function getActivatorState(ctx?: ExtensionContext): ActivatorState {
 	if (ctx) return getExtensionState(ctx, "latent-activator", () => ({
-		currentBehaviors: new Set(["planner", "executor"] as AtomicBehavior[]),
+		currentBehaviors: new Set(["planner", "executor", "research"] as AtomicBehavior[]),
 		activationHistory: [],
 	}));
 	return _default;
 }
-const _default: ActivatorState = { currentBehaviors: new Set(["planner", "executor"] as AtomicBehavior[]), activationHistory: [] };
+const _default: ActivatorState = { currentBehaviors: new Set(["planner", "executor", "research"] as AtomicBehavior[]), activationHistory: [] };
 
 /**
  * Activate a behavior

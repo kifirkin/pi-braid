@@ -136,7 +136,7 @@ const { classifyRetryError, ErrorCategory, transientRetryStrategy, DEFAULT_RETRY
 	assert.strictEqual(state.lastError, null, "initial lastError is null");
 	assert.strictEqual(state.failureCount, 0, "initial failureCount is 0");
 	assert.strictEqual(state.errorPhase, "initial", "initial errorPhase is 'initial'");
-	assert.strictEqual(state.version, 3, "version is 3");
+	assert.strictEqual(state.version, 4, "version is 4");
 
 	// Test getState returns session state (without ctx, uses module default)
 	const state2 = stateMod.getState();

@@ -2,16 +2,74 @@
 // Marks task complete with session model verification.
 // Auto-proceed chains to next pending task from scratchpad.
 // Records calibration when confidence is provided.
+// R5: On task completion, cascade episodic → semantic memory.
 
 import { Type } from "typebox";
 import { complete } from "@mariozechner/pi-ai";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { getExtensionState } from "../../../../lib/extension-state.js";
+import { createLogger } from "../../../../lib/logger.js";
+
+const log = createLogger("finalize");
+
+// ── R5: Record task completion to episodic memory ──────────────────────────────
+// Cascades: episodic → semantic → procedural per Evo-MedAgent (2604.14475).
+// On finalize, the completed task is stored as an episode so the agent can
+// retrieve similar past solutions on future tasks via retrieveEpisodes().
+async function recordToMemory(ctx: ExtensionContext | undefined, summary: string, completed: boolean): Promise<void> {
+	if (!ctx) return;
+	try {
+		// @ts-ignore dynamic import — runtime resolves after build, type-check not needed
+		const { addEpisode } = await import("../../memory/three-memory-stores/index.js");
+		const state = getExtensionState<any>(ctx, "three-memory-stores", () => ({
+			episodes: [],
+			heuristics: [],
+			toolStats: new Map<string, unknown>(),
+			currentSessionTools: [] as string[],
+			sessionStartTime: Date.now(),
+		}));
+		const project = ctx.cwd ?? "unknown";
+		const tags = inferTagsFromSummary(summary);
+		const toolSeq = getSessionToolSequence(ctx);
+		const outcome = completed ? "success" : "failure";
+		// addEpisode expects MemoryStoresState, we pass a compatible shape
+		const episode = addEpisode(state, summary, `Outcome: ${outcome}`, outcome, toolSeq, tags, project);
+		log.info(`R5: Recorded episode ${episode.id} (${outcome}) for: ${summary.slice(0, 60)}`);
+	} catch (err) {
+		log.debug(`R5: Memory recording skipped: ${(err as Error).message}`);
+	}
+}
+
+function inferTagsFromSummary(summary: string): string[] {
+	const tags: string[] = [];
+	const lower = summary.toLowerCase();
+	if (lower.includes("fix") || lower.includes("bug")) tags.push("bug-fix");
+	if (lower.includes("audit")) tags.push("audit");
+	if (lower.includes("test")) tags.push("testing");
+	if (lower.includes("refactor")) tags.push("refactoring");
+	if (lower.includes("feature")) tags.push("feature");
+	if (lower.includes("session") || lower.includes("memory")) tags.push("session-isolation");
+	if (lower.includes("retry")) tags.push("retry-system");
+	if (lower.includes("behavior")) tags.push("behavior-research");
+	if (lower.includes("three-memory") || lower.includes("three memory")) tags.push("three-memory");
+	return tags.length > 0 ? tags : ["general"];
+}
+
+function getSessionToolSequence(ctx: ExtensionContext): string[] {
+	try {
+		const analytics = getExtensionState<any>(ctx, "analytics", () => null);
+		if (analytics?.toolCallSequence) return analytics.toolCallSequence.slice(-20);
+	} catch {
+		// best-effort
+	}
+	return [];
+}
 
 const finalizeSchema = Type.Object({
-	completed:     Type.Boolean({ description: "Whether the task was successfully completed" }),
-	summary:       Type.String({ description: "Brief summary of what was accomplished" }),
+	completed:      Type.Boolean({ description: "Whether the task was successfully completed" }),
+	summary:        Type.String({ description: "Brief summary of what was accomplished" }),
 	tasksRemaining: Type.Optional(Type.Array(Type.String(), { description: "Follow-up tasks" })),
-	autoProceed:   Type.Optional(Type.Boolean({ description: "Automatically propose next pending work on finalize" })),
+	autoProceed:    Type.Optional(Type.Boolean({ description: "Automatically propose next pending work on finalize" })),
 });
 
 const FINALIZE_CRITIC_PROMPT = `You are a critical reviewer verifying whether a task is truly complete.
@@ -71,14 +129,11 @@ async function findNextWork(ctx?: ExtensionContext): Promise<{ id: string; descr
 	if (!ctx) return null;
 
 	try {
-		// Access scratchpad's session-scoped task store
-		const { getExtensionState } = await import("../../../../lib/extension-state.js");
-		const scratchpad = getExtensionState(ctx, "scratchpad", () => null as any);
+		const scratchpad = getExtensionState<any>(ctx, "scratchpad", () => null);
 		if (!scratchpad?.taskStore?.tasks) return null;
 
-		// Find first pending task
 		const pending = scratchpad.taskStore.tasks.find(
-			(t: any) => t.status === "pending" || t.status === "in_progress"
+			(t: any) => t.status === "pending" || t.status === "in_progress",
 		);
 		if (!pending) return null;
 
@@ -129,7 +184,6 @@ finalize(completed=true, summary="Fixed the bug", tasksRemaining=["write tests"]
 
 			onFinalize?.(params.summary, params.completed);
 			if (recordCalibration && _ctx) {
-				// Default confidence = 0.7 if not explicitly predicted; agent can set higher
 				recordCalibration(_ctx, 0.7, params.completed ? "success" : "failure");
 			}
 
@@ -160,6 +214,9 @@ Continue working until the issues are resolved.`,
 			const status = params.completed ? "Task completed" : "Task incomplete";
 			const messages: string[] = [status, `Summary: ${params.summary}`];
 
+			// R5: Record task to episodic memory (cascade: episodic → semantic → procedural)
+			await recordToMemory(_ctx, params.summary, params.completed);
+
 			if (verificationResult.message) {
 				messages.push(`\nVerification: ${verificationResult.message}`);
 			}
@@ -168,14 +225,11 @@ Continue working until the issues are resolved.`,
 				messages.push(`\nFollow-up needed: ${params.tasksRemaining.join(", ")}`);
 			}
 
-			// Check for next pending work from scratchpad
 			const nextWork = await findNextWork(_ctx);
 			if (nextWork) {
 				messages.push(`\n📋 **Next pending task:** ${nextWork.description}`);
 				if (params.autoProceed) {
 					messages.push(`\n✅ Auto-proceeding to next task...`);
-					// Schedule the next task injection after a short delay
-					// (allows the current finalize response to be processed first)
 					setTimeout(() => {
 						sendNextTask?.(nextWork.description);
 					}, 500);
@@ -191,7 +245,13 @@ Continue working until the issues are resolved.`,
 
 			return {
 				content: [{ type: "text" as const, text: messages.join("\n") }],
-				details: { finalized: true, completed: params.completed, summary: params.summary, verification: verificationResult, nextWork: nextWork?.id ?? null },
+				details: {
+					finalized: true,
+					completed: params.completed,
+					summary: params.summary,
+					verification: verificationResult,
+					nextWork: nextWork?.id ?? null,
+				},
 			};
 		},
 	};

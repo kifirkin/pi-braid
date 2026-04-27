@@ -51,7 +51,9 @@ function createEmptyState(): RetryState {
 		lastTurn: null,
 		failureCount: 0,
 		errorPhase: "initial",
-		version: 3,
+		version: 4,
+		// Turn at which lastUserMessage was captured — used to detect stale captures
+		agentTurnAtCapture: -1,
 	};
 }
 
@@ -109,9 +111,16 @@ export function getConfig(ctx?: ExtensionContext): RetryConfig {
 // ── State Recovery from Session Entries ──────────────────────────────────────
 
 const MAX_PERSISTED_STATE_AGE_MS = 5 * 60 * 1000; // 5 min
+const MAX_MIDCHAIN_RESTORE_TURNS = 3; // Only restore mid_chain if within ~3 turns (90s)
 
 /**
  * Recover retry state from session entries. Called on session_start.
+ *
+ * Recovery policy:
+ * - mid_chain state: only restore if error is recent (within MAX_MIDCHAIN_RESTORE_TURNS).
+ *   Otherwise reset to "initial" — the agent likely completed the task or started
+ *   a new one while the session was suspended.
+ * - "initial" state: restore normally (user message + any error)
  */
 export function recoverState(sessionManager: { getEntries(): Array<any> }, ctx?: ExtensionContext): void {
 	const s = getS(ctx);
@@ -136,6 +145,19 @@ export function recoverState(sessionManager: { getEntries(): Array<any> }, ctx?:
 			}
 		}
 		if (bestEntry && now - bestTimestamp < MAX_PERSISTED_STATE_AGE_MS) {
+			// Bug fix: don't restore stale mid_chain state — the session may have
+			// continued and completed the task while we were away. Only restore
+			// mid_chain if the failure was recent.
+			if (bestEntry.errorPhase === "mid_chain") {
+				const ageMs = now - bestTimestamp;
+				const maxAge = MAX_MIDCHAIN_RESTORE_TURNS * 30_000; // ~30s per turn estimate
+				if (ageMs > maxAge) {
+					// Stale mid_chain — reset to initial, preserve lastUserMessage only
+					log.info(`recoverState: skipping stale mid_chain state (${Math.round(ageMs / 1000)}s old), resetting to initial`);
+					s.state = { ...createEmptyState(), lastUserMessage: bestEntry.lastUserMessage };
+					return;
+				}
+			}
 			s.state = { ...createEmptyState(), ...bestEntry };
 			return;
 		}
@@ -203,20 +225,56 @@ export function persistState(pi: ExtensionAPI, ctx?: ExtensionContext): void {
 		failureCount: s.state.failureCount,
 		errorPhase: s.state.errorPhase,
 		version: s.state.version,
+		agentTurnAtCapture: s.state.agentTurnAtCapture,
 	} satisfies RetryState);
 }
 
 // ── State Mutators ───────────────────────────────────────────────────────────
 
+/**
+ * Capture the last failed tool name for context-aware steer messages.
+ * Set by tool_end events (when isError is true) before recordAgentEnd runs,
+ * so the steer message can include which tool failed.
+ */
+export function captureFailedToolName(toolName: string, ctx?: ExtensionContext): void {
+	const s = getS(ctx);
+	// Ensure lastError is at least initialized so we have a stable object reference
+	if (!s.state.lastError) {
+		s.state.lastError = {
+			message: "",
+			category: "unknown" as any,
+			httpStatus: null,
+			providerCode: null,
+			timestamp: Date.now(),
+		};
+	}
+	(s.state as any)._failedToolName = toolName;
+}
+
 export function captureUserInput(pi: ExtensionAPI, text: string, images?: ImageContent[], entryId?: string, ctx?: ExtensionContext): void {
 	const s = getS(ctx);
+	// Never overwrite a mid-chain state — the agent was mid-task when it failed.
+	// New user input should only replace lastUserMessage if the previous state
+	// was a successful turn (errorPhase == "initial" or no error recorded).
+	const safeToOverwrite = s.state.errorPhase === "initial" || !s.state.lastError;
+	if (!safeToOverwrite) {
+		// Log but don't overwrite — mid_chain state must be preserved
+		log.debug("captureUserInput: blocked — mid-chain state active, not overwriting lastUserMessage");
+		return;
+	}
 	s.state.lastUserMessage = { text, images: images?.length ? images : undefined };
 	if (entryId) s.state.lastUserEntryId = entryId;
+	// Record turn at capture so auto-retry can detect stale captures
+	if (ctx) {
+		s.state.agentTurnAtCapture = (ctx as any).currentTurn ?? -1;
+	}
 	persistState(pi, ctx);
 }
 
 export function recordAgentEnd(pi: ExtensionAPI, entryId: string | null, hadError: boolean, errorMessage?: string | null, httpStatus?: number | null, hasPostUserAssistantMsgs?: boolean, ctx?: ExtensionContext): void {
 	const s = getS(ctx);
+	// Capture the failed tool name for context-aware steer messages.
+	const failedToolName: string | null = (s as any)._failedToolName ?? null;
 	if (hadError && errorMessage) {
 		const classification = classifyRetryError(errorMessage, httpStatus ?? null);
 		s.state.lastError = {
@@ -226,12 +284,14 @@ export function recordAgentEnd(pi: ExtensionAPI, entryId: string | null, hadErro
 			providerCode: null,
 			timestamp: Date.now(),
 		};
+		(s.state as any)._failedToolName = failedToolName;
 		s.state.failureCount++;
 		s.state.errorPhase = hasPostUserAssistantMsgs ? "mid_chain" : "initial";
 	} else {
 		s.state.lastError = null;
 		s.state.failureCount = 0;
 		s.state.errorPhase = "initial";
+		(s.state as any)._failedToolName = null;
 	}
 	if (entryId) {
 		s.state.lastTurn = { entryId, timestamp: Date.now(), hadError };
@@ -271,6 +331,24 @@ export function scheduleAutoRetry(pi: ExtensionAPI, ctx: ExtensionContext): numb
 	if (!classification?.retryable) return -1;
 	const strategy = shouldAutoRetry(s.state.lastError?.message ?? "", s.state.lastError?.httpStatus ?? null, ctx);
 	if (!strategy) return -1;
+
+	// Bug fix: Cancel pending auto-retry if a NEWER user input has arrived
+	// since we captured lastUserMessage. The agent has moved on — don't retry
+	// the stale turn. We detect this by comparing agentTurnAtCapture against
+	// the current turn.
+	if (s.state.agentTurnAtCapture >= 0) {
+		const currentTurn = (ctx as any).currentTurn ?? s.state.agentTurnAtCapture;
+		// If currentTurn is more than 1 ahead of captureTurn, new input has arrived
+		if (currentTurn > s.state.agentTurnAtCapture + 1) {
+			log.info(
+				`Auto-retry suppressed: agent has moved on (captureTurn=${s.state.agentTurnAtCapture}, ` +
+				`currentTurn=${currentTurn}). New user input has arrived since the failed turn.`,
+			);
+			clearAutoRetry(ctx);
+			return -1;
+		}
+	}
+
 	s.autoRetryAttempt++;
 	if (s.autoRetryAttempt > strategy.maxAttempts) { clearAutoRetry(ctx); return -1; }
 	s.autoRetryStrategy = strategy;
@@ -306,8 +384,18 @@ export async function continueRetry(pi: ExtensionAPI, ctx?: ExtensionContext): P
 	if (s.state.errorPhase === "mid_chain") {
 		const errMsg = s.state.lastError?.message ?? "unknown error";
 		const snippet = errMsg.length > 200 ? errMsg.slice(0, 200) + "…" : errMsg;
+		const failedTool: string | null = (s.state as any)._failedToolName ?? null;
 		const attempt = s.state.failureCount > 1 ? ` (attempt ${s.state.failureCount})` : "";
-		const text = `Continue from where you left off${attempt}. The last operation failed: ${snippet}\n\nResume the task.`;
+
+		let text: string;
+		if (failedTool) {
+			text = `Continue from where you left off${attempt}. ` +
+				`The last operation (tool: ${failedTool}) failed with:\n${snippet}\n\n` +
+				`Do NOT restart from the beginning. Resume the task starting right after the failed step.`;
+		} else {
+			text = `Continue from where you left off${attempt}. The last operation failed:\n${snippet}\n\n` +
+				`Do NOT restart from the beginning. Resume the task.`;
+		}
 
 		const content: import("@mariozechner/pi-ai").TextContent[] = [
 			{ type: "text", text },

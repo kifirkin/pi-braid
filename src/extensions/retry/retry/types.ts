@@ -58,6 +58,10 @@ export interface RetryState {
 	errorPhase: "initial" | "mid_chain";
 	/** Version for forward-compat */
 	version: number;
+	/** Agent turn number at which lastUserMessage was captured. Used by auto-retry
+	 * to detect that the agent has moved on (new user input arrived) and suppress
+	 * the stale auto-retry. -1 means "not recorded". */
+	agentTurnAtCapture: number;
 }
 
 // ── Retry Strategy Interface (extensible) ────────────────────────────────────
