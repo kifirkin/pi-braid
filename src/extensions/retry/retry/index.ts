@@ -72,18 +72,24 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
 		if (!messages || messages.length === 0) return;
 
 		// Capture the failed tool name for context-aware steer messages.
-		// Walk the messages in reverse to find the last errored tool.
+		// Walk the messages in reverse to find the last errored tool result,
+		// then map it back to the matching tool_call.
 		let failedToolName: string | null = null;
+		let erroredToolId: string | null = null;
 		for (let i = messages.length - 1; i >= 0; i--) {
 			const msg = messages[i];
 			if (msg.role === "tool" && msg.isError) {
-				failedToolName = msg.name ?? msg.toolName ?? null;
+				erroredToolId = msg.tool_call_id ?? null;
 				break;
 			}
-			if (msg.role === "tool_call") {
-				// Use the tool_call that precedes this tool result
-				failedToolName = msg.name ?? null;
-				break;
+		}
+		if (erroredToolId) {
+			for (let i = messages.length - 1; i >= 0; i--) {
+				const msg = messages[i];
+				if (msg.role === "tool_call" && msg.id === erroredToolId) {
+					failedToolName = msg.name ?? null;
+					break;
+				}
 			}
 		}
 
@@ -201,15 +207,33 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
 				ctx.ui.notify?.(`Retry attempt #${state.failureCount + 1} for this turn.`, "info");
 			}
 
-			// Ensure agent is idle before sending
+			// Staleness check — don't retry messages older than 10 minutes
+			if (state.lastUserMessage) {
+				const lastTurnTs = state.lastTurn?.timestamp ?? 0;
+				const lastErrorTs = state.lastError?.timestamp ?? 0;
+				const lastActivity = Math.max(lastTurnTs, lastErrorTs);
+				if (lastActivity > 0 && Date.now() - lastActivity > 10 * 60 * 1000) {
+					ctx.ui.notify?.("Last message is too old (>10 min) to retry safely.", "warning");
+					return;
+				}
+			}
+
+			// Ensure agent is idle before sending (with timeout guard)
 			try {
-				if (!ctx.isIdle()) { ctx.abort(); await new Promise((r) => setTimeout(r, 0)); await ctx.waitForIdle(); }
+				if (!ctx.isIdle()) {
+					await ctx.abort();
+					await new Promise((r) => setTimeout(r, 100));
+					await Promise.race([
+						ctx.waitForIdle(),
+						new Promise((_, reject) => setTimeout(() => reject(new Error("waitForIdle timeout")), 10000)),
+					]);
+				}
 			} catch { /* best-effort */ }
 
 			clearAutoRetry(ctx);
 			try {
 				if (!(await continueRetry(pi, ctx))) { ctx.ui.notify?.("Retry failed — no message to send.", "error"); return; }
-				ctx.ui.notify?.("Re-sending last message as steer continuation.", "info");
+				ctx.ui.notify?.("Re-sending last message.", "info");
 			} catch (sendErr) {
 				log.error(`Retry send failed: ${(sendErr as Error).message}`);
 				ctx.ui.notify?.(`Retry failed: ${(sendErr as Error).message}`, "error");

@@ -167,7 +167,7 @@ function searchPastInsights(cwd: string): PastInsight[] {
 	const insights: PastInsight[] = [];
 
 	// Search three-memory-stores episodes
-	const memoryDir = join(homedir(), ".pi/logs/memory");
+	const memoryDir = join(homedir(), ".pi/agent/memory");
 	if (existsSync(memoryDir)) {
 		try {
 			const episodeFiles = readdirSync(memoryDir).filter((f) => f.startsWith("episodes"));

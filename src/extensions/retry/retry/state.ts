@@ -274,7 +274,7 @@ export function captureUserInput(pi: ExtensionAPI, text: string, images?: ImageC
 export function recordAgentEnd(pi: ExtensionAPI, entryId: string | null, hadError: boolean, errorMessage?: string | null, httpStatus?: number | null, hasPostUserAssistantMsgs?: boolean, ctx?: ExtensionContext): void {
 	const s = getS(ctx);
 	// Capture the failed tool name for context-aware steer messages.
-	const failedToolName: string | null = (s as any)._failedToolName ?? null;
+	const failedToolName: string | null = (s.state as any)._failedToolName ?? null;
 	if (hadError && errorMessage) {
 		const classification = classifyRetryError(errorMessage, httpStatus ?? null);
 		s.state.lastError = {
@@ -366,17 +366,6 @@ export function scheduleAutoRetry(pi: ExtensionAPI, ctx: ExtensionContext): numb
 	return delay;
 }
 
-export async function executeRetry(pi: ExtensionAPI, ctx?: ExtensionContext): Promise<boolean> {
-	const s = getS(ctx);
-	if (!s.state.lastUserMessage) return false;
-	const content: (ImageContent | import("@mariozechner/pi-ai").TextContent)[] = [
-		{ type: "text", text: s.state.lastUserMessage.text },
-	];
-	if (s.state.lastUserMessage.images?.length) content.push(...s.state.lastUserMessage.images);
-	await pi.sendUserMessage(content);
-	return true;
-}
-
 export async function continueRetry(pi: ExtensionAPI, ctx?: ExtensionContext): Promise<boolean> {
 	const s = getS(ctx);
 	if (!s.state.lastUserMessage) return false;
@@ -407,7 +396,13 @@ export async function continueRetry(pi: ExtensionAPI, ctx?: ExtensionContext): P
 			{ type: "text", text: s.state.lastUserMessage.text },
 		];
 		if (s.state.lastUserMessage.images?.length) content.push(...s.state.lastUserMessage.images);
-		await pi.sendUserMessage(content, { deliverAs: "steer" });
+		// If agent is idle, send normally (triggers a new turn). If still busy, queue as steer.
+		const busy = ctx ? !ctx.isIdle() : false;
+		if (busy) {
+			await pi.sendUserMessage(content, { deliverAs: "steer" });
+		} else {
+			await pi.sendUserMessage(content);
+		}
 	}
 
 	return true;
