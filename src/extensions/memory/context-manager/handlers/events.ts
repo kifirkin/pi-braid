@@ -8,6 +8,7 @@ import { applyPruningWorkflow } from "../pruning.js";
 import { findReasoningBlocks, recordSummarization, shouldSummarizeReasoning, estimateTokensSaved } from "../../../../lib/reasoning-summary.js";
 import { determineCompressionLevel } from "../../../../lib/compression-strategy.js";
 import { semanticCompress } from "../semantic-compress.js";
+import { updateContextDensity } from "../../../heartbeat/analytics/index.js";
 import {
 	log, getCmState,
 	compactionRetryState, overflowRetryState,
@@ -207,6 +208,8 @@ export function registerContextPruningHandler(pi: any): void {
 						`(${stats.unitsCollapsed} collapsed, ${stats.unitsDropped} dropped)`,
 					);
 				}
+				// Wire compression stats into heartbeat density tracking (BCR → analytics loop)
+				updateContextDensity(ctx as ExtensionContext, 1 - (stats.messagesOut / Math.max(stats.messagesIn, 1)));
 			} catch (err) {
 				log.error("context: semantic compression error:", err);
 			}
