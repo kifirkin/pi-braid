@@ -328,6 +328,52 @@ def check_fix_quality(task_id: str, workspace_dir: str, final_text: str) -> tupl
 	return fix_quality, over_fix
 
 
+def check_file_fixes(task_id: str, workspace_dir: str) -> tuple[float, list[str]]:
+	"""Verify actual file modifications match expected fix patterns.
+	Returns (fix_score, list of detected patterns).
+	"""
+	task = TASK_FILES.get(task_id)
+	if not task:
+		return 0.0, []
+
+	filepath = os.path.join(workspace_dir, task["path"])
+	if not os.path.exists(filepath):
+		return 0.0, []
+
+	with open(filepath) as f:
+		content = f.read()
+
+	patterns = []
+	score = 0.0
+
+	if task_id == "bug-race-condition":
+		# Must have atomic operation, lock, mutex, or compare-and-swap
+		if re.search(r'atomic|Atomics\.|Lock\(|Mutex\(|Semaphore\(', content):
+			score += 0.4; patterns.append("atomic/lock")
+		if re.search(r'\bawait\b', content) and re.search(r'\block\b|\bmutex\b', content.lower()):
+			score += 0.2; patterns.append("async lock")
+		if re.search(r'compareAndSet|compare_and_swap|CAS\(', content):
+			score += 0.4; patterns.append("CAS")
+	elif task_id == "bug-memory-leak":
+		# Must remove event listeners
+		if re.search(r'removeEventListener|removeListener', content):
+			score += 0.4; patterns.append("removeEventListener")
+		if re.search(r'\.off\(|\.once\(', content):
+			score += 0.3; patterns.append("off/once")
+		if re.search(r'cleanup|dispose|destroy', content.lower()):
+			score += 0.3; patterns.append("cleanup")
+	elif task_id == "bug-null-undefined":
+		# Must add optional chaining or null check
+		if re.search(r'\?\.', content):
+			score += 0.5; patterns.append("optional chaining")
+		if re.search(r'if\s*\(\s*!\s*(user|result|data)', content):
+			score += 0.3; patterns.append("null check")
+		if re.search(r'\|\|\s*{\}', content):  # || {} fallback
+			score += 0.2; patterns.append("fallback")
+
+	return min(score, 1.0), patterns
+
+
 def run_bm1(
 	task_id: Optional[str] = None,
 	model: str = DEFAULT_MODEL,
@@ -433,7 +479,10 @@ After fixing, run the code to verify your fix works.
 			rpc.stop()
 
 		# Analyze results
-		fix_quality, over_fix = check_fix_quality(task_id, workspace, result.final_text)
+		text_quality, over_fix = check_fix_quality(task_id, workspace, result.final_text)
+		file_quality, file_patterns = check_file_fixes(task_id, workspace)
+		# Weight file changes more heavily than text descriptions
+		fix_quality = (file_quality * 0.7) + (text_quality * 0.3)
 
 		multi_turn_score = 1.0 if result.turns >= 3 else result.turns / 3.0
 
@@ -464,9 +513,13 @@ task_name=task_name,
 		)
 		results.append(mr)
 
-		print(f"  Turns: {result.turns}, Tools: {len(result.tool_calls)}, "
-			f"Fix quality: {fix_quality:.1f}, Multi-turn: {multi_turn_score:.1f}",
-			file=sys.stderr)
+		patterns_str = (', patterns: ' + ', '.join(file_patterns)) if file_patterns else ''
+		print(
+			f"  Turns: {result.turns}, Tools: {len(result.tool_calls)}, "
+			f"Fix: {fix_quality:.0%} (text:{text_quality:.0%} file:{file_quality:.0%}), "
+			f"Multi-turn: {multi_turn_score:.0%}{patterns_str}",
+			file=sys.stderr,
+		)
 
 		# Cleanup workspace
 		try:
