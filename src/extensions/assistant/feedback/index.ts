@@ -37,7 +37,6 @@ interface Nudge {
 
 type NudgeType =
 	| "silent_turn"
-	| "sequence_repetition"
 	| "tool_ineffective"
 	| "scratchpad_missing"
 	| "hallucination_detected"
@@ -102,7 +101,6 @@ interface FeedbackState {
 	config: FeedbackConfig;
 	nudgeHistory: Nudge[];
 	activeNudges: Nudge[];
-	recentNudges: string[];
 	abTests: ABTest[];
 	modelPreferences: Record<string, ModelPreferences["preferences"]>;
 	lastNudgeTime: number;
@@ -118,7 +116,6 @@ function createFeedbackState(): FeedbackState {
 		config: loadConfig(),
 		nudgeHistory: [],
 		activeNudges: [],
-		recentNudges: [],
 		abTests: loadABTests(),
 		modelPreferences: loadModelPreferences(),
 		lastNudgeTime: 0,

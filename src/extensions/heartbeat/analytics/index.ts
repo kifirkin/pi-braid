@@ -18,7 +18,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "../../../lib/extension-state.js";
-import { emitSignal } from "../../../lib/belief-policy-engine.js";
+import { emitSignal, getNextRecommendation } from "../../../lib/belief-policy-engine.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { Type } from "typebox";
 
@@ -455,6 +455,21 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 					tools: warnings,
 					windowSize: total,
 				});
+
+				// R9: Proactively surface policy recommendations right after emitting signal
+				const bpeRec = getNextRecommendation(ctx);
+				if (bpeRec) {
+					sendTrackedMessage(
+						pi,
+						{
+							customType: "context",
+							display: true,
+							content: [{ type: "text", text: bpeRec.message }],
+						},
+						undefined,
+						{ type: "heartbeat", source: "heartbeat/analytics/policy" },
+					);
+				}
 
 				sendTrackedMessage(
 					pi,
