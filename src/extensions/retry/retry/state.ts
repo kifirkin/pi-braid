@@ -26,6 +26,11 @@ import {
 
 import { getExtensionState } from "../../../lib/extension-state.js";
 import { createLogger } from "../../../lib/logger.js";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
+
+const RETRY_STATE_DISK_PATH = join(homedir(), ".pi", "agent", "retry-state.json");
 
 const log = createLogger("retry");
 
@@ -126,9 +131,27 @@ const MAX_MIDCHAIN_RESTORE_TURNS = 3; // Only restore mid_chain if within ~3 tur
  */
 export function recoverState(sessionManager: { getEntries(): Array<any> }, ctx?: ExtensionContext): void {
 	const s = getS(ctx);
+	const now = Date.now();
+
+	// Priority 0: load from disk (survives compaction / restart / resume)
+	try {
+		if (existsSync(RETRY_STATE_DISK_PATH)) {
+			const disk = JSON.parse(readFileSync(RETRY_STATE_DISK_PATH, "utf-8"));
+			if (disk?.state?.version) {
+				const ts = disk.state.lastError?.timestamp ?? disk.state.lastTurn?.timestamp ?? 0;
+				// Recover if we have a timestamp OR a user message (handles "just retry" case)
+				if (ts > 0 || disk.state.lastUserMessage?.text) {
+					s.state = { ...createEmptyState(), ...disk.state };
+					const preview = s.state.lastUserMessage?.text ?? "";
+				log.info(`recovered from disk: "${preview.slice(0, 60)}${preview.length > 60 ? "..." : ""}"`);
+					return;
+				}
+			}
+		}
+	} catch { /* silent — proceed to session entry fallback */ }
+
 	try {
 		const entries = sessionManager.getEntries();
-		const now = Date.now();
 
 		// Priority 1: custom entry with latest timestamp
 		let bestEntry: RetryState | null = null;
@@ -219,6 +242,8 @@ export function persistState(pi: ExtensionAPI, ctx?: ExtensionContext): void {
 	const h = stateHash(s);
 	if (h === s.lastPersistedHash) return;
 	s.lastPersistedHash = h;
+
+	// Session entry (for immediate resume within same session)
 	pi.appendEntry(RETRY_STATE_ENTRY_TYPE, {
 		lastUserMessage: s.state.lastUserMessage,
 		lastUserEntryId: s.state.lastUserEntryId,
@@ -229,21 +254,21 @@ export function persistState(pi: ExtensionAPI, ctx?: ExtensionContext): void {
 		version: s.state.version,
 		agentTurnAtCapture: s.state.agentTurnAtCapture,
 	} satisfies RetryState);
+
+	// Disk file (survives compaction, restart, /resume across sessions)
+	try {
+		const dir = join(homedir(), ".pi", "agent");
+		if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+		writeFileSync(RETRY_STATE_DISK_PATH, JSON.stringify({ state: s.state }), "utf-8");
+	} catch {
+		/* Non-fatal: disk write may fail */
+	}
 }
 
 // ── State Mutators ───────────────────────────────────────────────────────────
 
 export function captureUserInput(pi: ExtensionAPI, text: string, images?: ImageContent[], entryId?: string, ctx?: ExtensionContext): void {
 	const s = getS(ctx);
-	// Never overwrite a mid-chain state — the agent was mid-task when it failed.
-	// New user input should only replace lastUserMessage if the previous state
-	// was a successful turn (errorPhase == "initial" or no error recorded).
-	const safeToOverwrite = s.state.errorPhase === "initial" || !s.state.lastError;
-	if (!safeToOverwrite) {
-		// Log but don't overwrite — mid_chain state must be preserved
-		log.debug("captureUserInput: blocked — mid-chain state active, not overwriting lastUserMessage");
-		return;
-	}
 	s.state.lastUserMessage = { text, images: images?.length ? images : undefined };
 	if (entryId) s.state.lastUserEntryId = entryId;
 	// Record turn at capture so auto-retry can detect stale captures
@@ -282,6 +307,8 @@ export function resetState(pi: ExtensionAPI, ctx?: ExtensionContext): void {
 	s.state = createEmptyState();
 	clearAutoRetry(ctx);
 	persistState(pi, ctx);
+	// Also clear disk file to prevent stale reuse after manual reset
+	try { require("node:fs").unlinkSync(RETRY_STATE_DISK_PATH); } catch { /* ignore */ }
 }
 
 // ── Auto-Retry ───────────────────────────────────────────────────────────────

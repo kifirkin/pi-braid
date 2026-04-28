@@ -1,21 +1,26 @@
 /**
  * Retry extension — command handler integration tests.
  *
- * Tests the /retry handler flow: staleness check, continueRetry minimal steer.
+ * Tests the /retry handler flow: staleness check, continueRetry minimal steer,
+ * disk recovery, and captureUserInput behavior.
  */
 
 import { strict as assert } from "node:assert";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { homedir } from "node:os";
+import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT = join(__dirname, "../..");
 
+const DISK_PATH = join(homedir(), ".pi", "agent", "retry-state.json");
+
 // ── Imports ──────────────────────────────────────────────────────────────────
 
 const stateMod = await import(join(ROOT, "dist/extensions/retry/retry/state.js"));
-const { initState, getState, captureUserInput, recordAgentEnd, continueRetry } = stateMod;
+const { initState, getState, captureUserInput, recordAgentEnd, continueRetry, recoverState } = stateMod;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -50,7 +55,7 @@ function makeMockCtx(idle = true) {
 	console.log("=== continueRetry: always sends minimal steer ===");
 	initState();
 	const pi = makeMockPi();
-	const ctx = makeMockCtx(true); // idle
+	const ctx = makeMockCtx(true);
 	captureUserInput(pi, "test message", undefined, "entry-1", ctx);
 	const ok = await continueRetry(pi, ctx);
 	assert.strictEqual(ok, true, "continueRetry returns true");
@@ -66,7 +71,7 @@ function makeMockCtx(idle = true) {
 	console.log("=== continueRetry: mid_chain also sends minimal steer ===");
 	initState();
 	const pi = makeMockPi();
-	const ctx = makeMockCtx(true); // idle, but mid_chain
+	const ctx = makeMockCtx(true);
 	captureUserInput(pi, "do something", undefined, "entry-3", ctx);
 	recordAgentEnd(pi, "entry-3", true, "file not found", null, true, ctx);
 	const ok = await continueRetry(pi, ctx);
@@ -92,45 +97,82 @@ function makeMockCtx(idle = true) {
 	console.log("  ✅ Raw message not leaked");
 }
 
-// ── Test: staleness check blocks old messages ────────────────────────────────
+// ── Test: captureUserInput works even after mid_chain error ──────────────────
 
 {
-	console.log("=== Staleness check: old messages blocked ===");
+	console.log("=== captureUserInput: overwrites after mid_chain ===");
 	initState();
 	const pi = makeMockPi();
 	const ctx = makeMockCtx();
-	const oldTs = Date.now() - 15 * 60 * 1000; // 15 minutes ago
-	captureUserInput(pi, "old message", undefined, "entry-old", ctx);
-	recordAgentEnd(pi, "entry-old", true, "timeout", null, false, ctx);
+	captureUserInput(pi, "first message", undefined, "e1", ctx);
+	recordAgentEnd(pi, "e1", true, "error", null, true, ctx); // mid_chain
+	// New user input should still be captured
+	captureUserInput(pi, "second message", undefined, "e2", ctx);
 	const state = getState(ctx);
-	state.lastError.timestamp = oldTs;
-	state.lastTurn.timestamp = oldTs;
-
-	const lastTurnTs = state.lastTurn?.timestamp ?? 0;
-	const lastErrorTs = state.lastError?.timestamp ?? 0;
-	const lastActivity = Math.max(lastTurnTs, lastErrorTs);
-	const isStale = lastActivity > 0 && Date.now() - lastActivity > 10 * 60 * 1000;
-	assert.strictEqual(isStale, true, "message older than 10 min is stale");
-	console.log("  ✅ Staleness check correctly identifies old messages");
+	assert.strictEqual(state.lastUserMessage?.text, "second message", "new input captured after mid_chain");
+	console.log("  ✅ capture overwrites mid_chain state");
 }
 
-// ── Test: fresh messages pass staleness check ────────────────────────────────
+// ── Test: disk recovery works regardless of age ──────────────────────────────
 
 {
-	console.log("=== Staleness check: fresh messages allowed ===");
+	console.log("=== recoverState: disk state recovered regardless of age ===");
 	initState();
 	const pi = makeMockPi();
 	const ctx = makeMockCtx();
-	captureUserInput(pi, "fresh message", undefined, "entry-fresh", ctx);
-	recordAgentEnd(pi, "entry-fresh", true, "timeout", null, false, ctx);
 
+	// Simulate old disk state (from hours ago)
+	const oldState = {
+		state: {
+			lastUserMessage: { text: "old resumed message" },
+			lastUserEntryId: "old-entry",
+			lastError: { message: "old error", category: "transient", httpStatus: null, providerCode: null, timestamp: Date.now() - 3600000 },
+			lastTurn: { entryId: "old-entry", timestamp: Date.now() - 3600000, hadError: true },
+			failureCount: 1,
+			errorPhase: "initial",
+			version: 4,
+			agentTurnAtCapture: -1,
+		},
+	};
+	writeFileSync(DISK_PATH, JSON.stringify(oldState), "utf-8");
+
+	// Recover from disk (no session entries needed)
+	recoverState({ getEntries: () => [] }, ctx);
 	const state = getState(ctx);
-	const lastTurnTs = state.lastTurn?.timestamp ?? 0;
-	const lastErrorTs = state.lastError?.timestamp ?? 0;
-	const lastActivity = Math.max(lastTurnTs, lastErrorTs);
-	const isStale = lastActivity > 0 && Date.now() - lastActivity > 10 * 60 * 1000;
-	assert.strictEqual(isStale, false, "message within 10 min is not stale");
-	console.log("  ✅ Staleness check allows fresh messages");
+	assert.strictEqual(state.lastUserMessage?.text, "old resumed message", "disk state recovered");
+	assert.strictEqual(state.lastError?.message, "old error", "error recovered from disk");
+
+	// Cleanup
+	try { unlinkSync(DISK_PATH); } catch { /* ignore */ }
+	console.log("  ✅ Disk recovery works regardless of age");
+}
+
+// ── Test: disk recovery survives when session entries are empty ──────────────
+
+{
+	console.log("=== recoverState: empty session entries, disk fallback ===");
+	initState();
+	const pi = makeMockPi();
+	const ctx = makeMockCtx();
+
+	writeFileSync(DISK_PATH, JSON.stringify({
+		state: {
+			lastUserMessage: { text: "from disk after compaction" },
+			lastError: { message: "timeout", category: "transient", httpStatus: null, providerCode: null, timestamp: Date.now() - 60000 },
+			lastTurn: { entryId: "compacted-entry", timestamp: Date.now() - 60000, hadError: true },
+			failureCount: 1,
+			errorPhase: "initial",
+			version: 4,
+			agentTurnAtCapture: -1,
+		},
+	}), "utf-8");
+
+	recoverState({ getEntries: () => [] }, ctx);
+	const state = getState(ctx);
+	assert.strictEqual(state.lastUserMessage?.text, "from disk after compaction", "disk used when no session entries");
+
+	try { unlinkSync(DISK_PATH); } catch { /* ignore */ }
+	console.log("  ✅ Disk fallback when session entries empty");
 }
 
 console.log("\n=== Results: All command tests passed ===");
