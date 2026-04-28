@@ -17,6 +17,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-cod
 import { ModelSelectorComponent, SettingsManager } from "@mariozechner/pi-coding-agent";
 import type { Model, Api } from "@mariozechner/pi-ai";
 import { resolveVisionModel } from "../../../lib/model-resolver.js";
+import { registerSessionCleanup } from "../../../lib/extension-state.js";
 
 
 
@@ -115,6 +116,11 @@ export default function polyfillExtension(pi: ExtensionAPI) {
 		patchSessionManagerMethods(pi, ctx);
 		return {};
 	});
+
+	// D1: Clean up all extension state on session rotation.
+	// This prevents memory leaks across sessions (cognitive stores, analytics,
+	// enforcement state, etc.). registerSessionCleanup clears per-ctx WeakMap state.
+	pi.on("session_end" as any, registerSessionCleanup());
 
 	// Register settings commands for model selection
 	pi.registerCommand("vision-model", {

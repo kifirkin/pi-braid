@@ -248,15 +248,6 @@ function generateNudge(
 			};
 		}
 
-		case "sequence_repetition": {
-			const tool = context.toolName as string;
-			const count = context.count as number;
-			return {
-				severity: "warning",
-				message: `You're repeating the same tool (${tool}) ${count} times in a row. Consider:\n- Is this the right approach?\n- Are you stuck in a loop?\n- Should you try a different approach?`,
-			};
-		}
-
 		case "tool_ineffective": {
 			const ineffectiveTool = context.toolName as string;
 			const tip = context.tip as string;
@@ -371,8 +362,7 @@ export default function feedbackExtension(pi: ExtensionAPI) {
 	// Initialize state on start
 	pi.on("session_start", async (_event, ctx) => {
 		const state = getFeedbackState(ctx);
-		state.recentNudges = [];
-		state.nudgeCountThisTurn = 0;
+			state.nudgeCountThisTurn = 0;
 	});
 
 	// Reset turn counter at turn start
@@ -428,32 +418,6 @@ export default function feedbackExtension(pi: ExtensionAPI) {
 
 		if (["feedback", "enforcement_status", "scratchpad", "memory_recall", "memory_store", "context_prune", "context_audit", "get-tool-addiction"].includes(toolName)) {
 			return;
-		}
-
-		state.recentNudges.push(toolName);
-		if (state.recentNudges.length > 20) state.recentNudges.shift();
-
-		let consecutiveCount = 0;
-		for (let i = state.recentNudges.length - 1; i >= 0; i--) {
-			if (state.recentNudges[i] === toolName) consecutiveCount++;
-			else break;
-		}
-
-		if (consecutiveCount >= 5) {
-			const nudgeDef = generateNudge("sequence_repetition", { toolName, count: consecutiveCount });
-			const nudge: Nudge = {
-				id: `repetition-${Date.now()}`,
-				timestamp: Date.now(),
-				type: "sequence_repetition",
-				severity: "warning",
-				message: nudgeDef.message,
-				triggeredBy: "tool_call",
-				acknowledged: false,
-			};
-			if (shouldSendNudge(state, nudge)) {
-				recordNudge(state, nudge);
-				sendFeedbackWhisper(pi, nudgeDef.message);
-			}
 		}
 
 		if (toolName === "think") {

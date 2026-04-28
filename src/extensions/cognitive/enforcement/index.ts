@@ -237,19 +237,6 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 			getState(ctx).toolsSinceReflection++;
 		}
 
-		// Sequence repetition detection: 9+ same tool in a row
-		const REPETITION_THRESHOLD = 9;
-		if (getState(ctx).toolLog.length >= REPETITION_THRESHOLD) {
-			const lastN = getState(ctx).toolLog.slice(-REPETITION_THRESHOLD);
-			if (lastN.every((t) => t === lastN[0])) {
-				const now = Date.now();
-				if (now - getState(ctx).lastNudgeTime > getState(ctx).nudgeCooldownMs) {
-					getState(ctx).lastNudgeTime = now;
-					sendEnforcementWhisper(pi, `Repeating ${toolName} ${REPETITION_THRESHOLD}+ times - consider a different approach`);
-				}
-			}
-		}
-
 		// Blocking enforcement
 		const blockResult = checkBlocking(pi, toolName, input, getState(ctx));
 		if (blockResult.blocked) {
