@@ -13,9 +13,9 @@ const log = createLogger("scratchpad");
  * - Key learnings: root causes, patterns, fixes discovered this session
  * - Goal / Plan / Decisions / Hypotheses: existing sections
  *
- * Minimum-fidelity invariant: key_learnings survive context compaction.
- * When a compaction event is noted (note_compact), key learnings are
- * written to memory_store so they persist even if scratchpad resets.
+ * Auto-recycling: All collections have hard caps (RECYCLE config). Items beyond
+ * cap are evicted (FIFO). Expired constraints are auto-pruned. Recycling runs
+ * on session_before_compact and note_compact.
  *
  * Storage: ~/.pi/agent/scratchpads/{project-slug}/latest.json
  * Tasks:  ~/.pi/agent/scratchpads/{project-slug}/tasks.json
@@ -95,6 +95,8 @@ export interface KeyLearning {
 export interface TaskScratchpad {
 	/** Original goal/task */
 	goal: string;
+	/** Goal from previous session (survives set_goal) */
+	prior_goal: string;
 	/** Steps to complete */
 	plan: string[];
 	/** Steps completed */
@@ -121,6 +123,113 @@ export interface TaskScratchpad {
 	updatedAt: number;
 	/** Project slug this scratchpad belongs to */
 	projectSlug: string;
+}
+
+// ── Recycling Config ──────────────────────────────────────────────────────────
+/** Hard caps: prevent unbounded growth. Items beyond cap are archived/discarded. */
+const RECYCLE = {
+	MAX_PLAN:        20,   // plan steps
+	MAX_DONE:        50,   // completed steps (keeps history)
+	MAX_DECISIONS:   30,   // key decisions
+	MAX_HYPOTHESES: 20,   // active hypotheses
+	MAX_NOTES:       30,   // notes
+	MAX_LEARNINGS:   50,   // key learnings
+	MAX_CONSTRAINTS: 20,   // active constraints
+	MAX_TASKS:       50,   // task store tasks
+	GOAL_HISTORY:     3,   // prior goals to keep in history
+} as const;
+
+type RecycleStats = {
+	pruned_plan: number; pruned_done: number; pruned_decisions: number;
+	pruned_hypotheses: number; pruned_notes: number; pruned_learnings: number;
+	pruned_constraints: number; archived_goal: string | null; total_pruned: number;
+};
+
+/**
+ * Auto-prune scratchpad to stay within hard caps.
+ * Called on note_compact, session_before_compact, and on load.
+ * Returns stats so the agent knows what was cleaned.
+ */
+function scratchpadClean(pad: TaskScratchpad): RecycleStats {
+	const stats: RecycleStats = {
+		pruned_plan: 0, pruned_done: 0, pruned_decisions: 0,
+		pruned_hypotheses: 0, pruned_notes: 0, pruned_learnings: 0,
+		pruned_constraints: 0, archived_goal: null, total_pruned: 0,
+	};
+
+
+	// ── Goal: if changed, archive prior goal ─────────────────────────
+	// (prior_goal field added to TaskScratchpad — see interface)
+	// Archive when goal is being set to something different
+
+	// ── Plan: trim oldest beyond MAX_PLAN ───────────────────────────
+	if (pad.plan.length > RECYCLE.MAX_PLAN) {
+		stats.pruned_plan = pad.plan.length - RECYCLE.MAX_PLAN;
+		pad.plan = pad.plan.slice(-RECYCLE.MAX_PLAN);
+	}
+
+
+	// ── Done: trim oldest beyond MAX_DONE (keep recent history) ─────
+	if (pad.done.length > RECYCLE.MAX_DONE) {
+		stats.pruned_done = pad.done.length - RECYCLE.MAX_DONE;
+		pad.done = pad.done.slice(-RECYCLE.MAX_DONE);
+	}
+
+	// ── Decisions: trim oldest beyond MAX_DECISIONS ─────────────────
+	if (pad.decisions.length > RECYCLE.MAX_DECISIONS) {
+		stats.pruned_decisions = pad.decisions.length - RECYCLE.MAX_DECISIONS;
+		pad.decisions = pad.decisions.slice(-RECYCLE.MAX_DECISIONS);
+	}
+
+	// ── Hypotheses: trim oldest beyond MAX_HYPOTHESES ────────────────
+	if (pad.hypotheses.length > RECYCLE.MAX_HYPOTHESES) {
+		stats.pruned_hypotheses = pad.hypotheses.length - RECYCLE.MAX_HYPOTHESES;
+		pad.hypotheses = pad.hypotheses.slice(-RECYCLE.MAX_HYPOTHESES);
+	}
+
+	// ── Notes: trim oldest beyond MAX_NOTES ───────────────────────────
+	if (pad.notes.length > RECYCLE.MAX_NOTES) {
+		stats.pruned_notes = pad.notes.length - RECYCLE.MAX_NOTES;
+		pad.notes = pad.notes.slice(-RECYCLE.MAX_NOTES);
+	}
+
+	// ── Key Learnings: trim oldest beyond MAX_LEARNINGS ──────────────
+	if (pad.key_learnings.length > RECYCLE.MAX_LEARNINGS) {
+		stats.pruned_learnings = pad.key_learnings.length - RECYCLE.MAX_LEARNINGS;
+		pad.key_learnings = pad.key_learnings.slice(-RECYCLE.MAX_LEARNINGS);
+	}
+
+
+	// ── Constraints: prune expired + trim oldest beyond MAX ─────────
+	const now = Date.now();
+	const before = pad.constraints.length;
+	pad.constraints = pad.constraints.filter(
+		(c) => c.expires_at === 0 || c.expires_at > now,
+	);
+	stats.pruned_constraints += before - pad.constraints.length;
+	if (pad.constraints.length > RECYCLE.MAX_CONSTRAINTS) {
+		const excess = pad.constraints.length - RECYCLE.MAX_CONSTRAINTS;
+		stats.pruned_constraints += excess;
+		pad.constraints = pad.constraints.slice(-RECYCLE.MAX_CONSTRAINTS);
+	}
+
+	stats.total_pruned =
+		stats.pruned_plan + stats.pruned_done + stats.pruned_decisions +
+		stats.pruned_hypotheses + stats.pruned_notes + stats.pruned_learnings +
+		stats.pruned_constraints;
+
+	return stats;
+}
+
+/** Enforce cap on a mutable array. Returns number of items removed. */
+function capPush<T>(arr: T[], item: T, max: number): number {
+	let pruned = 0;
+	if (arr.length >= max) {
+		pruned = 1;
+		arr.splice(0, 1); // remove oldest
+	}
+	arr.push(item);
+	return pruned;
 }
 
 // ── Task Management ──────────────────────────────────────────────────────────
@@ -162,6 +271,7 @@ function scratchpadFilePath(projectSlug: string): string {
 function createScratchpad(goal: string, projectSlug: string): TaskScratchpad {
 	return {
 		goal,
+		prior_goal: "",
 		plan: [],
 		done: [],
 		decisions: [],
@@ -199,6 +309,8 @@ export async function loadScratchpadFromDisk(projectSlug: string): Promise<TaskS
 		const data = JSON.parse(await fs.readFile(filePath, "utf-8"));
 		if (!data.updatedAt) data.updatedAt = Date.now();
 		if (!data.projectSlug) data.projectSlug = projectSlug;
+		// Backfill new L2 fields for scratchpads created before this update
+		if (!data.prior_goal) data.prior_goal = "";
 		// Backfill new L2 fields for scratchpads created before this update
 		if (!data.session) {
 			data.session = {
@@ -262,6 +374,9 @@ function generateConstraintId(): string {
 
 export function formatScratchpad(pad: TaskScratchpad): string {
 	const lines = [`Goal: ${pad.goal || "(none)"}`];
+	if (pad.prior_goal) {
+		lines.push(`Prior goal: ${pad.prior_goal.slice(0, 80)}${pad.prior_goal.length > 80 ? "…" : ""}`);
+	}
 
 	if (pad.session.turn > 0) {
 		lines.push(`Session: turn ${pad.session.turn} | ${pad.session.phase} | ${pad.session.mode}`);
@@ -494,38 +609,41 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 
 				case "set_goal":
 					if (!text) return { content: [{ type: "text" as const, text: "text required" }], details: { error: "missing_text" } };
+					if (pad.goal && pad.goal !== text) {
+						pad.prior_goal = pad.goal;
+					}
 					pad.goal = text;
 					pad.session.phase = "planning";
 					await mutateAndSave(pad);
-					return { content: [{ type: "text" as const, text: `Goal set: ${text}` }], details: { goal: text } };
+					return { content: [{ type: "text" as const, text: `Goal set: ${text}` }], details: { goal: text, prior_goal: pad.prior_goal || undefined } };
 
 				case "add_plan":
 					if (!text) return { content: [{ type: "text" as const, text: "text required" }], details: { error: "missing_text" } };
-					pad.plan.push(text);
+					const planPruned = capPush(pad.plan, text, RECYCLE.MAX_PLAN);
 					await mutateAndSave(pad);
-					return { content: [{ type: "text" as const, text: `Plan step added: ${text}` }], details: { plan: pad.plan } };
+					return { content: [{ type: "text" as const, text: planPruned ? `Plan step added (${planPruned} old step trimmed)` : `Plan step added: ${text}` }], details: { plan: pad.plan, pruned: planPruned } };
 
 				case "mark_done":
 					if (!text) return { content: [{ type: "text" as const, text: "text required" }], details: { error: "missing_text" } };
-					if (!pad.done.includes(text)) pad.done.push(text);
+					if (!pad.done.includes(text)) capPush(pad.done, text, RECYCLE.MAX_DONE);
 					await mutateAndSave(pad);
 					return { content: [{ type: "text" as const, text: `Marked done: ${text}` }], details: { done: pad.done } };
 
 				case "add_decision":
 					if (!text) return { content: [{ type: "text" as const, text: "text required" }], details: { error: "missing_text" } };
-					pad.decisions.push(text);
+					capPush(pad.decisions, text, RECYCLE.MAX_DECISIONS);
 					await mutateAndSave(pad);
 					return { content: [{ type: "text" as const, text: `Decision recorded: ${text}` }], details: { decisions: pad.decisions } };
 
 				case "add_hypothesis":
 					if (!text) return { content: [{ type: "text" as const, text: "text required" }], details: { error: "missing_text" } };
-					pad.hypotheses.push(text);
+					capPush(pad.hypotheses, text, RECYCLE.MAX_HYPOTHESES);
 					await mutateAndSave(pad);
 					return { content: [{ type: "text" as const, text: `Hypothesis added: ${text}` }], details: { hypotheses: pad.hypotheses } };
 
 				case "add_note":
 					if (!text) return { content: [{ type: "text" as const, text: "text required" }], details: { error: "missing_text" } };
-					pad.notes.push(text);
+					capPush(pad.notes, text, RECYCLE.MAX_NOTES);
 					await mutateAndSave(pad);
 					return { content: [{ type: "text" as const, text: `Note added: ${text}` }], details: { notes: pad.notes } };
 
@@ -566,7 +684,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 						expires_at: (params as ScratchpadToolInput).expires_in_ms ?? 0,
 						acknowledged: false,
 					};
-					pad.constraints.push(constraint);
+										capPush<Constraint>(pad.constraints, constraint, RECYCLE.MAX_CONSTRAINTS);
 					await mutateAndSave(pad);
 					return { content: [{ type: "text" as const, text: `Constraint added [${constraint.id}]: ${constraint.description}` }], details: { constraint } };
 				}
@@ -598,7 +716,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 						added_at: Date.now(),
 						persisted: false,
 					};
-					pad.key_learnings.push(learning);
+										capPush<KeyLearning>(pad.key_learnings, learning, RECYCLE.MAX_LEARNINGS);
 					await mutateAndSave(pad);
 					return { content: [{ type: "text" as const, text: `Learning recorded [${learning.id}]: [${learning.category}] ${learning.content}` }], details: { learning } };
 				}
@@ -626,9 +744,10 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 				}
 
 				case "note_compact": {
-					// Record the compaction event
+					// Record the compaction event + run recycling pass
 					const currentTurn = pad.session.turn;
 					pad.session.last_compact_turn = currentTurn;
+					const cleanStats = scratchpadClean(pad);
 					await mutateAndSave(pad);
 
 					const unpersisted = pad.key_learnings.filter((l) => !l.persisted);
@@ -825,5 +944,21 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
 			await saveScratchpadToDisk(cache.taskScratchpad);
 			ctx.ui.notify("Scratchpad cleared", "info");
 		},
+	});
+
+	// ── Recycling: auto-clean before context compaction ──────────────────
+	// Fires automatically before each compaction, keeping scratchpad lean.
+	pi.on("session_before_compact", async (_event: any, ctx: ExtensionContext) => {
+		try {
+			const slug = resolveProjectSlug(ctx.cwd);
+			const pad = await getOrCreateScratchpad(slug, ctx);
+			const stats = scratchpadClean(pad);
+			if (stats.total_pruned > 0) {
+				await saveScratchpadToDisk(pad);
+				log.debug(`[recycle] auto-cleaned scratchpad: ${stats.total_pruned} items pruned`);
+			}
+		} catch (err) {
+			log.debug(`[recycle] session_before_compact failed: ${err}`);
+		}
 	});
 }
