@@ -23,7 +23,7 @@ import {
 } from "./shared.js";
 import { getRotationState } from "../../../../lib/global-state.js";
 import { loadScratchpadFromDisk, projectSlugFromCwd, formatScratchpad } from "../../../../extensions/core/scratchpad/index.js";
-
+import { filterSafeToRemove, type AgentMessage } from "../../../../lib/filter-safe-to-remove.js";
 // ── Hard Truncation Summary Builder ───────────────────────────────────────────
 // When the context is too large for the LLM to even receive the summarization
 // prompt, we build a minimal summary locally from preparation data (previous
@@ -192,12 +192,30 @@ export function registerBeforeCompactHandler(pi: any): void {
 			const usage = ctx.getContextUsage();
 			const model = (ctx as any).model;
 			const contextWindow = model?.contextWindow ?? usage?.contextWindow ?? 262_144;
-			// Hard truncation threshold: 70% of context window.
+			const usageTokens = usage?.tokens ?? 0;
+
+			// STEP 1: Selective hard truncation — pre-filter 100%-certain-redundant items
+			// This runs FIRST to reduce context size before LLM summarization.
+			// If filtering helps enough, context drops below 70% → pi does normal LLM summarization.
+			const prep = event.preparation;
+			if (prep?.messagesToSummarize?.length) {
+				const { filtered, stats } = filterSafeToRemove(prep.messagesToSummarize as AgentMessage[]);
+				if (stats.totalRemoved > 0) {
+					log.info(
+						`[context-manager] Selective filtering: removed ${stats.totalRemoved} messages ` +
+						`(from ${stats.beforeTokens} to ${stats.afterTokens} tokens, ` +
+						`saved ~${Math.round((1 - stats.afterTokens / stats.beforeTokens) * 100)}%)`
+					);
+					// Update the mutable copy — pi will summarize the reduced list
+					(prep as any).messagesToSummarize = filtered;
+				}
+			}
+
+			// STEP 2: Check hard truncation threshold (70% of context window).
 			// Previous 50% was too aggressive — sessions at 50-70% can usually use LLM summarization.
 			// Only bypass LLM when context is truly unsafe (>=70%) or pi already has a summary
 			// (meaning LLM summarization already ran; we shouldn't re-summarize).
 			const threshold = Math.floor(contextWindow * 0.70);
-			const usageTokens = usage?.tokens ?? 0;
 
 			if (usage && usageTokens >= threshold && !event.preparation?.summary) {
 				log.warn(
