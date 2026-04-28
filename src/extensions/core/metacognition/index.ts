@@ -85,53 +85,6 @@ export default function metacognitionExtension(pi: ExtensionAPI) {
 		}
 	});
 
-	// Evaluation tool — measures cognition quality from session metrics
-	pi.registerTool({
-		name: "cognition_evaluate",
-		label: "Heuristics Evaluate",
-		description:
-			"Evaluate which heuristics were followed in the current session. " +
-			"Call after task completion to record outcomes.",
-		parameters: Type.Object({
-			action: Type.Union([Type.Literal("evaluate"), Type.Literal("compliance")]),
-			task_type: Type.Optional(Type.String({ description: "Task type to evaluate" })),
-		}),
-		execute: async (_id: string, params: any, _sig: unknown, _upd: unknown, ctx: ExtensionContext | undefined) => {
-			if (!ctx) return { content: [{ type: "text" as const, text: "No context available" }], details: {} };
-			const state = getMetaState(ctx);
-			const result = evaluateCognition({
-				thinks: state.thinks,
-				hypothesizes: state.hypothesizes,
-				finalizes: state.finalizes,
-				avgConfidence: state.thinks > 0 ? state.totalConfidence / state.thinks : 0,
-				hypothesesGenerated: state.hypothesesGenerated,
-				hypothesesWithVerification: state.hypothesesWithVerification,
-				finalizationsBlocked: state.finalizationsBlocked,
-				depthDistribution: state.depthDistribution,
-				reasoningTags: state.reasoningTags,
-			});
-
-			const lines = [
-				"Cognition Evaluation Report",
-				"=".repeat(40),
-				"",
-				`Overall Score: ${result.overall}/100`,
-				`  Reasoning Depth: ${result.reasoningDepth}/100`,
-				`  Hypothesis Quality: ${result.hypothesisQuality}/100`,
-				`  Verification Rigor: ${result.verificationRigor}/100`,
-				"",
-				`Usage: ${state.thinks} thinks, ${state.hypothesizes} hypotheses, ${state.finalizes} finalizes`,
-				`Avg Confidence: ${(state.thinks > 0 ? state.totalConfidence / state.thinks : 0).toFixed(2)}`,
-				`Depth: ${JSON.stringify(state.depthDistribution)}`,
-				`Tags: ${Object.keys(state.reasoningTags).join(", ") || "none"}`,
-			];
-
-			if (result.recommendations.length > 0) {
-				lines.push("", "Recommendations:");
-				for (const r of result.recommendations) lines.push(`  - ${r}`);
-			}
-
-			return { content: [{ type: "text" as const, text: lines.join("\n") }], details: result };
-		},
-	});
+	// Tools removed (2026-04-28): cognition_evaluate / heuristics_evaluate.
+	// Reason: rarely used, indirect metric. Heuristic definitions kept for enforcement use.
 }
