@@ -29,11 +29,25 @@ import { loadScratchpadFromDisk, projectSlugFromCwd, formatScratchpad } from "..
 // prompt, we build a minimal summary locally from preparation data (previous
 // summary + file ops) and return it as a custom compaction. This bypasses the
 // LLM call entirely and prevents the death-spiral where retries add messages.
+//
+// CRITICAL FIX (v0.21): Previous versions dropped the agent's final response and
+// user's follow-up from the summary. The session tail (last ~5 entries including
+// the agent's last output + user's follow-up message) is read BEFORE pi compacts
+// the context and passed in as recentEntries. This preserves conversation continuity
+// so the agent knows what it just said and what was asked next.
+
+interface RecentEntry {
+	type: string;
+	role?: string;
+	content?: string;
+	summary?: string;
+}
 
 async function buildHardTruncationSummary(
 	previousSummary: string | undefined,
 	fileOps: { readFiles?: string[]; modifiedFiles?: string[] },
 	cwd?: string,
+	recentEntries?: RecentEntry[],
 ): Promise<string> {
 	const lines: string[] = [];
 
@@ -88,6 +102,31 @@ async function buildHardTruncationSummary(
 
 	lines.push("## Next Steps");
 	lines.push("Continue from the most recent context. Use `memory_recall` if specific details from earlier work are needed.");
+
+	// FIX: Include conversation tail — agent's last response + user's follow-up
+	// This was dropped in previous versions, causing agent to "forget" its last output.
+	if (recentEntries && recentEntries.length > 0) {
+		lines.push("");
+		lines.push("## Recent Conversation (before compaction)");
+		for (const entry of recentEntries.slice(-6)) {
+			if (entry.type === "branch_summary" || entry.type === "compaction") {
+				// Summaries from previous compaction cycles
+				const text = entry.summary ?? "";
+				if (text) {
+					lines.push(`[PREVIOUS COMPACTION: ${text.slice(0, 200)}]`);
+				}
+			} else {
+				const role = entry.role ?? "?";
+				let text = entry.content ?? "";
+				if (typeof text !== "string") text = JSON.stringify(text).slice(0, 200);
+				if (text.length > 300) text = text.slice(0, 300) + "...";
+				if (text.trim()) {
+					const label = role === "assistant" ? "Agent" : role === "user" ? "You" : role;
+					lines.push(`**${label}**: ${text}`);
+				}
+			}
+		}
+	}
 
 	return lines.join("\n");
 }
@@ -153,31 +192,49 @@ export function registerBeforeCompactHandler(pi: any): void {
 			const usage = ctx.getContextUsage();
 			const model = (ctx as any).model;
 			const contextWindow = model?.contextWindow ?? usage?.contextWindow ?? 262_144;
-			// Hard truncation threshold: 50% of context window.
-			// At 50%+, the LLM summarization prompt (entries to summarize + system + summary output)
-			// may exceed the remaining safe budget, causing "context window exceeds limit" errors.
-			// Bypass the LLM entirely. Critical: firstKeptEntryId=null keeps ONLY the summary
-			// in context — no kept entries. Keeping old entries alongside the new summary is
-			// what causes "context window exceeds limit" in summarization (bug from v0.30.0).
-			const threshold = Math.floor(contextWindow * 0.50);
+			// Hard truncation threshold: 70% of context window.
+			// Previous 50% was too aggressive — sessions at 50-70% can usually use LLM summarization.
+			// Only bypass LLM when context is truly unsafe (>=70%) or pi already has a summary
+			// (meaning LLM summarization already ran; we shouldn't re-summarize).
+			const threshold = Math.floor(contextWindow * 0.70);
 			const usageTokens = usage?.tokens ?? 0;
 
-			if (usage && usageTokens >= threshold) {
+			if (usage && usageTokens >= threshold && !event.preparation?.summary) {
 				log.warn(
 					`[context-manager] Hard truncation at ${(usageTokens / contextWindow * 100).toFixed(1)}% ` +
 					`(${usageTokens}/${contextWindow} tokens) — firstKeptEntryId=null (summary only)`
 				);
 
+				// FIX: Read conversation tail BEFORE pi compacts the context.
+				// We need the last ~6 entries so the summary includes the agent's final response
+				// + user's follow-up (which would otherwise be lost with firstKeptEntryId=null).
+				const sm = (ctx as any).sessionManager as { getBranch?(): Array<{ id?: string; entry?: { type?: string; id?: string; summary?: string; message?: { role?: string; content?: string | Array<{ text?: string }> } } }> } | undefined;
+				const branch = sm?.getBranch?.() ?? [];
+				const totalEntries = branch.length;
+				const entriesToSummarize = event.preparation?.entryCount ?? Math.floor(totalEntries * 0.6);
+				const survivors = branch.slice(-Math.min(6, Math.max(1, totalEntries - entriesToSummarize)));
+				const recentEntries = survivors.map((e) => {
+					const entry = e.entry ?? e as any;
+					if (entry.type === "branch_summary" || entry.type === "compaction") {
+						return { type: entry.type, summary: entry.summary ?? "" };
+					}
+					const msg = entry.message ?? {};
+					const content = Array.isArray(msg.content)
+						? (msg.content[0] as any)?.text ?? ""
+						: (typeof msg.content === "string" ? msg.content : "");
+					return { type: entry.type ?? "message", role: msg.role, content };
+				});
+
 				const previousSummary = event.preparation?.previousSummary ?? "";
 				const fileOps = event.preparation?.fileOps ?? { read: new Set<string>(), written: new Set<string>(), edited: new Set<string>() };
 				const readFiles = [...(fileOps.read ?? new Set())];
 				const modifiedFiles = [...(fileOps.written ?? new Set()), ...(fileOps.edited ?? new Set())];
-				const summary = await buildHardTruncationSummary(previousSummary, { readFiles, modifiedFiles }, ctx.cwd);
+				const summary = await buildHardTruncationSummary(previousSummary, { readFiles, modifiedFiles }, ctx.cwd, recentEntries);
 
 				return {
 					compaction: {
 						summary,
-						firstKeptEntryId: null, // null = no kept entries, summary is new head
+						firstKeptEntryId: null,
 						tokensBefore: event.preparation?.tokensBefore ?? usageTokens,
 						details: { readFiles, modifiedFiles },
 					},
