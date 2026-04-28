@@ -140,7 +140,7 @@ const TRAPS = [
 			if (!completed) return { pass: false, reason: "Agent did not complete" };
 
 			const text = finalText.toLowerCase();
-			const conflictAware = /\b(conflict|differ|contradict|inconsistent|mismatch|discrepancy/).test(text);
+			const conflictAware = /(conflict|differ|contradict|inconsistent|mismatch|discrepancy)/.test(text);
 			const selfReflect = /\b(think|reflect|analyze|look.*closer|examining)/.test(text);
 
 			if (conflictAware && selfReflect) {
@@ -211,7 +211,7 @@ async function main() {
 
 	for (const trap of TRAPS) {
 		console.log(`\n[${trap.id}] ${trap.name}`);
-		console.log("-".repeat(60)));
+		console.log("-".repeat(60));
 
 		const result = await runPi(trap.prompt, 90000);
 		const { finalText, completed } = result;
