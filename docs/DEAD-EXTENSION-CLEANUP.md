@@ -120,34 +120,43 @@ Converted event handlers and tool execution hot paths to async fs:
 
 Skipped (init/shutdown, acceptable sync): feedback init, three-memory-stores shutdown, healthcheck, prompt-guardian, preview.ts, l1-environment.ts, retry/state.ts
 
-### 4b. Global variable coupling — DEFERRED
+### 4b. Global variable coupling ✅ DONE
 
-`enforcement/index.ts` exports mutable state that `prompt-builder/index.ts` reads directly.
-Replace with event-based communication. Needs design.
+`enforcement` emits `enforcement_signals` events but `prompt-builder` never listened. Added `session_start` listener in prompt-builder to subscribe and update session-scoped signal state. No changes to enforcement needed.
+
+### 4c. context-lifecycle simplification ✅ DONE
+
+The cleanup doc's premise was WRONG — signals and proposals ARE working. Real simplifications:
+- Governance: removed `no-proposal-spam` (always valid, does nothing) and `low-confidence-warning` (generates noisy warnings). Kept `high-usage-safety`.
+- Signals: removed `tool_sequence_pattern` signal (fires at wrong granularity, redundant with enforcement).
+- Types: removed `tool_sequence_pattern` from `SemanticSignalType`.
+
+Total removed: ~50 lines. Core proposal/snapshot infrastructure preserved.
 
 ---
 
 ## Summary: Removal Counts
 
-| Phase | Items | Risk | LOC Saved (est.) |
-|-------|-------|------|-------------------|
+| Phase | Items | Risk | LOC Saved |
+|-------|-------|------|-----------|
 | 1. Vestigial commands | 10 commands | Zero | ~200 |
 | 2. Over-tooled extensions | 8 tools | Low | ~400 |
 | 3. Dead code | 1 file, 3 opt-in reviews | Low | ~150 |
-| 4. Architecture (deferred) | 4 files sync→async, coupling | High | ~800 (rewrite) |
+| 4. Architecture | 5 files sync→async + coupling + lifecycle | Medium | ~300 |
 
-**Total immediate savings:** ~750 LOC, 10 commands, 8 tools removed.
-**Tool count:** 53 → 45 (more manageable).
+**Total savings:** ~1050 LOC, 10 commands, 8 tools removed.
+**Phase 4 completed** — all 4 sub-tasks done.
 
 ---
 
 ## Execution Order
 
-1. **Phase 1** — Remove vestigial commands (5 min, zero risk)
-2. **Phase 3a** — Delete `retry.ts` dead code (1 min)
-3. **Phase 2a-2e** — Remove over-tooled tools (15 min, low risk)
-4. Build + test after each phase
-5. **Phase 4** — Defer to v0.14 sprint (requires design)
+1. **Phase 1** — Remove vestigial commands ✅
+2. **Phase 3a** — Delete `retry.ts` dead code ✅
+3. **Phase 2a-2e** — Remove over-tooled tools ✅
+4. **Phase 4a** — sync→async hot path ✅
+5. **Phase 4b** — enforcement→prompt-builder event coupling ✅
+6. **Phase 4c** — context-lifecycle simplification ✅
 
 ---
 

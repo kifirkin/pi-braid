@@ -15,7 +15,6 @@ import type { SessionEntry } from "@mariozechner/pi-coding-agent";
 export type SemanticSignalType =
 	| "topic_shift"
 	| "redundancy_detected"
-	| "tool_sequence_pattern"
 	| "context_pressure"
 	| "task_boundary"
 	| "compaction_opportunity"
@@ -371,38 +370,13 @@ export function createDefaultPolicies(): ContextPolicy[] {
 
 // ── Default Governance Constraints ────────────────────────────────────────────
 
+// Simplified governance. Only keep constraints that actually do something.
+// Removed: no-proposal-spam (always returns valid:true, does nothing),
+// low-confidence-warning (generates noisy warnings that don't help).
+// Kept: high-usage-safety (actually blocks unsafe aggressive compaction).
+
 export function createDefaultGovernance(): GovernanceConstraint[] {
 	return [
-		{
-			id: "no-proposal-spam",
-			name: "Proposal rate limiting",
-			description: "Max 3 proposals per 10 turns",
-			target: "proposal",
-			validate: (proposal, signals) => {
-				// This would need access to proposal history - simplified check
-				return {
-					valid: true,
-				};
-			},
-			severity: "warn",
-		},
-		{
-			id: "low-confidence-warning",
-			name: "Warn on low confidence proposals",
-			description: "Warn if proposal confidence < 0.5",
-			target: "proposal",
-			validate: (proposal) => {
-				if (proposal.confidence < 0.5) {
-					return {
-						valid: true,
-						message: `Low confidence proposal (${(proposal.confidence * 100).toFixed(0)}%)`,
-						suggestion: "Consider waiting for more signals before acting",
-					};
-				}
-				return { valid: true };
-			},
-			severity: "warn",
-		},
 		{
 			id: "high-usage-safety",
 			name: "Safety on critical context usage",

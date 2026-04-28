@@ -455,7 +455,17 @@ async function reconstructSkillsSection(cwd: string): Promise<string> {
 
 export default function promptBuilderExtension(_pi: ExtensionAPI) {
   // L1 state is now gathered per-request, not global
-  // Enforcement signals handled in before_agent_start
+
+  // 4b: Listen for enforcement_signals events — replaces direct coupling via module-level singleton.
+  // enforcement emits these on every turn_end and session_compact.
+  _pi.on("session_start", async (_event, ctx) => {
+    const ps = getPromptState(ctx);
+    _pi.events.on("enforcement_signals", (data: unknown) => {
+      const d = data as { turn: number; signals: Record<string, { turn: number; text: string; acted: boolean }> };
+      ps.enforcementSignals = d.signals;
+      ps.lastSignalTurn = d.turn;
+    });
+  });
 
   _pi.on("before_agent_start", async (event, ctx) => {
     const ps = getPromptState(ctx);

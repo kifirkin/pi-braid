@@ -180,25 +180,6 @@ export class SignalDetector {
 		this.lastTopic = currentTopic;
 
 		// ── Tool sequence pattern ───────────────────────────────────────────
-		this.toolSequence.push(...toolCalls);
-		if (this.toolSequence.length > 20) {
-			this.toolSequence = this.toolSequence.slice(-20);
-		}
-
-		// Detect repetitive tool patterns (e.g., bash, bash, bash)
-		const windowSize = 5;
-		if (this.toolSequence.length >= windowSize * 2) {
-			const last = this.toolSequence.slice(-windowSize);
-			const prev = this.toolSequence.slice(-windowSize * 2, -windowSize);
-			if (last.every((t, i) => t === prev[i]) && new Set(last).size <= 2) {
-				signals.push(
-					createSignal("tool_sequence_pattern", turn, {
-						sequence: last,
-					}),
-				);
-			}
-		}
-
 		// ── Context pressure ───────────────────────────────────────────────
 		if (contextUsage >= 85) {
 			signals.push(createSignal("context_pressure", turn, { percent: contextUsage }));
