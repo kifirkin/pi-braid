@@ -409,13 +409,15 @@ def run_bm1(
 		# First, set up the task context
 		setup_prompt = f"""
 IMPORTANT: You are debugging code in {workspace}. 
-Before starting, run: cd {workspace} && ls -la
+Run: cd {workspace} && ls -la
 
-Then read the files to understand the bug and fix it.
+Then:
+1. Read the source file using the read tool
+2. Identify the bug described below
+3. Fix it using the edit tool
+4. Run the fixed code using bash to verify it works
 
 {task['description']}
-
-After fixing, run the code to verify your fix works.
 """
 
 		rpc = PiRPC(extensions=extensions, model=model)
@@ -568,7 +570,7 @@ if __name__ == "__main__":
 	parser.add_argument("--task", type=str, help="Specific task ID to run")
 	parser.add_argument("--model", type=str, default=DEFAULT_MODEL, help="Model")
 	parser.add_argument("--extensions", type=str, default=DEFAULT_EXTENSIONS, help="Extensions path")
-	parser.add_argument("--timeout", type=float, default=120.0, help="Timeout per trial")
+	parser.add_argument("--timeout", type=float, default=180.0, help="Timeout per trial")
 	parser.add_argument("--output", type=str, help="Output JSON file")
 	args = parser.parse_args()
 
