@@ -26,7 +26,6 @@ import {
 	getState,
 	recoverState,
 	captureUserInput,
-	captureFailedToolName,
 	recordAgentEnd,
 	clearAutoRetry,
 	isAutoRetryPending,
@@ -55,43 +54,13 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
 		captureUserInput(pi, event.text, event.images as any, undefined, ctx);
 	});
 
-	// Capture failed tool name from tool_end so mid_chain steer messages
-	// include the tool that actually failed. tool_end fires for every tool
-	// completion, including errored ones — we only record the errored ones.
-	// @ts-expect-error custom event not in ExtensionAPI types
-	pi.on("tool_end", (event: { tool?: string; isError?: boolean; toolName?: string }, ctx: ExtensionContext) => {
-		if (event.isError) {
-			const toolName = event.tool ?? event.toolName ?? null;
-			if (toolName) captureFailedToolName(toolName, ctx);
-		}
-	});
+	// tool_end no longer needs to capture failed tool name — /retry sends
+	// a minimal steer regardless of which tool failed.
 
 	// Detect errors on agent_end, record turn result, trigger auto-retry
 	pi.on("agent_end", (event: AgentEndEvent, ctx: ExtensionContext) => {
 		const messages = (event as any).messages as any[];
 		if (!messages || messages.length === 0) return;
-
-		// Capture the failed tool name for context-aware steer messages.
-		// Walk the messages in reverse to find the last errored tool result,
-		// then map it back to the matching tool_call.
-		let failedToolName: string | null = null;
-		let erroredToolId: string | null = null;
-		for (let i = messages.length - 1; i >= 0; i--) {
-			const msg = messages[i];
-			if (msg.role === "tool" && msg.isError) {
-				erroredToolId = msg.tool_call_id ?? null;
-				break;
-			}
-		}
-		if (erroredToolId) {
-			for (let i = messages.length - 1; i >= 0; i--) {
-				const msg = messages[i];
-				if (msg.role === "tool_call" && msg.id === erroredToolId) {
-					failedToolName = msg.name ?? null;
-					break;
-				}
-			}
-		}
 
 		// Fallback capture of last user message (only if `input` event was missed)
 		let lastUserMsg: any = null;
@@ -143,8 +112,6 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
 			}
 		}
 
-		// Store failed tool name before recordAgentEnd clears it on success
-		if (failedToolName) captureFailedToolName(failedToolName, ctx);
 		recordAgentEnd(pi, lastUserMsg?.id ?? null, errorMsg !== null, errorMsg, null, hasPostUserAssistantMsgs, ctx);
 		if (errorMsg) {
 			const delay = scheduleAutoRetry(pi, ctx);
@@ -233,7 +200,7 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
 			clearAutoRetry(ctx);
 			try {
 				if (!(await continueRetry(pi, ctx))) { ctx.ui.notify?.("Retry failed — no message to send.", "error"); return; }
-				ctx.ui.notify?.("Re-sending last message.", "info");
+				ctx.ui.notify?.("Retrying last turn.", "info");
 			} catch (sendErr) {
 				log.error(`Retry send failed: ${(sendErr as Error).message}`);
 				ctx.ui.notify?.(`Retry failed: ${(sendErr as Error).message}`, "error");

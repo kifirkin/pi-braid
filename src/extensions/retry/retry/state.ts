@@ -231,26 +231,6 @@ export function persistState(pi: ExtensionAPI, ctx?: ExtensionContext): void {
 
 // ── State Mutators ───────────────────────────────────────────────────────────
 
-/**
- * Capture the last failed tool name for context-aware steer messages.
- * Set by tool_end events (when isError is true) before recordAgentEnd runs,
- * so the steer message can include which tool failed.
- */
-export function captureFailedToolName(toolName: string, ctx?: ExtensionContext): void {
-	const s = getS(ctx);
-	// Ensure lastError is at least initialized so we have a stable object reference
-	if (!s.state.lastError) {
-		s.state.lastError = {
-			message: "",
-			category: "unknown" as any,
-			httpStatus: null,
-			providerCode: null,
-			timestamp: Date.now(),
-		};
-	}
-	(s.state as any)._failedToolName = toolName;
-}
-
 export function captureUserInput(pi: ExtensionAPI, text: string, images?: ImageContent[], entryId?: string, ctx?: ExtensionContext): void {
 	const s = getS(ctx);
 	// Never overwrite a mid-chain state — the agent was mid-task when it failed.
@@ -273,8 +253,6 @@ export function captureUserInput(pi: ExtensionAPI, text: string, images?: ImageC
 
 export function recordAgentEnd(pi: ExtensionAPI, entryId: string | null, hadError: boolean, errorMessage?: string | null, httpStatus?: number | null, hasPostUserAssistantMsgs?: boolean, ctx?: ExtensionContext): void {
 	const s = getS(ctx);
-	// Capture the failed tool name for context-aware steer messages.
-	const failedToolName: string | null = (s.state as any)._failedToolName ?? null;
 	if (hadError && errorMessage) {
 		const classification = classifyRetryError(errorMessage, httpStatus ?? null);
 		s.state.lastError = {
@@ -284,14 +262,12 @@ export function recordAgentEnd(pi: ExtensionAPI, entryId: string | null, hadErro
 			providerCode: null,
 			timestamp: Date.now(),
 		};
-		(s.state as any)._failedToolName = failedToolName;
 		s.state.failureCount++;
 		s.state.errorPhase = hasPostUserAssistantMsgs ? "mid_chain" : "initial";
 	} else {
 		s.state.lastError = null;
 		s.state.failureCount = 0;
 		s.state.errorPhase = "initial";
-		(s.state as any)._failedToolName = null;
 	}
 	if (entryId) {
 		s.state.lastTurn = { entryId, timestamp: Date.now(), hadError };
@@ -370,41 +346,10 @@ export async function continueRetry(pi: ExtensionAPI, ctx?: ExtensionContext): P
 	const s = getS(ctx);
 	if (!s.state.lastUserMessage) return false;
 
-	if (s.state.errorPhase === "mid_chain") {
-		const errMsg = s.state.lastError?.message ?? "unknown error";
-		const snippet = errMsg.length > 200 ? errMsg.slice(0, 200) + "…" : errMsg;
-		const failedTool: string | null = (s.state as any)._failedToolName ?? null;
-		const attempt = s.state.failureCount > 1 ? ` (attempt ${s.state.failureCount})` : "";
-
-		let text: string;
-		if (failedTool) {
-			text = `Continue from where you left off${attempt}. ` +
-				`The last operation (tool: ${failedTool}) failed with:\n${snippet}\n\n` +
-				`Do NOT restart from the beginning. Resume the task starting right after the failed step.`;
-		} else {
-			text = `Continue from where you left off${attempt}. The last operation failed:\n${snippet}\n\n` +
-				`Do NOT restart from the beginning. Resume the task.`;
-		}
-
-		const content: import("@mariozechner/pi-ai").TextContent[] = [
-			{ type: "text", text },
-		];
-
-		await pi.sendUserMessage(content, { deliverAs: "steer" });
-	} else {
-		const content: (import("@mariozechner/pi-ai").TextContent | import("@mariozechner/pi-ai").ImageContent)[] = [
-			{ type: "text", text: s.state.lastUserMessage.text },
-		];
-		if (s.state.lastUserMessage.images?.length) content.push(...s.state.lastUserMessage.images);
-		// If agent is idle, send normally (triggers a new turn). If still busy, queue as steer.
-		const busy = ctx ? !ctx.isIdle() : false;
-		if (busy) {
-			await pi.sendUserMessage(content, { deliverAs: "steer" });
-		} else {
-			await pi.sendUserMessage(content);
-		}
-	}
-
+	// Minimal steer: just ask the agent to retry. The agent already has the
+	// user message and error context in its conversation history. Re-sending
+	// the raw message or verbose error context creates confusion.
+	await pi.sendUserMessage([{ type: "text", text: "Try again." }], { deliverAs: "steer" });
 	return true;
 }
 

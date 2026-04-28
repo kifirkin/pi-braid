@@ -1,8 +1,7 @@
 /**
  * Retry extension — command handler integration tests.
  *
- * Tests the /retry handler flow: staleness check, continueRetry mode selection,
- * and failed tool name resolution via tool_call_id.
+ * Tests the /retry handler flow: staleness check, continueRetry minimal steer.
  */
 
 import { strict as assert } from "node:assert";
@@ -16,7 +15,7 @@ const ROOT = join(__dirname, "../..");
 // ── Imports ──────────────────────────────────────────────────────────────────
 
 const stateMod = await import(join(ROOT, "dist/extensions/retry/retry/state.js"));
-const { initState, getState, captureUserInput, captureFailedToolName, recordAgentEnd, continueRetry } = stateMod;
+const { initState, getState, captureUserInput, recordAgentEnd, continueRetry } = stateMod;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -45,10 +44,10 @@ function makeMockCtx(idle = true) {
 	};
 }
 
-// ── Test: continueRetry sends normally when idle ─────────────────────────────
+// ── Test: continueRetry sends minimal steer always ───────────────────────────
 
 {
-	console.log("=== continueRetry: idle agent → normal send ===");
+	console.log("=== continueRetry: always sends minimal steer ===");
 	initState();
 	const pi = makeMockPi();
 	const ctx = makeMockCtx(true); // idle
@@ -56,59 +55,41 @@ function makeMockCtx(idle = true) {
 	const ok = await continueRetry(pi, ctx);
 	assert.strictEqual(ok, true, "continueRetry returns true");
 	assert.strictEqual(pi._sent.length, 1, "exactly one message sent");
-	assert.strictEqual(pi._sent[0].options, undefined, "no deliverAs when idle");
-	console.log("  ✅ Normal send when idle");
+	assert.strictEqual(pi._sent[0].content[0].text, "Try again.", "minimal steer text");
+	assert.strictEqual(pi._sent[0].options?.deliverAs, "steer", "always uses steer");
+	console.log("  ✅ Minimal steer sent");
 }
 
-// ── Test: continueRetry sends steer when busy ────────────────────────────────
+// ── Test: continueRetry sends minimal steer even for mid_chain ───────────────
 
 {
-	console.log("=== continueRetry: busy agent → steer ===");
+	console.log("=== continueRetry: mid_chain also sends minimal steer ===");
 	initState();
 	const pi = makeMockPi();
-	const ctx = makeMockCtx(false); // busy
-	captureUserInput(pi, "test message busy", undefined, "entry-2", ctx);
-	const ok = await continueRetry(pi, ctx);
-	assert.strictEqual(ok, true, "continueRetry returns true");
-	assert.strictEqual(pi._sent.length, 1, "exactly one message sent");
-	assert.strictEqual(pi._sent[0].options?.deliverAs, "steer", "uses steer when busy");
-	console.log("  ✅ Steer send when busy");
-}
-
-// ── Test: mid_chain steer always uses steer regardless of idle ───────────────
-
-{
-	console.log("=== continueRetry: mid_chain → steer + error context ===");
-	initState();
-	const pi = makeMockPi();
-	const ctx = makeMockCtx(true); // idle, but mid_chain overrides
+	const ctx = makeMockCtx(true); // idle, but mid_chain
 	captureUserInput(pi, "do something", undefined, "entry-3", ctx);
-	captureFailedToolName("read", ctx);
 	recordAgentEnd(pi, "entry-3", true, "file not found", null, true, ctx);
 	const ok = await continueRetry(pi, ctx);
 	assert.strictEqual(ok, true, "continueRetry returns true");
 	assert.strictEqual(pi._sent.length, 1, "exactly one message sent");
-	assert.strictEqual(pi._sent[0].options?.deliverAs, "steer", "mid_chain always steer");
-	const text = pi._sent[0].content[0].text;
-	assert(text.includes("read"), "steer includes failed tool name");
-	assert(text.includes("file not found"), "steer includes error snippet");
-	console.log("  ✅ Mid-chain steer with error context");
+	assert.strictEqual(pi._sent[0].content[0].text, "Try again.", "minimal steer even for mid_chain");
+	assert.strictEqual(pi._sent[0].options?.deliverAs, "steer", "always uses steer");
+	console.log("  ✅ Mid-chain minimal steer");
 }
 
-// ── Test: failed tool name resolved via tool_call_id mapping ─────────────────
+// ── Test: no raw user message re-sent ────────────────────────────────────────
 
 {
-	console.log("=== agent_end: failed tool name via tool_call_id ===");
+	console.log("=== continueRetry: never re-sends raw user message ===");
 	initState();
 	const pi = makeMockPi();
 	const ctx = makeMockCtx();
-	captureUserInput(pi, "read file", undefined, "entry-4", ctx);
-	captureFailedToolName("read", ctx);
-	recordAgentEnd(pi, "entry-4", true, "ENOENT", null, true, ctx);
-	const state = getState(ctx);
-	assert.strictEqual(state.errorPhase, "mid_chain", "phase is mid_chain");
-	assert.strictEqual(state.failureCount, 1, "failure count incremented");
-	console.log("  ✅ Failed tool name captured in state");
+	captureUserInput(pi, "sensitive private data here", undefined, "entry-priv", ctx);
+	await continueRetry(pi, ctx);
+	const text = pi._sent[0].content[0].text;
+	assert(!text.includes("sensitive"), "must NOT contain raw user message");
+	assert(!text.includes("private"), "must NOT contain raw user message");
+	console.log("  ✅ Raw message not leaked");
 }
 
 // ── Test: staleness check blocks old messages ────────────────────────────────
@@ -118,17 +99,13 @@ function makeMockCtx(idle = true) {
 	initState();
 	const pi = makeMockPi();
 	const ctx = makeMockCtx();
-	// Manually set up state with a very old timestamp
 	const oldTs = Date.now() - 15 * 60 * 1000; // 15 minutes ago
 	captureUserInput(pi, "old message", undefined, "entry-old", ctx);
-	// Simulate old error
 	recordAgentEnd(pi, "entry-old", true, "timeout", null, false, ctx);
-	// Override timestamps to old values
 	const state = getState(ctx);
 	state.lastError.timestamp = oldTs;
 	state.lastTurn.timestamp = oldTs;
 
-	// Replicate the staleness check from the /retry handler
 	const lastTurnTs = state.lastTurn?.timestamp ?? 0;
 	const lastErrorTs = state.lastError?.timestamp ?? 0;
 	const lastActivity = Math.max(lastTurnTs, lastErrorTs);
