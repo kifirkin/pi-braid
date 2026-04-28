@@ -8,11 +8,13 @@ const src = readFileSync(join(ROOT, "src/extensions/core/planner/index.ts"), "ut
 {
 	console.log("=== Planner Extension ===");
 	assert.ok(src.length > 0, "planner/index.ts should exist");
-	assert.ok(src.includes("registerTool"), "should register tools");
+	assert.ok(src.includes("plannerExtension"), "should export extension factory");
+	assert.ok(src.includes("goal") || src.includes("plan") || src.includes("scratchpad"),
+		"planner should handle goal/plan restoration");
+	// No tools registered — removed 2026-04-28 (plan_with_budget, check_budget, set_budget)
 	const toolMatches = [...src.matchAll(/registerTool\s*\(\s*\{[\s\S]*?name\s*:\s*["']([^"']+)["']/g)];
 	const toolNames = toolMatches.map((m) => m[1]);
-	console.log(`  Registered tools: ${toolNames.length} (${toolNames.join(", ")})`);
-	assert.ok(toolNames.length >= 3, `expected ≥3 tools, got ${toolNames.length}`);
+	console.log(`  Registered tools: ${toolNames.length} (${toolNames.join(", ") || "none — goal/plan via scratchpad"})`);
 	console.log("  ✅ Extension: all assertions passed");
 }
 

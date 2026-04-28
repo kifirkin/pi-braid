@@ -50,17 +50,11 @@ Extensions that register tools the agent rarely or never uses in practice.
 - **Risk:** Low — planner tools are self-contained, no other extension imports from planner.
 - **Action:** Remove tool, keep planner extension for `session_start` goal restoration.
 
-### 2b. `check_budget` / `set_budget` (metacognition)
+### 2c. `check_budget` / `set_budget` (metacognition)
 
 - **Why remove:** Budget tracking is manual and rarely invoked. Should be automatic.
 - **Risk:** Low — self-contained tools, no dependents.
 - **Action:** Remove tools. If budget tracking matters, make it automatic via heartbeat.
-
-### 2c. `cognition_evaluate` / `heuristics_evaluate` (metacognition)
-
-- **Why remove:** Heuristic evaluation is an indirect metric. Agent never uses the output.
-- **Risk:** Low — no dependents.
-- **Action:** Remove tools. Keep the heuristic definitions for internal enforcement use.
 
 ### 2d. `preprocessor_config` / `preprocessor_stats` (user-message-preprocessor)
 
@@ -69,13 +63,15 @@ Extensions that register tools the agent rarely or never uses in practice.
 - **Risk:** Medium — preprocessor affects all user input. But the tools themselves are rarely used.
 - **Action:** Remove tools. Keep preprocessor extension with hardcoded defaults.
 
-### 2e. `heartbeat_status` (heartbeat-scheduler)
-
+### 2e. `heartbeat_status` (heartbeat-scheduler) ✅ DONE (2026-04-28)
 - **Why remove:** Debugging tool. Agent never uses it productively.
-- **Risk:** Low — self-contained.
-- **Action:** Remove tool. Keep heartbeat-scheduler as invisible infrastructure.
+- **Action:** Removed — 40-line tool deleted from heartbeat-scheduler/index.ts.
 
-### 2f. Latent behavior tools (latent-activator)
+### 2f. `heuristics_evaluate` (three-memory-stores) ✅ DONE (2026-04-28)
+- **Why remove:** Heuristic evaluation is an indirect metric. Agent never uses the output.
+- **Action:** Removed — tool deleted from three-memory-stores/index.ts.
+
+### 2g. Latent behavior tools (latent-activator)
 
 - `activate_behavior`, `deactivate_behavior`, `get_active_behaviors`, `activate_mix`
 - **Why reconsider:** Interesting concept but the agent doesn't discover or activate behaviors
@@ -140,7 +136,7 @@ Total removed: ~50 lines. Core proposal/snapshot infrastructure preserved.
 | Phase | Items | Risk | LOC Saved |
 |-------|-------|------|-----------|
 | 1. Vestigial commands | 10 commands | Zero | ~200 |
-| 2. Over-tooled extensions | 8 tools | Low | ~400 |
+| 2. Over-tooled extensions | 8 tools (2 removed 2026-04-28: heartbeat_status, heuristics_evaluate) | Low | ~400 |
 | 3. Dead code | 1 file, 3 opt-in reviews | Low | ~150 |
 | 4. Architecture | 5 files sync→async + coupling + lifecycle | Medium | ~300 |
 
@@ -153,10 +149,12 @@ Total removed: ~50 lines. Core proposal/snapshot infrastructure preserved.
 
 1. **Phase 1** — Remove vestigial commands ✅
 2. **Phase 3a** — Delete `retry.ts` dead code ✅
-3. **Phase 2a-2e** — Remove over-tooled tools ✅
+3. **Phase 2a-2g** — Remove over-tooled tools ✅ (heartbeat_status 2026-04-28, heuristics_evaluate 2026-04-28)
 4. **Phase 4a** — sync→async hot path ✅
 5. **Phase 4b** — enforcement→prompt-builder event coupling ✅
 6. **Phase 4c** — context-lifecycle simplification ✅
+
+**COMPLETE** — All phases done.
 
 ---
 

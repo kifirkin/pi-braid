@@ -899,56 +899,6 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 
 	builtInModules.push(timerReminderModule);
 
-	// ── heartbeat_status tool ─────────────────────────────────────────
-
-	pi.registerTool({
-		name: "heartbeat_status",
-		label: "Heartbeat Status",
-		description: "View heartbeat scheduler status, registered modules, and activation history.",
-		parameters: Type.Object({}),
-		execute: async (_toolCallId, _params, _signal, _onUpdate, ctx) => {
-			const state = getState(ctx);
-			const lines: string[] = [];
-
-			lines.push(`Heartbeat: ${state.enabled ? "🟢 Active" : "🔴 Stopped"}`);
-			lines.push(`Interval: every ${config.interval} turns`);
-			lines.push(`Turns: ${state.turnCount}`);
-			lines.push(`Ticks: ${state.stats.totalTicks}`);
-			lines.push(`Activations: ${state.stats.totalActivations}`);
-			lines.push("");
-
-			lines.push("Modules:");
-			for (const [name, reg] of state.modules) {
-				const status = reg.enabled ? "✅" : "⏸️";
-				const last = reg.lastActivated > 0 ? `${reg.lastActivated} turns ago` : "never";
-				lines.push(`  ${status} ${name} (priority: ${reg.module.priority.toFixed(1)}, activated: ${reg.activations}x, last: ${last})`);
-			}
-
-			// D0.5: Meta-learning stats
-			lines.push("");
-			lines.push("Meta-Learning:");
-			lines.push(`  Interval: ${state.metaLearning.tickInterval} (base: ${state.metaLearning.baseInterval}, range: ${META_LEARNING.MIN_INTERVAL}-${META_LEARNING.MAX_INTERVAL})`);
-			if (state.metaLearning.effectivenessHistory.length > 0) {
-				const avgEff = state.metaLearning.effectivenessHistory.reduce((a, b) => a + b, 0) / state.metaLearning.effectivenessHistory.length;
-				lines.push(`  Effectiveness: ${(avgEff * 100).toFixed(0)}% (window: ${state.metaLearning.effectivenessHistory.length}/${META_LEARNING.effectivenessWindowSize})`);
-			} else {
-				lines.push("  Effectiveness: collecting...");
-			}
-			lines.push(`  Pending signals: ${state.metaLearning.pendingSignals.size}`);
-
-			if (state.activationHistory.length > 0) {
-				lines.push("");
-				lines.push("Recent activations:");
-				const recent = state.activationHistory.slice(-5);
-				for (const record of recent) {
-					lines.push(`  Tick ${record.tick}: ${record.moduleName} (${record.reason})`);
-				}
-			}
-
-			return { content: [{ type: "text" as const, text: lines.join("\n") }], details: {} };
-		},
-	});
-
 	// ── Event: turn_end ───────────────────────────────────────────────
 
 	pi.on("turn_end", async (_event: any, ctx: ExtensionContext) => {

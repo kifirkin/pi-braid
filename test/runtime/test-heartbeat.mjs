@@ -33,7 +33,7 @@ console.log("\n[2] Heartbeat logic via source analysis");
 	assert(src.includes("measurementModule"), "has measurementModule");
 	assert(src.includes("priority: 0.7"), "measurement priority 0.7");
 	assert(src.includes("getExtensionState"), "uses getExtensionState (session-scoped)");
-	assert(src.includes("heartbeat_status"), "has heartbeat_status tool");
+	// heartbeat_status removed (2026-04-28) — debugging artifact, agent never uses it productively
 	assert(src.includes("turn_end"), "listens to turn_end event");
 	assert(src.includes("session_start"), "listens to session_start event");
 }
