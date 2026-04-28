@@ -78,9 +78,11 @@ function createSessionState(config?: Partial<RetryConfig>): RetrySessionState {
 /**
  * Get session-scoped state. Falls back to module-level default if no ctx.
  */
-function getS(ctx?: ExtensionContext): RetrySessionState {
-	if (ctx) return getExtensionState(ctx, "retry", () => createSessionState());
-	// Fallback: module-level default for internal calls without ctx
+function getS(_ctx?: ExtensionContext): RetrySessionState {
+	// Retry state is inherently session-global: one lastUserMessage per session.
+	// getExtensionState uses ctx as WeakMap key, so different event contexts
+	// get different state objects — breaking retry across input/command events.
+	// Use the module-level singleton for all retry state.
 	return _default;
 }
 
