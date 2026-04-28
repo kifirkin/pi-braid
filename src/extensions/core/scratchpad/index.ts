@@ -149,7 +149,7 @@ interface TaskStore {
 
 const SCRATCHPAD_BASE_DIR = path.join(os.homedir(), ".pi", "agent", "scratchpads");
 
-function projectSlugFromCwd(cwd?: string): string {
+export function projectSlugFromCwd(cwd?: string): string {
 	if (!cwd) return "default";
 	const segments = cwd.split("/").filter(Boolean);
 	return "--" + segments.join("-") + "--";
@@ -193,7 +193,7 @@ async function saveScratchpadToDisk(scratchpad: TaskScratchpad): Promise<void> {
 	}
 }
 
-async function loadScratchpadFromDisk(projectSlug: string): Promise<TaskScratchpad | null> {
+export async function loadScratchpadFromDisk(projectSlug: string): Promise<TaskScratchpad | null> {
 	try {
 		const filePath = scratchpadFilePath(projectSlug);
 		const data = JSON.parse(await fs.readFile(filePath, "utf-8"));

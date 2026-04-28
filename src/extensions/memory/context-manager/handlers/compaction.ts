@@ -21,6 +21,7 @@ import {
 	isContextWindowError,
 } from "./shared.js";
 import { getRotationState } from "../../../../lib/global-state.js";
+import { loadScratchpadFromDisk, projectSlugFromCwd, formatScratchpad } from "../../../../extensions/core/scratchpad/index.js";
 
 // ── Hard Truncation Summary Builder ───────────────────────────────────────────
 // When the context is too large for the LLM to even receive the summarization
@@ -28,8 +29,27 @@ import { getRotationState } from "../../../../lib/global-state.js";
 // summary + file ops) and return it as a custom compaction. This bypasses the
 // LLM call entirely and prevents the death-spiral where retries add messages.
 
-function buildHardTruncationSummary(previousSummary: string | undefined, fileOps: { readFiles?: string[]; modifiedFiles?: string[] }): string {
+async function buildHardTruncationSummary(
+	previousSummary: string | undefined,
+	fileOps: { readFiles?: string[]; modifiedFiles?: string[] },
+	cwd?: string,
+): Promise<string> {
 	const lines: string[] = [];
+
+	// PRIORITY 1: Task state (must survive compaction at all costs)
+	if (cwd) {
+		try {
+			const slug = projectSlugFromCwd(cwd);
+			const pad = await loadScratchpadFromDisk(slug);
+			if (pad && (pad.goal || pad.plan.length > 0)) {
+				lines.push("## Active Task");
+				lines.push(formatScratchpad(pad));
+				lines.push("");
+			}
+		} catch {
+			// Non-fatal — scratchpad may not exist
+		}
+	}
 
 	if (previousSummary && previousSummary.trim().length > 0) {
 		lines.push("## Previous Context");
@@ -151,7 +171,7 @@ export function registerBeforeCompactHandler(pi: any): void {
 				const fileOps = event.preparation?.fileOps ?? { read: new Set<string>(), written: new Set<string>(), edited: new Set<string>() };
 				const readFiles = [...(fileOps.read ?? new Set())];
 				const modifiedFiles = [...(fileOps.written ?? new Set()), ...(fileOps.edited ?? new Set())];
-				const summary = buildHardTruncationSummary(previousSummary, { readFiles, modifiedFiles });
+				const summary = await buildHardTruncationSummary(previousSummary, { readFiles, modifiedFiles }, ctx.cwd);
 
 				return {
 					compaction: {
@@ -310,7 +330,7 @@ async function handleOverflowFailure(pi: any, event: any, ctx: ExtensionContext,
 					"3. Store learnings in memory and start a new session",
 				].join("\n"),
 			}],
-			display: true,
+			display: false,
 		}, { deliverAs: "hint" });
 
 		triggerOverflowRetry(pi, ctx, overflowRetryState.attempt + 1, errMsg);
@@ -330,7 +350,7 @@ async function handleOverflowFailure(pi: any, event: any, ctx: ExtensionContext,
 				"Consider switching models, starting a new session, or storing learnings in memory.",
 			].join("\n"),
 		}],
-		display: true,
+		display: false,
 	}, { deliverAs: "hint" });
 	resetOverflowRetry();
 }
@@ -369,7 +389,7 @@ async function handleTransientError(pi: any, event: any, ctx: ExtensionContext, 
 				type: "text" as const,
 				text: `⚠️ Server overload (${errMsg}). Auto-retrying... (${compactionRetryState.attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})`,
 			}],
-			display: true,
+			display: false,
 		}, { deliverAs: "hint" });
 
 		triggerCompactionRetry(pi, ctx, compactionRetryState.attempt, errMsg);
@@ -382,7 +402,7 @@ async function handleTransientError(pi: any, event: any, ctx: ExtensionContext, 
 			type: "text" as const,
 			text: `⚠️ Auto-compaction failed after retries (server overload): ${errMsg}`,
 		}],
-		display: true,
+		display: false,
 	}, { deliverAs: "hint" });
 }
 
@@ -419,7 +439,7 @@ async function handleContextWindowError(pi: any, _event: any, ctx: ExtensionCont
 				"Please use `finalize()` to rotate the session, or `context_compress(start, end, summary)` to archive older work.",
 			].join("\n"),
 		}],
-		display: true,
+		display: false,
 	}, { deliverAs: "hint" });
 }
 
@@ -457,7 +477,7 @@ async function handleThresholdFailure(pi: any, event: any, ctx: ExtensionContext
 				type: "text" as const,
 				text: `⚠️ Compaction failed (${errMsg}). Auto-retrying... (${compactionRetryState.attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})`,
 			}],
-			display: true,
+			display: false,
 		}, { deliverAs: "hint" });
 
 		triggerCompactionRetry(pi, ctx, compactionRetryState.attempt, errMsg);
@@ -474,7 +494,7 @@ async function handleThresholdFailure(pi: any, event: any, ctx: ExtensionContext
 				"Consider: `/compact` manually, `context_checkout` with backup, or storing learnings in memory.",
 			].join("\n"),
 		}],
-		display: true,
+		display: false,
 	}, { deliverAs: "hint" });
 }
 
