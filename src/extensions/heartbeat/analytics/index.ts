@@ -19,6 +19,7 @@ import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "../../../lib/extension-state.js";
 import { emitSignal } from "../../../lib/belief-policy-engine.js";
+import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { Type } from "typebox";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -455,11 +456,16 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 					windowSize: total,
 				});
 
-				pi.sendMessage({
-					customType: "memory",
-					display: true,
-					content: [{ type: "text", text: `[analytics] Tool addiction pattern detected: ${warnings.join("; ")}` }],
-				});
+				sendTrackedMessage(
+					pi,
+					{
+						customType: "memory",
+						display: true,
+						content: [{ type: "text", text: `[analytics] Tool addiction pattern detected: ${warnings.join("; ")}` }],
+					},
+					undefined,
+					{ type: "heartbeat", source: "heartbeat/analytics" },
+				);
 			}
 		}
 	});

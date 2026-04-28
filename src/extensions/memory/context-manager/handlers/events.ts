@@ -3,6 +3,7 @@
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { addEvidence } from "../../../../lib/evidence-pool.js";
+import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
 import { applyPruningWorkflow } from "../pruning.js";
 import { findReasoningBlocks, recordSummarization, shouldSummarizeReasoning, estimateTokensSaved } from "../../../../lib/reasoning-summary.js";
 import { determineCompressionLevel } from "../../../../lib/compression-strategy.js";
@@ -104,7 +105,8 @@ export function registerAutoRetryEndHandler(pi: any): void {
 		try {
 			const { success, attempt, finalError } = event as { success?: boolean; attempt?: number; finalError?: string };
 			if (!success) {
-				pi.sendMessage(
+				sendTrackedMessage(
+					pi,
 					{
 						customType: "context",
 						content: [{
@@ -124,6 +126,7 @@ export function registerAutoRetryEndHandler(pi: any): void {
 						display: true,
 					},
 					{ deliverAs: "steer" },
+					{ type: "context", source: "context-manager/auto-retry" },
 				);
 			}
 		} catch (err) {

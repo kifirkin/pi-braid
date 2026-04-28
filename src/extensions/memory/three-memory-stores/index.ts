@@ -16,6 +16,7 @@ import { Type } from "typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { createLogger } from "../../../lib/logger.js";
 import { getExtensionState } from "../../../lib/extension-state.js";
+import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import * as os from "node:os";
 import { readFile as fsReadFilePromise } from "node:fs/promises";
 import * as fs from "node:fs";
@@ -755,11 +756,16 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 			lines.push(`    Solution: ${ep.solution.slice(0, 120)}`);
 		}
 
-		pi.sendMessage({
-			customType: "memory",
-			display: true,
-			content: [{ type: "text", text: lines.join("\n") }],
-		});
+		sendTrackedMessage(
+			pi,
+			{
+				customType: "memory",
+				display: true,
+				content: [{ type: "text", text: lines.join("\n") }],
+			},
+			undefined,
+			{ type: "memory", source: "three-memory-stores/recall" },
+		);
 	}
 
 	// ── Event: tool_end (enhanced with auto-recall) ────────────────────
@@ -807,11 +813,16 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 						}
 					}
 					if (bestAlt && bestRel > currentReliability + 0.2) {
-						pi.sendMessage({
-							customType: "memory",
-							display: true,
-							content: [{ type: "text", text: `[recall] ${bestAlt} has better reliability (${(bestRel * 100).toFixed(0)}%) for "${taskType}" than ${toolName} (${(currentReliability * 100).toFixed(0)}%)` }],
-						});
+						sendTrackedMessage(
+							pi,
+							{
+								customType: "memory",
+								display: true,
+								content: [{ type: "text", text: `[recall] ${bestAlt} has better reliability (${(bestRel * 100).toFixed(0)}%) for "${taskType}" than ${toolName} (${(currentReliability * 100).toFixed(0)}%)` }],
+							},
+							undefined,
+							{ type: "memory", source: "three-memory-stores/reliability" },
+						);
 					}
 				}
 			}

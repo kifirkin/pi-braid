@@ -10,6 +10,7 @@
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { addEvidence } from "../../../../lib/evidence-pool.js";
+import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
 import { analyzeSession } from "../analysis.js";
 import {
 	log, getCmState, compactionRetryState, overflowRetryState, _compactedEntries,
@@ -314,24 +315,29 @@ async function handleOverflowFailure(pi: any, event: any, ctx: ExtensionContext,
 
 		const reducedKeep = Math.floor(20000 * Math.pow(OVERFLOW_RETRY_KEEP_REDUCTION_FACTOR, overflowRetryState.attempt));
 
-		pi.sendMessage({
-			customType: "context",
-			content: [{
-				type: "text" as const,
-				text: [
-					`## ⚠️ Context overflow recovery failed (attempt ${overflowRetryState.attempt + 1}/${OVERFLOW_RETRY_MAX_ATTEMPTS})`,
-					errMsg, "",
-					overflowRetryState.attempt === 0
-						? "Retrying with more aggressive compaction..."
-						: `Retrying with keep ≤${reducedKeep} tokens...`, "",
-					"If this persists:",
-					"1. Switch to a larger-context model",
-					"2. Run `/model` to verify settings",
-					"3. Store learnings in memory and start a new session",
-				].join("\n"),
-			}],
-			display: true,
-		}, { deliverAs: "hint" });
+		sendTrackedMessage(
+			pi,
+			{
+				customType: "context",
+				content: [{
+					type: "text" as const,
+					text: [
+						`## ⚠️ Context overflow recovery failed (attempt ${overflowRetryState.attempt + 1}/${OVERFLOW_RETRY_MAX_ATTEMPTS})`,
+						errMsg, "",
+						overflowRetryState.attempt === 0
+							? "Retrying with more aggressive compaction..."
+							: `Retrying with keep ≤${reducedKeep} tokens...`, "",
+						"If this persists:",
+						"1. Switch to a larger-context model",
+						"2. Run `/model` to verify settings",
+						"3. Store learnings in memory and start a new session",
+					].join("\n"),
+				}],
+				display: true,
+			},
+			{ deliverAs: "hint" },
+			{ type: "context", source: "context-manager/compaction/overflow" },
+		);
 
 		triggerOverflowRetry(pi, ctx, overflowRetryState.attempt + 1, errMsg);
 		return;
@@ -339,19 +345,24 @@ async function handleOverflowFailure(pi: any, event: any, ctx: ExtensionContext,
 
 	// Exhausted
 	_compactedEntries.add(entryId ?? "overflow-" + Date.now());
-	pi.sendMessage({
-		customType: "context",
-		content: [{
-			type: "text" as const,
-			text: [
-				"## ⚠️ Context overflow recovery exhausted",
-				errMsg, "",
-				`After ${OVERFLOW_RETRY_MAX_ATTEMPTS} attempts, compaction cannot reduce context enough.`,
-				"Consider switching models, starting a new session, or storing learnings in memory.",
-			].join("\n"),
-		}],
-		display: true,
-	}, { deliverAs: "hint" });
+	sendTrackedMessage(
+		pi,
+		{
+			customType: "context",
+			content: [{
+				type: "text" as const,
+				text: [
+					"## ⚠️ Context overflow recovery exhausted",
+					errMsg, "",
+					`After ${OVERFLOW_RETRY_MAX_ATTEMPTS} attempts, compaction cannot reduce context enough.`,
+					"Consider switching models, starting a new session, or storing learnings in memory.",
+				].join("\n"),
+			}],
+			display: true,
+		},
+		{ deliverAs: "hint" },
+		{ type: "context", source: "context-manager/compaction/overflow-exhausted" },
+	);
 	resetOverflowRetry();
 }
 
@@ -383,27 +394,37 @@ async function handleTransientError(pi: any, event: any, ctx: ExtensionContext, 
 		compactionRetryState.lastError = errMsg;
 		compactionRetryState.lastReason = event.reason ?? "";
 
-		pi.sendMessage({
-			customType: "context",
-			content: [{
-				type: "text" as const,
-				text: `⚠️ Server overload (${errMsg}). Auto-retrying... (${compactionRetryState.attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})`,
-			}],
-			display: true,
-		}, { deliverAs: "hint" });
+		sendTrackedMessage(
+			pi,
+			{
+				customType: "context",
+				content: [{
+					type: "text" as const,
+					text: `⚠️ Server overload (${errMsg}). Auto-retrying... (${compactionRetryState.attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})`,
+				}],
+				display: true,
+			},
+			{ deliverAs: "hint" },
+			{ type: "context", source: "context-manager/compaction/transient" },
+		);
 
 		triggerCompactionRetry(pi, ctx, compactionRetryState.attempt, errMsg);
 		return;
 	}
 
-	pi.sendMessage({
-		customType: "context",
-		content: [{
-			type: "text" as const,
-			text: `⚠️ Auto-compaction failed after retries (server overload): ${errMsg}`,
-		}],
-		display: true,
-	}, { deliverAs: "hint" });
+	sendTrackedMessage(
+		pi,
+		{
+			customType: "context",
+			content: [{
+				type: "text" as const,
+				text: `⚠️ Auto-compaction failed after retries (server overload): ${errMsg}`,
+			}],
+			display: true,
+		},
+		{ deliverAs: "hint" },
+		{ type: "context", source: "context-manager/compaction/transient-exhausted" },
+	);
 }
 
 // ── Context Window Error Handler ──────────────────────────────────────────────
@@ -428,19 +449,24 @@ async function handleContextWindowError(pi: any, _event: any, ctx: ExtensionCont
 	}
 
 	// If emergency rotation fails, inform the user
-	pi.sendMessage({
-		customType: "context",
-		content: [{
-			type: "text" as const,
-			text: [
-				"## ⚠️ Session too large",
-				errMsg, "",
-				"The session cannot be compacted because it exceeds the model's context limit.",
-				"Please use `finalize()` to rotate the session, or `context_compress(start, end, summary)` to archive older work.",
-			].join("\n"),
-		}],
-		display: true,
-	}, { deliverAs: "hint" });
+	sendTrackedMessage(
+		pi,
+		{
+			customType: "context",
+			content: [{
+				type: "text" as const,
+				text: [
+					"## ⚠️ Session too large",
+					errMsg, "",
+					"The session cannot be compacted because it exceeds the model's context limit.",
+					"Please use `finalize()` to rotate the session, or `context_compress(start, end, summary)` to archive older work.",
+				].join("\n"),
+			}],
+			display: true,
+		},
+		{ deliverAs: "hint" },
+		{ type: "context", source: "context-manager/compaction/context-window" },
+	);
 }
 
 // ── Threshold Failure Handler ─────────────────────────────────────────────────
@@ -471,31 +497,41 @@ async function handleThresholdFailure(pi: any, event: any, ctx: ExtensionContext
 		compactionRetryState.lastError = errMsg;
 		compactionRetryState.lastReason = event.reason ?? "";
 
-		pi.sendMessage({
-			customType: "context",
-			content: [{
-				type: "text" as const,
-				text: `⚠️ Compaction failed (${errMsg}). Auto-retrying... (${compactionRetryState.attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})`,
-			}],
-			display: true,
-		}, { deliverAs: "hint" });
+		sendTrackedMessage(
+			pi,
+			{
+				customType: "context",
+				content: [{
+					type: "text" as const,
+					text: `⚠️ Compaction failed (${errMsg}). Auto-retrying... (${compactionRetryState.attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})`,
+				}],
+				display: true,
+			},
+			{ deliverAs: "hint" },
+			{ type: "context", source: "context-manager/compaction/threshold" },
+		);
 
 		triggerCompactionRetry(pi, ctx, compactionRetryState.attempt, errMsg);
 		return;
 	}
 
-	pi.sendMessage({
-		customType: "context",
-		content: [{
-			type: "text" as const,
-			text: [
-				"## ⚠️ Auto-compaction failed permanently",
-				errMsg, "",
-				"Consider: `/compact` manually, `context_checkout` with backup, or storing learnings in memory.",
-			].join("\n"),
-		}],
-		display: true,
-	}, { deliverAs: "hint" });
+	sendTrackedMessage(
+		pi,
+		{
+			customType: "context",
+			content: [{
+				type: "text" as const,
+				text: [
+					"## ⚠️ Auto-compaction failed permanently",
+					errMsg, "",
+					"Consider: `/compact` manually, `context_checkout` with backup, or storing learnings in memory.",
+				].join("\n"),
+			}],
+			display: true,
+		},
+		{ deliverAs: "hint" },
+		{ type: "context", source: "context-manager/compaction/threshold-exhausted" },
+	);
 }
 
 // ── Retry Trigger Functions ───────────────────────────────────────────────────

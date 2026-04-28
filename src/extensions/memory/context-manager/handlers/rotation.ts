@@ -17,6 +17,7 @@ import { getCmState } from "./shared.js";
 import { log } from "./shared.js";
 import { getRotationState } from "../../../../lib/global-state.js";
 import type { RotationState } from "../../../../lib/global-state.js";
+import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
 
 // ── Rotation configuration ───────────────────────────────────────────────────
 const MAX_SESSION_SIZE_BYTES = 50 * 1024 * 1024;  // 50 MB
@@ -142,22 +143,27 @@ function triggerEmergencyRotation(pi: any, ctx: ExtensionContext): void {
 		state.continuationSummary = buildContinuationSummary(ctx);
 
 		// Send immediate notification to agent
-		pi.sendMessage({
-			customType: "context",
-			content: [{
-				type: "text" as const,
-				text: [
-					"## Session Rotation Required",
-					"",
-					"Context overflow detected. Automatic rotation triggered to prevent data loss.",
-					"",
-					"Please call `finalize()` to complete this task and start fresh.",
-					"",
-					"Rotation will happen automatically on next `finalize()`.",
-				].join("\n"),
-			}],
-			display: true,
-		}, { deliverAs: "hint" });
+		sendTrackedMessage(
+			pi,
+			{
+				customType: "context",
+				content: [{
+					type: "text" as const,
+					text: [
+						"## Session Rotation Required",
+						"",
+						"Context overflow detected. Automatic rotation triggered to prevent data loss.",
+						"",
+						"Please call `finalize()` to complete this task and start fresh.",
+						"",
+						"Rotation will happen automatically on next `finalize()`.",
+					].join("\n"),
+				}],
+				display: true,
+			},
+			{ deliverAs: "hint" },
+			{ type: "context", source: "context-manager/rotation" },
+		);
 
 		log.info("[Emergency] Rotation triggered due to context overflow risk");
 	} catch (err) {
@@ -213,25 +219,30 @@ export function registerRotationHandlers(pi: any): void {
 			state.pendingRotation = true;
 
 			// Notify agent — ONCE — with identity-framed language (not compliance directives)
-			pi.sendMessage({
-				customType: "context",
-				display: true,
-				content: [{
-					type: "text" as const,
-					text: [
-						"## Session Size Notice",
-						"",
-						reason,
-						"",
-						"The session has grown large. To keep working smoothly:",
-						"1. **`finalize()`** — when done with current work; rotates session with summary",
-						"2. **`context_compress(start, end, summary)`** — archive completed work mid-session",
-						"3. **`memory_store(...)`** — preserve critical facts before compression",
-						"",
-						"Taking any of these actions will reset the session counter for 25 turns.",
-					].join("\n"),
-				}],
-			});
+			sendTrackedMessage(
+				pi,
+				{
+					customType: "context",
+					display: true,
+					content: [{
+						type: "text" as const,
+						text: [
+							"## Session Size Notice",
+							"",
+							reason,
+							"",
+							"The session has grown large. To keep working smoothly:",
+							"1. **`finalize()`** — when done with current work; rotates session with summary",
+							"2. **`context_compress(start, end, summary)`** — archive completed work mid-session",
+							"3. **`memory_store(...)`** — preserve critical facts before compression",
+							"",
+							"Taking any of these actions will reset the session counter for 25 turns.",
+						].join("\n"),
+					}],
+				},
+				undefined,
+				{ type: "context", source: "context-manager/rotation" },
+			);
 		} catch (err) {
 			log.error("turn_end rotation check error:", err);
 		}
@@ -279,20 +290,25 @@ export function registerRotationHandlers(pi: any): void {
 			log.info(`Session rotation triggered at task boundary (rotation #${state.rotationCount})`);
 
 			// Store continuation summary as memory for next session
-			pi.sendMessage({
-				customType: "context",
-				content: [{
-					type: "text" as const,
-					text: [
-						"## 🔄 Session Rotated",
-						"",
-						`Rotation #${state.rotationCount} completed at task boundary.`,
-						"Key context has been preserved in memory stores.",
-						"Use `memory_recall` to retrieve relevant context.",
-					].join("\n"),
-				}],
-				display: true,
-			}, { deliverAs: "hint" });
+			sendTrackedMessage(
+				pi,
+				{
+					customType: "context",
+					content: [{
+						type: "text" as const,
+						text: [
+							"## 🔄 Session Rotated",
+							"",
+							`Rotation #${state.rotationCount} completed at task boundary.`,
+							"Key context has been preserved in memory stores.",
+							"Use `memory_recall` to retrieve relevant context.",
+						].join("\n"),
+					}],
+					display: true,
+				},
+				{ deliverAs: "hint" },
+				{ type: "context", source: "context-manager/rotation" },
+			);
 		} catch (err) {
 			log.error("tool_end rotation error:", err);
 		}

@@ -224,14 +224,16 @@ function executeAction(evaluated: EvaluatedAction, pi: ExtensionAPI, ctx: any, u
 		case "nudge":
 			if (evaluated.canExecute) {
 				const msg = interpolateMessage(action.message, ctx);
-				pi.sendMessage(
+				sendTrackedMessage(
+					pi,
 					{
 						customType: "context-lifecycle",
 						content: [{ type: "text" as const, text: msg }],
 						display: true,
 					},
 					{ deliverAs: "steer" },
-				);
+					{ type: "context", source: "context-lifecycle/nudge" },
+					);
 			}
 			break;
 	}
@@ -290,7 +292,7 @@ function queueProposal(evaluated: EvaluatedAction, ctx: any, branchLength: numbe
 
 // ── Extension Factory ────────────────────────────────────────────────────────
 
-import { clearInjections } from "../../../lib/injection-tracker.js";
+import { clearInjections, sendTrackedMessage } from "../../../lib/injection-tracker.js";
 
 export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 	// ── session_start ────────────────────────────────────────────────────────

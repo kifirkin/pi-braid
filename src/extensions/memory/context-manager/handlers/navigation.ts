@@ -4,6 +4,7 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { analyzeSession } from "../analysis.js";
 import { log, getCmState, overflowRetryState, resetOverflowRetry } from "./shared.js";
+import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
 import { getSessionManager } from "../../../../lib/session-manager.js";
 
 // ── Session Before Tree ───────────────────────────────────────────────────────
@@ -50,14 +51,19 @@ export function registerTurnEndCheckoutHandler(pi: any): void {
 		try {
 			const state = getCmState(ctx);
 			if (state.checkoutParams) {
-				pi.sendMessage({
-					customType: "context",
-					content: [{
-						type: "text" as const,
-						text: `**Context checkout prepared.** Run \`context_checkout(target="${state.checkoutParams.target}")\` when ready.`,
-					}],
-					display: true,
-				}, { deliverAs: "steer" });
+				sendTrackedMessage(
+					pi,
+					{
+						customType: "context",
+						content: [{
+							type: "text" as const,
+							text: `**Context checkout prepared.** Run \`context_checkout(target="${state.checkoutParams.target}")\` when ready.`,
+						}],
+						display: true,
+					},
+					{ deliverAs: "steer" },
+					{ type: "context", source: "context-manager/navigation" },
+				);
 				state.checkoutParams = null;
 			}
 		} catch (err) {

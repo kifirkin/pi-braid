@@ -118,6 +118,7 @@ const MAX_SNIPPETS_PER_SESSION = 3;
 
 type SearchBackend = "rg" | "grep" | "node";
 import { getExtensionState } from "../../../lib/extension-state.js";
+import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 function getRecallState(ctx?: ExtensionContext): { cachedBackend: SearchBackend | undefined } {
@@ -485,11 +486,16 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
 			const results = searchFiles(toolNames.slice(0, 60), sessionsDir);
 			if (results.length > 0 && results[0].count >= 2) {
 				// Inject as a quiet whisper with display:false
-				pi.sendMessage({
-					customType: "memory",
-					display: true,
-					content: [{ type: "text" as const, text: `[recall] Past session found: "${basename(results[0].path)}" (${results[0].count} matches)` }],
-				});
+				sendTrackedMessage(
+					pi,
+					{
+						customType: "memory",
+						display: true,
+						content: [{ type: "text" as const, text: `[recall] Past session found: "${basename(results[0].path)}" (${results[0].count} matches)` }],
+					},
+					undefined,
+					{ type: "memory", source: "session-recall" },
+				);
 			}
 		} catch {
 			// Non-fatal: recall failed, continue without
