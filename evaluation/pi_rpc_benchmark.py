@@ -189,9 +189,16 @@ def run_task(
 
             # Agent done
             if etype == "agent_end":
-                result.success = True
+                # Validate: response must not be a prompt echo and must have meaningful content
+                stripped = result.final_text.strip()
+                is_echo = (len(stripped) > 0 and stripped == prompt.strip())
+                has_content = len(stripped) > 10
+                result.success = not is_echo and has_content
+                if is_echo:
+                    result.error = "echo"
+                elif not has_content:
+                    result.error = "no_content"
                 result.duration_seconds = time.time() - start_time
-                # Estimate tokens from text length (rough)
                 result.token_count = len(result.final_text) // 4
                 break
 
