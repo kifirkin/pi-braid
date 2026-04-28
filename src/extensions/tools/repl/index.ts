@@ -10,7 +10,8 @@ const log = createLogger("repl");
  * Code inlined from ../../tools/repl.ts
  */
 
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { resolve, relative } from "node:path";
 import { globSync } from "glob";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
@@ -70,21 +71,21 @@ function parseContent(content: string): unknown {
 	}
 }
 
-function loadDataFromFile(filePath: string, baseDir?: string): unknown {
+async function loadDataFromFile(filePath: string, baseDir?: string): Promise<unknown> {
 	const resolvedPath = baseDir ? resolve(baseDir, filePath) : filePath;
 	if (!existsSync(resolvedPath)) throw new Error(`File not found: ${resolvedPath}`);
-	return parseContent(readFileSync(resolvedPath, "utf-8"));
+	return parseContent(await readFile(resolvedPath, "utf-8"));
 }
 
-function loadDataFromGlob(pattern: string, baseDir?: string): unknown {
+async function loadDataFromGlob(pattern: string, baseDir?: string): Promise<unknown> {
 	const base = baseDir || ".";
 	const files = globSync(pattern, { cwd: base, absolute: true });
 	if (files.length === 0) throw new Error(`No files matching pattern: ${pattern} (in ${base})`);
 	if (files.length > MAX_GLOB_FILES) throw new Error(`Too many files (${files.length}) matching pattern: ${pattern}. Limit: ${MAX_GLOB_FILES}`);
-	return files.map((file) => ({ path: relative(base, file), content: parseContent(readFileSync(file, "utf-8")) }));
+	return await Promise.all(files.map(async (file) => ({ path: relative(base, file), content: parseContent(await readFile(file, "utf-8")) })));
 }
 
-function resolveContext(context: unknown, cwd?: string, baseDir?: string): unknown {
+async function resolveContext(context: unknown, cwd?: string, baseDir?: string): Promise<unknown> {
 	if (context === undefined || context === null) return undefined;
 	if (typeof context === "object" && !Array.isArray(context) && context !== null) {
 		const ctx = context as Record<string, unknown>;
@@ -185,7 +186,7 @@ function createReplTool(): AgentTool<typeof replSchema> {
 			const timeout = params.timeout_ms ?? 30000;
 			if (mode === "rlm") { replState.rlmDepth = 0; replState.rlmMaxCalls = maxCalls; }
 
-			const resolvedData = resolveContext(params.context, params.cwd, params.baseDir);
+			const resolvedData = await resolveContext(params.context, params.cwd, params.baseDir);
 			if (mode === "rlm") replState.rlmContext = resolvedData;
 
 			const evalKeys = [...Object.keys(replState.context), "lastResult"];

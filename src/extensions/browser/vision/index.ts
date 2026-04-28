@@ -355,11 +355,11 @@ async function performImageAnalysis(
   const sizeCheck = checkImageSize(absolutePath);
 
   // Read image for preview (only if small enough)
-  const imageData = readImageAsBase64(absolutePath);
+  const imageData = await readImageAsBase64(absolutePath);
   const imageBase64 = sizeCheck.isPreviewable ? imageData : undefined;
 
   // Detect image metadata for better analysis context
-  const metadata = getImageMetadata(absolutePath);
+  const metadata = await getImageMetadata(absolutePath);
 
   // Send initial metadata update
   const mimeType = getMimeType(absolutePath);

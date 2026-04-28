@@ -20,7 +20,8 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { Model, Api } from "@mariozechner/pi-ai";
 import { Type } from "typebox";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { homedir } from "node:os";
 
@@ -158,7 +159,7 @@ function walkJsonlFiles(dir: string): string[] {
 
 interface FileMatchCount { path: string; count: number }
 
-function searchFiles(query: string, sessionsDir: string, timeout = 10000): FileMatchCount[] {
+async function searchFiles(query: string, sessionsDir: string, timeout = 10000): Promise<FileMatchCount[]> {
 	const backend = getSearchBackend();
 
 	if (backend === "rg") {
@@ -191,14 +192,14 @@ function parseCountOutput(output: string): FileMatchCount[] {
 	});
 }
 
-function nodeSearchFiles(query: string, sessionsDir: string): FileMatchCount[] {
+async function nodeSearchFiles(query: string, sessionsDir: string): Promise<FileMatchCount[]> {
 	const files = walkJsonlFiles(sessionsDir);
 	const results: FileMatchCount[] = [];
 	const lowerQuery = query.toLowerCase();
 
 	for (const filePath of files) {
 		try {
-			const content = readFileSync(filePath, "utf-8");
+			const content = await readFile(filePath, "utf-8");
 			let count = 0;
 			for (const line of content.split("\n")) {
 				if (line.toLowerCase().includes(lowerQuery)) count++;
@@ -211,12 +212,12 @@ function nodeSearchFiles(query: string, sessionsDir: string): FileMatchCount[] {
 	return results;
 }
 
-function searchLines(query: string, filePath: string, limit: number): string[] {
+async function searchLines(query: string, filePath: string, limit: number): Promise<string[]> {
 	const results: string[] = [];
 	const lowerQuery = query.toLowerCase();
 
 	try {
-		const content = readFileSync(filePath, "utf-8");
+		const content = await readFile(filePath, "utf-8");
 		for (const line of content.split("\n")) {
 			if (line.toLowerCase().includes(lowerQuery)) {
 				results.push(line);
@@ -230,11 +231,11 @@ function searchLines(query: string, filePath: string, limit: number): string[] {
 
 // Session Loading (for query)
 
-function loadSessionMessages(sessionPath: string): Array<{ role: string; content: string }> {
+async function loadSessionMessages(sessionPath: string): Promise<Array<{ role: string; content: string }>> {
 	const messages: Array<{ role: string; content: string }> = [];
 
 	try {
-		const content = readFileSync(sessionPath, "utf-8");
+		const content = await readFile(sessionPath, "utf-8");
 		for (const line of content.split("\n")) {
 			if (!line.trim()) continue;
 			const msg = extractMessageText(line);
@@ -282,7 +283,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
 				};
 			}
 
-			const allMatches = searchFiles(params.query, sessionsDir);
+			const allMatches = await searchFiles(params.query, sessionsDir);
 
 			if (allMatches.length === 0) {
 				return {
@@ -300,7 +301,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
 			for (const { path: filePath, count } of fileMatches) {
 				const project = projectFromPath(filePath);
 				const date = dateFromPath(filePath);
-				const matchLines = searchLines(params.query, filePath, MAX_SNIPPETS_PER_SESSION);
+				const matchLines = await searchLines(params.query, filePath, MAX_SNIPPETS_PER_SESSION);
 
 				const snippets: string[] = [];
 				for (const line of matchLines) {
@@ -359,7 +360,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
 				};
 			}
 
-			const messages = loadSessionMessages(params.sessionPath);
+			const messages = await loadSessionMessages(params.sessionPath);
 
 			if (messages.length === 0) {
 				return {
@@ -469,7 +470,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
 	// the agent relevant prior context without explicit recall commands.
 	let midTaskRecallDone = false;
 
-	pi.on("turn_end" as never, (_event: unknown, ctx: any) => {
+	pi.on("turn_end" as never, async (_event: unknown, ctx: any) => {
 		if (midTaskRecallDone) return;
 		midTaskRecallDone = true;
 
@@ -483,7 +484,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
 		if (!existsSync(sessionsDir)) return;
 
 		try {
-			const results = searchFiles(toolNames.slice(0, 60), sessionsDir);
+			const results = await searchFiles(toolNames.slice(0, 60), sessionsDir);
 			if (results.length > 0 && results[0].count >= 2) {
 				// Inject as a quiet whisper with display:false
 				sendTrackedMessage(

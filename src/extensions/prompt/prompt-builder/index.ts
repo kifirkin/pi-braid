@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, readdirSync } from "fs";
+import { existsSync, readdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { createPromptPreviewTool } from "./preview.js";
 import type { Skill } from "@mariozechner/pi-coding-agent";
 import { homedir } from "node:os";
@@ -164,7 +165,7 @@ interface PastInsight {
 	source: string;
 }
 
-function searchPastInsights(cwd: string): PastInsight[] {
+async function searchPastInsights(cwd: string): Promise<PastInsight[]> {
 	const insights: PastInsight[] = [];
 
 	// Search three-memory-stores episodes
@@ -173,7 +174,7 @@ function searchPastInsights(cwd: string): PastInsight[] {
 		try {
 			const episodeFiles = readdirSync(memoryDir).filter((f) => f.startsWith("episodes"));
 			for (const file of episodeFiles.slice(0, 3)) {
-				const content = readFileSync(join(memoryDir, file), "utf-8");
+			const content = await readFile(join(memoryDir, file), "utf-8");
 				const lines = content.split("\n").filter((l) => l.trim());
 				for (const line of lines.slice(-5)) {
 					try {
@@ -207,7 +208,7 @@ function searchPastInsights(cwd: string): PastInsight[] {
 				.slice(0, 3);
 
 			for (const session of sessions) {
-				const content = readFileSync(join(sessionDir, session), "utf-8");
+			const content = await readFile(join(sessionDir, session), "utf-8");
 				const lines = content.split("\n").filter((l) => l.trim());
 				for (const line of lines.slice(-3)) {
 					try {
@@ -306,7 +307,7 @@ function reconstructGuidelineSection(_hasBash: boolean, _hasGrep: boolean, _hasF
   return "";
 }
 
-function reconstructProjectContextSection(cwd: string): string {
+async function reconstructProjectContextSection(cwd: string): Promise<string> {
   // Re-implemented from loadProjectContextFiles (not exported from pi)
   // Searches for AGENTS.md or CLAUDE.md in cwd and ancestors
   // NOTE: pi's native loading is overridden by prompt-builder, so we must replicate here
@@ -314,7 +315,7 @@ function reconstructProjectContextSection(cwd: string): string {
   const contextFiles: Array<{ path: string; content: string }> = [];
   const seenPaths = new Set<string>();
 
-  function loadContextFromDir(dir: string): { path: string; content: string } | null {
+  async function loadContextFromDir(dir: string): Promise<{ path: string; content: string } | null> {
     const candidates = ["AGENTS.md", "CLAUDE.md"];
     for (const filename of candidates) {
       const filePath = join(dir, filename);
@@ -322,7 +323,7 @@ function reconstructProjectContextSection(cwd: string): string {
         try {
           return {
             path: filePath,
-            content: readFileSync(filePath, "utf-8"),
+            content: await readFile(filePath, "utf-8"),
           };
         } catch {
           // Skip files that can't be read
@@ -335,7 +336,7 @@ function reconstructProjectContextSection(cwd: string): string {
 
   // Global context (agent dir)
   const agentDir = getAgentDir();
-  const globalContext = loadContextFromDir(agentDir);
+  const globalContext = await loadContextFromDir(agentDir);
   if (globalContext) {
     contextFiles.push(globalContext);
     seenPaths.add(globalContext.path);
@@ -346,7 +347,7 @@ function reconstructProjectContextSection(cwd: string): string {
   let currentDir = cwd;
 
   while (true) {
-    const contextFile = loadContextFromDir(currentDir);
+    const contextFile = await loadContextFromDir(currentDir);
     if (contextFile && !seenPaths.has(contextFile.path)) {
       contextFiles.unshift(contextFile);
       seenPaths.add(contextFile.path);
@@ -385,9 +386,9 @@ interface SkillMeta {
   sections: string[];
 }
 
-function getSkillMeta(skill: Skill): SkillMeta {
+async function getSkillMeta(skill: Skill): Promise<SkillMeta> {
   try {
-    const content = readFileSync(skill.filePath, "utf-8");
+    const content = await readFile(skill.filePath, "utf-8");
     const lines = content.split("\n");
     const sections: string[] = [];
 
@@ -405,7 +406,7 @@ function getSkillMeta(skill: Skill): SkillMeta {
   }
 }
 
-function formatSkillsWithLineCounts(skills: Skill[]): string {
+async function formatSkillsWithLineCounts(skills: Skill[]): Promise<string> {
   const visibleSkills = skills.filter((s) => !s.disableModelInvocation);
   if (visibleSkills.length === 0) {
     return "";
@@ -420,7 +421,7 @@ function formatSkillsWithLineCounts(skills: Skill[]): string {
   ];
 
   for (const skill of visibleSkills) {
-    const meta = getSkillMeta(skill);
+    const meta = await getSkillMeta(skill);
     lines.push("  <skill>");
     lines.push(`    <name>${escapeXml(skill.name)}</name>`);
     lines.push(`    <description>${escapeXml(skill.description)}</description>`);
@@ -445,7 +446,7 @@ function escapeXml(str: string): string {
     .replace(/'/g, "&apos;");
 }
 
-function reconstructSkillsSection(cwd: string): string {
+async function reconstructSkillsSection(cwd: string): Promise<string> {
   const result = loadSkills({ cwd, agentDir: getAgentDir(), skillPaths: [SKILLS_DIR], includeDefaults: true });
   return formatSkillsWithLineCounts(result.skills);
 }
@@ -486,21 +487,21 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     parts.push(reconstructGuidelineSection(hasBash, hasGrep, hasFind, hasLs));
 
     // 4. Project context (from file loading - required since pi's native loading is overridden)
-    const projectContext = reconstructProjectContextSection(cwd);
+    const projectContext = await reconstructProjectContextSection(cwd);
     if (projectContext) {
       parts.push(projectContext);
     }
 
     // 5. Skills
     if (hasRead) {
-      const skillsSection = reconstructSkillsSection(cwd);
+      const skillsSection = await reconstructSkillsSection(cwd);
       if (skillsSection) {
         parts.push(skillsSection);
       }
     }
 
     // R6: Proactive recall - inject past insights (only if relevance >= 0.7)
-    const pastInsights = searchPastInsights(cwd);
+    const pastInsights = await searchPastInsights(cwd);
     const pastInsightsSection = formatPastInsightsSection(pastInsights);
     if (pastInsightsSection) {
       parts.push(pastInsightsSection);

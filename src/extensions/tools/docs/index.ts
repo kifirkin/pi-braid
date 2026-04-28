@@ -83,7 +83,7 @@ function truncateLines(content: string, maxLines: number): string {
  */
 async function extractPdfWithPdfParse(path: string): Promise<string | null> {
 	try {
-		const buf = fsSync.readFileSync(path);
+		const buf = await fs.readFile(path);
 		const parser = new PDFParse({ data: buf });
 		const result = await parser.getText();
 
@@ -306,7 +306,7 @@ export default function docExtension(pi: ExtensionAPI) {
 			const scale = params.scale ?? 1.0; // 1.0 = 72dpi (readable, ~50% smaller than 1.5x)
 
 			try {
-				const buf = fsSync.readFileSync(params.path);
+				const buf = await fs.readFile(params.path);
 				const parser = new PDFParse({ data: buf });
 				const result = await parser.getScreenshot({
 					scale,

@@ -86,60 +86,44 @@ Extensions that register tools the agent rarely or never uses in practice.
 
 ## Phase 3: Dead Code / Unused Libraries (High Value)
 
-### 3a. `context-manager/retry.ts`
+### 3a. `context-manager/retry.ts` ✅ DONE
 
-- **Status:** Dead code. Functions `triggerCompactionRetryFromAgentEnd` and
-  `triggerOverflowRetryFromAgentEnd` are intentionally empty no-ops.
-- **Action:** Delete the file. All retry logic lives in `compaction.ts` now.
+- **Status:** Deleted. 165 lines of dead code using `triggerTurn:true` + `display:true` (removed in compaction cascade fix).
+- All retry logic lives in `compaction.ts`. Zero imports from retry.ts.
 
-### 3b. `evolve` extension (opt-in)
+### 3b. `evolve` extension (opt-in) ✅ CLEANED
 
-- **Status:** Opt-in, rarely enabled. The `evolve` tool is never naturally invoked.
-- **Action:** Keep as opt-in. Don't load by default. Consider removing in v0.14 if unused.
+- **Status:** Kept as opt-in. Removed dead pijul version control section from output formatting.
+- 739→728 lines. Useful for health/degradation/analytics tracking.
 
-### 3c. `watchdog` extension (opt-in)
+### 3c. `watchdog` extension (opt-in) ✅ REVIEWED
 
-- **Status:** Opt-in error monitoring. Useful for debugging but adds event listeners
-  on `session_start`, `message_end`, `agent_start`, `agent_end`.
-- **Action:** Keep as opt-in. Useful for production debugging.
+- **Status:** Kept as opt-in. 77 lines, clean session health tracking. Low cost.
 
-### 3d. `rate-limiter` extension (opt-in)
+### 3d. `rate-limiter` extension (opt-in) ✅ REVIEWED
 
-- **Status:** Opt-in usage throttling. Experimental.
-- **Action:** Keep as opt-in. Low cost when disabled.
+- **Status:** Kept as opt-in. 170 lines, experimental RPM/TPM limiting.
+- Note: `throw` from `context` event handler could crash agent on oversized requests.
 
 ---
 
 ## Phase 4: Architectural Cleanup (High Risk, Deferred)
 
-### 4a. Sync FS in event handlers
+### 4a. sync→async (HOT PATH ONLY) ✅ DONE
 
-Files using sync I/O in event-driven code:
-- `analytics/index.ts` — `readFileSync`, `writeFileSync`
-- `codebase-tree/index.ts` — `readFileSync` (for .gitignore)
-- `error-capture/index.ts` — `writeFileSync`
-- `feedback/index.ts` — `writeFileSync`, `readFileSync`
+Converted event handlers and tool execution hot paths to async fs:
+- `prompt-builder/index.ts` — searchPastInsights, getSkillMeta, reconstructProjectContextSection, reconstructSkillsSection
+- `memory/session-recall/index.ts` — nodeSearchFiles, searchLines, loadSessionMessages, searchFiles, turn_end handler
+- `tools/repl/index.ts` — loadDataFromFile, loadDataFromGlob, resolveContext
+- `browser/vision/index.ts` — getImageMetadata, readImageAsBase64
+- `tools/docs/index.ts` — extractPdfWithPdfParse, render_pdf_page
 
-**Action:** Convert to async (fs/promises). Batch these conversions together.
+Skipped (init/shutdown, acceptable sync): feedback init, three-memory-stores shutdown, healthcheck, prompt-guardian, preview.ts, l1-environment.ts, retry/state.ts
 
-### 4b. Global variable coupling
+### 4b. Global variable coupling — DEFERRED
 
-`enforcement/index.ts` exports mutable state that `prompt-builder/index.ts` reads directly:
-```
-let _enforcementSignals: Record<...> = {}; // Writable by enforcement, read by prompt-builder
-```
-
-**Action:** Replace with event-based communication. Enforcement emits signals via
-`pi.events.emit("enforcement_signals", data)` and prompt-builder listens.
-
-### 4c. context-lifecycle overengineering
-
-360 lines of types, 187 lines of policy engine, 259 lines of signal detector — for what
-amounts to "if context > 70%, nudge agent." Signal types `redundancy_detected` and
-`context_pressure` are defined but never fire.
-
-**Action:** Simplify. Remove unused signal types. Replace policy engine with simple
-threshold checks in the `context` event handler.
+`enforcement/index.ts` exports mutable state that `prompt-builder/index.ts` reads directly.
+Replace with event-based communication. Needs design.
 
 ---
 

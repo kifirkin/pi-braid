@@ -512,20 +512,6 @@ function formatEvolveOutput(result: EvolveResult): string {
 			lines.push("# Agent Evolution Status");
 			lines.push("");
 
-			// Pijul status
-			const ps = data?.pijulStatus;
-			if (ps?.available) {
-				lines.push("**Version Control:**");
-				lines.push(`- Pijul: ✅ Available`);
-				lines.push(`- Checkpoints: ${ps.patchCount || 0}`);
-			} else {
-				lines.push("**Version Control:**");
-				lines.push("- Pijul: ❌ Not available");
-				lines.push("  Install: `cargo install pijul`");
-			}
-
-			lines.push("");
-
 			if (data?.metrics) {
 				const m = data.metrics;
 				lines.push("**Performance Metrics:**");
