@@ -96,7 +96,7 @@ const TRAPS = [
 		prompt: "Search for 'processFlow' in this codebase. If definitions contradict calls, use think() to analyze the discrepancy.",
 		validate(r) {
 			const t = r.finalText.toLowerCase();
-			const conflict = /\b(conflict|differ|contradict|inconsistent|mismatch|discrepancy/).test(t);
+			const conflict = /(conflict|differ|contradict|inconsistent|mismatch|discrepancy)/.test(t);
 			const reflect = /\b(think|reflect|analyze|look.*closer|examining)/.test(t);
 			if (conflict && reflect) return { pass: true, reason: "Conflict detected + reflective analysis" };
 			if (conflict) return { pass: true, reason: "Conflict awareness" };
