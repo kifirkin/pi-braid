@@ -28,6 +28,7 @@ import {
 } from "./constants.js";
 import { gatherL1State, formatL1Environment } from "./l1-environment.js";
 import { getExtensionState } from "../../../lib/extension-state.js";
+import { getInjections } from "../../../lib/injection-tracker.js";
 
 const previewSchema = Type.Object({
 	section: Type.Optional(Type.String({
@@ -184,9 +185,32 @@ export function createPromptPreviewTool() {
 				sections.push({ title: "METADATA", body: `Current time: ${date}\nCurrent working directory: ${cwd.replace(/\\/g, "/")}` });
 			}
 
+			if (target === "all" || target === "injections") {
+				const injections = getInjections();
+				const lines2: string[] = [];
+				if (injections.length === 0) {
+					lines2.push("(no messages tracked this session)");
+				} else {
+					// Group by source
+					const bySource = new Map<string, string[]>();
+					for (const inj of injections.slice(-20)) {
+						const key = inj.source;
+						if (!bySource.has(key)) bySource.set(key, []);
+						const prefix = inj.display ? "[visible]" : "[hidden]";
+							bySource.get(key)!.push(`${prefix} ${inj.content.slice(0, 120)}`);
+						}
+					for (const [source, msgs] of bySource) {
+						lines2.push(`## ${source} (${msgs.length} messages)`);
+							for (const m of msgs.slice(-5)) lines2.push(`  ${m}`);
+						}
+						lines2.push(`\n_total: ${injections.length} injections tracked`);
+				}
+				sections.push({ title: "CONTEXT INJECTIONS", body: lines2.join("\n") });
+			}
+
 			if (sections.length === 0) {
 				return {
-					content: [{ type: "text" as const, text: `Unknown section: ${target}. Options: all, identity, tools, skills, project, l1, enforcement, date.` }],
+					content: [{ type: "text" as const, text: `Unknown section: ${target}. Options: all, identity, tools, skills, project, l1, enforcement, date, injections.` }],
 					details: { error: "unknown_section", available: ["all", "identity", "tools", "skills", "project", "l1", "enforcement", "date"] },
 				} as any;
 			}

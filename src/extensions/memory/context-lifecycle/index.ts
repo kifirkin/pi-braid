@@ -290,6 +290,8 @@ function queueProposal(evaluated: EvaluatedAction, ctx: any, branchLength: numbe
 
 // ── Extension Factory ────────────────────────────────────────────────────────
 
+import { clearInjections } from "../../../lib/injection-tracker.js";
+
 export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 	// ── session_start ────────────────────────────────────────────────────────
 	pi.on("session_start", async (_event: any, ctx: any) => {
@@ -297,6 +299,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 		state().outcomes.length = 0;
 		_policyEngine.resetCooldowns();
 		_signalDetector.reset();
+		clearInjections(); // Clear injection history on fresh session
 	});
 
 	// ── before_agent_start ──────────────────────────────────────────────────

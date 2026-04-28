@@ -330,7 +330,7 @@ async function handleOverflowFailure(pi: any, event: any, ctx: ExtensionContext,
 					"3. Store learnings in memory and start a new session",
 				].join("\n"),
 			}],
-			display: false,
+			display: true,
 		}, { deliverAs: "hint" });
 
 		triggerOverflowRetry(pi, ctx, overflowRetryState.attempt + 1, errMsg);
@@ -350,7 +350,7 @@ async function handleOverflowFailure(pi: any, event: any, ctx: ExtensionContext,
 				"Consider switching models, starting a new session, or storing learnings in memory.",
 			].join("\n"),
 		}],
-		display: false,
+		display: true,
 	}, { deliverAs: "hint" });
 	resetOverflowRetry();
 }
@@ -389,7 +389,7 @@ async function handleTransientError(pi: any, event: any, ctx: ExtensionContext, 
 				type: "text" as const,
 				text: `⚠️ Server overload (${errMsg}). Auto-retrying... (${compactionRetryState.attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})`,
 			}],
-			display: false,
+			display: true,
 		}, { deliverAs: "hint" });
 
 		triggerCompactionRetry(pi, ctx, compactionRetryState.attempt, errMsg);
@@ -402,7 +402,7 @@ async function handleTransientError(pi: any, event: any, ctx: ExtensionContext, 
 			type: "text" as const,
 			text: `⚠️ Auto-compaction failed after retries (server overload): ${errMsg}`,
 		}],
-		display: false,
+		display: true,
 	}, { deliverAs: "hint" });
 }
 
@@ -439,7 +439,7 @@ async function handleContextWindowError(pi: any, _event: any, ctx: ExtensionCont
 				"Please use `finalize()` to rotate the session, or `context_compress(start, end, summary)` to archive older work.",
 			].join("\n"),
 		}],
-		display: false,
+		display: true,
 	}, { deliverAs: "hint" });
 }
 
@@ -477,7 +477,7 @@ async function handleThresholdFailure(pi: any, event: any, ctx: ExtensionContext
 				type: "text" as const,
 				text: `⚠️ Compaction failed (${errMsg}). Auto-retrying... (${compactionRetryState.attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})`,
 			}],
-			display: false,
+			display: true,
 		}, { deliverAs: "hint" });
 
 		triggerCompactionRetry(pi, ctx, compactionRetryState.attempt, errMsg);
@@ -494,7 +494,7 @@ async function handleThresholdFailure(pi: any, event: any, ctx: ExtensionContext
 				"Consider: `/compact` manually, `context_checkout` with backup, or storing learnings in memory.",
 			].join("\n"),
 		}],
-		display: false,
+		display: true,
 	}, { deliverAs: "hint" });
 }
 

@@ -11,6 +11,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { getExtensionState } from "../../../lib/extension-state.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { trackInjection } from "../../../lib/injection-tracker.js";
 
 interface WhisperState {
 	pendingWhisper: string | null;
@@ -39,6 +40,14 @@ export function sendEnforcementWhisper(pi: ExtensionAPI, message: string): void 
 		},
 		{ triggerTurn: true },
 	);
+	// Track injection for visibility tool
+	trackInjection({
+		type: "enforcement",
+		source: "enforcement/whisper",
+		content: `[auto] ${message}`,
+		display: true,
+		steer: false,
+	});
 }
 
 /**
