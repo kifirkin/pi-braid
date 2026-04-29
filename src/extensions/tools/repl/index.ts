@@ -290,6 +290,24 @@ function formatForDetails(value: unknown): unknown {
   return value;
 }
 
+// Verbose result for content (user-visible output) — shows code executed + result
+function formatVerbose(result: unknown, count: number, code: string, mode: string): string {
+  const prefix = `[repl #${count}]`;
+  const codePreview = code.length > 60 ? code.slice(0, 60) + "..." : code;
+  if (result === undefined) return `${prefix} ${codePreview} => undefined`;
+  if (result === null) return `${prefix} ${codePreview} => null`;
+  if (typeof result === "function") return `${prefix} ${codePreview} => [Function: ${(result as Function).name || "anonymous"}]`;
+  if (typeof result === "object") {
+    try {
+      return `${prefix} ${codePreview} =>
+${JSON.stringify(result, null, 2)}`;
+    } catch {
+      return `${prefix} ${codePreview} => ${String(result)}`;
+    }
+  }
+  return `${prefix} ${codePreview} => ${String(result)}`;
+}
+
 function createReplTool(): AgentTool<typeof replSchema> {
   return {
     name: "repl",
@@ -348,17 +366,19 @@ function createReplTool(): AgentTool<typeof replSchema> {
 
       if (mode === "rlm") {
         replState.rlmHistory.push({ code: params.code, result });
-        if (replState.rlmHistory.length > 100)
-          replState.rlmHistory = replState.rlmHistory.slice(-100);
+        if (replState.rlmHistory.length > 500)
+          replState.rlmHistory = replState.rlmHistory.slice(-500);
       }
       replState.lastResult = result;
 
       return {
-        content: [{ type: "text" as const, text: formatResult(result) }],
+        content: [{ type: "text" as const, text: formatVerbose(result, replState.executionCount, params.code, mode) }],
         details: {
           execution: replState.executionCount,
           mode,
+          code: params.code,
           result: formatForDetails(result),
+          resultPreview: formatResult(result),
           ...(ctxObj ? { contextSummary: ctxObj.summary() } : {}),
         },
       };
