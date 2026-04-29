@@ -6,17 +6,17 @@
 
 ## Active Documentation
 
-| File | Purpose |
-|------|---------|
-| [STATUS.md](STATUS.md) | This file — current project state |
-| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Developer guide: structure, conventions |
-| [docs/BRAID-NEXT-PROPOSAL.md](docs/BRAID-NEXT-PROPOSAL.md) | **Full R&D proposal** — all items prioritized (D0-D5, R5-R9, BR1-BR4, BM1-BM3) |
-| [docs/SKILL-LOADING-RESEARCH.md](docs/SKILL-LOADING-RESEARCH.md) | Skill resolution paths |
-| [docs/NUDGE-QUALITY-RESEARCH.md](docs/NUDGE-QUALITY-RESEARCH.md) | Enforcement/judge quality research |
-| [docs/NUDGE-FATIGUE.md](docs/NUDGE-FATIGUE.md) | Session 12 nudge dedup fix |
-| [docs/HANDOFF.md](docs/HANDOFF.md) | Session 11-12 handoff for next agent |
-| [docs/archive/](docs/archive/) | 34 historical documents |
-| [../implicit-framing/evaluation/results/](docs/EXTERNAL-TASKS.md) | Experiment results |
+| File                                                              | Purpose                                                                        |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| [STATUS.md](STATUS.md)                                            | This file — current project state                                              |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)                        | Developer guide: structure, conventions                                        |
+| [docs/BRAID-NEXT-PROPOSAL.md](docs/BRAID-NEXT-PROPOSAL.md)        | **Full R&D proposal** — all items prioritized (D0-D5, R5-R9, BR1-BR4, BM1-BM3) |
+| [docs/SKILL-LOADING-RESEARCH.md](docs/SKILL-LOADING-RESEARCH.md)  | Skill resolution paths                                                         |
+| [docs/NUDGE-QUALITY-RESEARCH.md](docs/NUDGE-QUALITY-RESEARCH.md)  | Enforcement/judge quality research                                             |
+| [docs/NUDGE-FATIGUE.md](docs/NUDGE-FATIGUE.md)                    | Session 12 nudge dedup fix                                                     |
+| [docs/HANDOFF.md](docs/HANDOFF.md)                                | Session 11-12 handoff for next agent                                           |
+| [docs/archive/](docs/archive/)                                    | 34 historical documents                                                        |
+| [../implicit-framing/evaluation/results/](docs/EXTERNAL-TASKS.md) | Experiment results                                                             |
 
 ## Archive Recovery (D0-D5, from BRAID-NEXT-PROPOSAL.md)
 

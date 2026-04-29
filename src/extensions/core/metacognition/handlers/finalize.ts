@@ -16,60 +16,74 @@ const log = createLogger("finalize");
 // Cascades: episodic → semantic → procedural per Evo-MedAgent (2604.14475).
 // On finalize, the completed task is stored as an episode so the agent can
 // retrieve similar past solutions on future tasks via retrieveEpisodes().
-async function recordToMemory(ctx: ExtensionContext | undefined, summary: string, completed: boolean): Promise<void> {
-	if (!ctx) return;
-	try {
-		// @ts-ignore dynamic import — runtime resolves after build, type-check not needed
-		const { addEpisode } = await import("../../memory/three-memory-stores/index.js");
-		const state = getExtensionState<any>(ctx, "three-memory-stores", () => ({
-			episodes: [],
-			heuristics: [],
-			toolStats: new Map<string, unknown>(),
-			currentSessionTools: [] as string[],
-			sessionStartTime: Date.now(),
-		}));
-		const project = ctx.cwd ?? "unknown";
-		const tags = inferTagsFromSummary(summary);
-		const toolSeq = getSessionToolSequence(ctx);
-		const outcome = completed ? "success" : "failure";
-		// addEpisode expects MemoryStoresState, we pass a compatible shape
-		const episode = addEpisode(state, summary, `Outcome: ${outcome}`, outcome, toolSeq, tags, project);
-		log.info(`R5: Recorded episode ${episode.id} (${outcome}) for: ${summary.slice(0, 60)}`);
-	} catch (err) {
-		log.debug(`R5: Memory recording skipped: ${(err as Error).message}`);
-	}
+async function recordToMemory(
+  ctx: ExtensionContext | undefined,
+  summary: string,
+  completed: boolean,
+): Promise<void> {
+  if (!ctx) return;
+  try {
+    // @ts-ignore dynamic import — runtime resolves after build, type-check not needed
+    const { addEpisode } = await import("../../memory/three-memory-stores/index.js");
+    const state = getExtensionState<any>(ctx, "three-memory-stores", () => ({
+      episodes: [],
+      heuristics: [],
+      toolStats: new Map<string, unknown>(),
+      currentSessionTools: [] as string[],
+      sessionStartTime: Date.now(),
+    }));
+    const project = ctx.cwd ?? "unknown";
+    const tags = inferTagsFromSummary(summary);
+    const toolSeq = getSessionToolSequence(ctx);
+    const outcome = completed ? "success" : "failure";
+    // addEpisode expects MemoryStoresState, we pass a compatible shape
+    const episode = addEpisode(
+      state,
+      summary,
+      `Outcome: ${outcome}`,
+      outcome,
+      toolSeq,
+      tags,
+      project,
+    );
+    log.info(`R5: Recorded episode ${episode.id} (${outcome}) for: ${summary.slice(0, 60)}`);
+  } catch (err) {
+    log.debug(`R5: Memory recording skipped: ${(err as Error).message}`);
+  }
 }
 
 function inferTagsFromSummary(summary: string): string[] {
-	const tags: string[] = [];
-	const lower = summary.toLowerCase();
-	if (lower.includes("fix") || lower.includes("bug")) tags.push("bug-fix");
-	if (lower.includes("audit")) tags.push("audit");
-	if (lower.includes("test")) tags.push("testing");
-	if (lower.includes("refactor")) tags.push("refactoring");
-	if (lower.includes("feature")) tags.push("feature");
-	if (lower.includes("session") || lower.includes("memory")) tags.push("session-isolation");
-	if (lower.includes("retry")) tags.push("retry-system");
-	if (lower.includes("behavior")) tags.push("behavior-research");
-	if (lower.includes("three-memory") || lower.includes("three memory")) tags.push("three-memory");
-	return tags.length > 0 ? tags : ["general"];
+  const tags: string[] = [];
+  const lower = summary.toLowerCase();
+  if (lower.includes("fix") || lower.includes("bug")) tags.push("bug-fix");
+  if (lower.includes("audit")) tags.push("audit");
+  if (lower.includes("test")) tags.push("testing");
+  if (lower.includes("refactor")) tags.push("refactoring");
+  if (lower.includes("feature")) tags.push("feature");
+  if (lower.includes("session") || lower.includes("memory")) tags.push("session-isolation");
+  if (lower.includes("retry")) tags.push("retry-system");
+  if (lower.includes("behavior")) tags.push("behavior-research");
+  if (lower.includes("three-memory") || lower.includes("three memory")) tags.push("three-memory");
+  return tags.length > 0 ? tags : ["general"];
 }
 
 function getSessionToolSequence(ctx: ExtensionContext): string[] {
-	try {
-		const analytics = getExtensionState<any>(ctx, "analytics", () => null);
-		if (analytics?.toolCallSequence) return analytics.toolCallSequence.slice(-20);
-	} catch {
-		// best-effort
-	}
-	return [];
+  try {
+    const analytics = getExtensionState<any>(ctx, "analytics", () => null);
+    if (analytics?.toolCallSequence) return analytics.toolCallSequence.slice(-20);
+  } catch {
+    // best-effort
+  }
+  return [];
 }
 
 const finalizeSchema = Type.Object({
-	completed:      Type.Boolean({ description: "Whether the task was successfully completed" }),
-	summary:        Type.String({ description: "Brief summary of what was accomplished" }),
-	tasksRemaining: Type.Optional(Type.Array(Type.String(), { description: "Follow-up tasks" })),
-	autoProceed:    Type.Optional(Type.Boolean({ description: "Automatically propose next pending work on finalize" })),
+  completed: Type.Boolean({ description: "Whether the task was successfully completed" }),
+  summary: Type.String({ description: "Brief summary of what was accomplished" }),
+  tasksRemaining: Type.Optional(Type.Array(Type.String(), { description: "Follow-up tasks" })),
+  autoProceed: Type.Optional(
+    Type.Boolean({ description: "Automatically propose next pending work on finalize" }),
+  ),
 });
 
 const FINALIZE_CRITIC_PROMPT = `You are a critical reviewer verifying whether a task is truly complete.
@@ -85,90 +99,112 @@ VERIFIED: yes|no
 CONFIDENCE: 0-100
 MESSAGE: <one line explanation>`;
 
-async function verifyWithSessionModel(summary: string, ctx: ExtensionContext): Promise<{ verified: boolean; confidence: number; message: string }> {
-	if (!ctx.model) {
-		return { verified: true, confidence: 50, message: "No model available for verification" };
-	}
+async function verifyWithSessionModel(
+  summary: string,
+  ctx: ExtensionContext,
+): Promise<{ verified: boolean; confidence: number; message: string }> {
+  if (!ctx.model) {
+    return { verified: true, confidence: 50, message: "No model available for verification" };
+  }
 
-	try {
-		const response = await complete(
-			ctx.model,
-			{
-				systemPrompt: FINALIZE_CRITIC_PROMPT,
-				messages: [{ role: "user" as const, content: [{ type: "text" as const, text: `Work summary: ${summary}` }], timestamp: Date.now() }],
-			},
-			{ maxTokens: 256, temperature: 0.1 },
-		);
+  try {
+    const response = await complete(
+      ctx.model,
+      {
+        systemPrompt: FINALIZE_CRITIC_PROMPT,
+        messages: [
+          {
+            role: "user" as const,
+            content: [{ type: "text" as const, text: `Work summary: ${summary}` }],
+            timestamp: Date.now(),
+          },
+        ],
+      },
+      { maxTokens: 256, temperature: 0.1 },
+    );
 
-		const text = Array.isArray(response)
-			? response.map((r) => (r as { text?: string }).text || "").join(" ")
-			: typeof response === "string"
-				? response
-				: "";
+    const text = Array.isArray(response)
+      ? response.map((r) => (r as { text?: string }).text || "").join(" ")
+      : typeof response === "string"
+        ? response
+        : "";
 
-		const verifiedMatch = text.match(/VERIFIED:\s*(yes|no)/i);
-		const confidenceMatch = text.match(/CONFIDENCE:\s*(\d+)/);
-		const messageMatch = text.match(/MESSAGE:\s*(.+)/);
+    const verifiedMatch = text.match(/VERIFIED:\s*(yes|no)/i);
+    const confidenceMatch = text.match(/CONFIDENCE:\s*(\d+)/);
+    const messageMatch = text.match(/MESSAGE:\s*(.+)/);
 
-		const verified = verifiedMatch?.[1]?.toLowerCase() !== "no";
-		const confidence = confidenceMatch ? parseInt(confidenceMatch[1]) : 50;
-		const message = messageMatch?.[1] ?? "Review complete";
+    const verified = verifiedMatch?.[1]?.toLowerCase() !== "no";
+    const confidence = confidenceMatch ? parseInt(confidenceMatch[1]) : 50;
+    const message = messageMatch?.[1] ?? "Review complete";
 
-		return { verified, confidence, message };
-	} catch (err) {
-		const msg = err instanceof Error ? err.message : String(err);
-		return { verified: true, confidence: 50, message: `Verification error: ${msg}` };
-	}
+    return { verified, confidence, message };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { verified: true, confidence: 50, message: `Verification error: ${msg}` };
+  }
 }
 
 /**
  * Find the next pending task from scratchpad's task store.
  * Returns the first incomplete task, or null if none.
  */
-async function findNextWork(ctx?: ExtensionContext): Promise<{ id: string; description: string } | null> {
-	if (!ctx) return null;
+async function findNextWork(
+  ctx?: ExtensionContext,
+): Promise<{ id: string; description: string } | null> {
+  if (!ctx) return null;
 
-	try {
-		const scratchpad = getExtensionState<any>(ctx, "scratchpad", () => null);
-		if (!scratchpad?.taskStore?.tasks) return null;
+  try {
+    const scratchpad = getExtensionState<any>(ctx, "scratchpad", () => null);
+    if (!scratchpad?.taskStore?.tasks) return null;
 
-		const pending = scratchpad.taskStore.tasks.find(
-			(t: any) => t.status === "pending" || t.status === "in_progress",
-		);
-		if (!pending) return null;
+    const pending = scratchpad.taskStore.tasks.find(
+      (t: any) => t.status === "pending" || t.status === "in_progress",
+    );
+    if (!pending) return null;
 
-		return { id: pending.id, description: pending.text || pending.description || pending.id };
-	} catch {
-		return null;
-	}
+    return { id: pending.id, description: pending.text || pending.description || pending.id };
+  } catch {
+    return null;
+  }
 }
 
 export interface FinalizeCallbacks {
-	onFinalize?: (summary: string, completed: boolean) => void;
-	sendNextTask?: (description: string) => void;
-	recordCalibration?: (ctx: ExtensionContext, confidence: number, outcome: "success" | "failure") => void;
+  onFinalize?: (summary: string, completed: boolean) => void;
+  sendNextTask?: (description: string) => void;
+  recordCalibration?: (
+    ctx: ExtensionContext,
+    confidence: number,
+    outcome: "success" | "failure",
+  ) => void;
 }
 
 export function createFinalizeTool(callbacks: FinalizeCallbacks = {}) {
-	const { onFinalize, sendNextTask, recordCalibration } = callbacks;
+  const { onFinalize, sendNextTask, recordCalibration } = callbacks;
 
-	return {
-		name: "finalize" as const,
-		label: "Finalize",
-		description: `Mark the current task as complete. You MUST call this when:
+  return {
+    name: "finalize" as const,
+    label: "Finalize",
+    description: `Mark the current task as complete. You MUST call this when:
 - All code is written and tested
 - The solution has been verified
 - No further work is needed
 
 Before finalizing, the work will be reviewed to ensure everything is actually done.
 The task ends after finalize() is called.`,
-		parameters: finalizeSchema,
-		execute: async (_toolCallId: string, params: any, _signal: unknown, _onUpdate: unknown, _ctx: ExtensionContext | undefined) => {
-			if (!params || params.summary === undefined || params.completed === undefined) {
-				return {
-					content: [{
-						type: "text" as const,
-						text: `**FINALIZE REQUIRES PARAMETERS**
+    parameters: finalizeSchema,
+    execute: async (
+      _toolCallId: string,
+      params: any,
+      _signal: unknown,
+      _onUpdate: unknown,
+      _ctx: ExtensionContext | undefined,
+    ) => {
+      if (!params || params.summary === undefined || params.completed === undefined) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `**FINALIZE REQUIRES PARAMETERS**
 
 Missing required fields. Please provide:
 - completed: boolean (true if task succeeded, false if not)
@@ -177,28 +213,34 @@ Missing required fields. Please provide:
 
 Example:
 finalize(completed=true, summary="Fixed the bug", tasksRemaining=["write tests"])`,
-					}],
-					details: { finalized: false, blocked: true, error: "missing_params" },
-				};
-			}
+            },
+          ],
+          details: { finalized: false, blocked: true, error: "missing_params" },
+        };
+      }
 
-			onFinalize?.(params.summary, params.completed);
-			if (recordCalibration && _ctx) {
-				recordCalibration(_ctx, 0.7, params.completed ? "success" : "failure");
-			}
+      onFinalize?.(params.summary, params.completed);
+      if (recordCalibration && _ctx) {
+        recordCalibration(_ctx, 0.7, params.completed ? "success" : "failure");
+      }
 
-			const sessionSummary = params.summary;
-			let verificationResult = { verified: true, confidence: 50, message: "No context available for verification" };
+      const sessionSummary = params.summary;
+      let verificationResult = {
+        verified: true,
+        confidence: 50,
+        message: "No context available for verification",
+      };
 
-			if (_ctx) {
-				verificationResult = await verifyWithSessionModel(sessionSummary, _ctx);
-			}
+      if (_ctx) {
+        verificationResult = await verifyWithSessionModel(sessionSummary, _ctx);
+      }
 
-			if (!verificationResult.verified) {
-				return {
-					content: [{
-						type: "text" as const,
-						text: `**FINALIZE BLOCKED**
+      if (!verificationResult.verified) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `**FINALIZE BLOCKED**
 
 ${verificationResult.message}
 
@@ -206,53 +248,54 @@ Confidence: ${verificationResult.confidence}%
 
 **The work is not done enough to finalize.**
 Continue working until the issues are resolved.`,
-					}],
-					details: { finalized: false, blocked: true, verification: verificationResult },
-				};
-			}
+            },
+          ],
+          details: { finalized: false, blocked: true, verification: verificationResult },
+        };
+      }
 
-			const status = params.completed ? "Task completed" : "Task incomplete";
-			const messages: string[] = [status, `Summary: ${params.summary}`];
+      const status = params.completed ? "Task completed" : "Task incomplete";
+      const messages: string[] = [status, `Summary: ${params.summary}`];
 
-			// R5: Record task to episodic memory (cascade: episodic → semantic → procedural)
-			await recordToMemory(_ctx, params.summary, params.completed);
+      // R5: Record task to episodic memory (cascade: episodic → semantic → procedural)
+      await recordToMemory(_ctx, params.summary, params.completed);
 
-			if (verificationResult.message) {
-				messages.push(`\nVerification: ${verificationResult.message}`);
-			}
+      if (verificationResult.message) {
+        messages.push(`\nVerification: ${verificationResult.message}`);
+      }
 
-			if (params.tasksRemaining?.length) {
-				messages.push(`\nFollow-up needed: ${params.tasksRemaining.join(", ")}`);
-			}
+      if (params.tasksRemaining?.length) {
+        messages.push(`\nFollow-up needed: ${params.tasksRemaining.join(", ")}`);
+      }
 
-			const nextWork = await findNextWork(_ctx);
-			if (nextWork) {
-				messages.push(`\n📋 **Next pending task:** ${nextWork.description}`);
-				if (params.autoProceed) {
-					messages.push(`\n✅ Auto-proceeding to next task...`);
-					setTimeout(() => {
-						sendNextTask?.(nextWork.description);
-					}, 500);
-				} else {
-					messages.push(`\n💡 Set \`autoProceed: true\` to continue automatically.`);
-				}
-			} else {
-				messages.push(`\n✅ No pending tasks remaining.`);
-			}
+      const nextWork = await findNextWork(_ctx);
+      if (nextWork) {
+        messages.push(`\n📋 **Next pending task:** ${nextWork.description}`);
+        if (params.autoProceed) {
+          messages.push(`\n✅ Auto-proceeding to next task...`);
+          setTimeout(() => {
+            sendNextTask?.(nextWork.description);
+          }, 500);
+        } else {
+          messages.push(`\n💡 Set \`autoProceed: true\` to continue automatically.`);
+        }
+      } else {
+        messages.push(`\n✅ No pending tasks remaining.`);
+      }
 
-			messages.push("\n---");
-			messages.push("Session ending...");
+      messages.push("\n---");
+      messages.push("Session ending...");
 
-			return {
-				content: [{ type: "text" as const, text: messages.join("\n") }],
-				details: {
-					finalized: true,
-					completed: params.completed,
-					summary: params.summary,
-					verification: verificationResult,
-					nextWork: nextWork?.id ?? null,
-				},
-			};
-		},
-	};
+      return {
+        content: [{ type: "text" as const, text: messages.join("\n") }],
+        details: {
+          finalized: true,
+          completed: params.completed,
+          summary: params.summary,
+          verification: verificationResult,
+          nextWork: nextWork?.id ?? null,
+        },
+      };
+    },
+  };
 }

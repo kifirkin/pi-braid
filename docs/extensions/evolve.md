@@ -12,22 +12,23 @@ Integrates `resource-manager` (resource tracking), `time-tracker` (time budgets)
 
 ## Events Handled
 
-| Event | Handler |
-|-------|---------|
-| `session_start` | Reset metrics, load checkpoints |
-| `tool_execution_end` | Track error rates and tool success stats |
-| `turn_end` | Degradation check — compares metrics against thresholds |
-| `session_shutdown` | Save final metrics, create auto-checkpoint |
+| Event                | Handler                                                 |
+| -------------------- | ------------------------------------------------------- |
+| `session_start`      | Reset metrics, load checkpoints                         |
+| `tool_execution_end` | Track error rates and tool success stats                |
+| `turn_end`           | Degradation check — compares metrics against thresholds |
+| `session_shutdown`   | Save final metrics, create auto-checkpoint              |
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
+| Tool     | Description                                                                                                                                                                                                           |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `evolve` | Actions: `status` (view state), `health` (run healthcheck), `check` (degradation check), `commit` (checkpoint), `rollback` (reset metrics), `config` (thresholds), `benchmark` (log results), `reset` (clear metrics) |
 
 ## State
 
 Disk-persisted JSON: `~/.pi/agent/evolve/metrics.json`
+
 ```typescript
 {
   checkpoints: Checkpoint[],

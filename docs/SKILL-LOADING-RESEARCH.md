@@ -40,13 +40,16 @@ skills/
 # Skill Name
 
 ## When to Use
+
 - Trigger conditions (e.g., "Use when user mentions: approve npm package")
 
 ## Instructions
+
 - Step-by-step guidance
 - Can reference relative paths in skill directory
 
 ## Tools
+
 - List of tools this skill expects to use
 ```
 
@@ -59,21 +62,21 @@ skills/
 
 ## Current pi-braid Skills
 
-| Skill | Location | Purpose |
-|-------|----------|---------|
-| pi-reference | `skills/pi-reference/` | Pi SDK, extensions, configuration |
+| Skill             | Location                    | Purpose                                     |
+| ----------------- | --------------------------- | ------------------------------------------- |
+| pi-reference      | `skills/pi-reference/`      | Pi SDK, extensions, configuration           |
 | software-engineer | `skills/software-engineer/` | Universal debugging/implementation protocol |
-| documentation | `skills/documentation/` | Architecture docs, README generation |
-| process-control | `skills/process-control/` | tmux, nohup, long-running tasks |
-| healthcheck | `skills/healthcheck/` | Agent self-diagnostics |
-| tone-quality | `skills/tone-quality/` | Text quality principles |
-| agent-testing | `skills/agent-testing/` | Benchmarking, multi-trial tests |
-| paper-writer | `skills/paper-writer/` | LaTeX research paper structure |
-| vcs-tools | `skills/vcs-tools/` | Git/Pijul worktree management |
-| visual-validator | `skills/visual-validator/` | Design critique for sprites/UI |
-| code-search | `skills/code-search/` | grep vs ast-grep selection |
-| meta-improvement | `skills/meta-improvement/` | Skill creation & evolution |
-| research | `skills/research/` | Web search, fact verification |
+| documentation     | `skills/documentation/`     | Architecture docs, README generation        |
+| process-control   | `skills/process-control/`   | tmux, nohup, long-running tasks             |
+| healthcheck       | `skills/healthcheck/`       | Agent self-diagnostics                      |
+| tone-quality      | `skills/tone-quality/`      | Text quality principles                     |
+| agent-testing     | `skills/agent-testing/`     | Benchmarking, multi-trial tests             |
+| paper-writer      | `skills/paper-writer/`      | LaTeX research paper structure              |
+| vcs-tools         | `skills/vcs-tools/`         | Git/Pijul worktree management               |
+| visual-validator  | `skills/visual-validator/`  | Design critique for sprites/UI              |
+| code-search       | `skills/code-search/`       | grep vs ast-grep selection                  |
+| meta-improvement  | `skills/meta-improvement/`  | Skill creation & evolution                  |
+| research          | `skills/research/`          | Web search, fact verification               |
 
 ## Troubleshooting
 
@@ -95,5 +98,5 @@ skills/
 4. Should skills be auto-loaded based on task type (see [RESEARCH-MASTER.md Part 7](RESEARCH-MASTER.md) — Fast/Slow Routing)?
 5. Can skills inject behavior patterns that survive context rotation?
 
-*Generated: 2026-04-22*
-*Updated: 2026-04-23*
+_Generated: 2026-04-22_
+_Updated: 2026-04-23_

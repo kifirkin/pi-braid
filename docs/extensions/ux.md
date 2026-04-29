@@ -14,8 +14,8 @@ UX conventions are injected into the system prompt via `prompt-builder`. This ex
 
 ## Events Handled
 
-| Event | Handler |
-|-------|---------|
+| Event                   | Handler                                            |
+| ----------------------- | -------------------------------------------------- |
 | `session_before_prompt` | Inject UX convention guidelines into system prompt |
 
 ## Key Patterns

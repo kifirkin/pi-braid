@@ -14,15 +14,15 @@ import { getCustomModelKey, VISION_MODEL_KEY } from "./global-state.js";
  * Resolve a model from a pattern like "provider/model-id" or just "model-id".
  */
 function resolveFromPattern(ctx: ExtensionContext, pattern: string): Model<Api> | undefined {
-	const slashIndex = pattern.indexOf("/");
-	if (slashIndex >= 0) {
-		const provider = pattern.slice(0, slashIndex);
-		const modelId = pattern.slice(slashIndex + 1);
-		return ctx.modelRegistry.find(provider, modelId);
-	}
-	// Try to find by model ID alone
-	const all = ctx.modelRegistry.getAll();
-	return all.find((m) => m.id === pattern || m.id.endsWith(`/${pattern}`));
+  const slashIndex = pattern.indexOf("/");
+  if (slashIndex >= 0) {
+    const provider = pattern.slice(0, slashIndex);
+    const modelId = pattern.slice(slashIndex + 1);
+    return ctx.modelRegistry.find(provider, modelId);
+  }
+  // Try to find by model ID alone
+  const all = ctx.modelRegistry.getAll();
+  return all.find((m) => m.id === pattern || m.id.endsWith(`/${pattern}`));
 }
 
 /**
@@ -33,17 +33,17 @@ function resolveFromPattern(ctx: ExtensionContext, pattern: string): Model<Api> 
  *   3. First available vision model
  */
 export function resolveVisionModel(ctx: ExtensionContext): Model<Api> | undefined {
-	// 1. Custom role key set by /vision-model command (polyfill extension)
-	const customPattern = getCustomModelKey(VISION_MODEL_KEY);
-	if (customPattern) {
-		const resolved = resolveFromPattern(ctx, customPattern);
-		if (resolved?.input?.includes("image")) return resolved;
-	}
+  // 1. Custom role key set by /vision-model command (polyfill extension)
+  const customPattern = getCustomModelKey(VISION_MODEL_KEY);
+  if (customPattern) {
+    const resolved = resolveFromPattern(ctx, customPattern);
+    if (resolved?.input?.includes("image")) return resolved;
+  }
 
-	// 2. Current model if vision-capable
-	if (ctx.model?.input?.includes("image")) return ctx.model;
+  // 2. Current model if vision-capable
+  if (ctx.model?.input?.includes("image")) return ctx.model;
 
-	// 3. First available vision model
-	const available = ctx.modelRegistry.getAvailable();
-	return available.find((m) => m?.input?.includes("image"));
+  // 3. First available vision model
+  const available = ctx.modelRegistry.getAvailable();
+  return available.find((m) => m?.input?.includes("image"));
 }

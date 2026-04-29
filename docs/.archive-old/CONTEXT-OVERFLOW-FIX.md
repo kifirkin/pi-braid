@@ -3,6 +3,7 @@
 ## Problem
 
 The agent experiences a repeating cycle:
+
 1. Agent stops responding mid-output
 2. `Error: 400 status code (no body)` appears
 3. `Context overflow recovery failed after one compact-and-retry attempt` message
@@ -17,8 +18,8 @@ The upstream pi-core's `agent-session.js` limits overflow recovery to **ONE atte
 ```javascript
 // Line ~1402-1421
 if (this._overflowRecoveryAttempted) {
-    // Emit failure and return - NO MORE RETRIES
-    return;
+  // Emit failure and return - NO MORE RETRIES
+  return;
 }
 this._overflowRecoveryAttempted = true;
 await this._runAutoCompaction("overflow", true);
@@ -42,16 +43,17 @@ Added overflow-specific retry mechanism in `context-manager` extension:
 ### Changes to `src/extensions/context-manager/index.ts`:
 
 1. **New state tracking**:
+
    ```typescript
    const OVERFLOW_RETRY_MAX_ATTEMPTS = 3;
    const OVERFLOW_RETRY_BASE_DELAY_MS = 3000;
    const OVERFLOW_RETRY_KEEP_REDUCTION_FACTOR = 0.7;
-   
+
    const overflowRetryState: OverflowRetryState = {
-       attempt: 0,
-       lastError: "",
-       retryTimeout: null,
-       aggressiveMode: false,
+     attempt: 0,
+     lastError: "",
+     retryTimeout: null,
+     aggressiveMode: false,
    };
    ```
 
@@ -92,6 +94,7 @@ Retrying with more aggressive compaction...
 ```
 
 If it continues failing:
+
 ```
 ## ⚠️ Context overflow recovery failed (attempt 2/3)
 400 status code (no body)
@@ -99,11 +102,13 @@ Retrying with keep ≤14000 tokens (attempt 2/3)...
 ```
 
 If finally succeeds:
+
 ```
 Overflow recovery succeeded on attempt 2!
 ```
 
 If all retries fail:
+
 ```
 ## ⚠️ Context overflow recovery exhausted
 400 status code (no body)
@@ -125,6 +130,7 @@ If the issue persists after this fix, the root cause might be:
 ## Testing
 
 To test this fix, run a session that approaches context limit with Cerebras model and observe:
+
 1. Compaction triggers automatically
 2. If overflow retry needed, it shows progress
 3. Either succeeds or fails with detailed error

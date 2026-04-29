@@ -5,16 +5,17 @@
 ## Architecture
 
 Two-phase operation:
+
 1. `buildPattern(ctx)` — reads enforcement state to build a `SessionPattern` snapshot
 2. `generateAdvice(current, prev?, successRates?)` — compares patterns and generates advice
 
 ## Key Functions
 
-| Function | Description |
-|----------|-------------|
-| `buildPattern(ctx)` | Build `SessionPattern` from enforcement state (tool distribution, error types, consecutive errors, confidence/stability trends) |
-| `generateAdvice(current, prev?, successRates?)` | Compare patterns → advice. Returns `MARSAdvice` or `null` |
-| `getState(ctx)` | Access MARS session state (pattern snapshot, last advice timestamp) |
+| Function                                        | Description                                                                                                                     |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `buildPattern(ctx)`                             | Build `SessionPattern` from enforcement state (tool distribution, error types, consecutive errors, confidence/stability trends) |
+| `generateAdvice(current, prev?, successRates?)` | Compare patterns → advice. Returns `MARSAdvice` or `null`                                                                       |
+| `getState(ctx)`                                 | Access MARS session state (pattern snapshot, last advice timestamp)                                                             |
 
 ## SessionPattern
 
@@ -31,20 +32,20 @@ Two-phase operation:
 
 ## Advice Types
 
-| Type | Trigger | Severity |
-|------|---------|----------|
-| `tool_overuse` | Tool count > `avgPerTool * OVERUSE_MULTIPLIER(3)` AND success rate < `0.5` | warn |
-| `error_recurrence` | `consecutiveErrors >= 3` | warn |
-| `stability_decline` | Current stability trend significantly below previous | info |
+| Type                | Trigger                                                                    | Severity |
+| ------------------- | -------------------------------------------------------------------------- | -------- |
+| `tool_overuse`      | Tool count > `avgPerTool * OVERUSE_MULTIPLIER(3)` AND success rate < `0.5` | warn     |
+| `error_recurrence`  | `consecutiveErrors >= 3`                                                   | warn     |
+| `stability_decline` | Current stability trend significantly below previous                       | info     |
 
 ## Constants
 
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `LEARNING_PHASE_CALLS` | 5 | Tool calls below this are not flagged |
-| `OVERUSE_MULTIPLIER` | 3 | Threshold = `avgPerTool * 3` |
-| `MIN_SUCCESS_RATE_FOR_OVERUSE` | 0.5 | Only flag if tool is failing |
-| `ADVICE_COOLDOWN_MS` | 60_000 | Max 1 advice per minute |
+| Constant                       | Value  | Description                           |
+| ------------------------------ | ------ | ------------------------------------- |
+| `LEARNING_PHASE_CALLS`         | 5      | Tool calls below this are not flagged |
+| `OVERUSE_MULTIPLIER`           | 3      | Threshold = `avgPerTool * 3`          |
+| `MIN_SUCCESS_RATE_FOR_OVERUSE` | 0.5    | Only flag if tool is failing          |
+| `ADVICE_COOLDOWN_MS`           | 60_000 | Max 1 advice per minute               |
 
 ## Key Patterns
 

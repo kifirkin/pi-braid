@@ -3,7 +3,11 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
 import { Type } from "typebox";
-import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type {
+  AgentToolResult,
+  ExtensionAPI,
+  ExtensionContext,
+} from "@mariozechner/pi-coding-agent";
 
 const log = createLogger("codebase-graph");
 
@@ -87,7 +91,9 @@ class CodebaseGraph {
             }
           }
         }
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
     }
 
     await walk(root, 0);
@@ -133,7 +139,10 @@ class CodebaseGraph {
     }
   }
 
-  private extractImports(content: string, _fromDir: string): Array<{ specifier: string; isExternal: boolean; raw: string }> {
+  private extractImports(
+    content: string,
+    _fromDir: string,
+  ): Array<{ specifier: string; isExternal: boolean; raw: string }> {
     const imports: Array<{ specifier: string; isExternal: boolean; raw: string }> = [];
     const importRe = /^import\s+(?:type\s+)?(?:.+?\s+from\s+)?['"]([^'"]+)['"]/gm;
     // eslint-disable-next-line no-empty-pattern
@@ -147,7 +156,8 @@ class CodebaseGraph {
 
   private extractExports(content: string): string[] {
     const exports: string[] = [];
-    const re = /^export\s+(?:type\s+|interface\s+)?(?:const|function|class|interface|type|enum)\s+(\w+)/gm;
+    const re =
+      /^export\s+(?:type\s+|interface\s+)?(?:const|function|class|interface|type|enum)\s+(\w+)/gm;
     for (const m of content.matchAll(re)) {
       exports.push(m[1]);
     }
@@ -190,7 +200,7 @@ class CodebaseGraph {
 
   findOrphans(): Node[] {
     return [...this.nodes.values()].filter(
-      (n) => n.imports.length === 0 && n.importedBy.length === 0 && !n.isEntry
+      (n) => n.imports.length === 0 && n.importedBy.length === 0 && !n.isEntry,
     );
   }
 
@@ -317,7 +327,7 @@ function matchGlob(filePath: string, pattern: string): boolean {
         .replace(/\*\*/g, "[^/]*(?:/[^/]*)*")
         .replace(/\*/g, "[^/]*")
         .replace(/\?/g, "[^/]") +
-      "$"
+      "$",
   );
   return regex.test(normalized);
 }
@@ -335,19 +345,24 @@ const codebaseGraphSchema = Type.Object({
         Type.Literal("cycles", { description: "Circular dependency chains" }),
         Type.Literal("all", { description: "Full summary report" }),
       ],
-      { description: "What to find: dead-ends, orphans, hubs, cycles, or all" }
-    )
+      { description: "What to find: dead-ends, orphans, hubs, cycles, or all" },
+    ),
   ),
   impact: Type.Optional(
-    Type.String({ description: "File path to run impact analysis on — shows what breaks if this file changes" })
+    Type.String({
+      description: "File path to run impact analysis on — shows what breaks if this file changes",
+    }),
   ),
   include: Type.Optional(
-    Type.Array(Type.String(), { description: "Include patterns (default: ['**/*.ts', '**/*.tsx'])" })
+    Type.Array(Type.String(), {
+      description: "Include patterns (default: ['**/*.ts', '**/*.tsx'])",
+    }),
   ),
   exclude: Type.Optional(
     Type.Array(Type.String(), {
-      description: "Exclude patterns (default: ['**/*.d.ts', '**/*.spec.ts', '**/node_modules/**'])",
-    })
+      description:
+        "Exclude patterns (default: ['**/*.d.ts', '**/*.spec.ts', '**/node_modules/**'])",
+    }),
   ),
 });
 
@@ -365,7 +380,7 @@ export default function codebaseGraphExtension(pi: ExtensionAPI) {
       params,
       _signal,
       _onUpdate,
-      ctx: ExtensionContext
+      ctx: ExtensionContext,
     ): Promise<AgentToolResult<Record<string, unknown>>> => {
       let resolvedPath = params.path ?? ".";
       if (resolvedPath.startsWith("~/") || resolvedPath === "~") {
@@ -384,7 +399,10 @@ export default function codebaseGraphExtension(pi: ExtensionAPI) {
           };
         }
       } catch {
-        return { content: [{ type: "text" as const, text: `Path not found: ${rootPath}` }], details: {} };
+        return {
+          content: [{ type: "text" as const, text: `Path not found: ${rootPath}` }],
+          details: {},
+        };
       }
 
       const graph = new CodebaseGraph(rootPath);
@@ -393,7 +411,12 @@ export default function codebaseGraphExtension(pi: ExtensionAPI) {
         await graph.parse(params.include, params.exclude);
       } catch (e: unknown) {
         return {
-          content: [{ type: "text" as const, text: `Parse error: ${e instanceof Error ? e.message : String(e)}` }],
+          content: [
+            {
+              type: "text" as const,
+              text: `Parse error: ${e instanceof Error ? e.message : String(e)}`,
+            },
+          ],
           details: {},
         };
       }
@@ -543,11 +566,9 @@ export default function codebaseGraphExtension(pi: ExtensionAPI) {
 
       output.push("");
       output.push(
-        "> Use `codebase_graph(impact='src/foo.ts')` to see what breaks if you change a file."
+        "> Use `codebase_graph(impact='src/foo.ts')` to see what breaks if you change a file.",
       );
-      output.push(
-        "> Use `codebase_graph(find='cycles')` to find circular dependencies."
-      );
+      output.push("> Use `codebase_graph(find='cycles')` to find circular dependencies.");
 
       return {
         content: [{ type: "text" as const, text: output.join("\n") }],

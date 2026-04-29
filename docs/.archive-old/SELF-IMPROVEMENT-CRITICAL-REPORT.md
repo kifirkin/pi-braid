@@ -1,4 +1,5 @@
 # pi-braid Self-Improvement Critical Report — Merged Findings
+
 **Date**: 2026-04-21
 **Scope**: All audit sources merged (CODEBASE-AUDIT-FULL + BUGS-AND-FIXES + IMPLEMENTATION-CRITICAL-REVIEW + runtime tests)
 **Version**: pi-braid 0.9.x | 185 source files | 17 runtime tests
@@ -10,6 +11,7 @@
 We built pi-braid to eliminate monkey-patching, compliance theater, text scraping, and globalThis anti-patterns. The **implementation** has all four.
 
 **Source of truth for what's fixed**: `BUGS-AND-FIXES.md` documents 12 bugs from the integration session. Of these:
+
 - **6 are VERIFIED FIXED** (port from harness → current source confirmed via grep)
 - **4 are tool conceptual issues** (documented, need design decision)
 - **1 is MITIGATED** (bash truncation — can't fully fix, agent awareness needed)
@@ -24,22 +26,22 @@ We built pi-braid to eliminate monkey-patching, compliance theater, text scrapin
 
 ### ✅ VERIFIED FIXED (Ported from Harness)
 
-| Bug | Evidence in Source | Status |
-|-----|-------------------|--------|
-| PDF binary pollution | `docs/index.ts:50` → `isBinaryContent()` function, used at lines 90, 116, 137, 219 | ✅ FIXED |
-| Goal state lost between calls | `extension-state.ts:28` → `getSessionFile()` as stable key, `hasExtensionState()`, `clearExtensionState()` | ✅ FIXED |
-| web_fetch blocked by anti-bot | `web-fetch/index.ts:179-187` → realistic browser headers (User-Agent, Sec-Ch-Ua, etc.) | ✅ FIXED |
-| browser_navigate silent failures | `browser/index.ts` → try-catch with structured error return | ✅ FIXED |
-| browser_cookies wrong CDP | `browser/index.ts` → Network.getAllCookies first | ✅ FIXED |
+| Bug                              | Evidence in Source                                                                                         | Status   |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------- | -------- |
+| PDF binary pollution             | `docs/index.ts:50` → `isBinaryContent()` function, used at lines 90, 116, 137, 219                         | ✅ FIXED |
+| Goal state lost between calls    | `extension-state.ts:28` → `getSessionFile()` as stable key, `hasExtensionState()`, `clearExtensionState()` | ✅ FIXED |
+| web_fetch blocked by anti-bot    | `web-fetch/index.ts:179-187` → realistic browser headers (User-Agent, Sec-Ch-Ua, etc.)                     | ✅ FIXED |
+| browser_navigate silent failures | `browser/index.ts` → try-catch with structured error return                                                | ✅ FIXED |
+| browser_cookies wrong CDP        | `browser/index.ts` → Network.getAllCookies first                                                           | ✅ FIXED |
 
 ### ❌ STILL UNFIXED
 
-| Bug | File | Evidence | Severity |
-|-----|------|----------|----------|
-| **degradation-detector type guard broken** | `lib/degradation-detector.ts:73-74` | `!("turnNumber" in val)` — negative check on PerformanceMetrics property | 🔴 CRITICAL |
-| **safety extension text scraping** | `extensions/safety/index.ts:102-120` | `text.match(/Goal set:.../)`, `text.matchAll(/^\d+\)\s+(.+)$/gm)` — parses goals/decisions from raw text instead of structured state | 🔴 CRITICAL |
-| **safety extension exists** | `extensions/safety/` | Listed in directory — audit flagged it but it was never removed | 🔴 CRITICAL |
-| **setInterval without cleanup** | `extensions/evolve/index.ts:73-76` | `saveTimer` never cleared on extension unload | 🟠 HIGH |
+| Bug                                        | File                                 | Evidence                                                                                                                             | Severity    |
+| ------------------------------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ----------- |
+| **degradation-detector type guard broken** | `lib/degradation-detector.ts:73-74`  | `!("turnNumber" in val)` — negative check on PerformanceMetrics property                                                             | 🔴 CRITICAL |
+| **safety extension text scraping**         | `extensions/safety/index.ts:102-120` | `text.match(/Goal set:.../)`, `text.matchAll(/^\d+\)\s+(.+)$/gm)` — parses goals/decisions from raw text instead of structured state | 🔴 CRITICAL |
+| **safety extension exists**                | `extensions/safety/`                 | Listed in directory — audit flagged it but it was never removed                                                                      | 🔴 CRITICAL |
+| **setInterval without cleanup**            | `extensions/evolve/index.ts:73-76`   | `saveTimer` never cleared on extension unload                                                                                        | 🟠 HIGH     |
 
 ---
 
@@ -53,7 +55,7 @@ We built pi-braid to eliminate monkey-patching, compliance theater, text scrapin
 
 ```typescript
 function isCtx(val: unknown): val is ExtensionContext {
-	return typeof val === "object" && val !== null && !("turnNumber" in val);
+  return typeof val === "object" && val !== null && !("turnNumber" in val);
 }
 ```
 
@@ -61,7 +63,7 @@ function isCtx(val: unknown): val is ExtensionContext {
 
 ```typescript
 function isCtx(val: unknown): val is ExtensionContext {
-	return typeof val === "object" && val !== null && "tools" in val && "settingsManager" in val;
+  return typeof val === "object" && val !== null && "tools" in val && "settingsManager" in val;
 }
 ```
 
@@ -79,18 +81,19 @@ if (goalMatch && !scratchpadGoal) scratchpadGoal = goalMatch[1].trim();
 
 const planMatches = text.matchAll(/^\d+\)\s+(.+)$/gm);
 for (const m of planMatches) {
-	const step = m[1].trim();
-	if (step && !scratchpadPlan.includes(step)) scratchpadPlan.push(step.slice(0, 80));
+  const step = m[1].trim();
+  if (step && !scratchpadPlan.includes(step)) scratchpadPlan.push(step.slice(0, 80));
 }
 
 const decisionMatches = text.matchAll(/decision:?\s*(.+)/gi);
 for (const m of decisionMatches) {
-	const d = m[1].trim().slice(0, 100);
-	if (d && !scratchpadDecisions.includes(d)) scratchpadDecisions.push(d);
+  const d = m[1].trim().slice(0, 100);
+  if (d && !scratchpadDecisions.includes(d)) scratchpadDecisions.push(d);
 }
 ```
 
 **Why it's wrong**:
+
 1. Uses regex to parse raw text for structured data — the EXACT anti-pattern we built structured state to avoid
 2. Depends on specific output formats: "Goal set:", "1) ", "decision:"
 3. `ctx.scratchpadGoal` (line 150) — this IS the structured state, but then it's RE-PARSED from text instead of used directly
@@ -118,6 +121,7 @@ The AUDIT-2026-04-14 flagged `safety` as "fragile text scraping." BUGS-AND-FIXES
 **File**: `src/extensions/polyfill/index.ts:300-327`
 
 The polyfill extension directly mutates the ExtensionAPI prototype at runtime, replacing `getBranch` and `getLeafId` with wrapped versions that add `[pi-braid]` to branch names. This violates:
+
 - Extension isolation principle
 - pi-braid's own architecture (extensions should be stateless + event-driven)
 - The AGENTS.md convention against monkey-patching
@@ -169,6 +173,7 @@ No `pi.on("unload", ...)` handler to clear the timer. If the extension unloads, 
 **File**: `lib/error-classifier.ts`
 
 429 appears in both `HTTP_TRANSIENT_RETRYABLE` and `HTTP_CLIENT_ERROR_NON_RETRYABLE`. The code handles this via provider code checking:
+
 ```typescript
 if (httpStatus === 429) {
 	if (providerCode && CEREBRAS_OVERLOAD_CODES.has(providerCode)) {
@@ -233,6 +238,7 @@ These are NOT code bugs — they're agent-facing tool description problems causi
 #### Issue A: PDF Tool Decision Tree Unclear
 
 Agents don't know when to use:
+
 - `read_document` — text extraction from PDF (fast, text-only)
 - `read_pdf_screenshot` — page image rendering (slow, visual)
 - `analyze_image` — visual analysis (for diagrams/figures)
@@ -241,6 +247,7 @@ Agents don't know when to use:
 **Current behavior**: Agents guess. Often try `read_document` on image-based PDFs → get garbage or empty output → retry with wrong tool.
 
 **Fix needed**: Add decision tree to tool descriptions:
+
 ```
 1. Text-heavy PDF → read_document (fastest)
 2. Image-based/scanned PDF → read_pdf_screenshot + analyze_image
@@ -259,6 +266,7 @@ Agents call `analyze_image` expecting text extraction. It performs **visual anal
 #### Issue C: Silent Tool Failures → Agent Misinterprets as Success
 
 **Root causes**:
+
 1. Some tools return `isError: false` with empty content when they fail
 2. Error messages differ in format: some use `content[0].text`, some use `details.error`, some use nothing
 3. No consistent "this failed, here's why" pattern
@@ -266,6 +274,7 @@ Agents call `analyze_image` expecting text extraction. It performs **visual anal
 **Impact**: Agent sees "success" (no error thrown) and continues as if the tool worked. Discovers the failure 3 turns later.
 
 **Fix needed**: Consistent error contract:
+
 ```typescript
 // Every tool MUST return one of:
 { isError: true, content: [{ type: "text", text: "ERROR: <reason> + suggested action" }] }
@@ -286,11 +295,13 @@ Agents call `analyze_image` expecting text extraction. It performs **visual anal
 **File**: `src/extensions/analytics/index.ts`
 
 The analytics extension tracks tool patterns, whispers, nudges, and enforcement events. It has:
+
 - Module-level `const _patterns = new Map()` — mutable state at module level (violates architecture)
 - Silent pattern tracking — no visible output, agent doesn't know what it's tracking
 - No false-positive detection — it logs everything, including benign patterns
 
 **The false positive problem**: The analytics extension flags tool patterns that are actually correct behavior:
+
 - Tool called successfully → logged as "pattern"
 - Pattern repeats → flagged as "malfunction"
 - But the tool IS working correctly — it's just being called repeatedly for legitimate reasons
@@ -298,6 +309,7 @@ The analytics extension tracks tool patterns, whispers, nudges, and enforcement 
 **The irony**: Analytics was built to detect problematic tool behavior. But it has its own false-positive problem, meaning it creates noise that distracts from real issues.
 
 **What's needed**:
+
 1. **Baseline learning**: First N calls of each tool = normal behavior, not a pattern
 2. **False positive classification**: Distinguish "tool being used correctly" from "tool malfunctioning"
 3. **Threshold calibration**: What makes a pattern "problematic" vs "intentional use"?
@@ -309,33 +321,33 @@ The analytics extension tracks tool patterns, whispers, nudges, and enforcement 
 
 ### Immediate (Fix Now — 1 session)
 
-| # | Action | Files | Reason |
-|---|--------|-------|--------|
-| 1 | **Remove safety extension** | Delete `src/extensions/safety/` | Text scraping anti-pattern, functionally redundant with enforcement |
-| 2 | **Fix degradation-detector type guard** | `lib/degradation-detector.ts:73` | Broken semantic inversion — works by accident |
-| 3 | **Remove monkey-patching from polyfill** | `extensions/polyfill/index.ts:300-327` | Framework coupling, violates extension isolation |
-| 4 | **Add setInterval cleanup to evolve** | `extensions/evolve/index.ts` | Memory leak, timer persists after unload |
+| #   | Action                                   | Files                                  | Reason                                                              |
+| --- | ---------------------------------------- | -------------------------------------- | ------------------------------------------------------------------- |
+| 1   | **Remove safety extension**              | Delete `src/extensions/safety/`        | Text scraping anti-pattern, functionally redundant with enforcement |
+| 2   | **Fix degradation-detector type guard**  | `lib/degradation-detector.ts:73`       | Broken semantic inversion — works by accident                       |
+| 3   | **Remove monkey-patching from polyfill** | `extensions/polyfill/index.ts:300-327` | Framework coupling, violates extension isolation                    |
+| 4   | **Add setInterval cleanup to evolve**    | `extensions/evolve/index.ts`           | Memory leak, timer persists after unload                            |
 
 ### Short-term (Fix Now — 1-2 sessions)
 
-| # | Action | Files | Reason |
-|---|--------|-------|--------|
-| 5 | **Refactor module-level state → ctx.getState()** | All 8 extensions | Architecture violation, per IMPLEMENTATION-CRITICAL-REVIEW |
-| 6 | **Consolidate globalThis pattern** | `polyfill/`, `model-resolver/`, `rotation.ts` | DRY violation, 3 copies |
-| 7 | **Add false-positive detection to analytics** | `extensions/analytics/index.ts` | Currently flags normal behavior as malfunction |
-| 8 | **Standardize tool error contract** | All tools | Agents misread silent failures as success |
-| 9 | **Add PDF decision tree to tool descriptions** | docs AGENTS.md | Agents use wrong PDF tool |
-| 10 | **Clarify analyze_image vs OCR** | Tool descriptions | Agents confuse visual analysis with text extraction |
+| #   | Action                                           | Files                                         | Reason                                                     |
+| --- | ------------------------------------------------ | --------------------------------------------- | ---------------------------------------------------------- |
+| 5   | **Refactor module-level state → ctx.getState()** | All 8 extensions                              | Architecture violation, per IMPLEMENTATION-CRITICAL-REVIEW |
+| 6   | **Consolidate globalThis pattern**               | `polyfill/`, `model-resolver/`, `rotation.ts` | DRY violation, 3 copies                                    |
+| 7   | **Add false-positive detection to analytics**    | `extensions/analytics/index.ts`               | Currently flags normal behavior as malfunction             |
+| 8   | **Standardize tool error contract**              | All tools                                     | Agents misread silent failures as success                  |
+| 9   | **Add PDF decision tree to tool descriptions**   | docs AGENTS.md                                | Agents use wrong PDF tool                                  |
+| 10  | **Clarify analyze_image vs OCR**                 | Tool descriptions                             | Agents confuse visual analysis with text extraction        |
 
 ### Medium-term (Next sprint)
 
-| # | Action | Files | Reason |
-|---|--------|-------|--------|
-| 11 | **Reduce 70+ as any casts** | All files | Systemic type unsafety |
-| 12 | **Implement per-step effort tracking** | `reasoning-metrics.ts` + `think` | TOOL_IMPROVEMENTS spec item missing |
-| 13 | **Wire outcome tracking** | `cognitive-memory` + `think` | TOOL_IMPROVEMENTS spec item missing |
-| 14 | **Integrate topic-drift-detector** | enforcement + heartbeat | Ghost component — zero consumers |
-| 15 | **Add think(alternatives) + think(on_failure)** | `handlers/think.ts` | Hi-CoT + Structured Reflection spec |
+| #   | Action                                          | Files                            | Reason                              |
+| --- | ----------------------------------------------- | -------------------------------- | ----------------------------------- |
+| 11  | **Reduce 70+ as any casts**                     | All files                        | Systemic type unsafety              |
+| 12  | **Implement per-step effort tracking**          | `reasoning-metrics.ts` + `think` | TOOL_IMPROVEMENTS spec item missing |
+| 13  | **Wire outcome tracking**                       | `cognitive-memory` + `think`     | TOOL_IMPROVEMENTS spec item missing |
+| 14  | **Integrate topic-drift-detector**              | enforcement + heartbeat          | Ghost component — zero consumers    |
+| 15  | **Add think(alternatives) + think(on_failure)** | `handlers/think.ts`              | Hi-CoT + Structured Reflection spec |
 
 ---
 
@@ -343,41 +355,42 @@ The analytics extension tracks tool patterns, whispers, nudges, and enforcement 
 
 **2026-04-21** — All 21 audit issues verified against current source. Results:
 
-| ID | Severity | Issue | Status | Evidence |
-|----|----------|-------|--------|----------|
-| C1 | 🔴 | Degradation-detector type guard | ✅ **FIXED** | `isCtx` uses `"settingsManager" in val` (positive check, not `!("turnNumber" in val)`) |
-| C2 | 🔴 | Safety extension text scraping | ✅ **FIXED** | Extension deleted — `ls extensions/safety/` → not found |
-| C3 | 🔴 | Safety extension still present | ✅ **FIXED** | Directory removed |
-| C4 | 🔴 | Polyfill monkey-patches ExtensionAPI | ⚠️ **PARTIAL** | Full prototype mutation removed (no `.prototype` or `.bind(api)`). Conditional safeGuard wrapping remains. DRY-fied with `wrapOriginal()`. |
-| C5 | 🔴 | Module-level mutable state | 🟡 **DEPRECATE** | 20+ instances confirmed. Severity reassessed: NOT CRITICAL for single-session use. Architectural debt, not runtime bug. Keep but deprioritize. |
-| H1 | 🟠 | setInterval without cleanup | ✅ **FIXED** | `evolve/index.ts` has `pi.on("unload")` + `clearInterval(saveTimer)` |
-| H2 | 🟠 | 429 semantic conflict | ✅ **RESOLVED** | Provider code differentiation handles ambiguity functionally |
-| H3 | 🟠 | 70+ unsafe `as any` casts | ❌ **OPEN** | Systemic, needs dedicated type audit pass |
-| H4 | 🟠 | Duplicate globalThis anti-pattern | ✅ **FIXED** | 3 files now import from `lib/global-state.js`. No more DRY violation. Single Symbol-keyed source of truth. |
-| M1 | 🟡 | Empty catch blocks | ❌ **OPEN** | rotation.ts:54 — lower priority |
-| M2 | 🟡 | Singleton in cognitive-memory | ❌ **OPEN** | `let _singletonInstance` — deprioritized (same as C5) |
-| M3 | 🟡 | Overload explosion | ❌ **OPEN** | scratchpad 17, session-recall 16, feedback 15 — lower priority |
-| M4 | 🟡 | Text similarity utils in enforcement | ❌ **OPEN** | tokenize/jaccardSimilarity in wrong module — lower priority |
-| M5 | 🟡 | Legacy _global fallback | ❌ **OPEN** | degradation-detector returns `_global` when no ctx — warning log added |
-| M6 | 🟡 | Malformed comments in polyfill | ❌ **OPEN** | Split comment, wrong text — lower priority |
-| M7 | 🟡 | Event name `as any` cast | ❌ **OPEN** | `"auto_retry_end" as any` in enforcement — lower priority |
-| M8 | 🟡 | Deprecated function still exported | ❌ **OPEN** | `queueFeedbackWhisper` in feedback — lower priority |
-| M9 | 🟡 | 70+ as any casts (systemic) | ❌ **OPEN** | Same as H3, systemic |
-| T1 | 🟠 | PDF decision tree unclear | ❌ **OPEN** | Need design decision |
-| T2 | 🟡 | analyze_image vs OCR confusion | ❌ **OPEN** | Tool description issue |
-| T3 | 🔴 | Silent failures → agent misinterprets as success | ❌ **OPEN** | Error contract not standardized |
-| T4 | 🟡 | browser_screenshot filePath | ✅ **VERIFIED** | Fix present in source |
-| A1 | 🟠 | Analytics false positive | ✅ **FIXED** | MARS reflector now has 5-call learning phase + 3x frequency threshold + success rate gating |
-| A2 | 🟡 | Analytics module-level mutable state | ❌ **OPEN** | Same as C5 |
-| R1 | 🔴 | Per-step effort tracking missing | ❌ **OPEN** | reasoning-metrics has no perStepEffort |
-| R2 | 🔴 | Outcome tracking never wired | ❌ **OPEN** | cognitive-memory has no outcome field |
-| R3 | 🟠 | think(alternatives) + think(on_failure) | ✅ **FIXED** | Both params added to think.ts input schema + prompt integration |
-| R4 | 🟡 | Topic-drift-detector isolated | ❌ **OPEN** | 207 lines, zero consumers |
-| R5 | 🟠 | Three-memory-stores not integrated | ❌ **OPEN** | 41 behaviors, no memory connection |
+| ID  | Severity | Issue                                            | Status           | Evidence                                                                                                                                       |
+| --- | -------- | ------------------------------------------------ | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| C1  | 🔴       | Degradation-detector type guard                  | ✅ **FIXED**     | `isCtx` uses `"settingsManager" in val` (positive check, not `!("turnNumber" in val)`)                                                         |
+| C2  | 🔴       | Safety extension text scraping                   | ✅ **FIXED**     | Extension deleted — `ls extensions/safety/` → not found                                                                                        |
+| C3  | 🔴       | Safety extension still present                   | ✅ **FIXED**     | Directory removed                                                                                                                              |
+| C4  | 🔴       | Polyfill monkey-patches ExtensionAPI             | ⚠️ **PARTIAL**   | Full prototype mutation removed (no `.prototype` or `.bind(api)`). Conditional safeGuard wrapping remains. DRY-fied with `wrapOriginal()`.     |
+| C5  | 🔴       | Module-level mutable state                       | 🟡 **DEPRECATE** | 20+ instances confirmed. Severity reassessed: NOT CRITICAL for single-session use. Architectural debt, not runtime bug. Keep but deprioritize. |
+| H1  | 🟠       | setInterval without cleanup                      | ✅ **FIXED**     | `evolve/index.ts` has `pi.on("unload")` + `clearInterval(saveTimer)`                                                                           |
+| H2  | 🟠       | 429 semantic conflict                            | ✅ **RESOLVED**  | Provider code differentiation handles ambiguity functionally                                                                                   |
+| H3  | 🟠       | 70+ unsafe `as any` casts                        | ❌ **OPEN**      | Systemic, needs dedicated type audit pass                                                                                                      |
+| H4  | 🟠       | Duplicate globalThis anti-pattern                | ✅ **FIXED**     | 3 files now import from `lib/global-state.js`. No more DRY violation. Single Symbol-keyed source of truth.                                     |
+| M1  | 🟡       | Empty catch blocks                               | ❌ **OPEN**      | rotation.ts:54 — lower priority                                                                                                                |
+| M2  | 🟡       | Singleton in cognitive-memory                    | ❌ **OPEN**      | `let _singletonInstance` — deprioritized (same as C5)                                                                                          |
+| M3  | 🟡       | Overload explosion                               | ❌ **OPEN**      | scratchpad 17, session-recall 16, feedback 15 — lower priority                                                                                 |
+| M4  | 🟡       | Text similarity utils in enforcement             | ❌ **OPEN**      | tokenize/jaccardSimilarity in wrong module — lower priority                                                                                    |
+| M5  | 🟡       | Legacy \_global fallback                         | ❌ **OPEN**      | degradation-detector returns `_global` when no ctx — warning log added                                                                         |
+| M6  | 🟡       | Malformed comments in polyfill                   | ❌ **OPEN**      | Split comment, wrong text — lower priority                                                                                                     |
+| M7  | 🟡       | Event name `as any` cast                         | ❌ **OPEN**      | `"auto_retry_end" as any` in enforcement — lower priority                                                                                      |
+| M8  | 🟡       | Deprecated function still exported               | ❌ **OPEN**      | `queueFeedbackWhisper` in feedback — lower priority                                                                                            |
+| M9  | 🟡       | 70+ as any casts (systemic)                      | ❌ **OPEN**      | Same as H3, systemic                                                                                                                           |
+| T1  | 🟠       | PDF decision tree unclear                        | ❌ **OPEN**      | Need design decision                                                                                                                           |
+| T2  | 🟡       | analyze_image vs OCR confusion                   | ❌ **OPEN**      | Tool description issue                                                                                                                         |
+| T3  | 🔴       | Silent failures → agent misinterprets as success | ❌ **OPEN**      | Error contract not standardized                                                                                                                |
+| T4  | 🟡       | browser_screenshot filePath                      | ✅ **VERIFIED**  | Fix present in source                                                                                                                          |
+| A1  | 🟠       | Analytics false positive                         | ✅ **FIXED**     | MARS reflector now has 5-call learning phase + 3x frequency threshold + success rate gating                                                    |
+| A2  | 🟡       | Analytics module-level mutable state             | ❌ **OPEN**      | Same as C5                                                                                                                                     |
+| R1  | 🔴       | Per-step effort tracking missing                 | ❌ **OPEN**      | reasoning-metrics has no perStepEffort                                                                                                         |
+| R2  | 🔴       | Outcome tracking never wired                     | ❌ **OPEN**      | cognitive-memory has no outcome field                                                                                                          |
+| R3  | 🟠       | think(alternatives) + think(on_failure)          | ✅ **FIXED**     | Both params added to think.ts input schema + prompt integration                                                                                |
+| R4  | 🟡       | Topic-drift-detector isolated                    | ❌ **OPEN**      | 207 lines, zero consumers                                                                                                                      |
+| R5  | 🟠       | Three-memory-stores not integrated               | ❌ **OPEN**      | 41 behaviors, no memory connection                                                                                                             |
 
 **Fix rate**: 10 of 29 issues fixed (C1, C2, C3, H1, H4, T4, NUDGE-1, JUDGE-1, THINK-1, LATENT-1, MARS-1). 2 partial. **17 still open.**
 
 **New items fixed this session**:
+
 - **NUDGE-1**: Identity-framed nudge headers ("CONTRADICTION DETECTED" → "Reasoning Inconsistency Detected", "JUDGE VERDICT: FAIL" → "Response Worth Reconsidering")
 - **JUDGE-1**: COMPLIANCE_PATTERN dimension added to judge + identity framing in system prompt ("You are a thoughtful reviewer...")
 - **THINK-1**: depth levels expanded (minimal/low/medium/high/max + quick/deep), FRESH_EYES context enriched with codebase/tools context, alternatives/type/on_failure/outcome params added
@@ -392,18 +405,18 @@ The analytics extension tracks tool patterns, whispers, nudges, and enforcement 
 
 The most important thing to acknowledge: **most bugs ARE fixed**.
 
-| Category | Status |
-|----------|--------|
-| PDF binary safety | ✅ `isBinaryContent()` present and used |
-| Goal state persistence | ✅ Session-stable keys in extension-state.ts |
-| web_fetch anti-bot | ✅ Realistic browser headers |
-| browser_navigate errors | ✅ Structured error return |
-| Browser CDP | ✅ Fixed |
-| Runtime tests | ✅ 17 tests, verified passing |
-| context-manager decomposition | ✅ 1684→50 lines |
-| enforcement judge/nudge | ✅ 15 files, correct architecture |
-| cognitive-memory TTL/consolidation | ✅ Present |
-| think chain linking | ✅ parent_id working |
+| Category                           | Status                                       |
+| ---------------------------------- | -------------------------------------------- |
+| PDF binary safety                  | ✅ `isBinaryContent()` present and used      |
+| Goal state persistence             | ✅ Session-stable keys in extension-state.ts |
+| web_fetch anti-bot                 | ✅ Realistic browser headers                 |
+| browser_navigate errors            | ✅ Structured error return                   |
+| Browser CDP                        | ✅ Fixed                                     |
+| Runtime tests                      | ✅ 17 tests, verified passing                |
+| context-manager decomposition      | ✅ 1684→50 lines                             |
+| enforcement judge/nudge            | ✅ 15 files, correct architecture            |
+| cognitive-memory TTL/consolidation | ✅ Present                                   |
+| think chain linking                | ✅ parent_id working                         |
 
 **The codebase is in good shape on the critical path.** The remaining issues are architectural debt, not fundamental breakage.
 
@@ -413,74 +426,74 @@ The most important thing to acknowledge: **most bugs ARE fixed**.
 
 ### Completed ✅
 
-| # | Action | Files | Reason | Status |
-|---|--------|-------|--------|--------|
-| 1 | Remove safety extension | `extensions/safety/` | Text scraping anti-pattern, redundant | ✅ Done |
-| 2 | Fix degradation-detector type guard | `lib/degradation-detector.ts` | Broken semantic inversion | ✅ Done |
-| 3 | Fix evolve setInterval cleanup | `extensions/evolve/index.ts` | Memory leak | ✅ Done |
-| 4 | Consolidate globalThis DRY | `lib/global-state.ts` | 3 independent copies | ✅ Done |
-| 5 | Identity-framed nudge headers | `enforcement/judge.ts` | Compliance theater in nudges | ✅ Done |
-| 6 | Add COMPLIANCE_PATTERN + identity framing | `enforcement/judge.ts` + `judge-prompt.ts` | Judge can't detect compliance theater | ✅ Done |
-| 7 | Enrich FRESH_EYES context | `metacognition/handlers/think.ts` | Critique in vacuum | ✅ Done |
-| 8 | Add think(alternatives/on_failure/type/outcome) | `metacognition/handlers/think.ts` | Hi-CoT + Structured Reflection spec | ✅ Done |
-| 9 | Identity-framed latent activator signals | `extensions/latent-activator/index.ts` | Directive framing in activation | ✅ Done |
-| 10 | Add MARS false-positive detection | `lib/mars-reflector.ts` | Normal use flagged as malfunction | ✅ Done |
+| #   | Action                                          | Files                                      | Reason                                | Status  |
+| --- | ----------------------------------------------- | ------------------------------------------ | ------------------------------------- | ------- |
+| 1   | Remove safety extension                         | `extensions/safety/`                       | Text scraping anti-pattern, redundant | ✅ Done |
+| 2   | Fix degradation-detector type guard             | `lib/degradation-detector.ts`              | Broken semantic inversion             | ✅ Done |
+| 3   | Fix evolve setInterval cleanup                  | `extensions/evolve/index.ts`               | Memory leak                           | ✅ Done |
+| 4   | Consolidate globalThis DRY                      | `lib/global-state.ts`                      | 3 independent copies                  | ✅ Done |
+| 5   | Identity-framed nudge headers                   | `enforcement/judge.ts`                     | Compliance theater in nudges          | ✅ Done |
+| 6   | Add COMPLIANCE_PATTERN + identity framing       | `enforcement/judge.ts` + `judge-prompt.ts` | Judge can't detect compliance theater | ✅ Done |
+| 7   | Enrich FRESH_EYES context                       | `metacognition/handlers/think.ts`          | Critique in vacuum                    | ✅ Done |
+| 8   | Add think(alternatives/on_failure/type/outcome) | `metacognition/handlers/think.ts`          | Hi-CoT + Structured Reflection spec   | ✅ Done |
+| 9   | Identity-framed latent activator signals        | `extensions/latent-activator/index.ts`     | Directive framing in activation       | ✅ Done |
+| 10  | Add MARS false-positive detection               | `lib/mars-reflector.ts`                    | Normal use flagged as malfunction     | ✅ Done |
 
 ### Remaining High Priority
 
-| # | Action | Files | Reason | Effort |
-|---|--------|-------|--------|--------|
-| H3 | Reduce as any casts | All files | Systemic type unsafety | MEDIUM |
-| T3 | Standardize tool error contracts | All tools | Agents misread silent failures | MEDIUM |
-| R1 | Implement per-step effort tracking | `reasoning-metrics.ts` | TOOL_IMPROVEMENTS spec | MEDIUM |
-| R4 | Integrate topic-drift-detector | enforcement + heartbeat | Ghost component, zero consumers | MEDIUM |
-| R5 | Three-memory × latent-activator integration | metacognition | Bidirectional learning | MEDIUM |
-| T1 | Add PDF decision tree | Tool descriptions | Agents use wrong PDF tool | SMALL |
+| #   | Action                                      | Files                   | Reason                          | Effort |
+| --- | ------------------------------------------- | ----------------------- | ------------------------------- | ------ |
+| H3  | Reduce as any casts                         | All files               | Systemic type unsafety          | MEDIUM |
+| T3  | Standardize tool error contracts            | All tools               | Agents misread silent failures  | MEDIUM |
+| R1  | Implement per-step effort tracking          | `reasoning-metrics.ts`  | TOOL_IMPROVEMENTS spec          | MEDIUM |
+| R4  | Integrate topic-drift-detector              | enforcement + heartbeat | Ghost component, zero consumers | MEDIUM |
+| R5  | Three-memory × latent-activator integration | metacognition           | Bidirectional learning          | MEDIUM |
+| T1  | Add PDF decision tree                       | Tool descriptions       | Agents use wrong PDF tool       | SMALL  |
 
 ### Research Phase
 
-| # | Topic | Deliverable |
-|---|-------|-------------|
+| #     | Topic                       | Deliverable                      |
+| ----- | --------------------------- | -------------------------------- |
 | SKILL | Skill loading deep research | `docs/SKILL-LOADING-RESEARCH.md` |
 
 ---
 
 ## Appendix: Merged Issues Index
 
-| ID | Source | Severity | Issue |
-|----|--------|----------|-------|
-| C1 | AUDIT | 🔴 | Degradation-detector broken type guard |
-| C2 | AUDIT | 🔴 | Safety extension text scraping |
-| C3 | AUDIT | 🔴 | Safety extension never removed |
-| C4 | AUDIT | 🔴 | Polyfill monkey-patches ExtensionAPI |
-| C5 | AUDIT | 🔴 | Module-level mutable state (8 files) |
-| H1 | AUDIT | 🟠 | setInterval without cleanup (evolve) |
-| H2 | AUDIT | 🟠 | 429 semantic conflict in error-classifier |
-| H3 | AUDIT | 🟠 | 70+ unsafe as any casts |
-| H4 | AUDIT | 🟠 | Duplicate globalThis anti-pattern (3 files) |
-| M1 | AUDIT | 🟡 | Empty catch blocks (rotation, safety) |
-| M2 | AUDIT | 🟡 | Singleton in cognitive-memory |
-| M3 | AUDIT | 🟡 | Overload explosion (scratchpad 17, etc.) |
-| M4 | AUDIT | 🟡 | Text similarity utils in enforcement |
-| M5 | AUDIT | 🟡 | Legacy _global fallback |
-| M6 | AUDIT | 🟡 | Malformed comments in polyfill |
-| M7 | AUDIT | 🟡 | Event name `as any` cast |
-| M8 | AUDIT | 🟡 | Deprecated function still exported |
-| M9 | AUDIT | 🟡 | 70+ as any casts (systemic) |
-| T1 | TOOLS | 🟠 | PDF decision tree unclear |
-| T2 | TOOLS | 🟡 | analyze_image vs OCR confusion |
-| T3 | TOOLS | 🔴 | Silent failures → agent misinterprets as success |
-| T4 | TOOLS | 🟡 | browser_screenshot filePath — verify fixed |
-| A1 | ANALYTICS | 🟠 | Analytics has false positive problem |
-| A2 | ANALYTICS | 🟡 | Analytics uses module-level mutable state |
-| R1 | REVIEW | 🔴 | Per-step effort tracking missing |
-| R2 | REVIEW | 🔴 | Outcome tracking never wired |
-| R3 | REVIEW | 🟠 | think(alternatives) + think(on_failure) missing |
-| R4 | REVIEW | 🟡 | Topic-drift-detector isolated |
-| R5 | REVIEW | 🟠 | Three-memory-stores not integrated |
+| ID  | Source    | Severity | Issue                                            |
+| --- | --------- | -------- | ------------------------------------------------ |
+| C1  | AUDIT     | 🔴       | Degradation-detector broken type guard           |
+| C2  | AUDIT     | 🔴       | Safety extension text scraping                   |
+| C3  | AUDIT     | 🔴       | Safety extension never removed                   |
+| C4  | AUDIT     | 🔴       | Polyfill monkey-patches ExtensionAPI             |
+| C5  | AUDIT     | 🔴       | Module-level mutable state (8 files)             |
+| H1  | AUDIT     | 🟠       | setInterval without cleanup (evolve)             |
+| H2  | AUDIT     | 🟠       | 429 semantic conflict in error-classifier        |
+| H3  | AUDIT     | 🟠       | 70+ unsafe as any casts                          |
+| H4  | AUDIT     | 🟠       | Duplicate globalThis anti-pattern (3 files)      |
+| M1  | AUDIT     | 🟡       | Empty catch blocks (rotation, safety)            |
+| M2  | AUDIT     | 🟡       | Singleton in cognitive-memory                    |
+| M3  | AUDIT     | 🟡       | Overload explosion (scratchpad 17, etc.)         |
+| M4  | AUDIT     | 🟡       | Text similarity utils in enforcement             |
+| M5  | AUDIT     | 🟡       | Legacy \_global fallback                         |
+| M6  | AUDIT     | 🟡       | Malformed comments in polyfill                   |
+| M7  | AUDIT     | 🟡       | Event name `as any` cast                         |
+| M8  | AUDIT     | 🟡       | Deprecated function still exported               |
+| M9  | AUDIT     | 🟡       | 70+ as any casts (systemic)                      |
+| T1  | TOOLS     | 🟠       | PDF decision tree unclear                        |
+| T2  | TOOLS     | 🟡       | analyze_image vs OCR confusion                   |
+| T3  | TOOLS     | 🔴       | Silent failures → agent misinterprets as success |
+| T4  | TOOLS     | 🟡       | browser_screenshot filePath — verify fixed       |
+| A1  | ANALYTICS | 🟠       | Analytics has false positive problem             |
+| A2  | ANALYTICS | 🟡       | Analytics uses module-level mutable state        |
+| R1  | REVIEW    | 🔴       | Per-step effort tracking missing                 |
+| R2  | REVIEW    | 🔴       | Outcome tracking never wired                     |
+| R3  | REVIEW    | 🟠       | think(alternatives) + think(on_failure) missing  |
+| R4  | REVIEW    | 🟡       | Topic-drift-detector isolated                    |
+| R5  | REVIEW    | 🟠       | Three-memory-stores not integrated               |
 
 **Total**: 29 issues (5 CRITICAL, 8 HIGH, 11 MODERATE, 5 TOOL) + 5 RESEARCH gaps
 
 ---
 
-*Report merged from: CODEBASE-AUDIT-FULL.md (21 issues), BUGS-AND-FIXES.md (12 bugs), IMPLEMENTATION-CRITICAL-REVIEW.md (27 findings), TOOLS_ISSUES_REPORT.md (4 conceptual issues)*
+_Report merged from: CODEBASE-AUDIT-FULL.md (21 issues), BUGS-AND-FIXES.md (12 bugs), IMPLEMENTATION-CRITICAL-REVIEW.md (27 findings), TOOLS_ISSUES_REPORT.md (4 conceptual issues)_

@@ -14,17 +14,17 @@ In-memory timer store with `setTimeout`-based firing. Timers expire after firing
 
 ## Events Handled
 
-| Event | Handler |
-|-------|---------|
+| Event                  | Handler                                                |
+| ---------------------- | ------------------------------------------------------ |
 | `tool_execution_start` | Check for expired timers and deliver pending reminders |
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
-| `timer_set` | Set a timer. Params: `delay_seconds` (1-3600), `reason` (description), `tag` (optional). Returns immediately — reminder fires asynchronously. |
-| `timer_list` | List all active (non-expired) timers |
-| `timer_cancel` | Cancel a timer by ID before it fires |
+| Tool           | Description                                                                                                                                   |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `timer_set`    | Set a timer. Params: `delay_seconds` (1-3600), `reason` (description), `tag` (optional). Returns immediately — reminder fires asynchronously. |
+| `timer_list`   | List all active (non-expired) timers                                                                                                          |
+| `timer_cancel` | Cancel a timer by ID before it fires                                                                                                          |
 
 ## Key Patterns
 

@@ -1,16 +1,22 @@
 # BRAID Consolidated Task List
+
 **Sources**: BRAID-WORK-TRACKER.md + BRAID-NEXT-PROPOSAL.md + prompt-builder-refactor.md
 **Created**: 2026-04-22 | **Updated**: 2026-04-22 | **Agent**: Braid
 **Total Items**: 35 | **Remaining**: ~25
 
 ---
+
 ## How to Use
+
 - **Status**: ✅ Done | 🟡 In Progress | ❌ Not Started | 🔄 Ready to Start
 - **Effort**: XS (<15min) | S (1h) | M (2-4h) | L (4-8h)
 - **Track**: D=Archive Recovery | R=System | H=Health | BR=Behavior | BM=Benchmark | PB=Prompt-Builder
 - **Dependencies**: Items that must complete first
+
 ## PHASE 0: Archive Recovery 🔴
+
 ### D0 - Daemon Orchestrator (Belief Store + Policy Engine)
+
 **Status**: ✅ Done | Meta-learning optimizer: adaptive tick interval based on activation effectiveness | **Effort**: M (remaining ~2h)
 **Dependencies**: D0.1 ✅ → D0.2 ✅ → D0.3 ✅ → D0.4 ✅
 | Sub-item | Status | Notes |
@@ -21,52 +27,64 @@
 | D0.4: Implement dreamer module | ✅ Done | Self-reflection episodes |
 | **D0.5: Meta-learning optimizer** | ✅ Done | Tick interval adjusts based on activation history effectiveness |
 **Implementation hint for D0.5**:
+
 ```typescript
 // In heartbeat-scheduler, track activation success/failure
 // Adjust tick interval: faster when effective, slower when noisy
 // Based on: activation_history → effectiveness_score → interval_delta
 ```
+
 ### D1 - Session Isolation
+
 **Status**: ✅ Done
 **Priority**: 🔴 HIGH | **Effort**: M
 **Notes**: Enforcement singletons + session_end cleanup handler added
+
 ## PHASE 1: System Improvements 🔴
+
 ### R5 — Three-Memory Integration
+
 **Notes**: Three-memory in recaller; RUMS retrieval wired into agent loop
+
 ### R7 — L1 Environment Consolidation
+
 **Status**: 🔄 Partially Done | **Effort**: M (1h remaining)
 **Priority**: 🔴 HIGH
 **Track**: Infrastructure | **Files**: 3 files modified
 **Problem**: Two separate L1 environments with overlapping concerns:
+
 1. `agent-environment/index.ts` — session state, machine info
 2. `prompt-builder/l1-environment.ts` — context %, memory count, checkpoint distance
 3. **Missing**: path utilities scattered across modules
-**What's done**:
+   **What's done**:
+
 - ✅ Created `src/lib/path-utils.ts` with `discoverPiPackage()` and `normalizePlatform()`
 - ✅ Updated `agent-environment/index.ts` to use `normalizePlatform()`
 - ✅ Updated `prompt-builder/l1-environment.ts` to use `discoverPiPackage()`
-**NOT done** (1h remaining):
+  **NOT done** (1h remaining):
+
 1. [ ] Update `prompt-builder/index.ts` to use `discoverPiPackage()` for `reconstructProjectContextSection()` instead of manual path walking
 2. [ ] Audit for other files using manual pi package path discovery
 3. [ ] Remove any duplicate `os` imports after refactor
 4. [ ] TypeScript compile check: `npx tsc --noEmit`
 5. [ ] Verify runtime: confirm pi package path shows in prompt
-**Path naming convention** (established):
-| Term | Example | Purpose |
-|------|---------|---------|
-| `piPackage` | `.../node_modules/@mariozechner/pi-coding-agent` | npm package folder |
-| `agentDir` | `~/.pi/agent/` | pi config directory (from getAgentDir) |
-| `cwd` / `projectDir` | `/Users/kifir/projects/vibe/implicit-framing` | user's current working directory |
-**Files to modify**:
-src/extensions/prompt-builder/index.ts  # Use discoverPiPackage() in reconstructProjectContextSection
-audit: any file using manual path walking for pi package
-**Implementation hint for prompt-builder/index.ts**:
-import { discoverPiPackage } from "../../lib/path-utils.js";
-// In reconstructProjectContextSection:
-// Replace manual path walking with:
-const piPackage = discoverPiPackage();
-// Use for: agentDir context files, skills location, docs
-**Validation command**:
+       **Path naming convention** (established):
+       | Term | Example | Purpose |
+       |------|---------|---------|
+       | `piPackage` | `.../node_modules/@mariozechner/pi-coding-agent` | npm package folder |
+       | `agentDir` | `~/.pi/agent/` | pi config directory (from getAgentDir) |
+       | `cwd` / `projectDir` | `/Users/kifir/projects/vibe/implicit-framing` | user's current working directory |
+       **Files to modify**:
+       src/extensions/prompt-builder/index.ts # Use discoverPiPackage() in reconstructProjectContextSection
+       audit: any file using manual path walking for pi package
+       **Implementation hint for prompt-builder/index.ts**:
+       import { discoverPiPackage } from "../../lib/path-utils.js";
+       // In reconstructProjectContextSection:
+       // Replace manual path walking with:
+       const piPackage = discoverPiPackage();
+       // Use for: agentDir context files, skills location, docs
+       **Validation command**:
+
 ```bash
 # After changes, verify prompt shows correct paths:
 cd /Users/kifir/projects/agents/pi-braid
@@ -280,3 +298,4 @@ PB4 (benchmark) ← PB2, PB3
 
 | **Total** | **17/22** | **5** | |
 *Consolidated from BRAID-WORK-TRACKER.md + BRAID-NEXT-PROPOSAL.md + prompt-builder-refactor.md*
+```

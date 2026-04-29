@@ -10,11 +10,11 @@ Skills are instruction sets that augment the agent's system prompt. Each skill i
 
 Skills are loaded from three locations:
 
-| Location | Path | Contents |
-|----------|-------|---------|
-| **User skills** | `~/.pi/agent/skills/` | User-defined skills (loaded first) |
-| **Project skills** | `skills/` (project root) | pi-braid bundled skills |
-| **Extension skills** | `skills/` in extension dirs | Extension-provided skills |
+| Location             | Path                        | Contents                           |
+| -------------------- | --------------------------- | ---------------------------------- |
+| **User skills**      | `~/.pi/agent/skills/`       | User-defined skills (loaded first) |
+| **Project skills**   | `skills/` (project root)    | pi-braid bundled skills            |
+| **Extension skills** | `skills/` in extension dirs | Extension-provided skills          |
 
 ## Skill Format
 
@@ -40,6 +40,7 @@ name: software-engineer
 description: Use when writing, reviewing, or debugging code.
 activate: code-review, refactoring, implementation, debugging
 ---
+
 # Software Engineer
 
 Apply these principles when working with code...
@@ -47,6 +48,7 @@ Apply these principles when working with code...
 ## When to Use
 
 Use this skill when:
+
 - Writing new code
 - Reviewing existing code
 - Debugging issues
@@ -75,12 +77,14 @@ This shows all active skills with their descriptions and section headings.
 ## Adding a New Skill
 
 1. Create `skills/<name>/SKILL.md`:
+
 ```markdown
 ---
 name: <name>
 description: One-line description.
 activate: <trigger keywords>
 ---
+
 # Skill Name
 
 [skill guidance content]
@@ -102,20 +106,20 @@ When any of these keywords appear in the user message, the skill is loaded.
 
 ## Existing Skills
 
-| Skill | Description |
-|-------|-------------|
-| `software-engineer` | Universal coding guidance |
-| `research` | Research and fact-checking |
-| `documentation` | Writing docs and READMEs |
-| `code-review` | PR and code review |
-| `debugging` | Systematic debugging approach |
-| `process-control` | Long-running process management |
-| `tone-quality` | Writing quality guidance |
-| `visual-validator` | Visual design validation |
-| `meta-improvement` | Self-improvement and skill creation |
-| `paper-writer` | LaTeX research paper writing |
-| `agent-testing` | Testing agent behavior |
-| `code-search` | Code search and refactoring |
-| `pi-reference` | pi CLI and extension reference |
+| Skill               | Description                         |
+| ------------------- | ----------------------------------- |
+| `software-engineer` | Universal coding guidance           |
+| `research`          | Research and fact-checking          |
+| `documentation`     | Writing docs and READMEs            |
+| `code-review`       | PR and code review                  |
+| `debugging`         | Systematic debugging approach       |
+| `process-control`   | Long-running process management     |
+| `tone-quality`      | Writing quality guidance            |
+| `visual-validator`  | Visual design validation            |
+| `meta-improvement`  | Self-improvement and skill creation |
+| `paper-writer`      | LaTeX research paper writing        |
+| `agent-testing`     | Testing agent behavior              |
+| `code-search`       | Code search and refactoring         |
+| `pi-reference`      | pi CLI and extension reference      |
 
 See individual skill READMEs for details.

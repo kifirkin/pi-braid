@@ -26,7 +26,7 @@ The roadmap is well-engineered. Clear dependency graph, concrete implementation 
 The roadmap has no mechanism to detect when the agent drifts off-topic before producing confident wrong output. The "braid paper" failure mode — fluent but completely irrelevant output — is not addressed.
 
 **What Task 3 (Conflict QA) doesn't cover**:  
-Conflict QA is about *conflicting evidence from multiple sources*. Topic drift is about *output topic diverging from request topic*. These are orthogonal problems.
+Conflict QA is about _conflicting evidence from multiple sources_. Topic drift is about _output topic diverging from request topic_. These are orthogonal problems.
 
 **Add Task 8**: Topic Drift Detector
 
@@ -56,12 +56,12 @@ The roadmap has no connection to the 23 papers we researched. This is a missed o
 
 **Recommendation**: Add a "Research Basis" column to each task.
 
-| Task | Research Thread | Paper | Key Insight |
-|------|-----------------|-------|-------------|
-| Task 2 | cognitive-control | 2604.14401 Credo | Belief-based state |
-| Task 3 | knowledge-conflicts | 2604.11209 XoT | Source tracking + faithful reasoning |
-| Task 5 | measurement | 2604.14525 Cross-Query | Threshold calibration |
-| Task 6 | cognitive-control | 2604.14178 Heartbeat | Proactive scheduling |
+| Task   | Research Thread     | Paper                  | Key Insight                          |
+| ------ | ------------------- | ---------------------- | ------------------------------------ |
+| Task 2 | cognitive-control   | 2604.14401 Credo       | Belief-based state                   |
+| Task 3 | knowledge-conflicts | 2604.11209 XoT         | Source tracking + faithful reasoning |
+| Task 5 | measurement         | 2604.14525 Cross-Query | Threshold calibration                |
+| Task 6 | cognitive-control   | 2604.14178 Heartbeat   | Proactive scheduling                 |
 
 ---
 
@@ -70,6 +70,7 @@ The roadmap has no connection to the 23 papers we researched. This is a missed o
 **The problem**: EvidencePool is the most complex task in the roadmap, but it gets 3-4 hours — the same as Task 2 which is purely a refactor.
 
 **Why it's hard**:
+
 1. **Conflict detection requires entity extraction** — "X is true" vs "X is false" needs NLP, not just token overlap
 2. **Source attribution is non-trivial** — the agent doesn't naturally label its sources
 3. **Resolution is LLM-heavy** — "pick the right source" requires judgment
@@ -117,34 +118,46 @@ Task 5 (Metrics Calibration) ──▶ Task 6 (MARS)
 ## Task-Specific Reviews
 
 ### Task 1: Preprocessor Fix ✅
+
 **Verdict**: Well-scoped, trivial implementation, clear verification. Do first.
 
 ### Task 2: Session State Refactor ⚠️
+
 **Verdict**: Good strategy. One concern: enforcement/event handlers need `ctx` propagation through ALL tools, not just the enforcement tools.
+
 - **Verification**: Test with `codebase-tree` tool — does it get `ctx`? If not, state migration needs to handle that case.
 - **Missing**: The `getExtensionState` pattern assumes `ExtensionContext` is stable. If pi recreates context per turn, state won't persist. Check this.
 
 ### Task 3: Conflict QA ❌
+
 **Verdict**: Underestimated, underspecified. See Critical Gap 3 above.
 
 ### Task 4: Think v2 ⚠️
+
 **Verdict**: Good incremental additions. One concern:
+
 - **Enforcement nudges in think tool**: Adding nudge logic to think tool couples them. Consider: enforce in enforcement's `turn_end`, not in think tool.
 - **Calibration tracking**: "confidence: 0.9, then succeeded" is noisy — confidence is about the REASONING, not the outcome. A high-confidence wrong reasoning can still succeed by accident.
 
 ### Task 5: Metrics Calibration ✅
+
 **Verdict**: Right approach. Start conservative, tune from real data.
+
 - **Add**: Track false positive rate, not just threshold accuracy
 - **Add**: "Warn-only" mode by default — don't whisper, just log
 
 ### Task 6: MARS Reflection ⚠️
+
 **Verdict**: Good concept, underspecified trigger.
+
 - **Every 15 turns is arbitrary**: Use Heartbeat Scheduler concept (2604.14178) — adaptive intervals based on pattern changes
 - **Advice generation**: The advice rules are too simple. "Use grep instead of bash" is noise if bash is appropriate for the task.
-- **Consider**: Only whisper on *actionable* patterns, not *statistical* ones.
+- **Consider**: Only whisper on _actionable_ patterns, not _statistical_ ones.
 
 ### Task 7: Hypothesis Scoring ⚠️
+
 **Verdict**: Simple heuristic is fine for now.
+
 - **Risk**: Heuristic scoring may not correlate with actual likelihood
 - **Add**: Track scoring accuracy over time — did higher-scored hypotheses actually turn out to be correct?
 
@@ -156,34 +169,34 @@ Task 5 (Metrics Calibration) ──▶ Task 6 (MARS)
 
 Each task needs measurable completion criteria:
 
-| Task | Current Criteria | Missing |
-|------|------------------|---------|
-| Task 1 | Type check passes | Runtime verification |
-| Task 2 | Tests pass | Multi-session isolation test |
-| Task 3 | Unit tests | Integration with real conflicts |
-| Task 4 | Nudge fires | Verify it changes behavior |
-| Task 5 | No false positives | Track false positive rate |
-| Task 6 | Advice generated | Verify advice is actionable |
-| Task 7 | Higher scores | Track accuracy correlation |
+| Task   | Current Criteria   | Missing                         |
+| ------ | ------------------ | ------------------------------- |
+| Task 1 | Type check passes  | Runtime verification            |
+| Task 2 | Tests pass         | Multi-session isolation test    |
+| Task 3 | Unit tests         | Integration with real conflicts |
+| Task 4 | Nudge fires        | Verify it changes behavior      |
+| Task 5 | No false positives | Track false positive rate       |
+| Task 6 | Advice generated   | Verify advice is actionable     |
+| Task 7 | Higher scores      | Track accuracy correlation      |
 
 ### 2. Add Risk Rating
 
 Current risks are good but need severity ratings:
 
-| Task | Technical Risk | Research Risk | Schedule Risk |
-|------|----------------|---------------|---------------|
-| Task 2 | High (ctx propagation) | Low | Medium |
-| Task 3 | Very High (NLP complexity) | High (XoT is hard) | High |
-| Task 6 | Medium (arbitrary trigger) | Medium | Low |
+| Task   | Technical Risk             | Research Risk      | Schedule Risk |
+| ------ | -------------------------- | ------------------ | ------------- |
+| Task 2 | High (ctx propagation)     | Low                | Medium        |
+| Task 3 | Very High (NLP complexity) | High (XoT is hard) | High          |
+| Task 6 | Medium (arbitrary trigger) | Medium             | Low           |
 
 ### 3. Add Research Thread Column
 
-| Task | Thread | Papers |
-|------|--------|--------|
-| Task 2 | cognitive-control | 2604.14401 Credo |
-| Task 3 | knowledge-conflicts | 2604.11209 XoT |
-| Task 5 | measurement | 2604.14525 Cross-Query |
-| Task 6 | cognitive-control | 2604.14178 Heartbeat |
+| Task   | Thread              | Papers                 |
+| ------ | ------------------- | ---------------------- |
+| Task 2 | cognitive-control   | 2604.14401 Credo       |
+| Task 3 | knowledge-conflicts | 2604.11209 XoT         |
+| Task 5 | measurement         | 2604.14525 Cross-Query |
+| Task 6 | cognitive-control   | 2604.14178 Heartbeat   |
 
 ---
 
@@ -198,15 +211,15 @@ Current risks are good but need severity ratings:
 
 ## Summary of Changes
 
-| Priority | Change | Rationale |
-|----------|--------|-----------|
-| P0 | Add Task 8: Topic Drift Detection | Addresses braid paper failure mode |
-| P0 | Split Task 3 into 3a + 3b | Underestimated complexity |
-| P1 | Add Research Thread column | Connects roadmap to research |
-| P1 | Task 2: Verify ctx in ALL tools | State migration depends on this |
-| P2 | Task 6: Adaptive trigger, not fixed 15 turns | Use heartbeat concept |
-| P2 | Task 5: Track false positive rate | More useful than threshold accuracy |
-| P3 | Task 4: Decouple enforcement from think | Coupling is fragile |
+| Priority | Change                                       | Rationale                           |
+| -------- | -------------------------------------------- | ----------------------------------- |
+| P0       | Add Task 8: Topic Drift Detection            | Addresses braid paper failure mode  |
+| P0       | Split Task 3 into 3a + 3b                    | Underestimated complexity           |
+| P1       | Add Research Thread column                   | Connects roadmap to research        |
+| P1       | Task 2: Verify ctx in ALL tools              | State migration depends on this     |
+| P2       | Task 6: Adaptive trigger, not fixed 15 turns | Use heartbeat concept               |
+| P2       | Task 5: Track false positive rate            | More useful than threshold accuracy |
+| P3       | Task 4: Decouple enforcement from think      | Coupling is fragile                 |
 
 ---
 

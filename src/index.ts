@@ -39,37 +39,37 @@ const log = createLogger("braid");
 // ── Entry point ──────────────────────────────────────────────────────────────
 
 export default async function braidExtension(pi: ExtensionAPI): Promise<void> {
-	log.info(`pi-braid v${getVersion()} loading...`);
+  log.info(`pi-braid v${getVersion()} loading...`);
 
-	// 1. Load modules defined in src/modules/definitions.ts
-	//    Config source: BRAID_MODULES env var (format: +module,-module)
-	const report = await loadModules(pi);
+  // 1. Load modules defined in src/modules/definitions.ts
+  //    Config source: BRAID_MODULES env var (format: +module,-module)
+  const report = await loadModules(pi);
 
-	if (report.total === 0) {
-		log.warn("No extensions loaded — check BRAID_MODULES config or module definitions.");
-	} else {
-		log.info(`Loaded ${report.total} extensions (${report.loaded.length} modules).`);
+  if (report.total === 0) {
+    log.warn("No extensions loaded — check BRAID_MODULES config or module definitions.");
+  } else {
+    log.info(`Loaded ${report.total} extensions (${report.loaded.length} modules).`);
 
-		for (const m of report.loaded) {
-			log.info(`  ● ${m.module} (${m.extensions} extensions)`);
-		}
-		for (const s of report.skipped) {
-			log.warn(`  ○ ${s.module}/${s.ext || "*"}: ${s.reason}`);
-		}
-	}
+    for (const m of report.loaded) {
+      log.info(`  ● ${m.module} (${m.extensions} extensions)`);
+    }
+    for (const s of report.skipped) {
+      log.warn(`  ○ ${s.module}/${s.ext || "*"}: ${s.reason}`);
+    }
+  }
 
-	// 2. Register subagent API (always available so researcher can toggle modules)
-	await modulesApiExtension(pi);
+  // 2. Register subagent API (always available so researcher can toggle modules)
+  await modulesApiExtension(pi);
 
-	log.info("pi-braid ready.");
+  log.info("pi-braid ready.");
 }
 
 // ── Version ──────────────────────────────────────────────────────────────────
 
 function getVersion(): string {
-	try {
-		return "0.20.0";
-	} catch {
-		return "dev";
-	}
+  try {
+    return "0.20.0";
+  } catch {
+    return "dev";
+  }
 }

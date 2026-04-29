@@ -9,21 +9,21 @@
 
 ### Extensions + Tools at a Glance
 
-| Module | Tools | Commands | Events | Score |
-|--------|-------|----------|--------|-------|
-| **memory** | 14 | 1 | 15 | 44.5 ★ |
-| **cognitive** | 9 | 6 | 12 | 39.0 ★ |
-| **browser** | 8 | 5 | 3 | 26.5 ★ |
-| **tools** | 11 | 0 | 2 | 24.0 ★ |
-| **assistant** | 0 | 9 | 8 | 21.5 ★ |
-| **core** | 6 | 3 | 4 | 20.5 ★ |
-| **heartbeat** | 4 | 3 | 7 | 19.5 ★ |
-| **retry** | 0 | 2 | 7 | 10.0 ◆ |
-| watchdog | 0 | 1 | 4 | 5.5 |
-| rate-limiter | 0 | 1 | 2 | 3.5 |
-| prompt | 0 | 0 | 3 | 3.0 |
-| evolve | 1 | 0 | 1 | 3.0 |
-| agent-environment | 0 | 0 | 2 | 2.0 |
+| Module            | Tools | Commands | Events | Score  |
+| ----------------- | ----- | -------- | ------ | ------ |
+| **memory**        | 14    | 1        | 15     | 44.5 ★ |
+| **cognitive**     | 9     | 6        | 12     | 39.0 ★ |
+| **browser**       | 8     | 5        | 3      | 26.5 ★ |
+| **tools**         | 11    | 0        | 2      | 24.0 ★ |
+| **assistant**     | 0     | 9        | 8      | 21.5 ★ |
+| **core**          | 6     | 3        | 4      | 20.5 ★ |
+| **heartbeat**     | 4     | 3        | 7      | 19.5 ★ |
+| **retry**         | 0     | 2        | 7      | 10.0 ◆ |
+| watchdog          | 0     | 1        | 4      | 5.5    |
+| rate-limiter      | 0     | 1        | 2      | 3.5    |
+| prompt            | 0     | 0        | 3      | 3.0    |
+| evolve            | 1     | 0        | 1      | 3.0    |
+| agent-environment | 0     | 0        | 2      | 2.0    |
 
 **53 tools, 31 commands across 13 modules. Test coverage: 19%.**
 
@@ -34,51 +34,55 @@
 ### ✅ HELPFUL — high value, low friction
 
 **Core metacognitive stack (most used in real sessions):**
+
 - `think` — structured reasoning, the backbone of chain tracking
 - `hypothesize` — debugging approach, evidence-based
 - `finalize` — task completion with auto-proceed
 
 **Memory & context (essential infrastructure):**
+
 - `memory_store`, `memory_recall`, `memory_list`, `memory_get` — long-term knowledge
 - `context_tag`, `context_log`, `context_archive`, `context_prune` — context management
 - `session_search`, `session_query` — session recall
 
 **Workspace tools:**
+
 - `codebase_tree`, `repl`, `healthcheck`
 - `verify_claim`, `verify_decomposition`
 - `check_topic_drift`, `reset_topic_anchors`
 
 **Error recovery:**
+
 - `retry`, `retry_status` — reliable, survives session restart
 
 ### ⚠️ MIXED — useful but problematic
 
-| Tool/Feature | Problem |
-|--------------|---------|
-| `plan_with_budget` | Verbose tool output fills context. Agent rarely uses it. |
-| `check_budget`, `set_budget` | Useful in theory, rarely invoked in practice. |
-| `cognition_evaluate` | Rarely used. Heuristic evaluation is indirect. |
+| Tool/Feature                                | Problem                                                                                                                     |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `plan_with_budget`                          | Verbose tool output fills context. Agent rarely uses it.                                                                    |
+| `check_budget`, `set_budget`                | Useful in theory, rarely invoked in practice.                                                                               |
+| `cognition_evaluate`                        | Rarely used. Heuristic evaluation is indirect.                                                                              |
 | `activate_behavior` / `deactivate_behavior` | Latent behaviors are an interesting idea but the agent doesn't discover or activate them naturally. Mostly self-activation. |
-| `heartbeat_status` | Debugging tool. Should be invisible in normal operation. |
-| All assistant `feedback-*` commands | 7 commands for feedback configuration — too much surface area for a UX concern. |
-| `timer_set` / `timer_cancel` | Useful for long tasks but the agent doesn't naturally reach for them. |
+| `heartbeat_status`                          | Debugging tool. Should be invisible in normal operation.                                                                    |
+| All assistant `feedback-*` commands         | 7 commands for feedback configuration — too much surface area for a UX concern.                                             |
+| `timer_set` / `timer_cancel`                | Useful for long tasks but the agent doesn't naturally reach for them.                                                       |
 
 ### 🔴 FRUSTRATING — likely harmful
 
-| Feature | Why |
-|---------|-----|
-| **All of `prompt` module** (prompt-builder + prompt-guardian) | Invisible infrastructure — the agent never directly interacts with these. They're event handlers that silently modify the system prompt. The problem: they are **unobservable**. If prompt-builder corrupts the system prompt, the agent just acts strangely with no way to debug why. |
-| **`preprocessor_config` / `preprocessor_stats`** | Preprocessor is foundational and invisible — fine. But the two tools expose internals the agent doesn't need and shouldn't be manually configuring. |
-| **Enforcement commands** (`enforcement-on`, `enforcement-off`, `enforcement-stats`) | These feel like debugging commands from development, not agent-facing tools. The enforcement system works via events and whisper messages — the commands are vestigial. |
-| **Loop detection commands** (`loop-status`, `loop-reset`, `loop-help`) | Same — debugging artifacts. The agent doesn't need manual loop control. |
+| Feature                                                                             | Why                                                                                                                                                                                                                                                                                    |
+| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **All of `prompt` module** (prompt-builder + prompt-guardian)                       | Invisible infrastructure — the agent never directly interacts with these. They're event handlers that silently modify the system prompt. The problem: they are **unobservable**. If prompt-builder corrupts the system prompt, the agent just acts strangely with no way to debug why. |
+| **`preprocessor_config` / `preprocessor_stats`**                                    | Preprocessor is foundational and invisible — fine. But the two tools expose internals the agent doesn't need and shouldn't be manually configuring.                                                                                                                                    |
+| **Enforcement commands** (`enforcement-on`, `enforcement-off`, `enforcement-stats`) | These feel like debugging commands from development, not agent-facing tools. The enforcement system works via events and whisper messages — the commands are vestigial.                                                                                                                |
+| **Loop detection commands** (`loop-status`, `loop-reset`, `loop-help`)              | Same — debugging artifacts. The agent doesn't need manual loop control.                                                                                                                                                                                                                |
 
 ### 🟡 UNUSED — no tool registrations
 
-| Module | Tool Registrations | Notes |
-|--------|-------------------|-------|
-| `agent-environment` | 0 tools | Event-only. Captures cwd, project context. Potentially valuable but entirely invisible. |
-| `rate-limiter` | 0 tools | Same — invisible infrastructure. |
-| `evolve` | 1 tool (evolve) | The evolve tool exists but the agent barely uses it. Self-maintenance is aspirational. |
+| Module              | Tool Registrations | Notes                                                                                   |
+| ------------------- | ------------------ | --------------------------------------------------------------------------------------- |
+| `agent-environment` | 0 tools            | Event-only. Captures cwd, project context. Potentially valuable but entirely invisible. |
+| `rate-limiter`      | 0 tools            | Same — invisible infrastructure.                                                        |
+| `evolve`            | 1 tool (evolve)    | The evolve tool exists but the agent barely uses it. Self-maintenance is aspirational.  |
 
 ---
 

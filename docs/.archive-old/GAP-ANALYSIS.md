@@ -10,12 +10,12 @@ pi-braid is a self-contained pi-coding-agent extension that extracts all develop
 
 **92 files, +19,883 lines** from `src/core/builtin/`:
 
-| Category | Count | Details |
-|----------|-------|---------|
-| Extensions | 18 | planner, metacognition, scratchpad, cognitive-systems, docs, pijul-checkpoint, codebase-tree, healthcheck, prompt-guardian, enforcement, feedback, evolve, user-message-preprocessor, watchdog, rate-limiter, vision, reasoning, file-tool |
-| Tool definitions | 17 | think, goals, plan, planning, task, finalize, autonomous-control, explore-paths, resources, scratchpad, metacognition, knowledge-integration, tool-learning, time-tracker, repl, sub-agent, hypothesize |
-| Library modules | 13 | cognitive-memory, goal-manager, task-queue, task-scratchpad, planner, degradation-detector, metacognition, knowledge-integration, knowledge-vcs, pijul-utils, resource-manager, async-storage, tool-learner |
-| Skills | 16 | code-search, codebase-summary, compliance-audit, healthcheck, hyperagents-evolution, paper-writer, pi-docs, pi-internals, pijul-checkpoint, process-hygiene, skill-creator, software-engineer, tmux, visual-validator, web-search, workspace-manager |
+| Category         | Count | Details                                                                                                                                                                                                                                              |
+| ---------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Extensions       | 18    | planner, metacognition, scratchpad, cognitive-systems, docs, pijul-checkpoint, codebase-tree, healthcheck, prompt-guardian, enforcement, feedback, evolve, user-message-preprocessor, watchdog, rate-limiter, vision, reasoning, file-tool           |
+| Tool definitions | 17    | think, goals, plan, planning, task, finalize, autonomous-control, explore-paths, resources, scratchpad, metacognition, knowledge-integration, tool-learning, time-tracker, repl, sub-agent, hypothesize                                              |
+| Library modules  | 13    | cognitive-memory, goal-manager, task-queue, task-scratchpad, planner, degradation-detector, metacognition, knowledge-integration, knowledge-vcs, pijul-utils, resource-manager, async-storage, tool-learner                                          |
+| Skills           | 16    | code-search, codebase-summary, compliance-audit, healthcheck, hyperagents-evolution, paper-writer, pi-docs, pi-internals, pijul-checkpoint, process-hygiene, skill-creator, software-engineer, tmux, visual-validator, web-search, workspace-manager |
 
 **Verification**: Loaded via jiti, registers 55 tools and 29 events without errors.
 
@@ -32,6 +32,7 @@ These are changes to files deep in `src/core/` that are part of the pi runtime i
 **Change**: Complete rewrite from directive style to identity framing.
 
 **Old (main)**:
+
 ```
 "You are an expert coding assistant..."
 "MUST read files before editing"
@@ -40,6 +41,7 @@ These are changes to files deep in `src/core/` that are part of the pi runtime i
 ```
 
 **New (develop)**:
+
 ```
 "You are stateful, meticulous and rigorous software architect..."
 "You examine files before editing"
@@ -56,6 +58,7 @@ These are changes to files deep in `src/core/` that are part of the pi runtime i
 #### A2. `extensions/types.ts` (+47 lines)
 
 **Change**: New `ExtensionContext` methods:
+
 - `ctx.getUtilityModel(): Model | undefined` - Resolve cheapest model for utility calls
 - `ctx.getVisionModel(): Model | undefined` - Resolve vision-capable model
 
@@ -114,6 +117,7 @@ These are changes to files deep in `src/core/` that are part of the pi runtime i
 **Impact**: On main, images are always sent regardless of model capability. Wastes tokens on non-vision models.
 
 **Bridge**: ⚠️ Cannot override the core `read` tool from an extension. Options:
+
 1. Register a custom `read` tool that wraps the built-in (risky - conflicts with core)
 2. **Propose upstream PR**: Add a simple filter in the core `read` tool
 3. **Accept the gap**: Most models handle image content gracefully even if they can't "see" it
@@ -139,6 +143,7 @@ These are changes to files deep in `src/core/` that are part of the pi runtime i
 **Change**: Major rewrite of compaction logic - better summarization, branch summarization fixes.
 
 **Bridge**: ⚠️ The core compaction function can't be overridden. BUT:
+
 - The `session_before_compact` event lets extensions provide custom summaries
 - The `session_compact` event lets extensions react to compaction results
 - pi-braid could provide a custom compaction prompt via `session_before_compact`
@@ -171,27 +176,27 @@ Mode-specific changes for streaming, compaction, etc.
 
 ### Category E: Infrastructure 🟠 Not Extractable, Low Impact
 
-| File | Change | Bridge |
-|------|--------|--------|
-| `agent-session.ts` (+408/-158) | Time tracking, utility model, skill block parsing | ❌ Accept |
-| `agent-session-runtime.ts` (+222/-179) | Runtime bootstrap rewrite | ❌ Accept |
-| `resource-loader.ts` (+234/-210) | Bundled extension loading, skills | ❌ Accept |
-| `main.ts` (+534/-289) | CLI args, runtime bootstrap | ❌ Accept |
-| `tool-analytics.ts` (+668) | Entirely new analytics module | ✅ Could rebuild as extension |
-| `parse-tags.ts` (+109) | New tag parsing utility | ✅ Could bundle locally |
-| `keybindings.ts` (+18/-1) | Minor keybinding changes | ❌ Accept |
-| `slash-commands.ts` (+5) | Minor additions | ❌ Accept |
-| `cli/args.ts` (+65/-7) | CLI arg changes for model selectors | ❌ Accept |
+| File                                   | Change                                            | Bridge                        |
+| -------------------------------------- | ------------------------------------------------- | ----------------------------- |
+| `agent-session.ts` (+408/-158)         | Time tracking, utility model, skill block parsing | ❌ Accept                     |
+| `agent-session-runtime.ts` (+222/-179) | Runtime bootstrap rewrite                         | ❌ Accept                     |
+| `resource-loader.ts` (+234/-210)       | Bundled extension loading, skills                 | ❌ Accept                     |
+| `main.ts` (+534/-289)                  | CLI args, runtime bootstrap                       | ❌ Accept                     |
+| `tool-analytics.ts` (+668)             | Entirely new analytics module                     | ✅ Could rebuild as extension |
+| `parse-tags.ts` (+109)                 | New tag parsing utility                           | ✅ Could bundle locally       |
+| `keybindings.ts` (+18/-1)              | Minor keybinding changes                          | ❌ Accept                     |
+| `slash-commands.ts` (+5)               | Minor additions                                   | ❌ Accept                     |
+| `cli/args.ts` (+65/-7)                 | CLI arg changes for model selectors               | ❌ Accept                     |
 
 ---
 
 ### Category F: Deleted Code
 
-| File | Change | Bridge |
-|------|--------|--------|
-| `package-manager-cli.ts` (-270) | Removed entirely | ✅ Not needed |
-| `migrations.ts` (-19) | Removed keybinding migration | ✅ Not needed |
-| `AGENTS.md` | Removed, replaced by system prompt identity framing | ✅ Covered by prompt-builder |
+| File                            | Change                                              | Bridge                       |
+| ------------------------------- | --------------------------------------------------- | ---------------------------- |
+| `package-manager-cli.ts` (-270) | Removed entirely                                    | ✅ Not needed                |
+| `migrations.ts` (-19)           | Removed keybinding migration                        | ✅ Not needed                |
+| `AGENTS.md`                     | Removed, replaced by system prompt identity framing | ✅ Covered by prompt-builder |
 
 ---
 
@@ -204,6 +209,7 @@ Mode-specific changes for streaming, compaction, etc.
 **Mechanism**: Uses `before_agent_start` event which returns `{ systemPrompt: "..." }`.
 
 **What it does**:
+
 1. Receives `event.systemPrompt` (the current prompt from the host)
 2. Extracts any append content (Project Context, skills from the host)
 3. Builds a new prompt with:
@@ -216,6 +222,7 @@ Mode-specific changes for streaming, compaction, etc.
 5. Returns `{ systemPrompt: newPrompt }`
 
 **Key design decisions**:
+
 - Does NOT just append text - it REPLACES the prompt entirely
 - Checks `pi.getActiveTools()` and `pi.getAllTools()` for tool-aware guidelines
 - Preserves any `# Project Context` sections from the original prompt
@@ -230,14 +237,17 @@ Mode-specific changes for streaming, compaction, etc.
 **Purpose**: Patch missing `ExtensionContext` methods and provide model selector commands.
 
 **What it patches**:
+
 - `ctx.getUtilityModel()` - Falls back to `ctx.model` then cheapest available model
 - `ctx.getVisionModel()` - Falls back to `ctx.model` (if vision-capable) then first vision model
 
 **What it adds**:
+
 - `/utility-model [pattern|clear]` - Set or show utility model
 - `/vision-model [pattern|clear]` - Set or show vision model
 
 **Model resolution priority**:
+
 1. Custom pattern from `.pi/settings.json` (e.g., `"utilityModel": "anthropic/claude-haiku-4-5"`)
 2. Current model (for utility) / current model if vision-capable (for vision)
 3. Cheapest non-reasoning available model (for utility) / first vision model (for vision)
@@ -250,17 +260,17 @@ Mode-specific changes for streaming, compaction, etc.
 
 The develop branch shows a clear progression of attempting to extract core functionality into extensions:
 
-| Commit | What |
-|--------|------|
-| `9e8d0cc` | Add 113 new builtin extensions, skills, tools, and lib modules |
-| `68f96d1` | Wire up cognitive systems to v0.65.0 API |
-| `67cbb6e33` | Adapt hooks to v0.65.0 published Agent API |
-| `36b2fca` | Remove redundant/stub tools, demote admin tools to slash commands |
-| `5c150b8` | Refactor built-in tools and extract to extensions |
-| `fa4fdbd` | Move scratchpad() to extensions |
-| `a7c97ef` | Remove AGENTS.md, refactor system prompt |
-| `c73560d` | Implement 'Implicit Framing Engineering' for system_prompt |
-| `5c12bbc` | Apply implicit framing and add skill for applying it further |
+| Commit      | What                                                              |
+| ----------- | ----------------------------------------------------------------- |
+| `9e8d0cc`   | Add 113 new builtin extensions, skills, tools, and lib modules    |
+| `68f96d1`   | Wire up cognitive systems to v0.65.0 API                          |
+| `67cbb6e33` | Adapt hooks to v0.65.0 published Agent API                        |
+| `36b2fca`   | Remove redundant/stub tools, demote admin tools to slash commands |
+| `5c150b8`   | Refactor built-in tools and extract to extensions                 |
+| `fa4fdbd`   | Move scratchpad() to extensions                                   |
+| `a7c97ef`   | Remove AGENTS.md, refactor system prompt                          |
+| `c73560d`   | Implement 'Implicit Framing Engineering' for system_prompt        |
+| `5c12bbc`   | Apply implicit framing and add skill for applying it further      |
 
 **Key insight**: The AGENTS.md was progressively gutted (81 → 44 → 0 lines) and replaced by the system prompt builder. The system prompt itself evolved from MUST/ALWAYS/NEVER directives to identity framing. This confirms our approach: the prompt is the #1 thing to capture.
 
@@ -270,21 +280,21 @@ The develop branch shows a clear progression of attempting to extract core funct
 
 The upstream branch has a stable extension API that supports everything we need:
 
-| API Method | Purpose | Available in upstream? |
-|-----------|---------|----------------------|
-| `pi.on("before_agent_start")` | Modify system prompt per-turn | ✅ Yes (commit 17cb328c) |
-| `pi.registerTool()` with `promptSnippet` | Tool descriptions in prompt | ✅ Yes (commit 8d4a49487) |
-| `pi.registerTool()` with `promptGuidelines` | Tool-specific guidelines | ✅ Yes (commit bc2fa8d6d) |
-| `pi.getAllTools()` / `pi.getActiveTools()` | Get tool info | ✅ Yes |
-| `ctx.modelRegistry.getAvailable()` | Get available models | ✅ Yes |
-| `ctx.model` | Current model | ✅ Yes |
-| `pi.registerCommand()` | Slash commands | ✅ Yes |
-| `pi.on("resources_discover")` | Inject skills | ✅ Yes (commit 3e5d91f2) |
-| `pi.on("session_start")` | Lifecycle hook | ✅ Yes |
-| `pi.on("tool_call")` | Tool interception | ✅ Yes |
-| `ctx.settingsManager` | Read/write settings | ✅ Yes |
-| `ctx.getUtilityModel()` | **Resolve utility model** | ❌ NOT in upstream |
-| `ctx.getVisionModel()` | **Resolve vision model** | ❌ NOT in upstream |
+| API Method                                  | Purpose                       | Available in upstream?    |
+| ------------------------------------------- | ----------------------------- | ------------------------- |
+| `pi.on("before_agent_start")`               | Modify system prompt per-turn | ✅ Yes (commit 17cb328c)  |
+| `pi.registerTool()` with `promptSnippet`    | Tool descriptions in prompt   | ✅ Yes (commit 8d4a49487) |
+| `pi.registerTool()` with `promptGuidelines` | Tool-specific guidelines      | ✅ Yes (commit bc2fa8d6d) |
+| `pi.getAllTools()` / `pi.getActiveTools()`  | Get tool info                 | ✅ Yes                    |
+| `ctx.modelRegistry.getAvailable()`          | Get available models          | ✅ Yes                    |
+| `ctx.model`                                 | Current model                 | ✅ Yes                    |
+| `pi.registerCommand()`                      | Slash commands                | ✅ Yes                    |
+| `pi.on("resources_discover")`               | Inject skills                 | ✅ Yes (commit 3e5d91f2)  |
+| `pi.on("session_start")`                    | Lifecycle hook                | ✅ Yes                    |
+| `pi.on("tool_call")`                        | Tool interception             | ✅ Yes                    |
+| `ctx.settingsManager`                       | Read/write settings           | ✅ Yes                    |
+| `ctx.getUtilityModel()`                     | **Resolve utility model**     | ❌ NOT in upstream        |
+| `ctx.getVisionModel()`                      | **Resolve vision model**      | ❌ NOT in upstream        |
 
 **Conclusion**: The extension API is sufficient for everything except `getUtilityModel`/`getVisionModel`, which we polyfill.
 
@@ -295,12 +305,15 @@ The upstream branch has a stable extension API that supports everything we need:
 These changes would benefit the entire pi ecosystem and make pi-braid simpler:
 
 ### PR 1: Vision-Aware Read Tool (Small, Low Risk)
+
 Add `ctx?.model?.input?.includes('image')` check in the `read` tool before sending image content. Falls back to text warning for non-vision models. ~20 lines of code.
 
 ### PR 2: getUtilityModel/getVisionModel on ExtensionContext (Medium)
+
 Add these methods to the `ExtensionContext` interface so extensions can resolve models for LLM calls without polyfills. The resolution logic (settings → model → cheapest) is well-defined and testable.
 
 ### PR 3: Dynamic cwd via ctxFactory (Small)
+
 Add optional `ctxFactory?: () => ExtensionContext | undefined` to tool factory functions so tools can resolve cwd from session context rather than closure.
 
 ---
@@ -312,6 +325,7 @@ This is a fresh review of ALL 17 commits between upstream_main (v0.66.1, the pub
 ### A. ExtensionContext API Surface
 
 Only ONE difference between upstream_main and develop:
+
 - `ctx.getUtilityModel()` - **NEW on develop only** → Polyfilled by pi-braid ✅
 - `ctx.getVisionModel()` - **NEW on develop only** → Polyfilled by pi-braid ✅
 
@@ -320,6 +334,7 @@ All other `ExtensionContext` methods are identical.
 ### B. ExtensionAPI Events
 
 Only ONE difference:
+
 - `session_directory` event - **NEW on develop only**. Custom session directory resolution via `before_agent_start` alternatives. **NOT on upstream_main**.
 
 All other events are identical.
@@ -327,6 +342,7 @@ All other events are identical.
 ### C. Input Event - `confirm` Action
 
 **Develop adds a new result type** to `InputEventResult`:
+
 ```typescript
 | { action: "confirm"; text: string; images?: ImageContent[] }
 ```
@@ -337,14 +353,14 @@ pi-braid does NOT currently use this. Could be added as an enhancement.
 
 ### D. Slash Commands - What Exists Where
 
-| Command | upstream_main | develop |
-|---------|-------------|---------|
-| `/utility-model` | ❌ Not built-in | ✅ Built-in |
-| `/vision-model` | ❌ Not built-in | ✅ Built-in |
-| `/retry` | ❌ Not built-in | ✅ Built-in (core engine) |
-| `/analytics` | ❌ Not built-in | ✅ Built-in (needs ToolAnalytics) |
-| `/analytics:all` | ❌ Not built-in | ✅ Built-in (needs ToolAnalytics) |
-| `/compact`, `/new`, `/resume`, etc. | ✅ | ✅ |
+| Command                             | upstream_main   | develop                           |
+| ----------------------------------- | --------------- | --------------------------------- |
+| `/utility-model`                    | ❌ Not built-in | ✅ Built-in                       |
+| `/vision-model`                     | ❌ Not built-in | ✅ Built-in                       |
+| `/retry`                            | ❌ Not built-in | ✅ Built-in (core engine)         |
+| `/analytics`                        | ❌ Not built-in | ✅ Built-in (needs ToolAnalytics) |
+| `/analytics:all`                    | ❌ Not built-in | ✅ Built-in (needs ToolAnalytics) |
+| `/compact`, `/new`, `/resume`, etc. | ✅              | ✅                                |
 
 **pi-braid provides `/utility-model` and `/vision-model`** as extension commands - works on upstream_main.
 
@@ -353,6 +369,7 @@ pi-braid does NOT currently use this. Could be added as an enhancement.
 **Develop branch**: `/analytics` and `/analytics:all` require the core `ToolAnalytics` class.
 
 **pi-braid workaround**: Created a self-contained `analytics` extension at `src/extensions/analytics/index.ts` that provides:
+
 - `/analytics` - current session stats (tool calls, durations, success rates, sequences)
 - `/analytics:all` - historical summary across all sessions
 - Uses `tool_execution_start` and `tool_execution_end` events to track timing and success
@@ -365,10 +382,12 @@ This is a simplified version of the core ToolAnalytics but provides the same com
 **Develop branch**: `/retry` uses `session.continue()` to remove the last assistant message and re-run that turn.
 
 **upstream_main limitation**: `session.continue()` is NOT available in upstream_main. The extension can only:
+
 1. Call `ctx.abort()` to stop the current operation
 2. Send a steer message to inform the user
 
 **pi-braid workaround**:
+
 - Provides `/retry` command as an extension command
 - Aborts the current operation via `ctx.abort()`
 - Sends a steer message explaining the limitation and workarounds:
@@ -381,6 +400,7 @@ This is a simplified version of the core ToolAnalytics but provides the same com
 ### E. Extension Loader Runtime Stubs (CRITICAL BEHAVIORAL DIFFERENCE)
 
 **On upstream_main**: Calling action methods during extension factory loading **THROWS**:
+
 ```typescript
 sendMessage: notInitialized, // throws "Extension runtime not initialized"
 sendUserMessage: notInitialized,
@@ -392,6 +412,7 @@ getThinkingLevel: notInitialized, // throws
 ```
 
 **On develop**: Same methods return **safe defaults**:
+
 ```typescript
 sendMessage: () => {},
 sendUserMessage: () => {},
@@ -409,6 +430,7 @@ getThinkingLevel: () => "medium",
 **On develop**: `resource-loader.ts` explicitly calls `loadBundledExtensions(BUILT_IN_EXTENSIONS, ...)` to load 18 built-in extensions from the bundled dist.
 
 **On upstream_main**: Extensions are loaded ONLY from:
+
 - `additionalExtensionPaths` passed to `ResourceLoader`
 - `extensionFactories` passed to `ResourceLoader`
 
@@ -417,6 +439,7 @@ getThinkingLevel: () => "medium",
 ### G. settings-manager.ts - getUtilityModel/setUtilityModel
 
 These methods exist on `SettingsManager` (not just ExtensionContext):
+
 - `settingsManager.getUtilityModel()` → returns `settings.utilityModel`
 - `settingsManager.setUtilityModel(pattern)` → sets and persists to `settings.json`
 
@@ -425,6 +448,7 @@ pi-braid's polyfill reads `settingsManager.get("utilityModel")` which should wor
 ### H. Compact Improvements (Context Chunking)
 
 **Develop compaction** (+234 lines):
+
 - When conversation exceeds model's context window, chunks messages and summarizes each chunk
 - Then merges summaries into final summary
 - Better token estimation and chunking algorithm
@@ -474,6 +498,7 @@ a4769416d  cleanup: remove reasoning alias, dead tools (captured)
 ## 9. File Manifest
 
 ### pi-braid Structure
+
 ```
 pi-braid/
 ├── package.json              # pi.extensions = ["./src/index.ts"]
@@ -505,7 +530,9 @@ pi-braid/
 ```
 
 ### Import Mapping
+
 All private imports remapped to public API:
+
 - `../../../extensions/types.js` → `@mariozechner/pi-coding-agent`
 - `../../../../extensions/types.js` → `@mariozechner/pi-coding-agent`
 - `../../lib/*.js` → kept as-is (bundled locally)

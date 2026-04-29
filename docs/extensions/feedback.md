@@ -11,20 +11,21 @@ Structured feedback collection — prompts the user for task-quality feedback at
 ## Architecture
 
 Two feedback triggers:
+
 1. **Passive** — `feedback_status` tool (agent queries current feedback state)
 2. **Active** — `turn_end` event: periodically asks "Was that response helpful?" using interactive TUI components
 
 ## Events Handled
 
-| Event | Handler |
-|-------|---------|
-| `turn_end` | Every ~5 turns, prompt user for structured feedback via interactive message |
-| `session_shutdown` | Flush pending feedback state |
+| Event              | Handler                                                                     |
+| ------------------ | --------------------------------------------------------------------------- |
+| `turn_end`         | Every ~5 turns, prompt user for structured feedback via interactive message |
+| `session_shutdown` | Flush pending feedback state                                                |
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
+| Tool              | Description                                                                               |
+| ----------------- | ----------------------------------------------------------------------------------------- |
 | `feedback_status` | Returns current feedback counts (helpful, unhelpful, neutral) and last feedback timestamp |
 
 ## Key Patterns

@@ -8,9 +8,11 @@
 ## Core Papers
 
 ### Autogenesis (2604.15034)
+
 **Finding**: Self-evolution needs RSPL + SEPL with rollback
 
 **Key architecture**:
+
 ```
 RSPL: Resource Substrate Protocol Layer
     - Resources have explicit state
@@ -24,42 +26,45 @@ SEPL: Self Evolution Protocol Layer
 ```
 
 **Minimal implementation**:
+
 ```typescript
 interface VersionedState<T> {
-    current: T;
-    history: Array<{
-        value: T;
-        timestamp: number;
-        lineage: string;
-    }>;
+  current: T;
+  history: Array<{
+    value: T;
+    timestamp: number;
+    lineage: string;
+  }>;
 }
 
 function safeEvolve<T>(
-    state: VersionedState<T>,
-    propose: (current: T) => T,
-    assess: (proposed: T) => boolean
+  state: VersionedState<T>,
+  propose: (current: T) => T,
+  assess: (proposed: T) => boolean,
 ): T {
-    const proposed = propose(state.current);
-    if (!assess(proposed)) {
-        throw new Error("Assessment failed");
-    }
-    // Save current for rollback
-    state.history.push({
-        value: state.current,
-        timestamp: Date.now(),
-        lineage: generateLineage()
-    });
-    state.current = proposed;
-    return proposed;
+  const proposed = propose(state.current);
+  if (!assess(proposed)) {
+    throw new Error("Assessment failed");
+  }
+  // Save current for rollback
+  state.history.push({
+    value: state.current,
+    timestamp: Date.now(),
+    lineage: generateLineage(),
+  });
+  state.current = proposed;
+  return proposed;
 }
 ```
 
 **pi-braid connection**: evolve extension needs version tracking + rollback
 
 ### PriHA Query Optimizer (2604.14215)
+
 **Finding**: Tri-stage pipeline: Query Optimization → DRAG → Context Reorganization
 
 **Stages**:
+
 1. **Query Optimizer**: Generalize user intent → sub-queries (SIMPLE/COMPLEX routing)
 2. **DRAG**: Dual Retrieval — mixed-source retrieval
 3. **Context Reorganization**: Generate with reorganized context
@@ -67,33 +72,36 @@ function safeEvolve<T>(
 **Key insight**: Fast heuristic classification (no LLM) for simple queries, LLM for complex.
 
 **pi-braid connection**: Refactor our deleted query-optimizer for CODING domain:
+
 ```typescript
 const CODING_INTENT_PATTERNS = {
-    SIMPLE: [
-        /^(list|find|show|get)\s+(me\s+)?(the\s+)?(\w+)/i,
-        /\b(file|directory|folder|path)\b/i,
-        /\b(function|class|variable|import)\b/i,
-    ],
-    COMPLEX: [
-        /^(implement|build|create|refactor|optimize)\s+/i,
-        /\b(architecture|design|pattern|system)\b/i,
-    ]
+  SIMPLE: [
+    /^(list|find|show|get)\s+(me\s+)?(the\s+)?(\w+)/i,
+    /\b(file|directory|folder|path)\b/i,
+    /\b(function|class|variable|import)\b/i,
+  ],
+  COMPLEX: [
+    /^(implement|build|create|refactor|optimize)\s+/i,
+    /\b(architecture|design|pattern|system)\b/i,
+  ],
 };
 ```
 
 ### CROP: Token-Efficient Reasoning (2604.14214)
+
 **Finding**: 80.6% token reduction via length regularization
 
 **Key technique**: Regularization on response length forces optimization to produce concise prompts with critical information only.
 
 **pi-braid connection**: CROP-style whispers:
+
 ```typescript
 // Minimal signals instead of explanations:
 const MINIMAL_WHISPER = {
-    "verbose": "Concise.",
-    "off_topic": "Refocus.",
-    "uncertain": "Verify.",
-    "contradicting": "Check consistency."
+  verbose: "Concise.",
+  off_topic: "Refocus.",
+  uncertain: "Verify.",
+  contradicting: "Check consistency.",
 };
 ```
 
@@ -135,12 +143,12 @@ const MINIMAL_WHISPER = {
 
 ## Implementation Priority
 
-| Component | Effort | Impact | Priority |
-|----------|--------|--------|----------|
-| Versioned evolve state | Low | High | P1 |
-| CROP whispers | Low | Medium | P1 |
-| PriHA routing | Medium | High | P2 |
-| Autogenesis SEPL | High | Medium | P3 |
+| Component              | Effort | Impact | Priority |
+| ---------------------- | ------ | ------ | -------- |
+| Versioned evolve state | Low    | High   | P1       |
+| CROP whispers          | Low    | Medium | P1       |
+| PriHA routing          | Medium | High   | P2       |
+| Autogenesis SEPL       | High   | Medium | P3       |
 
 ---
 

@@ -14,33 +14,34 @@ Direct CDP-over-WebSocket communication with Chrome. Auto-starts Chrome if not a
 
 ## Events Handled
 
-| Event | Handler |
-|-------|---------|
+| Event         | Handler                                     |
+| ------------- | ------------------------------------------- |
 | `session_end` | Disconnect CDP, kill spawned Chrome process |
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
-| `browser_navigate` | Navigate to URL (auto-connects if needed). Returns page title + URL |
-| `browser_snapshot` | DOM accessibility snapshot. `interactive:true` shows only buttons/inputs/links |
-| `browser_eval` | Execute JavaScript in page context, returns structured key-value output |
-| `browser_screenshot` | Capture viewport as PNG/JPEG, saves to `~/.pi/screenshots/` |
-| `browser_cookies` | List all cookies for current page |
-| `browser_content` | Extract readable text via Readability algorithm, strips navigation |
+| Tool                 | Description                                                                    |
+| -------------------- | ------------------------------------------------------------------------------ |
+| `browser_navigate`   | Navigate to URL (auto-connects if needed). Returns page title + URL            |
+| `browser_snapshot`   | DOM accessibility snapshot. `interactive:true` shows only buttons/inputs/links |
+| `browser_eval`       | Execute JavaScript in page context, returns structured key-value output        |
+| `browser_screenshot` | Capture viewport as PNG/JPEG, saves to `~/.pi/screenshots/`                    |
+| `browser_cookies`    | List all cookies for current page                                              |
+| `browser_content`    | Extract readable text via Readability algorithm, strips navigation             |
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `/browser-pick` | Interactive element picker — user clicks elements in the browser; returns CSS selector + element text |
-| `/browser-connect` | Connect to existing Chrome at port 9222 (auto-starts if absent) |
-| `/browser-disconnect` | Disconnect and clean up session |
-| `/browser-start` | Spawn Chrome with remote debugging (`--profile` for cookie sync) |
+| Command               | Description                                                                                           |
+| --------------------- | ----------------------------------------------------------------------------------------------------- |
+| `/browser-pick`       | Interactive element picker — user clicks elements in the browser; returns CSS selector + element text |
+| `/browser-connect`    | Connect to existing Chrome at port 9222 (auto-starts if absent)                                       |
+| `/browser-disconnect` | Disconnect and clean up session                                                                       |
+| `/browser-start`      | Spawn Chrome with remote debugging (`--profile` for cookie sync)                                      |
 
 ## State
 
 Module-level singleton:
+
 - `cdp: CdpClient | null` — WebSocket client to Chrome
 - `connectedTabId`, `connectedUrl` — current tab
 - `autoStartDone` — only auto-spawn once per session

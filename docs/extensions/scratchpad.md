@@ -11,21 +11,22 @@ Structured session memory — the agent's "working memory" for goals, plans, dec
 ## Architecture
 
 Module-level session-scoped state with 7 collections:
+
 - Goal, plan, decisions, hypotheses, notes, constraints, learnings
 - Task management with priorities, dependencies, and status tracking
 - Progress tracking via phase/mode indicators
 
 ## Events Handled
 
-| Event | Handler |
-|-------|---------|
+| Event           | Handler                                              |
+| --------------- | ---------------------------------------------------- |
 | `session_start` | Reset all scratchpad state, initialize fresh session |
-| `turn_end` | Auto-persist learnings if pending |
+| `turn_end`      | Auto-persist learnings if pending                    |
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
+| Tool         | Description                                                                                                                                                                                                                                                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `scratchpad` | 20+ actions: `read` (full state), `set_goal`, `add_plan`, `mark_done`, `add_decision`, `add_note`, `add_constraint`, `add_learning`, `persist_learnings`, `elevate_to_goal`, `elevate_to_plan`, `task_add`, `task_list`, `task_complete`, `task_fail`, `task_next`, `task_remove`, `task_stats`, `task_clear`, `update_session` |
 
 ## Key Patterns

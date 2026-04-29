@@ -4,13 +4,13 @@
 
 ## Key Functions
 
-| Function | Description |
-|----------|-------------|
-| `getMetacognitiveState(ctx)` | Get or create state object |
-| `updateConfidence(ctx, delta)` | Adjust confidence by +/- delta |
-| `addKnowledgeGap(ctx, gap)` | Record that something is unknown |
-| `addStrength(ctx, strength)` | Record something agent is good at |
-| `addWeakness(ctx, weakness)` | Record something agent should improve |
+| Function                              | Description                                                  |
+| ------------------------------------- | ------------------------------------------------------------ |
+| `getMetacognitiveState(ctx)`          | Get or create state object                                   |
+| `updateConfidence(ctx, delta)`        | Adjust confidence by +/- delta                               |
+| `addKnowledgeGap(ctx, gap)`           | Record that something is unknown                             |
+| `addStrength(ctx, strength)`          | Record something agent is good at                            |
+| `addWeakness(ctx, weakness)`          | Record something agent should improve                        |
 | `getConfidenceLevel(confidenceScore)` | Map numeric score to text: `low`/`medium`/`high`/`very_high` |
 
 ## State

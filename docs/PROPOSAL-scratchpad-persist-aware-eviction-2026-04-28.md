@@ -22,7 +22,7 @@ function capPush<T>(arr: T[], item: T, max: number): number {
   let pruned = 0;
   if (arr.length >= max) {
     pruned = 1;
-    arr.splice(0, 1);   // ← evicts INDEX 0 (oldest), blind to any field
+    arr.splice(0, 1); // ← evicts INDEX 0 (oldest), blind to any field
   }
   arr.push(item);
   return pruned;
@@ -33,15 +33,15 @@ function capPush<T>(arr: T[], item: T, max: number): number {
 
 ### Affected Collections
 
-| Collection | Safety Signal | Risk |
-|---|---|---|
-| `key_learnings` | `persisted: boolean` | 🔴 HIGH — unpersisted data lost forever |
-| `decisions` | None | 🟡 MEDIUM — already in context |
-| `hypotheses` | None | 🟢 LOW — intentionally ephemeral |
-| `notes` | None | 🟢 LOW — intentionally ephemeral |
-| `constraints` | `expires_at` | 🟢 LOW — manual + TTL |
-| `tasks` | tasks.json file | 🟡 MEDIUM — separate persistence |
-| `goal`/`prior_goal` | None (not arrays) | 🟢 NONE |
+| Collection          | Safety Signal        | Risk                                    |
+| ------------------- | -------------------- | --------------------------------------- |
+| `key_learnings`     | `persisted: boolean` | 🔴 HIGH — unpersisted data lost forever |
+| `decisions`         | None                 | 🟡 MEDIUM — already in context          |
+| `hypotheses`        | None                 | 🟢 LOW — intentionally ephemeral        |
+| `notes`             | None                 | 🟢 LOW — intentionally ephemeral        |
+| `constraints`       | `expires_at`         | 🟢 LOW — manual + TTL                   |
+| `tasks`             | tasks.json file      | 🟡 MEDIUM — separate persistence        |
+| `goal`/`prior_goal` | None (not arrays)    | 🟢 NONE                                 |
 
 Only `key_learnings` has a meaningful safety signal that gets ignored during eviction.
 
@@ -117,6 +117,7 @@ case "persist_learnings": {
 ```
 
 **Problem:** This is advisory only. The agent must:
+
 1. Call `scratchpad(action="persist_learnings")`
 2. Then call `memory_store` for each item
 3. Then mark each as `persisted: true`
@@ -170,11 +171,13 @@ Note: `findIndex` on each eviction is O(n) but MAX_LEARNINGS=50, so at most 50 i
 Location: `index.ts` ~line 719
 
 Replace:
+
 ```typescript
 capPush<KeyLearning>(pad.key_learnings, learning, RECYCLE.MAX_LEARNINGS);
 ```
 
 With:
+
 ```typescript
 const pruned = persistAwareEvict(pad.key_learnings, RECYCLE.MAX_LEARNINGS);
 pad.key_learnings.push(learning);
@@ -188,6 +191,7 @@ pad.key_learnings.push(learning);
 Location: `index.ts` ~line 196
 
 Replace:
+
 ```typescript
 if (pad.key_learnings.length > RECYCLE.MAX_LEARNINGS) {
   stats.pruned_learnings = pad.key_learnings.length - RECYCLE.MAX_LEARNINGS;
@@ -196,6 +200,7 @@ if (pad.key_learnings.length > RECYCLE.MAX_LEARNINGS) {
 ```
 
 With:
+
 ```typescript
 if (pad.key_learnings.length > RECYCLE.MAX_LEARNINGS) {
   const target = RECYCLE.MAX_LEARNINGS;
@@ -213,8 +218,8 @@ if (pad.key_learnings.length > RECYCLE.MAX_LEARNINGS) {
 ```typescript
 type RecycleStats = {
   // ... existing fields ...
-  evicted_unpersisted: number;  // new
-  evicted_persisted: number;    // new
+  evicted_unpersisted: number; // new
+  evicted_persisted: number; // new
 };
 ```
 
@@ -224,15 +229,16 @@ This lets the agent know what was evicted and whether it needs to recover from m
 
 ## Alternative Approaches Considered
 
-| Approach | Why rejected |
-|---|---|
-| Hard limit with error (block add at max) | Blocks agent workflow; less graceful |
-| Two-tier cap (warn at 80%, block at 100%) | More complexity for marginal benefit |
-| Separate unpersisted buffer (ring buffer) | Major refactor; over-engineered |
-| Archive evicted to disk | Adds storage complexity, recovery path unclear |
-| Accept as-is | Silent data loss continues |
+| Approach                                  | Why rejected                                   |
+| ----------------------------------------- | ---------------------------------------------- |
+| Hard limit with error (block add at max)  | Blocks agent workflow; less graceful           |
+| Two-tier cap (warn at 80%, block at 100%) | More complexity for marginal benefit           |
+| Separate unpersisted buffer (ring buffer) | Major refactor; over-engineered                |
+| Archive evicted to disk                   | Adds storage complexity, recovery path unclear |
+| Accept as-is                              | Silent data loss continues                     |
 
 Persist-aware eviction was chosen because:
+
 - Minimal code change (~30 lines)
 - Zero data loss for unpersisted learnings
 - Preserves agent awareness of persist status
@@ -253,7 +259,7 @@ After implementation, verify:
 
 ```javascript
 // Suggested test cases (add to test-scratchpad.mjs or new file)
-const { persistAwareEvict } = await import('./dist/extensions/core/scratchpad/index.js');
+const { persistAwareEvict } = await import("./dist/extensions/core/scratchpad/index.js");
 
 // Test 1: Evicts unpersisted first
 const arr1 = [
@@ -263,7 +269,7 @@ const arr1 = [
 ];
 persistAwareEvict(arr1, 2);
 assert(arr1.length === 2);
-assert(arr1[0].id === "2");  // oldest unpersisted (idx 1) evicted
+assert(arr1[0].id === "2"); // oldest unpersisted (idx 1) evicted
 assert(arr1[1].id === "3");
 
 // Test 2: All persisted — fallback to oldest
@@ -273,7 +279,7 @@ const arr2 = [
 ];
 persistAwareEvict(arr2, 1);
 assert(arr2.length === 1);
-assert(arr2[0].id === "2");  // oldest evicted
+assert(arr2[0].id === "2"); // oldest evicted
 
 // Test 3: Mixed — evict all unpersisted first
 const arr3 = [
@@ -293,10 +299,10 @@ assert(arr3[1].id === "4");
 
 ## Files to Modify
 
-| File | Change |
-|---|---|
+| File                                      | Change                                                                 |
+| ----------------------------------------- | ---------------------------------------------------------------------- |
 | `src/extensions/core/scratchpad/index.ts` | Add `persistAwareEvict()`, fix `add_learning`, fix `scratchpadClean()` |
-| `test/runtime/test-scratchpad.mjs` | Add verification tests (or create new test file) |
+| `test/runtime/test-scratchpad.mjs`        | Add verification tests (or create new test file)                       |
 
 No other extensions affected. No API changes. No breaking changes.
 

@@ -98,12 +98,12 @@ const state = getExtensionState(ctx, "my-ext", () => ({
 
 ## Event Reference
 
-| Event | When | Use for |
-|-------|------|---------|
-| `session_start` | New session begins | Initialize state, recover from entries |
-| `turn_end` | Turn completes | Record metrics, update state |
-| `agent_end` | Agent finishes responding | Capture errors, trigger retries |
-| `before_agent_start` | Before new turn | Build system prompt, inject context |
+| Event                | When                      | Use for                                |
+| -------------------- | ------------------------- | -------------------------------------- |
+| `session_start`      | New session begins        | Initialize state, recover from entries |
+| `turn_end`           | Turn completes            | Record metrics, update state           |
+| `agent_end`          | Agent finishes responding | Capture errors, trigger retries        |
+| `before_agent_start` | Before new turn           | Build system prompt, inject context    |
 
 ## Error Handling
 

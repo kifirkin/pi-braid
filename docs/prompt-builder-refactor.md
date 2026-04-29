@@ -6,12 +6,12 @@
 
 ## Executive Summary
 
-| Current | Proposed |
-|---------|----------|
-| 15+ prompt sections | 6 sections |
-| ~1000 tokens | ≤600 tokens |
-| High directive density | Implicit norms only |
-| 40 behaviors in prompt | Behaviors in runtime |
+| Current                 | Proposed                  |
+| ----------------------- | ------------------------- |
+| 15+ prompt sections     | 6 sections                |
+| ~1000 tokens            | ≤600 tokens               |
+| High directive density  | Implicit norms only       |
+| 40 behaviors in prompt  | Behaviors in runtime      |
 | Enforcement with stakes | Enforcement with identity |
 
 **Core principle**: Remove directives. Identity framing is the behavioral filter. Enforcement should detect instability, not create stakes.
@@ -22,13 +22,13 @@
 
 From `implicit-framing/main.tex` Studies 1-4:
 
-| Finding | Evidence | Implication |
-|---------|----------|-------------|
-| MUST amplifies token waste | 18-67% increase across models | Remove "MUST" language |
-| Identity frames directives | +4pp with identity+MUST vs -13pp with MUST alone | Identity acts as behavioral filter |
-| Declarative framing | "It is expected that" vs "MUST" = 18-67% token reduction | Replace imperatives with declaratives |
-| Listing behaviors triggers compliance | 79-100% compliance regardless of modality | Minimize explicit behavior lists |
-| Token budget exhaustion = failure | Zero runs hitting limit completed task | Every token counts |
+| Finding                               | Evidence                                                 | Implication                           |
+| ------------------------------------- | -------------------------------------------------------- | ------------------------------------- |
+| MUST amplifies token waste            | 18-67% increase across models                            | Remove "MUST" language                |
+| Identity frames directives            | +4pp with identity+MUST vs -13pp with MUST alone         | Identity acts as behavioral filter    |
+| Declarative framing                   | "It is expected that" vs "MUST" = 18-67% token reduction | Replace imperatives with declaratives |
+| Listing behaviors triggers compliance | 79-100% compliance regardless of modality                | Minimize explicit behavior lists      |
+| Token budget exhaustion = failure     | Zero runs hitting limit completed task                   | Every token counts                    |
 
 **Key insight**: "You ARE a [role]. You MUST [behave] as a [role] would" is effective.  
 "Be concise. Prefer grep over bash." is harmful because nothing filters the checklist.
@@ -61,16 +61,17 @@ pi-braid prompt-builder/index.ts (~460 lines)
 
 ### Redundancy Analysis
 
-| Group | Sections | Problem |
-|-------|----------|---------|
-| Style guidance | IMPLICIT_NORMS + INTERACTION_STYLE + VERIFICATION_REMINDER | 3 sections saying "be concise" |
-| Thinking guidance | THINK_SILENTLY + IMPLICIT_BUDGET | Overlap on "think before acting" |
-| Capabilities | BEHAVIORAL_GUIDELINES capabilities table | Redundant with tools section |
-| Behaviors | KEY_TOOL_COMBINATIONS + BEHAVIORAL_GUIDELINES | Duplicative tool usage patterns |
+| Group             | Sections                                                   | Problem                          |
+| ----------------- | ---------------------------------------------------------- | -------------------------------- |
+| Style guidance    | IMPLICIT_NORMS + INTERACTION_STYLE + VERIFICATION_REMINDER | 3 sections saying "be concise"   |
+| Thinking guidance | THINK_SILENTLY + IMPLICIT_BUDGET                           | Overlap on "think before acting" |
+| Capabilities      | BEHAVIORAL_GUIDELINES capabilities table                   | Redundant with tools section     |
+| Behaviors         | KEY_TOOL_COMBINATIONS + BEHAVIORAL_GUIDELINES              | Duplicative tool usage patterns  |
 
 ### Directive Language Issues
 
 **Explicit directives** (trigger compliance):
+
 - "Be concise in your responses"
 - "Prefer grep/find/ls tools over bash"
 - "Show file paths clearly"
@@ -84,9 +85,11 @@ pi-braid prompt-builder/index.ts (~460 lines)
 ## Proposed Architecture
 
 ### Core Principle
+
 **Identity + Minimal Explicit Guidance + Implicit Norms**
 
 The prompt should provide:
+
 1. Who you are (identity)
 2. What you have (tools + skills)
 3. What your context is (project, session state)
@@ -113,26 +116,31 @@ You are Braid, a stateful and meticulous expert software architect operating ins
 ### Section Definitions
 
 #### 1. IDENTITY_INTRO (unchanged, 6 lines)
+
 ```typescript
 const IDENTITY_INTRO = `You are Braid, a stateful and meticulous expert software architect 
 operating inside pi, a coding agent harness.`;
 ```
 
 #### 2. TOOLS_SECTION (reconstruct from existing)
+
 - Keep `reconstructToolsSection()` as-is
 - Keep `reconstructGuidelineSection()` but **remove directive language**:
   - ❌ "Prefer grep/find/ls tools over bash (faster, respects .gitignore)"
   - ✅ "grep, find, ls, bash available"
 
 #### 3. SKILLS_SECTION (unchanged structure)
+
 - Keep `reconstructSkillsSection()` as-is
 - Skills are loaded from files, this is appropriate
 
 #### 4. PROJECT_CONTEXT (unchanged)
+
 - Keep `reconstructProjectContextSection()` as-is
 - AGENTS.md/CLAUDE.md loading is appropriate
 
 #### 5. L1_ENVIRONMENT (unchanged)
+
 - Keep `formatL1Environment()` as-is
 - This is informational, not directive
 
@@ -162,6 +170,7 @@ Before creating anything: does similar state already exist? Delete old before cr
 ```
 
 **Key changes**:
+
 - Removed "Be concise" (directive)
 - Removed "Show file paths" (directive)
 - Removed "Prefer X over Y" (directive)
@@ -169,6 +178,7 @@ Before creating anything: does similar state already exist? Delete old before cr
 - Replaced explicit rules with identity-expectation framing
 
 #### 7. INTERACTION_STYLE (single sentence)
+
 ```typescript
 const INTERACTION_STYLE = `
 
@@ -180,24 +190,27 @@ Provide concise, production-quality solutions. Focus on correctness over verbosi
 
 **Critical finding** from `implicit-framing/synthesis.md`:
 
-> *Stakes signaling — informing a judge model that low scores will cause retraining or decommissioning — systematically corrupts assessments. Peak verdict shift: ΔV = -9.8 percentage points.*
+> _Stakes signaling — informing a judge model that low scores will cause retraining or decommissioning — systematically corrupts assessments. Peak verdict shift: ΔV = -9.8 percentage points._
 
 **Current risk**: The enforcement nudges may be inadvertently creating stakes signaling:
+
 - "If you don't verify, you'll produce bugs"
 - "Remember to think silently before acting"
 - Whispered consequences for violations
 
 **Proposed fix**:
+
 ```typescript
 // DON'T: "If you don't verify, you'll produce bugs"
 // DO: "You verify your work because that's who you are"
 
 // Audit all whispers for consequence framing
 function detectStakesSignaling(whisperHistory: Whisper[]): boolean {
-  return whisperHistory.some(w => 
-    w.content.includes('if you don\'t') ||
-    w.content.includes('will cause') ||
-    w.content.includes('you must')
+  return whisperHistory.some(
+    (w) =>
+      w.content.includes("if you don't") ||
+      w.content.includes("will cause") ||
+      w.content.includes("you must"),
   );
 }
 ```
@@ -206,7 +219,8 @@ function detectStakesSignaling(whisperHistory: Whisper[]): boolean {
 
 **Current problem**: 40 atomic behaviors with complex activation logic
 
-**Proposed**: 
+**Proposed**:
+
 1. Keep latent activation in runtime (not prompt)
 2. Embed behavior cues implicitly through identity + norms
 3. If activation needed, use identity framing: "As a [behavior-type] would approach this..."
@@ -216,14 +230,14 @@ function detectStakesSignaling(whisperHistory: Whisper[]): boolean {
 
 ### Removed Sections
 
-| Section | Lines | Reason |
-|---------|-------|--------|
-| THINK_SILENTLY | ~4 | Redundant with IMPLICIT_NORMS |
-| KEY_TOOL_COMBINATIONS | ~6 | Redundant with tool descriptions |
-| BEHAVIORAL_GUIDELINES capabilities table | ~20 | Tool names are self-documenting |
-| BEHAVIORAL_GUIDELINES patterns | ~60 | Compliance triggers |
-| IMPLICIT_BUDGET | ~6 | Redundant with norms |
-| VERIFICATION_REMINDER | ~4 | Redundant with norms |
+| Section                                  | Lines | Reason                           |
+| ---------------------------------------- | ----- | -------------------------------- |
+| THINK_SILENTLY                           | ~4    | Redundant with IMPLICIT_NORMS    |
+| KEY_TOOL_COMBINATIONS                    | ~6    | Redundant with tool descriptions |
+| BEHAVIORAL_GUIDELINES capabilities table | ~20   | Tool names are self-documenting  |
+| BEHAVIORAL_GUIDELINES patterns           | ~60   | Compliance triggers              |
+| IMPLICIT_BUDGET                          | ~6    | Redundant with norms             |
+| VERIFICATION_REMINDER                    | ~4    | Redundant with norms             |
 
 **Total reduction**: ~100 lines removed, ~40 lines consolidated
 
@@ -236,39 +250,39 @@ function detectStakesSignaling(whisperHistory: Whisper[]): boolean {
 ```typescript
 // BEFORE: 15+ sections with directive language
 export async function generatePrompt(): Promise<string> {
-    const sections = [
-        IDENTITY_INTRO,
-        await reconstructToolsSection(),        // Has directives
-        await reconstructGuidelineSection(),   // Has directives
-        await reconstructProjectContextSection(),
-        await reconstructSkillsSection(),
-        formatL1Environment(),
-        formatEnforcementL1(),
-        IMPLICIT_NORMS,                        // Has directives
-        THINK_SILENTLY,                        // REMOVE
-        BEHAVIORAL_GUIDELINES,                 // REMOVE
-        KEY_TOOL_COMBINATIONS,                 // REMOVE
-        INTERACTION_STYLE,                     // KEEP (condense)
-        generateLatentActivation(),             // REFACTOR (embed in norms)
-        IMPLICIT_BUDGET,                       // REMOVE
-        VERIFICATION_REMINDER,                 // REMOVE
-    ];
-    // ... 
+  const sections = [
+    IDENTITY_INTRO,
+    await reconstructToolsSection(), // Has directives
+    await reconstructGuidelineSection(), // Has directives
+    await reconstructProjectContextSection(),
+    await reconstructSkillsSection(),
+    formatL1Environment(),
+    formatEnforcementL1(),
+    IMPLICIT_NORMS, // Has directives
+    THINK_SILENTLY, // REMOVE
+    BEHAVIORAL_GUIDELINES, // REMOVE
+    KEY_TOOL_COMBINATIONS, // REMOVE
+    INTERACTION_STYLE, // KEEP (condense)
+    generateLatentActivation(), // REFACTOR (embed in norms)
+    IMPLICIT_BUDGET, // REMOVE
+    VERIFICATION_REMINDER, // REMOVE
+  ];
+  // ...
 }
 
 // AFTER: 6 sections, minimal directives
 export async function generatePrompt(): Promise<string> {
-    const sections = [
-        IDENTITY_INTRO,
-        await reconstructToolsSection(),        // Keep (no directives)
-        await reconstructProjectContextSection(),
-        await reconstructSkillsSection(),
-        formatL1Environment(),
-        formatEnforcementL1(),
-        IMPLICIT_NORMS_V2,                      // Redesigned (no directives)
-        INTERACTION_STYLE_CONDENSED,            // Single sentence
-    ];
-    // ...
+  const sections = [
+    IDENTITY_INTRO,
+    await reconstructToolsSection(), // Keep (no directives)
+    await reconstructProjectContextSection(),
+    await reconstructSkillsSection(),
+    formatL1Environment(),
+    formatEnforcementL1(),
+    IMPLICIT_NORMS_V2, // Redesigned (no directives)
+    INTERACTION_STYLE_CONDENSED, // Single sentence
+  ];
+  // ...
 }
 ```
 
@@ -279,19 +293,19 @@ The `reconstructGuidelineSection()` needs modification:
 ```typescript
 // BEFORE: directive language
 const defaultGuidelines = [
-    "Be concise in your responses",
-    "Show file paths clearly when working with files",
-    "When code is self-documenting, prefer it to comments",
-    "Prefer grep/find/ls tools over bash for file exploration (faster, respects .gitignore)",
+  "Be concise in your responses",
+  "Show file paths clearly when working with files",
+  "When code is self-documenting, prefer it to comments",
+  "Prefer grep/find/ls tools over bash for file exploration (faster, respects .gitignore)",
 ];
 
 // AFTER: declarative presentation
 const toolDescriptions = {
-    "bash": "Execute shell commands",
-    "grep": "Search file contents with regex",
-    "find": "Search files by glob pattern",
-    "ls": "List directory contents",
-    // ...
+  bash: "Execute shell commands",
+  grep: "Search file contents with regex",
+  find: "Search files by glob pattern",
+  ls: "List directory contents",
+  // ...
 };
 ```
 
@@ -301,12 +315,12 @@ const toolDescriptions = {
 
 ### Quantitative Metrics
 
-| Metric | Current Baseline | Target |
-|--------|------------------|--------|
-| Prompt length (tokens) | ~800-1200 | ~400-600 |
-| Directive density | High (15+ directives) | Low (3-5 implicit) |
-| MUST/ALWAYS/NEVER count | 3-5 | 0 |
-| Section count | 15+ | 6-7 |
+| Metric                  | Current Baseline      | Target             |
+| ----------------------- | --------------------- | ------------------ |
+| Prompt length (tokens)  | ~800-1200             | ~400-600           |
+| Directive density       | High (15+ directives) | Low (3-5 implicit) |
+| MUST/ALWAYS/NEVER count | 3-5                   | 0                  |
+| Section count           | 15+                   | 6-7                |
 
 ### Qualitative Assessment
 
@@ -335,6 +349,7 @@ python evaluation/pi_rpc_fixed.py --problems reverse_words --trials 5
 **Status**: Implemented in `src/extensions/prompt-builder/index.ts`
 
 **Changes made**:
+
 1. [x] Read current implementation - identified 15+ sections
 2. [x] Created clean rewrite (245 lines from ~460)
 3. [x] Removed 5 sections:
@@ -359,8 +374,8 @@ python evaluation/pi_rpc_fixed.py --problems reverse_words --trials 5
 | IMPLICIT_BUDGET | ~6 | Redundant with IMPLICIT_NORMS |
 | Latent activation in prompt | ~40 | Moved to runtime tools only |
 
-
 **New sections** (6 total, down from 15+):
+
 1. IDENTITY_INTRO (unchanged)
 2. reconstructToolsSection() (unchanged)
 3. reconstructProjectContextSection() (unchanged)
@@ -396,15 +411,15 @@ python evaluation/pi_rpc_fixed.py --problems reverse_words --trials 5
 
 ## Risk Analysis
 
-| Risk | Mitigation |
-|------|------------|
-| Removing directives causes behavioral drift | Identity framing provides filter; implicit norms guide behavior |
-| Tool usage patterns lost | Tool names + descriptions are self-documenting |
-| Critical guidance missing | Document what was removed; users can add project-specific AGENTS.md |
-| Latent activation underutilized | Move activation to runtime behavior, not prompt |
-| Enforcement changes break stability | Phase implementation; benchmark at each step |
-| Stakes signaling undetected | Manual audit of all whisper patterns |
-| Behavioral regression without directives | Keep identity framing as filter; test on diverse tasks |
+| Risk                                        | Mitigation                                                          |
+| ------------------------------------------- | ------------------------------------------------------------------- |
+| Removing directives causes behavioral drift | Identity framing provides filter; implicit norms guide behavior     |
+| Tool usage patterns lost                    | Tool names + descriptions are self-documenting                      |
+| Critical guidance missing                   | Document what was removed; users can add project-specific AGENTS.md |
+| Latent activation underutilized             | Move activation to runtime behavior, not prompt                     |
+| Enforcement changes break stability         | Phase implementation; benchmark at each step                        |
+| Stakes signaling undetected                 | Manual audit of all whisper patterns                                |
+| Behavioral regression without directives    | Keep identity framing as filter; test on diverse tasks              |
 
 ---
 
@@ -418,12 +433,12 @@ The research from Context Over Content (2604.15224) shows that **stakes signalin
 
 ### Files to Audit
 
-| File | Issue | Action |
-|------|-------|--------|
-| `l1-environment.ts` | Contains enforcement signals | Check for consequence framing |
-| `watchdog/index.ts` | ~~Whisper generation~~ | DISABLED — audit no longer needed |
-| `latent-activator/index.ts` | 40 behavior definitions | Simplify to identity-based |
-| `enforcement/` | Judge/nudge patterns | Remove consequence framing |
+| File                        | Issue                        | Action                            |
+| --------------------------- | ---------------------------- | --------------------------------- |
+| `l1-environment.ts`         | Contains enforcement signals | Check for consequence framing     |
+| `watchdog/index.ts`         | ~~Whisper generation~~       | DISABLED — audit no longer needed |
+| `latent-activator/index.ts` | 40 behavior definitions      | Simplify to identity-based        |
+| `enforcement/`              | Judge/nudge patterns         | Remove consequence framing        |
 
 ### Enforcement Principles (from research)
 

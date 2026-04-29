@@ -9,24 +9,27 @@ pi-braid transforms from "extension-packed agent" to "daemon orchestrator" — a
 ## Research Papers
 
 ### Architecture
-| Paper | arXiv | Key Finding |
-|-------|-------|-------------|
-| **Aethon** | 2604.12129 | Reference-based replication, copy-on-write semantics for fast instantiation |
-| **AIBuildAI** | 2604.14455 | Manager + Designer + Coder + Tuner hierarchy |
-| **Governance by Design** | 2604.11337 | Parsonian AGIL framework for agent societies |
+
+| Paper                    | arXiv      | Key Finding                                                                 |
+| ------------------------ | ---------- | --------------------------------------------------------------------------- |
+| **Aethon**               | 2604.12129 | Reference-based replication, copy-on-write semantics for fast instantiation |
+| **AIBuildAI**            | 2604.14455 | Manager + Designer + Coder + Tuner hierarchy                                |
+| **Governance by Design** | 2604.11337 | Parsonian AGIL framework for agent societies                                |
 
 ### Coordination
-| Paper | arXiv | Key Finding |
-|-------|-------|-------------|
-| **HECTOR** | 2604.10892 | Three-layer hierarchical coordination (human ↔ fleet ↔ teams) |
-| **CoopEval** | 2604.15267 | Cooperation-sustaining mechanisms |
+
+| Paper        | arXiv      | Key Finding                                                   |
+| ------------ | ---------- | ------------------------------------------------------------- |
+| **HECTOR**   | 2604.10892 | Three-layer hierarchical coordination (human ↔ fleet ↔ teams) |
+| **CoopEval** | 2604.15267 | Cooperation-sustaining mechanisms                             |
 
 ### Supporting
-| Paper | arXiv | Key Finding |
-|-------|-------|-------------|
-| **Autogenesis** | 2604.15034 | Self-evolution with rollback |
-| **Evo-MedAgent** | 2604.14475 | Three memory stores |
-| **Credo** | 2604.14401 | Declarative belief + policy system |
+
+| Paper            | arXiv      | Key Finding                        |
+| ---------------- | ---------- | ---------------------------------- |
+| **Autogenesis**  | 2604.15034 | Self-evolution with rollback       |
+| **Evo-MedAgent** | 2604.14475 | Three memory stores                |
+| **Credo**        | 2604.14401 | Declarative belief + policy system |
 
 ## Architecture
 
@@ -53,17 +56,20 @@ pi-braid transforms from "extension-packed agent" to "daemon orchestrator" — a
 ## Key Innovations
 
 ### 1. tmux Workers
+
 - Process isolation via tmux sessions
 - Observable: `tmux capture-pane` for live output
 - Persistent: sessions survive terminal close
 - Controllable: `tmux send-keys` to inject
 
 ### 2. Raft-Inspired Leader Election
+
 - Single-machine: lock file with heartbeat
 - Multi-machine: full Raft consensus
 - Automatic failover on crash
 
 ### 3. Aethon-Inspired Instantiation
+
 - Reference-based workers (not duplication)
 - Copy-on-write memory
 - Pre-warmed worker pool

@@ -9,6 +9,7 @@
 **Solution**: Periodic "heartbeat" mechanism that proactively schedules cognitive modules based on temporal patterns and historical context.
 
 **Architecture**:
+
 ```
 Heartbeat (periodic tick)
     ↓
@@ -30,24 +31,24 @@ Our metacognition extension tries to do this ad-hoc. This paper gives the ARCHIT
 // Use heartbeat-driven proactive scheduling:
 
 interface HeartbeatScheduler {
-    modules: Map<string, CognitiveModule>;
-    schedule(modules: string[]): void;  // Which to activate, when
-    learn(history: InteractionLog): void;  // Meta-learning
+  modules: Map<string, CognitiveModule>;
+  schedule(modules: string[]): void; // Which to activate, when
+  learn(history: InteractionLog): void; // Meta-learning
 }
 
 // pi-braid metacognition becomes:
 const heartbeat = new HeartbeatScheduler({
-    modules: {
-        planner: new PlannerModule(),
-        critic: new CriticModule(),
-        recaller: new RecallerModule(),
-        dreamer: new DreamerModule(),  // Reflection/consolidation
-    }
+  modules: {
+    planner: new PlannerModule(),
+    critic: new CriticModule(),
+    recaller: new RecallerModule(),
+    dreamer: new DreamerModule(), // Reflection/consolidation
+  },
 });
 
 // Heartbeat fires every N turns
 pi.on("turn_end", () => {
-    heartbeat.tick(ctx.turnHistory);
+  heartbeat.tick(ctx.turnHistory);
 });
 
 // Scheduler decides which modules to activate
@@ -57,6 +58,7 @@ pi.on("turn_end", () => {
 **Key insight**: The `think` tool is a module. The heartbeat decides WHEN to activate it — proactively, not reactively.
 
 **Modules in pi-braid terms**:
+
 - **Planner** → existing `planner` extension
 - **Critic** → enforcement response analysis (judge)
 - **Recaller** → `session-recall` / memory retrieval
@@ -93,42 +95,43 @@ Our enforcement is imperative — rules fire when violations detected. Credo sug
 // Use declarative policies over beliefs:
 
 interface Belief {
-    id: string;
-    content: string;  // "agent_is_accurate", "context_is_clean"
-    confidence: number;  // 0-1
-    timestamp: number;
+  id: string;
+  content: string; // "agent_is_accurate", "context_is_clean"
+  confidence: number; // 0-1
+  timestamp: number;
 }
 
 interface Policy {
-    trigger: (beliefs: Belief[]) => boolean;
-    action: (ctx: ExecutionContext) => void;
+  trigger: (beliefs: Belief[]) => boolean;
+  action: (ctx: ExecutionContext) => void;
 }
 
 // Policies are declarative:
 const policies: Policy[] = [
-    {
-        trigger: (b) => b.find(b => b.id === "context_oversized")?.confidence > 0.8,
-        action: (ctx) => ctx.compact()
-    },
-    {
-        trigger: (b) => b.find(b => b.id === "output_too_verbose")?.confidence > 0.7,
-        action: (ctx) => ctx.signalReduceOutput()
-    }
+  {
+    trigger: (b) => b.find((b) => b.id === "context_oversized")?.confidence > 0.8,
+    action: (ctx) => ctx.compact(),
+  },
+  {
+    trigger: (b) => b.find((b) => b.id === "output_too_verbose")?.confidence > 0.7,
+    action: (ctx) => ctx.signalReduceOutput(),
+  },
 ];
 
 // Semantic control plane:
-const beliefStore = new BeliefStore();  // Database-backed
+const beliefStore = new BeliefStore(); // Database-backed
 const policyEngine = new PolicyEngine(beliefStore, policies);
 
 // Every turn: update beliefs, evaluate policies
 pi.on("turn_end", () => {
-    const beliefs = analyzeState(ctx);
-    beliefStore.update(beliefs);
-    policyEngine.evaluate();
+  const beliefs = analyzeState(ctx);
+  beliefStore.update(beliefs);
+  policyEngine.evaluate();
 });
 ```
 
 **Benefits over current approach**:
+
 1. **Auditable**: Every policy decision can be traced to beliefs
 2. **Composable**: Add policies without modifying core logic
 3. **Declarative**: "WHAT to do" not "HOW to do it"
@@ -143,6 +146,7 @@ pi.on("turn_end", () => {
 **Central finding**: Flat context representations + stateless retrieval = unstable RAG. Solution: persistent **evidence pool** with relevance + confidence signals.
 
 **Architecture**:
+
 ```
 Evidence Pool (persistent, structured)
     ↓
@@ -162,12 +166,12 @@ Our session-recall has memory but treats all memories flatly. Evidence-driven ap
 // Use evidence pool with confidence signals:
 
 interface Evidence {
-    content: string;
-    relevance: number;      // How relevant to current query
-    confidence: number;     // How certain the evidence is correct
-    support: string[];      // Supporting evidence IDs
-    conflict: string[];     // Contradicting evidence IDs
-    timestamp: number;
+  content: string;
+  relevance: number; // How relevant to current query
+  confidence: number; // How certain the evidence is correct
+  support: string[]; // Supporting evidence IDs
+  conflict: string[]; // Contradicting evidence IDs
+  timestamp: number;
 }
 
 // Evidence pool:
@@ -175,11 +179,11 @@ const evidencePool = new EvidencePool();
 
 // Add evidence with signals:
 evidencePool.add({
-    content: "project uses TypeScript",
-    relevance: 0.9,
-    confidence: 0.8,
-    support: [],
-    conflict: []
+  content: "project uses TypeScript",
+  relevance: 0.9,
+  confidence: 0.8,
+  support: [],
+  conflict: [],
 });
 
 // Deficiency analysis:
@@ -188,7 +192,7 @@ const conflicts = evidencePool.findConflicts();
 
 // Query refinement:
 if (gaps.length > 0 || conflicts.length > 0) {
-    refineQuery({ gaps, conflicts });
+  refineQuery({ gaps, conflicts });
 }
 ```
 
@@ -201,6 +205,7 @@ if (gaps.length > 0 || conflicts.length > 0) {
 **This is the paper behind our deleted `query-optimizer` extension.** Now we have the actual paper, not just the extension's broken implementation.
 
 **Key contribution**: Tri-stage pipeline:
+
 1. **Query Optimizer**: Generalize user intent → sub-queries (SIMPLE/COMPLEX routing)
 2. **DRAG**: Dual Retrieval — mixed-source retrieval
 3. **Context Reorganization**: Generate with reorganized context
@@ -214,16 +219,16 @@ For pi-braid, we need CODING domain patterns:
 ```typescript
 // What we need for pi-braid (not healthcare):
 const CODING_INTENT_PATTERNS = {
-    SIMPLE: [
-        /^(list|find|show|get)\s+(me\s+)?(the\s+)?(\w+)/i,  // Simple queries
-        /\b(file|directory|folder|path)\b/i,  // File system
-        /\b(function|class|variable|import)\b/i,  // Code structure
-    ],
-    COMPLEX: [
-        /^(implement|build|create|refactor|optimize)\s+/i,  // Complex tasks
-        /\b(architecture|design|pattern|system)\b/i,
-        /\b(error|bug|fix|debug)\b.*\b(trace|root|cause)\b/i,
-    ]
+  SIMPLE: [
+    /^(list|find|show|get)\s+(me\s+)?(the\s+)?(\w+)/i, // Simple queries
+    /\b(file|directory|folder|path)\b/i, // File system
+    /\b(function|class|variable|import)\b/i, // Code structure
+  ],
+  COMPLEX: [
+    /^(implement|build|create|refactor|optimize)\s+/i, // Complex tasks
+    /\b(architecture|design|pattern|system)\b/i,
+    /\b(error|bug|fix|debug)\b.*\b(trace|root|cause)\b/i,
+  ],
 };
 ```
 
@@ -248,11 +253,11 @@ const CODING_INTENT_PATTERNS = {
 // Use: minimal signal that triggers self-correction
 
 const MINIMAL_WHISPER = {
-    // Very short, high-impact signals:
-    "verbose": "Concise.",
-    "off_topic": "Refocus.",
-    "uncertain": "Verify.",
-    "contradicting": "Check consistency."
+  // Very short, high-impact signals:
+  verbose: "Concise.",
+  off_topic: "Refocus.",
+  uncertain: "Verify.",
+  contradicting: "Check consistency.",
 };
 ```
 
@@ -300,13 +305,13 @@ Combining all papers, here's the architecture for pi-braid's next generation:
 
 ## Implementation Priority
 
-| Paper | Impact | Effort | Priority |
-|-------|--------|--------|----------|
-| 2604.14178 Heartbeat | CRITICAL — solves reactive → proactive | Medium | P0 |
-| 2604.14401 Credo | HIGH — declarative enforcement | Medium | P1 |
-| 2604.14170 Evidence Pool | MEDIUM — better memory | Medium | P2 |
-| 2604.14214 CROP | MEDIUM — concise whispers | Low | P2 |
-| 2604.14215 PriHA | MEDIUM — query optimizer refactor | Medium | P3 |
+| Paper                    | Impact                                 | Effort | Priority |
+| ------------------------ | -------------------------------------- | ------ | -------- |
+| 2604.14178 Heartbeat     | CRITICAL — solves reactive → proactive | Medium | P0       |
+| 2604.14401 Credo         | HIGH — declarative enforcement         | Medium | P1       |
+| 2604.14170 Evidence Pool | MEDIUM — better memory                 | Medium | P2       |
+| 2604.14214 CROP          | MEDIUM — concise whispers              | Low    | P2       |
+| 2604.14215 PriHA         | MEDIUM — query optimizer refactor      | Medium | P3       |
 
 ---
 

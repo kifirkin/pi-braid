@@ -38,7 +38,11 @@ import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import { loadSkills } from "@mariozechner/pi-coding-agent";
 import { SKILLS_DIR } from "../../../index.js";
 import { gatherL1State, formatL1Environment } from "./l1-environment.js";
-import { loadScratchpadFromDisk, projectSlugFromCwd, formatScratchpad } from "../../core/scratchpad/index.js";
+import {
+  loadScratchpadFromDisk,
+  projectSlugFromCwd,
+  formatScratchpad,
+} from "../../core/scratchpad/index.js";
 
 // ── Identity (THE key difference from native) ─────────────────────────────────
 // Identity framing is the behavioral filter - not directives
@@ -116,18 +120,21 @@ High-stakes actions deserve a 3-second pause. Drift is invisible — check your 
 import { getExtensionState } from "../../../lib/extension-state.js";
 
 interface PromptBuilderState {
-	enforcementSignals: Record<string, { turn: number; text: string; acted: boolean }>;
-	lastSignalTurn: number;
+  enforcementSignals: Record<string, { turn: number; text: string; acted: boolean }>;
+  lastSignalTurn: number;
 }
 
 function getPromptState(ctx: ExtensionContext): PromptBuilderState {
-	return getExtensionState(ctx, "prompt-builder", () => ({
-		enforcementSignals: {},
-		lastSignalTurn: 0,
-	}));
+  return getExtensionState(ctx, "prompt-builder", () => ({
+    enforcementSignals: {},
+    lastSignalTurn: 0,
+  }));
 }
 
-function formatEnforcementL1(signals: Record<string, { turn: number; text: string; acted: boolean }>, lastSignalTurn: number): string {
+function formatEnforcementL1(
+  signals: Record<string, { turn: number; text: string; acted: boolean }>,
+  lastSignalTurn: number,
+): string {
   const keys = Object.keys(signals);
   if (keys.length === 0) return "";
 
@@ -159,115 +166,115 @@ ${JSON.stringify({ signals: signalEntries }, null, 2)}
 // Memory confidence threshold: only inject if relevance >= 0.7
 
 interface PastInsight {
-	type: "episode" | "session";
-	relevance: number;
-	content: string;
-	source: string;
+  type: "episode" | "session";
+  relevance: number;
+  content: string;
+  source: string;
 }
 
 async function searchPastInsights(cwd: string): Promise<PastInsight[]> {
-	const insights: PastInsight[] = [];
+  const insights: PastInsight[] = [];
 
-	// Search three-memory-stores episodes
-	const memoryDir = join(homedir(), ".pi/agent/memory");
-	if (existsSync(memoryDir)) {
-		try {
-			const episodeFiles = readdirSync(memoryDir).filter((f) => f.startsWith("episodes"));
-			for (const file of episodeFiles.slice(0, 3)) {
-			const content = await readFile(join(memoryDir, file), "utf-8");
-				const lines = content.split("\n").filter((l) => l.trim());
-				for (const line of lines.slice(-5)) {
-					try {
-						const ep = JSON.parse(line);
-						if (ep.task && ep.outcome) {
-							insights.push({
-								type: "episode",
-								relevance: 0.75,
-								content: `[${ep.outcome}] ${ep.task}: ${ep.solution || "(see logs)"}`,
-								source: `episodes:${ep.id}`,
-							});
-						}
-					} catch {
-						// Skip malformed JSON lines
-					}
-				}
-			}
-		} catch {
-			// Memory directory not readable - skip
-		}
-	}
+  // Search three-memory-stores episodes
+  const memoryDir = join(homedir(), ".pi/agent/memory");
+  if (existsSync(memoryDir)) {
+    try {
+      const episodeFiles = readdirSync(memoryDir).filter((f) => f.startsWith("episodes"));
+      for (const file of episodeFiles.slice(0, 3)) {
+        const content = await readFile(join(memoryDir, file), "utf-8");
+        const lines = content.split("\n").filter((l) => l.trim());
+        for (const line of lines.slice(-5)) {
+          try {
+            const ep = JSON.parse(line);
+            if (ep.task && ep.outcome) {
+              insights.push({
+                type: "episode",
+                relevance: 0.75,
+                content: `[${ep.outcome}] ${ep.task}: ${ep.solution || "(see logs)"}`,
+                source: `episodes:${ep.id}`,
+              });
+            }
+          } catch {
+            // Skip malformed JSON lines
+          }
+        }
+      }
+    } catch {
+      // Memory directory not readable - skip
+    }
+  }
 
-	// Search recent session summaries
-	const sessionDir = join(homedir(), ".pi/agent/sessions");
-	if (existsSync(sessionDir)) {
-		try {
-			const sessions = readdirSync(sessionDir)
-				.filter((f) => f.endsWith(".jsonl"))
-				.sort()
-				.reverse()
-				.slice(0, 3);
+  // Search recent session summaries
+  const sessionDir = join(homedir(), ".pi/agent/sessions");
+  if (existsSync(sessionDir)) {
+    try {
+      const sessions = readdirSync(sessionDir)
+        .filter((f) => f.endsWith(".jsonl"))
+        .sort()
+        .reverse()
+        .slice(0, 3);
 
-			for (const session of sessions) {
-			const content = await readFile(join(sessionDir, session), "utf-8");
-				const lines = content.split("\n").filter((l) => l.trim());
-				for (const line of lines.slice(-3)) {
-					try {
-						const entry = JSON.parse(line);
-						if (entry.message && (String(entry.message).includes("finalize") || String(entry.message).includes("completed"))) {
-							const task = extractTaskFromEntry(entry as Record<string, unknown>);
-							if (task) {
-								insights.push({
-									type: "session",
-									relevance: 0.7,
-									content: `Session: ${task}`,
-									source: `session:${session}`,
-								});
-							}
-						}
-					} catch {
-						// Skip malformed JSON lines
-					}
-				}
-			}
-		} catch {
-			// Sessions directory not readable - skip
-		}
-	}
+      for (const session of sessions) {
+        const content = await readFile(join(sessionDir, session), "utf-8");
+        const lines = content.split("\n").filter((l) => l.trim());
+        for (const line of lines.slice(-3)) {
+          try {
+            const entry = JSON.parse(line);
+            if (
+              entry.message &&
+              (String(entry.message).includes("finalize") ||
+                String(entry.message).includes("completed"))
+            ) {
+              const task = extractTaskFromEntry(entry as Record<string, unknown>);
+              if (task) {
+                insights.push({
+                  type: "session",
+                  relevance: 0.7,
+                  content: `Session: ${task}`,
+                  source: `session:${session}`,
+                });
+              }
+            }
+          } catch {
+            // Skip malformed JSON lines
+          }
+        }
+      }
+    } catch {
+      // Sessions directory not readable - skip
+    }
+  }
 
-	return insights.filter((i) => i.relevance >= 0.7).slice(0, 5);
+  return insights.filter((i) => i.relevance >= 0.7).slice(0, 5);
 }
 
 function extractTaskFromEntry(entry: Record<string, unknown>): string | null {
-	const msg = String(entry.message || "");
-	const patterns = [
-		/told to ([^.]{10,80})/i,
-		/task: ([^.]{10,80})/i,
-		/completed: ([^.]{10,80})/i,
-	];
-	for (const pattern of patterns) {
-		const match = msg.match(pattern);
-		if (match) return match[1].trim();
-	}
-	return null;
+  const msg = String(entry.message || "");
+  const patterns = [/told to ([^.]{10,80})/i, /task: ([^.]{10,80})/i, /completed: ([^.]{10,80})/i];
+  for (const pattern of patterns) {
+    const match = msg.match(pattern);
+    if (match) return match[1].trim();
+  }
+  return null;
 }
 
 function formatPastInsightsSection(insights: PastInsight[]): string {
-	if (insights.length === 0) return "";
-	const lines: string[] = [
-		"",
-		"## Past Insights",
-		"*(Relevant experience from previous sessions)*",
-	];
-	for (const insight of insights) {
-		lines.push(`- ${insight.content}`);
-	}
-	return lines.join("\n");
+  if (insights.length === 0) return "";
+  const lines: string[] = [
+    "",
+    "## Past Insights",
+    "*(Relevant experience from previous sessions)*",
+  ];
+  for (const insight of insights) {
+    lines.push(`- ${insight.content}`);
+  }
+  return lines.join("\n");
 }
 
 // ── Reconstruction Functions (from structured data, not text parsing) ─────────
 
 function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>): string {
-  const visibleTools = tools.map(t => `- ${t.name}: ${t.description}`).join("\n");
+  const visibleTools = tools.map((t) => `- ${t.name}: ${t.description}`).join("\n");
 
   // Structured output instruction (MDA: repetitive format catalyzes ICL circuits)
   const structuredOutput = `
@@ -301,7 +308,12 @@ ${visibleTools || "(none)"}
 In addition to the tools above, you may have access to other custom_tools depending on the project.${structuredOutput}`;
 }
 
-function reconstructGuidelineSection(_hasBash: boolean, _hasGrep: boolean, _hasFind: boolean, _hasLs: boolean): string {
+function reconstructGuidelineSection(
+  _hasBash: boolean,
+  _hasGrep: boolean,
+  _hasFind: boolean,
+  _hasLs: boolean,
+): string {
   // No directive guidelines - tool usage is self-documenting from tool names/descriptions
   // Behaviors are guided by identity framing, not explicit rules
   return "";
@@ -315,7 +327,9 @@ async function reconstructProjectContextSection(cwd: string): Promise<string> {
   const contextFiles: Array<{ path: string; content: string }> = [];
   const seenPaths = new Set<string>();
 
-  async function loadContextFromDir(dir: string): Promise<{ path: string; content: string } | null> {
+  async function loadContextFromDir(
+    dir: string,
+  ): Promise<{ path: string; content: string } | null> {
     const candidates = ["AGENTS.md", "CLAUDE.md"];
     for (const filename of candidates) {
       const filePath = join(dir, filename);
@@ -327,7 +341,7 @@ async function reconstructProjectContextSection(cwd: string): Promise<string> {
           };
         } catch {
           // Skip files that can't be read
-        /* Non-fatal: prompt parsing failed */
+          /* Non-fatal: prompt parsing failed */
         }
       }
     }
@@ -447,7 +461,12 @@ function escapeXml(str: string): string {
 }
 
 async function reconstructSkillsSection(cwd: string): Promise<string> {
-  const result = loadSkills({ cwd, agentDir: getAgentDir(), skillPaths: [SKILLS_DIR], includeDefaults: true });
+  const result = loadSkills({
+    cwd,
+    agentDir: getAgentDir(),
+    skillPaths: [SKILLS_DIR],
+    includeDefaults: true,
+  });
   return formatSkillsWithLineCounts(result.skills);
 }
 
@@ -461,7 +480,10 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
   _pi.on("session_start", async (_event, ctx) => {
     const ps = getPromptState(ctx);
     _pi.events.on("enforcement_signals", (data: unknown) => {
-      const d = data as { turn: number; signals: Record<string, { turn: number; text: string; acted: boolean }> };
+      const d = data as {
+        turn: number;
+        signals: Record<string, { turn: number; text: string; acted: boolean }>;
+      };
       ps.enforcementSignals = d.signals;
       ps.lastSignalTurn = d.turn;
     });
@@ -473,7 +495,7 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     const _userPrompt = event.prompt;
 
     const tools = _pi.getAllTools();
-    const toolNames = tools.map(t => t.name);
+    const toolNames = tools.map((t) => t.name);
     const hasBash = toolNames.includes("bash");
     const hasGrep = toolNames.includes("grep");
     const hasFind = toolNames.includes("find");

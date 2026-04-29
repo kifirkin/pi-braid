@@ -19,108 +19,177 @@ import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { createLogger } from "../../../lib/logger.js";
 const log = createLogger("semantic-compress");
 
-export type SemanticUnitType = "problem" | "reasoning" | "tool" | "result" | "summary" | "boilerplate";
+export type SemanticUnitType =
+  | "problem"
+  | "reasoning"
+  | "tool"
+  | "result"
+  | "summary"
+  | "boilerplate";
 
 export interface SemanticUnit {
-	type: SemanticUnitType;
-	startIndex: number;
-	endIndex: number;
-	messages: AgentMessage[];
-	preserve: boolean;
-	collapse: boolean;
-	priority: number; // 0=drop, 1=collapsible, 2=preservable, 3=essential
+  type: SemanticUnitType;
+  startIndex: number;
+  endIndex: number;
+  messages: AgentMessage[];
+  preserve: boolean;
+  collapse: boolean;
+  priority: number; // 0=drop, 1=collapsible, 2=preservable, 3=essential
 }
 
 export interface CompressionStats {
-	messagesIn: number;
-	messagesOut: number;
-	unitsPreserved: number;
-	unitsCollapsed: number;
-	unitsDropped: number;
+  messagesIn: number;
+  messagesOut: number;
+  unitsPreserved: number;
+  unitsCollapsed: number;
+  unitsDropped: number;
 }
 
 const UNIT_PATTERNS: Array<{ type: SemanticUnitType; patterns: RegExp[]; priority: number }> = [
-	{ type: "problem", patterns: [/\bI need to\b.*\bimplement\b/i, /\bCan you\b/i, /\bPlease\b.*\bcreate\b/i, /\bHelp me\b/i, /\brequirement\b/i], priority: 3 },
-	{ type: "reasoning", patterns: [/\bI think\b/i, /\bLet me\b/i, /\bPerhaps\b/i, /\bTherefore\b/i, /\bMy reasoning\b/i, /\bBased on\b/i], priority: 2 },
-	{ type: "result", patterns: [/\bSuccess\b/i, /\bCompleted\b/i, /\bAll tests pass\b/i, /\bBuild complete\b/i, /\bNo errors\b/i], priority: 2 },
-	{ type: "summary", patterns: [/\bIn summary\b/i, /\bTo summarize\b/i, /\bKey takeaways\b/i, /\bNext steps\b/i], priority: 3 },
-	{ type: "boilerplate", patterns: [/^\s{0,10}$/, /\bSure,?\b/i, /\bOf course\b/i, /\bHere is\b.*for you\b/i, /\bLet me show you\b/i], priority: 0 },
+  {
+    type: "problem",
+    patterns: [
+      /\bI need to\b.*\bimplement\b/i,
+      /\bCan you\b/i,
+      /\bPlease\b.*\bcreate\b/i,
+      /\bHelp me\b/i,
+      /\brequirement\b/i,
+    ],
+    priority: 3,
+  },
+  {
+    type: "reasoning",
+    patterns: [
+      /\bI think\b/i,
+      /\bLet me\b/i,
+      /\bPerhaps\b/i,
+      /\bTherefore\b/i,
+      /\bMy reasoning\b/i,
+      /\bBased on\b/i,
+    ],
+    priority: 2,
+  },
+  {
+    type: "result",
+    patterns: [
+      /\bSuccess\b/i,
+      /\bCompleted\b/i,
+      /\bAll tests pass\b/i,
+      /\bBuild complete\b/i,
+      /\bNo errors\b/i,
+    ],
+    priority: 2,
+  },
+  {
+    type: "summary",
+    patterns: [/\bIn summary\b/i, /\bTo summarize\b/i, /\bKey takeaways\b/i, /\bNext steps\b/i],
+    priority: 3,
+  },
+  {
+    type: "boilerplate",
+    patterns: [
+      /^\s{0,10}$/,
+      /\bSure,?\b/i,
+      /\bOf course\b/i,
+      /\bHere is\b.*for you\b/i,
+      /\bLet me show you\b/i,
+    ],
+    priority: 0,
+  },
 ];
 
 /**
  * Classify a message's semantic type.
  * Handles both raw AgentMessage (from context event) and wrapped format.
  */
-export function classifyMessage(msg: { role?: string; content?: unknown[] | string | null; isError?: boolean }): { type: SemanticUnitType; priority: number } {
-	const role = msg.role;
-	if (!role) return { type: "tool", priority: 1 };
+export function classifyMessage(msg: {
+  role?: string;
+  content?: unknown[] | string | null;
+  isError?: boolean;
+}): { type: SemanticUnitType; priority: number } {
+  const role = msg.role;
+  if (!role) return { type: "tool", priority: 1 };
 
-	if (role === "toolResult") {
-		return { type: "result", priority: 2 };
-	}
-	if (role === "assistant") {
-		const text = extractText(msg);
-		for (const { type, patterns, priority } of UNIT_PATTERNS) {
-			if (patterns.some((p) => p.test(text))) return { type, priority };
-		}
-	}
-	if (role === "user") return { type: "problem", priority: 3 };
-	return { type: "tool", priority: 1 };
+  if (role === "toolResult") {
+    return { type: "result", priority: 2 };
+  }
+  if (role === "assistant") {
+    const text = extractText(msg);
+    for (const { type, patterns, priority } of UNIT_PATTERNS) {
+      if (patterns.some((p) => p.test(text))) return { type, priority };
+    }
+  }
+  if (role === "user") return { type: "problem", priority: 3 };
+  return { type: "tool", priority: 1 };
 }
 
 function extractText(msg: any): string {
-	if (!msg?.content) return "";
-	if (typeof msg.content === "string") return msg.content;
-	if (Array.isArray(msg.content)) return msg.content.map((c: any) => c.text ?? "").join(" ");
-	return "";
+  if (!msg?.content) return "";
+  if (typeof msg.content === "string") return msg.content;
+  if (Array.isArray(msg.content)) return msg.content.map((c: any) => c.text ?? "").join(" ");
+  return "";
 }
 
 /**
  * Group consecutive messages of the same semantic type into units.
  */
 export function identifySemanticUnits(messages: AgentMessage[]): SemanticUnit[] {
-	if (messages.length === 0) return [];
-	const units: SemanticUnit[] = [];
-	let current: SemanticUnit | null = null;
+  if (messages.length === 0) return [];
+  const units: SemanticUnit[] = [];
+  let current: SemanticUnit | null = null;
 
-	for (let i = 0; i < messages.length; i++) {
-		const msg = messages[i];
-		const { type, priority } = classifyMessage(msg);
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    const { type, priority } = classifyMessage(msg);
 
-		if (!current || current.type !== type) {
-			if (current) { current.endIndex = i - 1; units.push(current); }
-			current = { type, startIndex: i, endIndex: i, messages: [msg], preserve: priority >= 3, collapse: priority >= 1 && priority < 3, priority };
-		} else {
-			current.endIndex = i;
-			current.messages.push(msg);
-		}
-	}
-	if (current) { current.endIndex = messages.length - 1; units.push(current); }
-	return units;
+    if (!current || current.type !== type) {
+      if (current) {
+        current.endIndex = i - 1;
+        units.push(current);
+      }
+      current = {
+        type,
+        startIndex: i,
+        endIndex: i,
+        messages: [msg],
+        preserve: priority >= 3,
+        collapse: priority >= 1 && priority < 3,
+        priority,
+      };
+    } else {
+      current.endIndex = i;
+      current.messages.push(msg);
+    }
+  }
+  if (current) {
+    current.endIndex = messages.length - 1;
+    units.push(current);
+  }
+  return units;
 }
 
 /**
  * Collapse consecutive tool calls of the same name into one with a count annotation.
  */
 function compressToolUnit(unit: SemanticUnit): AgentMessage[] {
-	if (unit.messages.length <= 1) return unit.messages;
-	const byTool = new Map<string, AgentMessage[]>();
-	for (const msg of unit.messages) {
-		const toolName = (msg as any).toolName ?? "unknown";
-		if (!byTool.has(toolName)) byTool.set(toolName, []);
-		byTool.get(toolName)!.push(msg);
-	}
-	const result: AgentMessage[] = [];
-	for (const [, toolMsgs] of byTool) {
-		if (toolMsgs.length === 1) {
-			result.push(toolMsgs[0]);
-		} else {
-			const last = toolMsgs[toolMsgs.length - 1];
-			(last as any)._bcrCount = toolMsgs.length;
-			result.push(last);
-		}
-	}
-	return result;
+  if (unit.messages.length <= 1) return unit.messages;
+  const byTool = new Map<string, AgentMessage[]>();
+  for (const msg of unit.messages) {
+    const toolName = (msg as any).toolName ?? "unknown";
+    if (!byTool.has(toolName)) byTool.set(toolName, []);
+    byTool.get(toolName)!.push(msg);
+  }
+  const result: AgentMessage[] = [];
+  for (const [, toolMsgs] of byTool) {
+    if (toolMsgs.length === 1) {
+      result.push(toolMsgs[0]);
+    } else {
+      const last = toolMsgs[toolMsgs.length - 1];
+      (last as any)._bcrCount = toolMsgs.length;
+      result.push(last);
+    }
+  }
+  return result;
 }
 
 /**
@@ -128,55 +197,76 @@ function compressToolUnit(unit: SemanticUnit): AgentMessage[] {
  * Preserves: problem statements, key decisions, critical failures, summaries.
  * Collapses: repeated patterns, verbose outputs, boilerplate.
  */
-export function semanticCompress(
-	messages: AgentMessage[],
-): { compressed: AgentMessage[]; units: SemanticUnit[]; stats: CompressionStats } {
-	if (messages.length === 0) {
-		return { compressed: [], units: [], stats: { messagesIn: 0, messagesOut: 0, unitsPreserved: 0, unitsCollapsed: 0, unitsDropped: 0 } };
-	}
+export function semanticCompress(messages: AgentMessage[]): {
+  compressed: AgentMessage[];
+  units: SemanticUnit[];
+  stats: CompressionStats;
+} {
+  if (messages.length === 0) {
+    return {
+      compressed: [],
+      units: [],
+      stats: {
+        messagesIn: 0,
+        messagesOut: 0,
+        unitsPreserved: 0,
+        unitsCollapsed: 0,
+        unitsDropped: 0,
+      },
+    };
+  }
 
-	const units = identifySemanticUnits(messages);
-	const compressed: AgentMessage[] = [];
-	let unitsPreserved = 0;
-	let unitsCollapsed = 0;
-	let unitsDropped = 0;
+  const units = identifySemanticUnits(messages);
+  const compressed: AgentMessage[] = [];
+  let unitsPreserved = 0;
+  let unitsCollapsed = 0;
+  let unitsDropped = 0;
 
-	for (const unit of units) {
-		if (!unit.preserve && !unit.collapse) { unitsDropped++; continue; }
+  for (const unit of units) {
+    if (!unit.preserve && !unit.collapse) {
+      unitsDropped++;
+      continue;
+    }
 
-		let processed: AgentMessage[];
-		if (unit.preserve) {
-			processed = unit.messages;
-		} else if (unit.type === "tool") {
-			processed = compressToolUnit(unit);
-		} else if (unit.type === "reasoning" && unit.messages.length > 2) {
-			// Reasoning unit: keep first + last (problem → solution)
-			processed = [unit.messages[0], unit.messages[unit.messages.length - 1]];
-		} else if (unit.type === "boilerplate") {
-			processed = extractText(unit.messages[0] as any).length > 50 ? [unit.messages[0]] : [];
-		} else {
-			processed = unit.messages;
-		}
+    let processed: AgentMessage[];
+    if (unit.preserve) {
+      processed = unit.messages;
+    } else if (unit.type === "tool") {
+      processed = compressToolUnit(unit);
+    } else if (unit.type === "reasoning" && unit.messages.length > 2) {
+      // Reasoning unit: keep first + last (problem → solution)
+      processed = [unit.messages[0], unit.messages[unit.messages.length - 1]];
+    } else if (unit.type === "boilerplate") {
+      processed = extractText(unit.messages[0] as any).length > 50 ? [unit.messages[0]] : [];
+    } else {
+      processed = unit.messages;
+    }
 
-		if (processed.length === 0) {
-			unitsDropped++;
-		} else if (processed.length < unit.messages.length) {
-			unitsCollapsed++;
-			compressed.push(...processed);
-		} else {
-			unitsPreserved++;
-			compressed.push(...processed);
-		}
-	}
+    if (processed.length === 0) {
+      unitsDropped++;
+    } else if (processed.length < unit.messages.length) {
+      unitsCollapsed++;
+      compressed.push(...processed);
+    } else {
+      unitsPreserved++;
+      compressed.push(...processed);
+    }
+  }
 
-	log.debug(
-		`semantic-compress: ${messages.length} msgs → ${compressed.length} msgs ` +
-		`(${unitsPreserved} preserved, ${unitsCollapsed} collapsed, ${unitsDropped} dropped)`,
-	);
+  log.debug(
+    `semantic-compress: ${messages.length} msgs → ${compressed.length} msgs ` +
+      `(${unitsPreserved} preserved, ${unitsCollapsed} collapsed, ${unitsDropped} dropped)`,
+  );
 
-	return {
-		compressed,
-		units,
-		stats: { messagesIn: messages.length, messagesOut: compressed.length, unitsPreserved, unitsCollapsed, unitsDropped },
-	};
+  return {
+    compressed,
+    units,
+    stats: {
+      messagesIn: messages.length,
+      messagesOut: compressed.length,
+      unitsPreserved,
+      unitsCollapsed,
+      unitsDropped,
+    },
+  };
 }

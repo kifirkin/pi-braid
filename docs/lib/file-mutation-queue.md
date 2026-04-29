@@ -4,11 +4,11 @@
 
 ## Key Functions
 
-| Function | Description |
-|----------|-------------|
+| Function                      | Description                                                         |
+| ----------------------------- | ------------------------------------------------------------------- |
 | `enqueueWrite(path, content)` | Queue a file write — returns a promise that resolves when committed |
-| `flushAll()` | Wait for all queued writes to complete |
-| `cancelPending(path?)` | Cancel pending writes (optionally for a specific file) |
+| `flushAll()`                  | Wait for all queued writes to complete                              |
+| `cancelPending(path?)`        | Cancel pending writes (optionally for a specific file)              |
 
 ## Key Patterns
 

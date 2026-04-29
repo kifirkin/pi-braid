@@ -20,6 +20,7 @@ From the SAE literature (e.g., "Towards Monosemanticity," Anthropic 2024):
 4. **Steering** = add α × feature_direction to residual stream at inference time
 
 Example features discovered in code models:
+
 - `function_call_boundary`
 - `bug_near_fix`
 - `error_handling_approach`
@@ -32,12 +33,12 @@ The current enforcement + cognitive systems work at the **behavioral level** —
 
 Potential applications:
 
-| Use Case | SAE Feature | Steering Effect |
-|----------|------------|-----------------|
-| Prevent premature completion | `incomplete_solution` | Keep model from claiming "done" |
-| Force verification | `verification_check` | Auto-insert verification step |
-| Debug mode | `error_diagnosis` | Steer toward debugging before solving |
-| Careful mode | `cautious_reasoning` | Slow down, increase skepticism |
+| Use Case                     | SAE Feature           | Steering Effect                       |
+| ---------------------------- | --------------------- | ------------------------------------- |
+| Prevent premature completion | `incomplete_solution` | Keep model from claiming "done"       |
+| Force verification           | `verification_check`  | Auto-insert verification step         |
+| Debug mode                   | `error_diagnosis`     | Steer toward debugging before solving |
+| Careful mode                 | `cautious_reasoning`  | Slow down, increase skepticism        |
 
 ## Research Questions
 
@@ -49,16 +50,19 @@ Potential applications:
 ## Implementation Plan
 
 ### Phase 1: Feature Discovery (Research)
+
 - Use existing open-source SAE tools (e.g., `sae-lens`, `transformerlens`)
 - Run activation patching on pi-braid agent sessions
 - Catalog features relevant to software engineering
 
 ### Phase 2: Steering Experiments
+
 - Implement SAE steering hook in the agent pipeline
 - A/B test: steering vs no-steering on benchmark tasks
 - Measure: task completion rate, error rate, verification adherence
 
 ### Phase 3: Integration
+
 - Add `sae_steer` tool to activate/deactivate specific features
 - Combine with enforcement whispers for layered nudging
 - Build feature activation dashboard

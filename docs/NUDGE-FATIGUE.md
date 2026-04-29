@@ -1,4 +1,5 @@
 # Nudge Fatigue — Compliance Theater in System Prompts
+
 **Date**: 2026-04-22
 **Session**: 12
 **File**: `src/extensions/context-manager/handlers/rotation.ts`
@@ -28,13 +29,16 @@ Agent ritualistically obeyed: `memory_store` → `context_tag` → `finalize`. B
 ## The Fix (Session 12)
 
 ### State Extension (global-state.ts)
+
 Added nudge dedup fields to `RotationState`:
+
 - `lastNudgeTurn` — prevents same-turn duplicates
 - `lastNudgeTimestamp` — time-based cooldown (5 min)
 - `nudgeCount` — tracks total nudges
 - `actionTaken` — suppresses after agent action
 
 ### Handler Changes (rotation.ts)
+
 1. **Deduplication gate**: skip if already nudged this turn
 2. **Action cooldown**: skip for 50 turns OR 5 minutes after `memory_store`/`context_tag`/`finalize`/`context_archive`
 3. **Action tracking**: `tool_end` listener watches for rotation-relevant tools
@@ -42,6 +46,7 @@ Added nudge dedup fields to `RotationState`:
 5. **Final reset**: `finalize` handler clears all nudge state
 
 ### Research Grounding
+
 - **Implicit Framing** (this project): compliance directives → letter-satisfying, intent-ignoring behavior
 - **Repetition Blindness** (Crick & Koch, 2003): repeated identical stimuli → cognitive suppression
 - **Nudge Saturation** (Thaler & Sunstein, 2008): beyond threshold, nudges become noise
@@ -49,6 +54,7 @@ Added nudge dedup fields to `RotationState`:
 ## Test Coverage
 
 `test/runtime/test-nudge-dedup.mjs` — 5 tests:
+
 1. First nudge at threshold fires
 2. Same-turn suppression
 3. Action-taken cooldown (within window)
@@ -59,13 +65,13 @@ All pass ✅
 
 ## Before vs After
 
-| Dimension | Before | After |
-|-----------|--------|-------|
-| Nudges per crossing | Unlimited | 1 per 50 turns (after action) |
-| Framing | Directive ("you MUST consider") | Identity ("you are managing") |
-| Action awareness | None | Tracks 4 tools |
-| Cooldown | None | 50 turns + 5 minutes |
-| Reset on finalize | Partial | Complete |
+| Dimension           | Before                          | After                         |
+| ------------------- | ------------------------------- | ----------------------------- |
+| Nudges per crossing | Unlimited                       | 1 per 50 turns (after action) |
+| Framing             | Directive ("you MUST consider") | Identity ("you are managing") |
+| Action awareness    | None                            | Tracks 4 tools                |
+| Cooldown            | None                            | 50 turns + 5 minutes          |
+| Reset on finalize   | Partial                         | Complete                      |
 
 ## Open Questions
 
@@ -76,4 +82,4 @@ All pass ✅
 
 ---
 
-*Document generated after fixing nudge loop in Session 12. Related: NUDGE-QUALITY-RESEARCH.md (meta-irony analysis).*
+_Document generated after fixing nudge loop in Session 12. Related: NUDGE-QUALITY-RESEARCH.md (meta-irony analysis)._

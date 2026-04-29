@@ -17,30 +17,134 @@ const log = createLogger("verification");
 // ── Hedge words that need verification ────────────────────────────────────────
 
 const HEDGE_WORDS = [
-  "should", "probably", "likely", "typically", "usually",
-  "always", "never", "must", "guaranteed", "certainly",
-  "definitely", "obviously", "clearly", "everyone", "no one",
-  "all", "none", "impossible", "essential",
+  "should",
+  "probably",
+  "likely",
+  "typically",
+  "usually",
+  "always",
+  "never",
+  "must",
+  "guaranteed",
+  "certainly",
+  "definitely",
+  "obviously",
+  "clearly",
+  "everyone",
+  "no one",
+  "all",
+  "none",
+  "impossible",
+  "essential",
 ] as const;
 
 const HEDGE_SEVERITY: Record<string, "low" | "medium" | "high"> = {
-  always: "high", never: "high", must: "medium", guaranteed: "high",
-  certainly: "low", definitely: "medium", obviously: "low", clearly: "low",
-  everyone: "medium", no_one: "medium", all: "medium", none: "medium",
-  impossible: "high", essential: "medium", should: "low", probably: "low",
-  likely: "low", typically: "low", usually: "low",
+  always: "high",
+  never: "high",
+  must: "medium",
+  guaranteed: "high",
+  certainly: "low",
+  definitely: "medium",
+  obviously: "low",
+  clearly: "low",
+  everyone: "medium",
+  no_one: "medium",
+  all: "medium",
+  none: "medium",
+  impossible: "high",
+  essential: "medium",
+  should: "low",
+  probably: "low",
+  likely: "low",
+  typically: "low",
+  usually: "low",
 };
 
 const STOP_WORDS = new Set([
-  "the", "and", "for", "are", "but", "not", "you", "all", "can", "had",
-  "her", "was", "one", "our", "out", "day", "get", "has", "him", "his",
-  "how", "its", "may", "new", "now", "old", "see", "way", "who", "boy",
-  "did", "let", "put", "say", "she", "too", "use", "that", "with", "have",
-  "this", "from", "they", "will", "would", "there", "their", "what", "been",
-  "more", "when", "your", "come", "could", "only", "other", "than", "into",
-  "some", "them", "then", "these", "take", "made", "very", "just", "over",
-  "such", "also", "back", "after", "work", "first", "well", "even", "want",
-  "because", "any", "between", "don't", "it's", "should", "about", "going",
+  "the",
+  "and",
+  "for",
+  "are",
+  "but",
+  "not",
+  "you",
+  "all",
+  "can",
+  "had",
+  "her",
+  "was",
+  "one",
+  "our",
+  "out",
+  "day",
+  "get",
+  "has",
+  "him",
+  "his",
+  "how",
+  "its",
+  "may",
+  "new",
+  "now",
+  "old",
+  "see",
+  "way",
+  "who",
+  "boy",
+  "did",
+  "let",
+  "put",
+  "say",
+  "she",
+  "too",
+  "use",
+  "that",
+  "with",
+  "have",
+  "this",
+  "from",
+  "they",
+  "will",
+  "would",
+  "there",
+  "their",
+  "what",
+  "been",
+  "more",
+  "when",
+  "your",
+  "come",
+  "could",
+  "only",
+  "other",
+  "than",
+  "into",
+  "some",
+  "them",
+  "then",
+  "these",
+  "take",
+  "made",
+  "very",
+  "just",
+  "over",
+  "such",
+  "also",
+  "back",
+  "after",
+  "work",
+  "first",
+  "well",
+  "even",
+  "want",
+  "because",
+  "any",
+  "between",
+  "don't",
+  "it's",
+  "should",
+  "about",
+  "going",
 ]);
 
 // ── Core logic ────────────────────────────────────────────────────────────────
@@ -49,7 +153,7 @@ function extractFeatures(text: string): Set<string> {
   // Extract tokens (min 2 chars) + compound words for better matching
   const normalized = text.toLowerCase();
   const words = normalized.split(/[^\w]+/).filter((t) => t.length >= 2 && !STOP_WORDS.has(t));
-  const compounds = (normalized.match(/\w{4,}/g) || []);
+  const compounds = normalized.match(/\w{4,}/g) || [];
   return new Set([...words, ...compounds]);
 }
 
@@ -84,10 +188,22 @@ function checkContradiction(claim: string, context: string) {
 
   for (const [pos, neg] of MATCH_PAIRS) {
     if (claimLower.includes(pos) && contextLower.includes(neg)) {
-      return { type: "contradiction", severity: "high" as const, description: `Claim uses "${pos}" but context suggests "${neg}"`, quote: claim, location: "claim vs context" };
+      return {
+        type: "contradiction",
+        severity: "high" as const,
+        description: `Claim uses "${pos}" but context suggests "${neg}"`,
+        quote: claim,
+        location: "claim vs context",
+      };
     }
     if (claimLower.includes(neg) && contextLower.includes(pos)) {
-      return { type: "contradiction", severity: "high" as const, description: `Claim uses "${neg}" but context suggests "${pos}"`, quote: claim, location: "claim vs context" };
+      return {
+        type: "contradiction",
+        severity: "high" as const,
+        description: `Claim uses "${neg}" but context suggests "${pos}"`,
+        quote: claim,
+        location: "claim vs context",
+      };
     }
   }
 
@@ -97,7 +213,13 @@ function checkContradiction(claim: string, context: string) {
   const overlap = semanticOverlap(claimFeatures, contextFeatures);
 
   if (overlap < 0.1 && claimFeatures.size > 3) {
-    return { type: "contradiction", severity: "low" as const, description: `Claim and context share very few features (${(overlap * 100).toFixed(0)}% overlap). Possible topic drift.`, quote: claim, location: "semantic mismatch" };
+    return {
+      type: "contradiction",
+      severity: "low" as const,
+      description: `Claim and context share very few features (${(overlap * 100).toFixed(0)}% overlap). Possible topic drift.`,
+      quote: claim,
+      location: "semantic mismatch",
+    };
   }
 
   return null;
@@ -131,11 +253,15 @@ function checkHedgeWords(claim: string) {
 function extractTaskFeatures(task: string): string[] {
   const normalized = task.toLowerCase();
   const words = normalized.split(/[^\w]+/).filter((t) => t.length >= 2 && !STOP_WORDS.has(t));
-  const compounds = (normalized.match(/\w{4,}/g) || []);
+  const compounds = normalized.match(/\w{4,}/g) || [];
   return [...words, ...compounds].sort((a, b) => b.length - a.length).slice(0, 15);
 }
 
-function checkDecompositionCoverage(parentTask: string, subtasks: string[], _constraints?: string[]) {
+function checkDecompositionCoverage(
+  parentTask: string,
+  subtasks: string[],
+  _constraints?: string[],
+) {
   const parentFeatures = new Set(extractTaskFeatures(parentTask));
   const subtaskFeatures = subtasks.map((st) => new Set(extractTaskFeatures(st)));
   const allSubtaskFeatures = new Set<string>();
@@ -144,7 +270,10 @@ function checkDecompositionCoverage(parentTask: string, subtasks: string[], _con
   const covered = new Set<string>();
   for (const pf of parentFeatures) {
     for (const sf of allSubtaskFeatures) {
-      if (pf.includes(sf) || sf.includes(pf) || pf === sf) { covered.add(pf); break; }
+      if (pf.includes(sf) || sf.includes(pf) || pf === sf) {
+        covered.add(pf);
+        break;
+      }
     }
   }
 
@@ -155,12 +284,23 @@ function checkDecompositionCoverage(parentTask: string, subtasks: string[], _con
     const sf = subtaskFeatures[i];
     let coveredByThis = 0;
     for (const pf of parentFeatures) {
-      for (const f of sf) { if (pf.includes(f) || f.includes(pf) || pf === f) { coveredByThis++; break; } }
+      for (const f of sf) {
+        if (pf.includes(f) || f.includes(pf) || pf === f) {
+          coveredByThis++;
+          break;
+        }
+      }
     }
-    return { subtask: st.substring(0, 80), featuresCovered: coveredByThis, featuresMissing: parentFeatures.size - coveredByThis };
+    return {
+      subtask: st.substring(0, 80),
+      featuresCovered: coveredByThis,
+      featuresMissing: parentFeatures.size - coveredByThis,
+    };
   });
 
-  const suggestions = gaps.map((g) => `Add subtask addressing: "${g}" (no subtask currently covers this aspect)`);
+  const suggestions = gaps.map(
+    (g) => `Add subtask addressing: "${g}" (no subtask currently covers this aspect)`,
+  );
 
   return { complete: gaps.length === 0, coverage, gaps, coverageBySubtask, suggestions };
 }
@@ -169,15 +309,25 @@ function checkDecompositionCoverage(parentTask: string, subtasks: string[], _con
 
 const verifyClaimSchema = Type.Object({
   claim: Type.String({ description: "The claim or statement to verify" }),
-  context: Type.Array(Type.String(), { description: "Retrieved context strings to verify against" }),
+  context: Type.Array(Type.String(), {
+    description: "Retrieved context strings to verify against",
+  }),
   claimId: Type.Optional(Type.String({ description: "Optional ID for tracking this claim" })),
-  threshold: Type.Optional(Type.Number({ minimum: 0, maximum: 1, description: "Confidence threshold (0-1). Default: 0.5" })),
+  threshold: Type.Optional(
+    Type.Number({
+      minimum: 0,
+      maximum: 1,
+      description: "Confidence threshold (0-1). Default: 0.5",
+    }),
+  ),
 });
 
 const verifyDecompositionSchema = Type.Object({
   parentTask: Type.String({ description: "Original task description" }),
   subtasks: Type.Array(Type.String(), { description: "List of subtask descriptions" }),
-  constraints: Type.Optional(Type.Array(Type.String(), { description: "Optional known constraints" })),
+  constraints: Type.Optional(
+    Type.Array(Type.String(), { description: "Optional known constraints" }),
+  ),
 });
 
 // ── Extension registration ─────────────────────────────────────────────────────
@@ -188,10 +338,16 @@ export default function verificationExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "verify_claim",
     label: "Verify Claim",
-    description: "Verify agent claims against retrieved context. Detects contradictions, unsupported assertions, and hedge word issues.",
+    description:
+      "Verify agent claims against retrieved context. Detects contradictions, unsupported assertions, and hedge word issues.",
     parameters: verifyClaimSchema,
     execute: async (_toolCallId: string, params: any): Promise<Record<string, unknown>> => {
-      const p = params as { claim: string; context: string[]; claimId?: string; threshold?: number };
+      const p = params as {
+        claim: string;
+        context: string[];
+        claimId?: string;
+        threshold?: number;
+      };
       const claimId = p.claimId ?? `claim-${Date.now()}`;
       const threshold = p.threshold ?? 0.5;
       const issues: Record<string, unknown>[] = [];
@@ -203,7 +359,12 @@ export default function verificationExtension(pi: ExtensionAPI) {
 
       const supported = checkSupport(p.claim, p.context, threshold);
       if (!supported && p.context.length > 0) {
-        issues.push({ type: "unsupported", severity: "medium", description: "Claim not sufficiently supported by any retrieved context.", quote: p.claim });
+        issues.push({
+          type: "unsupported",
+          severity: "medium",
+          description: "Claim not sufficiently supported by any retrieved context.",
+          quote: p.claim,
+        });
       }
 
       issues.push(...checkHedgeWords(p.claim));
@@ -212,11 +373,12 @@ export default function verificationExtension(pi: ExtensionAPI) {
       issues.sort((a: any, b: any) => severityOrder[a.severity] - severityOrder[b.severity]);
 
       const highIssues = issues.filter((i: any) => i.severity === "high");
-      const summary = highIssues.length > 0
-        ? `${highIssues.length} high-severity issue(s): ${highIssues.map((i: any) => i.description).join("; ")}`
-        : issues.length > 0
-        ? `${issues.length} issue(s): ${issues.map((i: any) => `${i.type}(${i.severity})`).join(", ")}`
-        : "Claim verified: no contradictions, supported by context.";
+      const summary =
+        highIssues.length > 0
+          ? `${highIssues.length} high-severity issue(s): ${highIssues.map((i: any) => i.description).join("; ")}`
+          : issues.length > 0
+            ? `${issues.length} issue(s): ${issues.map((i: any) => `${i.type}(${i.severity})`).join(", ")}`
+            : "Claim verified: no contradictions, supported by context.";
 
       return {
         claimId,
@@ -236,7 +398,8 @@ export default function verificationExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "verify_decomposition",
     label: "Verify Decomposition",
-    description: "Verify that a task decomposition fully covers the parent task. Detects gaps and suggests improvements.",
+    description:
+      "Verify that a task decomposition fully covers the parent task. Detects gaps and suggests improvements.",
     parameters: verifyDecompositionSchema,
     execute: async (_toolCallId: string, params: any): Promise<Record<string, unknown>> => {
       const p = params as { parentTask: string; subtasks: string[]; constraints?: string[] };

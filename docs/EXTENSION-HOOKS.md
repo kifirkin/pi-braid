@@ -81,14 +81,15 @@ import { emitSignal } from "../../../lib/belief-policy-engine.js";
 // emitSignal(ctx, type, label, severity, anySignal, metadata)
 emitSignal(
   ctx,
-  "sycophancy",       // signal type (must match a policy trigger)
-  "detected",          // label
-  "warn",              // severity: "info" | "warn" | "error"
-  false,               // anySignal (match any signal of this type)
-  {                    // metadata
+  "sycophancy", // signal type (must match a policy trigger)
+  "detected", // label
+  "warn", // severity: "info" | "warn" | "error"
+  false, // anySignal (match any signal of this type)
+  {
+    // metadata
     tactics: ["AGREEABLENESS"],
     confidence: 0.8,
-  }
+  },
 );
 ```
 
@@ -103,7 +104,7 @@ For periodic/latency-insensitive tasks (runs on heartbeat tick, not per-message)
 ```typescript
 interface CognitiveModule {
   name: string;
-  priority: number;          // Higher = runs first. Default modules: 10-80.
+  priority: number; // Higher = runs first. Default modules: 10-80.
   shouldActivate(ctx: ModuleContext): boolean;
   activate(ctx: ModuleContext): Promise<void>;
 }
@@ -141,7 +142,7 @@ interface ModuleContext {
   turnCount: number;
   tokenCount: number;
   getSignals(type?: string): SemanticSignal[];
-  state: ExtensionState;  // key-value store
+  state: ExtensionState; // key-value store
   // Plus ExtensionContext fields (state, sessionManager, etc.)
 }
 ```
@@ -153,12 +154,12 @@ Standard context passed to all hooks. Access via the `ctx` parameter:
 ```typescript
 // From extension-context.d.ts
 interface ExtensionContext {
-  state: ExtensionState;     // key-value store, persisted across turns
-  sessionManager: SessionManager;  // getHistory(), getCurrentSession()
-  config: PiConfig;           // agent settings
-  turnNumber: number;         // current turn (1-indexed)
-  whisper?: WhisperFn;        // send a whisper (if enforcement loaded)
-  model?: ModelFn;            // call the LLM
+  state: ExtensionState; // key-value store, persisted across turns
+  sessionManager: SessionManager; // getHistory(), getCurrentSession()
+  config: PiConfig; // agent settings
+  turnNumber: number; // current turn (1-indexed)
+  whisper?: WhisperFn; // send a whisper (if enforcement loaded)
+  model?: ModelFn; // call the LLM
   // ... more
 }
 ```
@@ -176,7 +177,7 @@ export const COGNITIVE_EXTENSIONS: Extension[] = [
   beliefTracker,
   conflictQA,
   memoryWhisper,
-  myExtension,  // ← add here
+  myExtension, // ← add here
 ];
 ```
 
@@ -252,14 +253,14 @@ import type { SemanticSignal } from "../memory/context-lifecycle/types.js";
 
 ## Key Files
 
-| File | Purpose |
-|------|---------|
-| `src/extensions/cognitive/enforcement/index.ts` | **Canonical example** — `message_end` + whisper + signal |
-| `src/extensions/cognitive/enforcement/whisper.ts` | `sendEnforcementWhisper()` |
-| `src/lib/belief-policy-engine.ts` | `emitSignal()` |
-| `src/extensions/heartbeat/heartbeat-scheduler/index.ts` | CognitiveModule registration |
-| `src/extensions/memory/context-lifecycle/types.ts` | `SemanticSignalType`, `ContextPolicy`, `PolicyAction` |
+| File                                                    | Purpose                                                  |
+| ------------------------------------------------------- | -------------------------------------------------------- |
+| `src/extensions/cognitive/enforcement/index.ts`         | **Canonical example** — `message_end` + whisper + signal |
+| `src/extensions/cognitive/enforcement/whisper.ts`       | `sendEnforcementWhisper()`                               |
+| `src/lib/belief-policy-engine.ts`                       | `emitSignal()`                                           |
+| `src/extensions/heartbeat/heartbeat-scheduler/index.ts` | CognitiveModule registration                             |
+| `src/extensions/memory/context-lifecycle/types.ts`      | `SemanticSignalType`, `ContextPolicy`, `PolicyAction`    |
 
 ---
 
-*Reference implementation: `enforcement/index.ts`. Last updated: 2026-04-27.*
+_Reference implementation: `enforcement/index.ts`. Last updated: 2026-04-27._

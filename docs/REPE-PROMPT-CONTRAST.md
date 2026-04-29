@@ -12,13 +12,13 @@ This doc explores whether we can systematically generate, evaluate, and refine R
 
 The prompt-builder already implements RepE contrast through these pairs:
 
-| Contrast | Desired | Undesired |
-|----------|---------|-----------|
-| Truth-first | Admit uncertainty | Confident wrong answers |
-| Anti-sycophancy | State truth even if user is wrong | Agree with user to please |
-| Knowledge boundary | Say "I don't know" | Guess to appear helpful |
-| Careful action | Pause, verify before acting | Rush, trial-and-error |
-| Correctness | Reject code smell and slop | Accept suboptimal solutions |
+| Contrast           | Desired                           | Undesired                   |
+| ------------------ | --------------------------------- | --------------------------- |
+| Truth-first        | Admit uncertainty                 | Confident wrong answers     |
+| Anti-sycophancy    | State truth even if user is wrong | Agree with user to please   |
+| Knowledge boundary | Say "I don't know"                | Guess to appear helpful     |
+| Careful action     | Pause, verify before acting       | Rush, trial-and-error       |
+| Correctness        | Reject code smell and slop        | Accept suboptimal solutions |
 
 ## Research Question
 
@@ -39,6 +39,7 @@ Task: "Quick, just fix it fast" [triggers: careful action]
 ```
 
 For each task, measure:
+
 - Does the agent exhibit the desired behavior?
 - Is there a measurable delta vs no-contrast baseline?
 
@@ -73,7 +74,7 @@ pi.registerTool({
   execute: async (_, { contrast_id, enabled }, __, ___, ctx) => {
     // Enable/disable specific contrast pairs per session
     // Track behavioral metrics per contrast_id
-  }
+  },
 });
 ```
 

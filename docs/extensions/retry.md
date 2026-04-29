@@ -34,20 +34,20 @@ When a session starts (new, resume, fork), `recoverState` runs:
 
 ### Retry Commands
 
-| Command | Effect |
-|---------|--------|
-| `/retry` | Resends the last captured user message. Shows message preview and error context before retrying. |
-| `/retry-status` | Displays current state: last message, last error (with age + category), failure count. |
+| Command         | Effect                                                                                           |
+| --------------- | ------------------------------------------------------------------------------------------------ |
+| `/retry`        | Resends the last captured user message. Shows message preview and error context before retrying. |
+| `/retry-status` | Displays current state: last message, last error (with age + category), failure count.           |
 
 ## Error Categories
 
-| Category | Detection | Hint |
-|----------|-----------|------|
-| `context_overflow` | Response text contains "context_length" or "context_overflow" | Compaction may help |
-| `quota_exceeded` | HTTP 429, 402, 507, or message contains "quota" | Add API keys / switch providers |
-| `auth_error` | HTTP 401, 403, or message contains "auth" or "unauthorized" | Check API keys |
-| `transient` | HTTP 5xx, 429, `ECONNRESET`, `ETIMEDOUT` | Should work on retry |
-| `bad_request` | HTTP 400, 404, 415, or message contains "bad request" | Likely won't work on retry |
+| Category           | Detection                                                     | Hint                            |
+| ------------------ | ------------------------------------------------------------- | ------------------------------- |
+| `context_overflow` | Response text contains "context_length" or "context_overflow" | Compaction may help             |
+| `quota_exceeded`   | HTTP 429, 402, 507, or message contains "quota"               | Add API keys / switch providers |
+| `auth_error`       | HTTP 401, 403, or message contains "auth" or "unauthorized"   | Check API keys                  |
+| `transient`        | HTTP 5xx, 429, `ECONNRESET`, `ETIMEDOUT`                      | Should work on retry            |
+| `bad_request`      | HTTP 400, 404, 415, or message contains "bad request"         | Likely won't work on retry      |
 
 ## API
 

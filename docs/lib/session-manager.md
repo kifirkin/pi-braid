@@ -4,12 +4,12 @@
 
 ## Key Functions
 
-| Function | Description |
-|----------|-------------|
-| `storeSession(session)` | Persist session to disk |
-| `loadSession(id)` | Load session from disk |
+| Function                            | Description                         |
+| ----------------------------------- | ----------------------------------- |
+| `storeSession(session)`             | Persist session to disk             |
+| `loadSession(id)`                   | Load session from disk              |
 | `rotateSession(oldSession, reason)` | Archive old session, create new one |
-| `listSessions()` | List all available sessions |
+| `listSessions()`                    | List all available sessions         |
 
 ## Key Patterns
 

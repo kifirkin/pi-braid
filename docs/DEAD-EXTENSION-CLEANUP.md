@@ -20,18 +20,18 @@
 These commands are debugging artifacts from development. They register via `registerCommand`
 but the agent never invokes them, and they expose internal state that shouldn't be user-facing.
 
-| Command | Extension | Action |
-|---------|-----------|--------|
-| `enforcement-on` | enforcement | Remove — enforcement auto-activates |
-| `enforcement-off` | enforcement | Remove — no use case for disabling |
-| `enforcement-stats` | enforcement | Remove — debugging artifact |
-| `loop-status` | reasoning | Remove — internal state, not user-facing |
-| `loop-reset` | reasoning | Remove — debugging artifact |
-| `loop-help` | reasoning | Remove — debugging artifact |
-| `feedback-status` | feedback | Remove — redundant with `feedback-config` |
-| `feedback-whitelist-show` | feedback | Remove — too granular |
-| `feedback-whitelist-add` | feedback | Remove — too granular |
-| `feedback-whitelist-remove` | feedback | Remove — too granular |
+| Command                     | Extension   | Action                                    |
+| --------------------------- | ----------- | ----------------------------------------- |
+| `enforcement-on`            | enforcement | Remove — enforcement auto-activates       |
+| `enforcement-off`           | enforcement | Remove — no use case for disabling        |
+| `enforcement-stats`         | enforcement | Remove — debugging artifact               |
+| `loop-status`               | reasoning   | Remove — internal state, not user-facing  |
+| `loop-reset`                | reasoning   | Remove — debugging artifact               |
+| `loop-help`                 | reasoning   | Remove — debugging artifact               |
+| `feedback-status`           | feedback    | Remove — redundant with `feedback-config` |
+| `feedback-whitelist-show`   | feedback    | Remove — too granular                     |
+| `feedback-whitelist-add`    | feedback    | Remove — too granular                     |
+| `feedback-whitelist-remove` | feedback    | Remove — too granular                     |
 
 **Keep:** `feedback-config` (central config), `feedback-toggle` (on/off)
 
@@ -64,10 +64,12 @@ Extensions that register tools the agent rarely or never uses in practice.
 - **Action:** Remove tools. Keep preprocessor extension with hardcoded defaults.
 
 ### 2e. `heartbeat_status` (heartbeat-scheduler) ✅ DONE (2026-04-28)
+
 - **Why remove:** Debugging tool. Agent never uses it productively.
 - **Action:** Removed — 40-line tool deleted from heartbeat-scheduler/index.ts.
 
 ### 2f. `heuristics_evaluate` (three-memory-stores) ✅ DONE (2026-04-28)
+
 - **Why remove:** Heuristic evaluation is an indirect metric. Agent never uses the output.
 - **Action:** Removed — tool deleted from three-memory-stores/index.ts.
 
@@ -108,6 +110,7 @@ Extensions that register tools the agent rarely or never uses in practice.
 ### 4a. sync→async (HOT PATH ONLY) ✅ DONE
 
 Converted event handlers and tool execution hot paths to async fs:
+
 - `prompt-builder/index.ts` — searchPastInsights, getSkillMeta, reconstructProjectContextSection, reconstructSkillsSection
 - `memory/session-recall/index.ts` — nodeSearchFiles, searchLines, loadSessionMessages, searchFiles, turn_end handler
 - `tools/repl/index.ts` — loadDataFromFile, loadDataFromGlob, resolveContext
@@ -123,6 +126,7 @@ Skipped (init/shutdown, acceptable sync): feedback init, three-memory-stores shu
 ### 4c. context-lifecycle simplification ✅ DONE
 
 The cleanup doc's premise was WRONG — signals and proposals ARE working. Real simplifications:
+
 - Governance: removed `no-proposal-spam` (always valid, does nothing) and `low-confidence-warning` (generates noisy warnings). Kept `high-usage-safety`.
 - Signals: removed `tool_sequence_pattern` signal (fires at wrong granularity, redundant with enforcement).
 - Types: removed `tool_sequence_pattern` from `SemanticSignalType`.
@@ -133,12 +137,12 @@ Total removed: ~50 lines. Core proposal/snapshot infrastructure preserved.
 
 ## Summary: Removal Counts
 
-| Phase | Items | Risk | LOC Saved |
-|-------|-------|------|-----------|
-| 1. Vestigial commands | 10 commands | Zero | ~200 |
-| 2. Over-tooled extensions | 8 tools (2 removed 2026-04-28: heartbeat_status, heuristics_evaluate) | Low | ~400 |
-| 3. Dead code | 1 file, 3 opt-in reviews | Low | ~150 |
-| 4. Architecture | 5 files sync→async + coupling + lifecycle | Medium | ~300 |
+| Phase                     | Items                                                                 | Risk   | LOC Saved |
+| ------------------------- | --------------------------------------------------------------------- | ------ | --------- |
+| 1. Vestigial commands     | 10 commands                                                           | Zero   | ~200      |
+| 2. Over-tooled extensions | 8 tools (2 removed 2026-04-28: heartbeat_status, heuristics_evaluate) | Low    | ~400      |
+| 3. Dead code              | 1 file, 3 opt-in reviews                                              | Low    | ~150      |
+| 4. Architecture           | 5 files sync→async + coupling + lifecycle                             | Medium | ~300      |
 
 **Total savings:** ~1050 LOC, 10 commands, 8 tools removed.
 **Phase 4 completed** — all 4 sub-tasks done.
@@ -158,4 +162,4 @@ Total removed: ~50 lines. Core proposal/snapshot infrastructure preserved.
 
 ---
 
-*Generated: 2026-04-28 | Based on SKEPTIC-AUDIT.md, FEATURE-AUDIT.md, and static analysis*
+_Generated: 2026-04-28 | Based on SKEPTIC-AUDIT.md, FEATURE-AUDIT.md, and static analysis_

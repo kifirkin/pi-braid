@@ -7,6 +7,7 @@
 ## Purpose
 
 L1 environmental awareness — provides the agent with runtime context (PID, session duration, turn count, tool timing, machine info) surfaced through:
+
 1. `time_status` tool — explicit time/state queries
 2. L1 system prompt injection — automatic context awareness via `gatherL1Environment()`/`formatL1EnvironmentSection()`
 
@@ -18,20 +19,21 @@ Pure module-level state (`_state`) gathered in-process. The `gatherL1Environment
 
 ## Events Handled
 
-| Event | Handler |
-|-------|---------|
-| `session_start` | Reset all counters and timestamps |
-| `message_end` | Increment turn count on assistant messages, update `lastEventTime` on user messages |
+| Event           | Handler                                                                             |
+| --------------- | ----------------------------------------------------------------------------------- |
+| `session_start` | Reset all counters and timestamps                                                   |
+| `message_end`   | Increment turn count on assistant messages, update `lastEventTime` on user messages |
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
+| Tool          | Description                                                                                          |
+| ------------- | ---------------------------------------------------------------------------------------------------- |
 | `time_status` | Action: `status` (full report), `mark` (label current time), `elapsed_since` (time since last event) |
 
 ## State
 
 Module-level singleton (`_state`):
+
 ```typescript
 {
   sessionStart: number,

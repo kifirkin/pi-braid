@@ -6,23 +6,23 @@ Date: 2026-04-24
 
 ### 1. Critical Bug Fixes (Day 0→v0.12.0)
 
-| Fix | File | Impact |
-|-----|------|--------|
-| activatePolicyEngine() never called | heartbeat-scheduler/index.ts | Policy engine now activates (tool tracking, policies work) |
-| Tool tracking local→persistent | heartbeat-scheduler/index.ts | Tracking survives across turns |
-| 5 cognitive modules not surfacing | heartbeat-scheduler/index.ts | Proactive memory, self-reflection, meta-learning, degradation, reasoning metrics all emit via ctx.whisper |
-| 5 trigger bugs | heartbeat-scheduler/index.ts | All heartbeat triggers fixed |
-| globalThis hack removed | heartbeat-scheduler/index.ts | Clean state management |
-| Proactive token monitoring | heartbeat-scheduler/index.ts | Context warnings at 70%/80%/90% thresholds |
+| Fix                                 | File                         | Impact                                                                                                    |
+| ----------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------- |
+| activatePolicyEngine() never called | heartbeat-scheduler/index.ts | Policy engine now activates (tool tracking, policies work)                                                |
+| Tool tracking local→persistent      | heartbeat-scheduler/index.ts | Tracking survives across turns                                                                            |
+| 5 cognitive modules not surfacing   | heartbeat-scheduler/index.ts | Proactive memory, self-reflection, meta-learning, degradation, reasoning metrics all emit via ctx.whisper |
+| 5 trigger bugs                      | heartbeat-scheduler/index.ts | All heartbeat triggers fixed                                                                              |
+| globalThis hack removed             | heartbeat-scheduler/index.ts | Clean state management                                                                                    |
+| Proactive token monitoring          | heartbeat-scheduler/index.ts | Context warnings at 70%/80%/90% thresholds                                                                |
 
 ### 2. New Extensions
 
-| Extension | Files | Tools |
-|-----------|-------|-------|
-| verification | index.ts, tools/verify-claim.ts, tools/verify-decomposition.ts | verify_claim, verify_decomposition |
-| topic-drift | index.ts, tools/check.ts, tools/reset.ts | check_topic_drift, reset_topic_anchors |
-| planner | index.ts, tools/plan.ts, tools/check-budget.ts, tools/set-budget.ts | plan_with_budget, check_budget, set_budget |
-| analytics | index.ts, tools/session-metrics.ts, tools/tool-reliability.ts | get-session-metrics, get-tool-reliability |
+| Extension    | Files                                                               | Tools                                      |
+| ------------ | ------------------------------------------------------------------- | ------------------------------------------ |
+| verification | index.ts, tools/verify-claim.ts, tools/verify-decomposition.ts      | verify_claim, verify_decomposition         |
+| topic-drift  | index.ts, tools/check.ts, tools/reset.ts                            | check_topic_drift, reset_topic_anchors     |
+| planner      | index.ts, tools/plan.ts, tools/check-budget.ts, tools/set-budget.ts | plan_with_budget, check_budget, set_budget |
+| analytics    | index.ts, tools/session-metrics.ts, tools/tool-reliability.ts       | get-session-metrics, get-tool-reliability  |
 
 ### 3. New Tools (Tool Registry)
 
@@ -40,17 +40,20 @@ Date: 2026-04-24
 ### 5. Context Overflow Investigation
 
 **Root cause identified:**
+
 - System is reactive — compacts AFTER overflow, not before
 - Compaction window shrinks on retry: 20K → 12K → 7K → 4K
 - Agent generates messages faster than compaction reduces them
 
 **Fix applied:**
+
 - Proactive token monitoring via heartbeat policy
 - Warns at 70%/80%/90% thresholds
 - 90% warning is a hard directive: exact finalize() call syntax
 - tokenWarningFired in HeartbeatState (per-session)
 
 **Why it might still overflow:**
+
 - Agent may ignore warnings (autonomous mode)
 - Runtime overflow threshold unknown
 - Compaction window still shrinks on retry

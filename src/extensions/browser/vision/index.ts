@@ -294,25 +294,50 @@ async function withRetry<T>(
       }
 
       // Check for rate limit or server errors
-      const isRateLimited = message.includes("429") || message.includes("rate limit") || message.includes("too many requests");
-      const isServerError = message.includes("500") || message.includes("502") || message.includes("503") || message.includes("504");
-      const isNetworkError = message.includes("econnreset") || message.includes("etimedout") || message.includes("enotfound") || message.includes("network");
-      const isGpuEngineError = message.includes("enginecore") || message.includes("upstream error") || message.includes("nvidia") && message.includes("error");
-      const isTransient = isRateLimited || isServerError || isNetworkError || isGpuEngineError || message.includes("timeout");
+      const isRateLimited =
+        message.includes("429") ||
+        message.includes("rate limit") ||
+        message.includes("too many requests");
+      const isServerError =
+        message.includes("500") ||
+        message.includes("502") ||
+        message.includes("503") ||
+        message.includes("504");
+      const isNetworkError =
+        message.includes("econnreset") ||
+        message.includes("etimedout") ||
+        message.includes("enotfound") ||
+        message.includes("network");
+      const isGpuEngineError =
+        message.includes("enginecore") ||
+        message.includes("upstream error") ||
+        (message.includes("nvidia") && message.includes("error"));
+      const isTransient =
+        isRateLimited ||
+        isServerError ||
+        isNetworkError ||
+        isGpuEngineError ||
+        message.includes("timeout");
 
       if (!isTransient) {
         // Unknown error — retry once more just in case
         if (attempt < maxRetries - 1) {
           const delay = baseDelayMs * Math.pow(2, attempt);
-          log.warn(`${operationName} failed (attempt ${attempt + 1}/${maxRetries + 1}): ${lastError.message}. Retrying in ${delay}ms...`);
+          log.warn(
+            `${operationName} failed (attempt ${attempt + 1}/${maxRetries + 1}): ${lastError.message}. Retrying in ${delay}ms...`,
+          );
           await new Promise((resolve) => setTimeout(resolve, delay));
           continue;
         }
         throw lastError;
       }
 
-      const delay = isRateLimited ? baseDelayMs * Math.pow(2, attempt) * 2 : baseDelayMs * Math.pow(2, attempt);
-      log.warn(`${operationName} transient error (attempt ${attempt + 1}/${maxRetries + 1}): ${lastError.message}. Retrying in ${delay}ms...`);
+      const delay = isRateLimited
+        ? baseDelayMs * Math.pow(2, attempt) * 2
+        : baseDelayMs * Math.pow(2, attempt);
+      log.warn(
+        `${operationName} transient error (attempt ${attempt + 1}/${maxRetries + 1}): ${lastError.message}. Retrying in ${delay}ms...`,
+      );
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }

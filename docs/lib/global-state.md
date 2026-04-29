@@ -12,8 +12,8 @@
 
 ## Key Functions
 
-| Function | Description |
-|----------|-------------|
+| Function           | Description                                     |
+| ------------------ | ----------------------------------------------- |
 | `getGlobalState()` | Get or create the singleton global state object |
 
 ## Key Patterns

@@ -9,25 +9,26 @@
 
 ### What Actually Works (verified in code)
 
-| Feature | Evidence | Confidence |
-|---------|----------|------------|
-| **NPM test suite** (18/18) | Real unit tests, directly exercise code | HIGH |
-| **TypeScript check** (0 errors) | `tsc --noEmit --skipLibCheck` clean | HIGH |
-| **D1 session cleanup** | `session_shutdown` handlers in context-manager + three-memory-stores | HIGH |
-| **R5 auto-recall** | `tool_end` handler recalls episodes on errors | HIGH |
-| **R6 mid-task recall** | `turn_end` handler in session-recall, first-turn search | HIGH |
-| **R9 feedback loop** | `getAnalyticsSummary()` exported, loaded on session_start | HIGH |
-| **D0 meta-learning fix** | `postActivationToolCount` reset edge case | HIGH |
-| **D0 policy outcome loop** | `reportRecommendationOutcome()` wired into enforcement turn_end | HIGH |
-| **BR1 tests** (32 total) | 13 MARS + 19 belief-policy, real assertions | HIGH |
-| **35 extension docs** | Structured markdown, covers all extensions | HIGH |
-| **21 lib docs** | Structured markdown, covers all libs | HIGH |
+| Feature                         | Evidence                                                             | Confidence |
+| ------------------------------- | -------------------------------------------------------------------- | ---------- |
+| **NPM test suite** (18/18)      | Real unit tests, directly exercise code                              | HIGH       |
+| **TypeScript check** (0 errors) | `tsc --noEmit --skipLibCheck` clean                                  | HIGH       |
+| **D1 session cleanup**          | `session_shutdown` handlers in context-manager + three-memory-stores | HIGH       |
+| **R5 auto-recall**              | `tool_end` handler recalls episodes on errors                        | HIGH       |
+| **R6 mid-task recall**          | `turn_end` handler in session-recall, first-turn search              | HIGH       |
+| **R9 feedback loop**            | `getAnalyticsSummary()` exported, loaded on session_start            | HIGH       |
+| **D0 meta-learning fix**        | `postActivationToolCount` reset edge case                            | HIGH       |
+| **D0 policy outcome loop**      | `reportRecommendationOutcome()` wired into enforcement turn_end      | HIGH       |
+| **BR1 tests** (32 total)        | 13 MARS + 19 belief-policy, real assertions                          | HIGH       |
+| **35 extension docs**           | Structured markdown, covers all extensions                           | HIGH       |
+| **21 lib docs**                 | Structured markdown, covers all libs                                 | HIGH       |
 
 ### What's Broken or Misleading
 
 #### 🔴 CRITICAL: Benchmark "feature tests" prove nothing
 
 The 8 feature tests (core_tool_execution, self_reflection, etc.) show:
+
 ```
 tool_count: 0, turns: 2, token_count: 17-27
 final_text_preview: <the raw prompt echoed back>
@@ -47,6 +48,7 @@ task = TASKS[TASKS.index(task_id)]  # BUG: TASKS is list of dicts, not strings
 `TASKS.index("bug-race-condition")` raises `ValueError` because TASKS contains dicts, not strings. My "fix" of `tasks → TASKS` didn't address the real issue.
 
 **Correct fix:**
+
 ```python
 task = next((t for t in TASKS if t["id"] == task_id), None)
 ```
@@ -54,6 +56,7 @@ task = next((t for t in TASKS if t["id"] == task_id), None)
 #### 🟡 MODERATE: BR4 results are meaningless
 
 BR4 output shows both configs (braid_latent and baseline) with identical metrics:
+
 ```
 | A_braid_latent | 100% | 2.0 turns | 59 tokens | 0.0 tools |
 | C_baseline     | 100% | 2.0 turns | 59 tokens | 0.0 tools |
@@ -64,9 +67,10 @@ Zero tools used, 2 turns, 59 tokens — the agent didn't do anything in either c
 #### 🟡 MODERATE: Cross-session pattern matching is weak
 
 ```typescript
-const matches = episodes.filter((ep: Episode) =>
+const matches = episodes.filter(
+  (ep: Episode) =>
     ep.task?.includes(toolsUsed[0] ?? "") ||
-    ep.tags?.some((t: string) => t === `turns-${context.turnCount}`)
+    ep.tags?.some((t: string) => t === `turns-${context.turnCount}`),
 );
 ```
 
@@ -78,7 +82,7 @@ const matches = episodes.filter((ep: Episode) =>
 
 ```typescript
 if (branch.length > 150) {
-    log.warn(`Branch ${branch.length} entries deep — consider context_tag + session_compact`);
+  log.warn(`Branch ${branch.length} entries deep — consider context_tag + session_compact`);
 }
 ```
 
@@ -103,16 +107,16 @@ Only fires at tool counts of exactly 10, 20, 30... If a session ends at 9 or 19 
 
 ### What's Actually Proven
 
-| Test Type | Count | What It Proves |
-|-----------|-------|----------------|
-| NPM runtime tests | 18 | Code compiles and runs correctly |
-| MARS reflector tests | 13 | Reflection engine works in isolation |
-| Belief-policy tests | 19 | Policy engine works in isolation |
-| TypeScript check | 1 | Type safety across codebase |
-| **Total real validations** | **51** | **Genuine, verified** |
-| pi RPC "feature tests" | 8 | **NOT VALIDATED** — harness broken |
-| BR4 | 1 | **NOT VALIDATED** — harness broken |
-| BM1 | 1 | **BUG** — crashes at runtime |
+| Test Type                  | Count  | What It Proves                       |
+| -------------------------- | ------ | ------------------------------------ |
+| NPM runtime tests          | 18     | Code compiles and runs correctly     |
+| MARS reflector tests       | 13     | Reflection engine works in isolation |
+| Belief-policy tests        | 19     | Policy engine works in isolation     |
+| TypeScript check           | 1      | Type safety across codebase          |
+| **Total real validations** | **51** | **Genuine, verified**                |
+| pi RPC "feature tests"     | 8      | **NOT VALIDATED** — harness broken   |
+| BR4                        | 1      | **NOT VALIDATED** — harness broken   |
+| BM1                        | 1      | **BUG** — crashes at runtime         |
 
 ### Recommended Fixes (priority order)
 
@@ -133,36 +137,36 @@ Only fires at tool counts of exactly 10, 20, 30... If a session ends at 9 or 19 
 
 ### ✅ Fixed Issues
 
-| Issue | Fix | Version |
-|-------|-----|---------|
-| BM1 crash (`TASKS.index`) | `next()` generator lookup | v0.19.0 |
-| Cross-session matching (substring) | Jaccard similarity (≥50% overlap) | v0.19.0 |
-| Analytics trigger (modulo 10) | Rolling window + percentage-based ( >60%) | v0.19.0 |
-| BR4 missing `--extensions` | Added parser arg | v0.19.0 |
-| Addiction threshold math bug | `avg * 5` never fires for single tool → ratio > 60% | v0.19.0 |
+| Issue                              | Fix                                                 | Version |
+| ---------------------------------- | --------------------------------------------------- | ------- |
+| BM1 crash (`TASKS.index`)          | `next()` generator lookup                           | v0.19.0 |
+| Cross-session matching (substring) | Jaccard similarity (≥50% overlap)                   | v0.19.0 |
+| Analytics trigger (modulo 10)      | Rolling window + percentage-based ( >60%)           | v0.19.0 |
+| BR4 missing `--extensions`         | Added parser arg                                    | v0.19.0 |
+| Addiction threshold math bug       | `avg * 5` never fires for single tool → ratio > 60% | v0.19.0 |
 
 ### ✅ Honest Renaming
 
-| Before | After |
-|--------|-------|
-| "Session tree auto-compaction" | "Branch depth monitoring" |
-| "Daemon orchestrator integrated" | "Daemon orchestrator (standalone utility)" |
-| "100% benchmark pass rate" | Withdrawn — replaced by 22 real feature tests |
+| Before                           | After                                         |
+| -------------------------------- | --------------------------------------------- |
+| "Session tree auto-compaction"   | "Branch depth monitoring"                     |
+| "Daemon orchestrator integrated" | "Daemon orchestrator (standalone utility)"    |
+| "100% benchmark pass rate"       | Withdrawn — replaced by 22 real feature tests |
 
 ### ✅ New Feature Tests (test-features.mjs)
 
 22 tests, all passing, covering:
 
-| Category | Tests | What's Tested |
-|----------|-------|---------------|
-| Three-memory-stores | 3 | Episode storage, heuristic priority, tool stats |
-| Addiction detection | 4 | Single-tool (100%) → alarm, balanced → no alarm, rolling window ignores old bursts |
-| Cross-session learning | 3 | Jaccard similarity ≥0.5, dissimilar rejection, edge cases |
-| Branch monitoring | 2 | Threshold at 150, no alarm below |
-| Daemon orchestrator | 2 | Source file exports, shell script commands |
-| BM1/BR4 fixes | 2 | `next()` generator, `--extensions` arg |
-| Bundle integrity | 4 | Existence, feature markers, daemon excluded, dead imports removed |
-| Documentation | 2 | HONEST-REVIEW.md, BENCHMARKS.md |
+| Category               | Tests | What's Tested                                                                      |
+| ---------------------- | ----- | ---------------------------------------------------------------------------------- |
+| Three-memory-stores    | 3     | Episode storage, heuristic priority, tool stats                                    |
+| Addiction detection    | 4     | Single-tool (100%) → alarm, balanced → no alarm, rolling window ignores old bursts |
+| Cross-session learning | 3     | Jaccard similarity ≥0.5, dissimilar rejection, edge cases                          |
+| Branch monitoring      | 2     | Threshold at 150, no alarm below                                                   |
+| Daemon orchestrator    | 2     | Source file exports, shell script commands                                         |
+| BM1/BR4 fixes          | 2     | `next()` generator, `--extensions` arg                                             |
+| Bundle integrity       | 4     | Existence, feature markers, daemon excluded, dead imports removed                  |
+| Documentation          | 2     | HONEST-REVIEW.md, BENCHMARKS.md                                                    |
 
 ### 🔴 Still Open: pi RPC Harness
 

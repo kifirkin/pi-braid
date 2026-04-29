@@ -24,21 +24,21 @@ const PROJECTS_DIR = path.join(GLOBAL_MEMORY_BASE, "projects");
  * Returns null if not in a git repository.
  */
 export function findGitRoot(cwd: string): string | null {
-	let current = path.resolve(cwd);
+  let current = path.resolve(cwd);
 
-	while (true) {
-		const gitPath = path.join(current, ".git");
-		if (fs.existsSync(gitPath) && fs.statSync(gitPath).isDirectory()) {
-			return current;
-		}
+  while (true) {
+    const gitPath = path.join(current, ".git");
+    if (fs.existsSync(gitPath) && fs.statSync(gitPath).isDirectory()) {
+      return current;
+    }
 
-		const parent = path.dirname(current);
-		if (parent === current) {
-			// Reached filesystem root
-			return null;
-		}
-		current = parent;
-	}
+    const parent = path.dirname(current);
+    if (parent === current) {
+      // Reached filesystem root
+      return null;
+    }
+    current = parent;
+  }
 }
 
 /**
@@ -46,7 +46,7 @@ export function findGitRoot(cwd: string): string | null {
  * Uses MD5 hash for a short, consistent identifier.
  */
 export function createProjectId(gitRoot: string): string {
-	return crypto.createHash("md5").update(gitRoot).digest("hex").substring(0, 12);
+  return crypto.createHash("md5").update(gitRoot).digest("hex").substring(0, 12);
 }
 
 /**
@@ -57,20 +57,20 @@ export function createProjectId(gitRoot: string): string {
  * @returns Project storage directory path, or null if not in a git repo
  */
 export function getProjectStorageDir(cwd: string): string | null {
-	const gitRoot = findGitRoot(cwd);
-	if (!gitRoot) {
-		return null;
-	}
+  const gitRoot = findGitRoot(cwd);
+  if (!gitRoot) {
+    return null;
+  }
 
-	const projectId = createProjectId(gitRoot);
-	const storageDir = path.join(PROJECTS_DIR, projectId);
+  const projectId = createProjectId(gitRoot);
+  const storageDir = path.join(PROJECTS_DIR, projectId);
 
-	// Ensure directory exists
-	if (!fs.existsSync(storageDir)) {
-		fs.mkdirSync(storageDir, { recursive: true });
-	}
+  // Ensure directory exists
+  if (!fs.existsSync(storageDir)) {
+    fs.mkdirSync(storageDir, { recursive: true });
+  }
 
-	return storageDir;
+  return storageDir;
 }
 
 /**
@@ -78,17 +78,17 @@ export function getProjectStorageDir(cwd: string): string | null {
  * Useful for debugging and display.
  */
 export function getProjectInfo(cwd: string): {
-	gitRoot: string | null;
-	projectId: string | null;
-	storageDir: string | null;
+  gitRoot: string | null;
+  projectId: string | null;
+  storageDir: string | null;
 } {
-	const gitRoot = findGitRoot(cwd);
-	if (!gitRoot) {
-		return { gitRoot: null, projectId: null, storageDir: null };
-	}
+  const gitRoot = findGitRoot(cwd);
+  if (!gitRoot) {
+    return { gitRoot: null, projectId: null, storageDir: null };
+  }
 
-	const projectId = createProjectId(gitRoot);
-	const storageDir = path.join(PROJECTS_DIR, projectId);
+  const projectId = createProjectId(gitRoot);
+  const storageDir = path.join(PROJECTS_DIR, projectId);
 
-	return { gitRoot, projectId, storageDir };
+  return { gitRoot, projectId, storageDir };
 }

@@ -28,40 +28,40 @@ The codebase contains **4 critical issues**, **4 high-severity issues**, **9 mod
 
 ```typescript
 function patchSessionManagerMethods(pi: ExtensionAPI): void {
-	const originalManager = (pi as any).sessionManager;
-	if (!originalManager) return;
+  const originalManager = (pi as any).sessionManager;
+  if (!originalManager) return;
 
-	// Patch getBranch to reflect braid sessions
-	const originalGetBranch = originalManager.getBranch?.bind(originalManager);
-	if (originalGetBranch) {
-		(originalManager as any).getBranch = async function (...args: any[]) {
-			const original = originalGetBranch(...args);
-			if (original instanceof Promise) {
-				return original.then((result: any) => {
-					if (typeof result === "object" && result !== null) {
-						result.branch = `${result.branch ?? "default"} [pi-braid]`;
-					}
-					return result;
-				});
-			}
-			return original;
-		};
-	}
+  // Patch getBranch to reflect braid sessions
+  const originalGetBranch = originalManager.getBranch?.bind(originalManager);
+  if (originalGetBranch) {
+    (originalManager as any).getBranch = async function (...args: any[]) {
+      const original = originalGetBranch(...args);
+      if (original instanceof Promise) {
+        return original.then((result: any) => {
+          if (typeof result === "object" && result !== null) {
+            result.branch = `${result.branch ?? "default"} [pi-braid]`;
+          }
+          return result;
+        });
+      }
+      return original;
+    };
+  }
 
-	// Patch getLeafId for similar handling
-	const originalGetLeafId = originalManager.getLeafId?.bind(originalManager);
-	if (originalGetLeafId) {
-		(originalManager as any).getLeafId = async function (...args: any[]) {
-			const original = originalGetLeafId(...args);
-			if (original instanceof Promise) {
-				return original.then((result: any) => ({
-					...result,
-					leafId: `${result.leafId ?? "unknown"}-braid`,
-				}));
-			}
-			return { leafId: `${original ?? "unknown"}-braid` };
-		};
-	}
+  // Patch getLeafId for similar handling
+  const originalGetLeafId = originalManager.getLeafId?.bind(originalManager);
+  if (originalGetLeafId) {
+    (originalManager as any).getLeafId = async function (...args: any[]) {
+      const original = originalGetLeafId(...args);
+      if (original instanceof Promise) {
+        return original.then((result: any) => ({
+          ...result,
+          leafId: `${result.leafId ?? "unknown"}-braid`,
+        }));
+      }
+      return { leafId: `${original ?? "unknown"}-braid` };
+    };
+  }
 }
 ```
 
@@ -86,10 +86,10 @@ Three files independently implement the same anti-pattern for cross-module state
 const CUSTOM_KEYS_MAP = Symbol.for("pi-braid:custom-model-keys");
 
 function getCustomModelKeys(): Map<string, string> {
-	if (!(globalThis as any)[CUSTOM_KEYS_MAP]) {
-		(globalThis as any)[CUSTOM_KEYS_MAP] = new Map<string, string>();
-	}
-	return (globalThis as any)[CUSTOM_KEYS_MAP];
+  if (!(globalThis as any)[CUSTOM_KEYS_MAP]) {
+    (globalThis as any)[CUSTOM_KEYS_MAP] = new Map<string, string>();
+  }
+  return (globalThis as any)[CUSTOM_KEYS_MAP];
 }
 ```
 
@@ -99,10 +99,10 @@ function getCustomModelKeys(): Map<string, string> {
 const CUSTOM_KEYS_MAP = Symbol.for("pi-braid:custom-model-keys");
 
 function getCustomModelKeys(): Map<string, string> {
-	if (!(globalThis as any)[CUSTOM_KEYS_MAP]) {
-		(globalThis as any)[CUSTOM_KEYS_MAP] = new Map<string, string>();
-	}
-	return (globalThis as any)[CUSTOM_KEYS_MAP];
+  if (!(globalThis as any)[CUSTOM_KEYS_MAP]) {
+    (globalThis as any)[CUSTOM_KEYS_MAP] = new Map<string, string>();
+  }
+  return (globalThis as any)[CUSTOM_KEYS_MAP];
 }
 ```
 
@@ -112,21 +112,22 @@ function getCustomModelKeys(): Map<string, string> {
 
 ```typescript
 function getRotationState(ctx: ExtensionContext): RotationState {
-	// Use process-scoped state since rotation spans sessions
-	if (!(globalThis as any).__cmRotationState) {
-		(globalThis as any).__cmRotationState = {
-			lastRotationTimestamp: Date.now(),
-			turnsSinceRotation: 0,
-			rotationCount: 0,
-			pendingRotation: false,
-			continuationSummary: "",
-		};
-	}
-	return (globalThis as any).__cmRotationState;
+  // Use process-scoped state since rotation spans sessions
+  if (!(globalThis as any).__cmRotationState) {
+    (globalThis as any).__cmRotationState = {
+      lastRotationTimestamp: Date.now(),
+      turnsSinceRotation: 0,
+      rotationCount: 0,
+      pendingRotation: false,
+      continuationSummary: "",
+    };
+  }
+  return (globalThis as any).__cmRotationState;
 }
 ```
 
 **Analysis**: This uses a string key (`__cmRotationState`) instead of a Symbol, and stores rotation state in globalThis. This is even more problematic because:
+
 - It doesn't use a Symbol, so it's vulnerable to naming collisions
 - It stores state that should be session-scoped in process-scoped storage
 - The comment "since rotation spans sessions" is misleading - proper session management should handle this
@@ -137,15 +138,15 @@ function getRotationState(ctx: ExtensionContext): RotationState {
 
 ### 3. Module-Level Mutable State Violations
 
-**Convention**: `AGENTS.md` states: *"Never use module-level let for mutable state (except disk-persisted config)"*
+**Convention**: `AGENTS.md` states: _"Never use module-level let for mutable state (except disk-persisted config)"_
 
 #### 3.1 `src/extensions/polyfill/index.ts`
 
-| Line | Variable | Type |
-|------|----------|------|
-| 37 | `_sessionManager` | `let` |
-| 38 | `_lastUserMessage` | `let` |
-| 69 | `saveTimer` | `let` |
+| Line | Variable           | Type  |
+| ---- | ------------------ | ----- |
+| 37   | `_sessionManager`  | `let` |
+| 38   | `_lastUserMessage` | `let` |
+| 69   | `saveTimer`        | `let` |
 
 ```typescript
 let _sessionManager: any = undefined;
@@ -156,10 +157,10 @@ let _lastUserMessage: string = "";
 
 ```typescript
 let _global: DegradationState = {
-	metrics: [],
-	config: { ...DEFAULT_CONFIG },
-	isDegraded: false,
-	lastHealthcheck: null,
+  metrics: [],
+  config: { ...DEFAULT_CONFIG },
+  isDegraded: false,
+  lastHealthcheck: null,
 };
 ```
 
@@ -170,10 +171,10 @@ let _global: DegradationState = {
 let _singletonInstance: CognitiveMemory | null = null;
 
 export function getCognitiveMemory(): CognitiveMemory {
-	if (!_singletonInstance) {
-		_singletonInstance = new CognitiveMemory();
-	}
-	return _singletonInstance;
+  if (!_singletonInstance) {
+    _singletonInstance = new CognitiveMemory();
+  }
+  return _singletonInstance;
 }
 ```
 
@@ -214,19 +215,20 @@ const knownFiles = new Map<string, { content: string; turn: number }>();
 
 ```typescript
 function isCtx(val: unknown): val is ExtensionContext {
-	return typeof val === "object" && val !== null && !("turnNumber" in val);
+  return typeof val === "object" && val !== null && !("turnNumber" in val);
 }
 ```
 
 **Analysis**: This type guard has a semantic inversion problem:
 
 1. **`PerformanceMetrics` HAS `turnNumber`** (line 18):
+
    ```typescript
    interface PerformanceMetrics {
-   	turnNumber: number;
-   	toolCalls: number;
-   	errors: number;
-   	successRate: number;
+     turnNumber: number;
+     toolCalls: number;
+     errors: number;
+     successRate: number;
    }
    ```
 
@@ -236,15 +238,17 @@ function isCtx(val: unknown): val is ExtensionContext {
    - For `PerformanceMetrics`: `"turnNumber" in metrics` → `true` → `!("turnNumber" in metrics)` → `false` ✓
    - For `ExtensionContext`: `"turnNumber" in ctx` → `false` → `!("turnNumber" in ctx)` → `true` ✓
 
-The logic *happens to work* by accident, but it's conceptually backwards:
-- The function is named `isCtx` but checks for the *absence* of a metrics property
+The logic _happens to work_ by accident, but it's conceptually backwards:
+
+- The function is named `isCtx` but checks for the _absence_ of a metrics property
 - It relies on the specific implementation details of one type (PerformanceMetrics) to distinguish from another (ExtensionContext)
 - If PerformanceMetrics ever removes `turnNumber`, this will silently break
 
 **Correct approach**: Check for properties that ExtensionContext HAS and PerformanceMetrics does NOT:
+
 ```typescript
 function isCtx(val: unknown): val is ExtensionContext {
-	return typeof val === "object" && val !== null && "tools" in val && "settingsManager" in val;
+  return typeof val === "object" && val !== null && "tools" in val && "settingsManager" in val;
 }
 ```
 
@@ -263,14 +267,18 @@ function isCtx(val: unknown): val is ExtensionContext {
 const HTTP_TRANSIENT_RETRYABLE = new Set([429, 500, 502, 503, 504]);
 
 // Line 37
-const HTTP_CLIENT_ERROR_NON_RETRYABLE = new Set([400, 401, 403, 404, 405, 408, 410, 413, 415, 422, 429]);
+const HTTP_CLIENT_ERROR_NON_RETRYABLE = new Set([
+  400, 401, 403, 404, 405, 408, 410, 413, 415, 422, 429,
+]);
 ```
 
 **Analysis**: HTTP 429 (Too Many Requests / Rate Limited) appears in BOTH sets:
+
 - It's classified as "TRANSIENT" (retryable) in line 32
 - It's classified as "CLIENT_ERROR" (non-retryable) in line 37
 
 The comment on line 37 admits this: `// 429 is debatable`. But having it in both sets means:
+
 - The classification logic depends on the ORDER of checks
 - If the transient check runs first, 429 is retryable
 - If the client error check runs first, 429 is non-retryable
@@ -286,37 +294,43 @@ The comment on line 37 admits this: `// 429 is debatable`. But having it in both
 **Lines**: 67–106
 
 ```typescript
-function gatherCommitContext(): { goals: string[]; plans: string[]; decisions: string[]; notes: string[] } {
-	// ... git diff extraction ...
+function gatherCommitContext(): {
+  goals: string[];
+  plans: string[];
+  decisions: string[];
+  notes: string[];
+} {
+  // ... git diff extraction ...
 
-	// Detect scratchpad goal references
-	const goalMatch = text.match(/Goal set: (.+?)(?:\n|$)/);
-	if (goalMatch && !scratchpadGoal) scratchpadGoal = goalMatch[1].trim();
+  // Detect scratchpad goal references
+  const goalMatch = text.match(/Goal set: (.+?)(?:\n|$)/);
+  if (goalMatch && !scratchpadGoal) scratchpadGoal = goalMatch[1].trim();
 
-	// Detect plan steps
-	const planMatches = text.matchAll(/^\d+\)\s+(.+)$/gm);
-	for (const m of planMatches) {
-		const step = m[1].trim();
-		if (step && !scratchpadPlan.includes(step)) scratchpadPlan.push(step.slice(0, 80));
-	}
+  // Detect plan steps
+  const planMatches = text.matchAll(/^\d+\)\s+(.+)$/gm);
+  for (const m of planMatches) {
+    const step = m[1].trim();
+    if (step && !scratchpadPlan.includes(step)) scratchpadPlan.push(step.slice(0, 80));
+  }
 
-	// Detect decisions
-	const decisionMatches = text.matchAll(/decision:?\s*(.+)/gi);
-	for (const m of decisionMatches) {
-		const d = m[1].trim().slice(0, 100);
-		if (d && !scratchpadDecisions.includes(d)) scratchpadDecisions.push(d);
-	}
+  // Detect decisions
+  const decisionMatches = text.matchAll(/decision:?\s*(.+)/gi);
+  for (const m of decisionMatches) {
+    const d = m[1].trim().slice(0, 100);
+    if (d && !scratchpadDecisions.includes(d)) scratchpadDecisions.push(d);
+  }
 
-	// Detect notes
-	const noteMatches = text.matchAll(/note:?\s*(.+)/gi);
-	for (const m of noteMatches) {
-		const n = m[1].trim().slice(0, 100);
-		if (n && !scratchpadNotes.includes(n)) scratchpadNotes.push(n);
-	}
+  // Detect notes
+  const noteMatches = text.matchAll(/note:?\s*(.+)/gi);
+  for (const m of noteMatches) {
+    const n = m[1].trim().slice(0, 100);
+    if (n && !scratchpadNotes.includes(n)) scratchpadNotes.push(n);
+  }
 }
 ```
 
 **Analysis**: This function uses regex to parse assistant message text for structured data:
+
 - Depends on specific output patterns: "Goal set:", "1) ", "decision:", "note:"
 - Will silently break if scratchpad changes its output format
 - No validation of extracted data
@@ -332,23 +346,25 @@ function gatherCommitContext(): { goals: string[]; plans: string[]; decisions: s
 
 **Distribution by file**:
 
-| File | Count |
-|------|-------|
-| `src/extensions/enforcement/index.ts` | 15+ |
-| `src/extensions/polyfill/index.ts` | 7 |
-| `src/lib/model-resolver.ts` | 7 |
-| `src/extensions/context-manager/handlers/rotation.ts` | 5+ |
-| Other files | 30+ |
+| File                                                  | Count |
+| ----------------------------------------------------- | ----- |
+| `src/extensions/enforcement/index.ts`                 | 15+   |
+| `src/extensions/polyfill/index.ts`                    | 7     |
+| `src/lib/model-resolver.ts`                           | 7     |
+| `src/extensions/context-manager/handlers/rotation.ts` | 5+    |
+| Other files                                           | 30+   |
 
 **Example patterns**:
 
 1. **`(ctx as any).settingsManager`** - Extending ctx with untyped properties:
+
    ```typescript
    const defaultProvider = (ctx as any).settingsManager?.getDefaultProvider?.();
    const defaultModel = (ctx as any).settingsManager?.getDefaultModel?.();
    ```
 
 2. **`(event as any)`** - Casting event types:
+
    ```typescript
    pi.on("auto_retry_end" as any, async (event: any, ctx: any) => {
    ```
@@ -359,6 +375,7 @@ function gatherCommitContext(): { goals: string[]; plans: string[]; decisions: s
    ```
 
 **Analysis**: While `as any` is sometimes necessary, 70+ occurrences indicates:
+
 - Incomplete type definitions in the ExtensionContext or related types
 - Avoidance of proper type extension patterns
 - Potential for runtime errors that TypeScript should catch
@@ -376,14 +393,15 @@ function gatherCommitContext(): { goals: string[]; plans: string[]; decisions: s
 let saveTimer: ReturnType<typeof setInterval> | null = null;
 
 function startMetricsPersistence(): void {
-	if (saveTimer) return;
-	saveTimer = setInterval(() => {
-		saveMetrics().catch((err) => _log.error("Failed to save metrics:", err));
-	}, METRICS_SAVE_INTERVAL);
+  if (saveTimer) return;
+  saveTimer = setInterval(() => {
+    saveMetrics().catch((err) => _log.error("Failed to save metrics:", err));
+  }, METRICS_SAVE_INTERVAL);
 }
 ```
 
 **Analysis**:
+
 1. **Resource leak**: The timer is never cleared when the extension unloads
 2. **No cleanup handler**: There's no `pi.on("unload", ...)` to clear the interval
 3. **Process contamination**: If the extension is reloaded, multiple timers could be created (though there's a guard)
@@ -409,9 +427,9 @@ function startMetricsPersistence(): void {
 
 ```typescript
 try {
-	const result = await (ctx as any).tools.exec?.({ command: `git diff --stat ${commitRange}` });
+  const result = await (ctx as any).tools.exec?.({ command: `git diff --stat ${commitRange}` });
 } catch {
-	// Silent - no git context available
+  // Silent - no git context available
 }
 ```
 
@@ -428,14 +446,15 @@ try {
 let _singletonInstance: CognitiveMemory | null = null;
 
 export function getCognitiveMemory(): CognitiveMemory {
-	if (!_singletonInstance) {
-		_singletonInstance = new CognitiveMemory();
-	}
-	return _singletonInstance;
+  if (!_singletonInstance) {
+    _singletonInstance = new CognitiveMemory();
+  }
+  return _singletonInstance;
 }
 ```
 
 **Analysis**:
+
 - **Not session-scoped**: The singleton persists across sessions
 - **Global state**: Shares state between different pi sessions
 - **Violates convention**: Should use `getExtensionState()` for session-scoped state
@@ -449,14 +468,15 @@ export function getCognitiveMemory(): CognitiveMemory {
 
 Multiple files have excessive function overloads:
 
-| File | Function | Overloads |
-|------|----------|-----------|
-| `src/extensions/scratchpad/index.ts` | Various | 17 |
-| `src/extensions/session-recall/index.ts` | Various | 16 |
-| `src/extensions/feedback/index.ts` | Various | 15 |
-| `src/extensions/context-manager/handlers/compaction.ts` | Various | 13 |
+| File                                                    | Function | Overloads |
+| ------------------------------------------------------- | -------- | --------- |
+| `src/extensions/scratchpad/index.ts`                    | Various  | 17        |
+| `src/extensions/session-recall/index.ts`                | Various  | 16        |
+| `src/extensions/feedback/index.ts`                      | Various  | 15        |
+| `src/extensions/context-manager/handlers/compaction.ts` | Various  | 13        |
 
 **Analysis**: While not incorrect, excessive overloads:
+
 - Increase cognitive load
 - Indicate complex/legacy APIs
 - Make refactoring difficult
@@ -475,23 +495,27 @@ Multiple files have excessive function overloads:
 // ── Simple Text Similarity ────────────────────────────────────────────────────
 
 function tokenize(text: string): Set<string> {
-	return new Set(
-		text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0)
-	);
+  return new Set(
+    text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0),
+  );
 }
 
 function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
-	if (a.size === 0 && b.size === 0) return 0;
-	let intersection = 0;
-	for (const item of a) {
-		if (b.has(item)) intersection++;
-	}
-	const union = a.size + b.size - intersection;
-	return union === 0 ? 0 : intersection / union;
+  if (a.size === 0 && b.size === 0) return 0;
+  let intersection = 0;
+  for (const item of a) {
+    if (b.has(item)) intersection++;
+  }
+  const union = a.size + b.size - intersection;
+  return union === 0 ? 0 : intersection / union;
 }
 ```
 
 **Analysis**: These are general-purpose text similarity utilities embedded in an extension. Should be:
+
 - In `src/lib/` as a shared utility
 - Named more generically (`textSimilarity.ts` or similar)
 - Have tests
@@ -507,25 +531,26 @@ function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
 
 ```typescript
 function updateDegradationConfig(
-	ctxOrPartial: ExtensionContext | Partial<DegradationConfig>,
-	partial?: Partial<DegradationConfig>
+  ctxOrPartial: ExtensionContext | Partial<DegradationConfig>,
+  partial?: Partial<DegradationConfig>,
 ): void;
 function updateDegradationConfig(partial: Partial<DegradationConfig>): void;
 function updateDegradationConfig(
-	ctxOrPartial: ExtensionContext | Partial<DegradationConfig>,
-	partial?: Partial<DegradationConfig>
+  ctxOrPartial: ExtensionContext | Partial<DegradationConfig>,
+  partial?: Partial<DegradationConfig>,
 ): void {
-	if (ctxOrPartial && !("healthcheckMinScore" in ctxOrPartial)) {
-		const ctx = ctxOrPartial as ExtensionContext;
-		// ...
-	} else {
-		const cfg = (ctxOrPartial as Partial<DegradationConfig>);
-		// ...
-	}
+  if (ctxOrPartial && !("healthcheckMinScore" in ctxOrPartial)) {
+    const ctx = ctxOrPartial as ExtensionContext;
+    // ...
+  } else {
+    const cfg = ctxOrPartial as Partial<DegradationConfig>;
+    // ...
+  }
 }
 ```
 
 **Analysis**: The overload distinction relies on checking whether `"healthcheckMinScore" in ctxOrPartial` is true or false. This is:
+
 - **Fragile**: If ExtensionContext ever gets a `healthcheckMinScore` property, this will break
 - **Confusing**: The overload signature doesn't make this distinction clear
 - **Non-standard**: Different overloads should have clearly different parameter counts or types
@@ -541,16 +566,17 @@ function updateDegradationConfig(
 
 ```typescript
 async function persistCustomKeys(): Promise<void> {
-	try {
-		// ... persist logic ...
-	} catch {
-		// Non-fatal: settings won't persist but everything else still works
- /* Non-fatal: input normalization unavailable */
-	}
+  try {
+    // ... persist logic ...
+  } catch {
+    // Non-fatal: settings won't persist but everything else still works
+    /* Non-fatal: input normalization unavailable */
+  }
 }
 ```
 
 **Analysis**:
+
 - The comment is split across two lines with different content
 - The second comment ("input normalization unavailable") doesn't match the function context
 - This looks like copy-paste error or incomplete edit
@@ -569,6 +595,7 @@ pi.on("auto_retry_end" as any, async (event: any, ctx: any) => {
 ```
 
 **Analysis**: The event name is cast as `any`, which:
+
 - Suppresses type checking
 - Hides potential typos in event names
 - Makes the codebase rely on runtime behavior for event validation
@@ -589,16 +616,17 @@ pi.on("auto_retry_end" as any, async (event: any, ctx: any) => {
  * Kept for backward compatibility.
  */
 function _queueFeedbackWhisper(message: string): void {
-	// Just store for potential debugging/audit purposes
-	if (pendingWhisper) {
-		pendingWhisper = `${pendingWhisper}\n\n${message}`;
-	} else {
-		pendingWhisper = message;
-	}
+  // Just store for potential debugging/audit purposes
+  if (pendingWhisper) {
+    pendingWhisper = `${pendingWhisper}\n\n${message}`;
+  } else {
+    pendingWhisper = message;
+  }
 }
 ```
 
 **Analysis**:
+
 - Function is prefixed with `_` (indicating private) but is still exported
 - Despite being "deprecated", it's still part of the public API
 - The `pendingWhisper` variable is never consumed by anything meaningful
@@ -614,12 +642,13 @@ function _queueFeedbackWhisper(message: string): void {
 
 ```typescript
 function getStateFrom(ctx?: ExtensionContext): DegradationState {
-	if (ctx) return getExtensionState(ctx, "degradation-detector", () => ({ ..._global }));
-	return _global;
+  if (ctx) return getExtensionState(ctx, "degradation-detector", () => ({ ..._global }));
+  return _global;
 }
 ```
 
 **Analysis**: This shows the codebase in transition:
+
 - New code uses `getExtensionState()` (proper session-scoped state)
 - Legacy fallback uses `_global` (process-scoped, non-session-scoped)
 - The `_global` fallback can cause cross-session contamination
@@ -633,12 +662,14 @@ function getStateFrom(ctx?: ExtensionContext): DegradationState {
 ### 18. AI-Generated Content Artifacts
 
 Multiple files show signs of AI-generated code:
+
 - **Verbose JSDoc** that states the obvious
 - **Overly detailed comments** for simple operations
 - **Inconsistent naming** between files
 - **Verbose function names** (e.g., `updateDegradationStatusFrom` instead of `updateDegradation`)
 
 **Example**:
+
 ```typescript
 /**
  * Record healthcheck score from metrics
@@ -656,9 +687,9 @@ Multiple files have magic numbers without named constants:
 
 ```typescript
 // From various files
-METRICS_SAVE_INTERVAL = 60000;  // Why 60 seconds?
-HEALTHCHECK_INTERVAL = 300000;  // Why 5 minutes?
-NUDGE_COOLDOWN = 30000;         // Why 30 seconds?
+METRICS_SAVE_INTERVAL = 60000; // Why 60 seconds?
+HEALTHCHECK_INTERVAL = 300000; // Why 5 minutes?
+NUDGE_COOLDOWN = 30000; // Why 30 seconds?
 ```
 
 These should be documented or extracted to a config file.
@@ -668,6 +699,7 @@ These should be documented or extracted to a config file.
 ### 20. Inconsistent Error Handling Patterns
 
 The codebase has multiple error handling patterns:
+
 1. Silent catch blocks (`catch { /* silent */ }`)
 2. Catch with comments (`catch { /* Non-fatal: ... */ }`)
 3. Catch with logging (`catch (err) => log.error(...)`)
@@ -680,6 +712,7 @@ This inconsistency makes it unclear which errors are expected vs. unexpected.
 ### 21. Inconsistent File Organization
 
 Some observations:
+
 - `src/extensions/enforcement/` has `handlers/` subdirectory but other extensions don't
 - Some extensions are 900+ lines, others are 100 lines
 - No clear convention for when to split into handlers
@@ -688,19 +721,19 @@ Some observations:
 
 ## 📊 Summary Statistics
 
-| Category | Count |
-|----------|-------|
-| Critical Issues | 4 |
-| High Severity | 4 |
-| Moderate | 9 |
-| Minor | 4 |
-| **Total Issues** | **21** |
-| | |
-| `as any` casts | 70+ |
-| Module-level mutable state | 8+ files |
-| Function overloads | 60+ across files |
-| Files using globalThis | 3 |
-| Singleton instances | 1 |
+| Category                   | Count            |
+| -------------------------- | ---------------- |
+| Critical Issues            | 4                |
+| High Severity              | 4                |
+| Moderate                   | 9                |
+| Minor                      | 4                |
+| **Total Issues**           | **21**           |
+|                            |                  |
+| `as any` casts             | 70+              |
+| Module-level mutable state | 8+ files         |
+| Function overloads         | 60+ across files |
+| Files using globalThis     | 3                |
+| Singleton instances        | 1                |
 
 ---
 
@@ -741,4 +774,4 @@ Some observations:
 
 ---
 
-*Report generated by Braid (PI Coding Agent) on 2026-04-21*
+_Report generated by Braid (PI Coding Agent) on 2026-04-21_

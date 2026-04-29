@@ -7,6 +7,7 @@
 Context grows over long sessions, causing agent performance to degrade. The agent becomes slower, less focused, and eventually produces worse results as the conversation history fills with noise.
 
 **Symptoms:**
+
 - Context hit rate drops after ~30 turns
 - Agent starts repeating itself
 - Error rate increases in long sessions
@@ -18,13 +19,13 @@ Context grows over long sessions, causing agent performance to degrade. The agen
 
 pi-braid already has a sophisticated context management system:
 
-| Component | Location | What It Does |
-|-----------|-----------|---------------|
-| **S-MMU Context Lifecycle** | `context-lifecycle/` | R-CCAM loop: retrieval, cognition, control, action, memory |
-| **Context Manager** | `context-manager/` | Pruning, compression, rotation, navigation |
-| **Three Memory Stores** | `three-memory-stores/` | Episodes, heuristics, tool reliability |
-| **Evidence Pool** | `lib/evidence-pool.ts` | Belief tracking, conflict detection, provenance |
-| **Heartbeat Scheduler** | `heartbeat-scheduler/` | Proactive monitoring |
+| Component                   | Location               | What It Does                                               |
+| --------------------------- | ---------------------- | ---------------------------------------------------------- |
+| **S-MMU Context Lifecycle** | `context-lifecycle/`   | R-CCAM loop: retrieval, cognition, control, action, memory |
+| **Context Manager**         | `context-manager/`     | Pruning, compression, rotation, navigation                 |
+| **Three Memory Stores**     | `three-memory-stores/` | Episodes, heuristics, tool reliability                     |
+| **Evidence Pool**           | `lib/evidence-pool.ts` | Belief tracking, conflict detection, provenance            |
+| **Heartbeat Scheduler**     | `heartbeat-scheduler/` | Proactive monitoring                                       |
 
 ### Why It's Not Enough
 
@@ -33,13 +34,14 @@ The existing mechanisms have fundamental limitations:
 **1. Count-based thresholds, not density-based**
 
 `context-manager/` uses hard token/message limits:
+
 ```typescript
-MAX_MESSAGES = 200
-COMPRESSION_THRESHOLD = 0.7  // 70% of limit
-COMPRESS_WHEN_OVER = 100  // tokens over limit
+MAX_MESSAGES = 200;
+COMPRESSION_THRESHOLD = 0.7; // 70% of limit
+COMPRESS_WHEN_OVER = 100; // tokens over limit
 ```
 
-This means context is compressed *after* it grows large, not *before* it becomes noisy. A 50-message context with high signal is better than a 10-message context with mostly boilerplate. Count thresholds miss this.
+This means context is compressed _after_ it grows large, not _before_ it becomes noisy. A 50-message context with high signal is better than a 10-message context with mostly boilerplate. Count thresholds miss this.
 
 **2. No information density monitoring**
 
@@ -48,6 +50,7 @@ The heartbeat's `contextHygieneModule` (before this sprint) did almost nothing �
 **3. No provenance on memory injections**
 
 Evidence and memories are injected into context without source/TTL tags. The agent can't distinguish fresh context from memory, leading to:
+
 - **Memory contamination**: Memories from previous projects influence current work (HaluMem, 2511.03506)
 - **Stale evidence**: Old evidence used as if fresh
 - **No confidence calibration**: Agent doesn't know how old or reliable injected memories are
@@ -109,6 +112,7 @@ Long-term (episodic):
 Key finding: Language models exhibit **memory hallucinations** — fluent but inaccurate claims about past interactions. These propagate between sessions when memories are injected without provenance.
 
 **Implementation in pi-braid**:
+
 - `Evidence.project` field tracks creation project
 - `formatEvidenceWithProvenance()` tags injections with `[EVIDENCE source project=X ttl=Y ago]`
 - `Evidence.project` on three-memory-stores episodes
@@ -135,6 +139,7 @@ const density = evaluateContextDensity(ctx);
 ```
 
 **Signals detected:**
+
 - Repeated boilerplate (tracebacks, import statements, HTTP headers)
 - Near-duplicate messages (hash-based detection)
 - Token ratio vs density mismatch
@@ -144,6 +149,7 @@ const density = evaluateContextDensity(ctx);
 **File**: `src/extensions/heartbeat/heartbeat-scheduler/index.ts`
 
 Enhanced `contextHygieneModule` now:
+
 - Evaluates density every 5-10 turns (adaptive)
 - Warns when density < 0.4 (noisy context)
 - Suggests semantic compression when high-density + large context
@@ -174,6 +180,7 @@ export function formatEvidenceWithProvenance(evidence) {
 **File**: `src/extensions/memory/three-memory-stores/index.ts`
 
 Episodes tagged with project path. Retrieved memories display provenance:
+
 ```
 [MEMORY project=/path/to/proj ttl=30m ago] ✅ [success] Implement feature X
    Solution: Used pattern Y with approach Z...
@@ -183,14 +190,14 @@ Episodes tagged with project path. Retrieved memories display provenance:
 
 ## Implemented ✅
 
-| Item | Status | Implementation |
-|------|--------|----------------|
-| Context density monitoring | ✅ v0.28.0 | `src/lib/context-density.ts`: signal/noise eval, density %, strategy recommendation |
-| Density-aware heartbeat | ✅ v0.28.0 | `contextHygieneModule`: density-aware warnings, turns-to-limit projection, duplicate detection |
-| Evidence provenance | ✅ v0.28.0 | `Evidence.project` field + `formatEvidenceWithProvenance()` (HaluMem) |
-| Density-aware S-MMU policies | ✅ v0.28.1 | `generateDensitySignals()` + `evaluatePolicies()` — emit density signals into lifecycle |
+| Item                           | Status     | Implementation                                                                                       |
+| ------------------------------ | ---------- | ---------------------------------------------------------------------------------------------------- |
+| Context density monitoring     | ✅ v0.28.0 | `src/lib/context-density.ts`: signal/noise eval, density %, strategy recommendation                  |
+| Density-aware heartbeat        | ✅ v0.28.0 | `contextHygieneModule`: density-aware warnings, turns-to-limit projection, duplicate detection       |
+| Evidence provenance            | ✅ v0.28.0 | `Evidence.project` field + `formatEvidenceWithProvenance()` (HaluMem)                                |
+| Density-aware S-MMU policies   | ✅ v0.28.1 | `generateDensitySignals()` + `evaluatePolicies()` — emit density signals into lifecycle              |
 | Cross-session memory isolation | ✅ v0.28.1 | `Episode.project` + `Evidence.project` — cross-project filtering in queryEvidence + retrieveEpisodes |
-| Memory provenance display | ✅ v0.28.1 | `[MEMORY project=X ttl=Ym ago]` prefix in search results |
+| Memory provenance display      | ✅ v0.28.1 | `[MEMORY project=X ttl=Ym ago]` prefix in search results                                             |
 
 ## Remaining Work
 
@@ -204,6 +211,7 @@ Episodes tagged with project path. Retrieved memories display provenance:
   - Long-term: Convert to episodic summaries in three-memory-stores
 
 ### P2 (Medium Priority)
+
 - [x] **Semantic compression prototype** — ✅ v0.31.0: `semanticCompress()` in `context-manager/semantic-compress.ts`
   - ⚠️ **NOTE:** Currently in wrong event handler (`"context"` — per-streaming, no return value effect)
   - **FIX:** Move to `session_before_compact` where return value is respected
@@ -215,6 +223,7 @@ Episodes tagged with project path. Retrieved memories display provenance:
 - [ ] **Remove `(ctx as any).turnCount` usages** — Track turns via `message_end` events instead (unstable API)
 
 ### P3 (Research Findings)
+
 - [x] **PI API research** — `docs/PI-API-RESEARCH.md`: event types, ExtensionContext properties, compaction lifecycle, session_before_compact patterns, known issues
 
 ## Architecture Decision
@@ -222,6 +231,7 @@ Episodes tagged with project path. Retrieved memories display provenance:
 **Q: Should compression be triggered by the agent or automatically?**
 
 A: Both, but differently:
+
 - **Automatic**: Heartbeat fires when density < 0.4 or token ratio > 0.6. No agent intervention needed.
 - **Agent-invoked**: `context_archive()` tool suggests compression strategy based on density. Agent decides whether to proceed.
 - **Proactive**: Agent sees context density in heartbeat nudges and can invoke compression before being told to.
@@ -230,12 +240,12 @@ This matches the GenericAgent finding: **monitor density, not just length**. The
 
 ## Key Metrics to Track
 
-| Metric | Measurement | Target |
-|--------|-------------|--------|
-| Context density | signal / (signal + noise) | > 0.6 |
-| Memory contamination rate | Memory hallucinations / total memory injections | < 5% |
-| Compression effectiveness | Post-compression density / pre-compression density | > 1.2x |
-| Turns-to-overflow projection | (tokenLimit - tokens) / tokensPerTurn | > 10 turns warning |
+| Metric                       | Measurement                                        | Target             |
+| ---------------------------- | -------------------------------------------------- | ------------------ |
+| Context density              | signal / (signal + noise)                          | > 0.6              |
+| Memory contamination rate    | Memory hallucinations / total memory injections    | < 5%               |
+| Compression effectiveness    | Post-compression density / pre-compression density | > 1.2x             |
+| Turns-to-overflow projection | (tokenLimit - tokens) / tokensPerTurn              | > 10 turns warning |
 
 ## References
 

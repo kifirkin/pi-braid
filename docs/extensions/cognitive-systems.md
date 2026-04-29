@@ -16,29 +16,30 @@ Plus the **evidence pool** — structured evidence tracking with source labeling
 
 ## Events Handled
 
-| Event | Handler |
-|-------|---------|
+| Event                | Handler                                                                                  |
+| -------------------- | ---------------------------------------------------------------------------------------- |
 | `tool_execution_end` | Store tool outcomes as evidence (via `addEvidence`) for hypotheses and memory operations |
-| `message_end` | Detect memory-related usage patterns and trigger MARS reflection triggers |
+| `message_end`        | Detect memory-related usage patterns and trigger MARS reflection triggers                |
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
-| `memory_store` | Store semantic memory with structured content, type, tags, importance, TTL |
-| `memory_recall` | Semantic text search across all memories |
-| `memory_list` | List recent memories sorted by recency |
-| `memory_get` | Get full memory by ID |
-| `memory_episodes` | Search/add/list retrospective episodes of past tasks |
-| `memory_heuristics` | View and manage adaptive procedural heuristics |
-| `memory_tool_stats` | View tool reliability statistics per task type |
-| `think` | Record structured thinking with depth, alternatives, confidence calibration |
-| `hypothesize` | Structure debugging approach with ranked hypotheses |
-| `explore_paths` | Parallel sub-agent exploration of multiple hypotheses (file search + grep + head) |
+| Tool                | Description                                                                       |
+| ------------------- | --------------------------------------------------------------------------------- |
+| `memory_store`      | Store semantic memory with structured content, type, tags, importance, TTL        |
+| `memory_recall`     | Semantic text search across all memories                                          |
+| `memory_list`       | List recent memories sorted by recency                                            |
+| `memory_get`        | Get full memory by ID                                                             |
+| `memory_episodes`   | Search/add/list retrospective episodes of past tasks                              |
+| `memory_heuristics` | View and manage adaptive procedural heuristics                                    |
+| `memory_tool_stats` | View tool reliability statistics per task type                                    |
+| `think`             | Record structured thinking with depth, alternatives, confidence calibration       |
+| `hypothesize`       | Structure debugging approach with ranked hypotheses                               |
+| `explore_paths`     | Parallel sub-agent exploration of multiple hypotheses (file search + grep + head) |
 
 ## MARS Integration
 
 The `think` tool (depth='deep') invokes a utility model for fresh-eyes perspective. The MARS reflector (metacognitive) analyzes tool-use patterns for:
+
 - Tool overuse detection (same tool repeatedly)
 - Error recurrence patterns
 - Switched-strategy success tracking

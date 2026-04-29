@@ -15,76 +15,80 @@ import { evaluateCognition } from "../../../lib/cognition-evaluator.js";
 import { Type } from "typebox";
 
 interface MetaMetrics {
-	thinks: number;
-	hypothesizes: number;
-	finalizes: number;
-	totalConfidence: number;
-	hypothesesGenerated: number;
-	hypothesesWithVerification: number;
-	finalizationsBlocked: number;
-	depthDistribution: Record<string, number>;
-	reasoningTags: Record<string, number>;
+  thinks: number;
+  hypothesizes: number;
+  finalizes: number;
+  totalConfidence: number;
+  hypothesesGenerated: number;
+  hypothesesWithVerification: number;
+  finalizationsBlocked: number;
+  depthDistribution: Record<string, number>;
+  reasoningTags: Record<string, number>;
 }
 
 function getMetaState(ctx: ExtensionContext): MetaMetrics {
-	return getExtensionState<MetaMetrics>(ctx, "metacognition-metrics", () => ({
-		thinks: 0,
-		hypothesizes: 0,
-		finalizes: 0,
-		totalConfidence: 0,
-		hypothesesGenerated: 0,
-		hypothesesWithVerification: 0,
-		finalizationsBlocked: 0,
-		depthDistribution: {},
-		reasoningTags: {},
-	}));
+  return getExtensionState<MetaMetrics>(ctx, "metacognition-metrics", () => ({
+    thinks: 0,
+    hypothesizes: 0,
+    finalizes: 0,
+    totalConfidence: 0,
+    hypothesesGenerated: 0,
+    hypothesesWithVerification: 0,
+    finalizationsBlocked: 0,
+    depthDistribution: {},
+    reasoningTags: {},
+  }));
 }
 
 export default function metacognitionExtension(pi: ExtensionAPI) {
-	// Register tools
-	pi.registerTool(createThinkTool() as any);
-	pi.registerTool(createHypothesizeTool() as any);
-	pi.registerTool(createFinalizeTool({
-		onFinalize: (_summary, _completed) => {
-			// Logging handled by the finalize tool's own execution
-		},
-		sendNextTask: (description) => {
-			pi.sendUserMessage([{ type: "text", text: `Continue with the next pending task: ${description}` }]);
-		},
-		recordCalibration,
-	}) as any);
+  // Register tools
+  pi.registerTool(createThinkTool() as any);
+  pi.registerTool(createHypothesizeTool() as any);
+  pi.registerTool(
+    createFinalizeTool({
+      onFinalize: (_summary, _completed) => {
+        // Logging handled by the finalize tool's own execution
+      },
+      sendNextTask: (description) => {
+        pi.sendUserMessage([
+          { type: "text", text: `Continue with the next pending task: ${description}` },
+        ]);
+      },
+      recordCalibration,
+    }) as any,
+  );
 
-	// Track tool usage
-	pi.on("tool_execution_end", (event: any, ctx: ExtensionContext) => {
-		const toolName = event?.toolName ?? "";
-		if (!ctx || !toolName) return;
-		const state = getMetaState(ctx);
+  // Track tool usage
+  pi.on("tool_execution_end", (event: any, ctx: ExtensionContext) => {
+    const toolName = event?.toolName ?? "";
+    if (!ctx || !toolName) return;
+    const state = getMetaState(ctx);
 
-		if (toolName === "think") {
-			state.thinks++;
-			const depth = event?.params?.depth ?? "quick";
-			state.depthDistribution[depth] = (state.depthDistribution[depth] ?? 0) + 1;
-			const tags: string[] = event?.params?.tags ?? [];
-			for (const tag of tags) {
-				state.reasoningTags[tag] = (state.reasoningTags[tag] ?? 0) + 1;
-			}
-			if (event?.params?.confidence !== undefined) {
-				state.totalConfidence += event.params.confidence;
-			}
-		} else if (toolName === "hypothesize") {
-			state.hypothesizes++;
-			state.hypothesesGenerated += event?.params?.maxHypotheses ?? 3;
-			if (event?.details?.scores?.some((s: any) => s.signals?.includes("verification-plan"))) {
-				state.hypothesesWithVerification++;
-			}
-		} else if (toolName === "finalize") {
-			state.finalizes++;
-			if (event?.details?.blocked) {
-				state.finalizationsBlocked++;
-			}
-		}
-	});
+    if (toolName === "think") {
+      state.thinks++;
+      const depth = event?.params?.depth ?? "quick";
+      state.depthDistribution[depth] = (state.depthDistribution[depth] ?? 0) + 1;
+      const tags: string[] = event?.params?.tags ?? [];
+      for (const tag of tags) {
+        state.reasoningTags[tag] = (state.reasoningTags[tag] ?? 0) + 1;
+      }
+      if (event?.params?.confidence !== undefined) {
+        state.totalConfidence += event.params.confidence;
+      }
+    } else if (toolName === "hypothesize") {
+      state.hypothesizes++;
+      state.hypothesesGenerated += event?.params?.maxHypotheses ?? 3;
+      if (event?.details?.scores?.some((s: any) => s.signals?.includes("verification-plan"))) {
+        state.hypothesesWithVerification++;
+      }
+    } else if (toolName === "finalize") {
+      state.finalizes++;
+      if (event?.details?.blocked) {
+        state.finalizationsBlocked++;
+      }
+    }
+  });
 
-	// Tools removed (2026-04-28): cognition_evaluate / heuristics_evaluate.
-	// Reason: rarely used, indirect metric. Heuristic definitions kept for enforcement use.
+  // Tools removed (2026-04-28): cognition_evaluate / heuristics_evaluate.
+  // Reason: rarely used, indirect metric. Heuristic definitions kept for enforcement use.
 }

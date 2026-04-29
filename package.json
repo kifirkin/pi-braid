@@ -13,7 +13,11 @@
 		"typecheck": "tsc --noEmit",
 		"build": "tsc",
 		"test": "npm run build && node scripts/run-tests.mjs",
-		"clean": "rm -rf dist *.tsbuildinfo"
+		"clean": "rm -rf dist *.tsbuildinfo",
+		"format": "prettier --write .",
+		"format:check": "prettier --check .",
+		"lint": "eslint src/ --max-warnings 0",
+		"lint:fix": "eslint src/ --fix"
 	},
 	"dependencies": {
 		"typebox": "1.1.34"

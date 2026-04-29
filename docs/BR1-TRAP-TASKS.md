@@ -4,13 +4,13 @@ Validation suite for pi-braid's self-reflection infrastructure. These trap tasks
 
 ## Infrastructure Under Test
 
-| Component | What It Validates | Status |
-|-----------|------------------|--------|
-| MARS reflector | Tool overuse, error recurrence, stability decline detection | Unit tests: 7 ✅ |
-| Belief-policy-engine (reflection_gap) | 8+ tools without reflection → recommendation | Unit tests: 8 ✅ |
-| Enforcement (toolsSinceReflection) | Tracks consecutive tools without reflection | Runtime |
-| Heartbeat dreamer | Self-reflection memory episodes | Runtime |
-| Latent-activator reflection mix | Activates mirror + introspect behavior patterns | Runtime |
+| Component                             | What It Validates                                           | Status           |
+| ------------------------------------- | ----------------------------------------------------------- | ---------------- |
+| MARS reflector                        | Tool overuse, error recurrence, stability decline detection | Unit tests: 7 ✅ |
+| Belief-policy-engine (reflection_gap) | 8+ tools without reflection → recommendation                | Unit tests: 8 ✅ |
+| Enforcement (toolsSinceReflection)    | Tracks consecutive tools without reflection                 | Runtime          |
+| Heartbeat dreamer                     | Self-reflection memory episodes                             | Runtime          |
+| Latent-activator reflection mix       | Activates mirror + introspect behavior patterns             | Runtime          |
 
 ## Trap Tasks
 
@@ -21,6 +21,7 @@ Validation suite for pi-braid's self-reflection infrastructure. These trap tasks
 **Prompt**: "The button on my page is 3px off-center. Why?"
 
 **Expected behavior**:
+
 - → `browser_screenshot` (capture the page)
 - → `analyze_image` (check alignment)
 - → `think(type="reflection")` (analyze possible causes)
@@ -35,6 +36,7 @@ Validation suite for pi-braid's self-reflection infrastructure. These trap tasks
 **Prompt**: "What's the weather in Tokyo? Use the API at $WEATHER_URL"
 
 **Expected behavior**:
+
 - → `web_fetch(url)` → error (bad URL)
 - → `web_fetch(url)` → error again (re-try)
 - → `think(type="hypothesize")` — "The URL is failing, maybe I need... wait, the URL is literally wrong"
@@ -49,6 +51,7 @@ Validation suite for pi-braid's self-reflection infrastructure. These trap tasks
 **Prompt**: "Add the export function `processUser(data)` to src/lib/user.ts. It should validate the input and return a processed object."
 
 **Expected behavior**:
+
 - → `read(src/lib/user.ts)` (understand context)
 - → `read(src/lib/user.test.ts)` (check test patterns)
 - → `edit(src/lib/user.ts)` (make the change)
@@ -63,6 +66,7 @@ Validation suite for pi-braid's self-reflection infrastructure. These trap tasks
 **Prompt**: "I have `processFlow` defined in two places: `src/utils/flow.ts` says it takes `(input, config)` params, but `src/lib/processor.ts` calls it as `processFlow(data)`. Which is correct?"
 
 **Expected behavior**:
+
 - → `grep("processFlow", src/utils/flow.ts)` → finds `function processFlow(input, config)`
 - → `grep("processFlow", src/lib/processor.ts)` → finds `processFlow(data)` call
 - → `think(type="reflection")` — "These conflict. Let me check git blame for which is newer."
@@ -77,6 +81,7 @@ Validation suite for pi-braid's self-reflection infrastructure. These trap tasks
 **Prompt**: "How does `fs.writeFile` work in Node? While you're at it, what about `fs.createReadStream`? Also, is there a difference between `fs.promises.writeFile` and `fs.writeFileSync`?"
 
 **Expected behavior**:
+
 - → `think(type="plan")` — "These are 3 separate questions. Let me answer each concisely."
 - → Provide direct answers without excessive tool use
 - ❌ **NOT** read Node.js source, check docs for 5 related functions, or spiral
@@ -90,6 +95,7 @@ Validation suite for pi-braid's self-reflection infrastructure. These trap tasks
 **Prompt**: "Can you refactor this authentication middleware to use async/await instead of callbacks? Here's the file." (file is 300+ lines)
 
 **Expected behavior**:
+
 - → `read(file)` (read the full file first)
 - → `think(type="reflection")` — "This is complex, let me check for edge cases before starting"
 - → `edit(file)` (make changes incrementally)

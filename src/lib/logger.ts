@@ -24,43 +24,40 @@
  *   log.info("Pool initialized"); // console only
  */
 
-import type {
-	ExtensionContext,
-	ExtensionUIContext,
-} from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext, ExtensionUIContext } from "@mariozechner/pi-coding-agent";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
 interface LogEntry {
-	timestamp: number;
-	level: LogLevel;
-	source: string;
-	message: string;
-	data?: unknown;
+  timestamp: number;
+  level: LogLevel;
+  source: string;
+  message: string;
+  data?: unknown;
 }
 
 export interface Logger {
-	/** Bind a context for this execution scope. Call at start of handler/tool. */
-	bindContext(ctx: ExtensionContext | undefined): void;
-	/** Unbind the current context. Call at end if you want strict scoping. */
-	unbindContext(): void;
-	/** Check if a context is currently bound. */
-	hasContext(): boolean;
-	debug(message: string, data?: unknown): void;
-	info(message: string, data?: unknown): void;
-	warn(message: string, data?: unknown): void;
-	error(message: string, data?: unknown): void;
+  /** Bind a context for this execution scope. Call at start of handler/tool. */
+  bindContext(ctx: ExtensionContext | undefined): void;
+  /** Unbind the current context. Call at end if you want strict scoping. */
+  unbindContext(): void;
+  /** Check if a context is currently bound. */
+  hasContext(): boolean;
+  debug(message: string, data?: unknown): void;
+  info(message: string, data?: unknown): void;
+  warn(message: string, data?: unknown): void;
+  error(message: string, data?: unknown): void;
 }
 
 // ── Module state ───────────────────────────────────────────────────────────
 
 const _LEVEL_PRIORITY: Record<LogLevel, number> = {
-	debug: 0,
-	info: 1,
-	warn: 2,
-	error: 3,
+  debug: 0,
+  info: 1,
+  warn: 2,
+  error: 3,
 };
 
 const _suppressedSources = new Set<string>();
@@ -77,153 +74,153 @@ const MAX_BUFFER_SIZE = 200;
 // ── Format helpers ─────────────────────────────────────────────────────────
 
 function formatLevel(level: LogLevel): string {
-	return level.toUpperCase().padEnd(5);
+  return level.toUpperCase().padEnd(5);
 }
 
 function formatTimestamp(ts: number): string {
-	const d = new Date(ts);
-	return d.toISOString().slice(11, 23); // HH:mm:ss.mmm
+  const d = new Date(ts);
+  return d.toISOString().slice(11, 23); // HH:mm:ss.mmm
 }
 
 function formatData(data: unknown): string {
-	if (data === undefined || data === null) return "";
-	if (data instanceof Error) {
-		let s = ` ${data.message}`;
-		if (data.stack) s += ` | ${data.stack.split("\n").slice(1, 3).join(" | ")}`;
-		return s;
-	}
-	if (typeof data === "object") {
-		try {
-			const json = JSON.stringify(data);
-			return json.length > 200 ? ` ${json.slice(0, 197)}...` : ` ${json}`;
-		} catch {
-			return " [unstringifiable]";
-		}
-	}
-	return ` ${String(data)}`;
+  if (data === undefined || data === null) return "";
+  if (data instanceof Error) {
+    let s = ` ${data.message}`;
+    if (data.stack) s += ` | ${data.stack.split("\n").slice(1, 3).join(" | ")}`;
+    return s;
+  }
+  if (typeof data === "object") {
+    try {
+      const json = JSON.stringify(data);
+      return json.length > 200 ? ` ${json.slice(0, 197)}...` : ` ${json}`;
+    } catch {
+      return " [unstringifiable]";
+    }
+  }
+  return ` ${String(data)}`;
 }
 
 function formatConsole(entry: LogEntry): string {
-	const ts = formatTimestamp(entry.timestamp);
-	return `${ts} ${formatLevel(entry.level)} [${entry.source}] ${entry.message}${formatData(entry.data)}`;
+  const ts = formatTimestamp(entry.timestamp);
+  return `${ts} ${formatLevel(entry.level)} [${entry.source}] ${entry.message}${formatData(entry.data)}`;
 }
 
 function formatNotify(entry: LogEntry): string {
-	return `[${entry.source}] ${entry.message}${formatData(entry.data)}`;
+  return `[${entry.source}] ${entry.message}${formatData(entry.data)}`;
 }
 
 // ── Core sink ──────────────────────────────────────────────────────────────
 
 function writeToConsole(entry: LogEntry): void {
-	if (_LEVEL_PRIORITY[entry.level] < _LEVEL_PRIORITY[_consoleMinLevel]) {
-		return; // info/debug stay in buffer / TUI, don't spam the raw terminal
-	}
-	const line = formatConsole(entry);
-	switch (entry.level) {
-		case "error":
-			console.error(line);
-			break;
-		default:
-			// warn/info/debug: no raw console output — only ui.notify for warn/error
-			break;
-	}
+  if (_LEVEL_PRIORITY[entry.level] < _LEVEL_PRIORITY[_consoleMinLevel]) {
+    return; // info/debug stay in buffer / TUI, don't spam the raw terminal
+  }
+  const line = formatConsole(entry);
+  switch (entry.level) {
+    case "error":
+      console.error(line);
+      break;
+    default:
+      // warn/info/debug: no raw console output — only ui.notify for warn/error
+      break;
+  }
 }
 
 function writeToUI(ui: ExtensionUIContext, entry: LogEntry): void {
-	const msg = formatNotify(entry);
-	switch (entry.level) {
-		case "debug":
-			// Debug goes to console only, not TUI
-			break;
-		case "info":
-			// Info sets status but doesn't notify (too noisy)
-			ui.setStatus?.(entry.source, msg);
-			break;
-		case "warn":
-			ui.notify(msg, "warning");
-			break;
-		case "error":
-			ui.notify(msg, "error");
-			break;
-	}
+  const msg = formatNotify(entry);
+  switch (entry.level) {
+    case "debug":
+      // Debug goes to console only, not TUI
+      break;
+    case "info":
+      // Info sets status but doesn't notify (too noisy)
+      ui.setStatus?.(entry.source, msg);
+      break;
+    case "warn":
+      ui.notify(msg, "warning");
+      break;
+    case "error":
+      ui.notify(msg, "error");
+      break;
+  }
 }
 
 function addToBuffer(entry: LogEntry): void {
-	_logBuffer.push(entry);
-	if (_logBuffer.length > MAX_BUFFER_SIZE) {
-		_logBuffer.shift();
-	}
+  _logBuffer.push(entry);
+  if (_logBuffer.length > MAX_BUFFER_SIZE) {
+    _logBuffer.shift();
+  }
 }
 
 // ── Logger factory ─────────────────────────────────────────────────────────
 
 class LoggerImpl implements Logger {
-	private _source: string;
-	private _ctxStack: (ExtensionContext | undefined)[] = [];
+  private _source: string;
+  private _ctxStack: (ExtensionContext | undefined)[] = [];
 
-	constructor(source: string) {
-		this._source = source;
-	}
+  constructor(source: string) {
+    this._source = source;
+  }
 
-	bindContext(ctx: ExtensionContext | undefined): void {
-		this._ctxStack.push(ctx);
-	}
+  bindContext(ctx: ExtensionContext | undefined): void {
+    this._ctxStack.push(ctx);
+  }
 
-	unbindContext(): void {
-		this._ctxStack.pop();
-	}
+  unbindContext(): void {
+    this._ctxStack.pop();
+  }
 
-	hasContext(): boolean {
-		return this._ctxStack.length > 0 && this._ctxStack[this._ctxStack.length - 1] !== undefined;
-	}
+  hasContext(): boolean {
+    return this._ctxStack.length > 0 && this._ctxStack[this._ctxStack.length - 1] !== undefined;
+  }
 
-	private _currentCtx(): ExtensionContext | undefined {
-		if (this._ctxStack.length === 0) return undefined;
-		return this._ctxStack[this._ctxStack.length - 1];
-	}
+  private _currentCtx(): ExtensionContext | undefined {
+    if (this._ctxStack.length === 0) return undefined;
+    return this._ctxStack[this._ctxStack.length - 1];
+  }
 
-	private _shouldLog(level: LogLevel): boolean {
-		if (_globallySuppressed) return false;
-		if (_suppressedSources.has(this._source)) return false;
-		if (_LEVEL_PRIORITY[level] < _LEVEL_PRIORITY[_globalMinLevel]) return false;
-		return true;
-	}
+  private _shouldLog(level: LogLevel): boolean {
+    if (_globallySuppressed) return false;
+    if (_suppressedSources.has(this._source)) return false;
+    if (_LEVEL_PRIORITY[level] < _LEVEL_PRIORITY[_globalMinLevel]) return false;
+    return true;
+  }
 
-	private _emit(level: LogLevel, message: string, data?: unknown): void {
-		if (!this._shouldLog(level)) return;
+  private _emit(level: LogLevel, message: string, data?: unknown): void {
+    if (!this._shouldLog(level)) return;
 
-		const entry: LogEntry = {
-			timestamp: Date.now(),
-			level,
-			source: this._source,
-			message,
-			data,
-		};
+    const entry: LogEntry = {
+      timestamp: Date.now(),
+      level,
+      source: this._source,
+      message,
+      data,
+    };
 
-		addToBuffer(entry);
-		writeToConsole(entry);
+    addToBuffer(entry);
+    writeToConsole(entry);
 
-		const ctx = this._currentCtx();
-		if (ctx?.hasUI && ctx.ui) {
-			writeToUI(ctx.ui, entry);
-		}
-	}
+    const ctx = this._currentCtx();
+    if (ctx?.hasUI && ctx.ui) {
+      writeToUI(ctx.ui, entry);
+    }
+  }
 
-	debug(message: string, data?: unknown): void {
-		this._emit("debug", message, data);
-	}
+  debug(message: string, data?: unknown): void {
+    this._emit("debug", message, data);
+  }
 
-	info(message: string, data?: unknown): void {
-		this._emit("info", message, data);
-	}
+  info(message: string, data?: unknown): void {
+    this._emit("info", message, data);
+  }
 
-	warn(message: string, data?: unknown): void {
-		this._emit("warn", message, data);
-	}
+  warn(message: string, data?: unknown): void {
+    this._emit("warn", message, data);
+  }
 
-	error(message: string, data?: unknown): void {
-		this._emit("error", message, data);
-	}
+  error(message: string, data?: unknown): void {
+    this._emit("error", message, data);
+  }
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────
@@ -237,60 +234,60 @@ const _loggers = new Map<string, Logger>();
  * same instance. This lets lib/ code and extension code share a logger.
  */
 export function createLogger(source: string): Logger {
-	if (!_loggers.has(source)) {
-		_loggers.set(source, new LoggerImpl(source));
-	}
-	return _loggers.get(source)!;
+  if (!_loggers.has(source)) {
+    _loggers.set(source, new LoggerImpl(source));
+  }
+  return _loggers.get(source)!;
 }
 
 /** Suppress a specific source (e.g. during tests). */
 export function suppressLogger(source: string): void {
-	_suppressedSources.add(source);
+  _suppressedSources.add(source);
 }
 
 /** Unsuppress a previously suppressed source. */
 export function unsuppressLogger(source: string): void {
-	_suppressedSources.delete(source);
+  _suppressedSources.delete(source);
 }
 
 /** Suppress ALL loggers. */
 export function suppressAllLoggers(): void {
-	_globallySuppressed = true;
+  _globallySuppressed = true;
 }
 
 /** Unsuppress all loggers. */
 export function unsuppressAllLoggers(): void {
-	_globallySuppressed = false;
+  _globallySuppressed = false;
 }
 
 /** Set the minimum log level globally. */
 export function setGlobalLogLevel(level: LogLevel): void {
-	_globalMinLevel = level;
+  _globalMinLevel = level;
 }
 
 /** Set the minimum level that reaches the process console. */
 export function setConsoleLogLevel(level: LogLevel): void {
-	_consoleMinLevel = level;
+  _consoleMinLevel = level;
 }
 
 /** Get the in-memory log buffer (for debugging / crash reports). */
 export function getLogBuffer(): readonly LogEntry[] {
-	return _logBuffer;
+  return _logBuffer;
 }
 
 /** Clear the in-memory log buffer. */
 export function clearLogBuffer(): void {
-	_logBuffer.length = 0;
+  _logBuffer.length = 0;
 }
 
 /** Get formatted log buffer as string (for crash reports). */
 export function formatLogBuffer(): string {
-	return _logBuffer.map(formatConsole).join("\n");
+  return _logBuffer.map(formatConsole).join("\n");
 }
 
 /** Get all active logger source names. */
 export function getActiveLoggerSources(): string[] {
-	return Array.from(_loggers.keys());
+  return Array.from(_loggers.keys());
 }
 
 // ── Backwards compatibility ────────────────────────────────────────────────

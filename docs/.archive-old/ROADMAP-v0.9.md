@@ -5,33 +5,36 @@
 
 ## What's Done (v0.8)
 
-| Item | Status | Details |
-|------|--------|---------|
-| Metacognition decomposition | ✅ | 760L → 145L index + 4 handlers |
-| Cognition evaluator | ✅ | 3-dimension scoring + recommendations |
-| Hyperagents evolver | ✅ | Heartbeat module #5, heuristic evolution |
-| Benchmark framework | ✅ | 5-task suite, provider-agnostic |
-| RUMS memory selection | ✅ | Mutual information retrieval |
-| Pre-commit hook | ✅ | 10/10 suites verified |
-| Enforcement decomposition | ✅ | 1350→880 lines |
-| Error classifier wired | ✅ | retry.ts + enforcement |
+| Item                        | Status | Details                                  |
+| --------------------------- | ------ | ---------------------------------------- |
+| Metacognition decomposition | ✅     | 760L → 145L index + 4 handlers           |
+| Cognition evaluator         | ✅     | 3-dimension scoring + recommendations    |
+| Hyperagents evolver         | ✅     | Heartbeat module #5, heuristic evolution |
+| Benchmark framework         | ✅     | 5-task suite, provider-agnostic          |
+| RUMS memory selection       | ✅     | Mutual information retrieval             |
+| Pre-commit hook             | ✅     | 10/10 suites verified                    |
+| Enforcement decomposition   | ✅     | 1350→880 lines                           |
+| Error classifier wired      | ✅     | retry.ts + enforcement                   |
 
 ## v0.9 — Planned Work
 
 ### High Priority
 
 #### 1. Context-Manager Decomposition (SKIPPED in v0.8)
+
 **Why skipped**: 15+ event handlers sharing `getCmState`, `compactionRetryState`, and inter-dependent state. Already partially decomposed (analysis.ts, pruning.ts, retry.ts extracted). Further decomposition would create a web of imports.
 
 **Revisit when**: pi SDK provides better event handler composition, or when the extension needs significant new features.
 
 #### 2. Live Benchmark
+
 Run agent on 5 known tasks, measure success rate, tool efficiency, context usage.
 Framework built (`scripts/benchmark.py`), needs working provider.
 
 **Blocked on**: provider availability (a0-venice not responding)
 
 #### 3. Merge cleanup/refactor → main
+
 All work is on `cleanup/refactor` branch. Need to merge to `main` and tag.
 
 **Effort**: 30 minutes
@@ -40,14 +43,17 @@ All work is on `cleanup/refactor` branch. Need to merge to `main` and tag.
 ### Medium Priority
 
 #### 4. Prompt Evolution
+
 Use enforcement feedback to evolve the system prompt.
 Track nudge patterns, adjust prompt based on failure modes.
 
 #### 5. Session Isolation Testing
+
 Verify parallel sessions don't share state.
 Run concurrent sessions, check for cross-contamination.
 
 #### 6. Documentation
+
 - Architecture diagrams (mermaid)
 - Contributing guide
 - Extension authoring tutorial

@@ -11,6 +11,7 @@ Interactive JavaScript evaluation — the `repl` tool evaluates JS code with opt
 ## Architecture
 
 Dual-mode execution:
+
 - **Simple mode** — direct `eval()` of JS expressions. Auto-wraps bare expressions in `return`.
 - **RLM mode** — context-aware execution with `ctx` helpers: `chunk()`, `search()`, `filter()`, `map()`, `reduce()`, `access()`, `summary()`.
 
@@ -22,8 +23,8 @@ None — the tool is called directly by the agent.
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
+| Tool   | Description                                                                                                                                                                             |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `repl` | Execute JavaScript. Params: `code`, `reset` (clear state), `context` (file/glob/inline data), `mode` (simple/rlm/auto), `max_calls`, `timeout_ms`. Returns evaluation result as string. |
 
 ## Key Patterns

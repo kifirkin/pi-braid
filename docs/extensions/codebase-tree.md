@@ -18,8 +18,8 @@ None — the tool is called directly by the agent.
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
+| Tool            | Description                                                                                                                                                                                    |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `codebase_tree` | Directory tree visualization. Params: `path` (root dir), `maxDepth` (1-10), `exclude` (glob patterns), `include` (only show matching), `showStats` (file sizes/lines), `compact` (single-line) |
 
 ## Key Patterns

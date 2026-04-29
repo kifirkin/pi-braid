@@ -10,6 +10,7 @@
 ## 0. UNDERSTANDING THE DIVERGENCE
 
 ### 0.1 Commit distance
+
 ```
 cleanup/refactor: 605a0f9 (HEAD of worktree)
 harness/implicit-budget: bab6841 (HEAD of worktree)
@@ -34,16 +35,19 @@ Both share 605a0f9 as merge base — 9 clean commits on each branch from that po
 | `lib/topic-drift-detector.ts` | 207L | Topic drift detection |
 
 **3 extensions removed in harness:**
+
 - `extensions/heartbeat-scheduler/` — removed (replaced by `watchdog`?)
 - `extensions/three-memory-stores/` — removed (replaced by `latent-activator`?)
 - `extensions/wait-review/` — removed (workflow changed?)
 
 **3 extensions restructured in harness (monolithed back from decomposed):**
+
 - `context-manager/` — was 5 files (analysis+handlers+pruning+retry) → reverted to 1 × 1684L
 - `enforcement/` — decomposed into judge/nudge/detection/validation/whisper architecture (see 0.3)
 - `metacognition/` — grew from clean decomposed to 482+ line changes
 
 **2 extensions made leaner in harness:**
+
 - `vision/index.ts` — 1361L → ~594L (-767L, improved!)
 - `prompt-builder/index.ts` — slight improvement
 
@@ -62,6 +66,7 @@ Both share 605a0f9 as merge base — 9 clean commits on each branch from that po
 | `extensions/watchdog/` | Daemon monitoring + health | None |
 
 **New enforcement architecture (judge/nudge model):**
+
 ```
 enforcement/
 ├── index.ts                          # ~100L (much slimmer)
@@ -81,6 +86,7 @@ enforcement/
 ```
 
 **New lib additions (preserved in harness):**
+
 - `extension-state.ts` — preserved in harness (same file exists)
 - `extension-utils.ts` — preserved in harness (same file exists)
 - `lib/degradation-detector.ts` — 325L (harness has slight changes)
@@ -94,6 +100,7 @@ enforcement/
 ## 1. PHASE 1: PREPARATION (Safety net — zero code loss)
 
 ### 1.1 Create integration branch
+
 ```bash
 cd /Users/kifir/projects/agents/pi-braid
 
@@ -104,12 +111,14 @@ git checkout -b integration/implicit-budget-merge
 ```
 
 ### 1.2 Tag snapshots for rollback
+
 ```bash
 git tag integration/snapshot-cleanup-refactor cleanup/refactor
 git tag integration/snapshot-harness-backup bab6841
 ```
 
 ### 1.3 Verify test baseline on cleanup/refactor
+
 ```bash
 cd /Users/kifir/projects/agents/pi-braid
 npm test 2>&1 | tail -20
@@ -117,6 +126,7 @@ npm test 2>&1 | tail -20
 ```
 
 ### 1.4 Create harness worktree for reference
+
 ```bash
 cd /Users/kifir/projects/agents/pi-braid
 git worktree add /Users/kifir/projects/agents/pi-braid-harness-ref bab6841
@@ -124,6 +134,7 @@ git worktree add /Users/kifir/projects/agents/pi-braid-harness-ref bab6841
 ```
 
 ### 1.5 Audit harness's new enforcement files for stale imports
+
 ```bash
 cd /Users/kifir/projects/agents/pi-braid-harness
 grep -r "evidence-pool\|conflict-qa\|belief-policy\|mars-reflector\|language-hint" \
@@ -137,7 +148,9 @@ grep -r "evidence-pool\|conflict-qa\|belief-policy\|mars-reflector\|language-hin
 ## 2. PHASE 2: RESTORE DELETED LIB FILES (From cleanup/refactor)
 
 ### 2.1 Restore the 11 deleted lib files
+
 These are safe to restore — they're from the base commit both worktrees share:
+
 ```bash
 cd /Users/kifir/projects/agents/pi-braid
 # Restore each deleted file from cleanup/refactor
@@ -166,6 +179,7 @@ topic-drift-detector.
 ```
 
 ### 2.2 Verify they don't break the build
+
 ```bash
 npm run build 2>&1 | grep -E "error|Error" | head -20
 # Should be clean or only pre-existing warnings
@@ -176,6 +190,7 @@ npm run build 2>&1 | grep -E "error|Error" | head -20
 ## 3. PHASE 3: MERGE NEW EXTENSIONS FROM HARNESS (Safe additions)
 
 ### 3.1 Copy the 6 new extensions
+
 ```bash
 cd /Users/kifir/projects/agents/pi-braid
 for ext in analytics feedback latent-activator rate-limiter reasoning watchdog; do
@@ -196,12 +211,15 @@ git commit -m "feat: add 6 new extensions from harness/implicit-budget
 ```
 
 ### 3.2 Fix dependencies
+
 **Critical dependency**: `latent-activator` depends on `three-memory-stores` which cleanup/refactor has. Good — no fix needed there.
 
 **Analytics dependencies**: `analytics` depends on `latent-activator` and `watchdog`. Both now present. Good.
 
 ### 3.3 Verify extension registration
+
 Check `src/index.ts` in pi-braid to ensure new extensions are registered (or auto-discovered):
+
 ```bash
 grep -l "analytics\|feedback\|latent-activator\|rate-limiter\|reasoning\|watchdog" \
   src/index.ts src/extensions/*/index.ts 2>/dev/null
@@ -210,6 +228,7 @@ grep -l "analytics\|feedback\|latent-activator\|rate-limiter\|reasoning\|watchdo
 If extensions aren't auto-discovered, add them to the extension registry in `src/index.ts`.
 
 ### 3.4 Run tests to verify no breakage
+
 ```bash
 npm test 2>&1 | tail -30
 ```
@@ -225,6 +244,7 @@ npm test 2>&1 | tail -30
 **Decision**: Take harness's NEW enforcement files (detection/dangerous, judge, judge-prompt, nudge-manager, prompts, state, validation, verification-judge, whisper) but merge them with cleanup/refactor's existing handler files that harness still has (blocking, tool-reg, tool-tracker).
 
 **Steps**:
+
 ```bash
 cd /Users/kifir/projects/agents/pi-braid
 
@@ -262,44 +282,54 @@ grep "from.*evidence-pool\|from.*conflict-qa\|from.*belief-policy\|from.*languag
 ```
 
 ### 4.2 Vision: Integrate harness's improvements
+
 ```bash
 # Harness's vision/index.ts is 767 lines smaller — find what was improved
 diff /Users/kifir/projects/agents/pi-braid/src/extensions/vision/index.ts \
      /Users/kifir/projects/agents/pi-braid-harness/src/extensions/vision/index.ts \
   | head -100
 ```
+
 **Decision**: Use harness's version (leaner). Verify it still covers all critical functionality.
 
 ### 4.3 Healthcheck: Integrate harness's improvements
+
 ```bash
 diff /Users/kifir/projects/agents/pi-braid/src/extensions/healthcheck/index.ts \
      /Users/kifir/projects/agents/pi-braid-harness/src/extensions/healthcheck/index.ts \
   | head -60
 ```
+
 **Decision**: Merge harness's improvements (better agent-core testing, removed dead code) into cleanup/refactor's decomposed structure.
 
 ### 4.4 Prompt-builder: Verify which version is better
+
 ```bash
 # Both changed — compare carefully
 diff /Users/kifir/projects/agents/pi-braid/src/extensions/prompt-builder/index.ts \
      /Users/kifir/projects/agents/pi-braid-harness/src/extensions/prompt-builder/index.ts
 ```
+
 **Decision**: Likely keep cleanup/refactor's version (more complete capability table), but merge the `THINK_STEP_BY_STEP` section from harness.
 
 ### 4.5 Metacognition: Restore decomposed structure
+
 ```bash
 # cleanup/refactor decomposed metacognition/ into handlers/
 # harness monolithed it back — restore decomposition
 ls /Users/kifir/projects/agents/pi-braid/src/extensions/metacognition/handlers/
 ```
+
 **Decision**: Keep cleanup/refactor's decomposition. Any new logic from harness's monolithic version needs to be ported back into handlers.
 
 ### 4.6 Context-manager: Restore decomposed structure
+
 ```bash
 # cleanup/refactor decomposed context-manager/ into 5 files
 # harness monolithed it back to 1684L — restore decomposition
 ls /Users/kifir/projects/agents/pi-braid/src/extensions/context-manager/
 ```
+
 **Decision**: Keep cleanup/refactor's decomposition. Apply harness's new features (session continuation, compaction improvements) into the handler structure.
 
 ---
@@ -307,6 +337,7 @@ ls /Users/kifir/projects/agents/pi-braid/src/extensions/context-manager/
 ## 5. PHASE 5: RESTORE DELETED EXTENSIONS + TESTS
 
 ### 5.1 Restore 3 deleted extensions (optional — assess value)
+
 ```bash
 cd /Users/kifir/projects/agents/pi-braid
 
@@ -329,6 +360,7 @@ git checkout cleanup/refactor -- src/extensions/wait-review/
 **Decision rule**: If new extension fully covers deleted extension's functionality, discard deleted. Otherwise restore.
 
 ### 5.2 Restore tests
+
 ```bash
 cd /Users/kifir/projects/agents/pi-braid
 
@@ -353,18 +385,21 @@ git commit -m "restore: deleted test files from cleanup/refactor"
 ## 6. PHASE 6: VALIDATION
 
 ### 6.1 Build verification
+
 ```bash
 npm run build 2>&1 | grep -E "^(error|Error|ERROR)" | head -20
 echo "Build exit code: $?"
 ```
 
 ### 6.2 Test suite
+
 ```bash
 npm test 2>&1 | grep -E "pass|fail|error|TOTAL" | tail -20
 # Target: 214+ passing
 ```
 
 ### 6.3 Manual smoke test
+
 ```bash
 # Test the key new integrations
 node -e "
@@ -376,6 +411,7 @@ console.log('All new extensions load OK');
 ```
 
 ### 6.4 Context-manager decomposition sanity check
+
 ```bash
 # Verify the 5-file structure is intact
 ls src/extensions/context-manager/
@@ -389,12 +425,14 @@ wc -l src/extensions/context-manager/index.ts
 ## 7. PHASE 7: FINALIZE
 
 ### 7.1 Resolve any remaining conflicts
+
 ```bash
 git status
 # Manually resolve any remaining merge conflicts
 ```
 
 ### 7.2 Final commit
+
 ```bash
 git add -A
 git commit -m "merge: integrate harness/implicit-budget into cleanup/refactor
@@ -416,6 +454,7 @@ Architecture preserved from cleanup/refactor:
 ```
 
 ### 7.3 Push and cleanup
+
 ```bash
 # Push integration branch
 git push -u origin integration/implicit-budget-merge
@@ -438,14 +477,14 @@ git worktree remove /Users/kifir/projects/agents/pi-braid-harness-ref
 
 ## 8. RISK REGISTER
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|-----------|
-| Harness enforcement imports deleted libs | MEDIUM | HIGH | Phase 1.5 audit + Phase 4.1.3 fix |
-| New extensions have circular dependencies | MEDIUM | MEDIUM | Phase 3.3 verify registration |
-| Re-monolified files lose cleanup/refactor features | HIGH | HIGH | Phase 4.5+4.6 restoration |
-| Build breaks after lib restore | LOW | MEDIUM | Phase 2.2 verify build |
-| Tests fail after extension merge | MEDIUM | MEDIUM | Phase 6.2 full test suite |
-| Session manager API changed in harness | LOW | HIGH | Audit ctx usage in new enforcement files |
+| Risk                                               | Likelihood | Impact | Mitigation                               |
+| -------------------------------------------------- | ---------- | ------ | ---------------------------------------- |
+| Harness enforcement imports deleted libs           | MEDIUM     | HIGH   | Phase 1.5 audit + Phase 4.1.3 fix        |
+| New extensions have circular dependencies          | MEDIUM     | MEDIUM | Phase 3.3 verify registration            |
+| Re-monolified files lose cleanup/refactor features | HIGH       | HIGH   | Phase 4.5+4.6 restoration                |
+| Build breaks after lib restore                     | LOW        | MEDIUM | Phase 2.2 verify build                   |
+| Tests fail after extension merge                   | MEDIUM     | MEDIUM | Phase 6.2 full test suite                |
+| Session manager API changed in harness             | LOW        | HIGH   | Audit ctx usage in new enforcement files |
 
 ---
 
@@ -453,7 +492,7 @@ git worktree remove /Users/kifir/projects/agents/pi-braid-harness-ref
 
 ```
 PHASE 1 (Safety) → PHASE 2 (Libs) → PHASE 3 (New Extensions)
-    → PHASE 4 (Reintegration) → PHASE 5 (Restoration) 
+    → PHASE 4 (Reintegration) → PHASE 5 (Restoration)
         → PHASE 6 (Validation) → PHASE 7 (Finalize)
 ```
 

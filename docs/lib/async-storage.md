@@ -4,13 +4,13 @@
 
 ## Key Functions
 
-| Function | Description |
-|----------|-------------|
-| `loadState(path)` | Async JSON read with `Try<unknown>` — returns `None` if file doesn't exist or is invalid |
-| `saveStateImmediate(path, data)` | Async JSON write with `try/catch` |
-| `saveStateDelayed(path, data, delayMs?)` | Debounced async JSON write — good for high-frequency updates |
-| `readJsonl(path)` | Async read of JSONL file → parsed objects array |
-| `appendJsonl(path, data)` | Async append a JSON object to a JSONL file |
+| Function                                 | Description                                                                              |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `loadState(path)`                        | Async JSON read with `Try<unknown>` — returns `None` if file doesn't exist or is invalid |
+| `saveStateImmediate(path, data)`         | Async JSON write with `try/catch`                                                        |
+| `saveStateDelayed(path, data, delayMs?)` | Debounced async JSON write — good for high-frequency updates                             |
+| `readJsonl(path)`                        | Async read of JSONL file → parsed objects array                                          |
+| `appendJsonl(path, data)`                | Async append a JSON object to a JSONL file                                               |
 
 ## Key Patterns
 

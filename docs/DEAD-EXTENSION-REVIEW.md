@@ -20,22 +20,27 @@
 ## Phase 2: Over-Tooled Extensions (Low Risk)
 
 ### 2a. planner tools
+
 - [confirm delete, but keep note for future research or proper implementation] Remove `plan_with_budget` tool
 - [confirm delete, but keep note for future research or proper implementation] Remove `check_budget` tool
 - [confirm delete, but keep note for future research or proper implementation] Remove `set_budget` tool
 
 ### 2b. cognition/heuristic tools
+
 - [confirm] Remove `cognition_evaluate` tool
 - [confirm] Remove `heuristics_evaluate` tool
 
 ### 2c. preprocessor tools
+
 - [confirm] Remove `preprocessor_config` tool
 - [confirm] Remove `preprocessor_stats` tool
 
 ### 2d. heartbeat tools
+
 - [confirm] Remove `heartbeat_status` tool
 
 ### 2e. latent-activator tools
+
 - [confirm, research] Keep all 4 tools (activate_behavior, deactivate_behavior, get_active_behaviors, activate_mix) — revisit in v0.14
 - [decline] Remove all 4 tools
 - [keep note for future research] Needs research
@@ -50,15 +55,18 @@
 ## Phase 4: Architectural Cleanup (High Risk, Deferred)
 
 ### 4a. Sync → Async I/O
+
 - [confirm] Convert `analytics/index.ts` (readFileSync, writeFileSync)
 - [confirm] Convert `codebase-tree/index.ts` (readFileSync)
 - [confirm] Convert `error-capture/index.ts` (writeFileSync)
 - [confirm] Convert `feedback/index.ts` (writeFileSync, readFileSync)
 
 ### 4b. Global Variable Coupling
+
 - [hard but critical, needs research and implementation document. codebases grows and messes too much.] Replace enforcement ↔ prompt-builder shared mutable state with event-based communication
 
 ### 4c. context-lifecycle Simplification
+
 - [cleanup, note for future research in case of our papers] Remove unused signal types (redundancy_detected, context_pressure)
 - [cleanup, note for future research in case of our papers] Simplify policy engine to threshold checks
 - [cleanup, note for future research in case of our papers] Reduce types.ts from 360 lines
@@ -66,6 +74,6 @@
 
 ---
 
-*Mark each item with ✅ 🔬 or ❌ and I'll execute approved items.*
+_Mark each item with ✅ 🔬 or ❌ and I'll execute approved items._
 
-*sorry, but I have to stream my raw brain signals into those [brackets].
+\*sorry, but I have to stream my raw brain signals into those [brackets].

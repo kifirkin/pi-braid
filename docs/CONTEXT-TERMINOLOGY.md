@@ -2,15 +2,15 @@
 
 ## Core Distinction
 
-| Term | Type | Who initiates | What happens |
-|------|------|---------------|---------------|
-| **compaction** | Event / system | pi core (automatic) | LLM summarizes + removes older context. Preserves backbone. |
-| **session_compact** | Event name | pi core | Fires when pi initiates automatic compaction. |
-| **compaction_end** | Event name | pi core | Fires after compaction attempt (success or failure). |
-| **session_before_compact** | Event name | pi core | Fires before compaction — allows us to inject smart instructions. |
-| **context_archive** | Tool (formerly `context_compress`) | Agent (manual) | LLM compresses a specific range of messages. Original preserved in session file. |
-| **context_prune** | Tool | Agent (manual) | Rule-based cleanup. Identifies candidates, doesn't remove. Auto-runs on every LLM call. |
-| **finalize** | Tool | Agent (manual) | Rotates session — summaries current work, preserves to memory, starts fresh branch. |
+| Term                       | Type                               | Who initiates       | What happens                                                                            |
+| -------------------------- | ---------------------------------- | ------------------- | --------------------------------------------------------------------------------------- |
+| **compaction**             | Event / system                     | pi core (automatic) | LLM summarizes + removes older context. Preserves backbone.                             |
+| **session_compact**        | Event name                         | pi core             | Fires when pi initiates automatic compaction.                                           |
+| **compaction_end**         | Event name                         | pi core             | Fires after compaction attempt (success or failure).                                    |
+| **session_before_compact** | Event name                         | pi core             | Fires before compaction — allows us to inject smart instructions.                       |
+| **context_archive**        | Tool (formerly `context_compress`) | Agent (manual)      | LLM compresses a specific range of messages. Original preserved in session file.        |
+| **context_prune**          | Tool                               | Agent (manual)      | Rule-based cleanup. Identifies candidates, doesn't remove. Auto-runs on every LLM call. |
+| **finalize**               | Tool                               | Agent (manual)      | Rotates session — summaries current work, preserves to memory, starts fresh branch.     |
 
 ## Naming Rationale
 
@@ -46,5 +46,6 @@ session_before_compact   context_tag
 - **Compaction** (automatic): pi core trims context when it gets large. Happens mid-conversation without agent triggering it.
 
 Both reduce context pressure but serve different purposes:
+
 - Rotation = task completion / checkpoint
 - Compaction = context management / overflow prevention

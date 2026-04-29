@@ -15,24 +15,25 @@ Core metacognitive tools — `think`, `hypothesize`, `finalize`. These are the f
 ## Architecture
 
 Wires into `lib/` tools:
+
 - `think` → `lib/think.ts` (structured thinking with recursive depth)
 - `hypothesize` → `lib/hypothesize.ts` (problem decomposition + evidence analysis)
 - `finalize` → `lib/finalize.ts` (task completion + auto-proceed)
 
 ## Events Handled
 
-| Event | Handler |
-|-------|---------|
-| `session_start` | Initialize finalize state, reset counters |
-| `turn_end` | Check for pending finalize auto-proceed triggers |
+| Event           | Handler                                          |
+| --------------- | ------------------------------------------------ |
+| `session_start` | Initialize finalize state, reset counters        |
+| `turn_end`      | Check for pending finalize auto-proceed triggers |
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
-| `think` | Record structured thinking. Depth levels: `minimal`, `low`, `medium`, `high`, `max`, `quick`, `deep`. Options: `ask_utility_model` for fresh-eyes perspective, `alternatives` for contrast. Auto-decorates with confidence calibration. |
-| `hypothesize` | Generate ranked hypotheses from problem + evidence. Parameters: `maxHypotheses` (default 3). Returns structured analysis with root cause, confidence, evidence. |
-| `finalize` | Mark task complete. Parameters: `completed` (boolean), `summary` (string), `tasksRemaining` (follow-ups), `autoProceed` (propose next task). Enforces minimum evidence before completion. |
+| Tool          | Description                                                                                                                                                                                                                             |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `think`       | Record structured thinking. Depth levels: `minimal`, `low`, `medium`, `high`, `max`, `quick`, `deep`. Options: `ask_utility_model` for fresh-eyes perspective, `alternatives` for contrast. Auto-decorates with confidence calibration. |
+| `hypothesize` | Generate ranked hypotheses from problem + evidence. Parameters: `maxHypotheses` (default 3). Returns structured analysis with root cause, confidence, evidence.                                                                         |
+| `finalize`    | Mark task complete. Parameters: `completed` (boolean), `summary` (string), `tasksRemaining` (follow-ups), `autoProceed` (propose next task). Enforces minimum evidence before completion.                                               |
 
 ## Key Patterns
 
