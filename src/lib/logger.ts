@@ -120,14 +120,11 @@ function writeToConsole(entry: LogEntry): void {
 	}
 	const line = formatConsole(entry);
 	switch (entry.level) {
-		case "warn":
-			console.warn(line);
-			break;
 		case "error":
 			console.error(line);
 			break;
 		default:
-			console.log(line);
+			// warn/info/debug: no raw console output — only ui.notify for warn/error
 			break;
 	}
 }
