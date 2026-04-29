@@ -2,6 +2,32 @@
 
 All notable changes to pi-braid are documented here.
 
+## v0.38.0 (2026-04-29)
+
+### Refactor
+- **browser/ merged into tools/**: CDP automation, web-fetch, vision now utility tools under tools/ module. Reduced module count from 14 to 13.
+
+### Features
+- **RepE structured contrast vectors**: 4-mode system (TRUTH-SEEKING, CORRECTION, EPISTEMIC CALIBRATION, TOOL RELIABILITY) embedded in prompt-builder section 8c.
+- **Structured output format**: CoT with > prefix, code blocks with language tags, XML-style tool result tags, tables for structured data. Prompt-builder section 8d.
+- **resources_discover handler**: pi-braid registers bundled skills via pi's native discovery system (prompt-builder extension).
+- **Master implementation plan**: docs/IMPLEMENTATION.md — single source of truth with P0-P3 execution order, 15 proposals audited.
+- **12 new proposals from research agent**: Worker tasks, Agent Timer/Pomodoro, Benchmark v2, Contrast Phrase Library, Heartbeat Event Bus, Hierarchical Memory, Memory Leak Prevention, Self-Evolution Meta-Cognition, Structured Output Catalyst, VAR-MATH variants.
+
+### Cleanup
+- **Top-level docs culled 26 → 10**: Archived 15 redundant/historical docs (.archive-old/top-level-cull-2026-04-29/). Kept: README, ARCHITECTURE, MODULES, EXTENSION-HOOKS, ERRORS, BRAID-NEXT, WHAT-IS-MISSING, BENCHMARKS, SKILLS, CHANGELOG.
+- **6 extension group docs added**: cognitive, core, heartbeat, memory, prompt, tools — full group coverage.
+- **7 docs deleted**: PI-API-RESEARCH, PROMPT-BUILDER-REFACTOR, RESEARCH-MASTER, CONSOLIDATED-DOCS-INVENTORY, HONEST-REVIEW, DEVELOPMENT, PROPOSAL-scratchpad-*
+- **README.md links fixed**: Dead links to RESEARCH-MASTER.md and DEVELOPMENT.md removed.
+- **proposals/README.md status table**: Full proposal audit with status markers.
+- **FIXME in degradation-detector.ts fixed**.
+
+### Bug Fixes
+- **enforcement/index.ts**: event param cast to `any` (auto_retry_end not in ExtensionAPI types).
+- **test-features.mjs**: doc count guard updated (10 → 11).
+
+---
+
 ## v0.14.0 (2026-04-23)
 
 ### Features
