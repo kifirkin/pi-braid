@@ -279,36 +279,22 @@ function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>)
     .map((t) => `- ${t.name}: ${t.description}`)
     .join("\n");
 
-  // Structured output instruction (MDA: repetitive format catalyzes ICL circuits)
-  const structuredOutput = `
-
-## Output Format
-
-Tool results and code should use structured, delimited format to catalyze induction head circuits (MDA 2601.21996):
-
-For tool results, use:
-\`\`\`
-TOOL_RESULT:
-TOOL: [tool-name]
-ACTION: [what was done]
-STATUS: success | error | partial
-DATA:
-  [KEY]: [value]
-RESULT: [summary]
----
-\`\`\`
+  // Simple output guidance — no structured format for tool results.
+  // Structured format (TOOL_RESULT, STATUS, DATA) encourages the model to OUTPUT
+  // text that resembles tool calls instead of making actual API-level tool calls.
+  // This causes "Tool not found" errors when the model generates text with
+  // empty tool names (LLM outputs "TOOL_RESULT:\nTOOL: ${}\n..." instead of a real call).
+  const codeBlockNote = `
 
 For code blocks, use consistent formatting:
 \`\`\`[language]
 [code]
-\`\`\`
-
-This structured format with consistent delimiters helps activate in-context learning circuits.`;
+\`\`\``;
 
   return `Available tools:
 ${visibleTools || "(none)"}
 
-Only use the tools listed above. Do not call tools not shown here.${structuredOutput}`;
+Only use the tools listed above. Do not call tools not shown here.${codeBlockNote}`;
 }
 
 function reconstructGuidelineSection(
@@ -607,7 +593,8 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     parts.push("// Use code blocks with language tags (```typescript, ```bash)");
     parts.push("// Use tables for structured data (| header | header |)");
     parts.push("// Chain-of-thought: show reasoning before conclusion with > prefix");
-    parts.push("// XML-style tags for tool results: <result>...</result>");
+    // Note: removed XML-style tool result tags. They encourage text-output-that-resembles-
+    // tool-calls instead of actual API-level tool calls, causing "Tool not found" errors.
 
     // 9. Interaction style (single declarative sentence)
     parts.push(INTERACTION_STYLE);
