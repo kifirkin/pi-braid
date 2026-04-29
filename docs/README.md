@@ -9,10 +9,10 @@
 
 | Document                                                           | Purpose                                                                        |
 | ------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
-| **[RESEARCH-MASTER.md](RESEARCH-MASTER.md)**                       | **Single source of truth** — all research, gaps, proposals, and execution plan |
+| **[BRAID-NEXT-PROPOSAL.md](BRAID-NEXT-PROPOSAL.md)**               | **Single source of truth** — all proposals and execution plan                      |
 | [WHAT-IS-MISSING.md](WHAT-IS-MISSING.md)                           | Detailed gap analysis (extracted from RESEARCH-MASTER)                         |
 | [BRAID-NEXT-PROPOSAL.md](BRAID-NEXT-PROPOSAL.md)                   | Original proposal (2026-04-20)                                                 |
-| [DEVELOPMENT.md](DEVELOPMENT.md)                                   | Development workflow and conventions                                           |
+| [ARCHITECTURE.md](ARCHITECTURE.md) + [MODULES.md](MODULES.md)     | Development workflow and architecture                                        |
 | [research/braid-loop-research.md](research/braid-loop-research.md) | Looped architecture research → harness improvements                            |
 
 ### Research Topics
@@ -37,7 +37,7 @@
 
 ## Start Here
 
-**New to the project?** Read [RESEARCH-MASTER.md](RESEARCH-MASTER.md) first. It contains:
+**New to the project?** Read [BRAID-NEXT-PROPOSAL.md](BRAID-NEXT-PROPOSAL.md) first. It contains:
 
 - Part 1: Executive summary
 - Part 2: Current architecture audit

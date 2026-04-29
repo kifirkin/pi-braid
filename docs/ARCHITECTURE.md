@@ -1,6 +1,6 @@
 # Architecture
 
-> High-level overview of pi-braid's design. For extension development, see [DEVELOPMENT.md](DEVELOPMENT.md).
+> High-level overview of pi-braid's design. For extension development, see [EXTENSION-HOOKS.md](EXTENSION-HOOKS.md) and individual extension docs in [docs/extensions/](extensions/).
 
 ## System Layers
 
