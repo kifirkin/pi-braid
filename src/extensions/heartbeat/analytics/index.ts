@@ -687,4 +687,52 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 			};
 		},
 	} as any);
+
+// ── hidden_messages tool ───────────────────────────────────────────────────
+// D3: Show all display:false injections this session (tracked by injection-tracker)
+pi.registerTool({
+	name: "hidden-messages",
+	label: "Get Hidden Messages",
+	description: "Show all messages sent to the model that are hidden from view (display:false). Use this to audit what the agent sees in context beyond visible conversation.",
+	parameters: Type.Object({}),
+	execute: async (_id: any, _params: any, _signal: any, _onUpdate: any, _ctx: ExtensionContext): Promise<any> => {
+		const { getInjections } = await import("../../../lib/injection-tracker.js");
+		const injections = getInjections();
+		const hidden = injections.filter((i) => !i.display);
+
+		if (hidden.length === 0) {
+			return {
+				content: [{ type: "text" as const, text: "No hidden messages this session." }],
+				details: { count: 0, injections: [] },
+			};
+		}
+
+		// Group by type
+		const byType: Record<string, string[]> = {};
+		for (const inj of hidden) {
+			if (!byType[inj.type]) byType[inj.type] = [];
+			byType[inj.type].push(`[${inj.source}] ${inj.content}`);
+		}
+
+		const lines = [`## Hidden Messages (${hidden.length} total, ${injections.length} total injections)`];
+		lines.push("_"+`(display:false — model sees these but you don't)`+"_");
+		lines.push("");
+		for (const [type, items] of Object.entries(byType)) {
+			lines.push(`### ${type} (${items.length})`);
+			for (const item of items) lines.push(`- ${item}`);
+			lines.push("");
+		}
+
+		return {
+			content: [{ type: "text" as const, text: lines.join("\n") }],
+			details: {
+				count: hidden.length,
+				totalInjections: injections.length,
+				byType: Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, v.length])),
+				injections: hidden.map((i) => ({ id: i.id, type: i.type, source: i.source, content: i.content })),
+			},
+		};
+	},
+} as any);
+
 }

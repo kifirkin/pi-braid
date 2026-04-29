@@ -954,6 +954,17 @@ Persist them now - this is the minimum-fidelity moment.`,
 		// MARS — get self-reflection advice
 		const marsAdvice = marsShouldAdvise(ctx);
 		if (marsAdvice) {
+			// D0: Emit MARS signal to belief-policy-engine
+			const signalType: any = marsAdvice.type === "tool_overuse" ? "tool-use" :
+				marsAdvice.type === "error_recurrence" ? "error" :
+				marsAdvice.type === "confidence_decline" ? "reasoning" : "stability";
+			const signalValue = marsAdvice.type === "tool_overuse" ? "overuse" :
+				marsAdvice.type === "error_recurrence" ? "recurrence" :
+				marsAdvice.type === "confidence_decline" ? "decline" : "decline";
+			emitSignal(ctx, signalType, signalValue, marsAdvice.severity, false, {
+				type: marsAdvice.type,
+				message: marsAdvice.message.slice(0, 200),
+			});
 			pi.sendMessage({
 				customType: "context",
 				display: true,
@@ -964,6 +975,11 @@ Persist them now - this is the minimum-fidelity moment.`,
 		// D0: Dreamer — proactive simulation of likely future paths
 		const dreamAdvice = dream(ctx, getState(ctx).toolLog);
 		if (dreamAdvice) {
+			// D0: Emit dreamer signal to belief-policy-engine
+			emitSignal(ctx, "stability", "predicted-decline", "info", false, {
+				source: "dreamer",
+				message: dreamAdvice.message.slice(0, 200),
+			});
 			pi.sendMessage({
 				customType: "context",
 				display: true,
