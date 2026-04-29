@@ -1,7 +1,7 @@
 # What Braid Has Missed: Complete Gap Analysis
 
 **Date**: 2026-04-29
-**Last updated**: Today — pi_rpc_benchmark threading fix, belief-policy-engine validated
+**Last updated**: Today — SDK benchmarks working (pi RPC subprocess deadlocks, SDK doesn't), BM1+BR1 harnesses via SDK + stepfun
 
 ## Legend
 
@@ -10,6 +10,18 @@
 | ✅ | Done |
 | 🔴 | Missing — critical |
 | 🟡 | Partial — needs completion |
+
+---
+
+## pi RPC vs SDK — Critical Finding
+
+**Python subprocess RPC deadlocks** — pi's async stdin/stdout interleaving causes blocking that can't be solved from Python. Threading partially helps but deep deadlocks remain on long prompts.
+
+**Solution: pi SDK (Node.js)** — Direct API, no subprocess pipes, reliable event delivery, session.state.messages for text extraction. Key fixes:
+- Model must include `provider` + `api` + `baseUrl` fields (not just `id`)
+- Streaming events `message_update` not reliable — use `session.state.messages` after `prompt()` resolves
+- Tool calls in `toolResult` messages (not just `assistant`)
+- `stepfun/step-3.5-flash` via `pi-poorman-providers` — reasoning=true but no thinking output
 
 ---
 
@@ -40,10 +52,10 @@
 
 | Item | Status | Notes |
 |------|--------|-------|
-| BR1 self-reflection | 🟡 Harness written | test-br1-trap-tasks.mjs — 5 trap tasks. Needs API access to run. |
+| BR1 self-reflection | 🟡 SDK harness | evaluation/br1-sdk.mjs — 5 trap tasks, stepfun model. Smoke test shows agent executes echo without hesitation. Needs full run. |
 | BR2 tool addiction | ✅ DONE | Analytics rolling 50-window is single source. Removed enforcement/feedback duplicates. |
 | BR3 nudge effectiveness | 🟡 Partial | Nudge dedup exists. A/B measurement not implemented. |
-| BR4 latent activator | 🟡 Benchmark exists | evaluation/br4_latent_multi_turn.py exists. Needs running. |
+| BR4 latent activator | 🟡 Benchmark exists | evaluation/br4_latent_multi_turn.py — needs SDK migration. |
 
 ---
 
@@ -62,9 +74,15 @@
 
 | Item | Status | Notes |
 |------|--------|-------|
-| BM1 multi-turn debugging | 🟡 Harness exists | evaluation/bm1_multi_turn_debug.py — 3 tasks, fix quality scoring. Needs threading fix in pi_rpc_benchmark. |
+| BM1 multi-turn debugging | 🟡 SDK harness | evaluation/bm1-sdk.mjs — 3 tasks, ~60/100 avg with stepfun. stepfun reasoning=true but no thinking output. ts-read-fail: 100/100, ls-bash-fail: 50/100, edit-fail: 30/100. |
 | BM2 code quality | 🔴 Not started | eslint, complexity, edge cases unmeasured |
 | BM3 real-world tasks | 🔴 Not started | No real-world task suite |
+
+---
+
+## pi-poorman-providers
+
+pi-braid should use `stepfun/step-3.5-flash` via `pi-poorman-providers` as the benchmark model. This is the model that "works great" per user confirmation. All benchmarks should migrate to SDK + stepfun. |
 
 ---
 
