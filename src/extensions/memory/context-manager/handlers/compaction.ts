@@ -159,6 +159,25 @@ export function registerSessionCompactHandler(pi: any): void {
 					`Context compressed: ${entry.summary?.slice(0, 80) ?? "no summary"}`, 0.8);
 			}
 
+			// BUG FIX: After successful auto-compaction, inject a steer to continue.
+			// Without this, the agent's session has no pending user message to respond to.
+			// Root cause: session_before_compact fires during agent's turn, user message
+			// is in messagesToSummarize, gets merged into compaction summary.
+			// The steer re-establishes context so the agent can continue working.
+			const sm = (ctx as any).sessionManager;
+			if (sm && entry?.summary) {
+				sendTrackedMessage(pi, {
+					customType: "context",
+					content: [{
+						type: "text" as const,
+						text: `[resuming] Context was compacted for efficiency. ` +
+							`The previous context was summarized. Please check the compaction ` +
+							`summary and continue working on the user's request.`,
+					}],
+					display: true,
+				}, { deliverAs: "steer" }, { type: "context", source: "context-manager/compaction/resume" });
+			}
+
 			// Clear overflow notification flag, retry guards, AND dedup guard on success
 			const cmState = getCmState(ctx);
 			cmState.overflowNotified = false;
