@@ -7,7 +7,7 @@
 
 ---
 
-## System Status: v1.0.0
+## System Status: v0.2.0-alpha.1
 
 | Dimension | Status |
 |---|---|
@@ -17,7 +17,7 @@
 | Docs | 11 top-level + 42 extension + 15 proposals |
 | Modules | core, cognitive, memory, heartbeat, retry, prompt, tools (13 total) |
 
-### Recently Implemented (v1.0.0)
+### Recently Implemented (v0.2.0-alpha.1)
 
 | Feature | Commit | Status |
 |---|---|---|
@@ -306,13 +306,13 @@ npm run lint:check  # 0 warnings
 
 ## Release Readiness
 
-**Current**: v1.0.0 — ready for manual review and tagging
+**Current**: v0.2.0-alpha.1 — first published version, alpha stage
 
 **Pre-release gate** (all items checked):
 - [x] P0 items completed (P0.1 ✅ CONTRAST_VECTORS, P0.4 ✅ structured output)
 - [x] README.md polished — clean, accurate, no dead links
 - [x] `docs/proposals/README.md` updated with proposal statuses
-- [x] CHANGELOG.md updated with v0.38.0 entry
+- [x] CHANGELOG.md updated with v0.2.0-alpha.1 entry
 - [x] package.json version 1.0.0, description polished
 - [ ] GitHub repo setup (manual step — user responsibility)
 - [ ] Manual review pass (user responsibility)
