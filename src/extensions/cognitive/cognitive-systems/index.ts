@@ -39,8 +39,14 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-// pi-braid project root — absolute path so searches work from any CWD
-const PROJECT_ROOT = "/Users/kifir/projects/agents/pi-braid";
+// pi-braid project root — resolved from this file's location so searches work from any CWD
+import * as path from "node:path";
+import * as url from "node:url";
+
+const PROJECT_ROOT = path.resolve(
+  path.dirname(url.fileURLToPath(import.meta.url)),
+  "../../../..",
+);
 
 /** Extract candidate file names from a hypothesis string using multiple patterns */
 function extractFileCandidates(hypothesis: string): string[] {

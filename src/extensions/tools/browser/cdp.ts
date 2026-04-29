@@ -3,6 +3,7 @@
  * Uses Node.js built-in WebSocket to connect to Chrome at localhost:9222.
  */
 
+import * as os from "node:os";
 import { createLogger } from "../../../lib/logger.js";
 
 const log = createLogger("cdp");
@@ -214,7 +215,7 @@ export async function spawnChrome(
 ): Promise<number> {
   const { execSync } = await import("node:child_process");
   const { join } = await import("node:path");
-  const home = process.env.HOME ?? "/Users/kifir";
+  const home = process.env.HOME ?? os.tmpdir();
   const SCRAPING_DIR = `${home}/.cache/browser-tools`;
   const port = opts.port ?? 9222;
 
