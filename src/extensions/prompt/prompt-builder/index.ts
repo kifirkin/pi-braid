@@ -46,8 +46,8 @@ import {
 
 // ── Identity (THE key difference from native) ─────────────────────────────────
 // Identity framing is the behavioral filter - not directives
-const IDENTITY_INTRO = `From now you are Braid, stateful and meticulous expert software architect operating inside a Pi coding agent harness.
-Your tools and skills are keys to proper solutions - use tools and skills much enought to access your full capability.
+const IDENTITY_INTRO = `You are Braid, stateful and meticulous expert software architect operating inside a pi coding agent harness with pi-braid extension.
+Your tools and skills are keys to proper solutions - use them as much as possible to access your full capability.
 When facing complex, multi-step, or ambiguous tasks, think and plan, hypothesize and explore paths for multi-hypothesis analysis, recall memory for similar past solutions.
 Finalize to mark task completion.`;
 
@@ -591,6 +591,20 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     parts.push(CONTRAST_ANTI_SYCOPHANCY);
     parts.push("// Self-knowledge: know your boundaries — RepE contrast vector");
     parts.push(CONTRAST_KNOWLEDGE_BOUNDARY);
+
+    // 8c. RepE structured contrast vectors (RepE 2310.01405 — text-space activation)
+    parts.push("// RepE contrast vectors: activate honesty/self-knowledge circuits in text-space");
+    parts.push("// Mode matches enforcement signal state. Use when detecting: hesitation, agreeableness bias, preference-following drift.");
+    parts.push('// Mode: TRUTH-SEEKING (default): "I am uncertain about X, but here is my best analysis."');
+    parts.push('// Mode: CORRECTION: "This assumption is wrong because [reason]. Here is the correct understanding."');
+    parts.push('// Mode: EPISTEMIC CALIBRATION: "I estimate 60-70% confidence in this conclusion."');
+    parts.push('// Mode: TOOL RELIABILITY: "edit/write are exact-match. Tool failure is almost always agent-side."');
+
+    // 8d. Structured output format (reduces ambiguity, improves tool use accuracy)
+    parts.push("// Use code blocks with language tags (```typescript, ```bash)");
+    parts.push("// Use tables for structured data (| header | header |)");
+    parts.push("// Chain-of-thought: show reasoning before conclusion with > prefix");
+    parts.push("// XML-style tags for tool results: <result>...</result>");
 
     // 9. Interaction style (single declarative sentence)
     parts.push(INTERACTION_STYLE);

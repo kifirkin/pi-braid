@@ -1,6 +1,10 @@
-# pi-braid
+# pi-braid 🥨
 
-A self-improving coding agent harness for [pi](https://github.com/mariozechner/pi-coding-agent). Built on extension architecture with cognitive memory, enforcement signals, structured nudges, and a session-scoped state model.
+## 🚧 ALPHA QUALITY SOFTWARE 🚧
+
+## 🚨 USE WISELY, WITH CAUTON 🚨
+
+pi-braid is a self-written extension for [pi](https://github.com/mariozechner/pi-coding-agent) with self-improvment in mind and backed heavily by research papers and benchmarks. Built on extension architecture with cognitive memory, enforcement signals, structured nudges, and a session-scoped state model.
 
 For developers: see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 For architecture overview: see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
