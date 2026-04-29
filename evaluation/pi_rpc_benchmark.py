@@ -181,11 +181,12 @@ def run_task(
             # Track message end (turn count)
             if etype == "message_end":
                 last_message_end = event
-                result.turns += 1
-                # Extract text content
-                for block in event.get("message", {}).get("content", []):
-                    if block.get("type") == "text":
-                        result.final_text += block.get("text", "")
+                # Only extract assistant text — user messages are echoed prompts
+                if event.get("message", {}).get("role") == "assistant":
+                    result.turns += 1
+                    for block in event.get("message", {}).get("content", []):
+                        if block.get("type") == "text":
+                            result.final_text += block.get("text", "")
 
             # Agent done
             if etype == "agent_end":

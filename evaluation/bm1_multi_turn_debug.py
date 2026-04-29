@@ -453,14 +453,14 @@ Then:
 						"error": event.get("isError", False),
 					})
 
-				if etype == "message_end":
+			if etype == "message_end":
+				if event.get("message", {}).get("role") == "assistant":
 					result.turns += 1
 					for block in event.get("message", {}).get("content", []):
 						if block.get("type") == "text":
 							text = block.get("text", "")
 							last_text += text
 							result.final_text += text
-							# Detect phase transitions
 							if "read" in text.lower() and "edit" not in text.lower():
 								phase_turns.append("diagnose")
 							elif "fix" in text.lower() or "implement" in text.lower():
