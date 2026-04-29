@@ -197,7 +197,9 @@ But for pi-braid's use case (multi-turn agentic reasoning), this is likely suffi
 
 ## Status
 
-**PARTIAL** — Key phrases (TRUTH-FIRST, ANTI-SYCOPHANCY, EPISTEMIC STABILITY, KNOWLEDGE BOUNDARY) embedded in prompt-builder identity section. MISSING: structured CONTRAST_VECTORS section, per-scenario toggle, lie-detection classifier (Week 2), standalone phrase library doc. See DOC-AUDIT.md for full analysis.
+**PARTIAL** — Key phrases (TRUTH-FIRST, ANTI-SYCOPHANCY, EPISTEMIC STABILITY, KNOWLEDGE BOUNDARY) embedded in prompt-builder identity section. Structured CONTRAST_VECTORS section (4 modes) added in §8c. Per-scenario toggle pending. Lie-detection pending. Contrast phrase library pending.
+
+⚠️ NOTE: Structured output format (TOOL_RESULT/STATUS/DATA blocks) was REMOVED in v0.2.0-alpha.1 — it caused 'Tool not found' errors because weaker LLMs confused structured text with actual API-level tool calls.
 
 ---
 

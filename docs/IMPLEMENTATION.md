@@ -22,7 +22,7 @@
 | Feature | Commit | Status |
 |---|---|---|
 | RepE structured contrast vectors (4 modes) | `dc85563` | ✅ Done |
-| Structured output format (CoT, XML tags) | `dc85563` | ✅ Done |
+| Structured output format | `f745364` | 🔶 Removed (caused tool-call errors) |
 | resources_discover handler (bundled skills) | `2ac5834` | ✅ Done |
 | Browser/ → tools/ (CDP, web-fetch, vision) | `58b1844` | ✅ Done |
 | Compaction v0.23 (LLM always, dedup guard) | prior | ✅ Done |
@@ -46,12 +46,13 @@
 - ✅ Sycophancy resistance phrase in identity section
 - ✅ RepE-style contrast principles in identity section
 - ✅ Structured `CONTRAST_VECTORS` section (4 modes: TRUTH-SEEKING, CORRECTION, EPISTEMIC CALIBRATION, TOOL RELIABILITY) — prompt-builder section 8c
-- ✅ Structured output format (CoT, code blocks, XML tags) — section 8d
+- 🔶 Structured output format REMOVED — TOOL_RESULT/STATUS/DATA blocks caused 'Tool not found' errors (LLM outputs text resembling tool calls instead of actual API calls). Replaced with simple code block guidance.
 
 **What's missing**:
 - Per-scenario toggle (enforcement signal state → prompt-builder contrast mode)
 - Lie-detector pattern (catching agent's own contradictions)
 - Contrast phrase library (see proposal #6)
+- ⚠️ Structured output format REMOVED — TOOL_RESULT/STATUS/DATA blocks caused 'Tool not found' errors (LLM outputs text resembling tool calls instead of actual API calls). Replaced with simple code block guidance.
 
 **Effort**: Medium | **Priority**: P2
 
@@ -195,13 +196,11 @@
 
 ---
 
-#### 13. Structured Output Catalyst — Status: NOT STARTED
+#### 13. Structured Output Catalyst — Status: REMOVED ✅
 
 **What**: Prompt format that elicits structured output (chain-of-thought headers, XML-ish tags for tool results).
 
-**Effort**: Low | **Priority**: P3
-
-**Implementation**: Add structured output format to prompt-builder section #9. No code changes needed — prompt template only.
+**Status**: REMOVED in v0.2.0-alpha.1 — the TOOL_RESULT/STATUS/DATA block format caused 'Tool not found' errors. Weaker LLMs confused structured text output with actual API-level tool calls, generating tool calls with empty names. Replaced with simple code block + CoT guidance.
 
 ---
 
@@ -226,7 +225,7 @@ API-only providers (stepfun, minimax) don't expose activations/logprobs. RepE pr
 | P0.1 | RepE CONTRAST_VECTORS section | ✅ Done (`dc85563`) | 4 modes in prompt-builder §8c |
 | P0.2 | Context-lifecycle signal detector | 🔶 Pending | Compaction quality → belief-policy-engine |
 | P0.3 | RepE per-scenario toggle | 🔶 Pending | Enforcement → prompt-builder contrast mode |
-| P0.4 | Structured output format | ✅ Done (`dc85563`) | CoT, code blocks, XML tags in §8d |
+| P0.4 | Structured output format | 🔶 Removed | TOOL_RESULT blocks caused tool-call errors |
 | P0.5 | Remaining TODOs in code | 🔶 Pending | Search for TODO/FIXME in src/ |
 | P0.5 | Fix any remaining TODOs in code | 1h | Search for TODO/FIXME comments. |
 
@@ -309,7 +308,7 @@ npm run lint:check  # 0 warnings
 **Current**: v0.2.0-alpha.1 — first published version, alpha stage
 
 **Pre-release gate** (all items checked):
-- [x] P0 items completed (P0.1 ✅ CONTRAST_VECTORS, P0.4 ✅ structured output)
+- [x] P0 items completed (P0.1 ✅ CONTRAST_VECTORS, P0.4 🔶 structured output REMOVED — caused tool-call errors)
 - [x] README.md polished — clean, accurate, no dead links
 - [x] `docs/proposals/README.md` updated with proposal statuses
 - [x] CHANGELOG.md updated with v0.2.0-alpha.1 entry
