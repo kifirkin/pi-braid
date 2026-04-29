@@ -3,7 +3,7 @@ import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 
 const fs = require("fs");
-const webFetchSource = fs.readFileSync("src/extensions/browser/web-fetch/index.ts", "utf-8");
+const webFetchSource = fs.readFileSync("src/extensions/tools/web-fetch/index.ts", "utf-8");
 
 let pass = 0;
 let fail = 0;

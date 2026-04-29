@@ -46,9 +46,9 @@ import healthcheckFn from "../extensions/tools/healthcheck/index.js";
 import timerFn from "../extensions/tools/timer/index.js";
 import latentActivatorFn from "../extensions/tools/latent-activator/index.js";
 
-import browserFn from "../extensions/browser/browser/index.js";
-import webFetchFn from "../extensions/browser/web-fetch/index.js";
-import visionFn from "../extensions/browser/vision/index.js";
+import browserFn from "../extensions/tools/browser/index.js";
+import webFetchFn from "../extensions/tools/web-fetch/index.js";
+import visionFn from "../extensions/tools/vision/index.js";
 
 import assistantFn from "../extensions/assistant/assistant/index.js";
 import feedbackFn from "../extensions/assistant/feedback/index.js";
@@ -270,13 +270,13 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
   },
 
   // ═════════════════════════════════════════════════════════════════════
-  // TOOLS — Workspace utility tools (no event listeners, pure tool extensions)
+  // TOOLS — Workspace utility tools + browser automation
   // ═════════════════════════════════════════════════════════════════════
   {
     name: "tools",
     label: "Utility Tools",
     description:
-      "Codebase tree, codebase graph, REPL, docs reader, healthcheck, timer, latent activator",
+      "Codebase tree, codebase graph, REPL, docs reader, healthcheck, timer, latent activator, browser CDP, web fetch, vision",
     dependencies: ["core"],
     extensions: [
       { name: "codebase-tree", fn: codebaseTreeFn },
@@ -286,25 +286,11 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
       { name: "healthcheck", fn: healthcheckFn },
       { name: "timer", fn: timerFn },
       { name: "latent-activator", fn: latentActivatorFn },
-    ],
-    listensTo: ["turn_end"], // timer only
-    coupledWith: [],
-  },
-
-  // ═════════════════════════════════════════════════════════════════════
-  // BROWSER — Web interaction via CDP
-  // ═════════════════════════════════════════════════════════════════════
-  {
-    name: "browser",
-    label: "Browser Automation",
-    description: "Browser CDP, web fetch, image analysis",
-    dependencies: ["core"],
-    extensions: [
       { name: "browser", fn: browserFn },
       { name: "web-fetch", fn: webFetchFn },
       { name: "vision", fn: visionFn },
     ],
-    listensTo: ["session_shutdown"], // browser only
+    listensTo: ["session_shutdown", "turn_end"], // browser + timer
     coupledWith: [],
   },
 

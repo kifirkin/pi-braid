@@ -13,8 +13,11 @@ Utility extensions providing developer and operational tools.
 | `latent-activator/` | 1 | Latent behavior pattern activation. |
 | `repl/` | 1 | JavaScript REPL (RLM mode with context helpers). |
 | `timer/` | 1 | Non-blocking timer (timer_set, timer_list, timer_cancel). |
+| `browser/` | 3 | CDP browser automation, execute JS, navigate, screenshot. |
+| `web-fetch/` | 5 | Clean markdown web fetching, headers, secrets detection. |
+| `vision/` | 1 | Image analysis (visual/UI/layout, sprites, OCR). |
 
-Total: 7 sub-extensions.
+Total: 10 sub-extensions.
 
 ## Key Architecture
 

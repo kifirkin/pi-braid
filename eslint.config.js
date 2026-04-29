@@ -13,6 +13,9 @@ export default tseslint.config(
 		},
 		rules: {
 			"prettier/prettier": "error",
+			// Enforce spaces (match .prettierrc useTabs:false)
+			"indent": ["error", 2, { "SwitchCase": 1 }],
+			"no-tabs": "error",
 			"@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
 			"@typescript-eslint/no-explicit-any": "warn",
 			"@typescript-eslint/no-floating-promises": "error",
