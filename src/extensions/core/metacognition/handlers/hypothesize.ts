@@ -59,24 +59,10 @@ export function createHypothesizeTool() {
       const { problem, evidence, maxHypotheses = 3 } = params;
 
       if (!ctx?.model) {
-        const lines: string[] = [
-          `## Hypothesis Analysis: ${problem}`,
-          "",
-          "### Evidence",
-          evidence,
-          "",
-          `### Hypotheses (generate ${maxHypotheses} and rank by likelihood)`,
-          ...Array.from({ length: maxHypotheses }, (_, i) => `${i + 1}. `),
-          "",
-          "For each hypothesis, explain: why it's likely, and why the solution is proper.",
-          "Focus on proper solutions over quick fixes.",
-          "",
-          "_Note: No model available. This is a template — use your own analysis._",
-        ];
-        return {
-          content: [{ type: "text" as const, text: lines.join("\n") }],
-          details: { problem, hypotheses: maxHypotheses, modelUsed: "template" },
-        };
+        throw new Error(
+          `hypothesize: no model available for session model analysis. ` +
+            `Problem: "${problem.slice(0, 50)}..." | Evidence: "${evidence.slice(0, 50)}..."`
+        );
       }
 
       try {
@@ -129,10 +115,7 @@ export function createHypothesizeTool() {
         };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        return {
-          content: [{ type: "text" as const, text: `Hypothesis generation error: ${message}` }],
-          details: { problem, hypotheses: maxHypotheses, modelUsed: ctx.model?.id, error: message },
-        };
+        throw new Error(`hypothesize: model analysis failed — ${message}`);
       }
     },
   };
