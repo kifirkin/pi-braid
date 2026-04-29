@@ -102,6 +102,15 @@ export class SignalDetector {
     const signals: SemanticSignal[] = [];
     const newEntryCount = entries.length;
 
+    // ── Session navigation detection ──────────────────────────────────
+    // If entry count drops sharply vs previous run, the session was
+    // restructured (/tree edit, /new, fork). Auto-reset to prevent stale
+    // topic/entry tracking from contaminating the new session.
+    if (this.entryCount > 0 && newEntryCount < this.entryCount - 2) {
+      log.warn(`Session navigation detected: ${this.entryCount} → ${newEntryCount} entries, resetting`);
+      this.reset();
+    }
+
     // Detect only new entries
     if (newEntryCount <= this.entryCount) {
       this.contextUsage = contextUsage;
@@ -115,7 +124,9 @@ export class SignalDetector {
     this.entryCount = newEntryCount;
     this.contextUsage = contextUsage;
 
-    let turn = this.lastTurn;
+    // Advance turn counter for this batch
+    this.lastTurn++;
+    const turn = this.lastTurn;
     const allText: string[] = [];
     const hashes: string[] = [];
     const toolCalls: string[] = [];
@@ -210,8 +221,6 @@ export class SignalDetector {
         signals.push(createSignal("task_boundary", turn, { pattern: last3 }));
       }
     }
-
-    this.lastTurn = turn;
 
     // Flush pending
     signals.push(...this.pendingSignals);

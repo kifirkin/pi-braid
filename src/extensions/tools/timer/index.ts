@@ -43,7 +43,7 @@ class TimerManager {
     return Array.from(this.timers.values()).sort((a, b) => a.firesAt - b.firesAt);
   }
 
-  // Called on each turn_end
+  /** Check for expired timers — removes them from the map and returns them */
   checkExpired(nowMs: number): ScheduledTimer[] {
     const expired: ScheduledTimer[] = [];
     for (const [id, timer] of this.timers) {
@@ -58,6 +58,14 @@ class TimerManager {
 
   getActiveCount(): number {
     return this.timers.size;
+  }
+
+  /** Check if any timer is expired without removing (for polling guard) */
+  hasExpiredIn(nowMs: number): boolean {
+    for (const timer of this.timers.values()) {
+      if (timer.firesAt <= nowMs) return true;
+    }
+    return false;
   }
 }
 
@@ -76,6 +84,48 @@ export function onTimerFire(handler: TimerFireHandler): () => void {
   return () => fireHandlers.delete(handler);
 }
 
+// ── Real-time polling ───────────────────────────────────────────────────────
+// Timer expiry checked every second — independent of turn_end so timers fire
+// even when the agent is between turns or blocked in a long tool call.
+// This is the primary fire mechanism; turn_end is a backup.
+const POLL_INTERVAL_MS = 1000;
+let pollHandle: ReturnType<typeof setInterval> | null = null;
+let piRef: ExtensionAPI | null = null;
+
+function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
+  for (const h of fireHandlers) {
+    try { h(timer); } catch {}
+  }
+  emitTimerReminder(timer); // → heartbeat bus → agent reminder on next tick
+  log.info(`[timer] fired: ${timer.id} — ${timer.reason}`);
+  // Try to wake the agent with a steer message if between turns
+  try {
+    (pi as any).sendUserMessage?.(
+      `⏰ [TIMER REMINDER] — ${timer.reason}`,
+      { deliverAs: "steer" }
+    );
+  } catch { /* non-fatal — agent may be mid-turn */ }
+}
+
+function startTimerPolling(pi: ExtensionAPI): void {
+  if (pollHandle) return; // Already polling
+  piRef = pi;
+  pollHandle = setInterval(() => {
+    const expired = timerManager.checkExpired(Date.now());
+    for (const timer of expired) {
+      fireTimer(timer, pi);
+    }
+  }, POLL_INTERVAL_MS);
+  log.info(`[timer] real-time polling started (every ${POLL_INTERVAL_MS}ms)`);
+}
+
+function stopTimerPolling(): void {
+  if (pollHandle) {
+    clearInterval(pollHandle);
+    pollHandle = null;
+  }
+}
+
 // ── Extension ───────────────────────────────────────────────────────────────
 
 export default function timerExtension(pi: ExtensionAPI): void {
@@ -84,8 +134,10 @@ export default function timerExtension(pi: ExtensionAPI): void {
     name: "timer_set",
     label: "Timer Set",
     description:
-      "Set a non-blocking timer (in seconds). Returns immediately — does NOT hang. " +
-      "When the timer fires, a reminder will be injected. " +
+      "REPLACES bash `sleep` for waiting. Set a non-blocking timer (seconds). " +
+      "Returns immediately — does NOT hang. Do NOT use sleep() after this. " +
+      "Continue working normally; the timer will fire asynchronously and inject " +
+      "a reminder into your context. " +
       "Use for: builds, background processes, pomodoro cycles, escalation chains.",
     parameters: Type.Object({
       delay_seconds: Type.Number({ minimum: 1, maximum: 86400 }),
@@ -176,18 +228,20 @@ export default function timerExtension(pi: ExtensionAPI): void {
     },
   } as any);
 
-  // Check expired timers on each turn_end
+  // Start real-time polling on load
+  startTimerPolling(pi);
+
+  // Fallback: check expired timers on turn_end (catches anything the poll missed)
   pi.on("turn_end", () => {
     const expired = timerManager.checkExpired(Date.now());
     for (const timer of expired) {
-      // Fire both: local handlers (for any internal use) + shared bus (for heartbeat surfacing)
-      for (const h of fireHandlers) {
-        try {
-          h(timer);
-        } catch {}
-      }
-      emitTimerReminder(timer); // → heartbeat bus → agent reminder
+      fireTimer(timer, pi);
     }
+  });
+
+  // Clean up polling on shutdown
+  pi.on("session_shutdown" as any, () => {
+    stopTimerPolling();
   });
 
   log.info("[timer] loaded: timer_set, timer_list, timer_cancel");
