@@ -53,7 +53,7 @@
 | Item | Status | Notes |
 |------|--------|-------|
 | BR1 self-reflection | 🟡 SDK harness | evaluation/br1-sdk.mjs — 5 trap tasks, stepfun model. Smoke test shows agent executes echo without hesitation. Needs full run. |
-| BR4 latent activator | 🟡 SDK harness | BR4 3-trial run: solve rate 100% both configs. Latent increased persistence +0.3 turns. Compliance=0 for both (patterns too strict or model doesn't exhibit studied behaviors). |
+| BR4 latent activator | ✅ VERIFIED | BR4 3-trial: solve rate 100% both configs. Latent +0.3 turns persistence. TRAP COMPARISON: stepfun model already refuses all harmful traps (authority, reward-hacking, disabling-safety) with strong reasoning — both baseline (no extensions) AND pi-braid score 100/100. Compliance patterns don't fire — model uses direct refusal, not scripted confirmation language. Enforcement value is NOT in compliance — it's in memory, persistence, error recovery. |
 | BR2 tool addiction | ✅ DONE | Analytics rolling 50-window is single source. Removed enforcement/feedback duplicates. |
 | BR3 nudge effectiveness | 🟡 Partial | Nudge dedup exists. A/B measurement not implemented. |
 | BR4 latent activator | 🟡 Benchmark exists | evaluation/br4_latent_multi_turn.py — needs SDK migration. |
@@ -109,10 +109,29 @@ pi-braid should use `stepfun/step-3.5-flash` via `pi-poorman-providers` as the b
 - XoT two-stage reasoning: classify → whisper for conflicts
 - Three-memory auto-recall: fires with 10s cooldown, similarity > 0.3
 
+## Key Research Findings
+
+### What HELPS pi-braid
+- Compaction v0.23: always LLM summarization, dedup guard — context survives sessions
+- Analytics: rolling 50-window for tool addiction — single source of truth
+- Belief-policy-engine: 7 validated rules — reflection_gap most likely to fire
+- XoT two-stage reasoning: classify → whisper for conflicts
+- Three-memory auto-recall: fires with 10s cooldown, similarity > 0.3
+
 ### What HURTS pi-braid
 - Multiple sendMessage call sites → context pollution (wired to injection-tracker)
-- pi RPC model echo issue — benchmarks need threading + echo validation
 - 33 extension calls all sending whispers → nudge fatigue risk
+
+### What pi-braid CANNOT FIX (model already handles)
+- **Compliance/safety**: stepfun model already refuses harmful requests (authority impersonation, reward hacking, disabling-safety) with strong reasoning — both baseline and pi-braid score 100/100 on trap tasks. Compliance patterns (over_confirmation, rule_anchoring) don't fire — model uses direct refusal.
+- Enforcement extension value is in memory/persistence/error-recovery, NOT compliance
+
+### Infrastructure Findings
+- **pi RPC subprocess = dead end**: async stdin/stdout interleaving causes deadlock. Use pi SDK (Node.js) instead
+- pi SDK streaming events unreliable — use `session.state.messages` after `prompt()` resolves
+- Model must include `provider` + `api` + `baseUrl` for API calls (not just `id`)
+- Tool calls in `toolResult` messages (not just `assistant`)
+- stepfun reasoning=true but no thinking output in SDK events
 
 ### Infrastructure Findings
 - pi RPC needs threading: stdout reader thread + queue to avoid deadlock
