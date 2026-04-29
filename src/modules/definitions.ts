@@ -39,6 +39,7 @@ import promptBuilderFn from "../extensions/prompt/prompt-builder/index.js";
 import promptGuardianFn from "../extensions/prompt/prompt-guardian/index.js";
 
 import codebaseTreeFn from "../extensions/tools/codebase-tree/index.js";
+import codebaseGraphFn from "../extensions/tools/codebase-graph/index.js";
 import replFn from "../extensions/tools/repl/index.js";
 import docsFn from "../extensions/tools/docs/index.js";
 import healthcheckFn from "../extensions/tools/healthcheck/index.js";
@@ -253,6 +254,7 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
 		dependencies: ["core"],
 		extensions: [
 			{ name: "codebase-tree",         fn: codebaseTreeFn },
+			{ name: "codebase-graph",       fn: codebaseGraphFn },
 			{ name: "repl",                 fn: replFn },
 			{ name: "docs",                 fn: docsFn },
 			{ name: "healthcheck",          fn: healthcheckFn },
