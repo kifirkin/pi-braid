@@ -47,7 +47,7 @@ Decomposed from a monolith into 5 handler modules:
 | `context_log` | View conversation history as log |
 | `context_checkout` | Navigate to any point in conversation history |
 | `context_prune` | Analyze session for prune candidates (analysis only; auto-pruning runs on every LLM call) |
-| `context_compress` | LLM-driven compression of a conversation range into a summary |
+| `context_archive` | LLM-driven compression of a conversation range into a summary |
 | `context_audit` | Comprehensive session analysis: usage stats, hygiene score, prune candidates, branching triggers |
 
 ## Commands

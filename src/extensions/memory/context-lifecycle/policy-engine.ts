@@ -131,7 +131,7 @@ export class PolicyEngine {
 			turn: 0,
 			policy_id: "",
 			confidence: signals[0]?.confidence ?? 0.5,
-			suggested_action: action.type === "propose" ? "context_compress" : undefined,
+			suggested_action: action.type === "propose" ? "context_archive" : undefined,
 		};
 
 		let blocked = false;
@@ -257,7 +257,7 @@ export function evaluatePolicies(
 			context_density_high: {
 				priority: 58,
 				message: "High density ({density}%) but context large ({ratio}% of limit). Semantic compression (SimpleMem): 30% token cost, preserves meaning.",
-				suggested_action: "context_compress",
+				suggested_action: "context_archive",
 				min_confidence: 0.5,
 			},
 			context_duplicates: {

@@ -11,7 +11,7 @@ export const log = createLogger("context-manager");
 
 // ── Internal tool detection ───────────────────────────────────────────────────
 export const INTERNAL_TOOLS = new Set([
-	"context_tag", "context_log", "context_checkout", "context_compress",
+	"context_tag", "context_log", "context_checkout", "context_archive",
 	"context_prune", "context_audit", "context_proposals", "context_signal",
 	"think", "hypothesize", "finalize", "heuristics_evaluate", "cognition_evaluate",
 	"memory_store", "memory_recall", "memory_list", "memory_get",

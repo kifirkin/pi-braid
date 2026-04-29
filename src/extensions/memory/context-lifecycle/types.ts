@@ -267,10 +267,10 @@ export function createDefaultPolicies(): ContextPolicy[] {
 			trigger: { type: "context_usage", threshold: 60 },
 			action: {
 				type: "propose",
-				message: "Context at {percent}%. Consider `context_compress` for completed tasks.",
+				message: "Context at {percent}%. Consider `context_archive` for completed tasks.",
 				priority: "low",
 			},
-			suggested_action: "context_compress",
+			suggested_action: "context_archive",
 		},
 		{
 			id: "density-low-prune",
@@ -297,7 +297,7 @@ export function createDefaultPolicies(): ContextPolicy[] {
 				message: "High density ({density}%) but context large ({ratio}% of limit). Semantic compression (SimpleMem): 30% token cost, preserves meaning.",
 				priority: "low",
 			},
-			suggested_action: "context_compress",
+			suggested_action: "context_archive",
 			min_confidence: 0.5,
 		},
 		{

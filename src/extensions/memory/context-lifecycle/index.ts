@@ -2,7 +2,7 @@
  * Context Lifecycle Extension - S-MMU Active Context Management
  *
  * AUTOMATION layer that works WITH context-manager.
- * NO new tools - uses existing context_tag, context_compress, etc.
+ * NO new tools - uses existing context_tag, context_archive, etc.
  *
  * R-CCAM-inspired loop:
  * - Retrieval: Signal detection from session content
@@ -385,7 +385,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 
 		if (toolName === "context_tag") {
 			_signalDetector.queueSignal("task_boundary", { action: "tag", target: input?.name });
-		} else if (toolName === "context_compress") {
+		} else if (toolName === "context_archive") {
 			_signalDetector.queueSignal("task_boundary", { action: "compress" });
 		} else if (toolName === "context_checkout") {
 			_signalDetector.queueSignal("task_boundary", { action: "checkout" });

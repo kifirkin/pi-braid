@@ -6,7 +6,7 @@
 
 ## Purpose
 
-S-MMU Active Context Management. AUTOMATION layer that works with context-manager (no new tools). Uses existing `context_tag`, `context_compress`, `context_signal` tools. R-CCAM-inspired loop.
+S-MMU Active Context Management. AUTOMATION layer that works with context-manager (no new tools). Uses existing `context_tag`, `context_archive`, `context_signal` tools. R-CCAM-inspired loop.
 
 ## R-CCAM Loop
 

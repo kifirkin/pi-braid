@@ -40,7 +40,7 @@
 
 **Memory & context (essential infrastructure):**
 - `memory_store`, `memory_recall`, `memory_list`, `memory_get` — long-term knowledge
-- `context_tag`, `context_log`, `context_compress`, `context_prune` — context management
+- `context_tag`, `context_log`, `context_archive`, `context_prune` — context management
 - `session_search`, `session_query` — session recall
 
 **Workspace tools:**

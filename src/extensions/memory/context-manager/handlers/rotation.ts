@@ -233,7 +233,7 @@ export function registerRotationHandlers(pi: any): void {
 							"",
 							"The session has grown large. To keep working smoothly:",
 							"1. **`finalize()`** — when done with current work; rotates session with summary",
-							"2. **`context_compress(start, end, summary)`** — archive completed work mid-session",
+							"2. **`context_archive(start, end, summary)`** — archive completed work mid-session",
 							"3. **`memory_store(...)`** — preserve critical facts before compression",
 							"",
 							"Taking any of these actions will reset the session counter for 25 turns.",
@@ -253,7 +253,7 @@ export function registerRotationHandlers(pi: any): void {
 		try {
 			if (!event?.toolName) return;
 			const state = _sessionRotationState();
-			const contextTools = new Set(["memory_store", "context_tag", "context_compress", "scratchpad", "finalize"]);
+			const contextTools = new Set(["memory_store", "context_tag", "context_archive", "scratchpad", "finalize"]);
 			if (contextTools.has(event.toolName)) {
 				state.actionTaken = true;
 				state.actionTakenAtTurn = state.turnsSinceRotation;

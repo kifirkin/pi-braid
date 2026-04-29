@@ -223,7 +223,7 @@ Episodes tagged with project path. Retrieved memories display provenance:
 
 A: Both, but differently:
 - **Automatic**: Heartbeat fires when density < 0.4 or token ratio > 0.6. No agent intervention needed.
-- **Agent-invoked**: `context_compress()` tool suggests compression strategy based on density. Agent decides whether to proceed.
+- **Agent-invoked**: `context_archive()` tool suggests compression strategy based on density. Agent decides whether to proceed.
 - **Proactive**: Agent sees context density in heartbeat nudges and can invoke compression before being told to.
 
 This matches the GenericAgent finding: **monitor density, not just length**. The agent should always know its context health.

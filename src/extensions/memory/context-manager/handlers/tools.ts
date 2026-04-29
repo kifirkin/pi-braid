@@ -197,7 +197,7 @@ export function registerTools(pi: any): void {
 			"Analyze session and identify obsolete entries for potential pruning. " +
 			"This is ANALYSIS ONLY - it does not remove entries. " +
 			"Automatic pruning runs on every LLM call via rule-based filtering (dedup, superseded writes, errors, recency). " +
-			"Use `context_compress` for LLM-driven compression of specific ranges.",
+			"Use `context_archive` for LLM-driven compression of specific ranges.",
 		parameters: contextPruneSchema,
 		execute: async (_toolCallId: string, params: any, _signal: any, _onUpdate: any, ctx: any): Promise<any> => {
 			const minAge = params.minAge ?? 5;
@@ -211,7 +211,7 @@ export function registerTools(pi: any): void {
 			lines.push(`## Context Prune Analysis`);
 			lines.push("\n📊 **Analysis mode** - This is analysis only.");
 			lines.push("Automatic rule-based pruning runs on every LLM call.");
-			lines.push("Use `context_compress` for LLM-driven compression.");
+			lines.push("Use `context_archive` for LLM-driven compression.");
 			lines.push(`\n**Context Usage:** ${audit.usage.percent.toFixed(1)}% (${Math.round(audit.usage.tokens / 1024)}K tokens)`);
 			lines.push(`**Session:** ${audit.branchLength} entries, ${audit.tagCount} tags, ${audit.summaryCount} summaries`);
 			lines.push(`**Auto-pruned:** ${getCmState(ctx).pruningState.stats.totalPruned} messages (${getCmState(ctx).pruningState.stats.totalProcessed} total processed)`);
@@ -290,9 +290,9 @@ export function registerTools(pi: any): void {
 		},
 	});
 
-	// ── context_compress ──────────────────────────────────────────────
+	// ── context_archive ──────────────────────────────────────────────
 	pi.registerTool({
-		name: "context_compress",
+		name: "context_archive",
 		label: "Compress Context",
 		description:
 			"Compress a range of conversation into a summary. The LLM generates a summary, " +

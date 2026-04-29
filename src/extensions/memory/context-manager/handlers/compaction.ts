@@ -351,7 +351,7 @@ async function handleContextWindowError(pi: any, _event: any, ctx: ExtensionCont
 			"## ⚠️ Session too large",
 			errMsg, "",
 			"The session cannot be compacted because it exceeds the model's context limit.",
-			"Please use `finalize()` to rotate the session, or `context_compress` to archive older work.",
+			"Please use `finalize()` to rotate the session, or `context_archive` to archive older work.",
 		].join("\n") }],
 		display: true,
 	}, { deliverAs: "hint" }, { type: "context", source: "context-manager/compaction/context-window" });

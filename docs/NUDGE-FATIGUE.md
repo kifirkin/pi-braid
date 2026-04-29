@@ -36,7 +36,7 @@ Added nudge dedup fields to `RotationState`:
 
 ### Handler Changes (rotation.ts)
 1. **Deduplication gate**: skip if already nudged this turn
-2. **Action cooldown**: skip for 50 turns OR 5 minutes after `memory_store`/`context_tag`/`finalize`/`context_compress`
+2. **Action cooldown**: skip for 50 turns OR 5 minutes after `memory_store`/`context_tag`/`finalize`/`context_archive`
 3. **Action tracking**: `tool_end` listener watches for rotation-relevant tools
 4. **Identity-framed language**: "You are managing a long session" instead of "The session is getting large. Consider..."
 5. **Final reset**: `finalize` handler clears all nudge state

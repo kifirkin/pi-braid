@@ -47,7 +47,7 @@ The system is **reactive, not proactive**:
 
 3. **No agent self-correction without user intervention**
    - Agent generates messages continuously in autonomous mode
-   - No `finalize` or `context_compress` called without explicit instruction
+   - No `finalize` or `context_archive` called without explicit instruction
    - Heartbeat warnings tell the agent to compress, but agent must CHOOSE to act
    - In truly autonomous mode, agent may ignore warnings
 
@@ -73,7 +73,7 @@ The system is **reactive, not proactive**:
 ## Why Proactive Monitoring Helps
 
 The heartbeat fires every 30 seconds. At 70% context:
-- Agent gets whisper: "Consider /finalize or /context_compress"
+- Agent gets whisper: "Consider /finalize or /context_archive"
 - Agent can call `finalize` to trigger rotation
 - Rotation preserves state, starts with fresh context
 - Loop breaks BEFORE overflow

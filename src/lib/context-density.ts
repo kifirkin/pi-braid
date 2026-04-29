@@ -85,7 +85,7 @@ function simpleHash(s: string): number {
  * @example
  * const d = evaluateContextDensity(ctx);
  * if (d.density < 0.4) {
- *   ctx.whisper("Context density low — consider context_compress()");
+ *   ctx.whisper("Context density low — consider context_archive()");
  * }
  */
 export function evaluateContextDensity(ctx: ExtensionContext): DensityResult {

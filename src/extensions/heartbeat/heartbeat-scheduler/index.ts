@@ -417,7 +417,7 @@ const contextHygieneModule: CognitiveModule = {
 			ctx.whisper?.(
 				"Low context density (" + Math.round(density.density * 100) + "% signal). " +
 				"Noisy: " + density.noisyMessages + ", Signal: " + density.signalMessages + ". " +
-				"Consider: context_compress() or context_prune().",
+				"Consider: context_archive() or context_prune().",
 				{ category: "cognitive", priority: density.density < 0.25 ? "high" : "medium" }
 			);
 		} else if (density.tokenRatio > 0.6) {
@@ -653,8 +653,8 @@ function createDefaultPolicies(
 				const fired = state?.metaLearning?.tokenWarningFired;
 
 				const thresholds: Array<{ pct: number; priority: "low" | "medium" | "high"; msg: string }> = [
-					{ pct: 70, priority: "low", msg: "Context at 70%. Consider using /finalize or /context_compress to reduce context." },
-					{ pct: 80, priority: "medium", msg: "Context at 80%. Use /context_compress or /finalize NOW." },
+					{ pct: 70, priority: "low", msg: "Context at 70%. Consider using /finalize or /context_archive to reduce context." },
+					{ pct: 80, priority: "medium", msg: "Context at 80%. Use /context_archive or /finalize NOW." },
 					{ pct: 90, priority: "high", msg: "CRITICAL: Context at 90%. Call finalize(completed=false, summary='[brief status]', tasksRemaining=[...]) RIGHT NOW. Every remaining turn risks overflow and data loss. Stop all work and finalize immediately." },
 				];
 
