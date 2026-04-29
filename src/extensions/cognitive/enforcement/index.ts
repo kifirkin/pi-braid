@@ -776,7 +776,7 @@ Persist them now - this is the minimum-fidelity moment.`,
   pi.on(
     "auto_retry_end" as never,
     async (
-      event: { success: boolean; attempt: number; finalError?: string },
+      event: any,
       ctx: ExtensionContext,
     ) => {
       if (!getState(ctx).enforcementActive) return;

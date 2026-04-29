@@ -489,6 +489,16 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     });
   });
 
+
+  // ── resources_discover: Register bundled skills with pi's native discovery ──
+  // pi's package manager calls this on all extensions to discover resources (skills, prompts, themes).
+  // We register the bundled skills/ directory so pi can auto-discover them.
+  _pi.on("resources_discover" as never, async (event: { cwd: string; reason: string }, _ctx: any) => {
+    return {
+      skillPaths: [SKILLS_DIR],
+    };
+  });
+
   _pi.on("before_agent_start", async (event, ctx) => {
     const ps = getPromptState(ctx);
     const cwd = ctx.cwd;
