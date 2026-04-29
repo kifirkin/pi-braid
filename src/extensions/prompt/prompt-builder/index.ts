@@ -274,7 +274,10 @@ function formatPastInsightsSection(insights: PastInsight[]): string {
 // ── Reconstruction Functions (from structured data, not text parsing) ─────────
 
 function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>): string {
-  const visibleTools = tools.map((t) => `- ${t.name}: ${t.description}`).join("\n");
+  const visibleTools = tools
+    .filter((t) => t.name && t.description)
+    .map((t) => `- ${t.name}: ${t.description}`)
+    .join("\n");
 
   // Structured output instruction (MDA: repetitive format catalyzes ICL circuits)
   const structuredOutput = `
@@ -305,7 +308,7 @@ This structured format with consistent delimiters helps activate in-context lear
   return `Available tools:
 ${visibleTools || "(none)"}
 
-In addition to the tools above, you may have access to other custom_tools depending on the project.${structuredOutput}`;
+Only use the tools listed above. Do not call tools not shown here.${structuredOutput}`;
 }
 
 function reconstructGuidelineSection(
