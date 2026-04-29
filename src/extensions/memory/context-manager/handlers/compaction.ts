@@ -176,11 +176,20 @@ export function registerSessionCompactHandler(pi: any): void {
         );
       }
 
-      // BUG FIX: After successful auto-compaction, inject a steer to continue.
-      // Without this, the agent's session has no pending user message to respond to.
-      // Root cause: session_before_compact fires during agent's turn, user message
-      // is in messagesToSummarize, gets merged into compaction summary.
-      // The steer re-establishes context so the agent can continue working.
+      // After successful auto-compaction, inject resume steer to continue.
+      // This is queued BEFORE flushCompactionQueue runs (TUI sync handler),
+      // so it is processed FIRST when agent.continue() fires.
+      //
+      // display: false — compaction summary is already in chat as a
+      // CustomMessageEntry. The steer provides context without adding noise.
+      //
+      // BUG FIX (v0.24): Previously injected with display:true in session_compact.
+      // This caused the steer to appear as a visible custom message in chat
+      // BEFORE the user's queued follow-up, making the follow-up "disappear"
+      // from the user's perspective. With display:false, the steer is added
+      // to session context for the agent but not rendered in chat, so the
+      // user's follow-up (queued by flushCompactionQueue) is processed first
+      // and the agent responds naturally to the user's message.
       const sm = (ctx as any).sessionManager;
       if (sm && entry?.summary) {
         sendTrackedMessage(
@@ -196,7 +205,7 @@ export function registerSessionCompactHandler(pi: any): void {
                   `summary and continue working on the user's request.`,
               },
             ],
-            display: true,
+            display: false,
           },
           { deliverAs: "steer" },
           { type: "context", source: "context-manager/compaction/resume" },
