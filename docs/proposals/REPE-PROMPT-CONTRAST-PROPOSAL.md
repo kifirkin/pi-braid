@@ -197,7 +197,7 @@ But for pi-braid's use case (multi-turn agentic reasoning), this is likely suffi
 
 ## Status
 
-**Ready to start** — Week 1 plan is concrete. First action: build contrast phrase library.
+**PARTIAL** — Key phrases (TRUTH-FIRST, ANTI-SYCOPHANCY, EPISTEMIC STABILITY, KNOWLEDGE BOUNDARY) embedded in prompt-builder identity section. MISSING: structured CONTRAST_VECTORS section, per-scenario toggle, lie-detection classifier (Week 2), standalone phrase library doc. See DOC-AUDIT.md for full analysis.
 
 ---
 

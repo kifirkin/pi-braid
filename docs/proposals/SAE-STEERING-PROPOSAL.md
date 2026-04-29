@@ -197,7 +197,7 @@ The steering system doesn't replace existing extensions — it enhances them:
 
 ## Status
 
-**Not started** — pending feasibility assessment.
+**OBSOLETE** — Superseded by REPE-PROMPT-CONTRAST-PROPOSAL.md. SAE steering requires activation access (residual stream, logprobs) which stepfun/minimax don't expose. RepE-style Prompt Contrast is the correct approach for API-only providers.
 
 The first concrete step is to test whether stepfun/minimax expose any form of token-level probability access. This is a 2-day task.
 
