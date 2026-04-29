@@ -72,6 +72,9 @@ interface MemoryStoresState {
 	toolStats: Map<string, ToolStat>;
 	currentSessionTools: string[];
 	sessionStartTime: number;
+	lastSkillType: string;        // R6: track tool→skill transitions for proactive recall
+	skillTransitionCount: number;  // R6: count skill transitions this session
+	recentErrors: string[];        // R6: recent error types for retry-recovery recall
 }
 
 // ── Factory ──────────────────────────────────────────────────────────────────
@@ -83,6 +86,9 @@ function createMemoryStoresState(): MemoryStoresState {
 		toolStats: new Map(),
 		currentSessionTools: [],
 		sessionStartTime: Date.now(),
+		lastSkillType: "",
+		skillTransitionCount: 0,
+		recentErrors: [],
 	};
 }
 
@@ -682,6 +688,9 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 
 		state.sessionStartTime = Date.now();
 		state.currentSessionTools = [];
+		state.lastSkillType = "";
+		state.skillTransitionCount = 0;
+		state.recentErrors = [];
 	});
 
 
@@ -735,8 +744,26 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 		const taskType = inferTaskType(ctx, toolName);
 		recordToolCall(state, toolName, taskType, !isError, duration);
 
+		// R6: Track skill transitions (read→edit, grep→bash, etc.)
+		if (state.lastSkillType && state.lastSkillType !== taskType) {
+			state.skillTransitionCount++;
+			// Proactive recall on 3rd skill transition (doing new type of work)
+			if (state.skillTransitionCount === 3 && state.episodes.length > 0) {
+				const transitionQuery = `${taskType} solution approach`;
+				const relevant = retrieveByRUMS(state, transitionQuery, 1);
+				if (relevant.length > 0 && relevant[0].similarity > 0.25) {
+					whisperRecall(ctx, `Approach hint for ${taskType} tasks:`, relevant);
+				}
+			}
+		}
+		state.lastSkillType = taskType;
+
 		if (isError) {
 			log.debug(`Tool "${toolName}" failed for task "${taskType}"`);
+
+			// R6: Track recent error types for retry-recovery recall
+			state.recentErrors.push(`${toolName}:${taskType}`);
+			if (state.recentErrors.length > 5) state.recentErrors.shift();
 
 			// ── R5: Auto-recall on tool error ───────────────────────
 			// When a tool fails, search past episodes for similar failures
@@ -787,17 +814,22 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 
 	pi.on("turn_end", async (_event: unknown, ctx: ExtensionContext) => {
 		const state = getState(ctx);
-		if (!AUTO_RECALL_ENABLED || state.currentSessionTools.length === 0) return;
+		if (!AUTO_RECALL_ENABLED || state.currentSessionTools.length < 3) return;
 
 		const now = Date.now();
 		if (now - lastRecallTime < RECALL_COOLDOWN_MS) return;
 
-		// Build a query from the current tool sequence + session context
+		// R6: Build improved query from tool sequence + recent errors + skill type
 		const recentTools = state.currentSessionTools.slice(-5);
-		const query = recentTools.join(" ") + " task solution";
+		const lastError = state.recentErrors[state.recentErrors.length - 1] ?? "";
+		const errorTool = lastError.split(":")[0] ?? "";
+		const taskType = inferTaskType(ctx, recentTools[recentTools.length - 1] ?? "");
 
+		// Query: current task type + recent failures → past solutions
+		const query = `${taskType} ${errorTool} solution error`.trim();
 		const relevant = retrieveByRUMS(state, query, 1);
-		if (relevant.length > 0 && relevant[0].similarity > 0.3) {
+
+		if (relevant.length > 0 && relevant[0].similarity > 0.28) {
 			lastRecallTime = now;
 			whisperRecall(ctx, `Past solution might apply:`, relevant);
 		}

@@ -46,6 +46,9 @@ interface MemoryStoresState {
 	toolStats: Map<string, any>;
 	currentSessionTools: string[];
 	sessionStartTime: number;
+	lastSkillType: string;
+	skillTransitionCount: number;
+	recentErrors: string[];
 }
 
 function getMemoryState(ctx: ExtensionContext): MemoryStoresState | null {
@@ -56,6 +59,9 @@ function getMemoryState(ctx: ExtensionContext): MemoryStoresState | null {
 			toolStats: new Map(),
 			currentSessionTools: [],
 			sessionStartTime: Date.now(),
+			lastSkillType: "",
+			skillTransitionCount: 0,
+			recentErrors: [],
 		}));
 	} catch {
 		return null;
