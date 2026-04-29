@@ -93,7 +93,7 @@ async function main() {
 	console.log("\n[4] Tool registrations");
 	check("tools.ts registers all 6 tools + 1 command", () => {
 		const src = readFileSync(`${ROOT}/src/extensions/memory/context-manager/handlers/tools.ts`, "utf8");
-		for (const tool of ["context_tag", "context_log", "context_checkout", "context_prune", "context_audit", "context_compress"]) {
+		for (const tool of ["context_tag", "context_log", "context_checkout", "context_prune", "context_audit", "context_archive"]) {
 			assert(src.includes(`name: "${tool}"`), `Missing tool: ${tool}`);
 		}
 		assert(src.includes("registerCommand"), "Missing command registration");
