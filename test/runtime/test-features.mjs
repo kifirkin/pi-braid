@@ -351,8 +351,8 @@ async function main() {
 	// ══════════════════════════════════════════════════════════════════════════
 	console.log("\n── Documentation ──");
 
-	test("HONEST-REVIEW.md exists", () => {
-		assert.ok(existsSync(join(ROOT, "docs/HONEST-REVIEW.md")));
+	test("CLEANUP-PLAN.md exists (docs hygiene)", () => {
+		assert.ok(existsSync(join(ROOT, "docs/CLEANUP-PLAN.md")));
 	});
 
 	test("BENCHMARKS.md documents the suite", () => {

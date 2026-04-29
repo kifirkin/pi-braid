@@ -203,3 +203,11 @@ The first concrete step is to test whether stepfun/minimax expose any form of to
 
 If they do → full SAE approach.  
 If they don't → indirect prompt-based approach or provider switch consideration.
+
+---
+
+## STATUS: OBSOLETE (2026-04-29)
+
+This approach is **superseded**. API-only providers (stepfun, minimax) don't expose activations or logits — SAE steering requires direct model access that isn't available.
+
+**Correct alternative**: [REPE-PROMPT-CONTRAST-PROPOSAL.md](REPE-PROMPT-CONTRAST-PROPOSAL.md) — text-based contrast vectors using prompt injection, no API changes required.
