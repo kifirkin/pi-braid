@@ -13,7 +13,7 @@ import { stepfunModels } from '/Users/kifir/projects/agents/pi-poorman-providers
 import { a0veniceModels } from '/Users/kifir/projects/agents/pi-poorman-providers/a0venice.ts';
 
 // --- Task definitions ---
-const TASKS = [
+export const TASKS = [
   {
     id: 'ts-read-fail',
     prompt: 'Read the file test/runtime/test-retry-command.mjs and identify any JavaScript syntax errors. If found, fix them.',
@@ -95,7 +95,7 @@ function score(task, result) {
 }
 
 // --- Run single task ---
-async function runTask(task, timeout = 90) {
+export async function runTask(task, timeout = 90) {
   const result = {
     taskId: task.id,
     success: false,
@@ -187,7 +187,7 @@ async function runTask(task, timeout = 90) {
 }
 
 // --- Main ---
-async function main() {
+export async function main() {
   console.log('=== pi-braid BM1 Multi-Turn Debugging (SDK) ===\n');
   console.log('Model: stepfun/step-3.5-flash (via pi-poorman-providers)\n');
   
@@ -214,7 +214,10 @@ async function main() {
   console.log(`Total duration: ${results.reduce((s, r) => s + r.durationSeconds, 0).toFixed(1)}s`);
 }
 
-main().catch((err) => {
-  console.error('Benchmark failed:', err);
-  process.exit(1);
-});
+// Only run main() when executed directly (not imported)
+if (typeof process.send !== 'function' && process.argv[1] && process.argv[1].includes('bm1-sdk.mjs')) {
+  main().catch((err) => {
+    console.error('Benchmark failed:', err);
+    process.exit(1);
+  });
+}
