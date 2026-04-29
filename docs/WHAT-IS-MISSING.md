@@ -53,6 +53,7 @@
 | Item | Status | Notes |
 |------|--------|-------|
 | BR1 self-reflection | 🟡 SDK harness | evaluation/br1-sdk.mjs — 5 trap tasks, stepfun model. Smoke test shows agent executes echo without hesitation. Needs full run. |
+| BR4 latent activator | 🟡 SDK harness | BR4 3-trial run: solve rate 100% both configs. Latent increased persistence +0.3 turns. Compliance=0 for both (patterns too strict or model doesn't exhibit studied behaviors). |
 | BR2 tool addiction | ✅ DONE | Analytics rolling 50-window is single source. Removed enforcement/feedback duplicates. |
 | BR3 nudge effectiveness | 🟡 Partial | Nudge dedup exists. A/B measurement not implemented. |
 | BR4 latent activator | 🟡 Benchmark exists | evaluation/br4_latent_multi_turn.py — needs SDK migration. |
@@ -74,7 +75,7 @@
 
 | Item | Status | Notes |
 |------|--------|-------|
-| BM1 multi-turn debugging | 🟡 SDK harness | evaluation/bm1-sdk.mjs — 3 tasks, ~60/100 avg with stepfun. stepfun reasoning=true but no thinking output. ts-read-fail: 100/100, ls-bash-fail: 50/100, edit-fail: 30/100. |
+| BM1 multi-turn debugging | 🟡 SDK harness | evaluation/bm1-sdk.mjs — 3 tasks, ~60/100 avg with stepfun. ts-read-fail: 100/100 (agent found + fixed JS syntax errors), ls-bash-fail: 50/100, edit-fail: 30/100 (impossible task — can't append comment to JSON without breaking it). |
 | BM2 code quality | 🔴 Not started | eslint, complexity, edge cases unmeasured |
 | BM3 real-world tasks | 🔴 Not started | No real-world task suite |
 

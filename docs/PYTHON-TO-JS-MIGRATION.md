@@ -1,7 +1,96 @@
 # Python → JS Migration for pi-braid Evaluation
 
 **Date**: 2026-04-29
-**Status**: Proposed
+**Status**: Phase 1 done — BM1, BR4, BR1 harnesses migrated. Run-all runner created.
+
+## Done ✅
+- `evaluation/bm1-sdk.mjs` — BM1 multi-turn debugging (3 tasks, ~60/100 avg)
+- `evaluation/br4-sdk.mjs` — BR4 latent multi-turn comparison (3-trial run complete)
+- `evaluation/br1-sdk.mjs` — BR1 trap task validation (5 trap types)
+- `evaluation/run-all.mjs` — Unified benchmark runner
+- `docs/PYTHON-TO-JS-MIGRATION.md` — Migration plan + SDK patterns
+
+## Pending
+- `evaluation/bm2-sdk.mjs` — BM2 code quality (from bm2_code_quality.py)
+- `evaluation/comprehensive-sdk.mjs` — Comprehensive benchmark suite
+- `evaluation/overnight-sdk.mjs` — Overnight multi-trial validation
+- `scripts/benchmark.mjs` — Quick smoke test
+- `scripts/smoke-*.mjs` — Smoke tests (Python → JS)
+- `test/stability-*.mjs` — Stability tests
+- Delete: all Python evaluation + script files
+
+## SDK Patterns (Established)
+
+### Model Registration
+```js
+import { stepfunModels } from '/path/to/pi-poorman-providers/stepfun.ts';
+
+const stepfunModel = {
+  ...stepfunModels.find(m => m.id === 'step-3.5-flash'),
+  provider: 'stepfun',
+  api: 'openai-completions',
+  baseUrl: 'https://api.stepfun.ai/step_plan/v1',
+};
+```
+
+### Session Creation
+```js
+const loader = new DefaultResourceLoader({
+  cwd: workspace,
+  agentDir: getAgentDir(),
+  extensionFactories: [(pi) => {
+    pi.registerProvider('stepfun', {
+      baseUrl: 'https://api.stepfun.ai/step_plan/v1',
+      apiKey: 'STEP_API_KEY',
+      api: 'openai-completions',
+      models: stepfunModels,
+    });
+  }],
+});
+await loader.reload();
+
+const { session } = await createAgentSession({
+  resourceLoader: loader,
+  model: stepfunModel,
+  sessionManager: SessionManager.inMemory(),
+  settingsManager: SettingsManager.inMemory({ compaction: { enabled: false } }),
+});
+```
+
+### Run Prompt + Extract Results
+```js
+await Promise.race([
+  session.prompt(prompt),
+  new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 60000)),
+]);
+
+const messages = session.state?.messages || [];
+for (const m of messages) {
+  if (m.role === 'assistant') {
+    for (const b of m.content || []) {
+      if (b.type === 'text') text += b.text;
+      if (b.type === 'toolCall') toolCalls.push(b);
+      if (b.type === 'thinking') thinking += b.thinking;
+    }
+  }
+  if (m.role === 'toolResult') {
+    for (const b of m.content || []) {
+      if (b.type === 'text') toolOutput += b.text;
+    }
+  }
+}
+```
+
+### Guard: run main() only when executed directly (not imported)
+```js
+if (typeof process.send !== 'function' && process.argv[1] && process.argv[1].includes('bm1-sdk.mjs')) {
+  main().catch((err) => {
+    console.error('Failed:', err);
+    process.exit(1);
+  });
+}
+```
+
 
 ## Rationale
 
