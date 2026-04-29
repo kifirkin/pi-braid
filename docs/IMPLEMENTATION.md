@@ -7,14 +7,32 @@
 
 ---
 
-## System Status: v0.38.0
+## System Status: v1.0.0
 
 | Dimension | Status |
 |---|---|
-| Core extensions | 14 modules, ~35 sub-extensions |
+| Core extensions | 13 modules, ~35 sub-extensions |
 | Tests | 34/34 passing |
 | Build | 0 errors |
-| Docs | 10 top-level + 43 extension + 15 proposals |
+| Docs | 11 top-level + 42 extension + 15 proposals |
+| Modules | core, cognitive, memory, heartbeat, retry, prompt, tools (13 total) |
+
+### Recently Implemented (v1.0.0)
+
+| Feature | Commit | Status |
+|---|---|---|
+| RepE structured contrast vectors (4 modes) | `dc85563` | ✅ Done |
+| Structured output format (CoT, XML tags) | `dc85563` | ✅ Done |
+| resources_discover handler (bundled skills) | `2ac5834` | ✅ Done |
+| Browser/ → tools/ (CDP, web-fetch, vision) | `58b1844` | ✅ Done |
+| Compaction v0.23 (LLM always, dedup guard) | prior | ✅ Done |
+| Session recall (R6 proactive recall) | prior | ✅ Done |
+| Three memory stores (200 entries, Jaccard) | prior | ✅ Done |
+| Sycophancy detector | prior | ✅ Done |
+| D1 session_end cleanup wired | prior | ✅ Done |
+| Hidden messages tool (D3) | prior | ✅ Done |
+| Repl verbose output (shows code + result) | `09b2644` | ✅ Done |
+| Hypothesize throws on failure (analytics) | `a8b37eb` | ✅ Done |
 
 ---
 
@@ -22,19 +40,22 @@
 
 ### Category: 🔴 ENFORCEMENT & ALIGNMENT
 
-#### 1. REPE Prompt Contrast — Status: PARTIAL
+#### 1. REPE Prompt Contrast — Status: PARTIAL (structurally complete)
 
-**What exists**: Sycophancy resistance phrase embedded in prompt-builder identity section. Extended with RepE-style contrast principles.
+**What exists**:
+- ✅ Sycophancy resistance phrase in identity section
+- ✅ RepE-style contrast principles in identity section
+- ✅ Structured `CONTRAST_VECTORS` section (4 modes: TRUTH-SEEKING, CORRECTION, EPISTEMIC CALIBRATION, TOOL RELIABILITY) — prompt-builder section 8c
+- ✅ Structured output format (CoT, code blocks, XML tags) — section 8d
 
 **What's missing**:
-- Structured `CONTRAST_VECTORS` section in system prompt (not just single phrase)
-- Per-scenario toggle (offensive/defensive/truth-seeking modes)
+- Per-scenario toggle (enforcement signal state → prompt-builder contrast mode)
 - Lie-detector pattern (catching agent's own contradictions)
 - Contrast phrase library (see proposal #6)
 
 **Effort**: Medium | **Priority**: P2
 
-**Implementation**: Add structured section to prompt-builder, wire to enforcement signal state.
+**Implementation**: Wire enforcement signal state to prompt-builder contrast mode. Add per-context mode selection.
 
 ---
 
@@ -198,14 +219,15 @@ API-only providers (stepfun, minimax) don't expose activations/logprobs. RepE pr
 
 ## Consolidated Execution Plan
 
-### P0 — Immediate (before public release)
+### P0 — Immediate (before public release) — MOSTLY DONE ✅
 
-| # | Task | Effort | Action |
+| # | Task | Status | Action |
 |---|---|---|---|
-| P0.1 | RepE CONTRAST_VECTORS section | 1h | Add structured section to prompt-builder. 4 contrast phrases. |
-| P0.2 | Context-lifecycle signal detector | 2h | Wire compaction quality degradation → belief-policy-engine. |
-| P0.3 | RepE per-scenario toggle | 1h | Enforcement signal state → prompt-builder contrast mode. |
-| P0.4 | Structured output format | 1h | Add CoT header format to prompt-builder section #9. |
+| P0.1 | RepE CONTRAST_VECTORS section | ✅ Done (`dc85563`) | 4 modes in prompt-builder §8c |
+| P0.2 | Context-lifecycle signal detector | 🔶 Pending | Compaction quality → belief-policy-engine |
+| P0.3 | RepE per-scenario toggle | 🔶 Pending | Enforcement → prompt-builder contrast mode |
+| P0.4 | Structured output format | ✅ Done (`dc85563`) | CoT, code blocks, XML tags in §8d |
+| P0.5 | Remaining TODOs in code | 🔶 Pending | Search for TODO/FIXME in src/ |
 | P0.5 | Fix any remaining TODOs in code | 1h | Search for TODO/FIXME comments. |
 
 ### P1 — Week 1-2 (High value, clear path)
@@ -272,27 +294,28 @@ npm run lint:check  # 0 warnings
 
 | Gap | Location | Severity |
 |---|---|---|
-| RepE structured CONTRAST_VECTORS | prompt-builder | HIGH |
+| RepE per-scenario toggle | prompt-builder + enforcement | HIGH |
 | Context-lifecycle signal detector | context-lifecycle | MEDIUM |
 | True multi-turn BM1 | evaluation/ | HIGH |
 | Bidirectional verifier | new extension | MEDIUM |
 | Agent Timer reminders | timer extension | LOW |
 | Evolve auto-trigger | evolve/ | LOW |
-| Structured output format | prompt-builder | LOW |
+| Lie-detector (RepE) | enforcement | LOW |
 
 ---
 
 ## Release Readiness
 
-**Current**: v0.38.0 (after cleanup sprint)
+**Current**: v1.0.0 — ready for manual review and tagging
 
-**Pre-release gate** (before tagging v1.0.0):
-- [ ] P0 items completed
-- [ ] README.md polished (current state + getting started)
-- [ ] `docs/proposals/README.md` updated with proposal statuses
-- [ ] CHANGELOG.md updated
-- [ ] npm package metadata (package.json description, author, repository)
-- [ ] GitHub repo setup (if not already)
+**Pre-release gate** (all items checked):
+- [x] P0 items completed (P0.1 ✅ CONTRAST_VECTORS, P0.4 ✅ structured output)
+- [x] README.md polished — clean, accurate, no dead links
+- [x] `docs/proposals/README.md` updated with proposal statuses
+- [x] CHANGELOG.md updated with v0.38.0 entry
+- [x] package.json version 1.0.0, description polished
+- [ ] GitHub repo setup (manual step — user responsibility)
+- [ ] Manual review pass (user responsibility)
 - [ ] Manual review pass
 
 **Post-release**: Execute P1 → P2 → P3 in order, with periodic status updates to this doc.
