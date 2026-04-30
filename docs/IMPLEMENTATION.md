@@ -26,8 +26,11 @@
 | resources_discover handler (bundled skills) | `2ac5834` | ✅ Done |
 | Browser/ → tools/ (CDP, web-fetch, vision) | `58b1844` | ✅ Done |
 | Compaction v0.23 (LLM always, dedup guard) | prior | ✅ Done |
+| Compaction v0.26 (queued message preservation) | `b765756` | ✅ Done |
 | Session recall (R6 proactive recall) | prior | ✅ Done |
 | Three memory stores (200 entries, Jaccard) | prior | ✅ Done |
+| P1.7 session isolation (cross-session contamination filter) | `57a5ed1` | ✅ Done |
+| P2.1 auto-trigger degrade detection | `9a41ec5` | ✅ Done |
 | Sycophancy detector | prior | ✅ Done |
 | D1 session_end cleanup wired | prior | ✅ Done |
 | Hidden messages tool (D3) | prior | ✅ Done |
@@ -243,17 +246,17 @@ API-only providers (stepfun, minimax) don't expose activations/logprobs. RepE pr
 | P1.3 | Bidirectional verifier (extension) | 4h | R6 session recall, enforcement |
 | DONE | Agent Timer + Pomodoro reminders | ✅ Complete | real-time polling + steer reminders + contrast toggle |
 | DONE | Contrast phrase library (lib) | ✅ Complete | formatContrastSection() → mode-driven phrase selection |
-| P1.6 | Semantic unit classification (compaction) | 3h | None |
-| P1.7 | Memory contamination detection | 3h | three-memory-stores |
+| DONE | Semantic unit classification (compaction) | ✅ Complete | semanticCompress.ts wired into events.ts context handler |
+| DONE | Memory contamination detection | ✅ Done | sessionId on Episode, _crossSession flag on recall (57a5ed17) |
 
 ### P2 — Weeks 3-4 (Medium complexity)
 
 | # | Task | Effort | Dependencies |
 |---|---|---|---|
-| P2.1 | Evolve auto-trigger (degrade → checkpoint) | 4h | degradation-detector, evolve ext |
+| DONE | Evolve auto-trigger (degrade → checkpoint) | ✅ Done | isDegraded turn_end → emitSignal stability/decline + whisper (9a41ec57) |
 | P2.2 | Heartbeat event bus formalization | 4h | Agent Timer (P1.4) |
 | P2.3 | Implicit/explicit memory boundary | 4h | P1.7 |
-| P2.4 | Meta-learning tick adjustment (wired) | 2h | metacognition |
+| DONE | Meta-learning tick adjustment (wired) | ✅ Done | tickInterval adjustment in heartbeat-scheduler (already wired) |
 | P2.5 | Benchmark variant generation framework | 4h | BM1/BM2 (P1.1/P1.2) |
 
 ### P3 — Weeks 5+ (Lower priority / exploration)
