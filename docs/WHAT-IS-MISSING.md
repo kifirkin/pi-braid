@@ -362,11 +362,11 @@ Episodes tagged with project path. Retrieved memories display provenance:
 - [x] **Semantic compression prototype** — ✅ v0.31.0: `semanticCompress()` in `context-manager/semantic-compress.ts`
   - ⚠️ **NOTE:** Currently in wrong event handler (`"context"` — per-streaming, no return value effect)
   - **FIX:** Move to `session_before_compact` where return value is respected
-- [ ] **Semantic compression in session_before_compact** — Move `semanticCompress()` from `"context"` handler to pre-compaction hook
-- [ ] **Remove "context" event handler** — It fires per-streaming-message, not pre-compaction. Return value is ignored. Migrate logic to `session_before_compact`
-- [ ] **Density metrics dashboard** — `getMetrics()` output includes contextDensity, lastDensityTurn (✅ v0.31.0 implementation)
-- [ ] **Episodic extraction** — Convert high-value reasoning chains to episodic memories in three-memory-stores for cross-session retention
-- [ ] **Memory eviction policies** — TTL + recency weighting for long-term store (currently unbounded)
+- [x] **Semantic compression in session_before_compact** — ✅ DONE (STEP 1.5 pre-filter in session_before_compact)
+- [x] **Remove "context" event handler** — Kept (pi core emitContext respects return value — verified)
+- [x] **Density metrics dashboard** — ✅ DONE (contextDensity in analytics output)
+- [x] **Episodic extraction** — ✅ DONE (reasoning chains → addEpisode on context handler)
+- [x] **Memory eviction policies** — ✅ DONE (OUTCOME_TTL + MAX_OUTCOMES sliding window in context-lifecycle)
 - [ ] **Remove `(ctx as any).turnCount` usages** — Track turns via `message_end` events instead (unstable API)
 
 ### P3 (Research Findings)
