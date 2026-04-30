@@ -291,7 +291,7 @@ export function registerTools(pi: any): void {
       const topCandidates = candidates.slice(0, 15);
       const lines: string[] = [];
       lines.push(`## Context Prune Analysis`);
-      lines.push("\n📊 **Analysis mode** - This is analysis only.");
+      lines.push("\n**Analysis mode** - This is analysis only.");
       lines.push("Automatic rule-based pruning runs on every LLM call.");
       lines.push("Use `context_archive` for LLM-driven compression.");
       lines.push(

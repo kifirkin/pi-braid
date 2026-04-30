@@ -285,7 +285,7 @@ function queueProposal(evaluated: EvaluatedAction, ctx: any, branchLength: numbe
     [
       {
         type: "text" as const,
-        text: `💡 **Context Suggestion:** ${proposal.message}`,
+        text: `Context Suggestion: ${proposal.message}`,
       },
     ],
     true,

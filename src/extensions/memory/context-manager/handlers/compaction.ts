@@ -52,55 +52,49 @@ function clearProcessedCompacts(sessionId: string, leafId: string): void {
 
 // ── Pre-append Queued Message Fix ──────────────────────────────────────────────
 // When a user sends a message during compaction, it is queued in the TUI's
-// compactionQueuedMessages array (not in sessionManager yet).
+// compactionQueuedMessages (not in sessionManager yet).
 //
 // On compaction_end, the TUI calls rebuildChatFromMessages() BEFORE
 // flushCompactionQueue delivers the user's message. This means the user's
 // message is NOT in the rebuilt chat snapshot.
 //
-// Fix: Capture the user's queued message in the `input` event, then persist
-// it to sessionManager in session_compact (fires BEFORE compaction_end).
-// This way rebuildChatFromMessages() captures the user's message in its
-// session state snapshot, and it appears in the TUI after compaction.
+// Fix:
+//  1. input event → capture user's message text (TUI queues it after)
+//  2. session_compact → pre-append to sessionManager + intercept appendMessage
+//  3. compaction_end → rebuildChatFromMessages() sees user's message in session ✅
+//  4. flushCompactionQueue → session.prompt() → appendMessage intercept SKIPS duplicate
+//  5. Agent turn fires ✅ (session.prompt() triggers agent-loop normally)
 //
-// The TUI's flushCompactionQueue is patched to skip sending the pre-appended
-// message (to avoid double-persistence in sessionManager).
+// The intercept works by wrapping sessionManager.appendMessage to detect when
+// flushCompactionQueue's session.prompt() fires (it calls appendMessage via the
+// message_end handler). We skip the duplicate by returning the pre-appended
+// entry ID instead of creating a new one.
 
-/** Text of the user's message queued during compaction. Cleared after session_compact. */
+/** Text of the user's message queued during compaction. */
 let _queuedDuringCompaction: string | undefined;
 
-/** Entry ID of the message pre-appended to sessionManager. TUI skips re-sending. */
+/** Entry ID of the message pre-appended to sessionManager. */
 let _preAppendedEntryId: string | undefined;
 
-/** Patch TUI's flushCompactionQueue to skip the pre-appended message. */
-function patchTuiFlushQueue(): void {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { InteractiveMode } = require(
-      "/Users/kifir/.local/share/mise/installs/node/22.22.0/lib/node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive/interactive-mode",
-    ) as any;
-    if (!(InteractiveMode.prototype as any)._braidFlushPatched) {
-      const orig = InteractiveMode.prototype.flushCompactionQueue as (this: any, options: any) => Promise<void>;
-      InteractiveMode.prototype.flushCompactionQueue = async function (this: any, options: any) {
-        // If the first non-extension message was pre-appended, skip it
-        // to avoid double-persistence in sessionManager (pre-appended in session_compact
-        // + sent again via session.prompt in flushCompactionQueue).
-        if (_preAppendedEntryId !== undefined) {
-          const queued = this.compactionQueuedMessages;
-          const firstNonExt = queued.find((m: any) => !this.isExtensionCommand(m.text));
-          if (firstNonExt) {
-            const idx = queued.indexOf(firstNonExt);
-            if (idx >= 0) queued.splice(idx, 1);
-          }
-        }
-        return orig.call(this, options);
-      };
-      (InteractiveMode.prototype as any)._braidFlushPatched = true;
+/** Original sessionManager.appendMessage — restored after intercept window. */
+let _origAppendMessage: ((msg: any) => string) | undefined;
+
+/**
+ * Intercept sessionManager.appendMessage to skip the duplicate when
+ * flushCompactionQueue's session.prompt() fires after our pre-append.
+ * Returns the pre-appended entry ID to avoid creating a duplicate entry.
+ */
+function skipDuplicateAppend(sessionManager: any): (msg: any) => string {
+  return (msg: any) => {
+    const text = msg?.content?.[0]?.text;
+    if (text === _queuedDuringCompaction) {
+      // Skip — this is the duplicate from session.prompt()'s message_end handler.
+      // The original from session_compact is already in sessionManager.
+      // Return the pre-appended entry ID so the caller gets a valid ID.
+      return _preAppendedEntryId ?? "";
     }
-  } catch {
-    // Patch is best-effort — TUI not available in RPC/print mode
-  }
+    return _origAppendMessage?.call(sessionManager, msg) ?? sessionManager.appendMessage(msg);
+  };
 }
 
 // ── Compaction Instructions Builder ───────────────────────────────────────────
@@ -175,22 +169,9 @@ export function registerBeforeCompactHandler(pi: any): void {
   // TUI's compactionQueuedMessages (not persisted to sessionManager yet).
   // We capture the text here so we can pre-append it to sessionManager in
   // session_compact (before TUI's rebuildChatFromMessages runs).
-  pi.on("input", (event: any, ctx: ExtensionContext) => {
+  pi.on("input", (event: any) => {
     if (!event?.text) return;
-    // Only capture if the agent is currently compacting (message queued, not yet sent)
-    const sm = (ctx as any).sessionManager;
-    if (!sm) return;
-    // Check if this message will be queued (session is compacting) or sent normally
-    // We detect compaction-queuing by: session is compacting AND text is not an extension command
-    // The input event fires BEFORE the TUI's isCompacting check, so we can't use
-    // session.isCompacting here. Instead, we check if _queuedDuringCompaction is already set
-    // (meaning compaction started after user started typing).
-    //
-    // Actually, the simplest approach: just capture the text. If compaction hasn't
-    // started yet, session.prompt() will handle persistence normally. If compaction
-    // IS active, the text will be used in session_compact.
-    // We use a module variable so session_compact can access it.
-    // Only overwrite if not already set (handles rapid inputs).
+    // Guard: only set if not already set (handles rapid double-Enter).
     if (_queuedDuringCompaction === undefined) {
       _queuedDuringCompaction = event.text;
     }
@@ -257,31 +238,27 @@ export function registerSessionCompactHandler(pi: any): void {
 
       // FIX: Pre-append the user's queued message to sessionManager BEFORE
       // compaction_end fires (which triggers TUI's rebuildChatFromMessages).
-      // Without this, the user's message is queued in TUI's compactionQueuedMessages
-      // and only delivered via flushCompactionQueue AFTER rebuildChatFromMessages
-      // runs. The TUI's snapshot misses the user's message, making it look
-      // "invisible" or "lost" even though it IS in the session tree.
-      //
-      // By persisting here (session_compact fires before compaction_end), we
-      // ensure rebuildChatFromMessages() captures the user's message in its
-      // session state snapshot.
+      // Intercept appendMessage to skip the duplicate from flushCompactionQueue's
+      // session.prompt() → message_end → appendMessage call.
       if (_queuedDuringCompaction) {
-        patchTuiFlushQueue(); // Best-effort — only runs once
         const sm = (ctx as any).sessionManager;
-        if (sm) {
+        if (sm && typeof sm.appendMessage === "function") {
           try {
             const messageObj = {
               role: "user" as const,
               content: [{ type: "text" as const, text: _queuedDuringCompaction }],
               timestamp: Date.now(),
             };
+            // Pre-append to sessionManager so rebuildChatFromMessages captures it
             _preAppendedEntryId = sm.appendMessage(messageObj);
-            log.info(`[context-manager] Pre-appended queued message to session (entry: ${_preAppendedEntryId})`);
+            // Intercept appendMessage to skip the duplicate from session.prompt()
+            _origAppendMessage = sm.appendMessage.bind(sm);
+            sm.appendMessage = skipDuplicateAppend(sm);
+            log.info(`[context-manager] Pre-appended queued message (entry: ${_preAppendedEntryId})`);
           } catch (e) {
             log.warn("[context-manager] Failed to pre-append queued message:", e);
           }
         }
-        // Clear the captured text so it doesn't leak to the next compaction
         _queuedDuringCompaction = undefined;
       }
 
@@ -341,9 +318,13 @@ export function registerCompactionEndHandler(pi: any): void {
             (_ctx as any).sessionManager?.getSessionId?.() ?? "?",
             (_ctx as any).sessionManager?.getLeafId?.() ?? "?",
           );
-          // Clear pre-append tracking — message will be sent via normal flow
-          _queuedDuringCompaction = undefined;
+          // Restore appendMessage intercept and clear tracking
+          if (_origAppendMessage) {
+            (_ctx as any).sessionManager.appendMessage = _origAppendMessage;
+            _origAppendMessage = undefined;
+          }
           _preAppendedEntryId = undefined;
+          _queuedDuringCompaction = undefined;
           return;
         }
 
@@ -724,8 +705,14 @@ export function registerTurnEndRetryReset(pi: any): void {
     if (compactionRetryState.attempt > 0 && !compactionRetryState.retryTimeout) {
       resetCompactionRetry();
     }
-    // Clear pre-append tracking after the turn following compaction completes.
-    // This prevents stale state from leaking to the next turn.
+    // Restore sessionManager.appendMessage after the pre-append window closes.
+    // The intercept was set in session_compact to skip the duplicate from
+    // flushCompactionQueue's session.prompt() → appendMessage call.
+    if (_origAppendMessage) {
+      const sm = (pi as any).sessionManager;
+      if (sm) sm.appendMessage = _origAppendMessage;
+      _origAppendMessage = undefined;
+    }
     _preAppendedEntryId = undefined;
     _queuedDuringCompaction = undefined;
   });
