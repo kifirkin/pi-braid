@@ -19,6 +19,7 @@ import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "../../../lib/extension-state.js";
 import { emitSignal, getNextRecommendation } from "../../../lib/belief-policy-engine.js";
+import { isDegraded, getDegradationReasons } from "../../../lib/degradation-detector.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { Type } from "typebox";
 
@@ -71,6 +72,7 @@ interface AnalyticsState {
   abVariant: string;
   contextDensity: number;
   lastDensityTurn: number;
+  wasDegraded: boolean; // Tracks degradation state transitions for one-shot alerts
 }
 
 function createAnalyticsState(): AnalyticsState {
@@ -83,6 +85,7 @@ function createAnalyticsState(): AnalyticsState {
     abVariant: "control",
     contextDensity: 0,
     lastDensityTurn: 0,
+    wasDegraded: false,
   };
 }
 
@@ -417,6 +420,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
     state.sessionStartTime = Date.now();
     state.toolMetrics.clear();
     state.toolCallSequence = [];
+    state.wasDegraded = false;
     pendingToolCalls.clear();
 
     const logsDir = join(homedir(), ".pi/logs");
@@ -506,7 +510,43 @@ export default function analyticsExtension(pi: ExtensionAPI) {
         );
       }
     }
+
+    // P2.1: Auto-trigger degrade detection — fires once on first detection,
+    // recovers when agent improves. Uses wasDegraded flag for one-shot alerting.
+    const degraded = isDegraded(ctx);
+    if (degraded && !state.wasDegraded) {
+      state.wasDegraded = true;
+      const reasons = getDegradationReasons(ctx);
+      emitSignal(ctx, "stability", "decline", "critical", false, {
+        reason: reasons[0] ?? "degraded",
+        consecutiveErrors: 3, // conservative default
+      });
+      sendTrackedMessage(
+        pi,
+        {
+          customType: "context",
+          display: true,
+          content: [{ type: "text", text: `[health] Degradation detected: ${reasons.join("; ")}` }],
+        },
+        undefined,
+        { type: "heartbeat", source: "heartbeat/analytics/degrade" },
+      );
+    } else if (!degraded && state.wasDegraded) {
+      // Recovery — agent improved
+      state.wasDegraded = false;
+      sendTrackedMessage(
+        pi,
+        {
+          customType: "context",
+          display: true,
+          content: [{ type: "text", text: "[health] Performance recovered to healthy." }],
+        },
+        undefined,
+        { type: "heartbeat", source: "heartbeat/analytics/recover" },
+      );
+    }
   });
+
 
   // Cleanup on session shutdown
   pi.on("session_shutdown", async (_event, ctx) => {

@@ -27,7 +27,7 @@ export type SignalSource =
   | "tool-use"
   | "sycophancy";
 
-export type SignalSeverity = "info" | "warn" | "critical";
+export type SignalSeverity = "info" | "warn" | "critical" | "error";
 
 export interface SystemSignal {
   id: string;
