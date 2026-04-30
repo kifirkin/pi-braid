@@ -31,6 +31,7 @@ import {
 } from "./shared.js";
 import { getRotationState } from "../../../../lib/global-state.js";
 import { filterSafeToRemove } from "../../../../lib/filter-safe-to-remove.js";
+import { semanticCompress } from "../semantic-compress.js";
 
 // ── Deduplication Guard ────────────────────────────────────────────────────────
 // session_before_compact fires from TWO call sites in pi core:
@@ -200,6 +201,28 @@ export function registerBeforeCompactHandler(pi: any): void {
               `(from ${stats.beforeTokens} to ${stats.afterTokens} tokens, saved ~${pct}%)`,
           );
           (prep as any).messagesToSummarize = filtered;
+        }
+      }
+
+      // STEP 1.5: Semantic compression pass.
+      // Compresses semantic units (redundant tool results, bloated reasoning chains,
+      // low-value exchanges) before LLM summarization. Reduces LLM's job and
+      // preserves key decisions/solutions.
+      if (prep?.messagesToSummarize?.length) {
+        try {
+          const { compressed, stats: scStats } = semanticCompress(
+            (prep as any).messagesToSummarize as any[],
+          );
+          if (scStats.messagesOut < scStats.messagesIn) {
+            const saved = scStats.messagesIn - scStats.messagesOut;
+            log.info(
+              `[context-manager] Semantic compress: ${scStats.messagesIn}→${scStats.messagesOut} msgs ` +
+                `(${scStats.unitsCollapsed} collapsed, ${scStats.unitsDropped} dropped)`,
+            );
+            (prep as any).messagesToSummarize = compressed;
+          }
+        } catch (err) {
+          log.error("session_before_compact semantic compression error:", err);
         }
       }
 

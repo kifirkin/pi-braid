@@ -337,6 +337,7 @@ function formatCurrentSession(s: AnalyticsState): string {
   lines.push(`**Session:** ${s.sessionId || "unknown"}`);
   lines.push(`**Duration:** ${Math.round((Date.now() - s.sessionStartTime) / 1000)}s`);
   lines.push(`**Total Tool Calls:** ${sessionMetrics.totalToolCalls}`);
+  lines.push(`**Context Density:** ${s.contextDensity.toFixed(1)}%`);
   lines.push(`**Unique Tools Used:** ${sessionMetrics.uniqueToolsUsed}`);
   lines.push(`**A/B Variant:** ${s.abVariant}`);
   lines.push("");

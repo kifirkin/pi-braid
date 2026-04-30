@@ -97,7 +97,7 @@ function createMemoryStoresState(): MemoryStoresState {
   };
 }
 
-function getState(ctx: ExtensionContext): MemoryStoresState {
+export function getState(ctx: ExtensionContext): MemoryStoresState {
   return getExtensionState(ctx, "three-memory-stores", createMemoryStoresState);
 }
 
