@@ -1,4 +1,5 @@
 # pi-braid Self-Improvement — Task Pool
+
 **Date**: 2026-04-21
 **Meta**: Extensions were written by naked agent → they suffered from same slop as raw LLM. We built harness-level nudge/assist extensions. Now pi-braid is sophisticated enough to bootstrap itself. Acceptable irony.
 
@@ -13,19 +14,23 @@
 **File**: `src/lib/degradation-detector.ts` line ~73
 
 **Problem**: Semantic inversion type guard:
+
 ```typescript
 function isCtx(val: unknown): val is ExtensionContext {
-    return typeof val === "object" && val !== null && !("turnNumber" in val);
+  return typeof val === "object" && val !== null && !("turnNumber" in val);
 }
 ```
+
 This checks that a property IS ABSENT from ExtensionContext. But what if PerformanceMetrics (which has turnNumber) is embedded in the val object? The check should be POSITIVE — check for properties ExtensionContext HAS, not properties it hasn't.
 
 **Fix**: Use positive property check:
+
 ```typescript
 function isCtx(val: unknown): val is ExtensionContext {
-    return typeof val === "object" && val !== null && "tools" in val && "settingsManager" in val;
+  return typeof val === "object" && val !== null && "tools" in val && "settingsManager" in val;
 }
 ```
+
 Also check line 77 for the `else return val` branch — that's the legacy `_global` fallback. Should log a warning when falling back.
 
 **Verification**: grep for `"turnNumber" in` — should return nothing after fix.
@@ -41,12 +46,13 @@ Also check line 77 for the `else return val` branch — that's the legacy `_glob
 **Problem**: `saveTimer` (setInterval) is never cleared when extension unloads. Memory leak.
 
 **Fix**: Add unload handler:
+
 ```typescript
 pi.on("unload", () => {
-    if (saveTimer) {
-        clearInterval(saveTimer);
-        saveTimer = null;
-    }
+  if (saveTimer) {
+    clearInterval(saveTimer);
+    saveTimer = null;
+  }
 });
 ```
 
@@ -63,11 +69,13 @@ Also verify: does evolve use `let saveTimer` at module level? If yes, note it as
 **Files**: `src/extensions/safety/` (entire directory)
 
 **Problem**:
+
 1. Uses text scraping anti-pattern (regex on raw text instead of structured state)
 2. Functionally redundant with `enforcement` extension
 3. `ctx.scratchpadGoal` accessed via regex parsing instead of `ctx.getState()`
 
 **Fix**:
+
 1. Delete `src/extensions/safety/` entirely
 2. Check what consumers import it — should be none (enforcement handles context-aware safety)
 3. If any consumer references `safety`, update to use `enforcement` or `ctx.getState()` instead
@@ -81,6 +89,7 @@ Also verify: does evolve use `let saveTimer` at module level? If yes, note it as
 ### Consolidate globalThis duplicate pattern (DRY violation)
 
 **Files**: 3 copies of same pattern across codebase:
+
 1. `src/extensions/polyfill/index.ts`
 2. `src/lib/model-resolver.ts`
 3. `src/extensions/context-manager/handlers/rotation.ts`
@@ -90,6 +99,7 @@ Also verify: does evolve use `let saveTimer` at module level? If yes, note it as
 Also: `rotation.ts` has a SECOND pattern using string key `"__cmRotationState"` instead of Symbol — more vulnerable.
 
 **Fix**:
+
 1. Move the shared pattern to `src/lib/global-state.ts` as a utility
 2. Import and use from all three locations
 3. Replace string-key pattern in rotation.ts with Symbol
@@ -107,6 +117,7 @@ Also: `rotation.ts` has a SECOND pattern using string key `"__cmRotationState"` 
 **List to check**: evolve (done in task 2), watchdog, heartbeat-scheduler, analytics, feedback, latent-activator, reasoning, rate-limiter
 
 **Fix**: For each extension with timers:
+
 1. Find all `setInterval` / `setTimeout` calls
 2. Add `pi.on("unload", ...)` that clears them
 3. Track timer IDs in module-level vars (already exists for some — verify they're used)
@@ -124,6 +135,7 @@ Also: `rotation.ts` has a SECOND pattern using string key `"__cmRotationState"` 
 **Impact**: Agent misinterprets silent failures as success.
 
 **Fix**: For all tools that can fail, enforce:
+
 ```typescript
 // On failure: MUST return isError: true with descriptive message
 {
@@ -146,6 +158,7 @@ Also: `rotation.ts` has a SECOND pattern using string key `"__cmRotationState"` 
 ### Replace module-level mutable state → ctx.getState() pattern
 
 **Files**: All 8+ extensions with module-level singletons:
+
 - polyfill: `let _sessionManager`, `let _lastUserMessage`, `let saveTimer`
 - degradation-detector: `let _global`
 - cognitive-memory: `let _singletonInstance`
@@ -170,18 +183,20 @@ Also: `rotation.ts` has a SECOND pattern using string key `"__cmRotationState"` 
 **File**: `src/extensions/polyfill/index.ts` lines ~300-327
 
 **Problem**: Directly mutates ExtensionAPI prototype at runtime:
+
 ```typescript
 const originalGetBranch = api.getBranch.bind(api);
-api.getBranch = function(...args) {
-    const result = originalGetBranch(...args);
-    if (result && typeof result === "string") {
-        return result + " [pi-braid]";
-    }
-    return result;
+api.getBranch = function (...args) {
+  const result = originalGetBranch(...args);
+  if (result && typeof result === "string") {
+    return result + " [pi-braid]";
+  }
+  return result;
 };
 ```
 
 **Fix**: Move branch name tagging to a wrapper that doesn't mutate the prototype. Either:
+
 1. Store the original, wrap, and call original (recommended)
 2. Or remove the feature entirely if it's not essential
 
@@ -194,6 +209,7 @@ api.getBranch = function(...args) {
 ### Skill loading deep research
 
 **Topics**:
+
 - How pi resolves skill directories vs skill files
 - When are SKILL.md files loaded vs when are just directories
 - Can skills be conditional-loaded based on context (e.g., only load software-engineer when coding task detected)
@@ -209,14 +225,14 @@ api.getBranch = function(...args) {
 
 ## Task Queue Status
 
-| # | Task | Size | Status |
-|---|------|------|--------|
-| 1 | Fix degradation-detector type guard | SMALL | READY |
-| 2 | Add setInterval cleanup to evolve | SMALL | READY |
-| 3 | Remove safety extension | SMALL | READY |
-| 4 | Consolidate globalThis duplicate | MEDIUM | READY |
-| 5 | Add unload handlers to all extensions | MEDIUM | READY |
-| 6 | Standardize tool error contract | MEDIUM | READY |
-| 7 | Module-level mutable state refactor | LARGE | 🔒 After 1-6 |
-| 8 | Remove polyfill monkey-patching | LARGE | 🔒 After 1-7 |
-| 9 | Skill loading research | X-LARGE | 🔒 Separate session |
+| #   | Task                                  | Size    | Status              |
+| --- | ------------------------------------- | ------- | ------------------- |
+| 1   | Fix degradation-detector type guard   | SMALL   | READY               |
+| 2   | Add setInterval cleanup to evolve     | SMALL   | READY               |
+| 3   | Remove safety extension               | SMALL   | READY               |
+| 4   | Consolidate globalThis duplicate      | MEDIUM  | READY               |
+| 5   | Add unload handlers to all extensions | MEDIUM  | READY               |
+| 6   | Standardize tool error contract       | MEDIUM  | READY               |
+| 7   | Module-level mutable state refactor   | LARGE   | 🔒 After 1-6        |
+| 8   | Remove polyfill monkey-patching       | LARGE   | 🔒 After 1-7        |
+| 9   | Skill loading research                | X-LARGE | 🔒 Separate session |

@@ -2,7 +2,7 @@
 
 **Date**: 2026-04-21  
 **Branch**: `integration/harness-merge` → merged into `cleanup/refactor`  
-**Commit**: `c82b42c`  
+**Commit**: `c82b42c`
 
 ---
 
@@ -14,6 +14,7 @@
 **Files**: 6 files in `src/extensions/context-manager/handlers/` and `src/extensions/vision/index.ts`
 
 **Root Cause**: Script inserted `import { createLogger }` inside multi-line import blocks:
+
 ```typescript
 import {
 import { createLogger } from "...";
@@ -65,6 +66,7 @@ const log = createLogger("...");
 **Root Cause**: `readPdf()` function tried `pdftotext` → `qlmanage -t` → `cupsfilter` fallback. `qlmanage -t` generates PNG thumbnails, not text. `cupsfilter` fallback sometimes outputs raw PDF binary. No binary validation before returning.
 
 **Evidence** (from session log):
+
 ```
 read_document
 %PDF-1.4
@@ -74,6 +76,7 @@ read_document
 ```
 
 **Fix Applied in Harness**: Rewrote `readPdf()` with:
+
 1. `isBinaryContent()` validation (null byte + control char ratio check)
 2. `pdftotext -layout` → stdout (no temp file)
 3. `strings -n 4` fallback (never returns binary)
@@ -89,8 +92,9 @@ read_document
 **File**: `src/extensions/browser/index.ts`
 
 **Root Cause**: Screenshot saved to disk but result object omitted `details.filePath`:
+
 ```json
-{"success":true,"status":"success","details":{}}
+{ "success": true, "status": "success", "details": {} }
 ```
 
 **Fix**: Ensure `details.filePath` is populated from `result.details.filePath`.
@@ -105,6 +109,7 @@ read_document
 **Root Cause**: Agent used Playwright/jQuery selectors (`:has-text()`) in `browser_eval`. These don't work in native `document.querySelector()`.
 
 **Fix**: Not a code bug — agent misunderstanding. Add tool description clarification:
+
 > "browser_eval executes code in the browser's native JS environment. Use standard DOM APIs (document.querySelector, etc.). Playwright/jQuery pseudo-selectors like :has-text() are not available."
 
 ---
@@ -117,6 +122,7 @@ read_document
 **Root Cause**: Default `fetch` headers identify as bot. Sites like immunefi.com return 404.
 
 **Fix Applied**: Added realistic browser headers:
+
 ```typescript
 headers: {
   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)...",
@@ -147,11 +153,12 @@ headers: {
 **Root Cause**: Navigation errors swallowed, returned `No result provided`.
 
 **Fix**: Wrapped in try-catch, returns structured error:
+
 ```typescript
 return {
   content: [{ type: "text", text: `Connection failed: ${errorMsg}` }],
   details: { url, tabId, error: errorMsg },
-  isError: true
+  isError: true,
 };
 ```
 
@@ -175,6 +182,7 @@ return {
 **Problem**: Agents don't know when to use `read_document` vs `read_pdf_screenshot` vs `analyze_image`.
 
 **Decision Tree** (should be in tool descriptions):
+
 1. **Text-heavy PDF** → `read_document` (extracts text, fastest)
 2. **Image-based / scanned PDF** → `read_pdf_screenshot` + `analyze_image` (page-by-page visual)
 3. **Mixed content with diagrams** → Both: `read_document` for text + `read_pdf_screenshot` for figures
@@ -184,6 +192,7 @@ return {
 **Problem**: Agents call `analyze_image` expecting text extraction. It's for visual analysis (UI elements, layout, sprites).
 
 **Clarification**: Add to description:
+
 > "analyze_image performs visual analysis (UI elements, layout, sprites, design critique). For text extraction from images or screenshots, use read_document or OCR tools."
 
 ### Issue C: `read_document` Tool Description Misleads
@@ -197,24 +206,24 @@ return {
 
 ## Fixes Already Present (Verified)
 
-| Fix | File | Verification |
-|-----|------|-------------|
-| PDF binary safety (`isBinaryContent`) | `src/extensions/docs/index.ts` | `test-pdf-safety.mjs` |
-| Three-tier PDF extraction | `src/extensions/docs/index.ts` | Manual audit |
-| Screenshot `filePath` in result | `src/extensions/browser/index.ts` | `test-browser-screenshot.mjs` |
-| web_fetch browser headers | `src/extensions/web-fetch/index.ts` | `test-web-fetch-headers.mjs` |
-| browser_navigate error handling | `src/extensions/browser/index.ts` | Manual audit |
-| browser_cookies CDP fix | `src/extensions/browser/index.ts` | Manual audit |
+| Fix                                   | File                                | Verification                  |
+| ------------------------------------- | ----------------------------------- | ----------------------------- |
+| PDF binary safety (`isBinaryContent`) | `src/extensions/docs/index.ts`      | `test-pdf-safety.mjs`         |
+| Three-tier PDF extraction             | `src/extensions/docs/index.ts`      | Manual audit                  |
+| Screenshot `filePath` in result       | `src/extensions/browser/index.ts`   | `test-browser-screenshot.mjs` |
+| web_fetch browser headers             | `src/extensions/web-fetch/index.ts` | `test-web-fetch-headers.mjs`  |
+| browser_navigate error handling       | `src/extensions/browser/index.ts`   | Manual audit                  |
+| browser_cookies CDP fix               | `src/extensions/browser/index.ts`   | Manual audit                  |
 
 ## Verification Status
 
 All fixes verified through regression tests (14 test suites passing):
 
-| Fix | Test File | Status |
-|-----|-----------|--------|
-| PDF binary safety | `test/runtime/test-pdf-safety.mjs` | ✅ PASS |
+| Fix                 | Test File                                  | Status  |
+| ------------------- | ------------------------------------------ | ------- |
+| PDF binary safety   | `test/runtime/test-pdf-safety.mjs`         | ✅ PASS |
 | Screenshot filePath | `test/runtime/test-browser-screenshot.mjs` | ✅ PASS |
-| web_fetch anti-bot | `test/runtime/test-web-fetch-headers.mjs` | ✅ PASS |
+| web_fetch anti-bot  | `test/runtime/test-web-fetch-headers.mjs`  | ✅ PASS |
 
 ---
 
@@ -225,24 +234,28 @@ All fixes verified through regression tests (14 test suites passing):
 
 **Root Cause**: `getExtensionState()` used a `WeakMap<ExtensionContext, ...>` keyed on the `ctx` object reference. The framework recreates `ctx` on each tool call, so each call got a fresh state bucket. Goals created in one `goal create` call were invisible to a subsequent `goal complete` call because the GoalManager instance was orphaned.
 
-**Impact**: 
+**Impact**:
+
 - `goal create` appeared to work but goal vanished on next tool call
 - `goal complete` returned "not found" for recently created goals
 - No error was raised — silent state loss
 - Affected planner, enforcement, context-manager — any extension using getExtensionState
 
 **Fix**: Rewrote `extension-state.ts` with session-stable keys:
+
 1. Primary: `ctx.sessionManager.getSessionFile()` or `getSessionId()` — stable across entire session
 2. Fallback: `ctx.agentId` or `ctx.runId` — stable per agent run
 3. Last resort: WeakMap on ctx (legacy behavior for backwards compat)
 
 Added helper functions:
+
 - `hasExtensionState(ctx, key)` — check without creating
 - `clearExtensionState(ctx, key)` — cleanup for testing
 - `clearAllExtensionState(ctx)` — session teardown
 - `getActiveSessionKeys()` / `getActiveSessionCount()` — monitoring
 
 **Verification**: `test-goal-state-persistence.mjs` — 6/6 tests pass:
+
 - Same session manager → same state across ctx recreation
 - Goal creation + completion persists across tool calls
 - Different sessions → isolated state

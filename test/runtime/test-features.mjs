@@ -351,8 +351,9 @@ async function main() {
 	// ══════════════════════════════════════════════════════════════════════════
 	console.log("\n── Documentation ──");
 
-	test("HONEST-REVIEW.md exists", () => {
-		assert.ok(existsSync(join(ROOT, "docs/HONEST-REVIEW.md")));
+	test("Top-level docs ≤ 10 essential files", () => {
+		const docs = readdirSync(join(ROOT, "docs")).filter(f => f.endsWith(".md"));
+		assert.ok(docs.length <= 12, `Too many top-level docs: ${docs.length} (${docs.join(", ")})`);
 	});
 
 	test("BENCHMARKS.md documents the suite", () => {

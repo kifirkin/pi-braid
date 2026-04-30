@@ -5,6 +5,7 @@
 ## The Problem This Solves
 
 Our Evidence Pool (2604.14170) + Cross-Query Contradictions (2604.14525) approach assumed:
+
 - Conflicts between evidence sources are detectable
 - Models should identify reliable evidence for correct reasoning
 
@@ -15,17 +16,17 @@ Our Evidence Pool (2604.14170) + Cross-Query Contradictions (2604.14525) approac
 ### Types of Conflicts Studied
 
 1. **Textual vs Textual** — Two text sources disagree
-2. **KG vs KG** — Two knowledge graphs disagree  
+2. **KG vs KG** — Two knowledge graphs disagree
 3. **Textual vs KG** — Text and knowledge graph disagree ← most common in modern RAG
 
 ### Key Findings
 
-| Finding | Evidence |
-|---------|----------|
-| LLMs fail to identify reliable evidence | Cross-source conflicts cause incorrect reasoning |
-| LLMs become sensitive to prompting choices | Same question, different framing → different answer |
-| LLMs rely exclusively on ONE source | Either KG or text, not both → faithful aggregation fails |
-| Prompt framing matters more than evidence quality | Arbitrary selection |
+| Finding                                           | Evidence                                                 |
+| ------------------------------------------------- | -------------------------------------------------------- |
+| LLMs fail to identify reliable evidence           | Cross-source conflicts cause incorrect reasoning         |
+| LLMs become sensitive to prompting choices        | Same question, different framing → different answer      |
+| LLMs rely exclusively on ONE source               | Either KG or text, not both → faithful aggregation fails |
+| Prompt framing matters more than evidence quality | Arbitrary selection                                      |
 
 **Critical**: "LLMs become more sensitive to prompting choices and tend to rely exclusively on either KG or textual evidence, resulting in incorrect responses."
 
@@ -45,42 +46,44 @@ Faithful aggregation of conflicting evidence
 ```
 
 **pi-braid mapping**:
+
 ```typescript
 // Current Evidence Pool (simplified):
 interface Evidence {
-    content: string;
-    source?: string;  // ← We had this, now it's CRITICAL
+  content: string;
+  source?: string; // ← We had this, now it's CRITICAL
 }
 
 // With XoT:
 // Stage 1: Source identification + conflict classification
 interface EvidentialSource {
-    type: "text" | "kg" | "param";  // parametric = what model "knows"
-    content: string;
-    timestamp: number;
-    reliability?: number;
+  type: "text" | "kg" | "param"; // parametric = what model "knows"
+  content: string;
+  timestamp: number;
+  reliability?: number;
 }
 
 interface ConflictAnalysis {
-    sources: EvidentialSource[];
-    conflictType: "direct" | "implication" | "reliability";
-    resolution: "favor_text" | "favor_kg" | "favor_param" | "acknowledge_conflict";
+  sources: EvidentialSource[];
+  conflictType: "direct" | "implication" | "reliability";
+  resolution: "favor_text" | "favor_kg" | "favor_param" | "acknowledge_conflict";
 }
 
 // Stage 2: Faithful reasoning
 function faithfulReason(analysis: ConflictAnalysis): ReasoningResult {
-    if (analysis.conflictType === "acknowledge_conflict") {
-        // Don't pick arbitrarily — surface the conflict
-        return { 
-            faithful: true, 
-            acknowledges: true,
-            sources: analysis.sources 
-        };
-    }
-    // Use reliability scores to resolve
-    const reliableSource = analysis.sources
-        .sort((a, b) => (b.reliability ?? 0.5) - (a.reliability ?? 0.5))[0];
-    return { faithful: true, source: reliableSource };
+  if (analysis.conflictType === "acknowledge_conflict") {
+    // Don't pick arbitrarily — surface the conflict
+    return {
+      faithful: true,
+      acknowledges: true,
+      sources: analysis.sources,
+    };
+  }
+  // Use reliability scores to resolve
+  const reliableSource = analysis.sources.sort(
+    (a, b) => (b.reliability ?? 0.5) - (a.reliability ?? 0.5),
+  )[0];
+  return { faithful: true, source: reliableSource };
 }
 ```
 
@@ -89,6 +92,7 @@ function faithfulReason(analysis: ConflictAnalysis): ReasoningResult {
 ### The pi-braid Evidence Problem
 
 When pi-braid's context-manager compacts context:
+
 - It may keep evidence from tool calls (textual)
 - It may keep evidence from memory systems (could be KG-structured)
 - It may keep parametric knowledge from system prompt
@@ -105,6 +109,7 @@ From paper: "LLMs become more sensitive to prompting choices"
 This connects to **Context Over Content (2604.15224)** — stakes signaling corrupts reasoning. But there's a subtler effect:
 
 **Prompt framing changes which evidence gets used:**
+
 - "What does the code say?" → text evidence favored
 - "What should we do?" → parametric knowledge favored
 - "Consider all sources" → neither, conflict acknowledged
@@ -117,55 +122,55 @@ This connects to **Context Over Content (2604.15224)** — stakes signaling corr
 // enforcement/evidence-tracker.ts
 
 interface SourceTrackedEvidence {
-    content: string;
-    source: "tool_call" | "memory" | "system_prompt" | "user_message";
-    reliability: number;  // 0-1
-    timestamp: number;
+  content: string;
+  source: "tool_call" | "memory" | "system_prompt" | "user_message";
+  reliability: number; // 0-1
+  timestamp: number;
 }
 
 export function trackEvidence(
-    content: string,
-    source: SourceTrackedEvidence["source"],
-    ctx: ExecutionContext
+  content: string,
+  source: SourceTrackedEvidence["source"],
+  ctx: ExecutionContext,
 ): void {
-    // Add to evidence pool with source tracking
-    const evidence = {
-        content,
-        source,
-        reliability: getSourceReliability(source),
-        timestamp: Date.now()
-    };
-    evidencePool.add(evidence);
+  // Add to evidence pool with source tracking
+  const evidence = {
+    content,
+    source,
+    reliability: getSourceReliability(source),
+    timestamp: Date.now(),
+  };
+  evidencePool.add(evidence);
 }
 
 export function detectCrossSourceConflict(): ConflictAnalysis | null {
-    const evidence = evidencePool.getRecent();
-    
-    // Group by source
-    const bySource = groupBy(evidence, "source");
-    if (Object.keys(bySource).length < 2) return null;
-    
-    // Check for direct conflicts
-    const texts = bySource["tool_call"] ?? [];
-    const mems = bySource["memory"] ?? [];
-    
-    // Simple conflict: same entity, different claims
-    const conflicts = findEntityConflicts(texts, mems);
-    if (conflicts.length === 0) return null;
-    
-    return {
-        sources: evidence,
-        conflictType: "cross_source",
-        acknowledged: true  // Faithful: acknowledge, don't pick arbitrarily
-    };
+  const evidence = evidencePool.getRecent();
+
+  // Group by source
+  const bySource = groupBy(evidence, "source");
+  if (Object.keys(bySource).length < 2) return null;
+
+  // Check for direct conflicts
+  const texts = bySource["tool_call"] ?? [];
+  const mems = bySource["memory"] ?? [];
+
+  // Simple conflict: same entity, different claims
+  const conflicts = findEntityConflicts(texts, mems);
+  if (conflicts.length === 0) return null;
+
+  return {
+    sources: evidence,
+    conflictType: "cross_source",
+    acknowledged: true, // Faithful: acknowledge, don't pick arbitrarily
+  };
 }
 
 export function faithfulReason(ctx: ExecutionContext): void {
-    const conflict = detectCrossSourceConflict();
-    if (conflict?.acknowledged) {
-        // Surface the conflict in reasoning, don't suppress it
-        ctx.signalAcknowledgedConflict(conflict.sources);
-    }
+  const conflict = detectCrossSourceConflict();
+  if (conflict?.acknowledged) {
+    // Surface the conflict in reasoning, don't suppress it
+    ctx.signalAcknowledgedConflict(conflict.sources);
+  }
 }
 ```
 
@@ -201,12 +206,12 @@ export function faithfulReason(ctx: ExecutionContext): void {
 
 ## Key Papers Connected
 
-| This Paper | Connection |
-|------------|------------|
-| 2604.14525 Cross-Query Contradictions | Metrics: contradiction density, revision cost |
-| 2604.14170 Evidence Pool | Extended with source tracking + XoT Stage 1 |
-| 2604.15224 Context Over Content | Prompt sensitivity explains source selection bias |
-| 2604.14401 Credo | Policies can encode source reliability preferences |
+| This Paper                            | Connection                                         |
+| ------------------------------------- | -------------------------------------------------- |
+| 2604.14525 Cross-Query Contradictions | Metrics: contradiction density, revision cost      |
+| 2604.14170 Evidence Pool              | Extended with source tracking + XoT Stage 1        |
+| 2604.15224 Context Over Content       | Prompt sensitivity explains source selection bias  |
+| 2604.14401 Credo                      | Policies can encode source reliability preferences |
 
 ## Action Items for Subagent
 
@@ -218,6 +223,7 @@ export function faithfulReason(ctx: ExecutionContext): void {
 ## Why This is P0 for Our Research
 
 The implicit framing / anti-slop work assumes:
+
 - Models produce consistent output
 - Enforcement signals improve consistency
 
@@ -229,4 +235,4 @@ Our enforcement needs to be FAITHFUL, not just corrective. Acknowledging conflic
 
 ## Reference
 
-Zhao, T., Chen, J., Zhang, S., Zhu, H., Lin, Q., & Liu, J. (2026). Exploring Knowledge Conflicts for Faithful LLM Reasoning: Benchmark and Method. *SIGIR 2026*. arXiv:2604.11209
+Zhao, T., Chen, J., Zhang, S., Zhu, H., Lin, Q., & Liu, J. (2026). Exploring Knowledge Conflicts for Faithful LLM Reasoning: Benchmark and Method. _SIGIR 2026_. arXiv:2604.11209

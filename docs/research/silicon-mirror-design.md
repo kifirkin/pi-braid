@@ -99,10 +99,10 @@ User message ──→ pi.on("message_end") ← SycophancyDetector
 
 **Two new components:**
 
-| Component | Type | Hook | Purpose |
-|-----------|------|------|---------|
+| Component             | Type                   | Hook      | Purpose                                |
+| --------------------- | ---------------------- | --------- | -------------------------------------- |
 | `sycophancy-detector` | `pi.on("message_end")` | Extension | Tactic pattern matching + risk scoring |
-| `sycophancy-critic` | Called from detector | — | Auditor LLM + whisper emission |
+| `sycophancy-critic`   | Called from detector   | —         | Auditor LLM + whisper emission         |
 
 **No new infrastructure.** Uses existing heartbeat + policy-engine + whisper system.
 
@@ -112,25 +112,27 @@ User message ──→ pi.on("message_end") ← SycophancyDetector
 
 **Tactic patterns**:
 
-| Tactic | Pattern | Severity |
-|--------|---------|----------|
-| AGREEABLENESS | `/\b(I think\|I believe\|you must (agree\|be right)\|Surely\b/i` | 0.3 |
-| CONFIDENCE_ERROR | `/\b(This is definitely\|The code (always\|never)\|Obviously\b/i` | 0.7 |
-| SKEPTICISM | `/\b(That (approach\|solution) is (wrong\|bad)\|Why would you/i` | 0.5 |
-| LOADED_QUESTION | `/\bWhy did you (do\|choose\|use)/i` | 0.6 |
-| AUTHORITY_CLAIM | `/\b(Trust me\|As a (senior\|expert)\|Everyone knows/i` | 0.5 |
+| Tactic           | Pattern                                                           | Severity |
+| ---------------- | ----------------------------------------------------------------- | -------- |
+| AGREEABLENESS    | `/\b(I think\|I believe\|you must (agree\|be right)\|Surely\b/i`  | 0.3      |
+| CONFIDENCE_ERROR | `/\b(This is definitely\|The code (always\|never)\|Obviously\b/i` | 0.7      |
+| SKEPTICISM       | `/\b(That (approach\|solution) is (wrong\|bad)\|Why would you/i`  | 0.5      |
+| LOADED_QUESTION  | `/\bWhy did you (do\|choose\|use)/i`                              | 0.6      |
+| AUTHORITY_CLAIM  | `/\b(Trust me\|As a (senior\|expert)\|Everyone knows/i`           | 0.5      |
 
 **Algorithm**:
+
 1. Parse user message into rhetorical units (claims, questions, assertions)
 2. Match each unit against tactic patterns
 3. Weighted sum → risk score (0-1)
 4. If `score >= 0.5` → trigger audit
 
 **Output**:
+
 ```typescript
 interface SycophancyRisk {
-  score: number;           // 0-1
-  tactics: string[];        // which tactics matched
+  score: number; // 0-1
+  tactics: string[]; // which tactics matched
   severity: "low" | "medium" | "high";
 }
 ```
@@ -140,6 +142,7 @@ interface SycophancyRisk {
 Called from detector when risk >= threshold.
 
 **Prompt**:
+
 ```
 You are a skeptical auditor checking for validation-before-correction (VbC) patterns.
 
@@ -165,6 +168,7 @@ JSON output:
 ```
 
 **Behavior on VbC detection**:
+
 1. `sendEnforcementWhisper(pi, correction_instruction)` — correction in next turn
 2. `emitSignal(ctx, "sycophancy", "detected", ...)` — policy engine signal
 3. Store event in extension state for rate tracking
@@ -173,16 +177,16 @@ JSON output:
 
 ## 6. Mapping to Existing pi-braid Components
 
-| Silicon Mirror | pi-braid | Notes |
-|---------------|----------|-------|
-| Trait Classifier | `enforcement/judge.ts` | Already scores compliance (1-5). Not tactic-specific. |
-| Trait Classifier | `enforcement/index.ts` | Has `pi.on("message_end")` pattern for analysis. |
-| Auditor | `enforcement/verification-judge.ts` | **Already does this** — runs LLM judge on response, sends nudge on fail. Reference implementation. |
-| BAC | `prompt-builder/l1-environment.ts` | Filters context into system prompt. Not dynamic. |
-| BAC | `enforcement/handlers/routing-handler.ts` | Message-level filtering. Existing anchor for context filtering. |
-| Signal bus | `belief-policy-engine.ts` | `emitSignal()` → policy evaluation. |
-| Whisper system | `enforcement/whisper.ts` | `sendEnforcementWhisper()`. |
-| Generator-Critic Loop | **N/A** | Not possible — no pre-response hook. Replaced by detector+whisper. |
+| Silicon Mirror        | pi-braid                                  | Notes                                                                                              |
+| --------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Trait Classifier      | `enforcement/judge.ts`                    | Already scores compliance (1-5). Not tactic-specific.                                              |
+| Trait Classifier      | `enforcement/index.ts`                    | Has `pi.on("message_end")` pattern for analysis.                                                   |
+| Auditor               | `enforcement/verification-judge.ts`       | **Already does this** — runs LLM judge on response, sends nudge on fail. Reference implementation. |
+| BAC                   | `prompt-builder/l1-environment.ts`        | Filters context into system prompt. Not dynamic.                                                   |
+| BAC                   | `enforcement/handlers/routing-handler.ts` | Message-level filtering. Existing anchor for context filtering.                                    |
+| Signal bus            | `belief-policy-engine.ts`                 | `emitSignal()` → policy evaluation.                                                                |
+| Whisper system        | `enforcement/whisper.ts`                  | `sendEnforcementWhisper()`.                                                                        |
+| Generator-Critic Loop | **N/A**                                   | Not possible — no pre-response hook. Replaced by detector+whisper.                                 |
 
 ### 6.1 The Verification Judge Is the Reference Implementation
 
@@ -233,11 +237,27 @@ import { sendEnforcementWhisper } from "../enforcement/whisper.js";
 import { emitSignal } from "../../../lib/belief-policy-engine.js";
 
 const TACTIC_PATTERNS = [
-  { name: "AGREEABLENESS", pattern: /\b(I think|I believe|you must (agree|be right)|Surely)\b/i, severity: 0.3 },
-  { name: "CONFIDENCE_ERROR", pattern: /\b(This is definitely|The code (always|never)|Obviously)\b/i, severity: 0.7 },
-  { name: "SKEPTICISM", pattern: /\b(That (approach|solution) is (wrong|bad)|Why would you)\b/i, severity: 0.5 },
+  {
+    name: "AGREEABLENESS",
+    pattern: /\b(I think|I believe|you must (agree|be right)|Surely)\b/i,
+    severity: 0.3,
+  },
+  {
+    name: "CONFIDENCE_ERROR",
+    pattern: /\b(This is definitely|The code (always|never)|Obviously)\b/i,
+    severity: 0.7,
+  },
+  {
+    name: "SKEPTICISM",
+    pattern: /\b(That (approach|solution) is (wrong|bad)|Why would you)\b/i,
+    severity: 0.5,
+  },
   { name: "LOADED_QUESTION", pattern: /\bWhy did you (do|choose|use)/i, severity: 0.6 },
-  { name: "AUTHORITY_CLAIM", pattern: /\b(Trust me|As a (senior|expert)|Everyone knows)\b/i, severity: 0.5 },
+  {
+    name: "AUTHORITY_CLAIM",
+    pattern: /\b(Trust me|As a (senior|expert)|Everyone knows)\b/i,
+    severity: 0.5,
+  },
 ];
 
 const RISK_THRESHOLD = 0.5;
@@ -258,19 +278,22 @@ export default function createSycophancyDetector(): Extension {
           .map((c: any) => c.text)
           .join("\n");
 
-        if (responseText.length < 50) return;  // Skip short responses
+        if (responseText.length < 50) return; // Skip short responses
 
         // Get the previous user message (the one that might contain persuasion tactics)
         const session = (ctx as any)?.sessionManager?.getCurrentSession?.();
         const messages = session?.messages ?? [];
         const userMessages = messages.filter((m: any) => m.role === "user");
-        const lastUserMessage = userMessages[userMessages.length - 1]?.content
-          ?? (typeof userMessages[userMessages.length - 1] === "string"
-              ? userMessages[userMessages.length - 1]
-              : "");
+        const lastUserMessage =
+          userMessages[userMessages.length - 1]?.content ??
+          (typeof userMessages[userMessages.length - 1] === "string"
+            ? userMessages[userMessages.length - 1]
+            : "");
 
         // Step 1: Compute sycophancy risk from user message
-        const risk = computeRisk(typeof lastUserMessage === "string" ? lastUserMessage : JSON.stringify(lastUserMessage));
+        const risk = computeRisk(
+          typeof lastUserMessage === "string" ? lastUserMessage : JSON.stringify(lastUserMessage),
+        );
         if (risk.score < RISK_THRESHOLD) return;
 
         // Step 2: Auditor LLM — check response for VbC
@@ -335,45 +358,45 @@ From reading `enforcement/index.ts`:
 
 Add to policy engine + heartbeat:
 
-| File | Change |
-|------|--------|
-| `types.ts` | Add `sycophancy` to `SemanticSignalType` |
-| `policy-engine.ts` | Add `SycophancyPolicy` to `createDefaultPolicies()` |
+| File                           | Change                                                                            |
+| ------------------------------ | --------------------------------------------------------------------------------- |
+| `types.ts`                     | Add `sycophancy` to `SemanticSignalType`                                          |
+| `policy-engine.ts`             | Add `SycophancyPolicy` to `createDefaultPolicies()`                               |
 | `heartbeat-scheduler/index.ts` | Register `SycophancyModule` in `builtInModules` (for periodic compliance scoring) |
 
 ## 8. Configuration
 
 ```typescript
 interface SycophancyConfig {
-  riskThreshold: number;           // default: 0.5
-  auditorTimeoutMs: number;        // default: 30000
-  maxWhispersPerSession: number;   // default: 10
-  cooldownTurns: number;          // default: 3 (don't spam same user)
+  riskThreshold: number; // default: 0.5
+  auditorTimeoutMs: number; // default: 30000
+  maxWhispersPerSession: number; // default: 10
+  cooldownTurns: number; // default: 3 (don't spam same user)
   bypassForShortResponses: boolean; // default: true (< 50 chars)
 }
 ```
 
 ## 9. Evaluation
 
-| Metric | Target |
-|--------|--------|
-| Tactic detection precision | > 70% (pattern-based) |
-| VbC detection recall | > 60% (auditor LLM) |
-| Correction whisper rate | Measurable reduction in VbC over session |
-| Latency overhead | < 500ms (auditor call only on high-risk) |
-| Agent behavioral change | VbC rate decreases session-over-session |
+| Metric                     | Target                                   |
+| -------------------------- | ---------------------------------------- |
+| Tactic detection precision | > 70% (pattern-based)                    |
+| VbC detection recall       | > 60% (auditor LLM)                      |
+| Correction whisper rate    | Measurable reduction in VbC over session |
+| Latency overhead           | < 500ms (auditor call only on high-risk) |
+| Agent behavioral change    | VbC rate decreases session-over-session  |
 
 **Baseline**: Measure VbC rate before and after. A successful intervention should show decreasing VbC frequency over the session as whispers accumulate.
 
 ## 10. Comparison: Paper vs pi-braid
 
-| Paper says | pi-braid does | Reason |
-|-----------|---------------|--------|
-| Auditor can **veto** response | Cannot veto — fires after send | No pre-response hook in ExtensionAPI |
-| Auditor can **rewrite** response | Cannot rewrite — fires after send | Same constraint |
-| Lock GRAPH/ENTITY layers on high risk | No layered context (API-only) | RAG-specific, not applicable |
-| Trait Classifier alone: 60% | Pattern-based: ~50% | No LLM classification in MVI |
-| Combined: 83% | Expected: ~50-60% | Weaker mechanism, honest estimate |
+| Paper says                            | pi-braid does                     | Reason                               |
+| ------------------------------------- | --------------------------------- | ------------------------------------ |
+| Auditor can **veto** response         | Cannot veto — fires after send    | No pre-response hook in ExtensionAPI |
+| Auditor can **rewrite** response      | Cannot rewrite — fires after send | Same constraint                      |
+| Lock GRAPH/ENTITY layers on high risk | No layered context (API-only)     | RAG-specific, not applicable         |
+| Trait Classifier alone: 60%           | Pattern-based: ~50%               | No LLM classification in MVI         |
+| Combined: 83%                         | Expected: ~50-60%                 | Weaker mechanism, honest estimate    |
 
 **Honest assessment**: pi-braid's sycophancy detector will be weaker than the paper's full implementation. The whisper-based correction reduces future VbC rather than preventing the current one. The expected effect is measurable but not dramatic.
 
@@ -391,18 +414,18 @@ The value is in **tracking** sycophancy rate over time and surfacing it as a sig
 
 The following are not in pi-braid docs and needed for MVI implementation:
 
-| Gap | Where documented | What's needed |
-|-----|-----------------|---------------|
-| `pi.on("message_end")` event pattern | `enforcement/index.ts` (source) | Full event type + content extraction |
-| `ExtensionContext` API | `@mariozechner/pi-coding-agent` (external) | `whisper()`, `state`, `turnNumber` |
-| How to emit whispers | `enforcement/whisper.ts` (source) | Rate limiting, cooldown |
-| `emitSignal()` signature | `belief-policy-engine.ts` (source) | Signal type, severity, metadata |
-| `MessageEndEvent` type | External | Full type with `.message.role`, `.message.content` |
+| Gap                                  | Where documented                           | What's needed                                      |
+| ------------------------------------ | ------------------------------------------ | -------------------------------------------------- |
+| `pi.on("message_end")` event pattern | `enforcement/index.ts` (source)            | Full event type + content extraction               |
+| `ExtensionContext` API               | `@mariozechner/pi-coding-agent` (external) | `whisper()`, `state`, `turnNumber`                 |
+| How to emit whispers                 | `enforcement/whisper.ts` (source)          | Rate limiting, cooldown                            |
+| `emitSignal()` signature             | `belief-policy-engine.ts` (source)         | Signal type, severity, metadata                    |
+| `MessageEndEvent` type               | External                                   | Full type with `.message.role`, `.message.content` |
 
 **Recommendation**: Add `docs/EXTENSION-HOOKS.md` before implementing Phase 1. Reference `enforcement/index.ts` as the canonical example of `pi.on("message_end")` + whisper + signal emission.
 
 ---
 
-*Design by Braid. Based on arxiv:2604.00478 + arxiv:2604.19117.*
-*Key constraint: no pre-response interception in pi-braid ExtensionAPI.*
-*Last updated: 2026-04-27*
+_Design by Braid. Based on arxiv:2604.00478 + arxiv:2604.19117._
+_Key constraint: no pre-response interception in pi-braid ExtensionAPI._
+_Last updated: 2026-04-27_

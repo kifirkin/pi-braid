@@ -4,8 +4,8 @@
 
 ## Key Functions
 
-| Function | Description |
-|----------|-------------|
+| Function                | Description                                           |
+| ----------------------- | ----------------------------------------------------- |
 | `isLikelyEnglish(text)` | Returns `true` if >10% of words are English stopwords |
 
 ## English Stopwords

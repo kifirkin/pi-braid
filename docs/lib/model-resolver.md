@@ -5,6 +5,7 @@
 ## Architecture
 
 Priority chain for model resolution:
+
 1. Custom setting (via `/vision-model` or `/model` commands) → highest priority
 2. `defaultModel`/`defaultProvider` from settings → survives restarts
 3. Current `ctx.model` → fallback
@@ -12,10 +13,10 @@ Priority chain for model resolution:
 
 ## Key Functions
 
-| Function | Description |
-|----------|-------------|
-| `resolveUtilityModel(ctx)` | Best model for non-vision tasks (cost-sensitive) |
-| `resolveVisionModel(ctx)` | Best model with vision capabilities |
+| Function                           | Description                                                      |
+| ---------------------------------- | ---------------------------------------------------------------- |
+| `resolveUtilityModel(ctx)`         | Best model for non-vision tasks (cost-sensitive)                 |
+| `resolveVisionModel(ctx)`          | Best model with vision capabilities                              |
 | `resolveFromPattern(ctx, pattern)` | Parse `"provider/model-id"` or `"model-id"` and find in registry |
 
 ## Key Patterns

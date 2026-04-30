@@ -21,19 +21,18 @@ const _sessionState = new Map<string, Map<string, unknown>>();
 const _stateBuckets = new WeakMap<ExtensionContext, Map<string, unknown>>();
 
 function getSessionKey(ctx: ExtensionContext): string | undefined {
-	// Prefer sessionManager's file path — stable across the whole session
-	const sm = ctx.sessionManager;
-	if (sm) {
-		try {
-			const file = sm.getSessionFile?.() ?? sm.getSessionId?.();
-			if (file) return String(file);
-		} catch {
-			// sessionManager methods may not exist on all implementations
-		}
-	}
+  // Prefer sessionManager's file path — stable across the whole session
+  const sm = ctx.sessionManager;
+  if (sm) {
+    try {
+      const file = sm.getSessionFile?.() ?? sm.getSessionId?.();
+      if (file) return String(file);
+    } catch {
+      // sessionManager methods may not exist on all implementations
+    }
+  }
 
-
-	return undefined;
+  return undefined;
 }
 
 /**
@@ -45,91 +44,85 @@ function getSessionKey(ctx: ExtensionContext): string | undefined {
  * @returns The state object (same reference every call for same session+key)
  */
 export function getExtensionState<T extends object>(
-	ctx: ExtensionContext,
-	key: string,
-	factory: () => T,
+  ctx: ExtensionContext,
+  key: string,
+  factory: () => T,
 ): T {
-	const sessionKey = getSessionKey(ctx);
+  const sessionKey = getSessionKey(ctx);
 
-	if (sessionKey) {
-		if (!_sessionState.has(sessionKey)) {
-			_sessionState.set(sessionKey, new Map());
-		}
-		const bucket = _sessionState.get(sessionKey)!;
-		if (!bucket.has(key)) {
-			bucket.set(key, factory());
-		}
-		return bucket.get(key) as T;
-	}
+  if (sessionKey) {
+    if (!_sessionState.has(sessionKey)) {
+      _sessionState.set(sessionKey, new Map());
+    }
+    const bucket = _sessionState.get(sessionKey)!;
+    if (!bucket.has(key)) {
+      bucket.set(key, factory());
+    }
+    return bucket.get(key) as T;
+  }
 
-	// Legacy fallback: WeakMap keyed on ctx object reference
-	if (!_stateBuckets.has(ctx)) {
-		_stateBuckets.set(ctx, new Map());
-	}
-	const bucket = _stateBuckets.get(ctx)!;
-	if (!bucket.has(key)) {
-		bucket.set(key, factory());
-	}
-	return bucket.get(key) as T;
+  // Legacy fallback: WeakMap keyed on ctx object reference
+  if (!_stateBuckets.has(ctx)) {
+    _stateBuckets.set(ctx, new Map());
+  }
+  const bucket = _stateBuckets.get(ctx)!;
+  if (!bucket.has(key)) {
+    bucket.set(key, factory());
+  }
+  return bucket.get(key) as T;
 }
 
 /**
  * Check if state exists for this session+key without creating it.
  */
-export function hasExtensionState(
-	ctx: ExtensionContext,
-	key: string,
-): boolean {
-	const sessionKey = getSessionKey(ctx);
-	if (sessionKey) {
-		const bucket = _sessionState.get(sessionKey);
-		return bucket ? bucket.has(key) : false;
-	}
-	const bucket = _stateBuckets.get(ctx);
-	return bucket ? bucket.has(key) : false;
+export function hasExtensionState(ctx: ExtensionContext, key: string): boolean {
+  const sessionKey = getSessionKey(ctx);
+  if (sessionKey) {
+    const bucket = _sessionState.get(sessionKey);
+    return bucket ? bucket.has(key) : false;
+  }
+  const bucket = _stateBuckets.get(ctx);
+  return bucket ? bucket.has(key) : false;
 }
 
 /**
  * Clear state for this session+key. Useful for testing.
  */
-export function clearExtensionState(
-	ctx: ExtensionContext,
-	key: string,
-): void {
-	const sessionKey = getSessionKey(ctx);
-	if (sessionKey) {
-		const bucket = _sessionState.get(sessionKey);
-		if (bucket) bucket.delete(key);
-		return;
-	}
-	const bucket = _stateBuckets.get(ctx);
-	if (bucket) bucket.delete(key);
+export function clearExtensionState(ctx: ExtensionContext, key: string): void {
+  const sessionKey = getSessionKey(ctx);
+  if (sessionKey) {
+    const bucket = _sessionState.get(sessionKey);
+    if (bucket) bucket.delete(key);
+    return;
+  }
+  const bucket = _stateBuckets.get(ctx);
+  if (bucket) bucket.delete(key);
 }
 
 /**
  * Clear ALL state for this session. Useful for session teardown.
  */
 export function clearAllExtensionState(ctx: ExtensionContext): void {
-	const sessionKey = getSessionKey(ctx);
-	if (sessionKey) {
-		_sessionState.delete(sessionKey);
-		return;
-	}
-	_stateBuckets.delete(ctx);
+  const sessionKey = getSessionKey(ctx);
+  if (sessionKey) {
+    _sessionState.delete(sessionKey);
+    return;
+  }
+  _stateBuckets.delete(ctx);
 }
 
 /**
  * Get all active session keys (for debugging / monitoring).
  */
 export function getActiveSessionKeys(): string[] {
-	return Array.from(_sessionState.keys());
+  return Array.from(_sessionState.keys());
 }
 
 /**
  * Get count of active sessions (for debugging / monitoring).
  */
 export function getActiveSessionCount(): number {
-	return _sessionState.size;
+  return _sessionState.size;
 }
 
 /**
@@ -140,14 +133,14 @@ export function getActiveSessionCount(): number {
  * Or simply import and call from your main extension.
  */
 export function registerSessionCleanup(): (event: any, ctx: ExtensionContext) => void {
-	return (_event: any, ctx: ExtensionContext) => {
-		clearAllExtensionState(ctx);
-	};
+  return (_event: any, ctx: ExtensionContext) => {
+    clearAllExtensionState(ctx);
+  };
 }
 
 /**
  * Force-clear all state for all sessions. Nuclear option for tests.
  */
 export function clearAllSessions(): void {
-	_sessionState.clear();
+  _sessionState.clear();
 }

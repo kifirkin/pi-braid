@@ -4,28 +4,28 @@
 
 ## Memory Types
 
-| Type | TTL | Scoring | Description |
-|------|-----|---------|-------------|
-| `insight` | 7d | Utility | Key realizations and findings |
-| `pattern` | 30d | Utility | Recurring code/behavior patterns |
-| `preference` | 7d | — | User preferences and settings |
-| `goal` | 1d | — | Active goals and objectives |
-| `error` | 30d | Utility | Error patterns and solutions |
-| `episodic` | 7d | Utility | Task episodes and outcomes |
-| `semantic` | 30d | Utility | Semantic knowledge and facts |
-| `procedural` | ∞ | — | Reusable procedures and heuristics |
+| Type         | TTL | Scoring | Description                        |
+| ------------ | --- | ------- | ---------------------------------- |
+| `insight`    | 7d  | Utility | Key realizations and findings      |
+| `pattern`    | 30d | Utility | Recurring code/behavior patterns   |
+| `preference` | 7d  | —       | User preferences and settings      |
+| `goal`       | 1d  | —       | Active goals and objectives        |
+| `error`      | 30d | Utility | Error patterns and solutions       |
+| `episodic`   | 7d  | Utility | Task episodes and outcomes         |
+| `semantic`   | 30d | Utility | Semantic knowledge and facts       |
+| `procedural` | ∞   | —       | Reusable procedures and heuristics |
 
 ## Key Functions
 
-| Function | Description |
-|----------|-------------|
-| `remember(category, content, tags?, importance?)` | Store a memory |
-| `recall(query, category?, limit?)` | Search memories by text relevance |
-| `recallByTags(tags, category?)` | Filter by tag intersection |
-| `get(id)` | Get single memory by ID |
-| `boost(id)` | Increase utility score |
-| `evict(id)` | Remove memory |
-| `consolidate()` | Merge similar memories, prune old/weak ones |
+| Function                                          | Description                                 |
+| ------------------------------------------------- | ------------------------------------------- |
+| `remember(category, content, tags?, importance?)` | Store a memory                              |
+| `recall(query, category?, limit?)`                | Search memories by text relevance           |
+| `recallByTags(tags, category?)`                   | Filter by tag intersection                  |
+| `get(id)`                                         | Get single memory by ID                     |
+| `boost(id)`                                       | Increase utility score                      |
+| `evict(id)`                                       | Remove memory                               |
+| `consolidate()`                                   | Merge similar memories, prune old/weak ones |
 
 ## Key Patterns
 

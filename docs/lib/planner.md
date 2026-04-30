@@ -17,6 +17,7 @@
 ```
 
 Each step:
+
 ```typescript
 {
   id: string,
@@ -30,15 +31,15 @@ Each step:
 
 ## Key Functions
 
-| Function | Description |
-|----------|-------------|
-| `createPlan(goal, steps, ctx?)` | Create a new plan from goal + step list |
-| `executePlan(planId, ctx?)` | Start executing a plan |
-| `completeStep(planId, stepId, result?)` | Mark step as completed |
-| `failStep(planId, stepId, error?)` | Mark step as failed (triggers replanning) |
-| `getPlanStatus(planId)` | Get current plan progress |
-| `adaptPlan(planId, newSteps)` | Replan from current position |
-| `reviewPlan(planId)` | Review and evaluate completed plan |
+| Function                                | Description                               |
+| --------------------------------------- | ----------------------------------------- |
+| `createPlan(goal, steps, ctx?)`         | Create a new plan from goal + step list   |
+| `executePlan(planId, ctx?)`             | Start executing a plan                    |
+| `completeStep(planId, stepId, result?)` | Mark step as completed                    |
+| `failStep(planId, stepId, error?)`      | Mark step as failed (triggers replanning) |
+| `getPlanStatus(planId)`                 | Get current plan progress                 |
+| `adaptPlan(planId, newSteps)`           | Replan from current position              |
+| `reviewPlan(planId)`                    | Review and evaluate completed plan        |
 
 ## Key Patterns
 

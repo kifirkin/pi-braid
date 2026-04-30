@@ -74,14 +74,14 @@ implicit-framing
 
 The compliance theater paper connects to all threads:
 
-| Thread | Connection |
-|--------|------------|
-| implicit-framing | Core finding: identity > directives |
-| cognitive-control | ECL explains mechanism |
-| measurement | How to measure compliance success |
+| Thread              | Connection                                        |
+| ------------------- | ------------------------------------------------- |
+| implicit-framing    | Core finding: identity > directives               |
+| cognitive-control   | ECL explains mechanism                            |
+| measurement         | How to measure compliance success                 |
 | knowledge-conflicts | Arbitrary evidence selection = compliance theater |
-| context-engineering | Evidence pool prevents conflicts |
-| agent-architecture | Self-evolution prevents drift |
+| context-engineering | Evidence pool prevents conflicts                  |
+| agent-architecture  | Self-evolution prevents drift                     |
 
 ---
 
@@ -140,16 +140,19 @@ measurement/drift-detection.ts
 ## Papers That Span Threads
 
 ### 2604.14180 Internal Knowledge
+
 - **cognitive-control**: Models know but don't express
 - **measurement**: Entropy proxy for internal uncertainty
 - **implicit-framing**: Compliance is confident output while reasoning is uncertain
 
 ### 2604.14525 Cross-Query Contradictions
+
 - **measurement**: Metrics (contradiction density, revision cost)
 - **knowledge-conflicts**: Conflict detection algorithm
 - **agent-architecture**: Assessment criteria for evolution
 
 ### 2604.11209 Knowledge Conflicts (XoT)
+
 - **knowledge-conflicts**: Core framework
 - **context-engineering**: Evidence pool structure
 - **implicit-framing**: Compliance theater = arbitrary evidence selection
@@ -174,11 +177,11 @@ measurement/drift-detection.ts
 
 ## Status Tracking
 
-| Connection | Document | Status |
-|------------|----------|--------|
-| implicit-framing → cognitive-control | `cognitive-control/synthesis.md` | ✅ Complete |
-| implicit-framing → measurement | `measurement/synthesis.md` | ✅ Complete |
-| cognitive-control → measurement | `measurement/synthesis.md` | ✅ Complete |
-| cognitive-control → agent-architecture | `agent-architecture/synthesis.md` | ✅ Complete |
+| Connection                                | Document                           | Status      |
+| ----------------------------------------- | ---------------------------------- | ----------- |
+| implicit-framing → cognitive-control      | `cognitive-control/synthesis.md`   | ✅ Complete |
+| implicit-framing → measurement            | `measurement/synthesis.md`         | ✅ Complete |
+| cognitive-control → measurement           | `measurement/synthesis.md`         | ✅ Complete |
+| cognitive-control → agent-architecture    | `agent-architecture/synthesis.md`  | ✅ Complete |
 | knowledge-conflicts → context-engineering | `context-engineering/synthesis.md` | ✅ Complete |
-| THE PAPER → all threads | `paper/expert-review.md` | ✅ Complete |
+| THE PAPER → all threads                   | `paper/expert-review.md`           | ✅ Complete |

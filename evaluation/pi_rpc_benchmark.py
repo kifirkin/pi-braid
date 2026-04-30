@@ -1,57 +1,38 @@
 #!/usr/bin/env python3
 """
-pi RPC Mode Benchmark Harness
-===========================
-Runs pi agent in RPC mode and collects structured metrics.
-Based on agent-testing skill patterns.
+pi RPC Benchmark — Uses threading to handle stdin/stdout simultaneously.
+pi outputs events on stdout as they happen. If stdin blocks (waiting for extension responses),
+pi deadlocks. Solution: dedicated stdout reader thread + queue.
 """
-
-import json
-import os
-import re
-import select
-import subprocess
-import sys
-import time
+import json, os, select, subprocess, threading, time
 from dataclasses import dataclass, field
 from typing import Optional
+from queue import Queue, Empty
 
-# Default model
-DEFAULT_MODEL = os.environ.get("PI_MODEL", "openrouter/qwen/qwen3.5-flash-02-23")
+DEFAULT_MODEL = os.environ.get("PI_MODEL", "minimax/MiniMax-M2.7")
 DEFAULT_EXTENSIONS = os.environ.get("PI_EXTENSIONS", "/Users/kifir/projects/agents/pi-braid")
 
 
 @dataclass
 class AgentResult:
     """Structured result from a pi agent run."""
-
     success: bool = False
     final_text: str = ""
     tool_calls: list[dict] = field(default_factory=list)
+    extension_responses: int = 0
+    turns: int = 0
     token_count: int = 0
     duration_seconds: float = 0.0
     error: Optional[str] = None
-    extension_responses: int = 0
-    turns: int = 0
 
 
 def make_event(event_type: str, **kwargs) -> bytes:
     """Create a JSON event line."""
-    event = {"type": event_type, **kwargs}
-    return json.dumps(event).encode() + b"\n"
-
-
-def extract_code(text: str, lang: str = "javascript") -> Optional[str]:
-    """Extract code from markdown-fenced text."""
-    if not text:
-        return None
-    pattern = rf"```(?:{lang}|{lang.replace('javascript','js')})\n(.*?)```"
-    match = re.search(pattern, text, re.DOTALL)
-    return match.group(1).strip() if match else None
+    return json.dumps({"type": event_type, **kwargs}).encode() + b"\n"
 
 
 class PiRPC:
-    """Manages a pi RPC subprocess."""
+    """Manages a pi RPC subprocess with thread-safe stdout reader."""
 
     def __init__(
         self,
@@ -74,11 +55,12 @@ class PiRPC:
             self.args.extend(["-e", extensions])
         if tools:
             self.args.extend(["--tools", tools])
-
         self.proc: Optional[subprocess.Popen] = None
+        self._evt_q: Optional[Queue] = None
+        self._reader_thread: Optional[threading.Thread] = None
 
     def start(self, timeout: float = 10.0) -> None:
-        """Start the pi subprocess."""
+        """Start the pi subprocess and stdout reader thread."""
         self.proc = subprocess.Popen(
             self.args,
             stdin=subprocess.PIPE,
@@ -86,8 +68,45 @@ class PiRPC:
             stderr=subprocess.PIPE,
             env={**os.environ},
         )
-        # Wait for startup
+        self._evt_q = Queue()
+        self._reader_thread = threading.Thread(target=self._read_stdout, daemon=True)
+        self._reader_thread.start()
         time.sleep(timeout)
+
+    def _read_stdout(self) -> None:
+        """Background thread: read stdout and queue events."""
+        while True:
+            try:
+                ready, _, _ = select.select([self.proc.stdout], [], [], 0.5)
+                if not ready:
+                    if self.proc and self.proc.poll() is not None:
+                        break
+                    continue
+                line = self.proc.stdout.readline()
+                if not line:
+                    break
+                try:
+                    evt = json.loads(line.decode().strip())
+                    self._evt_q.put(evt)
+                except json.JSONDecodeError:
+                    continue
+            except Exception:
+                break
+        self._evt_q.put(None)  # sentinel
+
+    def send(self, event: bytes) -> None:
+        """Send a JSON event to stdin."""
+        if self.proc and self.proc.stdin:
+            self.proc.stdin.write(event)
+            self.proc.stdin.flush()
+
+    def recv(self, timeout: float = 3.0) -> Optional[dict]:
+        """Receive a queued JSON event from stdout."""
+        try:
+            evt = self._evt_q.get(timeout=timeout)
+            return evt
+        except Empty:
+            return None
 
     def stop(self) -> None:
         """Kill and wait for the subprocess."""
@@ -96,24 +115,6 @@ class PiRPC:
             if self.proc.returncode is None:
                 self.proc.kill()
             self.proc.wait()
-
-    def send(self, event: bytes) -> None:
-        """Send a JSON event to stdin."""
-        if self.proc and self.proc.stdin:
-            self.proc.stdin.write(event)
-            self.proc.stdin.flush()
-
-    def recv(self, timeout: float = 2.0) -> Optional[dict]:
-        """Receive a JSON event from stdout."""
-        if not self.proc:
-            return None
-        ready, _, _ = select.select([self.proc.stdout], [], [], timeout)
-        if not ready:
-            return None
-        line = self.proc.stdout.readline()
-        if not line:
-            return None
-        return json.loads(line.decode().strip())
 
 
 def run_task(
@@ -126,32 +127,19 @@ def run_task(
 ) -> AgentResult:
     """
     Run a single task through pi RPC and collect metrics.
-
-    Args:
-        prompt: The task prompt
-        extensions: Extension path (default: pi-braid)
-        model: Model to use
-        no_extensions: Use no extensions (baseline)
-        timeout: Max seconds to wait
-        cancel_extensions: Auto-cancel extension requests
-
-    Returns:
-        AgentResult with structured metrics
+    Threading ensures extension responses are sent without blocking stdout reader.
     """
     rpc = PiRPC(extensions=extensions if not no_extensions else None, model=model, no_extensions=no_extensions)
     result = AgentResult()
 
     try:
         rpc.start(timeout=2.0)
-        start_time = time.time()
-
-        # Send initial prompt
         rpc.send(make_event("prompt", message=prompt))
 
-        last_message_end = None
+        start_time = time.time()
         while time.time() - start_time < timeout:
             event = rpc.recv(timeout=3.0)
-            if not event:
+            if event is None:
                 if rpc.proc and rpc.proc.poll() is not None:
                     break
                 continue
@@ -167,6 +155,7 @@ def run_task(
                         id=event.get("id"),
                         cancelled=True
                     ))
+                continue
 
             # Track tool calls
             if etype in ("tool_execution_start", "tool_execution_end"):
@@ -178,117 +167,44 @@ def run_task(
                     "error": event.get("isError", False),
                 })
 
-            # Track message end (turn count)
-            if etype == "message_end":
-                last_message_end = event
-                result.turns += 1
-                # Extract text content
-                for block in event.get("message", {}).get("content", []):
-                    if block.get("type") == "text":
-                        result.final_text += block.get("text", "")
+            # Count assistant turns
+            if etype == "message_start":
+                if event.get("message", {}).get("role") == "assistant":
+                    result.turns += 1
 
-            # Agent done
+            # Accumulate text from assistant messages
+            if etype in ("message_start", "message_end"):
+                if event.get("message", {}).get("role") == "assistant":
+                    for block in event.get("message", {}).get("content", []):
+                        if block.get("type") == "text":
+                            result.final_text += block.get("text", "")
+
+            # Finalize on agent_end
             if etype == "agent_end":
-                result.success = True
+                # agent_end.messages may have final complete text
+                for msg in event.get("messages", []):
+                    if msg.get("role") == "assistant":
+                        for block in msg.get("content", []):
+                            if block.get("type") == "text":
+                                result.final_text += block.get("text", "")
+                # Validate
+                stripped = result.final_text.strip()
+                is_echo = (len(stripped) > 0 and stripped == prompt.strip())
+                has_content = len(stripped) > 10
+                result.success = not is_echo and has_content
+                if is_echo:
+                    result.error = "echo"
+                elif not has_content:
+                    result.error = "no_content"
                 result.duration_seconds = time.time() - start_time
-                # Estimate tokens from text length (rough)
                 result.token_count = len(result.final_text) // 4
                 break
 
         result.duration_seconds = time.time() - start_time
-
-        # If agent didn't end cleanly, check if it timed out
         if not result.success and result.duration_seconds >= timeout:
             result.error = "timeout"
 
-    except Exception as e:
-        result.error = str(e)
     finally:
         rpc.stop()
 
     return result
-
-
-def run_comparison(
-    prompt: str,
-    baseline_extensions: Optional[str] = None,
-    test_extensions: str = DEFAULT_EXTENSIONS,
-    model: str = DEFAULT_MODEL,
-    trials: int = 3,
-    timeout: float = 90.0,
-) -> dict:
-    """
-    Run comparison between baseline and test configuration.
-
-    Returns:
-        Summary dict with per-config metrics
-    """
-    results = {"baseline": [], "test": [], "model": model, "prompt_preview": prompt[:100]}
-
-    for i in range(trials):
-        print(f"[Trial {i+1}/{trials}] Running baseline...", file=sys.stderr)
-        r = run_task(prompt, no_extensions=True, model=model, timeout=timeout)
-        results["baseline"].append({
-            "trial": i + 1,
-            "success": r.success,
-            "turns": r.turns,
-            "token_count": r.token_count,
-            "duration": r.duration_seconds,
-            "tool_count": len(r.tool_calls),
-            "extension_responses": r.extension_responses,
-        })
-
-        print(f"[Trial {i+1}/{trials}] Running test (pi-braid)...", file=sys.stderr)
-        r = run_task(prompt, extensions=test_extensions, model=model, timeout=timeout)
-        results["test"].append({
-            "trial": i + 1,
-            "success": r.success,
-            "turns": r.turns,
-            "token_count": r.token_count,
-            "duration": r.duration_seconds,
-            "tool_count": len(r.tool_calls),
-            "extension_responses": r.extension_responses,
-        })
-
-    return results
-
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="pi RPC benchmark harness")
-    parser.add_argument("--prompt", type=str, required=True, help="Task prompt")
-    parser.add_argument("--model", type=str, default=DEFAULT_MODEL, help="Model")
-    parser.add_argument("--extensions", type=str, default=DEFAULT_EXTENSIONS, help="Extensions path")
-    parser.add_argument("--no-extensions", action="store_true", help="No extensions baseline")
-    parser.add_argument("--trials", type=int, default=3, help="Number of trials")
-    parser.add_argument("--timeout", type=float, default=90.0, help="Timeout seconds")
-    parser.add_argument("--output", type=str, help="Output JSON file")
-    parser.add_argument("--compare", action="store_true", help="Run baseline comparison")
-    args = parser.parse_args()
-
-    if args.compare:
-        results = run_comparison(
-            args.prompt,
-            test_extensions=args.extensions,
-            model=args.model,
-            trials=args.trials,
-            timeout=args.timeout,
-        )
-    else:
-        r = run_task(args.prompt, extensions=args.extensions if not args.no_extensions else None,
-                      no_extensions=args.no_extensions, model=args.model, timeout=args.timeout)
-        results = {
-            "success": r.success,
-            "turns": r.turns,
-            "token_count": r.token_count,
-            "duration": r.duration_seconds,
-            "tool_count": len(r.tool_calls),
-            "error": r.error,
-            "final_text_preview": r.final_text[:500],
-        }
-
-    print(json.dumps(results, indent=2))
-    if args.output:
-        with open(args.output, "w") as f:
-            json.dump(results, f, indent=2)

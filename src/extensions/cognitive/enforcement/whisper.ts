@@ -11,15 +11,20 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { getExtensionState } from "../../../lib/extension-state.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { trackInjection } from "../../../lib/injection-tracker.js";
 
 interface WhisperState {
-	pendingWhisper: string | null;
-	pendingBlockAction: { toolName: string; reason: string } | null;
+  pendingWhisper: string | null;
+  pendingBlockAction: { toolName: string; reason: string } | null;
 }
 
 function getWhisperState(ctx?: ExtensionContext): WhisperState {
-	if (ctx) return getExtensionState(ctx, "enforcement-whisper", () => ({ pendingWhisper: null, pendingBlockAction: null }));
-	return _default;
+  if (ctx)
+    return getExtensionState(ctx, "enforcement-whisper", () => ({
+      pendingWhisper: null,
+      pendingBlockAction: null,
+    }));
+  return _default;
 }
 const _default: WhisperState = { pendingWhisper: null, pendingBlockAction: null };
 
@@ -29,16 +34,25 @@ const _default: WhisperState = { pendingWhisper: null, pendingBlockAction: null 
  * which only fires when user sends a message (causing whisper accumulation).
  */
 export function sendEnforcementWhisper(pi: ExtensionAPI, message: string): void {
-	// Tag all enforcement whispers as [auto] so the agent knows these are
-	// system-generated signals, not human messages.
-	pi.sendMessage(
-		{
-			customType: "enforcement",
-			content: [{ type: "text" as const, text: `[auto] ${message}` }],
-			display: true,
-		},
-		{ triggerTurn: true },
-	);
+  // Tag all enforcement whispers as [enforcement] so the agent knows these are
+  // system-generated signals, not human messages.
+  pi.sendMessage(
+    {
+      customType: "enforcement",
+      content: [{ type: "text" as const, text: `[enforcement] ${message}` }],
+      display: true,
+      details: { _braidInjected: true, _braidSource: "enforcement/whisper" },
+    },
+    { triggerTurn: true },
+  );
+  // Track injection for visibility tool
+  trackInjection({
+    type: "enforcement",
+    source: "enforcement/whisper",
+    content: `[enforcement] ${message}`,
+    display: true,
+    steer: false,
+  });
 }
 
 /**
@@ -47,13 +61,13 @@ export function sendEnforcementWhisper(pi: ExtensionAPI, message: string): void 
  * Kept for backward compatibility with block actions.
  */
 export function queueEnforcementWhisper(message: string): void {
-	// No longer append - just store single message for block actions
-	const s = getWhisperState();
-	if (s.pendingWhisper) {
-		s.pendingWhisper = `${s.pendingWhisper}\n\n${message}`;
-	} else {
-		s.pendingWhisper = message;
-	}
+  // No longer append - just store single message for block actions
+  const s = getWhisperState();
+  if (s.pendingWhisper) {
+    s.pendingWhisper = `${s.pendingWhisper}\n\n${message}`;
+  } else {
+    s.pendingWhisper = message;
+  }
 }
 
 /**
@@ -61,21 +75,21 @@ export function queueEnforcementWhisper(message: string): void {
  * will receive a whisper explaining why.
  */
 export function queueBlockAction(toolName: string, reason: string): void {
-	const s = getWhisperState();
-	s.pendingBlockAction = { toolName, reason };
-	queueEnforcementWhisper(`BLOCKED: ${reason}\n\nConsider addressing this before continuing.`);
+  const s = getWhisperState();
+  s.pendingBlockAction = { toolName, reason };
+  queueEnforcementWhisper(`BLOCKED: ${reason}\n\nConsider addressing this before continuing.`);
 }
 
 /**
  * Get the pending block action (called from index.ts event handlers).
  */
 export function getPendingBlockAction(): { toolName: string; reason: string } | null {
-	return getWhisperState().pendingBlockAction;
+  return getWhisperState().pendingBlockAction;
 }
 
 /**
  * Clear the pending block action after it's been sent.
  */
 export function clearPendingBlockAction(): void {
-	getWhisperState().pendingBlockAction = null;
+  getWhisperState().pendingBlockAction = null;
 }

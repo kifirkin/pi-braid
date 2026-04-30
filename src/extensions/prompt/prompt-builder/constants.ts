@@ -57,14 +57,14 @@ For file operations, \`edit\` and \`write\` are the default. Bash is for shell o
 This is non-negotiable: if you find yourself reaching for \`sed -i\` or \`echo ... > file\`, stop. Use \`edit\` or \`write\` instead. They are always available and always work.`;
 
 export const ALL_PROMPT_CONSTANTS = [
-	IDENTITY_INTRO,
-	SYCOPHANCY_RESISTANCE,
-	STAKES_AWARENESS,
-	EPISTEMIC_STABILITY,
-	CONTRAST_TRUTH_FIRST,
-	CONTRAST_ANTI_SYCOPHANCY,
-	CONTRAST_KNOWLEDGE_BOUNDARY,
-	TOOL_TRUST,
-	IMPLICIT_NORMS,
-	INTERACTION_STYLE,
+  IDENTITY_INTRO,
+  SYCOPHANCY_RESISTANCE,
+  STAKES_AWARENESS,
+  EPISTEMIC_STABILITY,
+  CONTRAST_TRUTH_FIRST,
+  CONTRAST_ANTI_SYCOPHANCY,
+  CONTRAST_KNOWLEDGE_BOUNDARY,
+  TOOL_TRUST,
+  IMPLICIT_NORMS,
+  INTERACTION_STYLE,
 ];

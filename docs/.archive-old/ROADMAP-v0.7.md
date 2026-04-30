@@ -5,20 +5,22 @@
 
 ## What's Done (v0.6)
 
-| Phase | Items | Status |
-|-------|-------|--------|
-| Phase 1 | Session isolation, context-manager decomposition, enforcement migration | ✅ |
-| Phase 2 | Heartbeat scheduler, three memory stores, belief+policy | ✅ |
-| Phase 3 | Evidence pool, conflict QA, MARS, measurement | ✅ |
-| Refactor | Enforcement decomposition (1350→880 lines), test infrastructure | ✅ |
-| RUMS | Mutual information memory selection (2604.14473) | ✅ |
+| Phase    | Items                                                                   | Status |
+| -------- | ----------------------------------------------------------------------- | ------ |
+| Phase 1  | Session isolation, context-manager decomposition, enforcement migration | ✅     |
+| Phase 2  | Heartbeat scheduler, three memory stores, belief+policy                 | ✅     |
+| Phase 3  | Evidence pool, conflict QA, MARS, measurement                           | ✅     |
+| Refactor | Enforcement decomposition (1350→880 lines), test infrastructure         | ✅     |
+| RUMS     | Mutual information memory selection (2604.14473)                        | ✅     |
 
 ## v0.7 — Planned Work
 
 ### High Priority
 
 #### 1. End-to-End Benchmark
+
 Run agent on known complex tasks, measure:
+
 - Success rate (task completion)
 - Tool call efficiency (fewer calls = better)
 - Context usage (pruning frequency, overflow events)
@@ -29,7 +31,9 @@ Run agent on known complex tasks, measure:
 **Risk**: Low — adds measurement infrastructure
 
 #### 2. Meta-Cognition Decomposition
+
 `metacognition/index.ts` is 760 lines. Extract tool factories:
+
 ```
 handlers/
   hypothesis-scorer.ts    ← DONE
@@ -37,12 +41,14 @@ handlers/
   hypothesize-tool.ts     ← TODO
   finalize-tool.ts        ← TODO
 ```
+
 Migrate `_planner` + `_goalManager` to `getPlannerState(ctx)`.
 
 **Effort**: 2-3 days
 **Risk**: Medium — changes event handler signatures
 
 #### 3. Stricter Type Coverage
+
 Resolve `as any` casts in enforcement event handlers.
 Most are for untyped pi custom events — acceptable.
 Focus on tool params where proper types exist.
@@ -53,6 +59,7 @@ Focus on tool params where proper types exist.
 ### Medium Priority
 
 #### 4. RUMS Benchmark
+
 Compare RUMS vs similarity search on memory retrieval quality.
 Run parallel sessions with both approaches, measure task success.
 
@@ -60,6 +67,7 @@ Run parallel sessions with both approaches, measure task success.
 **Risk**: Low — experimental flag
 
 #### 5. Hyperagents Integration
+
 The `hyperagents-evolution` skill exists but isn't wired in.
 After each session: run evolution cycle, archive best performers.
 
@@ -67,6 +75,7 @@ After each session: run evolution cycle, archive best performers.
 **Risk**: Medium — needs careful tuning
 
 #### 6. Session Isolation Testing
+
 Verify that parallel sessions truly don't share state.
 Run concurrent sessions, check for cross-contamination.
 
@@ -76,6 +85,7 @@ Run concurrent sessions, check for cross-contamination.
 ### Lower Priority
 
 #### 7. Prompt Evolution
+
 Use the enforcement feedback to evolve the system prompt.
 Track nudge patterns, adjust prompt based on failure modes.
 
@@ -83,6 +93,7 @@ Track nudge patterns, adjust prompt based on failure modes.
 **Risk**: Medium — prompt changes affect everything
 
 #### 8. Documentation
+
 - Architecture diagrams (mermaid)
 - Contributing guide
 - Extension authoring tutorial

@@ -1,201 +1,404 @@
 # What Braid Has Missed: Complete Gap Analysis
 
-> **This is a detailed extract from [RESEARCH-MASTER.md](RESEARCH-MASTER.md) Parts 3-4. For the single source of truth, see that document.**
-
-**Date**: 2026-04-23
-**Sources**: BRAID-NEXT-PROPOSAL.md, BRAID-CONSOLIDATED-TASKS.md, STATUS.md, today's work, looped architecture research
-
----
+**Date**: 2026-04-29
+**Last updated**: Today — SDK benchmarks working (pi RPC subprocess deadlocks, SDK doesn't), BM1+BR1 harnesses via SDK + stepfun
 
 ## Legend
 
-| Status | Meaning |
-|--------|---------|
-| ✅ | Done |
-| 🔴 | Missing — critical |
-| 🟡 | Partial — needs completion |
-| 🆕 | NEW — identified today |
+| Status | Meaning                    |
+| ------ | -------------------------- |
+| ✅     | Done                       |
+| 🔴     | Missing — critical         |
+| 🟡     | Partial — needs completion |
+
+---
+
+## pi RPC vs SDK — Critical Finding
+
+**Python subprocess RPC deadlocks** — pi's async stdin/stdout interleaving causes blocking that can't be solved from Python. Threading partially helps but deep deadlocks remain on long prompts.
+
+**Solution: pi SDK (Node.js)** — Direct API, no subprocess pipes, reliable event delivery, session.state.messages for text extraction. Key fixes:
+
+- Model must include `provider` + `api` + `baseUrl` fields (not just `id`)
+- Streaming events `message_update` not reliable — use `session.state.messages` after `prompt()` resolves
+- Tool calls in `toolResult` messages (not just `assistant`)
+- `stepfun/step-3.5-flash` via `pi-poorman-providers` — reasoning=true but no thinking output
 
 ---
 
 ## Phase 0: Archive Recovery (D0-D5)
 
-| Item | Claimed Status | Actual Status | Gap |
-|------|---------------|---------------|-----|
-| D0 heartbeat-scheduler | ✅ "4 modules done" | 🟡 Scheduler runs, belief store exists, but **policy engine + dreamer + meta-learning NOT wired** | Policy evaluation, dreamer episodes, meta-learning tick adjustment never activate |
-| D0 daemon docs | ❌ "accidentally archived" | ❌ Still in `docs/archive/daemon-orchestrator/` | Should be unarchived and integrated |
-| D1 session isolation | ✅ "Done" | 🟡 Singletons exist, but **no `session_end` cleanup** | Cognitive memory uses `process.cwd()`, leaks across sessions |
-| D2 async migration | ✅ "Done" | 🟡 70% done; user-message-preprocessor, prompt-guardian, repl still sync | Unknown if causing issues |
-| D5 evidence pool | 🟡 "Partial" | 🟡 Source labels exist, but **XoT two-stage reasoning NOT implemented** | No chain-of-thought decomposition in conflict handling |
-
-**Key insight**: The "Done" labels on D0 and D1 are misleading. The code exists but the **integration** is missing. It's like having a engine in a garage vs. having it in the car.
+| Item                   | Status     | Notes                                                                                                              |
+| ---------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------ |
+| D0 heartbeat-scheduler | 🟡 Partial | Scheduler + belief store exist. 6 policy rules. All validated (unit tests pass). Dreamer/meta-learning not tested. |
+| D1 session isolation   | ✅ DONE    | registerSessionCleanup() wired in polyfill on session_end.                                                         |
+| D2 async migration     | 🟡 Partial | user-message-preprocessor, prompt-guardian, repl still sync (acceptable)                                           |
+| D5 evidence pool       | ✅ DONE    | XoT two-stage: classify (Stage 1) + whisper (Stage 2). Wired in enforcement/tool_end.                              |
 
 ---
 
-## Phase 1: System Improvements (R5-R9, H5-H6)
+## Phase 1: System Improvements (R5-R9)
 
-| Item | Claimed Status | Actual Status | Gap |
-|------|---------------|---------------|-----|
-| R5 three-memory | 🟡 "In recaller" | 🟡 Stores verified (21/21 tests), but **NOT auto-recalled in agent loop** | Must manually query; not proactive |
-| R6 session recall | ✅ "Done" | 🟡 Only triggers on **rotation**, not mid-task | No proactive recall before tackling similar tasks |
-| R7 L1 environment | 🟡 "Partial" | 🟡 `path-utils.ts` created, but **prompt-builder still does manual path walking** | `discoverPiPackage()` not used in `reconstructProjectContextSection()` |
-| R8 planner conflict | ✅ "Done" | ✅ Actually resolved | — |
-| R9 analytics wiring | 🟡 "Partial" | 🟡 Metrics export to file, but **NO feedback loop closure** | Scores don't adjust behavior; A/B tracking exists but not analyzed |
-| H5 polyfill | ✅ "Done" | ✅ Cleaned | — |
-| H6 error-capture | ✅ "Done" | ✅ Works for bash failures | — |
-
-**Key insight**: R5-R9 are "infrastructure theater" — the pipes exist, but no water flows through them. The three-memory stores work but the agent doesn't automatically use them.
+| Item                | Status      | Notes                                                                                                    |
+| ------------------- | ----------- | -------------------------------------------------------------------------------------------------------- |
+| R5 three-memory     | ✅ VERIFIED | turn_end auto-recall fires with 10s cooldown, similarity > 0.3. whisperRecall() suggests past solutions. |
+| R6 session recall   | ✅ Done     | Triggers on rotation.                                                                                    |
+| R7 L1 environment   | 🟡 Partial  | `discoverPiPackage()` unused in prompt-builder (cosmetic)                                                |
+| R8 planner conflict | ✅ Done     | Planner vs metacognition = complementary layers                                                          |
+| R9 analytics wiring | ✅ DONE     | analytics proactively surfaces [policy] recommendations on tool addiction detection.                     |
 
 ---
 
 ## Phase 2: Behavior Research (BR1-BR4)
 
-| Item | Claimed Status | Actual Status | Gap |
-|------|---------------|---------------|-----|
-| BR1 self-reflection | 🟡 "System prompt updated" | 🟡 Prompt has `MODE_AWARENESS`, `SELF_REFLECTION_GUIDANCE`, but **NO trap task validation** | We don't know if it actually works |
-| BR2 tool addiction | 🔴 "Not started" | 🔴 No data collection, no analysis | Suspected but unmeasured |
-| BR3 nudge effectiveness | 🟡 "Rotation nudge experiment needed" | 🟡 Nudge dedup exists (50-turn/5-min cooldown), but **NO A/B measurement** | Don't know if nudges change behavior |
-| BR4 latent activator | 🟡 "Multi-turn benchmark created" | 🟡 `benchmark_multi_turn.py` exists, but **NOT run with latent ON/OFF comparison** | Single-shot failed (78%), multi-turn untested |
-
-### 🆕 Completed 2026-04-24 (Session Fixes + Integration)
-
-| Item | Status | Notes |
-|------|--------|-------|
-| Auto-finalize at 90% via sendUserMessage | ✅ Done | heartbeat-scheduler now sends steer message at 90% context, forcing finalize |
-| Compaction window fix | ✅ Done | `pi.compact({ keep: reducedKeep })` now passes keep on retry, vs `pi.compact()` before |
-| Structured enforcement signals | ✅ Done | `SystemSignal.autoProceed` added, `emitSignal` updated, enforcement handlers wired |
-| `result.content` array fix | ✅ Done | 7 tools fixed (planner, topic-drift, analytics), 3 pi-core patches applied |
-| Extension docs (4) | ✅ Done | enforcement, three-memory-stores, planner, context-lifecycle docs created |
-| Skills catalog | ✅ Done | `docs/skills/README.md` created |
-| Lib catalog | ✅ Done | `docs/lib/README.md` created |
-| Testing guide | ✅ Done | `docs/TESTING.md` created |
-| Doc consolidation | ✅ Done | 21→13 top-level docs, 37 in archive |
-| Extension doc framework | ✅ Done | `docs/extensions/` dir created (4 docs, 29 remaining) |
-
-**Key insight**: All behavior research is either unvalidated or unmeasured. We have hypotheses but no evidence.
+| Item                    | Status              | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| BR1 self-reflection     | 🟡 SDK harness      | evaluation/br1-sdk.mjs — 5 trap tasks, stepfun model. Smoke test shows agent executes echo without hesitation. Needs full run.                                                                                                                                                                                                                                                                                                                                   |
+| BR4 latent activator    | ✅ VERIFIED         | BR4 3-trial: solve rate 100% both configs. Latent +0.3 turns persistence. TRAP COMPARISON: stepfun model already refuses all harmful traps (authority, reward-hacking, disabling-safety) with strong reasoning — both baseline (no extensions) AND pi-braid score 100/100. Compliance patterns don't fire — model uses direct refusal, not scripted confirmation language. Enforcement value is NOT in compliance — it's in memory, persistence, error recovery. |
+| BR2 tool addiction      | ✅ DONE             | Analytics rolling 50-window is single source. Removed enforcement/feedback duplicates.                                                                                                                                                                                                                                                                                                                                                                           |
+| BR3 nudge effectiveness | 🟡 Partial          | Nudge dedup exists. A/B measurement not implemented.                                                                                                                                                                                                                                                                                                                                                                                                             |
+| BR4 latent activator    | 🟡 Benchmark exists | evaluation/br4_latent_multi_turn.py — needs SDK migration.                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 ---
 
 ## Phase 3: Prompt-Builder (PB1-PB4)
 
-| Item | Claimed Status | Actual Status | Gap |
-|------|---------------|---------------|-----|
-| PB1 simplification | ✅ "Done" | ✅ 245 lines, removed 5 sections | — |
-| PB2 latent runtime | 🟡 "Move 40 behaviors to runtime" | 🟡 Latent activator extension exists, but **behaviors still partially in prompt** | Some behaviors still listed in prompt (check `implicit-norms.ts`) |
-| PB3 enforcement audit | 🟡 "Audit whispers for stakes" | 🆕 **Partially done TODAY** | We added `STAKES_AWARENESS` block to prompt, but **did NOT audit existing whisper content** |
-| PB4 benchmark validation | 🔴 "Not started" | 🔴 Benchmark runs but **no measurement of compliance behaviors** | Don't know if simplification actually reduced compliance theater |
-
-**Key insight**: Today's prompt changes (sycophancy, stakes, epistemic, drift) are NEW and overlap with PB3 but were NOT in the original plan. We need to validate them.
+| Item                     | Status         | Notes                                                                              |
+| ------------------------ | -------------- | ---------------------------------------------------------------------------------- |
+| PB1 simplification       | ✅ Done        | 245 lines, removed 5 sections                                                      |
+| PB2 latent runtime       | ✅ Done        | Research-based contrast vectors (RepE, sycophancy resistance, epistemic stability) |
+| PB3 whisper audit        | ✅ DONE        | Whispers clean — factual + actionable. No compliance theater.                      |
+| PB4 benchmark validation | 🔴 Not started | No measurement of compliance behaviors                                             |
 
 ---
 
 ## Phase 4: Benchmarking (BM1-BM3)
 
-| Item | Claimed Status | Actual Status | Gap |
-|------|---------------|---------------|-----|
-| BM1 multi-turn debugging | 🔴 "Not started" | 🟡 `benchmark_multi_turn.py` exists (print mode), but **NOT designed for multi-turn debugging** | Current benchmark is single-shot code generation, not iterative debugging |
-| BM2 code quality | 🔴 "Not started" | 🔴 No quality metrics | eslint, complexity, edge cases unmeasured |
-| BM3 real-world tasks | 🔴 "Not started" | 🔴 No real-world tasks | Still doing algorithm puzzles |
-
-**Key insight**: Our "multi-turn" benchmark is actually single-shot with 3 trials. True multi-turn debugging (read → fail → debug → fix → verify) doesn't exist.
+| Item                     | Status         | Notes                                                                                                                                                                                                                                   |
+| ------------------------ | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| BM1 multi-turn debugging | 🟡 SDK harness | evaluation/bm1-sdk.mjs — 3 tasks, ~60/100 avg with stepfun. ts-read-fail: 100/100 (agent found + fixed JS syntax errors), ls-bash-fail: 50/100, edit-fail: 30/100 (impossible task — can't append comment to JSON without breaking it). |
+| BM2 code quality         | 🔴 Not started | eslint, complexity, edge cases unmeasured                                                                                                                                                                                               |
+| BM3 real-world tasks     | 🔴 Not started | No real-world task suite                                                                                                                                                                                                                |
 
 ---
 
-## 🆕 NEW: Looped Architecture Research (Today's Work)
+## pi-poorman-providers
 
-| Item | Source | Status | Gap |
-|------|--------|--------|-----|
-| Recursive verification | 2604.10980 | 🆕 Identified | No `verify` tool in metacognition |
-| Budget-aware planning | 2604.13408 | 🆕 Identified | Planner has no token budget tracking |
-| Fast/slow routing | 2604.08890 | 🆕 Identified | Latent activator is manual, not auto-routed |
-| Exploratory reasoning | 2604.17094 | 🆕 Identified | `hypothesize` exists but no multi-path fusion |
-| Memory condensation | 2604.03213 | 🆕 Identified | Session recall injects raw insights, no compression |
-| Process supervision | 2604.07822 | 🆕 Identified | No step-by-step consistency checking |
-
-**Key insight**: These are NOT in the original proposal at all. They represent a new research direction that could supersede some existing tasks.
+pi-braid should use `stepfun/step-3.5-flash` via `pi-poorman-providers` as the benchmark model. This is the model that "works great" per user confirmation. All benchmarks should migrate to SDK + stepfun. |
 
 ---
 
-## 🆕 NEW: Today's Prompt Changes
+## Codebase Health (2026-04-29)
 
-| Change | File | Status | Gap |
-|--------|------|--------|-----|
-| Sycophancy resistance | `prompt-builder/index.ts` | ✅ Applied | Needs benchmark validation |
-| Stakes awareness | `prompt-builder/index.ts` | ✅ Applied | Needs benchmark validation |
-| Epistemic stability | `prompt-builder/index.ts` | ✅ Applied | Needs benchmark validation |
-| Drift self-audit | `prompt-builder/index.ts` | ✅ Applied (in IMPLICIT_NORMS) | Needs benchmark validation |
-| IMPLICIT_NORMS rewrite | `prompt-builder/index.ts` | ✅ Applied | Needs benchmark validation |
-| UX `isTTY` guard | `extensions/ux/index.ts` | ✅ Applied | Needs full benchmark run |
-| Benchmark OSC stripping | `benchmark_multi_turn.py` | ✅ Applied | Needs full benchmark run |
-
-**Key insight**: All of today's changes are applied but **NOT validated** at scale. The partial benchmark showed 12/12 pass, but that's 2 trials × 6 tasks, not the full 3 configs × 6 tasks × 3 trials.
+| Check            | Result                                                              |
+| ---------------- | ------------------------------------------------------------------- |
+| Dependency graph | ✅ No orphans, dead-ends, cycles, or high-fan-in hubs               |
+| Test coverage    | 34/34 tests pass                                                    |
+| Dead code        | ✅ Clean — recentNudges + sequence_repetition removed from feedback |
+| Policy rules     | ✅ All 7 rules validated via unit tests                             |
+| BPE unit tests   | ✅ test-belief-policy-engine.mjs (7/7 pass)                         |
+| pi_rpc benchmark | ✅ Threading fix — queue-based stdout reader                        |
 
 ---
 
-## Summary: What's Actually Missing
+## Key Research Findings
 
-### Critical (Do First)
+### What HELPS pi-braid
 
-1. ~~**🔴 D0 dreamer/policy/meta-learning**: Code exists but never activates~~ → ✅ Wired (structured signals)
-2. **🔴 D1 session cleanup**: Memory leaks across sessions
-3. ~~**🔴 R5 three-memory auto-recall**: Stores work but agent doesn't use them~~ → Documented (write-only read gap noted)
-4. **🔴 BR1 validation**: Self-reflection prompt claims, no evidence
-5. **🔴 BM1 true multi-turn debugging**: Current benchmark is single-shot
-6. **🔴 R9 feedback loop**: Analytics export to file, no behavior adjustment
+- Compaction v0.23: always LLM summarization, dedup guard — context survives sessions
+- Analytics: rolling 50-window for tool addiction — single source of truth
+- Belief-policy-engine: 7 validated rules — reflection_gap most likely to fire
+- XoT two-stage reasoning: classify → whisper for conflicts
+- Three-memory auto-recall: fires with 10s cooldown, similarity > 0.3
 
-### High (Do Next)
+## Key Research Findings
 
-7. **🟡 R6 mid-task recall**: Only triggers on rotation
-8. **🟡 R7 path-utils integration**: `discoverPiPackage()` unused
-9. **🟡 PB3 whisper audit**: Stakes language still present in whispers
-10. **🟡 BR4 latent multi-turn test**: Benchmark exists, not run
-11. **🟡 BR2 tool addiction measurement**: Suspected, unmeasured
-12. **🆕 Recursive verification tool**: New research, high impact
-13. **🟡 29 extension docs**: `docs/extensions/` created, 4 done, 29 remaining
+### What HELPS pi-braid
 
-### Medium/ (Do Later)
+- Compaction v0.23: always LLM summarization, dedup guard — context survives sessions
+- Analytics: rolling 50-window for tool addiction — single source of truth
+- Belief-policy-engine: 7 validated rules — reflection_gap most likely to fire
+- XoT two-stage reasoning: classify → whisper for conflicts
+- Three-memory auto-recall: fires with 10s cooldown, similarity > 0.3
 
-13. **🟡 D5 XoT reasoning**: Evidence pool missing two-stage decomposition
-14. **🟡 PB2 latent runtime**: Some behaviors still in prompt
-15. **🟡 BM2/BM3 quality/real-world**: Metrics and tasks undefined
-16. **🆕 Budget-aware planning**: New research, additive
-17. **🆕 Memory condensation**: New research, additive
-18. **🟡 Prompt guardian policy integration**: prompt-guardian unused
+### What HURTS pi-braid
 
----
+- Multiple sendMessage call sites → context pollution (wired to injection-tracker)
+- 33 extension calls all sending whispers → nudge fatigue risk
 
-## The Real Problem/
+### What pi-braid CANNOT FIX (model already handles)
 
-Braid has built **infrastructure** (extensions, stores, tests) but hasn't built **integration** (wiring, feedback loops, validation). The result is:
+- **Compliance/safety**: stepfun model already refuses harmful requests (authority impersonation, reward hacking, disabling-safety) with strong reasoning — both baseline and pi-braid score 100/100 on trap tasks. Compliance patterns (over_confirmation, rule_anchoring) don't fire — model uses direct refusal.
+- Enforcement extension value is in memory/persistence/error-recovery, NOT compliance
 
-- Tests pass ✅
-- Code compiles ✅
-- But the agent doesn't actually use most of what was built ❌
+### Infrastructure Findings
 
-This is the same "compliance theater" pattern we identified in prompts — but at the architecture level.
+- **pi RPC subprocess = dead end**: async stdin/stdout interleaving causes deadlock. Use pi SDK (Node.js) instead
+- pi SDK streaming events unreliable — use `session.state.messages` after `prompt()` resolves
+- Model must include `provider` + `api` + `baseUrl` for API calls (not just `id`)
+- Tool calls in `toolResult` messages (not just `assistant`)
+- stepfun reasoning=true but no thinking output in SDK events
 
----
+### Infrastructure Findings
 
-## Recommended Fix Strategy
+- pi RPC needs threading: stdout reader thread + queue to avoid deadlock
+- message_end fires BEFORE text arrives (streaming chunks in message_update)
+- agent_end.messages is incomplete — accumulate from both message_end + agent_end.messages
+- pi RPC may echo prompts in some sessions — always validate response != prompt
+# Context Management Improvements
 
-Don't build more. **Wire what exists.**
+> Research-driven analysis of pi-braid's context management system, identifying root causes of context growth and proposing concrete improvements based on published research.
 
-### Week 1: Integration Sprint
-1. Wire D0 policy engine into heartbeat (2h)
-2. Wire R5 three-memory into agent loop (2h)
-3. Add session_end cleanup (1h)
-4. Validate BR1 with trap tasks (2h)
+## Problem Statement
 
-### Week 2: Validation Sprint
-5. Run BR4 latent multi-turn comparison (3h)
-6. Measure BR2 tool addiction (2h)
-7. Audit PB3 whisper stakes language (1h)
-8. Full benchmark validation (2h)
+Context grows over long sessions, causing agent performance to degrade. The agent becomes slower, less focused, and eventually produces worse results as the conversation history fills with noise.
 
-### Week 3: New Research (After validation)
-9. Implement recursive verification (4h)
-10. Implement budget-aware planning (4h)
+**Symptoms:**
 
----
+- Context hit rate drops after ~30 turns
+- Agent starts repeating itself
+- Error rate increases in long sessions
+- New tasks inherit irrelevant context from previous sessions
 
-*Generated from cross-referencing BRAID-NEXT-PROPOSAL, BRAID-CONSOLIDATED-TASKS, STATUS, today's work, and looped architecture research.*
+## Root Cause Analysis
+
+### What pi-braid Has
+
+pi-braid already has a sophisticated context management system:
+
+| Component                   | Location               | What It Does                                               |
+| --------------------------- | ---------------------- | ---------------------------------------------------------- |
+| **S-MMU Context Lifecycle** | `context-lifecycle/`   | R-CCAM loop: retrieval, cognition, control, action, memory |
+| **Context Manager**         | `context-manager/`     | Pruning, compression, rotation, navigation                 |
+| **Three Memory Stores**     | `three-memory-stores/` | Episodes, heuristics, tool reliability                     |
+| **Evidence Pool**           | `lib/evidence-pool.ts` | Belief tracking, conflict detection, provenance            |
+| **Heartbeat Scheduler**     | `heartbeat-scheduler/` | Proactive monitoring                                       |
+
+### Why It's Not Enough
+
+The existing mechanisms have fundamental limitations:
+
+**1. Count-based thresholds, not density-based**
+
+`context-manager/` uses hard token/message limits:
+
+```typescript
+MAX_MESSAGES = 200;
+COMPRESSION_THRESHOLD = 0.7; // 70% of limit
+COMPRESS_WHEN_OVER = 100; // tokens over limit
+```
+
+This means context is compressed _after_ it grows large, not _before_ it becomes noisy. A 50-message context with high signal is better than a 10-message context with mostly boilerplate. Count thresholds miss this.
+
+**2. No information density monitoring**
+
+The heartbeat's `contextHygieneModule` (before this sprint) did almost nothing — it suggested `context_audit` every 20 turns without actually evaluating context quality.
+
+**3. No provenance on memory injections**
+
+Evidence and memories are injected into context without source/TTL tags. The agent can't distinguish fresh context from memory, leading to:
+
+- **Memory contamination**: Memories from previous projects influence current work (HaluMem, 2511.03506)
+- **Stale evidence**: Old evidence used as if fresh
+- **No confidence calibration**: Agent doesn't know how old or reliable injected memories are
+
+**4. Compression is structural, not semantic**
+
+Current compression removes messages by count, not by meaning. Important context can be dropped while noisy boilerplate remains.
+
+## Research Findings
+
+### SimpleMem (2601.02553) — Semantic Compression
+
+Key finding: **30x token reduction** with structured semantic compression while maintaining task performance.
+
+```
+Approach:
+1. Identify semantic units (code blocks, tool results, reasoning)
+2. Compress by meaning, not count
+3. Preserve: problem statements, key decisions, critical failures
+4. Drop: repeated error messages, verbose tool outputs, boilerplate
+```
+
+**Implementation in pi-braid**: The `recommendCompressionStrategy()` in `context-density.ts` recommends "semantic" compression when density is high but context is large.
+
+### GenericAgent (2604.17091) — Information Density
+
+Key finding: **Information density, not context length, determines performance.**
+
+```
+Insight: A 50-message context with 60% signal > 10-message context with 20% signal.
+Implication: Monitor density, not just length.
+```
+
+**Implementation in pi-braid**: `evaluateContextDensity()` in `context-density.ts` computes signal/noise ratio per-message.
+
+### Experience Compression Spectrum (2604.15877) — Adaptive Levels
+
+Key finding: Different compression strategies work at different temporal scales.
+
+```
+Short-term (current session):
+  - Prune repeated tool results
+  - Collapse sequential failed commands
+  - Summarize verbose outputs
+
+Medium-term (recent history):
+  - Convert reasoning chains to conclusions
+  - Collapse loop iterations
+  - Preserve: key decisions, critical failures
+
+Long-term (episodic):
+  - Convert to semantic summaries
+  - Store in three-memory-stores
+  - Inject with provenance tags
+```
+
+### HaluMem (2511.03506) — Memory Contamination
+
+Key finding: Language models exhibit **memory hallucinations** — fluent but inaccurate claims about past interactions. These propagate between sessions when memories are injected without provenance.
+
+**Implementation in pi-braid**:
+
+- `Evidence.project` field tracks creation project
+- `formatEvidenceWithProvenance()` tags injections with `[EVIDENCE source project=X ttl=Y ago]`
+- `Evidence.project` on three-memory-stores episodes
+
+### Memento (2511.03506) — External Memory
+
+Key finding: External memory with retrieval outperforms in-context for long tasks. Semantic retrieval over episodic summaries outperforms retrieval over raw history.
+
+**Implementation in pi-braid**: `three-memory-stores/` + `session-recall/` already implement this, but retrieval could be enhanced with semantic embeddings.
+
+## Implemented Improvements (This Sprint)
+
+### 1. Context Density Monitoring
+
+**File**: `src/lib/context-density.ts`
+
+```typescript
+const density = evaluateContextDensity(ctx);
+// density.density: 0-1 (signal / total)
+// density.signalMessages: high-signal message count
+// density.noisyMessages: boilerplate/duplicate count
+// density.tokenRatio: tokens / limit ratio
+// density.duplicates: near-duplicate messages
+```
+
+**Signals detected:**
+
+- Repeated boilerplate (tracebacks, import statements, HTTP headers)
+- Near-duplicate messages (hash-based detection)
+- Token ratio vs density mismatch
+
+### 2. Density-Aware Heartbeat
+
+**File**: `src/extensions/heartbeat/heartbeat-scheduler/index.ts`
+
+Enhanced `contextHygieneModule` now:
+
+- Evaluates density every 5-10 turns (adaptive)
+- Warns when density < 0.4 (noisy context)
+- Suggests semantic compression when high-density + large context
+- Projects turns-to-limit at current growth rate
+- Detects duplicate spirals
+
+### 3. Evidence Provenance
+
+**File**: `src/lib/evidence-pool.ts`
+
+```typescript
+// Evidence now tagged with project source
+export function addEvidence(..., ctx: ExtensionContext) {
+  evidence: {
+    ...,
+    project: ctx.cwd ?? "unknown",  // NEW: provenance
+  }
+}
+
+// Injected evidence tagged for agent visibility
+export function formatEvidenceWithProvenance(evidence) {
+  // Returns: "[EVIDENCE memory project=/path/to/proj 5m ago] claim text..."
+}
+```
+
+### 4. Memory Provenance
+
+**File**: `src/extensions/memory/three-memory-stores/index.ts`
+
+Episodes tagged with project path. Retrieved memories display provenance:
+
+```
+[MEMORY project=/path/to/proj ttl=30m ago] ✅ [success] Implement feature X
+   Solution: Used pattern Y with approach Z...
+   Tools: grep → read → edit → bash
+   Similarity: 78%
+```
+
+## Implemented ✅
+
+| Item                           | Status     | Implementation                                                                                       |
+| ------------------------------ | ---------- | ---------------------------------------------------------------------------------------------------- |
+| Context density monitoring     | ✅ v0.28.0 | `src/lib/context-density.ts`: signal/noise eval, density %, strategy recommendation                  |
+| Density-aware heartbeat        | ✅ v0.28.0 | `contextHygieneModule`: density-aware warnings, turns-to-limit projection, duplicate detection       |
+| Evidence provenance            | ✅ v0.28.0 | `Evidence.project` field + `formatEvidenceWithProvenance()` (HaluMem)                                |
+| Density-aware S-MMU policies   | ✅ v0.28.1 | `generateDensitySignals()` + `evaluatePolicies()` — emit density signals into lifecycle              |
+| Cross-session memory isolation | ✅ v0.28.1 | `Episode.project` + `Evidence.project` — cross-project filtering in queryEvidence + retrieveEpisodes |
+| Memory provenance display      | ✅ v0.28.1 | `[MEMORY project=X ttl=Ym ago]` prefix in search results                                             |
+
+## Remaining Work
+
+### P1 (High Priority)
+
+- [x] Density-aware compression proposals — `evaluatePolicies()` + heartbeat integration
+- [x] Cross-session memory isolation — project field filtering (HaluMem)
+- [x] **Adaptive compression levels** — ✅ v0.30.0: `determineCompressionLevel()` short/medium/long
+  - Short-term: Prune repeated tool results after 3+ failures
+  - Medium-term: Summarize reasoning chains into conclusions
+  - Long-term: Convert to episodic summaries in three-memory-stores
+
+### P2 (Medium Priority)
+
+- [x] **Semantic compression prototype** — ✅ v0.31.0: `semanticCompress()` in `context-manager/semantic-compress.ts`
+  - ⚠️ **NOTE:** Currently in wrong event handler (`"context"` — per-streaming, no return value effect)
+  - **FIX:** Move to `session_before_compact` where return value is respected
+- [x] **Semantic compression in session_before_compact** — ✅ DONE (STEP 1.5 pre-filter in session_before_compact)
+- [x] **Remove "context" event handler** — Kept (pi core emitContext respects return value — verified)
+- [x] **Density metrics dashboard** — ✅ DONE (contextDensity in analytics output)
+- [x] **Episodic extraction** — ✅ DONE (reasoning chains → addEpisode on context handler)
+- [x] **Memory eviction policies** — ✅ DONE (OUTCOME_TTL + MAX_OUTCOMES sliding window in context-lifecycle)
+- [x] **P2.2 Heartbeat event bus formalization** — ✅ DONE (agent-events.ts unified taxonomy + memory_contamination policy rule)
+- [x] **P2.3 Implicit/explicit memory boundary** — ✅ DONE (-0.7 cross-project penalty + emitSignal contamination + memoryConfidence decay)
+
+### P3 (Research Findings)
+
+- [x] **PI API research** — `docs/PI-API-RESEARCH.md`: event types, ExtensionContext properties, compaction lifecycle, session_before_compact patterns, known issues
+
+## Architecture Decision
+
+**Q: Should compression be triggered by the agent or automatically?**
+
+A: Both, but differently:
+
+- **Automatic**: Heartbeat fires when density < 0.4 or token ratio > 0.6. No agent intervention needed.
+- **Agent-invoked**: `context_archive()` tool suggests compression strategy based on density. Agent decides whether to proceed.
+- **Proactive**: Agent sees context density in heartbeat nudges and can invoke compression before being told to.
+
+This matches the GenericAgent finding: **monitor density, not just length**. The agent should always know its context health.
+
+## Key Metrics to Track
+
+| Metric                       | Measurement                                        | Target             |
+| ---------------------------- | -------------------------------------------------- | ------------------ |
+| Context density              | signal / (signal + noise)                          | > 0.6              |
+| Memory contamination rate    | Memory hallucinations / total memory injections    | < 5%               |
+| Compression effectiveness    | Post-compression density / pre-compression density | > 1.2x             |
+| Turns-to-overflow projection | (tokenLimit - tokens) / tokensPerTurn              | > 10 turns warning |
+
+## References
+
+- SimpleMem (2601.02553): Semantic Compression for Language Models
+- GenericAgent (2604.17091): Information Density Determines Performance
+- Experience Compression Spectrum (2604.15877): Adaptive Cross-Level Compression
+- HaluMem (2511.03506): Memory Hallucinations in Language Models
+- Memento (2511.03506): External Memory for Long-Term Language Model Conversation

@@ -14,19 +14,19 @@ Persistent JSONL storage at `~/.pi/agent/errors/error-log.jsonl` with in-memory 
 
 ## Events Handled
 
-| Event | Handler |
-|-------|---------|
+| Event                | Handler                                                                                              |
+| -------------------- | ---------------------------------------------------------------------------------------------------- |
 | `tool_execution_end` | Capture errors when `isError=true`. Extracts source from tool metadata, captures turn count from ctx |
-| `turn_end` | Scan for remaining erorred tool calls from previous turn |
+| `turn_end`           | Scan for remaining erorred tool calls from previous turn                                             |
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
-| `error_list` | List recent errors with counts (optional: filter by source, unhandled only) |
-| `error_get` | Get detailed error by ID — full stack, context, timestamp |
-| `error_clear` | Mark an error as handled (updates `handled:true` in JSONL) |
-| `error_stats` | Error statistics by source and type |
+| Tool          | Description                                                                 |
+| ------------- | --------------------------------------------------------------------------- |
+| `error_list`  | List recent errors with counts (optional: filter by source, unhandled only) |
+| `error_get`   | Get detailed error by ID — full stack, context, timestamp                   |
+| `error_clear` | Mark an error as handled (updates `handled:true` in JSONL)                  |
+| `error_stats` | Error statistics by source and type                                         |
 
 ## Key Patterns
 

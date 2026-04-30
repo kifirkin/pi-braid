@@ -11,15 +11,16 @@ Extension health monitoring — tracks tool success rates per extension, detects
 ## Architecture
 
 Passive monitoring — observes tool execution events and tracks per-extension success/failure counts. No active probing. Degradation thresholds:
+
 - Error spike: >3 consecutive errors from same extension
 - Total failure: 100% failure rate over last 5 calls
 
 ## Events Handled
 
-| Event | Handler |
-|-------|---------|
+| Event                | Handler                                                    |
+| -------------------- | ---------------------------------------------------------- |
 | `tool_execution_end` | Track per-tool success/failure, update per-extension stats |
-| `turn_end` | Check for degraded extensions, emit warnings |
+| `turn_end`           | Check for degraded extensions, emit warnings               |
 
 ## Key Patterns
 

@@ -10,17 +10,17 @@ Reasoning quality metrics — measures entropy, verbosity, recovery, and consist
 
 ## Metrics Tracked
 
-| Metric | Description |
-|--------|-------------|
-| Entropy | Token distribution spread — low entropy = repetitive/templated reasoning |
-| Overlap | Token-overlap between consecutive reasoning blocks — high overlap = stalled |
-| Verbosity | Token count per reasoning block — detects bloated output |
-| Recovery | Speed of recovery after tool errors — turns between error and recovery signal |
+| Metric    | Description                                                                   |
+| --------- | ----------------------------------------------------------------------------- |
+| Entropy   | Token distribution spread — low entropy = repetitive/templated reasoning      |
+| Overlap   | Token-overlap between consecutive reasoning blocks — high overlap = stalled   |
+| Verbosity | Token count per reasoning block — detects bloated output                      |
+| Recovery  | Speed of recovery after tool errors — turns between error and recovery signal |
 
 ## Events Handled
 
-| Event | Handler |
-|-------|---------|
+| Event         | Handler                                                                           |
+| ------------- | --------------------------------------------------------------------------------- |
 | `message_end` | Sample agent reasoning (hidden CoT tokens) to compute entropy, overlap, verbosity |
 
 ## Key Patterns

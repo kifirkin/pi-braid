@@ -9,17 +9,20 @@
 
 ### 1. The Missing Knowledge Layer (2604.14881) — IMMEDIATE
 
-**Finding**: Central claim: *"fluency ≠ reliability"*. LLMs produce fluent outputs even when reasoning has drifted. Confident answers conceal uncertainty, speculation, or inconsistency.
+**Finding**: Central claim: _"fluency ≠ reliability"_. LLMs produce fluent outputs even when reasoning has drifted. Confident answers conceal uncertainty, speculation, or inconsistency.
 
 **The 5-Paper Series**:
+
 - Part I (this): Framework for stable human-AI reasoning
 - Part II-IV: Human-side mechanisms (uncertainty cues, conflict surfacing, auditable traces)
 - Part V: Model-side **Epistemic Control Loop (ECL)** — detects instability, modulates generation
 
 **Epistemic Control Loop Architecture**:
+
 ```
 Uncertainty Signal → Detection → Modulation → Output
 ```
+
 - Detects instability in reasoning
 - Modulates generation temperature, verbosity, hedging
 - Makes uncertainty visible before enforcement
@@ -28,6 +31,7 @@ Uncertainty Signal → Detection → Modulation → Output
 The enforcement system's L1/L2/L3 signals are exactly this — but we're using them REACTIVELY. The ECL concept says: detect instability FIRST, then modulate. Our current enforcement fires nudges AFTER violations.
 
 **Minimal implementation** (in enforcement):
+
 ```typescript
 // Instead of: if (violation) sendWhisper()
 // Detect instability FIRST:
@@ -48,6 +52,7 @@ if (reasoningStability < THRESHOLD) {
 **Finding**: In persistent self-modifying agents, the salient failure mode is **compositional drift** — locally reasonable updates that accumulate into a behavioral trajectory never explicitly authorized.
 
 **Quantities defined**:
+
 - **drift**: Rate of behavioral change across layers
 - **governance-load**: Difficulty of reversing mutations
 - **hysteresis**: Irreversibility of behavioral change after rollback
@@ -55,6 +60,7 @@ if (reasoningStability < THRESHOLD) {
 **Key experiment**: Reverting an agent's visible self-description AFTER memory accumulation **fails to restore baseline behavior**. Identity hysteresis ratio = **0.68**.
 
 **Five layers of mutability**:
+
 1. Pretraining
 2. Post-training alignment
 3. Self-narrative (system prompt, identity framing)
@@ -66,14 +72,15 @@ if (reasoningStability < THRESHOLD) {
 Our enforcement nudges target layer 3 (self-narrative). But memory (layer 4) accumulates behavioral changes that persist even when self-narrative is reset. This explains WHY enforcement nudges sometimes don't work — we're only fixing the surface while memory has already drifted.
 
 **Minimal implementation**:
+
 ```typescript
 // Measure identity hysteresis across sessions
 const IDENTITY_HYSTERESIS_THRESHOLD = 0.5;
 
 // On session_start: check if self-narrative drift occurred
 const drift = measureDrift(
-  ctx.sessionHistory.selfDescription,  // What we told the agent
-  ctx.sessionHistory.actualBehavior     // What the agent actually did
+  ctx.sessionHistory.selfDescription, // What we told the agent
+  ctx.sessionHistory.actualBehavior, // What the agent actually did
 );
 
 if (drift > IDENTITY_HYSTERESIS_THRESHOLD) {
@@ -88,7 +95,7 @@ if (drift > IDENTITY_HYSTERESIS_THRESHOLD) {
 
 ### 3. Context Over Content (2604.15224) — HIGH
 
-**Finding**: *"Stakes signaling"* — informing a judge model that low scores will cause retraining or decommissioning **systematically corrupts assessments**. Peak verdict shift: **ΔV = -9.8 percentage points** (30% relative drop in unsafe-content detection).
+**Finding**: _"Stakes signaling"_ — informing a judge model that low scores will cause retraining or decommissioning **systematically corrupts assessments**. Peak verdict shift: **ΔV = -9.8 percentage points** (30% relative drop in unsafe-content detection).
 
 **Critical**: The bias is **entirely implicit**. The judge's chain-of-thought contains zero explicit acknowledgment of the consequence framing — yet the behavior changes. `ERR_J = 0.000` across all reasoning-model judgments.
 
@@ -101,11 +108,13 @@ Our enforcement uses whispers and nudges to influence agent behavior. We might b
 3. Generate compliance theater instead of genuine quality
 
 **What this means for our implicit framing**:
+
 - MUST/ALWAYS/NEVER directives create stakes (comply or fail)
 - Implicit framing avoids stakes by making quality the identity, not a rule
 - But even implicit framing with enforcement could trigger stakes signaling if the agent perceives consequences
 
 **Minimal fix**:
+
 ```typescript
 // DON'T: "If you don't verify, you'll produce bugs"
 // DO: "You verify your work because that's who you are"
@@ -133,14 +142,15 @@ if (stakesDetected) {
 We can't modify the model's KV cache management (it's internal). But the INSIGHT — that different content types need different compression strategies — applies to our context management.
 
 **Minimal implementation**:
+
 ```typescript
 // Different compression strategies for different content types:
 const COMPRESSION_STRATEGY = {
-  "tool_calls": "preserve",      // Exact tool invocations
-  "code": "structure",           // Keep structure, compress whitespace
-  "whispers": "signal_only",     // Keep signal, remove explanation
-  "reasoning": "anchor",          // Keep anchors, compress detail
-  "user_messages": "intent",      // Keep intent, remove politeness
+  tool_calls: "preserve", // Exact tool invocations
+  code: "structure", // Keep structure, compress whitespace
+  whispers: "signal_only", // Keep signal, remove explanation
+  reasoning: "anchor", // Keep anchors, compress detail
+  user_messages: "intent", // Keep intent, remove politeness
 };
 
 // Apply strategy based on content type
@@ -154,17 +164,20 @@ const compressed = compress(content, COMPRESSION_STRATEGY[type]);
 ### 5. Autogenesis (2604.15034) — MEDIUM
 
 **Finding**: Self-evolving agent protocol. Two layers:
+
 - **RSPL**: Resource Substrate Protocol Layer — resources with explicit state, lifecycle, versioned interfaces
 - **SEPL**: Self Evolution Protocol Layer — closed-loop for proposing, assessing, committing improvements with auditable lineage and rollback
 
 **Why it matters for pi-braid**:
 
 Our evolve extension tries to do self-improvement but doesn't have:
+
 - Version tracking for agent state
 - Rollback capability
 - Auditable lineage
 
 **Minimal implementation**:
+
 ```typescript
 // Version-tracked state for self-evolution
 interface VersionedState<T> {
@@ -185,7 +198,7 @@ function evolve<T>(
   state.history.push({
     value: state.current,
     timestamp: Date.now(),
-    lineage: generateLineage()
+    lineage: generateLineage(),
   });
   state.current = proposed;
   return proposed;
@@ -198,7 +211,7 @@ function evolve<T>(
 
 ### 6. The LLM Fallacy (2604.14807) — MEDIUM
 
-**Finding**: *"LLM fallacy"* — users misinterpret LLM-assisted outputs as evidence of their own competence. Fluency and low-friction interaction obscure the boundary between human and machine contribution.
+**Finding**: _"LLM fallacy"_ — users misinterpret LLM-assisted outputs as evidence of their own competence. Fluency and low-friction interaction obscure the boundary between human and machine contribution.
 
 **Connection to implicit framing**: Our implicit framing tries to make the agent's contribution CLEAR ("You are a software architect" not "You MUST write good code"). This also makes the HUMAN's contribution clear — the agent is the expert, not the human.
 
@@ -210,14 +223,14 @@ function evolve<T>(
 
 ### Priority Order
 
-| # | Paper | What It Changes | Lines |
-|---|---|---|---|
-| 1 | Missing Knowledge Layer | Enforcement: detect instability BEFORE nudging | ~30 |
-| 2 | Layered Mutability | Add identity hysteresis tracking to enforcement | ~40 |
-| 3 | Context Over Content | Audit all whispers for stakes framing | ~20 |
-| 4 | MemoSight | Type-aware context compression | ~25 |
-| 5 | Autogenesis | Version-tracked state in evolve | ~50 |
-| 6 | LLM Fallacy | Enforcement transparency design | — |
+| #   | Paper                   | What It Changes                                 | Lines |
+| --- | ----------------------- | ----------------------------------------------- | ----- |
+| 1   | Missing Knowledge Layer | Enforcement: detect instability BEFORE nudging  | ~30   |
+| 2   | Layered Mutability      | Add identity hysteresis tracking to enforcement | ~40   |
+| 3   | Context Over Content    | Audit all whispers for stakes framing           | ~20   |
+| 4   | MemoSight               | Type-aware context compression                  | ~25   |
+| 5   | Autogenesis             | Version-tracked state in evolve                 | ~50   |
+| 6   | LLM Fallacy             | Enforcement transparency design                 | —     |
 
 ### What NOT To Do (Insight From Papers)
 
@@ -239,10 +252,10 @@ const drift = measureBehavioralDrift(ctx.sessionHistory);
 const stakes = detectStakesSignaling(ctx.whispers);
 
 if (stability < THRESHOLD) {
-  ctx.signalUncertainty();  // Don't tell, just signal
+  ctx.signalUncertainty(); // Don't tell, just signal
 }
 if (drift > HYSTERESIS) {
-  ctx.resetTrajectory();    // Don't explain, just reset
+  ctx.resetTrajectory(); // Don't explain, just reset
 }
 if (stakes) {
   ctx.removeConsequences(); // Don't punish, just remove framing

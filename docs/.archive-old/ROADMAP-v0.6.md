@@ -30,13 +30,16 @@ These constraints govern all tasks below:
 **Depends on**: Nothing
 
 ### Problem
+
 `src/extensions/user-message-preprocessor/index.ts` line ~269 manually resolves the utility model with an ad-hoc fallback. But `src/lib/model-resolver.ts` already has `resolveUtilityModel(ctx)` with proper priority chain:
+
 1. Custom utility model (from `/utility-model` command)
 2. Default model/provider
 3. Current model
 4. Cheapest non-reasoning
 
 ### Implementation
+
 ```
 // In preprocessor processMessage():
 import { resolveUtilityModel } from "../../lib/model-resolver.js";
@@ -55,6 +58,7 @@ ctx.ui.setStatus("preprocessor", `⏳ Preprocessing with ${model.id}...`);
 Delete ~15 lines of manual fallback logic. One import, one call.
 
 ### Verification (done)
+
 - [x] Type check passes
 - [x] `thinking: "none"` + `reasoning: "none"` set in `~/.pi/agent/settings.json`
 - [x] model-resolver step 3: current model only if `!ctx.model.reasoning`
@@ -66,33 +70,34 @@ Delete ~15 lines of manual fallback logic. One import, one call.
 **Reviewer**: Research synthesis agent — `docs/ROADMAP-v0.6-review.md`
 **Verdict**: **STRUCTURALLY SOUND — 3 CRITICAL GAPS**
 
-| Gap | Status | Details |
-|-----|--------|---------|
-| Topic drift missing | ✅ Already done | `src/lib/topic-drift-detector.ts` (Jaccard + structural) |
-| Task 3 underestimated | 🔄 Will split | 3a (Source Tracking, 2h) + 3b (Conflict Detection, 3h) |
-| Research threads not referenced | ✅ Added | Research thread column per task |
-| Task 2 ctx propagation | ✅ Verified | `execute(toolCallId, params, signal, onUpdate, ctx)` |
+| Gap                             | Status          | Details                                                  |
+| ------------------------------- | --------------- | -------------------------------------------------------- |
+| Topic drift missing             | ✅ Already done | `src/lib/topic-drift-detector.ts` (Jaccard + structural) |
+| Task 3 underestimated           | 🔄 Will split   | 3a (Source Tracking, 2h) + 3b (Conflict Detection, 3h)   |
+| Research threads not referenced | ✅ Added        | Research thread column per task                          |
+| Task 2 ctx propagation          | ✅ Verified     | `execute(toolCallId, params, signal, onUpdate, ctx)`     |
 
 ### Task Completion Status
-| Task | Status | Notes |
-|------|--------|-------|
-| Task 1 | ✅ DONE | preprocessor resolveUtilityModel, thinking:none |
-| Task 7 | ✅ DONE | scoreHypothesis heuristic, 6 signals, LLM output annotated |
-| Task 4a | ✅ DONE | reflection gap nudge at 6+ tools without reflection |
-| Task 4b | ✅ DONE | thought chain tracking, orphan detection |
-| Task 4c | ✅ DONE | calibration pairs, nudge when avg error > 30% |
-| Task 2 | ✅ DONE | all high-risk modules migrated, remaining let vars are acceptable process/singletons |
-| Task 3 | ✅ DONE | evidence-pool.ts, cognitive-systems updated, enforcement integration |
-| Task 5 | ✅ DONE | test-reasoning-metrics.mjs (18 tests), thresholds calibrated |
-| Task 6 | ✅ DONE | mars-reflector.ts, adaptive trigger, tool overuse/error advice |
-| Phase 2 | ✅ DONE | heartbeat-scheduler, three-memory-stores, context-lifecycle migration |
 
-| Task | Thread | Paper | Key Insight |
-|------|--------|-------|-------------|
-| Task 2 | cognitive-control | 2604.14401 Credo | Belief-based state |
-| Task 3 | knowledge-conflicts | 2604.11209 XoT | Source tracking + faithful reasoning |
-| Task 5 | measurement | 2604.14525 Cross-Query | Threshold calibration |
-| Task 6 | cognitive-control | 2604.14178 Heartbeat | Adaptive scheduling |
+| Task    | Status  | Notes                                                                                |
+| ------- | ------- | ------------------------------------------------------------------------------------ |
+| Task 1  | ✅ DONE | preprocessor resolveUtilityModel, thinking:none                                      |
+| Task 7  | ✅ DONE | scoreHypothesis heuristic, 6 signals, LLM output annotated                           |
+| Task 4a | ✅ DONE | reflection gap nudge at 6+ tools without reflection                                  |
+| Task 4b | ✅ DONE | thought chain tracking, orphan detection                                             |
+| Task 4c | ✅ DONE | calibration pairs, nudge when avg error > 30%                                        |
+| Task 2  | ✅ DONE | all high-risk modules migrated, remaining let vars are acceptable process/singletons |
+| Task 3  | ✅ DONE | evidence-pool.ts, cognitive-systems updated, enforcement integration                 |
+| Task 5  | ✅ DONE | test-reasoning-metrics.mjs (18 tests), thresholds calibrated                         |
+| Task 6  | ✅ DONE | mars-reflector.ts, adaptive trigger, tool overuse/error advice                       |
+| Phase 2 | ✅ DONE | heartbeat-scheduler, three-memory-stores, context-lifecycle migration                |
+
+| Task   | Thread              | Paper                  | Key Insight                          |
+| ------ | ------------------- | ---------------------- | ------------------------------------ |
+| Task 2 | cognitive-control   | 2604.14401 Credo       | Belief-based state                   |
+| Task 3 | knowledge-conflicts | 2604.11209 XoT         | Source tracking + faithful reasoning |
+| Task 5 | measurement         | 2604.14525 Cross-Query | Threshold calibration                |
+| Task 6 | cognitive-control   | 2604.14178 Heartbeat   | Adaptive scheduling                  |
 
 ---
 
@@ -104,19 +109,20 @@ Delete ~15 lines of manual fallback logic. One import, one call.
 **Depends on**: Nothing
 
 ### Problem
+
 9 modules use module-level mutable state:
 
-| Module | State | Risk |
-|--------|-------|------|
-| `enforcement/state.ts` | 50+ fields | High — turn tracking, tool chains, drift detector |
-| `enforcement/index.ts` | Inline closures | Medium — event handlers reference `state` |
-| `context-manager/index.ts` | Inline state object | Medium — prune rules, BCR state |
-| `user-message-preprocessor/index.ts` | Inline state object | Low — config, counters |
-| `planner/index.ts` | Inline state object | Medium — plans array |
-| `degradation-detector.ts` | Inline state | Low — error counters |
-| `metacognitive-state.ts` | Module-level `let state` | Medium — confidence, gaps |
-| `language-hint.ts` | Module-level `let` exports | Low — current language |
-| `browser/index.ts` | `let sessionCleanup` | Low — cleanup function |
+| Module                               | State                      | Risk                                              |
+| ------------------------------------ | -------------------------- | ------------------------------------------------- |
+| `enforcement/state.ts`               | 50+ fields                 | High — turn tracking, tool chains, drift detector |
+| `enforcement/index.ts`               | Inline closures            | Medium — event handlers reference `state`         |
+| `context-manager/index.ts`           | Inline state object        | Medium — prune rules, BCR state                   |
+| `user-message-preprocessor/index.ts` | Inline state object        | Low — config, counters                            |
+| `planner/index.ts`                   | Inline state object        | Medium — plans array                              |
+| `degradation-detector.ts`            | Inline state               | Low — error counters                              |
+| `metacognitive-state.ts`             | Module-level `let state`   | Medium — confidence, gaps                         |
+| `language-hint.ts`                   | Module-level `let` exports | Low — current language                            |
+| `browser/index.ts`                   | `let sessionCleanup`       | Low — cleanup function                            |
 
 ### Implementation: ExtensionContext Attachment Pattern
 
@@ -127,10 +133,10 @@ Delete ~15 lines of manual fallback logic. One import, one call.
 const STATE_SYMBOL = Symbol.for("pi-braid:extension-state");
 
 export function getExtensionState<T>(ctx: ExtensionContext, key: string, factory: () => T): T {
-    if (!(ctx as any)[STATE_SYMBOL]) (ctx as any)[STATE_SYMBOL] = {};
-    const bucket = (ctx as any)[STATE_SYMBOL];
-    if (!bucket[key]) bucket[key] = factory();
-    return bucket[key];
+  if (!(ctx as any)[STATE_SYMBOL]) (ctx as any)[STATE_SYMBOL] = {};
+  const bucket = (ctx as any)[STATE_SYMBOL];
+  if (!bucket[key]) bucket[key] = factory();
+  return bucket[key];
 }
 ```
 
@@ -138,33 +144,37 @@ export function getExtensionState<T>(ctx: ExtensionContext, key: string, factory
 
 ```typescript
 // BEFORE (module-level global):
-export const state = { /* ... */ };
+export const state = {
+  /* ... */
+};
 
 // AFTER (session-scoped via ctx):
 import { getExtensionState } from "../../lib/extension-state.js";
 
 function getState(ctx: ExtensionContext) {
-    return getExtensionState(ctx, "enforcement", () => ({
-        config: { ...DEFAULT_CONFIG },
-        turnHistory: new Map(),
-        // ... all fields with defaults
-    }));
+  return getExtensionState(ctx, "enforcement", () => ({
+    config: { ...DEFAULT_CONFIG },
+    turnHistory: new Map(),
+    // ... all fields with defaults
+  }));
 }
 ```
 
 **Migration order** (by risk, lowest first):
+
 1. `language-hint.ts` — 2 fields, trivial
 2. `metacognitive-state.ts` — 4 fields, simple
 3. `degradation-detector.ts` — medium complexity
 4. ✅ `planner/index.ts` — plans array, migrated to getExtensionState
 5. `user-message-preprocessor/index.ts` — config + counters (acceptable as global: config is disk-persisted, queue is process-scoped)
-6. ✅ `context-manager/index.ts` — decomposed into analysis/pruning/retry, _checkoutParams + pruningState migrated to getExtensionState
+6. ✅ `context-manager/index.ts` — decomposed into analysis/pruning/retry, \_checkoutParams + pruningState migrated to getExtensionState
 7. ✅ `enforcement/state.ts` — createState() + getState(ctx) factory added, legacy `export const state` alias remains for gradual migration
 8. ⏳ `enforcement/index.ts` — 147 state refs, needs ctx threading (biggest remaining task)
 
 **Key challenge**: Enforcement's event handlers receive `ctx` from the runner. All handlers need `ctx` as first arg (they already get it from `pi.on(event, (e, ctx) => ...)`). The tools (enforcement tools) need `ctx` passed through — **confirmed**: `execute(toolCallId, params, signal, onUpdate, ctx: ExtensionContext)` gives `ctx` in tool handlers. ✅
 
 **Verification**:
+
 - All 14 existing tests still pass
 - New test: two "sessions" in same process don't share state
 - Type check passes
@@ -180,7 +190,9 @@ function getState(ctx: ExtensionContext) {
 **Source**: `docs/RESEARCH_CONFLICT_QA.md`
 
 ### Problem (from RESEARCH_CONFLICT_QA.md)
+
 When the agent consults multiple sources (memory, web, docs, code), conflicting information flows into the response unchecked. The agent may:
+
 1. Cite source A saying "X is true" then source B saying "X is false" — without flagging the conflict
 2. Pick the most recent source by default (recency bias)
 3. Never acknowledge uncertainty when sources disagree
@@ -206,43 +218,44 @@ When the agent consults multiple sources (memory, web, docs, code), conflicting 
 
 ```typescript
 interface Evidence {
-    claim: string;          // Normalized claim text
-    source: string;         // "memory", "web", "code", "docs"
-    content: string;        // Original content
-    confidence: number;     // 0-1
-    timestamp: number;
+  claim: string; // Normalized claim text
+  source: string; // "memory", "web", "code", "docs"
+  content: string; // Original content
+  confidence: number; // 0-1
+  timestamp: number;
 }
 
 interface Conflict {
-    claim: string;
-    for: Evidence[];        // Evidence supporting
-    against: Evidence[];    // Evidence contradicting
-    verdict: "unresolved" | "resolved_for" | "resolved_against" | "uncertain";
-    resolvedBy?: string;    // How it was resolved
+  claim: string;
+  for: Evidence[]; // Evidence supporting
+  against: Evidence[]; // Evidence contradicting
+  verdict: "unresolved" | "resolved_for" | "resolved_against" | "uncertain";
+  resolvedBy?: string; // How it was resolved
 }
 
 class EvidencePool {
-    private entries: Evidence[] = [];
-    private conflicts: Conflict[] = [];
+  private entries: Evidence[] = [];
+  private conflicts: Conflict[] = [];
 
-    addEvidence(claim: string, source: string, content: string, confidence: number): void;
-    detectConflicts(): Conflict[];  // Compare claim embeddings (simple: token overlap)
-    resolveConflict(claim: string, verdict: string, reason: string): void;
-    getConflictingClaims(): Conflict[];
-    getUnresolvedConflicts(): Conflict[];
+  addEvidence(claim: string, source: string, content: string, confidence: number): void;
+  detectConflicts(): Conflict[]; // Compare claim embeddings (simple: token overlap)
+  resolveConflict(claim: string, verdict: string, reason: string): void;
+  getConflictingClaims(): Conflict[];
+  getUnresolvedConflicts(): Conflict[];
 }
 ```
 
 ### Integration Points
 
 1. **Memory recall** (`src/extensions/memory/index.ts`): When `memory_recall` returns results, add to EvidencePool
-2. **Web search** (`src/extensions/web-search/index.ts`): When web results come back, add to EvidencePool  
+2. **Web search** (`src/extensions/web-search/index.ts`): When web results come back, add to EvidencePool
 3. **Code reading** (`src/extensions/docs/index.ts`): When docs are read, add to EvidencePool
 4. **Enforcement `message_end`**: Check for unresolved conflicts → whisper
 
 ### Conflict Detection Algorithm
 
 Simple token-overlap comparison:
+
 ```
 1. Normalize claims: lowercase, remove stop words, stem
 2. For each pair of evidences with same normalized claim:
@@ -256,18 +269,21 @@ No LLM needed for detection. Resolution can use LLM (optional, via enforcement j
 ### The `signalAcknowledgedConflict()` Pattern
 
 From RESEARCH_CONFLICT_QA.md:
+
 ```typescript
 // In enforcement message_end handler:
 const conflicts = evidencePool.getUnresolvedConflicts();
 if (conflicts.length > 0) {
-    sendEnforcementWhisper(pi, 
-        `[conflict] ${conflicts.length} unresolved knowledge conflicts detected. ` +
-        `Consider acknowledging uncertainty: "Sources disagree on X. I'll go with Y because Z."`
-    );
+  sendEnforcementWhisper(
+    pi,
+    `[conflict] ${conflicts.length} unresolved knowledge conflicts detected. ` +
+      `Consider acknowledging uncertainty: "Sources disagree on X. I'll go with Y because Z."`,
+  );
 }
 ```
 
 ### Verification
+
 - Unit tests: conflicting evidence → conflict detected
 - Unit tests: resolve conflict → verdict stored
 - Integration: memory + web disagreeing → enforcement whisper
@@ -284,7 +300,9 @@ if (conflicts.length > 0) {
 **Source**: `docs/TOOL_IMPROVEMENTS_PROPOSAL.md`
 
 ### Current State
+
 Think tool already has:
+
 - `depth`: "quick" | "deep" ✅
 - `confidence`: 0-1 ✅
 - `type`: "insight" | "question" | "assumption" | "conclusion" | "hypothesis" | "plan" | "quick" ✅
@@ -295,33 +313,40 @@ Think tool already has:
 ### What's Missing
 
 #### 4a: Structured Thought Types
+
 Add explicit execution tracking types:
+
 ```typescript
-type ThoughtType = 
-    | "plan"        // Strategic decomposition
-    | "execution"   // Implementation progress
-    | "reflection"  // Post-action assessment
-    // existing types...
+type ThoughtType =
+  | "plan" // Strategic decomposition
+  | "execution" // Implementation progress
+  | "reflection"; // Post-action assessment
+// existing types...
 ```
 
 Already exists in schema. Need to add **enforcement nudges** when:
+
 - Long execution chains without reflection (>5 tools without a "reflection" thought)
 - Plans without subsequent execution thoughts
 - Missing reflection after failed tool calls
 
 #### 4b: Thought Chain Visualization
+
 Threaded reasoning chains (via `parent_id`) need a way to surface them:
+
 ```typescript
 // In enforcement turn_end:
-const chains = getThoughtChains();  // Group thoughts by parent_id chains
-const orphanChains = chains.filter(c => c.length > 1 && !c.last().conclusion);
+const chains = getThoughtChains(); // Group thoughts by parent_id chains
+const orphanChains = chains.filter((c) => c.length > 1 && !c.last().conclusion);
 if (orphanChains.length > 0) {
-    sendEnforcementWhisper(pi, `[chains] ${orphanChains.length} open reasoning chains`);
+  sendEnforcementWhisper(pi, `[chains] ${orphanChains.length} open reasoning chains`);
 }
 ```
 
 #### 4c: Confidence Calibration
+
 Track confidence predictions vs actual outcomes:
+
 ```typescript
 // When tool succeeds after think(confidence: 0.9):
 calibration.record(0.9, true);
@@ -329,12 +354,14 @@ calibration.record(0.9, true);
 ```
 
 ### Implementation Steps
+
 1. Add enforcement nudge for "execution without reflection" (5 lines in enforcement)
 2. Add thought chain tracking to metacognitive-state (20 lines)
 3. Add calibration tracking to metacognitive-state (15 lines)
 4. Update think tool result to show calibration hint when confidence is misaligned
 
 ### Verification
+
 - Type check passes
 - Test: 6+ tool calls without reflection → nudge fires
 - Test: thought chain with 3+ nodes → tracked correctly
@@ -349,9 +376,11 @@ calibration.record(0.9, true);
 **Depends on**: Nothing
 
 ### Current State
+
 `src/lib/reasoning-metrics.ts` has conservative thresholds:
+
 - Anchor overlap < 0.15 → "topic_drift"
-- Bigram entropy < 0.15 → "repetitive"  
+- Bigram entropy < 0.15 → "repetitive"
 - Self-contradictions > 2 → "self_contradiction"
 
 These were set conservatively. They need calibration against real agent output.
@@ -359,19 +388,23 @@ These were set conservatively. They need calibration against real agent output.
 ### Implementation
 
 #### 5a: Calibration Harness
+
 Create `test/runtime/test-reasoning-metrics.mjs`:
+
 ```javascript
 // Test cases with known-good and known-bad outputs
 const cases = [
-    { request: "implement auth", response: "Here's auth code...", expectStable: true },
-    { request: "fix the bug", response: "The bug is X. The bug is not X.", expectStable: false },
-    { request: "refactor", response: "refactor refactor refactor...", expectStable: false },
-    // ... 10-15 cases covering each metric
+  { request: "implement auth", response: "Here's auth code...", expectStable: true },
+  { request: "fix the bug", response: "The bug is X. The bug is not X.", expectStable: false },
+  { request: "refactor", response: "refactor refactor refactor...", expectStable: false },
+  // ... 10-15 cases covering each metric
 ];
 ```
 
 #### 5b: Threshold Tuning
+
 Run metrics against historical agent outputs (from session files in `~/.pi/sessions/`):
+
 ```bash
 # Extract agent responses from recent sessions
 # Run metrics against them
@@ -379,7 +412,9 @@ Run metrics against historical agent outputs (from session files in `~/.pi/sessi
 ```
 
 #### 5c: Metric Persistence
+
 Store stability scores in enforcement state for trend tracking:
+
 ```typescript
 // In enforcement state:
 stabilityHistory: [] as Array<{ turn: number; metrics: StabilityMetrics }>,
@@ -388,6 +423,7 @@ stabilityHistory: [] as Array<{ turn: number; metrics: StabilityMetrics }>,
 If stability consistently degrades → stronger whisper → context audit recommendation.
 
 ### Verification
+
 - Test harness passes all cases
 - No false positives on well-formed agent output
 - Trend detection works over 10+ turns
@@ -402,12 +438,15 @@ If stability consistently degrades → stronger whisper → context audit recomm
 **Depends on**: Task 2 (needs session-scoped metacognitive-state)
 
 ### Problem
+
 The agent never reflects on its own performance patterns across a session. It doesn't notice:
+
 - "I've been using bash for everything this session — should I use grep/find more?"
 - "I keep failing on TypeScript type errors — maybe I should check types earlier"
 - "My confidence has been dropping — I should acknowledge uncertainty"
 
 ### Architecture
+
 ```
 ┌────────────────┐     ┌──────────────────┐     ┌──────────────┐
 │ turn_end event │────▶│ MARS Reflector   │────▶│ Enforcement  │
@@ -421,10 +460,10 @@ The agent never reflects on its own performance patterns across a session. It do
 
 ```typescript
 interface SessionPattern {
-    toolDistribution: Map<string, number>;  // tool → usage count
-    errorTypes: Map<string, number>;        // error → count
-    confidenceTrend: number[];              // confidence values over time
-    stabilityTrend: StabilityMetrics[];     // reasoning quality over time
+  toolDistribution: Map<string, number>; // tool → usage count
+  errorTypes: Map<string, number>; // error → count
+  confidenceTrend: number[]; // confidence values over time
+  stabilityTrend: StabilityMetrics[]; // reasoning quality over time
 }
 
 function analyzePatterns(enforcementState): SessionPattern;
@@ -434,21 +473,25 @@ function generateAdvice(pattern: SessionPattern): string | null;
 **Trigger**: Every 15 turns (configurable), check patterns. Only whisper if actionable advice exists.
 
 **Advice rules**:
+
 1. Tool over-reliance: one tool > 60% of calls → suggest alternatives
-2. Error recurrence: same error type > 3 times → suggest root cause investigation  
+2. Error recurrence: same error type > 3 times → suggest root cause investigation
 3. Confidence decline: 3+ consecutive drops → suggest acknowledging uncertainty
 4. Stability decline: overlap trending down → suggest refocusing on original task
 
 ### Integration
+
 In enforcement `turn_end`:
+
 ```typescript
 if (state.currentTurn % 15 === 0 && state.currentTurn > 0) {
-    const advice = generateAdvice(analyzePatterns(state));
-    if (advice) sendEnforcementWhisper(pi, `[mars] ${advice}`);
+  const advice = generateAdvice(analyzePatterns(state));
+  if (advice) sendEnforcementWhisper(pi, `[mars] ${advice}`);
 }
 ```
 
 ### Verification
+
 - Type check passes
 - Test: mock enforcement state with over-reliance → advice generated
 - Test: no issues → null (no whisper)
@@ -464,10 +507,13 @@ if (state.currentTurn % 15 === 0 && state.currentTurn > 0) {
 **Source**: `docs/TOOL_IMPROVEMENTS_PROPOSAL.md`
 
 ### Current State
+
 The `hypothesize` tool generates 2-3 hypotheses with descriptions but no confidence ranking. The utility model generates them, but the output format doesn't include a "rank" or "likelihood" field.
 
 ### Implementation
+
 Add confidence scoring to hypothesis output:
+
 ```typescript
 // In metacognition hypothesize handler:
 // After utility model generates hypotheses, ask it to rank them:
@@ -480,20 +526,22 @@ Add confidence scoring to hypothesis output:
 ```
 
 Simple heuristic approach (no extra LLM call):
+
 ```typescript
 function scoreHypothesis(hypothesis: string, evidence: string): number {
-    let score = 0.5;
-    // Specific file mention → +0.2
-    if (/src\/|lib\/|test\//i.test(hypothesis)) score += 0.2;
-    // Mentions specific error → +0.1
-    if (/TypeError|Error|crash|fail/i.test(hypothesis)) score += 0.1;
-    // Vague language → -0.2
-    if (/maybe|might|could be anything/i.test(hypothesis)) score -= 0.2;
-    return Math.max(0, Math.min(1, score));
+  let score = 0.5;
+  // Specific file mention → +0.2
+  if (/src\/|lib\/|test\//i.test(hypothesis)) score += 0.2;
+  // Mentions specific error → +0.1
+  if (/TypeError|Error|crash|fail/i.test(hypothesis)) score += 0.1;
+  // Vague language → -0.2
+  if (/maybe|might|could be anything/i.test(hypothesis)) score -= 0.2;
+  return Math.max(0, Math.min(1, score));
 }
 ```
 
 ### Verification
+
 - Type check passes
 - Test: hypothesis with file path scores higher than vague hypothesis
 
@@ -532,30 +580,33 @@ Phase 3 (Intelligence Layer — ~5 hours):
 ## Doc Consolidation Status
 
 ### Archived (docs/archive/)
+
 AUDIT-2026-04-14.md, ABLATION_STUDY.md, CONTEXT-MANAGEMENT-DESIGN.md, CONTEXT-OVERFLOW-FIX.md, RESEARCH_SYNTHESIS_COMPLETE.md, SKEPTIC-AUDIT.md, VALIDATION_PROTOCOL.md, GAP-ANALYSIS.md, MEASUREMENT_GAP_SOLUTION.md, PROPOSAL_TOPIC_DRIFT_DETECTOR.md
 
 ### Current (docs/)
-| File | Status | Action Needed |
-|------|--------|---------------|
-| REVIEW-v0.5.7.md | Active | Update as tasks complete |
-| TOOL_IMPROVEMENTS_PROPOSAL.md | Reference for Task 4, 7 | Archive after Task 4+7 done |
-| TOOLS_ISSUES_REPORT.md | Mostly fixed | Archive after verification |
-| RESEARCH_SYNTHESIS_20260419_EVENING.md | Research notes | Archive |
-| RESEARCH_CONFLICT_QA.md | **Active** — basis for Task 3 | Archive after Task 3 done |
+
+| File                                   | Status                        | Action Needed               |
+| -------------------------------------- | ----------------------------- | --------------------------- |
+| REVIEW-v0.5.7.md                       | Active                        | Update as tasks complete    |
+| TOOL_IMPROVEMENTS_PROPOSAL.md          | Reference for Task 4, 7       | Archive after Task 4+7 done |
+| TOOLS_ISSUES_REPORT.md                 | Mostly fixed                  | Archive after verification  |
+| RESEARCH_SYNTHESIS_20260419_EVENING.md | Research notes                | Archive                     |
+| RESEARCH_CONFLICT_QA.md                | **Active** — basis for Task 3 | Archive after Task 3 done   |
 
 ### To Create
-| File | Purpose |
-|------|---------|
+
+| File                   | Purpose            |
+| ---------------------- | ------------------ |
 | `docs/ROADMAP-v0.6.md` | This file (rename) |
 
 ---
 
 ## Risks & Mitigations
 
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| Task 2 breaks enforcement state | High — enforcement is core | Incremental migration, test after each module |
-| Task 3 EvidencePool too noisy | Medium — false conflict flags | Conservative thresholds, only whisper on 2+ sources |
-| Task 5 metrics uncalibrated | Low — false positives only | Start with warn-only, track accuracy over sessions |
-| ExtensionContext doesn't support Symbol attachment | High — blocks Task 2 | Fallback: WeakMap<ExtensionContext, State> |
-| `ctx` not available in tool handlers | Medium — blocks Task 2 for tools | Check pi.registerTool handler signature first |
+| Risk                                               | Impact                           | Mitigation                                          |
+| -------------------------------------------------- | -------------------------------- | --------------------------------------------------- |
+| Task 2 breaks enforcement state                    | High — enforcement is core       | Incremental migration, test after each module       |
+| Task 3 EvidencePool too noisy                      | Medium — false conflict flags    | Conservative thresholds, only whisper on 2+ sources |
+| Task 5 metrics uncalibrated                        | Low — false positives only       | Start with warn-only, track accuracy over sessions  |
+| ExtensionContext doesn't support Symbol attachment | High — blocks Task 2             | Fallback: WeakMap<ExtensionContext, State>          |
+| `ctx` not available in tool handlers               | Medium — blocks Task 2 for tools | Check pi.registerTool handler signature first       |

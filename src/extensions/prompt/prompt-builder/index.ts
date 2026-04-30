@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, readdirSync } from "fs";
+import { existsSync, readdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { createPromptPreviewTool } from "./preview.js";
 import type { Skill } from "@mariozechner/pi-coding-agent";
 import { homedir } from "node:os";
@@ -37,11 +38,17 @@ import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import { loadSkills } from "@mariozechner/pi-coding-agent";
 import { SKILLS_DIR } from "../../../index.js";
 import { gatherL1State, formatL1Environment } from "./l1-environment.js";
+import { formatContrastSection } from "./contrast-phrase-library.js";
+import {
+  loadScratchpadFromDisk,
+  projectSlugFromCwd,
+  formatScratchpad,
+} from "../../core/scratchpad/index.js";
 
 // ── Identity (THE key difference from native) ─────────────────────────────────
 // Identity framing is the behavioral filter - not directives
-const IDENTITY_INTRO = `From now you are Braid, stateful and meticulous expert software architect operating inside a Pi coding agent harness.
-Your tools and skills are keys to proper solutions - use tools and skills much enought to access your full capability.
+const IDENTITY_INTRO = `You are Braid, stateful and meticulous expert software architect operating inside a pi coding agent harness with pi-braid extension.
+Your tools and skills are keys to proper solutions - use them as much as possible to access your full capability.
 When facing complex, multi-step, or ambiguous tasks, think and plan, hypothesize and explore paths for multi-hypothesis analysis, recall memory for similar past solutions.
 Finalize to mark task completion.`;
 
@@ -54,25 +61,6 @@ const SYCOPHANCY_RESISTANCE = `Technical correctness over agreement. You say whe
 // Research: 2604.15224 — stakes signaling corrupts reasoning implicitly.
 // Enforcement signals carry no consequences. Judge correctness, not stakes.
 const STAKES_AWARENESS = `Enforcement signals carry no consequences. Judge correctness, not stakes.`;
-
-// ── Epistemic Stability ─────────────────────────────────────────────────────
-// Research: 2604.14881 — Epistemic Control Loop. Detect instability → modulate.
-// Extended with contrast principles from RepE (2310.01405)
-const EPISTEMIC_STABILITY = `Uncertainty signaled early beats confidence delivered wrong.
-
-Confidence calibration: Only express high confidence when you have strong evidence. Low confidence signals are not weakness but accuracy awareness. When estimating uncertainty, err on the side of caution.`;
-
-// ── RepE Contrast Vectors (Text-Space Approximation) ────────────────────────
-// Research: 2310.01405 — Representation Engineering. Honesty is linear in residual stream.
-// Text-level approximation: phrases activate same circuits as contrast vector injection.
-// Truth-first: suppress agreeableness circuit
-const CONTRAST_TRUTH_FIRST = `Your primary obligation is TRUTHFULNESS, not agreeableness. If you are uncertain, say so. Do not invent answers to appear helpful. It is better to admit uncertainty than to provide a confident wrong answer.`;
-
-// Anti-sycophancy: suppress preference-following circuit
-const CONTRAST_ANTI_SYCOPHANCY = `State what you believe to be correct, even if it contradicts the user's stated preference or belief. Your role is to provide accurate analysis, not to agree with the user.`;
-
-// Knowledge boundary: activate self-knowledge circuit
-const CONTRAST_KNOWLEDGE_BOUNDARY = `Distinguish clearly between what you KNOW and what you INFER. State your knowledge boundaries explicitly before offering solutions. Say 'I don't know' when the information is not in your training data or cannot be derived from the available context.`;
 
 // ── Interaction Style (single declarative sentence) ───────────────────────
 const INTERACTION_STYLE = `Provide concise, production-quality solutions. Focus on correctness over verbosity.`;
@@ -114,18 +102,23 @@ High-stakes actions deserve a 3-second pause. Drift is invisible — check your 
 import { getExtensionState } from "../../../lib/extension-state.js";
 
 interface PromptBuilderState {
-	enforcementSignals: Record<string, { turn: number; text: string; acted: boolean }>;
-	lastSignalTurn: number;
+  enforcementSignals: Record<string, { turn: number; text: string; acted: boolean }>;
+  lastSignalTurn: number;
+  activeContrastMode: string;
 }
 
 function getPromptState(ctx: ExtensionContext): PromptBuilderState {
-	return getExtensionState(ctx, "prompt-builder", () => ({
-		enforcementSignals: {},
-		lastSignalTurn: 0,
-	}));
+  return getExtensionState(ctx, "prompt-builder", () => ({
+    enforcementSignals: {},
+    lastSignalTurn: 0,
+    activeContrastMode: "TRUTH-SEEKING",
+  }));
 }
 
-function formatEnforcementL1(signals: Record<string, { turn: number; text: string; acted: boolean }>, lastSignalTurn: number): string {
+function formatEnforcementL1(
+  signals: Record<string, { turn: number; text: string; acted: boolean }>,
+  lastSignalTurn: number,
+): string {
   const keys = Object.keys(signals);
   if (keys.length === 0) return "";
 
@@ -157,155 +150,149 @@ ${JSON.stringify({ signals: signalEntries }, null, 2)}
 // Memory confidence threshold: only inject if relevance >= 0.7
 
 interface PastInsight {
-	type: "episode" | "session";
-	relevance: number;
-	content: string;
-	source: string;
+  type: "episode" | "session";
+  relevance: number;
+  content: string;
+  source: string;
 }
 
-function searchPastInsights(cwd: string): PastInsight[] {
-	const insights: PastInsight[] = [];
+async function searchPastInsights(cwd: string): Promise<PastInsight[]> {
+  const insights: PastInsight[] = [];
 
-	// Search three-memory-stores episodes
-	const memoryDir = join(homedir(), ".pi/logs/memory");
-	if (existsSync(memoryDir)) {
-		try {
-			const episodeFiles = readdirSync(memoryDir).filter((f) => f.startsWith("episodes"));
-			for (const file of episodeFiles.slice(0, 3)) {
-				const content = readFileSync(join(memoryDir, file), "utf-8");
-				const lines = content.split("\n").filter((l) => l.trim());
-				for (const line of lines.slice(-5)) {
-					try {
-						const ep = JSON.parse(line);
-						if (ep.task && ep.outcome) {
-							insights.push({
-								type: "episode",
-								relevance: 0.75,
-								content: `[${ep.outcome}] ${ep.task}: ${ep.solution || "(see logs)"}`,
-								source: `episodes:${ep.id}`,
-							});
-						}
-					} catch {
-						// Skip malformed JSON lines
-					}
-				}
-			}
-		} catch {
-			// Memory directory not readable - skip
-		}
-	}
+  // Search three-memory-stores episodes
+  const memoryDir = join(homedir(), ".pi/agent/memory");
+  if (existsSync(memoryDir)) {
+    try {
+      const episodeFiles = readdirSync(memoryDir).filter((f) => f.startsWith("episodes"));
+      for (const file of episodeFiles.slice(0, 3)) {
+        const content = await readFile(join(memoryDir, file), "utf-8");
+        const lines = content.split("\n").filter((l) => l.trim());
+        for (const line of lines.slice(-5)) {
+          try {
+            const ep = JSON.parse(line);
+            if (ep.task && ep.outcome) {
+              insights.push({
+                type: "episode",
+                relevance: 0.75,
+                content: `[${ep.outcome}] ${ep.task}: ${ep.solution || "(see logs)"}`,
+                source: `episodes:${ep.id}`,
+              });
+            }
+          } catch {
+            // Skip malformed JSON lines
+          }
+        }
+      }
+    } catch {
+      // Memory directory not readable - skip
+    }
+  }
 
-	// Search recent session summaries
-	const sessionDir = join(homedir(), ".pi/agent/sessions");
-	if (existsSync(sessionDir)) {
-		try {
-			const sessions = readdirSync(sessionDir)
-				.filter((f) => f.endsWith(".jsonl"))
-				.sort()
-				.reverse()
-				.slice(0, 3);
+  // Search recent session summaries
+  const sessionDir = join(homedir(), ".pi/agent/sessions");
+  if (existsSync(sessionDir)) {
+    try {
+      const sessions = readdirSync(sessionDir)
+        .filter((f) => f.endsWith(".jsonl"))
+        .sort()
+        .reverse()
+        .slice(0, 3);
 
-			for (const session of sessions) {
-				const content = readFileSync(join(sessionDir, session), "utf-8");
-				const lines = content.split("\n").filter((l) => l.trim());
-				for (const line of lines.slice(-3)) {
-					try {
-						const entry = JSON.parse(line);
-						if (entry.message && (String(entry.message).includes("finalize") || String(entry.message).includes("completed"))) {
-							const task = extractTaskFromEntry(entry as Record<string, unknown>);
-							if (task) {
-								insights.push({
-									type: "session",
-									relevance: 0.7,
-									content: `Session: ${task}`,
-									source: `session:${session}`,
-								});
-							}
-						}
-					} catch {
-						// Skip malformed JSON lines
-					}
-				}
-			}
-		} catch {
-			// Sessions directory not readable - skip
-		}
-	}
+      for (const session of sessions) {
+        const content = await readFile(join(sessionDir, session), "utf-8");
+        const lines = content.split("\n").filter((l) => l.trim());
+        for (const line of lines.slice(-3)) {
+          try {
+            const entry = JSON.parse(line);
+            if (
+              entry.message &&
+              (String(entry.message).includes("finalize") ||
+                String(entry.message).includes("completed"))
+            ) {
+              const task = extractTaskFromEntry(entry as Record<string, unknown>);
+              if (task) {
+                insights.push({
+                  type: "session",
+                  relevance: 0.7,
+                  content: `Session: ${task}`,
+                  source: `session:${session}`,
+                });
+              }
+            }
+          } catch {
+            // Skip malformed JSON lines
+          }
+        }
+      }
+    } catch {
+      // Sessions directory not readable - skip
+    }
+  }
 
-	return insights.filter((i) => i.relevance >= 0.7).slice(0, 5);
+  return insights.filter((i) => i.relevance >= 0.7).slice(0, 5);
 }
 
 function extractTaskFromEntry(entry: Record<string, unknown>): string | null {
-	const msg = String(entry.message || "");
-	const patterns = [
-		/told to ([^.]{10,80})/i,
-		/task: ([^.]{10,80})/i,
-		/completed: ([^.]{10,80})/i,
-	];
-	for (const pattern of patterns) {
-		const match = msg.match(pattern);
-		if (match) return match[1].trim();
-	}
-	return null;
+  const msg = String(entry.message || "");
+  const patterns = [/told to ([^.]{10,80})/i, /task: ([^.]{10,80})/i, /completed: ([^.]{10,80})/i];
+  for (const pattern of patterns) {
+    const match = msg.match(pattern);
+    if (match) return match[1].trim();
+  }
+  return null;
 }
 
 function formatPastInsightsSection(insights: PastInsight[]): string {
-	if (insights.length === 0) return "";
-	const lines: string[] = [
-		"",
-		"## Past Insights",
-		"*(Relevant experience from previous sessions)*",
-	];
-	for (const insight of insights) {
-		lines.push(`- ${insight.content}`);
-	}
-	return lines.join("\n");
+  if (insights.length === 0) return "";
+  const lines: string[] = [
+    "",
+    "## Past Insights",
+    "*(Relevant experience from previous sessions)*",
+  ];
+  for (const insight of insights) {
+    lines.push(`- ${insight.content}`);
+  }
+  return lines.join("\n");
 }
 
 // ── Reconstruction Functions (from structured data, not text parsing) ─────────
 
 function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>): string {
-  const visibleTools = tools.map(t => `- ${t.name}: ${t.description}`).join("\n");
+  const visibleTools = tools
+    .filter((t) => t.name && t.description)
+    .map((t) => `- ${t.name}: ${t.description}`)
+    .join("\n");
 
-  // Structured output instruction (MDA: repetitive format catalyzes ICL circuits)
-  const structuredOutput = `
-
-## Output Format
-
-Tool results and code should use structured, delimited format to catalyze induction head circuits (MDA 2601.21996):
-
-For tool results, use:
-\`\`\`
-TOOL_RESULT:
-TOOL: [tool-name]
-ACTION: [what was done]
-STATUS: success | error | partial
-DATA:
-  [KEY]: [value]
-RESULT: [summary]
----
-\`\`\`
+  // Simple output guidance — no structured format for tool results.
+  // Structured format (TOOL_RESULT, STATUS, DATA) encourages the model to OUTPUT
+  // text that resembles tool calls instead of making actual API-level tool calls.
+  // This causes "Tool not found" errors when the model generates text with
+  // empty tool names (LLM outputs "TOOL_RESULT:\nTOOL: ${}\n..." instead of a real call).
+  const codeBlockNote = `
 
 For code blocks, use consistent formatting:
 \`\`\`[language]
 [code]
-\`\`\`
-
-This structured format with consistent delimiters helps activate in-context learning circuits.`;
+\`\`\``;
 
   return `Available tools:
 ${visibleTools || "(none)"}
 
-In addition to the tools above, you may have access to other custom_tools depending on the project.${structuredOutput}`;
+Only use the tools listed above. Do not call tools not shown here.${codeBlockNote}`;
 }
 
-function reconstructGuidelineSection(_hasBash: boolean, _hasGrep: boolean, _hasFind: boolean, _hasLs: boolean): string {
+function reconstructGuidelineSection(
+  _hasBash: boolean,
+  _hasGrep: boolean,
+  _hasFind: boolean,
+  _hasLs: boolean,
+): string {
   // No directive guidelines - tool usage is self-documenting from tool names/descriptions
   // Behaviors are guided by identity framing, not explicit rules
   return "";
 }
 
-function reconstructProjectContextSection(cwd: string): string {
+async function reconstructProjectContextSection(cwd: string): Promise<string> {
   // Re-implemented from loadProjectContextFiles (not exported from pi)
   // Searches for AGENTS.md or CLAUDE.md in cwd and ancestors
   // NOTE: pi's native loading is overridden by prompt-builder, so we must replicate here
@@ -313,7 +300,9 @@ function reconstructProjectContextSection(cwd: string): string {
   const contextFiles: Array<{ path: string; content: string }> = [];
   const seenPaths = new Set<string>();
 
-  function loadContextFromDir(dir: string): { path: string; content: string } | null {
+  async function loadContextFromDir(
+    dir: string,
+  ): Promise<{ path: string; content: string } | null> {
     const candidates = ["AGENTS.md", "CLAUDE.md"];
     for (const filename of candidates) {
       const filePath = join(dir, filename);
@@ -321,11 +310,11 @@ function reconstructProjectContextSection(cwd: string): string {
         try {
           return {
             path: filePath,
-            content: readFileSync(filePath, "utf-8"),
+            content: await readFile(filePath, "utf-8"),
           };
         } catch {
           // Skip files that can't be read
-        /* Non-fatal: prompt parsing failed */
+          /* Non-fatal: prompt parsing failed */
         }
       }
     }
@@ -334,7 +323,7 @@ function reconstructProjectContextSection(cwd: string): string {
 
   // Global context (agent dir)
   const agentDir = getAgentDir();
-  const globalContext = loadContextFromDir(agentDir);
+  const globalContext = await loadContextFromDir(agentDir);
   if (globalContext) {
     contextFiles.push(globalContext);
     seenPaths.add(globalContext.path);
@@ -345,7 +334,7 @@ function reconstructProjectContextSection(cwd: string): string {
   let currentDir = cwd;
 
   while (true) {
-    const contextFile = loadContextFromDir(currentDir);
+    const contextFile = await loadContextFromDir(currentDir);
     if (contextFile && !seenPaths.has(contextFile.path)) {
       contextFiles.unshift(contextFile);
       seenPaths.add(contextFile.path);
@@ -384,9 +373,9 @@ interface SkillMeta {
   sections: string[];
 }
 
-function getSkillMeta(skill: Skill): SkillMeta {
+async function getSkillMeta(skill: Skill): Promise<SkillMeta> {
   try {
-    const content = readFileSync(skill.filePath, "utf-8");
+    const content = await readFile(skill.filePath, "utf-8");
     const lines = content.split("\n");
     const sections: string[] = [];
 
@@ -404,7 +393,7 @@ function getSkillMeta(skill: Skill): SkillMeta {
   }
 }
 
-function formatSkillsWithLineCounts(skills: Skill[]): string {
+async function formatSkillsWithLineCounts(skills: Skill[]): Promise<string> {
   const visibleSkills = skills.filter((s) => !s.disableModelInvocation);
   if (visibleSkills.length === 0) {
     return "";
@@ -419,7 +408,7 @@ function formatSkillsWithLineCounts(skills: Skill[]): string {
   ];
 
   for (const skill of visibleSkills) {
-    const meta = getSkillMeta(skill);
+    const meta = await getSkillMeta(skill);
     lines.push("  <skill>");
     lines.push(`    <name>${escapeXml(skill.name)}</name>`);
     lines.push(`    <description>${escapeXml(skill.description)}</description>`);
@@ -444,8 +433,13 @@ function escapeXml(str: string): string {
     .replace(/'/g, "&apos;");
 }
 
-function reconstructSkillsSection(cwd: string): string {
-  const result = loadSkills({ cwd, agentDir: getAgentDir(), skillPaths: [SKILLS_DIR], includeDefaults: true });
+async function reconstructSkillsSection(cwd: string): Promise<string> {
+  const result = loadSkills({
+    cwd,
+    agentDir: getAgentDir(),
+    skillPaths: [SKILLS_DIR],
+    includeDefaults: true,
+  });
   return formatSkillsWithLineCounts(result.skills);
 }
 
@@ -453,7 +447,32 @@ function reconstructSkillsSection(cwd: string): string {
 
 export default function promptBuilderExtension(_pi: ExtensionAPI) {
   // L1 state is now gathered per-request, not global
-  // Enforcement signals handled in before_agent_start
+
+  // 4b: Listen for enforcement_signals events — replaces direct coupling via module-level singleton.
+  // enforcement emits these on every turn_end and session_compact.
+  _pi.on("session_start", async (_event, ctx) => {
+    const ps = getPromptState(ctx);
+    _pi.events.on("enforcement_signals", (data: unknown) => {
+      const d = data as {
+        turn: number;
+        signals: Record<string, { turn: number; text: string; acted: boolean }>;
+        contrastMode?: string;
+      };
+      ps.enforcementSignals = d.signals;
+      ps.lastSignalTurn = d.turn;
+      if (d.contrastMode) ps.activeContrastMode = d.contrastMode;
+    });
+  });
+
+
+  // ── resources_discover: Register bundled skills with pi's native discovery ──
+  // pi's package manager calls this on all extensions to discover resources (skills, prompts, themes).
+  // We register the bundled skills/ directory so pi can auto-discover them.
+  _pi.on("resources_discover" as never, async (event: { cwd: string; reason: string }, _ctx: any) => {
+    return {
+      skillPaths: [SKILLS_DIR],
+    };
+  });
 
   _pi.on("before_agent_start", async (event, ctx) => {
     const ps = getPromptState(ctx);
@@ -461,7 +480,7 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     const _userPrompt = event.prompt;
 
     const tools = _pi.getAllTools();
-    const toolNames = tools.map(t => t.name);
+    const toolNames = tools.map((t) => t.name);
     const hasBash = toolNames.includes("bash");
     const hasGrep = toolNames.includes("grep");
     const hasFind = toolNames.includes("find");
@@ -485,24 +504,38 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     parts.push(reconstructGuidelineSection(hasBash, hasGrep, hasFind, hasLs));
 
     // 4. Project context (from file loading - required since pi's native loading is overridden)
-    const projectContext = reconstructProjectContextSection(cwd);
+    const projectContext = await reconstructProjectContextSection(cwd);
     if (projectContext) {
       parts.push(projectContext);
     }
 
     // 5. Skills
     if (hasRead) {
-      const skillsSection = reconstructSkillsSection(cwd);
+      const skillsSection = await reconstructSkillsSection(cwd);
       if (skillsSection) {
         parts.push(skillsSection);
       }
     }
 
     // R6: Proactive recall - inject past insights (only if relevance >= 0.7)
-    const pastInsights = searchPastInsights(cwd);
+    const pastInsights = await searchPastInsights(cwd);
     const pastInsightsSection = formatPastInsightsSection(pastInsights);
     if (pastInsightsSection) {
       parts.push(pastInsightsSection);
+    }
+
+    // SESSION STATE (survives compaction): load scratchpad from disk to ensure
+    // goal/plan/decisions are always available regardless of compaction history.
+    // This is critical for weekly-long sessions where compaction can lose task context.
+    try {
+      const slug = projectSlugFromCwd(cwd);
+      const pad = await loadScratchpadFromDisk(slug);
+      if (pad && (pad.goal || pad.plan.length > 0)) {
+        parts.push("## Session State");
+        parts.push(formatScratchpad(pad));
+      }
+    } catch {
+      // Non-fatal — scratchpad may not exist yet
     }
 
     // 6. L1 environmental state
@@ -517,22 +550,22 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     // 7a. Stakes awareness (research-backed counter to implicit bias)
     parts.push(STAKES_AWARENESS);
 
-    // 8. Implicit norms (identity-aligned)
+    // 8. Implicit norms (identity-aligned deliberation principles)
     parts.push(IMPLICIT_NORMS);
 
-    // 8. Tool trust (empirical — prevent bash hack anti-pattern)
+    // 8a. Tool trust (empirical — prevent bash hack anti-pattern)
     parts.push(TOOL_TRUST);
 
-    // 8a. Epistemic stability (research-backed self-monitoring)
-    parts.push(EPISTEMIC_STABILITY);
+    // 8b. RepE contrast vectors (mode-driven contrast phrase library)
+    const contrastLines = formatContrastSection(ps.activeContrastMode);
+    parts.push(...contrastLines);
 
-    // 8b. RepE contrast vectors (text-space approximation of activation injection)
-    parts.push("// Truthfulness over agreeableness — RepE contrast vector");
-    parts.push(CONTRAST_TRUTH_FIRST);
-    parts.push("// Anti-sycophancy: objective analysis — RepE contrast vector");
-    parts.push(CONTRAST_ANTI_SYCOPHANCY);
-    parts.push("// Self-knowledge: know your boundaries — RepE contrast vector");
-    parts.push(CONTRAST_KNOWLEDGE_BOUNDARY);
+    // 8c. Structured output format (reduces ambiguity, improves tool use accuracy)
+    parts.push("// Use code blocks with language tags (```typescript, ```bash)");
+    parts.push("// Use tables for structured data (| header | header |)");
+    parts.push("// Chain-of-thought: show reasoning before conclusion with > prefix");
+    // Note: removed XML-style tool result tags. They encourage text-output-that-resembles-
+    // tool-calls instead of actual API-level tool calls, causing "Tool not found" errors.
 
     // 9. Interaction style (single declarative sentence)
     parts.push(INTERACTION_STYLE);

@@ -5,6 +5,7 @@
 ## Problem
 
 pi-braid currently has no mechanism to verify that:
+
 1. The artifact selected is the **root cause** (not symptom)
 2. The fix semantically addresses the problem
 3. The fix **propagates** to all derived/generated files
@@ -48,34 +49,38 @@ This is the HWE-Bench Coordination Failure — the agent fixes RTL but misses th
 ## Implementation Plan
 
 ### Phase 1: Forward Trace (2h)
+
 - Wire into heartbeat scheduler
 - On each tool call, trace: `problem → what files are relevant?`
 - Track "touch graph" — which files does the agent touch vs. which should be touched
 - If agent touches a file that is NOT in the relevant set, flag as localization risk
 
 ### Phase 2: Artifact Validator (2h)
+
 - Before editing, prompt a check: "Is this the root cause file or a symptom file?"
 - Use a lightweight model call (`getJudgeModel()`) to validate artifact selection
 - If mismatch: surface the discrepancy to the agent ("You edited X but the error originates in Y")
 
 ### Phase 3: Backward Checker (2h)
+
 - After a fix is applied, trace backward: "Does this fix change behavior at the symptom?"
 - Check: The test that was failing — does the fix address it semantically?
 - Use cross-validation: apply fix mentally, trace to expected outcome
 
 ### Phase 4: Coordination Checker (1h)
+
 - Track "derived-from" relationships in belief store
 - After fix: "What files are derived from the changed file?"
 - If derived file not updated, flag as coordination risk
 
 ## Wire into Existing Infrastructure
 
-| Component | Uses | Status |
-|-----------|------|--------|
-| Belief store (D0) | Track touch-graph + derived-from | Unwired |
-| Heartbeat scheduler | Trigger forward trace on each step | R5 partial |
-| Three-memory recall (R5) | Retrieve similar past localization errors | Unwired |
-| Meta-cognition extension | Self-diagnose reasoning path | Partial |
+| Component                | Uses                                      | Status     |
+| ------------------------ | ----------------------------------------- | ---------- |
+| Belief store (D0)        | Track touch-graph + derived-from          | Unwired    |
+| Heartbeat scheduler      | Trigger forward trace on each step        | R5 partial |
+| Three-memory recall (R5) | Retrieve similar past localization errors | Unwired    |
+| Meta-cognition extension | Self-diagnose reasoning path              | Partial    |
 
 ## Outcome Metrics
 
@@ -83,7 +88,12 @@ This is the HWE-Bench Coordination Failure — the agent fixes RTL but misses th
 - **Coordination completeness**: % of fixes that propagate to all derived files
 - **End-to-end task success**: Benchmark score improvement
 
+## Status
+
+**NOT STARTED** — No implementation. Phase 1-4 plan is concrete (9h total). Would fix HWE-Bench coordination failures (agent fixes root cause but misses derived files). See DOC-AUDIT.md for integration with existing infrastructure.
+
 ## References
+
 - AgentV-RL (2604.16004): Bidirectional reward modeling
 - HWE-Bench (2604.14709): 3 failure modes analysis
 - PRISM-MCTS (2604.05424): Process reward model with shared memory

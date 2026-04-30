@@ -11,15 +11,16 @@ Rate limiting and concurrency control — prevents tool call overload with token
 ## Architecture
 
 Two-tier rate limiting:
+
 1. **Per-second token bucket** — `maxTokens` tokens refilled per second. Each tool call consumes tokens (weighted by tool cost).
 2. **Global concurrency** — `maxConcurrent` cap on simultaneous tool executions.
 
 ## Events Handled
 
-| Event | Handler |
-|-------|---------|
+| Event                  | Handler                                             |
+| ---------------------- | --------------------------------------------------- |
 | `tool_execution_start` | Acquire rate limit token (blocks if limit exceeded) |
-| `tool_execution_end` | Release concurrency slot, return token |
+| `tool_execution_end`   | Release concurrency slot, return token              |
 
 ## Key Patterns
 

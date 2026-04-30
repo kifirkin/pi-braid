@@ -10,11 +10,12 @@ The `isCtx()` type guard at line ~73 uses **semantic inversion** — it checks f
 
 ```typescript
 function isCtx(val: unknown): val is ExtensionContext {
-    return typeof val === "object" && val !== null && !("turnNumber" in val);
+  return typeof val === "object" && val !== null && !("turnNumber" in val);
 }
 ```
 
 This checks: "val is NOT a PerformanceMetrics object (which has turnNumber)". But:
+
 1. The logic is backwards — we should check what ExtensionContext IS, not what it isn't
 2. If PerformanceMetrics ever embeds differently, the check silently breaks
 3. The "turnNumber" check is a negative assertion about a DIFFERENT type, not a positive assertion about ExtensionContext
@@ -25,7 +26,7 @@ Replace with **positive property checks** for properties ExtensionContext actual
 
 ```typescript
 function isCtx(val: unknown): val is ExtensionContext {
-    return typeof val === "object" && val !== null && "tools" in val && "settingsManager" in val;
+  return typeof val === "object" && val !== null && "tools" in val && "settingsManager" in val;
 }
 ```
 
@@ -34,6 +35,7 @@ Also check line ~77 — there's a `else return val` branch that falls back to th
 ## Verification
 
 After your fix:
+
 1. `grep -n '"turnNumber" in' src/lib/degradation-detector.ts` — should return nothing
 2. `grep -n '"tools" in val' src/lib/degradation-detector.ts` — should show the new check
 3. Verify the TypeScript type guard still compiles: `npx tsc --noEmit src/lib/degradation-detector.ts` (if tsconfig exists)

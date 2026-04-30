@@ -1,9 +1,13 @@
 {
 	"name": "pi-braid",
-	"version": "0.1.0",
-	"description": "Self-contained pi-coding-agent extension bundling all develop-branch functionality: cognitive systems, planning, enforcement, feedback, skills, and advanced tools.",
+	"version": "0.2.0-alpha.2",
+	"description": "Metacognitive extension suite for pi-coding-agent. Enforcement, planning, memory, heartbeat scheduling, RepE contrast vectors, utility tools.",
 	"type": "module",
 	"main": "./src/index.ts",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/kifirkin/pi-braid.git"
+	},
 	"pi": {
 		"extensions": [
 			"./src/index.ts"
@@ -13,7 +17,11 @@
 		"typecheck": "tsc --noEmit",
 		"build": "tsc",
 		"test": "npm run build && node scripts/run-tests.mjs",
-		"clean": "rm -rf dist *.tsbuildinfo"
+		"clean": "rm -rf dist *.tsbuildinfo",
+		"format": "prettier --write .",
+		"format:check": "prettier --check .",
+		"lint": "eslint src/ --max-warnings 0",
+		"lint:fix": "eslint src/ --fix"
 	},
 	"dependencies": {
 		"typebox": "1.1.34"
@@ -35,7 +43,11 @@
 		"coding-agent",
 		"cognitive-systems",
 		"enforcement",
-		"planning"
+		"planning",
+		"metacognition",
+		"heartbeat-scheduling",
+		"memory-management"
 	],
+	"author": "Kifir Kifirkin",
 	"license": "MIT"
 }

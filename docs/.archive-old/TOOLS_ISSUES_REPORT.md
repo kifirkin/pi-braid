@@ -14,7 +14,8 @@ During the SSV Network bug bounty submission workflow, multiple tool failures oc
 
 ## Issue #1: Screenshot Tool - Path Not Returned
 
-### Severity: CRITICAL  
+### Severity: CRITICAL
+
 ### Status: PARTIALLY FIXED (user reported fix)
 
 **Problem:**  
@@ -28,18 +29,21 @@ The `browser_screenshot` tool captured screenshots but did NOT return the file p
 {"success":true,"status":"success","details":{"filePath":"/path/to/screenshot.png"}}
 ```
 
-**Impact:**  
+**Impact:**
+
 - Could not analyze screenshots with `analyze_image` (needed file path)
 - Had to use `browser_eval` and `browser_snapshot` as fallback
 - Loss of vision-based UI analysis capability
 
-**Detection Method:**  
+**Detection Method:**
+
 ```javascript
-browser_eval(() => document.title) // worked
-browser_screenshot() // returned no path
+browser_eval(() => document.title); // worked
+browser_screenshot(); // returned no path
 ```
 
 **Proposed Fix:**
+
 ```javascript
 // In browser_screenshot tool, add to result:
 const filePath = `/Users/kifir/.pi/screenshots/screenshot_${Date.now()}.png`;
@@ -61,23 +65,25 @@ return { success: true, status: "success", details: { filePath } };
 document.querySelector('a[href*="ssv"], button:has-text("Submit")')
 
 // ERROR:
-SyntaxError: Failed to execute 'querySelector' on 'Document': 
+SyntaxError: Failed to execute 'querySelector' on 'Document':
 'a[href*="ssv"], button:has-text("Submit")' is not a valid selector.
 ```
 
 The `:has-text()` pseudo-selector is from jQuery/Playwright, not native CSS.
 
-**Impact:**  
+**Impact:**
+
 - Could not click on buttons with complex selectors
 - Had to manually find elements using JavaScript alternatives
 - Trial and error approach required
 
 **Proposed Fix:**
+
 ```javascript
 // Use Array.from() approach which worked:
-Array.from(document.querySelectorAll('a, button')).find(el => 
-  el.textContent.includes('Submit')
-)?.click()
+Array.from(document.querySelectorAll("a, button"))
+  .find((el) => el.textContent.includes("Submit"))
+  ?.click();
 ```
 
 **Recommendation:** Add jQuery-like selector support OR document `:has()` limitations.
@@ -96,28 +102,30 @@ browser_navigate → "No result provided"  // What does this mean?
 browser_navigate → ✓ Navigated to: URL  // Sometimes worked
 ```
 
-**Impact:**  
+**Impact:**
+
 - Could not determine if navigation succeeded or failed
 - Unclear if it's an async timing issue
 - No retry mechanism visible
 
 **Proposed Fix:**
+
 ```javascript
 // Return structured result with status
-return { 
-  success: true, 
-  navigated: true, 
+return {
+  success: true,
+  navigated: true,
   url: finalUrl,
-  error: null
-}
+  error: null,
+};
 
 // OR on failure:
-return { 
-  success: false, 
-  navigated: false, 
+return {
+  success: false,
+  navigated: false,
   url: null,
-  error: "Navigation timeout or blocked by page"
-}
+  error: "Navigation timeout or blocked by page",
+};
 ```
 
 ---
@@ -139,17 +147,20 @@ web_fetch("https://immunefi.com/help-center") → Status: 404
 Even though the pages exist (verified via browser screenshot).
 
 **Possible Root Causes:**
+
 1. **Anti-bot protection:** Immunefi uses Cloudflare/anti-bot that blocks server-side requests
 2. **JavaScript-rendered pages:** Pages are SPA with content loaded via JS, not in initial HTML
 3. **Rate limiting:** IP blocked after repeated requests
 4. **Redirects:** Site redirects to different URLs server-side
 
-**Impact:**  
+**Impact:**
+
 - Could not fetch program details, scope, or terms
 - Had to manually transcribe from screenshots
 - Lost ability to programmatically verify eligibility
 
 **Proposed Fixes:**
+
 1. Add Cloudflare bypass headers
 2. Wait for JavaScript hydration before fetching
 3. Add retry with exponential backoff
@@ -169,14 +180,16 @@ browser_content → ""  // Empty content
 browser_content → "Not Found"  // Sometimes returns error page
 ```
 
-**Impact:**  
+**Impact:**
+
 - Could not extract page text content for analysis
 - Had to rely on `browser_eval` with `innerText`
 
 **Proposed Fix:**
+
 ```javascript
 // Wait for specific element to load
-const content = await waitForSelector('main, article, .content', { timeout: 10000 });
+const content = await waitForSelector("main, article, .content", { timeout: 10000 });
 return { success: true, content };
 ```
 
@@ -194,11 +207,13 @@ Screenshots were being saved (user confirmed) but we couldn't find them:
 # find ~ -name "screenshot*.png" → nothing
 ```
 
-**Impact:**  
+**Impact:**
+
 - Could not verify screenshots existed
 - Could not manually analyze them with other tools
 
 **Proposed Fix:**
+
 1. Return absolute path in result
 2. Create screenshots directory if missing
 3. List files on request
@@ -209,12 +224,14 @@ Screenshots were being saved (user confirmed) but we couldn't find them:
 
 ### Severity: LOW
 
-**Problem:**  
+**Problem:**
+
 ```javascript
 browser_cookies() → Error: 'Page.getCookies' wasn't found
 ```
 
-**Impact:**  
+**Impact:**
+
 - Could not check session cookies
 - Could not debug authentication issues
 
@@ -226,20 +243,23 @@ browser_cookies() → Error: 'Page.getCookies' wasn't found
 
 **Problem:**  
 `browser_snapshot(interactive=true)` returned ALL DOM elements as interactive including:
+
 - Hundreds of hidden/navigation elements
 - No visual hierarchy
 - Hard to find actual clickable buttons
 
-**Impact:**  
+**Impact:**
+
 - Had to search through large output to find buttons
 - Could not easily determine which elements were visible
 
 **Proposed Fix:**
+
 ```javascript
 // Filter to only visible, interactive elements
-const interactive = [...document.querySelectorAll('button, a[href], input, select')]
-  .filter(el => el.offsetParent !== null)  // visible
-  .map(el => ({ tag: el.tagName, text: el.textContent.trim(), visible: true }));
+const interactive = [...document.querySelectorAll("button, a[href], input, select")]
+  .filter((el) => el.offsetParent !== null) // visible
+  .map((el) => ({ tag: el.tagName, text: el.textContent.trim(), visible: true }));
 ```
 
 ---
@@ -257,7 +277,8 @@ browser_screenshot() → All white (blank)
 browser_eval(() => window.location.href) → "about:blank"
 ```
 
-**Impact:**  
+**Impact:**
+
 - Navigation state was lost
 - Had to re-navigate to dashboard
 
@@ -269,11 +290,13 @@ browser_eval(() => window.location.href) → "about:blank"
 
 **Problem:**  
 `analyze_image` failed with 400 status code (no body):
+
 ```
 Image analysis failed: 400 status code (no body)
 ```
 
-**Impact:**  
+**Impact:**
+
 - Could not get AI analysis of screenshots
 - Had to rely on manual visual inspection via browser_snapshot
 
@@ -281,34 +304,37 @@ Image analysis failed: 400 status code (no body)
 
 ## Summary Table
 
-| # | Issue | Severity | Status |
-|---|-------|---------|--------|
-| 1 | Screenshot path not returned | CRITICAL | PARTIALLY FIXED |
-| 2 | Complex selector syntax errors | HIGH | NEEDS FIX |
-| 3 | Navigation silent failures | HIGH | NEEDS FIX |
-| 4 | web_fetch returns 404 | CRITICAL | NEEDS FIX |
-| 5 | browser_content fails on SPA | MEDIUM | NEEDS FIX |
-| 6 | Screenshot location unknown | MEDIUM | NEEDS FIX |
-| 7 | browser_cookies not implemented | LOW | NEEDS FIX |
-| 8 | Snapshot too verbose | LOW | NEEDS FIX |
-| 9 | Page state not maintained | MEDIUM | NEEDS FIX |
-| 10 | analyze_image API failures | MEDIUM | NEEDS FIX |
+| #   | Issue                           | Severity | Status          |
+| --- | ------------------------------- | -------- | --------------- |
+| 1   | Screenshot path not returned    | CRITICAL | PARTIALLY FIXED |
+| 2   | Complex selector syntax errors  | HIGH     | NEEDS FIX       |
+| 3   | Navigation silent failures      | HIGH     | NEEDS FIX       |
+| 4   | web_fetch returns 404           | CRITICAL | NEEDS FIX       |
+| 5   | browser_content fails on SPA    | MEDIUM   | NEEDS FIX       |
+| 6   | Screenshot location unknown     | MEDIUM   | NEEDS FIX       |
+| 7   | browser_cookies not implemented | LOW      | NEEDS FIX       |
+| 8   | Snapshot too verbose            | LOW      | NEEDS FIX       |
+| 9   | Page state not maintained       | MEDIUM   | NEEDS FIX       |
+| 10  | analyze_image API failures      | MEDIUM   | NEEDS FIX       |
 
 ---
 
 ## Recommendations
 
 ### Immediate Fixes (User Can Do)
+
 1. Verify screenshot path is being returned in result
 2. Test browser tool with a simple React SPA
 
 ### Short-term Fixes (Agent Development)
+
 1. Add Cloudflare/anti-bot bypass to web_fetch
 2. Implement proper error handling with retry logic
 3. Return structured results from all browser commands
 4. Filter browser_snapshot to visible elements only
 
 ### Long-term Improvements
+
 1. Add browser automation debugging tools
 2. Implement screenshot diffing capability
 3. Add video recording of browser session for debugging
@@ -334,7 +360,6 @@ Image analysis failed: 400 status code (no body)
 
 **File:** `src/extensions/web-fetch/index.ts`
 
-
 **Change:** Added realistic browser headers to bypass anti-bot protection:
 
 ```typescript
@@ -358,16 +383,13 @@ headers: {
 
 **Status:** Applied. TypeScript compiles without errors.
 
-
 ---
 
 ### Fix #2: browser_cookies - Correct CDP Command ✅
 
-
 **File:** `src/extensions/browser/index.ts`
 
 **Change:** Replaced `Page.getCookies` with `Network.getAllCookies` (more reliable) and added fallback logic:
-
 
 ```typescript
 // Try Network.getAllCookies first (more reliable)
@@ -394,38 +416,36 @@ try {
 
 **File:** `src/extensions/browser/index.ts`
 
-
 **Change:** Wrapped connection in try-catch, reduced wait time from 10s to 5s for responsiveness:
 
 ```typescript
 async function browserNavigate(input: Static<typeof navigateParams>) {
-    let client: CdpClient;
-    try {
-        client = await ensureConnected();
-    } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        return {
-            content: [{ type: "text" as const, text: `Connection failed: ${errorMsg}` }],
-            details: { url: connectedUrl, tabId: connectedTabId, error: errorMsg },
-            isError: true
-        };
-    }
-    // ... rest of function
+  let client: CdpClient;
+  try {
+    client = await ensureConnected();
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    return {
+      content: [{ type: "text" as const, text: `Connection failed: ${errorMsg}` }],
+      details: { url: connectedUrl, tabId: connectedTabId, error: errorMsg },
+      isError: true,
+    };
+  }
+  // ... rest of function
 }
 ```
 
 **Status:** Applied. TypeScript compiles without errors.
 
-
 ---
 
 ## Issues NOT Yet Fixed
 
-| # | Issue | Status | Notes |
-|---|-------|--------|-------|
-| 6 | Screenshot location unknown | UNCONFIRMED | Code shows `filePath` IS returned in details |
-| 9 | Page state not maintained | LOW | Requires more investigation |
-| 10 | analyze_image API failures | EXTERNAL | Likely a vision API issue |
+| #   | Issue                       | Status      | Notes                                        |
+| --- | --------------------------- | ----------- | -------------------------------------------- |
+| 6   | Screenshot location unknown | UNCONFIRMED | Code shows `filePath` IS returned in details |
+| 9   | Page state not maintained   | LOW         | Requires more investigation                  |
+| 10  | analyze_image API failures  | EXTERNAL    | Likely a vision API issue                    |
 
 ---
 
@@ -443,5 +463,5 @@ pi
 
 ---
 
-*Report generated: 2026-04-19T11:44:23Z*
-*Fixes applied: 2026-04-19T13:52:00Z*
+_Report generated: 2026-04-19T11:44:23Z_
+_Fixes applied: 2026-04-19T13:52:00Z_

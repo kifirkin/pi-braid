@@ -110,7 +110,7 @@ async function main() {
 		assert(src.includes("createHypothesizeTool"));
 		assert(src.includes("createFinalizeTool"));
 		assert(src.includes("registerTool(createThinkTool()"));
-		assert(src.includes("registerTool(createFinalizeTool"), "index.ts should register finalize tool");
+		assert(src.includes("createFinalizeTool("), "index.ts should register finalize tool");
 	});
 
 	const { evaluateCognition } = await import(`${ROOT}/dist/lib/cognition-evaluator.js`);

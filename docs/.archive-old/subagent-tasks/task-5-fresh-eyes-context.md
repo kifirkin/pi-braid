@@ -1,10 +1,13 @@
 # TASK 5 — Enrich FRESH_EYES Context in Think Tool
 
 ## Target File
+
 `/Users/kifir/projects/agents/pi-braid/src/extensions/metacognition/handlers/think.ts`
 
 ## Problem
+
 The `FRESH_EYES_PROMPT` at line ~35 only gets the thinking entry's observation/decision/reason text. It has NO context about:
+
 - What tools are available
 - What's been tried recently
 - Project conventions
@@ -13,6 +16,7 @@ The `FRESH_EYES_PROMPT` at line ~35 only gets the thinking entry's observation/d
 This makes utility model critique generic and non-actionable.
 
 ## Fix
+
 Add structured context to FRESH_EYES_PROMPT:
 
 ```typescript
@@ -41,14 +45,17 @@ Keep it concise - 4-6 sentences max.`;
 Note: Replace `{SESSION_HISTORY}` with a summary of recent thinking entries (last 3-5). This is a structured enrichment.
 
 Also, change the task type classification to include specific categories:
+
 ```typescript
 type?: "observation" | "planning" | "execution" | "reflection" | "conclusion" | "debugging" | "design"
 ```
 
 ## Verification
+
 After your fix, grep for "CRITICAL CONTEXT" in think.ts — should find the enriched prompt.
 
 ## Instructions
+
 1. Read think.ts
 2. Find FRESH_EYES_PROMPT
 3. Add the structured context (CRITICAL CONTEXT section)

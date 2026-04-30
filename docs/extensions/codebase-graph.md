@@ -31,19 +31,19 @@ await tool("codebase_graph", { impact: "src/core/agent.ts" });
 // Scope to specific patterns
 await tool("codebase_graph", {
   include: ["**/*.ts"],
-  exclude: ["**/*.d.ts", "**/*.test.ts"]
+  exclude: ["**/*.d.ts", "**/*.test.ts"],
 });
 ```
 
 ## Parameters
 
-| Param | Type | Description |
-|-------|------|-------------|
-| `path` | `string?` | Root directory (default: cwd) |
-| `find` | `dead-ends \| orphans \| hubs \| cycles \| all` | What to find |
-| `impact` | `string?` | File path for impact analysis |
-| `include` | `string[]?` | Include glob patterns |
-| `exclude` | `string[]?` | Exclude glob patterns |
+| Param     | Type                                            | Description                   |
+| --------- | ----------------------------------------------- | ----------------------------- |
+| `path`    | `string?`                                       | Root directory (default: cwd) |
+| `find`    | `dead-ends \| orphans \| hubs \| cycles \| all` | What to find                  |
+| `impact`  | `string?`                                       | File path for impact analysis |
+| `include` | `string[]?`                                     | Include glob patterns         |
+| `exclude` | `string[]?`                                     | Exclude glob patterns         |
 
 ## Output
 
@@ -54,6 +54,7 @@ await tool("codebase_graph", {
 ## Examples
 
 ### Find circular dependencies
+
 ```
 # Circular deps: extension A imports B, B imports A
 ↻ index.ts → cli.ts → index.ts
@@ -61,6 +62,7 @@ await tool("codebase_graph", {
 ```
 
 ### Impact analysis
+
 ```
 # Changing src/core/agent.ts affects:
 Risk: 🔴 HIGH

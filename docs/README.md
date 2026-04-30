@@ -1,63 +1,65 @@
-# pi-braid Documentation
+# pi-braid
 
-**Repository**: `/Users/kifir/projects/agents/pi-braid/`  
-**Purpose**: Extension framework for pi-coding-agent with research-backed behavioral engineering
-
----
-
-## Quick Navigation
-
-| Document | Purpose |
-|----------|---------|
-| **[RESEARCH-MASTER.md](RESEARCH-MASTER.md)** | **Single source of truth** — all research, gaps, proposals, and execution plan |
-| [WHAT-IS-MISSING.md](WHAT-IS-MISSING.md) | Detailed gap analysis (extracted from RESEARCH-MASTER) |
-| [BRAID-NEXT-PROPOSAL.md](BRAID-NEXT-PROPOSAL.md) | Original proposal (2026-04-20) |
-| [DEVELOPMENT.md](DEVELOPMENT.md) | Development workflow and conventions |
-| [research/braid-loop-research.md](research/braid-loop-research.md) | Looped architecture research → harness improvements |
-
-### Research Topics
-
-| Document | Topic |
-|----------|-------|
-| [NUDGE-QUALITY-RESEARCH.md](NUDGE-QUALITY-RESEARCH.md) | Enforcement/judge quality issues |
-| [NUDGE-FATIGUE.md](NUDGE-FATIGUE.md) | Nudge fatigue and deduplication |
-| [SKILL-LOADING-RESEARCH.md](SKILL-LOADING-RESEARCH.md) | Skill system design |
-| [prompt-builder-refactor.md](prompt-builder-refactor.md) | Prompt simplification rationale |
-| [research/braid-loop-research.md](research/braid-loop-research.md) | Recursive verification, budget planning, fast/slow routing |
-
-### Archived
-
-| Location | Contents |
-|----------|----------|
-| `archive/` | Superseded docs, old proposals, consolidated task lists (31 files) |
-| `.archive/` | Validation protocols, measurement solutions (2 files) |
-| `daemon-orchestrator/` | Daemon layer proposal (superseded by heartbeat-scheduler) |
+Metacognitive extension suite for [pi-coding-agent](https://github.com/mariozechner/pi-coding-agent). Research-backed behavioral engineering: enforcement, planning, memory, heartbeat scheduling, RepE contrast vectors, utility tools.
 
 ---
 
 ## Start Here
 
-**New to the project?** Read [RESEARCH-MASTER.md](RESEARCH-MASTER.md) first. It contains:
-- Part 1: Executive summary
-- Part 2: Current architecture audit
-- Part 3: Infrastructure theater analysis
-- Part 4: Complete gap registry
-- Part 5: Today's work (2026-04-23)
-- Part 6: Research cross-reference
-- Part 7: Recommended master plan
-- Part 8: Metrics & success criteria
-- Part 9: Open questions
-- Part 10: Archive of decisions
+| Document | Purpose |
+|---|---|
+| [IMPLEMENTATION.md](IMPLEMENTATION.md) | Master plan — proposals, priorities, P0-P3 execution order |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System design overview |
+| [MODULES.md](MODULES.md) | Module system + toggle API |
+| [WHAT-IS-MISSING.md](WHAT-IS-MISSING.md) | Gap analysis + backlog |
 
 ---
 
-## External Research
+## Features
 
-- `~/projects/vibe/implicit-framing/docs/research/` — Implicit framing, sycophancy, cognitive control
-- `~/projects/agents/OpenMythos/docs/` — Looped transformers, recurrent depth
+- **Cognitive enforcement**: 3-tier signal system, RepE contrast vectors, sycophancy detector
+- **Metacognition**: Meta-learning tick adjustment, degrade-on-idle, belief-policy-engine
+- **Memory**: Three-memory-stores (200 entries, Jaccard dedup), session recall, compaction v0.23
+- **Heartbeat scheduling**: Proactive cognitive scheduling (paper 2604.14178), tool addiction detection
+- **Utility tools**: Codebase tree/graph, REPL, docs reader, browser CDP, web fetch, vision analysis
+- **Bundled skills**: 13 skills for specialized workflows (agent-testing, code-search, documentation, healthcheck, meta-improvement, paper-writer, pi-reference, process-control, research, software-engineer, tone-quality, vcs-tools, visual-validator)
 
 ---
 
-## Maintainers
+## Development
 
-Last updated: 2026-04-23
+```bash
+npm run build     # TypeScript compile
+npm run test      # 34 runtime tests
+npm run typecheck # Type check only
+npm run format    # Prettier format
+npm run lint      # ESLint
+```
+
+---
+
+## Top-Level Docs
+
+| File | Purpose |
+|---|---|
+| [README.md](README.md) | This file |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System design |
+| [MODULES.md](MODULES.md) | Module system |
+| [EXTENSION-HOOKS.md](EXTENSION-HOOKS.md) | How to write extensions |
+| [ERRORS.md](ERRORS.md) | Error reference |
+| [IMPLEMENTATION.md](IMPLEMENTATION.md) | Master implementation plan |
+| [WHAT-IS-MISSING.md](WHAT-IS-MISSING.md) | Gap analysis |
+| [BENCHMARKS.md](BENCHMARKS.md) | Benchmark suite |
+| [SKILLS.md](SKILLS.md) | Skills system |
+| [CHANGELOG.md](CHANGELOG.md) | Version history |
+
+## Other Docs
+
+- [docs/extensions/](extensions/) — Extension documentation
+- [docs/lib/](lib/) — Library documentation
+- [docs/proposals/](proposals/) — R&D proposals
+- [.archive-old/](.archive-old/) — Historical docs (v0.5–v0.9)
+
+---
+
+**Version**: 0.2.0-alpha.1 | **Last updated**: 2026-04-29

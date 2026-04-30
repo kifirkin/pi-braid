@@ -17,6 +17,7 @@
 ## Solution: AGENTS.md as Single Source of Truth
 
 Created `/Users/kifir/projects/agents/pi-braid/AGENTS.md` with:
+
 - Clear identity statement
 - Tool philosophy (proactive, multi-turn)
 - Categorized tool list
@@ -26,20 +27,26 @@ Created `/Users/kifir/projects/agents/pi-braid/AGENTS.md` with:
 ## Next Steps
 
 ### 1. Verify AGENTS.md loads
+
 Test that pi with pi-braid extension now loads the AGENTS.md content.
 
 ### 2. Simplify Extension Architecture
+
 Consider consolidating:
+
 - context-manager + context-lifecycle → single context extension
 - cognitive-systems + session-recall → single memory extension
 
 ### 3. Create Tool Discovery Tool
+
 Add a `tools` or `help` tool that lists available tools in organized categories.
 
 ### 4. Remove Redundant Tools
+
 Remove or rename overlapping tools to reduce confusion.
 
 ### 5. Document Extension API
+
 Create documentation for ExtensionAPI so future extensions don't try to access non-existent state.
 
 ## Files to Review
@@ -53,6 +60,7 @@ Create documentation for ExtensionAPI so future extensions don't try to access n
 ## Testing
 
 After improvements, run benchmark to verify:
+
 1. Model correctly lists available tools
 2. PI-BRAID still encourages more REPL usage
 3. Task completion rates improve

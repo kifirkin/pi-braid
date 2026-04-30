@@ -40,27 +40,109 @@ const ANCHOR_TURNS_BEFORE_RESET = 50;
 const ANCHOR_MIN_TOKENS = 2;
 
 const STOP_WORDS = new Set([
-  "the", "and", "for", "are", "but", "not", "you", "all", "can", "had",
-  "her", "was", "one", "our", "out", "day", "get", "has", "him", "his",
-  "how", "its", "may", "new", "now", "old", "see", "way", "who", "boy",
-  "did", "let", "put", "say", "she", "too", "use", "that", "with", "have",
-  "this", "from", "they", "will", "would", "there", "their", "what", "been",
-  "more", "when", "your", "come", "could", "only", "other", "than", "into",
-  "some", "them", "then", "these", "take", "made", "very", "just", "over",
-  "such", "also", "back", "after", "work", "first", "well", "even", "want",
-  "because", "any", "between", "don't", "it's", "should", "about", "going",
-  "implement", "add", "create", "build", "make", "write", "fix", "update",
+  "the",
+  "and",
+  "for",
+  "are",
+  "but",
+  "not",
+  "you",
+  "all",
+  "can",
+  "had",
+  "her",
+  "was",
+  "one",
+  "our",
+  "out",
+  "day",
+  "get",
+  "has",
+  "him",
+  "his",
+  "how",
+  "its",
+  "may",
+  "new",
+  "now",
+  "old",
+  "see",
+  "way",
+  "who",
+  "boy",
+  "did",
+  "let",
+  "put",
+  "say",
+  "she",
+  "too",
+  "use",
+  "that",
+  "with",
+  "have",
+  "this",
+  "from",
+  "they",
+  "will",
+  "would",
+  "there",
+  "their",
+  "what",
+  "been",
+  "more",
+  "when",
+  "your",
+  "come",
+  "could",
+  "only",
+  "other",
+  "than",
+  "into",
+  "some",
+  "them",
+  "then",
+  "these",
+  "take",
+  "made",
+  "very",
+  "just",
+  "over",
+  "such",
+  "also",
+  "back",
+  "after",
+  "work",
+  "first",
+  "well",
+  "even",
+  "want",
+  "because",
+  "any",
+  "between",
+  "don't",
+  "it's",
+  "should",
+  "about",
+  "going",
+  "implement",
+  "add",
+  "create",
+  "build",
+  "make",
+  "write",
+  "fix",
+  "update",
 ]);
 
 // ── Core logic ──────────────────────────────────────────────────────────────
 
 export function extractAnchors(request: string): Set<string> {
   const normalized = request.toLowerCase();
-  const tokens = normalized.split(/[^\w]+/).filter(
-    (t) => t.length >= ANCHOR_MIN_TOKENS && !STOP_WORDS.has(t),
-  );
+  const tokens = normalized
+    .split(/[^\w]+/)
+    .filter((t) => t.length >= ANCHOR_MIN_TOKENS && !STOP_WORDS.has(t));
   const identifiers = normalized.match(/[a-z][A-Z][a-z]+/g) || [];
-  const compounds = (normalized.match(/\w{6,}/g) || []);
+  const compounds = normalized.match(/\w{6,}/g) || [];
   return new Set([...tokens, ...identifiers, ...compounds]);
 }
 
@@ -163,7 +245,8 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
 
   (pi as any).on("user_message", (event: any, ctx: ExtensionContext) => {
     const state = getExtensionState(ctx, "topic-drift", createDriftState);
-    const message = typeof event?.message === "string" ? event.message : JSON.stringify(event?.message ?? "");
+    const message =
+      typeof event?.message === "string" ? event.message : JSON.stringify(event?.message ?? "");
     if (message.length > 20) {
       resetAnchors(state, message);
     }
@@ -253,7 +336,12 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
       resetAnchors(state, request);
 
       return {
-        content: [{ type: "text" as const, text: `Topic anchors reset: ${state.anchors.size} tokens extracted.` }],
+        content: [
+          {
+            type: "text" as const,
+            text: `Topic anchors reset: ${state.anchors.size} tokens extracted.`,
+          },
+        ],
         details: {
           success: true,
           anchorCount: state.anchors.size,

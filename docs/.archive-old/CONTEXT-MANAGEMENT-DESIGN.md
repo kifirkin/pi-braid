@@ -28,10 +28,10 @@ context-manager (BEFORE)          context-lifecycle (AFTER)
 
 **Solution**: All state stored in SessionManager.
 
-| Data | CustomType | Visibility |
-|------|------------|------------|
+| Data      | CustomType                   | Visibility                        |
+| --------- | ---------------------------- | --------------------------------- |
 | Proposals | `context-lifecycle:proposal` | CustomMessageEntry → shown to LLM |
-| Snapshots | `context-lifecycle:snapshot` | CustomEntry → persisted |
+| Snapshots | `context-lifecycle:snapshot` | CustomEntry → persisted           |
 
 ## Signal Detection (from Session Content)
 
@@ -48,6 +48,7 @@ Session entries → Text extraction → Keyword analysis → Topic detection
 ```
 
 Signal types:
+
 - `topic_shift` - topic changed (keyword analysis)
 - `redundancy_detected` - duplicate content (content hashing)
 - `tool_sequence_pattern` - repetitive tools (tool call tracking)
@@ -96,6 +97,7 @@ context-lifecycle/
 ## Tools
 
 ### `context_proposals`
+
 - `list` - View pending proposals
 - `approve <id>` - Approve a proposal
 - `reject <id>` - Reject a proposal
@@ -103,20 +105,21 @@ context-lifecycle/
 - `stats` - S-MMU statistics
 
 ### `context_signal`
+
 - `task_boundary` - Emit task boundary signal
 - `topic_shift` - Emit topic shift signal
 
 ## Default Policies
 
-| Policy | Trigger | Action | Approval |
-|--------|---------|--------|----------|
-| Light dedup | redundancy ≥ 2 | compact: light | **auto** |
-| Aggressive compact | context > 85% | compact: aggressive | **auto** |
-| Medium compact | context > 70% | compact: medium | **auto** |
-| Pressure proposal | context > 60% | propose | **implicit** |
-| Topic shift proposal | topic_shift signal | propose | **implicit** |
-| Task boundary proposal | task_boundary signal | propose | **implicit** |
-| Auto-snapshot | context_pressure signal | snapshot | **auto** |
+| Policy                 | Trigger                 | Action              | Approval     |
+| ---------------------- | ----------------------- | ------------------- | ------------ |
+| Light dedup            | redundancy ≥ 2          | compact: light      | **auto**     |
+| Aggressive compact     | context > 85%           | compact: aggressive | **auto**     |
+| Medium compact         | context > 70%           | compact: medium     | **auto**     |
+| Pressure proposal      | context > 60%           | propose             | **implicit** |
+| Topic shift proposal   | topic_shift signal      | propose             | **implicit** |
+| Task boundary proposal | task_boundary signal    | propose             | **implicit** |
+| Auto-snapshot          | context_pressure signal | snapshot            | **auto**     |
 
 ## What Was NOT Built (Deliberately)
 
@@ -128,20 +131,22 @@ context-lifecycle/
 
 ## Key Insight
 
-> The value is in AUTOMATION, not new tools. The existing context_* tools are the interface. The S-MMU layer adds automatic proposals, snapshots, and signal detection - all without new tool calls.
+> The value is in AUTOMATION, not new tools. The existing context\_\* tools are the interface. The S-MMU layer adds automatic proposals, snapshots, and signal detection - all without new tool calls.
+
 ---
 
 ## Governance Constraints
 
-| Constraint | Target | Severity | Purpose |
-|------------|--------|----------|---------|
-| `proposal-spam` | proposal | warn | Max proposals per 10 turns |
-| `low-confidence-warning` | proposal | warn | Warn if confidence < 50% |
-| `high-usage-safety` | action | **block** | Block aggressive compact if confidence < 80% |
+| Constraint               | Target   | Severity  | Purpose                                      |
+| ------------------------ | -------- | --------- | -------------------------------------------- |
+| `proposal-spam`          | proposal | warn      | Max proposals per 10 turns                   |
+| `low-confidence-warning` | proposal | warn      | Warn if confidence < 50%                     |
+| `high-usage-safety`      | action   | **block** | Block aggressive compact if confidence < 80% |
 
 ## Closed-Loop Outcome Tracking
 
 Outcomes tracked for each proposal resolution:
+
 - `proposalId` - Unique identifier
 - `resolution` - approved/rejected/implicit_approved/expired
 - `turnsToResolve` - How many turns until resolved
@@ -164,4 +169,3 @@ context-lifecycle/
 ├── signal-detector.ts (259L) - Topic detection, redundancy, tool patterns
 └── index.ts (504L)     - R-CCAM loop, tools, outcome tracking, eviction
 ```
-

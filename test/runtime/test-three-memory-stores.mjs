@@ -13,7 +13,8 @@ const src = readFileSync(join(ROOT, "src/extensions/memory/three-memory-stores/i
 	const toolMatches = [...src.matchAll(/registerTool\s*\(\s*\{[\s\S]*?name\s*:\s*["']([^"']+)["']/g)];
 	const toolNames = toolMatches.map((m) => m[1]);
 	console.log(`  Registered tools: ${toolNames.length} (${toolNames.join(", ")})`);
-	assert.ok(toolNames.length >= 4, `expected ≥4 tools, got ${toolNames.length}`);
+	assert.ok(toolNames.length >= 3, `expected ≥3 tools, got ${toolNames.length}`);
+	// heuristics_evaluate removed (2026-04-28) — was rarely used, duplicates session analysis
 	console.log("  ✅ All assertions passed");
 }
 

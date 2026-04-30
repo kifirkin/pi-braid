@@ -11,6 +11,7 @@ Intelligent user message preprocessing — detects when user messages are trivia
 ## Architecture
 
 Multi-stage analysis pipeline:
+
 1. **Length check** — skip messages >5000 chars (`maxChars`)
 2. **Code block stripping** — strip ``` blocks before analysis
 3. **Bulk code detection** — skip if code blocks are the majority of content
@@ -21,16 +22,16 @@ Multi-stage analysis pipeline:
 
 ## Events Handled
 
-| Event | Handler |
-|-------|---------|
+| Event   | Handler                                                                                           |
+| ------- | ------------------------------------------------------------------------------------------------- |
 | `input` | Preprocess user messages before they reach the agent. Runs analysis pipeline, rewrites if needed. |
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
+| Tool                  | Description                                                                              |
+| --------------------- | ---------------------------------------------------------------------------------------- |
 | `preprocessor_config` | View/update config: `enabled`, `minLength`, `skipCommands`, `showDiff`, `timeoutSeconds` |
-| `preprocessor_stats` | Get preprocessing statistics: messages processed, skipped, rewritten, errors |
+| `preprocessor_stats`  | Get preprocessing statistics: messages processed, skipped, rewritten, errors             |
 
 ## Key Patterns
 

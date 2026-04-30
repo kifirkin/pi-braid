@@ -1,6 +1,6 @@
 # Architecture
 
-> High-level overview of pi-braid's design. For extension development, see [DEVELOPMENT.md](DEVELOPMENT.md).
+> High-level overview of pi-braid's design. For extension development, see [EXTENSION-HOOKS.md](EXTENSION-HOOKS.md) and individual extension docs in [docs/extensions/](extensions/).
 
 ## System Layers
 
@@ -34,21 +34,21 @@
 
 Extensions are grouped into 14 modules (`src/modules/definitions.ts`):
 
-| Module | Purpose | Extensions |
-|--------|---------|-----------|
-| **core** | Always-on foundation | polyfill, metacognition, planner, scratchpad, preprocessor |
-| **cognitive** | RepE enforcement, reasoning | cognitive-systems, reasoning, enforcement, verification, topic-drift |
-| **memory** | Three memory stores, context | three-memory-stores, session-recall, context-manager, context-lifecycle |
-| **heartbeat** | Proactive cognitive scheduling | heartbeat-scheduler, analytics |
-| **retry** | Error recovery | retry, error-capture |
-| **prompt** | System prompt construction | prompt-builder, prompt-guardian |
-| **tools** | Utility tools | codebase-tree, repl, docs, healthcheck, timer, latent-activator |
-| **browser** | Web interaction | browser (CDP), web-fetch, vision |
-| **assistant** | UX & feedback | assistant, feedback |
-| **watchdog** | Error monitoring (opt-in) | watchdog |
-| **evolve** | Self-maintenance (opt-in) | evolve |
-| **rate-limiter** | Usage throttling (opt-in) | rate-limiter |
-| **agent-environment** | Runtime context (opt-in) | agent-environment |
+| Module                | Purpose                        | Extensions                                                              |
+| --------------------- | ------------------------------ | ----------------------------------------------------------------------- |
+| **core**              | Always-on foundation           | polyfill, metacognition, planner, scratchpad, preprocessor              |
+| **cognitive**         | RepE enforcement, reasoning    | cognitive-systems, reasoning, enforcement, verification, topic-drift    |
+| **memory**            | Three memory stores, context   | three-memory-stores, session-recall, context-manager, context-lifecycle |
+| **heartbeat**         | Proactive cognitive scheduling | heartbeat-scheduler, analytics                                          |
+| **retry**             | Error recovery                 | retry, error-capture                                                    |
+| **prompt**            | System prompt construction     | prompt-builder, prompt-guardian                                         |
+| **tools**             | Utility tools                  | codebase-tree, repl, docs, healthcheck, timer, latent-activator         |
+| **browser**           | Web interaction                | browser (CDP), web-fetch, vision                                        |
+| **assistant**         | UX & feedback                  | assistant, feedback                                                     |
+| **watchdog**          | Error monitoring (opt-in)      | watchdog                                                                |
+| **evolve**            | Self-maintenance (opt-in)      | evolve                                                                  |
+| **rate-limiter**      | Usage throttling (opt-in)      | rate-limiter                                                            |
+| **agent-environment** | Runtime context (opt-in)       | agent-environment                                                       |
 
 Each extension lives at `src/extensions/<module>/<extension>/index.ts`.
 
@@ -64,6 +64,7 @@ const state = getExtensionState(ctx, "my-ext", () => ({
 ```
 
 **Rule**: Never use module-level `let` for mutable session state. Use module-level `let` only for:
+
 - Disk-persisted config
 - Process-scoped constants
 

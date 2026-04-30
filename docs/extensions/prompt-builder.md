@@ -11,6 +11,7 @@ Custom system prompt generation — builds the pi-braid system prompt from struc
 ## Architecture
 
 Reconstructs the system prompt from structured data (not fragile string extraction). Each prompt section is a helper function:
+
 - Identity, environment (L1), date/time
 - Agent identity description
 - Tool descriptions (from tool registry)
@@ -22,8 +23,8 @@ Reconstructs the system prompt from structured data (not fragile string extracti
 
 ## Events Handled
 
-| Event | Handler |
-|-------|---------|
+| Event                   | Handler                                                                 |
+| ----------------------- | ----------------------------------------------------------------------- |
 | `session_before_prompt` | Build complete system prompt from all sources, inject as system message |
 
 ## Key Patterns

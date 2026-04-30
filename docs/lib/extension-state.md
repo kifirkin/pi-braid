@@ -5,23 +5,24 @@
 ## How It Works
 
 Two-tier storage:
+
 1. **Primary**: Stable string key derived from `ctx.sessionManager.getSessionFile()` or `getSessionId()`. Uses `Map<string, Map<string, unknown>>` — survives ctx object recreation between tool calls.
 2. **Fallback**: `WeakMap<ExtensionContext, Map<string, unknown>>` — for contexts without sessionManager (legacy).
 
 ## Key Functions
 
-| Function | Description |
-|----------|-------------|
+| Function                               | Description                                                                         |
+| -------------------------------------- | ----------------------------------------------------------------------------------- |
 | `getExtensionState(ctx, key, factory)` | Get or create state bucket for this session + key. Factory called once per session. |
-| `clearAllExtensionState(ctx)` | Remove all state for this session (cleanup on shutdown) |
-| `registerSessionCleanup(pi, ctx)` | Register session_shutdown handler that calls `clearAllExtensionState` |
+| `clearAllExtensionState(ctx)`          | Remove all state for this session (cleanup on shutdown)                             |
+| `registerSessionCleanup(pi, ctx)`      | Register session_shutdown handler that calls `clearAllExtensionState`               |
 
 ## Usage Pattern
 
 ```typescript
 const state = getExtensionState(ctx, "my-extension", () => ({
-    counter: 0,
-    items: [],
+  counter: 0,
+  items: [],
 }));
 ```
 

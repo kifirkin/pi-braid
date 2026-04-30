@@ -74,6 +74,7 @@ analytics/index.ts:
 ### 5. **ARCHITECTURAL: 31 extensions - most are dead weight**
 
 Extensions with ZERO tools registered:
+
 - watchdog, ux, user-message-preprocessor, safety, reasoning, rate-limiter, prompt-guardian, prompt-builder, polyfill, enforcement, assistant, analytics
 
 **That's 12 extensions doing NOTHING visible to the user.**
@@ -92,11 +93,13 @@ Extensions doing 0 registerTool():
 ### 6. **ARCHITECTURAL: No extension dependency system**
 
 Extensions share state via:
+
 - Global module variables (14 extensions do this)
 - Event system (no ordering guarantees)
 - Direct object sharing (enforcement → prompt-builder)
 
 **Example of shared state mess**:
+
 ```
 prompt-builder/index.ts:41:
   let _enforcementSignals: Record<...> = {};
@@ -122,6 +125,7 @@ context-lifecycle/
 ```
 
 **Signal types defined but barely used**:
+
 - `topic_shift` - detected internally, no external emitter
 - `task_boundary` - only from `context_signal` tool
 - `redundancy_detected` - never actually fires
@@ -134,12 +138,14 @@ context-lifecycle/
 ### 8. **SECURITY: No auth boundaries between extensions**
 
 All extensions run in the same process with equal privilege. Any extension can:
+
 - Read/write any file
 - Access all environment variables
 - Emit fake events
 - Overwrite shared state
 
 **Example**:
+
 ```
 feedback/index.ts:164:
   return { ...DEFAULT_CONFIG, ...JSON.parse(readFileSync(path, "utf-8")) };
@@ -169,6 +175,7 @@ src/index.ts:
 ### 10. **PERFORMANCE: Startup is synchronous and slow**
 
 Extensions load sequentially:
+
 ```
 for (const { name, factory } of SUB_EXTENSIONS) {
   factory(pi);  // Blocks until complete
@@ -176,6 +183,7 @@ for (const { name, factory } of SUB_EXTENSIONS) {
 ```
 
 **Each extension does work at load time**:
+
 - `cognitive-systems`: reads directory for memory index
 - `codebase-tree`: initializes stat cache
 - `analytics`: creates storage directory
@@ -185,20 +193,22 @@ Total startup blocking: ~50+ms minimum.
 
 ---
 
-### 10b. **CODE QUALITY: Console.* calls not TUI-aware** ✅ FIXED
+### 10b. **CODE QUALITY: Console.\* calls not TUI-aware** ✅ FIXED
 
 Extensions used `console.log/error/warn` directly, which corrupts TUI rendering.
 
 **FIX**: Created `src/lib/logger.ts` with:
+
 - `createLogger(source)` - TUI-aware logging with levels
 - `taggedConsole(source)` - drop-in console replacement with [source] prefix
 
 **Migrated** (6 files, 20+ calls):
+
 - context-manager, context-lifecycle, enforcement/judge, enforcement/verification-judge
 - evolve, index.ts
 - lib: async-storage, cognitive-memory, degradation-detector
 
-All console.* calls now route through logger.
+All console.\* calls now route through logger.
 
 ---
 
@@ -221,6 +231,7 @@ evolve/index.ts:123: name: "evolve"  // <-- DUPLICATE
 ### 12. **GOVERNANCE: No proposal spam protection** ✅ FIXED
 
 context-lifecycle creates proposals via CustomMessageEntry, but has no actual rate limiting:
+
 ```
 context-lifecycle/index.ts:231:
   sm.appendCustomMessageEntry(PROPOSAL_CUSTOM_TYPE, [...], true, proposal);
@@ -229,6 +240,7 @@ context-lifecycle/index.ts:231:
 If a policy fires every turn, every turn gets a new CustomMessageEntry shown to the LLM.
 
 **FIX**: Added rate limiting in `queueProposal()`:
+
 - `MAX_PROPOSALS_PER_TURN = 2` - max 2 proposals per turn
 - `MAX_PROPOSALS_SESSION = 10` - max 10 proposals per session
 - Counters reset on turn start and session start
@@ -248,6 +260,7 @@ No persistence of outcome history. After restart, all stats reset.
 ### 14. **DOCUMENTATION: Skills reference wrong paths**
 
 healthcheck skill:
+
 ```
 ~/.pi/healthcheck/  // Documented path
 ~/.pi/agent/healthcheck/  // Actual path
@@ -267,16 +280,19 @@ healthcheck skill:
 ## RECOMMENDED ACTIONS
 
 ### P0 (Must Fix)
+
 1. ~~Remove or fix `ctx.triggerCompaction` call~~ ✅ FIXED - now uses `ctx.compact()`
 2. Add explicit extension ordering or event-based handshake
 3. Make analytics/error-capture/feedback async
 
 ### P1 (Should Fix)
+
 4. Audit dead extensions (12 with no tools)
 5. Fix duplicate tool registrations
 6. Add extension dependency declaration
 
 ### P2 (Nice to Have)
+
 7. Make startup lazy-load extensions
 8. Persist outcome tracking
 9. ~~Proposal spam protection~~ ✅ FIXED - rate limiting added
@@ -285,16 +301,15 @@ healthcheck skill:
 
 ## METRICS
 
-| Metric | Value |
-|--------|-------|
-| Extensions | 31 |
-| Extensions with tools | 19 |
-| Extensions dead (no tools, no events) | 12 |
-| Total tools | 47 |
-| Duplicate tools | 2 |
-| Lines of code | 13,681 |
-| Broken patterns | 2 (fixed: triggerCompaction, proposal crash) |
-| Sync I/O in handlers | 5 locations |
+| Metric                                | Value                                        |
+| ------------------------------------- | -------------------------------------------- |
+| Extensions                            | 31                                           |
+| Extensions with tools                 | 19                                           |
+| Extensions dead (no tools, no events) | 12                                           |
+| Total tools                           | 47                                           |
+| Duplicate tools                       | 2                                            |
+| Lines of code                         | 13,681                                       |
+| Broken patterns                       | 2 (fixed: triggerCompaction, proposal crash) |
+| Sync I/O in handlers                  | 5 locations                                  |
 
 **Technical Debt Score**: HIGH (improved from CRITICAL)
-

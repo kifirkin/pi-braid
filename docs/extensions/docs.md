@@ -11,6 +11,7 @@ Document reading tools — read PDF, DOC, DOCX, RTF, HTML, and TXT files. Uses m
 ## Architecture
 
 Two-tier PDF handling:
+
 1. `read_document` — try `pdf-parse` for text extraction, fall through to render-as-image if binary
 2. `render_pdf_page` — render PDF page as PNG image for visual analysis (scanned docs, complex layouts)
 
@@ -20,10 +21,10 @@ None — tools are called directly by the agent.
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
-| `read_document` | Extract text from documents. Supports `doc`, `docx`, `rtf`, `html`, `txt` (via textutil), `pdf` (via pdf-parse). Returns text with line count limit. |
-| `render_pdf_page` | Render a PDF page as PNG image. Parameters: `path`, `page` (1-indexed), `scale` (1.0=72dpi, 1.5=108dpi, 2=144dpi). |
+| Tool              | Description                                                                                                                                          |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `read_document`   | Extract text from documents. Supports `doc`, `docx`, `rtf`, `html`, `txt` (via textutil), `pdf` (via pdf-parse). Returns text with line count limit. |
+| `render_pdf_page` | Render a PDF page as PNG image. Parameters: `path`, `page` (1-indexed), `scale` (1.0=72dpi, 1.5=108dpi, 2=144dpi).                                   |
 
 ## Key Patterns
 

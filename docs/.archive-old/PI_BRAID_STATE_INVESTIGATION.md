@@ -9,24 +9,24 @@
 
 ### ✅ Progress Made
 
-| Area | Before | After | Status |
-|------|--------|-------|--------|
-| Extensions | 35 | 27 | 8 dead removed |
-| `as any` casts | ~80 | ~45 | 44% reduction |
-| Sync FS calls | ~200 | ~70 | 65% reduction |
-| Type.Union → StringEnum | ~15 | 0 | Done |
-| Hypothesis scoring | No | Yes | Implemented |
+| Area                    | Before | After | Status         |
+| ----------------------- | ------ | ----- | -------------- |
+| Extensions              | 35     | 27    | 8 dead removed |
+| `as any` casts          | ~80    | ~45   | 44% reduction  |
+| Sync FS calls           | ~200   | ~70   | 65% reduction  |
+| Type.Union → StringEnum | ~15    | 0     | Done           |
+| Hypothesis scoring      | No     | Yes   | Implemented    |
 
 ### ❌ Remaining Issues
 
-| Priority | Issue | Impact | Files |
-|----------|-------|--------|-------|
-| P0 | `process.cwd()` for session state | Branch switching breaks state | scratchpad, enforcement |
-| P0 | Module-level mutable state | Session isolation fails | All extensions |
-| P1 | Sync FS in settings/tools | Event loop blocking | 4 extensions |
-| P1 | Dead extension deletions uncommitted | Dirty git state | enforcement, etc. |
-| P2 | No dependency declaration | Load order fragile | index.ts |
-| P2 | No health reporting | Failed loads silent | All extensions |
+| Priority | Issue                                | Impact                        | Files                   |
+| -------- | ------------------------------------ | ----------------------------- | ----------------------- |
+| P0       | `process.cwd()` for session state    | Branch switching breaks state | scratchpad, enforcement |
+| P0       | Module-level mutable state           | Session isolation fails       | All extensions          |
+| P1       | Sync FS in settings/tools            | Event loop blocking           | 4 extensions            |
+| P1       | Dead extension deletions uncommitted | Dirty git state               | enforcement, etc.       |
+| P2       | No dependency declaration            | Load order fragile            | index.ts                |
+| P2       | No health reporting                  | Failed loads silent           | All extensions          |
 
 ---
 
@@ -36,11 +36,11 @@
 
 ```typescript
 function resolveProjectSlug(cwd?: string): string {
-    try {
-        return projectSlugFromCwd(cwd ?? process.cwd());  // ← P0
-    } catch {
-        return "default";
-    }
+  try {
+    return projectSlugFromCwd(cwd ?? process.cwd()); // ← P0
+  } catch {
+    return "default";
+  }
 }
 ```
 
@@ -51,9 +51,7 @@ function resolveProjectSlug(cwd?: string): string {
 ### enforcement/index.ts (Line 72)
 
 ```typescript
-const resolvedPath = isAbsolute(filePath)
-    ? filePath
-    : path.resolve(process.cwd(), filePath);  // ← P1
+const resolvedPath = isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath); // ← P1
 ```
 
 **Problem**: File path resolution uses `process.cwd()`. Less critical than scratchpad but still problematic.
@@ -139,9 +137,9 @@ Current `src/index.ts`:
 
 ```typescript
 const SUB_EXTENSIONS: ExtensionFactory[] = [
-    // context-lifecycle goes AFTER context-manager
-    polyfill,
-    // ... 27 extensions in hardcoded order
+  // context-lifecycle goes AFTER context-manager
+  polyfill,
+  // ... 27 extensions in hardcoded order
 ];
 ```
 
@@ -151,13 +149,13 @@ const SUB_EXTENSIONS: ExtensionFactory[] = [
 
 ```typescript
 const SUB_EXTENSIONS: Array<{
-    name: string;
-    factory: ExtensionFactory;
-    depends?: string[];
+  name: string;
+  factory: ExtensionFactory;
+  depends?: string[];
 }> = [
-    { name: "polyfill", factory: polyfill },
-    { name: "prompt-builder", factory: promptBuilder, depends: ["polyfill"] },
-    // ...
+  { name: "polyfill", factory: polyfill },
+  { name: "prompt-builder", factory: promptBuilder, depends: ["polyfill"] },
+  // ...
 ];
 ```
 
@@ -169,10 +167,10 @@ Current extension loading:
 
 ```typescript
 try {
-    ext(pi);
+  ext(pi);
 } catch (err) {
-    logger.error(`Failed to load ${name}: ${err}`);
-    continue;  // Silent continue
+  logger.error(`Failed to load ${name}: ${err}`);
+  continue; // Silent continue
 }
 ```
 
@@ -182,11 +180,11 @@ try {
 
 ```typescript
 try {
-    ext(pi);
-    pi.reportHealth?.(name, { status: "loaded" });
+  ext(pi);
+  pi.reportHealth?.(name, { status: "loaded" });
 } catch (err) {
-    pi.reportHealth?.(name, { status: "failed", error: err.message });
-    logger.error(`Failed to load ${name}: ${err}`);
+  pi.reportHealth?.(name, { status: "failed", error: err.message });
+  logger.error(`Failed to load ${name}: ${err}`);
 }
 ```
 
@@ -265,15 +263,15 @@ git status --short
 
 ## Files to Modify
 
-| File | Changes | Priority |
-|------|---------|----------|
-| `src/extensions/scratchpad/index.ts` | Use ctx.cwd | P0 |
-| `src/extensions/enforcement/index.ts` | Use ctx.cwd for paths | P1 |
-| `src/extensions/user-message-preprocessor/` | Async settings | P1 |
-| `src/index.ts` | Add dependency declaration | P2 |
-| `src/index.ts` | Add health reporting | P2 |
-| `src/extensions/prompt-guardian/` | Async prompts | P2 |
-| `src/extensions/repl/` | Async file reads | P2 |
+| File                                        | Changes                    | Priority |
+| ------------------------------------------- | -------------------------- | -------- |
+| `src/extensions/scratchpad/index.ts`        | Use ctx.cwd                | P0       |
+| `src/extensions/enforcement/index.ts`       | Use ctx.cwd for paths      | P1       |
+| `src/extensions/user-message-preprocessor/` | Async settings             | P1       |
+| `src/index.ts`                              | Add dependency declaration | P2       |
+| `src/index.ts`                              | Add health reporting       | P2       |
+| `src/extensions/prompt-guardian/`           | Async prompts              | P2       |
+| `src/extensions/repl/`                      | Async file reads           | P2       |
 
 ---
 

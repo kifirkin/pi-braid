@@ -22,12 +22,12 @@ const DEBOUNCE_MS = 100;
  * Returns cached value if file hasn't changed.
  */
 export async function loadState<T>(path: string): Promise<T | null> {
-	try {
-		const content = await readFile(path, "utf-8");
-		return JSON.parse(content) as T;
-	} catch {
-		return null;
-	}
+  try {
+    const content = await readFile(path, "utf-8");
+    return JSON.parse(content) as T;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -35,49 +35,49 @@ export async function loadState<T>(path: string): Promise<T | null> {
  * Multiple rapid saves to the same path are batched.
  */
 export async function saveState<T>(path: string, data: T): Promise<void> {
-	// Cancel any pending write for this path
-	const pending = pendingWrites.get(path);
-	if (pending) {
-		clearTimeout(pending.timeout);
-	}
+  // Cancel any pending write for this path
+  const pending = pendingWrites.get(path);
+  if (pending) {
+    clearTimeout(pending.timeout);
+  }
 
-	// Schedule debounced write
-	const timeout = setTimeout(async () => {
-		pendingWrites.delete(path);
-		try {
-			await mkdir(dirname(path), { recursive: true });
-			await writeFile(path, JSON.stringify(data, null, 2), "utf-8");
-		} catch (err) {
-			_log.error(`Failed to save state to ${path}:`, err);
-		}
-	}, DEBOUNCE_MS);
+  // Schedule debounced write
+  const timeout = setTimeout(async () => {
+    pendingWrites.delete(path);
+    try {
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, JSON.stringify(data, null, 2), "utf-8");
+    } catch (err) {
+      _log.error(`Failed to save state to ${path}:`, err);
+    }
+  }, DEBOUNCE_MS);
 
-	pendingWrites.set(path, { data, timeout });
+  pendingWrites.set(path, { data, timeout });
 }
 
 /**
  * Force immediate save (for shutdown/cleanup).
  */
 export async function saveStateImmediate<T>(path: string, data: T): Promise<void> {
-	// Cancel any pending write
-	const pending = pendingWrites.get(path);
-	if (pending) {
-		clearTimeout(pending.timeout);
-		pendingWrites.delete(path);
-	}
+  // Cancel any pending write
+  const pending = pendingWrites.get(path);
+  if (pending) {
+    clearTimeout(pending.timeout);
+    pendingWrites.delete(path);
+  }
 
-	try {
-		await mkdir(dirname(path), { recursive: true });
-		await writeFile(path, JSON.stringify(data, null, 2), "utf-8");
-	} catch (err) {
-		_log.error(`Failed to save state to ${path}:`, err);
-	}
+  try {
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, JSON.stringify(data, null, 2), "utf-8");
+  } catch (err) {
+    _log.error(`Failed to save state to ${path}:`, err);
+  }
 }
 
 /**
  * Flush all pending writes.
  */
 export async function flushAll(): Promise<void> {
-	const paths = Array.from(pendingWrites.keys());
-	await Promise.all(paths.map((path) => saveStateImmediate(path, pendingWrites.get(path)?.data)));
+  const paths = Array.from(pendingWrites.keys());
+  await Promise.all(paths.map((path) => saveStateImmediate(path, pendingWrites.get(path)?.data)));
 }
