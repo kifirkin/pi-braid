@@ -517,6 +517,88 @@ const measurementModule: CognitiveModule = {
   },
 };
 
+// ── Budget Module (BAVT — Budget-Aware Value Tree Search) ──────────────────────────
+// Tracks plan step budgets and warns when approaching/exceeding thresholds.
+// Budgets are set via `[budget:N]` in plan steps. Heartbeat tracks spend vs budget.
+// Research: docs/research/braid-loop-research.md (Improvement 2: Budget-Aware Planning)
+// Based on: 2604.13408 "Budget-Aware Value Estimation in LLM Agent Tree Search"
+const budgetModule: CognitiveModule = {
+  name: "budget-tracker",
+  description: "Track plan step budgets and warn at 80/90/100% thresholds (BAVT)",
+  priority: 0.85,
+
+  shouldActivate(context: ModuleContext): boolean {
+    // Activate every tick — budget tracking is lightweight
+    return true;
+  },
+
+  async activate(context: ModuleContext): Promise<void> {
+    try {
+      // Lazy-import scratchpad to avoid circular dependency
+      const { loadScratchpadFromDisk } = await import("../../core/scratchpad/index.js");
+      const { emitSignal } = await import("../../../lib/belief-policy-engine.js");
+
+      // Resolve project slug from cwd
+      const cwd = (context.ctx as any).cwd ?? "";
+      const segments = cwd.split("/").filter(Boolean);
+      const slug = "--" + segments.join("-") + "--";
+
+      const pad = await loadScratchpadFromDisk(slug);
+      if (!pad || pad.plan.length === 0) return;
+
+      const currentTotalCalls = context.totalToolCalls;
+
+      for (const step of pad.plan) {
+        if (step.doneTurn > 0) continue; // Already completed
+        if (!step.budgetCalls || step.budgetCalls <= 0) continue;
+
+        // Initialize startTotalCalls on first check (step just became active)
+        if (step.startTotalCalls === 0 && step.startTurn < pad.session.turn) {
+          step.startTotalCalls = currentTotalCalls;
+        }
+
+        const spent = Math.max(0, currentTotalCalls - step.startTotalCalls);
+        step.spentCalls = spent; // Keep scratchpad in sync
+        const budget = step.budgetCalls;
+        const ratio = budget > 0 ? spent / budget : 0;
+
+        if (ratio >= 1.0) {
+          // Over budget — emit signal + whisper
+          emitSignal(context.ctx, "tool-use", "overuse", "warn", false, {
+            reason: "budget-exceeded",
+            step: step.text.slice(0, 60),
+            spent,
+            budget,
+          });
+          context.ctx.whisper?.(
+            `[budget] Step "${step.text.slice(0, 50)}" exceeded budget: ${spent}/${budget} calls. Consider simplifying or marking done.`,
+            { category: "cognitive", priority: "medium" },
+          );
+        } else if (ratio >= 0.9) {
+          context.ctx.whisper?.(
+            `[budget] Step "${step.text.slice(0, 50)}" at ${(ratio * 100).toFixed(0)}% budget: ${spent}/${budget} calls. Consider wrapping up.`,
+            { category: "cognitive", priority: "low" },
+          );
+        } else if (ratio >= 0.8) {
+          context.ctx.whisper?.(
+            `[budget] Step "${step.text.slice(0, 50)}" at 80% budget: ${spent}/${budget} calls.`,
+            { category: "cognitive", priority: "low" },
+          );
+        }
+      }
+      // Save scratchpad with updated spentCalls/startTotalCalls
+      try {
+        const { saveScratchpadToDisk } = await import("../../core/scratchpad/index.js");
+        await saveScratchpadToDisk(pad);
+      } catch {
+        // Silent ignore save errors
+      }
+    } catch (err) {
+      log.debug(`budget-tracker: ${err}`);
+    }
+  },
+};
+
 // ── Evolver Module (Hyperagents-inspired) ────────────────────────────────────
 // After sufficient turns, evaluates session performance and evolves heuristics.
 // Based on: archive-based evolution + diversity-preserving selection.
@@ -983,6 +1065,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     contextHygieneModule,
     measurementModule,
     evolverModule,
+    budgetModule,
   ];
 
   // ── Timer Module ──────────────────────────────────────────────────

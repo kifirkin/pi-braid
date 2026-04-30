@@ -91,6 +91,29 @@ export interface KeyLearning {
   persisted: boolean;
 }
 
+// ── Budget-Aware Planning (BAVT) ───────────────────────────────────────────────
+
+// Each plan step has optional budget metadata. Heartbeat tracks velocity
+// and warns when approaching/exceeding budget.
+
+/** A single plan step with optional budget metadata */
+export interface PlanStep {
+  text: string;
+  estimateCalls?: number;
+  budgetCalls?: number;
+  spentCalls: number;
+  startTurn: number;
+  doneTurn: number;
+  startTotalCalls: number;
+}
+
+/** A decision with reasoning context */
+export interface Decision {
+  text: string;
+  reason?: string;
+  turn: number;
+}
+
 /** Main scratchpad type */
 export interface TaskScratchpad {
   /** Original goal/task */
@@ -98,11 +121,11 @@ export interface TaskScratchpad {
   /** Goal from previous session (survives set_goal) */
   prior_goal: string;
   /** Steps to complete */
-  plan: string[];
+  plan: PlanStep[];
   /** Steps completed */
   done: string[];
   /** Key decisions made */
-  decisions: string[];
+  decisions: Decision[];
   /** Multiple hypotheses (for debugging) */
   hypotheses: string[];
   /** Notes/thoughts */
@@ -283,9 +306,9 @@ function createScratchpad(goal: string, projectSlug: string): TaskScratchpad {
   return {
     goal,
     prior_goal: "",
-    plan: [],
+    plan: [] as PlanStep[],
     done: [],
-    decisions: [],
+    decisions: [] as Decision[],
     hypotheses: [],
     notes: [],
     session: {
@@ -303,7 +326,7 @@ function createScratchpad(goal: string, projectSlug: string): TaskScratchpad {
   };
 }
 
-async function saveScratchpadToDisk(scratchpad: TaskScratchpad): Promise<void> {
+export async function saveScratchpadToDisk(scratchpad: TaskScratchpad): Promise<void> {
   try {
     const filePath = scratchpadFilePath(scratchpad.projectSlug);
     // Use mutation queue for serialized, debounced writes
@@ -399,15 +422,20 @@ export function formatScratchpad(pad: TaskScratchpad): string {
     lines.push("\nPlan:");
     for (let i = 0; i < pad.plan.length; i++) {
       const step = pad.plan[i];
-      const status = pad.done.includes(step) ? "[done]" : "[ ]";
-      lines.push(`  ${status} ${i + 1}. ${step}`);
+      const isDone = step.doneTurn > 0;
+      const status = isDone ? "[done]" : "[ ]";
+      const spent = step.spentCalls > 0 ? ` (${step.spentCalls} calls)` : "";
+      const budget = step.budgetCalls ? `/${step.budgetCalls}` : "";
+      const over = step.budgetCalls && step.spentCalls > step.budgetCalls ? " ⚠️" : "";
+      lines.push(`  ${status} ${i + 1}. ${step.text}${spent}${budget}${over}`);
     }
   }
 
   if (pad.decisions.length > 0) {
     lines.push("\nDecisions:");
     for (const d of pad.decisions) {
-      lines.push(`  - ${d}`);
+      const reason = d.reason ? ` — ${d.reason}` : "";
+      lines.push(`  - ${d.text}${reason}`);
     }
   }
 
@@ -697,25 +725,44 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
             details: { goal: text, prior_goal: pad.prior_goal || undefined },
           };
 
-        case "add_plan":
+        case "add_plan": {
           if (!text)
             return {
               content: [{ type: "text" as const, text: "text required" }],
               details: { error: "missing_text" },
             };
-          const planPruned = capPush(pad.plan, text, RECYCLE.MAX_PLAN);
+          // Parse optional budget from text: "fix the bug [budget:10]"
+          let planText = text;
+          let budgetCalls: number | undefined;
+          const budgetMatch = text.match(/\s*\[budget:\s*(\d+)\]\s*$/i);
+          if (budgetMatch) {
+            budgetCalls = parseInt(budgetMatch[1], 10);
+            planText = text.slice(0, budgetMatch.index!).trim();
+          }
+          const step: PlanStep = {
+            text: planText,
+            budgetCalls,
+            estimateCalls: undefined,
+            spentCalls: 0,
+            startTurn: pad.session.turn,
+            doneTurn: 0,
+            startTotalCalls: 0,
+          };
+          const planPruned = capPush(pad.plan, step, RECYCLE.MAX_PLAN);
           await mutateAndSave(pad);
+          const budgetStr = budgetCalls ? ` [budget: ${budgetCalls} calls]` : "";
           return {
             content: [
               {
                 type: "text" as const,
                 text: planPruned
-                  ? `Plan step added (${planPruned} old step trimmed)`
-                  : `Plan step added: ${text}`,
+                  ? `Plan step added (${planPruned} old step trimmed)${budgetStr}`
+                  : `Plan step added: ${planText}${budgetStr}`,
               },
             ],
-            details: { plan: pad.plan, pruned: planPruned },
+            details: { plan: pad.plan.map((s) => s.text), pruned: planPruned },
           };
+        }
 
         case "mark_done":
           if (!text)
@@ -724,24 +771,37 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
               details: { error: "missing_text" },
             };
           if (!pad.done.includes(text)) capPush(pad.done, text, RECYCLE.MAX_DONE);
+          // Mark corresponding plan step done
+          const planIdx = pad.plan.findIndex((s) => s.text === text);
+          if (planIdx >= 0) pad.plan[planIdx].doneTurn = pad.session.turn;
           await mutateAndSave(pad);
           return {
             content: [{ type: "text" as const, text: `Marked done: ${text}` }],
             details: { done: pad.done },
           };
 
-        case "add_decision":
+        case "add_decision": {
           if (!text)
             return {
               content: [{ type: "text" as const, text: "text required" }],
               details: { error: "missing_text" },
             };
-          capPush(pad.decisions, text, RECYCLE.MAX_DECISIONS);
+          // Parse optional reason: "chose X [reason: Y]"
+          let decisionText = text;
+          let reason: string | undefined;
+          const reasonMatch = text.match(/\s*\[reason:\s*(.+?)\]\s*$/i);
+          if (reasonMatch) {
+            reason = reasonMatch[1].trim();
+            decisionText = text.slice(0, reasonMatch.index!).trim();
+          }
+          const decision: Decision = { text: decisionText, reason, turn: pad.session.turn };
+          capPush(pad.decisions, decision, RECYCLE.MAX_DECISIONS);
           await mutateAndSave(pad);
           return {
-            content: [{ type: "text" as const, text: `Decision recorded: ${text}` }],
+            content: [{ type: "text" as const, text: `Decision recorded: ${decisionText}` }],
             details: { decisions: pad.decisions },
           };
+        }
 
         case "add_hypothesis":
           if (!text)
@@ -1006,8 +1066,8 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
               details: { error: "no_plan" },
             };
           const steps = pad.plan.map((s, i) => {
-            const status = pad.done.includes(s) ? "[done]" : "[ ]";
-            return `${status} ${i + 1}. ${s}`;
+            const status = s.doneTurn > 0 ? "[done]" : "[ ]";
+            return `${status} ${i + 1}. ${s.text}`;
           });
           return {
             content: [
