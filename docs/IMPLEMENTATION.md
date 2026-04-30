@@ -242,7 +242,7 @@ API-only providers (stepfun, minimax) don't expose activations/logprobs. RepE pr
 | P1.2 | BM3 real-world task suite | 4h | None |
 | P1.3 | Bidirectional verifier (extension) | 4h | R6 session recall, enforcement |
 | DONE | Agent Timer + Pomodoro reminders | ✅ Complete | real-time polling + steer reminders + contrast toggle |
-| P1.5 | Contrast phrase library (lib) | 3h | P0.1, P0.3 |
+| DONE | Contrast phrase library (lib) | ✅ Complete | formatContrastSection() → mode-driven phrase selection |
 | P1.6 | Semantic unit classification (compaction) | 3h | None |
 | P1.7 | Memory contamination detection | 3h | three-memory-stores |
 

@@ -155,15 +155,30 @@ export const enforcementSignals: Record<
 
 // ── RepE Contrast Mode Detection (P0.3) ────────────────────────────────────────
 // Determines which RepE contrast mode should be active based on enforcement state.
-// Emitted with enforcement_signals event → prompt-builder renders active mode in §8c.
-// Modes: TRUTH-SEEKING (default), TOOL-RELIABILITY (errors), CORRECTION (edits).
+// Emitted with enforcement_signals event → prompt-builder renders active mode in §8.
+// Priority: errors > overflow > correction-edits > default.
+// Modes: TRUTH-SEEKING | TOOL-RELIABILITY | CORRECTION | EPISTEMIC-CALIBRATION.
 function determineContrastMode(ctx: ExtensionContext): string {
   const state = getState(ctx);
-  // Error burst → TOOL RELIABILITY
-  if (state.consecutiveErrorTurns >= 3) return "TOOL-RELIABILITY";
-  // Recent tool errors (non-burst) → TOOL RELIABILITY
+
+  // Priority 1: Error burst → TOOL RELIABILITY
+  // When tools are failing, emphasize tool trust + correctness over bash tricks
   if (state.consecutiveErrorTurns >= 1) return "TOOL-RELIABILITY";
-  // Default
+
+  // Priority 2: Overflow recovery → EPISTEMIC CALIBRATION
+  // After context overflow, agent needs careful confidence calibration
+  const RECOVERY_GRACE_TURNS = 5;
+  const inOverflowRecovery = state.currentTurn - state.overflowRecently < RECOVERY_GRACE_TURNS;
+  if (state.overflowRecently > 0 && inOverflowRecovery) return "EPISTEMIC-CALIBRATION";
+
+  // Priority 3: Edit without think recently → CORRECTION
+  // Agent is making changes without reasoning — should stand behind analysis
+  const recentEditsWithoutThink = state.toolChain.recentEditWithoutThink.filter(
+    (turn: number) => state.currentTurn - turn <= 3,
+  );
+  if (recentEditsWithoutThink.length > 0) return "CORRECTION";
+
+  // Default: TRUTH-SEEKING
   return "TRUTH-SEEKING";
 }
 
@@ -762,6 +777,7 @@ Persist them now - this is the minimum-fidelity moment.`,
         pi.events.emit("enforcement_signals", {
           turn: getState(ctx).currentTurn,
           signals: { ...enforcementSignals },
+          contrastMode: determineContrastMode(ctx),
         });
       }
 
