@@ -2,7 +2,7 @@
 
 **Single source of truth.** All features, their status, priority, and execution order.
 
-**Last updated**: 2026-04-29
+**Last updated**: 2026-04-30
 **Purpose**: Executable plan for weeks/months of incremental feature development.
 
 ---
