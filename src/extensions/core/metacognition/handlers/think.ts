@@ -301,6 +301,44 @@ function buildChainSummary(thoughts: ThoughtRecord[]): string {
   return `**Reasoning chain (${thoughts.length} thoughts):**\n${lines.join("\n")}`;
 }
 
+// ── Process Supervision (Loop, Think, Generalize 2604.07822) ────────────────────
+// Check logical consistency between consecutive reasoning steps.
+
+/** Check if a reasoning step is consistent with its parent step. */
+export function stepConsistencyCheck(
+  current: ThoughtRecord,
+  parent: ThoughtRecord | null,
+): string[] {
+  if (!parent) return [];
+  const issues: string[] = [];
+  const pl = parent.decision.toLowerCase();
+  const cl = current.decision.toLowerCase();
+  const contradictions = [
+    ["but", "however", "although"],
+    ["wrong", "correct"],
+    ["fail", "succeed"],
+    ["error", "working"],
+    ["impossible", "possible"],
+  ];
+  for (const [neg, pos] of contradictions) {
+    if ((pl.includes(neg) && cl.includes(pos)) || (pl.includes(pos) && cl.includes(neg))) {
+      issues.push(`Contradiction: "${parent.decision.slice(0, 40)}" vs "${current.decision.slice(0, 40)}"`);
+    }
+  }
+  if (/\bbecause\b/i.test(cl) && !/\bbecause\b/i.test(pl)) {
+    issues.push("Unsupported 'because': parent provides no causal link");
+  }
+  if (
+    current.confidence !== null &&
+    parent.confidence !== null &&
+    parent.confidence > 0.7 &&
+    current.confidence < 0.3
+  ) {
+    issues.push(`Confidence drop: ${Math.round(parent.confidence * 100)}% → ${Math.round(current.confidence * 100)}%`);
+  }
+  return issues;
+}
+
 // ── Main Tool ────────────────────────────────────────────────────────────────
 
 export function createThinkTool() {
@@ -334,6 +372,7 @@ export function createThinkTool() {
       const budget = getBudget(depth);
       const useDeepReview = params.ask_utility_model === true || depth === "deep";
       const confidence = params.confidence ?? null;
+      const consistencyIssues: string[] = []; // Process Supervision (2604.07822)
 
       // Persist to session chain
       let tokensUsed = 0;
@@ -355,6 +394,18 @@ export function createThinkTool() {
           createdAt: Date.now(),
         };
         chain.thoughts.push(record);
+
+        // Process Supervision: check consistency after pushing
+        if (params.parent_id) {
+          const parent = chain.thoughts.find((t) => t.id === params.parent_id);
+          if (parent) {
+            const issues = stepConsistencyCheck(record, parent);
+            if (issues.length > 0) {
+              log.debug(`Process supervision: ${issues.length} consistency issues`);
+              consistencyIssues.push(...issues.slice(0, 3));
+            }
+          }
+        }
       }
 
       const result: Record<string, unknown> = { thought_id: thoughtId };
@@ -423,6 +474,14 @@ export function createThinkTool() {
         }
       }
 
+      // Process Supervision: inject consistency check results
+      if (consistencyIssues.length > 0) {
+        lines.push("", "⚠️ Consistency check:");
+        for (const issue of consistencyIssues) {
+          lines.push(`  • ${issue.slice(0, 120)}`);
+        }
+      }
+
       // Show chain summary if requested
       if (params.show_chain && ctx) {
         const chain = getChainState(ctx);
@@ -438,7 +497,7 @@ export function createThinkTool() {
 
       return {
         content: [{ type: "text" as const, text: lines.join("\n") }],
-        details: { observation, decision, reason, ...result },
+        details: { observation, decision, reason, consistencyIssues, ...result },
       };
     },
   };
