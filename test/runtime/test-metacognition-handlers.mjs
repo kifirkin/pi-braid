@@ -140,6 +140,54 @@ async function main() {
 		assert(r.hypothesisQuality > 60);
 	});
 
+	// ── Verify handler — heuristic checks ──────────────────────────────────────
+	console.log("\n[3] Verify handler — heuristic checks");
+	const { heuristicCheck } = await import(
+		`${ROOT}/dist/extensions/core/metacognition/handlers/verify.js`
+	);
+
+	check("heuristicCheck: detects unmatched braces in code", () => {
+		// Genuinely unbalanced: 2 opens, 1 close
+		const result = heuristicCheck("code", "function foo() { return { a: 1; return { b: 2");
+		assert(result.issues.some(i => i.includes("Unmatched") || i.includes("brace")));
+		assert(result.checksRun.includes("syntax"));
+	});
+
+	check("heuristicCheck: detects eval() security risk", () => {
+		const result = heuristicCheck("code", "const result = eval(userInput);");
+		assert(result.issues.some(i => i.includes("eval") || i.includes("security") || i.includes("dangerous")));
+	});
+
+	check("heuristicCheck: detects innerHTML XSS risk", () => {
+		const result = heuristicCheck("code", "element.innerHTML = userData;");
+		assert(result.issues.some(i => i.includes("innerHTML") || i.includes("XSS")));
+	});
+
+	check("heuristicCheck: detects TODO markers", () => {
+		const result = heuristicCheck("code", "// TODO: fix this later");
+		assert(result.issues.some(i => i.includes("TODO")));
+	});
+
+	check("heuristicCheck: clean code passes with no issues", () => {
+		const result = heuristicCheck("code", "const x = { a: 1, b: 2 };\nreturn x.a + x.b;");
+		assert(result.issues.length === 0);
+	});
+
+	check("heuristicCheck: absolute language in reasoning", () => {
+		const result = heuristicCheck("reasoning", "This is always broken and never works correctly.");
+		assert(result.issues.some(i => i.includes("Absolute") || i.includes("overstate")));
+	});
+
+	check("heuristicCheck: placeholder in result", () => {
+		const result = heuristicCheck("result", "The answer is [TODO].");
+		assert(result.issues.some(i => i.includes("placeholder") || i.includes("incomplete")));
+	});
+
+	check("heuristicCheck: plan without exit criteria flagged", () => {
+		const result = heuristicCheck("plan", "1. First step\n2. Second step\n3. Third step");
+		assert(result.issues.some(i => i.includes("completion") || i.includes("failure") || i.includes("criteria")));
+	});
+
 	// Summary
 	console.log(`\n${"=".repeat(50)}`);
 	console.log(`metacognition-handlers: ${passed} passed, ${failed} failed`);
