@@ -122,12 +122,14 @@ import { getExtensionState } from "../../../lib/extension-state.js";
 interface PromptBuilderState {
   enforcementSignals: Record<string, { turn: number; text: string; acted: boolean }>;
   lastSignalTurn: number;
+  activeContrastMode: string;
 }
 
 function getPromptState(ctx: ExtensionContext): PromptBuilderState {
   return getExtensionState(ctx, "prompt-builder", () => ({
     enforcementSignals: {},
     lastSignalTurn: 0,
+    activeContrastMode: "TRUTH-SEEKING",
   }));
 }
 
@@ -472,9 +474,11 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
       const d = data as {
         turn: number;
         signals: Record<string, { turn: number; text: string; acted: boolean }>;
+        contrastMode?: string;
       };
       ps.enforcementSignals = d.signals;
       ps.lastSignalTurn = d.turn;
+      if (d.contrastMode) ps.activeContrastMode = d.contrastMode;
     });
   });
 
@@ -583,11 +587,12 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
 
     // 8c. RepE structured contrast vectors (RepE 2310.01405 — text-space activation)
     parts.push("// RepE contrast vectors: activate honesty/self-knowledge circuits in text-space");
-    parts.push("// Mode matches enforcement signal state. Use when detecting: hesitation, agreeableness bias, preference-following drift.");
-    parts.push('// Mode: TRUTH-SEEKING (default): "I am uncertain about X, but here is my best analysis."');
-    parts.push('// Mode: CORRECTION: "This assumption is wrong because [reason]. Here is the correct understanding."');
-    parts.push('// Mode: EPISTEMIC CALIBRATION: "I estimate 60-70% confidence in this conclusion."');
-    parts.push('// Mode: TOOL RELIABILITY: "edit/write are exact-match. Tool failure is almost always agent-side."');
+    parts.push(`// ACTIVE MODE: ${ps.activeContrastMode} — matches enforcement signal state.`);
+    parts.push("// All available modes:");
+    parts.push('//   TRUTH-SEEKING: "I am uncertain about X, but here is my best analysis."');
+    parts.push('//   CORRECTION: "This assumption is wrong because [reason]. Here is the correct understanding."');
+    parts.push('//   EPISTEMIC CALIBRATION: "I estimate 60-70% confidence in this conclusion."');
+    parts.push('//   TOOL-RELIABILITY: "edit/write are exact-match. Tool failure is almost always agent-side."');
 
     // 8d. Structured output format (reduces ambiguity, improves tool use accuracy)
     parts.push("// Use code blocks with language tags (```typescript, ```bash)");

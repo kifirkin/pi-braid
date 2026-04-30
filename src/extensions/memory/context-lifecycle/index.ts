@@ -31,7 +31,7 @@ import {
   type ContextProposal,
   type ContextSnapshot,
 } from "./types.js";
-import { PolicyEngine, type EvaluatedAction } from "./policy-engine.js";
+import { PolicyEngine, type EvaluatedAction, generateDensitySignals } from "./policy-engine.js";
 import { SignalDetector } from "./signal-detector.js";
 
 // ── Module State ─────────────────────────────────────────────────────────────
@@ -323,6 +323,13 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 
     // ── RETRIEVAL: Detect signals from session content ──────────────────
     const signals = _signalDetector.update(entries, usage);
+
+    // ── DENSITY: Generate context density signals (SimpleMem 2601.02553) ─
+    // These feed into density-aware policies (prune, compress, dedup)
+    const densitySignals = generateDensitySignals(ctx);
+    if (densitySignals.length > 0) {
+      signals.push(...densitySignals);
+    }
 
     // ── COGNITION: Evaluate policies against signals ───────────────────
     const redundancyCount = signals.filter((s) => s.type === "redundancy_detected").length;

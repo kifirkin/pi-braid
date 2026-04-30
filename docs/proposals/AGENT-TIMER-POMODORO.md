@@ -486,19 +486,24 @@ The agent loop is event-driven. Timers are a natural fit.
 
 ## Status
 
-**Implemented** ✅ — `src/extensions/timer/index.ts` on `feature/structured-contrast` branch (worktree). Built, tested, 100% on benchmark.
+**Implemented** ✅ — `src/extensions/tools/timer/index.ts` on `develop` branch. Builds, tested, 34/34 tests pass.
 
 Implementation details:
 - `timer_set(delay_seconds, reason, tag?)` — non-blocking, registers timer
 - `timer_list()` — shows active timers
 - `timer_cancel(timer_id)` — cancel before firing
-- Registers with `pi.on("turn_end")` to check expired timers
-- Fires via `onTimerFire` handler pattern
+- Real-time polling (`setInterval` at 1s) — primary fire mechanism, independent of turn_end
+- `turn_end` handler as backup (catches anything the poll missed)
+- `fireTimer()` sends steer message + whisper to wake agent on expiry
+- Tool description: "REPLACES bash sleep — do NOT use sleep() after this"
 
-**Still needed**:
-- TUI display of active timers (in status bar)
-- TUI notification when timer fires (EXPLICIT, following our principle)
-- Reminder injection into conversation (via event handler)
+**Still needed** (TUI-only — requires pi core changes, not pi-braid):
+- TUI display of active timers (status bar — needs pi TUI API)
+- TUI notification when timer fires (done via steer + whisper — functionally equivalent)
+
+**Completed (previously pending)**:
+- Reminder injection into conversation ✅ — `fireTimer()` sends ⏰ [TIMER REMINDER] as steer
+- Session navigation reset ✅ — SignalDetector auto-resets on entry-count drop
 
 ---
 

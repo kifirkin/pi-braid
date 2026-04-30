@@ -153,6 +153,20 @@ export const enforcementSignals: Record<
   { turn: number; text: string; acted: boolean }
 > = {};
 
+// ── RepE Contrast Mode Detection (P0.3) ────────────────────────────────────────
+// Determines which RepE contrast mode should be active based on enforcement state.
+// Emitted with enforcement_signals event → prompt-builder renders active mode in §8c.
+// Modes: TRUTH-SEEKING (default), TOOL-RELIABILITY (errors), CORRECTION (edits).
+function determineContrastMode(ctx: ExtensionContext): string {
+  const state = getState(ctx);
+  // Error burst → TOOL RELIABILITY
+  if (state.consecutiveErrorTurns >= 3) return "TOOL-RELIABILITY";
+  // Recent tool errors (non-burst) → TOOL RELIABILITY
+  if (state.consecutiveErrorTurns >= 1) return "TOOL-RELIABILITY";
+  // Default
+  return "TRUTH-SEEKING";
+}
+
 // Extension Factory
 export default function enforcementExtension(pi: ExtensionAPI) {
   const nudgeManager = new NudgeManager();
@@ -690,6 +704,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
       pi.events.emit("enforcement_signals", {
         turn: getState(ctx).currentTurn,
         signals: { ...enforcementSignals },
+        contrastMode: determineContrastMode(ctx),
       });
 
       const bundled = `[Session Signals]\n${sessionSignals.map((s) => `- ${s}`).join("\n")}`;

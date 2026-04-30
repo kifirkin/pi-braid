@@ -186,13 +186,19 @@
 
 ---
 
-#### 12. Agent Timer / Pomodoro — Status: NOT STARTED
+#### 12. Agent Timer / Pomodoro — Status: ✅ COMPLETE
 
 **What**: Non-blocking timer for checkpoint scheduling. Agent reminder pattern: `timer_set(15min, "Check if session is productive")`.
 
 **Effort**: Medium | **Priority**: P2
 
-**Implementation**: Extend `src/extensions/tools/timer/` with reminder injection. Add session checkpoint suggestion.
+**Implemented**:
+- `timer_set(delay_seconds, reason, tag?)` — registers timer, returns immediately
+- `timer_list()` / `timer_cancel(timer_id)` — query and cancel
+- Real-time polling (1s setInterval) — fires independently of turn_end
+- `fireTimer()` sends steer + whisper on expiry — agent woken regardless of state
+- Tool description says "REPLACES bash sleep — do NOT use sleep() after this"
+- Session navigation auto-reset via SignalDetector entry-count-drop detection
 
 ---
 
@@ -223,11 +229,10 @@ API-only providers (stepfun, minimax) don't expose activations/logprobs. RepE pr
 | # | Task | Status | Action |
 |---|---|---|---|
 | P0.1 | RepE CONTRAST_VECTORS section | ✅ Done (`dc85563`) | 4 modes in prompt-builder §8c |
-| P0.2 | Context-lifecycle signal detector | 🔶 Pending | Compaction quality → belief-policy-engine |
-| P0.3 | RepE per-scenario toggle | 🔶 Pending | Enforcement → prompt-builder contrast mode |
+| P0.2 | Context-lifecycle signal detector | ✅ Done | generateDensitySignals() feeds into policy engine on each turn |
+| P0.3 | RepE per-scenario toggle | ✅ Done | determineContrastMode() → enforcement_signals event → prompt-builder §8c |
 | P0.4 | Structured output format | 🔶 Removed | TOOL_RESULT blocks caused tool-call errors |
-| P0.5 | Remaining TODOs in code | 🔶 Pending | Search for TODO/FIXME in src/ |
-| P0.5 | Fix any remaining TODOs in code | 1h | Search for TODO/FIXME comments. |
+| P0.5 | Remaining TODOs in code | ✅ Clean | Zero TODO/FIXME matches in src/ |
 
 ### P1 — Week 1-2 (High value, clear path)
 
@@ -236,7 +241,7 @@ API-only providers (stepfun, minimax) don't expose activations/logprobs. RepE pr
 | P1.1 | BM1 true multi-turn benchmark | 3h | None |
 | P1.2 | BM3 real-world task suite | 4h | None |
 | P1.3 | Bidirectional verifier (extension) | 4h | R6 session recall, enforcement |
-| P1.4 | Agent Timer + Pomodoro reminders | 4h | heartbeat-scheduler |
+| DONE | Agent Timer + Pomodoro reminders | ✅ Complete | real-time polling + steer reminders + contrast toggle |
 | P1.5 | Contrast phrase library (lib) | 3h | P0.1, P0.3 |
 | P1.6 | Semantic unit classification (compaction) | 3h | None |
 | P1.7 | Memory contamination detection | 3h | three-memory-stores |
@@ -293,13 +298,11 @@ npm run lint:check  # 0 warnings
 
 | Gap | Location | Severity |
 |---|---|---|
-| RepE per-scenario toggle | prompt-builder + enforcement | HIGH |
-| Context-lifecycle signal detector | context-lifecycle | MEDIUM |
 | True multi-turn BM1 | evaluation/ | HIGH |
 | Bidirectional verifier | new extension | MEDIUM |
-| Agent Timer reminders | timer extension | LOW |
 | Evolve auto-trigger | evolve/ | LOW |
 | Lie-detector (RepE) | enforcement | LOW |
+| BM3 real-world task suite | evaluation/ | MEDIUM |
 
 ---
 
@@ -325,4 +328,5 @@ npm run lint:check  # 0 warnings
 
 | Date | Change |
 |---|---|
+| 2026-04-30 | P0.2 ✅ density signals → policy engine | P0.3 ✅ contrast mode toggle | P0.5 ✅ clean | Timer/Pomodoro marked COMPLETE |
 | 2026-04-29 | Initial version — 15 proposals audited, P0-P3 plan created |
