@@ -103,7 +103,7 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
     pi.sendMessage(
       {
         customType: "timer",
-        content: [{ type: "text" as const, text: `⏰ [TIMER REMINDER] — ${timer.reason}` }],
+        content: [{ type: "text" as const, text: `[timer] ${timer.reason}` }],
         display: true,
         details: { _braidInjected: true, _braidSource: "timer/fire" },
       },

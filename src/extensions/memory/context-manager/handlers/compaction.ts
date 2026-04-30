@@ -205,7 +205,7 @@ export function registerSessionCompactHandler(pi: any): void {
                   `summary and continue working on the user's request.`,
               },
             ],
-            display: false,
+            display: true,
           },
           { deliverAs: "steer" },
           { type: "context", source: "context-manager/compaction/resume" },

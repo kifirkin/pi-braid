@@ -34,12 +34,12 @@ const _default: WhisperState = { pendingWhisper: null, pendingBlockAction: null 
  * which only fires when user sends a message (causing whisper accumulation).
  */
 export function sendEnforcementWhisper(pi: ExtensionAPI, message: string): void {
-  // Tag all enforcement whispers as [auto] so the agent knows these are
+  // Tag all enforcement whispers as [enforcement] so the agent knows these are
   // system-generated signals, not human messages.
   pi.sendMessage(
     {
       customType: "enforcement",
-      content: [{ type: "text" as const, text: `[auto] ${message}` }],
+      content: [{ type: "text" as const, text: `[enforcement] ${message}` }],
       display: true,
       details: { _braidInjected: true, _braidSource: "enforcement/whisper" },
     },
@@ -49,7 +49,7 @@ export function sendEnforcementWhisper(pi: ExtensionAPI, message: string): void 
   trackInjection({
     type: "enforcement",
     source: "enforcement/whisper",
-    content: `[auto] ${message}`,
+    content: `[enforcement] ${message}`,
     display: true,
     steer: false,
   });

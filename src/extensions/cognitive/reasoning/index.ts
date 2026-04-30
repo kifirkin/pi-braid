@@ -27,7 +27,7 @@ function sendSteerMessage(pi: ExtensionAPI, message: string): void {
   pi.sendMessage(
     {
       customType: "enforcement",
-      content: [{ type: "text" as const, text: message }],
+      content: [{ type: "text" as const, text: `[reasoning] ${message}` }],
       display: true,
       details: { _braidInjected: true, _braidSource: "reasoning/steer" },
     },

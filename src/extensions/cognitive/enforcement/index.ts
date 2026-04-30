@@ -11,7 +11,7 @@ const log = createLogger("enforcement");
  * - L3 (Critical): Overflow failures, infrastructure errors, dangerous commands
  *   that passed review - individual visible messages with semantic framing
  *
- * Key design: Agent gets ONE [auto] message per turn max for non-critical signals.
+ * Key design: Agent gets ONE [enforcement] message per turn max for non-critical signals.
  * Critical signals (L3) get their own messages because they require immediate action.
  */
 
@@ -238,7 +238,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
       pi.sendMessage({
         customType: "context",
         display: true,
-        content: [{ type: "text", text: `[BLOCKED] ${pendingBlock.reason}` }],
+        content: [{ type: "text", text: `[enforcement] BLOCKED: ${pendingBlock.reason}` }],
         details: { _braidInjected: true, _braidSource: "enforcement/block" },
       });
     }
@@ -1059,7 +1059,7 @@ Persist them now - this is the minimum-fidelity moment.`,
         pi.sendMessage({
           customType: "context",
           display: true,
-          content: [{ type: "text", text: whisper }],
+          content: [{ type: "text", text: `[enforcement] ${whisper}` }],
           details: { _braidInjected: true, _braidSource: "enforcement/drift" },
         });
       }
@@ -1124,7 +1124,7 @@ Persist them now - this is the minimum-fidelity moment.`,
       pi.sendMessage({
         customType: "context",
         display: true,
-        content: [{ type: "text", text: marsAdvice.message }],
+        content: [{ type: "text", text: `[enforcement] ${marsAdvice.message}` }],
         details: { _braidInjected: true, _braidSource: "enforcement/mars" },
       });
     }
@@ -1140,7 +1140,7 @@ Persist them now - this is the minimum-fidelity moment.`,
       pi.sendMessage({
         customType: "context",
         display: true,
-        content: [{ type: "text", text: dreamAdvice.message }],
+        content: [{ type: "text", text: `[enforcement] ${dreamAdvice.message}` }],
         details: { _braidInjected: true, _braidSource: "enforcement/dreamer" },
       });
     }

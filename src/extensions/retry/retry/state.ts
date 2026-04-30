@@ -428,11 +428,11 @@ export async function continueRetry(pi: ExtensionAPI, ctx?: ExtensionContext): P
   await pi.sendMessage(
     {
       customType: "retry",
-      content: [{ type: "text" as const, text: "Proceed where you were left off." }],
+      content: [{ type: "text" as const, text: `[retry] Proceed where you were left off.` }],
       display: true,
       details: { _braidInjected: true, _braidSource: "retry/continue" },
     },
-    { deliverAs: "steer" },
+    { deliverAs: "steer", triggerTurn: true },
   );
   return true;
 }

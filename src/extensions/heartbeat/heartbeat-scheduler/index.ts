@@ -737,7 +737,7 @@ function createDefaultPolicies(
             // Auto-finalize at 90%: force a turn with finalize directive
             if (pct === 90) {
               const finalizationMessage =
-                `[SYSTEM] Context critical at ${percent?.toFixed(1)}%. Auto-finalizing to prevent overflow. ` +
+                `[heartbeat] Context critical at ${percent?.toFixed(1)}%. Auto-finalizing to prevent overflow. ` +
                 `Stop all work and call finalize(completed=false, autoProceed=true) now. ` +
                 `Provide a summary of what was accomplished and what remains.`;
               try {
@@ -997,7 +997,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
         const reminders = drainTimerReminders();
         for (const { timer } of reminders) {
           ctx.ctx.whisper?.(
-            `⏰ [TIMER REMINDER] — ${timer.reason}\n` +
+            `[timer] ${timer.reason}\n` +
               `Timer ID: ${timer.id}` +
               (timer.tag ? ` (tag: ${timer.tag})` : "") +
               `\nFired at: ${new Date(timer.firesAt).toLocaleTimeString()}`,

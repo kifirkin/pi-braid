@@ -217,7 +217,7 @@ function sendFeedbackWhisper(pi: ExtensionAPI, message: string): void {
   pi.sendMessage(
     {
       customType: "feedback",
-      content: [{ type: "text" as const, text: message }],
+      content: [{ type: "text", text: `[feedback] ${message}` }],
       display: true,
       details: { _braidInjected: true, _braidSource: "feedback/whisper" },
     },
