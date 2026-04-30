@@ -59,6 +59,8 @@ export interface Episode {
   project: string;
   /** Session ID — enables cross-session contamination filtering. */
   sessionId: string;
+  /** Quality score 0-1 (Decocted Experience 2604.03213): outcome × tool diversity × reasoning density. */
+  quality?: number;
 }
 
 export interface HeuristicRule {
@@ -126,6 +128,14 @@ function addEpisode(
   tags: string[] = [],
   project?: string,
 ): Episode {
+  // Decocted Experience (2604.03213): Quality score = outcome × tool diversity × reasoning density
+  const outcomeScore = { success: 1.0, partial: 0.5, failure: 0.2 }[outcome];
+  const uniqueTools = new Set(toolSequence).size;
+  const toolDiversity = toolSequence.length > 0 ? uniqueTools / toolSequence.length : 0;
+  const reasoningDensity =
+    toolSequence.length > 0 ? Math.min(1, solution.length / (toolSequence.length * 200)) : 0.5;
+  const quality = Math.round(outcomeScore * (toolDiversity * 0.4 + 0.6) * (reasoningDensity * 0.4 + 0.6) * 100) / 100;
+
   const episode: Episode = {
     id: `ep-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     task,
@@ -137,6 +147,7 @@ function addEpisode(
     tags,
     project: project ?? "unknown",
     sessionId: state.currentSessionId || "unknown",
+    quality,
   };
   state.episodes.push(episode);
 
@@ -144,8 +155,42 @@ function addEpisode(
     pruneEpisodes(state);
   }
 
-  log.debug(`Added episode: "${task.slice(0, 50)}..." (${outcome})`);
+  log.debug(`Added episode: "${task.slice(0, 50)}..." (${outcome}, quality=${quality})`);
   return episode;
+}
+
+// ── Memory Condensation (Decocted Experience 2604.03213) ─────────────────────────
+// Three methods: Exemplar Mining (SA pairs), Transition Tree (non-Markov states),
+// Socratic Compression (Q&A pairs). Returns condensed text safe for injection.
+
+/**
+ * Condense an episode for memory-efficient injection.
+ * Uses Socratic Compression: distills solution into key insight + actionable pattern.
+ * Reduces token cost while preserving actionable information.
+ *
+ * @param episode - The episode to condense
+ * @param maxTokens - Target token budget (default 150 ≈ ~75 words)
+ * @returns Condensed text safe for injection
+ */
+export function condenseInsights(episode: Episode, maxTokens = 150): string {
+  const outcomeLabel = episode.outcome === "success" ? "SUCCESS" : episode.outcome === "failure" ? "FAILURE" : "PARTIAL";
+  const toolSummary =
+    episode.toolSequence.length > 0
+      ? `[${episode.toolSequence.slice(0, 5).join(" → ")}${episode.toolSequence.length > 5 ? ` (+${episode.toolSequence.length - 5} more)` : ""}]`
+      : "";
+
+  // Socratic compression: extract the ONE key insight from the solution
+  // Keep: outcome, tool pattern, key decision
+  // Drop: verbose reasoning, implementation details
+  const insight = episode.solution
+    .split(/[.!?]\n/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 10 && s.length < 200)
+    .slice(0, 3)
+    .join(". ");
+
+  const condensed = `• ${episode.task.slice(0, 80)} [${outcomeLabel}] ${toolSummary}\n  Insight: ${insight.slice(0, maxTokens * 3)}`;
+  return condensed.length > maxTokens * 4 ? condensed.slice(0, maxTokens * 4) + "..." : condensed;
 }
 
 function retrieveEpisodes(
@@ -531,7 +576,8 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
             ? ` conf=${((ep as any).memoryConfidence * 100).toFixed(0)}%`
             : "";
           const crossTag = (ep as any)._crossSession ? " [CROSS-SESSION]" : "";
-          lines.push(`${provenance}${confTag}${crossTag} ${outcomeIcon} [${ep.outcome}] ${ep.task}`);
+          const qualityTag = ep.quality != null ? ` quality=${(ep.quality * 100).toFixed(0)}%` : "";
+          lines.push(`${provenance}${confTag}${qualityTag}${crossTag} ${outcomeIcon} [${ep.outcome}] ${ep.task}`);
           lines.push(
             `   Solution: ${ep.solution.slice(0, 200)}${ep.solution.length > 200 ? "..." : ""}`,
           );
