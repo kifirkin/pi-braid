@@ -68,6 +68,11 @@ import { NudgeManager } from "./nudge-manager.js";
 import { getState } from "./state.js";
 
 import type { TurnState } from "./types.js";
+import {
+  processAgentResponse,
+  formatContradictionWhisper,
+  getClaimStats,
+} from "../../../lib/claim-tracker.js";
 import { validateToolForPhase, validateTurn } from "./validation.js";
 import {
   formatVerificationNudge,
@@ -565,6 +570,25 @@ export default function enforcementExtension(pi: ExtensionAPI) {
     const orphanResult = detectOrphanChains(getState(ctx));
     if (!isBurst && orphanResult) {
       sendEnforcementWhisper(pi, orphanResult.suggestion);
+    }
+
+    // ── P3.2: Lie-Detector (RepE) — cross-turn claim tracker ─────────────
+    // Extract claims from agent's response and check against history.
+    // Silent unless contradictions are found (warn-only, never blocks).
+    if (!isBurst && event.message?.role === "assistant" && event.message?.content) {
+      const msgContent = Array.isArray(event.message.content)
+        ? event.message.content.filter((c: any) => c?.type === "text").map((c: any) => c?.text || "").join(" ")
+        : typeof event.message.content === "string"
+          ? event.message.content
+          : "";
+
+      if (msgContent.length > 50) {
+        const contradictions = processAgentResponse(msgContent, ctx, getState(ctx).currentTurn);
+        if (contradictions.length > 0) {
+          const whisper = formatContradictionWhisper(contradictions);
+          sendEnforcementWhisper(pi, whisper);
+        }
+      }
     }
 
     // ── L2: Non-critical signals → bundled Session Signals nudge ─────────

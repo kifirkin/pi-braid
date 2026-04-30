@@ -265,7 +265,7 @@ API-only providers (stepfun, minimax) don't expose activations/logprobs. RepE pr
 | # | Task | Effort | Dependencies |
 |---|---|---|---|
 | P3.1 | Self-evolution automatic trigger | 6h | P2.1 |
-| P3.2 | Lie-detector pattern (RepE) | 3h | P0.1 |
+| P3.2 | Lie-detector pattern (RepE) | ✅ Done | cross-turn claim tracking + enforcement whisper |
 | P3.3 | Rollback automation | 4h | P2.1 |
 | P3.4 | Budget-Aware Planning (BAVT) | Medium | P2 |
 | P3.5 | Memory Condensation (Decocted Experience) | Medium | P2 |
@@ -309,7 +309,7 @@ npm run lint:check  # 0 warnings
 | Budget-Aware Planning (BAVT) | planner | MEDIUM |
 | Memory Condensation (Decocted Experience) | session-recall | MEDIUM |
 | Process Supervision (step_check) | reasoning | LOW |
-| Lie-detector (RepE) | enforcement | LOW |
+| Lie-detector (RepE) | enforcement | ✅ Done | claim-tracker.ts + enforcement turn_end |
 | BM3 real-world task suite | evaluation/ | MEDIUM |
 
 ---
