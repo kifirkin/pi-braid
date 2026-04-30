@@ -73,6 +73,7 @@ import {
   formatContradictionWhisper,
   getClaimStats,
 } from "../../../lib/claim-tracker.js";
+import { getAnalyticsState } from "../../heartbeat/analytics/index.js";
 import { validateToolForPhase, validateTurn } from "./validation.js";
 import {
   formatVerificationNudge,
@@ -593,8 +594,19 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 
     // ── L2: Non-critical signals → bundled Session Signals nudge ─────────
 
+    // BR3: Check A/B variant — if "no_nudges", suppress all L2 signals
+    const abVariant = getAnalyticsState(ctx).abVariant;
+    const suppressNudges = abVariant === "no_nudges";
+    if (suppressNudges) {
+      getState(ctx).nudgeSuppressedCount = (getState(ctx).nudgeSuppressedCount || 0) + 1;
+    }
+
     // Collect signals for the bundled nudge
     const sessionSignals: string[] = [];
+
+    if (suppressNudges) {
+      // Skip all L2 signal collection when nudges are suppressed
+    }
 
     // Memory signal: fires on EVENT basis, not schedule.
     // Trigger: code changed after last memory usage (not just turns elapsed).
@@ -747,10 +759,13 @@ export default function enforcementExtension(pi: ExtensionAPI) {
         contrastMode: determineContrastMode(ctx),
       });
 
-      const bundled = `[Session Signals]\n${sessionSignals.map((s) => `- ${s}`).join("\n")}`;
-      const { shouldSend } = nudgeManager.shouldSendNudge("scratchpad", bundled);
-      if (shouldSend) {
-        sendEnforcementWhisper(pi, bundled);
+      // BR3: Only bundle and send if nudges are not suppressed ("no_nudges" variant)
+      if (!suppressNudges && sessionSignals.length > 0) {
+        const bundled = `[Session Signals]\n${sessionSignals.map((s) => `- ${s}`).join("\n")}`;
+        const { shouldSend } = nudgeManager.shouldSendNudge("scratchpad", bundled);
+        if (shouldSend) {
+          sendEnforcementWhisper(pi, bundled);
+        }
       }
     }
   });
