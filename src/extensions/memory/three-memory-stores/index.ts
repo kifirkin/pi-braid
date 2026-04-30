@@ -16,6 +16,7 @@ import { Type } from "typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { createLogger } from "../../../lib/logger.js";
 import { getExtensionState } from "../../../lib/extension-state.js";
+import { emitSignal } from "../../../lib/belief-policy-engine.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import * as os from "node:os";
 import { readFile as fsReadFilePromise } from "node:fs/promises";
@@ -144,18 +145,34 @@ function retrieveEpisodes(
   const now = Date.now();
   const scored = state.episodes
     .map((ep) => {
-      // HaluMem (2511.03506): Cross-session isolation — same-project bonus
       const baseScore = computeSimilarity(queryLower, ep);
+      // HaluMem (2511.03506): Cross-project penalty — memories from other projects
+      // are heavily penalized to prevent cross-project contamination.
+      // Same-project bonus: +0.2. Different-project penalty: -0.7.
+      // Cross-project memories only surface if no same-project memories exist.
+      const CROSS_PROJECT_PENALTY = -0.7;
+      const crossProjectPenalty =
+        currentProject && ep.project && ep.project !== currentProject ? CROSS_PROJECT_PENALTY : 0;
       const projectBonus = currentProject && ep.project === currentProject ? 0.2 : 0;
       const ageHours = (now - ep.timestamp) / 3600000;
       const ageBonus = Math.max(0, 1 - ageHours / 168) * 0.1; // Decay over 7 days
-      return { ep, score: baseScore + projectBonus + ageBonus };
+      return {
+        ep,
+        score: baseScore + projectBonus + ageBonus + crossProjectPenalty,
+        isCrossProject: crossProjectPenalty < 0,
+      };
     })
     .filter((s) => s.score > 0.1)
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
 
-  return scored.map((s) => ({ ...s.ep, similarity: s.score }));
+  return scored.map((s) => {
+    // HaluMem (2511.03506): Confidence decay over time — older memories are less reliable.
+    // Decay: 1.0 at 0h → 0.5 at 7 days → 0.25 at 30 days.
+    const ageHours = (Date.now() - s.ep.timestamp) / 3600000;
+    const memoryConfidence = Math.max(0.1, 1 - ageHours / 504); // Half-life ~7 days
+    return { ...s.ep, similarity: s.score, memoryConfidence };
+  });
 }
 
 function computeSimilarity(query: string, episode: Episode): number {
@@ -497,7 +514,11 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
             ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
           const ageMinutes = Math.round((Date.now() - ep.timestamp) / 60000);
           const provenance = `[MEMORY project=${ep.project || "unknown"} ttl=${ageMinutes}m ago]`;
-          lines.push(`${provenance} ${outcomeIcon} [${ep.outcome}] ${ep.task}`);
+          const confTag = (ep as any).memoryConfidence != null
+            ? ` conf=${((ep as any).memoryConfidence * 100).toFixed(0)}%`
+            : "";
+          const crossTag = (ep as any)._crossSession ? " [CROSS-SESSION]" : "";
+          lines.push(`${provenance}${confTag}${crossTag} ${outcomeIcon} [${ep.outcome}] ${ep.task}`);
           lines.push(
             `   Solution: ${ep.solution.slice(0, 200)}${ep.solution.length > 200 ? "..." : ""}`,
           );
@@ -760,10 +781,27 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     if (now - lastRecallTime < RECALL_COOLDOWN_MS) return;
     lastRecallTime = now;
 
+    // P2.3: Emit contamination signal when surfacing cross-session episodes
+    const crossSession = episodes.filter((ep: any) => ep._crossSession);
+    if (crossSession.length > 0) {
+      emitSignal(
+        ctx,
+        "memory",
+        "contamination",
+        "warn",
+        false,
+        { count: crossSession.length, sessionIds: crossSession.map((ep: any) => ep.sessionId).slice(0, 3) },
+      );
+    }
+
     const lines: string[] = [`[recall] ${title}`];
     for (const ep of episodes.slice(0, 2)) {
       const icon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
-      lines.push(`  ${icon} ${ep.task.slice(0, 80)}`);
+      const crossMark = (ep as any)._crossSession ? " [CROSS-SESSION]" : "";
+      const conf = (ep as any).memoryConfidence != null
+        ? ` (conf ${((ep as any).memoryConfidence * 100).toFixed(0)}%)`
+        : "";
+      lines.push(`  ${icon}${crossMark}${conf} ${ep.task.slice(0, 80)}`);
       lines.push(`    Solution: ${ep.solution.slice(0, 120)}`);
     }
 

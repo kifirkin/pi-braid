@@ -25,7 +25,8 @@ export type SignalSource =
   | "reflection"
   | "calibration"
   | "tool-use"
-  | "sycophancy";
+  | "sycophancy"
+  | "memory";
 
 export type SignalSeverity = "info" | "warn" | "critical" | "error";
 
@@ -200,6 +201,28 @@ const POLICY_RULES: PolicyRule[] = [
             priority: 8,
             message: `[careful] Reasoning coherence declining AND source conflicts present. Recommend: slow down, verify facts, acknowledge uncertainty explicitly.`,
             beliefs: ["reasoning:declining", "conflicts:present", "epistemic:uncertain"],
+            timestamp: Date.now(),
+          },
+        ];
+      }
+      return [];
+    },
+  },
+  // Rule 7: Memory contamination detected → verify cross-session memories
+  {
+    name: "memory_contamination",
+    evaluate(signals, beliefs): PolicyRecommendation[] {
+      const recent = signals.slice(-10);
+      const contamination = recent.filter((s) => s.source === "memory" && s.type === "contamination");
+      if (contamination.length > 0) {
+        const count = contamination.length;
+        return [
+          {
+            id: `pr-${Date.now()}-mc`,
+            type: "memory_contamination",
+            priority: 7,
+            message: `[memory] ${count} cross-session memory contamination signal(s) detected. Verify retrieved memories match current project context before acting on them.`,
+            beliefs: ["memory:contamination", "memory:verify-before-act"],
             timestamp: Date.now(),
           },
         ];
