@@ -20,6 +20,19 @@ import { emitSignal } from "../../../lib/belief-policy-engine.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import * as os from "node:os";
 import { readFile as fsReadFilePromise } from "node:fs/promises";
+
+// ── Project Identifier ───────────────────────────────────────────────────────
+// Determines the project scope for memory isolation.
+// Uses the top 2 path components of cwd as a stable project identifier:
+//   /Users/kifir/projects/agents/pi-braid/src → "pi-braid"
+//   /Users/kifir/projects/vibe/app/components → "vibe/app"
+// This correctly groups all subdirectories within the same git repo, without
+// requiring async git subprocess calls on every memory operation.
+function deriveProjectId(cwd: string): string {
+  const parts = cwd.replace(/\\/g, "/").split("/").filter(Boolean);
+  if (parts.length < 2) return cwd || "unknown";
+  return parts.slice(-2).join("/");
+}
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -505,7 +518,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 
       if (action === "search") {
         if (!query) return textResult("Error: query is required for search action");
-        const episodes = retrieveEpisodes(state, query, limit, ctx?.cwd ?? "unknown");
+        const episodes = retrieveEpisodes(state, query, limit, deriveProjectId(ctx?.cwd ?? ""));
         if (episodes.length === 0) return textResult("No relevant episodes found.");
 
         const lines: string[] = [`Found ${episodes.length} relevant episodes:\n`];
@@ -540,7 +553,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
           outcome as Episode["outcome"],
           [],
           tags,
-          ctx?.cwd ?? "unknown",
+          deriveProjectId(ctx?.cwd ?? ""),
         );
         return textResult(`Episode added: "${task.slice(0, 50)}..." (${outcome}) [${episode.id}]`);
       }
