@@ -31,6 +31,9 @@ function makeMockPi(opts = {}) {
 		sendUserMessage: async (content, options) => {
 			sent.push({ content, options });
 		},
+		sendMessage: async (params, options) => {
+			sent.push({ content: params, options });
+		},
 		_sent: sent,
 	};
 	return pi;
@@ -93,7 +96,7 @@ function makeMockCtx(idle = true) {
 	const ctx = makeMockCtx();
 	captureUserInput(pi, "sensitive private data here", undefined, "entry-priv", ctx);
 	await continueRetry(pi, ctx);
-	const text = pi._sent[0].content[0].text;
+	const text = pi._sent[0].content.content[0].text;
 	assert(!text.includes("sensitive"), "must NOT contain raw user message");
 	assert(!text.includes("private"), "must NOT contain raw user message");
 	console.log("  ✅ Raw message not leaked");

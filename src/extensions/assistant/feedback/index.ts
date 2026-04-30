@@ -219,6 +219,7 @@ function sendFeedbackWhisper(pi: ExtensionAPI, message: string): void {
       customType: "feedback",
       content: [{ type: "text" as const, text: message }],
       display: true,
+      details: { _braidInjected: true, _braidSource: "feedback/whisper" },
     },
     { deliverAs: "steer" },
   );

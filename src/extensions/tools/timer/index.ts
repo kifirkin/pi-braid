@@ -100,9 +100,14 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
   log.info(`[timer] fired: ${timer.id} — ${timer.reason}`);
   // Try to wake the agent with a steer message if between turns
   try {
-    (pi as any).sendUserMessage?.(
-      `⏰ [TIMER REMINDER] — ${timer.reason}`,
-      { deliverAs: "steer" }
+    pi.sendMessage(
+      {
+        customType: "timer",
+        content: [{ type: "text" as const, text: `⏰ [TIMER REMINDER] — ${timer.reason}` }],
+        display: true,
+        details: { _braidInjected: true, _braidSource: "timer/fire" },
+      },
+      { deliverAs: "steer" },
     );
   } catch { /* non-fatal — agent may be mid-turn */ }
 }

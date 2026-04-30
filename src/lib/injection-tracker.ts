@@ -107,6 +107,19 @@ export function sendTrackedMessage(
     steer: injectionMeta.steer ?? false,
     turn: 0,
   });
+
+  // Tag message metadata so compaction can identify injected messages
+  // and exclude them from LLM summarization (prevents nudge conflate)
+  if (injectionMeta.type !== "other") {
+    const existingDetails =
+      typeof params.details === "object" && params.details !== null
+        ? (params.details as Record<string, unknown>)
+        : {};
+    existingDetails._braidInjected = true;
+    existingDetails._braidSource = injectionMeta.source;
+    params.details = existingDetails;
+  }
+
   pi.sendMessage(params, options);
 }
 

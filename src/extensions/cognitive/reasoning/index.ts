@@ -29,6 +29,7 @@ function sendSteerMessage(pi: ExtensionAPI, message: string): void {
       customType: "enforcement",
       content: [{ type: "text" as const, text: message }],
       display: true,
+      details: { _braidInjected: true, _braidSource: "reasoning/steer" },
     },
     { deliverAs: "steer" },
   );

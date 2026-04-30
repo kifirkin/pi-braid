@@ -741,7 +741,15 @@ function createDefaultPolicies(
                 `Stop all work and call finalize(completed=false, autoProceed=true) now. ` +
                 `Provide a summary of what was accomplished and what remains.`;
               try {
-                (ctx as any).pi.sendUserMessage?.(finalizationMessage, { deliverAs: "steer" });
+                (ctx as any).pi.sendMessage(
+                  {
+                    customType: "heartbeat",
+                    content: [{ type: "text" as const, text: finalizationMessage }],
+                    display: true,
+                    details: { _braidInjected: true, _braidSource: "heartbeat/auto-finalize" },
+                  },
+                  { deliverAs: "steer" },
+                );
                 log.warn(`[heartbeat] Auto-finalize triggered at 90%`);
               } catch (err) {
                 log.error(`[heartbeat] sendUserMessage failed: ${err}`);

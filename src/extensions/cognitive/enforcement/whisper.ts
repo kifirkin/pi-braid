@@ -41,6 +41,7 @@ export function sendEnforcementWhisper(pi: ExtensionAPI, message: string): void 
       customType: "enforcement",
       content: [{ type: "text" as const, text: `[auto] ${message}` }],
       display: true,
+      details: { _braidInjected: true, _braidSource: "enforcement/whisper" },
     },
     { triggerTurn: true },
   );

@@ -425,9 +425,15 @@ export async function continueRetry(pi: ExtensionAPI, ctx?: ExtensionContext): P
   // Minimal steer: just ask the agent to retry. The agent already has the
   // user message and error context in its conversation history. Re-sending
   // the raw message or verbose error context creates confusion.
-  await pi.sendUserMessage([{ type: "text", text: "Proceed where you were left off." }], {
-    deliverAs: "steer",
-  });
+  await pi.sendMessage(
+    {
+      customType: "retry",
+      content: [{ type: "text" as const, text: "Proceed where you were left off." }],
+      display: true,
+      details: { _braidInjected: true, _braidSource: "retry/continue" },
+    },
+    { deliverAs: "steer" },
+  );
   return true;
 }
 

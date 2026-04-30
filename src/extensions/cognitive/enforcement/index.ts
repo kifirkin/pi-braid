@@ -239,6 +239,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
         customType: "context",
         display: true,
         content: [{ type: "text", text: `[BLOCKED] ${pendingBlock.reason}` }],
+        details: { _braidInjected: true, _braidSource: "enforcement/block" },
       });
     }
   });
@@ -1059,6 +1060,7 @@ Persist them now - this is the minimum-fidelity moment.`,
           customType: "context",
           display: true,
           content: [{ type: "text", text: whisper }],
+          details: { _braidInjected: true, _braidSource: "enforcement/drift" },
         });
       }
       // Emit to Belief Policy Engine
@@ -1091,6 +1093,7 @@ Persist them now - this is the minimum-fidelity moment.`,
         customType: "context",
         display: true,
         content: [{ type: "text", text: `[policy] ${bpeRec.message}` }],
+        details: { _braidInjected: true, _braidSource: "enforcement/policy" },
       });
     }
 
@@ -1122,6 +1125,7 @@ Persist them now - this is the minimum-fidelity moment.`,
         customType: "context",
         display: true,
         content: [{ type: "text", text: marsAdvice.message }],
+        details: { _braidInjected: true, _braidSource: "enforcement/mars" },
       });
     }
 
@@ -1137,6 +1141,7 @@ Persist them now - this is the minimum-fidelity moment.`,
         customType: "context",
         display: true,
         content: [{ type: "text", text: dreamAdvice.message }],
+        details: { _braidInjected: true, _braidSource: "enforcement/dreamer" },
       });
     }
 

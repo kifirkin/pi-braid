@@ -50,9 +50,15 @@ export default function metacognitionExtension(pi: ExtensionAPI) {
         // Logging handled by the finalize tool's own execution
       },
       sendNextTask: (description) => {
-        pi.sendUserMessage([
-          { type: "text", text: `Continue with the next pending task: ${description}` },
-        ]);
+        pi.sendMessage(
+          {
+            customType: "metacognition",
+            content: [{ type: "text" as const, text: `Continue with the next pending task: ${description}` }],
+            display: true,
+            details: { _braidInjected: true, _braidSource: "metacognition/next-task" },
+          },
+          { deliverAs: "steer" },
+        );
       },
       recordCalibration,
     }) as any,

@@ -112,6 +112,17 @@ export function filterSafeToRemove(messages: AgentMessage[]): {
 
   // Pass 3: filter
   for (const msg of messages) {
+    // Rule 0: System-injected messages (enforcement whispers, timer steers, etc.)
+    // These are ephemeral — they guide the current turn but should NOT be
+    // persisted through compaction. Filter them out to prevent the LLM
+    // summary from conflating nudge content with real user intent.
+    const details = (msg as any).details;
+    if (details && details._braidInjected === true) {
+      removed++;
+      // Don't push — skip entirely
+      continue;
+    }
+
     // NEVER remove user/assistant messages
     if (msg.role === "user" || msg.role === "assistant") {
       result.push(msg);
