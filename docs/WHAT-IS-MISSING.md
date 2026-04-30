@@ -369,6 +369,9 @@ Episodes tagged with project path. Retrieved memories display provenance:
 - [x] **Memory eviction policies** — ✅ DONE (OUTCOME_TTL + MAX_OUTCOMES sliding window in context-lifecycle)
 - [x] **P2.2 Heartbeat event bus formalization** — ✅ DONE (agent-events.ts unified taxonomy + memory_contamination policy rule)
 - [x] **P2.3 Implicit/explicit memory boundary** — ✅ DONE (-0.7 cross-project penalty + emitSignal contamination + memoryConfidence decay)
+- [x] **Recursive Verification Tool (verify)** — ✅ DONE (`metacognition/handlers/verify.ts` — heuristic + LLM checks, 3 depth modes)
+- [x] **ODAR Fast/Slow Routing** — ✅ DONE (`estimateComplexity()` + `complexityToDepth()` + `auto_depth` in think tool)
+- [ ] **Budget-Aware Planning (BAVT)** — Pending (add budget field to plan, warn at 80/90/95%)
 
 ### P3 (Research Findings)
 

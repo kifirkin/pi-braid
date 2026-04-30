@@ -7,17 +7,17 @@
 
 ---
 
-## System Status: v0.2.0-alpha.1
+## System Status: v0.2.0-alpha.2
 
 | Dimension | Status |
 |---|---|
 | Core extensions | 13 modules, ~35 sub-extensions |
 | Tests | 34/34 passing |
 | Build | 0 errors |
-| Docs | 11 top-level + 42 extension + 15 proposals |
+| Docs | 12 top-level + 42 extension + 15 proposals |
 | Modules | core, cognitive, memory, heartbeat, retry, prompt, tools (13 total) |
 
-### Recently Implemented (v0.2.0-alpha.1)
+### Recently Implemented (v0.2.0-alpha.2)
 
 | Feature | Commit | Status |
 |---|---|---|
@@ -25,15 +25,14 @@
 | Structured output format | `f745364` | 🔶 Removed (caused tool-call errors) |
 | resources_discover handler (bundled skills) | `2ac5834` | ✅ Done |
 | Browser/ → tools/ (CDP, web-fetch, vision) | `58b1844` | ✅ Done |
-| Compaction v0.23 (LLM always, dedup guard) | prior | ✅ Done |
 | Compaction v0.26 (queued message preservation) | `b765756` | ✅ Done |
-| Session recall (R6 proactive recall) | prior | ✅ Done |
-| Three memory stores (200 entries, Jaccard) | prior | ✅ Done |
-| P1.7 session isolation (cross-session contamination filter) | `57a5ed1` | ✅ Done |
+| P1.7 session isolation + deriveProjectId (repo-level memory) | `f547ca4` | ✅ Done |
 | P2.1 auto-trigger degrade detection | `9a41ec5` | ✅ Done |
+| P2.2 event taxonomy (agent-events.ts, 10 domains) | `ffd1b22` | ✅ Done |
+| P2.3 memory boundary (P2.3+P3.4 HaluMem: -0.7 cross-project penalty, contamination signal) | `ffd1b22` | ✅ Done |
+| Recursive Verification Tool (verify tool: heuristic + LLM, 3 depth modes) | `2f7432f` | ✅ Done |
+| ODAR Fast/Slow Routing (estimateComplexity + auto_depth in think tool) | `e7c6793` | ✅ Done |
 | Sycophancy detector | prior | ✅ Done |
-| D1 session_end cleanup wired | prior | ✅ Done |
-| Hidden messages tool (D3) | prior | ✅ Done |
 | Repl verbose output (shows code + result) | `09b2644` | ✅ Done |
 | Hypothesize throws on failure (analytics) | `a8b37eb` | ✅ Done |
 
@@ -241,25 +240,25 @@ API-only providers (stepfun, minimax) don't expose activations/logprobs. RepE pr
 
 | # | Task | Effort | Dependencies |
 |---|---|---|---|
+| DONE | Agent Timer + Pomodoro reminders | ✅ Done | real-time polling + steer reminders + contrast toggle |
+| DONE | Contrast phrase library | ✅ Done | formatContrastSection() → mode-driven phrase selection |
+| DONE | Semantic unit classification (compaction) | ✅ Done | semanticCompress.ts wired in session_before_compact |
+| DONE | P1.7 memory contamination detection | ✅ Done | sessionId on Episode, deriveProjectId(), _crossSession flag on recall |
 | P1.1 | BM1 true multi-turn benchmark | 3h | None | (excluded) |
 | P1.2 | BM3 real-world task suite | 4h | None | (excluded) |
 | P1.3 | Bidirectional verifier (extension) | 4h | R6 session recall, enforcement | (excluded) |
-| DONE | Agent Timer + Pomodoro reminders | ✅ Complete | real-time polling + steer reminders + contrast toggle |
-| DONE | Contrast phrase library (lib) | ✅ Complete | formatContrastSection() → mode-driven phrase selection |
-| DONE | Semantic unit classification (compaction) | ✅ Complete | semanticCompress.ts wired into events.ts context handler |
-| DONE | Memory contamination detection | ✅ Done | sessionId on Episode, _crossSession flag on recall (57a5ed17) |
 
 ### P2 — Weeks 3-4 (Medium complexity)
 
-| # | Task | Effort | Dependencies |
+| # | Task | Status | Dependencies |
 |---|---|---|---|
-| DONE | Evolve auto-trigger (degrade → checkpoint) | ✅ Done | isDegraded turn_end → emitSignal stability/decline + whisper (9a41ec57) |
-| P2.2 | Heartbeat event bus formalization | ✅ Done | agent-events.ts taxonomy + memory_contamination policy rule |
-| P2.3 | Implicit/explicit memory boundary | ✅ Done | -0.7 cross-project penalty + emitSignal contamination + memoryConfidence decay |
-| DONE | Meta-learning tick adjustment (wired) | ✅ Done | tickInterval adjustment in heartbeat-scheduler (already wired) |
-| DONE | Heartbeat event bus formalization | ✅ Done | agent-events.ts taxonomy + memory_contamination policy rule |
-| DONE | Implicit/explicit memory boundary | ✅ Done | -0.7 cross-project penalty + emitSignal contamination + memoryConfidence decay |
-| P2.5 | Benchmark variant generation framework | 4h | BM1/BM2 (P1.1/P1.2) |
+| DONE | Evolve auto-trigger (degrade → whisper) | ✅ Done | isDegraded turn_end → emitSignal + whisper |
+| DONE | P2.2 Heartbeat event bus formalization | ✅ Done | agent-events.ts (10 signal domains) + memory_contamination policy rule |
+| DONE | P2.3 Implicit/explicit memory boundary | ✅ Done | -0.7 cross-project penalty + contamination signal + memoryConfidence decay |
+| DONE | Meta-learning tick adjustment | ✅ Done | tickInterval adjustment in heartbeat-scheduler |
+| DONE | Recursive Verification Tool (verify) | ✅ Done | heuristic+LLM checks, 3 depth modes, finalize pre-flight |
+| DONE | ODAR Fast/Slow Routing | ✅ Done | estimateComplexity() + auto_depth in think tool |
+| P2.5 | Benchmark variant generation framework | 4h | BM1/BM2 (excluded) |
 
 ### P3 — Weeks 5+ (Lower priority / exploration)
 
@@ -268,6 +267,10 @@ API-only providers (stepfun, minimax) don't expose activations/logprobs. RepE pr
 | P3.1 | Self-evolution automatic trigger | 6h | P2.1 |
 | P3.2 | Lie-detector pattern (RepE) | 3h | P0.1 |
 | P3.3 | Rollback automation | 4h | P2.1 |
+| P3.4 | Budget-Aware Planning (BAVT) | Medium | P2 |
+| P3.5 | Memory Condensation (Decocted Experience) | Medium | P2 |
+| P3.6 | Process Supervision (step_check) | Medium | P3 |
+| P3.7 | Exploratory Reasoning (explore_paths) | Medium | P3 |
 | P3.4 | HaluMem memory contamination architecture | ✅ Done | P2.3 completed this (cross-project penalty + confidence decay + contamination signal) |
 
 ---
@@ -303,9 +306,9 @@ npm run lint:check  # 0 warnings
 
 | Gap | Location | Severity |
 |---|---|---|
-| True multi-turn BM1 | evaluation/ | HIGH |
-| Bidirectional verifier | new extension | MEDIUM |
-| Evolve auto-trigger | evolve/ | LOW |
+| Budget-Aware Planning (BAVT) | planner | MEDIUM |
+| Memory Condensation (Decocted Experience) | session-recall | MEDIUM |
+| Process Supervision (step_check) | reasoning | LOW |
 | Lie-detector (RepE) | enforcement | LOW |
 | BM3 real-world task suite | evaluation/ | MEDIUM |
 
@@ -313,17 +316,17 @@ npm run lint:check  # 0 warnings
 
 ## Release Readiness
 
-**Current**: v0.2.0-alpha.1 — first published version, alpha stage
+**Current**: v0.2.0-alpha.2 — 13 commits ahead of v0.2.0-alpha.1
 
-**Pre-release gate** (all items checked):
-- [x] P0 items completed (P0.1 ✅ CONTRAST_VECTORS, P0.4 🔶 structured output REMOVED — caused tool-call errors)
-- [x] README.md polished — clean, accurate, no dead links
-- [x] `docs/proposals/README.md` updated with proposal statuses
-- [x] CHANGELOG.md updated with v0.2.0-alpha.1 entry
-- [x] package.json version 1.0.0, description polished
-- [ ] GitHub repo setup (manual step — user responsibility)
+**Pre-release gate**:
+- [x] All P0 ✅ (P0.1-3 done, P0.4 REMOVED, P0.5 clean)
+- [x] P1/P2 non-benchmark items complete
+- [x] README.md + docs/proposals/README.md current
+- [x] CHANGELOG.md v0.2.0-alpha.2 entry
+- [x] BRAID-NEXT archived (superseded by IMPLEMENTATION.md)
+- [x] `npm run build && node scripts/run-tests.mjs` — 34/34, 0 TS errors
+- [ ] GitHub repo push (manual — user responsibility)
 - [ ] Manual review pass (user responsibility)
-- [ ] Manual review pass
 
 **Post-release**: Execute P1 → P2 → P3 in order, with periodic status updates to this doc.
 
@@ -333,5 +336,6 @@ npm run lint:check  # 0 warnings
 
 | Date | Change |
 |---|---|
-| 2026-04-30 | P0.2 ✅ density signals → policy engine | P0.3 ✅ contrast mode toggle | P0.5 ✅ clean | Timer/Pomodoro marked COMPLETE |
+| 2026-04-30 | v0.2.0-alpha.2: verify tool ✅, ODAR routing ✅, P2.2/P2.3/P1.7 ✅, deriveProjectId fix ✅, BRAID-NEXT archived, IMPLEMENTATION.md consolidated |
+| 2026-04-30 | P0.2 ✅ density signals → policy engine, P0.3 ✅ contrast mode toggle, P0.5 ✅ clean, Timer/Pomodoro COMPLETE |
 | 2026-04-29 | Initial version — 15 proposals audited, P0-P3 plan created |
