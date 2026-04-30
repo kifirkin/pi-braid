@@ -17,6 +17,8 @@ All notable changes to pi-braid are documented here.
 - **P0.4 structured format REMOVED**: TOOL_RESULT/STATUS/DATA/RESULT blocks + XML-style `<result>` tags caused "Tool not found" errors — weaker LLMs confused structured text with API-level tool calls. Removed entirely. Chain-of-thought `>` prefix, code block language tags, and tables preserved.
 - **hypothesize throws on failure**: Changed from returning error-as-text to throwing `Error(...)`. Now `tool_execution_end` fires with `isError: true` for analytics to detect.
 - **`_braidInjected` tagging**: All pi.sendMessage injection calls now tagged with `details._braidInjected: true`. `filterSafeToRemove()` strips these from compaction summaries so enforcement/timer/retry nudges don't conflate with real user messages.
+- **P2.2 — Heartbeat event bus formalization**: Created `src/lib/agent-events.ts` — unified `AgentSignal` type taxonomy documenting all 10 signal domains. Added `memory` to `SignalSource` type. Added `memory_contamination` policy rule (Rule 7) to belief-policy-engine: fires when cross-session memories are retrieved, recommends verifying before acting.
+- **P2.3 — Memory contamination architecture**: `retrieveEpisodes()` now applies -0.7 cross-project penalty (memories from other projects effectively excluded). `emitSignal(memory/contamination)` fires when cross-session episodes surfaced via `whisperRecall`. Retrieved episodes include `memoryConfidence` field with 7-day half-life decay. Search results and whispers show project, ttl, confidence%, and `[CROSS-SESSION]` tags.
 - **REPL verbose output**: `formatVerbose()` shows `[repl #N] code => result` format. Full code in `details.code` for analytics. Result preview for single-line format. rlmHistory limit 100→500.
 
 ### Bug Fixes
