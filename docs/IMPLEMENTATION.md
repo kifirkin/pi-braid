@@ -257,6 +257,8 @@ API-only providers (stepfun, minimax) don't expose activations/logprobs. RepE pr
 | P2.2 | Heartbeat event bus formalization | 4h | Agent Timer (P1.4) |
 | P2.3 | Implicit/explicit memory boundary | 4h | P1.7 |
 | DONE | Meta-learning tick adjustment (wired) | ✅ Done | tickInterval adjustment in heartbeat-scheduler (already wired) |
+| DONE | Heartbeat event bus formalization | ✅ Done | agent-events.ts taxonomy + memory_contamination policy rule |
+| DONE | Implicit/explicit memory boundary | ✅ Done | -0.7 cross-project penalty + emitSignal contamination + memoryConfidence decay |
 | P2.5 | Benchmark variant generation framework | 4h | BM1/BM2 (P1.1/P1.2) |
 
 ### P3 — Weeks 5+ (Lower priority / exploration)

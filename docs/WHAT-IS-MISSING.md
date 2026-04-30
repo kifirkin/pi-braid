@@ -367,7 +367,8 @@ Episodes tagged with project path. Retrieved memories display provenance:
 - [x] **Density metrics dashboard** — ✅ DONE (contextDensity in analytics output)
 - [x] **Episodic extraction** — ✅ DONE (reasoning chains → addEpisode on context handler)
 - [x] **Memory eviction policies** — ✅ DONE (OUTCOME_TTL + MAX_OUTCOMES sliding window in context-lifecycle)
-- [ ] **Remove `(ctx as any).turnCount` usages** — Track turns via `message_end` events instead (unstable API)
+- [x] **P2.2 Heartbeat event bus formalization** — ✅ DONE (agent-events.ts unified taxonomy + memory_contamination policy rule)
+- [x] **P2.3 Implicit/explicit memory boundary** — ✅ DONE (-0.7 cross-project penalty + emitSignal contamination + memoryConfidence decay)
 
 ### P3 (Research Findings)
 
