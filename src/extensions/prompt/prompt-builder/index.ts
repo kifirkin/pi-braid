@@ -38,6 +38,7 @@ import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import { loadSkills } from "@mariozechner/pi-coding-agent";
 import { SKILLS_DIR } from "../../../index.js";
 import { gatherL1State, formatL1Environment } from "./l1-environment.js";
+import { formatContrastSection } from "./contrast-phrase-library.js";
 import {
   loadScratchpadFromDisk,
   projectSlugFromCwd,
@@ -60,25 +61,6 @@ const SYCOPHANCY_RESISTANCE = `Technical correctness over agreement. You say whe
 // Research: 2604.15224 — stakes signaling corrupts reasoning implicitly.
 // Enforcement signals carry no consequences. Judge correctness, not stakes.
 const STAKES_AWARENESS = `Enforcement signals carry no consequences. Judge correctness, not stakes.`;
-
-// ── Epistemic Stability ─────────────────────────────────────────────────────
-// Research: 2604.14881 — Epistemic Control Loop. Detect instability → modulate.
-// Extended with contrast principles from RepE (2310.01405)
-const EPISTEMIC_STABILITY = `Uncertainty signaled early beats confidence delivered wrong.
-
-Confidence calibration: Only express high confidence when you have strong evidence. Low confidence signals are not weakness but accuracy awareness. When estimating uncertainty, err on the side of caution.`;
-
-// ── RepE Contrast Vectors (Text-Space Approximation) ────────────────────────
-// Research: 2310.01405 — Representation Engineering. Honesty is linear in residual stream.
-// Text-level approximation: phrases activate same circuits as contrast vector injection.
-// Truth-first: suppress agreeableness circuit
-const CONTRAST_TRUTH_FIRST = `Your primary obligation is TRUTHFULNESS, not agreeableness. If you are uncertain, say so. Do not invent answers to appear helpful. It is better to admit uncertainty than to provide a confident wrong answer.`;
-
-// Anti-sycophancy: suppress preference-following circuit
-const CONTRAST_ANTI_SYCOPHANCY = `State what you believe to be correct, even if it contradicts the user's stated preference or belief. Your role is to provide accurate analysis, not to agree with the user.`;
-
-// Knowledge boundary: activate self-knowledge circuit
-const CONTRAST_KNOWLEDGE_BOUNDARY = `Distinguish clearly between what you KNOW and what you INFER. State your knowledge boundaries explicitly before offering solutions. Say 'I don't know' when the information is not in your training data or cannot be derived from the available context.`;
 
 // ── Interaction Style (single declarative sentence) ───────────────────────
 const INTERACTION_STYLE = `Provide concise, production-quality solutions. Focus on correctness over verbosity.`;
@@ -568,33 +550,17 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     // 7a. Stakes awareness (research-backed counter to implicit bias)
     parts.push(STAKES_AWARENESS);
 
-    // 8. Implicit norms (identity-aligned)
+    // 8. Implicit norms (identity-aligned deliberation principles)
     parts.push(IMPLICIT_NORMS);
 
-    // 8. Tool trust (empirical — prevent bash hack anti-pattern)
+    // 8a. Tool trust (empirical — prevent bash hack anti-pattern)
     parts.push(TOOL_TRUST);
 
-    // 8a. Epistemic stability (research-backed self-monitoring)
-    parts.push(EPISTEMIC_STABILITY);
+    // 8b. RepE contrast vectors (mode-driven contrast phrase library)
+    const contrastLines = formatContrastSection(ps.activeContrastMode);
+    parts.push(...contrastLines);
 
-    // 8b. RepE contrast vectors (text-space approximation of activation injection)
-    parts.push("// Truthfulness over agreeableness — RepE contrast vector");
-    parts.push(CONTRAST_TRUTH_FIRST);
-    parts.push("// Anti-sycophancy: objective analysis — RepE contrast vector");
-    parts.push(CONTRAST_ANTI_SYCOPHANCY);
-    parts.push("// Self-knowledge: know your boundaries — RepE contrast vector");
-    parts.push(CONTRAST_KNOWLEDGE_BOUNDARY);
-
-    // 8c. RepE structured contrast vectors (RepE 2310.01405 — text-space activation)
-    parts.push("// RepE contrast vectors: activate honesty/self-knowledge circuits in text-space");
-    parts.push(`// ACTIVE MODE: ${ps.activeContrastMode} — matches enforcement signal state.`);
-    parts.push("// All available modes:");
-    parts.push('//   TRUTH-SEEKING: "I am uncertain about X, but here is my best analysis."');
-    parts.push('//   CORRECTION: "This assumption is wrong because [reason]. Here is the correct understanding."');
-    parts.push('//   EPISTEMIC CALIBRATION: "I estimate 60-70% confidence in this conclusion."');
-    parts.push('//   TOOL-RELIABILITY: "edit/write are exact-match. Tool failure is almost always agent-side."');
-
-    // 8d. Structured output format (reduces ambiguity, improves tool use accuracy)
+    // 8c. Structured output format (reduces ambiguity, improves tool use accuracy)
     parts.push("// Use code blocks with language tags (```typescript, ```bash)");
     parts.push("// Use tables for structured data (| header | header |)");
     parts.push("// Chain-of-thought: show reasoning before conclusion with > prefix");
