@@ -241,9 +241,9 @@ API-only providers (stepfun, minimax) don't expose activations/logprobs. RepE pr
 
 | # | Task | Effort | Dependencies |
 |---|---|---|---|
-| P1.1 | BM1 true multi-turn benchmark | 3h | None |
-| P1.2 | BM3 real-world task suite | 4h | None |
-| P1.3 | Bidirectional verifier (extension) | 4h | R6 session recall, enforcement |
+| P1.1 | BM1 true multi-turn benchmark | 3h | None | (excluded) |
+| P1.2 | BM3 real-world task suite | 4h | None | (excluded) |
+| P1.3 | Bidirectional verifier (extension) | 4h | R6 session recall, enforcement | (excluded) |
 | DONE | Agent Timer + Pomodoro reminders | ✅ Complete | real-time polling + steer reminders + contrast toggle |
 | DONE | Contrast phrase library (lib) | ✅ Complete | formatContrastSection() → mode-driven phrase selection |
 | DONE | Semantic unit classification (compaction) | ✅ Complete | semanticCompress.ts wired into events.ts context handler |
@@ -254,8 +254,8 @@ API-only providers (stepfun, minimax) don't expose activations/logprobs. RepE pr
 | # | Task | Effort | Dependencies |
 |---|---|---|---|
 | DONE | Evolve auto-trigger (degrade → checkpoint) | ✅ Done | isDegraded turn_end → emitSignal stability/decline + whisper (9a41ec57) |
-| P2.2 | Heartbeat event bus formalization | 4h | Agent Timer (P1.4) |
-| P2.3 | Implicit/explicit memory boundary | 4h | P1.7 |
+| P2.2 | Heartbeat event bus formalization | ✅ Done | agent-events.ts taxonomy + memory_contamination policy rule |
+| P2.3 | Implicit/explicit memory boundary | ✅ Done | -0.7 cross-project penalty + emitSignal contamination + memoryConfidence decay |
 | DONE | Meta-learning tick adjustment (wired) | ✅ Done | tickInterval adjustment in heartbeat-scheduler (already wired) |
 | DONE | Heartbeat event bus formalization | ✅ Done | agent-events.ts taxonomy + memory_contamination policy rule |
 | DONE | Implicit/explicit memory boundary | ✅ Done | -0.7 cross-project penalty + emitSignal contamination + memoryConfidence decay |
@@ -268,7 +268,7 @@ API-only providers (stepfun, minimax) don't expose activations/logprobs. RepE pr
 | P3.1 | Self-evolution automatic trigger | 6h | P2.1 |
 | P3.2 | Lie-detector pattern (RepE) | 3h | P0.1 |
 | P3.3 | Rollback automation | 4h | P2.1 |
-| P3.4 | HaluMem memory contamination architecture | 6h | P1.7, P2.3 |
+| P3.4 | HaluMem memory contamination architecture | ✅ Done | P2.3 completed this (cross-project penalty + confidence decay + contamination signal) |
 
 ---
 
