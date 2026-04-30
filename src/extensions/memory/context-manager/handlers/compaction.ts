@@ -176,38 +176,14 @@ export function registerSessionCompactHandler(pi: any): void {
         );
       }
 
-      // After successful auto-compaction, inject minimal resume steer to continue.
-      // pi core already includes the compaction summary in agent context, so this
-      // steer is kept minimal (one line) to avoid adding unnecessary context tokens
-      // that could trigger another context overflow.
-      //
-      // display: false — compaction summary is already in chat as a [compaction]
-      // entry. The steer provides context without adding noise to the TUI.
-      //
-      // BUG FIX (v0.24→v0.25): Previously display:true in session_compact caused
-      // the steer to appear as a visible custom message BEFORE the user's queued
-      // follow-up, making the follow-up "disappear" from the user's perspective
-      // (because the steer consumed the first non-command slot in flushCompactionQueue).
-      // With display:false, the steer is added to session context for the agent but
-      // not rendered in the chat TUI, so the user's message is processed first.
-      const sm = (ctx as any).sessionManager;
-      if (sm && entry?.summary) {
-        sendTrackedMessage(
-          pi,
-          {
-            customType: "context",
-            content: [
-              {
-                type: "text" as const,
-                text: "[resuming] Context was compacted. Continue working on the user's request.",
-              },
-            ],
-            display: false,
-          },
-          { deliverAs: "steer" },
-          { type: "context", source: "context-manager/compaction/resume" },
-        );
-      }
+      // NOTE: Do NOT inject a resume steer here.
+      // The user's queued message (from flushCompactionQueue → session.prompt())
+      // IS the resume mechanism. It triggers message_start events, gets persisted
+      // in sessionManager, and renders in the TUI. The steer from agent.steer()
+      // is delivered via agent-loop _steeringMessages, never emits message_start/
+      // message_end events, never reaches sessionManager.appendMessage(), and is
+      // invisible in both the TUI and session tree. Adding it would only add noise
+      // to agent context without any user-visible benefit.
 
       // Clear overflow notification flag, retry guards, AND dedup guard on success
       const cmState = getCmState(ctx);
