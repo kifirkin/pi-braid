@@ -44,6 +44,7 @@ import {
   getDegradationReasons,
   getMetricsSummary,
 } from "../../../lib/degradation-detector.js";
+import { heartbeatCheckpointTick } from "../../../lib/state-checkpoint.js";
 import { measureBigramEntropy, countSelfContradictions } from "../../../lib/reasoning-metrics.js";
 
 const log = createLogger("heartbeat");
@@ -619,7 +620,10 @@ const evolverModule: CognitiveModule = {
 
   shouldActivate(context: ModuleContext): boolean {
     const lastEvolve = context.lastActivation.get("evolver") ?? 0;
-    return context.turnCount >= 30 && lastEvolve === 0;
+    // P3.1: Auto-trigger on first-time activation at turn 30, OR on degradation detection (turn 10+)
+    if (context.turnCount >= 30 && lastEvolve === 0) return true;
+    if (lastEvolve === 0 && isDegraded(context.ctx) && context.turnCount >= 10) return true;
+    return false;
   },
 
   async activate(context: ModuleContext): Promise<void> {
@@ -1050,6 +1054,25 @@ function tick(
       } catch (err) {
         log.error(`Module "${module.name}" activate error:`, err);
       }
+    });
+
+  // P3.3: Auto-checkpoint on clean turns / auto-rollback on degradation
+  const sessionId = ctx.cwd ?? String(process.pid);
+  heartbeatCheckpointTick(ctx, state.turnCount, sessionId, isDegraded(ctx))
+    .then((result) => {
+      if (result.checkpointCreated) {
+        log.info(`Auto-checkpoint created at turn ${state.turnCount}`);
+      }
+      if (result.rollbackPerformed) {
+        log.warn(`Auto-rollback performed: ${result.message}`);
+        ctx.whisper?.(`[health] Auto-rollback: ${result.message}`, {
+          category: "cognitive",
+          priority: "high",
+        });
+      }
+    })
+    .catch((err) => {
+      log.error("Checkpoint tick error:", err);
     });
 }
 

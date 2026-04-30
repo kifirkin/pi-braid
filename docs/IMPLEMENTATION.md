@@ -264,13 +264,13 @@ API-only providers (stepfun, minimax) don't expose activations/logprobs. RepE pr
 
 | # | Task | Effort | Dependencies |
 |---|---|---|---|
-| P3.1 | Self-evolution automatic trigger | 6h | P2.1 |
+| P3.1 | Self-evolution automatic trigger | ✅ Done | isDegraded → evolver shouldActivate auto-trigger (turn 10 + degrade) |
 | P3.2 | Lie-detector pattern (RepE) | ✅ Done | cross-turn claim tracking + enforcement whisper |
-| P3.3 | Rollback automation | 4h | P2.1 |
+| P3.3 | Rollback automation | ✅ Done | state-checkpoint.ts: auto-checkpoint every 20 clean turns + auto-rollback on degrade via heartbeat |
 | P3.4 | Budget-Aware Planning (BAVT) | Medium | P2 |
 | P3.5 | Memory Condensation (Decocted Experience) | Medium | P2 |
 | P3.6 | Process Supervision (step_check) | Medium | P3 |
-| P3.7 | Exploratory Reasoning (explore_paths) | Medium | P3 |
+| P3.7 | Exploratory Reasoning (explore_paths) | ✅ Already exists | cognitive-systems/index.ts — spawns parallel sub-agents |
 | P3.4 | HaluMem memory contamination architecture | ✅ Done | P2.3 completed this (cross-project penalty + confidence decay + contamination signal) |
 
 ---
@@ -306,11 +306,13 @@ npm run lint:check  # 0 warnings
 
 | Gap | Location | Severity |
 |---|---|---|
-| Budget-Aware Planning (BAVT) | planner | MEDIUM |
-| Memory Condensation (Decocted Experience) | session-recall | MEDIUM |
-| Process Supervision (step_check) | reasoning | LOW |
+| Budget-Aware Planning (BAVT) | planner | ✅ Done |
+| Memory Condensation (Decocted Experience) | session-recall | ✅ Done |
+| Process Supervision (step_check) | reasoning | ✅ Done |
 | Lie-detector (RepE) | enforcement | ✅ Done | claim-tracker.ts + enforcement turn_end |
-| BM3 real-world task suite | evaluation/ | MEDIUM |
+| Self-evolution auto trigger | evolve | ✅ Done | isDegraded→evolver shouldActivate |
+| Rollback automation | heartbeat | ✅ Done | state-checkpoint.ts |
+| BM3 real-world task suite | evaluation/ | (excluded) |
 
 ---
 
