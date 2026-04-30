@@ -20,12 +20,14 @@ import { emitSignal } from "../../../lib/belief-policy-engine.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import * as os from "node:os";
 import { readFile as fsReadFilePromise } from "node:fs/promises";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 // ── Project Identifier ───────────────────────────────────────────────────────
 // Determines the project scope for memory isolation.
 // Uses the top 2 path components of cwd as a stable project identifier:
-//   /Users/kifir/projects/agents/pi-braid/src → "pi-braid"
-//   /Users/kifir/projects/vibe/app/components → "vibe/app"
+//   /Users/kifir/projects/agents/pi-braid/src → "pi-braid/src"
+//   /Users/kifir/projects/vibe/app/components → "app/components"
 // This correctly groups all subdirectories within the same git repo, without
 // requiring async git subprocess calls on every memory operation.
 function deriveProjectId(cwd: string): string {
@@ -33,8 +35,6 @@ function deriveProjectId(cwd: string): string {
   if (parts.length < 2) return cwd || "unknown";
   return parts.slice(-2).join("/");
 }
-import * as fs from "node:fs";
-import * as path from "node:path";
 
 const log = createLogger("three-memory-stores");
 
