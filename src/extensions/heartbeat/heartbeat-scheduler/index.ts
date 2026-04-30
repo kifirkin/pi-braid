@@ -59,6 +59,7 @@ interface MemoryStoresState {
   lastSkillType: string;
   skillTransitionCount: number;
   recentErrors: string[];
+  currentSessionId: string;
 }
 
 function getMemoryState(ctx: ExtensionContext): MemoryStoresState | null {
@@ -72,6 +73,7 @@ function getMemoryState(ctx: ExtensionContext): MemoryStoresState | null {
       lastSkillType: "",
       skillTransitionCount: 0,
       recentErrors: [],
+      currentSessionId: "",
     }));
   } catch {
     return null;
@@ -246,7 +248,7 @@ const recallerModule: CognitiveModule = {
     const contextKeywords = `session work turns:${recentTurns} tools:${context.totalToolCalls}`;
 
     if (memState.episodes.length >= 2) {
-      const rumsResults = retrieveByRUMS(memState, contextKeywords, 3);
+      const rumsResults = retrieveByRUMS(memState, contextKeywords, 3, memState.currentSessionId);
       if (rumsResults.length > 0) {
         log.info(
           `Recaller: RUMS selected ${rumsResults.length} episodes, top score: ${rumsResults[0].similarity.toFixed(2)}`,

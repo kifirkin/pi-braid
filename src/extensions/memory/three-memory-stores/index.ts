@@ -43,6 +43,8 @@ export interface Episode {
   tags: string[];
   /** Project path where this episode was created. Provenance tag (HaluMem 2511.03506). */
   project: string;
+  /** Session ID — enables cross-session contamination filtering. */
+  sessionId: string;
 }
 
 export interface HeuristicRule {
@@ -75,6 +77,8 @@ interface MemoryStoresState {
   lastSkillType: string; // R6: track tool→skill transitions for proactive recall
   skillTransitionCount: number; // R6: count skill transitions this session
   recentErrors: string[]; // R6: recent error types for retry-recovery recall
+  /** Current session ID — enables cross-session contamination filtering (P1.7). */
+  currentSessionId: string;
 }
 
 // ── Factory ──────────────────────────────────────────────────────────────────
@@ -89,6 +93,7 @@ function createMemoryStoresState(): MemoryStoresState {
     lastSkillType: "",
     skillTransitionCount: 0,
     recentErrors: [],
+    currentSessionId: "",
   };
 }
 
@@ -117,6 +122,7 @@ function addEpisode(
     toolSequence,
     tags,
     project: project ?? "unknown",
+    sessionId: state.currentSessionId || "unknown",
   };
   state.episodes.push(episode);
 
@@ -259,7 +265,12 @@ function computeRUMS(
  * RUMS-based episode retrieval — information-theoretic selection.
  * Replaces simple token overlap with mutual information scoring.
  */
-function retrieveByRUMS(state: MemoryStoresState, query: string, limit: number = 3): Episode[] {
+function retrieveByRUMS(
+  state: MemoryStoresState,
+  query: string,
+  limit: number = 3,
+  currentSessionId: string,
+): Episode[] {
   if (state.episodes.length === 0) return [];
 
   // Build background frequency distribution from all episodes
@@ -288,6 +299,11 @@ function retrieveByRUMS(state: MemoryStoresState, query: string, limit: number =
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
     .map((s) => ({ ...s.ep, similarity: s.score }));
+
+  // P1.7: Tag cross-session contamination risk
+  for (const ep of results) {
+    (ep as any)._crossSession = ep.sessionId && ep.sessionId !== currentSessionId;
+  }
 
   log.debug(`RUMS retrieved ${results.length} episodes for "${query.slice(0, 30)}..."`);
   return results;
@@ -662,6 +678,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event: any, ctx: ExtensionContext) => {
     const state = getState(ctx);
+    state.currentSessionId = ctx.sessionManager.getSessionFile?.() ?? `session-${Date.now()}`;
 
     // Load past episodes from disk so recaller has data from previous sessions
     if (state.episodes.length === 0) {
@@ -792,7 +809,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
         // Proactive recall on 3rd skill transition (doing new type of work)
         if (state.skillTransitionCount === 3 && state.episodes.length > 0) {
           const transitionQuery = `${taskType} solution approach`;
-          const relevant = retrieveByRUMS(state, transitionQuery, 1);
+          const relevant = retrieveByRUMS(state, transitionQuery, 1, state.currentSessionId);
           if (relevant.length > 0 && relevant[0].similarity > 0.25) {
             whisperRecall(ctx, `Approach hint for ${taskType} tasks:`, relevant);
           }
@@ -811,7 +828,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
         // When a tool fails, search past episodes for similar failures
         // and solutions. This gives the agent immediate prior art.
         const errorQuery = `${toolName} ${taskType} failure error`;
-        const similarFailures = retrieveByRUMS(state, errorQuery, 2);
+        const similarFailures = retrieveByRUMS(state, errorQuery, 2, state.currentSessionId);
         if (similarFailures.length > 0 && similarFailures[0].similarity > 0.15) {
           whisperRecall(ctx, `Similar past issue with ${toolName}:`, similarFailures);
         }
@@ -871,7 +888,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 
     // Query: current task type + recent failures → past solutions
     const query = `${taskType} ${errorTool} solution error`.trim();
-    const relevant = retrieveByRUMS(state, query, 1);
+    const relevant = retrieveByRUMS(state, query, 1, state.currentSessionId);
 
     if (relevant.length > 0 && relevant[0].similarity > 0.28) {
       lastRecallTime = now;
@@ -970,6 +987,7 @@ async function loadPastEpisodes(state: MemoryStoresState): Promise<number> {
         toolSequence: [],
         tags: ["loaded-from-disk"],
         project: (item as any).project ?? "unknown",
+        sessionId: (item as any).sessionId ?? "migrated",
       });
       loaded++;
     }
