@@ -50,7 +50,90 @@ function getChainState(ctx: ExtensionContext): ThoughtChainState {
   }));
 }
 
-// ── Calibration ────────────────────────────────────────────────────────────────
+// ── Complexity Estimation (ODAR — Optimal Depth Allocation Routing) ──────────────────
+// Estimates task complexity (0-1) from task description for Fast/Slow routing.
+// Based on: docs/research/braid-loop-research.md (Improvement 3: Fast/Slow System Routing)
+// Based on: 2604.08890 "ODAR: Optimal Depth Allocation Routing"
+//
+// Complexity signals:
+//   + High: long text (>300 chars), technical terms, multi-step keywords
+//   + Medium: some technical terms, moderate length
+//   + Low: short, imperative, simple keywords
+//
+// Research finding: ODAR saves 30-60% tokens on simple tasks by routing to fast system.
+// For pi-braid: "fast" = quick depth (minimal reasoning), "slow" = deep (full analysis).
+
+const COMPLEXITY_KEYWORDS = {
+  high: [
+    /\b(architectur|design\s+pattern|algorithm|optimize|refactor|benchmark|security|concurren|async|parallel|middleware|plugin|extension)\b/i,
+    /\b(integrat|deploy|docker|kubernetes|ci\/|cd\/|pipeline|auth|oauth|jwt|encrypt)\b/i,
+    /\b(migrate|upgrade|deprecat|legacy|monolith|microservice|api\s+design)\b/i,
+    /\b(database|schema|migration|transaction|index|query\s+optim|partition)\b/i,
+  ],
+  medium: [
+    /\b(function|class|interface|type\s+alias|module|import|export|async|await)\b/i,
+    /\b(error|exception|handler|middleware|callback|promise|observable)\b/i,
+    /\b(test|spec|assert|mock|stub|coverage|debug|profil)\b/i,
+    /\b(config|environment|variable|setup|install|configure|build|compile)\b/i,
+  ],
+};
+
+/**
+ * Estimate complexity score (0-1) from a task description.
+ * 0-0.3: simple (quick depth)
+ * 0.3-0.7: medium (standard depth)
+ * 0.7-1.0: complex (deep depth)
+ */
+export function estimateComplexity(taskText: string): number {
+  if (!taskText || taskText.length < 10) return 0.1;
+
+  let score = 0.3; // baseline for any non-trivial task
+
+  // Length signal: longer = more complex
+  const len = taskText.length;
+  if (len > 500) score += 0.2;
+  else if (len > 300) score += 0.15;
+  else if (len > 150) score += 0.1;
+  else if (len < 50) score -= 0.15;
+
+  // High complexity keywords
+  for (const re of COMPLEXITY_KEYWORDS.high) {
+    if (re.test(taskText)) {
+      score += 0.2;
+      break;
+    }
+  }
+
+  // Medium complexity keywords
+  let mediumHits = 0;
+  for (const re of COMPLEXITY_KEYWORDS.medium) {
+    if (re.test(taskText)) mediumHits++;
+  }
+  score += Math.min(mediumHits * 0.05, 0.15);
+
+  // Multi-step indicators (numbered lists, "first/then/finally")
+  const stepIndicators =
+    (taskText.match(/\d+\.\s+\w+/g) ?? []).length +
+    (taskText.match(/\b(first|then|next|finally|after|before)\b/gi) ?? []).length;
+  if (stepIndicators > 3) score += 0.15;
+  else if (stepIndicators > 1) score += 0.08;
+
+  // Question marks (uncertainty → possibly complex)
+  const questions = (taskText.match(/\?/g) ?? []).length;
+  if (questions > 2) score += 0.05;
+
+  // Clamp to [0.05, 0.98]
+  return Math.max(0.05, Math.min(0.98, score));
+}
+
+/**
+ * Map complexity score to ODAR depth level.
+ */
+export function complexityToDepth(score: number): "quick" | "standard" | "deep" {
+  if (score >= 0.7) return "deep";
+  if (score >= 0.3) return "standard";
+  return "quick";
+}
 
 /**
  * Compute calibration error: |predicted confidence - actual outcome|
@@ -137,6 +220,18 @@ const thinkSchema = Type.Object({
     Type.String({
       enum: ["minimal", "low", "medium", "high", "max", "quick", "deep"],
       description: "Analysis depth",
+    }),
+  ),
+  complexity: Type.Optional(
+    Type.Number({
+      description: "Task complexity 0-1 (auto-estimated from observation if omitted). Used for ODAR Fast/Slow routing: 0-0.3=quick, 0.3-0.7=standard, 0.7+=deep.",
+      minimum: 0,
+      maximum: 1,
+    }),
+  ),
+  auto_depth: Type.Optional(
+    Type.Boolean({
+      description: "Auto-select depth from complexity estimation (recommended when depth is not explicit). Default: false.",
     }),
   ),
   ask_utility_model: Type.Optional(
@@ -226,7 +321,16 @@ export function createThinkTool() {
       const decision = params.decision ?? "";
       const reason = params.reason ?? "";
       const thoughtId = params.thought_id ?? crypto.randomUUID();
-      const depth = params.depth ?? "quick";
+      // ODAR Fast/Slow routing: complexity → depth
+      let depth = params.depth ?? "quick";
+      if (params.complexity !== undefined) {
+        depth = complexityToDepth(params.complexity);
+      } else if (params.auto_depth || (!params.depth && observation.length > 30)) {
+        // Auto-estimate when: auto_depth=true, OR depth not provided AND task has substance
+        const estimated = estimateComplexity(observation);
+        depth = complexityToDepth(estimated);
+        log.debug(`ODAR: auto depth ${depth} (complexity=${estimated.toFixed(2)}, len=${observation.length})`);
+      }
       const budget = getBudget(depth);
       const useDeepReview = params.ask_utility_model === true || depth === "deep";
       const confidence = params.confidence ?? null;
@@ -266,6 +370,9 @@ export function createThinkTool() {
         `- Decided: ${decision}`,
         reason ? `- Reason: ${reason}` : "",
         `- Depth: ${depth} (${budget.guidance})`,
+        params.auto_depth || params.complexity !== undefined
+          ? `- Routing: ODAR auto (${params.complexity !== undefined ? `complexity=${params.complexity}` : "auto-estimated"})`
+          : "",
         `- ID: ${thoughtId}${params.parent_id ? `\n- Parent: ${params.parent_id}` : ""}`,
       ].filter(Boolean);
 

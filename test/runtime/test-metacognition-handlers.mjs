@@ -188,6 +188,48 @@ async function main() {
 		assert(result.issues.some(i => i.includes("completion") || i.includes("failure") || i.includes("criteria")));
 	});
 
+	// ── Think tool — ODAR complexity estimation ──────────────────────────────────
+	console.log("\n[4] Think tool — ODAR complexity estimation");
+	const { estimateComplexity, complexityToDepth } = await import(
+		`${ROOT}/dist/extensions/core/metacognition/handlers/think.js`
+	);
+
+	check("estimateComplexity: short imperative → quick", () => {
+		const c = estimateComplexity("Fix the bug");
+		assert(c < 0.3, `Expected <0.3, got ${c}`);
+	});
+
+	check("estimateComplexity: architecture/middleware → deep", () => {
+		// Multiple high-complexity signals: architecture + middleware + async + deploy + security
+		const c = estimateComplexity("Design a middleware plugin architecture for the API gateway with async authentication, JWT encryption, and deploy to Kubernetes with CI/CD pipeline");
+		assert(c >= 0.6, `Expected ≥0.6, got ${c}`);
+	});
+
+	check("estimateComplexity: function/class code → medium", () => {
+		const c = estimateComplexity("Write a function that handles async errors with a callback pattern");
+		assert(c >= 0.3 && c < 0.7, `Expected 0.3-0.7, got ${c}`);
+	});
+
+	check("estimateComplexity: multi-step → higher complexity", () => {
+		const c = estimateComplexity("1. Install dependencies\n2. Configure the module\n3. Write tests\n4. Deploy to production");
+		assert(c > 0.1, `Expected >0.1, got ${c}`);
+	});
+
+	check("complexityToDepth: 0-0.3 → quick", () => {
+		assert(complexityToDepth(0.1) === "quick");
+		assert(complexityToDepth(0.29) === "quick");
+	});
+
+	check("complexityToDepth: 0.3-0.7 → standard", () => {
+		assert(complexityToDepth(0.3) === "standard");
+		assert(complexityToDepth(0.5) === "standard");
+	});
+
+	check("complexityToDepth: 0.7+ → deep", () => {
+		assert(complexityToDepth(0.7) === "deep");
+		assert(complexityToDepth(0.98) === "deep");
+	});
+
 	// Summary
 	console.log(`\n${"=".repeat(50)}`);
 	console.log(`metacognition-handlers: ${passed} passed, ${failed} failed`);
