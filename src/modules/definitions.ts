@@ -46,9 +46,9 @@ import healthcheckFn from "../extensions/tools/healthcheck/index.js";
 import timerFn from "../extensions/tools/timer/index.js";
 import latentActivatorFn from "../extensions/tools/latent-activator/index.js";
 
-import browserFn from "../extensions/browser/browser/index.js";
-import webFetchFn from "../extensions/browser/web-fetch/index.js";
-import visionFn from "../extensions/browser/vision/index.js";
+import browserFn from "../extensions/tools/browser/index.js";
+import webFetchFn from "../extensions/tools/web-fetch/index.js";
+import visionFn from "../extensions/tools/vision/index.js";
 
 import assistantFn from "../extensions/assistant/assistant/index.js";
 import feedbackFn from "../extensions/assistant/feedback/index.js";
