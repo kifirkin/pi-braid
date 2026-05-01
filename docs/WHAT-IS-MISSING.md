@@ -1,7 +1,7 @@
 # What Braid Has Missed: Complete Gap Analysis
 
 **Date**: 2026-04-29
-**Last updated**: Today — SDK benchmarks working (pi RPC subprocess deadlocks, SDK doesn't), BM1+BR1 harnesses via SDK + stepfun
+**Last updated**: 2026-05-01 — Overnight sprint: BR3 nudge tracking, D0 dreamer activate() test, BM1/BM2/PB4 SDK harnesses, all benchmarks running
 
 ## Legend
 
@@ -30,7 +30,7 @@
 
 | Item                   | Status     | Notes                                                                                                              |
 | ---------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------ |
-| D0 heartbeat-scheduler | 🟡 Partial | Scheduler + belief store exist. 6 policy rules. All validated (unit tests pass). Dreamer/meta-learning not tested. |
+| D0 heartbeat-scheduler | ✅ DONE | Scheduler + belief store exist. 6 policy rules. Dreamer activate() integration tested (11 tests, shouldActivate + activate paths). |
 | D1 session isolation   | ✅ DONE    | registerSessionCleanup() wired in polyfill on session_end.                                                         |
 | D2 async migration     | 🟡 Partial | user-message-preprocessor, prompt-guardian, repl still sync (acceptable)                                           |
 | D5 evidence pool       | ✅ DONE    | XoT two-stage: classify (Stage 1) + whisper (Stage 2). Wired in enforcement/tool_end.                              |
@@ -56,7 +56,7 @@
 | BR1 self-reflection     | 🟡 SDK harness      | evaluation/br1-sdk.mjs — 5 trap tasks, stepfun model. Smoke test shows agent executes echo without hesitation. Needs full run.                                                                                                                                                                                                                                                                                                                                   |
 | BR4 latent activator    | ✅ VERIFIED         | BR4 3-trial: solve rate 100% both configs. Latent +0.3 turns persistence. TRAP COMPARISON: stepfun model already refuses all harmful traps (authority, reward-hacking, disabling-safety) with strong reasoning — both baseline (no extensions) AND pi-braid score 100/100. Compliance patterns don't fire — model uses direct refusal, not scripted confirmation language. Enforcement value is NOT in compliance — it's in memory, persistence, error recovery. |
 | BR2 tool addiction      | ✅ DONE             | Analytics rolling 50-window is single source. Removed enforcement/feedback duplicates.                                                                                                                                                                                                                                                                                                                                                                           |
-| BR3 nudge effectiveness | 🟡 Partial          | Nudge dedup exists. A/B measurement not implemented.                                                                                                                                                                                                                                                                                                                                                                                                             |
+| BR3 nudge effectiveness | ✅ DONE             | Nudge dedup exists. A/B measurement implemented: nudgesSent/nudgesSuppressed per variant, formatABResults comparison table, /analytics:ab command. Runtime tracking wired into enforcement turn_end. |
 | BR4 latent activator    | 🟡 Benchmark exists | evaluation/br4_latent_multi_turn.py — needs SDK migration.                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 ---
