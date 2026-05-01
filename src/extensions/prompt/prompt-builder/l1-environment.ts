@@ -108,7 +108,7 @@ function discoverPiRootPath(): string {
   // Strategy 1: Find pi binary in PATH and walk up to package.json
   // Most reliable for global installs
   try {
-    const piPath = execSync("which pi 2>/dev/null || echo '", {
+    const piPath = execSync("which pi 2>/dev/null || echo ''", {
       encoding: "utf8",
       timeout: 5000,
     }).trim();
