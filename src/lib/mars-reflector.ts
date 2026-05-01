@@ -9,7 +9,7 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { getExtensionState } from "./extension-state.js";
+import { getExtensionState, hasExtensionState } from "./extension-state.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -61,15 +61,13 @@ const MIN_SUCCESS_RATE_FOR_OVERUSE = 0.5;
 export function buildPattern(ctx: ExtensionContext): SessionPattern {
   const state = getState(ctx);
   // Get pattern from enforcement state if available
-  const enforcementState = (ctx: ExtensionContext): Record<string, unknown> | null => {
-    try {
-      return getExtensionState(ctx, "enforcement", () => ({}) as Record<string, unknown>);
-    } catch {
-      return null;
-    }
-  };
-
-  const eState = enforcementState(ctx);
+  const eState = hasExtensionState(ctx, "enforcement")
+    ? getExtensionState(
+        ctx,
+        "enforcement",
+        () => ({ consecutiveErrorTurns: 0 }) as Record<string, unknown>,
+      )
+    : null;
   if (!eState) {
     return {
       toolDistribution: new Map(),

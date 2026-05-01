@@ -302,6 +302,10 @@ export function processAgentResponse(
   if (!ctx) return [];
 
   const state = getClaimState(ctx);
+  // Defensive: if state was corrupted by a mismatched factory, reset it
+  if (!state.claims) {
+    (state as any).claims = [];
+  }
   const newClaims = extractClaims(text);
 
   // Set turn on extracted claims
@@ -362,10 +366,11 @@ export function getClaimStats(ctx: ExtensionContext): {
   lastCheckMs: number;
 } {
   const state = getClaimState(ctx);
-  const entities = new Set(state.claims.map((c) => c.entity));
+  const claims = state.claims ?? [];
+  const entities = new Set(claims.map((c) => c.entity));
   return {
-    totalClaims: state.claims.length,
+    totalClaims: claims.length,
     uniqueEntities: entities.size,
-    lastCheckMs: state.lastCheckMs,
+    lastCheckMs: state.lastCheckMs ?? 0,
   };
 }

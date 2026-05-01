@@ -610,10 +610,15 @@ export default function enforcementExtension(pi: ExtensionAPI) {
           : "";
 
       if (msgContent.length > 50) {
-        const contradictions = processAgentResponse(msgContent, ctx, getState(ctx).currentTurn);
-        if (contradictions.length > 0) {
-          const whisper = formatContradictionWhisper(contradictions);
-          sendEnforcementWhisper(pi, whisper);
+        try {
+          const contradictions = processAgentResponse(msgContent, ctx, getState(ctx).currentTurn);
+          if (contradictions.length > 0) {
+            const whisper = formatContradictionWhisper(contradictions);
+            sendEnforcementWhisper(pi, whisper);
+          }
+        } catch (err) {
+          // Defensive: claim-tracker errors must not crash enforcement or abort session saving
+          log.warn("claim-tracker error (suppressed):", err);
         }
       }
     }

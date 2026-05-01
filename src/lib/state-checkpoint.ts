@@ -20,7 +20,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import { getExtensionState } from "./extension-state.js";
+import { getExtensionState, hasExtensionState } from "./extension-state.js";
 import { createLogger } from "./logger.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
@@ -109,11 +109,11 @@ export async function createCheckpoint(
   const snapshots: Record<string, unknown> = {};
 
   // Capture claim-tracker state (from P3.2)
-  try {
+  if (hasExtensionState(ctx, "claim-tracker")) {
     const claimState = getExtensionState(
       ctx,
       "claim-tracker",
-      () => ({}) as Record<string, unknown>,
+      () => ({ claims: [], lastCheckMs: 0 }) as Record<string, unknown>,
     );
     const cState = claimState as { claims?: unknown[]; lastCheckMs?: number };
     if (Object.keys(cState).length > 0) {
@@ -122,16 +122,14 @@ export async function createCheckpoint(
         lastCheckMs: cState.lastCheckMs ?? 0,
       };
     }
-  } catch {
-    // claim-tracker not loaded — skip
   }
 
   // Capture enforcement state summary
-  try {
+  if (hasExtensionState(ctx, "enforcement")) {
     const enforcementState = getExtensionState(
       ctx,
       "enforcement",
-      () => ({}) as Record<string, unknown>,
+      () => ({ consecutiveErrorTurns: 0 }) as Record<string, unknown>,
     );
     const eState = enforcementState as { consecutiveErrorTurns?: number };
     if (Object.keys(eState).length > 0) {
@@ -139,13 +137,15 @@ export async function createCheckpoint(
         consecutiveErrorTurns: eState.consecutiveErrorTurns ?? 0,
       };
     }
-  } catch {
-    // enforcement not loaded — skip
   }
 
   // Capture heartbeat state (turn count, tool tracking)
-  try {
-    const hbState = getExtensionState(ctx, "heartbeat", () => ({}) as Record<string, unknown>);
+  if (hasExtensionState(ctx, "heartbeat")) {
+    const hbState = getExtensionState(
+      ctx,
+      "heartbeat",
+      () => ({ turnCount: 0, policyTurnCount: 0 }) as Record<string, unknown>,
+    );
     const hState = hbState as { turnCount?: number; policyTurnCount?: number };
     if (Object.keys(hState).length > 0) {
       snapshots["heartbeat"] = {
@@ -153,8 +153,6 @@ export async function createCheckpoint(
         policyTurnCount: hState.policyTurnCount ?? 0,
       };
     }
-  } catch {
-    // heartbeat not loaded — skip
   }
 
   const checkpoint: Checkpoint = {
@@ -218,31 +216,27 @@ export async function autoRollback(
   }
 
   // Restore enforcement error counter (clear it to stop error burst detection)
-  try {
+  if (hasExtensionState(ctx, "enforcement")) {
     const enforcementState = getExtensionState(
       ctx,
       "enforcement",
-      () => ({}) as Record<string, unknown>,
+      () => ({ consecutiveErrorTurns: 0 }) as Record<string, unknown>,
     );
     if (latest.stateSnapshots["enforcement"]) {
       const snap = latest.stateSnapshots["enforcement"] as { consecutiveErrorTurns?: number };
       (enforcementState as { consecutiveErrorTurns: number }).consecutiveErrorTurns =
         snap.consecutiveErrorTurns ?? 0;
     }
-  } catch {
-    // Best effort
   }
 
   // Clear degradation state
-  try {
+  if (hasExtensionState(ctx, "degradation-detector")) {
     const degState = getExtensionState(
       ctx,
       "degradation-detector",
-      () => ({}) as { isDegraded: boolean },
+      () => ({ isDegraded: false }) as { isDegraded: boolean },
     );
     degState.isDegraded = false;
-  } catch {
-    // Best effort
   }
 
   log.info(`Auto-rollback: restored from checkpoint ${latest.id} (turn ${latest.turnCount})`);

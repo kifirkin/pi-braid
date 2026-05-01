@@ -252,7 +252,7 @@ export default function docExtension(pi: ExtensionAPI) {
       params,
       _signal,
       _onUpdate,
-      ctx: ExtensionContext,
+      _ctx: ExtensionContext,
     ): Promise<AgentToolResult<{ lines: number; format: string; method?: string }>> => {
       if (!fsSync.existsSync(params.path)) {
         return {
@@ -322,7 +322,7 @@ export default function docExtension(pi: ExtensionAPI) {
       params,
       _signal,
       _onUpdate,
-      ctx: ExtensionContext,
+      _ctx: ExtensionContext,
     ): Promise<
       AgentToolResult<{ page: number; width: number; height: number; scale: number; path: string }>
     > => {
