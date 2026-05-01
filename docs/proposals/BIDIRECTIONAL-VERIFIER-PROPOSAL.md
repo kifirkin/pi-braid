@@ -90,7 +90,9 @@ This is the HWE-Bench Coordination Failure — the agent fixes RTL but misses th
 
 ## Status
 
-**NOT STARTED** — No implementation. Phase 1-4 plan is concrete (9h total). Would fix HWE-Bench coordination failures (agent fixes root cause but misses derived files). See DOC-AUDIT.md for integration with existing infrastructure.
+**Phase 1 DONE** (`src/lib/bidirectional-verifier.ts`) — Forward Trace: file touch graph + localization risk detection. Wired into enforcement input/tool_call/turn_end handlers.
+
+**Phases 2-4 pending** — Artifact Validator (judge model), Backward Checker (semantic validation), Coordination Checker (derived file tracking). See DOC-AUDIT.md for integration details.
 
 ## References
 
