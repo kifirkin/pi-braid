@@ -71,6 +71,7 @@ import {
 import { analyzeWithJudge } from "./judge.js";
 import { NudgeManager } from "./nudge-manager.js";
 import { getState } from "./state.js";
+import { recordNudgeSent, recordNudgeSuppressed } from "../../../extensions/heartbeat/analytics/index.js";
 
 import type { TurnState } from "./types.js";
 import {
@@ -630,6 +631,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
     const suppressNudges = abVariant === "no_nudges";
     if (suppressNudges) {
       getState(ctx).nudgeSuppressedCount = (getState(ctx).nudgeSuppressedCount || 0) + 1;
+      recordNudgeSuppressed(ctx);
     }
 
     // Collect signals for the bundled nudge
@@ -802,6 +804,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
         const { shouldSend } = nudgeManager.shouldSendNudge("scratchpad", bundled);
         if (shouldSend) {
           sendEnforcementWhisper(pi, bundled);
+          recordNudgeSent(ctx);
         }
       }
     }

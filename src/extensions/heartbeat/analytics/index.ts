@@ -73,6 +73,8 @@ interface AnalyticsState {
   contextDensity: number;
   lastDensityTurn: number;
   wasDegraded: boolean; // Tracks degradation state transitions for one-shot alerts
+  nudgesSent: number; // BR3: Count of nudges actually sent to agent
+  nudgesSuppressed: number; // BR3: Count of nudges suppressed by A/B variant
 }
 
 function createAnalyticsState(): AnalyticsState {
@@ -86,6 +88,8 @@ function createAnalyticsState(): AnalyticsState {
     contextDensity: 0,
     lastDensityTurn: 0,
     wasDegraded: false,
+    nudgesSent: 0,
+    nudgesSuppressed: 0,
   };
 }
 
@@ -107,6 +111,22 @@ export function updateContextDensity(ctx: ExtensionContext, density: number) {
   state.contextDensity = Math.round(density * 1000) / 10;
   state.lastDensityTurn = (ctx as any).turnCount ?? 0;
   log.debug(`analytics: context_density=${state.contextDensity.toFixed(1)}%`);
+}
+
+/**
+ * Record that a nudge was sent to the agent (BR3 tracking).
+ */
+export function recordNudgeSent(ctx: ExtensionContext) {
+  const state = getAnalyticsStateInternal(ctx);
+  state.nudgesSent++;
+}
+
+/**
+ * Record that a nudge was suppressed by A/B variant (BR3 tracking).
+ */
+export function recordNudgeSuppressed(ctx: ExtensionContext) {
+  const state = getAnalyticsStateInternal(ctx);
+  state.nudgesSuppressed++;
 }
 
 /**
@@ -238,6 +258,8 @@ function flushAnalytics(s: AnalyticsState, taskCompleted = false): void {
     sequences,
     taskCompleted,
     abVariant: s.abVariant,
+    nudgesSent: s.nudgesSent,
+    nudgesSuppressed: s.nudgesSuppressed,
     outcome,
   };
 
@@ -347,6 +369,8 @@ interface VariantStats {
   failureCount: number;
   avgToolsPerSession: number;
   avgErrorRate: number;
+  nudgesSent: number;
+  nudgesSuppressed: number;
 }
 
 function loadAnalyticsByVariant(storagePath?: string): Map<string, VariantStats> {
@@ -377,6 +401,8 @@ function loadAnalyticsByVariant(storagePath?: string): Map<string, VariantStats>
             failureCount: 0,
             avgToolsPerSession: 0,
             avgErrorRate: 0,
+            nudgesSent: 0,
+            nudgesSuppressed: 0,
           };
           variants.set(variant, existing);
         }
@@ -393,6 +419,10 @@ function loadAnalyticsByVariant(storagePath?: string): Map<string, VariantStats>
         existing.avgToolsPerSession =
           (existing.avgToolsPerSession * (existing.sessions - 1) + (sm.totalToolCalls || 0)) /
           existing.sessions;
+
+        // Accumulate nudge counts
+        existing.nudgesSent += entry.nudgesSent || 0;
+        existing.nudgesSuppressed += entry.nudgesSuppressed || 0;
 
         // Compute session error rate
         const totalCalls = sm.totalToolCalls || 0;
@@ -420,15 +450,15 @@ function formatABResults(): string {
   const lines: string[] = [];
   lines.push("## A/B Experiment Results");
   lines.push("");
-  lines.push("| Variant | Sessions | Success | Partial | Failure | Avg Tools | Avg Error Rate |");
-  lines.push("|---------|----------|---------|---------|---------|-----------|----------------|");
+  lines.push("| Variant | Sessions | Success | Partial | Failure | Avg Tools | Nudges Sent | Suppressed | Avg Error Rate |");
+  lines.push("|---------|----------|---------|---------|---------|-----------|-------------|------------|----------------|");
 
   for (const v of variants.values()) {
     const successRate = v.sessions > 0 ? ((v.successCount / v.sessions) * 100).toFixed(0) : "0";
     const partialRate = v.sessions > 0 ? ((v.partialCount / v.sessions) * 100).toFixed(0) : "0";
     const failureRate = v.sessions > 0 ? ((v.failureCount / v.sessions) * 100).toFixed(0) : "0";
     lines.push(
-      `| ${v.variant} | ${v.sessions} | ${successRate}% | ${partialRate}% | ${failureRate}% | ${v.avgToolsPerSession.toFixed(1)} | ${(v.avgErrorRate * 100).toFixed(0)}% |`,
+      `| ${v.variant} | ${v.sessions} | ${successRate}% | ${partialRate}% | ${failureRate}% | ${v.avgToolsPerSession.toFixed(1)} | ${v.nudgesSent} | ${v.nudgesSuppressed} | ${(v.avgErrorRate * 100).toFixed(0)}% |`,
     );
   }
 
@@ -465,6 +495,7 @@ function formatCurrentSession(s: AnalyticsState): string {
   lines.push(`**Context Density:** ${s.contextDensity.toFixed(1)}%`);
   lines.push(`**Unique Tools Used:** ${sessionMetrics.uniqueToolsUsed}`);
   lines.push(`**A/B Variant:** ${s.abVariant}`);
+  lines.push(`**Nudges Sent:** ${s.nudgesSent} | **Suppressed:** ${s.nudgesSuppressed}`);
   lines.push("");
 
   if (metrics.length > 0) {
@@ -547,6 +578,8 @@ export default function analyticsExtension(pi: ExtensionAPI) {
     state.toolMetrics.clear();
     state.toolCallSequence = [];
     state.wasDegraded = false;
+    state.nudgesSent = 0;
+    state.nudgesSuppressed = 0;
     pendingToolCalls.clear();
 
     const logsDir = join(homedir(), ".pi/logs");
