@@ -210,6 +210,16 @@ function getSessionMetrics(s: AnalyticsState): SessionMetrics {
   };
 }
 
+function computeSessionOutcome(s: AnalyticsState): "success" | "partial" | "failure" {
+  const totalCalls = s.toolCallSequence.length;
+  if (totalCalls === 0) return "partial";
+  const failedCalls = Array.from(s.toolMetrics.values()).reduce((sum, m) => sum + m.failedCalls, 0);
+  const errorRate = failedCalls / totalCalls;
+  if (s.wasDegraded && errorRate > 0.3) return "failure";
+  if (s.wasDegraded || errorRate > 0.15) return "partial";
+  return "success";
+}
+
 function flushAnalytics(s: AnalyticsState, taskCompleted = false): void {
   const logsDir = join(homedir(), ".pi/logs");
   if (!existsSync(logsDir)) {
@@ -219,6 +229,7 @@ function flushAnalytics(s: AnalyticsState, taskCompleted = false): void {
   const sessionMetrics = getSessionMetrics(s);
   const toolMetricsList = Array.from(s.toolMetrics.values());
   const sequences = getToolSequences(s);
+  const outcome = computeSessionOutcome(s);
 
   const entry = {
     timestamp: Date.now(),
@@ -227,6 +238,7 @@ function flushAnalytics(s: AnalyticsState, taskCompleted = false): void {
     sequences,
     taskCompleted,
     abVariant: s.abVariant,
+    outcome,
   };
 
   try {
@@ -322,6 +334,119 @@ function loadAnalytics(storagePath?: string): AnalyticsSummary {
       sequences: [],
     };
   }
+}
+
+// ── A/B Variant Measurement (BR3) ──────────────────────────────────────────
+
+interface VariantStats {
+  variant: string;
+  sessions: number;
+  totalToolCalls: number;
+  successCount: number;
+  partialCount: number;
+  failureCount: number;
+  avgToolsPerSession: number;
+  avgErrorRate: number;
+}
+
+function loadAnalyticsByVariant(storagePath?: string): Map<string, VariantStats> {
+  const path = storagePath ?? join(homedir(), ".pi/logs/braid-metrics.jsonl");
+  const variants = new Map<string, VariantStats>();
+
+  if (!existsSync(path)) return variants;
+
+  try {
+    const content = readFileSync(path, "utf-8");
+    const lines = content.trim().split("\n");
+
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line);
+        const variant = entry.abVariant || "control";
+        const sm = entry.sessionMetrics || {};
+        const tms = entry.toolMetrics || [];
+
+        let existing = variants.get(variant);
+        if (!existing) {
+          existing = {
+            variant,
+            sessions: 0,
+            totalToolCalls: 0,
+            successCount: 0,
+            partialCount: 0,
+            failureCount: 0,
+            avgToolsPerSession: 0,
+            avgErrorRate: 0,
+          };
+          variants.set(variant, existing);
+        }
+
+        existing.sessions++;
+        existing.totalToolCalls += sm.totalToolCalls || 0;
+
+        const outcome = entry.outcome || "partial";
+        if (outcome === "success") existing.successCount++;
+        else if (outcome === "failure") existing.failureCount++;
+        else existing.partialCount++;
+
+        // Rolling average for tools per session
+        existing.avgToolsPerSession =
+          (existing.avgToolsPerSession * (existing.sessions - 1) + (sm.totalToolCalls || 0)) /
+          existing.sessions;
+
+        // Compute session error rate
+        const totalCalls = sm.totalToolCalls || 0;
+        const failedCalls = tms.reduce((sum: number, m: any) => sum + (m.failedCalls || 0), 0);
+        const errorRate = totalCalls > 0 ? failedCalls / totalCalls : 0;
+        existing.avgErrorRate =
+          (existing.avgErrorRate * (existing.sessions - 1) + errorRate) / existing.sessions;
+      } catch {
+        // Skip malformed lines
+      }
+    }
+  } catch {
+    // Ignore read errors
+  }
+
+  return variants;
+}
+
+function formatABResults(): string {
+  const variants = loadAnalyticsByVariant();
+  if (variants.size === 0) {
+    return "## A/B Results\n\n*No historical data yet. Run `/analytics:setVariant` to configure variants and accumulate sessions.*";
+  }
+
+  const lines: string[] = [];
+  lines.push("## A/B Experiment Results");
+  lines.push("");
+  lines.push("| Variant | Sessions | Success | Partial | Failure | Avg Tools | Avg Error Rate |");
+  lines.push("|---------|----------|---------|---------|---------|-----------|----------------|");
+
+  for (const v of variants.values()) {
+    const successRate = v.sessions > 0 ? ((v.successCount / v.sessions) * 100).toFixed(0) : "0";
+    const partialRate = v.sessions > 0 ? ((v.partialCount / v.sessions) * 100).toFixed(0) : "0";
+    const failureRate = v.sessions > 0 ? ((v.failureCount / v.sessions) * 100).toFixed(0) : "0";
+    lines.push(
+      `| ${v.variant} | ${v.sessions} | ${successRate}% | ${partialRate}% | ${failureRate}% | ${v.avgToolsPerSession.toFixed(1)} | ${(v.avgErrorRate * 100).toFixed(0)}% |`,
+    );
+  }
+
+  lines.push("");
+
+  // Compute significance: if control and no_nudges both have >= 3 sessions, show delta
+  const control = variants.get("control");
+  const noNudges = variants.get("no_nudges");
+  if (control && noNudges && control.sessions >= 3 && noNudges.sessions >= 3) {
+    const controlSuccess = control.sessions > 0 ? control.successCount / control.sessions : 0;
+    const noNudgesSuccess = noNudges.sessions > 0 ? noNudges.successCount / noNudges.sessions : 0;
+    const delta = ((noNudgesSuccess - controlSuccess) * 100).toFixed(1);
+    const direction = parseFloat(delta) > 0 ? "improvement" : "regression";
+    lines.push(`**Delta (no_nudges vs control): ${delta}% ${direction}**`);
+    lines.push("");
+  }
+
+  return lines.join("\n");
 }
 
 // ── Formatting (for /analytics commands) ───────────────────────────────────
@@ -584,6 +709,14 @@ export default function analyticsExtension(pi: ExtensionAPI) {
     },
   });
 
+  pi.registerCommand("analytics:ab", {
+    description: "Show A/B experiment results across variants",
+    handler: async (_args, ctx) => {
+      const output = formatABResults();
+      ctx.ui.notify(output, "info");
+    },
+  });
+
   // ── Programmatic Tools ──────────────────────────────────────────────
 
   pi.registerTool({
@@ -606,7 +739,8 @@ export default function analyticsExtension(pi: ExtensionAPI) {
       const sessionMetrics = getSessionMetrics(state);
       const sequences = getToolSequences(state, 2, 3).slice(0, 10);
       const duration = Math.round((Date.now() - state.sessionStartTime) / 1000);
-      const text = `Session: ${state.sessionId || "unknown"}, ${sessionMetrics.totalToolCalls} tool calls, ${duration}s.`;
+      const outcome = computeSessionOutcome(state);
+      const text = `Session: ${state.sessionId || "unknown"}, ${sessionMetrics.totalToolCalls} tool calls, ${duration}s, outcome: ${outcome}.`;
       return {
         content: [{ type: "text" as const, text }],
         details: {
@@ -615,6 +749,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
           totalToolCalls: sessionMetrics.totalToolCalls,
           uniqueToolsUsed: sessionMetrics.uniqueToolsUsed,
           abVariant: state.abVariant,
+          outcome,
           toolCounts: Object.fromEntries(metrics.map((m) => [m.toolName, m.totalCalls])),
           topTools: metrics.slice(0, 10).map((m) => ({
             tool: m.toolName,
@@ -656,6 +791,42 @@ export default function analyticsExtension(pi: ExtensionAPI) {
           totalSessions: summary.totalSessions,
           totalToolCalls: summary.totalToolCalls,
           tools: reliability,
+        },
+      };
+    },
+  } as any);
+
+  pi.registerTool({
+    name: "get-ab-results",
+    label: "Get A/B Results",
+    description: "Get A/B experiment results across variants.",
+    parameters: Type.Object({}),
+    execute: async (
+      _id: any,
+      _params: any,
+      _signal: any,
+      _onUpdate: any,
+      ctx: ExtensionContext,
+    ): Promise<any> => {
+      const state = getAnalyticsStateInternal(ctx);
+      const variants = loadAnalyticsByVariant(state.storagePath);
+      const rows = Array.from(variants.values()).map((v) => ({
+        variant: v.variant,
+        sessions: v.sessions,
+        successRate: v.sessions > 0 ? v.successCount / v.sessions : 0,
+        partialRate: v.sessions > 0 ? v.partialCount / v.sessions : 0,
+        failureRate: v.sessions > 0 ? v.failureCount / v.sessions : 0,
+        avgTools: v.avgToolsPerSession,
+        avgErrorRate: v.avgErrorRate,
+      }));
+      const text =
+        rows.length === 0
+          ? "No A/B data yet."
+          : `${rows.length} variant(s) tracked. Top: ${rows[0].variant} (${rows[0].sessions} sessions).`;
+      return {
+        content: [{ type: "text" as const, text }],
+        details: {
+          variants: rows,
         },
       };
     },
