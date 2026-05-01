@@ -49,6 +49,11 @@ import {
 import { shouldAdvise as marsShouldAdvise } from "../../../lib/mars-reflector.js";
 import { dream } from "../../../lib/dreamer.js";
 import { recordBashDetails, recordToolCall, recordToolInput } from "./handlers/tool-tracker.js";
+import {
+  checkLocalizationRisk,
+  recordFileTouch,
+  updateProblemContext,
+} from "../../../lib/bidirectional-verifier.js";
 import { analyzeMessage } from "./handlers/message-analysis.js";
 import {
   TurnAnalysisContext,
@@ -207,6 +212,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 
     setLanguage(ctx, lang.code, lang.name);
     getState(ctx).lastUserMessage = text;
+    updateProblemContext(ctx, text);
     const replyLang = getReplyInstruction(ctx);
     if (!replyLang) return;
 
@@ -270,6 +276,22 @@ export default function enforcementExtension(pi: ExtensionAPI) {
     if (toolName === "edit" || toolName === "write") {
       detectRecordCodeChange(getState(ctx).currentTurn);
       getState(ctx).hasCodeChanges = true;
+      const path = (input?.path as string) ?? (input?.target as string) ?? "";
+      if (path) {
+        recordFileTouch(ctx, path, getState(ctx).currentTurn, true);
+        const risk = checkLocalizationRisk(ctx, path, getState(ctx).currentTurn);
+        if (risk) {
+          // Will be surfaced via turn_end Session Signals (L2)
+          getState(ctx)._localizationRisk = risk;
+        }
+      }
+    }
+
+    if (toolName === "read" || toolName === "grep" || toolName === "find") {
+      const path = (input?.path as string) ?? (input?.target as string) ?? (input?.pattern as string) ?? "";
+      if (path) {
+        recordFileTouch(ctx, path, getState(ctx).currentTurn, false);
+      }
     }
 
     if (toolName === "edit" || toolName === "write") {
@@ -717,6 +739,12 @@ export default function enforcementExtension(pi: ExtensionAPI) {
         );
       }
       // Below 75%: no signal - not actionable enough to bother
+    }
+
+    // BV1: Surface localization risk (Bidirectional Verifier Phase 1)
+    if (getState(ctx)._localizationRisk) {
+      sessionSignals.push(`[localization] ${getState(ctx)._localizationRisk}`);
+      getState(ctx)._localizationRisk = "";
     }
 
     // Send bundled nudge if we have signals AND no L3 critical message just went out.

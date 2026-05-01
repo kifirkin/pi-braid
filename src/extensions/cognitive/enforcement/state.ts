@@ -108,6 +108,7 @@ export function createState() {
       turn: number;
     }>,
     nudgeSuppressedCount: 0 as number,
+    _localizationRisk: "" as string,
     lastThinkConfidence: 0.5,
     verificationJudgeRunning: false,
     toolLog: [] as string[],
@@ -205,6 +206,7 @@ export function resetState(s: EnforcementState = state): void {
   s.thoughtChains = [];
   s.calibrationPairs = [];
   s.nudgeSuppressedCount = 0;
+  s._localizationRisk = "";
   s.lastThinkConfidence = 0.5;
   s.verificationJudgeRunning = false;
   s.toolLog = [];
