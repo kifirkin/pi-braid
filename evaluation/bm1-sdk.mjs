@@ -224,5 +224,5 @@ export async function main() {
 }
 
 if (typeof process.send !== 'function' && process.argv[1] && process.argv[1].includes('bm1-sdk.mjs')) {
-  main().catch((err) => { console.error('BM1 failed:', err); process.exit(1); });
+  main().then(() => process.exit(0)).catch((err) => { console.error('BM1 failed:', err); process.exit(1); });
 }
