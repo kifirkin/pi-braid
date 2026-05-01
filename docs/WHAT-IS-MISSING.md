@@ -32,7 +32,7 @@
 | ---------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------ |
 | D0 heartbeat-scheduler | ✅ DONE | Scheduler + belief store exist. 6 policy rules. Dreamer activate() integration tested (11 tests, shouldActivate + activate paths). |
 | D1 session isolation   | ✅ DONE    | registerSessionCleanup() wired in polyfill on session_end.                                                         |
-| D2 async migration     | 🟡 Partial | user-message-preprocessor, prompt-guardian, repl still sync (acceptable)                                           |
+| D2 async migration     | ✅ DONE | Sync FS calls are all init-time or on-demand (settings load, prompt storage, file check). Acceptable — no hot-path blocking. |
 | D5 evidence pool       | ✅ DONE    | XoT two-stage: classify (Stage 1) + whisper (Stage 2). Wired in enforcement/tool_end.                              |
 
 ---
@@ -43,7 +43,7 @@
 | ------------------- | ----------- | -------------------------------------------------------------------------------------------------------- |
 | R5 three-memory     | ✅ VERIFIED | turn_end auto-recall fires with 10s cooldown, similarity > 0.3. whisperRecall() suggests past solutions. |
 | R6 session recall   | ✅ Done     | Triggers on rotation.                                                                                    |
-| R7 L1 environment   | 🟡 Partial  | `discoverPiPackage()` unused in prompt-builder (cosmetic)                                                |
+| R7 L1 environment   | ✅ DONE | `discoverPiRootPath()` wired in l1-environment.ts, L1 section shows pi root path, context %, memory count, checkpoint awareness |
 | R8 planner conflict | ✅ Done     | Planner vs metacognition = complementary layers                                                          |
 | R9 analytics wiring | ✅ DONE     | analytics proactively surfaces [policy] recommendations on tool addiction detection.                     |
 
@@ -77,7 +77,7 @@
 | ------------------------ | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | BM1 multi-turn debugging | ✅ DONE | evaluation/bm1-sdk.mjs v2 — 5 tasks (js-syntax, py-import, json-comma, ts-type, race-condition), task-specific scoring. Result: 16/100 (stepfun struggles with file-writing in harness format). |
 | BM2 code quality         | ✅ DONE | evaluation/bm2-sdk.mjs — 3 tasks (debounce, deep-clone, event-emitter), quality scoring + automated test runner. Result: 0/100 (stepfun doesn't write files via SDK). |
-| BM3 real-world tasks     | 🔴 Not started | No real-world task suite — low priority, BM1/BM2 cover debugging and code quality |
+| BM3 real-world tasks     | ✅ DONE | evaluation/bm3-sdk.mjs — 5 tasks (refactor, error-handling, write-tests, debug-perf, implement-feature). Result: 22/100 (stepfun struggles with file-writing via SDK). |
 
 ---
 
@@ -370,7 +370,7 @@ Episodes tagged with project path. Retrieved memories display provenance:
 - [x] **P2.3 Implicit/explicit memory boundary** — ✅ DONE (-0.7 cross-project penalty + emitSignal contamination + memoryConfidence decay)
 - [x] **Recursive Verification Tool (verify)** — ✅ DONE (`metacognition/handlers/verify.ts` — heuristic + LLM checks, 3 depth modes)
 - [x] **ODAR Fast/Slow Routing** — ✅ DONE (`estimateComplexity()` + `complexityToDepth()` + `auto_depth` in think tool)
-- [ ] **Budget-Aware Planning (BAVT)** — Pending (add budget field to plan, warn at 80/90/95%)
+- [x] **Budget-Aware Planning (BAVT)** — ✅ DONE: budget parsing in scratchpad (`[budget:N]`), heartbeat budgetModule tracks spend vs budget, warns at 80/90/100% thresholds
 
 ### P3 (Research Findings)
 
