@@ -317,7 +317,7 @@ export function createVerifyTool() {
       "Runs syntax, semantic, and result checks. Returns issues + suggestions. " +
       "Results feed into finalize pre-flight check — high issue counts block finalization.",
 
-    schema: Type.Object(
+    parameters: Type.Object(
       {
         target: Type.Optional(
           Type.String({
