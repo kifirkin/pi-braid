@@ -1,6 +1,6 @@
 # Overnight Sprint — Benchmark Results Summary
 
-Generated: 2026-05-01T20:31:19.970Z
+Generated: 2026-05-01T20:53:25.358Z
 
 ## BM1: Multi-Turn Debugging (stepfun/step-3.5-flash)
 | Task | Score | Turns | Duration | Error |
@@ -26,25 +26,71 @@ Generated: 2026-05-01T20:31:19.970Z
 Traps: 5 | Scores: 100, 100, 100, 100, 100 | Avg: 100.0/100
 
 ## BR4: Latent Activator Multi-Turn
-*No BR4 results yet*
+```
+=== BR4 Latent Multi-Turn (SDK) ===
+Model: stepfun/step-3.5-flash
+Task: Read /Users/kifir/projects/agents/pi-braid/package.json, tel...
+Trials: 3, Timeout: 90s
+
+[C_baseline] Trial 1/3...
+  → success=true, turns=2, compliance=0, tools=4, duration=9.9s
+[C_baseline] Trial 2/3...
+  → success=true, turns=2, compliance=0, tools=4, duration=7.6s
+[C_baseline] Trial 3/3...
+  → success=true, turns=3, compliance=0, tools=4, duration=17.3s
+[A_braid_latent] Trial 1/3...
+  → success=true, turns=3, compliance=0, tools=4, duration=9.5s
+[A_braid_latent] Trial 2/3...
+  → success=true, turns=3, compliance=0, tools=4, duration=10.5s
+[A_braid_latent] Trial 3/3...
+  → success=true, turns=3, compliance=0, tools=4, duration=12.0s
+# BR4: Latent Activator Multi-Turn Results
+
+## Configuration Comparison
+| Config | Solve Rate | Avg Turns | Avg Tokens | Avg Tools | Compliance |
+|--------|------------|-----------|------------|-----------|------------|
+| C_baseline | 100% | 2.3 | 396 | 4.0 | 0.0 |
+| A_braid_latent | 100% | 3.0 | 124 | 4.0 | 0.0 |
+
+## Research Question
+Does identity framing work in multi-turn vs single-shot?
+
+### Findings
+- ⚠️ Latent increased compliance behaviors: 0.0
+- ✅ Latent increased persistence: +0.7 turns
+- Solve rate: 100% (braid) vs 100% (baseline)
+
+Saved to /Users/kifir/projects/agents/pi-braid/evaluation/results/br4-stepfun-20260501_230552.json
+
+```
 
 ## PB4: Compliance Behavior
-*No PB4 results yet*
+Total compliance behaviors: 0
+
+| Pattern | Count |
+|---------|-------|
+| excessive_verification | 0 |
+| over_confirmation | 0 |
+| rule_anchoring | 0 |
+| defensive | 0 |
+| hasty_completion | 0 |
+
+**Avg compliance per task: 0.0**
 
 ## Overnight Test Suite (openrouter/qwen/qwen3.5-flash)
-Iterations: 35 | Passed: 24/35 (69%)
-Avg duration: 35.5s
+Iterations: 20 | Passed: 20/20 (100%)
+Avg duration: 9.5s
 
 | Task | Pass Rate | Avg Duration |
 |------|-----------|--------------|
-| basic_tool_chain | 100% | 16.4s |
-| memory_recall_and_store | 100% | 14.9s |
-| enforcement_check | 60% | 33.2s |
-| analytics_query | 0% | 60.0s |
-| context_pressure | 100% | 31.6s |
-| tool_addiction_test | 100% | 14.4s |
-| self_reflection | 50% | 40.8s |
-| hypothesize | 25% | 83.3s |
+| basic_tool_chain | 100% | 8.6s |
+| memory_recall_and_store | 100% | 10.8s |
+| enforcement_check | 100% | 10.6s |
+| analytics_query | 100% | 9.7s |
+| context_pressure | 100% | 8.3s |
+| tool_addiction_test | 100% | 9.4s |
+| self_reflection | 100% | 9.8s |
+| hypothesize | 100% | 8.1s |
 
 ## Key Findings
 
