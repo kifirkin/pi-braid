@@ -72,7 +72,7 @@
 
 ---
 
-#### 3. Bidirectional Verifier — Status: NOT STARTED
+#### 3. Bidirectional Verifier — Status: PHASE 1 DONE
 
 **What**: Agent's root-cause fixes are verified for derived-file consistency. Prevents fixing root cause but missing derived bugs.
 
@@ -271,6 +271,7 @@ API-only providers (stepfun, minimax) don't expose activations/logprobs. RepE pr
 | P3.5 | Memory Condensation (Decocted Experience) | ✅ Done | P2 |
 | P3.6 | Process Supervision (step_check) | ✅ Done | P3 |
 | P3.7 | Exploratory Reasoning (explore_paths) | ✅ Already exists | cognitive-systems/index.ts — spawns parallel sub-agents |
+| BV1 | Bidirectional Verifier Phase 1 | ✅ Done | Forward Trace: file touch graph + localization risk detection |
 | BR3 | Nudge A/B measurement | ✅ Done | Variant-controlled nudge suppression for effectiveness testing |
 | D0 | Dreamer module testing | ✅ Done | test-dreamer.mjs: 6 tests for shouldActivate, cooldown, structure |
 | R9 | Analytics feedback loop | ✅ Done | getNextRecommendation called from analytics turn_end on addiction |
