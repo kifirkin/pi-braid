@@ -62,13 +62,13 @@
 
 ---
 
-#### 2. Contrast Phrase Library — Status: NOT STARTED
+#### 2. Contrast Phrase Library — Status: IMPLEMENTED ✅
 
 **What**: Four contrast phrases (speak-truth, correct-hierarchy, epistemic-calibration, admit-uncertainty) with per-context activation.
 
-**Effort**: Medium | **Priority**: P3
+**File**: `src/extensions/prompt/prompt-builder/contrast-phrase-library.ts`
 
-**Implementation**: New lib `contrast-phrase-library.ts` + integration into prompt-builder. Requires REPE proposal above.
+**Integration**: `formatContrastSection(activeMode)` wired into prompt-builder §8b — renders active contrast phrases based on enforcement contrast mode.
 
 ---
 
