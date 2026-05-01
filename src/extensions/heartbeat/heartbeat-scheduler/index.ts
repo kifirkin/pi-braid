@@ -1179,6 +1179,32 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     }
   });
 
+// ── Phase 2: SOP Retrieval + Coach Decision (Self-Evolution Loop) ──────────
+
+/** Format SOP (3-tier hierarchy) for whispering to agent */
+function formatSOPForWhisper(episode: Episode): string {
+  const parts: string[] = [];
+  
+  // Strategic SOP (high-level)
+  if (episode.strategicSOP) {
+    parts.push(`**Strategy**: ${episode.strategicSOP}`);
+  }
+  
+  // Functional SOP (mid-level)
+  if (episode.functionalSOP && episode.functionalSOP.length > 0) {
+    const steps = episode.functionalSOP.map((step, i) => `${i + 1}. ${step}`).join("\n");
+    parts.push(`**Key Steps**:\n${steps}`);
+  }
+  
+  // Atomic SOP (low-level - tool sequence)
+  if (episode.atomicSOP && episode.atomicSOP.length > 0) {
+    parts.push(`**Tools**: ${episode.atomicSOP.join(" → ")}`);
+  }
+  
+  return parts.length > 0 
+    ? parts.join("\n\n")
+    : `SOP for: ${episode.task.slice(0, 100)}`;
+}
   // ── Event: session_start ──────────────────────────────────────────
 
   pi.on("session_start", async (_event: any, ctx: ExtensionContext) => {
