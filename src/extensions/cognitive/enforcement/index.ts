@@ -288,7 +288,8 @@ export default function enforcementExtension(pi: ExtensionAPI) {
     }
 
     if (toolName === "read" || toolName === "grep" || toolName === "find") {
-      const path = (input?.path as string) ?? (input?.target as string) ?? (input?.pattern as string) ?? "";
+      const path =
+        (input?.path as string) ?? (input?.target as string) ?? (input?.pattern as string) ?? "";
       if (path) {
         recordFileTouch(ctx, path, getState(ctx).currentTurn, false);
       }

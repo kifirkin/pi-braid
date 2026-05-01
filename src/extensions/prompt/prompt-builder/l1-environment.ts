@@ -14,6 +14,7 @@ const log = createLogger("prompt-builder");
  * Don't duplicate native sections here.
  */
 
+import { execSync } from "node:child_process";
 import { existsSync, realpathSync, readFileSync } from "node:fs";
 import * as os from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -107,8 +108,7 @@ function discoverPiRootPath(): string {
   // Strategy 1: Find pi binary in PATH and walk up to package.json
   // Most reliable for global installs
   try {
-    const { execSync } = require("child_process");
-    const piPath = execSync("which pi 2>/dev/null || echo ''", {
+    const piPath = execSync("which pi 2>/dev/null || echo '", {
       encoding: "utf8",
       timeout: 5000,
     }).trim();
@@ -154,7 +154,6 @@ function discoverPiRootPath(): string {
 
   // Strategy 3: Check npm global prefix
   try {
-    const { execSync } = require("child_process");
     const npmPrefix = execSync("npm root -g", { encoding: "utf8", timeout: 5000 }).trim();
     const candidate = join(npmPrefix, "@mariozechner", "pi-coding-agent", "package.json");
     if (existsSync(candidate)) {

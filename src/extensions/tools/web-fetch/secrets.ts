@@ -19,7 +19,7 @@ export const SECRET_PATTERNS: SecretPattern[] = [
   { name: "GitHub OAuth", pattern: /gho_[A-Za-z0-9]{36}/ },
   { name: "GitHub App Token", pattern: /ghs_[A-Za-z0-9]{36}/ },
   { name: "GitHub Refresh Token", pattern: /ghr_[A-Za-z0-9]{36}/ },
-  { name: "GitLab PAT", pattern: /glpat-[A-Za-z0-9\-]{20}/ },
+  { name: "GitLab PAT", pattern: /glpat-[A-Za-z0-9-]{20}/ },
   { name: "npm Token", pattern: /npm_[A-Za-z0-9]{36}/ },
   { name: "PyPI Token", pattern: /pypi-[A-Za-z0-9\-_]{50,}/ },
   { name: "Slack Bot Token", pattern: /xoxb-[0-9]{10,}-[0-9]{10,}-[A-Za-z0-9]{24}/ },

@@ -161,7 +161,7 @@ class CodebaseGraph {
     for (const m of content.matchAll(re)) {
       exports.push(m[1]);
     }
-    const namedRe = /^export\s+\{([^}]+)\}/gm;
+    const namedRe = /^export\s+\{([^}]+)}/gm;
     for (const m of content.matchAll(namedRe)) {
       for (const name of m[1].split(",")) {
         exports.push(name.trim());

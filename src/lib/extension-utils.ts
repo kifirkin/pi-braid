@@ -89,7 +89,7 @@ export function debounce<T extends (...args: any[]) => any>(
  * Check if a string looks like a valid file path.
  */
 export function looksLikeFilePath(s: string): boolean {
-  return /^[.\/]?[a-zA-Z0-9_\-./]+$/.test(s) && s.length > 1 && !s.includes(" ");
+  return /^[.\/]?[a-zA-Z0-9_./-]+$/.test(s) && s.length > 1 && !s.includes(" ");
 }
 
 /**

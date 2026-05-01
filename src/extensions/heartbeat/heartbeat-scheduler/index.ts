@@ -1312,11 +1312,11 @@ interface PolicyEngine {
 function interpolateMessage(message: string, ctx: Record<string, number | string>): string {
   let result = message;
   for (const [key, value] of Object.entries(ctx)) {
-    result = result.replace(new RegExp(`\{${key}(?:%|\}|[^a-zA-Z])`, "g"), String(value));
+    result = result.replace(new RegExp(`{${key}(?:%|}|[a-zA-Z])`, "g"), String(value));
   }
   // Fallback: simple {key} replacement
   for (const [key, value] of Object.entries(ctx)) {
-    result = result.replace(new RegExp(`\{${key}\}`, "g"), String(value));
+    result = result.replace(new RegExp(`{${key}}`, "g"), String(value));
   }
   return result;
 }

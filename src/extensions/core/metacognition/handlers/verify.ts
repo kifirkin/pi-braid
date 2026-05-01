@@ -141,7 +141,7 @@ export function heuristicCheck(
     case "code": {
       checksRun.push("syntax", "safety-patterns", "imports");
       // Unclosed brackets/braces
-      if ((text.match(/\{/g) ?? []).length !== (text.match(/\}/g) ?? []).length)
+      if ((text.match(/{/g) ?? []).length !== (text.match(/}/g) ?? []).length)
         issues.push("Unmatched braces detected");
       if ((text.match(/\[/g) ?? []).length !== (text.match(/\]/g) ?? []).length)
         issues.push("Unmatched brackets detected");
@@ -151,7 +151,7 @@ export function heuristicCheck(
       // Dangerous patterns
       if (/\beval\s*\(/.test(text)) issues.push("Use of eval() detected — security risk");
       if (/\.innerHTML\s*=/.test(text)) issues.push("Direct innerHTML assignment — XSS risk");
-      if (/delete\s+\w+\s*,\s*\{/.test(text))
+      if (/delete\s+\w+\s*,\s*{/.test(text))
         issues.push("Delete with comma syntax — may be unintended");
       break;
     }
@@ -196,7 +196,7 @@ export function heuristicCheck(
     case "result": {
       checksRun.push("format", "completeness", "hallucination-risk");
       // Check for placeholder content
-      if (/\[.*?\]|\<.*?\>/.test(text))
+      if (/\[.*?\]|<.*?>/.test(text))
         issues.push("Contains placeholder markers — may be incomplete");
       if (/\.\.\.$|\blorem ipsum\b/i.test(text)) issues.push("Contains placeholder or filler text");
       // Very short results
@@ -270,7 +270,7 @@ Do not invent problems that are not supported by the text.`;
         : ((response as any)?.content ?? (response as any)?.message?.content ?? "");
 
     // Extract JSON from response
-    const jsonMatch = content.match(/\{[\s\S]*?\}/);
+    const jsonMatch = content.match(/{[\s\S]*?}/);
     if (!jsonMatch) {
       log.debug("verify: could not parse LLM response as JSON");
       return { issues: [], suggestions: [], confidence: 0.5 };

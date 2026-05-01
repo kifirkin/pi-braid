@@ -12,6 +12,7 @@
 // - Memory stores (episodic, heuristics, tool reliability) survive via three-memory-stores
 // - Key context is carried forward as a "continuation summary"
 
+import { statSync } from "node:fs";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getCmState } from "./shared.js";
 import { log } from "./shared.js";
@@ -37,8 +38,7 @@ function estimateSessionSize(ctx: ExtensionContext): number {
       getBranch?(): Array<unknown>;
     };
     if (sm.session?.filePath) {
-      const fs = require("fs");
-      const stat = fs.statSync(sm.session.filePath);
+      const stat = statSync(sm.session.filePath);
       return stat.size;
     }
     // Fallback: estimate from branch length

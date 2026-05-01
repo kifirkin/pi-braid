@@ -40,9 +40,7 @@ function createState(): BidirectionalVerifierState {
   };
 }
 
-export function getVerifierState(
-  ctx: ExtensionContext,
-): BidirectionalVerifierState {
+export function getVerifierState(ctx: ExtensionContext): BidirectionalVerifierState {
   return getExtensionState(ctx, "bidirectional-verifier", createState);
 }
 
@@ -89,10 +87,7 @@ export function extractFileReferences(text: string): string[] {
 /**
  * Update the problem-relevant file set from user input or error text.
  */
-export function updateProblemContext(
-  ctx: ExtensionContext,
-  text: string,
-): void {
+export function updateProblemContext(ctx: ExtensionContext, text: string): void {
   const state = getVerifierState(ctx);
   const refs = extractFileReferences(text);
   for (const ref of refs) {

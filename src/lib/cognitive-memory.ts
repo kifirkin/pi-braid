@@ -453,10 +453,10 @@ export function parseStructuredContent(content: string): {
           error:
             parsed.error || parsed.stack
               ? {
-                message: parsed.error?.message || parsed.error,
-                stack: parsed.stack,
-                code: parsed.code,
-              }
+                  message: parsed.error?.message || parsed.error,
+                  stack: parsed.stack,
+                  code: parsed.code,
+                }
               : undefined,
           solution: parsed.solution || parsed.fix || parsed.resolution,
           ...parsed,
@@ -908,7 +908,7 @@ export class CognitiveMemory {
     total: number;
     byType: Record<CognitiveMemoryType, number>;
     avgUtility: number;
-    } {
+  } {
     const byType: Record<CognitiveMemoryType, number> = {
       insight: 0,
       pattern: 0,

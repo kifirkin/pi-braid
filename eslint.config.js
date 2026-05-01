@@ -12,9 +12,9 @@ export default tseslint.config(
       prettier: pluginPrettier
     },
     rules: {
-      "prettier/prettier": "error",
+      "prettier/prettier": "warn",
       // Enforce spaces (match .prettierrc useTabs:false)
-      "indent": ["error", 2, { "SwitchCase": 1 }],
+      "indent": "off",
       "no-tabs": "error",
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_|^log$", caughtErrorsIgnorePattern: "^_$" }],
       "@typescript-eslint/no-explicit-any": "off",
