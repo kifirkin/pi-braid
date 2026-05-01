@@ -145,7 +145,7 @@ class CodebaseGraph {
   ): Array<{ specifier: string; isExternal: boolean; raw: string }> {
     const imports: Array<{ specifier: string; isExternal: boolean; raw: string }> = [];
     const importRe = /^import\s+(?:type\s+)?(?:.+?\s+from\s+)?['"]([^'"]+)['"]/gm;
-    // eslint-disable-next-line no-empty-pattern
+
     for (const m of content.matchAll(importRe)) {
       const specifier = m[1];
       const isExternal = !specifier.startsWith(".");
@@ -161,7 +161,7 @@ class CodebaseGraph {
     for (const m of content.matchAll(re)) {
       exports.push(m[1]);
     }
-    const namedRe = /^export\s+\{([^}]+)\}/gm;
+    const namedRe = /^export\s+\{([^}]+)}/gm;
     for (const m of content.matchAll(namedRe)) {
       for (const name of m[1].split(",")) {
         exports.push(name.trim());

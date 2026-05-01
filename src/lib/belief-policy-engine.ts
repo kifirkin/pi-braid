@@ -67,7 +67,7 @@ const POLICY_RULES: PolicyRule[] = [
   // Rule 1: Consecutive stability decline → reasoning collapse warning
   {
     name: "stability_decline",
-    evaluate(signals, beliefs): PolicyRecommendation[] {
+    evaluate(signals, _beliefs): PolicyRecommendation[] {
       const stabilitySignals = signals.filter(
         (s) => s.source === "stability" && s.type === "decline",
       );
@@ -91,7 +91,7 @@ const POLICY_RULES: PolicyRule[] = [
   // Rule 2: Unresolved conflicts accumulate → epistemic debt warning
   {
     name: "conflict_accumulation",
-    evaluate(signals, beliefs): PolicyRecommendation[] {
+    evaluate(signals, _beliefs): PolicyRecommendation[] {
       const conflictSignals = signals.filter((s) => s.source === "conflict");
       const unresolved = conflictSignals.filter((s) => s.type === "unresolved");
       if (unresolved.length >= 5) {
@@ -113,7 +113,7 @@ const POLICY_RULES: PolicyRule[] = [
   // Rule 3: Topic drift + tool overuse → scatter warning
   {
     name: "drift_plus_scatter",
-    evaluate(signals, beliefs): PolicyRecommendation[] {
+    evaluate(signals, _beliefs): PolicyRecommendation[] {
       const recent = signals.slice(-10);
       const hasDrift = recent.some((s) => s.source === "topic-drift" && s.severity !== "info");
       const toolSignals = recent.filter((s) => s.source === "tool-use" && s.type === "overuse");
@@ -136,7 +136,7 @@ const POLICY_RULES: PolicyRule[] = [
   // Rule 4: Calibration error high → confidence miscalibration
   {
     name: "calibration_error",
-    evaluate(signals, beliefs): PolicyRecommendation[] {
+    evaluate(signals, _beliefs): PolicyRecommendation[] {
       const calSignals = signals.filter(
         (s) => s.source === "calibration" && s.type === "high-error",
       );
@@ -162,7 +162,7 @@ const POLICY_RULES: PolicyRule[] = [
   // Rule 5: Reflection gap → reasoning without reflection
   {
     name: "reflection_gap",
-    evaluate(signals, beliefs): PolicyRecommendation[] {
+    evaluate(signals, _beliefs): PolicyRecommendation[] {
       const reflectionSignals = signals.filter((s) => s.source === "reflection");
       const recent = reflectionSignals.slice(-5);
       const hasReflection = recent.length > 0;
@@ -189,7 +189,7 @@ const POLICY_RULES: PolicyRule[] = [
   // Rule 6: Reasoning decline + conflict → believe carefully
   {
     name: "reasoning_plus_conflict",
-    evaluate(signals, beliefs): PolicyRecommendation[] {
+    evaluate(signals, _beliefs): PolicyRecommendation[] {
       const recent = signals.slice(-15);
       const hasDecline = recent.some((s) => s.source === "reasoning" && s.type === "decline");
       const hasConflict = recent.some((s) => s.source === "conflict");
@@ -211,9 +211,11 @@ const POLICY_RULES: PolicyRule[] = [
   // Rule 7: Memory contamination detected → verify cross-session memories
   {
     name: "memory_contamination",
-    evaluate(signals, beliefs): PolicyRecommendation[] {
+    evaluate(signals, _beliefs): PolicyRecommendation[] {
       const recent = signals.slice(-10);
-      const contamination = recent.filter((s) => s.source === "memory" && s.type === "contamination");
+      const contamination = recent.filter(
+        (s) => s.source === "memory" && s.type === "contamination",
+      );
       if (contamination.length > 0) {
         const count = contamination.length;
         return [

@@ -61,7 +61,7 @@ export function createHypothesizeTool() {
       if (!ctx?.model) {
         throw new Error(
           `hypothesize: no model available for session model analysis. ` +
-            `Problem: "${problem.slice(0, 50)}..." | Evidence: "${evidence.slice(0, 50)}..."`
+            `Problem: "${problem.slice(0, 50)}..." | Evidence: "${evidence.slice(0, 50)}..."`,
         );
       }
 

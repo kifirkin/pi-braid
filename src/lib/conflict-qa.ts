@@ -297,7 +297,7 @@ export function getPendingQAs(_ctx: unknown): ConflictQA[] {
 }
 
 /** Alias for all QA records */
-export function getAllQAs(ctx: unknown): ConflictQA[] {
+export function getAllQAs(_ctx: unknown): ConflictQA[] {
   return [..._qaRegistry.values()];
 }
 

@@ -305,7 +305,7 @@ function consolidate(store: CognitiveMemoryStore): CognitiveMemoryStore {
 
   // Phase 1: Remove dead memories (utility decayed below meaningful threshold)
   const DEAD_UTILITY_THRESHOLD = 0.05;
-  let alive = store.memories.filter(
+  const alive = store.memories.filter(
     (m) => m.utility >= DEAD_UTILITY_THRESHOLD || m.type === "goal" || m.type === "error",
   );
 

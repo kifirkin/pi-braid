@@ -257,12 +257,19 @@ export function registerContextPruningHandler(pi: any): void {
               // P1.6: Extract high-value reasoning chains as episodic memories
               const summary = extractReasoningSummary(block);
               const toolNames = block.messages
-                .flatMap((m: any) => (m.content.match(/`(edit|read|bash|grep|write)`/g) ?? []))
+                .flatMap((m: any) => m.content.match(/`(edit|read|bash|grep|write)`/g) ?? [])
                 .map((t: string) => t.slice(1, -1))
                 .filter((v: string, i: number, a: string[]) => a.indexOf(v) === i)
                 .slice(0, 6);
               try {
-                addEpisode(getState(ctx), `Reasoning: ${summary.slice(0, 120)}`, summary, "partial", toolNames, ["reasoning-chain"]);
+                addEpisode(
+                  getState(ctx),
+                  `Reasoning: ${summary.slice(0, 120)}`,
+                  summary,
+                  "partial",
+                  toolNames,
+                  ["reasoning-chain"],
+                );
               } catch {
                 // Non-fatal — three-memory-stores may not be available
               }

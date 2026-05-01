@@ -8,7 +8,6 @@ const log = createLogger("enforcement");
  * of assistant messages at message_end boundaries.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { measureStability } from "../../../../lib/reasoning-metrics.js";
 import { estimateComplexity, checkComplexityMismatch } from "./probe-handler.js";
 import { detectIntent, getRoutingHint, checkRoutingMismatch } from "./routing-handler.js";

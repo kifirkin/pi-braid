@@ -44,6 +44,7 @@ import {
   getDegradationReasons,
   getMetricsSummary,
 } from "../../../lib/degradation-detector.js";
+import { heartbeatCheckpointTick } from "../../../lib/state-checkpoint.js";
 import { measureBigramEntropy, countSelfContradictions } from "../../../lib/reasoning-metrics.js";
 
 const log = createLogger("heartbeat");
@@ -517,6 +518,88 @@ const measurementModule: CognitiveModule = {
   },
 };
 
+// ── Budget Module (BAVT — Budget-Aware Value Tree Search) ──────────────────────────
+// Tracks plan step budgets and warns when approaching/exceeding thresholds.
+// Budgets are set via `[budget:N]` in plan steps. Heartbeat tracks spend vs budget.
+// Research: docs/research/braid-loop-research.md (Improvement 2: Budget-Aware Planning)
+// Based on: 2604.13408 "Budget-Aware Value Estimation in LLM Agent Tree Search"
+const budgetModule: CognitiveModule = {
+  name: "budget-tracker",
+  description: "Track plan step budgets and warn at 80/90/100% thresholds (BAVT)",
+  priority: 0.85,
+
+  shouldActivate(context: ModuleContext): boolean {
+    // Activate every tick — budget tracking is lightweight
+    return true;
+  },
+
+  async activate(context: ModuleContext): Promise<void> {
+    try {
+      // Lazy-import scratchpad to avoid circular dependency
+      const { loadScratchpadFromDisk } = await import("../../core/scratchpad/index.js");
+      const { emitSignal } = await import("../../../lib/belief-policy-engine.js");
+
+      // Resolve project slug from cwd
+      const cwd = (context.ctx as any).cwd ?? "";
+      const segments = cwd.split("/").filter(Boolean);
+      const slug = "--" + segments.join("-") + "--";
+
+      const pad = await loadScratchpadFromDisk(slug);
+      if (!pad || pad.plan.length === 0) return;
+
+      const currentTotalCalls = context.totalToolCalls;
+
+      for (const step of pad.plan) {
+        if (step.doneTurn > 0) continue; // Already completed
+        if (!step.budgetCalls || step.budgetCalls <= 0) continue;
+
+        // Initialize startTotalCalls on first check (step just became active)
+        if (step.startTotalCalls === 0 && step.startTurn < pad.session.turn) {
+          step.startTotalCalls = currentTotalCalls;
+        }
+
+        const spent = Math.max(0, currentTotalCalls - step.startTotalCalls);
+        step.spentCalls = spent; // Keep scratchpad in sync
+        const budget = step.budgetCalls;
+        const ratio = budget > 0 ? spent / budget : 0;
+
+        if (ratio >= 1.0) {
+          // Over budget — emit signal + whisper
+          emitSignal(context.ctx, "tool-use", "overuse", "warn", false, {
+            reason: "budget-exceeded",
+            step: step.text.slice(0, 60),
+            spent,
+            budget,
+          });
+          context.ctx.whisper?.(
+            `[budget] Step "${step.text.slice(0, 50)}" exceeded budget: ${spent}/${budget} calls. Consider simplifying or marking done.`,
+            { category: "cognitive", priority: "medium" },
+          );
+        } else if (ratio >= 0.9) {
+          context.ctx.whisper?.(
+            `[budget] Step "${step.text.slice(0, 50)}" at ${(ratio * 100).toFixed(0)}% budget: ${spent}/${budget} calls. Consider wrapping up.`,
+            { category: "cognitive", priority: "low" },
+          );
+        } else if (ratio >= 0.8) {
+          context.ctx.whisper?.(
+            `[budget] Step "${step.text.slice(0, 50)}" at 80% budget: ${spent}/${budget} calls.`,
+            { category: "cognitive", priority: "low" },
+          );
+        }
+      }
+      // Save scratchpad with updated spentCalls/startTotalCalls
+      try {
+        const { saveScratchpadToDisk } = await import("../../core/scratchpad/index.js");
+        await saveScratchpadToDisk(pad);
+      } catch {
+        // Silent ignore save errors
+      }
+    } catch (err) {
+      log.debug(`budget-tracker: ${err}`);
+    }
+  },
+};
+
 // ── Evolver Module (Hyperagents-inspired) ────────────────────────────────────
 // After sufficient turns, evaluates session performance and evolves heuristics.
 // Based on: archive-based evolution + diversity-preserving selection.
@@ -537,7 +620,10 @@ const evolverModule: CognitiveModule = {
 
   shouldActivate(context: ModuleContext): boolean {
     const lastEvolve = context.lastActivation.get("evolver") ?? 0;
-    return context.turnCount >= 30 && lastEvolve === 0;
+    // P3.1: Auto-trigger on first-time activation at turn 30, OR on degradation detection (turn 10+)
+    if (context.turnCount >= 30 && lastEvolve === 0) return true;
+    if (lastEvolve === 0 && isDegraded(context.ctx) && context.turnCount >= 10) return true;
+    return false;
   },
 
   async activate(context: ModuleContext): Promise<void> {
@@ -969,6 +1055,25 @@ function tick(
         log.error(`Module "${module.name}" activate error:`, err);
       }
     });
+
+  // P3.3: Auto-checkpoint on clean turns / auto-rollback on degradation
+  const sessionId = ctx.cwd ?? String(process.pid);
+  heartbeatCheckpointTick(ctx, state.turnCount, sessionId, isDegraded(ctx))
+    .then((result) => {
+      if (result.checkpointCreated) {
+        log.info(`Auto-checkpoint created at turn ${state.turnCount}`);
+      }
+      if (result.rollbackPerformed) {
+        log.warn(`Auto-rollback performed: ${result.message}`);
+        ctx.whisper?.(`[health] Auto-rollback: ${result.message}`, {
+          category: "cognitive",
+          priority: "high",
+        });
+      }
+    })
+    .catch((err) => {
+      log.error("Checkpoint tick error:", err);
+    });
 }
 
 // ── Extension ────────────────────────────────────────────────────────────────
@@ -983,6 +1088,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     contextHygieneModule,
     measurementModule,
     evolverModule,
+    budgetModule,
   ];
 
   // ── Timer Module ──────────────────────────────────────────────────
@@ -1206,11 +1312,11 @@ interface PolicyEngine {
 function interpolateMessage(message: string, ctx: Record<string, number | string>): string {
   let result = message;
   for (const [key, value] of Object.entries(ctx)) {
-    result = result.replace(new RegExp(`\{${key}(?:%|\}|[^a-zA-Z])`, "g"), String(value));
+    result = result.replace(new RegExp(`{${key}(?:%|}|[a-zA-Z])`, "g"), String(value));
   }
   // Fallback: simple {key} replacement
   for (const [key, value] of Object.entries(ctx)) {
-    result = result.replace(new RegExp(`\{${key}\}`, "g"), String(value));
+    result = result.replace(new RegExp(`{${key}}`, "g"), String(value));
   }
   return result;
 }

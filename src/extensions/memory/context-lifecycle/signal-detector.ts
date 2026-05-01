@@ -107,7 +107,9 @@ export class SignalDetector {
     // restructured (/tree edit, /new, fork). Auto-reset to prevent stale
     // topic/entry tracking from contaminating the new session.
     if (this.entryCount > 0 && newEntryCount < this.entryCount - 2) {
-      log.warn(`Session navigation detected: ${this.entryCount} → ${newEntryCount} entries, resetting`);
+      log.warn(
+        `Session navigation detected: ${this.entryCount} → ${newEntryCount} entries, resetting`,
+      );
       this.reset();
     }
 

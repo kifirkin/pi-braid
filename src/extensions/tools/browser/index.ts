@@ -167,18 +167,18 @@ function formatEvalResult(value: unknown): string {
 
 // ── Tool param types ─────────────────────────────────────────────────
 
-const baseParams = Type.Object({
-  timeout: Type.Optional(Type.Number({ description: "Timeout in milliseconds (default: 30000)" })),
-});
+const baseTimeoutParam = Type.Optional(
+  Type.Number({ description: "Timeout in milliseconds (default: 30000)" }),
+);
 
 const navigateParams = Type.Object({
-  ...baseParams.properties,
+  timeout: baseTimeoutParam,
   url: Type.String({ description: "URL to navigate to" }),
   new_tab: Type.Optional(Type.Boolean({ description: "Open in a new tab instead of current tab" })),
 });
 
 const snapshotParams = Type.Object({
-  ...baseParams.properties,
+  timeout: baseTimeoutParam,
   interactive: Type.Optional(
     Type.Boolean({ description: "Show only interactive elements (buttons, inputs, links)" }),
   ),
@@ -186,12 +186,12 @@ const snapshotParams = Type.Object({
 });
 
 const evalParams = Type.Object({
-  ...baseParams.properties,
+  timeout: baseTimeoutParam,
   code: Type.String({ description: "JavaScript code to execute" }),
 });
 
 const screenshotParams = Type.Object({
-  ...baseParams.properties,
+  timeout: baseTimeoutParam,
   format: Type.Optional(Type.String({ description: "Image format: png or jpeg (default: png)" })),
   quality: Type.Optional(Type.Number({ description: "JPEG quality 0-100 (default: 80)" })),
 });
@@ -199,7 +199,7 @@ const screenshotParams = Type.Object({
 const cookiesParams = Type.Object({});
 
 const contentParams = Type.Object({
-  ...baseParams.properties,
+  timeout: baseTimeoutParam,
   url: Type.Optional(
     Type.String({
       description: "URL to fetch content from (optional - uses current tab if omitted)",

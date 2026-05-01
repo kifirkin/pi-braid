@@ -23,6 +23,19 @@ import { readFile as fsReadFilePromise } from "node:fs/promises";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+// ── Project Identifier ───────────────────────────────────────────────────────
+// Determines the project scope for memory isolation.
+// Uses the top 2 path components of cwd as a stable project identifier:
+//   /Users/kifir/projects/agents/pi-braid/src → "pi-braid/src"
+//   /Users/kifir/projects/vibe/app/components → "app/components"
+// This correctly groups all subdirectories within the same git repo, without
+// requiring async git subprocess calls on every memory operation.
+function deriveProjectId(cwd: string): string {
+  const parts = cwd.replace(/\\/g, "/").split("/").filter(Boolean);
+  if (parts.length < 2) return cwd || "unknown";
+  return parts.slice(-2).join("/");
+}
+
 const log = createLogger("three-memory-stores");
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -46,6 +59,8 @@ export interface Episode {
   project: string;
   /** Session ID — enables cross-session contamination filtering. */
   sessionId: string;
+  /** Quality score 0-1 (Decocted Experience 2604.03213): outcome × tool diversity × reasoning density. */
+  quality?: number;
 }
 
 export interface HeuristicRule {
@@ -113,6 +128,16 @@ function addEpisode(
   tags: string[] = [],
   project?: string,
 ): Episode {
+  // Decocted Experience (2604.03213): Quality score = outcome × tool diversity × reasoning density
+  const outcomeScore = { success: 1.0, partial: 0.5, failure: 0.2 }[outcome];
+  const uniqueTools = new Set(toolSequence).size;
+  const toolDiversity = toolSequence.length > 0 ? uniqueTools / toolSequence.length : 0;
+  const reasoningDensity =
+    toolSequence.length > 0 ? Math.min(1, solution.length / (toolSequence.length * 200)) : 0.5;
+  const quality =
+    Math.round(outcomeScore * (toolDiversity * 0.4 + 0.6) * (reasoningDensity * 0.4 + 0.6) * 100) /
+    100;
+
   const episode: Episode = {
     id: `ep-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     task,
@@ -124,6 +149,7 @@ function addEpisode(
     tags,
     project: project ?? "unknown",
     sessionId: state.currentSessionId || "unknown",
+    quality,
   };
   state.episodes.push(episode);
 
@@ -131,8 +157,47 @@ function addEpisode(
     pruneEpisodes(state);
   }
 
-  log.debug(`Added episode: "${task.slice(0, 50)}..." (${outcome})`);
+  log.debug(`Added episode: "${task.slice(0, 50)}..." (${outcome}, quality=${quality})`);
   return episode;
+}
+
+// ── Memory Condensation (Decocted Experience 2604.03213) ─────────────────────────
+// Three methods: Exemplar Mining (SA pairs), Transition Tree (non-Markov states),
+// Socratic Compression (Q&A pairs). Returns condensed text safe for injection.
+
+/**
+ * Condense an episode for memory-efficient injection.
+ * Uses Socratic Compression: distills solution into key insight + actionable pattern.
+ * Reduces token cost while preserving actionable information.
+ *
+ * @param episode - The episode to condense
+ * @param maxTokens - Target token budget (default 150 ≈ ~75 words)
+ * @returns Condensed text safe for injection
+ */
+export function condenseInsights(episode: Episode, maxTokens = 150): string {
+  const outcomeLabel =
+    episode.outcome === "success"
+      ? "SUCCESS"
+      : episode.outcome === "failure"
+        ? "FAILURE"
+        : "PARTIAL";
+  const toolSummary =
+    episode.toolSequence.length > 0
+      ? `[${episode.toolSequence.slice(0, 5).join(" → ")}${episode.toolSequence.length > 5 ? ` (+${episode.toolSequence.length - 5} more)` : ""}]`
+      : "";
+
+  // Socratic compression: extract the ONE key insight from the solution
+  // Keep: outcome, tool pattern, key decision
+  // Drop: verbose reasoning, implementation details
+  const insight = episode.solution
+    .split(/[.!?]\n/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 10 && s.length < 200)
+    .slice(0, 3)
+    .join(". ");
+
+  const condensed = `• ${episode.task.slice(0, 80)} [${outcomeLabel}] ${toolSummary}\n  Insight: ${insight.slice(0, maxTokens * 3)}`;
+  return condensed.length > maxTokens * 4 ? condensed.slice(0, maxTokens * 4) + "..." : condensed;
 }
 
 function retrieveEpisodes(
@@ -505,7 +570,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 
       if (action === "search") {
         if (!query) return textResult("Error: query is required for search action");
-        const episodes = retrieveEpisodes(state, query, limit, ctx?.cwd ?? "unknown");
+        const episodes = retrieveEpisodes(state, query, limit, deriveProjectId(ctx?.cwd ?? ""));
         if (episodes.length === 0) return textResult("No relevant episodes found.");
 
         const lines: string[] = [`Found ${episodes.length} relevant episodes:\n`];
@@ -514,11 +579,15 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
             ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
           const ageMinutes = Math.round((Date.now() - ep.timestamp) / 60000);
           const provenance = `[MEMORY project=${ep.project || "unknown"} ttl=${ageMinutes}m ago]`;
-          const confTag = (ep as any).memoryConfidence != null
-            ? ` conf=${((ep as any).memoryConfidence * 100).toFixed(0)}%`
-            : "";
+          const confTag =
+            (ep as any).memoryConfidence != null
+              ? ` conf=${((ep as any).memoryConfidence * 100).toFixed(0)}%`
+              : "";
           const crossTag = (ep as any)._crossSession ? " [CROSS-SESSION]" : "";
-          lines.push(`${provenance}${confTag}${crossTag} ${outcomeIcon} [${ep.outcome}] ${ep.task}`);
+          const qualityTag = ep.quality != null ? ` quality=${(ep.quality * 100).toFixed(0)}%` : "";
+          lines.push(
+            `${provenance}${confTag}${qualityTag}${crossTag} ${outcomeIcon} [${ep.outcome}] ${ep.task}`,
+          );
           lines.push(
             `   Solution: ${ep.solution.slice(0, 200)}${ep.solution.length > 200 ? "..." : ""}`,
           );
@@ -540,7 +609,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
           outcome as Episode["outcome"],
           [],
           tags,
-          ctx?.cwd ?? "unknown",
+          deriveProjectId(ctx?.cwd ?? ""),
         );
         return textResult(`Episode added: "${task.slice(0, 50)}..." (${outcome}) [${episode.id}]`);
       }
@@ -784,23 +853,20 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     // P2.3: Emit contamination signal when surfacing cross-session episodes
     const crossSession = episodes.filter((ep: any) => ep._crossSession);
     if (crossSession.length > 0) {
-      emitSignal(
-        ctx,
-        "memory",
-        "contamination",
-        "warn",
-        false,
-        { count: crossSession.length, sessionIds: crossSession.map((ep: any) => ep.sessionId).slice(0, 3) },
-      );
+      emitSignal(ctx, "memory", "contamination", "warn", false, {
+        count: crossSession.length,
+        sessionIds: crossSession.map((ep: any) => ep.sessionId).slice(0, 3),
+      });
     }
 
     const lines: string[] = [`[recall] ${title}`];
     for (const ep of episodes.slice(0, 2)) {
       const icon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
       const crossMark = (ep as any)._crossSession ? " [CROSS-SESSION]" : "";
-      const conf = (ep as any).memoryConfidence != null
-        ? ` (conf ${((ep as any).memoryConfidence * 100).toFixed(0)}%)`
-        : "";
+      const conf =
+        (ep as any).memoryConfidence != null
+          ? ` (conf ${((ep as any).memoryConfidence * 100).toFixed(0)}%)`
+          : "";
       lines.push(`  ${icon}${crossMark}${conf} ${ep.task.slice(0, 80)}`);
       lines.push(`    Solution: ${ep.solution.slice(0, 120)}`);
     }

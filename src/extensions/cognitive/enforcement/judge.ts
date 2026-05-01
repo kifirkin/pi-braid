@@ -155,7 +155,7 @@ function parseJudgeOutput(raw: string): JudgeAnalysis | null {
     try {
       JSON.parse(jsonStr);
     } catch {
-      const scoresMatch = jsonStr.match(/"scores"\s*:\s*\{[^}]+\}/);
+      const scoresMatch = jsonStr.match(/"scores"\s*:\s*\{[^}]+}/);
       if (scoresMatch) {
         const scoresContent = scoresMatch[0].replace('"scores":', "").trim();
         try {

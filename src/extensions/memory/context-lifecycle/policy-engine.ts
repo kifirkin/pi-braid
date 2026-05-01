@@ -131,7 +131,7 @@ export class PolicyEngine {
     };
 
     let blocked = false;
-    let warnings: string[] = [];
+    const warnings: string[] = [];
 
     for (const constraint of this.governance) {
       if (constraint.target !== "action" && constraint.target !== "proposal") continue;

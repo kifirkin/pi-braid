@@ -266,7 +266,7 @@ function createRlmContext(data: unknown, depth: number, maxCalls: number) {
 function formatResult(value: unknown): string {
   if (value === undefined) return "undefined";
   if (value === null) return "null";
-  if (typeof value === "function") return `[Function: ${(value as Function).name || "anonymous"}]`;
+  if (typeof value === "function") return `[Function: ${(value as { name?: string }).name || "anonymous"}]`;
   if (typeof value === "object") {
     try {
       return JSON.stringify(value, null, 2);
@@ -279,7 +279,7 @@ function formatResult(value: unknown): string {
 
 function formatForDetails(value: unknown): unknown {
   if (value === undefined || value === null) return value;
-  if (typeof value === "function") return `[Function: ${(value as Function).name || "anonymous"}]`;
+  if (typeof value === "function") return `[Function: ${(value as { name?: string }).name || "anonymous"}]`;
   if (typeof value === "object") {
     try {
       return JSON.parse(JSON.stringify(value));
@@ -296,7 +296,8 @@ function formatVerbose(result: unknown, count: number, code: string, mode: strin
   const codePreview = code.length > 60 ? code.slice(0, 60) + "..." : code;
   if (result === undefined) return `${prefix} ${codePreview} => undefined`;
   if (result === null) return `${prefix} ${codePreview} => null`;
-  if (typeof result === "function") return `${prefix} ${codePreview} => [Function: ${(result as Function).name || "anonymous"}]`;
+  if (typeof result === "function")
+    return `${prefix} ${codePreview} => [Function: ${(result as { name?: string }).name || "anonymous"}]`;
   if (typeof result === "object") {
     try {
       return `${prefix} ${codePreview} =>
@@ -372,7 +373,12 @@ function createReplTool(): AgentTool<typeof replSchema> {
       replState.lastResult = result;
 
       return {
-        content: [{ type: "text" as const, text: formatVerbose(result, replState.executionCount, params.code, mode) }],
+        content: [
+          {
+            type: "text" as const,
+            text: formatVerbose(result, replState.executionCount, params.code, mode),
+          },
+        ],
         details: {
           execution: replState.executionCount,
           mode,

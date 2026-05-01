@@ -11,6 +11,7 @@
  * (set once per process for the first session, then overridden by ctx calls).
  */
 
+import { unlinkSync } from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { ImageContent } from "@mariozechner/pi-ai";
 
@@ -335,7 +336,7 @@ export function resetState(pi: ExtensionAPI, ctx?: ExtensionContext): void {
   persistState(pi, ctx);
   // Also clear disk file to prevent stale reuse after manual reset
   try {
-    require("node:fs").unlinkSync(RETRY_STATE_DISK_PATH);
+    unlinkSync(RETRY_STATE_DISK_PATH);
   } catch {
     /* ignore */
   }

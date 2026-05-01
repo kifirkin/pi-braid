@@ -11,6 +11,7 @@ import { getExtensionState } from "../../../lib/extension-state.js";
 import { createThinkTool, recordCalibration } from "./handlers/think.js";
 import { createHypothesizeTool } from "./handlers/hypothesize.js";
 import { createFinalizeTool } from "./handlers/finalize.js";
+import { createVerifyTool } from "./handlers/verify.js";
 import { evaluateCognition } from "../../../lib/cognition-evaluator.js";
 import { Type } from "typebox";
 
@@ -22,6 +23,8 @@ interface MetaMetrics {
   hypothesesGenerated: number;
   hypothesesWithVerification: number;
   finalizationsBlocked: number;
+  verifies: number;
+  verificationsPassed: number;
   depthDistribution: Record<string, number>;
   reasoningTags: Record<string, number>;
 }
@@ -35,6 +38,8 @@ function getMetaState(ctx: ExtensionContext): MetaMetrics {
     hypothesesGenerated: 0,
     hypothesesWithVerification: 0,
     finalizationsBlocked: 0,
+    verifies: 0,
+    verificationsPassed: 0,
     depthDistribution: {},
     reasoningTags: {},
   }));
@@ -53,7 +58,9 @@ export default function metacognitionExtension(pi: ExtensionAPI) {
         pi.sendMessage(
           {
             customType: "metacognition",
-            content: [{ type: "text" as const, text: `[system] Continue with next task: ${description}` }],
+            content: [
+              { type: "text" as const, text: `[system] Continue with next task: ${description}` },
+            ],
             display: true,
             details: { _braidInjected: true, _braidSource: "metacognition/next-task" },
           },
@@ -63,6 +70,9 @@ export default function metacognitionExtension(pi: ExtensionAPI) {
       recordCalibration,
     }) as any,
   );
+
+  // ── Verify Tool ───────────────────────────────────────────────────────────
+  pi.registerTool(createVerifyTool() as any);
 
   // Track tool usage
   pi.on("tool_execution_end", (event: any, ctx: ExtensionContext) => {
@@ -91,6 +101,11 @@ export default function metacognitionExtension(pi: ExtensionAPI) {
       state.finalizes++;
       if (event?.details?.blocked) {
         state.finalizationsBlocked++;
+      }
+    } else if (toolName === "verify") {
+      state.verifies++;
+      if (event?.details?.passed) {
+        state.verificationsPassed++;
       }
     }
   });

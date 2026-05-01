@@ -49,6 +49,11 @@ import {
 import { shouldAdvise as marsShouldAdvise } from "../../../lib/mars-reflector.js";
 import { dream } from "../../../lib/dreamer.js";
 import { recordBashDetails, recordToolCall, recordToolInput } from "./handlers/tool-tracker.js";
+import {
+  checkLocalizationRisk,
+  recordFileTouch,
+  updateProblemContext,
+} from "../../../lib/bidirectional-verifier.js";
 import { analyzeMessage } from "./handlers/message-analysis.js";
 import {
   TurnAnalysisContext,
@@ -66,8 +71,15 @@ import {
 import { analyzeWithJudge } from "./judge.js";
 import { NudgeManager } from "./nudge-manager.js";
 import { getState } from "./state.js";
+import { recordNudgeSent, recordNudgeSuppressed } from "../../../extensions/heartbeat/analytics/index.js";
 
 import type { TurnState } from "./types.js";
+import {
+  processAgentResponse,
+  formatContradictionWhisper,
+  getClaimStats,
+} from "../../../lib/claim-tracker.js";
+import { getAnalyticsState } from "../../heartbeat/analytics/index.js";
 import { validateToolForPhase, validateTurn } from "./validation.js";
 import {
   formatVerificationNudge,
@@ -201,6 +213,7 @@ export default function enforcementExtension(pi: ExtensionAPI) {
 
     setLanguage(ctx, lang.code, lang.name);
     getState(ctx).lastUserMessage = text;
+    updateProblemContext(ctx, text);
     const replyLang = getReplyInstruction(ctx);
     if (!replyLang) return;
 
@@ -264,6 +277,23 @@ export default function enforcementExtension(pi: ExtensionAPI) {
     if (toolName === "edit" || toolName === "write") {
       detectRecordCodeChange(getState(ctx).currentTurn);
       getState(ctx).hasCodeChanges = true;
+      const path = (input?.path as string) ?? (input?.target as string) ?? "";
+      if (path) {
+        recordFileTouch(ctx, path, getState(ctx).currentTurn, true);
+        const risk = checkLocalizationRisk(ctx, path, getState(ctx).currentTurn);
+        if (risk) {
+          // Will be surfaced via turn_end Session Signals (L2)
+          getState(ctx)._localizationRisk = risk;
+        }
+      }
+    }
+
+    if (toolName === "read" || toolName === "grep" || toolName === "find") {
+      const path =
+        (input?.path as string) ?? (input?.target as string) ?? (input?.pattern as string) ?? "";
+      if (path) {
+        recordFileTouch(ctx, path, getState(ctx).currentTurn, false);
+      }
     }
 
     if (toolName === "edit" || toolName === "write") {
@@ -567,10 +597,49 @@ export default function enforcementExtension(pi: ExtensionAPI) {
       sendEnforcementWhisper(pi, orphanResult.suggestion);
     }
 
+    // ── P3.2: Lie-Detector (RepE) — cross-turn claim tracker ─────────────
+    // Extract claims from agent's response and check against history.
+    // Silent unless contradictions are found (warn-only, never blocks).
+    if (!isBurst && event.message?.role === "assistant" && event.message?.content) {
+      const msgContent = Array.isArray(event.message.content)
+        ? event.message.content
+            .filter((c: any) => c?.type === "text")
+            .map((c: any) => c?.text || "")
+            .join(" ")
+        : typeof event.message.content === "string"
+          ? event.message.content
+          : "";
+
+      if (msgContent.length > 50) {
+        try {
+          const contradictions = processAgentResponse(msgContent, ctx, getState(ctx).currentTurn);
+          if (contradictions.length > 0) {
+            const whisper = formatContradictionWhisper(contradictions);
+            sendEnforcementWhisper(pi, whisper);
+          }
+        } catch (err) {
+          // Defensive: claim-tracker errors must not crash enforcement or abort session saving
+          log.warn("claim-tracker error (suppressed):", err);
+        }
+      }
+    }
+
     // ── L2: Non-critical signals → bundled Session Signals nudge ─────────
+
+    // BR3: Check A/B variant — if "no_nudges", suppress all L2 signals
+    const abVariant = getAnalyticsState(ctx).abVariant;
+    const suppressNudges = abVariant === "no_nudges";
+    if (suppressNudges) {
+      getState(ctx).nudgeSuppressedCount = (getState(ctx).nudgeSuppressedCount || 0) + 1;
+      recordNudgeSuppressed(ctx);
+    }
 
     // Collect signals for the bundled nudge
     const sessionSignals: string[] = [];
+
+    if (suppressNudges) {
+      // Skip all L2 signal collection when nudges are suppressed
+    }
 
     // Memory signal: fires on EVENT basis, not schedule.
     // Trigger: code changed after last memory usage (not just turns elapsed).
@@ -680,6 +749,12 @@ export default function enforcementExtension(pi: ExtensionAPI) {
       // Below 75%: no signal - not actionable enough to bother
     }
 
+    // BV1: Surface localization risk (Bidirectional Verifier Phase 1)
+    if (getState(ctx)._localizationRisk) {
+      sessionSignals.push(`[localization] ${getState(ctx)._localizationRisk}`);
+      getState(ctx)._localizationRisk = "";
+    }
+
     // Send bundled nudge if we have signals AND no L3 critical message just went out.
     // Also populate enforcementSignals for L1 surfacing in prompt-builder.
     // Suppress L2 signals during error burst
@@ -723,10 +798,14 @@ export default function enforcementExtension(pi: ExtensionAPI) {
         contrastMode: determineContrastMode(ctx),
       });
 
-      const bundled = `[Session Signals]\n${sessionSignals.map((s) => `- ${s}`).join("\n")}`;
-      const { shouldSend } = nudgeManager.shouldSendNudge("scratchpad", bundled);
-      if (shouldSend) {
-        sendEnforcementWhisper(pi, bundled);
+      // BR3: Only bundle and send if nudges are not suppressed ("no_nudges" variant)
+      if (!suppressNudges && sessionSignals.length > 0) {
+        const bundled = `[Session Signals]\n${sessionSignals.map((s) => `- ${s}`).join("\n")}`;
+        const { shouldSend } = nudgeManager.shouldSendNudge("scratchpad", bundled);
+        if (shouldSend) {
+          sendEnforcementWhisper(pi, bundled);
+          recordNudgeSent(ctx);
+        }
       }
     }
   });
@@ -805,43 +884,37 @@ Persist them now - this is the minimum-fidelity moment.`,
 
   // ── auto_retry_end ────────────────────────────────────────────────────────
   // L3: Infrastructure errors from retry failures → individual, semantic
-  pi.on(
-    "auto_retry_end" as never,
-    async (
-      event: any,
-      ctx: ExtensionContext,
-    ) => {
-      if (!getState(ctx).enforcementActive) return;
+  pi.on("auto_retry_end" as never, async (event: any, ctx: ExtensionContext) => {
+    if (!getState(ctx).enforcementActive) return;
 
-      const { success, attempt, finalError } = event;
+    const { success, attempt, finalError } = event;
 
-      if (!success) {
-        getState(ctx).validationFailures++;
+    if (!success) {
+      getState(ctx).validationFailures++;
 
-        const now = Date.now();
-        if (now - getState(ctx).lastNudgeTime < getState(ctx).nudgeCooldownMs) return;
-        getState(ctx).lastNudgeTime = now;
+      const now = Date.now();
+      if (now - getState(ctx).lastNudgeTime < getState(ctx).nudgeCooldownMs) return;
+      getState(ctx).lastNudgeTime = now;
 
-        const errorType = _classifyRetryError(finalError ?? "");
+      const errorType = _classifyRetryError(finalError ?? "");
 
-        let msg = "";
-        if (errorType === "rate_limit") {
-          msg = `Rate limit after ${attempt} retry(s). Switch model with /model or wait.`;
-        } else if (errorType === "server_error") {
-          msg = `Server error after ${attempt} retry(s) (${finalError}). Provider may be overloaded.`;
-        } else if (errorType === "network") {
-          msg = `Network error after ${attempt} retry(s). Check your connection.`;
-        } else {
-          msg = `API error after ${attempt} retry(s): ${finalError ?? "unknown"}.`;
-        }
-
-        sendEnforcementWhisper(
-          pi,
-          `## ⚠️ ${msg}\n\nStore for reference: memory_store(content="API error: ${finalError}", tags=["error", "api"])`,
-        );
+      let msg = "";
+      if (errorType === "rate_limit") {
+        msg = `Rate limit after ${attempt} retry(s). Switch model with /model or wait.`;
+      } else if (errorType === "server_error") {
+        msg = `Server error after ${attempt} retry(s) (${finalError}). Provider may be overloaded.`;
+      } else if (errorType === "network") {
+        msg = `Network error after ${attempt} retry(s). Check your connection.`;
+      } else {
+        msg = `API error after ${attempt} retry(s): ${finalError ?? "unknown"}.`;
       }
-    },
-  );
+
+      sendEnforcementWhisper(
+        pi,
+        `## ⚠️ ${msg}\n\nStore for reference: memory_store(content="API error: ${finalError}", tags=["error", "api"])`,
+      );
+    }
+  });
 
   // ── message_end ────────────────────────────────────────────────────────────
   pi.on("message_end", async (event, ctx) => {

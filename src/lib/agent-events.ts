@@ -65,39 +65,60 @@ import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 /** High-level domain/category for a signal. Maps to belief-policy-engine belief keys. */
 export type SignalDomain =
-  | "stability"      // System health: degrade, recovery, decline
-  | "tool-use"       // Tool patterns: overuse, repetition, addiction
-  | "reflection"      // Meta-cognition: absent reflection, reflection gap
-  | "sycophancy"      // Alignment: detected sycophancy signals
-  | "conflict"        // Evidence: unresolved belief conflicts
-  | "calibration"     // Confidence: prediction accuracy signals
-  | "topic-drift"     // Focus: drift from semantic anchors
-  | "memory"          // Memory: contamination, cross-session leakage
-  | "reasoning"       // Cognitive: absent/declining reasoning chains
-  | "enforcement";    // Governance: policy signals (via events.emit)
+  | "stability" // System health: degrade, recovery, decline
+  | "tool-use" // Tool patterns: overuse, repetition, addiction
+  | "reflection" // Meta-cognition: absent reflection, reflection gap
+  | "sycophancy" // Alignment: detected sycophancy signals
+  | "conflict" // Evidence: unresolved belief conflicts
+  | "calibration" // Confidence: prediction accuracy signals
+  | "topic-drift" // Focus: drift from semantic anchors
+  | "memory" // Memory: contamination, cross-session leakage
+  | "reasoning" // Cognitive: absent/declining reasoning chains
+  | "enforcement"; // Governance: policy signals (via events.emit)
 
 /** Specific signal within a domain. Maps to belief key suffix. */
 export type SignalType =
   // stability
-  | "decline" | "predicted-decline" | "recovered" | "healthy"
+  | "decline"
+  | "predicted-decline"
+  | "recovered"
+  | "healthy"
   // tool-use
-  | "overuse" | "repetition" | "addiction" | "idle"
+  | "overuse"
+  | "repetition"
+  | "addiction"
+  | "idle"
   // reflection
-  | "absent" | "present" | "deep"
+  | "absent"
+  | "present"
+  | "deep"
   // sycophancy
-  | "detected" | "corrected"
+  | "detected"
+  | "corrected"
   // conflict
-  | "unresolved" | "detected" | "resolved"
+  | "unresolved"
+  | "detected"
+  | "resolved"
   // calibration
-  | "high-error" | "calibrated" | "uncertain"
+  | "high-error"
+  | "calibrated"
+  | "uncertain"
   // topic-drift
-  | "drifted" | "scatter"
+  | "drifted"
+  | "scatter"
   // memory
-  | "contamination" | "cross-project" | "stale" | "evicted"
+  | "contamination"
+  | "cross-project"
+  | "stale"
+  | "evicted"
   // reasoning
-  | "absent" | "declining" | "enhanced"
+  | "absent"
+  | "declining"
+  | "enhanced"
   // enforcement
-  | "L1" | "L2" | "L3";
+  | "L1"
+  | "L2"
+  | "L3";
 
 /** How urgent is this signal? Determines policy evaluation priority. */
 export type SignalSeverity = "info" | "warn" | "critical";
@@ -151,10 +172,10 @@ export type EmitSignalFn = (
 
 /** What the belief-policy-engine recommends when a rule fires. */
 export type PolicyActionType =
-  | "whisper"    // Inject reminder/nudge into context
-  | "steer"       // Force a behavioral steer
-  | "propose"     // Suggest an action to the agent
-  | "block";     // Prevent an action
+  | "whisper" // Inject reminder/nudge into context
+  | "steer" // Force a behavioral steer
+  | "propose" // Suggest an action to the agent
+  | "block"; // Prevent an action
 
 // ── Deprecated Aliases ────────────────────────────────────────────────────────
 // Extensions may still emit via the old emitSignal() API directly.

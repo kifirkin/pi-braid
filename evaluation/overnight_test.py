@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 ROOT = Path(__file__).parent.parent
-MODEL = os.environ.get("PI_MODEL", "openrouter/qwen/qwen3.5-flash-02-23")
+MODEL = os.environ.get("PI_MODEL", "openrouter/qwen/qwen3-coder:free")
 EXTENSIONS = str(ROOT)
 OUTFILE = ROOT / "evaluation" / "results" / f"overnight_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
 

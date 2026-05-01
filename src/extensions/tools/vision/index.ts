@@ -367,7 +367,10 @@ function getImageMetadata(absolutePath: string): ImageMetadata | null {
     } else if ((ext === ".jpg" || ext === ".jpeg") && buffer.length > 10) {
       let offset = 2;
       while (offset < buffer.length - 9 && offset < 10000) {
-        if (buffer[offset] !== 0xff) { offset++; continue; }
+        if (buffer[offset] !== 0xff) {
+          offset++;
+          continue;
+        }
         const marker = buffer[offset + 1];
         if (marker >= 0xc0 && marker <= 0xc3 && marker !== 0xc4) {
           height = buffer.readUInt16BE(offset + 5);
@@ -377,7 +380,9 @@ function getImageMetadata(absolutePath: string): ImageMetadata | null {
         if (marker !== 0xff && marker !== 0x00 && marker !== 0xd8 && marker !== 0xd9) {
           const segLen = buffer.readUInt16BE(offset + 2);
           offset += 2 + segLen;
-        } else { offset += 2; }
+        } else {
+          offset += 2;
+        }
       }
     } else if (ext === ".gif" && buffer.length > 10) {
       width = buffer.readUInt16LE(6);
@@ -401,7 +406,10 @@ function getImageMetadata(absolutePath: string): ImageMetadata | null {
     const sizeCheck = checkImageSize(absolutePath);
 
     return {
-      width, height, aspectRatio, isExtremeRatio,
+      width,
+      height,
+      aspectRatio,
+      isExtremeRatio,
       isOversized: sizeCheck.isOversized,
       isPreviewable: sizeCheck.isPreviewable,
       sizeWarning: sizeCheck.warning,
@@ -425,7 +433,9 @@ function readImageAsBase64(absolutePath: string): { data: string; mimeType: stri
     const buffer = fs.readFileSync(absolutePath);
     const mimeType = getMimeType(absolutePath);
     return { data: buffer.toString("base64"), mimeType };
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -440,34 +450,65 @@ async function withRetry<T>(
   let lastError: Error | undefined;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try { return await fn(); } catch (error) {
+    try {
+      return await fn();
+    } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       const message = lastError.message.toLowerCase();
 
       const nonRetryable =
-        message.includes("unauthorized") || message.includes("authentication") ||
-        message.includes("api key") || message.includes("not found") ||
-        message.includes("invalid api key") || message.includes("model not available") ||
-        message.includes("no api key") || message.includes("no vision-capable model");
+        message.includes("unauthorized") ||
+        message.includes("authentication") ||
+        message.includes("api key") ||
+        message.includes("not found") ||
+        message.includes("invalid api key") ||
+        message.includes("model not available") ||
+        message.includes("no api key") ||
+        message.includes("no vision-capable model");
 
       if (nonRetryable || attempt === maxRetries) throw lastError;
 
-      const isRateLimited = message.includes("429") || message.includes("rate limit") || message.includes("too many requests");
-      const isServerError = message.includes("500") || message.includes("502") || message.includes("503") || message.includes("504");
-      const isNetworkError = message.includes("econnreset") || message.includes("etimedout") || message.includes("enotfound") || message.includes("network");
-      const isGpuEngineError = message.includes("enginecore") || message.includes("upstream error") || (message.includes("nvidia") && message.includes("error"));
-      const isTransient = isRateLimited || isServerError || isNetworkError || isGpuEngineError || message.includes("timeout");
+      const isRateLimited =
+        message.includes("429") ||
+        message.includes("rate limit") ||
+        message.includes("too many requests");
+      const isServerError =
+        message.includes("500") ||
+        message.includes("502") ||
+        message.includes("503") ||
+        message.includes("504");
+      const isNetworkError =
+        message.includes("econnreset") ||
+        message.includes("etimedout") ||
+        message.includes("enotfound") ||
+        message.includes("network");
+      const isGpuEngineError =
+        message.includes("enginecore") ||
+        message.includes("upstream error") ||
+        (message.includes("nvidia") && message.includes("error"));
+      const isTransient =
+        isRateLimited ||
+        isServerError ||
+        isNetworkError ||
+        isGpuEngineError ||
+        message.includes("timeout");
 
       if (!isTransient && attempt < maxRetries - 1) {
         const delay = baseDelayMs * Math.pow(2, attempt);
-        log.warn(`${operationName} failed (attempt ${attempt + 1}/${maxRetries + 1}): ${lastError.message}. Retrying in ${delay}ms...`);
-        await new Promise(r => setTimeout(r, delay));
+        log.warn(
+          `${operationName} failed (attempt ${attempt + 1}/${maxRetries + 1}): ${lastError.message}. Retrying in ${delay}ms...`,
+        );
+        await new Promise((r) => setTimeout(r, delay));
         continue;
       }
 
-      const delay = isRateLimited ? baseDelayMs * Math.pow(2, attempt) * 2 : baseDelayMs * Math.pow(2, attempt);
-      log.warn(`${operationName} transient error (attempt ${attempt + 1}/${maxRetries + 1}): ${lastError.message}. Retrying in ${delay}ms...`);
-      await new Promise(r => setTimeout(r, delay));
+      const delay = isRateLimited
+        ? baseDelayMs * Math.pow(2, attempt) * 2
+        : baseDelayMs * Math.pow(2, attempt);
+      log.warn(
+        `${operationName} transient error (attempt ${attempt + 1}/${maxRetries + 1}): ${lastError.message}. Retrying in ${delay}ms...`,
+      );
+      await new Promise((r) => setTimeout(r, delay));
     }
   }
   throw lastError ?? new Error(`${operationName} failed after ${maxRetries} retries`);
@@ -482,8 +523,7 @@ function buildAnalysisPrompt(
 ): { prompt: string; systemPrompt: string } {
   if (isPixelArt) {
     return {
-      prompt: PIXEL_ART_PROMPT
-        .replace("{width}", String(metadata?.width ?? "?"))
+      prompt: PIXEL_ART_PROMPT.replace("{width}", String(metadata?.width ?? "?"))
         .replace("{height}", String(metadata?.height ?? "?"))
         .replace("{extremeRatioWarning}", metadata?.analysisWarning ?? ""),
       systemPrompt:
@@ -543,7 +583,9 @@ async function performImageAnalysis(
 
   if (!fs.existsSync(absolutePath)) throw new Error(`File not found: ${absolutePath}`);
   if (!isImageFile(absolutePath)) {
-    throw new Error(`Not a supported image file. Supported formats: ${SUPPORTED_IMAGE_EXTENSIONS.join(", ")}`);
+    throw new Error(
+      `Not a supported image file. Supported formats: ${SUPPORTED_IMAGE_EXTENSIONS.join(", ")}`,
+    );
   }
 
   const sizeCheck = checkImageSize(absolutePath);
@@ -555,7 +597,9 @@ async function performImageAnalysis(
   // Send metadata update
   const metadataLines = [`Analyzing: ${absolutePath}`];
   if (metadata) {
-    metadataLines.push(`Dimensions: ${metadata.width}×${metadata.height} (${metadata.aspectRatio.toFixed(1)}:1 ratio)`);
+    metadataLines.push(
+      `Dimensions: ${metadata.width}×${metadata.height} (${metadata.aspectRatio.toFixed(1)}:1 ratio)`,
+    );
   }
   metadataLines.push(`Size: ${formatFileSize(sizeCheck.size)} (${sizeCheck.sizeMB.toFixed(1)} MB)`);
   metadataLines.push(`MIME: ${mimeType}`);
@@ -580,7 +624,9 @@ async function performImageAnalysis(
 
   // Build prompt
   const { prompt: analysisPrompt, systemPrompt } = buildAnalysisPrompt(
-    metadata, detail, isLikelyPixelArt,
+    metadata,
+    detail,
+    isLikelyPixelArt,
   );
 
   const context = {
@@ -590,7 +636,11 @@ async function performImageAnalysis(
         role: "user" as const,
         content: [
           { type: "text" as const, text: analysisPrompt },
-          { type: "image" as const, data: imageData?.data ?? "", mimeType: imageData?.mimeType ?? "image/jpeg" },
+          {
+            type: "image" as const,
+            data: imageData?.data ?? "",
+            mimeType: imageData?.mimeType ?? "image/jpeg",
+          },
         ],
         timestamp: Date.now(),
       },
@@ -598,18 +648,19 @@ async function performImageAnalysis(
   };
 
   const result = await withRetry(
-    () => completeSimple(model, context, {
-      apiKey,
-      maxTokens: detail === "comprehensive" ? 8192 : 4096,
-      temperature: 0.3,
-    }),
+    () =>
+      completeSimple(model, context, {
+        apiKey,
+        maxTokens: detail === "comprehensive" ? 8192 : 4096,
+        temperature: 0.3,
+      }),
     `Vision analysis (${model.provider}/${model.id})`,
   );
 
   const textContent = result.content.filter(
     (c): c is { type: "text"; text: string } => c.type === "text",
   );
-  const analysis = textContent.map(t => t.text).join("\n");
+  const analysis = textContent.map((t) => t.text).join("\n");
 
   if (result.errorMessage) {
     throw new Error(`Analysis failed: ${result.errorMessage}`);
@@ -651,10 +702,11 @@ export default function visionExtension(pi: ExtensionAPI) {
         description: "Path to the image file (jpg, jpeg, png, gif, webp)",
       }),
       detail: Type.Optional(
-        Type.Union(
-          [Type.Literal("standard"), Type.Literal("comprehensive")],
-          { description: "Analysis detail level. 'standard' is faster and covers essentials. 'comprehensive' performs in-depth design, accessibility, and domain-specific analysis with up to 8K token output. Default: 'standard'.", default: "standard" },
-        ),
+        Type.Union([Type.Literal("standard"), Type.Literal("comprehensive")], {
+          description:
+            "Analysis detail level. 'standard' is faster and covers essentials. 'comprehensive' performs in-depth design, accessibility, and domain-specific analysis with up to 8K token output. Default: 'standard'.",
+          default: "standard",
+        }),
       ),
     }),
 
@@ -678,7 +730,12 @@ export default function visionExtension(pi: ExtensionAPI) {
 
       if (!isImageFile(absolutePath)) {
         return {
-          content: [{ type: "text", text: `Error: "${params.imagePath}" is not a supported image file. Supported formats: ${SUPPORTED_IMAGE_EXTENSIONS.join(", ")}` }],
+          content: [
+            {
+              type: "text",
+              text: `Error: "${params.imagePath}" is not a supported image file. Supported formats: ${SUPPORTED_IMAGE_EXTENSIONS.join(", ")}`,
+            },
+          ],
           details: { path: absolutePath, supported: SUPPORTED_IMAGE_EXTENSIONS },
         };
       }
@@ -735,7 +792,10 @@ export default function visionExtension(pi: ExtensionAPI) {
 
       const trimmed = args.trim();
       if (!trimmed) {
-        ctx.ui.notify("Usage: /analyze-image [--detail=standard|comprehensive] <image-path>", "error");
+        ctx.ui.notify(
+          "Usage: /analyze-image [--detail=standard|comprehensive] <image-path>",
+          "error",
+        );
         return;
       }
 
@@ -751,7 +811,10 @@ export default function visionExtension(pi: ExtensionAPI) {
       const absolutePath = path.resolve(ctx.cwd, imagePathExpanded);
 
       if (!isImageFile(absolutePath)) {
-        ctx.ui.notify(`Not a supported image file. Supported: ${SUPPORTED_IMAGE_EXTENSIONS.join(", ")}`, "error");
+        ctx.ui.notify(
+          `Not a supported image file. Supported: ${SUPPORTED_IMAGE_EXTENSIONS.join(", ")}`,
+          "error",
+        );
         return;
       }
 

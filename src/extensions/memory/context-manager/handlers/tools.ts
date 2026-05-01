@@ -2,7 +2,6 @@
 // All 6 tool registrations + 1 command registration.
 
 import { Type } from "typebox";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { analyzeSession } from "../analysis.js";
 import {
   log,

@@ -9,8 +9,6 @@
  * truly global (cross-session) state.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-
 // ── Custom Model Keys (polyfill ↔ model-resolver) ─────────────────────────────
 
 /** Symbol-keyed map shared between polyfill extension and model-resolver */
