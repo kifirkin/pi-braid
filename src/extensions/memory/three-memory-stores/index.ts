@@ -134,7 +134,9 @@ function addEpisode(
   const toolDiversity = toolSequence.length > 0 ? uniqueTools / toolSequence.length : 0;
   const reasoningDensity =
     toolSequence.length > 0 ? Math.min(1, solution.length / (toolSequence.length * 200)) : 0.5;
-  const quality = Math.round(outcomeScore * (toolDiversity * 0.4 + 0.6) * (reasoningDensity * 0.4 + 0.6) * 100) / 100;
+  const quality =
+    Math.round(outcomeScore * (toolDiversity * 0.4 + 0.6) * (reasoningDensity * 0.4 + 0.6) * 100) /
+    100;
 
   const episode: Episode = {
     id: `ep-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -173,7 +175,12 @@ function addEpisode(
  * @returns Condensed text safe for injection
  */
 export function condenseInsights(episode: Episode, maxTokens = 150): string {
-  const outcomeLabel = episode.outcome === "success" ? "SUCCESS" : episode.outcome === "failure" ? "FAILURE" : "PARTIAL";
+  const outcomeLabel =
+    episode.outcome === "success"
+      ? "SUCCESS"
+      : episode.outcome === "failure"
+        ? "FAILURE"
+        : "PARTIAL";
   const toolSummary =
     episode.toolSequence.length > 0
       ? `[${episode.toolSequence.slice(0, 5).join(" → ")}${episode.toolSequence.length > 5 ? ` (+${episode.toolSequence.length - 5} more)` : ""}]`
@@ -572,12 +579,15 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
             ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
           const ageMinutes = Math.round((Date.now() - ep.timestamp) / 60000);
           const provenance = `[MEMORY project=${ep.project || "unknown"} ttl=${ageMinutes}m ago]`;
-          const confTag = (ep as any).memoryConfidence != null
-            ? ` conf=${((ep as any).memoryConfidence * 100).toFixed(0)}%`
-            : "";
+          const confTag =
+            (ep as any).memoryConfidence != null
+              ? ` conf=${((ep as any).memoryConfidence * 100).toFixed(0)}%`
+              : "";
           const crossTag = (ep as any)._crossSession ? " [CROSS-SESSION]" : "";
           const qualityTag = ep.quality != null ? ` quality=${(ep.quality * 100).toFixed(0)}%` : "";
-          lines.push(`${provenance}${confTag}${qualityTag}${crossTag} ${outcomeIcon} [${ep.outcome}] ${ep.task}`);
+          lines.push(
+            `${provenance}${confTag}${qualityTag}${crossTag} ${outcomeIcon} [${ep.outcome}] ${ep.task}`,
+          );
           lines.push(
             `   Solution: ${ep.solution.slice(0, 200)}${ep.solution.length > 200 ? "..." : ""}`,
           );
@@ -843,23 +853,20 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     // P2.3: Emit contamination signal when surfacing cross-session episodes
     const crossSession = episodes.filter((ep: any) => ep._crossSession);
     if (crossSession.length > 0) {
-      emitSignal(
-        ctx,
-        "memory",
-        "contamination",
-        "warn",
-        false,
-        { count: crossSession.length, sessionIds: crossSession.map((ep: any) => ep.sessionId).slice(0, 3) },
-      );
+      emitSignal(ctx, "memory", "contamination", "warn", false, {
+        count: crossSession.length,
+        sessionIds: crossSession.map((ep: any) => ep.sessionId).slice(0, 3),
+      });
     }
 
     const lines: string[] = [`[recall] ${title}`];
     for (const ep of episodes.slice(0, 2)) {
       const icon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
       const crossMark = (ep as any)._crossSession ? " [CROSS-SESSION]" : "";
-      const conf = (ep as any).memoryConfidence != null
-        ? ` (conf ${((ep as any).memoryConfidence * 100).toFixed(0)}%)`
-        : "";
+      const conf =
+        (ep as any).memoryConfidence != null
+          ? ` (conf ${((ep as any).memoryConfidence * 100).toFixed(0)}%)`
+          : "";
       lines.push(`  ${icon}${crossMark}${conf} ${ep.task.slice(0, 80)}`);
       lines.push(`    Solution: ${ep.solution.slice(0, 120)}`);
     }

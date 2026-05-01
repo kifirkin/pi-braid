@@ -58,7 +58,9 @@ export default function metacognitionExtension(pi: ExtensionAPI) {
         pi.sendMessage(
           {
             customType: "metacognition",
-            content: [{ type: "text" as const, text: `[system] Continue with next task: ${description}` }],
+            content: [
+              { type: "text" as const, text: `[system] Continue with next task: ${description}` },
+            ],
             display: true,
             details: { _braidInjected: true, _braidSource: "metacognition/next-task" },
           },

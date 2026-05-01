@@ -267,10 +267,13 @@ API-only providers (stepfun, minimax) don't expose activations/logprobs. RepE pr
 | P3.1 | Self-evolution automatic trigger | ✅ Done | isDegraded → evolver shouldActivate auto-trigger (turn 10 + degrade) |
 | P3.2 | Lie-detector pattern (RepE) | ✅ Done | cross-turn claim tracking + enforcement whisper |
 | P3.3 | Rollback automation | ✅ Done | state-checkpoint.ts: auto-checkpoint every 20 clean turns + auto-rollback on degrade via heartbeat |
-| P3.4 | Budget-Aware Planning (BAVT) | Medium | P2 |
-| P3.5 | Memory Condensation (Decocted Experience) | Medium | P2 |
-| P3.6 | Process Supervision (step_check) | Medium | P3 |
+| P3.4 | Budget-Aware Planning (BAVT) | ✅ Done | P2 |
+| P3.5 | Memory Condensation (Decocted Experience) | ✅ Done | P2 |
+| P3.6 | Process Supervision (step_check) | ✅ Done | P3 |
 | P3.7 | Exploratory Reasoning (explore_paths) | ✅ Already exists | cognitive-systems/index.ts — spawns parallel sub-agents |
+| BR3 | Nudge A/B measurement | ✅ Done | Variant-controlled nudge suppression for effectiveness testing |
+| D0 | Dreamer module testing | ✅ Done | test-dreamer.mjs: 6 tests for shouldActivate, cooldown, structure |
+| R9 | Analytics feedback loop | ✅ Done | getNextRecommendation called from analytics turn_end on addiction |
 | P3.4 | HaluMem memory contamination architecture | ✅ Done | P2.3 completed this (cross-project penalty + confidence decay + contamination signal) |
 
 ---

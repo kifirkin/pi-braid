@@ -89,7 +89,9 @@ const DEFAULT_CRITERIA: Record<VerificationTarget, string[]> = {
 // ── Auto-Detection ───────────────────────────────────────────────────────────
 
 /** Auto-detect the most recent code/reasoning/plan from session messages. */
-function autoDetectTarget(ctx: ExtensionContext): { target: VerificationTarget; text: string } | null {
+function autoDetectTarget(
+  ctx: ExtensionContext,
+): { target: VerificationTarget; text: string } | null {
   const session = (ctx as any)?.sessionManager?.getCurrentSession?.();
   if (!session?.messages) return null;
 
@@ -144,11 +146,13 @@ export function heuristicCheck(
       if ((text.match(/\[/g) ?? []).length !== (text.match(/\]/g) ?? []).length)
         issues.push("Unmatched brackets detected");
       // TODO/FIXME in code
-      if (/\b(TODO|FIXME|HACK|XXX)\b/.test(text)) issues.push("Contains unresolved TODO/FIXME markers");
+      if (/\b(TODO|FIXME|HACK|XXX)\b/.test(text))
+        issues.push("Contains unresolved TODO/FIXME markers");
       // Dangerous patterns
       if (/\beval\s*\(/.test(text)) issues.push("Use of eval() detected — security risk");
       if (/\.innerHTML\s*=/.test(text)) issues.push("Direct innerHTML assignment — XSS risk");
-      if (/delete\s+\w+\s*,\s*\{/.test(text)) issues.push("Delete with comma syntax — may be unintended");
+      if (/delete\s+\w+\s*,\s*\{/.test(text))
+        issues.push("Delete with comma syntax — may be unintended");
       break;
     }
     case "reasoning": {
@@ -158,7 +162,10 @@ export function heuristicCheck(
         issues.push("Absolute language detected — may overstate certainty");
       // Check for contradiction markers
       const contradictions = text.match(/\bbut\b|\bhowever\b|\balthough\b/gi) ?? [];
-      if (contradictions.length > 3) issues.push(`Many contradiction markers (${contradictions.length}) — verify claims are reconciled`);
+      if (contradictions.length > 3)
+        issues.push(
+          `Many contradiction markers (${contradictions.length}) — verify claims are reconciled`,
+        );
       // Check for unexplained claims
       const claims = (text.match(/^\s*[-*]\s+.+$/gm) ?? []).length;
       const explanations = (text.match(/\b(because|since|therefore)\b/gi) ?? []).length;
@@ -176,7 +183,8 @@ export function heuristicCheck(
           for (let j = i + 1; j < stepTexts.length; j++) {
             // Simple: step N should not mention completing step N+1 before itself
             const mentionsLater = /\b(step\s*\d+|after\s+(step|item)\s*\d+)/gi.test(stepTexts[i]);
-            if (mentionsLater && j > i + 1) issues.push(`Step ${i + 1} may reference steps out of order`);
+            if (mentionsLater && j > i + 1)
+              issues.push(`Step ${i + 1} may reference steps out of order`);
           }
         }
       }
@@ -188,7 +196,8 @@ export function heuristicCheck(
     case "result": {
       checksRun.push("format", "completeness", "hallucination-risk");
       // Check for placeholder content
-      if (/\[.*?\]|\<.*?\>/.test(text)) issues.push("Contains placeholder markers — may be incomplete");
+      if (/\[.*?\]|\<.*?\>/.test(text))
+        issues.push("Contains placeholder markers — may be incomplete");
       if (/\.\.\.$|\blorem ipsum\b/i.test(text)) issues.push("Contains placeholder or filler text");
       // Very short results
       if (text.length < 20) issues.push("Result is very short — may be truncated or incomplete");
@@ -245,7 +254,11 @@ Do not invent problems that are not supported by the text.`;
       ctx.model,
       {
         messages: [
-          { role: "user" as const, content: [{ type: "text" as const, text: prompt }], timestamp: Date.now() },
+          {
+            role: "user" as const,
+            content: [{ type: "text" as const, text: prompt }],
+            timestamp: Date.now(),
+          },
         ],
       },
       { maxTokens: 1024, temperature: 0.1 },
@@ -254,7 +267,7 @@ Do not invent problems that are not supported by the text.`;
     const content =
       typeof response === "string"
         ? response
-        : (response as any)?.content ?? (response as any)?.message?.content ?? "";
+        : ((response as any)?.content ?? (response as any)?.message?.content ?? "");
 
     // Extract JSON from response
     const jsonMatch = content.match(/\{[\s\S]*?\}/);
@@ -269,7 +282,8 @@ Do not invent problems that are not supported by the text.`;
       suggestions: Array.isArray(parsed.suggestions)
         ? parsed.suggestions.filter(Boolean).slice(0, 5)
         : [],
-      confidence: typeof parsed.confidence === "number" ? Math.max(0, Math.min(1, parsed.confidence)) : 0.7,
+      confidence:
+        typeof parsed.confidence === "number" ? Math.max(0, Math.min(1, parsed.confidence)) : 0.7,
     };
   } catch (err) {
     log.debug(`verify: LLM call failed: ${err}`);
@@ -312,19 +326,28 @@ export function createVerifyTool() {
           }),
         ),
         targetText: Type.Optional(
-          Type.String({ description: "Text to verify. If omitted, auto-detected from recent context." }),
+          Type.String({
+            description: "Text to verify. If omitted, auto-detected from recent context.",
+          }),
         ),
         criteria: Type.Optional(
-          Type.Array(Type.String(), { description: "Specific criteria to check. Auto-generated if omitted." }),
+          Type.Array(Type.String(), {
+            description: "Specific criteria to check. Auto-generated if omitted.",
+          }),
         ),
         depth: Type.Optional(
           Type.String({
-            description: "Verification depth: quick (heuristic only), standard (heuristic + LLM), deep (thorough LLM)",
+            description:
+              "Verification depth: quick (heuristic only), standard (heuristic + LLM), deep (thorough LLM)",
             enum: ["quick", "standard", "deep"],
           }),
         ),
         confidenceThreshold: Type.Optional(
-          Type.Number({ description: "Block finalize if confidence below this threshold. Default: 0.5", minimum: 0, maximum: 1 }),
+          Type.Number({
+            description: "Block finalize if confidence below this threshold. Default: 0.5",
+            minimum: 0,
+            maximum: 1,
+          }),
         ),
       },
       { additionalProperties: false },
@@ -336,7 +359,10 @@ export function createVerifyTool() {
       _signal: AbortSignal,
       _onUpdate: (update: unknown) => void,
       ctx: ExtensionContext,
-    ): Promise<{ content: Array<{ type: "text"; text: string }>; details: Record<string, unknown> }> {
+    ): Promise<{
+      content: Array<{ type: "text"; text: string }>;
+      details: Record<string, unknown>;
+    }> {
       const p = params as {
         target?: VerificationTarget;
         targetText?: string;
@@ -370,7 +396,8 @@ export function createVerifyTool() {
       // Step 1: Heuristic quick check (always runs)
       const { issues: heuristicIssues, checksRun } = heuristicCheck(target, text);
       let allIssues = [...heuristicIssues];
-      let confidence = heuristicIssues.length === 0 ? 0.7 : Math.max(0.3, 0.7 - heuristicIssues.length * 0.1);
+      let confidence =
+        heuristicIssues.length === 0 ? 0.7 : Math.max(0.3, 0.7 - heuristicIssues.length * 0.1);
       let suggestions: string[] = [];
 
       // Step 2: LLM deep verification for standard/deep
@@ -411,7 +438,9 @@ export function createVerifyTool() {
       // Format output
       const lines: string[] = [];
       const verdict = passed ? "✅ PASSED" : `❌ ${uniqueIssues.length} issue(s) found`;
-      lines.push(`[verify] ${verdict} (confidence: ${(confidence * 100).toFixed(0)}%, ${result.verificationMs}ms)`);
+      lines.push(
+        `[verify] ${verdict} (confidence: ${(confidence * 100).toFixed(0)}%, ${result.verificationMs}ms)`,
+      );
       lines.push(`Target: ${target} | Depth: ${depth} | Checks: ${checksRun.join(", ")}`);
 
       if (uniqueIssues.length > 0) {
@@ -434,7 +463,9 @@ export function createVerifyTool() {
         );
       }
 
-      log.debug(`verify: ${passed ? "PASSED" : "FAILED"} (${uniqueIssues.length} issues, conf=${confidence.toFixed(2)})`);
+      log.debug(
+        `verify: ${passed ? "PASSED" : "FAILED"} (${uniqueIssues.length} issues, conf=${confidence.toFixed(2)})`,
+      );
 
       return {
         content: [{ type: "text", text: lines.join("\n") }],

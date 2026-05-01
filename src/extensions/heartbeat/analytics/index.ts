@@ -412,7 +412,7 @@ function formatAllSessions(): string {
 
 export default function analyticsExtension(pi: ExtensionAPI) {
   // Pending tool calls — timing tracker (closure-scoped, not stateful)
-  let pendingToolCalls: Map<string, { toolName: string; startTime: number }> = new Map();
+  const pendingToolCalls: Map<string, { toolName: string; startTime: number }> = new Map();
 
   // Initialize on session start
   pi.on("session_start", async (_event, ctx) => {
@@ -547,7 +547,6 @@ export default function analyticsExtension(pi: ExtensionAPI) {
       );
     }
   });
-
 
   // Cleanup on session shutdown
   pi.on("session_shutdown", async (_event, ctx) => {

@@ -224,14 +224,16 @@ const thinkSchema = Type.Object({
   ),
   complexity: Type.Optional(
     Type.Number({
-      description: "Task complexity 0-1 (auto-estimated from observation if omitted). Used for ODAR Fast/Slow routing: 0-0.3=quick, 0.3-0.7=standard, 0.7+=deep.",
+      description:
+        "Task complexity 0-1 (auto-estimated from observation if omitted). Used for ODAR Fast/Slow routing: 0-0.3=quick, 0.3-0.7=standard, 0.7+=deep.",
       minimum: 0,
       maximum: 1,
     }),
   ),
   auto_depth: Type.Optional(
     Type.Boolean({
-      description: "Auto-select depth from complexity estimation (recommended when depth is not explicit). Default: false.",
+      description:
+        "Auto-select depth from complexity estimation (recommended when depth is not explicit). Default: false.",
     }),
   ),
   ask_utility_model: Type.Optional(
@@ -322,7 +324,9 @@ export function stepConsistencyCheck(
   ];
   for (const [neg, pos] of contradictions) {
     if ((pl.includes(neg) && cl.includes(pos)) || (pl.includes(pos) && cl.includes(neg))) {
-      issues.push(`Contradiction: "${parent.decision.slice(0, 40)}" vs "${current.decision.slice(0, 40)}"`);
+      issues.push(
+        `Contradiction: "${parent.decision.slice(0, 40)}" vs "${current.decision.slice(0, 40)}"`,
+      );
     }
   }
   if (/\bbecause\b/i.test(cl) && !/\bbecause\b/i.test(pl)) {
@@ -334,7 +338,9 @@ export function stepConsistencyCheck(
     parent.confidence > 0.7 &&
     current.confidence < 0.3
   ) {
-    issues.push(`Confidence drop: ${Math.round(parent.confidence * 100)}% → ${Math.round(current.confidence * 100)}%`);
+    issues.push(
+      `Confidence drop: ${Math.round(parent.confidence * 100)}% → ${Math.round(current.confidence * 100)}%`,
+    );
   }
   return issues;
 }
@@ -367,7 +373,9 @@ export function createThinkTool() {
         // Auto-estimate when: auto_depth=true, OR depth not provided AND task has substance
         const estimated = estimateComplexity(observation);
         depth = complexityToDepth(estimated);
-        log.debug(`ODAR: auto depth ${depth} (complexity=${estimated.toFixed(2)}, len=${observation.length})`);
+        log.debug(
+          `ODAR: auto depth ${depth} (complexity=${estimated.toFixed(2)}, len=${observation.length})`,
+        );
       }
       const budget = getBudget(depth);
       const useDeepReview = params.ask_utility_model === true || depth === "deep";
@@ -375,7 +383,7 @@ export function createThinkTool() {
       const consistencyIssues: string[] = []; // Process Supervision (2604.07822)
 
       // Persist to session chain
-      let tokensUsed = 0;
+      const tokensUsed = 0;
       if (ctx) {
         const chain = getChainState(ctx);
         const record: ThoughtRecord = {

@@ -64,10 +64,29 @@ const ENTITY_KEYWORDS = [
 
 /** Negation markers for polarity detection */
 const NEGATION_WORDS = new Set([
-  "not", "no", "never", "neither", "nor", "none", "nothing",
-  "doesn't", "don't", "didn't", "won't", "wouldn't", "shouldn't",
-  "can't", "cannot", "couldn't", "isn't", "aren't", "wasn't",
-  "haven't", "hasn't", "hadn't", "without",
+  "not",
+  "no",
+  "never",
+  "neither",
+  "nor",
+  "none",
+  "nothing",
+  "doesn't",
+  "don't",
+  "didn't",
+  "won't",
+  "wouldn't",
+  "shouldn't",
+  "can't",
+  "cannot",
+  "couldn't",
+  "isn't",
+  "aren't",
+  "wasn't",
+  "haven't",
+  "hasn't",
+  "hadn't",
+  "without",
 ]);
 
 /** Contradiction signal pairs: opposite-direction claims about same entity */
@@ -121,13 +140,18 @@ export function extractClaims(text: string): Claim[] {
   if (!text || text.length < 20) return [];
 
   const claims: Claim[] = [];
-  const sentences = text.split(/[.!?\n]+/).map((s) => s.trim()).filter((s) => s.length > 15);
+  const sentences = text
+    .split(/[.!?\n]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 15);
 
   for (const sentence of sentences) {
     // Skip questions, commands, and meta-commentary
-    if (/^\s*(what|how|why|is|are|can|should|would|let|try|check|note|see)/i.test(sentence)) continue;
+    if (/^\s*(what|how|why|is|are|can|should|would|let|try|check|note|see)/i.test(sentence))
+      continue;
     if (/^(i'?ll|i will|i need|i think|i believe|i suggest|i'm going)/i.test(sentence)) continue;
-    if (/^(this is why|the reason|because|so|therefore|thus|however|but|although)/i.test(sentence)) continue;
+    if (/^(this is why|the reason|because|so|therefore|thus|however|but|although)/i.test(sentence))
+      continue;
 
     // Extract entity: first noun-like phrase
     const entity = extractEntity(sentence);
@@ -142,8 +166,8 @@ export function extractClaims(text: string): Claim[] {
 
     // Deduplicate: skip if similar claim already extracted from same response
     const isDuplicate = claims.some(
-      (c) => c.entity.toLowerCase() === entity.toLowerCase() &&
-        tokenOverlap(c.claim, claimText) > 0.7,
+      (c) =>
+        c.entity.toLowerCase() === entity.toLowerCase() && tokenOverlap(c.claim, claimText) > 0.7,
     );
     if (isDuplicate) continue;
 
@@ -164,7 +188,9 @@ export function extractClaims(text: string): Claim[] {
 /** Extract the entity/subject from a sentence */
 function extractEntity(sentence: string): string | null {
   // Pattern: "The X is/does..." or "X is/does..."
-  const match = sentence.match(/^(?:the\s+)?(\w+(?:\s+\w+){0,3})\s+(?:is|was|will|can|does|has|should|must|returns|takes|accepts|uses|provides|creates|handles|implements|extends|contains|supports|needs|requires)\b/i);
+  const match = sentence.match(
+    /^(?:the\s+)?(\w+(?:\s+\w+){0,3})\s+(?:is|was|will|can|does|has|should|must|returns|takes|accepts|uses|provides|creates|handles|implements|extends|contains|supports|needs|requires)\b/i,
+  );
   if (match) return match[1].toLowerCase();
 
   // Pattern: "This X..." where X is a known entity type
@@ -179,7 +205,10 @@ function extractEntity(sentence: string): string | null {
 /** Extract the predicate/claim portion after the entity */
 function extractPredicate(sentence: string): string {
   // Remove leading entity
-  const cleaned = sentence.replace(/^(?:the\s+)?(?:\w+(?:\s+\w+){0,3})\s+(?:is|was|will|can|does|has|should|must|returns|takes|accepts|uses|provides|creates|handles|implements|extends|contains|supports|needs|requires)\s+/i, "");
+  const cleaned = sentence.replace(
+    /^(?:the\s+)?(?:\w+(?:\s+\w+){0,3})\s+(?:is|was|will|can|does|has|should|must|returns|takes|accepts|uses|provides|creates|handles|implements|extends|contains|supports|needs|requires)\s+/i,
+    "",
+  );
   return cleaned.slice(0, 80).trim();
 }
 
@@ -196,8 +225,18 @@ function detectPolarity(sentence: string): "positive" | "negative" {
 
 /** Token overlap ratio between two strings */
 export function tokenOverlap(a: string, b: string): number {
-  const tokensA = new Set(a.toLowerCase().split(/\s+/).filter((t) => t.length > 2));
-  const tokensB = new Set(b.toLowerCase().split(/\s+/).filter((t) => t.length > 2));
+  const tokensA = new Set(
+    a
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((t) => t.length > 2),
+  );
+  const tokensB = new Set(
+    b
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((t) => t.length > 2),
+  );
   if (tokensA.size === 0 || tokensB.size === 0) return 0;
   let intersection = 0;
   for (const t of tokensA) {

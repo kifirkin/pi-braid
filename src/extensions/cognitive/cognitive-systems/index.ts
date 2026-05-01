@@ -43,10 +43,7 @@ const execFileAsync = promisify(execFile);
 import * as path from "node:path";
 import * as url from "node:url";
 
-const PROJECT_ROOT = path.resolve(
-  path.dirname(url.fileURLToPath(import.meta.url)),
-  "../../../..",
-);
+const PROJECT_ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../../..");
 
 /** Extract candidate file names from a hypothesis string using multiple patterns */
 function extractFileCandidates(hypothesis: string): string[] {
@@ -257,7 +254,7 @@ function createExplorePathsTool() {
 export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
   const memory = getCognitiveMemory();
   // Initialize async - tools will await before first use
-  let initPromise: Promise<void> | null = memory.init();
+  const initPromise: Promise<void> | null = memory.init();
 
   pi.registerTool({
     name: "memory_store",

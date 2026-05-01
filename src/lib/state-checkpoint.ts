@@ -71,7 +71,11 @@ function checkpointFilePath(sessionId: string): string {
 async function saveCheckpointsToDisk(sessionId: string, checkpoints: Checkpoint[]): Promise<void> {
   try {
     await fs.mkdir(CHECKPOINT_DIR, { recursive: true });
-    await fs.writeFile(checkpointFilePath(sessionId), JSON.stringify(checkpoints, null, 2), "utf-8");
+    await fs.writeFile(
+      checkpointFilePath(sessionId),
+      JSON.stringify(checkpoints, null, 2),
+      "utf-8",
+    );
   } catch (err) {
     log.error("Failed to save checkpoints:", err);
   }
@@ -106,7 +110,11 @@ export async function createCheckpoint(
 
   // Capture claim-tracker state (from P3.2)
   try {
-    const claimState = getExtensionState(ctx, "claim-tracker", () => ({} as Record<string, unknown>));
+    const claimState = getExtensionState(
+      ctx,
+      "claim-tracker",
+      () => ({}) as Record<string, unknown>,
+    );
     const cState = claimState as { claims?: unknown[]; lastCheckMs?: number };
     if (Object.keys(cState).length > 0) {
       snapshots["claim-tracker"] = {
@@ -120,7 +128,11 @@ export async function createCheckpoint(
 
   // Capture enforcement state summary
   try {
-    const enforcementState = getExtensionState(ctx, "enforcement", () => ({} as Record<string, unknown>));
+    const enforcementState = getExtensionState(
+      ctx,
+      "enforcement",
+      () => ({}) as Record<string, unknown>,
+    );
     const eState = enforcementState as { consecutiveErrorTurns?: number };
     if (Object.keys(eState).length > 0) {
       snapshots["enforcement"] = {
@@ -133,7 +145,7 @@ export async function createCheckpoint(
 
   // Capture heartbeat state (turn count, tool tracking)
   try {
-    const hbState = getExtensionState(ctx, "heartbeat", () => ({} as Record<string, unknown>));
+    const hbState = getExtensionState(ctx, "heartbeat", () => ({}) as Record<string, unknown>);
     const hState = hbState as { turnCount?: number; policyTurnCount?: number };
     if (Object.keys(hState).length > 0) {
       snapshots["heartbeat"] = {
@@ -207,10 +219,15 @@ export async function autoRollback(
 
   // Restore enforcement error counter (clear it to stop error burst detection)
   try {
-    const enforcementState = getExtensionState(ctx, "enforcement", () => ({} as Record<string, unknown>));
+    const enforcementState = getExtensionState(
+      ctx,
+      "enforcement",
+      () => ({}) as Record<string, unknown>,
+    );
     if (latest.stateSnapshots["enforcement"]) {
       const snap = latest.stateSnapshots["enforcement"] as { consecutiveErrorTurns?: number };
-      (enforcementState as { consecutiveErrorTurns: number }).consecutiveErrorTurns = snap.consecutiveErrorTurns ?? 0;
+      (enforcementState as { consecutiveErrorTurns: number }).consecutiveErrorTurns =
+        snap.consecutiveErrorTurns ?? 0;
     }
   } catch {
     // Best effort
@@ -218,7 +235,11 @@ export async function autoRollback(
 
   // Clear degradation state
   try {
-    const degState = getExtensionState(ctx, "degradation-detector", () => ({} as { isDegraded: boolean }));
+    const degState = getExtensionState(
+      ctx,
+      "degradation-detector",
+      () => ({}) as { isDegraded: boolean },
+    );
     degState.isDegraded = false;
   } catch {
     // Best effort
@@ -244,7 +265,11 @@ export async function heartbeatCheckpointTick(
   sessionId: string,
   isDegradedFlag: boolean,
 ): Promise<{ checkpointCreated: boolean; rollbackPerformed: boolean; message?: string }> {
-  const result = { checkpointCreated: false, rollbackPerformed: false, message: undefined as string | undefined };
+  const result = {
+    checkpointCreated: false,
+    rollbackPerformed: false,
+    message: undefined as string | undefined,
+  };
 
   if (isDegradedFlag) {
     // Degraded → auto-rollback
@@ -276,7 +301,8 @@ export function getCheckpointInfo(ctx: ExtensionContext): {
   const state = getCheckpointState(ctx);
   const latest = state.checkpoints[state.checkpoints.length - 1];
   const age = latest ? Math.round((Date.now() - latest.timestamp) / 1000) : 0;
-  const ageStr = age < 60 ? `${age}s` : age < 3600 ? `${Math.round(age / 60)}m` : `${Math.round(age / 3600)}h`;
+  const ageStr =
+    age < 60 ? `${age}s` : age < 3600 ? `${Math.round(age / 60)}m` : `${Math.round(age / 3600)}h`;
   return {
     count: state.checkpoints.length,
     latestTurn: latest?.turnCount ?? 0,

@@ -167,7 +167,9 @@ function formatEvalResult(value: unknown): string {
 
 // ── Tool param types ─────────────────────────────────────────────────
 
-const baseTimeoutParam = Type.Optional(Type.Number({ description: "Timeout in milliseconds (default: 30000)" }));
+const baseTimeoutParam = Type.Optional(
+  Type.Number({ description: "Timeout in milliseconds (default: 30000)" }),
+);
 
 const navigateParams = Type.Object({
   timeout: baseTimeoutParam,

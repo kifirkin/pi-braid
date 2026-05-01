@@ -277,7 +277,9 @@ export function registerSessionCompactHandler(pi: any): void {
             // Intercept appendMessage to skip the duplicate from session.prompt()
             _origAppendMessage = sm.appendMessage.bind(sm);
             sm.appendMessage = skipDuplicateAppend(sm);
-            log.info(`[context-manager] Pre-appended queued message (entry: ${_preAppendedEntryId})`);
+            log.info(
+              `[context-manager] Pre-appended queued message (entry: ${_preAppendedEntryId})`,
+            );
           } catch (e) {
             log.warn("[context-manager] Failed to pre-append queued message:", e);
           }

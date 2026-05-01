@@ -578,7 +578,10 @@ export default function enforcementExtension(pi: ExtensionAPI) {
     // Silent unless contradictions are found (warn-only, never blocks).
     if (!isBurst && event.message?.role === "assistant" && event.message?.content) {
       const msgContent = Array.isArray(event.message.content)
-        ? event.message.content.filter((c: any) => c?.type === "text").map((c: any) => c?.text || "").join(" ")
+        ? event.message.content
+            .filter((c: any) => c?.type === "text")
+            .map((c: any) => c?.text || "")
+            .join(" ")
         : typeof event.message.content === "string"
           ? event.message.content
           : "";
@@ -844,43 +847,37 @@ Persist them now - this is the minimum-fidelity moment.`,
 
   // ── auto_retry_end ────────────────────────────────────────────────────────
   // L3: Infrastructure errors from retry failures → individual, semantic
-  pi.on(
-    "auto_retry_end" as never,
-    async (
-      event: any,
-      ctx: ExtensionContext,
-    ) => {
-      if (!getState(ctx).enforcementActive) return;
+  pi.on("auto_retry_end" as never, async (event: any, ctx: ExtensionContext) => {
+    if (!getState(ctx).enforcementActive) return;
 
-      const { success, attempt, finalError } = event;
+    const { success, attempt, finalError } = event;
 
-      if (!success) {
-        getState(ctx).validationFailures++;
+    if (!success) {
+      getState(ctx).validationFailures++;
 
-        const now = Date.now();
-        if (now - getState(ctx).lastNudgeTime < getState(ctx).nudgeCooldownMs) return;
-        getState(ctx).lastNudgeTime = now;
+      const now = Date.now();
+      if (now - getState(ctx).lastNudgeTime < getState(ctx).nudgeCooldownMs) return;
+      getState(ctx).lastNudgeTime = now;
 
-        const errorType = _classifyRetryError(finalError ?? "");
+      const errorType = _classifyRetryError(finalError ?? "");
 
-        let msg = "";
-        if (errorType === "rate_limit") {
-          msg = `Rate limit after ${attempt} retry(s). Switch model with /model or wait.`;
-        } else if (errorType === "server_error") {
-          msg = `Server error after ${attempt} retry(s) (${finalError}). Provider may be overloaded.`;
-        } else if (errorType === "network") {
-          msg = `Network error after ${attempt} retry(s). Check your connection.`;
-        } else {
-          msg = `API error after ${attempt} retry(s): ${finalError ?? "unknown"}.`;
-        }
-
-        sendEnforcementWhisper(
-          pi,
-          `## ⚠️ ${msg}\n\nStore for reference: memory_store(content="API error: ${finalError}", tags=["error", "api"])`,
-        );
+      let msg = "";
+      if (errorType === "rate_limit") {
+        msg = `Rate limit after ${attempt} retry(s). Switch model with /model or wait.`;
+      } else if (errorType === "server_error") {
+        msg = `Server error after ${attempt} retry(s) (${finalError}). Provider may be overloaded.`;
+      } else if (errorType === "network") {
+        msg = `Network error after ${attempt} retry(s). Check your connection.`;
+      } else {
+        msg = `API error after ${attempt} retry(s): ${finalError ?? "unknown"}.`;
       }
-    },
-  );
+
+      sendEnforcementWhisper(
+        pi,
+        `## ⚠️ ${msg}\n\nStore for reference: memory_store(content="API error: ${finalError}", tags=["error", "api"])`,
+      );
+    }
+  });
 
   // ── message_end ────────────────────────────────────────────────────────────
   pi.on("message_end", async (event, ctx) => {

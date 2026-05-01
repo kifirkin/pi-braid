@@ -213,7 +213,9 @@ const POLICY_RULES: PolicyRule[] = [
     name: "memory_contamination",
     evaluate(signals, beliefs): PolicyRecommendation[] {
       const recent = signals.slice(-10);
-      const contamination = recent.filter((s) => s.source === "memory" && s.type === "contamination");
+      const contamination = recent.filter(
+        (s) => s.source === "memory" && s.type === "contamination",
+      );
       if (contamination.length > 0) {
         const count = contamination.length;
         return [

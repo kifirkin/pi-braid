@@ -94,7 +94,9 @@ let piRef: ExtensionAPI | null = null;
 
 function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
   for (const h of fireHandlers) {
-    try { h(timer); } catch {}
+    try {
+      h(timer);
+    } catch {}
   }
   emitTimerReminder(timer); // → heartbeat bus → agent reminder on next tick
   log.info(`[timer] fired: ${timer.id} — ${timer.reason}`);
@@ -109,7 +111,9 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
       },
       { deliverAs: "steer" },
     );
-  } catch { /* non-fatal — agent may be mid-turn */ }
+  } catch {
+    /* non-fatal — agent may be mid-turn */
+  }
 }
 
 function startTimerPolling(pi: ExtensionAPI): void {
