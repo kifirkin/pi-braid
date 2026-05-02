@@ -230,7 +230,7 @@ test("codebase-tree: readFile uses async fs.readFile", async () => {
 
 const MODULE_PATHS = [
   "src/lib/cognitive-memory.ts",
-  "src/extensions/core/scratchpad/index.ts",
+  "src/extensions/core/scratchpad/persistence.ts",
   "src/extensions/cognitive/enforcement/index.ts",
   "src/extensions/retry/error-capture/index.ts",
   "src/extensions/tools/docs/index.ts",
