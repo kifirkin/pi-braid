@@ -1,4 +1,5 @@
 import { createLogger } from "../../../lib/logger.js";
+import { eventBus } from "../../../lib/event-bus.js";
 
 const log = createLogger("analytics");
 
@@ -111,6 +112,18 @@ export function updateContextDensity(ctx: ExtensionContext, density: number) {
   state.contextDensity = Math.round(density * 1000) / 10;
   state.lastDensityTurn = (ctx as any).turnCount ?? 0;
   log.debug(`analytics: context_density=${state.contextDensity.toFixed(1)}%`);
+
+  // Emit context_full event when density exceeds 70%
+  if (state.contextDensity > 70) {
+    try {
+      eventBus.emit({
+        type: "context_full",
+        usagePercent: state.contextDensity,
+        tokensUsed: 0,
+        tokensLimit: 0,
+      });
+    } catch {} // non-fatal
+  }
 }
 
 /**

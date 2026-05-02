@@ -1,6 +1,7 @@
 import { createLogger } from "../../../lib/logger.js";
 import { resetState } from "./state.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
+import { eventBus } from "../../../lib/event-bus.js";
 
 const log = createLogger("enforcement");
 /**

@@ -1,4 +1,5 @@
 import { createLogger } from "../../../lib/logger.js";
+import { eventBus } from "../../../lib/event-bus.js";
 
 const log = createLogger("enforcement");
 /**
@@ -34,6 +35,16 @@ const _default: WhisperState = { pendingWhisper: null, pendingBlockAction: null 
  * which only fires when user sends a message (causing whisper accumulation).
  */
 export function sendEnforcementWhisper(pi: ExtensionAPI, message: string): void {
+  // Emit via event bus
+  try {
+    eventBus.emit({
+      type: "enforcement_violation",
+      rule: "enforcement",
+      description: message,
+      severity: "medium",
+    });
+  } catch {}
+
   // Tag all enforcement whispers as [enforcement] so the agent knows these are
   // system-generated signals, not human messages.
   sendTrackedMessage(
