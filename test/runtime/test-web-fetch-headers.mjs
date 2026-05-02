@@ -3,7 +3,10 @@ import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 
 const fs = require("fs");
-const webFetchSource = fs.readFileSync("src/extensions/tools/web-fetch/index.ts", "utf-8");
+const webFetchSource = fs.readFileSync(
+  require("os").homedir() + "/.pi/agent/extensions/pi-web-fetch/index.ts",
+  "utf-8"
+);
 
 let pass = 0;
 let fail = 0;

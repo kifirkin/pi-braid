@@ -38,14 +38,11 @@ import errorCaptureFn from "../extensions/retry/error-capture/index.js";
 import promptBuilderFn from "../extensions/prompt/prompt-builder/index.js";
 import promptGuardianFn from "../extensions/prompt/prompt-guardian/index.js";
 
-import replFn from "../extensions/tools/repl/index.js";
-import docsFn from "../extensions/tools/docs/index.js";
 import healthcheckFn from "../extensions/tools/healthcheck/index.js";
 import timerFn from "../extensions/tools/timer/index.js";
 import latentActivatorFn from "../extensions/tools/latent-activator/index.js";
 
 import browserFn from "../extensions/tools/browser/index.js";
-import webFetchFn from "../extensions/tools/web-fetch/index.js";
 import visionFn from "../extensions/tools/vision/index.js";
 
 import assistantFn from "../extensions/assistant/assistant/index.js";
@@ -251,8 +248,6 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
 		description: "Codebase graph, REPL, docs reader, timer, latent activator",
 		dependencies: ["core"],
 		extensions: [
-			{ name: "repl",                 fn: replFn },
-			{ name: "docs",                 fn: docsFn },
 			{ name: "healthcheck",          fn: healthcheckFn },
 			{ name: "timer",                fn: timerFn },
 			{ name: "latent-activator",     fn: latentActivatorFn },
@@ -271,7 +266,6 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
 		dependencies: ["core"],
 		extensions: [
 			{ name: "browser",               fn: browserFn },
-			{ name: "web-fetch",            fn: webFetchFn },
 			{ name: "vision",               fn: visionFn },
 		],
 		listensTo: ["session_shutdown"], // browser only

@@ -202,7 +202,6 @@ const MODULE_PATHS = [
   "src/extensions/core/scratchpad/persistence.ts",
   "src/extensions/cognitive/enforcement/index.ts",
   "src/extensions/retry/error-capture/index.ts",
-  "src/extensions/tools/docs/index.ts",
   "src/extensions/tools/vision/index.ts",
 ];
 
