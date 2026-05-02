@@ -23,6 +23,10 @@ import { readFile as fsReadFilePromise } from "node:fs/promises";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+// ── Re-export types ─────────────────────────────────────────────────────────
+export type { Episode, HeuristicRule, ToolStat } from "./types.js";
+import type { MemoryStoresState, Episode, HeuristicRule, ToolStat } from "./types.js";
+
 // ── Project Identifier ───────────────────────────────────────────────────────
 // Determines the project scope for memory isolation.
 // Uses the top 2 path components of cwd as a stable project identifier:
@@ -42,67 +46,6 @@ const log = createLogger("three-memory-stores");
 
 function textResult(text: string) {
   return { content: [{ type: "text" as const, text }], details: {} };
-}
-
-// ── Types ────────────────────────────────────────────────────────────────────
-
-export interface Episode {
-  id: string;
-  task: string;
-  solution: string;
-  outcome: "success" | "failure" | "partial";
-  similarity: number;
-  timestamp: number;
-  toolSequence: string[];
-  tags: string[];
-  /** Project path where this episode was created. Provenance tag (HaluMem 2511.03506). */
-  project: string;
-  /** Session ID — enables cross-session contamination filtering. */
-  sessionId: string;
-  /** Quality score 0-1 (Decocted Experience 2604.03213): outcome × tool diversity × reasoning density. */
-  quality?: number;
-  /** Strategic SOP (high-level): Overall strategy used (e.g., "Debug by isolating components"). */
-  strategicSOP?: string;
-  /** Functional SOP (mid-level): Key steps taken (e.g., ["Reproduce bug", "Locate root cause", "Apply fix"]). */
-  functionalSOP?: string[];
-  /** Atomic SOP (low-level): Tool invocations — same as toolSequence. */
-  atomicSOP?: string[];
-}
-
-export interface HeuristicRule {
-  id: string;
-  condition: string;
-  action: string;
-  priority: number;
-  successRate: number;
-  uses: number;
-  successes: number;
-  lastUsed: number;
-  created: number;
-  /** Source: "sop" for success-derived, "principle" for failure-derived */
-  ruleType?: "sop" | "principle";
-}
-
-export interface ToolStat {
-  tool: string;
-  taskType: string;
-  attempts: number;
-  successes: number;
-  lastAttempt: number;
-  avgDuration: number;
-}
-
-interface MemoryStoresState {
-  episodes: Episode[];
-  heuristics: HeuristicRule[];
-  toolStats: Map<string, ToolStat>;
-  currentSessionTools: string[];
-  sessionStartTime: number;
-  lastSkillType: string; // R6: track tool→skill transitions for proactive recall
-  skillTransitionCount: number; // R6: count skill transitions this session
-  recentErrors: string[]; // R6: recent error types for retry-recovery recall
-  /** Current session ID — enables cross-session contamination filtering (P1.7). */
-  currentSessionId: string;
 }
 
 // ── Factory ──────────────────────────────────────────────────────────────────
