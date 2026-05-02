@@ -1253,6 +1253,27 @@ function formatSOPForWhisper(episode: Episode): string {
     // TIER 1 CRITICAL: Activate the policy engine - was defined but never called!
     // Without this, cognitive modules (recaller, dreamer, contextHygiene, evolver) never fire.
     activatePolicyEngine(engine, state, ctx);
+
+    // Phase 2: SOP Retrieval + Coach Decision (Self-Evolution Loop)
+    try {
+      const { retrieveEpisodes } = await import("../../memory/three-memory-stores/index.js") as any;
+      const memState = getMemoryState(ctx);
+      if (memState) {
+        const project = ctx.cwd ?? "unknown";
+        const episodes = retrieveEpisodes(memState, project, 3, project);
+        if (episodes && episodes.length > 0) {
+          const topEpisode = episodes[0];
+          if (topEpisode.similarity > 0.3) {
+            const sopSummary = formatSOPForWhisper(topEpisode);
+            const msg = `📚 **Past SOP available** (similarity: ${(topEpisode.similarity * 100).toFixed(0)}%)\n${sopSummary}\n\nUse this as reference for the current task.`;
+            ctx.whisper?.("msg", { category: "cognitive", priority: "low" });
+            log.info(`Coach: Whispered SOP from past episode ${topEpisode.id}`);
+          }
+        }
+      }
+    } catch (err) {
+      log.debug(`SOP retrieval skipped: ${(err as Error).message}`);
+    }
   });
 
   // ── Event: agent_end ──────────────────────────────────────────────
