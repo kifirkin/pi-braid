@@ -47,6 +47,7 @@ import {
 import { heartbeatCheckpointTick } from "../../../lib/state-checkpoint.js";
 import { measureBigramEntropy, countSelfContradictions } from "../../../lib/reasoning-metrics.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
+import { eventBus } from "../../../lib/event-bus.js";
 
 const log = createLogger("heartbeat");
 
@@ -1129,6 +1130,13 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     if (!state.enabled || !config.enabled) return;
 
     state.turnCount++;
+
+    // Emit to event bus — modules react via handlers
+    eventBus.emit({
+      type: "turn_complete",
+      turn: state.turnCount,
+      duration: Date.now(),
+    });
 
     // D0.5: Use adaptive interval from meta-learning
     const interval = getAdaptiveInterval(state, config);

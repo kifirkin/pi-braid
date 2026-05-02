@@ -9,6 +9,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../../lib/logger.js";
 import { Type } from "typebox";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
+import { eventBus } from "../../../lib/event-bus.js";
 
 const log = createLogger("timer");
 
@@ -100,6 +101,18 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
     } catch {}
   }
   emitTimerReminder(timer); // → heartbeat bus → agent reminder on next tick
+
+  // Emit via event bus (unified event-driven path)
+  try {
+    eventBus.emit({
+      type: "timer_fire",
+      id: timer.id,
+      reason: timer.reason,
+      tag: timer.tag,
+      payload: `⏰ Timer "${timer.reason}" has fired. Action required.`,
+    });
+  } catch {}
+
   log.info(`[timer] fired: ${timer.id} — ${timer.reason}`);
   // Try to wake the agent with a steer message if between turns
   try {
