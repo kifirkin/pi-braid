@@ -38,7 +38,6 @@ import errorCaptureFn from "../extensions/retry/error-capture/index.js";
 import promptBuilderFn from "../extensions/prompt/prompt-builder/index.js";
 import promptGuardianFn from "../extensions/prompt/prompt-guardian/index.js";
 
-import codebaseTreeFn from "../extensions/tools/codebase-tree/index.js";
 import codebaseGraphFn from "../extensions/tools/codebase-graph/index.js";
 import replFn from "../extensions/tools/repl/index.js";
 import docsFn from "../extensions/tools/docs/index.js";
@@ -250,10 +249,9 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
 	{
 		name: "tools",
 		label: "Utility Tools",
-		description: "Codebase tree, REPL, docs reader, healthcheck, timer, latent activator",
+		description: "Codebase graph, REPL, docs reader, timer, latent activator",
 		dependencies: ["core"],
 		extensions: [
-			{ name: "codebase-tree",         fn: codebaseTreeFn },
 			{ name: "codebase-graph",       fn: codebaseGraphFn },
 			{ name: "repl",                 fn: replFn },
 			{ name: "docs",                 fn: docsFn },
