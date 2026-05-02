@@ -403,13 +403,228 @@ export function validateCompletion(ctx: ExtensionContext): CompletionValidation 
   };
 }
 
+// ── Phase 4: Coordination Checker ────────────────────────────────────────────
+// After a fix, check: are all derived/generated files updated?
+// Tracks "derived-from" relationships: if B imports A, B is derived from A.
+// If A is edited and B is NOT touched, flag as coordination risk.
+
+interface DerivedFile {
+  source: string;     // The file that was edited
+  derived: string;    // The file that depends on it
+  relation: string;   // "import", "generate", "inherit", "config"
+  turn: number;
+  stale: boolean;     // True if derived wasn't touched after source edit
+}
+
+interface CoordinationCheck {
+  derivedFiles: DerivedFile[];
+  staleDerivedFiles: DerivedFile[];
+  coordinationRisks: Array<{
+    turn: number;
+    source: string;
+    stale: string;
+    relation: string;
+  }>;
+}
+
+// Module-level state for coordination checker
+const _coordinationState: CoordinationCheck = {
+  derivedFiles: [],
+  staleDerivedFiles: [],
+  coordinationRisks: [],
+};
+
 /**
- * Get a combined verification report (Phases 1-3).
+ * Record that `derivedFile` is derived from `sourceFile`.
+ * Used when the agent explicitly notes a dependency,
+ * or when auto-detected from imports.
+ */
+export function recordDerivedFrom(
+  derived: string,
+  source: string,
+  relation: string,
+  turn: number,
+): void {
+  // Avoid duplicates
+  const exists = _coordinationState.derivedFiles.find(
+    (d) => d.derived === derived && d.source === source,
+  );
+  if (exists) return;
+
+  _coordinationState.derivedFiles.push({
+    source,
+    derived,
+    relation,
+    turn,
+    stale: true, // Starts stale until verified
+  });
+}
+
+/**
+ * Clear stale flags for all derived files touching a source.
+ * Called when the agent touches a file that may resolve derived dependencies.
+ */
+export function markDerivedResolved(source: string, derived: string): void {
+  for (const d of _coordinationState.derivedFiles) {
+    if (d.source === source && d.derived === derived) {
+      d.stale = false;
+    }
+  }
+}
+
+/**
+ * Auto-detect derived files from file content (import scanning).
+ * Scans the read file for imports of recently-edited files.
+ */
+function detectImportDerived(
+  readFilePath: string,
+  content: string,
+  recentlyEditedFiles: Set<string>,
+  turn: number,
+): void {
+  // Match: import ... from "relative/path"
+  const importRegex = /from\s+['"]([^'"]+)['"]/g;
+  let match;
+  while ((match = importRegex.exec(content)) !== null) {
+    const imported = match[1];
+    if (!imported.startsWith(".")) continue; // Skip non-relative imports
+
+    // Resolve relative import against read file's directory
+    const dir = readFilePath.substring(0, readFilePath.lastIndexOf("/") + 1);
+    const resolved = resolveRelativeImport(dir, imported);
+
+    // Check if the imported file was recently edited
+    for (const edited of recentlyEditedFiles) {
+      if (filesAreRelated(resolved, edited)) {
+        recordDerivedFrom(readFilePath, edited, "import", turn);
+      }
+    }
+  }
+
+  // Match: require("relative/path") or require('./path')
+  const requireRegex = /require\(['"]([^'"]+)['"]\)/g;
+  while ((match = requireRegex.exec(content)) !== null) {
+    const imported = match[1];
+    if (!imported.startsWith(".")) continue;
+    const dir = readFilePath.substring(0, readFilePath.lastIndexOf("/") + 1);
+    const resolved = resolveRelativeImport(dir, imported);
+    for (const edited of recentlyEditedFiles) {
+      if (filesAreRelated(resolved, edited)) {
+        recordDerivedFrom(readFilePath, edited, "require", turn);
+      }
+    }
+  }
+}
+
+/**
+ * Resolve a relative import path against a directory.
+ */
+function resolveRelativeImport(dir: string, importPath: string): string {
+  // Normalize: remove ./ prefix, resolve ../ up one level
+  let resolved = importPath;
+  if (resolved.startsWith("./")) resolved = resolved.slice(2);
+  while (resolved.startsWith("../")) {
+    resolved = resolved.slice(3);
+    const parts = dir.split("/");
+    if (parts.length > 1) {
+      dir = parts.slice(0, -2).join("/") + "/";
+    }
+  }
+  return dir + resolved;
+}
+
+/**
+ * After a file is edited, check for stale derived files.
+ * Returns coordination risks if any exist.
+ */
+export function checkCoordinationRisk(
+  ctx: ExtensionContext,
+  editedFile: string,
+  turn: number,
+): string | null {
+  const state = getVerifierState(ctx);
+
+  // Find derived files that depend on the edited file and are still stale
+  const staleDerived = _coordinationState.derivedFiles.filter(
+    (d) => d.source === editedFile && d.stale,
+  );
+
+  // Check if any of these derived files were touched AFTER the source edit
+  const sourceEditTurn = state.touchTurns.get(editedFile) ?? turn;
+  const stillStale: DerivedFile[] = [];
+  for (const d of staleDerived) {
+    const derivedTouchTurn = state.touchTurns.get(d.derived);
+    if (!derivedTouchTurn || derivedTouchTurn < sourceEditTurn) {
+      stillStale.push(d);
+    }
+  }
+
+  if (stillStale.length === 0) return null;
+
+  // Build coordination risk descriptions
+  const risks: Array<{ source: string; stale: string; relation: string }> = [];
+  for (const d of stillStale) {
+    risks.push({ source: d.source, stale: d.derived, relation: d.relation });
+    d.stale = true; // Keep as stale
+  }
+
+  _coordinationState.staleDerivedFiles.push(...stillStale);
+  _coordinationState.coordinationRisks.push(
+    ...risks.map((r) => ({ turn, ...r })),
+  );
+
+  const riskDesc = risks
+    .map((r) => `"${r.stale}" (${r.relation}) depends on edited "${r.source}" but wasn't updated`)
+    .join("; ");
+
+  return `Coordination risk: ${riskDesc}`;
+}
+
+/**
+ * Auto-scan a read file for imports of recently-edited files.
+ * Called externally when agent reads a file.
+ */
+export function scanForDerivedFiles(
+  ctx: ExtensionContext,
+  readFilePath: string,
+  content: string,
+  turn: number,
+): void {
+  const state = getVerifierState(ctx);
+  detectImportDerived(readFilePath, content, state.editedFiles, turn);
+}
+
+/**
+ * Get a summary of coordination checks (Phase 4).
+ */
+export function getCoordinationCheckSummary(): string {
+  const lines: string[] = [];
+
+  if (_coordinationState.derivedFiles.length === 0) {
+    return "No derived file relationships tracked.";
+  }
+
+  lines.push(`Derived relationships: ${_coordinationState.derivedFiles.length}`);
+  lines.push(`Stale derived files: ${_coordinationState.staleDerivedFiles.length}`);
+  lines.push(`Coordination risks: ${_coordinationState.coordinationRisks.length}`);
+
+  if (_coordinationState.coordinationRisks.length > 0) {
+    for (const r of _coordinationState.coordinationRisks.slice(-5)) {
+      lines.push(`  Turn ${r.turn}: "${r.stale}" depends on "${r.source}" (${r.relation}) — not updated`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Get a combined verification report (Phases 1-4).
  */
 export function getFullVerificationReport(ctx: ExtensionContext): string {
   const touchGraph = getTouchGraphSummary(ctx);
   const artifactValidation = getArtifactValidationSummary();
   const completion = validateCompletion(ctx);
+  const coordinationCheck = getCoordinationCheckSummary();
 
   const lines: string[] = [];
   lines.push("=== Bidirectional Verifier Report ===");
@@ -430,6 +645,12 @@ export function getFullVerificationReport(ctx: ExtensionContext): string {
     lines.push("WARNING: Low verification score — fix may not address the problem");
   }
   lines.push("");
+  lines.push("--- Coordination Check (Phase 4) ---");
+  lines.push(coordinationCheck);
+  if (_coordinationState.coordinationRisks.length > 0) {
+    lines.push("WARNING: Derived files may need updates — coordination risk detected");
+  }
+  lines.push("");
   lines.push("To reset verifier state for a new task, call clearVerifierState().");
 
   return lines.join("\n");
@@ -447,4 +668,7 @@ export function clearVerifierState(ctx: ExtensionContext): void {
   state.localizationRisks = [];
   _validationState.claimed = [];
   _validationState.mismatches = [];
+  _coordinationState.derivedFiles = [];
+  _coordinationState.staleDerivedFiles = [];
+  _coordinationState.coordinationRisks = [];
 }
