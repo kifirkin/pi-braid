@@ -1181,6 +1181,32 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     }
   });
 
+// ── Phase 2: SOP Retrieval + Coach Decision (Self-Evolution Loop) ──────────
+
+/** Format SOP (3-tier hierarchy) for whispering to agent */
+function formatSOPForWhisper(episode: Episode): string {
+  const parts: string[] = [];
+  
+  // Strategic SOP (high-level)
+  if (episode.strategicSOP) {
+    parts.push(`**Strategy**: ${episode.strategicSOP}`);
+  }
+  
+  // Functional SOP (mid-level)
+  if (episode.functionalSOP && episode.functionalSOP.length > 0) {
+    const steps = episode.functionalSOP.map((step, i) => `${i + 1}. ${step}`).join("\n");
+    parts.push(`**Key Steps**:\n${steps}`);
+  }
+  
+  // Atomic SOP (low-level - tool sequence)
+  if (episode.atomicSOP && episode.atomicSOP.length > 0) {
+    parts.push(`**Tools**: ${episode.atomicSOP.join(" → ")}`);
+  }
+  
+  return parts.length > 0 
+    ? parts.join("\n\n")
+    : `SOP for: ${episode.task.slice(0, 100)}`;
+}
   // ── Event: session_start ──────────────────────────────────────────
 
   pi.on("session_start", async (_event: any, ctx: ExtensionContext) => {
@@ -1229,6 +1255,27 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     // TIER 1 CRITICAL: Activate the policy engine - was defined but never called!
     // Without this, cognitive modules (recaller, dreamer, contextHygiene, evolver) never fire.
     activatePolicyEngine(engine, state, ctx);
+
+    // Phase 2: SOP Retrieval + Coach Decision (Self-Evolution Loop)
+    try {
+      const { retrieveEpisodes } = await import("../../memory/three-memory-stores/index.js") as any;
+      const memState = getMemoryState(ctx);
+      if (memState) {
+        const project = ctx.cwd ?? "unknown";
+        const episodes = retrieveEpisodes(memState, project, 3, project);
+        if (episodes && episodes.length > 0) {
+          const topEpisode = episodes[0];
+          if (topEpisode.similarity > 0.3) {
+            const sopSummary = formatSOPForWhisper(topEpisode);
+            const msg = `📚 **Past SOP available** (similarity: ${(topEpisode.similarity * 100).toFixed(0)}%)\n${sopSummary}\n\nUse this as reference for the current task.`;
+            ctx.whisper?.("msg", { category: "cognitive", priority: "low" });
+            log.info(`Coach: Whispered SOP from past episode ${topEpisode.id}`);
+          }
+        }
+      }
+    } catch (err) {
+      log.debug(`SOP retrieval skipped: ${(err as Error).message}`);
+    }
   });
 
   // ── Event: agent_end ──────────────────────────────────────────────

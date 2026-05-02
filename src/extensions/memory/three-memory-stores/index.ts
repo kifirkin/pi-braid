@@ -61,6 +61,12 @@ export interface Episode {
   sessionId: string;
   /** Quality score 0-1 (Decocted Experience 2604.03213): outcome × tool diversity × reasoning density. */
   quality?: number;
+  /** Strategic SOP (high-level): Overall strategy used (e.g., "Debug by isolating components"). */
+  strategicSOP?: string;
+  /** Functional SOP (mid-level): Key steps taken (e.g., ["Reproduce bug", "Locate root cause", "Apply fix"]). */
+  functionalSOP?: string[];
+  /** Atomic SOP (low-level): Tool invocations — same as toolSequence. */
+  atomicSOP?: string[];
 }
 
 export interface HeuristicRule {
@@ -73,6 +79,8 @@ export interface HeuristicRule {
   successes: number;
   lastUsed: number;
   created: number;
+  /** Source: "sop" for success-derived, "principle" for failure-derived */
+  ruleType?: "sop" | "principle";
 }
 
 export interface ToolStat {
@@ -127,6 +135,9 @@ function addEpisode(
   toolSequence: string[],
   tags: string[] = [],
   project?: string,
+  strategicSOP?: string,
+  functionalSOP?: string[],
+  atomicSOP?: string[],
 ): Episode {
   // Decocted Experience (2604.03213): Quality score = outcome × tool diversity × reasoning density
   const outcomeScore = { success: 1.0, partial: 0.5, failure: 0.2 }[outcome];
@@ -150,6 +161,9 @@ function addEpisode(
     project: project ?? "unknown",
     sessionId: state.currentSessionId || "unknown",
     quality,
+    strategicSOP,
+    functionalSOP,
+    atomicSOP,
   };
   state.episodes.push(episode);
 
@@ -422,6 +436,33 @@ function addHeuristicRule(
   };
   state.heuristics.push(rule);
   log.debug(`Added heuristic: "${condition.slice(0, 50)}..."`);
+  return rule;
+}
+
+/**
+ * Add a principle from a failed task.
+ * SkillX 2604.04804: Principles from failures are abstract rules to remember.
+ * Stored as HeuristicRule with ruleType="principle" and low priority.
+ */
+export function addPrinciple(
+  state: MemoryStoresState,
+  principle: string,
+  context: string,
+): HeuristicRule {
+  const rule: HeuristicRule = {
+    id: `pr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    condition: context,
+    action: principle,
+    priority: 0.2, // Low priority - from failure
+    successRate: 0.1, // Start with low success rate
+    uses: 0,
+    successes: 0,
+    lastUsed: Date.now(),
+    created: Date.now(),
+    ruleType: "principle",
+  };
+  state.heuristics.push(rule);
+  log.info(`Added principle: "${principle.slice(0, 50)}..."`);
   return rule;
 }
 

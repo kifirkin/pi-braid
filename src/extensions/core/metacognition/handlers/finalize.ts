@@ -24,7 +24,7 @@ async function recordToMemory(
   if (!ctx) return;
   try {
     // @ts-ignore dynamic import — runtime resolves after build, type-check not needed
-    const { addEpisode } = await import("../../memory/three-memory-stores/index.js");
+    const { addEpisode, addPrinciple } = await import("../../memory/three-memory-stores/index.js");
     const state = getExtensionState<any>(ctx, "three-memory-stores", () => ({
       episodes: [],
       heuristics: [],
@@ -36,6 +36,12 @@ async function recordToMemory(
     const tags = inferTagsFromSummary(summary);
     const toolSeq = getSessionToolSequence(ctx);
     const outcome = completed ? "success" : "failure";
+
+    // Extract 3-tier SOP (SkillX 2604.04804)
+    const strategicSOP = extractStrategicSOP(ctx, summary);
+    const functionalSOP = extractFunctionalSOP(toolSeq);
+    const atomicSOP = toolSeq; // Already the atomic-level SOP
+
     // addEpisode expects MemoryStoresState, we pass a compatible shape
     const episode = addEpisode(
       state,
@@ -45,11 +51,79 @@ async function recordToMemory(
       toolSeq,
       tags,
       project,
+      strategicSOP,
+      functionalSOP,
+      atomicSOP,
     );
     log.info(`R5: Recorded episode ${episode.id} (${outcome}) for: ${summary.slice(0, 60)}`);
+
+    // On failure: extract principle and store as heuristic rule
+    if (!completed) {
+      const principle = extractPrinciple(ctx, summary);
+      addPrinciple(
+        state,
+        principle,
+        summary.slice(0, 100),
+      );
+      log.info(`R5: Extracted principle from failure: ${principle.slice(0, 60)}`);
+    }
   } catch (err) {
     log.debug(`R5: Memory recording skipped: ${(err as Error).message}`);
   }
+}
+
+/**
+ * Extract principle from failed task.
+ * MARS 2601.11974: Principle-based reflection ("What general rule should I follow?")
+ */
+function extractPrinciple(ctx: ExtensionContext, summary: string): string {
+  // MVP: Generic principle based on failure
+  // TODO: Enhance with LLM-based extraction from error patterns
+  return `Avoid: ${summary.slice(0, 150)}`;
+}
+
+/**
+ * Extract strategic SOP (high-level): Overall strategy from task description.
+ * SkillX 2604.04804: Strategic plans guide overall approach.
+ */
+function extractStrategicSOP(ctx: ExtensionContext, summary: string): string {
+  // MVP: Use the summary as strategic SOP
+  // TODO: Enhance with LLM-based extraction from first user message
+  return `Task: ${summary.slice(0, 200)}`;
+}
+
+/**
+ * Extract functional SOP (mid-level): Key steps from tool sequence.
+ * Groups consecutive tools into logical steps.
+ * SkillX 2604.04804: Functional skills are mid-level procedures.
+ */
+function extractFunctionalSOP(toolSeq: string[]): string[] {
+  if (toolSeq.length === 0) return [];
+  
+  const steps: string[] = [];
+  let currentStep = "";
+  let lastTool = "";
+  
+  for (const tool of toolSeq) {
+    // Group consecutive same-type tools
+    if (tool === lastTool) {
+      // Part of same step, skip
+      continue;
+    }
+    
+    // New tool type - save previous step and start new
+    if (currentStep) {
+      steps.push(currentStep);
+    }
+    currentStep = tool;
+    lastTool = tool;
+  }
+  
+  if (currentStep) {
+    steps.push(currentStep);
+  }
+  
+  return steps.length > 0 ? steps : ["No clear steps identified"];
 }
 
 function inferTagsFromSummary(summary: string): string[] {
