@@ -42,8 +42,6 @@ import healthcheckFn from "../extensions/tools/healthcheck/index.js";
 import timerFn from "../extensions/tools/timer/index.js";
 import latentActivatorFn from "../extensions/tools/latent-activator/index.js";
 
-import browserFn from "../extensions/tools/browser/index.js";
-import visionFn from "../extensions/tools/vision/index.js";
 
 import assistantFn from "../extensions/assistant/assistant/index.js";
 import feedbackFn from "../extensions/assistant/feedback/index.js";
@@ -257,21 +255,6 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
 	},
 
 	// ═════════════════════════════════════════════════════════════════════
-	// BROWSER — Web interaction via CDP
-	// ═════════════════════════════════════════════════════════════════════
-	{
-		name: "browser",
-		label: "Browser Automation",
-		description: "Browser CDP, web fetch, image analysis",
-		dependencies: ["core"],
-		extensions: [
-			{ name: "browser",               fn: browserFn },
-			{ name: "vision",               fn: visionFn },
-		],
-		listensTo: ["session_shutdown"], // browser only
-		coupledWith: [],
-	},
-
 	// ═════════════════════════════════════════════════════════════════════
 	// ASSISTANT — State persistence + UX + feedback whisper
 	// Coupling: all three are user-facing. assistant + feedback listen to
