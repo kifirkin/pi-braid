@@ -110,16 +110,6 @@ pi-braid should use `stepfun/step-3.5-flash` via `pi-poorman-providers` as the b
 - XoT two-stage reasoning: classify → whisper for conflicts
 - Three-memory auto-recall: fires with 10s cooldown, similarity > 0.3
 
-## Key Research Findings
-
-### What HELPS pi-braid
-
-- Compaction v0.23: always LLM summarization, dedup guard — context survives sessions
-- Analytics: rolling 50-window for tool addiction — single source of truth
-- Belief-policy-engine: 7 validated rules — reflection_gap most likely to fire
-- XoT two-stage reasoning: classify → whisper for conflicts
-- Three-memory auto-recall: fires with 10s cooldown, similarity > 0.3
-
 ### What HURTS pi-braid
 
 - Multiple sendMessage call sites → context pollution (wired to injection-tracker)
@@ -137,13 +127,11 @@ pi-braid should use `stepfun/step-3.5-flash` via `pi-poorman-providers` as the b
 - Model must include `provider` + `api` + `baseUrl` for API calls (not just `id`)
 - Tool calls in `toolResult` messages (not just `assistant`)
 - stepfun reasoning=true but no thinking output in SDK events
-
-### Infrastructure Findings
-
 - pi RPC needs threading: stdout reader thread + queue to avoid deadlock
 - message_end fires BEFORE text arrives (streaming chunks in message_update)
 - agent_end.messages is incomplete — accumulate from both message_end + agent_end.messages
 - pi RPC may echo prompts in some sessions — always validate response != prompt
+
 # Context Management Improvements
 
 > Research-driven analysis of pi-braid's context management system, identifying root causes of context growth and proposing concrete improvements based on published research.
