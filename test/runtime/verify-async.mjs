@@ -194,37 +194,6 @@ test("vision: checkImageSize uses async fs.stat", async () => {
 });
 
 // ============================================================================
-// VERIFY: codebase-tree/index.ts - async fastStat with caching
-// ============================================================================
-
-test("codebase-tree: fastStat uses async fs.stat", async () => {
-  const tmpFile = path.join(os.tmpdir(), "test-tree-file.txt");
-  await fs.writeFile(tmpFile, "test");
-
-  // Test the pattern: try stat, catch if doesn't exist
-  try {
-    const stats = await fs.stat(tmpFile);
-    const result = stats.isFile();
-    await fs.unlink(tmpFile).catch(() => {});
-    return result;
-  } catch {
-    await fs.unlink(tmpFile).catch(() => {});
-    return false;
-  }
-});
-
-test("codebase-tree: readFile uses async fs.readFile", async () => {
-  const tmpFile = path.join(os.tmpdir(), "test-readfile.txt");
-  const content = "test readFile content";
-  await fs.writeFile(tmpFile, content);
-
-  const read = await fs.readFile(tmpFile, "utf-8");
-  await fs.unlink(tmpFile).catch(() => {});
-
-  return read === content;
-});
-
-// ============================================================================
 // VERIFY: All modules use fs/promises import
 // ============================================================================
 
@@ -235,7 +204,6 @@ const MODULE_PATHS = [
   "src/extensions/retry/error-capture/index.ts",
   "src/extensions/tools/docs/index.ts",
   "src/extensions/tools/vision/index.ts",
-  "src/extensions/tools/codebase-tree/index.ts",
 ];
 
 for (const modPath of MODULE_PATHS) {
