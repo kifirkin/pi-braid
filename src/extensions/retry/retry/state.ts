@@ -28,6 +28,7 @@ import {
 import { getExtensionState } from "../../../lib/extension-state.js";
 import { createLogger } from "../../../lib/logger.js";
 import { homedir } from "node:os";
+import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { join } from "node:path";
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
 
@@ -426,14 +427,15 @@ export async function continueRetry(pi: ExtensionAPI, ctx?: ExtensionContext): P
   // Minimal steer: just ask the agent to retry. The agent already has the
   // user message and error context in its conversation history. Re-sending
   // the raw message or verbose error context creates confusion.
-  await pi.sendMessage(
+  sendTrackedMessage(
+    pi,
     {
       customType: "retry",
       content: [{ type: "text" as const, text: `[retry] Proceed where you were left off.` }],
       display: true,
-      details: { _braidInjected: true, _braidSource: "retry/continue" },
     },
     { deliverAs: "steer", triggerTurn: true },
+    { type: "retry", source: "retry/continue" },
   );
   return true;
 }

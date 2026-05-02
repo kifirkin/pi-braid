@@ -1,5 +1,6 @@
 import { createLogger } from "../../../lib/logger.js";
 import { resetState } from "./state.js";
+import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 
 const log = createLogger("enforcement");
 /**
@@ -248,12 +249,16 @@ export default function enforcementExtension(pi: ExtensionAPI) {
     clearPendingBlockAction();
 
     if (pendingBlock) {
-      pi.sendMessage({
-        customType: "context",
-        display: true,
-        content: [{ type: "text", text: `[enforcement] BLOCKED: ${pendingBlock.reason}` }],
-        details: { _braidInjected: true, _braidSource: "enforcement/block" },
-      });
+      sendTrackedMessage(
+        pi,
+        {
+          customType: "context",
+          display: true,
+          content: [{ type: "text", text: `[enforcement] BLOCKED: ${pendingBlock.reason}` }],
+        },
+        undefined,
+        { type: "enforcement", source: "enforcement/block" },
+      );
     }
   });
 
@@ -1129,12 +1134,16 @@ Persist them now - this is the minimum-fidelity moment.`,
     if (driftCheck.drifted) {
       const whisper = getState(ctx).driftDetector.generateWhisper(driftCheck);
       if (whisper) {
-        pi.sendMessage({
-          customType: "context",
-          display: true,
-          content: [{ type: "text", text: `[enforcement] ${whisper}` }],
-          details: { _braidInjected: true, _braidSource: "enforcement/drift" },
-        });
+        sendTrackedMessage(
+          pi,
+          {
+            customType: "context",
+            display: true,
+            content: [{ type: "text", text: `[enforcement] ${whisper}` }],
+          },
+          undefined,
+          { type: "enforcement", source: "enforcement/drift" },
+        );
       }
       // Emit to Belief Policy Engine
       emitSignal(
@@ -1162,12 +1171,16 @@ Persist them now - this is the minimum-fidelity moment.`,
     if (bpeRec) {
       (pi as any).__lastRecommendationType = bpeRec.type;
       enState.toolCallsAtLastRecommendation = enState.totalToolCalls;
-      pi.sendMessage({
-        customType: "context",
-        display: true,
-        content: [{ type: "text", text: `[policy] ${bpeRec.message}` }],
-        details: { _braidInjected: true, _braidSource: "enforcement/policy" },
-      });
+      sendTrackedMessage(
+        pi,
+        {
+          customType: "context",
+          display: true,
+          content: [{ type: "text", text: `[policy] ${bpeRec.message}` }],
+        },
+        undefined,
+        { type: "enforcement", source: "enforcement/policy" },
+      );
     }
 
     // MARS — get self-reflection advice
@@ -1194,12 +1207,16 @@ Persist them now - this is the minimum-fidelity moment.`,
         type: marsAdvice.type,
         message: marsAdvice.message.slice(0, 200),
       });
-      pi.sendMessage({
-        customType: "context",
-        display: true,
-        content: [{ type: "text", text: `[enforcement] ${marsAdvice.message}` }],
-        details: { _braidInjected: true, _braidSource: "enforcement/mars" },
-      });
+      sendTrackedMessage(
+        pi,
+        {
+          customType: "context",
+          display: true,
+          content: [{ type: "text", text: `[enforcement] ${marsAdvice.message}` }],
+        },
+        undefined,
+        { type: "enforcement", source: "enforcement/mars" },
+      );
     }
 
     // D0: Dreamer — proactive simulation of likely future paths
@@ -1210,12 +1227,16 @@ Persist them now - this is the minimum-fidelity moment.`,
         source: "dreamer",
         message: dreamAdvice.message.slice(0, 200),
       });
-      pi.sendMessage({
-        customType: "context",
-        display: true,
-        content: [{ type: "text", text: `[enforcement] ${dreamAdvice.message}` }],
-        details: { _braidInjected: true, _braidSource: "enforcement/dreamer" },
-      });
+      sendTrackedMessage(
+        pi,
+        {
+          customType: "context",
+          display: true,
+          content: [{ type: "text", text: `[enforcement] ${dreamAdvice.message}` }],
+        },
+        undefined,
+        { type: "enforcement", source: "enforcement/dreamer" },
+      );
     }
 
     // D0: Emit reflection gap signal for belief-policy-engine

@@ -13,6 +13,7 @@ import { createHypothesizeTool } from "./handlers/hypothesize.js";
 import { createFinalizeTool } from "./handlers/finalize.js";
 import { createVerifyTool } from "./handlers/verify.js";
 import { evaluateCognition } from "../../../lib/cognition-evaluator.js";
+import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { Type } from "typebox";
 
 interface MetaMetrics {
@@ -55,16 +56,17 @@ export default function metacognitionExtension(pi: ExtensionAPI) {
         // Logging handled by the finalize tool's own execution
       },
       sendNextTask: (description) => {
-        pi.sendMessage(
+        sendTrackedMessage(
+          pi,
           {
             customType: "metacognition",
             content: [
               { type: "text" as const, text: `[system] Continue with next task: ${description}` },
             ],
             display: true,
-            details: { _braidInjected: true, _braidSource: "metacognition/next-task" },
           },
           { deliverAs: "steer" },
+          { type: "other", source: "metacognition/next-task" },
         );
       },
       recordCalibration,

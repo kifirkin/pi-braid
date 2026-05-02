@@ -46,6 +46,7 @@ import {
 } from "../../../lib/degradation-detector.js";
 import { heartbeatCheckpointTick } from "../../../lib/state-checkpoint.js";
 import { measureBigramEntropy, countSelfContradictions } from "../../../lib/reasoning-metrics.js";
+import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 
 const log = createLogger("heartbeat");
 
@@ -829,18 +830,19 @@ function createDefaultPolicies(
                 `Stop all work and call finalize(completed=false, autoProceed=true) now. ` +
                 `Provide a summary of what was accomplished and what remains.`;
               try {
-                (ctx as any).pi.sendMessage(
+                sendTrackedMessage(
+                  (ctx as any).pi,
                   {
                     customType: "heartbeat",
                     content: [{ type: "text" as const, text: finalizationMessage }],
                     display: true,
-                    details: { _braidInjected: true, _braidSource: "heartbeat/auto-finalize" },
                   },
-                  { deliverAs: "steer" },
+                  undefined,
+                  { type: "heartbeat", source: "heartbeat/auto-finalize" },
                 );
                 log.warn(`[heartbeat] Auto-finalize triggered at 90%`);
               } catch (err) {
-                log.error(`[heartbeat] sendUserMessage failed: ${err}`);
+                log.error(`[heartbeat] sendTrackedMessage failed: ${err}`);
               }
             }
             break; // One warning per tick

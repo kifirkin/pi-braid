@@ -15,6 +15,7 @@ const log = createLogger("reasoning");
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "../../../lib/extension-state.js";
+import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 
 // Helper: Send Enforcement Message as Custom (for visual distinction in TUI)
 
@@ -24,14 +25,15 @@ import { getExtensionState } from "../../../lib/extension-state.js";
  * background and [enforcement] label instead of looking like a user message.
  */
 function sendSteerMessage(pi: ExtensionAPI, message: string): void {
-  pi.sendMessage(
+  sendTrackedMessage(
+    pi,
     {
       customType: "enforcement",
       content: [{ type: "text" as const, text: `[reasoning] ${message}` }],
       display: true,
-      details: { _braidInjected: true, _braidSource: "reasoning/steer" },
     },
     { deliverAs: "steer" },
+    { type: "enforcement", source: "reasoning/steer" },
   );
 }
 

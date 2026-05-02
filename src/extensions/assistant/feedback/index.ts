@@ -1,4 +1,5 @@
 import { createLogger } from "../../../lib/logger.js";
+import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 
 const log = createLogger("feedback");
 /**
@@ -214,14 +215,15 @@ function loadModelPreferences(): Record<string, ModelPreferences["preferences"]>
 // ── Whisper System ─────────────────────────────────────────────────────────
 
 function sendFeedbackWhisper(pi: ExtensionAPI, message: string): void {
-  pi.sendMessage(
+  sendTrackedMessage(
+    pi,
     {
       customType: "feedback",
       content: [{ type: "text", text: `[feedback] ${message}` }],
       display: true,
-      details: { _braidInjected: true, _braidSource: "feedback/whisper" },
     },
     { deliverAs: "steer" },
+    { type: "other", source: "feedback/whisper" },
   );
 }
 

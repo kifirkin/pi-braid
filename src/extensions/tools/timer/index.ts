@@ -8,6 +8,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../../lib/logger.js";
 import { Type } from "typebox";
+import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 
 const log = createLogger("timer");
 
@@ -102,14 +103,15 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
   log.info(`[timer] fired: ${timer.id} — ${timer.reason}`);
   // Try to wake the agent with a steer message if between turns
   try {
-    pi.sendMessage(
+    sendTrackedMessage(
+      pi,
       {
         customType: "timer",
         content: [{ type: "text" as const, text: `[timer] ${timer.reason}` }],
         display: true,
-        details: { _braidInjected: true, _braidSource: "timer/fire" },
       },
       { deliverAs: "steer" },
+      { type: "heartbeat", source: "timer/fire" },
     );
   } catch {
     /* non-fatal — agent may be mid-turn */

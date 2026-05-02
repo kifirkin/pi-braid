@@ -11,7 +11,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { getExtensionState } from "../../../lib/extension-state.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { trackInjection } from "../../../lib/injection-tracker.js";
+import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 
 interface WhisperState {
   pendingWhisper: string | null;
@@ -29,30 +29,23 @@ function getWhisperState(ctx?: ExtensionContext): WhisperState {
 const _default: WhisperState = { pendingWhisper: null, pendingBlockAction: null };
 
 /**
- * Send an enforcement whisper immediately using pi.sendMessage().
+ * Send an enforcement whisper immediately using sendTrackedMessage().
  * This injects the whisper right away instead of waiting for before_agent_start,
  * which only fires when user sends a message (causing whisper accumulation).
  */
 export function sendEnforcementWhisper(pi: ExtensionAPI, message: string): void {
   // Tag all enforcement whispers as [enforcement] so the agent knows these are
   // system-generated signals, not human messages.
-  pi.sendMessage(
+  sendTrackedMessage(
+    pi,
     {
       customType: "enforcement",
       content: [{ type: "text" as const, text: `[enforcement] ${message}` }],
       display: true,
-      details: { _braidInjected: true, _braidSource: "enforcement/whisper" },
     },
     { triggerTurn: true },
+    { type: "enforcement", source: "enforcement/whisper" },
   );
-  // Track injection for visibility tool
-  trackInjection({
-    type: "enforcement",
-    source: "enforcement/whisper",
-    content: `[enforcement] ${message}`,
-    display: true,
-    steer: false,
-  });
 }
 
 /**
