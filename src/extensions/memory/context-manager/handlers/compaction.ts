@@ -11,6 +11,7 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { addEvidence } from "../../../../lib/evidence-pool.js";
 import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
+import { eventBus } from "../../../../lib/event-bus.js";
 import { analyzeSession } from "../analysis.js";
 import {
   log,
@@ -234,6 +235,15 @@ export function registerBeforeCompactHandler(pi: any): void {
       if (instructions.length > 0) {
         event.customInstructions = instructions.join(" ");
       }
+
+      // Emit memory_evict event via bus
+      try {
+        eventBus.emit({
+          type: "memory_evict",
+          reason: "context compaction",
+          count: prep?.messagesToSummarize?.length ?? 0,
+        });
+      } catch {} // non-fatal
     } catch (err) {
       log.error("session_before_compact error:", err);
     }
