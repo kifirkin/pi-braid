@@ -48,6 +48,7 @@ import { heartbeatCheckpointTick } from "../../../lib/state-checkpoint.js";
 import { measureBigramEntropy, countSelfContradictions } from "../../../lib/reasoning-metrics.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { eventBus } from "../../../lib/event-bus.js";
+import { processConsolidationTick } from "../../../lib/consolidation-channel.js";
 
 const log = createLogger("heartbeat");
 
@@ -950,6 +951,17 @@ function tick(
   ctx: ExtensionContext,
 ): void {
   state.stats.totalTicks++;
+
+  // Emit heartbeat_tick event — modules react via event bus
+  try {
+    eventBus.emit({
+      type: "heartbeat_tick",
+      turn: state.turnCount,
+      tickCount: state.stats.totalTicks,
+      timestamp: Date.now(),
+    });
+  } catch {} // non-fatal
+
   state.policyTurnCount++;
 
   // D0.5: Update meta-learning before processing tick
@@ -1061,6 +1073,14 @@ function tick(
 
   // P3.3: Auto-checkpoint on clean turns / auto-rollback on degradation
   const sessionId = ctx.cwd ?? String(process.pid);
+
+  // Consolidation Channel: process queue on each tick
+  try {
+    processConsolidationTick();
+  } catch (err) {
+    log.error("Consolidation tick error:", err);
+  }
+
   heartbeatCheckpointTick(ctx, state.turnCount, sessionId, isDegraded(ctx))
     .then((result) => {
       if (result.checkpointCreated) {

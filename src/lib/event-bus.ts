@@ -53,12 +53,20 @@ export interface EnforcementEvent {
   severity: "low" | "medium" | "high";
 }
 
+export interface HeartbeatTickEvent {
+  type: "heartbeat_tick";
+  turn: number;
+  tickCount: number;
+  timestamp: number;
+}
+
 export type AgentEvent =
   | TimerEvent
   | MemoryEvictEvent
   | TurnCompleteEvent
   | ContextFullEvent
-  | EnforcementEvent;
+  | EnforcementEvent
+  | HeartbeatTickEvent;
 
 type Handler<T extends AgentEvent = AgentEvent> = (event: T) => void;
 
