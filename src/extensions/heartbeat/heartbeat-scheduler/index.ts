@@ -1239,6 +1239,15 @@ function formatSOPForWhisper(episode: Episode): string {
 
   pi.on("session_start", async (_event: any, ctx: ExtensionContext) => {
     const state = getState(ctx);
+
+    // Register Event Bus consumers (idempotent — safe to call on every session_start)
+    try {
+      const { registerEventConsumers } = await import("../../../lib/event-consumers.js");
+      registerEventConsumers();
+    } catch (err) {
+      log.error("Failed to register event consumers:", err);
+    }
+
     // Register built-in modules if not already registered
     for (const module of builtInModules) {
       if (!state.modules.has(module.name)) {
