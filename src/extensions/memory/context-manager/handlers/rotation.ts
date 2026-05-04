@@ -272,7 +272,7 @@ export function registerRotationHandlers(pi: any): void {
             },
           ],
         },
-        undefined,
+        { deliverAs: "steer", triggerTurn: true },
         { type: "context", source: "context-manager/rotation" },
       );
     } catch (err) {

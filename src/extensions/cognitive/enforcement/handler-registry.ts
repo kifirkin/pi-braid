@@ -13,7 +13,11 @@
  * Key design: Agent gets ONE [enforcement] message per turn max for non-critical signals.
  */
 
-import type { ExtensionAPI, SessionCompactEvent, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  SessionCompactEvent,
+  ExtensionContext,
+} from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../../lib/logger.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
@@ -95,36 +99,40 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     }
   });
 
-  registerSessionStartHandler(pi, SessionPhase.CoreInit, async (event: any, ctx: ExtensionContext) => {
-    if (!getState(ctx).enforcementActive) return;
-    const task =
-      (event as unknown as { task?: string; prompt?: string }).task ||
-      (event as unknown as { task?: string; prompt?: string }).prompt ||
-      getState(ctx).originalRequest ||
-      "";
-    if (task) {
-      getState(ctx).driftDetector?.setTaskContext(task);
-    }
+  registerSessionStartHandler(
+    pi,
+    SessionPhase.CoreInit,
+    async (event: any, ctx: ExtensionContext) => {
+      if (!getState(ctx).enforcementActive) return;
+      const task =
+        (event as unknown as { task?: string; prompt?: string }).task ||
+        (event as unknown as { task?: string; prompt?: string }).prompt ||
+        getState(ctx).originalRequest ||
+        "";
+      if (task) {
+        getState(ctx).driftDetector?.setTaskContext(task);
+      }
 
-    getState(ctx).currentTurn++;
+      getState(ctx).currentTurn++;
 
-    // Block action must surface via system prompt
-    const pendingBlock = getPendingBlockAction();
-    clearPendingBlockAction();
+      // Block action must surface via system prompt
+      const pendingBlock = getPendingBlockAction();
+      clearPendingBlockAction();
 
-    if (pendingBlock) {
-      sendTrackedMessage(
-        pi,
-        {
-          customType: "context",
-          display: true,
-          content: [{ type: "text", text: `[enforcement] BLOCKED: ${pendingBlock.reason}` }],
-        },
-        undefined,
-        { type: "enforcement", source: "enforcement/block" },
-      );
-    }
-  });
+      if (pendingBlock) {
+        sendTrackedMessage(
+          pi,
+          {
+            customType: "context",
+            display: true,
+            content: [{ type: "text", text: `[enforcement] BLOCKED: ${pendingBlock.reason}` }],
+          },
+          { deliverAs: "steer", triggerTurn: true },
+          { type: "enforcement", source: "enforcement/block" },
+        );
+      }
+    },
+  );
 
   pi.on("tool_call" as never, async (event: any, ctx: ExtensionContext) => {
     if (!getState(ctx).enforcementActive) {
@@ -487,7 +495,8 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
         thinking: thinkingContent,
       };
 
-      const { runVerificationJudge, formatVerificationNudge } = await import("./verification-judge.js");
+      const { runVerificationJudge, formatVerificationNudge } =
+        await import("./verification-judge.js");
       const result = await runVerificationJudge(ctx as never, judgeCtx, { timeoutMs: 30000 });
 
       getState(ctx).lastVerificationJudgeTurn = getState(ctx).currentTurn;
@@ -605,7 +614,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
           display: true,
           content: [{ type: "text", text: `[policy] ${bpeRec.message}` }],
         },
-        undefined,
+        { deliverAs: "steer", triggerTurn: true },
         { type: "enforcement", source: "enforcement/policy" },
       );
     }
@@ -641,7 +650,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
           display: true,
           content: [{ type: "text", text: `[enforcement] ${marsAdvice.message}` }],
         },
-        undefined,
+        { deliverAs: "steer", triggerTurn: true },
         { type: "enforcement", source: "enforcement/mars" },
       );
     }
@@ -661,7 +670,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
           display: true,
           content: [{ type: "text", text: `[enforcement] ${dreamAdvice.message}` }],
         },
-        undefined,
+        { deliverAs: "steer", triggerTurn: true },
         { type: "enforcement", source: "enforcement/dreamer" },
       );
     }
@@ -698,8 +707,7 @@ function _classifyRetryError(
   // Covers the same patterns as classifyErrorLib but doesn't need the full module.
   if (/429|rate.?limit/i.test(errorMsg)) return "rate_limit";
   if (/5\d\d|server.?error|internal|overloaded|unavailable/i.test(errorMsg)) return "server_error";
-  if (/network|connection|fetch failed|socket|timeout|timed out/i.test(errorMsg))
-    return "network";
+  if (/network|connection|fetch failed|socket|timeout|timed out/i.test(errorMsg)) return "network";
   return "unknown";
 }
 
@@ -707,9 +715,7 @@ function extractTextContent(msg: any): string {
   if (typeof msg.content === "string") return msg.content;
   if (Array.isArray(msg.content)) {
     return msg.content
-      .map((c: any) =>
-        c.type === "text" ? c.text : c.type === "toolCall" ? `tool:${c.name}` : "",
-      )
+      .map((c: any) => (c.type === "text" ? c.text : c.type === "toolCall" ? `tool:${c.name}` : ""))
       .join(" ");
   }
   return "";
