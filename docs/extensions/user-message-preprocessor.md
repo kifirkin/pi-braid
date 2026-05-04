@@ -33,6 +33,8 @@ _(Tools removed 2026-04-28)_ `preprocessor_config` and `preprocessor_stats` were
 ## Key Patterns
 
 - **Non-blocking by design**: Most messages skip preprocessing entirely (well-written English text passes through). Only ambiguous or problematic messages are rewritten.
+- **Role isolation**: The preprocessor uses a strict SYSTEM_PROMPT that explicitly states it is NOT the main assistant. XML `<user_message>` tags wrap the input to visually separate content from instructions.
+- **Anti-instruction-following**: The prompt includes explicit DO NOT rules preventing the model from executing commands inside the user message.
 - **Conservative approach**: Language detection via Unicode script ranges, not stopword counting. Non-English text is translated to English.
 - **Images preserved**: Messages with attached images skip preprocessing to avoid image data loss during the `handled` → re-submit cycle.
 - **Configurable**: Enabled state persists to `~/.pi/agent/settings.json`. Toggle via `/preprocessor` command.
