@@ -84,15 +84,21 @@ export function createHypothesizeTool() {
             ],
           },
           { maxTokens: 2048, temperature: 0.3 },
+        ) as any;
+
+        // Extract text from AssistantMessage (response is an object with .content,
+        // NOT an array or raw string). Same pattern as user-message-preprocessor.
+        const content = Array.isArray(response?.content)
+          ? response.content
+          : typeof response?.content === "string"
+            ? [{ type: "text" as const, text: response.content }]
+            : [];
+        const textBlocks = content.filter(
+          (c: any): c is { type: "text"; text: string } => c.type === "text",
         );
+        const text = textBlocks.length > 0 ? textBlocks[0].text.trim() : "";
 
-        const text = Array.isArray(response)
-          ? response.map((r) => (r as { text?: string }).text || "").join("\n")
-          : typeof response === "string"
-            ? response
-            : "";
-
-        if (!text || !text.trim()) {
+        if (!text) {
           throw new Error(
             `hypothesize: session model returned empty response. ` +
               `Model: "${ctx.model.id}". ` +
