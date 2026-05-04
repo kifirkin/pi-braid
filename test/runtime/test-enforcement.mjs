@@ -102,8 +102,9 @@ console.log("\n[3] handler-registry.ts — structure");
   test("registers all pi.on() + registerSessionStartHandler() handlers", () => {
     const piOn = [...src.matchAll(/pi\.on\(/g)].length;
     const regSh = [...src.matchAll(/registerSessionStartHandler\(/g)].length;
-    const total = piOn + regSh;
-    assert.equal(total, 12, `expected 12, got ${total} (pi.on:${piOn} + regSh:${regSh})`);
+    const regTe = [...src.matchAll(/registerTurnEndHandler\(/g)].length;
+    const total = piOn + regSh + regTe;
+    assert.equal(total, 12, `expected 12, got  (pi.on: + regSh: + regTe:)`);
   });
 
   test("registers input handler", () => {
@@ -118,9 +119,10 @@ console.log("\n[3] handler-registry.ts — structure");
     assert.ok(src.includes(`pi.on("tool_call"`), "should have tool_call handler");
   });
 
-  test("registers turn_end handler (2x: main + drift/policy)", () => {
-    const matches = [...src.matchAll(/pi\.on\("turn_end"/g)];
-    assert.equal(matches.length, 2, `expected 2 turn_end handlers, got ${matches.length}`);
+  test("registers turn_end handler (1x drift/policy + 1x via registerTurnEndHandler)", () => {
+    const piOnTurnEnd = [...src.matchAll(/pi\.on\("turn_end"/g)].length;
+    const regTurnEnd = [...src.matchAll(/registerTurnEndHandler\(/g)].length;
+    assert.equal(piOnTurnEnd + regTurnEnd, 2, `expected 2 turn_end handlers, got ${piOnTurnEnd} pi.on + ${regTurnEnd} registerTurnEndHandler`);
   });
 
   test("registers message_end handler (2x: conflict + analysis)", () => {
@@ -197,9 +199,14 @@ console.log("\n[5] Lazy-load verification");
     assert.ok(src.includes('await import("../../../lib/dreamer.js")'), "dreamer should be lazy");
   });
 
-  test("claim-tracker not eagerly imported", () => {
-    assert.ok(!src.includes('from "../../../lib/claim-tracker.js"'), "claim-tracker should be dynamic");
-    assert.ok(src.includes('await import("../../../lib/claim-tracker.js")'), "claim-tracker should be lazy");
+  test("claim-tracker lazily imported from turn-end-handler.ts", () => {
+    const hasAnyImport = src.includes('claim-tracker');
+    assert.ok(!hasAnyImport, "claim-tracker should NOT be in handler-registry.ts (moved to turn-end-handler.ts)");
+    const turnEndSrc = readFileSync(`${ROOT}/src/extensions/cognitive/enforcement/handlers/turn-end-handler.ts`, "utf8");
+    const hasStatic = turnEndSrc.includes('from "../../../../lib/claim-tracker.js"');
+    const hasDynamic = turnEndSrc.includes('await import("../../../../lib/claim-tracker.js")');
+    assert.ok(!hasStatic, "turn-end-handler: claim-tracker should be lazy");
+    assert.ok(hasDynamic, "turn-end-handler: claim-tracker should be lazy");
   });
 
   test("verification-judge not eagerly imported", () => {
