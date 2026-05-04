@@ -22,6 +22,7 @@ import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { Type } from "typebox";
 
 import { getAnalyticsStateInternal, updateContextDensity, recordNudgeSent, recordNudgeSuppressed, getAnalyticsState } from "./shared.js";
+import { recordError, recordToolSuccess } from "../../../lib/degradation-detector.js";
 export { updateContextDensity, recordNudgeSent, recordNudgeSuppressed, getAnalyticsState, getAnalyticsSummary } from "./shared.js";
 
 import { recordToolCall, getToolSequences, getSessionMetrics, computeSessionOutcome, flushAnalytics, loadAnalytics } from "./core.js";
@@ -66,7 +67,14 @@ export default function analyticsExtension(pi: ExtensionAPI) {
     const pending = pendingToolCalls.get(event.toolCallId);
     if (pending) {
       const state = getAnalyticsStateInternal(ctx);
-      recordToolCall(state, pending.toolName, Date.now() - pending.startTime, !event.isError);
+      const success = !event.isError;
+      recordToolCall(state, pending.toolName, Date.now() - pending.startTime, success);
+      // Feed degradation detector
+      if (success) {
+        recordToolSuccess(ctx);
+      } else {
+        recordError(ctx);
+      }
       // Track tool type for per-turn deduplication in addiction detection
       turnToolTypes.add(pending.toolName);
       pendingToolCalls.delete(event.toolCallId);

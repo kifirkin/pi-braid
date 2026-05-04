@@ -26,7 +26,7 @@ import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { eventBus } from "../../../lib/event-bus.js";
 import { processConsolidationTick } from "../../../lib/consolidation-channel.js";
 import { heartbeatCheckpointTick } from "../../../lib/state-checkpoint.js";
-import { isDegraded } from "../../../lib/degradation-detector.js";
+import { isDegraded, recordTurnMetrics } from "../../../lib/degradation-detector.js";
 import type { Episode } from "../../memory/three-memory-stores/index.js";
 
 import type { CognitiveModule, ModuleContext, PolicyEngine } from "./types.js";
@@ -97,6 +97,22 @@ function tick(
   ctx: ExtensionContext,
 ): void {
   state.stats.totalTicks++;
+
+  // Record turn metrics into degradation detector so isDegraded() works
+  const activationCount = state.stats.totalActivations;
+  recordTurnMetrics(ctx, {
+    turnNumber: state.turnCount,
+    avgTurnDurationMs: 1000,
+    inputTokens: 0,
+    outputTokens: 0,
+    toolCalls: activationCount,
+    errors: 0,
+    errorRate: 0,
+    toolSuccessRate: 100,
+    consecutiveErrors: 0,
+    tokenUsage: { input: 0, output: 0 },
+    memoryUsagePercent: 50,
+  });
 
   // Emit heartbeat_tick event
   try {
