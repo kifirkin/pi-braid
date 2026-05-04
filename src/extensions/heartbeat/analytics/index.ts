@@ -64,6 +64,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 
   // ── tool_execution_end ─────────────────────────────────────────────
   pi.on("tool_execution_end", async (event, ctx) => {
+    try {
     const pending = pendingToolCalls.get(event.toolCallId);
     if (pending) {
       const state = getAnalyticsStateInternal(ctx);
@@ -79,11 +80,15 @@ export default function analyticsExtension(pi: ExtensionAPI) {
       turnToolTypes.add(pending.toolName);
       pendingToolCalls.delete(event.toolCallId);
     }
+    } catch (err) {
+      log.error("[analytics-tool-exec-end] error:", err);
+    }
   });
 
   // ── turn_end: addiction detection + degradation ─────────────────────
   let lastAddictionCheck = 0;
   pi.on("turn_end", async (_event: any, ctx: any) => {
+    try {
     const state = getAnalyticsStateInternal(ctx);
 
     // Flush per-turn deduplicated tool types into turnToolSequence
@@ -130,6 +135,9 @@ export default function analyticsExtension(pi: ExtensionAPI) {
     } else if (!degraded && state.wasDegraded) {
       state.wasDegraded = false;
       sendTrackedMessage(pi, { customType: "context", display: true, content: [{ type: "text", text: "[health] Performance recovered to healthy." }] }, undefined, { type: "heartbeat", source: "heartbeat/analytics/recover" });
+    }
+    } catch (err) {
+      log.error("[analytics-turn-end] error:", err);
     }
   });
 
