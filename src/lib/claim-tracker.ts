@@ -223,20 +223,10 @@ function detectPolarity(sentence: string): "positive" | "negative" {
 
 // ── Contradiction Detection ───────────────────────────────────────────────────
 
-/** Token overlap ratio between two strings */
+/** Token overlap ratio between two strings (uses stemmed forms for tense robustness) */
 export function tokenOverlap(a: string, b: string): number {
-  const tokensA = new Set(
-    a
-      .toLowerCase()
-      .split(/\s+/)
-      .filter((t) => t.length > 2),
-  );
-  const tokensB = new Set(
-    b
-      .toLowerCase()
-      .split(/\s+/)
-      .filter((t) => t.length > 2),
-  );
+  const tokensA = new Set(stemTokens(normalizePredicate(a)));
+  const tokensB = new Set(stemTokens(normalizePredicate(b)));
   if (tokensA.size === 0 || tokensB.size === 0) return 0;
   let intersection = 0;
   for (const t of tokensA) {
@@ -244,6 +234,39 @@ export function tokenOverlap(a: string, b: string): number {
   }
   const union = tokensA.size + tokensB.size - intersection;
   return union > 0 ? intersection / union : 0;
+}
+
+/**
+ * Normalize a predicate string for comparison.
+ * Strips punctuation and collapses whitespace.
+ */
+export function normalizePredicate(text: string): string {
+  return text
+    .toLowerCase()
+    // Remove punctuation
+    .replace(/[.,;:!?()\[\]{}]/g, " ")
+    // Collapse whitespace
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Stem common verb forms so tense/person variations are equivalent.
+ * "throws" → "throw", "was" → "be", etc.
+ */
+function stemTokens(normalizedText: string): string[] {
+  const STEM_MAP: Record<string, string> = {
+    throws: "throw", threw: "throw", throwing: "throw",
+    is: "be", was: "be", were: "be", are: "be",
+    "does": "do", "doesn't": "do", "didn't": "do",
+  };
+  return normalizedText
+    .split(/\s+/)
+    .filter((t) => t.length > 2)
+    .map((t) => {
+      const lower = t.toLowerCase();
+      return STEM_MAP[lower] ?? t.replace(/(s|es|ed|ing)$/, "");
+    });
 }
 
 /**
