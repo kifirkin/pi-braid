@@ -45,6 +45,8 @@ export interface AnalyticsState {
   sessionStartTime: number;
   toolMetrics: Map<string, ToolMetrics>;
   toolCallSequence: string[];
+  /** Per-turn deduplicated tool names for addiction detection */
+  turnToolSequence: string[];
   storagePath: string;
   abVariant: string;
   contextDensity: number;

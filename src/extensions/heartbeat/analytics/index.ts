@@ -31,6 +31,9 @@ const log = createLogger("analytics");
 
 export default function analyticsExtension(pi: ExtensionAPI) {
   const pendingToolCalls = new Map<string, { toolName: string; startTime: number }>();
+  /** Tracks unique tool types used in the current turn (deduplicated for addiction detection).
+   *  Set is flushed to state.turnToolSequence on each turn_end, then cleared. */
+  const turnToolTypes = new Set<string>();
 
   // ── session_start ──────────────────────────────────────────────────
   pi.on("session_start", async (_event, ctx) => {
@@ -39,11 +42,14 @@ export default function analyticsExtension(pi: ExtensionAPI) {
     state.sessionStartTime = Date.now();
     state.toolMetrics.clear();
     state.toolCallSequence = [];
+    state.turnToolSequence = [];
     state.wasDegraded = false;
     state.nudgesSent = 0;
     state.nudgesSuppressed = 0;
     state.storagePath = join(homedir(), ".pi/logs/braid-metrics.jsonl");
     pendingToolCalls.clear();
+    turnToolTypes.clear();
+    lastAddictionCheck = 0;
 
     const logsDir = join(homedir(), ".pi/logs");
     if (!existsSync(logsDir)) mkdirSync(logsDir, { recursive: true });
@@ -58,7 +64,10 @@ export default function analyticsExtension(pi: ExtensionAPI) {
   pi.on("tool_execution_end", async (event, ctx) => {
     const pending = pendingToolCalls.get(event.toolCallId);
     if (pending) {
-      recordToolCall(getAnalyticsStateInternal(ctx), pending.toolName, Date.now() - pending.startTime, !event.isError);
+      const state = getAnalyticsStateInternal(ctx);
+      recordToolCall(state, pending.toolName, Date.now() - pending.startTime, !event.isError);
+      // Track tool type for per-turn deduplication in addiction detection
+      turnToolTypes.add(pending.toolName);
       pendingToolCalls.delete(event.toolCallId);
     }
   });
@@ -67,12 +76,19 @@ export default function analyticsExtension(pi: ExtensionAPI) {
   let lastAddictionCheck = 0;
   pi.on("turn_end", async (_event: any, ctx: any) => {
     const state = getAnalyticsStateInternal(ctx);
-    const calls = state.toolCallSequence.length;
 
-    // Addiction check every 10 calls
-    if (calls >= 10 && calls - lastAddictionCheck >= 10) {
-      lastAddictionCheck = calls;
-      const window = state.toolCallSequence.slice(-50);
+    // Flush per-turn deduplicated tool types into turnToolSequence
+    for (const tool of turnToolTypes) {
+      state.turnToolSequence.push(tool);
+    }
+    turnToolTypes.clear();
+
+    // Addiction check using per-turn deduplicated sequence (turnToolSequence)
+    // This prevents multi-call turns (e.g., 3 bash + 1 read) from skewing ratios.
+    const turnCalls = state.turnToolSequence.length;
+    if (turnCalls >= 10 && turnCalls - lastAddictionCheck >= 10) {
+      lastAddictionCheck = turnCalls;
+      const window = state.turnToolSequence.slice(-50);
       const counts = new Map<string, number>();
       for (const t of window) counts.set(t, (counts.get(t) ?? 0) + 1);
       const total = window.length;
@@ -82,7 +98,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
         const toolN = counts.size;
         if (tool === "read") continue;
         if ((ratio > 0.8 && toolN <= 2) || (toolN > 1 && count > (total / Math.max(toolN, 1)) * 4)) {
-          warnings.push(`${tool} (${count}/${total}, ${(ratio * 100).toFixed(0)}%)`);
+          warnings.push(`${tool} (${count}/${total} turns, ${(ratio * 100).toFixed(0)}%)`);
         }
       }
       if (warnings.length > 0) {

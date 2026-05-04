@@ -54,6 +54,9 @@ export interface AnalyticsState {
   sessionStartTime: number;
   toolMetrics: Map<string, ToolMetrics>;
   toolCallSequence: string[];
+  /** Per-turn deduplicated tool names: each turn contributes at most 1 entry per tool type.
+   *  Used for addiction detection to avoid over-weighting multi-call turns. */
+  turnToolSequence: string[];
   storagePath: string;
   abVariant: string;
   contextDensity: number;
@@ -69,6 +72,7 @@ export function createAnalyticsState(): AnalyticsState {
     sessionStartTime: Date.now(),
     toolMetrics: new Map(),
     toolCallSequence: [],
+    turnToolSequence: [],
     storagePath: "",
     abVariant: "control",
     contextDensity: 0,
