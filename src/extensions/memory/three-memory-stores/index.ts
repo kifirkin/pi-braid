@@ -329,6 +329,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 
   // ── Event: tool_end ────────────────────────────────────────────────
   pi.on("tool_end" as never, async (event: any, ctx: ExtensionContext) => {
+    try {
     const state = getState(ctx);
     const toolName = event?.toolName ?? event?.tool ?? "unknown";
     const isError = event?.isError ?? event?.error != null;
@@ -381,10 +382,14 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
         }
       }
     }
+    } catch (err) {
+      log.error("[three-mem-tool-end] error:", err);
+    }
   });
 
   // ── Event: turn_end ────────────────────────────────────────────────
   pi.on("turn_end", async (_event: unknown, ctx: ExtensionContext) => {
+    try {
     const state = getState(ctx);
     if (!AUTO_RECALL_ENABLED || state.currentSessionTools.length < 3) return;
 
@@ -402,16 +407,23 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
       lastRecallTime = now;
       whisperRecall(ctx, `Past solution might apply:`, relevant);
     }
+    } catch (err) {
+      log.error("[three-mem-turn-end] error:", err);
+    }
   });
 
   // ── Event: agent_end ────────────────────────────────────────────────
   pi.on("agent_end", async (_event: any, ctx: ExtensionContext) => {
+    try {
     const state = getState(ctx);
     const uniqueTools = new Set(state.currentSessionTools);
     log.info(`Session ended: ${state.currentSessionTools.length} tool calls, ${uniqueTools.size} unique tools, ${state.episodes.length} episodes, ${state.heuristics.length} heuristics`);
 
     for (const h of getPrioritizedHeuristics(state).slice(0, 3)) {
       log.info(`  Top heuristic: "${h.condition}" (priority: ${h.priority.toFixed(2)})`);
+    }
+    } catch (err) {
+      log.error("[three-mem-agent-end] error:", err);
     }
   });
 

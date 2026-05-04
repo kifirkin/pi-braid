@@ -374,6 +374,7 @@ export default function feedbackExtension(pi: ExtensionAPI) {
 
   // Reset turn counter at turn start
   pi.on("turn_start", async (_event, ctx) => {
+    try {
     const state = getFeedbackState(ctx);
     state.currentTurn++;
     state.nudgeCountThisTurn = 0;
@@ -387,10 +388,14 @@ export default function feedbackExtension(pi: ExtensionAPI) {
         state.config.maxNudgesPerTurn = abConfig.maxNudgesPerTurn as number;
       }
     }
+    } catch (err) {
+      log.error("[feedback-turn-start] error:", err);
+    }
   });
 
   // Monitor for issues and generate nudges
   pi.on("message_end", async (event, ctx) => {
+    try {
     if (event.message.role !== "assistant") {
       return;
     }
@@ -416,10 +421,14 @@ export default function feedbackExtension(pi: ExtensionAPI) {
         sendFeedbackWhisper(pi, nudgeDef.message);
       }
     }
+    } catch (err) {
+      log.error("[feedback-msg-end] error:", err);
+    }
   });
 
   // Track tool usage for sequence repetition detection
   pi.on("tool_call", async (event, ctx) => {
+    try {
     const toolName = event.toolName;
     const state = getFeedbackState(ctx);
 
@@ -442,10 +451,14 @@ export default function feedbackExtension(pi: ExtensionAPI) {
       state.lastThinkToolTurn = state.currentTurn;
       state.thinkToolNudgeActive = false;
     }
+    } catch (err) {
+      log.error("[feedback-tool-call] error:", err);
+    }
   });
 
   // Track scratchpad usage and enforce think tool cadence
   pi.on("turn_end", async (event, ctx) => {
+    try {
     const state = getFeedbackState(ctx);
     const tools = (event.toolResults || []).map((r) => r.toolName);
 
@@ -494,6 +507,9 @@ export default function feedbackExtension(pi: ExtensionAPI) {
         recordNudge(state, nudge);
         sendFeedbackWhisper(pi, nudgeDef.message);
       }
+    }
+    } catch (err) {
+      log.error("[feedback-turn-end] error:", err);
     }
   });
 
