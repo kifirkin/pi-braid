@@ -244,45 +244,55 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
   // ── Event listeners (use 'any' cast — events exist at runtime) ─────────
 
   (pi as any).on("user_message", (event: any, ctx: ExtensionContext) => {
-    const state = getExtensionState(ctx, "topic-drift", createDriftState);
-    const message =
-      typeof event?.message === "string" ? event.message : JSON.stringify(event?.message ?? "");
-    if (message.length > 20) {
-      resetAnchors(state, message);
+    try {
+      const state = getExtensionState(ctx, "topic-drift", createDriftState);
+      const message =
+        typeof event?.message === "string" ? event.message : JSON.stringify(event?.message ?? "");
+      if (message.length > 20) {
+        resetAnchors(state, message);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error(`[topic-drift] user_message handler error: ${msg}`);
     }
   });
 
   (pi as any).on("tool_result", (event: any, ctx: ExtensionContext) => {
-    const state = getExtensionState(ctx, "topic-drift", createDriftState);
-    if (state.anchors.size === 0) return;
+    try {
+      const state = getExtensionState(ctx, "topic-drift", createDriftState);
+      if (state.anchors.size === 0) return;
 
-    const output = extractOutputText(event);
-    if (output.length < 50) return;
+      const output = extractOutputText(event);
+      if (output.length < 50) return;
 
-    const result = detectTopicDrift(ctx.cwd ?? "unknown", output, state);
+      const result = detectTopicDrift(ctx.cwd ?? "unknown", output, state);
 
-    if (result.drifted && state.driftHistory.length > 1) {
-      const recent = state.driftHistory.slice(-3);
-      const allRecentDrifted = recent.every((r) => r.drifted);
+      if (result.drifted && state.driftHistory.length > 1) {
+        const recent = state.driftHistory.slice(-3);
+        const allRecentDrifted = recent.every((r) => r.drifted);
 
-      if (allRecentDrifted && result.similarity < 0.3) {
-        const missing = result.missingAnchors.slice(0, 5).join(", ");
-        ctx.whisper?.(
-          `Your response seems to cover different ground than the original request. ` +
-            `Missing key topics from request: ${missing || "none detected"}. ` +
-            `Original request: "${state.originalRequest.substring(0, 80)}..."`,
-          { category: "cognitive", priority: "low" },
-        );
-        log.info(
-          `[topic-drift] Drift: similarity=${result.similarity.toFixed(2)}, ` +
-            `missing=${result.missingAnchors.length}`,
-        );
+        if (allRecentDrifted && result.similarity < 0.3) {
+          const missing = result.missingAnchors.slice(0, 5).join(", ");
+          ctx.whisper?.(
+            `Your response seems to cover different ground than the original request. ` +
+              `Missing key topics from request: ${missing || "none detected"}. ` +
+              `Original request: "${state.originalRequest.substring(0, 80)}..."`,
+            { category: "cognitive", priority: "low" },
+          );
+          log.info(
+            `[topic-drift] Drift: similarity=${result.similarity.toFixed(2)}, ` +
+              `missing=${result.missingAnchors.length}`,
+          );
+        }
       }
-    }
 
-    if (result.shouldReset && state.originalRequest) {
-      log.info("[topic-drift] Anchors auto-reset after timeout");
-      resetAnchors(state, state.originalRequest);
+      if (result.shouldReset && state.originalRequest) {
+        log.info("[topic-drift] Anchors auto-reset after timeout");
+        resetAnchors(state, state.originalRequest);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error(`[topic-drift] tool_result handler error: ${msg}`);
     }
   });
 
@@ -294,33 +304,39 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
     description: "Check if the current output matches the original user request anchors.",
     parameters: checkDriftSchema,
     execute: async (_toolCallId: string, params: any): Promise<any> => {
-      const p = params as { output?: string };
-      const state = getExtensionState({ cwd: "check" } as any, "topic-drift", createDriftState);
-      const output = p.output ?? "";
-      const result = detectTopicDrift("check", output, state);
+      try {
+        const p = params as { output?: string };
+        const state = getExtensionState({ cwd: "check" } as any, "topic-drift", createDriftState);
+        const output = p.output ?? "";
+        const result = detectTopicDrift("check", output, state);
 
-      const details = {
-        drifted: result.drifted,
-        similarity: Math.round(result.similarity * 100) / 100,
-        missingAnchors: result.missingAnchors,
-        anchorCount: state.anchors.size,
-        originalRequest: state.originalRequest,
-        driftHistory: state.driftHistory.slice(-5),
-        recommendations: result.drifted
-          ? [
-              `Include these topics from the original request: ${result.missingAnchors.slice(0, 5).join(", ")}`,
-              "Verify your response addresses the core request.",
-            ]
-          : [],
-      };
+        const details = {
+          drifted: result.drifted,
+          similarity: Math.round(result.similarity * 100) / 100,
+          missingAnchors: result.missingAnchors,
+          anchorCount: state.anchors.size,
+          originalRequest: state.originalRequest,
+          driftHistory: state.driftHistory.slice(-5),
+          recommendations: result.drifted
+            ? [
+                `Include these topics from the original request: ${result.missingAnchors.slice(0, 5).join(", ")}`,
+                "Verify your response addresses the core request.",
+              ]
+            : [],
+        };
 
-      const text = result.drifted
-        ? `Topic drift detected (similarity: ${details.similarity}). Missing anchors: ${details.missingAnchors.slice(0, 5).join(", ")}.`
-        : `No topic drift (similarity: ${details.similarity}). All anchors present.`;
-      return {
-        content: [{ type: "text" as const, text }],
-        details,
-      };
+        const text = result.drifted
+          ? `Topic drift detected (similarity: ${details.similarity}). Missing anchors: ${details.missingAnchors.slice(0, 5).join(", ")}.`
+          : `No topic drift (similarity: ${details.similarity}). All anchors present.`;
+        return {
+          content: [{ type: "text" as const, text }],
+          details,
+        };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.error(`check_topic_drift failed: ${msg}`);
+        return { content: [{ type: "text" as const, text: `Error: ${msg}` }], details: { drifted: false, similarity: 0, error: msg } };
+      }
     },
   } as any);
 
@@ -330,25 +346,31 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
     description: "Reset the topic anchors to a new request or the current context.",
     parameters: resetAnchorsSchema,
     execute: async (_toolCallId: string, params: any): Promise<any> => {
-      const p = params as { newRequest?: string };
-      const state = getExtensionState({ cwd: "reset" } as any, "topic-drift", createDriftState);
-      const request = p.newRequest ?? state.originalRequest;
-      resetAnchors(state, request);
+      try {
+        const p = params as { newRequest?: string };
+        const state = getExtensionState({ cwd: "reset" } as any, "topic-drift", createDriftState);
+        const request = p.newRequest ?? state.originalRequest;
+        resetAnchors(state, request);
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Topic anchors reset: ${state.anchors.size} tokens extracted.`,
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Topic anchors reset: ${state.anchors.size} tokens extracted.`,
+            },
+          ],
+          details: {
+            success: true,
+            anchorCount: state.anchors.size,
+            anchors: [...state.anchors],
+            originalRequest: state.originalRequest,
           },
-        ],
-        details: {
-          success: true,
-          anchorCount: state.anchors.size,
-          anchors: [...state.anchors],
-          originalRequest: state.originalRequest,
-        },
-      };
+        };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.error(`reset_topic_anchors failed: ${msg}`);
+        return { content: [{ type: "text" as const, text: `Error: ${msg}` }], details: { success: false, error: msg } };
+      }
     },
   } as any);
 

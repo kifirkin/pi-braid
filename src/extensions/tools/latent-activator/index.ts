@@ -468,9 +468,14 @@ const activateMixSchema = Type.Object({
 
 export default function latentActivatorExtension(pi: ExtensionAPI) {
   pi.on("session_start", () => {
-    const s = getActivatorState();
-    s.currentBehaviors = new Set(["planner", "executor"] as AtomicBehavior[]);
-    s.activationHistory = [];
+    try {
+      const s = getActivatorState();
+      s.currentBehaviors = new Set(["planner", "executor"] as AtomicBehavior[]);
+      s.activationHistory = [];
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error(`[latent-activator] session_start error: ${msg}`);
+    }
   });
 
   // Behavior inference disabled - use manual activate_behavior tool instead
@@ -483,19 +488,25 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
     promptSnippet: "activate behavior patterns for different problem-solving modes",
     parameters: activateSchema,
     execute: async (_toolCallId, params: any) => {
-      const behavior = params.behavior as AtomicBehavior;
-      if (LATENT_SIGNALS[behavior]) {
-        activateBehavior(behavior);
-        const signal = LATENT_SIGNALS[behavior].activation[0];
+      try {
+        const behavior = params.behavior as AtomicBehavior;
+        if (LATENT_SIGNALS[behavior]) {
+          activateBehavior(behavior);
+          const signal = LATENT_SIGNALS[behavior].activation[0];
+          return {
+            content: [{ type: "text", text: `Activated: ${behavior}. ${signal}` }],
+            details: { behavior, active: getActiveBehaviors() },
+          };
+        }
         return {
-          content: [{ type: "text", text: `Activated: ${behavior}. ${signal}` }],
+          content: [{ type: "text", text: `Unknown behavior: ${behavior}` }],
           details: { behavior, active: getActiveBehaviors() },
         };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.error(`activate_behavior failed: ${msg}`);
+        return { content: [{ type: "text", text: `Error: ${msg}` }], details: { error: msg } } as any;
       }
-      return {
-        content: [{ type: "text", text: `Unknown behavior: ${behavior}` }],
-        details: { behavior, active: getActiveBehaviors() },
-      };
     },
   });
 
@@ -506,12 +517,18 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
     promptSnippet: "deactivate a behavior pattern when no longer relevant",
     parameters: deactivateSchema,
     execute: async (_toolCallId, params: any) => {
-      const behavior = params.behavior as AtomicBehavior;
-      deactivateBehavior(behavior);
-      return {
-        content: [{ type: "text", text: `Deactivated: ${behavior}` }],
-        details: { behavior, active: getActiveBehaviors() },
-      };
+      try {
+        const behavior = params.behavior as AtomicBehavior;
+        deactivateBehavior(behavior);
+        return {
+          content: [{ type: "text", text: `Deactivated: ${behavior}` }],
+          details: { behavior, active: getActiveBehaviors() },
+        };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.error(`deactivate_behavior failed: ${msg}`);
+        return { content: [{ type: "text", text: `Error: ${msg}` }], details: { error: msg } } as any;
+      }
     },
   });
 
@@ -522,11 +539,17 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
     promptSnippet: "check what behavior patterns are currently active",
     parameters: Type.Object({}),
     execute: async () => {
-      const active = getActiveBehaviors();
-      return {
-        content: [{ type: "text", text: `Active behaviors: ${active.join(", ") || "none"}` }],
-        details: { active },
-      };
+      try {
+        const active = getActiveBehaviors();
+        return {
+          content: [{ type: "text", text: `Active behaviors: ${active.join(", ") || "none"}` }],
+          details: { active },
+        };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.error(`get_active_behaviors failed: ${msg}`);
+        return { content: [{ type: "text", text: `Error: ${msg}` }], details: { error: msg } } as any;
+      }
     },
   });
 
@@ -537,22 +560,28 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
     promptSnippet: "activate a predefined behavior mix for common scenarios",
     parameters: activateMixSchema,
     execute: async (_toolCallId, params: any) => {
-      const behaviors = BEHAVIOR_MIXES[params.scenario];
-      if (behaviors) {
-        for (const b of behaviors) {
-          activateBehavior(b);
+      try {
+        const behaviors = BEHAVIOR_MIXES[params.scenario];
+        if (behaviors) {
+          for (const b of behaviors) {
+            activateBehavior(b);
+          }
+          return {
+            content: [
+              { type: "text", text: `Activated ${params.scenario} mode: ${behaviors.join(", ")}` },
+            ],
+            details: { scenario: params.scenario, active: getActiveBehaviors() },
+          };
         }
         return {
-          content: [
-            { type: "text", text: `Activated ${params.scenario} mode: ${behaviors.join(", ")}` },
-          ],
+          content: [{ type: "text", text: `Unknown scenario: ${params.scenario}` }],
           details: { scenario: params.scenario, active: getActiveBehaviors() },
         };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.error(`activate_mix failed: ${msg}`);
+        return { content: [{ type: "text", text: `Error: ${msg}` }], details: { error: msg } } as any;
       }
-      return {
-        content: [{ type: "text", text: `Unknown scenario: ${params.scenario}` }],
-        details: { scenario: params.scenario, active: getActiveBehaviors() },
-      };
     },
   });
 }

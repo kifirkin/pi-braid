@@ -342,56 +342,65 @@ export default function verificationExtension(pi: ExtensionAPI) {
       "Verify agent claims against retrieved context. Detects contradictions, unsupported assertions, and hedge word issues.",
     parameters: verifyClaimSchema,
     execute: async (_toolCallId: string, params: any): Promise<Record<string, unknown>> => {
-      const p = params as {
-        claim: string;
-        context: string[];
-        claimId?: string;
-        threshold?: number;
-      };
-      const claimId = p.claimId ?? `claim-${Date.now()}`;
-      const threshold = p.threshold ?? 0.5;
-      const issues: Record<string, unknown>[] = [];
+      try {
+        const p = params as {
+          claim: string;
+          context: string[];
+          claimId?: string;
+          threshold?: number;
+        };
+        if (!p.claim || !Array.isArray(p.context)) {
+          throw new Error("verify_claim requires 'claim' (string) and 'context' (string array)");
+        }
+        const claimId = p.claimId ?? `claim-${Date.now()}`;
+        const threshold = p.threshold ?? 0.5;
+        const issues: Record<string, unknown>[] = [];
 
-      for (const ctx of p.context) {
-        const result = checkContradiction(p.claim, ctx);
-        if (result) issues.push(result);
+        for (const ctx of p.context) {
+          const result = checkContradiction(p.claim, ctx);
+          if (result) issues.push(result);
+        }
+
+        const supported = checkSupport(p.claim, p.context, threshold);
+        if (!supported && p.context.length > 0) {
+          issues.push({
+            type: "unsupported",
+            severity: "medium",
+            description: "Claim not sufficiently supported by any retrieved context.",
+            quote: p.claim,
+          });
+        }
+
+        issues.push(...checkHedgeWords(p.claim));
+
+        const severityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+        issues.sort((a: any, b: any) => severityOrder[a.severity] - severityOrder[b.severity]);
+
+        const highIssues = issues.filter((i: any) => i.severity === "high");
+        const summary =
+          highIssues.length > 0
+            ? `${highIssues.length} high-severity issue(s): ${highIssues.map((i: any) => i.description).join("; ")}`
+            : issues.length > 0
+              ? `${issues.length} issue(s): ${issues.map((i: any) => `${i.type}(${i.severity})`).join(", ")}`
+              : "Claim verified: no contradictions, supported by context.";
+
+        return {
+          claimId,
+          verified: highIssues.length === 0,
+          issues,
+          summary,
+          checks: {
+            contradictions: issues.filter((i: any) => i.type === "contradiction").length,
+            unsupported: issues.filter((i: any) => i.type === "unsupported").length,
+            hedgeWarnings: issues.filter((i: any) => i.type === "hedge_warning").length,
+            gaps: 0,
+          },
+        };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.error(`verify_claim failed: ${msg}`);
+        return { verified: false, issues: [], summary: `Error: ${msg}`, error: msg };
       }
-
-      const supported = checkSupport(p.claim, p.context, threshold);
-      if (!supported && p.context.length > 0) {
-        issues.push({
-          type: "unsupported",
-          severity: "medium",
-          description: "Claim not sufficiently supported by any retrieved context.",
-          quote: p.claim,
-        });
-      }
-
-      issues.push(...checkHedgeWords(p.claim));
-
-      const severityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
-      issues.sort((a: any, b: any) => severityOrder[a.severity] - severityOrder[b.severity]);
-
-      const highIssues = issues.filter((i: any) => i.severity === "high");
-      const summary =
-        highIssues.length > 0
-          ? `${highIssues.length} high-severity issue(s): ${highIssues.map((i: any) => i.description).join("; ")}`
-          : issues.length > 0
-            ? `${issues.length} issue(s): ${issues.map((i: any) => `${i.type}(${i.severity})`).join(", ")}`
-            : "Claim verified: no contradictions, supported by context.";
-
-      return {
-        claimId,
-        verified: highIssues.length === 0,
-        issues,
-        summary,
-        checks: {
-          contradictions: issues.filter((i: any) => i.type === "contradiction").length,
-          unsupported: issues.filter((i: any) => i.type === "unsupported").length,
-          hedgeWarnings: issues.filter((i: any) => i.type === "hedge_warning").length,
-          gaps: 0,
-        },
-      };
     },
   } as any);
 
@@ -402,8 +411,17 @@ export default function verificationExtension(pi: ExtensionAPI) {
       "Verify that a task decomposition fully covers the parent task. Detects gaps and suggests improvements.",
     parameters: verifyDecompositionSchema,
     execute: async (_toolCallId: string, params: any): Promise<Record<string, unknown>> => {
-      const p = params as { parentTask: string; subtasks: string[]; constraints?: string[] };
-      return checkDecompositionCoverage(p.parentTask, p.subtasks, p.constraints);
+      try {
+        const p = params as { parentTask: string; subtasks: string[]; constraints?: string[] };
+        if (!p.parentTask || !Array.isArray(p.subtasks)) {
+          throw new Error("verify_decomposition requires 'parentTask' (string) and 'subtasks' (string array)");
+        }
+        return checkDecompositionCoverage(p.parentTask, p.subtasks, p.constraints);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.error(`verify_decomposition failed: ${msg}`);
+        return { complete: false, coverage: 0, gaps: [], suggestions: [`Error: ${msg}`], error: msg };
+      }
     },
   } as any);
 

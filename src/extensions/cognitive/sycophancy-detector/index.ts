@@ -264,17 +264,22 @@ async function handleSycophancy(
 export default function sycophancyDetector(): (pi: ExtensionAPI) => void {
   return function register(pi: ExtensionAPI): void {
     pi.on("message_end", async (event: any, ctx: ExtensionContext) => {
-      if (event.message?.role !== "assistant") return;
+      try {
+        if (event.message?.role !== "assistant") return;
 
-      // Skip short responses (tool call results, etc.)
-      const textContent = (event.message.content ?? [])
-        .filter((c: any): c is { type: "text"; text: string } => c.type === "text")
-        .map((c: { type: "text"; text: string }) => c.text)
-        .join("\n");
-      if (textContent.length < 50) return;
+        // Skip short responses (tool call results, etc.)
+        const textContent = (event.message.content ?? [])
+          .filter((c: any): c is { type: "text"; text: string } => c.type === "text")
+          .map((c: { type: "text"; text: string }) => c.text)
+          .join("\n");
+        if (textContent.length < 50) return;
 
-      const state = getState(ctx);
-      await handleSycophancy(pi, ctx, state);
+        const state = getState(ctx);
+        await handleSycophancy(pi, ctx, state);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.error(`[sycophancy] message_end handler error: ${msg}`);
+      }
     });
   };
 }
