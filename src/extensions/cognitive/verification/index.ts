@@ -385,21 +385,24 @@ export default function verificationExtension(pi: ExtensionAPI) {
               : "Claim verified: no contradictions, supported by context.";
 
         return {
-          claimId,
-          verified: highIssues.length === 0,
-          issues,
-          summary,
-          checks: {
-            contradictions: issues.filter((i: any) => i.type === "contradiction").length,
-            unsupported: issues.filter((i: any) => i.type === "unsupported").length,
-            hedgeWarnings: issues.filter((i: any) => i.type === "hedge_warning").length,
-            gaps: 0,
+          content: [{ type: "text" as const, text: summary }],
+          details: {
+            claimId,
+            verified: highIssues.length === 0,
+            issues,
+            summary,
+            checks: {
+              contradictions: issues.filter((i: any) => i.type === "contradiction").length,
+              unsupported: issues.filter((i: any) => i.type === "unsupported").length,
+              hedgeWarnings: issues.filter((i: any) => i.type === "hedge_warning").length,
+              gaps: 0,
+            },
           },
         };
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         log.error(`verify_claim failed: ${msg}`);
-        return { verified: false, issues: [], summary: `Error: ${msg}`, error: msg };
+        return { content: [{ type: "text" as const, text: `Error: ${msg}` }], details: { verified: false, issues: [], summary: `Error: ${msg}`, error: msg } };
       }
     },
   } as any);
@@ -416,11 +419,15 @@ export default function verificationExtension(pi: ExtensionAPI) {
         if (!p.parentTask || !Array.isArray(p.subtasks)) {
           throw new Error("verify_decomposition requires 'parentTask' (string) and 'subtasks' (string array)");
         }
-        return checkDecompositionCoverage(p.parentTask, p.subtasks, p.constraints);
+        const cov = checkDecompositionCoverage(p.parentTask, p.subtasks, p.constraints);
+        const text = cov.complete
+          ? `Coverage complete (${(cov.coverage * 100).toFixed(0)}%).`
+          : `Gaps: ${cov.gaps.length}. Coverage: ${(cov.coverage * 100).toFixed(0)}%. ${cov.suggestions.slice(0, 3).join("; ")}`;
+        return { content: [{ type: "text" as const, text }], details: cov };
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         log.error(`verify_decomposition failed: ${msg}`);
-        return { complete: false, coverage: 0, gaps: [], suggestions: [`Error: ${msg}`], error: msg };
+        return { content: [{ type: "text" as const, text: `Error: ${msg}` }], details: { complete: false, coverage: 0, gaps: [], error: msg } };
       }
     },
   } as any);
