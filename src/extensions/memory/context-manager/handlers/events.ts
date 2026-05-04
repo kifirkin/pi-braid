@@ -180,7 +180,7 @@ export function registerAutoRetryEndHandler(pi: any): void {
               ],
               display: true,
             },
-            { deliverAs: "steer" },
+            { deliverAs: "steer", triggerTurn: true },
             { type: "context", source: "context-manager/auto-retry" },
           );
         }

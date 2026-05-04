@@ -25,14 +25,12 @@ const log = createLogger("user-message-preprocessor");
  * - Other config (minLength, skipCommands, etc.) stored in memory
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, promises as fsPromises, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Api, AssistantMessage, Context, ImageContent, Model } from "@mariozechner/pi-ai";
 import { completeSimple } from "@mariozechner/pi-ai";
-import { Type } from "typebox";
 import type {
-  AgentToolResult,
   ExtensionAPI,
   ExtensionContext,
   InputEventResult,
@@ -107,17 +105,16 @@ function loadGlobalSetting<T>(key: string, defaultValue: T): T {
 }
 
 async function saveGlobalSetting<T>(key: string, value: T): Promise<void> {
-  const fs = await import("node:fs");
   let settings: Record<string, unknown> = {};
   try {
-    settings = JSON.parse(await fs.promises.readFile(SETTINGS_FILE, "utf-8"));
+    settings = JSON.parse(await fsPromises.readFile(SETTINGS_FILE, "utf-8"));
   } catch {
     /* file may not exist */
   }
   settings[key] = value;
   try {
-    await fs.promises.mkdir(CONFIG_DIR, { recursive: true });
-    await fs.promises.writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2), "utf-8");
+    await fsPromises.mkdir(CONFIG_DIR, { recursive: true });
+    await fsPromises.writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2), "utf-8");
   } catch {
     /* non-fatal */
   }
@@ -292,6 +289,7 @@ interface PreprocessorState {
   isProcessing: boolean;
   preprocessedText: string | undefined;
   preprocessingExhausted: boolean;
+  storedImages?: ImageContent[];
 }
 
 function createPreprocessorState(): PreprocessorState {
@@ -317,6 +315,9 @@ async function processMessage(
   ctx: ExtensionContext,
   resolve: (result: InputEventResult) => void,
 ) {
+  // Store images so they can be restored on re-submit after preprocessing
+  const state_pre = getPreprocessorState(ctx);
+  state_pre.storedImages = _images;
   const state = getPreprocessorState(ctx);
   state.isProcessing = true;
 
@@ -493,7 +494,19 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
     }
 
     // If preprocessing was already done in this agentic session, skip
+    // Restore stored images so they're not lost on re-submit
     if (state.preprocessingExhausted) {
+      if (state.storedImages && state.storedImages.length > 0) {
+        state.storedImages = undefined;
+        return { action: "continue", images: state.storedImages } as any;
+      }
+      return { action: "continue" };
+    }
+
+    // Skip preprocessing when images are attached — the image data can't
+    // be preserved through a "handled" → re-submit cycle
+    if (event.images && event.images.length > 0) {
+      state.skippedCount++;
       return { action: "continue" };
     }
 

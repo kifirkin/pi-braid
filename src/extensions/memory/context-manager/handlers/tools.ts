@@ -35,6 +35,9 @@ const contextCheckoutSchema = Type.Object({
 const contextPruneSchema = Type.Object({
   minAge: Type.Optional(Type.Number({ description: "Minimum age in turns (default 5)" })),
   toolFilter: Type.Optional(Type.Array(Type.String())),
+  dryRun: Type.Optional(
+    Type.Boolean({ description: "If true (default), shows what would be removed without deleting. Set to false to actually remove entries." }),
+  ),
 });
 
 const contextAuditSchema = Type.Object({
@@ -269,10 +272,14 @@ export function registerTools(pi: any): void {
     name: "context_prune",
     label: "Context Prune",
     description:
-      "Analyze session and identify obsolete entries for potential pruning. " +
-      "This is ANALYSIS ONLY - it does not remove entries. " +
-      "Automatic pruning runs on every LLM call via rule-based filtering (dedup, superseded writes, errors, recency). " +
-      "Use `context_archive` for LLM-driven compression of specific ranges.",
+      "Analyze session to identify obsolete/duplicate entries. " +
+      "By default (dryRun=true) this is a dry-run — it shows what would be removed " +
+      "without actually deleting anything. " +
+      "Set dryRun=false to actually REMOVE the identified entries and free up context. " +
+      "" +
+      "Use context_snapshot for a quick health check first, " +
+      "then context_prune(dryRun=false) to clean up, " +
+      "or context_archive to compress completed work into summaries.",
     parameters: contextPruneSchema,
     execute: async (
       _toolCallId: string,
@@ -281,18 +288,59 @@ export function registerTools(pi: any): void {
       _onUpdate: any,
       ctx: any,
     ): Promise<any> => {
+      const isDryRun = params.dryRun !== false;
       const minAge = params.minAge ?? 5;
       const audit = analyzeSession(ctx);
       let candidates = audit.candidates.filter((c) => c.age >= minAge);
       if (params.toolFilter?.length) {
         candidates = candidates.filter((c) => c.toolName && params.toolFilter.includes(c.toolName));
       }
+
+      // ── EXECUTION MODE (dryRun=false): Actually remove entries ────────
+      if (!isDryRun) {
+        try {
+          if (params?.keep != null) {
+            pi.compact({ keep: params.keep });
+          } else {
+            pi.compact();
+          }
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: [
+                  `**Prune executed** (dryRun=false): pi.compact() triggered`,
+                  `  Before: ${audit.usage.percent.toFixed(1)}% context used (${Math.round(audit.usage.tokens / 1024)}K tokens)`,
+                  `  Candidates identified: ${candidates.length}`,
+                  `  Keep recent: ${params?.keep ?? "auto"}`,
+                  ``,
+                  `Compaction is asynchronous — freed space visible next turn.`,
+                  `Run context_snapshot after the next turn to verify.`,
+                ].join("\n"),
+              },
+            ],
+            details: {
+              mode: "execute",
+              triggered: true,
+              beforeUsagePercent: audit.usage.percent,
+              candidatesFound: candidates.length,
+              keepMessages: params?.keep ?? "auto",
+            },
+          };
+        } catch (e: any) {
+          return {
+            content: [{ type: "text" as const, text: `Failed to prune: ${e.message}` }],
+            details: { mode: "execute", error: e.message },
+          };
+        }
+      }
+
+      // ── DRY-RUN MODE (default) ──────────────────────────────────────
       const topCandidates = candidates.slice(0, 15);
       const lines: string[] = [];
-      lines.push(`## Context Prune Analysis`);
-      lines.push("\n**Analysis mode** - This is analysis only.");
-      lines.push("Automatic rule-based pruning runs on every LLM call.");
-      lines.push("Use `context_archive` for LLM-driven compression.");
+      lines.push(`## Context Prune — Dry Run`);
+      lines.push("\n**Dry-run mode** — set dryRun=false to actually remove these.");
+      lines.push("Automatic rule-based pruning also runs on every LLM call.");
       lines.push(
         `\n**Context Usage:** ${audit.usage.percent.toFixed(1)}% (${Math.round(audit.usage.tokens / 1024)}K tokens)`,
       );
@@ -307,7 +355,7 @@ export function registerTools(pi: any): void {
         lines.push("\n✓ No prune candidates found (session is clean)");
         return {
           content: [{ type: "text" as const, text: lines.join("\n") }],
-          details: { candidatesFound: 0, audit, stats: getCmState(ctx).pruningState.stats },
+          details: { mode: "analyze", candidatesFound: 0, audit, stats: getCmState(ctx).pruningState.stats },
         };
       }
 
@@ -316,6 +364,7 @@ export function registerTools(pi: any): void {
       return {
         content: [{ type: "text" as const, text: lines.join("\n") }],
         details: {
+          mode: "analyze",
           candidatesFound: candidates.length,
           topCandidates: topCandidates.map((c) => ({ id: c.id, score: c.score, reason: c.reason })),
           audit,
@@ -400,20 +449,152 @@ export function registerTools(pi: any): void {
     },
   });
 
+  // ── context_snapshot ──────────────────────────────────────────────
+  pi.registerTool({
+    name: "context_snapshot",
+    label: "Context Snapshot",
+    description:
+      "Quick health check of the current session context. " +
+      "Returns a one-shot summary: usage %, session length, hygiene score, " +
+      "prune candidates count, and top recommendation. " +
+      "\n\n" +
+      "Use this first to assess context health, then:\n" +
+      "  context_compact — trigger immediate compaction pass\n" +
+      "  context_prune(dryRun=false) — also triggers compaction\n" +
+      "  context_prune() — analyze candidates before deciding\n" +
+      "  context_archive — compress completed work into summaries\n" +
+      "Simpler than the full context_audit.",
+    parameters: Type.Object({}),
+    execute: async (
+      _toolCallId: string,
+      _params: any,
+      _signal: any,
+      _onUpdate: any,
+      ctx: any,
+    ): Promise<any> => {
+      const audit = analyzeSession(ctx);
+
+      let hygieneScore = 1.0;
+      if (audit.usage.percent > 80) hygieneScore -= 0.3;
+      else if (audit.usage.percent > 60) hygieneScore -= 0.15;
+      if (audit.tagCount === 0 && audit.branchLength > 10) hygieneScore -= 0.2;
+      if (audit.candidates.length > 10) hygieneScore -= 0.15;
+      if (audit.summaryCount === 0 && audit.branchLength > 20) hygieneScore -= 0.2;
+      hygieneScore = Math.max(0, Math.min(1, hygieneScore));
+
+      const scoreIcon = hygieneScore >= 0.8 ? "✓" : hygieneScore >= 0.5 ? "⚠" : "✗";
+      const topRec = audit.recommendations
+        .filter((r: any) => r.priority === "high" || r.priority === "medium")
+        .slice(0, 1);
+
+      const lines = [
+        `**Context:** ${audit.usage.percent.toFixed(1)}% (${Math.round(audit.usage.tokens / 1024)}K/${Math.round(audit.usage.contextWindow / 1024)}K)`,
+        `**Session:** ${audit.branchLength} entries, ${audit.tagCount} tags, ${audit.summaryCount} summaries`,
+        `**Hygiene:** ${scoreIcon} ${(hygieneScore * 100).toFixed(0)}%`,
+        `**Prune candidates:** ${audit.candidates.length}`,
+      ];
+      if (topRec.length > 0) {
+        lines.push(`**Top action:** ${topRec[0].action} — ${topRec[0].reason}`);
+      }
+
+      return {
+        content: [{ type: "text" as const, text: lines.join("\n") }],
+        details: {
+          usagePercent: audit.usage.percent,
+          branchLength: audit.branchLength,
+          tagCount: audit.tagCount,
+          hygieneScore,
+          pruneCandidates: audit.candidates.length,
+          topRecommendation: topRec[0]?.action ?? null,
+        },
+      };
+    },
+  });
+
+  // ── context_compact ──────────────────────────────────────────────
+  pi.registerTool({
+    name: "context_compact",
+    label: "Compact Context",
+    description:
+      "Trigger a compaction pass to free up context space. " +
+      "Calls pi.compact() to remove obsolete, duplicate, and superseded entries. " +
+      "Accepts optional 'keep' parameter to preserve recent N messages from pruning. " +
+      "\n\n" +
+      "Compaction is asynchronous — freed space will be visible on the next turn. " +
+      "Use context_snapshot before and after to verify the effect.",
+    parameters: Type.Object({
+      keep: Type.Optional(
+        Type.Number({
+          description: "Number of most recent messages to preserve from pruning (default: auto)",
+        }),
+      ),
+    }),
+    execute: async (
+      _toolCallId: string,
+      params: any,
+      _signal: any,
+      _onUpdate: any,
+      ctx: any,
+    ): Promise<any> => {
+      try {
+        if (params?.keep != null) {
+          pi.compact({ keep: params.keep });
+        } else {
+          pi.compact();
+        }
+        const audit = analyzeSession(ctx);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: [
+                `**Compaction triggered** — freed space visible next turn.`,
+                `  Before: ${audit.usage.percent.toFixed(1)}% context used (${Math.round(audit.usage.tokens / 1024)}K tokens)`,
+                `  Keep recent: ${params?.keep ?? "auto"}`,
+                ``,
+                `Run context_snapshot on the next turn to verify freed space.`,
+              ].join("\n"),
+            },
+          ],
+          details: {
+            compactionTriggered: true,
+            beforeUsagePercent: audit.usage.percent,
+            keep: params?.keep ?? "auto",
+          },
+        };
+      } catch (e: any) {
+        return {
+          content: [{ type: "text" as const, text: `Failed to compact: ${e.message}` }],
+          details: { error: e.message },
+        };
+      }
+    },
+  });
+
   // ── context_archive ──────────────────────────────────────────────
   pi.registerTool({
     name: "context_archive",
     label: "Compress Context",
     description:
-      "Compress a range of conversation into a summary. The LLM generates a summary, " +
-      "and the original messages are marked for removal from context (not deleted from session). " +
-      "Use when a task is complete and the details are no longer needed in context.",
+      "Compress a range of conversation into an LLM-generated summary. " +
+      "The original messages are marked for removal from context (not deleted from session). " +
+      "Use when a task is complete and the details are no longer needed in context. " +
+      "If startIndex/endIndex are omitted, auto-selects the oldest 20% of entries.\n\n" +
+      "Context management tool chain:\n" +
+      "  context_snapshot — check current health\n" +
+      "  context_prune() — analyze what could be removed\n" +
+      "  context_prune(prune=true) — automatically remove obsolete entries\n" +
+      "  context_archive — summarize + remove completed work",
     parameters: Type.Object({
       topic: Type.String({
         description: "Brief topic label (e.g., 'Auth Implementation', 'Bug Fix')",
       }),
-      startIndex: Type.Number({ description: "Index of first message to compress" }),
-      endIndex: Type.Number({ description: "Index of last message to compress" }),
+      startIndex: Type.Optional(
+        Type.Number({ description: "Index of first message to compress (auto if omitted)" }),
+      ),
+      endIndex: Type.Optional(
+        Type.Number({ description: "Index of last message to compress (auto if omitted)" }),
+      ),
       summary: Type.String({ description: "Comprehensive summary of what was accomplished" }),
     }),
     execute: async (
@@ -423,7 +604,18 @@ export function registerTools(pi: any): void {
       _onUpdate: any,
       ctx: any,
     ): Promise<any> => {
-      const { topic, startIndex, endIndex, summary } = params;
+      let { topic, startIndex, endIndex, summary } = params;
+
+      // Auto-detect range if omitted
+      if (startIndex === undefined || endIndex === undefined) {
+        const audit = analyzeSession(ctx);
+        const sessionLength = audit.branchLength;
+        // Archive the oldest ~20% of entries (up to 100)
+        const archiveCount = Math.min(Math.max(Math.floor(sessionLength * 0.2), 10), 100);
+        startIndex = 0;
+        endIndex = archiveCount - 1;
+      }
+
       if (startIndex < 0 || endIndex < startIndex) {
         return {
           content: [

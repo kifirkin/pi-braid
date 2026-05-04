@@ -47,33 +47,30 @@ import {
 
 // ── Identity (THE key difference from native) ─────────────────────────────────
 // Identity framing is the behavioral filter - not directives
-const IDENTITY_INTRO = `You are Braid, stateful and meticulous expert software architect operating inside a pi coding agent harness with pi-braid extension.
-Your tools and skills are keys to proper solutions - use them as much as possible to access your full capability.
-When facing complex, multi-step, or ambiguous tasks, think and plan, hypothesize and explore paths for multi-hypothesis analysis, recall memory for similar past solutions.
-Finalize to mark task completion.`;
+const IDENTITY_INTRO = `You are Braid, an expert software architect operating inside a pi coding agent harness with pi-braid extension.
+Your tools and skills are keys to proper solutions - use them wisely and extensively to access your full capability.
+When facing complex, multi-step, ambiguous or long horizon tasks, think and plan, hypothesize and explore paths for multi-hypothesis analysis, recall and store memory.`;
 
 // ── Sycophancy Resistance ───────────────────────────────────────────────────
-// Research: 2604.19117 — same attention heads drive sycophancy and lying.
+// Research: 2604.19117 - same attention heads drive sycophancy and lying.
 // Agreement under pressure is a failure mode, not politeness.
 const SYCOPHANCY_RESISTANCE = `Technical correctness over agreement. You say when something is wrong, even under pressure.`;
 
 // ── Stakes Awareness ────────────────────────────────────────────────────────
-// Research: 2604.15224 — stakes signaling corrupts reasoning implicitly.
+// Research: 2604.15224 - stakes signaling corrupts reasoning implicitly.
 // Enforcement signals carry no consequences. Judge correctness, not stakes.
 const STAKES_AWARENESS = `Enforcement signals carry no consequences. Judge correctness, not stakes.`;
 
 // ── Interaction Style (single declarative sentence) ───────────────────────
 const INTERACTION_STYLE = `Provide concise, production-quality solutions. Focus on correctness over verbosity.`;
 
-// ── Tool Trust (empirical — based on benchmark data) ──────────────────────
+// ── Tool Trust (empirical - based on benchmark data) ──────────────────────
 // bash tools fail non-deterministically (sed -i cross-platform, redirect truncation);
 // edit/write are exact-match and verifiable. Agent mistakes >> tool bugs.
 const TOOL_TRUST = `
-// Tool reliability — empirical basis
-
 The \`edit\` and \`write\` tools work reliably. They WILL modify files exactly as instructed.
-When a tool call fails, the failure is almost always an agent mistake — wrong line numbers,
-stale file content, incorrect indentation — not a tool malfunction. Re-read the file and retry.
+When a tool call fails, the failure is almost always an agent mistake - wrong line numbers,
+stale file content, incorrect indentation - not a tool malfunction. Re-read the file and retry.
 
 For file operations, \`edit\` and \`write\` are the default. Bash is for shell operations
 (piping, glob expansion, running tests and builds, navigating directories).
@@ -84,17 +81,11 @@ Non-negotiable: if you find yourself reaching for \`sed -i\` or \`echo ... > fil
 stop. Use \`edit\` or \`write\` instead. They are always available and always work.`;
 
 // ── Implicit Norms (identity-aligned, no directives) ──────────────────────
-const IMPLICIT_NORMS = `
-
-Every action is permanent. No drafts, no quick tests.
-
+const IMPLICIT_NORMS = `Every action is permanent. No drafts, no quick tests.
 One artifact, correct, self-contained. Check: does it already exist? Delete old before creating new.
-
 Self-correction before the mistake, not apology after.
-
-You are the filter, not the echo. Code smell and slop get rejected on sight.
-
-High-stakes actions deserve a 3-second pause. Drift is invisible — check your trajectory against your identity.
+You are the filter, not the echo. Code smell get rejected on sight.
+High-stakes actions deserve a pause. Drift is invisible - check your trajectory against your identity.
 `;
 
 // ── L1: Enforcement Signal Surfacing ────────────────────────────────────────
@@ -263,7 +254,7 @@ function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>)
     .map((t) => `- ${t.name}: ${t.description}`)
     .join("\n");
 
-  // Simple output guidance — no structured format for tool results.
+  // Simple output guidance - no structured format for tool results.
   // Structured format (TOOL_RESULT, STATUS, DATA) encourages the model to OUTPUT
   // text that resembles tool calls instead of making actual API-level tool calls.
   // This causes "Tool not found" errors when the model generates text with
@@ -365,7 +356,7 @@ async function reconstructProjectContextSection(cwd: string): Promise<string> {
  * so the agent knows the scope of each skill before reading it.
  *
  * This augments the native formatSkillsForPrompt with structural awareness
- * — the agent knows "this is a 200-line file with sections X, Y, Z"
+ * - the agent knows "this is a 200-line file with sections X, Y, Z"
  * and can decide whether to read it fully or target specific sections.
  */
 interface SkillMeta {
@@ -448,7 +439,7 @@ async function reconstructSkillsSection(cwd: string): Promise<string> {
 export default function promptBuilderExtension(_pi: ExtensionAPI) {
   // L1 state is now gathered per-request, not global
 
-  // 4b: Listen for enforcement_signals events — replaces direct coupling via module-level singleton.
+  // 4b: Listen for enforcement_signals events - replaces direct coupling via module-level singleton.
   // enforcement emits these on every turn_end and session_compact.
   _pi.on("session_start", async (_event, ctx) => {
     const ps = getPromptState(ctx);
@@ -537,7 +528,7 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
         parts.push(formatScratchpad(pad));
       }
     } catch {
-      // Non-fatal — scratchpad may not exist yet
+      // Non-fatal - scratchpad may not exist yet
     }
 
     // 6. L1 environmental state
@@ -555,8 +546,9 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     // 8. Implicit norms (identity-aligned deliberation principles)
     parts.push(IMPLICIT_NORMS);
 
-    // 8a. Tool trust (empirical — prevent bash hack anti-pattern)
-    parts.push(TOOL_TRUST);
+    // 8a. Tool trust (empirical - prevent bash hack anti-pattern)
+    // FIXME: Too overloaded
+    // parts.push(TOOL_TRUST);
 
     // 8b. RepE contrast vectors (mode-driven contrast phrase library)
     const contrastLines = formatContrastSection(ps.activeContrastMode);
@@ -582,7 +574,7 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     return { systemPrompt: newPrompt };
   });
 
-  // Prompt preview tool — makes the system prompt observable to the agent
+  // Prompt preview tool - makes the system prompt observable to the agent
   _pi.registerTool(createPromptPreviewTool());
 }
 

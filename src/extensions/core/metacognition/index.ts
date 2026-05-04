@@ -65,7 +65,7 @@ export default function metacognitionExtension(pi: ExtensionAPI) {
             ],
             display: true,
           },
-          { deliverAs: "steer" },
+          { deliverAs: "steer", triggerTurn: true },
           { type: "other", source: "metacognition/next-task" },
         );
       },

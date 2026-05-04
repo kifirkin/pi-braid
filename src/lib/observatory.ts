@@ -268,6 +268,19 @@ class ObservatoryServer {
       });
     });
 
+    // Handle port-in-use — never crash the host process
+    server.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE") {
+        const fallbackPort = this.config.port + 1;
+        log.warn(`[observatory] Port ${this.config.port} in use, trying ${fallbackPort}...`);
+        this.config = { ...this.config, port: fallbackPort };
+        server.listen(fallbackPort, this.config.host);
+      } else {
+        log.error(`[observatory] Server error: ${err.message}`);
+        this.wss = null;
+      }
+    });
+
     server.listen(this.config.port, this.config.host);
     log.info(`[observatory] Server started at ws://${this.config.host}:${this.config.port}`);
   }
@@ -283,6 +296,10 @@ class ObservatoryServer {
 
   isRunning(): boolean {
     return this.wss !== null;
+  }
+
+  getPort(): number {
+    return this.config.port;
   }
 }
 
@@ -337,7 +354,8 @@ export function getObservatoryStatus(): string {
   lines.push(`Server running: ${server?.isRunning() ? "yes" : "no"}`);
   if (server) {
     lines.push(`Clients: ${server.getClientCount()}`);
-    lines.push(`Port: ${DEFAULT_CONFIG.port}`);
+    const port = server?.getPort() ?? DEFAULT_CONFIG.port;
+    lines.push(`Port: ${port}`);
   }
   if (collector) {
     const metrics = collector.getMetrics();

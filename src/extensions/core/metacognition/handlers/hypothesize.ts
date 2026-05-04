@@ -92,9 +92,18 @@ export function createHypothesizeTool() {
             ? response
             : "";
 
+        if (!text || !text.trim()) {
+          throw new Error(
+            `hypothesize: session model returned empty response. ` +
+              `Model: "${ctx.model.id}". ` +
+              `The model may be unavailable or the prompt was rejected. ` +
+              `Try again with a more specific problem statement.`,
+          );
+        }
+
         // Score hypotheses with heuristic signals + evidence pool
         const { scored, annotated } = scoreHypothesisOutput(
-          text || "No analysis produced.",
+          text,
           evidence,
           ctx ?? undefined,
         );

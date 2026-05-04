@@ -60,13 +60,22 @@ export interface HeartbeatTickEvent {
   timestamp: number;
 }
 
+export interface ToolErrorEvent {
+  type: "tool_error";
+  toolName: string;
+  error: string;
+  turn: number;
+  timestamp: number;
+}
+
 export type AgentEvent =
   | TimerEvent
   | MemoryEvictEvent
   | TurnCompleteEvent
   | ContextFullEvent
   | EnforcementEvent
-  | HeartbeatTickEvent;
+  | HeartbeatTickEvent
+  | ToolErrorEvent;
 
 type Handler<T extends AgentEvent = AgentEvent> = (event: T) => void;
 

@@ -13,7 +13,6 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import corePolyfillFn from "../extensions/core/polyfill/index.js";
 import coreMetacognitionFn from "../extensions/core/metacognition/index.js";
-import corePlannerFn from "../extensions/core/planner/index.js";
 import coreScratchpadFn from "../extensions/core/scratchpad/index.js";
 import corePreprocessorFn from "../extensions/core/user-message-preprocessor/index.js";
 
@@ -36,12 +35,12 @@ import retryFn from "../extensions/retry/retry/index.js";
 import errorCaptureFn from "../extensions/retry/error-capture/index.js";
 
 import promptBuilderFn from "../extensions/prompt/prompt-builder/index.js";
-import promptGuardianFn from "../extensions/prompt/prompt-guardian/index.js";
-
 import healthcheckFn from "../extensions/tools/healthcheck/index.js";
 import timerFn from "../extensions/tools/timer/index.js";
 import latentActivatorFn from "../extensions/tools/latent-activator/index.js";
-
+import observatoryFn from "../extensions/tools/observatory/index.js";
+import diffFn from "../extensions/tools/diff/index.js";
+import systemMonitorFn from "../extensions/tools/system-monitor/index.js";
 
 import assistantFn from "../extensions/assistant/assistant/index.js";
 import feedbackFn from "../extensions/assistant/feedback/index.js";
@@ -88,17 +87,16 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
 	// CORE — Foundation layer (always on, no dependencies)
 	// Coupling: polyfill patches pi API used by all others; preprocessor
 	//   modifies input stream before enforcement sees it;
-	//   planner+scratchpad+metacognition form the metacognitive tool stack.
+	//   scratchpad+metacognition form the metacognitive tool stack.
 	// ═════════════════════════════════════════════════════════════════════
 	{
 		name: "core",
 		label: "Core",
-		description: "Foundation: polyfill, metacognition, planner, scratchpad, preprocessor",
+		description: "Foundation: polyfill, metacognition, scratchpad, preprocessor",
 		alwaysOn: true,
 		extensions: [
 			{ name: "polyfill",              fn: corePolyfillFn },
 			{ name: "metacognition",          fn: coreMetacognitionFn },
-			{ name: "planner",               fn: corePlannerFn },
 			{ name: "scratchpad",            fn: coreScratchpadFn },
 			{ name: "user-message-preprocessor", fn: corePreprocessorFn },
 		],
@@ -231,7 +229,6 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
 		dependencies: ["core"],
 		extensions: [
 			{ name: "prompt-builder",        fn: promptBuilderFn },
-			{ name: "prompt-guardian",       fn: promptGuardianFn },
 		],
 		listensTo: ["session_start", "phase_start", "session_shutdown", "before_agent_start"],
 		coupledWith: [],
@@ -249,8 +246,11 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
 			{ name: "healthcheck",          fn: healthcheckFn },
 			{ name: "timer",                fn: timerFn },
 			{ name: "latent-activator",     fn: latentActivatorFn },
+			{ name: "observatory",          fn: observatoryFn },
+			{ name: "diff",                 fn: diffFn },
+			{ name: "system-monitor",        fn: systemMonitorFn },
 		],
-		listensTo: ["turn_end"], // timer only
+		listensTo: ["turn_end", "session_start", "session_shutdown"], // timer + observatory + diff + system-monitor
 		coupledWith: [],
 	},
 

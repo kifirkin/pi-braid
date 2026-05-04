@@ -28,14 +28,11 @@ Multi-stage analysis pipeline:
 
 ## Tools
 
-| Tool                  | Description                                                                              |
-| --------------------- | ---------------------------------------------------------------------------------------- |
-| `preprocessor_config` | View/update config: `enabled`, `minLength`, `skipCommands`, `showDiff`, `timeoutSeconds` |
-| `preprocessor_stats`  | Get preprocessing statistics: messages processed, skipped, rewritten, errors             |
+_(Tools removed 2026-04-28)_ `preprocessor_config` and `preprocessor_stats` were removed to reduce surface area. Preprocessor config is now internal only. Use `~/.pi/agent/settings.json` to toggle enabled/disabled, or the `/preprocessor` command.
 
 ## Key Patterns
 
 - **Non-blocking by design**: Most messages skip preprocessing entirely (well-written English text passes through). Only ambiguous or problematic messages are rewritten.
-- **Conservative approach**: `isLikelyEnglish` stopword-ratio check prevents false positives on English text. If >10% stopwords, it's English → skip.
-- **System prompt directive**: Injects "Think silently before producing output." to encourage better reasoning before tool calls.
-- **Configurable**: All thresholds configurable via `preprocessor_config`.
+- **Conservative approach**: Language detection via Unicode script ranges, not stopword counting. Non-English text is translated to English.
+- **Images preserved**: Messages with attached images skip preprocessing to avoid image data loss during the `handled` → re-submit cycle.
+- **Configurable**: Enabled state persists to `~/.pi/agent/settings.json`. Toggle via `/preprocessor` command.

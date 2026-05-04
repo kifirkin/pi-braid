@@ -123,7 +123,7 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
         content: [{ type: "text" as const, text: `[timer] ${timer.reason}` }],
         display: true,
       },
-      { deliverAs: "steer" },
+      { deliverAs: "steer", triggerTurn: true },
       { type: "heartbeat", source: "timer/fire" },
     );
   } catch {

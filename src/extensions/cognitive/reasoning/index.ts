@@ -32,7 +32,7 @@ function sendSteerMessage(pi: ExtensionAPI, message: string): void {
       content: [{ type: "text" as const, text: `[reasoning] ${message}` }],
       display: true,
     },
-    { deliverAs: "steer" },
+    { deliverAs: "steer", triggerTurn: true },
     { type: "enforcement", source: "reasoning/steer" },
   );
 }

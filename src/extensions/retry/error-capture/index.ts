@@ -1,4 +1,5 @@
 import { createLogger } from "../../../lib/logger.js";
+import { eventBus } from "../../../lib/event-bus.js";
 
 const log = createLogger("error-capture");
 /**
@@ -129,6 +130,13 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
       if (result.isError) {
         await captureError(result.toolName, `Tool failed: ${result.toolName}`, undefined, {
           turn: "current",
+        });
+        eventBus.emit({
+          type: "tool_error",
+          toolName: result.toolName,
+          error: `Tool failed: ${result.toolName}`,
+          turn: 0,
+          timestamp: Date.now(),
         });
       }
     }
