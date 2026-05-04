@@ -99,9 +99,11 @@ console.log("\n[3] handler-registry.ts — structure");
     assert.ok(src.includes("export function registerHandlers"));
   });
 
-  test("registers all pi.on() handlers", () => {
-    const matches = [...src.matchAll(/pi\.on\(/g)];
-    assert.equal(matches.length, 12, `expected 12, got ${matches.length}`);
+  test("registers all pi.on() + registerSessionStartHandler() handlers", () => {
+    const piOn = [...src.matchAll(/pi\.on\(/g)].length;
+    const regSh = [...src.matchAll(/registerSessionStartHandler\(/g)].length;
+    const total = piOn + regSh;
+    assert.equal(total, 12, `expected 12, got ${total} (pi.on:${piOn} + regSh:${regSh})`);
   });
 
   test("registers input handler", () => {
@@ -109,7 +111,7 @@ console.log("\n[3] handler-registry.ts — structure");
   });
 
   test("registers session_start handler", () => {
-    assert.ok(src.includes(`pi.on("session_start"`), "should have session_start handler");
+    assert.ok(src.includes(`pi.on("session_start"`) || src.includes(`registerSessionStartHandler`), "should have session_start handler");
   });
 
   test("registers tool_call handler", () => {

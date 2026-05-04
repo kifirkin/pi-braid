@@ -22,7 +22,7 @@ console.log("\n[1] Observatory extension structure");
 
   assert(src.includes("export default function observatoryExtension"), "exports default function");
   assert(src.includes("pi.registerTool"), "registers /observatory tool");
-  assert(src.includes("pi.on(\"session_start\""), "listens to session_start");
+  assert(src.includes("pi.on(\"session_start\"") || src.includes("registerSessionStartHandler"), "listens to session_start");
   assert(src.includes("isDaemonRunning"), "checks daemon status via PID");
   assert(src.includes("braid-daemon.sh"), "manages daemon via shell script");
   assert(src.includes("execSync"), "uses execSync for daemon control");

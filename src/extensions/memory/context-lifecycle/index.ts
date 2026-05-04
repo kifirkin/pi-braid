@@ -17,6 +17,7 @@ import { StringEnum } from "@mariozechner/pi-ai";
 import { Type } from "typebox";
 
 import { createLogger } from "../../../lib/logger.js";
+import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 import { getExtensionState } from "../../../lib/extension-state.js";
 
 import type { SemanticSignal } from "./types.js";
@@ -300,7 +301,7 @@ import { clearInjections, sendTrackedMessage } from "../../../lib/injection-trac
 
 export default function contextLifecycleExtension(pi: ExtensionAPI): void {
   // ── session_start ────────────────────────────────────────────────────────
-  pi.on("session_start", async (_event: any, ctx: any) => {
+  registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event: any, ctx: any) => {
     resetState(ctx);
     state().outcomes.length = 0;
     _policyEngine.resetCooldowns();

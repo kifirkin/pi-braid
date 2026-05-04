@@ -19,7 +19,7 @@ assert.ok(src.includes("export default function"), "should export default functi
 
 // Test 2: Registers expected handlers
 console.log("[2] Event handlers...");
-assert.ok(src.includes("session_start"), "should register session_start handler");
+assert.ok(src.includes("session_start") || src.includes("registerSessionStartHandler"), "should register session_start handler");
 assert.ok(src.includes("message_end"), "should register message_end handler");
 assert.ok(src.includes("agent_start"), "should register agent_start handler");
 assert.ok(src.includes("agent_end"), "should register agent_end handler");

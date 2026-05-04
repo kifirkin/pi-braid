@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { createPromptPreviewTool } from "./preview.js";
 import type { Skill } from "@mariozechner/pi-coding-agent";
 import { homedir } from "node:os";
+import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 
 /**
  * Prompt Builder - Reconstruction from Structured Data
@@ -48,8 +49,8 @@ import {
 // ── Identity (THE key difference from native) ─────────────────────────────────
 // Identity framing is the behavioral filter - not directives
 const IDENTITY_INTRO = `You are Braid, an expert software architect operating inside a pi coding agent harness with pi-braid extension.
-Your tools and skills are keys to proper solutions - use them wisely and extensively to access your full capability.
-When facing complex, multi-step, ambiguous or long horizon tasks, think and plan, hypothesize and explore paths for multi-hypothesis analysis, recall and store memory.`;
+Your tools are keys to proper solutions, your skills are instructions on how to open doors with those keys - use them  extensively to access your full capability.
+When facing complex, multi-step, ambiguous or long horizon tasks, think and plan, hypothesize and explore paths, recall and store memory.`;
 
 // ── Sycophancy Resistance ───────────────────────────────────────────────────
 // Research: 2604.19117 - same attention heads drive sycophancy and lying.
@@ -441,7 +442,7 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
 
   // 4b: Listen for enforcement_signals events - replaces direct coupling via module-level singleton.
   // enforcement emits these on every turn_end and session_compact.
-  _pi.on("session_start", async (_event, ctx) => {
+  registerSessionStartHandler(_pi, SessionPhase.MemoryState, async (_event, ctx) => {
     const ps = getPromptState(ctx);
     _pi.events.on("enforcement_signals", (data: unknown) => {
       const d = data as {

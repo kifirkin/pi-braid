@@ -1,3 +1,5 @@
+import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
+
 // ── Context-Manager Extension ─────────────────────────────────────────────────
 // Decomposed from 1141L monolith into 4 handler modules + slim index.
 //
@@ -33,7 +35,7 @@ import { registerRotationHandlers, registerSessionShutdownHandler } from "./hand
 
 export default function contextManagerExtension(pi: any): void {
   // ── Session Start ──────────────────────────────────────────────────────
-  pi.on("session_start", async (_event: any, ctx: ExtensionContext) => {
+  registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event: any, ctx: ExtensionContext) => {
     try {
       // Pruning state is initialized eagerly in getCmState factory
       // Set compaction reserve tokens

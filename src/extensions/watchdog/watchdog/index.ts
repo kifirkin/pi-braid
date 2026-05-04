@@ -1,4 +1,5 @@
 import { createLogger } from "../../../lib/logger.js";
+import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 
 const log = createLogger("watchdog");
 /**
@@ -25,7 +26,7 @@ function formatTime(ms: number): string {
 }
 
 export default function (pi: ExtensionAPI) {
-  pi.on("session_start", async (_event, ctx) => {
+  registerSessionStartHandler(pi, SessionPhase.Background, async (_event, ctx) => {
     const path = ctx.sessionManager.getSessionFile() ?? ctx.cwd;
     sessions.set(path, {
       startTime: Date.now(),

@@ -20,6 +20,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { Type } from "typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { createLogger } from "../../../lib/logger.js";
+import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -165,7 +166,7 @@ export default function observatoryExtension(pi: ExtensionAPI) {
   // Check if daemon is running. If so, whisper availability.
   // Does NOT start any server itself — that's the daemon's job.
 
-  pi.on("session_start", async (_event: any, ctx: ExtensionContext) => {
+  registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event: any, ctx: ExtensionContext) => {
     if (isDaemonRunning()) {
       log.info("Observatory daemon detected — monitoring available.");
       ctx.whisper?.(

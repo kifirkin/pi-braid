@@ -16,6 +16,7 @@
 import type { ExtensionAPI, SessionCompactEvent, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../../lib/logger.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
+import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 import { eventBus } from "../../../lib/event-bus.js";
 import { detectMalformedToolCalls } from "./detection/malformed.js";
 import { getReplyInstruction, setLanguage, detectLanguage } from "../../../lib/language-hint.js";
@@ -101,7 +102,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     }
   });
 
-  pi.on("session_start" as never, async (event: any, ctx: ExtensionContext) => {
+  registerSessionStartHandler(pi, SessionPhase.CoreInit, async (event: any, ctx: ExtensionContext) => {
     if (!getState(ctx).enforcementActive) return;
     const task =
       (event as unknown as { task?: string; prompt?: string }).task ||

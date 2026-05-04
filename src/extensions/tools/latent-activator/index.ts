@@ -1,4 +1,5 @@
 import { createLogger } from "../../../lib/logger.js";
+import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 
 const log = createLogger("latent-activator");
 /**
@@ -467,7 +468,7 @@ const activateMixSchema = Type.Object({
 });
 
 export default function latentActivatorExtension(pi: ExtensionAPI) {
-  pi.on("session_start", () => {
+  registerSessionStartHandler(pi, SessionPhase.Background, async () => {
     try {
       const s = getActivatorState();
       s.currentBehaviors = new Set(["planner", "executor"] as AtomicBehavior[]);

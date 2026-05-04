@@ -15,6 +15,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { Type } from "typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { createLogger } from "../../../lib/logger.js";
+import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 import { getExtensionState } from "../../../lib/extension-state.js";
 import { emitSignal } from "../../../lib/belief-policy-engine.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
@@ -240,7 +241,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
   });
 
   // ── Event: session_start ────────────────────────────────────────────
-  pi.on("session_start", async (_event: any, ctx: ExtensionContext) => {
+  registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event: any, ctx: ExtensionContext) => {
     const state = getState(ctx);
     state.currentSessionId = ctx.sessionManager.getSessionFile?.() ?? `session-${Date.now()}`;
 

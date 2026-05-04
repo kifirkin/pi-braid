@@ -1,4 +1,5 @@
 import { createLogger } from "../../../lib/logger.js";
+import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 
 const log = createLogger("agent-environment");
 /**
@@ -251,7 +252,7 @@ function createTimeStatusTool() {
 
 export default function agentEnvironmentExtension(pi: ExtensionAPI) {
   // Track turns
-  pi.on("session_start", () => {
+  registerSessionStartHandler(pi, SessionPhase.Background, async () => {
     _state.sessionStart = Date.now();
     _state.lastEventTime = Date.now();
     _state.turnCount = 0;

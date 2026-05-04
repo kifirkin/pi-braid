@@ -1,5 +1,6 @@
 import { createLogger } from "../../../lib/logger.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
+import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 
 const log = createLogger("feedback");
 /**
@@ -366,7 +367,7 @@ function getABTestConfig(s: FeedbackState): Record<string, unknown> {
 
 export default function feedbackExtension(pi: ExtensionAPI) {
   // Initialize state on start
-  pi.on("session_start", async (_event, ctx) => {
+  registerSessionStartHandler(pi, SessionPhase.Background, async (_event, ctx) => {
     const state = getFeedbackState(ctx);
     state.nudgeCountThisTurn = 0;
   });

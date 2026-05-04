@@ -20,6 +20,7 @@ import {
   type PolicyContext,
 } from "../../../lib/belief-store.js";
 import { createLogger } from "../../../lib/logger.js";
+import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 import { getExtensionState } from "../../../lib/extension-state.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { eventBus } from "../../../lib/event-bus.js";
@@ -313,7 +314,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 
   // ── Event: session_start ──────────────────────────────────────────
 
-  pi.on("session_start", async (_event: any, ctx: ExtensionContext) => {
+  registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event: any, ctx: ExtensionContext) => {
     const state = getState(ctx);
 
     // Register Event Bus consumers

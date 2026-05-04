@@ -10,6 +10,7 @@
  */
 
 import { createLogger } from "../../../lib/logger.js";
+import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -36,7 +37,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
   const turnToolTypes = new Set<string>();
 
   // ── session_start ──────────────────────────────────────────────────
-  pi.on("session_start", async (_event, ctx) => {
+  registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event, ctx) => {
     const state = getAnalyticsStateInternal(ctx);
     state.sessionId = ctx.sessionManager.getSessionFile() ?? `session-${Date.now()}`;
     state.sessionStartTime = Date.now();

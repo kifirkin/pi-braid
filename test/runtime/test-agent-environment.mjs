@@ -63,7 +63,7 @@ assert.ok(src.includes("Turns:"), "should include turn count");
 
 // Test 8: Session event tracking
 console.log("[8] Session tracking...");
-assert.ok(src.includes("session_start"), "should handle session_start");
+assert.ok(src.includes("session_start") || src.includes("registerSessionStartHandler"), "should handle session_start");
 assert.ok(src.includes("message_end"), "should handle message_end");
 assert.ok(src.includes("turnCount++"), "should increment turn count");
 
