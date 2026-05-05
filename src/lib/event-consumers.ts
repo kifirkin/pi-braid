@@ -57,17 +57,31 @@ export function getEvictCount(): number {
 // ── Handler: context_full → trigger compaction ───────────────────────────────
 
 let _contextFullWarnings = 0;
+/** When context_full fires, this tracks the highest usage % seen for aggressive compression. */
+let _peakUsagePercent = 0;
 
 export function onContextFull(event: { usagePercent: number }): void {
   _contextFullWarnings++;
+  if (event.usagePercent > _peakUsagePercent) {
+    _peakUsagePercent = event.usagePercent;
+  }
   log.warn(
     `[event] Context full warning #${_contextFullWarnings}: ` +
-      `${event.usagePercent.toFixed(1)}% used`,
+      `${event.usagePercent.toFixed(1)}% used` +
+      ` (peak: ${_peakUsagePercent.toFixed(1)}%)`,
   );
 }
 
 export function getContextFullWarnings(): number {
   return _contextFullWarnings;
+}
+
+/**
+ * Get the peak usage % seen. Used by compaction to determine
+ * compression aggressiveness — higher peak → more aggressive.
+ */
+export function getPeakUsagePercent(): number {
+  return _peakUsagePercent;
 }
 
 // ── Handler: turn_complete → track module health ────────────────────────────

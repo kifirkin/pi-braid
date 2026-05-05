@@ -17,6 +17,7 @@
 
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { createLogger } from "../../../lib/logger.js";
+import type { CompressionLevel } from "../../../lib/compression-strategy.js";
 const log = createLogger("semantic-compress");
 
 export type SemanticUnitType =
@@ -43,6 +44,8 @@ export interface CompressionStats {
   unitsPreserved: number;
   unitsCollapsed: number;
   unitsDropped: number;
+  /** Which compression level was used (if adaptive). */
+  level?: CompressionLevel;
 }
 
 const UNIT_PATTERNS: Array<{ type: SemanticUnitType; patterns: RegExp[]; priority: number }> = [
@@ -196,8 +199,18 @@ function compressToolUnit(unit: SemanticUnit): AgentMessage[] {
  * Semantically compress a message array.
  * Preserves: problem statements, key decisions, critical failures, summaries.
  * Collapses: repeated patterns, verbose outputs, boilerplate.
+ *
+ * @param messages - Messages to compress
+ * @param compressionLevel - Optional adaptive compression level:
+ *   "short-term": conservative, preserve most content
+ *   "medium-term": moderate, collapse reasoning + tool chains
+ *   "long-term": aggressive, drop low-priority content heavily
+ *   Default (undefined): standard compression (behaves like medium-term)
  */
-export function semanticCompress(messages: AgentMessage[]): {
+export function semanticCompress(
+  messages: AgentMessage[],
+  compressionLevel?: CompressionLevel,
+): {
   compressed: AgentMessage[];
   units: SemanticUnit[];
   stats: CompressionStats;
@@ -222,7 +235,18 @@ export function semanticCompress(messages: AgentMessage[]): {
   let unitsCollapsed = 0;
   let unitsDropped = 0;
 
+  // Determine minimum priority to keep and collapse thresholds based on level
+  const minKeepPriority = compressionLevel === "long-term" ? 2 : 0;
+  const reasoningCollapseLen = compressionLevel === "short-term" ? 5 : compressionLevel === "long-term" ? 2 : 3;
+  const toolCollapseThreshold = compressionLevel === "short-term" ? 5 : compressionLevel === "long-term" ? 2 : 3;
+
   for (const unit of units) {
+    // Stage 1: Filter by minimum priority
+    if (unit.priority < minKeepPriority) {
+      unitsDropped++;
+      continue;
+    }
+
     if (!unit.preserve && !unit.collapse) {
       unitsDropped++;
       continue;
@@ -232,12 +256,32 @@ export function semanticCompress(messages: AgentMessage[]): {
     if (unit.preserve) {
       processed = unit.messages;
     } else if (unit.type === "tool") {
+      // Tool unit: compressToolUnit then check threshold
       processed = compressToolUnit(unit);
-    } else if (unit.type === "reasoning" && unit.messages.length > 2) {
+      // If the result is still long and we're being aggressive, keep only the last
+      if (compressionLevel === "long-term" && processed.length > 3) {
+        processed = [processed[processed.length - 1]];
+      } else if (compressionLevel === "medium-term" && processed.length > toolCollapseThreshold) {
+        processed = [processed[processed.length - 1]];
+      }
+    } else if (unit.type === "reasoning" && unit.messages.length > reasoningCollapseLen) {
       // Reasoning unit: keep first + last (problem → solution)
-      processed = [unit.messages[0], unit.messages[unit.messages.length - 1]];
+      // For long-term: also trim if the first+last alone are long
+      const kept = [unit.messages[0], unit.messages[unit.messages.length - 1]];
+      if (compressionLevel === "long-term" && kept.length > 1) {
+        // Also trim kept to single message if both are verbose
+        processed = [kept[kept.length - 1]];
+      } else {
+        processed = kept;
+      }
     } else if (unit.type === "boilerplate") {
-      processed = extractText(unit.messages[0] as any).length > 50 ? [unit.messages[0]] : [];
+      const text = extractText(unit.messages[0] as any);
+      if (compressionLevel === "long-term") {
+        // Drop all boilerplate in long-term mode
+        processed = text.length > 100 ? [unit.messages[0]] : [];
+      } else {
+        processed = text.length > 50 ? [unit.messages[0]] : [];
+      }
     } else {
       processed = unit.messages;
     }
@@ -254,7 +298,8 @@ export function semanticCompress(messages: AgentMessage[]): {
   }
 
   log.debug(
-    `semantic-compress: ${messages.length} msgs → ${compressed.length} msgs ` +
+    `semantic-compress[${compressionLevel ?? "standard"}]: ` +
+      `${messages.length} msgs → ${compressed.length} msgs ` +
       `(${unitsPreserved} preserved, ${unitsCollapsed} collapsed, ${unitsDropped} dropped)`,
   );
 
@@ -267,6 +312,7 @@ export function semanticCompress(messages: AgentMessage[]): {
       unitsPreserved,
       unitsCollapsed,
       unitsDropped,
+      level: compressionLevel,
     },
   };
 }

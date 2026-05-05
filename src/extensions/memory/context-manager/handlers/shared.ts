@@ -42,6 +42,8 @@ export function isInternal(toolName: string): boolean {
 }
 
 // ── Session-scoped state ──────────────────────────────────────────────────────
+import type { CompressionStats } from "../semantic-compress.js";
+
 interface CmState {
   checkoutParams: { target: string; newId: string; targetId: string; backupTag?: string } | null;
   pruningState: any;
@@ -49,6 +51,11 @@ interface CmState {
   // H5: Retry guards for compaction/overflow (prevents double-trigger)
   compactionRetryActive?: boolean;
   overflowRetryActive?: boolean;
+  /** Compression metadata from the last semantic compression pass. */
+  lastCompressionStats?: CompressionStats & {
+    turnRange: { from: number; to: number };
+    timestamp: number;
+  };
 }
 
 export function getCmState(ctx: ExtensionContext): CmState {

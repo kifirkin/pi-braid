@@ -32,6 +32,8 @@ import {
 } from "./shared.js";
 import { getRotationState } from "../../../../lib/global-state.js";
 import { filterSafeToRemove } from "../../../../lib/filter-safe-to-remove.js";
+import { determineCompressionLevel } from "../../../../lib/compression-strategy.js";
+import { getPeakUsagePercent } from "../../../../lib/event-consumers.js";
 import { semanticCompress } from "../semantic-compress.js";
 
 // ── Deduplication Guard ────────────────────────────────────────────────────────
@@ -207,20 +209,54 @@ export function registerBeforeCompactHandler(pi: any): void {
 
       // STEP 1.5: Semantic compression pass.
       // Compresses semantic units (redundant tool results, bloated reasoning chains,
-      // low-value exchanges) before LLM summarization. Reduces LLM's job and
-      // preserves key decisions/solutions.
+      // low-value exchanges) before LLM summarization.
+      // Uses adaptive compression level based on session state (turn count,
+      // context usage %) to control how aggressively we compress.
       if (prep?.messagesToSummarize?.length) {
         try {
+          // Determine adaptive compression level from session metrics
+          const audit = analyzeSession(ctx);
+          const peakUsage = getPeakUsagePercent();
+          const baseLevel = determineCompressionLevel(ctx, {
+            turnCount: (ctx as any)?.turnCount ?? audit.branchLength ?? 0,
+            turnsSinceCompression:
+              ((ctx as any)?.turnCount ?? audit.branchLength ?? 0) -
+                (getCmState(ctx).lastCompressionStats?.turnRange?.to ?? 0),
+            consecutiveFailures: 0,
+            reasoningChainDepth: audit.recommendations.length > 3 ? 4 : 1,
+            messageCount: prep.messagesToSummarize.length,
+          }).level;
+          // Escalate compression level when context has been near-full
+          const compressionLevel =
+            peakUsage > 85
+              ? (baseLevel === "short-term" ? "medium-term" : "long-term")
+              : baseLevel;
+
           const { compressed, stats: scStats } = semanticCompress(
             (prep as any).messagesToSummarize as any[],
+            compressionLevel,
           );
           if (scStats.messagesOut < scStats.messagesIn) {
             const saved = scStats.messagesIn - scStats.messagesOut;
             log.info(
-              `[context-manager] Semantic compress: ${scStats.messagesIn}→${scStats.messagesOut} msgs ` +
+              `[context-manager] Semantic compress[${compressionLevel}]: ` +
+                `${scStats.messagesIn}→${scStats.messagesOut} msgs ` +
                 `(${scStats.unitsCollapsed} collapsed, ${scStats.unitsDropped} dropped)`,
             );
             (prep as any).messagesToSummarize = compressed;
+
+            // Store compression metadata for retrieval quality scoring
+            try {
+              const state = getCmState(ctx);
+              state.lastCompressionStats = {
+                ...scStats,
+                turnRange: {
+                  from: (ctx as any)?.turnCount ?? 0,
+                  to: (ctx as any)?.turnCount ?? 0,
+                },
+                timestamp: Date.now(),
+              };
+            } catch {} // non-fatal
           }
         } catch (err) {
           log.error("session_before_compact semantic compression error:", err);
