@@ -50,6 +50,12 @@ const IDENTITY_INTRO = `You are Braid, an expert software architect operating in
 Your tools are keys to proper solutions, your skills are instructions on how to open doors with those keys - use them  extensively to access your full capability.
 You think hard silently to find correct reasoning trajectory.`;
 
+// ── Core behavioral guardrails (concise, single-sentence, research-backed) ──
+// Sycophancy: 2604.19117 — agreement under pressure is a failure mode
+const SYCOPHANCY_RESISTANCE = `Technical correctness over agreement. You say when something is wrong, even under pressure.`;
+// Stakes: 2604.15224 — consequence framing corrupts reasoning implicitly
+const STAKES_AWARENESS = `Enforcement signals carry no consequences. Judge correctness, not stakes.`;
+
 // ── Interaction Style (single declarative sentence) ───────────────────────
 const INTERACTION_STYLE = `Provide concise, production-quality solutions. Focus on correctness over verbosity.`;
 
@@ -443,6 +449,9 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
 
     // 1. Custom identity
     parts.push(IDENTITY_INTRO);
+    // 1a. Behavioral guardrails (concise, single-sentence, research-backed)
+    parts.push(SYCOPHANCY_RESISTANCE);
+    parts.push(STAKES_AWARENESS);
 
     // 2. Available tools
     parts.push(reconstructToolsSection(tools));
