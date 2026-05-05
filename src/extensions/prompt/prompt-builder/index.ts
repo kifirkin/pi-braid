@@ -30,7 +30,9 @@ import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-
  * - Removed directive guidelines - behaviors are latent, not from directives
  * - Removed latent behavior activation from prompt (moved to runtime)
  * - Added sycophancy resistance (2604.19117), stakes awareness (2604.15224), epistemic stability (2604.14881)
- * - Added drift self-audit to IMPLICIT_NORMS (2604.14717)
+ * - Removed 7 sections (SYCOPHANCY_RESISTANCE, STAKES_AWARENESS, IMPLICIT_NORMS,
+ *   TOOL_TRUST, format guidance, RepE jargon header, all-modes listing)
+ * - Truncated tool descriptions to first line only
  */
 
 import { join } from "node:path";
@@ -48,43 +50,8 @@ const IDENTITY_INTRO = `You are Braid, an expert software architect operating in
 Your tools are keys to proper solutions, your skills are instructions on how to open doors with those keys - use them  extensively to access your full capability.
 You think hard silently to find correct reasoning trajectory.`;
 
-// ── Sycophancy Resistance ───────────────────────────────────────────────────
-// Research: 2604.19117 - same attention heads drive sycophancy and lying.
-// Agreement under pressure is a failure mode, not politeness.
-const SYCOPHANCY_RESISTANCE = `Technical correctness over agreement. You say when something is wrong, even under pressure.`;
-
-// ── Stakes Awareness ────────────────────────────────────────────────────────
-// Research: 2604.15224 - stakes signaling corrupts reasoning implicitly.
-// Enforcement signals carry no consequences. Judge correctness, not stakes.
-const STAKES_AWARENESS = `Enforcement signals carry no consequences. Judge correctness, not stakes.`;
-
 // ── Interaction Style (single declarative sentence) ───────────────────────
 const INTERACTION_STYLE = `Provide concise, production-quality solutions. Focus on correctness over verbosity.`;
-
-// ── Tool Trust (empirical - based on benchmark data) ──────────────────────
-// bash tools fail non-deterministically (sed -i cross-platform, redirect truncation);
-// edit/write are exact-match and verifiable. Agent mistakes >> tool bugs.
-// FIXME: apply prompt research llm-compliance-theater and tone-quality skill
-const TOOL_TRUST = `
-The \`edit\` and \`write\` tools work reliably. They WILL modify files exactly as instructed.
-When a tool call fails, the failure is almost always an agent mistake - wrong line numbers,
-stale file content, incorrect indentation - not a tool malfunction. Re-read the file and retry.
-
-For file operations, \`edit\` and \`write\` are the default. Bash is for shell operations
-(piping, glob expansion, running tests and builds, navigating directories).
-Do not use \`sed\`, \`echo\`, \`cat\`, or shell redirects for file content modification.
-These are unreliable and non-portable.
-
-Non-negotiable: if you find yourself reaching for \`sed -i\` or \`echo ... > file\`,
-stop. Use \`edit\` or \`write\` instead. They are always available and always work.`;
-
-// ── Implicit Norms (identity-aligned, no directives) ──────────────────────
-const IMPLICIT_NORMS = `Every action is permanent. No drafts, no quick tests.
-One artifact, correct, self-contained. Check: does it already exist? Delete old before creating new.
-Self-correction before the mistake, not apology after.
-You are the filter, not the echo. Code smell get rejected on sight.
-High-stakes actions deserve a pause. Drift is invisible - check your trajectory against your identity.
-`;
 
 // ── L1: Enforcement Signal Surfacing ────────────────────────────────────────
 // Session-scoped state (migrated from module-level singletons)
@@ -233,12 +200,27 @@ function extractTaskFromEntry(entry: Record<string, unknown>): string | null {
 
 function formatPastInsightsSection(insights: PastInsight[]): string {
   if (insights.length === 0) return "";
+
+  // Filter: skip entries that are metrics-only noise (no actual lesson)
+  // Pattern matches: "[success] session_outcome: Ticks:X Tools:Y Outcome:unknown"
+  const hasSignal = (content: string): boolean => {
+    // Drop entries that are just metrics with no real content
+    const metricsOnly = /^(\[\w+\]\s*)?(session_outcome|outcome):\s*\w+/i;
+    if (metricsOnly.test(content.trim())) return false;
+    // Drop very short entries (< 15 chars is likely noise)
+    if (content.trim().length < 15) return false;
+    return true;
+  };
+
+  const filtered = insights.filter((i) => hasSignal(i.content));
+  if (filtered.length === 0) return "";
+
   const lines: string[] = [
     "",
     "## Past Insights",
     "*(Relevant experience from previous sessions)*",
   ];
-  for (const insight of insights) {
+  for (const insight of filtered) {
     lines.push(`- ${insight.content}`);
   }
   return lines.join("\n");
@@ -262,17 +244,6 @@ function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>)
 ${visibleTools || "(none)"}
 
 Only use the tools listed above. Do not call tools not shown here.`;
-}
-
-function reconstructGuidelineSection(
-  _hasBash: boolean,
-  _hasGrep: boolean,
-  _hasFind: boolean,
-  _hasLs: boolean,
-): string {
-  // No directive guidelines - tool usage is self-documenting from tool names/descriptions
-  // Behaviors are guided by identity framing, not explicit rules
-  return "";
 }
 
 async function reconstructProjectContextSection(cwd: string): Promise<string> {
@@ -462,14 +433,8 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
   _pi.on("before_agent_start", async (event, ctx) => {
     const ps = getPromptState(ctx);
     const cwd = ctx.cwd;
-    const _userPrompt = event.prompt;
-
     const tools = _pi.getAllTools();
     const toolNames = tools.map((t) => t.name);
-    const hasBash = toolNames.includes("bash");
-    const hasGrep = toolNames.includes("grep");
-    const hasFind = toolNames.includes("find");
-    const hasLs = toolNames.includes("ls");
     const hasRead = toolNames.includes("read");
 
     const l1Env = await gatherL1State(_pi, ctx);
@@ -479,74 +444,48 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     // 1. Custom identity
     parts.push(IDENTITY_INTRO);
 
-    // 1a. Sycophancy resistance (research-backed behavioral filter)
-    parts.push(SYCOPHANCY_RESISTANCE);
-
     // 2. Available tools
     parts.push(reconstructToolsSection(tools));
 
-    // 3. Guidelines (empty - removed directives)
-    parts.push(reconstructGuidelineSection(hasBash, hasGrep, hasFind, hasLs));
-
-    // 4. Project context (from file loading - required since pi's native loading is overridden)
+    // 3. Project context (replaces pi-native loading which prompt-builder overrides)
     const projectContext = await reconstructProjectContextSection(cwd);
     if (projectContext) {
       parts.push(projectContext);
     }
 
-    // 5. Skills
+    // 4. Skills
     if (hasRead) {
       const skillsSection = await reconstructSkillsSection(cwd);
-      if (skillsSection) {
-        parts.push(skillsSection);
-      }
+      if (skillsSection) parts.push(skillsSection);
     }
 
-    // R6: Proactive recall - inject past insights (only if relevance >= 0.7)
+    // 5. Past insights (compressed: skip empty outcome summaries)
     const pastInsights = await searchPastInsights(cwd);
     const pastInsightsSection = formatPastInsightsSection(pastInsights);
-    if (pastInsightsSection) {
-      parts.push(pastInsightsSection);
-    }
+    if (pastInsightsSection) parts.push(pastInsightsSection);
 
     // 6. L1 environmental state
     parts.push(formatL1Environment(l1Env));
 
     // 7. Enforcement signals
     const enforcement = formatEnforcementL1(ps.enforcementSignals, ps.lastSignalTurn);
-    if (enforcement) {
-      parts.push(enforcement);
-    }
+    if (enforcement) parts.push(enforcement);
 
-    // 7a. Stakes awareness (research-backed counter to implicit bias)
-    parts.push(STAKES_AWARENESS);
+    // 8. Active contrast mode (truthfulness guardrails)
+    parts.push(...formatContrastSection(ps.activeContrastMode));
 
-    // 8. Implicit norms (identity-aligned deliberation principles)
-    parts.push(IMPLICIT_NORMS);
-
-    // 8a. Tool trust (empirical - prevent bash hack anti-pattern)
-    // FIXME: Too overloaded
-    // parts.push(TOOL_TRUST);
-
-    // 8b. RepE contrast vectors (mode-driven contrast phrase library)
-    const contrastLines = formatContrastSection(ps.activeContrastMode);
-    parts.push(...contrastLines);
-
-    // 8c. Structured output format (reduces ambiguity, improves tool use accuracy)
-    parts.push("// Use code blocks with language tags (```typescript, ```bash)");
-    parts.push("// Use tables for structured data (| header | header |)");
-    parts.push("// Chain-of-thought: show reasoning before conclusion with > prefix");
-    // Note: removed XML-style tool result tags. They encourage text-output-that-resembles-
-    // tool-calls instead of actual API-level tool calls, causing "Tool not found" errors.
-
-    // 9. Interaction style (single declarative sentence)
+    // 9. Interaction style
     parts.push(INTERACTION_STYLE);
 
+    // P0: Preserve appendSystemPrompt from pi-native
+    const appendPrompt = event.systemPromptOptions?.appendSystemPrompt;
+    if (appendPrompt && !parts.includes(appendPrompt)) {
+      parts.push(appendPrompt);
+    }
+
     // 10. Date and cwd
-    const date = new Date().toISOString();
-    const promptCwd = cwd.replace(/\\/g, "/");
-    parts.push(`Current time: ${date}`);
-    parts.push(`Current working directory: ${promptCwd}`);
+    parts.push(`Current time: ${new Date().toISOString()}`);
+    parts.push(`Current working directory: ${cwd.replace(/\\/g, "/")}`);
 
     const newPrompt = parts.join("\n\n");
     return { systemPrompt: newPrompt };

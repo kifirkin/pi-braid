@@ -113,21 +113,13 @@ export function formatContrastSection(activeMode: string): string[] {
   const mode = MODES[activeMode] ?? DEFAULT_MODE;
   const parts: string[] = [];
 
-  // Header with active mode
-  parts.push("RepE contrast vectors: activate honesty/self-knowledge circuits in text-space");
+  // Active mode label + phrases (no jargon header, no full mode listing)
   parts.push(`ACTIVE MODE: ${mode.label} — ${mode.description}`);
 
   // Primary contrast phrase(s) for the active mode
   for (const phrase of mode.phrases) {
     parts.push("");
     parts.push(phrase);
-  }
-
-  // All available modes for reference (so the agent knows all options)
-  parts.push("");
-  parts.push("All available modes:");
-  for (const m of Object.values(MODES)) {
-    parts.push(`- ${m.label}: ${m.description}`);
   }
 
   return parts;
