@@ -40,11 +40,7 @@ import { loadSkills } from "@mariozechner/pi-coding-agent";
 import { SKILLS_DIR } from "../../../index.js";
 import { gatherL1State, formatL1Environment } from "./l1-environment.js";
 import { formatContrastSection } from "./contrast-phrase-library.js";
-import {
-  loadScratchpadFromDisk,
-  projectSlugFromCwd,
-  formatScratchpad,
-} from "../../core/scratchpad/index.js";
+
 
 // ── Identity (THE key difference from native) ─────────────────────────────────
 // Identity framing is the behavioral filter - not directives
@@ -519,20 +515,6 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
       parts.push(pastInsightsSection);
     }
 
-    // SESSION STATE (survives compaction): load scratchpad from disk to ensure
-    // goal/plan/decisions are always available regardless of compaction history.
-    // This is critical for weekly-long sessions where compaction can lose task context.
-    try {
-      const slug = projectSlugFromCwd(cwd);
-      const pad = await loadScratchpadFromDisk(slug);
-      if (pad && (pad.goal || pad.plan.length > 0)) {
-        parts.push("## Session State");
-        parts.push(formatScratchpad(pad));
-      }
-    } catch {
-      // Non-fatal - scratchpad may not exist yet
-    }
-
     // 6. L1 environmental state
     parts.push(formatL1Environment(l1Env));
 
@@ -580,6 +562,4 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
   _pi.registerTool(createPromptPreviewTool());
 }
 
-// Re-exports for preview.ts (and other internal tools)
-export * from "./constants.js";
 export { gatherL1State, formatL1Environment };

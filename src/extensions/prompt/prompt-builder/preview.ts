@@ -1,40 +1,28 @@
 /**
- * Prompt Preview Tool — makes the built system prompt observable.
+ * Prompt Preview Tool — reads the actual system prompt from runtime.
  *
- * The agent can't see what the system prompt looks like — when something goes
- * wrong, there's no way to check if the prompt is the cause.
+ * No reverse-engineering, no constants reconstruction.
+ * Gets the string directly from ctx.getSystemPrompt() and parses it
+ * into labelled sections for human-readable access.
  *
- * This tool rebuilds the current system prompt from the same functions used
- * by before_agent_start, with a readable section-by-section output.
+ * Why this exists: the agent can't introspect its own system prompt.
+ * When something goes wrong, there's no other way to check if the
+ * prompt is the cause. This tool bridges that gap by reading the
+ * ACTUAL prompt string that the model receives — not a reconstruction
+ * that can drift from reality.
  */
 
 import { Type } from "typebox";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { join } from "node:path";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { getAgentDir, loadSkills } from "@mariozechner/pi-coding-agent";
-import { SKILLS_DIR } from "../../../index.js";
-
-import {
-  IDENTITY_INTRO,
-  SYCOPHANCY_RESISTANCE,
-  STAKES_AWARENESS,
-  EPISTEMIC_STABILITY,
-  CONTRAST_TRUTH_FIRST,
-  CONTRAST_ANTI_SYCOPHANCY,
-  CONTRAST_KNOWLEDGE_BOUNDARY,
-  IMPLICIT_NORMS,
-  INTERACTION_STYLE,
-} from "./constants.js";
-import { gatherL1State, formatL1Environment } from "./l1-environment.js";
-import { getExtensionState } from "../../../lib/extension-state.js";
 import { getInjections } from "../../../lib/injection-tracker.js";
 
 const previewSchema = Type.Object({
   section: Type.Optional(
     Type.String({
       description:
-        "Which section to show. Options: all | identity | tools | skills | project | l1 | enforcement | date",
+        "Which section to show. Options: all, identity, tools, skills, project, " +
+        "insights, l1, enforcement, norms, format, metadata, injections. " +
+        "Also accepts substring match against any section body.",
       default: "all",
     }),
   ),
@@ -48,54 +36,80 @@ const previewSchema = Type.Object({
 
 function truncate(s: string, max: number): string {
   if (max === 0 || s.length <= max) return s;
-  return s.slice(0, max - 3) + "...";
+  // Try to break at a section boundary for cleaner output
+  const truncated = s.slice(0, max);
+  const lastBreak = truncated.lastIndexOf("\n──");
+  if (lastBreak > max / 2) return truncated.slice(0, lastBreak) + "\n...(truncated)";
+  return truncated.slice(0, max - 3) + "...";
 }
 
-function getSkillMeta(skillFilePath: string): { lines: number; sections: string[] } {
-  try {
-    const content = readFileSync(skillFilePath, "utf-8");
-    const lines = content.split("\n");
-    const sections: string[] = [];
-    for (const line of lines) {
-      const m = line.match(/^#{2,3}\s+(.+)$/);
-      if (m) sections.push(m[1].trim());
+// ── Section detection ────────────────────────────────────────────────────
+// These patterns match the start of each section block in the prompt-builder
+// output. Each detector identifies a section boundary. Content between one
+// detector and the next (or end-of-string) belongs to that section.
+// Variables: project context and skills lengths. Fixed: everything else.
+
+const SECTION_DETECTORS: Array<{
+  id: string;
+  title: string;
+  detect: RegExp;
+}> = [
+  { id: "identity", title: "IDENTITY + NORMS", detect: /^You are Braid/ },
+  { id: "tools", title: "AVAILABLE TOOLS", detect: /^Available tools:/ },
+  { id: "project", title: "PROJECT CONTEXT", detect: /^# Project Context/m },
+  { id: "skills", title: "ACTIVE SKILLS", detect: /^<available_skills>/s },
+  { id: "insights", title: "PAST INSIGHTS", detect: /^## Past Insights/ },
+  { id: "l1", title: "L1 ENVIRONMENTAL STATE", detect: /^## System State/ },
+  { id: "enforcement", title: "ENFORCEMENT SIGNALS", detect: /^## Enforcement State/ },
+  { id: "norms", title: "IMPLICIT NORMS + CONTRAST", detect: /^RepE contrast vectors:/ },
+  { id: "format", title: "FORMAT GUIDANCE", detect: /^\/\/ Use code blocks/ },
+  { id: "style", title: "INTERACTION STYLE", detect: /^Provide concise/ },
+  { id: "metadata", title: "METADATA", detect: /^Current time:/ },
+];
+
+/**
+ * Parse the raw system prompt string into labelled sections.
+ *
+ * Strategy: split on double-newlines, match each block against detectors,
+ * group continuation blocks into the most-recently-detected section.
+ *
+ * This is NOT fragile reverse-engineering — the detectors match the actual
+ * output format of prompt-builder/index.ts. If the format changes, only
+ * the detectors need updating.
+ */
+function parsePromptIntoSections(
+  prompt: string,
+): Array<{ id: string; title: string; body: string }> {
+  const blocks = prompt.split(/\n\n+/).filter((b) => b.trim());
+  if (blocks.length === 0) return [];
+
+  const rawSections: Array<{ id: string; title: string; body: string[] }> = [];
+  let current: { id: string; title: string; body: string[] } | null = null;
+
+  for (const block of blocks) {
+    const trimmed = block.trim();
+    if (!trimmed) continue;
+
+    const firstLine = trimmed.split("\n")[0].trim();
+    const matched = SECTION_DETECTORS.find((d) => d.detect.test(firstLine));
+
+    if (matched) {
+      if (current) rawSections.push(current);
+      current = { id: matched.id, title: matched.title, body: [trimmed] };
+    } else if (current) {
+      // Continuation of the current section
+      current.body.push(trimmed);
     }
-    return { lines: lines.length, sections: sections.slice(0, 8) };
-  } catch {
-    return { lines: 0, sections: [] };
+    // Blocks before any detector match are leading identity content
   }
-}
 
-function loadProjectFiles(cwd: string): string[] {
-  const agentDir = getAgentDir();
-  const found: string[] = [];
-  const checked: Set<string> = new Set();
+  if (current) rawSections.push(current);
 
-  const checkDir = (dir: string) => {
-    if (checked.has(dir)) return;
-    checked.add(dir);
-    for (const name of ["AGENTS.md", "CLAUDE.md"]) {
-      const p = join(dir, name);
-      if (existsSync(p)) {
-        try {
-          const content = readFileSync(p, "utf-8").slice(0, 500);
-          found.push(`[${dir}] ${name}:\n${content}\n`);
-        } catch {
-          /* skip */
-        }
-      }
-    }
-  };
-
-  checkDir(agentDir);
-  let cur: string | null = cwd;
-  while (cur && cur !== "/") {
-    checkDir(cur);
-    const parent = join(cur, "..");
-    if (parent === cur) break;
-    cur = parent;
-  }
-  return found;
+  return rawSections.map((s) => ({
+    id: s.id,
+    title: s.title,
+    body: s.body.join("\n\n"),
+  }));
 }
 
 export function createPromptPreviewTool() {
@@ -103,7 +117,8 @@ export function createPromptPreviewTool() {
     name: "prompt_preview" as const,
     label: "Prompt Preview",
     description:
-      "Show the current system prompt structure built by prompt-builder. " +
+      "Show the current system prompt structure. " +
+      "Reads directly from runtime — no reverse-engineering. " +
       "Use section= to target a specific part, truncate= to limit output length.",
     parameters: previewSchema,
 
@@ -113,122 +128,64 @@ export function createPromptPreviewTool() {
       _signal: unknown,
       _onUpdate: unknown,
       ctx: ExtensionContext | undefined,
-    ) => {
+    ): Promise<any> => {
       const target = params.section ?? "all";
       const maxLen = params.truncate ?? 2000;
 
       if (!ctx) {
         return {
-          content: [{ type: "text" as const, text: "Prompt preview requires a valid context." }],
+          content: [
+            { type: "text" as const, text: "Prompt preview requires a valid context." },
+          ],
           details: { error: "no_context" },
         };
       }
 
-      const cwd = ctx.cwd;
-      const pi = (ctx as any)._pi;
-
-      // Collect sections
-      const sections: Array<{ title: string; body: string }> = [];
-
-      if (target === "all" || target === "identity") {
-        sections.push({
-          title: "IDENTITY + NORMS",
-          body: [
-            IDENTITY_INTRO,
-            SYCOPHANCY_RESISTANCE,
-            STAKES_AWARENESS,
-            EPISTEMIC_STABILITY,
-            CONTRAST_TRUTH_FIRST,
-            CONTRAST_ANTI_SYCOPHANCY,
-            CONTRAST_KNOWLEDGE_BOUNDARY,
-            IMPLICIT_NORMS,
-            INTERACTION_STYLE,
-          ]
-            .filter(Boolean)
-            .join("\n\n"),
-        });
+      // ── Read the actual system prompt from runtime ───────────────────────
+      const systemPrompt = ctx.getSystemPrompt?.();
+      if (!systemPrompt) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text:
+                "Could not read system prompt from runtime. " +
+                "This may be a compile-time or --no-session invocation.",
+            },
+          ],
+          details: { error: "no_system_prompt" },
+        };
       }
 
-      if (target === "all" || target === "tools") {
-        if (pi) {
-          const allTools = pi.getAllTools();
-          const lines = allTools.map(
-            (t: any) => `  ${t.name}: ${t.description?.split("\n")[0] ?? ""}`,
+      // ── Parse into sections ─────────────────────────────────────────────
+      const allSections = parsePromptIntoSections(systemPrompt);
+
+      // ── Filter ───────────────────────────────────────────────────────────
+      let filtered = allSections;
+      if (target !== "all") {
+        // Try exact match first
+        filtered = allSections.filter((s) => s.id === target);
+        // Fallback: substring match against title or body
+        if (filtered.length === 0) {
+          const lower = target.toLowerCase();
+          filtered = allSections.filter(
+            (s) =>
+              s.title.toLowerCase().includes(lower) ||
+              s.body.toLowerCase().includes(lower),
           );
-          sections.push({
-            title: "AVAILABLE TOOLS",
-            body: `${allTools.length} tools registered:\n${lines.join("\n")}`,
-          });
         }
       }
 
-      if (target === "all" || target === "skills") {
-        const skillsResult = loadSkills({
-          cwd,
-          agentDir: getAgentDir(),
-          skillPaths: [SKILLS_DIR],
-          includeDefaults: true,
-        });
-        const active = skillsResult.skills.filter((s: any) => !s.disableModelInvocation);
-        const lines = active.map((s: any) => {
-          const meta = getSkillMeta(s.filePath);
-          const secs = meta.sections.length > 0 ? ` (${meta.sections.join(", ")})` : "";
-          return `  ${s.name} (${meta.lines} lines)${secs}`;
-        });
-        sections.push({
-          title: "ACTIVE SKILLS",
-          body: lines.length > 0 ? lines.join("\n") : "(no active skills)",
-        });
-      }
+      // ── Injections section (separate from system prompt) ─────────────────
+      const includeInjections =
+        target === "all" || target === "injections" || target.toLowerCase() === "injection";
 
-      if (target === "all" || target === "project") {
-        const files = loadProjectFiles(cwd);
-        sections.push({
-          title: "PROJECT CONTEXT FILES",
-          body: files.length > 0 ? files.join("\n---\n") : "(none found)",
-        });
-      }
-
-      if (target === "all" || target === "l1") {
-        const l1Env = await gatherL1State(pi, ctx);
-        sections.push({ title: "L1 ENVIRONMENTAL STATE", body: formatL1Environment(l1Env) });
-      }
-
-      if (target === "all" || target === "enforcement") {
-        const ps = getExtensionState(ctx, "prompt-builder", () => ({
-          enforcementSignals: {},
-          lastSignalTurn: 0,
-        }));
-        const { lastSignalTurn } = ps;
-        const active: string[] = [];
-        for (const [key, s] of Object.entries(ps.enforcementSignals) as [
-          string,
-          { turn: number; text: string; acted: boolean },
-        ][]) {
-          if (lastSignalTurn - s.turn > 5 || s.acted) continue;
-          active.push(`  [${key}] turn ${s.turn}: ${s.text}`);
-        }
-        sections.push({
-          title: "ENFORCEMENT SIGNALS",
-          body: active.length > 0 ? active.join("\n") : "(no active signals)",
-        });
-      }
-
-      if (target === "all" || target === "date") {
-        const date = new Date().toISOString();
-        sections.push({
-          title: "METADATA",
-          body: `Current time: ${date}\nCurrent working directory: ${cwd.replace(/\\/g, "/")}`,
-        });
-      }
-
-      if (target === "all" || target === "injections") {
+      if (includeInjections) {
         const injections = getInjections();
-        const lines2: string[] = [];
+        const injLines: string[] = [];
         if (injections.length === 0) {
-          lines2.push("(no messages tracked this session)");
+          injLines.push("(no messages tracked this session)");
         } else {
-          // Group by source
           const bySource = new Map<string, string[]>();
           for (const inj of injections.slice(-20)) {
             const key = inj.source;
@@ -237,58 +194,76 @@ export function createPromptPreviewTool() {
             bySource.get(key)!.push(`${prefix} ${inj.content.slice(0, 120)}`);
           }
           for (const [source, msgs] of bySource) {
-            lines2.push(`## ${source} (${msgs.length} messages)`);
-            for (const m of msgs.slice(-5)) lines2.push(`  ${m}`);
+            injLines.push(`## ${source} (${msgs.length} messages)`);
+            for (const m of msgs.slice(-5)) injLines.push(`  ${m}`);
           }
-          lines2.push(`\n_total: ${injections.length} injections tracked`);
+          injLines.push(`\n_total: ${injections.length} injections tracked`);
         }
-        sections.push({ title: "CONTEXT INJECTIONS", body: lines2.join("\n") });
-      }
-
-      if (sections.length === 0) {
+        // Push as extra content, not with sections (it's not in the system prompt)
+        const injBody = injLines.join("\n");
         return {
           content: [
             {
               type: "text" as const,
-              text: `Unknown section: ${target}. Options: all, identity, tools, skills, project, l1, enforcement, date, injections.`,
+              text: `System Prompt Runtime (${systemPrompt.length} chars, ${allSections.length} sections):\n\n── PROMPT SECTIONS ──\n\n${formatSections(filtered, maxLen)}\n\n── CONTEXT INJECTIONS ──\n${injBody}`,
+            },
+          ],
+          details: {
+            section: target,
+            sections: allSections.map((s) => s.id),
+            promptChars: systemPrompt.length,
+            truncated: maxLen > 0 && systemPrompt.length > maxLen,
+            injectionCount: injections.length,
+          },
+        };
+      }
+
+      // ── Build output ─────────────────────────────────────────────────────
+      if (filtered.length === 0) {
+        const availableIds = allSections.map((s) => s.id).join(", ");
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `No section matched "${target}". Available: ${availableIds}, injections.`,
             },
           ],
           details: {
             error: "unknown_section",
-            available: [
-              "all",
-              "identity",
-              "tools",
-              "skills",
-              "project",
-              "l1",
-              "enforcement",
-              "date",
-            ],
+            available: [...allSections.map((s) => s.id), "injections"],
           },
-        } as any;
+        };
       }
 
-      // Build output with per-section truncation
-      const sectionBudget = maxLen > 0 ? Math.floor(maxLen / sections.length) : 0;
-      const lines = sections.map((s) => `── ${s.title} ──\n${truncate(s.body, sectionBudget)}`);
-      const body = lines.join("\n\n");
+      const body = formatSections(filtered, maxLen);
       const totalChars = body.length;
 
       return {
         content: [
           {
             type: "text" as const,
-            text: `System Prompt Preview (${sections.length} sections, ${totalChars} chars):\n\n${body}`,
+            text: `System Prompt Runtime (${systemPrompt.length} chars, ${allSections.length} sections):\n\n${body}`,
           },
         ],
         details: {
           section: target,
-          sections: sections.map((s) => s.title),
+          sections: allSections.map((s) => s.id),
+          promptChars: systemPrompt.length,
           totalChars,
           truncated: maxLen > 0 && totalChars > maxLen,
         },
-      } as any;
+      };
     },
   };
+}
+
+function formatSections(
+  sections: Array<{ id: string; title: string; body: string }>,
+  maxLen: number,
+): string {
+  if (sections.length === 0) return "(no sections)";
+  const sectionBudget = maxLen > 0 ? Math.floor(maxLen / sections.length) : 0;
+  return sections
+    .map((s) => `── ${s.title} ──\n${truncate(s.body, sectionBudget)}`)
+    .join("\n\n");
 }
