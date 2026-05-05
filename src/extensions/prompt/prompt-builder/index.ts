@@ -247,27 +247,21 @@ function formatPastInsightsSection(insights: PastInsight[]): string {
 // ── Reconstruction Functions (from structured data, not text parsing) ─────────
 
 function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>): string {
+  // First-line-only descriptions — full descriptions bloat the prompt and
+  // tool names are self-documenting. The agent already has tool docs via
+  // tool-use feedback loops.
   const visibleTools = tools
     .filter((t) => t.name && t.description)
-    .map((t) => `- ${t.name}: ${t.description}`)
+    .map((t) => {
+      const brief = t.description.split(/\n/)[0].replace(/\.$/, "");
+      return `- ${t.name}: ${brief}`;
+    })
     .join("\n");
-
-  // Simple output guidance - no structured format for tool results.
-  // Structured format (TOOL_RESULT, STATUS, DATA) encourages the model to OUTPUT
-  // text that resembles tool calls instead of making actual API-level tool calls.
-  // This causes "Tool not found" errors when the model generates text with
-  // empty tool names (LLM outputs "TOOL_RESULT:\nTOOL: ${}\n..." instead of a real call).
-  const codeBlockNote = `
-
-For code blocks, use consistent formatting:
-\`\`\`[language]
-[code]
-\`\`\``;
 
   return `Available tools:
 ${visibleTools || "(none)"}
 
-Only use the tools listed above. Do not call tools not shown here.${codeBlockNote}`;
+Only use the tools listed above. Do not call tools not shown here.`;
 }
 
 function reconstructGuidelineSection(
