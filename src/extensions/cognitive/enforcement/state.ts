@@ -12,35 +12,35 @@ import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "../../../lib/extension-state.js";
 
 export const DEFAULT_CONFIG: EnforcementConfig = {
-  requireReasoning: true,
-  requirePlan: true,
-  requireToolJustification: true,
-  enforceScratchpad: true,
-  enforceThinkBeforeEdit: true,
-  enforceHypothesisBeforeFix: true,
-  enforceMemory: true,
-  enforceMemoryNudge: true,
+  requireReasoning: false,
+  requirePlan: false,
+  requireToolJustification: false,
+  enforceScratchpad: false,
+  enforceThinkBeforeEdit: false,
+  enforceHypothesisBeforeFix: false,
+  enforceMemory: false,
+  enforceMemoryNudge: false,
   // Context tool enforcement
 
-  enforceToolDiversity: true,
-  enforceExploreBeforeAct: true,
+  enforceToolDiversity: false,
+  enforceExploreBeforeAct: false,
   memoryNudgeThreshold: 15, // Lower threshold for proactive memory nudges
   maxSilentTurns: 6,
   warnOnToolSequenceRepetition: 3,
   blockThinkBeforeEdit: false, // DEPRECATED: no longer blocks, kept for config compat
-  blockExploreBeforeWrite: true,
+  blockExploreBeforeWrite: false,
   thinkCalledInSession: false,
   exploreCalledInSession: false,
-  enforceMemoryRecallOnStart: true,
-  trackClaimsVsVerifications: true,
+  enforceMemoryRecallOnStart: false,
+  trackClaimsVsVerifications: false,
   maxClaimsBeforeVerification: 5,
-  useJudge: true,
+  useJudge: false,
   judgeCooldownMs: 20000,
   judgeSkipTurns: 1,
   // Verification Judge (LLM-based work audit)
-  useVerificationJudge: true,
+  useVerificationJudge: false,
   verificationJudgeInterval: 15,
-  verifyAfterCodeChanges: true,
+  verifyAfterCodeChanges: false,
 };
 
 // ── State Factory ────────────────────────────────────────────────────────────
