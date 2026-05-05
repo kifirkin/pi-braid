@@ -45,44 +45,33 @@ npm run build && npm test
 ### Track 1: Self-Evolution Loop + Consolidation Channel ⭐ P0
 
 **Merges**: `SELF-EVOLUTION-META-COGNITION-PROPOSAL.md` + `CONSOLIDATION-CHANNEL-PHASE3-PROPOSAL.md`
-**Status**: 🔴 Not started
+**Status**: 🟡 Phase 1 done, Phase 2 partial
 
 **What exists**:
 - ✅ `mars-reflector.ts` — MARS single-cycle reflection module
 - ✅ `belief-policy-engine.ts` — D0 belief store for principles
-- ✅ `three-memory-stores` — episodic memory for SOPs
+- ✅ `three-memory-stores` — episodic memory for SOPs (strategic/functional/atomic levels)
 - ✅ Tool call tracking (enforcement/tool-tracker)
 - ✅ `agent-events.ts` — signal taxonomy
+- ✅ `consolidation-channel.ts` — scoring/queuing/scheduling infrastructure
+- ✅ `sop-extractor.ts` — heuristic trajectory→SOP conversion
 
-**What's missing** (three phases):
+**Phase 1 — SOP Extraction**: ✅ Done 2026-05-05
+- ✅ `src/lib/sop-extractor.ts`: Strategic/Functional/Atomic levels, 9 pattern types
+- ✅ Auto-extract on `agent_end` via heartbeat-scheduler
+- ✅ Stores all 3 SOP levels via `addEpisode()`
+- ✅ Consolidation candidate scored on success
+- ✅ 8 unit tests
 
-Phase 1 — Trajectory Verification & SOP Extraction (Week 1):
-```
-Task:
-  1. Add outcome tracking to heartbeat/analytics (track task success/failure)
-  2. Implement SOP extraction from successful trajectories
-  3. Store SOPs in procedural memory (three-memory-stores)
-  4. Implement principle extraction from failures → belief store
+**Phase 2 — Retrieval & Suggestion**: 🟡 Partial
+- ✅ Heartbeat queries episodes on session_start (SOP retrieval, existing)
+- 🟡 Principle extraction from failures → belief store
+- 🟡 Proactive SOP surfacing (heartbeat whisper is minimal)
 
-Files to create/modify:
-  - src/extensions/heartbeat/analytics/ → add outcome tracking
-  - src/lib/cognitive-memory/ → SOP storage format
-  - src/extensions/evolve/ → trajectory verification handler
-```
-
-Phase 2 — Retrieval & Suggestion (Week 2):
-```
-Task:
-  5. On new task, query procedural memory for similar SOPs
-  6. Surface relevant SOP to agent before execution
-  7. Monitor principle violation during execution
-  8. Metrics: retrieval rate, adherence rate, task improvement
-```
-
-Phase 3 — Consolidation Channel (Weeks 3-4):
-```
-Task:
-  9. Implement consolidation channel (episodic → semantic transfer)
+**Phase 3 — Consolidation Channel**: 🟡 Infra exists
+- ✅ `consolidation-channel.ts`: queue, scoring engine, config, tick
+- ✅ `processConsolidationTick()` called from heartbeat tick
+- 🟡 Full episodic→semantic transfer loop
   10. Lightweight weight update mechanism (LoRA or fine-tuning trigger)
   11. Full self-evolution loop integration
   12. Benchmark validation
