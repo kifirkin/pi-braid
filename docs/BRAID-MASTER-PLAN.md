@@ -92,24 +92,24 @@ Task:
 
 ---
 
-### Track 2: Hierarchical Memory Compression 🟡 P1
+### Track 2: Hierarchical Memory Compression 🟢 P1 — Adaptive levels done 2026-05-05
 
 **Based on**: `HIERARCHICAL-MEMORY-COMPRESSION-PROPOSAL.md`
-**Status**: 🟡 Partial
+**Status**: 🟢 Mostly Complete
 
 **What exists**:
 - ✅ Compaction v0.23+ (dedup guard, LLM summarization, clear on complete/abort)
 - ✅ `filter-safe-to-remove` — injection-stripping
 - ✅ `injection-tracker` — tracks all injected messages
+- ✅ Semantic unit classification — `semantic-compress.ts` (6 unit types: problem/reasoning/tool/result/summary/boilerplate)
+- ✅ Adaptive compression ratio — `compressionLevel` param (short-term/medium-term/long-term) adjusts collapse thresholds and priority filtering
+- ✅ Wired to context-full detection — `getPeakUsagePercent()` from event-consumers escalates compression level when peak >85%
+- ✅ Compression metadata stored — `CmState.lastCompressionStats` with CompressionStats + turn range + timestamp
+- ✅ Compression level per compaction pass — `determineCompressionLevel()` called during `session_before_compact`
 
-**What's missing**:
-```
-Task:
-  1. Implement semantic unit classification (short/medium/long message classification)
-  2. Add adaptive compression ratio based on information density
-  3. Wire compression level to context-full detection
-  4. Store compression metadata for retrieval quality scoring
-```
+**Remaining (nice-to-have)**:
+- Store compression metadata in durable storage for cross-session retrieval scoring
+- Benchmark: measure token savings at each level against accuracy impact
 
 **Key papers**: GenericAgent (2604.17091), Experience Compression Spectrum (2604.15877), SimpleMem (2601.02553)
 
