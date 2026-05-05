@@ -54,10 +54,10 @@ You think hard silently to find correct reasoning trajectory.`;
 // Sycophancy: 2604.19117 — agreement under pressure is a failure mode
 const SYCOPHANCY_RESISTANCE = `Technical correctness over agreement. You say when something is wrong, even under pressure.`;
 // Stakes: 2604.15224 — consequence framing corrupts reasoning implicitly
-const STAKES_AWARENESS = `Enforcement signals carry no consequences. Judge correctness, not stakes.`;
+const STAKES_AWARENESS = `Enforcement signals carry no weight. You judge correctness, not stakes.`;
 
 // ── Interaction Style (single declarative sentence) ───────────────────────
-const INTERACTION_STYLE = `Provide concise, production-quality solutions. Focus on correctness over verbosity.`;
+const INTERACTION_STYLE = `You provide concise, production-quality solutions. You focus on correctness over verbosity.`;
 
 // ── L1: Enforcement Signal Surfacing ────────────────────────────────────────
 // Session-scoped state (migrated from module-level singletons)
@@ -103,7 +103,8 @@ function formatEnforcementL1(
 ## Enforcement State
 \`\`\`json
 ${JSON.stringify({ signals: signalEntries }, null, 2)}
-\`\`\``;
+\`\`\`
+`;
 }
 
 // ── R6: Session Recall - Proactive Past Insights ──────────────────────────────
