@@ -14,6 +14,10 @@ Complete reference for pi's architecture, configuration, and internals.
 1. Check the root path at top of prompt (after ## System State)
 2. Docs are under: `<root>/docs/*.md`
 3. Read the doc completely, follow cross-references
+4. Examples are under: `<root>/examples/` (extensions, custom tools, SDK)
+5. Main documentation is at: `<root>/README.md`
+
+Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details).
 
 ## Documentation Index (relative to `<root>/docs/`)
 
