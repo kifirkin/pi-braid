@@ -26,6 +26,8 @@ import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { eventBus } from "../../../lib/event-bus.js";
 import { processConsolidationTick } from "../../../lib/consolidation-channel.js";
 import { heartbeatCheckpointTick } from "../../../lib/state-checkpoint.js";
+import { extractSOP } from "../../../lib/sop-extractor.js";
+import type { TrajectoryEntry } from "../../../lib/sop-extractor.js";
 import { isDegraded, recordTurnMetrics } from "../../../lib/degradation-detector.js";
 import type { Episode } from "../../memory/three-memory-stores/index.js";
 
@@ -425,16 +427,59 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
       const { addEpisode } = await import("../../memory/three-memory-stores/index.js");
       const memState = getMemoryState(ctx);
       if (memState) {
+        const taskDesc = _event?.task ?? "session_outcome";
         const success = outcome === "success" || !_event?.error;
+
+        // Reconstruct trajectory from activation history for SOP extraction
+        const trajectory: TrajectoryEntry[] = state.activationHistory
+          .filter((h) => h.moduleName === "tool_call" || h.reason === "tool")
+          .map((h) => ({ toolName: h.moduleName, success: true }));
+
+        // Extract SOP from the trajectory
+        const sop = extractSOP({
+          task: taskDesc,
+          trajectory,
+          solution: `Ticks:${state.stats.totalTicks} Tools:${state.metaLearning.toolTracking.totalToolsUsed}`,
+          outcome: success ? "success" : "partial",
+        });
+
         addEpisode(
           memState,
-          "session_outcome",
-          `Ticks:${state.stats.totalTicks} Tools:${state.metaLearning.toolTracking.totalToolsUsed} Outcome:${outcome ?? "unknown"}`,
+          taskDesc,
+          sop.strategicSOP,
           success ? "success" : "partial",
-          [],
-          ["session", "outcome"],
+          sop.atomicSOP,
+          ["session", "outcome", success ? "success" : "partial"],
+          undefined, // project
+          sop.strategicSOP,
+          sop.functionalSOP,
+          sop.atomicSOP,
         );
-        log.info(`[heartbeat] Outcome episode recorded: ${success ? "success" : "partial"}`);
+        log.info(
+          `[heartbeat] Outcome episode recorded: ${success ? "success" : "partial"} ` +
+          `(SOP: ${sop.functionalSOP.length} steps, ${sop.atomicSOP.length} tools)`,
+        );
+
+        // Queue for consolidation if successful
+        if (success) {
+          try {
+            const { scoreEpisode } = await import("../../../lib/consolidation-channel.js");
+            const candidate = scoreEpisode({
+              id: `ep-${Date.now()}`,
+              task: taskDesc,
+              outcome: "success",
+              strategicSOP: sop.strategicSOP,
+              functionalSOP: sop.functionalSOP,
+              toolSequence: sop.atomicSOP,
+            });
+            if (candidate.consolidationScore > 0.5) {
+              log.info(
+                `[heartbeat] Candidate scored ${candidate.consolidationScore.toFixed(2)} ` +
+                `— ready for consolidation`,
+              );
+            }
+          } catch {} // non-fatal
+        }
       }
     } catch (err) {
       log.warn(`[heartbeat] Could not record outcome episode: ${err}`);
