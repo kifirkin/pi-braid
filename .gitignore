@@ -31,3 +31,6 @@ Thumbs.db
 # modules
 node_modules/
 __pycache__/
+
+# Pi /export
+pi-session-*
