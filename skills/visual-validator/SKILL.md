@@ -1,6 +1,12 @@
 ---
 name: visual-validator
 description: "Rigorous visual validation with professional design critique. Analyzes sprite assets, game screenshots, UI designs, and any visual content with designer-level feedback and actionable fixes with measurable deltas. Companion to visual-creator (creation) and design-system (brand identity)."
+triggers:
+  - "visual validation"
+  - "design critique"
+  - "sprite analysis"
+  - "UI audit"
+  - "image quality check"
 ---
 
 # Visual Validator
