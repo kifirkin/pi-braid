@@ -109,8 +109,10 @@ export function formatContrastSection(activeMode: string): string[] {
   const mode = MODES[activeMode] ?? DEFAULT_MODE;
   const parts: string[] = [];
 
-  // Active mode label + phrases (no jargon header, no full mode listing)
-  parts.push(`ACTIVE MODE: ${mode.label} — ${mode.description}`);
+  // Active mode with proper section heading for visual separation
+  // from L1 state above and interaction style below.
+  parts.push(`## Active Mode`);
+  parts.push(`**${mode.label}** — ${mode.description}`);
 
   // Primary contrast phrase(s) for the active mode
   for (const phrase of mode.phrases) {

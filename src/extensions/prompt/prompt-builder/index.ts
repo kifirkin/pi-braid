@@ -235,23 +235,79 @@ function formatPastInsightsSection(insights: PastInsight[]): string {
 
 // ── Reconstruction Functions (from structured data, not text parsing) ─────────
 
+// Known promptSnippets for pi-native core tools (from pi source tool definitions).
+// Extension tools without known snippets use their full description as fallback.
+const KNOWN_SNIPPETS: Record<string, string> = {
+  read: "Read file contents",
+  bash: "Execute bash commands (ls, grep, find, etc.)",
+  edit: "Make precise file edits with exact text replacement, including multiple disjoint edits in one call",
+  write: "Create or overwrite files",
+  grep: "Search file contents for patterns (respects .gitignore)",
+  find: "Find files by glob pattern (respects .gitignore)",
+  ls: "List directory contents",
+};
+
 function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>): string {
-  // First-line-only descriptions — full descriptions bloat the prompt and
-  // tool names are self-documenting. The agent already has tool docs via
-  // tool-use feedback loops.
+  // pi-native uses promptSnippet (short curated description) from each tool definition.
+  // Only tools with a snippet appear in the listing. Fall back to full description.
+  const toolNames = tools.map((t) => t.name);
   const visibleTools = tools
-    .filter((t) => t.name && t.description)
-    .map((t) => {
-      const brief = t.description.split(/\n/)[0].replace(/\.$/, "");
-      return `- ${t.name}: ${brief}`;
-    })
+    .filter((t) => t.name && (t.description || KNOWN_SNIPPETS[t.name]))
+    .map((t) => `- ${t.name}: ${KNOWN_SNIPPETS[t.name] ?? t.description}`)
     .join("\n");
 
-  return `Available tools:
-${visibleTools || "(none)"}
+  // Collect guidelines matching pi-native's _rebuildSystemPrompt + system-prompt.js logic.
+  const guidelines: string[] = [];
+  const addGuideline = (g: string) => {
+    const trimmed = g.trim();
+    if (trimmed.length > 0 && !guidelines.includes(trimmed)) {
+      guidelines.push(trimmed);
+    }
+  };
 
-Only use the tools listed above. Do not call tools not shown here.`;
+  // pi-native's bash/grep/find/ls conditional (from system-prompt.js)
+  const hasBash = toolNames.includes("bash");
+  const hasGrep = toolNames.includes("grep");
+  const hasFind = toolNames.includes("find");
+  const hasLs = toolNames.includes("ls");
+  if (hasBash && !hasGrep && !hasFind && !hasLs) {
+    addGuideline("Use bash for file operations like ls, rg, find");
+  } else if (hasBash && (hasGrep || hasFind || hasLs)) {
+    addGuideline("Prefer grep/find/ls tools over bash for file exploration (faster, respects .gitignore)");
+  }
+
+  // Tool-specific promptGuidelines — only for tools known to define them.
+  // These replicate what pi-native collects via _toolPromptGuidelines.get(name).
+  for (const name of toolNames) {
+    const toolGuidelines = PROMPT_GUIDELINES[name as keyof typeof PROMPT_GUIDELINES];
+    if (toolGuidelines) {
+      for (const g of toolGuidelines) {
+        addGuideline(g);
+      }
+    }
+  }
+
+  // Always-included guidelines (pi-native)
+  addGuideline("Be concise in your responses");
+  addGuideline("Show file paths clearly when working with files");
+
+  const toolGuidelines =
+    guidelines.length > 0 ? "\n\n" + guidelines.join("\n") : "";
+
+  return `Available tools:\n${visibleTools || "(none)"}\n\nOnly use the tools listed above. Do not call tools not shown here.${toolGuidelines}`;
 }
+
+// Known promptGuidelines for pi-native core tools (from their tool definitions).
+const PROMPT_GUIDELINES: Record<string, string[]> = {
+  read: ["Use read to examine files instead of cat or sed"],
+  edit: [
+    "Use edit for precise changes (edits[].oldText must match exactly)",
+    "When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls",
+    "Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.",
+    "Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.",
+  ],
+  write: ["Use write only for new files or complete rewrites"],
+};
 
 async function reconstructProjectContextSection(cwd: string): Promise<string> {
   // Re-implemented from loadProjectContextFiles (not exported from pi)
