@@ -7,12 +7,13 @@ const log = createLogger("enforcement");
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 // Whisper System
 
 import { getExtensionState } from "../../../lib/extension-state.js";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
+import { recordNudgeSent } from "../../heartbeat/analytics/shared.js";
 
 interface WhisperState {
   pendingWhisper: string | null;
@@ -33,8 +34,19 @@ const _default: WhisperState = { pendingWhisper: null, pendingBlockAction: null 
  * Send an enforcement whisper immediately using sendTrackedMessage().
  * This injects the whisper right away instead of waiting for before_agent_start,
  * which only fires when user sends a message (causing whisper accumulation).
+ * 
+ * @param pi - ExtensionAPI for sending messages
+ * @param ctx - ExtensionContext for tracking nudge stats
+ * @param message - The nudge message to send
  */
-export function sendEnforcementWhisper(pi: ExtensionAPI, message: string): void {
+export function sendEnforcementWhisper(pi: ExtensionAPI, ctx: ExtensionContext, message: string): void {
+  // Track nudge sent for A/B variant analytics (BR3)
+  try {
+    recordNudgeSent(ctx);
+  } catch (err) {
+    log.warn("Failed to record nudge sent:", err);
+  }
+
   // Emit via event bus
   try {
     eventBus.emit({

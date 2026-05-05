@@ -242,7 +242,7 @@ async function handleSycophancy(
   // Step 4: Rate limit whispers (max 10 per session, min 3 turns between)
   const turnSinceLastWhisper = state.turnCount - state.lastWhisperTurn;
   if (turnSinceLastWhisper >= COOLDOWN_TURNS && state.whisperCount < MAX_WHISPERS_PER_SESSION) {
-    sendEnforcementWhisper(pi, `VbC correction: ${vbcResult.correction_hint}`);
+    sendEnforcementWhisper(pi, ctx, `VbC correction: ${vbcResult.correction_hint}`);
     state.whisperCount++;
     state.lastWhisperTurn = state.turnCount;
   }

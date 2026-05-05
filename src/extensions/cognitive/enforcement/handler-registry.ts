@@ -304,6 +304,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
 
         sendEnforcementWhisper(
           pi,
+          ctx,
           `[calibration] High prediction error: ${(error * 100).toFixed(0)}% off on last ${toolName}. ` +
             `Avg error last 10 tools: ${(avgError * 100).toFixed(0)}%`,
         );
@@ -335,6 +336,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
       if (unpersisted.length > 0) {
         sendEnforcementWhisper(
           pi,
+          ctx,
           `Context compacted at turn ${compactTurn}. ` +
             `${unpersisted.length} key learning(s) not yet persisted - these will be harder to recover:\n\n` +
             unpersisted
@@ -400,6 +402,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
 
       sendEnforcementWhisper(
         pi,
+        ctx,
         `## ⚠️ ${msg}\n\nStore for reference: memory_store(content="API error: ${finalError}", tags=["error", "api"])`,
       );
     }
@@ -504,7 +507,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
 
       if (result) {
         if (result.verdict === "fail" || result.verdict === "warn") {
-          sendEnforcementWhisper(pi, formatVerificationNudge(result));
+          sendEnforcementWhisper(pi, ctx, formatVerificationNudge(result));
           if (result.verdict === "fail") {
             getState(ctx).validationFailures++;
           }
@@ -540,7 +543,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
         const rateLimitOk = now - getState(ctx).lastNudgeTime > getState(ctx).nudgeCooldownMs;
         if (rateLimitOk) {
           getState(ctx).lastNudgeTime = now;
-          sendEnforcementWhisper(pi, action.nudgeMessage);
+          sendEnforcementWhisper(pi, ctx, action.nudgeMessage);
 
           if (action.priority === "critical" || action.priority === "high") {
             getState(ctx).validationFailures++;

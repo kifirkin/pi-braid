@@ -50,6 +50,7 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
       if (state.consecutiveErrorTurns === ERROR_BURST_THRESHOLD) {
         sendEnforcementWhisper(
           pi,
+          ctx,
           `Error burst detected: ${state.consecutiveErrorTurns} consecutive errors. Consider stepping back.`,
         );
       }
@@ -139,7 +140,7 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
           stopReason: (event.message as unknown as { stopReason?: string }).stopReason,
         },
         actualTools, erroredTools, hadErrors, knownFiles, enforcementSignals,
-        sendWhisper: (msg) => sendEnforcementWhisper(pi, msg),
+        sendWhisper: (msg) => sendEnforcementWhisper(pi, ctx, msg),
         loadFileContent,
       };
       if (!isBurst) {
@@ -156,7 +157,7 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
         stopReason: (event.message as unknown as { stopReason?: string }).stopReason,
       },
       actualTools, erroredTools, hadErrors, knownFiles, enforcementSignals,
-      sendWhisper: (msg) => sendEnforcementWhisper(pi, msg),
+      sendWhisper: (msg) => sendEnforcementWhisper(pi, ctx, msg),
       loadFileContent,
     };
     handleCriticalSignals(tac, prevTurn, turnState, nudgeManager, validateTurn);
@@ -164,7 +165,7 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
     // ── Orphan thought chain detection ─────────────────────────────────────
     const orphanResult = detectOrphanChains(getState(ctx));
     if (!isBurst && orphanResult) {
-      sendEnforcementWhisper(pi, orphanResult.suggestion);
+      sendEnforcementWhisper(pi, ctx, orphanResult.suggestion);
     }
 
     // ── Claim tracker (cross-turn contradiction detection) ─────────────────
@@ -183,7 +184,7 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
           const { processAgentResponse, formatContradictionWhisper } = await import("../../../../lib/claim-tracker.js");
           const contradictions = processAgentResponse(msgText, ctx, getState(ctx).currentTurn);
           if (contradictions.length > 0) {
-            sendEnforcementWhisper(pi, formatContradictionWhisper(contradictions));
+            sendEnforcementWhisper(pi, ctx, formatContradictionWhisper(contradictions));
           }
         } catch (err) {
           log.warn("claim-tracker error (suppressed):", err);
@@ -333,8 +334,7 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
         const bundled = `[Session Signals]\n${sessionSignals.map((s) => `- ${s}`).join("\n")}`;
         const { shouldSend } = nudgeManager.shouldSendNudge("scratchpad", bundled);
         if (shouldSend) {
-          sendEnforcementWhisper(pi, bundled);
-          recordNudgeSent(ctx);
+          sendEnforcementWhisper(pi, ctx, bundled);
         }
       }
     }

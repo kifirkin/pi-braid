@@ -11,7 +11,7 @@ const log = createLogger("enforcement");
  * - Context-aware escalation
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { sendEnforcementWhisper } from "./whisper.js";
 
 // Nudge Types
@@ -161,6 +161,7 @@ export class NudgeManager {
  */
 export function sendSmartNudge(
   pi: ExtensionAPI,
+  ctx: ExtensionContext,
   type: NudgeType,
   message: string,
   nudgeManager: NudgeManager,
@@ -169,7 +170,7 @@ export function sendSmartNudge(
 
   if (shouldSend) {
     const prefix = escalated ? `[ESCALATED] ` : "";
-    sendEnforcementWhisper(pi, prefix + message);
+    sendEnforcementWhisper(pi, ctx, prefix + message);
   }
 
   return { sent: shouldSend, escalated };
