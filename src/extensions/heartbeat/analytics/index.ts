@@ -100,7 +100,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 
     // Addiction check using per-turn deduplicated sequence (turnToolSequence)
     // This prevents multi-call turns (e.g., 3 bash + 1 read) from skewing ratios.
-    const turnCalls = state.turnToolSequence.length;
+    const turnCalls = state?.turnToolSequence?.length ?? 0;
     if (turnCalls >= 10 && turnCalls - lastAddictionCheck >= 10) {
       lastAddictionCheck = turnCalls;
       const window = state.turnToolSequence.slice(-50);
