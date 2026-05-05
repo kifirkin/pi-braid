@@ -41,6 +41,7 @@ import latentActivatorFn from "../extensions/tools/latent-activator/index.js";
 import observatoryFn from "../extensions/tools/observatory/index.js";
 import diffFn from "../extensions/tools/diff/index.js";
 import systemMonitorFn from "../extensions/tools/system-monitor/index.js";
+import researchFn from "../extensions/tools/research/index.js";
 
 import assistantFn from "../extensions/assistant/assistant/index.js";
 import feedbackFn from "../extensions/assistant/feedback/index.js";
