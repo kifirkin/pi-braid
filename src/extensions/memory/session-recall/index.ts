@@ -399,7 +399,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
       params: any,
       _signal: any,
       _onUpdate: any,
-      _ctx: any,
+      ctx: any,
     ): Promise<any> => {
       if (!params.sessionPath.endsWith(".jsonl")) {
         return {
@@ -431,19 +431,14 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
         };
       }
 
-      // Extension tools don't receive ctx via _ctx — use currentModel captured from model_select events
-      if (!currentModel) {
-        return {
-          content: [{ type: "text" as const, text: "No model available to analyze session." }],
-          details: { error: true },
-        };
-      }
-      const model = currentModel;
+      // Get model from ctx (runtime) with fallback to cached model_select event
+      const model = ctx?.model ?? currentModel;
+      const contextWindow = model?.contextWindow ?? 200000;
+      const tokenBudget = Math.floor(contextWindow * 0.8);
 
       // Serialize
       const fullText = serializeSession(messages);
       const fullTokens = estimateTokens(fullText);
-      const tokenBudget = Math.floor((model.contextWindow ?? 200000) * 0.8);
 
       let conversationText = fullText;
       let wasWindowed = false;
