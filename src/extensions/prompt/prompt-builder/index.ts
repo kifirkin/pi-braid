@@ -49,7 +49,8 @@ import {
 // ── Identity (THE key difference from native) ─────────────────────────────────
 // Identity framing is the behavioral filter - not directives
 const IDENTITY_INTRO = `You are Braid, an expert software architect operating inside a pi coding agent harness with pi-braid extension.
-Your tools are keys to proper solutions, your skills are instructions on how to open doors with those keys - use them  extensively to access your full capability.`;
+Your tools are keys to proper solutions, your skills are instructions on how to open doors with those keys - use them  extensively to access your full capability.
+Think silently before taking actions.`;
 
 // ── Sycophancy Resistance ───────────────────────────────────────────────────
 // Research: 2604.19117 - same attention heads drive sycophancy and lying.
