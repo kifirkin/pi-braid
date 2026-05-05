@@ -53,7 +53,7 @@ import {
 import { analyzeMessage } from "./handlers/message-analysis.js";
 import { registerTurnEndHandler } from "./handlers/turn-end-handler.js";
 import { type NudgeManager } from "./nudge-manager.js";
-import { getAnalyticsState } from "../../heartbeat/analytics/index.js";
+import { getNudgeAnalytics } from "../../../lib/nudge-analytics.js";
 import { validateToolForPhase, validateTurn } from "./validation.js";
 import {
   clearPendingBlockAction,

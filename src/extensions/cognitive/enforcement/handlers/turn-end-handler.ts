@@ -23,7 +23,7 @@ import {
 import { detectOrphanChains } from "./orphan-chains.js";
 import { type NudgeManager } from "../nudge-manager.js";
 import { getState } from "../state.js";
-import { recordNudgeSent, recordNudgeSuppressed, getAnalyticsState } from "../../../heartbeat/analytics/index.js";
+import { recordNudgeSent, recordNudgeSuppressed, getNudgeAnalytics } from "../../../../lib/nudge-analytics.js";
 import { type TurnState } from "../types.js";
 import { validateTurn } from "../validation.js";
 import { sendEnforcementWhisper } from "../whisper.js";
@@ -195,7 +195,7 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
     // ── L2: Session Signals bundling ────────────────────────────────────────
 
     // BR3: Check A/B variant
-    const abVariant = getAnalyticsState(ctx).abVariant;
+    const abVariant = getNudgeAnalytics(ctx).abVariant;
     const suppressNudges = abVariant === "no_nudges";
     if (suppressNudges) {
       getState(ctx).nudgeSuppressedCount = (getState(ctx).nudgeSuppressedCount || 0) + 1;

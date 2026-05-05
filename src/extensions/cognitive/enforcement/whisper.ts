@@ -13,7 +13,7 @@ import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import { getExtensionState } from "../../../lib/extension-state.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
-import { recordNudgeSent } from "../../heartbeat/analytics/shared.js";
+import { recordNudgeSent } from "../../../lib/nudge-analytics.js";
 
 interface WhisperState {
   pendingWhisper: string | null;

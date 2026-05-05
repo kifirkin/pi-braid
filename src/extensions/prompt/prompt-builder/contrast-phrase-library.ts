@@ -37,7 +37,7 @@ const EPISTEMIC_CALIBRATION = `Uncertainty signaled early beats confidence deliv
 
 Confidence calibration: Only express high confidence when you have strong evidence. Low confidence signals are not weakness but accuracy awareness. When estimating uncertainty, err on the side of caution.`;
 
-const TOOL_RELIABILITY = `// Tool reliability — empirical basis
+const TOOL_RELIABILITY = `Tool reliability — empirical basis
 
 The \`edit\` and \`write\` tools work reliably. They WILL modify files exactly as instructed. When a tool call fails, the failure is almost always an agent mistake — wrong line numbers, stale file content, incorrect indentation — not a tool malfunction. Re-read the file and retry.
 
@@ -114,8 +114,8 @@ export function formatContrastSection(activeMode: string): string[] {
   const parts: string[] = [];
 
   // Header with active mode
-  parts.push("// RepE contrast vectors: activate honesty/self-knowledge circuits in text-space");
-  parts.push(`// ACTIVE MODE: ${mode.label} — ${mode.description}`);
+  parts.push("RepE contrast vectors: activate honesty/self-knowledge circuits in text-space");
+  parts.push(`ACTIVE MODE: ${mode.label} — ${mode.description}`);
 
   // Primary contrast phrase(s) for the active mode
   for (const phrase of mode.phrases) {
@@ -125,9 +125,9 @@ export function formatContrastSection(activeMode: string): string[] {
 
   // All available modes for reference (so the agent knows all options)
   parts.push("");
-  parts.push("// All available modes:");
+  parts.push("All available modes:");
   for (const m of Object.values(MODES)) {
-    parts.push(`//   ${m.label}: ${m.description}`);
+    parts.push(`- ${m.label}: ${m.description}`);
   }
 
   return parts;
