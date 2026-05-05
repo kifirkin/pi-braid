@@ -205,20 +205,19 @@ Task:
 
 ### Track 7: Test Coverage (Critical Libs) 🟡 P1
 
-**Status**: 🟡 Partial (55 tests pass, core libs untested)
+**Status**: 🟡 Progress (58 tests pass — 3 new runtime test files added May 5)
 
-**Untested libraries (from SELF-REFLECTION.md audit)**:
-```
-Priority order:
-  1. src/lib/cognitive-memory/storage.ts (58L) — memory persistence
-  2. src/lib/cognitive-memory/index.ts (602L) — core memory system
-  3. src/lib/degradation-detector.ts (328L) — drives degrade decisions
-  4. src/lib/state-checkpoint.ts (306L) — rollback infrastructure
-  5. src/lib/filter-safe-to-remove.ts (251L) — injection filtering
-  6. src/lib/belief-store.ts (252L) — policy engine state
-```
+**What's been done**:
+- ✅ `test-goal-manager.mjs` (17 tests) — goal lifecycle, decompose, stats, evidence, edge cases
+- ✅ `test-cognitive-memory-runtime.mjs` (14 tests) — store, types, search, tags, link, boost, stats, clear
+- ✅ `test-state-checkpoint.mjs` (6 tests) — interval gating, creation, heartbeat integration, multi-checkpoint
 
-**Each needs**: unit tests covering normal paths + error cases + edge cases.
+**Remaining untested libs**:
+```
+  1. cognitive-memory/storage.ts (58L) — persistence layer (tested indirectly via CognitiveMemory class)
+  2. cognitive-memory/utils.ts (181L) — utility functions
+  3. state-checkpoint.ts, goal-manager.ts, cognitive-memory/index.ts — now have runtime coverage
+```
 
 ---
 
