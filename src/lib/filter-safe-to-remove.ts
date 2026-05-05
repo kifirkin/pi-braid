@@ -77,6 +77,30 @@ export function filterSafeToRemove(messages: AgentMessage[]): {
     afterTokens: number;
   };
 } {
+  try {
+    return filterSafeToRemoveInner(messages);
+  } catch (err) {
+    // If filtering fails, return everything unchanged
+    console.error("filterSafeToRemove error:", err);
+    return {
+      filtered: messages,
+      stats: { duplicates: 0, resolved: 0, oversized: 0, streaks: 0, totalRemoved: 0, beforeTokens: 0, afterTokens: 0 },
+    };
+  }
+}
+
+function filterSafeToRemoveInner(messages: AgentMessage[]): {
+  filtered: AgentMessage[];
+  stats: {
+    duplicates: number;
+    resolved: number;
+    oversized: number;
+    streaks: number;
+    totalRemoved: number;
+    beforeTokens: number;
+    afterTokens: number;
+  };
+} {
   const result: AgentMessage[] = [];
   let removed = 0;
   let beforeTokens = 0;
