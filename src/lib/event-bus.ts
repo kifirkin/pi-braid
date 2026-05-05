@@ -68,6 +68,16 @@ export interface ToolErrorEvent {
   timestamp: number;
 }
 
+export interface AnalyticsAlertEvent {
+  type: "analytics_alert";
+  alertType: "addiction" | "degradation" | "recovery" | "anomaly";
+  severity: "info" | "warn" | "critical";
+  message: string;
+  data?: Record<string, unknown>;
+  turn: number;
+  timestamp: number;
+}
+
 export type AgentEvent =
   | TimerEvent
   | MemoryEvictEvent
@@ -75,7 +85,8 @@ export type AgentEvent =
   | ContextFullEvent
   | EnforcementEvent
   | HeartbeatTickEvent
-  | ToolErrorEvent;
+  | ToolErrorEvent
+  | AnalyticsAlertEvent;
 
 type Handler<T extends AgentEvent = AgentEvent> = (event: T) => void;
 

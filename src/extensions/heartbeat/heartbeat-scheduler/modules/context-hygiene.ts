@@ -9,12 +9,62 @@
 import type { CognitiveModule } from "../types.js";
 import { createLogger } from "../../../../lib/logger.js";
 import { getExtensionState } from "../../../../lib/extension-state.js";
+import { eventBus } from "../../../../lib/event-bus.js";
 import {
   generateDensitySignals,
   evaluatePolicies,
 } from "../../../memory/context-lifecycle/policy-engine.js";
 
 const log = createLogger("heartbeat:context-hygiene");
+
+// ── Proactive Detection Constants ───────────────────────────────────────────────
+
+/** Max token snapshots to keep for growth-rate projection. */
+const MAX_SNAPSHOTS = 10;
+
+/** If projected full within this many turns, emit proactive warning. */
+const PROACTIVE_THRESHOLD_TURNS = 10;
+
+/** The usage ratio at which we consider context "full" (85%). */
+const PROJECTION_TARGET_RATIO = 0.85;
+
+/** Default token limit used when limit is unknown. */
+const DEFAULT_TOKEN_LIMIT = 100_000;
+
+/**
+ * Estimate how many turns remain before context hits PROJECTION_TARGET_RATIO.
+ * Uses linear regression on the last N token-usage snapshots.
+ * Returns Infinity if not enough data or negative growth rate.
+ */
+function estimateRemainingTurns(
+  snapshots: Array<{ turn: number; tokens: number }>,
+  currentTokens: number,
+  currentTurn: number,
+): number {
+  if (snapshots.length < 2) return Infinity;
+
+  // Use only the last few snapshots for a current growth rate
+  const window = snapshots.slice(-5);
+  if (window.length < 2) return Infinity;
+
+  // Simple linear fit: Δtokens / Δturns
+  const first = window[0];
+  const last = window[window.length - 1];
+  const turnDelta = last.turn - first.turn;
+  if (turnDelta <= 0) return Infinity;
+
+  const tokenDelta = last.tokens - first.tokens;
+  if (tokenDelta <= 0) return Infinity; // Not growing (compaction may have happened)
+
+  const tokensPerTurn = tokenDelta / turnDelta;
+  if (tokensPerTurn <= 0) return Infinity;
+
+  const targetTokens = Math.ceil(PROJECTION_TARGET_RATIO * DEFAULT_TOKEN_LIMIT);
+  const remainingTokens = targetTokens - currentTokens;
+  if (remainingTokens <= 0) return 0;
+
+  return remainingTokens / tokensPerTurn;
+}
 
 /** Replace {placeholder} in message with values from context dict. */
 function interpolateMessage(message: string, ctx: Record<string, number | string>): string {
@@ -70,6 +120,61 @@ export const contextHygieneModule: CognitiveModule = {
       }
     } catch {
       log.debug("Density policies not available, using direct whisper");
+    }
+
+    // ── Proactive context_full projection ────────────────────────────────
+    // Track token usage snapshots to project when context will be full.
+    const state = getExtensionState(ctx, "context-hygiene-projection", () => ({
+      snapshots: [] as Array<{ turn: number; tokens: number }>,
+      lastProjectedRemaining: Infinity,
+    }));
+
+    const currentTurn = (ctx as any)?.turnCount ?? 0;
+    state.snapshots.push({ turn: currentTurn, tokens: density.totalTokens });
+    if (state.snapshots.length > MAX_SNAPSHOTS) {
+      state.snapshots = state.snapshots.slice(-MAX_SNAPSHOTS);
+    }
+
+    const remainingTurns = estimateRemainingTurns(
+      state.snapshots,
+      density.totalTokens,
+      currentTurn,
+    );
+
+    if (
+      remainingTurns <= PROACTIVE_THRESHOLD_TURNS &&
+      remainingTurns < state.lastProjectedRemaining
+    ) {
+      state.lastProjectedRemaining = remainingTurns;
+
+      const projectedUsage =
+        density.tokenRatio +
+        (PROJECTION_TARGET_RATIO - density.tokenRatio) *
+          (1 - remainingTurns / PROACTIVE_THRESHOLD_TURNS);
+
+      try {
+        eventBus.emit({
+          type: "context_full",
+          usagePercent: Math.min(projectedUsage * 100, 100),
+          tokensUsed: density.totalTokens,
+          tokensLimit: DEFAULT_TOKEN_LIMIT,
+        });
+      } catch {}
+
+      const projectedPercent = Math.min(
+        Math.round(projectedUsage * 100),
+        100,
+      );
+      ctx.whisper?.(
+        `[proactive] Context projected at ${projectedPercent}% in ` +
+          `${Math.ceil(remainingTurns)} turns (${(density.totalTokens / 1000).toFixed(0)}K tokens, ` +
+          `${(density.tokenRatio * 100).toFixed(0)}% now). ` +
+          `Consider: context_archive() to reduce before hitting limit.`,
+        { category: "cognitive", priority: remainingTurns <= 3 ? "high" : "medium" },
+      );
+    } else if (remainingTurns > PROACTIVE_THRESHOLD_TURNS * 2) {
+      // Reset if we've freed up significant space (compaction happened)
+      state.lastProjectedRemaining = Infinity;
     }
 
     if (density.density < 0.4) {

@@ -17,6 +17,7 @@ import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "../../../lib/extension-state.js";
 import { emitSignal, getNextRecommendation } from "../../../lib/belief-policy-engine.js";
+import { eventBus } from "../../../lib/event-bus.js";
 import { isDegraded, getDegradationReasons } from "../../../lib/degradation-detector.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { Type } from "typebox";
@@ -122,6 +123,17 @@ export default function analyticsExtension(pi: ExtensionAPI) {
           sendTrackedMessage(pi, { customType: "context", display: true, content: [{ type: "text", text: bpeRec.message }] }, undefined, { type: "heartbeat", source: "heartbeat/analytics/policy" });
         }
         sendTrackedMessage(pi, { customType: "memory", display: true, content: [{ type: "text", text: `[analytics] Tool addiction pattern detected: ${warnings.join("; ")}` }] }, undefined, { type: "heartbeat", source: "heartbeat/analytics" });
+        try {
+          eventBus.emit({
+            type: "analytics_alert",
+            alertType: "addiction",
+            severity: "warn",
+            message: `Tool addiction pattern detected: ${warnings.join("; ")}`,
+            data: { tools: warnings, windowSize: total },
+            turn: (ctx as any)?.turnCount ?? state.lastDensityTurn,
+            timestamp: Date.now(),
+          });
+        } catch {}
       }
     }
 
@@ -132,9 +144,30 @@ export default function analyticsExtension(pi: ExtensionAPI) {
       const reasons = getDegradationReasons(ctx);
       emitSignal(ctx, "stability", "decline", "critical", false, { reason: reasons[0] ?? "degraded", consecutiveErrors: 3 });
       sendTrackedMessage(pi, { customType: "context", display: true, content: [{ type: "text", text: `[health] Degradation detected: ${reasons.join("; ")}` }] }, undefined, { type: "heartbeat", source: "heartbeat/analytics/degrade" });
+      try {
+        eventBus.emit({
+          type: "analytics_alert",
+          alertType: "degradation",
+          severity: "critical",
+          message: `Degradation detected: ${reasons.join("; ")}`,
+          data: { reasons, consecutiveErrors: 3 },
+          turn: (ctx as any)?.turnCount ?? state.lastDensityTurn,
+          timestamp: Date.now(),
+        });
+      } catch {}
     } else if (!degraded && state.wasDegraded) {
       state.wasDegraded = false;
       sendTrackedMessage(pi, { customType: "context", display: true, content: [{ type: "text", text: "[health] Performance recovered to healthy." }] }, undefined, { type: "heartbeat", source: "heartbeat/analytics/recover" });
+      try {
+        eventBus.emit({
+          type: "analytics_alert",
+          alertType: "recovery",
+          severity: "info",
+          message: "Performance recovered to healthy.",
+          turn: (ctx as any)?.turnCount ?? state.lastDensityTurn,
+          timestamp: Date.now(),
+        });
+      } catch {}
     }
     } catch (err) {
       log.error("[analytics-turn-end] error:", err);

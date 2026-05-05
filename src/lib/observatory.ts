@@ -141,6 +141,17 @@ class MetricsCollector {
       this.trim();
       this.notify();
     });
+
+    eventBus.on("analytics_alert", (event) => {
+      this.metrics.events.push({
+        type: "analytics_alert",
+        timestamp: Date.now(),
+        turn: 0,
+        data: { alertType: event.alertType, severity: event.severity, message: event.message },
+      });
+      this.trim();
+      this.notify();
+    });
   }
 
   private trim(): void {

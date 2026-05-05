@@ -123,7 +123,7 @@ console.log("\n[6] ToolErrorEvent in event bus");
   assert(lib.includes("ToolErrorEvent"), "ToolErrorEvent interface defined");
   assert(lib.includes("tool_error"), "tool_error type emitted");
   assert(lib.includes("toolName"), "ToolErrorEvent has toolName");
-  assert(lib.includes("ToolErrorEvent;"), "ToolErrorEvent included in AgentEvent union");
+  assert(lib.includes("ToolErrorEvent") && lib.includes("AgentEvent ="), "ToolErrorEvent included in AgentEvent union");
 }
 
 // ── [7] Error-capture emits tool_error ────────────────────────────

@@ -19,13 +19,13 @@ const {
 const { eventBus } = await import("../../dist/lib/event-bus.js");
 
 describe("Event Consumers", () => {
-  it("registers 6 handlers without error", () => {
+  it("registers 7 handlers without error", () => {
     resetConsumerState();
     eventBus.clear();
     registerEventConsumers();
     const stats = eventBus.getStats();
     const totalHandlers = Object.values(stats).reduce((s, v) => s + v.persistent, 0);
-    assert.equal(totalHandlers, 6, "Should have 6 persistent handlers");
+    assert.equal(totalHandlers, 7, "Should have 7 persistent handlers");
   });
 
   it("tracks enforcement violations", () => {

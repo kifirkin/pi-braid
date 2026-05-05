@@ -37,9 +37,13 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
   pi.on("turn_end" as never, async (event: any, ctx: ExtensionContext) => {
     if (!getState(ctx).enforcementActive) return;
 
-    const actualTools: string[] = (event.toolResults || []).map((r: any) => r.toolName);
+    const actualTools: string[] = (event.toolResults || [])
+      .map((r: any) => r.toolName)
+      .filter((name: string) => name && name.trim().length > 0);
     const erroredTools: Set<string> = new Set(
-      (event.toolResults || []).filter((r: any) => r.isError).map((r: any) => r.toolName),
+      (event.toolResults || [])
+        .filter((r: any) => r.isError && r.toolName && r.toolName.trim().length > 0)
+        .map((r: any) => r.toolName),
     );
     const hadErrors = erroredTools.size > 0;
 

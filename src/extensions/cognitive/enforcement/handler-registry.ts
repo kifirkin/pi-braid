@@ -142,6 +142,9 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     const toolName = event.toolName;
     const input = event?.input as Record<string, unknown> | undefined;
 
+    // Drop empty/whitespace-only tool calls (LLM hallucinations like proxy artifacts)
+    if (!toolName || !toolName.trim()) return undefined;
+
     recordToolCall(toolName);
     recordToolInput(toolName, input);
 
@@ -267,6 +270,8 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     if (!getState(ctx).enforcementActive) return;
     const isBurst = getState(ctx).consecutiveErrorTurns >= ERROR_BURST_THRESHOLD;
     const toolName = event?.tool || "";
+    // Drop empty/whitespace-only tool names (LLM hallucinations like proxy artifacts)
+    if (!toolName || !toolName.trim()) return;
     if (toolName === "think") return;
 
     const predicted = getState(ctx).lastThinkConfidence;
