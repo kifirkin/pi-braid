@@ -24,13 +24,13 @@
 ### KEY OBSERVATIONS
 
 **Missing Tools (critical gaps):**
-- **No diff/patch tool** — agent must bash `diff` to compare files, can't apply patches directly
+- ~~No diff/patch tool~~ — ✅ `file_diff` tool exists (multi-hunk structured diff, git ref comparison)
 - **No structured data query tool** — no SQL/JSON query, forces bash jq usage
-- **No system monitor** — agent can't see CPU/memory trends (only healthcheck snapshot)
-- **No rollback/snapshot tool** — state-checkpoint lib exists but no user-facing tool
+- ~~No system monitor~~ — ✅ `system_monitor` tool exists (CPU, memory, disk, processes)
+- ~~No rollback/snapshot tool~~ — ✅ Auto-checkpoint/rollback via `state-checkpoint.ts` + heartbeat integration
 - **No experiment tracker** — no structured A/B result viewer (only raw analytics)
 - **No prompt tester** — no way to test prompt changes before deploying
-- **No file comparison tool** — agent reads two files separately, no side-by-side
+- ~~No file comparison tool~~ — ✅ `file_diff` covers this (side-by-side with hunks)
 
 **Overused Tools (addiction signals):**
 - **bash (32-62% of calls)** — used for build, test, grep, wc, git, npm, piping. 52 shell pattern usages in test files, 147 in extensions. Many should be dedicated tools.
@@ -53,31 +53,31 @@
 
 | Missing Event | Impact |
 |--------------|--------|
-| `tool_error` | Enforcement can't react to tool failures directly |
-| `memory_evict` | Emitted by collector but no handler consumes it |
-| `context_full` | Emitted but reactive, not proactive |
-| `analytics_alert` | No structured alert channel from analytics → enforcement |
-| `experiment_result` | No event for A/B test results landing |
+| `tool_error` | ✅ Wired — `ToolErrorEvent` in `event-bus.ts`, emitted from `error-capture` |
+| `memory_evict` | ✅ Wired — emitted from `compaction.ts`, consumed by `event-consumers.ts`, observatory |
+| `context_full` | ✅ Proactive — growth-rate projection in `context-hygiene.ts` emits before full |
+| `analytics_alert` | ✅ Wired — `AnalyticsAlertEvent` in `event-bus.ts`, 3 emission sites in analytics |
+| `experiment_result` | Still missing — no event for A/B test results landing |
 
 ### RECOMMENDATION
-- Lazy-load heavy session_start listeners
+- ~~Lazy-load heavy session_start listeners~~ ✅ Done — `session-start-queue.ts` with 3-phase loading
 - Batch turn_end handlers into a single tick
-- Add tool_error event type to reduce bash catch-all usage
+- ~~Add tool_error event type~~ ✅ Done — `ToolErrorEvent` + `AnalyticsAlertEvent` both wired
 
 ---
 
 ## 3. Test Coverage Crisis
 
-### UNTESTED LIBRARIES (24 of 40 = 60%)
+### UNTESTED LIBRARIES (18 of 40 = 45% — some gaps closed)
 
 | File | Lines | Risk |
 |------|-------|------|
 | `cognitive-memory.ts` | **1225** | ⛔ CRITICAL — core memory system, zero tests |
 | `goal-manager.ts` | 527 | ⛔ HIGH — goal tracking, no tests |
-| `degradation-detector.ts` | 328 | ⛔ HIGH — drives degrade decisions, no tests |
+| `degradation-detector.ts` | 328 | 🟡 Has tests — `test-degradation-detector.mjs` (62 tests) + module test (16 tests) |
 | `state-checkpoint.ts` | 306 | ⛔ HIGH — rollback infrastructure, no tests |
-| `filter-safe-to-remove.ts` | 251 | ⛔ HIGH — injection filtering, no tests |
-| `belief-store.ts` | 252 | ⛔ HIGH — policy engine state, no tests |
+| `filter-safe-to-remove.ts` | 251 | 🟡 Has tests — `test-filter-safe-to-remove.mjs` (8 tests) |
+| `belief-store.ts` | 252 | 🟡 Has tests — via `test-belief-policy-engine.mjs` and `test-belief-policy.mjs` |
 | `context-density.ts` | 175 | ⚠️ MEDIUM |
 | `extension-state.ts` | 146 | ⚠️ MEDIUM — all extensions depend on this |
 | `injection-tracker.ts` | 131 | ⚠️ MEDIUM |
@@ -99,8 +99,8 @@
 | `latent-activator` | 568 (zero catch) | ⛔ HIGH — commands can fail silently |
 
 ### TEST QUALITY
-- 47 tests pass, but most test small surface areas via source analysis (grep for strings in files)
-- Only 5-6 tests do actual runtime import/invocation
+- 55 tests pass — 22 test files covering enforcement, memory, heartbeat, cognitive systems, tools
+- ~15 tests do actual runtime import/invocation (up from 5-6)
 - No performance/benchmark tests for memory or heartbeat
 - No stress tests (many concurrent events)
 - No regression test suite for event bus

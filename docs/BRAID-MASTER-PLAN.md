@@ -35,8 +35,8 @@ npm run build && npm test
 | 5 | SAE Steering | 🔴 Research only | P2 | 2-4 weeks | Open model provider |
 | 6 | Benchmark Improvements + VAR-MATH | 🟡 SDK harnesses done | P1 | 1 week | None |
 | 7 | Test Coverage (critical libs) | 🟡 Partial | P1 | 3-5 days | None |
-| 8 | Event Bus Gaps | 🟡 Partial | P2 | 2-3 days | None |
-| 9 | Docs Catch-Up | 🟡 Stale | P3 | 1 day | All tracks |
+| 8 | Event Bus Gaps | ✅ Complete | P2 | — | Track 9 |
+| 9 | Docs Catch-Up | 🟡 In Progress | P3 | In progress | All tracks |
 
 ---
 
@@ -222,43 +222,34 @@ Priority order:
 
 ---
 
-### Track 8: Event Bus Gaps 🟡 P2
+### Track 8: Event Bus Gaps ✅ P2 — Complete 2026-05-05
 
-**Status**: 🟡 Partial
+**Status**: ✅ Complete
 
-**What exists**:
-- ✅ `agent-events.ts` — 10 signal domains taxonomy
-- ✅ `tool_error` event type (wired into error-capture)
-- ✅ Enforcement → prompt-builder signal chain
+**Gap 1 (memory_evict handler)**: Was already wired — `MemoryEvictEvent` defined in `event-bus.ts`, emitted from `compaction.ts:241`, handler `onMemoryEvict` in `event-consumers.ts`, registered in `registerEventConsumers()`, and wired into `observatory.ts`.
 
-**What's missing**:
-```
-Task:
-  1. Wire `memory_evict` handler (emitted by collector, no consumer)
-  2. Add proactive `context_full` detection (not just reactive)
-  3. Create `analytics_alert` event for structured alert channel
-  4. Add lazy-loading for 12 synchronous session_start listeners
-```
+**Gap 2 (proactive context_full detection)**: Implemented. `context-hygiene.ts` now tracks a sliding window of token-usage snapshots, computes tokens-per-turn growth rate, and projects when context will hit 85% usage. When ≤10 turns remain, emits a `context_full` event with projected usage and sends a whisper to the agent.
+
+**Gap 3 (analytics_alert event)**: Created `AnalyticsAlertEvent` type in `event-bus.ts`, handler `onAnalyticsAlert` in `event-consumers.ts` (tracks count + recent alerts), wired 3 emission sites in `analytics/index.ts` (tool addiction pattern → `"addiction"`, degradation detected → `"degradation"`, recovery → `"recovery"`), and wired into `observatory.ts` for 3D visualization.
+
+**Gap 4 (session_start lazy-loading)**: Was already done — `session-start-queue.ts` fully implemented with 3-tier phases (CoreInit/MemoryState/Background). All 14+ extensions migrated; zero raw `pi.on("session_start")` calls remaining in `src/`.
 
 ---
 
 ### Track 9: Docs Catch-Up 🟡 P3
 
-**Status**: 🟡 Stale (~5 days behind code)
+**Status**: 🟡 In Progress
 
-**What needs updating**:
+**What's been done (2026-05-05)**:
+- ✅ **proposals/README.md** rewritten with per-proposal status (✅ implemented / ❌ abandoned / 🔴 not started / 🟡 partial), priorities, and file references
+- ✅ **BRAID-MASTER-PLAN.md** (this doc) updated — Track 8 marked complete, P2 commit cb0c6c50
+- 🟡 **SELF-REFLECTION.md** still needs stale-claim fixes (claims `file_diff`, `system_monitor`, `tool_error` are missing — they all exist)
+
+**What still needs updating**:
 ```
 Task:
-  1. Update proposals/README.md with actual implementation status for all 15 proposals
-  2. Update IMPLEMENTATION.md with recent commits (file_diff, system_monitor, tool_error, etc.)
-  3. Update WHAT-IS-MISSING.md with post-May-1 progress
-  4. Archive proposals that are fully implemented:
-     - CONTRAST-PHRASE-LIBRARY.md ✅
-     - REPE-PROMPT-CONTRAST-PROPOSAL.md ✅
-     - STRUCTURED-OUTPUT-CATALYST.md (abandoned)
-     - HEARTBEAT-AS-EVENT-BUS.md ✅
-     - MEMORY-LEAK-PREVENTION-AND-IMPLICIT-EXPLICIT-BOUNDARY.md ✅
-  5. Update SELF-REFLECTION.md (stale missing-tool claims)
+  1. Update SELF-REFLECTION.md (stale missing-tool claims — file_diff, system_monitor, tool_error all exist)
+  2. Mark IMPLEMENTATION.md as superseded by this master plan (or remove)
 ```
 
 ---

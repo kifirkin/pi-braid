@@ -1,9 +1,10 @@
 # pi-braid Implementation Plan
 
-**Single source of truth.** All features, their status, priority, and execution order.
+> ⚠️ **SUPERSEDED** by [BRAID-MASTER-PLAN.md](./BRAID-MASTER-PLAN.md) (last updated May 5, 2026).
+> This document is preserved for historical reference but is no longer the single source of truth.
+> Track-level status: the self-evolution, memory compression, and benchmark tracks have shifted priority based on evaluation results.
 
-**Last updated**: 2026-04-30
-**Purpose**: Executable plan for weeks/months of incremental feature development.
+**Last updated**: 2026-04-30 (archived)
 
 ---
 
