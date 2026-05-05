@@ -38,9 +38,13 @@ export async function detectRedundancySignal(tac: TurnAnalysisContext): Promise<
   // Ensure all known files have content loaded
   for (const [filePath, entry] of tac.knownFiles) {
     if (!entry.content) {
-      const loaded = await tac.loadFileContent(filePath);
-      if (loaded !== null) {
-        entry.content = loaded;
+      try {
+        const loaded = await tac.loadFileContent(filePath);
+        if (loaded !== null) {
+          entry.content = loaded;
+        }
+      } catch {
+        log.warn(`Failed to load file content for redundancy check: ${filePath}`);
       }
     }
   }
@@ -48,19 +52,23 @@ export async function detectRedundancySignal(tac: TurnAnalysisContext): Promise<
   // Check new/updated files for similarity
   for (const [filePath, entry] of tac.knownFiles) {
     if (entry.turn === tac.state.currentTurn && entry.content === "") {
-      const loaded = await tac.loadFileContent(filePath);
-      if (loaded !== null) {
-        entry.content = loaded;
-        const similarTo = await detectRedundancy(loaded, filePath);
-        if (similarTo) {
-          const now = Date.now();
-          if (now - tac.state.lastNudgeTime > tac.state.nudgeCooldownMs) {
-            tac.state.lastNudgeTime = now;
-            tac.sendWhisper(
-              `[Quality] Similar code exists at \`${similarTo}\`. Reuse or deduplicate.`,
-            );
+      try {
+        const loaded = await tac.loadFileContent(filePath);
+        if (loaded !== null) {
+          entry.content = loaded;
+          const similarTo = await detectRedundancy(loaded, filePath);
+          if (similarTo) {
+            const now = Date.now();
+            if (now - tac.state.lastNudgeTime > tac.state.nudgeCooldownMs) {
+              tac.state.lastNudgeTime = now;
+              tac.sendWhisper(
+                `[Quality] Similar code exists at \`${similarTo}\`. Reuse or deduplicate.`,
+              );
+            }
           }
         }
+      } catch {
+        log.warn(`Failed to load file content for redundancy check (current turn): ${filePath}`);
       }
     }
   }

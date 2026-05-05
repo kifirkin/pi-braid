@@ -1,5 +1,6 @@
 import { createLogger } from "../../../lib/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
+import { getExtensionState } from "../../../lib/extension-state.js";
 
 const log = createLogger("agent-environment");
 /**
@@ -70,7 +71,7 @@ export interface L1EnvironmentData {
 
 export function gatherL1Environment(
   _pi: ExtensionAPI,
-  _ctx: ExtensionContext | undefined,
+  ctx: ExtensionContext | undefined,
 ): L1EnvironmentData {
   const now = Date.now();
   const sessionElapsed = now - _state.sessionStart;
@@ -79,6 +80,22 @@ export function gatherL1Environment(
     _state.metrics.totalToolCalls > 0
       ? Math.round(_state.metrics.totalToolTime / _state.metrics.totalToolCalls)
       : 0;
+
+  // Sync turnCount from extension state (survives extension reloads in resumed sessions).
+  // When module reloads mid-session, _state.turnCount starts at 0. Extension state
+  // persists because pi-core stores it per-session, not per-extension-load.
+  if (_state.turnCount === 0 && ctx) {
+    try {
+      const extState = getExtensionState(ctx, "agent-environment", () => ({
+        turnCount: 0,
+        lastEventTime: Date.now(),
+      }));
+      _state.turnCount = extState.turnCount;
+      _state.lastEventTime = extState.lastEventTime;
+    } catch {
+      // Extension state unavailable — fall back to module-level defaults
+    }
+  }
 
   // OS detection - normalize platform names for clarity
   const rawPlatform = os.platform();
@@ -262,9 +279,20 @@ export default function agentEnvironmentExtension(pi: ExtensionAPI) {
     _state.metrics.assistantMessageCount = 0;
   });
 
-  pi.on("message_end", (event) => {
+  pi.on("message_end", (event, ctx) => {
     if (event.message.role === "assistant") {
       _state.turnCount++;
+      // Persist to extension state so turn count survives extension reload
+      try {
+        const extState = getExtensionState(ctx, "agent-environment", () => ({
+          turnCount: 0,
+          lastEventTime: Date.now(),
+        }));
+        extState.turnCount = _state.turnCount;
+        extState.lastEventTime = _state.lastEventTime;
+      } catch {
+        // Extension state unavailable — module-level tracking only
+      }
     }
     if (event.message.role === "user") {
       _state.lastEventTime = Date.now();
