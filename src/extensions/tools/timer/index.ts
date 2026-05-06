@@ -159,10 +159,8 @@ export default function timerExtension(pi: ExtensionAPI): void {
     label: "Timer Set",
     promptSnippet: "Set a non-blocking timer for background processes",
     description:
-      "REPLACES bash `sleep` for waiting. Set a non-blocking timer (seconds). " +
-      "Returns immediately — does NOT hang. Do NOT use sleep() after this. " +
-      "Continue working normally; the timer will fire asynchronously and inject " +
-      "a reminder into your context. " +
+      "Set a non-blocking timer that fires asynchronously. " +
+      "Returns immediately without hanging. " +
       "Use for: builds, background processes, pomodoro cycles, escalation chains.",
     parameters: Type.Object({
       delay_seconds: Type.Number({ minimum: 1, maximum: 86400 }),
