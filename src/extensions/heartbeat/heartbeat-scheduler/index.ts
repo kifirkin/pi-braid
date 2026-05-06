@@ -27,6 +27,7 @@ import { eventBus } from "../../../lib/event-bus.js";
 import { processConsolidationTick } from "../../../lib/consolidation-channel.js";
 import { heartbeatCheckpointTick } from "../../../lib/state-checkpoint.js";
 import { extractSOP } from "../../../lib/sop-extractor.js";
+import { injectSopSuggestions } from "../../../lib/sop-suggestion.js";
 import type { TrajectoryEntry } from "../../../lib/sop-extractor.js";
 import { isDegraded, recordTurnMetrics } from "../../../lib/degradation-detector.js";
 import type { Episode } from "../../memory/three-memory-stores/index.js";
@@ -405,6 +406,25 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
       }
     } catch (err) {
       log.debug(`SOP retrieval skipped: ${(err as Error).message}`);
+    }
+  });
+
+  // ── Event: turn_start — inject relevant SOPs from past episodes ─────
+
+  pi.on("turn_start", async (_event: any, ctx: ExtensionContext) => {
+    // Inject SOP suggestions based on the current turn's user message
+    try {
+      const { retrieveEpisodes } = await import("../../memory/three-memory-stores/index.js") as any;
+      const memState = getMemoryState(ctx);
+      if (memState && memState.episodes) {
+        // Use the user message from the event or the latest message in context
+        const userText = _event?.userMessage ?? _event?.text ?? "";
+        if (userText.length > 5) {
+          injectSopSuggestions(pi, userText, memState.episodes);
+        }
+      }
+    } catch (err) {
+      log.debug(`SOP suggestion skipped: ${(err as Error).message}`);
     }
   });
 
