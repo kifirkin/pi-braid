@@ -1,6 +1,6 @@
 {
 	"name": "pi-braid",
-	"version": "0.2.0-alpha.4",
+	"version": "0.2.0-alpha.5",
 	"description": "Metacognitive extension suite for pi-coding-agent. Enforcement, planning, memory, heartbeat scheduling, RepE contrast vectors, utility tools.",
 	"type": "module",
 	"main": "./dist/index.js",

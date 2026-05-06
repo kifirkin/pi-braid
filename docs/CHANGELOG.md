@@ -2,6 +2,34 @@
 
 All notable changes to pi-braid are documented here.
 
+## v0.2.0-alpha.5 (2026-05-07)
+
+### Bug Fixes
+
+- **ctx.compact() API fix**: `pi.compact()` doesn't exist - `compact()` is on `ctx` (ExtensionContext), not `pi` (ExtensionAPI). All context-manager tools and handlers updated. `keep` parameter changed to `customInstructions` (CompactOptions only supports customInstructions, onComplete, onError).
+- **Whisper delivery timing**: Non-critical advisories now use `deliverAs: "hint"` (visible in TUI, no hidden turn). Critical signals (error bursts, degradation, blocks, retry) use `triggerTurn: true`. Removed BPE duplicate from heartbeat/analytics (only enforcement handles it). MARS, dreamer, BPE recommendations → hint. Error bursts → critical.
+
+### Refactor
+
+- `sendEnforcementWhisper()` signature: Added `critical` boolean parameter (default: false). Non-critical whispers use `hint`, critical use `triggerTurn`.
+- Removed duplicate `getNextRecommendation()` call from heartbeat/analytics (was duplicating enforcement's BPE handling).
+- All enforcement whispers preserved with `display: true` - nothing hidden from TUI.
+
+---
+
+## v0.2.0-alpha.4 (2026-05-06)
+
+### Bug Fixes
+
+- **Session persistence after compaction**: Fixed `_processedCompacts` deduplication guard missing + stale intercept on sessionManager after reload/newSession. 5 sub-fixes: `_interceptActive` flag, `_interceptedSmRef` tracking, `tryRestoreAppendMessage()`, `clearInterceptState()`, `message_end` backup handler. Compaction.ts handler now handles session replacement gracefully.
+
+### Features
+
+- **BM3 complex multi-step benchmark**: 5 tasks with nested complexity (flatten custom iterators, generators, mixed, depth variance, empty/singletons).
+- **run-compare-modes.mjs**: Naked vs braid comparison script.
+
+---
+
 ## v0.2.0-alpha.2 (2026-04-30)
 
 ### Features
