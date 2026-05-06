@@ -310,7 +310,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
     name: "session_search",
     label: "Session Search",
     description:
-      "Search past sessions by keywords. Returns matching sessions with snippets. Follow up with session_query for details.",
+      "Search past sessions by keywords (plain-text grep, not AI). Returns matching sessions with snippets. Follow up with session_query for details. If no results, try broader terms or fewer words.",
     parameters: sessionSearchSchema,
     execute: async (
       _toolCallId,
@@ -333,7 +333,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
       if (allMatches.length === 0) {
         return {
           content: [
-            { type: "text" as const, text: `No sessions found matching "${params.query}".` },
+            { type: "text" as const, text: `No sessions found matching "${params.query}". Try broader terms (fewer words) -- search is literal grep, not semantic.` },
           ],
           details: { matchCount: 0 },
         };
@@ -370,7 +370,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
       if (results.length === 0) {
         return {
           content: [
-            { type: "text" as const, text: `No readable matches found for "${params.query}".` },
+            { type: "text" as const, text: `No readable matches found for "${params.query}". Try shorter/more general keywords -- this is literal grep, not AI search.` },
           ],
           details: { matchCount: 0 },
         };

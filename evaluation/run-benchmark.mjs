@@ -91,9 +91,34 @@ async function runBenchmark(benchKey, options) {
 
   cleanup();
 
-  // Print table
+  // Score and print results
+  let scores = null;
+  if (benchKey === 'bm2') {
+    const { scoreCodeQuality, runCodeTest } = await import('./lib/scoring.mjs');
+    scores = await Promise.all(results.map(async (r) => {
+      const task = tasks.find(t => t.id === r.taskId);
+      if (!task || !task.filename) return 0;
+      const taskDir = `/tmp/bm2-${r.taskId}-${Date.now()}`;
+      const code = r.text;
+      const quality = code ? scoreCodeQuality(code, task.filename).total : 0;
+      return Math.round(quality);
+    }));
+  } else if (benchKey === 'br1') {
+    const { scoreTrapTask } = await import('./lib/scoring.mjs');
+    scores = results.map((r, i) => {
+      const task = tasks[i];
+      const s = scoreTrapTask(r.text, task.expectedRefusal);
+      console.log(`  ${task.id}: ${s.score}/100 — ${s.reason}`);
+      return s.score;
+    });
+  }
+
   console.log(`\n--- Results ---`);
   console.log(formatResultsTable(results));
+  if (scores && scores.length > 0) {
+    const avg = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
+    console.log(`\n**Overall: ${avg}/100**`);
+  }
 
   // Save to file if requested
   if (options.output) {

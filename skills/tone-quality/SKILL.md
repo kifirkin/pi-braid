@@ -1,17 +1,27 @@
 ---
 name: tone-quality
-description: "Read this skill before writing any text that humans or agents will read - documentation, prompts, messages, skills, comments, and explanations. Ask yourself: 'Am I writing meaningful text?' If yes, activate this skill first. Not a post-hoc review step; apply these principles while drafting. Covers directive density, voice artifacts, and epistemic calibration."
+description: "Read this skill before writing any text that humans or agents will read - documentation, prompts, messages, skills, comments, and explanations. Ask yourself: 'Am I writing meaningful text?' If yes, activate this skill first. Not a post-hoc review step; apply these principles while drafting. Covers directive density, cognitive reasoning density, voice artifacts, and epistemic calibration."
 ---
 
 # Tone Quality
 
-Apply three diagnostic dimensions when creating or revising text. Each dimension catches problems the others miss.
+Apply four diagnostic dimensions when creating or revising text. Each dimension catches problems the others miss.
 
 ---
 
 ## 1. Directive Density
 
-**Theory**: Explicit directives ("You MUST do X") trigger compliance theater - behavior demonstrates adherence rather than solves problems. Identity framing ("You are meticulous") creates a behavioral filter that channels action toward task-relevant behavior. The mechanism is selective: an identity word filters which directives to follow, rather than following all of them equally.
+**Theory**: Explicit directives ("You MUST do X") trigger compliance theater — behavior demonstrates adherence rather than solves problems. Identity framing ("You are meticulous") creates a behavioral filter that channels action toward task-relevant behavior.
+
+Empirically, the effect is stark: **identity framing produces 0–38% compliance behaviors; explicit directives produce 100% compliance behaviors** across all tested models. The compliance behaviors (docstrings, type hints, error handlers, examples) are not wrong — they're *indiscriminate*. They appear on every task regardless of whether they help, consuming the model's output token budget.
+
+**Why it works (token budget mechanism):** Compliance behaviors consume output tokens needed for implementation. Every docstring written because "MUST" demanded it is a token not spent on solving the problem. On budget-constrained tasks, compliance overhead causes failure — **zero runs that hit the token limit complete successfully**. On capable models, compliance causes 2–3× token waste and measurable slowdown: **identity framing completes tasks 3.3× faster** than directive-heavy prompts in production agent benchmarks.
+
+| Prompt style | Compliance rate | Quality markers | Speed |
+|---|---|---|---|
+| Identity ("You are an architect") | 0–38% | Emergent type hints, error handling | Fastest |
+| Behavioral directives ("You MUST write tests") | 100% | Checklist-driven output, same quality | 3.3× slower |
+| Empty prompt | 0% | Functional but unmaintainable (0% type hints) | — |
 
 **Markers to convert** (drop the modifier, keep the verb):
 
@@ -32,15 +42,35 @@ Apply three diagnostic dimensions when creating or revising text. Each dimension
 | rigorous | verification, exactness |
 | careful | step-by-step, caution |
 
-**Preserve**: Safety guardrails ("Never delete production databases") are infrastructure, not prompts. Compliance theater is performative adherence - real constraints stay explicit.
+**Preserve**: Safety guardrails ("Never delete production databases") are infrastructure, not prompts. Compliance theater is performative adherence — real constraints stay explicit.
 
 **Verification**: Prepending "I am someone who..." makes identity statements coherent and directive statements incoherent.
 
 ---
 
-## 2. Voice Artifacts
+## 2. Cognitive Reasoning Density
 
-**Theory**: LLM text is the most statistically likely continuation. This produces recognizable fingerprints - patterns that feel hollow because they optimize for typical rather than true. These patterns are artifacts of generation, not intent. Removing them produces text that reads as deliberate rather than generated.
+**Theory**: "Think step by step" is cognitive compliance theater — it instructs the model to produce reasoning chains, not to reason better. The model complies by writing verbose chain-of-thought that consumes output tokens without improving solution quality. "Think silently" produces equivalent or better results with 2–3× fewer tokens by eliminating performative intermediate text.
+
+Cognitive waste parallels behavioral waste: both are compliance mechanisms triggered by explicit instructions that prescribe *how* to produce output rather than *what identity* to adopt. The model satisfies the instruction (show reasoning) instead of solving the problem (produce correct code).
+
+**Markers to convert** (replace explicit reasoning instructions with silent reasoning):
+
+| Flag | Why | Conversion |
+|---|---|---|
+| "Think step by step" | Triggers verbose chain-of-thought | "Think silently" or remove |
+| "Analyze first, then solve" | Moderate cognitive overhead | "Think silently before responding" |
+| "Show your reasoning" | Forces token allocation to reasoning | "Respond concisely after careful thought" |
+
+**Empirical ground**: On budget-constrained models, "think step by step" hits the token limit before producing a solution; "think silently" completes within budget. On capable models, "think step by step" adds 2–3× token overhead with no measurable quality improvement over silent reasoning.
+
+**Verification**: A coding task with "think step by step" will produce visible intermediate text (analysis, plan, edge-case enumeration) before the solution. The same task with "think silently" produces code directly. If both solve, compare token counts — the "think step by step" version will be 2–3× larger.
+
+---
+
+## 3. Voice Artifacts
+
+**Theory**: LLM text is the most statistically likely continuation. This produces recognizable fingerprints — patterns that feel hollow because they optimize for typical rather than true. These patterns are artifacts of generation, not intent. Removing them produces text that reads as deliberate rather than generated.
 
 **Patterns that signal generation** (remove or replace):
 
@@ -50,19 +80,25 @@ Apply three diagnostic dimensions when creating or revising text. Each dimension
 - **Vague intensifiers**: "pivotal", "groundbreaking", "vital role", "crucial"
 - **Validation filler**: "You're absolutely right!", "Excellent point!"
 - **Template endings**: "The future looks bright", "Let's get started"
+- **Measurable fingerprints** (research-validated signals):
+  - Tricolon (three-part lists) — appears at ~2× human rate in LLM text
+  - Rhetorical questions (erotema) — appear at half human rate
+  - Performed hesitancy markers — appear at ~2× human density
+  - Uniform rhetorical device distribution — humans cluster devices, LLMs distribute uniformly
+  - Low perplexity + low burstiness — statistically predictable token sequences
 
 **Principles over rules**:
 - Start with substance, not setup
 - Replace "In order to" with "To"
 - Replace "Due to the fact that" with "Because"
-- Vary sentence rhythm - short and long
+- Vary sentence rhythm — short and long
 - State opinions directly
 
 ---
 
-## 3. Epistemic Calibration
+## 4. Epistemic Calibration
 
-**Theory**: LLMs produce fluent, plausible text. This creates a credibility illusion - simulated coherence is easily mistaken for genuine understanding. The model cannot distinguish between retrieved facts, inferred patterns, synthesized training knowledge, and guesses to fill gaps. All four sound equally fluent. Calibration means matching confidence to actual production pathway.
+**Theory**: LLMs produce fluent, plausible text. This creates a credibility illusion — simulated coherence is easily mistaken for genuine understanding. The model cannot distinguish between retrieved facts, inferred patterns, synthesized training knowledge, and guesses to fill gaps. All four sound equally fluent. Calibration means matching confidence to actual production pathway.
 
 **Before any claim, identify its production pathway**:
 
@@ -74,9 +110,9 @@ Apply three diagnostic dimensions when creating or revising text. Each dimension
 | Gap-filling guess | None | Say you don't know |
 
 **Calibration rules**:
-- "Based on my knowledge..." means "I think" - say "I think" instead
+- "Based on my knowledge..." means "I think" — say "I think" instead
 - Uncertainty signals: "I don't have access to...", "I'm not certain about..."
-- Mixed evidence: "X indicates..., but Y indicates..." - don't flatten
+- Mixed evidence: "X indicates..., but Y indicates..." — don't flatten
 - Current info: if potentially outdated, flag the gap
 
 **Anti-patterns**:
@@ -85,7 +121,7 @@ Apply three diagnostic dimensions when creating or revising text. Each dimension
 - Using "very", "clearly", "obviously" to inflate confidence
 - Presenting speculation as fact
 
-**Suspension template**: When uncertain, offer three honest paths - search, explain the search, or share patterns with caveats.
+**Suspension template**: When uncertain, offer three honest paths — search, explain the search, or share patterns with caveats.
 
 ---
 
@@ -97,14 +133,17 @@ Text to improve?
   ├─ Has MUST/ALWAYS/NEVER/CRITICAL/REQUIRED?
   │     → Dimension 1: convert directive → identity
   │
+  ├─ Has "think step by step", "show reasoning", "analyze first"?
+  │     → Dimension 2: replace with silent reasoning
+  │
   ├─ Has signposting, filler, inflated language?
-  │     → Dimension 2: remove artifacts
+  │     → Dimension 3: remove artifacts
   │
   ├─ Makes confident claim without source?
-  │     → Dimension 3: qualify or suspend
+  │     → Dimension 4: qualify or suspend
   │
-  └─ All three?
-        → Apply in order: 1 → 2 → 3
+  └─ All four?
+        → Apply in order: 1 → 2 → 3 → 4
 ```
 
 ---
@@ -114,3 +153,15 @@ Text to improve?
 - Safety guardrails (genuine constraints, not compliance rituals)
 - Regulatory/legal text
 - Infrastructure messages users never see (audit their reason strings separately)
+
+### Anti-pattern: Empty System Prompt
+
+An empty system prompt produces high solve rates but **zero code quality** (0% type hints, 0% error handling, 0% documentation). The model solves functionally but produces unmaintainable code. A minimal identity framing eliminates this without adding compliance overhead.
+
+```
+# Bad (empty → 0% code quality, unmaintainable output)
+$PI_AGENT_SYSTEM = ""
+
+# Good (minimal identity → emergent quality, maintainable)
+$PI_AGENT_SYSTEM = "You are a careful engineer."
+```
