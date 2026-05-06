@@ -14,7 +14,7 @@
  *   node evaluation/run-benchmark.mjs --verify           # Check build/temps are clean
  */
 
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { parseArgs } from 'util';
@@ -94,20 +94,41 @@ async function runBenchmark(benchKey, options) {
   // Score and print results
   let scores = null;
   if (benchKey === 'bm2') {
-    const { scoreCodeQuality, runCodeTest } = await import('./lib/scoring.mjs');
+    const { scoreCodeQuality, runCodeTest, extractCode } = await import('./lib/scoring.mjs');
     const { TESTS } = await import('./tasks/bm2-tests.mjs');
     scores = await Promise.all(results.map(async (r) => {
       const task = tasks.find(t => t.id === r.taskId);
       if (!task || !task.filename) return 0;
       const taskDir = `/tmp/bm2-${r.taskId}-${Date.now()}`;
       mkdirSync(taskDir, { recursive: true });
-      const code = r.text;
-      if (!code) return 0;
+      const rawText = r.text;
+      if (!rawText) return 0;
 
-      // 50%: code quality
+      // Extract clean code from markdown blocks
+      let code = extractCode(rawText, task.filename);
+
+      // Try agent's file path if extractCode failed
+      if (!code || code.length < 10) {
+        const pathMatch = task.prompt.match(/to ([\/\w.-]+\/[\w.-]+\.js)/);
+        const agentFile = pathMatch ? pathMatch[1] : null;
+        if (agentFile && existsSync(agentFile)) {
+          const agentCode = readFileSync(agentFile, 'utf8');
+          if (agentCode.length > 20) {
+            console.log(`  ${task.id}: read from ${agentFile}`);
+            code = agentCode;
+          }
+        }
+      }
+
+      if (!code || code.length < 10) {
+        console.log(`  ${task.id}: no code found (text=${rawText.length}b)`);
+        return 0;
+      }
+
+      // Score quality on the clean code
       const quality = scoreCodeQuality(code, task.filename).total;
 
-      // 50%: run tests
+      // Run benchmark tests
       const testCode = TESTS[r.taskId];
       if (testCode) {
         const testFile = join(taskDir, task.filename.replace('.js', '.test.js'));
@@ -116,7 +137,10 @@ async function runBenchmark(benchKey, options) {
         const testResult = runCodeTest(testFile, taskDir);
         const totalTests = testResult.passed + testResult.failed;
         const testScore = totalTests > 0 ? Math.round((testResult.passed / totalTests) * 50) : 0;
-        return Math.round(quality * 0.5 + testScore);
+        const qualityScore = totalTests > 0 ? Math.round(quality * 0.5) : quality;
+        const taskScore = qualityScore + testScore;
+        console.log(`  ${task.id}: quality=${quality}/100 + tests=${testResult.passed}/${totalTests} → ${taskScore}/100`);
+        return taskScore;
       }
 
       return Math.round(quality);

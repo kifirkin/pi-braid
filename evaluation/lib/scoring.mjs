@@ -17,7 +17,62 @@
 import { execSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'fs';
 import { join } from 'path';
-import { join } from 'path';
+
+// ── BM2: Code Extraction ─────────────────────────────────────────────────
+
+/**
+ * Extract JavaScript code blocks from agent's markdown text response.
+ * The agent writes code inside ```js...``` blocks — but there may be multiple
+ * blocks (implementation + test scripts). We pick the block that contains
+ * the actual function/class definition (heuristic: has function/class keyword
+ * or the expected filename keyword).
+ *
+ * Falls back to first block if no definition found.
+ */
+export function extractCode(text, filename) {
+  if (!text) return '';
+
+  // Find all ```js/```javascript blocks
+  const blocks = [];
+  const re = /```(?:js|javascript)?\n([\s\S]*?)```/gi;
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    const content = match[1].trim();
+    if (content.length > 20) blocks.push(content);
+  }
+
+  if (blocks.length === 0) return '';
+
+  // Heuristic: pick the block that looks like the main implementation
+  // (contains function/class keyword or the expected export name)
+  const expectedNames = {
+    'debounce.js': ['function debounce', 'const debounce', 'export default debounce'],
+    'clone.js': ['function deepClone', 'const deepClone', 'export default deepClone'],
+    'emitter.js': ['class EventEmitter', 'export class'],
+  };
+  const keywords = expectedNames[filename] || [];
+
+  // Prefer block with a function/class definition
+  for (const block of blocks) {
+    for (const kw of keywords) {
+      if (block.includes(kw)) return block;
+    }
+  }
+
+  // Fallback 1: block with 'function' keyword
+  for (const block of blocks) {
+    if (/\bfunction\s+\w/.test(block)) return block;
+  }
+
+  // Fallback 2: block with 'class ' keyword
+  for (const block of blocks) {
+    if (/\bclass\s+\w/.test(block)) return block;
+  }
+
+  // Fallback 3: longest block (most likely the implementation)
+  blocks.sort((a, b) => b.length - a.length);
+  return blocks[0];
+}
 
 // ── BM2: Code Quality ────────────────────────────────────────────────────
 
