@@ -236,15 +236,73 @@ function formatPastInsightsSection(insights: PastInsight[]): string {
 // ── Reconstruction Functions (from structured data, not text parsing) ─────────
 
 // Known promptSnippets for pi-native core tools (from pi source tool definitions).
-// Extension tools without known snippets use their full description as fallback.
+// Extension tools without known snippets use their full description as fallback —
+// but getAllTools() returns description (full field), not promptSnippet, so
+// extension tools with verbose descriptions need explicit entries here.
 const KNOWN_SNIPPETS: Record<string, string> = {
+  // pi-native core tools
   read: "Read file contents",
   bash: "Execute bash commands (ls, grep, find, etc.)",
-  edit: "Make precise file edits with exact text replacement, including multiple disjoint edits in one call",
+  edit: "Make precise file edits with exact text replacement",
   write: "Create or overwrite files",
   grep: "Search file contents for patterns (respects .gitignore)",
   find: "Find files by glob pattern (respects .gitignore)",
   ls: "List directory contents",
+  // pi-braid extension tools (getAllTools doesn't return promptSnippet)
+  think: "Record structured thinking with decision, observation, and reason",
+  hypothesize: "Generate hypotheses about root causes of a problem",
+  finalize: "Mark the current task as complete and trigger review",
+  verify: "Verify code, reasoning, or tool results before finalization",
+  scratchpad: "Structured session memory for goal, plan, and decisions",
+  timer_set: "Set a non-blocking timer for background processes",
+  timer_list: "List all active timers",
+  timer_cancel: "Cancel an active timer before it fires",
+  file_diff: "Compare two files or git revisions",
+  system_monitor: "Report CPU, memory, disk, and top processes",
+  healthcheck: "Run health check on tools, extensions, and system resources",
+  observatory: "Real-time monitoring dashboard for agent observability",
+  research: "Analyze system prompt evolution and propose changes",
+  context_tag: "Create a named save point in conversation history",
+  context_log: "View conversation history with usage and milestones",
+  context_checkout: "Navigate to any point in conversation history",
+  context_prune: "Identify and remove obsolete session entries",
+  context_audit: "Full analysis of session context health and recommendations",
+  context_snapshot: "Quick health check of session context",
+  context_compact: "Trigger compaction to free up context space",
+  context_archive: "Compress conversation range into a summary",
+  context_proposals: "View and manage S-MMU context proposals",
+  context_signal: "Emit a semantic signal to the S-MMU policy engine",
+  memory_episodes: "Search retrospective episodes for similar past tasks",
+  memory_heuristics: "View and manage adaptive procedural heuristics",
+  memory_tool_stats: "View tool reliability statistics across sessions",
+  memory_store: "Store information in long-term memory",
+  memory_recall: "Search memory for relevant information",
+  memory_list: "List all stored memories sorted by recency",
+  memory_get: "Get a specific memory by ID",
+  session_search: "Search past sessions by keywords",
+  session_query: "Analyze a specific session file in detail",
+  error_list: "List recent errors captured by the system",
+  error_get: "Get detailed error information by ID",
+  error_clear: "Mark an error as handled",
+  error_stats: "Get error statistics by source and type",
+  prompt_preview: "Show the current system prompt from runtime",
+  "get-session-metrics": "Get structured current session analytics",
+  "get-tool-reliability": "Get tool success rates from historical data",
+  "get-ab-results": "Get A/B experiment results across variants",
+  "get-tool-addiction": "Detect tool addiction patterns",
+  "hidden-messages": "Show all display:false injections in this session",
+  evolve: "Self-evolution commands for agent improvement",
+  explore_paths: "Spawn parallel sub-agents to explore root causes",
+  conflict_qa: "View and resolve knowledge conflicts from evidence pool",
+  verify_claim: "Verify agent claims against retrieved context",
+  verify_decomposition: "Verify task decomposition fully covers the parent task",
+  check_topic_drift: "Check if output matches the original user request",
+  reset_topic_anchors: "Reset topic anchors to a new request or context",
+  time_status: "Get current time status and session duration",
+  activate_behavior: "Activate a latent behavior pattern",
+  deactivate_behavior: "Deactivate a behavior pattern",
+  get_active_behaviors: "View currently active behavior patterns",
+  activate_mix: "Activate a predefined combination of behaviors",
 };
 
 function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>): string {
@@ -296,7 +354,7 @@ function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>)
   const toolGuidelines =
     guidelines.length > 0 ? "\n\n" + guidelines.join("\n") : "";
 
-  return `Available tools:\n${visibleTools || "(none)"}\n\nOnly use the tools listed above. Do not call tools not shown here.${toolGuidelines}`;
+  return `Available tools:\n${visibleTools || "(none)"}\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.${toolGuidelines}`;
 }
 
 // Known promptGuidelines for pi-native core tools (from their tool definitions).
