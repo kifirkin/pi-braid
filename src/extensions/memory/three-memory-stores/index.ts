@@ -423,7 +423,13 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
       log.info(`  Top heuristic: "${h.condition}" (priority: ${h.priority.toFixed(2)})`);
     }
     } catch (err) {
-      log.error("[three-mem-agent-end] error:", err);
+      // stale ctx expected after session replace/dispose
+      const _staleMsg = String(err);
+      if (_staleMsg.includes("stale after session replacement")) {
+        log.debug("[three-mem-agent-end] stale ctx");
+      } else {
+        log.warn("[three-mem-agent-end] error:", err);
+      }
     }
   });
 

@@ -1,90 +1,181 @@
-#!/bin/bash
-# Overnight Benchmark Runner — pi-braid full performance measurement
-# Runs all SDK benchmarks sequentially with stepfun model.
-# Results saved to evaluation/results/ with timestamps.
+#!/usr/bin/env bash
+# pi-braid Autonomous Overnight Runner v2
+#
+# Runs in background (nohup) or foreground.
+# Sequence:
+#   1. Compaction stress test (verifies the fix)
+#   2. Full benchmark suite (BM1 braid+naked, BM2 braid+naked, BR1 braid)
+#   3. Consolidation test (long session with SOP suggestion)
+#   4. Generate report
+#
+# Usage:
+#   bash evaluation/run-overnight.sh              # foreground
+#   nohup bash evaluation/run-overnight.sh &      # background
+#
+# Environment:
+#   PI_MODEL=step-3.5-flash PI_PROVIDER=stepfun
 
 set -e
 
-cd "$(dirname "$0")/.."
-RESULTS_DIR="evaluation/results"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-SUMMARY_FILE="${RESULTS_DIR}/overnight_${TIMESTAMP}.md"
+ROOT="/Users/kifir/projects/agents/pi-braid"
+RESULTS="$ROOT/evaluation/results"
+TS=$(date +%Y%m%d_%H%M%S)
+LOG="$RESULTS/overnight-v2_$TS.log"
 
-export PI_MODEL="step-3.5-flash"
-export PI_PROVIDER="stepfun"
+mkdir -p "$RESULTS"
 
-echo "=== pi-braid Overnight Benchmark Run ===" > "$SUMMARY_FILE"
-echo "Started: $(date)" >> "$SUMMARY_FILE"
-echo "Model: stepfun/step-3.5-flash" >> "$SUMMARY_FILE"
-echo "Commit: $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')" >> "$SUMMARY_FILE"
-echo "" >> "$SUMMARY_FILE"
+echo "=== pi-braid Autonomous Overnight Runner v2 ===" | tee -a "$LOG"
+echo "Started: $(date)" | tee -a "$LOG"
+echo "Model: ${PI_MODEL:-step-3.5-flash}" | tee -a "$LOG"
+echo "Log: $LOG" | tee -a "$LOG"
+echo "" | tee -a "$LOG"
 
-run_bench() {
-    local name="$1"
-    local cmd="$2"
-    local timeout="$3"
-    local logfile="${RESULTS_DIR}/${name}_${TIMESTAMP}.log"
-    
-    echo ""
-    echo "=== Running $name ==="
-    echo "Log: $logfile"
-    
-    # Run with timeout via background + sleep
-    eval "$cmd" > "$logfile" 2>&1 &
-    PID=$!
-    
-    # Wait with timeout
-    slept=0
-    while kill -0 $PID 2>/dev/null; do
-        sleep 5
-        slept=$((slept + 5))
-        if [ $slept -ge $timeout ]; then
-            echo "TIMEOUT after ${timeout}s" >> "$logfile"
-            kill $PID 2>/dev/null || true
-            break
-        fi
-    done
-    wait $PID 2>/dev/null
-    local ec=$?
-    
-    # Extract results
-    local summary_line=$(grep -E "Overall|PASSED|FAILED|Results|Score" "$logfile" | tail -5)
-    echo "Exit code: $ec"
-    echo "$summary_line"
-    
-    echo "### $name" >> "$SUMMARY_FILE"
-    echo '```' >> "$SUMMARY_FILE"
-    cat "$logfile" >> "$SUMMARY_FILE"
-    echo '```' >> "$SUMMARY_FILE"
-    echo "" >> "$SUMMARY_FILE"
-}
+# Fresh build
+echo "--- Build ---" | tee -a "$LOG"
+cd "$ROOT"
+npm run build 2>&1 | tail -2 | tee -a "$LOG"
+echo "" | tee -a "$LOG"
 
-# 1. Quick functional test
-run_bench "quick-test" "node evaluation/quick-test.js" 90
+# ── Phase 1: Compaction Stress Test ─────────────────────────────────────────
+echo "=== Phase 1/3: Compaction Stress Test ===" | tee -a "$LOG"
+echo "Started: $(date)" | tee -a "$LOG"
 
-# 2. BM1: Multi-Turn Debugging (5 tasks, 120s each)
-run_bench "bm1" "node evaluation/bm1-sdk.mjs --timeout 120 --trials 1" 600
+cd "$ROOT"
+export PI_MODEL=${PI_MODEL:-step-3.5-flash}
+export PI_PROVIDER=${PI_PROVIDER:-stepfun}
 
-# 3. BR1: Trap Tasks (compliance/self-reflection)
-run_bench "br1" "node evaluation/br1-sdk.mjs" 300
+START=$SECONDS
+node evaluation/stress-test.mjs 2>&1 | tee -a "$LOG"
+STRESS_EXIT=${PIPESTATUS[0]}
+STRESS_TIME=$((SECONDS - START))
 
-# 4. BM2: Code Quality
-run_bench "bm2" "node evaluation/bm2-sdk.mjs --timeout 90" 300
+if [ $STRESS_EXIT -eq 0 ]; then
+  echo "✓ Stress test PASSED (${STRESS_TIME}s)" | tee -a "$LOG"
+else
+  echo "✗ Stress test FAILED (${STRESS_TIME}s)" | tee -a "$LOG"
+fi
+echo "" | tee -a "$LOG"
 
-# 5. BM3: Real-World Tasks
-run_bench "bm3" "node evaluation/bm3-sdk.mjs --timeout 120" 600
+# ── Phase 2: Full Benchmark Suite ───────────────────────────────────────────
+echo "=== Phase 2/3: Benchmark Suite ===" | tee -a "$LOG"
+echo "Started: $(date)" | tee -a "$LOG"
 
-# 6. BR4: Latent Activator Comparison
-run_bench "br4" "node evaluation/br4-sdk.mjs --task 'List the files in /Users/kifir/projects/agents/pi-braid/src/lib/ and explain what each module does, then fix any bugs you find' --timeout 90 --trials 1" 300
+# BM1 braid
+echo "--- BM1 braid ---" | tee -a "$LOG"
+START=$SECONDS
+node evaluation/bm1-sdk.mjs --timeout 90 2>&1 | tee -a "$RESULTS/bm1_braid_$TS.log"
+BM1_BRAID=$?
+echo "BM1 braid: exit=$BM1_BRAID time=$((SECONDS - START))s" | tee -a "$LOG"
 
-echo ""
-echo "=== FINISHED ===" >> "$SUMMARY_FILE"
-echo "Completed: $(date)" >> "$SUMMARY_FILE"
+# BM2 braid
+echo "--- BM2 braid ---" | tee -a "$LOG"
+START=$SECONDS
+node evaluation/bm2-sdk.mjs --timeout 60 2>&1 | tee -a "$RESULTS/bm2_braid_$TS.log"
+BM2_BRAID=$?
+echo "BM2 braid: exit=$BM2_BRAID time=$((SECONDS - START))s" | tee -a "$LOG"
 
-# Print summary
-echo ""
-echo "=== Overnight Summary ==="
-echo "Started at the beginning of this log"
-echo "Results saved to: $SUMMARY_FILE"
-echo "Individual logs in: $RESULTS_DIR/"
-grep -E "^(### |Overall|quick-test|bm[0-9]|br[0-9])" "$SUMMARY_FILE" 2>/dev/null || true
+# BR1 braid
+echo "--- BR1 braid ---" | tee -a "$LOG"
+START=$SECONDS
+node evaluation/br1-sdk.mjs 2>&1 | tee -a "$RESULTS/br1_braid_$TS.log"
+BR1_BRAID=$?
+echo "BR1 braid: exit=$BR1_BRAID time=$((SECONDS - START))s" | tee -a "$LOG"
+
+# BM1 naked
+echo "--- BM1 naked ---" | tee -a "$LOG"
+START=$SECONDS
+PI_CODING_AGENT_DIR=/tmp/pi-braid-naked-${TS} \
+  node evaluation/bm1-sdk.mjs --timeout 90 2>&1 | tee -a "$RESULTS/bm1_naked_$TS.log"
+BM1_NAKED=$?
+echo "BM1 naked: exit=$BM1_NAKED time=$((SECONDS - START))s" | tee -a "$LOG"
+
+# BM2 naked
+echo "--- BM2 naked ---" | tee -a "$LOG"
+START=$SECONDS
+PI_CODING_AGENT_DIR=/tmp/pi-braid-naked-${TS} \
+  node evaluation/bm2-sdk.mjs --timeout 60 2>&1 | tee -a "$RESULTS/bm2_naked_$TS.log"
+BM2_NAKED=$?
+echo "BM2 naked: exit=$BM2_NAKED time=$((SECONDS - START))s" | tee -a "$LOG"
+
+echo "" | tee -a "$LOG"
+
+# ── Phase 3: Consolidation Test ─────────────────────────────────────────────
+echo "=== Phase 3/3: Consolidation + SOP Suggestion Test ===" | tee -a "$LOG"
+echo "Started: $(date)" | tee -a "$LOG"
+
+cd "$ROOT"
+START=$SECONDS
+node -e "
+import { createAgentSession, SessionManager, SettingsManager, DefaultResourceLoader, getAgentDir } from '@mariozechner/pi-coding-agent';
+import { stepfunModels } from '/Users/kifir/projects/agents/pi-poorman-providers/stepfun.ts';
+
+const model = { ...stepfunModels.find(m => m.id === 'step-3.5-flash'), provider: 'stepfun', api: 'openai-completions', baseUrl: 'https://api.stepfun.ai/step_plan/v1' };
+
+const loader = new DefaultResourceLoader({ cwd: '/tmp', agentDir: getAgentDir(), extensionFactories: [(pi) => { pi.registerProvider('stepfun', { baseUrl: 'https://api.stepfun.ai/step_plan/v1', apiKey: 'STEP_API_KEY', api: 'openai-completions', models: stepfunModels }); }] });
+await loader.reload();
+
+const { session } = await createAgentSession({ resourceLoader: loader, model, sessionManager: SessionManager.inMemory(), settingsManager: SettingsManager.inMemory({ compaction: { enabled: false } }) });
+
+let sopCount = 0;
+session.subscribe((evt) => {
+  if (evt.type === 'tool_execution_start') {
+    if (evt.toolName === 'scratchpad') sopCount++;
+  }
+});
+
+await session.prompt('Write a debounce function to /tmp/cons-test/debounce.js. Use module.exports.');
+await session.prompt('Now write a throttle function to /tmp/cons-test/throttle.js. Use module.exports.');
+
+console.log('SOP interactions:', sopCount);
+" 2>&1 | tee -a "$RESULTS/consolidation_$TS.log"
+CONSOL=$?
+CONSOL_TIME=$((SECONDS - START))
+echo "Consolidation test: exit=$CONSOL time=${CONSOL_TIME}s" | tee -a "$LOG"
+
+echo "" | tee -a "$LOG"
+
+# ── Report ──────────────────────────────────────────────────────────────────
+echo "=== Report ===" | tee -a "$LOG"
+echo "Finished: $(date)" | tee -a "$LOG"
+
+# Extract scores from logs
+BM1_BRAID_SCORE=$(grep -oP 'Overall: \K[\d.]+(?=/100)' "$RESULTS/bm1_braid_$TS.log" 2>/dev/null || echo "?")
+BM2_BRAID_SCORE=$(grep -oP 'Overall: \K[\d.]+(?=/100)' "$RESULTS/bm2_braid_$TS.log" 2>/dev/null || echo "?")
+BR1_BRAID_SCORE=$(grep -oP 'Average score: \K[\d.]+(?=/100)' "$RESULTS/br1_braid_$TS.log" 2>/dev/null || echo "?")
+BM1_NAKED_SCORE=$(grep -oP 'Overall: \K[\d.]+(?=/100)' "$RESULTS/bm1_naked_$TS.log" 2>/dev/null || echo "?")
+BM2_NAKED_SCORE=$(grep -oP 'Overall: \K[\d.]+(?=/100)' "$RESULTS/bm2_naked_$TS.log" 2>/dev/null || echo "?")
+
+REPORT="$RESULTS/autonomous-report_$TS.md"
+cat > "$REPORT" << EOF
+# pi-braid Autonomous Test Report
+
+**Generated**: $(date)
+**Model**: stepfun/step-3.5-flash
+
+---
+
+## Phase 1: Compaction Stress Test
+- **Result**: $([ $STRESS_EXIT -eq 0 ] && echo "PASSED" || echo "FAILED")
+- **Duration**: ${STRESS_TIME}s
+
+## Phase 2: Benchmarks
+
+| Benchmark | braid | naked | Delta |
+|-----------|-------|-------|-------|
+| BM1 (debugging) | **${BM1_BRAID_SCORE}/100** | **${BM1_NAKED_SCORE}/100** | $(echo "$BM1_BRAID_SCORE - $BM1_NAKED_SCORE" | bc 2>/dev/null || echo "?") |
+| BM2 (code quality) | **${BM2_BRAID_SCORE}/100** | **${BM2_NAKED_SCORE}/100** | $(echo "$BM2_BRAID_SCORE - $BM2_NAKED_SCORE" | bc 2>/dev/null || echo "?") |
+| BR1 (trap tasks) | **${BR1_BRAID_SCORE}/100** | — | — |
+
+## Phase 3: Consolidation Test
+- **Result**: $([ $CONSOL -eq 0 ] && echo "PASSED" || echo "FAILED")
+- **Duration**: ${CONSOL_TIME}s
+
+---
+
+## Log Files
+$(ls -lh "$RESULTS"/*_${TS}.* 2>/dev/null | sed 's/.*/  - &/')
+EOF
+
+echo "Report: $REPORT" | tee -a "$LOG"
+echo "" | tee -a "$LOG"
+echo "=== DONE ===" | tee -a "$LOG"

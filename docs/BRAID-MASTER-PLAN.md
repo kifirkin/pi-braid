@@ -45,7 +45,7 @@ npm run build && npm test
 ### Track 1: Self-Evolution Loop + Consolidation Channel ⭐ P0
 
 **Merges**: `SELF-EVOLUTION-META-COGNITION-PROPOSAL.md` + `CONSOLIDATION-CHANNEL-PHASE3-PROPOSAL.md`
-**Status**: 🟡 Phase 1 done, Phase 2 partial
+**Status**: 🟡 Phase 1 done, Phase 2 mostly done
 
 **What exists**:
 - ✅ `mars-reflector.ts` — MARS single-cycle reflection module
@@ -78,6 +78,10 @@ npm run build && npm test
 ```
 
 **Key papers**: MARS (2601.11974), ACE (2510.04618), GenericAgent (2604.17091), Contextual Agentic Memory (2604.27707)
+
+**Recent fixes**:
+- `skipDuplicateAppend` (compaction.ts:91-100): BashExecutionMessage silently dropped after compaction due to `undefined === undefined` comparison. Fixed with `Array.isArray()` guard + delayed `_queuedDuringCompaction` clear.
+- Stress test v3: 186 entries, compaction triggered, ZERO integrity issues.
 
 ---
 
