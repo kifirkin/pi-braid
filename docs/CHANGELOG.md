@@ -12,6 +12,7 @@ All notable changes to pi-braid are documented here.
 ### Refactor
 
 - `sendEnforcementWhisper()` signature: Added `critical` boolean parameter (default: false). Non-critical whispers use `hint`, critical use `triggerTurn`.
+- State management refactored: enforcement functions now consistently use `getState(ctx)` for session-scoped state instead of deprecated global `state`. Functions updated: `detectMalformedToolCalls`, `detectMissingVerification`, `recordCodeChange`, `recordToolCall`.
 - Removed duplicate `getNextRecommendation()` call from heartbeat/analytics (was duplicating enforcement's BPE handling).
 - All enforcement whispers preserved with `display: true` - nothing hidden from TUI.
 
