@@ -1,6 +1,6 @@
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 
-// ── Context-Manager Extension ─────────────────────────────────────────────────
+// ── Context-Manager Extension ──────────────────────────────────────
 // Decomposed from 1141L monolith into 4 handler modules + slim index.
 //
 // Handlers:
@@ -34,7 +34,17 @@ import {
 import { registerRotationHandlers, registerSessionShutdownHandler } from "./handlers/rotation.js";
 
 export default function contextManagerExtension(pi: any): void {
-  // ── Session Start ──────────────────────────────────────────────────────
+  // ── DEBUG: Monitor message events ─────────────────────────────
+  pi.on("message_start", (event: any) => {
+    const role = event?.message?.role;
+    log.info(`[DEBUG] message_start fired: role=${role}`);
+  });
+  pi.on("message_end", (event: any) => {
+    const role = event?.message?.role;
+    log.info(`[DEBUG] message_end fired: role=${role}`);
+  });
+
+  // ── Session Start ──────────────────────────────────────────────
   registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event: any, ctx: ExtensionContext) => {
     try {
       // Pruning state is initialized eagerly in getCmState factory
@@ -48,11 +58,11 @@ export default function contextManagerExtension(pi: any): void {
         sm.save?.();
       }
     } catch {
-      /* non-fatal: reserve tokens */
+      // Ignore - best effort
     }
   });
 
-  // ── Register handlers from modules ─────────────────────────────────────
+  // ── Register handlers from modules ───────────────────────────
   registerTools(pi);
   registerBeforeCompactHandler(pi);
   registerSessionCompactHandler(pi);
