@@ -1,0 +1,23 @@
+# Source maps (bloat the package needlessly)
+*.map
+
+# Development/test
+test/
+evaluation/
+scripts/
+skills/.archive/
+
+# Config files
+.eslintrc*
+.prettierrc*
+.prettierignore
+tsconfig.json
+.gitignore
+
+# Source (compiled to dist/ so not needed at runtime)
+# But keep src/ for extension loading via pi.json extensions field
+# Actually pi needs src/ to find the extensions entry point
+# so we DO include src/ and dist/ but not all dev tools
+
+# No node_modules
+node_modules/
