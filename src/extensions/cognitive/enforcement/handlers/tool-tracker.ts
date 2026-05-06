@@ -4,8 +4,8 @@ const log = createLogger("enforcement");
 /**
  * Tool tracking - centralized tracking logic for all tool usage patterns
  */
-import { recordCodeChange as detectRecordCodeChange } from "../detection/verification.js";
-import { state } from "../state.js";
+import { recordCodeChange } from "../detection/verification.js";
+import { getState, state } from "../state.js";
 import type { EnforcementState } from "../state.js";
 
 /**
@@ -34,7 +34,17 @@ export function recordToolInput(
   }
 }
 
-export function recordToolCall(toolName: string, s: EnforcementState = state): void {
+export function recordToolCall(toolName: string, ctx?: any): void {
+  // When ctx available, use getState(ctx) for session-scoped state
+  // Fall back to global state for backward compatibility
+  const s = ctx ? getState(ctx) : state;
+  
+  // Track code changes (edit/write) for verification context
+  if (toolName === "edit" || toolName === "write") {
+    s.hasCodeChanges = true;
+    recordCodeChange(s.currentTurn, ctx);
+  }
+  
   // Track think
   if (toolName === "think") {
     s.toolChain.lastThinkCall = s.currentTurn;
@@ -76,17 +86,13 @@ export function recordToolCall(toolName: string, s: EnforcementState = state): v
     "context_audit",
   ];
   if (contextTools.includes(toolName)) {
+    s.lastContextCheckTurn = s.currentTurn;
+    s.contextNudgeSent = false;
   }
 
   // Track scratchpad usage as part of memory hygiene
   if (toolName === "scratchpad") {
     s.lastScratchpadNudgeTurn = -100; // Reset scratchpad nudge cooldown
-  }
-
-  // Track code changes (edit/write) for verification context
-  if (toolName === "edit" || toolName === "write") {
-    s.hasCodeChanges = true;
-    detectRecordCodeChange(s.currentTurn);
   }
 
   // Track total tool calls

@@ -24,10 +24,7 @@ import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-
 import { eventBus } from "../../../lib/event-bus.js";
 import { detectMalformedToolCalls } from "./detection/malformed.js";
 import { getReplyInstruction, setLanguage, detectLanguage } from "../../../lib/language-hint.js";
-import {
-  detectMissingVerification,
-  recordCodeChange as detectRecordCodeChange,
-} from "./detection/verification.js";
+import { detectMissingVerification, recordCodeChange } from "./detection/verification.js";
 import { checkBlocking } from "./handlers/blocking.js";
 import {
   addEvidence,
@@ -145,16 +142,15 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     // Drop empty/whitespace-only tool calls (LLM hallucinations like proxy artifacts)
     if (!toolName || !toolName.trim()) return undefined;
 
-    recordToolCall(toolName);
-    recordToolInput(toolName, input);
+    recordToolCall(toolName, ctx);
+    recordToolInput(toolName, input, getState(ctx));
 
     if (toolName === "bash") {
       const cmd = (input as { command?: string } | undefined)?.command || "";
-      recordBashDetails(cmd);
+      recordBashDetails(cmd, getState(ctx));
     }
 
     if (toolName === "edit" || toolName === "write") {
-      detectRecordCodeChange(getState(ctx).currentTurn);
       getState(ctx).hasCodeChanges = true;
       const fp = (input?.path as string) ?? (input?.target as string) ?? "";
       if (fp) {
@@ -455,7 +451,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
 
     const turnState = getState(ctx).turnHistory.get(getState(ctx).currentTurn);
     if (turnState) {
-      detectMalformedToolCalls(textContent, pi);
+      detectMalformedToolCalls(textContent, pi, ctx);
     }
 
     if (getState(ctx).verificationJudgeRunning) return;

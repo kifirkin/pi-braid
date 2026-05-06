@@ -11,10 +11,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { createLogger } from "../../../../lib/logger.js";
 import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
 import { eventBus } from "../../../../lib/event-bus.js";
-import {
-  detectMissingVerification,
-  recordCodeChange as detectRecordCodeChange,
-} from "../detection/verification.js";
+import { detectMissingVerification, recordCodeChange } from "../detection/verification.js";
 import {
   type TurnAnalysisContext,
   detectRedundancySignal,
@@ -90,11 +87,11 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
 
     // ── Code change tracking ───────────────────────────────────────────────
     if (actualTools.some((t: string) => ["edit", "write"].includes(t))) {
-      detectRecordCodeChange(getState(ctx).currentTurn);
+      recordCodeChange(getState(ctx).currentTurn, ctx);
     }
 
     if (!isBurst) {
-      detectMissingVerification(pi as never, getState(ctx).currentTurn);
+      detectMissingVerification(pi, ctx, getState(ctx).currentTurn);
     }
 
     const scratchpadUpdated = actualTools.includes("scratchpad");

@@ -7,9 +7,9 @@ const log = createLogger("enforcement");
  * Detects missing verification after code changes.
  */
 
-import { queueEnforcementWhisper } from "../whisper.js";
+import { sendEnforcementWhisper } from "../whisper.js";
 import { getExtensionState } from "../../../../lib/extension-state.js";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 interface VerificationState {
   pendingCodeChanges: boolean;
@@ -27,13 +27,15 @@ function getVerificationState(ctx?: ExtensionContext): VerificationState {
 const _default: VerificationState = { pendingCodeChanges: false, lastCodeChangeTurn: -100 };
 export const VERIFICATION_REMINDER_THRESHOLD = 12; // turns
 
-export function detectMissingVerification(_pi: never, currentTurn: number): void {
-  const s = getVerificationState();
+export function detectMissingVerification(pi: ExtensionAPI, ctx: ExtensionContext, currentTurn: number): void {
+  const s = getVerificationState(ctx);
   const turnsSinceCodeChange = currentTurn - s.lastCodeChangeTurn;
 
   // If there were code changes but no bash command within threshold turns, nudge
   if (s.pendingCodeChanges && turnsSinceCodeChange >= VERIFICATION_REMINDER_THRESHOLD) {
-    queueEnforcementWhisper(
+    sendEnforcementWhisper(
+      pi,
+      ctx,
       "You modified code but haven't verified it works. " +
         "Run tests or commands to confirm your implementation is correct.\n\n" +
         "You verify code changes before declaring the task complete.",
@@ -42,17 +44,8 @@ export function detectMissingVerification(_pi: never, currentTurn: number): void
   }
 }
 
-export function recordCodeChange(turn: number): void {
-  const s = getVerificationState();
+export function recordCodeChange(turn: number, ctx?: ExtensionContext): void {
+  const s = getVerificationState(ctx);
   s.lastCodeChangeTurn = turn;
   s.pendingCodeChanges = true;
-}
-
-/**
- * Queue a memory tool execution nudge as a whisper.
- */
-export function queueMemoryNudge(toolName: string, toolArgs: Record<string, unknown>): void {
-  const argsStr = JSON.stringify(toolArgs);
-  const content = `[MEMORY] Consider executing:\n\n${toolName} ${argsStr}`;
-  queueEnforcementWhisper(content);
 }
