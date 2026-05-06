@@ -227,6 +227,7 @@ function executeAction(
     case "nudge":
       if (evaluated.canExecute) {
         const msg = interpolateMessage(action.message, ctx);
+        // Non-critical context awareness - use hint, visible in TUI but no hidden turn
         sendTrackedMessage(
           pi,
           {
@@ -234,7 +235,7 @@ function executeAction(
             content: [{ type: "text" as const, text: msg }],
             display: true,
           },
-          { deliverAs: "steer", triggerTurn: true },
+          { deliverAs: "hint" },
           { type: "context", source: "context-lifecycle/nudge" },
         );
       }

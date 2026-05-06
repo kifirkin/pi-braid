@@ -53,9 +53,20 @@ const _default: WhisperState = { pendingWhisper: null, pendingBlockAction: null 
  * This injects the whisper right away instead of waiting for before_agent_start,
  * which only fires when user sends a message (causing whisper accumulation).
  *
+ * Non-critical (hint): advisory signals, tool misuse, memory suggestions
+ *   → uses deliverAs: "hint" (visible in TUI, no hidden turn)
+ *
+ * Critical (triggerTurn): blocks, error bursts, context overflow
+ *   → uses triggerTurn: true (creates hidden turn to ensure response)
+ *
  * Auto-confirm mode: suppressed entirely when disableConfirmations=true.
  */
-export function sendEnforcementWhisper(pi: ExtensionAPI, ctx: ExtensionContext, message: string): void {
+export function sendEnforcementWhisper(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  message: string,
+  critical: boolean = false
+): void {
   // Auto-confirm mode: skip all enforcement whispers
   if (isAutoConfirmEnabled()) {
     return;
@@ -74,7 +85,7 @@ export function sendEnforcementWhisper(pi: ExtensionAPI, ctx: ExtensionContext, 
       type: "enforcement_violation",
       rule: "enforcement",
       description: message,
-      severity: "medium",
+      severity: critical ? "high" : "medium",
     });
   } catch {}
 
@@ -87,7 +98,7 @@ export function sendEnforcementWhisper(pi: ExtensionAPI, ctx: ExtensionContext, 
       content: [{ type: "text" as const, text: `[enforcement] ${message}` }],
       display: true,
     },
-    { triggerTurn: true },
+    critical ? { triggerTurn: true } : { deliverAs: "hint" },
     { type: "enforcement", source: "enforcement/whisper" },
   );
 }

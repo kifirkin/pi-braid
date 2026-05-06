@@ -16,7 +16,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "../../../lib/extension-state.js";
-import { emitSignal, getNextRecommendation } from "../../../lib/belief-policy-engine.js";
+import { emitSignal } from "../../../lib/belief-policy-engine.js";
 import { eventBus } from "../../../lib/event-bus.js";
 import { isDegraded, getDegradationReasons } from "../../../lib/degradation-detector.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
@@ -133,13 +133,18 @@ export default function analyticsExtension(pi: ExtensionAPI) {
       }
       if (warnings.length > 0) {
         emitSignal(ctx, "tool-use", "overuse", "warn", false, { tools: warnings, windowSize: total });
-        const bpeRec = getNextRecommendation(ctx);
-        if (bpeRec && !isAutoConfirmEnabled()) {
-          sendTrackedMessage(pi, { customType: "context", display: true, content: [{ type: "text", text: bpeRec.message }] }, undefined, { type: "heartbeat", source: "heartbeat/analytics/policy" });
-        }
-        if (!isAutoConfirmEnabled()) {
-          sendTrackedMessage(pi, { customType: "memory", display: true, content: [{ type: "text", text: `[analytics] Tool addiction pattern detected: ${warnings.join("; ")}` }] }, undefined, { type: "heartbeat", source: "heartbeat/analytics" });
-        }
+        // BPE recommendation handled by enforcement - no duplicate here
+        // Use deliverAs: "hint" - non-critical advisory, visible in TUI
+        sendTrackedMessage(
+          pi,
+          {
+            customType: "memory",
+            content: [{ type: "text", text: `[analytics] Tool addiction pattern detected: ${warnings.join("; ")}` }],
+            display: true,
+          },
+          { deliverAs: "hint" },
+          { type: "heartbeat", source: "heartbeat/analytics" }
+        );
         try {
           eventBus.emit({
             type: "analytics_alert",
@@ -154,15 +159,22 @@ export default function analyticsExtension(pi: ExtensionAPI) {
       }
     }
 
-    // Degradation detection
+    // Degradation detection - CRITICAL: stability decline, use triggerTurn
     const degraded = isDegraded(ctx);
     if (degraded && !state.wasDegraded) {
       state.wasDegraded = true;
       const reasons = getDegradationReasons(ctx);
       emitSignal(ctx, "stability", "decline", "critical", false, { reason: reasons[0] ?? "degraded", consecutiveErrors: 3 });
-      if (!isAutoConfirmEnabled()) {
-        sendTrackedMessage(pi, { customType: "context", display: true, content: [{ type: "text", text: `[health] Degradation detected: ${reasons.join("; ")}` }] }, undefined, { type: "heartbeat", source: "heartbeat/analytics/degrade" });
-      }
+      sendTrackedMessage(
+        pi,
+        {
+          customType: "context",
+          content: [{ type: "text", text: `[health] Degradation detected: ${reasons.join("; ")}` }],
+          display: true,
+        },
+        { deliverAs: "steer", triggerTurn: true },
+        { type: "heartbeat", source: "heartbeat/analytics/degrade" }
+      );
       try {
         eventBus.emit({
           type: "analytics_alert",
@@ -176,9 +188,17 @@ export default function analyticsExtension(pi: ExtensionAPI) {
       } catch {}
     } else if (!degraded && state.wasDegraded) {
       state.wasDegraded = false;
-      if (!isAutoConfirmEnabled()) {
-        sendTrackedMessage(pi, { customType: "context", display: true, content: [{ type: "text", text: "[health] Performance recovered to healthy." }] }, undefined, { type: "heartbeat", source: "heartbeat/analytics/recover" });
-      }
+      // Recovery notification - informational, use hint
+      sendTrackedMessage(
+        pi,
+        {
+          customType: "context",
+          content: [{ type: "text", text: "[health] Performance recovered to healthy." }],
+          display: true,
+        },
+        { deliverAs: "hint" },
+        { type: "heartbeat", source: "heartbeat/analytics/recover" }
+      );
       try {
         eventBus.emit({
           type: "analytics_alert",

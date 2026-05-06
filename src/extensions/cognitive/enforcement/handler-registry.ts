@@ -609,7 +609,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
       reportRecommendationOutcome(ctx, lastRecType, madeProgress);
     }
 
-    // Belief Policy Engine
+    // Belief Policy Engine - advisory, use hint (BPE recommendations are suggestions, not critical)
     const bpeRec = getNextRecommendation(ctx);
     if (bpeRec) {
       (pi as any).__lastRecommendationType = bpeRec.type;
@@ -621,7 +621,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
           display: true,
           content: [{ type: "text", text: `[policy] ${bpeRec.message}` }],
         },
-        { deliverAs: "steer", triggerTurn: true },
+        { deliverAs: "hint" },
         { type: "enforcement", source: "enforcement/policy" },
       );
     }
@@ -657,7 +657,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
           display: true,
           content: [{ type: "text", text: `[enforcement] ${marsAdvice.message}` }],
         },
-        { deliverAs: "steer", triggerTurn: true },
+        { deliverAs: "hint" },
         { type: "enforcement", source: "enforcement/mars" },
       );
     }
@@ -677,7 +677,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
           display: true,
           content: [{ type: "text", text: `[enforcement] ${dreamAdvice.message}` }],
         },
-        { deliverAs: "steer", triggerTurn: true },
+        { deliverAs: "hint" },
         { type: "enforcement", source: "enforcement/dreamer" },
       );
     }

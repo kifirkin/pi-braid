@@ -56,6 +56,7 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
           pi,
           ctx,
           `Error burst detected: ${state.consecutiveErrorTurns} consecutive errors. Consider stepping back.`,
+          true, // critical - needs agent response
         );
       }
     } else {
