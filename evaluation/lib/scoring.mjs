@@ -15,7 +15,8 @@
  */
 
 import { execSync } from 'child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'fs';
+import { join } from 'path';
 import { join } from 'path';
 
 // ── BM2: Code Quality ────────────────────────────────────────────────────
@@ -58,6 +59,16 @@ export function scoreCodeQuality(code, filename) {
  * Run BM2 test file against the agent's code and return pass/fail counts.
  */
 export function runCodeTest(testFile, taskDir) {
+  // If the expected test file doesn't exist, search for any test file in the task dir
+  if (!existsSync(testFile)) {
+    try {
+      const files = readdirSync(taskDir).filter(f => f.endsWith('.js') && f.includes('test'));
+      if (files.length > 0) {
+        testFile = join(taskDir, files[0]);
+      }
+    } catch {}
+  }
+
   try {
     const output = execSync(`node ${testFile}`, {
       cwd: taskDir,

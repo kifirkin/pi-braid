@@ -95,12 +95,30 @@ async function runBenchmark(benchKey, options) {
   let scores = null;
   if (benchKey === 'bm2') {
     const { scoreCodeQuality, runCodeTest } = await import('./lib/scoring.mjs');
+    const { TESTS } = await import('./tasks/bm2-tests.mjs');
     scores = await Promise.all(results.map(async (r) => {
       const task = tasks.find(t => t.id === r.taskId);
       if (!task || !task.filename) return 0;
       const taskDir = `/tmp/bm2-${r.taskId}-${Date.now()}`;
+      mkdirSync(taskDir, { recursive: true });
       const code = r.text;
-      const quality = code ? scoreCodeQuality(code, task.filename).total : 0;
+      if (!code) return 0;
+
+      // 50%: code quality
+      const quality = scoreCodeQuality(code, task.filename).total;
+
+      // 50%: run tests
+      const testCode = TESTS[r.taskId];
+      if (testCode) {
+        const testFile = join(taskDir, task.filename.replace('.js', '.test.js'));
+        writeFileSync(testFile, testCode);
+        writeFileSync(join(taskDir, task.filename), code);
+        const testResult = runCodeTest(testFile, taskDir);
+        const totalTests = testResult.passed + testResult.failed;
+        const testScore = totalTests > 0 ? Math.round((testResult.passed / totalTests) * 50) : 0;
+        return Math.round(quality * 0.5 + testScore);
+      }
+
       return Math.round(quality);
     }));
   } else if (benchKey === 'br1') {

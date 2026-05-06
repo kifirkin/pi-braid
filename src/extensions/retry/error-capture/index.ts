@@ -23,7 +23,6 @@ import * as fsSync from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 
@@ -145,7 +144,7 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
   });
 
   // Error list tool
-  const errorListTool: AgentTool<typeof errorListSchema> = {
+  const errorListTool = {
     name: "error_list",
     label: "Error List",
     promptSnippet: "List recent errors captured by the system",
@@ -190,7 +189,7 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
   pi.registerTool(errorListTool);
 
   // Error get tool
-  const errorGetTool: AgentTool<typeof errorGetSchema> = {
+  const errorGetTool = {
     name: "error_get",
     label: "Error Get",
     promptSnippet: "Get detailed error information by ID",
@@ -228,7 +227,7 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
   pi.registerTool(errorGetTool);
 
   // Error clear tool
-  const errorClearTool: AgentTool<typeof errorClearSchema> = {
+  const errorClearTool = {
     name: "error_clear",
     label: "Error Clear",
     promptSnippet: "Mark an error as handled",
@@ -258,7 +257,7 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
   pi.registerTool(errorClearTool);
 
   // Error stats tool
-  const errorStatsTool: AgentTool<typeof errorStatsSchema> = {
+  const errorStatsTool = {
     name: "error_stats",
     label: "Error Stats",
     promptSnippet: "Get error statistics by source and type",
