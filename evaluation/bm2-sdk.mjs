@@ -14,6 +14,7 @@ import { createAgentSession, createBashTool, createReadTool, createWriteTool, cr
 import { stepfunModels } from '/Users/kifir/projects/agents/pi-poorman-providers/stepfun.ts';
 import { parseArgs } from 'util';
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
+import { execSync } from 'child_process';
 import { join } from 'path';
 
 // ── Tasks ──────────────────────────────────────────────────────────────────
@@ -25,7 +26,7 @@ const TASKS = [
     language: 'javascript',
     filename: 'debounce.js',
     testFile: '/tmp/bm2-task1/debounce.test.js',
-    testContent: `const { debounce } = require('./debounce.js');\nconst assert = require('assert');\n\n// Test 1: basic debounce\nlet count = 0;\nconst fn = debounce(() => count++, 50);\nfn(); fn(); fn();\nsetTimeout(() => {\n  assert.strictEqual(count, 1, 'Should debounce multiple calls');\n  console.log('Test 1 passed');\n}, 100);\n\n// Test 2: cancel\nlet count2 = 0;\nconst fn2 = debounce(() => count2++, 50);\nfn2();\nfn2.cancel();\nsetTimeout(() => {\n  assert.strictEqual(count2, 0, 'Cancel should prevent execution');\n  console.log('Test 2 passed');\n}, 100);\n\n// Test 3: leading edge\nlet count3 = 0;\nconst fn3 = debounce(() => count3++, 50, { leading: true });\nfn3();\nassert.strictEqual(count3, 1, 'Leading edge should fire immediately');\nconsole.log('Test 3 passed');\n`,
+    testContent: `const debounce = require('./debounce.js');\nconst assert = require('assert');\n\n// Test 1: basic debounce\nlet count = 0;\nconst fn = debounce(() => count++, 50);\nfn(); fn(); fn();\nsetTimeout(() => {\n  assert.strictEqual(count, 1, 'Should debounce multiple calls');\n  console.log('Test 1 passed');\n}, 100);\n\n// Test 2: cancel\nlet count2 = 0;\nconst fn2 = debounce(() => count2++, 50);\nfn2();\nfn2.cancel();\nsetTimeout(() => {\n  assert.strictEqual(count2, 0, 'Cancel should prevent execution');\n  console.log('Test 2 passed');\n}, 100);\n\n// Test 3: leading edge\nlet count3 = 0;\nconst fn3 = debounce(() => count3++, 50, { leading: true });\nfn3();\nassert.strictEqual(count3, 1, 'Leading edge should fire immediately');\nconsole.log('Test 3 passed');\n`,
   },
   {
     id: 'deep-clone',
@@ -83,13 +84,41 @@ function scoreCodeQuality(code, filename) {
 
 function runTests(testFile, taskDir) {
   try {
-    const { execSync } = require('child_process');
-    const output = execSync(`node ${testFile}`, {
-      cwd: taskDir,
-      timeout: 10000,
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    // Try running tests. If the module exports a single function but the test
+    // expects destructured import, try wrapping with a compat shim.
+    let output;
+    try {
+      output = execSync(`node ${testFile}`, {
+        cwd: taskDir,
+        timeout: 10000,
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+    } catch (compatErr) {
+      // If the test failed with TypeError (wrong import style), try a compat wrapper
+      const stderr = compatErr.stderr || '';
+      if (stderr.includes('is not a function') || stderr.includes('is not a constructor')) {
+        // Create a compat version that wraps the module
+        const testContent = readFileSync(testFile, 'utf-8');
+        if (/\{\s*\w+\s*\}/.test(testContent.split('\n')[0])) {
+          // Test uses destructured require but module exports single function
+          const moduleName = testContent.match(/const\s+\{\s*(\w+)\s*\}/);
+          if (moduleName) {
+            const compatPath = testFile.replace(/\.test\.js$/, '.compat.js');
+            const compatTest = testContent.replace(
+              `const { ${moduleName[1]} }`,
+              `const ${moduleName[1]} = require`
+            );
+            writeFileSync(compatPath, compatTest);
+            output = execSync(`node ${compatPath}`, {
+              cwd: taskDir, timeout: 10000, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
+            });
+          }
+        }
+      } else {
+        throw compatErr;
+      }
+    }
     const passed = (output.match(/passed/g) || []).length;
     const failed = (output.match(/failed|Error|AssertionError/g) || []).length;
     return { passed, failed, output: output.slice(0, 500) };
@@ -141,16 +170,34 @@ async function runTask(task, modelConfig, timeout = 90) {
     model: modelConfig,
     sessionManager: SessionManager.inMemory(),
     settingsManager: SettingsManager.inMemory({ compaction: { enabled: false } }),
-    tools: [
-      createReadTool('/tmp'),
-      createBashTool('/tmp'),
-      createWriteTool('/tmp'),
-      createEditTool('/tmp'),
-    ],
   });
 
+  // Capture tool calls via subscriber (more reliable than post-hoc message parsing)
+  const _toolPaths = new Map();
+  const _toolCodes = new Map();
   session.subscribe((evt) => {
     if (evt.type === 'turn_start') result.turns++;
+    if (evt.type === 'tool_execution_start') {
+      console.error(`[bm2-debug] tool_start: ${evt.toolName}`);
+      const path = evt.args?.path || '';
+      if (path) console.error(`[bm2-debug]   path: ${path}`);
+      if (path && path.includes('.js')) {
+        _toolPaths.set(evt.toolName, path);
+      }
+    }
+    if (evt.type === 'tool_execution_end') {
+      console.error(`[bm2-debug] tool_end: ${evt.toolName} success=${evt.success}`);
+      if (evt.toolName === 'write' || evt.toolName === 'edit') {
+        const path = evt.args?.path || '';
+        if (path && path.includes('.js')) {
+          const content = evt.args?.content || evt.args?.newText || '';
+          console.error(`[bm2-debug]   content len: ${content.length}`);
+          if (content) {
+            _toolCodes.set(path, content);
+          }
+        }
+      }
+    }
   });
 
   try {
@@ -165,24 +212,143 @@ async function runTask(task, modelConfig, timeout = 90) {
 
   result.durationSeconds = (Date.now() - startTime) / 1000;
 
-  // Extract code from messages
+  // ── Extract code from messages ──────────────────────────────────────
+  // The agent may write files via write/edit tools OR via bash.
   const messages = session.state?.messages || [];
+  let writtenFilePath = '';
+
+  // Strategy 1: Check write/edit tool calls for file writes
   for (const msg of messages) {
     if (msg.role === 'assistant') {
       for (const b of msg.content || []) {
         if (b.type === 'toolCall' && (b.name === 'write' || b.name === 'edit')) {
           const path = b.arguments?.path || '';
-          if (path.includes(task.filename)) {
-            result.code = b.arguments?.content || b.arguments?.newText || '';
+          console.error(`[bm2-debug] write/edit tool called: path="${path}"`);
+          if (path.includes('.js') && !writtenFilePath) {
+            writtenFilePath = path;
+            // content might be at top-level or nested in a 'file' property
+            result.code = b.arguments?.content || b.arguments?.newText || b.arguments?.file?.content || '';
+            console.error(`[bm2-debug] extracted ${result.code.length} chars of code`);
           }
         }
       }
     }
   }
+  // Also check tool_execution_start events via the subscribe listener
+  if (!result.code) {
+    console.error(`[bm2-debug] Strategy 1 failed. Tools called: none matching write/edit with .js path`);
+  }
 
-  // If we got code, write it and test it
+  // Strategy 2: Use code captured from subscriber (more reliable)
+  if (!result.code && _toolCodes.size > 0) {
+    const [path, code] = _toolCodes.entries().next().value;
+    result.code = code;
+    writtenFilePath = path;
+    console.error(`[bm2-debug] Strategy 2: got ${code.length} chars from subscriber for ${path}`);
+  }
+
+  // Strategy 3: Read the file from disk using the path from tool call
+  if (!result.code && writtenFilePath && existsSync(writtenFilePath)) {
+    result.code = readFileSync(writtenFilePath, 'utf-8');
+  }
+
+  // Strategy 4: Check expected path on disk
+  if (!result.code) {
+    const expectedPath = join(taskDir, task.filename);
+    if (existsSync(expectedPath)) {
+      result.code = readFileSync(expectedPath, 'utf-8');
+      console.error(`[bm2-debug] Strategy 4: read ${result.code.length} chars from ${expectedPath}`);
+    }
+  }
+
+  // Strategy 5: Search /tmp for any file matching the task filename
+  if (!result.code) {
+    try {
+      const { execSync } = await import('child_process');
+      const found = execSync(`find /tmp -name '${task.filename}' 2>/dev/null | head -1`, { encoding: 'utf-8' }).trim();
+      if (found && existsSync(found)) {
+        result.code = readFileSync(found, 'utf-8');
+        console.error(`[bm2-debug] Strategy 5: found at ${found}`);
+      }
+    } catch {}
+  }
+
+  // Strategy 6: Extract from tool results (bash heredoc with code)
+  if (!result.code) {
+    for (const msg of messages) {
+      if (msg.role === 'toolResult' && Array.isArray(msg.content)) {
+        for (const b of msg.content) {
+          if (b.type === 'text' && b.text) {
+            const trimmed = b.text.trim();
+            if (/^(const|let|function|class|module\.exports|import|export)/m.test(trimmed)) {
+              result.code = trimmed.split('\n').filter(l => !/^(\$ |> |#)/.test(l)).join('\n');
+              break;
+            }
+          }
+        }
+      }
+      if (result.code) break;
+    }
+  }
+
+  // Strategy 7: Extract code from assistant text messages (agent writes code inline)
+  if (!result.code) {
+    for (const msg of messages) {
+      if (msg.role === 'assistant') {
+        for (const b of msg.content || []) {
+          if (b.type === 'text' && b.text) {
+            // Clean the text: remove XML-like tags, tool_call metadata
+            let cleanText = b.text
+              .replace(/<\/?[a-z_]+[^>]*>/gi, '')  // Strip XML-like tags
+              .replace(/\[TOOL:[^\]]+\]/g, '')    // Strip [TOOL: ...] markers
+              .replace(/```[a-z]*\n?/g, '');        // Strip markdown code fences
+
+            // Look for JavaScript code blocks in markdown or inline code
+            let code = '';
+            // Try markdown code block first (already stripped fences)
+            const lines = cleanText.split('\n');
+            const codeLines = [];
+            let inCode = false;
+            for (const line of lines) {
+              if (/^(\s*)(const|let|function|class|module\.exports|import|export|var)/.test(line)) {
+                inCode = true;
+              } else if (inCode && /^\s*$/.test(line) && codeLines.length > 0) {
+                // Empty line after starting code — continue (JS has blank lines)
+              } else if (inCode && !/^\s*(\/\/|\*|\/\*\*)/.test(line) && !/^(\s*)(const|let|function|class|module\.exports|import|export|var|if|for|while|return|try|catch|})/.test(line)) {
+                // Line doesn't match code patterns and isn't a comment — could be end of code
+                if (codeLines.length > 5) break;
+              }
+              if (inCode) {
+                codeLines.push(line);
+              }
+            }
+            if (codeLines.length > 5) {
+              code = codeLines.join('\n').trim();
+              // Remove trailing non-JS lines (comments, metadata)
+              const lastJS = code.split('\n').reduce((last, line, i) => {
+                if (/^\s*(const|let|function|class|module\.exports|import|export|var|}|if|for|while|return|try|catch)/.test(line)) return i;
+                return last;
+              }, -1);
+              if (lastJS > 0 && lastJS < code.split('\n').length - 1) {
+                code = code.split('\n').slice(0, lastJS + 1).join('\n');
+              }
+            }
+            if (code && code.length > 50) {
+              result.code = code;
+              console.error(`[bm2-debug] Strategy 7: extracted ${code.length} chars`);
+              break;
+            }
+          }
+        }
+      }
+      if (result.code) break;
+    }
+  }
+
+  // If we got code, ensure it's at the expected path and test it
   if (result.code) {
     const codePath = join(taskDir, task.filename);
+    mkdirSync(taskDir, { recursive: true });
     writeFileSync(codePath, result.code);
 
     // Write test file
