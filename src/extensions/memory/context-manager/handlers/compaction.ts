@@ -90,12 +90,17 @@ let _origAppendMessage: ((msg: any) => string) | undefined;
  */
 function skipDuplicateAppend(sessionManager: any): (msg: any) => string {
   return (msg: any) => {
-    const text = msg?.content?.[0]?.text;
-    if (text === _queuedDuringCompaction) {
-      // Skip — this is the duplicate from session.prompt()'s message_end handler.
-      // The original from session_compact is already in sessionManager.
-      // Return the pre-appended entry ID so the caller gets a valid ID.
-      return _preAppendedEntryId ?? "";
+    // Only messages with content[] can be the duplicate user message.
+    // BashExecutionMessage has NO `content` field — must pass through.
+    const content = msg?.content;
+    if (Array.isArray(content)) {
+      const text = content[0]?.text;
+      if (typeof text === "string" && text === _queuedDuringCompaction) {
+        // Skip — this is the duplicate from session.prompt()'s message_end handler.
+        // The original from session_compact is already in sessionManager.
+        // Return the pre-appended entry ID so the caller gets a valid ID.
+        return _preAppendedEntryId ?? "";
+      }
     }
     return _origAppendMessage?.call(sessionManager, msg) ?? sessionManager.appendMessage(msg);
   };
@@ -330,7 +335,10 @@ export function registerSessionCompactHandler(pi: any): void {
             log.warn("[context-manager] Failed to pre-append queued message:", e);
           }
         }
-        _queuedDuringCompaction = undefined;
+        // NOTE: _queuedDuringCompaction stays set after intercept setup.
+        // It must survive until flushCompactionQueue's session.prompt()
+        // fires AFTER session_compact returns, so skipDuplicateAppend can
+        // detect the duplicate user message. Cleared on turn_end or abort.
       }
 
       // NOTE: Do NOT inject a resume steer here.

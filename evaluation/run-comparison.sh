@@ -1,31 +1,25 @@
 #!/bin/bash
-# pi-braid vs Naked pi Comparison Runner (macOS compat)
+# pi-braid vs Naked pi Comparison Runner (v3 — minimal)
 #
-# Runs each SDK benchmark twice:
-#   braid — with pi-braid extensions
-#   naked — only stepfun provider (using PI_CODING_AGENT_DIR isolation)
-#
-# For naked mode, creates a temp ~/.pi/agent replacement with settings.json
-# that excludes the braid extension path.
+# For naked mode: creates clean ~/.pi/agent with only stepfun provider.
+# Runs benchmarks via node subprocess with brief timeout per task.
+# No complex watchdog — trusts benchmark's internal --timeout.
 
-set -e
+set -euo pipefail
 
 cd "$(dirname "$0")/.."
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+TS=$(date +%Y%m%d_%H%M%S)
 RESULTS_DIR="evaluation/results"
-SUMMARY_MD="${RESULTS_DIR}/comparison_${TIMESTAMP}.md"
+SUMMARY_MD="${RESULTS_DIR}/comparison_${TS}.md"
 mkdir -p "$RESULTS_DIR"
 
-# Clean agent directory for naked runs
-NAKED_DIR="/tmp/pi-agent-naked"
+# Clean agent dir for naked runs
+NAKED_DIR="/tmp/pi-naked-${TS}"
 rm -rf "$NAKED_DIR"
-mkdir -p "$NAKED_DIR/extensions" "$NAKED_DIR/sessions" \
-         "$NAKED_DIR/scratchpads" "$NAKED_DIR/checkpoints" \
-         "$NAKED_DIR/skills" "$NAKED_DIR/memory" "$NAKED_DIR/errors"
-
+mkdir -p "$NAKED_DIR"/{extensions,sessions,scratchpads,checkpoints,skills,memory,errors}
 cp ~/.pi/agent/auth.json "$NAKED_DIR/auth.json"
 
-cat > "$NAKED_DIR/settings.json" << JSONEOF
+cat > "$NAKED_DIR/settings.json" << EOF
 {
   "defaultProvider": "stepfun",
   "defaultModel": "step-3.5-flash",
@@ -36,120 +30,89 @@ cat > "$NAKED_DIR/settings.json" << JSONEOF
   "enableSkillCommands": false,
   "retry": { "enabled": false },
   "disableConfirmations": true,
-  "extensions": [
-    "/Users/kifir/projects/agents/pi-poorman-providers"
-  ],
+  "extensions": ["/Users/kifir/projects/agents/pi-poorman-providers"],
   "packages": []
 }
-JSONEOF
+EOF
 
-echo "Clean agent dir ready at $NAKED_DIR"
-
-run_benchmark() {
-    local name="$1"
-    local file="$2"
-    local timeout="$3"
+# ── Run one benchmark in one mode ──────────────────────────────────────
+run_bench() {
+    local name="$1" file="$2" ttimeout="$3" mode="$4"
+    local label="${name}_${mode}"
+    local log="${RESULTS_DIR}/${label}_${TS}.log"
     
-    for mode in braid naked; do
-        echo "=== ${name} [${mode}] ==="
-        local log="${RESULTS_DIR}/${name}_${mode}_${TIMESTAMP}.log"
-        
-        if [ "$mode" = "naked" ]; then
-            export PI_CODING_AGENT_DIR="$NAKED_DIR"
-        else
-            unset PI_CODING_AGENT_DIR
-        fi
-        
-        export PI_MODEL="step-3.5-flash"
-        export PI_PROVIDER="stepfun"
-        
-        # Wait for clean state between runs
-        sleep 3
-        
-        # Run with 5min overall timeout
-        timeout 300 node "evaluation/${file}" --timeout "${timeout}" > "$log" 2>&1
-        local rc=$?
-        
-        # Extract overall score
-        local score="N/A"
-        if grep -q 'Overall:' "$log" 2>/dev/null; then
-            score=$(grep 'Overall:' "$log" | sed 's/.*Overall:[[:space:]]*\([0-9.]*\)\/100.*/\1/' | tail -1)
-        fi
-        
-        # Extract per-task lines
-        local details=$(grep -E 'score=[0-9.]+/100' "$log" | head -5 || true)
-        
-        echo "  score=${score}"
-        echo "$details" | sed 's/^/    /'
-        
-        # Store for summary
-        eval "${name}_${mode}_score=\"$score\""
-        eval "${name}_${mode}_details=\"$details\""
-    done
+    echo "  [${label}] task_timeout=${ttimeout}s …"
+    
+    if [ "$mode" = "naked" ]; then
+        export PI_CODING_AGENT_DIR="$NAKED_DIR"
+    else
+        unset PI_CODING_AGENT_DIR
+    fi
+    export PI_MODEL="step-3.5-flash"
+    export PI_PROVIDER="stepfun"
+    
+    # Run with overall timeout via background kill
+    node "evaluation/${file}" --timeout "${ttimeout}" > "$log" 2>&1 &
+    local PID=$!
+    
+    # Kill after 20 min wall clock (BM1 takes ~8min alone)
+    ( sleep 1200; kill $PID 2>/dev/null ) &
+    local KILLER=$!
+    
+    wait $PID 2>/dev/null
+    kill $KILLER 2>/dev/null || true
+    
+    local score=$(grep 'Overall:' "$log" | sed 's/.*Overall:[[:space:]]*\([0-9.]*\)\/100.*/\1/' | tail -1)
+    echo "${score:-N/A}"
 }
 
-# Run benchmarks sequentially
-run_benchmark "bm1-sdk" "bm1-sdk.mjs" 90
-run_benchmark "bm2-sdk" "bm2-sdk.mjs" 60
-run_benchmark "br1-sdk" "br1-sdk.mjs" 60
-
-# ── Summary ──────────────────────────────────────────────────────────────────
+echo "=== pi-braid vs Naked pi ==="
+echo "Model: stepfun/step-3.5-flash"
 echo ""
-echo "========================"
-echo " COMPARISON RESULTS"
-echo "========================"
 
-for name in bm1-sdk bm2-sdk br1-sdk; do
-    eval b_score="\${${name}_braid_score}"
-    eval n_score="\${${name}_naked_score}"
-    b_score="${b_score:-N/A}"
-    n_score="${n_score:-N/A}"
-    
-    echo ""
-    echo "${name}:"
-    echo "  braid: ${b_score}/100"
-    echo "  naked: ${n_score}/100"
-    if [ "$b_score" != "N/A" ] && [ "$n_score" != "N/A" ]; then
-        delta=$(python3 -c "print(${b_score} - ${n_score})" 2>/dev/null || echo "?")
-        echo "  delta: ${delta}"
-    fi
-    echo "  braid details:"
-    eval details="\${${name}_braid_details}"
-    echo "$details" | sed 's/^/    /'
-    echo "  naked details:"
-    eval details="\${${name}_naked_details}"
-    echo "$details" | sed 's/^/    /'
-done
+# BM1: 5 tasks × 90s = up to 7.5min each
+echo "--- bm1-sdk ---"
+B1=$(run_bench "bm1-sdk" "bm1-sdk.mjs" 90 "braid")
+N1=$(run_bench "bm1-sdk" "bm1-sdk.mjs" 90 "naked")
 
-# ── Write Markdown ──────────────────────────────────────────────────────────
+# BM2: 3 tasks × 60s = up to 3min each  
+echo "--- bm2-sdk ---"
+B2=$(run_bench "bm2-sdk" "bm2-sdk.mjs" 60 "braid")
+N2=$(run_bench "bm2-sdk" "bm2-sdk.mjs" 60 "naked")
+
+# BR1: 5 tasks × 60s = up to 5min each
+echo "--- br1-sdk ---"
+B3=$(run_bench "br1-sdk" "br1-sdk.mjs" 60 "braid")
+N3=$(run_bench "br1-sdk" "br1-sdk.mjs" 60 "naked")
+
+# ── Output ─────────────────────────────────────────────────────────────
+echo ""
+echo "=============================="
+echo " RESULTS"
+echo "=============================="
+
 {
     echo "# pi-braid vs Naked pi — Comparison Results"
-    echo ""
-    echo "**Generated**: $(date)"
-    echo "**Model**: stepfun/step-3.5-flash"
-    echo ""
-    echo "| Benchmark | Config | Score | Details |"
-    echo "|-----------|--------|-------|---------|"
+    echo ""; echo "**Generated**: $(date)"; echo "**Model**: stepfun/step-3.5-flash"; echo ""
+    echo "| Benchmark | braid | naked | Delta |"
+    echo "|-----------|-------|-------|-------|"
     
-    for name in bm1-sdk bm2-sdk br1-sdk; do
-        eval b_score="\${${name}_braid_score}"
-        eval n_score="\${${name}_naked_score}"
-        eval b_det="\${${name}_braid_details}"
-        eval n_det="\${${name}_naked_details}"
-        b_score="${b_score:-N/A}"
-        n_score="${n_score:-N/A}"
-        b_det=$(echo "$b_det" | head -1 | sed 's/|//g' | xargs)
-        n_det=$(echo "$n_det" | head -1 | sed 's/|//g' | xargs)
-        
-        echo "| ${name} | braid | ${b_score} | ${b_det} |"
-        echo "| | naked | ${n_score} | ${n_det} |"
-        if [ "$b_score" != "N/A" ] && [ "$n_score" != "N/A" ]; then
-            delta=$(python3 -c "print('+' if ${b_score} > ${n_score} else '', ${b_score} - ${n_score})" 2>/dev/null || echo "?")
-            echo "| | **Delta** | **${delta}** | — |"
+    for row in "bm1-sdk $B1 $N1" "bm2-sdk $B2 $N2" "br1-sdk $B3 $N3"; do
+        set -- $row; n=$1; b=$2; nk=$3
+        b="${b:-?}"; nk="${nk:-?}"
+        if [ "$b" != "N/A" ] && [ "$nk" != "N/A" ] 2>/dev/null; then
+            d=$(python3 -c "d=$b-$nk; print(f'+{d}' if d>0 else d)" 2>/dev/null)
+        else
+            d="N/A"
         fi
+        echo "| ${n} | ${b}/100 | ${nk}/100 | ${d} |"
     done
-    
 } > "$SUMMARY_MD"
+
+# Console
+for row in "bm1-sdk $B1 $N1" "bm2-sdk $B2 $N2" "br1-sdk $B3 $N3"; do
+    set -- $row; echo "$1: braid=$2  naked=$3"
+done
 
 echo ""
 echo "Results: $SUMMARY_MD"

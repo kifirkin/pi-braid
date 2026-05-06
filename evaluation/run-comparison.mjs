@@ -1,128 +1,130 @@
 #!/usr/bin/env node
 /**
- * pi-braid vs Naked pi — Wrapper that runs existing SDK benchmarks with
- * a different loader config for the naked baseline.
+ * pi-braid vs Naked pi — node.js comparison runner v2
  *
- * For each benchmark, it replaces the DefaultResourceLoader cwd so
- * no braid extensions are loaded (only stepfun provider).
+ * Runs each SDK benchmark as a subprocess with PI_CODING_AGENT_DIR set
+ * for the naked baseline. Each benchmark mode has its own overall timeout
+ * so one stuck run doesn't block the entire comparison.
  */
 
-const BENCHMARKS = ['bm1-sdk', 'bm2-sdk', 'br1-sdk'];
+import { execSync } from 'child_process';
+import { writeFileSync, mkdirSync, existsSync, cpSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
 
-async function runBenchmark(name, isBraid) {
-  const label = isBraid ? 'braid' : 'naked';
-  console.log(`\n=== ${name} [${label}] ===`);
+const ROOT = '/Users/kifir/projects/agents/pi-braid';
+const RESULTS_DIR = join(ROOT, 'evaluation/results');
+const TS = new Date().toISOString().replace(/[:.]/g, '-');
+mkdirSync(RESULTS_DIR, { recursive: true });
 
-  const mod = await import(`./${name}.mjs`);
-  const filePath = `/tmp/${name}-${label}-output.txt`;
+const NAKED_DIR = `/tmp/pi-naked-${TS}`;
 
-  // We can't easily change the loader config in the imported module.
-  // Instead, we monkey-patch the DefaultResourceLoader behavior.
-  // But that's fragile. Better approach: run the benchmark file as a subprocess
-  // with an environment variable indicating braid/naked mode.
-  
-  // Actually, the simplest approach: copy the benchmark file, modify the cwd,
-  // and run it as a separate process.
+// ── Create clean agent dir for naked pi ─────────────────────────────
+console.log(`Setting up naked agent dir at ${NAKED_DIR}...`);
+for (const sub of ['extensions','sessions','scratchpads','checkpoints','skills','memory','errors']) {
+  mkdirSync(join(NAKED_DIR, sub), { recursive: true });
 }
+const authSrc = join(homedir(), '.pi', 'agent', 'auth.json');
+if (existsSync(authSrc)) cpSync(authSrc, join(NAKED_DIR, 'auth.json'));
 
-// Alternative: run via CLI subprocess
-// `pi -ne -e /path/to/providers` would give us naked pi
-// But the SDK benchmarks use createAgentSession, not the CLI.
+writeFileSync(join(NAKED_DIR, 'settings.json'), JSON.stringify({
+  defaultProvider: 'stepfun',
+  defaultModel: 'step-3.5-flash',
+  thinking: 'high',
+  compaction: { enabled: false },
+  hideThinkingBlock: true,
+  quietStartup: true,
+  enableSkillCommands: false,
+  retry: { enabled: false },
+  disableConfirmations: true,
+  extensions: ['/Users/kifir/projects/agents/pi-poorman-providers'],
+  packages: [],
+}, null, 2));
 
-// Best approach: the benchmarks read their EXTENSIONS_PATH from env or args.
-// Let me create modified versions that accept --naked flag.
+// ── Per-benchmark config ────────────────────────────────────────────
+const BENCHES = [
+  { name: 'bm1-sdk', file: 'bm1-sdk.mjs', taskTimeout: 90, overallMs: 12 * 60 * 1000 },
+  { name: 'bm2-sdk', file: 'bm2-sdk.mjs', taskTimeout: 60, overallMs: 5 * 60 * 1000 },
+  { name: 'br1-sdk', file: 'br1-sdk.mjs', taskTimeout: 60, overallMs: 8 * 60 * 1000 },
+];
 
-console.log('=== pi-braid vs Naked pi Comparison ===');
-console.log('\nRunning benchmarks via subprocess with config flag...\n');
+function runBenchmark(name, file, taskTimeout, mode, overallMs) {
+  const log = join(RESULTS_DIR, `${name}_${mode}_${TS}.log`);
+  const label = `${name} [${mode}]`;
 
-const results = [];
+  const env = { ...process.env, PI_MODEL: 'step-3.5-flash', PI_PROVIDER: 'stepfun' };
+  if (mode === 'naked') env.PI_CODING_AGENT_DIR = NAKED_DIR;
+  else delete env.PI_CODING_AGENT_DIR;
 
-for (const name of BENCHMARKS) {
-  for (const isBraid of [true, false]) {
-    const label = isBraid ? 'braid' : 'naked';
-    const outputFile = `/tmp/bench-${name}-${label}.json`;
+  process.stdout.write(`  ${label} (task=${taskTimeout}s, wall=${(overallMs/1000).toFixed(0)}s) ... `);
 
-    // The benchmark modules read PI_EXTENSIONS env var.
-    // Set it to empty for naked, to braid path for braid mode.
-    const env = {
-      ...process.env,
-      PI_EXTENSIONS: isBraid ? '/Users/kifir/projects/agents/pi-braid' : '',
-      PI_MODEL: 'step-3.5-flash',
-      PI_PROVIDER: 'stepfun',
-    };
-
-    const { execSync } = await import('child_process');
-    const start = Date.now();
-    try {
-      const stdout = execSync(`node evaluation/${name}.mjs --timeout 60`, {
-        env,
-        timeout: 120000,
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-      
-      // Extract overall score from output
-      const overallMatch = stdout.match(/Overall:\s*([\d.]+)\/100/);
-      const score = overallMatch ? parseFloat(overallMatch[1]) : null;
-      const duration = ((Date.now() - start) / 1000).toFixed(1);
-      
-      console.log(`  ${name} [${label}]: score=${score ?? 'N/A'}, ${duration}s`);
-      results.push({ name, label, score, duration });
-    } catch (err) {
-      const duration = ((Date.now() - start) / 1000).toFixed(1);
-      const output = err.stdout || '';
-      const overallMatch = output.match(/Overall:\s*([\d.]+)\/100/);
-      const score = overallMatch ? parseFloat(overallMatch[1]) : 'error';
-      console.log(`  ${name} [${label}]: score=${score}, ${duration}s (${err.message.slice(0, 40)})`);
-      results.push({ name, label, score, duration });
-    }
+  try {
+    const stdout = execSync(`node evaluation/${file} --timeout ${taskTimeout}`, {
+      cwd: ROOT,
+      env,
+      timeout: overallMs,
+      maxBuffer: 10 * 1024 * 1024,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      encoding: 'utf-8',
+    });
+    writeFileSync(log, stdout);
+    const m = stdout.match(/Overall:\s*([\d.]+)\/100/);
+    const score = m ? parseFloat(m[1]) : null;
+    process.stdout.write(`score=${score ?? 'N/A'}\n`);
+    return score;
+  } catch (err) {
+    const output = err.stdout || '';
+    writeFileSync(log, output);
+    const m = output.match(/Overall:\s*([\d.]+)\/100/);
+    const score = m ? parseFloat(m[1]) : null;
+    process.stdout.write(`score=${score ?? 'ERR'} (${err.message.slice(0,50)})\n`);
+    return score;
   }
 }
 
-// ── Table ──────────────────────────────────────────────────────────────────
-console.log('\n' + '='.repeat(60));
-console.log('RESULTS');
-console.log('='.repeat(60));
-console.log('\n| Benchmark | Config | Score | Duration |');
-console.log('|-----------|--------|-------|----------|');
+// ── Run ─────────────────────────────────────────────────────────────
+console.log('\n=== pi-braid vs Naked pi ===\n');
+const results = {};
 
-const grouped = {};
-for (const r of results) {
-  if (!grouped[r.name]) grouped[r.name] = {};
-  grouped[r.name][r.label] = r;
+for (const { name, file, taskTimeout, overallMs } of BENCHES) {
+  console.log(`--- ${name} ---`);
+  const braid = runBenchmark(name, file, taskTimeout, 'braid', overallMs);
+  const naked = runBenchmark(name, file, taskTimeout, 'naked', overallMs);
+  results[name] = { braid, naked };
 }
 
-for (const [name, configs] of Object.entries(grouped)) {
-  const b = configs.braid;
-  const n = configs.naked;
-  const bScore = b?.score ?? '?';
-  const nScore = n?.score ?? '?';
-  const bDur = b?.duration ?? '?';
-  const nDur = n?.duration ?? '?';
-  console.log(`| ${name} | braid | ${bScore}/100 | ${bDur}s |`);
-  console.log(`| | naked | ${nScore}/100 | ${nDur}s |`);
-  if (typeof bScore === 'number' && typeof nScore === 'number') {
-    const delta = bScore - nScore;
-    console.log(`| | **Delta** | **${delta >= 0 ? '+' : ''}${delta}** | — |`);
+// ── Output ──────────────────────────────────────────────────────────
+console.log('\n' + '='.repeat(50));
+console.log('COMPARISON RESULTS');
+console.log('='.repeat(50));
+
+const md = [];
+md.push('# pi-braid vs Naked pi — Comparison Results');
+md.push('');
+md.push(`**Generated**: ${new Date().toISOString()}`);
+md.push('**Model**: stepfun/step-3.5-flash');
+md.push('');
+md.push('| Benchmark | braid | naked | Delta |');
+md.push('|-----------|-------|-------|-------|');
+
+for (const [name, { braid, naked }] of Object.entries(results)) {
+  const b = braid ?? '?';
+  const n = naked ?? '?';
+  let delta = '—';
+  if (typeof b === 'number' && typeof n === 'number') {
+    const d = b - n;
+    delta = `${d > 0 ? '+' : ''}${d.toFixed(1)}`;
   }
+  md.push(`| ${name} | ${b}/100 | ${n}/100 | ${delta} |`);
+  console.log(`${name}: braid=${b}  naked=${n}  delta=${delta}`);
 }
 
-const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-const { writeFileSync } = await import('fs');
-const mdPath = `/Users/kifir/projects/agents/pi-braid/evaluation/results/comparison_${timestamp}.md`;
-let md = `# pi-braid vs Naked pi — Comparison Results\n\n`;
-md += `**Generated**: ${new Date().toISOString()}\n`;
-md += `**Model**: stepfun/step-3.5-flash\n\n`;
-md += `| Benchmark | Config | Score | Duration |\n`;
-md += `|-----------|--------|-------|----------|\n`;
-for (const [name, configs] of Object.entries(grouped)) {
-  const b = configs.braid;
-  const n = configs.naked;
-  md += `| ${name} | braid | ${b?.score ?? '?'}/100 | ${b?.duration ?? '?'}s |\n`;
-  md += `| | naked | ${n?.score ?? '?'}/100 | ${n?.duration ?? '?'}s |\n`;
-  if (typeof b?.score === 'number' && typeof n?.score === 'number') {
-    md += `| | **Delta** | **${b.score - n.score >= 0 ? '+' : ''}${b.score - n.score}** | — |\n`;
-  }
-}
-writeFileSync(mdPath, md);
-console.log(`\nResults saved to ${mdPath}`);
+md.push('');
+md.push('### Setup');
+md.push('- braid: ~/.pi/agent (pi-braid + poorman-providers)');
+md.push(`- naked: ${NAKED_DIR} (only stepfun provider)`);
+md.push('');
+
+const out = join(RESULTS_DIR, `comparison_${TS}.md`);
+writeFileSync(out, md.join('\n'));
+console.log(`\nResults saved to ${out}`);
