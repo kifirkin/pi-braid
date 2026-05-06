@@ -8,37 +8,17 @@ const log = createLogger("enforcement");
 export type EscalationLevel = "info" | "warning" | "critical";
 
 export interface EnforcementConfig {
-  requireReasoning: boolean;
-  requirePlan: boolean;
-  requireToolJustification: boolean;
-  enforceScratchpad: boolean;
-  enforceThinkBeforeEdit: boolean;
-  enforceHypothesisBeforeFix: boolean;
-  enforceMemory: boolean;
-  enforceMemoryNudge: boolean;
-  enforceToolDiversity: boolean;
-  enforceExploreBeforeAct: boolean;
+  // Tunable parameters (thresholds and intervals)
   memoryNudgeThreshold: number;
   maxSilentTurns: number;
   warnOnToolSequenceRepetition: number;
-  // Blocking behavior
-  blockThinkBeforeEdit: boolean; // DEPRECATED: no longer blocks, kept for config compat
-  blockExploreBeforeWrite: boolean;
-  // Session tracking for blocking decisions
-  thinkCalledInSession: boolean;
-  exploreCalledInSession: boolean;
-  // Agentic Loop Enforcement
-  enforceMemoryRecallOnStart: boolean;
-  trackClaimsVsVerifications: boolean;
-  maxClaimsBeforeVerification: number;
-  // LLM Judge
-  useJudge: boolean;
   judgeCooldownMs: number;
   judgeSkipTurns: number;
-  // Verification Judge (LLM-based work audit)
-  useVerificationJudge: boolean;
   verificationJudgeInterval: number;
-  verifyAfterCodeChanges: boolean;
+  maxClaimsBeforeVerification: number;
+  // Blocking behavior
+  blockExploreBeforeWrite: boolean;
+  blockThinkBeforeEdit: boolean; // DEPRECATED
 }
 
 export interface TurnState {

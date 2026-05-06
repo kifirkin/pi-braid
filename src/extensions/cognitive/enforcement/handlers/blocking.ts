@@ -38,52 +38,40 @@ export function checkBlocking(
   }
 
   // BLOCK: Edit/Write without any prior exploration in session (existing files only)
-  if (writeTools.includes(toolName) && stateRef.config.blockExploreBeforeWrite) {
+  if (writeTools.includes(toolName)) {
     const targetPath = (eventInput as { path?: string } | undefined)?.path;
     const isWriteToNewFile = toolName === "write" && targetPath && !fileExists(targetPath);
 
     // Downgraded from block to passthrough: too noisy to force exploration.
-    // Agent may already know file contents from context or prior session.
-    if (!stateRef.config.exploreCalledInSession && !stateRef.hasExplored && !isWriteToNewFile) {
+    if (!stateRef.exploreCalledInSession && !stateRef.hasExplored && !isWriteToNewFile) {
       return { blocked: false, reason: "explore-before-edit (downgraded)" };
     }
   }
 
   // L2: Edit without think() - track for Session Signals bundle
-  if (toolName === "edit" && stateRef.config.enforceThinkBeforeEdit) {
-    if (!stateRef.config.thinkCalledInSession) {
-      stateRef.toolChain.recentEditWithoutThink.push(stateRef.currentTurn);
-      // Bundled by index.ts turn_end - don't send individually
-    }
+  if (toolName === "edit" && !stateRef.thinkCalledInSession) {
+    stateRef.toolChain.recentEditWithoutThink.push(stateRef.currentTurn);
   }
 
   // L2: First meaningful work without memory_recall - track for Session Signals bundle
-  if (
-    toolName === "edit" &&
-    stateRef.config.enforceMemoryRecallOnStart &&
-    !stateRef.hasRecalledOnStart &&
-    !stateRef.firstWorkDone
-  ) {
+  if (!stateRef.hasRecalledOnStart && !stateRef.firstWorkDone) {
     stateRef.firstWorkDone = true;
-    // Bundled by index.ts turn_end - don't send individually
   }
 
   // L2: Edit without plan - track for Session Signals bundle
-  if (toolName === "edit" && stateRef.config.enforceHypothesisBeforeFix) {
+  if (toolName === "edit") {
     const turnsSincePlan = stateRef.currentTurn - stateRef.toolChain.lastPlanCall;
-    if (turnsSincePlan > 3 && stateRef.config.thinkCalledInSession) {
+    if (turnsSincePlan > 3 && stateRef.thinkCalledInSession) {
       stateRef.toolChain.recentEditWithoutPlan.push(stateRef.currentTurn);
-      // Bundled by index.ts turn_end - don't send individually
     }
   }
 
   // L2: Tool diversity low - track for Session Signals bundle
   const actionTools = ["bash", "read", "write", "edit", "grep", "find"];
-  if (stateRef.totalToolCalls >= 10 && stateRef.config.enforceToolDiversity) {
+  if (stateRef.totalToolCalls >= 10) {
     const actionToolCount = actionTools.filter((t) => stateRef.uniqueToolsUsed.has(t)).length;
     if (actionToolCount <= 2 && !stateRef.toolDiversityNudged) {
       stateRef.toolDiversityNudged = true;
-      // Bundled by index.ts turn_end - don't send individually
     }
   }
 

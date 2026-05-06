@@ -219,7 +219,6 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
 
     if (
       !hadErrors && !inOverflowRecovery &&
-      getState(ctx).config.enforceMemory &&
       getState(ctx).hasCodeChanges &&
       getState(ctx).turnsSinceMemory >= 20 &&
       !getState(ctx).memoryNudgeSent
@@ -234,7 +233,6 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
     // Scratchpad signal
     if (
       !hadErrors && !inOverflowRecovery &&
-      getState(ctx).config.enforceScratchpad &&
       actualTools.some((t: string) => ["edit", "write"].includes(t)) &&
       !scratchpadUpdated
     ) {

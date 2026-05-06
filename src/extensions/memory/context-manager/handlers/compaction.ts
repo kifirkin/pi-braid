@@ -8,7 +8,7 @@
 // - Semantic preservation of tool call/result pairs
 // - Better summarization guidance for the LLM
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { CompactOptions, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { addEvidence } from "../../../../lib/evidence-pool.js";
 import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
 import { eventBus } from "../../../../lib/event-bus.js";
@@ -788,7 +788,7 @@ function triggerCompactionRetry(
       return;
     }
     cmState.compactionRetryActive = true;
-    pi.compact();
+    ctx.compact();
   }, delayMs);
 }
 
@@ -811,7 +811,11 @@ function triggerOverflowRetry(
       return;
     }
     cmState.overflowRetryActive = true;
-    pi.compact({ keep: reducedKeep });
+    const options: CompactOptions = {};
+    if (reducedKeep != null) {
+      options.customInstructions = `Keep the most recent ${reducedKeep} messages.`;
+    }
+    ctx.compact(options);
   }, delayMs);
 }
 

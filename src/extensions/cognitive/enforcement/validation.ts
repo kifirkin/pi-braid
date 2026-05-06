@@ -9,7 +9,7 @@ const log = createLogger("enforcement");
  */
 
 import { POST_TURN_VALIDATION_TEMPLATE } from "./prompts.js";
-import { state } from "./state.js";
+import { state, ENFORCEMENT_PARAMS } from "./state.js";
 import type { EnforcementState } from "./state.js";
 import type { TurnState, ValidationResult } from "./types.js";
 
@@ -120,7 +120,7 @@ export function validateTurn(
     s.silentTurns = 0;
   } else if (currentState.actualTools.length === 0) {
     s.silentTurns++;
-    if (s.silentTurns >= s.config.maxSilentTurns) {
+    if (s.silentTurns >= ENFORCEMENT_PARAMS.maxSilentTurns) {
       issues.push(
         `${s.silentTurns} turns without tool calls. You work through tools - reach for read, bash, edit, write to make progress.`,
       );
@@ -131,13 +131,13 @@ export function validateTurn(
 
   // Check for tool sequence repetition - smart detection avoids false positives
   if (!hadErrors && currentState.actualTools.length > 0) {
-    const prevSeqs = s.recentToolSequences.slice(-s.config.warnOnToolSequenceRepetition);
+    const prevSeqs = s.recentToolSequences.slice(-ENFORCEMENT_PARAMS.warnOnToolSequenceRepetition);
 
     // Semantic repetition check (handles read,read etc. properly)
     const seqIssue = checkSemanticRepetition(
       currentState.actualTools,
       prevSeqs,
-      s.config.warnOnToolSequenceRepetition,
+      ENFORCEMENT_PARAMS.warnOnToolSequenceRepetition,
     );
     if (seqIssue) {
       issues.push(seqIssue);

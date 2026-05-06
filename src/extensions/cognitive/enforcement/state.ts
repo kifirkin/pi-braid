@@ -11,43 +11,27 @@ import type { EnforcementConfig, ToolChainState, ToolSequencePattern, TurnState 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "../../../lib/extension-state.js";
 
-export const DEFAULT_CONFIG: EnforcementConfig = {
-  requireReasoning: false,
-  requirePlan: false,
-  requireToolJustification: false,
-  enforceScratchpad: false,
-  enforceThinkBeforeEdit: false,
-  enforceHypothesisBeforeFix: false,
-  enforceMemory: false,
-  enforceMemoryNudge: false,
-  // Context tool enforcement
-
-  enforceToolDiversity: false,
-  enforceExploreBeforeAct: false,
-  memoryNudgeThreshold: 15, // Lower threshold for proactive memory nudges
+export const ENFORCEMENT_PARAMS = {
+  // Tunable thresholds
+  memoryNudgeThreshold: 15,
   maxSilentTurns: 6,
   warnOnToolSequenceRepetition: 3,
-  blockThinkBeforeEdit: false, // DEPRECATED: no longer blocks, kept for config compat
-  blockExploreBeforeWrite: false,
-  thinkCalledInSession: false,
-  exploreCalledInSession: false,
-  enforceMemoryRecallOnStart: false,
-  trackClaimsVsVerifications: false,
-  maxClaimsBeforeVerification: 5,
-  useJudge: false,
   judgeCooldownMs: 20000,
   judgeSkipTurns: 1,
-  // Verification Judge (LLM-based work audit)
-  useVerificationJudge: false,
   verificationJudgeInterval: 15,
-  verifyAfterCodeChanges: false,
+  maxClaimsBeforeVerification: 5,
+  // Session tracking (defaults, reset each session)
+  blockExploreBeforeWrite: true,
+  blockThinkBeforeEdit: false, // DEPRECATED
 };
 
 // ── State Factory ────────────────────────────────────────────────────────────
 
 export function createState() {
   return {
-    config: { ...DEFAULT_CONFIG },
+    config: { ...ENFORCEMENT_PARAMS },
+    thinkCalledInSession: false,
+    exploreCalledInSession: false,
     turnHistory: new Map<number, TurnState>(),
     currentTurn: 0,
     recentToolSequences: [] as string[][],
@@ -187,8 +171,6 @@ export function resetState(s: EnforcementState = state): void {
   s.hasCodeChanges = false;
   s.lastCodeChangeTurn = 0;
   s.consecutiveErrorTurns = 0;
-  s.config.thinkCalledInSession = false;
-  s.config.exploreCalledInSession = false;
   s.hasRecordedFailure = false;
   s.lastFailedToolTurn = -100;
   s.lastScratchpadNudgeTurn = -100;

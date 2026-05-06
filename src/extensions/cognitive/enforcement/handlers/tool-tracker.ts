@@ -38,7 +38,7 @@ export function recordToolCall(toolName: string, s: EnforcementState = state): v
   // Track think
   if (toolName === "think") {
     s.toolChain.lastThinkCall = s.currentTurn;
-    s.config.thinkCalledInSession = true;
+    s.thinkCalledInSession = true;
   }
 
   // Track plan
@@ -62,7 +62,7 @@ export function recordToolCall(toolName: string, s: EnforcementState = state): v
   const exploreTools = ["read", "grep", "find", "ls"];
   if (exploreTools.includes(toolName)) {
     s.hasExplored = true;
-    s.config.exploreCalledInSession = true;
+    s.exploreCalledInSession = true;
     s.turnsSinceExplore = 0;
     s.exploreBeforeActNudged = false;
   }
@@ -125,7 +125,7 @@ export function recordBashDetails(command: string, s: EnforcementState = state):
   // bash with directory exploration also counts as exploration
   if (cmd.includes("ls ") || cmd === "ls" || cmd.startsWith("cd ") || cmd.includes("pwd")) {
     s.hasExplored = true;
-    s.config.exploreCalledInSession = true;
+    s.exploreCalledInSession = true;
   }
 
   // Record verification when tests are run

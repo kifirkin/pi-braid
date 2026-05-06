@@ -63,7 +63,7 @@ import {
 } from "./whisper.js";
 import { knownFiles, loadFileContent } from "./similarity.js";
 import { enforcementSignals, determineContrastMode } from "./signals.js";
-import { getState } from "./state.js";
+import { getState, ENFORCEMENT_PARAMS } from "./state.js";
 import { resetState } from "./state.js";
 
 const log = createLogger("enforcement");
@@ -462,7 +462,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
 
     const userHasBash = Array.from(getState(ctx).uniqueToolsUsed).includes("bash");
 
-    const VERIFICATION_GAP_TURNS = getState(ctx).config.verifyAfterCodeChanges ? 8 : Infinity;
+    const VERIFICATION_GAP_TURNS = 8;
     const turnsSinceCodeChange =
       getState(ctx).currentTurn - getState(ctx).lastVerificationJudgeTurn;
     const hasVerificationGap =
@@ -471,10 +471,9 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
       turnsSinceCodeChange >= VERIFICATION_GAP_TURNS;
 
     const isPeriodicCheck =
-      getState(ctx).config.verificationJudgeInterval > 0 &&
       getState(ctx).hasCodeChanges &&
       getState(ctx).currentTurn - getState(ctx).lastVerificationJudgeTurn >=
-        getState(ctx).config.verificationJudgeInterval;
+        ENFORCEMENT_PARAMS.verificationJudgeInterval;
 
     if (
       !getState(ctx).verificationJudgeRunning &&
@@ -521,7 +520,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     }
 
     // Legacy LLM Judge
-    if (getState(ctx).config.useJudge && turnState && turnState.actualTools.length === 0) {
+    if (turnState && turnState.actualTools.length === 0) {
       const now = Date.now();
       if (now - getState(ctx).lastJudgeTime < getState(ctx).config.judgeCooldownMs) return;
 

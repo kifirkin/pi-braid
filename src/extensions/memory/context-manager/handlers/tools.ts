@@ -2,6 +2,7 @@
 // All 6 tool registrations + 1 command registration.
 
 import { Type } from "typebox";
+import type { CompactOptions } from "@mariozechner/pi-coding-agent";
 import { analyzeSession } from "../analysis.js";
 import {
   log,
@@ -303,11 +304,11 @@ export function registerTools(pi: any): void {
       // ── EXECUTION MODE (dryRun=false): Actually remove entries ────────
       if (!isDryRun) {
         try {
+          const options: CompactOptions = {};
           if (params?.keep != null) {
-            pi.compact({ keep: params.keep });
-          } else {
-            pi.compact();
+            options.customInstructions = `Keep the most recent ${params.keep} messages.`;
           }
+          ctx.compact(options);
           return {
             content: [
               {
@@ -544,11 +545,11 @@ export function registerTools(pi: any): void {
       ctx: any,
     ): Promise<any> => {
       try {
+        const options: CompactOptions = {};
         if (params?.keep != null) {
-          pi.compact({ keep: params.keep });
-        } else {
-          pi.compact();
+          options.customInstructions = `Keep the most recent ${params.keep} messages.`;
         }
+        ctx.compact(options);
         const audit = analyzeSession(ctx);
         return {
           content: [

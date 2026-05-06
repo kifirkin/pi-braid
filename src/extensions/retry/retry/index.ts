@@ -95,15 +95,21 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
       }
     }
     if (!errorMsg) {
-      for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].role === "assistant") {
-          const text =
-            typeof messages[i].content === "string"
-              ? messages[i].content
-              : (messages[i].content?.find((c: any) => c.type === "text" && c.text)?.text ?? "");
-          if (text && classifyRetryError(text, null).category !== "unknown") {
-            errorMsg = text;
-            break;
+      // Only check assistant content if stopReason indicates an error
+      // This prevents false positives from natural conversation containing "error" or "context"
+      const assistantMsg = messages.find((m: any) => m.role === "assistant");
+      const stopReason = (assistantMsg as any)?.stopReason;
+      if (stopReason === "error" || stopReason === "aborted") {
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].role === "assistant") {
+            const text =
+              typeof messages[i].content === "string"
+                ? messages[i].content
+                : (messages[i].content?.find((c: any) => c.type === "text" && c.text)?.text ?? "");
+            if (text && classifyRetryError(text, null).category !== "unknown") {
+              errorMsg = text;
+              break;
+            }
           }
         }
       }

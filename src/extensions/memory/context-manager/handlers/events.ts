@@ -337,14 +337,14 @@ export function registerContextPruningHandler(pi: any): void {
 
 // ── Retry trigger helpers (for agent_end) ─────────────────────────────────────
 // These helpers are kept for backward compatibility but now simply update status.
-// Actual compaction retries are handled by compaction.ts via pi.compact() calls.
+// Actual compaction retries are handled by compaction.ts via ctx.compact() calls.
 // No more triggerTurn:true hidden turns — they caused context bloat.
 function triggerCompactionRetryFromAgentEnd(
   _pi: any,
   _attempt: number,
   _errorMessage: string,
 ): void {
-  // Intentionally empty — compaction.ts handles retries via pi.compact()
+  // Intentionally empty — compaction.ts handles retries via ctx.compact()
   // The agent_end handler just updates the retry counter above
   log.debug("[Compaction] agent_end retry signal received, compaction.ts handles actual retry");
 }
@@ -355,6 +355,6 @@ function triggerOverflowRetryFromAgentEnd(
   _errorMessage: string,
   _ctx: any,
 ): void {
-  // Intentionally empty — compaction.ts handles retries via pi.compact({ keep })
+  // Intentionally empty — compaction.ts handles retries via ctx.compact()
   log.debug("[Overflow] agent_end overflow signal received, compaction.ts handles actual retry");
 }
