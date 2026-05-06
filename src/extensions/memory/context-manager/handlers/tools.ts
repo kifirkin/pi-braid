@@ -50,6 +50,7 @@ export function registerTools(pi: any): void {
   pi.registerTool({
     name: "context_tag",
     label: "Context Tag",
+    promptSnippet: "Create a named save point in conversation history",
     description:
       "Create a named save point (milestone) in conversation history. Use before risky changes or when stable.",
     parameters: contextTagSchema,
@@ -93,6 +94,7 @@ export function registerTools(pi: any): void {
   pi.registerTool({
     name: "context_log",
     label: "Context Log",
+    promptSnippet: "View conversation history with usage and milestones",
     description: "View conversation history. Like git log. Shows context usage and milestones.",
     parameters: contextLogSchema,
     execute: async (
@@ -222,6 +224,7 @@ export function registerTools(pi: any): void {
   pi.registerTool({
     name: "context_checkout",
     label: "Context Checkout",
+    promptSnippet: "Navigate to any point in conversation history",
     description: "Navigate to any point in conversation history. Like git checkout.",
     parameters: contextCheckoutSchema,
     execute: async (
@@ -271,6 +274,7 @@ export function registerTools(pi: any): void {
   pi.registerTool({
     name: "context_prune",
     label: "Context Prune",
+    promptSnippet: "Identify and remove obsolete session entries",
     description:
       "Analyze session to identify obsolete/duplicate entries. " +
       "By default (dryRun=true) this is a dry-run — it shows what would be removed " +
@@ -378,6 +382,7 @@ export function registerTools(pi: any): void {
   pi.registerTool({
     name: "context_audit",
     label: "Context Audit",
+    promptSnippet: "Full analysis of session context health and recommendations",
     description:
       "Comprehensive analysis of session context: usage stats, hygiene score, prune candidates, branching triggers, and actionable recommendations.",
     parameters: contextAuditSchema,
@@ -453,6 +458,7 @@ export function registerTools(pi: any): void {
   pi.registerTool({
     name: "context_snapshot",
     label: "Context Snapshot",
+    promptSnippet: "Quick health check of session context",
     description:
       "Quick health check of the current session context. " +
       "Returns a one-shot summary: usage %, session length, hygiene score, " +
@@ -515,6 +521,7 @@ export function registerTools(pi: any): void {
   pi.registerTool({
     name: "context_compact",
     label: "Compact Context",
+    promptSnippet: "Trigger compaction to free up context space",
     description:
       "Trigger a compaction pass to free up context space. " +
       "Calls pi.compact() to remove obsolete, duplicate, and superseded entries. " +
@@ -575,6 +582,7 @@ export function registerTools(pi: any): void {
   pi.registerTool({
     name: "context_archive",
     label: "Compress Context",
+    promptSnippet: "Compress conversation range into a summary",
     description:
       "Compress a range of conversation into an LLM-generated summary. " +
       "The original messages are marked for removal from context (not deleted from session). " +

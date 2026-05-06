@@ -351,6 +351,7 @@ export function createThinkTool() {
   return {
     name: "think" as const,
     label: "Think",
+    promptSnippet: "Record structured thinking with decision, observation, and reason",
     description:
       "Record structured thinking: decision (required), observation and reason (optional). Use depth='deep' or ask_utility_model=true to also invoke the session model for a fresh-eyes perspective.",
     parameters: thinkSchema,

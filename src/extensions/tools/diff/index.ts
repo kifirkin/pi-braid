@@ -183,6 +183,7 @@ export default function diffExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "file_diff",
     label: "File Diff",
+    promptSnippet: "Compare two files or git revisions",
     description:
       "Compare two files or git revisions with structured output. " +
       "Returns hunks with line numbers, change types (add/del/ctx), and stats. " +

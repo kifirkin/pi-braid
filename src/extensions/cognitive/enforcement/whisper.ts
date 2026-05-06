@@ -1,5 +1,8 @@
 import { createLogger } from "../../../lib/logger.js";
 import { eventBus } from "../../../lib/event-bus.js";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 
 const log = createLogger("enforcement");
 /**
@@ -14,6 +17,21 @@ import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "../../../lib/extension-state.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { recordNudgeSent } from "../../../lib/nudge-analytics.js";
+
+const SETTINGS_PATH = join(homedir(), ".pi", "agent", "settings.json");
+
+function isAutoConfirmEnabled(): boolean {
+  try {
+    if (existsSync(SETTINGS_PATH)) {
+      const content = readFileSync(SETTINGS_PATH, "utf-8");
+      const settings = JSON.parse(content);
+      return settings.disableConfirmations === true;
+    }
+  } catch {
+    // Non-fatal: fall through to normal operation
+  }
+  return false;
+}
 
 interface WhisperState {
   pendingWhisper: string | null;
@@ -34,12 +52,15 @@ const _default: WhisperState = { pendingWhisper: null, pendingBlockAction: null 
  * Send an enforcement whisper immediately using sendTrackedMessage().
  * This injects the whisper right away instead of waiting for before_agent_start,
  * which only fires when user sends a message (causing whisper accumulation).
- * 
- * @param pi - ExtensionAPI for sending messages
- * @param ctx - ExtensionContext for tracking nudge stats
- * @param message - The nudge message to send
+ *
+ * Auto-confirm mode: suppressed entirely when disableConfirmations=true.
  */
 export function sendEnforcementWhisper(pi: ExtensionAPI, ctx: ExtensionContext, message: string): void {
+  // Auto-confirm mode: skip all enforcement whispers
+  if (isAutoConfirmEnabled()) {
+    return;
+  }
+
   // Track nudge sent for A/B variant analytics (BR3)
   try {
     recordNudgeSent(ctx);

@@ -46,6 +46,7 @@ export default function healthcheckExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "healthcheck",
     label: "Healthcheck",
+    promptSnippet: "Run health check on tools, extensions, and system resources",
     description:
       "Run comprehensive health check on agent tools, extensions, and system resources. " +
       "Tests tool registry, builtin tools, extension API, shell commands, and system capabilities. " +

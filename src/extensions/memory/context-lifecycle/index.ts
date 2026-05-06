@@ -408,6 +408,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "context_proposals",
     label: "Context Proposals",
+    promptSnippet: "View and manage S-MMU context proposals",
     description:
       "View and manage S-MMU context proposals. Proposals are auto-generated " +
       "based on session analysis. Use `list` to see pending, `approve`/`reject` to act.",
@@ -598,6 +599,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "context_signal",
     label: "Context Signal",
+    promptSnippet: "Emit a semantic signal to the S-MMU policy engine",
     description: "Emit a semantic signal to the S-MMU policy engine.",
     parameters: contextSignalSchema,
     execute: async (

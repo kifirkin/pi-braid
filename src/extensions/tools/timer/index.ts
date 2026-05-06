@@ -157,6 +157,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "timer_set",
     label: "Timer Set",
+    promptSnippet: "Set a non-blocking timer for background processes",
     description:
       "REPLACES bash `sleep` for waiting. Set a non-blocking timer (seconds). " +
       "Returns immediately — does NOT hang. Do NOT use sleep() after this. " +
@@ -200,6 +201,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "timer_list",
     label: "Timer List",
+    promptSnippet: "List all active timers",
     description: "List all active (non-expired) timers.",
     parameters: Type.Object({}),
     execute: async (): Promise<any> => {
@@ -237,6 +239,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "timer_cancel",
     label: "Timer Cancel",
+    promptSnippet: "Cancel an active timer before it fires",
     description: "Cancel an active timer before it fires.",
     parameters: Type.Object({ timer_id: Type.String() }),
     execute: async (_id: string, params: any): Promise<any> => {

@@ -215,7 +215,27 @@ function loadModelPreferences(): Record<string, ModelPreferences["preferences"]>
 
 // ── Whisper System ─────────────────────────────────────────────────────────
 
+const SETTINGS_PATH = join(homedir(), ".pi", "agent", "settings.json");
+
+function isAutoConfirmEnabled(): boolean {
+  try {
+    if (existsSync(SETTINGS_PATH)) {
+      const content = readFileSync(SETTINGS_PATH, "utf-8");
+      const settings = JSON.parse(content);
+      return settings.disableConfirmations === true;
+    }
+  } catch {
+    // Non-fatal: fall through to normal operation
+  }
+  return false;
+}
+
 function sendFeedbackWhisper(pi: ExtensionAPI, message: string): void {
+  // Auto-confirm mode: skip all feedback nudges
+  if (isAutoConfirmEnabled()) {
+    return;
+  }
+
   sendTrackedMessage(
     pi,
     {

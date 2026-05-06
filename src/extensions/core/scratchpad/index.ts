@@ -604,6 +604,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
     {
       name: "scratchpad",
       label: "Scratchpad",
+      promptSnippet: "Structured session memory for goal, plan, and decisions",
       description:
         "Structured session memory: goal, plan, decisions, hypotheses, notes, constraints, learnings, tasks.",
       parameters: scratchpadParams,

@@ -301,6 +301,7 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "check_topic_drift",
     label: "Check Topic Drift",
+    promptSnippet: "Check if output matches the original user request",
     description: "Check if the current output matches the original user request anchors.",
     parameters: checkDriftSchema,
     execute: async (_toolCallId: string, params: any): Promise<any> => {
@@ -343,6 +344,7 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "reset_topic_anchors",
     label: "Reset Topic Anchors",
+    promptSnippet: "Reset topic anchors to a new request or context",
     description: "Reset the topic anchors to a new request or the current context.",
     parameters: resetAnchorsSchema,
     execute: async (_toolCallId: string, params: any): Promise<any> => {

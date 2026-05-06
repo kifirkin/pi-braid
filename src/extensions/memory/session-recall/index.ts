@@ -309,6 +309,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "session_search",
     label: "Session Search",
+    promptSnippet: "Search past sessions by keywords",
     description:
       "Search past sessions by keywords (plain-text grep, not AI). Returns matching sessions with snippets. Follow up with session_query for details. If no results, try broader terms or fewer words.",
     parameters: sessionSearchSchema,
@@ -391,6 +392,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "session_query",
     label: "Session Query",
+    promptSnippet: "Analyze a specific session file in detail",
     description:
       "Analyze a specific session file. Use after session_search, or with an existing session path.",
     parameters: sessionQuerySchema,

@@ -338,6 +338,7 @@ export default function verificationExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "verify_claim",
     label: "Verify Claim",
+    promptSnippet: "Verify agent claims against retrieved context",
     description:
       "Verify agent claims against retrieved context. Detects contradictions, unsupported assertions, and hedge word issues.",
     parameters: verifyClaimSchema,
@@ -410,6 +411,7 @@ export default function verificationExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "verify_decomposition",
     label: "Verify Decomposition",
+    promptSnippet: "Verify task decomposition fully covers the parent task",
     description:
       "Verify that a task decomposition fully covers the parent task. Detects gaps and suggests improvements.",
     parameters: verifyDecompositionSchema,

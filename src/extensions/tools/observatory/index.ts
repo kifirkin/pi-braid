@@ -56,6 +56,7 @@ export default function observatoryExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "observatory",
     label: "Agent Observatory",
+    promptSnippet: "Real-time monitoring dashboard for agent observability",
     description:
       "Agent Observatory — real-time monitoring dashboard. " +
       "Checks the singleton daemon status, or starts/stops it via braid-daemon.sh. " +

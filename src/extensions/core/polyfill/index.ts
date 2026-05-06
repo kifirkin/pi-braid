@@ -102,6 +102,28 @@ async function loadCustomKeysFromDisk(): Promise<void> {
   }
 }
 
+/** Load disableConfirmations setting from ~/.pi/agent/settings.json */
+async function loadDisableConfirmations(): Promise<boolean> {
+  try {
+    const content = await fs.readFile(SETTINGS_PATH, "utf-8");
+    const settings = JSON.parse(content);
+    return settings.disableConfirmations === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Patch ctx.ui.confirm to auto-confirm when disableConfirmations is enabled */
+function patchConfirmForAutoConfirm(ctx: any): void {
+  if (!ctx.ui?.confirm) return;
+
+  const originalConfirm = ctx.ui.confirm.bind(ctx.ui);
+  ctx.ui.confirm = async (title: string, message: string, opts?: any): Promise<boolean> => {
+    // Auto-confirm all dialogs
+    return true;
+  };
+}
+
 export default function polyfillExtension(pi: ExtensionAPI) {
   // Load custom model keys from disk at startup so they survive session restarts.
   // Fire-and-forget: non-fatal if this fails (keys will be loaded on next set).
@@ -110,6 +132,13 @@ export default function polyfillExtension(pi: ExtensionAPI) {
   // Patch session manager methods on before_agent_start (fires for --no-session mode)
   pi.on("before_agent_start", async (_event, ctx) => {
     patchSessionManagerMethods(pi, ctx);
+
+    // Patch confirm dialogs if auto-confirm is enabled
+    const autoConfirm = await loadDisableConfirmations();
+    if (autoConfirm) {
+      patchConfirmForAutoConfirm(ctx);
+    }
+
     return {};
   });
 

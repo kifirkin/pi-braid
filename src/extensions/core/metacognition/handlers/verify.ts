@@ -312,6 +312,7 @@ export function getLastVerification(ctx: ExtensionContext): VerificationRecord |
 export function createVerifyTool() {
   return {
     name: "verify",
+    promptSnippet: "Verify code, reasoning, or tool results before finalization",
     description:
       "Verify code, reasoning, plans, or tool results before finalization. " +
       "Runs syntax, semantic, and result checks. Returns issues + suggestions. " +

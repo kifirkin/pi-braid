@@ -420,7 +420,10 @@ async function processMessage(
       const lang = detectLanguage(original);
       setLanguage(ctx, lang.code, lang.name);
 
-      if (state.config.showDiff) {
+      // Check for auto-confirm setting to bypass manual confirmation
+      const autoConfirm = loadGlobalSetting("disableConfirmations", false);
+
+      if (!autoConfirm && state.config.showDiff) {
         const lines = generateDiffLines(original, cleaned);
         ctx.ui.setWidget("preprocessor-diff", lines, { placement: "aboveEditor" });
         setTimeout(() => {
@@ -435,11 +438,19 @@ async function processMessage(
       }
 
       ctx.ui.setEditorText(cleaned);
-      ctx.ui.setStatus("preprocessor", "✓ Preprocessed - press Enter to continue");
+      if (autoConfirm) {
+        ctx.ui.setStatus("preprocessor", "✓ Preprocessed - auto-confirmed");
+      } else {
+        ctx.ui.setStatus("preprocessor", "✓ Preprocessed - press Enter to continue");
+      }
 
-      // Return "handled" to stop the current prompt cycle.
-      // User reviews the edited text in the editor and presses Enter to send it to the LLM.
-      resolve({ action: "handled" });
+      if (autoConfirm) {
+        // Auto-confirm: continue processing with corrected text without waiting for user
+        resolve({ action: "transform", text: cleaned, images: _images });
+      } else {
+        // Wait for user to press Enter
+        resolve({ action: "handled" });
+      }
     } else {
       state.skippedCount++;
       state.preprocessingExhausted = true;

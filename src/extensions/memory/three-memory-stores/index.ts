@@ -90,6 +90,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "memory_episodes",
     label: "Memory Episodes",
+    promptSnippet: "Search retrospective episodes for similar past tasks",
     description:
       "Search retrospective episodes for similar past tasks. Returns relevant past solutions and outcomes.",
     parameters: Type.Object({
@@ -154,6 +155,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "memory_heuristics",
     label: "Memory Heuristics",
+    promptSnippet: "View and manage adaptive procedural heuristics",
     description: "View and manage adaptive procedural heuristics. Returns prioritized rules for the current context.",
     parameters: Type.Object({
       action: StringEnum(["list", "add", "evolve"]),
@@ -201,6 +203,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "memory_tool_stats",
     label: "Memory Tool Stats",
+    promptSnippet: "View tool reliability statistics across sessions",
     description: "View tool reliability statistics. Shows success rates per tool per task type.",
     parameters: Type.Object({
       action: StringEnum(["list", "reliability", "best"]),

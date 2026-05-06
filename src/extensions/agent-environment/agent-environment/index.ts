@@ -165,6 +165,7 @@ function createTimeStatusTool() {
   return {
     name: "time_status",
     label: "Time Status",
+    promptSnippet: "Get current time status and session duration",
     description:
       "Get current time status: elapsed time, time since last event, session duration. Use to track progress and estimate remaining time.",
     parameters: timeStatusSchema,
@@ -304,6 +305,7 @@ export default function agentEnvironmentExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: tool.name,
     label: tool.label,
+    promptSnippet: tool.promptSnippet,
     description: tool.description,
     parameters: tool.parameters,
     execute: tool.execute,

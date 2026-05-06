@@ -38,6 +38,7 @@ export function createHypothesizeTool() {
   return {
     name: "hypothesize" as const,
     label: "Hypothesize",
+    promptSnippet: "Generate hypotheses about root causes of a problem",
     description:
       "Structure your debugging approach by generating hypotheses about root causes. " +
       "This uses the session model to analyze the problem and suggest hypotheses.\n" +

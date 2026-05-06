@@ -53,6 +53,7 @@ export default function evolveExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "evolve",
     label: "Evolve",
+    promptSnippet: "Self-evolution commands for agent improvement",
     description: "Self-evolution commands: status, health, check, commit, rollback, config, reset, benchmark",
     parameters: evolveSchema,
     execute: async (_toolCallId, params, _signal, _onUpdate, ctx): Promise<AgentToolResult<EvolveResult>> => {

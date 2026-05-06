@@ -231,6 +231,7 @@ export default function systemMonitorExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "system_monitor",
     label: "System Monitor",
+    promptSnippet: "Report CPU, memory, disk, and top processes",
     description:
       "Report CPU, memory, disk, and top processes as structured metrics. " +
       "Use mount_point to check a specific disk (default: /). " +

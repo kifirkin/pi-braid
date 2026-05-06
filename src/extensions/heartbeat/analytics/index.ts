@@ -11,7 +11,7 @@
 
 import { createLogger } from "../../../lib/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
@@ -31,6 +31,21 @@ import { loadAnalyticsByVariant } from "./ab-variant.js";
 import { formatCurrentSession, formatAllSessions } from "./format.js";
 
 const log = createLogger("analytics");
+
+const SETTINGS_PATH = join(homedir(), ".pi", "agent", "settings.json");
+
+function isAutoConfirmEnabled(): boolean {
+  try {
+    if (existsSync(SETTINGS_PATH)) {
+      const content = readFileSync(SETTINGS_PATH, "utf-8");
+      const settings = JSON.parse(content);
+      return settings.disableConfirmations === true;
+    }
+  } catch {
+    // Non-fatal: fall through to normal operation
+  }
+  return false;
+}
 
 export default function analyticsExtension(pi: ExtensionAPI) {
   const pendingToolCalls = new Map<string, { toolName: string; startTime: number }>();
@@ -119,10 +134,12 @@ export default function analyticsExtension(pi: ExtensionAPI) {
       if (warnings.length > 0) {
         emitSignal(ctx, "tool-use", "overuse", "warn", false, { tools: warnings, windowSize: total });
         const bpeRec = getNextRecommendation(ctx);
-        if (bpeRec) {
+        if (bpeRec && !isAutoConfirmEnabled()) {
           sendTrackedMessage(pi, { customType: "context", display: true, content: [{ type: "text", text: bpeRec.message }] }, undefined, { type: "heartbeat", source: "heartbeat/analytics/policy" });
         }
-        sendTrackedMessage(pi, { customType: "memory", display: true, content: [{ type: "text", text: `[analytics] Tool addiction pattern detected: ${warnings.join("; ")}` }] }, undefined, { type: "heartbeat", source: "heartbeat/analytics" });
+        if (!isAutoConfirmEnabled()) {
+          sendTrackedMessage(pi, { customType: "memory", display: true, content: [{ type: "text", text: `[analytics] Tool addiction pattern detected: ${warnings.join("; ")}` }] }, undefined, { type: "heartbeat", source: "heartbeat/analytics" });
+        }
         try {
           eventBus.emit({
             type: "analytics_alert",
@@ -143,7 +160,9 @@ export default function analyticsExtension(pi: ExtensionAPI) {
       state.wasDegraded = true;
       const reasons = getDegradationReasons(ctx);
       emitSignal(ctx, "stability", "decline", "critical", false, { reason: reasons[0] ?? "degraded", consecutiveErrors: 3 });
-      sendTrackedMessage(pi, { customType: "context", display: true, content: [{ type: "text", text: `[health] Degradation detected: ${reasons.join("; ")}` }] }, undefined, { type: "heartbeat", source: "heartbeat/analytics/degrade" });
+      if (!isAutoConfirmEnabled()) {
+        sendTrackedMessage(pi, { customType: "context", display: true, content: [{ type: "text", text: `[health] Degradation detected: ${reasons.join("; ")}` }] }, undefined, { type: "heartbeat", source: "heartbeat/analytics/degrade" });
+      }
       try {
         eventBus.emit({
           type: "analytics_alert",
@@ -157,7 +176,9 @@ export default function analyticsExtension(pi: ExtensionAPI) {
       } catch {}
     } else if (!degraded && state.wasDegraded) {
       state.wasDegraded = false;
-      sendTrackedMessage(pi, { customType: "context", display: true, content: [{ type: "text", text: "[health] Performance recovered to healthy." }] }, undefined, { type: "heartbeat", source: "heartbeat/analytics/recover" });
+      if (!isAutoConfirmEnabled()) {
+        sendTrackedMessage(pi, { customType: "context", display: true, content: [{ type: "text", text: "[health] Performance recovered to healthy." }] }, undefined, { type: "heartbeat", source: "heartbeat/analytics/recover" });
+      }
       try {
         eventBus.emit({
           type: "analytics_alert",
@@ -204,6 +225,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
   // ── Tools ──────────────────────────────────────────────────────────
   pi.registerTool({
     name: "get-session-metrics", label: "Get Session Metrics",
+    promptSnippet: "Get structured current session analytics",
     description: "Get structured current session analytics.",
     parameters: Type.Object({}),
     execute: async (_id: any, _params: any, _signal: any, _onUpdate: any, ctx: ExtensionContext): Promise<any> => {
@@ -227,6 +249,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 
   pi.registerTool({
     name: "get-tool-reliability", label: "Get Tool Reliability",
+    promptSnippet: "Get tool success rates from historical data",
     description: "Get tool success rates from historical analytics data.",
     parameters: Type.Object({ topN: Type.Optional(Type.Number({ description: "Max results. Default: 10" })) }),
     execute: async (_id: any, params: any, _signal: any, _onUpdate: any, ctx: ExtensionContext): Promise<any> => {
@@ -239,6 +262,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 
   pi.registerTool({
     name: "get-ab-results", label: "Get A/B Results",
+    promptSnippet: "Get A/B experiment results across variants",
     description: "Get A/B experiment results across variants.",
     parameters: Type.Object({}),
     execute: async (_id: any, _params: any, _signal: any, _onUpdate: any, ctx: ExtensionContext): Promise<any> => {
@@ -251,6 +275,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 
   pi.registerTool({
     name: "get-tool-addiction", label: "Get Tool Addiction",
+    promptSnippet: "Detect tool addiction patterns",
     description: "Detect tool addiction patterns.",
     parameters: Type.Object({ sessionOnly: Type.Optional(Type.Boolean({ default: false })) }),
     execute: async (_id: any, params: any, _signal: any, _onUpdate: any, ctx: ExtensionContext): Promise<any> => {
@@ -282,6 +307,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 
   pi.registerTool({
     name: "hidden-messages", label: "Get Hidden Messages",
+    promptSnippet: "Show all display:false injections in this session",
     description: "Show all display:false injections this session.",
     parameters: Type.Object({}),
     execute: async (_id: any, _params: any, _signal: any, _onUpdate: any, _ctx: ExtensionContext): Promise<any> => {

@@ -38,6 +38,7 @@ export default function researchExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "research",
     label: "Research",
+    promptSnippet: "Analyze system prompt evolution and propose changes",
     description: 
       "Research tool for analyzing system prompt evolution, comparing variants, " +
       "and proposing evidence-based changes. Use 'history' to query prompt changes, " +

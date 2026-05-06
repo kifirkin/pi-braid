@@ -148,6 +148,7 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
   const errorListTool: AgentTool<typeof errorListSchema> = {
     name: "error_list",
     label: "Error List",
+    promptSnippet: "List recent errors captured by the system",
     description: "List recent errors captured by the system",
     parameters: errorListSchema,
     execute: async (_toolCallId: string, params: any) => {
@@ -192,6 +193,7 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
   const errorGetTool: AgentTool<typeof errorGetSchema> = {
     name: "error_get",
     label: "Error Get",
+    promptSnippet: "Get detailed error information by ID",
     description: "Get detailed error by ID",
     parameters: errorGetSchema,
     execute: async (_toolCallId: string, params: any) => {
@@ -229,6 +231,7 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
   const errorClearTool: AgentTool<typeof errorClearSchema> = {
     name: "error_clear",
     label: "Error Clear",
+    promptSnippet: "Mark an error as handled",
     description: "Mark an error as handled",
     parameters: errorClearSchema,
     execute: async (_toolCallId: string, params: any) => {
@@ -258,6 +261,7 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
   const errorStatsTool: AgentTool<typeof errorStatsSchema> = {
     name: "error_stats",
     label: "Error Stats",
+    promptSnippet: "Get error statistics by source and type",
     description: "Get error statistics by source and type",
     parameters: errorStatsSchema,
     execute: async () => {

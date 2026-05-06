@@ -50,6 +50,7 @@ export function createPromptPreviewTool() {
   return {
     name: "prompt_preview" as const,
     label: "Prompt Preview",
+    promptSnippet: "Show the current system prompt from runtime",
     description:
       "Show the current system prompt. Reads directly from runtime. " +
       "Use includeTools/includeSkills to exclude long sections, truncate to limit chars.",

@@ -67,7 +67,7 @@ function runBenchmark(benchKey, mode, taskTimeout = 60) {
   try {
     const stdout = execSync(
       `node evaluation/run-benchmark.mjs --${benchKey} --timeout ${taskTimeout}`,
-      { cwd: ROOT, env, timeout: 10 * 60 * 1000, maxBuffer: 10 * 1024 * 1024, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+      { cwd: ROOT, env, timeout: 15 * 60 * 1000, maxBuffer: 10 * 1024 * 1024, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
     );
     writeFileSync(logFile, stdout);
 
@@ -89,7 +89,7 @@ function runBenchmark(benchKey, mode, taskTimeout = 60) {
 
 // ── Naked pi setup ────────────────────────────────────────────────────────
 
-function setupNakedDir() {
+async function setupNakedDir() {
   const dir = `/tmp/pi-naked-${TS}`;
   for (const sub of ['extensions','sessions','scratchpads','checkpoints','skills','memory','errors']) {
     mkdirSync(join(dir, sub), { recursive: true });
@@ -142,7 +142,7 @@ async function main() {
   console.log(`Timestamp: ${TS}\n`);
 
   // Setup naked dir if needed
-  if (modeList.includes('naked')) setupNakedDir();
+  if (modeList.includes('naked')) await setupNakedDir();
 
   // Run each benchmark in each mode
   const allResults = [];

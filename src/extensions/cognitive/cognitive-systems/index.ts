@@ -114,6 +114,7 @@ function createExplorePathsTool() {
   return {
     name: "explore_paths",
     label: "Explore Paths",
+    promptSnippet: "Spawn parallel sub-agents to explore root causes",
     description:
       "Spawn parallel sub-agents to explore MULTIPLE potential root causes. Use BEFORE fixing bugs to gather evidence. All hypotheses must lead to proper, well-designed solutions - never use monkey patching or workarounds.",
     parameters: Type.Object({
@@ -259,6 +260,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "memory_store",
     label: "Store Memory",
+    promptSnippet: "Store information in long-term memory",
     description:
       "Store information in long-term memory. Supports structured content (files, errors, solutions), memory linking, and TTL-based expiration.",
     parameters: Type.Object({
@@ -320,6 +322,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "memory_recall",
     label: "Recall Memory",
+    promptSnippet: "Search memory for relevant information",
     description: "Search memory for relevant information using semantic text search",
     parameters: Type.Object({
       query: Type.String({ description: "What to search for (natural language)" }),
@@ -379,6 +382,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "memory_list",
     label: "List Memories",
+    promptSnippet: "List all stored memories sorted by recency",
     description: "List all stored memories (sorted by recency)",
     parameters: Type.Object({
       limit: Type.Optional(Type.Number({ default: 20 })),
@@ -412,6 +416,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "memory_get",
     label: "Get Memory",
+    promptSnippet: "Get a specific memory by ID",
     description: "Get a specific memory by ID",
     parameters: Type.Object({
       id: Type.String({ description: "Memory ID to retrieve" }),
@@ -446,6 +451,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: explorePathsTool.name,
     label: explorePathsTool.label,
+    promptSnippet: explorePathsTool.promptSnippet,
     description: explorePathsTool.description,
     parameters: explorePathsTool.parameters,
     execute: explorePathsTool.execute,
@@ -456,6 +462,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "conflict_qa",
     label: "Conflict QA",
+    promptSnippet: "View and resolve knowledge conflicts from evidence pool",
     description:
       "View and resolve knowledge conflicts detected by the evidence pool. " +
       "Shows contradiction classification, resolution strategy, and source confidence.",

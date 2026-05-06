@@ -258,6 +258,7 @@ export function createFinalizeTool(callbacks: FinalizeCallbacks = {}) {
   return {
     name: "finalize" as const,
     label: "Finalize",
+    promptSnippet: "Mark the current task as complete and trigger review",
     description: `Mark the current task as complete. You MUST call this when:
 - All code is written and tested
 - The solution has been verified
