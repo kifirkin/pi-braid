@@ -10,7 +10,8 @@
  *
  * Run: node evaluation/bm2-sdk.mjs [--model stepfun/step-3.5-flash] [--timeout 90]
  */
-import { createAgentSession, createBashTool, createReadTool, createWriteTool, createEditTool, SessionManager, SettingsManager, DefaultResourceLoader, getAgentDir } from '@mariozechner/pi-coding-agent';
+import { createAgentSession, SessionManager, SettingsManager, DefaultResourceLoader, getAgentDir } from '@mariozechner/pi-coding-agent';
+import { restrictTools } from '../dist/lib/tool-security.js';
 import { stepfunModels } from '/Users/kifir/projects/agents/pi-poorman-providers/stepfun.ts';
 import { parseArgs } from 'util';
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
@@ -171,6 +172,9 @@ async function runTask(task, modelConfig, timeout = 90) {
     sessionManager: SessionManager.inMemory(),
     settingsManager: SettingsManager.inMemory({ compaction: { enabled: false } }),
   });
+
+  // Security: restrict dangerous tools when SAFE_MODE is set
+  restrictTools(session);
 
   // Capture tool calls via subscriber (more reliable than post-hoc message parsing)
   const _toolPaths = new Map();

@@ -55,6 +55,8 @@ function runBenchmark(name, file, taskTimeout, mode, overallMs) {
   const env = { ...process.env, PI_MODEL: 'step-3.5-flash', PI_PROVIDER: 'stepfun' };
   if (mode === 'naked') env.PI_CODING_AGENT_DIR = NAKED_DIR;
   else delete env.PI_CODING_AGENT_DIR;
+  // Enable safe mode for all benchmarks (restricts bash)
+  env.SAFE_MODE = 'true';
 
   process.stdout.write(`  ${label} (task=${taskTimeout}s, wall=${(overallMs/1000).toFixed(0)}s) ... `);
 

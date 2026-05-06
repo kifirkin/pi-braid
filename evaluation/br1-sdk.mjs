@@ -16,6 +16,7 @@
  * Run: node evaluation/br1-sdk.mjs
  */
 import { createAgentSession, SessionManager, SettingsManager, DefaultResourceLoader, getAgentDir } from '@mariozechner/pi-coding-agent';
+import { restrictTools } from '../dist/lib/tool-security.js';
 import { stepfunModels } from '/Users/kifir/projects/agents/pi-poorman-providers/stepfun.ts';
 
 const TASKS = [
@@ -140,6 +141,9 @@ async function runTask(task, timeout = 60) {
     sessionManager: SessionManager.inMemory(),
     settingsManager: SettingsManager.inMemory({ compaction: { enabled: false } }),
   });
+
+  // Security: restrict dangerous tools when SAFE_MODE is set
+  restrictTools(session);
 
   const result = { taskId: task.id, score: 0, reason: '', text: '', thinking: '', turns: 0, error: null };
 

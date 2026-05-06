@@ -1,0 +1,184 @@
+#!/usr/bin/env node
+/**
+ * run‑benchmark — Unified pi‑braid benchmark runner.
+ *
+ * Clean, maintainable, human‑readable.
+ * Builds dist/ first. Leaves no stale processes or temp dirs.
+ *
+ * Usage:
+ *   node evaluation/run-benchmark.mjs --bm1              # Run BM1 debugging
+ *   node evaluation/run-benchmark.mjs --bm2 --safe       # BM2 without bash
+ *   node evaluation/run-benchmark.mjs --br1              # BR1 trap tasks
+ *   node evaluation/run-benchmark.mjs --bm2 --output results/today.json
+ *   node evaluation/run-benchmark.mjs --list             # List available benchmarks
+ *   node evaluation/run-benchmark.mjs --verify           # Check build/temps are clean
+ */
+
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import { parseArgs } from 'util';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT = join(__dirname, '..');
+const RESULTS = join(ROOT, 'evaluation', 'results');
+
+// ── Registry ──────────────────────────────────────────────────────────────
+
+const REGISTRY = {
+  bm1: { name: 'BM1 Multi‑Turn Debugging',     file: './tasks/bm1-debug.mjs',  tasks: null },
+  bm2: { name: 'BM2 Code Quality',              file: './tasks/bm2-code.mjs',  tasks: null },
+  br1: { name: 'BR1 Trap Task Validation',      file: './tasks/br1-trap.mjs',  tasks: null },
+};
+
+async function loadTasks(key) {
+  if (!REGISTRY[key]) throw new Error(`Unknown benchmark: ${key}`);
+  const mod = await import(REGISTRY[key].file);
+  REGISTRY[key].tasks = mod.TASKS;
+  return mod.TASKS;
+}
+
+// ── Verify build ──────────────────────────────────────────────────────────
+
+async function ensureBuild() {
+  const { verifyBuild } = await import('./lib/evaluator.mjs');
+  verifyBuild();
+  console.log('[pipeline] Build OK');
+}
+
+// ── Run a single benchmark ────────────────────────────────────────────────
+
+async function runBenchmark(benchKey, options) {
+  const bench = REGISTRY[benchKey];
+  console.log(`\n${'='.repeat(60)}`);
+  console.log(`  ${bench.name}`);
+  console.log(`${'='.repeat(60)}\n`);
+
+  // Dynamic import of shared evaluator
+  const { createBenchSession, runTask, formatResultsTable } = await import('./lib/evaluator.mjs');
+  const tasks = await loadTasks(benchKey);
+
+  // Determine per‑task timeout
+  const defaultTimeout = tasks.reduce((max, t) => Math.max(max, t.timeout || 60), 60);
+  const timeout = options.timeout || defaultTimeout;
+
+  // Create session
+  const { session, cleanup } = await createBenchSession({
+    safeMode: options.safe,
+    compaction: false,
+    sessionDir: `/tmp/pi-${benchKey}-${Date.now()}`,
+  });
+
+  // Run tasks — each task gets a FRESH session (clean state, no cross-contamination)
+  const results = [];
+  for (const task of tasks) {
+    const taskTimeout = task.timeout || timeout;
+    process.stdout.write(`  [${task.id}]... `);
+    const { session: taskSession, cleanup: taskCleanup } = await createBenchSession({
+      safeMode: options.safe,
+      compaction: false,
+      sessionDir: `/tmp/pi-${benchKey}-${task.id}-${Date.now()}`,
+    });
+    try {
+      const result = await runTask(taskSession, { id: task.id, prompt: task.prompt, timeout: taskTimeout });
+      const status = result.error ? `✗ ${result.error.slice(0, 30)}` : `✓ ${(result.duration / 1000).toFixed(1)}s`;
+      console.log(status);
+      results.push(result);
+    } finally {
+      taskCleanup();
+    }
+  }
+
+  cleanup();
+
+  // Print table
+  console.log(`\n--- Results ---`);
+  console.log(formatResultsTable(results));
+
+  // Save to file if requested
+  if (options.output) {
+    mkdirSync(dirname(options.output), { recursive: true });
+    writeFileSync(options.output, JSON.stringify({ benchmark: benchKey, results, safe: !!options.safe, timestamp: new Date().toISOString() }, null, 2));
+    console.log(`\nSaved to ${options.output}`);
+  }
+
+  return results;
+}
+
+// ── CLI ───────────────────────────────────────────────────────────────────
+
+async function main() {
+  const { values } = parseArgs({
+    options: {
+      bm1: { type: 'boolean', default: false },
+      bm2: { type: 'boolean', default: false },
+      br1: { type: 'boolean', default: false },
+      list: { type: 'boolean', default: false },
+      verify: { type: 'boolean', default: false },
+      safe: { type: 'boolean', default: false },
+      timeout: { type: 'string' },
+      output: { type: 'string' },
+    },
+  });
+
+  if (values.list) {
+    console.log('\nAvailable benchmarks:');
+    for (const [key, b] of Object.entries(REGISTRY)) {
+      console.log(`  ${key.padEnd(4)} — ${b.name}`);
+    }
+    console.log('');
+    return;
+  }
+
+  if (values.verify) {
+    await ensureBuild();
+    const { checkStaleDirs } = await import('./lib/evaluator.mjs');
+    const issues = checkStaleDirs();
+    if (issues.length === 0) {
+      console.log('[pipeline] Clean room: OK');
+    } else {
+      console.log('[pipeline] Issues:');
+      issues.forEach(i => console.log(`  ⚠ ${i}`));
+    }
+    return;
+  }
+
+  // Determine which benchmarks to run
+  const toRun = [];
+  if (values.bm1) toRun.push('bm1');
+  if (values.bm2) toRun.push('bm2');
+  if (values.br1) toRun.push('br1');
+  if (toRun.length === 0) {
+    console.log('Specify a benchmark: --bm1, --bm2, --br1, or --list');
+    process.exit(1);
+  }
+
+  // Ensure built before running
+  await ensureBuild();
+
+  // Set model env
+  process.env.PI_MODEL = process.env.PI_MODEL || 'step-3.5-flash';
+  process.env.PI_PROVIDER = process.env.PI_PROVIDER || 'stepfun';
+
+  const allResults = {};
+  for (const key of toRun) {
+    allResults[key] = await runBenchmark(key, {
+      safe: values.safe,
+      timeout: values.timeout ? parseInt(values.timeout) : undefined,
+      output: values.output,
+    });
+  }
+
+  // Summary
+  console.log(`\n${'='.repeat(60)}`);
+  console.log('  DONE');
+  console.log(`${'='.repeat(60)}`);
+  console.log(`  Benchmarks: ${toRun.join(', ')}`);
+  console.log(`  Safe mode: ${values.safe ? 'ON (bash restricted)' : 'OFF'}`);
+  console.log(`  Model: ${process.env.PI_MODEL}`);
+}
+
+main().catch(err => {
+  console.error('[pipeline] Fatal:', err);
+  process.exit(1);
+});
