@@ -80,3 +80,4 @@ export default function contextManagerExtension(pi: any): void {
 
   log.debug("Context-manager extension initialized");
 }
+// Debug listeners added Wed May  6 16:22:35 EAT 2026
