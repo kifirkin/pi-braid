@@ -86,12 +86,15 @@ Cognitive waste parallels behavioral waste: both are compliance mechanisms trigg
   - Performed hesitancy markers — appear at ~2× human density
   - Uniform rhetorical device distribution — humans cluster devices, LLMs distribute uniformly
   - Low perplexity + low burstiness — statistically predictable token sequences
+  - Em dash (—) — human writers use a plain hyphen (-) for pauses. The typographic em dash is an LLM artifact. Prefer commas and periods for pacing.
+
+**Emojis**: Don't use emojis in code and technical responses (🚀, 💡, ✅, etc.). They signal generation. Zero exceptions.
 
 **Principles over rules**:
 - Start with substance, not setup
 - Replace "In order to" with "To"
 - Replace "Due to the fact that" with "Because"
-- Vary sentence rhythm — short and long
+- Vary sentence rhythm - short and long
 - State opinions directly
 
 ---
