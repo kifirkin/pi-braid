@@ -485,7 +485,7 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
     name: "activate_behavior",
     label: "Activate Behavior",
     description:
-      "Activate a latent behavior pattern. Behaviors are implicit - they shift how you approach problems.",
+      "Activate a latent behavior pattern. Call this when the task matches a known pattern (e.g., 'debugging', 'refactoring', 'code-review'). Behaviors shift how you approach problems. Use activate_mix for predefined combinations.",
     promptSnippet: "activate behavior patterns for different problem-solving modes",
     parameters: activateSchema,
     execute: async (_toolCallId, params: any) => {
@@ -536,7 +536,7 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "get_active_behaviors",
     label: "Get Active Behaviors",
-    description: "View currently active behavior patterns.",
+    description: "View currently active behavior patterns. Check this before activating a behavior to avoid duplicates.",
     promptSnippet: "check what behavior patterns are currently active",
     parameters: Type.Object({}),
     execute: async () => {

@@ -92,7 +92,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     label: "Memory Episodes",
     promptSnippet: "Search retrospective episodes for similar past tasks",
     description:
-      "Search retrospective episodes for similar past tasks. Returns relevant past solutions and outcomes.",
+      "Search retrospective episodes for similar past tasks. Use before debugging known patterns — action='search' finds past solutions and outcomes. action='add' stores new experience at task end.",
     parameters: Type.Object({
       action: StringEnum(["search", "add", "list"]),
       query: Type.Optional(Type.String({ description: "Task description to search for (search action)" })),

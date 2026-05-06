@@ -259,13 +259,7 @@ export function createFinalizeTool(callbacks: FinalizeCallbacks = {}) {
     name: "finalize" as const,
     label: "Finalize",
     promptSnippet: "Mark the current task as complete and trigger review",
-    description: `Mark the current task as complete. You MUST call this when:
-- All code is written and tested
-- The solution has been verified
-- No further work is needed
-
-Before finalizing, the work will be reviewed to ensure everything is actually done.
-The task ends after finalize() is called.`,
+    description: `Mark the current task as complete. Call finalize() only when all code is written, tested, and verified — use verify() first. The task ends after finalize() is called.`,
     parameters: finalizeSchema,
     execute: async (
       _toolCallId: string,

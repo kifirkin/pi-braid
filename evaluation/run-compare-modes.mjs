@@ -20,14 +20,127 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 const RESULTS = join(ROOT, 'evaluation', 'results');
 
-// Task directories to clear between modes
-const TASK_DIRS = ['/tmp/bm2-task1', '/tmp/bm2-task2', '/tmp/bm2-task3'];
+// Task directories to reset between modes
+const BM2_DIRS = ['/tmp/bm2-task1', '/tmp/bm2-task2', '/tmp/bm2-task3'];
+const BM3_DIRS = ['/tmp/bm3-task1', '/tmp/bm3-task2', '/tmp/bm3-task3', '/tmp/bm3-task4', '/tmp/bm3-task5'];
 
-function clearTaskDirs() {
-  for (const d of TASK_DIRS) {
+function resetBm2Tasks() {
+  for (const d of BM2_DIRS) {
     try { execSync(`rm -rf "${d}"`, { stdio: 'pipe' }); } catch {}
     mkdirSync(d, { recursive: true });
   }
+  writeFileSync('/tmp/bm2-task1/debounce.js', `function debounce(fn, wait) { return function(...a) {}; }
+module.exports = debounce;
+`);
+  writeFileSync('/tmp/bm2-task2/clone.js', `function deepClone(v) { return v; }
+module.exports = { deepClone };
+`);
+  writeFileSync('/tmp/bm2-task3/emitter.js', `class EventEmitter { on() {} emit() {} off() {} once() {} }
+module.exports = EventEmitter;
+`);
+}
+
+function resetBm3Tasks() {
+  // Task 1: refactor-spread (BUGGY: uses spread operators)
+  mkdirSync('/tmp/bm3-task1', { recursive: true });
+  writeFileSync('/tmp/bm3-task1/utils.js', `const merge = (...objs) => ({ ...objs[0], ...objs[1] });
+const clone = (obj) => ({ ...obj });
+const defaults = (target, ...sources) => ({ ...target, ...sources });
+module.exports = { merge, clone, defaults };
+`);
+  writeFileSync('/tmp/bm3-task1/logger.js', `const log = (level, msg) => ({ level, msg, ...{ timestamp: Date.now() } });
+const format = (entry) => ({ ...entry, formatted: true });
+module.exports = { log, format };
+`);
+
+  // Task 2: consistent-types (buggy: mixed use)
+  mkdirSync('/tmp/bm3-task2', { recursive: true });
+  writeFileSync('/tmp/bm3-task2/api.ts', `interface User { id: number; email: string; createdAt: Date }
+class MockRepo {
+  findByEmail(email: string) { return null; }
+}
+class MockAuth {
+  login(username: string, _password: string) { return \`token-\${username}\`; }
+}
+const auth = new MockAuth();
+const token = auth.login('a@b.com', 'pass');
+console.log('OK:', token);
+`);
+
+  // Task 3: race-condition (BUGGY: no locking)
+  mkdirSync('/tmp/bm3-task3', { recursive: true });
+  writeFileSync('/tmp/bm3-task3/cache.js', `class Cache {
+  constructor() { this.store = new Map(); this.pending = new Map(); }
+  getOrSet(key, factory) {
+    if (this.store.has(key)) return Promise.resolve(this.store.get(key));
+    if (this.pending.has(key)) return this.pending.get(key);
+    const p = factory().then(v => { this.store.set(key, v); this.pending.delete(key); return v; });
+    this.pending.set(key, p);
+    return p;
+  }
+  clear() { this.store.clear(); }
+}
+module.exports = { Cache };
+`);
+  writeFileSync('/tmp/bm3-task3/cache.test.js', `const { Cache } = require('./cache.js');
+const cache = new Cache();
+let factoryCalls = 0;
+function factory() {
+  factoryCalls++;
+  return new Promise(resolve => setTimeout(() => resolve(\`value-\${factoryCalls}\`), 10));
+}
+async function test() {
+  const [a, b, c] = await Promise.all([cache.getOrSet('k', factory), cache.getOrSet('k', factory), cache.getOrSet('k', factory)]);
+  console.log('Results:', a, b, c, 'factory calls:', factoryCalls);
+  if (a === b && b === c && factoryCalls === 1) { console.log('Test passed'); }
+  else { console.log('FAIL: factoryCalls=' + factoryCalls); process.exit(1); }
+}
+test().catch(e => { console.error(e.message); process.exit(1); });
+`);
+
+  // Task 4: memory-leak (BUGGY: off() does nothing)
+  mkdirSync('/tmp/bm3-task4', { recursive: true });
+  writeFileSync('/tmp/bm3-task4/event-bus.js', `class EventBus {
+  constructor() { this.listeners = new Map(); }
+  on(event, handler) {
+    if (!this.listeners.has(event)) this.listeners.set(event, []);
+    this.listeners.get(event).push(handler);
+  }
+  emit(event, ...args) { (this.listeners.get(event) || []).forEach(h => h(...args)); }
+  off(event, handler) { /* BUG: does nothing */ }
+}
+module.exports = { EventBus };
+`);
+  writeFileSync('/tmp/bm3-task4/test-leak.js', `const { EventBus } = require('./event-bus.js');
+const e = new EventBus();
+let count = 0;
+const handler = () => count++;
+for (let i = 0; i < 100; i++) e.on('ping', handler);
+e.off('ping', handler);
+e.emit('ping');
+console.log('Count after off():', count, '(should be 0)');
+if (count === 0) console.log('Test passed'); else { console.log('FAIL'); process.exit(1); }
+`);
+
+  // Task 5: circular-deps (BUGGY: all top-level requires)
+  mkdirSync('/tmp/bm3-task5', { recursive: true });
+  writeFileSync('/tmp/bm3-task5/a.js', `const { b } = require('./b.js');
+class A { getB() { return b; } }
+module.exports = { A, value: 'a' };
+`);
+  writeFileSync('/tmp/bm3-task5/b.js', `const { c } = require('./c.js');
+class B { getC() { return c; } }
+module.exports = { B, value: 'b' };
+`);
+  writeFileSync('/tmp/bm3-task5/c.js', `const { a } = require('./a.js');
+class C { getA() { return a; } }
+module.exports = { C, value: 'c' };
+`);
+  writeFileSync('/tmp/bm3-task5/test-circular.js', `try {
+  require('./a.js');
+  console.log('OK: no crash');
+} catch (e) { console.log('FAIL:', e.message); process.exit(1); }
+`);
 }
 
 function setupNakedDir(ts) {
@@ -82,6 +195,10 @@ async function runMode(mode, benchKey, ts) {
   console.log(`  ▶ ${mode.name}...`);
   const start = Date.now();
 
+  // Reset task files fresh for this mode
+  if (benchKey === 'bm2') resetBm2Tasks();
+  else if (benchKey === 'bm3') resetBm3Tasks();
+
   let output = '';
   try {
     output = execSync(fullCmd, { cwd: ROOT, maxBuffer: 10 * 1024 * 1024, timeout: 600000, encoding: 'utf-8' });
@@ -135,7 +252,6 @@ async function main() {
 
     const results = [];
     for (const mode of MODES) {
-      clearTaskDirs();
       const r = await runMode(mode, benchKey, ts);
       results.push(r);
       summary[benchKey] = results;

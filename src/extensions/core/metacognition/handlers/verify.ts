@@ -314,9 +314,7 @@ export function createVerifyTool() {
     name: "verify",
     promptSnippet: "Verify code, reasoning, or tool results before finalization",
     description:
-      "Verify code, reasoning, plans, or tool results before finalization. " +
-      "Runs syntax, semantic, and result checks. Returns issues + suggestions. " +
-      "Results feed into finalize pre-flight check — high issue counts block finalization.",
+      "Verify code, reasoning, plans, or tool results. Call verify(target='code') after writing code to check correctness. Call verify(target='reasoning') when uncertain about an approach — catches logic errors early. Provide specific criteria for targeted checks.",
 
     parameters: Type.Object(
       {

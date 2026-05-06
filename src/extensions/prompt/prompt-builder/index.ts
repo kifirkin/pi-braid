@@ -251,24 +251,15 @@ const KNOWN_SNIPPETS: Record<string, string> = {
   ls: "List directory contents",
 };
 
-/** Extract first sentence from a tool description. */
-function firstSentence(text: string): string {
-  // Find the first period followed by a space and uppercase letter (second sentence boundary)
-  const end = text.search(/\.\s+[A-Z"`(]/);
-  if (end === -1) {
-    // Single sentence: ensure it ends with a period
-    return text.endsWith(".") ? text : text + ".";
-  }
-  return text.slice(0, end + 1).trim();
-}
 
 function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>): string {
   // pi-native uses promptSnippet (short curated description) from each tool definition.
   // Only tools with a snippet appear in the listing. Fall back to full description.
   const toolNames = tools.map((t) => t.name);
+  // pi-native core tools: KNOWN_SNIPPETS. pi-braid tools: full t.description (source of truth).
   const visibleTools = tools
     .filter((t) => t.name && (t.description || KNOWN_SNIPPETS[t.name]))
-    .map((t) => `- ${t.name}: ${KNOWN_SNIPPETS[t.name] ?? firstSentence(t.description)}`)
+    .map((t) => `- ${t.name}: ${KNOWN_SNIPPETS[t.name] ?? t.description}`)
     .join("\n");
 
   // Collect guidelines matching pi-native's _rebuildSystemPrompt + system-prompt.js logic.
@@ -291,17 +282,6 @@ function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>)
     addGuideline("Prefer grep/find/ls tools over bash for file exploration (faster, respects .gitignore)");
   }
 
-  // Tool-specific promptGuidelines - only for tools known to define them.
-  // These replicate what pi-native collects via _toolPromptGuidelines.get(name).
-  for (const name of toolNames) {
-    const toolGuidelines = PROMPT_GUIDELINES[name as keyof typeof PROMPT_GUIDELINES];
-    if (toolGuidelines) {
-      for (const g of toolGuidelines) {
-        addGuideline(g);
-      }
-    }
-  }
-
   // Always-included guidelines (pi-native)
   addGuideline("Be concise in your responses");
   addGuideline("Show file paths clearly when working with files");
@@ -314,17 +294,7 @@ function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>)
   return `Available tools:\n${visibleTools || "(none)"}\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.${toolGuidelines}`;
 }
 
-// Known promptGuidelines for pi-native core tools (from their tool definitions).
-const PROMPT_GUIDELINES: Record<string, string[]> = {
-  read: ["Use read to examine files instead of cat or sed"],
-  edit: [
-    "Use edit for precise changes (edits[].oldText must match exactly)",
-    "When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls",
-    "Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.",
-    "Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.",
-  ],
-  write: ["Use write only for new files or complete rewrites"],
-};
+
 
 async function reconstructProjectContextSection(cwd: string): Promise<string> {
   // Re-implemented from loadProjectContextFiles (not exported from pi)

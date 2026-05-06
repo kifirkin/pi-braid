@@ -1,5 +1,9 @@
 # Build output
 dist/
+*.d.ts
+*.d.ts.map
+*.js.map
+*.js
 
 # TypeScript incremental build
 *.tsbuildinfo

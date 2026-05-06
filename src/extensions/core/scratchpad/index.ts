@@ -606,7 +606,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
       label: "Scratchpad",
       promptSnippet: "Structured session memory for goal, plan, and decisions",
       description:
-        "Structured session memory: goal, plan, decisions, hypotheses, notes, constraints, learnings, tasks.",
+        "Structured session memory. Use scratchpad(action='add_plan') at the start of multi-step tasks to track goals and decisions. Track hypotheses, learnings, and constraints throughout. Essential for tasks spanning multiple turns.",
       parameters: scratchpadParams,
       execute: scratchpadExecute,
     } as any,

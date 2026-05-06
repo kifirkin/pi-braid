@@ -353,7 +353,7 @@ export function createThinkTool() {
     label: "Think",
     promptSnippet: "Record structured thinking with decision, observation, and reason",
     description:
-      "Record structured thinking: decision (required), observation and reason (optional). Use depth='deep' or ask_utility_model=true to also invoke the session model for a fresh-eyes perspective.",
+      "Record structured thinking. Use think() before irreversible actions (destructive commands, file deletions, service restarts). Use think(depth='deep') for complex decisions with multiple components or trade-offs. Decision field is required; observation and reason are optional.",
     parameters: thinkSchema,
     execute: async (
       _toolCallId: string,

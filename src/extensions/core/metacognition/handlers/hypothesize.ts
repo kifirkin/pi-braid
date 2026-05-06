@@ -40,15 +40,7 @@ export function createHypothesizeTool() {
     label: "Hypothesize",
     promptSnippet: "Generate hypotheses about root causes of a problem",
     description:
-      "Structure your debugging approach by generating hypotheses about root causes. " +
-      "This uses the session model to analyze the problem and suggest hypotheses.\n" +
-      "Use this to:\n" +
-      "- Organize multiple hypotheses about a problem\n" +
-      "- Analyze error messages and stack traces\n" +
-      "- Identify potential issues in code paths\n" +
-      "- Brainstorm PROPER solutions before implementing\n\n" +
-      "Hypotheses should lead to proper solutions.\n" +
-      "Returns structured analysis with ranked hypotheses.",
+      "Generate hypotheses about root causes before selecting a fix. Call this when debugging — a first attempt at fixing something fails. Generates multiple ranked hypotheses using the session model for fresh-eyes analysis.",
     parameters: hypothesizeSchema,
     execute: async (
       _toolCallId: string,

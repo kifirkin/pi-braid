@@ -146,9 +146,8 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
   // Error list tool
   const errorListTool = {
     name: "error_list",
+    description: "List recent errors captured by the system. Use error_stats for patterns by source and type; use error_clear to mark handled errors.",
     label: "Error List",
-    promptSnippet: "List recent errors captured by the system",
-    description: "List recent errors captured by the system",
     parameters: errorListSchema,
     execute: async (_toolCallId: string, params: any) => {
       const entries = await loadErrors();
