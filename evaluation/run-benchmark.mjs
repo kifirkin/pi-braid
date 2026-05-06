@@ -109,7 +109,8 @@ async function runBenchmark(benchKey, options) {
 
       // Try agent's file path if extractCode failed
       if (!code || code.length < 10) {
-        const pathMatch = task.prompt.match(/to ([\/\w.-]+\/[\w.-]+\.js)/);
+        // Match both "to" and "in" paths: "Write ... to /tmp/bm2-task1/debounce.js"
+        const pathMatch = task.prompt.match(/\b(?:to|in)\s+([\/\w.-]+\/[\w.-]+\.js)/);
         const agentFile = pathMatch ? pathMatch[1] : null;
         if (agentFile && existsSync(agentFile)) {
           const agentCode = readFileSync(agentFile, 'utf8');

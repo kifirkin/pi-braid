@@ -38,7 +38,7 @@ console.log('Test 3 passed');
 `.trim(),
 
   'deep-clone': `
-const deepClone = require('./clone.js');
+const { deepClone } = require('./clone.js');
 const assert = require('assert');
 
 // Test 1: primitives
