@@ -15,7 +15,12 @@ import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 const log = createLogger("heartbeat:policies");
 
 export const VERIFICATION_TOOLS = new Set([
-  "grep", "find", "read", "read_document", "browser_content", "web_fetch",
+  "grep",
+  "find",
+  "read",
+  "read_document",
+  "browser_content",
+  "web_fetch",
 ]);
 
 export const WEB_TOOLS = new Set(["web_fetch", "browser_navigate", "browser_content"]);
@@ -45,8 +50,8 @@ export function createDefaultPolicies(
       action: async (ctx: PolicyContext) => {
         sendWhisper(
           "No verification (grep/read/search) in 10+ turns. " +
-          "Consider: Are you sure the implementation is correct? " +
-          "Verify with grep or read to confirm.",
+            "Consider: Are you sure the implementation is correct? " +
+            "Verify with grep or read to confirm.",
         );
         onSignal("verification_reminder", {
           turn: ctx.turnNumber,
@@ -72,7 +77,7 @@ export function createDefaultPolicies(
       action: async () => {
         sendWhisper(
           "8+ turns with no tool calls. Consider using /think to reflect " +
-          "on progress or /finalize if the task is complete.",
+            "on progress or /finalize if the task is complete.",
         );
         onSignal("reflection_reminder", { turn: 0 });
       },
@@ -96,8 +101,8 @@ export function createDefaultPolicies(
       action: async () => {
         sendWhisper(
           "You have recent web-based beliefs but haven't fetched " +
-          "documentation in 15+ turns. Consider verifying claims " +
-          "with web_fetch or browser_navigate.",
+            "documentation in 15+ turns. Consider verifying claims " +
+            "with web_fetch or browser_navigate.",
         );
         onSignal("web_verification_reminder", { turn: 0 });
       },
@@ -120,23 +125,24 @@ export function createDefaultPolicies(
         const state = getState((ctx as any).ctx);
         const fired = state?.metaLearning?.tokenWarningFired;
 
-        const thresholds: Array<{ pct: number; priority: "low" | "medium" | "high"; msg: string }> = [
-          {
-            pct: 70,
-            priority: "low",
-            msg: "Context at 70%. Consider using /finalize or /context_archive to reduce context.",
-          },
-          {
-            pct: 80,
-            priority: "medium",
-            msg: "Context at 80%. Use /context_archive or /finalize NOW.",
-          },
-          {
-            pct: 90,
-            priority: "high",
-            msg: "CRITICAL: Context at 90%. Call finalize(completed=false, summary='[brief status]', tasksRemaining=[...]) RIGHT NOW.",
-          },
-        ];
+        const thresholds: Array<{ pct: number; priority: "low" | "medium" | "high"; msg: string }> =
+          [
+            {
+              pct: 70,
+              priority: "low",
+              msg: "Context at 70%. Consider using /finalize or /context_archive to reduce context.",
+            },
+            {
+              pct: 80,
+              priority: "medium",
+              msg: "Context at 80%. Use /context_archive or /finalize NOW.",
+            },
+            {
+              pct: 90,
+              priority: "high",
+              msg: "CRITICAL: Context at 90%. Call finalize(completed=false, summary='[brief status]', tasksRemaining=[...]) RIGHT NOW.",
+            },
+          ];
 
         for (const { pct, priority, msg } of thresholds) {
           if (percent >= pct && !fired.has(pct)) {

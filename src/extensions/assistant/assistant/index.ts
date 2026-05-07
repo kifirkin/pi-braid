@@ -121,7 +121,9 @@ export default function assistantExtension(pi: ExtensionAPI) {
     applyToolState();
   };
 
-  registerSessionStartHandler(pi, SessionPhase.CoreInit, async (_event, ctx) => restoreToolState(ctx));
+  registerSessionStartHandler(pi, SessionPhase.CoreInit, async (_event, ctx) =>
+    restoreToolState(ctx),
+  );
   pi.on("session_tree", async (_event, ctx) => restoreToolState(ctx));
 
   pi.registerCommand("tools", {

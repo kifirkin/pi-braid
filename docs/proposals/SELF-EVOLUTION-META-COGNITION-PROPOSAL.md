@@ -10,6 +10,7 @@
 ## Problem Statement
 
 pi-braid has meta-cognition infrastructure (R3, R4) but it doesn't actually self-improve. After each task, the agent:
+
 - ❌ Does NOT extract principles from success/failure
 - ❌ Does NOT update its reasoning strategies
 - ❌ Does NOT convert trajectories into reusable patterns
@@ -40,7 +41,7 @@ Key innovation: Works WITHIN A SINGLE RECURRENCE CYCLE
   → Efficient: outperforms SOTA while reducing computational overhead
 ```
 
-**Key insight for pi-braid**: Self-improvement doesn't need expensive multi-turn loops. 
+**Key insight for pi-braid**: Self-improvement doesn't need expensive multi-turn loops.
 Two reflection types (principles + procedures) are sufficient.
 
 ### PRefLexOR (2410.12375) — Recursive Self-Teaching
@@ -57,7 +58,7 @@ with greater depth and reflectivity.
 Key innovation: Iterative refinement in thinking token framework.
 ```
 
-**Key insight for pi-braid**: Even small agents can self-improve if given the right 
+**Key insight for pi-braid**: Even small agents can self-improve if given the right
 recursive framework. pi-braid's lightweight architecture could still benefit.
 
 ### ACE (2510.04618) — Agentic Context Engineering
@@ -76,7 +77,7 @@ Results: +10.6% on agents, +8.6% on finance benchmarks.
 AppWorld leaderboard: matches top-ranked agent.
 ```
 
-**Key insight for pi-braid**: Contexts should be living documents that evolve 
+**Key insight for pi-braid**: Contexts should be living documents that evolve
 through experience, not static templates.
 
 ### GenericAgent Self-Evolution (2604.17091)
@@ -91,7 +92,7 @@ Self-evolution in GenericAgent:
 Simple but powerful: Self-evolution = trajectory verification → SOP extraction → retrieval
 ```
 
-**Key insight for pi-braid**: This is implementable NOW. We already track tool call 
+**Key insight for pi-braid**: This is implementable NOW. We already track tool call
 sequences. We just need to verify outcomes and extract SOPs.
 
 ---
@@ -139,7 +140,7 @@ REFLECTION TYPE 1: PRINCIPLE-BASED (from mistakes)
   Trigger: Task failed OR sub-optimal outcome
   Question: "What general rule should I follow to avoid this error?"
   Output: Updated principle in belief store
-  
+
   Example:
     - Task: Bug fix was wrong
     - Principle: "Always verify fix by running failing test BEFORE editing"
@@ -149,7 +150,7 @@ REFLECTION TYPE 2: PROCEDURAL (from success)
   Trigger: Task succeeded with good outcome
   Question: "What specific steps led to success?"
   Output: SOP in procedural memory
-  
+
   Example:
     - Task: Fixed flatten bug
     - SOP: "1. Identify symptom file → 2. Run failing test → 3. Locate root cause → 4. Apply minimal fix → 5. Verify"
@@ -159,6 +160,7 @@ REFLECTION TYPE 2: PROCEDURAL (from success)
 ### Integration Notes (Parallel Work)
 
 The other pi-braid agent is implementing:
+
 ```
 Tier 1 (Hours 1-4):
   1.1 Activate heartbeat policy engine ◄── BLOCKER (being fixed)
@@ -173,8 +175,9 @@ Tier 3 (Hours 7-9):
 ```
 
 Our self-evolution plan integrates naturally:
+
 - Trajectory verification → uses 1.2 (tool tracking wired) when ready
-- SOP extraction → uses 1.3 (three-memory wired) when ready  
+- SOP extraction → uses 1.3 (three-memory wired) when ready
 - Principle extraction → uses 1.5 (belief store wired) when ready
 - Context evolution (ACE) → uses 3.2 (nudge quality fixed) when ready
 
@@ -185,6 +188,7 @@ Our self-evolution plan integrates naturally:
 ### Phase 1: Trajectory Verification (Week 1)
 
 **Day 1-2**: Add outcome tracking to heartbeat
+
 ```
 - Track task completion status
 - Record tool call sequence
@@ -194,6 +198,7 @@ Heartbeat: After task, flag trajectory for verification
 ```
 
 **Day 3-4**: Implement SOP extraction
+
 ```
 - Detect successful trajectories
 - Extract step sequence as SOP
@@ -202,6 +207,7 @@ Heartbeat: After task, flag trajectory for verification
 ```
 
 **Day 5**: Implement principle extraction
+
 ```
 - Detect failed/sub-optimal trajectories
 - Ask: "What rule should I follow?"
@@ -212,6 +218,7 @@ Heartbeat: After task, flag trajectory for verification
 ### Phase 2: Retrieval and Suggestion (Week 2)
 
 **Day 6-7**: SOP retrieval on task start
+
 ```
 - On new task, analyze problem type
 - Query procedural memory for similar SOPs
@@ -220,6 +227,7 @@ Heartbeat: After task, flag trajectory for verification
 ```
 
 **Day 8-9**: Principle retrieval during execution
+
 ```
 - Monitor for principle violation patterns
 - If detected: inject principle as hint
@@ -227,6 +235,7 @@ Heartbeat: After task, flag trajectory for verification
 ```
 
 **Day 10**: Metrics and validation
+
 ```
 - SOP retrieval rate
 - Principle adherence rate
@@ -236,6 +245,7 @@ Heartbeat: After task, flag trajectory for verification
 ### Phase 3: ACE Context Evolution (Week 3)
 
 **Day 11-12**: Generate playbook from task
+
 ```
 - Build structured playbook structure
 - Include: task type, tools used, strategies, outcome
@@ -243,6 +253,7 @@ Heartbeat: After task, flag trajectory for verification
 ```
 
 **Day 13-14**: Reflect and curate
+
 ```
 - After task: self-critique (ACE Reflect)
 - Update playbook with lessons (ACE Curate)
@@ -252,6 +263,7 @@ Heartbeat: After task, flag trajectory for verification
 ### Phase 4: Full Integration (Week 4)
 
 **Day 15-18**: End-to-end self-evolution loop
+
 ```
 - Full pipeline: execute → verify → extract → retrieve → evolve
 - Integrate with all existing extensions
@@ -259,6 +271,7 @@ Heartbeat: After task, flag trajectory for verification
 ```
 
 **Day 19-20**: Validation
+
 ```
 - Compare: baseline vs. self-evolution enabled
 - Measure: task success, token usage, trajectory quality
@@ -269,25 +282,25 @@ Heartbeat: After task, flag trajectory for verification
 
 ## Metrics
 
-| Metric | Baseline | Target | Method |
-|--------|----------|--------|--------|
-| SOP extraction rate | N/A | >30% of tasks | Count extracted SOPs / total tasks |
-| Principle extraction rate | N/A | >10% of tasks | Count extracted principles / total failures |
-| SOP retrieval adherence | N/A | >50% | Retrieved SOPs that were accepted |
-| Task improvement (self-evo) | baseline | >10% | Hard task success with self-evolution |
-| Token efficiency | current | >80% of baseline | Tokens used with memory compression |
+| Metric                      | Baseline | Target           | Method                                      |
+| --------------------------- | -------- | ---------------- | ------------------------------------------- |
+| SOP extraction rate         | N/A      | >30% of tasks    | Count extracted SOPs / total tasks          |
+| Principle extraction rate   | N/A      | >10% of tasks    | Count extracted principles / total failures |
+| SOP retrieval adherence     | N/A      | >50%             | Retrieved SOPs that were accepted           |
+| Task improvement (self-evo) | baseline | >10%             | Hard task success with self-evolution       |
+| Token efficiency            | current  | >80% of baseline | Tokens used with memory compression         |
 
 ---
 
 ## Key Papers Referenced
 
-| Paper | arXiv | Key Contribution |
-|-------|-------|-----------------|
-| MARS | 2601.11974 | Two reflection types: principle-based + procedural, single-cycle self-improvement |
-| PRefLexOR | 2410.12375 | Recursive self-teaching, knowledge graph from traces, preference optimization |
-| ACE | 2510.04618 | Contexts as evolving playbooks: generate, reflect, curate |
-| GenericAgent | 2604.17091 | Trajectory verification → SOP extraction → retrieval |
-| HIERARCHICAL MEMORY | [prior proposal] | Memory infrastructure for SOP storage and retrieval |
+| Paper               | arXiv            | Key Contribution                                                                  |
+| ------------------- | ---------------- | --------------------------------------------------------------------------------- |
+| MARS                | 2601.11974       | Two reflection types: principle-based + procedural, single-cycle self-improvement |
+| PRefLexOR           | 2410.12375       | Recursive self-teaching, knowledge graph from traces, preference optimization     |
+| ACE                 | 2510.04618       | Contexts as evolving playbooks: generate, reflect, curate                         |
+| GenericAgent        | 2604.17091       | Trajectory verification → SOP extraction → retrieval                              |
+| HIERARCHICAL MEMORY | [prior proposal] | Memory infrastructure for SOP storage and retrieval                               |
 
 ---
 
@@ -297,8 +310,9 @@ Heartbeat: After task, flag trajectory for verification
 
 ---
 
-*Related: HIERARCHICAL-MEMORY-COMPRESSION-PROPOSAL.md (this folder)*  
-*Related: pi-braid/docs/RESEARCH-MASTER.md*
+_Related: HIERARCHICAL-MEMORY-COMPRESSION-PROPOSAL.md (this folder)_  
+_Related: pi-braid/docs/RESEARCH-MASTER.md_
+
 ### ClawTrace (2604.23853) — Cost-Aware Skill Distillation [NEW]
 
 ```
@@ -312,6 +326,7 @@ CostCraft distillation pipeline produces 3 patch types:
 ```
 
 **⚠️ CRITICAL FINDING**:
+
 - **Prune patches transfer across tasks**: 32% median cost reduction on unrelated benchmarks
 - **Preserve patches cause regressions**: trained on benchmark-specific conventions, fail on new task types
 - **Both** cost attribution and prune patches independently reduce quality regressions

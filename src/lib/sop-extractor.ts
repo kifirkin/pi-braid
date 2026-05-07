@@ -126,7 +126,8 @@ function detectPattern(tools: string[]): string {
   // Fallback: describe by phases
   const phases = [...new Set(tools.map((t) => TOOL_PHASES[t] ?? "other").filter(Boolean))];
   if (phases.length > 1) return phases.join("-").replace(/\b\w/g, (c) => c.toUpperCase());
-  if (phases.length === 1) return `Focused ${phases[0].charAt(0).toUpperCase() + phases[0].slice(1)}`;
+  if (phases.length === 1)
+    return `Focused ${phases[0].charAt(0).toUpperCase() + phases[0].slice(1)}`;
   return "General workflow";
 }
 
@@ -191,19 +192,20 @@ export function extractSOP(input: ExtractionInput): ExtractedSOP {
   for (const t of trajectory) {
     const phase = TOOL_PHASES[t.toolName] ?? "other";
     if (phase !== lastPhase) {
-      const action = t.toolName === "edit"
-        ? `Edit files to fix issues`
-        : t.toolName === "read"
-          ? `Read files to understand current state`
-          : t.toolName === "bash"
-            ? `Run commands to build/test/verify`
-            : t.toolName === "write"
-              ? `Create new files with correct content`
-              : t.toolName === "grep" || t.toolName === "find"
-                ? `Search codebase for relevant patterns`
-                : t.toolName === "finalize"
-                  ? `Complete and finalize the task`
-                  : `Use ${t.toolName} for ${phase}`;
+      const action =
+        t.toolName === "edit"
+          ? `Edit files to fix issues`
+          : t.toolName === "read"
+            ? `Read files to understand current state`
+            : t.toolName === "bash"
+              ? `Run commands to build/test/verify`
+              : t.toolName === "write"
+                ? `Create new files with correct content`
+                : t.toolName === "grep" || t.toolName === "find"
+                  ? `Search codebase for relevant patterns`
+                  : t.toolName === "finalize"
+                    ? `Complete and finalize the task`
+                    : `Use ${t.toolName} for ${phase}`;
       if (!steps.includes(action)) {
         steps.push(action);
       }

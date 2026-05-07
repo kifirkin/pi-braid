@@ -6,12 +6,12 @@ Metacognitive extension suite for [pi-coding-agent](https://github.com/mariozech
 
 ## Start Here
 
-| Document | Purpose |
-|---|---|
-| [IMPLEMENTATION.md](IMPLEMENTATION.md) | Master plan — proposals, priorities, P0-P3 execution order |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | System design overview |
-| [MODULES.md](MODULES.md) | Module system + toggle API |
-| [WHAT-IS-MISSING.md](WHAT-IS-MISSING.md) | Gap analysis + backlog |
+| Document                                 | Purpose                                                    |
+| ---------------------------------------- | ---------------------------------------------------------- |
+| [IMPLEMENTATION.md](IMPLEMENTATION.md)   | Master plan — proposals, priorities, P0-P3 execution order |
+| [ARCHITECTURE.md](ARCHITECTURE.md)       | System design overview                                     |
+| [MODULES.md](MODULES.md)                 | Module system + toggle API                                 |
+| [WHAT-IS-MISSING.md](WHAT-IS-MISSING.md) | Gap analysis + backlog                                     |
 
 ---
 
@@ -40,18 +40,18 @@ npm run lint      # ESLint
 
 ## Top-Level Docs
 
-| File | Purpose |
-|---|---|
-| [README.md](README.md) | This file |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | System design |
-| [MODULES.md](MODULES.md) | Module system |
-| [EXTENSION-HOOKS.md](EXTENSION-HOOKS.md) | How to write extensions |
-| [ERRORS.md](ERRORS.md) | Error reference |
-| [IMPLEMENTATION.md](IMPLEMENTATION.md) | Master implementation plan |
-| [WHAT-IS-MISSING.md](WHAT-IS-MISSING.md) | Gap analysis |
-| [BENCHMARKS.md](BENCHMARKS.md) | Benchmark suite |
-| [SKILLS.md](SKILLS.md) | Skills system |
-| [CHANGELOG.md](CHANGELOG.md) | Version history |
+| File                                     | Purpose                    |
+| ---------------------------------------- | -------------------------- |
+| [README.md](README.md)                   | This file                  |
+| [ARCHITECTURE.md](ARCHITECTURE.md)       | System design              |
+| [MODULES.md](MODULES.md)                 | Module system              |
+| [EXTENSION-HOOKS.md](EXTENSION-HOOKS.md) | How to write extensions    |
+| [ERRORS.md](ERRORS.md)                   | Error reference            |
+| [IMPLEMENTATION.md](IMPLEMENTATION.md)   | Master implementation plan |
+| [WHAT-IS-MISSING.md](WHAT-IS-MISSING.md) | Gap analysis               |
+| [BENCHMARKS.md](BENCHMARKS.md)           | Benchmark suite            |
+| [SKILLS.md](SKILLS.md)                   | Skills system              |
+| [CHANGELOG.md](CHANGELOG.md)             | Version history            |
 
 ## Other Docs
 

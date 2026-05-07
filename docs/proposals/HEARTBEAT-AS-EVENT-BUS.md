@@ -2,13 +2,14 @@
 
 **Type**: Architecture Enhancement  
 **Based on**: Timer proposal + heartbeat scheduler architecture + event-driven design  
-**Related**: AGENT-TIMER-POMODORO.md  
+**Related**: AGENT-TIMER-POMODORO.md
 
 ---
 
 ## The Pattern Already Exists
 
 The heartbeat scheduler is **already** an event bus. Every N turns, it:
+
 1. Emits a tick event
 2. Fires cognitive modules
 3. Evaluates conditions
@@ -49,33 +50,30 @@ EVENT-DRIVEN (unified):
 // All asynchronous events through one bus
 
 type AgentEvent =
-  | { type: 'timer_fire'; timer: ScheduledTimer; payload: string }
-  | { type: 'memory_evict'; belief: Belief; reason: string }
-  | { type: 'memory_conflict'; beliefs: [Belief, Belief]; conflict_type: string }
-  | { type: 'heuristic_update'; heuristic: Heuristic; delta: Delta }
-  | { type: 'turn_complete'; turns: number; outcome: Outcome }
-  | { type: 'context_full'; usage_percent: number }
-  | { type: 'belief_conflict'; beliefs: [Belief, Belief] }
-  | { type: 'policy_violation'; policy: Policy; context: Context }
-  | { type: 'task_progress'; task: Task; percent: number };
+  | { type: "timer_fire"; timer: ScheduledTimer; payload: string }
+  | { type: "memory_evict"; belief: Belief; reason: string }
+  | { type: "memory_conflict"; beliefs: [Belief, Belief]; conflict_type: string }
+  | { type: "heuristic_update"; heuristic: Heuristic; delta: Delta }
+  | { type: "turn_complete"; turns: number; outcome: Outcome }
+  | { type: "context_full"; usage_percent: number }
+  | { type: "belief_conflict"; beliefs: [Belief, Belief] }
+  | { type: "policy_violation"; policy: Policy; context: Context }
+  | { type: "task_progress"; task: Task; percent: number };
 
 interface EventBus {
-  on<T extends AgentEvent['type']>(
+  on<T extends AgentEvent["type"]>(
     event: T,
-    handler: (event: Extract<AgentEvent, { type: T }>) => void
+    handler: (event: Extract<AgentEvent, { type: T }>) => void,
   ): void;
 
   emit(event: AgentEvent): void;
 
-  once<T extends AgentEvent['type']>(
+  once<T extends AgentEvent["type"]>(
     event: T,
-    handler: (event: Extract<AgentEvent, { type: T }>) => void
+    handler: (event: Extract<AgentEvent, { type: T }>) => void,
   ): void;
 
-  off<T extends AgentEvent['type']>(
-    event: T,
-    handler: Function
-  ): void;
+  off<T extends AgentEvent["type"]>(event: T, handler: Function): void;
 }
 ```
 
@@ -129,9 +127,9 @@ type EventHandler<T extends AgentEvent = AgentEvent> = (event: T) => void;
 class EventBus {
   private handlers: Map<string, Set<EventHandler>> = new Map();
 
-  on<T extends AgentEvent['type']>(
+  on<T extends AgentEvent["type"]>(
     eventType: T,
-    handler: EventHandler<Extract<AgentEvent, { type: T }>>
+    handler: EventHandler<Extract<AgentEvent, { type: T }>>,
   ): void {
     if (!this.handlers.has(eventType)) {
       this.handlers.set(eventType, new Set());
@@ -152,9 +150,9 @@ class EventBus {
     }
   }
 
-  off<T extends AgentEvent['type']>(
+  off<T extends AgentEvent["type"]>(
     eventType: T,
-    handler: EventHandler<Extract<AgentEvent, { type: T }>>
+    handler: EventHandler<Extract<AgentEvent, { type: T }>>,
   ): void {
     this.handlers.get(eventType)?.delete(handler as EventHandler);
   }
@@ -168,7 +166,7 @@ export const eventBus = new EventBus();
 ```typescript
 // src/extensions/timer/index.ts
 
-import { eventBus } from '../../lib/event-bus';
+import { eventBus } from "../../lib/event-bus";
 
 class TimerManager {
   private timers: Map<string, ScheduledTimer> = new Map();
@@ -190,9 +188,9 @@ class TimerManager {
 
         // Emit event — heartbeat handles it
         eventBus.emit({
-          type: 'timer_fire',
+          type: "timer_fire",
           timer,
-          payload: `⏰ Timer "${timer.reason}" has fired. Action required.`
+          payload: `⏰ Timer "${timer.reason}" has fired. Action required.`,
         });
       }
     }
@@ -205,7 +203,7 @@ class TimerManager {
 ```typescript
 // src/extensions/heartbeat-scheduler/index.ts
 
-import { eventBus } from '../../lib/event-bus';
+import { eventBus } from "../../lib/event-bus";
 
 function heartbeatTick(state: SchedulerState): void {
   const now = Date.now();
@@ -213,9 +211,9 @@ function heartbeatTick(state: SchedulerState): void {
 
   // Emit tick event — modules respond via handlers
   eventBus.emit({
-    type: 'turn_complete',
+    type: "turn_complete",
     turn: state.turnCount,
-    outcome: state.lastOutcome
+    outcome: state.lastOutcome,
   });
 
   // Modules register handlers, not called directly
@@ -225,7 +223,7 @@ function heartbeatTick(state: SchedulerState): void {
 }
 
 // Module registration (in each module's init)
-eventBus.on('turn_complete', ({ turn }) => {
+eventBus.on("turn_complete", ({ turn }) => {
   timerManager.checkExpired(Date.now());
 });
 ```
@@ -238,31 +236,31 @@ Every async event can force a new agent turn via one mechanism:
 
 ```typescript
 // In heartbeat tick:
-eventBus.on('timer_fire', ({ payload }) => {
+eventBus.on("timer_fire", ({ payload }) => {
   // Inject into agent context → forces new turn
   injectIntoContext({
-    type: 'system',
-    role: 'system',
+    type: "system",
+    role: "system",
     content: payload,
-    metadata: { source: 'timer', display: 'explicit' }
+    metadata: { source: "timer", display: "explicit" },
   });
 });
 
-eventBus.on('memory_evict', ({ belief, reason }) => {
+eventBus.on("memory_evict", ({ belief, reason }) => {
   injectIntoContext({
-    type: 'system',
-    role: 'system',
+    type: "system",
+    role: "system",
     content: `[MEMORY EVICTION] ${belief.entity}:${belief.relation}:${belief.value} — ${reason}`,
-    metadata: { source: 'memory', display: 'explicit' }
+    metadata: { source: "memory", display: "explicit" },
   });
 });
 
-eventBus.on('belief_conflict', ({ beliefs }) => {
+eventBus.on("belief_conflict", ({ beliefs }) => {
   injectIntoContext({
-    type: 'system',
-    role: 'system',
+    type: "system",
+    role: "system",
     content: `[BELIEF CONFLICT DETECTED] ${beliefs[0].value} vs ${beliefs[1].value}`,
-    metadata: { source: 'belief_store', display: 'explicit' }
+    metadata: { source: "belief_store", display: "explicit" },
   });
 });
 ```
@@ -271,21 +269,21 @@ eventBus.on('belief_conflict', ({ beliefs }) => {
 
 ## All Async Mechanisms as Events
 
-| Mechanism | Event | Forces Turn? | Handler |
-|-----------|-------|-------------|---------|
-| Timer fires | `timer_fire` | ✅ | Inject reminder |
-| Memory TTL expires | `memory_evict` | Optional | Log / inject |
-| Belief conflict detected | `belief_conflict` | ✅ | Inject warning |
-| Heuristic update | `heuristic_update` | Optional | Log / reflect |
-| Context full | `context_full` | ✅ | Inject compression request |
-| Policy violation | `policy_violation` | ✅ | Inject enforcement |
-| Task progress milestone | `task_progress` | Optional | Inject status |
+| Mechanism                | Event              | Forces Turn? | Handler                    |
+| ------------------------ | ------------------ | ------------ | -------------------------- |
+| Timer fires              | `timer_fire`       | ✅           | Inject reminder            |
+| Memory TTL expires       | `memory_evict`     | Optional     | Log / inject               |
+| Belief conflict detected | `belief_conflict`  | ✅           | Inject warning             |
+| Heuristic update         | `heuristic_update` | Optional     | Log / reflect              |
+| Context full             | `context_full`     | ✅           | Inject compression request |
+| Policy violation         | `policy_violation` | ✅           | Inject enforcement         |
+| Task progress milestone  | `task_progress`    | Optional     | Inject status              |
 
 ---
 
 ## The Core Principle
 
-> *Everything asynchronous forces turns the same way: through explicit event injection into the agent context.*
+> _Everything asynchronous forces turns the same way: through explicit event injection into the agent context._
 
 The heartbeat is not the "thing that fires modules." It's the event loop that routes events to handlers, and handlers decide whether to force a new turn.
 
@@ -301,6 +299,7 @@ eventBus.emit('timer_fire', {payload}) → injectIntoContext() → new turn
 ```
 
 But the same pattern works for:
+
 - Memory eviction (TTL)
 - Belief conflict (dedup)
 - Heuristic updates (reflection)
@@ -314,5 +313,5 @@ But the same pattern works for:
 
 ---
 
-*Related: AGENT-TIMER-POMODORO.md*  
-*Related: HEARTBEAT-SCHEDULER-INTEGRATION (parallel agent working on this)*
+_Related: AGENT-TIMER-POMODORO.md_  
+_Related: HEARTBEAT-SCHEDULER-INTEGRATION (parallel agent working on this)_

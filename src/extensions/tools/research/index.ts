@@ -16,22 +16,30 @@ import { Type } from "typebox";
 import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 const researchSchema = Type.Object({
-  action: Type.String({ 
+  action: Type.String({
     enum: ["history", "compare", "propose", "experiment"],
-    description: "Research action to perform" 
+    description: "Research action to perform",
   }),
-  query: Type.Optional(Type.String({ 
-    description: "Search query for history (e.g., 'think silently')" 
-  })),
-  variant_a: Type.Optional(Type.String({ 
-    description: "Variant A text for comparison" 
-  })),
-  variant_b: Type.Optional(Type.String({ 
-    description: "Variant B text for comparison" 
-  })),
-  evidence: Type.Optional(Type.String({ 
-    description: "Evidence or observations to base proposal on" 
-  })),
+  query: Type.Optional(
+    Type.String({
+      description: "Search query for history (e.g., 'think silently')",
+    }),
+  ),
+  variant_a: Type.Optional(
+    Type.String({
+      description: "Variant A text for comparison",
+    }),
+  ),
+  variant_b: Type.Optional(
+    Type.String({
+      description: "Variant B text for comparison",
+    }),
+  ),
+  evidence: Type.Optional(
+    Type.String({
+      description: "Evidence or observations to base proposal on",
+    }),
+  ),
 });
 
 export default function researchExtension(pi: ExtensionAPI) {
@@ -39,7 +47,7 @@ export default function researchExtension(pi: ExtensionAPI) {
     name: "research",
     label: "Research",
     promptSnippet: "Analyze system prompt evolution and propose changes",
-    description: 
+    description:
       "Research tool for analyzing system prompt evolution, comparing variants, " +
       "and proposing evidence-based changes. Use 'history' to query prompt changes, " +
       "'compare' to A/B test variants, 'propose' to generate improvements.",
@@ -59,7 +67,12 @@ export default function researchExtension(pi: ExtensionAPI) {
           case "compare": {
             if (!params.variant_a || !params.variant_b) {
               return {
-                content: [{ type: "text" as const, text: "Error: variant_a and variant_b required for comparison" }],
+                content: [
+                  {
+                    type: "text" as const,
+                    text: "Error: variant_a and variant_b required for comparison",
+                  },
+                ],
                 details: { error: "Missing variants" },
               };
             }
@@ -95,7 +108,12 @@ export default function researchExtension(pi: ExtensionAPI) {
         }
       } catch (error) {
         return {
-          content: [{ type: "text" as const, text: `Research error: ${error instanceof Error ? error.message : String(error)}` }],
+          content: [
+            {
+              type: "text" as const,
+              text: `Research error: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
           details: { error: String(error) },
         };
       }
@@ -156,9 +174,10 @@ async function analyzePromptHistory(query: string): Promise<HistoryEntry[]> {
 
   // Filter by query
   if (query && query !== "think silently") {
-    return timeline.filter((entry) => 
-      entry.changes.some((change) => change.toLowerCase().includes(query.toLowerCase())) ||
-      entry.message.toLowerCase().includes(query.toLowerCase())
+    return timeline.filter(
+      (entry) =>
+        entry.changes.some((change) => change.toLowerCase().includes(query.toLowerCase())) ||
+        entry.message.toLowerCase().includes(query.toLowerCase()),
     );
   }
 
@@ -169,7 +188,7 @@ function formatHistoryResult(entries: HistoryEntry[]): string {
   const lines: string[] = [];
   lines.push("# System Prompt History");
   lines.push("");
-  
+
   for (const entry of entries) {
     lines.push(`## ${entry.commit} (${entry.date})`);
     lines.push(`**Message:** ${entry.message}`);
@@ -207,9 +226,10 @@ function compareVariants(a: string, b: string): ComparisonResult {
     differences.push("Variant A specifies 'before taking actions', Variant B does not");
   }
 
-  const recommendation = differences.length === 0 
-    ? "No significant differences detected"
-    : `Found ${differences.length} difference(s). Simpler variants typically perform better.`;
+  const recommendation =
+    differences.length === 0
+      ? "No significant differences detected"
+      : `Found ${differences.length} difference(s). Simpler variants typically perform better.`;
 
   return { variant_a: a, variant_b: b, differences, recommendation };
 }
@@ -248,7 +268,8 @@ function proposeChange(evidence: string): ProposalResult {
 Your tools are keys to proper solutions, your skills are instructions on how to open doors with those keys - use them extensively to access your full capability.
 Think silently before taking actions.\`;`;
 
-  const rationale = `User reports better performance with simpler "think silently before taking actions" variant. ` +
+  const rationale =
+    `User reports better performance with simpler "think silently before taking actions" variant. ` +
     `Evidence: Manual restoration after "revive silent-thinking theory" commit. ` +
     `Git history shows 6+ variants evolved, with simpler forms predating more complex ones.`;
 

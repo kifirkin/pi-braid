@@ -94,37 +94,37 @@ See [docs/MODULES.md](docs/MODULES.md) for the full module catalog.
 
 ## Extension Overview
 
-| Category | Extension | Purpose |
-|----------|-----------|---------|
-| **Cognitive** | enforcement | Belief policy engine, structured signals, sycophancy detection |
-| | cognitive-systems | Memory recall, `explore_paths`, `hypothesize`, `memory_*` tools |
-| | metacognition | `think`, `verify`, `hypothesize`, `scratchpad` |
-| | reasoning | Reasoning quality metrics |
-| **Memory** | three-memory-stores | Episodic, heuristic, and tool-reliability persistence |
-| | context-lifecycle | S-MMU context management with proposal system |
-| | session-recall | Cross-session context recall |
-| | context-manager | Compaction, rotation, archive, pruning |
-| **Heartbeat** | heartbeat-scheduler | Token budgets, auto-finalize, dreamer, recaller, evolver |
-| | analytics | Session metrics, A/B variants, tool reliability |
-| **Core** | prompt-builder | System prompt construction with cognitive context |
-| | polyfill | Settings and keybindings compatibility |
-| | scratchpad | Structured session memory and task management |
-| **Retry** | retry | Error capture, retry state management |
-| | error-capture | Error classification and persistence |
-| **Tools** | healthcheck | System diagnostics |
-| | timer | Async timers with reminder delivery |
-| | latent-activator | Behavior pattern activation |
-| | observatory | Real-time monitoring dashboard |
-| | diff | File and git diff with structured output |
-| | research | Web search and fact verification |
-| | system-monitor | CPU, memory, disk metrics |
-| **Infra** | assistant | Agent interaction helpers |
-| | feedback | Nudge quality feedback loop |
-| | evolve | Self-evolution with git integration |
-| | watchdog | Agent health monitoring |
-| | rate-limiter | API rate limiting |
-| | topic-drift | Topic anchor tracking |
-| | verification | Claim verification, decomposition checks |
+| Category      | Extension           | Purpose                                                         |
+| ------------- | ------------------- | --------------------------------------------------------------- |
+| **Cognitive** | enforcement         | Belief policy engine, structured signals, sycophancy detection  |
+|               | cognitive-systems   | Memory recall, `explore_paths`, `hypothesize`, `memory_*` tools |
+|               | metacognition       | `think`, `verify`, `hypothesize`, `scratchpad`                  |
+|               | reasoning           | Reasoning quality metrics                                       |
+| **Memory**    | three-memory-stores | Episodic, heuristic, and tool-reliability persistence           |
+|               | context-lifecycle   | S-MMU context management with proposal system                   |
+|               | session-recall      | Cross-session context recall                                    |
+|               | context-manager     | Compaction, rotation, archive, pruning                          |
+| **Heartbeat** | heartbeat-scheduler | Token budgets, auto-finalize, dreamer, recaller, evolver        |
+|               | analytics           | Session metrics, A/B variants, tool reliability                 |
+| **Core**      | prompt-builder      | System prompt construction with cognitive context               |
+|               | polyfill            | Settings and keybindings compatibility                          |
+|               | scratchpad          | Structured session memory and task management                   |
+| **Retry**     | retry               | Error capture, retry state management                           |
+|               | error-capture       | Error classification and persistence                            |
+| **Tools**     | healthcheck         | System diagnostics                                              |
+|               | timer               | Async timers with reminder delivery                             |
+|               | latent-activator    | Behavior pattern activation                                     |
+|               | observatory         | Real-time monitoring dashboard                                  |
+|               | diff                | File and git diff with structured output                        |
+|               | research            | Web search and fact verification                                |
+|               | system-monitor      | CPU, memory, disk metrics                                       |
+| **Infra**     | assistant           | Agent interaction helpers                                       |
+|               | feedback            | Nudge quality feedback loop                                     |
+|               | evolve              | Self-evolution with git integration                             |
+|               | watchdog            | Agent health monitoring                                         |
+|               | rate-limiter        | API rate limiting                                               |
+|               | topic-drift         | Topic anchor tracking                                           |
+|               | verification        | Claim verification, decomposition checks                        |
 
 ## Development
 

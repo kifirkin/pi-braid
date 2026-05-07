@@ -10,32 +10,32 @@
 
 ## System Status: v0.2.0-alpha.2
 
-| Dimension | Status |
-|---|---|
-| Core extensions | 13 modules, ~35 sub-extensions |
-| Tests | 34/34 passing |
-| Build | 0 errors |
-| Docs | 12 top-level + 42 extension + 15 proposals |
-| Modules | core, cognitive, memory, heartbeat, retry, prompt, tools (13 total) |
+| Dimension       | Status                                                              |
+| --------------- | ------------------------------------------------------------------- |
+| Core extensions | 13 modules, ~35 sub-extensions                                      |
+| Tests           | 34/34 passing                                                       |
+| Build           | 0 errors                                                            |
+| Docs            | 12 top-level + 42 extension + 15 proposals                          |
+| Modules         | core, cognitive, memory, heartbeat, retry, prompt, tools (13 total) |
 
 ### Recently Implemented (v0.2.0-alpha.2)
 
-| Feature | Commit | Status |
-|---|---|---|
-| RepE structured contrast vectors (4 modes) | `dc85563` | ✅ Done |
-| Structured output format | `f745364` | 🔶 Removed (caused tool-call errors) |
-| resources_discover handler (bundled skills) | `2ac5834` | ✅ Done |
-| Browser/ → tools/ (CDP, web-fetch, vision) | `58b1844` | ✅ Done |
-| Compaction v0.26 (queued message preservation) | `b765756` | ✅ Done |
-| P1.7 session isolation + deriveProjectId (repo-level memory) | `f547ca4` | ✅ Done |
-| P2.1 auto-trigger degrade detection | `9a41ec5` | ✅ Done |
-| P2.2 event taxonomy (agent-events.ts, 10 domains) | `ffd1b22` | ✅ Done |
-| P2.3 memory boundary (P2.3+P3.4 HaluMem: -0.7 cross-project penalty, contamination signal) | `ffd1b22` | ✅ Done |
-| Recursive Verification Tool (verify tool: heuristic + LLM, 3 depth modes) | `2f7432f` | ✅ Done |
-| ODAR Fast/Slow Routing (estimateComplexity + auto_depth in think tool) | `e7c6793` | ✅ Done |
-| Sycophancy detector | prior | ✅ Done |
-| Repl verbose output (shows code + result) | `09b2644` | ✅ Done |
-| Hypothesize throws on failure (analytics) | `a8b37eb` | ✅ Done |
+| Feature                                                                                    | Commit    | Status                               |
+| ------------------------------------------------------------------------------------------ | --------- | ------------------------------------ |
+| RepE structured contrast vectors (4 modes)                                                 | `dc85563` | ✅ Done                              |
+| Structured output format                                                                   | `f745364` | 🔶 Removed (caused tool-call errors) |
+| resources_discover handler (bundled skills)                                                | `2ac5834` | ✅ Done                              |
+| Browser/ → tools/ (CDP, web-fetch, vision)                                                 | `58b1844` | ✅ Done                              |
+| Compaction v0.26 (queued message preservation)                                             | `b765756` | ✅ Done                              |
+| P1.7 session isolation + deriveProjectId (repo-level memory)                               | `f547ca4` | ✅ Done                              |
+| P2.1 auto-trigger degrade detection                                                        | `9a41ec5` | ✅ Done                              |
+| P2.2 event taxonomy (agent-events.ts, 10 domains)                                          | `ffd1b22` | ✅ Done                              |
+| P2.3 memory boundary (P2.3+P3.4 HaluMem: -0.7 cross-project penalty, contamination signal) | `ffd1b22` | ✅ Done                              |
+| Recursive Verification Tool (verify tool: heuristic + LLM, 3 depth modes)                  | `2f7432f` | ✅ Done                              |
+| ODAR Fast/Slow Routing (estimateComplexity + auto_depth in think tool)                     | `e7c6793` | ✅ Done                              |
+| Sycophancy detector                                                                        | prior     | ✅ Done                              |
+| Repl verbose output (shows code + result)                                                  | `09b2644` | ✅ Done                              |
+| Hypothesize throws on failure (analytics)                                                  | `a8b37eb` | ✅ Done                              |
 
 ---
 
@@ -46,12 +46,14 @@
 #### 1. REPE Prompt Contrast — Status: PARTIAL (structurally complete)
 
 **What exists**:
+
 - ✅ Sycophancy resistance phrase in identity section
 - ✅ RepE-style contrast principles in identity section
 - ✅ Structured `CONTRAST_VECTORS` section (4 modes: TRUTH-SEEKING, CORRECTION, EPISTEMIC CALIBRATION, TOOL RELIABILITY) — prompt-builder section 8c
 - 🔶 Structured output format REMOVED — TOOL_RESULT/STATUS/DATA blocks caused 'Tool not found' errors (LLM outputs text resembling tool calls instead of actual API calls). Replaced with simple code block guidance.
 
 **What's missing**:
+
 - Per-scenario toggle (enforcement signal state → prompt-builder contrast mode)
 - Lie-detector pattern (catching agent's own contradictions)
 - Contrast phrase library (see proposal #6)
@@ -98,6 +100,7 @@
 **What exists**: Compaction v0.23 (dedup guard, LLM always, clear on complete/abort).
 
 **What's missing**:
+
 - Semantic unit classification (short/medium/long message classification)
 - Signal detector: `context_lifecycle signal` fires when compaction quality degrades
 - Context-density metrics → heartbeat analytics (wired but not formalized)
@@ -115,6 +118,7 @@
 **What exists**: D1 session_end cleanup wired (`registerSessionCleanup` in polyfill on session_end). All extension state clears on rotation.
 
 **What's missing**:
+
 - Proactive leak detection (identify which extensions accumulate state across rotations)
 - Implicit/explicit boundary enforcement (HaluMem paper: prevent memory contamination)
 
@@ -143,6 +147,7 @@
 **What exists**: `emitSignal()` across 6 call sites, heartbeat-scheduler ticks, policy engine evaluation.
 
 **What's missing**:
+
 - Formalized unified event model (all async mechanisms as events)
 - Timer-based checkpoint triggers (pomodoro pattern)
 - Agent reminder pattern (heartbeat → reminder whisper to agent)
@@ -158,6 +163,7 @@
 **What exists**: `evolve/` extension (disabled by default), `degradation-detector.ts`, `dreamer.ts`.
 
 **What's missing**:
+
 - Automatic trigger (not just manual /evolve command)
 - Health-based checkpointing (auto-save on degradation detection)
 - Meta-learning tick interval adjustment (already in metacognition but not wired to degrade-on-idle)
@@ -178,6 +184,7 @@
 **What exists**: BM1 (multi-turn debugging), BM2 (code quality), BR1 (trap tasks), BR4 (latent multi-turn). SDK harness working.
 
 **What's missing**:
+
 - BM1 true multi-turn (current is single-shot)
 - BM3 real-world task suite
 - Variant generation framework (VAR-MATH-VARIANTS proposal)
@@ -196,6 +203,7 @@
 **Effort**: Medium | **Priority**: P2
 
 **Implemented**:
+
 - `timer_set(delay_seconds, reason, tag?)` — registers timer, returns immediately
 - `timer_list()` / `timer_cancel(timer_id)` — query and cancel
 - Real-time polling (1s setInterval) — fires independently of turn_end
@@ -229,54 +237,54 @@ API-only providers (stepfun, minimax) don't expose activations/logprobs. RepE pr
 
 ### P0 — Immediate (before public release) — MOSTLY DONE ✅
 
-| # | Task | Status | Action |
-|---|---|---|---|
-| P0.1 | RepE CONTRAST_VECTORS section | ✅ Done (`dc85563`) | 4 modes in prompt-builder §8c |
-| P0.2 | Context-lifecycle signal detector | ✅ Done | generateDensitySignals() feeds into policy engine on each turn |
-| P0.3 | RepE per-scenario toggle | ✅ Done | determineContrastMode() → enforcement_signals event → prompt-builder §8c |
-| P0.4 | Structured output format | 🔶 Removed | TOOL_RESULT blocks caused tool-call errors |
-| P0.5 | Remaining TODOs in code | ✅ Clean | Zero TODO/FIXME matches in src/ |
+| #    | Task                              | Status              | Action                                                                   |
+| ---- | --------------------------------- | ------------------- | ------------------------------------------------------------------------ |
+| P0.1 | RepE CONTRAST_VECTORS section     | ✅ Done (`dc85563`) | 4 modes in prompt-builder §8c                                            |
+| P0.2 | Context-lifecycle signal detector | ✅ Done             | generateDensitySignals() feeds into policy engine on each turn           |
+| P0.3 | RepE per-scenario toggle          | ✅ Done             | determineContrastMode() → enforcement_signals event → prompt-builder §8c |
+| P0.4 | Structured output format          | 🔶 Removed          | TOOL_RESULT blocks caused tool-call errors                               |
+| P0.5 | Remaining TODOs in code           | ✅ Clean            | Zero TODO/FIXME matches in src/                                          |
 
 ### P1 — Week 1-2 (High value, clear path)
 
-| # | Task | Effort | Dependencies |
-|---|---|---|---|
-| DONE | Agent Timer + Pomodoro reminders | ✅ Done | real-time polling + steer reminders + contrast toggle |
-| DONE | Contrast phrase library | ✅ Done | formatContrastSection() → mode-driven phrase selection |
-| DONE | Semantic unit classification (compaction) | ✅ Done | semanticCompress.ts wired in session_before_compact |
-| DONE | P1.7 memory contamination detection | ✅ Done | sessionId on Episode, deriveProjectId(), _crossSession flag on recall |
-| P1.1 | BM1 true multi-turn benchmark | 3h | None | (excluded) |
-| P1.2 | BM3 real-world task suite | 4h | None | (excluded) |
-| P1.3 | Bidirectional verifier (extension) | 4h | R6 session recall, enforcement | (excluded) |
+| #    | Task                                      | Effort  | Dependencies                                                           |
+| ---- | ----------------------------------------- | ------- | ---------------------------------------------------------------------- | ---------- |
+| DONE | Agent Timer + Pomodoro reminders          | ✅ Done | real-time polling + steer reminders + contrast toggle                  |
+| DONE | Contrast phrase library                   | ✅ Done | formatContrastSection() → mode-driven phrase selection                 |
+| DONE | Semantic unit classification (compaction) | ✅ Done | semanticCompress.ts wired in session_before_compact                    |
+| DONE | P1.7 memory contamination detection       | ✅ Done | sessionId on Episode, deriveProjectId(), \_crossSession flag on recall |
+| P1.1 | BM1 true multi-turn benchmark             | 3h      | None                                                                   | (excluded) |
+| P1.2 | BM3 real-world task suite                 | 4h      | None                                                                   | (excluded) |
+| P1.3 | Bidirectional verifier (extension)        | 4h      | R6 session recall, enforcement                                         | (excluded) |
 
 ### P2 — Weeks 3-4 (Medium complexity)
 
-| # | Task | Status | Dependencies |
-|---|---|---|---|
-| DONE | Evolve auto-trigger (degrade → whisper) | ✅ Done | isDegraded turn_end → emitSignal + whisper |
-| DONE | P2.2 Heartbeat event bus formalization | ✅ Done | agent-events.ts (10 signal domains) + memory_contamination policy rule |
-| DONE | P2.3 Implicit/explicit memory boundary | ✅ Done | -0.7 cross-project penalty + contamination signal + memoryConfidence decay |
-| DONE | Meta-learning tick adjustment | ✅ Done | tickInterval adjustment in heartbeat-scheduler |
-| DONE | Recursive Verification Tool (verify) | ✅ Done | heuristic+LLM checks, 3 depth modes, finalize pre-flight |
-| DONE | ODAR Fast/Slow Routing | ✅ Done | estimateComplexity() + auto_depth in think tool |
-| P2.5 | Benchmark variant generation framework | 4h | BM1/BM2 (excluded) |
+| #    | Task                                    | Status  | Dependencies                                                               |
+| ---- | --------------------------------------- | ------- | -------------------------------------------------------------------------- |
+| DONE | Evolve auto-trigger (degrade → whisper) | ✅ Done | isDegraded turn_end → emitSignal + whisper                                 |
+| DONE | P2.2 Heartbeat event bus formalization  | ✅ Done | agent-events.ts (10 signal domains) + memory_contamination policy rule     |
+| DONE | P2.3 Implicit/explicit memory boundary  | ✅ Done | -0.7 cross-project penalty + contamination signal + memoryConfidence decay |
+| DONE | Meta-learning tick adjustment           | ✅ Done | tickInterval adjustment in heartbeat-scheduler                             |
+| DONE | Recursive Verification Tool (verify)    | ✅ Done | heuristic+LLM checks, 3 depth modes, finalize pre-flight                   |
+| DONE | ODAR Fast/Slow Routing                  | ✅ Done | estimateComplexity() + auto_depth in think tool                            |
+| P2.5 | Benchmark variant generation framework  | 4h      | BM1/BM2 (excluded)                                                         |
 
 ### P3 — Weeks 5+ (Lower priority / exploration)
 
-| # | Task | Effort | Dependencies |
-|---|---|---|---|
-| P3.1 | Self-evolution automatic trigger | ✅ Done | isDegraded → evolver shouldActivate auto-trigger (turn 10 + degrade) |
-| P3.2 | Lie-detector pattern (RepE) | ✅ Done | cross-turn claim tracking + enforcement whisper |
-| P3.3 | Rollback automation | ✅ Done | state-checkpoint.ts: auto-checkpoint every 20 clean turns + auto-rollback on degrade via heartbeat |
-| P3.4 | Budget-Aware Planning (BAVT) | ✅ Done | P2 |
-| P3.5 | Memory Condensation (Decocted Experience) | ✅ Done | P2 |
-| P3.6 | Process Supervision (step_check) | ✅ Done | P3 |
-| P3.7 | Exploratory Reasoning (explore_paths) | ✅ Already exists | cognitive-systems/index.ts — spawns parallel sub-agents |
-| BV1 | Bidirectional Verifier Phase 1 | ✅ Done | Forward Trace: file touch graph + localization risk detection |
-| BR3 | Nudge A/B measurement | ✅ Done | Variant-controlled nudge suppression for effectiveness testing |
-| D0 | Dreamer module testing | ✅ Done | test-dreamer.mjs: 6 tests for shouldActivate, cooldown, structure |
-| R9 | Analytics feedback loop | ✅ Done | getNextRecommendation called from analytics turn_end on addiction |
-| P3.4 | HaluMem memory contamination architecture | ✅ Done | P2.3 completed this (cross-project penalty + confidence decay + contamination signal) |
+| #    | Task                                      | Effort            | Dependencies                                                                                       |
+| ---- | ----------------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------- |
+| P3.1 | Self-evolution automatic trigger          | ✅ Done           | isDegraded → evolver shouldActivate auto-trigger (turn 10 + degrade)                               |
+| P3.2 | Lie-detector pattern (RepE)               | ✅ Done           | cross-turn claim tracking + enforcement whisper                                                    |
+| P3.3 | Rollback automation                       | ✅ Done           | state-checkpoint.ts: auto-checkpoint every 20 clean turns + auto-rollback on degrade via heartbeat |
+| P3.4 | Budget-Aware Planning (BAVT)              | ✅ Done           | P2                                                                                                 |
+| P3.5 | Memory Condensation (Decocted Experience) | ✅ Done           | P2                                                                                                 |
+| P3.6 | Process Supervision (step_check)          | ✅ Done           | P3                                                                                                 |
+| P3.7 | Exploratory Reasoning (explore_paths)     | ✅ Already exists | cognitive-systems/index.ts — spawns parallel sub-agents                                            |
+| BV1  | Bidirectional Verifier Phase 1            | ✅ Done           | Forward Trace: file touch graph + localization risk detection                                      |
+| BR3  | Nudge A/B measurement                     | ✅ Done           | Variant-controlled nudge suppression for effectiveness testing                                     |
+| D0   | Dreamer module testing                    | ✅ Done           | test-dreamer.mjs: 6 tests for shouldActivate, cooldown, structure                                  |
+| R9   | Analytics feedback loop                   | ✅ Done           | getNextRecommendation called from analytics turn_end on addiction                                  |
+| P3.4 | HaluMem memory contamination architecture | ✅ Done           | P2.3 completed this (cross-project penalty + confidence decay + contamination signal)              |
 
 ---
 
@@ -309,15 +317,15 @@ npm run lint:check  # 0 warnings
 
 ## Current Gaps Summary
 
-| Gap | Location | Severity |
-|---|---|---|
-| Budget-Aware Planning (BAVT) | planner | ✅ Done |
-| Memory Condensation (Decocted Experience) | session-recall | ✅ Done |
-| Process Supervision (step_check) | reasoning | ✅ Done |
-| Lie-detector (RepE) | enforcement | ✅ Done | claim-tracker.ts + enforcement turn_end |
-| Self-evolution auto trigger | evolve | ✅ Done | isDegraded→evolver shouldActivate |
-| Rollback automation | heartbeat | ✅ Done | state-checkpoint.ts |
-| BM3 real-world task suite | evaluation/ | (excluded) |
+| Gap                                       | Location       | Severity   |
+| ----------------------------------------- | -------------- | ---------- | --------------------------------------- |
+| Budget-Aware Planning (BAVT)              | planner        | ✅ Done    |
+| Memory Condensation (Decocted Experience) | session-recall | ✅ Done    |
+| Process Supervision (step_check)          | reasoning      | ✅ Done    |
+| Lie-detector (RepE)                       | enforcement    | ✅ Done    | claim-tracker.ts + enforcement turn_end |
+| Self-evolution auto trigger               | evolve         | ✅ Done    | isDegraded→evolver shouldActivate       |
+| Rollback automation                       | heartbeat      | ✅ Done    | state-checkpoint.ts                     |
+| BM3 real-world task suite                 | evaluation/    | (excluded) |
 
 ---
 
@@ -326,6 +334,7 @@ npm run lint:check  # 0 warnings
 **Current**: v0.2.0-alpha.2 — 13 commits ahead of v0.2.0-alpha.1
 
 **Pre-release gate**:
+
 - [x] All P0 ✅ (P0.1-3 done, P0.4 REMOVED, P0.5 clean)
 - [x] P1/P2 non-benchmark items complete
 - [x] README.md + docs/proposals/README.md current
@@ -341,8 +350,8 @@ npm run lint:check  # 0 warnings
 
 ## Changelog
 
-| Date | Change |
-|---|---|
+| Date       | Change                                                                                                                                          |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | 2026-04-30 | v0.2.0-alpha.2: verify tool ✅, ODAR routing ✅, P2.2/P2.3/P1.7 ✅, deriveProjectId fix ✅, BRAID-NEXT archived, IMPLEMENTATION.md consolidated |
-| 2026-04-30 | P0.2 ✅ density signals → policy engine, P0.3 ✅ contrast mode toggle, P0.5 ✅ clean, Timer/Pomodoro COMPLETE |
-| 2026-04-29 | Initial version — 15 proposals audited, P0-P3 plan created |
+| 2026-04-30 | P0.2 ✅ density signals → policy engine, P0.3 ✅ contrast mode toggle, P0.5 ✅ clean, Timer/Pomodoro COMPLETE                                   |
+| 2026-04-29 | Initial version — 15 proposals audited, P0-P3 plan created                                                                                      |

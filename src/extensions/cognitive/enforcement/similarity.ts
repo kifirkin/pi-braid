@@ -63,7 +63,10 @@ export async function loadFileContent(filePath: string): Promise<string | null> 
   }
 }
 
-export async function detectRedundancy(newContent: string, newPath: string): Promise<string | null> {
+export async function detectRedundancy(
+  newContent: string,
+  newPath: string,
+): Promise<string | null> {
   const SIMILARITY_THRESHOLD = 0.7;
 
   for (const [existingPath, { content: existingContent }] of knownFiles) {

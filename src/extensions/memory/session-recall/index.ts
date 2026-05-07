@@ -334,7 +334,10 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
       if (allMatches.length === 0) {
         return {
           content: [
-            { type: "text" as const, text: `No sessions found matching "${params.query}". Try broader terms (fewer words) -- search is literal grep, not semantic.` },
+            {
+              type: "text" as const,
+              text: `No sessions found matching "${params.query}". Try broader terms (fewer words) -- search is literal grep, not semantic.`,
+            },
           ],
           details: { matchCount: 0 },
         };
@@ -371,7 +374,10 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
       if (results.length === 0) {
         return {
           content: [
-            { type: "text" as const, text: `No readable matches found for "${params.query}". Try shorter/more general keywords -- this is literal grep, not AI search.` },
+            {
+              type: "text" as const,
+              text: `No readable matches found for "${params.query}". Try shorter/more general keywords -- this is literal grep, not AI search.`,
+            },
           ],
           details: { matchCount: 0 },
         };

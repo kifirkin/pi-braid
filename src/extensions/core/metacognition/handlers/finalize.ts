@@ -23,7 +23,7 @@ async function recordToMemory(
 ): Promise<void> {
   if (!ctx) return;
   try {
-    // @ts-ignore dynamic import — runtime resolves after build, type-check not needed
+    // @ts-expect-error dynamic import — runtime resolves after build, type-check not needed
     const { addEpisode, addPrinciple } = await import("../../memory/three-memory-stores/index.js");
     const state = getExtensionState<any>(ctx, "three-memory-stores", () => ({
       episodes: [],
@@ -60,11 +60,7 @@ async function recordToMemory(
     // On failure: extract principle and store as heuristic rule
     if (!completed) {
       const principle = extractPrinciple(ctx, summary);
-      addPrinciple(
-        state,
-        principle,
-        summary.slice(0, 100),
-      );
+      addPrinciple(state, principle, summary.slice(0, 100));
       log.info(`R5: Extracted principle from failure: ${principle.slice(0, 60)}`);
     }
   } catch (err) {
@@ -99,18 +95,18 @@ function extractStrategicSOP(ctx: ExtensionContext, summary: string): string {
  */
 function extractFunctionalSOP(toolSeq: string[]): string[] {
   if (toolSeq.length === 0) return [];
-  
+
   const steps: string[] = [];
   let currentStep = "";
   let lastTool = "";
-  
+
   for (const tool of toolSeq) {
     // Group consecutive same-type tools
     if (tool === lastTool) {
       // Part of same step, skip
       continue;
     }
-    
+
     // New tool type - save previous step and start new
     if (currentStep) {
       steps.push(currentStep);
@@ -118,11 +114,11 @@ function extractFunctionalSOP(toolSeq: string[]): string[] {
     currentStep = tool;
     lastTool = tool;
   }
-  
+
   if (currentStep) {
     steps.push(currentStep);
   }
-  
+
   return steps.length > 0 ? steps : ["No clear steps identified"];
 }
 

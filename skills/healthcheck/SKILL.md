@@ -42,6 +42,7 @@ Snapshot create fails → check disk space
 ## Process Cleanup
 
 Kill processes with these patterns:
+
 ```bash
 # pi agents
 pkill -f "pi.*agent" || true

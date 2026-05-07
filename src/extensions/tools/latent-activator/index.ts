@@ -506,7 +506,10 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         log.error(`activate_behavior failed: ${msg}`);
-        return { content: [{ type: "text", text: `Error: ${msg}` }], details: { error: msg } } as any;
+        return {
+          content: [{ type: "text", text: `Error: ${msg}` }],
+          details: { error: msg },
+        } as any;
       }
     },
   });
@@ -528,7 +531,10 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         log.error(`deactivate_behavior failed: ${msg}`);
-        return { content: [{ type: "text", text: `Error: ${msg}` }], details: { error: msg } } as any;
+        return {
+          content: [{ type: "text", text: `Error: ${msg}` }],
+          details: { error: msg },
+        } as any;
       }
     },
   });
@@ -536,7 +542,8 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "get_active_behaviors",
     label: "Get Active Behaviors",
-    description: "View currently active behavior patterns. Check this before activating a behavior to avoid duplicates.",
+    description:
+      "View currently active behavior patterns. Check this before activating a behavior to avoid duplicates.",
     promptSnippet: "check what behavior patterns are currently active",
     parameters: Type.Object({}),
     execute: async () => {
@@ -549,7 +556,10 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         log.error(`get_active_behaviors failed: ${msg}`);
-        return { content: [{ type: "text", text: `Error: ${msg}` }], details: { error: msg } } as any;
+        return {
+          content: [{ type: "text", text: `Error: ${msg}` }],
+          details: { error: msg },
+        } as any;
       }
     },
   });
@@ -581,7 +591,10 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         log.error(`activate_mix failed: ${msg}`);
-        return { content: [{ type: "text", text: `Error: ${msg}` }], details: { error: msg } } as any;
+        return {
+          content: [{ type: "text", text: `Error: ${msg}` }],
+          details: { error: msg },
+        } as any;
       }
     },
   });

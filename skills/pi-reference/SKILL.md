@@ -21,21 +21,21 @@ Always read pi .md files completely and follow links to related docs (e.g., tui.
 
 ## Documentation Index (relative to `<root>/docs/`)
 
-| Topic | Path |
-|-------|------|
-| Extensions | `extensions.md`, `examples/extensions/` |
-| Themes | `themes.md` |
-| Skills | `skills.md` |
-| Prompt Templates | `prompt-templates.md` |
-| TUI Components | `tui.md` |
-| Keybindings | `keybindings.md` |
-| SDK | `sdk.md` |
-| Custom Providers | `custom-provider.md` |
-| Adding Models | `models.md` |
-| Package Overview | `packages.md` |
-| RPC Mode | `rpc.md` |
-| Session Management | `session.md` |
-| Settings | `settings.md` |
+| Topic              | Path                                    |
+| ------------------ | --------------------------------------- |
+| Extensions         | `extensions.md`, `examples/extensions/` |
+| Themes             | `themes.md`                             |
+| Skills             | `skills.md`                             |
+| Prompt Templates   | `prompt-templates.md`                   |
+| TUI Components     | `tui.md`                                |
+| Keybindings        | `keybindings.md`                        |
+| SDK                | `sdk.md`                                |
+| Custom Providers   | `custom-provider.md`                    |
+| Adding Models      | `models.md`                             |
+| Package Overview   | `packages.md`                           |
+| RPC Mode           | `rpc.md`                                |
+| Session Management | `session.md`                            |
+| Settings           | `settings.md`                           |
 
 ## Directory Structure
 
@@ -52,16 +52,16 @@ Always read pi .md files completely and follow links to related docs (e.g., tui.
 
 ## Key Paths
 
-| Path | Purpose |
-|------|---------|
-| `~/.pi/agent/settings.json` | Global settings (model, tools, etc.) |
-| `~/.pi/agent/auth.json` | API keys and OAuth credentials |
-| `<cwd>/.pi/settings.json` | Project-local settings (overrides global) |
+| Path                        | Purpose                                   |
+| --------------------------- | ----------------------------------------- |
+| `~/.pi/agent/settings.json` | Global settings (model, tools, etc.)      |
+| `~/.pi/agent/auth.json`     | API keys and OAuth credentials            |
+| `<cwd>/.pi/settings.json`   | Project-local settings (overrides global) |
 
 ## Environment Variables
 
-| Variable | Purpose |
-|----------|---------|
+| Variable              | Purpose                                           |
+| --------------------- | ------------------------------------------------- |
 | `PI_CODING_AGENT_DIR` | Override agent directory (default: `~/.pi/agent`) |
 
 ---

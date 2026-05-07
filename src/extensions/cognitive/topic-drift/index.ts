@@ -336,7 +336,10 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         log.error(`check_topic_drift failed: ${msg}`);
-        return { content: [{ type: "text" as const, text: `Error: ${msg}` }], details: { drifted: false, similarity: 0, error: msg } };
+        return {
+          content: [{ type: "text" as const, text: `Error: ${msg}` }],
+          details: { drifted: false, similarity: 0, error: msg },
+        };
       }
     },
   } as any);
@@ -371,7 +374,10 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         log.error(`reset_topic_anchors failed: ${msg}`);
-        return { content: [{ type: "text" as const, text: `Error: ${msg}` }], details: { success: false, error: msg } };
+        return {
+          content: [{ type: "text" as const, text: `Error: ${msg}` }],
+          details: { success: false, error: msg },
+        };
       }
     },
   } as any);

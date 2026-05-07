@@ -35,8 +35,7 @@ export function formatMemoryTimestamp(timestamp: number): string {
 export function formatMemoryEntry(memory: CognitiveMemoryEntry, full = false): string {
   const time = formatMemoryTimestamp(memory.timestamp);
   const tags = memory.tags.length > 0 ? ` [${memory.tags.join(", ")}]` : "";
-  const expired =
-    memory.expiresAt && Date.now() > memory.expiresAt ? " [EXPIRED]" : "";
+  const expired = memory.expiresAt && Date.now() > memory.expiresAt ? " [EXPIRED]" : "";
 
   if (full) {
     const source = memory.source ? `\n  Source: ${memory.source}` : "";
@@ -66,11 +65,8 @@ export function formatMemoryEntry(memory: CognitiveMemoryEntry, full = false): s
   }
 
   const preview =
-    memory.content.length > 100
-      ? `${memory.content.slice(0, 100)}...`
-      : memory.content;
-  const idPreview =
-    memory.id.length > 12 ? `${memory.id.slice(0, 12)}..` : memory.id;
+    memory.content.length > 100 ? `${memory.content.slice(0, 100)}...` : memory.content;
+  const idPreview = memory.id.length > 12 ? `${memory.id.slice(0, 12)}..` : memory.id;
   return `[${memory.type}] ${idPreview} ${time}${tags}${expired} - ${preview}`;
 }
 
@@ -87,10 +83,7 @@ export function parseStructuredContent(content: string): {
       return {
         summary: parsed.summary || parsed.description || JSON.stringify(parsed).slice(0, 100),
         context: {
-          files:
-            parsed.files || parsed.file
-              ? [parsed.files || parsed.file].flat()
-              : undefined,
+          files: parsed.files || parsed.file ? [parsed.files || parsed.file].flat() : undefined,
           error:
             parsed.error || parsed.stack
               ? {

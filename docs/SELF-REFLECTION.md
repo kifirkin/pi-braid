@@ -1,6 +1,6 @@
 # Agent Self-Reflection: pi-braid Tool & Architecture Audit
 
-*Generated: 2026-05-03 - Infinite Self-Reflection Loop*
+_Generated: 2026-05-03 - Infinite Self-Reflection Loop_
 
 ---
 
@@ -8,22 +8,23 @@
 
 ### BY CATEGORY
 
-| Category | Count | Extensions | Health |
-|----------|-------|-----------|--------|
-| **Metacognition** | 5 | think, hypothesize, finalize, verify, scratchpad | ✅ Strong |
-| **Memory** | 12 | memory-search, memory-add, memory-list, memory-get, session-search, session-query, context-tag, context-compress, context-audit, context-proposals, conflict-qa, context-signal | ✅ Strong |
-| **Cognitive** | 10 | verify-claim, verify-decomposition, check-topic-drift, reset-topic-anchors, 6 belief/conflict tools | ✅ Strong |
-| **Utility** | 12 | healthcheck, timer-set/list/cancel, web-fetch, browser-*, codebase-tree, read-document, render-pdf-page | ✅ Strong |
-| **Latent Activator** | 4 | 3 activator + 1 behavior tools | ⚠️ Weak |
-| **Observatory** | 1 | /observatory | ✅ New |
-| **Analytics** | 5 | /analytics, /analytics:all, /analytics:setVariant, /analytics:ab, 3 data tools | ✅ Strong |
-| **Error** | 4 | error-list, error-get, error-clear, error-stats | ✅ Strong |
-| **Evolve** | 1 | /evolve | ⚠️ Weak triggers |
-| **Agent-Env** | 1 | /env | ⚠️ Weak |
+| Category             | Count | Extensions                                                                                                                                                                      | Health           |
+| -------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| **Metacognition**    | 5     | think, hypothesize, finalize, verify, scratchpad                                                                                                                                | ✅ Strong        |
+| **Memory**           | 12    | memory-search, memory-add, memory-list, memory-get, session-search, session-query, context-tag, context-compress, context-audit, context-proposals, conflict-qa, context-signal | ✅ Strong        |
+| **Cognitive**        | 10    | verify-claim, verify-decomposition, check-topic-drift, reset-topic-anchors, 6 belief/conflict tools                                                                             | ✅ Strong        |
+| **Utility**          | 12    | healthcheck, timer-set/list/cancel, web-fetch, browser-\*, codebase-tree, read-document, render-pdf-page                                                                        | ✅ Strong        |
+| **Latent Activator** | 4     | 3 activator + 1 behavior tools                                                                                                                                                  | ⚠️ Weak          |
+| **Observatory**      | 1     | /observatory                                                                                                                                                                    | ✅ New           |
+| **Analytics**        | 5     | /analytics, /analytics:all, /analytics:setVariant, /analytics:ab, 3 data tools                                                                                                  | ✅ Strong        |
+| **Error**            | 4     | error-list, error-get, error-clear, error-stats                                                                                                                                 | ✅ Strong        |
+| **Evolve**           | 1     | /evolve                                                                                                                                                                         | ⚠️ Weak triggers |
+| **Agent-Env**        | 1     | /env                                                                                                                                                                            | ⚠️ Weak          |
 
 ### KEY OBSERVATIONS
 
 **Missing Tools (critical gaps):**
+
 - ~~No diff/patch tool~~ — ✅ `file_diff` tool exists (multi-hunk structured diff, git ref comparison)
 - **No structured data query tool** — no SQL/JSON query, forces bash jq usage
 - ~~No system monitor~~ — ✅ `system_monitor` tool exists (CPU, memory, disk, processes)
@@ -33,6 +34,7 @@
 - ~~No file comparison tool~~ — ✅ `file_diff` covers this (side-by-side with hunks)
 
 **Overused Tools (addiction signals):**
+
 - **bash (32-62% of calls)** — used for build, test, grep, wc, git, npm, piping. 52 shell pattern usages in test files, 147 in extensions. Many should be dedicated tools.
 - **grep (indirect via bash)** — should be first-class tool with structured output
 
@@ -42,24 +44,25 @@
 
 ### HOT SPOTS (overloaded events)
 
-| Event | Listeners | Risk |
-|-------|-----------|------|
-| `session_start` | 12 | STARTUP LATENCY — all fire synchronously |
-| `turn_end` | 8 | PER-TURN OVERHEAD — enforcement + heartbeat + memory + feedback |
-| `session_shutdown` | 8 | CLEANUP RACE — shutdown order matters |
-| `tool_call` | 3 | MISSING — no tool_error event type |
+| Event              | Listeners | Risk                                                            |
+| ------------------ | --------- | --------------------------------------------------------------- |
+| `session_start`    | 12        | STARTUP LATENCY — all fire synchronously                        |
+| `turn_end`         | 8         | PER-TURN OVERHEAD — enforcement + heartbeat + memory + feedback |
+| `session_shutdown` | 8         | CLEANUP RACE — shutdown order matters                           |
+| `tool_call`        | 3         | MISSING — no tool_error event type                              |
 
 ### GAPS
 
-| Missing Event | Impact |
-|--------------|--------|
-| `tool_error` | ✅ Wired — `ToolErrorEvent` in `event-bus.ts`, emitted from `error-capture` |
-| `memory_evict` | ✅ Wired — emitted from `compaction.ts`, consumed by `event-consumers.ts`, observatory |
-| `context_full` | ✅ Proactive — growth-rate projection in `context-hygiene.ts` emits before full |
-| `analytics_alert` | ✅ Wired — `AnalyticsAlertEvent` in `event-bus.ts`, 3 emission sites in analytics |
-| `experiment_result` | Still missing — no event for A/B test results landing |
+| Missing Event       | Impact                                                                                 |
+| ------------------- | -------------------------------------------------------------------------------------- |
+| `tool_error`        | ✅ Wired — `ToolErrorEvent` in `event-bus.ts`, emitted from `error-capture`            |
+| `memory_evict`      | ✅ Wired — emitted from `compaction.ts`, consumed by `event-consumers.ts`, observatory |
+| `context_full`      | ✅ Proactive — growth-rate projection in `context-hygiene.ts` emits before full        |
+| `analytics_alert`   | ✅ Wired — `AnalyticsAlertEvent` in `event-bus.ts`, 3 emission sites in analytics      |
+| `experiment_result` | Still missing — no event for A/B test results landing                                  |
 
 ### RECOMMENDATION
+
 - ~~Lazy-load heavy session_start listeners~~ ✅ Done — `session-start-queue.ts` with 3-phase loading
 - Batch turn_end handlers into a single tick
 - ~~Add tool_error event type~~ ✅ Done — `ToolErrorEvent` + `AnalyticsAlertEvent` both wired
@@ -70,35 +73,36 @@
 
 ### UNTESTED LIBRARIES (18 of 40 = 45% — some gaps closed)
 
-| File | Lines | Risk |
-|------|-------|------|
-| `cognitive-memory.ts` | **1225** | ⛔ CRITICAL — core memory system, zero tests |
-| `goal-manager.ts` | 527 | ⛔ HIGH — goal tracking, no tests |
-| `degradation-detector.ts` | 328 | 🟡 Has tests — `test-degradation-detector.mjs` (62 tests) + module test (16 tests) |
-| `state-checkpoint.ts` | 306 | ⛔ HIGH — rollback infrastructure, no tests |
-| `filter-safe-to-remove.ts` | 251 | 🟡 Has tests — `test-filter-safe-to-remove.mjs` (8 tests) |
-| `belief-store.ts` | 252 | 🟡 Has tests — via `test-belief-policy-engine.mjs` and `test-belief-policy.mjs` |
-| `context-density.ts` | 175 | ⚠️ MEDIUM |
-| `extension-state.ts` | 146 | ⚠️ MEDIUM — all extensions depend on this |
-| `injection-tracker.ts` | 131 | ⚠️ MEDIUM |
-| `edit-helper.ts` | 201 | ⚠️ MEDIUM |
-| 14 more smaller files | 35-130 | 🟢 LOW per-file, but compound risk |
+| File                       | Lines    | Risk                                                                               |
+| -------------------------- | -------- | ---------------------------------------------------------------------------------- |
+| `cognitive-memory.ts`      | **1225** | ⛔ CRITICAL — core memory system, zero tests                                       |
+| `goal-manager.ts`          | 527      | ⛔ HIGH — goal tracking, no tests                                                  |
+| `degradation-detector.ts`  | 328      | 🟡 Has tests — `test-degradation-detector.mjs` (62 tests) + module test (16 tests) |
+| `state-checkpoint.ts`      | 306      | ⛔ HIGH — rollback infrastructure, no tests                                        |
+| `filter-safe-to-remove.ts` | 251      | 🟡 Has tests — `test-filter-safe-to-remove.mjs` (8 tests)                          |
+| `belief-store.ts`          | 252      | 🟡 Has tests — via `test-belief-policy-engine.mjs` and `test-belief-policy.mjs`    |
+| `context-density.ts`       | 175      | ⚠️ MEDIUM                                                                          |
+| `extension-state.ts`       | 146      | ⚠️ MEDIUM — all extensions depend on this                                          |
+| `injection-tracker.ts`     | 131      | ⚠️ MEDIUM                                                                          |
+| `edit-helper.ts`           | 201      | ⚠️ MEDIUM                                                                          |
+| 14 more smaller files      | 35-130   | 🟢 LOW per-file, but compound risk                                                 |
 
 ### EXTENSIONS WITH ZERO ERROR HANDLING
 
-| Extension | Lines | Risk |
-|-----------|-------|------|
-| `verification` | 411 | ⛔ HIGH — any error crashes the tool |
-| `topic-drift` | 356 | ⛔ HIGH |
-| `sycophancy-detector` | 280 | ⚠️ MEDIUM |
-| `agent-environment` | 282 | ⚠️ MEDIUM |
-| `rate-limiter` | 173 | ⚠️ MEDIUM |
-| `metacognition/index.ts` | 117 | ⚠️ MEDIUM (handlers have catches though) |
-| `watchdog` | 77 | 🟢 LOW |
-| `planner` | 21 | 🟢 LOW |
-| `latent-activator` | 568 (zero catch) | ⛔ HIGH — commands can fail silently |
+| Extension                | Lines            | Risk                                     |
+| ------------------------ | ---------------- | ---------------------------------------- |
+| `verification`           | 411              | ⛔ HIGH — any error crashes the tool     |
+| `topic-drift`            | 356              | ⛔ HIGH                                  |
+| `sycophancy-detector`    | 280              | ⚠️ MEDIUM                                |
+| `agent-environment`      | 282              | ⚠️ MEDIUM                                |
+| `rate-limiter`           | 173              | ⚠️ MEDIUM                                |
+| `metacognition/index.ts` | 117              | ⚠️ MEDIUM (handlers have catches though) |
+| `watchdog`               | 77               | 🟢 LOW                                   |
+| `planner`                | 21               | 🟢 LOW                                   |
+| `latent-activator`       | 568 (zero catch) | ⛔ HIGH — commands can fail silently     |
 
 ### TEST QUALITY
+
 - 55 tests pass — 22 test files covering enforcement, memory, heartbeat, cognitive systems, tools
 - ~15 tests do actual runtime import/invocation (up from 5-6)
 - No performance/benchmark tests for memory or heartbeat
@@ -111,19 +115,20 @@
 
 ### 15 ACTIVE SKILLS
 
-| Skill | Lines | Trigger Phrases | Sections | Health |
-|-------|-------|----------------|----------|--------|
-| meta-improvement | 166 | **7** | 30 | ✅ Best |
-| visual-creator | 386 | 1 | 41 | ⚠️ Bloated |
-| design-system | 368 | 1 | 27 | ⚠️ Bloated |
-| process-control | 137 | 1 | 21 | ⚠️ Under-triggered |
-| code-search | 92 | 1 | 19 | ⚠️ Under-triggered |
-| agent-testing | 196 | 1 | 9 | ⚠️ Under-triggered |
-| tone-quality | 116 | 3 | 6 | ✅ Good triggers |
-| vcs-tools | 100 | 1 | 12 | ⚠️ |
-| visual-validator | 135 | **0** | 17 | 🚫 BROKEN — no trigger phrases |
+| Skill            | Lines | Trigger Phrases | Sections | Health                         |
+| ---------------- | ----- | --------------- | -------- | ------------------------------ |
+| meta-improvement | 166   | **7**           | 30       | ✅ Best                        |
+| visual-creator   | 386   | 1               | 41       | ⚠️ Bloated                     |
+| design-system    | 368   | 1               | 27       | ⚠️ Bloated                     |
+| process-control  | 137   | 1               | 21       | ⚠️ Under-triggered             |
+| code-search      | 92    | 1               | 19       | ⚠️ Under-triggered             |
+| agent-testing    | 196   | 1               | 9        | ⚠️ Under-triggered             |
+| tone-quality     | 116   | 3               | 6        | ✅ Good triggers               |
+| vcs-tools        | 100   | 1               | 12       | ⚠️                             |
+| visual-validator | 135   | **0**           | 17       | 🚫 BROKEN — no trigger phrases |
 
 ### PROBLEMS
+
 - **11/15 skills have only 1 trigger phrase** — they activate rarely or never
 - **visual-validator** has zero trigger phrases — effectively dead
 - **visual-creator** (386L) and **design-system** (368L) are bloated with no progressive loading
@@ -136,29 +141,31 @@
 
 ### PROBLEM FILES (still >500 lines)
 
-| File | Lines | Status |
-|------|-------|--------|
-| `heartbeat/analytics/index.ts` | 1053 | ⏳ Not decomposed |
-| `enforcement/index.ts` | 1268 | ⏳ Has handlers/ but index still huge |
-| `cognitive-memory.ts` | 1225 | ⏳ Not decomposed |
-| `lib/bidirectional-verifier.ts` | 674 | ⏳ Could split |
-| `context-lifecycle/index.ts` | 622 | ⏳ Could split |
-| `session-recall/index.ts` | 591 | ⏳ Could split |
-| `latent-activator/index.ts` | 568 | ⏳ Could split |
-| `cognitive-systems/index.ts` | 521 | ⏳ Could split |
-| `feedback/index.ts` | 503 | ⏳ Could split |
+| File                            | Lines | Status                                |
+| ------------------------------- | ----- | ------------------------------------- |
+| `heartbeat/analytics/index.ts`  | 1053  | ⏳ Not decomposed                     |
+| `enforcement/index.ts`          | 1268  | ⏳ Has handlers/ but index still huge |
+| `cognitive-memory.ts`           | 1225  | ⏳ Not decomposed                     |
+| `lib/bidirectional-verifier.ts` | 674   | ⏳ Could split                        |
+| `context-lifecycle/index.ts`    | 622   | ⏳ Could split                        |
+| `session-recall/index.ts`       | 591   | ⏳ Could split                        |
+| `latent-activator/index.ts`     | 568   | ⏳ Could split                        |
+| `cognitive-systems/index.ts`    | 521   | ⏳ Could split                        |
+| `feedback/index.ts`             | 503   | ⏳ Could split                        |
 
 ### DECOMPOSED SUCCESSFULLY
-| File | Before | After | Delta |
-|------|--------|-------|-------|
-| heartbeat-scheduler/index.ts | **1410** | **446** | -964 ✅ |
-| enforcement index splitted into handlers/ | ~2000+ | 1268 | Already in progress ✅ |
+
+| File                                      | Before   | After   | Delta                  |
+| ----------------------------------------- | -------- | ------- | ---------------------- |
+| heartbeat-scheduler/index.ts              | **1410** | **446** | -964 ✅                |
+| enforcement index splitted into handlers/ | ~2000+   | 1268    | Already in progress ✅ |
 
 ---
 
 ## 6. What Boosts Performance
 
 ### HIGH-VALUE PATTERNS
+
 1. **Injection Tracker** (injection-tracker.ts) — prevents system messages from corrupting user context
 2. **Event Bus** (event-bus.ts) — decoupled architecture lets modules react without coupling
 3. **Extension State** (extension-state.ts) — session-scoped state prevents cross-session leaks
@@ -170,6 +177,7 @@
 9. **Tool tracking + addiction detection** — self-knowledge for the agent
 
 ### LOW-VALUE / RARELY USED
+
 1. **Latent Activator** — 4 tools, 568 lines, zero error handling, unclear value
 2. **Evolve extension** — has infrastructure but rarely triggers
 3. **Rate Limiter** — disabled-by-default, 173 lines, never fires
@@ -183,55 +191,63 @@
 ## 7. Immediate Action Items
 
 ### CRITICAL (do this week)
+
 - [ ] Write tests for cognitive-memory.ts (1225L) — highest risk untested code
 - [ ] Add error handling to verification, topic-drift, sycophancy-detector extensions
 - [ ] Add catch blocks to latent-activator (568L, zero error handling)
 - [ ] Write tests for degradation-detector.ts (328L) — drives evolve decisions
 
 ### HIGH PRIORITY
+
 - [ ] Create diff/patch tool — reduce bash usage by 10%+
 - [ ] Write tests for filter-safe-to-remove.ts, injection-tracker.ts, state-checkpoint.ts
 - [ ] Add tool_error event type to event bus
 - [ ] Lazy-load session_start handlers (12 listeners is too many)
 
 ### MEDIUM PRIORITY
+
 - [ ] Decompose analytics/index.ts (1053L), cognitive-memory.ts (1225L)
 - [ ] Add trigger phrases to visual-validator (currently 0)
 - [ ] Clean up archived skills (5 dirs, revive or remove)
 - [ ] Create system monitor tool (CPU/memory/disk trends)
 
 ### LOW PRIORITY
+
 - [ ] Create structured data query tool (SQL/JSON path)
 - [ ] Create experiment tracker UI
 - [ ] Add progressive loading to visual-creator (386L) and design-system (368L)
 
 ---
 
-*Generated: Cycle 4 of infinite self-reflection loop. Next analysis cycle would deep-dive each critical item with implementation proposals.*
+_Generated: Cycle 4 of infinite self-reflection loop. Next analysis cycle would deep-dive each critical item with implementation proposals._
+
 # Self-Reflection Supplement: Deep-Dive Findings
-*Appended during infinite loop — Cycles 5-8*
+
+_Appended during infinite loop — Cycles 5-8_
 
 ---
 
 ## Cycle 5: enforcement/index.ts (1268L) — Misleading Decomposition
 
 ### Finding: handlers/ directory is ALL UTILITY, ZERO event handlers
+
 Every file in `src/extensions/cognitive/enforcement/handlers/` has **0** `pi.on()`, `registerTool()`, or `registerCommand()` calls. They are pure helper modules:
 
-| Handler File | Lines | Purpose | Registration Count |
-|-------------|-------|---------|-------------------|
-| blocking.ts | 91 | Check if commands should be blocked | 0 |
-| message-analysis.ts | 98 | Analyze message content | 0 |
-| orphan-chains.ts | 58 | Detect orphan thought chains | 0 |
-| probe-handler.ts | 146 | Probe analysis | 0 |
-| routing-handler.ts | 216 | Route messages to correct handler | 0 |
-| tool-registrations.ts | 8 | **STUB** — no actual registrations | 0 |
-| tool-tracker.ts | 152 | Track tool usage | 0 |
-| turn-analysis.ts | 126 | Analyze turn patterns | 0 |
+| Handler File          | Lines | Purpose                             | Registration Count |
+| --------------------- | ----- | ----------------------------------- | ------------------ |
+| blocking.ts           | 91    | Check if commands should be blocked | 0                  |
+| message-analysis.ts   | 98    | Analyze message content             | 0                  |
+| orphan-chains.ts      | 58    | Detect orphan thought chains        | 0                  |
+| probe-handler.ts      | 146   | Probe analysis                      | 0                  |
+| routing-handler.ts    | 216   | Route messages to correct handler   | 0                  |
+| tool-registrations.ts | 8     | **STUB** — no actual registrations  | 0                  |
+| tool-tracker.ts       | 152   | Track tool usage                    | 0                  |
+| turn-analysis.ts      | 126   | Analyze turn patterns               | 0                  |
 
 **All 8 pi.on() event handlers remain in index.ts** (1268 lines):
+
 - `before_agent_start`
-- `input` 
+- `input`
 - `session_start`
 - `tool_call` (largest: ~90 lines)
 - `message_end` (3 handlers!)
@@ -241,7 +257,7 @@ Every file in `src/extensions/cognitive/enforcement/handlers/` has **0** `pi.on(
 - `auto_retry_end`
 - `session_shutdown`
 
-**Impact**: The handlers/ directory creates the *illusion* of decomposition. The index.ts is still 1268 lines with all event wiring. True decomposition would move each pi.on() into a handlers/ file.
+**Impact**: The handlers/ directory creates the _illusion_ of decomposition. The index.ts is still 1268 lines with all event wiring. True decomposition would move each pi.on() into a handlers/ file.
 
 ---
 
@@ -255,17 +271,23 @@ cognitive/enforcement/index.ts
 ```
 
 This is a **cross-module dependency** NOT documented in COUPLING.md:
+
 ```ts
 import { getAnalyticsState } from "../../heartbeat/analytics/index.js";
-import { recordNudgeSent, recordNudgeSuppressed } from "../../../extensions/heartbeat/analytics/index.js";
+import {
+  recordNudgeSent,
+  recordNudgeSuppressed,
+} from "../../../extensions/heartbeat/analytics/index.js";
 ```
 
 The second import path `../../../extensions/heartbeat/analytics/index.js` is a **filesystem-relative path that bypasses the module system entirely**. If the heartbeat module is disabled but cognitive is enabled, this import will fail at runtime. This IS a latent bug.
 
 ### VERIFIED CLEAN: heartbeat → memory (uses lazy import)
+
 heartbeat-scheduler uses `await import()` for three-memory-stores, avoiding static circular dependency. ✅
 
 ### CONCERN: No static import verification
+
 There is no tool or check that verifies cross-module imports are documented in COUPLING.md. Any extension can hard-import any other extension's code.
 
 ---
@@ -274,26 +296,26 @@ There is no tool or check that verifies cross-module imports are documented in C
 
 ### What Boosts Performance (empirical)
 
-| Tool/Pattern | Why | Usage Pattern |
-|-------------|-----|--------------|
-| **edit** | Exact match replacement — reliable, no partial changes | 80% of file changes |
-| **write** | Full file overwrite — atomic and predictable | 15% of file changes |
-| **think** | Structured reasoning with depth param | Used every 5-10 turns |
-| **grep** | Fast codebase search | ~10% of calls |
-| **scratchpad** | Persistent state between sessions | ~1-3 calls per session |
-| **error_clear** | Error state management | ~3-5 per session |
-| **read** | Understanding existing code | ~20% of calls |
+| Tool/Pattern    | Why                                                    | Usage Pattern          |
+| --------------- | ------------------------------------------------------ | ---------------------- |
+| **edit**        | Exact match replacement — reliable, no partial changes | 80% of file changes    |
+| **write**       | Full file overwrite — atomic and predictable           | 15% of file changes    |
+| **think**       | Structured reasoning with depth param                  | Used every 5-10 turns  |
+| **grep**        | Fast codebase search                                   | ~10% of calls          |
+| **scratchpad**  | Persistent state between sessions                      | ~1-3 calls per session |
+| **error_clear** | Error state management                                 | ~3-5 per session       |
+| **read**        | Understanding existing code                            | ~20% of calls          |
 
 ### What Struggles (empirical)
 
-| Tool/Pattern | Problem | Suggested Fix |
-|-------------|---------|---------------|
-| **bash** (32-62%) | Used for grep, diff, test, build, wc, npm, git, piping | Create diff tool, query tool, test watcher |
-| **healthcheck** | Diagnostic only, no continuous monitoring | Add system monitor with trend tracking |
-| **latent-activator** | 568 lines, 4 tools, 0 error handling, unclear value | Audit for actual usage; remove if dead |
-| **evolve** | Complex infrastructure, rarely triggers | Simplify trigger conditions |
-| **observatory** | New, untested in production | Needs real-world validation |
-| **verify** (verify-claim) | Works well but output is text, not structured | Add structured output mode |
+| Tool/Pattern              | Problem                                                | Suggested Fix                              |
+| ------------------------- | ------------------------------------------------------ | ------------------------------------------ |
+| **bash** (32-62%)         | Used for grep, diff, test, build, wc, npm, git, piping | Create diff tool, query tool, test watcher |
+| **healthcheck**           | Diagnostic only, no continuous monitoring              | Add system monitor with trend tracking     |
+| **latent-activator**      | 568 lines, 4 tools, 0 error handling, unclear value    | Audit for actual usage; remove if dead     |
+| **evolve**                | Complex infrastructure, rarely triggers                | Simplify trigger conditions                |
+| **observatory**           | New, untested in production                            | Needs real-world validation                |
+| **verify** (verify-claim) | Works well but output is text, not structured          | Add structured output mode                 |
 
 ### Tool Category Value Ranking
 
@@ -310,28 +332,31 @@ NEW:      observatory, codebase-tree, timer
 
 ### HIGHEST USAGE LIBS (most dependents)
 
-| Library | Used By | Risk |
-|---------|---------|------|
-| `extension-state.ts` (146L, NO TEST) | heartbeat, context-lifecycle, metacognition, planner, topic-drift, three-memory-stores | 🔴 ALL extensions depend on untested state |
-| `event-bus.ts` (181L, TESTED) | heartbeat, enforcement, timer, observatory | 🟢 Tested |
-| `logger.ts` (301L, NO TEST) | ALL extensions | 🔴 30+ dependents, no test |
-| `injection-tracker.ts` (131L, NO TEST) | enforcement, reasoning, timer, retry, metacognition, feedback | 🔴 Controls message visibility |
-| `degradation-detector.ts` (328L, NO TEST) | heartbeat, evolve | 🔴 Drives auto-rollback decisions |
+| Library                                   | Used By                                                                                | Risk                                       |
+| ----------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `extension-state.ts` (146L, NO TEST)      | heartbeat, context-lifecycle, metacognition, planner, topic-drift, three-memory-stores | 🔴 ALL extensions depend on untested state |
+| `event-bus.ts` (181L, TESTED)             | heartbeat, enforcement, timer, observatory                                             | 🟢 Tested                                  |
+| `logger.ts` (301L, NO TEST)               | ALL extensions                                                                         | 🔴 30+ dependents, no test                 |
+| `injection-tracker.ts` (131L, NO TEST)    | enforcement, reasoning, timer, retry, metacognition, feedback                          | 🔴 Controls message visibility             |
+| `degradation-detector.ts` (328L, NO TEST) | heartbeat, evolve                                                                      | 🔴 Drives auto-rollback decisions          |
 
 ### POTENTIAL FRAGILE LIBS (complex, no tests)
-| Library | Lines | Complex? | Tested? |
-|---------|-------|----------|---------|
-| `cognitive-memory.ts` | 1225 | YES (class + I/O) | ❌ |
-| `goal-manager.ts` | 527 | YES (multi-step logic) | ❌ |
-| `state-checkpoint.ts` | 306 | YES (async I/O + rollback) | ❌ |
-| `filter-safe-to-remove.ts` | 251 | YES (LLM summarization) | ❌ |
-| `consolidation-channel.ts` | 358 | YES (async queue) | ✅ (test-consolidation-channel.mjs) |
+
+| Library                    | Lines | Complex?                   | Tested?                             |
+| -------------------------- | ----- | -------------------------- | ----------------------------------- |
+| `cognitive-memory.ts`      | 1225  | YES (class + I/O)          | ❌                                  |
+| `goal-manager.ts`          | 527   | YES (multi-step logic)     | ❌                                  |
+| `state-checkpoint.ts`      | 306   | YES (async I/O + rollback) | ❌                                  |
+| `filter-safe-to-remove.ts` | 251   | YES (LLM summarization)    | ❌                                  |
+| `consolidation-channel.ts` | 358   | YES (async queue)          | ✅ (test-consolidation-channel.mjs) |
 
 ---
 
-*End of supplement. Next cycles would propose fixes for each finding.*
+_End of supplement. Next cycles would propose fixes for each finding._
+
 # Self-Reflection: Improvement Proposals
-*Cycle 9 — Highest-ROI fixes for tool effectiveness and system health*
+
+_Cycle 9 — Highest-ROI fixes for tool effectiveness and system health_
 
 ---
 
@@ -340,6 +365,7 @@ NEW:      observatory, codebase-tree, timer
 **Problem**: Agent uses `bash diff file1 file2` or `git diff` to see changes. This returns plain text, not structured data. No way to apply patches.
 
 **Solution**: `pi.registerTool({ name: "file_diff", ... })` that:
+
 - Takes `fileA`, `fileB` (optional git ref)
 - Returns structured diff (hunks, added/removed lines)
 - Can apply patches via `patch` parameter
@@ -360,6 +386,7 @@ NEW:      observatory, codebase-tree, timer
 **Problem**: 12 listeners fire on `session_start` synchronously. Startup gets slower with every new extension. Latency is invisible — agent just waits.
 
 **Solution**: Add batch phase loading:
+
 ```
 Phase 1 (synchronous): polyfill, extension-state, logger
 Phase 2 (await all): memory, enforcement, context-lifecycle, prompt
@@ -373,6 +400,7 @@ Phase 3 (fire-and-forget): analytics, heartbeat, latent-activator
 **Problem**: handlers/ directory is misleading — 0 event registrations. All 8 pi.on() handlers remain in 1268-line index.ts.
 
 **Solution**: Move each pi.on() into its own handler file:
+
 - `handlers/input-handler.ts`
 - `handlers/tool-call-handler.ts`
 - `handlers/turn-end-handler.ts`
@@ -386,6 +414,7 @@ Each handler file receives `(pi, getState, ...utilities)` and registers itself.
 ## P5: Write Tests for Critical Untested Libraries
 
 **Priority order (by risk):**
+
 1. `extension-state.ts` (146L) — ALL extensions depend on it
 2. `injection-tracker.ts` (131L) — controls message visibility
 3. `degradation-detector.ts` (328L) — drives auto-rollback
@@ -402,6 +431,7 @@ Each test takes ~30 min to write. Total: ~3 hours for all 6.
 **Problem**: Only `healthcheck` exists (snapshot). No way to see CPU/memory trends, process count, disk growth.
 
 **Solution**: `pi.registerTool({ name: "system_monitor", ... })`:
+
 - Returns resource usage as structured metrics
 - Can start continuous monitoring (setInterval + whisper when thresholds exceeded)
 - Stores history for trend visualization
@@ -411,6 +441,7 @@ Each test takes ~30 min to write. Total: ~3 hours for all 6.
 ## P7: Audit Low-Value Extensions
 
 **Extensions to review for removal or reduction:**
+
 - `latent-activator` (568L, 0 catch blocks, unclear value)
 - `evolve` (780L, unclear trigger conditions)
 - `rate-limiter` (173L, disabled-by-default, never fires)
@@ -422,4 +453,4 @@ Each test takes ~30 min to write. Total: ~3 hours for all 6.
 
 ---
 
-*Generated during infinite self-reflection loop. Next analysis: implementation plans for each proposal.*
+_Generated during infinite self-reflection loop. Next analysis: implementation plans for each proposal._

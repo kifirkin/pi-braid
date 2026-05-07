@@ -180,10 +180,7 @@ class EventBus {
    */
   getStats(): Record<string, { persistent: number; once: number }> {
     const stats: Record<string, { persistent: number; once: number }> = {};
-    const allTypes = new Set([
-      ...this.handlers.keys(),
-      ...this.onceHandlers.keys(),
-    ]);
+    const allTypes = new Set([...this.handlers.keys(), ...this.onceHandlers.keys()]);
     for (const type of allTypes) {
       stats[type] = {
         persistent: this.handlers.get(type)?.size ?? 0,

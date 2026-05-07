@@ -20,6 +20,7 @@ UPDATE: How do I integrate the new knowledge?
 ```
 
 The variations are in:
+
 1. **What** gets extracted (principle vs. SOP vs. skill)
 2. **When** extraction happens (after success, after failure, continuously)
 3. **Where** it gets stored (belief store, procedural memory, skill knowledge base)
@@ -227,12 +228,14 @@ pi-braid application:
 ## Integration with Parallel pi-braid Agent
 
 The other agent is wiring:
+
 - 1.1: `activatePolicyEngine()` — THE BLOCKER
 - 1.2: Real tool tracking
 - 1.3: Three-memory-stores to heartbeat
 - 1.5: Belief store to measurement module
 
 Our self-evolution loop requires:
+
 - 1.2 (tool tracking) → for trajectory verification
 - 1.3 (three-memory wired) → for SOP/procedure storage
 - 1.5 (belief store wired) → for principle storage
@@ -278,32 +281,32 @@ Our self-evolution loop requires:
 
 ## New Papers to Add to Bibliography
 
-| arXiv | Title | Key for pi-braid |
-|-------|-------|----------------|
+| arXiv      | Title                                                    | Key for pi-braid                                 |
+| ---------- | -------------------------------------------------------- | ------------------------------------------------ |
 | 2604.04804 | SkillX: Automatically Constructing Skill Knowledge Bases | 3-tier hierarchical skills, iterative refinement |
-| 2604.00931 | PsychAgent: Experience-Driven Lifelong Learning | Rejection fine-tuning, longitudinal memory |
-| 2604.09815 | EE-MCP: Self-Evolving MCP-GUI Agents | Experience bank, distillation vs exploration |
-| 2510.08002 | MUSE: Experience-Driven Self-Evolving Agent | Hierarchical memory, zero-shot generalization |
-| 2510.16079 | EvolveR: Experience-Driven Lifecycle | Offline distillation + online retrieval |
-| 2511.12997 | WebCoach: Cross-Session Memory Guidance | Coach decision, WebCondenser compression |
-| 2511.10395 | AgentEvolver: Self-Evolving Agent System | Self-questioning, curiosity-driven generation |
-| 2512.18746 | MemEvolve: Meta-Evolution of Memory | Memory architecture evolution, EvolveLab |
-| 2603.09716 | AutoAgent: Evolving Cognition + Elastic Memory | Elastic Memory Orchestrator |
-| 2410.20285 | SWE-Search: MCTS for Software Agents | MCTS + self-feedback + multi-agent debate |
-| 2602.13594 | Hippocampus: Efficient Memory for Agentic AI | Binary signatures, 31x latency reduction |
-| 2603.24576 | Chameleon: Episodic Memory for Robotics | Geometry-grounded tokens, differentiable stack |
-| 2511.17208 | EMem: Event-Centric Long-Term Memory | Event semantics, EDUs, heterogeneous graph |
+| 2604.00931 | PsychAgent: Experience-Driven Lifelong Learning          | Rejection fine-tuning, longitudinal memory       |
+| 2604.09815 | EE-MCP: Self-Evolving MCP-GUI Agents                     | Experience bank, distillation vs exploration     |
+| 2510.08002 | MUSE: Experience-Driven Self-Evolving Agent              | Hierarchical memory, zero-shot generalization    |
+| 2510.16079 | EvolveR: Experience-Driven Lifecycle                     | Offline distillation + online retrieval          |
+| 2511.12997 | WebCoach: Cross-Session Memory Guidance                  | Coach decision, WebCondenser compression         |
+| 2511.10395 | AgentEvolver: Self-Evolving Agent System                 | Self-questioning, curiosity-driven generation    |
+| 2512.18746 | MemEvolve: Meta-Evolution of Memory                      | Memory architecture evolution, EvolveLab         |
+| 2603.09716 | AutoAgent: Evolving Cognition + Elastic Memory           | Elastic Memory Orchestrator                      |
+| 2410.20285 | SWE-Search: MCTS for Software Agents                     | MCTS + self-feedback + multi-agent debate        |
+| 2602.13594 | Hippocampus: Efficient Memory for Agentic AI             | Binary signatures, 31x latency reduction         |
+| 2603.24576 | Chameleon: Episodic Memory for Robotics                  | Geometry-grounded tokens, differentiable stack   |
+| 2511.17208 | EMem: Event-Centric Long-Term Memory                     | Event semantics, EDUs, heterogeneous graph       |
 
 ---
 
 ## Status
 
-**Not started** — Waiting on Tier 1 wiring from parallel agent. 
+**Not started** — Waiting on Tier 1 wiring from parallel agent.
 Once `activatePolicyEngine()` is called, the cognitive modules fire and wiring cascades.
 
 The self-evolution design is COMPLETE. Implementation can proceed once infrastructure is wired.
 
 ---
 
-*Related: docs/research/pi-braid-proposals/SELF-EVOLUTION-META-COGNITION-PROPOSAL.md*  
-*Related: docs/research/pi-braid-proposals/HIERARCHICAL-MEMORY-COMPRESSION-PROPOSAL.md*
+_Related: docs/research/pi-braid-proposals/SELF-EVOLUTION-META-COGNITION-PROPOSAL.md_  
+_Related: docs/research/pi-braid-proposals/HIERARCHICAL-MEMORY-COMPRESSION-PROPOSAL.md_

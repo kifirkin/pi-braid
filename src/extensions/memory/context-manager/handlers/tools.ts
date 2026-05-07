@@ -37,7 +37,10 @@ const contextPruneSchema = Type.Object({
   minAge: Type.Optional(Type.Number({ description: "Minimum age in turns (default 5)" })),
   toolFilter: Type.Optional(Type.Array(Type.String())),
   dryRun: Type.Optional(
-    Type.Boolean({ description: "If true (default), shows what would be removed without deleting. Set to false to actually remove entries." }),
+    Type.Boolean({
+      description:
+        "If true (default), shows what would be removed without deleting. Set to false to actually remove entries.",
+    }),
   ),
 });
 
@@ -360,7 +363,12 @@ export function registerTools(pi: any): void {
         lines.push("\n✓ No prune candidates found (session is clean)");
         return {
           content: [{ type: "text" as const, text: lines.join("\n") }],
-          details: { mode: "analyze", candidatesFound: 0, audit, stats: getCmState(ctx).pruningState.stats },
+          details: {
+            mode: "analyze",
+            candidatesFound: 0,
+            audit,
+            stats: getCmState(ctx).pruningState.stats,
+          },
         };
       }
 

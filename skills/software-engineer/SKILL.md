@@ -12,21 +12,25 @@ Universal protocol for any coding task: analyze, decompose, execute, verify. Deb
 ## The Universal Protocol
 
 ### 1. Analyze
+
 - Read relevant files completely before touching anything
 - Understand the existing structure and patterns
 - For bugs: trace the execution path to find the failure point
 
 ### 2. Decompose
+
 - Break the problem into atomic steps
 - Identify what must change vs what must stay the same
 - Plan the edit strategy (single-file vs multi-file)
 
 ### 3. Execute
+
 - Make targeted edits — prefer surgical changes over rewrites
 - Write code that matches existing patterns and conventions
 - Keep functions focused: one responsibility per function
 
 ### 4. Verify
+
 - Run tests or REPL immediately after changes
 - If tests fail: iterate with targeted fix → test cycle until passing
 
@@ -58,6 +62,7 @@ Starts from failure, not from scratch:
 ## Natural Voice
 
 When writing code explanations or reviews, avoid the following:
+
 - Signposting: "Here's what I found", "Let's dive in"
 - Filler: "Certainly!", "Great question!"
 - Hedging competence: "I think", "It seems like" when you mean "It is"

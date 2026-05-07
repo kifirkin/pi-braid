@@ -235,10 +235,7 @@ class ObservatoryServer {
   private config: ObservatoryServerConfig;
   private connectedClients = 0;
 
-  constructor(
-    collector: MetricsCollector,
-    config: Partial<ObservatoryServerConfig> = {},
-  ) {
+  constructor(collector: MetricsCollector, config: Partial<ObservatoryServerConfig> = {}) {
     this.collector = collector;
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
@@ -252,18 +249,22 @@ class ObservatoryServer {
       log.info(`[observatory] Client connected (${this.connectedClients} total)`);
 
       // Send current state on connection
-      ws.send(JSON.stringify({
-        type: "metrics_snapshot",
-        payload: this.collector.getMetrics(),
-      }));
+      ws.send(
+        JSON.stringify({
+          type: "metrics_snapshot",
+          payload: this.collector.getMetrics(),
+        }),
+      );
 
       // Subscribe to live updates
       const unsub = this.collector.subscribe((metrics) => {
         try {
-          ws.send(JSON.stringify({
-            type: "metrics_update",
-            payload: metrics,
-          }));
+          ws.send(
+            JSON.stringify({
+              type: "metrics_update",
+              payload: metrics,
+            }),
+          );
         } catch {}
       });
 

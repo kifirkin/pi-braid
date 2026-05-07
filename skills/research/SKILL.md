@@ -42,10 +42,12 @@ web_fetch "https://html.duckduckgo.com/html/?q=your+search+query"
 ```
 
 **Query parameters:**
+
 - `q` (required): Search query. Supports `site:`, `intitle:`, etc.
 - `kl=us-en`: Language/region. Use for locale-specific results.
 
 For a lighter (text-only) variant:
+
 ```bash
 web_fetch "https://lite.duckduckgo.com/lite/?q=your+query&kl=us-en"
 ```
@@ -55,6 +57,7 @@ web_fetch "https://lite.duckduckgo.com/lite/?q=your+query&kl=us-en"
 #### Time-Sensitive Queries
 
 For current events, append year or month to the query:
+
 ```bash
 web_fetch "https://html.duckduckgo.com/html/?q=AI+regulation+April+2026"
 ```
@@ -72,6 +75,7 @@ web_fetch <url>
 ```
 
 Best for:
+
 - Official documentation
 - Specific articles you found via search
 - Pages where you need the full content, not just a summary
@@ -94,6 +98,7 @@ The most effective approach for most research tasks:
 SearXNG aggregates results from multiple engines (Google, Bing, DuckDuckGo) simultaneously. However, **public instances are unreliable** — most block JSON API access, rate-limit aggressively, or go offline.
 
 If you want to try:
+
 ```bash
 curl -sL --max-time 10 'https://<instance>/search?q=query&format=json'
 ```
@@ -105,6 +110,7 @@ curl -sL --max-time 10 'https://<instance>/search?q=query&format=json'
 ## Fact Verification
 
 For claims that need verification:
+
 1. Find at least two independent sources
 2. Check publication dates (outdated info ≠ wrong info)
 3. Note consensus vs disagreement
@@ -114,6 +120,7 @@ For claims that need verification:
 ## Literature Review
 
 For academic or technical research:
+
 1. Identify key terms from the question
 2. Search papers, docs, and technical content
 3. Prioritize: top-tier AI conferences, arXiv, official docs, authoritative blogs
@@ -124,6 +131,7 @@ For academic or technical research:
 ## Comparative Research
 
 When comparing options or approaches:
+
 1. Define criteria upfront
 2. Gather data for each option against each criterion
 3. Note tradeoffs honestly
@@ -133,13 +141,13 @@ When comparing options or approaches:
 
 ## Evidence Quality
 
-| Source | Reliability | Notes |
-|--------|-------------|-------|
-| Official documentation | High | Primary source |
-| arXiv / peer-reviewed | High | Peer-reviewed > preprint |
-| Authoritative blog | Medium-High | Depends on author expertise |
-| Forum / Q&A | Medium | Often outdated, verify independently |
-| Social media | Low | Last resort, verify everything |
+| Source                 | Reliability | Notes                                |
+| ---------------------- | ----------- | ------------------------------------ |
+| Official documentation | High        | Primary source                       |
+| arXiv / peer-reviewed  | High        | Peer-reviewed > preprint             |
+| Authoritative blog     | Medium-High | Depends on author expertise          |
+| Forum / Q&A            | Medium      | Often outdated, verify independently |
+| Social media           | Low         | Last resort, verify everything       |
 
 Always note the source and date when reporting findings.
 
@@ -147,10 +155,10 @@ Always note the source and date when reporting findings.
 
 ## Troubleshooting
 
-| Problem | Solution |
-|---------|----------|
-| DuckDuckGo returns "no results" | Try simplifying the query; use `lite.duckduckgo.com` variant |
-| `web_fetch` gets 403 on a result | The site blocks bots; try `curl -A "Mozilla/5.0"` directly |
-| Results are outdated | Append month/year to query (e.g., `April 2026`) |
-| Page content is paywalled | Try `web_fetch` on the URL anyway — often extracts article text |
-| Need real-time data | Use DuckDuckGo HTML with very recent date in query |
+| Problem                          | Solution                                                        |
+| -------------------------------- | --------------------------------------------------------------- |
+| DuckDuckGo returns "no results"  | Try simplifying the query; use `lite.duckduckgo.com` variant    |
+| `web_fetch` gets 403 on a result | The site blocks bots; try `curl -A "Mozilla/5.0"` directly      |
+| Results are outdated             | Append month/year to query (e.g., `April 2026`)                 |
+| Page content is paywalled        | Try `web_fetch` on the URL anyway — often extracts article text |
+| Need real-time data              | Use DuckDuckGo HTML with very recent date in query              |

@@ -69,7 +69,11 @@ export function parseUnifiedDiff(raw: string): DiffHunk[] {
       } else if (line.startsWith("-") && !line.startsWith("---")) {
         current.changes.push({ type: "del", line: current.changes.length, content: line.slice(1) });
       } else {
-        current.changes.push({ type: "ctx", line: current.changes.length, content: line.startsWith(" ") ? line.slice(1) : line });
+        current.changes.push({
+          type: "ctx",
+          line: current.changes.length,
+          content: line.startsWith(" ") ? line.slice(1) : line,
+        });
       }
     }
   }
@@ -100,7 +104,10 @@ function diffFiles(fileA: string, fileB: string, contextLines: number): DiffResu
     if (e.status === 1 && e.stdout) {
       const hunks = parseUnifiedDiff(e.stdout);
       const added = hunks.reduce((s, h) => s + h.changes.filter((c) => c.type === "add").length, 0);
-      const removed = hunks.reduce((s, h) => s + h.changes.filter((c) => c.type === "del").length, 0);
+      const removed = hunks.reduce(
+        (s, h) => s + h.changes.filter((c) => c.type === "del").length,
+        0,
+      );
       return {
         hunks,
         files: [fileA, fileB],
@@ -127,7 +134,11 @@ function diffGit(refA: string, refB: string, path: string, contextLines: number)
   const repoPath = path ? `-- ${escapePath(path)}` : "";
   const cmd = `git diff -U ${contextLines} ${refA} ${refB} ${repoPath}`;
   try {
-    const stdout = execSync(cmd, { encoding: "utf-8", maxBuffer: 10 * 1024 * 1024, cwd: process.cwd() });
+    const stdout = execSync(cmd, {
+      encoding: "utf-8",
+      maxBuffer: 10 * 1024 * 1024,
+      cwd: process.cwd(),
+    });
     const hunks = parseUnifiedDiff(stdout);
     const added = hunks.reduce((s, h) => s + h.changes.filter((c) => c.type === "add").length, 0);
     const removed = hunks.reduce((s, h) => s + h.changes.filter((c) => c.type === "del").length, 0);
@@ -141,7 +152,15 @@ function diffGit(refA: string, refB: string, path: string, contextLines: number)
       format: "unified",
     };
   } catch {
-    return { hunks: [], files: [], added: 0, removed: 0, changed: 0, hasChanges: false, format: "unified" };
+    return {
+      hunks: [],
+      files: [],
+      added: 0,
+      removed: 0,
+      changed: 0,
+      hasChanges: false,
+      format: "unified",
+    };
   }
 }
 
@@ -193,9 +212,13 @@ export default function diffExtension(pi: ExtensionAPI) {
       fileA: Type.Optional(Type.String({ description: "First file path" })),
       fileB: Type.Optional(Type.String({ description: "Second file path" })),
       gitRefA: Type.Optional(Type.String({ description: "Git reference A (e.g. HEAD~1)" })),
-      gitRefB: Type.Optional(Type.String({ description: "Git reference B (e.g. HEAD)", default: "HEAD" })),
+      gitRefB: Type.Optional(
+        Type.String({ description: "Git reference B (e.g. HEAD)", default: "HEAD" }),
+      ),
       path: Type.Optional(Type.String({ description: "Path filter for git diff" })),
-      context: Type.Optional(Type.Number({ default: 3, description: "Context lines (default: 3)" })),
+      context: Type.Optional(
+        Type.Number({ default: 3, description: "Context lines (default: 3)" }),
+      ),
       format: Type.Optional(
         Type.String({ default: "unified", description: "Output format: unified, summary, stat" }),
       ),
@@ -280,7 +303,9 @@ function formatResult(result: DiffResult, format: string): any {
   // Unified format
   if (!result.hasChanges) {
     return {
-      content: [{ type: "text" as const, text: `✅ Files are identical: ${result.files.join(", ")}` }],
+      content: [
+        { type: "text" as const, text: `✅ Files are identical: ${result.files.join(", ")}` },
+      ],
       details: result,
     };
   }

@@ -25,7 +25,11 @@ import { addEvidence } from "../../../lib/evidence-pool.js";
 import { getExtensionState } from "../../../lib/extension-state.js";
 import { textResult } from "../../../lib/extension-utils.js";
 import type { MemoryStoresState } from "../../memory/three-memory-stores/index.js";
-import { createMemoryStoresState, retrieveByRUMS, addEpisode } from "../../memory/three-memory-stores/index.js";
+import {
+  createMemoryStoresState,
+  retrieveByRUMS,
+  addEpisode,
+} from "../../memory/three-memory-stores/index.js";
 import {
   getPendingQAs as getPendingConflictQAs,
   getAllQAs as getAllConflictQAs,
@@ -307,7 +311,9 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
         if (params.memoryType === "episodic" && ctx) {
           try {
             const threeMem = getExtensionState<MemoryStoresState>(
-              ctx, "three-memory-stores", createMemoryStoresState,
+              ctx,
+              "three-memory-stores",
+              createMemoryStoresState,
             );
             addEpisode(
               threeMem,
@@ -318,7 +324,9 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
               params.tags ?? [],
               undefined,
             );
-          } catch { /* three-memory-stores not available */ }
+          } catch {
+            /* three-memory-stores not available */
+          }
         }
 
         return {
@@ -385,17 +393,26 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
       if (ctx) {
         try {
           const threeMem = getExtensionState<MemoryStoresState>(
-            ctx, "three-memory-stores", createMemoryStoresState,
+            ctx,
+            "three-memory-stores",
+            createMemoryStoresState,
           );
           if (threeMem.episodes.length > 0) {
-            const episodes = retrieveByRUMS(threeMem, params.query, params.limit ?? 3, threeMem.currentSessionId);
+            const episodes = retrieveByRUMS(
+              threeMem,
+              params.query,
+              params.limit ?? 3,
+              threeMem.currentSessionId,
+            );
             episodeResults = episodes.map((ep) => ({
               task: ep.task.slice(0, 80),
               outcome: ep.outcome,
               similarity: ep.similarity ?? 0,
             }));
           }
-        } catch { /* three-memory-stores not available */ }
+        } catch {
+          /* three-memory-stores not available */
+        }
       }
 
       // Add evidence to pool (Task 3b)
@@ -427,7 +444,10 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
         lines.push("No matching memories found.");
       }
 
-      return { content: [{ type: "text", text: lines.join("\n") }], details: { count: results.length + episodeResults.length } };
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+        details: { count: results.length + episodeResults.length },
+      };
     },
   });
 
@@ -464,7 +484,9 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
       if (ctx) {
         try {
           const threeMem = getExtensionState<MemoryStoresState>(
-            ctx, "three-memory-stores", createMemoryStoresState,
+            ctx,
+            "three-memory-stores",
+            createMemoryStoresState,
           );
           const recent = threeMem.episodes
             .slice()
@@ -479,7 +501,9 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
               lines.push(`  ${icon} [id:${ep.id.slice(0, 12)}] ${time} — ${ep.task.slice(0, 60)}`);
             }
           }
-        } catch { /* three-memory-stores not available */ }
+        } catch {
+          /* three-memory-stores not available */
+        }
       }
 
       if (lines.length === 0) {
@@ -515,21 +539,40 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
       if (!m && ctx) {
         try {
           const threeMem = getExtensionState<MemoryStoresState>(
-            ctx, "three-memory-stores", createMemoryStoresState,
+            ctx,
+            "three-memory-stores",
+            createMemoryStoresState,
           );
           const ep = threeMem.episodes.find((e) => e.id === params.id);
           if (ep) {
             const time = formatMemoryTimestamp(ep.timestamp);
             const tags = ep.tags?.length ? ` [${ep.tags.join(", ")}]` : "";
             return {
-              content: [{
-                type: "text",
-                text: `[episodic] ${time}${tags}\n  Task: ${ep.task}\n  Solution: ${ep.solution}\n  Outcome: ${ep.outcome}`,
-              }],
-              details: { found: true, memory: { id: ep.id, content: `${ep.task}: ${ep.solution}`, type: "episodic", tags: ep.tags ?? [], timestamp: ep.timestamp, accessCount: 0, lastAccessed: 0, importance: 0.5, utility: 0.5 } },
+              content: [
+                {
+                  type: "text",
+                  text: `[episodic] ${time}${tags}\n  Task: ${ep.task}\n  Solution: ${ep.solution}\n  Outcome: ${ep.outcome}`,
+                },
+              ],
+              details: {
+                found: true,
+                memory: {
+                  id: ep.id,
+                  content: `${ep.task}: ${ep.solution}`,
+                  type: "episodic",
+                  tags: ep.tags ?? [],
+                  timestamp: ep.timestamp,
+                  accessCount: 0,
+                  lastAccessed: 0,
+                  importance: 0.5,
+                  utility: 0.5,
+                },
+              },
             };
           }
-        } catch { /* three-memory-stores not available */ }
+        } catch {
+          /* three-memory-stores not available */
+        }
       }
 
       if (!m) {

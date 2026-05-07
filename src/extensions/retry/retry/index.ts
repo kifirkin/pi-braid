@@ -40,12 +40,16 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
   // ── Events ───────────────────────────────────────────────────────────
 
   // Recover persisted retry state on session start
-  registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event: SessionStartEvent, ctx: ExtensionContext): Promise<void> => {
-    recoverState(ctx.sessionManager, ctx);
-    const state = getState(ctx);
-    if (state.lastUserMessage)
-      log.info(`Recovered retry state: "${truncate(state.lastUserMessage.text, 60)}"`);
-  });
+  registerSessionStartHandler(
+    pi,
+    SessionPhase.MemoryState,
+    async (_event: SessionStartEvent, ctx: ExtensionContext): Promise<void> => {
+      recoverState(ctx.sessionManager, ctx);
+      const state = getState(ctx);
+      if (state.lastUserMessage)
+        log.info(`Recovered retry state: "${truncate(state.lastUserMessage.text, 60)}"`);
+    },
+  );
 
   // Capture user input for potential retry (skip commands and shell invocations)
   pi.on("input", (event: InputEvent, ctx: ExtensionContext) => {

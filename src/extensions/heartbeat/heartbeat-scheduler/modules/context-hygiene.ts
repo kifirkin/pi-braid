@@ -161,10 +161,7 @@ export const contextHygieneModule: CognitiveModule = {
         });
       } catch {}
 
-      const projectedPercent = Math.min(
-        Math.round(projectedUsage * 100),
-        100,
-      );
+      const projectedPercent = Math.min(Math.round(projectedUsage * 100), 100);
       ctx.whisper?.(
         `[proactive] Context projected at ${projectedPercent}% in ` +
           `${Math.ceil(remainingTurns)} turns (${(density.totalTokens / 1000).toFixed(0)}K tokens, ` +
@@ -182,8 +179,10 @@ export const contextHygieneModule: CognitiveModule = {
         "Low context density (" +
           Math.round(density.density * 100) +
           "% signal). " +
-          "Noisy: " + density.noisyMessages +
-          ", Signal: " + density.signalMessages +
+          "Noisy: " +
+          density.noisyMessages +
+          ", Signal: " +
+          density.signalMessages +
           ". " +
           "Consider: context_archive() or context_prune().",
         { category: "cognitive", priority: density.density < 0.25 ? "high" : "medium" },

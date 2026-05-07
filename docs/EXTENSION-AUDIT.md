@@ -13,24 +13,28 @@ Purpose: Identify low-value extensions that could be removed, merged, or improve
 ## Disabled by Default (Audit Candidates)
 
 ### 1. watchdog (72L)
+
 - **Purpose**: Session monitoring and error alerting
 - **Status**: Disabled by default (verbose, opt-in)
 - **Value**: Medium - useful for debugging production issues
 - **Recommendation**: Keep, but consider reducing verbosity or merging into core logging
 
 ### 2. evolve (156L + 169L modules = 325L total)
+
 - **Purpose**: Self-evolution commands, checkpointing, degradation detection
 - **Status**: Disabled by default (disruptive)
 - **Value**: High for research, Low for production
 - **Recommendation**: Keep for research, document as experimental
 
 ### 3. rate-limiter (unknown size)
+
 - **Purpose**: API rate limiting and usage management
 - **Status**: Disabled by default (experimental)
 - **Value**: Medium - useful for production with rate-limited APIs
 - **Recommendation**: Keep, document as experimental
 
 ### 4. agent-environment (283L)
+
 - **Purpose**: L1 environmental awareness (runtime context)
 - **Status**: Disabled by default
 - **Value**: Medium - provides useful context to agent
@@ -39,10 +43,12 @@ Purpose: Identify low-value extensions that could be removed, merged, or improve
 ## Large Files (Decomposition Candidates)
 
 ### Already Decomposed This Session
+
 - ✅ healthcheck: 874L → 115L + modular files
 - ✅ evolve: 780L → 156L + modular files
 
 ### Remaining Large Files
+
 1. **context-manager/handlers/compaction.ts (754L)** - compaction logic
 2. **enforcement/handler-registry.ts (725L)** - enforcement handlers
 3. **context-manager/handlers/tools.ts (675L)** - tool handlers

@@ -40,7 +40,12 @@ export type {
   CognitiveMemoryEntry,
   CognitiveMemoryStore,
 } from "./types.js";
-export { formatMemoryTimestamp, formatMemoryEntry, parseStructuredContent, generateAutoTags } from "./utils.js";
+export {
+  formatMemoryTimestamp,
+  formatMemoryEntry,
+  parseStructuredContent,
+  generateAutoTags,
+} from "./utils.js";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -337,9 +342,7 @@ export class CognitiveMemory {
   }
 
   getRecent(limit = 10): CognitiveMemoryEntry[] {
-    return [...this.memoryStore.memories]
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, limit);
+    return [...this.memoryStore.memories].sort((a, b) => b.timestamp - a.timestamp).slice(0, limit);
   }
 
   async getById(id: string): Promise<CognitiveMemoryEntry | undefined> {
@@ -560,9 +563,7 @@ export class CognitiveMemory {
       total: this.memoryStore.memories.length,
       byType,
       avgUtility:
-        this.memoryStore.memories.length > 0
-          ? totalUtility / this.memoryStore.memories.length
-          : 0,
+        this.memoryStore.memories.length > 0 ? totalUtility / this.memoryStore.memories.length : 0,
       lastConsolidation: this.memoryStore.lastConsolidation,
     };
   }

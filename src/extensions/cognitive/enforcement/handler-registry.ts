@@ -390,7 +390,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
 
       const errorType = _classifyRetryError(finalError ?? "");
 
-      let msg = "";
+      let msg = ""; // eslint-disable-line no-useless-assignment
       if (errorType === "rate_limit") {
         msg = `Rate limit after ${attempt} retry(s). Switch model with /model or wait.`;
       } else if (errorType === "server_error") {

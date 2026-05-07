@@ -27,7 +27,11 @@ function getVerificationState(ctx?: ExtensionContext): VerificationState {
 const _default: VerificationState = { pendingCodeChanges: false, lastCodeChangeTurn: -100 };
 export const VERIFICATION_REMINDER_THRESHOLD = 12; // turns
 
-export function detectMissingVerification(pi: ExtensionAPI, ctx: ExtensionContext, currentTurn: number): void {
+export function detectMissingVerification(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  currentTurn: number,
+): void {
   const s = getVerificationState(ctx);
   const turnsSinceCodeChange = currentTurn - s.lastCodeChangeTurn;
 

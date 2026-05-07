@@ -304,16 +304,14 @@ export function registerBeforeCompactHandler(pi: any): void {
             turnCount: (ctx as any)?.turnCount ?? audit.branchLength ?? 0,
             turnsSinceCompression:
               ((ctx as any)?.turnCount ?? audit.branchLength ?? 0) -
-                (getCmState(ctx).lastCompressionStats?.turnRange?.to ?? 0),
+              (getCmState(ctx).lastCompressionStats?.turnRange?.to ?? 0),
             consecutiveFailures: 0,
             reasoningChainDepth: audit.recommendations.length > 3 ? 4 : 1,
             messageCount: prep.messagesToSummarize.length,
           }).level;
           // Escalate compression level when context has been near-full
           const compressionLevel =
-            peakUsage > 85
-              ? (baseLevel === "short-term" ? "medium-term" : "long-term")
-              : baseLevel;
+            peakUsage > 85 ? (baseLevel === "short-term" ? "medium-term" : "long-term") : baseLevel;
 
           const { compressed, stats: scStats } = semanticCompress(
             (prep as any).messagesToSummarize as any[],

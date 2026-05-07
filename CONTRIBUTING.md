@@ -13,14 +13,14 @@ npm run build
 
 ## Commands
 
-| Command | Purpose |
-|---------|---------|
-| `npm run typecheck` | TypeScript check (no emit) |
-| `npm run build` | Compile to `dist/` |
-| `npm run test` | Build + run 61 runtime tests |
-| `npm run lint` | ESLint check |
-| `npm run format` | Prettier formatting |
-| `npm run clean` | Remove build artifacts |
+| Command             | Purpose                      |
+| ------------------- | ---------------------------- |
+| `npm run typecheck` | TypeScript check (no emit)   |
+| `npm run build`     | Compile to `dist/`           |
+| `npm run test`      | Build + run 61 runtime tests |
+| `npm run lint`      | ESLint check                 |
+| `npm run format`    | Prettier formatting          |
+| `npm run clean`     | Remove build artifacts       |
 
 ## Project Structure
 
@@ -55,7 +55,9 @@ export default function register(pi: ExtensionAPI) {
   pi.registerTool({
     name: "my_tool",
     description: "What it does",
-    parameters: { /* TypeBox schema */ },
+    parameters: {
+      /* TypeBox schema */
+    },
     execute: async (toolCallId, params, signal, onUpdate, ctx) => {
       return { result: "done" };
     },

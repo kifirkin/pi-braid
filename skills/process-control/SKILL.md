@@ -38,6 +38,7 @@ tmux -S $SOCKET kill-session -t <name>
 **Socket**: `${TMPDIR:-/tmp}/pi-tmux-sockets` · **Target**: `session:window.pane` (defaults to `:0.0`)
 
 **Lifecycle pattern**:
+
 ```
 1. Create session
 2. Send startup command
@@ -73,14 +74,14 @@ Use nohup when you only need the final result and don't need to monitor intermed
 
 ## Choosing a Mechanism
 
-| Need | Mechanism |
-|------|-----------|
-| Monitor output over time | tmux |
-| Interactive input (REPL, debugger) | tmux |
-| Supervise subagents | tmux |
-| Dev server start/stop/verify | tmux |
-| Long task, final output only | nohup |
-| Quick command <30s | bash `&` or direct |
+| Need                               | Mechanism          |
+| ---------------------------------- | ------------------ |
+| Monitor output over time           | tmux               |
+| Interactive input (REPL, debugger) | tmux               |
+| Supervise subagents                | tmux               |
+| Dev server start/stop/verify       | tmux               |
+| Long task, final output only       | nohup              |
+| Quick command <30s                 | bash `&` or direct |
 
 **Default**: tmux. It costs slightly more setup but gives you monitoring and control that nohup can't.
 
@@ -119,12 +120,12 @@ done
 
 ### Interactive REPL
 
-| CLI | Spawn |
-|-----|-------|
-| Python | `PYTHON_BASIC_REPL=1 python3 -q` |
-| Node | `node` |
-| GDB | `gdb --quiet ./binary` then `set pagination off` |
-| LLDB | `lldb ./binary` |
+| CLI    | Spawn                                            |
+| ------ | ------------------------------------------------ |
+| Python | `PYTHON_BASIC_REPL=1 python3 -q`                 |
+| Node   | `node`                                           |
+| GDB    | `gdb --quiet ./binary` then `set pagination off` |
+| LLDB   | `lldb ./binary`                                  |
 
 Send input: `tmux send-keys -t $SESSION:0.0 'cmd' Enter`
 Interrupt: `tmux send-keys -t $SESSION:0.0 C-c`

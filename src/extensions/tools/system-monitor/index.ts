@@ -8,6 +8,7 @@
  */
 
 import * as os from "node:os";
+import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
@@ -169,11 +170,10 @@ export function collectDisk(mountPoint: string): DiskInfo {
 function collectProcesses(limit: number): ProcessInfo[] {
   // Use ps via execSync as fallback — os module doesn't provide per-process info
   try {
-    const { execSync } = require("node:child_process") as typeof import("node:child_process");
-    const stdout = execSync(
-      `ps -eo pid,comm,%cpu,%mem,state --sort=-%cpu | head -${limit + 1}`,
-      { encoding: "utf-8", maxBuffer: 1024 * 1024 },
-    );
+    const stdout = execSync(`ps -eo pid,comm,%cpu,%mem,state --sort=-%cpu | head -${limit + 1}`, {
+      encoding: "utf-8",
+      maxBuffer: 1024 * 1024,
+    });
     const lines = stdout.trim().split("\n").slice(1); // skip header
     return lines.map((line) => {
       const parts = line.trim().split(/\s+/);

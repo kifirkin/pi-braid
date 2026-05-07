@@ -26,17 +26,17 @@ npm run build && npm test
 
 ## Quick Status Table
 
-| # | Track | Status | Priority | Est. Effort | Dependencies |
-|---|-------|--------|----------|-------------|--------------|
-| 1 | Self-Evolution + Consolidation | 🔴 Not started | P0 | 3-4 weeks | None |
-| 2 | Hierarchical Memory Compression | 🟡 Partial | P1 | 1-2 weeks | Track 1 (SOP storage) |
-| 3 | Bidirectional Verifier | 🟡 Phase 1 done | P3 | 3-5 days | None |
-| 4 | Agent Timer / Pomodoro | 🟡 Core done | P1 | 2-3 days | None |
-| 5 | SAE Steering | 🔴 Research only | P2 | 2-4 weeks | Open model provider |
-| 6 | Benchmark Improvements + VAR-MATH | 🟡 SDK harnesses done | P1 | 1 week | None |
-| 7 | Test Coverage (critical libs) | 🟡 Partial | P1 | 3-5 days | None |
-| 8 | Event Bus Gaps | ✅ Complete | P2 | — | Track 9 |
-| 9 | Docs Catch-Up | 🟡 In Progress | P3 | In progress | All tracks |
+| #   | Track                             | Status                | Priority | Est. Effort | Dependencies          |
+| --- | --------------------------------- | --------------------- | -------- | ----------- | --------------------- |
+| 1   | Self-Evolution + Consolidation    | 🔴 Not started        | P0       | 3-4 weeks   | None                  |
+| 2   | Hierarchical Memory Compression   | 🟡 Partial            | P1       | 1-2 weeks   | Track 1 (SOP storage) |
+| 3   | Bidirectional Verifier            | 🟡 Phase 1 done       | P3       | 3-5 days    | None                  |
+| 4   | Agent Timer / Pomodoro            | 🟡 Core done          | P1       | 2-3 days    | None                  |
+| 5   | SAE Steering                      | 🔴 Research only      | P2       | 2-4 weeks   | Open model provider   |
+| 6   | Benchmark Improvements + VAR-MATH | 🟡 SDK harnesses done | P1       | 1 week      | None                  |
+| 7   | Test Coverage (critical libs)     | 🟡 Partial            | P1       | 3-5 days    | None                  |
+| 8   | Event Bus Gaps                    | ✅ Complete           | P2       | —           | Track 9               |
+| 9   | Docs Catch-Up                     | 🟡 In Progress        | P3       | In progress | All tracks            |
 
 ---
 
@@ -48,6 +48,7 @@ npm run build && npm test
 **Status**: 🟡 Phase 1 done, Phase 2 mostly done
 
 **What exists**:
+
 - ✅ `mars-reflector.ts` — MARS single-cycle reflection module
 - ✅ `belief-policy-engine.ts` — D0 belief store for principles
 - ✅ `three-memory-stores` — episodic memory for SOPs (strategic/functional/atomic levels)
@@ -57,6 +58,7 @@ npm run build && npm test
 - ✅ `sop-extractor.ts` — heuristic trajectory→SOP conversion
 
 **Phase 1 — SOP Extraction**: ✅ Done 2026-05-05
+
 - ✅ `src/lib/sop-extractor.ts`: Strategic/Functional/Atomic levels, 9 pattern types
 - ✅ Auto-extract on `agent_end` via heartbeat-scheduler
 - ✅ Stores all 3 SOP levels via `addEpisode()`
@@ -64,17 +66,17 @@ npm run build && npm test
 - ✅ 8 unit tests
 
 **Phase 2 — Retrieval & Suggestion**: 🟡 Partial
+
 - ✅ Heartbeat queries episodes on session_start (SOP retrieval, existing)
 - 🟡 Principle extraction from failures → belief store
 - 🟡 Proactive SOP surfacing (heartbeat whisper is minimal)
 
 **Phase 3 — Consolidation Channel**: 🟡 Infra exists
+
 - ✅ `consolidation-channel.ts`: queue, scoring engine, config, tick
 - ✅ `processConsolidationTick()` called from heartbeat tick
-- 🟡 Full episodic→semantic transfer loop
-  10. Lightweight weight update mechanism (LoRA or fine-tuning trigger)
-  11. Full self-evolution loop integration
-  12. Benchmark validation
+- 🟡 Full episodic→semantic transfer loop 10. Lightweight weight update mechanism (LoRA or fine-tuning trigger) 11. Full self-evolution loop integration 12. Benchmark validation
+
 ```
 
 **Key papers**: MARS (2601.11974), ACE (2510.04618), GenericAgent (2604.17091), Contextual Agentic Memory (2604.27707)
@@ -119,11 +121,14 @@ npm run build && npm test
 
 **What's missing**:
 ```
+
 Task:
-  1. Add backward verification: after root-cause fix, check derived files for consistency
-  2. Track file dependency graph between edits
-  3. Inject derived-file check into enforcement/verification nudge
-  4. Add to benchmark scoring
+
+1. Add backward verification: after root-cause fix, check derived files for consistency
+2. Track file dependency graph between edits
+3. Inject derived-file check into enforcement/verification nudge
+4. Add to benchmark scoring
+
 ```
 
 ---
@@ -142,11 +147,14 @@ Task:
 
 **What's missing**:
 ```
+
 Task:
-  1. Add Pomodoro-style agent pacing (auto-set focus timers)
-  2. Add break reminders after N consecutive turns
-  3. Add session planning integration (estimate time per task)
-  4. Add timer analytics (task time estimation accuracy)
+
+1. Add Pomodoro-style agent pacing (auto-set focus timers)
+2. Add break reminders after N consecutive turns
+3. Add session planning integration (estimate time per task)
+4. Add timer analytics (task time estimation accuracy)
+
 ```
 
 ---
@@ -161,12 +169,15 @@ Need open model (Llama 3 via Ollama, Qwen via local) for activation extraction.
 
 **What's missing**:
 ```
+
 Task:
-  1. Feasibility: test logprob access on current providers
-  2. If blocked: switch to open model for research worktree
-  3. Implement TransformerLens activation extraction
-  4. Apply open-source SAEs for steering vectors
-  5. Test: sycophancy suppression, epistemic stability enhancement
+
+1. Feasibility: test logprob access on current providers
+2. If blocked: switch to open model for research worktree
+3. Implement TransformerLens activation extraction
+4. Apply open-source SAEs for steering vectors
+5. Test: sycophancy suppression, epistemic stability enhancement
+
 ```
 
 ---
@@ -186,12 +197,15 @@ Task:
 
 **What's missing**:
 ```
+
 Task:
-  1. Add contamination resistance (shuffle task order, inject distractor tasks)
-  2. Implement VAR-MATH variant generation (problem variants per skill)
-  3. Improve scoring: check actual tool call sequences, not text mentions
-  4. Add retry logic for API timeouts
-  5. Add cross-benchmark comparison reports
+
+1. Add contamination resistance (shuffle task order, inject distractor tasks)
+2. Implement VAR-MATH variant generation (problem variants per skill)
+3. Improve scoring: check actual tool call sequences, not text mentions
+4. Add retry logic for API timeouts
+5. Add cross-benchmark comparison reports
+
 ```
 
 ---
@@ -207,9 +221,11 @@ Task:
 
 **Remaining untested libs**:
 ```
-  1. cognitive-memory/storage.ts (58L) — persistence layer (tested indirectly via CognitiveMemory class)
-  2. cognitive-memory/utils.ts (181L) — utility functions
-  3. state-checkpoint.ts, goal-manager.ts, cognitive-memory/index.ts — now have runtime coverage
+
+1. cognitive-memory/storage.ts (58L) — persistence layer (tested indirectly via CognitiveMemory class)
+2. cognitive-memory/utils.ts (181L) — utility functions
+3. state-checkpoint.ts, goal-manager.ts, cognitive-memory/index.ts — now have runtime coverage
+
 ```
 
 ---
@@ -239,9 +255,12 @@ Task:
 
 **What still needs updating**:
 ```
+
 Task:
-  1. Update SELF-REFLECTION.md (stale missing-tool claims — file_diff, system_monitor, tool_error all exist)
-  2. Mark IMPLEMENTATION.md as superseded by this master plan (or remove)
+
+1. Update SELF-REFLECTION.md (stale missing-tool claims — file_diff, system_monitor, tool_error all exist)
+2. Mark IMPLEMENTATION.md as superseded by this master plan (or remove)
+
 ```
 
 ---
@@ -249,6 +268,7 @@ Task:
 ## Commit Log (Last 30, for context)
 
 ```
+
 6dff09d4 fix: error handling + L1 turn count persistence
 0d5a41a2 docs: update pi-reference skill
 59faf02d refactor: pi-native tool listing, preview, active-mode
@@ -257,7 +277,8 @@ dd572b95 refactor: tone-quality directive-density
 aec53043 refactor: strip dead sections, fix appendSystemPrompt
 a7f85b18 fix: tool descriptions, empty proxy calls
 933d6a2d refactor: remove scratchpad, rewrite preview
-```
+
+````
 
 ---
 
@@ -267,6 +288,6 @@ a7f85b18 fix: tool descriptions, empty proxy calls
 memory_recall(query="pi-braid master plan")
 # → Returns this plan's key content
 # → Use git log, cat docs/BRAID-MASTER-PLAN.md for full details
-```
+````
 
-*End of Master Plan*
+_End of Master Plan_

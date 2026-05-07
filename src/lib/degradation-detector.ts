@@ -162,18 +162,21 @@ export function recordTurnMetrics(
     ? metrics!
     : (ctxOrMetrics as Omit<PerformanceMetrics, "timestamp" | "healthcheckScore">);
   const s = getStateFrom(ctx);
-  
+
   // Calculate derived fields if not provided
   const toolCalls = actualMetrics.toolCalls || 0;
   const errors = actualMetrics.errors || 0;
   const errorRate = actualMetrics.errorRate ?? (toolCalls > 0 ? errors / toolCalls : 0);
-  const toolSuccessRate = actualMetrics.toolSuccessRate ?? (toolCalls > 0 ? ((toolCalls - errors) / toolCalls) * 100 : 100);
-  
+  const toolSuccessRate =
+    actualMetrics.toolSuccessRate ??
+    (toolCalls > 0 ? ((toolCalls - errors) / toolCalls) * 100 : 100);
+
   const entry: PerformanceMetrics = {
     ...actualMetrics,
     errorRate,
     toolSuccessRate,
-    memoryUsagePercent: actualMetrics.memoryUsagePercent ?? captureSystemMetrics().memoryUsagePercent,
+    memoryUsagePercent:
+      actualMetrics.memoryUsagePercent ?? captureSystemMetrics().memoryUsagePercent,
     consecutiveErrors: actualMetrics.consecutiveErrors ?? (errors > 0 ? errors : 0),
     timestamp: Date.now(),
     healthcheckScore: s.lastHealthcheck?.score ?? 100,
@@ -208,7 +211,7 @@ export function getDegradationReasons(ctx?: ExtensionContext): string[] {
   const reasons: string[] = [];
   const s = getStateFrom(ctx);
   const recent = s.metrics.slice(-5);
-  
+
   // Check metrics-based conditions only if we have metrics
   if (recent.length > 0) {
     const maxConsecutive = Math.max(...recent.map((m) => m.consecutiveErrors));
@@ -221,11 +224,11 @@ export function getDegradationReasons(ctx?: ExtensionContext): string[] {
     if (avgToolSuccess < s.config.toolSuccessMin)
       reasons.push(`Low tool success: ${avgToolSuccess.toFixed(1)}%`);
   }
-  
+
   // Always check healthcheck score (doesn't depend on having metrics)
   if (s.lastHealthcheck && s.lastHealthcheck.score < s.config.healthcheckMinScore)
     reasons.push(`Low healthcheck: ${s.lastHealthcheck.score}%`);
-  
+
   return reasons;
 }
 

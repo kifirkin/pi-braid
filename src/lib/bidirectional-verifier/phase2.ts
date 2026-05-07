@@ -23,7 +23,9 @@ export function _resetArtifactState(): void {
 function isLikelyFilePath(s: string): boolean {
   return (
     (s.includes("/") || /\.\w+$/.test(s)) &&
-    !/^https?:\/\//.test(s) && !/^[A-Z][a-z]+$/.test(s) && s.length > 2
+    !/^https?:\/\//.test(s) &&
+    !/^[A-Z][a-z]+$/.test(s) &&
+    s.length > 2
   );
 }
 
@@ -72,7 +74,9 @@ export function recordClaimedActions(ctx: ExtensionContext, text: string, turn: 
 }
 
 export function validateArtifact(
-  ctx: ExtensionContext, actualFile: string, turn: number,
+  ctx: ExtensionContext,
+  actualFile: string,
+  turn: number,
 ): string | null {
   const matchingClaims = _validationState.claimed.filter(
     (c) => !c.verified && (filesAreRelated(c.file, actualFile) || c.file === actualFile),
@@ -86,7 +90,12 @@ export function validateArtifact(
   if (pendingClaims.length > 0) {
     const pending = pendingClaims[0];
     const mismatch = `Edited "${actualFile}" but claimed "${pending.file}" (${pending.context.slice(0, 40)})`;
-    _validationState.mismatches.push({ turn, claimedFile: pending.file, actualFile, action: "edit" });
+    _validationState.mismatches.push({
+      turn,
+      claimedFile: pending.file,
+      actualFile,
+      action: "edit",
+    });
     return mismatch;
   }
   return null;

@@ -20,8 +20,8 @@ RepE (Representation Engineering) shows that honesty, truthfulness, and anti-syc
 ### 1. TRUTH-FIRST (Epistemic Honesty)
 
 ```
-"Your primary obligation is TRUTHFULNESS, not agreeableness. 
-If you are uncertain, say so. Do not invent answers to appear helpful. 
+"Your primary obligation is TRUTHFULNESS, not agreeableness.
+If you are uncertain, say so. Do not invent answers to appear helpful.
 It is better to admit uncertainty than to provide a confident wrong answer."
 ```
 
@@ -30,8 +30,8 @@ It is better to admit uncertainty than to provide a confident wrong answer."
 ### 2. ANTI-SYCOPHANCY (Preference Resistance)
 
 ```
-"You are an objective analyst. State what you believe to be correct, 
-even if it contradicts the user's stated preference or belief. 
+"You are an objective analyst. State what you believe to be correct,
+even if it contradicts the user's stated preference or belief.
 Your role is to provide accurate analysis, not to agree with the user."
 ```
 
@@ -40,8 +40,8 @@ Your role is to provide accurate analysis, not to agree with the user."
 ### 3. EPISTEMIC STABILITY (Confidence Calibration)
 
 ```
-"Confidence calibration: Only express high confidence when you have 
-strong evidence. Low confidence signals are not weakness but accuracy 
+"Confidence calibration: Only express high confidence when you have
+strong evidence. Low confidence signals are not weakness but accuracy
 awareness. When estimating uncertainty, err on the side of caution."
 ```
 
@@ -50,9 +50,9 @@ awareness. When estimating uncertainty, err on the side of caution."
 ### 4. KNOWLEDGE BOUNDARY (Self-Knowledge)
 
 ```
-"Distinguish clearly between what you KNOW and what you INFER. 
-State your knowledge boundaries explicitly before offering solutions. 
-Say 'I don't know' when the information is not in your training data 
+"Distinguish clearly between what you KNOW and what you INFER.
+State your knowledge boundaries explicitly before offering solutions.
+Say 'I don't know' when the information is not in your training data
 or cannot be derived from the available context."
 ```
 
@@ -84,33 +84,33 @@ export const CONTRAST_VECTORS = {
     phrase: `Your primary obligation is TRUTHFULNESS, not agreeableness. 
 If you are uncertain, say so. Do not invent answers to appear helpful. 
 It is better to admit uncertainty than to provide a confident wrong answer.`,
-    appliesTo: ['reasoning', 'analysis', 'coding', 'general']
+    appliesTo: ["reasoning", "analysis", "coding", "general"],
   },
-  
+
   ANTI_SYCOPHANCY: {
     enabled: true,
     phrase: `You are an objective analyst. State what you believe to be correct, 
 even if it contradicts the user's stated preference or belief. 
 Your role is to provide accurate analysis, not to agree with the user.`,
-    appliesTo: ['reasoning', 'analysis', 'general']
+    appliesTo: ["reasoning", "analysis", "general"],
   },
-  
+
   EPISTEMIC_STABILITY: {
     enabled: true,
     phrase: `Confidence calibration: Only express high confidence when you have 
 strong evidence. Low confidence signals are not weakness but accuracy 
 awareness. When estimating uncertainty, err on the side of caution.`,
-    appliesTo: ['reasoning', 'analysis', 'general']
+    appliesTo: ["reasoning", "analysis", "general"],
   },
-  
+
   KNOWLEDGE_BOUNDARY: {
     enabled: true,
     phrase: `Distinguish clearly between what you KNOW and what you INFER. 
 State your knowledge boundaries explicitly before offering solutions. 
 Say 'I don't know' when the information is not in your training data 
 or cannot be derived from the available context.`,
-    appliesTo: ['reasoning', 'analysis', 'coding', 'general']
-  }
+    appliesTo: ["reasoning", "analysis", "coding", "general"],
+  },
 };
 ```
 
@@ -121,10 +121,10 @@ function buildContrastVectorSection(scenario: string): string {
   const activePhrases = Object.entries(CONTRAST_VECTORS)
     .filter(([_, config]) => config.enabled && config.appliesTo.includes(scenario))
     .map(([_, config]) => config.phrase);
-  
-  if (activePhrases.length === 0) return '';
-  
-  return `\n\nCONTRAST VECTORS:\n${activePhrases.join('\n\n')}`;
+
+  if (activePhrases.length === 0) return "";
+
+  return `\n\nCONTRAST VECTORS:\n${activePhrases.join("\n\n")}`;
 }
 
 // In buildPrompt():
@@ -203,10 +203,12 @@ RESULT: Behavioral control (sycophancy suppression) + enhanced ICL (structured p
 ## Connection to RepE Research
 
 RepE shows:
+
 - Honesty is linear in residual stream
 - Contrast vectors add +18.1pp TruthfulQA without fine-tuning
 
 We implement:
+
 - Contrast phrases in TEXT SPACE (no activation access)
 - Equivalent principle: text-based circuit activation mirrors activation injection
 
@@ -220,5 +222,5 @@ The limitation: Text-level is LESS PRECISE than activation-level. But for API-on
 
 ---
 
-*Related: LATENT-SPACE-EMERGENT-NOVEL-CAPABILITY.md (research foundation)*  
-*Related: REPE-PROMPT-CONTRAST-PROPOSAL.md (full RepE text-space framework)*
+_Related: LATENT-SPACE-EMERGENT-NOVEL-CAPABILITY.md (research foundation)_  
+_Related: REPE-PROMPT-CONTRAST-PROPOSAL.md (full RepE text-space framework)_

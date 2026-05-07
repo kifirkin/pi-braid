@@ -381,19 +381,19 @@ export default function feedbackExtension(pi: ExtensionAPI) {
   // Reset turn counter at turn start
   pi.on("turn_start", async (_event, ctx) => {
     try {
-    const state = getFeedbackState(ctx);
-    state.currentTurn++;
-    state.nudgeCountThisTurn = 0;
+      const state = getFeedbackState(ctx);
+      state.currentTurn++;
+      state.nudgeCountThisTurn = 0;
 
-    if (state.config.enableABTesting) {
-      const abConfig = getABTestConfig(state);
-      if (abConfig.nudgeCooldownMs) {
-        state.config.nudgeCooldownMs = abConfig.nudgeCooldownMs as number;
+      if (state.config.enableABTesting) {
+        const abConfig = getABTestConfig(state);
+        if (abConfig.nudgeCooldownMs) {
+          state.config.nudgeCooldownMs = abConfig.nudgeCooldownMs as number;
+        }
+        if (abConfig.maxNudgesPerTurn) {
+          state.config.maxNudgesPerTurn = abConfig.maxNudgesPerTurn as number;
+        }
       }
-      if (abConfig.maxNudgesPerTurn) {
-        state.config.maxNudgesPerTurn = abConfig.maxNudgesPerTurn as number;
-      }
-    }
     } catch (err) {
       log.error("[feedback-turn-start] error:", err);
     }
@@ -402,31 +402,31 @@ export default function feedbackExtension(pi: ExtensionAPI) {
   // Monitor for issues and generate nudges
   pi.on("message_end", async (event, ctx) => {
     try {
-    if (event.message.role !== "assistant") {
-      return;
-    }
-
-    const state = getFeedbackState(ctx);
-    const issues: { type: NudgeType; context: Record<string, unknown> }[] = [];
-
-    for (const issue of issues) {
-      const nudgeDef = generateNudge(issue.type, issue.context);
-      const nudge: Nudge = {
-        id: `${issue.type}-${Date.now()}`,
-        timestamp: Date.now(),
-        type: issue.type,
-        severity: nudgeDef.severity,
-        message: nudgeDef.message,
-        triggeredBy: "message_end",
-        action: nudgeDef.action,
-        acknowledged: false,
-      };
-
-      if (shouldSendNudge(state, nudge)) {
-        recordNudge(state, nudge);
-        sendFeedbackWhisper(pi, nudgeDef.message);
+      if (event.message.role !== "assistant") {
+        return;
       }
-    }
+
+      const state = getFeedbackState(ctx);
+      const issues: { type: NudgeType; context: Record<string, unknown> }[] = [];
+
+      for (const issue of issues) {
+        const nudgeDef = generateNudge(issue.type, issue.context);
+        const nudge: Nudge = {
+          id: `${issue.type}-${Date.now()}`,
+          timestamp: Date.now(),
+          type: issue.type,
+          severity: nudgeDef.severity,
+          message: nudgeDef.message,
+          triggeredBy: "message_end",
+          action: nudgeDef.action,
+          acknowledged: false,
+        };
+
+        if (shouldSendNudge(state, nudge)) {
+          recordNudge(state, nudge);
+          sendFeedbackWhisper(pi, nudgeDef.message);
+        }
+      }
     } catch (err) {
       log.error("[feedback-msg-end] error:", err);
     }
@@ -435,28 +435,28 @@ export default function feedbackExtension(pi: ExtensionAPI) {
   // Track tool usage for sequence repetition detection
   pi.on("tool_call", async (event, ctx) => {
     try {
-    const toolName = event.toolName;
-    const state = getFeedbackState(ctx);
+      const toolName = event.toolName;
+      const state = getFeedbackState(ctx);
 
-    if (
-      [
-        "feedback",
-        "enforcement_status",
-        "scratchpad",
-        "memory_recall",
-        "memory_store",
-        "context_prune",
-        "context_audit",
-        "get-tool-addiction",
-      ].includes(toolName)
-    ) {
-      return;
-    }
+      if (
+        [
+          "feedback",
+          "enforcement_status",
+          "scratchpad",
+          "memory_recall",
+          "memory_store",
+          "context_prune",
+          "context_audit",
+          "get-tool-addiction",
+        ].includes(toolName)
+      ) {
+        return;
+      }
 
-    if (toolName === "think") {
-      state.lastThinkToolTurn = state.currentTurn;
-      state.thinkToolNudgeActive = false;
-    }
+      if (toolName === "think") {
+        state.lastThinkToolTurn = state.currentTurn;
+        state.thinkToolNudgeActive = false;
+      }
     } catch (err) {
       log.error("[feedback-tool-call] error:", err);
     }
@@ -465,55 +465,55 @@ export default function feedbackExtension(pi: ExtensionAPI) {
   // Track scratchpad usage and enforce think tool cadence
   pi.on("turn_end", async (event, ctx) => {
     try {
-    const state = getFeedbackState(ctx);
-    const tools = (event.toolResults || []).map((r) => r.toolName);
+      const state = getFeedbackState(ctx);
+      const tools = (event.toolResults || []).map((r) => r.toolName);
 
-    const madeFileChanges = tools.some((t) => ["edit", "write"].includes(t));
-    const usedScratchpad = tools.includes("scratchpad");
+      const madeFileChanges = tools.some((t) => ["edit", "write"].includes(t));
+      const usedScratchpad = tools.includes("scratchpad");
 
-    if (madeFileChanges && !usedScratchpad) {
-      const nudgeDef = generateNudge("scratchpad_missing", {});
-      const nudge: Nudge = {
-        id: `scratchpad-${Date.now()}`,
-        timestamp: Date.now(),
-        type: "scratchpad_missing",
-        severity: "warning",
-        message: nudgeDef.message,
-        triggeredBy: "turn_end",
-        action: nudgeDef.action,
-        acknowledged: false,
-      };
+      if (madeFileChanges && !usedScratchpad) {
+        const nudgeDef = generateNudge("scratchpad_missing", {});
+        const nudge: Nudge = {
+          id: `scratchpad-${Date.now()}`,
+          timestamp: Date.now(),
+          type: "scratchpad_missing",
+          severity: "warning",
+          message: nudgeDef.message,
+          triggeredBy: "turn_end",
+          action: nudgeDef.action,
+          acknowledged: false,
+        };
 
-      if (shouldSendNudge(state, nudge)) {
-        recordNudge(state, nudge);
-        sendFeedbackWhisper(pi, nudgeDef.message);
+        if (shouldSendNudge(state, nudge)) {
+          recordNudge(state, nudge);
+          sendFeedbackWhisper(pi, nudgeDef.message);
+        }
       }
-    }
 
-    const turnsSinceThink = state.currentTurn - state.lastThinkToolTurn;
-    if (
-      state.config.thinkToolEnforcementTurns > 0 &&
-      turnsSinceThink >= state.config.thinkToolEnforcementTurns &&
-      !state.thinkToolNudgeActive
-    ) {
-      state.thinkToolNudgeActive = true;
-      const nudgeDef = generateNudge("think_tool_missing", { turnsSince: turnsSinceThink });
-      const nudge: Nudge = {
-        id: `think-${Date.now()}`,
-        timestamp: Date.now(),
-        type: "think_tool_missing",
-        severity: "info",
-        message: nudgeDef.message,
-        triggeredBy: "turn_end",
-        action: nudgeDef.action,
-        acknowledged: false,
-      };
+      const turnsSinceThink = state.currentTurn - state.lastThinkToolTurn;
+      if (
+        state.config.thinkToolEnforcementTurns > 0 &&
+        turnsSinceThink >= state.config.thinkToolEnforcementTurns &&
+        !state.thinkToolNudgeActive
+      ) {
+        state.thinkToolNudgeActive = true;
+        const nudgeDef = generateNudge("think_tool_missing", { turnsSince: turnsSinceThink });
+        const nudge: Nudge = {
+          id: `think-${Date.now()}`,
+          timestamp: Date.now(),
+          type: "think_tool_missing",
+          severity: "info",
+          message: nudgeDef.message,
+          triggeredBy: "turn_end",
+          action: nudgeDef.action,
+          acknowledged: false,
+        };
 
-      if (shouldSendNudge(state, nudge)) {
-        recordNudge(state, nudge);
-        sendFeedbackWhisper(pi, nudgeDef.message);
+        if (shouldSendNudge(state, nudge)) {
+          recordNudge(state, nudge);
+          sendFeedbackWhisper(pi, nudgeDef.message);
+        }
       }
-    }
     } catch (err) {
       log.error("[feedback-turn-end] error:", err);
     }

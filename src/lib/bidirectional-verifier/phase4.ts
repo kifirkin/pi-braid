@@ -24,9 +24,13 @@ export function _resetCoordinationState(): void {
 }
 
 export function recordDerivedFrom(
-  derived: string, source: string, relation: string, turn: number,
+  derived: string,
+  source: string,
+  relation: string,
+  turn: number,
 ): void {
-  if (_coordinationState.derivedFiles.some((d) => d.derived === derived && d.source === source)) return;
+  if (_coordinationState.derivedFiles.some((d) => d.derived === derived && d.source === source))
+    return;
   _coordinationState.derivedFiles.push({ source, derived, relation, turn, stale: true });
 }
 
@@ -37,10 +41,14 @@ export function markDerivedResolved(source: string, derived: string): void {
 }
 
 export function checkCoordinationRisk(
-  ctx: ExtensionContext, editedFile: string, turn: number,
+  ctx: ExtensionContext,
+  editedFile: string,
+  turn: number,
 ): string | null {
   const state = getVerifierState(ctx);
-  const staleDerived = _coordinationState.derivedFiles.filter((d) => d.source === editedFile && d.stale);
+  const staleDerived = _coordinationState.derivedFiles.filter(
+    (d) => d.source === editedFile && d.stale,
+  );
   const sourceEditTurn = state.touchTurns.get(editedFile) ?? turn;
   const stillStale: DerivedFile[] = [];
 
@@ -51,7 +59,11 @@ export function checkCoordinationRisk(
 
   if (stillStale.length === 0) return null;
 
-  const risks = stillStale.map((d) => ({ source: d.source, stale: d.derived, relation: d.relation }));
+  const risks = stillStale.map((d) => ({
+    source: d.source,
+    stale: d.derived,
+    relation: d.relation,
+  }));
   for (const d of stillStale) d.stale = true;
 
   _coordinationState.staleDerivedFiles.push(...stillStale);
@@ -61,14 +73,20 @@ export function checkCoordinationRisk(
 }
 
 export function scanForDerivedFiles(
-  ctx: ExtensionContext, readFilePath: string, content: string, turn: number,
+  ctx: ExtensionContext,
+  readFilePath: string,
+  content: string,
+  turn: number,
 ): void {
   const state = getVerifierState(ctx);
   detectImportDerived(readFilePath, content, state.editedFiles, turn);
 }
 
 function detectImportDerived(
-  readFilePath: string, content: string, recentlyEditedFiles: Set<string>, turn: number,
+  readFilePath: string,
+  content: string,
+  recentlyEditedFiles: Set<string>,
+  turn: number,
 ): void {
   const importRegex = /from\s+['"]([^'"]+)['"]/g;
   let match;
@@ -78,7 +96,8 @@ function detectImportDerived(
     const dir = readFilePath.substring(0, readFilePath.lastIndexOf("/") + 1);
     const resolved = resolveRelativeImport(dir, imported);
     for (const edited of recentlyEditedFiles) {
-      if (filesAreRelated(resolved, edited)) recordDerivedFrom(readFilePath, edited, "import", turn);
+      if (filesAreRelated(resolved, edited))
+        recordDerivedFrom(readFilePath, edited, "import", turn);
     }
   }
 
@@ -89,7 +108,8 @@ function detectImportDerived(
     const dir = readFilePath.substring(0, readFilePath.lastIndexOf("/") + 1);
     const resolved = resolveRelativeImport(dir, imported);
     for (const edited of recentlyEditedFiles) {
-      if (filesAreRelated(resolved, edited)) recordDerivedFrom(readFilePath, edited, "require", turn);
+      if (filesAreRelated(resolved, edited))
+        recordDerivedFrom(readFilePath, edited, "require", turn);
     }
   }
 }
@@ -113,7 +133,9 @@ export function getCoordinationCheckSummary(): string {
   lines.push(`Coordination risks: ${_coordinationState.coordinationRisks.length}`);
   if (_coordinationState.coordinationRisks.length > 0) {
     for (const r of _coordinationState.coordinationRisks.slice(-5)) {
-      lines.push(`  Turn ${r.turn}: "${r.stale}" depends on "${r.source}" (${r.relation}) — not updated`);
+      lines.push(
+        `  Turn ${r.turn}: "${r.stale}" depends on "${r.source}" (${r.relation}) — not updated`,
+      );
     }
   }
   return lines.join("\n");

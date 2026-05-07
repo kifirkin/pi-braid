@@ -199,6 +199,7 @@ pi-braid is a cognitive extension layer for the pi coding agent. The brand ident
 ### Primary — Amber `#855300`
 
 The amber is the action color. It appears on:
+
 - **Primary buttons** (solid amber background)
 - **Active states** (current selection, focus ring)
 - **Progress indicators** (working, processing)
@@ -209,6 +210,7 @@ The amber says "this is where the energy is." It is never used for decoration al
 ### Secondary — Blue `#0058BE`
 
 Blue is the intelligence color. It appears on:
+
 - **Secondary buttons** (outlined or container style)
 - **Informational states** (context hints, tooltips)
 - **Links** within text
@@ -220,20 +222,20 @@ Blue balances amber's warmth with cool precision. Together they create a system 
 
 pi-braid lives in a terminal environment. Surfaces are layered dark grays, not flat black. The warmth in the `on-surface` color (`#E4E2DE`) prevents the cold sterility of pure white-on-black.
 
-| Surface | When to use |
-|---------|-------------|
-| `surface-dim` `#121416` | Page/app background — the deepest layer |
-| `surface` `#1A1C1E` | Primary card/container background |
-| `surface-container` `#212326` | Nested containers, sidebar backgrounds |
-| `surface-bright` `#2A2C2F` | Hover states, elevated elements |
+| Surface                       | When to use                             |
+| ----------------------------- | --------------------------------------- |
+| `surface-dim` `#121416`       | Page/app background — the deepest layer |
+| `surface` `#1A1C1E`           | Primary card/container background       |
+| `surface-container` `#212326` | Nested containers, sidebar backgrounds  |
+| `surface-bright` `#2A2C2F`    | Hover states, elevated elements         |
 
 ### Semantic Colors
 
-| Token | Hex | Usage |
-|-------|-----|-------|
-| `error` | `#FFB4AB` | Error text on dark surfaces |
+| Token     | Hex       | Usage                           |
+| --------- | --------- | ------------------------------- |
+| `error`   | `#FFB4AB` | Error text on dark surfaces     |
 | `success` | `#7DD99D` | Confirmations, success messages |
-| `warning` | `#F0C06A` | Caution, attention-needed |
+| `warning` | `#F0C06A` | Caution, attention-needed       |
 
 All semantic colors have adequate contrast against their backgrounds (≥4.5:1 for text, ≥3:1 for UI components).
 
@@ -242,6 +244,7 @@ All semantic colors have adequate contrast against their backgrounds (≥4.5:1 f
 ## Typography System
 
 **Font**: Plus Jakarta Sans — chosen for:
+
 - Excellent legibility from 10px to 44px
 - Natural weight variation (400–800) without optical compensation issues
 - Modern, professional character without being generic
@@ -253,18 +256,18 @@ All semantic colors have adequate contrast against their backgrounds (≥4.5:1 f
 
 ### Type Usage
 
-| Token | Application |
-|-------|-------------|
-| `display` | Hero text, agent output headers, splash screens |
-| `headline-lg` | Section titles, major headings |
-| `headline-md` | Card titles, subsection headings |
-| `title-lg` | Navigation labels, large buttons |
-| `title-md` | Form labels, secondary headings |
-| `body-lg` | Primary reading text, agent responses |
-| `body-md` | Secondary text, metadata, captions |
-| `label-lg` | Button text, interactive labels |
-| `label-md` | Badges, tags, small metadata |
-| `label-sm` | Timestamps, line numbers, tiny labels |
+| Token         | Application                                     |
+| ------------- | ----------------------------------------------- |
+| `display`     | Hero text, agent output headers, splash screens |
+| `headline-lg` | Section titles, major headings                  |
+| `headline-md` | Card titles, subsection headings                |
+| `title-lg`    | Navigation labels, large buttons                |
+| `title-md`    | Form labels, secondary headings                 |
+| `body-lg`     | Primary reading text, agent responses           |
+| `body-md`     | Secondary text, metadata, captions              |
+| `label-lg`    | Button text, interactive labels                 |
+| `label-md`    | Badges, tags, small metadata                    |
+| `label-sm`    | Timestamps, line numbers, tiny labels           |
 
 ### Accessibility
 
@@ -279,6 +282,7 @@ All semantic colors have adequate contrast against their backgrounds (≥4.5:1 f
 **Base unit**: `8px`. Every spacing value is a multiple of 8 (or 4 for `xs`).
 
 **Spacing scale**:
+
 ```
 4  → xs  (icon margins, micro gaps)
 8  → sm  (input padding, tight gaps)
@@ -296,13 +300,13 @@ All semantic colors have adequate contrast against their backgrounds (≥4.5:1 f
 
 ## Corner Radius
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `rounded.sm` | 4px | Small inputs, chips, tight elements |
-| `rounded.md` | 8px | Cards, buttons, standard containers |
-| `rounded.lg` | 12px | Modals, large sheets, prominent elements |
-| `rounded.xl` | 16px | Full-screen sheets, onboarding cards |
-| `rounded.full` | 9999px | Avatars, pills, badges |
+| Token          | Value  | Usage                                    |
+| -------------- | ------ | ---------------------------------------- |
+| `rounded.sm`   | 4px    | Small inputs, chips, tight elements      |
+| `rounded.md`   | 8px    | Cards, buttons, standard containers      |
+| `rounded.lg`   | 12px   | Modals, large sheets, prominent elements |
+| `rounded.xl`   | 16px   | Full-screen sheets, onboarding cards     |
+| `rounded.full` | 9999px | Avatars, pills, badges                   |
 
 **Rule**: never use radii outside this scale. The radius should match the component's prominence — subtle for utilitarian, generous for interactive/emphasized.
 
@@ -389,6 +393,7 @@ badge-error:
 ## Do's and Don'ts
 
 ### Do
+
 - Use amber for primary CTAs and active states
 - Use blue for secondary actions, links, and informational elements
 - Use surface containers to create visual hierarchy and depth
@@ -396,6 +401,7 @@ badge-error:
 - Apply rounded.md (8px) as the default corner radius
 
 ### Don't
+
 - Use more than 2 accent colors (amber + blue is the system)
 - Place amber on amber (no gradient overlays on buttons)
 - Use surface-bright for large areas — it's for highlights, not backgrounds
