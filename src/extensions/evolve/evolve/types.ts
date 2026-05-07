@@ -15,9 +15,9 @@ export interface BenchmarkResult {
   failedCases: string[];
 }
 
-export type EvolveActionType = 
+export type EvolveActionType =
   | "status"
-  | "health" 
+  | "health"
   | "check"
   | "commit"
   | "rollback"

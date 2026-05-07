@@ -26,19 +26,20 @@ Key flags: `--no-extensions` for baseline · `-e <path>` for extensions · `--to
 Send one JSON event per line on stdin, read events from stdout.
 
 **Start agent**:
+
 ```json
-{"type": "prompt", "message": "Your task here"}
+{ "type": "prompt", "message": "Your task here" }
 ```
 
 **Key event types**:
 
-| Event | When | Your Action |
-|-------|------|------------|
-| `agent_start` | Agent begins | Log start time |
-| `message_end` | Response complete | Extract text/code |
-| `tool_execution_start/end` | Tool runs | Track what was called |
-| `extension_ui_request` | Extension needs input | Respond to every one (within 2s) |
-| `agent_end` | Agent finishes | Collect results |
+| Event                      | When                  | Your Action                      |
+| -------------------------- | --------------------- | -------------------------------- |
+| `agent_start`              | Agent begins          | Log start time                   |
+| `message_end`              | Response complete     | Extract text/code                |
+| `tool_execution_start/end` | Tool runs             | Track what was called            |
+| `extension_ui_request`     | Extension needs input | Respond to every one (within 2s) |
+| `agent_end`                | Agent finishes        | Collect results                  |
 
 ### Responding to `extension_ui_request`
 
@@ -79,20 +80,20 @@ while True:
     line = proc.stdout.readline()
     if not line: break
     event = json.loads(line.decode().strip())
-    
+
     if event["type"] == "extension_ui_request":
         proc.stdin.write(json.dumps({
             "type": "extension_ui_response", "id": event["id"], "cancelled": True
         }).encode() + b"\n")
         proc.stdin.flush()
-    
+
     if event["type"] == "message_end":
         msg = event.get("message", {})
         if msg.get("role") == "assistant":
             for block in msg.get("content", []):
                 if block.get("type") == "text":
                     result = block["text"]
-    
+
     if event["type"] == "agent_end":
         break
 
@@ -103,11 +104,11 @@ proc.kill(); proc.wait()
 
 ## Extract Code from Response
 
-```python
+````python
 import re
 match = re.search(r'```(?:javascript|js|python)\n(.*?)```', final_text, re.DOTALL)
 code = match.group(1).strip() if match else None
-```
+````
 
 ---
 
@@ -143,7 +144,7 @@ finally:
 
 ## Benchmark Template
 
-```python
+````python
 import subprocess, json, os, select, re, time
 
 MODEL = "openrouter/qwen/qwen3.5-flash-02-23"
@@ -160,7 +161,7 @@ def run_pi(args, prompt, timeout=90):
                             stderr=subprocess.PIPE, env={**os.environ})
     proc.stdin.write(json.dumps({"type": "prompt", "message": prompt}).encode() + b"\n")
     proc.stdin.flush()
-    
+
     result = None
     start = time.time()
     while time.time() - start < timeout:
@@ -183,7 +184,7 @@ def run_pi(args, prompt, timeout=90):
                         result = block["text"]
             if event["type"] == "agent_end": break
         except: pass
-    
+
     proc.kill(); proc.wait()
     return result
 
@@ -191,6 +192,6 @@ def extract_code(text):
     if not text: return None
     match = re.search(r'```(?:javascript|js)\n(.*?)```', text, re.DOTALL)
     return match.group(1).strip() if match else None
-```
+````
 
 For subprocess persistence and monitoring across trials, delegate to **process-control** for tmux patterns.

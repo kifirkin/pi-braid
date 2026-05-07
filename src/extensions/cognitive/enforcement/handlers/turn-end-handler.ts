@@ -20,7 +20,11 @@ import {
 import { detectOrphanChains } from "./orphan-chains.js";
 import { type NudgeManager } from "../nudge-manager.js";
 import { getState } from "../state.js";
-import { recordNudgeSent, recordNudgeSuppressed, getNudgeAnalytics } from "../../../../lib/nudge-analytics.js";
+import {
+  recordNudgeSent,
+  recordNudgeSuppressed,
+  getNudgeAnalytics,
+} from "../../../../lib/nudge-analytics.js";
 import { type TurnState } from "../types.js";
 import { validateTurn } from "../validation.js";
 import { sendEnforcementWhisper } from "../whisper.js";
@@ -63,7 +67,8 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
 
     // ── Context overflow detection ─────────────────────────────────────────
     const msgContent =
-      (event.message as unknown as { content?: Array<{ type: string; text?: string }> })?.content ?? [];
+      (event.message as unknown as { content?: Array<{ type: string; text?: string }> })?.content ??
+      [];
     const isOverflowTurn =
       event.message.role === "assistant" &&
       "stopReason" in event.message &&
@@ -136,12 +141,18 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
     // ── Redundancy detection ────────────────────────────────────────────────
     if (actualTools.some((t: string) => ["edit", "write"].includes(t))) {
       const tac: TurnAnalysisContext = {
-        pi, ctx, state: getState(ctx),
+        pi,
+        ctx,
+        state: getState(ctx),
         event: {
           role: event.message.role,
           stopReason: (event.message as unknown as { stopReason?: string }).stopReason,
         },
-        actualTools, erroredTools, hadErrors, knownFiles, enforcementSignals,
+        actualTools,
+        erroredTools,
+        hadErrors,
+        knownFiles,
+        enforcementSignals,
         sendWhisper: (msg) => sendEnforcementWhisper(pi, ctx, msg),
         loadFileContent,
       };
@@ -153,12 +164,18 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
     // ── L3: Critical signals ────────────────────────────────────────────────
     const prevTurn = getState(ctx).turnHistory.get(getState(ctx).currentTurn - 1);
     const tac: TurnAnalysisContext = {
-      pi, ctx, state: getState(ctx),
+      pi,
+      ctx,
+      state: getState(ctx),
       event: {
         role: event.message.role,
         stopReason: (event.message as unknown as { stopReason?: string }).stopReason,
       },
-      actualTools, erroredTools, hadErrors, knownFiles, enforcementSignals,
+      actualTools,
+      erroredTools,
+      hadErrors,
+      knownFiles,
+      enforcementSignals,
       sendWhisper: (msg) => sendEnforcementWhisper(pi, ctx, msg),
       loadFileContent,
     };
@@ -183,7 +200,8 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
 
       if (msgText.length > 50) {
         try {
-          const { processAgentResponse, formatContradictionWhisper } = await import("../../../../lib/claim-tracker.js");
+          const { processAgentResponse, formatContradictionWhisper } =
+            await import("../../../../lib/claim-tracker.js");
           const contradictions = processAgentResponse(msgText, ctx, getState(ctx).currentTurn);
           if (contradictions.length > 0) {
             sendEnforcementWhisper(pi, ctx, formatContradictionWhisper(contradictions));
@@ -216,7 +234,8 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
       getState(ctx).currentTurn - getState(ctx).overflowRecently < RECOVERY_GRACE_TURNS;
 
     if (
-      !hadErrors && !inOverflowRecovery &&
+      !hadErrors &&
+      !inOverflowRecovery &&
       getState(ctx).hasCodeChanges &&
       getState(ctx).turnsSinceMemory >= 20 &&
       !getState(ctx).memoryNudgeSent
@@ -230,7 +249,8 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
 
     // Scratchpad signal
     if (
-      !hadErrors && !inOverflowRecovery &&
+      !hadErrors &&
+      !inOverflowRecovery &&
       actualTools.some((t: string) => ["edit", "write"].includes(t)) &&
       !scratchpadUpdated
     ) {
@@ -244,7 +264,8 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
 
     // Think tool enforcement
     if (
-      !hadErrors && !inOverflowRecovery &&
+      !hadErrors &&
+      !inOverflowRecovery &&
       getState(ctx).toolChain.lastThinkCall === 0 &&
       getState(ctx).currentTurn >= 5 &&
       getState(ctx).currentTurn % 5 === 0
@@ -257,7 +278,13 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
     // Context usage signal
     if (
       actualTools.some((t: string) =>
-        ["context_tag", "context_log", "context_checkout", "context_prune", "context_audit"].includes(t),
+        [
+          "context_tag",
+          "context_log",
+          "context_checkout",
+          "context_prune",
+          "context_audit",
+        ].includes(t),
       )
     ) {
       getState(ctx).lastContextCheckTurn = getState(ctx).currentTurn;
@@ -271,12 +298,17 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
       )?.ctx;
       const usage = ctxFromEvent?.getContextUsage?.();
       if (usage) usagePercent = usage.percent ?? 0;
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     if (
-      !hadErrors && actualTools.length > 0 &&
-      getState(ctx).currentTurn - getState(ctx).lastContextCheckTurn >= getState(ctx).contextCheckInterval &&
-      !getState(ctx).contextNudgeSent && usagePercent > 0
+      !hadErrors &&
+      actualTools.length > 0 &&
+      getState(ctx).currentTurn - getState(ctx).lastContextCheckTurn >=
+        getState(ctx).contextCheckInterval &&
+      !getState(ctx).contextNudgeSent &&
+      usagePercent > 0
     ) {
       getState(ctx).contextNudgeSent = true;
       if (usagePercent > 85) {
@@ -316,7 +348,11 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
           enforcementSignals["scratchpad"] = entry;
         } else if (signal.includes("critical")) {
           enforcementSignals["context_critical"] = entry;
-        } else if (signal.includes("high") || signal.includes("/compact") || signal.includes("context")) {
+        } else if (
+          signal.includes("high") ||
+          signal.includes("/compact") ||
+          signal.includes("context")
+        ) {
           enforcementSignals["context_high"] = entry;
         } else {
           enforcementSignals["generic"] = entry;

@@ -19,19 +19,22 @@ import { getInjections } from "../../../lib/injection-tracker.js";
 const previewSchema = Type.Object({
   includeTools: Type.Optional(
     Type.Boolean({
-      description: "Include tool descriptions. When false, shows a count marker instead. Default: true",
+      description:
+        "Include tool descriptions. When false, shows a count marker instead. Default: true",
       default: true,
     }),
   ),
   includeSkills: Type.Optional(
     Type.Boolean({
-      description: "Include skill descriptions. When false, shows a count marker instead. Default: true",
+      description:
+        "Include skill descriptions. When false, shows a count marker instead. Default: true",
       default: true,
     }),
   ),
   truncate: Type.Optional(
     Type.Number({
-      description: "Max characters (0 = no limit, default: 5000). Applied after optional tool/skill exclusion.",
+      description:
+        "Max characters (0 = no limit, default: 5000). Applied after optional tool/skill exclusion.",
       default: 5000,
     }),
   ),
@@ -69,9 +72,7 @@ export function createPromptPreviewTool() {
 
       if (!ctx) {
         return {
-          content: [
-            { type: "text" as const, text: "Prompt preview requires a valid context." },
-          ],
+          content: [{ type: "text" as const, text: "Prompt preview requires a valid context." }],
           details: { error: "no_context" },
         };
       }
@@ -99,7 +100,8 @@ export function createPromptPreviewTool() {
       // ── Optionally strip skills block ────────────────────────────────────
       if (!showSkills) {
         // The skills block includes the intro line + <available_skills>...</available_skills>
-        const skillsPattern = /\n\nThe following skills provide specialized instructions[\s\S]*?<\/available_skills>/;
+        const skillsPattern =
+          /\n\nThe following skills provide specialized instructions[\s\S]*?<\/available_skills>/;
         const match = result.match(skillsPattern);
         if (match) {
           toolsLinesRemoved = countLines(result, skillsPattern); // overloading var, will fix below
@@ -117,7 +119,8 @@ export function createPromptPreviewTool() {
       if (!showTools) {
         // Tools section: from "Available tools:" to the next section boundary
         // (double-newline followed by # or ##, or the skills section)
-        const toolsPattern = /Available tools:[\s\S]*?(?=\n\n# |\n\n## |\n\n\nThe following skills|\n\n\[SKILLS:)/;
+        const toolsPattern =
+          /Available tools:[\s\S]*?(?=\n\n# |\n\n## |\n\n\nThe following skills|\n\n\[SKILLS:)/;
         const match = result.match(toolsPattern);
         if (match) {
           toolsLinesRemoved = match[0].split("\n").length;
@@ -150,9 +153,7 @@ export function createPromptPreviewTool() {
       }
 
       // ── Build output ─────────────────────────────────────────────────────
-      const infoParts: string[] = [
-        `System Prompt (${raw.length} chars):`,
-      ];
+      const infoParts: string[] = [`System Prompt (${raw.length} chars):`];
       if (!showTools) infoParts.push(`  [tools excluded: ${toolsLinesRemoved} lines removed]`);
       if (!showSkills) infoParts.push(`  [skills excluded: ${skillsLinesRemoved} lines removed]`);
 
@@ -161,7 +162,9 @@ export function createPromptPreviewTool() {
 
       // Apply truncation if needed
       if (maxLen > 0 && body.length > maxLen) {
-        body = body.slice(0, maxLen - 80) + `\n...(truncated at ${maxLen} chars, full prompt is ${raw.length} chars)`;
+        body =
+          body.slice(0, maxLen - 80) +
+          `\n...(truncated at ${maxLen} chars, full prompt is ${raw.length} chars)`;
       }
 
       const output = infoParts.join("\n") + "\n\n" + body + injectionsSection;

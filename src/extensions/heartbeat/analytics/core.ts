@@ -4,7 +4,13 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { METRICS_FILE, LOGS_DIR } from "../../../lib/braid-paths.js";
-import type { AnalyticsState, AnalyticsSummary, ToolMetrics, ToolSequence, SessionMetrics } from "./shared.js";
+import type {
+  AnalyticsState,
+  AnalyticsSummary,
+  ToolMetrics,
+  ToolSequence,
+  SessionMetrics,
+} from "./shared.js";
 
 // ── Metrics ────────────────────────────────────────────────────────────────
 
@@ -12,9 +18,16 @@ export function getOrCreateMetrics(s: AnalyticsState, toolName: string): ToolMet
   let metrics = s.toolMetrics.get(toolName);
   if (!metrics) {
     metrics = {
-      toolName, totalCalls: 0, successfulCalls: 0, failedCalls: 0,
-      totalDurationMs: 0, avgDurationMs: 0, minDurationMs: Number.MAX_SAFE_INTEGER,
-      maxDurationMs: 0, errorRate: 0, lastUsed: Date.now(),
+      toolName,
+      totalCalls: 0,
+      successfulCalls: 0,
+      failedCalls: 0,
+      totalDurationMs: 0,
+      avgDurationMs: 0,
+      minDurationMs: Number.MAX_SAFE_INTEGER,
+      maxDurationMs: 0,
+      errorRate: 0,
+      lastUsed: Date.now(),
     };
     s.toolMetrics.set(toolName, metrics);
   }
@@ -22,7 +35,10 @@ export function getOrCreateMetrics(s: AnalyticsState, toolName: string): ToolMet
 }
 
 export function recordToolCall(
-  s: AnalyticsState, toolName: string, durationMs: number, success: boolean,
+  s: AnalyticsState,
+  toolName: string,
+  durationMs: number,
+  success: boolean,
 ): void {
   s.toolCallSequence.push(toolName);
   const metrics = getOrCreateMetrics(s, toolName);
@@ -106,7 +122,14 @@ export function flushAnalytics(s: AnalyticsState, taskCompleted = false): void {
 
 export function loadAnalytics(storagePath?: string): AnalyticsSummary {
   const path = storagePath ?? METRICS_FILE;
-  if (!existsSync(path)) return { totalSessions: 0, totalToolCalls: 0, avgToolsPerSession: 0, topTools: [], sequences: [] };
+  if (!existsSync(path))
+    return {
+      totalSessions: 0,
+      totalToolCalls: 0,
+      avgToolsPerSession: 0,
+      topTools: [],
+      sequences: [],
+    };
 
   try {
     const content = readFileSync(path, "utf-8");
@@ -133,8 +156,10 @@ export function loadAnalytics(storagePath?: string): AnalyticsSummary {
 
     const topTools = Object.entries(toolCounts)
       .map(([toolName, count]) => ({
-        toolName, count,
-        successRate: toolCounts[toolName] > 0 ? (toolSuccess[toolName] || 0) / toolCounts[toolName] : 0,
+        toolName,
+        count,
+        successRate:
+          toolCounts[toolName] > 0 ? (toolSuccess[toolName] || 0) / toolCounts[toolName] : 0,
       }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
@@ -145,19 +170,30 @@ export function loadAnalytics(storagePath?: string): AnalyticsSummary {
         const entry = JSON.parse(line);
         for (const seq of entry.sequences || []) {
           const existing = sequenceMap.get(seq.pattern);
-          if (existing) { existing.count += seq.count; existing.successRate = (existing.successRate + seq.successRate) / 2; }
-          else sequenceMap.set(seq.pattern, { ...seq });
+          if (existing) {
+            existing.count += seq.count;
+            existing.successRate = (existing.successRate + seq.successRate) / 2;
+          } else sequenceMap.set(seq.pattern, { ...seq });
         }
       } catch {}
     }
 
     return {
-      totalSessions, totalToolCalls,
+      totalSessions,
+      totalToolCalls,
       avgToolsPerSession: totalSessions > 0 ? totalToolCalls / totalSessions : 0,
       topTools,
-      sequences: Array.from(sequenceMap.values()).sort((a, b) => b.count - a.count).slice(0, 20),
+      sequences: Array.from(sequenceMap.values())
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 20),
     };
   } catch {
-    return { totalSessions: 0, totalToolCalls: 0, avgToolsPerSession: 0, topTools: [], sequences: [] };
+    return {
+      totalSessions: 0,
+      totalToolCalls: 0,
+      avgToolsPerSession: 0,
+      topTools: [],
+      sequences: [],
+    };
   }
 }

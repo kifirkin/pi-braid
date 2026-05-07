@@ -366,7 +366,7 @@ export function registerSessionShutdownHandler(pi: any): void {
     const cmState = getCmState(ctx);
     cmState.compactionRetryActive = false;
     cmState.overflowRetryActive = false;
-    
+
     // CRITICAL: Clear intercept state to prevent stale intercept on next session.
     // The intercept (_interceptActive, _origAppendMessage, etc.) was set up
     // during compaction. If session ends without proper cleanup (e.g., crash,

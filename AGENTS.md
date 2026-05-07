@@ -23,14 +23,14 @@ export BRAID_MODULES="core,cognitive,memory,retry"
 
 Researcher subagents can toggle modules during benchmark sessions:
 
-| Command | Effect |
-|---------|--------|
-| `/modules-list` | Show all modules and their state |
-| `/modules-enable <name>` | Enable a module (next session) |
-| `/modules-disable <name>` | Disable a module (next session) |
-| `/modules-toggle <name>` | Toggle a module on/off |
-| `/modules-status` | Show current load state |
-| `/modules-reset` | Reset all runtime overrides |
+| Command                   | Effect                           |
+| ------------------------- | -------------------------------- |
+| `/modules-list`           | Show all modules and their state |
+| `/modules-enable <name>`  | Enable a module (next session)   |
+| `/modules-disable <name>` | Disable a module (next session)  |
+| `/modules-toggle <name>`  | Toggle a module on/off           |
+| `/modules-status`         | Show current load state          |
+| `/modules-reset`          | Reset all runtime overrides      |
 
 This enables A/B testing of feature sets without editing config.
 

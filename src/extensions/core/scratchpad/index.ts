@@ -58,18 +58,28 @@ const RECYCLE = {
 } as const;
 
 type RecycleStats = {
-  pruned_plan: number; pruned_done: number; pruned_decisions: number;
-  pruned_hypotheses: number; pruned_notes: number;
-  pruned_learnings: number; pruned_constraints: number;
-  archived_goal: string | null; total_pruned: number;
+  pruned_plan: number;
+  pruned_done: number;
+  pruned_decisions: number;
+  pruned_hypotheses: number;
+  pruned_notes: number;
+  pruned_learnings: number;
+  pruned_constraints: number;
+  archived_goal: string | null;
+  total_pruned: number;
 };
 
 function scratchpadClean(pad: TaskScratchpad): RecycleStats {
   const stats: RecycleStats = {
-    pruned_plan: 0, pruned_done: 0, pruned_decisions: 0,
-    pruned_hypotheses: 0, pruned_notes: 0,
-    pruned_learnings: 0, pruned_constraints: 0,
-    archived_goal: null, total_pruned: 0,
+    pruned_plan: 0,
+    pruned_done: 0,
+    pruned_decisions: 0,
+    pruned_hypotheses: 0,
+    pruned_notes: 0,
+    pruned_learnings: 0,
+    pruned_constraints: 0,
+    archived_goal: null,
+    total_pruned: 0,
   };
 
   if (pad.plan.length > RECYCLE.MAX_PLAN) {
@@ -101,9 +111,13 @@ function scratchpadClean(pad: TaskScratchpad): RecycleStats {
     pad.constraints = pad.constraints.slice(-RECYCLE.MAX_CONSTRAINTS);
   }
   stats.total_pruned =
-    stats.pruned_plan + stats.pruned_done + stats.pruned_decisions +
-    stats.pruned_hypotheses + stats.pruned_notes +
-    stats.pruned_learnings + stats.pruned_constraints;
+    stats.pruned_plan +
+    stats.pruned_done +
+    stats.pruned_decisions +
+    stats.pruned_hypotheses +
+    stats.pruned_notes +
+    stats.pruned_learnings +
+    stats.pruned_constraints;
   return stats;
 }
 
@@ -117,9 +131,15 @@ function capPush<T>(arr: T[], item: T, max: number): number {
   return 0;
 }
 
-function generateTaskId(): string { return `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`; }
-function generateLearningId(): string { return `lrn-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`; }
-function generateConstraintId(): string { return `con-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`; }
+function generateTaskId(): string {
+  return `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+function generateLearningId(): string {
+  return `lrn-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
+}
+function generateConstraintId(): string {
+  return `con-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
+}
 
 // ── Format Scratchpad ─────────────────────────────────────────────────────
 
@@ -178,7 +198,11 @@ export function formatScratchpad(pad: TaskScratchpad): string {
 }
 
 export function formatSessionSummary(pad: TaskScratchpad): {
-  cycles: number; pruned: number; goals: number; decisions: number; learnings: number;
+  cycles: number;
+  pruned: number;
+  goals: number;
+  decisions: number;
+  learnings: number;
 } {
   return {
     cycles: pad.session.turn,
@@ -306,7 +330,7 @@ async function scratchpadExecute(
   }
 
   const priorGoal = pad.goal;
-  let resultText = "";
+  let resultText = ""; // eslint-disable-line no-useless-assignment
 
   switch (action) {
     case "read": {
@@ -402,7 +426,8 @@ async function scratchpadExecute(
     case "update_session": {
       if (params.turn !== undefined) pad.session.turn = params.turn as number;
       if (params.phase !== undefined) pad.session.phase = params.phase as SessionPhase;
-      if (params.mode !== undefined) pad.session.mode = params.mode as "normal" | "deep_think" | "recovery";
+      if (params.mode !== undefined)
+        pad.session.mode = params.mode as "normal" | "deep_think" | "recovery";
       pad.session.updated_at = Date.now();
       await mutateAndSave(pad);
       resultText = `Session: turn=${pad.session.turn}, phase=${pad.session.phase}, mode=${pad.session.mode}`;
@@ -413,10 +438,12 @@ async function scratchpadExecute(
       // Format: "type|description"
       const [type, ...descParts] = text.split("|");
       const desc = descParts.join("|") || type;
-      const cType = type as Constraint["type"] || "custom";
+      const cType = (type as Constraint["type"]) || "custom";
       const constraint: Constraint = {
         id: generateConstraintId(),
-        type: ["blocker", "enforcement_rule", "invariant", "custom"].includes(cType) ? cType : "custom",
+        type: ["blocker", "enforcement_rule", "invariant", "custom"].includes(cType)
+          ? cType
+          : "custom",
         description: desc,
         added_at: Date.now(),
         expires_at: expires_in_ms ? Date.now() + expires_in_ms : 0,
@@ -488,7 +515,9 @@ async function scratchpadExecute(
         if (pad.goal && pad.goal !== "Untitled") pad.prior_goal = pad.goal;
         pad.goal = text;
       }
-      if (successCriteria) { /* stored for future use */ }
+      if (successCriteria) {
+        /* stored for future use */
+      }
       await mutateAndSave(pad);
       resultText = `Elevated to goal: ${text || "current goal"}`;
       break;
@@ -496,7 +525,14 @@ async function scratchpadExecute(
 
     case "elevate_to_plan": {
       if (text) {
-        pad.plan.push({ text, budgetCalls: undefined, spentCalls: 0, startTurn: pad.session.turn, doneTurn: 0, startTotalCalls: 0 });
+        pad.plan.push({
+          text,
+          budgetCalls: undefined,
+          spentCalls: 0,
+          startTurn: pad.session.turn,
+          doneTurn: 0,
+          startTotalCalls: 0,
+        });
       }
       await mutateAndSave(pad);
       resultText = `Elevated to plan: ${text || "current plan"}`;
@@ -526,8 +562,15 @@ async function scratchpadExecute(
     case "task_list": {
       const slug = resolveProjectSlugFromCtx(ctx);
       const store = await loadTaskStore(slug);
-      const tasksByStatus: Record<string, TaskItem[]> = { pending: [], in_progress: [], completed: [], failed: [] };
-      for (const t of store.tasks) { (tasksByStatus[t.status] ??= []).push(t); }
+      const tasksByStatus: Record<string, TaskItem[]> = {
+        pending: [],
+        in_progress: [],
+        completed: [],
+        failed: [],
+      };
+      for (const t of store.tasks) {
+        (tasksByStatus[t.status] ??= []).push(t);
+      }
       resultText = `Tasks: ${store.tasks.length} total (${tasksByStatus.pending.length} pending, ${tasksByStatus.in_progress.length} in progress, ${tasksByStatus.completed.length} completed, ${tasksByStatus.failed.length} failed)`;
       break;
     }
@@ -536,8 +579,12 @@ async function scratchpadExecute(
       const slug = resolveProjectSlugFromCtx(ctx);
       const store = await loadTaskStore(slug);
       const t = store.tasks.find((t) => t.id === task_id);
-      if (t) { t.status = "completed"; t.updated_at = Date.now(); await saveTaskStore(slug, store); resultText = `Task completed: ${t.text}`; }
-      else resultText = `Task not found: ${task_id}`;
+      if (t) {
+        t.status = "completed";
+        t.updated_at = Date.now();
+        await saveTaskStore(slug, store);
+        resultText = `Task completed: ${t.text}`;
+      } else resultText = `Task not found: ${task_id}`;
       break;
     }
 
@@ -545,8 +592,12 @@ async function scratchpadExecute(
       const slug = resolveProjectSlugFromCtx(ctx);
       const store = await loadTaskStore(slug);
       const t = store.tasks.find((t) => t.id === task_id);
-      if (t) { t.status = "failed"; t.updated_at = Date.now(); await saveTaskStore(slug, store); resultText = `Task failed: ${t.text}`; }
-      else resultText = `Task not found: ${task_id}`;
+      if (t) {
+        t.status = "failed";
+        t.updated_at = Date.now();
+        await saveTaskStore(slug, store);
+        resultText = `Task failed: ${t.text}`;
+      } else resultText = `Task not found: ${task_id}`;
       break;
     }
 
@@ -563,8 +614,11 @@ async function scratchpadExecute(
       const slug = resolveProjectSlugFromCtx(ctx);
       const store = await loadTaskStore(slug);
       const idx = store.tasks.findIndex((t) => t.id === task_id);
-      if (idx >= 0) { const removed = store.tasks.splice(idx, 1)[0]; await saveTaskStore(slug, store); resultText = `Task removed: ${removed.text}`; }
-      else resultText = `Task not found: ${task_id}`;
+      if (idx >= 0) {
+        const removed = store.tasks.splice(idx, 1)[0];
+        await saveTaskStore(slug, store);
+        resultText = `Task removed: ${removed.text}`;
+      } else resultText = `Task not found: ${task_id}`;
       break;
     }
 
@@ -572,7 +626,9 @@ async function scratchpadExecute(
       const slug = resolveProjectSlugFromCtx(ctx);
       const store = await loadTaskStore(slug);
       const byStatus = { pending: 0, in_progress: 0, completed: 0, failed: 0 };
-      for (const t of store.tasks) { if (t.status in byStatus) byStatus[t.status as keyof typeof byStatus]++; }
+      for (const t of store.tasks) {
+        if (t.status in byStatus) byStatus[t.status as keyof typeof byStatus]++;
+      }
       resultText = `Task stats: ${store.tasks.length} total, ${byStatus.pending} pending, ${byStatus.in_progress} in-progress, ${byStatus.completed} completed, ${byStatus.failed} failed`;
       break;
     }
@@ -600,15 +656,13 @@ async function scratchpadExecute(
 // ── Tool Registration ─────────────────────────────────────────────────────
 
 export default function scratchpadExtension(pi: ExtensionAPI): void {
-  pi.registerTool(
-    {
-      name: "scratchpad",
-      label: "Scratchpad",
-      promptSnippet: "Structured session memory for goal, plan, and decisions",
-      description:
-        "Structured session memory. Use scratchpad(action='add_plan') at the start of multi-step tasks to track goals and decisions. Track hypotheses, learnings, and constraints throughout. Essential for tasks spanning multiple turns.",
-      parameters: scratchpadParams,
-      execute: scratchpadExecute,
-    } as any,
-  );
+  pi.registerTool({
+    name: "scratchpad",
+    label: "Scratchpad",
+    promptSnippet: "Structured session memory for goal, plan, and decisions",
+    description:
+      "Structured session memory. Use scratchpad(action='add_plan') at the start of multi-step tasks to track goals and decisions. Track hypotheses, learnings, and constraints throughout. Essential for tasks spanning multiple turns.",
+    parameters: scratchpadParams,
+    execute: scratchpadExecute,
+  } as any);
 }

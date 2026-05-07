@@ -11,7 +11,11 @@
 
 import * as fs from "node:fs";
 import * as http from "node:http";
-import { startObservatory, stopObservatory, getObservatoryStatus } from "../dist/lib/observatory.js";
+import {
+  startObservatory,
+  stopObservatory,
+  getObservatoryStatus,
+} from "../dist/lib/observatory.js";
 
 const PORT = parseInt(process.env.OBSERVATORY_PORT || "4199", 10);
 const HOST = process.env.OBSERVATORY_HOST || "localhost";
@@ -59,7 +63,6 @@ try {
   setInterval(() => {
     // Heartbeat — keep process alive, prevent idle exit
   }, 60_000).unref();
-
 } catch (err) {
   console.error(`[observatory-daemon] Failed to start: ${err}`);
   process.exit(1);

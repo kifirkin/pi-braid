@@ -86,9 +86,7 @@ export function formatSOPForWhisper(episode: Episode): string {
     parts.push(`**Tools**: ${episode.atomicSOP.join(" → ")}`);
   }
 
-  return parts.length > 0
-    ? parts.join("\n\n")
-    : `SOP for: ${episode.task.slice(0, 100)}`;
+  return parts.length > 0 ? parts.join("\n\n") : `SOP for: ${episode.task.slice(0, 100)}`;
 }
 
 // ── Tick Engine ─────────────────────────────────────────────────────────────
@@ -166,7 +164,10 @@ function tick(
     totalToolCalls: state.metaLearning.toolTracking.totalToolsUsed,
     silentTurns:
       state.stats.totalTicks > 0
-        ? Math.max(0, state.stats.totalTicks - (state.metaLearning.toolTracking.lastToolCallTurn || 0))
+        ? Math.max(
+            0,
+            state.stats.totalTicks - (state.metaLearning.toolTracking.lastToolCallTurn || 0),
+          )
         : 0,
     metadata: {
       toolFailures:
@@ -333,88 +334,94 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 
   // ── Event: session_start ──────────────────────────────────────────
 
-  registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event: any, ctx: ExtensionContext) => {
-    const state = getState(ctx);
+  registerSessionStartHandler(
+    pi,
+    SessionPhase.MemoryState,
+    async (_event: any, ctx: ExtensionContext) => {
+      const state = getState(ctx);
 
-    // Register Event Bus consumers
-    try {
-      const { registerEventConsumers } = await import("../../../lib/event-consumers.js");
-      registerEventConsumers();
-    } catch (err) {
-      log.error("Failed to register event consumers:", err);
-    }
-
-    // Register built-in modules
-    for (const module of builtInModules) {
-      if (!state.modules.has(module.name)) {
-        state.modules.set(module.name, {
-          module,
-          enabled: true,
-          activations: 0,
-          lastActivated: 0,
-          effectiveness: 0.5,
-        });
-        log.info(`Registered module "${module.name}"`);
+      // Register Event Bus consumers
+      try {
+        const { registerEventConsumers } = await import("../../../lib/event-consumers.js");
+        registerEventConsumers();
+      } catch (err) {
+        log.error("Failed to register event consumers:", err);
       }
-    }
 
-    // Initialize policy engine
-    const sessionId = ctx.cwd ?? String(process.pid);
-    const engine = createPolicyEngine(sessionId);
-    state.policyTurnCount = 0;
-    state.policyEngineReady = true;
-
-    const onSignal = (type: string, data: Record<string, unknown>) => {
-      state.activationHistory.push({
-        tick: state.stats.totalTicks,
-        moduleName: type,
-        timestamp: Date.now(),
-        reason: "policy",
-      });
-    };
-
-    const defaultPolicies = createDefaultPolicies(
-      () => state.metaLearning.toolTracking,
-      onSignal,
-      (msg: string) => ctx.whisper?.(msg, { category: "cognitive", priority: "low" }),
-    );
-    for (const policy of defaultPolicies) {
-      engine.register(policy);
-    }
-    log.info(
-      `Policy engine initialized with ${defaultPolicies.length} default policies (tool tracking active)`,
-    );
-
-    // Activate policy engine wrapper
-    activatePolicyEngine(engine, state, ctx);
-
-    // SOP Retrieval + Coach Decision
-    try {
-      const { retrieveEpisodes } = await import("../../memory/three-memory-stores/index.js") as any;
-      const memState = getMemoryState(ctx);
-      if (memState) {
-        const project = ctx.cwd ?? "unknown";
-        const episodes = retrieveEpisodes(memState, project, 3, project);
-        if (episodes && episodes.length > 0) {
-          const topEpisode = episodes[0];
-          if (topEpisode.similarity > 0.3) {
-            const sopSummary = formatSOPForWhisper(topEpisode);
-            ctx.whisper?.("msg", { category: "cognitive", priority: "low" });
-            log.info(`Coach: Whispered SOP from past episode ${topEpisode.id}`);
-          }
+      // Register built-in modules
+      for (const module of builtInModules) {
+        if (!state.modules.has(module.name)) {
+          state.modules.set(module.name, {
+            module,
+            enabled: true,
+            activations: 0,
+            lastActivated: 0,
+            effectiveness: 0.5,
+          });
+          log.info(`Registered module "${module.name}"`);
         }
       }
-    } catch (err) {
-      log.debug(`SOP retrieval skipped: ${(err as Error).message}`);
-    }
-  });
+
+      // Initialize policy engine
+      const sessionId = ctx.cwd ?? String(process.pid);
+      const engine = createPolicyEngine(sessionId);
+      state.policyTurnCount = 0;
+      state.policyEngineReady = true;
+
+      const onSignal = (type: string, data: Record<string, unknown>) => {
+        state.activationHistory.push({
+          tick: state.stats.totalTicks,
+          moduleName: type,
+          timestamp: Date.now(),
+          reason: "policy",
+        });
+      };
+
+      const defaultPolicies = createDefaultPolicies(
+        () => state.metaLearning.toolTracking,
+        onSignal,
+        (msg: string) => ctx.whisper?.(msg, { category: "cognitive", priority: "low" }),
+      );
+      for (const policy of defaultPolicies) {
+        engine.register(policy);
+      }
+      log.info(
+        `Policy engine initialized with ${defaultPolicies.length} default policies (tool tracking active)`,
+      );
+
+      // Activate policy engine wrapper
+      activatePolicyEngine(engine, state, ctx);
+
+      // SOP Retrieval + Coach Decision
+      try {
+        const { retrieveEpisodes } =
+          (await import("../../memory/three-memory-stores/index.js")) as any;
+        const memState = getMemoryState(ctx);
+        if (memState) {
+          const project = ctx.cwd ?? "unknown";
+          const episodes = retrieveEpisodes(memState, project, 3, project);
+          if (episodes && episodes.length > 0) {
+            const topEpisode = episodes[0];
+            if (topEpisode.similarity > 0.3) {
+              const sopSummary = formatSOPForWhisper(topEpisode);
+              ctx.whisper?.("msg", { category: "cognitive", priority: "low" });
+              log.info(`Coach: Whispered SOP from past episode ${topEpisode.id}`);
+            }
+          }
+        }
+      } catch (err) {
+        log.debug(`SOP retrieval skipped: ${(err as Error).message}`);
+      }
+    },
+  );
 
   // ── Event: turn_start — inject relevant SOPs from past episodes ─────
 
   pi.on("turn_start", async (_event: any, ctx: ExtensionContext) => {
     // Inject SOP suggestions based on the current turn's user message
     try {
-      const { retrieveEpisodes } = await import("../../memory/three-memory-stores/index.js") as any;
+      const { retrieveEpisodes } =
+        (await import("../../memory/three-memory-stores/index.js")) as any;
       const memState = getMemoryState(ctx);
       if (memState && memState.episodes) {
         // Use the user message from the event or the latest message in context
@@ -435,9 +442,9 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     const outcome = _event?.outcome as string | undefined;
     log.info(
       `Session ended. Ticks: ${state.stats.totalTicks}, ` +
-      `Activations: ${state.stats.totalActivations}, ` +
-      `Tools: ${state.metaLearning.toolTracking.totalToolsUsed}, ` +
-      `Outcome: ${outcome ?? "unknown"}`,
+        `Activations: ${state.stats.totalActivations}, ` +
+        `Tools: ${state.metaLearning.toolTracking.totalToolsUsed}, ` +
+        `Outcome: ${outcome ?? "unknown"}`,
     );
     for (const [name, count] of Object.entries(state.stats.activationsByModule)) {
       log.info(`  ${name}: ${count} activations`);
@@ -477,7 +484,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
         );
         log.info(
           `[heartbeat] Outcome episode recorded: ${success ? "success" : "partial"} ` +
-          `(SOP: ${sop.functionalSOP.length} steps, ${sop.atomicSOP.length} tools)`,
+            `(SOP: ${sop.functionalSOP.length} steps, ${sop.atomicSOP.length} tools)`,
         );
 
         // Queue for consolidation if successful
@@ -495,7 +502,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
             if (candidate.consolidationScore > 0.5) {
               log.info(
                 `[heartbeat] Candidate scored ${candidate.consolidationScore.toFixed(2)} ` +
-                `— ready for consolidation`,
+                  `— ready for consolidation`,
               );
             }
           } catch {} // non-fatal

@@ -403,7 +403,10 @@ export default function verificationExtension(pi: ExtensionAPI) {
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         log.error(`verify_claim failed: ${msg}`);
-        return { content: [{ type: "text" as const, text: `Error: ${msg}` }], details: { verified: false, issues: [], summary: `Error: ${msg}`, error: msg } };
+        return {
+          content: [{ type: "text" as const, text: `Error: ${msg}` }],
+          details: { verified: false, issues: [], summary: `Error: ${msg}`, error: msg },
+        };
       }
     },
   } as any);
@@ -419,7 +422,9 @@ export default function verificationExtension(pi: ExtensionAPI) {
       try {
         const p = params as { parentTask: string; subtasks: string[]; constraints?: string[] };
         if (!p.parentTask || !Array.isArray(p.subtasks)) {
-          throw new Error("verify_decomposition requires 'parentTask' (string) and 'subtasks' (string array)");
+          throw new Error(
+            "verify_decomposition requires 'parentTask' (string) and 'subtasks' (string array)",
+          );
         }
         const cov = checkDecompositionCoverage(p.parentTask, p.subtasks, p.constraints);
         const text = cov.complete
@@ -429,7 +434,10 @@ export default function verificationExtension(pi: ExtensionAPI) {
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         log.error(`verify_decomposition failed: ${msg}`);
-        return { content: [{ type: "text" as const, text: `Error: ${msg}` }], details: { complete: false, coverage: 0, gaps: [], error: msg } };
+        return {
+          content: [{ type: "text" as const, text: `Error: ${msg}` }],
+          details: { complete: false, coverage: 0, gaps: [], error: msg },
+        };
       }
     },
   } as any);

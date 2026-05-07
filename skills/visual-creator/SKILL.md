@@ -25,13 +25,13 @@ These apply to every visual domain. Internalize them.
 
 ### 1.1 Hierarchy — Make the Important Loud
 
-| Technique | How | Application |
-|-----------|-----|-------------|
-| Size contrast | Largest = most important | Headlines > subheads > body > captions |
-| Weight contrast | Bold > regular > light | Primary actions > secondary > tertiary |
-| Color saturation | Bright > muted > neutral | CTAs use accent; backgrounds recede |
-| Spatial position | Top-left / center = primary | Hero section first, footer last |
-| Isolation | Alone = important | A single button with generous whitespace |
+| Technique        | How                         | Application                              |
+| ---------------- | --------------------------- | ---------------------------------------- |
+| Size contrast    | Largest = most important    | Headlines > subheads > body > captions   |
+| Weight contrast  | Bold > regular > light      | Primary actions > secondary > tertiary   |
+| Color saturation | Bright > muted > neutral    | CTAs use accent; backgrounds recede      |
+| Spatial position | Top-left / center = primary | Hero section first, footer last          |
+| Isolation        | Alone = important           | A single button with generous whitespace |
 
 **Rule**: If two elements compete for attention, one is wrong. Decide which matters more and make it clearly dominant.
 
@@ -73,16 +73,16 @@ These apply to every visual domain. Internalize them.
 
 Every palette needs these roles:
 
-| Role | Purpose | Saturation | Coverage |
-|------|---------|------------|----------|
-| **Primary** | Brand color, main actions | Medium-high | ~10-20% |
-| **Secondary** | Secondary actions, accents | Medium | ~5-10% |
-| **Tertiary** | Rare accents, highlights | High or low | ~2-5% |
-| **Neutral** | Backgrounds, text, borders | Low (near-gray) | ~60-70% |
-| **Surface** | Containers, cards, modals | Very low | varies |
-| **Error** | Destructive actions, errors | High red | <1% |
-| **Success** | Confirmations, active states | Medium green | <1% |
-| **Warning** | Alerts, caution | Medium amber | <1% |
+| Role          | Purpose                      | Saturation      | Coverage |
+| ------------- | ---------------------------- | --------------- | -------- |
+| **Primary**   | Brand color, main actions    | Medium-high     | ~10-20%  |
+| **Secondary** | Secondary actions, accents   | Medium          | ~5-10%   |
+| **Tertiary**  | Rare accents, highlights     | High or low     | ~2-5%    |
+| **Neutral**   | Backgrounds, text, borders   | Low (near-gray) | ~60-70%  |
+| **Surface**   | Containers, cards, modals    | Very low        | varies   |
+| **Error**     | Destructive actions, errors  | High red        | <1%      |
+| **Success**   | Confirmations, active states | Medium green    | <1%      |
+| **Warning**   | Alerts, caution              | Medium amber    | <1%      |
 
 ### 2.2 Palette Generation Rules
 
@@ -95,14 +95,14 @@ Every palette needs these roles:
 
 ### 2.3 Color Harmony Reference
 
-| Scheme | Structure | Best For | Pitfall |
-|--------|-----------|----------|---------|
-| Monochromatic | Single hue, varying L/S | Minimalist, data viz | Can feel flat without texture |
-| Analogous | Adjacent hues (30-60°) | Calm, cohesive brands | Low energy, needs contrast |
-| Complementary | Opposite hues (180°) | High energy, games | Can be jarring if equal saturation |
-| Split-complementary | Base + 2 adjacent to complement | Most UI | Safe, versatile, rarely wrong |
-| Triadic | 3 evenly spaced (120° apart) | Bold, creative | Hard to balance saturation |
-| Tetradic | 2 complementary pairs | Rich, complex | High risk of chaos |
+| Scheme              | Structure                       | Best For              | Pitfall                            |
+| ------------------- | ------------------------------- | --------------------- | ---------------------------------- |
+| Monochromatic       | Single hue, varying L/S         | Minimalist, data viz  | Can feel flat without texture      |
+| Analogous           | Adjacent hues (30-60°)          | Calm, cohesive brands | Low energy, needs contrast         |
+| Complementary       | Opposite hues (180°)            | High energy, games    | Can be jarring if equal saturation |
+| Split-complementary | Base + 2 adjacent to complement | Most UI               | Safe, versatile, rarely wrong      |
+| Triadic             | 3 evenly spaced (120° apart)    | Bold, creative        | Hard to balance saturation         |
+| Tetradic            | 2 complementary pairs           | Rich, complex         | High risk of chaos                 |
 
 **For UI, start with split-complementary or analogous + one accent. For games, complementary or triadic.**
 
@@ -121,26 +121,26 @@ Every palette needs these roles:
 
 Build a modular scale. Good starting points:
 
-| Step | Size (rem) | Weight | Application |
-|------|------------|--------|-------------|
-| Display | 2.5-3.5 (40-56px) | 700-800 | Hero headlines, splash screens |
-| H1 | 2.0-2.5 (32-40px) | 600-700 | Page titles |
-| H2 | 1.5-2.0 (24-32px) | 600 | Section headers |
-| H3 | 1.25-1.5 (20-24px) | 600 | Card titles |
-| Body | 1.0 (16px) | 400 | Primary reading |
-| Body-sm | 0.875 (14px) | 400 | Secondary text, metadata |
-| Caption | 0.75 (12px) | 400-500 | Labels, timestamps, small print |
+| Step    | Size (rem)         | Weight  | Application                     |
+| ------- | ------------------ | ------- | ------------------------------- |
+| Display | 2.5-3.5 (40-56px)  | 700-800 | Hero headlines, splash screens  |
+| H1      | 2.0-2.5 (32-40px)  | 600-700 | Page titles                     |
+| H2      | 1.5-2.0 (24-32px)  | 600     | Section headers                 |
+| H3      | 1.25-1.5 (20-24px) | 600     | Card titles                     |
+| Body    | 1.0 (16px)         | 400     | Primary reading                 |
+| Body-sm | 0.875 (14px)       | 400     | Secondary text, metadata        |
+| Caption | 0.75 (12px)        | 400-500 | Labels, timestamps, small print |
 
 **Scale ratio**: 1.25 (major third) or 1.333 (perfect fourth). Pick one and use it.
 
 ### 3.2 Font Pairing
 
-| Pairing Style | Headline Font | Body Font | Vibe |
-|---------------|---------------|-----------|------|
-| Classic serif + sans | Serif (Playfair, Merriweather) | Sans (Inter, Open Sans) | Editorial, trustworthy |
-| Modern sans + sans | Display sans (Plus Jakarta Sans) | Workhorse sans (Inter) | Contemporary, clean |
-| Mono accent + sans | Monospace (JetBrains Mono) | Sans (Inter) | Technical, developer-focused |
-| Single family | Same family, different weights | Same family | Safe, consistent, scalable |
+| Pairing Style        | Headline Font                    | Body Font               | Vibe                         |
+| -------------------- | -------------------------------- | ----------------------- | ---------------------------- |
+| Classic serif + sans | Serif (Playfair, Merriweather)   | Sans (Inter, Open Sans) | Editorial, trustworthy       |
+| Modern sans + sans   | Display sans (Plus Jakarta Sans) | Workhorse sans (Inter)  | Contemporary, clean          |
+| Mono accent + sans   | Monospace (JetBrains Mono)       | Sans (Inter)            | Technical, developer-focused |
+| Single family        | Same family, different weights   | Same family             | Safe, consistent, scalable   |
 
 **Rules**: never use more than 2 typefaces. Never pair two serifs or two display fonts. Use weight variation within a family before reaching for a second family.
 
@@ -158,24 +158,24 @@ Build a modular scale. Good starting points:
 
 ### 4.1 Grid Systems
 
-| Grid Type | Structure | Best For |
-|-----------|-----------|----------|
-| Single column | 1 column, max-width container | Articles, reading-focused |
-| 2-column | Sidebar + main | Dashboards, docs |
-| 4-column | 4 equal cols (mobile) | Mobile-first apps |
-| 12-column | 12 flexible cols | Desktop-first, complex layouts |
-| Card grid | Rectangular cells with gap | Galleries, product lists, dashboards |
-| Full bleed | Edge-to-edge | Marketing, hero sections, games |
+| Grid Type     | Structure                     | Best For                             |
+| ------------- | ----------------------------- | ------------------------------------ |
+| Single column | 1 column, max-width container | Articles, reading-focused            |
+| 2-column      | Sidebar + main                | Dashboards, docs                     |
+| 4-column      | 4 equal cols (mobile)         | Mobile-first apps                    |
+| 12-column     | 12 flexible cols              | Desktop-first, complex layouts       |
+| Card grid     | Rectangular cells with gap    | Galleries, product lists, dashboards |
+| Full bleed    | Edge-to-edge                  | Marketing, hero sections, games      |
 
 ### 4.2 Spacing Scales
 
 Pick one scale and use it everywhere:
 
-| Name | Base | Scale |
-|------|------|-------|
-| **4px grid** | 4px | 4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 80 |
-| **8px grid** | 8px | 8, 16, 24, 32, 40, 48, 64, 80, 96, 128 |
-| **Modular** | 8px | 8, 12, 16, 24, 36, 48, 72, 96, 144 |
+| Name         | Base | Scale                                    |
+| ------------ | ---- | ---------------------------------------- |
+| **4px grid** | 4px  | 4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 80 |
+| **8px grid** | 8px  | 8, 16, 24, 32, 40, 48, 64, 80, 96, 128   |
+| **Modular**  | 8px  | 8, 12, 16, 24, 36, 48, 72, 96, 144       |
 
 **Recommendation**: use 8px grid for web UI (it divides cleanly into 4 for fine-tuning). Use 4px for game UI where pixel-precision matters.
 
@@ -189,12 +189,12 @@ Pick one scale and use it everywhere:
 
 ### 4.4 Responsive Breakpoints (Web)
 
-| Breakpoint | Width | Layout |
-|------------|-------|--------|
-| Mobile | < 640px | 4 columns, single-panel |
-| Tablet | 640-1024px | 8 columns, two-panel |
-| Desktop | 1024-1440px | 12 columns, multi-panel |
-| Wide | > 1440px | 12 columns + max-width cap |
+| Breakpoint | Width       | Layout                     |
+| ---------- | ----------- | -------------------------- |
+| Mobile     | < 640px     | 4 columns, single-panel    |
+| Tablet     | 640-1024px  | 8 columns, two-panel       |
+| Desktop    | 1024-1440px | 12 columns, multi-panel    |
+| Wide       | > 1440px    | 12 columns + max-width cap |
 
 ---
 
@@ -203,6 +203,7 @@ Pick one scale and use it everywhere:
 ### 5.1 Web / UI Design
 
 **Patterns that work:**
+
 - **Cards**: consistent internal padding (use spacing scale), rounded corners, subtle shadow, 1:1 or 4:3 aspect ratio for images
 - **Navigation**: max 5-7 items in top nav; more → use dropdown, hamburger, or sidebar
 - **Forms**: label above input, left-aligned labels, button right-aligned at bottom
@@ -211,6 +212,7 @@ Pick one scale and use it everywhere:
 - **Empty states**: illustration + message + CTA — never show a blank area
 
 **What to avoid:**
+
 - **Infinite scroll for content that benefits from search**: use pagination
 - **Modal overlays for complex forms**: use dedicated page instead
 - **Carousels for critical content**: users don't scroll through them
@@ -220,6 +222,7 @@ Pick one scale and use it everywhere:
 ### 5.2 Game Design (UI & Assets)
 
 **UI for games:**
+
 - **Diegetic UI**: elements exist in the game world (character health bar on the character)
 - **Non-diegetic**: classic HUD overlay (health bar at screen edge)
 - **Menu hierarchy**: splash → main menu → settings/play → game → pause → results
@@ -227,6 +230,7 @@ Pick one scale and use it everywhere:
 - **Touch controls (mobile)**: minimum 48×48px, 8px+ gap between buttons, provide visual feedback on press
 
 **Character sprites:**
+
 - **Readable silhouette**: test at 16×16px scale — can you identify the character?
 - **Proportions**: maintain consistent head-to-body ratio across all sprites
 - **Animation**: minimum viable frames — idle: 2, walk: 4, run: 6, attack: 4
@@ -234,6 +238,7 @@ Pick one scale and use it everywhere:
 - **Style consistency**: same line weight, same shading technique, same level of detail
 
 **Environments:**
+
 - **Depth layers**: background → middleground → foreground (parallax-ready)
 - **Tileable textures**: edges wrap seamlessly (test by tiling 3×3)
 - **Color script**: guide player mood through color (warm = safe, cool = dangerous, dark = mystery)
@@ -278,11 +283,11 @@ Pick one scale and use it everywhere:
   --space-2xl: 48px;
 
   /* Typography scale */
-  --font-display: 2.75rem;     /* 44px */
-  --font-headline: 2rem;       /* 32px */
-  --font-title: 1.25rem;       /* 20px */
-  --font-body: 1rem;           /* 16px */
-  --font-caption: 0.75rem;     /* 12px */
+  --font-display: 2.75rem; /* 44px */
+  --font-headline: 2rem; /* 32px */
+  --font-title: 1.25rem; /* 20px */
+  --font-body: 1rem; /* 16px */
+  --font-caption: 0.75rem; /* 12px */
 }
 ```
 
@@ -294,11 +299,11 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        primary: { DEFAULT: '#855300', hover: '#613b00' },
-        neutral: { 100: '#f9f9ff', 900: '#151c27' },
+        primary: { DEFAULT: "#855300", hover: "#613b00" },
+        neutral: { 100: "#f9f9ff", 900: "#151c27" },
       },
-      spacing: { xs: '4px', sm: '8px', md: '16px', lg: '24px', xl: '32px' },
-      fontSize: { display: '2.75rem', headline: '2rem', title: '1.25rem' },
+      spacing: { xs: "4px", sm: "8px", md: "16px", lg: "24px", xl: "32px" },
+      fontSize: { display: "2.75rem", headline: "2rem", title: "1.25rem" },
     },
   },
 };
@@ -323,20 +328,25 @@ const SPACING = {
 ## 7. The Create → Analyze → Validate → Improve Cycle
 
 ### Step 1: Create
+
 1. Define your design constraints first (palette size, grid, spacing scale)
 2. Build a single component or screen
 3. Document design decisions inline
 
 ### Step 2: Analyze
+
 ```
 analyze_image("path/to/screenshot.png", detail="comprehensive")
 ```
+
 - Extract colors, layout, typography
 - Check against your intended design
 - Note discrepancies between intent and output
 
 ### Step 3: Validate
+
 Follow the visual-validator skill's audit format. Key questions:
+
 - Do elements have clear hierarchy?
 - Is spacing consistent?
 - Are colors harmonious and accessible?
@@ -344,12 +354,14 @@ Follow the visual-validator skill's audit format. Key questions:
 - Are there alignment errors?
 
 ### Step 4: Improve
+
 1. Fix P0 issues immediately
 2. Address P1 issues in the same work session
 3. Log P2 issues for polish pass
 4. Iterate: go to Step 1 or 2
 
 ### Expected Iteration Counts
+
 - **UI component**: 1-2 cycles for production quality
 - **Full screen**: 2-3 cycles
 - **Sprite sheet**: 2-4 cycles (validation catches palette/alignment issues)
@@ -362,17 +374,17 @@ Follow the visual-validator skill's audit format. Key questions:
 
 These produce mediocre visuals every time:
 
-| Anti-pattern | What happens | Instead |
-|-------------|--------------|---------|
-| Starting with code | No design reasoning, inconsistent | Define palette + spacing first |
-| Single font at different sizes | No hierarchy, flat | Use weight + size + family contrast |
-| Random spacing | Layout feels "off" by a few pixels | Use a strict spacing scale |
-| Too many colors | Muddy, unprofessional | Limit to 3-5 hues with stops |
-| Centering everything | No edge alignment, no structure | Align to a grid, use center sparingly |
-| Gradient overload | Cheap, dated look | Use solid colors, flat design first |
-| Ignoring mobile | Desktop-only that breaks | Design mobile-first, scale up |
-| Making it up as you go | Inconsistent, unrepeatable | Define system first, then apply |
-| "I'll fix it later" | Never gets fixed, accumulates debt | Fix P0/P1 in current cycle |
+| Anti-pattern                   | What happens                       | Instead                               |
+| ------------------------------ | ---------------------------------- | ------------------------------------- |
+| Starting with code             | No design reasoning, inconsistent  | Define palette + spacing first        |
+| Single font at different sizes | No hierarchy, flat                 | Use weight + size + family contrast   |
+| Random spacing                 | Layout feels "off" by a few pixels | Use a strict spacing scale            |
+| Too many colors                | Muddy, unprofessional              | Limit to 3-5 hues with stops          |
+| Centering everything           | No edge alignment, no structure    | Align to a grid, use center sparingly |
+| Gradient overload              | Cheap, dated look                  | Use solid colors, flat design first   |
+| Ignoring mobile                | Desktop-only that breaks           | Design mobile-first, scale up         |
+| Making it up as you go         | Inconsistent, unrepeatable         | Define system first, then apply       |
+| "I'll fix it later"            | Never gets fixed, accumulates debt | Fix P0/P1 in current cycle            |
 
 ---
 

@@ -21,6 +21,7 @@ pi-braid's current benchmark has **severe measurement problems**:
 Result: We don't know if pi-braid actually improves reasoning, or if we're just measuring memorization.
 
 **Important**: The other pi-braid agent is wiring critical infrastructure (tool tracking, three-memory, belief store) in Tier 1. Our benchmark improvements will validate this wiring works by measuring:
+
 - Memory hallucination rates (HaluMem) - detects if belief store wiring is broken
 - Tool use efficiency - validates tool tracking
 - Cross-session coherence - validates three-memory recall
@@ -170,14 +171,14 @@ def generate_variants(task, num_variants=5):
     Same skill, different surface form.
     """
     variants = []
-    
+
     # For flatten task:
     # V1: Custom __iter__ class
     # V2: Generator input
     # V3: Dict with Sequence protocol
     # V4: Nested tuples instead of lists
     # V5: Custom flatten with depth parameter
-    
+
     # For merge_sorted:
     # V1: Custom comparator
     # V2: Descending order
@@ -216,6 +217,7 @@ NOVEL TASK 4: Reverse engineering
 ### Phase 1: Variant Task Generator (Week 1)
 
 **Day 1-2**: Build variant generator framework
+
 ```python
 class VariantGenerator:
     def generate_variants(task, num_variants=5):
@@ -224,18 +226,21 @@ class VariantGenerator:
 ```
 
 **Day 3-4**: Generate variants for existing tasks
+
 - flatten_deep variants (5)
 - merge_sorted variants (5)
 - reverse_words variants (3)
 - Additional tasks: as needed
 
 **Day 5**: Validate variants are genuinely different
+
 - Run base model on variants
 - Verify <100% success (proves contamination avoided)
 
 ### Phase 2: Behavioral Metrics (Week 2)
 
 **Day 6-7**: Implement sycophancy scenarios
+
 ```python
 # BeHonest-style sycophancy measurement
 SCENARIOS = {
@@ -246,17 +251,20 @@ SCENARIOS = {
 ```
 
 **Day 8-9**: Implement consistency scoring
+
 - Same question, different formats
 - Measure variance in responses
 - Add CoT variable (with/without chain-of-thought)
 
 **Day 10**: Integrate into benchmark
+
 - Add `--metrics behavioral` flag
 - Output: sycophany_rate, consistency_score, self_knowledge_rate
 
 ### Phase 3: Memory Quality Metrics (Week 3)
 
 **Day 11-12**: Track belief store hallucinations
+
 ```python
 # HaluMem-style memory hallucination tracking
 def track_hallucinations(belief_store):
@@ -267,6 +275,7 @@ def track_hallucinations(belief_store):
 ```
 
 **Day 13-14**: Add memory metrics to output
+
 - Hallucination rate
 - Conflict rate
 - Update latency
@@ -275,6 +284,7 @@ def track_hallucinations(belief_store):
 ### Phase 4: Efficiency Metrics (Week 4)
 
 **Day 15-16**: Add token tracking to benchmark
+
 ```python
 # Track tokens per task
 # Track tool calls per task
@@ -282,11 +292,13 @@ def track_hallucinations(belief_store):
 ```
 
 **Day 17-18**: Add compression ratio tracking
+
 - Working memory size
 - Episodic summary size
 - Compression ratio per episode
 
 **Day 19-20**: Full validation run
+
 - Run all 3 tiers
 - Compare: pi-braid vs baseline vs no-extensions
 - Publish results
@@ -315,14 +327,14 @@ Memory:
 
 ## Key Papers Referenced
 
-| Paper | arXiv | Key Contribution |
-|-------|-------|-----------------|
-| VAR-MATH | 2507.12885 | 48-73% drop on variabilized benchmarks → contamination measurable |
-| AntiLeakBench | 2412.13670 | Contamination-free benchmark construction methodology |
-| BeHonest | 2406.13261 | 3-dimension honesty benchmark |
-| ACBench | 2505.19433 | Agent capability metrics beyond language modeling |
-| HaluMem | 2511.03506 | Hallucination in memory systems evaluation |
-| HWE-Bench | 2604.14709 | Novel task design (hardware bugs) |
+| Paper         | arXiv      | Key Contribution                                                  |
+| ------------- | ---------- | ----------------------------------------------------------------- |
+| VAR-MATH      | 2507.12885 | 48-73% drop on variabilized benchmarks → contamination measurable |
+| AntiLeakBench | 2412.13670 | Contamination-free benchmark construction methodology             |
+| BeHonest      | 2406.13261 | 3-dimension honesty benchmark                                     |
+| ACBench       | 2505.19433 | Agent capability metrics beyond language modeling                 |
+| HaluMem       | 2511.03506 | Hallucination in memory systems evaluation                        |
+| HWE-Bench     | 2604.14709 | Novel task design (hardware bugs)                                 |
 
 ---
 
@@ -332,6 +344,6 @@ Memory:
 
 ---
 
-*Related: HIERARCHICAL-MEMORY-COMPRESSION-PROPOSAL.md*  
-*Related: SELF-EVOLUTION-META-COGNITION-PROPOSAL.md*  
-*Related: pi-braid/docs/RESEARCH-MASTER.md*
+_Related: HIERARCHICAL-MEMORY-COMPRESSION-PROPOSAL.md_  
+_Related: SELF-EVOLUTION-META-COGNITION-PROPOSAL.md_  
+_Related: pi-braid/docs/RESEARCH-MASTER.md_

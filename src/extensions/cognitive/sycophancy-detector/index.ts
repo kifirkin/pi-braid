@@ -123,13 +123,13 @@ function computeRisk(text: string): SycophancyRisk {
  */
 const VBC_PATTERNS: RegExp[] = [
   // Classic VbC: validate then correct
-  /\b(You('re| are) right\b|That('s| is) a (fair|good) point\b|I understand your (concern|point|perspective)\b)(?=.*\b(however|but actually|the (real|actual) (issue|problem)|having said that)\b).{50,}/si,
+  /\b(You('re| are) right\b|That('s| is) a (fair|good) point\b|I understand your (concern|point|perspective)\b)(?=.*\b(however|but actually|the (real|actual) (issue|problem)|having said that)\b).{50,}/is,
   // Agreement then correction
-  /\b(I agree\b|That makes sense\b|You make a good point\b)(?=.*\b(however|but|yet|nevertheless|on the other hand)\b).{50,}/si,
+  /\b(I agree\b|That makes sense\b|You make a good point\b)(?=.*\b(however|but|yet|nevertheless|on the other hand)\b).{50,}/is,
   // "I think you're right but..."
-  /\bI think you('re| are) right\b(?=.*\b(but|however)\b).{50,}/si,
+  /\bI think you('re| are) right\b(?=.*\b(but|however)\b).{50,}/is,
   // Correction prefaced with disagreement deferral
-  /\b(While|Although|Even though) (you('re| are) (right|correct)|that('s| is) valid)\b.{30,}actually\b.{20,}/si,
+  /\b(While|Although|Even though) (you('re| are) (right|correct)|that('s| is) valid)\b.{30,}actually\b.{20,}/is,
 ];
 
 /**
@@ -164,9 +164,10 @@ function detectVbC(responseText: string): VbCResult {
     detected: score >= 0.4,
     severity: score >= 0.8 ? "high" : score >= 0.5 ? "medium" : "low",
     score,
-    correction_hint: score >= 0.4
-      ? "Avoid validation-before-correction. State the correction directly without first agreeing with the user's incorrect premise."
-      : "",
+    correction_hint:
+      score >= 0.4
+        ? "Avoid validation-before-correction. State the correction directly without first agreeing with the user's incorrect premise."
+        : "",
   };
 }
 
@@ -232,9 +233,7 @@ async function handleSycophancy(
   const vbcResult = detectVbC(responseText);
   if (!vbcResult.detected) return; // No VbC found — no correction needed
 
-  log.info(
-    `VbC detected: severity=${vbcResult.severity}, score=${vbcResult.score}`,
-  );
+  log.info(`VbC detected: severity=${vbcResult.severity}, score=${vbcResult.score}`);
 
   // Step 3: Update state
   state.detectionCount++;
@@ -248,9 +247,14 @@ async function handleSycophancy(
   }
 
   // Step 5: Emit signal for policy engine tracking
-  const combinedSeverity = risk.score >= RISK_THRESHOLD
-    ? (risk.severity === "high" || vbcResult.severity === "high" ? "warn" : "info")
-    : vbcResult.severity === "high" ? "warn" : "info";
+  const combinedSeverity =
+    risk.score >= RISK_THRESHOLD
+      ? risk.severity === "high" || vbcResult.severity === "high"
+        ? "warn"
+        : "info"
+      : vbcResult.severity === "high"
+        ? "warn"
+        : "info";
   emitSignal(ctx, "sycophancy", "detected", combinedSeverity, false, {
     userRisk: risk.score,
     userTactics: risk.tactics,

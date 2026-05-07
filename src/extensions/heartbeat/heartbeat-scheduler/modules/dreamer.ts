@@ -40,7 +40,12 @@ export const dreamerModule: CognitiveModule = {
 
     // ── Analyze tool usage patterns ─────────────────────────────────
     const verificationTools = [
-      "grep", "find", "read", "read_document", "browser_content", "web_fetch",
+      "grep",
+      "find",
+      "read",
+      "read_document",
+      "browser_content",
+      "web_fetch",
     ];
     const verificationCount = toolsUsed.filter((t: string) => verificationTools.includes(t)).length;
     const codeTools = ["bash", "write", "edit"];
@@ -65,12 +70,14 @@ export const dreamerModule: CognitiveModule = {
     const solution = insights.join(" ") || "Self-reflection on tool usage patterns";
 
     addMemoryEpisode(memState, task, solution, "partial", toolsUsed, [
-      "self-reflection", "dreamer", `turns-${context.turnCount}`,
+      "self-reflection",
+      "dreamer",
+      `turns-${context.turnCount}`,
     ]);
 
     log.info(
       `${toolsUsed.length} tool calls, ${uniqueTools.size} unique tools, ` +
-      `${verificationCount} verifications, ${codeCount} code ops — added reflection episode`,
+        `${verificationCount} verifications, ${codeCount} code ops — added reflection episode`,
     );
 
     if (insights.length > 0) {

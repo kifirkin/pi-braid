@@ -7,15 +7,17 @@
 
 ## P0: Self-Evolution Loop
 
-**Files**: 
+**Files**:
+
 - `docs/PROPOSALS/SELF-EVOLUTION-META-COGNITION-PROPOSAL.md` (design)
 - `docs/PROPOSALS/SELF-EVOLUTION-RESEARCH-SYNTHESIS.md` (literature)
 
 **Goal**: Closed-loop self-improvement after each task.
 
 **Pipeline to implement**:
+
 ```
-Task Complete → Verify Success/Failure → 
+Task Complete → Verify Success/Failure →
   If success: extract SOP (3-tier hierarchy) → store in procedural memory
   If failure: extract principle → store in belief store
 Next task → query SOPs → Coach decides whether to surface
@@ -29,25 +31,25 @@ Next task → query SOPs → Coach decides whether to surface
 
 ## P1: Missing Extensions (implement from doc)
 
-| File | Description |
-|------|-------------|
+| File    | Description                      |
+| ------- | -------------------------------- |
 | `ux.md` | UX extension doc, no code exists |
 
 ---
 
 ## P2: Enhancement Proposals (implement from doc)
 
-| File | Description |
-|------|-------------|
-| `agent-timer-pomodoro.md` | Pomodoro-style agent pacing |
-| `bidirectional-verifier-proposal.md` | Forward + backward verification |
-| `contrast-phrase-library.md` | Behavioral contrast phrases |
-| `heartbeat-as-event-bus.md` | Heartbeat-driven interrupt system |
-| `hierarchical-memory-compression-proposal.md` | Three-tier memory compression |
-| `repe-prompt-contrast-proposal.md` | RepE contrast vectors |
-| `sae-steering-proposal.md` | Sparse autoencoder steering |
-| `structured-output-catalyst.md` | Output optimization |
-| `var-math-variants.md` | Mathematical variant generation |
+| File                                          | Description                       |
+| --------------------------------------------- | --------------------------------- |
+| `agent-timer-pomodoro.md`                     | Pomodoro-style agent pacing       |
+| `bidirectional-verifier-proposal.md`          | Forward + backward verification   |
+| `contrast-phrase-library.md`                  | Behavioral contrast phrases       |
+| `heartbeat-as-event-bus.md`                   | Heartbeat-driven interrupt system |
+| `hierarchical-memory-compression-proposal.md` | Three-tier memory compression     |
+| `repe-prompt-contrast-proposal.md`            | RepE contrast vectors             |
+| `sae-steering-proposal.md`                    | Sparse autoencoder steering       |
+| `structured-output-catalyst.md`               | Output optimization               |
+| `var-math-variants.md`                        | Mathematical variant generation   |
 
 ---
 
@@ -61,4 +63,4 @@ Next task → query SOPs → Coach decides whether to surface
 
 ---
 
-*Last updated: 2026-04-29*
+_Last updated: 2026-04-29_

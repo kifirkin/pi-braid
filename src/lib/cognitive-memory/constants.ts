@@ -2,7 +2,11 @@
  * Cognitive Memory — constants and configuration.
  */
 
-import { SEMANTIC_MEMORY_FILE, LEGACY_MEMORY_FILE, MEMORY_DIR as BRAID_MEMORY_DIR } from "../braid-paths.js";
+import {
+  SEMANTIC_MEMORY_FILE,
+  LEGACY_MEMORY_FILE,
+  MEMORY_DIR as BRAID_MEMORY_DIR,
+} from "../braid-paths.js";
 import type { CognitiveMemoryType } from "./types.js";
 
 // Storage paths — consolidated under ~/.pi/agent/braid/memory/

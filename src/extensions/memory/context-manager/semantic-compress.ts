@@ -237,8 +237,10 @@ export function semanticCompress(
 
   // Determine minimum priority to keep and collapse thresholds based on level
   const minKeepPriority = compressionLevel === "long-term" ? 2 : 0;
-  const reasoningCollapseLen = compressionLevel === "short-term" ? 5 : compressionLevel === "long-term" ? 2 : 3;
-  const toolCollapseThreshold = compressionLevel === "short-term" ? 5 : compressionLevel === "long-term" ? 2 : 3;
+  const reasoningCollapseLen =
+    compressionLevel === "short-term" ? 5 : compressionLevel === "long-term" ? 2 : 3;
+  const toolCollapseThreshold =
+    compressionLevel === "short-term" ? 5 : compressionLevel === "long-term" ? 2 : 3;
 
   for (const unit of units) {
     // Stage 1: Filter by minimum priority

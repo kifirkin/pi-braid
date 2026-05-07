@@ -6,10 +6,16 @@ import { existsSync, readFileSync } from "node:fs";
 import { METRICS_FILE } from "../../../lib/braid-paths.js";
 
 interface VariantStats {
-  variant: string; sessions: number; totalToolCalls: number;
-  successCount: number; partialCount: number; failureCount: number;
-  avgToolsPerSession: number; avgErrorRate: number;
-  nudgesSent: number; nudgesSuppressed: number;
+  variant: string;
+  sessions: number;
+  totalToolCalls: number;
+  successCount: number;
+  partialCount: number;
+  failureCount: number;
+  avgToolsPerSession: number;
+  avgErrorRate: number;
+  nudgesSent: number;
+  nudgesSuppressed: number;
 }
 
 export function loadAnalyticsByVariant(storagePath?: string): Map<string, VariantStats> {
@@ -26,7 +32,18 @@ export function loadAnalyticsByVariant(storagePath?: string): Map<string, Varian
         const tms = entry.toolMetrics || [];
         let v = variants.get(variant);
         if (!v) {
-          v = { variant, sessions: 0, totalToolCalls: 0, successCount: 0, partialCount: 0, failureCount: 0, avgToolsPerSession: 0, avgErrorRate: 0, nudgesSent: 0, nudgesSuppressed: 0 };
+          v = {
+            variant,
+            sessions: 0,
+            totalToolCalls: 0,
+            successCount: 0,
+            partialCount: 0,
+            failureCount: 0,
+            avgToolsPerSession: 0,
+            avgErrorRate: 0,
+            nudgesSent: 0,
+            nudgesSuppressed: 0,
+          };
           variants.set(variant, v);
         }
         v.sessions++;
@@ -34,12 +51,15 @@ export function loadAnalyticsByVariant(storagePath?: string): Map<string, Varian
         if (entry.outcome === "success") v.successCount++;
         else if (entry.outcome === "failure") v.failureCount++;
         else v.partialCount++;
-        v.avgToolsPerSession = (v.avgToolsPerSession * (v.sessions - 1) + (sm.totalToolCalls || 0)) / v.sessions;
+        v.avgToolsPerSession =
+          (v.avgToolsPerSession * (v.sessions - 1) + (sm.totalToolCalls || 0)) / v.sessions;
         v.nudgesSent += entry.nudgesSent || 0;
         v.nudgesSuppressed += entry.nudgesSuppressed || 0;
         const totalCalls = sm.totalToolCalls || 0;
         const failedCalls = tms.reduce((sum: number, m: any) => sum + (m.failedCalls || 0), 0);
-        v.avgErrorRate = (v.avgErrorRate * (v.sessions - 1) + (totalCalls > 0 ? failedCalls / totalCalls : 0)) / v.sessions;
+        v.avgErrorRate =
+          (v.avgErrorRate * (v.sessions - 1) + (totalCalls > 0 ? failedCalls / totalCalls : 0)) /
+          v.sessions;
       } catch {}
     }
   } catch {}
@@ -48,18 +68,32 @@ export function loadAnalyticsByVariant(storagePath?: string): Map<string, Varian
 
 export function formatABResults(variants?: Map<string, VariantStats>): string {
   const v = variants ?? loadAnalyticsByVariant();
-  if (v.size === 0) return "## A/B Results\n\n*No historical data yet. Run `/analytics:setVariant` to configure variants.*\n";
+  if (v.size === 0)
+    return "## A/B Results\n\n*No historical data yet. Run `/analytics:setVariant` to configure variants.*\n";
 
-  const lines = ["## A/B Experiment Results", "", "| Variant | Sessions | Success | Partial | Failure | Avg Tools | Nudges Sent | Suppressed | Avg Error Rate |", "|---------|----------|---------|---------|---------|-----------|-------------|------------|----------------|"];
+  const lines = [
+    "## A/B Experiment Results",
+    "",
+    "| Variant | Sessions | Success | Partial | Failure | Avg Tools | Nudges Sent | Suppressed | Avg Error Rate |",
+    "|---------|----------|---------|---------|---------|-----------|-------------|------------|----------------|",
+  ];
   for (const vs of v.values()) {
-    lines.push(`| ${vs.variant} | ${vs.sessions} | ${vs.sessions > 0 ? ((vs.successCount / vs.sessions) * 100).toFixed(0) : "0"}% | ${vs.sessions > 0 ? ((vs.partialCount / vs.sessions) * 100).toFixed(0) : "0"}% | ${vs.sessions > 0 ? ((vs.failureCount / vs.sessions) * 100).toFixed(0) : "0"}% | ${vs.avgToolsPerSession.toFixed(1)} | ${vs.nudgesSent} | ${vs.nudgesSuppressed} | ${(vs.avgErrorRate * 100).toFixed(0)}% |`);
+    lines.push(
+      `| ${vs.variant} | ${vs.sessions} | ${vs.sessions > 0 ? ((vs.successCount / vs.sessions) * 100).toFixed(0) : "0"}% | ${vs.sessions > 0 ? ((vs.partialCount / vs.sessions) * 100).toFixed(0) : "0"}% | ${vs.sessions > 0 ? ((vs.failureCount / vs.sessions) * 100).toFixed(0) : "0"}% | ${vs.avgToolsPerSession.toFixed(1)} | ${vs.nudgesSent} | ${vs.nudgesSuppressed} | ${(vs.avgErrorRate * 100).toFixed(0)}% |`,
+    );
   }
 
   const control = v.get("control");
   const noNudges = v.get("no_nudges");
   if (control && noNudges && control.sessions >= 3 && noNudges.sessions >= 3) {
-    const delta = ((noNudges.successCount / noNudges.sessions - control.successCount / control.sessions) * 100).toFixed(1);
-    lines.push("", `**Delta (no_nudges vs control): ${delta}% ${parseFloat(delta) > 0 ? "improvement" : "regression"}**`);
+    const delta = (
+      (noNudges.successCount / noNudges.sessions - control.successCount / control.sessions) *
+      100
+    ).toFixed(1);
+    lines.push(
+      "",
+      `**Delta (no_nudges vs control): ${delta}% ${parseFloat(delta) > 0 ? "improvement" : "regression"}**`,
+    );
   }
 
   return lines.join("\n");

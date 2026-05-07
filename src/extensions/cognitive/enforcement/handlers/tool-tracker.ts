@@ -38,13 +38,13 @@ export function recordToolCall(toolName: string, ctx?: any): void {
   // When ctx available, use getState(ctx) for session-scoped state
   // Fall back to global state for backward compatibility
   const s = ctx ? getState(ctx) : state;
-  
+
   // Track code changes (edit/write) for verification context
   if (toolName === "edit" || toolName === "write") {
     s.hasCodeChanges = true;
     recordCodeChange(s.currentTurn, ctx);
   }
-  
+
   // Track think
   if (toolName === "think") {
     s.toolChain.lastThinkCall = s.currentTurn;

@@ -15,8 +15,8 @@ export default tseslint.config(
       "prettier/prettier": "warn",
       // Enforce spaces (match .prettierrc useTabs:false)
       "indent": "off",
-      "no-tabs": "error",
-      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_|^log$", caughtErrorsIgnorePattern: "^_$" }],
+      "no-tabs": "warn",
+      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_|^log$", caughtErrorsIgnorePattern: "^_$" }],
       "@typescript-eslint/no-explicit-any": "off",
       // Project has many as-any casts for undocumented SDK types — warnings only
       "@typescript-eslint/no-unsafe-argument": "off",

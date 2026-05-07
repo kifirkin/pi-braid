@@ -20,9 +20,12 @@ export function extractFileReferences(text: string): string[] {
   for (const match of text.matchAll(pathPattern)) {
     const candidate = match[0];
     if (
-      candidate.includes(".") && !candidate.startsWith("http") &&
-      !candidate.startsWith("www") && !candidate.startsWith("//") &&
-      !candidate.includes("://") && candidate.length > 3 &&
+      candidate.includes(".") &&
+      !candidate.startsWith("http") &&
+      !candidate.startsWith("www") &&
+      !candidate.startsWith("//") &&
+      !candidate.includes("://") &&
+      candidate.length > 3 &&
       (candidate.includes("/") || !candidate.match(/^[^/]+\.[^/]+$/))
     ) {
       refs.push(candidate);
@@ -45,7 +48,10 @@ export function updateProblemContext(ctx: ExtensionContext, text: string): void 
 }
 
 export function recordFileTouch(
-  ctx: ExtensionContext, filePath: string, turn: number, wasEdit: boolean,
+  ctx: ExtensionContext,
+  filePath: string,
+  turn: number,
+  wasEdit: boolean,
 ): void {
   const state = getVerifierState(ctx);
   state.touchTurns.set(filePath, turn);
@@ -54,7 +60,9 @@ export function recordFileTouch(
 }
 
 export function checkLocalizationRisk(
-  ctx: ExtensionContext, editedFile: string, turn: number,
+  ctx: ExtensionContext,
+  editedFile: string,
+  turn: number,
 ): string | null {
   const state = getVerifierState(ctx);
   if (state.problemFiles.size === 0) return null;
@@ -67,7 +75,11 @@ export function checkLocalizationRisk(
 }
 
 export function filesAreRelated(a: string, b: string): boolean {
-  const normalize = (p: string) => p.replace(/^\.\//, "").replace(/^\.\.\//, "").replace(/^\//, "");
+  const normalize = (p: string) =>
+    p
+      .replace(/^\.\//, "")
+      .replace(/^\.\.\//, "")
+      .replace(/^\//, "");
   const na = normalize(a);
   const nb = normalize(b);
   if (na === nb) return true;

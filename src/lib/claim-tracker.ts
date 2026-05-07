@@ -241,13 +241,15 @@ export function tokenOverlap(a: string, b: string): number {
  * Strips punctuation and collapses whitespace.
  */
 export function normalizePredicate(text: string): string {
-  return text
-    .toLowerCase()
-    // Remove punctuation
-    .replace(/[.,;:!?()\[\]{}]/g, " ")
-    // Collapse whitespace
-    .replace(/\s+/g, " ")
-    .trim();
+  return (
+    text
+      .toLowerCase()
+      // Remove punctuation
+      .replace(/[.,;:!?()[\]{}]/g, " ")
+      // Collapse whitespace
+      .replace(/\s+/g, " ")
+      .trim()
+  );
 }
 
 /**
@@ -256,9 +258,16 @@ export function normalizePredicate(text: string): string {
  */
 function stemTokens(normalizedText: string): string[] {
   const STEM_MAP: Record<string, string> = {
-    throws: "throw", threw: "throw", throwing: "throw",
-    is: "be", was: "be", were: "be", are: "be",
-    "does": "do", "doesn't": "do", "didn't": "do",
+    "throws": "throw",
+    "threw": "throw",
+    "throwing": "throw",
+    "is": "be",
+    "was": "be",
+    "were": "be",
+    "are": "be",
+    "does": "do",
+    "doesn't": "do",
+    "didn't": "do",
   };
   return normalizedText
     .split(/\s+/)

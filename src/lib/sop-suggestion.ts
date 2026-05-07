@@ -54,7 +54,7 @@ export const DEFAULT_SOP_CONFIG: SopSuggestionConfig = {
   minSimilarity: 0.3,
   maxTotalTokens: 800,
   taskIncludePatterns: [],
-  taskExcludePatterns: [/\/retry/, /^\[retry\]/],
+  taskExcludePatterns: [/\/retry/, /^\[retry\]/], // eslint-disable-line no-useless-escape
   enabled: true,
 };
 
@@ -68,19 +68,121 @@ function extractKeywords(text: string): string[] {
   if (!text || text.length < 5) return [];
 
   const stopwords = new Set([
-    "the", "a", "an", "this", "that", "these", "those", "is", "are", "was",
-    "were", "be", "been", "being", "have", "has", "had", "do", "does", "did",
-    "will", "would", "can", "could", "should", "may", "might", "shall",
-    "to", "of", "in", "for", "on", "with", "at", "by", "from", "as", "into",
-    "through", "during", "before", "after", "about", "between", "under",
-    "over", "and", "but", "or", "nor", "not", "so", "yet", "if", "then",
-    "else", "when", "where", "why", "how", "all", "each", "every", "both",
-    "few", "more", "most", "other", "some", "such", "no", "only", "own",
-    "same", "just", "also", "very", "too", "really", "please", "help",
-    "need", "want", "like", "make", "get", "use", "let", "know", "see",
-    "check", "look", "write", "create", "find", "fix", "update", "add",
-    "remove", "change", "implement", "hello", "hi", "thanks", "thank",
-    "yes", "no", "ok", "okay", "sure", "right", "well", "now", "here",
+    "the",
+    "a",
+    "an",
+    "this",
+    "that",
+    "these",
+    "those",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "have",
+    "has",
+    "had",
+    "do",
+    "does",
+    "did",
+    "will",
+    "would",
+    "can",
+    "could",
+    "should",
+    "may",
+    "might",
+    "shall",
+    "to",
+    "of",
+    "in",
+    "for",
+    "on",
+    "with",
+    "at",
+    "by",
+    "from",
+    "as",
+    "into",
+    "through",
+    "during",
+    "before",
+    "after",
+    "about",
+    "between",
+    "under",
+    "over",
+    "and",
+    "but",
+    "or",
+    "nor",
+    "not",
+    "so",
+    "yet",
+    "if",
+    "then",
+    "else",
+    "when",
+    "where",
+    "why",
+    "how",
+    "all",
+    "each",
+    "every",
+    "both",
+    "few",
+    "more",
+    "most",
+    "other",
+    "some",
+    "such",
+    "no",
+    "only",
+    "own",
+    "same",
+    "just",
+    "also",
+    "very",
+    "too",
+    "really",
+    "please",
+    "help",
+    "need",
+    "want",
+    "like",
+    "make",
+    "get",
+    "use",
+    "let",
+    "know",
+    "see",
+    "check",
+    "look",
+    "write",
+    "create",
+    "find",
+    "fix",
+    "update",
+    "add",
+    "remove",
+    "change",
+    "implement",
+    "hello",
+    "hi",
+    "thanks",
+    "thank",
+    "yes",
+    "no",
+    "ok",
+    "okay",
+    "sure",
+    "right",
+    "well",
+    "now",
+    "here",
   ]);
 
   // Extract words, filter stopwords & short words
@@ -131,15 +233,12 @@ function extractProjectKeywords(text: string): string[] {
  *
  * Uses Jaccard similarity on keyword sets.
  */
-function computeSimilarity(
-  queryKeywords: string[],
-  episodeTask: string,
-): number {
+function computeSimilarity(queryKeywords: string[], episodeTask: string): number {
   if (queryKeywords.length === 0 || !episodeTask) return 0;
 
   const episodeWords = episodeTask
     .toLowerCase()
-    .replace(/[^a-z0-9_\-]+/g, " ")
+    .replace(/[^a-z0-9_-]+/g, " ")
     .split(/\s+/)
     .filter((w) => w.length > 2);
 
@@ -303,7 +402,7 @@ export function injectSopSuggestions(
     try {
       eventBus.emit({
         type: "sop_suggestion_injected" as never,
-        // @ts-ignore — custom analytics payload
+        // @ts-expect-error — custom analytics payload
         details: { count: injected, tokens: totalTokens },
       });
     } catch {} // non-fatal

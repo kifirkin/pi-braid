@@ -40,7 +40,7 @@ export const measurementModule: CognitiveModule = {
     if (summary.totalTurns > 0) {
       log.info(
         `Metrics: ${summary.totalTurns} turns, error rate: ${(summary.avgErrorRate * 100).toFixed(0)}%, ` +
-        `tool success: ${(summary.avgToolSuccess * 100).toFixed(0)}%, degraded: ${summary.degraded}`,
+          `tool success: ${(summary.avgToolSuccess * 100).toFixed(0)}%, degraded: ${summary.degraded}`,
       );
     }
   },

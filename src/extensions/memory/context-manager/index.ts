@@ -45,22 +45,26 @@ export default function contextManagerExtension(pi: any): void {
   });
 
   // ── Session Start ──────────────────────────────────────────────
-  registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event: any, ctx: ExtensionContext) => {
-    try {
-      // Pruning state is initialized eagerly in getCmState factory
-      // Set compaction reserve tokens
-      const sm = ctx.sessionManager as {
-        globalSettings?: { compaction?: { reserveTokens?: number } };
-        save?: () => void;
-      };
-      if (sm?.globalSettings?.compaction) {
-        sm.globalSettings.compaction.reserveTokens = 50_000;
-        sm.save?.();
+  registerSessionStartHandler(
+    pi,
+    SessionPhase.MemoryState,
+    async (_event: any, ctx: ExtensionContext) => {
+      try {
+        // Pruning state is initialized eagerly in getCmState factory
+        // Set compaction reserve tokens
+        const sm = ctx.sessionManager as {
+          globalSettings?: { compaction?: { reserveTokens?: number } };
+          save?: () => void;
+        };
+        if (sm?.globalSettings?.compaction) {
+          sm.globalSettings.compaction.reserveTokens = 50_000;
+          sm.save?.();
+        }
+      } catch {
+        // Ignore - best effort
       }
-    } catch {
-      // Ignore - best effort
-    }
-  });
+    },
+  );
 
   // ── Register handlers from modules ───────────────────────────
   registerTools(pi);

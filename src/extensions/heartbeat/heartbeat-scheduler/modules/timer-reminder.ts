@@ -25,9 +25,9 @@ export const timerReminderModule: CognitiveModule = {
       for (const { timer } of reminders) {
         context.ctx.whisper?.(
           `[timer] ${timer.reason}\n` +
-          `Timer ID: ${timer.id}` +
-          (timer.tag ? ` (tag: ${timer.tag})` : "") +
-          `\nFired at: ${new Date(timer.firesAt).toLocaleTimeString()}`,
+            `Timer ID: ${timer.id}` +
+            (timer.tag ? ` (tag: ${timer.tag})` : "") +
+            `\nFired at: ${new Date(timer.firesAt).toLocaleTimeString()}`,
           { category: "cognitive", priority: "medium" },
         );
       }

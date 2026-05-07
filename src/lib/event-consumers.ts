@@ -45,9 +45,7 @@ let _evictCount = 0;
 
 export function onMemoryEvict(event: { reason: string; count: number }): void {
   _evictCount++;
-  log.info(
-    `[event] Memory evict #${_evictCount}: ${event.reason} (${event.count} messages)`,
-  );
+  log.info(`[event] Memory evict #${_evictCount}: ${event.reason} (${event.count} messages)`);
 }
 
 export function getEvictCount(): number {
@@ -111,7 +109,8 @@ export function getTickCount(): number {
 // ── Handler: analytics_alert → structured alert channel ─────────────────────
 
 let _alertCount = 0;
-const _recentAlerts: Array<{ type: string; severity: string; message: string; timestamp: number }> = [];
+const _recentAlerts: Array<{ type: string; severity: string; message: string; timestamp: number }> =
+  [];
 const MAX_ALERTS = 50;
 
 export function onAnalyticsAlert(event: {
@@ -133,7 +132,7 @@ export function onAnalyticsAlert(event: {
 
   log.info(
     `[event] Analytics alert #${_alertCount}: [${event.severity}] ` +
-    `${event.alertType}: ${event.message.slice(0, 80)}`,
+      `${event.alertType}: ${event.message.slice(0, 80)}`,
   );
 }
 

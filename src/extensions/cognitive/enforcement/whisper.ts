@@ -43,7 +43,7 @@ export function sendEnforcementWhisper(
   pi: ExtensionAPI,
   ctx: ExtensionContext,
   message: string,
-  critical: boolean = false
+  critical: boolean = false,
 ): void {
   // Cognitive nudge suppression — separate from confirm dialogs
   if (areCognitiveNudgesDisabled()) {
@@ -79,7 +79,9 @@ export function sendEnforcementWhisper(
       content: [{ type: "text" as const, text: `[enforcement] ${message}` }],
       display: true,
     },
-    critical ? { deliverAs: "steer", triggerTurn: true } : { deliverAs: "followUp", triggerTurn: false },
+    critical
+      ? { deliverAs: "steer", triggerTurn: true }
+      : { deliverAs: "followUp", triggerTurn: false },
     { type: "enforcement", source: "enforcement/whisper" },
   );
 }

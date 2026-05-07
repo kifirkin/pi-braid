@@ -6,14 +6,7 @@ export function testBuiltinTools(pi: ExtensionAPI): CheckResult[] {
   const checks: CheckResult[] = [];
 
   // Critical builtin tools that should always be available
-  const builtinTools = [
-    "read",
-    "bash",
-    "scratchpad",
-    "think",
-    "hypothesize",
-    "healthcheck",
-  ];
+  const builtinTools = ["read", "bash", "scratchpad", "think", "hypothesize", "healthcheck"];
 
   // Get both all registered tools and active tools to check availability
   let toolNames: string[] = [];

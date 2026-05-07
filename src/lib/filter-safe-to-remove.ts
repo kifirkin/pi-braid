@@ -84,7 +84,15 @@ export function filterSafeToRemove(messages: AgentMessage[]): {
     console.error("filterSafeToRemove error:", err);
     return {
       filtered: messages,
-      stats: { duplicates: 0, resolved: 0, oversized: 0, streaks: 0, totalRemoved: 0, beforeTokens: 0, afterTokens: 0 },
+      stats: {
+        duplicates: 0,
+        resolved: 0,
+        oversized: 0,
+        streaks: 0,
+        totalRemoved: 0,
+        beforeTokens: 0,
+        afterTokens: 0,
+      },
     };
   }
 }

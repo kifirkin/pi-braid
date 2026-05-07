@@ -11,7 +11,7 @@ Build and maintain a durable visual brand identity using the DESIGN.md format. T
 
 ## The DESIGN.md Format
 
-A DESIGN.md file combines machine-readable design tokens (YAML front matter) with human-readable design rationale (markdown). Tokens give agents exact values. Prose tells them *why* those values exist and how to apply them.
+A DESIGN.md file combines machine-readable design tokens (YAML front matter) with human-readable design rationale (markdown). Tokens give agents exact values. Prose tells them _why_ those values exist and how to apply them.
 
 ```
 ---
@@ -50,18 +50,18 @@ colors:
   <token-name>: <hex-color>
 ```
 
-| Token name convention | Example | Role |
-|-----------------------|---------|------|
-| `primary` | `#855300` | Brand color, primary actions |
-| `on-primary` | `#FFFFFF` | Text/icon color ON primary backgrounds |
-| `primary-container` | `#FFDDB8` | Surface variant of primary |
-| `secondary` | `#0058BE` | Secondary actions, accents |
-| `surface` | `#F9F9FF` | Main background |
-| `surface-container` | `#E7EEFE` | Card/container background |
-| `outline` | `#867461` | Borders, dividers |
-| `error` | `#BA1A1A` | Destructive actions |
-| `background` | `#F9F9FF` | Page/app background |
-| `on-background` | `#151C27` | Text on background |
+| Token name convention | Example   | Role                                   |
+| --------------------- | --------- | -------------------------------------- |
+| `primary`             | `#855300` | Brand color, primary actions           |
+| `on-primary`          | `#FFFFFF` | Text/icon color ON primary backgrounds |
+| `primary-container`   | `#FFDDB8` | Surface variant of primary             |
+| `secondary`           | `#0058BE` | Secondary actions, accents             |
+| `surface`             | `#F9F9FF` | Main background                        |
+| `surface-container`   | `#E7EEFE` | Card/container background              |
+| `outline`             | `#867461` | Borders, dividers                      |
+| `error`               | `#BA1A1A` | Destructive actions                    |
+| `background`          | `#F9F9FF` | Page/app background                    |
+| `on-background`       | `#151C27` | Text on background                     |
 
 **Material Design 3 convention**: use the full M3 palette surface system for elevation depth:
 `surface`, `surface-dim`, `surface-bright`, `surface-container-lowest`, `surface-container-low`, `surface-container`, `surface-container-high`, `surface-container-highest`, `surface-tint`
@@ -71,21 +71,21 @@ colors:
 ```yaml
 typography:
   <token-name>:
-    fontFamily: <string>           # Font name or font stack
-    fontSize: <dimension>          # e.g., 48px, 1.5rem
-    fontWeight: <number>           # 300, 400, 500, 600, 700, 800
+    fontFamily: <string> # Font name or font stack
+    fontSize: <dimension> # e.g., 48px, 1.5rem
+    fontWeight: <number> # 300, 400, 500, 600, 700, 800
     lineHeight: <dimension|number> # e.g., 52px or 1.3 (unitless = multiplier of fontSize)
-    letterSpacing: <dimension>     # e.g., -0.02em, 0.5px
-    fontFeature: <string>          # optional: font-feature-settings value
-    fontVariation: <string>        # optional: font-variation-settings value
+    letterSpacing: <dimension> # e.g., -0.02em, 0.5px
+    fontFeature: <string> # optional: font-feature-settings value
+    fontVariation: <string> # optional: font-variation-settings value
 ```
 
-| Token name convention | Scale role |
-|-----------------------|------------|
-| `display` | Hero text, 2.5-3.5rem |
-| `headline-lg` / `headline-md` | Page/section titles |
-| `title-lg` / `title-md` / `title-sm` | Card titles, nav items |
-| `body-lg` / `body-md` / `body-sm` | Reading text |
+| Token name convention                | Scale role                  |
+| ------------------------------------ | --------------------------- |
+| `display`                            | Hero text, 2.5-3.5rem       |
+| `headline-lg` / `headline-md`        | Page/section titles         |
+| `title-lg` / `title-md` / `title-sm` | Card titles, nav items      |
+| `body-lg` / `body-md` / `body-sm`    | Reading text                |
 | `label-lg` / `label-md` / `label-sm` | Buttons, captions, metadata |
 
 **Font size scale (recommended)**: 12, 14, 16, 18, 20, 24, 32, 44, 56px
@@ -94,21 +94,21 @@ typography:
 
 ```yaml
 spacing:
-  xs: 4px       # Micro spacing: icon margins
-  sm: 8px       # Dense spacing: input padding
-  md: 16px      # Default spacing: card padding
-  lg: 24px      # Section spacing: between sections
-  xl: 40px      # Large spacing: page margins
-  xxl: 64px     # Macro spacing: hero padding
-  gutter: 16px  # Grid gutters
-  margin: 24px  # Page margins
+  xs: 4px # Micro spacing: icon margins
+  sm: 8px # Dense spacing: input padding
+  md: 16px # Default spacing: card padding
+  lg: 24px # Section spacing: between sections
+  xl: 40px # Large spacing: page margins
+  xxl: 64px # Macro spacing: hero padding
+  gutter: 16px # Grid gutters
+  margin: 24px # Page margins
 
 rounded:
-  sm: 4px       # Subtle rounding: inputs
-  md: 8px       # Default: cards
-  lg: 12px      # Generous: buttons
-  xl: 16px      # Large: modals, sheets
-  full: 9999px  # Pill shape: badges, chips
+  sm: 4px # Subtle rounding: inputs
+  md: 8px # Default: cards
+  lg: 12px # Generous: buttons
+  xl: 16px # Large: modals, sheets
+  full: 9999px # Pill shape: badges, chips
 ```
 
 **Naming convention**: use semantic level names (`sm`, `md`, `lg`, `xl`) not numeric values so you can change the value globally without renaming.
@@ -128,14 +128,14 @@ components:
     textColor: "{colors.on-primary-container}"
 ```
 
-| Property | Allowed values |
-|----------|---------------|
-| `backgroundColor` | Color hex or `{colors.xxx}` token reference |
-| `textColor` | Color hex or `{colors.xxx}` token reference |
-| `typography` | `{typography.xxx}` token reference |
-| `rounded` | Dimension or `{rounded.xxx}` reference |
-| `padding` | Dimension or `{spacing.xxx}` reference |
-| `size`, `height`, `width` | Dimension |
+| Property                  | Allowed values                              |
+| ------------------------- | ------------------------------------------- |
+| `backgroundColor`         | Color hex or `{colors.xxx}` token reference |
+| `textColor`               | Color hex or `{colors.xxx}` token reference |
+| `typography`              | `{typography.xxx}` token reference          |
+| `rounded`                 | Dimension or `{rounded.xxx}` reference      |
+| `padding`                 | Dimension or `{spacing.xxx}` reference      |
+| `size`, `height`, `width` | Dimension                                   |
 
 **Variants**: use suffixes like `-hover`, `-active`, `-pressed`, `-disabled`, `-selected`
 
@@ -156,12 +156,13 @@ Before writing tokens, answer these questions to guide the prose sections:
 ### 2.2 Creating the Design System
 
 **Step 1 — Define the core palette:**
+
 ```yaml
 colors:
-  primary: "#855300"      # Golden amber — warmth, action, trust
-  secondary: "#0058BE"    # Sky blue — calm, reliable, information
-  tertiary: "#00658B"     # Deep teal — premium, depth
-  neutral: "#F9F9FF"      # Warm off-white — approachable, not sterile
+  primary: "#855300" # Golden amber — warmth, action, trust
+  secondary: "#0058BE" # Sky blue — calm, reliable, information
+  tertiary: "#00658B" # Deep teal — premium, depth
+  neutral: "#F9F9FF" # Warm off-white — approachable, not sterile
 ```
 
 1. Pick one primary color that embodies the brand personality
@@ -170,6 +171,7 @@ colors:
 4. Derive neutrals that share the primary's undertone temperature
 
 **Step 2 — Build typography:**
+
 ```yaml
 typography:
   display:
@@ -192,6 +194,7 @@ typography:
 4. Define weights: display/headline = bold (700+), body = regular (400), labels = semibold (600)
 
 **Step 3 — Define spacing grid:**
+
 ```yaml
 spacing:
   base: 8px
@@ -204,6 +207,7 @@ spacing:
 - Define layout-specific: gutter, margin, section
 
 **Step 4 — Define component tokens:**
+
 ```yaml
 components:
   button-primary:
@@ -223,16 +227,16 @@ components:
 **Step 5 — Write prose sections:**
 The markdown body explains rationale. Each section answers "why":
 
-| Section | What to include |
-|---------|-----------------|
-| Overview | Brand personality, target audience, emotional response, design philosophy |
-| Colors | Rationale for each palette choice, where/how to use each color |
-| Typography | Font selection reasoning, scale logic, readability notes |
-| Layout & Spacing | Grid system, responsive behavior, spacing philosophy |
-| Elevation & Depth | Shadow system, layering, interaction feedback |
-| Shapes | Corner radius logic, shape language meaning |
-| Components | Usage guidelines, interaction patterns, dos/don'ts |
-| Do's and Don'ts | Concrete examples of correct and incorrect usage |
+| Section           | What to include                                                           |
+| ----------------- | ------------------------------------------------------------------------- |
+| Overview          | Brand personality, target audience, emotional response, design philosophy |
+| Colors            | Rationale for each palette choice, where/how to use each color            |
+| Typography        | Font selection reasoning, scale logic, readability notes                  |
+| Layout & Spacing  | Grid system, responsive behavior, spacing philosophy                      |
+| Elevation & Depth | Shadow system, layering, interaction feedback                             |
+| Shapes            | Corner radius logic, shape language meaning                               |
+| Components        | Usage guidelines, interaction patterns, dos/don'ts                        |
+| Do's and Don'ts   | Concrete examples of correct and incorrect usage                          |
 
 ---
 
@@ -273,13 +277,13 @@ When verifying that a screen follows the DESIGN.md:
 
 When consistency drift is detected:
 
-| Drift type | Action |
-|------------|--------|
-| Unauthorized color in UI | Replace with nearest DESIGN.md color. If the new color is essential, add it as a new token. |
-| Non-scale spacing | Snap to nearest spacing token. If the spacing is essential AND frequent, add it to the scale. |
-| Wrong component token | Replace with the correct token. Variants (hover/active) may need their own tokens. |
-| Missing component type | Add new component tokens to DESIGN.md. Don't leave components tokenless. |
-| Prose / token mismatch | Update prose to match actual tokens, or update tokens to match prose. Tokens are normative. |
+| Drift type               | Action                                                                                        |
+| ------------------------ | --------------------------------------------------------------------------------------------- |
+| Unauthorized color in UI | Replace with nearest DESIGN.md color. If the new color is essential, add it as a new token.   |
+| Non-scale spacing        | Snap to nearest spacing token. If the spacing is essential AND frequent, add it to the scale. |
+| Wrong component token    | Replace with the correct token. Variants (hover/active) may need their own tokens.            |
+| Missing component type   | Add new component tokens to DESIGN.md. Don't leave components tokenless.                      |
+| Prose / token mismatch   | Update prose to match actual tokens, or update tokens to match prose. Tokens are normative.   |
 
 ### 3.4 Automated Checks
 
@@ -295,15 +299,18 @@ When writing code that consumes a DESIGN.md:
 ## 4. Brand Evolution Workflow
 
 ### Adding a new color
+
 ```yaml
 colors:
   # ...existing tokens...
   warning: "#F59E0B"
   on-warning: "#1A1C1E"
 ```
+
 Then run `npx @google/design.md diff DESIGN.md DESIGN-v2.md` to verify only intentional changes.
 
 ### Deprecating a token
+
 ```yaml
 colors:
   # Remove the token from the list
@@ -313,6 +320,7 @@ colors:
 ```
 
 ### Rebranding (full system change)
+
 1. Create a new DESIGN.md alongside the old one
 2. Run diff to catalog every change
 3. Verify WCAG compliance for the new palette
@@ -340,29 +348,29 @@ The analysis will report detected colors, typography, spacing, and components. C
 
 ## 6. Anti-Patterns
 
-| Anti-pattern | Why it fails | Instead |
-|-------------|--------------|---------|
-| Tokens without prose | No rationale — future agents guess at intent | Always explain WHY behind each token |
-| Prose without tokens | No exact values — agents invent their own | Always include YAML token definitions |
-| Over-specified palette (>15 colors) | Hard to maintain, confusing | Keep core to 8-12 colors max |
-| No component tokens | Agents invent component styles | Define buttons, cards, inputs minimum |
-| Only light mode | Dark mode is left to chance | Define surface variants for dark mode |
-| No on-* colors | Text readability not guaranteed | Every color needs an on-color |
-| Changing token names | Breaks references everywhere | Names are permanent; values change |
-| Zero documentation of drift | Inconsistencies compound silently | Use lint + diff regularly |
+| Anti-pattern                        | Why it fails                                 | Instead                               |
+| ----------------------------------- | -------------------------------------------- | ------------------------------------- |
+| Tokens without prose                | No rationale — future agents guess at intent | Always explain WHY behind each token  |
+| Prose without tokens                | No exact values — agents invent their own    | Always include YAML token definitions |
+| Over-specified palette (>15 colors) | Hard to maintain, confusing                  | Keep core to 8-12 colors max          |
+| No component tokens                 | Agents invent component styles               | Define buttons, cards, inputs minimum |
+| Only light mode                     | Dark mode is left to chance                  | Define surface variants for dark mode |
+| No on-\* colors                     | Text readability not guaranteed              | Every color needs an on-color         |
+| Changing token names                | Breaks references everywhere                 | Names are permanent; values change    |
+| Zero documentation of drift         | Inconsistencies compound silently            | Use lint + diff regularly             |
 
 ---
 
 ## Quick Reference
 
-| Action | Command |
-|--------|---------|
-| Validate | `npx @google/design.md lint DESIGN.md` |
-| Compare | `npx @google/design.md diff DESIGN.md DESIGN-v2.md` |
+| Action             | Command                                                    |
+| ------------------ | ---------------------------------------------------------- |
+| Validate           | `npx @google/design.md lint DESIGN.md`                     |
+| Compare            | `npx @google/design.md diff DESIGN.md DESIGN-v2.md`        |
 | Export to Tailwind | `npx @google/design.md export --format tailwind DESIGN.md` |
-| Export to DTCG | `npx @google/design.md export --format dtcg DESIGN.md` |
-| Get spec | `npx @google/design.md spec` |
-| Analyze visual | `analyze_image("screenshot.png", detail="comprehensive")` |
-| Validate output | Follow visual-validator audit format |
+| Export to DTCG     | `npx @google/design.md export --format dtcg DESIGN.md`     |
+| Get spec           | `npx @google/design.md spec`                               |
+| Analyze visual     | `analyze_image("screenshot.png", detail="comprehensive")`  |
+| Validate output    | Follow visual-validator audit format                       |
 
 The DESIGN.md monorepo: `~/projects/vibe/design.md/`

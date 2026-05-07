@@ -63,7 +63,7 @@ export function createHypothesizeTool() {
           .replace("{evidence}", evidence)
           .replace("{maxHypotheses}", String(maxHypotheses));
 
-        const response = await complete(
+        const response = (await complete(
           ctx.model,
           {
             systemPrompt:
@@ -77,7 +77,7 @@ export function createHypothesizeTool() {
             ],
           },
           { maxTokens: 2048, temperature: 0.3 },
-        ) as any;
+        )) as any;
 
         // Extract text from AssistantMessage (response is an object with .content,
         // NOT an array or raw string). Same pattern as user-message-preprocessor.
@@ -101,11 +101,7 @@ export function createHypothesizeTool() {
         }
 
         // Score hypotheses with heuristic signals + evidence pool
-        const { scored, annotated } = scoreHypothesisOutput(
-          text,
-          evidence,
-          ctx ?? undefined,
-        );
+        const { scored, annotated } = scoreHypothesisOutput(text, evidence, ctx ?? undefined);
 
         return {
           content: [{ type: "text" as const, text: annotated }],
@@ -123,7 +119,7 @@ export function createHypothesizeTool() {
         };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        throw new Error(`hypothesize: model analysis failed — ${message}`);
+        throw new Error(`hypothesize: model analysis failed — ${message}`, { cause: err });
       }
     },
   };

@@ -20,14 +20,14 @@ ls .pijul 2>/dev/null && echo "pijul"
 
 ## Quick Reference
 
-| Action | Git | Pijul |
-|--------|-----|-------|
+| Action           | Git                                | Pijul                         |
+| ---------------- | ---------------------------------- | ----------------------------- |
 | Create workspace | `git worktree add <path> <branch>` | `pijul channel create <name>` |
-| List workspaces | `git worktree list` | `pijul channel list` |
-| Switch workspace | `cd <path>` | `pijul switch <name>` |
-| Remove workspace | `git worktree remove <path>` | `pijul channel delete <name>` |
-| View history | `git log` | `pijul_log` tool |
-| Surgical undo | `git revert <sha>` | `pijul_surgical_rewind` tool |
+| List workspaces  | `git worktree list`                | `pijul channel list`          |
+| Switch workspace | `cd <path>`                        | `pijul switch <name>`         |
+| Remove workspace | `git worktree remove <path>`       | `pijul channel delete <name>` |
+| View history     | `git log`                          | `pijul_log` tool              |
+| Surgical undo    | `git revert <sha>`                 | `pijul_surgical_rewind` tool  |
 
 ---
 
@@ -46,11 +46,11 @@ Pijul provides patch-level history with commutative properties — patches apply
 
 These are custom shell commands that may be available in your environment:
 
-| Command | Purpose |
-|---------|---------|
-| `pijul_log` | View patch history |
-| `pijul_surgical_rewind` | Un-apply a specific patch |
-| `pijul_reset` | Reset working directory to a patch |
+| Command                 | Purpose                            |
+| ----------------------- | ---------------------------------- |
+| `pijul_log`             | View patch history                 |
+| `pijul_surgical_rewind` | Un-apply a specific patch          |
+| `pijul_reset`           | Reset working directory to a patch |
 
 Patches are recorded automatically at turn start. Use `pijul_log` to view history, `pijul_surgical_rewind` to revert specific patches.
 

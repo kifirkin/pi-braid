@@ -75,10 +75,12 @@ export default function observatoryExtension(pi: ExtensionAPI) {
           const running = isDaemonRunning();
           if (running) {
             return {
-              content: [{
-                type: "text" as const,
-                text: "✅ Observatory daemon already running on ws://localhost:4199\nOpen observatory/index.html in a browser.",
-              }],
+              content: [
+                {
+                  type: "text" as const,
+                  text: "✅ Observatory daemon already running on ws://localhost:4199\nOpen observatory/index.html in a browser.",
+                },
+              ],
             };
           }
           // Try to start via shell
@@ -89,17 +91,21 @@ export default function observatoryExtension(pi: ExtensionAPI) {
               timeout: 5000,
             });
             return {
-              content: [{
-                type: "text" as const,
-                text: "✅ Observatory daemon started. Run /observatory status to confirm.\nOpen observatory/index.html in a browser.",
-              }],
+              content: [
+                {
+                  type: "text" as const,
+                  text: "✅ Observatory daemon started. Run /observatory status to confirm.\nOpen observatory/index.html in a browser.",
+                },
+              ],
             };
           } catch (e: any) {
             return {
-              content: [{
-                type: "text" as const,
-                text: `❌ Failed to start observatory: ${e.message}\nRun: ./braid-os/braid-daemon.sh observatory start`,
-              }],
+              content: [
+                {
+                  type: "text" as const,
+                  text: `❌ Failed to start observatory: ${e.message}\nRun: ./braid-os/braid-daemon.sh observatory start`,
+                },
+              ],
             };
           }
         }
@@ -131,10 +137,12 @@ export default function observatoryExtension(pi: ExtensionAPI) {
               timeout: 5000,
             });
             return {
-              content: [{
-                type: "text" as const,
-                text: "✅ Observatory daemon restarted on ws://localhost:4199",
-              }],
+              content: [
+                {
+                  type: "text" as const,
+                  text: "✅ Observatory daemon restarted on ws://localhost:4199",
+                },
+              ],
             };
           } catch (e: any) {
             return {
@@ -146,17 +154,21 @@ export default function observatoryExtension(pi: ExtensionAPI) {
         default: {
           if (isDaemonRunning()) {
             return {
-              content: [{
-                type: "text" as const,
-                text: `✅ Observatory daemon is RUNNING\nPID: ${fs.readFileSync(OBSERVATORY_PIDFILE, "utf-8").trim()}\nWebSocket: ws://localhost:4199\nDashboard: observatory/index.html`,
-              }],
+              content: [
+                {
+                  type: "text" as const,
+                  text: `✅ Observatory daemon is RUNNING\nPID: ${fs.readFileSync(OBSERVATORY_PIDFILE, "utf-8").trim()}\nWebSocket: ws://localhost:4199\nDashboard: observatory/index.html`,
+                },
+              ],
             };
           }
           return {
-            content: [{
-              type: "text" as const,
-              text: "❌ Observatory daemon is NOT running.\nStart it: ./braid-os/braid-daemon.sh observatory start",
-            }],
+            content: [
+              {
+                type: "text" as const,
+                text: "❌ Observatory daemon is NOT running.\nStart it: ./braid-os/braid-daemon.sh observatory start",
+              },
+            ],
           };
         }
       }
@@ -167,17 +179,21 @@ export default function observatoryExtension(pi: ExtensionAPI) {
   // Check if daemon is running. If so, whisper availability.
   // Does NOT start any server itself — that's the daemon's job.
 
-  registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event: any, ctx: ExtensionContext) => {
-    if (isDaemonRunning()) {
-      log.info("Observatory daemon detected — monitoring available.");
-      ctx.whisper?.(
-        "📊 Observatory active: open observatory/index.html for real-time agent monitoring.",
-        { category: "cognitive", priority: "low" },
-      );
-    } else {
-      log.info("Observatory daemon not running — monitoring unavailable.");
-    }
-  });
+  registerSessionStartHandler(
+    pi,
+    SessionPhase.MemoryState,
+    async (_event: any, ctx: ExtensionContext) => {
+      if (isDaemonRunning()) {
+        log.info("Observatory daemon detected — monitoring available.");
+        ctx.whisper?.(
+          "📊 Observatory active: open observatory/index.html for real-time agent monitoring.",
+          { category: "cognitive", priority: "low" },
+        );
+      } else {
+        log.info("Observatory daemon not running — monitoring unavailable.");
+      }
+    },
+  );
 
   log.info("Observatory extension registered (client mode).");
 }

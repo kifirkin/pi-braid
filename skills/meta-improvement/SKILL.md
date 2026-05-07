@@ -35,11 +35,11 @@ skill-name/
 
 ### Frontmatter
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `name` | Yes | Lowercase, hyphens, max 64 chars |
-| `description` | Yes | When to trigger + what it does, max 1024 chars |
-| `disable-model-invocation` | No | Skip loading to agent prompt |
+| Field                      | Required | Description                                    |
+| -------------------------- | -------- | ---------------------------------------------- |
+| `name`                     | Yes      | Lowercase, hyphens, max 64 chars               |
+| `description`              | Yes      | When to trigger + what it does, max 1024 chars |
+| `disable-model-invocation` | No       | Skip loading to agent prompt                   |
 
 ### Writing the Description
 
@@ -58,6 +58,7 @@ internal data, charts, graphs, or displaying company data."
 ### Progressive Disclosure
 
 Skills load in layers:
+
 1. **Metadata** — name + description (~100 words)
 2. **SKILL.md body** — in context when triggered (<500 lines)
 3. **Bundled resources** — loaded as needed
@@ -68,12 +69,12 @@ Create test cases, run the skill on realistic prompts, compare output to expecte
 
 ### Common Issues
 
-| Issue | Fix |
-|-------|-----|
-| Under-triggering | More specific contexts in description |
-| Over-triggering | Narrow description, add exclusions |
-| Unclear guidance | Add examples, explain the why |
-| Missing edge cases | Add sections for edge cases |
+| Issue              | Fix                                   |
+| ------------------ | ------------------------------------- |
+| Under-triggering   | More specific contexts in description |
+| Over-triggering    | Narrow description, add exclusions    |
+| Unclear guidance   | Add examples, explain the why         |
+| Missing edge cases | Add sections for edge cases           |
 
 ---
 
@@ -86,11 +87,13 @@ Based on: [Hyperagents (arXiv:2603.19461)](https://arxiv.org/abs/2603.19461)
 Archive-based evolution stores ALL experiment variants, not just the best. This enables lineage tracking and revisiting previous approaches.
 
 Staged evaluation adds a quick probe before expensive full runs:
+
 - **Probe**: ~10% of samples (~1-5 min)
 - **Full**: Only if probe passes threshold (~10-60 min)
 - **Skip**: Probe below threshold → skip full eval
 
 Diversity-preserving selection penalizes over-explored nodes:
+
 ```
 combined_score = probe_score × exp(-(children/8)³)
 ```
@@ -105,23 +108,29 @@ Write `evolution-config.md` before starting:
 # Evolution: <goal>
 
 ## Objective
+
 <What we're optimizing>
 
 ## Metrics
+
 - **Primary**: <name> (<unit>, lower/higher is better)
 - **Secondary**: <name>, ...
 
 ## Command Template
+
 `./benchmark.sh --num_samples {samples}`
 
 ## Staged Eval
+
 - Probe size: 10%
 - Threshold: 0.4
 
 ## Files in Scope
+
 <What the agent can modify>
 
 ## Constraints
+
 <Tests, types, etc. that must pass>
 ```
 

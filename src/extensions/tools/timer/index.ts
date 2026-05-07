@@ -200,7 +200,8 @@ export default function timerExtension(pi: ExtensionAPI): void {
     name: "timer_list",
     label: "Timer List",
     promptSnippet: "List all active timers",
-    description: "List all active (non-expired) timers. Check this to see if background timers have fired.",
+    description:
+      "List all active (non-expired) timers. Check this to see if background timers have fired.",
     parameters: Type.Object({}),
     execute: async (): Promise<any> => {
       const timers = timerManager.listTimers();
@@ -238,7 +239,8 @@ export default function timerExtension(pi: ExtensionAPI): void {
     name: "timer_cancel",
     label: "Timer Cancel",
     promptSnippet: "Cancel an active timer before it fires",
-    description: "Cancel an active timer before it fires. Use when the timed task is no longer needed.",
+    description:
+      "Cancel an active timer before it fires. Use when the timed task is no longer needed.",
     parameters: Type.Object({ timer_id: Type.String() }),
     execute: async (_id: string, params: any): Promise<any> => {
       const { timer_id } = params ?? {};

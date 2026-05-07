@@ -59,11 +59,11 @@ src/extensions/tools/index.ts
 
 ```typescript
 interface StructuredToolResult {
-  TOOL: string;        // Tool name
-  ACTION: string;     // What was done
-  RESULT: string;     // Result summary
-  STATUS: 'success' | 'error' | 'partial';
-  DATA?: Record<string, any>;  // Structured data if applicable
+  TOOL: string; // Tool name
+  ACTION: string; // What was done
+  RESULT: string; // Result summary
+  STATUS: "success" | "error" | "partial";
+  DATA?: Record<string, any>; // Structured data if applicable
   METADATA?: {
     lines_affected?: number;
     files_modified?: string[];
@@ -79,16 +79,16 @@ function formatToolResultStructured(
   toolName: string,
   action: string,
   result: string,
-  status: 'success' | 'error' | 'partial',
+  status: "success" | "error" | "partial",
   data?: Record<string, any>,
-  metadata?: Record<string, any>
+  metadata?: Record<string, any>,
 ): string {
   // Header
   let output = `TOOL_RESULT:\n`;
   output += `TOOL: ${toolName}\n`;
   output += `ACTION: ${action}\n`;
   output += `STATUS: ${status}\n`;
-  
+
   // Structured data if present
   if (data) {
     output += `DATA:\n`;
@@ -96,10 +96,10 @@ function formatToolResultStructured(
       output += `  ${key.toUpperCase()}: ${JSON.stringify(value)}\n`;
     }
   }
-  
+
   // Result summary
   output += `RESULT: ${result}\n`;
-  
+
   // Metadata if present
   if (metadata) {
     output += `METADATA:\n`;
@@ -107,10 +107,10 @@ function formatToolResultStructured(
       output += `  ${key}: ${value}\n`;
     }
   }
-  
+
   // Delimiter
   output += `---\n`;
-  
+
   return output;
 }
 ```
@@ -159,6 +159,7 @@ python3 benchmark_multi_turn.py --config no-bash --structured-output true --tria
 ### Day 5: Validate ICL Improvement
 
 Hypothesis: Structured output helps MOST on:
+
 - Multi-step reasoning tasks
 - Tasks requiring tool call chains
 - Tasks where earlier steps inform later steps
@@ -217,11 +218,11 @@ TIPS:
 
 ## Connection to Other Proposals
 
-| Proposal | Connection |
-|----------|------------|
+| Proposal                 | Connection                                                     |
+| ------------------------ | -------------------------------------------------------------- |
 | **RepE Prompt Contrast** | Structured output + contrast phrases = full behavioral control |
-| **Self-Evolution** | Structured SOPs from successful trajectories |
-| **Hierarchical Memory** | Structured memory format catalyzes recall |
+| **Self-Evolution**       | Structured SOPs from successful trajectories                   |
+| **Hierarchical Memory**  | Structured memory format catalyzes recall                      |
 
 ---
 
@@ -248,5 +249,5 @@ For now: Implement as standalone option in prompt-builder, test via benchmark.
 
 ---
 
-*Related: LATENT-SPACE-EMERGENT-NOVEL-CAPABILITY.md (research foundation)*  
-*Related: REPE-PROMPT-CONTRAST-PROPOSAL.md (contrast phrases)*
+_Related: LATENT-SPACE-EMERGENT-NOVEL-CAPABILITY.md (research foundation)_  
+_Related: REPE-PROMPT-CONTRAST-PROPOSAL.md (contrast phrases)_

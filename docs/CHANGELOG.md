@@ -2,6 +2,38 @@
 
 All notable changes to pi-braid are documented here.
 
+## v0.2.0 (2026-05-08)
+
+### Publishing Readiness
+
+- **package.json**: Version bump to 0.2.0. Added `files`, `exports`, `bugs`, `homepage`, `prepublishOnly`, `prepare` scripts.
+- **README.md**: Complete rewrite — architecture diagram, extension table, installation, configuration, skill catalog.
+- **CONTRIBUTING.md**: New file — dev setup, code style, extension anatomy, testing, PR process.
+- **.gitignore**: Added compiled output dirs (`extensions/`, `lib/`, `modules/`) and session HTML files.
+- Removed stale session HTML exports from root (~10MB).
+- Removed 8 stale extension docs for deleted features (prompt-guardian, browser, repl, docs, codebase-tree, codebase-graph, planner, vision, web-fetch).
+- Removed `docs/.archive-old/` directory.
+
+### Path Consolidation
+
+- All braid storage consolidated under `~/.pi/agent/braid/` via `src/lib/braid-paths.ts`.
+- Eliminated all hardcoded `~/.pi/` paths from source code (16 files updated).
+- Added centralized constants: `METRICS_FILE`, `LOGS_DIR`, `BRAID_PROJECTS_DIR`, `HEALTHCHECK_DIR`.
+
+### Memory Unification
+
+- Cognitive-memory migrated to `braid/memory/semantic.json` with automatic legacy fallback.
+- Memory deep merge: `memory_recall`, `memory_list`, `memory_store`, `memory_get` all cross-search both semantic and episodic stores.
+- `memory_store(type=episodic)` now also populates three-memory-stores.
+- 174 legacy memories imported; 47 episodes consolidated.
+
+### Code Quality
+
+- Fixed sync I/O in async functions (`edit-helper.ts`) — `readFileSync`/`writeFileSync` → `await readFile`/`writeFile`.
+- Fixed silent catch blocks (`whisper.ts`, `healthcheck/helpers.ts`) — now log warnings.
+- All `sendTrackedMessage` calls have explicit `triggerTurn` values (21 calls audited).
+- Removed unused `os`/`homedir` imports from 3 files.
+
 ## v0.2.0-alpha.5 (2026-05-07)
 
 ### Bug Fixes
@@ -20,7 +52,7 @@ All notable changes to pi-braid are documented here.
   - `~/.pi/agent/braid/tools-config.json` — custom tools config
   - `~/.pi/logs/braid-metrics.jsonl` — analytics (logs dir, appropriate)
   - `~/.pi/memory/memory.json` — cognitive-memory legacy (migration compat)
-  Existing files migrated automatically. Created `src/lib/braid-paths.ts` as single source of truth for all paths. Removed `~/.pi/prompt-guardian/` directory.
+    Existing files migrated automatically. Created `src/lib/braid-paths.ts` as single source of truth for all paths. Removed `~/.pi/prompt-guardian/` directory.
 - **Session persistence after compaction (root cause fix)**: Previously we fixed symptom (intercept state cleanup) but the REAL root cause was `sessionManager._persist()` has a no-assistant guard that returns early without writing to disk if there's no assistant message yet. This caused pre-appended user messages during compaction to be stored in memory but NOT written to disk, making them lost on session reload. Fix: after pre-appending queued user message to sessionManager, call `forcePersistSession()` which manually writes all pending entries to disk, bypassing the no-assistant guard.
 - **Whisper delivery timing**: Non-critical advisories now use `deliverAs: "hint"` (visible in TUI, no hidden turn). Critical signals (error bursts, degradation, blocks, retry) use `triggerTurn: true`. Removed BPE duplicate from heartbeat/analytics (only enforcement handles it). MARS, dreamer, BPE recommendations → hint. Error bursts → critical.
 
@@ -88,7 +120,7 @@ All notable changes to pi-braid are documented here.
 
 - Top-level docs culled 26 → 10: archived 15 redundant/historical docs.
 - 6 extension group docs added: cognitive, core, heartbeat, memory, prompt, tools.
-- 7 docs deleted: PI-API-RESEARCH, PROMPT-BUILDER-REFACTOR, RESEARCH-MASTER, CONSOLIDATED-DOCS-INVENTORY, HONEST-REVIEW, DEVELOPMENT, PROPOSAL-scratchpad-*.
+- 7 docs deleted: PI-API-RESEARCH, PROMPT-BUILDER-REFACTOR, RESEARCH-MASTER, CONSOLIDATED-DOCS-INVENTORY, HONEST-REVIEW, DEVELOPMENT, PROPOSAL-scratchpad-\*.
 - proposals/README.md: full audit with status markers.
 - README.md rewritten: clean, accurate, no dead links.
 
@@ -116,7 +148,7 @@ All notable changes to pi-braid are documented here.
 
 - Top-level docs culled 26 → 10: archived 15 redundant/historical docs.
 - 6 extension group docs added: cognitive, core, heartbeat, memory, prompt, tools.
-- 7 docs deleted: PI-API-RESEARCH, PROMPT-BUILDER-REFACTOR, RESEARCH-MASTER, CONSOLIDATED-DOCS-INVENTORY, HONEST-REVIEW, DEVELOPMENT, PROPOSAL-scratchpad-*.
+- 7 docs deleted: PI-API-RESEARCH, PROMPT-BUILDER-REFACTOR, RESEARCH-MASTER, CONSOLIDATED-DOCS-INVENTORY, HONEST-REVIEW, DEVELOPMENT, PROPOSAL-scratchpad-\*.
 - proposals/README.md: full audit with status markers.
 - README.md rewritten: clean, accurate, no dead links.
 

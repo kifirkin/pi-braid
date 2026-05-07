@@ -11,11 +11,11 @@
 
 **You articulated it precisely**:
 
-> *Memories sometimes leak between projects due to automatic implicit memory injection in system prompt.*
+> _Memories sometimes leak between projects due to automatic implicit memory injection in system prompt._
 >
-> *Runtime injection that non-deterministically injects things on every turn is a pain in the ass.*
+> _Runtime injection that non-deterministically injects things on every turn is a pain in the ass._
 >
-> *We need to clearly distinguish where we should be explicit and where implicit.*
+> _We need to clearly distinguish where we should be explicit and where implicit._
 
 This is a **leaking abstraction** — the memory system's internal state (contaminated by hallucinations) is leaking into the agent's reasoning context, and the agent can't distinguish memory-derived information from context-derived information.
 
@@ -41,12 +41,12 @@ Memory hallucinations occur at THREE operational stages:
 
 ### The Four Hallucination Types
 
-| Type | Description | Example |
-|------|-------------|---------|
+| Type            | Description                    | Example                                              |
+| --------------- | ------------------------------ | ---------------------------------------------------- |
 | **Fabrication** | Made-up facts not from context | "You worked on project X last week" (never happened) |
-| **Error** | Incorrect stored facts | "Project X used React" (actually Vue) |
-| **Conflict** | Contradictory memories | "Project X is done" AND "Project X is in progress" |
-| **Omission** | Forgotten important info | Memory system dropped critical context |
+| **Error**       | Incorrect stored facts         | "Project X used React" (actually Vue)                |
+| **Conflict**    | Contradictory memories         | "Project X is done" AND "Project X is in progress"   |
+| **Omission**    | Forgotten important info       | Memory system dropped critical context               |
 
 ### Why This Causes Cross-Project Leakage
 
@@ -87,26 +87,26 @@ EXPLICIT: The agent and user can see, verify, and reason about
 
 ### Where IMPLICIT Works
 
-| Context | Why Implicit | Example |
-|---------|------------|---------|
-| **Identity framing** | Behavioral, not informational | "You are a careful engineer" |
-| **Norm injection** | Domain-fit principles | "Precision over speed" |
-| **Structured format** | Catalyst for ICL (MDA) | `STEP N: / RESULT:` pattern |
-| **CoT structure** | Reasoning scaffold, not facts | "Let me think step by step" |
-| **Contrast phrases** | Behavioral direction, not content | "Truthfulness over agreeableness" |
+| Context               | Why Implicit                      | Example                           |
+| --------------------- | --------------------------------- | --------------------------------- |
+| **Identity framing**  | Behavioral, not informational     | "You are a careful engineer"      |
+| **Norm injection**    | Domain-fit principles             | "Precision over speed"            |
+| **Structured format** | Catalyst for ICL (MDA)            | `STEP N: / RESULT:` pattern       |
+| **CoT structure**     | Reasoning scaffold, not facts     | "Let me think step by step"       |
+| **Contrast phrases**  | Behavioral direction, not content | "Truthfulness over agreeableness" |
 
 These are **BEHAVIORAL** — they shape HOW the agent reasons, not WHAT facts it reasons about.
 
 ### Where EXPLICIT Is Required
 
-| Context | Why Explicit | What's Wrong With Implicit |
-|---------|------------|-------------------------|
-| **Memory injection** | Provenance critical | Agent can't distinguish memory vs. context |
-| **Enforcement triggers** | User must know what's happening | "Why did the agent just do X?" |
-| **Error context** | Agent must understand cause | "Screenshot saved" is useless; "Screenshot saved to /path (antibot detected)" is useful |
-| **Retry signals** | User must see retry reason | "Retrying" is opaque; "Retrying due to 403 (antibot protection)" is clear |
-| **Tool failures** | Agent must diagnose | "Failed" is opaque; "Failed: curl 22 (HTTP 403 - antibot protection)" is actionable |
-| **Memory boundaries** | Agent must know what's in scope | "MEMORY: [facts from prior sessions]" marks provenance |
+| Context                  | Why Explicit                    | What's Wrong With Implicit                                                              |
+| ------------------------ | ------------------------------- | --------------------------------------------------------------------------------------- |
+| **Memory injection**     | Provenance critical             | Agent can't distinguish memory vs. context                                              |
+| **Enforcement triggers** | User must know what's happening | "Why did the agent just do X?"                                                          |
+| **Error context**        | Agent must understand cause     | "Screenshot saved" is useless; "Screenshot saved to /path (antibot detected)" is useful |
+| **Retry signals**        | User must see retry reason      | "Retrying" is opaque; "Retrying due to 403 (antibot protection)" is clear               |
+| **Tool failures**        | Agent must diagnose             | "Failed" is opaque; "Failed: curl 22 (HTTP 403 - antibot protection)" is actionable     |
+| **Memory boundaries**    | Agent must know what's in scope | "MEMORY: [facts from prior sessions]" marks provenance                                  |
 
 ### The Key Heuristic
 
@@ -157,12 +157,12 @@ Every memory injection must carry:
 
 ```typescript
 interface MemoryProvenance {
-  projectId: string;      // Which project this belongs to
-  sessionId: string;      // Which session it came from
-  extractionTurn: number;   // When it was extracted
-  confidence: number;       // 0-1, based on extraction verification
-  ttl: number;            // Turns remaining before expiration
-  type: 'fact' | 'belief' | 'principle' | 'sop';  // What kind of memory
+  projectId: string; // Which project this belongs to
+  sessionId: string; // Which session it came from
+  extractionTurn: number; // When it was extracted
+  confidence: number; // 0-1, based on extraction verification
+  ttl: number; // Turns remaining before expiration
+  type: "fact" | "belief" | "principle" | "sop"; // What kind of memory
 }
 ```
 
@@ -461,11 +461,11 @@ This extends to memory: **information injection = explicit**, behavioral framing
 
 ## Related Papers
 
-| Paper | arXiv | Key Finding |
-|-------|-------|-------------|
-| HaluMem | 2511.03506 | Memory hallucinations: fabrication, error, conflict, omission. Propagate from extraction/updating to QA. |
-| SimpleMem | 2601.02553 | Semantic structured compression + intent-aware retrieval. 30x token reduction, 26.4% F1 improvement. |
-| MemEvolve | 2512.18746 | Memory architecture can itself evolve. EvolveLab: encode/store/retrieve/manage design space. |
+| Paper     | arXiv      | Key Finding                                                                                              |
+| --------- | ---------- | -------------------------------------------------------------------------------------------------------- |
+| HaluMem   | 2511.03506 | Memory hallucinations: fabrication, error, conflict, omission. Propagate from extraction/updating to QA. |
+| SimpleMem | 2601.02553 | Semantic structured compression + intent-aware retrieval. 30x token reduction, 26.4% F1 improvement.     |
+| MemEvolve | 2512.18746 | Memory architecture can itself evolve. EvolveLab: encode/store/retrieve/manage design space.             |
 
 ---
 
@@ -475,6 +475,6 @@ This extends to memory: **information injection = explicit**, behavioral framing
 
 ---
 
-*Related: HIERARCHICAL-MEMORY-COMPRESSION-PROPOSAL.md*  
-*Related: SELF-EVOLUTION-META-COGNITION-PROPOSAL.md*  
-*Related: BENCHMARK-IMPROVEMENTS-PROPOSAL.md (HaluMem metrics)*
+_Related: HIERARCHICAL-MEMORY-COMPRESSION-PROPOSAL.md_  
+_Related: SELF-EVOLUTION-META-COGNITION-PROPOSAL.md_  
+_Related: BENCHMARK-IMPROVEMENTS-PROPOSAL.md (HaluMem metrics)_

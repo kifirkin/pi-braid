@@ -48,7 +48,7 @@ export const evolverModule: CognitiveModule = {
 
     log.info(
       `Evolver: archived session (${context.turnCount} turns, ` +
-      `${memState.heuristics.filter((h) => h.uses > 0).length}/${memState.heuristics.length} heuristics used)`,
+        `${memState.heuristics.filter((h) => h.uses > 0).length}/${memState.heuristics.length} heuristics used)`,
     );
 
     context.ctx.whisper?.(

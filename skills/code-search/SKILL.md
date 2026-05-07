@@ -11,12 +11,12 @@ Search the codebase for patterns, run refactors, and choose the right tool for e
 
 ## Tool Selection
 
-| Task | Tool | Why |
-|------|------|-----|
-| Structural pattern (function call, import, specific syntax) | ast-grep | Understands AST, precise matching |
-| Text search across files | ripgrep | Fast, handles large repos |
-| File discovery | find | Glob patterns, path-based |
-| Rename symbol safely | lang tool (tsc --rename) or ast-grep | Preserves scope |
+| Task                                                        | Tool                                 | Why                               |
+| ----------------------------------------------------------- | ------------------------------------ | --------------------------------- |
+| Structural pattern (function call, import, specific syntax) | ast-grep                             | Understands AST, precise matching |
+| Text search across files                                    | ripgrep                              | Fast, handles large repos         |
+| File discovery                                              | find                                 | Glob patterns, path-based         |
+| Rename symbol safely                                        | lang tool (tsc --rename) or ast-grep | Preserves scope                   |
 
 Most searches → ripgrep. ast-grep for structural patterns.
 
@@ -74,16 +74,19 @@ rg -l "old" . | xargs sed -i '' 's/old/new/g'
 ## Common Patterns
 
 ### Find a function's callers
+
 ```bash
 rg "function_name\(" . --type-add 'typescript:*.ts' -t typescript
 ```
 
 ### Find all imports of a module
+
 ```bash
 rg "^import .* from 'module-name'" .
 ```
 
 ### Rename across files (safety first)
+
 ```bash
 # Dry run: see all occurrences
 rg -l "old_name" . | head -20

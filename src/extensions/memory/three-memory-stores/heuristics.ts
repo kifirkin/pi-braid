@@ -76,15 +76,30 @@ export function getPrioritizedHeuristics(state: MemoryStoresState): HeuristicRul
   return [...state.heuristics].sort((a, b) => b.priority - a.priority);
 }
 
-export function getApplicableHeuristics(state: MemoryStoresState, context: string): HeuristicRule[] {
+export function getApplicableHeuristics(
+  state: MemoryStoresState,
+  context: string,
+): HeuristicRule[] {
   return state.heuristics
     .filter((r) => context.toLowerCase().includes(r.condition.toLowerCase()))
     .sort((a, b) => b.priority - a.priority);
 }
 
 export const BUILTIN_HEURISTICS = [
-  { condition: "think before write", action: "Always use think tool before write tool for complex changes", priority: 0.8 },
+  {
+    condition: "think before write",
+    action: "Always use think tool before write tool for complex changes",
+    priority: 0.8,
+  },
   { condition: "test after edit", action: "Run tests after modifying code files", priority: 0.7 },
-  { condition: "read before edit", action: "Read file contents before editing to understand context", priority: 0.9 },
-  { condition: "small changes first", action: "Make incremental changes and verify each step", priority: 0.6 },
+  {
+    condition: "read before edit",
+    action: "Read file contents before editing to understand context",
+    priority: 0.9,
+  },
+  {
+    condition: "small changes first",
+    action: "Make incremental changes and verify each step",
+    priority: 0.6,
+  },
 ];

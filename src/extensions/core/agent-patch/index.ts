@@ -43,95 +43,92 @@ const log = createLogger("agent-patch");
  *   Result: session persistence fires on message_end ✓
  */
 function applyPatch(): boolean {
-	try {
-		// Use `any` cast because handleRunFailure is `private` in TS type defs,
-		// but JavaScript doesn't enforce visibility. The prototype is writable
-		// at runtime regardless of the TS private annotation.
-		const proto = Agent.prototype as any;
+  try {
+    // Use `any` cast because handleRunFailure is `private` in TS type defs,
+    // but JavaScript doesn't enforce visibility. The prototype is writable
+    // at runtime regardless of the TS private annotation.
+    const proto = Agent.prototype as any;
 
-		if (!proto) {
-			log.warn("Agent class not found — patch skipped");
-			return false;
-		}
+    if (!proto) {
+      log.warn("Agent class not found — patch skipped");
+      return false;
+    }
 
-		const original: ((this: any, error: unknown, aborted: boolean) => Promise<void>) | undefined =
-			proto.handleRunFailure;
-		if (!original) {
-			log.warn("handleRunFailure not found on Agent.prototype — patch skipped");
-			return false;
-		}
+    const original: ((this: any, error: unknown, aborted: boolean) => Promise<void>) | undefined =
+      proto.handleRunFailure;
+    if (!original) {
+      log.warn("handleRunFailure not found on Agent.prototype — patch skipped");
+      return false;
+    }
 
-		proto.handleRunFailure = async function (
-			this: {
-				_state: {
-					model: { api: string; provider: string; id: string };
-					messages: unknown[];
-					errorMessage?: string;
-				};
-				processEvents: (event: Record<string, unknown>) => Promise<void>;
-			},
-			error: unknown,
-			aborted: boolean,
-		): Promise<void> {
-			const failureMessage = {
-				role: "assistant" as const,
-				content: [{ type: "text" as const, text: "" }] as const,
-				api: this._state.model.api,
-				provider: this._state.model.provider,
-				model: this._state.model.id,
-				usage: {
-					input: 0,
-					output: 0,
-					cacheRead: 0,
-					cacheWrite: 0,
-					totalTokens: 0,
-					cost: {
-						input: 0,
-						output: 0,
-						cacheRead: 0,
-						cacheWrite: 0,
-						total: 0,
-					},
-				},
-				stopReason: aborted ? ("aborted" as const) : ("error" as const),
-				errorMessage:
-					error instanceof Error ? error.message : String(error),
-				timestamp: Date.now(),
-			};
-			this._state.errorMessage = failureMessage.errorMessage;
+    proto.handleRunFailure = async function (
+      this: {
+        _state: {
+          model: { api: string; provider: string; id: string };
+          messages: unknown[];
+          errorMessage?: string;
+        };
+        processEvents: (event: Record<string, unknown>) => Promise<void>;
+      },
+      error: unknown,
+      aborted: boolean,
+    ): Promise<void> {
+      const failureMessage = {
+        role: "assistant" as const,
+        content: [{ type: "text" as const, text: "" }] as const,
+        api: this._state.model.api,
+        provider: this._state.model.provider,
+        model: this._state.model.id,
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 0,
+          },
+        },
+        stopReason: aborted ? ("aborted" as const) : ("error" as const),
+        errorMessage: error instanceof Error ? error.message : String(error),
+        timestamp: Date.now(),
+      };
+      this._state.errorMessage = failureMessage.errorMessage;
 
-			// Emit message_start (spread copy matches streamAssistantResponse pattern)
-			await this.processEvents({
-				type: "message_start",
-				message: { ...failureMessage },
-			});
-			// Emit message_end — processEvents pushes to state.messages
-			await this.processEvents({
-				type: "message_end",
-				message: failureMessage,
-			});
-			// Emit agent_end as before
-			await this.processEvents({
-				type: "agent_end",
-				messages: [failureMessage],
-			});
-		};
+      // Emit message_start (spread copy matches streamAssistantResponse pattern)
+      await this.processEvents({
+        type: "message_start",
+        message: { ...failureMessage },
+      });
+      // Emit message_end — processEvents pushes to state.messages
+      await this.processEvents({
+        type: "message_end",
+        message: failureMessage,
+      });
+      // Emit agent_end as before
+      await this.processEvents({
+        type: "agent_end",
+        messages: [failureMessage],
+      });
+    };
 
-		log.info("Applied Agent.handleRunFailure patch (message_end persistence fix)");
-		return true;
-	} catch (err) {
-		log.warn(`Failed to apply Agent.handleRunFailure patch: ${err}`);
-		return false;
-	}
+    log.info("Applied Agent.handleRunFailure patch (message_end persistence fix)");
+    return true;
+  } catch (err) {
+    log.warn(`Failed to apply Agent.handleRunFailure patch: ${err}`);
+    return false;
+  }
 }
 
 // ── Extension Factory ────────────────────────────────────────────────────────
 
-export default async function agentPatchExtension(
-	_pi: ExtensionAPI,
-): Promise<void> {
-	// Apply the patch synchronously at extension load time.
-	// This runs before any agent loops start, so the patched
-	// handleRunFailure is in place for the entire session.
-	applyPatch();
+export default async function agentPatchExtension(_pi: ExtensionAPI): Promise<void> {
+  // Apply the patch synchronously at extension load time.
+  // This runs before any agent loops start, so the patched
+  // handleRunFailure is in place for the entire session.
+  applyPatch();
 }

@@ -11,14 +11,14 @@ LaTeX-based research paper generation for arXiv, following standard ML conventio
 
 ## IMRaD Structure
 
-| Section | Content |
-|---------|---------|
-| **Abstract** | Problem + Approach + Key Result |
+| Section          | Content                                           |
+| ---------------- | ------------------------------------------------- |
+| **Abstract**     | Problem + Approach + Key Result                   |
 | **Introduction** | Context → Gap → Proposed Solution → Contributions |
-| **Related Work** | Organize by theme, not paper-by-paper |
-| **Methodology** | LaTeX math environments (align, equation) |
-| **Experiments** | Hyperparameters and data detail |
-| **Conclusion** | Summary + Future Work |
+| **Related Work** | Organize by theme, not paper-by-paper             |
+| **Methodology**  | LaTeX math environments (align, equation)         |
+| **Experiments**  | Hyperparameters and data detail                   |
+| **Conclusion**   | Summary + Future Work                             |
 
 ---
 
@@ -44,9 +44,11 @@ LaTeX-based research paper generation for arXiv, following standard ML conventio
 ## Workflow
 
 ### 1. Initial Setup
+
 Create `main.tex`, `references.bib`, and a `/figures` directory. Cite (`\cite{}`) all empirical and factual claims.
 
 ### 2. Quality Control
+
 - Consistent terminology throughout
 - All figures referenced in text (`\ref{...}`)
 - Length: 9 pages + unlimited references

@@ -58,12 +58,15 @@ export function getFullVerificationReport(ctx: ExtensionContext): string {
   lines.push("--- Artifact Validation (Phase 2) ---");
   lines.push(getArtifactValidationSummary(), "");
   lines.push("--- Backward Check (Phase 3) ---");
-  lines.push(`Problem files touched: ${completion.problemFiles - completion.problemFilesNotTouched.length}/${completion.problemFiles}`);
+  lines.push(
+    `Problem files touched: ${completion.problemFiles - completion.problemFilesNotTouched.length}/${completion.problemFiles}`,
+  );
   if (completion.problemFilesNotTouched.length > 0) {
     lines.push(`Untouched problem files: ${completion.problemFilesNotTouched.join(", ")}`);
   }
   lines.push(`Verification score: ${(completion.verificationScore * 100).toFixed(0)}/100`);
-  if (completion.verificationScore < 0.5) lines.push("WARNING: Low verification score — fix may not address the problem");
+  if (completion.verificationScore < 0.5)
+    lines.push("WARNING: Low verification score — fix may not address the problem");
   lines.push("");
   lines.push("--- Coordination Check (Phase 4) ---");
   lines.push(getCoordinationCheckSummary());

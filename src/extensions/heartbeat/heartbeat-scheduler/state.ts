@@ -7,11 +7,7 @@
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "../../../lib/extension-state.js";
-import type {
-  HeartbeatState,
-  HeartbeatConfig,
-  MemoryStoresState,
-} from "./types.js";
+import type { HeartbeatState, HeartbeatConfig, MemoryStoresState } from "./types.js";
 
 // ── Default Configuration ────────────────────────────────────────────────────
 

@@ -28,7 +28,11 @@ export function recordToolCall(
   stat.avgDuration = stat.avgDuration === 0 ? duration : (stat.avgDuration + duration) / 2;
 }
 
-export function getToolReliability(state: MemoryStoresState, tool: string, taskType: string): number {
+export function getToolReliability(
+  state: MemoryStoresState,
+  tool: string,
+  taskType: string,
+): number {
   const stat = state.toolStats.get(`${tool}:${taskType}`);
   if (!stat || stat.attempts === 0) return 0.5;
   return stat.successes / stat.attempts;

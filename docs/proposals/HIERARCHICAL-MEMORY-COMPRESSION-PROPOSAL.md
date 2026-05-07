@@ -167,18 +167,20 @@ Trigger: Cross-session knowledge conflict detected
 ### Phase 1: Wire Existing Infrastructure (Week 1-2)
 
 **Day 1-3**: Wire D0 belief store into heartbeat
+
 ```
 - D0 stores structured beliefs (from R5 research)
 - Heartbeat queries D0 on each trigger
 - If relevant belief exists → inject into context
 - Track belief coherence score
 
-⚠️ NOTE: heartbeat-scheduler/src currently has `activatePolicyEngine()` 
+⚠️ NOTE: heartbeat-scheduler/src currently has `activatePolicyEngine()`
 UNDEFINED/NOT CALLED - this is the BLOCKER. Other agent is fixing this.
 Once fixed, cognitive modules will fire and wiring cascades naturally.
 ```
 
 **Day 4-5**: Wire R5 three-memory recall
+
 ```
 - R5 already has working/episodic/procedural structure (other agent wiring)
 - Wire to heartbeat: on turn N, recall relevant from episodic
@@ -187,6 +189,7 @@ Once fixed, cognitive modules will fire and wiring cascades naturally.
 ```
 
 **Day 6-7**: Add compression trigger to heartbeat
+
 ```
 - Monitor working memory information density
 - When density drops → trigger compression
@@ -197,6 +200,7 @@ Once fixed, cognitive modules will fire and wiring cascades naturally.
 ### Integration Notes (Parallel Work)
 
 The other pi-braid agent is implementing:
+
 ```
 Tier 1 (Hours 1-4):
   1.1 Activate heartbeat policy engine ◄── BLOCKER (being fixed)
@@ -218,6 +222,7 @@ Tier 3 (Hours 7-9):
 ```
 
 Our proposals integrate with these naturally:
+
 - Hierarchical Memory → uses 1.3 (three-memory wiring) when ready
 - Self-Evolution → uses 1.5 (belief store wired) + 3.2 (nudge quality)
 - Bidirectional Verifier → maps to 2.1 (already in our proposals)
@@ -226,6 +231,7 @@ Our proposals integrate with these naturally:
 ### Phase 2: Self-Evolution (Week 3-4)
 
 **Day 8-10**: SOP extraction from successful trajectories
+
 ```
 - Track successful tool call sequences
 - Extract as reusable SOPs
@@ -234,6 +240,7 @@ Our proposals integrate with these naturally:
 ```
 
 **Day 11-12**: ACE-inspired context evolution (2510.04618)
+
 ```
 - Contexts as evolving playbooks
 - Generate: build structured strategy from task
@@ -242,6 +249,7 @@ Our proposals integrate with these naturally:
 ```
 
 **Day 13-14**: Validation
+
 ```
 - Run benchmark with/without memory compression
 - Measure: token usage, task success, cross-turn coherence
@@ -251,6 +259,7 @@ Our proposals integrate with these naturally:
 ### Phase 3: Adaptive Cross-Level Compression (Week 5-6)
 
 **Day 15-18**: Implement experience compression spectrum
+
 ```
 - Detect task type (factual recall vs. procedural vs. episodic)
 - Apply appropriate compression level
@@ -259,6 +268,7 @@ Our proposals integrate with these naturally:
 ```
 
 **Day 19-20**: Knowledge graph integration
+
 ```
 - Prometheus-style unified KG for codebase
 - Integrate with D0 belief store
@@ -270,39 +280,39 @@ Our proposals integrate with these naturally:
 
 ## Connection to Other Proposals
 
-| This Proposal | Builds On | Enables |
-|---------------|-----------|---------|
-| Hierarchical Memory | R5 three-memory (existing, unwired) | Bidirectional Verifier, Prometheus Memory |
-| Self-Evolution SOPs | Heartbeat scheduler | MARS meta-cognition, ACE context evolution |
-| Adaptive Compression | Experience Compression Spectrum | SimpleMem compression, GenericAgent density |
-| KG Integration | D0 belief store (unwired) | Prometheus KG, Zep Graphiti |
+| This Proposal        | Builds On                           | Enables                                     |
+| -------------------- | ----------------------------------- | ------------------------------------------- |
+| Hierarchical Memory  | R5 three-memory (existing, unwired) | Bidirectional Verifier, Prometheus Memory   |
+| Self-Evolution SOPs  | Heartbeat scheduler                 | MARS meta-cognition, ACE context evolution  |
+| Adaptive Compression | Experience Compression Spectrum     | SimpleMem compression, GenericAgent density |
+| KG Integration       | D0 belief store (unwired)           | Prometheus KG, Zep Graphiti                 |
 
 ---
 
 ## Metrics
 
-| Metric | Baseline | Target | Method |
-|--------|----------|--------|--------|
-| Token usage per task | Current | <70% | Measure tokens in vs. tokens used |
-| Cross-turn coherence | Unknown | >80% | Same task, turn N vs. turn N+5 similarity |
-| SOP retrieval rate | N/A | >50% | Tasks that use procedural memory |
-| Information density | Unknown | >0.7 | Compression ratio × task success |
-| Repeated traversal avoidance | N/A | >60% | Prometheus metric |
+| Metric                       | Baseline | Target | Method                                    |
+| ---------------------------- | -------- | ------ | ----------------------------------------- |
+| Token usage per task         | Current  | <70%   | Measure tokens in vs. tokens used         |
+| Cross-turn coherence         | Unknown  | >80%   | Same task, turn N vs. turn N+5 similarity |
+| SOP retrieval rate           | N/A      | >50%   | Tasks that use procedural memory          |
+| Information density          | Unknown  | >0.7   | Compression ratio × task success          |
+| Repeated traversal avoidance | N/A      | >60%   | Prometheus metric                         |
 
 ---
 
 ## Key Papers Referenced
 
-| Paper | arXiv | Key Contribution |
-|-------|-------|-----------------|
-| GenericAgent | 2604.17091 | Context information density maximization, self-evolving SOPs |
-| Experience Compression Spectrum | 2604.15877 | Missing diagonal: adaptive cross-level compression |
-| SimpleMem | 2601.02553 | Semantic lossless compression, 30x token reduction |
-| Prometheus | 2507.19942 | Memory-centric coding agent, temporal continuity |
-| ACE | 2510.04618 | Contexts as evolving playbooks: generate, reflect, curate |
-| MARS | 2601.11974 | Meta-cognitive reflection, single-cycle self-improvement |
-| LightThinker++ | 2604.03679 | Thought compression, 70% token reduction |
-| HyMem | 2602.13933 | Hybrid memory with dual-granular storage |
+| Paper                           | arXiv      | Key Contribution                                             |
+| ------------------------------- | ---------- | ------------------------------------------------------------ |
+| GenericAgent                    | 2604.17091 | Context information density maximization, self-evolving SOPs |
+| Experience Compression Spectrum | 2604.15877 | Missing diagonal: adaptive cross-level compression           |
+| SimpleMem                       | 2601.02553 | Semantic lossless compression, 30x token reduction           |
+| Prometheus                      | 2507.19942 | Memory-centric coding agent, temporal continuity             |
+| ACE                             | 2510.04618 | Contexts as evolving playbooks: generate, reflect, curate    |
+| MARS                            | 2601.11974 | Meta-cognitive reflection, single-cycle self-improvement     |
+| LightThinker++                  | 2604.03679 | Thought compression, 70% token reduction                     |
+| HyMem                           | 2602.13933 | Hybrid memory with dual-granular storage                     |
 
 ---
 
@@ -312,6 +322,6 @@ Our proposals integrate with these naturally:
 
 ---
 
-*Related: pi-braid/docs/RESEARCH-MASTER.md*  
-*Related: docs/research/agent-architecture/LATENT-SPACE-AND-NOVEL-CAPABILITY.md*  
-*Related: docs/research/agent-architecture/TOOL-AUGMENTED-REASONING-EXTENDED.md*
+_Related: pi-braid/docs/RESEARCH-MASTER.md_  
+_Related: docs/research/agent-architecture/LATENT-SPACE-AND-NOVEL-CAPABILITY.md_  
+_Related: docs/research/agent-architecture/TOOL-AUGMENTED-REASONING-EXTENDED.md_

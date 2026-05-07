@@ -124,10 +124,16 @@ export function computeSimilarity(query: string, episode: Episode): number {
   if (queryWords.size === 0) return 0;
 
   const taskWords = new Set(
-    episode.task.toLowerCase().split(/\s+/).filter((w) => w.length > 2),
+    episode.task
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 2),
   );
   const solutionWords = new Set(
-    episode.solution.toLowerCase().split(/\s+/).filter((w) => w.length > 2),
+    episode.solution
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 2),
   );
   const tagWords = new Set(
     episode.tags.flatMap((t) => t.toLowerCase().split(/\s+/)).filter((w) => w.length > 2),
@@ -168,14 +174,20 @@ export function computeRUMS(
   backgroundFreq: Map<string, number>,
   totalDocs: number,
 ): number {
-  const queryWords = query.toLowerCase().split(/\W+/).filter((w) => w.length > 2);
+  const queryWords = query
+    .toLowerCase()
+    .split(/\W+/)
+    .filter((w) => w.length > 2);
   if (queryWords.length === 0) return 0;
 
   let pmiSum = 0;
   let validWords = 0;
   for (const word of queryWords) {
     const pmi = estimatePMI(word, episode, backgroundFreq, totalDocs);
-    if (pmi > 0) { pmiSum += pmi; validWords++; }
+    if (pmi > 0) {
+      pmiSum += pmi;
+      validWords++;
+    }
   }
   const avgPMI = validWords > 0 ? pmiSum / validWords : 0;
   const pmiScore = Math.min(avgPMI / 5, 1) * 0.6;
@@ -202,7 +214,9 @@ export function retrieveByRUMS(
   for (const ep of state.episodes) {
     const words = new Set(
       (ep.task + " " + ep.solution + " " + ep.tags.join(" "))
-        .toLowerCase().split(/\W+/).filter((w) => w.length > 2),
+        .toLowerCase()
+        .split(/\W+/)
+        .filter((w) => w.length > 2),
     );
     for (const word of words) {
       backgroundFreq.set(word, (backgroundFreq.get(word) ?? 0) + 1);

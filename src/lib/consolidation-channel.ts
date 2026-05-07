@@ -136,11 +136,7 @@ class ConsolidationQueue {
 
 // ── Scoring Engine ─────────────────────────────────────────────────────────
 
-function computeValue(
-  outcome: string,
-  quality?: number,
-  toolSequence?: string[],
-): number {
+function computeValue(outcome: string, quality?: number, toolSequence?: string[]): number {
   let value = 0;
 
   // Outcome-based value
@@ -158,10 +154,7 @@ function computeValue(
   return Math.min(1, value);
 }
 
-function computeConfidence(
-  strategicSOP?: string,
-  functionalSOP?: string[],
-): number {
+function computeConfidence(strategicSOP?: string, functionalSOP?: string[]): number {
   let confidence = 0.3; // Base
 
   // SOP completeness: strategic + functional = higher confidence
@@ -182,17 +175,15 @@ function computeNovelty(): number {
 /**
  * Score a single episode for consolidation worthiness.
  */
-export function scoreEpisode(
-  episode: {
-    id: string;
-    task: string;
-    outcome: "success" | "failure" | "partial";
-    quality?: number;
-    toolSequence?: string[];
-    strategicSOP?: string;
-    functionalSOP?: string[];
-  },
-): ConsolidationCandidate {
+export function scoreEpisode(episode: {
+  id: string;
+  task: string;
+  outcome: "success" | "failure" | "partial";
+  quality?: number;
+  toolSequence?: string[];
+  strategicSOP?: string;
+  functionalSOP?: string[];
+}): ConsolidationCandidate {
   const valueScore = computeValue(episode.outcome, episode.quality, episode.toolSequence);
   const confidenceScore = computeConfidence(episode.strategicSOP, episode.functionalSOP);
   const noveltyScore = computeNovelty();
@@ -317,8 +308,7 @@ export function queueForConsolidation(
   }
 
   log.info(
-    `[consolidation] Queued ${enqueued}/${candidates.length} ` +
-      `(queue size: ${queue.size})`,
+    `[consolidation] Queued ${enqueued}/${candidates.length} ` + `(queue size: ${queue.size})`,
   );
 
   return { enqueued, skipped: candidates.length - enqueued };
@@ -337,9 +327,11 @@ export function getConsolidationStatus(): string {
   lines.push(`Enabled: ${DEFAULT_CONSOLIDATION_CONFIG.enabled}`);
   lines.push(`Queue: ${queue.size} pending`);
   lines.push(`Completed: ${queue.completedCount}`);
-  lines.push(`Config: minQuality=${DEFAULT_CONSOLIDATION_CONFIG.minQuality}, ` +
-    `minValue=${DEFAULT_CONSOLIDATION_CONFIG.minValueScore}, ` +
-    `minConfidence=${DEFAULT_CONSOLIDATION_CONFIG.minConfidence}`);
+  lines.push(
+    `Config: minQuality=${DEFAULT_CONSOLIDATION_CONFIG.minQuality}, ` +
+      `minValue=${DEFAULT_CONSOLIDATION_CONFIG.minValueScore}, ` +
+      `minConfidence=${DEFAULT_CONSOLIDATION_CONFIG.minConfidence}`,
+  );
   lines.push(`Interval: every ${DEFAULT_CONSOLIDATION_CONFIG.consolidationInterval} turns`);
 
   if (queue.size > 0) {

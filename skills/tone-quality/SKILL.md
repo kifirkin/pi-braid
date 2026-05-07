@@ -13,34 +13,34 @@ Apply four diagnostic dimensions when creating or revising text. Each dimension 
 
 **Theory**: Explicit directives ("You MUST do X") trigger compliance theater — behavior demonstrates adherence rather than solves problems. Identity framing ("You are meticulous") creates a behavioral filter that channels action toward task-relevant behavior.
 
-Empirically, the effect is stark: **identity framing produces 0–38% compliance behaviors; explicit directives produce 100% compliance behaviors** across all tested models. The compliance behaviors (docstrings, type hints, error handlers, examples) are not wrong — they're *indiscriminate*. They appear on every task regardless of whether they help, consuming the model's output token budget.
+Empirically, the effect is stark: **identity framing produces 0–38% compliance behaviors; explicit directives produce 100% compliance behaviors** across all tested models. The compliance behaviors (docstrings, type hints, error handlers, examples) are not wrong — they're _indiscriminate_. They appear on every task regardless of whether they help, consuming the model's output token budget.
 
 **Why it works (token budget mechanism):** Compliance behaviors consume output tokens needed for implementation. Every docstring written because "MUST" demanded it is a token not spent on solving the problem. On budget-constrained tasks, compliance overhead causes failure — **zero runs that hit the token limit complete successfully**. On capable models, compliance causes 2–3× token waste and measurable slowdown: **identity framing completes tasks 3.3× faster** than directive-heavy prompts in production agent benchmarks.
 
-| Prompt style | Compliance rate | Quality markers | Speed |
-|---|---|---|---|
-| Identity ("You are an architect") | 0–38% | Emergent type hints, error handling | Fastest |
-| Behavioral directives ("You MUST write tests") | 100% | Checklist-driven output, same quality | 3.3× slower |
-| Empty prompt | 0% | Functional but unmaintainable (0% type hints) | — |
+| Prompt style                                   | Compliance rate | Quality markers                               | Speed       |
+| ---------------------------------------------- | --------------- | --------------------------------------------- | ----------- |
+| Identity ("You are an architect")              | 0–38%           | Emergent type hints, error handling           | Fastest     |
+| Behavioral directives ("You MUST write tests") | 100%            | Checklist-driven output, same quality         | 3.3× slower |
+| Empty prompt                                   | 0%              | Functional but unmaintainable (0% type hints) | —           |
 
 **Markers to convert** (drop the modifier, keep the verb):
 
-| Flag | Why | Conversion |
-|---|---|---|
-| `MUST`, `REQUIRED`, `MANDATORY` | Deontic trigger | "You work through tools" |
-| `ALWAYS`, `CRITICAL` | Absolute urgency | "You verify" |
-| `NEVER` | Prohibition pattern | "You don't skip tests" |
-| `VERIFICATION REQUIRED` | Combined trigger | "You verify" |
-| `"ruled by"`, `"governed by"` | External locus | "Your guidelines shape how you work" |
+| Flag                            | Why                 | Conversion                           |
+| ------------------------------- | ------------------- | ------------------------------------ |
+| `MUST`, `REQUIRED`, `MANDATORY` | Deontic trigger     | "You work through tools"             |
+| `ALWAYS`, `CRITICAL`            | Absolute urgency    | "You verify"                         |
+| `NEVER`                         | Prohibition pattern | "You don't skip tests"               |
+| `VERIFICATION REQUIRED`         | Combined trigger    | "You verify"                         |
+| `"ruled by"`, `"governed by"`   | External locus      | "Your guidelines shape how you work" |
 
 **Identity words** filter behavior toward specific qualities:
 
-| Word | Filters For |
-|---|---|
+| Word       | Filters For                |
+| ---------- | -------------------------- |
 | meticulous | precision, detail-checking |
-| architect | structure, planning |
-| rigorous | verification, exactness |
-| careful | step-by-step, caution |
+| architect  | structure, planning        |
+| rigorous   | verification, exactness    |
+| careful    | step-by-step, caution      |
 
 **Preserve**: Safety guardrails ("Never delete production databases") are infrastructure, not prompts. Compliance theater is performative adherence — real constraints stay explicit.
 
@@ -52,15 +52,15 @@ Empirically, the effect is stark: **identity framing produces 0–38% compliance
 
 **Theory**: "Think step by step" is cognitive compliance theater — it instructs the model to produce reasoning chains, not to reason better. The model complies by writing verbose chain-of-thought that consumes output tokens without improving solution quality. "Think silently" produces equivalent or better results with 2–3× fewer tokens by eliminating performative intermediate text.
 
-Cognitive waste parallels behavioral waste: both are compliance mechanisms triggered by explicit instructions that prescribe *how* to produce output rather than *what identity* to adopt. The model satisfies the instruction (show reasoning) instead of solving the problem (produce correct code).
+Cognitive waste parallels behavioral waste: both are compliance mechanisms triggered by explicit instructions that prescribe _how_ to produce output rather than _what identity_ to adopt. The model satisfies the instruction (show reasoning) instead of solving the problem (produce correct code).
 
 **Markers to convert** (replace explicit reasoning instructions with silent reasoning):
 
-| Flag | Why | Conversion |
-|---|---|---|
-| "Think step by step" | Triggers verbose chain-of-thought | "Think silently" or remove |
-| "Analyze first, then solve" | Moderate cognitive overhead | "Think silently before responding" |
-| "Show your reasoning" | Forces token allocation to reasoning | "Respond concisely after careful thought" |
+| Flag                        | Why                                  | Conversion                                |
+| --------------------------- | ------------------------------------ | ----------------------------------------- |
+| "Think step by step"        | Triggers verbose chain-of-thought    | "Think silently" or remove                |
+| "Analyze first, then solve" | Moderate cognitive overhead          | "Think silently before responding"        |
+| "Show your reasoning"       | Forces token allocation to reasoning | "Respond concisely after careful thought" |
 
 **Empirical ground**: On budget-constrained models, "think step by step" hits the token limit before producing a solution; "think silently" completes within budget. On capable models, "think step by step" adds 2–3× token overhead with no measurable quality improvement over silent reasoning.
 
@@ -91,6 +91,7 @@ Cognitive waste parallels behavioral waste: both are compliance mechanisms trigg
 **Emojis**: Don't use emojis in code and technical responses (🚀, 💡, ✅, etc.). They signal generation. Zero exceptions.
 
 **Principles over rules**:
+
 - Start with substance, not setup
 - Replace "In order to" with "To"
 - Replace "Due to the fact that" with "Because"
@@ -105,20 +106,22 @@ Cognitive waste parallels behavioral waste: both are compliance mechanisms trigg
 
 **Before any claim, identify its production pathway**:
 
-| Pathway | Confidence | Signal |
-|---|---|---|
-| Verified source | High | "According to X..." |
-| Pattern inference | Moderate | "This typically..." |
+| Pathway            | Confidence | Signal                    |
+| ------------------ | ---------- | ------------------------- |
+| Verified source    | High       | "According to X..."       |
+| Pattern inference  | Moderate   | "This typically..."       |
 | Training synthesis | Unverified | "My training suggests..." |
-| Gap-filling guess | None | Say you don't know |
+| Gap-filling guess  | None       | Say you don't know        |
 
 **Calibration rules**:
+
 - "Based on my knowledge..." means "I think" — say "I think" instead
 - Uncertainty signals: "I don't have access to...", "I'm not certain about..."
 - Mixed evidence: "X indicates..., but Y indicates..." — don't flatten
 - Current info: if potentially outdated, flag the gap
 
 **Anti-patterns**:
+
 - Flattening complexity into confident certainty
 - Filling gaps with plausible-sounding content
 - Using "very", "clearly", "obviously" to inflate confidence

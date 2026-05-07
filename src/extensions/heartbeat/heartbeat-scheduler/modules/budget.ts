@@ -22,9 +22,8 @@ export const budgetModule: CognitiveModule = {
 
   async activate(context): Promise<void> {
     try {
-      const { loadScratchpadFromDisk, saveScratchpadToDisk } = await import(
-        "../../../core/scratchpad/index.js"
-      );
+      const { loadScratchpadFromDisk, saveScratchpadToDisk } =
+        await import("../../../core/scratchpad/index.js");
       const { emitSignal } = await import("../../../../lib/belief-policy-engine.js");
 
       const cwd = (context.ctx as any).cwd ?? "";

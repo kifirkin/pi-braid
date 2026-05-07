@@ -269,11 +269,11 @@ This runs automatically (not as a tool call) via the reasoning extension.
 
 ## 3. Implementation Priority
 
-| Priority | Improvement                              | Effort     | Impact | Status        |
+| Priority | Improvement                              | Effort     | Impact | Status         |
 | -------- | ---------------------------------------- | ---------- | ------ | -------------- |
-| 1        | **Recursive Verification** (verify tool) | Medium     | High   | ✅ IMPLEMENTED  |
+| 1        | **Recursive Verification** (verify tool) | Medium     | High   | ✅ IMPLEMENTED |
 | 2        | **Budget-Aware Planning**                | Medium     | High   | Pending        |
-| 3        | **Fast/Slow Routing (ODAR)**           | Low-Medium | Medium | ✅ IMPLEMENTED  |
+| 3        | **Fast/Slow Routing (ODAR)**             | Low-Medium | Medium | ✅ IMPLEMENTED |
 | 4        | **Memory Condensation**                  | Medium     | Medium | Pending        |
 | 5        | **Process Supervision**                  | Medium     | Medium | Pending        |
 | 6        | **Exploratory Reasoning**                | Medium     | High   | Pending        |
