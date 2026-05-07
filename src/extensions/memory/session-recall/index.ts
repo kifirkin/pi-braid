@@ -24,6 +24,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { homedir } from "node:os";
+import { SESSION_RECALL_FILE, BRAID } from "../../../lib/braid-paths.js";
 
 // Config
 
@@ -32,8 +33,7 @@ interface SessionRecallConfig {
 }
 
 function getConfigPath(): string {
-  const home = homedir();
-  return join(home, ".pi", "agent", "session-recall.json");
+  return SESSION_RECALL_FILE;
 }
 
 function loadConfig(): SessionRecallConfig {
@@ -62,7 +62,7 @@ const sessionQuerySchema = Type.Object({
 // Helpers
 
 function getSessionsDir(): string {
-  return join(homedir(), ".pi", "agent", "sessions");
+  return join(BRAID, "sessions");
 }
 
 function projectFromPath(sessionPath: string): string {

@@ -65,4 +65,6 @@ export interface MemoryStoresState {
   recentErrors: string[];
   /** Current session ID — enables cross-session contamination filtering. */
   currentSessionId: string;
+  /** Tracks whether episodes were loaded from legacy path (for migration). */
+  loadedFromLegacy: boolean;
 }

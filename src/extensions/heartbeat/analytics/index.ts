@@ -132,7 +132,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
             content: [{ type: "text", text: `[analytics] Tool addiction pattern detected: ${warnings.join("; ")}` }],
             display: true,
           },
-          { deliverAs: "hint" },
+          { deliverAs: "hint", triggerTurn: true },
           { type: "heartbeat", source: "heartbeat/analytics" }
         );
         }
@@ -194,7 +194,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
             content: [{ type: "text", text: "[health] Performance recovered to healthy." }],
             display: true,
           },
-          { deliverAs: "hint" },
+          { deliverAs: "hint", triggerTurn: true },
           { type: "heartbeat", source: "heartbeat/analytics/recover" }
         );
       }

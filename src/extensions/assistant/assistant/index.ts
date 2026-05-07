@@ -1,5 +1,6 @@
 import { createLogger } from "../../../lib/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
+import { BRAID } from "../../../lib/braid-paths.js";
 
 const log = createLogger("assistant");
 /**
@@ -19,7 +20,7 @@ import { loadState, saveState } from "../../../lib/async-storage.js";
 const TOOLS_CONFIG_TYPE = "tools-config";
 
 /** Path to disk-persisted tools config - survives pi restarts */
-const TOOLS_DISK_PATH = path.join(os.homedir(), ".pi", "agent", "tools-config.json");
+const TOOLS_DISK_PATH = path.join(BRAID, "tools-config.json");
 
 interface ToolsConfigData {
   enabledTools: string[];

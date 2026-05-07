@@ -77,7 +77,7 @@ export function sendEnforcementWhisper(
       content: [{ type: "text" as const, text: `[enforcement] ${message}` }],
       display: true,
     },
-    critical ? { triggerTurn: true } : { deliverAs: "hint" },
+    critical ? { deliverAs: "steer", triggerTurn: true } : { deliverAs: "hint", triggerTurn: true },
     { type: "enforcement", source: "enforcement/whisper" },
   );
 }

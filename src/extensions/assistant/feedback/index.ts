@@ -18,10 +18,10 @@ const log = createLogger("feedback");
  * 4. Integration hub - Connects analytics, enforcement, adaptive
  */
 
+import { FEEDBACK_DIR, METRICS_FILE } from "../../../lib/braid-paths.js";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Type } from "typebox";
 import type {
   AgentToolResult,
   ExtensionAPI,
@@ -97,7 +97,7 @@ const DEFAULT_CONFIG: FeedbackConfig = {
   thinkToolEnforcementTurns: 5,
 };
 
-const STORAGE_DIR = join(homedir(), ".pi/agent/feedback");
+const STORAGE_DIR = FEEDBACK_DIR;
 const NUDGE_HISTORY_FILE = join(STORAGE_DIR, "nudge-history.jsonl");
 const AB_TESTS_FILE = join(STORAGE_DIR, "ab-tests.json");
 const MODEL_PREFS_FILE = join(STORAGE_DIR, "model-preferences.json");
@@ -129,7 +129,7 @@ function createFeedbackState(): FeedbackState {
     lastNudgeTime: 0,
     nudgeCountThisTurn: 0,
     currentTurn: 0,
-    analyticsPath: join(homedir(), ".pi/agent/analytics/tool-analytics.jsonl"),
+    analyticsPath: METRICS_FILE,
     lastThinkToolTurn: -1,
     thinkToolNudgeActive: false,
   };

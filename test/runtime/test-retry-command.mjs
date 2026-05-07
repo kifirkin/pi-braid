@@ -15,7 +15,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT = join(__dirname, "../..");
 
-const DISK_PATH = join(homedir(), ".pi", "agent", "retry-state.json");
+const DISK_PATH = join(homedir(), ".pi", "agent", "braid", "retry-state.json");
 
 // ── Imports ──────────────────────────────────────────────────────────────────
 

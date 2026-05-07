@@ -8,6 +8,19 @@ All notable changes to pi-braid are documented here.
 
 - **ctx.compact() API fix**: `pi.compact()` doesn't exist - `compact()` is on `ctx` (ExtensionContext), not `pi` (ExtensionAPI). All context-manager tools and handlers updated. `keep` parameter changed to `customInstructions` (CompactOptions only supports customInstructions, onComplete, onError).
 - **Cognitive nudge suppression (root cause fix)**: `disableConfirmations: true` was silently suppressing ALL cognitive whispers (enforcement nudges, heartbeat context-hygiene, analytics addiction/degradation, feedback) because 4 extensions incorrectly used it as the gate for advisory messages. Semantic mismatch: `disableConfirmations` was for Y/n blocking dialogs, not soft context-aware nudges. Fix: created `src/lib/braid-settings.ts` with two separate flags — `isConfirmDialogDisabled()` (pi-native, for dialogs) and `areCognitiveNudgesDisabled()` (braid-specific, for cognitive whispers, default false = ON). All 4 `isAutoConfirmEnabled()` copies replaced with the appropriate flag. Added `log.debug()` when suppression fires. Removed `braid.modules` from `settings.json` — all defaults now used (core, cognitive, memory, heartbeat, retry, prompt, tools, assistant).
+- **Path consolidation to `~/.pi/agent/braid/`**: All braid-specific storage consolidated under `~/.pi/agent/braid/` for discoverability and easy backup. New layout:
+  - `~/.pi/agent/braid/memory/semantic.json` — cognitive-memory semantic store
+  - `~/.pi/agent/braid/memory/episodes.jsonl` — three-memory-stores retrospective episodes
+  - `~/.pi/agent/braid/checkpoints/` — state-checkpoint snapshots
+  - `~/.pi/agent/braid/errors/` — error-capture classified errors
+  - `~/.pi/agent/braid/feedback/` — feedback preferences + analytics
+  - `~/.pi/agent/braid/retry-state.json` — retry command state
+  - `~/.pi/agent/braid/session-recall.json` — session recall config
+  - `~/.pi/agent/braid/scratchpads/` — scratchpad task state
+  - `~/.pi/agent/braid/tools-config.json` — custom tools config
+  - `~/.pi/logs/braid-metrics.jsonl` — analytics (logs dir, appropriate)
+  - `~/.pi/memory/memory.json` — cognitive-memory legacy (migration compat)
+  Existing files migrated automatically. Created `src/lib/braid-paths.ts` as single source of truth for all paths. Removed `~/.pi/prompt-guardian/` directory.
 - **Session persistence after compaction (root cause fix)**: Previously we fixed symptom (intercept state cleanup) but the REAL root cause was `sessionManager._persist()` has a no-assistant guard that returns early without writing to disk if there's no assistant message yet. This caused pre-appended user messages during compaction to be stored in memory but NOT written to disk, making them lost on session reload. Fix: after pre-appending queued user message to sessionManager, call `forcePersistSession()` which manually writes all pending entries to disk, bypassing the no-assistant guard.
 - **Whisper delivery timing**: Non-critical advisories now use `deliverAs: "hint"` (visible in TUI, no hidden turn). Critical signals (error bursts, degradation, blocks, retry) use `triggerTurn: true`. Removed BPE duplicate from heartbeat/analytics (only enforcement handles it). MARS, dreamer, BPE recommendations → hint. Error bursts → critical.
 

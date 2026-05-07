@@ -31,8 +31,9 @@ import { homedir } from "node:os";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { join } from "node:path";
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
+import { BRAID } from "../../../lib/braid-paths.js";
 
-const RETRY_STATE_DISK_PATH = join(homedir(), ".pi", "agent", "retry-state.json");
+const RETRY_STATE_DISK_PATH = join(BRAID, "retry-state.json");
 
 const log = createLogger("retry");
 

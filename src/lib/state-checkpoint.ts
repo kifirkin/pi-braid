@@ -22,13 +22,13 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { getExtensionState, hasExtensionState } from "./extension-state.js";
 import { createLogger } from "./logger.js";
+import { CHECKPOINT_DIR } from "./braid-paths.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 const log = createLogger("checkpoint");
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
-const CHECKPOINT_DIR = path.join(os.homedir(), ".pi", "agent", "checkpoints");
 const MAX_CHECKPOINTS = 10;
 const DEFAULT_CHECKPOINT_INTERVAL = 20; // Clean turns between checkpoints
 

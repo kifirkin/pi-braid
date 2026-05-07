@@ -89,6 +89,7 @@ export function getMemoryState(ctx: ExtensionContext): MemoryStoresState | null 
       skillTransitionCount: 0,
       recentErrors: [],
       currentSessionId: "",
+      loadedFromLegacy: false,
     }));
   } catch {
     return null;

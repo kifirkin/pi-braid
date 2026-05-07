@@ -38,10 +38,8 @@ interface ErrorEntry {
   handled: boolean;
 }
 
-// Storage
+import { ERROR_DIR, ERROR_FILE } from "../../../lib/braid-paths.js";
 
-const ERROR_DIR = path.join(os.homedir(), ".pi", "agent", "errors");
-const ERROR_FILE = path.join(ERROR_DIR, "error-log.jsonl");
 const MAX_ERRORS = 100;
 
 async function ensureErrorDir(): Promise<void> {

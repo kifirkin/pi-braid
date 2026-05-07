@@ -8,9 +8,12 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileMutationQueue } from "../../../lib/file-mutation-queue.js";
+import { BRAID_DIR, SCRATCHPAD_DIR } from "../../../lib/braid-paths.js";
 import type { TaskScratchpad, TaskStore, PlanStep, Decision } from "./types.js";
 
-const SCRATCHPAD_BASE_DIR = path.join(os.homedir(), ".pi", "agent", "scratchpads");
+// SCRATCHPAD_DIR already points to ~/.pi/agent/braid/scratchpads
+const _ = BRAID_DIR; // ensure braid dir exists
+void _;
 
 export function projectSlugFromCwd(cwd?: string): string {
   if (!cwd) return "default";
@@ -19,7 +22,7 @@ export function projectSlugFromCwd(cwd?: string): string {
 }
 
 function scratchpadFilePath(projectSlug: string): string {
-  return path.join(SCRATCHPAD_BASE_DIR, projectSlug, "latest.json");
+  return path.join(SCRATCHPAD_DIR, projectSlug, "latest.json");
 }
 
 export function createScratchpad(goal: string, projectSlug: string): TaskScratchpad {
@@ -82,7 +85,7 @@ export async function loadScratchpadFromDisk(projectSlug: string): Promise<TaskS
 }
 
 function taskFilePath(projectSlug: string): string {
-  return path.join(SCRATCHPAD_BASE_DIR, projectSlug, "tasks.json");
+  return path.join(SCRATCHPAD_DIR, projectSlug, "tasks.json");
 }
 
 export async function saveTaskStore(slug: string, store: TaskStore): Promise<void> {

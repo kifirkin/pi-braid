@@ -19,6 +19,7 @@ export interface MemoryStoresState {
   skillTransitionCount: number;
   recentErrors: string[];
   currentSessionId: string;
+  loadedFromLegacy: boolean;
 }
 
 // ── Cognitive Module Types ────────────────────────────────────────────────────
