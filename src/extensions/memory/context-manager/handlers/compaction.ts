@@ -12,6 +12,7 @@ import type { CompactOptions, ExtensionContext } from "@mariozechner/pi-coding-a
 import { addEvidence } from "../../../../lib/evidence-pool.js";
 import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
 import { eventBus } from "../../../../lib/event-bus.js";
+import { appendFileSync } from "node:fs";
 import { analyzeSession } from "../analysis.js";
 import {
   log,
@@ -154,6 +155,33 @@ export function clearInterceptState(): void {
   _origAppendMessage = undefined;
   _interceptActive = false;
   _interceptedSmRef = undefined;
+}
+
+/**
+ * Force-persist the session to disk.
+ * This is needed because sessionManager._persist() has a no-assistant guard that
+ * returns early without writing if there's no assistant message yet.
+ * When we pre-append a user message during compaction (before any assistant response),
+ * _persist() silently ignores it, causing the message to be lost on session reload.
+ *
+ * This function manually writes all pending entries to disk, bypassing the guard.
+ */
+function forcePersistSession(sm: any): void {
+  try {
+    if (!sm?.sessionFile || !sm?.persist) return;
+    const flushed = (sm as any).flushed;
+    const entries = (sm as any).fileEntries ?? [];
+    if (!flushed && entries.length > 0) {
+      // Write all entries to establish the session file with all content
+      for (const entry of entries) {
+        appendFileSync(sm.sessionFile, `${JSON.stringify(entry)}\n`);
+      }
+      (sm as any).flushed = true;
+      log.debug(`[context-manager] Force-persisted ${entries.length} entries to ${sm.sessionFile}`);
+    }
+  } catch (e) {
+    log.error("[context-manager] Force-persist failed:", e);
+  }
 }
 
 // ── Compaction Instructions Builder ───────────────────────────────────────────
@@ -381,6 +409,11 @@ export function registerSessionCompactHandler(pi: any): void {
             // restore the old wrapper to the new sm.
             _interceptedSmRef = sm;
             _interceptActive = true;
+            // CRITICAL: Force-persist immediately after pre-append.
+            // sessionManager._persist() has a no-assistant guard that returns early,
+            // so our pre-appended user message won't be written to disk automatically.
+            // This causes the message to be lost on session reload.
+            forcePersistSession(sm);
             log.info(
               `[context-manager] Pre-appended queued message (entry: ${_preAppendedEntryId})`,
             );
