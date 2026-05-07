@@ -283,7 +283,7 @@ export function injectSopSuggestions(
       {
         customType: "context",
         content: [{ type: "text" as const, text: formatted }],
-        display: false, // Whisper — hidden from TUI
+        display: true, // Whisper — NEVER HIDE from TUI
       },
       { deliverAs: "hint" },
       { type: "context", source: "consolidation/sop-suggestion" },
