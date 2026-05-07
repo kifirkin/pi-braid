@@ -7,12 +7,14 @@ All notable changes to pi-braid are documented here.
 ### Bug Fixes
 
 - **ctx.compact() API fix**: `pi.compact()` doesn't exist - `compact()` is on `ctx` (ExtensionContext), not `pi` (ExtensionAPI). All context-manager tools and handlers updated. `keep` parameter changed to `customInstructions` (CompactOptions only supports customInstructions, onComplete, onError).
+- **Session persistence after compaction (root cause fix)**: Previously we fixed symptom (intercept state cleanup) but the REAL root cause was `sessionManager._persist()` has a no-assistant guard that returns early without writing to disk if there's no assistant message yet. This caused pre-appended user messages during compaction to be stored in memory but NOT written to disk, making them lost on session reload. Fix: after pre-appending queued user message to sessionManager, call `forcePersistSession()` which manually writes all pending entries to disk, bypassing the no-assistant guard.
 - **Whisper delivery timing**: Non-critical advisories now use `deliverAs: "hint"` (visible in TUI, no hidden turn). Critical signals (error bursts, degradation, blocks, retry) use `triggerTurn: true`. Removed BPE duplicate from heartbeat/analytics (only enforcement handles it). MARS, dreamer, BPE recommendations → hint. Error bursts → critical.
 
 ### Refactor
 
 - `sendEnforcementWhisper()` signature: Added `critical` boolean parameter (default: false). Non-critical whispers use `hint`, critical use `triggerTurn`.
 - State management refactored: enforcement functions now consistently use `getState(ctx)` for session-scoped state instead of deprecated global `state`. Functions updated: `detectMalformedToolCalls`, `detectMissingVerification`, `recordCodeChange`, `recordToolCall`.
+- Intercept state cleanup: now cleared on ALL `compaction_end` exits (not just abort). Also cleared on `session_shutdown` to prevent stale intercept between sessions.
 - Removed duplicate `getNextRecommendation()` call from heartbeat/analytics (was duplicating enforcement's BPE handling).
 - All enforcement whispers preserved with `display: true` - nothing hidden from TUI.
 
