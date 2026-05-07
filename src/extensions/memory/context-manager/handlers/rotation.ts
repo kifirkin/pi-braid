@@ -186,7 +186,7 @@ function triggerEmergencyRotation(pi: any, ctx: ExtensionContext): void {
         ],
         display: true,
       },
-      { deliverAs: "hint" },
+      { deliverAs: "hint", triggerTurn: true },
       { type: "context", source: "context-manager/rotation" },
     );
 
@@ -347,7 +347,7 @@ export function registerRotationHandlers(pi: any): void {
           ],
           display: true,
         },
-        { deliverAs: "hint" },
+        { deliverAs: "hint", triggerTurn: false },
         { type: "context", source: "context-manager/rotation" },
       );
     } catch (err) {

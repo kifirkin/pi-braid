@@ -285,7 +285,7 @@ export function injectSopSuggestions(
         content: [{ type: "text" as const, text: formatted }],
         display: true, // Whisper — NEVER HIDE from TUI
       },
-      { deliverAs: "hint" },
+      { deliverAs: "hint", triggerTurn: true },
       { type: "context", source: "consolidation/sop-suggestion" },
     );
 

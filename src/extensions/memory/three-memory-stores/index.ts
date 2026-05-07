@@ -329,7 +329,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
       customType: "memory",
       display: true,
       content: [{ type: "text", text: lines.join("\n") }],
-    }, undefined, { type: "memory", source: "three-memory-stores/recall" });
+    }, { triggerTurn: false }, { type: "memory", source: "three-memory-stores/recall" });
   }
 
   // ── Event: tool_end ────────────────────────────────────────────────
@@ -382,7 +382,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
               customType: "memory",
               display: true,
               content: [{ type: "text", text: `[recall] ${bestAlt} has better reliability (${(bestRel * 100).toFixed(0)}%) for "${taskType}" than ${toolName} (${(currentReliability * 100).toFixed(0)}%)` }],
-            }, undefined, { type: "memory", source: "three-memory-stores/reliability" });
+            }, { triggerTurn: false }, { type: "memory", source: "three-memory-stores/reliability" });
           }
         }
       }

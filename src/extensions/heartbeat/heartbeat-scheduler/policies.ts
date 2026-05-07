@@ -158,7 +158,7 @@ export function createDefaultPolicies(
                     content: [{ type: "text" as const, text: finalizationMessage }],
                     display: true,
                   },
-                  undefined,
+                  { triggerTurn: false },
                   { type: "heartbeat", source: "heartbeat/auto-finalize" },
                 );
                 log.warn(`Auto-finalize triggered at 90%`);

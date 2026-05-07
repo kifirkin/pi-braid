@@ -599,7 +599,7 @@ async function handleOverflowFailure(
         ],
         display: true,
       },
-      { deliverAs: "hint" },
+      { deliverAs: "hint", triggerTurn: false },
       { type: "context", source: "context-manager/compaction/overflow" },
     );
 
@@ -626,7 +626,7 @@ async function handleOverflowFailure(
       ],
       display: true,
     },
-    { deliverAs: "hint" },
+    { deliverAs: "hint", triggerTurn: true },
     { type: "context", source: "context-manager/compaction/overflow-exhausted" },
   );
   resetOverflowRetry();
@@ -673,7 +673,7 @@ async function handleTransientError(
         ],
         display: true,
       },
-      { deliverAs: "hint" },
+      { deliverAs: "hint", triggerTurn: false },
       { type: "context", source: "context-manager/compaction/transient" },
     );
 
@@ -693,7 +693,7 @@ async function handleTransientError(
       ],
       display: true,
     },
-    { deliverAs: "hint" },
+    { deliverAs: "hint", triggerTurn: true },
     { type: "context", source: "context-manager/compaction/transient-exhausted" },
   );
 }
@@ -738,7 +738,7 @@ async function handleContextWindowError(
       ],
       display: true,
     },
-    { deliverAs: "hint" },
+    { deliverAs: "hint", triggerTurn: true },
     { type: "context", source: "context-manager/compaction/context-window" },
   );
 }
@@ -784,7 +784,7 @@ async function handleThresholdFailure(
         ],
         display: true,
       },
-      { deliverAs: "hint" },
+      { deliverAs: "hint", triggerTurn: false },
       { type: "context", source: "context-manager/compaction/threshold" },
     );
 
@@ -809,7 +809,7 @@ async function handleThresholdFailure(
       ],
       display: true,
     },
-    { deliverAs: "hint" },
+    { deliverAs: "hint", triggerTurn: true },
     { type: "context", source: "context-manager/compaction/threshold-exhausted" },
   );
 }
