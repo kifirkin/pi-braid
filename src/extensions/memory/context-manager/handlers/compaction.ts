@@ -119,7 +119,7 @@ function skipDuplicateAppend(sessionManager: any): (msg: any) => string {
  * Called from both turn_end and message_end handlers to handle edge cases
  * where one event might not fire (e.g., session replacement mid-turn).
  */
-function tryRestoreAppendMessage(pi: any): void {
+export function tryRestoreAppendMessage(pi: any): void {
   if (!_interceptActive || !_origAppendMessage) return;
   const sm = (pi as any).sessionManager;
   // Only restore if the sessionManager is the same one we intercepted.
@@ -148,8 +148,7 @@ function tryRestoreAppendMessage(pi: any): void {
   log.debug("[context-manager] AppendMessage intercept restored");
 }
 
-/** Clear ALL intercept state — call on success, failure, or abort. */
-function clearInterceptState(): void {
+export function clearInterceptState(): void {
   _queuedDuringCompaction = undefined;
   _preAppendedEntryId = undefined;
   _origAppendMessage = undefined;
@@ -452,18 +451,31 @@ export function registerCompactionEndHandler(pi: any): void {
         // pi core is retrying — nothing to do, let pi handle it
         if (willRetry) return;
 
+        // CRITICAL: Always clear intercept state on compaction_end, regardless of outcome.
+        // The intercept was set in session_compact to skip the duplicate from
+        // flushCompactionQueue's session.prompt() → message_end → appendMessage call.
+        // If we don't clear it, future appendMessage calls get intercepted incorrectly,
+        // breaking session persistence for all subsequent messages.
+        tryRestoreAppendMessage(pi);
+        clearInterceptState();
+
         // Aborted — user cancelled. Clear dedup guard so next compaction can run.
         if (aborted) {
           clearProcessedCompacts(
             (_ctx as any).sessionManager?.getSessionId?.() ?? "?",
             (_ctx as any).sessionManager?.getLeafId?.() ?? "?",
           );
-        // Clear intercept state using helper (clears _interceptActive, _origAppendMessage,
-        // _interceptedSmRef, _preAppendedEntryId, and _queuedDuringCompaction).
-        clearInterceptState();
           return;
         }
 
+        // On success (result exists), compaction completed successfully.
+        // The intercept has been handled above. Nothing more to do.
+        if (result) {
+          log.info("[context-manager] Compaction completed successfully");
+          return;
+        }
+
+        // Handle failures below — intercept state already cleared above.
         // Context window error — context too large even for LLM summarization
         if (isContextWindowError(errorMessage)) {
           handleContextWindowError(pi, event, _ctx, errorMessage);

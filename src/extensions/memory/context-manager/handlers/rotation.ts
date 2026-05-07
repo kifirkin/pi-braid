@@ -19,6 +19,7 @@ import { log } from "./shared.js";
 import { getRotationState } from "../../../../lib/global-state.js";
 import type { RotationState } from "../../../../lib/global-state.js";
 import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
+import { tryRestoreAppendMessage, clearInterceptState } from "./compaction.js";
 
 // ── Rotation configuration ───────────────────────────────────────────────────
 const MAX_SESSION_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
@@ -361,10 +362,17 @@ export function registerRotationHandlers(pi: any): void {
 
 export function registerSessionShutdownHandler(pi: any): void {
   pi.on("session_shutdown", async (_event: unknown, ctx: ExtensionContext) => {
-    log.debug("Session shutdown: clearing compaction retry state");
+    log.debug("Session shutdown: clearing compaction retry state and intercept");
     const cmState = getCmState(ctx);
     cmState.compactionRetryActive = false;
     cmState.overflowRetryActive = false;
+    
+    // CRITICAL: Clear intercept state to prevent stale intercept on next session.
+    // The intercept (_interceptActive, _origAppendMessage, etc.) was set up
+    // during compaction. If session ends without proper cleanup (e.g., crash,
+    // force quit), the intercept could remain active in the new session.
+    tryRestoreAppendMessage(pi);
+    clearInterceptState();
   });
 }
 
