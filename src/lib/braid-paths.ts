@@ -49,6 +49,7 @@ export const FEEDBACK_DIR = path.join(BRAID, "feedback");
 export const SCRATCHPAD_DIR = path.join(BRAID, "scratchpads");
 export const METRICS_DIR = path.join(BRAID, "metrics");
 export const BRAID_PROJECTS_DIR = path.join(MEMORY_DIR, "projects");
+export const HEALTHCHECK_DIR = path.join(BRAID, "healthcheck");
 
 // ── File paths ─────────────────────────────────────────────────────────────
 
@@ -111,5 +112,6 @@ export function getAllBraidDirs(): string[] {
     FEEDBACK_DIR,
     SCRATCHPAD_DIR,
     METRICS_DIR,
+    HEALTHCHECK_DIR,
   ];
 }

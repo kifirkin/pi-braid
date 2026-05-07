@@ -21,7 +21,8 @@
  *   await replaceInFile("src/foo.ts", (content) => content.replace(/pat/g, "replacement"));
  */
 
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import { existsSync } from "fs";
+import { readFile, writeFile } from "fs/promises";
 import { resolve } from "path";
 
 export interface Edit {
@@ -47,7 +48,7 @@ export async function safeEdit(filePath: string, edit: Edit): Promise<EditResult
     return { success: false, file: resolved, applied: false, error: "File not found" };
   }
 
-  const content = readFileSync(resolved, "utf8");
+  const content = await readFile(resolved, "utf8");
   const idx = content.indexOf(edit.oldText);
 
   if (idx === -1) {
@@ -66,7 +67,7 @@ export async function safeEdit(filePath: string, edit: Edit): Promise<EditResult
   const after = content.slice(idx + edit.oldText.length);
   const newContent = before + edit.newText + after;
 
-  writeFileSync(resolved, newContent, "utf8");
+  await writeFile(resolved, newContent, "utf8");
 
   const linesBefore = before.split("\n").length;
   const linesOld = edit.oldText.split("\n").length;
@@ -98,7 +99,7 @@ export async function safeEditMulti(filePath: string, edits: Edit[]): Promise<Ed
     }));
   }
 
-  const content = readFileSync(resolved, "utf8");
+  const content = await readFile(resolved, "utf8");
   let newContent = content;
   let offset = 0;
 
@@ -130,7 +131,7 @@ export async function safeEditMulti(filePath: string, edits: Edit[]): Promise<Ed
   }
 
   if (results.every((r) => r.applied)) {
-    writeFileSync(resolved, newContent, "utf8");
+    await writeFile(resolved, newContent, "utf8");
   } else {
     // Partial failure — don't write
   }
@@ -152,9 +153,9 @@ export async function replaceInFile(
   }
 
   try {
-    const content = readFileSync(resolved, "utf8");
+    const content = await readFile(resolved, "utf8");
     const newContent = transform(content);
-    writeFileSync(resolved, newContent, "utf8");
+    await writeFile(resolved, newContent, "utf8");
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };

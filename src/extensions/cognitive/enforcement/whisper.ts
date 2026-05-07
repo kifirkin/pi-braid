@@ -66,7 +66,9 @@ export function sendEnforcementWhisper(
       description: message,
       severity: critical ? "high" : "medium",
     });
-  } catch {}
+  } catch (err) {
+    log.warn("Failed to emit enforcement event:", err);
+  }
 
   // Tag all enforcement whispers as [enforcement] so the agent knows these are
   // system-generated signals, not human messages.

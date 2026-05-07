@@ -1,9 +1,9 @@
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
+import { HEALTHCHECK_DIR } from "../../../../lib/braid-paths.js";
 import type { CheckResult } from "./types.js";
 
-export const HC_DIR = path.join(os.homedir(), ".pi", "healthcheck");
+export const HC_DIR = HEALTHCHECK_DIR;
 
 export function ensureHcDir(): void {
   if (!fs.existsSync(HC_DIR)) {
