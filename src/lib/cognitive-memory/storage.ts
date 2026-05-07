@@ -5,7 +5,7 @@
 import * as fs from "node:fs/promises";
 import { fileMutationQueue } from "../file-mutation-queue.js";
 import { createLogger } from "../logger.js";
-import { MEMORY_DIR, MEMORY_FILE } from "./constants.js";
+import { MEMORY_DIR, MEMORY_FILE, LEGACY_MEMORY_FILE_PATH } from "./constants.js";
 import type { CognitiveMemoryStore } from "./types.js";
 
 const _log = createLogger("cognitive-memory:storage");
@@ -16,6 +16,8 @@ async function ensureMemoryDir(): Promise<void> {
 
 export async function loadMemory(): Promise<CognitiveMemoryStore> {
   await ensureMemoryDir();
+
+  // Try new path first
   try {
     const data = await fs.readFile(MEMORY_FILE, "utf-8");
     const parsed = JSON.parse(data);
@@ -46,9 +48,51 @@ export async function loadMemory(): Promise<CognitiveMemoryStore> {
     return parsed;
   } catch (e) {
     if ((e as { code?: string }).code !== "ENOENT") {
-      _log.error("Load error:", e);
+      _log.error("Load error (new path):", e);
     }
   }
+
+  // Fallback: try legacy path (~/.pi/memory/memory.json)
+  try {
+    const legacyData = await fs.readFile(LEGACY_MEMORY_FILE_PATH, "utf-8");
+    const legacyParsed = JSON.parse(legacyData);
+
+    if (legacyParsed.memories && legacyParsed.memories.length > 0) {
+      _log.info(`Migrating ${legacyParsed.memories.length} memories from legacy path`);
+
+      if (legacyParsed.entries && !legacyParsed.memories) {
+        const migrated: CognitiveMemoryStore = {
+          version: 1,
+          memories: legacyParsed.entries.map((e: any) => ({
+            id: e.id,
+            content: e.content,
+            type: e.category,
+            tags: e.tags || [],
+            timestamp: e.timestamp,
+            accessCount: 0,
+            lastAccessed: e.timestamp,
+            source: e.source,
+            importance: e.utility,
+            utility: e.utility,
+          })),
+          lastConsolidation: legacyParsed.lastConsolidation || 0,
+          turnCount: legacyParsed.turnCount || 0,
+        };
+        await saveMemory(migrated);
+        return migrated;
+      }
+
+      // Migrate to new path for next load
+      await saveMemory(legacyParsed);
+      return legacyParsed;
+    }
+  } catch (e) {
+    // ENOENT on legacy path is expected (fresh install or already migrated)
+    if ((e as { code?: string }).code !== "ENOENT") {
+      _log.error("Load error (legacy path):", e);
+    }
+  }
+
   return { version: 1, memories: [], lastConsolidation: 0, turnCount: 0 };
 }
 

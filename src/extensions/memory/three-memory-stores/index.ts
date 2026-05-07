@@ -23,7 +23,7 @@ import * as os from "node:os";
 import { readFile as fsReadFilePromise } from "node:fs/promises";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { EPISODES_FILE, LEGACY_EPISODES_FILE } from "../../../lib/braid-paths.js";
+import { EPISODES_FILE, LEGACY_EPISODES_FILE, LEGACY_MEMORY_FILE } from "../../../lib/braid-paths.js";
 
 // ── Re-export types ─────────────────────────────────────────────────────────
 export type { Episode, HeuristicRule, ToolStat } from "./types.js";
@@ -509,8 +509,8 @@ async function loadPastEpisodes(state: MemoryStoresState): Promise<number> {
     } catch { /* non-fatal */ }
   }
 
-  // Backward compat: load episodic items from cognitive-memory (~/.pi/memory/memory.json)
-  const legacyMemPath = path.join(os.homedir(), ".pi", "memory", "memory.json");
+  // Backward compat: load episodic items from cognitive-memory legacy path
+  const legacyMemPath = LEGACY_MEMORY_FILE;
   try {
     if (fs.existsSync(legacyMemPath)) {
       const parsed = JSON.parse(fs.readFileSync(legacyMemPath, "utf-8"));

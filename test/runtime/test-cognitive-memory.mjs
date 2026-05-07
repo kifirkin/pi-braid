@@ -71,7 +71,7 @@ console.log("\n[3] Constants (constants.ts)");
   assert(src.includes("export const CATEGORY_BASE_UTILITY"), "exports CATEGORY_BASE_UTILITY");
   assert(src.includes("export const MEMORY_DIR"), "exports MEMORY_DIR");
   assert(src.includes("export const MEMORY_FILE"), "exports MEMORY_FILE");
-  assert(src.includes('"memory.json"'), "memory file = memory.json");
+  assert(src.includes("SEMANTIC_MEMORY_FILE"), "memory file = semantic.json (via braid-paths)");
 }
 
 // ── [4] Index — class structure and methods ────────────────────────
