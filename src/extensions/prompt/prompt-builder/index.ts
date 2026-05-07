@@ -36,6 +36,7 @@ import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-
  */
 
 import { join } from "node:path";
+import { MEMORY_DIR } from "../../../lib/braid-paths.js";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import { loadSkills } from "@mariozechner/pi-coding-agent";
@@ -123,7 +124,7 @@ async function searchPastInsights(cwd: string): Promise<PastInsight[]> {
   const insights: PastInsight[] = [];
 
   // Search three-memory-stores episodes
-  const memoryDir = join(homedir(), ".pi/agent/memory");
+  const memoryDir = MEMORY_DIR;
   if (existsSync(memoryDir)) {
     try {
       const episodeFiles = readdirSync(memoryDir).filter((f) => f.startsWith("episodes"));

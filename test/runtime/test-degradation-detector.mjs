@@ -177,7 +177,7 @@ console.log("\n[10] File persistence");
   const src = fs.readFileSync(`${ROOT}/src/lib/degradation-detector.ts`, "utf8");
 
   assert(src.includes("METRICS_FILE"), "Defines METRICS_FILE path");
-  assert(src.includes('"metrics", "degradation.json"'),
+  assert(src.includes("DEGRADATION_FILE"),
     "Metrics file path includes degradation.json");
   assert(src.includes("saveStateImmediate"), "Uses saveStateImmediate for persistence");
 }

@@ -13,6 +13,8 @@ import { getExtensionState } from "./extension-state.js";
 import { saveStateImmediate } from "./async-storage.js";
 import { createLogger } from "./logger.js";
 
+import { DEGRADATION_FILE } from "./braid-paths.js";
+
 const _log = createLogger("degradation-detector");
 
 export interface PerformanceMetrics {
@@ -54,7 +56,7 @@ const DEFAULT_CONFIG: DegradationConfig = {
   maxConsecutiveErrors: 3,
 };
 
-const METRICS_FILE = path.join(os.homedir(), ".pi", "agent", "metrics", "degradation.json");
+const METRICS_FILE = DEGRADATION_FILE;
 
 // Global fallback (legacy — for tool handlers without ctx)
 let _global: DegradationState = {
