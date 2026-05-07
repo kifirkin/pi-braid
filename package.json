@@ -1,20 +1,40 @@
 {
 	"name": "pi-braid",
-	"version": "0.2.0-alpha.5",
-	"description": "Metacognitive extension suite for pi-coding-agent. Enforcement, planning, memory, heartbeat scheduling, RepE contrast vectors, utility tools.",
+	"version": "0.2.0",
+	"description": "Metacognitive extension suite for pi-coding-agent — enforcement, memory, reasoning, and self-improvement.",
 	"type": "module",
 	"main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": "./dist/index.js"
+	},
+	"files": [
+		"dist/",
+		"skills/",
+		"docs/",
+		"braid-os/",
+		"src/",
+		"README.md",
+		"LICENSE",
+		"AGENTS.md",
+		"tsconfig.json"
+	],
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/kifirkin/pi-braid.git"
 	},
+	"bugs": {
+		"url": "https://github.com/kifirkin/pi-braid/issues"
+	},
+	"homepage": "https://github.com/kifirkin/pi-braid#readme",
 	"pi": {
 		"extensions": [
 			"./src/index.ts"
 		]
 	},
 	"scripts": {
+		"prepublishOnly": "npm run typecheck && npm run build",
+		"prepare": "npm run build",
 		"typecheck": "tsc --noEmit",
 		"build": "tsc",
 		"test": "npm run build && node scripts/run-tests.mjs",
@@ -47,12 +67,12 @@
 	"keywords": [
 		"pi",
 		"pi-extension",
-		"coding-agent",
+		"llm-agent",
 		"cognitive-systems",
 		"enforcement",
 		"planning",
 		"metacognition",
-		"heartbeat-scheduling",
+		"self-improvement",
 		"memory-management"
 	],
 	"author": "Kifir Kifirkin",
