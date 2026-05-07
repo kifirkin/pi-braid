@@ -12,6 +12,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 // ── Extension imports ────────────────────────────────────────────────────────
 
 import corePolyfillFn from "../extensions/core/polyfill/index.js";
+import coreAgentPatchFn from "../extensions/core/agent-patch/index.js";
 import coreMetacognitionFn from "../extensions/core/metacognition/index.js";
 import coreScratchpadFn from "../extensions/core/scratchpad/index.js";
 import corePreprocessorFn from "../extensions/core/user-message-preprocessor/index.js";
@@ -96,6 +97,7 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
 		description: "Foundation: polyfill, metacognition, scratchpad, preprocessor",
 		alwaysOn: true,
 		extensions: [
+			{ name: "agent-patch",           fn: coreAgentPatchFn },
 			{ name: "polyfill",              fn: corePolyfillFn },
 			{ name: "metacognition",          fn: coreMetacognitionFn },
 			{ name: "scratchpad",            fn: coreScratchpadFn },

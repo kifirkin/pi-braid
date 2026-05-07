@@ -1,9 +1,14 @@
 /**
- * Retry Extension — /retry command + auto-retry for transient errors.
+ * Retry Extension — /retry command + error capture.
  *
  * Persists last user message via session custom entries (survives restart/resume),
- * provides manual /retry with error context display, and auto-retries transient
- * errors (network, 5xx) with configurable backoff.
+ * provides manual /retry with error context display, and injects error info as
+ * custom_message when handleRunFailure bypasses message_end (session persistence fix).
+ *
+ * NOTE: Auto-retry was removed (Dec 2025). It created agent loops that fail
+ * identically on persistent API errors, cascading into working indicator hangs
+ * and lost messages. pi's built-in retry (in agent-session.ts) covers the same
+ * transient errors. This extension is purely passive: state + /retry command.
  */
 
 import type {
@@ -18,17 +23,12 @@ import type {
 import { createLogger } from "../../../lib/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 
-import { type RetryConfig, classifyRetryError } from "./types.js";
+import { classifyRetryError } from "./types.js";
 import {
-  initState,
   getState,
   recoverState,
   captureUserInput,
   recordAgentEnd,
-  clearAutoRetry,
-  isAutoRetryPending,
-  getAutoRetryAttempt,
-  scheduleAutoRetry,
   continueRetry,
 } from "./state.js";
 
@@ -56,7 +56,7 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
   // tool_end no longer needs to capture failed tool name — /retry sends
   // a minimal steer regardless of which tool failed.
 
-  // Detect errors on agent_end, record turn result, trigger auto-retry
+  // Detect errors on agent_end, record turn result, inject error custom_message
   pi.on("agent_end", (event: AgentEndEvent, ctx: ExtensionContext) => {
     const messages = (event as any).messages as any[];
     if (!messages || messages.length === 0) return;
@@ -127,6 +127,21 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
       }
     }
 
+    // Detect if the error message was created by Agent.handleRunFailure() which
+    // skips message_start/message_end. These messages have empty content text
+    // because the actual error is in the `errorMessage` field. When handleRunFailure
+    // bypasses message_end, the message is NOT persisted to the session file.
+    // We inject a custom_message so the error info survives session reloads.
+    const isHandleRunFailureBypass =
+      errorMsg &&
+      messages.some((m: any) => {
+        if (m.role !== "assistant" || m.stopReason !== "error") return false;
+        const c = m.content;
+        if (!Array.isArray(c)) return !c;
+        // Empty content = handleRunFailure created it (error is in errorMessage)
+        return c.every((b: any) => b.type === "text" && !b.text);
+      });
+
     recordAgentEnd(
       pi,
       lastUserMsg?.id ?? null,
@@ -136,9 +151,27 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
       hasPostUserAssistantMsgs,
       ctx,
     );
-    if (errorMsg) {
-      const delay = scheduleAutoRetry(pi, ctx);
-      if (delay > 0) log.info(`Auto-retry scheduled in ${delay}ms: ${truncate(errorMsg, 80)}`);
+    // ── handleRunFailure workaround ─────────────────────────────────
+    // When handleRunFailure creates the error, agent is still streaming
+    // (isStreaming=true). We can't call sendMessage() until finishRun()
+    // completes. Use setTimeout(0) to defer to the NEXT macrotask, which
+    // fires after finishRun() sets isStreaming=false.
+    if (isHandleRunFailureBypass) {
+      setTimeout(() => {
+        try {
+          const assistantMsg = messages.find((m: any) => m.stopReason === "error");
+          const errText = assistantMsg?.errorMessage || errorMsg || "Unknown error";
+          (ctx as any).sendMessage({
+            customType: "__agent_error",
+            content: [{ type: "text" as const, text: `[Agent error: ${errText}]` }],
+            display: true,
+            details: { _braidInjected: true, _braidSource: "retry/error-persist" },
+          });
+          log.info(`Persisted handleRunFailure error as custom_message: ${truncate(errText, 80)}`);
+        } catch {
+          // Best-effort — agent may have been shut down
+        }
+      }, 0);
     }
   });
 
@@ -150,24 +183,6 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
     }
   });
 
-  // Forward visibility into built-in AgentSession auto-retry
-  pi.on("auto_retry_start" as never, async (event: any, ctx: ExtensionContext) => {
-    const attempt = event.attempt ?? 1;
-    const delay = event.delay ?? 5000;
-    ctx.ui.notify?.(
-      `Auto-retrying (attempt ${attempt}) in ${(delay / 1000).toFixed(0)}s: ${truncate(event.message ?? "", 60)}`,
-      "info",
-    );
-  });
-  pi.on("auto_retry_end" as never, async (event: any, ctx: ExtensionContext) => {
-    if (event.success) ctx.ui.notify?.("Auto-retry successful.", "info");
-    else
-      ctx.ui.notify?.(
-        `Auto-retry failed after ${event.attempt ?? "?"} attempts: ${truncate(event.finalError ?? "unknown error", 80)}`,
-        "warning",
-      );
-  });
-
   // ── Command: /retry ─────────────────────────────────────────────────
 
   pi.registerCommand("retry", {
@@ -175,13 +190,6 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
       const state = getState(ctx);
 
-      if (isAutoRetryPending(ctx)) {
-        ctx.ui.notify?.(
-          `Auto-retry in progress (attempt ${getAutoRetryAttempt(ctx)}), waiting for it to finish.`,
-          "warning",
-        );
-        return;
-      }
       if (!state.lastUserMessage) {
         ctx.ui.notify?.("Nothing to retry — no previous user message found.", "warning");
         return;
@@ -234,7 +242,6 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
         /* best-effort */
       }
 
-      clearAutoRetry(ctx);
       try {
         if (!(await continueRetry(pi, ctx))) {
           ctx.ui.notify?.("Retry failed — no message to send.", "error");
@@ -275,7 +282,6 @@ export default async function retryExtension(pi: ExtensionAPI): Promise<void> {
           `Last turn: ${state.lastTurn.hadError ? "FAILED" : "OK"} — entry: ${state.lastTurn.entryId}`,
         );
       parts.push(`Failures: ${state.failureCount}`);
-      parts.push(`Auto-retry pending: ${isAutoRetryPending(ctx)}`);
       parts.push(`Version: ${state.version}`);
       ctx.ui.notify?.(parts.join("\n"), "info");
     },
