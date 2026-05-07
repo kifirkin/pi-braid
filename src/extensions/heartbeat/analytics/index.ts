@@ -20,6 +20,7 @@ import { emitSignal } from "../../../lib/belief-policy-engine.js";
 import { eventBus } from "../../../lib/event-bus.js";
 import { isDegraded, getDegradationReasons } from "../../../lib/degradation-detector.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
+import { areCognitiveNudgesDisabled } from "../../../lib/braid-settings.js";
 import { Type } from "typebox";
 
 import { getAnalyticsStateInternal, updateContextDensity, recordNudgeSent, recordNudgeSuppressed, getAnalyticsState } from "./shared.js";
@@ -31,21 +32,6 @@ import { loadAnalyticsByVariant } from "./ab-variant.js";
 import { formatCurrentSession, formatAllSessions } from "./format.js";
 
 const log = createLogger("analytics");
-
-const SETTINGS_PATH = join(homedir(), ".pi", "agent", "settings.json");
-
-function isAutoConfirmEnabled(): boolean {
-  try {
-    if (existsSync(SETTINGS_PATH)) {
-      const content = readFileSync(SETTINGS_PATH, "utf-8");
-      const settings = JSON.parse(content);
-      return settings.disableConfirmations === true;
-    }
-  } catch {
-    // Non-fatal: fall through to normal operation
-  }
-  return false;
-}
 
 export default function analyticsExtension(pi: ExtensionAPI) {
   const pendingToolCalls = new Map<string, { toolName: string; startTime: number }>();
@@ -134,8 +120,12 @@ export default function analyticsExtension(pi: ExtensionAPI) {
       if (warnings.length > 0) {
         emitSignal(ctx, "tool-use", "overuse", "warn", false, { tools: warnings, windowSize: total });
         // BPE recommendation handled by enforcement - no duplicate here
-        // Use deliverAs: "hint" - non-critical advisory, visible in TUI
-        sendTrackedMessage(
+        // Skip whisper if cognitive nudges are disabled
+        if (areCognitiveNudgesDisabled()) {
+          log.debug("[analytics] Addiction alert suppressed via braid.suppressNudges=true");
+        } else {
+          // Use deliverAs: "hint" - non-critical advisory, visible in TUI
+          sendTrackedMessage(
           pi,
           {
             customType: "memory",
@@ -145,6 +135,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
           { deliverAs: "hint" },
           { type: "heartbeat", source: "heartbeat/analytics" }
         );
+        }
         try {
           eventBus.emit({
             type: "analytics_alert",
@@ -165,16 +156,20 @@ export default function analyticsExtension(pi: ExtensionAPI) {
       state.wasDegraded = true;
       const reasons = getDegradationReasons(ctx);
       emitSignal(ctx, "stability", "decline", "critical", false, { reason: reasons[0] ?? "degraded", consecutiveErrors: 3 });
-      sendTrackedMessage(
-        pi,
-        {
-          customType: "context",
-          content: [{ type: "text", text: `[health] Degradation detected: ${reasons.join("; ")}` }],
-          display: true,
-        },
-        { deliverAs: "steer", triggerTurn: true },
-        { type: "heartbeat", source: "heartbeat/analytics/degrade" }
-      );
+      if (areCognitiveNudgesDisabled()) {
+        log.debug("[analytics] Degradation alert suppressed via braid.suppressNudges=true");
+      } else {
+        sendTrackedMessage(
+          pi,
+          {
+            customType: "context",
+            content: [{ type: "text", text: `[health] Degradation detected: ${reasons.join("; ")}` }],
+            display: true,
+          },
+          { deliverAs: "steer", triggerTurn: true },
+          { type: "heartbeat", source: "heartbeat/analytics/degrade" }
+        );
+      }
       try {
         eventBus.emit({
           type: "analytics_alert",
@@ -188,17 +183,21 @@ export default function analyticsExtension(pi: ExtensionAPI) {
       } catch {}
     } else if (!degraded && state.wasDegraded) {
       state.wasDegraded = false;
-      // Recovery notification - informational, use hint
-      sendTrackedMessage(
-        pi,
-        {
-          customType: "context",
-          content: [{ type: "text", text: "[health] Performance recovered to healthy." }],
-          display: true,
-        },
-        { deliverAs: "hint" },
-        { type: "heartbeat", source: "heartbeat/analytics/recover" }
-      );
+      if (areCognitiveNudgesDisabled()) {
+        log.debug("[analytics] Recovery notification suppressed via braid.suppressNudges=true");
+      } else {
+        // Recovery notification - informational, use hint
+        sendTrackedMessage(
+          pi,
+          {
+            customType: "context",
+            content: [{ type: "text", text: "[health] Performance recovered to healthy." }],
+            display: true,
+          },
+          { deliverAs: "hint" },
+          { type: "heartbeat", source: "heartbeat/analytics/recover" }
+        );
+      }
       try {
         eventBus.emit({
           type: "analytics_alert",

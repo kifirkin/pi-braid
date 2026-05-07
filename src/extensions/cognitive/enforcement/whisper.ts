@@ -1,37 +1,15 @@
 import { createLogger } from "../../../lib/logger.js";
 import { eventBus } from "../../../lib/event-bus.js";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
 
 const log = createLogger("enforcement");
-/**
- * Enforcement whisper - Queue and send enforcement messages
- */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-// Whisper System
-
 import { getExtensionState } from "../../../lib/extension-state.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { recordNudgeSent } from "../../../lib/nudge-analytics.js";
-
-const SETTINGS_PATH = join(homedir(), ".pi", "agent", "settings.json");
-
-function isAutoConfirmEnabled(): boolean {
-  try {
-    if (existsSync(SETTINGS_PATH)) {
-      const content = readFileSync(SETTINGS_PATH, "utf-8");
-      const settings = JSON.parse(content);
-      return settings.disableConfirmations === true;
-    }
-  } catch {
-    // Non-fatal: fall through to normal operation
-  }
-  return false;
-}
+import { areCognitiveNudgesDisabled } from "../../../lib/braid-settings.js";
 
 interface WhisperState {
   pendingWhisper: string | null;
@@ -50,16 +28,16 @@ const _default: WhisperState = { pendingWhisper: null, pendingBlockAction: null 
 
 /**
  * Send an enforcement whisper immediately using sendTrackedMessage().
- * This injects the whisper right away instead of waiting for before_agent_start,
- * which only fires when user sends a message (causing whisper accumulation).
  *
- * Non-critical (hint): advisory signals, tool misuse, memory suggestions
- *   → uses deliverAs: "hint" (visible in TUI, no hidden turn)
+ * Whisper types:
+ * - hint:    advisory signals, tool misuse, memory suggestions
+ *            visible in TUI, no hidden turn (non-critical)
+ * - steer:   critical signals (blocks, error bursts, overflow)
+ *            triggerTurn: true ensures agent processes immediately
  *
- * Critical (triggerTurn): blocks, error bursts, context overflow
- *   → uses triggerTurn: true (creates hidden turn to ensure response)
- *
- * Auto-confirm mode: suppressed entirely when disableConfirmations=true.
+ * Nudges are suppressed when braid.suppressNudges=true in settings.json.
+ * Note: This is SEPARATE from disableConfirmations which only affects
+ * blocking Y/n confirmation dialogs.
  */
 export function sendEnforcementWhisper(
   pi: ExtensionAPI,
@@ -67,8 +45,9 @@ export function sendEnforcementWhisper(
   message: string,
   critical: boolean = false
 ): void {
-  // Auto-confirm mode: skip all enforcement whispers
-  if (isAutoConfirmEnabled()) {
+  // Cognitive nudge suppression — separate from confirm dialogs
+  if (areCognitiveNudgesDisabled()) {
+    log.debug("[whisper] Cognitive nudges suppressed via braid.suppressNudges=true");
     return;
   }
 
