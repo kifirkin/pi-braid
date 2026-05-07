@@ -24,9 +24,10 @@ import { readFile as fsReadFilePromise } from "node:fs/promises";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { EPISODES_FILE, LEGACY_EPISODES_FILE, LEGACY_MEMORY_FILE } from "../../../lib/braid-paths.js";
+import { CognitiveMemory, getCognitiveMemory } from "../../../lib/cognitive-memory.js";
 
 // ── Re-export types ─────────────────────────────────────────────────────────
-export type { Episode, HeuristicRule, ToolStat } from "./types.js";
+export type { Episode, HeuristicRule, ToolStat, MemoryStoresState } from "./types.js";
 import type { MemoryStoresState, Episode } from "./types.js";
 
 // ── Sub-module imports ──────────────────────────────────────────────────────
@@ -66,7 +67,7 @@ function textResult(text: string) {
 
 // ── Factory ──────────────────────────────────────────────────────────────────
 
-function createMemoryStoresState(): MemoryStoresState {
+export function createMemoryStoresState(): MemoryStoresState {
   return {
     episodes: [],
     heuristics: [],
@@ -412,6 +413,24 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
       lastRecallTime = now;
       whisperRecall(ctx, `Past solution might apply:`, relevant);
     }
+
+    // Cross-search cognitive-memory for relevant semantic insights
+    try {
+      const cm = getCognitiveMemory();
+      const semanticResults = await cm.recall(query, { type: undefined, limit: 2 });
+      if (semanticResults.length > 0) {
+        const lines: string[] = [`[recall] Related semantic memories:`];
+        for (const r of semanticResults) {
+          lines.push(`  [${r.memory.type}] ${r.memory.content.slice(0, 80)}... (rel: ${r.relevance.toFixed(2)})`);
+        }
+        sendTrackedMessage(pi, {
+          customType: "memory",
+          display: true,
+          content: [{ type: "text", text: lines.join("\n") }],
+        }, { triggerTurn: false }, { type: "memory", source: "three-memory-stores/cross-recall" });
+      }
+    } catch { /* cognitive-memory not available */ }
+
     } catch (err) {
       log.error("[three-mem-turn-end] error:", err);
     }
