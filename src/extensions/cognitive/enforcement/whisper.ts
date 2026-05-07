@@ -30,10 +30,10 @@ const _default: WhisperState = { pendingWhisper: null, pendingBlockAction: null 
  * Send an enforcement whisper immediately using sendTrackedMessage().
  *
  * Whisper types:
- * - hint:    advisory signals, tool misuse, memory suggestions
- *            visible in TUI, no hidden turn (non-critical)
- * - steer:   critical signals (blocks, error bursts, overflow)
- *            triggerTurn: true ensures agent processes immediately
+ * - followUp: advisory signals, tool misuse, memory suggestions
+ *             visible in TUI, no forced turn (non-critical)
+ * - steer:    critical signals (blocks, error bursts, overflow)
+ *             triggerTurn: true ensures agent processes immediately
  *
  * Nudges are suppressed when braid.suppressNudges=true in settings.json.
  * Note: This is SEPARATE from disableConfirmations which only affects
@@ -77,7 +77,7 @@ export function sendEnforcementWhisper(
       content: [{ type: "text" as const, text: `[enforcement] ${message}` }],
       display: true,
     },
-    critical ? { deliverAs: "steer", triggerTurn: true } : { deliverAs: "hint", triggerTurn: true },
+    critical ? { deliverAs: "steer", triggerTurn: true } : { deliverAs: "followUp", triggerTurn: false },
     { type: "enforcement", source: "enforcement/whisper" },
   );
 }

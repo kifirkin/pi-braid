@@ -12,8 +12,7 @@
 import { createLogger } from "../../../lib/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { METRICS_FILE, LOGS_DIR } from "../../../lib/braid-paths.js";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "../../../lib/extension-state.js";
 import { emitSignal } from "../../../lib/belief-policy-engine.js";
@@ -50,12 +49,12 @@ export default function analyticsExtension(pi: ExtensionAPI) {
     state.wasDegraded = false;
     state.nudgesSent = 0;
     state.nudgesSuppressed = 0;
-    state.storagePath = join(homedir(), ".pi/logs/braid-metrics.jsonl");
+    state.storagePath = METRICS_FILE;
     pendingToolCalls.clear();
     turnToolTypes.clear();
     lastAddictionCheck = 0;
 
-    const logsDir = join(homedir(), ".pi/logs");
+    const logsDir = LOGS_DIR;
     if (!existsSync(logsDir)) mkdirSync(logsDir, { recursive: true });
   });
 
@@ -124,7 +123,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
         if (areCognitiveNudgesDisabled()) {
           log.debug("[analytics] Addiction alert suppressed via braid.suppressNudges=true");
         } else {
-          // Use deliverAs: "hint" - non-critical advisory, visible in TUI
+          // Use deliverAs: "followUp" - non-critical advisory, visible in TUI
           sendTrackedMessage(
           pi,
           {
@@ -132,7 +131,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
             content: [{ type: "text", text: `[analytics] Tool addiction pattern detected: ${warnings.join("; ")}` }],
             display: true,
           },
-          { deliverAs: "hint", triggerTurn: true },
+          { deliverAs: "followUp", triggerTurn: false },
           { type: "heartbeat", source: "heartbeat/analytics" }
         );
         }
@@ -194,7 +193,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
             content: [{ type: "text", text: "[health] Performance recovered to healthy." }],
             display: true,
           },
-          { deliverAs: "hint", triggerTurn: true },
+          { deliverAs: "followUp", triggerTurn: false },
           { type: "heartbeat", source: "heartbeat/analytics/recover" }
         );
       }

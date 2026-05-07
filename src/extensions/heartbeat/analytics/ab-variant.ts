@@ -3,8 +3,7 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { METRICS_FILE } from "../../../lib/braid-paths.js";
 
 interface VariantStats {
   variant: string; sessions: number; totalToolCalls: number;
@@ -14,7 +13,7 @@ interface VariantStats {
 }
 
 export function loadAnalyticsByVariant(storagePath?: string): Map<string, VariantStats> {
-  const path = storagePath ?? join(homedir(), ".pi/logs/braid-metrics.jsonl");
+  const path = storagePath ?? METRICS_FILE;
   const variants = new Map<string, VariantStats>();
   if (!existsSync(path)) return variants;
 

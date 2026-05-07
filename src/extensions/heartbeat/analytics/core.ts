@@ -3,8 +3,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { METRICS_FILE, LOGS_DIR } from "../../../lib/braid-paths.js";
 import type { AnalyticsState, AnalyticsSummary, ToolMetrics, ToolSequence, SessionMetrics } from "./shared.js";
 
 // ── Metrics ────────────────────────────────────────────────────────────────
@@ -82,7 +81,7 @@ export function computeSessionOutcome(s: AnalyticsState): "success" | "partial" 
 // ── Persistence ────────────────────────────────────────────────────────────
 
 export function flushAnalytics(s: AnalyticsState, taskCompleted = false): void {
-  const logsDir = join(homedir(), ".pi/logs");
+  const logsDir = LOGS_DIR;
   if (!existsSync(logsDir)) mkdirSync(logsDir, { recursive: true });
 
   const metrics = Array.from(s.toolMetrics.values());
@@ -106,7 +105,7 @@ export function flushAnalytics(s: AnalyticsState, taskCompleted = false): void {
 }
 
 export function loadAnalytics(storagePath?: string): AnalyticsSummary {
-  const path = storagePath ?? join(homedir(), ".pi/logs/braid-metrics.jsonl");
+  const path = storagePath ?? METRICS_FILE;
   if (!existsSync(path)) return { totalSessions: 0, totalToolCalls: 0, avgToolsPerSession: 0, topTools: [], sequences: [] };
 
   try {

@@ -19,11 +19,10 @@ import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-
 import { getExtensionState } from "../../../lib/extension-state.js";
 import { emitSignal } from "../../../lib/belief-policy-engine.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
-import * as os from "node:os";
 import { readFile as fsReadFilePromise } from "node:fs/promises";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { EPISODES_FILE, LEGACY_EPISODES_FILE, LEGACY_MEMORY_FILE } from "../../../lib/braid-paths.js";
+import { EPISODES_FILE, LEGACY_EPISODES_FILE, LEGACY_MEMORY_FILE, METRICS_FILE } from "../../../lib/braid-paths.js";
 import { CognitiveMemory, getCognitiveMemory } from "../../../lib/cognitive-memory.js";
 
 // ── Re-export types ─────────────────────────────────────────────────────────
@@ -264,7 +263,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     }
 
     // R9: Load analytics data to pre-populate tool stats
-    const analyticsPath = path.join(os.homedir(), ".pi", "logs", "braid-metrics.jsonl");
+    const analyticsPath = METRICS_FILE;
     try {
       if (fs.existsSync(analyticsPath)) {
         const raw = fs.readFileSync(analyticsPath, "utf-8");
@@ -330,7 +329,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
       customType: "memory",
       display: true,
       content: [{ type: "text", text: lines.join("\n") }],
-    }, { triggerTurn: false }, { type: "memory", source: "three-memory-stores/recall" });
+    }, { deliverAs: "followUp", triggerTurn: false }, { type: "memory", source: "three-memory-stores/recall" });
   }
 
   // ── Event: tool_end ────────────────────────────────────────────────
@@ -383,7 +382,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
               customType: "memory",
               display: true,
               content: [{ type: "text", text: `[recall] ${bestAlt} has better reliability (${(bestRel * 100).toFixed(0)}%) for "${taskType}" than ${toolName} (${(currentReliability * 100).toFixed(0)}%)` }],
-            }, { triggerTurn: false }, { type: "memory", source: "three-memory-stores/reliability" });
+            }, { deliverAs: "followUp", triggerTurn: false }, { type: "memory", source: "three-memory-stores/reliability" });
           }
         }
       }
@@ -427,7 +426,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
           customType: "memory",
           display: true,
           content: [{ type: "text", text: lines.join("\n") }],
-        }, { triggerTurn: false }, { type: "memory", source: "three-memory-stores/cross-recall" });
+        }, { deliverAs: "followUp", triggerTurn: false }, { type: "memory", source: "three-memory-stores/cross-recall" });
       }
     } catch { /* cognitive-memory not available */ }
 

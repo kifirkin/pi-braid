@@ -48,6 +48,7 @@ export const ERROR_DIR = path.join(BRAID, "errors");
 export const FEEDBACK_DIR = path.join(BRAID, "feedback");
 export const SCRATCHPAD_DIR = path.join(BRAID, "scratchpads");
 export const METRICS_DIR = path.join(BRAID, "metrics");
+export const BRAID_PROJECTS_DIR = path.join(MEMORY_DIR, "projects");
 
 // ── File paths ─────────────────────────────────────────────────────────────
 
@@ -89,7 +90,8 @@ export const SESSION_RECALL_FILE = path.join(BRAID, "session-recall.json");
 // ── Log paths (NOT under braid/ — logs directory is appropriate) ─────────
 
 /** Analytics: tool call metrics + A/B variant tracking */
-export const METRICS_FILE = path.join(PI, "logs", "braid-metrics.jsonl");
+export const LOGS_DIR = path.join(PI, "logs");
+export const METRICS_FILE = path.join(LOGS_DIR, "braid-metrics.jsonl");
 
 /** Degradation detector: health metrics state */
 export const DEGRADATION_FILE = path.join(BRAID, "metrics", "degradation.json");

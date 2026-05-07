@@ -583,7 +583,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
             display: true,
             content: [{ type: "text", text: `[enforcement] ${whisper}` }],
           },
-          { triggerTurn: false },
+          { deliverAs: "followUp", triggerTurn: false },
           { type: "enforcement", source: "enforcement/drift" },
         );
       }
@@ -617,7 +617,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
           display: true,
           content: [{ type: "text", text: `[policy] ${bpeRec.message}` }],
         },
-        { deliverAs: "hint", triggerTurn: true },
+        { deliverAs: "followUp", triggerTurn: false },
         { type: "enforcement", source: "enforcement/policy" },
       );
     }
@@ -653,7 +653,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
           display: true,
           content: [{ type: "text", text: `[enforcement] ${marsAdvice.message}` }],
         },
-        { deliverAs: "hint", triggerTurn: true },
+        { deliverAs: "followUp", triggerTurn: false },
         { type: "enforcement", source: "enforcement/mars" },
       );
     }
@@ -673,7 +673,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
           display: true,
           content: [{ type: "text", text: `[enforcement] ${dreamAdvice.message}` }],
         },
-        { deliverAs: "hint", triggerTurn: true },
+        { deliverAs: "followUp", triggerTurn: false },
         { type: "enforcement", source: "enforcement/dreamer" },
       );
     }

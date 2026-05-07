@@ -42,7 +42,7 @@ export function createState() {
     validationFailures: 0 as number,
     escalationCounts: {} as Record<string, number>,
     lastNudgeTime: 0,
-    nudgeCooldownMs: 3600_000,
+    nudgeCooldownMs: 60_000,
     toolChain: {
       lastThinkCall: 0,
       lastPlanCall: 0,

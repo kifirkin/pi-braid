@@ -12,11 +12,10 @@ const log = createLogger("cognitive-systems");
 
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
+import { BRAID_PROJECTS_DIR } from "../../../lib/braid-paths.js";
 
-const GLOBAL_MEMORY_BASE = path.join(os.homedir(), ".pi", "memory");
-const PROJECTS_DIR = path.join(GLOBAL_MEMORY_BASE, "projects");
+const PROJECTS_DIR = BRAID_PROJECTS_DIR;
 
 /**
  * Find the git root directory from a working directory.

@@ -27,9 +27,9 @@ import {
 
 import { getExtensionState } from "../../../lib/extension-state.js";
 import { createLogger } from "../../../lib/logger.js";
-import { homedir } from "node:os";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { join } from "node:path";
+import { BRAID_DIR } from "../../../lib/braid-paths.js";
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
 import { BRAID } from "../../../lib/braid-paths.js";
 
@@ -272,7 +272,7 @@ export function persistState(pi: ExtensionAPI, ctx?: ExtensionContext): void {
 
   // Disk file (survives compaction, restart, /resume across sessions)
   try {
-    const dir = join(homedir(), ".pi", "agent");
+    const dir = BRAID_DIR;
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     writeFileSync(RETRY_STATE_DISK_PATH, JSON.stringify({ state: s.state }), "utf-8");
   } catch {
