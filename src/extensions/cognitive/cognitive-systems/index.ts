@@ -25,7 +25,7 @@ import { addEvidence } from "../../../lib/evidence-pool.js";
 import { getExtensionState } from "../../../lib/extension-state.js";
 import { textResult } from "../../../lib/extension-utils.js";
 import type { MemoryStoresState } from "../../memory/three-memory-stores/index.js";
-import { createMemoryStoresState, retrieveByRUMS } from "../../memory/three-memory-stores/index.js";
+import { createMemoryStoresState, retrieveByRUMS, addEpisode } from "../../memory/three-memory-stores/index.js";
 import {
   getPendingQAs as getPendingConflictQAs,
   getAllQAs as getAllConflictQAs,
@@ -302,6 +302,25 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
           source: params.source,
           ttl: params.ttl,
         });
+
+        // When storing episodic type, also add to three-memory-stores
+        if (params.memoryType === "episodic" && ctx) {
+          try {
+            const threeMem = getExtensionState<MemoryStoresState>(
+              ctx, "three-memory-stores", createMemoryStoresState,
+            );
+            addEpisode(
+              threeMem,
+              params.content.slice(0, 300),
+              params.content,
+              "partial",
+              [],
+              params.tags ?? [],
+              undefined,
+            );
+          } catch { /* three-memory-stores not available */ }
+        }
+
         return {
           content: [
             { type: "text", text: `Stored memory ${m.id.slice(0, 12)} (${params.memoryType})` },
