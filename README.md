@@ -1,153 +1,152 @@
 # pi-braid 🥨
 
-## 🚧 ALPHA QUALITY SOFTWARE 🚧
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue.svg)](https://www.typescriptlang.org/)
 
-## 🚨 USE WISELY, WITH CAUTON 🚨
+Metacognitive extension suite for [pi-coding-agent](https://github.com/mariozechner/pi-coding-agent). Adds enforcement, memory, reasoning, self-improvement, and structured cognitive signals on top of the base agent session.
 
-pi-braid is a self-generated(initially with pi itself) extension for [pi](https://github.com/mariozechner/pi-coding-agent) with self-improvement in mind and backed heavily by research papers and benchmarks. Built on extension architecture with cognitive memory, enforcement signals, structured nudges, and a session-scoped state model.
-
-For developers: see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
-For architecture overview: see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Quick Start
-
-```bash
-# Install
-npm install
-
-# Type-check
-npm run typecheck
-
-# Build (tree output to dist/)
-npm run build
-
-# Run
-pi -e /path/to/pi-braid/src/index.ts
-```
+> **⚠️ Early-stage software.** APIs may change. Not production-hardened.
 
 ## What It Does
 
-pi-braid layers cognition, enforcement, and memory on top of the pi-core agent session. It doesn't replace the agent — it shapes how it behaves across sessions.
+pi-braid extends pi with a layered cognitive architecture:
 
-## Core Extensions
+- **Enforcement** — belief policy engine, structured signal delivery (L1–L3 severity), sycophancy detection, verification nudges
+- **Memory** — dual-store memory system: semantic (cognitive-memory) + episodic (three-memory-stores) with cross-search
+- **Reasoning** — reasoning quality metrics, topic drift detection, bidirectional verification
+- **Self-improvement** — heuristic evolution, dreamer (offline consolidation), SOP extraction, degradation detection
+- **Session management** — context lifecycle (S-MMU), auto-finalize at 90%, scratchpad task tracking
+- **Utilities** — healthcheck, timers, system monitoring, web research, code search
 
-| Extension | Purpose |
-|-----------|---------|
-| `enforcement` | Structured signal delivery, belief policy engine, MARS reflector |
-| `heartbeat-scheduler` | Token monitoring, auto-finalize at 90%, meta-learning recaller |
-| `cognitive-systems` | Episode/heuristic/memory recall, explore_paths, hypothesize |
-| `planner` | Budget-aware task planning with phase estimates |
-| `metacognition` | Self-reflection, cognition evaluation |
-| `scratchpad` | Structured session memory, task management |
-| `context-lifecycle` | S-MMU context management with proposal system |
+The agent doesn't just execute tools — it reflects, remembers, and adapts.
 
-## Tool Extensions
-
-| Extension | Tools |
-|-----------|-------|
-| `analytics` | `get-session-metrics`, `get-tool-reliability` |
-| `browser` | `browser_navigate`, `browser_snapshot`, `browser_screenshot`, `browser_eval`, `browser_cookies`, `browser_content` |
-| `codebase-tree` | `codebase_tree` |
-| `docs` | `read_document`, `render_pdf_page` |
-| `error-capture` | `error_list`, `error_get`, `error_clear`, `error_stats` |
-| `evolve` | `evolve` (status/health/check/commit/rollback) |
-| `healthcheck` | `healthcheck` |
-| `planner` | `plan_with_budget`, `check_budget`, `set_budget` |
-| `topic-drift` | `check_topic_drift`, `reset_topic_anchors` |
-| `verification` | `verify_claim`, `verify_decomposition` |
-| `vision` | `analyze_image` |
-| `web-fetch` | `web_fetch` |
-| `cognitive-systems` | `explore_paths`, `hypothesize`, `memory_*`, `get_active_behaviors` |
-
-## Infrastructure Extensions
-
-| Extension | Events Handled |
-|-----------|---------------|
-| `prompt-builder` | Builds system prompt before agent starts |
-| `prompt-guardian` | Prompt safety checks |
-| `polyfill` | TypeScript compatibility shims |
-| `latent-activator` | Behavior pattern activation |
-| `three-memory-stores` | Episodic + heuristic + tool reliability memory |
-| `feedback` | Nudge frequency testing |
-| `reasoning` | Reasoning metrics tracking |
-| `agent-environment` | Environment time tracking |
-
-## Extension Docs
-
-See `docs/extensions/` for individual extension documentation.
-
-## Project Structure
+## Architecture
 
 ```
-src/
-  index.ts              # Extension registration
-  extensions/           # 30 active extensions
-    enforcement/        # Belief policy + structured signals
-    heartbeat-scheduler/
-    cognitive-systems/
-    ...
-  lib/                 # Shared: evidence-pool, conflict-qa, belief-policy-engine,
-                        #   mars-reflector, error-classifier, reasoning-metrics,
-                        #   degradation-detector, topic-drift-detector
-skills/                # 12 bundled skills (SKILL.md per skill)
-test/runtime/           # 22 test files
-docs/
-  extensions/          # Extension documentation
-  skills/              # Skills catalog
-  lib/                 # Library catalog
-  archive/             # Historical documents
+┌─────────────────────────────────────────────────────┐
+│                    pi-coding-agent                   │
+│                  (base agent loop)                   │
+├─────────────────────────────────────────────────────┤
+│  prompt-builder  │  polyfill  │  user-msg-preproc   │
+├──────────┬───────┴────────────┴──────────────────────┤
+│enforcement│  cognitive-systems  │  metacognition     │
+│(signals)  │  (memory, explore)  │  (think, verify)   │
+├──────────┴─────────────────────┴────────────────────┤
+│  heartbeat-scheduler  │  context-lifecycle (S-MMU)   │
+├───────────────────────┴─────────────────────────────┤
+│  three-memory-stores  │  cognitive-memory  │  dreamer│
+├───────────────────────┴───────────────────┴─────────┤
+│  analytics  │  retry  │  error-capture  │  watchdog  │
+└─────────────────────────────────────────────────────┘
 ```
 
-## Key Concepts
+## Installation
 
-### Enforcement Signals (L1-L3)
+```bash
+# Clone
+git clone https://github.com/kifirkin/pi-braid.git
+cd pi-braid
+npm install
 
-- **L1** (internal): Evidence tracking, context hygiene — no message to agent
-- **L2** (structured): Redundancy, verification hints — delivered via Session Signals
-- **L3** (critical): Overflow failures, infrastructure errors — individual messages
+# Build
+npm run build
 
-### Auto-Finalize at 90%
+# Run with pi
+pi -e /path/to/pi-braid/src/index.ts
+```
 
-When context reaches 90%, `heartbeat-scheduler` sends a `sendUserMessage` with `deliverAs:"steer"` forcing the agent to call `finalize(completed=false, autoProceed=true)`.
+### Prerequisites
 
-### S-MMU Context Lifecycle
+- [Node.js](https://nodejs.org/) ≥ 20
+- [pi-coding-agent](https://github.com/mariozechner/pi-coding-agent) ≥ 0.70.0
 
-`context-lifecycle` extension manages active context via: retrieval → cognition → control → action → memory, with proposal injection at 90% context.
+## Configuration
 
-### Compaction Window
+pi-braid reads settings from `~/.pi/agent/settings.json` under the `braid` key:
 
-On overflow, `pi.compact({ keep: reducedKeep })` is called with progressively smaller window. The `reducedKeep` value is computed from retry count × 0.6 factor.
+```json
+{
+  "braid": {
+    "suppressNudges": false
+  }
+}
+```
+
+All braid-specific data is stored under `~/.pi/agent/braid/`.
+
+### Module System
+
+Extensions are grouped into modules that can be toggled:
+
+```bash
+# Enable all (default)
+export BRAID_MODULES="all"
+
+# Enable specific modules
+export BRAID_MODULES="core,cognitive,memory,retry"
+```
+
+See [docs/MODULES.md](docs/MODULES.md) for the full module catalog.
+
+## Bundled Skills
+
+15 skills ship with pi-braid, covering code search, documentation, visual creation, research, and more. See [skills/](skills/) for the full list.
+
+## Extension Overview
+
+| Category | Extension | Purpose |
+|----------|-----------|---------|
+| **Cognitive** | enforcement | Belief policy engine, structured signals, sycophancy detection |
+| | cognitive-systems | Memory recall, `explore_paths`, `hypothesize`, `memory_*` tools |
+| | metacognition | `think`, `verify`, `hypothesize`, `scratchpad` |
+| | reasoning | Reasoning quality metrics |
+| **Memory** | three-memory-stores | Episodic, heuristic, and tool-reliability persistence |
+| | context-lifecycle | S-MMU context management with proposal system |
+| | session-recall | Cross-session context recall |
+| | context-manager | Compaction, rotation, archive, pruning |
+| **Heartbeat** | heartbeat-scheduler | Token budgets, auto-finalize, dreamer, recaller, evolver |
+| | analytics | Session metrics, A/B variants, tool reliability |
+| **Core** | prompt-builder | System prompt construction with cognitive context |
+| | polyfill | Settings and keybindings compatibility |
+| | scratchpad | Structured session memory and task management |
+| **Retry** | retry | Error capture, retry state management |
+| | error-capture | Error classification and persistence |
+| **Tools** | healthcheck | System diagnostics |
+| | timer | Async timers with reminder delivery |
+| | latent-activator | Behavior pattern activation |
+| | observatory | Real-time monitoring dashboard |
+| | diff | File and git diff with structured output |
+| | research | Web search and fact verification |
+| | system-monitor | CPU, memory, disk metrics |
+| **Infra** | assistant | Agent interaction helpers |
+| | feedback | Nudge quality feedback loop |
+| | evolve | Self-evolution with git integration |
+| | watchdog | Agent health monitoring |
+| | rate-limiter | API rate limiting |
+| | topic-drift | Topic anchor tracking |
+| | verification | Claim verification, decomposition checks |
 
 ## Development
 
 ```bash
-# Type-check
-npm run typecheck
-
-# Build (tree output to dist/)
-npm run build
-
-# Tests
-npm test
-
-# Individual test
-node test/runtime/test-<name>.mjs
+npm run typecheck   # TypeScript check
+npm run build       # Compile to dist/
+npm run test        # Build + run 61 runtime tests
+npm run lint        # ESLint
+npm run format      # Prettier
 ```
 
-## Skills
+For the full development guide, see [AGENTS.md](AGENTS.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-pi-braid ships 12 bundled skills. See `skills/*/SKILL.md` and `docs/skills/README.md`.
+## Documentation
 
-## Docs
+- [Architecture](docs/ARCHITECTURE.md) — system design and data flow
+- [Extension docs](docs/extensions/) — per-extension documentation
+- [Library docs](docs/lib/README.md) — shared library catalog
+- [Skills catalog](docs/skills/README.md) — bundled skill descriptions
+- [Modules](docs/MODULES.md) — module definitions and toggling
+- [Errors](docs/ERRORS.md) — error classification reference
 
-- `docs/WHAT-IS-MISSING.md` — Gap registry with priorities
-- `docs/OVERNIGHT-RESULTS.md` — v0.13.0 enforcement refactor results
-- `docs/RESEARCH-MASTER.md` — Architecture audit, papers analyzed, research synthesis
-- `docs/BRAID-NEXT-PROPOSAL.md` — v0.14.0 → v1.0 roadmap
-- `docs/DEVELOPMENT.md` — Technical guide, testing, conventions
-- `docs/CONSOLIDATED-DOCS-INVENTORY.md` — Full doc catalog
+## License
 
-## Version
-
-- **v0.13.0** — Enforcement refactor, belief policy engine, 17 enforcement tests
-- **v0.14.0** — pending: structured signals wiring, compaction fix, extension docs
+[MIT](LICENSE)
