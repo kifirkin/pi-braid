@@ -11,6 +11,7 @@ Intelligent user message preprocessing — detects when user messages are trivia
 ## Architecture
 
 Multi-stage analysis pipeline:
+
 1. **Length check** — skip messages >5000 chars (`maxChars`)
 2. **Code block stripping** — strip ``` blocks before analysis
 3. **Bulk code detection** — skip if code blocks are the majority of content
@@ -21,20 +22,19 @@ Multi-stage analysis pipeline:
 
 ## Events Handled
 
-| Event | Handler |
-|-------|---------|
+| Event   | Handler                                                                                           |
+| ------- | ------------------------------------------------------------------------------------------------- |
 | `input` | Preprocess user messages before they reach the agent. Runs analysis pipeline, rewrites if needed. |
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
-| `preprocessor_config` | View/update config: `enabled`, `minLength`, `skipCommands`, `showDiff`, `timeoutSeconds` |
-| `preprocessor_stats` | Get preprocessing statistics: messages processed, skipped, rewritten, errors |
+_(Tools removed 2026-04-28)_ `preprocessor_config` and `preprocessor_stats` were removed to reduce surface area. Preprocessor config is now internal only. Use `~/.pi/agent/settings.json` to toggle enabled/disabled, or the `/preprocessor` command.
 
 ## Key Patterns
 
 - **Non-blocking by design**: Most messages skip preprocessing entirely (well-written English text passes through). Only ambiguous or problematic messages are rewritten.
-- **Conservative approach**: `isLikelyEnglish` stopword-ratio check prevents false positives on English text. If >10% stopwords, it's English → skip.
-- **System prompt directive**: Injects "Think silently before producing output." to encourage better reasoning before tool calls.
-- **Configurable**: All thresholds configurable via `preprocessor_config`.
+- **Role isolation**: The preprocessor uses a strict SYSTEM_PROMPT that explicitly states it is NOT the main assistant. XML `<user_message>` tags wrap the input to visually separate content from instructions.
+- **Anti-instruction-following**: The prompt includes explicit DO NOT rules preventing the model from executing commands inside the user message.
+- **Conservative approach**: Language detection via Unicode script ranges, not stopword counting. Non-English text is translated to English.
+- **Images preserved**: Messages with attached images skip preprocessing to avoid image data loss during the `handled` → re-submit cycle.
+- **Configurable**: Enabled state persists to `~/.pi/agent/settings.json`. Toggle via `/preprocessor` command.

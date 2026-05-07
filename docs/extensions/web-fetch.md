@@ -14,14 +14,14 @@ Uses native `fetch()` with browser-like headers to bypass anti-bot protections. 
 
 ## Events Handled
 
-| Event | Handler |
-|-------|---------|
+| Event                  | Handler                                                                              |
+| ---------------------- | ------------------------------------------------------------------------------------ |
 | `tool_execution_start` | Scan URL for secrets (API keys, tokens) before fetching — blocks request if detected |
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
+| Tool        | Description                                                                                                                                                                           |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `web_fetch` | Fetch URL → clean markdown. Params: `url`, `raw` (skip conversion), `minimal` (LLM-optimized, default true), `headers` (custom), `timeout`, `injection_action` (warn/redact/tag/none) |
 
 ## Key Patterns

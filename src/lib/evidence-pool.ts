@@ -34,95 +34,175 @@ export type ConflictClassification = "direct" | "implication" | "reliability";
  * Used as multiplicative factor when computing evidence reliability.
  */
 const SOURCE_RELIABILITY: Record<EvidenceSource, number> = {
-	code: 0.95,    // Executed code is ground truth
-	docs: 0.85,    // Documentation is highly reliable
-	memory: 0.7,   // Memory is moderate reliability
-	web: 0.6,      // Web is variable quality
-	session: 0.5,   // Session knowledge may be outdated
-	unknown: 0.4,
+  code: 0.95, // Executed code is ground truth
+  docs: 0.85, // Documentation is highly reliable
+  memory: 0.7, // Memory is moderate reliability
+  web: 0.6, // Web is variable quality
+  session: 0.5, // Session knowledge may be outdated
+  unknown: 0.4,
 };
 
 export interface Evidence {
-	id: string;
-	claim: string;
-	normalized: string;
-	content: string;
-	source: EvidenceSource;
-	confidence: number;        // Caller-provided confidence (0-1)
-	confidenceType: EvidenceConfidenceType;
-	reliability: number;        // Computed: SOURCE_RELIABILITY[source] × confidence
-	/** Project path where this evidence was created. Used for provenance tagging (HaluMem, 2511.03506). */
-	project: string;
-	timestamp: number;
-	turn?: number;
+  id: string;
+  claim: string;
+  normalized: string;
+  content: string;
+  source: EvidenceSource;
+  confidence: number; // Caller-provided confidence (0-1)
+  confidenceType: EvidenceConfidenceType;
+  reliability: number; // Computed: SOURCE_RELIABILITY[source] × confidence
+  /** Project path where this evidence was created. Used for provenance tagging (HaluMem, 2511.03506). */
+  project: string;
+  timestamp: number;
+  turn?: number;
 }
 
 export interface Conflict {
-	id: string;
-	claim: string;
-	for: Evidence[];
-	against: Evidence[];
-	verdict: "unresolved" | "resolved_for" | "resolved_against" | "uncertain";
-	resolvedBy?: string;
-	resolvedAt?: number;
-	detectedAt: number;
-	/** XoT Stage 1 result — how the conflict was classified */
-	classification: ConflictClassification;
+  id: string;
+  claim: string;
+  for: Evidence[];
+  against: Evidence[];
+  verdict: "unresolved" | "resolved_for" | "resolved_against" | "uncertain";
+  resolvedBy?: string;
+  resolvedAt?: number;
+  detectedAt: number;
+  /** XoT Stage 1 result — how the conflict was classified */
+  classification: ConflictClassification;
 }
 
 export interface EvidencePoolState {
-	evidence: Evidence[];
-	conflicts: Conflict[];
-	lastCleanup: number;
+  evidence: Evidence[];
+  conflicts: Conflict[];
+  lastCleanup: number;
 }
 
 // ── State factory ──────────────────────────────────────────────────────────────
 
 function getState(ctx: ExtensionContext): EvidencePoolState {
-	return getExtensionState(ctx, "evidence-pool", () => ({
-		evidence: [],
-		conflicts: [],
-		lastCleanup: Date.now(),
-	}));
+  return getExtensionState(ctx, "evidence-pool", () => ({
+    evidence: [],
+    conflicts: [],
+    lastCleanup: Date.now(),
+  }));
 }
 
 // ── Normalization helpers ─────────────────────────────────────────────────────
 
 const STOP_WORDS = new Set([
-	"the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-	"have", "has", "had", "do", "does", "did", "will", "would", "could",
-	"should", "may", "might", "must", "shall", "can", "need", "dare",
-	"that", "this", "these", "those", "what", "which", "who", "whom",
-	"with", "without", "from", "into", "onto", "in", "out", "on", "off",
-	"over", "under", "above", "below", "to", "for", "of", "and", "or",
-	"but", "if", "then", "else", "when", "where", "how", "why", "not",
-	"all", "each", "every", "both", "few", "more", "most", "other",
-	"some", "such", "no", "nor", "only", "own", "same", "so", "than",
-	"too", "very", "just", "also", "now", "here", "there", "then",
+  "the",
+  "a",
+  "an",
+  "is",
+  "are",
+  "was",
+  "were",
+  "be",
+  "been",
+  "being",
+  "have",
+  "has",
+  "had",
+  "do",
+  "does",
+  "did",
+  "will",
+  "would",
+  "could",
+  "should",
+  "may",
+  "might",
+  "must",
+  "shall",
+  "can",
+  "need",
+  "dare",
+  "that",
+  "this",
+  "these",
+  "those",
+  "what",
+  "which",
+  "who",
+  "whom",
+  "with",
+  "without",
+  "from",
+  "into",
+  "onto",
+  "in",
+  "out",
+  "on",
+  "off",
+  "over",
+  "under",
+  "above",
+  "below",
+  "to",
+  "for",
+  "of",
+  "and",
+  "or",
+  "but",
+  "if",
+  "then",
+  "else",
+  "when",
+  "where",
+  "how",
+  "why",
+  "not",
+  "all",
+  "each",
+  "every",
+  "both",
+  "few",
+  "more",
+  "most",
+  "other",
+  "some",
+  "such",
+  "no",
+  "nor",
+  "only",
+  "own",
+  "same",
+  "so",
+  "than",
+  "too",
+  "very",
+  "just",
+  "also",
+  "now",
+  "here",
+  "there",
+  "then",
 ]);
 
 /** Normalize claim for comparison: lowercase, remove stopwords, sort words */
 function normalize(text: string): string {
-	const tokens = text.toLowerCase().split(/\W+/).filter((t) => t.length > 2 && !STOP_WORDS.has(t));
-	return tokens.sort().join(" ");
+  const tokens = text
+    .toLowerCase()
+    .split(/\W+/)
+    .filter((t) => t.length > 2 && !STOP_WORDS.has(t));
+  return tokens.sort().join(" ");
 }
 
 /** Token overlap ratio between two texts. Exported for conflict-qa reuse. */
 export function tokenOverlap(a: string, b: string): number {
-	const tokensA = new Set(normalize(a).split(" "));
-	const tokensB = new Set(normalize(b).split(" "));
-	if (tokensA.size === 0 || tokensB.size === 0) return 0;
-	let overlap = 0;
-	for (const t of tokensA) {
-		if (tokensB.has(t)) overlap++;
-	}
-	return overlap / Math.max(tokensA.size, tokensB.size);
+  const tokensA = new Set(normalize(a).split(" "));
+  const tokensB = new Set(normalize(b).split(" "));
+  if (tokensA.size === 0 || tokensB.size === 0) return 0;
+  let overlap = 0;
+  for (const t of tokensA) {
+    if (tokensB.has(t)) overlap++;
+  }
+  return overlap / Math.max(tokensA.size, tokensB.size);
 }
 
 /** Extract the core claim from text (first sentence, stripped) */
 function extractClaim(text: string, maxLen = 80): string {
-	const first = text.split(/[.!?\n]/)[0].trim();
-	return first.length > maxLen ? first.slice(0, maxLen) + "..." : first;
+  const first = text.split(/[.!?\n]/)[0].trim();
+  return first.length > maxLen ? first.slice(0, maxLen) + "..." : first;
 }
 
 // ── XoT Stage 1: Conflict Classification ─────────────────────────────────────
@@ -131,21 +211,24 @@ function extractClaim(text: string, maxLen = 80): string {
  * Classify a conflict using source reliability and claim overlap.
  * XoT Stage 1: Evidence Explanation.
  */
-function classifyConflict(forEvidence: Evidence[], againstEvidence: Evidence[]): ConflictClassification {
-	const forText = forEvidence.map((e) => e.normalized).join(" ");
-	const againstText = againstEvidence.map((e) => e.normalized).join(" ");
-	const overlap = tokenOverlap(forText, againstText);
+function classifyConflict(
+  forEvidence: Evidence[],
+  againstEvidence: Evidence[],
+): ConflictClassification {
+  const forText = forEvidence.map((e) => e.normalized).join(" ");
+  const againstText = againstEvidence.map((e) => e.normalized).join(" ");
+  const overlap = tokenOverlap(forText, againstText);
 
-	// Direct: High overlap between the claims (same topic being contradicted)
-	if (overlap > 0.5) return "direct";
+  // Direct: High overlap between the claims (same topic being contradicted)
+  if (overlap > 0.5) return "direct";
 
-	// Reliability: Source reliability difference > 0.2
-	const forReliability = forEvidence[0]?.reliability ?? 0.5;
-	const againstReliability = againstEvidence[0]?.reliability ?? 0.5;
-	if (Math.abs(forReliability - againstReliability) > 0.2) return "reliability";
+  // Reliability: Source reliability difference > 0.2
+  const forReliability = forEvidence[0]?.reliability ?? 0.5;
+  const againstReliability = againstEvidence[0]?.reliability ?? 0.5;
+  if (Math.abs(forReliability - againstReliability) > 0.2) return "reliability";
 
-	// Default: implication-based (one claim may logically contradict another)
-	return "implication";
+  // Default: implication-based (one claim may logically contradict another)
+  return "implication";
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────────
@@ -155,84 +238,88 @@ function classifyConflict(forEvidence: Evidence[], againstEvidence: Evidence[]):
  * Reliability is computed as: SOURCE_RELIABILITY[source] × confidence.
  */
 export function addEvidence(
-	ctx: ExtensionContext,
-	claim: string,
-	source: EvidenceSource,
-	content: string,
-	confidence = 0.7,
-	confidenceType: EvidenceConfidenceType = "retrieved",
+  ctx: ExtensionContext,
+  claim: string,
+  source: EvidenceSource,
+  content: string,
+  confidence = 0.7,
+  confidenceType: EvidenceConfidenceType = "retrieved",
 ): string {
-	const state = getState(ctx);
+  const state = getState(ctx);
 
-	const evidence: Evidence = {
-		id: `e${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-		claim: extractClaim(claim),
-		normalized: normalize(claim),
-		content: content.slice(0, 500),
-		source,
-		confidence,
-		confidenceType,
-		reliability: SOURCE_RELIABILITY[source] * confidence,
-		project: ctx.cwd ?? "unknown",
-		timestamp: Date.now(),
-	};
-	state.evidence.push(evidence);
+  const evidence: Evidence = {
+    id: `e${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    claim: extractClaim(claim),
+    normalized: normalize(claim),
+    content: content.slice(0, 500),
+    source,
+    confidence,
+    confidenceType,
+    reliability: SOURCE_RELIABILITY[source] * confidence,
+    project: ctx.cwd ?? "unknown",
+    timestamp: Date.now(),
+  };
+  state.evidence.push(evidence);
 
-	// Cleanup old evidence (>50 entries → keep last 30)
-	if (state.evidence.length > 50) {
-		state.evidence = state.evidence.slice(-30);
-	}
+  // Cleanup old evidence (>50 entries → keep last 30)
+  if (state.evidence.length > 50) {
+    state.evidence = state.evidence.slice(-30);
+  }
 
-	// Check for conflicts with this new evidence
-	detectConflictsFor(ctx, evidence.id);
+  // Check for conflicts with this new evidence
+  detectConflictsFor(ctx, evidence.id);
 
-	return evidence.id;
+  return evidence.id;
 }
 
 /**
  * Get all evidence for a given context (optional filter by source).
  */
 export function getEvidence(
-	ctx: ExtensionContext,
-	{ source, project, minConfidence, maxAgeMs }:
-		{ source?: EvidenceSource; project?: string; minConfidence?: number; maxAgeMs?: number } = {},
+  ctx: ExtensionContext,
+  {
+    source,
+    project,
+    minConfidence,
+    maxAgeMs,
+  }: { source?: EvidenceSource; project?: string; minConfidence?: number; maxAgeMs?: number } = {},
 ): Evidence[] {
-	const state = getState(ctx);
-	const currentProject = ctx.cwd ?? "unknown";
-	let result = state.evidence;
+  const state = getState(ctx);
+  const currentProject = ctx.cwd ?? "unknown";
+  let result = state.evidence;
 
-	if (source) result = result.filter((e) => e.source === source);
-	if (minConfidence !== undefined) result = result.filter((e) => e.confidence >= minConfidence);
-	if (maxAgeMs !== undefined) result = result.filter((e) => Date.now() - e.timestamp <= maxAgeMs);
+  if (source) result = result.filter((e) => e.source === source);
+  if (minConfidence !== undefined) result = result.filter((e) => e.confidence >= minConfidence);
+  if (maxAgeMs !== undefined) result = result.filter((e) => Date.now() - e.timestamp <= maxAgeMs);
 
-	// HaluMem (2511.03506): Cross-session isolation — project-aware filtering
-	if (project !== undefined) {
-		result = result.filter((e) => e.project === project);
-	} else if (source === undefined) {
-		// Default: prefer current project, allow legacy (project="unknown"), allow recent cross-project
-		result = result.filter((e) => {
-			if (!e.project || e.project === currentProject || e.project === "unknown") return true;
-			// Cross-project: only if <1h old and high confidence
-			const ageMs = Date.now() - e.timestamp;
-			return ageMs < 3600000 && e.confidence >= 0.8;
-		});
-	}
+  // HaluMem (2511.03506): Cross-session isolation — project-aware filtering
+  if (project !== undefined) {
+    result = result.filter((e) => e.project === project);
+  } else if (source === undefined) {
+    // Default: prefer current project, allow legacy (project="unknown"), allow recent cross-project
+    result = result.filter((e) => {
+      if (!e.project || e.project === currentProject || e.project === "unknown") return true;
+      // Cross-project: only if <1h old and high confidence
+      const ageMs = Date.now() - e.timestamp;
+      return ageMs < 3600000 && e.confidence >= 0.8;
+    });
+  }
 
-	return result;
+  return result;
 }
 
 /**
  * Get unresolved conflicts.
  */
 export function getUnresolvedConflicts(ctx: ExtensionContext): Conflict[] {
-	return getState(ctx).conflicts.filter((c) => c.verdict === "unresolved");
+  return getState(ctx).conflicts.filter((c) => c.verdict === "unresolved");
 }
 
 /**
  * Get all conflicts.
  */
 export function getAllConflicts(ctx: ExtensionContext): Conflict[] {
-	return [...getState(ctx).conflicts];
+  return [...getState(ctx).conflicts];
 }
 
 /**
@@ -242,40 +329,41 @@ export function getAllConflicts(ctx: ExtensionContext): Conflict[] {
  * evidence is injected without source/TTL tags. This formatter adds markers so the
  * agent can distinguish memory from fresh context.
  */
-export function formatEvidenceWithProvenance(
-	evidence: Evidence[],
-	includeProject = true,
-): string {
-	if (!evidence.length) return "(no relevant evidence)";
-	return evidence.map((e) => {
-		const ageMs = Date.now() - e.timestamp;
-		const ageLabel = ageMs < 60000
-			? `${Math.round(ageMs / 1000)}s ago`
-			: ageMs < 3600000
-				? `${Math.round(ageMs / 60000)}m ago`
-				: `${Math.round(ageMs / 3600000)}h ago`;
-		const provenance = includeProject && e.project && e.project !== "unknown"
-			? `[EVIDENCE ${e.source} project=${e.project} ${ageLabel}] `
-			: `[EVIDENCE ${e.source} ${ageLabel}] `;
-		return `${provenance}${e.claim}`;
-	}).join("\n");
+export function formatEvidenceWithProvenance(evidence: Evidence[], includeProject = true): string {
+  if (!evidence.length) return "(no relevant evidence)";
+  return evidence
+    .map((e) => {
+      const ageMs = Date.now() - e.timestamp;
+      const ageLabel =
+        ageMs < 60000
+          ? `${Math.round(ageMs / 1000)}s ago`
+          : ageMs < 3600000
+            ? `${Math.round(ageMs / 60000)}m ago`
+            : `${Math.round(ageMs / 3600000)}h ago`;
+      const provenance =
+        includeProject && e.project && e.project !== "unknown"
+          ? `[EVIDENCE ${e.source} project=${e.project} ${ageLabel}] `
+          : `[EVIDENCE ${e.source} ${ageLabel}] `;
+      return `${provenance}${e.claim}`;
+    })
+    .join("\n");
 }
 
 /**
  * Resolve a conflict with a verdict.
  */
 export function resolveConflict(
-	ctx: ExtensionContext,
-	conflictId: string,
-	verdict: "resolved_for" | "resolved_against" | "uncertain",
-	resolvedBy: string,
+  ctx: ExtensionContext,
+  conflictId: string,
+  verdict: "resolved_for" | "resolved_against" | "uncertain",
+  resolvedBy: string,
 ): void {
-	const state = getState(ctx);
-	const conflict = state.conflicts.find((c) => c.id === conflictId);
-	if (!conflict) return;
-	conflict.verdict = verdict;
-	conflict.resolvedBy = resolvedBy;
-	conflict.resolvedAt = Date.now();
+  const state = getState(ctx);
+  const conflict = state.conflicts.find((c) => c.id === conflictId);
+  if (!conflict) return;
+  conflict.verdict = verdict;
+  conflict.resolvedBy = resolvedBy;
+  conflict.resolvedAt = Date.now();
 }
 
 /**
@@ -284,98 +372,101 @@ export function resolveConflict(
  * Returns newly detected conflicts.
  */
 export function detectConflicts(ctx: ExtensionContext): Conflict[] {
-	const state = getState(ctx);
-	const evidence = state.evidence;
-	const newConflicts: Conflict[] = [];
+  const state = getState(ctx);
+  const evidence = state.evidence;
+  const newConflicts: Conflict[] = [];
 
-	for (let i = 0; i < evidence.length; i++) {
-		for (let j = i + 1; j < evidence.length; j++) {
-			const a = evidence[i];
-			const b = evidence[j];
+  for (let i = 0; i < evidence.length; i++) {
+    for (let j = i + 1; j < evidence.length; j++) {
+      const a = evidence[i];
+      const b = evidence[j];
 
-			if (a.source === b.source) continue;
+      if (a.source === b.source) continue;
 
-			const overlap = tokenOverlap(a.normalized, b.normalized);
-			if (overlap < 0.3) continue;
+      const overlap = tokenOverlap(a.normalized, b.normalized);
+      if (overlap < 0.3) continue;
 
-			const reliabilityDiff = Math.abs(a.reliability - b.reliability);
-			if (reliabilityDiff < 0.02) continue;
+      const reliabilityDiff = Math.abs(a.reliability - b.reliability);
+      if (reliabilityDiff < 0.02) continue;
 
-			const existing = state.conflicts.find(
-				(c) =>
-					c.for.some((e) => e.id === a.id || e.id === b.id) ||
-					c.against.some((e) => e.id === a.id || e.id === b.id),
-			);
-			if (existing) continue;
+      const existing = state.conflicts.find(
+        (c) =>
+          c.for.some((e) => e.id === a.id || e.id === b.id) ||
+          c.against.some((e) => e.id === a.id || e.id === b.id),
+      );
+      if (existing) continue;
 
-			// Higher reliability goes in "for"
-			const forEvidence = a.reliability > b.reliability ? [a] : [b];
-			const againstEvidence = a.reliability > b.reliability ? [b] : [a];
+      // Higher reliability goes in "for"
+      const forEvidence = a.reliability > b.reliability ? [a] : [b];
+      const againstEvidence = a.reliability > b.reliability ? [b] : [a];
 
-			const conflict: Conflict = {
-				id: `c${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-				claim: overlap >= 0.5 ? a.claim : `${a.claim.slice(0, 40)}... vs ${b.claim.slice(0, 40)}...`,
-				for: forEvidence,
-				against: againstEvidence,
-				verdict: "unresolved",
-				detectedAt: Date.now(),
-				classification: classifyConflict(forEvidence, againstEvidence),
-			};
-			state.conflicts.push(conflict);
-			newConflicts.push(conflict);
-		}
-	}
+      const conflict: Conflict = {
+        id: `c${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        claim:
+          overlap >= 0.5 ? a.claim : `${a.claim.slice(0, 40)}... vs ${b.claim.slice(0, 40)}...`,
+        for: forEvidence,
+        against: againstEvidence,
+        verdict: "unresolved",
+        detectedAt: Date.now(),
+        classification: classifyConflict(forEvidence, againstEvidence),
+      };
+      state.conflicts.push(conflict);
+      newConflicts.push(conflict);
+    }
+  }
 
-	if (state.conflicts.length > 20) {
-		state.conflicts = state.conflicts.slice(-10);
-	}
+  if (state.conflicts.length > 20) {
+    state.conflicts = state.conflicts.slice(-10);
+  }
 
-	return newConflicts;
+  return newConflicts;
 }
 
 /** Detect conflicts for a single new evidence entry */
 function detectConflictsFor(ctx: ExtensionContext, evidenceId: string): Conflict[] {
-	const state = getState(ctx);
-	const newEvidence = state.evidence.find((e) => e.id === evidenceId);
-	if (!newEvidence) return [];
+  const state = getState(ctx);
+  const newEvidence = state.evidence.find((e) => e.id === evidenceId);
+  if (!newEvidence) return [];
 
-	const newConflicts: Conflict[] = [];
-	for (const existing of state.evidence) {
-		if (existing.id === evidenceId) continue;
-		if (existing.source === newEvidence.source) continue;
+  const newConflicts: Conflict[] = [];
+  for (const existing of state.evidence) {
+    if (existing.id === evidenceId) continue;
+    if (existing.source === newEvidence.source) continue;
 
-		const overlap = tokenOverlap(newEvidence.normalized, existing.normalized);
-		if (overlap < 0.3) continue;
+    const overlap = tokenOverlap(newEvidence.normalized, existing.normalized);
+    if (overlap < 0.3) continue;
 
-		const reliabilityDiff = Math.abs(newEvidence.reliability - existing.reliability);
-		if (reliabilityDiff < 0.02) continue;
+    const reliabilityDiff = Math.abs(newEvidence.reliability - existing.reliability);
+    if (reliabilityDiff < 0.02) continue;
 
-		const existingConflict = state.conflicts.find(
-			(c) =>
-				c.for.some((e) => e.id === evidenceId || e.id === existing.id) ||
-				c.against.some((e) => e.id === evidenceId || e.id === existing.id),
-		);
-		if (existingConflict) continue;
+    const existingConflict = state.conflicts.find(
+      (c) =>
+        c.for.some((e) => e.id === evidenceId || e.id === existing.id) ||
+        c.against.some((e) => e.id === evidenceId || e.id === existing.id),
+    );
+    if (existingConflict) continue;
 
-		const forEvidence = newEvidence.reliability > existing.reliability ? [newEvidence] : [existing];
-		const againstEvidence = newEvidence.reliability > existing.reliability ? [existing] : [newEvidence];
+    const forEvidence = newEvidence.reliability > existing.reliability ? [newEvidence] : [existing];
+    const againstEvidence =
+      newEvidence.reliability > existing.reliability ? [existing] : [newEvidence];
 
-		const conflict: Conflict = {
-			id: `c${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-			claim: overlap >= 0.5
-				? newEvidence.claim
-				: `${newEvidence.claim.slice(0, 40)}... vs ${existing.claim.slice(0, 40)}...`,
-			for: forEvidence,
-			against: againstEvidence,
-			verdict: "unresolved",
-			detectedAt: Date.now(),
-			classification: classifyConflict(forEvidence, againstEvidence),
-		};
-		state.conflicts.push(conflict);
-		newConflicts.push(conflict);
-	}
+    const conflict: Conflict = {
+      id: `c${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      claim:
+        overlap >= 0.5
+          ? newEvidence.claim
+          : `${newEvidence.claim.slice(0, 40)}... vs ${existing.claim.slice(0, 40)}...`,
+      for: forEvidence,
+      against: againstEvidence,
+      verdict: "unresolved",
+      detectedAt: Date.now(),
+      classification: classifyConflict(forEvidence, againstEvidence),
+    };
+    state.conflicts.push(conflict);
+    newConflicts.push(conflict);
+  }
 
-	return newConflicts;
+  return newConflicts;
 }
 
 /**
@@ -383,23 +474,23 @@ function detectConflictsFor(ctx: ExtensionContext, evidenceId: string): Conflict
  * XoT Stage 2: Faithful reasoning — surfaces disagreement rather than picking sides.
  */
 export function formatConflictMessage(conflict: Conflict): string {
-	const forSource = conflict.for[0]?.source || "unknown";
-	const againstSource = conflict.against[0]?.source || "unknown";
-	const forRel = (conflict.for[0]?.reliability ?? 0).toFixed(2);
-	const againstRel = (conflict.against[0]?.reliability ?? 0).toFixed(2);
+  const forSource = conflict.for[0]?.source || "unknown";
+  const againstSource = conflict.against[0]?.source || "unknown";
+  const forRel = (conflict.for[0]?.reliability ?? 0).toFixed(2);
+  const againstRel = (conflict.against[0]?.reliability ?? 0).toFixed(2);
 
-	return (
-		`[conflict:${conflict.classification}] Sources disagree: "${conflict.claim.slice(0, 60)}". ` +
-		`${forSource} (rel ${forRel}) vs ${againstSource} (rel ${againstRel}). ` +
-		`Consider acknowledging: "Sources disagree on X. Based on Y, I conclude Z."`
-	);
+  return (
+    `[conflict:${conflict.classification}] Sources disagree: "${conflict.claim.slice(0, 60)}". ` +
+    `${forSource} (rel ${forRel}) vs ${againstSource} (rel ${againstRel}). ` +
+    `Consider acknowledging: "Sources disagree on X. Based on Y, I conclude Z."`
+  );
 }
 
 /**
  * Clear all evidence and conflicts (for testing or session reset).
  */
 export function clearEvidence(ctx: ExtensionContext): void {
-	const state = getState(ctx);
-	state.evidence = [];
-	state.conflicts = [];
+  const state = getState(ctx);
+  state.evidence = [];
+  state.conflicts = [];
 }

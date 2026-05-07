@@ -4,11 +4,11 @@
 
 ## Key Functions
 
-| Function | Description |
-|----------|-------------|
-| `loadBeliefs()` | Load beliefs from disk (`~/.pi/agent/beliefs.json`) |
-| `saveBeliefs(beliefs)` | Save beliefs to disk |
-| `mergeBeliefs(existing, incoming)` | Merge new beliefs into existing set (dedup by key) |
+| Function                           | Description                                         |
+| ---------------------------------- | --------------------------------------------------- |
+| `loadBeliefs()`                    | Load beliefs from disk (`~/.pi/agent/beliefs.json`) |
+| `saveBeliefs(beliefs)`             | Save beliefs to disk                                |
+| `mergeBeliefs(existing, incoming)` | Merge new beliefs into existing set (dedup by key)  |
 
 ## Key Patterns
 

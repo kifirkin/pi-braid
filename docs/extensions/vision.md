@@ -18,8 +18,8 @@ None — the tool is called directly by the agent.
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
+| Tool            | Description                                                                                                                                                                              |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `analyze_image` | Analyze image file. Auto-detects: pixel art, spritesheets, grid layouts. Extracts: text, visual elements, technical details, color palettes. Reports dimensions + aspect ratio warnings. |
 
 ## Key Patterns

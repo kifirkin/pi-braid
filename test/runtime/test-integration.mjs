@@ -198,8 +198,11 @@ console.log("\n[8] Heartbeat module registry");
 		assert(src.includes(name), `Module ${name} exists in heartbeat`);
 	}
 	assert(src.includes("evolverModule"), "Evolver module registered");
-	assert(src.includes("retrieveByRUMS"), "RUMS retrieval imported");
 	assert(src.includes("builtInModules"), "Built-in modules array");
+
+	// Verify retrieveByRUMS in the recaller module file
+	const recallerSrc = fs.readFileSync(`${ROOT}/src/extensions/heartbeat/heartbeat-scheduler/modules/recaller.ts`, "utf8");
+	assert(recallerSrc.includes("retrieveByRUMS"), "RUMS retrieval imported in recaller module");
 }
 
 // Summary

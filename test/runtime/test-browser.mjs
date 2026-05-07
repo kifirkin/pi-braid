@@ -1,9 +1,13 @@
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import * as os from "node:os";
 
 const ROOT = join(import.meta.dirname, "../..");
-const src = readFileSync(join(ROOT, "src/extensions/browser/browser/index.ts"), "utf-8");
+const src = readFileSync(
+  join(os.homedir(), ".pi/agent/extensions/pi-browser/index.ts"),
+  "utf-8"
+);
 
 {
 	console.log("=== Browser Extension ===");

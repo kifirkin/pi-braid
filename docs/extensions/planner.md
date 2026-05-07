@@ -10,27 +10,27 @@ Budget-aware planning tool. Estimates task cost before starting and tracks progr
 
 ## Tools (8)
 
-| Tool | Description |
-|------|-------------|
+| Tool               | Description                                  |
+| ------------------ | -------------------------------------------- |
 | `plan_with_budget` | Plan task with phases, estimate calls/tokens |
-| `check_budget` | Show current budget usage |
-| `set_budget` | Set/modify budget, optionally reset |
+| `check_budget`     | Show current budget usage                    |
+| `set_budget`       | Set/modify budget, optionally reset          |
 
 Plus 5 implicit planning tools (analyze, implement, verify, review, document).
 
 ## Budget Model
 
-| Tool | Estimated Cost |
-|------|----------------|
-| `bash` | 3 calls |
-| `repl` | 5 calls |
-| `read` | 1 call |
-| `grep/find` | 1 call |
-| `write/edit` | 3 calls |
-| `think` | 2 calls |
-| `web_fetch` | 5 calls |
-| `browser_navigate` | 4 calls |
-| Default | 2 calls |
+| Tool               | Estimated Cost |
+| ------------------ | -------------- |
+| `bash`             | 3 calls        |
+| `repl`             | 5 calls        |
+| `read`             | 1 call         |
+| `grep/find`        | 1 call         |
+| `write/edit`       | 3 calls        |
+| `think`            | 2 calls        |
+| `web_fetch`        | 5 calls        |
+| `browser_navigate` | 4 calls        |
+| Default            | 2 calls        |
 
 Task cost heuristic: `phases × 8 + words`, where `phases = min(5, max(1, words/10))`.
 
@@ -38,8 +38,8 @@ Task cost heuristic: `phases × 8 + words`, where `phases = min(5, max(1, words/
 
 ```typescript
 interface BudgetState {
-  budget: number;      // default: 50
-  spent: number;       // cumulative tool calls
+  budget: number; // default: 50
+  spent: number; // cumulative tool calls
   checkpoints: BudgetCheckpoint[];
   warnings: string[];
 }

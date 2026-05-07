@@ -5,18 +5,19 @@
 ## Architecture
 
 Operates on the same session-scoped state as evidence-pool. Manages a QA workflow:
+
 1. Conflict detected → generate clarifying question
 2. Agent/user answers → evaluate against both conflicting claims
 3. One side accepted, one rejected, or both merged
 
 ## Key Functions
 
-| Function | Description |
-|----------|-------------|
-| `classifyConflict(e1, e2)` | Classify conflict type: direct, implication, reliability |
-| `normalize(text)` | Normalize text for comparison (lowercase, trim, collapse whitespace) |
-| `tokens(text)` | Split into tokens using word boundaries |
-| `tokenOverlap(e1, e2)` | Compute Jaccard similarity between two evidence claims |
+| Function                   | Description                                                          |
+| -------------------------- | -------------------------------------------------------------------- |
+| `classifyConflict(e1, e2)` | Classify conflict type: direct, implication, reliability             |
+| `normalize(text)`          | Normalize text for comparison (lowercase, trim, collapse whitespace) |
+| `tokens(text)`             | Split into tokens using word boundaries                              |
+| `tokenOverlap(e1, e2)`     | Compute Jaccard similarity between two evidence claims               |
 
 ## Key Patterns
 

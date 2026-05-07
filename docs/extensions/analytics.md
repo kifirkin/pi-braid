@@ -16,31 +16,32 @@ A/B experiment variant tracking (`analytics:setVariant` command). Variant name (
 
 ## Events Handled
 
-| Event | Handler |
-|-------|---------|
-| `session_start` | Initialize session ID, clear pending tool calls, ensure logs directory |
-| `tool_execution_start` | Track start time + tool name per `toolCallId` |
-| `tool_execution_end` | Record duration, success/failure, update metrics |
-| `session_shutdown` | Flush remaining metrics to disk |
+| Event                  | Handler                                                                |
+| ---------------------- | ---------------------------------------------------------------------- |
+| `session_start`        | Initialize session ID, clear pending tool calls, ensure logs directory |
+| `tool_execution_start` | Track start time + tool name per `toolCallId`                          |
+| `tool_execution_end`   | Record duration, success/failure, update metrics                       |
+| `session_shutdown`     | Flush remaining metrics to disk                                        |
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
-| `get-session-metrics` | Structured JSON: tool counts, durations, sequences, success rates for current session |
-| `get-tool-reliability` | Historical tool success rates from analytics export file |
+| Tool                   | Description                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------- |
+| `get-session-metrics`  | Structured JSON: tool counts, durations, sequences, success rates for current session |
+| `get-tool-reliability` | Historical tool success rates from analytics export file                              |
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `/analytics` | Show current session: tool counts, avg duration, common sequences |
-| `/analytics:all` | Show all historical sessions aggregated: top tools, sequences |
-| `/analytics:setVariant` | Set A/B experiment variant name for this session |
+| Command                 | Description                                                       |
+| ----------------------- | ----------------------------------------------------------------- |
+| `/analytics`            | Show current session: tool counts, avg duration, common sequences |
+| `/analytics:all`        | Show all historical sessions aggregated: top tools, sequences     |
+| `/analytics:setVariant` | Set A/B experiment variant name for this session                  |
 
 ## State
 
 Module-level singleton (`state`):
+
 ```typescript
 {
   sessionId: string,

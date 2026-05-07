@@ -6,36 +6,41 @@ let passed = 0;
 let failed = 0;
 const assert = (cond, msg) => cond ? (passed++, console.log("  ✅ "+msg)) : (failed++, console.log("  ❌ "+msg));
 
-console.log("\n[1] Module can be loaded");
+console.log("\n[1] Module exports");
 {
 	try {
 		const mod = await import(`${ROOT}/dist/extensions/heartbeat/heartbeat-scheduler/index.js`);
-		// Default is the factory function — can't call without ExtensionAPI
 		assert(typeof mod.recallerModule === "object", "recallerModule exported");
 		assert(mod.dreamerModule != null, "dreamerModule exported");
 		assert(mod.contextHygieneModule != null, "contextHygieneModule exported");
+		assert(mod.measurementModule != null, "measurementModule exported");
+		assert(mod.evolverModule != null, "evolverModule exported");
+		assert(mod.budgetModule != null, "budgetModule exported");
 	} catch (e) {
-		// Expected: pi-coding-agent module not resolvable in Node.js
 		assert(true, "pi-coding-agent dependency prevents standalone import (expected)");
 	}
 }
 
-console.log("\n[2] Heartbeat logic via source analysis");
+console.log("\n[2] Heartbeat logic via module source analysis");
 {
-	// Test the shouldActivate logic by inspecting the source
 	const fs = await import("fs");
-	const src = fs.readFileSync(`${ROOT}/src/extensions/heartbeat/heartbeat-scheduler/index.ts`, "utf8");
-	
-	assert(src.includes("shouldActivate(context"), "has shouldActivate method");
-	assert(src.includes("lastActivation.get(\"recaller\")"), "recaller checks lastActivation");
-	assert(src.includes("turnsSinceRecall") || src.includes("turnsSinceRecall"), "recaller checks turnsSinceRecall");
-	assert(src.includes("totalToolCalls") && src.includes("shouldActivate"), "recaller checks tool calls");
-	assert(src.includes("measurementModule"), "has measurementModule");
-	assert(src.includes("priority: 0.7"), "measurement priority 0.7");
-	assert(src.includes("getExtensionState"), "uses getExtensionState (session-scoped)");
-	assert(src.includes("heartbeat_status"), "has heartbeat_status tool");
-	assert(src.includes("turn_end"), "listens to turn_end event");
-	assert(src.includes("session_start"), "listens to session_start event");
+
+	// Check index.ts (extension wiring)
+	const idx = fs.readFileSync(`${ROOT}/src/extensions/heartbeat/heartbeat-scheduler/index.ts`, "utf8");
+	assert(idx.includes("shouldActivate"), "extension uses shouldActivate");
+	assert(idx.includes("turn_end"), "listens to turn_end event");
+	assert(idx.includes("session_start"), "listens to session_start event");
+
+	// Check individual module files for specific logic
+	const recaller = fs.readFileSync(`${ROOT}/src/extensions/heartbeat/heartbeat-scheduler/modules/recaller.ts`, "utf8");
+	assert(recaller.includes("lastActivation.get(\"recaller\")"), "recaller checks lastActivation");
+	assert(recaller.includes("turnsSinceRecall"), "recaller checks turnsSinceRecall");
+	assert(recaller.includes("totalToolCalls") && recaller.includes("shouldActivate"), "recaller checks tool calls");
+	assert(recaller.includes("getExtensionState") || recaller.includes("getMemoryState"), "recaller uses session-scoped state");
+
+	const measurement = fs.readFileSync(`${ROOT}/src/extensions/heartbeat/heartbeat-scheduler/modules/measurement.ts`, "utf8");
+	assert(measurement.includes("measurementModule"), "has measurementModule");
+	assert(measurement.includes("priority: 0.7"), "measurement priority 0.7");
 }
 
 console.log("\n[3] Three memory stores source analysis");
@@ -60,9 +65,11 @@ console.log("\n[3] Three memory stores source analysis");
 console.log("\n[4] Cross-store integration");
 {
 	const fs = await import("fs");
-	// Check that heartbeat imports from three-memory-stores
-	const hbSrc = fs.readFileSync(`${ROOT}/src/extensions/heartbeat/heartbeat-scheduler/index.ts`, "utf8");
-	assert(hbSrc.includes("three-memory-stores"), "heartbeat imports from three-memory-stores");
+	// Check that heartbeat modules import from three-memory-stores
+	const recaller = fs.readFileSync(`${ROOT}/src/extensions/heartbeat/heartbeat-scheduler/modules/recaller.ts`, "utf8");
+	const dreamer = fs.readFileSync(`${ROOT}/src/extensions/heartbeat/heartbeat-scheduler/modules/dreamer.ts`, "utf8");
+	const evolver = fs.readFileSync(`${ROOT}/src/extensions/heartbeat/heartbeat-scheduler/modules/evolver.ts`, "utf8");
+	assert(recaller.includes("three-memory-stores") || dreamer.includes("three-memory-stores") || evolver.includes("three-memory-stores"), "heartbeat modules import from three-memory-stores");
 }
 
 console.log("\n"+("=".repeat(50)));

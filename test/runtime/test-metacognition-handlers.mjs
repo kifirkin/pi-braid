@@ -110,7 +110,7 @@ async function main() {
 		assert(src.includes("createHypothesizeTool"));
 		assert(src.includes("createFinalizeTool"));
 		assert(src.includes("registerTool(createThinkTool()"));
-		assert(src.includes("registerTool(createFinalizeTool"), "index.ts should register finalize tool");
+		assert(src.includes("createFinalizeTool("), "index.ts should register finalize tool");
 	});
 
 	const { evaluateCognition } = await import(`${ROOT}/dist/lib/cognition-evaluator.js`);
@@ -138,6 +138,96 @@ async function main() {
 		assert(r.overall > 60, `Expected >60, got ${r.overall}`);
 		assert(r.reasoningDepth > 60);
 		assert(r.hypothesisQuality > 60);
+	});
+
+	// ── Verify handler — heuristic checks ──────────────────────────────────────
+	console.log("\n[3] Verify handler — heuristic checks");
+	const { heuristicCheck } = await import(
+		`${ROOT}/dist/extensions/core/metacognition/handlers/verify.js`
+	);
+
+	check("heuristicCheck: detects unmatched braces in code", () => {
+		// Genuinely unbalanced: 2 opens, 1 close
+		const result = heuristicCheck("code", "function foo() { return { a: 1; return { b: 2");
+		assert(result.issues.some(i => i.includes("Unmatched") || i.includes("brace")));
+		assert(result.checksRun.includes("syntax"));
+	});
+
+	check("heuristicCheck: detects eval() security risk", () => {
+		const result = heuristicCheck("code", "const result = eval(userInput);");
+		assert(result.issues.some(i => i.includes("eval") || i.includes("security") || i.includes("dangerous")));
+	});
+
+	check("heuristicCheck: detects innerHTML XSS risk", () => {
+		const result = heuristicCheck("code", "element.innerHTML = userData;");
+		assert(result.issues.some(i => i.includes("innerHTML") || i.includes("XSS")));
+	});
+
+	check("heuristicCheck: detects TODO markers", () => {
+		const result = heuristicCheck("code", "// TODO: fix this later");
+		assert(result.issues.some(i => i.includes("TODO")));
+	});
+
+	check("heuristicCheck: clean code passes with no issues", () => {
+		const result = heuristicCheck("code", "const x = { a: 1, b: 2 };\nreturn x.a + x.b;");
+		assert(result.issues.length === 0);
+	});
+
+	check("heuristicCheck: absolute language in reasoning", () => {
+		const result = heuristicCheck("reasoning", "This is always broken and never works correctly.");
+		assert(result.issues.some(i => i.includes("Absolute") || i.includes("overstate")));
+	});
+
+	check("heuristicCheck: placeholder in result", () => {
+		const result = heuristicCheck("result", "The answer is [TODO].");
+		assert(result.issues.some(i => i.includes("placeholder") || i.includes("incomplete")));
+	});
+
+	check("heuristicCheck: plan without exit criteria flagged", () => {
+		const result = heuristicCheck("plan", "1. First step\n2. Second step\n3. Third step");
+		assert(result.issues.some(i => i.includes("completion") || i.includes("failure") || i.includes("criteria")));
+	});
+
+	// ── Think tool — ODAR complexity estimation ──────────────────────────────────
+	console.log("\n[4] Think tool — ODAR complexity estimation");
+	const { estimateComplexity, complexityToDepth } = await import(
+		`${ROOT}/dist/extensions/core/metacognition/handlers/think.js`
+	);
+
+	check("estimateComplexity: short imperative → quick", () => {
+		const c = estimateComplexity("Fix the bug");
+		assert(c < 0.3, `Expected <0.3, got ${c}`);
+	});
+
+	check("estimateComplexity: architecture/middleware → deep", () => {
+		// Multiple high-complexity signals: architecture + middleware + async + deploy + security
+		const c = estimateComplexity("Design a middleware plugin architecture for the API gateway with async authentication, JWT encryption, and deploy to Kubernetes with CI/CD pipeline");
+		assert(c >= 0.6, `Expected ≥0.6, got ${c}`);
+	});
+
+	check("estimateComplexity: function/class code → medium", () => {
+		const c = estimateComplexity("Write a function that handles async errors with a callback pattern");
+		assert(c >= 0.3 && c < 0.7, `Expected 0.3-0.7, got ${c}`);
+	});
+
+	check("estimateComplexity: multi-step → higher complexity", () => {
+		const c = estimateComplexity("1. Install dependencies\n2. Configure the module\n3. Write tests\n4. Deploy to production");
+		assert(c > 0.1, `Expected >0.1, got ${c}`);
+	});
+
+	check("complexityToDepth: 0-0.3 → quick", () => {
+		assert(complexityToDepth(0.1) === "quick");
+		assert(complexityToDepth(0.29) === "quick");
+	});
+
+	check("complexityToDepth: 0.3-0.7 → standard", () => {
+		assert(complexityToDepth(0.3) === "standard");
+		assert(complexityToDepth(0.5) === "standard");
+	});
+
+	check("complexityToDepth: 0.7+ → deep", () => {
+		assert(complexityToDepth(0.7) === "deep");
+		assert(complexityToDepth(0.98) === "deep");
 	});
 
 	// Summary

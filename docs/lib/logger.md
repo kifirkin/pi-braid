@@ -4,13 +4,13 @@
 
 ## Key Functions
 
-| Function | Description |
-|----------|-------------|
+| Function               | Description                            |
+| ---------------------- | -------------------------------------- |
 | `createLogger(module)` | Create a logger with `[module]` prefix |
-| `.info(...args)` | Info-level log |
-| `.warn(...args)` | Warning-level log |
-| `.debug(...args)` | Debug-level log |
-| `.error(...args)` | Error-level log |
+| `.info(...args)`       | Info-level log                         |
+| `.warn(...args)`       | Warning-level log                      |
+| `.debug(...args)`      | Debug-level log                        |
+| `.error(...args)`      | Error-level log                        |
 
 ## Usage
 

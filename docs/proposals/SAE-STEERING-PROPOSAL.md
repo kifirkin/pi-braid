@@ -17,6 +17,7 @@ pi-braid currently controls agent behavior through **prompt-based framing** (ide
 4. **API opacity**: We have no visibility into the model's latent activation patterns
 
 Meanwhile, research shows that **SAE-based steering** (operating in the sparse autoencoder latent space of the model) can:
+
 - Modify behavior without prompt pollution
 - Survive context shifts
 - Disentangle specific traits from general capabilities
@@ -34,6 +35,7 @@ Desired (SAE-based):
 ```
 
 Specifically, we want to:
+
 1. **Reduce sycophancy** by suppressing the "follow human preference" circuit
 2. **Increase epistemic stability** by enhancing the "admit uncertainty" circuit
 3. **Increase anti-sycophancy** by suppressing the "agree with human" bias
@@ -42,12 +44,12 @@ Specifically, we want to:
 
 ### API Provider Constraints
 
-| Provider | Model | API Access | Residual Stream | SAE Compatible |
-|----------|-------|------------|-----------------|----------------|
-| stepfun | step-3.5-flash-2603 | Text completion | ❌ No | ❌ No |
-| minimax | MiniMax-M2.7 | Text completion | ❌ No | ❌ No |
-| OpenAI | GPT-4o | Logprobs + embeddings | ⚠️ Partial | ⚠️ via第三方 |
-| Anthropic | Claude | Hidden states | ❌ No | ❌ No |
+| Provider  | Model               | API Access            | Residual Stream | SAE Compatible |
+| --------- | ------------------- | --------------------- | --------------- | -------------- |
+| stepfun   | step-3.5-flash-2603 | Text completion       | ❌ No           | ❌ No          |
+| minimax   | MiniMax-M2.7        | Text completion       | ❌ No           | ❌ No          |
+| OpenAI    | GPT-4o              | Logprobs + embeddings | ⚠️ Partial      | ⚠️ via第三方   |
+| Anthropic | Claude              | Hidden states         | ❌ No           | ❌ No          |
 
 **Problem**: Neither stepfun nor minimax exposes model internals. We only get text output.
 
@@ -56,6 +58,7 @@ Specifically, we want to:
 #### Approach A: Third-Party Model SAE (if we switch to open model)
 
 If we use an open model (e.g., Llama 3 via Ollama, Qwen via local部署), we can:
+
 - Use TransformerLens for activation extraction
 - Apply open-source SAEs (e.g., on huggingface)
 - Implement full YaPO-style steering
@@ -66,6 +69,7 @@ If we use an open model (e.g., Llama 3 via Ollama, Qwen via local部署), we can
 #### Approach B: Indirect Steering via Prompt Engineering
 
 Even without direct SAE access, we can apply the **principles** from SAE research:
+
 - Identify which behavioral circuits are being triggered
 - Design prompts that suppress unwanted circuits without needing access to them
 - Use "contrastive activation" technique: describe the unwanted behavior, then describe the alternative
@@ -76,6 +80,7 @@ Even without direct SAE access, we can apply the **principles** from SAE researc
 #### Approach C: Hybrid — Latent Assessment + Prompt Injection
 
 For each response, use the **model's own confidence signals** (token probabilities from logprobs) as a proxy for latent activation:
+
 - If model shows high uncertainty → boost confidence
 - If model shows sycophancy signal → inject counter-framing
 
@@ -161,12 +166,12 @@ The steering system doesn't replace existing extensions — it enhances them:
 
 ## Metrics
 
-| Metric | Baseline | Target | Measurement |
-|--------|----------|--------|-------------|
-| Sycophancy rate (BeHonest) | ~40% (estimated for stepfun) | <15% | Persona + preference scenarios |
-| Consistency across 10 turns | ~70% (estimated) | >90% | Same question, different formats |
-| Task accuracy preservation | 100% | >95% | Benchmark score vs. no-steering |
-| Epistemic stability | unknown | Measurable baseline | Self-knowledge metric |
+| Metric                      | Baseline                     | Target              | Measurement                      |
+| --------------------------- | ---------------------------- | ------------------- | -------------------------------- |
+| Sycophancy rate (BeHonest)  | ~40% (estimated for stepfun) | <15%                | Persona + preference scenarios   |
+| Consistency across 10 turns | ~70% (estimated)             | >90%                | Same question, different formats |
+| Task accuracy preservation  | 100%                         | >95%                | Benchmark score vs. no-steering  |
+| Epistemic stability         | unknown                      | Measurable baseline | Self-knowledge metric            |
 
 ## Open Questions
 
@@ -192,9 +197,17 @@ The steering system doesn't replace existing extensions — it enhances them:
 
 ## Status
 
-**Not started** — pending feasibility assessment.
+**OBSOLETE** — Superseded by REPE-PROMPT-CONTRAST-PROPOSAL.md. SAE steering requires activation access (residual stream, logprobs) which stepfun/minimax don't expose. RepE-style Prompt Contrast is the correct approach for API-only providers.
 
 The first concrete step is to test whether stepfun/minimax expose any form of token-level probability access. This is a 2-day task.
 
 If they do → full SAE approach.  
 If they don't → indirect prompt-based approach or provider switch consideration.
+
+---
+
+## STATUS: OBSOLETE (2026-04-29)
+
+This approach is **superseded**. API-only providers (stepfun, minimax) don't expose activations or logits — SAE steering requires direct model access that isn't available.
+
+**Correct alternative**: [REPE-PROMPT-CONTRAST-PROPOSAL.md](REPE-PROMPT-CONTRAST-PROPOSAL.md) — text-based contrast vectors using prompt injection, no API changes required.

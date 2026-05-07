@@ -11,6 +11,7 @@ Core pi-braid integration layer — patches the pi host context with pi-braid's 
 ## Architecture
 
 Patches the following pi subsystems:
+
 1. **Context methods** — injects `getUtilityModel()`/`getVisionModel()` via `resolveUtilityModel()`/`resolveVisionModel()` from `lib/model-resolver.ts`
 2. **Command handlers** — `/retry`, `/models`, `/vendor`, `/tools`, `/tool-status`, `/analytics`, `/context-stats`, `/browser-*`, `/model-picker`
 3. **Session manager** — patches `settings.setDefaultModelAndProvider()` to persist model settings
@@ -18,10 +19,10 @@ Patches the following pi subsystems:
 
 ## Events Handled
 
-| Event | Handler |
-|-------|---------|
+| Event           | Handler                                                                                           |
+| --------------- | ------------------------------------------------------------------------------------------------- |
 | `session_start` | Patch runner.createContext, resolve functions, set default model, register commands, refreshTools |
-| `message_end` | Retry interception — detect retry requests and re-route through retry handler |
+| `message_end`   | Retry interception — detect retry requests and re-route through retry handler                     |
 
 ## Key Patterns
 

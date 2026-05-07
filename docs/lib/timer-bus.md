@@ -4,12 +4,12 @@
 
 ## Key Functions
 
-| Function | Description |
-|----------|-------------|
+| Function                          | Description                                 |
+| --------------------------------- | ------------------------------------------- |
 | `setTimer(delayMs, reason, tag?)` | Set a non-blocking timer. Returns timer ID. |
-| `cancelTimer(id)` | Cancel a timer before it fires |
-| `listTimers()` | List all active (non-expired) timers |
-| `onTimerFired(callback)` | Register callback for timer fire events |
+| `cancelTimer(id)`                 | Cancel a timer before it fires              |
+| `listTimers()`                    | List all active (non-expired) timers        |
+| `onTimerFired(callback)`          | Register callback for timer fire events     |
 
 ## Key Patterns
 

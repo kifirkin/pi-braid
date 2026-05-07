@@ -1,5 +1,9 @@
 # Build output
 dist/
+*.d.ts
+*.d.ts.map
+*.js.map
+*.js
 
 # TypeScript incremental build
 *.tsbuildinfo
@@ -31,3 +35,6 @@ Thumbs.db
 # modules
 node_modules/
 __pycache__/
+
+# Pi /export
+pi-session-*

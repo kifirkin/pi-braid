@@ -13,6 +13,7 @@ Context window would exceed 2013 tokens
 **Cause**: Compaction retries were previously creating hidden turns (~200 tokens each), accelerating a positive feedback cascade into overflow. Fixed in v0.14.0.
 
 **Resolution**:
+
 - If seen: restart the session (context is too bloated to recover)
 - Prevention: compaction retries now use `display:false` messages and concurrency guards
 - Emergency rotation triggers at 75% context threshold
@@ -90,6 +91,7 @@ error: Could not resolve "fs"
 **Cause**: Build tool configured for browser instead of Node.
 
 **Resolution**: Use `tsc` (Node by default):
+
 ```bash
 npm run build
 ```
@@ -123,6 +125,7 @@ Could not connect to Chrome. Is Chrome running with --remote-debugging-port=9222
 **Cause**: Chrome not running, or debugging port not exposed.
 
 **Resolution**: Run `/browser-start` to spawn Chrome automatically, or start Chrome manually:
+
 ```bash
 /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222
 ```
@@ -178,6 +181,7 @@ Timer delay must be between 1 and 3600 seconds
 ## Diagnostics
 
 To diagnose active errors:
+
 ```bash
 # List recent errors
 error_list --limit 10
@@ -190,6 +194,7 @@ error_stats
 ```
 
 For session-level diagnostics:
+
 ```
 context_audit --detailLevel full
 ```

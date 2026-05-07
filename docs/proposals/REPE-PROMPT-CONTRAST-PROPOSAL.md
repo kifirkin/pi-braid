@@ -10,11 +10,13 @@
 ## The Constraint
 
 Both stepfun and minimax are **API-only** — no access to:
+
 - Residual stream / hidden states
 - Logprobs
 - Activation hooks
 
 This blocks:
+
 - ❌ RepE contrast vector injection (needs residual stream)
 - ❌ SAE steering (needs hidden state access)
 - ❌ UniR logit addition (needs logprobs)
@@ -25,9 +27,11 @@ This blocks:
 ## The Solution: RepE-Style Prompt Contrast
 
 **RepE theory** says:
+
 > The "honesty vector" exists as a DIRECTION in the residual stream. Adding the vector shifts behavior.
 
 **Prompt contrast** applies the same PRINCIPLE via text instead of activations:
+
 ```
 RepE (activation-level):
   h_new = h + α · v_honesty
@@ -42,12 +46,12 @@ Prompt Contrast (text-level):
 
 ### The Contrast Framework
 
-| RepE Method | API-Only Alternative | Effect |
-|-------------|---------------------|--------|
-| Contrast vector (h + α·v) | "Prioritize TRUTH over AGREEMENT" | Subtract agreeableness direction |
-| Reading vector (PCA probe) | Text-based trust detection prompt | Detect if model is lying |
-| LoRRA (PEFT adapter) | Hard-coded identity framing | Persistent behavioral anchors |
-| LAT scan | N/A — needs activations | Blocked |
+| RepE Method                | API-Only Alternative              | Effect                           |
+| -------------------------- | --------------------------------- | -------------------------------- |
+| Contrast vector (h + α·v)  | "Prioritize TRUTH over AGREEMENT" | Subtract agreeableness direction |
+| Reading vector (PCA probe) | Text-based trust detection prompt | Detect if model is lying         |
+| LoRRA (PEFT adapter)       | Hard-coded identity framing       | Persistent behavioral anchors    |
+| LAT scan                   | N/A — needs activations           | Blocked                          |
 
 ### The Key Phrases (From RepE Research)
 
@@ -83,6 +87,7 @@ KNOWLEDGE BOUNDARY PHRASE:
    - Truthfulness circuit: "state what is actually correct"
 
 3. **Add contrast phrase to system prompt**:
+
    ```
    [Original identity framing]
    +
@@ -100,6 +105,7 @@ KNOWLEDGE BOUNDARY PHRASE:
 ### Week 1: Prompt Contrast Framework
 
 **Day 1-2**: Build contrast phrase library
+
 ```
 - Create 5 contrast phrases targeting different sycophancy dimensions
 - Test each phrase independently on simple scenarios
@@ -107,6 +113,7 @@ KNOWLEDGE BOUNDARY PHRASE:
 ```
 
 **Day 3-4**: Integrate into pi-braid prompt-builder
+
 ```
 - Add "CONTRAST_VECTORS" section to prompt-builder
 - Each contrast vector = a phrase that suppresses a specific circuit
@@ -114,6 +121,7 @@ KNOWLEDGE BOUNDARY PHRASE:
 ```
 
 **Day 5**: Benchmark test
+
 ```
 - Run pi-braid benchmark with/without contrast vectors
 - Measure: task accuracy + sycophancy rate
@@ -123,6 +131,7 @@ KNOWLEDGE BOUNDARY PHRASE:
 ### Week 2: Text-Based Lie Detection
 
 **Day 6-8**: Build trust classifier
+
 ```
 - Use minimax embeddings (embo-01 works, 1024 dim)
 - Create contrastive text pairs: honest response vs. sycophantic response
@@ -131,6 +140,7 @@ KNOWLEDGE BOUNDARY PHRASE:
 ```
 
 **Day 9-10**: Wire into heartbeat
+
 ```
 - On each heartbeat, sample the last few responses
 - Run through trust classifier
@@ -155,6 +165,7 @@ Both activate the same internal representation.
 ```
 
 The LIMITATION is that text-based approaches are:
+
 1. **Less precise** — the phrase covers more concepts than a sparse vector
 2. **More context-dependent** — works better in short contexts
 3. **Slower to activate** — requires the model to process the text
@@ -165,31 +176,33 @@ But for pi-braid's use case (multi-turn agentic reasoning), this is likely suffi
 
 ## Metrics
 
-| Metric | Baseline | Target | Method |
-|--------|----------|--------|--------|
-| Sycophancy rate | ~40% (estimated) | <20% | BeHonest-style persona + preference scenarios |
-| Truthful accuracy | ~85% | >82% | Benchmark score (shouldn't drop) |
-| Cross-turn stability | unknown | >85% | Same test at turn 1 vs. turn 10 |
-| Embedding classifier precision | N/A | >70% | If we build the classifier |
+| Metric                         | Baseline         | Target | Method                                        |
+| ------------------------------ | ---------------- | ------ | --------------------------------------------- |
+| Sycophancy rate                | ~40% (estimated) | <20%   | BeHonest-style persona + preference scenarios |
+| Truthful accuracy              | ~85%             | >82%   | Benchmark score (shouldn't drop)              |
+| Cross-turn stability           | unknown          | >85%   | Same test at turn 1 vs. turn 10               |
+| Embedding classifier precision | N/A              | >70%   | If we build the classifier                    |
 
 ---
 
 ## Connection to Other Proposals
 
-| This | Builds On | Enables |
-|------|-----------|---------|
-| Prompt contrast | RepE theory | Bidirectional verifier (D5) sycophancy detection |
-| Embedding classifier | minimax embeddings | Real-time behavioral monitoring |
+| This                    | Builds On                      | Enables                                                  |
+| ----------------------- | ------------------------------ | -------------------------------------------------------- |
+| Prompt contrast         | RepE theory                    | Bidirectional verifier (D5) sycophancy detection         |
+| Embedding classifier    | minimax embeddings             | Real-time behavioral monitoring                          |
 | Contrast phrase library | BeHonest sycophancy dimensions | SAE-STEERING-PROPOSAL (if we switch to open model later) |
 
 ---
 
 ## Status
 
-**Ready to start** — Week 1 plan is concrete. First action: build contrast phrase library.
+**PARTIAL** — Key phrases (TRUTH-FIRST, ANTI-SYCOPHANCY, EPISTEMIC STABILITY, KNOWLEDGE BOUNDARY) embedded in prompt-builder identity section. Structured CONTRAST_VECTORS section (4 modes) added in §8c. Per-scenario toggle pending. Lie-detection pending. Contrast phrase library pending.
+
+⚠️ NOTE: Structured output format (TOOL_RESULT/STATUS/DATA blocks) was REMOVED in v0.2.0-alpha.1 — it caused 'Tool not found' errors because weaker LLMs confused structured text with actual API-level tool calls.
 
 ---
 
-*Related: pi-braid/docs/proposals/SAE-STEERING-PROPOSAL.md (now obsolete for API providers)*  
-*Related: LATENT-SPACE-AND-NOVEL-CAPABILITY.md (Section on Tier 1 implementation)*  
-*Note: This proposal documents why we're doing prompt contrast — it's not a second-best solution, it's the correct approach for API-only providers.*
+_Related: pi-braid/docs/proposals/SAE-STEERING-PROPOSAL.md (now obsolete for API providers)_  
+_Related: LATENT-SPACE-AND-NOVEL-CAPABILITY.md (Section on Tier 1 implementation)_  
+_Note: This proposal documents why we're doing prompt contrast — it's not a second-best solution, it's the correct approach for API-only providers._

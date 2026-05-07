@@ -1,11 +1,30 @@
 ---
 name: visual-validator
-description: "Rigorous visual validation with professional design critique. Analyzes sprite assets, game screenshots, UI designs, and any visual content with designer-level feedback and actionable fixes with measurable deltas."
+description: "Rigorous visual validation with professional design critique. Analyzes sprite assets, game screenshots, UI designs, and any visual content with designer-level feedback and actionable fixes with measurable deltas. Companion to visual-creator (creation) and design-system (brand identity)."
+triggers:
+  - "visual validation"
+  - "design critique"
+  - "sprite analysis"
+  - "UI audit"
+  - "image quality check"
 ---
 
 # Visual Validator
 
 Professional design critique with evidence-based, actionable fixes.
+
+---
+
+## The Full Quality Cycle
+
+```
+CREATE (visual-creator) ──→ ANALYZE (analyze_image) ──→ VALIDATE (visual-validator) ──→ IMPROVE
+```
+
+This skill is the **VALIDATE** step. Pair it with:
+- **visual-creator** — for creating amazing visuals with design reasoning
+- **design-system** — for brand identity and DESIGN.md token systems
+- **analyze_image(imagePath, detail="comprehensive")** — in-depth design analysis
 
 ---
 

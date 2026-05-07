@@ -14,10 +14,10 @@ Dual persistence: session entries (for branch navigation) + disk file (for resta
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `/tools` | Interactive tool enable/disable with SettingsList UI (fuzzy search, scrollable) |
-| `/tool-status` | Show current enabled/disabled tool list |
+| Command        | Description                                                                     |
+| -------------- | ------------------------------------------------------------------------------- |
+| `/tools`       | Interactive tool enable/disable with SettingsList UI (fuzzy search, scrollable) |
+| `/tool-status` | Show current enabled/disabled tool list                                         |
 
 ## Key Patterns
 

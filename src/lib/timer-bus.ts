@@ -9,8 +9,8 @@
 import type { ScheduledTimer } from "../extensions/tools/timer/index.js";
 
 export interface TimerReminder {
-	timer: ScheduledTimer;
-	firedAt: number;
+  timer: ScheduledTimer;
+  firedAt: number;
 }
 
 type ReminderHandler = (reminder: TimerReminder) => void;
@@ -20,22 +20,24 @@ let pendingReminders: TimerReminder[] = [];
 
 /** Timer extension calls this when a timer fires */
 export function emitTimerReminder(timer: ScheduledTimer): void {
-	const reminder: TimerReminder = { timer, firedAt: Date.now() };
-	pendingReminders.push(reminder);
-	for (const h of handlers) {
-		try { h(reminder); } catch {}
-	}
+  const reminder: TimerReminder = { timer, firedAt: Date.now() };
+  pendingReminders.push(reminder);
+  for (const h of handlers) {
+    try {
+      h(reminder);
+    } catch {}
+  }
 }
 
 /** Heartbeat scheduler calls this on each turn to get pending reminders */
 export function drainTimerReminders(): TimerReminder[] {
-	const drained = pendingReminders;
-	pendingReminders = [];
-	return drained;
+  const drained = pendingReminders;
+  pendingReminders = [];
+  return drained;
 }
 
 /** Heartbeat registers a handler for immediate reminder surfacing */
 export function onTimerReminder(handler: ReminderHandler): () => void {
-	handlers.add(handler);
-	return () => handlers.delete(handler);
+  handlers.add(handler);
+  return () => handlers.delete(handler);
 }

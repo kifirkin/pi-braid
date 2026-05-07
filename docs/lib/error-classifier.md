@@ -4,19 +4,19 @@
 
 ## Error Categories
 
-| Category | Retryable? | Examples |
-|----------|-----------|---------|
-| `TRANSIENT` | ✅ Yes (wait + retry) | 429 (rate limit), 5xx (server error), 529 (overloaded), "overloaded" |
-| `CLIENT_ERROR` | ❌ No (will repeat) | 4xx (auth, not found, bad request), invalid API key |
-| `CONTEXT_OVERFLOW` | ❌ No (needs compaction) | 400 context overflow, token limit exceeded |
-| `UNKNOWN` | ⚠️ Conservative retry | Unrecognized error format |
+| Category           | Retryable?               | Examples                                                             |
+| ------------------ | ------------------------ | -------------------------------------------------------------------- |
+| `TRANSIENT`        | ✅ Yes (wait + retry)    | 429 (rate limit), 5xx (server error), 529 (overloaded), "overloaded" |
+| `CLIENT_ERROR`     | ❌ No (will repeat)      | 4xx (auth, not found, bad request), invalid API key                  |
+| `CONTEXT_OVERFLOW` | ❌ No (needs compaction) | 400 context overflow, token limit exceeded                           |
+| `UNKNOWN`          | ⚠️ Conservative retry    | Unrecognized error format                                            |
 
 ## Key Functions
 
-| Function | Description |
-|----------|-------------|
-| `classifyError(error)` | Full classification from error object → `ErrorClassification` |
-| `extractHttpStatus(error)` | Extract HTTP status from Axios/Fetch error or message string |
+| Function                     | Description                                                       |
+| ---------------------------- | ----------------------------------------------------------------- |
+| `classifyError(error)`       | Full classification from error object → `ErrorClassification`     |
+| `extractHttpStatus(error)`   | Extract HTTP status from Axios/Fetch error or message string      |
 | `extractProviderCode(error)` | Extract provider-specific error code (e.g., "insufficient_quota") |
 
 ## ErrorClassification

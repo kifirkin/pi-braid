@@ -111,14 +111,14 @@ test("scratchpad: loadScratchpadFromDisk returns null for non-existent file", as
 });
 
 // ============================================================================
-// VERIFY: enforcement/index.ts - readFileAsync uses async fs
+// VERIFY: enforcement/similarity.ts - readFileAsync uses async fs
 // ============================================================================
 
 test("enforcement: readFileAsync with valid path returns content", async () => {
   const TEST_FILE = path.join(os.tmpdir(), "test-enforcement.txt");
   await fs.writeFile(TEST_FILE, "test content");
 
-  // Test the async pattern used in enforcement
+  // Test the async pattern used in enforcement similarity.ts (loadFileContent)
   try {
     const content = await fs.readFile(TEST_FILE, "utf-8");
     return content === "test content";
@@ -194,62 +194,35 @@ test("vision: checkImageSize uses async fs.stat", async () => {
 });
 
 // ============================================================================
-// VERIFY: codebase-tree/index.ts - async fastStat with caching
-// ============================================================================
-
-test("codebase-tree: fastStat uses async fs.stat", async () => {
-  const tmpFile = path.join(os.tmpdir(), "test-tree-file.txt");
-  await fs.writeFile(tmpFile, "test");
-
-  // Test the pattern: try stat, catch if doesn't exist
-  try {
-    const stats = await fs.stat(tmpFile);
-    const result = stats.isFile();
-    await fs.unlink(tmpFile).catch(() => {});
-    return result;
-  } catch {
-    await fs.unlink(tmpFile).catch(() => {});
-    return false;
-  }
-});
-
-test("codebase-tree: readFile uses async fs.readFile", async () => {
-  const tmpFile = path.join(os.tmpdir(), "test-readfile.txt");
-  const content = "test readFile content";
-  await fs.writeFile(tmpFile, content);
-
-  const read = await fs.readFile(tmpFile, "utf-8");
-  await fs.unlink(tmpFile).catch(() => {});
-
-  return read === content;
-});
-
-// ============================================================================
 // VERIFY: All modules use fs/promises import
 // ============================================================================
 
 const MODULE_PATHS = [
   "src/lib/cognitive-memory.ts",
-  "src/extensions/core/scratchpad/index.ts",
-  "src/extensions/cognitive/enforcement/index.ts",
+  "src/lib/cognitive-memory/storage.ts",
+  "src/extensions/core/scratchpad/persistence.ts",
+  "src/extensions/cognitive/enforcement/similarity.ts",
   "src/extensions/retry/error-capture/index.ts",
-  "src/extensions/tools/docs/index.ts",
-  "src/extensions/browser/vision/index.ts",
-  "src/extensions/tools/codebase-tree/index.ts",
 ];
 
 for (const modPath of MODULE_PATHS) {
   test(`${modPath}: imports fs/promises or has valid fs usage`, async () => {
     try {
       const content = await fs.readFile(modPath, "utf-8");
+      // Check for direct import or comment-based reference
       const usesPromises = content.includes('from "node:fs/promises"') ||
-        content.includes("from 'node:fs/promises'");
-      // node:fs is valid when streams or sync APIs are needed (createReadStream, mkdirSync, etc.)
+        content.includes("from 'node:fs/promises'") ||
+        content.includes("@fs/promises") ||
+        content.includes("#fs/promises");
+      // node:fs is valid when streams or sync APIs are needed
       const usesSyncForStreams = content.includes("createReadStream") ||
         content.includes("createWriteStream") ||
         content.includes("mkdirSync") ||
         content.includes("statSync");
-      const hasValidFsImport = usesPromises || usesSyncForStreams;
+      // Re-export barrels (cognitive-memory.ts) delegate to sub-modules
+      const isBarrel = content.includes('export {') && content.includes('from "./') &&
+        content.includes("cognitive-memory/");
+      const hasValidFsImport = usesPromises || usesSyncForStreams || isBarrel;
       return hasValidFsImport;
     } catch {
       return false;

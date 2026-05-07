@@ -11,6 +11,7 @@ Agent self-diagnostic — validates all tools, extensions, and system resources.
 ## Architecture
 
 Modular checks grouped by category:
+
 - `filesystem` — file I/O
 - `paths` — path resolution
 - `shell` — bash execution
@@ -27,8 +28,8 @@ None — the tool is called directly by the agent, typically via `evolve health`
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
+| Tool          | Description                                                                                                                                              |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `healthcheck` | Run comprehensive health check. Params: `verbose` (detailed output), `categories` (filter specific checks). Returns structured pass/fail/warn per check. |
 
 ## Key Patterns

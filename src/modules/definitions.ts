@@ -12,8 +12,8 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 // ── Extension imports ────────────────────────────────────────────────────────
 
 import corePolyfillFn from "../extensions/core/polyfill/index.js";
+import coreAgentPatchFn from "../extensions/core/agent-patch/index.js";
 import coreMetacognitionFn from "../extensions/core/metacognition/index.js";
-import corePlannerFn from "../extensions/core/planner/index.js";
 import coreScratchpadFn from "../extensions/core/scratchpad/index.js";
 import corePreprocessorFn from "../extensions/core/user-message-preprocessor/index.js";
 
@@ -22,6 +22,7 @@ import reasoningFn from "../extensions/cognitive/reasoning/index.js";
 import enforcementFn from "../extensions/cognitive/enforcement/index.js";
 import verificationFn from "../extensions/cognitive/verification/index.js";
 import topicDriftFn from "../extensions/cognitive/topic-drift/index.js";
+import sycophancyDetectorFn from "../extensions/cognitive/sycophancy-detector/index.js";
 
 import memoryStoresFn from "../extensions/memory/three-memory-stores/index.js";
 import sessionRecallFn from "../extensions/memory/session-recall/index.js";
@@ -35,18 +36,13 @@ import retryFn from "../extensions/retry/retry/index.js";
 import errorCaptureFn from "../extensions/retry/error-capture/index.js";
 
 import promptBuilderFn from "../extensions/prompt/prompt-builder/index.js";
-import promptGuardianFn from "../extensions/prompt/prompt-guardian/index.js";
-
-import codebaseTreeFn from "../extensions/tools/codebase-tree/index.js";
-import replFn from "../extensions/tools/repl/index.js";
-import docsFn from "../extensions/tools/docs/index.js";
 import healthcheckFn from "../extensions/tools/healthcheck/index.js";
 import timerFn from "../extensions/tools/timer/index.js";
 import latentActivatorFn from "../extensions/tools/latent-activator/index.js";
-
-import browserFn from "../extensions/browser/browser/index.js";
-import webFetchFn from "../extensions/browser/web-fetch/index.js";
-import visionFn from "../extensions/browser/vision/index.js";
+import observatoryFn from "../extensions/tools/observatory/index.js";
+import diffFn from "../extensions/tools/diff/index.js";
+import systemMonitorFn from "../extensions/tools/system-monitor/index.js";
+import researchFn from "../extensions/tools/research/index.js";
 
 import assistantFn from "../extensions/assistant/assistant/index.js";
 import feedbackFn from "../extensions/assistant/feedback/index.js";
@@ -93,17 +89,17 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
 	// CORE — Foundation layer (always on, no dependencies)
 	// Coupling: polyfill patches pi API used by all others; preprocessor
 	//   modifies input stream before enforcement sees it;
-	//   planner+scratchpad+metacognition form the metacognitive tool stack.
+	//   scratchpad+metacognition form the metacognitive tool stack.
 	// ═════════════════════════════════════════════════════════════════════
 	{
 		name: "core",
 		label: "Core",
-		description: "Foundation: polyfill, metacognition, planner, scratchpad, preprocessor",
+		description: "Foundation: polyfill, metacognition, scratchpad, preprocessor",
 		alwaysOn: true,
 		extensions: [
+			{ name: "agent-patch",           fn: coreAgentPatchFn },
 			{ name: "polyfill",              fn: corePolyfillFn },
 			{ name: "metacognition",          fn: coreMetacognitionFn },
-			{ name: "planner",               fn: corePlannerFn },
 			{ name: "scratchpad",            fn: coreScratchpadFn },
 			{ name: "user-message-preprocessor", fn: corePreprocessorFn },
 		],
@@ -123,8 +119,8 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
 	{
 		name: "cognitive",
 		label: "Cognitive Systems",
-		description: "RepE enforcement, structured reasoning, evidence pool, verification, topic-drift",
-		paper: "RepE Contrast / Evidence-Based Reasoning",
+		description: "RepE enforcement, structured reasoning, evidence pool, verification, topic-drift, sycophancy detection",
+		paper: "RepE Contrast / Evidence-Based Reasoning / Silicon Mirror (2604.19117)",
 		dependencies: ["core"],
 		extensions: [
 			{ name: "cognitive-systems",     fn: cognitiveSystemsFn },
@@ -132,6 +128,7 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
 			{ name: "enforcement",           fn: enforcementFn },
 			{ name: "verification",          fn: verificationFn },
 			{ name: "topic-drift",           fn: topicDriftFn },
+			{ name: "sycophancy-detector",   fn: sycophancyDetectorFn },
 		],
 		listensTo: [
 			"session_start", "session_shutdown", "input", "agent_end",
@@ -235,7 +232,6 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
 		dependencies: ["core"],
 		extensions: [
 			{ name: "prompt-builder",        fn: promptBuilderFn },
-			{ name: "prompt-guardian",       fn: promptGuardianFn },
 		],
 		listensTo: ["session_start", "phase_start", "session_shutdown", "before_agent_start"],
 		coupledWith: [],
@@ -247,37 +243,21 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
 	{
 		name: "tools",
 		label: "Utility Tools",
-		description: "Codebase tree, REPL, docs reader, healthcheck, timer, latent activator",
+		description: "Codebase graph, REPL, docs reader, timer, latent activator",
 		dependencies: ["core"],
 		extensions: [
-			{ name: "codebase-tree",         fn: codebaseTreeFn },
-			{ name: "repl",                 fn: replFn },
-			{ name: "docs",                 fn: docsFn },
 			{ name: "healthcheck",          fn: healthcheckFn },
 			{ name: "timer",                fn: timerFn },
 			{ name: "latent-activator",     fn: latentActivatorFn },
+			{ name: "observatory",          fn: observatoryFn },
+			{ name: "diff",                 fn: diffFn },
+			{ name: "system-monitor",        fn: systemMonitorFn },
 		],
-		listensTo: ["turn_end"], // timer only
+		listensTo: ["turn_end", "session_start", "session_shutdown"], // timer + observatory + diff + system-monitor
 		coupledWith: [],
 	},
 
 	// ═════════════════════════════════════════════════════════════════════
-	// BROWSER — Web interaction via CDP
-	// ═════════════════════════════════════════════════════════════════════
-	{
-		name: "browser",
-		label: "Browser Automation",
-		description: "Browser CDP, web fetch, image analysis",
-		dependencies: ["core"],
-		extensions: [
-			{ name: "browser",               fn: browserFn },
-			{ name: "web-fetch",            fn: webFetchFn },
-			{ name: "vision",               fn: visionFn },
-		],
-		listensTo: ["session_shutdown"], // browser only
-		coupledWith: [],
-	},
-
 	// ═════════════════════════════════════════════════════════════════════
 	// ASSISTANT — State persistence + UX + feedback whisper
 	// Coupling: all three are user-facing. assistant + feedback listen to

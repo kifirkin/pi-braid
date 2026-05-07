@@ -10,6 +10,7 @@
 ## Executive Summary
 
 **Recommendation**: Use a **single model with specialized prompting** for most cases. Reserve separate models for:
+
 1. **Vision tasks** (different modality)
 2. **High-stakes verification** where cost is secondary
 3. **When the main model is known to have specific blind spots** (use specialized model as complement)
@@ -40,22 +41,22 @@ export function getJudgeModel(ctx: Context): ModelInfo {
 
 ### Multi-Model Approaches
 
-| Approach | Papers | Key Idea | Cost | Benefit |
-|----------|--------|-----------|------|---------|
-| **Multiagent Debate** (2305.14325) | Multiagent Debate: 4-7 debaters | Multiple LLMs propose → debate → revise → vote | 4-7× | +12-34% on reasoning tasks |
-| **Constitutional AI** (Anthropic) | Constitutional AI: Critic + Revision | Separate critique model generates feedback, main model revises | 2× | Better alignment, less sycophancy |
-| **Model Specialization** | Mixture-of-Experts, Specialist Models | Different models for different domains (math, code, reasoning) | Variable | +5-15% per domain |
-| **Separate Verifier** | various verification papers | Dedicated verifier model checks main model output | 2× | ~8% reduction in errors |
+| Approach                           | Papers                                | Key Idea                                                       | Cost     | Benefit                           |
+| ---------------------------------- | ------------------------------------- | -------------------------------------------------------------- | -------- | --------------------------------- |
+| **Multiagent Debate** (2305.14325) | Multiagent Debate: 4-7 debaters       | Multiple LLMs propose → debate → revise → vote                 | 4-7×     | +12-34% on reasoning tasks        |
+| **Constitutional AI** (Anthropic)  | Constitutional AI: Critic + Revision  | Separate critique model generates feedback, main model revises | 2×       | Better alignment, less sycophancy |
+| **Model Specialization**           | Mixture-of-Experts, Specialist Models | Different models for different domains (math, code, reasoning) | Variable | +5-15% per domain                 |
+| **Separate Verifier**              | various verification papers           | Dedicated verifier model checks main model output              | 2×       | ~8% reduction in errors           |
 
 ### Single-Model Alternatives
 
-| Approach | Papers | Key Idea | Cost | Benefit |
-|----------|--------|-----------|------|---------|
-| **Self-Consistency** (2210.09150) | Self-Consistency: multiple CoT paths, majority vote | Generate N reasoning chains, vote | N× (but parallelizable) | +3-6% on reasoning |
-| **Self-Refine** (2212.12804) | Self-Refine: critic + refine using SAME model | Same model acts as its own critic | 2× sequential | Similar to 2-model for many tasks |
-| **Chain-of-Verification** (2023) | CoV: generate verification steps, execute them | Model creates and checks its own work | 1.5-2× | Reduces hallucination by ~30% |
-| **Structured Thinking** (Thinking-Claude) | Single model with detailed thinking protocol | XML-tagged reasoning steps | 1× | Better coherence, no cost increase |
-| **Role-Playing** | Same model with different system prompts | "Act as a critic" vs "Act as a solver" | 2× | ~90% of separate-model quality |
+| Approach                                  | Papers                                              | Key Idea                               | Cost                    | Benefit                            |
+| ----------------------------------------- | --------------------------------------------------- | -------------------------------------- | ----------------------- | ---------------------------------- |
+| **Self-Consistency** (2210.09150)         | Self-Consistency: multiple CoT paths, majority vote | Generate N reasoning chains, vote      | N× (but parallelizable) | +3-6% on reasoning                 |
+| **Self-Refine** (2212.12804)              | Self-Refine: critic + refine using SAME model       | Same model acts as its own critic      | 2× sequential           | Similar to 2-model for many tasks  |
+| **Chain-of-Verification** (2023)          | CoV: generate verification steps, execute them      | Model creates and checks its own work  | 1.5-2×                  | Reduces hallucination by ~30%      |
+| **Structured Thinking** (Thinking-Claude) | Single model with detailed thinking protocol        | XML-tagged reasoning steps             | 1×                      | Better coherence, no cost increase |
+| **Role-Playing**                          | Same model with different system prompts            | "Act as a critic" vs "Act as a solver" | 2×                      | ~90% of separate-model quality     |
 
 ---
 
@@ -65,12 +66,12 @@ export function getJudgeModel(ctx: Context): ModelInfo {
 
 pi-braid's enforcement/judge reviews tool outputs for issues.
 
-| Configuration | Cost per Check | Quality | Notes |
-|---------------|---------------|---------|-------|
-| Single model (same) | 1× baseline | Baseline | No fresh perspective |
-| Single model (different prompt) | 1× baseline | +15% | "Act as a critic" prompt |
-| Two models (cheap critic) | 1.2× | +20% | Cheap model may lack nuance |
-| Two models (same tier) | 2× | +25% | Diminishing returns |
+| Configuration                   | Cost per Check | Quality  | Notes                       |
+| ------------------------------- | -------------- | -------- | --------------------------- |
+| Single model (same)             | 1× baseline    | Baseline | No fresh perspective        |
+| Single model (different prompt) | 1× baseline    | +15%     | "Act as a critic" prompt    |
+| Two models (cheap critic)       | 1.2×           | +20%     | Cheap model may lack nuance |
+| Two models (same tier)          | 2×             | +25%     | Diminishing returns         |
 
 **Verdict**: Single model with `"You are a meticulous reviewer"` prompt is **80% as effective** at 50% the cost.
 
@@ -78,12 +79,12 @@ pi-braid's enforcement/judge reviews tool outputs for issues.
 
 Before `finalize`, verify solution correctness.
 
-| Configuration | Cost | Error Reduction | Cost-Effectiveness |
-|---------------|------|----------------|-------------------|
-| Single model (CoV) | 1.5× | 30% | Good |
-| Single model (Self-Refine) | 2× | 35% | Good |
-| Two models (debate) | 3× | 40% | Poor |
-| Two models + voting | 5× | 45% | Very poor |
+| Configuration              | Cost | Error Reduction | Cost-Effectiveness |
+| -------------------------- | ---- | --------------- | ------------------ |
+| Single model (CoV)         | 1.5× | 30%             | Good               |
+| Single model (Self-Refine) | 2×   | 35%             | Good               |
+| Two models (debate)        | 3×   | 40%             | Poor               |
+| Two models + voting        | 5×   | 45%             | Very poor          |
 
 **Verdict**: Chain-of-Verification with single model wins on cost-effectiveness.
 
@@ -91,11 +92,11 @@ Before `finalize`, verify solution correctness.
 
 For `hypothesize` tool — generate multiple root causes.
 
-| Configuration | Cost | Diversity | Quality |
-|---------------|------|-----------|---------|
-| Single model (temp=0.8, N=5) | 5× (parallel) | High | Best |
-| Two models (debate) | 2× | Medium | Good |
-| Single model (N=3) | 3× | Medium | Good |
+| Configuration                | Cost          | Diversity | Quality |
+| ---------------------------- | ------------- | --------- | ------- |
+| Single model (temp=0.8, N=5) | 5× (parallel) | High      | Best    |
+| Two models (debate)          | 2×            | Medium    | Good    |
+| Single model (N=3)           | 3×            | Medium    | Good    |
 
 **Verdict**: Multiple samples from same model > two-model debate for diversity. Temperature sampling gives more variation than model diversity.
 
@@ -113,6 +114,7 @@ Historical bicameral mind: two distinct "voices" in consciousness (often divine 
 - **System 2**: Slow, deliberative, logical
 
 **Mapping to LLMs**:
+
 - Single model can simulate both via prompting ("think step by step")
 - No evidence that separate models are needed for System 1 vs System 2
 
@@ -131,6 +133,7 @@ Historical bicameral mind: two distinct "voices" in consciousness (often divine 
 ### 1. Keep `getJudgeModel()` Flexible (Already Done)
 
 Current design:
+
 ```typescript
 getJudgeModel(ctx): ModelInfo {
   return ctx.config.judgeModel || ctx.model;
@@ -142,11 +145,13 @@ getJudgeModel(ctx): ModelInfo {
 ### 2. Default to Single Model with Specialized Prompt
 
 Instead of:
+
 ```
 You are a helpful assistant. Review this code.
 ```
 
 Use:
+
 ```
 You are a meticulous code reviewer. Your job is to find bugs, not be polite.
 Check for: null checks, type safety, edge cases, logic errors.
@@ -157,12 +162,13 @@ This gets ~90% of the benefit at no extra cost.
 ### 3. Add Model Configuration Options
 
 In `settings.json`:
+
 ```json
 {
   "extensions": {
     "pi-braid": {
       "judge": {
-        "model": null,  // null = use main model
+        "model": null, // null = use main model
         "prompt": "default|strict|mentor"
       }
     }
@@ -188,13 +194,13 @@ In `settings.json`:
 
 ## Performance Data (From Literature)
 
-| Task | Single Model (optimized) | Two Models | Δ Quality | Δ Cost | Verdict |
-|------|-------------------------|------------|-----------|--------|---------|
-| Math reasoning (GSM8k) | 84% | 88% | +4% | 2× | Not worth it |
-| Fact verification (FActScore) | 78% | 85% | +7% | 2× | Borderline |
-| Code generation (HumanEval) | 72% | 75% | +3% | 2× | Not worth it |
-| Toxicity filtering | 92% | 94% | +2% | 2× | Not worth it |
-| Long-context QA | 81% | 83% | +2% | 2× | Not worth it |
+| Task                          | Single Model (optimized) | Two Models | Δ Quality | Δ Cost | Verdict      |
+| ----------------------------- | ------------------------ | ---------- | --------- | ------ | ------------ |
+| Math reasoning (GSM8k)        | 84%                      | 88%        | +4%       | 2×     | Not worth it |
+| Fact verification (FActScore) | 78%                      | 85%        | +7%       | 2×     | Borderline   |
+| Code generation (HumanEval)   | 72%                      | 75%        | +3%       | 2×     | Not worth it |
+| Toxicity filtering            | 92%                      | 94%        | +2%       | 2×     | Not worth it |
+| Long-context QA               | 81%                      | 83%        | +2%       | 2×     | Not worth it |
 
 **Average**: +4.8% quality gain for 2× cost. Poor ROI.
 
@@ -242,16 +248,18 @@ The user mentioned "whispers or thoughts about tools results you got it" — thi
 **Key insight**: "Fresh eyes" is a **prompting pattern**, not a model requirement.
 
 **Single-model implementation**:
+
 ```typescript
 verifyToolResult({
   toolName: "write",
   result: "...",
   context: "...",
-  perspective: "fresh eyes"  // prompt variant: "You are reviewing this for the first time"
+  perspective: "fresh eyes", // prompt variant: "You are reviewing this for the first time"
 });
 ```
 
 **Two-model implementation**:
+
 ```typescript
 // Separate model called
 const reviewer = getJudgeModel(ctx);
@@ -259,6 +267,7 @@ const verdict = await callModel(reviewer, freshEyesPrompt);
 ```
 
 The single-model version with "fresh eyes" prompt works because:
+
 1. The model has no memory of the previous step (stateless per turn)
 2. The prompt creates psychological distance ("you are reviewing this fresh")
 3. No difference in model weights needed
@@ -272,11 +281,13 @@ The single-model version with "fresh eyes" prompt works because:
 **Current**: `getJudgeModel()` supports separate model but falls back to same model.
 
 **This is correct**. It gives users flexibility:
+
 - Default: single model (cheaper, simpler)
 - Opt-in: separate model for specific needs
 - No forced complexity
 
 **What to change**:
+
 1. Default `judgeModel` to `null` (use main model) in config
 2. Document the three prompt variants: `default`, `strict`, `mentor`
 3. Add benchmark to measure single vs dual model quality delta on our tasks
@@ -286,6 +297,7 @@ The single-model version with "fresh eyes" prompt works because:
 ## Cost Calculation Example
 
 **Assumptions**:
+
 - Main model: step-3.5-flash-2603 ($0.001/1K tokens)
 - Utility model: cheaper model like step-3.5 ($0.0005/1K tokens)
 - Average tokens per turn: 1000
@@ -305,15 +317,15 @@ For a research project, not critical. But for production, adds up.
 
 ## Decision Matrix
 
-| Situation | Recommended Setup |
-|-----------|------------------|
-| **Default pi-braid usage** | Single model with optimized prompts |
-| **Vision tasks** | Separate vision model (necessary) |
-| **High-stakes code review** | Optional separate model if user has one |
-| **Low-resource environments** | Single model only |
-| **Research/experimentation** | Both models to compare |
-| **Production with budget** | Single model + self-consistency |
-| **Production with no budget limit** | Two models for verification |
+| Situation                           | Recommended Setup                       |
+| ----------------------------------- | --------------------------------------- |
+| **Default pi-braid usage**          | Single model with optimized prompts     |
+| **Vision tasks**                    | Separate vision model (necessary)       |
+| **High-stakes code review**         | Optional separate model if user has one |
+| **Low-resource environments**       | Single model only                       |
+| **Research/experimentation**        | Both models to compare                  |
+| **Production with budget**          | Single model + self-consistency         |
+| **Production with no budget limit** | Two models for verification             |
 
 ---
 
@@ -333,6 +345,7 @@ For a research project, not critical. But for production, adds up.
 ## Conclusion
 
 The bicameral mind metaphor is compelling but **overkill** for most agent tasks. A single model with:
+
 - Specialized prompting
 - Multiple sampling
 - Structured verification steps
@@ -340,6 +353,7 @@ The bicameral mind metaphor is compelling but **overkill** for most agent tasks.
 achieves 85-90% of the benefit at half the cost.
 
 **Keep the flexibility** (separate model OPTIONAL), **default to single model** with optimized prompts. Use separate models only for:
+
 1. Different modalities (vision)
 2. Domain specialists (math/code)
 3. Users with budgets who value the marginal gain
@@ -359,4 +373,4 @@ The "fresh eyes" effect comes from **prompting**, not **model diversity**.
 
 ---
 
-*Generated: 2026-04-23 — Based on literature review + pi-braid implementation analysis*
+_Generated: 2026-04-23 — Based on literature review + pi-braid implementation analysis_

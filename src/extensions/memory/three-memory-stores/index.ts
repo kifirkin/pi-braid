@@ -6,954 +6,559 @@
  * outperform single memory. MCQ accuracy 0.68 → 0.79.
  *
  * Architecture:
- * 1. Retrospective Episodes — case-based reasoning from past tasks
- * 2. Adaptive Procedural Heuristics — priority-tagged rules that evolve
- * 3. Tool Reliability Controller — per-tool trustworthiness tracking
+ * 1. Retrospective Episodes — case-based reasoning from past tasks (episodes.ts)
+ * 2. Adaptive Procedural Heuristics — priority-tagged rules that evolve (heuristics.ts)
+ * 3. Tool Reliability Controller — per-tool trustworthiness tracking (tool-reliability.ts)
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { createLogger } from "../../../lib/logger.js";
+import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 import { getExtensionState } from "../../../lib/extension-state.js";
-import * as os from "node:os";
+import { emitSignal } from "../../../lib/belief-policy-engine.js";
+import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { readFile as fsReadFilePromise } from "node:fs/promises";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { EPISODES_FILE, LEGACY_EPISODES_FILE, LEGACY_MEMORY_FILE, METRICS_FILE } from "../../../lib/braid-paths.js";
+import { CognitiveMemory, getCognitiveMemory } from "../../../lib/cognitive-memory.js";
+
+// ── Re-export types ─────────────────────────────────────────────────────────
+export type { Episode, HeuristicRule, ToolStat, MemoryStoresState } from "./types.js";
+import type { MemoryStoresState, Episode } from "./types.js";
+
+// ── Sub-module imports ──────────────────────────────────────────────────────
+import {
+  addEpisode,
+  retrieveEpisodes,
+  retrieveByRUMS,
+  condenseInsights,
+} from "./episodes.js";
+import {
+  addHeuristicRule,
+  evolveHeuristic,
+  getPrioritizedHeuristics,
+  getApplicableHeuristics,
+  BUILTIN_HEURISTICS,
+} from "./heuristics.js";
+import {
+  recordToolCall,
+  getToolReliability,
+  selectBestTool,
+} from "./tool-reliability.js";
+
+// ── Project Identifier ───────────────────────────────────────────────────────
+function deriveProjectId(cwd: string): string {
+  const parts = cwd.replace(/\\/g, "/").split("/").filter(Boolean);
+  if (parts.length < 2) return cwd || "unknown";
+  return parts.slice(-2).join("/");
+}
 
 const log = createLogger("three-memory-stores");
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function textResult(text: string) {
-	return { content: [{ type: "text" as const, text }], details: {} };
-}
-
-// ── Types ────────────────────────────────────────────────────────────────────
-
-export interface Episode {
-	id: string;
-	task: string;
-	solution: string;
-	outcome: "success" | "failure" | "partial";
-	similarity: number;
-	timestamp: number;
-	toolSequence: string[];
-	tags: string[];
-	/** Project path where this episode was created. Provenance tag (HaluMem 2511.03506). */
-	project: string;
-}
-
-export interface HeuristicRule {
-	id: string;
-	condition: string;
-	action: string;
-	priority: number;
-	successRate: number;
-	uses: number;
-	successes: number;
-	lastUsed: number;
-	created: number;
-}
-
-export interface ToolStat {
-	tool: string;
-	taskType: string;
-	attempts: number;
-	successes: number;
-	lastAttempt: number;
-	avgDuration: number;
-}
-
-interface MemoryStoresState {
-	episodes: Episode[];
-	heuristics: HeuristicRule[];
-	toolStats: Map<string, ToolStat>;
-	currentSessionTools: string[];
-	sessionStartTime: number;
+  return { content: [{ type: "text" as const, text }], details: {} };
 }
 
 // ── Factory ──────────────────────────────────────────────────────────────────
 
-function createMemoryStoresState(): MemoryStoresState {
-	return {
-		episodes: [],
-		heuristics: [],
-		toolStats: new Map(),
-		currentSessionTools: [],
-		sessionStartTime: Date.now(),
-	};
+export function createMemoryStoresState(): MemoryStoresState {
+  return {
+    episodes: [],
+    heuristics: [],
+    toolStats: new Map(),
+    currentSessionId: "",
+    currentSessionTools: [],
+    sessionStartTime: Date.now(),
+    lastSkillType: "",
+    skillTransitionCount: 0,
+    recentErrors: [],
+    loadedFromLegacy: false,
+  };
 }
 
-function getState(ctx: ExtensionContext): MemoryStoresState {
-	return getExtensionState(ctx, "three-memory-stores", createMemoryStoresState);
+export function getState(ctx: ExtensionContext): MemoryStoresState {
+  return getExtensionState(ctx, "three-memory-stores", createMemoryStoresState);
 }
-
-// ── Episode Store ────────────────────────────────────────────────────────────
-
-function addEpisode(
-	state: MemoryStoresState,
-	task: string,
-	solution: string,
-	outcome: Episode["outcome"],
-	toolSequence: string[],
-	tags: string[] = [],
-	project?: string,
-): Episode {
-	const episode: Episode = {
-		id: `ep-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-		task,
-		solution,
-		outcome,
-		similarity: 0,
-		timestamp: Date.now(),
-		toolSequence,
-		tags,
-		project: project ?? "unknown",
-	};
-	state.episodes.push(episode);
-
-	if (state.episodes.length > 500) {
-		pruneEpisodes(state);
-	}
-
-	log.debug(`Added episode: "${task.slice(0, 50)}..." (${outcome})`);
-	return episode;
-}
-
-function retrieveEpisodes(
-	state: MemoryStoresState,
-	query: string,
-	limit: number = 3,
-	currentProject?: string,
-): Episode[] {
-	const queryLower = query.toLowerCase();
-	const now = Date.now();
-	const scored = state.episodes
-		.map((ep) => {
-			// HaluMem (2511.03506): Cross-session isolation — same-project bonus
-			const baseScore = computeSimilarity(queryLower, ep);
-			const projectBonus = (currentProject && ep.project === currentProject) ? 0.2 : 0;
-			const ageHours = (now - ep.timestamp) / 3600000;
-			const ageBonus = Math.max(0, 1 - ageHours / 168) * 0.1; // Decay over 7 days
-			return { ep, score: baseScore + projectBonus + ageBonus };
-		})
-		.filter((s) => s.score > 0.1)
-		.sort((a, b) => b.score - a.score)
-		.slice(0, limit);
-
-	return scored.map((s) => ({ ...s.ep, similarity: s.score }));
-}
-
-function computeSimilarity(query: string, episode: Episode): number {
-	const queryWords = new Set(query.split(/\s+/).filter((w) => w.length > 2));
-	if (queryWords.size === 0) return 0;
-
-	const taskWords = new Set(episode.task.toLowerCase().split(/\s+/).filter((w) => w.length > 2));
-	const solutionWords = new Set(episode.solution.toLowerCase().split(/\s+/).filter((w) => w.length > 2));
-	const tagWords = new Set(episode.tags.flatMap((t) => t.toLowerCase().split(/\s+/)).filter((w) => w.length > 2));
-
-	let matches = 0;
-	for (const word of queryWords) {
-		if (taskWords.has(word)) matches += 3;
-		if (solutionWords.has(word)) matches += 1;
-		if (tagWords.has(word)) matches += 2;
-	}
-
-	return matches / (queryWords.size * 3);
-}
-
-// ── RUMS Retrieval (paper 2604.14473) ────────────────────────────────────────
-// Select memories by mutual information with response, not just semantic similarity.
-// Key insight: select memories that MINIMIZE RESPONSE ENTROPY.
-
-/**
- * Estimate pointwise mutual information between a query word and the episode.
- * PMI(word; episode) ≈ log(P(word | episode) / P(word))
- * High PMI = word is informative about this episode context.
- */
-function estimatePMI(
-	queryWord: string,
-	episode: Episode,
-	backgroundFreq: Map<string, number>,
-	totalDocs: number,
-): number {
-	const pWord = backgroundFreq.get(queryWord) ?? 1;
-	let pWordGivenEpisode = 0;
-	if (queryWord.length >= 3) {
-		if (episode.task.toLowerCase().includes(queryWord)) pWordGivenEpisode += 0.7;
-		if (episode.solution.toLowerCase().includes(queryWord)) pWordGivenEpisode += 0.5;
-		if (episode.tags.some((t) => t.toLowerCase().includes(queryWord))) pWordGivenEpisode += 0.3;
-	}
-	if (pWordGivenEpisode === 0) return 0;
-	return Math.log((pWordGivenEpisode * totalDocs) / Math.max(pWord, 1));
-}
-
-/**
- * Compute RUMS score for an episode given a query.
- * Combines PMI with outcome consistency and recency.
- *
- * RUMS theory: select memories that maximize I(Response; Memory | Query)
- * which ≈ minimize entropy of expected response conditioned on memory.
- */
-function computeRUMS(
-	query: string,
-	episode: Episode,
-	backgroundFreq: Map<string, number>,
-	totalDocs: number,
-): number {
-	const queryWords = query.toLowerCase().split(/\W+/).filter((w) => w.length > 2);
-	if (queryWords.length === 0) return 0;
-
-	// 1. PMI-based information gain (60% weight)
-	let pmiSum = 0;
-	let validWords = 0;
-	for (const word of queryWords) {
-		const pmi = estimatePMI(word, episode, backgroundFreq, totalDocs);
-		if (pmi > 0) { pmiSum += pmi; validWords++; }
-	}
-	const avgPMI = validWords > 0 ? pmiSum / validWords : 0;
-	const pmiScore = Math.min(avgPMI / 5, 1) * 0.6; // [0, 0.6]
-
-	// 2. Outcome consistency bonus (20% weight)
-	const outcomeScore = episode.outcome === "success" ? 0.2 :
-		episode.outcome === "partial" ? 0.1 : 0.0;
-
-	// 3. Recency bonus (20% weight)
-	const ageDays = (Date.now() - episode.timestamp) / (24 * 60 * 60 * 1000);
-	const recencyScore = Math.max(0, 1 - ageDays / 30) * 0.2;
-
-	// 4. Solution specificity bonus (10% weight)
-	const solutionTokens = episode.solution.split(/\W+/).filter((w) => w.length > 3).length;
-	const specificityScore = Math.min(solutionTokens / 20, 1) * 0.1;
-
-	return pmiScore + outcomeScore + recencyScore + specificityScore;
-}
-
-/**
- * RUMS-based episode retrieval — information-theoretic selection.
- * Replaces simple token overlap with mutual information scoring.
- */
-function retrieveByRUMS(
-	state: MemoryStoresState,
-	query: string,
-	limit: number = 3,
-): Episode[] {
-	if (state.episodes.length === 0) return [];
-
-	// Build background frequency distribution from all episodes
-	const backgroundFreq = new Map<string, number>();
-	const totalDocs = state.episodes.length;
-	for (const ep of state.episodes) {
-		const words = new Set(
-			(ep.task + " " + ep.solution + " " + ep.tags.join(" "))
-			.toLowerCase().split(/\W+/).filter((w) => w.length > 2),
-		);
-		for (const word of words) {
-			backgroundFreq.set(word, (backgroundFreq.get(word) ?? 0) + 1);
-		}
-	}
-
-	// Score each episode by RUMS
-	const scored = state.episodes.map((ep) => ({
-		ep,
-		score: computeRUMS(query, ep, backgroundFreq, totalDocs),
-	}));
-
-	const results = scored
-		.filter((s) => s.score > 0.05)
-		.sort((a, b) => b.score - a.score)
-		.slice(0, limit)
-		.map((s) => ({ ...s.ep, similarity: s.score }));
-
-	log.debug(`RUMS retrieved ${results.length} episodes for "${query.slice(0, 30)}..."`);
-	return results;
-}
-
-
-function pruneEpisodes(state: MemoryStoresState): void {
-	const outcomeScore = (ep: Episode) =>
-		(ep.outcome === "success" ? 2 : ep.outcome === "partial" ? 1 : 0) * 0.5 +
-		Math.max(0, 1 - (Date.now() - ep.timestamp) / (30 * 24 * 60 * 60 * 1000)) * 0.5;
-
-	state.episodes
-		.map((ep) => ({ ep, score: outcomeScore(ep) }))
-		.sort((a, b) => a.score - b.score);
-
-	state.episodes = state.episodes.slice(-500);
-}
-
-// ── Heuristics Store ─────────────────────────────────────────────────────────
-
-function addHeuristicRule(
-	state: MemoryStoresState,
-	condition: string,
-	action: string,
-	initialPriority: number = 0.5,
-): HeuristicRule {
-	const rule: HeuristicRule = {
-		id: `hr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-		condition,
-		action,
-		priority: initialPriority,
-		successRate: 0.5,
-		uses: 0,
-		successes: 0,
-		lastUsed: 0,
-		created: Date.now(),
-	};
-	state.heuristics.push(rule);
-	log.debug(`Added heuristic: "${condition.slice(0, 50)}..."`);
-	return rule;
-}
-
-function evolveHeuristic(
-	state: MemoryStoresState,
-	ruleId: string,
-	success: boolean,
-): void {
-	const rule = state.heuristics.find((r) => r.id === ruleId);
-	if (!rule) return;
-
-	rule.uses++;
-	if (success) rule.successes++;
-	rule.successRate = rule.successes / rule.uses;
-	rule.priority = calculateHeuristicPriority(rule);
-	rule.lastUsed = Date.now();
-}
-
-function calculateHeuristicPriority(rule: HeuristicRule): number {
-	const successComponent = rule.successRate * 0.6;
-	const recencyComponent =
-		Math.max(0, 1 - (Date.now() - rule.lastUsed) / (7 * 24 * 60 * 60 * 1000)) * 0.2;
-	const usageComponent = Math.min(rule.uses / 10, 1) * 0.2;
-	return successComponent + recencyComponent + usageComponent;
-}
-
-function getPrioritizedHeuristics(state: MemoryStoresState): HeuristicRule[] {
-	return [...state.heuristics].sort((a, b) => b.priority - a.priority);
-}
-
-function getApplicableHeuristics(
-	state: MemoryStoresState,
-	context: string,
-): HeuristicRule[] {
-	const contextLower = context.toLowerCase();
-	return state.heuristics
-		.filter((r) => contextLower.includes(r.condition.toLowerCase()))
-		.sort((a, b) => b.priority - a.priority);
-}
-
-// ── Tool Reliability Controller ──────────────────────────────────────────────
-
-function recordToolCall(
-	state: MemoryStoresState,
-	tool: string,
-	taskType: string,
-	success: boolean,
-	duration: number = 0,
-): void {
-	const key = `${tool}:${taskType}`;
-	let stat = state.toolStats.get(key);
-
-	if (!stat) {
-		stat = { tool, taskType, attempts: 0, successes: 0, lastAttempt: 0, avgDuration: 0 };
-		state.toolStats.set(key, stat);
-	}
-
-	stat.attempts++;
-	if (success) stat.successes++;
-	stat.lastAttempt = Date.now();
-	stat.avgDuration = stat.avgDuration === 0 ? duration : (stat.avgDuration + duration) / 2;
-}
-
-function getToolReliability(
-	state: MemoryStoresState,
-	tool: string,
-	taskType: string,
-): number {
-	const stat = state.toolStats.get(`${tool}:${taskType}`);
-	if (!stat || stat.attempts === 0) return 0.5;
-	return stat.successes / stat.attempts;
-}
-
-function selectBestTool(
-	state: MemoryStoresState,
-	taskType: string,
-	candidates: string[],
-): string | null {
-	let bestTool: string | null = null;
-	let bestReliability = -1;
-
-	for (const tool of candidates) {
-		const reliability = getToolReliability(state, tool, taskType);
-		if (reliability > bestReliability) {
-			bestReliability = reliability;
-			bestTool = tool;
-		}
-	}
-
-	return bestTool;
-}
-
-// ── Built-in Heuristic Rules ─────────────────────────────────────────────────
-
-const BUILTIN_HEURISTICS = [
-	{
-		condition: "think before write",
-		action: "Always use think tool before write tool for complex changes",
-		priority: 0.8,
-	},
-	{
-		condition: "test after edit",
-		action: "Run tests after modifying code files",
-		priority: 0.7,
-	},
-	{
-		condition: "read before edit",
-		action: "Read file contents before editing to understand context",
-		priority: 0.9,
-	},
-	{
-		condition: "small changes first",
-		action: "Make incremental changes and verify each step",
-		priority: 0.6,
-	},
-];
 
 // ── Extension ────────────────────────────────────────────────────────────────
 
 export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
-	// ── memory_episodes tool ────────────────────────────────────────────
+  // ── memory_episodes tool ────────────────────────────────────────────
+  pi.registerTool({
+    name: "memory_episodes",
+    label: "Memory Episodes",
+    promptSnippet: "Search retrospective episodes for similar past tasks",
+    description:
+      "Search retrospective episodes for similar past tasks. Use before debugging known patterns — action='search' finds past solutions and outcomes. action='add' stores new experience at task end.",
+    parameters: Type.Object({
+      action: StringEnum(["search", "add", "list"]),
+      query: Type.Optional(Type.String({ description: "Task description to search for (search action)" })),
+      task: Type.Optional(Type.String({ description: "Task description (add action)" })),
+      solution: Type.Optional(Type.String({ description: "Solution description (add action)" })),
+      outcome: Type.Optional(StringEnum(["success", "failure", "partial"], { description: "Outcome of the task (add action)" })),
+      limit: Type.Optional(Type.Number({ description: "Max results (default: 3)", default: 3 })),
+      tags: Type.Optional(Type.Array(Type.String(), { description: "Tags for the episode (add action)" })),
+    }),
+    execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
+      const state = getState(ctx);
+      const p = params as { action: string; query?: string; task?: string; solution?: string; outcome?: string; limit?: number; tags?: string[] };
+      const { action, query, task, solution, outcome, limit = 3, tags = [] } = p;
 
-	pi.registerTool({
-		name: "memory_episodes",
-		label: "Memory Episodes",
-		description:
-			"Search retrospective episodes for similar past tasks. Returns relevant past solutions and outcomes.",
-		parameters: Type.Object({
-			action: StringEnum(["search", "add", "list"]),
-			query: Type.Optional(
-				Type.String({ description: "Task description to search for (search action)" }),
-			),
-			task: Type.Optional(
-				Type.String({ description: "Task description (add action)" }),
-			),
-			solution: Type.Optional(
-				Type.String({ description: "Solution description (add action)" }),
-			),
-			outcome: Type.Optional(
-				StringEnum(["success", "failure", "partial"], {
-					description: "Outcome of the task (add action)",
-				}),
-			),
-			limit: Type.Optional(
-				Type.Number({ description: "Max results (default: 3)", default: 3 }),
-			),
-			tags: Type.Optional(
-				Type.Array(Type.String(), { description: "Tags for the episode (add action)" }),
-			),
-		}),
-		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
-			const state = getState(ctx);
-			const p = params as { action: string; query?: string; task?: string; solution?: string; outcome?: string; limit?: number; tags?: string[] };
-			const { action, query, task, solution, outcome, limit = 3, tags = [] } = p;
+      if (action === "search") {
+        if (!query) return textResult("Error: query is required for search action");
+        const episodes = retrieveEpisodes(state, query, limit, deriveProjectId(ctx?.cwd ?? ""));
+        if (episodes.length === 0) return textResult("No relevant episodes found.");
 
-			if (action === "search") {
-				if (!query) return textResult("Error: query is required for search action");
-				const episodes = retrieveEpisodes(state, query, limit, ctx?.cwd ?? "unknown");
-				if (episodes.length === 0) return textResult("No relevant episodes found.");
+        const lines: string[] = [`Found ${episodes.length} relevant episodes:\n`];
+        for (const ep of episodes) {
+          const outcomeIcon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
+          const ageMinutes = Math.round((Date.now() - ep.timestamp) / 60000);
+          const provenance = `[MEMORY project=${ep.project || "unknown"} ttl=${ageMinutes}m ago]`;
+          const confTag = (ep as any).memoryConfidence != null ? ` conf=${((ep as any).memoryConfidence * 100).toFixed(0)}%` : "";
+          const crossTag = (ep as any)._crossSession ? " [CROSS-SESSION]" : "";
+          const qualityTag = ep.quality != null ? ` quality=${(ep.quality * 100).toFixed(0)}%` : "";
+          lines.push(`${provenance}${confTag}${qualityTag}${crossTag} ${outcomeIcon} [${ep.outcome}] ${ep.task}`);
+          lines.push(`   Solution: ${ep.solution.slice(0, 200)}${ep.solution.length > 200 ? "..." : ""}`);
+          lines.push(`   Tools: ${ep.toolSequence.join(" → ")}`);
+          lines.push(`   Similarity: ${(ep.similarity * 100).toFixed(0)}%`);
+          lines.push("");
+        }
+        return textResult(lines.join("\n"));
+      }
 
-				const lines: string[] = [`Found ${episodes.length} relevant episodes:\n`];
-				for (const ep of episodes) {
-					const outcomeIcon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
-					const ageMinutes = Math.round((Date.now() - ep.timestamp) / 60000);
-					const provenance = `[MEMORY project=${ep.project || "unknown"} ttl=${ageMinutes}m ago]`;					lines.push(`${provenance} ${outcomeIcon} [${ep.outcome}] ${ep.task}`);
-					lines.push(`   Solution: ${ep.solution.slice(0, 200)}${ep.solution.length > 200 ? "..." : ""}`);
-					lines.push(`   Tools: ${ep.toolSequence.join(" → ")}`);
-					lines.push(`   Similarity: ${(ep.similarity * 100).toFixed(0)}%`);
-					lines.push("");
-				}
-				return textResult(lines.join("\n"));
-			}
+      if (action === "add") {
+        if (!task || !solution || !outcome) {
+          return textResult("Error: task, solution, and outcome are required for add action");
+        }
+        const episode = addEpisode(state, task, solution, outcome as Episode["outcome"], [], tags, deriveProjectId(ctx?.cwd ?? ""));
+        return textResult(`Episode added: "${task.slice(0, 50)}..." (${outcome}) [${episode.id}]`);
+      }
 
-			if (action === "add") {
-				if (!task || !solution || !outcome) {
-					return textResult("Error: task, solution, and outcome are required for add action");
-				}
-				const episode = addEpisode(state, task, solution, outcome as Episode["outcome"], [], tags, ctx?.cwd ?? "unknown");
-				return textResult(`Episode added: "${task.slice(0, 50)}..." (${outcome}) [${episode.id}]`);
-			}
+      if (action === "list") {
+        if (state.episodes.length === 0) return textResult("No episodes stored.");
+        const lines: string[] = [`Episodes (${state.episodes.length} total):\n`];
+        for (const ep of state.episodes.slice(-10).reverse()) {
+          const outcomeIcon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
+          lines.push(`${outcomeIcon} ${ep.task.slice(0, 60)}...`);
+        }
+        return textResult(lines.join("\n"));
+      }
 
-			if (action === "list") {
-				if (state.episodes.length === 0) return textResult("No episodes stored.");
-				const lines: string[] = [`Episodes (${state.episodes.length} total):\n`];
-				const recent = state.episodes.slice(-10).reverse();
-				for (const ep of recent) {
-					const outcomeIcon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
-					lines.push(`${outcomeIcon} ${ep.task.slice(0, 60)}...`);
-				}
-				return textResult(lines.join("\n"));
-			}
+      return textResult(`Unknown action: ${action}. Use search, add, or list.`);
+    },
+  });
 
-			return textResult(`Unknown action: ${action}. Use search, add, or list.`);
-		},
-	});
+  // ── memory_heuristics tool ──────────────────────────────────────────
+  pi.registerTool({
+    name: "memory_heuristics",
+    label: "Memory Heuristics",
+    promptSnippet: "View and manage adaptive procedural heuristics",
+    description: "View and manage adaptive procedural heuristics. Returns prioritized rules for the current context.",
+    parameters: Type.Object({
+      action: StringEnum(["list", "add", "evolve"]),
+      context: Type.Optional(Type.String({ description: "Current context to match rules against (list action)" })),
+      condition: Type.Optional(Type.String({ description: "Rule condition pattern (add action)" })),
+      action_text: Type.Optional(Type.String({ description: "Rule action description (add action)" })),
+      rule_id: Type.Optional(Type.String({ description: "Rule ID to evolve (evolve action)" })),
+      success: Type.Optional(Type.Boolean({ description: "Whether the rule application succeeded (evolve action)" })),
+    }),
+    execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
+      const state = getState(ctx);
+      const hp = params as { action: string; context?: string; condition?: string; action_text?: string; rule_id?: string; success?: boolean };
+      const { action, context, condition, action_text, rule_id, success } = hp;
 
-	// ── memory_heuristics tool ──────────────────────────────────────────
+      if (action === "list") {
+        const rules = context ? getApplicableHeuristics(state, context) : getPrioritizedHeuristics(state);
+        if (rules.length === 0) return textResult("No heuristics found.");
+        const lines: string[] = [`Heuristics (${rules.length} total):\n`];
+        for (const rule of rules) {
+          lines.push(`[${rule.priority.toFixed(2)}] ${rule.condition}`);
+          lines.push(`   → ${rule.action}`);
+          lines.push(`   Success rate: ${(rule.successRate * 100).toFixed(0)}% (${rule.uses} uses)`);
+          lines.push("");
+        }
+        return textResult(lines.join("\n"));
+      }
 
-	pi.registerTool({
-		name: "memory_heuristics",
-		label: "Memory Heuristics",
-		description:
-			"View and manage adaptive procedural heuristics. Returns prioritized rules for the current context.",
-		parameters: Type.Object({
-			action: StringEnum(["list", "add", "evolve"]),
-			context: Type.Optional(
-				Type.String({ description: "Current context to match rules against (list action)" }),
-			),
-			condition: Type.Optional(
-				Type.String({ description: "Rule condition pattern (add action)" }),
-			),
-			action_text: Type.Optional(
-				Type.String({ description: "Rule action description (add action)" }),
-			),
-			rule_id: Type.Optional(
-				Type.String({ description: "Rule ID to evolve (evolve action)" }),
-			),
-			success: Type.Optional(
-				Type.Boolean({ description: "Whether the rule application succeeded (evolve action)" }),
-			),
-		}),
-		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
-			const state = getState(ctx);
-			const hp = params as { action: string; context?: string; condition?: string; action_text?: string; rule_id?: string; success?: boolean };
-			const { action, context, condition, action_text, rule_id, success } = hp;
+      if (action === "add") {
+        if (!condition || !action_text) return textResult("Error: condition and action_text are required for add action");
+        const rule = addHeuristicRule(state, condition, action_text);
+        return textResult(`Heuristic added: "${condition}" → "${action_text}" [${rule.id}]`);
+      }
 
-			if (action === "list") {
-				const rules = context
-					? getApplicableHeuristics(state, context)
-					: getPrioritizedHeuristics(state);
+      if (action === "evolve") {
+        if (!rule_id || success === undefined) return textResult("Error: rule_id and success are required for evolve action");
+        evolveHeuristic(state, rule_id, success);
+        return textResult(`Heuristic evolved: ${rule_id} (success: ${success})`);
+      }
 
-				if (rules.length === 0) return textResult("No heuristics found.");
+      return textResult(`Unknown action: ${action}. Use list, add, or evolve.`);
+    },
+  });
 
-				const lines: string[] = [`Heuristics (${rules.length} total):\n`];
-				for (const rule of rules) {
-					lines.push(`[${rule.priority.toFixed(2)}] ${rule.condition}`);
-					lines.push(`   → ${rule.action}`);
-					lines.push(`   Success rate: ${(rule.successRate * 100).toFixed(0)}% (${rule.uses} uses)`);
-					lines.push("");
-				}
-				return textResult(lines.join("\n"));
-			}
+  // ── memory_tool_stats tool ──────────────────────────────────────────
+  pi.registerTool({
+    name: "memory_tool_stats",
+    label: "Memory Tool Stats",
+    promptSnippet: "View tool reliability statistics across sessions",
+    description: "View tool reliability statistics. Shows success rates per tool per task type.",
+    parameters: Type.Object({
+      action: StringEnum(["list", "reliability", "best"]),
+      tool: Type.Optional(Type.String({ description: "Tool name (reliability action)" })),
+      task_type: Type.Optional(Type.String({ description: "Task type (reliability/best action)" })),
+      candidates: Type.Optional(Type.Array(Type.String(), { description: "Candidate tools (best action)" })),
+    }),
+    execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
+      const state = getState(ctx);
+      const tp = params as { action: string; tool?: string; task_type?: string; candidates?: string[] };
+      const { action, tool, task_type, candidates } = tp;
 
-			if (action === "add") {
-				if (!condition || !action_text) {
-					return textResult("Error: condition and action_text are required for add action");
-				}
-				const rule = addHeuristicRule(state, condition, action_text);
-				return textResult(`Heuristic added: "${condition}" → "${action_text}" [${rule.id}]`);
-			}
+      if (action === "list") {
+        if (state.toolStats.size === 0) return textResult("No tool stats recorded.");
+        const lines: string[] = ["Tool Reliability Stats:\n"];
+        for (const stat of state.toolStats.values()) {
+          const rate = stat.attempts > 0 ? ((stat.successes / stat.attempts) * 100).toFixed(0) : "N/A";
+          lines.push(`${stat.tool} (${stat.taskType}): ${rate}% success (${stat.attempts} attempts)`);
+        }
+        return textResult(lines.join("\n"));
+      }
 
-			if (action === "evolve") {
-				if (!rule_id || success === undefined) {
-					return textResult("Error: rule_id and success are required for evolve action");
-				}
-				evolveHeuristic(state, rule_id, success);
-				return textResult(`Heuristic evolved: ${rule_id} (success: ${success})`);
-			}
+      if (action === "reliability") {
+        if (!tool || !task_type) return textResult("Error: tool and task_type are required");
+        const reliability = getToolReliability(state, tool, task_type);
+        return textResult(`${tool} reliability for "${task_type}": ${(reliability * 100).toFixed(0)}%`);
+      }
 
-			return textResult(`Unknown action: ${action}. Use list, add, or evolve.`);
-		},
-	});
+      if (action === "best") {
+        if (!task_type || !candidates || candidates.length === 0) return textResult("Error: task_type and candidates are required");
+        const best = selectBestTool(state, task_type, candidates);
+        if (!best) return textResult("No tool stats available for candidates");
+        return textResult(`Best tool for "${task_type}": ${best} (${(getToolReliability(state, best, task_type) * 100).toFixed(0)}% reliability)`);
+      }
 
-	// ── memory_tool_stats tool ──────────────────────────────────────────
+      return textResult(`Unknown action: ${action}. Use list, reliability, or best.`);
+    },
+  });
 
-	pi.registerTool({
-		name: "memory_tool_stats",
-		label: "Memory Tool Stats",
-		description:
-			"View tool reliability statistics. Shows success rates per tool per task type.",
-		parameters: Type.Object({
-			action: StringEnum(["list", "reliability", "best"]),
-			tool: Type.Optional(
-				Type.String({ description: "Tool name (reliability action)" }),
-			),
-			task_type: Type.Optional(
-				Type.String({ description: "Task type (reliability/best action)" }),
-			),
-			candidates: Type.Optional(
-				Type.Array(Type.String(), { description: "Candidate tools (best action)" }),
-			),
-		}),
-		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
-			const state = getState(ctx);
-			const tp = params as { action: string; tool?: string; task_type?: string; candidates?: string[] };
-			const { action, tool, task_type, candidates } = tp;
+  // ── Event: session_start ────────────────────────────────────────────
+  registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event: any, ctx: ExtensionContext) => {
+    const state = getState(ctx);
+    state.currentSessionId = ctx.sessionManager.getSessionFile?.() ?? `session-${Date.now()}`;
 
-			if (action === "list") {
-				if (state.toolStats.size === 0) return textResult("No tool stats recorded.");
+    if (state.episodes.length === 0) {
+      const loaded = await loadPastEpisodes(state);
+      if (loaded > 0) log.info(`Loaded ${loaded} past episodes from disk`);
+    }
 
-				const lines: string[] = ["Tool Reliability Stats:\n"];
-				for (const stat of state.toolStats.values()) {
-					const rate = stat.attempts > 0 ? ((stat.successes / stat.attempts) * 100).toFixed(0) : "N/A";
-					lines.push(`${stat.tool} (${stat.taskType}): ${rate}% success (${stat.attempts} attempts)`);
-				}
-				return textResult(lines.join("\n"));
-			}
+    if (state.heuristics.length === 0) {
+      for (const h of BUILTIN_HEURISTICS) {
+        addHeuristicRule(state, h.condition, h.action, h.priority);
+      }
+      log.info(`Seeded ${BUILTIN_HEURISTICS.length} built-in heuristics`);
+    }
 
-			if (action === "reliability") {
-				if (!tool || !task_type) return textResult("Error: tool and task_type are required");
-				const reliability = getToolReliability(state, tool, task_type);
-				return textResult(`${tool} reliability for "${task_type}": ${(reliability * 100).toFixed(0)}%`);
-			}
+    // R9: Load analytics data to pre-populate tool stats
+    const analyticsPath = METRICS_FILE;
+    try {
+      if (fs.existsSync(analyticsPath)) {
+        const raw = fs.readFileSync(analyticsPath, "utf-8");
+        for (const line of raw.trim().split("\n").filter(Boolean).slice(-20)) {
+          try {
+            const entry = JSON.parse(line);
+            if (entry.toolMetrics) {
+              for (const [toolName, metrics] of Object.entries(entry.toolMetrics)) {
+                const m = metrics as any;
+                if (m.successCount !== undefined && m.totalCalls !== undefined) {
+                  const key = `${toolName}:*`;
+                  if (!state.toolStats.has(key)) {
+                    state.toolStats.set(key, { tool: toolName, taskType: "*", successes: 0, attempts: 0, lastAttempt: 0, avgDuration: 0 });
+                  }
+                  const stat = state.toolStats.get(key)!;
+                  stat.successes += m.successCount;
+                  stat.attempts += m.totalCalls;
+                }
+              }
+            }
+          } catch { /* skip malformed */ }
+        }
+        log.debug(`Loaded analytics entries for tool reliability pre-population`);
+      }
+    } catch { /* non-fatal */ }
 
-			if (action === "best") {
-				if (!task_type || !candidates || candidates.length === 0) {
-					return textResult("Error: task_type and candidates are required");
-				}
-				const best = selectBestTool(state, task_type, candidates);
-				if (!best) return textResult("No tool stats available for candidates");
-				const reliability = getToolReliability(state, best, task_type);
-				return textResult(`Best tool for "${task_type}": ${best} (${(reliability * 100).toFixed(0)}% reliability)`);
-			}
+    state.sessionStartTime = Date.now();
+    state.currentSessionTools = [];
+    state.lastSkillType = "";
+    state.skillTransitionCount = 0;
+    state.recentErrors = [];
+  });
 
-			return textResult(`Unknown action: ${action}. Use list, reliability, or best.`);
-		},
-	});
+  // ── Auto-Recall Cooldown ──────────────────────────────────────────
+  const RECALL_COOLDOWN_MS = 10_000;
+  let lastRecallTime = 0;
+  const AUTO_RECALL_ENABLED = true;
 
-	// ── heuristics_evaluate tool ────────────────────────────────────────
-	pi.registerTool({
-		name: "heuristics_evaluate",
-		label: "Heuristics Evaluate",
-		description:
-			"Evaluate which heuristics were followed in the current session.",
-		parameters: Type.Object({
-			action: StringEnum(["evaluate", "compliance"]),
-			task_type: Type.Optional(Type.String()),
-		}),
-		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
-			const state = getState(ctx);
-			const p = params as { action: string; task_type?: string };
-			const { action, task_type } = p;
+  function whisperRecall(ctx: ExtensionContext, title: string, episodes: Episode[]): void {
+    if (!AUTO_RECALL_ENABLED || episodes.length === 0) return;
+    const now = Date.now();
+    if (now - lastRecallTime < RECALL_COOLDOWN_MS) return;
+    lastRecallTime = now;
 
-			if (action === "evaluate" || action === "compliance") {
-				const applicable = task_type
-					? getApplicableHeuristics(state, task_type)
-					: getPrioritizedHeuristics(state).slice(0, 5);
+    const crossSession = episodes.filter((ep: any) => ep._crossSession);
+    if (crossSession.length > 0) {
+      emitSignal(ctx, "memory", "contamination", "warn", false, {
+        count: crossSession.length,
+        sessionIds: crossSession.map((ep: any) => ep.sessionId).slice(0, 3),
+      });
+    }
 
-				if (applicable.length === 0) {
-					return textResult("No applicable heuristics found.");
-				}
+    const lines: string[] = [`[recall] ${title}`];
+    for (const ep of episodes.slice(0, 2)) {
+      const icon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
+      const crossMark = (ep as any)._crossSession ? " [CROSS-SESSION]" : "";
+      const conf = (ep as any).memoryConfidence != null ? ` (conf ${((ep as any).memoryConfidence * 100).toFixed(0)}%)` : "";
+      lines.push(`  ${icon}${crossMark}${conf} ${ep.task.slice(0, 80)}`);
+      lines.push(`    Solution: ${ep.solution.slice(0, 120)}`);
+    }
 
-				const lines: string[] = ["Heuristic Compliance:\n"];
-				for (const rule of applicable) {
-					const key = task_type ?? "general";
-					const stat = state.toolStats.get(`${rule.condition}:${key}`);
-					const toolRate = stat && stat.attempts > 0 ? stat.successes / stat.attempts : null;
-					const compliance = toolRate !== null
-						? rule.successRate * 0.6 + toolRate * 0.4
-						: rule.successRate;
-					const icon = compliance > 0.7 ? "yes" : compliance > 0.4 ? "partial" : "no";
-					lines.push(`[${icon}] ${rule.condition}`);
-					lines.push(`  -> ${rule.action}`);
-					lines.push(`  Uses: ${rule.uses}, Rate: ${(rule.successRate * 100).toFixed(0)}%`);
-					lines.push("");
-				}
-			return textResult(lines.join("\n"));
-			}
+    sendTrackedMessage(pi, {
+      customType: "memory",
+      display: true,
+      content: [{ type: "text", text: lines.join("\n") }],
+    }, { deliverAs: "followUp", triggerTurn: false }, { type: "memory", source: "three-memory-stores/recall" });
+  }
 
-			return textResult("Unknown action. Use evaluate.");
-		},
-	});
+  // ── Event: tool_end ────────────────────────────────────────────────
+  pi.on("tool_end" as never, async (event: any, ctx: ExtensionContext) => {
+    try {
+    const state = getState(ctx);
+    const toolName = event?.toolName ?? event?.tool ?? "unknown";
+    const isError = event?.isError ?? event?.error != null;
+    const duration = event?.duration ?? 0;
 
+    state.currentSessionTools.push(toolName);
+    const taskType = inferTaskType(ctx, toolName);
+    recordToolCall(state, toolName, taskType, !isError, duration);
 
-	// ── Event: session_start ────────────────────────────────────────────
+    if (state.lastSkillType && state.lastSkillType !== taskType) {
+      state.skillTransitionCount++;
+      if (state.skillTransitionCount === 3 && state.episodes.length > 0) {
+        const relevant = retrieveByRUMS(state, `${taskType} solution approach`, 1, state.currentSessionId);
+        if (relevant.length > 0 && relevant[0].similarity > 0.25) {
+          whisperRecall(ctx, `Approach hint for ${taskType} tasks:`, relevant);
+        }
+      }
+    }
+    state.lastSkillType = taskType;
 
-	pi.on("session_start", async (_event: any, ctx: ExtensionContext) => {
-		const state = getState(ctx);
+    if (isError) {
+      state.recentErrors.push(`${toolName}:${taskType}`);
+      if (state.recentErrors.length > 5) state.recentErrors.shift();
 
-		// Load past episodes from disk so recaller has data from previous sessions
-		if (state.episodes.length === 0) {
-			const loaded = await loadPastEpisodes(state);
-			if (loaded > 0) {
-				log.info(`Loaded ${loaded} past episodes from disk`);
-			}
-		}
+      const errorQuery = `${toolName} ${taskType} failure error`;
+      const similarFailures = retrieveByRUMS(state, errorQuery, 2, state.currentSessionId);
+      if (similarFailures.length > 0 && similarFailures[0].similarity > 0.15) {
+        whisperRecall(ctx, `Similar past issue with ${toolName}:`, similarFailures);
+      }
 
-		if (state.heuristics.length === 0) {
-			for (const h of BUILTIN_HEURISTICS) {
-				addHeuristicRule(state, h.condition, h.action, h.priority);
-			}
-			log.info(`Seeded ${BUILTIN_HEURISTICS.length} built-in heuristics`);
-		}
+      if (toolName !== "bash") {
+        const currentReliability = getToolReliability(state, toolName, taskType);
+        if (currentReliability < 0.4 && state.toolStats.size > 3) {
+          let bestAlt: string | null = null;
+          let bestRel = 0;
+          for (const [key, stat] of state.toolStats) {
+            const [t, tt] = key.split(":");
+            if (t !== toolName && tt === taskType && stat.successes / stat.attempts > bestRel) {
+              bestRel = stat.successes / stat.attempts;
+              bestAlt = t;
+            }
+          }
+          if (bestAlt && bestRel > currentReliability + 0.2) {
+            sendTrackedMessage(pi, {
+              customType: "memory",
+              display: true,
+              content: [{ type: "text", text: `[recall] ${bestAlt} has better reliability (${(bestRel * 100).toFixed(0)}%) for "${taskType}" than ${toolName} (${(currentReliability * 100).toFixed(0)}%)` }],
+            }, { deliverAs: "followUp", triggerTurn: false }, { type: "memory", source: "three-memory-stores/reliability" });
+          }
+        }
+      }
+    }
+    } catch (err) {
+      log.error("[three-mem-tool-end] error:", err);
+    }
+  });
 
-		// R9: Load analytics data to pre-populate tool-reliability stats
-		// This closes the feedback loop: analytics → tool reliability → agent behavior
-		const analyticsPath = path.join(os.homedir(), ".pi", "logs", "braid-metrics.jsonl");
-		try {
-			if (fs.existsSync(analyticsPath)) {
-				const raw = fs.readFileSync(analyticsPath, "utf-8");
-				const lines = raw.trim().split("\n").filter(Boolean);
-				// Use last N sessions for relevance
-				for (const line of lines.slice(-20)) {
-					try {
-						const entry = JSON.parse(line);
-						if (entry.toolMetrics) {
-							for (const [toolName, metrics] of Object.entries(entry.toolMetrics)) {
-								const m = metrics as any;
-								if (m.successCount !== undefined && m.totalCalls !== undefined) {
-									// Populate tool stats using the toolName as key across all task types
-									// (analytics doesn't break down by task type, so we use "*" as generic)
-									const key = `${toolName}:*`;
-									if (!state.toolStats.has(key)) {
-										state.toolStats.set(key, { tool: toolName, taskType: "*", successes: 0, attempts: 0, lastAttempt: 0, avgDuration: 0 });
-									}
-									const stat = state.toolStats.get(key)!;
-									stat.successes += m.successCount;
-									stat.attempts += m.totalCalls;
-								}
-							}
-						}
-					} catch {
-						// Skip malformed lines
-					}
-				}
-				log.debug(`Loaded ${lines.length} analytics entries for tool reliability pre-population`);
-			}
-		} catch (err) {
-			log.warn(`Could not load analytics data: ${err}`);
-		}
+  // ── Event: turn_end ────────────────────────────────────────────────
+  pi.on("turn_end", async (_event: unknown, ctx: ExtensionContext) => {
+    try {
+    const state = getState(ctx);
+    if (!AUTO_RECALL_ENABLED || state.currentSessionTools.length < 3) return;
 
-		state.sessionStartTime = Date.now();
-		state.currentSessionTools = [];
-	});
+    const now = Date.now();
+    if (now - lastRecallTime < RECALL_COOLDOWN_MS) return;
 
+    const recentTools = state.currentSessionTools.slice(-5);
+    const lastError = state.recentErrors[state.recentErrors.length - 1] ?? "";
+    const errorTool = lastError.split(":")[0] ?? "";
+    const taskType = inferTaskType(ctx, recentTools[recentTools.length - 1] ?? "");
+    const query = `${taskType} ${errorTool} solution error`.trim();
+    const relevant = retrieveByRUMS(state, query, 1, state.currentSessionId);
 
-	// ── Auto-Recall Cooldown ──────────────────────────────────────────
-	// Prevents noise: minimum gap between proactive recall whispers
-	const RECALL_COOLDOWN_MS = 10_000; // 10 seconds
-	let lastRecallTime = 0;
-	const AUTO_RECALL_ENABLED = true; // Master toggle for auto-recall
+    if (relevant.length > 0 && relevant[0].similarity > 0.28) {
+      lastRecallTime = now;
+      whisperRecall(ctx, `Past solution might apply:`, relevant);
+    }
 
-	// ── Auto-Recall Helper ────────────────────────────────────────────
-	function whisperRecall(
-		ctx: ExtensionContext,
-		title: string,
-		episodes: Episode[],
-	): void {
-		if (!AUTO_RECALL_ENABLED || episodes.length === 0) return;
+    // Cross-search cognitive-memory for relevant semantic insights
+    try {
+      const cm = getCognitiveMemory();
+      const semanticResults = await cm.recall(query, { type: undefined, limit: 2 });
+      if (semanticResults.length > 0) {
+        const lines: string[] = [`[recall] Related semantic memories:`];
+        for (const r of semanticResults) {
+          lines.push(`  [${r.memory.type}] ${r.memory.content.slice(0, 80)}... (rel: ${r.relevance.toFixed(2)})`);
+        }
+        sendTrackedMessage(pi, {
+          customType: "memory",
+          display: true,
+          content: [{ type: "text", text: lines.join("\n") }],
+        }, { deliverAs: "followUp", triggerTurn: false }, { type: "memory", source: "three-memory-stores/cross-recall" });
+      }
+    } catch { /* cognitive-memory not available */ }
 
-		const now = Date.now();
-		if (now - lastRecallTime < RECALL_COOLDOWN_MS) return;
-		lastRecallTime = now;
+    } catch (err) {
+      log.error("[three-mem-turn-end] error:", err);
+    }
+  });
 
-		const lines: string[] = [`[recall] ${title}`];
-		for (const ep of episodes.slice(0, 2)) {
-			const icon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
-			lines.push(`  ${icon} ${ep.task.slice(0, 80)}`);
-			lines.push(`    Solution: ${ep.solution.slice(0, 120)}`);
-		}
+  // ── Event: agent_end ────────────────────────────────────────────────
+  pi.on("agent_end", async (_event: any, ctx: ExtensionContext) => {
+    try {
+    const state = getState(ctx);
+    const uniqueTools = new Set(state.currentSessionTools);
+    log.info(`Session ended: ${state.currentSessionTools.length} tool calls, ${uniqueTools.size} unique tools, ${state.episodes.length} episodes, ${state.heuristics.length} heuristics`);
 
-		pi.sendMessage({
-			customType: "memory",
-			display: true,
-			content: [{ type: "text", text: lines.join("\n") }],
-		});
-	}
+    for (const h of getPrioritizedHeuristics(state).slice(0, 3)) {
+      log.info(`  Top heuristic: "${h.condition}" (priority: ${h.priority.toFixed(2)})`);
+    }
+    } catch (err) {
+      // stale ctx expected after session replace/dispose
+      const _staleMsg = String(err);
+      if (_staleMsg.includes("stale after session replacement")) {
+        log.debug("[three-mem-agent-end] stale ctx");
+      } else {
+        log.warn("[three-mem-agent-end] error:", err);
+      }
+    }
+  });
 
-	// ── Event: tool_end (enhanced with auto-recall) ────────────────────
-
-	pi.on("tool_end" as never, async (event: { toolName?: string; tool?: string; isError?: boolean; error?: unknown; duration?: number }, ctx: ExtensionContext) => {
-		const state = getState(ctx);
-		const toolName = event?.toolName ?? event?.tool ?? "unknown";
-		const isError = event?.isError ?? event?.error != null;
-		const duration = event?.duration ?? 0;
-
-		state.currentSessionTools.push(toolName);
-
-		const taskType = inferTaskType(ctx, toolName);
-		recordToolCall(state, toolName, taskType, !isError, duration);
-
-		if (isError) {
-			log.debug(`Tool "${toolName}" failed for task "${taskType}"`);
-
-			// ── R5: Auto-recall on tool error ───────────────────────
-			// When a tool fails, search past episodes for similar failures
-			// and solutions. This gives the agent immediate prior art.
-			const errorQuery = `${toolName} ${taskType} failure error`;
-			const similarFailures = retrieveByRUMS(state, errorQuery, 2);
-			if (similarFailures.length > 0 && similarFailures[0].similarity > 0.15) {
-				whisperRecall(
-					ctx,
-					`Similar past issue with ${toolName}:`,
-					similarFailures,
-				);
-			}
-
-			// ── R5: Tool-reliability-based alternative suggestion ──
-			// If this tool has low reliability for this task type, suggest a better one
-			if (toolName !== "bash") {
-				const currentReliability = getToolReliability(state, toolName, taskType);
-				if (currentReliability < 0.4 && state.toolStats.size > 3) {
-					// Find any tool with better reliability for this task type
-					let bestAlt: string | null = null;
-					let bestRel = 0;
-					for (const [key, stat] of state.toolStats) {
-						const [t, tt] = key.split(":");
-						if (t !== toolName && tt === taskType && stat.successes / stat.attempts > bestRel) {
-							bestRel = stat.successes / stat.attempts;
-							bestAlt = t;
-						}
-					}
-					if (bestAlt && bestRel > currentReliability + 0.2) {
-						pi.sendMessage({
-							customType: "memory",
-							display: true,
-							content: [{ type: "text", text: `[recall] ${bestAlt} has better reliability (${(bestRel * 100).toFixed(0)}%) for "${taskType}" than ${toolName} (${(currentReliability * 100).toFixed(0)}%)` }],
-						});
-					}
-				}
-			}
-		}
-	});
-
-	// ── Event: turn_end auto-recall ────────────────────────────────────
-
-	pi.on("turn_end", async (_event: unknown, ctx: ExtensionContext) => {
-		const state = getState(ctx);
-		if (!AUTO_RECALL_ENABLED || state.currentSessionTools.length === 0) return;
-
-		const now = Date.now();
-		if (now - lastRecallTime < RECALL_COOLDOWN_MS) return;
-
-		// Build a query from the current tool sequence + session context
-		const recentTools = state.currentSessionTools.slice(-5);
-		const query = recentTools.join(" ") + " task solution";
-
-		const relevant = retrieveByRUMS(state, query, 1);
-		if (relevant.length > 0 && relevant[0].similarity > 0.3) {
-			lastRecallTime = now;
-			whisperRecall(ctx, `Past solution might apply:`, relevant);
-		}
-	});
-
-	// ── Event: agent_end ────────────────────────────────────────────────
-
-	pi.on("agent_end", async (_event: any, ctx: ExtensionContext) => {
-		const state = getState(ctx);
-
-		const uniqueTools = new Set(state.currentSessionTools);
-		const duration = Date.now() - state.sessionStartTime;
-
-		log.info(
-			`Session ended: ${state.currentSessionTools.length} tool calls, ${uniqueTools.size} unique tools, ${state.episodes.length} episodes, ${state.heuristics.length} heuristics`,
-		);
-
-		const topHeuristics = getPrioritizedHeuristics(state).slice(0, 3);
-		for (const h of topHeuristics) {
-			log.info(`  Top heuristic: "${h.condition}" (priority: ${h.priority.toFixed(2)})`);
-		}
-	});
-
-	/* ── Event: session_shutdown ──────────────────────────────────────────── */
-	// Persist episodes to disk so they survive session rotation
-	pi.on("session_shutdown", async (_event: any, ctx: ExtensionContext) => {
-		const state = getState(ctx);
-		if (state.episodes.length > 0) {
-			const diskPath = path.join(os.homedir(), ".pi", "agent", "memory", "episodes.jsonl");
-			try {
-				const dir = path.dirname(diskPath);
-				if (!fs.existsSync(dir)) {
-					fs.mkdirSync(dir, { recursive: true });
-				}
-				const lines = state.episodes.map((e: any) => JSON.stringify(e)).join("\n");
-				fs.writeFileSync(diskPath, lines, "utf-8");
-				log.debug(`Persisted ${state.episodes.length} episodes to disk`);
-			} catch (err) {
-				log.warn(`Failed to persist episodes: ${err}`);
-			}
-		}
-	});
+  // ── Event: session_shutdown ────────────────────────────────────────────
+  pi.on("session_shutdown", async (_event: any, _ctx: ExtensionContext) => {
+    const state = getState(_ctx);
+    if (state.episodes.length > 0) {
+      // Migrate from legacy path on first write to new location
+      let diskPath = EPISODES_FILE;
+      const legacyExists = !!(state.loadedFromLegacy || fs.existsSync(LEGACY_EPISODES_FILE));
+      if (legacyExists && !fs.existsSync(LEGACY_EPISODES_FILE.replace(".jsonl", ".migrated"))) {
+        diskPath = LEGACY_EPISODES_FILE;
+      }
+      try {
+        const dir = path.dirname(diskPath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(diskPath, state.episodes.map((e: any) => JSON.stringify(e)).join("\n"), "utf-8");
+        log.debug(`Persisted ${state.episodes.length} episodes to ${diskPath}`);
+      } catch (err) {
+        log.warn(`Failed to persist episodes: ${err}`);
+      }
+    }
+  });
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function inferTaskType(_ctx: ExtensionContext, _toolName: string): string {
-	const toolTypeMap: Record<string, string> = {
-		read: "file_read",
-		write: "file_write",
-		edit: "file_edit",
-		bash: "command_execution",
-		grep: "search",
-		find: "search",
-		think: "reasoning",
-		memory_recall: "memory_access",
-	};
-
-	return toolTypeMap[_toolName] || "general";
+  const toolTypeMap: Record<string, string> = {
+    read: "file_read", write: "file_write", edit: "file_edit",
+    bash: "command_execution", grep: "search", find: "search",
+    think: "reasoning", memory_recall: "memory_access",
+  };
+  return toolTypeMap[_toolName] || "general";
 }
 
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Load episodes from cognitive-memory's disk store on session start.
- * This fixes the write-only read bug: episodes from previous sessions are now
- * available to the recaller module immediately, instead of only after the agent
- * explicitly calls memory_episodes.
- */
 async function loadPastEpisodes(state: MemoryStoresState): Promise<number> {
-	const diskPath = path.join(os.homedir(), ".pi", "memory", "memory.json");
-	try {
-		const data = await fsReadFilePromise(diskPath, "utf-8");
-		const parsed = JSON.parse(data);
-		const episodicItems: Array<{
-			id: string;
-			type: string;
-			text: string;
-			timestamp?: number;
-			task?: string;
-			outcome?: "success" | "failure" | "partial";
-		}> = Array.isArray(parsed.episodic)
-			? parsed.episodic
-			: Array.isArray(parsed)
-				? parsed
-				: [];
+  let loaded = 0;
 
-		let loaded = 0;
-		for (const item of episodicItems) {
-			if (state.episodes.some((e) => e.id === item.id)) continue;
-			state.episodes.push({
-				id: item.id || `disk-${Date.now()}-${loaded}`,
-				task: item.task || item.text?.substring(0, 200) || "",
-				solution: item.text || "",
-				outcome: item.outcome || "partial",
-				similarity: 0.5,
-				timestamp: item.timestamp || Date.now() - 86400000,
-				toolSequence: [],
-				tags: ["loaded-from-disk"],
-								project: (item as any).project ?? "unknown",
-			});
-			loaded++;
-		}
-		return loaded;
-	} catch {
-		return 0;
-	}
+  // Load from current path first
+  const newPath = EPISODES_FILE;
+  try {
+    if (fs.existsSync(newPath)) {
+      const lines = fs.readFileSync(newPath, "utf-8").split("\n").filter((l) => l.trim());
+      for (const line of lines) {
+        try {
+          const ep: Episode = JSON.parse(line);
+          if (!state.episodes.some((e) => e.id === ep.id)) {
+            state.episodes.push(ep);
+            loaded++;
+          }
+        } catch { /* skip malformed lines */ }
+      }
+    }
+  } catch { /* non-fatal */ }
+
+  // Migration: also try legacy path (~/.pi/agent/memory/)
+  const legacyPath = LEGACY_EPISODES_FILE;
+  if (fs.existsSync(legacyPath) && !state.loadedFromLegacy) {
+    state.loadedFromLegacy = true;
+    try {
+      const lines = fs.readFileSync(legacyPath, "utf-8").split("\n").filter((l) => l.trim());
+      for (const line of lines) {
+        try {
+          const ep: Episode = JSON.parse(line);
+          if (!state.episodes.some((e) => e.id === ep.id)) {
+            state.episodes.push(ep);
+            loaded++;
+          }
+        } catch { /* skip malformed lines */ }
+      }
+    } catch { /* non-fatal */ }
+  }
+
+  // Backward compat: load episodic items from cognitive-memory legacy path
+  const legacyMemPath = LEGACY_MEMORY_FILE;
+  try {
+    if (fs.existsSync(legacyMemPath)) {
+      const parsed = JSON.parse(fs.readFileSync(legacyMemPath, "utf-8"));
+      const episodicItems: Array<any> = Array.isArray(parsed.memories)
+        ? parsed.memories.filter((m: any) => m.type === "episodic")
+        : [];
+      for (const item of episodicItems) {
+        if (state.episodes.some((e) => e.id === item.id)) continue;
+        state.episodes.push({
+          id: item.id || `mig-${Date.now()}-${loaded}`,
+          task: item.content?.substring(0, 200) || "",
+          solution: item.content || "",
+          outcome: "partial",
+          similarity: 0.5,
+          timestamp: item.timestamp || Date.now() - 86400000,
+          toolSequence: [],
+          tags: ["loaded-from-disk"],
+          project: item.project ?? "unknown",
+          sessionId: item.sessionId ?? "migrated",
+        });
+        loaded++;
+      }
+    }
+  } catch { /* non-fatal */ }
+
+  return loaded;
 }
 
 // ── Exports ──────────────────────────────────────────────────────────────────
 
-export {
-	addEpisode,
-	retrieveEpisodes,
-	addHeuristicRule,
-	evolveHeuristic,
-	getPrioritizedHeuristics,
-	getApplicableHeuristics,
-	recordToolCall,
-	getToolReliability,
-	selectBestTool,
-	retrieveByRUMS,
-};
+export { addEpisode, condenseInsights, retrieveEpisodes, retrieveByRUMS } from "./episodes.js";
+export { addHeuristicRule, addPrinciple, evolveHeuristic, getPrioritizedHeuristics, getApplicableHeuristics } from "./heuristics.js";
+export { recordToolCall, getToolReliability, selectBestTool } from "./tool-reliability.js";

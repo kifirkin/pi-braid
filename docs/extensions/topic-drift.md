@@ -11,6 +11,7 @@ Topic drift detection — monitors whether the agent's output stays on topic rel
 ## Architecture
 
 Two tools:
+
 1. `check_topic_drift` — compare output against original request anchors
 2. `reset_topic_anchors` — reset anchors to a new request or current context
 
@@ -20,10 +21,10 @@ None — tools are called directly by the agent.
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
-| `check_topic_drift` | Check if current output matches original request anchors. Params: `output` (text to check). Returns drift score and warning if confident. |
-| `reset_topic_anchors` | Reset anchors to new request. Params: `newRequest` (optional — uses current context if omitted). |
+| Tool                  | Description                                                                                                                               |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `check_topic_drift`   | Check if current output matches original request anchors. Params: `output` (text to check). Returns drift score and warning if confident. |
+| `reset_topic_anchors` | Reset anchors to new request. Params: `newRequest` (optional — uses current context if omitted).                                          |
 
 ## Key Patterns
 
