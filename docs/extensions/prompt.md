@@ -7,9 +7,8 @@ System prompt construction and injection defense.
 | Extension | Files | Purpose |
 |---|---|---|
 | `prompt-builder/` | 3 | Full system prompt reconstruction from structured data. Overrides pi's native loading. |
-| `prompt-guardian/` | 1 | Injection defense (early implementation). |
 
-Total: 5 `.ts` files.
+Total: 3 `.ts` files.
 
 ## Key Architecture
 
@@ -30,5 +29,3 @@ Total: 5 `.ts` files.
 ## See Also
 
 - [prompt-builder.md](prompt-builder.md) — full docs
-- [prompt-guardian.md](prompt-guardian.md) — injection defense
-- [docs/CONTEXT-TERMINOLOGY.md](../CONTEXT-TERMINOLOGY.md) — compaction vs archive
