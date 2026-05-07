@@ -2,6 +2,38 @@
 
 All notable changes to pi-braid are documented here.
 
+## v0.2.0 (2026-05-08)
+
+### Publishing Readiness
+
+- **package.json**: Version bump to 0.2.0. Added `files`, `exports`, `bugs`, `homepage`, `prepublishOnly`, `prepare` scripts.
+- **README.md**: Complete rewrite — architecture diagram, extension table, installation, configuration, skill catalog.
+- **CONTRIBUTING.md**: New file — dev setup, code style, extension anatomy, testing, PR process.
+- **.gitignore**: Added compiled output dirs (`extensions/`, `lib/`, `modules/`) and session HTML files.
+- Removed stale session HTML exports from root (~10MB).
+- Removed 8 stale extension docs for deleted features (prompt-guardian, browser, repl, docs, codebase-tree, codebase-graph, planner, vision, web-fetch).
+- Removed `docs/.archive-old/` directory.
+
+### Path Consolidation
+
+- All braid storage consolidated under `~/.pi/agent/braid/` via `src/lib/braid-paths.ts`.
+- Eliminated all hardcoded `~/.pi/` paths from source code (16 files updated).
+- Added centralized constants: `METRICS_FILE`, `LOGS_DIR`, `BRAID_PROJECTS_DIR`, `HEALTHCHECK_DIR`.
+
+### Memory Unification
+
+- Cognitive-memory migrated to `braid/memory/semantic.json` with automatic legacy fallback.
+- Memory deep merge: `memory_recall`, `memory_list`, `memory_store`, `memory_get` all cross-search both semantic and episodic stores.
+- `memory_store(type=episodic)` now also populates three-memory-stores.
+- 174 legacy memories imported; 47 episodes consolidated.
+
+### Code Quality
+
+- Fixed sync I/O in async functions (`edit-helper.ts`) — `readFileSync`/`writeFileSync` → `await readFile`/`writeFile`.
+- Fixed silent catch blocks (`whisper.ts`, `healthcheck/helpers.ts`) — now log warnings.
+- All `sendTrackedMessage` calls have explicit `triggerTurn` values (21 calls audited).
+- Removed unused `os`/`homedir` imports from 3 files.
+
 ## v0.2.0-alpha.5 (2026-05-07)
 
 ### Bug Fixes
