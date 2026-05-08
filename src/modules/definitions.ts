@@ -266,7 +266,7 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
   {
     name: "tools",
     label: "Utility Tools",
-    description: "Codebase graph, REPL, docs reader, timer, latent activator",
+    description: "Healthcheck, timer, latent activator, observatory, diff, system-monitor, research",
     dependencies: ["core"],
     extensions: [
       { name: "healthcheck", fn: healthcheckFn },
@@ -275,6 +275,7 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
       { name: "observatory", fn: observatoryFn },
       { name: "diff", fn: diffFn },
       { name: "system-monitor", fn: systemMonitorFn },
+      { name: "research", fn: researchFn },
     ],
     listensTo: ["turn_end", "session_start", "session_shutdown"], // timer + observatory + diff + system-monitor
     coupledWith: [],
