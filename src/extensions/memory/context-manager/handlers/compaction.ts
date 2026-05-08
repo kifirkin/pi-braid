@@ -597,7 +597,7 @@ async function handleOverflowFailure(
         ],
         display: true,
       },
-      { deliverAs: "followUp", triggerTurn: false },
+      { deliverAs: "steer", triggerTurn: false },
       { type: "context", source: "context-manager/compaction/overflow" },
     );
 
@@ -671,7 +671,7 @@ async function handleTransientError(
         ],
         display: true,
       },
-      { deliverAs: "followUp", triggerTurn: false },
+      { deliverAs: "steer", triggerTurn: false },
       { type: "context", source: "context-manager/compaction/transient" },
     );
 
@@ -782,7 +782,7 @@ async function handleThresholdFailure(
         ],
         display: true,
       },
-      { deliverAs: "followUp", triggerTurn: false },
+      { deliverAs: "steer", triggerTurn: false },
       { type: "context", source: "context-manager/compaction/threshold" },
     );
 

@@ -347,7 +347,7 @@ export function registerRotationHandlers(pi: any): void {
           ],
           display: true,
         },
-        { deliverAs: "followUp", triggerTurn: false },
+        { deliverAs: "steer", triggerTurn: false },
         { type: "context", source: "context-manager/rotation" },
       );
     } catch (err) {

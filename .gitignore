@@ -42,8 +42,3 @@ pi-session-*
 # Session HTML exports
 pi-session-*.html
 *.html
-
-# Compiled output (built from src/)
-extensions/
-lib/
-modules/

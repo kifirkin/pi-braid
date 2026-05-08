@@ -414,7 +414,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
         display: true,
         content: [{ type: "text", text: lines.join("\n") }],
       },
-      { deliverAs: "followUp", triggerTurn: false },
+      { deliverAs: "steer", triggerTurn: false },
       { type: "memory", source: "three-memory-stores/recall" },
     );
   }
@@ -482,7 +482,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
                     },
                   ],
                 },
-                { deliverAs: "followUp", triggerTurn: false },
+                { deliverAs: "steer", triggerTurn: false },
                 { type: "memory", source: "three-memory-stores/reliability" },
               );
             }
@@ -533,7 +533,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
               display: true,
               content: [{ type: "text", text: lines.join("\n") }],
             },
-            { deliverAs: "followUp", triggerTurn: false },
+            { deliverAs: "steer", triggerTurn: false },
             { type: "memory", source: "three-memory-stores/cross-recall" },
           );
         }

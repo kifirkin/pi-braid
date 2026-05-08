@@ -583,7 +583,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
               },
             ],
           },
-          { deliverAs: "followUp", triggerTurn: false },
+          { deliverAs: "steer", triggerTurn: false },
           { type: "memory", source: "session-recall" },
         );
       }

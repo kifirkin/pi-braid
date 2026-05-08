@@ -235,7 +235,7 @@ function executeAction(
             content: [{ type: "text" as const, text: msg }],
             display: true,
           },
-          { deliverAs: "followUp", triggerTurn: false },
+          { deliverAs: "steer", triggerTurn: false },
           { type: "context", source: "context-lifecycle/nudge" },
         );
       }
