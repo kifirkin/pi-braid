@@ -4,7 +4,7 @@
 
 import { Type } from "typebox";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { complete } from "@mariozechner/pi-ai";
+import { callLlm } from "../../../../lib/llm-call.js";
 import { getExtensionState } from "../../../../lib/extension-state.js";
 import { createLogger } from "../../../../lib/logger.js";
 
@@ -353,7 +353,7 @@ export function createThinkTool() {
     label: "Think",
     promptSnippet: "Record structured thinking with decision, observation, and reason",
     description:
-      "Record structured thinking. Use think() before irreversible actions (destructive commands, file deletions, service restarts). Use think(depth='deep') for complex decisions with multiple components or trade-offs. Decision field is required; observation and reason are optional.",
+      "Record structured reasoning before irreversible actions or complex multi-component decisions.",
     parameters: thinkSchema,
     execute: async (
       _toolCallId: string,
@@ -442,27 +442,19 @@ export function createThinkTool() {
             .replace("{decision}", decision)
             .replace("{reason}", reason);
 
-          const response = await complete(
+          const apiKey = await ctx.modelRegistry.getApiKeyForProvider(ctx.model.provider);
+          const llmResult = await callLlm(
             ctx.model,
-            {
-              systemPrompt:
-                "You are a sharp, critical thinker who reviews the reasoning of other agents.",
-              messages: [
-                {
-                  role: "user" as const,
-                  content: [{ type: "text" as const, text: prompt }],
-                  timestamp: Date.now(),
-                },
-              ],
-            },
+            apiKey,
+            "You are a sharp, critical thinker who reviews the reasoning of other agents.",
+            prompt,
             { maxTokens: budget.tokens, temperature: 0.4 },
           );
 
-          const reviewText = Array.isArray(response)
-            ? response.map((r) => (r as { text?: string }).text || "").join("\n")
-            : typeof response === "string"
-              ? response
-              : "";
+          let reviewText = "";
+          if (!("error" in llmResult)) {
+            reviewText = llmResult.text;
+          }
 
           // Track tokens used
           if (ctx) {

@@ -5,7 +5,7 @@
 // R5: On task completion, cascade episodic → semantic memory.
 
 import { Type } from "typebox";
-import { complete } from "@mariozechner/pi-ai";
+import { callLlm } from "../../../../lib/llm-call.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "../../../../lib/extension-state.js";
 import { createLogger } from "../../../../lib/logger.js";
@@ -178,26 +178,17 @@ async function verifyWithSessionModel(
   }
 
   try {
-    const response = await complete(
-      ctx.model,
-      {
-        systemPrompt: FINALIZE_CRITIC_PROMPT,
-        messages: [
-          {
-            role: "user" as const,
-            content: [{ type: "text" as const, text: `Work summary: ${summary}` }],
-            timestamp: Date.now(),
-          },
-        ],
-      },
-      { maxTokens: 256, temperature: 0.1 },
-    );
+    const apiKey = await ctx.modelRegistry.getApiKeyForProvider(ctx.model.provider);
+    const llmResult = await callLlm(ctx.model, apiKey, FINALIZE_CRITIC_PROMPT, `Work summary: ${summary}`, {
+      maxTokens: 256,
+      temperature: 0.1,
+    });
 
-    const text = Array.isArray(response)
-      ? response.map((r) => (r as { text?: string }).text || "").join(" ")
-      : typeof response === "string"
-        ? response
-        : "";
+    if ("error" in llmResult) {
+      return { verified: true, confidence: 50, message: `Verification error: ${llmResult.error}` };
+    }
+
+    const text = llmResult.text;
 
     const verifiedMatch = text.match(/VERIFIED:\s*(yes|no)/i);
     const confidenceMatch = text.match(/CONFIDENCE:\s*(\d+)/);
@@ -255,7 +246,7 @@ export function createFinalizeTool(callbacks: FinalizeCallbacks = {}) {
     name: "finalize" as const,
     label: "Finalize",
     promptSnippet: "Mark the current task as complete and trigger review",
-    description: `Mark the current task as complete. Call finalize() only when all code is written, tested, and verified — use verify() first. The task ends after finalize() is called.`,
+    description: `Complete the current task only when all code is written, tested, and verified with verify() first. The task ends after finalize() is called.`,
     parameters: finalizeSchema,
     execute: async (
       _toolCallId: string,

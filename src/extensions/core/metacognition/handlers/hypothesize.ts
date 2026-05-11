@@ -3,7 +3,7 @@
 
 import { Type } from "typebox";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { complete } from "@mariozechner/pi-ai";
+import { callLlm } from "../../../../lib/llm-call.js";
 import { scoreHypothesisOutput } from "./scoring.js";
 import { createLogger } from "../../../../lib/logger.js";
 
@@ -40,7 +40,7 @@ export function createHypothesizeTool() {
     label: "Hypothesize",
     promptSnippet: "Generate hypotheses about root causes of a problem",
     description:
-      "Generate hypotheses about root causes before selecting a fix. Call this when debugging — a first attempt at fixing something fails. Generates multiple ranked hypotheses using the session model for fresh-eyes analysis.",
+      "Generate root cause hypotheses when debugging after a first fix attempt fails, using the session model for fresh-eyes analysis.",
     parameters: hypothesizeSchema,
     execute: async (
       _toolCallId: string,
@@ -63,33 +63,20 @@ export function createHypothesizeTool() {
           .replace("{evidence}", evidence)
           .replace("{maxHypotheses}", String(maxHypotheses));
 
-        const response = (await complete(
+        const apiKey = await ctx.modelRegistry.getApiKeyForProvider(ctx.model.provider);
+        const llmResult = await callLlm(
           ctx.model,
-          {
-            systemPrompt:
-              "You are an expert debugging assistant that analyzes problems and generates testable hypotheses.",
-            messages: [
-              {
-                role: "user" as const,
-                content: [{ type: "text" as const, text: prompt }],
-                timestamp: Date.now(),
-              },
-            ],
-          },
+          apiKey,
+          "You are an expert debugging assistant that analyzes problems and generates testable hypotheses.",
+          prompt,
           { maxTokens: 2048, temperature: 0.3 },
-        )) as any;
-
-        // Extract text from AssistantMessage (response is an object with .content,
-        // NOT an array or raw string). Same pattern as user-message-preprocessor.
-        const content = Array.isArray(response?.content)
-          ? response.content
-          : typeof response?.content === "string"
-            ? [{ type: "text" as const, text: response.content }]
-            : [];
-        const textBlocks = content.filter(
-          (c: any): c is { type: "text"; text: string } => c.type === "text",
         );
-        const text = textBlocks.length > 0 ? textBlocks[0].text.trim() : "";
+
+        if ("error" in llmResult) {
+          throw new Error(`hypothesize: session model error: ${llmResult.error}`);
+        }
+
+        const text = llmResult.text.trim();
 
         if (!text) {
           throw new Error(

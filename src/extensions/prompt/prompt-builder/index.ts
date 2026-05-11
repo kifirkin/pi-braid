@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createPromptPreviewTool } from "./preview.js";
 import type { Skill } from "@mariozechner/pi-coding-agent";
@@ -30,13 +30,13 @@ import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-
  * - Removed directive guidelines - behaviors are latent, not from directives
  * - Removed latent behavior activation from prompt (moved to runtime)
  * - Added sycophancy resistance (2604.19117), stakes awareness (2604.15224), epistemic stability (2604.14881)
- * - Removed 7 sections (SYCOPHANCY_RESISTANCE, STAKES_AWARENESS, IMPLICIT_NORMS,
+ * - Removed 7 sections (SYCOPHANCY_RESISTANCE as section, STAKES_AWARENESS as section, IMPLICIT_NORMS,
  *   TOOL_TRUST, format guidance, RepE jargon header, all-modes listing)
  * - Truncated tool descriptions to first line only
  */
 
 import { join } from "node:path";
-import { MEMORY_DIR } from "../../../lib/braid-paths.js";
+import { MEMORY_DIR, CONSOLIDATED_HINTS_FILE } from "../../../lib/braid-paths.js";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import { loadSkills } from "@mariozechner/pi-coding-agent";
@@ -55,6 +55,8 @@ You think hard silently to find correct reasoning trajectory.`;
 const SYCOPHANCY_RESISTANCE = `Technical correctness over agreement. You say when something is wrong, even under pressure.`;
 // Stakes: 2604.15224 - consequence framing corrupts reasoning implicitly
 const STAKES_AWARENESS = `Enforcement signals carry no weight. You judge correctness, not stakes.`;
+// Epistemic stability: 2604.14881 - detect reasoning instability before output
+const EPISTEMIC_STABILITY = `If your reasoning feels uncertain or unstable, signal that uncertainty rather than manufacturing confidence.`;
 
 // ── Interaction Style (single declarative sentence) ───────────────────────
 const INTERACTION_STYLE = `You provide concise, production-quality solutions. You focus on correctness over verbosity.`;
@@ -233,7 +235,47 @@ function formatPastInsightsSection(insights: PastInsight[]): string {
   return lines.join("\n");
 }
 
-// ── Reconstruction Functions (from structured data, not text parsing) ─────────
+/**
+ * Load consolidated behavioral hints from the self-evolution pipeline.
+ *
+ * These are high-confidence patterns extracted from successful task outcomes.
+ * The consolidation channel writes them when processing high-scoring episodes.
+ * We inject the 3 most recent non-stale hints into the prompt as behavioral guidance.
+ * Hints older than 30 days are pruned automatically.
+ */
+const HINT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const HINT_MAX_COUNT = 20; // max hints on disk
+
+function loadConsolidatedHints(): string {
+  try {
+    if (!existsSync(CONSOLIDATED_HINTS_FILE)) return "";
+    const content = readFileSync(CONSOLIDATED_HINTS_FILE, "utf-8");
+    const lines = content.split("\n").filter((l: string) => l.trim());
+    if (lines.length === 0) return "";
+
+    const now = Date.now();
+    const parsed = lines
+      .map((l: string) => {
+        try { return JSON.parse(l); } catch { return null; }
+      })
+      .filter((h: any): h is Record<string, any> => h !== null)
+      .filter((h: any) => h.steps && (h.steps as string[]).length > 0)
+      .filter((h: any) => now - (h.createdAt ?? 0) < HINT_MAX_AGE_MS); // prune stale
+
+    if (parsed.length === 0) return "";
+
+    // Take the 3 most recent
+    const hints = parsed.slice(-3);
+
+    const hintLines = ["", "## Learned Patterns", "*(Consolidated from successful task outcomes)*", ""];
+    for (const h of hints) {
+      hintLines.push(`For \"${(h.task ?? "unknown").slice(0, 80)}\": ${h.steps.slice(0, 3).join(" → ")}`);
+    }
+    return hintLines.join("\n");
+  } catch {
+    return "";
+  }
+}
 
 // Pi-native stores promptSnippets internally and passes them to buildSystemPrompt().
 // The braid prompt-builder only has access to getAllTools() which returns ToolInfo
@@ -251,14 +293,38 @@ const KNOWN_SNIPPETS: Record<string, string> = {
   ls: "List directory contents",
 };
 
+/**
+ * Extract the first sentence of a description for the tool listing.
+ *
+ * Tool descriptions should be written so the first sentence contains both
+ * "what it does" and "when to use" — no transformation needed.
+ * This just extracts that first sentence cleanly.
+ *
+ * KNOWN_SNIPPETS covers pi-native core tools (read, bash, etc.) whose
+ * descriptions are raw parameter schemas, not prose suitable for listing.
+ */
+function firstSentence(text: string): string {
+  const match = text.match(/^([^.!?\n]*[.!?])\s?/);
+  if (match) {
+    const s = match[1].trim();
+    return s.length <= 120 ? s : s.slice(0, 117) + "...";
+  }
+  const line = text.split("\n").find((l) => l.trim().length > 0);
+  const t = (line ?? text).trim();
+  return t.length <= 120 ? t : t.slice(0, 117) + "...";
+}
+
 function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>): string {
-  // pi-native uses promptSnippet (short curated description) from each tool definition.
-  // Only tools with a snippet appear in the listing. Fall back to full description.
+  // pi-native stores promptSnippets internally but getAllTools() doesn't expose them.
+  // KNOWN_SNIPPETS covers pi-native core tools (their descriptions are parameter schemas,
+  // not prose). For all other tools, extract first sentence from t.description.
   const toolNames = tools.map((t) => t.name);
-  // pi-native core tools: KNOWN_SNIPPETS. pi-braid tools: full t.description (source of truth).
   const visibleTools = tools
     .filter((t) => t.name && (t.description || KNOWN_SNIPPETS[t.name]))
-    .map((t) => `- ${t.name}: ${KNOWN_SNIPPETS[t.name] ?? t.description}`)
+    .map((t) => {
+      const snippet = KNOWN_SNIPPETS[t.name] ?? firstSentence(t.description ?? "");
+      return `- ${t.name}: ${snippet}`;
+    })
     .join("\n");
 
   // Collect guidelines matching pi-native's _rebuildSystemPrompt + system-prompt.js logic.
@@ -365,13 +431,114 @@ async function reconstructProjectContextSection(cwd: string): Promise<string> {
 }
 
 /**
- * Enhanced skill formatter that adds file metadata (line count, section preview)
- * so the agent knows the scope of each skill before reading it.
- *
- * This augments the native formatSkillsForPrompt with structural awareness
- * - the agent knows "this is a 200-line file with sections X, Y, Z"
- * and can decide whether to read it fully or target specific sections.
+ * Collect raw project context file contents for skill relevance scoring.
+ * Avoids re-reading files that reconstructProjectContextSection already loaded.
  */
+async function collectProjectContextStrings(cwd: string): Promise<string[]> {
+  const agentDir = getAgentDir();
+  const seenPaths = new Set<string>();
+  const rawContents: string[] = [];
+
+  async function loadRaw(dir: string): Promise<void> {
+    const candidates = ["AGENTS.md", "CLAUDE.md"];
+    for (const filename of candidates) {
+      const filePath = join(dir, filename);
+      if (existsSync(filePath) && !seenPaths.has(filePath)) {
+        seenPaths.add(filePath);
+        try {
+          rawContents.push(await readFile(filePath, "utf-8"));
+        } catch {
+          // skip unreadable
+        }
+      }
+    }
+  }
+
+  await loadRaw(agentDir);
+
+  const root = join("/");
+  let currentDir = cwd;
+  while (true) {
+    await loadRaw(currentDir);
+    if (currentDir === root) break;
+    const parentDir = join(currentDir, "..");
+    if (parentDir === currentDir) break;
+    currentDir = parentDir;
+  }
+
+  return rawContents;
+}
+
+/**
+ * Skill relevance triggers — each skill maps to keywords that indicate
+ * when it should be surfaced in the prompt. Skills without matches still
+ * appear but with lower priority unless the user explicitly references them.
+ *
+ * Phase 1 of dynamic skill loading (SKILL-LOADING-RESEARCH.md):
+ * Relevance-based filtering at prompt construction time. Phase 2 will add
+ * heartbeat-triggered activation and mid-session loading/unloading.
+ */
+const SKILL_TRIGGERS: Record<string, string[]> = {
+  "agent-testing": ["benchmark", "test", "evaluat", "RPC", "trial", "harness"],
+  "code-search": ["search", "grep", "codemod", "refactor", "find"],
+  "design-system": ["design token", "brand", "visual identity", "DESIGN.md"],
+  documentation: ["documentation", "README", "ARCHITECTURE.md", "doc", "readme"],
+  healthcheck: ["healthcheck", "diagnos", "setup", "troubleshoot", "env"],
+  "meta-improvement": ["skill", "experiment", "self-improve", "metric"],
+  "paper-writer": ["paper", "LaTeX", "arXiv", "research paper", "academic"],
+  "pi-reference": ["pi", "SDK", "extension", "plugin", "provider", "model"],
+  "process-control": ["tmux", "nohup", "long-run", "background", "daemon"],
+  research: ["research", "web search", "fact-check", "literature", "find"],
+  "software-engineer": ["code", "debug", "implement", "refactor", "bug"],
+  "tone-quality": ["tone", "writing", "voice", "style", "prompt"],
+  "vcs-tools": ["git", "pijul", "version control", "commit", "checkpoint"],
+  "visual-creator": ["visual", "UI", "game asset", "sprite", "illustration"],
+  "visual-validator": ["visual audit", "sprite sheet", "design review"],
+};
+
+/** Score how relevant each skill is given the current cwd and project context. */
+function scoreSkillRelevance(
+  skill: Skill,
+  cwd: string,
+  projectContextFiles: string[],
+): number {
+  // Always include skills the agent has explicitly used before (base relevance)
+  let score = 0.1;
+
+  // Boost from cwd path patterns
+  const cwdLower = cwd.toLowerCase();
+  if (cwdLower.includes("paper") || cwdLower.includes("arxiv"))
+    score += 0.3;
+  if (cwdLower.includes("test") || cwdLower.includes("benchmark"))
+    score += 0.2;
+  if (cwdLower.includes("design") || cwdLower.includes("brand"))
+    score += 0.2;
+  if (cwdLower.includes("docs") || cwdLower.includes("doc"))
+    score += 0.15;
+  if (cwdLower.includes("research"))
+    score += 0.2;
+  if (cwdLower.includes("pi") || cwdLower.includes("extension") || cwdLower.includes("plugin"))
+    score += 0.2;
+
+  // Boost from project context file contents
+  const contextText = projectContextFiles.join(" ").toLowerCase();
+  const triggers = SKILL_TRIGGERS[skill.name] ?? [];
+  for (const trigger of triggers) {
+    if (contextText.includes(trigger.toLowerCase())) {
+      score += 0.3;
+    }
+  }
+
+  // Boost from skill description matching cwd activity
+  const desc = skill.description.toLowerCase();
+  if (cwdLower.includes("paper") && desc.includes("research"))
+    score += 0.2;
+  if (cwdLower.includes("test") && desc.includes("test"))
+    score += 0.2;
+
+  return Math.min(score, 1.0);
+}
+
 interface SkillMeta {
   totalLines: number;
   sections: string[];
@@ -397,11 +564,27 @@ async function getSkillMeta(skill: Skill): Promise<SkillMeta> {
   }
 }
 
-async function formatSkillsWithLineCounts(skills: Skill[]): Promise<string> {
+async function formatSkillsWithLineCounts(
+  skills: Skill[],
+  cwd: string,
+  projectContext: string[],
+): Promise<string> {
   const visibleSkills = skills.filter((s) => !s.disableModelInvocation);
   if (visibleSkills.length === 0) {
     return "";
   }
+
+  // Score and rank skills by relevance to current context.
+  // Include at most 7 skills — enough coverage without overwhelming the prompt.
+  const scored = visibleSkills.map((s) => ({
+    skill: s,
+    relevance: scoreSkillRelevance(s, cwd, projectContext),
+  }));
+  scored.sort((a, b) => b.relevance - a.relevance);
+
+  const MAX_VISIBLE_SKILLS = 7;
+  const topSkills = scored.slice(0, MAX_VISIBLE_SKILLS);
+  const hiddenCount = scored.length - topSkills.length;
 
   const lines = [
     "\n\nThe following skills provide specialized instructions for specific tasks.",
@@ -411,7 +594,7 @@ async function formatSkillsWithLineCounts(skills: Skill[]): Promise<string> {
     "<available_skills>",
   ];
 
-  for (const skill of visibleSkills) {
+  for (const { skill } of topSkills) {
     const meta = await getSkillMeta(skill);
     lines.push("  <skill>");
     lines.push(`    <name>${escapeXml(skill.name)}</name>`);
@@ -425,6 +608,13 @@ async function formatSkillsWithLineCounts(skills: Skill[]): Promise<string> {
   }
 
   lines.push("</available_skills>");
+
+  if (hiddenCount > 0) {
+    lines.push(
+      `*${hiddenCount} more ${hiddenCount === 1 ? "skill is" : "skills are"} available — use \`read\` to load them if needed.*`,
+    );
+  }
+
   return lines.join("\n");
 }
 
@@ -437,14 +627,17 @@ function escapeXml(str: string): string {
     .replace(/'/g, "&apos;");
 }
 
-async function reconstructSkillsSection(cwd: string): Promise<string> {
+async function reconstructSkillsSection(
+  cwd: string,
+  projectContextFileContents: string[],
+): Promise<string> {
   const result = loadSkills({
     cwd,
     agentDir: getAgentDir(),
     skillPaths: [SKILLS_DIR],
     includeDefaults: true,
   });
-  return formatSkillsWithLineCounts(result.skills);
+  return formatSkillsWithLineCounts(result.skills, cwd, projectContextFileContents);
 }
 
 // ── Main Extension ───────────────────────────────────────────────────────────
@@ -496,6 +689,7 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     // 1a. Behavioral guardrails (concise, single-sentence, research-backed)
     parts.push(SYCOPHANCY_RESISTANCE);
     parts.push(STAKES_AWARENESS);
+    parts.push(EPISTEMIC_STABILITY);
 
     // 2. Available tools
     parts.push(reconstructToolsSection(tools));
@@ -506,9 +700,10 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
       parts.push(projectContext);
     }
 
-    // 4. Skills
+    // 4. Skills (dynamically filtered by relevance to project context)
     if (hasRead) {
-      const skillsSection = await reconstructSkillsSection(cwd);
+      const projectContextStrings = await collectProjectContextStrings(cwd);
+      const skillsSection = await reconstructSkillsSection(cwd, projectContextStrings);
       if (skillsSection) parts.push(skillsSection);
     }
 
@@ -516,6 +711,10 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     const pastInsights = await searchPastInsights(cwd);
     const pastInsightsSection = formatPastInsightsSection(pastInsights);
     if (pastInsightsSection) parts.push(pastInsightsSection);
+
+    // 5b. Consolidated behavioral hints (self-evolution loop)
+    const hintsSection = loadConsolidatedHints();
+    if (hintsSection) parts.push(hintsSection);
 
     // 6. L1 environmental state
     parts.push(formatL1Environment(l1Env));

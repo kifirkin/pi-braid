@@ -159,7 +159,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
     label: "Timer Set",
     promptSnippet: "Set a non-blocking timer for background processes",
     description:
-      "Set a non-blocking timer that fires asynchronously. " +
+      "Set a non-blocking timer for builds, background processes, and long-running tasks. Returns immediately without hanging." +
       "Returns immediately without hanging. " +
       "Use for: builds, background processes, pomodoro cycles, escalation chains.",
     parameters: Type.Object({
@@ -201,7 +201,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
     label: "Timer List",
     promptSnippet: "List all active timers",
     description:
-      "List all active (non-expired) timers. Check this to see if background timers have fired.",
+      "List all active timers to check if background processes have completed or need attention.",
     parameters: Type.Object({}),
     execute: async (): Promise<any> => {
       const timers = timerManager.listTimers();
@@ -240,7 +240,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
     label: "Timer Cancel",
     promptSnippet: "Cancel an active timer before it fires",
     description:
-      "Cancel an active timer before it fires. Use when the timed task is no longer needed.",
+      "Cancel an active timer when the timed task is no longer needed.",
     parameters: Type.Object({ timer_id: Type.String() }),
     execute: async (_id: string, params: any): Promise<any> => {
       const { timer_id } = params ?? {};

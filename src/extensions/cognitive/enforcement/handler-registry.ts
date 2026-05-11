@@ -262,10 +262,10 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     }
   });
 
-  pi.on("tool_end" as never, async (event: any, ctx: ExtensionContext) => {
+  pi.on("tool_result", async (event: any, ctx: ExtensionContext) => {
     if (!getState(ctx).enforcementActive) return;
     const isBurst = getState(ctx).consecutiveErrorTurns >= ERROR_BURST_THRESHOLD;
-    const toolName = event?.tool || "";
+    const toolName = event?.toolName || "";
     // Drop empty/whitespace-only tool names (LLM hallucinations like proxy artifacts)
     if (!toolName || !toolName.trim()) return;
     if (toolName === "think") return;
@@ -297,6 +297,12 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
       const avgError =
         recent.reduce((s, p) => s + Math.abs(p.predicted - p.actual), 0) / recent.length;
       if (avgError > 0.3) {
+        // Rate-limit: at most one calibration whisper per 30 seconds
+        const enState = getState(ctx);
+        const now = Date.now();
+        if (now - enState.lastCalibrationWhisperTime < 30_000) return;
+        enState.lastCalibrationWhisperTime = now;
+
         emitSignal(ctx, "calibration", "high-error", "warn", false, {
           error: avgError,
           tool: toolName,
@@ -583,7 +589,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
             display: true,
             content: [{ type: "text", text: `[enforcement] ${whisper}` }],
           },
-          { deliverAs: "followUp", triggerTurn: false },
+          { deliverAs: "steer", triggerTurn: false },
           { type: "enforcement", source: "enforcement/drift" },
         );
       }
@@ -617,7 +623,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
           display: true,
           content: [{ type: "text", text: `[policy] ${bpeRec.message}` }],
         },
-        { deliverAs: "followUp", triggerTurn: false },
+        { deliverAs: "steer", triggerTurn: false },
         { type: "enforcement", source: "enforcement/policy" },
       );
     }
@@ -653,7 +659,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
           display: true,
           content: [{ type: "text", text: `[enforcement] ${marsAdvice.message}` }],
         },
-        { deliverAs: "followUp", triggerTurn: false },
+        { deliverAs: "steer", triggerTurn: false },
         { type: "enforcement", source: "enforcement/mars" },
       );
     }
@@ -673,7 +679,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
           display: true,
           content: [{ type: "text", text: `[enforcement] ${dreamAdvice.message}` }],
         },
-        { deliverAs: "followUp", triggerTurn: false },
+        { deliverAs: "steer", triggerTurn: false },
         { type: "enforcement", source: "enforcement/dreamer" },
       );
     }

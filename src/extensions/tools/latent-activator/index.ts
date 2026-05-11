@@ -485,7 +485,7 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
     name: "activate_behavior",
     label: "Activate Behavior",
     description:
-      "Activate a latent behavior pattern. Call this when the task matches a known pattern (e.g., 'debugging', 'refactoring', 'code-review'). Behaviors shift how you approach problems. Use activate_mix for predefined combinations.",
+      "Activate a behavior pattern like debugging or refactoring when the task matches that problem-solving mode. Behaviors shift how you approach problems.",
     promptSnippet: "activate behavior patterns for different problem-solving modes",
     parameters: activateSchema,
     execute: async (_toolCallId, params: any) => {
@@ -517,7 +517,7 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "deactivate_behavior",
     label: "Deactivate Behavior",
-    description: "Deactivate a behavior pattern when no longer relevant.",
+    description: "Deactivate a behavior pattern when it is no longer relevant to the current task.",
     promptSnippet: "deactivate a behavior pattern when no longer relevant",
     parameters: deactivateSchema,
     execute: async (_toolCallId, params: any) => {
@@ -543,7 +543,7 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
     name: "get_active_behaviors",
     label: "Get Active Behaviors",
     description:
-      "View currently active behavior patterns. Check this before activating a behavior to avoid duplicates.",
+      "Check which behavior patterns are currently active before activating a new one to avoid conflicts or duplicates.",
     promptSnippet: "check what behavior patterns are currently active",
     parameters: Type.Object({}),
     execute: async () => {
@@ -567,7 +567,7 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "activate_mix",
     label: "Activate Mix",
-    description: "Activate a predefined combination of behaviors for common scenarios.",
+    description: "Activate a predefined behavior combination for common scenarios like debugging, refactoring, or code review.",
     promptSnippet: "activate a predefined behavior mix for common scenarios",
     parameters: activateMixSchema,
     execute: async (_toolCallId, params: any) => {

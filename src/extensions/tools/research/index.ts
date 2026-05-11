@@ -48,7 +48,7 @@ export default function researchExtension(pi: ExtensionAPI) {
     label: "Research",
     promptSnippet: "Analyze system prompt evolution and propose changes",
     description:
-      "Research tool for analyzing system prompt evolution, comparing variants, " +
+      "Analyze system prompt evolution and compare variants to propose evidence-based improvements. " +
       "and proposing evidence-based changes. Use 'history' to query prompt changes, " +
       "'compare' to A/B test variants, 'propose' to generate improvements.",
     parameters: researchSchema,

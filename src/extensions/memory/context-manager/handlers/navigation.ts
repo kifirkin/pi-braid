@@ -66,7 +66,7 @@ export function registerTurnEndCheckoutHandler(pi: any): void {
             ],
             display: true,
           },
-          { deliverAs: "steer", triggerTurn: true },
+          { deliverAs: "steer", triggerTurn: false },
           { type: "context", source: "context-manager/navigation" },
         );
         state.checkoutParams = null;

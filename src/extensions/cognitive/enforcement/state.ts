@@ -97,6 +97,7 @@ export function createState() {
     verificationJudgeRunning: false,
     toolLog: [] as string[],
     lastContextCheckTurn: 0,
+    lastCalibrationWhisperTime: 0,
     contextCheckInterval: 21,
     contextNudgeSent: false,
     contextAuditThreshold: 0.66,

@@ -82,6 +82,9 @@ export const FEEDBACK_ANALYTICS_FILE = path.join(FEEDBACK_DIR, "analytics.jsonl"
 /** Retry: command + state persistence */
 export const RETRY_STATE_FILE = path.join(BRAID, "retry-state.json");
 
+/** Consolidation: behavioral hints from successful patterns */
+export const CONSOLIDATED_HINTS_FILE = path.join(BRAID, "consolidated-hints.jsonl");
+
 /** Assistant: custom tools config */
 export const TOOLS_CONFIG_FILE = path.join(BRAID, "tools-config.json");
 

@@ -56,7 +56,7 @@ export function registerTools(pi: any): void {
     label: "Context Tag",
     promptSnippet: "Create a named save point in conversation history",
     description:
-      "Create a named save point (milestone) in conversation history. Use before risky changes or when stable.",
+      "Create a named save point in conversation history before risky changes or when you want a stable checkpoint.",
     parameters: contextTagSchema,
     execute: async (
       _toolCallId: string,
@@ -99,7 +99,7 @@ export function registerTools(pi: any): void {
     name: "context_log",
     label: "Context Log",
     promptSnippet: "View conversation history with usage and milestones",
-    description: "View conversation history. Like git log. Shows context usage and milestones.",
+    description: "View conversation history with context usage and milestones like a git log.",
     parameters: contextLogSchema,
     execute: async (
       _toolCallId: string,
@@ -229,7 +229,7 @@ export function registerTools(pi: any): void {
     name: "context_checkout",
     label: "Context Checkout",
     promptSnippet: "Navigate to any point in conversation history",
-    description: "Navigate to any point in conversation history. Like git checkout.",
+    description: "Navigate to any point in conversation history like git checkout.",
     parameters: contextCheckoutSchema,
     execute: async (
       _toolCallId: string,
@@ -280,7 +280,7 @@ export function registerTools(pi: any): void {
     label: "Context Prune",
     promptSnippet: "Identify and remove obsolete session entries",
     description:
-      "Analyze session to identify obsolete/duplicate entries. " +
+      "Analyze session to find and remove obsolete or duplicate entries and free up context space. " +
       "By default (dryRun=true) this is a dry-run — it shows what would be removed " +
       "without actually deleting anything. " +
       "Set dryRun=false to actually REMOVE the identified entries and free up context. " +
@@ -393,7 +393,7 @@ export function registerTools(pi: any): void {
     label: "Context Audit",
     promptSnippet: "Full analysis of session context health and recommendations",
     description:
-      "Comprehensive analysis of session context: usage stats, hygiene score, prune candidates, branching triggers, and actionable recommendations.",
+      "Get a comprehensive analysis of session context health with recommendations for improvement: usage stats, hygiene score, prune candidates, branching triggers.",
     parameters: contextAuditSchema,
     execute: async (
       _toolCallId: string,
@@ -469,7 +469,7 @@ export function registerTools(pi: any): void {
     label: "Context Snapshot",
     promptSnippet: "Quick health check of session context",
     description:
-      "Quick health check of the current session context. " +
+      "Run a quick health check on session context before any context management action. " +
       "Returns a one-shot summary: usage %, session length, hygiene score, " +
       "prune candidates count, and top recommendation. " +
       "\n\n" +
@@ -532,7 +532,7 @@ export function registerTools(pi: any): void {
     label: "Compact Context",
     promptSnippet: "Trigger compaction to free up context space",
     description:
-      "Trigger a compaction pass to free up context space. " +
+      "Free up context space by removing obsolete, duplicate, and superseded entries via compaction. " +
       "Calls pi.compact() to remove obsolete, duplicate, and superseded entries. " +
       "Accepts optional 'keep' parameter to preserve recent N messages from pruning. " +
       "\n\n" +
@@ -593,7 +593,7 @@ export function registerTools(pi: any): void {
     label: "Compress Context",
     promptSnippet: "Compress conversation range into a summary",
     description:
-      "Compress a range of conversation into an LLM-generated summary. " +
+      "Compress completed work into a summary to free context space while preserving key information. " +
       "The original messages are marked for removal from context (not deleted from session). " +
       "Use when a task is complete and the details are no longer needed in context. " +
       "If startIndex/endIndex are omitted, auto-selects the oldest 20% of entries.\n\n" +

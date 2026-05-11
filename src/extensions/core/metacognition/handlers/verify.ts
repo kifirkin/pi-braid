@@ -15,7 +15,7 @@
 
 import { Type } from "typebox";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { complete } from "@mariozechner/pi-ai";
+import { callLlm } from "../../../../lib/llm-call.js";
 import { getExtensionState } from "../../../../lib/extension-state.js";
 import { createLogger } from "../../../../lib/logger.js";
 
@@ -248,29 +248,23 @@ Do not invent problems that are not supported by the text.`;
 
   try {
     if (!ctx.model) {
-      return { issues: [], suggestions: [], confidence: 0.3 };
+      // Model unavailable — cannot run LLM verification. Return neutral confidence
+      // so the caller's heuristic confidence is not dragged down.
+      return { issues: [], suggestions: ["LLM verification skipped: no model available"], confidence: 1.0 };
     }
-    const response = await complete(
-      ctx.model,
-      {
-        messages: [
-          {
-            role: "user" as const,
-            content: [{ type: "text" as const, text: prompt }],
-            timestamp: Date.now(),
-          },
-        ],
-      },
-      { maxTokens: 1024, temperature: 0.1 },
-    );
+    const apiKey = await ctx.modelRegistry.getApiKeyForProvider(ctx.model.provider);
+    const llmResult = await callLlm(ctx.model, apiKey, "", prompt, {
+      maxTokens: 1024,
+      temperature: 0.1,
+    });
 
-    const content =
-      typeof response === "string"
-        ? response
-        : ((response as any)?.content ?? (response as any)?.message?.content ?? "");
+    if ("error" in llmResult) {
+      log.debug(`verify: LLM call failed: ${llmResult.error}`);
+      return { issues: [], suggestions: [], confidence: 0.5 };
+    }
 
     // Extract JSON from response
-    const jsonMatch = content.match(/{[\s\S]*?}/);
+    const jsonMatch = llmResult.text.match(/{[\s\S]*?}/);
     if (!jsonMatch) {
       log.debug("verify: could not parse LLM response as JSON");
       return { issues: [], suggestions: [], confidence: 0.5 };
@@ -287,7 +281,9 @@ Do not invent problems that are not supported by the text.`;
     };
   } catch (err) {
     log.debug(`verify: LLM call failed: ${err}`);
-    return { issues: [], suggestions: [], confidence: 0.3 };
+    // LLM verification failed — return neutral values so the caller's heuristic
+    // confidence is not penalized. The caller will keep heuristic confidence.
+    return { issues: [], suggestions: ["LLM verification failed, relying on heuristics only"], confidence: 1.0 };
   }
 }
 
@@ -314,7 +310,7 @@ export function createVerifyTool() {
     name: "verify",
     promptSnippet: "Verify code, reasoning, or tool results before finalization",
     description:
-      "Verify code, reasoning, plans, or tool results. Call verify(target='code') after writing code to check correctness. Call verify(target='reasoning') when uncertain about an approach — catches logic errors early. Provide specific criteria for targeted checks.",
+      "Verify code, reasoning, or results after writing code or when uncertain about an approach to catch errors early. Provide specific criteria for targeted checks.",
 
     parameters: Type.Object(
       {
@@ -399,12 +395,22 @@ export function createVerifyTool() {
         heuristicIssues.length === 0 ? 0.7 : Math.max(0.3, 0.7 - heuristicIssues.length * 0.1);
       let suggestions: string[] = [];
 
-      // Step 2: LLM deep verification for standard/deep
-      if (depth !== "quick" && (depth === "deep" || allIssues.length > 0 || confidence < 0.8)) {
+      // Step 2: LLM deep verification for standard/deep (requires a session model)
+      const modelAvailable = Boolean(ctx.model);
+      if (
+        modelAvailable &&
+        depth !== "quick" &&
+        (depth === "deep" || allIssues.length > 0 || confidence < 0.8)
+      ) {
         const llmResult = await llmVerify(target, text, criteria, depth, ctx);
         allIssues = [...allIssues, ...llmResult.issues];
         suggestions = llmResult.suggestions;
-        confidence = Math.min(confidence, llmResult.confidence);
+        // Only reduce confidence if LLM actually found issues.
+        // If LLM found no issues but has low confidence (e.g., model unavailable,
+        // provider not found, network error), keep the heuristic confidence.
+        if (llmResult.issues.length > 0) {
+          confidence = Math.min(confidence, llmResult.confidence);
+        }
       }
 
       // Deduplicate issues

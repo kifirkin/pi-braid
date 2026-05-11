@@ -24,6 +24,8 @@ Total: 16 `.ts` files across 4 sub-extensions.
 
 **Compaction v0.23:** LLM summarization always fires (no hard truncation bypass). Deduplication guard via `sessionId::leafId`. Token threshold uses `prep.tokensBefore`.
 
+**Freshness scoring:** Memory recall applies a 7-day half-life decay — recent memories surface above stale ones with equal utility. Formula: `relevance * (0.4 + 0.6 * 0.5^(age/halflife))`.
+
 **Context lifecycle:** proposal → S-MMU policy → auto-compaction → resume steer.
 
 ## See Also

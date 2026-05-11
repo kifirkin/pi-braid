@@ -43,6 +43,7 @@ import { measurementModule } from "./modules/measurement.js";
 import { budgetModule } from "./modules/budget.js";
 import { evolverModule } from "./modules/evolver.js";
 import { timerReminderModule } from "./modules/timer-reminder.js";
+import { behavioralDriftModule } from "./modules/behavioral-drift.js";
 
 export { recallerModule };
 export { dreamerModule };
@@ -267,6 +268,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     evolverModule,
     budgetModule,
     timerReminderModule,
+    behavioralDriftModule,
   ];
 
   // ── Event: turn_end ───────────────────────────────────────────────
@@ -332,8 +334,29 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     }
   });
 
-  // ── Event: session_start ──────────────────────────────────────────
+  // ── Event: tool_result — collect tool success/failure for trajectory enrichment
+  pi.on("tool_result", (event: any, ctx: ExtensionContext) => {
+    const state = getState(ctx);
+    const toolName = event?.toolName as string;
+    if (!toolName) return;
 
+    // Track tool outcome for richer SOP extraction
+    const success = !event?.isError;
+    state.metaLearning.toolTracking.trajectory ??= [];
+    state.metaLearning.toolTracking.trajectory.push({
+      toolName,
+      success,
+      turn: state.policyTurnCount,
+    });
+
+    // Cap trajectory length
+    if (state.metaLearning.toolTracking.trajectory.length > 200) {
+      state.metaLearning.toolTracking.trajectory =
+        state.metaLearning.toolTracking.trajectory.slice(-100);
+    }
+  });
+
+  // ── Event: session_start ──────────────────────────────────────────
   registerSessionStartHandler(
     pi,
     SessionPhase.MemoryState,
@@ -457,10 +480,17 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
         const taskDesc = _event?.task ?? "session_outcome";
         const success = outcome === "success" || !_event?.error;
 
-        // Reconstruct trajectory from activation history for SOP extraction
-        const trajectory: TrajectoryEntry[] = state.activationHistory
-          .filter((h) => h.moduleName === "tool_call" || h.reason === "tool")
-          .map((h) => ({ toolName: h.moduleName, success: true }));
+        // Use enriched trajectory from tool_end tracking (has success/failure data)
+        // Fall back to activation history if tool_end wasn't available
+        const enrichedTrajectory = state.metaLearning.toolTracking.trajectory ?? [];
+        const trajectory: TrajectoryEntry[] = enrichedTrajectory.length > 0
+          ? enrichedTrajectory.map((t: any) => ({
+              toolName: t.toolName,
+              success: t.success,
+            }))
+          : state.activationHistory
+              .filter((h) => h.moduleName === "tool_call" || h.reason === "tool")
+              .map((h) => ({ toolName: h.moduleName, success: true }));
 
         // Extract SOP from the trajectory
         const sop = extractSOP({

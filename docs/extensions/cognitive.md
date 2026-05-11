@@ -26,6 +26,8 @@ Total: 28 `.ts` files across 6 sub-extensions.
 
 **Nudge patterns:** repetition, drift, efficiency, tool_use, stakes, calibration — each with 3 urgency levels.
 
+**Judge scoring:** Score-based contradiction detection (replaced severity labels). Positive reinforcement when all 7 dimensions ≥90. Severity labels never exposed in nudges (compliance theater trigger per 2604.15224).
+
 ## See Also
 
 - [enforcement.md](enforcement.md) — full enforcement docs

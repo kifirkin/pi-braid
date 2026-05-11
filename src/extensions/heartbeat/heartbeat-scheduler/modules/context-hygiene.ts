@@ -174,29 +174,68 @@ export const contextHygieneModule: CognitiveModule = {
       state.lastProjectedRemaining = Infinity;
     }
 
+    // ── Auto-trigger compaction on sustained low density ─────────────────
+    // If density stays < 0.4 for 3+ consecutive ticks, trigger compaction
+    // automatically instead of just whispering suggestions. Cooldown of 20
+    // turns between auto-triggers to avoid oscillation.
+    const autoCompactState = getExtensionState(ctx, "context-hygiene-autocompact", () => ({
+      consecutiveLowDensity: 0,
+      lastAutoCompactTurn: -20,
+      lastDensityWhisperTurn: -20,
+    }));
+
     if (density.density < 0.4) {
-      ctx.whisper?.(
-        "Low context density (" +
-          Math.round(density.density * 100) +
-          "% signal). " +
-          "Noisy: " +
-          density.noisyMessages +
-          ", Signal: " +
-          density.signalMessages +
-          ". " +
-          "Consider: context_archive() or context_prune().",
-        { category: "cognitive", priority: density.density < 0.25 ? "high" : "medium" },
-      );
-    } else if (density.tokenRatio > 0.6) {
-      ctx.whisper?.(
-        "High density (" +
-          Math.round(density.density * 100) +
-          "%) but large context (" +
-          Math.round(density.tokenRatio * 100) +
-          "% of limit). " +
-          "Semantic compression could preserve meaning at 30% token cost (SimpleMem).",
-        { category: "cognitive", priority: "low" },
-      );
+      autoCompactState.consecutiveLowDensity++;
+
+      if (
+        autoCompactState.consecutiveLowDensity >= 3 &&
+        currentTurn - autoCompactState.lastAutoCompactTurn >= 20
+      ) {
+        const ticks = autoCompactState.consecutiveLowDensity;
+        autoCompactState.lastAutoCompactTurn = currentTurn;
+        autoCompactState.consecutiveLowDensity = 0;
+        try {
+          ctx.compact?.();
+          log.info(
+            `Auto-compacted: density ${Math.round(density.density * 100)}% ` +
+              `for ${ticks}+ ticks`,
+          );
+        } catch {
+          log.warn("Auto-compact failed (may not be available)");
+        }
+      } else {
+        // Rate-limit: at most one density whisper per 10 turns
+        if (currentTurn - autoCompactState.lastDensityWhisperTurn >= 10) {
+          autoCompactState.lastDensityWhisperTurn = currentTurn;
+          ctx.whisper?.(
+            "Low context density (" +
+              Math.round(density.density * 100) +
+              "% signal). " +
+              "Noisy: " +
+              density.noisyMessages +
+              ", Signal: " +
+              density.signalMessages +
+              ". " +
+              "Consider: context_archive() or context_prune().",
+            { category: "cognitive", priority: density.density < 0.25 ? "high" : "medium" },
+          );
+        }
+      }
+    } else {
+      autoCompactState.consecutiveLowDensity = 0;
+
+      // High density but large context — suggest semantic compression
+      if (density.tokenRatio > 0.6) {
+        ctx.whisper?.(
+          "High density (" +
+            Math.round(density.density * 100) +
+            "%) but large context (" +
+            Math.round(density.tokenRatio * 100) +
+            "% of limit). " +
+            "Semantic compression could preserve meaning at 30% token cost (SimpleMem).",
+          { category: "cognitive", priority: "low" },
+        );
+      }
     }
 
     if (density.duplicates > 2) {

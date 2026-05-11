@@ -624,7 +624,7 @@ async function handleOverflowFailure(
       ],
       display: true,
     },
-    { deliverAs: "followUp", triggerTurn: true },
+    { deliverAs: "steer", triggerTurn: false },
     { type: "context", source: "context-manager/compaction/overflow-exhausted" },
   );
   resetOverflowRetry();
@@ -691,7 +691,7 @@ async function handleTransientError(
       ],
       display: true,
     },
-    { deliverAs: "followUp", triggerTurn: true },
+    { deliverAs: "steer", triggerTurn: false },
     { type: "context", source: "context-manager/compaction/transient-exhausted" },
   );
 }
@@ -736,7 +736,7 @@ async function handleContextWindowError(
       ],
       display: true,
     },
-    { deliverAs: "followUp", triggerTurn: true },
+    { deliverAs: "steer", triggerTurn: false },
     { type: "context", source: "context-manager/compaction/context-window" },
   );
 }
@@ -801,13 +801,13 @@ async function handleThresholdFailure(
             "## ⚠️ Auto-compaction failed permanently",
             errMsg,
             "",
-            "Consider: `/compact` manually, `context_checkout` with backup, or storing learnings in memory.",
+            "Consider: `compact` manually, `context_checkout` with backup, or storing learnings in memory.",
           ].join("\n"),
         },
       ],
       display: true,
     },
-    { deliverAs: "followUp", triggerTurn: true },
+    { deliverAs: "steer", triggerTurn: true },
     { type: "context", source: "context-manager/compaction/threshold-exhausted" },
   );
 }

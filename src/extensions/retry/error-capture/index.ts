@@ -145,7 +145,7 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
   const errorListTool = {
     name: "error_list",
     description:
-      "List recent errors captured by the system. Use error_stats for patterns by source and type; use error_clear to mark handled errors.",
+      "List recent errors captured by the system before inspecting individual errors or clearing handled ones by source and type.",
     label: "Error List",
     parameters: errorListSchema,
     execute: async (_toolCallId: string, params: any) => {
@@ -191,7 +191,7 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
     name: "error_get",
     label: "Error Get",
     promptSnippet: "Get detailed error information by ID",
-    description: "Get detailed error by ID",
+    description: "Get detailed error information by ID after listing errors to inspect specific issues.",
     parameters: errorGetSchema,
     execute: async (_toolCallId: string, params: any) => {
       const entries = await loadErrors();
@@ -229,7 +229,7 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
     name: "error_clear",
     label: "Error Clear",
     promptSnippet: "Mark an error as handled",
-    description: "Mark an error as handled",
+    description: "Mark an error as handled after inspecting or resolving it to clear it from the active error list.",
     parameters: errorClearSchema,
     execute: async (_toolCallId: string, params: any) => {
       const entries = await loadErrors();
@@ -259,7 +259,7 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
     name: "error_stats",
     label: "Error Stats",
     promptSnippet: "Get error statistics by source and type",
-    description: "Get error statistics by source and type",
+    description: "Get error statistics grouped by source and type to identify patterns and recurring issues.",
     parameters: errorStatsSchema,
     execute: async () => {
       const entries = await loadErrors();

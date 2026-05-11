@@ -18,6 +18,7 @@ const log = createLogger("session-recall");
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { Model, Api } from "@mariozechner/pi-ai";
+import { callLlm } from "../../../lib/llm-call.js";
 import { Type } from "typebox";
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -311,7 +312,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
     label: "Session Search",
     promptSnippet: "Search past sessions by keywords",
     description:
-      "Search past sessions by keywords (plain-text grep, not AI). Returns matching sessions with snippets. Follow up with session_query for details. If no results, try broader terms or fewer words.",
+      "Search past sessions by keywords using plain-text grep before querying a specific session for details. Returns matching sessions with snippets.",
     parameters: sessionSearchSchema,
     execute: async (
       _toolCallId,
@@ -400,7 +401,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
     label: "Session Query",
     promptSnippet: "Analyze a specific session file in detail",
     description:
-      "Analyze a specific session file. Use after session_search, or with an existing session path.",
+      "Analyze a specific session file in detail after finding it with session_search.",
     parameters: sessionQuerySchema,
     execute: async (
       _toolCallId,
@@ -477,46 +478,24 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
       const userMessage = `## Session Conversation${contextNote}\n\n${conversationText}\n\n## Question\n\n${params.question}`;
 
       try {
-        // Use the complete function from pi-ai if available
-        const { complete } = await import("@mariozechner/pi-ai").catch(() => ({ complete: null }));
+        const apiKey = ctx?.modelRegistry
+          ? await ctx.modelRegistry.getApiKeyForProvider(model.provider)
+          : "";
 
-        if (!complete) {
-          // Fallback: just return the conversation text
+        const llmResult = await callLlm(model, apiKey, QUERY_SYSTEM_PROMPT, userMessage, {
+          signal: _signal,
+        });
+
+        if ("error" in llmResult) {
           return {
             content: [
-              {
-                type: "text" as const,
-                text: `**Session:** ${params.sessionPath}\n**Messages:** ${messages.length}\n\n${conversationText}\n\n*Query tool unavailable - showing raw session instead.*`,
-              },
+              { type: "text" as const, text: `Query failed: ${llmResult.error}` },
             ],
-            details: {
-              sessionPath: params.sessionPath,
-              messageCount: messages.length,
-              wasWindowed,
-            },
+            details: { error: true },
           };
         }
 
-        const response = await complete(
-          model,
-          {
-            systemPrompt: QUERY_SYSTEM_PROMPT,
-            messages: [{ role: "user" as const, content: userMessage, timestamp: Date.now() }],
-          },
-          { signal: _signal },
-        );
-
-        if (response.stopReason === "aborted") {
-          return {
-            content: [{ type: "text" as const, text: "Query was cancelled." }],
-            details: { cancelled: true },
-          };
-        }
-
-        const answer = (response.content ?? [])
-          .filter((c: any) => c.type === "text")
-          .map((c: any) => c.text)
-          .join("\n");
+        const answer = llmResult.text;
 
         if (!answer) {
           return {

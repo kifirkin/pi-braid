@@ -152,7 +152,6 @@ export default function analyticsExtension(pi: ExtensionAPI) {
             if (areCognitiveNudgesDisabled()) {
               log.debug("[analytics] Addiction alert suppressed via braid.suppressNudges=true");
             } else {
-              // Use deliverAs: "followUp" - non-critical advisory, visible in TUI
               sendTrackedMessage(
                 pi,
                 {
@@ -233,7 +232,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
               content: [{ type: "text", text: "[health] Performance recovered to healthy." }],
               display: true,
             },
-            { deliverAs: "followUp", triggerTurn: false },
+            { deliverAs: "steer", triggerTurn: false },
             { type: "heartbeat", source: "heartbeat/analytics/recover" },
           );
         }

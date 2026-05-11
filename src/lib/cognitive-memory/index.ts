@@ -313,7 +313,16 @@ export class CognitiveMemory {
       }
 
       const relevance = matches * (0.5 + memory.utility * 0.5);
-      if (relevance > 0) results.push({ memory, relevance });
+      if (relevance > 0) {
+        // Freshness scoring: penalize stale memories.
+        // Half-life of 7 days (604800000ms) — after 7 days, relevance decays by 50%.
+        // This ensures recent insights surface above old ones with equal utility.
+        const ageMs = Date.now() - memory.timestamp;
+        const HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000;
+        const freshnessFactor = Math.pow(0.5, ageMs / HALF_LIFE_MS);
+        const adjustedRelevance = relevance * (0.4 + 0.6 * freshnessFactor);
+        results.push({ memory, relevance: adjustedRelevance });
+      }
     }
 
     results.sort((a, b) => b.relevance - a.relevance);

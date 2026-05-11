@@ -59,7 +59,7 @@ console.log("\n[3] Three memory stores source analysis");
 	assert(src.includes("memory_tool_stats"), "has memory_tool_stats tool");
 	assert(src.includes("getExtensionState"), "uses getExtensionState (session-scoped)");
 	assert(src.includes("BUILTIN_HEURISTICS"), "has BUILTIN_HEURISTICS");
-	assert(src.includes("tool_end"), "listens to tool_end event");
+	assert(src.includes("tool_result"), "listens to tool_result event");
 }
 
 console.log("\n[4] Cross-store integration");

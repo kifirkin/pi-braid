@@ -65,4 +65,34 @@
 
 ---
 
-_Last updated: 2026-05-05_
+_Last updated: 2026-05-08_
+
+---
+
+## External Proposals (discovered May 2026)
+
+An inventory sweep across three research directories (`implicit-framing/pi-braid/docs/`,
+`llm-compliance-theater/braid-research/`, `implicit-framing/docs/research/`) recovered
+**32 unique proposal documents** not previously in braid's docs.
+
+They are now catalogued in `external/` with a master synthesis at:
+[`IMPROVEMENT-PROPOSALS-INVENTORY.md`](IMPROVEMENT-PROPOSALS-INVENTORY.md)
+
+### Key discoveries — actionable items
+
+| Priority | Proposal | Source | What to Do |
+|----------|----------|--------|------------|
+| 🔴 HIGH | **NUDGE-QUALITY-RESEARCH.md** | [A] archive | Rephrase judge prompt from directive to identity framing; add compliance dimension to 6-dimension schema |
+| 🔴 HIGH | **SKILL-LOADING-RESEARCH.md** | [A] root | Audit token cost of all skills; design heartbeat-triggered dynamic activation |
+| 🔴 HIGH | **prompt-gap-analysis.md** | [C] | Add sycophancy resistance + epistemic control loop to prompt-builder |
+| 🔴 HIGH | **BR1-TRAP-TASKS.md** | [A] archive | Use 6 trap types as regression suite for self-evolution |
+| 🔴 HIGH | **DEAD-EXTENSION-CLEANUP.md** | [A] archive | Remove vestigial commands (enforcement-on/off, loop-status/reset) |
+| 🟡 MED | **CONTEXT-MANAGEMENT.md** | [A] archive | Add density-based context triggers instead of hard token limits |
+| 🟡 MED | **FEATURE-AUDIT.md** | [A] archive | Re-evaluate MIXED/FRUSTRATING tools for deprecation |
+| 🟡 MED | **COUPLING.md** + **CLEANUP-PLAN.md** | [A] archive | Add group-level docs for cognitive (28 files), core, memory, heartbeat modules |
+
+### Full inventory
+
+See [`IMPROVEMENT-PROPOSALS-INVENTORY.md`](IMPROVEMENT-PROPOSALS-INVENTORY.md) for
+complete catalog of all 32 external proposals with summaries, cross-references,
+and implementation status synthesis.

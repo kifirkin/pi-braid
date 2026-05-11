@@ -233,7 +233,7 @@ export default function systemMonitorExtension(pi: ExtensionAPI) {
     label: "System Monitor",
     promptSnippet: "Report CPU, memory, disk, and top processes",
     description:
-      "Report CPU, memory, disk, and top processes as structured metrics. " +
+      "Report CPU, memory, disk, and top processes as structured metrics to troubleshoot performance issues. " +
       "Use mount_point to check a specific disk (default: /). " +
       "Set with_delta=true to see changes from last call. " +
       "Set process_limit to control how many top processes are returned (default: 0 = none).",
