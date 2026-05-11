@@ -259,7 +259,8 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     name: "memory_tool_stats",
     label: "Memory Tool Stats",
     promptSnippet: "View tool reliability statistics across sessions",
-    description: "View tool reliability statistics across sessions — use to find which tools work best for each task type.",
+    description:
+      "View tool reliability statistics across sessions — use to find which tools work best for each task type.",
     parameters: Type.Object({
       action: StringEnum(["list", "reliability", "best"]),
       tool: Type.Optional(Type.String({ description: "Tool name (reliability action)" })),
@@ -384,14 +385,22 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
   const RECALL_COOLDOWN_MS = 30_000;
   const AUTO_RECALL_ENABLED = true;
 
-  function whisperRecall(state: MemoryStoresState, ctx: ExtensionContext, title: string, episodes: Episode[]): void {
+  function whisperRecall(
+    state: MemoryStoresState,
+    ctx: ExtensionContext,
+    title: string,
+    episodes: Episode[],
+  ): void {
     if (!AUTO_RECALL_ENABLED || episodes.length === 0) return;
     const now = Date.now();
     if (now - state.lastRecallTime < RECALL_COOLDOWN_MS) return;
     state.lastRecallTime = now;
 
     // Deduplicate: skip if same title + episodes as last emission
-    const signature = `${title}|${episodes.slice(0, 2).map((ep: Episode) => ep.id).join("|")}`;
+    const signature = `${title}|${episodes
+      .slice(0, 2)
+      .map((ep: Episode) => ep.id)
+      .join("|")}`;
     if (signature === state.lastEpisodeRecallSignature) return;
     state.lastEpisodeRecallSignature = signature;
 
@@ -516,9 +525,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
       const recentTools = state.currentSessionTools.slice(-5);
       const toolTypes = recentTools.map((t: string) => inferTaskType(ctx, t));
       const dominantType =
-        toolTypes.filter((t: string) => t === toolTypes[0]).length >= 3
-          ? toolTypes[0]
-          : "general";
+        toolTypes.filter((t: string) => t === toolTypes[0]).length >= 3 ? toolTypes[0] : "general";
       const lastError = state.recentErrors[state.recentErrors.length - 1] ?? "";
       const errorTool = lastError.split(":")[0] ?? "";
       const stableQuery = `${dominantType} ${errorTool} solution error`.trim();
@@ -538,9 +545,15 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
         const semanticResults = await cm.recall(stableQuery, { type: undefined, limit: 2 });
 
         // Deduplicate: skip if same hashes as last emission
-        const resultHashes = semanticResults.map((r: any) => `${r.memory.id}:${r.memory.content.slice(0, 40)}`);
+        const resultHashes = semanticResults.map(
+          (r: any) => `${r.memory.id}:${r.memory.content.slice(0, 40)}`,
+        );
         const prevHashes = state.lastSemanticRecallHashes;
-        if (resultHashes.length > 0 && (resultHashes.length !== prevHashes.length || !resultHashes.every((h: string, i: number) => h === prevHashes[i]))) {
+        if (
+          resultHashes.length > 0 &&
+          (resultHashes.length !== prevHashes.length ||
+            !resultHashes.every((h: string, i: number) => h === prevHashes[i]))
+        ) {
           state.lastSemanticRecallHashes = resultHashes;
 
           const lines: string[] = [`[recall] Related semantic memories:`];

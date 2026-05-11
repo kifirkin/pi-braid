@@ -15,12 +15,12 @@ and its relevance to active braid development.
 
 ## Source Legend
 
-| Tag | Location |
-|-----|----------|
-| `[B]` | `braid/docs/` — already in pi-braid's docs |
-| `[A]` | `implicit-framing/pi-braid/docs/` — pi-braid clone snapshot |
+| Tag   | Location                                                                        |
+| ----- | ------------------------------------------------------------------------------- |
+| `[B]` | `braid/docs/` — already in pi-braid's docs                                      |
+| `[A]` | `implicit-framing/pi-braid/docs/` — pi-braid clone snapshot                     |
 | `[C]` | `llm-compliance-theater/braid-research/` — compliance theater research worktree |
-| `[D]` | `implicit-framing/docs/research/` — implicit-framing research docs |
+| `[D]` | `implicit-framing/docs/research/` — implicit-framing research docs              |
 
 ---
 
@@ -28,23 +28,23 @@ and its relevance to active braid development.
 
 These are already in `braid/docs/proposals/`. Status is per `proposals/README.md`.
 
-| # | Proposal | Source | Status | Summary |
-|---|----------|--------|--------|---------|
-| 1 | **CONTRAST-PHRASE-LIBRARY.md** | [B] proposals/ | ✅ FULLY IMPLEMENTED | 4 behavioral modes (TRUTH-SEEKING, CORRECTION, EPISTEMIC-CALIBRATION, TOOL-RELIABILITY) with per-scenario toggle via enforcement signals |
-| 2 | **REPE-PROMPT-CONTRAST-PROPOSAL.md** | [B] proposals/ | ✅ FULLY IMPLEMENTED | RepE-style contrast vectors injected as identity phrases in prompt-builder |
-| 3 | **HEARTBEAT-AS-EVENT-BUS.md** | [B] proposals/ | ✅ FULLY IMPLEMENTED | Unified event bus with 7 consumer handlers + observatory integration |
-| 4 | **MEMORY-LEAK-PREVENTION-AND-IMPLICIT-EXPLICIT-BOUNDARY.md** | [B] proposals/ | ✅ FULLY IMPLEMENTED | Cross-project memory isolation with deriveProjectId(), contamination signals |
-| 5 | **AGENT-TIMER-POMODORO.md** | [B] proposals/ | ✅ FULLY IMPLEMENTED | Non-blocking timers with heartbeat integration |
-| 6 | **STRUCTURED-OUTPUT-CATALYST.md** | [B] proposals/ | ❌ ABANDONED | TOOL_RESULT/STATUS/DATA blocks confused weaker LLMs |
-| 7 | **SELF-EVOLUTION-META-COGNITION-PROPOSAL.md** | [B] proposals/, [C] self-evolution/ | 🔴 NOT STARTED | Full self-evolution loop: mars-reflector + SOP extraction + consolidation channel (P0) |
-| 8 | **SELF-EVOLUTION-RESEARCH-SYNTHESIS.md** | [B] proposals/, [C] self-evolution/ | 🔴 NOT STARTED | Theoretical foundation for self-evolution (research only) |
-| 9 | **SAE-STEERING-PROPOSAL.md** | [B] proposals/, [C] agent-architecture/ | 🔴 NOT STARTED (obsoleted) | SAE steering — obsoleted by RepE Prompt Contrast (API providers don't expose activations) |
-| 10 | **HIERARCHICAL-MEMORY-COMPRESSION-PROPOSAL.md** | [B] proposals/ | 🟡 PARTIAL | Compaction done; missing semantic classification, adaptive ratios, compression metadata |
-| 11 | **BIDIRECTIONAL-VERIFIER-PROPOSAL.md** | [B] proposals/, [C] agent-architecture/ | 🟡 PARTIAL | Phase 1 (verify tool) done; missing backward verification + file dependency graph |
-| 12 | **BENCHMARK-IMPROVEMENTS-PROPOSAL.md** | [B] proposals/, [C] agent-architecture/ | 🟡 PARTIAL | SDK harnesses exist; missing multi-turn loop, BM3 suite, variant generation |
-| 13 | **VAR-MATH-VARIANTS.md** | [B] proposals/, [C] agent-architecture/ | 🟡 PARTIAL | Eval infra exists; missing variant generation + cross-bench comparison reports |
-| 14 | **CONSOLIDATION-CHANNEL-PHASE3-PROPOSAL.md** | [B] proposals/ | 🟡 PARTIAL | Phase 1-2 infra done; full consolidation loop not wired |
-| 15 | **00-WORKER-TASKS.md** | [B] proposals/ | 🟡 PARTIAL | Core extensions exist; not all worker-task patterns automated |
+| #   | Proposal                                                     | Source                                  | Status                     | Summary                                                                                                                                  |
+| --- | ------------------------------------------------------------ | --------------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **CONTRAST-PHRASE-LIBRARY.md**                               | [B] proposals/                          | ✅ FULLY IMPLEMENTED       | 4 behavioral modes (TRUTH-SEEKING, CORRECTION, EPISTEMIC-CALIBRATION, TOOL-RELIABILITY) with per-scenario toggle via enforcement signals |
+| 2   | **REPE-PROMPT-CONTRAST-PROPOSAL.md**                         | [B] proposals/                          | ✅ FULLY IMPLEMENTED       | RepE-style contrast vectors injected as identity phrases in prompt-builder                                                               |
+| 3   | **HEARTBEAT-AS-EVENT-BUS.md**                                | [B] proposals/                          | ✅ FULLY IMPLEMENTED       | Unified event bus with 7 consumer handlers + observatory integration                                                                     |
+| 4   | **MEMORY-LEAK-PREVENTION-AND-IMPLICIT-EXPLICIT-BOUNDARY.md** | [B] proposals/                          | ✅ FULLY IMPLEMENTED       | Cross-project memory isolation with deriveProjectId(), contamination signals                                                             |
+| 5   | **AGENT-TIMER-POMODORO.md**                                  | [B] proposals/                          | ✅ FULLY IMPLEMENTED       | Non-blocking timers with heartbeat integration                                                                                           |
+| 6   | **STRUCTURED-OUTPUT-CATALYST.md**                            | [B] proposals/                          | ❌ ABANDONED               | TOOL_RESULT/STATUS/DATA blocks confused weaker LLMs                                                                                      |
+| 7   | **SELF-EVOLUTION-META-COGNITION-PROPOSAL.md**                | [B] proposals/, [C] self-evolution/     | 🔴 NOT STARTED             | Full self-evolution loop: mars-reflector + SOP extraction + consolidation channel (P0)                                                   |
+| 8   | **SELF-EVOLUTION-RESEARCH-SYNTHESIS.md**                     | [B] proposals/, [C] self-evolution/     | 🔴 NOT STARTED             | Theoretical foundation for self-evolution (research only)                                                                                |
+| 9   | **SAE-STEERING-PROPOSAL.md**                                 | [B] proposals/, [C] agent-architecture/ | 🔴 NOT STARTED (obsoleted) | SAE steering — obsoleted by RepE Prompt Contrast (API providers don't expose activations)                                                |
+| 10  | **HIERARCHICAL-MEMORY-COMPRESSION-PROPOSAL.md**              | [B] proposals/                          | 🟡 PARTIAL                 | Compaction done; missing semantic classification, adaptive ratios, compression metadata                                                  |
+| 11  | **BIDIRECTIONAL-VERIFIER-PROPOSAL.md**                       | [B] proposals/, [C] agent-architecture/ | 🟡 PARTIAL                 | Phase 1 (verify tool) done; missing backward verification + file dependency graph                                                        |
+| 12  | **BENCHMARK-IMPROVEMENTS-PROPOSAL.md**                       | [B] proposals/, [C] agent-architecture/ | 🟡 PARTIAL                 | SDK harnesses exist; missing multi-turn loop, BM3 suite, variant generation                                                              |
+| 13  | **VAR-MATH-VARIANTS.md**                                     | [B] proposals/, [C] agent-architecture/ | 🟡 PARTIAL                 | Eval infra exists; missing variant generation + cross-bench comparison reports                                                           |
+| 14  | **CONSOLIDATION-CHANNEL-PHASE3-PROPOSAL.md**                 | [B] proposals/                          | 🟡 PARTIAL                 | Phase 1-2 infra done; full consolidation loop not wired                                                                                  |
+| 15  | **00-WORKER-TASKS.md**                                       | [B] proposals/                          | 🟡 PARTIAL                 | Core extensions exist; not all worker-task patterns automated                                                                            |
 
 ---
 
@@ -66,6 +66,7 @@ have been completed since this was written (April 22), but the proposal contains
 implementation details useful for future regression checking.
 
 **Key remaining items from this proposal**:
+
 - D5 Evidence Pool: XoT two-stage reasoning (classify + whisper) — now done
 - D1 Session Isolation: enforcement state singletons still use `let` statements
 - R5 Three-Memory: proactive recall before think(), memory injection into prompt
@@ -112,6 +113,7 @@ compression), GenericAgent (information density determines performance), Experie
 Compression Spectrum (adaptive levels for different temporal scales).
 
 **Key proposals**:
+
 - Semantic unit classification (code blocks, tool results, reasoning)
 - Hybrid compression strategy: semantic for dense context, count-based for sparse
 - Per-memory TTL and source tags for provenance
@@ -166,6 +168,7 @@ plan_with_budget, check_budget/set_budget, preprocessor tools), Phase 3 (dead co
 evolve extension cleanup, watchdog review). Some items already done.
 
 **Items still pending**:
+
 - `plan_with_budget`, `check_budget`, `set_budget` tools — verbose, rarely used
 - `preprocessor_config`, `preprocessor_stats` — exposes internals
 - `enforcement-on/off/stats` commands — debugging artifacts
@@ -227,6 +230,7 @@ think FRESH_EYES, and latent-activator produce slop themselves. Root causes:
 not actual code state.
 
 **Key findings**:
+
 - `"You are an enforcement judge"` IS compliance theater framing
 - Judge 6-dimension schema has NO compliance behavior detection dimension
 - `"## JUDGE VERDICT: FAIL"` labels reinforce compliance thinking
@@ -347,6 +351,7 @@ research), Phase 3 (PB1-PB4 prompt-builder), Phase 4 (BM1-BM3 benchmarking), plu
 codebase health checks. Most items marked DONE.
 
 **Key open items** (from this doc):
+
 - R5 three-memory: recall before think() not wired
 - Compression metadata for retrieval scoring
 - Benchmark contamination detection framework
@@ -369,6 +374,7 @@ execution feedback loop (track success rate, deactivate low-effectiveness skills
 extract new skills from completions).
 
 **Key research questions**:
+
 - Can skills be unloaded mid-session? (Check pi API for unloadSkill)
 - Can heartbeat trigger skill activation? (Heartbeat already runs in pi-braid)
 - Can execution feedback update skill content? (SkillX shows this is possible)
@@ -396,6 +402,7 @@ more dependent on memorization. (2) SAE-based latent steering (YaPO) works for
 behavioral control — but requires activation access, unavailable on API-only providers.
 
 **Key proposals for braid**:
+
 - Synthetic problem generation for contamination-free evaluation
 - Parameterized benchmarks with random seeds at evaluation time
 - Multi-instance evaluation (VAR-MATH approach — require consistency across variants)
@@ -650,35 +657,35 @@ change management. Less relevant to pi-braid's ~100 file codebase.
 
 ### 🔴 High Priority (directly actionable)
 
-| Item | Source | What to Do |
-|------|--------|------------|
-| **Nudge quality audit** | [A] NUDGE-QUALITY-RESEARCH.md | Rephrase judge prompt from directive to identity framing; add compliance dimension to 6-dimension schema |
-| **Skill loading dynamic scheduling** | [A] SKILL-LOADING-RESEARCH.md | Audit token cost of all skills; design heartbeat-triggered activation |
-| **Sycophancy resistance gap** | [C] prompt-gap-analysis.md | Add prompt-level sycophancy defense to prompt-builder |
-| **Epistemic control loop gap** | [C] prompt-gap-analysis.md | Add self-monitoring of reasoning stability to prompt-builder |
-| **BR1 trap tasks as regression suite** | [A] BR1-TRAP-TASKS.md | Validate self-evolution implementation against 6 trap types |
-| **Vestigial command cleanup** | [A] DEAD-EXTENSION-CLEANUP.md | Remove enforcement-on/off/stats, loop-status/reset/help, feedback-whitelist commands |
+| Item                                   | Source                        | What to Do                                                                                               |
+| -------------------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **Nudge quality audit**                | [A] NUDGE-QUALITY-RESEARCH.md | Rephrase judge prompt from directive to identity framing; add compliance dimension to 6-dimension schema |
+| **Skill loading dynamic scheduling**   | [A] SKILL-LOADING-RESEARCH.md | Audit token cost of all skills; design heartbeat-triggered activation                                    |
+| **Sycophancy resistance gap**          | [C] prompt-gap-analysis.md    | Add prompt-level sycophancy defense to prompt-builder                                                    |
+| **Epistemic control loop gap**         | [C] prompt-gap-analysis.md    | Add self-monitoring of reasoning stability to prompt-builder                                             |
+| **BR1 trap tasks as regression suite** | [A] BR1-TRAP-TASKS.md         | Validate self-evolution implementation against 6 trap types                                              |
+| **Vestigial command cleanup**          | [A] DEAD-EXTENSION-CLEANUP.md | Remove enforcement-on/off/stats, loop-status/reset/help, feedback-whitelist commands                     |
 
 ### 🟡 Medium Priority
 
-| Item | Source | What to Do |
-|------|--------|------------|
-| **Extension group docs** | [A] COUPLING.md, CLEANUP-PLAN.md | Add group-level docs for cognitive (28 files), core (9), heartbeat (2), memory (16) |
-| **Over-tooled extension pruning** | [A] DEAD-EXTENSION-CLEANUP.md | Consider removing plan_with_budget, check_budget, set_budget, preprocessor tools |
-| **Context management density-based triggers** | [A] CONTEXT-MANAGEMENT.md | Add information density monitoring instead of hard token limits |
-| **Feature audit recommendations** | [A] FEATURE-AUDIT.md | Document which tools to invest in vs deprecate in ROADMAP |
+| Item                                          | Source                           | What to Do                                                                          |
+| --------------------------------------------- | -------------------------------- | ----------------------------------------------------------------------------------- |
+| **Extension group docs**                      | [A] COUPLING.md, CLEANUP-PLAN.md | Add group-level docs for cognitive (28 files), core (9), heartbeat (2), memory (16) |
+| **Over-tooled extension pruning**             | [A] DEAD-EXTENSION-CLEANUP.md    | Consider removing plan_with_budget, check_budget, set_budget, preprocessor tools    |
+| **Context management density-based triggers** | [A] CONTEXT-MANAGEMENT.md        | Add information density monitoring instead of hard token limits                     |
+| **Feature audit recommendations**             | [A] FEATURE-AUDIT.md             | Document which tools to invest in vs deprecate in ROADMAP                           |
 
 ### 🔵 Research Reference
 
-| Item | Source | Relevance |
-|------|--------|-----------|
-| UniR tool-composition modules | [C] TOOL-AUGMENTED-REASONING-EXTENDED.md | Requires GPU training — long-term |
-| Benchmark contamination framework | [C] BENCHMARK-CONTAMINATION-AND-LATENT-STEERING.md | Design parameterized benchmarks with random seeds |
-| OpenMythos loop comparison | [C] OPENMYTHOS-LOOP-ANALYSIS-PROPOSAL.md | Architecture research — cross-turn carry tasks |
-| Benchmark saturation | [C] BENCHMARK-SATURATION.md | 100% saturation confirms need for variant generation |
-| Emergence via structured reasoning | [C] EMERGENCE-VIA-STRUCTURED-REASONING.md | Theoretical foundation for think() |
-| Ablation study framework | [A] ABLATION_STUDY.md | Run against current think() implementation |
-| Nudge fatigue design reference | [A] NUDGE-FATIGUE.md | Dedup patterns for future nudge systems |
+| Item                               | Source                                             | Relevance                                            |
+| ---------------------------------- | -------------------------------------------------- | ---------------------------------------------------- |
+| UniR tool-composition modules      | [C] TOOL-AUGMENTED-REASONING-EXTENDED.md           | Requires GPU training — long-term                    |
+| Benchmark contamination framework  | [C] BENCHMARK-CONTAMINATION-AND-LATENT-STEERING.md | Design parameterized benchmarks with random seeds    |
+| OpenMythos loop comparison         | [C] OPENMYTHOS-LOOP-ANALYSIS-PROPOSAL.md           | Architecture research — cross-turn carry tasks       |
+| Benchmark saturation               | [C] BENCHMARK-SATURATION.md                        | 100% saturation confirms need for variant generation |
+| Emergence via structured reasoning | [C] EMERGENCE-VIA-STRUCTURED-REASONING.md          | Theoretical foundation for think()                   |
+| Ablation study framework           | [A] ABLATION_STUDY.md                              | Run against current think() implementation           |
+| Nudge fatigue design reference     | [A] NUDGE-FATIGUE.md                               | Dedup patterns for future nudge systems              |
 
 ---
 
@@ -735,34 +742,34 @@ implicit-framing/docs/research/                         18 docs
 
 **Unique proposals now copied into `braid/docs/proposals/`:**
 
-| File | Source | New Path |
-|------|--------|----------|
-| NUDGE-QUALITY-RESEARCH.md | [A] archive | `proposals/external/` |
-| BR1-TRAP-TASKS.md | [A] archive | `proposals/external/` |
-| CONTEXT-MANAGEMENT.md | [A] archive | `proposals/external/` |
-| SKILL-LOADING-RESEARCH.md | [A] root | `proposals/external/` |
-| BENCHMARK-CONTAMINATION-AND-LATENT-STEERING.md | [C] | `proposals/external/` |
-| BENCHMARK-SATURATION.md | [C] | `proposals/external/` |
-| EMERGENCE-VIA-STRUCTURED-REASONING.md | [C] | `proposals/external/` |
-| LATENT-SPACE-AND-NOVEL-CAPABILITY.md | [C] | `proposals/external/` |
-| prompt-gap-analysis.md | [C] | `proposals/external/` |
-| TOOL-AUGMENTED-REASONING-EXTENDED.md | [C] | `proposals/external/` |
-| ToolCoverageProposal.md | [C] | `proposals/external/` |
-| OPENMYTHOS-LOOP-ANALYSIS-PROPOSAL.md | [C] | `proposals/external/` |
-| REPE-DEEP-SYNTHESIS.md | [C] | `proposals/external/` |
-| ABLATION_STUDY.md | [A] archive | `proposals/external/` |
-| WHAT-IS-MISSING.md | [A] root | `proposals/external/` |
-| COUPLING.md | [A] archive | `proposals/external/` |
-| FEATURE-AUDIT.md | [A] archive | `proposals/external/` |
-| DEAD-EXTENSION-CLEANUP.md | [A] archive | `proposals/external/` |
-| NUDGE-FATIGUE.md | [A] archive | `proposals/external/` |
-| OVERFLOW-INVESTIGATION.md | [A] archive | `proposals/external/` |
-| CONTEXT-TERMINOLOGY.md | [A] archive | `proposals/external/` |
-| PYTHON-TO-JS-MIGRATION.md | [A] archive | `proposals/external/` |
-| CLEANUP-PLAN.md | [A] archive | `proposals/external/` |
-| DOC-AUDIT.md | [A] archive | `proposals/external/` |
-| OVERNIGHT-RESULTS.md | [A] archive | `proposals/external/` |
-| BRAID-NEXT-PROPOSAL.md | [A] archive | `proposals/external/` |
+| File                                           | Source      | New Path              |
+| ---------------------------------------------- | ----------- | --------------------- |
+| NUDGE-QUALITY-RESEARCH.md                      | [A] archive | `proposals/external/` |
+| BR1-TRAP-TASKS.md                              | [A] archive | `proposals/external/` |
+| CONTEXT-MANAGEMENT.md                          | [A] archive | `proposals/external/` |
+| SKILL-LOADING-RESEARCH.md                      | [A] root    | `proposals/external/` |
+| BENCHMARK-CONTAMINATION-AND-LATENT-STEERING.md | [C]         | `proposals/external/` |
+| BENCHMARK-SATURATION.md                        | [C]         | `proposals/external/` |
+| EMERGENCE-VIA-STRUCTURED-REASONING.md          | [C]         | `proposals/external/` |
+| LATENT-SPACE-AND-NOVEL-CAPABILITY.md           | [C]         | `proposals/external/` |
+| prompt-gap-analysis.md                         | [C]         | `proposals/external/` |
+| TOOL-AUGMENTED-REASONING-EXTENDED.md           | [C]         | `proposals/external/` |
+| ToolCoverageProposal.md                        | [C]         | `proposals/external/` |
+| OPENMYTHOS-LOOP-ANALYSIS-PROPOSAL.md           | [C]         | `proposals/external/` |
+| REPE-DEEP-SYNTHESIS.md                         | [C]         | `proposals/external/` |
+| ABLATION_STUDY.md                              | [A] archive | `proposals/external/` |
+| WHAT-IS-MISSING.md                             | [A] root    | `proposals/external/` |
+| COUPLING.md                                    | [A] archive | `proposals/external/` |
+| FEATURE-AUDIT.md                               | [A] archive | `proposals/external/` |
+| DEAD-EXTENSION-CLEANUP.md                      | [A] archive | `proposals/external/` |
+| NUDGE-FATIGUE.md                               | [A] archive | `proposals/external/` |
+| OVERFLOW-INVESTIGATION.md                      | [A] archive | `proposals/external/` |
+| CONTEXT-TERMINOLOGY.md                         | [A] archive | `proposals/external/` |
+| PYTHON-TO-JS-MIGRATION.md                      | [A] archive | `proposals/external/` |
+| CLEANUP-PLAN.md                                | [A] archive | `proposals/external/` |
+| DOC-AUDIT.md                                   | [A] archive | `proposals/external/` |
+| OVERNIGHT-RESULTS.md                           | [A] archive | `proposals/external/` |
+| BRAID-NEXT-PROPOSAL.md                         | [A] archive | `proposals/external/` |
 
 ---
 

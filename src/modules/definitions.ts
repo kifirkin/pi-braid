@@ -266,7 +266,8 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
   {
     name: "tools",
     label: "Utility Tools",
-    description: "Healthcheck, timer, latent activator, observatory, diff, system-monitor, research",
+    description:
+      "Healthcheck, timer, latent activator, observatory, diff, system-monitor, research",
     dependencies: ["core"],
     extensions: [
       { name: "healthcheck", fn: healthcheckFn },

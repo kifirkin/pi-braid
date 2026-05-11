@@ -4,11 +4,11 @@ Proactive cognitive scheduling extensions. Research: paper 2604.14178.
 
 ## Extensions
 
-| Extension | Files | Purpose |
-|---|---|---|
-| `heartbeat-scheduler/` | 1 | Proactive scheduling tick, belief-policy-engine integration, MARS calibration. |
-| `analytics/` | 1 | Tool use tracking, rolling 50-window analysis, addiction detection, tool reliability. |
-| `behavioral-drift/` | 1 | Tool pattern drift detection via Jensen-Shannon divergence against session baseline. |
+| Extension              | Files | Purpose                                                                               |
+| ---------------------- | ----- | ------------------------------------------------------------------------------------- |
+| `heartbeat-scheduler/` | 1     | Proactive scheduling tick, belief-policy-engine integration, MARS calibration.        |
+| `analytics/`           | 1     | Tool use tracking, rolling 50-window analysis, addiction detection, tool reliability. |
+| `behavioral-drift/`    | 1     | Tool pattern drift detection via Jensen-Shannon divergence against session baseline.  |
 
 Total: 3 sub-extensions.
 

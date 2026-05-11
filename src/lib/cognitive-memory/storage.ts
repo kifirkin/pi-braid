@@ -55,9 +55,7 @@ export async function loadMemory(): Promise<CognitiveMemoryStore> {
         const legacyParsed = JSON.parse(legacyData);
         if (legacyParsed.memories?.length > 0) {
           const existingIds = new Set(store.memories.map((m) => m.id));
-          const newMemories = legacyParsed.memories.filter(
-            (m: any) => !existingIds.has(m.id),
-          );
+          const newMemories = legacyParsed.memories.filter((m: any) => !existingIds.has(m.id));
           if (newMemories.length > 0) {
             _log.info(`Importing ${newMemories.length} legacy memories into semantic store`);
             store.memories.push(...newMemories);

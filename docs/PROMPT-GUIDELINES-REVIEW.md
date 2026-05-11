@@ -26,12 +26,12 @@ The researcher agent built a **three-layer system** for prompt quality:
 
 The 4-dimension framework is **rigorous and empirically backed**:
 
-| Dimension | Theory | Evidence | Verdict |
-|-----------|--------|----------|---------|
-| 1. Directive Density | Identity framing > directives | 3.3× speed, 0-38% vs 100% compliance | ✅ Strong |
-| 2. Cognitive Reasoning Density | "Think silently" > "Think step by step" | 2-3× token waste from verbose chains | ✅ Strong |
-| 3. Voice Artifacts | Statistical patterns reveal generation | Measurable fingerprints (tricolon, em dash) | ✅ Good |
-| 4. Epistemic Calibration | Match confidence to production pathway | 4-level pathway taxonomy | ✅ Good |
+| Dimension                      | Theory                                  | Evidence                                    | Verdict   |
+| ------------------------------ | --------------------------------------- | ------------------------------------------- | --------- |
+| 1. Directive Density           | Identity framing > directives           | 3.3× speed, 0-38% vs 100% compliance        | ✅ Strong |
+| 2. Cognitive Reasoning Density | "Think silently" > "Think step by step" | 2-3× token waste from verbose chains        | ✅ Strong |
+| 3. Voice Artifacts             | Statistical patterns reveal generation  | Measurable fingerprints (tricolon, em dash) | ✅ Good   |
+| 4. Epistemic Calibration       | Match confidence to production pathway  | 4-level pathway taxonomy                    | ✅ Good   |
 
 The decision tree is practical and the "Anti-pattern: Empty System Prompt" section is a valuable insight (0% code quality without any prompt).
 
@@ -52,10 +52,12 @@ The decision tree is practical and the "Anti-pattern: Empty System Prompt" secti
 ### Architecture
 
 Each tool has two description fields:
+
 - **`promptSnippet`**: One-sentence summary, used in system prompt's "Available tools:" listing
 - **`description`**: Full documentation including usage patterns, parameters, caveats
 
 The prompt builder uses this logic:
+
 ```
 if (KNOWN_SNIPPETS[tool.name]) → use hardcoded snippet (pi-native tools)
 else → use full tool.description (braid tools)
@@ -119,9 +121,11 @@ The prompt builder constructs the system prompt from 10 sections:
 ### What Could Be Better
 
 1. **Tool listing uses full descriptions, not snippets**
+
    ```typescript
    .map((t) => `- ${t.name}: ${KNOWN_SNIPPETS[t.name] ?? t.description}`)
    ```
+
    For braid tools without KNOWN_SNIPPETS, this uses the FULL description.
    A tool with a 200-char description gets all 200 chars in the system prompt.
    With 60+ tools, this is ~6000-12000 tokens of tool descriptions per turn.
@@ -177,6 +181,7 @@ Option A is better — it lets tool authors control their one-line summary:
 **Fix**: Run the 4-dimension tone-quality framework over all tool descriptions.
 
 Checklist for each tool:
+
 - [ ] No MUST/ALWAYS/NEVER/CRITICAL/REQUIRED
 - [ ] No "think step by step" or "show reasoning"
 - [ ] No signposting ("Great question!", "Let's dive in")
@@ -195,6 +200,7 @@ Tool descriptions serve two audiences: the agent (decides when to use the tool)
 and the developer (reads parameter docs).
 
 Rules:
+
 - promptSnippet: ≤15 words, declarative, starts with a verb
 - description: 1-3 sentences, covers purpose + when to use + key caveats
 - No instructions in description (those go in the system prompt or skill)
@@ -208,9 +214,9 @@ Rules:
 
 ```typescript
 const hasSignal = (content: string): boolean => {
-  if (content.trim().length < 30) return false;  // Too short
+  if (content.trim().length < 30) return false; // Too short
   if (/^(session_outcome|outcome):/i.test(content.trim())) return false;
-  if (content.split(' ').length < 5) return false;  // Too few words
+  if (content.split(" ").length < 5) return false; // Too few words
   return true;
 };
 ```

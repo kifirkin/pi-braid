@@ -24,17 +24,18 @@ The naive approach — "read everything, then make changes" — doesn't scale. T
 
 **What actually works at scale**:
 
-| Approach | How it works | Limitation |
-|----------|-------------|------------|
-| Grep/find | Text pattern matching | Requires knowing the text |
-| AST analysis | Parse, extract structure | Can't run on entire 10M lines |
-| Semantic search (RAG) | Embed code chunks, query by meaning | Stale unless incrementally updated |
-| Hierarchical summaries | Module → File → Function summaries | Needs maintenance |
-| Dependency graphs | Call graph, import graph | Often incomplete for large codebases |
+| Approach               | How it works                        | Limitation                           |
+| ---------------------- | ----------------------------------- | ------------------------------------ |
+| Grep/find              | Text pattern matching               | Requires knowing the text            |
+| AST analysis           | Parse, extract structure            | Can't run on entire 10M lines        |
+| Semantic search (RAG)  | Embed code chunks, query by meaning | Stale unless incrementally updated   |
+| Hierarchical summaries | Module → File → Function summaries  | Needs maintenance                    |
+| Dependency graphs      | Call graph, import graph            | Often incomplete for large codebases |
 
 **The key insight**: Navigation should be hierarchical, not flat. The agent first narrows to the module, then to the file, then to the function. Each level has a summary that makes the next level searchable.
 
 **Proposed architecture**:
+
 ```
 User: "fix the memory leak in the auth module"
          ↓
@@ -51,6 +52,7 @@ User: "fix the memory leak in the auth module"
 ```
 
 **Research questions**:
+
 - How often do summaries need to be updated?
 - Can embeddings alone identify the right module, or does the agent need structured metadata?
 - What's the precision/recall tradeoff between semantic search and grep?
@@ -65,17 +67,18 @@ User: "fix the memory leak in the auth module"
 
 **What actually works**:
 
-| Approach | How it works | Limitation |
-|----------|-------------|------------|
-| Static call graph | Who calls this function? | Misses dynamic calls, reflection, string references |
-| Type analysis | What types does this use? | Weak for dynamically typed code |
-| Test coverage map | What tests exercise this code? | Many files have no tests |
-| Semantic similarity | What is conceptually related? | Expensive to compute at scale |
-| Change history | Who changed this recently? | Only works for codebases with history |
+| Approach            | How it works                   | Limitation                                          |
+| ------------------- | ------------------------------ | --------------------------------------------------- |
+| Static call graph   | Who calls this function?       | Misses dynamic calls, reflection, string references |
+| Type analysis       | What types does this use?      | Weak for dynamically typed code                     |
+| Test coverage map   | What tests exercise this code? | Many files have no tests                            |
+| Semantic similarity | What is conceptually related?  | Expensive to compute at scale                       |
+| Change history      | Who changed this recently?     | Only works for codebases with history               |
 
 **The key insight**: Impact prediction requires a **typed dependency graph** (not just call graph). A type change in a function signature requires finding all callers. A schema change in a data model requires finding all code that serializes/deserializes it.
 
 **Proposed architecture**:
+
 ```
 Agent proposes: rename `user_id` to `account_id` in User model
          ↓
@@ -92,6 +95,7 @@ Agent proposes: rename `user_id` to `account_id` in User model
 ```
 
 **Research questions**:
+
 - How accurate are static call graphs for dynamically-typed code (Python, JS)?
 - Can the agent learn a "sensitivity score" per file from test failure history?
 - What's the minimum graph that's sufficient for accurate impact prediction?
@@ -103,6 +107,7 @@ Agent proposes: rename `user_id` to `account_id` in User model
 **The challenge**: Refactoring across 500 files must be atomic. If 499 succeed and 1 fails, you have a broken codebase. The agent needs to change all or none.
 
 **Current tools**: Git branches provide atomicity at the commit level. But the agent needs:
+
 1. Pre-flight validation (can this change even work?)
 2. Ordered application (change dependencies before dependents)
 3. Rollback on failure
@@ -113,6 +118,7 @@ Agent proposes: rename `user_id` to `account_id` in User model
 **The Stal architecture** (2026): GitManager provides branch/create/commit/revert. Branch before any change. Multi-file orchestrator applies changes, tests, then commits atomically.
 
 **Proposed architecture**:
+
 ```
 Refactoring goal: extract PaymentProcessor from monolith
          ↓
@@ -136,6 +142,7 @@ Refactoring goal: extract PaymentProcessor from monolith
 **The hard part**: Knowing when to stop. Refactoring can touch an infinite surface area. The agent needs a clear definition of "done" — not "all tests pass" but "the original design goal is achieved."
 
 **Research questions**:
+
 - How does the agent know when refactoring is complete vs. when it's creating new debt?
 - What's the right granularity for atomic changes? One file at a time? One module?
 - Can the agent detect when a refactoring is making things worse (adding layers, increasing coupling)?
@@ -147,21 +154,23 @@ Refactoring goal: extract PaymentProcessor from monolith
 **The challenge**: The agent's mental model of the codebase (summaries, embeddings, dependency graphs) becomes stale every time the code changes. For a codebase with 100 commits/day, the model is stale within hours.
 
 **Current approaches**:
+
 - Full rebuild: Regenerate everything after each change. Expensive but correct.
 - Lazy evaluation: Build model on demand, cache results. Fast but may miss dependencies.
 - Incremental update: Update only affected parts of the model. Complicated but necessary at scale.
 
 **The key insight**: The agent doesn't need a perfect model. It needs a model that's good enough to navigate correctly. The question is: what's the minimum freshness for each model component?
 
-| Model component | Freshness needed | Update trigger |
-|---------------|-----------------|----------------|
-| Module-level summaries | Daily | File added/removed |
-| File-level summaries | Hourly | Significant change |
-| Function summaries | Per-session | Modified function |
-| Dependency graph | Minutes | Import/function call change |
-| Test coverage map | Per-build | Tests added/modified |
+| Model component        | Freshness needed | Update trigger              |
+| ---------------------- | ---------------- | --------------------------- |
+| Module-level summaries | Daily            | File added/removed          |
+| File-level summaries   | Hourly           | Significant change          |
+| Function summaries     | Per-session      | Modified function           |
+| Dependency graph       | Minutes          | Import/function call change |
+| Test coverage map      | Per-build        | Tests added/modified        |
 
 **Proposed architecture**:
+
 ```
 [File change event]
          ↓
@@ -180,6 +189,7 @@ Refactoring goal: extract PaymentProcessor from monolith
 ```
 
 **Research questions**:
+
 - What's the minimum freshness for each model component to maintain navigation accuracy?
 - Can embeddings be incrementally updated, or do they need full recomputation?
 - How does the agent detect when its model is stale (without re-reading the code)?
@@ -225,29 +235,33 @@ Here's where our implicit framing work connects directly:
 **"You MUST maintain clean code" → compliance code theater**
 
 An agent given a directive like "keep the codebase clean" will produce clean-looking behavior:
+
 - Remove obvious dead code
 - Add docstrings
 - Format code
 
 But it won't catch:
+
 - Conceptual duplication (two modules doing the same thing differently)
 - Integration gaps (extension registered but never wired)
 - Architectural debt (the patterns that will cause problems in 6 months)
 
 **What works instead**: Identity framing.
+
 - "You are an architect who maintains structural integrity"
 - "You are a systems thinker who considers how changes propagate"
 
 This is an empirically testable hypothesis: does identity framing produce better architecture maintenance than directive framing?
 
 **Proposed experiment**:
+
 ```
 Condition A: "You MUST remove dead code, update tests, maintain documentation"
 Condition B: "You are a software architect who values simplicity and cohesion"
 
 Measure:
 - Dead code ratio over time
-- Test coverage over time  
+- Test coverage over time
 - Coupling metrics over time
 - Agent time spent on maintenance vs. feature work
 ```
@@ -272,26 +286,26 @@ Measure:
 
 pi-braid's own codebase (33K lines, 120 files) is small but complex enough to test these ideas:
 
-| Sub-problem | pi-braid test |
-|-------------|--------------|
-| Navigation | Build semantic index of extensions. Query: "which extension handles memory?" |
-| Impact prediction | Before changing `enforcement/index.ts`, predict what breaks |
-| Atomic changes | Refactor topic-drift unification as atomic multi-file change |
-| Model freshness | Track how stale the index gets after 10 commits |
+| Sub-problem       | pi-braid test                                                                |
+| ----------------- | ---------------------------------------------------------------------------- |
+| Navigation        | Build semantic index of extensions. Query: "which extension handles memory?" |
+| Impact prediction | Before changing `enforcement/index.ts`, predict what breaks                  |
+| Atomic changes    | Refactor topic-drift unification as atomic multi-file change                 |
+| Model freshness   | Track how stale the index gets after 10 commits                              |
 
 ---
 
 ## Papers to Cite
 
-| Source | Key contribution |
-|--------|-----------------|
-| RefAgent (2511.03153) | Multi-agent self-reflection loop for refactoring |
-| Stal (2026) | Git safety, RAG for code, AST analysis |
-| RepoAI (2026) | Multi-agent orchestration for cross-file changes |
-| VAR-MATH (2507.12885) | Benchmark contamination — agents may "solve" maintenance by memorizing patterns |
-| Our work | Compliance code theater — directive framing produces clean-looking code, not clean code |
+| Source                | Key contribution                                                                        |
+| --------------------- | --------------------------------------------------------------------------------------- |
+| RefAgent (2511.03153) | Multi-agent self-reflection loop for refactoring                                        |
+| Stal (2026)           | Git safety, RAG for code, AST analysis                                                  |
+| RepoAI (2026)         | Multi-agent orchestration for cross-file changes                                        |
+| VAR-MATH (2507.12885) | Benchmark contamination — agents may "solve" maintenance by memorizing patterns         |
+| Our work              | Compliance code theater — directive framing produces clean-looking code, not clean code |
 
 ---
 
-*Research by Braid — 2026-04-27*
-*Connects to: RefAgent, implicit framing, pi-braid architecture audit*
+_Research by Braid — 2026-04-27_
+_Connects to: RefAgent, implicit framing, pi-braid architecture audit_

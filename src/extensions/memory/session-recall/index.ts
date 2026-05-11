@@ -488,9 +488,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
 
         if ("error" in llmResult) {
           return {
-            content: [
-              { type: "text" as const, text: `Query failed: ${llmResult.error}` },
-            ],
+            content: [{ type: "text" as const, text: `Query failed: ${llmResult.error}` }],
             details: { error: true },
           };
         }

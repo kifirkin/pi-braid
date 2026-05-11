@@ -330,9 +330,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
         }
 
         return {
-          content: [
-            { type: "text", text: `Stored memory ${m.id} (${params.memoryType})` },
-          ],
+          content: [{ type: "text", text: `Stored memory ${m.id} (${params.memoryType})` }],
           details: { id: m.id, stored: true },
         };
       } catch (e) {

@@ -33,6 +33,7 @@
 **1. Fits package subject?** ✅ Yes — thin entry point that delegates to module system.
 
 **2. Well-architected?** ⚠️ Minor issue:
+
 - `getVersion()` is hardcoded `"0.20.0"` inside a try/catch that does nothing. The version always returns `"0.20.0"`. Should read from `package.json` via `require("../../package.json").version` or similar.
 - `SKILLS_DIR` uses `fileURLToPath` which is correct for ESM. ✅
 
@@ -47,6 +48,7 @@
 **1. Fits package subject?** ✅ Yes — central registry for all braid extensions.
 
 **2. Well-architected?** ⚠️ **Bug found:**
+
 - `researchFn` is imported (line 45) but **never included in any module's extensions list**. The `research` tool at `src/extensions/tools/research/index.ts` is orphaned — it will never load.
 - Tools module description says "Codebase graph, REPL, docs reader, timer, latent activator" — references deleted tools (codebase-graph, repl, docs). Stale.
 
@@ -61,6 +63,7 @@
 **1. Fits package subject?** ✅ Yes — essential for modular research experiments.
 
 **2. Well-architected?** ✅ Good:
+
 - Priority chain is clear and well-documented
 - Topological sort avoids circular dependency issues
 - Settings persistence (global + project tier) matches pi-native pattern
@@ -79,6 +82,7 @@
 **1. Fits package subject?** ✅ Yes — enables researcher subagent workflow.
 
 **2. Well-architected?** ⚠️ **Dead code:**
+
 - `modules-list` handler computes `const deps = (() => {...})()` which always returns `""` and is never used. Clearly intended to show module dependencies but never wired.
 - `modules-status` handler computes `const overrides = ...` which always returns `false` and is never used.
 - The list handler shows `status.padEnd(12)` but status strings like `"●"` (1 char) and `"— disabled"` (12 chars) produce uneven alignment.
@@ -98,6 +102,7 @@
 **1. Fits package subject?** ✅ Yes — fixes an upstream bug that causes lost assistant messages on API errors. Critical for braid's session persistence to work.
 
 **2. Well-architected?** ✅ Good:
+
 - Well-documented with upstream issue reference
 - Graceful degradation (try/catch, logging, returns false on failure)
 - Checks `Agent.prototype` existence before patching
@@ -115,6 +120,7 @@
 **1. Fits package subject?** ✅ Yes — patches missing API methods and provides model selection UI.
 
 **2. Well-architected?** ⚠️ Issues:
+
 - `loadCustomKeysFromDisk().catch(() => {})` — empty catch swallows errors. Should log.
 - `patchConfirmForAutoConfirm()` stores `originalConfirm` but never uses it (replaces entirely without fallback).
 - `getPolyfillState` has a module-level `_default` fallback plus `getExtensionState` — inconsistency. The module-level singleton leaks state across sessions.
@@ -164,6 +170,7 @@
 **1. Fits package subject?** ✅ Yes — behavioral enforcement is a core research track.
 
 **2. Well-architected?** ⚠️ Mixed:
+
 - **Good**: 3-tier signal architecture (L1 internal tracking, L2 structured hints, L3 critical messages) is well-documented in handler-registry.ts header. Nudge dedup via cooldown.
 - **Good**: Handlers are split into separate files (handlers/, detection/).
 - **Problem**: Massive handler-registry.ts (~720 lines) — too many event handlers in one file. The comment says it was "extracted from index.ts to reduce it from 1268L to a thin wrapper" but it's still very large.
@@ -213,6 +220,7 @@
 **1. Fits package subject?** ✅ Yes — core memory research (paper 2604.14475).
 
 **2. Well-architected?** ✅ Good:
+
 - 3-tier memory (RUMS: recency, utility, importance, similarity) is a clean retrieval algorithm
 - Event handlers persist episodes on `turn_end` and `session_shutdown`
 - `turn_end` recaller cross-searches cognitive memory for insights
@@ -274,6 +282,7 @@
 **1. Fits package subject?** ✅ Yes — proactive cognitive scheduling (paper 2604.14178).
 
 **2. Well-architected?** ✅ Good:
+
 - Modular sub-handlers (6 modules) each with clear responsibility
 - Policy engine for decision-making
 - Clean separation between timing (heartbeat-scheduler) and measurement (analytics)
@@ -336,6 +345,7 @@
 **1. Fits package subject?** ✅ Yes — this is the most important extension. Overrides pi-native prompt with braid's structured prompt.
 
 **2. Well-architected?** ⚠️ Good concept, implementation gaps:
+
 - **Good**: 10-section system prompt built from structured data, not string extraction
 - **Good**: Identity framing (Dimension 1 of tone-quality) — "You are Braid, an expert software architect"
 - **Good**: Research citations (2604.19117, 2604.15224)
@@ -408,16 +418,16 @@
 
 **47 files** across `src/lib/`. Key categories:
 
-| Category | Files | Assessment |
-|----------|-------|------------|
-| **Memory** | cognitive-memory (dir), belief-store, claim-tracker, evidence-pool, conflict-qa, memory-guidance | ✅ Well-structured |
-| **Storage** | braid-paths, braid-settings, async-storage, global-state | ✅ Recently centralized |
-| **Enforcement** | injection-tracker, nudge-analytics, belief-policy-engine | ✅ Clean |
-| **State** | extension-state, session-start-queue, metacognitive-state, state-checkpoint | ✅ Good patterns |
-| **Reasoning** | mars-reflector, reasoning-metrics, reasoning-summary, planner, cognition-evaluator, goal-manager | ✅ Focused |
-| **Infra** | logger, model-resolver, event-bus, event-consumers, timer-bus, filter-safe-to-remove | ✅ Standard |
-| **Utilities** | edit-helper, extension-utils, compression-strategy, consolidation-channel, language-hint, sop-extractor, sop-suggestion, bidirectional-verifier, context-density, degradation-detector, observatory, file-mutation-queue, dreamer | ✅ Varied quality |
-| **Dead/Stale** | agent-events (restored), tool-security (restored) | ✅ Restored |
+| Category        | Files                                                                                                                                                                                                                             | Assessment              |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| **Memory**      | cognitive-memory (dir), belief-store, claim-tracker, evidence-pool, conflict-qa, memory-guidance                                                                                                                                  | ✅ Well-structured      |
+| **Storage**     | braid-paths, braid-settings, async-storage, global-state                                                                                                                                                                          | ✅ Recently centralized |
+| **Enforcement** | injection-tracker, nudge-analytics, belief-policy-engine                                                                                                                                                                          | ✅ Clean                |
+| **State**       | extension-state, session-start-queue, metacognitive-state, state-checkpoint                                                                                                                                                       | ✅ Good patterns        |
+| **Reasoning**   | mars-reflector, reasoning-metrics, reasoning-summary, planner, cognition-evaluator, goal-manager                                                                                                                                  | ✅ Focused              |
+| **Infra**       | logger, model-resolver, event-bus, event-consumers, timer-bus, filter-safe-to-remove                                                                                                                                              | ✅ Standard             |
+| **Utilities**   | edit-helper, extension-utils, compression-strategy, consolidation-channel, language-hint, sop-extractor, sop-suggestion, bidirectional-verifier, context-density, degradation-detector, observatory, file-mutation-queue, dreamer | ✅ Varied quality       |
+| **Dead/Stale**  | agent-events (restored), tool-security (restored)                                                                                                                                                                                 | ✅ Restored             |
 
 **1. Fits package subject?** ✅ — lib provides shared infrastructure used across all extensions.
 
@@ -431,18 +441,18 @@
 
 ### Dead Code / Unused Imports
 
-| File | Unused Import | Reason |
-|------|--------------|--------|
-| handler-registry.ts (enforcement) | `SessionCompactEvent`, `eventBus`, `detectMissingVerification`, `recordCodeChange`, `getNudgeAnalytics`, `validateTurn`, `knownFiles`, `loadFileContent` | 8 orphaned imports |
-| turn-end-handler.ts (enforcement) | `sendTrackedMessage`, `eventBus`, `recordNudgeSent` | 3 orphaned imports |
-| feedback/index.ts | `homedir`, `AgentToolResult` | 2 orphaned imports |
-| cognitive-systems/index.ts | `getAllConflictQAs` | 1 orphaned import |
-| modules/api.ts | `deps` variable, `overrides` variable | 2 computed-but-never-used |
-| definitions.ts | `researchFn` | Imported but not in any module |
-| metacognition/index.ts | `evaluateCognition`, `Type` | 2 orphaned imports |
-| blocking.ts (enforcement) | `queueBlockAction` | 1 orphaned export/import |
-| probe-handler.ts, routing-handler.ts | `ExtensionAPI` | 2 files, each 1 unused import |
-| handler-registry.ts (retry) | `loadFileContent` | 1 orphaned import |
+| File                                 | Unused Import                                                                                                                                            | Reason                         |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| handler-registry.ts (enforcement)    | `SessionCompactEvent`, `eventBus`, `detectMissingVerification`, `recordCodeChange`, `getNudgeAnalytics`, `validateTurn`, `knownFiles`, `loadFileContent` | 8 orphaned imports             |
+| turn-end-handler.ts (enforcement)    | `sendTrackedMessage`, `eventBus`, `recordNudgeSent`                                                                                                      | 3 orphaned imports             |
+| feedback/index.ts                    | `homedir`, `AgentToolResult`                                                                                                                             | 2 orphaned imports             |
+| cognitive-systems/index.ts           | `getAllConflictQAs`                                                                                                                                      | 1 orphaned import              |
+| modules/api.ts                       | `deps` variable, `overrides` variable                                                                                                                    | 2 computed-but-never-used      |
+| definitions.ts                       | `researchFn`                                                                                                                                             | Imported but not in any module |
+| metacognition/index.ts               | `evaluateCognition`, `Type`                                                                                                                              | 2 orphaned imports             |
+| blocking.ts (enforcement)            | `queueBlockAction`                                                                                                                                       | 1 orphaned export/import       |
+| probe-handler.ts, routing-handler.ts | `ExtensionAPI`                                                                                                                                           | 2 files, each 1 unused import  |
+| handler-registry.ts (retry)          | `loadFileContent`                                                                                                                                        | 1 orphaned import              |
 
 ### Known Blockers
 
@@ -454,11 +464,11 @@
 
 ### Sync I/O in Async Contexts
 
-| File | Line | Pattern |
-|------|------|---------|
-| prompt-builder/index.ts | `readdirSync(memoryDir)` | Blocking inside `searchPastInsights()` |
-| loader.ts | `readFileSync`/`writeFileSync` | Settings persistence (at load time — acceptable) |
-| polyfill/index.ts | `fs.readFile/parse/set keys` | Already using async fs.promises ✅ |
+| File                    | Line                           | Pattern                                          |
+| ----------------------- | ------------------------------ | ------------------------------------------------ |
+| prompt-builder/index.ts | `readdirSync(memoryDir)`       | Blocking inside `searchPastInsights()`           |
+| loader.ts               | `readFileSync`/`writeFileSync` | Settings persistence (at load time — acceptable) |
+| polyfill/index.ts       | `fs.readFile/parse/set keys`   | Already using async fs.promises ✅               |
 
 ---
 
@@ -476,14 +486,14 @@ All 12 modules fit the pi-braid subject ("metacognitive agent extension suite").
 
 ### Unfinished Work Priority
 
-| Priority | Item | Why |
-|----------|------|-----|
-| 🟥 P0 | Wire researchFn into tools module | Orphaned tool exists in source, never loads |
-| 🟥 P0 | Tool description truncation in prompt-builder | ~5000 tokens wasted per turn |
-| 🟧 P1 | Clean 13 orphaned imports | Code quality, maintainability |
-| 🟧 P1 | Fix modules/api.ts dead variables | Half-finished features confuse users |
-| 🟧 P1 | Version detection for agent-patch | Remove when upstream fix ships |
-| 🟨 P2 | Add context_prune blocker in tools docs | Prevents future frustration |
-| 🟨 P2 | Test isolation for cognitive-memory test | Tests should be isolated |
-| 🟩 P3 | utility-model command (polyfill) | Parity with vision-model |
-| 🟩 P3 | Soft-start — load modules in parallel | Startup perf |
+| Priority | Item                                          | Why                                         |
+| -------- | --------------------------------------------- | ------------------------------------------- |
+| 🟥 P0    | Wire researchFn into tools module             | Orphaned tool exists in source, never loads |
+| 🟥 P0    | Tool description truncation in prompt-builder | ~5000 tokens wasted per turn                |
+| 🟧 P1    | Clean 13 orphaned imports                     | Code quality, maintainability               |
+| 🟧 P1    | Fix modules/api.ts dead variables             | Half-finished features confuse users        |
+| 🟧 P1    | Version detection for agent-patch             | Remove when upstream fix ships              |
+| 🟨 P2    | Add context_prune blocker in tools docs       | Prevents future frustration                 |
+| 🟨 P2    | Test isolation for cognitive-memory test      | Tests should be isolated                    |
+| 🟩 P3    | utility-model command (polyfill)              | Parity with vision-model                    |
+| 🟩 P3    | Soft-start — load modules in parallel         | Startup perf                                |

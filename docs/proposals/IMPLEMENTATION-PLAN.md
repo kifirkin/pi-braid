@@ -9,6 +9,7 @@
 ## How to read this plan
 
 Each proposal from `IMPROVEMENT-PROPOSALS-INVENTORY.md` is listed with:
+
 - **Status**: What the audit found in the actual codebase
 - **Implementation delta**: What's truly missing (or already done)
 - **Effort**: Estimated work
@@ -22,6 +23,7 @@ Each proposal from `IMPROVEMENT-PROPOSALS-INVENTORY.md` is listed with:
 
 **Source**: `proposals/SELF-EVOLUTION-META-COGNITION-PROPOSAL.md`
 **Codebase audit**: PARTIALLY IMPLEMENTED → **NOW IMPLEMENTED**
+
 - ✅ MARS reflector (`src/lib/mars-reflector.ts`) — wired in enforcement `handler-registry.ts`
 - ✅ 3-tier SOP extraction on finalize (`src/extensions/core/metacognition/handlers/finalize.ts` lines 40-56)
 - ✅ Dreamer module (`heartbeat-scheduler/modules/dreamer.ts`) — reflection + consolidation
@@ -33,6 +35,7 @@ Each proposal from `IMPROVEMENT-PROPOSALS-INVENTORY.md` is listed with:
 - ✅ **Trajectory enrichment**: tool_end listener collects toolName + success/failure per step
 
 **Remaining (P3)**:
+
 - ❌ SOP → skill conversion (requires pi API support for dynamic skill registration)
 - ❌ SOP validation against re-execution (requires benchmark harness)
 
@@ -45,6 +48,7 @@ Each proposal from `IMPROVEMENT-PROPOSALS-INVENTORY.md` is listed with:
 
 **Source**: `external/NUDGE-QUALITY-RESEARCH.md`
 **Codebase audit**: MOSTLY DONE → **NOW IMPLEMENTED**
+
 - ✅ Judge prompt: neutral framing (NOT "enforcement judge")
 - ✅ 7-dimension schema includes `compliancePattern` dimension
 - ✅ Nudge formatting: uses questions not directives
@@ -63,6 +67,7 @@ Each proposal from `IMPROVEMENT-PROPOSALS-INVENTORY.md` is listed with:
 
 **Source**: `external/SKILL-LOADING-RESEARCH.md`
 **Codebase audit**: PARTIALLY DONE → **PHASE 1 DONE**
+
 - ✅ **SKILL_TRIGGERS keyword map** for all 15 skills with cwd patterns and project context keywords
 - ✅ **scoreSkillRelevance()** scoring by cwd patterns + project context keywords
 - ✅ **MAX_VISIBLE_SKILLS=7** limit with hidden count message
@@ -71,6 +76,7 @@ Each proposal from `IMPROVEMENT-PROPOSALS-INVENTORY.md` is listed with:
 - ❌ No skill effectiveness tracking (needs P1.4 benchmark infrastructure)
 
 **Implementation delta**:
+
 1. **Audit token cost**: Measure how many tokens all 13 skills add to prompt (~1300 lines)
 2. **Design skill metadata**: Add `trigger` and `deactivateOn` fields to skill interface
 3. **Implement heartbeat-triggered activation**: Wire skill loading to heartbeat events (task_start, failure_detected, context_threshold)
@@ -86,6 +92,7 @@ Each proposal from `IMPROVEMENT-PROPOSALS-INVENTORY.md` is listed with:
 
 **Source**: `external/prompt-gap-analysis.md`
 **Codebase audit**: PARTIALLY DONE → **NOW IMPLEMENTED**
+
 - ✅ SYCOPHANCY_RESISTANCE emitted
 - ✅ STAKES_AWARENESS emitted
 - ✅ Sycophancy-detector extension exists
@@ -101,6 +108,7 @@ Each proposal from `IMPROVEMENT-PROPOSALS-INVENTORY.md` is listed with:
 
 **Source**: `external/CONTEXT-MANAGEMENT.md`
 **Codebase audit**: PARTIALLY DONE → **NOW IMPLEMENTED**
+
 - ✅ Semantic compression exists
 - ✅ Context-density library exists
 - ✅ 6 semantic unit types
@@ -120,6 +128,7 @@ Each proposal from `IMPROVEMENT-PROPOSALS-INVENTORY.md` is listed with:
 
 **Source**: `external/BENCHMARK-CONTAMINATION-AND-LATENT-STEERING.md`, `external/BENCHMARK-SATURATION.md`, `proposals/VAR-MATH-VARIANTS.md`
 **Codebase audit**: PARTIALLY DONE
+
 - ✅ Variant generation exists (`evaluation/run-variants.mjs`, `evaluation/variant-tasks.mjs`)
 - ✅ SDK harnesses exist (BM1-3, BR1, BR4, PB4 all migrated to JS SDK)
 - ✅ 144/144 saturation finding documented and confirmed
@@ -129,6 +138,7 @@ Each proposal from `IMPROVEMENT-PROPOSALS-INVENTORY.md` is listed with:
 - ❌ **No contamination detection framework**: No automated check for training data overlap
 
 **Implementation delta**:
+
 1. Build synthetic problem generator: parameterize problem templates with random seeds
 2. Add multi-instance scoring: require 3/3 or 5/5 consistent solves across variants
 3. Build cross-bench comparison pipeline: automated report comparing no-bash vs baseline vs braid-full vs braid-research
@@ -145,6 +155,7 @@ Each proposal from `IMPROVEMENT-PROPOSALS-INVENTORY.md` is listed with:
 
 **Source**: `external/COUPLING.md`, `external/CLEANUP-PLAN.md`
 **Codebase audit**: DONE → **NOW UPDATED**
+
 - ✅ Group-level docs exist (`docs/extensions/{cognitive,core,heartbeat,memory,prompt,tools}.md`)
 - ✅ Updated to reflect all implemented changes (behavioral drift, auto-compaction, freshness scoring, dynamic skills, score-based judging, consolidated hints)
 - ✅ Individual extension docs exist (37 docs)
@@ -152,6 +163,7 @@ Each proposal from `IMPROVEMENT-PROPOSALS-INVENTORY.md` is listed with:
 
 **Implementation delta**:
 Create 6 group-level docs covering:
+
 1. `docs/modules/cognitive.md` — enforcement + reasoning + verification + topic-drift + sycophancy-detector + cognitive-systems
 2. `docs/modules/core.md` — polyfill + metacognition + scratchpad + preprocessor
 3. `docs/modules/heartbeat.md` — heartbeat-scheduler + analytics
@@ -168,6 +180,7 @@ Create 6 group-level docs covering:
 
 **Source**: `proposals/HIERARCHICAL-MEMORY-COMPRESSION-PROPOSAL.md`
 **Codebase audit**: PARTIALLY DONE
+
 - ✅ Semantic unit classification exists (6 types)
 - ✅ Priority system exists (0-4)
 - ❌ **Adaptive ratios not implemented**: Compression ratio is fixed, doesn't adapt to information density
@@ -175,6 +188,7 @@ Create 6 group-level docs covering:
 - ❌ **Full consolidation loop not wired**: Episodic → semantic → procedural cascade not automated
 
 **Implementation delta**:
+
 1. Add adaptive ratio calculation based on `context-density.ts` signal/noise ratio
 2. Add metadata output to semantic compression: `{ units_preserved: [...], units_collapsed: [...], units_dropped: [...] }`
 3. Wire compression metadata → heartbeat density tracking → adaptive ratio next cycle
@@ -189,14 +203,16 @@ Create 6 group-level docs covering:
 
 **Source**: `proposals/BIDIRECTIONAL-VERIFIER-PROPOSAL.md`
 **Codebase audit**: PHASE 1 DONE ONLY
+
 - ✅ verify_claim tool exists
-- ✅ verify_decomposition tool exists  
+- ✅ verify_decomposition tool exists
 - ✅ Verification judge prompt exists
 - ❌ **Backward verification missing**: After file edit, no check that dependent files are still valid
 - ❌ **File dependency graph missing**: No tool to analyze which files depend on a changed file
 - ❌ **Derived-file check injection**: Not wired into tool_end for automated check after edits
 
 **Implementation delta**:
+
 1. Build file dependency analysis tool (import graph scanning)
 2. Wire backward verification into `tool_end`: after edit, check dependent files
 3. Add `verify_backward` tool for explicit backward verification requests
@@ -210,6 +226,7 @@ Create 6 group-level docs covering:
 
 **Source**: `external/ToolCoverageProposal.md`
 **Codebase audit**: NOT STARTED
+
 - ❌ No `delete`, `move`, `copy`, `mkdir`, `permissions` tools
 - ❌ No `run`, `test` tools (only `repl` exists)
 - ❌ No `tree`, `locate` tools
@@ -219,6 +236,7 @@ Create 6 group-level docs covering:
 
 **Implementation delta**:
 Build Category 1 (file operations) and Category 4 (code analysis) tools first:
+
 1. `delete` — with confirmation, no glob bypass
 2. `move` — atomic move with backup
 3. `copy` — recursive with exclude patterns
@@ -234,6 +252,7 @@ Build Category 1 (file operations) and Category 4 (code analysis) tools first:
 
 **Source**: `proposals/00-WORKER-TASKS.md`
 **Codebase audit**: PARTIALLY DONE
+
 - ✅ Dreamer module exists (`heartbeat-scheduler/modules/dreamer.ts`)
 - ✅ Active state tracking with `shouldActivate()` + `activate()` paths
 - ✅ 11 unit tests for dreamer paths
@@ -253,6 +272,7 @@ Complete remaining worker-task patterns from `00-WORKER-TASKS.md`
 
 **Source**: `external/ABLATION_STUDY.md`
 **Codebase audit**: FRAMEWORK EXISTS, NEVER RUN
+
 - ✅ All instrumentation exists (think metrics, task metrics)
 - ✅ Framework design documented
 - ❌ **Study never executed**: No empirical validation of think() depth/utility model effects
@@ -269,6 +289,7 @@ Run the 2×2 factorial study (baseline × quick × deep × utility × combined) 
 
 **Source**: `external/OPENMYTHOS-LOOP-ANALYSIS-PROPOSAL.md`
 **Codebase audit**: NOT STARTED
+
 - ❌ No cross-turn carry experiments
 - ❌ No workspace belief accumulation
 
@@ -284,6 +305,7 @@ Design and run "cross-turn carry" comparison between pi-braid (external persiste
 
 **Source**: `external/TOOL-AUGMENTED-REASONING-EXTENDED.md`
 **Codebase audit**: NOT STARTED
+
 - ❌ No trained UniR modules for tool composition, fault localization, etc.
 - ❌ Requires GPU compute and training infrastructure
 
@@ -299,6 +321,7 @@ Design training pipeline. Define reward functions. Train on pi-braid task traces
 
 **Source**: `proposals/SAE-STEERING-PROPOSAL.md`
 **Codebase audit**: CORRECTLY ABANDONED
+
 - ✅ Obsoleted by RepE Prompt Contrast (as documented in proposals/README.md)
 - ❌ API providers (stepfun/minimax) don't expose activations/logprobs
 - ❌ Would need open model provider (Llama/Ollama)
@@ -335,27 +358,27 @@ P3.4  | SAE steering                      | —      | —    | ✅ Obsoleted
 
 These proposals' recommendations are already in the codebase. No action needed:
 
-| Proposal | What's Done |
-|----------|-------------|
-| NUDGE-FATIGUE.md | Nudge dedup (50-turn cooldown, action tracking, identity framing) |
-| OVERFLOW-INVESTIGATION.md | Proactive token monitoring at 70/80/90% via heartbeat |
-| CONTEXT-TERMINOLOGY.md | Established naming: compaction vs archive vs finalize |
-| BRAID-NEXT-PROPOSAL.md | D0-D5, R5-R9, BR1-BR4, PB1-PB4, BM1-BM3 — all implemented |
-| OVERNIGHT-RESULTS.md | All bug fixes + 4 new extensions from v0.13.0 sprint |
+| Proposal                         | What's Done                                                         |
+| -------------------------------- | ------------------------------------------------------------------- |
+| NUDGE-FATIGUE.md                 | Nudge dedup (50-turn cooldown, action tracking, identity framing)   |
+| OVERFLOW-INVESTIGATION.md        | Proactive token monitoring at 70/80/90% via heartbeat               |
+| CONTEXT-TERMINOLOGY.md           | Established naming: compaction vs archive vs finalize               |
+| BRAID-NEXT-PROPOSAL.md           | D0-D5, R5-R9, BR1-BR4, PB1-PB4, BM1-BM3 — all implemented           |
+| OVERNIGHT-RESULTS.md             | All bug fixes + 4 new extensions from v0.13.0 sprint                |
 | DEAD-EXTENSION-CLEANUP.md (most) | enforcement commands, loop commands, feedback-whitelist all removed |
-| DOC-AUDIT.md | Per-doc verdicts already applied |
-| FEATURE-AUDIT.md (parts) | prompt_preview tool makes prompt-builder observable |
-| ABLATION_STUDY.md | Framework exists, instrumentation in place (just needs execution) |
+| DOC-AUDIT.md                     | Per-doc verdicts already applied                                    |
+| FEATURE-AUDIT.md (parts)         | prompt_preview tool makes prompt-builder observable                 |
+| ABLATION_STUDY.md                | Framework exists, instrumentation in place (just needs execution)   |
 
 ## Partially in Progress
 
 These have uncommitted changes in the working tree (tool description polish):
 
-| Area | What's Being Done |
-|------|-------------------|
+| Area              | What's Being Done                                                      |
+| ----------------- | ---------------------------------------------------------------------- |
 | Tool descriptions | First sentence now includes "what it does + when to use" for all tools |
-| Prompt visibility | `prompt_preview` tool for debugging prompt issues |
-| prompt-builder | `firstSentence()` extraction + condensed tool listing |
+| Prompt visibility | `prompt_preview` tool for debugging prompt issues                      |
+| prompt-builder    | `firstSentence()` extraction + condensed tool listing                  |
 
 ---
 

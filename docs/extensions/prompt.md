@@ -4,15 +4,16 @@ System prompt construction and injection defense.
 
 ## Extensions
 
-| Extension | Files | Purpose |
-|---|---|---|
-| `prompt-builder/` | 3 | Full system prompt reconstruction from structured data. Overrides pi's native loading. |
+| Extension         | Files | Purpose                                                                                |
+| ----------------- | ----- | -------------------------------------------------------------------------------------- |
+| `prompt-builder/` | 3     | Full system prompt reconstruction from structured data. Overrides pi's native loading. |
 
 Total: 3 `.ts` files.
 
 ## Key Architecture
 
 **prompt-builder** completely overrides pi's native prompt loading. Reconstructs prompt from:
+
 1. Custom identity (Braid agent identity)
 2. Sycophancy resistance (RepE-style text vectors)
 3. Epistemic stability (uncertainty signaling)

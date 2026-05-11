@@ -601,7 +601,8 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     name: "context_signal",
     label: "Context Signal",
     promptSnippet: "Emit a semantic signal to the S-MMU policy engine",
-    description: "Emit a semantic signal to the policy engine — use when the conversation topic shifts or a task boundary is reached to help context management.",
+    description:
+      "Emit a semantic signal to the policy engine — use when the conversation topic shifts or a task boundary is reached to help context management.",
     parameters: contextSignalSchema,
     execute: async (
       _toolCallId: string,

@@ -501,7 +501,13 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
             const sopState = getExtensionState(ctx, "sop-suggestion", () => ({
               suggestedEpisodeIds: new Set<string>(),
             }));
-            injectSopSuggestions(pi, userText, memState.episodes, undefined, sopState.suggestedEpisodeIds);
+            injectSopSuggestions(
+              pi,
+              userText,
+              memState.episodes,
+              undefined,
+              sopState.suggestedEpisodeIds,
+            );
           } catch {
             // Non-fatal: basic suggestion without dedup
             injectSopSuggestions(pi, userText, memState.episodes);
@@ -538,14 +544,15 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
         // Use enriched trajectory from tool_end tracking (has success/failure data)
         // Fall back to activation history if tool_end wasn't available
         const enrichedTrajectory = state.metaLearning.toolTracking.trajectory ?? [];
-        const trajectory: TrajectoryEntry[] = enrichedTrajectory.length > 0
-          ? enrichedTrajectory.map((t: any) => ({
-              toolName: t.toolName,
-              success: t.success,
-            }))
-          : state.activationHistory
-              .filter((h) => h.moduleName === "tool_call" || h.reason === "tool")
-              .map((h) => ({ toolName: h.moduleName, success: true }));
+        const trajectory: TrajectoryEntry[] =
+          enrichedTrajectory.length > 0
+            ? enrichedTrajectory.map((t: any) => ({
+                toolName: t.toolName,
+                success: t.success,
+              }))
+            : state.activationHistory
+                .filter((h) => h.moduleName === "tool_call" || h.reason === "tool")
+                .map((h) => ({ toolName: h.moduleName, success: true }));
 
         // Extract SOP from the trajectory
         const sop = extractSOP({

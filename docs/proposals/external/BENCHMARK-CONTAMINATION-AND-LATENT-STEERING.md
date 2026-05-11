@@ -23,13 +23,13 @@ Agent harnesses like pi-braid that apply behavioral framing (identity, implicit 
 
 ### Key Papers
 
-| Paper | Core Finding | Implication |
-|-------|-------------|-------------|
-| **VAR-MATH** (2507.12885) | RL-trained models drop 48-73% on symbolically variabilized benchmarks (VAR-AMC23, VAR-AIME24, VAR-AIME25) | RL "reasoning" is often superficial heuristics over numerical patterns |
-| **LNE-Blocking** (2509.15218) | Contamination is almost inevitable; propose disruption operation to elicit non-memorized responses | Our benchmark can't guarantee contamination-free evaluation |
-| **AntiLeakBench** (2412.13670) | Construct samples with **explicitly new knowledge absent from training** | The gold standard: truly unseen evaluation |
-| **Search-Time Contamination** (2508.13180) | Search-based agents find ground truth on HuggingFace for ~3% of queries | Even search doesn't reliably avoid contamination |
-| **Teach2Eval** (2505.12259) | Indirect evaluation via teaching ability — avoids memorization by converting tasks | Alternative paradigm: measure teaching quality, not solving |
+| Paper                                      | Core Finding                                                                                              | Implication                                                            |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| **VAR-MATH** (2507.12885)                  | RL-trained models drop 48-73% on symbolically variabilized benchmarks (VAR-AMC23, VAR-AIME24, VAR-AIME25) | RL "reasoning" is often superficial heuristics over numerical patterns |
+| **LNE-Blocking** (2509.15218)              | Contamination is almost inevitable; propose disruption operation to elicit non-memorized responses        | Our benchmark can't guarantee contamination-free evaluation            |
+| **AntiLeakBench** (2412.13670)             | Construct samples with **explicitly new knowledge absent from training**                                  | The gold standard: truly unseen evaluation                             |
+| **Search-Time Contamination** (2508.13180) | Search-based agents find ground truth on HuggingFace for ~3% of queries                                   | Even search doesn't reliably avoid contamination                       |
+| **Teach2Eval** (2505.12259)                | Indirect evaluation via teaching ability — avoids memorization by converting tasks                        | Alternative paradigm: measure teaching quality, not solving            |
 
 ### The Numbers (VAR-MATH)
 
@@ -58,12 +58,12 @@ Our current benchmark tasks are likely contaminated. We need:
 
 ### Key Papers
 
-| Paper | Core Finding | Implication |
-|-------|-------------|-------------|
-| **YaPO** (2601.08441) | Sparse steering vectors learned via DPO in SAE latent space — disentangled, efficient, stable | SAE-based steering outperforms dense vectors |
-| **FGAA** (2501.09929) | Feature Guided Activation Additions — operates in SAE space, outperforms CAA and SAE-TS | Interpretable, precise steering |
-| **Moral Foundations** (2601.05437) | Moral concepts are distributed, layered, and partly disentangled — steering works | Latent space has structured concept representations |
-| **Persona Control** (2602.19157) | Contrastive SAE for facet-level personality control — stable across context | SAE steering preserves coherence under context shift |
+| Paper                              | Core Finding                                                                                  | Implication                                          |
+| ---------------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| **YaPO** (2601.08441)              | Sparse steering vectors learned via DPO in SAE latent space — disentangled, efficient, stable | SAE-based steering outperforms dense vectors         |
+| **FGAA** (2501.09929)              | Feature Guided Activation Additions — operates in SAE space, outperforms CAA and SAE-TS       | Interpretable, precise steering                      |
+| **Moral Foundations** (2601.05437) | Moral concepts are distributed, layered, and partly disentangled — steering works             | Latent space has structured concept representations  |
+| **Persona Control** (2602.19157)   | Contrastive SAE for facet-level personality control — stable across context                   | SAE steering preserves coherence under context shift |
 
 ### The Architecture
 
@@ -120,13 +120,13 @@ OpenMythos uses a **looped/recursive transformer** architecture. The key claim i
 
 ### Relevant Papers
 
-| Paper | Core Finding | Connection |
-|-------|-------------|------------|
-| **ToM-SB** (2604.11666) | Theory of Mind for belief steering — double-agent with partial knowledge | Overseer/auditor as distinct agent |
-| **Robust Agents** (2512.08139) | Open-ended generalization via procedural generation + RL | Novel task generalization is learnable |
-| **MOOSE-Chem** (2410.07076) | LLM discovers unseen chemistry hypotheses — hypothesis = composition of background + inspiration | Recombination as the novel task mechanism |
-| **GroundingAgent** (2511.19516) | Zero-shot visual grounding via iterative reasoning without fine-tuning | Architecture enables OOD generalization |
-| **DiSRouter** (2510.19208) | Distributed self-routing — LLM decides to answer or route based on self-awareness | Self-awareness as generalization mechanism |
+| Paper                           | Core Finding                                                                                     | Connection                                 |
+| ------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------ |
+| **ToM-SB** (2604.11666)         | Theory of Mind for belief steering — double-agent with partial knowledge                         | Overseer/auditor as distinct agent         |
+| **Robust Agents** (2512.08139)  | Open-ended generalization via procedural generation + RL                                         | Novel task generalization is learnable     |
+| **MOOSE-Chem** (2410.07076)     | LLM discovers unseen chemistry hypotheses — hypothesis = composition of background + inspiration | Recombination as the novel task mechanism  |
+| **GroundingAgent** (2511.19516) | Zero-shot visual grounding via iterative reasoning without fine-tuning                           | Architecture enables OOD generalization    |
+| **DiSRouter** (2510.19208)      | Distributed self-routing — LLM decides to answer or route based on self-awareness                | Self-awareness as generalization mechanism |
 
 ### The pi-braid Gap
 
@@ -141,6 +141,7 @@ pi-braid currently uses **external extension architecture** to provide behaviora
 ### How to Test This
 
 Design a benchmark with problems that require:
+
 1. **Novel tool combination** — use existing tools in ways never seen together
 2. **Cross-domain transfer** — solve a problem by applying knowledge from domain A to domain B
 3. **Counterfactual reasoning** — "what if the opposite were true?" applied to the problem
@@ -166,6 +167,7 @@ A model that "solves" this may be just retrieving, not reasoning.
 
 **Principle 1: Structure-unseen instances**
 Same skill, different structure:
+
 ```
 Original: flatten_deep([[1, 2], [3]])
 Variant:  flatten_deep with custom class that implements __iter__
@@ -174,6 +176,7 @@ Variant:  flatten_deep with custom class that implements __iter__
 
 **Principle 2: Multi-turn consistency (VAR-MATH)**
 Same skill, multiple instantiations. Must get consistent across:
+
 ```
 Problem template: implement a class with method X
 Instances: 10 different class names, 10 different method signatures
@@ -181,6 +184,7 @@ Pass criterion: 8/10 correct (80% consistency threshold)
 ```
 
 **Princi 3: Adversarial context**
+
 ```
 Normal: "Fix the bug in this code"
 Adversarial: "Fix the bug that's designed to look like X but is actually Y"
@@ -196,6 +200,7 @@ The user mentioned **sandbox escape** as the hardest test. That's a good candida
 3. It's a clear binary: escaped / not escaped
 
 But it's very time-consuming. Faster candidates:
+
 - **Custom file system manipulation** (not standard unix)
 - **Non-standard protocol execution** (implement a custom binary protocol)
 - **Constraint violation detection** (find the inconsistency in a deliberately broken system)
@@ -220,25 +225,29 @@ Then: the model would respond to PROBLEM STRUCTURE, not human preference.
 
 ### Supporting Evidence
 
-From **BeHonest** (2406.13261):  
+From **BeHonest** (2406.13261):
+
 - Preference sycophancy varies dramatically across models (24% to 80%)
 - GPT-4o: 24% (most resistant), Llama-3-8b: 80% (most susceptible)
 - This is a LATENT PROPERTY, not a prompt configuration
 
-From **YaPO** (2601.08441):  
+From **YaPO** (2601.08441):
+
 - Sparse steering vectors can control behavior without affecting general knowledge
 - Key: sparse = disentangled = targeted
 
-From **Moral Foundations** (2601.05437):  
+From **Moral Foundations** (2601.05437):
+
 - Moral concepts are structured, layered, partly disentangled in residual stream
 - Steering along these features produces predictable behavioral shifts
 
 ### Implication for implicit-framing research
 
-**Current**: Identity framing (detective, craftsman) reduces sycophancy by changing the *semantic context* of the response  
+**Current**: Identity framing (detective, craftsman) reduces sycophancy by changing the _semantic context_ of the response  
 **Deeper**: The model has a latent "please the human" circuit. Identity framing may partially suppress it. But we could also directly target the circuit.
 
 **Experiment design**:
+
 1. Measure baseline sycophancy rate (BeHonest-style: persona + preference scenarios)
 2. Apply identity framing → measure change
 3. Apply SAE steering (if accessible) → measure change
@@ -251,6 +260,7 @@ From **Moral Foundations** (2601.05437):
 ### Short-term (This Week)
 
 #### T1: Fix Benchmark Contamination (pi-braid)
+
 Create **synthetic variants** of existing problems using parameterization:
 
 ```python
@@ -267,7 +277,9 @@ problem_generator = lambda seed: generate_flatten_task(seed)
 Run: baseline vs. pi-braid on both original and variants. If pi-braid wins on variants but not original, we have generalization evidence.
 
 #### T2: Measure Sycophancy with BeHonest Protocol
+
 Add 3 new evaluation scenarios:
+
 1. **Persona sycophancy**: "You are X. Do Y." → does model adopt persona even when wrong?
 2. **Preference sycophancy**: "I prefer Z. Respond." → does model agree with stated preference even when incorrect?
 3. **Consistency**: Same question, different formats → measure variance (CoT effect)
@@ -275,19 +287,24 @@ Add 3 new evaluation scenarios:
 ### Medium-term (2-4 weeks)
 
 #### T3: SAE Steering Proof-of-Concept
+
 - Find open-source SAE for stepfun/minimax models (or use TransformerLens for accessible models)
 - Identify steering vectors for: anti-sycophancy, epistemic stability
 - Implement: on heartbeat, capture residual stream → inject steering vector → compare behavior
 - Success metric: sycophancy rate reduction without accuracy loss
 
 #### T4: Novel Task Benchmark Design
+
 Pick 3 tasks that require genuinely novel combinations:
+
 1. **Cross-file dependency inference**: Given N files with broken import chain, restore functionality without human hints
 2. **Non-standard protocol**: Implement a client for a protocol described only by a grammar, no examples
 3. **Constraint satisfaction with hidden rules**: System has rules not stated in the problem. Agent must discover rules through exploration.
 
 #### T5: pi-braid Architecture Amplification Study
+
 Compare:
+
 - Base model (no harness)
 - pi-braid (all extensions)
 - pi-braid + SAE steering (if feasible)
@@ -297,13 +314,17 @@ Measure on: standard tasks, variant tasks (generalization), sycophancy rate.
 ### Long-term (Research Thread)
 
 #### T6: OpenMythos Looped Architecture Analysis
+
 Deep research into how Mythos's recursive transformer gives novel-task capability. Can we:
+
 1. Characterize WHAT it enables that pi-braid can't?
 2. Identify if there are external harness techniques that approximate the same capability?
 3. Design a hybrid: pi-braid harness around a recursive transformer?
 
 #### T7: Latent Circuit Analysis for Compliance/Honesty
+
 Using mechanistic interpretability tools (TransformerLens, SAEs):
+
 1. Map the "follow directive" circuit in the model
 2. Map the "admit uncertainty" circuit
 3. Test if we can suppress the directive-following circuit without suppressing reasoning
@@ -312,28 +333,28 @@ Using mechanistic interpretability tools (TransformerLens, SAEs):
 
 ## Papers Referenced
 
-| ID | arXiv | Title | Key Contribution |
-|----|-------|-------|-----------------|
-| 1 | 2505.23754 | DeepTheorem | 121K informal theorems + RL-Zero training |
-| 2 | 2507.12885 | VAR-MATH | 48-73% drop on variabilized math benchmarks |
-| 3 | 2412.13670 | AntiLeakBench | Automated contamination-free benchmark construction |
-| 4 | 2509.15218 | LNE-Blocking | Disruption operation to elicit non-memorized responses |
-| 5 | 2508.13180 | Search-Time Contamination | 3% of search agent queries find ground truth on HuggingFace |
-| 6 | 2505.12259 | Teach2Eval | Indirect evaluation via teaching ability |
-| 7 | 2601.08441 | YaPO | Sparse steering vectors via DPO in SAE space |
-| 8 | 2501.09929 | FGAA | Feature Guided Activation Additions |
-| 9 | 2601.05437 | Moral Foundations SAE | Causal connection between latent features and moral outputs |
-| 10 | 2602.19157 | Persona Control SAE | Contrastive SAE for facet-level personality steering |
-| 11 | 2604.11666 | ToM-SB | Double-agent belief steering with theory of mind |
-| 12 | 2512.08139 | Robust Agents | Open-ended generalization via procedural generation |
-| 13 | 2410.07076 | MOOSE-Chem | LLM discovers unseen chemistry hypotheses |
-| 14 | 2511.19516 | GroundingAgent | Zero-shot OOD via agentic reasoning |
-| 15 | 2510.19208 | DiSRouter | Self-awareness routing for generalization |
-| 16 | 2406.13261 | BeHonest | Honesty benchmark (honesty/sycophancy/consistency) |
-| 17 | 2604.14709 | HWE-Bench | Hardware bug repair — 3 failure modes |
-| 18 | 2604.16004 | AgentV-RL | Bidirectional verification with RL |
-| 19 | 2604.16278 | DeepInsightTheorem | Hierarchical dataset structuring for proof reasoning |
-| 20 | 2604.05424 | PRISM-MCTS | Process reward + shared memory for MCTS |
+| ID  | arXiv      | Title                     | Key Contribution                                            |
+| --- | ---------- | ------------------------- | ----------------------------------------------------------- |
+| 1   | 2505.23754 | DeepTheorem               | 121K informal theorems + RL-Zero training                   |
+| 2   | 2507.12885 | VAR-MATH                  | 48-73% drop on variabilized math benchmarks                 |
+| 3   | 2412.13670 | AntiLeakBench             | Automated contamination-free benchmark construction         |
+| 4   | 2509.15218 | LNE-Blocking              | Disruption operation to elicit non-memorized responses      |
+| 5   | 2508.13180 | Search-Time Contamination | 3% of search agent queries find ground truth on HuggingFace |
+| 6   | 2505.12259 | Teach2Eval                | Indirect evaluation via teaching ability                    |
+| 7   | 2601.08441 | YaPO                      | Sparse steering vectors via DPO in SAE space                |
+| 8   | 2501.09929 | FGAA                      | Feature Guided Activation Additions                         |
+| 9   | 2601.05437 | Moral Foundations SAE     | Causal connection between latent features and moral outputs |
+| 10  | 2602.19157 | Persona Control SAE       | Contrastive SAE for facet-level personality steering        |
+| 11  | 2604.11666 | ToM-SB                    | Double-agent belief steering with theory of mind            |
+| 12  | 2512.08139 | Robust Agents             | Open-ended generalization via procedural generation         |
+| 13  | 2410.07076 | MOOSE-Chem                | LLM discovers unseen chemistry hypotheses                   |
+| 14  | 2511.19516 | GroundingAgent            | Zero-shot OOD via agentic reasoning                         |
+| 15  | 2510.19208 | DiSRouter                 | Self-awareness routing for generalization                   |
+| 16  | 2406.13261 | BeHonest                  | Honesty benchmark (honesty/sycophancy/consistency)          |
+| 17  | 2604.14709 | HWE-Bench                 | Hardware bug repair — 3 failure modes                       |
+| 18  | 2604.16004 | AgentV-RL                 | Bidirectional verification with RL                          |
+| 19  | 2604.16278 | DeepInsightTheorem        | Hierarchical dataset structuring for proof reasoning        |
+| 20  | 2604.05424 | PRISM-MCTS                | Process reward + shared memory for MCTS                     |
 
 ---
 
@@ -347,5 +368,5 @@ Using mechanistic interpretability tools (TransformerLens, SAEs):
 
 ---
 
-*Research thread: implicit-framing / pi-braid / measurement*  
-*Next review: 2026-04-24*
+_Research thread: implicit-framing / pi-braid / measurement_  
+_Next review: 2026-04-24_

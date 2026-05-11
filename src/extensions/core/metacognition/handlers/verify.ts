@@ -250,7 +250,11 @@ Do not invent problems that are not supported by the text.`;
     if (!ctx.model) {
       // Model unavailable — cannot run LLM verification. Return neutral confidence
       // so the caller's heuristic confidence is not dragged down.
-      return { issues: [], suggestions: ["LLM verification skipped: no model available"], confidence: 1.0 };
+      return {
+        issues: [],
+        suggestions: ["LLM verification skipped: no model available"],
+        confidence: 1.0,
+      };
     }
     const apiKey = await ctx.modelRegistry.getApiKeyForProvider(ctx.model.provider);
     const llmResult = await callLlm(ctx.model, apiKey, "", prompt, {
@@ -283,7 +287,11 @@ Do not invent problems that are not supported by the text.`;
     log.debug(`verify: LLM call failed: ${err}`);
     // LLM verification failed — return neutral values so the caller's heuristic
     // confidence is not penalized. The caller will keep heuristic confidence.
-    return { issues: [], suggestions: ["LLM verification failed, relying on heuristics only"], confidence: 1.0 };
+    return {
+      issues: [],
+      suggestions: ["LLM verification failed, relying on heuristics only"],
+      confidence: 1.0,
+    };
   }
 }
 

@@ -24,41 +24,41 @@ type ToolCategory = "code" | "search" | "memory" | "browser" | "context" | "cogn
 
 const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   // Code tools
-  read: "code",
-  write: "code",
-  edit: "code",
-  bash: "code",
-  repl: "code",
-  diff: "code",
+  "read": "code",
+  "write": "code",
+  "edit": "code",
+  "bash": "code",
+  "repl": "code",
+  "diff": "code",
   // Search tools
-  grep: "search",
-  find: "search",
-  ls: "search",
+  "grep": "search",
+  "find": "search",
+  "ls": "search",
   "code-search": "search",
   // Memory tools
-  memory_store: "memory",
-  memory_recall: "memory",
-  memory_list: "memory",
-  memory_get: "memory",
-  memory_episodes: "memory",
+  "memory_store": "memory",
+  "memory_recall": "memory",
+  "memory_list": "memory",
+  "memory_get": "memory",
+  "memory_episodes": "memory",
   // Browser tools
-  browser_navigate: "browser",
-  browser_snapshot: "browser",
-  browser_eval: "browser",
-  browser_screenshot: "browser",
-  browser_content: "browser",
-  web_fetch: "browser",
+  "browser_navigate": "browser",
+  "browser_snapshot": "browser",
+  "browser_eval": "browser",
+  "browser_screenshot": "browser",
+  "browser_content": "browser",
+  "web_fetch": "browser",
   // Context tools
-  context_compact: "context",
-  context_prune: "context",
-  context_archive: "context",
-  context_snapshot: "context",
-  scratchpad: "context",
+  "context_compact": "context",
+  "context_prune": "context",
+  "context_archive": "context",
+  "context_snapshot": "context",
+  "scratchpad": "context",
   // Cognitive tools
-  think: "cognitive",
-  verify: "cognitive",
-  hypothesize: "cognitive",
-  verify_claim: "cognitive",
+  "think": "cognitive",
+  "verify": "cognitive",
+  "hypothesize": "cognitive",
+  "verify_claim": "cognitive",
 };
 
 function categorizeTool(toolName: string): ToolCategory {
@@ -97,10 +97,7 @@ function klDivergence(p: number, q: number): number {
   return p * Math.log2(p / q);
 }
 
-function jensenShannon(
-  p: Record<ToolCategory, number>,
-  q: Record<ToolCategory, number>,
-): number {
+function jensenShannon(p: Record<ToolCategory, number>, q: Record<ToolCategory, number>): number {
   const m: Record<ToolCategory, number> = {} as Record<ToolCategory, number>;
   const keys = Object.keys(p) as ToolCategory[];
   for (const k of keys) {
@@ -159,10 +156,7 @@ export const behavioralDriftModule: CognitiveModule = {
     const ctx = context.ctx;
     const state = (
       ctx as unknown as {
-        getExtensionState?: (
-          key: string,
-          factory: () => DriftState,
-        ) => DriftState;
+        getExtensionState?: (key: string, factory: () => DriftState) => DriftState;
       }
     ).getExtensionState?.("behavioral-drift", () => ({
       baselineCalls: [],
@@ -199,9 +193,7 @@ export const behavioralDriftModule: CognitiveModule = {
     // Compare recent window against baseline
     if (state.recentCalls.length < 5) return;
 
-    const recentDist = buildDistribution(
-      state.recentCalls.slice(-RECENT_WINDOW),
-    );
+    const recentDist = buildDistribution(state.recentCalls.slice(-RECENT_WINDOW));
     const divergence = jensenShannon(state.baselineDist!, recentDist);
 
     // Trim recent calls to prevent unbounded growth

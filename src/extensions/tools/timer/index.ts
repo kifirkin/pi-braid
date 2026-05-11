@@ -238,8 +238,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
     name: "timer_cancel",
     label: "Timer Cancel",
     promptSnippet: "Cancel an active timer before it fires",
-    description:
-      "Cancel an active timer when the timed task is no longer needed.",
+    description: "Cancel an active timer when the timed task is no longer needed.",
     parameters: Type.Object({ timer_id: Type.String() }),
     execute: async (_id: string, params: any): Promise<any> => {
       const { timer_id } = params ?? {};

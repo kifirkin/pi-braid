@@ -64,9 +64,21 @@ export const budgetModule: CognitiveModule = {
 
         // Define thresholds in descending order (highest first)
         const thresholds: Array<{ pct: number; priority: string; msg: string }> = [
-          { pct: 100, priority: "medium", msg: `[budget] Step "${step.text.slice(0, 50)}" exceeded budget: ${spent}/${budget} calls. Consider simplifying or marking done.` },
-          { pct: 90, priority: "low", msg: `[budget] Step "${step.text.slice(0, 50)}" at ${(ratio * 100).toFixed(0)}% budget: ${spent}/${budget} calls. Consider wrapping up.` },
-          { pct: 80, priority: "low", msg: `[budget] Step "${step.text.slice(0, 50)}" at 80% budget: ${spent}/${budget} calls.` },
+          {
+            pct: 100,
+            priority: "medium",
+            msg: `[budget] Step "${step.text.slice(0, 50)}" exceeded budget: ${spent}/${budget} calls. Consider simplifying or marking done.`,
+          },
+          {
+            pct: 90,
+            priority: "low",
+            msg: `[budget] Step "${step.text.slice(0, 50)}" at ${(ratio * 100).toFixed(0)}% budget: ${spent}/${budget} calls. Consider wrapping up.`,
+          },
+          {
+            pct: 80,
+            priority: "low",
+            msg: `[budget] Step "${step.text.slice(0, 50)}" at 80% budget: ${spent}/${budget} calls.`,
+          },
         ];
 
         for (const threshold of thresholds) {

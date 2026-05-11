@@ -4,12 +4,12 @@ Foundation extensions that are always loaded (non-toggleable).
 
 ## Extensions
 
-| Extension | Files | Purpose |
-|---|---|---|
-| `polyfill/` | 1 | Compatibility layer, session state management, resource cleanup. |
-| `metacognition/` | 1 | Meta-learning, tick interval adjustment, degrade-on-idle. |
-| `scratchpad/` | 1 | Goal/plan/state management for long sessions. |
-| `user-message-preprocessor/` | 1 | Message normalization, duplicate detection. |
+| Extension                    | Files | Purpose                                                          |
+| ---------------------------- | ----- | ---------------------------------------------------------------- |
+| `polyfill/`                  | 1     | Compatibility layer, session state management, resource cleanup. |
+| `metacognition/`             | 1     | Meta-learning, tick interval adjustment, degrade-on-idle.        |
+| `scratchpad/`                | 1     | Goal/plan/state management for long sessions.                    |
+| `user-message-preprocessor/` | 1     | Message normalization, duplicate detection.                      |
 
 Total: 9 `.ts` files across 4 sub-extensions.
 

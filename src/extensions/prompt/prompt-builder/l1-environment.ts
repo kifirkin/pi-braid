@@ -136,7 +136,13 @@ function discoverPiRootPath(): string {
     for (let i = 0; i < 10; i++) {
       for (const pkgName of PI_PACKAGE_NAMES) {
         const scopedName = pkgName.split("/")[1]; // e.g. "pi-coding-agent"
-        const candidate = join(dir, "node_modules", pkgName.split("/")[0], scopedName, "package.json");
+        const candidate = join(
+          dir,
+          "node_modules",
+          pkgName.split("/")[0],
+          scopedName,
+          "package.json",
+        );
         if (existsSync(candidate)) {
           const pkg = JSON.parse(readFileSync(candidate, "utf8"));
           if (pkg.name === pkgName) {
@@ -154,7 +160,12 @@ function discoverPiRootPath(): string {
   try {
     const npmPrefix = execSync("npm root -g", { encoding: "utf8", timeout: 5000 }).trim();
     for (const pkgName of PI_PACKAGE_NAMES) {
-      const candidate = join(npmPrefix, pkgName.split("/")[0], pkgName.split("/")[1], "package.json");
+      const candidate = join(
+        npmPrefix,
+        pkgName.split("/")[0],
+        pkgName.split("/")[1],
+        "package.json",
+      );
       if (existsSync(candidate)) {
         const pkg = JSON.parse(readFileSync(candidate, "utf8"));
         if (pkg.name === pkgName) {

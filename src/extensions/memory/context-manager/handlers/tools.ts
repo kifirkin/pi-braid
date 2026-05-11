@@ -99,7 +99,8 @@ export function registerTools(pi: any): void {
     name: "context_log",
     label: "Context Log",
     promptSnippet: "View conversation history with usage and milestones",
-    description: "View conversation history with context usage and milestones — use like git log to inspect session progress.",
+    description:
+      "View conversation history with context usage and milestones — use like git log to inspect session progress.",
     parameters: contextLogSchema,
     execute: async (
       _toolCallId: string,
@@ -229,7 +230,8 @@ export function registerTools(pi: any): void {
     name: "context_checkout",
     label: "Context Checkout",
     promptSnippet: "Navigate to any point in conversation history",
-    description: "Navigate to any point in conversation history — use like git checkout to restore or replay a previous state.",
+    description:
+      "Navigate to any point in conversation history — use like git checkout to restore or replay a previous state.",
     parameters: contextCheckoutSchema,
     execute: async (
       _toolCallId: string,

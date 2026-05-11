@@ -9,7 +9,7 @@
 
 The implicit framing research identified **compliance theater** in prompts: code that satisfies the build but doesn't produce behavioral change. pi-braid has the same pattern at the **architecture level** — extensions that exist, tests that pass, but no behavioral integration.
 
-More broadly: the literature on LLM agent codebase maintenance is sparse. Most papers focus on agents refactoring *other* codebases. Almost none study how agents maintain their *own* architecture over time.
+More broadly: the literature on LLM agent codebase maintenance is sparse. Most papers focus on agents refactoring _other_ codebases. Almost none study how agents maintain their _own_ architecture over time.
 
 ---
 
@@ -20,12 +20,14 @@ More broadly: the literature on LLM agent codebase maintenance is sparse. Most p
 **What it is**: Multi-agent framework for end-to-end software refactoring. Four specialized agents: planner, executor, tester, reviewer. Iterative self-reflection loop.
 
 **Key findings**:
+
 - Multi-agent (4 specialized agents) outperforms single-agent by 64.7% on unit test pass rate
 - Achieves 90% unit test pass rate, 52.5% code smell reduction
 - F1-score of 79.15% on identifying refactoring opportunities (vs. developer refactorings)
 - Self-reflection is critical: each agent refines based on test results
 
 **Architecture**:
+
 ```
 Planner Agent → Executor Agent → Tester Agent → Reviewer Agent
        ↑                                              ↓
@@ -41,13 +43,15 @@ Planner Agent → Executor Agent → Tester Agent → Reviewer Agent
 **What it is**: Practical guide to building a refactoring agent. Covers AST-based analysis, RAG for large codebases, Git versioning for safety.
 
 **Key architectural components**:
+
 1. **Orchestrator** — plan/act/observe loop
 2. **Code Analyzer** — AST parsing, static analysis
 3. **Git Manager** — versioning, rollback safety
 4. **Knowledge Base** — RAG/embeddings for semantic search
 5. **File Handler** — read/write with rollback
 
-**Key insight on context management**: 
+**Key insight on context management**:
+
 - Summarization (condense large files)
 - RAG (vector DB for semantic retrieval)
 - Sliding window (process in chunks)
@@ -80,6 +84,7 @@ Planner Agent → Executor Agent → Tester Agent → Reviewer Agent
 LLM agents are **notoriously bad at maintenance tasks**. They prefer building new things over cleaning old things. The implicit framing research shows why: "You MUST clean up" triggers compliance theater (produce cleanup-looking behavior) rather than actual cleanup.
 
 The same applies to architecture:
+
 - "Add this extension" → visible, testable, rewardable
 - "Remove this dead code" → invisible, no test coverage, uncertain impact
 
@@ -90,6 +95,7 @@ The same applies to architecture:
 **Core question**: Can an LLM agent maintain its own architecture without human intervention?
 
 This is different from "agent refactors external codebases" because:
+
 1. **Recursive problem**: An agent maintaining its own architecture needs to reason about code that includes its own reasoning
 2. **Ownership**: No external stakeholder to validate the refactoring
 3. **Test coverage**: The agent's own tests may be part of what needs maintenance
@@ -98,25 +104,26 @@ This is different from "agent refactors external codebases" because:
 
 Apply the same methodology from implicit framing research to architecture:
 
-| Prompt Pattern | Architectural Equivalent |
-|---------------|------------------------|
-| "You MUST write tests" | "You MUST remove dead code" |
-| Compliance theater: writes tests that don't cover anything | Compliance cleanup: removes code that nothing uses |
-| Behavioral filter: "You are a careful engineer" | Behavioral filter: "You are an architect who values simplicity" |
+| Prompt Pattern                                             | Architectural Equivalent                                        |
+| ---------------------------------------------------------- | --------------------------------------------------------------- |
+| "You MUST write tests"                                     | "You MUST remove dead code"                                     |
+| Compliance theater: writes tests that don't cover anything | Compliance cleanup: removes code that nothing uses              |
+| Behavioral filter: "You are a careful engineer"            | Behavioral filter: "You are an architect who values simplicity" |
 
 **Hypothesis**: Architecture compliance theater is harder to detect than prompt compliance theater because:
+
 - Dead code can look active (imported, referenced)
 - Active code can look dead (only one caller)
 - Test coverage masks integration gaps
 
 ### Measuring Architecture Debt
 
-| Metric | How to Measure |
-|--------|---------------|
-| Dead imports | Static analysis: exported but never imported |
-| Conceptual duplication | AST similarity across files |
-| Integration gaps | Event listener registration vs. actual emission |
-| Token waste in prompts | Token count of disabled extensions |
+| Metric                       | How to Measure                                  |
+| ---------------------------- | ----------------------------------------------- |
+| Dead imports                 | Static analysis: exported but never imported    |
+| Conceptual duplication       | AST similarity across files                     |
+| Integration gaps             | Event listener registration vs. actual emission |
+| Token waste in prompts       | Token count of disabled extensions              |
 | Test coverage of integration | Does extension X's integration path have tests? |
 
 ---
@@ -141,6 +148,7 @@ Rather than building more infrastructure, pi-braid needs:
 **Location**: `docs/research/agent-architecture/`
 
 **Experiments**:
+
 1. **Audit pi-braid**: Find all dead imports, conceptual duplications, unused stores
 2. **Measure integration coverage**: What percentage of extensions have tests that exercise their integration path?
 3. **Agent self-cleanup experiment**: Can pi-braid clean its own dead code when asked? Compare "You MUST remove dead code" vs "You are an architect who values simplicity"
@@ -150,11 +158,11 @@ Rather than building more infrastructure, pi-braid needs:
 
 ## Key Papers
 
-| arXiv | Paper | Application |
-|-------|-------|-------------|
-| 2511.03153 | RefAgent: Multi-Agent Refactoring | Multi-agent self-reflection for refactoring |
-| Stal 2026 | Building an LLM-Based Agent for Code Refactoring | Practical architecture: orchestrator, tools, Git safety |
-| (pending) | Agent codebase self-maintenance | Research gap |
+| arXiv      | Paper                                            | Application                                             |
+| ---------- | ------------------------------------------------ | ------------------------------------------------------- |
+| 2511.03153 | RefAgent: Multi-Agent Refactoring                | Multi-agent self-reflection for refactoring             |
+| Stal 2026  | Building an LLM-Based Agent for Code Refactoring | Practical architecture: orchestrator, tools, Git safety |
+| (pending)  | Agent codebase self-maintenance                  | Research gap                                            |
 
 ---
 
@@ -168,5 +176,5 @@ Rather than building more infrastructure, pi-braid needs:
 
 ---
 
-*Synthesized by Braid — 2026-04-27*
-*Literature: RefAgent (2511.03153), Stal blog (2026), RepoAI*
+_Synthesized by Braid — 2026-04-27_
+_Literature: RefAgent (2511.03153), Stal blog (2026), RepoAI_

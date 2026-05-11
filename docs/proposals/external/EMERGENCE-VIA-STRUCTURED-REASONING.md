@@ -8,7 +8,7 @@
 
 ## The Meta-Question
 
-> *How can a single agent harness tool (think()) push an LLM beyond its training data boundaries — to solve problems it has genuinely never seen?*
+> _How can a single agent harness tool (think()) push an LLM beyond its training data boundaries — to solve problems it has genuinely never seen?_
 
 The think() analysis gave a layered answer. This document synthesizes that with the pi-braid architecture to produce a concrete research agenda.
 
@@ -37,6 +37,7 @@ The emergence happens at: the intersection of novel constraint sets + systematic
 From the think() analysis:
 
 **1. Constraint-Driven Synthesis**
+
 ```
 When constraints are explicit and non-negotiable,
 the agent MUST construct novel solutions that satisfy them.
@@ -48,6 +49,7 @@ The agent must search for a valid composition.
 ```
 
 **2. Cross-Domain Analogy**
+
 ```
 By forcing explicit: "What similar problem exists in another domain?"
 the agent transfers solution primitives across boundaries.
@@ -58,6 +60,7 @@ This requires recognizing the deep structure, not surface form.
 ```
 
 **3. Recursive Decomposition**
+
 ```
 Breaking "impossible" tasks into sub-tasks until each matches a known primitive,
 then recomposing — can solve novel task compositions.
@@ -69,6 +72,7 @@ Example: Build a compiler in 1000 lines.
 ```
 
 **4. Reasoning Graph Search**
+
 ```
 With parent_id chains, reasoning traces become a graph.
 The graph can be algorithmically traversed.
@@ -127,6 +131,7 @@ This is beam search / Monte Carlo tree search over reasoning space.
 Current pi-braid: think() creates traces, but they're not queryable as a graph.
 
 What's missing:
+
 ```
 1. Reasoning graph store — all think() traces in a queryable DB
 2. Graph traversal API — branch(), prune(), merge(), depth_limit()
@@ -448,18 +453,18 @@ Day 19-20: Benchmark + validation
 
 ## Part 8: Key Papers Reference
 
-| Paper | arXiv | Key for pi-braid |
-|-------|-------|------------------|
-| Heartbeat-Driven | 2604.14178 | Heartbeat scheduler as cognitive orchestrator, meta-learning scheduling |
-| Verbalized Assumptions | 2604.03058 | Causal link assumptions → sycophancy. Assumption probes for detection |
-| ToM-SB | 2604.11666 | Theory of Mind for belief steering. Bidirectional ToM ↔ fooling emergence |
-| RepE | 2310.01405 | Representations as linear directions. Contrast vectors. |
-| HWE-Bench | 2604.14709 | 3 failure modes = reasoning search failures |
-| GenericAgent | 2604.17091 | Self-evolution: verify → extract SOP → retrieve |
-| AgentV-RL | 2604.16004 | Bidirectional verification. Forward + backward check |
-| UniR | 2505.19075 | Reasoning as plug-and-play modules |
-| IRCoT | 2212.10509 | Interleaved retrieval + reasoning = multi-step recombination |
-| MDA | 2601.21996 | Induction heads = ICL circuit. Repetitive format catalyzes |
+| Paper                  | arXiv      | Key for pi-braid                                                          |
+| ---------------------- | ---------- | ------------------------------------------------------------------------- |
+| Heartbeat-Driven       | 2604.14178 | Heartbeat scheduler as cognitive orchestrator, meta-learning scheduling   |
+| Verbalized Assumptions | 2604.03058 | Causal link assumptions → sycophancy. Assumption probes for detection     |
+| ToM-SB                 | 2604.11666 | Theory of Mind for belief steering. Bidirectional ToM ↔ fooling emergence |
+| RepE                   | 2310.01405 | Representations as linear directions. Contrast vectors.                   |
+| HWE-Bench              | 2604.14709 | 3 failure modes = reasoning search failures                               |
+| GenericAgent           | 2604.17091 | Self-evolution: verify → extract SOP → retrieve                           |
+| AgentV-RL              | 2604.16004 | Bidirectional verification. Forward + backward check                      |
+| UniR                   | 2505.19075 | Reasoning as plug-and-play modules                                        |
+| IRCoT                  | 2212.10509 | Interleaved retrieval + reasoning = multi-step recombination              |
+| MDA                    | 2601.21996 | Induction heads = ICL circuit. Repetitive format catalyzes                |
 
 ---
 
@@ -499,15 +504,15 @@ This is the minimal viable emergence harness.
 
 ## Connection to Other Research
 
-| This Document | Builds On | Extends |
-|---------------|-----------|---------|
-| Reasoning graph store | think() analysis | The data structure for graph search |
-| Meta-learning scheduler | 2604.14178 Heartbeat-Driven | Extend from heartbeat to cognitive module scheduling |
-| Assumption probes | 2604.03058 Verbalized | Detection + correction of sycophancy assumptions |
-| Emergence engine | think() analysis + HWE-Bench | The full emergence architecture |
-| Implicit/explicit boundary | Prior research | Reasoning = explicit where it affects WHAT, implicit where it affects HOW |
+| This Document              | Builds On                    | Extends                                                                   |
+| -------------------------- | ---------------------------- | ------------------------------------------------------------------------- |
+| Reasoning graph store      | think() analysis             | The data structure for graph search                                       |
+| Meta-learning scheduler    | 2604.14178 Heartbeat-Driven  | Extend from heartbeat to cognitive module scheduling                      |
+| Assumption probes          | 2604.03058 Verbalized        | Detection + correction of sycophancy assumptions                          |
+| Emergence engine           | think() analysis + HWE-Bench | The full emergence architecture                                           |
+| Implicit/explicit boundary | Prior research               | Reasoning = explicit where it affects WHAT, implicit where it affects HOW |
 
 ---
 
-*Research thread: implicit-framing / pi-braid / emergent-reasoning*  
-*Core insight: Reasoning externalized as graph = manipulable data structure. Training provides primitives, harness provides search. Emergence = optimal path through constraint space. pi-braid already has the components — needs reasoning graph store + constraint extraction.*
+_Research thread: implicit-framing / pi-braid / emergent-reasoning_  
+_Core insight: Reasoning externalized as graph = manipulable data structure. Training provides primitives, harness provides search. Emergence = optimal path through constraint space. pi-braid already has the components — needs reasoning graph store + constraint extraction._

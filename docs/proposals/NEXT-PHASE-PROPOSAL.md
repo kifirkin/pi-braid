@@ -9,6 +9,7 @@
 ## Executive Summary
 
 The scratchpad contains **14 items**, many of which are:
+
 - ✅ **Already completed** (items 1-8, 13-14)
 - 🔁 **Duplicates** (items 13-14 duplicate 1-7)
 - ❓ **Research tasks** that may be resolved (items 3-4, 9-10)
@@ -19,22 +20,22 @@ The scratchpad contains **14 items**, many of which are:
 
 ## Item-by-Item Audit
 
-| # | Title | Status | Evidence |
-|---|-------|--------|----------|
-| 1 | Import 174 legacy memories | ✅ DONE | `semantic.json` loaded from `memory.json` fallback; 174 entries accessible via `memory_recall` |
-| 2 | Same as #1 | 🔁 DUPLICATE | — |
-| 3 | Research compaction disaster | ⚠️ LIKELY FIXED | `forcePersistSession()` added in compaction.ts; agent-patch emits message lifecycle |
-| 4 | Same as #3 | 🔁 DUPLICATE | — |
-| 5 | Fix handleRunFailure (message_end) | ✅ DONE | `agent-patch` extension created, registered in core module, emits `message_start`/`message_end` |
-| 6 | Same as #5 | 🔁 DUPLICATE | — |
-| 7 | Systematic migration (3 items) | ✅ DONE | Scratchpads copied, prompt-builder uses `MEMORY_DIR`, degradation-detector uses `DEGRADATION_FILE` |
-| 8 | Same as #7 | 🔁 DUPLICATE | — |
-| 9 | Investigate whisper delivery | ⚠️ LIKELY FIXED | `areCognitiveNudgesDisabled()` gate added; `deliverAs`/`triggerTurn` fixed in whisper.ts |
-| 10 | Same as #9 | 🔁 DUPLICATE | — |
-| 11 | Fix nudge/whisper delivery options | ✅ DONE | Critical → `steer`+`triggerTurn:true`; Advisory → `followUp`+`triggerTurn:false`; `nudgeCooldownMs=60_000` |
-| 12 | Same as #11 | 🔁 DUPLICATE | — |
-| 13 | Phase 1-7 Publishing sprint | ✅ DONE | Merged to main, tagged v0.2.0, 5 commits, 61/61 tests pass |
-| 14 | Same as #13 | 🔁 DUPLICATE | — |
+| #   | Title                              | Status          | Evidence                                                                                                   |
+| --- | ---------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------- |
+| 1   | Import 174 legacy memories         | ✅ DONE         | `semantic.json` loaded from `memory.json` fallback; 174 entries accessible via `memory_recall`             |
+| 2   | Same as #1                         | 🔁 DUPLICATE    | —                                                                                                          |
+| 3   | Research compaction disaster       | ⚠️ LIKELY FIXED | `forcePersistSession()` added in compaction.ts; agent-patch emits message lifecycle                        |
+| 4   | Same as #3                         | 🔁 DUPLICATE    | —                                                                                                          |
+| 5   | Fix handleRunFailure (message_end) | ✅ DONE         | `agent-patch` extension created, registered in core module, emits `message_start`/`message_end`            |
+| 6   | Same as #5                         | 🔁 DUPLICATE    | —                                                                                                          |
+| 7   | Systematic migration (3 items)     | ✅ DONE         | Scratchpads copied, prompt-builder uses `MEMORY_DIR`, degradation-detector uses `DEGRADATION_FILE`         |
+| 8   | Same as #7                         | 🔁 DUPLICATE    | —                                                                                                          |
+| 9   | Investigate whisper delivery       | ⚠️ LIKELY FIXED | `areCognitiveNudgesDisabled()` gate added; `deliverAs`/`triggerTurn` fixed in whisper.ts                   |
+| 10  | Same as #9                         | 🔁 DUPLICATE    | —                                                                                                          |
+| 11  | Fix nudge/whisper delivery options | ✅ DONE         | Critical → `steer`+`triggerTurn:true`; Advisory → `followUp`+`triggerTurn:false`; `nudgeCooldownMs=60_000` |
+| 12  | Same as #11                        | 🔁 DUPLICATE    | —                                                                                                          |
+| 13  | Phase 1-7 Publishing sprint        | ✅ DONE         | Merged to main, tagged v0.2.0, 5 commits, 61/61 tests pass                                                 |
+| 14  | Same as #13                        | 🔁 DUPLICATE    | —                                                                                                          |
 
 **Duplicate items**: 6 items are exact duplicates (13-14 duplicate 1-7). All marked done.
 
@@ -43,6 +44,7 @@ The scratchpad contains **14 items**, many of which are:
 ## Verification of Fixes
 
 ### 1. Compaction Persistence
+
 **Original bug**: Compaction removed messages from memory but session file write was lost; agent loop stopped.
 
 **Fix implemented**: `forcePersistSession()` in compaction.ts (line 169) bypasses the no-assistant guard. Additionally, `agent-patch` ensures `handleRunFailure` emits full message lifecycle.
@@ -50,9 +52,11 @@ The scratchpad contains **14 items**, many of which are:
 **Status**: Code is present and appears correct. No user complaints since fix.
 
 ### 2. Whisper Delivery
+
 **Original bug**: Cognitive whispers (enforcement nudges, heartbeat context-hygiene) not visible to agent.
 
 **Fixes implemented**:
+
 - Separated `suppressNudges` from `disableConfirmations` (braid-settings.ts)
 - `areCognitiveNudgesDisabled()` gate in whisper.ts
 - Delivery options: critical → `steer`+`triggerTurn:true`, advisory → `followUp`+`triggerTurn:false`
@@ -61,6 +65,7 @@ The scratchpad contains **14 items**, many of which are:
 **Status**: Code is present. User reported "enforcement works too!" during testing.
 
 ### 3. HandleRunFailure
+
 **Original bug**: `handleRunFailure` emitted `agent_end` without `message_start`/`message_end`, breaking session persistence on errors.
 
 **Fix implemented**: `agent-patch` extension monkey-patches `Agent.prototype.handleRunFailure` to emit full lifecycle before `agent_end`. Registered in `core` module.
@@ -133,6 +138,7 @@ If you want to be thorough before public release:
 ## Recommendation
 
 **The repo is publish-ready.** The remaining items are either:
+
 - Documentation polish (internal)
 - Future deprecation planning (legacy memory)
 - Nice-to-have verification tests

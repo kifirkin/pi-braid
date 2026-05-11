@@ -4,18 +4,19 @@ Three-tier memory architecture with automatic persistence and session recovery.
 
 ## Extensions
 
-| Extension | Files | Purpose |
-|---|---|---|
-| `context-manager/` | 8 | Compaction (v0.23), pruning, session lifecycle, navigation. |
-| `context-lifecycle/` | 1 | S-MMU governance, proposal system, compaction lifecycle. |
-| `session-recall/` | 1 | Past session search via semantic query. |
-| `three-memory-stores/` | 1 | Semantic + episodic + procedural stores (200 entries, Jaccard dedup). |
+| Extension              | Files | Purpose                                                               |
+| ---------------------- | ----- | --------------------------------------------------------------------- |
+| `context-manager/`     | 8     | Compaction (v0.23), pruning, session lifecycle, navigation.           |
+| `context-lifecycle/`   | 1     | S-MMU governance, proposal system, compaction lifecycle.              |
+| `session-recall/`      | 1     | Past session search via semantic query.                               |
+| `three-memory-stores/` | 1     | Semantic + episodic + procedural stores (200 entries, Jaccard dedup). |
 
 Total: 16 `.ts` files across 4 sub-extensions.
 
 ## Key Architecture
 
 **Three memory stores:**
+
 - Semantic: semantic search relevance scoring
 - Episodic: past session outcomes
 - Procedural: learned patterns

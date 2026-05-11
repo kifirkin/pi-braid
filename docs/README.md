@@ -6,11 +6,11 @@ Metacognitive extension suite for [pi-coding-agent](https://github.com/mariozech
 
 ## Start Here
 
-| Document                                 | Purpose                                                    |
-| ---------------------------------------- | ---------------------------------------------------------- |
-| [IMPLEMENTATION.md](IMPLEMENTATION.md)   | Master plan — proposals, priorities, P0-P3 execution order |
-| [ARCHITECTURE.md](ARCHITECTURE.md)       | System design overview                                     |
-| [MODULES.md](MODULES.md)                 | Module system + toggle API                                 |
+| Document                               | Purpose                                                    |
+| -------------------------------------- | ---------------------------------------------------------- |
+| [IMPLEMENTATION.md](IMPLEMENTATION.md) | Master plan — proposals, priorities, P0-P3 execution order |
+| [ARCHITECTURE.md](ARCHITECTURE.md)     | System design overview                                     |
+| [MODULES.md](MODULES.md)               | Module system + toggle API                                 |
 
 ---
 

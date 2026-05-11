@@ -8,7 +8,7 @@
 
 ## The Central Question
 
-> *Can we use the LLM's internal activation space to make it solve problems it couldn't solve before — problems that were NOT in its training data?*
+> _Can we use the LLM's internal activation space to make it solve problems it couldn't solve before — problems that were NOT in its training data?_
 
 This splits into two sub-questions:
 
@@ -61,11 +61,11 @@ Step 3: Construct linear model (PCA)
 
 #### Control: Three Methods
 
-| Method | How It Works | Training | Precision |
-|--------|------------|----------|-----------|
-| **Reading Vector** | Add concept vector directly to residual stream | None | Low |
-| **Contrast Vector** | Subtract activations with concept from without | None | Medium |
-| **LoRRA** | Fine-tune low-rank adapter on contrastive loss | Yes (PEFT) | High |
+| Method              | How It Works                                   | Training   | Precision |
+| ------------------- | ---------------------------------------------- | ---------- | --------- |
+| **Reading Vector**  | Add concept vector directly to residual stream | None       | Low       |
+| **Contrast Vector** | Subtract activations with concept from without | None       | Medium    |
+| **LoRRA**           | Fine-tune low-rank adapter on contrastive loss | Yes (PEFT) | High      |
 
 ```
 Reading Vector (no training):
@@ -82,17 +82,17 @@ LoRRA (PEFT, requires training):
 
 ### RepE Applications (All Safety-Relevant)
 
-| Application | Method | Result |
-|-------------|--------|--------|
-| **Honesty** | Contrast vector | +18.1pp on TruthfulQA (SOTA at time) |
-| **Hallucination detection** | Linear probe on hidden states | Detects lies before output |
-| **Truthfulness extraction** | PCA on consistency-eliciting prompts | Model knows truth even when generating lies |
-| **Utility / Power-seeking** | LAT scan | Model encodes utility across layers |
-| **Morality aversion** | Contrast vector | Increases ethical behavior |
-| **Emotion tracking** | LAT across layers | Emotions distributed across layers, peak in middle |
-| **Harmlessness** | Conditional transformation | Reduces harmful instruction following |
-| **Knowledge editing** | Activation patching | Update facts without retraining |
-| **Memorization detection** | Reading vector | Detect when model outputs memorized data |
+| Application                 | Method                               | Result                                             |
+| --------------------------- | ------------------------------------ | -------------------------------------------------- |
+| **Honesty**                 | Contrast vector                      | +18.1pp on TruthfulQA (SOTA at time)               |
+| **Hallucination detection** | Linear probe on hidden states        | Detects lies before output                         |
+| **Truthfulness extraction** | PCA on consistency-eliciting prompts | Model knows truth even when generating lies        |
+| **Utility / Power-seeking** | LAT scan                             | Model encodes utility across layers                |
+| **Morality aversion**       | Contrast vector                      | Increases ethical behavior                         |
+| **Emotion tracking**        | LAT across layers                    | Emotions distributed across layers, peak in middle |
+| **Harmlessness**            | Conditional transformation           | Reduces harmful instruction following              |
+| **Knowledge editing**       | Activation patching                  | Update facts without retraining                    |
+| **Memorization detection**  | Reading vector                       | Detect when model outputs memorized data           |
 
 ### The Critical Insight for pi-braid
 
@@ -169,6 +169,7 @@ SAE steering (YaPO):
 ### pi-braid Relevance
 
 The SAE approach is the **precision tool** for behavioral control:
+
 - **Precision**: Target specific features (e.g., "epistemic caution") without affecting general capability
 - **Compositionality**: Multiple features can be steered simultaneously
 - **Stability**: Sparse features are more robust across contexts
@@ -229,19 +230,19 @@ The UniR module is trained ONCE:
 
 ### What the Literature Actually Says
 
-The central question: *Can latent space techniques make an LLM solve problems that were genuinely not in its training data?*
+The central question: _Can latent space techniques make an LLM solve problems that were genuinely not in its training data?_
 
 The honest answer from the literature is **complex and layered**:
 
 ### What We CAN Do (Capability Enhancement)
 
-| Method | What It Enables | Limits |
-|--------|----------------|--------|
-| **RepE contrast vectors** | Suppress unwanted behaviors (sycophancy, harmful instruction following) | Can't add capabilities, only modulate existing ones |
-| **SAE steering** | Precise behavioral control along specific axes | Requires model-specific SAE; limited by what exists in the latent space |
-| **UniR modules** | Add NEW reasoning capabilities to frozen LLM | Capabilities must be decomposable into reward signals; can't add arbitrary new knowledge |
-| **Knowledge editing** | Update specific facts without retraining | Works for factual recall, not for "discovering" new relationships |
-| **In-context composition** | LLM recombines known skills in new combinations | Only works for skills that exist in training data |
+| Method                     | What It Enables                                                         | Limits                                                                                   |
+| -------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| **RepE contrast vectors**  | Suppress unwanted behaviors (sycophancy, harmful instruction following) | Can't add capabilities, only modulate existing ones                                      |
+| **SAE steering**           | Precise behavioral control along specific axes                          | Requires model-specific SAE; limited by what exists in the latent space                  |
+| **UniR modules**           | Add NEW reasoning capabilities to frozen LLM                            | Capabilities must be decomposable into reward signals; can't add arbitrary new knowledge |
+| **Knowledge editing**      | Update specific facts without retraining                                | Works for factual recall, not for "discovering" new relationships                        |
+| **In-context composition** | LLM recombines known skills in new combinations                         | Only works for skills that exist in training data                                        |
 
 ### What We CANNOT Do (The Hard Limit)
 
@@ -275,6 +276,7 @@ Alternative view: ICL = composing learned primitives in real-time
 ```
 
 **The induction head literature** supports the composition view:
+
 - Induction heads are two-layer circuits that do "next-token prediction for novel sequences"
 - They emerge early in training and are critical for in-context learning
 - They're the mechanism for RECOMBINING known patterns in new ways
@@ -328,6 +330,7 @@ LEVEL 3: Genuine Novelty / Discovery
 **pi-braid primarily operates at Level 2.** This is still valuable — Level 2 recombination is where most "reasoning" tasks live, and it's where scaffold overhead makes the biggest difference.
 
 **For Level 3**, we need:
+
 - Tool use (search, code execution) to access external knowledge
 - Persistent state (belief store, three-memory) to accumulate insight
 - Potentially UniR modules for specific reasoning capabilities
@@ -387,6 +390,7 @@ Based on everything above, here's what can actually be done:
 ### Tier 1: Feasible with Current Providers (API-only)
 
 **1a. RepE Contrast Vector Injection** — 2 weeks
+
 ```
 Method: Use RepE-style contrast vectors for honesty/sycophancy
   → Generate contrast pairs (honest responses vs sycophantic responses)
@@ -406,6 +410,7 @@ pi-braid integration: New extension "latent-activator" that:
 ```
 
 **1b. Proxy-Metric Monitoring** — 1 week
+
 ```
 Even without injection capability, we can USE RepE:
   → Use LAT-style probes to detect: is the model being honest/sycophantic?
@@ -421,6 +426,7 @@ This requires:
 ### Tier 2: Requires Open Model or Provider with Hooks
 
 **2a. SAE-Based Steering** — 4-6 weeks
+
 ```
 Requires: Access to residual stream + SAE for the target model
 
@@ -436,6 +442,7 @@ pi-braid integration:
 ```
 
 **2b. UniR Reasoning Modules** — 3-4 weeks
+
 ```
 UniR is model-agnostic (logit-level addition):
   → Can train reasoning module on ANY accessible model
@@ -455,6 +462,7 @@ pi-braid integration:
 ### Tier 3: Research Questions (Open)
 
 **3a. Novel Recombination Measurement**
+
 ```
 Question: Can we measure when an LLM is doing genuine Level 2 recombination
           vs. Level 1 memorization?
@@ -470,6 +478,7 @@ Connection to HWE-Bench: Hardware bugs are designed to be novel
 ```
 
 **3b. Latent Space Composability**
+
 ```
 Question: Can we compose multiple RepE/SAE interventions without interference?
 
@@ -483,6 +492,7 @@ Expected: SAE-based steering should compose better (disentangled features)
 ```
 
 **3c. OpenMythos Loop vs. External Scaffold**
+
 ```
 Question: Does an internal loop (Mythos) give qualitatively different recombination
           than external scaffold (pi-braid)?
@@ -538,21 +548,21 @@ pi-braid's actual contribution:
 
 ### Confirmed YES
 
-| Technique | What It Gives | pi-braid Integration |
-|-----------|-------------|---------------------|
-| **RepE contrast vectors** | Suppress sycophancy, increase honesty | New `latent-activator` extension |
-| **RepE LAT probes** | Detect lying/hallucination in real-time | Feed into heartbeat scheduler |
-| **SAE steering (YaPO)** | Precise, disentangled behavioral control | Requires open model or hook access |
-| **UniR modules** | Add novel reasoning capabilities without retraining | Compose multiple modules as pi-braid skills |
-| **Compositionality** | Stack multiple interventions | UniR modules can be combined |
+| Technique                 | What It Gives                                       | pi-braid Integration                        |
+| ------------------------- | --------------------------------------------------- | ------------------------------------------- |
+| **RepE contrast vectors** | Suppress sycophancy, increase honesty               | New `latent-activator` extension            |
+| **RepE LAT probes**       | Detect lying/hallucination in real-time             | Feed into heartbeat scheduler               |
+| **SAE steering (YaPO)**   | Precise, disentangled behavioral control            | Requires open model or hook access          |
+| **UniR modules**          | Add novel reasoning capabilities without retraining | Compose multiple modules as pi-braid skills |
+| **Compositionality**      | Stack multiple interventions                        | UniR modules can be combined                |
 
 ### Confirmed NO (not without new architecture)
 
-| Technique | Why Not | Alternative |
-|-----------|---------|-------------|
-| **True novel knowledge generation** | LLM can't invent new primitives | External knowledge via tools |
-| **Level 3 capability from prompt alone** | Not how LLMs work | Change architecture or inject knowledge |
-| **Arbitrary capability injection via latent space** | Latent space is a compression | UniR is the closest valid approach |
+| Technique                                           | Why Not                         | Alternative                             |
+| --------------------------------------------------- | ------------------------------- | --------------------------------------- |
+| **True novel knowledge generation**                 | LLM can't invent new primitives | External knowledge via tools            |
+| **Level 3 capability from prompt alone**            | Not how LLMs work               | Change architecture or inject knowledge |
+| **Arbitrary capability injection via latent space** | Latent space is a compression   | UniR is the closest valid approach      |
 
 ### Key Research Gaps (Open Questions)
 
@@ -568,6 +578,7 @@ pi-braid's actual contribution:
 ### This Week
 
 1. **Test stepfun/minimax activation access** (2 days)
+
    ```
    Send completion request with:
    - Logprobs enabled
@@ -576,6 +587,7 @@ pi-braid's actual contribution:
    ```
 
 2. **Implement RepE-style probe for honesty detection** (3 days)
+
    ```
    Even without injection, we can READ:
    - Generate honest/sycophantic response pairs
@@ -595,6 +607,7 @@ pi-braid's actual contribution:
 ### Next 4 Weeks
 
 4. **Design novel recombination benchmark** (1 week)
+
    ```
    Following AntiLeakBench methodology:
    - Generate problems with structures never in training
@@ -602,6 +615,7 @@ pi-braid's actual contribution:
    ```
 
 5. **SAE feasibility study** (2 weeks)
+
    ```
    - If open model available: full YaPO implementation
    - If not: document what's needed and why it matters
@@ -619,38 +633,38 @@ pi-braid's actual contribution:
 
 ## Bibliography
 
-| ID | arXiv | Title | Key Finding |
-|----|-------|-------|------------|
-| RepE | [2310.01405](https://arxiv.org/abs/2310.01405) | Representation Engineering | Top-down approach: population representations, LAT scan, contrast vectors, LoRRA. +18.1pp TruthfulQA. |
-| SAE Features | [2407.10774](https://arxiv.org/abs/2407.10774) | Sparse Autoencoders on Llama-3 | 16K monosemantic features extracted from residual stream |
-| YaPO | [2601.08441](https://arxiv.org/abs/2601.08441) | Sparse Steering Vectors via DPO | DPO-trained sparse steering in SAE space |
-| FGAA | [2501.09929](https://arxiv.org/abs/2501.09929) | Feature Guided Activation Additions | Contrastive approach to activation addition |
-| UniR | [2505.19075](https://arxiv.org/abs/2505.19075) | Universal Reasoner | Plug-and-play reasoning module. Composable. Weak-to-strong. |
-| CAA | — | Contrastive Activation Addition | Baseline: subtract concept vs. non-concept activations |
-| LoRRA | — | Low-Rank Representation Adaptation | PEFT baseline for representation control |
-| Truth Probe | — | Models Know When They're Wrong | Representations of truthfulness exist even when output is wrong |
-| CoT Vecs | — | Chain of Thought Vectors | Reasoning mechanism transfer via latent vectors |
-| SRPS | — | Sparse Autoencoder Role-Playing Steering | SAE-based persona control |
-| VAR-MATH | [2507.12885](https://arxiv.org/abs/2507.12885) | Variabilized Math | 48-73% drop on variabilized benchmarks → memorization dominant |
-| AntiLeakBench | [2412.13670](https://arxiv.org/abs/2412.13670) | Contamination-Free Benchmark | Automated construction of truly unseen evaluation problems |
-| BeHonest | [2406.13261](https://arxiv.org/abs/2406.13261) | Honesty Benchmark | 3-dimension honesty: self-knowledge, non-deceptiveness, consistency |
-| HWE-Bench | [2604.14709](https://arxiv.org/abs/2604.14709) | Hardware Bug Repair | 3 failure modes, best proxy for real novel recombination |
-| Induction Heads | — | In-Context Learning Circuits | Two-layer circuits for next-token prediction on novel sequences |
+| ID              | arXiv                                          | Title                                    | Key Finding                                                                                           |
+| --------------- | ---------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| RepE            | [2310.01405](https://arxiv.org/abs/2310.01405) | Representation Engineering               | Top-down approach: population representations, LAT scan, contrast vectors, LoRRA. +18.1pp TruthfulQA. |
+| SAE Features    | [2407.10774](https://arxiv.org/abs/2407.10774) | Sparse Autoencoders on Llama-3           | 16K monosemantic features extracted from residual stream                                              |
+| YaPO            | [2601.08441](https://arxiv.org/abs/2601.08441) | Sparse Steering Vectors via DPO          | DPO-trained sparse steering in SAE space                                                              |
+| FGAA            | [2501.09929](https://arxiv.org/abs/2501.09929) | Feature Guided Activation Additions      | Contrastive approach to activation addition                                                           |
+| UniR            | [2505.19075](https://arxiv.org/abs/2505.19075) | Universal Reasoner                       | Plug-and-play reasoning module. Composable. Weak-to-strong.                                           |
+| CAA             | —                                              | Contrastive Activation Addition          | Baseline: subtract concept vs. non-concept activations                                                |
+| LoRRA           | —                                              | Low-Rank Representation Adaptation       | PEFT baseline for representation control                                                              |
+| Truth Probe     | —                                              | Models Know When They're Wrong           | Representations of truthfulness exist even when output is wrong                                       |
+| CoT Vecs        | —                                              | Chain of Thought Vectors                 | Reasoning mechanism transfer via latent vectors                                                       |
+| SRPS            | —                                              | Sparse Autoencoder Role-Playing Steering | SAE-based persona control                                                                             |
+| VAR-MATH        | [2507.12885](https://arxiv.org/abs/2507.12885) | Variabilized Math                        | 48-73% drop on variabilized benchmarks → memorization dominant                                        |
+| AntiLeakBench   | [2412.13670](https://arxiv.org/abs/2412.13670) | Contamination-Free Benchmark             | Automated construction of truly unseen evaluation problems                                            |
+| BeHonest        | [2406.13261](https://arxiv.org/abs/2406.13261) | Honesty Benchmark                        | 3-dimension honesty: self-knowledge, non-deceptiveness, consistency                                   |
+| HWE-Bench       | [2604.14709](https://arxiv.org/abs/2604.14709) | Hardware Bug Repair                      | 3 failure modes, best proxy for real novel recombination                                              |
+| Induction Heads | —                                              | In-Context Learning Circuits             | Two-layer circuits for next-token prediction on novel sequences                                       |
 
 ---
 
 ## Connection to Previous Research
 
-| This Document | Builds On | Extends |
-|---------------|-----------|---------|
-| RepE + SAE analysis | SAE-STEERING-PROPOSAL.md | Gives concrete implementation paths for each approach |
-| UniR | OPENMYTHOS-LOOP-ANALYSIS-PROPOSAL.md | Alternative to loop architecture for capability addition |
-| Three-level model | BENCHMARK-CONTAMINATION-AND-LATENT-STEERING.md | Explains WHY some capabilities are achievable and others aren't |
-| Novel recombination benchmark | NEW_PAPERS_20260423.md | HWE-Bench as a starting point |
-| Tier 1 (API-only) | SAE-STEERING-PROPOSAL.md | Phase 2b implementation |
+| This Document                 | Builds On                                      | Extends                                                         |
+| ----------------------------- | ---------------------------------------------- | --------------------------------------------------------------- |
+| RepE + SAE analysis           | SAE-STEERING-PROPOSAL.md                       | Gives concrete implementation paths for each approach           |
+| UniR                          | OPENMYTHOS-LOOP-ANALYSIS-PROPOSAL.md           | Alternative to loop architecture for capability addition        |
+| Three-level model             | BENCHMARK-CONTAMINATION-AND-LATENT-STEERING.md | Explains WHY some capabilities are achievable and others aren't |
+| Novel recombination benchmark | NEW_PAPERS_20260423.md                         | HWE-Bench as a starting point                                   |
+| Tier 1 (API-only)             | SAE-STEERING-PROPOSAL.md                       | Phase 2b implementation                                         |
 
 ---
 
-*Research thread: implicit-framing / pi-braid / measurement*  
-*Core finding: Latent space manipulation can enhance Level 2 recombination but not create Level 3 novelty. UniR is the most promising practical path for adding new capabilities to frozen models. RepE contrast vectors can suppress unwanted behaviors (sycophancy, dishonesty) without training.*  
-*Next review: 2026-04-24*
+_Research thread: implicit-framing / pi-braid / measurement_  
+_Core finding: Latent space manipulation can enhance Level 2 recombination but not create Level 3 novelty. UniR is the most promising practical path for adding new capabilities to frozen models. RepE contrast vectors can suppress unwanted behaviors (sycophancy, dishonesty) without training._  
+_Next review: 2026-04-24_

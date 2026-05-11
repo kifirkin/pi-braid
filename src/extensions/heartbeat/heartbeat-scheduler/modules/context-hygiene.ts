@@ -257,10 +257,7 @@ export const contextHygieneModule: CognitiveModule = {
     }
 
     // ── Duplicate whisper (cooldown: 25 turns) ─────────────────────
-    if (
-      density.duplicates > 2 &&
-      currentTurn - autoCompactState.lastDuplicateWhisperTurn >= 25
-    ) {
+    if (density.duplicates > 2 && currentTurn - autoCompactState.lastDuplicateWhisperTurn >= 25) {
       autoCompactState.lastDuplicateWhisperTurn = currentTurn;
       ctx.whisper?.(
         density.duplicates +

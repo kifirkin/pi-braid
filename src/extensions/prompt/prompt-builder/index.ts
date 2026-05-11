@@ -256,7 +256,11 @@ function loadConsolidatedHints(): string {
     const now = Date.now();
     const parsed = lines
       .map((l: string) => {
-        try { return JSON.parse(l); } catch { return null; }
+        try {
+          return JSON.parse(l);
+        } catch {
+          return null;
+        }
       })
       .filter((h: any): h is Record<string, any> => h !== null)
       .filter((h: any) => h.steps && (h.steps as string[]).length > 0)
@@ -267,9 +271,16 @@ function loadConsolidatedHints(): string {
     // Take the 3 most recent
     const hints = parsed.slice(-3);
 
-    const hintLines = ["", "## Learned Patterns", "*(Consolidated from successful task outcomes)*", ""];
+    const hintLines = [
+      "",
+      "## Learned Patterns",
+      "*(Consolidated from successful task outcomes)*",
+      "",
+    ];
     for (const h of hints) {
-      hintLines.push(`For \"${(h.task ?? "unknown").slice(0, 80)}\": ${h.steps.slice(0, 3).join(" → ")}`);
+      hintLines.push(
+        `For \"${(h.task ?? "unknown").slice(0, 80)}\": ${h.steps.slice(0, 3).join(" → ")}`,
+      );
     }
     return hintLines.join("\n");
   } catch {
@@ -482,15 +493,15 @@ const SKILL_TRIGGERS: Record<string, string[]> = {
   "agent-testing": ["benchmark", "test", "evaluat", "RPC", "trial", "harness", "subagent"],
   "code-search": ["search", "grep", "codemod", "refactor", "find"],
   "design-system": ["design token", "brand", "visual identity", "DESIGN.md"],
-  documentation: ["documentation", "README", "ARCHITECTURE.md", "doc", "readme"],
-  healthcheck: ["healthcheck", "diagnos", "setup", "troubleshoot", "env"],
+  "documentation": ["documentation", "README", "ARCHITECTURE.md", "doc", "readme"],
+  "healthcheck": ["healthcheck", "diagnos", "setup", "troubleshoot", "env"],
   "meta-improvement": ["skill", "experiment", "self-improve", "metric"],
   "paper-writer": ["paper", "LaTeX", "arXiv", "research paper", "academic"],
   "pi-reference": ["pi", "SDK", "extension", "plugin", "provider", "model"],
   "process-control": ["tmux", "nohup", "long-run", "background", "daemon", "subagent"],
-  research: ["research", "web search", "fact-check", "literature", "find"],
+  "research": ["research", "web search", "fact-check", "literature", "find"],
   "software-engineer": ["code", "debug", "implement", "refactor", "bug"],
-  subagent: ["subagent", "spawn", "worker", "orchestrat", "parallel", "fan-out", "RPC mode"],
+  "subagent": ["subagent", "spawn", "worker", "orchestrat", "parallel", "fan-out", "RPC mode"],
   "tone-quality": ["tone", "writing", "voice", "style", "prompt", "skill", "documentation"],
   "vcs-tools": ["git", "pijul", "version control", "commit", "checkpoint"],
   "visual-creator": ["visual", "UI", "game asset", "sprite", "illustration"],
@@ -502,32 +513,23 @@ const SKILL_RELATIONS: Record<string, string[]> = {
   "agent-testing": ["process-control", "pi-reference"],
   "meta-improvement": ["tone-quality", "pi-reference"],
   "process-control": ["agent-testing"],
-  subagent: ["agent-testing", "process-control", "pi-reference"],
+  "subagent": ["agent-testing", "process-control", "pi-reference"],
   "tone-quality": ["pi-reference"],
   "visual-creator": ["visual-validator", "design-system"],
 };
 
 /** Score how relevant each skill is given the current cwd and project context. */
-function scoreSkillRelevance(
-  skill: Skill,
-  cwd: string,
-  projectContextFiles: string[],
-): number {
+function scoreSkillRelevance(skill: Skill, cwd: string, projectContextFiles: string[]): number {
   // Always include skills the agent has explicitly used before (base relevance)
   let score = 0.1;
 
   // Boost from cwd path patterns
   const cwdLower = cwd.toLowerCase();
-  if (cwdLower.includes("paper") || cwdLower.includes("arxiv"))
-    score += 0.3;
-  if (cwdLower.includes("test") || cwdLower.includes("benchmark"))
-    score += 0.2;
-  if (cwdLower.includes("design") || cwdLower.includes("brand"))
-    score += 0.2;
-  if (cwdLower.includes("docs") || cwdLower.includes("doc"))
-    score += 0.15;
-  if (cwdLower.includes("research"))
-    score += 0.2;
+  if (cwdLower.includes("paper") || cwdLower.includes("arxiv")) score += 0.3;
+  if (cwdLower.includes("test") || cwdLower.includes("benchmark")) score += 0.2;
+  if (cwdLower.includes("design") || cwdLower.includes("brand")) score += 0.2;
+  if (cwdLower.includes("docs") || cwdLower.includes("doc")) score += 0.15;
+  if (cwdLower.includes("research")) score += 0.2;
   if (cwdLower.includes("pi") || cwdLower.includes("extension") || cwdLower.includes("plugin"))
     score += 0.2;
 
@@ -542,10 +544,8 @@ function scoreSkillRelevance(
 
   // Boost from skill description matching cwd activity
   const desc = skill.description.toLowerCase();
-  if (cwdLower.includes("paper") && desc.includes("research"))
-    score += 0.2;
-  if (cwdLower.includes("test") && desc.includes("test"))
-    score += 0.2;
+  if (cwdLower.includes("paper") && desc.includes("research")) score += 0.2;
+  if (cwdLower.includes("test") && desc.includes("test")) score += 0.2;
 
   return Math.min(score, 1.0);
 }

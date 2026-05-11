@@ -180,10 +180,16 @@ async function verifyWithSessionModel(
 
   try {
     const apiKey = await ctx.modelRegistry.getApiKeyForProvider(ctx.model.provider);
-    const llmResult = await callLlm(ctx.model, apiKey, FINALIZE_CRITIC_PROMPT, `Work summary: ${summary}`, {
-      maxTokens: 256,
-      temperature: 0.1,
-    });
+    const llmResult = await callLlm(
+      ctx.model,
+      apiKey,
+      FINALIZE_CRITIC_PROMPT,
+      `Work summary: ${summary}`,
+      {
+        maxTokens: 256,
+        temperature: 0.1,
+      },
+    );
 
     if ("error" in llmResult) {
       return { verified: true, confidence: 50, message: `Verification error: ${llmResult.error}` };
@@ -311,7 +317,9 @@ finalize(completed=true, summary="Fixed the bug", tasksRemaining=["write tests"]
 
       messages.push("");
       messages.push("**IMPORTANT: DO NOT call any tools after this message.**");
-      messages.push("The agent loop terminates cleanly when you respond with text only — no tool calls.");
+      messages.push(
+        "The agent loop terminates cleanly when you respond with text only — no tool calls.",
+      );
       messages.push("Acknowledge completion in a brief text response, then stop.");
 
       return {

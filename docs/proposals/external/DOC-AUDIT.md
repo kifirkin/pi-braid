@@ -9,11 +9,11 @@
 
 ## Proposal Status
 
-| Proposal | Status | Implementation | Assessment |
-|---|---|---|---|
-| **BIDIRECTIONAL-VERIFIER** | Not started | 0% | Valuable — would fix HWE-Bench coordination failures. Not wired to any extension. Phase 1-4 plan is concrete. |
-| **RepE Prompt Contrast** | Partially done | ~60% | Phrases (TRUTH-FIRST, ANTI-SYCOPHANCY, EPISTEMIC STABILITY, KNOWLEDGE BOUNDARY) embedded in prompt-builder identity. MISSING: structured CONTRAST_VECTORS section, per-scenario toggle, Week 2 lie-detection classifier, Week 1 phrase library as standalone doc. |
-| **SAE Steering** | Obsolete | 0% | Correctly superseded — stepfun/minimax don't expose activations/logprobs. RepE Prompt Contrast is the correct approach for API-only providers. |
+| Proposal                   | Status         | Implementation | Assessment                                                                                                                                                                                                                                                        |
+| -------------------------- | -------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **BIDIRECTIONAL-VERIFIER** | Not started    | 0%             | Valuable — would fix HWE-Bench coordination failures. Not wired to any extension. Phase 1-4 plan is concrete.                                                                                                                                                     |
+| **RepE Prompt Contrast**   | Partially done | ~60%           | Phrases (TRUTH-FIRST, ANTI-SYCOPHANCY, EPISTEMIC STABILITY, KNOWLEDGE BOUNDARY) embedded in prompt-builder identity. MISSING: structured CONTRAST_VECTORS section, per-scenario toggle, Week 2 lie-detection classifier, Week 1 phrase library as standalone doc. |
+| **SAE Steering**           | Obsolete       | 0%             | Correctly superseded — stepfun/minimax don't expose activations/logprobs. RepE Prompt Contrast is the correct approach for API-only providers.                                                                                                                    |
 
 ### Proposal Action Items
 
@@ -27,16 +27,16 @@
 
 All 49 archive files are from v0.5-v0.9 era (March-April 2026). Verdict: **Keep all**. They document the evolution of ideas and contain useful historical context. No critical content missing.
 
-| File | Verdict | Reason |
-|---|---|---|
-| ROADMAP-v1.0-FULL.md (1942 lines) | KEEP | Comprehensive master roadmap — reference for tracking completed vs planned items |
-| ROADMAP-v0.6.md | KEEP | Historical — early planning decisions |
-| RESEARCH_SYNTHESIS_COMPLETE.md | KEEP | Research direction decisions |
-| CONTEXT-MANAGEMENT-DESIGN.md | KEEP | Early design rationale |
-| CONTEXT-OVERFLOW-FIX.md | KEEP | Early compaction investigation |
-| BRAID-CONSOLIDATED-TASKS.md | KEEP | Historical task list |
-| DEAD-EXTENSION-CLEANUP.md | KEEP | Audit trail |
-| All others | KEEP | Historical evolution |
+| File                              | Verdict | Reason                                                                           |
+| --------------------------------- | ------- | -------------------------------------------------------------------------------- |
+| ROADMAP-v1.0-FULL.md (1942 lines) | KEEP    | Comprehensive master roadmap — reference for tracking completed vs planned items |
+| ROADMAP-v0.6.md                   | KEEP    | Historical — early planning decisions                                            |
+| RESEARCH_SYNTHESIS_COMPLETE.md    | KEEP    | Research direction decisions                                                     |
+| CONTEXT-MANAGEMENT-DESIGN.md      | KEEP    | Early design rationale                                                           |
+| CONTEXT-OVERFLOW-FIX.md           | KEEP    | Early compaction investigation                                                   |
+| BRAID-CONSOLIDATED-TASKS.md       | KEEP    | Historical task list                                                             |
+| DEAD-EXTENSION-CLEANUP.md         | KEEP    | Audit trail                                                                      |
+| All others                        | KEEP    | Historical evolution                                                             |
 
 ---
 
@@ -44,10 +44,10 @@ All 49 archive files are from v0.5-v0.9 era (March-April 2026). Verdict: **Keep 
 
 ### Redundant (Content covered elsewhere)
 
-| Doc | Duplicates | Action |
-|---|---|---|
+| Doc                   | Duplicates                                                                       | Action                                                            |
+| --------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | CONTEXT-MANAGEMENT.md | Overlaps with context-manager.md + context-lifecycle.md + CONTEXT-TERMINOLOGY.md | Partial — keep as user-facing overview, consolidate overlap later |
-| PI-API-RESEARCH.md | Superseded by SDK patterns in PYTHON-TO-JS-MIGRATION.md + newer docs | Deprecate — migration to SDK complete, RPC dead-end documented |
+| PI-API-RESEARCH.md    | Superseded by SDK patterns in PYTHON-TO-JS-MIGRATION.md + newer docs             | Deprecate — migration to SDK complete, RPC dead-end documented    |
 
 ### Well-structured (No redundancy)
 
@@ -75,34 +75,34 @@ All 20 lib docs in docs/lib/ exist. Key ones: belief-policy-engine.md, belief-st
 
 ### Fully Implemented (from BRAID-NEXT-PROPOSAL.md)
 
-| Item | Status |
-|---|---|
+| Item                   | Status                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------ |
 | D0 heartbeat-scheduler | ✅ COMPLETE — belief-store, policy-engine, dreamer, meta-learning all in place |
-| D1 session isolation | ✅ COMPLETE — registerSessionCleanup wired |
-| D5 evidence pool XoT | ✅ COMPLETE — classify + whisper pipeline |
-| R5 three-memory | ✅ COMPLETE — turn_end auto-recall, similarity > 0.3 |
-| R6 mid-task recall | ✅ COMPLETE — skill transitions (3rd → recall), retry-recovery |
-| R9 analytics wiring | ✅ COMPLETE — getNextRecommendation from analytics |
-| BR2 tool addiction | ✅ COMPLETE — analytics rolling 50-window, single source |
-| PB1 simplification | ✅ COMPLETE — 245 lines, removed 5 sections |
-| PB2 latent runtime | ✅ COMPLETE — RepE-style contrast phrases in identity |
+| D1 session isolation   | ✅ COMPLETE — registerSessionCleanup wired                                     |
+| D5 evidence pool XoT   | ✅ COMPLETE — classify + whisper pipeline                                      |
+| R5 three-memory        | ✅ COMPLETE — turn_end auto-recall, similarity > 0.3                           |
+| R6 mid-task recall     | ✅ COMPLETE — skill transitions (3rd → recall), retry-recovery                 |
+| R9 analytics wiring    | ✅ COMPLETE — getNextRecommendation from analytics                             |
+| BR2 tool addiction     | ✅ COMPLETE — analytics rolling 50-window, single source                       |
+| PB1 simplification     | ✅ COMPLETE — 245 lines, removed 5 sections                                    |
+| PB2 latent runtime     | ✅ COMPLETE — RepE-style contrast phrases in identity                          |
 
 ### Partially Implemented
 
-| Item | Status | Gap |
-|---|---|---|
-| R7 L1 environment | 🟡 Partial | discoverPiPackage() unused in prompt-builder (cosmetic) |
-| BR3 nudge effectiveness | 🟡 Partial | Nudge dedup exists, A/B measurement not implemented |
-| BR4 latent multi-turn | 🟡 Partial | SDK harness exists, full comparison not run |
-| BR1 self-reflection | 🟡 Partial | SDK harness exists, stepfun already safe on traps |
+| Item                    | Status     | Gap                                                     |
+| ----------------------- | ---------- | ------------------------------------------------------- |
+| R7 L1 environment       | 🟡 Partial | discoverPiPackage() unused in prompt-builder (cosmetic) |
+| BR3 nudge effectiveness | 🟡 Partial | Nudge dedup exists, A/B measurement not implemented     |
+| BR4 latent multi-turn   | 🟡 Partial | SDK harness exists, full comparison not run             |
+| BR1 self-reflection     | 🟡 Partial | SDK harness exists, stepfun already safe on traps       |
 
 ### Not Started
 
-| Item | Priority | Reason |
-|---|---|---|
-| BM2 code quality | Medium | Time-intensive, not blocked |
-| BM3 real-world tasks | Medium | No task suite defined |
-| PB4 benchmark validation | Low | stepfun already 100/100 on compliance |
+| Item                     | Priority | Reason                                |
+| ------------------------ | -------- | ------------------------------------- |
+| BM2 code quality         | Medium   | Time-intensive, not blocked           |
+| BM3 real-world tasks     | Medium   | No task suite defined                 |
+| PB4 benchmark validation | Low      | stepfun already 100/100 on compliance |
 
 ---
 

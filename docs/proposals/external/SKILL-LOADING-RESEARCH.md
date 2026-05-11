@@ -9,12 +9,14 @@
 ## Current pi-braid Skill System
 
 **What's implemented**:
+
 - `loadSkills()` from `@mariozechner/pi-coding-agent` (native)
 - Skills loaded at `session_start` via `resources_discover`
 - 13 bundled skills from `skills/` directory
 - Activation based on keyword matching in task description
 
 **What's primitive**:
+
 1. **Static loading** — all skills loaded at session start regardless of task
 2. **No hierarchy** — flat list of skills, no strategic/functional/atomic tiers
 3. **No refinement** — skills don't update based on execution feedback
@@ -32,13 +34,14 @@
 ```
 Heartbeat scheduler decides WHEN to engage specific thinking activities:
 - Recalling memories
-- Summarizing experiences  
+- Summarizing experiences
 - Strategic planning
 
 The scheduler learns to determine when to engage modules based on temporal patterns.
 ```
 
 **Application to skills**:
+
 - Skills should be scheduled like cognitive modules
 - Trigger skills based on task phase (analysis vs implementation vs debugging)
 - Remove skills when no longer relevant
@@ -50,7 +53,7 @@ The scheduler learns to determine when to engage modules based on temporal patte
 ```
 Three-tier skill hierarchy:
 1. Strategic Plans — high-level goal decomposition
-2. Functional Skills — reusable task-solving procedures  
+2. Functional Skills — reusable task-solving procedures
 3. Atomic Skills — single tool operations
 
 Iterative refinement:
@@ -60,6 +63,7 @@ Iterative refinement:
 ```
 
 **Application to skills**:
+
 - pi-braid skills should have tier hierarchy
 - Monitor skill effectiveness → update or deactivate poorly performing skills
 - Extract new skills from successful task completions
@@ -70,11 +74,11 @@ Iterative refinement:
 
 ### Tier 1: Hierarchical Skill Organization
 
-| Tier | Current | Proposed |
-|------|---------|----------|
-| Strategic | Flat list | Project-level guidance (e.g., "research mode", "debug mode") |
+| Tier       | Current   | Proposed                                                            |
+| ---------- | --------- | ------------------------------------------------------------------- |
+| Strategic  | Flat list | Project-level guidance (e.g., "research mode", "debug mode")        |
 | Functional | Flat list | Task-specific workflows (e.g., "benchmark", "refactor", "document") |
-| Atomic | N/A | Single-skill operations (e.g., "grep-pattern", "edit-exact") |
+| Atomic     | N/A       | Single-skill operations (e.g., "grep-pattern", "edit-exact")        |
 
 ### Tier 2: Heartbeat-Scheduled Activation
 
@@ -91,9 +95,19 @@ interface SkillSchedule {
 
 // Example:
 const schedule: SkillSchedule[] = [
-  { skill: "debugging", trigger: "failure_detected", params: { count: 2 }, deactivateOn: "task_complete" },
-  { skill: "benchmark", trigger: "task_start", params: { pattern: "benchmark*" }, deactivateOn: "task_complete" },
-  { skill: "software-engineer", trigger: "task_start", params: {}, deactivateOn: "idle_threshold" }
+  {
+    skill: "debugging",
+    trigger: "failure_detected",
+    params: { count: 2 },
+    deactivateOn: "task_complete",
+  },
+  {
+    skill: "benchmark",
+    trigger: "task_start",
+    params: { pattern: "benchmark*" },
+    deactivateOn: "task_complete",
+  },
+  { skill: "software-engineer", trigger: "task_start", params: {}, deactivateOn: "idle_threshold" },
 ];
 ```
 

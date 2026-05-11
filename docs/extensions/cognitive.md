@@ -4,20 +4,21 @@ Cognitive control extensions enforcing agent behavior, reasoning quality, and al
 
 ## Extensions
 
-| Extension | Files | Purpose |
-|---|---|---|
-| `enforcement/` | 20 | 3-tier signal system (L1 internal, L2 session, L3 critical). Nudge engine, whisper system, validation. |
-| `reasoning/` | 1 | Reasoning metrics (entropy, overlap, coherence). |
-| `verification/` | 1 | Claim verification, evidence pool. |
-| `topic-drift/` | 1 | Topic drift detection. |
-| `sycophancy-detector/` | 1 | Anti-sycophancy enforcement. |
-| `cognitive-systems/` | 1 | Cognitive architecture coordination. |
+| Extension              | Files | Purpose                                                                                                |
+| ---------------------- | ----- | ------------------------------------------------------------------------------------------------------ |
+| `enforcement/`         | 20    | 3-tier signal system (L1 internal, L2 session, L3 critical). Nudge engine, whisper system, validation. |
+| `reasoning/`           | 1     | Reasoning metrics (entropy, overlap, coherence).                                                       |
+| `verification/`        | 1     | Claim verification, evidence pool.                                                                     |
+| `topic-drift/`         | 1     | Topic drift detection.                                                                                 |
+| `sycophancy-detector/` | 1     | Anti-sycophancy enforcement.                                                                           |
+| `cognitive-systems/`   | 1     | Cognitive architecture coordination.                                                                   |
 
 Total: 28 `.ts` files across 6 sub-extensions.
 
 ## Key Architecture
 
 **Enforcement signal tiers:**
+
 - L1: Internal state signals (belief, policy, MARS calibration)
 - L2: Bundled session signals (per-turn aggregates)
 - L3: Critical individual messages (high-stakes, high-confidence)

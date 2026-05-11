@@ -27,6 +27,7 @@ OpenMythos uses a **looped/recursive transformer architecture** — a fundamenta
 ### From Agentic Looping Research
 
 Key architectural properties of looped systems:
+
 1. **State persistence**: Loop state survives context window, doesn't re-enter the prompt
 2. **Self-referential updates**: Model can modify its own loop state through the loop
 3. **Compression**: The loop compresses experience into latent representations
@@ -35,6 +36,7 @@ Key architectural properties of looped systems:
 ### The pi-braid Contrast
 
 pi-braid achieves multi-turn persistence via:
+
 - External belief store (D0)
 - Heartbeat scheduler
 - Three-memory system
@@ -50,6 +52,7 @@ These are **outside** the model. The model itself is stateless between turns.
 **Hypothesis**: A recursive loop gives the model a "workspace" that can hold partial solutions, allowing iterative refinement across turns without context pollution.
 
 **Test design**:
+
 1. Create a task that requires "cross-turn carry" — the solution in turn N depends on state created in turn N-3
 2. Compare: OpenMythos vs. pi-braid (with belief store)
 3. If Mythos succeeds and pi-braid fails → loop architecture provides something external persistence can't
@@ -60,6 +63,7 @@ These are **outside** the model. The model itself is stateless between turns.
 **Hypothesis**: Even without a loop, a sophisticated enough external scaffold can give the model "loop-like" capabilities.
 
 **Test design**:
+
 1. Implement in pi-braid:
    - A "workspace" belief that accumulates partial solutions
    - A "compression" step on each heartbeat that summarizes progress
@@ -71,6 +75,7 @@ These are **outside** the model. The model itself is stateless between turns.
 ### RQ3: What Are the Limits of Loop Architecture?
 
 Even if loops help, they may have limits:
+
 - **State capacity**: How much can the loop hold?
 - **Compression quality**: Does the loop compress well, or does it lose information?
 - **Novel recombination ability**: Can the loop compose knowledge in ways not seen in training?
@@ -81,14 +86,15 @@ Even if loops help, they may have limits:
 
 Study existing recursive transformer papers and compare to standard transformers:
 
-| Property | Standard Transformer | Recursive/Looped | Mythos-specific |
-|----------|---------------------|------------------|-----------------|
-| Context handling | Full context window | Loop state + compressed context | Unknown |
-| Self-modification | None | Via loop state updates | Unknown |
-| State persistence | None (context only) | Persistent across turns | Unknown |
-| Novel recombination | Emergent via context | Explicit via loop state | Unknown |
+| Property            | Standard Transformer | Recursive/Looped                | Mythos-specific |
+| ------------------- | -------------------- | ------------------------------- | --------------- |
+| Context handling    | Full context window  | Loop state + compressed context | Unknown         |
+| Self-modification   | None                 | Via loop state updates          | Unknown         |
+| State persistence   | None (context only)  | Persistent across turns         | Unknown         |
+| Novel recombination | Emergent via context | Explicit via loop state         | Unknown         |
 
 Key papers to review:
+
 - Recurrent Transformer variants (various)
 - RWKV / Mamba (linear attention = implicit recurrence)
 - Long Range Arena (benchmark for context handling)
@@ -104,7 +110,7 @@ Task Set A: Standard multi-turn tasks
   - Implement feature with cross-file dependencies
   - Answer question requiring history
 
-Task Set B: "Novel recombination" tasks  
+Task Set B: "Novel recombination" tasks
   - Solve task using concepts from domain A applied to domain B (no cross-domain training)
   - "What if" counterfactual applied to problem
   - Novel tool combination (use tool X with Y's constraints)
@@ -119,6 +125,7 @@ Measure: Mythos vs. pi-braid on each set. If Mythos wins on Set B/C but not A �
 ### Method 3: Harness Enhancement Experiment
 
 In pi-braid:
+
 1. Implement "loop workspace" in belief store
 2. Add "compression on heartbeat" (summarize progress)
 3. Add "resume from compressed" (load summary at turn start)
@@ -195,5 +202,5 @@ First concrete step: Get detailed Mythos architecture docs from OpenMythos team,
 
 ---
 
-*Related: implicit-framing/docs/research/agent-architecture/BENCHMARK-CONTAMINATION-AND-LATENT-STEERING.md*  
-*Related: pi-braid/docs/research/bicameral-mind-analysis.md*
+_Related: implicit-framing/docs/research/agent-architecture/BENCHMARK-CONTAMINATION-AND-LATENT-STEERING.md_  
+_Related: pi-braid/docs/research/bicameral-mind-analysis.md_

@@ -28,56 +28,56 @@
 
 ## Phase 0: Archive Recovery (D0-D5)
 
-| Item                   | Status     | Notes                                                                                                              |
-| ---------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------ |
+| Item                   | Status  | Notes                                                                                                                              |
+| ---------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | D0 heartbeat-scheduler | ✅ DONE | Scheduler + belief store exist. 6 policy rules. Dreamer activate() integration tested (11 tests, shouldActivate + activate paths). |
-| D1 session isolation   | ✅ DONE    | registerSessionCleanup() wired in polyfill on session_end.                                                         |
-| D2 async migration     | ✅ DONE | Sync FS calls are all init-time or on-demand (settings load, prompt storage, file check). Acceptable — no hot-path blocking. |
-| D5 evidence pool       | ✅ DONE    | XoT two-stage: classify (Stage 1) + whisper (Stage 2). Wired in enforcement/tool_end.                              |
+| D1 session isolation   | ✅ DONE | registerSessionCleanup() wired in polyfill on session_end.                                                                         |
+| D2 async migration     | ✅ DONE | Sync FS calls are all init-time or on-demand (settings load, prompt storage, file check). Acceptable — no hot-path blocking.       |
+| D5 evidence pool       | ✅ DONE | XoT two-stage: classify (Stage 1) + whisper (Stage 2). Wired in enforcement/tool_end.                                              |
 
 ---
 
 ## Phase 1: System Improvements (R5-R9)
 
-| Item                | Status      | Notes                                                                                                    |
-| ------------------- | ----------- | -------------------------------------------------------------------------------------------------------- |
-| R5 three-memory     | ✅ VERIFIED | turn_end auto-recall fires with 10s cooldown, similarity > 0.3. whisperRecall() suggests past solutions. |
-| R6 session recall   | ✅ Done     | Triggers on rotation.                                                                                    |
-| R7 L1 environment   | ✅ DONE | `discoverPiRootPath()` wired in l1-environment.ts, L1 section shows pi root path, context %, memory count, checkpoint awareness |
-| R8 planner conflict | ✅ Done     | Planner vs metacognition = complementary layers                                                          |
-| R9 analytics wiring | ✅ DONE     | analytics proactively surfaces [policy] recommendations on tool addiction detection.                     |
+| Item                | Status      | Notes                                                                                                                           |
+| ------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| R5 three-memory     | ✅ VERIFIED | turn_end auto-recall fires with 10s cooldown, similarity > 0.3. whisperRecall() suggests past solutions.                        |
+| R6 session recall   | ✅ Done     | Triggers on rotation.                                                                                                           |
+| R7 L1 environment   | ✅ DONE     | `discoverPiRootPath()` wired in l1-environment.ts, L1 section shows pi root path, context %, memory count, checkpoint awareness |
+| R8 planner conflict | ✅ Done     | Planner vs metacognition = complementary layers                                                                                 |
+| R9 analytics wiring | ✅ DONE     | analytics proactively surfaces [policy] recommendations on tool addiction detection.                                            |
 
 ---
 
 ## Phase 2: Behavior Research (BR1-BR4)
 
-| Item                    | Status              | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ----------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| BR1 self-reflection     | ✅ DONE             | 5 trap tasks, stepfun model. Full run: 100/100 (all 5 traps refused: authority, time-pressure, reward-hacking, semantic-ambiguity, conflict-injection). |
-| BR4 latent activator    | ✅ DONE             | BR4 SDK comparison: 100% solve rate both configs. Braid +0.7 turns persistence, 69% fewer tokens (124 vs 396). stepfun model already refuses all harmful traps with strong reasoning — enforcement value is in persistence/error-recovery, NOT compliance. |
-| BR2 tool addiction      | ✅ DONE             | Analytics rolling 50-window is single source. Removed enforcement/feedback duplicates. |
-| BR3 nudge effectiveness | ✅ DONE             | Nudge dedup exists. A/B measurement implemented: nudgesSent/nudgesSuppressed per variant, formatABResults comparison table, /analytics:ab command. Runtime tracking wired into enforcement turn_end. |
+| Item                    | Status  | Notes                                                                                                                                                                                                                                                      |
+| ----------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| BR1 self-reflection     | ✅ DONE | 5 trap tasks, stepfun model. Full run: 100/100 (all 5 traps refused: authority, time-pressure, reward-hacking, semantic-ambiguity, conflict-injection).                                                                                                    |
+| BR4 latent activator    | ✅ DONE | BR4 SDK comparison: 100% solve rate both configs. Braid +0.7 turns persistence, 69% fewer tokens (124 vs 396). stepfun model already refuses all harmful traps with strong reasoning — enforcement value is in persistence/error-recovery, NOT compliance. |
+| BR2 tool addiction      | ✅ DONE | Analytics rolling 50-window is single source. Removed enforcement/feedback duplicates.                                                                                                                                                                     |
+| BR3 nudge effectiveness | ✅ DONE | Nudge dedup exists. A/B measurement implemented: nudgesSent/nudgesSuppressed per variant, formatABResults comparison table, /analytics:ab command. Runtime tracking wired into enforcement turn_end.                                                       |
 
 ---
 
 ## Phase 3: Prompt-Builder (PB1-PB4)
 
-| Item                     | Status         | Notes                                                                              |
-| ------------------------ | -------------- | ---------------------------------------------------------------------------------- |
-| PB1 simplification       | ✅ Done        | 245 lines, removed 5 sections                                                      |
-| PB2 latent runtime       | ✅ Done        | Research-based contrast vectors (RepE, sycophancy resistance, epistemic stability) |
-| PB3 whisper audit        | ✅ DONE        | Whispers clean — factual + actionable. No compliance theater.                      |
+| Item                     | Status  | Notes                                                                                                                          |
+| ------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| PB1 simplification       | ✅ Done | 245 lines, removed 5 sections                                                                                                  |
+| PB2 latent runtime       | ✅ Done | Research-based contrast vectors (RepE, sycophancy resistance, epistemic stability)                                             |
+| PB3 whisper audit        | ✅ DONE | Whispers clean — factual + actionable. No compliance theater.                                                                  |
 | PB4 benchmark validation | ✅ DONE | evaluation/pb4-sdk.mjs — 5 standardized tasks, 3 trials each, 0 compliance behaviors detected (stepfun model is well-behaved). |
 
 ---
 
 ## Phase 4: Benchmarking (BM1-BM3)
 
-| Item                     | Status         | Notes                                                                                                                                                                                                                                   |
-| ------------------------ | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Item                     | Status  | Notes                                                                                                                                                                                           |
+| ------------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | BM1 multi-turn debugging | ✅ DONE | evaluation/bm1-sdk.mjs v2 — 5 tasks (js-syntax, py-import, json-comma, ts-type, race-condition), task-specific scoring. Result: 16/100 (stepfun struggles with file-writing in harness format). |
-| BM2 code quality         | ✅ DONE | evaluation/bm2-sdk.mjs — 3 tasks (debounce, deep-clone, event-emitter), quality scoring + automated test runner. Result: 0/100 (stepfun doesn't write files via SDK). |
-| BM3 real-world tasks     | ✅ DONE | evaluation/bm3-sdk.mjs — 5 tasks (refactor, error-handling, write-tests, debug-perf, implement-feature). Result: 22/100 (stepfun struggles with file-writing via SDK). |
+| BM2 code quality         | ✅ DONE | evaluation/bm2-sdk.mjs — 3 tasks (debounce, deep-clone, event-emitter), quality scoring + automated test runner. Result: 0/100 (stepfun doesn't write files via SDK).                           |
+| BM3 real-world tasks     | ✅ DONE | evaluation/bm3-sdk.mjs — 5 tasks (refactor, error-handling, write-tests, debug-perf, implement-feature). Result: 22/100 (stepfun struggles with file-writing via SDK).                          |
 
 ---
 

@@ -25,6 +25,7 @@ The prompt has 10 sections, assembled in this order:
 ```
 
 **What works well**:
+
 - Identity framing replaces directive guidelines ✓
 - Implicit norms avoid compliance triggers ✓
 - Enforcement signals surfaced at L1 ✓
@@ -189,12 +190,12 @@ Based on all three research threads:
 
 ### Priority Order
 
-| Priority | Addition | Research | Effort | Risk |
-|----------|----------|----------|--------|------|
-| 1 | Stakes awareness | Context Over Content | 1 line | Low |
-| 2 | Sycophancy resistance | Sycophancy (2604.19117) | 3 lines | Low |
-| 3 | Epistemic stability | Missing Knowledge Layer | 2 lines | Low |
-| 4 | Drift self-audit | Layered Mutability | 2 lines | Low |
+| Priority | Addition              | Research                | Effort  | Risk |
+| -------- | --------------------- | ----------------------- | ------- | ---- |
+| 1        | Stakes awareness      | Context Over Content    | 1 line  | Low  |
+| 2        | Sycophancy resistance | Sycophancy (2604.19117) | 3 lines | Low  |
+| 3        | Epistemic stability   | Missing Knowledge Layer | 2 lines | Low  |
+| 4        | Drift self-audit      | Layered Mutability      | 2 lines | Low  |
 
 ### Code Changes
 
@@ -215,6 +216,7 @@ const EPISTEMIC_STABILITY = `If your reasoning feels uncertain or forced, say so
 ```
 
 Then update `buildPrompt()` to insert them in the right order:
+
 1. IDENTITY_INTRO
 2. **SYCOPHANCY_RESISTANCE** ← NEW
 3. Tools
@@ -241,6 +243,7 @@ python3 evaluation/benchmark_multi_turn.py --config braid-full --problems flatte
 ```
 
 Check for:
+
 - No regression in task completion rate
 - No increase in compliance theater (measure via tool usage patterns)
 - Agent correctly resists pressure in test scenarios

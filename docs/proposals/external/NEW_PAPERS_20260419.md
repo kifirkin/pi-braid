@@ -26,6 +26,7 @@
 ```
 
 ### Results
+
 - MCQ accuracy: 0.68 → 0.79 (GPT-5-mini)
 - MCQ accuracy: 0.76 → 0.87 (Gemini-3 Flash)
 - **No training required** — test-time adaptation
@@ -88,12 +89,12 @@ interface ToolReliability {
 
 ### Connection to Our Research
 
-| Evo-MedAgent Component | Our Research Thread | Connection |
-|-----------------------|-------------------|------------|
-| Retrospective Episodes | measurement | Episode tracking + outcome correlation |
-| Adaptive Heuristics | cognitive-control | Procedural rules evolve via reflection |
-| Tool Reliability | agent-architecture | Track tool success rates for adaptive selection |
-| Reflection call | MARS | Single reflection call per case |
+| Evo-MedAgent Component | Our Research Thread | Connection                                      |
+| ---------------------- | ------------------- | ----------------------------------------------- |
+| Retrospective Episodes | measurement         | Episode tracking + outcome correlation          |
+| Adaptive Heuristics    | cognitive-control   | Procedural rules evolve via reflection          |
+| Tool Reliability       | agent-architecture  | Track tool success rates for adaptive selection |
+| Reflection call        | MARS                | Single reflection call per case                 |
 
 ---
 
@@ -108,7 +109,8 @@ interface ToolReliability {
 Current: Select memory based on similarity to query  
 Problem: Similar query ≠ useful memory
 
-RUMS: Select memory based on **mutual information with response**  
+RUMS: Select memory based on **mutual information with response**
+
 - "Which memories SHIFT the response distribution?"
 - "Which memories reduce uncertainty in the output?"
 
@@ -160,6 +162,7 @@ Planning Agent → DeepSearch Agent → Report Agent
 ```
 
 ### Four-Stage Training
+
 1. SFT cold-start
 2. Search-RL
 3. Report-RL
@@ -168,6 +171,7 @@ Planning Agent → DeepSearch Agent → Report Agent
 ### Relevance to pi-braid
 
 This gives a template for multi-agent coordination:
+
 - Manager = orchestrator
 - Planning = goal decomposition
 - DeepSearch = retrieval/execution
@@ -190,6 +194,7 @@ Designer → Coder → Tuner
 ```
 
 ### Results
+
 - MLE-Bench: 63.1% medal rate
 - Outperforms experienced AI engineers
 - First place on benchmark
@@ -266,14 +271,14 @@ From all our research, the architecture for pi-braid's next generation is:
 
 ## What This Enables
 
-| Component | Paper | Implementation |
-|-----------|-------|----------------|
-| Heartbeat | 2604.14178 | When to trigger reflection |
-| Episodes | Evo-MedAgent | Case retrieval from history |
-| Heuristics | Evo-MedAgent | Evolving rules from outcomes |
-| Tool Reliability | Evo-MedAgent | Per-tool success tracking |
-| Memory Selection | RUMS | Mutual information, not similarity |
-| Policies | Credo | Declarative belief-based control |
+| Component        | Paper        | Implementation                     |
+| ---------------- | ------------ | ---------------------------------- |
+| Heartbeat        | 2604.14178   | When to trigger reflection         |
+| Episodes         | Evo-MedAgent | Case retrieval from history        |
+| Heuristics       | Evo-MedAgent | Evolving rules from outcomes       |
+| Tool Reliability | Evo-MedAgent | Per-tool success tracking          |
+| Memory Selection | RUMS         | Mutual information, not similarity |
+| Policies         | Credo        | Declarative belief-based control   |
 
 ---
 

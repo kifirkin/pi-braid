@@ -12,21 +12,21 @@ No differentiation possible with current problems. Must use variant problems or 
 
 ### stepfun (4 configs × 6 tasks × 3 trials = 72 runs)
 
-| Config | flatten_deep | merge_sorted | reverse_words | group_anagrams | binary_search | is_balanced | Total |
-|--------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| no-bash | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | **18/18 (100%)** |
-| baseline-bash | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | **18/18 (100%)** |
-| braid-full | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | **18/18 (100%)** |
-| braid-research | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | **18/18 (100%)** |
+| Config         | flatten_deep | merge_sorted | reverse_words | group_anagrams | binary_search | is_balanced |      Total       |
+| -------------- | :----------: | :----------: | :-----------: | :------------: | :-----------: | :---------: | :--------------: |
+| no-bash        |     3/3      |     3/3      |      3/3      |      3/3       |      3/3      |     3/3     | **18/18 (100%)** |
+| baseline-bash  |     3/3      |     3/3      |      3/3      |      3/3       |      3/3      |     3/3     | **18/18 (100%)** |
+| braid-full     |     3/3      |     3/3      |      3/3      |      3/3       |      3/3      |     3/3     | **18/18 (100%)** |
+| braid-research |     3/3      |     3/3      |      3/3      |      3/3       |      3/3      |     3/3     | **18/18 (100%)** |
 
 ### minimax (4 configs × 6 tasks × 3 trials = 72 runs)
 
-| Config | flatten_deep | merge_sorted | reverse_words | group_anagrams | binary_search | is_balanced | Total |
-|--------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| no-bash | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | **18/18 (100%)** |
-| baseline-bash | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | **18/18 (100%)** |
-| braid-full | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | **18/18 (100%)** |
-| braid-research | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | **18/18 (100%)** |
+| Config         | flatten_deep | merge_sorted | reverse_words | group_anagrams | binary_search | is_balanced |      Total       |
+| -------------- | :----------: | :----------: | :-----------: | :------------: | :-----------: | :---------: | :--------------: |
+| no-bash        |     3/3      |     3/3      |      3/3      |      3/3       |      3/3      |     3/3     | **18/18 (100%)** |
+| baseline-bash  |     3/3      |     3/3      |      3/3      |      3/3       |      3/3      |     3/3     | **18/18 (100%)** |
+| braid-full     |     3/3      |     3/3      |      3/3      |      3/3       |      3/3      |     3/3     | **18/18 (100%)** |
+| braid-research |     3/3      |     3/3      |      3/3      |      3/3       |      3/3      |     3/3     | **18/18 (100%)** |
 
 ### Grand Total: 144/144 runs = **100% pass rate**
 
@@ -46,6 +46,7 @@ braid-research (contrast)  █████████████████�
 **Why?** The 6 benchmark problems test Level 1 (algorithmic) and Level 2 (recombination) skills. When both are saturated, no config differentiation is possible.
 
 **What this means:**
+
 - Compliance framing doesn't hurt (no compliance theater visible)
 - Identity framing doesn't help (beyond baseline)
 - Both stepfun and minimax are strong enough for these problems
@@ -68,7 +69,7 @@ If braid-research > braid-full on variants → MDA/contrast phrases help general
 
 ## Key Bug Fix Applied This Session
 
-**pi `--no-extensions` bug**: `--no-extensions` with directory `-e` paths broke provider loading (stepfun disappeared). 
+**pi `--no-extensions` bug**: `--no-extensions` with directory `-e` paths broke provider loading (stepfun disappeared).
 
 **Fix**: Use `--no-extensions -e <path>/index.ts` (explicit file, not directory) for both poorman-providers and braid-develop. Updated `benchmark_multi_turn.py`.
 
@@ -77,9 +78,11 @@ If braid-research > braid-full on variants → MDA/contrast phrases help general
 ## Session Files (Raw)
 
 Session files from last night's session (for tool behavior analysis):
+
 - `~/.pi/agent/sessions/--Users-kifir-projects-vibe-implicit-framing--/2026-04-23T07-24-45-193Z_019db93a-1709-7069-87e1-acd0803c2dad.jsonl`
 
 Raw benchmark results:
+
 - `evaluation/runs/results_20260424_154901.json` (braid-research stepfun)
 - `evaluation/runs/results_20260424_155219.json` (no-bash stepfun)
 - `evaluation/runs/results_20260424_155533.json` (baseline-bash stepfun)
@@ -96,19 +99,23 @@ Raw benchmark results:
 From session `2026-04-23T07-24-45` (2612 lines):
 
 ### 1. UX Extension OSC Pollution
+
 - OSC 777 notifications polluted stdout in print mode (benchmark)
 - Fixed: added `isTTY` guard in `ux/index.ts`
 
 ### 2. Context Overflow Bugs (FIXED in today's commits)
+
 - `e096118`: Context window errors were retried WITHOUT checking first → infinite loop
 - `bc93442`: LLM summarization ran at 200K+ tokens → garbage output
 - `15b32f1`: Compaction produced nonsense (removed wait-review module first, then fixed compaction itself)
 
 ### 3. Whisper Enforcement Bug (FIXED)
+
 - `2c2ce51`: 90% whisper was a "should" not a "must" → model ignored whisper directives
 - Now hard-coded as mandatory
 
 ### 4. Infrastructure Theater (8 items NOT wired → zero behavioral change)
+
 - Belief store: exists but NOT wired into heartbeat-scheduler
 - Three-memory stores: work but NOT auto-recalled during task
 - Session cleanup: missing (memory leak via `process.cwd()`)
@@ -119,6 +126,7 @@ From session `2026-04-23T07-24-45` (2612 lines):
 - Polyfill/async migration: incomplete (preprocessor, guardian, repl still sync)
 
 ### 5. Context Management (S-MMU)
+
 - Compaction proposals triggered at 61% context but no compression executed
 - Context hygiene module exists in heartbeat but NOT wired to actual compaction
 - `memory_recall` exists but only fires on rotation, not when agent stalls

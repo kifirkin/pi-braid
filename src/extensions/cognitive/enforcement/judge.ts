@@ -362,7 +362,8 @@ export function determineAction(analysis: JudgeAnalysis, responseText?: string):
       type: "nudge",
       reason: "All dimensions clean — reinforcing good pattern",
       priority: "low",
-      nudgeMessage: "## Reasoning Looks Solid\n\nThe reasoning is consistent, grounded, and well-calibrated. This pattern — checking claims against evidence, acknowledging uncertainty, and following intent over letter — is worth repeating.",
+      nudgeMessage:
+        "## Reasoning Looks Solid\n\nThe reasoning is consistent, grounded, and well-calibrated. This pattern — checking claims against evidence, acknowledging uncertainty, and following intent over letter — is worth repeating.",
     };
   }
 

@@ -73,7 +73,10 @@ export default function analyticsExtension(pi: ExtensionAPI) {
   pi.on("tool_execution_start", async (event, ctx) => {
     try {
       const state = getAnalyticsStateInternal(ctx);
-      state.pendingToolCalls.set(event.toolCallId, { toolName: event.toolName, startTime: Date.now() });
+      state.pendingToolCalls.set(event.toolCallId, {
+        toolName: event.toolName,
+        startTime: Date.now(),
+      });
     } catch {}
   });
 
@@ -140,8 +143,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
           } else {
             state.lastAddictionSignatures.push(signature);
             // Keep last 3 signatures to bound memory (stale = 1 full window refresh)
-            if (state.lastAddictionSignatures.length > 3)
-              state.lastAddictionSignatures.shift();
+            if (state.lastAddictionSignatures.length > 3) state.lastAddictionSignatures.shift();
 
             emitSignal(ctx, "tool-use", "overuse", "warn", false, {
               tools: warnings,
@@ -290,7 +292,8 @@ export default function analyticsExtension(pi: ExtensionAPI) {
     name: "get-session-metrics",
     label: "Get Session Metrics",
     promptSnippet: "Get structured current session analytics",
-    description: "Get structured current session analytics — use for performance monitoring and debugging session behavior.",
+    description:
+      "Get structured current session analytics — use for performance monitoring and debugging session behavior.",
     parameters: Type.Object({}),
     execute: async (
       _id: any,
@@ -338,7 +341,8 @@ export default function analyticsExtension(pi: ExtensionAPI) {
     name: "get-tool-reliability",
     label: "Get Tool Reliability",
     promptSnippet: "Get tool success rates from historical data",
-    description: "Get tool success rates from historical data — use to find which tools work best for each task type.",
+    description:
+      "Get tool success rates from historical data — use to find which tools work best for each task type.",
     parameters: Type.Object({
       topN: Type.Optional(Type.Number({ description: "Max results. Default: 10" })),
     }),
@@ -369,7 +373,8 @@ export default function analyticsExtension(pi: ExtensionAPI) {
     name: "get-ab-results",
     label: "Get A/B Results",
     promptSnippet: "Get A/B experiment results across variants",
-    description: "Get A/B experiment results across variants — use to compare different configurations and agent behaviors.",
+    description:
+      "Get A/B experiment results across variants — use to compare different configurations and agent behaviors.",
     parameters: Type.Object({}),
     execute: async (
       _id: any,
@@ -408,7 +413,8 @@ export default function analyticsExtension(pi: ExtensionAPI) {
     name: "get-tool-addiction",
     label: "Get Tool Addiction",
     promptSnippet: "Detect tool addiction patterns",
-    description: "Detect tool addiction patterns — use to identify over-reliance on a single tool across sessions.",
+    description:
+      "Detect tool addiction patterns — use to identify over-reliance on a single tool across sessions.",
     parameters: Type.Object({ sessionOnly: Type.Optional(Type.Boolean({ default: false })) }),
     execute: async (
       _id: any,
@@ -462,7 +468,8 @@ export default function analyticsExtension(pi: ExtensionAPI) {
     name: "hidden-messages",
     label: "Get Hidden Messages",
     promptSnippet: "Show all display:false injections in this session",
-    description: "Show all display:false injections from this session — use to debug hidden system messages and nudges affecting context.",
+    description:
+      "Show all display:false injections from this session — use to debug hidden system messages and nudges affecting context.",
     parameters: Type.Object({}),
     execute: async (
       _id: any,
