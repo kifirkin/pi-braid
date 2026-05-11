@@ -174,10 +174,11 @@ export const contextHygieneModule: CognitiveModule = {
       state.lastProjectedRemaining = Infinity;
     }
 
-    // ── Auto-trigger compaction on sustained low density ─────────────────
-    // If density stays < 0.4 for 3+ consecutive ticks, trigger compaction
-    // automatically instead of just whispering suggestions. Cooldown of 20
-    // turns between auto-triggers to avoid oscillation.
+    // ── Suggest compaction on sustained low density ─────────────────
+    // If density stays < 0.4 for 3+ consecutive ticks, whisper a suggestion
+    // to call context_compact() instead of auto-compacting mid-turn.
+    // ctx.compact() calls this._disconnectFromAgent() + this.abort() in
+    // pi core (agent-session.js:1245), which breaks the agent loop.
     const autoCompactState = getExtensionState(ctx, "context-hygiene-autocompact", () => ({
       consecutiveLowDensity: 0,
       lastAutoCompactTurn: -20,
@@ -196,15 +197,23 @@ export const contextHygieneModule: CognitiveModule = {
         const ticks = autoCompactState.consecutiveLowDensity;
         autoCompactState.lastAutoCompactTurn = currentTurn;
         autoCompactState.consecutiveLowDensity = 0;
-        try {
-          ctx.compact?.();
-          log.info(
-            `Auto-compacted: density ${Math.round(density.density * 100)}% ` +
-              `for ${ticks}+ ticks`,
-          );
-        } catch {
-          log.warn("Auto-compact failed (may not be available)");
-        }
+        // Whisper a high-priority suggestion — don't call ctx.compact()
+        // as it aborts the agent mid-turn (agent-session.js:1245)
+        ctx.whisper?.(
+          "Context density still low (" +
+            Math.round(density.density * 100) +
+            "% signal). " +
+            "Noisy: " +
+            density.noisyMessages +
+            ", Signal: " +
+            density.signalMessages +
+            ". Call context_compact() or context_prune() to free space.",
+          { category: "cognitive", priority: "high" },
+        );
+        log.info(
+          `Low density persisted: ${Math.round(density.density * 100)}% ` +
+            `for ${ticks}+ ticks — suggested compaction to agent`,
+        );
       } else {
         // Rate-limit: at most one density whisper per 10 turns
         if (currentTurn - autoCompactState.lastDensityWhisperTurn >= 10) {
