@@ -182,6 +182,8 @@ export const contextHygieneModule: CognitiveModule = {
       consecutiveLowDensity: 0,
       lastAutoCompactTurn: -20,
       lastDensityWhisperTurn: -20,
+      lastLargeContextWhisperTurn: -20,
+      lastDuplicateWhisperTurn: -20,
     }));
 
     if (density.density < 0.4) {
@@ -223,22 +225,31 @@ export const contextHygieneModule: CognitiveModule = {
       }
     } else {
       autoCompactState.consecutiveLowDensity = 0;
-
-      // High density but large context — suggest semantic compression
-      if (density.tokenRatio > 0.6) {
-        ctx.whisper?.(
-          "High density (" +
-            Math.round(density.density * 100) +
-            "%) but large context (" +
-            Math.round(density.tokenRatio * 100) +
-            "% of limit). " +
-            "Semantic compression could preserve meaning at 30% token cost (SimpleMem).",
-          { category: "cognitive", priority: "low" },
-        );
-      }
     }
 
-    if (density.duplicates > 2) {
+    // ── High-density large context whisper (cooldown: 20 turns) ────
+    if (
+      density.tokenRatio > 0.6 &&
+      currentTurn - autoCompactState.lastLargeContextWhisperTurn >= 20
+    ) {
+      autoCompactState.lastLargeContextWhisperTurn = currentTurn;
+      ctx.whisper?.(
+        "High density (" +
+          Math.round(density.density * 100) +
+          "%) but large context (" +
+          Math.round(density.tokenRatio * 100) +
+          "% of limit). " +
+          "Semantic compression could preserve meaning at 30% token cost (SimpleMem).",
+        { category: "cognitive", priority: "low" },
+      );
+    }
+
+    // ── Duplicate whisper (cooldown: 15 turns) ─────────────────────
+    if (
+      density.duplicates > 2 &&
+      currentTurn - autoCompactState.lastDuplicateWhisperTurn >= 15
+    ) {
+      autoCompactState.lastDuplicateWhisperTurn = currentTurn;
       ctx.whisper?.(
         density.duplicates +
           " near-duplicate messages in context. " +
