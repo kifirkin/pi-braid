@@ -485,7 +485,7 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
     name: "activate_behavior",
     label: "Activate Behavior",
     description:
-      "Activate a behavior pattern like debugging or refactoring when the task matches that problem-solving mode. Behaviors shift how you approach problems.",
+      "Activate a behavior pattern like debugging or refactoring — use when the task matches that problem-solving mode. Behaviors shift how you approach problems.",
     promptSnippet: "activate behavior patterns for different problem-solving modes",
     parameters: activateSchema,
     execute: async (_toolCallId, params: any) => {
