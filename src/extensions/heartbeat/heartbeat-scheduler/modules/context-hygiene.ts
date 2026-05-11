@@ -127,6 +127,7 @@ export const contextHygieneModule: CognitiveModule = {
     const state = getExtensionState(ctx, "context-hygiene-projection", () => ({
       snapshots: [] as Array<{ turn: number; tokens: number }>,
       lastProjectedRemaining: Infinity,
+      lastProjectionWhisperTurn: -20,
     }));
 
     const currentTurn = (ctx as any)?.turnCount ?? 0;
@@ -143,9 +144,11 @@ export const contextHygieneModule: CognitiveModule = {
 
     if (
       remainingTurns <= PROACTIVE_THRESHOLD_TURNS &&
-      remainingTurns < state.lastProjectedRemaining
+      remainingTurns < state.lastProjectedRemaining &&
+      currentTurn - state.lastProjectionWhisperTurn >= 20
     ) {
       state.lastProjectedRemaining = remainingTurns;
+      state.lastProjectionWhisperTurn = currentTurn;
 
       const projectedUsage =
         density.tokenRatio +
@@ -215,8 +218,8 @@ export const contextHygieneModule: CognitiveModule = {
             `for ${ticks}+ ticks — suggested compaction to agent`,
         );
       } else {
-        // Rate-limit: at most one density whisper per 10 turns
-        if (currentTurn - autoCompactState.lastDensityWhisperTurn >= 10) {
+        // Rate-limit: at most one density whisper per 25 turns
+        if (currentTurn - autoCompactState.lastDensityWhisperTurn >= 25) {
           autoCompactState.lastDensityWhisperTurn = currentTurn;
           ctx.whisper?.(
             "Low context density (" +
@@ -253,10 +256,10 @@ export const contextHygieneModule: CognitiveModule = {
       );
     }
 
-    // ── Duplicate whisper (cooldown: 15 turns) ─────────────────────
+    // ── Duplicate whisper (cooldown: 25 turns) ─────────────────────
     if (
       density.duplicates > 2 &&
-      currentTurn - autoCompactState.lastDuplicateWhisperTurn >= 15
+      currentTurn - autoCompactState.lastDuplicateWhisperTurn >= 25
     ) {
       autoCompactState.lastDuplicateWhisperTurn = currentTurn;
       ctx.whisper?.(
