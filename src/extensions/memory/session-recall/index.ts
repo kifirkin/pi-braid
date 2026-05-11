@@ -312,7 +312,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
     label: "Session Search",
     promptSnippet: "Search past sessions by keywords",
     description:
-      "Search past sessions by keywords using plain-text grep before querying a specific session for details. Returns matching sessions with snippets.",
+      "Search past sessions by keywords using plain-text grep — use before querying a specific session to find relevant history. Returns matching sessions with snippets.",
     parameters: sessionSearchSchema,
     execute: async (
       _toolCallId,
@@ -401,7 +401,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
     label: "Session Query",
     promptSnippet: "Analyze a specific session file in detail",
     description:
-      "Analyze a specific session file in detail after finding it with session_search.",
+      "Analyze a specific session file in detail — use after session_search to examine a matching session's content and decisions.",
     parameters: sessionQuerySchema,
     execute: async (
       _toolCallId,

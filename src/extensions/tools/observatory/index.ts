@@ -58,7 +58,7 @@ export default function observatoryExtension(pi: ExtensionAPI) {
     label: "Agent Observatory",
     promptSnippet: "Real-time monitoring dashboard for agent observability",
     description:
-      "Monitor running pi agents in real-time via the 3D observability dashboard. " +
+      "Monitor running pi agents in real-time via the 3D observability dashboard — use to debug and observe agent behavior. " +
       "Checks the singleton daemon status, or starts/stops it via braid-daemon.sh. " +
       "The daemon runs one WebSocket server on port 4199 shared by all pi instances. " +
       "Open observatory/index.html in a browser for the 3D visualization.",

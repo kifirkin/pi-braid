@@ -48,7 +48,7 @@ export default function healthcheckExtension(pi: ExtensionAPI) {
     label: "Healthcheck",
     promptSnippet: "Run health check on tools, extensions, and system resources",
     description:
-      "Run a comprehensive health check on tools, extensions, and system resources to diagnose setup issues. " +
+      "Run a comprehensive health check on tools, extensions, and system resources — use to diagnose setup issues. " +
       "Tests tool registry, builtin tools, extension API, shell commands, and system capabilities. " +
       "Returns pass/fail/warn status with recommendations.",
     parameters: healthcheckSchema,

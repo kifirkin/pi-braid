@@ -192,7 +192,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     label: "Memory Heuristics",
     promptSnippet: "View and manage adaptive procedural heuristics",
     description:
-      "View and manage adaptive procedural heuristics that learn from session performance patterns.",
+      "View and manage adaptive procedural heuristics — use to inspect or evolve behavior rules learned from session performance.",
     parameters: Type.Object({
       action: StringEnum(["list", "add", "evolve"]),
       context: Type.Optional(
@@ -259,7 +259,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     name: "memory_tool_stats",
     label: "Memory Tool Stats",
     promptSnippet: "View tool reliability statistics across sessions",
-    description: "View tool reliability statistics across sessions to find which tools work best for each task type.",
+    description: "View tool reliability statistics across sessions — use to find which tools work best for each task type.",
     parameters: Type.Object({
       action: StringEnum(["list", "reliability", "best"]),
       tool: Type.Optional(Type.String({ description: "Tool name (reliability action)" })),

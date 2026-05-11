@@ -204,7 +204,7 @@ export default function diffExtension(pi: ExtensionAPI) {
     label: "File Diff",
     promptSnippet: "Compare two files or git revisions",
     description:
-      "Compare two files or git revisions to see what changed between versions using structured diff output. " +
+      "Compare two files or git revisions to see what changed between versions — use for code review and debugging. " +
       "Returns hunks with line numbers, change types (add/del/ctx), and stats. " +
       "Use fileA and fileB for file comparison, or gitRefA/gitRefB for git diff. " +
       "Set format='summary' for quick check or format='stat' for line counts only.",

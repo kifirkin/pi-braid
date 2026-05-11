@@ -159,8 +159,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
     label: "Timer Set",
     promptSnippet: "Set a non-blocking timer for background processes",
     description:
-      "Set a non-blocking timer for builds, background processes, and long-running tasks. Returns immediately without hanging." +
-      "Returns immediately without hanging. " +
+      "Set a non-blocking timer for builds, background processes, and long-running tasks — use when you need a process to run in the background without blocking. Returns immediately without hanging. " +
       "Use for: builds, background processes, pomodoro cycles, escalation chains.",
     parameters: Type.Object({
       delay_seconds: Type.Number({ minimum: 1, maximum: 86400 }),
@@ -201,7 +200,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
     label: "Timer List",
     promptSnippet: "List all active timers",
     description:
-      "List all active timers to check if background processes have completed or need attention.",
+      "List all active timers — use to check if background processes have completed or need attention.",
     parameters: Type.Object({}),
     execute: async (): Promise<any> => {
       const timers = timerManager.listTimers();

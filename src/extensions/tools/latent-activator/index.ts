@@ -517,7 +517,7 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "deactivate_behavior",
     label: "Deactivate Behavior",
-    description: "Deactivate a behavior pattern when it is no longer relevant to the current task.",
+    description: "Deactivate a behavior pattern — use when it is no longer relevant to the current task.",
     promptSnippet: "deactivate a behavior pattern when no longer relevant",
     parameters: deactivateSchema,
     execute: async (_toolCallId, params: any) => {
@@ -543,7 +543,7 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
     name: "get_active_behaviors",
     label: "Get Active Behaviors",
     description:
-      "Check which behavior patterns are currently active before activating a new one to avoid conflicts or duplicates.",
+      "Check which behavior patterns are currently active — use before activating a new one to avoid conflicts or duplicates.",
     promptSnippet: "check what behavior patterns are currently active",
     parameters: Type.Object({}),
     execute: async () => {
@@ -567,7 +567,7 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "activate_mix",
     label: "Activate Mix",
-    description: "Activate a predefined behavior combination for common scenarios like debugging, refactoring, or code review.",
+    description: "Activate a predefined behavior combination for common scenarios — use for debugging, refactoring, or code review.",
     promptSnippet: "activate a predefined behavior mix for common scenarios",
     parameters: activateMixSchema,
     execute: async (_toolCallId, params: any) => {

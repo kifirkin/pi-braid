@@ -98,7 +98,7 @@ export default function evolveExtension(pi: ExtensionAPI) {
     label: "Evolve",
     promptSnippet: "Self-evolution commands for agent improvement",
     description:
-      "Self-evolution commands for agent improvement: check health, commit changes, rollback issues, and benchmark performance.",
+      "Self-evolution commands for agent improvement — use to check health, commit changes, rollback issues, or benchmark performance.",
     parameters: evolveSchema,
     execute: async (
       _toolCallId,
