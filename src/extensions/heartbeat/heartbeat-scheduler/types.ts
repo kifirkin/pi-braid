@@ -20,6 +20,9 @@ export interface MemoryStoresState {
   recentErrors: string[];
   currentSessionId: string;
   loadedFromLegacy: boolean;
+  lastRecallTime: number;
+  lastSemanticRecallHashes: string[];
+  lastEpisodeRecallSignature: string;
 }
 
 // ── Cognitive Module Types ────────────────────────────────────────────────────
@@ -106,6 +109,8 @@ export interface ToolTracking {
   lastCodeExecutionTurn: number;
   totalToolsUsed: number;
   lastToolCallTurn: number;
+  /** Rich trajectory data from tool_end events */
+  trajectory?: Array<{ toolName: string; success: boolean; turn: number }>;
 }
 
 // ── Archives ─────────────────────────────────────────────────────────────────

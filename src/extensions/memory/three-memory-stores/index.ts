@@ -74,6 +74,9 @@ export function createMemoryStoresState(): MemoryStoresState {
     skillTransitionCount: 0,
     recentErrors: [],
     loadedFromLegacy: false,
+    lastRecallTime: 0,
+    lastSemanticRecallHashes: [],
+    lastEpisodeRecallSignature: "",
   };
 }
 
@@ -90,7 +93,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     label: "Memory Episodes",
     promptSnippet: "Search retrospective episodes for similar past tasks",
     description:
-      "Search retrospective episodes for similar past tasks. Use before debugging known patterns — action='search' finds past solutions and outcomes. action='add' stores new experience at task end.",
+      "Search retrospective episodes for similar past tasks before debugging known problems. Use action='search' to find past solutions and outcomes.",
     parameters: Type.Object({
       action: StringEnum(["search", "add", "list"]),
       query: Type.Optional(
@@ -188,7 +191,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     label: "Memory Heuristics",
     promptSnippet: "View and manage adaptive procedural heuristics",
     description:
-      "View and manage adaptive procedural heuristics. Returns prioritized rules for the current context.",
+      "View and manage adaptive procedural heuristics that learn from session performance patterns.",
     parameters: Type.Object({
       action: StringEnum(["list", "add", "evolve"]),
       context: Type.Optional(
@@ -255,7 +258,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     name: "memory_tool_stats",
     label: "Memory Tool Stats",
     promptSnippet: "View tool reliability statistics across sessions",
-    description: "View tool reliability statistics. Shows success rates per tool per task type.",
+    description: "View tool reliability statistics across sessions to find which tools work best for each task type.",
     parameters: Type.Object({
       action: StringEnum(["list", "reliability", "best"]),
       tool: Type.Optional(Type.String({ description: "Tool name (reliability action)" })),
@@ -378,14 +381,18 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 
   // ── Auto-Recall Cooldown ──────────────────────────────────────────
   const RECALL_COOLDOWN_MS = 10_000;
-  let lastRecallTime = 0;
   const AUTO_RECALL_ENABLED = true;
 
-  function whisperRecall(ctx: ExtensionContext, title: string, episodes: Episode[]): void {
+  function whisperRecall(state: MemoryStoresState, ctx: ExtensionContext, title: string, episodes: Episode[]): void {
     if (!AUTO_RECALL_ENABLED || episodes.length === 0) return;
     const now = Date.now();
-    if (now - lastRecallTime < RECALL_COOLDOWN_MS) return;
-    lastRecallTime = now;
+    if (now - state.lastRecallTime < RECALL_COOLDOWN_MS) return;
+    state.lastRecallTime = now;
+
+    // Deduplicate: skip if same title + episodes as last emission
+    const signature = `${title}|${episodes.slice(0, 2).map((ep: Episode) => ep.id).join("|")}`;
+    if (signature === state.lastEpisodeRecallSignature) return;
+    state.lastEpisodeRecallSignature = signature;
 
     const crossSession = episodes.filter((ep: any) => ep._crossSession);
     if (crossSession.length > 0) {
@@ -419,8 +426,8 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     );
   }
 
-  // ── Event: tool_end ────────────────────────────────────────────────
-  pi.on("tool_end" as never, async (event: any, ctx: ExtensionContext) => {
+  // ── Event: tool_result ────────────────────────────────────────────────
+  pi.on("tool_result", async (event: any, ctx: ExtensionContext) => {
     try {
       const state = getState(ctx);
       const toolName = event?.toolName ?? event?.tool ?? "unknown";
@@ -441,7 +448,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
             state.currentSessionId,
           );
           if (relevant.length > 0 && relevant[0].similarity > 0.25) {
-            whisperRecall(ctx, `Approach hint for ${taskType} tasks:`, relevant);
+            whisperRecall(state, ctx, `Approach hint for ${taskType} tasks:`, relevant);
           }
         }
       }
@@ -454,7 +461,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
         const errorQuery = `${toolName} ${taskType} failure error`;
         const similarFailures = retrieveByRUMS(state, errorQuery, 2, state.currentSessionId);
         if (similarFailures.length > 0 && similarFailures[0].similarity > 0.15) {
-          whisperRecall(ctx, `Similar past issue with ${toolName}:`, similarFailures);
+          whisperRecall(state, ctx, `Similar past issue with ${toolName}:`, similarFailures);
         }
 
         if (toolName !== "bash") {
@@ -501,7 +508,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
       if (!AUTO_RECALL_ENABLED || state.currentSessionTools.length < 3) return;
 
       const now = Date.now();
-      if (now - lastRecallTime < RECALL_COOLDOWN_MS) return;
+      if (now - state.lastRecallTime < RECALL_COOLDOWN_MS) return;
 
       const recentTools = state.currentSessionTools.slice(-5);
       const lastError = state.recentErrors[state.recentErrors.length - 1] ?? "";
@@ -511,15 +518,21 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
       const relevant = retrieveByRUMS(state, query, 1, state.currentSessionId);
 
       if (relevant.length > 0 && relevant[0].similarity > 0.28) {
-        lastRecallTime = now;
-        whisperRecall(ctx, `Past solution might apply:`, relevant);
+        whisperRecall(state, ctx, `Past solution might apply:`, relevant);
       }
 
       // Cross-search cognitive-memory for relevant semantic insights
       try {
         const cm = getCognitiveMemory();
         const semanticResults = await cm.recall(query, { type: undefined, limit: 2 });
-        if (semanticResults.length > 0) {
+
+        // Deduplicate: skip if same hashes as last emission
+        const resultHashes = semanticResults.map((r: any) => `${r.memory.id}:${r.memory.content.slice(0, 40)}`);
+        const prevHashes = state.lastSemanticRecallHashes;
+        if (resultHashes.length > 0 && (resultHashes.length !== prevHashes.length || !resultHashes.every((h: string, i: number) => h === prevHashes[i]))) {
+          state.lastRecallTime = now;
+          state.lastSemanticRecallHashes = resultHashes;
+
           const lines: string[] = [`[recall] Related semantic memories:`];
           for (const r of semanticResults) {
             lines.push(

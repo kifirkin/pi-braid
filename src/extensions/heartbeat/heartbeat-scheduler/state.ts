@@ -86,6 +86,9 @@ export function getMemoryState(ctx: ExtensionContext): MemoryStoresState | null 
       recentErrors: [],
       currentSessionId: "",
       loadedFromLegacy: false,
+      lastRecallTime: 0,
+      lastSemanticRecallHashes: [],
+      lastEpisodeRecallSignature: "",
     }));
   } catch {
     return null;
