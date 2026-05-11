@@ -242,6 +242,10 @@ interface BPEState {
   recommendations: PolicyRecommendation[];
   lastRecommendationAt: number;
   recommendationCooldownMs: number;
+  /** Per-type cooldown: when each recommendation type was last consumed. Prevents same-type regeneration flooding. */
+  recommendationTypeTimestamps: Map<string, number>;
+  /** Per-type cooldown duration in ms (default 5 min for sticky types). */
+  recommendationTypeCooldownMs: number;
   outcomes: Map<string, OutcomeEntry>;
 }
 
@@ -252,6 +256,8 @@ function getState(ctx: ExtensionContext): BPEState {
     recommendations: [],
     lastRecommendationAt: 0,
     recommendationCooldownMs: 30_000, // 30s between recommendations
+    recommendationTypeTimestamps: new Map(),
+    recommendationTypeCooldownMs: 300_000, // 5min per-type cooldown for sticky types
     outcomes: new Map(),
   }));
 }
@@ -339,15 +345,18 @@ function updateBeliefs(state: BPEState, signal: SystemSignal): void {
 /** Evaluate all policy rules and generate recommendations */
 function evaluatePolicies(state: BPEState): void {
   const newRecs: PolicyRecommendation[] = [];
+  const now = Date.now();
 
   for (const rule of POLICY_RULES) {
     try {
       const results = rule.evaluate(state.signals, state.beliefs);
       for (const rec of results) {
-        // Deduplicate by type
-        if (!state.recommendations.some((r) => r.type === rec.type)) {
-          newRecs.push(rec);
-        }
+        // Deduplicate by type (don't add if already pending)
+        if (state.recommendations.some((r) => r.type === rec.type)) continue;
+        // Per-type cooldown: don't regenerate same type recently consumed
+        const lastTypeTime = state.recommendationTypeTimestamps.get(rec.type) ?? 0;
+        if (now - lastTypeTime < state.recommendationTypeCooldownMs) continue;
+        newRecs.push(rec);
       }
     } catch {
       /* silent — policy evaluation errors shouldn't break enforcement */
@@ -382,6 +391,7 @@ export function getNextRecommendation(ctx: ExtensionContext): PolicyRecommendati
   if (state.recommendations.length > 0) {
     const rec = state.recommendations[0];
     state.lastRecommendationAt = now;
+    state.recommendationTypeTimestamps.set(rec.type, now);
     state.recommendations.shift();
     return rec;
   }
