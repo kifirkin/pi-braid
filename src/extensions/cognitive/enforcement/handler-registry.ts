@@ -296,11 +296,11 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
       const recent = getState(ctx).calibrationPairs.slice(-10);
       const avgError =
         recent.reduce((s, p) => s + Math.abs(p.predicted - p.actual), 0) / recent.length;
-      if (avgError > 0.3) {
-        // Rate-limit: at most one calibration whisper per 30 seconds
+      if (avgError > 0.5) {
+        // Rate-limit: at most one calibration whisper per 120 seconds
         const enState = getState(ctx);
         const now = Date.now();
-        if (now - enState.lastCalibrationWhisperTime < 30_000) return;
+        if (now - enState.lastCalibrationWhisperTime < 120_000) return;
         enState.lastCalibrationWhisperTime = now;
 
         emitSignal(ctx, "calibration", "high-error", "warn", false, {

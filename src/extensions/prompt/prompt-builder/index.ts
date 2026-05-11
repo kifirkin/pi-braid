@@ -479,7 +479,7 @@ async function collectProjectContextStrings(cwd: string): Promise<string[]> {
  * heartbeat-triggered activation and mid-session loading/unloading.
  */
 const SKILL_TRIGGERS: Record<string, string[]> = {
-  "agent-testing": ["benchmark", "test", "evaluat", "RPC", "trial", "harness"],
+  "agent-testing": ["benchmark", "test", "evaluat", "RPC", "trial", "harness", "subagent"],
   "code-search": ["search", "grep", "codemod", "refactor", "find"],
   "design-system": ["design token", "brand", "visual identity", "DESIGN.md"],
   documentation: ["documentation", "README", "ARCHITECTURE.md", "doc", "readme"],
@@ -487,13 +487,24 @@ const SKILL_TRIGGERS: Record<string, string[]> = {
   "meta-improvement": ["skill", "experiment", "self-improve", "metric"],
   "paper-writer": ["paper", "LaTeX", "arXiv", "research paper", "academic"],
   "pi-reference": ["pi", "SDK", "extension", "plugin", "provider", "model"],
-  "process-control": ["tmux", "nohup", "long-run", "background", "daemon"],
+  "process-control": ["tmux", "nohup", "long-run", "background", "daemon", "subagent"],
   research: ["research", "web search", "fact-check", "literature", "find"],
   "software-engineer": ["code", "debug", "implement", "refactor", "bug"],
-  "tone-quality": ["tone", "writing", "voice", "style", "prompt"],
+  subagent: ["subagent", "spawn", "worker", "orchestrat", "parallel", "fan-out", "RPC mode"],
+  "tone-quality": ["tone", "writing", "voice", "style", "prompt", "skill", "documentation"],
   "vcs-tools": ["git", "pijul", "version control", "commit", "checkpoint"],
   "visual-creator": ["visual", "UI", "game asset", "sprite", "illustration"],
   "visual-validator": ["visual audit", "sprite sheet", "design review"],
+};
+
+/** Skills that should be co-loaded when a related skill is relevant. */
+const SKILL_RELATIONS: Record<string, string[]> = {
+  "agent-testing": ["process-control", "pi-reference"],
+  "meta-improvement": ["tone-quality", "pi-reference"],
+  "process-control": ["agent-testing"],
+  subagent: ["agent-testing", "process-control", "pi-reference"],
+  "tone-quality": ["pi-reference"],
+  "visual-creator": ["visual-validator", "design-system"],
 };
 
 /** Score how relevant each skill is given the current cwd and project context. */
@@ -575,16 +586,32 @@ async function formatSkillsWithLineCounts(
   }
 
   // Score and rank skills by relevance to current context.
-  // Include at most 7 skills — enough coverage without overwhelming the prompt.
+  // Include at most 8 skills — enough coverage without overwhelming the prompt.
   const scored = visibleSkills.map((s) => ({
     skill: s,
     relevance: scoreSkillRelevance(s, cwd, projectContext),
   }));
   scored.sort((a, b) => b.relevance - a.relevance);
 
-  const MAX_VISIBLE_SKILLS = 7;
+  const MAX_VISIBLE_SKILLS = 8;
   const topSkills = scored.slice(0, MAX_VISIBLE_SKILLS);
-  const hiddenCount = scored.length - topSkills.length;
+
+  // Boost related skills: if a high-scoring skill has relations, boost those too
+  const topNames = new Set(topSkills.map(({ skill }) => skill.name));
+  for (const { skill, relevance } of scored) {
+    if (relevance >= 0.3 && SKILL_RELATIONS[skill.name]) {
+      for (const related of SKILL_RELATIONS[skill.name]) {
+        const idx = scored.findIndex((s) => s.skill.name === related);
+        if (idx >= 0 && !topNames.has(related)) {
+          scored[idx].relevance = Math.max(scored[idx].relevance, 0.25);
+        }
+      }
+    }
+  }
+  // Re-sort after boosting
+  scored.sort((a, b) => b.relevance - a.relevance);
+  const boosted = scored.slice(0, MAX_VISIBLE_SKILLS);
+  const hiddenCount = scored.length - boosted.length;
 
   const lines = [
     "\n\nThe following skills provide specialized instructions for specific tasks.",
@@ -594,7 +621,7 @@ async function formatSkillsWithLineCounts(
     "<available_skills>",
   ];
 
-  for (const { skill } of topSkills) {
+  for (const { skill } of boosted) {
     const meta = await getSkillMeta(skill);
     lines.push("  <skill>");
     lines.push(`    <name>${escapeXml(skill.name)}</name>`);

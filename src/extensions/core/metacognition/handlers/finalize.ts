@@ -1,8 +1,9 @@
 // ── Finalize Tool ─────────────────────────────────────────────────────────────
-// Marks task complete with session model verification.
+// Records task outcome, triggers R5 memory cascade, and signals loop termination.
 // Auto-proceed chains to next pending task from scratchpad.
 // Records calibration when confidence is provided.
 // R5: On task completion, cascade episodic → semantic memory.
+// NOTE: No blocking LLM verification — agent should use verify() tool independently.
 
 import { Type } from "typebox";
 import { callLlm } from "../../../../lib/llm-call.js";
@@ -246,7 +247,7 @@ export function createFinalizeTool(callbacks: FinalizeCallbacks = {}) {
     name: "finalize" as const,
     label: "Finalize",
     promptSnippet: "Mark the current task as complete and trigger review",
-    description: `Complete the current task only when all code is written, tested, and verified with verify() first. The task ends after finalize() is called.`,
+    description: `Mark a task complete and record it to session memory. Skips blocking LLM review — use verify() beforehand for quality checks. After finalize, respond with text only (no tool calls) to end the agent loop cleanly.`,
     parameters: finalizeSchema,
     execute: async (
       _toolCallId: string,
@@ -280,45 +281,14 @@ finalize(completed=true, summary="Fixed the bug", tasksRemaining=["write tests"]
         recordCalibration(_ctx, 0.7, params.completed ? "success" : "failure");
       }
 
-      const sessionSummary = params.summary;
-      let verificationResult = {
-        verified: true,
-        confidence: 50,
-        message: "No context available for verification",
-      };
+      // Fire-and-forget: record to memory asynchronously (don't block tool result on I/O)
+      recordToMemory(_ctx, params.summary, params.completed).catch(() => {});
 
-      if (_ctx) {
-        verificationResult = await verifyWithSessionModel(sessionSummary, _ctx);
-      }
-
-      if (!verificationResult.verified) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `**FINALIZE BLOCKED**
-
-${verificationResult.message}
-
-Confidence: ${verificationResult.confidence}%
-
-**The work is not done enough to finalize.**
-Continue working until the issues are resolved.`,
-            },
-          ],
-          details: { finalized: false, blocked: true, verification: verificationResult },
-        };
-      }
+      // Skip blocking LLM verification — it adds 1-3min delay and the agent's own
+      // verify() tool is more reliable. Finalize just records and signals.
 
       const status = params.completed ? "Task completed" : "Task incomplete";
       const messages: string[] = [status, `Summary: ${params.summary}`];
-
-      // R5: Record task to episodic memory (cascade: episodic → semantic → procedural)
-      await recordToMemory(_ctx, params.summary, params.completed);
-
-      if (verificationResult.message) {
-        messages.push(`\nVerification: ${verificationResult.message}`);
-      }
 
       if (params.tasksRemaining?.length) {
         messages.push(`\nFollow-up needed: ${params.tasksRemaining.join(", ")}`);
@@ -339,8 +309,10 @@ Continue working until the issues are resolved.`,
         messages.push(`\n✅ No pending tasks remaining.`);
       }
 
-      messages.push("\n---");
-      messages.push("Session ending...");
+      messages.push("");
+      messages.push("**IMPORTANT: DO NOT call any tools after this message.**");
+      messages.push("The agent loop terminates cleanly when you respond with text only — no tool calls.");
+      messages.push("Acknowledge completion in a brief text response, then stop.");
 
       return {
         content: [{ type: "text" as const, text: messages.join("\n") }],
@@ -348,7 +320,6 @@ Continue working until the issues are resolved.`,
           finalized: true,
           completed: params.completed,
           summary: params.summary,
-          verification: verificationResult,
           nextWork: nextWork?.id ?? null,
         },
       };

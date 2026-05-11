@@ -77,6 +77,7 @@ export function createMemoryStoresState(): MemoryStoresState {
     lastRecallTime: 0,
     lastSemanticRecallHashes: [],
     lastEpisodeRecallSignature: "",
+    lastSemanticRecallTime: 0,
   };
 }
 
@@ -380,7 +381,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
   );
 
   // ── Auto-Recall Cooldown ──────────────────────────────────────────
-  const RECALL_COOLDOWN_MS = 10_000;
+  const RECALL_COOLDOWN_MS = 30_000;
   const AUTO_RECALL_ENABLED = true;
 
   function whisperRecall(state: MemoryStoresState, ctx: ExtensionContext, title: string, episodes: Episode[]): void {
@@ -510,27 +511,36 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
       const now = Date.now();
       if (now - state.lastRecallTime < RECALL_COOLDOWN_MS) return;
 
+      // Use a stable aggregated query: the most frequent task type across recent tools
+      // (not the last tool alone, which changes every turn and causes query instability)
       const recentTools = state.currentSessionTools.slice(-5);
+      const toolTypes = recentTools.map((t: string) => inferTaskType(ctx, t));
+      const dominantType =
+        toolTypes.filter((t: string) => t === toolTypes[0]).length >= 3
+          ? toolTypes[0]
+          : "general";
       const lastError = state.recentErrors[state.recentErrors.length - 1] ?? "";
       const errorTool = lastError.split(":")[0] ?? "";
-      const taskType = inferTaskType(ctx, recentTools[recentTools.length - 1] ?? "");
-      const query = `${taskType} ${errorTool} solution error`.trim();
-      const relevant = retrieveByRUMS(state, query, 1, state.currentSessionId);
+      const stableQuery = `${dominantType} ${errorTool} solution error`.trim();
+      const relevant = retrieveByRUMS(state, stableQuery, 1, state.currentSessionId);
 
       if (relevant.length > 0 && relevant[0].similarity > 0.28) {
         whisperRecall(state, ctx, `Past solution might apply:`, relevant);
       }
 
       // Cross-search cognitive-memory for relevant semantic insights
+      // Uses a separate cooldown (lastSemanticRecallTime) so it doesn't interfere with
+      // episode recall's timer.
+      if (now - state.lastSemanticRecallTime < RECALL_COOLDOWN_MS) return;
+      state.lastSemanticRecallTime = now;
       try {
         const cm = getCognitiveMemory();
-        const semanticResults = await cm.recall(query, { type: undefined, limit: 2 });
+        const semanticResults = await cm.recall(stableQuery, { type: undefined, limit: 2 });
 
         // Deduplicate: skip if same hashes as last emission
         const resultHashes = semanticResults.map((r: any) => `${r.memory.id}:${r.memory.content.slice(0, 40)}`);
         const prevHashes = state.lastSemanticRecallHashes;
         if (resultHashes.length > 0 && (resultHashes.length !== prevHashes.length || !resultHashes.every((h: string, i: number) => h === prevHashes[i]))) {
-          state.lastRecallTime = now;
           state.lastSemanticRecallHashes = resultHashes;
 
           const lines: string[] = [`[recall] Related semantic memories:`];

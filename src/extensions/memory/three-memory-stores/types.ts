@@ -73,4 +73,6 @@ export interface MemoryStoresState {
   lastSemanticRecallHashes: string[];
   /** Signature of last-emitted episode recall (title + episode IDs) for deduplication. */
   lastEpisodeRecallSignature: string;
+  /** Separate cooldown timestamp for semantic recall path (avoids interfering with episode recall). */
+  lastSemanticRecallTime: number;
 }

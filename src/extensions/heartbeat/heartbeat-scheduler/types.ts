@@ -23,6 +23,7 @@ export interface MemoryStoresState {
   lastRecallTime: number;
   lastSemanticRecallHashes: string[];
   lastEpisodeRecallSignature: string;
+  lastSemanticRecallTime: number;
 }
 
 // ── Cognitive Module Types ────────────────────────────────────────────────────
