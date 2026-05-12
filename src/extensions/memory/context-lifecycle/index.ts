@@ -211,7 +211,31 @@ function executeAction(
   switch (action.type) {
     case "compact":
       if (evaluated.canExecute) {
-        ctx.compact?.();
+        // Don't call ctx.compact?.() — it calls _disconnectFromAgent() + abort()
+        // in pi core (agent-session.js:1245), breaking the agent loop mid-turn.
+        // Instead, nudge the agent to call context_compact() manually.
+        sendTrackedMessage(
+          pi,
+          {
+            customType: "context-lifecycle",
+            content: [
+              {
+                type: "text" as const,
+                text:
+                  `[compact] ${evaluated.policy.name} — ` +
+                  `call context_compact() to free space (context at ${Math.round(usage)}%).`,
+              },
+            ],
+            display: true,
+            details: { _braidInjected: true, _braidSource: "context-lifecycle/compact-suggestion" },
+          },
+          undefined,
+          { type: "context" as const, source: "context-lifecycle/compact-suggestion" },
+        );
+        log.info(
+          `Suggested compact: ${evaluated.policy.name} (context ${Math.round(usage)}%, ` +
+            `priority ${evaluated.policy.priority})`,
+        );
       }
       break;
 
