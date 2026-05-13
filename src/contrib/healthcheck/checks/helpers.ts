@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { HEALTHCHECK_DIR } from "../../../../lib/braid-paths.js";
+import { HEALTHCHECK_DIR } from "../../../lib/braid-paths.js";
 import type { CheckResult } from "./types.js";
 
 export const HC_DIR = HEALTHCHECK_DIR;

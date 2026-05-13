@@ -9,7 +9,7 @@ import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../lib/logger.js";
 
 const log = createLogger("diff");
 

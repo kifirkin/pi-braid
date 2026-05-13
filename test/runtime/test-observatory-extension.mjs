@@ -18,7 +18,7 @@ const assert = (cond, msg) => cond ? (passed++, console.log("  ✅ " + msg)) : (
 console.log("\n[1] Observatory extension structure");
 {
   const fs = await import("fs");
-  const src = fs.readFileSync(`${ROOT}/src/extensions/tools/observatory/index.ts`, "utf8");
+  const src = fs.readFileSync(`${ROOT}/src/contrib/observatory/index.ts`, "utf8");
 
   assert(src.includes("export default function observatoryExtension"), "exports default function");
   assert(src.includes("pi.registerTool"), "registers /observatory tool");

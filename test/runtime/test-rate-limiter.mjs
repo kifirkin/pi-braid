@@ -13,7 +13,7 @@ console.log("=== Rate Limiter Extension Tests ===\n");
 
 // Test 1: File exists and exports default function
 console.log("[1] Extension structure...");
-const src = readSrc("src/extensions/rate-limiter/index.ts");
+const src = readSrc("src/contrib/rate-limiter/index.ts");
 assert.ok(src.length > 0, "rate-limiter/index.ts should exist");
 assert.ok(src.includes("export default function"), "should export default function");
 

@@ -15,7 +15,7 @@ const assert = (cond, msg) => cond ? (passed++, console.log("  ✅ " + msg)) : (
 console.log("\n[1] Diff extension structure");
 {
   const fs = await import("fs");
-  const src = fs.readFileSync(`${ROOT}/src/extensions/tools/diff/index.ts`, "utf8");
+  const src = fs.readFileSync(`${ROOT}/src/contrib/diff/index.ts`, "utf8");
 
   assert(src.includes("export default function diffExtension"), "exports default function");
   assert(src.includes("registerTool"), "registers a tool");
@@ -46,7 +46,7 @@ console.log("\n[2] Module system registration");
 console.log("\n[3] Diff parser");
 {
   // Import the parser function from dist
-  const { parseUnifiedDiff } = await import("../../dist/extensions/tools/diff/index.js");
+  const { parseUnifiedDiff } = await import("../../dist/contrib/diff/index.js");
 
   const sampleDiff = `--- a/file.txt
 +++ b/file.txt
@@ -78,7 +78,7 @@ console.log("\n[3] Diff parser");
 // ── [4] Parse empty/matching files ────────────────────────────────
 console.log("\n[4] Empty diff handling");
 {
-  const { parseUnifiedDiff } = await import("../../dist/extensions/tools/diff/index.js");
+  const { parseUnifiedDiff } = await import("../../dist/contrib/diff/index.js");
 
   const emptyHunks = parseUnifiedDiff("");
   assert(emptyHunks.length === 0, "No hunks from empty input");
@@ -92,7 +92,7 @@ console.log("\n[4] Empty diff handling");
 // ── [5] Multiple hunks ────────────────────────────────────────────
 console.log("\n[5] Multi-hunk diff parsing");
 {
-  const { parseUnifiedDiff } = await import("../../dist/extensions/tools/diff/index.js");
+  const { parseUnifiedDiff } = await import("../../dist/contrib/diff/index.js");
 
   const multiHunkDiff = `--- a/file.txt
 +++ b/file.txt

@@ -15,7 +15,7 @@ const assert = (cond, msg) => cond ? (passed++, console.log("  ✅ " + msg)) : (
 console.log("\n[1] System monitor extension structure");
 {
   const fs = await import("fs");
-  const src = fs.readFileSync(`${ROOT}/src/extensions/tools/system-monitor/index.ts`, "utf8");
+  const src = fs.readFileSync(`${ROOT}/src/contrib/system-monitor/index.ts`, "utf8");
 
   assert(src.includes("export default function systemMonitorExtension"), "exports default function");
   assert(src.includes("registerTool"), "registers a tool");
@@ -49,7 +49,7 @@ console.log("\n[2] Module system registration");
 // ── [3] Format helpers ────────────────────────────────────────
 console.log("\n[3] Format helpers");
 {
-  const { formatBytes, formatUptime } = await import("../../dist/extensions/tools/system-monitor/index.js");
+  const { formatBytes, formatUptime } = await import("../../dist/contrib/system-monitor/index.js");
 
   assert(formatBytes(0) === "0.0 B", "0 bytes formats correctly");
   assert(formatBytes(1024) === "1.0 KB", "1024 bytes = 1 KB");
@@ -64,7 +64,7 @@ console.log("\n[3] Format helpers");
 // ── [4] CPU collector logic ───────────────────────────────────
 console.log("\n[4] CPU collector");
 {
-  const { collectCpu } = await import("../../dist/extensions/tools/system-monitor/index.js");
+  const { collectCpu } = await import("../../dist/contrib/system-monitor/index.js");
   const cpu = collectCpu();
 
   assert(typeof cpu.cores === "number" && cpu.cores > 0, `Has cores: ${cpu.cores}`);
@@ -77,7 +77,7 @@ console.log("\n[4] CPU collector");
 // ── [5] Memory collector logic ────────────────────────────────
 console.log("\n[5] Memory collector");
 {
-  const { collectMemory } = await import("../../dist/extensions/tools/system-monitor/index.js");
+  const { collectMemory } = await import("../../dist/contrib/system-monitor/index.js");
   const mem = collectMemory();
 
   assert(mem.totalBytes > 0, "Total memory > 0");
@@ -91,7 +91,7 @@ console.log("\n[5] Memory collector");
 // ── [6] Disk collector logic ──────────────────────────────────
 console.log("\n[6] Disk collector");
 {
-  const { collectDisk } = await import("../../dist/extensions/tools/system-monitor/index.js");
+  const { collectDisk } = await import("../../dist/contrib/system-monitor/index.js");
   const disk = collectDisk("/");
 
   assert(disk.totalBytes > 0, "Total disk > 0");
@@ -103,7 +103,7 @@ console.log("\n[6] Disk collector");
 // ── [7] Report collection ─────────────────────────────────────
 console.log("\n[7] Full report");
 {
-  const { collectReport } = await import("../../dist/extensions/tools/system-monitor/index.js");
+  const { collectReport } = await import("../../dist/contrib/system-monitor/index.js");
   const report = collectReport("/", 3);
 
   assert(report.hostname.length > 0, "Has hostname");

@@ -28,7 +28,7 @@ import coreScratchpadFn from "../extensions/core/scratchpad/index.js";
 import corePreprocessorFn from "../extensions/core/user-message-preprocessor/index.js";
 import corePromptBuilderFn from "../extensions/core/prompt-builder/index.js";
 import coreAgentEnvFn from "../extensions/core/agent-environment/index.js";
-import coreRateLimiterFn from "../extensions/rate-limiter/index.js";
+import contribRateLimiterFn from "../contrib/rate-limiter/index.js";
 
 // cognitive-quality (reasoning tools, verification, topic control)
 import reasoningFn from "../extensions/cognitive/reasoning/index.js";
@@ -51,19 +51,21 @@ import heartbeatSchedulerFn from "../extensions/heartbeat/heartbeat-scheduler/in
 import analyticsFn from "../extensions/heartbeat/analytics/index.js";
 
 // tools (utility tools, pure tool-providers)
-import healthcheckFn from "../extensions/tools/healthcheck/index.js";
 import timerFn from "../extensions/tools/timer/index.js";
 import latentActivatorFn from "../extensions/tools/latent-activator/index.js";
-import observatoryFn from "../extensions/tools/observatory/index.js";
-import diffFn from "../extensions/tools/diff/index.js";
-import systemMonitorFn from "../extensions/tools/system-monitor/index.js";
-import researchFn from "../extensions/tools/research/index.js";
+
+// contrib (out-of-scope utilities, not cognitive architecture)
+import diffFn from "../contrib/diff/index.js";
+import healthcheckFn from "../contrib/healthcheck/index.js";
+import observatoryFn from "../contrib/observatory/index.js";
+import researchFn from "../contrib/research/index.js";
+import systemMonitorFn from "../contrib/system-monitor/index.js";
+import toolConfigFn from "../contrib/tool-config/index.js";
 
 // nudge (feedback/nudge injection — from assistant/feedback)
 import feedbackFn from "../extensions/nudge/index.js";
 
-// tool-config (interactive tool management — from assistant/assistant)
-import toolConfigFn from "../extensions/tool-config/index.js";
+
 
 // watchdog (session monitoring, opt-in)
 import watchdogFn from "../extensions/watchdog/index.js";
@@ -121,7 +123,7 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
   {
     name: "core",
     label: "Core",
-    description: "Foundation: polyfill, metacognition, scratchpad, preprocessor, prompt-builder, agent-environment, rate-limiter",
+    description: "Foundation: polyfill, metacognition, scratchpad, preprocessor, prompt-builder, agent-environment",
     alwaysOn: true,
     extensions: [
       { name: "agent-patch", fn: coreAgentPatchFn },
@@ -131,7 +133,6 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
       { name: "user-message-preprocessor", fn: corePreprocessorFn },
       { name: "prompt-builder", fn: corePromptBuilderFn },
       { name: "agent-environment", fn: coreAgentEnvFn },
-      { name: "rate-limiter", fn: coreRateLimiterFn },
     ],
     listensTo: [
       "session_start", "before_agent_start", "agent_end", "input",
@@ -266,17 +267,11 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
   {
     name: "tools",
     label: "Utility Tools",
-    description:
-      "Healthcheck, timer, latent-activator, observatory, diff, system-monitor, research",
+    description: "Timer, latent-activator",
     dependencies: ["core"],
     extensions: [
-      { name: "healthcheck", fn: healthcheckFn },
       { name: "timer", fn: timerFn },
       { name: "latent-activator", fn: latentActivatorFn },
-      { name: "observatory", fn: observatoryFn },
-      { name: "diff", fn: diffFn },
-      { name: "system-monitor", fn: systemMonitorFn },
-      { name: "research", fn: researchFn },
     ],
     listensTo: ["turn_end", "session_start", "session_shutdown"],
     coupledWith: [],
@@ -304,20 +299,26 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
   },
 
   // ═════════════════════════════════════════════════════════════════════
-  // TOOL-CONFIG — Interactive tool management (from assistant/assistant)
-  //   COMMAND-PROVIDER — /tools and /tool-status commands for enabling/
-  //   disabling pi tools interactively. Split from assistant module
-  //   because it has zero coupling with nudge/feedback.
+  // CONTRIB — Out-of-scope utilities (not cognitive architecture)
+  //   These are single-tool/command extensions that could be extracted
+  //   as standalone pi packages. Kept here for convenience but physically
+  //   separated under src/contrib/ to signal they're not core braid.
   // ═════════════════════════════════════════════════════════════════════
   {
-    name: "tool-config",
-    label: "Tool Configuration",
-    description: "Interactive /tools and /tool-status commands for tool enable/disable",
+    name: "contrib",
+    label: "Contrib Utilities",
+    description: "Peripheral utilities: diff, healthcheck, observatory, research, system-monitor, rate-limiter, tool-config",
     dependencies: ["core"],
     extensions: [
+      { name: "diff", fn: diffFn },
+      { name: "healthcheck", fn: healthcheckFn },
+      { name: "observatory", fn: observatoryFn },
+      { name: "research", fn: researchFn },
+      { name: "system-monitor", fn: systemMonitorFn },
+      { name: "rate-limiter", fn: contribRateLimiterFn },
       { name: "tool-config", fn: toolConfigFn },
     ],
-    listensTo: ["session_start", "session_tree"],
+    listensTo: ["session_start", "session_tree", "session_shutdown", "context", "turn_end"],
     coupledWith: [],
   },
 
