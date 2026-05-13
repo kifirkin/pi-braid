@@ -4,6 +4,8 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { METRICS_FILE } from "../../../lib/braid-paths.js";
+import { createLogger } from "../../../lib/logger.js";
+const log = createLogger("analytics:ab-variant");
 
 interface VariantStats {
   variant: string;
@@ -60,9 +62,13 @@ export function loadAnalyticsByVariant(storagePath?: string): Map<string, Varian
         v.avgErrorRate =
           (v.avgErrorRate * (v.sessions - 1) + (totalCalls > 0 ? failedCalls / totalCalls : 0)) /
           v.sessions;
-      } catch {}
+      } catch (err) {
+        log.warn(`Could not aggregate error rate: ${err}`);
+      }
     }
-  } catch {}
+  } catch (err) {
+    log.warn(`Could not load variant data: ${err}`);
+  }
   return variants;
 }
 

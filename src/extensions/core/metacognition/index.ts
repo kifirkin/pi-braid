@@ -12,9 +12,7 @@ import { createThinkTool, recordCalibration } from "./handlers/think.js";
 import { createHypothesizeTool } from "./handlers/hypothesize.js";
 import { createFinalizeTool } from "./handlers/finalize.js";
 import { createVerifyTool } from "./handlers/verify.js";
-import { evaluateCognition } from "../../../lib/cognition-evaluator.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
-import { Type } from "typebox";
 
 interface MetaMetrics {
   thinks: number;

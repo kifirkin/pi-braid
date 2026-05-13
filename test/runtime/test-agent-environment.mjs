@@ -13,7 +13,7 @@ console.log("=== Agent Environment Extension Tests ===\n");
 
 // Test 1: File exists and exports
 console.log("[1] Extension structure...");
-const src = readSrc("src/extensions/agent-environment/agent-environment/index.ts");
+const src = readSrc("src/extensions/core/agent-environment/index.ts");
 assert.ok(src.length > 0, "agent-environment/index.ts should exist");
 assert.ok(src.includes("export default function"), "should export default function");
 assert.ok(src.includes("gatherL1Environment"), "should export gatherL1Environment");

@@ -49,7 +49,7 @@
 
 **2. Well-architected?** ⚠️ **Bug found:**
 
-- `researchFn` is imported (line 45) but **never included in any module's extensions list**. The `research` tool at `src/extensions/tools/research/index.ts` is orphaned — it will never load.
+- ✅ RESOLVED: `researchFn` was orphaned, now registered in the `contrib` module.
 - Tools module description says "Codebase graph, REPL, docs reader, timer, latent activator" — references deleted tools (codebase-graph, repl, docs). Stale.
 
 **3. Unfinished work?** — The `coupledWith` field documents cross-module coupling but nothing enforces it. If an extension starts listening to a new event, the coupling doc drifts silently.
@@ -362,7 +362,7 @@
 **6 extensions**: healthcheck, timer, latent-activator, observatory, diff, system-monitor
 **Dependencies**: core
 
-**NOTE**: `research` tool at `src/extensions/tools/research/index.ts` is **not registered** in any module — orphaned.
+**NOTE**: `research` tool — was orphaned, now registered in the `contrib` module.
 
 ### General Assessment
 
@@ -448,11 +448,11 @@
 | feedback/index.ts                    | `homedir`, `AgentToolResult`                                                                                                                             | 2 orphaned imports             |
 | cognitive-systems/index.ts           | `getAllConflictQAs`                                                                                                                                      | 1 orphaned import              |
 | modules/api.ts                       | `deps` variable, `overrides` variable                                                                                                                    | 2 computed-but-never-used      |
-| definitions.ts                       | `researchFn`                                                                                                                                             | Imported but not in any module |
+| definitions.ts                       | `researchFn` (was orphaned)                                                                                                                               | ✅ Now registered in contrib module |
 | metacognition/index.ts               | `evaluateCognition`, `Type`                                                                                                                              | 2 orphaned imports             |
 | blocking.ts (enforcement)            | `queueBlockAction`                                                                                                                                       | 1 orphaned export/import       |
 | probe-handler.ts, routing-handler.ts | `ExtensionAPI`                                                                                                                                           | 2 files, each 1 unused import  |
-| handler-registry.ts (retry)          | `loadFileContent`                                                                                                                                        | 1 orphaned import              |
+| handler-registry.ts (enforcement)          | `loadFileContent`                                                                                                                                        | 1 orphaned import              |
 
 ### Known Blockers
 
@@ -460,7 +460,7 @@
 
 2. **Test isolation** — `test-cognitive-memory.mjs` clears all memories during test. Needs isolated test database.
 
-3. **research tool orphaned** — Created for system prompt analysis but never registered in module definitions. Functionally dead.
+3. **research tool orphaned** — ✅ RESOLVED. Now registered in the `contrib` module.
 
 ### Sync I/O in Async Contexts
 
@@ -488,7 +488,7 @@ All 12 modules fit the pi-braid subject ("metacognitive agent extension suite").
 
 | Priority | Item                                          | Why                                         |
 | -------- | --------------------------------------------- | ------------------------------------------- |
-| 🟥 P0    | Wire researchFn into tools module             | Orphaned tool exists in source, never loads |
+| 🟩 DONE  | Wire researchFn into contrib module            | Was orphaned, now loads (contrib module) |
 | 🟥 P0    | Tool description truncation in prompt-builder | ~5000 tokens wasted per turn                |
 | 🟧 P1    | Clean 13 orphaned imports                     | Code quality, maintainability               |
 | 🟧 P1    | Fix modules/api.ts dead variables             | Half-finished features confuse users        |

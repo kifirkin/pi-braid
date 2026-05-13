@@ -13,7 +13,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { sendEnforcementWhisper } from "../enforcement/whisper.js";
+import { sendEnforcementWhisper } from "../../enforcement/whisper.js";
 import { emitSignal } from "../../../lib/belief-policy-engine.js";
 import { createLogger } from "../../../lib/logger.js";
 import { getExtensionState } from "../../../lib/extension-state.js";

@@ -262,7 +262,7 @@ const FRESH_EYES_PROMPT = `You are a sharp, critical thinker who reviews the rea
 
 ## Context
 You are reviewing thinking from an agent working on a TypeScript/Node.js codebase (pi-braid agent framework).
-Available tools include: think, hypothesize, read, write, edit, bash, grep, browser_*, memory_*, evolve tools.
+Available tools include: think, hypothesize, read, write, edit, bash, grep, browser_*, memory_*, health-maintenance tools.
 
 ## Thinking Entry
 - Observation: {observation}

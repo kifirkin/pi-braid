@@ -122,7 +122,9 @@ export function updateContextDensity(ctx: ExtensionContext, density: number) {
         tokensUsed: 0,
         tokensLimit: 0,
       });
-    } catch {}
+    } catch (err) {
+      log.warn(`[analytics:shared] Event bus emit failed: ${err}`);
+    }
   }
 }
 

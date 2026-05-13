@@ -157,7 +157,9 @@ function tick(
       tickCount: state.stats.totalTicks,
       timestamp: Date.now(),
     });
-  } catch {} // non-fatal
+  } catch (err) {
+    log.warn(`[heartbeat] Could not emit tick event: ${err}`);
+  }
 
   state.policyTurnCount++;
 
@@ -597,7 +599,9 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
                   `— ready for consolidation`,
               );
             }
-          } catch {} // non-fatal
+          } catch (err) {
+            log.warn(`[heartbeat] Could not score consolidation candidate: ${err}`);
+          }
         }
       }
     } catch (err) {

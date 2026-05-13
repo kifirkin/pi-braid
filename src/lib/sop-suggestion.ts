@@ -412,7 +412,9 @@ export function injectSopSuggestions(
         // @ts-expect-error — custom analytics payload
         details: { count: injected, tokens: totalTokens },
       });
-    } catch {} // non-fatal
+    } catch (err) {
+      log.warn(`[sop-suggestion] Could not emit sop_suggestion_injected event: ${err}`);
+    }
   }
 
   return injected;

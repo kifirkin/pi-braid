@@ -118,7 +118,7 @@ console.log("\n[2] Consolidation hint writing");
 console.log("\n[3] Hint loading and pruning");
 {
   const promptSrc = readFileSync(
-    "/Users/kifir/projects/agents/pi-braid/src/extensions/prompt/prompt-builder/index.ts",
+    "/Users/kifir/projects/agents/pi-braid/src/extensions/core/prompt-builder/index.ts",
     "utf-8",
   );
 

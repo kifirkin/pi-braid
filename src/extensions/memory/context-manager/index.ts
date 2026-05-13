@@ -34,16 +34,6 @@ import {
 import { registerRotationHandlers, registerSessionShutdownHandler } from "./handlers/rotation.js";
 
 export default function contextManagerExtension(pi: any): void {
-  // ── DEBUG: Monitor message events ─────────────────────────────
-  pi.on("message_start", (event: any) => {
-    const role = event?.message?.role;
-    log.info(`[DEBUG] message_start fired: role=${role}`);
-  });
-  pi.on("message_end", (event: any) => {
-    const role = event?.message?.role;
-    log.info(`[DEBUG] message_end fired: role=${role}`);
-  });
-
   // ── Session Start ──────────────────────────────────────────────
   registerSessionStartHandler(
     pi,
@@ -84,4 +74,3 @@ export default function contextManagerExtension(pi: any): void {
 
   log.debug("Context-manager extension initialized");
 }
-// Debug listeners added Wed May  6 16:22:35 EAT 2026

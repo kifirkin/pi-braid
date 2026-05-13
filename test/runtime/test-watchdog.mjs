@@ -13,7 +13,7 @@ console.log("=== Watchdog Extension Tests ===\n");
 
 // Test 1: File exists and exports default function
 console.log("[1] Extension structure...");
-const src = readSrc("src/extensions/watchdog/watchdog/index.ts");
+const src = readSrc("src/extensions/watchdog/index.ts");
 assert.ok(src.length > 0, "watchdog/index.ts should exist");
 assert.ok(src.includes("export default function"), "should export default function");
 
