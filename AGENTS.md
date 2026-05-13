@@ -15,9 +15,15 @@ export BRAID_MODULES="all"
 # Enable specific modules
 export BRAID_MODULES="core,cognitive-quality,enforcement,memory"
 
-# Disable specific modules
-# (format not supported — use runtime API instead)
+# Toggle individual modules: +name to enable, -name to disable
+export BRAID_MODULES="all,-contrib,-tools"          # disable contrib + tools
+export BRAID_MODULES="core,+error-tracking"          # core + opt-in error tracking
+export BRAID_MODULES="-heartbeat"                    # everything except heartbeat
 ```
+
+Available modules: `core`, `cognitive-quality`, `enforcement`, `memory`, `heartbeat`, `tools`, `nudge`, `contrib`, `watchdog`, `health-maintenance`, `error-tracking`.
+
+Peripheral utilities (`contrib`) live at `src/contrib/` instead of `src/extensions/`.
 
 ## Build & Test
 

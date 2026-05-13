@@ -7,7 +7,7 @@ Purpose: Identify low-value extensions that could be removed, merged, or improve
 
 - Total extensions: 20+
 - Enabled by default: 16
-- Disabled by default: 4 (watchdog, evolve, rate-limiter, agent-environment)
+- Disabled by default: 3 (watchdog, health-maintenance, error-tracking)
 - Large files (>600L): 4 (healthcheck, evolve, compaction, enforcement)
 
 ## Disabled by Default (Audit Candidates)
@@ -19,7 +19,7 @@ Purpose: Identify low-value extensions that could be removed, merged, or improve
 - **Value**: Medium - useful for debugging production issues
 - **Recommendation**: Keep, but consider reducing verbosity or merging into core logging
 
-### 2. evolve (156L + 169L modules = 325L total)
+### 2. health-maintenance (renamed from evolve)
 
 - **Purpose**: Self-evolution commands, checkpointing, degradation detection
 - **Status**: Disabled by default (disruptive)
@@ -45,7 +45,7 @@ Purpose: Identify low-value extensions that could be removed, merged, or improve
 ### Already Decomposed This Session
 
 - ✅ healthcheck: 874L → 115L + modular files
-- ✅ evolve: 780L → 156L + modular files
+- ✅ health-maintenance: modular decomposition (was 780L)
 
 ### Remaining Large Files
 
@@ -74,7 +74,7 @@ After analysis, no extensions appear truly "low-value". All serve specific purpo
 ## Actions Taken This Session
 
 1. ✅ Decomposed healthcheck/index.ts (874L → modular)
-2. ✅ Decomposed evolve/index.ts (780L → modular)
+2. ✅ Decomposed health-maintenance/index.ts (was 780L → modular)
 3. ✅ Verified error handling in large handlers (partially complete)
 4. 🔄 Audit complete - no low-value extensions found to remove
 

@@ -36,19 +36,19 @@ Extensions are grouped by **actual coupling** (shared events, tools, state):
 
 | Module                | Always-on | Purpose                           | Extensions                                                                 |
 | --------------------- | --------- | --------------------------------- | -------------------------------------------------------------------------- |
-| **core**              | ✅        | Foundation layer                  | agent-patch, polyfill, metacognition, scratchpad, preprocessor, prompt-builder, agent-environment, rate-limiter |
+| **core**              | ✅        | Foundation layer                  | agent-patch, polyfill, metacognition, scratchpad, preprocessor, prompt-builder, agent-environment |
 | **cognitive-quality** | ✅        | Reasoning quality tools           | reasoning, verification, topic-drift, sycophancy-detector                 |
-| **enforcement**       | ✅        | RepE behavioral enforcement       | enforcement (split from cognitive-quality due to heavy event load)        |
+| **enforcement**       | ✅        | RepE behavioral enforcement       | enforcement                                                               |
 | **memory**            | ✅        | Memory stores + context lifecycle | three-memory-stores, session-recall, context-manager, context-lifecycle, memory-agent-bridge |
 | **heartbeat**         | ✅        | Proactive cognitive scheduling    | heartbeat-scheduler, analytics                                            |
-| **tools**             | ✅        | Utility tools                    | healthcheck, timer, latent-activator, observatory, diff, system-monitor, research |
-| **nudge**             | ✅        | Feedback/nudge injection         | feedback (from assistant/feedback)                                        |
-| **tool-config**       | ✅        | Interactive tool management      | tool-config (/tools, /tool-status)                                        |
-| **watchdog**          | ❌        | Error monitoring (opt-in)        | watchdog                                                                  |
-| **health-maintenance**| ❌        | Degradation recovery (opt-in)    | health-maintenance (renamed from evolve)                                  |
-| **error-tracking**    | ❌        | Error logging tools (opt-in)     | error-capture (promoted from retry/error-capture)                         |
+| **tools**             | ✅        | Cognitive utility tools           | timer, latent-activator                                                   |
+| **nudge**             | ✅        | Feedback/nudge injection          | feedback                                                                  |
+| **contrib**           | ✅        | Peripheral utilities (not cog. arch.) | diff, healthcheck, observatory, research, system-monitor, rate-limiter, tool-config |
+| **watchdog**          | ❌        | Error monitoring (opt-in)         | watchdog                                                                  |
+| **health-maintenance**| ❌        | Degradation recovery (opt-in)     | health-maintenance                                                        |
+| **error-tracking**    | ❌        | Error logging tools (opt-in)      | error-capture                                                             |
 
-Each extension lives at `src/extensions/<module>/<extension>/index.ts`.
+Cognitive extensions live at `src/extensions/<module>/<extension>/`. Peripheral utilities live at `src/contrib/<extension>/`.
 
 ## Module Config
 

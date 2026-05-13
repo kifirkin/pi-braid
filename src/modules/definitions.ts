@@ -118,7 +118,6 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
   //   preprocessor:   EVENT-HANDLER — input preprocessing
   //   prompt-builder: EVENT-HANDLER — system prompt assembly (moved from prompt/)
   //   agent-environment: TOOL-PROVIDER — time_status, L1 context injection
-  //   rate-limiter:   EVENT-HANDLER — RPM/TPM API rate limiting
   // ═════════════════════════════════════════════════════════════════════
   {
     name: "core",
@@ -318,7 +317,7 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
       { name: "rate-limiter", fn: contribRateLimiterFn },
       { name: "tool-config", fn: toolConfigFn },
     ],
-    listensTo: ["session_start", "session_tree", "session_shutdown", "context", "turn_end"],
+    listensTo: ["session_tree", "session_shutdown", "context"],
     coupledWith: [],
   },
 
