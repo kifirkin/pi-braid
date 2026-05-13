@@ -9,8 +9,6 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../../lib/logger.js";
-import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
-import { eventBus } from "../../../lib/event-bus.js";
 import { detectMissingVerification, recordCodeChange } from "../detection/verification.js";
 import {
   type TurnAnalysisContext,
@@ -20,11 +18,7 @@ import {
 import { detectOrphanChains } from "./orphan-chains.js";
 import { type NudgeManager } from "../nudge-manager.js";
 import { getState } from "../state.js";
-import {
-  recordNudgeSent,
-  recordNudgeSuppressed,
-  getNudgeAnalytics,
-} from "../../../lib/nudge-analytics.js";
+import { recordNudgeSuppressed, getNudgeAnalytics } from "../../../lib/nudge-analytics.js";
 import { type TurnState } from "../types.js";
 import { validateTurn } from "../validation.js";
 import { sendEnforcementWhisper } from "../whisper.js";

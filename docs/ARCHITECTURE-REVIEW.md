@@ -452,7 +452,7 @@
 | metacognition/index.ts               | `evaluateCognition`, `Type`                                                                                                                              | 2 orphaned imports             |
 | blocking.ts (enforcement)            | `queueBlockAction`                                                                                                                                       | 1 orphaned export/import       |
 | probe-handler.ts, routing-handler.ts | `ExtensionAPI`                                                                                                                                           | 2 files, each 1 unused import  |
-| handler-registry.ts (retry)          | `loadFileContent`                                                                                                                                        | 1 orphaned import              |
+| handler-registry.ts (enforcement)          | `loadFileContent`                                                                                                                                        | 1 orphaned import              |
 
 ### Known Blockers
 

@@ -20,10 +20,8 @@ const log = createLogger("feedback");
 
 import { FEEDBACK_DIR, METRICS_FILE } from "../../lib/braid-paths.js";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import type {
-  AgentToolResult,
   ExtensionAPI,
   ExtensionContext,
 } from "@mariozechner/pi-coding-agent";

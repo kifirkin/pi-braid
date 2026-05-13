@@ -1,6 +1,6 @@
 import { getAnalyticsState } from "../heartbeat/analytics/index.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { EvolveResult, BenchmarkResult } from "./types.js";
+import type { HealthMaintenanceResult, BenchmarkResult } from "./types.js";
 
 // R9: Analytics feedback loop helpers
 export function getAnalyticsMetrics(ctx?: ExtensionContext) {
@@ -50,18 +50,18 @@ import { getExtensionState } from "../../lib/extension-state.js";
 
 const METRICS_SAVE_INTERVAL = 30000; // 30 seconds
 
-export function getEvolveState(ctx?: ExtensionContext): {
+export function getHealthMaintenanceState(ctx?: ExtensionContext): {
   saveTimer: ReturnType<typeof setInterval> | null;
 } {
-  if (ctx) return getExtensionState(ctx, "evolve", () => ({ saveTimer: null }));
+  if (ctx) return getExtensionState(ctx, "health-maintenance", () => ({ saveTimer: null }));
   return _default;
 }
 
 const _default = { saveTimer: null as ReturnType<typeof setInterval> | null };
 
 export function startMetricsPersistence(): void {
-  if (getEvolveState().saveTimer) return;
-  getEvolveState().saveTimer = setInterval(() => {
+  if (getHealthMaintenanceState().saveTimer) return;
+  getHealthMaintenanceState().saveTimer = setInterval(() => {
     saveMetrics().catch((err: Error) => _log.error("Failed to save metrics:", err));
   }, METRICS_SAVE_INTERVAL);
 }

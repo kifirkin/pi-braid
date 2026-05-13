@@ -1,6 +1,6 @@
-import type { EvolveResult } from "./types.js";
+import type { HealthMaintenanceResult } from "./types.js";
 
-export function formatEvolveOutput(result: EvolveResult): string {
+export function formatHealthMaintenanceOutput(result: HealthMaintenanceResult): string {
   const lines: string[] = [];
 
   switch (result.action) {

@@ -11,7 +11,6 @@ const log = createLogger("enforcement");
 import * as fs from "node:fs";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { EnforcementState } from "../state.js";
-import { queueBlockAction } from "../whisper.js";
 
 /** Result of a blocking check */
 export interface BlockResult {

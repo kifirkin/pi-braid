@@ -32,7 +32,7 @@ import {
 } from "../three-memory-stores/index.js";
 import {
   getPendingQAs as getPendingConflictQAs,
-  getAllQAs as getAllConflictQAs,
+// NOTE: getAllQAs aliased as getAllConflictQAs — verify if alias is needed
   resolveQA as resolveConflictQA,
   getQAStats as getConflictQAStats,
   getRelevantQA,

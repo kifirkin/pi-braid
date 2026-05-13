@@ -24,16 +24,16 @@ import {
 } from "../../lib/metacognitive-state.js";
 import { getExtensionState } from "../../lib/extension-state.js";
 
-import type { BenchmarkResult, EvolveActionType, EvolveResult } from "./types.js";
+import type { BenchmarkResult, HealthMaintenanceActionType, HealthMaintenanceResult } from "./types.js";
 import {
   getAnalyticsMetrics,
   startMetricsPersistence,
   BENCHMARK_HISTORY,
   MAX_BENCHMARK_HISTORY,
 } from "./helpers.js";
-import { formatEvolveOutput } from "./format.js";
+import { formatHealthMaintenanceOutput } from "./format.js";
 
-const _log = createLogger("evolve");
+const _log = createLogger("health-maintenance");
 
 // Initialize subsystems
 loadMetrics().catch((err: Error) => _log.error("Failed to load metrics:", err));
@@ -50,7 +50,7 @@ const EVOLVE_ACTIONS = [
   "benchmark",
 ] as const;
 
-const evolveSchema = Type.Object({
+const healthMaintenanceSchema = Type.Object({
   action: StringEnum([...EVOLVE_ACTIONS], { description: "Action to perform" }),
   checkpoint: Type.Optional(Type.String({ description: "Checkpoint hash for rollback" })),
   config: Type.Optional(
@@ -82,11 +82,11 @@ const evolveSchema = Type.Object({
   ),
 });
 
-export default function evolveExtension(pi: ExtensionAPI) {
+export default function healthMaintenanceExtension(pi: ExtensionAPI) {
   startMetricsPersistence();
 
   pi.on("session_shutdown", async (event, ctx) => {
-    const state = getExtensionState(ctx, "evolve", () => ({ saveTimer: null }));
+    const state = getExtensionState(ctx, "health-maintenance", () => ({ saveTimer: null }));
     if (state.saveTimer) {
       clearInterval(state.saveTimer);
     }
@@ -94,48 +94,48 @@ export default function evolveExtension(pi: ExtensionAPI) {
   });
 
   pi.registerTool({
-    name: "evolve",
-    label: "Evolve",
-    promptSnippet: "Self-evolution commands for agent improvement",
+    name: "health-maintenance",
+    label: "Health Maintenance",
+    promptSnippet: "Health maintenance commands for agent self-improvement",
     description:
-      "Self-evolution commands for agent improvement — use to check health, commit changes, rollback issues, or benchmark performance.",
-    parameters: evolveSchema,
+      "Health maintenance commands for agent improvement — use to check health, commit changes, rollback issues, or benchmark performance.",
+    parameters: healthMaintenanceSchema,
     execute: async (
       _toolCallId,
       params,
       _signal,
       _onUpdate,
       ctx,
-    ): Promise<AgentToolResult<EvolveResult>> => {
+    ): Promise<AgentToolResult<HealthMaintenanceResult>> => {
       try {
-        const result = await executeEvolveAction(params, pi, ctx);
+        const result = await executeHealthMaintenanceAction(params, pi, ctx);
         return {
-          content: [{ type: "text" as const, text: formatEvolveOutput(result) }],
+          content: [{ type: "text" as const, text: formatHealthMaintenanceOutput(result) }],
           details: result,
         };
       } catch (error) {
-        const errorResult: EvolveResult = {
+        const errorResult: HealthMaintenanceResult = {
           action: params.action,
           success: false,
           error: error instanceof Error ? error.message : String(error),
         };
         return {
-          content: [{ type: "text" as const, text: formatEvolveOutput(errorResult) }],
+          content: [{ type: "text" as const, text: formatHealthMaintenanceOutput(errorResult) }],
           details: errorResult,
         };
       }
     },
   });
 
-  return { name: "evolve", version: "3.0.0" };
+  return { name: "health-maintenance", version: "3.0.0" };
 }
 
 // Action Handlers
-async function executeEvolveAction(
+async function executeHealthMaintenanceAction(
   params: any,
   _pi: ExtensionAPI,
   ctx?: any,
-): Promise<EvolveResult> {
+): Promise<HealthMaintenanceResult> {
   switch (params.action) {
     case "status":
       return executeStatus(ctx);
@@ -158,7 +158,7 @@ async function executeEvolveAction(
   }
 }
 
-function executeStatus(ctx?: any): EvolveResult {
+function executeStatus(ctx?: any): HealthMaintenanceResult {
   const summary = getMetricsSummary();
   const config = getConfig();
   const meta = getMetacognitiveState();
@@ -184,7 +184,7 @@ function executeStatus(ctx?: any): EvolveResult {
   };
 }
 
-async function executeHealth(_pi: ExtensionAPI): Promise<EvolveResult> {
+async function executeHealth(_pi: ExtensionAPI): Promise<HealthMaintenanceResult> {
   const degraded = isDegraded();
   const reasons = getDegradationReasons();
   return {
@@ -198,12 +198,12 @@ async function executeHealth(_pi: ExtensionAPI): Promise<EvolveResult> {
   };
 }
 
-function executeCheck(): EvolveResult {
+function executeCheck(): HealthMaintenanceResult {
   const degraded = isDegraded();
   return { action: "check", success: true, data: { degraded, reasons: getDegradationReasons() } };
 }
 
-async function executeCommit(force: boolean, _pi: ExtensionAPI): Promise<EvolveResult> {
+async function executeCommit(force: boolean, _pi: ExtensionAPI): Promise<HealthMaintenanceResult> {
   return {
     action: "commit",
     success: true,
@@ -211,7 +211,7 @@ async function executeCommit(force: boolean, _pi: ExtensionAPI): Promise<EvolveR
   };
 }
 
-async function executeRollback(): Promise<EvolveResult> {
+async function executeRollback(): Promise<HealthMaintenanceResult> {
   return {
     action: "rollback",
     success: true,
@@ -219,17 +219,17 @@ async function executeRollback(): Promise<EvolveResult> {
   };
 }
 
-function executeConfig(newConfig?: any): EvolveResult {
+function executeConfig(newConfig?: any): HealthMaintenanceResult {
   if (newConfig) updateConfig(newConfig);
   return { action: "config", success: true, data: { config: getConfig() } };
 }
 
-function executeReset(): EvolveResult {
+function executeReset(): HealthMaintenanceResult {
   resetMetrics();
   return { action: "reset", success: true, data: { note: "Metrics reset to defaults." } };
 }
 
-function executeBenchmark(params?: any): EvolveResult {
+function executeBenchmark(params?: any): HealthMaintenanceResult {
   const BENCHMARK_HISTORY: BenchmarkResult[] = [];
   const MAX_BENCHMARK_HISTORY = 20;
 

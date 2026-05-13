@@ -34,7 +34,7 @@ export const INTERNAL_TOOLS = new Set([
   "goal",
   "plan",
   "scratchpad",
-  "evolve",
+  "health-maintenance",
 ]);
 
 export function isInternal(toolName: string): boolean {

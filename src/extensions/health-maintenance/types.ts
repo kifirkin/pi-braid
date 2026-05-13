@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-export interface EvolveResult {
+export interface HealthMaintenanceResult {
   action: string;
   success: boolean;
   data?: Record<string, unknown>;
@@ -15,7 +15,7 @@ export interface BenchmarkResult {
   failedCases: string[];
 }
 
-export type EvolveActionType =
+export type HealthMaintenanceActionType =
   | "status"
   | "health"
   | "check"

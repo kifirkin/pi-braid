@@ -15,16 +15,13 @@
 
 import type {
   ExtensionAPI,
-  SessionCompactEvent,
   ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../lib/logger.js";
 import { sendTrackedMessage } from "../../lib/injection-tracker.js";
 import { registerSessionStartHandler, SessionPhase } from "../../lib/session-start-queue.js";
-import { eventBus } from "../../lib/event-bus.js";
 import { detectMalformedToolCalls } from "./detection/malformed.js";
 import { getReplyInstruction, setLanguage, detectLanguage } from "../../lib/language-hint.js";
-import { detectMissingVerification, recordCodeChange } from "./detection/verification.js";
 import { checkBlocking } from "./handlers/blocking.js";
 import {
   addEvidence,
@@ -50,15 +47,15 @@ import {
 import { analyzeMessage } from "./handlers/message-analysis.js";
 import { registerTurnEndHandler } from "./handlers/turn-end-handler.js";
 import { type NudgeManager } from "./nudge-manager.js";
-import { getNudgeAnalytics } from "../../lib/nudge-analytics.js";
-import { validateToolForPhase, validateTurn } from "./validation.js";
+
+import { validateToolForPhase } from "./validation.js";
 import {
   clearPendingBlockAction,
   getPendingBlockAction,
   queueEnforcementWhisper,
   sendEnforcementWhisper,
 } from "./whisper.js";
-import { knownFiles, loadFileContent } from "./similarity.js";
+import { knownFiles } from "./similarity.js";
 import { enforcementSignals, determineContrastMode } from "./signals.js";
 import { getState, ENFORCEMENT_PARAMS } from "./state.js";
 import { resetState } from "./state.js";
