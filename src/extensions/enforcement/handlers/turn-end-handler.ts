@@ -8,9 +8,9 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { createLogger } from "../../../../lib/logger.js";
-import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
-import { eventBus } from "../../../../lib/event-bus.js";
+import { createLogger } from "../../../lib/logger.js";
+import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
+import { eventBus } from "../../../lib/event-bus.js";
 import { detectMissingVerification, recordCodeChange } from "../detection/verification.js";
 import {
   type TurnAnalysisContext,
@@ -24,7 +24,7 @@ import {
   recordNudgeSent,
   recordNudgeSuppressed,
   getNudgeAnalytics,
-} from "../../../../lib/nudge-analytics.js";
+} from "../../../lib/nudge-analytics.js";
 import { type TurnState } from "../types.js";
 import { validateTurn } from "../validation.js";
 import { sendEnforcementWhisper } from "../whisper.js";
@@ -201,7 +201,7 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
       if (msgText.length > 50) {
         try {
           const { processAgentResponse, formatContradictionWhisper } =
-            await import("../../../../lib/claim-tracker.js");
+            await import("../../../lib/claim-tracker.js");
           const contradictions = processAgentResponse(msgText, ctx, getState(ctx).currentTurn);
           if (contradictions.length > 0) {
             sendEnforcementWhisper(pi, ctx, formatContradictionWhisper(contradictions));

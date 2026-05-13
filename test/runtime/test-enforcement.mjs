@@ -28,7 +28,7 @@ function test(name, fn) {
 console.log("\n[1] similarity.ts — text similarity + file tracking");
 
 {
-  const mod = await import("../../dist/extensions/cognitive/enforcement/similarity.js");
+  const mod = await import("../../dist/extensions/enforcement/similarity.js");
   const { computeSimilarity, knownFiles, loadFileContent } = mod;
 
   test("computeSimilarity returns 1 for identical texts", () => {
@@ -68,7 +68,7 @@ console.log("\n[1] similarity.ts — text similarity + file tracking");
 console.log("\n[2] signals.ts — enforcement signals + contrast mode");
 
 {
-  const mod = await import("../../dist/extensions/cognitive/enforcement/signals.js");
+  const mod = await import("../../dist/extensions/enforcement/signals.js");
   const { enforcementSignals, determineContrastMode } = mod;
 
   test("enforcementSignals is an object", () => {
@@ -93,7 +93,7 @@ console.log("\n[2] signals.ts — enforcement signals + contrast mode");
 console.log("\n[3] handler-registry.ts — structure");
 
 {
-  const src = readFileSync(join(ROOT, "src/extensions/cognitive/enforcement/handler-registry.ts"), "utf-8");
+  const src = readFileSync(join(ROOT, "src/extensions/enforcement/handler-registry.ts"), "utf-8");
 
   test("exports registerHandlers function", () => {
     assert.ok(src.includes("export function registerHandlers"));
@@ -163,7 +163,7 @@ console.log("\n[3] handler-registry.ts — structure");
 console.log("\n[4] index.ts — thin wrapper");
 
 {
-  const src = readFileSync(join(ROOT, "src/extensions/cognitive/enforcement/index.ts"), "utf-8");
+  const src = readFileSync(join(ROOT, "src/extensions/enforcement/index.ts"), "utf-8");
 
   test("index.ts is small (thin wrapper)", () => {
     const lines = src.split("\n").length;
@@ -187,24 +187,24 @@ console.log("\n[4] index.ts — thin wrapper");
 console.log("\n[5] Lazy-load verification");
 
 {
-  const src = readFileSync(join(ROOT, "src/extensions/cognitive/enforcement/handler-registry.ts"), "utf-8");
+  const src = readFileSync(join(ROOT, "src/extensions/enforcement/handler-registry.ts"), "utf-8");
 
   test("mars-reflector not eagerly imported", () => {
-    assert.ok(!src.includes('from "../../../lib/mars-reflector.js"'), "mars-reflector should be dynamic");
-    assert.ok(src.includes('await import("../../../lib/mars-reflector.js")'), "mars-reflector should be lazy");
+    assert.ok(!src.includes('from "../../lib/mars-reflector.js"'), "mars-reflector should be dynamic");
+    assert.ok(src.includes('await import("../../lib/mars-reflector.js")'), "mars-reflector should be lazy");
   });
 
   test("dreamer not eagerly imported", () => {
-    assert.ok(!src.includes('from "../../../lib/dreamer.js"'), "dreamer should be dynamic");
-    assert.ok(src.includes('await import("../../../lib/dreamer.js")'), "dreamer should be lazy");
+    assert.ok(!src.includes('from "../../lib/dreamer.js"'), "dreamer should be dynamic");
+    assert.ok(src.includes('await import("../../lib/dreamer.js")'), "dreamer should be lazy");
   });
 
   test("claim-tracker lazily imported from turn-end-handler.ts", () => {
     const hasAnyImport = src.includes('claim-tracker');
     assert.ok(!hasAnyImport, "claim-tracker should NOT be in handler-registry.ts (moved to turn-end-handler.ts)");
-    const turnEndSrc = readFileSync(`${ROOT}/src/extensions/cognitive/enforcement/handlers/turn-end-handler.ts`, "utf8");
-    const hasStatic = turnEndSrc.includes('from "../../../../lib/claim-tracker.js"');
-    const hasDynamic = turnEndSrc.includes('await import("../../../../lib/claim-tracker.js")');
+    const turnEndSrc = readFileSync(`${ROOT}/src/extensions/enforcement/handlers/turn-end-handler.ts`, "utf8");
+    const hasStatic = turnEndSrc.includes('from "../../../lib/claim-tracker.js"');
+    const hasDynamic = turnEndSrc.includes('await import("../../../lib/claim-tracker.js")');
     assert.ok(!hasStatic, "turn-end-handler: claim-tracker should be lazy");
     assert.ok(hasDynamic, "turn-end-handler: claim-tracker should be lazy");
   });
@@ -220,7 +220,7 @@ console.log("\n[5] Lazy-load verification");
   });
 
   test("belief-policy-engine IS eagerly imported (used in 7+ call sites)", () => {
-    assert.ok(src.includes('from "../../../lib/belief-policy-engine.js"'), "belief-policy-engine should be eager");
+    assert.ok(src.includes('from "../../lib/belief-policy-engine.js"'), "belief-policy-engine should be eager");
   });
 }
 

@@ -55,7 +55,7 @@
  *
  * See also:
  *   - src/lib/belief-policy-engine.ts — signal storage + policy evaluation
- *   - src/extensions/cognitive/enforcement/index.ts — signal emission sites
+ *   - src/extensions/enforcement/index.ts — signal emission sites
  *   - src/extensions/heartbeat/analytics/index.ts — analytics signal emission
  */
 

@@ -201,7 +201,7 @@ const MODULE_PATHS = [
   "src/lib/cognitive-memory.ts",
   "src/lib/cognitive-memory/storage.ts",
   "src/extensions/core/scratchpad/persistence.ts",
-  "src/extensions/cognitive/enforcement/similarity.ts",
+  "src/extensions/enforcement/similarity.ts",
   "src/extensions/error-tracking/error-capture/index.ts",
 ];
 

@@ -37,7 +37,7 @@ import topicDriftFn from "../extensions/cognitive/topic-drift/index.js";
 import sycophancyDetectorFn from "../extensions/cognitive/sycophancy-detector/index.js";
 
 // enforcement (heavy event handling, split from cognitive-quality)
-import enforcementFn from "../extensions/cognitive/enforcement/index.js";
+import enforcementFn from "../extensions/enforcement/index.js";
 
 // memory (three-store memory + context lifecycle + agent-facing bridge)
 import memoryStoresFn from "../extensions/memory/three-memory-stores/index.js";

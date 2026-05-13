@@ -12,7 +12,7 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { VERIFICATION_JUDGE_SYSTEM_PROMPT } from "./judge-prompt.js";
 import { callLlm, extractJson } from "./judge-utils.js";
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../lib/logger.js";
 
 const log = createLogger("verification-judge");
 

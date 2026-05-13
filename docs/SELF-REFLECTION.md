@@ -231,7 +231,7 @@ _Appended during infinite loop — Cycles 5-8_
 
 ### Finding: handlers/ directory is ALL UTILITY, ZERO event handlers
 
-Every file in `src/extensions/cognitive/enforcement/handlers/` has **0** `pi.on()`, `registerTool()`, or `registerCommand()` calls. They are pure helper modules:
+Every file in `src/extensions/enforcement/handlers/` has **0** `pi.on()`, `registerTool()`, or `registerCommand()` calls. They are pure helper modules:
 
 | Handler File          | Lines | Purpose                             | Registration Count |
 | --------------------- | ----- | ----------------------------------- | ------------------ |
@@ -266,7 +266,7 @@ Every file in `src/extensions/cognitive/enforcement/handlers/` has **0** `pi.on(
 ### CRITICAL: enforcement → analytics (cross-module hard import)
 
 ```
-cognitive/enforcement/index.ts
+enforcement/index.ts
   → heartbeat/analytics/index.js  (HARD import, not lazy)
 ```
 

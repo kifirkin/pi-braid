@@ -15,8 +15,8 @@
 
 import type { Api, Model } from "@mariozechner/pi-ai";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { callLlm as sharedCallLlm } from "../../../lib/llm-call.js";
-import type { LlmCallOptions } from "../../../lib/llm-call.js";
+import { callLlm as sharedCallLlm } from "../../lib/llm-call.js";
+import type { LlmCallOptions } from "../../lib/llm-call.js";
 
 export type { LlmCallOptions };
 

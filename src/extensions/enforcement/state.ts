@@ -1,4 +1,4 @@
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../lib/logger.js";
 
 const log = createLogger("enforcement");
 /**
@@ -6,10 +6,10 @@ const log = createLogger("enforcement");
  */
 
 import type { JudgeAnalysis } from "./judge.js";
-import { TopicDriftDetector } from "../../../lib/topic-drift-detector.js";
+import { TopicDriftDetector } from "../../lib/topic-drift-detector.js";
 import type { EnforcementConfig, ToolChainState, ToolSequencePattern, TurnState } from "./types.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { getExtensionState } from "../../../lib/extension-state.js";
+import { getExtensionState } from "../../lib/extension-state.js";
 
 export const ENFORCEMENT_PARAMS = {
   // Tunable thresholds

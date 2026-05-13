@@ -18,12 +18,12 @@ import type {
   SessionCompactEvent,
   ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
-import { createLogger } from "../../../lib/logger.js";
-import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
-import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
-import { eventBus } from "../../../lib/event-bus.js";
+import { createLogger } from "../../lib/logger.js";
+import { sendTrackedMessage } from "../../lib/injection-tracker.js";
+import { registerSessionStartHandler, SessionPhase } from "../../lib/session-start-queue.js";
+import { eventBus } from "../../lib/event-bus.js";
 import { detectMalformedToolCalls } from "./detection/malformed.js";
-import { getReplyInstruction, setLanguage, detectLanguage } from "../../../lib/language-hint.js";
+import { getReplyInstruction, setLanguage, detectLanguage } from "../../lib/language-hint.js";
 import { detectMissingVerification, recordCodeChange } from "./detection/verification.js";
 import { checkBlocking } from "./handlers/blocking.js";
 import {
@@ -31,26 +31,26 @@ import {
   getUnresolvedConflicts,
   detectConflicts,
   formatConflictMessage,
-} from "../../../lib/evidence-pool.js";
+} from "../../lib/evidence-pool.js";
 import {
   processConflicts as processConflictQAs,
   formatConflictWhisper,
-} from "../../../lib/conflict-qa.js";
+} from "../../lib/conflict-qa.js";
 import {
   emitSignal,
   getNextRecommendation,
   reportRecommendationOutcome,
-} from "../../../lib/belief-policy-engine.js";
+} from "../../lib/belief-policy-engine.js";
 import { recordBashDetails, recordToolCall, recordToolInput } from "./handlers/tool-tracker.js";
 import {
   checkLocalizationRisk,
   recordFileTouch,
   updateProblemContext,
-} from "../../../lib/bidirectional-verifier.js";
+} from "../../lib/bidirectional-verifier.js";
 import { analyzeMessage } from "./handlers/message-analysis.js";
 import { registerTurnEndHandler } from "./handlers/turn-end-handler.js";
 import { type NudgeManager } from "./nudge-manager.js";
-import { getNudgeAnalytics } from "../../../lib/nudge-analytics.js";
+import { getNudgeAnalytics } from "../../lib/nudge-analytics.js";
 import { validateToolForPhase, validateTurn } from "./validation.js";
 import {
   clearPendingBlockAction,
@@ -629,7 +629,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     }
 
     // MARS
-    const { shouldAdvise: marsShouldAdvise } = await import("../../../lib/mars-reflector.js");
+    const { shouldAdvise: marsShouldAdvise } = await import("../../lib/mars-reflector.js");
     const marsAdvice = marsShouldAdvise(ctx);
     if (marsAdvice) {
       const signalType: any =
@@ -665,7 +665,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     }
 
     // Dreamer
-    const { dream } = await import("../../../lib/dreamer.js");
+    const { dream } = await import("../../lib/dreamer.js");
     const dreamAdvice = dream(ctx, getState(ctx).toolLog);
     if (dreamAdvice) {
       emitSignal(ctx, "stability", "predicted-decline", "info", false, {

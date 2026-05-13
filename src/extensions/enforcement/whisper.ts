@@ -1,15 +1,15 @@
-import { createLogger } from "../../../lib/logger.js";
-import { eventBus } from "../../../lib/event-bus.js";
+import { createLogger } from "../../lib/logger.js";
+import { eventBus } from "../../lib/event-bus.js";
 
 const log = createLogger("enforcement");
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import { getExtensionState } from "../../../lib/extension-state.js";
-import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
-import { recordNudgeSent } from "../../../lib/nudge-analytics.js";
-import { areCognitiveNudgesDisabled } from "../../../lib/braid-settings.js";
+import { getExtensionState } from "../../lib/extension-state.js";
+import { sendTrackedMessage } from "../../lib/injection-tracker.js";
+import { recordNudgeSent } from "../../lib/nudge-analytics.js";
+import { areCognitiveNudgesDisabled } from "../../lib/braid-settings.js";
 
 interface WhisperState {
   pendingWhisper: string | null;

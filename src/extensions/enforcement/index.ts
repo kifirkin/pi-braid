@@ -19,7 +19,7 @@ const log = createLogger("enforcement");
 
 export { enforcementSignals, determineContrastMode } from "./signals.js";
 
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../lib/logger.js";
 
 export default function enforcementExtension(pi: ExtensionAPI) {
   const nudgeManager = new NudgeManager();
