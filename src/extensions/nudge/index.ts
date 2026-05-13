@@ -1,7 +1,7 @@
-import { createLogger } from "../../../lib/logger.js";
-import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
-import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
-import { areCognitiveNudgesDisabled } from "../../../lib/braid-settings.js";
+import { createLogger } from "../../lib/logger.js";
+import { sendTrackedMessage } from "../../lib/injection-tracker.js";
+import { registerSessionStartHandler, SessionPhase } from "../../lib/session-start-queue.js";
+import { areCognitiveNudgesDisabled } from "../../lib/braid-settings.js";
 
 const log = createLogger("feedback");
 
@@ -18,7 +18,7 @@ const log = createLogger("feedback");
  * 4. Integration hub - Connects analytics, enforcement, adaptive
  */
 
-import { FEEDBACK_DIR, METRICS_FILE } from "../../../lib/braid-paths.js";
+import { FEEDBACK_DIR, METRICS_FILE } from "../../lib/braid-paths.js";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -28,7 +28,7 @@ import type {
   ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
 
-import { getExtensionState } from "../../../lib/extension-state.js";
+import { getExtensionState } from "../../lib/extension-state.js";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 

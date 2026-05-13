@@ -60,7 +60,7 @@ import systemMonitorFn from "../extensions/tools/system-monitor/index.js";
 import researchFn from "../extensions/tools/research/index.js";
 
 // nudge (feedback/nudge injection — from assistant/feedback)
-import feedbackFn from "../extensions/nudge/feedback/index.js";
+import feedbackFn from "../extensions/nudge/index.js";
 
 // tool-config (interactive tool management — from assistant/assistant)
 import toolConfigFn from "../extensions/tool-config/index.js";
@@ -72,7 +72,7 @@ import watchdogFn from "../extensions/watchdog/index.js";
 import healthMaintenanceFn from "../extensions/health-maintenance/index.js";
 
 // error-tracking (error logging tools, opt-in, new from retry/error-capture)
-import errorCaptureFn from "../extensions/error-tracking/error-capture/index.js";
+import errorCaptureFn from "../extensions/error-tracking/index.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
