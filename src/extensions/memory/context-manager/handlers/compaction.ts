@@ -75,6 +75,10 @@ function clearProcessedCompacts(sessionId: string, leafId: string): void {
 // message_end handler). We skip the duplicate by returning the pre-appended
 // entry ID instead of creating a new one.
 
+/** Whether compaction is currently in progress. Guards input capture to only
+ * capture messages typed DURING compaction, not messages that triggered it. */
+let _compactionActive = false;
+
 /** Text of the user's message queued during compaction. */
 let _queuedDuringCompaction: string | undefined;
 
@@ -155,6 +159,7 @@ export function clearInterceptState(): void {
   _origAppendMessage = undefined;
   _interceptActive = false;
   _interceptedSmRef = undefined;
+  _compactionActive = false;
 }
 
 /**
@@ -258,14 +263,17 @@ export function registerBeforeCompactHandler(pi: any): void {
   // session_compact (before TUI's rebuildChatFromMessages runs).
   pi.on("input", (event: any) => {
     if (!event?.text) return;
-    // Guard: only set if not already set (handles rapid double-Enter).
-    if (_queuedDuringCompaction === undefined) {
+    // Guard: only capture messages typed DURING active compaction.
+    // Messages typed before compaction starts are already in sessionManager
+    // and should NOT be pre-appended (would create a duplicate).
+    if (_compactionActive && _queuedDuringCompaction === undefined) {
       _queuedDuringCompaction = event.text;
     }
   });
 
   pi.on("session_before_compact", async (event: any, ctx: ExtensionContext) => {
     try {
+      _compactionActive = true;
       // STEP 0: Deduplicate — prevent two entries from manual+auto call sites
       const sessionId = (ctx as any).sessionManager?.getSessionId?.() ?? "?";
       const leafId = (ctx as any).sessionManager?.getLeafId?.() ?? "?";
@@ -480,7 +488,12 @@ export function registerCompactionEndHandler(pi: any): void {
         const { reason, willRetry, aborted, errorMessage, result } = event;
 
         // pi core is retrying — nothing to do, let pi handle it
-        if (willRetry) return;
+        if (willRetry) {
+          _compactionActive = false;
+          return;
+        }
+
+        _compactionActive = false;
 
         // CRITICAL: Always clear intercept state on compaction_end, regardless of outcome.
         // The intercept was set in session_compact to skip the duplicate from
@@ -897,6 +910,7 @@ export function registerTurnEndRetryReset(pi: any): void {
     // This ensures the next compaction cycle starts clean.
     _queuedDuringCompaction = undefined;
     _preAppendedEntryId = undefined;
+    _compactionActive = false;
   });
 
   // Also listen for message_end — handles edge case where turn_end might not
