@@ -1,6 +1,6 @@
-import { createLogger } from "../../../lib/logger.js";
-import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
-import { BRAID } from "../../../lib/braid-paths.js";
+import { createLogger } from "../../lib/logger.js";
+import { registerSessionStartHandler, SessionPhase } from "../../lib/session-start-queue.js";
+import { BRAID } from "../../lib/braid-paths.js";
 
 const log = createLogger("assistant");
 /**
@@ -15,7 +15,7 @@ import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext, ToolInfo } from "@mariozechner/pi-coding-agent";
 import { getSettingsListTheme } from "@mariozechner/pi-coding-agent";
 import { Container, type SettingItem, SettingsList } from "@mariozechner/pi-tui";
-import { loadState, saveState } from "../../../lib/async-storage.js";
+import { loadState, saveState } from "../../lib/async-storage.js";
 
 const TOOLS_CONFIG_TYPE = "tools-config";
 

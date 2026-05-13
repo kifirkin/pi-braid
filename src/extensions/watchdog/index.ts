@@ -1,5 +1,5 @@
-import { createLogger } from "../../../lib/logger.js";
-import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
+import { createLogger } from "../../lib/logger.js";
+import { registerSessionStartHandler, SessionPhase } from "../../lib/session-start-queue.js";
 
 const log = createLogger("watchdog");
 /**

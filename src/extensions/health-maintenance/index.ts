@@ -15,14 +15,14 @@ import {
   resetMetrics,
   saveMetrics,
   updateConfig,
-} from "../../../lib/degradation-detector.js";
-import { createLogger } from "../../../lib/logger.js";
+} from "../../lib/degradation-detector.js";
+import { createLogger } from "../../lib/logger.js";
 import {
   getMetacognitiveState,
   getRecommendation,
   initMetacognitiveState,
-} from "../../../lib/metacognitive-state.js";
-import { getExtensionState } from "../../../lib/extension-state.js";
+} from "../../lib/metacognitive-state.js";
+import { getExtensionState } from "../../lib/extension-state.js";
 
 import type { BenchmarkResult, EvolveActionType, EvolveResult } from "./types.js";
 import {

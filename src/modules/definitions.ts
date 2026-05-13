@@ -28,7 +28,7 @@ import coreScratchpadFn from "../extensions/core/scratchpad/index.js";
 import corePreprocessorFn from "../extensions/core/user-message-preprocessor/index.js";
 import corePromptBuilderFn from "../extensions/core/prompt-builder/index.js";
 import coreAgentEnvFn from "../extensions/core/agent-environment/index.js";
-import coreRateLimiterFn from "../extensions/rate-limiter/rate-limiter/index.js";
+import coreRateLimiterFn from "../extensions/rate-limiter/index.js";
 
 // cognitive-quality (reasoning tools, verification, topic control)
 import reasoningFn from "../extensions/cognitive/reasoning/index.js";
@@ -63,13 +63,13 @@ import researchFn from "../extensions/tools/research/index.js";
 import feedbackFn from "../extensions/nudge/feedback/index.js";
 
 // tool-config (interactive tool management — from assistant/assistant)
-import toolConfigFn from "../extensions/tool-config/tool-config/index.js";
+import toolConfigFn from "../extensions/tool-config/index.js";
 
 // watchdog (session monitoring, opt-in)
-import watchdogFn from "../extensions/watchdog/watchdog/index.js";
+import watchdogFn from "../extensions/watchdog/index.js";
 
 // health-maintenance (degradation detection + checkpointing, opt-in)
-import healthMaintenanceFn from "../extensions/health-maintenance/health-maintenance/index.js";
+import healthMaintenanceFn from "../extensions/health-maintenance/index.js";
 
 // error-tracking (error logging tools, opt-in, new from retry/error-capture)
 import errorCaptureFn from "../extensions/error-tracking/error-capture/index.js";

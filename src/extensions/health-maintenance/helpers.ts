@@ -1,4 +1,4 @@
-import { getAnalyticsState } from "../../heartbeat/analytics/index.js";
+import { getAnalyticsState } from "../heartbeat/analytics/index.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { EvolveResult, BenchmarkResult } from "./types.js";
 
@@ -46,7 +46,7 @@ export function getAnalyticsRecommendation(
 }
 
 // State management
-import { getExtensionState } from "../../../lib/extension-state.js";
+import { getExtensionState } from "../../lib/extension-state.js";
 
 const METRICS_SAVE_INTERVAL = 30000; // 30 seconds
 
@@ -66,8 +66,8 @@ export function startMetricsPersistence(): void {
   }, METRICS_SAVE_INTERVAL);
 }
 
-import { createLogger } from "../../../lib/logger.js";
-import { saveMetrics } from "../../../lib/degradation-detector.js";
+import { createLogger } from "../../lib/logger.js";
+import { saveMetrics } from "../../lib/degradation-detector.js";
 const _log = createLogger("evolve");
 
 // Benchmark history
