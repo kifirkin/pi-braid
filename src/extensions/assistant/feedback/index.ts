@@ -229,7 +229,7 @@ function sendFeedbackWhisper(pi: ExtensionAPI, message: string): void {
       content: [{ type: "text", text: `[feedback] ${message}` }],
       display: true,
     },
-    { deliverAs: "steer", triggerTurn: true },
+    { deliverAs: "steer", triggerTurn: false },
     { type: "other", source: "feedback/whisper" },
   );
 }

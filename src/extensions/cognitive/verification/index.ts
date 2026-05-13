@@ -340,7 +340,7 @@ export default function verificationExtension(pi: ExtensionAPI) {
     label: "Verify Claim",
     promptSnippet: "Verify agent claims against retrieved context",
     description:
-      "Verify agent claims against retrieved context. Detects contradictions, unsupported assertions, and hedge word issues.",
+      "Verify agent claims against retrieved context — use when conclusions depend on evidence. Detects contradictions, unsupported assertions, and hedge word issues.",
     parameters: verifyClaimSchema,
     execute: async (_toolCallId: string, params: any): Promise<Record<string, unknown>> => {
       try {
@@ -416,7 +416,7 @@ export default function verificationExtension(pi: ExtensionAPI) {
     label: "Verify Decomposition",
     promptSnippet: "Verify task decomposition fully covers the parent task",
     description:
-      "Verify that a task decomposition fully covers the parent task. Detects gaps and suggests improvements.",
+      "Check a task decomposition for coverage gaps — use after breaking down a complex task into subtasks.",
     parameters: verifyDecompositionSchema,
     execute: async (_toolCallId: string, params: any): Promise<Record<string, unknown>> => {
       try {

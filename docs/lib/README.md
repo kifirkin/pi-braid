@@ -19,8 +19,8 @@ Coverage: **22/23 lib files documented** (21 individual + 1 overview)
 | [mars-reflector](./mars-reflector.md)             | `src/lib/mars-reflector.ts`       | 100+  | Self-reflection tool pattern analysis  |
 | [belief-policy-engine](./belief-policy-engine.md) | `src/lib/belief-policy-engine.ts` | 300+  | Signal policy engine + recommendations |
 | [reasoning-metrics](./reasoning-metrics.md)       | `src/lib/reasoning-metrics.ts`    | 60+   | Reasoning quality metrics              |
-| [metacognitive-state](./metacognitive-state.md)   | `src/lib/metacognitive-state.ts`  | 70+   | Confidence + knowledge gap tracking    |
-| [cognition-evaluator](./cognition-evaluator.md)   | `src/lib/cognition-evaluator.ts`  | —     | Heuristic evaluation (bundled)         |
+| metacognitive-state (metacognitive-state)         | `src/lib/metacognitive-state.ts`  | 70+   | Confidence + knowledge gap tracking    |
+| cognition-evaluator (no standalone doc)           | `src/lib/cognition-evaluator.ts`  | —     | Heuristic evaluation (bundled)         |
 
 ## Memory & Storage
 

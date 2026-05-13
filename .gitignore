@@ -1,6 +1,5 @@
 # Build output
 dist/
-*.d.ts
 *.d.ts.map
 *.js.map
 *.js
@@ -42,8 +41,4 @@ pi-session-*
 # Session HTML exports
 pi-session-*.html
 *.html
-
-# Compiled output (built from src/)
-extensions/
-lib/
-modules/
+.DS_Store

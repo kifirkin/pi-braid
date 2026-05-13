@@ -106,7 +106,8 @@ async function gatherL1State(
  */
 function discoverPiRootPath(): string {
   // Strategy 1: Find pi binary in PATH and walk up to package.json
-  // Most reliable for global installs
+  // Most reliable for global installs (mise, npm, bun)
+  const PI_PACKAGE_NAMES = ["@earendil-works/pi-coding-agent", "@mariozechner/pi-coding-agent"];
   try {
     const piPath = execSync("which pi 2>/dev/null || echo ''", {
       encoding: "utf8",
@@ -119,7 +120,7 @@ function discoverPiRootPath(): string {
         const pkgPath = join(dir, "package.json");
         if (existsSync(pkgPath)) {
           const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
-          if (pkg.name === "@mariozechner/pi-coding-agent") {
+          if (PI_PACKAGE_NAMES.includes(pkg.name)) {
             return dir;
           }
         }
@@ -133,17 +134,20 @@ function discoverPiRootPath(): string {
     const extensionDir = dirname(fileURLToPath(import.meta.url));
     let dir = extensionDir;
     for (let i = 0; i < 10; i++) {
-      const candidate = join(
-        dir,
-        "node_modules",
-        "@mariozechner",
-        "pi-coding-agent",
-        "package.json",
-      );
-      if (existsSync(candidate)) {
-        const pkg = JSON.parse(readFileSync(candidate, "utf8"));
-        if (pkg.name === "@mariozechner/pi-coding-agent") {
-          return dirname(candidate);
+      for (const pkgName of PI_PACKAGE_NAMES) {
+        const scopedName = pkgName.split("/")[1]; // e.g. "pi-coding-agent"
+        const candidate = join(
+          dir,
+          "node_modules",
+          pkgName.split("/")[0],
+          scopedName,
+          "package.json",
+        );
+        if (existsSync(candidate)) {
+          const pkg = JSON.parse(readFileSync(candidate, "utf8"));
+          if (pkg.name === pkgName) {
+            return dirname(candidate);
+          }
         }
       }
       const parent = resolve(dir, "..");
@@ -155,11 +159,18 @@ function discoverPiRootPath(): string {
   // Strategy 3: Check npm global prefix
   try {
     const npmPrefix = execSync("npm root -g", { encoding: "utf8", timeout: 5000 }).trim();
-    const candidate = join(npmPrefix, "@mariozechner", "pi-coding-agent", "package.json");
-    if (existsSync(candidate)) {
-      const pkg = JSON.parse(readFileSync(candidate, "utf8"));
-      if (pkg.name === "@mariozechner/pi-coding-agent") {
-        return dirname(candidate);
+    for (const pkgName of PI_PACKAGE_NAMES) {
+      const candidate = join(
+        npmPrefix,
+        pkgName.split("/")[0],
+        pkgName.split("/")[1],
+        "package.json",
+      );
+      if (existsSync(candidate)) {
+        const pkg = JSON.parse(readFileSync(candidate, "utf8"));
+        if (pkg.name === pkgName) {
+          return dirname(candidate);
+        }
       }
     }
   } catch {}

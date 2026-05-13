@@ -45,7 +45,32 @@ export async function loadMemory(): Promise<CognitiveMemoryStore> {
       return migrated;
     }
 
-    return parsed;
+    // After loading from new path, check if legacy memories need importing
+    // This handles the case where semantic.json exists but legacy memories
+    // were never migrated (e.g., migration condition missed the file format)
+    const store = parsed as CognitiveMemoryStore;
+    if (!store.migratedAt) {
+      try {
+        const legacyData = await fs.readFile(LEGACY_MEMORY_FILE_PATH, "utf-8");
+        const legacyParsed = JSON.parse(legacyData);
+        if (legacyParsed.memories?.length > 0) {
+          const existingIds = new Set(store.memories.map((m) => m.id));
+          const newMemories = legacyParsed.memories.filter((m: any) => !existingIds.has(m.id));
+          if (newMemories.length > 0) {
+            _log.info(`Importing ${newMemories.length} legacy memories into semantic store`);
+            store.memories.push(...newMemories);
+          }
+        }
+      } catch (e) {
+        if ((e as { code?: string }).code !== "ENOENT") {
+          _log.warn("Legacy memory check failed:", e);
+        }
+      }
+      store.migratedAt = Date.now();
+      await saveMemory(store);
+    }
+
+    return store;
   } catch (e) {
     if ((e as { code?: string }).code !== "ENOENT") {
       _log.error("Load error (new path):", e);

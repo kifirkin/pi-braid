@@ -52,11 +52,6 @@ import { formatCurrentSession, formatAllSessions } from "./format.js";
 const log = createLogger("analytics");
 
 export default function analyticsExtension(pi: ExtensionAPI) {
-  const pendingToolCalls = new Map<string, { toolName: string; startTime: number }>();
-  /** Tracks unique tool types used in the current turn (deduplicated for addiction detection).
-   *  Set is flushed to state.turnToolSequence on each turn_end, then cleared. */
-  const turnToolTypes = new Set<string>();
-
   // ── session_start ──────────────────────────────────────────────────
   registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event, ctx) => {
     const state = getAnalyticsStateInternal(ctx);
@@ -69,25 +64,28 @@ export default function analyticsExtension(pi: ExtensionAPI) {
     state.nudgesSent = 0;
     state.nudgesSuppressed = 0;
     state.storagePath = METRICS_FILE;
-    pendingToolCalls.clear();
-    turnToolTypes.clear();
-    lastAddictionCheck = 0;
 
     const logsDir = LOGS_DIR;
     if (!existsSync(logsDir)) mkdirSync(logsDir, { recursive: true });
   });
 
   // ── tool_execution_start ───────────────────────────────────────────
-  pi.on("tool_execution_start", async (event) => {
-    pendingToolCalls.set(event.toolCallId, { toolName: event.toolName, startTime: Date.now() });
+  pi.on("tool_execution_start", async (event, ctx) => {
+    try {
+      const state = getAnalyticsStateInternal(ctx);
+      state.pendingToolCalls.set(event.toolCallId, {
+        toolName: event.toolName,
+        startTime: Date.now(),
+      });
+    } catch {}
   });
 
   // ── tool_execution_end ─────────────────────────────────────────────
   pi.on("tool_execution_end", async (event, ctx) => {
     try {
-      const pending = pendingToolCalls.get(event.toolCallId);
+      const state = getAnalyticsStateInternal(ctx);
+      const pending = state.pendingToolCalls.get(event.toolCallId);
       if (pending) {
-        const state = getAnalyticsStateInternal(ctx);
         const success = !event.isError;
         recordToolCall(state, pending.toolName, Date.now() - pending.startTime, success);
         // Feed degradation detector
@@ -97,8 +95,8 @@ export default function analyticsExtension(pi: ExtensionAPI) {
           recordError(ctx);
         }
         // Track tool type for per-turn deduplication in addiction detection
-        turnToolTypes.add(pending.toolName);
-        pendingToolCalls.delete(event.toolCallId);
+        state.currentTurnTypes.add(pending.toolName);
+        state.pendingToolCalls.delete(event.toolCallId);
       }
     } catch (err) {
       log.error("[analytics-tool-exec-end] error:", err);
@@ -106,22 +104,21 @@ export default function analyticsExtension(pi: ExtensionAPI) {
   });
 
   // ── turn_end: addiction detection + degradation ─────────────────────
-  let lastAddictionCheck = 0;
   pi.on("turn_end", async (_event: any, ctx: any) => {
     try {
       const state = getAnalyticsStateInternal(ctx);
 
       // Flush per-turn deduplicated tool types into turnToolSequence
-      for (const tool of turnToolTypes) {
+      for (const tool of state.currentTurnTypes) {
         state.turnToolSequence.push(tool);
       }
-      turnToolTypes.clear();
+      state.currentTurnTypes.clear();
 
       // Addiction check using per-turn deduplicated sequence (turnToolSequence)
       // This prevents multi-call turns (e.g., 3 bash + 1 read) from skewing ratios.
       const turnCalls = state?.turnToolSequence?.length ?? 0;
-      if (turnCalls >= 10 && turnCalls - lastAddictionCheck >= 10) {
-        lastAddictionCheck = turnCalls;
+      if (turnCalls >= 10 && turnCalls - state.lastAddictionCheck >= 10) {
+        state.lastAddictionCheck = turnCalls;
         const window = state.turnToolSequence.slice(-50);
         const counts = new Map<string, number>();
         for (const t of window) counts.set(t, (counts.get(t) ?? 0) + 1);
@@ -135,47 +132,56 @@ export default function analyticsExtension(pi: ExtensionAPI) {
             (ratio > 0.8 && toolN <= 2) ||
             (toolN > 1 && count > (total / Math.max(toolN, 1)) * 4)
           ) {
-            warnings.push(`${tool} (${count}/${total} turns, ${(ratio * 100).toFixed(0)}%)`);
+            warnings.push(`${tool} (${count}/${total} tool-turns, ${(ratio * 100).toFixed(0)}%)`);
           }
         }
         if (warnings.length > 0) {
-          emitSignal(ctx, "tool-use", "overuse", "warn", false, {
-            tools: warnings,
-            windowSize: total,
-          });
-          // BPE recommendation handled by enforcement - no duplicate here
-          // Skip whisper if cognitive nudges are disabled
-          if (areCognitiveNudgesDisabled()) {
-            log.debug("[analytics] Addiction alert suppressed via braid.suppressNudges=true");
+          // Deduplicate: skip if the exact same warnings were already emitted
+          const signature = warnings.sort().join("|");
+          if (state.lastAddictionSignatures.includes(signature)) {
+            log.debug("[analytics] Skipping duplicate addiction warning:", signature);
           } else {
-            // Use deliverAs: "followUp" - non-critical advisory, visible in TUI
-            sendTrackedMessage(
-              pi,
-              {
-                customType: "memory",
-                content: [
-                  {
-                    type: "text",
-                    text: `[analytics] Tool addiction pattern detected: ${warnings.join("; ")}`,
-                  },
-                ],
-                display: true,
-              },
-              { deliverAs: "followUp", triggerTurn: false },
-              { type: "heartbeat", source: "heartbeat/analytics" },
-            );
-          }
-          try {
-            eventBus.emit({
-              type: "analytics_alert",
-              alertType: "addiction",
-              severity: "warn",
-              message: `Tool addiction pattern detected: ${warnings.join("; ")}`,
-              data: { tools: warnings, windowSize: total },
-              turn: (ctx as any)?.turnCount ?? state.lastDensityTurn,
-              timestamp: Date.now(),
+            state.lastAddictionSignatures.push(signature);
+            // Keep last 3 signatures to bound memory (stale = 1 full window refresh)
+            if (state.lastAddictionSignatures.length > 3) state.lastAddictionSignatures.shift();
+
+            emitSignal(ctx, "tool-use", "overuse", "warn", false, {
+              tools: warnings,
+              windowSize: total,
             });
-          } catch {}
+            // BPE recommendation handled by enforcement - no duplicate here
+            // Skip whisper if cognitive nudges are disabled
+            if (areCognitiveNudgesDisabled()) {
+              log.debug("[analytics] Addiction alert suppressed via braid.suppressNudges=true");
+            } else {
+              sendTrackedMessage(
+                pi,
+                {
+                  customType: "memory",
+                  content: [
+                    {
+                      type: "text",
+                      text: `[analytics] Tool addiction pattern detected: ${warnings.join("; ")}`,
+                    },
+                  ],
+                  display: true,
+                },
+                { deliverAs: "steer", triggerTurn: false },
+                { type: "heartbeat", source: "heartbeat/analytics" },
+              );
+            }
+            try {
+              eventBus.emit({
+                type: "analytics_alert",
+                alertType: "addiction",
+                severity: "warn",
+                message: `Tool addiction pattern detected: ${warnings.join("; ")}`,
+                data: { tools: warnings, windowSize: total },
+                turn: (ctx as any)?.turnCount ?? state.lastDensityTurn,
+                timestamp: Date.now(),
+              });
+            } catch {}
+          }
         }
       }
 
@@ -228,7 +234,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
               content: [{ type: "text", text: "[health] Performance recovered to healthy." }],
               display: true,
             },
-            { deliverAs: "followUp", triggerTurn: false },
+            { deliverAs: "steer", triggerTurn: false },
             { type: "heartbeat", source: "heartbeat/analytics/recover" },
           );
         }
@@ -286,7 +292,8 @@ export default function analyticsExtension(pi: ExtensionAPI) {
     name: "get-session-metrics",
     label: "Get Session Metrics",
     promptSnippet: "Get structured current session analytics",
-    description: "Get structured current session analytics.",
+    description:
+      "Get structured current session analytics — use for performance monitoring and debugging session behavior.",
     parameters: Type.Object({}),
     execute: async (
       _id: any,
@@ -334,7 +341,8 @@ export default function analyticsExtension(pi: ExtensionAPI) {
     name: "get-tool-reliability",
     label: "Get Tool Reliability",
     promptSnippet: "Get tool success rates from historical data",
-    description: "Get tool success rates from historical analytics data.",
+    description:
+      "Get tool success rates from historical data — use to find which tools work best for each task type.",
     parameters: Type.Object({
       topN: Type.Optional(Type.Number({ description: "Max results. Default: 10" })),
     }),
@@ -365,7 +373,8 @@ export default function analyticsExtension(pi: ExtensionAPI) {
     name: "get-ab-results",
     label: "Get A/B Results",
     promptSnippet: "Get A/B experiment results across variants",
-    description: "Get A/B experiment results across variants.",
+    description:
+      "Get A/B experiment results across variants — use to compare different configurations and agent behaviors.",
     parameters: Type.Object({}),
     execute: async (
       _id: any,
@@ -404,7 +413,8 @@ export default function analyticsExtension(pi: ExtensionAPI) {
     name: "get-tool-addiction",
     label: "Get Tool Addiction",
     promptSnippet: "Detect tool addiction patterns",
-    description: "Detect tool addiction patterns.",
+    description:
+      "Detect tool addiction patterns — use to identify over-reliance on a single tool across sessions.",
     parameters: Type.Object({ sessionOnly: Type.Optional(Type.Boolean({ default: false })) }),
     execute: async (
       _id: any,
@@ -458,7 +468,8 @@ export default function analyticsExtension(pi: ExtensionAPI) {
     name: "hidden-messages",
     label: "Get Hidden Messages",
     promptSnippet: "Show all display:false injections in this session",
-    description: "Show all display:false injections this session.",
+    description:
+      "Show all display:false injections from this session — use to debug hidden system messages and nudges affecting context.",
     parameters: Type.Object({}),
     execute: async (
       _id: any,

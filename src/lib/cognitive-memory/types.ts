@@ -70,4 +70,6 @@ export interface CognitiveMemoryStore {
   memories: CognitiveMemoryEntry[];
   lastConsolidation: number;
   turnCount: number;
+  /** Timestamp of legacy memory migration (undefined = not yet migrated) */
+  migratedAt?: number;
 }

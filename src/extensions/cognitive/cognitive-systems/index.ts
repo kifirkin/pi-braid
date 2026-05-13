@@ -123,7 +123,7 @@ function createExplorePathsTool() {
     label: "Explore Paths",
     promptSnippet: "Spawn parallel sub-agents to explore root causes",
     description:
-      "Spawn parallel sub-agents to explore MULTIPLE potential root causes. Use BEFORE fixing bugs to gather evidence. All hypotheses must lead to proper, well-designed solutions - never use monkey patching or workarounds.",
+      "Spawn parallel sub-agents to explore multiple potential root causes before fixing bugs and gather evidence first. All hypotheses must lead to proper solutions — never use monkey patching.",
     parameters: Type.Object({
       hypothesis_1: Type.String({
         description:
@@ -269,7 +269,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
     label: "Store Memory",
     promptSnippet: "Store information in long-term memory",
     description:
-      "Store information in long-term memory. Supports structured content (files, errors, solutions), memory linking, and TTL-based expiration.",
+      "Persist insights, patterns, and errors to long-term memory — use when saving findings for cross-session recall. Supports structured content, memory linking, and TTL-based expiration.",
     parameters: Type.Object({
       content: Type.String({
         description: "The information to remember (can be JSON for structured content)",
@@ -330,9 +330,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
         }
 
         return {
-          content: [
-            { type: "text", text: `Stored memory ${m.id.slice(0, 12)} (${params.memoryType})` },
-          ],
+          content: [{ type: "text", text: `Stored memory ${m.id} (${params.memoryType})` }],
           details: { id: m.id, stored: true },
         };
       } catch (e) {
@@ -353,7 +351,8 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
     name: "memory_recall",
     label: "Recall Memory",
     promptSnippet: "Search memory for relevant information",
-    description: "Search memory for relevant information using semantic text search",
+    description:
+      "Search memory for past learnings and patterns — use when you need to recall before answering. Uses semantic text search to find relevant stored information.",
     parameters: Type.Object({
       query: Type.String({ description: "What to search for (natural language)" }),
       memoryType: Type.Optional(
@@ -455,7 +454,8 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
     name: "memory_list",
     label: "List Memories",
     promptSnippet: "List all stored memories sorted by recency",
-    description: "List all stored memories (sorted by recency)",
+    description:
+      "List stored memories sorted by recency — use before searching or recalling to see what's available.",
     parameters: Type.Object({
       limit: Type.Optional(Type.Number({ default: 20 })),
       full: Type.Optional(
@@ -521,7 +521,8 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
     name: "memory_get",
     label: "Get Memory",
     promptSnippet: "Get a specific memory by ID",
-    description: "Get a specific memory by ID",
+    description:
+      "Retrieve a specific memory by its full ID — use after listing or searching to inspect complete details.",
     parameters: Type.Object({
       id: Type.String({ description: "Memory ID to retrieve" }),
     }),
@@ -609,8 +610,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
     label: "Conflict QA",
     promptSnippet: "View and resolve knowledge conflicts from evidence pool",
     description:
-      "View and resolve knowledge conflicts detected by the evidence pool. " +
-      "Shows contradiction classification, resolution strategy, and source confidence.",
+      "Resolve contradictions between sources or beliefs using the evidence pool — use when sources disagree. Shows contradiction classification, resolution strategy, and source confidence.",
     parameters: Type.Object({
       action: StringEnum(["list", "stats", "resolve", "search"]),
       qa_id: Type.Optional(Type.String({ description: "QA ID to resolve (resolve action)" })),

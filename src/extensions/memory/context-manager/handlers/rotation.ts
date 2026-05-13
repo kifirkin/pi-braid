@@ -186,7 +186,7 @@ function triggerEmergencyRotation(pi: any, ctx: ExtensionContext): void {
         ],
         display: true,
       },
-      { deliverAs: "followUp", triggerTurn: true },
+      { deliverAs: "steer", triggerTurn: true },
       { type: "context", source: "context-manager/rotation" },
     );
 
@@ -282,7 +282,7 @@ export function registerRotationHandlers(pi: any): void {
   });
 
   // Track when agent takes rotation-relevant action
-  pi.on("tool_end", async (event: any, _ctx: ExtensionContext) => {
+  pi.on("tool_result", async (event: any, _ctx: ExtensionContext) => {
     try {
       if (!event?.toolName) return;
       const state = _sessionRotationState();
@@ -304,7 +304,7 @@ export function registerRotationHandlers(pi: any): void {
   });
 
   // Trigger rotation on finalize
-  pi.on("tool_end", async (event: any, ctx: ExtensionContext) => {
+  pi.on("tool_result", async (event: any, ctx: ExtensionContext) => {
     try {
       if (event?.toolName !== "finalize") return;
 
@@ -347,7 +347,7 @@ export function registerRotationHandlers(pi: any): void {
           ],
           display: true,
         },
-        { deliverAs: "followUp", triggerTurn: false },
+        { deliverAs: "steer", triggerTurn: false },
         { type: "context", source: "context-manager/rotation" },
       );
     } catch (err) {

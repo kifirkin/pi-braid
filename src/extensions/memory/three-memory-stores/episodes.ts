@@ -228,15 +228,25 @@ export function retrieveByRUMS(
     score: computeRUMS(query, ep, backgroundFreq, totalDocs),
   }));
 
-  const results = scored
+  let results = scored
     .filter((s) => s.score > 0.05)
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
     .map((s) => ({ ...s.ep, similarity: s.score }));
 
+  // Mark cross-session and filter them out — only current session episodes
+  // should be whispered to the agent. Cross-session episodes cause confusion.
+  const filtered: Episode[] = [];
   for (const ep of results) {
     (ep as any)._crossSession = ep.sessionId && ep.sessionId !== currentSessionId;
+    if (!(ep as any)._crossSession) {
+      filtered.push(ep);
+    }
   }
+
+  // If filtering removed everything, return empty rather than polluting
+  if (filtered.length === 0) return [];
+  results = filtered;
 
   log.debug(`RUMS retrieved ${results.length} episodes for "${query.slice(0, 30)}..."`);
   return results;

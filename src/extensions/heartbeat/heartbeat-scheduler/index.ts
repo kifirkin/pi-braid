@@ -43,6 +43,7 @@ import { measurementModule } from "./modules/measurement.js";
 import { budgetModule } from "./modules/budget.js";
 import { evolverModule } from "./modules/evolver.js";
 import { timerReminderModule } from "./modules/timer-reminder.js";
+import { behavioralDriftModule } from "./modules/behavioral-drift.js";
 
 export { recallerModule };
 export { dreamerModule };
@@ -87,6 +88,39 @@ export function formatSOPForWhisper(episode: Episode): string {
   }
 
   return parts.length > 0 ? parts.join("\n\n") : `SOP for: ${episode.task.slice(0, 100)}`;
+}
+
+// ── Whisper Batching ───────────────────────────────────────────────────────
+
+/**
+ * Flush batched whispers: group by priority tier, concatenate per tier,
+ * and send as aggregated messages. This prevents N separate injected
+ * messages per heartbeat tick when multiple modules activate.
+ */
+function flushWhisperBuffer(
+  buffer: Array<{ message: string; priority: string }>,
+  send: ((msg: string, opts?: { category?: string; priority?: string }) => void) | undefined,
+): void {
+  if (buffer.length === 0 || !send) return;
+
+  // Group by priority
+  const groups = new Map<string, string[]>();
+  for (const entry of buffer) {
+    const p = entry.priority;
+    if (!groups.has(p)) groups.set(p, []);
+    groups.get(p)!.push(entry.message);
+  }
+
+  // Flush one message per priority tier
+  for (const [priority, messages] of groups) {
+    if (messages.length === 1) {
+      send(messages[0], { category: "cognitive", priority } as any);
+    } else {
+      const combined = `[Heartbeat Summary]
+${messages.map((m, i) => `${i + 1}. ${m}`).join("\n")}`;
+      send(combined, { category: "cognitive", priority } as any);
+    }
+  }
 }
 
 // ── Tick Engine ─────────────────────────────────────────────────────────────
@@ -192,6 +226,15 @@ function tick(
     }
   }
 
+  // ── Whisper batching ───────────────────────────────────────────────
+  // Buffer module whispers and flush as aggregated messages per priority tier.
+  // This prevents N separate injected messages per heartbeat tick.
+  const whisperBuffer: Array<{ message: string; priority: string }> = [];
+  const originalWhisper = ctx.whisper?.bind(ctx);
+  ctx.whisper = (msg: string, opts?: { category?: string; priority?: string }) => {
+    whisperBuffer.push({ message: msg, priority: opts?.priority ?? "low" });
+  };
+
   candidates
     .sort((a, b) => b.priority - a.priority)
     .slice(0, config.maxActivationsPerTick)
@@ -242,14 +285,19 @@ function tick(
       }
       if (result.rollbackPerformed) {
         log.warn(`Auto-rollback performed: ${result.message}`);
-        ctx.whisper?.(`[health] Auto-rollback: ${result.message}`, {
-          category: "cognitive",
+        whisperBuffer.push({
+          message: `[health] Auto-rollback: ${result.message}`,
           priority: "high",
         });
       }
     })
     .catch((err) => {
       log.error("Checkpoint tick error:", err);
+    })
+    .finally(() => {
+      // Restore original whisper and flush buffer
+      ctx.whisper = originalWhisper;
+      flushWhisperBuffer(whisperBuffer, originalWhisper as any);
     });
 }
 
@@ -267,6 +315,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     evolverModule,
     budgetModule,
     timerReminderModule,
+    behavioralDriftModule,
   ];
 
   // ── Event: turn_end ───────────────────────────────────────────────
@@ -332,8 +381,29 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     }
   });
 
-  // ── Event: session_start ──────────────────────────────────────────
+  // ── Event: tool_result — collect tool success/failure for trajectory enrichment
+  pi.on("tool_result", (event: any, ctx: ExtensionContext) => {
+    const state = getState(ctx);
+    const toolName = event?.toolName as string;
+    if (!toolName) return;
 
+    // Track tool outcome for richer SOP extraction
+    const success = !event?.isError;
+    state.metaLearning.toolTracking.trajectory ??= [];
+    state.metaLearning.toolTracking.trajectory.push({
+      toolName,
+      success,
+      turn: state.policyTurnCount,
+    });
+
+    // Cap trajectory length
+    if (state.metaLearning.toolTracking.trajectory.length > 200) {
+      state.metaLearning.toolTracking.trajectory =
+        state.metaLearning.toolTracking.trajectory.slice(-100);
+    }
+  });
+
+  // ── Event: session_start ──────────────────────────────────────────
   registerSessionStartHandler(
     pi,
     SessionPhase.MemoryState,
@@ -404,7 +474,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
             const topEpisode = episodes[0];
             if (topEpisode.similarity > 0.3) {
               const sopSummary = formatSOPForWhisper(topEpisode);
-              ctx.whisper?.("msg", { category: "cognitive", priority: "low" });
+              ctx.whisper?.(sopSummary, { category: "cognitive", priority: "low" });
               log.info(`Coach: Whispered SOP from past episode ${topEpisode.id}`);
             }
           }
@@ -427,7 +497,21 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
         // Use the user message from the event or the latest message in context
         const userText = _event?.userMessage ?? _event?.text ?? "";
         if (userText.length > 5) {
-          injectSopSuggestions(pi, userText, memState.episodes);
+          try {
+            const sopState = getExtensionState(ctx, "sop-suggestion", () => ({
+              suggestedEpisodeIds: new Set<string>(),
+            }));
+            injectSopSuggestions(
+              pi,
+              userText,
+              memState.episodes,
+              undefined,
+              sopState.suggestedEpisodeIds,
+            );
+          } catch {
+            // Non-fatal: basic suggestion without dedup
+            injectSopSuggestions(pi, userText, memState.episodes);
+          }
         }
       }
     } catch (err) {
@@ -457,10 +541,18 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
         const taskDesc = _event?.task ?? "session_outcome";
         const success = outcome === "success" || !_event?.error;
 
-        // Reconstruct trajectory from activation history for SOP extraction
-        const trajectory: TrajectoryEntry[] = state.activationHistory
-          .filter((h) => h.moduleName === "tool_call" || h.reason === "tool")
-          .map((h) => ({ toolName: h.moduleName, success: true }));
+        // Use enriched trajectory from tool_end tracking (has success/failure data)
+        // Fall back to activation history if tool_end wasn't available
+        const enrichedTrajectory = state.metaLearning.toolTracking.trajectory ?? [];
+        const trajectory: TrajectoryEntry[] =
+          enrichedTrajectory.length > 0
+            ? enrichedTrajectory.map((t: any) => ({
+                toolName: t.toolName,
+                success: t.success,
+              }))
+            : state.activationHistory
+                .filter((h) => h.moduleName === "tool_call" || h.reason === "tool")
+                .map((h) => ({ toolName: h.moduleName, success: true }));
 
         // Extract SOP from the trajectory
         const sop = extractSOP({

@@ -55,7 +55,7 @@ export function createPromptPreviewTool() {
     label: "Prompt Preview",
     promptSnippet: "Show the current system prompt from runtime",
     description:
-      "Show the current system prompt. Reads directly from runtime. " +
+      "Show the current system prompt from runtime to debug prompt-related issues or inspect the assembled content. " +
       "Use includeTools/includeSkills to exclude long sections, truncate to limit chars.",
     parameters: previewSchema,
 

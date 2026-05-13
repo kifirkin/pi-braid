@@ -362,6 +362,7 @@ export function injectSopSuggestions(
   userMessage: string,
   episodes: Episode[],
   config: SopSuggestionConfig = DEFAULT_SOP_CONFIG,
+  alreadySuggestedIds?: Set<string>,
 ): number {
   if (!config.enabled) return 0;
 
@@ -372,6 +373,9 @@ export function injectSopSuggestions(
   let injected = 0;
 
   for (const r of retrieved) {
+    // Skip if already suggested this session
+    if (alreadySuggestedIds && r.episode.id && alreadySuggestedIds.has(r.episode.id)) continue;
+
     const formatted = formatSopSuggestion(r, Math.floor(config.maxTotalTokens / retrieved.length));
     const estimatedTokens = Math.ceil(formatted.length / 4);
 
@@ -390,6 +394,9 @@ export function injectSopSuggestions(
 
     totalTokens += estimatedTokens;
     injected++;
+    if (alreadySuggestedIds && r.episode.id) {
+      alreadySuggestedIds.add(r.episode.id);
+    }
   }
 
   if (injected > 0) {

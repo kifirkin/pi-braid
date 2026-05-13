@@ -302,7 +302,8 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
     name: "check_topic_drift",
     label: "Check Topic Drift",
     promptSnippet: "Check if output matches the original user request",
-    description: "Check if the current output matches the original user request anchors.",
+    description:
+      "Check if output still matches the original request — use before responding to prevent topic drift.",
     parameters: checkDriftSchema,
     execute: async (_toolCallId: string, params: any): Promise<any> => {
       try {
@@ -348,7 +349,8 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
     name: "reset_topic_anchors",
     label: "Reset Topic Anchors",
     promptSnippet: "Reset topic anchors to a new request or context",
-    description: "Reset the topic anchors to a new request or the current context.",
+    description:
+      "Reset topic anchors to a new request or the current context — use when the task shifts to prevent false drift detection.",
     parameters: resetAnchorsSchema,
     execute: async (_toolCallId: string, params: any): Promise<any> => {
       try {

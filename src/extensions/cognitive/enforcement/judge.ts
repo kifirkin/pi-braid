@@ -237,19 +237,31 @@ function parseJudgeOutput(raw: string): JudgeAnalysis | null {
  * 1. Verdict is derived from scores rather than trusting the LLM's independent verdict label
  * 2. Issues with evidence that doesn't exist in the response are filtered out before nudging
  * 3. Minimum confidence threshold required before failing
+ * 4. Severity labels are never exposed in nudge messages (compliance theater trigger)
+ * 5. Positive reinforcement emitted when all dimensions are clean
  */
 export function determineAction(analysis: JudgeAnalysis, responseText?: string): JudgeAction {
-  // High-severity contradictions always trigger action
-  if (analysis.contradictions.length > 0) {
-    const highSeverity = analysis.contradictions.filter((c) => c.severity === "high");
-    if (highSeverity.length > 0 || analysis.contradictions.length >= 2) {
-      return {
-        type: "nudge",
-        reason: "Contradiction detected",
-        priority: "high",
-        nudgeMessage: formatContradictionNudge(analysis.contradictions),
-      };
-    }
+  // Check for positive reinforcement: all dimensions clean
+  // Positive feedback reinforces good patterns without compliance labels
+  const allClean =
+    analysis.scores.contradiction >= 90 &&
+    analysis.scores.hallucination >= 90 &&
+    analysis.scores.selfInterference >= 90 &&
+    analysis.scores.overconfidence >= 90 &&
+    analysis.scores.logicalCoherence >= 90 &&
+    analysis.scores.completeness >= 90 &&
+    analysis.scores.compliancePattern >= 90;
+
+  // Prefer score-based contradiction check over severity labels.
+  // Severity is a compliance-theater label (high/medium/low) — research (2604.15224)
+  // shows labels trigger compliance checking behavior. Scores provide richer signal.
+  if (analysis.contradictions.length >= 2 || analysis.scores.contradiction < 40) {
+    return {
+      type: "nudge",
+      reason: "Contradiction detected",
+      priority: "high",
+      nudgeMessage: formatContradictionNudge(analysis.contradictions),
+    };
   }
 
   // Check scores for action triggers
@@ -339,6 +351,19 @@ export function determineAction(analysis: JudgeAnalysis, responseText?: string):
       reason: allIssues.length > 0 ? allIssues.join("; ") : `Judge verdict: warn`,
       priority: criticalIssues.length > 0 ? "high" : "medium",
       nudgeMessage: formatScoreNudge(analysis),
+    };
+  }
+
+  // Positive reinforcement: brief acknowledgment when all dimensions are clean.
+  // This matters — research shows agents silently internalize patterns of
+  // what gets reinforced, not just what gets corrected.
+  if (allClean) {
+    return {
+      type: "nudge",
+      reason: "All dimensions clean — reinforcing good pattern",
+      priority: "low",
+      nudgeMessage:
+        "## Reasoning Looks Solid\n\nThe reasoning is consistent, grounded, and well-calibrated. This pattern — checking claims against evidence, acknowledging uncertainty, and following intent over letter — is worth repeating.",
     };
   }
 

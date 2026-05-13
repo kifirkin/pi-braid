@@ -67,4 +67,12 @@ export interface MemoryStoresState {
   currentSessionId: string;
   /** Tracks whether episodes were loaded from legacy path (for migration). */
   loadedFromLegacy: boolean;
+  /** Session-scoped recall cooldown timestamp (prevents cross-session leak). */
+  lastRecallTime: number;
+  /** Hashes of last-emitted semantic recall entries for deduplication. */
+  lastSemanticRecallHashes: string[];
+  /** Signature of last-emitted episode recall (title + episode IDs) for deduplication. */
+  lastEpisodeRecallSignature: string;
+  /** Separate cooldown timestamp for semantic recall path (avoids interfering with episode recall). */
+  lastSemanticRecallTime: number;
 }

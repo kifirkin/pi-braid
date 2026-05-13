@@ -127,6 +127,7 @@ export const contextHygieneModule: CognitiveModule = {
     const state = getExtensionState(ctx, "context-hygiene-projection", () => ({
       snapshots: [] as Array<{ turn: number; tokens: number }>,
       lastProjectedRemaining: Infinity,
+      lastProjectionWhisperTurn: -20,
     }));
 
     const currentTurn = (ctx as any)?.turnCount ?? 0;
@@ -143,9 +144,11 @@ export const contextHygieneModule: CognitiveModule = {
 
     if (
       remainingTurns <= PROACTIVE_THRESHOLD_TURNS &&
-      remainingTurns < state.lastProjectedRemaining
+      remainingTurns < state.lastProjectedRemaining &&
+      currentTurn - state.lastProjectionWhisperTurn >= 20
     ) {
       state.lastProjectedRemaining = remainingTurns;
+      state.lastProjectionWhisperTurn = currentTurn;
 
       const projectedUsage =
         density.tokenRatio +
@@ -174,20 +177,74 @@ export const contextHygieneModule: CognitiveModule = {
       state.lastProjectedRemaining = Infinity;
     }
 
+    // ── Suggest compaction on sustained low density ─────────────────
+    // If density stays < 0.4 for 3+ consecutive ticks, whisper a suggestion
+    // to call context_compact() instead of auto-compacting mid-turn.
+    // ctx.compact() calls this._disconnectFromAgent() + this.abort() in
+    // pi core (agent-session.js:1245), which breaks the agent loop.
+    const autoCompactState = getExtensionState(ctx, "context-hygiene-autocompact", () => ({
+      consecutiveLowDensity: 0,
+      lastAutoCompactTurn: -20,
+      lastDensityWhisperTurn: -20,
+      lastLargeContextWhisperTurn: -20,
+      lastDuplicateWhisperTurn: -20,
+    }));
+
     if (density.density < 0.4) {
-      ctx.whisper?.(
-        "Low context density (" +
-          Math.round(density.density * 100) +
-          "% signal). " +
-          "Noisy: " +
-          density.noisyMessages +
-          ", Signal: " +
-          density.signalMessages +
-          ". " +
-          "Consider: context_archive() or context_prune().",
-        { category: "cognitive", priority: density.density < 0.25 ? "high" : "medium" },
-      );
-    } else if (density.tokenRatio > 0.6) {
+      autoCompactState.consecutiveLowDensity++;
+
+      if (
+        autoCompactState.consecutiveLowDensity >= 3 &&
+        currentTurn - autoCompactState.lastAutoCompactTurn >= 20
+      ) {
+        const ticks = autoCompactState.consecutiveLowDensity;
+        autoCompactState.lastAutoCompactTurn = currentTurn;
+        autoCompactState.consecutiveLowDensity = 0;
+        // Whisper a high-priority suggestion — don't call ctx.compact()
+        // as it aborts the agent mid-turn (agent-session.js:1245)
+        ctx.whisper?.(
+          "Context density still low (" +
+            Math.round(density.density * 100) +
+            "% signal). " +
+            "Noisy: " +
+            density.noisyMessages +
+            ", Signal: " +
+            density.signalMessages +
+            ". Call context_compact() or context_prune() to free space.",
+          { category: "cognitive", priority: "high" },
+        );
+        log.info(
+          `Low density persisted: ${Math.round(density.density * 100)}% ` +
+            `for ${ticks}+ ticks — suggested compaction to agent`,
+        );
+      } else {
+        // Rate-limit: at most one density whisper per 25 turns
+        if (currentTurn - autoCompactState.lastDensityWhisperTurn >= 25) {
+          autoCompactState.lastDensityWhisperTurn = currentTurn;
+          ctx.whisper?.(
+            "Low context density (" +
+              Math.round(density.density * 100) +
+              "% signal). " +
+              "Noisy: " +
+              density.noisyMessages +
+              ", Signal: " +
+              density.signalMessages +
+              ". " +
+              "Consider: context_archive() or context_prune().",
+            { category: "cognitive", priority: density.density < 0.25 ? "high" : "medium" },
+          );
+        }
+      }
+    } else {
+      autoCompactState.consecutiveLowDensity = 0;
+    }
+
+    // ── High-density large context whisper (cooldown: 20 turns) ────
+    if (
+      density.tokenRatio > 0.6 &&
+      currentTurn - autoCompactState.lastLargeContextWhisperTurn >= 20
+    ) {
+      autoCompactState.lastLargeContextWhisperTurn = currentTurn;
       ctx.whisper?.(
         "High density (" +
           Math.round(density.density * 100) +
@@ -199,7 +256,9 @@ export const contextHygieneModule: CognitiveModule = {
       );
     }
 
-    if (density.duplicates > 2) {
+    // ── Duplicate whisper (cooldown: 25 turns) ─────────────────────
+    if (density.duplicates > 2 && currentTurn - autoCompactState.lastDuplicateWhisperTurn >= 25) {
+      autoCompactState.lastDuplicateWhisperTurn = currentTurn;
       ctx.whisper?.(
         density.duplicates +
           " near-duplicate messages in context. " +

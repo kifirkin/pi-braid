@@ -57,6 +57,17 @@ export interface AnalyticsState {
   /** Per-turn deduplicated tool names: each turn contributes at most 1 entry per tool type.
    *  Used for addiction detection to avoid over-weighting multi-call turns. */
   turnToolSequence: string[];
+  /** Session-scoped counter for addiction check throttling (prevents leak between sessions). */
+  lastAddictionCheck: number;
+  /** Set of last-emitted warning signatures to suppress duplicate identical reports. */
+  lastAddictionSignatures: string[];
+  /** Pending tool calls awaiting execution_end (toolCallId → {toolName, startTime}).
+   *  Session-scoped to prevent cross-session contamination if session_start timing varies. */
+  pendingToolCalls: Map<string, { toolName: string; startTime: number }>;
+  /** Unique tool types used in the current turn (per-turn deduplication for addiction).
+   *  Flushed to turnToolSequence on each turn_end, then cleared.
+   *  Session-scoped to prevent cross-session contamination. */
+  currentTurnTypes: Set<string>;
   storagePath: string;
   abVariant: string;
   contextDensity: number;
@@ -73,6 +84,10 @@ export function createAnalyticsState(): AnalyticsState {
     toolMetrics: new Map(),
     toolCallSequence: [],
     turnToolSequence: [],
+    lastAddictionCheck: 0,
+    lastAddictionSignatures: [],
+    pendingToolCalls: new Map(),
+    currentTurnTypes: new Set(),
     storagePath: "",
     abVariant: "control",
     contextDensity: 0,

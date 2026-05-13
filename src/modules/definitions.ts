@@ -32,8 +32,6 @@ import contextLifecycleFn from "../extensions/memory/context-lifecycle/index.js"
 import heartbeatSchedulerFn from "../extensions/heartbeat/heartbeat-scheduler/index.js";
 import analyticsFn from "../extensions/heartbeat/analytics/index.js";
 
-import retryFn from "../extensions/retry/retry/index.js";
-import errorCaptureFn from "../extensions/retry/error-capture/index.js";
 
 import promptBuilderFn from "../extensions/prompt/prompt-builder/index.js";
 import healthcheckFn from "../extensions/tools/healthcheck/index.js";
@@ -138,14 +136,12 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
       "agent_end",
       "message_end",
       "tool_call",
-      "tool_end",
+      "tool_result",
       "turn_end",
       "session_compact",
-      "auto_retry_end",
     ],
     coupledWith: [
       { module: "memory", via: "tool_end, turn_end" },
-      { module: "retry", via: "auto_retry_end" },
       { module: "heartbeat", via: "turn_end" },
     ],
   },
@@ -175,7 +171,7 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
       "session_start",
       "session_shutdown",
       "agent_end",
-      "tool_end",
+      "tool_result",
       "turn_end",
       "model_select",
       "before_agent_start",
@@ -220,33 +216,6 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
   },
 
   // ═════════════════════════════════════════════════════════════════════
-  // RETRY — Error recovery with backoff
-  // Coupling: retry listens to input, agent_end, auto_retry events;
-  //   error-capture listens to turn_end + registers error analysis tools.
-  //   Both handle failures — one at user level, one at tool level.
-  // ═════════════════════════════════════════════════════════════════════
-  {
-    name: "retry",
-    label: "Error Recovery",
-    description: "/retry command, auto-retry with backoff, error classification",
-    dependencies: ["core"],
-    extensions: [
-      { name: "retry", fn: retryFn },
-      { name: "error-capture", fn: errorCaptureFn },
-    ],
-    listensTo: [
-      "session_start",
-      "input",
-      "agent_end",
-      "turn_end",
-      "after_provider_response",
-      "auto_retry_start",
-      "auto_retry_end",
-    ],
-    coupledWith: [{ module: "cognitive", via: "auto_retry_end" }],
-  },
-
-  // ═════════════════════════════════════════════════════════════════════
   // PROMPT — Prompt builder + injection defence
   // Coupling: both hook into before_agent_start to inject/validate prompts.
   // ═════════════════════════════════════════════════════════════════════
@@ -266,7 +235,8 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
   {
     name: "tools",
     label: "Utility Tools",
-    description: "Codebase graph, REPL, docs reader, timer, latent activator",
+    description:
+      "Healthcheck, timer, latent activator, observatory, diff, system-monitor, research",
     dependencies: ["core"],
     extensions: [
       { name: "healthcheck", fn: healthcheckFn },
@@ -275,6 +245,7 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
       { name: "observatory", fn: observatoryFn },
       { name: "diff", fn: diffFn },
       { name: "system-monitor", fn: systemMonitorFn },
+      { name: "research", fn: researchFn },
     ],
     listensTo: ["turn_end", "session_start", "session_shutdown"], // timer + observatory + diff + system-monitor
     coupledWith: [],

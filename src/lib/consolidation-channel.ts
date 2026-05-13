@@ -18,6 +18,9 @@
 
 import { createLogger } from "./logger.js";
 import { eventBus } from "./event-bus.js";
+import { CONSOLIDATED_HINTS_FILE } from "./braid-paths.js";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 
 const log = createLogger("consolidation");
 
@@ -280,7 +283,63 @@ export function processConsolidationTick(): void {
       `confidence=${candidate.confidenceScore.toFixed(2)})`,
   );
 
-  // For now, just mark as completed (weight update is future work)
+  // Write high-confidence SOPs as behavioral hints for prompt injection.
+  // This closes the self-evolution loop: successful patterns → persistent
+  // hints → injected into future sessions → agent benefits from experience.
+  // Cap at 20 hints, prune stale ones older than 30 days.
+  if (candidate.consolidationScore > 0.7 && candidate.functionalSOP) {
+    try {
+      mkdirSync(dirname(CONSOLIDATED_HINTS_FILE), { recursive: true });
+
+      // Prune: keep only recent, non-stale hints (max 20, under 30 days old)
+      const MAX_HINTS = 20;
+      const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+      try {
+        const existing = readFileSync(CONSOLIDATED_HINTS_FILE, "utf-8");
+        const lines = existing.split("\n").filter((l) => l.trim());
+        const now = Date.now();
+        const fresh = lines
+          .map((l) => JSON.parse(l))
+          .filter((h) => now - (h.createdAt ?? 0) < MAX_AGE_MS);
+        if (fresh.length >= MAX_HINTS) {
+          // Keep the freshest MAX_HINTS-1 to make room for the new one
+          const kept = fresh
+            .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+            .slice(0, MAX_HINTS - 1);
+          writeFileSync(
+            CONSOLIDATED_HINTS_FILE,
+            kept.map((h) => JSON.stringify(h)).join("\n") + "\n",
+          );
+        }
+      } catch {
+        // File doesn't exist yet — that's fine
+      }
+
+      const hint = {
+        task: candidate.task,
+        strategy: candidate.strategicSOP,
+        steps: candidate.functionalSOP.slice(0, 5),
+        score: Math.round(candidate.consolidationScore * 100),
+        source: "consolidation",
+        createdAt: Date.now(),
+      };
+      // Use sync write to avoid race with concurrent ticks
+      // (appendFile is async and could interleave with readFileSync above)
+      try {
+        const existingContent = existsSync(CONSOLIDATED_HINTS_FILE)
+          ? readFileSync(CONSOLIDATED_HINTS_FILE, "utf-8")
+          : "";
+        const allLines = existingContent.split("\n").filter((l) => l.trim());
+        allLines.push(JSON.stringify(hint));
+        writeFileSync(CONSOLIDATED_HINTS_FILE, allLines.join("\n") + "\n");
+      } catch (writeErr) {
+        log.warn(`Hint append failed: ${(writeErr as Error).message}`);
+      }
+    } catch (err) {
+      log.warn(`Hint write failed: ${(err as Error).message}`);
+    }
+  }
+
   queue.complete(candidate);
 }
 

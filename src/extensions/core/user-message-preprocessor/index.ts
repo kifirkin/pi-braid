@@ -28,8 +28,8 @@ const log = createLogger("user-message-preprocessor");
 import { existsSync, mkdirSync, promises as fsPromises, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { Api, AssistantMessage, Context, ImageContent, Model } from "@mariozechner/pi-ai";
-import { completeSimple } from "@mariozechner/pi-ai";
+import type { Api, Context, ImageContent, Model } from "@mariozechner/pi-ai";
+import { callLlm } from "../../../lib/llm-call.js";
 import type {
   ExtensionAPI,
   ExtensionContext,
@@ -355,53 +355,27 @@ async function processMessage(
       ],
     };
 
-    // Race between preprocessing and timeout
     const timeoutMs = state.config.timeoutSeconds * 1000;
-    const timeoutPromise = new Promise<AssistantMessage>((_, reject) => {
-      setTimeout(() => reject(new Error("timeout")), timeoutMs);
-    });
-
-    // Calculate sufficient output tokens: ~1:1 with input length (4 chars/token), min 500, max 4096
     const outputTokens = Math.min(Math.max(500, Math.floor(original.length / 4)), 4096);
-    const preprocessPromise = completeSimple(model as Model<Api>, context, {
-      apiKey,
+
+    const result = await callLlm(model as Model<Api>, apiKey, SYSTEM_PROMPT, original, {
       maxTokens: outputTokens,
       temperature: 0.1,
+      timeoutMs,
     });
 
-    let result: AssistantMessage | null = null;
-    try {
-      result = await Promise.race([preprocessPromise, timeoutPromise]);
-    } catch (err: unknown) {
-      if (err instanceof Error && err.message === "timeout") {
-        state.errorCount++;
-        state.skippedCount++;
-        const origPreview = original.length > 100 ? `${original.slice(0, 100)}...` : original;
-        ctx.ui.setStatus("preprocessor", "⏱️ Preprocessing timeout!");
-        ctx.ui.notify(`Timeout on: "${origPreview}"`, "warning");
-        resolve({ action: "continue" });
-        processQueue(ctx);
-        return;
-      }
-      throw err;
-    }
-
-    if (result.errorMessage) {
+    if ("error" in result) {
       state.errorCount++;
       state.skippedCount++;
       const origPreview = original.length > 100 ? `${original.slice(0, 100)}...` : original;
-      ctx.ui.setStatus("preprocessor", "❌ Preprocessing error!");
-      ctx.ui.notify(`Error on: "${origPreview}"`, "error");
+      ctx.ui.setStatus("preprocessor", "⏱️ Preprocessing error!");
+      ctx.ui.notify(`Error on: "${origPreview}"`, "warning");
       resolve({ action: "continue" });
       processQueue(ctx);
       return;
     }
 
-    const content = Array.isArray(result.content) ? result.content : [];
-    const textContent = content.filter(
-      (c): c is { type: "text"; text: string } => c.type === "text",
-    );
-    let cleaned = textContent.length > 0 ? textContent[0].text.trim() : null;
+    let cleaned = result.text.trim();
 
     // Strip <user_message> XML tags that the LLM might echo back
     if (cleaned) {

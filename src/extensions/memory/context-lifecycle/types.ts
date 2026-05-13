@@ -278,7 +278,7 @@ export function createDefaultPolicies(): ContextPolicy[] {
       id: "density-low-prune",
       name: "Low context density — suggest pruning",
       priority: 65,
-      cooldown_ms: 60_000,
+      cooldown_ms: 120_000,
       trigger: { type: "signal", signal: "context_density_low" },
       action: {
         type: "propose",
@@ -308,7 +308,7 @@ export function createDefaultPolicies(): ContextPolicy[] {
       id: "duplicates-dedup",
       name: "Duplicate messages — suggest dedup",
       priority: 62,
-      cooldown_ms: 45_000,
+      cooldown_ms: 120_000,
       trigger: { type: "signal", signal: "context_duplicates" },
       action: {
         type: "propose",

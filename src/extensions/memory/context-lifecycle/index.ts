@@ -211,7 +211,31 @@ function executeAction(
   switch (action.type) {
     case "compact":
       if (evaluated.canExecute) {
-        ctx.compact?.();
+        // Don't call ctx.compact?.() — it calls _disconnectFromAgent() + abort()
+        // in pi core (agent-session.js:1245), breaking the agent loop mid-turn.
+        // Instead, nudge the agent to call context_compact() manually.
+        sendTrackedMessage(
+          pi,
+          {
+            customType: "context-lifecycle",
+            content: [
+              {
+                type: "text" as const,
+                text:
+                  `[compact] ${evaluated.policy.name} — ` +
+                  `call context_compact() to free space (context at ${Math.round(usage)}%).`,
+              },
+            ],
+            display: true,
+            details: { _braidInjected: true, _braidSource: "context-lifecycle/compact-suggestion" },
+          },
+          undefined,
+          { type: "context" as const, source: "context-lifecycle/compact-suggestion" },
+        );
+        log.info(
+          `Suggested compact: ${evaluated.policy.name} (context ${Math.round(usage)}%, ` +
+            `priority ${evaluated.policy.priority})`,
+        );
       }
       break;
 
@@ -235,7 +259,7 @@ function executeAction(
             content: [{ type: "text" as const, text: msg }],
             display: true,
           },
-          { deliverAs: "followUp", triggerTurn: false },
+          { deliverAs: "steer", triggerTurn: false },
           { type: "context", source: "context-lifecycle/nudge" },
         );
       }
@@ -411,7 +435,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     label: "Context Proposals",
     promptSnippet: "View and manage S-MMU context proposals",
     description:
-      "View and manage S-MMU context proposals. Proposals are auto-generated " +
+      "View and manage auto-generated context proposals for session improvement — use to review or act on pending compaction/archive suggestions. Proposals are auto-generated " +
       "based on session analysis. Use `list` to see pending, `approve`/`reject` to act.",
     parameters: contextProposalsSchema,
     execute: async (
@@ -601,7 +625,8 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     name: "context_signal",
     label: "Context Signal",
     promptSnippet: "Emit a semantic signal to the S-MMU policy engine",
-    description: "Emit a semantic signal to the S-MMU policy engine.",
+    description:
+      "Emit a semantic signal to the policy engine — use when the conversation topic shifts or a task boundary is reached to help context management.",
     parameters: contextSignalSchema,
     execute: async (
       _toolCallId: string,

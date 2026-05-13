@@ -4,6 +4,40 @@ All notable changes to pi-braid are documented here.
 
 ## v0.2.0 (2026-05-08)
 
+### Whisper Bugfixes (2026-05-11)
+
+- **SOP coach**: Fixed literal `"msg"` string used instead of `sopSummary` variable — SOP suggestions now actually contain SOP content.
+- **Budget module**: Per-step per-threshold cooldown via `Set` tracking — 80/90/100% budget whispers no longer fire on every turn.
+- **Context-hygiene**: 20-turn cooldown for high-density whispers, 15-turn for duplicate detection.
+- **SOP suggestion**: Per-episode dedup via `alreadySuggestedIds` Set — same episode not injected multiple times.
+- **Heartbeat whispers**: Batching — buffer + flush aggregated `[Heartbeat Summary]` instead of N separate injected messages per tick.
+- **Cross-session memory**: `retrieveByRUMS` now filters out episodes from foreign sessions.
+
+### Tool Description Rewrites
+
+- All 38 tool descriptions rewritten so `firstSentence()` extracts both _what_ and _when_ — uses em dash separator to keep "use when" advice within the first sentence boundary.
+- Tools affected: cognitive-systems (5), verification (2), topic-drift (2), context-manager/tools (7), context-lifecycle (2), session-recall (2), three-memory-stores (2), analytics (5), diff (1), healthcheck (1), observatory (1), system-monitor (1), research (1), timer (2), latent-activator (behavior + mix, 4), evolve (1).
+
+### Compaction Mid-Turn Fix
+
+- **Root cause**: `ctx.compact?.()` in context-hygiene's auto-compact path called pi core's `compact()` which runs `_disconnectFromAgent()` + `abort()` (agent-session.js:1245), killing the agent stream mid-turn.
+- **Fix**: Replaced with high-priority whisper suggesting the agent call `context_compact()` tool instead.
+
+### Context Density Noise Tuning
+
+- Context-lifecycle policy engine: density-low-prune 60s→120s cooldown, duplicates-dedup 45s→120s.
+- Heartbeat context-hygiene: density whisper 10→25 turns, duplicates 15→25 turns, projection whisper added 20-turn cooldown (was unlimited).
+
+### Test Fixes
+
+- **test-web-fetch-headers.mjs**: Gracefully skips when pi-web-fetch extension isn't installed (now built into pi-coding-agent core).
+  **64/64 tests passing.**
+
+### Cleanup
+
+- Removed legacy `~/.pi/memory/memory.json` (143KB, migration code handles ENOENT gracefully).
+- Archived `NEXT-PHASE-PROPOSAL.md` to `docs/proposals/` (Phase B is manual smoke testing).
+
 ### Publishing Readiness
 
 - **package.json**: Version bump to 0.2.0. Added `files`, `exports`, `bugs`, `homepage`, `prepublishOnly`, `prepare` scripts.

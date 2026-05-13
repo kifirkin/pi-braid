@@ -4,18 +4,19 @@ Three-tier memory architecture with automatic persistence and session recovery.
 
 ## Extensions
 
-| Extension | Files | Purpose |
-|---|---|---|
-| `context-manager/` | 8 | Compaction (v0.23), pruning, session lifecycle, navigation. |
-| `context-lifecycle/` | 1 | S-MMU governance, proposal system, compaction lifecycle. |
-| `session-recall/` | 1 | Past session search via semantic query. |
-| `three-memory-stores/` | 1 | Semantic + episodic + procedural stores (200 entries, Jaccard dedup). |
+| Extension              | Files | Purpose                                                               |
+| ---------------------- | ----- | --------------------------------------------------------------------- |
+| `context-manager/`     | 8     | Compaction (v0.23), pruning, session lifecycle, navigation.           |
+| `context-lifecycle/`   | 1     | S-MMU governance, proposal system, compaction lifecycle.              |
+| `session-recall/`      | 1     | Past session search via semantic query.                               |
+| `three-memory-stores/` | 1     | Semantic + episodic + procedural stores (200 entries, Jaccard dedup). |
 
 Total: 16 `.ts` files across 4 sub-extensions.
 
 ## Key Architecture
 
 **Three memory stores:**
+
 - Semantic: semantic search relevance scoring
 - Episodic: past session outcomes
 - Procedural: learned patterns
@@ -23,6 +24,8 @@ Total: 16 `.ts` files across 4 sub-extensions.
 **R6 auto-recall:** trigger on skill transition (3rd+), recentErrors, tool-reliability suggestions.
 
 **Compaction v0.23:** LLM summarization always fires (no hard truncation bypass). Deduplication guard via `sessionId::leafId`. Token threshold uses `prep.tokensBefore`.
+
+**Freshness scoring:** Memory recall applies a 7-day half-life decay — recent memories surface above stale ones with equal utility. Formula: `relevance * (0.4 + 0.6 * 0.5^(age/halflife))`.
 
 **Context lifecycle:** proposal → S-MMU policy → auto-compaction → resume steer.
 
