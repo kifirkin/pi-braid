@@ -1,4 +1,7 @@
+import * as path from "node:path";
+import * as fs from "node:fs";
 import { createLogger } from "../../lib/logger.js";
+import { HEALTHCHECK_DIR } from "../../lib/braid-paths.js";
 import { Type } from "typebox";
 import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
@@ -93,13 +96,14 @@ export default function healthcheckExtension(pi: ExtensionAPI) {
       const report = generateReport(allChecks);
       const text = formatReport(report);
 
-      // Save report
+      // Save report (best-effort)
       try {
         ensureHcDir();
-        const reportFile = `/Users/kifir/.pi/healthcheck/report-${Date.now()}.json`;
-        const fs = await import("node:fs");
+        const reportFile = path.join(HEALTHCHECK_DIR, `report-${Date.now()}.json`);
         fs.writeFileSync(reportFile, JSON.stringify(report, null, 2));
-      } catch {}
+      } catch (e) {
+        log.warn(`Could not save healthcheck report: ${e}`);
+      }
 
       return {
         content: [{ type: "text" as const, text }],

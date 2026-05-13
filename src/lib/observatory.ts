@@ -265,7 +265,9 @@ class ObservatoryServer {
               payload: metrics,
             }),
           );
-        } catch {}
+        } catch (err) {
+          log.warn(`[observatory] Could not send metrics to client: ${err}`);
+        }
       });
 
       ws.on("close", () => {

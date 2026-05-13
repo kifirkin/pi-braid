@@ -7,6 +7,9 @@
  */
 
 import type { ScheduledTimer } from "../extensions/tools/timer/index.js";
+import { createLogger } from "./logger.js";
+
+const log = createLogger("timer-bus");
 
 export interface TimerReminder {
   timer: ScheduledTimer;
@@ -25,7 +28,9 @@ export function emitTimerReminder(timer: ScheduledTimer): void {
   for (const h of handlers) {
     try {
       h(reminder);
-    } catch {}
+    } catch (err) {
+      log.warn(`Timer reminder handler failed: ${err}`);
+    }
   }
 }
 

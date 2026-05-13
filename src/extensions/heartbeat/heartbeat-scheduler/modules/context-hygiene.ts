@@ -162,7 +162,9 @@ export const contextHygieneModule: CognitiveModule = {
           tokensUsed: density.totalTokens,
           tokensLimit: DEFAULT_TOKEN_LIMIT,
         });
-      } catch {}
+      } catch (err) {
+        log.warn(`[context-hygiene] Could not emit context_full event: ${err}`);
+      }
 
       const projectedPercent = Math.min(Math.round(projectedUsage * 100), 100);
       ctx.whisper?.(

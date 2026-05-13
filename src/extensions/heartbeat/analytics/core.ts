@@ -4,6 +4,8 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { METRICS_FILE, LOGS_DIR } from "../../../lib/braid-paths.js";
+import { createLogger } from "../../../lib/logger.js";
+const log = createLogger("analytics:core");
 import type {
   AnalyticsState,
   AnalyticsSummary,
@@ -117,7 +119,9 @@ export function flushAnalytics(s: AnalyticsState, taskCompleted = false): void {
 
   try {
     writeFileSync(s.storagePath, `${JSON.stringify(entry)}\n`, { flag: "a" });
-  } catch {}
+  } catch (err) {
+    log.warn(`Could not persist session metric: ${err}`);
+  }
 }
 
 export function loadAnalytics(storagePath?: string): AnalyticsSummary {
@@ -151,7 +155,9 @@ export function loadAnalytics(storagePath?: string): AnalyticsSummary {
         for (const tm of entry.toolMetrics || []) {
           toolSuccess[tm.toolName] = (toolSuccess[tm.toolName] || 0) + tm.successfulCalls;
         }
-      } catch {}
+      } catch (err) {
+        log.warn(`Could not read toolMetrics for session: ${err}`);
+      }
     }
 
     const topTools = Object.entries(toolCounts)
@@ -175,7 +181,9 @@ export function loadAnalytics(storagePath?: string): AnalyticsSummary {
             existing.successRate = (existing.successRate + seq.successRate) / 2;
           } else sequenceMap.set(seq.pattern, { ...seq });
         }
-      } catch {}
+      } catch (err) {
+        log.warn(`Could not read sequenceMetrics: ${err}`);
+      }
     }
 
     return {

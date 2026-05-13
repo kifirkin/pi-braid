@@ -77,7 +77,9 @@ export default function analyticsExtension(pi: ExtensionAPI) {
         toolName: event.toolName,
         startTime: Date.now(),
       });
-    } catch {}
+    } catch (err) {
+      log.warn(`[analytics] Could not track tool start: ${err}`);
+    }
   });
 
   // ── tool_execution_end ─────────────────────────────────────────────
@@ -180,7 +182,9 @@ export default function analyticsExtension(pi: ExtensionAPI) {
                 turn: (ctx as any)?.turnCount ?? state.lastDensityTurn,
                 timestamp: Date.now(),
               });
-            } catch {}
+            } catch (err) {
+              log.warn(`[analytics] Could not emit addiction signal: ${err}`);
+            }
           }
         }
       }
@@ -220,7 +224,9 @@ export default function analyticsExtension(pi: ExtensionAPI) {
             turn: (ctx as any)?.turnCount ?? state.lastDensityTurn,
             timestamp: Date.now(),
           });
-        } catch {}
+        } catch (err) {
+          log.warn(`[analytics] Could not emit degradation alert: ${err}`);
+        }
       } else if (!degraded && state.wasDegraded) {
         state.wasDegraded = false;
         if (areCognitiveNudgesDisabled()) {
@@ -247,7 +253,9 @@ export default function analyticsExtension(pi: ExtensionAPI) {
             turn: (ctx as any)?.turnCount ?? state.lastDensityTurn,
             timestamp: Date.now(),
           });
-        } catch {}
+        } catch (err) {
+          log.warn(`[analytics] Could not emit recovery signal: ${err}`);
+        }
       }
     } catch (err) {
       log.error("[analytics-turn-end] error:", err);
