@@ -4,36 +4,53 @@
  * Each module groups extensions by **actual coupling** (shared events, tools,
  * state, or research paper) rather than just conceptual similarity.
  *
- * See COUPLING.md for the full event/tool/state dependency matrix.
+ * Architecture:
+ *   Most extensions provide either TOOLS (agent-facing) or EVENT HANDLERS
+ *   (infrastructure). The module system groups them by shared state and
+ *   event coupling, not by conceptual similarity alone.
+ *
+ * Extension role key (from structural audit):
+ *   TOOL-PROVIDER  = registers tools the agent can call
+ *   EVENT-HANDLER  = listens to pi events for infrastructure
+ *   COMMAND-PROVIDER = registers /commands
+ *   PURE-IMPORT    = applies side-effect patches at load time
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 // ── Extension imports ────────────────────────────────────────────────────────
 
-import corePolyfillFn from "../extensions/core/polyfill/index.js";
+// core (always on, no dependencies)
 import coreAgentPatchFn from "../extensions/core/agent-patch/index.js";
+import corePolyfillFn from "../extensions/core/polyfill/index.js";
 import coreMetacognitionFn from "../extensions/core/metacognition/index.js";
 import coreScratchpadFn from "../extensions/core/scratchpad/index.js";
 import corePreprocessorFn from "../extensions/core/user-message-preprocessor/index.js";
+import corePromptBuilderFn from "../extensions/core/prompt-builder/index.js";
+import coreAgentEnvFn from "../extensions/core/agent-environment/index.js";
+import coreRateLimiterFn from "../extensions/rate-limiter/rate-limiter/index.js";
 
-import cognitiveSystemsFn from "../extensions/cognitive/cognitive-systems/index.js";
+// cognitive-quality (reasoning tools, verification, topic control)
 import reasoningFn from "../extensions/cognitive/reasoning/index.js";
-import enforcementFn from "../extensions/cognitive/enforcement/index.js";
 import verificationFn from "../extensions/cognitive/verification/index.js";
 import topicDriftFn from "../extensions/cognitive/topic-drift/index.js";
 import sycophancyDetectorFn from "../extensions/cognitive/sycophancy-detector/index.js";
 
+// enforcement (heavy event handling, split from cognitive-quality)
+import enforcementFn from "../extensions/cognitive/enforcement/index.js";
+
+// memory (three-store memory + context lifecycle + agent-facing bridge)
 import memoryStoresFn from "../extensions/memory/three-memory-stores/index.js";
 import sessionRecallFn from "../extensions/memory/session-recall/index.js";
 import contextManagerFn from "../extensions/memory/context-manager/index.js";
 import contextLifecycleFn from "../extensions/memory/context-lifecycle/index.js";
+import memoryAgentBridgeFn from "../extensions/memory/memory-agent-bridge/index.js";
 
+// heartbeat (proactive cognitive scheduling)
 import heartbeatSchedulerFn from "../extensions/heartbeat/heartbeat-scheduler/index.js";
 import analyticsFn from "../extensions/heartbeat/analytics/index.js";
 
-
-import promptBuilderFn from "../extensions/prompt/prompt-builder/index.js";
+// tools (utility tools, pure tool-providers)
 import healthcheckFn from "../extensions/tools/healthcheck/index.js";
 import timerFn from "../extensions/tools/timer/index.js";
 import latentActivatorFn from "../extensions/tools/latent-activator/index.js";
@@ -42,13 +59,20 @@ import diffFn from "../extensions/tools/diff/index.js";
 import systemMonitorFn from "../extensions/tools/system-monitor/index.js";
 import researchFn from "../extensions/tools/research/index.js";
 
-import assistantFn from "../extensions/assistant/assistant/index.js";
-import feedbackFn from "../extensions/assistant/feedback/index.js";
+// nudge (feedback/nudge injection — from assistant/feedback)
+import feedbackFn from "../extensions/nudge/feedback/index.js";
 
-import evolveFn from "../extensions/evolve/evolve/index.js";
+// tool-config (interactive tool management — from assistant/assistant)
+import toolConfigFn from "../extensions/tool-config/tool-config/index.js";
+
+// watchdog (session monitoring, opt-in)
 import watchdogFn from "../extensions/watchdog/watchdog/index.js";
-import rateLimiterFn from "../extensions/rate-limiter/rate-limiter/index.js";
-import agentEnvFn from "../extensions/agent-environment/agent-environment/index.js";
+
+// health-maintenance (degradation detection + checkpointing, opt-in)
+import healthMaintenanceFn from "../extensions/health-maintenance/health-maintenance/index.js";
+
+// error-tracking (error logging tools, opt-in, new from retry/error-capture)
+import errorCaptureFn from "../extensions/error-tracking/error-capture/index.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -85,14 +109,19 @@ export interface ModuleDef {
 export const MODULE_DEFINITIONS: ModuleDef[] = [
   // ═════════════════════════════════════════════════════════════════════
   // CORE — Foundation layer (always on, no dependencies)
-  // Coupling: polyfill patches pi API used by all others; preprocessor
-  //   modifies input stream before enforcement sees it;
-  //   scratchpad+metacognition form the metacognitive tool stack.
+  //   agent-patch:    PURE-IMPORT — monkey-patches pi's handleRunFailure
+  //   polyfill:       EVENT-HANDLER + COMMAND — pi API polyfills, vision model config
+  //   metacognition:  TOOL-PROVIDER — think, hypothesize, finalize, verify
+  //   scratchpad:     TOOL-PROVIDER — scratchpad tool
+  //   preprocessor:   EVENT-HANDLER — input preprocessing
+  //   prompt-builder: EVENT-HANDLER — system prompt assembly (moved from prompt/)
+  //   agent-environment: TOOL-PROVIDER — time_status, L1 context injection
+  //   rate-limiter:   EVENT-HANDLER — RPM/TPM API rate limiting
   // ═════════════════════════════════════════════════════════════════════
   {
     name: "core",
     label: "Core",
-    description: "Foundation: polyfill, metacognition, scratchpad, preprocessor",
+    description: "Foundation: polyfill, metacognition, scratchpad, preprocessor, prompt-builder, agent-environment, rate-limiter",
     alwaysOn: true,
     extensions: [
       { name: "agent-patch", fn: coreAgentPatchFn },
@@ -100,47 +129,71 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
       { name: "metacognition", fn: coreMetacognitionFn },
       { name: "scratchpad", fn: coreScratchpadFn },
       { name: "user-message-preprocessor", fn: corePreprocessorFn },
+      { name: "prompt-builder", fn: corePromptBuilderFn },
+      { name: "agent-environment", fn: coreAgentEnvFn },
+      { name: "rate-limiter", fn: coreRateLimiterFn },
     ],
-    listensTo: ["session_start", "before_agent_start", "agent_end", "input"],
+    listensTo: [
+      "session_start", "before_agent_start", "agent_end", "input",
+      "message_end", "turn_end", "session_shutdown", "context",
+    ],
     coupledWith: [
       { module: "enforcement", via: "input event" },
-      { module: "prompt", via: "before_agent_start event" },
     ],
   },
 
   // ═════════════════════════════════════════════════════════════════════
-  // COGNITIVE — Behavioral enforcement + reasoning quality
-  // Coupling: enforcement listens to 10+ events (pervasive).
-  //   reasoning, verification, topic-drift, cognitive-systems are
-  //   tool-only (no event listeners) — coupled by concept, not events.
+  // COGNITIVE-QUALITY — Reasoning quality tools
+  //   All are TOOL-PROVIDER (no event listeners except sycophancy-detector).
+  //   reasoning:      2 events — think tool cadence tracking
+  //   verification:   0 events — verify_claim, verify_decomposition tools
+  //   topic-drift:    0 events — check/reset topic drift tools
+  //   sycophancy-detector: 1 event — message_end, contrast-based detection
+  // Paper: RepE Contrast / Silicon Mirror (2604.19117)
   // ═════════════════════════════════════════════════════════════════════
   {
-    name: "cognitive",
-    label: "Cognitive Systems",
-    description:
-      "RepE enforcement, structured reasoning, evidence pool, verification, topic-drift, sycophancy detection",
-    paper: "RepE Contrast / Evidence-Based Reasoning / Silicon Mirror (2604.19117)",
+    name: "cognitive-quality",
+    label: "Cognitive Quality",
+    description: "Structured reasoning, verification, topic-drift, sycophancy detection",
+    paper: "RepE Contrast / Silicon Mirror (2604.19117)",
     dependencies: ["core"],
     extensions: [
-      { name: "cognitive-systems", fn: cognitiveSystemsFn },
       { name: "reasoning", fn: reasoningFn },
-      { name: "enforcement", fn: enforcementFn },
       { name: "verification", fn: verificationFn },
       { name: "topic-drift", fn: topicDriftFn },
       { name: "sycophancy-detector", fn: sycophancyDetectorFn },
     ],
     listensTo: [
-      "session_start",
-      "session_shutdown",
-      "input",
-      "agent_end",
-      "message_end",
-      "tool_call",
-      "tool_result",
-      "turn_end",
-      "session_compact",
+      "before_agent_start", "message_end",
     ],
     coupledWith: [
+      { module: "enforcement", via: "message_end" },
+    ],
+  },
+
+  // ═════════════════════════════════════════════════════════════════════
+  // ENFORCEMENT — RepE contrast enforcement (split from cognitive-quality)
+  //   EVENT-HANDLER — heavy: 10+ event listeners across session lifecycle.
+  //   Registered separately so it can be disabled without losing other tools.
+  //   This is the most event-coupled module in the system.
+  // Paper: Representation Engineering (RepE)
+  // ═════════════════════════════════════════════════════════════════════
+  {
+    name: "enforcement",
+    label: "Behavioral Enforcement",
+    description: "RepE-based behavioral enforcement, turn validation, contrast detection",
+    paper: "Representation Engineering (RepE)",
+    dependencies: ["core"],
+    extensions: [
+      { name: "enforcement", fn: enforcementFn },
+    ],
+    listensTo: [
+      "session_start", "session_shutdown", "input", "agent_end",
+      "message_end", "tool_call", "tool_result", "turn_end",
+      "session_compact", "auto_retry_end",
+    ],
+    coupledWith: [
+      { module: "cognitive-quality", via: "message_end" },
       { module: "memory", via: "tool_end, turn_end" },
       { module: "heartbeat", via: "turn_end" },
     ],
@@ -148,17 +201,19 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
 
   // ═════════════════════════════════════════════════════════════════════
   // MEMORY — Three-store memory + session recall + context lifecycle
-  // Coupling: all share session custom entries + extension-state.
-  //   three-memory-stores listens to session, tool, turn, agent events.
-  //   session-recall listens to model_select + turn_end.
-  //   context-lifecycle listens to session_start, before_agent_start.
-  //   context-manager provides compaction tools (no event listeners).
+  //   three-memory-stores: EVENT-HANDLER + TOOL — core memory infrastructure
+  //   session-recall:     TOOL-PROVIDER — session_search, session_query
+  //   context-lifecycle:  TOOL-PROVIDER + EVENT — proposals, signal
+  //   context-manager:    TOOL-PROVIDER — compaction/pruning tools
+  //   memory-agent-bridge: TOOL-PROVIDER — agent-facing memory tools
+  //     (memory_store/recall/list/get, explore_paths, conflict_qa)
+  //     Renamed from cognitive-systems, moved from cognitive module.
   // Paper: 2604.14475 (Three Memory Stores)
   // ═════════════════════════════════════════════════════════════════════
   {
     name: "memory",
     label: "Memory Stores",
-    description: "Three memory stores, session recall, context compaction + lifecycle",
+    description: "Three memory stores, session recall, context compaction + lifecycle, agent-facing memory tools",
     paper: "Three Memory Stores (2604.14475)",
     dependencies: ["core"],
     extensions: [
@@ -166,33 +221,27 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
       { name: "session-recall", fn: sessionRecallFn },
       { name: "context-manager", fn: contextManagerFn },
       { name: "context-lifecycle", fn: contextLifecycleFn },
+      { name: "memory-agent-bridge", fn: memoryAgentBridgeFn },
     ],
     listensTo: [
-      "session_start",
-      "session_shutdown",
-      "agent_end",
-      "tool_result",
-      "turn_end",
-      "model_select",
-      "before_agent_start",
-      "tool_call",
+      "session_start", "session_shutdown", "agent_end", "tool_result",
+      "turn_end", "model_select", "before_agent_start", "tool_call",
     ],
     coupledWith: [
-      { module: "cognitive", via: "turn_end, tool_end" },
+      { module: "enforcement", via: "turn_end, tool_end" },
       { module: "heartbeat", via: "session_shutdown" },
     ],
   },
 
   // ═════════════════════════════════════════════════════════════════════
   // HEARTBEAT — Proactive cognitive scheduling
-  // Coupling: heartbeat-scheduler provides the timing tick; analytics
-  //   provides metrics that inform policy decisions.
-  //   Both listen to turn_end + session_start + session_shutdown.
+  //   heartbeat-scheduler: EVENT-HANDLER — cognitive scheduling engine
+  //   analytics:          TOOL-PROVIDER + EVENT — session metrics tools
   // Paper: 2604.14178 (Cognitive Heartbeat)
   // ═════════════════════════════════════════════════════════════════════
   {
     name: "heartbeat",
-    label: "Heartbeat Scheduler",
+    label: "Cognitive Scheduler (Heartbeat)",
     description: "Proactive cognitive scheduling with policy engine + analytics",
     paper: "Cognitive Heartbeat (2604.14178)",
     dependencies: ["core", "memory"],
@@ -201,42 +250,24 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
       { name: "analytics", fn: analyticsFn },
     ],
     listensTo: [
-      "session_start",
-      "session_shutdown",
-      "agent_end",
-      "turn_end",
-      "tool_call",
-      "tool_execution_start",
-      "tool_execution_end",
+      "session_start", "session_shutdown", "agent_end", "turn_end",
+      "tool_call", "tool_execution_start", "tool_execution_end",
     ],
     coupledWith: [
-      { module: "cognitive", via: "turn_end" },
+      { module: "enforcement", via: "turn_end" },
       { module: "memory", via: "session_shutdown" },
     ],
   },
 
   // ═════════════════════════════════════════════════════════════════════
-  // PROMPT — Prompt builder + injection defence
-  // Coupling: both hook into before_agent_start to inject/validate prompts.
-  // ═════════════════════════════════════════════════════════════════════
-  {
-    name: "prompt",
-    label: "Prompt Management",
-    description: "System prompt builder, prompt injection detection",
-    dependencies: ["core"],
-    extensions: [{ name: "prompt-builder", fn: promptBuilderFn }],
-    listensTo: ["session_start", "phase_start", "session_shutdown", "before_agent_start"],
-    coupledWith: [],
-  },
-
-  // ═════════════════════════════════════════════════════════════════════
-  // TOOLS — Workspace utility tools (no event listeners, pure tool extensions)
+  // TOOLS — Workspace utility tools (pure TOOL-PROVIDERs)
+  //   All tools are self-contained with no shared state or event coupling.
   // ═════════════════════════════════════════════════════════════════════
   {
     name: "tools",
     label: "Utility Tools",
     description:
-      "Healthcheck, timer, latent activator, observatory, diff, system-monitor, research",
+      "Healthcheck, timer, latent-activator, observatory, diff, system-monitor, research",
     dependencies: ["core"],
     extensions: [
       { name: "healthcheck", fn: healthcheckFn },
@@ -247,41 +278,52 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
       { name: "system-monitor", fn: systemMonitorFn },
       { name: "research", fn: researchFn },
     ],
-    listensTo: ["turn_end", "session_start", "session_shutdown"], // timer + observatory + diff + system-monitor
+    listensTo: ["turn_end", "session_start", "session_shutdown"],
     coupledWith: [],
   },
 
   // ═════════════════════════════════════════════════════════════════════
-  // ═════════════════════════════════════════════════════════════════════
-  // ASSISTANT — State persistence + UX + feedback whisper
-  // Coupling: all three are user-facing. assistant + feedback listen to
-  //   session events; ux listens to input/agent_end.
+  // NUDGE — Feedback/nudge injection (from assistant/feedback)
+  //   EVENT-HANDLER — 7 event listeners. Injects behavioral nudges
+  //   and feedback via the whisper pattern (before_agent_start).
+  //   Renamed from "assistant/feedback" for clarity.
   // ═════════════════════════════════════════════════════════════════════
   {
-    name: "assistant",
-    label: "Assistant & UX",
-    description: "Assistant identity state, feedback whisper, notifications",
+    name: "nudge",
+    label: "Nudge & Feedback",
+    description: "Behavioral nudge injection, feedback whispers, turn-quality monitoring",
     dependencies: ["core"],
     extensions: [
-      { name: "assistant", fn: assistantFn },
       { name: "feedback", fn: feedbackFn },
     ],
     listensTo: [
-      "session_start",
-      "session_tree",
-      "agent_start",
-      "turn_start",
-      "message_end",
-      "tool_call",
-      "turn_end",
-      "before_agent_start",
+      "session_start", "session_shutdown", "turn_start",
+      "message_end", "tool_call", "turn_end", "before_agent_start",
     ],
-    coupledWith: [{ module: "cognitive", via: "message_end, tool_call" }],
+    coupledWith: [{ module: "cognitive-quality", via: "message_end, tool_call" }],
+  },
+
+  // ═════════════════════════════════════════════════════════════════════
+  // TOOL-CONFIG — Interactive tool management (from assistant/assistant)
+  //   COMMAND-PROVIDER — /tools and /tool-status commands for enabling/
+  //   disabling pi tools interactively. Split from assistant module
+  //   because it has zero coupling with nudge/feedback.
+  // ═════════════════════════════════════════════════════════════════════
+  {
+    name: "tool-config",
+    label: "Tool Configuration",
+    description: "Interactive /tools and /tool-status commands for tool enable/disable",
+    dependencies: ["core"],
+    extensions: [
+      { name: "tool-config", fn: toolConfigFn },
+    ],
+    listensTo: ["session_start", "session_tree"],
+    coupledWith: [],
   },
 
   // ═════════════════════════════════════════════════════════════════════
   // WATCHDOG — Error monitoring (opt-in, verbose)
-  // Coupling: standalone, listens to session_start + agent_end + message_end
+  //   EVENT-HANDLER — session_start, agent_end, message_end
   // ═════════════════════════════════════════════════════════════════════
   {
     name: "watchdog",
@@ -295,44 +337,34 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
   },
 
   // ═════════════════════════════════════════════════════════════════════
-  // EVOLVE — Self-maintenance / checkpointing (opt-in, disruptive)
+  // HEALTH-MAINTENANCE — Degradation recovery (opt-in)
+  //   Renamed from "evolve" for clarity. Health-based checkpointing,
+  //   degradation detection, and rollback.
   // ═════════════════════════════════════════════════════════════════════
   {
-    name: "evolve",
-    label: "Self-Evolution",
+    name: "health-maintenance",
+    label: "Health Maintenance",
     description: "Health-based checkpointing, degradation detection, rollback",
     disabledByDefault: true,
     dependencies: ["core"],
-    extensions: [{ name: "evolve", fn: evolveFn }],
+    extensions: [{ name: "health-maintenance", fn: healthMaintenanceFn }],
     listensTo: ["session_shutdown"],
     coupledWith: [],
   },
 
   // ═════════════════════════════════════════════════════════════════════
-  // RATE-LIMITER — Usage throttling (opt-in, experimental)
+  // ERROR-TRACKING — Error logging tools (opt-in)
+  //   TOOL-PROVIDER — error_list, error_get, error_clear, error_stats.
+  //   Promoted from retry/error-capture to its own module.
   // ═════════════════════════════════════════════════════════════════════
   {
-    name: "rate-limiter",
-    label: "Rate Limiter",
-    description: "API rate limiting and usage management",
+    name: "error-tracking",
+    label: "Error Tracking",
+    description: "Error logging tools: error_list, error_get, error_clear, error_stats",
     disabledByDefault: true,
     dependencies: ["core"],
-    extensions: [{ name: "rate-limiter", fn: rateLimiterFn }],
-    listensTo: ["session_shutdown", "context"],
-    coupledWith: [],
-  },
-
-  // ═════════════════════════════════════════════════════════════════════
-  // AGENT-ENVIRONMENT — Runtime context for agent execution
-  // ═════════════════════════════════════════════════════════════════════
-  {
-    name: "agent-environment",
-    label: "Agent Environment",
-    description: "Runtime execution context provider",
-    disabledByDefault: true,
-    dependencies: ["core"],
-    extensions: [{ name: "agent-environment", fn: agentEnvFn }],
-    listensTo: ["session_start", "message_end"],
+    extensions: [{ name: "error-capture", fn: errorCaptureFn }],
+    listensTo: ["turn_end"],
     coupledWith: [],
   },
 ];

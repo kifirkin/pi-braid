@@ -32,25 +32,29 @@
 
 ## Extension Module Hierarchy
 
-Extensions are grouped into 14 modules (`src/modules/definitions.ts`):
+Extensions are grouped by **actual coupling** (shared events, tools, state):
 
-| Module                | Purpose                        | Extensions                                                              |
-| --------------------- | ------------------------------ | ----------------------------------------------------------------------- |
-| **core**              | Always-on foundation           | polyfill, metacognition, planner, scratchpad, preprocessor              |
-| **cognitive**         | RepE enforcement, reasoning    | cognitive-systems, reasoning, enforcement, verification, topic-drift    |
-| **memory**            | Three memory stores, context   | three-memory-stores, session-recall, context-manager, context-lifecycle |
-| **heartbeat**         | Proactive cognitive scheduling | heartbeat-scheduler, analytics                                          |
-| **retry**             | Error recovery                 | retry, error-capture                                                    |
-| **prompt**            | System prompt construction     | prompt-builder, prompt-guardian                                         |
-| **tools**             | Utility tools                  | codebase-tree, repl, docs, healthcheck, timer, latent-activator         |
-| **browser**           | Web interaction                | browser (CDP), web-fetch, vision                                        |
-| **assistant**         | UX & feedback                  | assistant, feedback                                                     |
-| **watchdog**          | Error monitoring (opt-in)      | watchdog                                                                |
-| **evolve**            | Self-maintenance (opt-in)      | evolve                                                                  |
-| **rate-limiter**      | Usage throttling (opt-in)      | rate-limiter                                                            |
-| **agent-environment** | Runtime context (opt-in)       | agent-environment                                                       |
+| Module                | Always-on | Purpose                           | Extensions                                                                 |
+| --------------------- | --------- | --------------------------------- | -------------------------------------------------------------------------- |
+| **core**              | ✅        | Foundation layer                  | agent-patch, polyfill, metacognition, scratchpad, preprocessor, prompt-builder, agent-environment, rate-limiter |
+| **cognitive-quality** | ✅        | Reasoning quality tools           | reasoning, verification, topic-drift, sycophancy-detector                 |
+| **enforcement**       | ✅        | RepE behavioral enforcement       | enforcement (split from cognitive-quality due to heavy event load)        |
+| **memory**            | ✅        | Memory stores + context lifecycle | three-memory-stores, session-recall, context-manager, context-lifecycle, memory-agent-bridge |
+| **heartbeat**         | ✅        | Proactive cognitive scheduling    | heartbeat-scheduler, analytics                                            |
+| **tools**             | ✅        | Utility tools                    | healthcheck, timer, latent-activator, observatory, diff, system-monitor, research |
+| **nudge**             | ✅        | Feedback/nudge injection         | feedback (from assistant/feedback)                                        |
+| **tool-config**       | ✅        | Interactive tool management      | tool-config (/tools, /tool-status)                                        |
+| **watchdog**          | ❌        | Error monitoring (opt-in)        | watchdog                                                                  |
+| **health-maintenance**| ❌        | Degradation recovery (opt-in)    | health-maintenance (renamed from evolve)                                  |
+| **error-tracking**    | ❌        | Error logging tools (opt-in)     | error-capture (promoted from retry/error-capture)                         |
 
 Each extension lives at `src/extensions/<module>/<extension>/index.ts`.
+
+## Module Config
+
+Toggling: `BRAID_MODULES=cognitive-quality,enforcement,+error-tracking,-tools`
+
+See `src/modules/definitions.ts` for the full list.
 
 ## State Management
 

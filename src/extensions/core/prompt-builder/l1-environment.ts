@@ -25,7 +25,7 @@ import { getCognitiveMemory } from "../../../lib/cognitive-memory.js";
 import {
   gatherL1Environment,
   formatL1EnvironmentSection,
-} from "../../agent-environment/agent-environment/index.js";
+} from "../agent-environment/index.js";
 
 interface L1Environment {
   contextPercent: number;

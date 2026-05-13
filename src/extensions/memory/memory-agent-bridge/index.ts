@@ -24,12 +24,12 @@ import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { addEvidence } from "../../../lib/evidence-pool.js";
 import { getExtensionState } from "../../../lib/extension-state.js";
 import { textResult } from "../../../lib/extension-utils.js";
-import type { MemoryStoresState } from "../../memory/three-memory-stores/index.js";
+import type { MemoryStoresState } from "../three-memory-stores/index.js";
 import {
   createMemoryStoresState,
   retrieveByRUMS,
   addEpisode,
-} from "../../memory/three-memory-stores/index.js";
+} from "../three-memory-stores/index.js";
 import {
   getPendingQAs as getPendingConflictQAs,
   getAllQAs as getAllConflictQAs,

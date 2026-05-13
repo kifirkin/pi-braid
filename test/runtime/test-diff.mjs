@@ -130,7 +130,7 @@ console.log("\n[6] ToolErrorEvent in event bus");
 console.log("\n[7] Error-capture emits tool_error");
 {
   const fs = await import("fs");
-  const src = fs.readFileSync(`${ROOT}/src/extensions/retry/error-capture/index.ts`, "utf8");
+  const src = fs.readFileSync(`${ROOT}/src/extensions/error-tracking/error-capture/index.ts`, "utf8");
 
   assert(src.includes("eventBus.emit"), "eventBus.emit called on tool failure");
   assert(src.includes('type: "tool_error"'), "emits tool_error event type");
