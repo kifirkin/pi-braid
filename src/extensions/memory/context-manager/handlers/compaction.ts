@@ -30,6 +30,8 @@ import {
   getOverflowRetryDelay,
   isTransientCompactionError,
   isContextWindowError,
+  isCompactionActive,
+  setCompactionActive,
 } from "./shared.js";
 import { getRotationState } from "../../../../lib/global-state.js";
 import { filterSafeToRemove } from "../../../../lib/filter-safe-to-remove.js";
@@ -75,9 +77,8 @@ function clearProcessedCompacts(sessionId: string, leafId: string): void {
 // message_end handler). We skip the duplicate by returning the pre-appended
 // entry ID instead of creating a new one.
 
-/** Whether compaction is currently in progress. Guards input capture to only
- * capture messages typed DURING compaction, not messages that triggered it. */
-let _compactionActive = false;
+// ── Shared compaction state (exported via shared.ts for preprocessor access) ────
+// _compactionActive is now exported directly from shared.ts.
 
 /** Text of the user's message queued during compaction. */
 let _queuedDuringCompaction: string | undefined;
@@ -159,7 +160,7 @@ export function clearInterceptState(): void {
   _origAppendMessage = undefined;
   _interceptActive = false;
   _interceptedSmRef = undefined;
-  _compactionActive = false;
+  setCompactionActive(false);
 }
 
 /**
@@ -266,14 +267,14 @@ export function registerBeforeCompactHandler(pi: any): void {
     // Guard: only capture messages typed DURING active compaction.
     // Messages typed before compaction starts are already in sessionManager
     // and should NOT be pre-appended (would create a duplicate).
-    if (_compactionActive && _queuedDuringCompaction === undefined) {
+    if (isCompactionActive() && _queuedDuringCompaction === undefined) {
       _queuedDuringCompaction = event.text;
     }
   });
 
   pi.on("session_before_compact", async (event: any, ctx: ExtensionContext) => {
     try {
-      _compactionActive = true;
+      setCompactionActive(true);
       // STEP 0: Deduplicate — prevent two entries from manual+auto call sites
       const sessionId = (ctx as any).sessionManager?.getSessionId?.() ?? "?";
       const leafId = (ctx as any).sessionManager?.getLeafId?.() ?? "?";
@@ -489,11 +490,11 @@ export function registerCompactionEndHandler(pi: any): void {
 
         // pi core is retrying — nothing to do, let pi handle it
         if (willRetry) {
-          _compactionActive = false;
+          setCompactionActive(false);
           return;
         }
 
-        _compactionActive = false;
+        setCompactionActive(false);
 
         // CRITICAL: Always clear intercept state on compaction_end, regardless of outcome.
         // The intercept was set in session_compact to skip the duplicate from
@@ -513,9 +514,17 @@ export function registerCompactionEndHandler(pi: any): void {
         }
 
         // On success (result exists), compaction completed successfully.
-        // The intercept has been handled above. Nothing more to do.
+        // The intercept has been handled above. The agent is mid-turn with queued
+        // user input — send a steer to unblock it since compaction may have
+        // interrupted the agent loop.
         if (result) {
           log.info("[context-manager] Compaction completed successfully");
+          sendTrackedMessage(
+            pi,
+            { content: [{ type: "text", text: "Context compaction done. Continue your task." }] },
+            { triggerTurn: true, deliverAs: "steer" },
+            { type: "context", source: "context-manager/compaction/resume" },
+          );
           return;
         }
 
@@ -910,7 +919,7 @@ export function registerTurnEndRetryReset(pi: any): void {
     // This ensures the next compaction cycle starts clean.
     _queuedDuringCompaction = undefined;
     _preAppendedEntryId = undefined;
-    _compactionActive = false;
+    setCompactionActive(false);
   });
 
   // Also listen for message_end — handles edge case where turn_end might not

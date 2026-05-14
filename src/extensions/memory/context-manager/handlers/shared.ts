@@ -93,6 +93,19 @@ export const overflowRetryState: RetryState = {
 
 export const _compactedEntries = new Set<string>();
 
+/** Whether compaction is currently in progress. Guards input capture to only
+ * capture messages typed DURING compaction, not messages that triggered it.
+ * Exported for read+write access by compaction.ts and user-message-preprocessor. */
+export let _compactionActive = false;
+
+export function isCompactionActive(): boolean {
+  return _compactionActive;
+}
+
+export function setCompactionActive(value: boolean): void {
+  _compactionActive = value;
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 export const COMPACTION_RETRY_MAX_ATTEMPTS = 3;
 export const OVERFLOW_RETRY_MAX_ATTEMPTS = 3;

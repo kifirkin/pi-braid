@@ -2,6 +2,25 @@
 
 All notable changes to pi-braid are documented here.
 
+## v0.2.4 (2026-05-14)
+
+### Compaction Loop-Break Fix
+
+- **Root cause**: Compaction success returned silently — agent stall mid-loop after context_compact tool.
+- **Fix**: `compaction_end` injects steer message on success so agent continues without manual prompt.
+
+### User Message Preprocessor Race Fix
+
+- **Root cause**: Preprocessor ran during active compaction, corrupting input flow.
+- **Fix**: Skip preprocessing when `_compactionActive` is true (reads shared flag exported from context-manager/shared.ts).
+- **Added**: session_start lazy-import of `isCompactionActive()` from shared.ts to avoid circular dependency.
+
+### Internal
+
+- **Race condition**: `connectLock` in pi-browser extension was dead code — connection lock now properly acquired and released.
+- **Session leak**: `sessionCleanup` stored only the last tab's event handler — now uses array.
+- **Shared state**: `_compactionActive` moved from compaction.ts to shared.ts with getter/setter pattern.
+
 ## v0.2.0 (2026-05-08)
 
 ### Whisper Bugfixes (2026-05-11)

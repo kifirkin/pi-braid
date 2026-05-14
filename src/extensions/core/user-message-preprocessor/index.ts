@@ -1,6 +1,10 @@
 import { createLogger } from "../../../lib/logger.js";
 
 const log = createLogger("user-message-preprocessor");
+
+// Forward declaration — imported lazily to avoid circular dep with compaction.ts
+let _isCompactionActive: (() => boolean) | undefined;
+
 /**
  * User Message Preprocessor Extension
  *
@@ -14,11 +18,13 @@ const log = createLogger("user-message-preprocessor");
  * - Skips code-heavy messages (>30% code characters)
  * - Skips well-written English text
  * - Preserves markdown, code blocks, and formatting
+ * - Skips during active compaction (input queued in compaction.ts instead)
  *
- * Preprocessing happens ONCE per agentic session:
- * 1. User submits input -> preprocesses -> updates editor text
- * 2. User presses enter again -> no preprocessing, text goes straight to LLM
- * 3. Session ends (agent finishes) -> preprocessing enabled for next input
+ * Preprocessing happens at most once per user message:
+ * 1. User submits input → preprocesses → updates editor text (flag set)
+ * 2. User presses Enter again → no preprocessing, text goes straight to LLM (flag reset)
+ * 3. Next user message → preprocessing runs again (flag was false)
+ * 4. On error or no-change → message goes through immediately, no blocking
  *
  * Settings:
  * - Enabled state persists to ~/.pi/agent/settings.json
@@ -293,7 +299,6 @@ interface PreprocessorState {
   isProcessing: boolean;
   preprocessedText: string | undefined;
   preprocessingExhausted: boolean;
-  storedImages?: ImageContent[];
 }
 
 function createPreprocessorState(): PreprocessorState {
@@ -319,9 +324,6 @@ async function processMessage(
   ctx: ExtensionContext,
   resolve: (result: InputEventResult) => void,
 ) {
-  // Store images so they can be restored on re-submit after preprocessing
-  const state_pre = getPreprocessorState(ctx);
-  state_pre.storedImages = _images;
   const state = getPreprocessorState(ctx);
   state.isProcessing = true;
 
@@ -387,8 +389,6 @@ async function processMessage(
 
     if (cleaned && cleaned !== original && cleaned.length > 0) {
       state.preprocessedCount++;
-      state.preprocessingExhausted = true;
-      state.preprocessedText = cleaned;
 
       // Detect input language → set language hint for reply instruction
       const lang = detectLanguage(original);
@@ -412,24 +412,22 @@ async function processMessage(
       }
 
       ctx.ui.setEditorText(cleaned);
-      if (autoConfirm) {
-        ctx.ui.setStatus("preprocessor", "✓ Preprocessed - auto-confirmed");
-      } else {
-        ctx.ui.setStatus("preprocessor", "✓ Preprocessed - press Enter to continue");
-      }
 
       if (autoConfirm) {
-        // Auto-confirm: continue processing with corrected text without waiting for user
+        // Message sent immediately — no blocking flag needed
+        state.preprocessingExhausted = false;
+        ctx.ui.setStatus("preprocessor", "✓ Preprocessed - auto-confirmed");
         resolve({ action: "transform", text: cleaned, images: _images });
       } else {
-        // Wait for user to press Enter
+        // Two-step flow: set flag so second submit skips preprocessing
+        state.preprocessingExhausted = true;
+        state.preprocessedText = cleaned;
+        ctx.ui.setStatus("preprocessor", "✓ Preprocessed - press Enter to continue");
         resolve({ action: "handled" });
       }
     } else {
       state.skippedCount++;
-      state.preprocessingExhausted = true;
-      state.preprocessedText = original;
-      // No change needed, proceed normally
+      // No change needed — proceed normally, flag stays false for next message
       resolve({ action: "continue" });
     }
   } catch (err: unknown) {
@@ -482,13 +480,11 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
       return { action: "continue" };
     }
 
-    // If preprocessing was already done in this agentic session, skip
-    // Restore stored images so they're not lost on re-submit
+    // Preprocessing already done — user saw diff, now pressing Enter to send
+    // Reset flag so next user message can be preprocessed, then let it through
     if (state.preprocessingExhausted) {
-      if (state.storedImages && state.storedImages.length > 0) {
-        state.storedImages = undefined;
-        return { action: "continue", images: state.storedImages } as any;
-      }
+      state.preprocessingExhausted = false;
+      state.preprocessedText = undefined;
       return { action: "continue" };
     }
 
@@ -510,6 +506,13 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
     }
 
     if (looksWellWritten(original)) {
+      state.skippedCount++;
+      return { action: "continue" };
+    }
+
+    // Skip during active compaction — input is queued in compaction.ts
+    // and delivered after compaction completes.
+    if (_isCompactionActive?.()) {
       state.skippedCount++;
       return { action: "continue" };
     }
@@ -539,6 +542,23 @@ export default function userMessagePreprocessorExtension(pi: ExtensionAPI) {
     const state = getPreprocessorState(ctx);
     state.preprocessingExhausted = false;
     state.preprocessedText = undefined;
+  });
+
+  // Lazy-load the compaction state check on first session. This avoids a
+  // circular dependency: preprocessor imports shared.js which imports compaction.ts,
+  // but shared.js doesn't import preprocessor.js.
+  pi.on("session_start", async () => {
+    if (!_isCompactionActive) {
+      try {
+        const { isCompactionActive } = await import(
+          "../../memory/context-manager/handlers/shared.js"
+        );
+        _isCompactionActive = isCompactionActive;
+      } catch {
+        // Non-fatal — preprocessor will skip compaction check if import fails
+        log.debug("[preprocessor] Could not load compaction state, skipping");
+      }
+    }
   });
 
   pi.registerCommand("preprocessor", {
