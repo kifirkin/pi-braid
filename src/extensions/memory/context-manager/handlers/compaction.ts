@@ -513,25 +513,11 @@ export function registerCompactionEndHandler(pi: any): void {
           return;
         }
 
-        // On success (result exists), compaction completed successfully.
-        // The intercept has been handled above. The agent is mid-turn with queued
-        // user input — send a steer to unblock it since compaction may have
-        // interrupted the agent loop.
+        // Timer is now scheduled in context_compact tool execute before ctx.compact().
+        // The timer fires via the timer extension's polling loop (1s interval, server
+        // process) independent of agent disconnect during compaction.
         if (result) {
           log.info("[context-manager] Compaction completed successfully");
-          // Schedule a short timer to wake the agent after compaction.
-          // The timer fires via the timer extension's polling loop (1s interval)
-          // and delivers a steer message that doesn't compete with the tool result.
-          try {
-            const { scheduleTimer } = await import("../../../tools/timer/index.js");
-            scheduleTimer(
-              500,
-              "Context compaction done — continue your task",
-              "compaction-resume",
-            );
-          } catch {
-            log.warn("[context-manager] Could not schedule resume timer");
-          }
           return;
         }
 

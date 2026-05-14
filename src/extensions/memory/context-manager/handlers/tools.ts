@@ -560,6 +560,21 @@ export function registerTools(pi: any): void {
       ctx: any,
     ): Promise<any> => {
       try {
+        // Schedule a resume timer BEFORE compacting — fires after compaction
+        // completes and the tool result is processed, so the agent doesn't stall.
+        // The polling loop in the timer extension (1s interval, server process)
+        // handles delivery, independent of agent disconnect during compaction.
+        try {
+          const { scheduleTimer } = await import("../../../tools/timer/index.js");
+          scheduleTimer(
+            1500,
+            "Context compaction done — continue your task",
+            "compaction-resume",
+          );
+        } catch {
+          // Non-fatal — timer unavailable, agent must type to resume
+        }
+
         const options: CompactOptions = {};
         if (params?.keep != null) {
           options.customInstructions = `Keep the most recent ${params.keep} messages.`;

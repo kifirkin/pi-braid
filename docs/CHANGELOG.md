@@ -2,6 +2,14 @@
 
 All notable changes to pi-braid are documented here.
 
+## v0.2.5 (2026-05-14)
+
+### Compaction Resume Fix (v2)
+
+- Timer now scheduled from `context_compact` tool execute BEFORE `ctx.compact()` — reliable even if compaction disconnects the agent.
+- Removed unreliable programmatic timer from `compaction_end` handler (steer/timer messages from inside compaction events don't reliably wake the agent).
+- Tool description warns agent to set its own timer with task context.
+
 ## v0.2.4 (2026-05-14)
 
 ### Compaction Loop-Break Fix
