@@ -519,12 +519,19 @@ export function registerCompactionEndHandler(pi: any): void {
         // interrupted the agent loop.
         if (result) {
           log.info("[context-manager] Compaction completed successfully");
-          sendTrackedMessage(
-            pi,
-            { content: [{ type: "text", text: "Context compaction done. Continue your task." }] },
-            { triggerTurn: true, deliverAs: "steer" },
-            { type: "context", source: "context-manager/compaction/resume" },
-          );
+          // Schedule a short timer to wake the agent after compaction.
+          // The timer fires via the timer extension's polling loop (1s interval)
+          // and delivers a steer message that doesn't compete with the tool result.
+          try {
+            const { scheduleTimer } = await import("../../../tools/timer/index.js");
+            scheduleTimer(
+              500,
+              "Context compaction done — continue your task",
+              "compaction-resume",
+            );
+          } catch {
+            log.warn("[context-manager] Could not schedule resume timer");
+          }
           return;
         }
 

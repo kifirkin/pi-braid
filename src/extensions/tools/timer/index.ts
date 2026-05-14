@@ -73,6 +73,19 @@ class TimerManager {
 
 const timerManager = new TimerManager();
 
+/**
+ * Programmatic timer API — schedule a timer from any extension.
+ * Returns the timer ID. Timer fires and delivers a steer to the agent.
+ */
+export function scheduleTimer(delayMs: number, reason: string, tag?: string): string {
+  return timerManager.setTimer(delayMs, reason, tag);
+}
+
+/** Cancel a timer by ID. */
+export function cancelTimer(id: string): boolean {
+  return timerManager.cancelTimer(id);
+}
+
 // ── Fire Handlers (via shared bus) ───────────────────────────────────
 // We import the shared bus to bridge timer fires → heartbeat surfacing
 import { emitTimerReminder } from "../../../lib/timer-bus.js";

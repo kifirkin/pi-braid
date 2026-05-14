@@ -538,6 +538,11 @@ export function registerTools(pi: any): void {
       "Calls pi.compact() to remove obsolete, duplicate, and superseded entries. " +
       "Accepts optional 'keep' parameter to preserve recent N messages from pruning. " +
       "\n\n" +
+      "⚠️ WARNING: Compaction interrupts your execution. After calling this tool, " +
+      "the agent stalls until the next user message or timer reminder. " +
+      "SET A TIMER BEFORE CALLING (timer_set, 1-2s delay) with your task context " +
+      "as the reason — the timer fires after compaction and resumes you automatically. " +
+      "\n\n" +
       "Compaction is asynchronous — freed space will be visible on the next turn. " +
       "Use context_snapshot before and after to verify the effect.",
     parameters: Type.Object({
