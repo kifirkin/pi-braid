@@ -187,9 +187,10 @@ async function handleSycophancy(
 ): Promise<void> {
   state.turnCount++;
 
-  // Get session history
-  const session = (ctx as any).sessionManager?.getCurrentSession?.();
-  const messages = session?.messages ?? [];
+  // Get session history — use getBranch(), getCurrentSession() does not exist on SessionManager
+  const entries = ctx.sessionManager?.getBranch() ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const messages: any[] = entries.filter((e) => e.type === "message").map((e) => e.message);
 
   // Get the last user message
   const userMessages = messages.filter((m: any) => m.role === "user");

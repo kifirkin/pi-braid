@@ -453,6 +453,19 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
         () => state.metaLearning.toolTracking,
         onSignal,
         (msg: string) => ctx.whisper?.(msg, { category: "cognitive", priority: "low" }),
+        () => ctx.getContextUsage(),
+        (msg: string) => {
+          sendTrackedMessage(
+            pi,
+            {
+              customType: "heartbeat",
+              content: [{ type: "text" as const, text: msg }],
+              display: true,
+            },
+            { deliverAs: "steer", triggerTurn: false },
+            { type: "heartbeat", source: "heartbeat/auto-finalize" },
+          );
+        },
       );
       for (const policy of defaultPolicies) {
         engine.register(policy);

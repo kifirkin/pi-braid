@@ -309,10 +309,12 @@ export function registerBeforeCompactHandler(pi: any): void {
           // Determine adaptive compression level from session metrics
           const audit = analyzeSession(ctx);
           const peakUsage = getPeakUsagePercent();
+          // ExtensionContext has no turnCount — use audit.branchLength as proxy
+          const proxyTurnCount = audit.branchLength ?? 0;
           const baseLevel = determineCompressionLevel(ctx, {
-            turnCount: (ctx as any)?.turnCount ?? audit.branchLength ?? 0,
+            turnCount: proxyTurnCount,
             turnsSinceCompression:
-              ((ctx as any)?.turnCount ?? audit.branchLength ?? 0) -
+              proxyTurnCount -
               (getCmState(ctx).lastCompressionStats?.turnRange?.to ?? 0),
             consecutiveFailures: 0,
             reasoningChainDepth: audit.recommendations.length > 3 ? 4 : 1,
@@ -341,8 +343,8 @@ export function registerBeforeCompactHandler(pi: any): void {
               state.lastCompressionStats = {
                 ...scStats,
                 turnRange: {
-                  from: (ctx as any)?.turnCount ?? 0,
-                  to: (ctx as any)?.turnCount ?? 0,
+                  from: proxyTurnCount,
+                  to: proxyTurnCount,
                 },
                 timestamp: Date.now(),
               };

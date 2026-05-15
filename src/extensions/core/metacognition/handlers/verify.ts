@@ -92,20 +92,23 @@ const DEFAULT_CRITERIA: Record<VerificationTarget, string[]> = {
 function autoDetectTarget(
   ctx: ExtensionContext,
 ): { target: VerificationTarget; text: string } | null {
-  const session = (ctx as any)?.sessionManager?.getCurrentSession?.();
-  if (!session?.messages) return null;
+  // Use getBranch() — getCurrentSession() does not exist on SessionManager
+  const entries = ctx.sessionManager?.getBranch();
+  if (!entries || entries.length === 0) return null;
 
-  const msgs = session.messages;
   // Walk backwards to find the last assistant message
-  for (let i = msgs.length - 1; i >= 0; i--) {
-    const msg = msgs[i];
-    if (msg.role !== "assistant") continue;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    if (entry.type !== "message") continue;
+    if (entry.message.role !== "assistant") continue;
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const content = (entry.message as any).content;
     const text =
-      typeof msg.content === "string"
-        ? msg.content
-        : Array.isArray(msg.content)
-          ? msg.content.map((c: any) => (c.type === "text" ? c.text : "")).join("\n")
+      typeof content === "string"
+        ? content
+        : Array.isArray(content)
+          ? content.map((c: any) => (c.type === "text" ? c.text : "")).join("\n")
           : "";
 
     if (!text || text.length < 50) continue;

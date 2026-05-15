@@ -94,23 +94,26 @@ export function estimateTokensSaved(block: any): number {
 
 export function shouldSummarizeReasoning(ctx: ExtensionContext): boolean {
   const state = getExtensionState(ctx, "reasoning-compression", () => ({
+    localTurnCount: 0,
     lastSummaryTurn: 0,
     summarizedCount: 0,
   }));
-  const turnCount = (ctx as any).turnCount ?? 0;
-  return turnCount - state.lastSummaryTurn > 20 && state.summarizedCount < 10;
+  state.localTurnCount++;
+  return state.localTurnCount - state.lastSummaryTurn > 20 && state.summarizedCount < 10;
 }
 
 export function recordSummarization(ctx: ExtensionContext, block: any, tokensSaved: number): void {
   const state = getExtensionState(ctx, "reasoning-compression", () => ({
+    localTurnCount: 0,
     lastSummaryTurn: 0,
     summarizedCount: 0,
     totalTokensSaved: 0,
     chainDepth: 0,
   }));
+  state.localTurnCount++;
   state.summarizedCount++;
   state.totalTokensSaved += tokensSaved;
-  state.lastSummaryTurn = (ctx as any).turnCount ?? 0;
+  state.lastSummaryTurn = state.localTurnCount;
   state.chainDepth = Math.max(state.chainDepth, block.messages.length);
   log.debug(
     `Reasoning summarized: ${block.messages.length} steps → ${Math.round(tokensSaved)} tokens saved`,

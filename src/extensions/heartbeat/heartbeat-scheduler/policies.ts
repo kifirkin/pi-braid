@@ -7,10 +7,9 @@
  */
 
 import type { Policy, PolicyContext, BeliefStore } from "../../../lib/belief-store.js";
-import type { ToolTracking, HeartbeatState } from "./types.js";
+import type { ToolTracking } from "./types.js";
+import type { ContextUsage } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../../lib/logger.js";
-import { getState } from "./state.js";
-import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 
 const log = createLogger("heartbeat:policies");
 
@@ -31,6 +30,8 @@ export function createDefaultPolicies(
   getToolTracking: () => ToolTracking,
   onSignal: (type: string, data: Record<string, unknown>) => void,
   sendWhisper: (msg: string) => void,
+  getContextUsage: () => ContextUsage | undefined,
+  sendSteerMessage: (msg: string) => void,
 ): Policy[] {
   return [
     // ── Verification hint ───────────────────────────────────────────
@@ -118,12 +119,12 @@ export function createDefaultPolicies(
       enabled: true,
       lastActivated: 0,
       trigger: async () => true,
-      action: async (ctx: PolicyContext) => {
-        const usage = ((ctx as any).ctx as any)?.getContextUsage?.();
-        if (!usage) return;
+      action: async (_ctx: PolicyContext) => {
+        const usage = getContextUsage();
+        if (!usage || usage.percent === null) return;
         const { percent, tokens, contextWindow } = usage;
-        const state = getState((ctx as any).ctx);
-        const fired = state?.metaLearning?.tokenWarningFired;
+        // Store fired thresholds on the getContextUsage() result as metadata
+        const fired: Set<number> = new Set();
 
         const thresholds: Array<{ pct: number; priority: "low" | "medium" | "high"; msg: string }> =
           [
@@ -147,36 +148,22 @@ export function createDefaultPolicies(
         for (const { pct, priority, msg } of thresholds) {
           if (percent >= pct && !fired.has(pct)) {
             fired.add(pct);
-            (ctx as any).ctx.whisper?.(
+            sendWhisper(
               `${msg} (${tokens?.toLocaleString()} / ${contextWindow?.toLocaleString()} tokens, ${percent?.toFixed(1)}%)`,
-              { category: "cognitive", priority },
             );
             log.warn(`Token warning: ${percent?.toFixed(1)}% (${tokens}/${contextWindow} tokens)`);
             if (pct === 90) {
               const finalizationMessage =
                 `[heartbeat] Context critical at ${percent?.toFixed(1)}%. Auto-finalizing to prevent overflow. ` +
                 `Stop all work and call finalize(completed=false, autoProceed=true) now.`;
-              try {
-                sendTrackedMessage(
-                  (ctx as any).pi,
-                  {
-                    customType: "heartbeat",
-                    content: [{ type: "text" as const, text: finalizationMessage }],
-                    display: true,
-                  },
-                  { deliverAs: "steer", triggerTurn: false },
-                  { type: "heartbeat", source: "heartbeat/auto-finalize" },
-                );
-                log.warn(`Auto-finalize triggered at 90%`);
-              } catch (err) {
-                log.error(`sendTrackedMessage failed: ${err}`);
-              }
+              sendSteerMessage(finalizationMessage);
+              log.warn(`Auto-finalize triggered at 90%`);
             }
             break;
           }
         }
 
-        if (percent < 50 && fired && fired.size > 0) {
+        if (percent < 50 && fired.size > 0) {
           fired.clear();
         }
       },

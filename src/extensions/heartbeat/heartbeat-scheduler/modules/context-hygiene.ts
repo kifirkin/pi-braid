@@ -130,7 +130,7 @@ export const contextHygieneModule: CognitiveModule = {
       lastProjectionWhisperTurn: -20,
     }));
 
-    const currentTurn = (ctx as any)?.turnCount ?? 0;
+    const currentTurn = context.turnCount;
     state.snapshots.push({ turn: currentTurn, tokens: density.totalTokens });
     if (state.snapshots.length > MAX_SNAPSHOTS) {
       state.snapshots = state.snapshots.slice(-MAX_SNAPSHOTS);

@@ -78,19 +78,9 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     setLanguage(ctx, lang.code, lang.name);
     getState(ctx).lastUserMessage = text;
     updateProblemContext(ctx, text);
-    const replyLang = getReplyInstruction(ctx);
-    if (!replyLang) return;
-
-    const session = (
-      ctx as unknown as {
-        sessionManager?: {
-          getCurrentSession?(): { updateSystemPrompt?(opts: { append: string }): void };
-        };
-      }
-    ).sessionManager?.getCurrentSession?.();
-    if (session?.updateSystemPrompt) {
-      session.updateSystemPrompt({ append: replyLang });
-    }
+    // Note: system prompt append via getReplyInstruction() was previously attempted
+    // via getCurrentSession()/updateSystemPrompt() — neither API exists on SessionManager.
+    // Language hint is still tracked in state via setLanguage() above.
   });
 
   registerSessionStartHandler(
@@ -268,6 +258,10 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     if (toolName === "think") return;
 
     const predicted = getState(ctx).lastThinkConfidence;
+
+    // Skip calibration if agent hasn't provided explicit confidence via think()
+    if (predicted === null) return;
+
     const actual = event?.error ? 0 : 1;
     getState(ctx).calibrationPairs.push({
       predicted,
@@ -558,15 +552,17 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
 
   pi.on("turn_end" as never, async (_event: any, ctx: ExtensionContext) => {
     if (!getState(ctx).enforcementActive || !getState(ctx).driftDetector) return;
-    const session =
-      (
-        ctx as unknown as {
-          sessionManager?: {
-            getCurrentSession?(): { messages?: Array<{ role?: string; content?: unknown }> };
-          };
-        }
-      ).sessionManager?.getCurrentSession?.() || null;
-    const recentMsgs = session?.messages?.slice(-4) ?? [];
+    // Use getBranch() — getCurrentSession() does not exist on SessionManager
+    const entries = ctx.sessionManager?.getBranch() ?? [];
+    const recentMsgs: Array<{ role?: string; content?: unknown }> = [];
+    for (let i = entries.length - 1; i >= 0 && recentMsgs.length < 4; i--) {
+      const entry = entries[i];
+      if (entry.type === "message") {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const msg = entry.message as any;
+        recentMsgs.unshift({ role: msg.role, content: msg.content });
+      }
+    }
     for (let i = recentMsgs.length - 1; i >= 0; i--) {
       const msg = recentMsgs[i];
       const text = extractTextContent(msg);

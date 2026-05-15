@@ -211,7 +211,8 @@ export function registerContextPruningHandler(pi: any): void {
 
         // Determine compression level (Experience Compression Spectrum)
         const decision = determineCompressionLevel(ctx as ExtensionContext, {
-          turnCount: ctx.turnCount ?? beforeCount / 2,
+          // ExtensionContext has no turnCount — use message count as proxy
+          turnCount: Math.round(beforeCount / 2),
           turnsSinceCompression: pruningState.turnsSinceCompression ?? Infinity,
           consecutiveFailures: pruningState.consecutiveFailures ?? 0,
           reasoningChainDepth: (pruningState as any).reasoningChainDepth ?? 0,

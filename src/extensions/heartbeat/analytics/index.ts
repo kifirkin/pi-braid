@@ -109,6 +109,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
   pi.on("turn_end", async (_event: any, ctx: any) => {
     try {
       const state = getAnalyticsStateInternal(ctx);
+      state.localTurnCount++;
 
       // Flush per-turn deduplicated tool types into turnToolSequence
       for (const tool of state.currentTurnTypes) {
@@ -179,7 +180,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
                 severity: "warn",
                 message: `Tool addiction pattern detected: ${warnings.join("; ")}`,
                 data: { tools: warnings, windowSize: total },
-                turn: (ctx as any)?.turnCount ?? state.lastDensityTurn,
+                turn: state.localTurnCount,
                 timestamp: Date.now(),
               });
             } catch (err) {
@@ -221,7 +222,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
             severity: "critical",
             message: `Degradation detected: ${reasons.join("; ")}`,
             data: { reasons, consecutiveErrors: 3 },
-            turn: (ctx as any)?.turnCount ?? state.lastDensityTurn,
+            turn: state.localTurnCount,
             timestamp: Date.now(),
           });
         } catch (err) {
@@ -250,7 +251,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
             alertType: "recovery",
             severity: "info",
             message: "Performance recovered to healthy.",
-            turn: (ctx as any)?.turnCount ?? state.lastDensityTurn,
+            turn: state.localTurnCount,
             timestamp: Date.now(),
           });
         } catch (err) {

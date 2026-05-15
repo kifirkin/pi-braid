@@ -93,7 +93,7 @@ export function createState() {
     }>,
     nudgeSuppressedCount: 0 as number,
     _localizationRisk: "" as string,
-    lastThinkConfidence: 0.5,
+    lastThinkConfidence: null as number | null,
     verificationJudgeRunning: false,
     toolLog: [] as string[],
     lastContextCheckTurn: 0,
@@ -190,7 +190,7 @@ export function resetState(s: EnforcementState = state): void {
   s.calibrationPairs = [];
   s.nudgeSuppressedCount = 0;
   s._localizationRisk = "";
-  s.lastThinkConfidence = 0.5;
+  s.lastThinkConfidence = null;
   s.verificationJudgeRunning = false;
   s.toolLog = [];
   s.planAlignmentData = null;

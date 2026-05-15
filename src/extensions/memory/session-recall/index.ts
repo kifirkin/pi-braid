@@ -536,8 +536,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
     midTaskRecallDone = true;
 
     // Extract context: the tools used so far tell us what kind of task this is
-    const tools = ctx.tools?.list() ?? [];
-    const toolNames = Array.from(tools.keys()).slice(0, 5).join(" ");
+    const toolNames = pi.getActiveTools().slice(0, 5).join(" ");
     if (!toolNames) return;
 
     // Quick search for broad terms that might match past sessions

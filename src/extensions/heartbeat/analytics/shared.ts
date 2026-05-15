@@ -75,6 +75,8 @@ export interface AnalyticsState {
   wasDegraded: boolean;
   nudgesSent: number;
   nudgesSuppressed: number;
+  /** Local turn counter (incremented each turn_end) — ExtensionContext has no turnCount */
+  localTurnCount: number;
 }
 
 export function createAnalyticsState(): AnalyticsState {
@@ -95,6 +97,7 @@ export function createAnalyticsState(): AnalyticsState {
     wasDegraded: false,
     nudgesSent: 0,
     nudgesSuppressed: 0,
+    localTurnCount: 0,
   };
 }
 
@@ -111,7 +114,7 @@ export function getAnalyticsStateInternal(ctx: ExtensionContext): AnalyticsState
 export function updateContextDensity(ctx: ExtensionContext, density: number) {
   const state = getAnalyticsStateInternal(ctx);
   state.contextDensity = Math.round(density * 1000) / 10;
-  state.lastDensityTurn = (ctx as any).turnCount ?? 0;
+  state.lastDensityTurn = state.localTurnCount;
   log.debug(`analytics: context_density=${state.contextDensity.toFixed(1)}%`);
 
   if (state.contextDensity > 70) {
