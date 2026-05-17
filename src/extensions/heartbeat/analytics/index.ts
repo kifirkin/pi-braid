@@ -160,11 +160,11 @@ export default function analyticsExtension(pi: ExtensionAPI) {
               sendTrackedMessage(
                 pi,
                 {
-                  customType: "memory",
+                  customType: "heartbeat",
                   content: [
                     {
                       type: "text",
-                      text: `[analytics] Tool addiction pattern detected: ${warnings.join("; ")}`,
+                      text: `[analytics] Tool addiction pattern detected: ${warnings.join("; ")}. Assess intent — heavy single-tool use may be valid if the task demands it.`,
                     },
                   ],
                   display: true,

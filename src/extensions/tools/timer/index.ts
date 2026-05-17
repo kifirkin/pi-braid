@@ -194,7 +194,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
         content: [
           {
             type: "text" as const,
-            text: `Timer set for ${delay_seconds}s. Will fire at ${new Date(firesAt).toLocaleTimeString()}. Continue working — reminder will arrive automatically.`,
+            text: `Timer set for ${delay_seconds}s (ID: ${id}). Will fire at ${new Date(firesAt).toLocaleTimeString()}. Continue working — reminder will arrive automatically. Use timer_cancel with this ID to cancel.`,
           },
         ],
         details: {
@@ -238,7 +238,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
         content: [
           {
             type: "text" as const,
-            text: `${timers.length} active timer(s). ${formatted.map((t) => `[${t.tag}] fires in ${t.fires_in_seconds}s: ${t.reason}`).join("; ")}`,
+            text: `${timers.length} active timer(s). ${formatted.map((t) => `ID:${t.timer_id} [${t.tag}] fires in ${t.fires_in_seconds}s: ${t.reason}`).join("; ")}`,
           },
         ],
         details: { active_timers: timers.length, timers: formatted },
@@ -251,7 +251,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
     name: "timer_cancel",
     label: "Timer Cancel",
     promptSnippet: "Cancel an active timer before it fires",
-    description: "Cancel an active timer when the timed task is no longer needed.",
+    description: "Cancel an active timer when the timed task is no longer needed. The timer_id is returned by timer_set and shown in timer_list output.",
     parameters: Type.Object({ timer_id: Type.String() }),
     execute: async (_id: string, params: any): Promise<any> => {
       const { timer_id } = params ?? {};
