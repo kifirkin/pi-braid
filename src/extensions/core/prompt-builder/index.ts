@@ -119,9 +119,41 @@ interface PastInsight {
   relevance: number;
   content: string;
   source: string;
+  project?: string;
 }
 
+/**
+ * Derive a project identifier from a cwd path, matching deriveProjectId in three-memory-stores.
+ * Returns the last 2 path components, e.g., /Users/user/projects/agents/pi-braid → "agents/pi-braid"
+ */
+function deriveProjectIdFromCwd(cwd: string): string {
+  const parts = cwd.replace(/\\/g, "/").split("/").filter(Boolean);
+  if (parts.length < 2) return cwd || "unknown";
+  return parts.slice(-2).join("/");
+}
+
+/**
+ * Check if an episode is eligible for cross-project injection.
+ * HaluMem (2511.03506): Only allow cross-project if recent (< 1h) and high-quality (success).
+ */
+function isCrossProjectInjectionAllowed(
+  epProject: string | undefined,
+  currentProject: string,
+  timestamp: number,
+  outcome: string,
+): boolean {
+  if (!epProject || epProject === currentProject || epProject === "unknown") return true;
+  // Cross-project: only if < 1h old AND successful outcome
+  const ageMs = Date.now() - timestamp;
+  return ageMs < 3600000 && outcome === "success";
+}
+
+/**
+ * Derive a project identifier from a cwd path, matching deriveProjectId in three-memory-stores.
+ * Returns the last 2 path components, e.g., /Users/user/projects/agents/pi-braid -> "agents/pi-braid"
+ */
 async function searchPastInsights(cwd: string): Promise<PastInsight[]> {
+  const projectId = deriveProjectIdFromCwd(cwd);
   const insights: PastInsight[] = [];
 
   // Search three-memory-stores episodes
@@ -135,14 +167,21 @@ async function searchPastInsights(cwd: string): Promise<PastInsight[]> {
         for (const line of lines.slice(-5)) {
           try {
             const ep = JSON.parse(line);
-            if (ep.task && ep.outcome) {
-              insights.push({
-                type: "episode",
-                relevance: 0.75,
-                content: `[${ep.outcome}] ${ep.task}: ${ep.solution || "(see logs)"}`,
-                source: `episodes:${ep.id}`,
-              });
+            if (!ep.task || !ep.outcome) continue;
+
+            // HaluMem: skip cross-project episodes that don't meet injection criteria
+            // the strict criteria (only recent successes from other projects).
+            if (!isCrossProjectInjectionAllowed(ep.project, projectId, ep.timestamp ?? Date.now(), ep.outcome)) {
+              continue;
             }
+
+            insights.push({
+              type: "episode",
+              project: ep.project || "unknown",
+              relevance: 0.75,
+              content: `[${ep.outcome}] ${ep.task}: ${ep.solution || "(see logs)"}`,
+              source: `episodes:${ep.id}`,
+            });
           } catch {
             // Skip malformed JSON lines
           }
@@ -163,6 +202,7 @@ async function searchPastInsights(cwd: string): Promise<PastInsight[]> {
         .reverse()
         .slice(0, 3);
 
+      
       for (const session of sessions) {
         const content = await readFile(join(sessionDir, session), "utf-8");
         const lines = content.split("\n").filter((l) => l.trim());
@@ -178,6 +218,7 @@ async function searchPastInsights(cwd: string): Promise<PastInsight[]> {
               if (task) {
                 insights.push({
                   type: "session",
+                  project: "unknown",
                   relevance: 0.7,
                   content: `Session: ${task}`,
                   source: `session:${session}`,

@@ -274,8 +274,25 @@ export function retrieveRelevantSOPs(
   userMessage: string,
   episodes: Episode[],
   config: SopSuggestionConfig = DEFAULT_SOP_CONFIG,
+  currentProject?: string,
 ): RetrievedSop[] {
   if (!config.enabled || episodes.length === 0) return [];
+
+  // ── HaluMem project filtering ──────────────────────────────────────
+  // Pre-filter episodes by project to prevent memory contamination.
+  // Same project: include freely.
+  // Unknown project: include (backward compat).
+  // Cross-project: only if < 1h old AND successful outcome.
+  const now = Date.now();
+  const filtered = currentProject
+    ? episodes.filter((ep) => {
+        if (!ep.project || ep.project === currentProject || ep.project === "unknown") return true;
+        const ageMs = now - (ep.timestamp ?? 0);
+        return ageMs < 3600000 && ep.outcome === "success";
+      })
+    : episodes;
+
+  if (filtered.length === 0) return [];
 
   // Extract keywords
   const keywords = extractKeywords(userMessage);
@@ -286,7 +303,7 @@ export function retrieveRelevantSOPs(
 
   // Score episodes
   const scored: RetrievedSop[] = [];
-  for (const ep of episodes) {
+  for (const ep of filtered) {
     const similarity = computeSimilarity(allKeywords, ep.task);
 
     if (similarity < config.minSimilarity) continue;
@@ -317,9 +334,12 @@ function formatSopSuggestion(retrieved: RetrievedSop, maxTokens: number): string
 
   lines.push("## ⚡ Relevant past experience");
 
-  // Task context
+  // Task context with project provenance
   lines.push(`**Task**: ${ep.task}`);
   lines.push(`**Outcome**: ${ep.outcome}`);
+  if (ep.project && ep.project !== "unknown") {
+    lines.push(`**Project**: ${ep.project}`);
+  }
   lines.push(`**Similarity**: ${Math.round(ep.similarity * 100)}%`);
 
   // Strategic SOP
@@ -363,10 +383,11 @@ export function injectSopSuggestions(
   episodes: Episode[],
   config: SopSuggestionConfig = DEFAULT_SOP_CONFIG,
   alreadySuggestedIds?: Set<string>,
+  currentProject?: string,
 ): number {
   if (!config.enabled) return 0;
 
-  const retrieved = retrieveRelevantSOPs(userMessage, episodes, config);
+  const retrieved = retrieveRelevantSOPs(userMessage, episodes, config, currentProject);
   if (retrieved.length === 0) return 0;
 
   let totalTokens = 0;

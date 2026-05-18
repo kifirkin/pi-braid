@@ -43,6 +43,23 @@ const log = createLogger("context-lifecycle");
 const MAX_PROPOSALS_PER_TURN = 2;
 const MAX_PROPOSALS_SESSION = 10;
 
+// ── Compaction Escalation Thresholds ────────────────────────────────────────────
+// When the agent ignores 3+ compaction nudges at >=85% usage, auto-compact with timer.
+const COMPACT_ESCALATION_THRESHOLD = 3;
+const COMPACT_ESCALATION_USAGE = 85;
+
+// Context management tools that count as "agent acted on compaction nudge"
+const CONTEXT_MGMT_TOOLS = new Set([
+  "context_compact",
+  "context_prune",
+  "context_archive",
+  "context_snapshot",
+  "context_audit",
+  "context_proposals",
+  "context_tag",
+  "context_checkout",
+]);
+
 const _policyEngine = new PolicyEngine();
 const _signalDetector = new SignalDetector();
 
@@ -81,6 +98,17 @@ interface ContextLifecycleState {
   turnCount: number;
   proposalsByEntryId: Map<string, any>;
   outcomes: Outcome[];
+  // ── Compaction escalation tracking ──────────────────────────────────────
+  /** How many compact nudges the agent has ignored consecutively */
+  ignoredCompactNudges: number;
+  /** Turn number when we last sent a compact nudge */
+  lastCompactNudgeTurn: number;
+  /** Context usage % at the time of last compact nudge */
+  lastCompactNudgeUsage: number;
+  /** Whether a compact nudge is currently waiting for agent action */
+  compactNudgeActive: boolean;
+  /** Whether the agent called a context management tool since the last nudge check */
+  agentActedOnContext: boolean;
 }
 
 function createState(): ContextLifecycleState {
@@ -92,6 +120,11 @@ function createState(): ContextLifecycleState {
     turnCount: 0,
     proposalsByEntryId: new Map(),
     outcomes: [],
+    ignoredCompactNudges: 0,
+    lastCompactNudgeTurn: 0,
+    lastCompactNudgeUsage: 0,
+    compactNudgeActive: false,
+    agentActedOnContext: false,
   };
 }
 
@@ -199,6 +232,85 @@ function interpolateMessage(message: string, ctx: any): string {
 
 // ── Action Execution ─────────────────────────────────────────────────────────
 
+/**
+ * Send a compact nudge to the agent via tracked message.
+ * Extracted from executeAction so the before_agent_start handler can also use it.
+ */
+function sendCompactNudge(
+  pi: ExtensionAPI,
+  evaluated: EvaluatedAction,
+  usage: number,
+): void {
+  sendTrackedMessage(
+    pi,
+    {
+      customType: "context-lifecycle",
+      content: [
+        {
+          type: "text" as const,
+          text:
+            `[compact] ${evaluated.policy.name} — ` +
+            `call context_compact() to free space (context at ${Math.round(usage)}%).`,
+        },
+      ],
+      display: true,
+      details: { _braidInjected: true, _braidSource: "context-lifecycle/compact-suggestion" },
+    },
+    undefined,
+    { type: "context" as const, source: "context-lifecycle/compact-suggestion" },
+  );
+  log.info(
+    `Suggested compact: ${evaluated.policy.name} (context ${Math.round(usage)}%, ` +
+      `priority ${evaluated.policy.priority})`,
+  );
+}
+
+/**
+ * Execute auto-compaction with pre-scheduled resume timer.
+ * This is the escalation path: when the agent ignores compaction nudges,
+ * we auto-trigger the same timer+compact pattern that context_compact tool uses.
+ * The timer fires after compaction completes and resumes the agent.
+ */
+async function executeAutoCompact(pi: ExtensionAPI, ctx: any): Promise<void> {
+  try {
+    // 1. Schedule resume timer BEFORE compacting
+    try {
+      const { scheduleTimer } = await import("../../tools/timer/index.js");
+      scheduleTimer(1500, "Auto-compaction done — continue your task", "auto-compaction-resume");
+      log.info("Scheduled resume timer before auto-compaction");
+    } catch {
+      log.warn("Timer unavailable for auto-compaction - agent must type to resume");
+    }
+
+    // 2. Send visible notification
+    sendTrackedMessage(
+      pi,
+      {
+        customType: "context-lifecycle",
+        content: [
+          {
+            type: "text" as const,
+            text: [
+              "## ⚡ Auto-compacting context",
+              "Compaction nudges were ignored. Timer will fire after compaction to resume.",
+            ].join("\n"),
+          },
+        ],
+        display: true,
+        details: { _braidInjected: true, _braidSource: "context-lifecycle/auto-compact" },
+      },
+      undefined,
+      { type: "context" as const, source: "context-lifecycle/auto-compact" },
+    );
+
+    // 3. Trigger compaction (this aborts the agent loop, timer resumes later)
+    ctx.compact();
+    log.warn("Auto-compaction triggered (escalation path)");
+  } catch (err) {
+    log.error("Auto-compaction failed:", err);
+  }
+}
+
 function executeAction(
   evaluated: EvaluatedAction,
   pi: ExtensionAPI,
@@ -211,31 +323,7 @@ function executeAction(
   switch (action.type) {
     case "compact":
       if (evaluated.canExecute) {
-        // Don't call ctx.compact?.() — it calls _disconnectFromAgent() + abort()
-        // in pi core (agent-session.js:1245), breaking the agent loop mid-turn.
-        // Instead, nudge the agent to call context_compact() manually.
-        sendTrackedMessage(
-          pi,
-          {
-            customType: "context-lifecycle",
-            content: [
-              {
-                type: "text" as const,
-                text:
-                  `[compact] ${evaluated.policy.name} — ` +
-                  `call context_compact() to free space (context at ${Math.round(usage)}%).`,
-              },
-            ],
-            display: true,
-            details: { _braidInjected: true, _braidSource: "context-lifecycle/compact-suggestion" },
-          },
-          undefined,
-          { type: "context" as const, source: "context-lifecycle/compact-suggestion" },
-        );
-        log.info(
-          `Suggested compact: ${evaluated.policy.name} (context ${Math.round(usage)}%, ` +
-            `priority ${evaluated.policy.priority})`,
-        );
+        sendCompactNudge(pi, evaluated, usage);
       }
       break;
 
@@ -347,6 +435,27 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     const entries = getAllEntries(ctx);
     const branch = getBranchEntries(ctx);
 
+    // ── COMPACTION ESCALATION CHECK ────────────────────────────────────────
+    // If we sent a compact nudge last turn and the agent didn't use any
+    // context management tool, increment the ignored counter.
+    // If they DID use a tool, reset the counter.
+    if (state().compactNudgeActive) {
+      if (state().agentActedOnContext) {
+        state().ignoredCompactNudges = 0;
+        state().compactNudgeActive = false;
+        log.debug("Compact nudge acknowledged — agent used a context management tool");
+      } else if (state().turnCount - state().lastCompactNudgeTurn > 0) {
+        // Agent had a turn to respond but didn't act
+        state().ignoredCompactNudges++;
+        log.info(
+          `Compact nudge ignored (${state().ignoredCompactNudges}/${COMPACT_ESCALATION_THRESHOLD}) ` +
+          `usage=${usage.toFixed(0)}%`,
+        );
+      }
+    }
+    // Reset agent action flag for this turn
+    state().agentActedOnContext = false;
+
     // ── RETRIEVAL: Detect signals from session content ──────────────────
     const signals = _signalDetector.update(entries, usage);
 
@@ -387,6 +496,29 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
       // ── ACTION: Execute or queue ───────────────────────────────────
       if (ev.action.type === "propose") {
         queueProposal(ev, ctx, branch.length);
+      } else if (ev.action.type === "compact" && ev.canExecute) {
+        // ── ESCALATION GATE ──────────────────────────────────────────
+        // If the agent has ignored 3+ compaction nudges and context is
+        // still above 85%, auto-compact with a pre-scheduled resume timer.
+        // This avoids the mid-task overflow death spiral (scenario 2.2).
+        if (
+          state().ignoredCompactNudges >= COMPACT_ESCALATION_THRESHOLD &&
+          usage >= COMPACT_ESCALATION_USAGE
+        ) {
+          log.warn(
+            `Escalating: auto-compacting (${state().ignoredCompactNudges} ignored nudges, ` +
+            `usage=${usage.toFixed(0)}%)`,
+          );
+          await executeAutoCompact(pi, ctx);
+          state().ignoredCompactNudges = 0;
+          state().compactNudgeActive = false;
+        } else {
+          // Normal: send compact nudge
+          sendCompactNudge(pi, ev, usage);
+          state().compactNudgeActive = true;
+          state().lastCompactNudgeTurn = state().turnCount;
+          state().lastCompactNudgeUsage = usage;
+        }
       } else {
         executeAction(ev, pi, ctx, usage, branch.length);
       }
@@ -415,17 +547,28 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     }
   });
 
-  // ── tool_call: Capture agent signals ────────────────────────────────────
+  // ── tool_call: Capture agent signals + compaction escalation reset ────────
   pi.on("tool_call", async (event: any) => {
     const toolName = event.toolName as string;
     const input = event?.input as Record<string, unknown> | undefined;
 
+    // ── Task boundary signals ──────────────────────────────────────────
     if (toolName === "context_tag") {
       _signalDetector.queueSignal("task_boundary", { action: "tag", target: input?.name });
     } else if (toolName === "context_archive") {
       _signalDetector.queueSignal("task_boundary", { action: "compress" });
     } else if (toolName === "context_checkout") {
       _signalDetector.queueSignal("task_boundary", { action: "checkout" });
+    }
+
+    // ── Compaction escalation reset ────────────────────────────────────
+    // If the agent calls any context management tool, the compaction nudge
+    // is considered "acted upon" and we reset the escalation counter.
+    if (CONTEXT_MGMT_TOOLS.has(toolName)) {
+      state().agentActedOnContext = true;
+      state().ignoredCompactNudges = 0;
+      state().compactNudgeActive = false;
+      log.debug(`Context management tool "${toolName}" called - reset compaction escalation`);
     }
   });
 

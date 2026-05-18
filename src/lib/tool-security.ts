@@ -63,6 +63,7 @@ export const SAFE_TOOL_KEEP: string[] = [
   "timer_set",
   "timer_list",
   "timer_cancel",
+  "sleep",
   "activate_behavior",
   "deactivate_behavior",
   "get_active_behaviors",

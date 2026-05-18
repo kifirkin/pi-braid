@@ -334,8 +334,25 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
           delete enforcementSignals[key];
         }
       }
+      // Check if agent has used any context management tool this turn
+      const contextMgmtTools = new Set([
+        "context_compact", "context_prune", "context_archive",
+        "context_snapshot", "context_audit", "context_proposals",
+        "context_tag", "context_checkout",
+      ]);
+      const agentUsedContextTool = actualTools.some((t: string) => contextMgmtTools.has(t));
+
       for (const signal of sessionSignals) {
-        const entry = { turn: getState(ctx).currentTurn, text: signal, acted: false };
+        const entry = {
+          turn: getState(ctx).currentTurn,
+          text: signal,
+          acted: agentUsedContextTool && (
+            signal.includes("critical") ||
+            signal.includes("/compact") ||
+            signal.includes("context") ||
+            signal.includes("high")
+          ),
+        };
         if (signal.includes("nothing stored") || signal.includes("memory_store")) {
           enforcementSignals["memory"] = { ...entry, acted: getState(ctx).memoryNudgeSent };
         } else if (signal.includes("scratchpad")) {

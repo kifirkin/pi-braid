@@ -516,16 +516,27 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
             const sopState = getExtensionState(ctx, "sop-suggestion", () => ({
               suggestedEpisodeIds: new Set<string>(),
             }));
+            // Derive project ID from cwd (last 2 path components)
+            const cwdParts = (ctx.cwd ?? "").replace(/\\/g, "/").split("/").filter(Boolean);
+            const currentProject = cwdParts.length >= 2
+              ? cwdParts.slice(-2).join("/")
+              : (ctx.cwd ?? "unknown");
+
             injectSopSuggestions(
               pi,
               userText,
               memState.episodes,
               undefined,
               sopState.suggestedEpisodeIds,
+              currentProject,
             );
           } catch {
             // Non-fatal: basic suggestion without dedup
-            injectSopSuggestions(pi, userText, memState.episodes);
+            const cwdParts = (ctx.cwd ?? "").replace(/\\/g, "/").split("/").filter(Boolean);
+            const currentProject = cwdParts.length >= 2
+              ? cwdParts.slice(-2).join("/")
+              : (ctx.cwd ?? "unknown");
+            injectSopSuggestions(pi, userText, memState.episodes, undefined, undefined, currentProject);
           }
         }
       }
