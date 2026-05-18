@@ -42,6 +42,7 @@ const BRAID = path.join(AGENT, "braid");
 
 export const BRAID_DIR = BRAID;
 export { BRAID };
+export { AGENT };
 export const MEMORY_DIR = path.join(BRAID, "memory");
 export const CHECKPOINT_DIR = path.join(BRAID, "checkpoints");
 export const ERROR_DIR = path.join(BRAID, "errors");

@@ -3,13 +3,13 @@
 // Auto-proceed chains to next pending task from scratchpad.
 // Records calibration when confidence is provided.
 // R5: On task completion, cascade episodic → semantic memory.
-// NOTE: No blocking LLM verification — agent should use verify() tool independently.
+// Pre-flight: checks if recent verify() passed, blocks finalization if unresolved issues remain.
 
 import { Type } from "typebox";
-import { callLlm } from "../../../../lib/llm-call.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "../../../../lib/extension-state.js";
 import { createLogger } from "../../../../lib/logger.js";
+import { getLastVerification } from "./verify.js";
 
 const log = createLogger("finalize");
 
@@ -75,7 +75,7 @@ async function recordToMemory(
  */
 function extractPrinciple(ctx: ExtensionContext, summary: string): string {
   // MVP: Generic principle based on failure
-  // TODO: Enhance with LLM-based extraction from error patterns
+  // TODO: Enhance with LLM extraction from
   return `Avoid: ${summary.slice(0, 150)}`;
 }
 
@@ -85,7 +85,7 @@ function extractPrinciple(ctx: ExtensionContext, summary: string): string {
  */
 function extractStrategicSOP(ctx: ExtensionContext, summary: string): string {
   // MVP: Use the summary as strategic SOP
-  // TODO: Enhance with LLM-based extraction from first user message
+  // TODO: Enhance with LLM extraction from first user message
   return `Task: ${summary.slice(0, 200)}`;
 }
 
@@ -157,61 +157,6 @@ const finalizeSchema = Type.Object({
   ),
 });
 
-const FINALIZE_CRITIC_PROMPT = `You are a critical reviewer verifying whether a task is truly complete.
-
-Review the work summary and check these criteria:
-1. Was the code actually written (not just planned)?
-2. Were tests written and do they pass?
-3. Were all edge cases addressed?
-4. Is the solution production-quality (no shortcuts)?
-
-Respond in this EXACT format:
-VERIFIED: yes|no
-CONFIDENCE: 0-100
-MESSAGE: <one line explanation>`;
-
-async function verifyWithSessionModel(
-  summary: string,
-  ctx: ExtensionContext,
-): Promise<{ verified: boolean; confidence: number; message: string }> {
-  if (!ctx.model) {
-    return { verified: true, confidence: 50, message: "No model available for verification" };
-  }
-
-  try {
-    const apiKey = await ctx.modelRegistry.getApiKeyForProvider(ctx.model.provider);
-    const llmResult = await callLlm(
-      ctx.model,
-      apiKey,
-      FINALIZE_CRITIC_PROMPT,
-      `Work summary: ${summary}`,
-      {
-        maxTokens: 256,
-        temperature: 0.1,
-      },
-    );
-
-    if ("error" in llmResult) {
-      return { verified: true, confidence: 50, message: `Verification error: ${llmResult.error}` };
-    }
-
-    const text = llmResult.text;
-
-    const verifiedMatch = text.match(/VERIFIED:\s*(yes|no)/i);
-    const confidenceMatch = text.match(/CONFIDENCE:\s*(\d+)/);
-    const messageMatch = text.match(/MESSAGE:\s*(.+)/);
-
-    const verified = verifiedMatch?.[1]?.toLowerCase() !== "no";
-    const confidence = confidenceMatch ? parseInt(confidenceMatch[1]) : 50;
-    const message = messageMatch?.[1] ?? "Review complete";
-
-    return { verified, confidence, message };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { verified: true, confidence: 50, message: `Verification error: ${msg}` };
-  }
-}
-
 /**
  * Find the next pending task from scratchpad's task store.
  * Returns the first incomplete task, or null if none.
@@ -253,7 +198,7 @@ export function createFinalizeTool(callbacks: FinalizeCallbacks = {}) {
     name: "finalize" as const,
     label: "Finalize",
     promptSnippet: "Mark the current task as complete and trigger review",
-    description: `Mark a task complete and record it to session memory. Skips blocking LLM review — use verify() beforehand for quality checks. After finalize, respond with text only (no tool calls) to end the agent loop cleanly.`,
+    description: `Mark a task complete and record it to session memory. Checks recent verify() result and blocks if unresolved issues remain. After finalize, respond with text only (no tool calls) to end the agent loop cleanly.`,
     parameters: finalizeSchema,
     execute: async (
       _toolCallId: string,
@@ -282,6 +227,42 @@ finalize(completed=true, summary="Fixed the bug", tasksRemaining=["write tests"]
         };
       }
 
+      // ── Pre-flight check: verify() must have passed ──────────────────────
+      if (_ctx && !params.completed) {
+        const lastVerification = getLastVerification(_ctx);
+        if (lastVerification && !lastVerification.passed) {
+          const elapsedMs = Date.now() - lastVerification.createdAt;
+          // Only block if verify result is recent (within last 5min)
+          if (elapsedMs < 300_000) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `**⚠️ FINALIZE BLOCKED — verify() found unresolved issues**
+
+Last verification (${Math.round(elapsedMs / 1000)}s ago):
+- Target: ${lastVerification.target}
+- Issues: ${lastVerification.issueCount}
+- Confidence: ${(lastVerification.confidence * 100).toFixed(0)}%
+
+Run \`verify()\` again after fixing the issues, or set \`completed: true\` to finalize as-is.`,
+                },
+              ],
+              details: {
+                finalized: false,
+                blocked: true,
+                reason: "verify_failed",
+                lastVerification: {
+                  target: lastVerification.target,
+                  issues: lastVerification.issueCount,
+                  confidence: lastVerification.confidence,
+                },
+              },
+            };
+          }
+        }
+      }
+
       onFinalize?.(params.summary, params.completed);
       if (recordCalibration && _ctx) {
         recordCalibration(_ctx, 0.7, params.completed ? "success" : "failure");
@@ -289,9 +270,6 @@ finalize(completed=true, summary="Fixed the bug", tasksRemaining=["write tests"]
 
       // Fire-and-forget: record to memory asynchronously (don't block tool result on I/O)
       recordToMemory(_ctx, params.summary, params.completed).catch(() => {});
-
-      // Skip blocking LLM verification — it adds 1-3min delay and the agent's own
-      // verify() tool is more reliable. Finalize just records and signals.
 
       const status = params.completed ? "Task completed" : "Task incomplete";
       const messages: string[] = [status, `Summary: ${params.summary}`];

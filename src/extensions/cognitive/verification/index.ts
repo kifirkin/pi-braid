@@ -61,110 +61,64 @@ const HEDGE_SEVERITY: Record<string, "low" | "medium" | "high"> = {
 };
 
 const STOP_WORDS = new Set([
-  "the",
-  "and",
-  "for",
-  "are",
-  "but",
-  "not",
-  "you",
-  "all",
-  "can",
-  "had",
-  "her",
-  "was",
-  "one",
-  "our",
-  "out",
-  "day",
-  "get",
-  "has",
-  "him",
-  "his",
-  "how",
-  "its",
-  "may",
-  "new",
-  "now",
-  "old",
-  "see",
-  "way",
-  "who",
-  "boy",
-  "did",
-  "let",
-  "put",
-  "say",
-  "she",
-  "too",
-  "use",
-  "that",
-  "with",
-  "have",
-  "this",
-  "from",
-  "they",
-  "will",
-  "would",
-  "there",
-  "their",
-  "what",
-  "been",
-  "more",
-  "when",
-  "your",
-  "come",
-  "could",
-  "only",
-  "other",
-  "than",
-  "into",
-  "some",
-  "them",
-  "then",
-  "these",
-  "take",
-  "made",
-  "very",
-  "just",
-  "over",
-  "such",
-  "also",
-  "back",
-  "after",
-  "work",
-  "first",
-  "well",
-  "even",
-  "want",
-  "because",
-  "any",
-  "between",
-  "don't",
-  "it's",
-  "should",
-  "about",
-  "going",
+  // core English stop words
+  "the", "and", "for", "are", "but", "not", "you", "all", "can",
+  "had", "her", "was", "one", "our", "out", "get", "has", "him",
+  "his", "how", "its", "may", "new", "now", "old", "see", "way",
+  "who", "did", "let", "put", "say", "she", "too", "use", "that",
+  "with", "have", "this", "from", "they", "will", "would", "there",
+  "their", "what", "been", "more", "when", "your", "come", "could",
+  "only", "other", "than", "into", "some", "them", "then", "these",
+  "take", "made", "very", "just", "over", "such", "also", "back",
+  "after", "work", "first", "well", "even", "want", "because", "any",
+  "between", "don't", "it's", "should", "about", "going",
+  // missing common stop words that add noise
+  "is", "in", "at", "on", "to", "of", "it", "as", "by", "an",
+  "or", "no", "if", "up", "be", "so", "do", "he", "my", "me",
+  "we", "am", "us", "i'", "its", "has", "can", "was", "had",
+  "were", "been", "being", "does", "done", "doing",
+  // days (accidental stop words from previous list — keep for consistency)
+  "day", "boy",
 ]);
 
 // ── Core logic ────────────────────────────────────────────────────────────────
 
 function extractFeatures(text: string): Set<string> {
-  // Extract tokens (min 2 chars) + compound words for better matching
+  // Extract content-bearing tokens (min 3 chars), skip stop words
   const normalized = text.toLowerCase();
-  const words = normalized.split(/[^\w]+/).filter((t) => t.length >= 2 && !STOP_WORDS.has(t));
-  const compounds = normalized.match(/\w{4,}/g) || [];
-  return new Set([...words, ...compounds]);
+  const words = normalized
+    .split(/[^\w]+/)
+    .filter((t) => t.length >= 3 && !STOP_WORDS.has(t));
+  return new Set(words);
 }
 
-function semanticOverlap(a: Set<string>, b: Set<string>): number {
-  if (a.size === 0 || b.size === 0) return 0;
-  let intersection = 0;
+/**
+ * Compute claim recall: what fraction of claim features appear in the context.
+ * Uses Jaccard on features but this is only for the getContradiction fallback.
+ * For checkSupport, we use claimRecall() directly (not penalized by long contexts).
+ */
+function featureIntersection(a: Set<string>, b: Set<string>): number {
+  let count = 0;
   for (const token of a) {
-    if (b.has(token) || Array.from(b).some((bt) => token.includes(bt) || bt.includes(token))) {
-      intersection++;
+    if (
+      b.has(token) ||
+      Array.from(b).some((bt) => token.includes(bt) || bt.includes(token))
+    ) {
+      count++;
     }
   }
+  return count;
+}
+
+function claimRecall(claimFeatures: Set<string>, contextFeatures: Set<string>): number {
+  if (claimFeatures.size === 0) return 1;
+  const found = featureIntersection(claimFeatures, contextFeatures);
+  return found / claimFeatures.size;
+}
+
+function symmetricOverlap(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  const intersection = featureIntersection(a, b);
   return intersection / (a.size + b.size - intersection);
 }
 
@@ -186,6 +140,41 @@ function checkContradiction(claim: string, context: string) {
   const claimLower = claim.toLowerCase();
   const contextLower = context.toLowerCase();
 
+  const claimFeatures = extractFeatures(claim);
+  const contextFeatures = extractFeatures(context);
+
+  // Phase 1: Pattern-based negation detection
+  // Match "not X" or "n't X" patterns between claim and context
+  const negationPattern = /\b(not|n't|never|no|isn't|aren't|wasn't|weren't|don't|doesn't|didn't|won't|wouldn't|can't|cannot|couldn't|shouldn't)\s+(\w{3,})/gi;
+
+  // Extract positive and negative claims from both sides
+  const claimNegations: Array<{ word: string; negated: string }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = negationPattern.exec(claimLower)) !== null) {
+    claimNegations.push({ word: match[1], negated: match[2] });
+  }
+  const contextNegations: Array<{ word: string; negated: string }> = [];
+  while ((match = negationPattern.exec(contextLower)) !== null) {
+    contextNegations.push({ word: match[1], negated: match[2] });
+  }
+
+  // asserts something positive but context negates it
+  for (const ctxNeg of contextNegations) {
+    for (const cf of claimFeatures) {
+      if (ctxNeg.negated.includes(cf) || cf.includes(ctxNeg.negated)) {
+        // Claim word appears negated in context
+        return {
+          type: "contradiction",
+          severity: "high" as const,
+          description: `Claim mentions "${cf}" but context says "${ctxNeg.word} ${ctxNeg.negated}"`,
+          quote: claim,
+          location: "claim vs context",
+        };
+      }
+    }
+  }
+
+  // Phase 2: Hardcoded positive-negation pair matching
   for (const [pos, neg] of MATCH_PAIRS) {
     if (claimLower.includes(pos) && contextLower.includes(neg)) {
       return {
@@ -207,10 +196,8 @@ function checkContradiction(claim: string, context: string) {
     }
   }
 
-  // Check semantic overlap
-  const claimFeatures = extractFeatures(claim);
-  const contextFeatures = extractFeatures(context);
-  const overlap = semanticOverlap(claimFeatures, contextFeatures);
+  // Check semantic overlap (topic drift detection)
+  const overlap = symmetricOverlap(claimFeatures, contextFeatures);
 
   if (overlap < 0.1 && claimFeatures.size > 3) {
     return {
@@ -225,11 +212,12 @@ function checkContradiction(claim: string, context: string) {
   return null;
 }
 
-function checkSupport(claim: string, contexts: string[], threshold = 0.3): boolean {
+function checkSupport(claim: string, contexts: string[], threshold = 0.4): boolean {
   const claimFeatures = extractFeatures(claim);
   if (claimFeatures.size === 0) return true;
   for (const ctx of contexts) {
-    if (semanticOverlap(claimFeatures, extractFeatures(ctx)) >= threshold) return true;
+    const recall = claimRecall(claimFeatures, extractFeatures(ctx));
+    if (recall >= threshold) return true;
   }
   return false;
 }

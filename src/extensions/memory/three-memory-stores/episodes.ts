@@ -234,20 +234,12 @@ export function retrieveByRUMS(
     .slice(0, limit)
     .map((s) => ({ ...s.ep, similarity: s.score }));
 
-  // Mark cross-session and filter them out — only current session episodes
-  // should be whispered to the agent. Cross-session episodes cause confusion.
-  const filtered: Episode[] = [];
+  // Mark cross-session episodes (for display/auto-whisper filtering)
+  // but do NOT filter them out — user-initiated memory_recall needs them.
+  // Callers that want filtering (e.g. auto-whisper) should do it at the call site.
   for (const ep of results) {
     (ep as any)._crossSession = ep.sessionId && ep.sessionId !== currentSessionId;
-    if (!(ep as any)._crossSession) {
-      filtered.push(ep);
-    }
   }
-
-  // If filtering removed everything, return empty rather than polluting
-  if (filtered.length === 0) return [];
-  results = filtered;
-
   log.debug(`RUMS retrieved ${results.length} episodes for "${query.slice(0, 30)}..."`);
   return results;
 }
