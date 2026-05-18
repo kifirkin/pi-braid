@@ -1,11 +1,11 @@
 /**
- * Test: Sleep Tool — non-blocking delay
+ * Test: Sleep Tool — pause agent execution
  *
  * Verifies:
  *  1. Extension file structure
  *  2. Module registration in definitions.ts
  *  3. Tool registration and basic execution
- *  4. Delayed reminder fires after the requested delay
+ *  4. Resume steer fires after the requested delay
  */
 
 const ROOT = "/Users/kifir/projects/agents/pi-braid";
@@ -24,14 +24,15 @@ console.log("\n[1] Sleep extension structure");
   assert(src.includes("export default function sleepExtension"), "exports default function");
   assert(src.includes('name: "sleep"'), "registers tool named 'sleep'");
   assert(src.includes("delay_seconds"), "accepts delay_seconds param");
-  assert(src.includes("reason"), "accepts optional reason param");
-  assert(src.includes("setTimeout"), "uses setTimeout for deferred reminder");
-  assert(src.includes("emitTimerReminder"), "emits timer-bus reminder on fire");
-  assert(src.includes("eventBus.emit"), "emits event-bus notification on fire");
-  assert(src.includes("sendTrackedMessage"), "sends steer message on fire");
-  assert(src.includes("unref"), "unrefs the timer handle (best-effort)");
+  assert(!src.includes("reason"), "does NOT accept reason param (removed in simplification)");
+  assert(src.includes("setTimeout"), "uses setTimeout for deferred resume");
+  assert(!src.includes("emitTimerReminder"), "does NOT push to timer-bus");
+  assert(!src.includes("eventBus.emit"), "does NOT emit to event-bus");
+  assert(src.includes("sendTrackedMessage"), "sends resume steer on fire");
+  assert(!src.includes("unref"), "does NOT unref (timer must keep process alive)");
   assert(src.includes("Do NOT use bash"), "description warns against bash sleep");
   assert(src.includes("timer_set"), "description cross-references timer_set");
+  assert(src.includes("Pause agent execution"), "description says pause not delay");
   assert(src.includes("MIN_DELAY_SECS"), "has minimum delay validation");
   assert(src.includes("MAX_DELAY_SECS"), "has maximum delay validation");
 }
@@ -68,14 +69,9 @@ console.log("\n[4] Build artifact");
   assert(js.includes("setTimeout"), "built JS contains setTimeout");
 }
 
-// ── [5] Functional: sleep fires reminder after delay ─────────
-console.log("\n[5] Functional: delayed reminder fires after sleep");
+// ── [5] Module loadable ─────────────────────────────────────
+console.log("\n[5] Module can be loaded at runtime");
 {
-  // eventBus is a class instance; import and verify it exists
-  const { eventBus } = await import(`${ROOT}/dist/lib/event-bus.js`);
-  assert(eventBus && typeof eventBus.emit === "function", "eventBus available with emit");
-
-  // Verify sleep module can be loaded
   const sleepMod = await import(`${ROOT}/dist/contrib/sleep/index.js`);
   assert(typeof sleepMod.default === "function", "sleepExtension is callable (default export)");
 }
@@ -91,6 +87,24 @@ console.log("\n[6] Delay parameter validation");
   );
   assert(src.includes("throw new Error"), "throws on invalid delay");
   assert(src.includes('default: DEFAULT_DELAY_SECS'), "default is 30s");
+}
+
+// ── [7] Resume steer delivery ────────────────────────────────
+console.log("\n[7] Resume steer delivered after delay");
+{
+  const src = await import("fs").then((f) => f.readFileSync(`${ROOT}/src/contrib/sleep/index.ts`, "utf8"));
+  assert(
+    src.includes('type: "text" as const, text: "[resume]"'),
+    "steer content is bare [resume]",
+  );
+  assert(
+    src.includes("display: false"),
+    "steer has display:false (invisible to agent)",
+  );
+  assert(
+    src.includes('deliverAs: "steer"'),
+    "steer uses deliverAs steer to wake agent",
+  );
 }
 
 // ── Summary ──────────────────────────────────────────────────
