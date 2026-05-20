@@ -45,7 +45,7 @@ export function createHypothesizeTool() {
     execute: async (
       _toolCallId: string,
       params: any,
-      _signal: unknown,
+      signal: AbortSignal | undefined,
       _onUpdate: unknown,
       ctx: ExtensionContext | undefined,
     ) => {
@@ -69,7 +69,7 @@ export function createHypothesizeTool() {
           apiKey,
           "You are an expert debugging assistant that analyzes problems and generates testable hypotheses.",
           prompt,
-          { maxTokens: 2048, temperature: 0.3 },
+          { maxTokens: 2048, temperature: 0.3, signal },
         );
 
         if ("error" in llmResult) {

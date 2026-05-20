@@ -25,14 +25,15 @@ console.log("\n[1] Sleep extension structure");
   assert(src.includes('name: "sleep"'), "registers tool named 'sleep'");
   assert(src.includes("delay_seconds"), "accepts delay_seconds param");
   assert(!src.includes("reason"), "does NOT accept reason param (removed in simplification)");
-  assert(src.includes("setTimeout"), "uses setTimeout for deferred resume");
+  assert(src.includes("setTimeout"), "uses setTimeout to schedule resolve");
   assert(!src.includes("emitTimerReminder"), "does NOT push to timer-bus");
   assert(!src.includes("eventBus.emit"), "does NOT emit to event-bus");
-  assert(src.includes("sendTrackedMessage"), "sends resume steer on fire");
+  assert(!src.includes("sendTrackedMessage"), "does NOT send resume steer (blocks promise instead)");
   assert(!src.includes("unref"), "does NOT unref (timer must keep process alive)");
   assert(src.includes("Do NOT use bash"), "description warns against bash sleep");
   assert(src.includes("timer_set"), "description cross-references timer_set");
   assert(src.includes("Pause agent execution"), "description says pause not delay");
+  assert(!src.includes("Returns immediately"), "description does NOT claim returns immediately (now blocks)");
   assert(src.includes("MIN_DELAY_SECS"), "has minimum delay validation");
   assert(src.includes("MAX_DELAY_SECS"), "has maximum delay validation");
 }
@@ -67,6 +68,7 @@ console.log("\n[4] Build artifact");
   const js = fs.readFileSync(`${ROOT}/dist/contrib/sleep/index.js`, "utf8");
   assert(js.includes("sleepExtension"), "built JS exports sleepExtension");
   assert(js.includes("setTimeout"), "built JS contains setTimeout");
+  assert(!js.includes("sendTrackedMessage"), "built JS does NOT import sendTrackedMessage");
 }
 
 // ── [5] Module loadable ─────────────────────────────────────
@@ -89,21 +91,21 @@ console.log("\n[6] Delay parameter validation");
   assert(src.includes('default: DEFAULT_DELAY_SECS'), "default is 30s");
 }
 
-// ── [7] Resume steer delivery ────────────────────────────────
-console.log("\n[7] Resume steer delivered after delay");
+// ── [7] Promise blocks until delay elapses ────────────────────
+console.log("\n[7] Tool blocks until delay elapses");
 {
   const src = await import("fs").then((f) => f.readFileSync(`${ROOT}/src/contrib/sleep/index.ts`, "utf8"));
   assert(
-    src.includes('type: "text" as const, text: "[resume]"'),
-    "steer content is bare [resume]",
+    src.includes("await new Promise<void>((resolve) => setTimeout(resolve, delayMs))"),
+    "execute awaits a delayed promise to block tool call",
   );
   assert(
-    src.includes("display: false"),
-    "steer has display:false (invisible to agent)",
+    !src.includes("sendTrackedMessage"),
+    "no sendTrackedMessage call (no steer needed)",
   );
   assert(
-    src.includes('deliverAs: "steer"'),
-    "steer uses deliverAs steer to wake agent",
+    !src.includes("deliverAs: \"steer\""),
+    "no steer delivery (resume naturally from promise resolve)",
   );
 }
 

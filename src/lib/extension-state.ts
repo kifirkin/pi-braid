@@ -14,6 +14,7 @@
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
+
 // ── Session-scoped storage (stable across ctx recreation) ───────────────────
 const _sessionState = new Map<string, Map<string, unknown>>();
 
@@ -21,15 +22,18 @@ const _sessionState = new Map<string, Map<string, unknown>>();
 const _stateBuckets = new WeakMap<ExtensionContext, Map<string, unknown>>();
 
 function getSessionKey(ctx: ExtensionContext): string | undefined {
-  // Prefer sessionManager's file path — stable across the whole session
-  const sm = ctx.sessionManager;
-  if (sm) {
-    try {
+  // Prefer sessionManager's file path — stable across the whole session.
+  // Wrapping entire access in try/catch because ctx.sessionManager is a
+  // getter that calls ExtensionRunner.assertActive() — throws when the ctx
+  // is stale after session replacement or reload (observed in turn_end).
+  try {
+    const sm = ctx.sessionManager;
+    if (sm) {
       const file = sm.getSessionFile?.() ?? sm.getSessionId?.();
       if (file) return String(file);
-    } catch {
-      // sessionManager methods may not exist on all implementations
     }
+  } catch {
+    // ctx is stale or sessionManager not available
   }
 
   return undefined;
@@ -141,6 +145,24 @@ export function registerSessionCleanup(): (event: any, ctx: ExtensionContext) =>
 /**
  * Force-clear all state for all sessions. Nuclear option for tests.
  */
+/**
+ * Safely access ctx.sessionManager, returning undefined on stale ctx.
+ *
+ * ctx.sessionManager is a getter that calls ExtensionRunner.assertActive() —
+ * throws when the ctx is stale after session replacement or reload.
+ * Optional chaining (ctx.sessionManager?.method()) does NOT protect against
+ * this because the getter itself throws before the `?.` operand is evaluated.
+ *
+ * Use this in event handlers when reading session data is best-effort.
+ */
+export function safeSessionManager(ctx: ExtensionContext): unknown {
+  try {
+    return ctx.sessionManager;
+  } catch {
+    return undefined;
+  }
+}
+
 export function clearAllSessions(): void {
   _sessionState.clear();
 }

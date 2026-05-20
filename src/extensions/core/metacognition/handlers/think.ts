@@ -358,7 +358,7 @@ export function createThinkTool() {
     execute: async (
       _toolCallId: string,
       params: any,
-      _signal: unknown,
+      signal: AbortSignal | undefined,
       _onUpdate: unknown,
       ctx: ExtensionContext | undefined,
     ) => {
@@ -448,7 +448,7 @@ export function createThinkTool() {
             apiKey,
             "You are a sharp, critical thinker who reviews the reasoning of other agents.",
             prompt,
-            { maxTokens: budget.tokens, temperature: 0.4 },
+            { maxTokens: budget.tokens, temperature: 0.4, signal },
           );
 
           let reviewText = "";

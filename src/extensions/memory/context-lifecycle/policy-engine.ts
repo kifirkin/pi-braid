@@ -4,6 +4,11 @@ import {
   evaluateContextDensity,
   recommendCompressionStrategy,
 } from "../../../lib/context-density.js";
+import {
+  DENSITY_LOW,
+  DENSITY_HIGH,
+  TOKEN_RATIO_LARGE_CONTEXT,
+} from "../../../lib/context-thresholds.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 const log = createLogger("context-lifecycle");
@@ -194,9 +199,9 @@ export interface GovernanceResult {
  * Evaluate context information density and emit signals.
  * Based on: SimpleMem (2601.02553), GenericAgent (2604.17091)
  *
- * density < 0.4  → noisy context → aggressive pruning
- * density 0.4-0.7 → mixed → semantic compression
- * density > 0.7 + large context → semantic compression opportunity
+ * density < DENSITY_LOW    → noisy context → aggressive pruning
+ * density DENSITY_LOW–DENSITY_HIGH → mixed → semantic compression
+ * density >= DENSITY_HIGH + large context → semantic compression opportunity
  * duplicates > 2 → dedup signal
  */
 export function generateDensitySignals(ctx: ExtensionContext): SemanticSignal[] {
@@ -204,7 +209,7 @@ export function generateDensitySignals(ctx: ExtensionContext): SemanticSignal[] 
   const density = evaluateContextDensity(ctx);
   const strategy = recommendCompressionStrategy(density);
 
-  if (density.density < 0.4) {
+  if (density.density < DENSITY_LOW) {
     signals.push({
       id: `sig-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
       type: "context_density_low",
@@ -217,7 +222,7 @@ export function generateDensitySignals(ctx: ExtensionContext): SemanticSignal[] 
       turn: undefined as any,
       confidence: 0.8,
     });
-  } else if (density.density >= 0.7 && density.tokenRatio > 0.6) {
+  } else if (density.density >= DENSITY_HIGH && density.tokenRatio > TOKEN_RATIO_LARGE_CONTEXT) {
     signals.push({
       id: `sig-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
       type: "context_density_high",

@@ -5,6 +5,7 @@
 import { getExtensionState } from "../../../lib/extension-state.js";
 import { eventBus } from "../../../lib/event-bus.js";
 import { createLogger } from "../../../lib/logger.js";
+import { ANALYTICS_DENSITY_FULL_EVENT } from "../../../lib/context-thresholds.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 const log = createLogger("analytics:shared");
@@ -117,7 +118,7 @@ export function updateContextDensity(ctx: ExtensionContext, density: number) {
   state.lastDensityTurn = state.localTurnCount;
   log.debug(`analytics: context_density=${state.contextDensity.toFixed(1)}%`);
 
-  if (state.contextDensity > 70) {
+  if (state.contextDensity > ANALYTICS_DENSITY_FULL_EVENT) {
     try {
       eventBus.emit({
         type: "context_full",

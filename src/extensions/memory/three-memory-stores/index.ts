@@ -16,7 +16,7 @@ import { Type } from "typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { createLogger } from "../../../lib/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
-import { getExtensionState } from "../../../lib/extension-state.js";
+import { getExtensionState, safeSessionManager } from "../../../lib/extension-state.js";
 import { emitSignal } from "../../../lib/belief-policy-engine.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { readFile as fsReadFilePromise } from "node:fs/promises";
@@ -320,7 +320,8 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     SessionPhase.MemoryState,
     async (_event: any, ctx: ExtensionContext) => {
       const state = getState(ctx);
-      state.currentSessionId = ctx.sessionManager.getSessionFile?.() ?? `session-${Date.now()}`;
+      const sm = safeSessionManager(ctx) as any;
+      state.currentSessionId = sm?.getSessionFile?.() ?? `session-${Date.now()}`;
 
       if (state.episodes.length === 0) {
         const loaded = await loadPastEpisodes(state);
@@ -381,8 +382,8 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     },
   );
 
-  // ── Auto-Recall Cooldown ──────────────────────────────────────────
-  const RECALL_COOLDOWN_MS = 30_000;
+  // ── Auto-Recall Cooldown (raised from 30s to 120s to reduce flooding) ───
+  const RECALL_COOLDOWN_MS = 120_000;
   const AUTO_RECALL_ENABLED = true;
 
   function whisperRecall(
@@ -392,20 +393,29 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     episodes: Episode[],
   ): void {
     if (!AUTO_RECALL_ENABLED || episodes.length === 0) return;
+
+    // Filter out cross-session episodes from auto-whisper unless highly relevant (>0.6)
+    const filtered = episodes.filter((ep: any) => {
+      if (!ep._crossSession) return true;
+      return (ep as any).similarity > 0.6;
+    });
+    if (filtered.length === 0) return;
+
     const now = Date.now();
     if (now - state.lastRecallTime < RECALL_COOLDOWN_MS) return;
     state.lastRecallTime = now;
 
     // Deduplicate: skip if same title + episodes as last emission
-    const signature = `${title}|${episodes
+    const signature = `${title}|${filtered
       .slice(0, 2)
       .map((ep: Episode) => ep.id)
       .join("|")}`;
     if (signature === state.lastEpisodeRecallSignature) return;
     state.lastEpisodeRecallSignature = signature;
 
-    const crossSession = episodes.filter((ep: any) => ep._crossSession);
-    if (crossSession.length > 0) {
+    const crossSession = filtered.filter((ep: any) => ep._crossSession);
+    // Only emit contamination signal for repeated cross-session — batch per session
+    if (crossSession.length > 0 && state.recentErrors.length < 10) {
       emitSignal(ctx, "memory", "contamination", "warn", false, {
         count: crossSession.length,
         sessionIds: crossSession.map((ep: any) => ep.sessionId).slice(0, 3),
@@ -413,7 +423,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     }
 
     const lines: string[] = [`[recall] ${title}`];
-    for (const ep of episodes.slice(0, 2)) {
+    for (const ep of filtered.slice(0, 2)) {
       const icon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
       const crossMark = (ep as any)._crossSession ? " [CROSS-SESSION]" : "";
       const conf =
@@ -457,7 +467,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
             1,
             state.currentSessionId,
           );
-          if (relevant.length > 0 && relevant[0].similarity > 0.25) {
+          if (relevant.length > 0 && relevant[0].similarity > 0.40) {
             whisperRecall(state, ctx, `Approach hint for ${taskType} tasks:`, relevant);
           }
         }
@@ -470,7 +480,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 
         const errorQuery = `${toolName} ${taskType} failure error`;
         const similarFailures = retrieveByRUMS(state, errorQuery, 2, state.currentSessionId);
-        if (similarFailures.length > 0 && similarFailures[0].similarity > 0.15) {
+        if (similarFailures.length > 0 && similarFailures[0].similarity > 0.35) {
           whisperRecall(state, ctx, `Similar past issue with ${toolName}:`, similarFailures);
         }
 
@@ -531,21 +541,28 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
       const stableQuery = `${dominantType} ${errorTool} solution error`.trim();
       const relevant = retrieveByRUMS(state, stableQuery, 1, state.currentSessionId);
 
-      if (relevant.length > 0 && relevant[0].similarity > 0.28) {
+      if (relevant.length > 0 && relevant[0].similarity > 0.40) {
         whisperRecall(state, ctx, `Past solution might apply:`, relevant);
       }
 
       // Cross-search cognitive-memory for relevant semantic insights
-      // Uses a separate cooldown (lastSemanticRecallTime) so it doesn't interfere with
-      // episode recall's timer.
+      // Uses a separate cooldown so it doesn't interfere with episode recall's timer.
       if (now - state.lastSemanticRecallTime < RECALL_COOLDOWN_MS) return;
       state.lastSemanticRecallTime = now;
       try {
         const cm = getCognitiveMemory();
         const semanticResults = await cm.recall(stableQuery, { type: undefined, limit: 2 });
 
+        // Filter: only surface highly relevant results (adjusted relevance > 1.5)
+        // and skip ephemeral types (episodic, procedural) — only goal/pattern,semantic,insight
+        const relevantTypes = new Set(["goal", "pattern", "semantic", "insight"]);
+        const filtered = semanticResults.filter(
+          (r: any) => r.relevance > 1.5 && relevantTypes.has(r.memory.type),
+        );
+        if (filtered.length === 0) return;
+
         // Deduplicate: skip if same hashes as last emission
-        const resultHashes = semanticResults.map(
+        const resultHashes = filtered.map(
           (r: any) => `${r.memory.id}:${r.memory.content.slice(0, 40)}`,
         );
         const prevHashes = state.lastSemanticRecallHashes;
@@ -556,10 +573,10 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
         ) {
           state.lastSemanticRecallHashes = resultHashes;
 
-          const lines: string[] = [`[recall] Related semantic memories:`];
-          for (const r of semanticResults) {
+          const lines: string[] = [`[recall] Related memory:`];
+          for (const r of filtered.slice(0, 1)) {
             lines.push(
-              `  [${r.memory.type}] ${r.memory.content.slice(0, 80)}... (rel: ${r.relevance.toFixed(2)})`,
+              `  [${r.memory.type}] ${r.memory.content.slice(0, 80).replace(/\n/g, " ")}`,
             );
           }
           sendTrackedMessage(

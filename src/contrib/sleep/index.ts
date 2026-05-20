@@ -8,14 +8,14 @@
  * Use over bash `sleep` because bash blocks the entire process.
  * Use over `timer_set` when you want a fire-once delay without cancellation.
  *
- * Implementation: schedules a single setTimeout that delivers a bare steer
- * to wake the agent after the delay. No timer-bus, no event-bus spam.
+ * Implementation: blocks the tool's returned promise by awaiting a delayed
+ * resolve, which pauses the agent until the delay elapses. The agent resumes
+ * naturally when the promise resolves — no steer or timer-bus needed.
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { createLogger } from "../../lib/logger.js";
-import { sendTrackedMessage } from "../../lib/injection-tracker.js";
 
 const log = createLogger("sleep");
 
@@ -54,7 +54,7 @@ export default function sleepExtension(pi: ExtensionAPI): void {
       "Pause agent execution for a duration — use when you need to wait",
     description:
       "Pause agent execution for the specified duration. " +
-      "Returns immediately. After the delay expires, a new turn starts automatically. " +
+      "The agent's tool call blocks until the delay elapses, then resumes automatically. " +
       "Do NOT use bash `sleep` — use this instead. " +
       "Use `timer_set` instead if you need cancellable timers.",
     parameters: sleepSchema,
@@ -66,41 +66,27 @@ export default function sleepExtension(pi: ExtensionAPI): void {
       const delayMs = delaySecs * 1000;
       const timerId = `sleep_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
-      // ── Schedule agent wake-up ──────────────────────────────────────────
-      // Single setTimeout — fires exactly once after delayMs.
-      // Delivers a bare steer to wake the agent. No visible content,
-      // no timer-bus, no event-bus — the agent just resumes quietly.
-      setTimeout(() => {
-        try {
-          sendTrackedMessage(
-            pi,
-            {
-              customType: "sleep-timer",
-              content: [{ type: "text" as const, text: "[resume]" }],
-              display: false,
-            },
-            { deliverAs: "steer", triggerTurn: true },
-            { type: "heartbeat", source: "sleep/resume" },
-          );
-          log.info(`[sleep] ${timerId}: resumed after ${delaySecs}s`);
-        } catch {
-          /* non-fatal */
-        }
-      }, delayMs);
-
       log.info(`[sleep] ${timerId}: sleeping ${delaySecs}s`);
+
+      // ── Block tool execution until delay elapses ────────────────────────
+      // Unlike timer_set (which returns immediately), sleep MUST block the
+      // tool call. The agent framework `await`s the tool's returned promise,
+      // so a delayed resolve actually pauses the agent. No setTimeout, no
+      // steer — the agent resumes naturally when this promise resolves.
+      await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+
+      log.info(`[sleep] ${timerId}: resumed after ${delaySecs}s`);
 
       return {
         content: [
           {
             type: "text" as const,
-            text: `Paused for ${delaySecs}s. Will resume automatically when the time elapses.`,
+            text: `Resumed after ${delaySecs}s pause.`,
           },
         ],
         details: {
           timer_id: timerId,
           delay_seconds: delaySecs,
-          note: "This timer is not cancellable. Use timer_set + timer_cancel if you need cancellation.",
         },
       };
     },

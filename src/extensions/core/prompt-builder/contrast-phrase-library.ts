@@ -41,6 +41,10 @@ const TOOL_RELIABILITY = `The \`edit\` and \`write\` tools work reliably. They m
 
 You default to \`edit\` and \`write\` for file operations. You use bash for shell operations — piping, glob expansion, running tests and builds, navigating directories. You don't use \`sed\`, \`echo\`, \`cat\`, or shell redirects for file modification. These are unreliable and non-portable.`;
 
+// ── Epistemic Action (proactive assumption surfacing) ─────────────────────────
+// From surgical collaboration heuristics: surface assumptions, don't blend conflicts.
+const EPISTEMIC_ACTION = `State assumptions before acting. Surface conflicts explicitly when you find competing patterns in the codebase — don't blend them silently.`;
+
 // ── Mode Definitions ────────────────────────────────────────────────────────
 
 const MODES: Record<string, ModeDef> = {
@@ -48,12 +52,12 @@ const MODES: Record<string, ModeDef> = {
    * TRUTH-SEEKING (default mode)
    * Agent should prioritize truthfulness, admit uncertainty.
    * Activated when: no errors, normal flow.
-   * Phrases: knowledge boundary + truth first.
+   * Phrases: knowledge boundary + truth first + epistemic action.
    */
   "TRUTH-SEEKING": {
     label: "TRUTH-SEEKING",
     description: '"I am uncertain about X, but here is my best analysis."',
-    phrases: [TRUTH_FIRST, KNOWLEDGE_BOUNDARY],
+    phrases: [TRUTH_FIRST, KNOWLEDGE_BOUNDARY, EPISTEMIC_ACTION],
   },
 
   /**

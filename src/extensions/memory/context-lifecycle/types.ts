@@ -1,4 +1,9 @@
 import { createLogger } from "../../../lib/logger.js";
+import {
+  USAGE_WHISPER_ADVISORY,
+  USAGE_COMPACT_MEDIUM,
+  USAGE_COMPACT_AGGRESSIVE,
+} from "../../../lib/context-thresholds.js";
 
 const log = createLogger("context-lifecycle");
 /**
@@ -246,7 +251,7 @@ export function createDefaultPolicies(): ContextPolicy[] {
       name: "Aggressive compact on critical usage",
       priority: 95,
       cooldown_ms: 30_000,
-      trigger: { type: "context_usage", threshold: 90 },
+      trigger: { type: "context_usage", threshold: USAGE_COMPACT_AGGRESSIVE },
       action: { type: "compact", level: "aggressive" },
       min_confidence: 0.7,
       max_context_usage: 95,
@@ -256,7 +261,7 @@ export function createDefaultPolicies(): ContextPolicy[] {
       name: "Medium compact on high usage",
       priority: 70,
       cooldown_ms: 60_000,
-      trigger: { type: "context_usage", threshold: 80 },
+      trigger: { type: "context_usage", threshold: USAGE_COMPACT_MEDIUM },
       action: { type: "compact", level: "medium" },
       min_confidence: 0.5,
     },
@@ -266,7 +271,7 @@ export function createDefaultPolicies(): ContextPolicy[] {
       name: "Propose offload when context > 50%",
       priority: 55,
       cooldown_ms: 90_000,
-      trigger: { type: "context_usage", threshold: 50 },
+      trigger: { type: "context_usage", threshold: USAGE_WHISPER_ADVISORY },
       action: {
         type: "propose",
         message: "Context at {percent}%. Consider `context_archive` for completed tasks.",

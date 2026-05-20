@@ -1,7 +1,3 @@
-import { createLogger } from "../../lib/logger.js";
-import { registerSessionStartHandler, SessionPhase } from "../../lib/session-start-queue.js";
-
-const log = createLogger("watchdog");
 /**
  * Pi Watchdog Extension
  *
@@ -9,6 +5,11 @@ const log = createLogger("watchdog");
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { safeSessionManager } from "../../lib/extension-state.js";
+import { createLogger } from "../../lib/logger.js";
+import { registerSessionStartHandler, SessionPhase } from "../../lib/session-start-queue.js";
+
+const log = createLogger("watchdog");
 
 interface SessionState {
   startTime: number;
@@ -27,7 +28,8 @@ function formatTime(ms: number): string {
 
 export default function (pi: ExtensionAPI) {
   registerSessionStartHandler(pi, SessionPhase.Background, async (_event, ctx) => {
-    const path = ctx.sessionManager.getSessionFile() ?? ctx.cwd;
+    const sm = safeSessionManager(ctx) as any;
+    const path = sm?.getSessionFile?.() ?? ctx.cwd;
     sessions.set(path, {
       startTime: Date.now(),
       lastProgressTime: Date.now(),
@@ -38,7 +40,8 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("message_end", async (_event, ctx) => {
-    const path = ctx.sessionManager.getSessionFile() ?? ctx.cwd;
+    const sm = safeSessionManager(ctx) as any;
+    const path = sm?.getSessionFile?.() ?? ctx.cwd;
     const sessionState = sessions.get(path);
     if (sessionState) {
       sessionState.lastProgressTime = Date.now();
@@ -47,13 +50,15 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("agent_start", async (_event, ctx) => {
-    const path = ctx.sessionManager.getSessionFile() ?? ctx.cwd;
+    const sm = safeSessionManager(ctx) as any;
+    const path = sm?.getSessionFile?.() ?? ctx.cwd;
     const sessionState = sessions.get(path);
     if (sessionState) sessionState.isStreaming = true;
   });
 
   pi.on("agent_end", async (_event, ctx) => {
-    const path = ctx.sessionManager.getSessionFile() ?? ctx.cwd;
+    const sm = safeSessionManager(ctx) as any;
+    const path = sm?.getSessionFile?.() ?? ctx.cwd;
     const sessionState = sessions.get(path);
     if (sessionState) {
       sessionState.isStreaming = false;
@@ -64,7 +69,8 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("watchdog-status", {
     description: "Show watchdog status",
     handler: async (_args, ctx) => {
-      const path = ctx.sessionManager.getSessionFile() ?? ctx.cwd;
+      const sm = safeSessionManager(ctx) as any;
+      const path = sm?.getSessionFile?.() ?? ctx.cwd;
       const sessionState = sessions.get(path);
       if (!sessionState) return;
       const now = Date.now();

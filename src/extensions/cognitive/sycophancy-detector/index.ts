@@ -16,7 +16,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { sendEnforcementWhisper } from "../../enforcement/whisper.js";
 import { emitSignal } from "../../../lib/belief-policy-engine.js";
 import { createLogger } from "../../../lib/logger.js";
-import { getExtensionState } from "../../../lib/extension-state.js";
+import { getExtensionState, safeSessionManager } from "../../../lib/extension-state.js";
 
 const log = createLogger("sycophancy-detector");
 
@@ -188,9 +188,12 @@ async function handleSycophancy(
   state.turnCount++;
 
   // Get session history — use getBranch(), getCurrentSession() does not exist on SessionManager
-  const entries = ctx.sessionManager?.getBranch() ?? [];
+  // Use safeSessionManager to avoid assertActive() crash on stale ctx
+  const sm = safeSessionManager(ctx) as any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const messages: any[] = entries.filter((e) => e.type === "message").map((e) => e.message);
+  const entries: any[] = sm?.getBranch?.() ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const messages: any[] = entries.filter((e: any) => e.type === "message").map((e: any) => e.message);
 
   // Get the last user message
   const userMessages = messages.filter((m: any) => m.role === "user");

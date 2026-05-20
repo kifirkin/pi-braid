@@ -11,6 +11,15 @@ import { createLogger } from "../../../../lib/logger.js";
 import { getExtensionState } from "../../../../lib/extension-state.js";
 import { eventBus } from "../../../../lib/event-bus.js";
 import {
+  DENSITY_LOW,
+  DENSITY_VERY_LOW,
+  TOKEN_RATIO_LARGE_CONTEXT,
+  HYGIENE_LOW_DENSITY_CONSECUTIVE_MIN,
+  HYGIENE_DENSITY_WHISPER_COOLDOWN_TURNS,
+  HYGIENE_LARGE_CONTEXT_COOLDOWN_TURNS,
+  HYGIENE_AUTO_COMPACT_COOLDOWN_TURNS,
+} from "../../../../lib/context-thresholds.js";
+import {
   generateDensitySignals,
   evaluatePolicies,
 } from "../../../memory/context-lifecycle/policy-engine.js";
@@ -23,13 +32,16 @@ const log = createLogger("heartbeat:context-hygiene");
 const MAX_SNAPSHOTS = 10;
 
 /** If projected full within this many turns, emit proactive warning. */
-const PROACTIVE_THRESHOLD_TURNS = 10;
+const PROACTIVE_THRESHOLD_TURNS = 15;
 
-/** The usage ratio at which we consider context "full" (85%). */
-const PROJECTION_TARGET_RATIO = 0.85;
+/** The usage ratio at which we consider context "full" (80%). */
+const PROJECTION_TARGET_RATIO = 0.80;
 
 /** Default token limit used when limit is unknown. */
 const DEFAULT_TOKEN_LIMIT = 100_000;
+
+// Note: density thresholds are imported from context-thresholds.ts:
+//   DENSITY_LOW (0.4), DENSITY_VERY_LOW (0.25), TOKEN_RATIO_LARGE_CONTEXT (0.6)
 
 /**
  * Estimate how many turns remain before context hits PROJECTION_TARGET_RATIO.
@@ -85,7 +97,7 @@ export const contextHygieneModule: CognitiveModule = {
 
   shouldActivate(context): boolean {
     const turns = context.turnCount;
-    const threshold = turns < 30 ? 10 : 5;
+    const threshold = turns < 30 ? 7 : 4;
     const last = context.lastActivation.get("context-hygiene") ?? 0;
     return turns - last >= threshold;
   },
@@ -145,7 +157,7 @@ export const contextHygieneModule: CognitiveModule = {
     if (
       remainingTurns <= PROACTIVE_THRESHOLD_TURNS &&
       remainingTurns < state.lastProjectedRemaining &&
-      currentTurn - state.lastProjectionWhisperTurn >= 20
+      currentTurn - state.lastProjectionWhisperTurn >= 15
     ) {
       state.lastProjectedRemaining = remainingTurns;
       state.lastProjectionWhisperTurn = currentTurn;
@@ -192,12 +204,12 @@ export const contextHygieneModule: CognitiveModule = {
       lastDuplicateWhisperTurn: -20,
     }));
 
-    if (density.density < 0.4) {
+    if (density.density < DENSITY_LOW) {
       autoCompactState.consecutiveLowDensity++;
 
       if (
-        autoCompactState.consecutiveLowDensity >= 3 &&
-        currentTurn - autoCompactState.lastAutoCompactTurn >= 20
+        autoCompactState.consecutiveLowDensity >= HYGIENE_LOW_DENSITY_CONSECUTIVE_MIN &&
+        currentTurn - autoCompactState.lastAutoCompactTurn >= HYGIENE_AUTO_COMPACT_COOLDOWN_TURNS
       ) {
         const ticks = autoCompactState.consecutiveLowDensity;
         autoCompactState.lastAutoCompactTurn = currentTurn;
@@ -220,8 +232,8 @@ export const contextHygieneModule: CognitiveModule = {
             `for ${ticks}+ ticks — suggested compaction to agent`,
         );
       } else {
-        // Rate-limit: at most one density whisper per 25 turns
-        if (currentTurn - autoCompactState.lastDensityWhisperTurn >= 25) {
+        // Rate-limit: at most one density whisper per 20 turns
+        if (currentTurn - autoCompactState.lastDensityWhisperTurn >= HYGIENE_DENSITY_WHISPER_COOLDOWN_TURNS) {
           autoCompactState.lastDensityWhisperTurn = currentTurn;
           ctx.whisper?.(
             "Low context density (" +
@@ -233,7 +245,7 @@ export const contextHygieneModule: CognitiveModule = {
               density.signalMessages +
               ". " +
               "Consider: context_archive() or context_prune().",
-            { category: "cognitive", priority: density.density < 0.25 ? "high" : "medium" },
+            { category: "cognitive", priority: density.density < DENSITY_VERY_LOW ? "high" : "medium" },
           );
         }
       }
@@ -241,10 +253,10 @@ export const contextHygieneModule: CognitiveModule = {
       autoCompactState.consecutiveLowDensity = 0;
     }
 
-    // ── High-density large context whisper (cooldown: 20 turns) ────
+    // ── High-density large context whisper ────
     if (
-      density.tokenRatio > 0.6 &&
-      currentTurn - autoCompactState.lastLargeContextWhisperTurn >= 20
+      density.tokenRatio > TOKEN_RATIO_LARGE_CONTEXT &&
+      currentTurn - autoCompactState.lastLargeContextWhisperTurn >= HYGIENE_LARGE_CONTEXT_COOLDOWN_TURNS
     ) {
       autoCompactState.lastLargeContextWhisperTurn = currentTurn;
       ctx.whisper?.(
@@ -258,8 +270,8 @@ export const contextHygieneModule: CognitiveModule = {
       );
     }
 
-    // ── Duplicate whisper (cooldown: 25 turns) ─────────────────────
-    if (density.duplicates > 2 && currentTurn - autoCompactState.lastDuplicateWhisperTurn >= 25) {
+    // ── Duplicate whisper (cooldown) ─────────────────────
+    if (density.duplicates > 2 && currentTurn - autoCompactState.lastDuplicateWhisperTurn >= HYGIENE_DENSITY_WHISPER_COOLDOWN_TURNS) {
       autoCompactState.lastDuplicateWhisperTurn = currentTurn;
       ctx.whisper?.(
         density.duplicates +

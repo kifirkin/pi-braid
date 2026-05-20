@@ -1,4 +1,5 @@
 import { createLogger } from "../../../lib/logger.js";
+import { safeSessionManager } from "../../../lib/extension-state.js";
 
 const log = createLogger("session-recall");
 /**
@@ -526,27 +527,44 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
     },
   });
   // ── R6: Mid-Task Auto Recall ────────────────────────────────────────
-  // Auto-search past sessions at natural breakpoints during a task.
-  // Fires once per session (on first user message processed) to give
-  // the agent relevant prior context without explicit recall commands.
+  // Fires once per session (on first tool execution). Uses actual task text
+  // from the first user message (not tool names) and requires strong relevance
+  // (>=5 matches + same project) to avoid flooding the agent with noise.
   let midTaskRecallDone = false;
 
   pi.on("turn_end" as never, async (_event: unknown, ctx: any) => {
     if (midTaskRecallDone) return;
     midTaskRecallDone = true;
 
-    // Extract context: the tools used so far tell us what kind of task this is
-    const toolNames = pi.getActiveTools().slice(0, 5).join(" ");
-    if (!toolNames) return;
+    // Extract first user message as task context
+    // Use safeSessionManager to avoid assertActive() crash on stale ctx
+    const manager = safeSessionManager(ctx) as any;
+    const entries = manager?.getBranch?.() as any[] | undefined;
+    if (!entries || entries.length === 0) return;
+    const firstUserMsg = entries.find(
+      (e: any) => e.type === "message" && e.message?.role === "user",
+    );
+    if (!firstUserMsg) return;
+    const content = firstUserMsg.message?.content;
+    const taskText =
+      typeof content === "string"
+        ? content.slice(0, 300)
+        : Array.isArray(content)
+          ? content.filter((c: any) => c.type === "text").map((c: any) => c.text).join(" ").slice(0, 300)
+          : "";
+    if (!taskText || taskText.length < 20) return;
 
-    // Quick search for broad terms that might match past sessions
     const sessionsDir = getSessionsDir();
     if (!existsSync(sessionsDir)) return;
 
     try {
-      const results = await searchFiles(toolNames.slice(0, 60), sessionsDir);
-      if (results.length > 0 && results[0].count >= 2) {
-        // Inject as a quiet whisper with display:false
+      const results = await searchFiles(taskText, sessionsDir);
+      // Only surface if strongly relevant: >=5 matches AND same project directory
+      const projectId = ctx?.cwd ? basename(ctx.cwd) : "";
+      const strongMatches = results.filter(
+        (r) => r.count >= 5 && (!projectId || r.path.includes(projectId)),
+      );
+      if (strongMatches.length > 0) {
         sendTrackedMessage(
           pi,
           {
@@ -555,7 +573,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
             content: [
               {
                 type: "text" as const,
-                text: `[recall] Past session found: "${basename(results[0].path)}" (${results[0].count} matches)`,
+                text: `[recall] Past session found: "${basename(strongMatches[0].path)}" (${strongMatches[0].count} matches)`,
               },
             ],
           },

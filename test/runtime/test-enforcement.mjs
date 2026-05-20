@@ -214,9 +214,9 @@ console.log("\n[5] Lazy-load verification");
     assert.ok(src.includes('await import("./verification-judge.js")'), "verification-judge should be lazy");
   });
 
-  test("judge not eagerly imported", () => {
-    assert.ok(!src.includes('from "./judge.js"'), "judge should be dynamic");
-    assert.ok(src.includes('await import("./judge.js")'), "judge should be lazy");
+  test("judge fully removed (legacy LLM judge deleted)", () => {
+    assert.ok(!src.includes('from "./judge.js"'), "judge should not be statically imported");
+    assert.ok(!src.includes('await import("./judge.js")'), "judge should not be dynamically imported");
   });
 
   test("belief-policy-engine IS eagerly imported (used in 7+ call sites)", () => {

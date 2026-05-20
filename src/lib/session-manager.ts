@@ -3,6 +3,7 @@
 // Usage: const sm = getSessionManager(ctx); sm.getBranch(), sm.getLabel(id), etc.
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { safeSessionManager } from "./extension-state.js";
 
 export interface SessionEntry {
   id: string;
@@ -29,7 +30,7 @@ export interface SessionManager {
 }
 
 export function getSessionManager(ctx: ExtensionContext): SessionManager {
-  const sm = (ctx as unknown as { sessionManager?: SessionManager }).sessionManager;
-  if (!sm) throw new Error("sessionManager not available");
+  const sm = safeSessionManager(ctx) as SessionManager | undefined;
+  if (!sm) throw new Error("sessionManager not available (ctx may be stale)");
   return sm;
 }

@@ -208,22 +208,23 @@ const POLICY_RULES: PolicyRule[] = [
       return [];
     },
   },
-  // Rule 7: Memory contamination detected → verify cross-session memories
+  // Rule 7: Memory contamination — only warn on repeated cross-session recall (3+ signals)
   {
     name: "memory_contamination",
     evaluate(signals, _beliefs): PolicyRecommendation[] {
-      const recent = signals.slice(-10);
+      const recent = signals.slice(-20);
       const contamination = recent.filter(
         (s) => s.source === "memory" && s.type === "contamination",
       );
-      if (contamination.length > 0) {
+      // Only surface if 3+ contamination signals in recent window
+      if (contamination.length >= 3) {
         const count = contamination.length;
         return [
           {
             id: `pr-${Date.now()}-mc`,
             type: "memory_contamination",
-            priority: 7,
-            message: `[memory] ${count} cross-session memory contamination signal(s) detected. Verify retrieved memories match current project context before acting on them.`,
+            priority: 5,
+            message: `[memory] ${count} cross-session memory recall(s) — verify relevant to current project before acting.`,
             beliefs: ["memory:contamination", "memory:verify-before-act"],
             timestamp: Date.now(),
           },

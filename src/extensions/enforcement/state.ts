@@ -5,7 +5,6 @@ const log = createLogger("enforcement");
  * Enforcement state - Central state management
  */
 
-import type { JudgeAnalysis } from "./judge.js";
 import { TopicDriftDetector } from "../../lib/topic-drift-detector.js";
 import type { EnforcementConfig, ToolChainState, ToolSequencePattern, TurnState } from "./types.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
@@ -73,8 +72,7 @@ export function createState() {
     consecutiveErrorTurns: 0,
     lastScratchpadNudgeTurn: -100,
     lastJudgeTime: 0,
-    judgeSkipCounter: 0,
-    lastJudgeAnalysis: null as JudgeAnalysis | null,
+
     lastLazyNudgeTime: 0,
     lastVerificationJudgeTurn: 0,
     lastUserMessage: "",
@@ -179,8 +177,7 @@ export function resetState(s: EnforcementState = state): void {
   s.lastNudgeTime = 0;
   s.escalationCounts = {};
   s.lastJudgeTime = 0;
-  s.judgeSkipCounter = 0;
-  s.lastJudgeAnalysis = null;
+
   s.lastLazyNudgeTime = 0;
   // Reset verification judge tracking
   s.lastVerificationJudgeTurn = 0;

@@ -14,7 +14,7 @@ import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { METRICS_FILE, LOGS_DIR } from "../../../lib/braid-paths.js";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { getExtensionState } from "../../../lib/extension-state.js";
+import { getExtensionState, safeSessionManager } from "../../../lib/extension-state.js";
 import { emitSignal } from "../../../lib/belief-policy-engine.js";
 import { eventBus } from "../../../lib/event-bus.js";
 import { isDegraded, getDegradationReasons } from "../../../lib/degradation-detector.js";
@@ -55,7 +55,8 @@ export default function analyticsExtension(pi: ExtensionAPI) {
   // ── session_start ──────────────────────────────────────────────────
   registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event, ctx) => {
     const state = getAnalyticsStateInternal(ctx);
-    state.sessionId = ctx.sessionManager.getSessionFile() ?? `session-${Date.now()}`;
+    const sm = safeSessionManager(ctx);
+    state.sessionId = sm ? (sm as any).getSessionFile?.() ?? `session-${Date.now()}` : `session-${Date.now()}`;
     state.sessionStartTime = Date.now();
     state.toolMetrics.clear();
     state.toolCallSequence = [];
@@ -112,8 +113,13 @@ export default function analyticsExtension(pi: ExtensionAPI) {
       state.localTurnCount++;
 
       // Flush per-turn deduplicated tool types into turnToolSequence
-      for (const tool of state.currentTurnTypes) {
-        state.turnToolSequence.push(tool);
+      // Defensive: currentTurnTypes may be missing if getExtensionState
+      // returns a state from a stale-ctx WeakMap bucket that wasn't
+      // initialized through createAnalyticsState.
+      if (state.currentTurnTypes) {
+        for (const tool of state.currentTurnTypes) {
+          state.turnToolSequence.push(tool);
+        }
       }
       state.currentTurnTypes.clear();
 

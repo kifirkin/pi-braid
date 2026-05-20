@@ -18,6 +18,7 @@ import type {
   ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../lib/logger.js";
+import { safeSessionManager } from "../../lib/extension-state.js";
 import { sendTrackedMessage } from "../../lib/injection-tracker.js";
 import { registerSessionStartHandler, SessionPhase } from "../../lib/session-start-queue.js";
 import { detectMalformedToolCalls } from "./detection/malformed.js";
@@ -455,23 +456,14 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
 
     const userHasBash = Array.from(getState(ctx).uniqueToolsUsed).includes("bash");
 
-    const VERIFICATION_GAP_TURNS = 8;
-    const turnsSinceCodeChange =
-      getState(ctx).currentTurn - getState(ctx).lastVerificationJudgeTurn;
-    const hasVerificationGap =
-      getState(ctx).hasCodeChanges &&
-      !userHasBash &&
-      turnsSinceCodeChange >= VERIFICATION_GAP_TURNS;
-
-    const isPeriodicCheck =
-      getState(ctx).hasCodeChanges &&
-      getState(ctx).currentTurn - getState(ctx).lastVerificationJudgeTurn >=
-        ENFORCEMENT_PARAMS.verificationJudgeInterval;
-
+    // Verification Judge fires ONLY at agent loop end — when the agent produces
+    // a final response with no tool calls (same condition the legacy judge used).
+    // This prevents automatic N-turn periodic checks that waste tokens.
     if (
       !getState(ctx).verificationJudgeRunning &&
-      (hasVerificationGap || isPeriodicCheck) &&
-      getState(ctx).uniqueToolsUsed.size > 0
+      turnState && turnState.actualTools.length === 0 &&
+      getState(ctx).hasCodeChanges &&
+      getState(ctx).currentTurn - getState(ctx).lastVerificationJudgeTurn >= 1
     ) {
       const now = Date.now();
       if (now - getState(ctx).lastJudgeTime < 60_000) return;
@@ -512,48 +504,14 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
       }
     }
 
-    // Legacy LLM Judge
-    if (turnState && turnState.actualTools.length === 0) {
-      const now = Date.now();
-      if (now - getState(ctx).lastJudgeTime < getState(ctx).config.judgeCooldownMs) return;
-
-      getState(ctx).judgeSkipCounter++;
-      if (getState(ctx).judgeSkipCounter < getState(ctx).config.judgeSkipTurns) return;
-      getState(ctx).judgeSkipCounter = 0;
-
-      const history: string[] = [];
-      for (const [turnIdx, turn] of getState(ctx).turnHistory) {
-        if (turnIdx >= getState(ctx).currentTurn) continue;
-        const tools = turn.actualTools.length > 0 ? ` [Tools: ${turn.actualTools.join(", ")}]` : "";
-        history.push(`[Turn ${turnIdx}]${tools}`);
-      }
-
-      const { analyzeWithJudge } = await import("./judge.js");
-      const { analysis, action } = await analyzeWithJudge(ctx as never, fullContent, history, {
-        timeoutMs: 30000,
-      });
-
-      getState(ctx).lastJudgeTime = now;
-      getState(ctx).lastJudgeAnalysis = analysis;
-
-      if (action.type === "nudge" && action.nudgeMessage) {
-        const rateLimitOk = now - getState(ctx).lastNudgeTime > getState(ctx).nudgeCooldownMs;
-        if (rateLimitOk) {
-          getState(ctx).lastNudgeTime = now;
-          sendEnforcementWhisper(pi, ctx, action.nudgeMessage);
-
-          if (action.priority === "critical" || action.priority === "high") {
-            getState(ctx).validationFailures++;
-          }
-        }
-      }
-    }
   });
 
   pi.on("turn_end" as never, async (_event: any, ctx: ExtensionContext) => {
     if (!getState(ctx).enforcementActive || !getState(ctx).driftDetector) return;
     // Use getBranch() — getCurrentSession() does not exist on SessionManager
-    const entries = ctx.sessionManager?.getBranch() ?? [];
+    // Use safeSessionManager to avoid assertActive() crash on stale ctx
+    const sm = safeSessionManager(ctx) as any;
+    const entries = sm?.getBranch?.() ?? [];
     const recentMsgs: Array<{ role?: string; content?: unknown }> = [];
     for (let i = entries.length - 1; i >= 0 && recentMsgs.length < 4; i--) {
       const entry = entries[i];

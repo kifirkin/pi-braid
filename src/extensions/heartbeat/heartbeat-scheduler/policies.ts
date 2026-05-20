@@ -10,6 +10,13 @@ import type { Policy, PolicyContext, BeliefStore } from "../../../lib/belief-sto
 import type { ToolTracking } from "./types.js";
 import type { ContextUsage } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../../lib/logger.js";
+import {
+  USAGE_WHISPER_SOFT,
+  USAGE_WHISPER_ADVISORY,
+  USAGE_WHISPER_WARNING,
+  USAGE_WHISPER_CRITICAL,
+  USAGE_FIRED_RESET_BELOW,
+} from "../../../lib/context-thresholds.js";
 
 const log = createLogger("heartbeat:policies");
 
@@ -126,22 +133,28 @@ export function createDefaultPolicies(
         // Store fired thresholds on the getContextUsage() result as metadata
         const fired: Set<number> = new Set();
 
+        // Threshold ladder: soft → advisory → warning → critical
         const thresholds: Array<{ pct: number; priority: "low" | "medium" | "high"; msg: string }> =
           [
             {
-              pct: 70,
+              pct: USAGE_WHISPER_SOFT,
               priority: "low",
-              msg: "Context at 70%. Consider using /finalize or /context_archive to reduce context.",
+              msg: `Context at ${USAGE_WHISPER_SOFT}%. Consider archiving completed tasks with /context_archive or wrapping up with /finalize.`,
             },
             {
-              pct: 80,
+              pct: USAGE_WHISPER_ADVISORY,
               priority: "medium",
-              msg: "Context at 80%. Use /context_archive or /finalize NOW.",
+              msg: `Context at ${USAGE_WHISPER_ADVISORY}%. Use /context_archive or /finalize to free space.`,
             },
             {
-              pct: 90,
+              pct: USAGE_WHISPER_WARNING,
+              priority: "medium",
+              msg: `Context at ${USAGE_WHISPER_WARNING}%. Consider /context_archive or /finalize soon.`,
+            },
+            {
+              pct: USAGE_WHISPER_CRITICAL,
               priority: "high",
-              msg: "CRITICAL: Context at 90%. Call finalize(completed=false, summary='[brief status]', tasksRemaining=[...]) RIGHT NOW.",
+              msg: `CRITICAL: Context at ${USAGE_WHISPER_CRITICAL}%. Call finalize(completed=false, summary='[brief status]', tasksRemaining=[...]) RIGHT NOW.`,
             },
           ];
 
@@ -152,18 +165,18 @@ export function createDefaultPolicies(
               `${msg} (${tokens?.toLocaleString()} / ${contextWindow?.toLocaleString()} tokens, ${percent?.toFixed(1)}%)`,
             );
             log.warn(`Token warning: ${percent?.toFixed(1)}% (${tokens}/${contextWindow} tokens)`);
-            if (pct === 90) {
+            if (pct === USAGE_WHISPER_CRITICAL) {
               const finalizationMessage =
                 `[heartbeat] Context critical at ${percent?.toFixed(1)}%. Auto-finalizing to prevent overflow. ` +
                 `Stop all work and call finalize(completed=false, autoProceed=true) now.`;
               sendSteerMessage(finalizationMessage);
-              log.warn(`Auto-finalize triggered at 90%`);
+              log.warn(`Auto-finalize triggered at ${USAGE_WHISPER_CRITICAL}%`);
             }
             break;
           }
         }
 
-        if (percent < 50 && fired.size > 0) {
+        if (percent < USAGE_FIRED_RESET_BELOW && fired.size > 0) {
           fired.clear();
         }
       },

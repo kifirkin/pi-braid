@@ -220,6 +220,7 @@ async function llmVerify(
   criteria: string[],
   depth: VerificationDepth,
   ctx: ExtensionContext,
+  signal?: AbortSignal,
 ): Promise<{ issues: string[]; suggestions: string[]; confidence: number }> {
   const depthInstructions =
     depth === "deep"
@@ -263,6 +264,7 @@ Do not invent problems that are not supported by the text.`;
     const llmResult = await callLlm(ctx.model, apiKey, "", prompt, {
       maxTokens: 1024,
       temperature: 0.1,
+      signal,
     });
 
     if ("error" in llmResult) {
@@ -362,7 +364,7 @@ export function createVerifyTool() {
     async execute(
       _toolCallId: string,
       params: Record<string, unknown>,
-      _signal: AbortSignal,
+      signal: AbortSignal,
       _onUpdate: (update: unknown) => void,
       ctx: ExtensionContext,
     ): Promise<{
@@ -413,7 +415,7 @@ export function createVerifyTool() {
         depth !== "quick" &&
         (depth === "deep" || allIssues.length > 0 || confidence < 0.8)
       ) {
-        const llmResult = await llmVerify(target, text, criteria, depth, ctx);
+        const llmResult = await llmVerify(target, text, criteria, depth, ctx, signal);
         allIssues = [...allIssues, ...llmResult.issues];
         suggestions = llmResult.suggestions;
         // Only reduce confidence if LLM actually found issues.

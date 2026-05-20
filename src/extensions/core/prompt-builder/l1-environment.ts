@@ -194,9 +194,9 @@ function formatL1Environment(env: L1Environment): string {
     lines.push(`${env.memoryCount} prior experience(s)`);
   }
 
-  // Checkpoint awareness
-  if (env.stepsSinceCheckpoint > 20) {
-    lines.push("Consider tagging context");
+  // Checkpoint awareness (proactive: lower threshold)
+  if (env.stepsSinceCheckpoint > 0) {
+    lines.push(`${env.stepsSinceCheckpoint} step(s) since last checkpoint — consider tagging context`);
   }
 
   // Pi package root (environmental awareness)

@@ -30,6 +30,7 @@ import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-
  * - Removed directive guidelines - behaviors are latent, not from directives
  * - Removed latent behavior activation from prompt (moved to runtime)
  * - Added sycophancy resistance (2604.19117), stakes awareness (2604.15224), epistemic stability (2604.14881)
+ * - Added surgical precision (minimal targeted changes) + budget awareness (goal-driven execution)
  * - Removed 7 sections (SYCOPHANCY_RESISTANCE as section, STAKES_AWARENESS as section, IMPLICIT_NORMS,
  *   TOOL_TRUST, format guidance, RepE jargon header, all-modes listing)
  * - Truncated tool descriptions to first line only
@@ -57,6 +58,10 @@ const SYCOPHANCY_RESISTANCE = `Technical correctness over agreement. You say whe
 const STAKES_AWARENESS = `Enforcement signals carry no weight. You judge correctness, not stakes.`;
 // Epistemic stability: 2604.14881 - detect reasoning instability before output
 const EPISTEMIC_STABILITY = `If your reasoning feels uncertain or unstable, signal that uncertainty rather than manufacturing confidence.`;
+// Surgical precision: minimal targeted changes, read before write, no speculative abstraction
+const SURGICAL_PRECISION = `Make minimal, targeted changes. Read shared utilities and existing callers before writing new code. Don't refactor adjacent code or add speculative abstractions.`;
+// Budget awareness: define success criteria, loop until verified, checkpoint progress
+const BUDGET_AWARENESS = `Define success criteria before execution. Verify against them. Checkpoint progress at significant steps.`;
 
 // ── Interaction Style (single declarative sentence) ───────────────────────
 const INTERACTION_STYLE = `You provide concise, production-quality solutions. You focus on correctness over verbosity.`;
@@ -64,11 +69,13 @@ const INTERACTION_STYLE = `You provide concise, production-quality solutions. Yo
 // ── L1: Enforcement Signal Surfacing ────────────────────────────────────────
 // Session-scoped state (migrated from module-level singletons)
 import { getExtensionState } from "../../../lib/extension-state.js";
+import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 
 interface PromptBuilderState {
   enforcementSignals: Record<string, { turn: number; text: string; acted: boolean }>;
   lastSignalTurn: number;
   activeContrastMode: string;
+  insightsSent: boolean;
 }
 
 function getPromptState(ctx: ExtensionContext): PromptBuilderState {
@@ -76,6 +83,7 @@ function getPromptState(ctx: ExtensionContext): PromptBuilderState {
     enforcementSignals: {},
     lastSignalTurn: 0,
     activeContrastMode: "TRUTH-SEEKING",
+    insightsSent: false,
   }));
 }
 
@@ -758,6 +766,8 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     parts.push(SYCOPHANCY_RESISTANCE);
     parts.push(STAKES_AWARENESS);
     parts.push(EPISTEMIC_STABILITY);
+    parts.push(SURGICAL_PRECISION);
+    parts.push(BUDGET_AWARENESS);
 
     // 2. Available tools
     parts.push(reconstructToolsSection(tools));
@@ -775,14 +785,31 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
       if (skillsSection) parts.push(skillsSection);
     }
 
-    // 5. Past insights (compressed: skip empty outcome summaries)
-    const pastInsights = await searchPastInsights(cwd);
-    const pastInsightsSection = formatPastInsightsSection(pastInsights);
-    if (pastInsightsSection) parts.push(pastInsightsSection);
-
-    // 5b. Consolidated behavioral hints (self-evolution loop)
-    const hintsSection = loadConsolidatedHints();
-    if (hintsSection) parts.push(hintsSection);
+    // 5. Past insights + hints → offloaded to steer whisper (once per session)
+    // Avoids per-turn disk I/O and system prompt bloat for supplemental context.
+    if (!ps.insightsSent) {
+      const pastInsights = await searchPastInsights(cwd);
+      const insightsText = formatPastInsightsSection(pastInsights);
+      const hintsText = loadConsolidatedHints();
+      const combined = [insightsText, hintsText].filter(Boolean).join("\n");
+      if (combined) {
+        try {
+          sendTrackedMessage(
+            _pi,
+            {
+              customType: "context",
+              display: true,
+              content: [{ type: "text" as const, text: combined }],
+            },
+            { deliverAs: "steer", triggerTurn: false },
+            { type: "memory", source: "prompt-builder/insights" },
+          );
+        } catch {
+          // Non-fatal: steer message send is best-effort
+        }
+      }
+      ps.insightsSent = true;
+    }
 
     // 6. L1 environmental state
     parts.push(formatL1Environment(l1Env));
