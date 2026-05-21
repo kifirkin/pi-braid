@@ -303,7 +303,7 @@ export function createDefaultPolicies(): ContextPolicy[] {
       action: {
         type: "propose",
         message:
-          "High density ({density}%) but context large ({ratio}% of limit). Semantic compression (SimpleMem): 30% token cost, preserves meaning.",
+          "High density ({density}%) but context large ({token_ratio}% of limit). Semantic compression (SimpleMem): 30% token cost, preserves meaning.",
         priority: "low",
       },
       suggested_action: "context_archive",

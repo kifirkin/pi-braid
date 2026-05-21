@@ -225,9 +225,18 @@ function formatDuration(ms: number): string {
   return `${(ms / 60000).toFixed(0)}m`;
 }
 
-function interpolateMessage(message: string, ctx: any): string {
+function interpolateMessage(message: string, ctx: any, signalData?: Record<string, unknown>): string {
   const usage = getContextUsage(ctx);
-  return message.replace("{percent}", `${usage.toFixed(0)}%`);
+  let result = message.replace("{percent}", `${usage.toFixed(0)}%`);
+
+  // Interpolate signal data fields (e.g., {noise}, {signal}, {count}, {density}, {token_ratio})
+  if (signalData) {
+    for (const [key, value] of Object.entries(signalData)) {
+      result = result.replaceAll(`{${key}}`, String(value ?? ""));
+    }
+  }
+
+  return result;
 }
 
 // ── Action Execution ─────────────────────────────────────────────────────────
@@ -338,7 +347,7 @@ function executeAction(
 
     case "nudge":
       if (evaluated.canExecute) {
-        const msg = interpolateMessage(action.message, ctx);
+        const msg = interpolateMessage(action.message, ctx, evaluated.signal?.data);
         // Non-critical context awareness - use hint, visible in TUI but no hidden turn
         sendTrackedMessage(
           pi,
@@ -386,7 +395,7 @@ function queueProposal(evaluated: EvaluatedAction, ctx: any, branchLength: numbe
 
   const proposal = createProposal(
     "compact",
-    interpolateMessage(action.message, ctx),
+    interpolateMessage(action.message, ctx, evaluated.signal?.data),
     evaluated.policy.id,
     branchLength,
     action.priority,

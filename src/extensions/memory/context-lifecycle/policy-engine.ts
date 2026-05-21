@@ -101,7 +101,11 @@ export class PolicyEngine {
       // Check trigger
       if (!matchesTrigger(policy.trigger, ctx)) continue;
 
-      // Policy fires
+      // Policy fires — find the matching signal to attach data
+      const matchingSignal = policy.trigger.type === "signal"
+        ? ctx.signals.find((s) => s.type === (policy.trigger as { type: "signal"; signal: string }).signal)
+        : undefined;
+
       const action: PolicyAction = policy.action;
 
       // Apply governance validation
@@ -112,6 +116,7 @@ export class PolicyEngine {
         policy,
         validation,
         canExecute: validation.valid || validation.severity === "warn",
+        signal: matchingSignal,
       });
 
       this.cooldowns.set(policy.id, now);
@@ -185,6 +190,8 @@ export interface EvaluatedAction {
   policy: ContextPolicy;
   validation: GovernanceResult;
   canExecute: boolean;
+  /** The signal that triggered this policy action, if applicable */
+  signal?: SemanticSignal;
 }
 
 export interface GovernanceResult {
@@ -284,7 +291,7 @@ export function evaluatePolicies(ctx: ExtensionContext, signals: SemanticSignal[
       context_density_high: {
         priority: 58,
         message:
-          "High density ({density}%) but context large ({ratio}% of limit). Semantic compression (SimpleMem): 30% token cost, preserves meaning.",
+          "High density ({density}%) but context large ({token_ratio}% of limit). Semantic compression (SimpleMem): 30% token cost, preserves meaning.",
         suggested_action: "context_archive",
         min_confidence: 0.5,
       },
