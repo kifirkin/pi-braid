@@ -3,7 +3,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { METRICS_FILE, LOGS_DIR } from "../../../lib/braid-paths.js";
+import { METRICS_FILE, METRICS_DIR } from "../../../lib/braid-paths.js";
 import { createLogger } from "../../../lib/logger.js";
 const log = createLogger("analytics:core");
 import type {
@@ -99,8 +99,7 @@ export function computeSessionOutcome(s: AnalyticsState): "success" | "partial" 
 // ── Persistence ────────────────────────────────────────────────────────────
 
 export function flushAnalytics(s: AnalyticsState, taskCompleted = false): void {
-  const logsDir = LOGS_DIR;
-  if (!existsSync(logsDir)) mkdirSync(logsDir, { recursive: true });
+  if (!existsSync(METRICS_DIR)) mkdirSync(METRICS_DIR, { recursive: true });
 
   const metrics = Array.from(s.toolMetrics.values());
   const sequences = getToolSequences(s);

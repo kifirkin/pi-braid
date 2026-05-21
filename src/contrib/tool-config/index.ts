@@ -1,6 +1,6 @@
 import { createLogger } from "../../lib/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../lib/session-start-queue.js";
-import { BRAID } from "../../lib/braid-paths.js";
+import { TOOLS_CONFIG_FILE } from "../../lib/braid-paths.js";
 
 const log = createLogger("assistant");
 /**
@@ -10,8 +10,6 @@ const log = createLogger("assistant");
  * /tool-status: show current configuration
  */
 
-import * as os from "node:os";
-import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext, ToolInfo } from "@mariozechner/pi-coding-agent";
 import { getSettingsListTheme } from "@mariozechner/pi-coding-agent";
 import { Container, type SettingItem, SettingsList } from "@mariozechner/pi-tui";
@@ -20,7 +18,7 @@ import { loadState, saveState } from "../../lib/async-storage.js";
 const TOOLS_CONFIG_TYPE = "tools-config";
 
 /** Path to disk-persisted tools config - survives pi restarts */
-const TOOLS_DISK_PATH = path.join(BRAID, "tools-config.json");
+const TOOLS_DISK_PATH = TOOLS_CONFIG_FILE;
 
 interface ToolsConfigData {
   enabledTools: string[];

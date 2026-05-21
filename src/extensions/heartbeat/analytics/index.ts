@@ -12,7 +12,7 @@
 import { createLogger } from "../../../lib/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { METRICS_FILE, LOGS_DIR } from "../../../lib/braid-paths.js";
+import { METRICS_FILE, METRICS_DIR } from "../../../lib/braid-paths.js";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState, safeSessionManager } from "../../../lib/extension-state.js";
 import { emitSignal } from "../../../lib/belief-policy-engine.js";
@@ -66,8 +66,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
     state.nudgesSuppressed = 0;
     state.storagePath = METRICS_FILE;
 
-    const logsDir = LOGS_DIR;
-    if (!existsSync(logsDir)) mkdirSync(logsDir, { recursive: true });
+    if (!existsSync(METRICS_DIR)) mkdirSync(METRICS_DIR, { recursive: true });
   });
 
   // ── tool_execution_start ───────────────────────────────────────────
