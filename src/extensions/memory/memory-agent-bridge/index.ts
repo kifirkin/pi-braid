@@ -388,7 +388,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
       });
 
       // Cross-search three-memory-stores episodes
-      let episodeResults: Array<{ task: string; outcome: string; similarity: number }> = [];
+      let episodeResults: Array<{ task: string; solution: string; outcome: string; similarity: number }> = [];
       if (ctx) {
         try {
           const threeMem = getExtensionState<MemoryStoresState>(
@@ -404,7 +404,8 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
               threeMem.currentSessionId,
             );
             episodeResults = episodes.map((ep) => ({
-              task: ep.task.slice(0, 80),
+              task: ep.task,
+              solution: ep.solution.slice(0, 500),
               outcome: ep.outcome,
               similarity: ep.similarity ?? 0,
             }));
@@ -427,7 +428,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
         lines.push(`Found ${results.length} semantic memories:`);
         for (const r of results.slice(0, params.limit ?? 5)) {
           lines.push(
-            `  [${r.memory.type}] ${r.memory.content.slice(0, 80)}... (relevance: ${r.relevance.toFixed(1)}, id: ${r.memory.id})`,
+            `  [${r.memory.type}] ${r.memory.content.slice(0, 300)}... (relevance: ${r.relevance.toFixed(1)}, id: ${r.memory.id})`,
           );
         }
       }
@@ -436,7 +437,8 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
         lines.push(`Found ${episodeResults.length} related episodes:`);
         for (const ep of episodeResults) {
           const icon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
-          lines.push(`  ${icon} [episodic] ${ep.task} (similarity: ${ep.similarity.toFixed(2)})`);
+          const sol = ep.solution ? ` Solution: ${ep.solution}` : "";
+          lines.push(`  ${icon} [episodic] ${ep.task}${sol} (similarity: ${ep.similarity.toFixed(2)})`);
         }
       }
       if (lines.length === 0) {
@@ -498,7 +500,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
             for (const ep of recent) {
               const icon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
               const time = new Date(ep.timestamp).toLocaleDateString();
-              lines.push(`  ${icon} [id:${ep.id.slice(0, 12)}] ${time} — ${ep.task.slice(0, 60)}`);
+              lines.push(`  ${icon} [id:${ep.id}] ${time} — ${ep.task.slice(0, 60)}`);
             }
           }
         } catch {

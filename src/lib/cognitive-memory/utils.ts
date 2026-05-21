@@ -65,9 +65,8 @@ export function formatMemoryEntry(memory: CognitiveMemoryEntry, full = false): s
   }
 
   const preview =
-    memory.content.length > 100 ? `${memory.content.slice(0, 100)}...` : memory.content;
-  const idPreview = memory.id.length > 12 ? `${memory.id.slice(0, 12)}..` : memory.id;
-  return `[${memory.type}] ${idPreview} ${time}${tags}${expired} - ${preview}`;
+    memory.content.length > 300 ? `${memory.content.slice(0, 300)}...` : memory.content;
+  return `[${memory.type}] ${memory.id} ${time}${tags}${expired} - ${preview}`;
 }
 
 /**
