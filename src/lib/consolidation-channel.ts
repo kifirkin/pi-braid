@@ -315,13 +315,14 @@ export function processConsolidationTick(): void {
         // File doesn't exist yet — that's fine
       }
 
+      const now = Date.now();
       const hint = {
         task: candidate.task,
         strategy: candidate.strategicSOP,
         steps: candidate.functionalSOP.slice(0, 5),
         score: Math.round(candidate.consolidationScore * 100),
         source: "consolidation",
-        createdAt: Date.now(),
+        createdAt: now,
       };
       // Use sync write to avoid race with concurrent ticks
       // (appendFile is async and could interleave with readFileSync above)
@@ -330,7 +331,23 @@ export function processConsolidationTick(): void {
           ? readFileSync(CONSOLIDATED_HINTS_FILE, "utf-8")
           : "";
         const allLines = existingContent.split("\n").filter((l) => l.trim());
-        allLines.push(JSON.stringify(hint));
+        // Deduplicate: replace existing entry with the same task, or append
+        const taskKey = candidate.task;
+        const replaced = allLines.some((line, i) => {
+          try {
+            const existing = JSON.parse(line);
+            if (existing.task === taskKey) {
+              allLines[i] = JSON.stringify(hint);
+              return true;
+            }
+          } catch {
+            // skip malformed lines
+          }
+          return false;
+        });
+        if (!replaced) {
+          allLines.push(JSON.stringify(hint));
+        }
         writeFileSync(CONSOLIDATED_HINTS_FILE, allLines.join("\n") + "\n");
       } catch (writeErr) {
         log.warn(`Hint append failed: ${(writeErr as Error).message}`);
