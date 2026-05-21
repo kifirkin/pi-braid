@@ -24,7 +24,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import {
   EPISODES_FILE,
-  LEGACY_EPISODES_FILE,
   LEGACY_MEMORY_FILE,
   METRICS_FILE,
 } from "../../../lib/braid-paths.js";
@@ -73,7 +72,6 @@ export function createMemoryStoresState(): MemoryStoresState {
     lastSkillType: "",
     skillTransitionCount: 0,
     recentErrors: [],
-    loadedFromLegacy: false,
     lastRecallTime: 0,
     lastSemanticRecallHashes: [],
     lastEpisodeRecallSignature: "",
@@ -146,7 +144,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
             `${provenance}${confTag}${qualityTag}${crossTag} ${outcomeIcon} [${ep.outcome}] ${ep.task}`,
           );
           lines.push(
-            `   Solution: ${ep.solution.slice(0, 200)}${ep.solution.length > 200 ? "..." : ""}`,
+            `   Solution: ${ep.solution.slice(0, 500)}${ep.solution.length > 500 ? "..." : ""}`,
           );
           lines.push(`   Tools: ${ep.toolSequence.join(" → ")}`);
           lines.push(`   Similarity: ${(ep.similarity * 100).toFixed(0)}%`);
@@ -431,7 +429,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
           ? ` (conf ${((ep as any).memoryConfidence * 100).toFixed(0)}%)`
           : "";
       lines.push(`  ${icon}${crossMark}${conf} ${ep.task.slice(0, 80)}`);
-      lines.push(`    Solution: ${ep.solution.slice(0, 120)}`);
+      lines.push(`    Solution: ${ep.solution.slice(0, 300)}`);
     }
 
     sendTrackedMessage(
@@ -625,21 +623,15 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
   pi.on("session_shutdown", async (_event: any, _ctx: ExtensionContext) => {
     const state = getState(_ctx);
     if (state.episodes.length > 0) {
-      // Migrate from legacy path on first write to new location
-      let diskPath = EPISODES_FILE;
-      const legacyExists = !!(state.loadedFromLegacy || fs.existsSync(LEGACY_EPISODES_FILE));
-      if (legacyExists && !fs.existsSync(LEGACY_EPISODES_FILE.replace(".jsonl", ".migrated"))) {
-        diskPath = LEGACY_EPISODES_FILE;
-      }
       try {
-        const dir = path.dirname(diskPath);
+        const dir = path.dirname(EPISODES_FILE);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(
-          diskPath,
+          EPISODES_FILE,
           state.episodes.map((e: any) => JSON.stringify(e)).join("\n"),
           "utf-8",
         );
-        log.debug(`Persisted ${state.episodes.length} episodes to ${diskPath}`);
+        log.debug(`Persisted ${state.episodes.length} episodes to ${EPISODES_FILE}`);
       } catch (err) {
         log.warn(`Failed to persist episodes: ${err}`);
       }
@@ -688,31 +680,6 @@ async function loadPastEpisodes(state: MemoryStoresState): Promise<number> {
     }
   } catch {
     /* non-fatal */
-  }
-
-  // Migration: also try legacy path (~/.pi/agent/memory/)
-  const legacyPath = LEGACY_EPISODES_FILE;
-  if (fs.existsSync(legacyPath) && !state.loadedFromLegacy) {
-    state.loadedFromLegacy = true;
-    try {
-      const lines = fs
-        .readFileSync(legacyPath, "utf-8")
-        .split("\n")
-        .filter((l) => l.trim());
-      for (const line of lines) {
-        try {
-          const ep: Episode = JSON.parse(line);
-          if (!state.episodes.some((e) => e.id === ep.id)) {
-            state.episodes.push(ep);
-            loaded++;
-          }
-        } catch {
-          /* skip malformed lines */
-        }
-      }
-    } catch {
-      /* non-fatal */
-    }
   }
 
   // Backward compat: load episodic items from cognitive-memory legacy path
