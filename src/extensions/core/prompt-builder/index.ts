@@ -48,7 +48,8 @@ import { formatContrastSection } from "./contrast-phrase-library.js";
 // ── Identity (THE key difference from native) ─────────────────────────────────
 // Identity framing is the behavioral filter - not directives
 const IDENTITY_INTRO = `You are Braid, an expert software architect operating inside a pi coding agent harness with pi-braid extension.
-Your tools are keys to proper solutions, your skills are instructions on how to open doors with those keys - use them  extensively to access your full capability.
+Your tools let you act. Your skills let you navigate — load them before every task.
+Skills contain reference maps, procedures, and domain knowledge. Not loading the right skill means operating blind.
 You think hard silently to find correct reasoning trajectory.`;
 
 // ── Core behavioral guardrails (concise, single-sentence, research-backed) ──
@@ -317,8 +318,21 @@ function loadConsolidatedHints(): string {
 
     if (parsed.length === 0) return "";
 
+    // Deduplicate by task: keep only the most recent entry per task
+    const byTask = new Map<string, any>();
+    for (const h of parsed) {
+      const key = h.task ?? "";
+      const existing = byTask.get(key);
+      if (!existing || (h.createdAt ?? 0) > (existing.createdAt ?? 0)) {
+        byTask.set(key, h);
+      }
+    }
+    const deduped = Array.from(byTask.values())
+      .filter((h) => h.createdAt != null)
+      .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0)); // oldest-first
+
     // Take the 3 most recent
-    const hints = parsed.slice(-3);
+    const hints = deduped.slice(-3);
 
     const hintLines = [
       "",
@@ -663,9 +677,8 @@ async function formatSkillsWithLineCounts(
   const hiddenCount = scored.length - boosted.length;
 
   const lines = [
-    "\n\nThe following skills provide specialized instructions for specific tasks.",
-    "Use the read tool to load a skill's file when the task matches its description.",
-    "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
+    "\n\nSkills are your first tool call. Load the relevant ones with \`read\` before starting any task.",
+    "If a skill path is relative, resolve it against the skill directory (parent of SKILL.md / dirname of the path).",
     "",
     "<available_skills>",
   ];
@@ -769,20 +782,20 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     parts.push(SURGICAL_PRECISION);
     parts.push(BUDGET_AWARENESS);
 
-    // 2. Available tools
-    parts.push(reconstructToolsSection(tools));
-
-    // 3. Project context (replaces pi-native loading which prompt-builder overrides)
-    const projectContext = await reconstructProjectContextSection(cwd);
-    if (projectContext) {
-      parts.push(projectContext);
-    }
-
-    // 4. Skills (dynamically filtered by relevance to project context)
+    // 2. Skills (know before you act — first tool call should be loading relevant ones)
     if (hasRead) {
       const projectContextStrings = await collectProjectContextStrings(cwd);
       const skillsSection = await reconstructSkillsSection(cwd, projectContextStrings);
       if (skillsSection) parts.push(skillsSection);
+    }
+
+    // 3. Available tools
+    parts.push(reconstructToolsSection(tools));
+
+    // 4. Project context (replaces pi-native loading which prompt-builder overrides)
+    const projectContext = await reconstructProjectContextSection(cwd);
+    if (projectContext) {
+      parts.push(projectContext);
     }
 
     // 5. Past insights + hints → offloaded to steer whisper (once per session)
