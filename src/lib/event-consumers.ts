@@ -144,6 +144,23 @@ export function getRecentAlerts() {
   return [..._recentAlerts];
 }
 
+/**
+ * Reset all session-level counters. Call on session_shutdown or session_start
+ * to prevent cross-session accumulation. Without this, counters like
+ * _violationCount, _peakUsagePercent, _alertCount accumulate across ALL
+ * sessions — skewing per-session metrics.
+ */
+export function resetSessionCounters(): void {
+  _violationCount = 0;
+  _evictCount = 0;
+  _contextFullWarnings = 0;
+  _peakUsagePercent = 0;
+  _turnCount = 0;
+  _tickCount = 0;
+  _alertCount = 0;
+  _recentAlerts.length = 0;
+}
+
 // ── Register all consumers (idempotent) ─────────────────────────────────────
 
 let _registered = false;

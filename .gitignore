@@ -2,7 +2,6 @@
 dist/
 *.d.ts.map
 *.js.map
-*.js
 
 # TypeScript incremental build
 *.tsbuildinfo
@@ -42,4 +41,3 @@ pi-session-*
 pi-session-*.html
 *.html
 .DS_Store
-skills/twitter/

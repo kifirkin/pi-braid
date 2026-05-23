@@ -20,6 +20,13 @@ import {
 
 const log = createLogger("heartbeat:policies");
 
+/**
+ * Persist fired threshold set across invocations so the context-monitor
+ * policy doesn't re-fire the same threshold every tick.
+ * Cleared when usage drops below USAGE_FIRED_RESET_BELOW.
+ */
+const _firedThresholds: Set<number> = new Set();
+
 export const VERIFICATION_TOOLS = new Set([
   "grep",
   "find",
@@ -130,54 +137,55 @@ export function createDefaultPolicies(
         const usage = getContextUsage();
         if (!usage || usage.percent === null) return;
         const { percent, tokens, contextWindow } = usage;
-        // Store fired thresholds on the getContextUsage() result as metadata
-        const fired: Set<number> = new Set();
+
+        // Clear fired thresholds when usage drops below reset point
+        if (percent < USAGE_FIRED_RESET_BELOW && _firedThresholds.size > 0) {
+          _firedThresholds.clear();
+        }
 
         // Threshold ladder: soft → advisory → warning → critical
+        // Each threshold fires ONCE until usage resets below USAGE_FIRED_RESET_BELOW
+        // Pipeline taught fully at critical level; lighter hints below that.
         const thresholds: Array<{ pct: number; priority: "low" | "medium" | "high"; msg: string }> =
           [
             {
               pct: USAGE_WHISPER_SOFT,
               priority: "low",
-              msg: `Context at ${USAGE_WHISPER_SOFT}%. Consider archiving completed tasks with /context_archive or wrapping up with /finalize.`,
+              msg: `Context at ${USAGE_WHISPER_SOFT}%. context_tag to mark progress.`,
             },
             {
               pct: USAGE_WHISPER_ADVISORY,
               priority: "medium",
-              msg: `Context at ${USAGE_WHISPER_ADVISORY}%. Use /context_archive or /finalize to free space.`,
+              msg: `Context at ${USAGE_WHISPER_ADVISORY}%. context_tag, then context_checkout to branch with a summary.`,
             },
             {
               pct: USAGE_WHISPER_WARNING,
               priority: "medium",
-              msg: `Context at ${USAGE_WHISPER_WARNING}%. Consider /context_archive or /finalize soon.`,
+              msg: `Context at ${USAGE_WHISPER_WARNING}%. context_tag now, then branch with context_checkout.`,
             },
             {
               pct: USAGE_WHISPER_CRITICAL,
               priority: "high",
-              msg: `CRITICAL: Context at ${USAGE_WHISPER_CRITICAL}%. Call finalize(completed=false, summary='[brief status]', tasksRemaining=[...]) RIGHT NOW.`,
+              msg: `CRITICAL: Context at ${USAGE_WHISPER_CRITICAL}%. Pipeline: context_tag → context_checkout → context_archive → compact (last resort).`,
             },
           ];
 
         for (const { pct, priority, msg } of thresholds) {
-          if (percent >= pct && !fired.has(pct)) {
-            fired.add(pct);
+          if (percent >= pct && !_firedThresholds.has(pct)) {
+            _firedThresholds.add(pct);
             sendWhisper(
               `${msg} (${tokens?.toLocaleString()} / ${contextWindow?.toLocaleString()} tokens, ${percent?.toFixed(1)}%)`,
             );
             log.warn(`Token warning: ${percent?.toFixed(1)}% (${tokens}/${contextWindow} tokens)`);
             if (pct === USAGE_WHISPER_CRITICAL) {
               const finalizationMessage =
-                `[heartbeat] Context critical at ${percent?.toFixed(1)}%. Auto-finalizing to prevent overflow. ` +
-                `Stop all work and call finalize(completed=false, autoProceed=true) now.`;
+                `[heartbeat] Context critical at ${percent?.toFixed(1)}%. ` +
+                `Tag your position with context_tag now and branch with context_checkout.`;
               sendSteerMessage(finalizationMessage);
               log.warn(`Auto-finalize triggered at ${USAGE_WHISPER_CRITICAL}%`);
             }
             break;
           }
-        }
-
-        if (percent < USAGE_FIRED_RESET_BELOW && fired.size > 0) {
-          fired.clear();
         }
       },
     },

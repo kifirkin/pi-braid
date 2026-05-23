@@ -24,6 +24,11 @@ import { validateTurn } from "../validation.js";
 import { sendEnforcementWhisper } from "../whisper.js";
 import { knownFiles, loadFileContent } from "../similarity.js";
 import { enforcementSignals, determineContrastMode } from "../signals.js";
+import {
+  USAGE_WHISPER_CRITICAL,
+  USAGE_FIRED_RESET_BELOW,
+  USAGE_COMPACT_MEDIUM,
+} from "../../../lib/context-thresholds.js";
 
 const log = createLogger("enforcement:turn-end");
 const ERROR_BURST_THRESHOLD = 3;
@@ -296,6 +301,12 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
       /* ignore */
     }
 
+    // Reset contextNudgeSent if usage dropped below reset threshold
+    // (e.g. after compaction or archive freed space)
+    if (getState(ctx).contextNudgeSent && usagePercent < USAGE_FIRED_RESET_BELOW) {
+      getState(ctx).contextNudgeSent = false;
+    }
+
     if (
       !hadErrors &&
       actualTools.length > 0 &&
@@ -305,13 +316,15 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
       usagePercent > 0
     ) {
       getState(ctx).contextNudgeSent = true;
-      if (usagePercent > 85) {
+      const pct = Math.round(usagePercent);
+      if (usagePercent >= USAGE_COMPACT_MEDIUM) {
         sessionSignals.push(
-          "Context at critical levels — run /compact or use context_checkout to branch before continuing",
+          `Context at ${pct}%. Pipeline: context_tag → context_checkout → ` +
+          `context_archive → compact (last resort). Tag your position first.`,
         );
-      } else if (usagePercent > 75) {
+      } else if (usagePercent >= USAGE_WHISPER_CRITICAL) {
         sessionSignals.push(
-          "Context getting high — consider /compact or context_tag to mark progress",
+          `Context at ${pct}%. Tag with context_tag, then context_checkout to branch with a summary.`,
         );
       }
     }

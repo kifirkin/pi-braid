@@ -36,7 +36,6 @@ import {
 import { getRotationState } from "../../../../lib/global-state.js";
 import { filterSafeToRemove } from "../../../../lib/filter-safe-to-remove.js";
 import { determineCompressionLevel } from "../../../../lib/compression-strategy.js";
-import { getPeakUsagePercent } from "../../../../lib/event-consumers.js";
 import { semanticCompress } from "../semantic-compress.js";
 
 // ── Deduplication Guard ────────────────────────────────────────────────────────
@@ -308,7 +307,10 @@ export function registerBeforeCompactHandler(pi: any): void {
         try {
           // Determine adaptive compression level from session metrics
           const audit = analyzeSession(ctx);
-          const peakUsage = getPeakUsagePercent();
+          // Use current session context usage instead of cross-session peak
+          // (getPeakUsagePercent leaked peakUsage across sessions, causing
+          // aggressive compression in sessions that never hit high usage).
+          const currentUsage = audit.usage.percent;
           // ExtensionContext has no turnCount — use audit.branchLength as proxy
           const proxyTurnCount = audit.branchLength ?? 0;
           const baseLevel = determineCompressionLevel(ctx, {
@@ -320,9 +322,9 @@ export function registerBeforeCompactHandler(pi: any): void {
             reasoningChainDepth: audit.recommendations.length > 3 ? 4 : 1,
             messageCount: prep.messagesToSummarize.length,
           }).level;
-          // Escalate compression level when context has been near-full
+          // Escalate compression level when current context is near-full
           const compressionLevel =
-            peakUsage > 85 ? (baseLevel === "short-term" ? "medium-term" : "long-term") : baseLevel;
+            currentUsage > 85 ? (baseLevel === "short-term" ? "medium-term" : "long-term") : baseLevel;
 
           const { compressed, stats: scStats } = semanticCompress(
             (prep as any).messagesToSummarize as any[],

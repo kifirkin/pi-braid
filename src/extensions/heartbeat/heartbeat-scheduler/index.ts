@@ -637,6 +637,13 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 
   pi.on("session_shutdown", async (_event: any, ctx: ExtensionContext) => {
     cleanupSession(ctx.cwd);
+    // Reset cross-session counters that accumulate across all sessions
+    try {
+      const { resetSessionCounters } = await import("../../../lib/event-consumers.js");
+      resetSessionCounters();
+    } catch {
+      // Non-fatal
+    }
     log.info("Heartbeat scheduler shutting down");
   });
 

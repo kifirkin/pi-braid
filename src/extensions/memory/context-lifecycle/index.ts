@@ -250,6 +250,13 @@ function sendCompactNudge(
   evaluated: EvaluatedAction,
   usage: number,
 ): void {
+  // Tag/branch is preferred over compaction — preserves session history
+  // while freeing working context. Compact is the last resort.
+  const pipelineMsg =
+    usage >= 80
+      ? `Context at ${Math.round(usage)}%. Pipeline: context_tag → context_checkout → context_archive → compact (last resort).`
+      : `Context at ${Math.round(usage)}%. Tag with context_tag, then context_checkout to branch with a summary.`;
+
   sendTrackedMessage(
     pi,
     {
@@ -258,8 +265,7 @@ function sendCompactNudge(
         {
           type: "text" as const,
           text:
-            `[compact] ${evaluated.policy.name} — ` +
-            `call context_compact() to free space (context at ${Math.round(usage)}%).`,
+            `[compact] ${evaluated.policy.name} — ${pipelineMsg}`,
         },
       ],
       display: true,
@@ -301,7 +307,8 @@ async function executeAutoCompact(pi: ExtensionAPI, ctx: any): Promise<void> {
             type: "text" as const,
             text: [
               "## ⚡ Auto-compacting context",
-              "Compaction nudges were ignored. Timer will fire after compaction to resume.",
+              "Compaction nudges were ignored. Auto-tagging then compacting to prevent overflow.",
+              "Use context_tag proactively next time to avoid losing the completion summary.",
             ].join("\n"),
           },
         ],

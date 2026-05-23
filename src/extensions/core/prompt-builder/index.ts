@@ -765,7 +765,11 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
   _pi.on("before_agent_start", async (event, ctx) => {
     const ps = getPromptState(ctx);
     const cwd = ctx.cwd;
-    const tools = _pi.getAllTools();
+    const allTools = _pi.getAllTools();
+    const activeToolNames = _pi.getActiveTools() ?? allTools.map((t) => t.name);
+    const tools = activeToolNames.length > 0
+      ? allTools.filter((t) => activeToolNames.includes(t.name))
+      : allTools;
     const toolNames = tools.map((t) => t.name);
     const hasRead = toolNames.includes("read");
 

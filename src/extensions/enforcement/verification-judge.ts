@@ -179,7 +179,7 @@ export async function runVerificationJudge(
   const result = await callLlm(ctx, VERIFICATION_JUDGE_SYSTEM_PROMPT, prompt, options);
 
   if ("error" in result) {
-    log.error("Verification judge error:", result.error);
+    log.warn("Verification judge error:", result.error);
     return null;
   }
 

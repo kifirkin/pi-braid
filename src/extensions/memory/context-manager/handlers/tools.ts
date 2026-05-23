@@ -282,14 +282,10 @@ export function registerTools(pi: any): void {
     label: "Context Prune",
     promptSnippet: "Identify and remove obsolete session entries",
     description:
-      "Analyze session to find and remove obsolete/duplicate entries and free up context space — use when context is cluttered or too large. " +
-      "By default (dryRun=true) this is a dry-run — it shows what would be removed " +
-      "without actually deleting anything. " +
-      "Set dryRun=false to actually REMOVE the identified entries and free up context. " +
-      "" +
-      "Use context_snapshot for a quick health check first, " +
-      "then context_prune(dryRun=false) to clean up, " +
-      "or context_archive to compress completed work into summaries.",
+      "Analyze session for entries eligible for removal. " +
+      "Dry-run (default) filters candidates by minAge/toolFilter to show what would be removed. " +
+      "Set dryRun=false to remove them via compaction with auto-resume. " +
+      "Accepts optional `keep` to preserve recent N messages.",
     parameters: contextPruneSchema,
     execute: async (
       _toolCallId: string,
@@ -309,12 +305,25 @@ export function registerTools(pi: any): void {
       // ── EXECUTION MODE (dryRun=false): Actually remove entries ────────
       if (!isDryRun) {
         try {
+          // Schedule a resume timer before compacting — otherwise agent stalls
+          try {
+            const { scheduleTimer } = await import("../../../tools/timer/index.js");
+            scheduleTimer(
+              1500,
+              "Context pruning done — continue your task",
+              "compaction-resume",
+            );
+          } catch {
+            // Non-fatal — timer unavailable, agent must type to resume
+          }
           const options: CompactOptions = {};
           if (params?.keep != null) {
             options.customInstructions = `Keep the most recent ${params.keep} messages.`;
           }
-          ctx.compact(options);
-          return {
+
+          // Build result BEFORE ctx.compact() — compact disconnects the
+          // agent, making any code after it (including return) dead code.
+          const result = {
             content: [
               {
                 type: "text" as const,
@@ -324,8 +333,7 @@ export function registerTools(pi: any): void {
                   `  Candidates identified: ${candidates.length}`,
                   `  Keep recent: ${params?.keep ?? "auto"}`,
                   ``,
-                  `Compaction is asynchronous — freed space visible next turn.`,
-                  `Run context_snapshot after the next turn to verify.`,
+                  `Agent will resume after compaction completes.`,
                 ].join("\n"),
               },
             ],
@@ -337,6 +345,16 @@ export function registerTools(pi: any): void {
               keepMessages: params?.keep ?? "auto",
             },
           };
+
+          setTimeout(() => {
+            try {
+              ctx.compact(options);
+            } catch {
+              // Non-fatal — agent disconnect
+            }
+          }, 0);
+
+          return result;
         } catch (e: any) {
           return {
             content: [{ type: "text" as const, text: `Failed to prune: ${e.message}` }],
@@ -471,16 +489,8 @@ export function registerTools(pi: any): void {
     label: "Context Snapshot",
     promptSnippet: "Quick health check of session context",
     description:
-      "Quick health check on session context — use before any context management action. " +
-      "Returns a one-shot summary: usage %, session length, hygiene score, " +
-      "prune candidates count, and top recommendation. " +
-      "\n\n" +
-      "Use this first to assess context health, then:\n" +
-      "  context_compact — trigger immediate compaction pass\n" +
-      "  context_prune(dryRun=false) — also triggers compaction\n" +
-      "  context_prune() — analyze candidates before deciding\n" +
-      "  context_archive — compress completed work into summaries\n" +
-      "Simpler than the full context_audit.",
+      "Quick health check on session context: usage %, hygiene score, prune candidates, top recommendation. " +
+      "Use before other context management tools. Simpler than context_audit.",
     parameters: Type.Object({}),
     execute: async (
       _toolCallId: string,
@@ -534,17 +544,9 @@ export function registerTools(pi: any): void {
     label: "Compact Context",
     promptSnippet: "Trigger compaction to free up context space",
     description:
-      "Free up context space by removing obsolete and duplicate entries via compaction — use when context is full or performance degrades. " +
-      "Calls pi.compact() to remove obsolete, duplicate, and superseded entries. " +
-      "Accepts optional 'keep' parameter to preserve recent N messages from pruning. " +
-      "\n\n" +
-      "⚠️ WARNING: Compaction interrupts your execution. After calling this tool, " +
-      "the agent stalls until the next user message or timer reminder. " +
-      "SET A TIMER BEFORE CALLING (timer_set, 1-2s delay) with your task context " +
-      "as the reason — the timer fires after compaction and resumes you automatically. " +
-      "\n\n" +
-      "Compaction is asynchronous — freed space will be visible on the next turn. " +
-      "Use context_snapshot before and after to verify the effect.",
+      "Remove obsolete/duplicate entries via compaction. " +
+      "Accepts optional `keep` parameter to preserve recent N messages. " +
+      "Auto-resumes after completion — freed space visible next turn.",
     parameters: Type.Object({
       keep: Type.Optional(
         Type.Number({
@@ -560,10 +562,37 @@ export function registerTools(pi: any): void {
       ctx: any,
     ): Promise<any> => {
       try {
-        // Schedule a resume timer BEFORE compacting — fires after compaction
-        // completes and the tool result is processed, so the agent doesn't stall.
-        // The polling loop in the timer extension (1s interval, server process)
-        // handles delivery, independent of agent disconnect during compaction.
+        // CRITICAL: Must return tool result BEFORE ctx.compact().
+        // ctx.compact() calls _disconnectFromAgent() + abort() in pi core,
+        // which terminates the tool execution context. Any code after
+        // ctx.compact() — including the return statement — is dead code.
+        // Without this fix, the tool result is NEVER persisted to the
+        // session file and NEVER seen by the agent, causing the agent to
+        // hang on the [compaction] summary with no context for how it got
+        // there.
+
+        const audit = analyzeSession(ctx);
+        const result = {
+          content: [
+            {
+              type: "text" as const,
+              text: [
+                `**Compaction triggered** — agent will resume after compression.`,
+                `  Before: ${audit.usage.percent.toFixed(1)}% used (${Math.round(audit.usage.tokens / 1024)}K tokens)`,
+                `  Keep recent: ${params?.keep ?? "auto"}`,
+                ``,
+                `On resume: the [compaction] summary shows what was preserved.`,
+              ].join("\n"),
+            },
+          ],
+          details: {
+            compactionTriggered: true,
+            beforeUsagePercent: audit.usage.percent,
+            keep: params?.keep ?? "auto",
+          },
+        };
+
+        // Schedule resume timer AFTER building result but BEFORE compacting
         try {
           const { scheduleTimer } = await import("../../../tools/timer/index.js");
           scheduleTimer(
@@ -579,27 +608,23 @@ export function registerTools(pi: any): void {
         if (params?.keep != null) {
           options.customInstructions = `Keep the most recent ${params.keep} messages.`;
         }
-        ctx.compact(options);
-        const audit = analyzeSession(ctx);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: [
-                `**Compaction triggered** — freed space visible next turn.`,
-                `  Before: ${audit.usage.percent.toFixed(1)}% context used (${Math.round(audit.usage.tokens / 1024)}K tokens)`,
-                `  Keep recent: ${params?.keep ?? "auto"}`,
-                ``,
-                `Run context_snapshot on the next turn to verify freed space.`,
-              ].join("\n"),
-            },
-          ],
-          details: {
-            compactionTriggered: true,
-            beforeUsagePercent: audit.usage.percent,
-            keep: params?.keep ?? "auto",
-          },
-        };
+
+        // CRITICAL: Use setTimeout to defer ctx.compact() so pi core can
+        // fully process the tool result (persist to session, inject into
+        // agent context) BEFORE the agent is disconnected.
+        // ctx.compact() calls _disconnectFromAgent() which terminates the
+        // tool execution context — any code after it is dead code.
+        // queueMicrotask isn't safe here: the result Promise resolution
+        // microtask queues are flushed before result processing completes.
+        setTimeout(() => {
+          try {
+            ctx.compact(options);
+          } catch {
+            // Agent already disconnected — non-fatal
+          }
+        }, 0);
+
+        return result;
       } catch (e: any) {
         return {
           content: [{ type: "text" as const, text: `Failed to compact: ${e.message}` }],
@@ -615,15 +640,9 @@ export function registerTools(pi: any): void {
     label: "Compress Context",
     promptSnippet: "Compress conversation range into a summary",
     description:
-      "Compress completed work into a summary to free context space — use when a task is done and its details are no longer needed. " +
-      "The original messages are marked for removal from context (not deleted from session). " +
-      "If startIndex/endIndex are omitted, auto-selects the oldest 20% of entries.\n\n" +
-      "If startIndex/endIndex are omitted, auto-selects the oldest 20% of entries.\n\n" +
-      "Context management tool chain:\n" +
-      "  context_snapshot — check current health\n" +
-      "  context_prune() — analyze what could be removed\n" +
-      "  context_prune(prune=true) — automatically remove obsolete entries\n" +
-      "  context_archive — summarize + remove completed work",
+      "Compress a range of messages into a topic summary, freeing context space. " +
+      "Original messages are preserved in session file (not deleted). " +
+      "Auto-selects oldest ~20% when startIndex/endIndex omitted.",
     parameters: Type.Object({
       topic: Type.String({
         description: "Brief topic label (e.g., 'Auth Implementation', 'Bug Fix')",

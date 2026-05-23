@@ -60,6 +60,8 @@ const ENTITY_KEYWORDS = [
   /\b(?:the\s+\w+\s+(?:function|method|class|API|endpoint|route|handler))\b/i,
   /\b(?:this\s+(?:code|function|method|class|approach|solution|fix|bug))\b/i,
   /\b(?:it|this)\s+(?:is|was|will|can|should|must|doesn't|won't)\b/i,
+  // Domain-specific entities common in code/reasoning contexts
+  /\b(?:tool|result|return value|execution context|session|state|handler|callback|promise|error)\b/i,
 ];
 
 /** Negation markers for polarity detection */
@@ -212,9 +214,15 @@ function extractPredicate(sentence: string): string {
   return cleaned.slice(0, 80).trim();
 }
 
-/** Detect claim polarity */
+/**
+ * Detect claim polarity — checks only the predicate clause, not the full sentence.
+ * Prevents false positives from compound sentences where negation appears
+ * in a different clause (e.g., "The function returns X, but it doesn't handle Y").
+ */
 function detectPolarity(sentence: string): "positive" | "negative" {
-  const words = sentence.toLowerCase().split(/\s+/);
+  // Use the predicate (text after entity+verb) for negation scanning
+  const predicate = extractPredicate(sentence);
+  const words = (predicate || sentence).toLowerCase().split(/\s+/);
   for (const word of words) {
     if (NEGATION_WORDS.has(word)) return "negative";
   }
@@ -286,6 +294,9 @@ export function claimsContradict(a: Claim, b: Claim): boolean {
   // Must be about the same entity
   if (a.entity !== b.entity) return false;
 
+  // Same-turn claims aren't cross-turn contradictions
+  if (a.turn === b.turn) return false;
+
   // Same polarity = not a contradiction (same claim, just repeated)
   if (a.polarity === b.polarity) return false;
 
@@ -345,8 +356,13 @@ export function processAgentResponse(
     claim.turn = turn;
   }
 
+  // Filter history: only claims from DIFFERENT turns — prevents
+  // same-turn false positives if processAgentResponse is called
+  // multiple times for the same response (e.g., double turn_end handlers)
+  const relevantHistory = state.claims.filter((c) => c.turn < turn);
+
   // Check against history
-  const contradictions = detectContradictions(newClaims, state.claims);
+  const contradictions = detectContradictions(newClaims, relevantHistory);
 
   // Update history
   state.claims.push(...newClaims);

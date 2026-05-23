@@ -90,7 +90,9 @@ export function cancelTimer(id: string): boolean {
 // We import the shared bus to bridge timer fires → heartbeat surfacing
 import { emitTimerReminder } from "../../../lib/timer-bus.js";
 
-// Internal handler count (kept for API compat)
+// Internal handler count (kept for API compat — currently unused,
+// no callers register via onTimerFire. The event bus handles
+// timer_fire delivery. Kept for future use but with zero-current-cost.)
 type TimerFireHandler = (timer: ScheduledTimer) => void;
 const fireHandlers: Set<TimerFireHandler> = new Set();
 

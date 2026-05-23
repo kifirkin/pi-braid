@@ -127,7 +127,9 @@ function discoverPiRootPath(): string {
         dir = dirname(dir);
       }
     }
-  } catch {}
+  } catch {
+    // Strategy 1: check CWD and parents — non-fatal if pi not in node_modules
+  }
 
   // Strategy 2: Walk up from extension's location (works for local dev and linked packages)
   try {
@@ -154,7 +156,9 @@ function discoverPiRootPath(): string {
       if (parent === dir) break;
       dir = parent;
     }
-  } catch {}
+  } catch {
+    // Strategy 2: walk up from extension dir — non-fatal
+  }
 
   // Strategy 3: Check npm global prefix
   try {

@@ -317,7 +317,7 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
       { name: "system-monitor", fn: systemMonitorFn },
       { name: "rate-limiter", fn: contribRateLimiterFn },
       { name: "tool-config", fn: toolConfigFn },
-      { name: "sleep", fn: sleepFn },
+      // { name: "sleep", fn: sleepFn },
     ],
     listensTo: ["session_tree", "session_shutdown", "context"],
     coupledWith: [],

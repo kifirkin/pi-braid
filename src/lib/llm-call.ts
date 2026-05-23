@@ -6,9 +6,9 @@
  * Tier 1 — Provider SDK: Handles fast transient blips (quick network drops)
  *           via completeSimple's maxRetries (default: 1 SDK-level retry).
  * Tier 2 — This module: Handles sustained rate limits with longer backoff
- *           (2s → 5s → 10s → 20s) so the provider gets real cooldown time.
+ *           (5s → 15s → 30s → 60s) so the provider gets real cooldown time.
  *
- * A rate-limit circuit breaker skips calls for 30s after a 429 to avoid
+ * A rate-limit circuit breaker skips calls for 60s after a 429 to avoid
  * cascading failures during provider congestion.
  *
  * Usage
@@ -34,10 +34,13 @@ const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_SDK_RETRIES = 1;
 
 /** Cooldown after a rate-limit hit before attempting calls again. */
-const RATE_LIMIT_COOLDOWN_MS = 30_000;
+const RATE_LIMIT_COOLDOWN_MS = 60_000;
 
 /** Timestamp of the last 429 seen, 0 = no rate-limit recently. */
 let lastRateLimitAt = 0;
+
+/** Track the cooldown expiration deadline for efficient checking inside loops. */
+let rateLimitCooldownUntil = 0;
 
 // ── Options ────────────────────────────────────────────────────────────────────
 
@@ -84,6 +87,13 @@ export async function callLlm(
   }
 
   const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
+
+  // ── fast-path: check cooldown before starting the loop ──
+  if (Date.now() < rateLimitCooldownUntil) {
+    log.warn("LLM call skipped — rate-limit cooldown active");
+    return { error: "Rate-limit cooldown active" };
+  }
+
   const maxTokens =
     options.maxTokens ?? Math.min(Math.max(500, Math.floor(userPrompt.length / 8)), 2000);
   const timeoutMs = options.timeoutMs ?? 30_000;
@@ -97,6 +107,12 @@ export async function callLlm(
   };
 
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+    // ── circuit breaker re-check inside retry loop ──
+    if (rateLimitCooldownUntil > 0 && Date.now() < rateLimitCooldownUntil) {
+      log.warn(`Skipping retry ${attempt} — rate-limit cooldown active`);
+      return { error: "Rate-limit cooldown active" };
+    }
+
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error("LLM call timeout")), timeoutMs);
     });
@@ -123,6 +139,8 @@ export async function callLlm(
 
           if (isRateLimitError(result.errorMessage)) {
             lastRateLimitAt = Date.now();
+            // Extend cooldown: track a deadline so future retries can skip without calling
+            rateLimitCooldownUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
           }
 
           await sleep(delay);
@@ -132,6 +150,7 @@ export async function callLlm(
         // Non-retryable or exhausted — log and return
         if (isRateLimitError(result.errorMessage)) {
           lastRateLimitAt = Date.now();
+          rateLimitCooldownUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
           log.warn(
             `LLM rate-limited, giving up (cooldown ${RATE_LIMIT_COOLDOWN_MS}ms): ${result.errorMessage}`,
           );
@@ -210,14 +229,14 @@ function isRateLimitError(message: string): boolean {
 
 /**
  * Compute exponential backoff delay.
- * attempt 1 → 2s, attempt 2 → 5s, attempt 3 → 10s, attempt 4 → 20s
- * With ±20% jitter. Capped at 30s.
+ * attempt 1 → 5s, attempt 2 → 15s, attempt 3 → 30s, attempt 4 → 60s
+ * With ±20% jitter. Capped at 60s.
  */
 function backoffDelay(attempt: number): number {
-  const delays = [2_000, 5_000, 10_000, 20_000];
+  const delays = [5_000, 15_000, 30_000, 60_000];
   const base = delays[Math.min(attempt - 1, delays.length - 1)];
   const jitter = Math.round(base * (0.8 + Math.random() * 0.4));
-  return Math.min(jitter, 30_000);
+  return Math.min(jitter, 60_000);
 }
 
 function sleep(ms: number): Promise<void> {
