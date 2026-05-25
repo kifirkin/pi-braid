@@ -8,7 +8,7 @@
 // - Semantic preservation of tool call/result pairs
 // - Better summarization guidance for the LLM
 
-import type { CompactOptions, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { CompactOptions, ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { addEvidence } from "../../../../lib/evidence-pool.js";
 import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
 import { eventBus } from "../../../../lib/event-bus.js";
@@ -37,6 +37,14 @@ import { getRotationState } from "../../../../lib/global-state.js";
 import { filterSafeToRemove } from "../../../../lib/filter-safe-to-remove.js";
 import { determineCompressionLevel } from "../../../../lib/compression-strategy.js";
 import { semanticCompress } from "../semantic-compress.js";
+import {
+  handleOverflowFailure,
+  handleTransientError,
+  handleContextWindowError,
+  handleThresholdFailure,
+  registerContextCleanupHandler,
+  registerTurnEndRetryReset,
+} from "./compaction-retry.js";
 
 // ── Deduplication Guard ────────────────────────────────────────────────────────
 // session_before_compact fires from TWO call sites in pi core:
@@ -124,7 +132,7 @@ function skipDuplicateAppend(sessionManager: any): (msg: any) => string {
  * Called from both turn_end and message_end handlers to handle edge cases
  * where one event might not fire (e.g., session replacement mid-turn).
  */
-export function tryRestoreAppendMessage(pi: any): void {
+export function tryRestoreAppendMessage(pi: ExtensionAPI): void {
   if (!_interceptActive || !_origAppendMessage) return;
   const sm = (pi as any).sessionManager;
   // Only restore if the sessionManager is the same one we intercepted.
@@ -255,7 +263,7 @@ function buildCompactionInstructions(audit: any): string[] {
 // Previously (v0.22): hard truncation bypass at 70% threshold.
 // Fix (v0.23): always let LLM summarize. pi core handles overflow safety net.
 
-export function registerBeforeCompactHandler(pi: any): void {
+export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
   // ── Input hook: capture user's queued message during compaction ─────────────
   // When the user sends a message while compaction is running, it is queued in
   // TUI's compactionQueuedMessages (not persisted to sessionManager yet).
@@ -383,7 +391,7 @@ export function registerBeforeCompactHandler(pi: any): void {
 // ── Session Compact (success only) ────────────────────────────────────────────
 // session_compact fires ONLY on successful compaction.
 
-export function registerSessionCompactHandler(pi: any): void {
+export function registerSessionCompactHandler(pi: ExtensionAPI): void {
   pi.on("session_compact", async (event: any, ctx: ExtensionContext) => {
     try {
       const entry = event.compactionEntry;
@@ -474,7 +482,7 @@ export function registerSessionCompactHandler(pi: any): void {
 // Key insight: pi core handles retry internally (willRetry flag). We only step in
 // for cases where pi does NOT retry (permanent failure, user needs guidance).
 
-export function registerCompactionEndHandler(pi: any): void {
+export function registerCompactionEndHandler(pi: ExtensionAPI): void {
   pi.on(
     "compaction_end" as never,
     async (
@@ -554,376 +562,12 @@ export function registerCompactionEndHandler(pi: any): void {
       }
     },
   );
-}
 
-// ── Overflow Failure Handler ──────────────────────────────────────────────────
-async function handleOverflowFailure(
-  pi: any,
-  event: any,
-  ctx: ExtensionContext,
-  errorMessage?: string,
-): Promise<void> {
-  const entryId = event.result?.firstKeptEntryId ?? event.compactionEntry?.id;
-  const errMsg = errorMessage ?? "Compaction succeeded but the retry overflowed.";
-
-  try {
-    const analysis = await analyzeSession(ctx);
-    if (analysis.usage.percent >= 75) {
-      log.warn(
-        `[Critical] Context at ${analysis.usage.percent.toFixed(1)}% — triggering emergency rotation (overflow)`,
-      );
-      const rotationModule = await import("./rotation.js");
-      const triggerEmergencyRotation = rotationModule?.triggerEmergencyRotation;
-      if (triggerEmergencyRotation) triggerEmergencyRotation(pi, ctx);
-      return;
-    }
-  } catch {
-    if (isContextWindowError(errMsg)) {
-      const rotationModule = await import("./rotation.js");
-      const triggerEmergencyRotation = rotationModule?.triggerEmergencyRotation;
-      if (triggerEmergencyRotation) triggerEmergencyRotation(pi, ctx);
-      return;
-    }
-  }
-
-  if (overflowRetryState.attempt < OVERFLOW_RETRY_MAX_ATTEMPTS) {
-    _compactedEntries.add(entryId ?? "overflow-" + Date.now());
-    const reducedKeep = Math.floor(
-      20000 * Math.pow(OVERFLOW_RETRY_KEEP_REDUCTION_FACTOR, overflowRetryState.attempt),
-    );
-
-    sendTrackedMessage(
-      pi,
-      {
-        customType: "context",
-        content: [
-          {
-            type: "text" as const,
-            text: [
-              `## ⚠️ Context overflow recovery failed (attempt ${overflowRetryState.attempt + 1}/${OVERFLOW_RETRY_MAX_ATTEMPTS})`,
-              errMsg,
-              "",
-              overflowRetryState.attempt === 0
-                ? "Retrying with more aggressive compaction..."
-                : `Retrying with keep ≤${reducedKeep} tokens...`,
-              "",
-              "If this persists:",
-              "1. Switch to a larger-context model",
-              "2. Run `/model` to verify settings",
-              "3. Store learnings in memory and start a new session",
-            ].join("\n"),
-          },
-        ],
-        display: true,
-      },
-      { deliverAs: "steer", triggerTurn: false },
-      { type: "context", source: "context-manager/compaction/overflow" },
-    );
-
-    triggerOverflowRetry(pi, ctx, overflowRetryState.attempt + 1, errMsg);
-    return;
-  }
-
-  _compactedEntries.add(entryId ?? "overflow-" + Date.now());
-  sendTrackedMessage(
-    pi,
-    {
-      customType: "context",
-      content: [
-        {
-          type: "text" as const,
-          text: [
-            "## ⚠️ Context overflow recovery exhausted",
-            errMsg,
-            "",
-            `After ${OVERFLOW_RETRY_MAX_ATTEMPTS} attempts, compaction cannot reduce context enough.`,
-            "Consider switching models, starting a new session, or storing learnings in memory.",
-          ].join("\n"),
-        },
-      ],
-      display: true,
-    },
-    { deliverAs: "steer", triggerTurn: false },
-    { type: "context", source: "context-manager/compaction/overflow-exhausted" },
-  );
-  resetOverflowRetry();
-}
-
-// ── Transient Error Handler ───────────────────────────────────────────────────
-async function handleTransientError(
-  pi: any,
-  event: any,
-  ctx: ExtensionContext,
-  errorMessage?: string,
-): Promise<void> {
-  const errMsg = errorMessage ?? "Compaction threw an error.";
-
-  try {
-    const analysis = await analyzeSession(ctx);
-    if (analysis.usage.percent >= 75) {
-      log.warn(
-        `[Critical] Context at ${analysis.usage.percent.toFixed(1)}% — triggering emergency rotation (transient)`,
-      );
-      const rotationModule = await import("./rotation.js");
-      const triggerEmergencyRotation = rotationModule?.triggerEmergencyRotation;
-      if (triggerEmergencyRotation) triggerEmergencyRotation(pi, ctx);
-      return;
-    }
-  } catch {
-    /* analysis skipped */
-  }
-
-  if (compactionRetryState.attempt < COMPACTION_RETRY_MAX_ATTEMPTS) {
-    compactionRetryState.attempt++;
-    compactionRetryState.lastError = errMsg;
-    compactionRetryState.lastReason = event.reason ?? "";
-
-    sendTrackedMessage(
-      pi,
-      {
-        customType: "context",
-        content: [
-          {
-            type: "text" as const,
-            text: `⚠️ Server overload (${errMsg}). Auto-retrying... (${compactionRetryState.attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})`,
-          },
-        ],
-        display: true,
-      },
-      { deliverAs: "steer", triggerTurn: false },
-      { type: "context", source: "context-manager/compaction/transient" },
-    );
-
-    triggerCompactionRetry(pi, ctx, compactionRetryState.attempt, errMsg);
-    return;
-  }
-
-  sendTrackedMessage(
-    pi,
-    {
-      customType: "context",
-      content: [
-        {
-          type: "text" as const,
-          text: `⚠️ Auto-compaction failed after retries (server overload): ${errMsg}`,
-        },
-      ],
-      display: true,
-    },
-    { deliverAs: "steer", triggerTurn: false },
-    { type: "context", source: "context-manager/compaction/transient-exhausted" },
-  );
-}
-
-// ── Context Window Error Handler ──────────────────────────────────────────────
-async function handleContextWindowError(
-  pi: any,
-  _event: any,
-  ctx: ExtensionContext,
-  errorMessage?: string,
-): Promise<void> {
-  const errMsg = errorMessage ?? "Context window limit exceeded during compaction.";
-  log.warn(`[Critical] ${errMsg}`);
-
-  try {
-    const rotationModule = await import("./rotation.js");
-    const triggerEmergencyRotation = rotationModule?.triggerEmergencyRotation;
-    if (triggerEmergencyRotation) {
-      triggerEmergencyRotation(pi, ctx);
-      log.info("[ContextWindow] Emergency rotation triggered");
-      return;
-    }
-  } catch (e) {
-    log.error("[ContextWindow] Failed to trigger emergency rotation:", e);
-  }
-
-  sendTrackedMessage(
-    pi,
-    {
-      customType: "context",
-      content: [
-        {
-          type: "text" as const,
-          text: [
-            "## ⚠️ Session too large",
-            errMsg,
-            "",
-            "The session cannot be compacted because it exceeds the model's context limit.",
-            "Please use `finalize()` to rotate the session, or `context_archive` to archive older work.",
-          ].join("\n"),
-        },
-      ],
-      display: true,
-    },
-    { deliverAs: "steer", triggerTurn: false },
-    { type: "context", source: "context-manager/compaction/context-window" },
-  );
-}
-
-// ── Threshold Failure Handler ─────────────────────────────────────────────────
-async function handleThresholdFailure(
-  pi: any,
-  event: any,
-  ctx: ExtensionContext,
-  errorMessage?: string,
-): Promise<void> {
-  const errMsg = errorMessage ?? "Compaction failed.";
-
-  try {
-    const analysis = await analyzeSession(ctx);
-    if (analysis.usage.percent >= 75) {
-      log.warn(
-        `[Critical] Context at ${analysis.usage.percent.toFixed(1)}% — triggering emergency rotation (threshold)`,
-      );
-      const rotationModule = await import("./rotation.js");
-      const triggerEmergencyRotation = rotationModule?.triggerEmergencyRotation;
-      if (triggerEmergencyRotation) triggerEmergencyRotation(pi, ctx);
-      return;
-    }
-  } catch {
-    /* analysis skipped */
-  }
-
-  if (compactionRetryState.attempt < COMPACTION_RETRY_MAX_ATTEMPTS) {
-    compactionRetryState.attempt++;
-    compactionRetryState.lastError = errMsg;
-    compactionRetryState.lastReason = event.reason ?? "";
-
-    sendTrackedMessage(
-      pi,
-      {
-        customType: "context",
-        content: [
-          {
-            type: "text" as const,
-            text: `⚠️ Compaction failed (${errMsg}). Auto-retrying... (${compactionRetryState.attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})`,
-          },
-        ],
-        display: true,
-      },
-      { deliverAs: "steer", triggerTurn: false },
-      { type: "context", source: "context-manager/compaction/threshold" },
-    );
-
-    triggerCompactionRetry(pi, ctx, compactionRetryState.attempt, errMsg);
-    return;
-  }
-
-  sendTrackedMessage(
-    pi,
-    {
-      customType: "context",
-      content: [
-        {
-          type: "text" as const,
-          text: [
-            "## ⚠️ Auto-compaction failed permanently",
-            errMsg,
-            "",
-            "Consider: `compact` manually, `context_checkout` with backup, or storing learnings in memory.",
-          ].join("\n"),
-        },
-      ],
-      display: true,
-    },
-    { deliverAs: "steer", triggerTurn: true },
-    { type: "context", source: "context-manager/compaction/threshold-exhausted" },
-  );
-}
-
-// ── Retry Trigger Functions ───────────────────────────────────────────────────
-function triggerCompactionRetry(
-  pi: any,
-  ctx: ExtensionContext,
-  attempt: number,
-  _errorMessage: string,
-): void {
-  clearCompactionRetry();
-  const delayMs = getCompactionRetryDelay(attempt);
-
-  compactionRetryState.retryTimeout = setTimeout(() => {
-    compactionRetryState.retryTimeout = null;
-    const cmState = getCmState(ctx);
-    if (cmState.compactionRetryActive) {
-      log.info("[Compaction] Retry skipped — already active");
-      resetCompactionRetry();
-      return;
-    }
-    cmState.compactionRetryActive = true;
-    ctx.compact();
-  }, delayMs);
-}
-
-function triggerOverflowRetry(
-  pi: any,
-  ctx: ExtensionContext,
-  attempt: number,
-  _errorMessage: string,
-  reducedKeep?: number,
-): void {
-  clearOverflowRetryInternal();
-  const delayMs = getOverflowRetryDelay(attempt);
-
-  overflowRetryState.retryTimeout = setTimeout(() => {
-    overflowRetryState.retryTimeout = null;
-    const cmState = getCmState(ctx);
-    if (cmState.overflowRetryActive) {
-      log.info("[Overflow] Retry skipped — already active");
-      resetOverflowRetry();
-      return;
-    }
-    cmState.overflowRetryActive = true;
-    const options: CompactOptions = {};
-    if (reducedKeep != null) {
-      options.customInstructions = `Keep the most recent ${reducedKeep} messages.`;
-    }
-    ctx.compact(options);
-  }, delayMs);
-}
-
-function clearCompactionRetry(): void {
-  if (compactionRetryState.retryTimeout) clearTimeout(compactionRetryState.retryTimeout);
-  compactionRetryState.retryTimeout = null;
-}
-
-function clearOverflowRetryInternal(): void {
-  if (overflowRetryState.retryTimeout) clearTimeout(overflowRetryState.retryTimeout);
-  overflowRetryState.retryTimeout = null;
-}
-
-// ── Context Cleanup Retry Reset ────────────────────────────────────────────────
-export function registerContextCleanupHandler(pi: any): void {
-  pi.on("context_cleanup", async (_event: any, ctx: ExtensionContext) => {
-    const cmState = getCmState(ctx);
-    cmState.compactionRetryActive = false;
-    cmState.overflowRetryActive = false;
-    log.debug("[Cleanup] Retry guards reset on context cleanup");
-  });
-}
-
-// ── Turn End Retry Reset ────────────────────────────────────────────────────────
-export function registerTurnEndRetryReset(pi: any): void {
-  pi.on("turn_end", async () => {
-    if (compactionRetryState.attempt > 0 && !compactionRetryState.retryTimeout) {
-      resetCompactionRetry();
-    }
-    // Restore sessionManager.appendMessage after the pre-append window closes.
-    // The intercept was set in session_compact to skip the duplicate from
-    // flushCompactionQueue's session.prompt() → message_end → appendMessage call.
-    // Check _interceptActive to avoid restoring to a replaced sessionManager.
-    tryRestoreAppendMessage(pi);
-    // Clear all intercept state — including the queued message text.
-    // This ensures the next compaction cycle starts clean.
-    _queuedDuringCompaction = undefined;
-    _preAppendedEntryId = undefined;
-    setCompactionActive(false);
-  });
-
-  // Also listen for message_end — handles edge case where turn_end might not
-  // fire after session replacement (reload/newSession mid-turn). This gives us
-  // a second chance to clear intercept state before the next compaction cycle.
-  pi.on("message_end", async () => {
-    if (!_interceptActive) return;
+  // ── message_end backup cleanup ────────────────────────────────────────────
+  // Catches edge cases where turn_end is missed (no tools called that turn).
+  // Ensures intercept state is always cleaned up before the next assistant turn.
+  pi.on("message_end" as never, async () => {
     tryRestoreAppendMessage(pi);
   });
 }
+

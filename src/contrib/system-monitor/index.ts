@@ -203,20 +203,26 @@ export function collectReport(mountPoint: string, processLimit: number): SystemR
   };
 }
 
-// ── Snapshot tracking ───────────────────────────────────────────────────────
+// ── Snapshot tracking (session-scoped, keyed on a stable session handle) ────
 
-let previousSnapshot: SystemReport | null = null;
+const _snapshots = new Map<string, SystemReport>();
 
-function collectDelta(current: SystemReport): Record<string, string> {
-  if (!previousSnapshot) {
-    previousSnapshot = current;
+function getSnapshotKey(session: string | undefined): string {
+  return session ?? "default";
+}
+
+function collectDelta(current: SystemReport, sessionKey?: string): Record<string, string> {
+  const key = getSnapshotKey(sessionKey);
+  const previous = _snapshots.get(key);
+  if (!previous) {
+    _snapshots.set(key, current);
     return { info: "First snapshot — no delta available" };
   }
 
-  const memDelta = current.memory.freePercent - previousSnapshot.memory.freePercent;
-  const diskDelta = current.disk.freePercent - previousSnapshot.disk.freePercent;
-  const cpuDelta = current.cpu.usagePercent - previousSnapshot.cpu.usagePercent;
-  previousSnapshot = current;
+  const memDelta = current.memory.freePercent - previous.memory.freePercent;
+  const diskDelta = current.disk.freePercent - previous.disk.freePercent;
+  const cpuDelta = current.cpu.usagePercent - previous.cpu.usagePercent;
+  _snapshots.set(key, current);
 
   return {
     "memory Δ": `${memDelta > 0 ? "+" : ""}${memDelta.toFixed(1)}% free`,
@@ -271,7 +277,7 @@ export default function systemMonitorExtension(pi: ExtensionAPI) {
       ];
 
       if (withDelta) {
-        const delta = collectDelta(report);
+        const delta = collectDelta(report, process.cwd());
         lines.push(``, `📈 **Delta from last check**:`);
         for (const [key, val] of Object.entries(delta)) {
           lines.push(`   ${key}: ${val}`);

@@ -31,11 +31,8 @@ interface Settings {
   braid?: BraidConfig;
 }
 
-/** Read and parse settings.json once per process (cached). */
-let _cache: Settings | null = null;
-
+/** Read and parse settings.json. Not cached — always reads fresh to respect runtime changes. */
 function readSettings(): Settings {
-  if (_cache !== null) return _cache;
   let result: Settings = {};
   try {
     if (existsSync(SETTINGS_PATH)) {
@@ -44,7 +41,6 @@ function readSettings(): Settings {
   } catch {
     // Non-fatal: fall through to empty settings
   }
-  _cache = result;
   return result;
 }
 
@@ -75,10 +71,4 @@ export function areCognitiveNudgesDisabled(): boolean {
   return false;
 }
 
-/**
- * Invalidate the settings cache. Call this if settings.json is modified
- * at runtime and you need to re-read.
- */
-export function clearSettingsCache(): void {
-  _cache = null;
-}
+

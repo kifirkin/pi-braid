@@ -25,16 +25,18 @@ import coreAgentPatchFn from "../extensions/core/agent-patch/index.js";
 import corePolyfillFn from "../extensions/core/polyfill/index.js";
 import coreMetacognitionFn from "../extensions/core/metacognition/index.js";
 import coreScratchpadFn from "../extensions/core/scratchpad/index.js";
-import corePreprocessorFn from "../extensions/core/user-message-preprocessor/index.js";
+import inputPolisherFn from "../extensions/core/input-polisher/index.js";
 import corePromptBuilderFn from "../extensions/core/prompt-builder/index.js";
 import coreAgentEnvFn from "../extensions/core/agent-environment/index.js";
 import contribRateLimiterFn from "../contrib/rate-limiter/index.js";
 
-// cognitive-quality (reasoning tools, verification, topic control)
+// cognitive-quality (reasoning tools, verification, topic control, turn-outcome)
 import reasoningFn from "../extensions/cognitive/reasoning/index.js";
 import verificationFn from "../extensions/cognitive/verification/index.js";
 import topicDriftFn from "../extensions/cognitive/topic-drift/index.js";
 import sycophancyDetectorFn from "../extensions/cognitive/sycophancy-detector/index.js";
+import turnOutcomeFn from "../extensions/cognitive/turn-outcome/index.js";
+import toolSafetyFn from "../extensions/cognitive/tool-safety/index.js";
 
 // enforcement (heavy event handling, split from cognitive-quality)
 import enforcementFn from "../extensions/enforcement/index.js";
@@ -53,11 +55,14 @@ import analyticsFn from "../extensions/heartbeat/analytics/index.js";
 // tools (utility tools, pure tool-providers)
 import timerFn from "../extensions/tools/timer/index.js";
 import latentActivatorFn from "../extensions/tools/latent-activator/index.js";
+import autoSingletonFn from "../extensions/tools/auto-singleton/index.js";
+import autoRecoveryFn from "../extensions/tools/auto-recovery/index.js";
 
 // contrib (out-of-scope utilities, not cognitive architecture)
 import diffFn from "../contrib/diff/index.js";
 import healthcheckFn from "../contrib/healthcheck/index.js";
 import observatoryFn from "../contrib/observatory/index.js";
+import pathSecurityFn from "../contrib/path-security/index.js";
 import researchFn from "../contrib/research/index.js";
 import systemMonitorFn from "../contrib/system-monitor/index.js";
 import toolConfigFn from "../contrib/tool-config/index.js";
@@ -116,21 +121,21 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
   //   polyfill:       EVENT-HANDLER + COMMAND — pi API polyfills, vision model config
   //   metacognition:  TOOL-PROVIDER — think, hypothesize, finalize, verify
   //   scratchpad:     TOOL-PROVIDER — scratchpad tool
-  //   preprocessor:   EVENT-HANDLER — input preprocessing
+  //   input-polisher:   EVENT-HANDLER — input proofreading & translation
   //   prompt-builder: EVENT-HANDLER — system prompt assembly (moved from prompt/)
   //   agent-environment: TOOL-PROVIDER — time_status, L1 context injection
   // ═════════════════════════════════════════════════════════════════════
   {
     name: "core",
     label: "Core",
-    description: "Foundation: polyfill, metacognition, scratchpad, preprocessor, prompt-builder, agent-environment",
+    description: "Foundation: polyfill, metacognition, scratchpad, input-polisher, prompt-builder, agent-environment",
     alwaysOn: true,
     extensions: [
       { name: "agent-patch", fn: coreAgentPatchFn },
       { name: "polyfill", fn: corePolyfillFn },
       { name: "metacognition", fn: coreMetacognitionFn },
       { name: "scratchpad", fn: coreScratchpadFn },
-      { name: "user-message-preprocessor", fn: corePreprocessorFn },
+      { name: "input-polisher", fn: inputPolisherFn },
       { name: "prompt-builder", fn: corePromptBuilderFn },
       { name: "agent-environment", fn: coreAgentEnvFn },
     ],
@@ -155,7 +160,7 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
   {
     name: "cognitive-quality",
     label: "Cognitive Quality",
-    description: "Structured reasoning, verification, topic-drift, sycophancy detection",
+    description: "Structured reasoning, verification, topic-drift, sycophancy detection, turn-outcome loop detection",
     paper: "RepE Contrast / Silicon Mirror (2604.19117)",
     dependencies: ["core"],
     extensions: [
@@ -163,9 +168,11 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
       { name: "verification", fn: verificationFn },
       { name: "topic-drift", fn: topicDriftFn },
       { name: "sycophancy-detector", fn: sycophancyDetectorFn },
+      { name: "turn-outcome", fn: turnOutcomeFn },
+      { name: "tool-safety", fn: toolSafetyFn },
     ],
     listensTo: [
-      "before_agent_start", "message_end",
+      "before_agent_start", "message_end", "turn_end", "tool_call",
     ],
     coupledWith: [
       { module: "enforcement", via: "message_end" },
@@ -267,13 +274,15 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
   {
     name: "tools",
     label: "Utility Tools",
-    description: "Timer, latent-activator",
+    description: "Timer, auto-singleton watchdog, auto-recovery, latent-activator",
     dependencies: ["core"],
     extensions: [
       { name: "timer", fn: timerFn },
+      { name: "auto-singleton", fn: autoSingletonFn },
+      { name: "auto-recovery", fn: autoRecoveryFn },
       { name: "latent-activator", fn: latentActivatorFn },
     ],
-    listensTo: ["turn_end", "session_start", "session_shutdown"],
+    listensTo: ["turn_end", "tool_call", "tool_result", "turn_start", "session_start", "session_shutdown"],
     coupledWith: [],
   },
 
@@ -313,6 +322,7 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
       { name: "diff", fn: diffFn },
       { name: "healthcheck", fn: healthcheckFn },
       { name: "observatory", fn: observatoryFn },
+      { name: "path-security", fn: pathSecurityFn },
       { name: "research", fn: researchFn },
       { name: "system-monitor", fn: systemMonitorFn },
       { name: "rate-limiter", fn: contribRateLimiterFn },

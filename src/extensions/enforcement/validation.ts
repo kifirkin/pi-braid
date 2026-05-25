@@ -9,12 +9,12 @@ const log = createLogger("enforcement");
  */
 
 import { POST_TURN_VALIDATION_TEMPLATE } from "./prompts.js";
-import { state, ENFORCEMENT_PARAMS } from "./state.js";
+import { ENFORCEMENT_PARAMS, getState } from "./state.js";
 import type { EnforcementState } from "./state.js";
 import type { TurnState, ValidationResult } from "./types.js";
 
 // Tools that are cheap to repeat legitimately (different files/targets)
-const LEGIT_REPEATABLE = new Set<string>(["read", "grep", "find", "bash"]);
+const LEGIT_REPEATABLE = new Set<string>(["read", "grep", "find"]);
 // Tools that signal actual progress
 const PROGRESS_TOOLS = new Set<string>(["edit", "write", "bash"]);
 
@@ -106,10 +106,11 @@ function checkReReadWaste(
 export function validateTurn(
   previousState: TurnState | undefined,
   currentState: TurnState,
+  ctx: any,
   erroredTools: Set<string> = new Set(),
   isInfrastructureError: boolean = false,
-  s: EnforcementState = state,
 ): ValidationResult {
+  const s = getState(ctx);
   const issues: string[] = [];
   const hadErrors = erroredTools.size > 0;
 
@@ -190,7 +191,7 @@ export function validateTurn(
 export function validateToolForPhase(
   toolName: string,
   _turnIndex: number,
-  s: EnforcementState = state,
+  s: EnforcementState,
 ): { valid: boolean; message: string | null } {
   const recentTools = Array.from(s.turnHistory.values())
     .slice(-5)

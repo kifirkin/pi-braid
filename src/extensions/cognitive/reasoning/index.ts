@@ -63,17 +63,19 @@ function getReasoningState(ctx: ExtensionContext): ExtensionState {
 
 // Malformed Tool Call Detection
 
-const MALFORMED_REGEX =
-  /<(function|write|edit|read|bash|grep|find|ls|think|plan|scratchpad)[^>]*>[\s\S]*?<\/(function|write|edit|read|bash|grep|find|ls|think|plan|scratchpad)>/gi;
+import {
+  MALFORMED_TOOL_CALL_RE,
+  MALFORMED_TOOL_NAME_RE,
+} from "../../../lib/tool-constants.js";
 
 function detectMalformedToolCalls(text: string, pi: ExtensionAPI, s: ExtensionState): void {
-  MALFORMED_REGEX.lastIndex = 0;
-  const match = MALFORMED_REGEX.exec(text);
-  MALFORMED_REGEX.lastIndex = 0;
+  MALFORMED_TOOL_CALL_RE.lastIndex = 0;
+  const match = MALFORMED_TOOL_CALL_RE.exec(text);
+  MALFORMED_TOOL_CALL_RE.lastIndex = 0;
 
   if (match) {
     const toolNameMatch = text.match(
-      /<(function|write|edit|read|bash|grep|find|ls|think|plan|scratchpad)/i,
+      MALFORMED_TOOL_NAME_RE,
     );
     const detectedTool = toolNameMatch ? toolNameMatch[1].toLowerCase() : "unknown";
 

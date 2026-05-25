@@ -197,7 +197,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     }
 
     // Phase validation nudge
-    const { message } = validateToolForPhase(toolName, getState(ctx).currentTurn);
+    const { message } = validateToolForPhase(toolName, getState(ctx).currentTurn, getState(ctx));
     if (message) {
       const now = Date.now();
       if (now - getState(ctx).lastNudgeTime > getState(ctx).nudgeCooldownMs) {
@@ -653,7 +653,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
         `${state.verificationsDone} verifications, ${state.validationFailures} failures`,
     );
 
-    resetState(state);
+    resetState(getState(ctx));
     log.info(`[session_shutdown] Enforcement state reset for session ${sessionId}`);
   });
 }

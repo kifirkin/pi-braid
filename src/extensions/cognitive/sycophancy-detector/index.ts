@@ -17,6 +17,7 @@ import { sendEnforcementWhisper } from "../../enforcement/whisper.js";
 import { emitSignal } from "../../../lib/belief-policy-engine.js";
 import { createLogger } from "../../../lib/logger.js";
 import { getExtensionState, safeSessionManager } from "../../../lib/extension-state.js";
+import { classify } from "../../../lib/text-classifier.js";
 
 const log = createLogger("sycophancy-detector");
 
@@ -26,37 +27,30 @@ const RISK_THRESHOLD = 0.5;
 const MAX_WHISPERS_PER_SESSION = 10;
 const COOLDOWN_TURNS = 3;
 
-// ── Tactic Patterns ───────────────────────────────────────────────────────────
+// ── UTILITY MODEL CRITERIA ──────────────────────────────────────────────────
 
-interface Tactic {
-  name: string;
-  pattern: RegExp;
-  severity: number;
+const SYCOPHANCY_CRITERIA = {
+  systemPrompt:
+    "You are a sycophancy pressure detector. Determine if the given user message " +
+    "is trying to pressure the assistant into agreeing, using flattery, loaded questions, " +
+    "authority claims, skepticism, or forcing agreement. " +
+    "These are messages designed to make the assistant less objective. " +
+    "Answer only 'yes' or 'no'. Do not explain.",
+  userPrompt:
+    "Does this message use sycophancy pressure tactics?\n\n{{text}}",
+};
+
+/** Heuristic fallback: preserve original TACTICS patterns */
+function sycophancyFallback(text: string): string {
+  const patterns = [
+    /\b(I think|I believe|you must (agree|be right)|Surely)\b/i,
+    /\b(This is definitely|The code (always|never)|Obviously)\b/i,
+    /\b(That (approach|solution) is (wrong|bad)|Why would you)\b/i,
+    /\bWhy did you (do|choose|use)/i,
+    /\b(Trust me|As a (senior|expert)|Everyone knows)\b/i,
+  ];
+  return patterns.some((p) => p.test(text)) ? "yes" : "no";
 }
-
-const TACTICS: Tactic[] = [
-  {
-    name: "AGREEABLENESS",
-    pattern: /\b(I think|I believe|you must (agree|be right)|Surely)\b/i,
-    severity: 0.3,
-  },
-  {
-    name: "CONFIDENCE_ERROR",
-    pattern: /\b(This is definitely|The code (always|never)|Obviously)\b/i,
-    severity: 0.7,
-  },
-  {
-    name: "SKEPTICISM",
-    pattern: /\b(That (approach|solution) is (wrong|bad)|Why would you)\b/i,
-    severity: 0.5,
-  },
-  { name: "LOADED_QUESTION", pattern: /\bWhy did you (do|choose|use)/i, severity: 0.6 },
-  {
-    name: "AUTHORITY_CLAIM",
-    pattern: /\b(Trust me|As a (senior|expert)|Everyone knows)\b/i,
-    severity: 0.5,
-  },
-];
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -85,57 +79,60 @@ interface SycophancyRisk {
 
 /**
  * Compute sycophancy risk from user input.
- * Uses matchAll() to count ALL alternation matches per tactic pattern,
- * not just the first match (fix: old code used test() which returns on first match).
+ * Uses utility model classification (fallback: heuristic patterns).
  */
-function computeRisk(text: string): SycophancyRisk {
-  let totalScore = 0;
-  const matched: string[] = [];
+async function computeRisk(
+  text: string,
+  ctx: ExtensionContext,
+): Promise<SycophancyRisk> {
+  const result = await classify(ctx, SYCOPHANCY_CRITERIA, { text }, {
+    maxTokens: 5,
+    timeoutMs: 5000,
+    fallback: () => sycophancyFallback(text),
+  });
 
-  for (const tactic of TACTICS) {
-    // Use matchAll to count ALL alternation matches, not just the first
-    const matches = [...text.matchAll(new RegExp(tactic.pattern.source, tactic.pattern.flags))];
-    // Each match contributes the tactic's severity (capped at 1.0 total per tactic type)
-    const tacticScore = Math.min(tactic.severity, matches.length * tactic.severity * 0.5);
-    if (matches.length > 0) {
-      totalScore += tacticScore;
-      matched.push(`${tactic.name}(${matches.length})`);
-    }
+  if (result.label === "yes") {
+    return {
+      score: 0.6,
+      tactics: [`classify(${result.tier})`],
+      severity: "medium",
+    };
   }
 
-  const score = Math.min(1, totalScore);
   return {
-    score,
-    tactics: matched,
-    severity: score >= 0.7 ? "high" : score >= 0.5 ? "medium" : "low",
+    score: 0,
+    tactics: [],
+    severity: "low",
   };
 }
 
 // ── VbC Detection (Assistant Response) ────────────────────────────────────────
 
-/**
- * Detect validation-before-correction (VbC) patterns in assistant responses.
- * Uses heuristic patterns instead of 30s LLM auditor call.
- *
- * VbC patterns: "You're right that X... however Y"
- *                "That's a fair point... but actually"
- *                "I understand your concern... but the issue is"
- */
-const VBC_PATTERNS: RegExp[] = [
-  // Classic VbC: validate then correct
-  /\b(You('re| are) right\b|That('s| is) a (fair|good) point\b|I understand your (concern|point|perspective)\b)(?=.*\b(however|but actually|the (real|actual) (issue|problem)|having said that)\b).{50,}/is,
-  // Agreement then correction
-  /\b(I agree\b|That makes sense\b|You make a good point\b)(?=.*\b(however|but|yet|nevertheless|on the other hand)\b).{50,}/is,
-  // "I think you're right but..."
-  /\bI think you('re| are) right\b(?=.*\b(but|however)\b).{50,}/is,
-  // Correction prefaced with disagreement deferral
-  /\b(While|Although|Even though) (you('re| are) (right|correct)|that('s| is) valid)\b.{30,}actually\b.{20,}/is,
-];
+const VBC_CRITERIA = {
+  systemPrompt:
+    "You are a validation-before-correction detector. Determine if the given " +
+    "text validates before correcting — i.e., it first agrees with the user's " +
+    "premise then contradicts it.\n" +
+    "Examples of VbC:\n" +
+    "- \"You're right that X... however Y\"\n" +
+    "- \"That's a fair point... but actually\"\n" +
+    "- \"I understand your concern... however the issue is\"\n" +
+    "Answer only 'yes' or 'no'. Do not explain.",
+  userPrompt:
+    "Does this response do validation-before-correction?\n\n{{text}}",
+};
 
-/**
- * Score suggested correction instruction based on the VbC text.
- * Higher score = more severe VbC.
- */
+/** Heuristic fallback: preserve original VBC_PATTERNS */
+function detectVbCFallback(text: string): string {
+  const patterns = [
+    /\b(You('re| are) right\b|That('s| is) a (fair|good) point\b|I understand your (concern|point|perspective)\b)(?=.*\b(however|but actually|the (real|actual) (issue|problem)|having said that)\b).{50,}/is,
+    /\b(I agree\b|That makes sense\b|You make a good point\b)(?=.*\b(however|but|yet|nevertheless|on the other hand)\b).{50,}/is,
+    /\bI think you('re| are) right\b(?=.*\b(but|however)\b).{50,}/is,
+    /\b(While|Although|Even though) (you('re| are) (right|correct)|that('s| is) valid)\b.{30,}actually\b.{20,}/is,
+  ];
+  return patterns.some((p) => p.test(text)) ? "yes" : "no";
+}
+
 interface VbCResult {
   detected: boolean;
   severity: "low" | "medium" | "high";
@@ -143,32 +140,42 @@ interface VbCResult {
   correction_hint: string;
 }
 
-function detectVbC(responseText: string): VbCResult {
+/**
+ * Detect validation-before-correction (VbC) in assistant responses.
+ * Uses utility model classification (fallback: heuristic patterns).
+ * Replaces the 30s LLM auditor — this runs in ~50ms via the utility model.
+ */
+async function detectVbC(
+  responseText: string,
+  ctx: ExtensionContext,
+): Promise<VbCResult> {
   if (responseText.length < 100) {
     return { detected: false, severity: "low", score: 0, correction_hint: "" };
   }
 
-  let totalScore = 0;
-  const matchedPatterns: string[] = [];
+  // Truncate long responses to keep prompt tokens reasonable
+  const truncated = responseText.length > 2000
+    ? responseText.slice(0, 2000) + "..."
+    : responseText;
 
-  for (const pattern of VBC_PATTERNS) {
-    const matches = responseText.match(pattern);
-    if (matches) {
-      totalScore += 0.6; // Each matched VbC pattern adds 0.6
-      matchedPatterns.push(pattern.source.substring(0, 40));
-    }
+  const result = await classify(ctx, VBC_CRITERIA, { text: truncated }, {
+    maxTokens: 5,
+    timeoutMs: 5000,
+    fallback: () => detectVbCFallback(responseText),
+  });
+
+  if (result.label === "yes") {
+    return {
+      detected: true,
+      severity: "medium",
+      score: 0.6,
+      correction_hint:
+        "Avoid validation-before-correction. State the correction directly " +
+        "without first agreeing with the user's incorrect premise.",
+    };
   }
 
-  const score = Math.min(1, totalScore);
-  return {
-    detected: score >= 0.4,
-    severity: score >= 0.8 ? "high" : score >= 0.5 ? "medium" : "low",
-    score,
-    correction_hint:
-      score >= 0.4
-        ? "Avoid validation-before-correction. State the correction directly without first agreeing with the user's incorrect premise."
-        : "",
-  };
+  return { detected: false, severity: "low", score: 0, correction_hint: "" };
 }
 
 // ── Auditor LLM (Optional Async) ──────────────────────────────────────────────
@@ -211,7 +218,7 @@ async function handleSycophancy(
   if (userText.length < 30) return; // Skip short messages
 
   // Step 1: Compute tactic-based risk from user message (optional signal)
-  const risk = computeRisk(userText);
+  const risk = await computeRisk(userText, ctx);
   // Note: We don't gate on risk.score here — VbC can occur even with neutral user input.
   // User risk is used as an additional signal for severity reporting below.
 
@@ -234,7 +241,7 @@ async function handleSycophancy(
 
   // Step 2: Detect VbC in assistant response using heuristic patterns
   // Replaces expensive 30s LLM auditor call with fast pattern matching
-  const vbcResult = detectVbC(responseText);
+  const vbcResult = await detectVbC(responseText, ctx);
   if (!vbcResult.detected) return; // No VbC found — no correction needed
 
   log.info(`VbC detected: severity=${vbcResult.severity}, score=${vbcResult.score}`);

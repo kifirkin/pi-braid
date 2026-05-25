@@ -130,12 +130,7 @@ export function getState(ctx: ExtensionContext): EnforcementState {
   return getExtensionState(ctx, "enforcement", createState);
 }
 
-// ── Legacy Global State ──────────────────────────────────────────────────────
-// Legacy fallback: callers in index.ts now pass getState(ctx) explicitly. Kept as default param safety net.
-
-export const state = createState();
-
-export function resetState(s: EnforcementState = state): void {
+export function resetState(s: EnforcementState): void {
   s.turnHistory.clear();
   s.recentToolSequences = [];
   s.recentlyReadFiles.clear();

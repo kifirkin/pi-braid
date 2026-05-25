@@ -9,8 +9,9 @@
  */
 
 import { Type } from "typebox";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../../lib/logger.js";
+import { classify } from "../../../lib/text-classifier.js";
 
 const log = createLogger("verification");
 
@@ -81,6 +82,68 @@ const STOP_WORDS = new Set([
   "day", "boy",
 ]);
 
+// ── Utility Model Criteria ─────────────────────────────────────────────────────
+
+const CONTRADICTION_CRITERIA = {
+  systemPrompt:
+    "You are a contradiction detector. Determine if the given claim contradicts the given " +
+    "context. Consider positive/negative polarity: if the claim says something is true " +
+    "but the context says it is false (or vice versa), that is a contradiction.\n" +
+    "Answer only 'yes' or 'no'. Do not explain.",
+  userPrompt:
+    "Claim: {{claim}}\nContext: {{context}}\nDoes the claim contradict the context?",
+};
+
+/** Heuristic fallback: preserve original negation pattern + MATCH_PAIRS logic */
+function contradictionFallback(claim: string, context: string): string {
+  const claimLower = claim.toLowerCase();
+  const contextLower = context.toLowerCase();
+
+  // Phase 1 (heuristic): Pattern-based negation detection
+  const negationPattern = /\b(not|n't|never|no|isn't|aren't|wasn't|weren't|don't|doesn't|didn't|won't|wouldn't|can't|cannot|couldn't|shouldn't)\s+(\w{3,})/gi;
+
+  const claimNegations: Array<{ word: string; negated: string }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = negationPattern.exec(claimLower)) !== null) {
+    claimNegations.push({ word: match[1], negated: match[2] });
+  }
+  const contextNegations: Array<{ word: string; negated: string }> = [];
+  while ((match = negationPattern.exec(contextLower)) !== null) {
+    contextNegations.push({ word: match[1], negated: match[2] });
+  }
+
+  const claimFeatures = extractFeatures(claim);
+
+  for (const ctxNeg of contextNegations) {
+    for (const cf of claimFeatures) {
+      if (ctxNeg.negated.includes(cf) || cf.includes(ctxNeg.negated)) {
+        return "yes";
+      }
+    }
+  }
+
+  // Phase 2 (heuristic): Hardcoded positive-negation pair matching
+  const MATCH_PAIRS: [string, string][] = [
+    ["works", "doesn't work"],
+    ["works", "fails"],
+    ["supported", "not supported"],
+    ["compatible", "incompatible"],
+    ["can use", "cannot use"],
+    ["is defined", "is not defined"],
+    ["exists", "doesn't exist"],
+    ["succeeds", "fails"],
+    ["passes", "fails"],
+    ["correct", "incorrect"],
+  ];
+
+  for (const [pos, neg] of MATCH_PAIRS) {
+    if (claimLower.includes(pos) && contextLower.includes(neg)) return "yes";
+    if (claimLower.includes(neg) && contextLower.includes(pos)) return "yes";
+  }
+
+  return "no";
+}
+
 // ── Core logic ────────────────────────────────────────────────────────────────
 
 function extractFeatures(text: string): Set<string> {
@@ -122,86 +185,42 @@ function symmetricOverlap(a: Set<string>, b: Set<string>): number {
   return intersection / (a.size + b.size - intersection);
 }
 
-// Positive-negation pairs to detect contradictions
-const MATCH_PAIRS: [string, string][] = [
-  ["works", "doesn't work"],
-  ["works", "fails"],
-  ["supported", "not supported"],
-  ["compatible", "incompatible"],
-  ["can use", "cannot use"],
-  ["is defined", "is not defined"],
-  ["exists", "doesn't exist"],
-  ["succeeds", "fails"],
-  ["passes", "fails"],
-  ["correct", "incorrect"],
-];
-
-function checkContradiction(claim: string, context: string) {
-  const claimLower = claim.toLowerCase();
-  const contextLower = context.toLowerCase();
-
+async function checkContradiction(
+  claim: string,
+  context: string,
+  ctx: ExtensionContext,
+) {
   const claimFeatures = extractFeatures(claim);
   const contextFeatures = extractFeatures(context);
 
-  // Phase 1: Pattern-based negation detection
-  // Match "not X" or "n't X" patterns between claim and context
-  const negationPattern = /\b(not|n't|never|no|isn't|aren't|wasn't|weren't|don't|doesn't|didn't|won't|wouldn't|can't|cannot|couldn't|shouldn't)\s+(\w{3,})/gi;
+  // Primary: classify via utility model
+  const truncated = {
+    claim: claim.length > 1500 ? claim.slice(0, 1500) + "..." : claim,
+    context: context.length > 1500 ? context.slice(0, 1500) + "..." : context,
+  };
 
-  // Extract positive and negative claims from both sides
-  const claimNegations: Array<{ word: string; negated: string }> = [];
-  let match: RegExpExecArray | null;
-  while ((match = negationPattern.exec(claimLower)) !== null) {
-    claimNegations.push({ word: match[1], negated: match[2] });
-  }
-  const contextNegations: Array<{ word: string; negated: string }> = [];
-  while ((match = negationPattern.exec(contextLower)) !== null) {
-    contextNegations.push({ word: match[1], negated: match[2] });
-  }
+  const result = await classify(ctx, CONTRADICTION_CRITERIA, truncated, {
+    maxTokens: 5,
+    timeoutMs: 5000,
+    fallback: () => contradictionFallback(claim, context),
+  });
 
-  // asserts something positive but context negates it
-  for (const ctxNeg of contextNegations) {
-    for (const cf of claimFeatures) {
-      if (ctxNeg.negated.includes(cf) || cf.includes(ctxNeg.negated)) {
-        // Claim word appears negated in context
-        return {
-          type: "contradiction",
-          severity: "high" as const,
-          description: `Claim mentions "${cf}" but context says "${ctxNeg.word} ${ctxNeg.negated}"`,
-          quote: claim,
-          location: "claim vs context",
-        };
-      }
-    }
+  if (result.label === "yes") {
+    return {
+      type: "contradiction" as const,
+      severity: "high" as const,
+      description: `Claim contradicts context (${result.tier} tier)`,
+      quote: claim,
+      location: "claim vs context",
+    };
   }
 
-  // Phase 2: Hardcoded positive-negation pair matching
-  for (const [pos, neg] of MATCH_PAIRS) {
-    if (claimLower.includes(pos) && contextLower.includes(neg)) {
-      return {
-        type: "contradiction",
-        severity: "high" as const,
-        description: `Claim uses "${pos}" but context suggests "${neg}"`,
-        quote: claim,
-        location: "claim vs context",
-      };
-    }
-    if (claimLower.includes(neg) && contextLower.includes(pos)) {
-      return {
-        type: "contradiction",
-        severity: "high" as const,
-        description: `Claim uses "${neg}" but context suggests "${pos}"`,
-        quote: claim,
-        location: "claim vs context",
-      };
-    }
-  }
-
-  // Check semantic overlap (topic drift detection)
+  // Phase 3: Semantic overlap check (topic drift — separate concern)
   const overlap = symmetricOverlap(claimFeatures, contextFeatures);
 
   if (overlap < 0.1 && claimFeatures.size > 3) {
     return {
-      type: "contradiction",
+      type: "contradiction" as const,
       severity: "low" as const,
       description: `Claim and context share very few features (${(overlap * 100).toFixed(0)}% overlap). Possible topic drift.`,
       quote: claim,
@@ -330,7 +349,13 @@ export default function verificationExtension(pi: ExtensionAPI) {
     description:
       "Verify agent claims against retrieved context — use when conclusions depend on evidence. Detects contradictions, unsupported assertions, and hedge word issues.",
     parameters: verifyClaimSchema,
-    execute: async (_toolCallId: string, params: any): Promise<Record<string, unknown>> => {
+    execute: async (
+      _toolCallId: string,
+      params: any,
+      _signal?: AbortSignal,
+      _onUpdate?: unknown,
+      ctx?: ExtensionContext,
+    ): Promise<Record<string, unknown>> => {
       try {
         const p = params as {
           claim: string;
@@ -345,8 +370,8 @@ export default function verificationExtension(pi: ExtensionAPI) {
         const threshold = p.threshold ?? 0.5;
         const issues: Record<string, unknown>[] = [];
 
-        for (const ctx of p.context) {
-          const result = checkContradiction(p.claim, ctx);
+        for (const ctxStr of p.context) {
+          const result = await checkContradiction(p.claim, ctxStr, ctx!);
           if (result) issues.push(result);
         }
 

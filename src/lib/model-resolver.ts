@@ -8,7 +8,7 @@
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { Model, Api } from "@mariozechner/pi-ai";
-import { getCustomModelKey, VISION_MODEL_KEY } from "./global-state.js";
+import { getCustomModelKey, UTILITY_MODEL_KEY, VISION_MODEL_KEY } from "./global-state.js";
 
 /**
  * Resolve a model from a pattern like "provider/model-id" or just "model-id".
@@ -46,4 +46,19 @@ export function resolveVisionModel(ctx: ExtensionContext): Model<Api> | undefine
   // 3. First available vision model
   const available = ctx.modelRegistry.getAvailable();
   return available.find((m) => m?.input?.includes("image"));
+}
+
+/**
+ * Get the configured utility model for classification tasks.
+ * Priority:
+ *   1. Custom utilityModel setting (from /utility-model command or settings.json)
+ *   2. Fall back to undefined (caller uses session model)
+ */
+export function resolveUtilityModel(ctx: ExtensionContext): Model<Api> | undefined {
+  const customPattern = getCustomModelKey(UTILITY_MODEL_KEY);
+  if (customPattern) {
+    const resolved = resolveFromPattern(ctx, customPattern);
+    if (resolved) return resolved;
+  }
+  return undefined;
 }

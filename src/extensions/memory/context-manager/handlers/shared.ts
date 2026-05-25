@@ -95,7 +95,7 @@ export const _compactedEntries = new Set<string>();
 
 /** Whether compaction is currently in progress. Guards input capture to only
  * capture messages typed DURING compaction, not messages that triggered it.
- * Exported for read+write access by compaction.ts and user-message-preprocessor. */
+ * Exported for read+write access by compaction.ts and input-polisher. */
 export let _compactionActive = false;
 
 export function isCompactionActive(): boolean {

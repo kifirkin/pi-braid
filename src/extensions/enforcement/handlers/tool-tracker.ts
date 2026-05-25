@@ -5,7 +5,7 @@ const log = createLogger("enforcement");
  * Tool tracking - centralized tracking logic for all tool usage patterns
  */
 import { recordCodeChange } from "../detection/verification.js";
-import { getState, state } from "../state.js";
+import { getState } from "../state.js";
 import type { EnforcementState } from "../state.js";
 
 /**
@@ -15,7 +15,7 @@ import type { EnforcementState } from "../state.js";
 export function recordToolInput(
   toolName: string,
   input: Record<string, unknown> | undefined,
-  s: EnforcementState = state,
+  s: EnforcementState,
 ): void {
   if (!input) return;
 
@@ -34,10 +34,8 @@ export function recordToolInput(
   }
 }
 
-export function recordToolCall(toolName: string, ctx?: any): void {
-  // When ctx available, use getState(ctx) for session-scoped state
-  // Fall back to global state for backward compatibility
-  const s = ctx ? getState(ctx) : state;
+export function recordToolCall(toolName: string, ctx: any): void {
+  const s = getState(ctx);
 
   // Track code changes (edit/write) for verification context
   if (toolName === "edit" || toolName === "write") {
@@ -124,7 +122,7 @@ export function recordToolCall(toolName: string, ctx?: any): void {
   }
 }
 
-export function recordBashDetails(command: string, s: EnforcementState = state): void {
+export function recordBashDetails(command: string, s: EnforcementState): void {
   s.bashCalls = (s.bashCalls || 0) + 1;
   const cmd = command.toLowerCase();
 

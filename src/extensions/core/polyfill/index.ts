@@ -16,11 +16,11 @@ import * as os from "node:os";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { ModelSelectorComponent, SettingsManager } from "@mariozechner/pi-coding-agent";
 import type { Model, Api } from "@mariozechner/pi-ai";
-import { resolveVisionModel } from "../../../lib/model-resolver.js";
+import { resolveUtilityModel, resolveVisionModel } from "../../../lib/model-resolver.js";
 import { registerSessionCleanup } from "../../../lib/extension-state.js";
 
 /** Custom settings keys managed by /utility-model and /vision-model commands */
-import { getCustomModelKeys, VISION_MODEL_KEY } from "../../../lib/global-state.js";
+import { getCustomModelKeys, UTILITY_MODEL_KEY, VISION_MODEL_KEY } from "../../../lib/global-state.js";
 
 interface SessionManagerLike {
   getSessionFile(): string | null;
@@ -91,7 +91,7 @@ async function loadCustomKeysFromDisk(): Promise<void> {
     const content = await fs.readFile(SETTINGS_PATH, "utf-8");
     const settings = JSON.parse(content);
     const map = getCustomModelKeys();
-    for (const key of [VISION_MODEL_KEY]) {
+    for (const key of [VISION_MODEL_KEY, UTILITY_MODEL_KEY]) {
       if (typeof settings[key] === "string" && settings[key]) {
         map.set(key, settings[key]);
       }
@@ -148,6 +148,43 @@ export default function polyfillExtension(pi: ExtensionAPI) {
   pi.on("session_end" as any, registerSessionCleanup());
 
   // Register settings commands for model selection
+  // ── Utility model command ──────────────────────────────────────────
+  pi.registerCommand("utility-model", {
+    description:
+      "Set or show the utility model for classification tasks. " +
+      "No args = show current setting. Smaller/faster models preferred. " +
+      "Examples: /utility-model provider/model-id, /utility-model clear",
+    handler: async (args, ctx) => {
+      if (!args || args.trim() === "") {
+        if (ctx.hasUI) {
+          await openModelSelectorUI(ctx, UTILITY_MODEL_KEY, "Utility", null, resolveUtilityModel);
+        } else {
+          const model = resolveUtilityModel(ctx);
+          ctx.ui.notify(
+            `Utility model: ${model?.id ?? "none (will use session model)"}`,
+            model ? "info" : "warning",
+          );
+        }
+        return;
+      }
+
+      const text = args.trim();
+      if (text === "clear" || text === "reset") {
+        await clearModelSetting(UTILITY_MODEL_KEY);
+        ctx.ui.notify("Utility model cleared (will use session model for classification)", "info");
+        return;
+      }
+
+      const model = resolveModelPattern(ctx, text);
+      if (!model) {
+        ctx.ui.notify(`Model not found: ${text}`, "error");
+        return;
+      }
+      await setModelSetting(UTILITY_MODEL_KEY, text);
+      ctx.ui.notify(`Utility model set to: ${model.id} (classifications will use this model)`, "info");
+    },
+  });
+
   pi.registerCommand("vision-model", {
     description:
       "Set or show the vision model for image analysis. No args = open model selector UI (filtered to vision-capable models).",
@@ -156,7 +193,7 @@ export default function polyfillExtension(pi: ExtensionAPI) {
         if (ctx.hasUI) {
           const visionFilter = (m: Model<Api>) =>
             hasImageInput(m as unknown as { input?: unknown });
-          await openModelSelectorUI(ctx, VISION_MODEL_KEY, "Vision Model", visionFilter);
+          await openModelSelectorUI(ctx, VISION_MODEL_KEY, "Vision", visionFilter);
         } else {
           const model = resolveVisionModel(ctx);
           ctx.ui.notify(`Vision model: ${model?.id ?? "none"} (auto-detected)`, "info");
@@ -226,8 +263,9 @@ function resolveModelPattern(
 async function openModelSelectorUI(
   ctx: ExtensionCommandContext,
   settingKey: string,
-  _label: string,
+  roleLabel: string,
   scopeFilter: ((m: Model<Api>) => boolean) | null,
+  resolveFn: (ctx: ExtensionContext) => Model<Api> | undefined = resolveVisionModel,
 ): Promise<void> {
   const modelRegistry = ctx.modelRegistry;
 
@@ -236,16 +274,35 @@ async function openModelSelectorUI(
   // won't persist to disk. We call pi.setModel() below for proper persistence.
   const settingsManager = SettingsManager.inMemory();
 
-  // Build scoped models list for vision filter
-  const scopedModels: { model: Model<Api>; thinkingLevel?: string }[] = scopeFilter
-    ? modelRegistry
-        .getAvailable()
-        .filter(scopeFilter)
-        .map((m) => ({ model: m }))
-    : [];
+  // Build sorted scoped model list
+  // Priority: selected model first, then same provider, then others
+  const currentRoleModel = resolveFn(ctx as ExtensionContext);
+  const mainModel = (ctx as any).model;
+  const prefProvider = currentRoleModel?.provider ?? mainModel?.provider;
 
-  // Pre-select the currently configured model (vision model only — no utility model)
-  const currentModel = resolveVisionModel(ctx);
+  const allModels = modelRegistry.getAvailable();
+  let scopedModels: { model: Model<Api>; thinkingLevel?: string }[];
+
+  if (scopeFilter) {
+    const filtered = allModels.filter(scopeFilter);
+    filtered.sort((a, b) => {
+      if (currentRoleModel && a.id === currentRoleModel.id) return -1;
+      if (currentRoleModel && b.id === currentRoleModel.id) return 1;
+      if (prefProvider && a.provider === prefProvider) return -1;
+      if (prefProvider && b.provider === prefProvider) return 1;
+      return a.id.localeCompare(b.id);
+    });
+    scopedModels = filtered.map((m) => ({ model: m }));
+  } else {
+    allModels.sort((a, b) => {
+      if (currentRoleModel && a.id === currentRoleModel.id) return -1;
+      if (currentRoleModel && b.id === currentRoleModel.id) return 1;
+      if (prefProvider && a.provider === prefProvider) return -1;
+      if (prefProvider && b.provider === prefProvider) return 1;
+      return a.id.localeCompare(b.id);
+    });
+    scopedModels = allModels.map((m) => ({ model: m }));
+  }
 
   // Capture selected model from the dialog
   let selectedModel: Model<Api> | undefined;
@@ -253,7 +310,7 @@ async function openModelSelectorUI(
   await ctx.ui.custom(async (tui, _theme, _keybindings, done) => {
     const selector = new ModelSelectorComponent(
       tui,
-      currentModel,
+      currentRoleModel,
       settingsManager,
       modelRegistry,
       scopedModels,
@@ -261,7 +318,7 @@ async function openModelSelectorUI(
         selectedModel = model;
 
         // Warn if a non-vision model was picked for the vision role
-        if (!hasImageInput(model as { input?: unknown })) {
+        if (scopeFilter && !hasImageInput(model as { input?: unknown })) {
           ctx.ui.notify(
             `⚠ ${model.id} does not support image input. Vision analysis may fail.`,
             "warning",
@@ -284,7 +341,7 @@ async function openModelSelectorUI(
   const pattern = `${selectedModel.provider}/${selectedModel.id}`;
   await setModelSetting(settingKey, pattern);
 
-  ctx.ui.notify(`Vision model set to: ${selectedModel.id}`, "info");
+  ctx.ui.notify(`${roleLabel} model set to: ${selectedModel.id}`, "info");
 }
 
 // Session manager patches for --no-session mode

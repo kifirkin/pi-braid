@@ -1,5 +1,10 @@
 /**
  * Reasoning Chain Summarization (2604.15877) — Medium-Term Compression
+ *
+ * Two-tier detection:
+ *   Tier 1 (regex, sync): Fast pre-filter to find candidate reasoning messages.
+ *   Tier 2 (utility model, async): Confirm ambiguous blocks via classify().
+ *     Runs on already-identified blocks, not individual messages.
  */
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "./extension-state.js";
@@ -21,6 +26,7 @@ const REASONING_PATTERNS = [
   /\bLooking at\b.*we can\b/i,
 ];
 
+/** Tier 1: Regex pre-filter (sync, fast). */
 export function isReasoningMessage(msg: { role: string; content?: string | unknown[] }): boolean {
   if (msg.role !== "assistant" || !msg.content) return false;
   const content =
@@ -34,6 +40,33 @@ export function isReasoningMessage(msg: { role: string; content?: string | unkno
     return REASONING_PATTERNS.filter((p) => p.test(content)).length >= 2;
   }
   return REASONING_PATTERNS.some((p) => p.test(content));
+}
+
+/** Tier 2: Confirmation via utility model (async, runs on identified blocks). */
+export async function confirmReasoningBlock(
+  content: string,
+  ctx: ExtensionContext,
+): Promise<boolean> {
+  try {
+    const { classify } = await import("./text-classifier.js");
+    const result = await classify(
+      ctx,
+      {
+        systemPrompt:
+          "You are a reasoning-content detector. Determine if the given text is " +
+          "part of the AI's reasoning process (thinking through a problem, " +
+          "analyzing options, justifying a decision) or just a response delivery. " +
+          "Answer only 'yes' or 'no'. Do not explain.",
+        userPrompt: "Is this reasoning?\n\n{{text}}",
+      },
+      { text: content.slice(0, 2000) },
+      { maxTokens: 5, timeoutMs: 2000 },
+    );
+    return result.label === "yes";
+  } catch {
+    // If classify fails, keep the block (regex already identified it)
+    return true;
+  }
 }
 
 export function findReasoningBlocks(

@@ -28,6 +28,8 @@ import {
   USAGE_WHISPER_CRITICAL,
   USAGE_FIRED_RESET_BELOW,
   USAGE_COMPACT_MEDIUM,
+  USAGE_TOKENS_SOFT,
+  USAGE_TOKENS_WARNING,
 } from "../../../lib/context-thresholds.js";
 
 const log = createLogger("enforcement:turn-end");
@@ -246,31 +248,42 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
       );
     }
 
-    // Scratchpad signal
+    // Scratchpad signal — widened: fires on (a) write/edit without scratchpad,
+    // or (b) complex turn (3+ tools) without scratchpad
+    const madeFileChanges = actualTools.some((t: string) => ["edit", "write"].includes(t));
+    const isComplexTurn = actualTools.length >= 3;
+    const needsScratchpad = (madeFileChanges || isComplexTurn) && !scratchpadUpdated;
     if (
       !hadErrors &&
       !inOverflowRecovery &&
-      actualTools.some((t: string) => ["edit", "write"].includes(t)) &&
-      !scratchpadUpdated
+      needsScratchpad
     ) {
-      if (getState(ctx).currentTurn - getState(ctx).lastScratchpadNudgeTurn >= 8) {
+      const cooldown = madeFileChanges ? 8 : 15; // Tighter for file changes, relaxed for complexity
+      if (getState(ctx).currentTurn - getState(ctx).lastScratchpadNudgeTurn >= cooldown) {
         getState(ctx).lastScratchpadNudgeTurn = getState(ctx).currentTurn;
+        const reason = madeFileChanges
+          ? "Code changed without updating scratchpad"
+          : `Complex turn (${actualTools.length} tools) without scratchpad`;
         sessionSignals.push(
-          `Code changed without updating scratchpad. Consider updating scratchpad(action="add_note", text="...")`,
+          `${reason}. Consider updating scratchpad(action="add_note", text="...")`,
         );
       }
     }
 
-    // Think tool enforcement
-    if (
-      !hadErrors &&
-      !inOverflowRecovery &&
-      getState(ctx).toolChain.lastThinkCall === 0 &&
-      getState(ctx).currentTurn >= 5 &&
-      getState(ctx).currentTurn % 5 === 0
-    ) {
+    // Think tool enforcement — widened: fires on (a) no think ever called by turn 5,
+    // or (b) high-stakes actions (edit/write/finalize) without prior think this session
+    const madeHighStakesAction = actualTools.some((t: string) =>
+      ["edit", "write", "finalize"].includes(t),
+    );
+    const noThinkThisSession = getState(ctx).toolChain.lastThinkCall === 0;
+    const thinkNeeded =
+      (noThinkThisSession && getState(ctx).currentTurn >= 5 && getState(ctx).currentTurn % 5 === 0) ||
+      (madeHighStakesAction && noThinkThisSession && getState(ctx).currentTurn >= 3);
+    if (!hadErrors && !inOverflowRecovery && thinkNeeded) {
       sessionSignals.push(
-        `${getState(ctx).currentTurn} turns without think() — consider think(observation, decision, reason) to track reasoning`,
+        madeHighStakesAction
+          ? `High-stakes action without prior think(). Consider think(observation, decision, reason) before the next change.`
+          : `${getState(ctx).currentTurn} turns without think() — consider think(observation, decision, reason) to track reasoning`,
       );
     }
 
@@ -291,12 +304,16 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
     }
 
     let usagePercent = 0;
+    let usageTokens = 0;
     try {
       const ctxFromEvent = (
-        event as unknown as { ctx?: { getContextUsage?(): { percent?: number } } }
+        event as unknown as { ctx?: { getContextUsage?(): { percent?: number; tokens?: number } } }
       )?.ctx;
       const usage = ctxFromEvent?.getContextUsage?.();
-      if (usage) usagePercent = usage.percent ?? 0;
+      if (usage) {
+        usagePercent = usage.percent ?? 0;
+        usageTokens = usage.tokens ?? 0;
+      }
     } catch {
       /* ignore */
     }
@@ -307,6 +324,37 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
       getState(ctx).contextNudgeSent = false;
     }
 
+    // ── Token-count early check (tighter interval, fires before percentage) ──
+    // Uses a shorter interval (8 turns) because we want preventive nudges at
+    // 30K tokens, not reactive ones at 80%.
+    if (
+      !hadErrors &&
+      actualTools.length > 0 &&
+      !getState(ctx).contextNudgeSent &&
+      usageTokens > 0
+    ) {
+      const tokenCheckInterval = 8;
+      const turnsSinceLastCheck = getState(ctx).currentTurn - getState(ctx).lastContextCheckTurn;
+      if (turnsSinceLastCheck >= tokenCheckInterval) {
+        if (usageTokens >= USAGE_TOKENS_WARNING) {
+          getState(ctx).contextNudgeSent = true;
+          getState(ctx).lastContextCheckTurn = getState(ctx).currentTurn;
+          sessionSignals.push(
+            `Context at ${Math.round(usageTokens / 1000)}K tokens (${Math.round(usagePercent)}%). ` +
+            `Pipeline: context_tag → context_checkout → context_archive → compact (last resort).`,
+          );
+        } else if (usageTokens >= USAGE_TOKENS_SOFT) {
+          getState(ctx).contextNudgeSent = true;
+          getState(ctx).lastContextCheckTurn = getState(ctx).currentTurn;
+          sessionSignals.push(
+            `Context at ${Math.round(usageTokens / 1000)}K tokens. ` +
+            `Consider pruning old tool results (context_prune dry-run) or tagging position.`,
+          );
+        }
+      }
+    }
+
+    // ── Percentage-based check (original, longer interval) ──────────────────
     if (
       !hadErrors &&
       actualTools.length > 0 &&
@@ -316,6 +364,7 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
       usagePercent > 0
     ) {
       getState(ctx).contextNudgeSent = true;
+      getState(ctx).lastContextCheckTurn = getState(ctx).currentTurn;
       const pct = Math.round(usagePercent);
       if (usagePercent >= USAGE_COMPACT_MEDIUM) {
         sessionSignals.push(

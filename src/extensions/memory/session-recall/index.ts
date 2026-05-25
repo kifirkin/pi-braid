@@ -22,11 +22,15 @@ import type { Model, Api } from "@mariozechner/pi-ai";
 import { callLlm } from "../../../lib/llm-call.js";
 import { Type } from "typebox";
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { stat, readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
+
+/** Async helper: check if a path exists (replaces existsSync). */
+async function asyncExists(p: string): Promise<boolean> {
+  return stat(p).then(() => true).catch(() => false);
+}
 import { homedir } from "node:os";
-import { SESSION_RECALL_FILE, AGENT } from "../../../lib/braid-paths.js";
+import { AGENT } from "../../../lib/braid-paths.js";
 
 // Config
 
@@ -34,21 +38,9 @@ interface SessionRecallConfig {
   queryModel?: { provider: string; id: string };
 }
 
-function getConfigPath(): string {
-  return SESSION_RECALL_FILE;
-}
+// ── Default config (file loading was dead code — removed) ──
 
-function loadConfig(): SessionRecallConfig {
-  try {
-    const data = readFileSync(getConfigPath(), "utf-8");
-    return JSON.parse(data);
-  } catch {
-    return {};
-  }
-  /* Non-fatal: prior session read failed */
-}
-
-// Schemas
+  // Schemas
 
 const sessionSearchSchema = Type.Object({
   query: Type.String({
@@ -155,22 +147,22 @@ function getSearchBackend(): SearchBackend {
   return "node";
 }
 
-function walkJsonlFiles(dir: string): string[] {
+async function walkJsonlFiles(dir: string): Promise<string[]> {
   const results: string[] = [];
-  function walk(d: string) {
+  async function walk(d: string) {
     let entries;
     try {
-      entries = readdirSync(d, { withFileTypes: true });
+      entries = await readdir(d, { withFileTypes: true });
     } catch {
       return;
     }
     for (const entry of entries) {
       const full = join(d, entry.name);
-      if (entry.isDirectory()) walk(full);
+      if (entry.isDirectory()) await walk(full);
       else if (entry.name.endsWith(".jsonl")) results.push(full);
     }
   }
-  walk(dir);
+  await walk(dir);
   return results;
 }
 
@@ -228,7 +220,7 @@ function parseCountOutput(output: string): FileMatchCount[] {
 }
 
 async function nodeSearchFiles(query: string, sessionsDir: string): Promise<FileMatchCount[]> {
-  const files = walkJsonlFiles(sessionsDir);
+  const files = await walkJsonlFiles(sessionsDir);
   const results: FileMatchCount[] = [];
   const lowerQuery = query.toLowerCase();
 
@@ -324,7 +316,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
     ): Promise<any> => {
       const sessionsDir = getSessionsDir();
 
-      if (!existsSync(sessionsDir)) {
+      if (!await asyncExists(sessionsDir)) {
         return {
           content: [{ type: "text" as const, text: "No sessions directory found." }],
           details: { error: true, matchCount: 0 },
@@ -423,7 +415,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
         };
       }
 
-      if (!existsSync(params.sessionPath)) {
+      if (!await asyncExists(params.sessionPath)) {
         return {
           content: [
             { type: "text" as const, text: `Error: Session file not found: ${params.sessionPath}` },
@@ -555,7 +547,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
     if (!taskText || taskText.length < 20) return;
 
     const sessionsDir = getSessionsDir();
-    if (!existsSync(sessionsDir)) return;
+    if (!await asyncExists(sessionsDir)) return;
 
     try {
       const results = await searchFiles(taskText, sessionsDir);

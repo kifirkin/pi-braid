@@ -93,7 +93,7 @@ export function handleCriticalSignals(
   prevTurn: any,
   turnState: any,
   nudgeManager: any,
-  validateTurn: (prev: any, state: any, errors: Set<string>, infra: boolean) => any,
+  validateTurn: (prev: any, state: any, ctx: any, errors: Set<string>, infra: boolean) => any,
 ): void {
   if (tac.erroredTools.size > 0) {
     tac.state.lastFailedToolTurn = tac.state.currentTurn;
@@ -106,7 +106,7 @@ export function handleCriticalSignals(
     tac.event.stopReason === "error";
 
   // Validation failures
-  const validation = validateTurn(prevTurn, turnState, tac.erroredTools, isInfrastructureError);
+  const validation = validateTurn(prevTurn, turnState, tac.ctx, tac.erroredTools, isInfrastructureError);
   if (!validation.passed && validation.nudge && !tac.hadErrors) {
     const { shouldSend, escalated } = nudgeManager.shouldSendNudge("validation", validation.nudge);
     if (shouldSend) {

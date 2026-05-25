@@ -1,14 +1,14 @@
 // ── Navigation Handler ────────────────────────────────────────────────────────
 // Handles session_before_tree, turn_end checkout, and agent_end retry.
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { analyzeSession } from "../analysis.js";
 import { log, getCmState, overflowRetryState, resetOverflowRetry } from "./shared.js";
 import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
 import { getSessionManager } from "../../../../lib/session-manager.js";
 
 // ── Session Before Tree ───────────────────────────────────────────────────────
-export function registerBeforeTreeHandler(pi: any): void {
+export function registerBeforeTreeHandler(pi: ExtensionAPI): void {
   pi.on("session_before_tree", async (event: any, ctx: ExtensionContext) => {
     try {
       const audit = analyzeSession(ctx);
@@ -49,7 +49,7 @@ export function registerBeforeTreeHandler(pi: any): void {
 }
 
 // ── Turn End Checkout ─────────────────────────────────────────────────────────
-export function registerTurnEndCheckoutHandler(pi: any): void {
+export function registerTurnEndCheckoutHandler(pi: ExtensionAPI): void {
   pi.on("turn_end", async (_event: any, ctx: ExtensionContext) => {
     try {
       const state = getCmState(ctx);
@@ -78,7 +78,7 @@ export function registerTurnEndCheckoutHandler(pi: any): void {
 }
 
 // ── Agent End Retry Handling ──────────────────────────────────────────────────
-export function registerAgentEndRetryHandler(pi: any): void {
+export function registerAgentEndRetryHandler(pi: ExtensionAPI): void {
   pi.on("agent_end", async (_event: any, _ctx: ExtensionContext) => {
     try {
       // Clean up overflow retry state if agent ends during retry

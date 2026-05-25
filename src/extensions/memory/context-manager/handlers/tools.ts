@@ -2,7 +2,7 @@
 // All 6 tool registrations + 1 command registration.
 
 import { Type } from "typebox";
-import type { CompactOptions } from "@mariozechner/pi-coding-agent";
+import type { CompactOptions, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { analyzeSession } from "../analysis.js";
 import {
   log,
@@ -49,7 +49,7 @@ const contextAuditSchema = Type.Object({
   detailLevel: Type.Optional(Type.String({ enum: ["summary", "detailed", "full"] })),
 });
 
-export function registerTools(pi: any): void {
+export function registerTools(pi: ExtensionAPI): void {
   // ── context_tag ─────────────────────────────────────────────────────────
   pi.registerTool({
     name: "context_tag",

@@ -1,9 +1,14 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { stat, readdir, readFile } from "node:fs/promises";
 import { createPromptPreviewTool } from "./preview.js";
 import type { Skill } from "@mariozechner/pi-coding-agent";
 import { homedir } from "node:os";
+import { searchPastInsights, formatPastInsightsSection, deriveProjectIdFromCwd, type PastInsight } from "./past-insights.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
+
+/** Async helper: check if a path exists (replaces existsSync). */
+async function asyncExists(p: string): Promise<boolean> {
+  return stat(p).then(() => true).catch(() => false);
+}
 
 /**
  * Prompt Builder - Reconstruction from Structured Data
@@ -44,6 +49,7 @@ import { loadSkills } from "@mariozechner/pi-coding-agent";
 import { SKILLS_DIR } from "../../../index.js";
 import { gatherL1State, formatL1Environment } from "./l1-environment.js";
 import { formatContrastSection } from "./contrast-phrase-library.js";
+import { classify } from "../../../lib/text-classifier.js";
 
 // ── Identity (THE key difference from native) ─────────────────────────────────
 // Identity framing is the behavioral filter - not directives
@@ -73,235 +79,28 @@ import { getExtensionState } from "../../../lib/extension-state.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 
 interface PromptBuilderState {
-  enforcementSignals: Record<string, { turn: number; text: string; acted: boolean }>;
-  lastSignalTurn: number;
   activeContrastMode: string;
   insightsSent: boolean;
 }
 
 function getPromptState(ctx: ExtensionContext): PromptBuilderState {
   return getExtensionState(ctx, "prompt-builder", () => ({
-    enforcementSignals: {},
-    lastSignalTurn: 0,
     activeContrastMode: "TRUTH-SEEKING",
     insightsSent: false,
   }));
 }
 
-function formatEnforcementL1(
-  signals: Record<string, { turn: number; text: string; acted: boolean }>,
-  lastSignalTurn: number,
-): string {
-  const keys = Object.keys(signals);
-  if (keys.length === 0) return "";
 
-  const signalEntries: Record<string, unknown> = {};
-  for (const key of keys) {
-    const s = signals[key];
-    if (lastSignalTurn - s.turn > 5) continue;
-    if (s.acted) continue;
 
-    signalEntries[key] = {
-      active: true,
-      turn: s.turn,
-      hint: s.text.split(" - ")[1] ?? s.text,
-    };
-  }
-
-  if (Object.keys(signalEntries).length === 0) return "";
-
-  return `
-## Enforcement State
-\`\`\`json
-${JSON.stringify({ signals: signalEntries }, null, 2)}
-\`\`\`
-`;
-}
-
-// ── R6: Session Recall - Proactive Past Insights ──────────────────────────────
-// Injects relevant experience from previous sessions into prompt.
-// Uses three-memory-stores (episodes) + session-recall (sessions)
-// Memory confidence threshold: only inject if relevance >= 0.7
-
-interface PastInsight {
-  type: "episode" | "session";
-  relevance: number;
-  content: string;
-  source: string;
-  project?: string;
-}
-
-/**
- * Derive a project identifier from a cwd path, matching deriveProjectId in three-memory-stores.
- * Returns the last 2 path components, e.g., /Users/user/projects/agents/pi-braid → "agents/pi-braid"
- */
-function deriveProjectIdFromCwd(cwd: string): string {
-  const parts = cwd.replace(/\\/g, "/").split("/").filter(Boolean);
-  if (parts.length < 2) return cwd || "unknown";
-  return parts.slice(-2).join("/");
-}
-
-/**
- * Check if an episode is eligible for cross-project injection.
- * HaluMem (2511.03506): Only allow cross-project if recent (< 1h) and high-quality (success).
- */
-function isCrossProjectInjectionAllowed(
-  epProject: string | undefined,
-  currentProject: string,
-  timestamp: number,
-  outcome: string,
-): boolean {
-  if (!epProject || epProject === currentProject || epProject === "unknown") return true;
-  // Cross-project: only if < 1h old AND successful outcome
-  const ageMs = Date.now() - timestamp;
-  return ageMs < 3600000 && outcome === "success";
-}
-
-/**
- * Derive a project identifier from a cwd path, matching deriveProjectId in three-memory-stores.
- * Returns the last 2 path components, e.g., /Users/user/projects/agents/pi-braid -> "agents/pi-braid"
- */
-async function searchPastInsights(cwd: string): Promise<PastInsight[]> {
-  const projectId = deriveProjectIdFromCwd(cwd);
-  const insights: PastInsight[] = [];
-
-  // Search three-memory-stores episodes
-  const memoryDir = MEMORY_DIR;
-  if (existsSync(memoryDir)) {
-    try {
-      const episodeFiles = readdirSync(memoryDir).filter((f) => f.startsWith("episodes"));
-      for (const file of episodeFiles.slice(0, 3)) {
-        const content = await readFile(join(memoryDir, file), "utf-8");
-        const lines = content.split("\n").filter((l) => l.trim());
-        for (const line of lines.slice(-5)) {
-          try {
-            const ep = JSON.parse(line);
-            if (!ep.task || !ep.outcome) continue;
-
-            // HaluMem: skip cross-project episodes that don't meet injection criteria
-            // the strict criteria (only recent successes from other projects).
-            if (!isCrossProjectInjectionAllowed(ep.project, projectId, ep.timestamp ?? Date.now(), ep.outcome)) {
-              continue;
-            }
-
-            insights.push({
-              type: "episode",
-              project: ep.project || "unknown",
-              relevance: 0.75,
-              content: `[${ep.outcome}] ${ep.task}: ${ep.solution || "(see logs)"}`,
-              source: `episodes:${ep.id}`,
-            });
-          } catch {
-            // Skip malformed JSON lines
-          }
-        }
-      }
-    } catch {
-      // Memory directory not readable - skip
-    }
-  }
-
-  // Search recent session summaries
-  const sessionDir = join(homedir(), ".pi/agent/sessions");
-  if (existsSync(sessionDir)) {
-    try {
-      const sessions = readdirSync(sessionDir)
-        .filter((f) => f.endsWith(".jsonl"))
-        .sort()
-        .reverse()
-        .slice(0, 3);
-
-      
-      for (const session of sessions) {
-        const content = await readFile(join(sessionDir, session), "utf-8");
-        const lines = content.split("\n").filter((l) => l.trim());
-        for (const line of lines.slice(-3)) {
-          try {
-            const entry = JSON.parse(line);
-            if (
-              entry.message &&
-              (String(entry.message).includes("finalize") ||
-                String(entry.message).includes("completed"))
-            ) {
-              const task = extractTaskFromEntry(entry as Record<string, unknown>);
-              if (task) {
-                insights.push({
-                  type: "session",
-                  project: "unknown",
-                  relevance: 0.7,
-                  content: `Session: ${task}`,
-                  source: `session:${session}`,
-                });
-              }
-            }
-          } catch {
-            // Skip malformed JSON lines
-          }
-        }
-      }
-    } catch {
-      // Sessions directory not readable - skip
-    }
-  }
-
-  return insights.filter((i) => i.relevance >= 0.7).slice(0, 5);
-}
-
-function extractTaskFromEntry(entry: Record<string, unknown>): string | null {
-  const msg = String(entry.message || "");
-  const patterns = [/told to ([^.]{10,80})/i, /task: ([^.]{10,80})/i, /completed: ([^.]{10,80})/i];
-  for (const pattern of patterns) {
-    const match = msg.match(pattern);
-    if (match) return match[1].trim();
-  }
-  return null;
-}
-
-function formatPastInsightsSection(insights: PastInsight[]): string {
-  if (insights.length === 0) return "";
-
-  // Filter: skip entries that are metrics-only noise (no actual lesson)
-  // Pattern matches: "[success] session_outcome: Ticks:X Tools:Y Outcome:unknown"
-  const hasSignal = (content: string): boolean => {
-    // Drop entries that are just metrics with no real content
-    const metricsOnly = /^(\[\w+\]\s*)?(session_outcome|outcome):\s*\w+/i;
-    if (metricsOnly.test(content.trim())) return false;
-    // Drop very short entries (< 15 chars is likely noise)
-    if (content.trim().length < 15) return false;
-    return true;
-  };
-
-  const filtered = insights.filter((i) => hasSignal(i.content));
-  if (filtered.length === 0) return "";
-
-  const lines: string[] = [
-    "",
-    "## Past Insights",
-    "*(Relevant experience from previous sessions)*",
-  ];
-  for (const insight of filtered) {
-    lines.push(`- ${insight.content}`);
-  }
-  return lines.join("\n");
-}
-
-/**
- * Load consolidated behavioral hints from the self-evolution pipeline.
- *
- * These are high-confidence patterns extracted from successful task outcomes.
- * The consolidation channel writes them when processing high-scoring episodes.
- * We inject the 3 most recent non-stale hints into the prompt as behavioral guidance.
- * Hints older than 30 days are pruned automatically.
- */
 const HINT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const HINT_MAX_COUNT = 20; // max hints on disk
 
-function loadConsolidatedHints(): string {
+async function loadConsolidatedHints(currentProject?: string): Promise<string[]> {
   try {
-    if (!existsSync(CONSOLIDATED_HINTS_FILE)) return "";
-    const content = readFileSync(CONSOLIDATED_HINTS_FILE, "utf-8");
+    if (!await asyncExists(CONSOLIDATED_HINTS_FILE)) return [];
+    const content = await readFile(CONSOLIDATED_HINTS_FILE, "utf-8");
     const lines = content.split("\n").filter((l: string) => l.trim());
-    if (lines.length === 0) return "";
+    if (lines.length === 0) return [];
 
     const now = Date.now();
     const parsed = lines
@@ -314,13 +113,24 @@ function loadConsolidatedHints(): string {
       })
       .filter((h: any): h is Record<string, any> => h !== null)
       .filter((h: any) => h.steps && (h.steps as string[]).length > 0)
-      .filter((h: any) => now - (h.createdAt ?? 0) < HINT_MAX_AGE_MS); // prune stale
+      .filter((h: any) => now - (h.createdAt ?? 0) < HINT_MAX_AGE_MS);
 
-    if (parsed.length === 0) return "";
+    if (parsed.length === 0) return [];
+
+    // Filter: prefer same-project hints. Cross-project hints are only included
+    // if they pass a higher quality bar (score >= 80) — same logic as
+    // isCrossProjectInjectionAllowed for episodic memory.
+    const sameProject = currentProject
+      ? parsed.filter((h: any) => !h.project || h.project === currentProject || h.project === "unknown")
+      : parsed;
+    const crossProject = currentProject
+      ? parsed.filter((h: any) => h.project && h.project !== currentProject && h.project !== "unknown" && (h.score ?? 0) >= 80)
+      : [];
+    const candidates = [...sameProject, ...crossProject];
 
     // Deduplicate by task: keep only the most recent entry per task
     const byTask = new Map<string, any>();
-    for (const h of parsed) {
+    for (const h of candidates) {
       const key = h.task ?? "";
       const existing = byTask.get(key);
       if (!existing || (h.createdAt ?? 0) > (existing.createdAt ?? 0)) {
@@ -329,33 +139,80 @@ function loadConsolidatedHints(): string {
     }
     const deduped = Array.from(byTask.values())
       .filter((h) => h.createdAt != null)
-      .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0)); // oldest-first
+      .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
 
-    // Take the 3 most recent
-    const hints = deduped.slice(-3);
-
-    const hintLines = [
-      "",
-      "## Learned Patterns",
-      "*(Consolidated from successful task outcomes)*",
-      "",
-    ];
-    for (const h of hints) {
-      hintLines.push(
-        `For \"${(h.task ?? "unknown").slice(0, 80)}\": ${h.steps.slice(0, 3).join(" → ")}`,
-      );
-    }
-    return hintLines.join("\n");
+    // Take the 3 most recent, render as readable strings
+    return deduped.slice(-3).map((h) => {
+      const task = (h.task ?? "unknown").slice(0, 80);
+      const steps = (h.steps as string[]).slice(0, 3).join(" → ");
+      return `When working on "${task}": ${steps}`;
+    });
   } catch {
-    return "";
+    return [];
   }
 }
 
-// Pi-native stores promptSnippets internally and passes them to buildSystemPrompt().
-// The braid prompt-builder only has access to getAllTools() which returns ToolInfo
-// (name, description, parameters) — promptSnippet is not exposed.
-// So we extract the first sentence from each tool's description automatically.
-// Only pi-native core tools that need consistent cross-version snippets are hardcoded.
+/**
+ * Relevance criteria for hints — uses the hint text and a context summary.
+ */
+const HINT_RELEVANCE_CRITERIA = {
+  systemPrompt:
+    "You are a relevance classifier. Determine if the given behavioral hint " +
+    "is relevant to the user's current task. A hint is relevant if it describes " +
+    "a strategy or workflow that could apply to what the user is working on. " +
+    "Generic hints like 'Fix type error: Reproduce → Locate → Apply' are NOT relevant. " +
+    "Answer only 'yes' or 'no'. Do not explain.",
+  userPrompt:
+    "Hint: {{hint}}\n" +
+    "Is this hint relevant to the user's current work?",
+};
+
+/** Heuristic fallback: reject generic-seeming hints. */
+function hintRelevanceFallback(hint: string): string {
+  // Reject hints shorter than 30 chars or that match generic patterns
+  if (hint.length < 30) return "no";
+  if (/Fix \w+ error:/.test(hint)) return "no";
+  if (/Debug.*isolate/.test(hint)) return "no";
+  if (/Reproduce.*Locate.*Apply/.test(hint)) return "no";
+  return "yes";
+}
+
+/**
+ * Pre-filter: run the cheap heuristic BEFORE the LLM classifier.
+ * If the heuristic says "no", skip the expensive LLM call entirely.
+ * This prevents known-bad hints from slipping through when the LLM
+ * misclassifies them despite instructions to reject generic patterns.
+ */
+function hintRelevancePreFilter(hint: string): "no" | "maybe" {
+  const fallback = hintRelevanceFallback(hint);
+  return fallback === "no" ? "no" : "maybe";
+}
+
+/**
+ * Filter hints by relevance using the utility model.
+ * Returns only hints classified as relevant to the current session.
+ */
+async function filterRelevantHints(
+  hints: string[],
+  ctx: ExtensionContext,
+): Promise<string[]> {
+  // Pre-filter: skip hints the cheap heuristic rejects outright.
+  // This avoids LLM calls for known-generic patterns and prevents
+  // the LLM from overriding the correct heuristic with a "yes".
+  const preFiltered = hints.filter((hint) => hintRelevancePreFilter(hint) !== "no");
+
+  const results = await Promise.all(
+    preFiltered.map((hint) =>
+      classify(ctx, HINT_RELEVANCE_CRITERIA, { hint }, {
+        maxTokens: 5,
+        timeoutMs: 3000,
+        fallback: () => hintRelevanceFallback(hint),
+      }),
+    ),
+  );
+
+  return preFiltered.filter((_, i) => results[i].label === "yes");
+}
 const KNOWN_SNIPPETS: Record<string, string> = {
   // pi-native core tools (consistent one-liners regardless of version)
   read: "Read file contents",
@@ -450,7 +307,7 @@ async function reconstructProjectContextSection(cwd: string): Promise<string> {
     const candidates = ["AGENTS.md", "CLAUDE.md"];
     for (const filename of candidates) {
       const filePath = join(dir, filename);
-      if (existsSync(filePath)) {
+      if (await asyncExists(filePath)) {
         try {
           return {
             path: filePath,
@@ -517,7 +374,7 @@ async function collectProjectContextStrings(cwd: string): Promise<string[]> {
     const candidates = ["AGENTS.md", "CLAUDE.md"];
     for (const filename of candidates) {
       const filePath = join(dir, filename);
-      if (existsSync(filePath) && !seenPaths.has(filePath)) {
+      if (await asyncExists(filePath) && !seenPaths.has(filePath)) {
         seenPaths.add(filePath);
         try {
           rawContents.push(await readFile(filePath, "utf-8"));
@@ -677,8 +534,7 @@ async function formatSkillsWithLineCounts(
   const hiddenCount = scored.length - boosted.length;
 
   const lines = [
-    "\n\nSkills are your first tool call. Load the relevant ones with \`read\` before starting any task.",
-    "If a skill path is relative, resolve it against the skill directory (parent of SKILL.md / dirname of the path).",
+    "\n\nSkills are your first tool call. Load all of the relevant ones with \`read\` before starting any task. ",
     "",
     "<available_skills>",
   ];
@@ -744,8 +600,6 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
         signals: Record<string, { turn: number; text: string; acted: boolean }>;
         contrastMode?: string;
       };
-      ps.enforcementSignals = d.signals;
-      ps.lastSignalTurn = d.turn;
       if (d.contrastMode) ps.activeContrastMode = d.contrastMode;
     });
   });
@@ -807,16 +661,14 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     if (!ps.insightsSent) {
       const pastInsights = await searchPastInsights(cwd);
       const insightsText = formatPastInsightsSection(pastInsights);
-      const hintsText = loadConsolidatedHints();
-      const combined = [insightsText, hintsText].filter(Boolean).join("\n");
-      if (combined) {
+      if (insightsText) {
         try {
           sendTrackedMessage(
             _pi,
             {
               customType: "context",
               display: true,
-              content: [{ type: "text" as const, text: combined }],
+              content: [{ type: "text" as const, text: insightsText }],
             },
             { deliverAs: "steer", triggerTurn: false },
             { type: "memory", source: "prompt-builder/insights" },
@@ -825,20 +677,41 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
           // Non-fatal: steer message send is best-effort
         }
       }
+
+      // Load and filter hints by utility model relevance, deliver as whispers
+      // Pass project ID so cross-project hints are deprioritized.
+      const projectId = deriveProjectIdFromCwd(cwd);
+      const allHints = await loadConsolidatedHints(projectId);
+      if (allHints.length > 0) {
+        try {
+          const relevantHints = await filterRelevantHints(allHints, ctx);
+          for (const hint of relevantHints) {
+            sendTrackedMessage(
+              _pi,
+              {
+                customType: "hint",
+                display: true,
+                content: [{ type: "text" as const, text: `[hint] ${hint}` }],
+              },
+              { deliverAs: "steer", triggerTurn: false },
+              { type: "memory", source: "prompt-builder/hint" },
+            );
+          }
+        } catch {
+          // Non-fatal: hint delivery is best-effort
+        }
+      }
+
       ps.insightsSent = true;
     }
 
     // 6. L1 environmental state
     parts.push(formatL1Environment(l1Env));
 
-    // 7. Enforcement signals
-    const enforcement = formatEnforcementL1(ps.enforcementSignals, ps.lastSignalTurn);
-    if (enforcement) parts.push(enforcement);
-
-    // 8. Active contrast mode (truthfulness guardrails)
+    // 7. Active contrast mode (truthfulness guardrails)
     parts.push(...formatContrastSection(ps.activeContrastMode));
 
-    // 9. Interaction style
+    // 8. Interaction style
     parts.push(INTERACTION_STYLE);
 
     // P0: Preserve appendSystemPrompt from pi-native
@@ -847,7 +720,7 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
       parts.push(appendPrompt);
     }
 
-    // 10. Date and cwd
+    // 9. Date and cwd
     parts.push(`Current time: ${new Date().toISOString()}`);
     parts.push(`Current working directory: ${cwd.replace(/\\/g, "/")}`);
 

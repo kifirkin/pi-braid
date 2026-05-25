@@ -462,7 +462,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
               content: [{ type: "text" as const, text: msg }],
               display: true,
             },
-            { deliverAs: "steer", triggerTurn: false },
+            { deliverAs: "steer", triggerTurn: true },
             { type: "heartbeat", source: "heartbeat/auto-finalize" },
           );
         },

@@ -105,9 +105,46 @@ export function onTimerFire(handler: TimerFireHandler): () => void {
 // Timer expiry checked every second — independent of turn_end so timers fire
 // even when the agent is between turns or blocked in a long tool call.
 // This is the primary fire mechanism; turn_end is a backup.
+// NOTE: Polling state is encapsulated in TimerPoller class. A single interval
+// serves all sessions. piRef is the most recently registered pi instance.
 const POLL_INTERVAL_MS = 1000;
-let pollHandle: ReturnType<typeof setInterval> | null = null;
-let piRef: ExtensionAPI | null = null;
+
+class TimerPoller {
+  pollHandle: ReturnType<typeof setInterval> | null = null;
+  piRef: ExtensionAPI | null = null;
+
+  setPiRef(pi: ExtensionAPI): void {
+    this.piRef = pi;
+  }
+
+  start(): void {
+    if (this.pollHandle) return;
+    this.pollHandle = setInterval(() => this.poll(), POLL_INTERVAL_MS);
+    log.info(`[timer] polling started (every ${POLL_INTERVAL_MS}ms)`);
+  }
+
+  stop(): void {
+    if (this.pollHandle) {
+      clearInterval(this.pollHandle);
+      this.pollHandle = null;
+    }
+  }
+
+  private poll(): void {
+    const pi = this.piRef;
+    if (!pi) return;
+    const expired = timerManager.checkExpired(Date.now());
+    for (const timer of expired) {
+      fireTimer(timer, pi);
+    }
+  }
+
+  isRunning(): boolean {
+    return this.pollHandle !== null;
+  }
+}
+
+const poller = new TimerPoller();
 
 function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
   for (const h of fireHandlers) {
@@ -147,22 +184,13 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
 }
 
 function startTimerPolling(pi: ExtensionAPI): void {
-  if (pollHandle) return; // Already polling
-  piRef = pi;
-  pollHandle = setInterval(() => {
-    const expired = timerManager.checkExpired(Date.now());
-    for (const timer of expired) {
-      fireTimer(timer, pi);
-    }
-  }, POLL_INTERVAL_MS);
-  log.info(`[timer] real-time polling started (every ${POLL_INTERVAL_MS}ms)`);
+  if (poller.isRunning()) return;
+  poller.setPiRef(pi);
+  poller.start();
 }
 
 function stopTimerPolling(): void {
-  if (pollHandle) {
-    clearInterval(pollHandle);
-    pollHandle = null;
-  }
+  poller.stop();
 }
 
 // ── Extension ───────────────────────────────────────────────────────────────

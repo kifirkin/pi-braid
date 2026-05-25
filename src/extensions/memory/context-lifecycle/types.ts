@@ -3,6 +3,9 @@ import {
   USAGE_WHISPER_ADVISORY,
   USAGE_COMPACT_MEDIUM,
   USAGE_COMPACT_AGGRESSIVE,
+  USAGE_TOKENS_SOFT,
+  USAGE_TOKENS_ADVISORY,
+  USAGE_TOKENS_WARNING,
 } from "../../../lib/context-thresholds.js";
 
 const log = createLogger("context-lifecycle");
@@ -28,7 +31,10 @@ export type SemanticSignalType =
   // ── Context Density Signals (SimpleMem 2601.02553, GenericAgent 2604.17091) ──────
   | "context_density_low"
   | "context_density_high"
-  | "context_duplicates";
+  | "context_duplicates"
+  // ── Task State Signals ───────────────────────────────────────────────────────
+  | "task_complexity"
+  | "decision_density";
 
 export interface SemanticSignal {
   id: string;
@@ -60,6 +66,7 @@ export function createSignal(
 export type PolicyTrigger =
   | { type: "signal"; signal: SemanticSignalType }
   | { type: "context_usage"; threshold: number }
+  | { type: "context_usage_tokens"; threshold: number }
   | { type: "turn_count"; threshold: number }
   | { type: "redundancy"; count: number }
   | { type: "any_signal" };
@@ -246,6 +253,47 @@ export function createDefaultPolicies(): ContextPolicy[] {
       action: { type: "compact", level: "light" },
       min_confidence: 0.6,
     },
+    // ── Token-count thresholds — preventive, fire BEFORE percentages ────────
+    {
+      id: "tokens-soft",
+      name: "Token-count: soft preventive whisper",
+      priority: 99,
+      cooldown_ms: 120_000,
+      trigger: { type: "context_usage_tokens", threshold: USAGE_TOKENS_SOFT },
+      action: {
+        type: "propose",
+        message: "Context at ~{tokens}K tokens. Consider pruning old tool results (context_prune dry-run).",
+        priority: "low",
+      },
+      suggested_action: "context_prune",
+    },
+    {
+      id: "tokens-advisory",
+      name: "Token-count: advisory — tag and consider archiving",
+      priority: 98,
+      cooldown_ms: 120_000,
+      trigger: { type: "context_usage_tokens", threshold: USAGE_TOKENS_ADVISORY },
+      action: {
+        type: "propose",
+        message: "Context grew past {tokens}K tokens. Tag your position (context_tag), then consider context_archive or context_checkout to branch.",
+        priority: "medium",
+      },
+      suggested_action: "context_tag",
+    },
+    {
+      id: "tokens-warning",
+      name: "Token-count: warning — suggest full pipeline",
+      priority: 97,
+      cooldown_ms: 120_000,
+      trigger: { type: "context_usage_tokens", threshold: USAGE_TOKENS_WARNING },
+      action: {
+        type: "propose",
+        message: "Context at {tokens}K tokens ({percent}%). Pipeline: context_tag → context_checkout → context_archive → compact (last resort).",
+        priority: "medium",
+      },
+      suggested_action: "context_tag",
+    },
+    // ── Percentage-based thresholds (take over at higher levels) ────────────
     {
       id: "high-usage-aggressive",
       name: "Aggressive compact on critical usage",
@@ -278,6 +326,37 @@ export function createDefaultPolicies(): ContextPolicy[] {
         priority: "low",
       },
       suggested_action: "context_archive",
+    },
+    // ── Task-state signal policies ──────────────────────────────────────────
+    {
+      id: "complexity-scratchpad",
+      name: "Task complexity — suggest scratchpad",
+      priority: 68,
+      cooldown_ms: 90_000,
+      trigger: { type: "signal", signal: "task_complexity" },
+      action: {
+        type: "propose",
+        message:
+          "Complex task detected ({unique_tools} unique tools). Consider updating scratchpad to track goal, decisions, and next steps.",
+        priority: "medium",
+      },
+      suggested_action: "scratchpad",
+      min_confidence: 0.5,
+    },
+    {
+      id: "decision-density-think",
+      name: "Decision density — suggest think before next change",
+      priority: 67,
+      cooldown_ms: 90_000,
+      trigger: { type: "signal", signal: "decision_density" },
+      action: {
+        type: "propose",
+        message:
+          "Dense decision-making detected ({high_stakes} high-stakes actions). Consider think(observation, decision, reason) before committing.",
+        priority: "medium",
+      },
+      suggested_action: "think",
+      min_confidence: 0.5,
     },
     {
       id: "density-low-prune",

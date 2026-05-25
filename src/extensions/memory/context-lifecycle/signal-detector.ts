@@ -224,6 +224,36 @@ export class SignalDetector {
       }
     }
 
+    // ── Task complexity detection ──────────────────────────────────────
+    // Detected when: >=4 unique tool types used this turn OR >=5 tools total
+    const uniqueToolTypes = new Set(toolCalls).size;
+    const totalToolsThisTurn = toolCalls.length;
+    if (uniqueToolTypes >= 4 || totalToolsThisTurn >= 5) {
+      signals.push(
+        createSignal("task_complexity", turn, {
+          unique_tools: uniqueToolTypes,
+          total_tools: totalToolsThisTurn,
+        }),
+      );
+    }
+
+    // ── Decision density detection ─────────────────────────────────────
+    // Detected when multiple high-stakes actions occur in one turn
+    const highStakesActions = toolCalls.filter((t) =>
+      ["edit", "write", "finalize"].includes(t),
+    ).length;
+    const stateChanges = toolCalls.filter((t) =>
+      ["memory_store", "context_tag", "context_checkout", "context_archive"].includes(t),
+    ).length;
+    if (highStakesActions >= 2 || (highStakesActions >= 1 && stateChanges >= 1)) {
+      signals.push(
+        createSignal("decision_density", turn, {
+          high_stakes: highStakesActions,
+          state_changes: stateChanges,
+        }),
+      );
+    }
+
     // Flush pending
     signals.push(...this.pendingSignals);
     this.pendingSignals = [];

@@ -13,7 +13,7 @@
 // - Key context is carried forward as a "continuation summary"
 
 import { statSync } from "node:fs";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getCmState } from "./shared.js";
 import { log } from "./shared.js";
 import { getRotationState } from "../../../../lib/global-state.js";
@@ -153,7 +153,7 @@ function buildContinuationSummary(ctx: ExtensionContext): string {
 
 // ── Emergency rotation trigger ─────────────────────────────────────────────
 // Called when context overflow is imminent to force rotation before cascade
-function triggerEmergencyRotation(pi: any, ctx: ExtensionContext): void {
+function triggerEmergencyRotation(pi: ExtensionAPI, ctx: ExtensionContext): void {
   try {
     const state = _sessionRotationState();
     if (state.pendingRotation) {
@@ -197,7 +197,7 @@ function triggerEmergencyRotation(pi: any, ctx: ExtensionContext): void {
 }
 
 // ── Register rotation handlers ───────────────────────────────────────────────
-export function registerRotationHandlers(pi: any): void {
+export function registerRotationHandlers(pi: ExtensionAPI): void {
   // Check rotation need on each turn_end
   pi.on("turn_end", async (_event: any, ctx: ExtensionContext) => {
     try {
@@ -360,7 +360,7 @@ export function registerRotationHandlers(pi: any): void {
 // Cleans up retry guards and compaction state when session ends.
 // Prevents stale state from leaking between sessions.
 
-export function registerSessionShutdownHandler(pi: any): void {
+export function registerSessionShutdownHandler(pi: ExtensionAPI): void {
   pi.on("session_shutdown", async (_event: unknown, ctx: ExtensionContext) => {
     log.debug("Session shutdown: clearing compaction retry state and intercept");
     const cmState = getCmState(ctx);

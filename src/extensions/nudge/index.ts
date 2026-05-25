@@ -467,15 +467,23 @@ export default function feedbackExtension(pi: ExtensionAPI) {
       const tools = (event.toolResults || []).map((r) => r.toolName);
 
       const madeFileChanges = tools.some((t) => ["edit", "write"].includes(t));
+      const isComplexTurn = tools.length >= 3;
       const usedScratchpad = tools.includes("scratchpad");
 
-      if (madeFileChanges && !usedScratchpad) {
-        const nudgeDef = generateNudge("scratchpad_missing", {});
+      // Widen: fire on file changes OR complex turns without scratchpad
+      if ((madeFileChanges || isComplexTurn) && !usedScratchpad) {
+        const reason = madeFileChanges
+          ? "You made file changes (edit/write) without updating scratchpad."
+          : `Complex turn (${tools.length} tools) without scratchpad tracking.`;
+        const message =
+          `${reason}\n\nUse the scratchpad tool to track:\n` +
+          `- Current goal\n- Decisions made\n- Next steps\n\nThis helps maintain context in long sessions.`;
+        const nudgeDef = { severity: "warning" as const, message, action: "Call scratchpad tool to update your tracking." };
         const nudge: Nudge = {
           id: `scratchpad-${Date.now()}`,
           timestamp: Date.now(),
           type: "scratchpad_missing",
-          severity: "warning",
+          severity: nudgeDef.severity,
           message: nudgeDef.message,
           triggeredBy: "turn_end",
           action: nudgeDef.action,
@@ -489,27 +497,36 @@ export default function feedbackExtension(pi: ExtensionAPI) {
       }
 
       const turnsSinceThink = state.currentTurn - state.lastThinkToolTurn;
-      if (
-        state.config.thinkToolEnforcementTurns > 0 &&
-        turnsSinceThink >= state.config.thinkToolEnforcementTurns &&
-        !state.thinkToolNudgeActive
-      ) {
+      const madeHighStakesAction = tools.some((t: string) =>
+        ["edit", "write", "finalize"].includes(t),
+      );
+      const noThinkEver = state.lastThinkToolTurn < 0;
+
+      // Widen: fire on (a) turn-count threshold OR (b) high-stakes action without prior think
+      const thinkNeeded =
+        (state.config.thinkToolEnforcementTurns > 0 &&
+          turnsSinceThink >= state.config.thinkToolEnforcementTurns) ||
+        (madeHighStakesAction && noThinkEver && state.currentTurn >= 3);
+
+      if (thinkNeeded && !state.thinkToolNudgeActive) {
         state.thinkToolNudgeActive = true;
-        const nudgeDef = generateNudge("think_tool_missing", { turnsSince: turnsSinceThink });
+        const message = madeHighStakesAction && noThinkEver
+          ? `High-stakes action without prior think(). Use think() to track:\n- Observation: what you discovered\n- Decision: what you decided\n- Reason: why you made that choice`
+          : `Consider using think() tool to record structured reasoning.\n\n${turnsSinceThink} turn(s) since think() was called. Use think() to track:\n- Observation: what you discovered\n- Decision: what you decided\n- Reason: why you made that choice`;
         const nudge: Nudge = {
           id: `think-${Date.now()}`,
           timestamp: Date.now(),
           type: "think_tool_missing",
           severity: "info",
-          message: nudgeDef.message,
+          message,
           triggeredBy: "turn_end",
-          action: nudgeDef.action,
+          action: "Call think() tool to record your reasoning.",
           acknowledged: false,
         };
 
         if (shouldSendNudge(state, nudge)) {
           recordNudge(state, nudge);
-          sendFeedbackWhisper(pi, nudgeDef.message);
+          sendFeedbackWhisper(pi, message);
         }
       }
     } catch (err) {

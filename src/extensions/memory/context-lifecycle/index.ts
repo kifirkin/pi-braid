@@ -171,6 +171,15 @@ function getContextUsage(ctx: any): number {
   }
 }
 
+function getContextTokens(ctx: any): number {
+  try {
+    const usage = ctx.getContextUsage?.();
+    return usage?.tokens ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 function getAllEntries(ctx: any) {
   try {
     const sm = ctx.sessionManager;
@@ -227,7 +236,9 @@ function formatDuration(ms: number): string {
 
 function interpolateMessage(message: string, ctx: any, signalData?: Record<string, unknown>): string {
   const usage = getContextUsage(ctx);
+  const tokens = getContextTokens(ctx);
   let result = message.replace("{percent}", `${usage.toFixed(0)}%`);
+  result = result.replace("{tokens}", `${Math.round(tokens / 1000)}K`);
 
   // Interpolate signal data fields (e.g., {noise}, {signal}, {count}, {density}, {token_ratio})
   if (signalData) {
@@ -496,6 +507,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     const evaluated = _policyEngine.evaluate({
       signals,
       contextUsage: usage,
+      contextTokens: getContextTokens(ctx),
       turnCount: branch.length,
       redundancyCount,
     });

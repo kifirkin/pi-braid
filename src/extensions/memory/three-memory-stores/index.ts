@@ -19,8 +19,12 @@ import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-
 import { getExtensionState, safeSessionManager } from "../../../lib/extension-state.js";
 import { emitSignal } from "../../../lib/belief-policy-engine.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
-import { readFile as fsReadFilePromise } from "node:fs/promises";
-import * as fs from "node:fs";
+import { readFile as readFilePromise, stat, writeFile, mkdir } from "node:fs/promises";
+
+/** Async helper: check if a path exists (replaces existsSync). */
+async function asyncExists(p: string): Promise<boolean> {
+  return stat(p).then(() => true).catch(() => false);
+}
 import * as path from "node:path";
 import {
   EPISODES_FILE,
@@ -336,8 +340,8 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
       // R9: Load analytics data to pre-populate tool stats
       const analyticsPath = METRICS_FILE;
       try {
-        if (fs.existsSync(analyticsPath)) {
-          const raw = fs.readFileSync(analyticsPath, "utf-8");
+        if (await asyncExists(analyticsPath)) {
+          const raw = await readFilePromise(analyticsPath, "utf-8");
           for (const line of raw.trim().split("\n").filter(Boolean).slice(-20)) {
             try {
               const entry = JSON.parse(line);
@@ -625,8 +629,8 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     if (state.episodes.length > 0) {
       try {
         const dir = path.dirname(EPISODES_FILE);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(
+        if (!await asyncExists(dir)) await mkdir(dir, { recursive: true });
+        await writeFile(
           EPISODES_FILE,
           state.episodes.map((e: any) => JSON.stringify(e)).join("\n"),
           "utf-8",
@@ -661,11 +665,9 @@ async function loadPastEpisodes(state: MemoryStoresState): Promise<number> {
   // Load from current path first
   const newPath = EPISODES_FILE;
   try {
-    if (fs.existsSync(newPath)) {
-      const lines = fs
-        .readFileSync(newPath, "utf-8")
-        .split("\n")
-        .filter((l) => l.trim());
+    if (await asyncExists(newPath)) {
+      const content = await readFilePromise(newPath, "utf-8");
+      const lines = content.split("\n").filter((l) => l.trim());
       for (const line of lines) {
         try {
           const ep: Episode = JSON.parse(line);
@@ -685,8 +687,8 @@ async function loadPastEpisodes(state: MemoryStoresState): Promise<number> {
   // Backward compat: load episodic items from cognitive-memory legacy path
   const legacyMemPath = LEGACY_MEMORY_FILE;
   try {
-    if (fs.existsSync(legacyMemPath)) {
-      const parsed = JSON.parse(fs.readFileSync(legacyMemPath, "utf-8"));
+    if (await asyncExists(legacyMemPath)) {
+      const parsed = JSON.parse(await readFilePromise(legacyMemPath, "utf-8"));
       const episodicItems: Array<any> = Array.isArray(parsed.memories)
         ? parsed.memories.filter((m: any) => m.type === "episodic")
         : [];

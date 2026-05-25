@@ -115,40 +115,32 @@ console.log("\n[2] Consolidation hint writing");
 
 // ── 3. Hint pruning in prompt-builder ─────────────────────────────────────────
 
-console.log("\n[3] Hint loading and pruning");
+console.log("\n[3] Hint loading with relevance filtering");
 {
   const promptSrc = readFileSync(
     "/Users/kifir/projects/agents/pi-braid/src/extensions/core/prompt-builder/index.ts",
     "utf-8",
   );
 
-  // Verify loadConsolidatedHints function exists
+  // loadConsolidatedHints returns string[] (3 most recent hints)
   assert.ok(
-    promptSrc.includes("loadConsolidatedHints"),
-    "prompt-builder should have loadConsolidatedHints function",
+    promptSrc.includes("function loadConsolidatedHints"),
+    "loadConsolidatedHints should exist (returns string[])",
   );
   assert.ok(
-    promptSrc.includes("HINT_MAX_AGE_MS"),
-    "should have 30-day TTL constant",
+    promptSrc.includes("HINT_RELEVANCE_CRITERIA"),
+    "should have relevance criteria for utility model filtering",
   );
   assert.ok(
-    promptSrc.includes("HINT_MAX_COUNT") || promptSrc.includes("slice(-3)"),
-    "should limit hints shown in prompt",
+    promptSrc.includes("filterRelevantHints"),
+    "should have filterRelevantHints that uses classify()",
   );
-
-  // Verify the hints section is injected
   assert.ok(
-    promptSrc.includes("Learned Patterns"),
-    "prompt should include 'Learned Patterns' section header",
+    promptSrc.includes("hintRelevanceFallback"),
+    "should have heuristic fallback for hint relevance",
   );
 
-  // Verify freshness filtering
-  assert.ok(
-    promptSrc.includes("createdAt"),
-    "hint loading should check createdAt for freshness",
-  );
-
-  console.log("  ✅ Hint loading and pruning logic verified");
+  console.log("  ✅ Hint system: load + relevance filter + whisper delivery");
 }
 
 // ── 4. End-to-end: write test hints, verify loadConsolidatedHints parses them ─

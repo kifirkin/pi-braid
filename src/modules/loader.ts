@@ -24,7 +24,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../lib/logger.js";
-import { getExtensionState } from "../lib/extension-state.js";
 
 import {
   type ModuleDef,
@@ -73,26 +72,17 @@ interface ModuleLoaderState {
   skipped: { module: string; ext: string; reason: string }[];
 }
 
-function getLoaderState(ctx?: ExtensionContext): ModuleLoaderState {
-  if (!ctx) {
-    if (!_globalLoaderState)
-      _globalLoaderState = {
-        runtimeConfig: new Map(),
-        loaded: [],
-        loadedCount: 0,
-        skipped: [],
-      };
-    return _globalLoaderState;
-  }
-  return getExtensionState(ctx, "module-loader", () => ({
-    runtimeConfig: new Map(),
-    loaded: [],
-    loadedCount: 0,
-    skipped: [],
-  }));
-}
+// Module loading state is process-wide — module config can't differ per session.
+const _loaderState: ModuleLoaderState = {
+  runtimeConfig: new Map(),
+  loaded: [],
+  loadedCount: 0,
+  skipped: [],
+};
 
-let _globalLoaderState: ModuleLoaderState | null = null;
+function getLoaderState(): ModuleLoaderState {
+  return _loaderState;
+}
 
 // ──── Pi settings.json persistence (two-tier: global + project) ─────────────
 
@@ -304,7 +294,7 @@ export function enableModule(name: string, ctx?: ExtensionContext): boolean {
   const def = getModuleDef(name);
   if (!def) return false;
   if (def.alwaysOn) return true;
-  const state = getLoaderState(ctx);
+  const state = getLoaderState();
   state.runtimeConfig.set(name, true);
   saveModuleOverridesToFile(state.runtimeConfig);
   return true;
@@ -315,7 +305,7 @@ export function disableModule(name: string, ctx?: ExtensionContext): boolean {
   const def = getModuleDef(name);
   if (!def) return false;
   if (def.alwaysOn) return false;
-  const state = getLoaderState(ctx);
+  const state = getLoaderState();
   state.runtimeConfig.set(name, false);
   saveModuleOverridesToFile(state.runtimeConfig);
   return true;
@@ -326,7 +316,7 @@ export function toggleModule(name: string, ctx?: ExtensionContext): boolean | nu
   const def = getModuleDef(name);
   if (!def) return null;
   if (def.alwaysOn) return true;
-  const state = getLoaderState(ctx);
+  const state = getLoaderState();
   const current = state.runtimeConfig.get(name);
   const next = current === undefined ? true : !current;
   state.runtimeConfig.set(name, next);
@@ -338,7 +328,7 @@ export function toggleModule(name: string, ctx?: ExtensionContext): boolean | nu
 export function getModuleStates(
   ctx?: ExtensionContext,
 ): Record<string, { enabled: boolean; loaded: boolean; source: string; description: string }> {
-  const state = getLoaderState(ctx);
+  const state = getLoaderState();
   const { enabled, source } = resolveEnabledModules();
   const result: Record<
     string,
@@ -360,7 +350,7 @@ export function getModuleStates(
 
 /** Reset all runtime overrides (does NOT clear settings.json). */
 export function resetModuleOverrides(ctx?: ExtensionContext): void {
-  getLoaderState(ctx).runtimeConfig.clear();
+  getLoaderState().runtimeConfig.clear();
 }
 
 // ──── Helpers ────────────────────────────────────────────────────────────────

@@ -1,13 +1,11 @@
 // ── Context-Manager Event Handlers ───────────────────────────────────────────
 // agent_end (retry handling), auto_retry_end (API errors), context (pruning workflow).
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { addEvidence } from "../../../../lib/evidence-pool.js";
 import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
 import { applyPruningWorkflow } from "../pruning.js";
-import {
-  findReasoningBlocks,
-  recordSummarization,
+import { findReasoningBlocks, confirmReasoningBlock, recordSummarization,
   shouldSummarizeReasoning,
   estimateTokensSaved,
   extractReasoningSummary,
@@ -31,7 +29,7 @@ import {
 } from "./shared.js";
 
 // ── Agent End Retry Handling ──────────────────────────────────────────────────
-export function registerAgentEndRetryHandler(pi: any): void {
+export function registerAgentEndRetryHandler(pi: ExtensionAPI): void {
   pi.on("agent_end", async (event: any, ctx: any) => {
     try {
       const messages = event.messages;
@@ -144,11 +142,11 @@ export function registerAgentEndRetryHandler(pi: any): void {
 }
 
 // ── Auto-Retry End Event ──────────────────────────────────────────────────────
-export function registerAutoRetryEndHandler(pi: any): void {
+export function registerAutoRetryEndHandler(pi: ExtensionAPI): void {
   pi.on(
     "auto_retry_end" as never,
     async (
-      event: { success?: boolean; attempt?: number; finalError?: string },
+      event: any,
       _ctx: ExtensionContext,
     ) => {
       try {
@@ -192,7 +190,7 @@ export function registerAutoRetryEndHandler(pi: any): void {
 }
 
 // ── Context Event Handler (pruning + semantic compression + trigger cleanup) ──
-export function registerContextPruningHandler(pi: any): void {
+export function registerContextPruningHandler(pi: ExtensionAPI): void {
   pi.on("context", async (event: any, ctx: any) => {
     try {
       log.bindContext(ctx);
@@ -254,6 +252,15 @@ export function registerContextPruningHandler(pi: any): void {
               `context: ${blocks.length} reasoning block(s) found — medium-term compression opportunity`,
             );
             for (const block of blocks) {
+              // Tier 2: Confirm with utility model before summarization
+              const lastContent = block.messages[block.messages.length - 1]?.content ?? "";
+              if (lastContent.length > 50) {
+                const confirmed = await confirmReasoningBlock(lastContent, ctx as any).catch(() => true);
+                if (!confirmed) {
+                  log.debug("context: reasoning block rejected by utility model, skipping");
+                  continue;
+                }
+              }
               recordSummarization(ctx as ExtensionContext, block, estimateTokensSaved(block));
               // P1.6: Extract high-value reasoning chains as episodic memories
               const summary = extractReasoningSummary(block);
@@ -341,7 +348,7 @@ export function registerContextPruningHandler(pi: any): void {
 // Actual compaction retries are handled by compaction.ts via ctx.compact() calls.
 // No more triggerTurn:true hidden turns — they caused context bloat.
 function triggerCompactionRetryFromAgentEnd(
-  _pi: any,
+  _pi: ExtensionAPI,
   _attempt: number,
   _errorMessage: string,
 ): void {
@@ -351,7 +358,7 @@ function triggerCompactionRetryFromAgentEnd(
 }
 
 function triggerOverflowRetryFromAgentEnd(
-  _pi: any,
+  _pi: ExtensionAPI,
   _attempt: number,
   _errorMessage: string,
   _ctx: any,

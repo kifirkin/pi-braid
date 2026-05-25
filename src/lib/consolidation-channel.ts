@@ -33,6 +33,8 @@ export interface ConsolidationCandidate {
   task: string;
   /** Outcome of the episode */
   outcome: "success" | "failure" | "partial";
+  /** Project identifier for cross-project filtering */
+  project?: string;
   /** Strategic SOP (high-level strategy) */
   strategicSOP?: string;
   /** Functional SOP (mid-level steps) */
@@ -182,6 +184,7 @@ export function scoreEpisode(episode: {
   id: string;
   task: string;
   outcome: "success" | "failure" | "partial";
+  project?: string;
   quality?: number;
   toolSequence?: string[];
   strategicSOP?: string;
@@ -196,6 +199,7 @@ export function scoreEpisode(episode: {
     episodeId: episode.id,
     task: episode.task,
     outcome: episode.outcome,
+    project: episode.project,
     strategicSOP: episode.strategicSOP,
     functionalSOP: episode.functionalSOP,
     quality: episode.quality ?? 0,
@@ -216,6 +220,7 @@ export function selectCandidates(
     id: string;
     task: string;
     outcome: "success" | "failure" | "partial";
+    project?: string;
     quality?: number;
     toolSequence?: string[];
     strategicSOP?: string;
@@ -243,6 +248,7 @@ export function selectBestCandidate(
     id: string;
     task: string;
     outcome: "success" | "failure" | "partial";
+    project?: string;
     quality?: number;
     toolSequence?: string[];
     strategicSOP?: string;
@@ -260,6 +266,66 @@ const _queue = new ConsolidationQueue();
 
 export function getConsolidationQueue(): ConsolidationQueue {
   return _queue;
+}
+
+// ── Hint Quality Filter ─────────────────────────────────────────────────────
+
+/**
+ * Patterns that indicate a hint is too generic to be useful.
+ * These are debugging/development clichés that provide zero information value
+ * when presented as behavioral hints across sessions.
+ */
+const GENERIC_STEP_PATTERNS = [
+  /^reproduce\s*bug$/i,
+  /^locate\s*root\s*cause$/i,
+  /^apply\s*fix$/i,
+  /^debug$/i,
+  /^isolate\s*(issue|problem|component)?$/i,
+  /^identify\s*(issue|problem|bug)?$/i,
+  /^fix\s*(it|the\s*issue|the\s*problem|the\s*bug)?$/i,
+  /^test\s*(the\s*fix|solution)?$/i,
+  /^verify\s*(the\s*fix|solution)?$/i,
+  /^check\s*(result|output|it)?$/i,
+];
+
+/** The classic three-step generic debugging cliché. */
+const GENERIC_DEBUG_TRIAD = [
+  /^reproduce\s*bug$/i,
+  /^locate\s*root\s*cause$/i,
+  /^apply\s*fix$/i,
+];
+
+/**
+ * Check whether a hint's steps are too generic to provide value.
+ * Rejects hints where all steps match known generic debugging patterns,
+ * or where the classic "Reproduce → Locate → Apply" triad is detected.
+ * Also rejects hints with fewer than 2 substantive (non-generic) steps.
+ */
+function isHintTooGeneric(task: string, steps: string[]): boolean {
+  if (!steps || steps.length === 0) return true;
+
+  // Check for the classic generic triad pattern (any variation)
+  const stepTexts = steps.map((s) => s.trim().toLowerCase());
+  let triadMatches = 0;
+  for (const pattern of GENERIC_DEBUG_TRIAD) {
+    if (stepTexts.some((s) => pattern.test(s))) triadMatches++;
+  }
+  if (triadMatches >= 3) return true;
+
+  // Count how many steps are just generic patterns
+  const genericCount = steps.filter((s) =>
+    GENERIC_STEP_PATTERNS.some((p) => p.test(s.trim())),
+  ).length;
+
+  // If more than half the steps are generic clichés, reject
+  if (genericCount >= steps.length * 0.5) return true;
+
+  // Reject if task description is just a file-specific error fix
+  if (/^(fix|resolve|address)\s+\w+\s+(error|issue|bug|warning)\s+in\s+\S+\.\w+$/i.test(task.trim())) {
+    return true;
+  }
+
+  return false;
 }
 
 // ── Heartbeat Integration ──────────────────────────────────────────────────
@@ -287,7 +353,12 @@ export function processConsolidationTick(): void {
   // This closes the self-evolution loop: successful patterns → persistent
   // hints → injected into future sessions → agent benefits from experience.
   // Cap at 20 hints, prune stale ones older than 30 days.
-  if (candidate.consolidationScore > 0.7 && candidate.functionalSOP) {
+  // Quality gate: skip hints whose steps are generic debugging clichés.
+  if (
+    candidate.consolidationScore > 0.7 &&
+    candidate.functionalSOP &&
+    !isHintTooGeneric(candidate.task, candidate.functionalSOP)
+  ) {
     try {
       mkdirSync(dirname(CONSOLIDATED_HINTS_FILE), { recursive: true });
 
@@ -318,6 +389,7 @@ export function processConsolidationTick(): void {
       const now = Date.now();
       const hint = {
         task: candidate.task,
+        project: candidate.project ?? "unknown",
         strategy: candidate.strategicSOP,
         steps: candidate.functionalSOP.slice(0, 5),
         score: Math.round(candidate.consolidationScore * 100),

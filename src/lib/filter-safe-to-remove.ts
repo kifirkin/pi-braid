@@ -1,6 +1,10 @@
 // Selective Hard Truncation — pre-filter 100%-certain-redundant items before LLM summarization.
 // This module is tested independently before being integrated into compaction.ts.
 
+import { createLogger } from "./logger.js";
+
+const log = createLogger("filter-safe");
+
 export interface AgentMessage {
   role: string;
   content?: string | Array<{ type: string; text?: string }>;
@@ -81,7 +85,7 @@ export function filterSafeToRemove(messages: AgentMessage[]): {
     return filterSafeToRemoveInner(messages);
   } catch (err) {
     // If filtering fails, return everything unchanged
-    console.error("filterSafeToRemove error:", err);
+    log.error("filterSafeToRemove error:", err);
     return {
       filtered: messages,
       stats: {

@@ -38,6 +38,9 @@ function matchesTrigger(trigger: ContextPolicy["trigger"], ctx: PolicyContext): 
     case "context_usage":
       return ctx.contextUsage >= trigger.threshold;
 
+    case "context_usage_tokens":
+      return ctx.contextTokens >= trigger.threshold;
+
     case "turn_count":
       return ctx.turnCount >= trigger.threshold;
 
@@ -56,7 +59,8 @@ function matchesTrigger(trigger: ContextPolicy["trigger"], ctx: PolicyContext): 
 
 interface PolicyContext {
   signals: SemanticSignal[];
-  contextUsage: number;
+  contextUsage: number;     // percentage (0-100)
+  contextTokens: number;    // absolute token count
   turnCount: number;
   redundancyCount: number;
 }

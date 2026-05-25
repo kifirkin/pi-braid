@@ -34,6 +34,25 @@ export const USAGE_COMPACT_AGGRESSIVE = 90;
 export const USAGE_FIRED_RESET_BELOW = 50;
 
 // ═════════════════════════════════════════════════════════════════════════════
+// TOKEN-COUNT THRESHOLDS (absolute tokens, model-agnostic early warnings)
+// ═════════════════════════════════════════════════════════════════════════════
+// Percentages fire too late for large context windows (200K+).
+// Token-count thresholds provide preventive nudges before context is heavy.
+// These complement the percentage thresholds — both triggers are evaluated.
+
+/** Soft whisper: consider pruning old tool results. */
+export const USAGE_TOKENS_SOFT = 30_000;
+
+/** Advisory: tag position, consider archiving completed work. */
+export const USAGE_TOKENS_ADVISORY = 50_000;
+
+/** Warning: context growing — suggest tag → checkout → archive pipeline. */
+export const USAGE_TOKENS_WARNING = 75_000;
+
+/** Above this, percentage thresholds take over naturally. */
+export const USAGE_TOKENS_CRITICAL = 100_000;
+
+// ═════════════════════════════════════════════════════════════════════════════
 // DENSITY THRESHOLDS (signal/noise ratio, 0-1)
 // ═════════════════════════════════════════════════════════════════════════════
 

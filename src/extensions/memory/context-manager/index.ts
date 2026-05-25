@@ -11,15 +11,18 @@ import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-
 //   events.ts   — agent_end retry, auto_retry_end, context pruning
 
 import { Type } from "typebox";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { log } from "./handlers/shared.js";
 import { registerTools } from "./handlers/tools.js";
 import {
   registerBeforeCompactHandler,
   registerSessionCompactHandler,
   registerCompactionEndHandler,
-  registerTurnEndRetryReset,
 } from "./handlers/compaction.js";
+import {
+  registerContextCleanupHandler,
+  registerTurnEndRetryReset,
+} from "./handlers/compaction-retry.js";
 import { registerAgentEndRetryHandler, registerAutoRetryEndHandler } from "./handlers/events.js";
 import {
   registerBeforeTreeHandler,
@@ -33,7 +36,7 @@ import {
 // import { registerContextPruningHandler } from "./handlers/events.js";
 import { registerRotationHandlers, registerSessionShutdownHandler } from "./handlers/rotation.js";
 
-export default function contextManagerExtension(pi: any): void {
+export default function contextManagerExtension(pi: ExtensionAPI): void {
   // ── Session Start ──────────────────────────────────────────────
   registerSessionStartHandler(
     pi,

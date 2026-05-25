@@ -34,6 +34,7 @@ export function getCustomModelKey(key: string): string | undefined {
 // ── Custom Settings Keys (polyfill) ─────────────────────────────────────────
 
 export const VISION_MODEL_KEY = "visionModel";
+export const UTILITY_MODEL_KEY = "utilityModel";
 
 // ── Rotation State (rotation.ts) ─────────────────────────────────────────────
 
