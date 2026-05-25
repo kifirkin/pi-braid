@@ -48,14 +48,10 @@ console.log("\n[2] Module system registration");
   assert(defs.includes('{ name: "sleep", fn: sleepFn }'), "sleep listed in contrib module extensions");
 }
 
-// ── [3] Tool-security allowlist ──────────────────────────────
-console.log("\n[3] Tool-security allowlist");
-{
-  const fs = await import("fs");
-  const ts = fs.readFileSync(`${ROOT}/src/lib/tool-security.ts`, "utf8");
-
-  assert(ts.includes('"sleep"'), "sleep in SAFE_TOOL_KEEP");
-}
+// ── [3] Tool-security: tool-security.ts was dead code (graveyard → deleted) ──
+// The file no longer exists, and the SAFE_TOOL_KEEP allowlist was abandoned.
+// Sleep tool registration in definitions.ts covers tool availability.
+console.log("\n[3] Tool-security check skipped (tool-security.ts was dead code)");
 
 // ── [4] Build artifact exists ────────────────────────────────
 console.log("\n[4] Build artifact");

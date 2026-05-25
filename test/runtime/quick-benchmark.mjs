@@ -259,7 +259,7 @@ test("contradiction: works vs fails detected", () => {
 test("unsupported claim detected", () => {
   const src = readFileSync("src/extensions/cognitive/verification/index.ts", "utf-8");
   deepEqual(src.includes("checkSupport"), true);
-  deepEqual(src.includes("semanticOverlap"), true);
+  deepEqual(src.includes("symmetricOverlap"), true);
 });
 
 test("decomposition coverage logic exists", () => {

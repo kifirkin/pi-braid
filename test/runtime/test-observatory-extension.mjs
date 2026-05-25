@@ -46,26 +46,12 @@ console.log("\n[2] Module system registration");
   assert(defs.includes("\"session_start\", \"session_shutdown\""), "observatory events in listensTo");
 }
 
-// ── [3] Observatory library exists with expected exports ─────────────
-console.log("\n[3] Observatory library integration");
-{
-  const fs = await import("fs");
-  const lib = fs.readFileSync(`${ROOT}/src/lib/observatory.ts`, "utf8");
-
-  assert(lib.includes("export function startObservatory"), "startObservatory exported");
-  assert(lib.includes("export function stopObservatory"), "stopObservatory exported");
-  assert(lib.includes("export function getObservatoryStatus"), "getObservatoryStatus exported");
-  assert(lib.includes("export function getCollector"), "getCollector exported");
-  assert(lib.includes("MetricsCollector"), "has MetricsCollector class");
-  assert(lib.includes("WebSocketServer"), "uses WebSocketServer");
-  assert(lib.includes("4199"), "default port 4199");
-  assert(lib.includes("eventBus.on("), "wired to event bus");
-  assert(lib.includes("turn_complete"), "listens to turn_complete");
-  assert(lib.includes("heartbeat_tick"), "listens to heartbeat_tick");
-  assert(lib.includes("AgentEventMetric"), "exports AgentEventMetric type");
-  assert(lib.includes("ToolCallMetric"), "exports ToolCallMetric type");
-}
-
+// ── 
+// ── [3] Observatory library check skipped (was dead code) ──
+// The old src/lib/observatory.ts was in graveyard/ and deleted.
+// Current observatory is at contrib/observatory/ (client tool) and
+// braid-os/observatory-daemon.ts (server daemon).
+console.log("[3] Observatory library check skipped (was dead code)");
 // ── [4] Frontend HTML exists and loads ───────────────────────────────
 console.log("\n[4] Observatory frontend");
 {
