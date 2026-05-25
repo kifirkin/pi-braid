@@ -36,10 +36,7 @@ const DEFAULT_SDK_RETRIES = 3;
 /** Cooldown after a rate-limit hit before attempting calls again. */
 const RATE_LIMIT_COOLDOWN_MS = 60_000;
 
-/** Timestamp of the last 429 seen, 0 = no rate-limit recently. */
-let lastRateLimitAt = 0;
-
-/** Track the cooldown expiration deadline for efficient checking inside loops. */
+/** Track the cooldown expiration deadline. Checks use this; lastRateLimitAt was removed (duplicate). */
 let rateLimitCooldownUntil = 0;
 
 // ── Options ────────────────────────────────────────────────────────────────────
@@ -80,19 +77,13 @@ export async function callLlm(
 ): Promise<{ text: string } | { error: string }> {
   // ── circuit breaker: skip if we recently hit a rate limit ─────────
   const now = Date.now();
-  if (lastRateLimitAt > 0 && now - lastRateLimitAt < RATE_LIMIT_COOLDOWN_MS) {
-    const remaining = RATE_LIMIT_COOLDOWN_MS - (now - lastRateLimitAt);
+  if (rateLimitCooldownUntil > 0 && now < rateLimitCooldownUntil) {
+    const remaining = rateLimitCooldownUntil - now;
     log.debug(`Skipping LLM call — rate-limit cooldown ${remaining}ms remaining`);
     return { error: "Rate-limit cooldown active" };
   }
 
   const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
-
-  // ── fast-path: check cooldown before starting the loop ──
-  if (Date.now() < rateLimitCooldownUntil) {
-    log.warn("LLM call skipped — rate-limit cooldown active");
-    return { error: "Rate-limit cooldown active" };
-  }
 
   const maxTokens =
     options.maxTokens ?? Math.min(Math.max(1000, Math.floor(userPrompt.length / 8)), 4000);
@@ -138,8 +129,6 @@ export async function callLlm(
           );
 
           if (isRateLimitError(result.errorMessage)) {
-            lastRateLimitAt = Date.now();
-            // Extend cooldown: track a deadline so future retries can skip without calling
             rateLimitCooldownUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
           }
 
@@ -149,7 +138,6 @@ export async function callLlm(
 
         // Non-retryable or exhausted — log and return
         if (isRateLimitError(result.errorMessage)) {
-          lastRateLimitAt = Date.now();
           rateLimitCooldownUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
           log.warn(
             `LLM rate-limited, giving up (cooldown ${RATE_LIMIT_COOLDOWN_MS}ms): ${result.errorMessage}`,

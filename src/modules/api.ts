@@ -40,7 +40,7 @@ export default async function modulesApiExtension(pi: ExtensionAPI): Promise<voi
         ctx.ui.notify?.(`Usage: modules-enable <name>\nAvailable: ${names.join(", ")}`, "warning");
         return;
       }
-      const ok = enableModule(name, ctx as any);
+      const ok = enableModule(name, ctx);
       ctx.ui.notify?.(
         ok ? `Module "${name}" enabled (next session startup).` : `Cannot enable "${name}".`,
         ok ? "info" : "error",
@@ -57,7 +57,7 @@ export default async function modulesApiExtension(pi: ExtensionAPI): Promise<voi
         ctx.ui.notify?.("Usage: modules-disable <name>", "warning");
         return;
       }
-      const ok = disableModule(name, ctx as any);
+      const ok = disableModule(name, ctx);
       ctx.ui.notify?.(
         ok
           ? `Module "${name}" disabled (next session).`
@@ -76,7 +76,7 @@ export default async function modulesApiExtension(pi: ExtensionAPI): Promise<voi
         ctx.ui.notify?.("Usage: modules-toggle <name>", "warning");
         return;
       }
-      const state = toggleModule(name, ctx as any);
+      const state = toggleModule(name, ctx);
       if (state === null) ctx.ui.notify?.(`Module "${name}" not found.`, "error");
       else
         ctx.ui.notify?.(`Module "${name}" toggled ${state ? "ON" : "OFF"} (next session).`, "info");
@@ -87,7 +87,7 @@ export default async function modulesApiExtension(pi: ExtensionAPI): Promise<voi
   pi.registerCommand("modules-list", {
     description: "List all modules with their state, load status, and config source.",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      const states = getModuleStates(ctx as any);
+      const states = getModuleStates(ctx);
       const lines: string[] = [];
       const source = Object.values(states)[0]?.source ?? "?";
       lines.push(`Modules (config: ${source}):`);
@@ -112,7 +112,7 @@ export default async function modulesApiExtension(pi: ExtensionAPI): Promise<voi
   pi.registerCommand("modules-status", {
     description: "Show current runtime module overrides and load state.",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      const states = getModuleStates(ctx as any);
+      const states = getModuleStates(ctx);
       const loaded = Object.values(states).filter((s) => s.loaded).length;
       const enabled = Object.values(states).filter((s) => s.enabled).length;
       const overrides = Object.entries(states).filter(([, s]) => {
@@ -131,7 +131,7 @@ export default async function modulesApiExtension(pi: ExtensionAPI): Promise<voi
   pi.registerCommand("modules-reset", {
     description: "Reset all runtime module overrides (restore defaults).",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      resetModuleOverrides(ctx as any);
+      resetModuleOverrides(ctx);
       ctx.ui.notify?.(
         "All module overrides reset. Defaults will apply on next session start.",
         "info",

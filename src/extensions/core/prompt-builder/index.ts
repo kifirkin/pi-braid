@@ -195,23 +195,16 @@ function hintRelevanceFallback(hint: string): string {
  * This prevents known-bad hints from slipping through when the LLM
  * misclassifies them despite instructions to reject generic patterns.
  */
-function hintRelevancePreFilter(hint: string): "no" | "maybe" {
-  const fallback = hintRelevanceFallback(hint);
-  return fallback === "no" ? "no" : "maybe";
-}
-
 /**
  * Filter hints by relevance using the utility model.
  * Returns only hints classified as relevant to the current session.
  */
 async function filterRelevantHints(hints: string[], ctx: ExtensionContext): Promise<string[]> {
-  // Pre-filter: skip hints the cheap heuristic rejects outright.
-  // This avoids LLM calls for known-generic patterns and prevents
-  // the LLM from overriding the correct heuristic with a "yes".
-  const preFiltered = hints.filter((hint) => hintRelevancePreFilter(hint) !== "no");
+  // No pre-filter: let the LLM classify all hints. The heuristic fallback
+  // (hintRelevanceFallback) is only used when the LLM call fails.
 
   const results = await Promise.all(
-    preFiltered.map((hint) =>
+    hints.map((hint) =>
       classify(
         ctx,
         HINT_RELEVANCE_CRITERIA,
@@ -225,7 +218,7 @@ async function filterRelevantHints(hints: string[], ctx: ExtensionContext): Prom
     ),
   );
 
-  return preFiltered.filter((_, i) => results[i].label === "yes");
+  return hints.filter((_, i) => results[i].label === "yes");
 }
 const KNOWN_SNIPPETS: Record<string, string> = {
   // pi-native core tools (consistent one-liners regardless of version)

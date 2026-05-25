@@ -52,8 +52,8 @@ function getChainState(ctx: ExtensionContext): ThoughtChainState {
 
 // ── Complexity Estimation (ODAR — Optimal Depth Allocation Routing) ──────────────────
 // Estimates task complexity (0-1) from task description for Fast/Slow routing.
-// Based on: docs/research/braid-loop-research.md (Improvement 3: Fast/Slow System Routing)
-// Based on: 2604.08890 "ODAR: Optimal Depth Allocation Routing"
+// Heuristic: keyword counting + length threshold. Not a learned routing algorithm.
+// References: docs/research/braid-loop-research.md (Improvement 3: Fast/Slow System Routing)
 //
 // Complexity signals:
 //   + High: long text (>300 chars), technical terms, multi-step keywords

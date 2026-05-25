@@ -14,8 +14,9 @@ import { getLastVerification } from "./verify.js";
 const log = createLogger("finalize");
 
 // ── R5: Record task completion to episodic memory ──────────────────────────────
-// Cascades: episodic → semantic → procedural per Evo-MedAgent (2604.14475).
-// On finalize, the completed task is stored as an episode so the agent can
+// Stores completed task as an episode so the agent can retrieve similar past
+// solutions via retrieveEpisodes(). Currently episodic-only; the full
+// cascade (episodic → semantic → procedural) is future work.
 // retrieve similar past solutions on future tasks via retrieveEpisodes().
 async function recordToMemory(
   ctx: ExtensionContext | undefined,
@@ -38,7 +39,7 @@ async function recordToMemory(
     const toolSeq = getSessionToolSequence(ctx);
     const outcome = completed ? "success" : "failure";
 
-    // Extract 3-tier SOP (SkillX 2604.04804)
+    // Extract 2-tier SOP: strategic (high-level plan) + functional (tool sequence)
     const strategicSOP = extractStrategicSOP(ctx, summary);
     const functionalSOP = extractFunctionalSOP(toolSeq);
     const atomicSOP = toolSeq; // Already the atomic-level SOP
@@ -95,18 +96,15 @@ function extractPrinciple(_ctx: ExtensionContext, summary: string): string {
 
 /**
  * Extract strategic SOP (high-level): Overall strategy from task description.
- * SkillX 2604.04804: Strategic plans guide overall approach.
+ * Simple implementation: uses the summary directly. Full extraction is future work.
  */
-function extractStrategicSOP(ctx: ExtensionContext, summary: string): string {
-  // MVP: Use the summary as strategic SOP
-  // TODO: Enhance with LLM extraction from first user message
+function extractStrategicSOP(_ctx: ExtensionContext, summary: string): string {
   return `Task: ${summary.slice(0, 200)}`;
 }
 
 /**
  * Extract functional SOP (mid-level): Key steps from tool sequence.
  * Groups consecutive tools into logical steps.
- * SkillX 2604.04804: Functional skills are mid-level procedures.
  */
 function extractFunctionalSOP(toolSeq: string[]): string[] {
   if (toolSeq.length === 0) return [];
