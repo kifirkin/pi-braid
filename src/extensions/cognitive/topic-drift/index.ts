@@ -11,9 +11,10 @@
  */
 
 import { Type } from "typebox";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../../lib/logger.js";
 import { getExtensionState } from "../../../lib/extension-state.js";
+import { onEvent } from "../../../lib/event-types.js";
 
 const log = createLogger("topic-drift");
 
@@ -243,7 +244,7 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
 
   // ── Event listeners (use 'any' cast — events exist at runtime) ─────────
 
-  (pi as any).on("user_message", (event: any, ctx: ExtensionContext) => {
+  onEvent(pi, "user_message", (event: any, ctx: ExtensionContext) => {
     try {
       const state = getExtensionState(ctx, "topic-drift", createDriftState);
       const message =
@@ -257,7 +258,7 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
     }
   });
 
-  (pi as any).on("tool_result", (event: any, ctx: ExtensionContext) => {
+  onEvent(pi, "tool_result", (event: any, ctx: ExtensionContext) => {
     try {
       const state = getExtensionState(ctx, "topic-drift", createDriftState);
       if (state.anchors.size === 0) return;
@@ -308,7 +309,7 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
     execute: async (_toolCallId: string, params: any): Promise<any> => {
       try {
         const p = params as { output?: string };
-        const state = getExtensionState({ cwd: "check" } as any, "topic-drift", createDriftState);
+        const state = getExtensionState({ cwd: "check" } as ExtensionContext, "topic-drift", createDriftState);
         const output = p.output ?? "";
         const result = detectTopicDrift("check", output, state);
 
@@ -343,7 +344,7 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
         };
       }
     },
-  } as any);
+  } as ToolDefinition);
 
   pi.registerTool({
     name: "reset_topic_anchors",
@@ -355,7 +356,7 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
     execute: async (_toolCallId: string, params: any): Promise<any> => {
       try {
         const p = params as { newRequest?: string };
-        const state = getExtensionState({ cwd: "reset" } as any, "topic-drift", createDriftState);
+        const state = getExtensionState({ cwd: "reset" } as ExtensionContext, "topic-drift", createDriftState);
         const request = p.newRequest ?? state.originalRequest;
         resetAnchors(state, request);
 
@@ -382,7 +383,7 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
         };
       }
     },
-  } as any);
+  } as ToolDefinition);
 
   log.info("Topic drift detector registered: check_topic_drift, reset_topic_anchors");
 }

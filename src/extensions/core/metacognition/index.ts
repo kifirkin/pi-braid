@@ -6,7 +6,7 @@
  * Research: docs/research/bicameral-mind-analysis.md
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "../../../lib/extension-state.js";
 import { createThinkTool, recordCalibration } from "./handlers/think.js";
 import { createHypothesizeTool } from "./handlers/hypothesize.js";
@@ -46,8 +46,8 @@ function getMetaState(ctx: ExtensionContext): MetaMetrics {
 
 export default function metacognitionExtension(pi: ExtensionAPI) {
   // Register tools
-  pi.registerTool(createThinkTool() as any);
-  pi.registerTool(createHypothesizeTool() as any);
+  pi.registerTool(createThinkTool() as ToolDefinition<any, any, any>);
+  pi.registerTool(createHypothesizeTool() as ToolDefinition<any, any, any>);
   pi.registerTool(
     createFinalizeTool({
       onFinalize: (_summary, _completed) => {
@@ -68,11 +68,11 @@ export default function metacognitionExtension(pi: ExtensionAPI) {
         );
       },
       recordCalibration,
-    }) as any,
+    }) as ToolDefinition<any, any, any>,
   );
 
   // ── Verify Tool ───────────────────────────────────────────────────────────
-  pi.registerTool(createVerifyTool() as any);
+  pi.registerTool(createVerifyTool() as ToolDefinition<any, any, any>);
 
   // Track tool usage
   pi.on("tool_execution_end", (event: any, ctx: ExtensionContext) => {

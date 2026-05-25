@@ -14,7 +14,7 @@ const log = createLogger("scratchpad");
 
 import { StringEnum } from "@mariozechner/pi-ai";
 import { Type } from "typebox";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import type { AgentToolResult } from "@mariozechner/pi-coding-agent";
 
 // ── Re-export types and persistence for importers ─────────────────────────
@@ -232,7 +232,7 @@ async function getOrCreateScratchpad(
   ctx: ExtensionContext,
   goal?: string,
 ): Promise<TaskScratchpad | null> {
-  const cwd = (ctx as any).cwd ?? "";
+  const cwd = (ctx as { cwd?: string }).cwd ?? "";
   const slug = resolveProjectSlug(cwd);
 
   // Check cache first
@@ -259,7 +259,7 @@ async function mutateAndSave(scratchpad: TaskScratchpad): Promise<void> {
 }
 
 function resolveProjectSlugFromCtx(ctx: ExtensionContext): string {
-  const cwd = (ctx as any).cwd ?? "";
+  const cwd = (ctx as { cwd?: string }).cwd ?? "";
   return resolveProjectSlug(cwd);
 }
 
@@ -664,5 +664,5 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
       "Track goals, plans, and decisions throughout multi-step tasks using structured session memory. Use scratchpad(action='add_plan') at the start, add notes and learnings as you work.",
     parameters: scratchpadParams,
     execute: scratchpadExecute,
-  } as any);
+  } as unknown as ToolDefinition<any, any, any>);
 }

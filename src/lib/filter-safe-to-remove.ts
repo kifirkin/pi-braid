@@ -23,14 +23,14 @@ function estimateMsgTokens(msg: AgentMessage): number {
     if (typeof content === "string") chars = content.length;
     else if (Array.isArray(content)) {
       for (const block of content) {
-        if (block.type === "text" && (block as any).text) chars += (block as any).text.length;
+        if (block.type === "text" && "text" in block) chars += (block as { text: string }).text.length;
       }
     }
   } else if (msg.role === "toolResult") {
     if (typeof msg.content === "string") chars = msg.content.length;
     else if (Array.isArray(msg.content)) {
       for (const block of msg.content) {
-        if (block.type === "text" && (block as any).text) chars += (block as any).text.length;
+        if (block.type === "text" && "text" in block) chars += (block as { text: string }).text.length;
       }
     }
   }
@@ -152,8 +152,8 @@ function filterSafeToRemoveInner(messages: AgentMessage[]): {
     // These are ephemeral — they guide the current turn but should NOT be
     // persisted through compaction. Filter them out to prevent the LLM
     // summary from conflating nudge content with real user intent.
-    const details = (msg as any).details;
-    if (details && details._braidInjected === true) {
+    const details = (msg as Record<string, unknown>).details;
+    if (details && typeof details === "object" && (details as Record<string, unknown>)._braidInjected === true) {
       removed++;
       // Don't push — skip entirely
       continue;
@@ -234,7 +234,7 @@ function filterSafeToRemoveInner(messages: AgentMessage[]): {
         if (toolCallId) {
           let toolName = "";
           for (const prev of messages) {
-            if (prev.role === "toolCall" && (prev as any).toolCallId === toolCallId) {
+            if (prev.role === "toolCall" && (prev as { toolCallId?: string }).toolCallId === toolCallId) {
               toolName = (prev.toolName ?? "").toLowerCase();
               break;
             }

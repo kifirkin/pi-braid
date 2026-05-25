@@ -196,9 +196,9 @@ async function handleSycophancy(
 
   // Get session history — use getBranch(), getCurrentSession() does not exist on SessionManager
   // Use safeSessionManager to avoid assertActive() crash on stale ctx
-  const sm = safeSessionManager(ctx) as any;
+  const sm = safeSessionManager(ctx) as { getBranch?(): unknown[] } | undefined;
 
-  const entries: any[] = sm?.getBranch?.() ?? [];
+  const entries: unknown[] = sm?.getBranch?.() ?? [];
 
   const messages: any[] = entries
     .filter((e: any) => e.type === "message")
@@ -211,7 +211,7 @@ async function handleSycophancy(
     typeof lastUserMsg?.content === "string"
       ? lastUserMsg.content
       : Array.isArray(lastUserMsg?.content)
-        ? (lastUserMsg.content as any[])
+        ? (lastUserMsg.content as unknown[])
             .filter((c: any): c is { type: "text"; text: string } => c.type === "text")
             .map((c: { type: "text"; text: string }) => c.text)
             .join("\n")
@@ -233,7 +233,7 @@ async function handleSycophancy(
     typeof lastAssistantMsg?.content === "string"
       ? lastAssistantMsg.content
       : Array.isArray(lastAssistantMsg?.content)
-        ? (lastAssistantMsg.content as any[])
+        ? (lastAssistantMsg.content as unknown[])
             .filter((c: any): c is { type: "text"; text: string } => c.type === "text")
             .map((c: { type: "text"; text: string }) => c.text)
             .join("\n")

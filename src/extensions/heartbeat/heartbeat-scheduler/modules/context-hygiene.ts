@@ -113,7 +113,7 @@ export const contextHygieneModule: CognitiveModule = {
     try {
       for (const signal of signals) {
         const state = getExtensionState(ctx, "context-lifecycle", () => ({
-          signalQueue: [] as any[],
+          signalQueue: [] as unknown[],
         }));
         state.signalQueue.push(signal);
       }

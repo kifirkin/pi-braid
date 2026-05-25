@@ -233,7 +233,7 @@ export function generateDensitySignals(ctx: ExtensionContext): SemanticSignal[] 
         noise: density.noisyMessages,
       },
       timestamp: Date.now(),
-      turn: undefined as any,
+      turn: 0,
       confidence: 0.8,
     });
   } else if (density.density >= DENSITY_HIGH && density.tokenRatio > TOKEN_RATIO_LARGE_CONTEXT) {
@@ -242,7 +242,7 @@ export function generateDensitySignals(ctx: ExtensionContext): SemanticSignal[] 
       type: "context_density_high",
       data: { density: density.density, token_ratio: density.tokenRatio },
       timestamp: Date.now(),
-      turn: undefined as any,
+      turn: 0,
       confidence: 0.8,
     });
   }
@@ -253,7 +253,7 @@ export function generateDensitySignals(ctx: ExtensionContext): SemanticSignal[] 
       type: "context_duplicates",
       data: { count: density.duplicates },
       timestamp: Date.now(),
-      turn: undefined as any,
+      turn: 0,
       confidence: 0.8,
     });
   }

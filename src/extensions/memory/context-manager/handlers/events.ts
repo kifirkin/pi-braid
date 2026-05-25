@@ -211,7 +211,7 @@ export function registerContextPruningHandler(pi: ExtensionAPI): void {
           turnCount: Math.round(beforeCount / 2),
           turnsSinceCompression: pruningState.turnsSinceCompression ?? Infinity,
           consecutiveFailures: pruningState.consecutiveFailures ?? 0,
-          reasoningChainDepth: (pruningState as any).reasoningChainDepth ?? 0,
+          reasoningChainDepth: (pruningState as { reasoningChainDepth?: number }).reasoningChainDepth ?? 0,
           messageCount: beforeCount,
         });
         if (decision.estimatedSavings > 0) {
@@ -253,7 +253,7 @@ export function registerContextPruningHandler(pi: ExtensionAPI): void {
               // Tier 2: Confirm with utility model before summarization
               const lastContent = block.messages[block.messages.length - 1]?.content ?? "";
               if (lastContent.length > 50) {
-                const confirmed = await confirmReasoningBlock(lastContent, ctx as any).catch(
+                const confirmed = await confirmReasoningBlock(lastContent, ctx as ExtensionContext).catch(
                   () => true,
                 );
                 if (!confirmed) {
@@ -283,7 +283,7 @@ export function registerContextPruningHandler(pi: ExtensionAPI): void {
               }
             }
             if (pruningState)
-              (pruningState as any).reasoningChainDepth = Math.max(
+              (pruningState as Record<string, number>).reasoningChainDepth = Math.max(
                 ...blocks.map((b: any) => b.messages.length),
               );
           }

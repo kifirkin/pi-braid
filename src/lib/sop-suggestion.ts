@@ -428,7 +428,7 @@ export function injectSopSuggestions(
 
     // Emit event for analytics
     try {
-      (eventBus.emit as any)({
+      (eventBus as { emit: (event: unknown) => void }).emit({
         type: "sop_suggestion_injected",
         details: { count: injected, tokens: totalTokens },
       });

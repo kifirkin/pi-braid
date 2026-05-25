@@ -178,7 +178,7 @@ function compressToolUnit(unit: SemanticUnit): AgentMessage[] {
   if (unit.messages.length <= 1) return unit.messages;
   const byTool = new Map<string, AgentMessage[]>();
   for (const msg of unit.messages) {
-    const toolName = (msg as any).toolName ?? "unknown";
+    const toolName = (msg as { toolName?: string }).toolName ?? "unknown";
     if (!byTool.has(toolName)) byTool.set(toolName, []);
     byTool.get(toolName)!.push(msg);
   }
@@ -188,7 +188,7 @@ function compressToolUnit(unit: SemanticUnit): AgentMessage[] {
       result.push(toolMsgs[0]);
     } else {
       const last = toolMsgs[toolMsgs.length - 1];
-      (last as any)._bcrCount = toolMsgs.length;
+      (last as unknown as Record<string, unknown>)._bcrCount = toolMsgs.length;
       result.push(last);
     }
   }
@@ -277,7 +277,7 @@ export function semanticCompress(
         processed = kept;
       }
     } else if (unit.type === "boilerplate") {
-      const text = extractText(unit.messages[0] as any);
+      const text = extractText(unit.messages[0]);
       if (compressionLevel === "long-term") {
         // Drop all boilerplate in long-term mode
         processed = text.length > 100 ? [unit.messages[0]] : [];

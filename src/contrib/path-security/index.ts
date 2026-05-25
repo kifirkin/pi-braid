@@ -213,7 +213,7 @@ export default function pathSecurityExtension(pi: ExtensionAPI): void {
   onEvent(pi, "tool_call", async (event: any, ctx: ExtensionContext) => {
     const toolName: string = event?.toolName ?? "";
     const input = (event?.input ?? {}) as Record<string, unknown>;
-    const cwd: string = (ctx as any).cwd ?? process.cwd();
+    const cwd: string = (ctx as { cwd?: string }).cwd ?? process.cwd();
     const allowlist = buildAllowlist(cwd);
 
     // ── File tools: check `path` parameter (deterministic, no LLM) ──────

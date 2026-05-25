@@ -533,8 +533,8 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
 
     // Extract first user message as task context
     // Use safeSessionManager to avoid assertActive() crash on stale ctx
-    const manager = safeSessionManager(ctx) as any;
-    const entries = manager?.getBranch?.() as any[] | undefined;
+    const manager = safeSessionManager(ctx) as { getBranch?(): any[] } | undefined;
+    const entries = manager?.getBranch?.();
     if (!entries || entries.length === 0) return;
     const firstUserMsg = entries.find(
       (e: any) => e.type === "message" && e.message?.role === "user",

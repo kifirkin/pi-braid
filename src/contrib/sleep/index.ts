@@ -13,7 +13,7 @@
  * naturally when the promise resolves — no steer or timer-bus needed.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { createLogger } from "../../lib/logger.js";
 
@@ -89,7 +89,7 @@ export default function sleepExtension(pi: ExtensionAPI): void {
         },
       };
     },
-  } as any);
+  } as ToolDefinition<any, any, any>);
 
   log.info("[sleep] loaded: sleep");
 }

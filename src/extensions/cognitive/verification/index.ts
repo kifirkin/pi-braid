@@ -9,7 +9,7 @@
  */
 
 import { Type } from "typebox";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../../lib/logger.js";
 import { classify } from "../../../lib/text-classifier.js";
 
@@ -517,7 +517,7 @@ export default function verificationExtension(pi: ExtensionAPI) {
         };
       }
     },
-  } as any);
+  } as unknown as ToolDefinition<any, any, any>);
 
   pi.registerTool({
     name: "verify_decomposition",
@@ -548,7 +548,7 @@ export default function verificationExtension(pi: ExtensionAPI) {
         };
       }
     },
-  } as any);
+  } as unknown as ToolDefinition<any, any, any>);
 
   log.info("Verification extension registered: verify_claim, verify_decomposition");
 }

@@ -347,7 +347,7 @@ export function processAgentResponse(
   const state = getClaimState(ctx);
   // Defensive: if state was corrupted by a mismatched factory, reset it
   if (!state.claims) {
-    (state as any).claims = [];
+    (state as unknown as Record<string, unknown>).claims = [];
   }
   const newClaims = extractClaims(text);
 

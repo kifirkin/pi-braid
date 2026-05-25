@@ -157,7 +157,7 @@ export default function turnOutcomeExtension(pi: ExtensionAPI): void {
       .filter((r) => r.isError)
       .map((r) => r.toolName)
       .filter(Boolean);
-    const fileTools = tools.filter((t) => FILE_CHURN_TOOLS.includes(t as any));
+    const fileTools = tools.filter((t) => FILE_CHURN_TOOLS.includes(t));
     const hadProgress = tools.length > 0 && erroredTools.length === 0;
 
     // Record this turn

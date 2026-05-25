@@ -114,11 +114,11 @@ function flushWhisperBuffer(
   // Flush one message per priority tier
   for (const [priority, messages] of groups) {
     if (messages.length === 1) {
-      send(messages[0], { category: "cognitive", priority } as any);
+      send(messages[0], { category: "cognitive", priority: priority });
     } else {
       const combined = `[Heartbeat Summary]
 ${messages.map((m, i) => `${i + 1}. ${m}`).join("\n")}`;
-      send(combined, { category: "cognitive", priority } as any);
+      send(combined, { category: "cognitive", priority: priority });
     }
   }
 }
@@ -299,7 +299,7 @@ function tick(
     .finally(() => {
       // Restore original whisper and flush buffer
       ctx.whisper = originalWhisper;
-      flushWhisperBuffer(whisperBuffer, originalWhisper as any);
+      flushWhisperBuffer(whisperBuffer, originalWhisper as ((msg: string, opts?: { category?: string; priority?: string }) => void) | undefined);
     });
 }
 
@@ -480,7 +480,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
       // SOP Retrieval + Coach Decision
       try {
         const { retrieveEpisodes } =
-          (await import("../../memory/three-memory-stores/index.js")) as any;
+          (await import("../../memory/three-memory-stores/index.js")) as { retrieveEpisodes: Function };
         const memState = getMemoryState(ctx);
         if (memState) {
           const project = ctx.cwd ?? "unknown";
@@ -506,7 +506,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     // Inject SOP suggestions based on the current turn's user message
     try {
       const { retrieveEpisodes } =
-        (await import("../../memory/three-memory-stores/index.js")) as any;
+        (await import("../../memory/three-memory-stores/index.js")) as { retrieveEpisodes: Function };
       const memState = getMemoryState(ctx);
       if (memState && memState.episodes) {
         // Use the user message from the event or the latest message in context

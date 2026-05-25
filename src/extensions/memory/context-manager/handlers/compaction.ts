@@ -318,6 +318,8 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
       // Removes duplicate reads, resolved errors, oversized non-critical outputs.
       // Reduces context before LLM call so LLM summarization has an easier job.
       if (prep?.messagesToSummarize?.length) {
+        // Type bridge: filterSafeToRemove uses its own AgentMessage interface;
+        // pi's messagesToSummarize uses pi's AgentMessage. Structurally compatible.
         const { filtered, stats } = filterSafeToRemove(prep.messagesToSummarize as any[]);
         if (stats.totalRemoved > 0) {
           const pct = Math.round((1 - stats.afterTokens / stats.beforeTokens) * 100);

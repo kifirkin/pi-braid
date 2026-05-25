@@ -13,7 +13,7 @@ import { createLogger } from "../../../lib/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { METRICS_FILE, METRICS_DIR } from "../../../lib/braid-paths.js";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { getExtensionState, safeSessionManager } from "../../../lib/extension-state.js";
 import { emitSignal } from "../../../lib/belief-policy-engine.js";
 import { eventBus } from "../../../lib/event-bus.js";
@@ -55,9 +55,9 @@ export default function analyticsExtension(pi: ExtensionAPI) {
   // ── session_start ──────────────────────────────────────────────────
   registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event, ctx) => {
     const state = getAnalyticsStateInternal(ctx);
-    const sm = safeSessionManager(ctx);
+    const sm = safeSessionManager(ctx) as { getSessionFile?(): string } | undefined;
     state.sessionId = sm
-      ? ((sm as any).getSessionFile?.() ?? `session-${Date.now()}`)
+      ? (sm.getSessionFile?.() ?? `session-${Date.now()}`)
       : `session-${Date.now()}`;
     state.sessionStartTime = Date.now();
     state.toolMetrics.clear();
@@ -351,7 +351,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
         },
       };
     },
-  } as any);
+  } as ToolDefinition);
 
   pi.registerTool({
     name: "get-tool-reliability",
@@ -383,7 +383,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
         },
       };
     },
-  } as any);
+  } as ToolDefinition);
 
   pi.registerTool({
     name: "get-ab-results",
@@ -423,7 +423,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
         details: { variants: rows },
       };
     },
-  } as any);
+  } as ToolDefinition);
 
   pi.registerTool({
     name: "get-tool-addiction",
@@ -478,7 +478,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
         details: { totalCalls, tools: results },
       };
     },
-  } as any);
+  } as ToolDefinition);
 
   pi.registerTool({
     name: "hidden-messages",
@@ -520,5 +520,5 @@ export default function analyticsExtension(pi: ExtensionAPI) {
         },
       };
     },
-  } as any);
+  } as ToolDefinition);
 }

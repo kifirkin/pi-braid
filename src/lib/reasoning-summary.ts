@@ -81,7 +81,7 @@ export function findReasoningBlocks(
   let current: any = null;
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
-    if (isReasoningMessage(msg as any)) {
+    if (isReasoningMessage(msg)) {
       const content =
         typeof msg.content === "string"
           ? msg.content

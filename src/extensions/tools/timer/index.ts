@@ -5,7 +5,7 @@
  * This replaces bash `sleep` which blocks the tool call.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, AgentToolResult, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../../lib/logger.js";
 import { Type } from "typebox";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
@@ -237,7 +237,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
         },
       };
     },
-  } as any);
+  } as ToolDefinition);
 
   // timer_list
   pi.registerTool({
@@ -276,7 +276,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
         details: { active_timers: timers.length, timers: formatted },
       };
     },
-  } as any);
+  } as ToolDefinition);
 
   // timer_cancel
   pi.registerTool({
@@ -297,7 +297,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
         details: { cancelled: true, timer_id, active_timers: timerManager.getActiveCount() },
       };
     },
-  } as any);
+  } as ToolDefinition);
 
   // Start real-time polling on load
   startTimerPolling(pi);
@@ -311,7 +311,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
   });
 
   // Clean up polling on shutdown
-  pi.on("session_shutdown" as any, () => {
+  pi.on("session_shutdown", () => {
     stopTimerPolling();
   });
 

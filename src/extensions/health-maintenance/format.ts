@@ -1,11 +1,19 @@
 import type { HealthMaintenanceResult } from "./types.js";
 
+interface StatusData {
+  metrics?: { totalTurns: number; avgHealthcheck?: number; avgErrorRate: number; avgToolSuccess?: number; degraded: boolean };
+  metacognition?: { confidence: number; knowledgeGaps?: string[] };
+}
+
+interface HealthData { overall?: string; score?: number }
+interface CheckData { degraded?: boolean }
+
 export function formatHealthMaintenanceOutput(result: HealthMaintenanceResult): string {
   const lines: string[] = [];
 
   switch (result.action) {
     case "status": {
-      const data = result.data as any;
+      const data = result.data as unknown as StatusData;
       lines.push("# Agent Evolution Status");
       lines.push("");
 
@@ -25,7 +33,7 @@ export function formatHealthMaintenanceOutput(result: HealthMaintenanceResult): 
         lines.push("");
         lines.push("**Metacognition:**");
         lines.push(`- Confidence: ${(mc.confidence * 100)?.toFixed(0)}%`);
-        if (mc.knowledgeGaps?.length > 0) {
+        if (mc.knowledgeGaps && mc.knowledgeGaps.length > 0) {
           lines.push(`- Knowledge Gaps: ${mc.knowledgeGaps.join(", ")}`);
         }
       }
@@ -33,7 +41,7 @@ export function formatHealthMaintenanceOutput(result: HealthMaintenanceResult): 
     }
 
     case "health": {
-      const data = result.data as any;
+      const data = result.data as unknown as HealthData;
       lines.push("# Healthcheck Result");
       lines.push("");
       lines.push(`**Status:** ${(data?.overall ?? "unknown").toUpperCase()}`);
@@ -42,7 +50,7 @@ export function formatHealthMaintenanceOutput(result: HealthMaintenanceResult): 
     }
 
     case "check": {
-      const data = result.data as any;
+      const data = result.data as unknown as CheckData;
       lines.push("# Degradation Check");
       lines.push("");
       lines.push(`**Degraded:** ${data?.degraded ? "🔴 YES" : "🟢 NO"}`);

@@ -208,7 +208,7 @@ export function registerRotationHandlers(pi: ExtensionAPI): void {
 
       // Session tree auto-compaction: warn on deep branch
       try {
-        const sm = ctx.sessionManager as any;
+        const sm = ctx.sessionManager as { getBranch?(): unknown[] };
         const branch = sm.getBranch?.() ?? [];
         if (branch.length > 150) {
           log.warn(`Branch ${branch.length} entries deep — consider context_tag + session_compact`);

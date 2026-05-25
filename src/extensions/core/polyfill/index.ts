@@ -17,6 +17,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-cod
 import { ModelSelectorComponent, SettingsManager } from "@mariozechner/pi-coding-agent";
 import type { Model, Api } from "@mariozechner/pi-ai";
 import { resolveUtilityModel, resolveVisionModel } from "../../../lib/model-resolver.js";
+import { onEvent } from "../../../lib/event-types.js";
 import { registerSessionCleanup } from "../../../lib/extension-state.js";
 
 /** Custom settings keys managed by /utility-model and /vision-model commands */
@@ -57,11 +58,10 @@ function hasImageInput(model: { input?: unknown }): boolean {
 import { getExtensionState } from "../../../lib/extension-state.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-function getPolyfillState(ctx?: ExtensionContext): { sessionManager: any } {
+function getPolyfillState(ctx?: ExtensionContext): { sessionManager: unknown } {
   if (ctx) return getExtensionState(ctx, "polyfill", () => ({ sessionManager: undefined }));
-  return _default;
+  return { sessionManager: undefined };
 }
-const _default = { sessionManager: undefined as any };
 
 /** Path to the global settings file - ~/.pi/agent/settings.json */
 const SETTINGS_PATH = path.join(os.homedir(), ".pi", "agent", "settings.json");
@@ -149,7 +149,7 @@ export default function polyfillExtension(pi: ExtensionAPI) {
   // D1: Clean up all extension state on session rotation.
   // This prevents memory leaks across sessions (cognitive stores, analytics,
   // enforcement state, etc.). registerSessionCleanup clears per-ctx WeakMap state.
-  pi.on("session_end" as any, registerSessionCleanup());
+  onEvent(pi, "session_end", registerSessionCleanup());
 
   // Register settings commands for model selection
   // ── Utility model command ──────────────────────────────────────────
@@ -284,7 +284,7 @@ async function openModelSelectorUI(
   // Build sorted scoped model list
   // Priority: selected model first, then same provider, then others
   const currentRoleModel = resolveFn(ctx as ExtensionContext);
-  const mainModel = (ctx as any).model;
+  const mainModel = (ctx as { model?: { provider?: string } }).model;
   const prefProvider = currentRoleModel?.provider ?? mainModel?.provider;
 
   const allModels = modelRegistry.getAvailable();

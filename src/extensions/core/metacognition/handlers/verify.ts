@@ -102,7 +102,7 @@ function autoDetectTarget(
     if (entry.type !== "message") continue;
     if (entry.message.role !== "assistant") continue;
 
-    const content = (entry.message as any).content;
+    const content = entry.message.content;
     const text =
       typeof content === "string"
         ? content
