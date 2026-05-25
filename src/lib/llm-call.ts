@@ -31,7 +31,7 @@ const log = createLogger("llm-call");
 const DEFAULT_MAX_RETRIES = 3;
 
 /** SDK-level retries per attempt. */
-const DEFAULT_SDK_RETRIES = 1;
+const DEFAULT_SDK_RETRIES = 2;
 
 /** Cooldown after a rate-limit hit before attempting calls again. */
 const RATE_LIMIT_COOLDOWN_MS = 60_000;
@@ -53,7 +53,7 @@ export interface LlmCallOptions {
   timeoutMs?: number;
   /** Outer retry attempts. Default: 3 */
   maxRetries?: number;
-  /** Inner SDK retries per attempt. Default: 1 */
+  /** Inner SDK retries per attempt. Default: 2 */
   sdkRetries?: number;
   /** Optional AbortSignal for cancellation */
   signal?: AbortSignal;
@@ -95,7 +95,7 @@ export async function callLlm(
   }
 
   const maxTokens =
-    options.maxTokens ?? Math.min(Math.max(500, Math.floor(userPrompt.length / 8)), 2000);
+    options.maxTokens ?? Math.min(Math.max(1000, Math.floor(userPrompt.length / 8)), 4000);
   const timeoutMs = options.timeoutMs ?? 30_000;
   const temperature = options.temperature ?? 0.1;
   const sdkMaxRetries = options.sdkRetries ?? DEFAULT_SDK_RETRIES;

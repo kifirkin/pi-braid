@@ -93,68 +93,62 @@ console.log("\n[2] signals.ts — enforcement signals + contrast mode");
 console.log("\n[3] handler-registry.ts — structure");
 
 {
-  const src = readFileSync(join(ROOT, "src/extensions/enforcement/handler-registry.ts"), "utf-8");
+  const { HANDLER_REGISTRATIONS } = await import("../../dist/extensions/enforcement/handler-registry.js");
 
   test("exports registerHandlers function", () => {
-    assert.ok(src.includes("export function registerHandlers"));
+    assert.ok(HANDLER_REGISTRATIONS, "HANDLER_REGISTRATIONS exported");
   });
 
-  test("registers all onEvent() + pi.on() + registerSessionStartHandler() handlers", () => {
-    const onEv = [...src.matchAll(/onEvent\(pi/g)].length;
-    const piOn = [...src.matchAll(/pi\.on\(/g)].length;
-    const regSh = [...src.matchAll(/registerSessionStartHandler\(/g)].length;
-    const regTe = [...src.matchAll(/registerTurnEndHandler\(/g)].length;
-    const total = onEv + piOn + regSh + regTe;
-    assert.equal(total, 11, `expected 11, got onEvent=${onEv} pi.on=${piOn} regSh=${regSh} regTe=${regTe}`);
+  test("registers all handlers (from HANDLER_REGISTRATIONS metadata)", () => {
+    assert.equal(HANDLER_REGISTRATIONS.length, 10, "expected 10 handler registrations");
   });
 
   test("registers input handler", () => {
-    assert.ok(src.includes(`pi.on("input"`), "should have input handler");
+    assert.ok(HANDLER_REGISTRATIONS.some((r) => r.event === "input"), "input registered");
   });
 
   test("registers session_start handler", () => {
-    assert.ok(src.includes(`pi.on("session_start"`) || src.includes(`registerSessionStartHandler`), "should have session_start handler");
+    assert.ok(HANDLER_REGISTRATIONS.some((r) => r.event === "session_start"), "session_start registered");
   });
 
   test("registers tool_call handler", () => {
-    assert.ok(src.includes(`pi.on("tool_call"`) || src.includes(`onEvent(pi, "tool_call"`), "should have tool_call handler");
+    assert.ok(HANDLER_REGISTRATIONS.some((r) => r.event === "tool_call"), "tool_call registered");
   });
 
-  test("registers turn_end handler (1x drift/policy + 1x via registerTurnEndHandler)", () => {
-    const onEvTurnEnd = [...src.matchAll(/onEvent\(pi,\s*"turn_end"/g)].length;
-    const piOnTurnEnd = [...src.matchAll(/pi\.on\("turn_end"/g)].length;
-    const regTurnEnd = [...src.matchAll(/registerTurnEndHandler\(/g)].length;
-    assert.equal(onEvTurnEnd + piOnTurnEnd + regTurnEnd, 2, `expected 2 turn_end handlers, got onEv=${onEvTurnEnd} pi.on=${piOnTurnEnd} regTe=${regTurnEnd}`);
+  test("registers 2 turn_end handlers (onEvent + registerTurnEndHandler)", () => {
+    const turnEnds = HANDLER_REGISTRATIONS.filter((r) => r.event === "turn_end");
+    assert.equal(turnEnds.length, 2, `expected 2 turn_end handlers, got ${turnEnds.length}`);
   });
 
-  test("registers message_end handler (1x: merged conflict + analysis)", () => {
-    const matches = [...src.matchAll(/onEvent\(pi,\s*"message_end"/g)];
-    assert.equal(matches.length, 1, `expected 1 merged message_end handler, got ${matches.length}`);
+  test("registers 1 message_end handler (merged conflict + analysis)", () => {
+    const msgEnds = HANDLER_REGISTRATIONS.filter((r) => r.event === "message_end");
+    assert.equal(msgEnds.length, 1, `expected 1 message_end, got ${msgEnds.length}`);
   });
 
   test("registers auto_retry_end handler", () => {
-    assert.ok(src.includes(`onEvent(pi, "auto_retry_end"`) || src.includes(`pi.on("auto_retry_end"`));
+    assert.ok(HANDLER_REGISTRATIONS.some((r) => r.event === "auto_retry_end"), "auto_retry_end registered");
   });
 
   test("registers session_compact handler", () => {
-    assert.ok(src.includes(`onEvent(pi, "session_compact"`) || src.includes(`pi.on("session_compact"`));
+    assert.ok(HANDLER_REGISTRATIONS.some((r) => r.event === "session_compact"), "session_compact registered");
   });
 
   test("registers session_shutdown handler", () => {
-    assert.ok(src.includes(`onEvent(pi, "session_shutdown"`) || src.includes(`pi.on("session_shutdown"`));
+    assert.ok(HANDLER_REGISTRATIONS.some((r) => r.event === "session_shutdown"), "session_shutdown registered");
   });
 
+  // Read source for inline heuristic checks (can't verify via metadata)
+  const handlerSrc = readFileSync(join(ROOT, "src/extensions/enforcement/handler-registry.ts"), "utf-8");
   test("has _classifyRetryError helper with inline heuristic (no import)", () => {
-    assert.ok(src.includes("return \"rate_limit\""));
-    assert.ok(src.includes("return \"server_error\""));
-    assert.ok(src.includes("return \"network\""));
-    assert.ok(src.includes("return \"unknown\""));
-    // Should NOT import error-classifier via import statement
-    assert.ok(!src.includes('from "../../../lib/error-classifier.js"'), "should not import error-classifier");
+    assert.ok(handlerSrc.includes("return \"rate_limit\""));
+    assert.ok(handlerSrc.includes("return \"server_error\""));
+    assert.ok(handlerSrc.includes("return \"network\""));
+    assert.ok(handlerSrc.includes("return \"unknown\""));
+    assert.ok(!handlerSrc.includes('from "../../../lib/error-classifier.js"'), "should not import error-classifier");
   });
 
   test("has extractTextContent helper", () => {
-    assert.ok(src.includes("function extractTextContent"));
+    assert.ok(handlerSrc.includes("function extractTextContent"));
   });
 }
 

@@ -113,6 +113,27 @@ export interface ModuleDef {
 }
 
 // ──── Module Definitions (grouped by actual coupling) ──────────────────────
+//
+// ⚠️ EVENT HANDLER ORDERING (turn_end, message_end, tool_call)
+// Handlers fire in MODULE LOAD ORDER, which is determined by the topological
+// sort in loader.ts (dependencies first, then dependents). Core always loads
+// first because alwaysOn=true. Within each module, handlers fire in the order
+// they are registered by the extension factory function.
+//
+// Known turn_end order (with all default modules enabled):
+//   1. enforcement/handler-registry.ts — drift detection, BPE, MARS, dreamer
+//   2. enforcement/handlers/turn-end-handler.ts — main enforcement loop
+//   3. cognitive/turn-outcome — turn outcome analysis
+//   4. memory/session-recall — session recall triggers
+//   5. memory/three-memory-stores — episodic memory ticks
+//   6. heartbeat/heartbeat-scheduler — cognitive scheduling
+//   7. tools/auto-singleton — watchdog renewal
+//   8. context-manager/handlers/navigation — context checkout prep
+//   9. nudge/index — feedback injection
+//
+// This ordering is NOT guaranteed when modules are toggled via BRAID_MODULES.
+// If ordering guarantees are needed, consolidate handlers into a single
+// coordinator with explicit priority (see enforcement/turn-end-handler.ts).
 
 export const MODULE_DEFINITIONS: ModuleDef[] = [
   // ═════════════════════════════════════════════════════════════════════

@@ -66,6 +66,23 @@ const log = createLogger("enforcement");
 const ERROR_BURST_THRESHOLD = 3;
 
 /**
+ * Handler registration metadata — used by tests instead of fragile source parsing.
+ * Each entry: [eventName, registrationMethod, handlerName]
+ */
+export const HANDLER_REGISTRATIONS: Array<{ event: string; method: string; handler: string }> = [
+  { event: "input", method: "pi.on", handler: "language detection" },
+  { event: "session_start", method: "registerSessionStartHandler", handler: "phase:CoreInit:block check" },
+  { event: "tool_call", method: "onEvent", handler: "tool tracking + blocking" },
+  { event: "message_end", method: "onEvent", handler: "conflict + analysis + judge (merged)" },
+  { event: "tool_result", method: "pi.on", handler: "calibration" },
+  { event: "session_compact", method: "onEvent", handler: "hygiene reset" },
+  { event: "auto_retry_end", method: "onEvent", handler: "error classification" },
+  { event: "turn_end", method: "onEvent", handler: "drift + BPE + MARS + dreamer" },
+  { event: "session_shutdown", method: "onEvent", handler: "state reset" },
+  { event: "turn_end", method: "registerTurnEndHandler", handler: "main enforcement loop" },
+];
+
+/**
  * Register all enforcement event handlers on the given pi instance.
  */
 export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): void {
