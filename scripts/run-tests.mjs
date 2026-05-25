@@ -1,8 +1,10 @@
 /**
  * pi-braid unified test runner.
  * Run: npm test
+ *
+ * Uses spawnSync with exit codes (no stdout parsing) for robustness.
  */
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,35 +31,29 @@ console.log(`Running ${tests.length} tests from ${testDir}\n`);
 
 for (const t of tests) {
 	const label = `[${String(passed + failed + 1)}/${tests.length}]`;
-	try {
-		const stdout = execSync(`node test/runtime/${t}`, {
-			cwd: root,
-			timeout: 30_000,
-			encoding: "utf-8",
-			stdio: ["ignore", "pipe", "pipe"],
-		});
-		const summary = stdout
-			.split("\n")
-			.find((l) => l.includes("\uD83D\uDCCA") || l.includes("Results"))
-			?.trim();
+	const result = spawnSync("node", [`test/runtime/${t}`], {
+		cwd: root,
+		timeout: 30_000,
+		encoding: "utf-8",
+		stdio: ["ignore", "pipe", "pipe"],
+	});
+
+	// Use exit code for pass/fail determination
+	if (result.status === 0) {
+		// Extract summary line from stdout for display
+		const lines = (result.stdout ?? "").split("\n");
+		const summary = lines.find((l) => l.includes("\uD83D\uDCCA") || l.includes("Results"))?.trim();
 		console.log(`  \u2705 ${label} ${t}${summary ? " \u2014 " + summary : ""}`);
 		passed++;
-	} catch (e) {
-		const stderr = e.stderr?.toString() ?? "";
-		const stdout = e.stdout?.toString() ?? "";
-		const summary =
-			stdout
-				.split("\n")
-				.find((l) => l.includes("\uD83D\uDCCA") || l.includes("passed"))
-				?.trim() ??
-			stderr
-				.split("\n")
-				.find((l) => l.includes("\uD83D\uDCCA") || l.includes("passed"))
-				?.trim();
+	} else {
+		const stdout = result.stdout ?? "";
+		const stderr = result.stderr ?? "";
+		const lines = (stdout + "\n" + stderr).split("\n");
+		const summary = lines.find((l) => l.includes("\uD83D\uDCCA") || l.includes("passed"))?.trim();
 		if (summary) {
 			console.log(`  \u274C ${label} ${t} \u2014 ${summary}`);
 		} else {
-			console.log(`  \u274C ${label} ${t} \u2014 exit code ${e.status}`);
+			console.log(`  \u274C ${label} ${t} \u2014 exit code ${result.status}`);
 		}
 		failed++;
 		failures.push(t);

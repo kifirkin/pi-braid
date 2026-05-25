@@ -598,4 +598,12 @@ export function registerCompactionEndHandler(pi: ExtensionAPI): void {
   onEvent(pi, "message_end", async () => {
     tryRestoreAppendMessage(pi);
   });
+
+  // ── Session lifecycle cleanup ──────────────────────────────────────────────
+  // Prevents _processedCompacts memory leak across sessions. Module-level state
+  // must be explicitly cleared; LRU eviction alone is insufficient for
+  // long-running agent processes with many session rotations.
+  onEvent(pi, "session_end", () => {
+    _processedCompacts.clear();
+  });
 }
