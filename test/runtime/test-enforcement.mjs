@@ -104,7 +104,7 @@ console.log("\n[3] handler-registry.ts — structure");
     const regSh = [...src.matchAll(/registerSessionStartHandler\(/g)].length;
     const regTe = [...src.matchAll(/registerTurnEndHandler\(/g)].length;
     const total = piOn + regSh + regTe;
-    assert.equal(total, 12, `expected 12, got  (pi.on: + regSh: + regTe:)`);
+    assert.equal(total, 11, `expected 11 (merged duplicate message_end), got  (pi.on: + regSh: + regTe:)`);
   });
 
   test("registers input handler", () => {
@@ -125,9 +125,9 @@ console.log("\n[3] handler-registry.ts — structure");
     assert.equal(piOnTurnEnd + regTurnEnd, 2, `expected 2 turn_end handlers, got ${piOnTurnEnd} pi.on + ${regTurnEnd} registerTurnEndHandler`);
   });
 
-  test("registers message_end handler (2x: conflict + analysis)", () => {
+  test("registers message_end handler (1x: merged conflict + analysis)", () => {
     const matches = [...src.matchAll(/pi\.on\("message_end"/g)];
-    assert.equal(matches.length, 2, `expected 2 message_end handlers, got ${matches.length}`);
+    assert.equal(matches.length, 1, `expected 1 merged message_end handler, got ${matches.length}`);
   });
 
   test("registers auto_retry_end handler", () => {

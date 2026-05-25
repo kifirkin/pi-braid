@@ -82,11 +82,11 @@ export default function autoRecoveryExtension(pi: ExtensionAPI): void {
           { deliverAs: "steer", triggerTurn: true },
           { type: "enforcement", source: "auto-recovery/degradation" },
         );
-      } catch {
-        /* non-fatal */
+      } catch (e) {
+        log.warn(`[auto-recovery] steer delivery failed: ${(e as Error).message}`);
       }
-    } catch {
-      /* Non-fatal: stale ctx or state access failure */
+    } catch (e) {
+      log.warn(`[auto-recovery] handler error (stale ctx?): ${(e as Error).message}`);
     }
   });
 

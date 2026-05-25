@@ -209,43 +209,133 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     return undefined;
   });
 
+  // ── message_end: combined handler (conflict detection → message analysis → verification judge) ──
   pi.on("message_end" as never, async (event: any, ctx: any) => {
     if (!getState(ctx).enforcementActive) return;
     const isBurst = getState(ctx).consecutiveErrorTurns >= ERROR_BURST_THRESHOLD;
-    if (isBurst) return;
 
-    // Run conflict detection and surface unresolved conflicts
-    const newConflicts = detectConflicts(ctx);
-    if (newConflicts.length > 0) {
-      const msg = formatConflictMessage(newConflicts[0]);
-      queueEnforcementWhisper(msg);
-      // Emit to Belief Policy Engine
-      emitSignal(
-        ctx,
-        "conflict",
-        "detected",
-        newConflicts[0]?.for[0]?.confidence > 0.7 ? "warn" : "info",
-        false,
-        { conflictId: newConflicts[0]?.id },
-      );
-    }
-
-    const unresolved = getUnresolvedConflicts(ctx);
-    if (unresolved.length > 0) {
-      emitSignal(ctx, "conflict", "unresolved", "info", false, { count: unresolved.length });
-    }
-    if (unresolved.length > 0 && unresolved.length % 5 === 0) {
-      queueEnforcementWhisper(
-        `[conflict] ${unresolved.length} unresolved source conflicts. ` +
-          `Consider resolving: memory_store content with conflict_verified tag.`,
-      );
-    }
-
-    // Conflict QA: classify conflicts and generate resolution questions
+    // Part 1: Conflict detection (runs for all messages, not just assistant)
     if (!isBurst) {
+      const newConflicts = detectConflicts(ctx);
+      if (newConflicts.length > 0) {
+        const msg = formatConflictMessage(newConflicts[0]);
+        queueEnforcementWhisper(msg);
+        emitSignal(
+          ctx,
+          "conflict",
+          "detected",
+          newConflicts[0]?.for[0]?.confidence > 0.7 ? "warn" : "info",
+          false,
+          { conflictId: newConflicts[0]?.id },
+        );
+      }
+
+      const unresolved = getUnresolvedConflicts(ctx);
+      if (unresolved.length > 0) {
+        emitSignal(ctx, "conflict", "unresolved", "info", false, { count: unresolved.length });
+      }
+      if (unresolved.length > 0 && unresolved.length % 5 === 0) {
+        queueEnforcementWhisper(
+          `[conflict] ${unresolved.length} unresolved source conflicts. ` +
+            `Consider resolving: memory_store content with conflict_verified tag.`,
+        );
+      }
+
       const newQAs = processConflictQAs(ctx);
       for (const qa of newQAs) {
         queueEnforcementWhisper(formatConflictWhisper(qa));
+      }
+    }
+
+    // Part 2: Message analysis + verification judge (assistant messages only)
+    if (event.message.role !== "assistant") return;
+
+    const textContent = event.message.content
+      .filter((c: any) => c.type === "text")
+      .map((c: any) => (c as { type: "text"; text: string }).text)
+      .join("\n");
+
+    const thinkingContent = event.message.content
+      .filter((c: any) => c.type === "thinking")
+      .map((c: any) => (c as { type: "thinking"; thinking: string }).thinking)
+      .join("\n");
+
+    const fullContent = thinkingContent
+      ? `## REASONING\n${thinkingContent}\n\n## RESPONSE\n${textContent}`
+      : textContent;
+
+    if (textContent.length < 100) return;
+
+    // ── Message Analysis ──────────────────────────────────────────────────
+    const analysisSignals = analyzeMessage(textContent, thinkingContent, getState(ctx));
+    getState(ctx).lastUserMessage = "";
+    const signalEntries = analysisSignals as Record<
+      string,
+      { turn: number; text: string; acted: boolean }
+    >;
+    for (const [key, signal] of Object.entries(signalEntries)) {
+      if (signal?.text) {
+        enforcementSignals[key] = signal;
+        if (key === "stability") {
+          emitSignal(ctx, "stability", "decline", "warn", false, {
+            overlap: signal.text.match(/overlap=([0-9.]+)/)?.[1] ?? 0,
+            reason: signal.text,
+          });
+        }
+      }
+    }
+
+    const turnState = getState(ctx).turnHistory.get(getState(ctx).currentTurn);
+    if (turnState) {
+      detectMalformedToolCalls(textContent, pi, ctx);
+    }
+
+    if (getState(ctx).verificationJudgeRunning) return;
+
+    const userHasBash = Array.from(getState(ctx).uniqueToolsUsed).includes("bash");
+
+    if (
+      !getState(ctx).verificationJudgeRunning &&
+      turnState && turnState.actualTools.length === 0 &&
+      getState(ctx).hasCodeChanges &&
+      getState(ctx).currentTurn - getState(ctx).lastVerificationJudgeTurn >= 1
+    ) {
+      const now = Date.now();
+      if (now - getState(ctx).lastJudgeTime < 60_000) return;
+
+      getState(ctx).verificationJudgeRunning = true;
+
+      const toolLog: string[] = [];
+      for (const [, turn] of getState(ctx).turnHistory) {
+        if (turn.actualTools.length > 0) {
+          toolLog.push(`Turn ${turn.turnIndex}: [${turn.actualTools.join(", ")}]`);
+        }
+      }
+
+      const judgeCtx: any = {
+        userRequest: getState(ctx).originalRequest,
+        toolsUsed: Array.from(getState(ctx).uniqueToolsUsed),
+        toolLog,
+        hasCodeChanges: getState(ctx).hasCodeChanges,
+        hasVerification: userHasBash,
+        lastResponse: fullContent,
+        thinking: thinkingContent,
+      };
+
+      const { runVerificationJudge, formatVerificationNudge } =
+        await import("./verification-judge.js");
+      const result = await runVerificationJudge(ctx as never, judgeCtx, { timeoutMs: 30000 });
+
+      getState(ctx).lastVerificationJudgeTurn = getState(ctx).currentTurn;
+      getState(ctx).verificationJudgeRunning = false;
+
+      if (result) {
+        if (result.verdict === "fail" || result.verdict === "warn") {
+          sendEnforcementWhisper(pi, ctx, formatVerificationNudge(result));
+          if (result.verdict === "fail") {
+            getState(ctx).validationFailures++;
+          }
+        }
       }
     }
   });
@@ -405,105 +495,6 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
         `## ⚠️ ${msg}\n\nStore for reference: memory_store(content="API error: ${finalError}", tags=["error", "api"])`,
       );
     }
-  });
-
-  pi.on("message_end" as never, async (event: any, ctx: any) => {
-    if (!getState(ctx).enforcementActive) return;
-
-    if (event.message.role !== "assistant") return;
-
-    const textContent = event.message.content
-      .filter((c: any) => c.type === "text")
-      .map((c: any) => (c as { type: "text"; text: string }).text)
-      .join("\n");
-
-    const thinkingContent = event.message.content
-      .filter((c: any) => c.type === "thinking")
-      .map((c: any) => (c as { type: "thinking"; thinking: string }).thinking)
-      .join("\n");
-
-    const fullContent = thinkingContent
-      ? `## REASONING\n${thinkingContent}\n\n## RESPONSE\n${textContent}`
-      : textContent;
-
-    if (textContent.length < 100) return;
-
-    // ── Message Analysis ──────────────────────────────────────────────────
-    const analysisSignals = analyzeMessage(textContent, thinkingContent, getState(ctx));
-    getState(ctx).lastUserMessage = "";
-    const signalEntries = analysisSignals as Record<
-      string,
-      { turn: number; text: string; acted: boolean }
-    >;
-    for (const [key, signal] of Object.entries(signalEntries)) {
-      if (signal?.text) {
-        enforcementSignals[key] = signal;
-        if (key === "stability") {
-          emitSignal(ctx, "stability", "decline", "warn", false, {
-            overlap: signal.text.match(/overlap=([0-9.]+)/)?.[1] ?? 0,
-            reason: signal.text,
-          });
-        }
-      }
-    }
-
-    const turnState = getState(ctx).turnHistory.get(getState(ctx).currentTurn);
-    if (turnState) {
-      detectMalformedToolCalls(textContent, pi, ctx);
-    }
-
-    if (getState(ctx).verificationJudgeRunning) return;
-
-    const userHasBash = Array.from(getState(ctx).uniqueToolsUsed).includes("bash");
-
-    // Verification Judge fires ONLY at agent loop end — when the agent produces
-    // a final response with no tool calls (same condition the legacy judge used).
-    // This prevents automatic N-turn periodic checks that waste tokens.
-    if (
-      !getState(ctx).verificationJudgeRunning &&
-      turnState && turnState.actualTools.length === 0 &&
-      getState(ctx).hasCodeChanges &&
-      getState(ctx).currentTurn - getState(ctx).lastVerificationJudgeTurn >= 1
-    ) {
-      const now = Date.now();
-      if (now - getState(ctx).lastJudgeTime < 60_000) return;
-
-      getState(ctx).verificationJudgeRunning = true;
-
-      const toolLog: string[] = [];
-      for (const [, turn] of getState(ctx).turnHistory) {
-        if (turn.actualTools.length > 0) {
-          toolLog.push(`Turn ${turn.turnIndex}: [${turn.actualTools.join(", ")}]`);
-        }
-      }
-
-      const judgeCtx: any = {
-        userRequest: getState(ctx).originalRequest,
-        toolsUsed: Array.from(getState(ctx).uniqueToolsUsed),
-        toolLog,
-        hasCodeChanges: getState(ctx).hasCodeChanges,
-        hasVerification: userHasBash,
-        lastResponse: fullContent,
-        thinking: thinkingContent,
-      };
-
-      const { runVerificationJudge, formatVerificationNudge } =
-        await import("./verification-judge.js");
-      const result = await runVerificationJudge(ctx as never, judgeCtx, { timeoutMs: 30000 });
-
-      getState(ctx).lastVerificationJudgeTurn = getState(ctx).currentTurn;
-      getState(ctx).verificationJudgeRunning = false;
-
-      if (result) {
-        if (result.verdict === "fail" || result.verdict === "warn") {
-          sendEnforcementWhisper(pi, ctx, formatVerificationNudge(result));
-          if (result.verdict === "fail") {
-            getState(ctx).validationFailures++;
-          }
-        }
-      }
-    }
-
   });
 
   pi.on("turn_end" as never, async (_event: any, ctx: ExtensionContext) => {

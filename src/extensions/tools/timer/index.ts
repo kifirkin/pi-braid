@@ -150,7 +150,9 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
   for (const h of fireHandlers) {
     try {
       h(timer);
-    } catch {}
+    } catch (e) {
+      log.warn(`[timer] fireHandler error: ${(e as Error).message}`);
+    }
   }
   emitTimerReminder(timer); // → heartbeat bus → agent reminder on next tick
 
@@ -178,8 +180,8 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
       { deliverAs: "steer", triggerTurn: true },
       { type: "heartbeat", source: "timer/fire" },
     );
-  } catch {
-    /* non-fatal — agent may be mid-turn */
+  } catch (e) {
+    log.warn(`[timer] steer delivery failed (agent may be mid-turn): ${(e as Error).message}`);
   }
 }
 
