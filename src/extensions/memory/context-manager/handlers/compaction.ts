@@ -386,7 +386,9 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
                 },
                 timestamp: Date.now(),
               };
-            } catch {} // non-fatal
+            } catch {
+              log.warn("[context-manager] failed to emit end-of-turn context signal");
+            }
           }
         } catch (err) {
           log.error("session_before_compact semantic compression error:", err);
@@ -409,7 +411,9 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
           reason: "context compaction",
           count: prep?.messagesToSummarize?.length ?? 0,
         });
-      } catch {} // non-fatal
+      } catch {
+        log.warn("[context-manager] failed to emit memory_evict event");
+      }
     } catch (err) {
       log.error("session_before_compact error:", err);
     }

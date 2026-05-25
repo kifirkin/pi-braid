@@ -174,7 +174,9 @@ function discoverPiRootPath(): string {
         }
       }
     }
-  } catch {}
+  } catch {
+    log.warn("[prompt-builder] failed to resolve L1 environment directory");
+  }
 
   return "";
 }

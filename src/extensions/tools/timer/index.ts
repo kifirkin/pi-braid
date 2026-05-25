@@ -165,7 +165,9 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
       tag: timer.tag,
       payload: `⏰ Timer "${timer.reason}" has fired. Action required.`,
     });
-  } catch {}
+  } catch {
+    log.warn("[timer] failed to send steer for fired timer: " + timer.id);
+  }
 
   log.info(`[timer] fired: ${timer.id} — ${timer.reason}`);
   // Try to wake the agent with a steer message if between turns

@@ -43,7 +43,9 @@ function isDaemonRunning(): boolean {
       // Clean up stale PID file
       try {
         fs.unlinkSync(OBSERVATORY_PIDFILE);
-      } catch {}
+      } catch {
+        log.warn("[observatory] failed to remove stale PID file");
+      }
       return false;
     }
   } catch {
