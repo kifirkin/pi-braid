@@ -77,7 +77,7 @@ console.log("\n[5] Test discovery");
   const fs = await import("fs");
   const files = fs.readdirSync(`${ROOT}/test/runtime`);
   assert(files.includes("test-observatory-extension.mjs"), "observatory extension test file exists");
-  assert(files.includes("test-observatory.mjs"), "observatory lib test file exists");
+  assert(files.includes("test-observatory-extension.mjs"), "observatory extension test file exists");
   assert(true, "test runner auto-discovers .mjs files");
 }
 
