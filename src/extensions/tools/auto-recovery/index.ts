@@ -13,6 +13,7 @@ import { createLogger } from "../../../lib/logger.js";
 import { getExtensionState } from "../../../lib/extension-state.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { isDegraded, getDegradationReasons } from "../../../lib/degradation-detector.js";
+import { onEvent } from "../../../lib/event-types.js";
 
 const log = createLogger("auto-recovery");
 
@@ -39,7 +40,7 @@ function getState(ctx: ExtensionContext): RecoveryState {
 // ── Extension ────────────────────────────────────────────────────────────────
 
 export default function autoRecoveryExtension(pi: ExtensionAPI): void {
-  pi.on("turn_start" as never, async (_event: any, ctx: ExtensionContext) => {
+  onEvent(pi, "turn_start", async (_event: any, ctx: ExtensionContext) => {
     try {
       const state = getState(ctx);
       state.turnCounter++;

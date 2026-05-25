@@ -34,6 +34,7 @@ import { createLogger } from "../../lib/logger.js";
 import { classify } from "../../lib/text-classifier.js";
 import * as path from "node:path";
 import * as os from "node:os";
+import { onEvent } from "../../lib/event-types.js";
 
 const log = createLogger("path-security");
 
@@ -211,7 +212,7 @@ function denySuspicious(): string {
 // ── Extension ────────────────────────────────────────────────────────────────
 
 export default function pathSecurityExtension(pi: ExtensionAPI): void {
-  pi.on("tool_call" as never, async (event: any, ctx: ExtensionContext) => {
+  onEvent(pi, "tool_call", async (event: any, ctx: ExtensionContext) => {
     const toolName: string = event?.toolName ?? "";
     const input = (event?.input ?? {}) as Record<string, unknown>;
     const cwd: string = (ctx as any).cwd ?? process.cwd();

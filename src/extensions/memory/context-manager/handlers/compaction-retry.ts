@@ -9,6 +9,7 @@
 import type { CompactOptions, ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
 import { analyzeSession } from "../analysis.js";
+import { onEvent } from "../../../../lib/event-types.js";
 import {
   log,
   getCmState,
@@ -329,7 +330,7 @@ function clearOverflowRetryInternal(): void {
 
 // ── Context Cleanup Retry Reset ────────────────────────────────────────────────
 export function registerContextCleanupHandler(pi: ExtensionAPI): void {
-  pi.on("context_cleanup" as never, async (_event: any, ctx: ExtensionContext) => {
+  onEvent(pi, "context_cleanup", async (_event: any, ctx: ExtensionContext) => {
     const cmState = getCmState(ctx);
     cmState.compactionRetryActive = false;
     cmState.overflowRetryActive = false;

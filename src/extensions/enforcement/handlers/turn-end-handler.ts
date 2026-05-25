@@ -24,6 +24,7 @@ import { validateTurn } from "../validation.js";
 import { sendEnforcementWhisper } from "../whisper.js";
 import { knownFiles, loadFileContent } from "../similarity.js";
 import { enforcementSignals, determineContrastMode } from "../signals.js";
+import { onEvent } from "../../../lib/event-types.js";
 import {
   USAGE_WHISPER_CRITICAL,
   USAGE_FIRED_RESET_BELOW,
@@ -36,7 +37,7 @@ const log = createLogger("enforcement:turn-end");
 const ERROR_BURST_THRESHOLD = 3;
 
 export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeManager): void {
-  pi.on("turn_end" as never, async (event: any, ctx: ExtensionContext) => {
+  onEvent(pi, "turn_end", async (event: any, ctx: ExtensionContext) => {
     if (!getState(ctx).enforcementActive) return;
 
     const actualTools: string[] = (event.toolResults || [])

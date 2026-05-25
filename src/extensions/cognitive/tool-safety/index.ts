@@ -16,6 +16,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { classify } from "../../../lib/text-classifier.js";
 import { createLogger } from "../../../lib/logger.js";
 import { DESTRUCTIVE_TOOLS } from "../../../lib/tool-constants.js";
+import { onEvent } from "../../../lib/event-types.js";
 
 const log = createLogger("tool-safety");
 
@@ -51,7 +52,7 @@ function isSafeFallback(): string {
 // ── Extension ────────────────────────────────────────────────────────────────
 
 export default function toolSafetyExtension(pi: ExtensionAPI): void {
-  pi.on("tool_call" as never, async (event: any, ctx: ExtensionContext) => {
+  onEvent(pi, "tool_call", async (event: any, ctx: ExtensionContext) => {
     const toolName: string = event?.toolName ?? "";
     if (!DESTRUCTIVE_TOOLS_SET.has(toolName)) return;
 

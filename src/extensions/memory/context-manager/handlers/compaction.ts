@@ -37,6 +37,7 @@ import { getRotationState } from "../../../../lib/global-state.js";
 import { filterSafeToRemove } from "../../../../lib/filter-safe-to-remove.js";
 import { determineCompressionLevel } from "../../../../lib/compression-strategy.js";
 import { semanticCompress } from "../semantic-compress.js";
+import { onEvent } from "../../../../lib/event-types.js";
 import {
   handleOverflowFailure,
   handleTransientError,
@@ -483,8 +484,8 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
 // for cases where pi does NOT retry (permanent failure, user needs guidance).
 
 export function registerCompactionEndHandler(pi: ExtensionAPI): void {
-  pi.on(
-    "compaction_end" as never,
+  onEvent(pi,
+    "compaction_end",
     async (
       event: {
         reason?: string;
@@ -566,7 +567,7 @@ export function registerCompactionEndHandler(pi: ExtensionAPI): void {
   // ── message_end backup cleanup ────────────────────────────────────────────
   // Catches edge cases where turn_end is missed (no tools called that turn).
   // Ensures intercept state is always cleaned up before the next assistant turn.
-  pi.on("message_end" as never, async () => {
+  onEvent(pi, "message_end", async () => {
     tryRestoreAppendMessage(pi);
   });
 }

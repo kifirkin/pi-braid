@@ -99,12 +99,13 @@ console.log("\n[3] handler-registry.ts — structure");
     assert.ok(src.includes("export function registerHandlers"));
   });
 
-  test("registers all pi.on() + registerSessionStartHandler() handlers", () => {
+  test("registers all onEvent() + pi.on() + registerSessionStartHandler() handlers", () => {
+    const onEv = [...src.matchAll(/onEvent\(pi/g)].length;
     const piOn = [...src.matchAll(/pi\.on\(/g)].length;
     const regSh = [...src.matchAll(/registerSessionStartHandler\(/g)].length;
     const regTe = [...src.matchAll(/registerTurnEndHandler\(/g)].length;
-    const total = piOn + regSh + regTe;
-    assert.equal(total, 11, `expected 11 (merged duplicate message_end), got  (pi.on: + regSh: + regTe:)`);
+    const total = onEv + piOn + regSh + regTe;
+    assert.equal(total, 11, `expected 11, got onEvent=${onEv} pi.on=${piOn} regSh=${regSh} regTe=${regTe}`);
   });
 
   test("registers input handler", () => {
@@ -116,30 +117,31 @@ console.log("\n[3] handler-registry.ts — structure");
   });
 
   test("registers tool_call handler", () => {
-    assert.ok(src.includes(`pi.on("tool_call"`), "should have tool_call handler");
+    assert.ok(src.includes(`pi.on("tool_call"`) || src.includes(`onEvent(pi, "tool_call"`), "should have tool_call handler");
   });
 
   test("registers turn_end handler (1x drift/policy + 1x via registerTurnEndHandler)", () => {
+    const onEvTurnEnd = [...src.matchAll(/onEvent\(pi,\s*"turn_end"/g)].length;
     const piOnTurnEnd = [...src.matchAll(/pi\.on\("turn_end"/g)].length;
     const regTurnEnd = [...src.matchAll(/registerTurnEndHandler\(/g)].length;
-    assert.equal(piOnTurnEnd + regTurnEnd, 2, `expected 2 turn_end handlers, got ${piOnTurnEnd} pi.on + ${regTurnEnd} registerTurnEndHandler`);
+    assert.equal(onEvTurnEnd + piOnTurnEnd + regTurnEnd, 2, `expected 2 turn_end handlers, got onEv=${onEvTurnEnd} pi.on=${piOnTurnEnd} regTe=${regTurnEnd}`);
   });
 
   test("registers message_end handler (1x: merged conflict + analysis)", () => {
-    const matches = [...src.matchAll(/pi\.on\("message_end"/g)];
+    const matches = [...src.matchAll(/onEvent\(pi,\s*"message_end"/g)];
     assert.equal(matches.length, 1, `expected 1 merged message_end handler, got ${matches.length}`);
   });
 
   test("registers auto_retry_end handler", () => {
-    assert.ok(src.includes(`pi.on("auto_retry_end"`));
+    assert.ok(src.includes(`onEvent(pi, "auto_retry_end"`) || src.includes(`pi.on("auto_retry_end"`));
   });
 
   test("registers session_compact handler", () => {
-    assert.ok(src.includes(`pi.on("session_compact"`));
+    assert.ok(src.includes(`onEvent(pi, "session_compact"`) || src.includes(`pi.on("session_compact"`));
   });
 
   test("registers session_shutdown handler", () => {
-    assert.ok(src.includes(`pi.on("session_shutdown"`));
+    assert.ok(src.includes(`onEvent(pi, "session_shutdown"`) || src.includes(`pi.on("session_shutdown"`));
   });
 
   test("has _classifyRetryError helper with inline heuristic (no import)", () => {

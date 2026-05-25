@@ -14,6 +14,7 @@ import { addEpisode, getState } from "../../three-memory-stores/index.js";
 import { determineCompressionLevel } from "../../../../lib/compression-strategy.js";
 import { semanticCompress } from "../semantic-compress.js";
 import { updateContextDensity } from "../../../heartbeat/analytics/index.js";
+import { onEvent } from "../../../../lib/event-types.js";
 import {
   log,
   getCmState,
@@ -143,8 +144,8 @@ export function registerAgentEndRetryHandler(pi: ExtensionAPI): void {
 
 // ── Auto-Retry End Event ──────────────────────────────────────────────────────
 export function registerAutoRetryEndHandler(pi: ExtensionAPI): void {
-  pi.on(
-    "auto_retry_end" as never,
+  onEvent(pi,
+    "auto_retry_end",
     async (
       event: any,
       _ctx: ExtensionContext,

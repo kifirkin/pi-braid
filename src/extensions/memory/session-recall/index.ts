@@ -124,6 +124,7 @@ type SearchBackend = "rg" | "grep" | "node";
 import { getExtensionState } from "../../../lib/extension-state.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { onEvent } from "../../../lib/event-types.js";
 
 function getRecallState(ctx?: ExtensionContext): { cachedBackend: SearchBackend | undefined } {
   if (ctx) return getExtensionState(ctx, "session-recall", () => ({ cachedBackend: undefined }));
@@ -524,7 +525,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
   // (>=5 matches + same project) to avoid flooding the agent with noise.
   let midTaskRecallDone = false;
 
-  pi.on("turn_end" as never, async (_event: unknown, ctx: any) => {
+  onEvent(pi, "turn_end", async (_event: unknown, ctx: any) => {
     if (midTaskRecallDone) return;
     midTaskRecallDone = true;
 

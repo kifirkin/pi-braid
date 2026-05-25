@@ -15,6 +15,7 @@ import { createLogger } from "../../../lib/logger.js";
 import { getExtensionState } from "../../../lib/extension-state.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { FILE_CHURN_TOOLS } from "../../../lib/tool-constants.js";
+import { onEvent } from "../../../lib/event-types.js";
 
 const log = createLogger("turn-outcome");
 
@@ -150,7 +151,7 @@ function formatSteerMessage(loops: LoopFireEntry[]): string {
 // ── Extension ────────────────────────────────────────────────────────────────
 
 export default function turnOutcomeExtension(pi: ExtensionAPI): void {
-  pi.on("turn_end" as never, async (event: any, ctx: ExtensionContext) => {
+  onEvent(pi, "turn_end", async (event: any, ctx: ExtensionContext) => {
     const state = getState(ctx);
 
     // Collect tool results from the turn

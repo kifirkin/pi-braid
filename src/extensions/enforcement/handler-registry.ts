@@ -60,6 +60,7 @@ import { knownFiles } from "./similarity.js";
 import { enforcementSignals, determineContrastMode } from "./signals.js";
 import { getState, ENFORCEMENT_PARAMS } from "./state.js";
 import { resetState } from "./state.js";
+import { onEvent } from "../../lib/event-types.js";
 
 const log = createLogger("enforcement");
 const ERROR_BURST_THRESHOLD = 3;
@@ -119,7 +120,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     },
   );
 
-  pi.on("tool_call" as never, async (event: any, ctx: ExtensionContext) => {
+  onEvent(pi, "tool_call", async (event: any, ctx: ExtensionContext) => {
     if (!getState(ctx).enforcementActive) {
       return undefined;
     }
@@ -210,7 +211,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
   });
 
   // ── message_end: combined handler (conflict detection → message analysis → verification judge) ──
-  pi.on("message_end" as never, async (event: any, ctx: any) => {
+  onEvent(pi, "message_end", async (event: any, ctx: any) => {
     if (!getState(ctx).enforcementActive) return;
     const isBurst = getState(ctx).consecutiveErrorTurns >= ERROR_BURST_THRESHOLD;
 
@@ -405,7 +406,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
   // Extracted to handlers/turn-end-handler.ts
   registerTurnEndHandler(pi, nudgeManager);
 
-  pi.on("session_compact" as never, async (event: any, ctx: ExtensionContext) => {
+  onEvent(pi, "session_compact", async (event: any, ctx: ExtensionContext) => {
     if (!getState(ctx).enforcementActive) return;
 
     const compactTurn = getState(ctx).currentTurn;
@@ -464,7 +465,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
   });
 
   // ── auto_retry_end ────────────────────────────────────────────────────────
-  pi.on("auto_retry_end" as never, async (event: any, ctx: ExtensionContext) => {
+  onEvent(pi, "auto_retry_end", async (event: any, ctx: ExtensionContext) => {
     if (!getState(ctx).enforcementActive) return;
 
     const { success, attempt, finalError } = event;
@@ -497,7 +498,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     }
   });
 
-  pi.on("turn_end" as never, async (_event: any, ctx: ExtensionContext) => {
+  onEvent(pi, "turn_end", async (_event: any, ctx: ExtensionContext) => {
     if (!getState(ctx).enforcementActive || !getState(ctx).driftDetector) return;
     // Use getBranch() — getCurrentSession() does not exist on SessionManager
     // Use safeSessionManager to avoid assertActive() crash on stale ctx
@@ -634,7 +635,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     }
   });
 
-  pi.on("session_shutdown" as never, async (_event: any, ctx: ExtensionContext) => {
+  onEvent(pi, "session_shutdown", async (_event: any, ctx: ExtensionContext) => {
     const state = getState(ctx);
     const sessionId = ctx.cwd ?? "default";
 
