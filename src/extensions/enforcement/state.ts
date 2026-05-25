@@ -17,6 +17,11 @@ import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "../../lib/extension-state.js";
 
 export { getVerificationJudgeView, type VerificationJudgeView, startJudge, completeJudge, shouldRunJudge, recordCalibration, getCalibrationError } from "./verification-judge-state.js";
+export { getContextHygieneView, type ContextHygieneView, markNudgeSent, resetNudge, recordContextTool, recordCompaction, recordOverflow, inOverflowRecovery, shouldCheckContext, getContextNudgeMessage } from "./context-hygiene-state.js";
+export { getMemoryHygieneView, type MemoryHygieneView, recordMemoryAccess, incrementTurnsSinceMemory, resetTurnsSinceMemory, shouldNudgeForMemory, markNudgeSent as markMemoryNudgeSent, resetMemoryHygiene } from "./memory-hygiene-state.js";
+import type { ThoughtChainEntry } from "./thought-chain-state.js";
+
+export { getThoughtChainView, type ThoughtChainView, recordThink, incrementToolsSinceReflection, recordSilentTurn, resetSilentTurns, isTooSilent, getReflectionGapMessage, resetThoughtChain } from "./thought-chain-state.js";
 
 const log = createLogger("enforcement");
 
@@ -41,13 +46,6 @@ export interface CalibrationPair {
   actual: number;
   tool: string;
   turn: number;
-}
-
-export interface ThoughtChainEntry {
-  id: string;
-  parentId: string | null;
-  type: string;
-  timestamp: number;
 }
 
 // ── State factory ──────────────────────────────────────────────────────────
@@ -130,7 +128,7 @@ export function createState() {
     lastContextCheckTurn: 0,
     lastCompactionTurn: 0,
     overflowRecently: 0,
-    contextCheckInterval: 21,
+    contextCheckInterval: 34,
     contextAuditThreshold: 0.66,
 
     // ── Verification judge ──────────────────────────────────────────────
