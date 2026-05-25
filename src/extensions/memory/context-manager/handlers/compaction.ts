@@ -52,12 +52,20 @@ import {
 // (1) compact() — manual /pi compact command
 // (2) _runAutoCompaction() — auto-compaction triggered by context pressure
 // Without a guard, our handler fires twice per compaction cycle.
-const _processedCompacts = new Set<string>();
+const MAX_PROCESSED_COMPACTS = 200;
+const _processedCompacts = new Map<string, number>();
 
 function markCompactProcessed(sessionId: string, leafId: string): boolean {
   const key = `${sessionId}::${leafId}`;
   if (_processedCompacts.has(key)) return false;
-  _processedCompacts.add(key);
+  // LRU: remove oldest half when over limit
+  if (_processedCompacts.size >= MAX_PROCESSED_COMPACTS) {
+    const oldest = [..._processedCompacts.entries()]
+      .sort((a, b) => a[1] - b[1])
+      .slice(0, Math.floor(MAX_PROCESSED_COMPACTS / 2));
+    for (const [k] of oldest) _processedCompacts.delete(k);
+  }
+  _processedCompacts.set(key, Date.now());
   return true;
 }
 

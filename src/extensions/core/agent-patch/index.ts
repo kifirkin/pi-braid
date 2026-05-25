@@ -30,6 +30,19 @@ import { createLogger } from "../../../lib/logger.js";
 
 const log = createLogger("agent-patch");
 
+/** Minimum pi-agent-core version that includes the upstream fix (unreleased). */
+const MIN_FIXED_VERSION = [0, 0, 0] as const; // Set to e.g. [0, 71, 0] when upstream fix lands
+
+/** Check if pi-agent-core version meets the minimum fixed version. */
+function isVersionAtLeast(current: string, min: readonly [number, number, number]): boolean {
+  const parts = current.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((parts[i] ?? 0) > min[i]) return true;
+    if ((parts[i] ?? 0) < min[i]) return false;
+  }
+  return true;
+}
+
 /**
  * Monkey-patch Agent.prototype.handleRunFailure to emit message lifecycle events.
  *
@@ -44,10 +57,21 @@ const log = createLogger("agent-patch");
  */
 function applyPatch(): boolean {
   try {
-    // Use `any` cast because handleRunFailure is `private` in TS type defs,
-    // but JavaScript doesn't enforce visibility. The prototype is writable
-    // at runtime regardless of the TS private annotation.
-    const proto = Agent.prototype as any;
+    // Version gate: skip if upstream already has the fix
+    try {
+      const pkg = require("@mariozechner/pi-agent-core/package.json");
+      if (isVersionAtLeast(pkg.version, MIN_FIXED_VERSION)) {
+        log.info("pi-agent-core version includes the handleRunFailure fix — patch skipped");
+        return true;
+      }
+    } catch {
+      // Can't read package.json — apply patch defensively
+    }
+
+    // handleRunFailure is `private` in TS type defs, but JavaScript doesn't
+    // enforce visibility. The prototype is writable at runtime regardless.
+    // Cast through Record<string, unknown> instead of any for slightly better discipline.
+    const proto = Agent.prototype as unknown as Record<string, unknown>;
 
     if (!proto) {
       log.warn("Agent class not found — patch skipped");
@@ -55,7 +79,7 @@ function applyPatch(): boolean {
     }
 
     const original: ((this: any, error: unknown, aborted: boolean) => Promise<void>) | undefined =
-      proto.handleRunFailure;
+      proto.handleRunFailure as typeof original | undefined;
     if (!original) {
       log.warn("handleRunFailure not found on Agent.prototype — patch skipped");
       return false;

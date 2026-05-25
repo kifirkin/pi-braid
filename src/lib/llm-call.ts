@@ -28,10 +28,10 @@ const log = createLogger("llm-call");
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 /** Default outer retry attempts (each may trigger SDK inner retries). */
-const DEFAULT_MAX_RETRIES = 3;
+const DEFAULT_MAX_RETRIES = 5;
 
 /** SDK-level retries per attempt. */
-const DEFAULT_SDK_RETRIES = 2;
+const DEFAULT_SDK_RETRIES = 3;
 
 /** Cooldown after a rate-limit hit before attempting calls again. */
 const RATE_LIMIT_COOLDOWN_MS = 60_000;

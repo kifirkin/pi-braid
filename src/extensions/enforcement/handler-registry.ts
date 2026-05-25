@@ -58,9 +58,13 @@ import { enforcementSignals, determineContrastMode } from "./signals.js";
 import { getState, ENFORCEMENT_PARAMS, recordThink, startJudge, completeJudge } from "./state.js";
 import { resetState } from "./state.js";
 import { onEvent } from "../../lib/event-types.js";
+import type { SessionEntry, SessionManager } from "../../lib/session-manager.js";
 
 const log = createLogger("enforcement");
 const ERROR_BURST_THRESHOLD = 3;
+
+// Module-level tracking for last recommendation (one pi instance per extension load)
+let _lastRecommendationType: string | null = null;
 
 /**
  * Handler registration metadata — used by tests instead of fragile source parsing.
@@ -505,14 +509,13 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     if (!getState(ctx).enforcementActive || !getState(ctx).driftDetector) return;
     // Use getBranch() — getCurrentSession() does not exist on SessionManager
     // Use safeSessionManager to avoid assertActive() crash on stale ctx
-    const sm = safeSessionManager(ctx) as any;
-    const entries = sm?.getBranch?.() ?? [];
+    const sm = safeSessionManager(ctx) as SessionManager | undefined;
+    const entries: SessionEntry[] = sm?.getBranch?.() ?? [];
     const recentMsgs: Array<{ role?: string; content?: unknown }> = [];
     for (let i = entries.length - 1; i >= 0 && recentMsgs.length < 4; i--) {
       const entry = entries[i];
-      if (entry.type === "message") {
-        const msg = entry.message as any;
-        recentMsgs.unshift({ role: msg.role, content: msg.content });
+      if (entry.type === "message" && entry.message) {
+        recentMsgs.unshift({ role: entry.message.role, content: entry.message.content });
       }
     }
     for (let i = recentMsgs.length - 1; i >= 0; i--) {
@@ -550,7 +553,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
 
     // D0: Report previous recommendation outcome
     const enState = getState(ctx);
-    const lastRecType = (pi as any).__lastRecommendationType;
+    const lastRecType = _lastRecommendationType;
     if (lastRecType) {
       const madeProgress = enState.totalToolCalls > (enState.toolCallsAtLastRecommendation ?? 0);
       reportRecommendationOutcome(ctx, lastRecType, madeProgress);
@@ -559,7 +562,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     // Belief Policy Engine - advisory, use hint (BPE recommendations are suggestions, not critical)
     const bpeRec = getNextRecommendation(ctx);
     if (bpeRec) {
-      (pi as any).__lastRecommendationType = bpeRec.type;
+      _lastRecommendationType = bpeRec.type;
       enState.toolCallsAtLastRecommendation = enState.totalToolCalls;
       sendTrackedMessage(
         pi,
