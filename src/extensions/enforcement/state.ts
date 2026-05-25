@@ -16,6 +16,8 @@ import type { EnforcementConfig, ToolChainState, ToolSequencePattern, TurnState 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "../../lib/extension-state.js";
 
+export { getVerificationJudgeView, type VerificationJudgeView, startJudge, completeJudge, shouldRunJudge, recordCalibration, getCalibrationError } from "./verification-judge-state.js";
+
 const log = createLogger("enforcement");
 
 // ── Tunable thresholds ─────────────────────────────────────────────────────
