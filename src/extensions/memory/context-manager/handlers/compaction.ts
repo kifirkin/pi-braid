@@ -9,6 +9,20 @@
 // - Better summarization guidance for the LLM
 
 import type { CompactOptions, ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { SessionManager } from "../../../../lib/session-manager.js";
+
+// Minimal typed interfaces for pi APIs that lack type declarations
+interface PiWithSession { sessionManager: FullSessionManager }
+interface CtxWithSession { sessionManager: FullSessionManager }
+interface FullSessionManager extends SessionManager {
+  appendMessage(msg: unknown): string;
+  getSessionId(): string;
+  /** Flush tracking for compaction dedup */
+  flushed?: boolean;
+  /** File entries from session for diagnostics */
+  fileEntries?: unknown[];
+}
+interface Preparation { messagesToSummarize?: unknown[] }
 import { addEvidence } from "../../../../lib/evidence-pool.js";
 import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
 import { eventBus } from "../../../../lib/event-bus.js";
@@ -143,7 +157,7 @@ function skipDuplicateAppend(sessionManager: any): (msg: any) => string {
  */
 export function tryRestoreAppendMessage(pi: ExtensionAPI): void {
   if (!_interceptActive || !_origAppendMessage) return;
-  const sm = (pi as any).sessionManager;
+  const sm = (pi as unknown as PiWithSession).sessionManager;
   // Only restore if the sessionManager is the same one we intercepted.
   // After session replacement (reload/newSession), sm is a new instance
   // and the old _origAppendMessage is stale — DO NOT restore.
@@ -191,14 +205,14 @@ export function clearInterceptState(): void {
 function forcePersistSession(sm: any): void {
   try {
     if (!sm?.sessionFile || !sm?.persist) return;
-    const flushed = (sm as any).flushed;
-    const entries = (sm as any).fileEntries ?? [];
+    const flushed = (sm as FullSessionManager).flushed;
+    const entries = (sm as FullSessionManager).fileEntries ?? [];
     if (!flushed && entries.length > 0) {
       // Write all entries to establish the session file with all content
       for (const entry of entries) {
         appendFileSync(sm.sessionFile, `${JSON.stringify(entry)}\n`);
       }
-      (sm as any).flushed = true;
+      (sm as FullSessionManager).flushed = true;
       log.debug(`[context-manager] Force-persisted ${entries.length} entries to ${sm.sessionFile}`);
     }
   } catch (e) {
@@ -292,8 +306,8 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
     try {
       setCompactionActive(true);
       // STEP 0: Deduplicate — prevent two entries from manual+auto call sites
-      const sessionId = (ctx as any).sessionManager?.getSessionId?.() ?? "?";
-      const leafId = (ctx as any).sessionManager?.getLeafId?.() ?? "?";
+      const sessionId = (ctx as unknown as CtxWithSession).sessionManager?.getSessionId?.() ?? "?";
+      const leafId = (ctx as unknown as CtxWithSession).sessionManager?.getLeafId?.() ?? "?";
       if (!markCompactProcessed(sessionId, leafId)) {
         log.info("[context-manager] session_before_compact duplicate — skipping");
         return;
@@ -311,7 +325,7 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
             `[context-manager] Pre-filter: removed ${stats.totalRemoved} messages ` +
               `(from ${stats.beforeTokens} to ${stats.afterTokens} tokens, saved ~${pct}%)`,
           );
-          (prep as any).messagesToSummarize = filtered;
+          (prep as unknown as Preparation).messagesToSummarize = filtered;
         }
       }
 
@@ -347,7 +361,7 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
               : baseLevel;
 
           const { compressed, stats: scStats } = semanticCompress(
-            (prep as any).messagesToSummarize as any[],
+            (prep as unknown as Preparation).messagesToSummarize as any[],
             compressionLevel,
           );
           if (scStats.messagesOut < scStats.messagesIn) {
@@ -357,7 +371,7 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
                 `${scStats.messagesIn}→${scStats.messagesOut} msgs ` +
                 `(${scStats.unitsCollapsed} collapsed, ${scStats.unitsDropped} dropped)`,
             );
-            (prep as any).messagesToSummarize = compressed;
+            (prep as unknown as Preparation).messagesToSummarize = compressed;
 
             // Store compression metadata for retrieval quality scoring
             try {
@@ -424,7 +438,7 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
       // Intercept appendMessage to skip the duplicate from flushCompactionQueue's
       // session.prompt() → message_end → appendMessage call.
       if (_queuedDuringCompaction) {
-        const sm = (ctx as any).sessionManager;
+        const sm = (ctx as unknown as CtxWithSession).sessionManager;
         if (sm && typeof sm.appendMessage === "function") {
           try {
             const messageObj = {
@@ -480,8 +494,8 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
       cmState.compactionRetryActive = false;
       cmState.overflowRetryActive = false;
       clearProcessedCompacts(
-        (ctx as any).sessionManager?.getSessionId?.() ?? "?",
-        (ctx as any).sessionManager?.getLeafId?.() ?? "?",
+        (ctx as unknown as CtxWithSession).sessionManager?.getSessionId?.() ?? "?",
+        (ctx as unknown as CtxWithSession).sessionManager?.getLeafId?.() ?? "?",
       );
     } catch (err) {
       log.error("session_compact error:", err);
@@ -532,8 +546,8 @@ export function registerCompactionEndHandler(pi: ExtensionAPI): void {
         // Aborted — user cancelled. Clear dedup guard so next compaction can run.
         if (aborted) {
           clearProcessedCompacts(
-            (_ctx as any).sessionManager?.getSessionId?.() ?? "?",
-            (_ctx as any).sessionManager?.getLeafId?.() ?? "?",
+            (_ctx as unknown as CtxWithSession).sessionManager?.getSessionId?.() ?? "?",
+            (_ctx as unknown as CtxWithSession).sessionManager?.getLeafId?.() ?? "?",
           );
           return;
         }

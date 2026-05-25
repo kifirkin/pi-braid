@@ -14,6 +14,19 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
+import type { SessionManager } from "../../../lib/session-manager.js";
+
+// Extended episode with dynamic metadata fields not in the base type
+interface RichEpisode extends Episode {
+  memoryConfidence?: number;
+  _crossSession?: boolean;
+}
+
+// Extended session manager with getSessionFile (pi-native, not in our wrapper)
+interface CtxSessionManager extends SessionManager {
+  getSessionFile(): string;
+}
+
 import { createLogger } from "../../../lib/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 import { getExtensionState, safeSessionManager } from "../../../lib/extension-state.js";
@@ -136,11 +149,12 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
             ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
           const ageMinutes = Math.round((Date.now() - ep.timestamp) / 60000);
           const provenance = `[MEMORY project=${ep.project || "unknown"} ttl=${ageMinutes}m ago]`;
+          const _rich = ep! as unknown as RichEpisode;
           const confTag =
-            (ep as any).memoryConfidence != null
-              ? ` conf=${((ep as any).memoryConfidence * 100).toFixed(0)}%`
+            _rich.memoryConfidence != null
+              ? ` conf=${(_rich.memoryConfidence * 100).toFixed(0)}%`
               : "";
-          const crossTag = (ep as any)._crossSession ? " [CROSS-SESSION]" : "";
+          const crossTag = _rich._crossSession ? " [CROSS-SESSION]" : "";
           const qualityTag = ep.quality != null ? ` quality=${(ep.quality * 100).toFixed(0)}%` : "";
           lines.push(
             `${provenance}${confTag}${qualityTag}${crossTag} ${outcomeIcon} [${ep.outcome}] ${ep.task}`,
@@ -320,7 +334,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     SessionPhase.MemoryState,
     async (_event: any, ctx: ExtensionContext) => {
       const state = getState(ctx);
-      const sm = safeSessionManager(ctx) as any;
+      const sm = safeSessionManager(ctx) as CtxSessionManager | undefined;
       state.currentSessionId = sm?.getSessionFile?.() ?? `session-${Date.now()}`;
 
       if (state.episodes.length === 0) {
@@ -345,7 +359,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
               const entry = JSON.parse(line);
               if (entry.toolMetrics) {
                 for (const [toolName, metrics] of Object.entries(entry.toolMetrics)) {
-                  const m = metrics as any;
+                  const m = metrics as { successCount?: number; totalCalls?: number };
                   if (m.successCount !== undefined && m.totalCalls !== undefined) {
                     const key = `${toolName}:*`;
                     if (!state.toolStats.has(key)) {
@@ -397,7 +411,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     // Filter out cross-session episodes from auto-whisper unless highly relevant (>0.6)
     const filtered = episodes.filter((ep: any) => {
       if (!ep._crossSession) return true;
-      return (ep as any).similarity > 0.6;
+      return (ep! as unknown as RichEpisode).similarity > 0.6;
     });
     if (filtered.length === 0) return;
 
@@ -423,12 +437,13 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     }
 
     const lines: string[] = [`[recall] ${title}`];
-    for (const ep of filtered.slice(0, 2)) {
+    for (const ep of filtered.slice(0, 2) as Episode[]) {
       const icon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
-      const crossMark = (ep as any)._crossSession ? " [CROSS-SESSION]" : "";
+      const _richEp = ep! as unknown as RichEpisode;
+      const crossMark = _richEp._crossSession ? " [CROSS-SESSION]" : "";
       const conf =
-        (ep as any).memoryConfidence != null
-          ? ` (conf ${((ep as any).memoryConfidence * 100).toFixed(0)}%)`
+        _richEp.memoryConfidence != null
+          ? ` (conf ${(_richEp.memoryConfidence * 100).toFixed(0)}%)`
           : "";
       lines.push(`  ${icon}${crossMark}${conf} ${ep.task.slice(0, 80)}`);
       lines.push(`    Solution: ${ep.solution.slice(0, 300)}`);
