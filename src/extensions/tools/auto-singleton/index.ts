@@ -23,6 +23,12 @@ import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 
 const log = createLogger("auto-singleton");
 
+// piRef at runtime is a full Pi instance with sendMessage, but ExtensionAPI
+// doesn't expose it. Used for stale-reference detection only.
+interface PiRefWithSendMessage {
+  sendMessage?: (...args: unknown[]) => unknown;
+}
+
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const MIN_TIMEOUT_SECONDS = 30;
@@ -151,7 +157,7 @@ class AutoSingletonManager {
     // piRef can go stale after session restart in same process. Guard by
     // checking that sendTrackedMessage would actually work. If piRef is
     // stale, cancel the watchdog silently rather than throwing mid-poll.
-    if (typeof (this.piRef as any)?.sendMessage !== "function") {
+    if (typeof (this.piRef as unknown as PiRefWithSendMessage)?.sendMessage !== "function") {
       log.warn("[auto-singleton] piRef appears stale — disarming watchdog");
       this.active = false;
       return;
@@ -258,7 +264,7 @@ export default function autoSingletonExtension(pi: ExtensionAPI): void {
         },
       };
     },
-  } as any);
+  });
 
   // ── auto_singleton_cancel ───────────────────────────────────────────────
   pi.registerTool({
@@ -283,7 +289,7 @@ export default function autoSingletonExtension(pi: ExtensionAPI): void {
         details: { cancelled: wasActive, active: false },
       };
     },
-  } as any);
+  });
 
   // ── auto_singleton_status ─────────────────────────────────────────────────
   pi.registerTool({
@@ -326,7 +332,7 @@ export default function autoSingletonExtension(pi: ExtensionAPI): void {
         },
       };
     },
-  } as any);
+  });
 
   // ── Event hooks: renew deadline on agent activity ──────────────────────────
 
@@ -344,7 +350,7 @@ export default function autoSingletonExtension(pi: ExtensionAPI): void {
 
   // ── Cleanup on session end ────────────────────────────────────────────────
 
-  pi.on("session_shutdown" as any, () => {
+  pi.on("session_shutdown", () => {
     manager.stop();
   });
 

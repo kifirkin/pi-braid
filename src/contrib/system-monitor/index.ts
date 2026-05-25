@@ -99,7 +99,7 @@ export function collectCpu(): CpuInfo {
   let total = 0;
   for (const cpu of cpus) {
     for (const type in cpu.times) {
-      total += (cpu.times as any)[type];
+      total += (cpu.times as Record<string, number>)[type];
     }
     idle += cpu.times.idle;
   }

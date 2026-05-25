@@ -308,7 +308,11 @@ export function registerTools(pi: ExtensionAPI): void {
           // Schedule a resume timer before compacting — otherwise agent stalls
           try {
             const { scheduleTimer } = await import("../../../tools/timer/index.js");
-            scheduleTimer(1500, "Context pruning done — continue your task", "compaction-resume");
+            scheduleTimer(
+              3 * 60 * 1000,
+              "Context pruning done — continue your task",
+              "compaction-resume",
+            );
           } catch {
             // Non-fatal — timer unavailable, agent must type to resume
           }

@@ -5,9 +5,15 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { SessionManager } from "../../lib/session-manager.js";
 import { safeSessionManager } from "../../lib/extension-state.js";
 import { createLogger } from "../../lib/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../lib/session-start-queue.js";
+
+// pi's native SessionManager has getSessionFile() not in our wrapper
+interface SmWithSessionFile extends SessionManager {
+  getSessionFile(): string;
+}
 
 const log = createLogger("watchdog");
 
@@ -28,7 +34,7 @@ function formatTime(ms: number): string {
 
 export default function (pi: ExtensionAPI) {
   registerSessionStartHandler(pi, SessionPhase.Background, async (_event, ctx) => {
-    const sm = safeSessionManager(ctx) as any;
+    const sm = safeSessionManager(ctx) as unknown as SmWithSessionFile;
     const path = sm?.getSessionFile?.() ?? ctx.cwd;
     sessions.set(path, {
       startTime: Date.now(),
@@ -40,7 +46,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("message_end", async (_event, ctx) => {
-    const sm = safeSessionManager(ctx) as any;
+    const sm = safeSessionManager(ctx) as unknown as SmWithSessionFile;
     const path = sm?.getSessionFile?.() ?? ctx.cwd;
     const sessionState = sessions.get(path);
     if (sessionState) {
@@ -50,14 +56,14 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("agent_start", async (_event, ctx) => {
-    const sm = safeSessionManager(ctx) as any;
+    const sm = safeSessionManager(ctx) as unknown as SmWithSessionFile;
     const path = sm?.getSessionFile?.() ?? ctx.cwd;
     const sessionState = sessions.get(path);
     if (sessionState) sessionState.isStreaming = true;
   });
 
   pi.on("agent_end", async (_event, ctx) => {
-    const sm = safeSessionManager(ctx) as any;
+    const sm = safeSessionManager(ctx) as unknown as SmWithSessionFile;
     const path = sm?.getSessionFile?.() ?? ctx.cwd;
     const sessionState = sessions.get(path);
     if (sessionState) {
@@ -69,7 +75,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("watchdog-status", {
     description: "Show watchdog status",
     handler: async (_args, ctx) => {
-      const sm = safeSessionManager(ctx) as any;
+      const sm = safeSessionManager(ctx) as unknown as SmWithSessionFile;
       const path = sm?.getSessionFile?.() ?? ctx.cwd;
       const sessionState = sessions.get(path);
       if (!sessionState) return;

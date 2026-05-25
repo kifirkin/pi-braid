@@ -20,7 +20,7 @@ const log = createLogger("latent-activator");
  * 4. BEHAVIORAL DECOMPOSITION - atomic behaviors, not personas
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, AgentToolResult } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 
 /**
@@ -509,7 +509,7 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
         return {
           content: [{ type: "text", text: `Error: ${msg}` }],
           details: { error: msg },
-        } as any;
+        } as AgentToolResult<unknown>;
       }
     },
   });
@@ -535,7 +535,7 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
         return {
           content: [{ type: "text", text: `Error: ${msg}` }],
           details: { error: msg },
-        } as any;
+        } as AgentToolResult<unknown>;
       }
     },
   });
@@ -560,7 +560,7 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
         return {
           content: [{ type: "text", text: `Error: ${msg}` }],
           details: { error: msg },
-        } as any;
+        } as AgentToolResult<unknown>;
       }
     },
   });
@@ -596,7 +596,7 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
         return {
           content: [{ type: "text", text: `Error: ${msg}` }],
           details: { error: msg },
-        } as any;
+        } as AgentToolResult<unknown>;
       }
     },
   });
