@@ -58,7 +58,7 @@ import {
 } from "./whisper.js";
 import { knownFiles } from "./similarity.js";
 import { enforcementSignals, determineContrastMode } from "./signals.js";
-import { getState, ENFORCEMENT_PARAMS } from "./state.js";
+import { getState, ENFORCEMENT_PARAMS, recordThink, startJudge, completeJudge } from "./state.js";
 import { resetState } from "./state.js";
 import { onEvent } from "../../lib/event-types.js";
 
@@ -173,20 +173,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
       const thinkType = (input as { type?: string })?.type || "unknown";
       const parentId = (input as { parent_id?: string })?.parent_id || null;
       const confidence = (input as { confidence?: number })?.confidence;
-      if (typeof confidence === "number") getState(ctx).lastThinkConfidence = confidence;
-      const thoughtId = `t${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      getState(ctx).thoughtChains.push({
-        id: thoughtId,
-        parentId,
-        type: thinkType,
-        timestamp: Date.now(),
-      });
-
-      if (thinkType === "reflection" || thinkType === "conclusion") {
-        getState(ctx).toolsSinceReflection = 0;
-      } else {
-        getState(ctx).toolsSinceReflection++;
-      }
+      recordThink(getState(ctx), thinkType, parentId, confidence);
     } else {
       getState(ctx).toolsSinceReflection++;
     }
@@ -301,10 +288,8 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
       getState(ctx).hasCodeChanges &&
       getState(ctx).currentTurn - getState(ctx).lastVerificationJudgeTurn >= 1
     ) {
-      const now = Date.now();
-      if (now - getState(ctx).lastJudgeTime < 60_000) return;
-
-      getState(ctx).verificationJudgeRunning = true;
+      if (Date.now() - getState(ctx).lastJudgeTime < 60_000) return;
+      startJudge(getState(ctx));
 
       const toolLog: string[] = [];
       for (const [, turn] of getState(ctx).turnHistory) {
@@ -327,8 +312,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
         await import("./verification-judge.js");
       const result = await runVerificationJudge(ctx as never, judgeCtx, { timeoutMs: 30000 });
 
-      getState(ctx).lastVerificationJudgeTurn = getState(ctx).currentTurn;
-      getState(ctx).verificationJudgeRunning = false;
+      completeJudge(getState(ctx), getState(ctx).currentTurn);
 
       if (result) {
         if (result.verdict === "fail" || result.verdict === "warn") {

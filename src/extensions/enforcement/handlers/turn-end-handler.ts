@@ -17,7 +17,7 @@ import {
 } from "./turn-analysis.js";
 import { detectOrphanChains } from "./orphan-chains.js";
 import { type NudgeManager } from "../nudge-manager.js";
-import { getState } from "../state.js";
+import { getState, markNudgeSent, shouldNudgeForMemory, markMemoryNudgeSent, recordContextTool, resetNudge } from "../state.js";
 import { recordNudgeSuppressed, getNudgeAnalytics } from "../../../lib/nudge-analytics.js";
 import { type TurnState } from "../types.js";
 import { validateTurn } from "../validation.js";
@@ -238,11 +238,9 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
     if (
       !hadErrors &&
       !inOverflowRecovery &&
-      getState(ctx).hasCodeChanges &&
-      getState(ctx).turnsSinceMemory >= 20 &&
-      !getState(ctx).memoryNudgeSent
+      shouldNudgeForMemory(getState(ctx), getState(ctx).currentTurn, 20)
     ) {
-      getState(ctx).memoryNudgeSent = true;
+      markMemoryNudgeSent(getState(ctx));
       sessionSignals.push(
         "Code changed but nothing stored. Capture the key pattern or fix: " +
           'memory_store(content="...", tags=["pattern", "fix"])',
@@ -338,15 +336,13 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
       const turnsSinceLastCheck = getState(ctx).currentTurn - getState(ctx).lastContextCheckTurn;
       if (turnsSinceLastCheck >= tokenCheckInterval) {
         if (usageTokens >= USAGE_TOKENS_WARNING) {
-          getState(ctx).contextNudgeSent = true;
-          getState(ctx).lastContextCheckTurn = getState(ctx).currentTurn;
+          markNudgeSent(getState(ctx), getState(ctx).currentTurn);
           sessionSignals.push(
             `Context at ${Math.round(usageTokens / 1000)}K tokens (${Math.round(usagePercent)}%). ` +
             `Pipeline: context_tag → context_checkout → context_archive → compact (last resort).`,
           );
         } else if (usageTokens >= USAGE_TOKENS_SOFT) {
-          getState(ctx).contextNudgeSent = true;
-          getState(ctx).lastContextCheckTurn = getState(ctx).currentTurn;
+          markNudgeSent(getState(ctx), getState(ctx).currentTurn);
           sessionSignals.push(
             `Context at ${Math.round(usageTokens / 1000)}K tokens. ` +
             `Consider pruning old tool results (context_prune dry-run) or tagging position.`,
@@ -364,8 +360,7 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
       !getState(ctx).contextNudgeSent &&
       usagePercent > 0
     ) {
-      getState(ctx).contextNudgeSent = true;
-      getState(ctx).lastContextCheckTurn = getState(ctx).currentTurn;
+      markNudgeSent(getState(ctx), getState(ctx).currentTurn);
       const pct = Math.round(usagePercent);
       if (usagePercent >= USAGE_COMPACT_MEDIUM) {
         sessionSignals.push(

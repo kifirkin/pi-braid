@@ -47,9 +47,10 @@ export function getContextHygieneView(ctx: ExtensionContext): ContextHygieneView
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-/** Mark context nudge as sent. */
-export function markNudgeSent(s: EnforcementState): void {
+/** Mark context nudge as sent (system sends nudge to agent). */
+export function markNudgeSent(s: EnforcementState, turn: number): void {
   s.contextNudgeSent = true;
+  s.lastContextCheckTurn = turn;
 }
 
 /** Reset context nudge (e.g., after compaction freed space). */
