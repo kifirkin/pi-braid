@@ -23,14 +23,12 @@ import { readFile as readFilePromise, stat, writeFile, mkdir } from "node:fs/pro
 
 /** Async helper: check if a path exists (replaces existsSync). */
 async function asyncExists(p: string): Promise<boolean> {
-  return stat(p).then(() => true).catch(() => false);
+  return stat(p)
+    .then(() => true)
+    .catch(() => false);
 }
 import * as path from "node:path";
-import {
-  EPISODES_FILE,
-  LEGACY_MEMORY_FILE,
-  METRICS_FILE,
-} from "../../../lib/braid-paths.js";
+import { EPISODES_FILE, LEGACY_MEMORY_FILE, METRICS_FILE } from "../../../lib/braid-paths.js";
 import { CognitiveMemory, getCognitiveMemory } from "../../../lib/cognitive-memory.js";
 
 // ── Re-export types ─────────────────────────────────────────────────────────
@@ -469,7 +467,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
             1,
             state.currentSessionId,
           );
-          if (relevant.length > 0 && relevant[0].similarity > 0.40) {
+          if (relevant.length > 0 && relevant[0].similarity > 0.4) {
             whisperRecall(state, ctx, `Approach hint for ${taskType} tasks:`, relevant);
           }
         }
@@ -543,7 +541,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
       const stableQuery = `${dominantType} ${errorTool} solution error`.trim();
       const relevant = retrieveByRUMS(state, stableQuery, 1, state.currentSessionId);
 
-      if (relevant.length > 0 && relevant[0].similarity > 0.40) {
+      if (relevant.length > 0 && relevant[0].similarity > 0.4) {
         whisperRecall(state, ctx, `Past solution might apply:`, relevant);
       }
 
@@ -577,9 +575,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
 
           const lines: string[] = [`[recall] Related memory:`];
           for (const r of filtered.slice(0, 1)) {
-            lines.push(
-              `  [${r.memory.type}] ${r.memory.content.slice(0, 80).replace(/\n/g, " ")}`,
-            );
+            lines.push(`  [${r.memory.type}] ${r.memory.content.slice(0, 80).replace(/\n/g, " ")}`);
           }
           sendTrackedMessage(
             pi,
@@ -629,7 +625,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     if (state.episodes.length > 0) {
       try {
         const dir = path.dirname(EPISODES_FILE);
-        if (!await asyncExists(dir)) await mkdir(dir, { recursive: true });
+        if (!(await asyncExists(dir))) await mkdir(dir, { recursive: true });
         await writeFile(
           EPISODES_FILE,
           state.episodes.map((e: any) => JSON.stringify(e)).join("\n"),

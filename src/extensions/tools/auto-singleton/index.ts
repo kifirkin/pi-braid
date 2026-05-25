@@ -35,10 +35,10 @@ const DEFAULT_TIMEOUT_SECONDS = 300; // 5 minutes
 interface AutoSingletonState {
   active: boolean;
   timeoutMs: number;
-  deadline: number;        // renewed on each activity event
-  message: string;         // custom message delivered on fire
-  fired: boolean;          // true after fire — prevents double-fire
-  lastRenewal: number;     // timestamp of last activity
+  deadline: number; // renewed on each activity event
+  message: string; // custom message delivered on fire
+  fired: boolean; // true after fire — prevents double-fire
+  lastRenewal: number; // timestamp of last activity
 }
 
 /**
@@ -75,13 +75,17 @@ class AutoSingletonManager {
     this.fired = false;
     this.piRef = pi;
 
-    log.info(`[auto-singleton] ARMED: timeout=${clamped}s, deadline=${new Date(this.deadline).toISOString()}`);
+    log.info(
+      `[auto-singleton] ARMED: timeout=${clamped}s, deadline=${new Date(this.deadline).toISOString()}`,
+    );
   }
 
   /** Disarm the watchdog. */
   cancel(): void {
     if (this.active) {
-      log.info(`[auto-singleton] CANCELLED by agent (was active for ${Math.round((Date.now() - this.lastRenewal) / 1000)}s)`);
+      log.info(
+        `[auto-singleton] CANCELLED by agent (was active for ${Math.round((Date.now() - this.lastRenewal) / 1000)}s)`,
+      );
     }
     this.active = false;
     this.fired = false;
@@ -96,7 +100,14 @@ class AutoSingletonManager {
   }
 
   /** Check current status. */
-  status(): { active: boolean; deadline: number | null; fired: boolean; message: string; timeoutSeconds: number; lastActivityAgoMs: number } {
+  status(): {
+    active: boolean;
+    deadline: number | null;
+    fired: boolean;
+    message: string;
+    timeoutSeconds: number;
+    lastActivityAgoMs: number;
+  } {
     return {
       active: this.active,
       deadline: this.active ? this.deadline : null,
@@ -180,7 +191,9 @@ class AutoSingletonManager {
       }
     }
 
-    log.info(`[auto-singleton] FIRED: fully expired (${idleSeconds}s idle, timeout was ${Math.round(this.timeoutMs / 1000)}s)`);
+    log.info(
+      `[auto-singleton] FIRED: fully expired (${idleSeconds}s idle, timeout was ${Math.round(this.timeoutMs / 1000)}s)`,
+    );
   }
 }
 
@@ -230,7 +243,8 @@ export default function autoSingletonExtension(pi: ExtensionAPI): void {
         content: [
           {
             type: "text" as const,
-            text: `Auto-singleton armed for ${timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS}s inactivity. ` +
+            text:
+              `Auto-singleton armed for ${timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS}s inactivity. ` +
               `Will fire at ${new Date(Date.now() + (timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000).toLocaleTimeString()} ` +
               `if no activity detected. Use auto_singleton_cancel() to disarm.`,
           },
@@ -238,7 +252,9 @@ export default function autoSingletonExtension(pi: ExtensionAPI): void {
         details: {
           active: true,
           timeout_seconds: timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS,
-          deadline: new Date(Date.now() + (timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000).toISOString(),
+          deadline: new Date(
+            Date.now() + (timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000,
+          ).toISOString(),
         },
       };
     },
@@ -280,16 +296,19 @@ export default function autoSingletonExtension(pi: ExtensionAPI): void {
     execute: async (): Promise<any> => {
       const s = manager.status();
       if (!s.active) {
-        const fireNote = s.fired ? " Watchdog has fired (re-arm with auto_singleton_set to continue)." : "";
+        const fireNote = s.fired
+          ? " Watchdog has fired (re-arm with auto_singleton_set to continue)."
+          : "";
         return {
-          content: [{ type: "text" as const, text: `No active auto-singleton watchdog.${fireNote}` }],
+          content: [
+            { type: "text" as const, text: `No active auto-singleton watchdog.${fireNote}` },
+          ],
           details: { active: false, fired: s.fired },
         };
       }
       const remaining = Math.max(0, Math.ceil((s.deadline! - Date.now()) / 1000));
-      const lastActivity = s.lastActivityAgoMs < 1000
-        ? "just now"
-        : `${Math.round(s.lastActivityAgoMs / 1000)}s ago`;
+      const lastActivity =
+        s.lastActivityAgoMs < 1000 ? "just now" : `${Math.round(s.lastActivityAgoMs / 1000)}s ago`;
 
       return {
         content: [
@@ -333,5 +352,7 @@ export default function autoSingletonExtension(pi: ExtensionAPI): void {
 
   manager.start(pi);
 
-  log.info("[auto-singleton] loaded: auto_singleton_set, auto_singleton_cancel, auto_singleton_status");
+  log.info(
+    "[auto-singleton] loaded: auto_singleton_set, auto_singleton_cancel, auto_singleton_status",
+  );
 }

@@ -22,10 +22,7 @@ import { fileURLToPath } from "node:url";
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getCognitiveMemory } from "../../../lib/cognitive-memory.js";
-import {
-  gatherL1Environment,
-  formatL1EnvironmentSection,
-} from "../agent-environment/index.js";
+import { gatherL1Environment, formatL1EnvironmentSection } from "../agent-environment/index.js";
 
 interface L1Environment {
   contextPercent: number;
@@ -200,7 +197,9 @@ function formatL1Environment(env: L1Environment): string {
 
   // Checkpoint awareness (proactive: lower threshold)
   if (env.stepsSinceCheckpoint > 0) {
-    lines.push(`${env.stepsSinceCheckpoint} step(s) since last checkpoint — consider tagging context`);
+    lines.push(
+      `${env.stepsSinceCheckpoint} step(s) since last checkpoint — consider tagging context`,
+    );
   }
 
   // Pi package root (environmental awareness)

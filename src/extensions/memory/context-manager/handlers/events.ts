@@ -5,7 +5,10 @@ import type { ExtensionContext, ExtensionAPI } from "@mariozechner/pi-coding-age
 import { addEvidence } from "../../../../lib/evidence-pool.js";
 import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
 import { applyPruningWorkflow } from "../pruning.js";
-import { findReasoningBlocks, confirmReasoningBlock, recordSummarization,
+import {
+  findReasoningBlocks,
+  confirmReasoningBlock,
+  recordSummarization,
   shouldSummarizeReasoning,
   estimateTokensSaved,
   extractReasoningSummary,
@@ -144,50 +147,44 @@ export function registerAgentEndRetryHandler(pi: ExtensionAPI): void {
 
 // ── Auto-Retry End Event ──────────────────────────────────────────────────────
 export function registerAutoRetryEndHandler(pi: ExtensionAPI): void {
-  onEvent(pi,
-    "auto_retry_end",
-    async (
-      event: any,
-      _ctx: ExtensionContext,
-    ) => {
-      try {
-        const { success, attempt, finalError } = event as {
-          success?: boolean;
-          attempt?: number;
-          finalError?: string;
-        };
-        if (!success) {
-          sendTrackedMessage(
-            pi,
-            {
-              customType: "context",
-              content: [
-                {
-                  type: "text" as const,
-                  text: [
-                    "## ⚠️ API retry failed after " + attempt + " attempt(s)",
-                    finalError ?? "Unknown error",
-                    "",
-                    "The API kept returning errors despite retries. Possible causes:",
-                    "- Rate limit (429) - wait a moment or switch models",
-                    "- Server error (500/502/503) - provider is having issues",
-                    "- Network error - check your connection",
-                    "",
-                    "Actions: Run `/model` to switch models, or wait and retry.",
-                  ].join("\n"),
-                },
-              ],
-              display: true,
-            },
-            { deliverAs: "steer", triggerTurn: false },
-            { type: "context", source: "context-manager/auto-retry" },
-          );
-        }
-      } catch (err) {
-        log.error("auto_retry_end error:", err);
+  onEvent(pi, "auto_retry_end", async (event: any, _ctx: ExtensionContext) => {
+    try {
+      const { success, attempt, finalError } = event as {
+        success?: boolean;
+        attempt?: number;
+        finalError?: string;
+      };
+      if (!success) {
+        sendTrackedMessage(
+          pi,
+          {
+            customType: "context",
+            content: [
+              {
+                type: "text" as const,
+                text: [
+                  "## ⚠️ API retry failed after " + attempt + " attempt(s)",
+                  finalError ?? "Unknown error",
+                  "",
+                  "The API kept returning errors despite retries. Possible causes:",
+                  "- Rate limit (429) - wait a moment or switch models",
+                  "- Server error (500/502/503) - provider is having issues",
+                  "- Network error - check your connection",
+                  "",
+                  "Actions: Run `/model` to switch models, or wait and retry.",
+                ].join("\n"),
+              },
+            ],
+            display: true,
+          },
+          { deliverAs: "steer", triggerTurn: false },
+          { type: "context", source: "context-manager/auto-retry" },
+        );
       }
-    },
-  );
+    } catch (err) {
+      log.error("auto_retry_end error:", err);
+    }
+  });
 }
 
 // ── Context Event Handler (pruning + semantic compression + trigger cleanup) ──
@@ -256,7 +253,9 @@ export function registerContextPruningHandler(pi: ExtensionAPI): void {
               // Tier 2: Confirm with utility model before summarization
               const lastContent = block.messages[block.messages.length - 1]?.content ?? "";
               if (lastContent.length > 50) {
-                const confirmed = await confirmReasoningBlock(lastContent, ctx as any).catch(() => true);
+                const confirmed = await confirmReasoningBlock(lastContent, ctx as any).catch(
+                  () => true,
+                );
                 if (!confirmed) {
                   log.debug("context: reasoning block rejected by utility model, skipping");
                   continue;

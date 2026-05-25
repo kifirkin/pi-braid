@@ -9,10 +9,7 @@
 export const FILE_CHURN_TOOLS: readonly string[] = ["edit", "write", "delete"] as const;
 
 /** Tools that can cause destructive or irreversible system changes. */
-export const DESTRUCTIVE_TOOLS: readonly string[] = [
-  ...FILE_CHURN_TOOLS,
-  "bash",
-] as const;
+export const DESTRUCTIVE_TOOLS: readonly string[] = [...FILE_CHURN_TOOLS, "bash"] as const;
 
 // ── Malformed Tool Call Detection (shared across enforcement + reasoning) ────
 

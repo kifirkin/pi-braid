@@ -12,7 +12,9 @@ import { stat, readdir, readFile } from "node:fs/promises";
 
 /** Async helper: check if a path exists. */
 async function asyncExists(p: string): Promise<boolean> {
-  return stat(p).then(() => true).catch(() => false);
+  return stat(p)
+    .then(() => true)
+    .catch(() => false);
 }
 
 export interface PastInsight {
@@ -70,7 +72,14 @@ export async function searchPastInsights(cwd: string): Promise<PastInsight[]> {
           try {
             const ep = JSON.parse(line);
             if (!ep.task || !ep.outcome) continue;
-            if (!isCrossProjectInjectionAllowed(ep.project, projectId, ep.timestamp ?? Date.now(), ep.outcome)) {
+            if (
+              !isCrossProjectInjectionAllowed(
+                ep.project,
+                projectId,
+                ep.timestamp ?? Date.now(),
+                ep.outcome,
+              )
+            ) {
               continue;
             }
             insights.push({

@@ -41,7 +41,9 @@ function isDaemonRunning(): boolean {
       return true;
     } catch {
       // Clean up stale PID file
-      try { fs.unlinkSync(OBSERVATORY_PIDFILE); } catch {}
+      try {
+        fs.unlinkSync(OBSERVATORY_PIDFILE);
+      } catch {}
       return false;
     }
   } catch {

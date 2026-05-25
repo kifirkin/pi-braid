@@ -34,19 +34,19 @@
 
 Extensions are grouped by **actual coupling** (shared events, tools, state):
 
-| Module                | Always-on | Purpose                           | Extensions                                                                 |
-| --------------------- | --------- | --------------------------------- | -------------------------------------------------------------------------- |
-| **core**              | ✅        | Foundation layer                  | agent-patch, polyfill, metacognition, scratchpad, preprocessor, prompt-builder, agent-environment |
-| **cognitive-quality** | ✅        | Reasoning quality tools           | reasoning, verification, topic-drift, sycophancy-detector                 |
-| **enforcement**       | ✅        | RepE behavioral enforcement       | enforcement                                                               |
-| **memory**            | ✅        | Memory stores + context lifecycle | three-memory-stores, session-recall, context-manager, context-lifecycle, memory-agent-bridge |
-| **heartbeat**         | ✅        | Proactive cognitive scheduling    | heartbeat-scheduler, analytics                                            |
-| **tools**             | ✅        | Cognitive utility tools           | timer, latent-activator                                                   |
-| **nudge**             | ✅        | Feedback/nudge injection          | feedback                                                                  |
-| **contrib**           | ✅        | Peripheral utilities (not cog. arch.) | diff, healthcheck, observatory, research, system-monitor, rate-limiter, tool-config |
-| **watchdog**          | ❌        | Error monitoring (opt-in)         | watchdog                                                                  |
-| **health-maintenance**| ❌        | Degradation recovery (opt-in)     | health-maintenance                                                        |
-| **error-tracking**    | ❌        | Error logging tools (opt-in)      | error-capture                                                             |
+| Module                 | Always-on | Purpose                               | Extensions                                                                                        |
+| ---------------------- | --------- | ------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| **core**               | ✅        | Foundation layer                      | agent-patch, polyfill, metacognition, scratchpad, preprocessor, prompt-builder, agent-environment |
+| **cognitive-quality**  | ✅        | Reasoning quality tools               | reasoning, verification, topic-drift, sycophancy-detector                                         |
+| **enforcement**        | ✅        | RepE behavioral enforcement           | enforcement                                                                                       |
+| **memory**             | ✅        | Memory stores + context lifecycle     | three-memory-stores, session-recall, context-manager, context-lifecycle, memory-agent-bridge      |
+| **heartbeat**          | ✅        | Proactive cognitive scheduling        | heartbeat-scheduler, analytics                                                                    |
+| **tools**              | ✅        | Cognitive utility tools               | timer, latent-activator                                                                           |
+| **nudge**              | ✅        | Feedback/nudge injection              | feedback                                                                                          |
+| **contrib**            | ✅        | Peripheral utilities (not cog. arch.) | diff, healthcheck, observatory, research, system-monitor, rate-limiter, tool-config               |
+| **watchdog**           | ❌        | Error monitoring (opt-in)             | watchdog                                                                                          |
+| **health-maintenance** | ❌        | Degradation recovery (opt-in)         | health-maintenance                                                                                |
+| **error-tracking**     | ❌        | Error logging tools (opt-in)          | error-capture                                                                                     |
 
 Cognitive extensions live at `src/extensions/<module>/<extension>/`. Peripheral utilities live at `src/contrib/<extension>/`.
 

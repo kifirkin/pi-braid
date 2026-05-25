@@ -21,19 +21,19 @@ const log = createLogger("turn-outcome");
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const WINDOW_SIZE = 12;         // Rolling window of recent turns
-const TOOL_REPEAT_THRESHOLD = 4;  // Same tool sequence for >= N turns
-const ERROR_ECHO_THRESHOLD = 3;   // Same tool error for >= N turns
-const FILE_CHURN_THRESHOLD = 3;   // Same file edit for >= N turns
-const LOOP_COOLDOWN_TURNS = 8;    // Don't fire for same loop type again within N turns
+const WINDOW_SIZE = 12; // Rolling window of recent turns
+const TOOL_REPEAT_THRESHOLD = 4; // Same tool sequence for >= N turns
+const ERROR_ECHO_THRESHOLD = 3; // Same tool error for >= N turns
+const FILE_CHURN_THRESHOLD = 3; // Same file edit for >= N turns
+const LOOP_COOLDOWN_TURNS = 8; // Don't fire for same loop type again within N turns
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
 interface TurnOutcome {
-  tools: string[];               // tool names used this turn
-  erroredTools: string[];        // tools that errored
-  fileTools: string[];           // tools that modified files (edit, write)
-  hadProgress: boolean;          // true if tool succeeded with no errors
+  tools: string[]; // tool names used this turn
+  erroredTools: string[]; // tools that errored
+  fileTools: string[]; // tools that modified files (edit, write)
+  hadProgress: boolean; // true if tool succeeded with no errors
 }
 
 interface LoopDetectionState {
@@ -90,9 +90,7 @@ function detectErrorEcho(history: TurnOutcome[]): string | null {
   if (erroredSets.length < ERROR_ECHO_THRESHOLD) return null;
 
   // Check for common error tool across all recent turns
-  const common = [...erroredSets[0]].filter((tool) =>
-    erroredSets.every((s) => s.has(tool)),
-  );
+  const common = [...erroredSets[0]].filter((tool) => erroredSets.every((s) => s.has(tool)));
   return common.length > 0 ? common.join(", ") : null;
 }
 
@@ -109,9 +107,7 @@ function detectFileChurn(history: TurnOutcome[]): string | null {
 
   // Check if the same file-modifying tools are used
   const firstTools = new Set(recent[0].fileTools);
-  const consistent = recent.every((t) =>
-    t.fileTools.some((tool) => firstTools.has(tool)),
-  );
+  const consistent = recent.every((t) => t.fileTools.some((tool) => firstTools.has(tool)));
 
   return consistent ? recent.map((t) => t.fileTools.join(", ")).join(" | ") : null;
 }
@@ -156,9 +152,7 @@ export default function turnOutcomeExtension(pi: ExtensionAPI): void {
 
     // Collect tool results from the turn
     const results: Array<{ toolName: string; isError: boolean }> = event?.toolResults ?? [];
-    const tools = results
-      .map((r) => r.toolName)
-      .filter(Boolean);
+    const tools = results.map((r) => r.toolName).filter(Boolean);
     const erroredTools = results
       .filter((r) => r.isError)
       .map((r) => r.toolName)

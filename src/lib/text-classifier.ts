@@ -84,8 +84,16 @@ export async function classify(
     );
     if (tier1) {
       const latency = Date.now() - start;
-      log.debug(`[text-classifier] TIER 1 (utility → ${utilityModel.id}): "${tier1.label}" ${latency}ms`);
-      return { label: tier1.label, confidence: 0.9, raw: tier1.raw, tier: "utility", latencyMs: latency };
+      log.debug(
+        `[text-classifier] TIER 1 (utility → ${utilityModel.id}): "${tier1.label}" ${latency}ms`,
+      );
+      return {
+        label: tier1.label,
+        confidence: 0.9,
+        raw: tier1.raw,
+        tier: "utility",
+        latencyMs: latency,
+      };
     }
     log.warn("[text-classifier] TIER 1 failed (utility model error), falling to TIER 2");
   }
@@ -104,8 +112,16 @@ export async function classify(
     );
     if (tier2) {
       const latency = Date.now() - start;
-      log.debug(`[text-classifier] TIER 2 (session → ${sessionModel.id}): "${tier2.label}" ${latency}ms`);
-      return { label: tier2.label, confidence: 0.6, raw: tier2.raw, tier: "session", latencyMs: latency };
+      log.debug(
+        `[text-classifier] TIER 2 (session → ${sessionModel.id}): "${tier2.label}" ${latency}ms`,
+      );
+      return {
+        label: tier2.label,
+        confidence: 0.6,
+        raw: tier2.raw,
+        tier: "session",
+        latencyMs: latency,
+      };
     }
     log.warn("[text-classifier] TIER 2 failed (session model error), falling to TIER 3");
   }
@@ -181,6 +197,9 @@ async function tryModelCall(
  * if a substitution value contains `{{otherKey}}`, it won't be re-processed.
  * Exported for testing.
  */
-export function replacePlaceholders(template: string, substitutions: Record<string, string>): string {
+export function replacePlaceholders(
+  template: string,
+  substitutions: Record<string, string>,
+): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => substitutions[key] ?? `{{${key}}}`);
 }

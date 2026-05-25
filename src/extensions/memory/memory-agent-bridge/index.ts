@@ -32,7 +32,7 @@ import {
 } from "../three-memory-stores/index.js";
 import {
   getPendingQAs as getPendingConflictQAs,
-// NOTE: getAllQAs aliased as getAllConflictQAs — verify if alias is needed
+  // NOTE: getAllQAs aliased as getAllConflictQAs — verify if alias is needed
   resolveQA as resolveConflictQA,
   getQAStats as getConflictQAStats,
   getRelevantQA,
@@ -388,7 +388,12 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
       });
 
       // Cross-search three-memory-stores episodes
-      let episodeResults: Array<{ task: string; solution: string; outcome: string; similarity: number }> = [];
+      let episodeResults: Array<{
+        task: string;
+        solution: string;
+        outcome: string;
+        similarity: number;
+      }> = [];
       if (ctx) {
         try {
           const threeMem = getExtensionState<MemoryStoresState>(
@@ -438,7 +443,9 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
         for (const ep of episodeResults) {
           const icon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
           const sol = ep.solution ? ` Solution: ${ep.solution}` : "";
-          lines.push(`  ${icon} [episodic] ${ep.task}${sol} (similarity: ${ep.similarity.toFixed(2)})`);
+          lines.push(
+            `  ${icon} [episodic] ${ep.task}${sol} (similarity: ${ep.similarity.toFixed(2)})`,
+          );
         }
       }
       if (lines.length === 0) {

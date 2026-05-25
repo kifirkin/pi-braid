@@ -24,7 +24,11 @@ import {
 } from "../../lib/metacognitive-state.js";
 import { getExtensionState } from "../../lib/extension-state.js";
 
-import type { BenchmarkResult, HealthMaintenanceActionType, HealthMaintenanceResult } from "./types.js";
+import type {
+  BenchmarkResult,
+  HealthMaintenanceActionType,
+  HealthMaintenanceResult,
+} from "./types.js";
 import {
   getAnalyticsMetrics,
   startMetricsPersistence,

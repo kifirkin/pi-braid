@@ -1,42 +1,10 @@
 /**
- * Thought Chain — sub-state for think() tool tracking and reflection gaps.
+ * Thought Chain — helpers for think() tool tracking and reflection gaps.
  *
- * Pattern: sub-state view over EnforcementState properties (no separate store).
+ * Pattern: helper functions take EnforcementState directly (no ctx import).
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { getState, type EnforcementState } from "./state.js";
-
-// ── Focused view ──────────────────────────────────────────────────────────
-
-export interface ThoughtChainEntry {
-  id: string;
-  parentId: string | null;
-  type: string;
-  timestamp: number;
-}
-
-export interface ThoughtChainView {
-  /** All thought chains tracked this session. */
-  chains: ReadonlyArray<ThoughtChainEntry>;
-  /** Tool calls since last reflection/think(type="reflection"). */
-  toolsSinceReflection: number;
-  /** Consecutive turns with no tool calls. */
-  silentTurns: number;
-}
-
-// ── Accessor ──────────────────────────────────────────────────────────────
-
-export function getThoughtChainView(ctx: ExtensionContext): ThoughtChainView {
-  const s = getState(ctx);
-  return {
-    get chains() { return s.thoughtChains; },
-    get toolsSinceReflection() { return s.toolsSinceReflection; },
-    get silentTurns() { return s.silentTurns; },
-  };
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────
+import type { EnforcementState } from "./state.js";
 
 /** Record a think() call in the chain. */
 export function recordThink(

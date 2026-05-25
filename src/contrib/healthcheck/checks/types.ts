@@ -1,5 +1,3 @@
-import type { AgentToolResult } from "@mariozechner/pi-coding-agent";
-
 export interface CheckResult {
   category: string;
   name: string;

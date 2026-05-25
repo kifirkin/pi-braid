@@ -50,8 +50,7 @@ export default function sleepExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "sleep",
     label: "Sleep",
-    promptSnippet:
-      "Pause agent execution for a duration — use when you need to wait",
+    promptSnippet: "Pause agent execution for a duration — use when you need to wait",
     description:
       "Pause agent execution for the specified duration. " +
       "The agent's tool call blocks until the delay elapses, then resumes automatically. " +

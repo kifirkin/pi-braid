@@ -228,7 +228,7 @@ export function retrieveByRUMS(
     score: computeRUMS(query, ep, backgroundFreq, totalDocs),
   }));
 
-  let results = scored
+  const results = scored
     .filter((s) => s.score > 0.05)
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)

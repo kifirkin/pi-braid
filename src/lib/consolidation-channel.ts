@@ -289,11 +289,7 @@ const GENERIC_STEP_PATTERNS = [
 ];
 
 /** The classic three-step generic debugging cliché. */
-const GENERIC_DEBUG_TRIAD = [
-  /^reproduce\s*bug$/i,
-  /^locate\s*root\s*cause$/i,
-  /^apply\s*fix$/i,
-];
+const GENERIC_DEBUG_TRIAD = [/^reproduce\s*bug$/i, /^locate\s*root\s*cause$/i, /^apply\s*fix$/i];
 
 /**
  * Check whether a hint's steps are too generic to provide value.
@@ -321,7 +317,9 @@ function isHintTooGeneric(task: string, steps: string[]): boolean {
   if (genericCount >= steps.length * 0.5) return true;
 
   // Reject if task description is just a file-specific error fix
-  if (/^(fix|resolve|address)\s+\w+\s+(error|issue|bug|warning)\s+in\s+\S+\.\w+$/i.test(task.trim())) {
+  if (
+    /^(fix|resolve|address)\s+\w+\s+(error|issue|bug|warning)\s+in\s+\S+\.\w+$/i.test(task.trim())
+  ) {
     return true;
   }
 

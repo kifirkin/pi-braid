@@ -19,7 +19,7 @@ const log = createLogger("auto-recovery");
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const COOLDOWN_TURNS = 10;  // Don't suggest recovery again within N turns
+const COOLDOWN_TURNS = 10; // Don't suggest recovery again within N turns
 const MIN_TURNS_BEFORE_CHECK = 5; // Wait N turns before first check (let agent warm up)
 const STATE_KEY = "auto-recovery";
 

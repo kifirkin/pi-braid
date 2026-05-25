@@ -1,47 +1,12 @@
 /**
- * Verification Judge — accessor and helpers for judge/calibration state.
+ * Verification Judge — helpers for judge/calibration state.
  *
- * This module does NOT own its own state store. Instead it operates on the
- * relevant properties within EnforcementState, exposed via a focused interface.
- *
- * Pattern: sub-state view over a shared state object.
- * Callers can migrate from raw getState(ctx).propertyName to these helpers
- * without breaking backward compatibility.
+ * Pattern: helper functions take EnforcementState directly (no ctx import).
+ * View functions (getVerificationJudgeView) live in state.ts to avoid
+ * circular dependencies.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { getState, type EnforcementState } from "./state.js";
-
-// ── Focused view of verification judge properties within EnforcementState ───
-
-export interface VerificationJudgeView {
-  /** Whether a verification judge is currently running (prevents re-entry). */
-  isRunning: boolean;
-  /** Last turn where verification judge completed. */
-  lastRunTurn: number;
-  /** Last time a judge was attempted (ms). */
-  lastRunTime: number;
-  /** Last time a calibration whisper was sent (ms). */
-  lastCalibrationWhisperTime: number;
-  /** Historical predicted vs actual pairs. */
-  calibrationPairs: ReadonlyArray<{ predicted: number; actual: number; tool: string; turn: number }>;
-  /** Most recent confidence value from think() tool. */
-  lastConfidence: number | null;
-}
-
-// ── Accessor (returns a live view into EnforcementState) ────────────────────
-
-export function getVerificationJudgeView(ctx: ExtensionContext): VerificationJudgeView {
-  const s = getState(ctx);
-  return {
-    get isRunning() { return s.verificationJudgeRunning; },
-    get lastRunTurn() { return s.lastVerificationJudgeTurn; },
-    get lastRunTime() { return s.lastJudgeTime; },
-    get lastCalibrationWhisperTime() { return s.lastCalibrationWhisperTime; },
-    get calibrationPairs() { return s.calibrationPairs; },
-    get lastConfidence() { return s.lastThinkConfidence; },
-  };
-}
+import type { EnforcementState } from "./state.js";
 
 // ── Helpers (mutate EnforcementState directly) ──────────────────────────────
 

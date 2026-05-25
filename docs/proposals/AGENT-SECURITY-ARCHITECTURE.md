@@ -14,11 +14,11 @@ Pi-braid has multiple sub-agent capabilities (subagent skill, RPC mode, tool del
 
 The bot operates a **triple-brain security system**:
 
-| Layer | Implementation | What It Does |
-|-------|---------------|--------------|
-| **1. Instruction Defense** | System prompt overlay (sarcasm persona) | Prevents direct extraction attempts at the reasoning layer |
-| **2. Infection Check** | Separate utility model, runs before every tool execution | Verifies the agent hasn't been compromised BEFORE it can act |
-| **3. Streaming Secrets Filter** | `StreamingSecretsFilter` — regex/case-sensitive match on output stream | Masks secret values during token generation, min 3 chars |
+| Layer                           | Implementation                                                         | What It Does                                                 |
+| ------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------ |
+| **1. Instruction Defense**      | System prompt overlay (sarcasm persona)                                | Prevents direct extraction attempts at the reasoning layer   |
+| **2. Infection Check**          | Separate utility model, runs before every tool execution               | Verifies the agent hasn't been compromised BEFORE it can act |
+| **3. Streaming Secrets Filter** | `StreamingSecretsFilter` — regex/case-sensitive match on output stream | Masks secret values during token generation, min 3 chars     |
 
 ### Key Findings
 
@@ -32,7 +32,7 @@ The bot operates a **triple-brain security system**:
 3. **Streaming filter is character-level, not semantic.** It matches exact strings case-sensitively. This means:
    - Paraphrases pass through (semantic equivalent of the secret is not filtered)
    - Transformations (ROT13, base64, reversing) pass through
-   - The filter cannot detect "the vault's key is D____ your f___" — only exact match
+   - The filter cannot detect "the vault's key is D\_**_ your f_**" — only exact match
 
 ## Implications for Pi-Braid
 
@@ -62,6 +62,7 @@ Execution
 ```
 
 This way:
+
 - No LLM sees raw credentials — secrets exist only at the tool-invocation boundary
 - Subordinate agents inherit tool access, NOT secret knowledge
 - Credential injection happens outside LLM context — cannot be prompted out
@@ -103,12 +104,12 @@ Subordinate Agent has:
 
 ### Defense Layer Alignment
 
-| @hackingA0 Layer | Pi-Braid Equivalent | Gaps |
-|------------------|-------------------|------|
-| Instruction Defense | System prompt + enforcement signals | ✅ Adequate |
-| Infection Check | ❌ **Missing** | No pre-tool sanity check |
-| Streaming Filter | ❌ **Missing** | No output-side credential masking |
-| Credential Isolation | ❌ **Missing** | Secrets visible in agent context |
+| @hackingA0 Layer     | Pi-Braid Equivalent                 | Gaps                              |
+| -------------------- | ----------------------------------- | --------------------------------- |
+| Instruction Defense  | System prompt + enforcement signals | ✅ Adequate                       |
+| Infection Check      | ❌ **Missing**                      | No pre-tool sanity check          |
+| Streaming Filter     | ❌ **Missing**                      | No output-side credential masking |
+| Credential Isolation | ❌ **Missing**                      | Secrets visible in agent context  |
 
 ### Priority Recommendations
 

@@ -262,7 +262,8 @@ export function createDefaultPolicies(): ContextPolicy[] {
       trigger: { type: "context_usage_tokens", threshold: USAGE_TOKENS_SOFT },
       action: {
         type: "propose",
-        message: "Context at ~{tokens}K tokens. Consider pruning old tool results (context_prune dry-run).",
+        message:
+          "Context at ~{tokens}K tokens. Consider pruning old tool results (context_prune dry-run).",
         priority: "low",
       },
       suggested_action: "context_prune",
@@ -275,7 +276,8 @@ export function createDefaultPolicies(): ContextPolicy[] {
       trigger: { type: "context_usage_tokens", threshold: USAGE_TOKENS_ADVISORY },
       action: {
         type: "propose",
-        message: "Context grew past {tokens}K tokens. Tag your position (context_tag), then consider context_archive or context_checkout to branch.",
+        message:
+          "Context grew past {tokens}K tokens. Tag your position (context_tag), then consider context_archive or context_checkout to branch.",
         priority: "medium",
       },
       suggested_action: "context_tag",
@@ -288,7 +290,8 @@ export function createDefaultPolicies(): ContextPolicy[] {
       trigger: { type: "context_usage_tokens", threshold: USAGE_TOKENS_WARNING },
       action: {
         type: "propose",
-        message: "Context at {tokens}K tokens ({percent}%). Pipeline: context_tag → context_checkout → context_archive → compact (last resort).",
+        message:
+          "Context at {tokens}K tokens ({percent}%). Pipeline: context_tag → context_checkout → context_archive → compact (last resort).",
         priority: "medium",
       },
       suggested_action: "context_tag",

@@ -234,7 +234,11 @@ function formatDuration(ms: number): string {
   return `${(ms / 60000).toFixed(0)}m`;
 }
 
-function interpolateMessage(message: string, ctx: any, signalData?: Record<string, unknown>): string {
+function interpolateMessage(
+  message: string,
+  ctx: any,
+  signalData?: Record<string, unknown>,
+): string {
   const usage = getContextUsage(ctx);
   const tokens = getContextTokens(ctx);
   let result = message.replace("{percent}", `${usage.toFixed(0)}%`);
@@ -256,11 +260,7 @@ function interpolateMessage(message: string, ctx: any, signalData?: Record<strin
  * Send a compact nudge to the agent via tracked message.
  * Extracted from executeAction so the before_agent_start handler can also use it.
  */
-function sendCompactNudge(
-  pi: ExtensionAPI,
-  evaluated: EvaluatedAction,
-  usage: number,
-): void {
+function sendCompactNudge(pi: ExtensionAPI, evaluated: EvaluatedAction, usage: number): void {
   // Tag/branch is preferred over compaction — preserves session history
   // while freeing working context. Compact is the last resort.
   const pipelineMsg =
@@ -275,8 +275,7 @@ function sendCompactNudge(
       content: [
         {
           type: "text" as const,
-          text:
-            `[compact] ${evaluated.policy.name} — ${pipelineMsg}`,
+          text: `[compact] ${evaluated.policy.name} — ${pipelineMsg}`,
         },
       ],
       display: true,
@@ -476,7 +475,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
         state().ignoredCompactNudges++;
         log.info(
           `Compact nudge ignored (${state().ignoredCompactNudges}/${COMPACT_ESCALATION_THRESHOLD}) ` +
-          `usage=${usage.toFixed(0)}%`,
+            `usage=${usage.toFixed(0)}%`,
         );
       }
     }
@@ -535,7 +534,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
         ) {
           log.warn(
             `Escalating: auto-compacting (${state().ignoredCompactNudges} ignored nudges, ` +
-            `usage=${usage.toFixed(0)}%)`,
+              `usage=${usage.toFixed(0)}%)`,
           );
           await executeAutoCompact(pi, ctx);
           state().ignoredCompactNudges = 0;

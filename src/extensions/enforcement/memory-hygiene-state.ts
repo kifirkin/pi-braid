@@ -1,38 +1,10 @@
 /**
- * Memory Hygiene — sub-state for tracking memory tool usage and nudges.
+ * Memory Hygiene — helpers for tracking memory tool usage and nudges.
  *
- * Pattern: sub-state view over EnforcementState properties (no separate store).
+ * Pattern: helper functions take EnforcementState directly (no ctx import).
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { getState, type EnforcementState } from "./state.js";
-
-// ── Focused view ──────────────────────────────────────────────────────────
-
-export interface MemoryHygieneView {
-  /** Last turn a memory tool was called. */
-  lastMemoryCall: number;
-  /** Turns elapsed since last memory tool call. */
-  turnsSinceMemory: number;
-  /** Whether a memory nudge has been sent this session. */
-  nudgeSent: boolean;
-  /** Tool calls since last memory access. */
-  toolCallsSinceLastMemory: number;
-}
-
-// ── Accessor ──────────────────────────────────────────────────────────────
-
-export function getMemoryHygieneView(ctx: ExtensionContext): MemoryHygieneView {
-  const s = getState(ctx);
-  return {
-    get lastMemoryCall() { return s.lastMemoryCall; },
-    get turnsSinceMemory() { return s.turnsSinceMemory; },
-    get nudgeSent() { return s.memoryNudgeSent; },
-    get toolCallsSinceLastMemory() { return s.toolCallsSinceLastMemory; },
-  };
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────
+import type { EnforcementState } from "./state.js";
 
 /** Record that a memory tool was called. Resets nudge timer. */
 export function recordMemoryAccess(s: EnforcementState, turn: number): void {
@@ -63,7 +35,7 @@ export function shouldNudgeForMemory(
 }
 
 /** Mark memory nudge as sent. */
-export function markNudgeSent(s: EnforcementState): void {
+export function markMemoryNudgeSent(s: EnforcementState): void {
   s.memoryNudgeSent = true;
 }
 

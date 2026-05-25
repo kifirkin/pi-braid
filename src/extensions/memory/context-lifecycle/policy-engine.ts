@@ -59,8 +59,8 @@ function matchesTrigger(trigger: ContextPolicy["trigger"], ctx: PolicyContext): 
 
 interface PolicyContext {
   signals: SemanticSignal[];
-  contextUsage: number;     // percentage (0-100)
-  contextTokens: number;    // absolute token count
+  contextUsage: number; // percentage (0-100)
+  contextTokens: number; // absolute token count
   turnCount: number;
   redundancyCount: number;
 }
@@ -106,9 +106,12 @@ export class PolicyEngine {
       if (!matchesTrigger(policy.trigger, ctx)) continue;
 
       // Policy fires — find the matching signal to attach data
-      const matchingSignal = policy.trigger.type === "signal"
-        ? ctx.signals.find((s) => s.type === (policy.trigger as { type: "signal"; signal: string }).signal)
-        : undefined;
+      const matchingSignal =
+        policy.trigger.type === "signal"
+          ? ctx.signals.find(
+              (s) => s.type === (policy.trigger as { type: "signal"; signal: string }).signal,
+            )
+          : undefined;
 
       const action: PolicyAction = policy.action;
 

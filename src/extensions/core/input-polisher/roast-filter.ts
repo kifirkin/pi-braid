@@ -132,38 +132,50 @@ export interface RoastResult {
  * If not configured, all three use the session model (~100ms parallel).
  * If no model works, all three use heuristics (~0.03ms).
  */
-export async function roastInput(
-  text: string,
-  ctx: ExtensionContext,
-): Promise<RoastResult> {
+export async function roastInput(text: string, ctx: ExtensionContext): Promise<RoastResult> {
   // Truncate very long text to keep prompt tokens reasonable
   const truncated = text.length > 2000 ? text.slice(0, 2000) + "..." : text;
 
   const [codeResult, wellWrittenResult, codeRequestResult] = await Promise.all([
-    classify(ctx, CODE_HEAVY_CRITERIA, { text: truncated }, {
-      maxTokens: 5,
-      timeoutMs: 5000,
-      fallback: () => isCodeHeavyFallback(text),
-    }),
-    classify(ctx, WELL_WRITTEN_CRITERIA, { text: truncated }, {
-      maxTokens: 5,
-      timeoutMs: 5000,
-      fallback: () => isWellWrittenFallback(text),
-    }),
-    classify(ctx, CODE_REQUEST_CRITERIA, { text: truncated }, {
-      maxTokens: 5,
-      timeoutMs: 5000,
-      fallback: () => isCodeRequestFallback(text),
-    }),
+    classify(
+      ctx,
+      CODE_HEAVY_CRITERIA,
+      { text: truncated },
+      {
+        maxTokens: 5,
+        timeoutMs: 5000,
+        fallback: () => isCodeHeavyFallback(text),
+      },
+    ),
+    classify(
+      ctx,
+      WELL_WRITTEN_CRITERIA,
+      { text: truncated },
+      {
+        maxTokens: 5,
+        timeoutMs: 5000,
+        fallback: () => isWellWrittenFallback(text),
+      },
+    ),
+    classify(
+      ctx,
+      CODE_REQUEST_CRITERIA,
+      { text: truncated },
+      {
+        maxTokens: 5,
+        timeoutMs: 5000,
+        fallback: () => isCodeRequestFallback(text),
+      },
+    ),
   ]);
 
   // Determine the overall tier (lowest confidence across all three)
   const tiers = [codeResult.tier, wellWrittenResult.tier, codeRequestResult.tier];
   const overallTier = tiers.includes("heuristic")
-    ? "heuristic" as const
+    ? ("heuristic" as const)
     : tiers.includes("session")
-    ? "session" as const
-    : "utility" as const;
+      ? ("session" as const)
+      : ("utility" as const);
 
   return {
     isCode: codeResult.label === "yes",

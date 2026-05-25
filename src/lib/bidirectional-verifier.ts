@@ -69,12 +69,18 @@ export function getVerifierState(ctx: ExtensionContext): BidirectionalVerifierSt
 
 // Phase 2: claimed actions
 const _claimedActions: ClaimedAction[] = [];
-const _mismatches: Array<{ turn: number; claimedFile: string; actualFile: string; action: string }> = [];
+const _mismatches: Array<{
+  turn: number;
+  claimedFile: string;
+  actualFile: string;
+  action: string;
+}> = [];
 
 // Phase 4: derived file coordination
 const _derivedFiles: DerivedFile[] = [];
 const _staleDerivedFiles: DerivedFile[] = [];
-const _coordinationRisks: Array<{ turn: number; source: string; stale: string; relation: string }> = [];
+const _coordinationRisks: Array<{ turn: number; source: string; stale: string; relation: string }> =
+  [];
 
 // ── File Extraction ────────────────────────────────────────────────────────
 
@@ -96,7 +102,9 @@ export function extractFileReferences(text: string): string[] {
     }
   }
 
-  for (const match of text.matchAll(/(?:at\s+)?(?:.+?\s+)?([a-zA-Z0-9_\-/.]+\.[a-zA-Z0-9]+):(\d+):(\d+)/g)) {
+  for (const match of text.matchAll(
+    /(?:at\s+)?(?:.+?\s+)?([a-zA-Z0-9_\-/.]+\.[a-zA-Z0-9]+):(\d+):(\d+)/g,
+  )) {
     refs.push(match[1]);
   }
 
@@ -106,7 +114,10 @@ export function extractFileReferences(text: string): string[] {
 // ── File path helpers ──────────────────────────────────────────────────────
 
 function normalize(p: string): string {
-  return p.replace(/^\.\//, "").replace(/^\.\.\//, "").replace(/^\//, "");
+  return p
+    .replace(/^\.\//, "")
+    .replace(/^\.\.\//, "")
+    .replace(/^\//, "");
 }
 
 export function filesAreRelated(a: string, b: string): boolean {
@@ -229,11 +240,7 @@ export function recordClaimedActions(ctx: ExtensionContext, text: string, turn: 
   }
 }
 
-export function validateArtifact(
-  _ctx: any,
-  actualFile: string,
-  turn: number,
-): string | null {
+export function validateArtifact(_ctx: any, actualFile: string, turn: number): string | null {
   const matchingClaims = _claimedActions.filter(
     (c) => !c.verified && (filesAreRelated(c.file, actualFile) || c.file === actualFile),
   );
@@ -333,9 +340,7 @@ export function checkCoordinationRisk(
   turn: number,
 ): string | null {
   const state = getVerifierState(ctx);
-  const staleDerived = _derivedFiles.filter(
-    (d) => d.source === editedFile && d.stale,
-  );
+  const staleDerived = _derivedFiles.filter((d) => d.source === editedFile && d.stale);
   const sourceEditTurn = state.touchTurns.get(editedFile) ?? turn;
   const stillStale: DerivedFile[] = [];
 
@@ -388,8 +393,7 @@ function detectImportDerived(
       const dir = readFilePath.substring(0, readFilePath.lastIndexOf("/") + 1);
       const resolved = resolveRelativeImport(dir, imported);
       for (const edited of recentlyEditedFiles) {
-        if (filesAreRelated(resolved, edited))
-          recordDerivedFrom(readFilePath, edited, label, turn);
+        if (filesAreRelated(resolved, edited)) recordDerivedFrom(readFilePath, edited, label, turn);
       }
     }
   }
@@ -403,7 +407,9 @@ export function getCoordinationCheckSummary(): string {
     `Coordination risks: ${_coordinationRisks.length}`,
   ];
   for (const r of _coordinationRisks.slice(-5)) {
-    lines.push(`  Turn ${r.turn}: "${r.stale}" depends on "${r.source}" (${r.relation}) — not updated`);
+    lines.push(
+      `  Turn ${r.turn}: "${r.stale}" depends on "${r.source}" (${r.relation}) — not updated`,
+    );
   }
   return lines.join("\n");
 }

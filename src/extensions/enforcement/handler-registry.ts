@@ -13,10 +13,7 @@
  * Key design: Agent gets ONE [enforcement] message per turn max for non-critical signals.
  */
 
-import type {
-  ExtensionAPI,
-  ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../lib/logger.js";
 import { safeSessionManager } from "../../lib/extension-state.js";
 import { sendTrackedMessage } from "../../lib/injection-tracker.js";
@@ -71,7 +68,11 @@ const ERROR_BURST_THRESHOLD = 3;
  */
 export const HANDLER_REGISTRATIONS: Array<{ event: string; method: string; handler: string }> = [
   { event: "input", method: "pi.on", handler: "language detection" },
-  { event: "session_start", method: "registerSessionStartHandler", handler: "phase:CoreInit:block check" },
+  {
+    event: "session_start",
+    method: "registerSessionStartHandler",
+    handler: "phase:CoreInit:block check",
+  },
   { event: "tool_call", method: "onEvent", handler: "tool tracking + blocking" },
   { event: "message_end", method: "onEvent", handler: "conflict + analysis + judge (merged)" },
   { event: "tool_result", method: "pi.on", handler: "calibration" },
@@ -301,7 +302,8 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
 
     if (
       !getState(ctx).verificationJudgeRunning &&
-      turnState && turnState.actualTools.length === 0 &&
+      turnState &&
+      turnState.actualTools.length === 0 &&
       getState(ctx).hasCodeChanges &&
       getState(ctx).currentTurn - getState(ctx).lastVerificationJudgeTurn >= 1
     ) {
@@ -509,7 +511,6 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     for (let i = entries.length - 1; i >= 0 && recentMsgs.length < 4; i--) {
       const entry = entries[i];
       if (entry.type === "message") {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const msg = entry.message as any;
         recentMsgs.unshift({ role: msg.role, content: msg.content });
       }

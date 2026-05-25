@@ -102,7 +102,7 @@ const SYSTEM_BIN_DIRS = new Set([
 ]);
 
 /** Regex to match absolute Unix paths in a command string. */
-const ABSOLUTE_PATH_RE = /(?<!\w)(\/[\w%+~@.-][\w%+~@.\/-]*)/g;
+const ABSOLUTE_PATH_RE = /(?<!\w)(\/[\w%+~@.-][\w%+~@.\/-]*)/g; // eslint-disable-line no-useless-escape
 
 /** Regex to match `cd <path>` commands. */
 const CD_COMMAND_RE = /\bcd\s+(\S+)/gi;
@@ -133,9 +133,7 @@ function checkBashRegex(command: string, allowlist: string[], cwd: string): Rege
   let cdMatch: RegExpExecArray | null;
   while ((cdMatch = CD_COMMAND_RE.exec(command)) !== null) {
     const cdTarget = cdMatch[1];
-    const resolved = cdTarget.startsWith("/")
-      ? cdTarget
-      : path.resolve(resolvedCwd, cdTarget);
+    const resolved = cdTarget.startsWith("/") ? cdTarget : path.resolve(resolvedCwd, cdTarget);
     if (!isPathAllowed(resolved, allAllowed)) {
       violations.push(`cd to ${cdTarget} would escape the project directory`);
       suspiciousPaths.push(cdTarget);
@@ -250,7 +248,7 @@ export default function pathSecurityExtension(pi: ExtensionAPI): void {
       // Tier 2: Utility model classification for suspicious commands
       log.info(
         `[path-security] Regex flagged ${regexResult.violations.length} issue(s), ` +
-        `escalating to utility model: ${command.slice(0, 100)}...`,
+          `escalating to utility model: ${command.slice(0, 100)}...`,
       );
 
       try {
@@ -272,15 +270,18 @@ export default function pathSecurityExtension(pi: ExtensionAPI): void {
         if (classification.label === "yes") {
           log.warn(
             `[path-security] BLOCKED bash (model: ${classification.tier}, ` +
-            `confidence: ${classification.confidence}): ${command.slice(0, 100)}`,
+              `confidence: ${classification.confidence}): ${command.slice(0, 100)}`,
           );
           await sendBashBlockWhisper(ctx, command, regexResult.violations, classification, cwd);
-          return { blocked: true, reason: `classified as filesystem escape (${classification.tier})` };
+          return {
+            blocked: true,
+            reason: `classified as filesystem escape (${classification.tier})`,
+          };
         }
 
         log.info(
           `[path-security] ALLOWED bash (model: ${classification.tier}, ` +
-          `confidence: ${classification.confidence}): ${command.slice(0, 100)}`,
+            `confidence: ${classification.confidence}): ${command.slice(0, 100)}`,
         );
       } catch (err) {
         // Classifier threw — deny-by-default for suspicious commands
@@ -308,7 +309,7 @@ async function sendBlockWhisper(
     const rel = path.relative(cwd, resolved);
     ctx.whisper?.(
       `🔒 ${toolName} blocked — path \`${filePath}\` resolves outside project (${dir}/): ${rel} ` +
-      `Keep all file access within the project directory. For skills/config, use the appropriate /command.`,
+        `Keep all file access within the project directory. For skills/config, use the appropriate /command.`,
       { category: "cognitive", priority: "low" },
     );
   } catch {
@@ -330,8 +331,8 @@ async function sendBashBlockWhisper(
       : "classifier unavailable";
     ctx.whisper?.(
       `🔒 Bash blocked [${tierInfo}] — ${violations[0] || "possible filesystem escape"}. ` +
-      `Run commands within \`${dir}/\` using relative paths. ` +
-      `System tools (npm, git) resolve from PATH automatically.`,
+        `Run commands within \`${dir}/\` using relative paths. ` +
+        `System tools (npm, git) resolve from PATH automatically.`,
       { category: "cognitive", priority: "low" },
     );
   } catch {

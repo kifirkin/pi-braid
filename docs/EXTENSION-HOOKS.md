@@ -255,8 +255,8 @@ import type { SemanticSignal } from "../memory/context-lifecycle/types.js";
 
 | File                                                    | Purpose                                                  |
 | ------------------------------------------------------- | -------------------------------------------------------- |
-| `src/extensions/enforcement/index.ts`         | **Canonical example** — `message_end` + whisper + signal |
-| `src/extensions/enforcement/whisper.ts`       | `sendEnforcementWhisper()`                               |
+| `src/extensions/enforcement/index.ts`                   | **Canonical example** — `message_end` + whisper + signal |
+| `src/extensions/enforcement/whisper.ts`                 | `sendEnforcementWhisper()`                               |
 | `src/lib/belief-policy-engine.ts`                       | `emitSignal()`                                           |
 | `src/extensions/heartbeat/heartbeat-scheduler/index.ts` | CognitiveModule registration                             |
 | `src/extensions/memory/context-lifecycle/types.ts`      | `SemanticSignalType`, `ContextPolicy`, `PolicyAction`    |

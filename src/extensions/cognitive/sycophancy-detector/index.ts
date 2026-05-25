@@ -36,8 +36,7 @@ const SYCOPHANCY_CRITERIA = {
     "authority claims, skepticism, or forcing agreement. " +
     "These are messages designed to make the assistant less objective. " +
     "Answer only 'yes' or 'no'. Do not explain.",
-  userPrompt:
-    "Does this message use sycophancy pressure tactics?\n\n{{text}}",
+  userPrompt: "Does this message use sycophancy pressure tactics?\n\n{{text}}",
 };
 
 /** Heuristic fallback: preserve original TACTICS patterns */
@@ -81,15 +80,17 @@ interface SycophancyRisk {
  * Compute sycophancy risk from user input.
  * Uses utility model classification (fallback: heuristic patterns).
  */
-async function computeRisk(
-  text: string,
-  ctx: ExtensionContext,
-): Promise<SycophancyRisk> {
-  const result = await classify(ctx, SYCOPHANCY_CRITERIA, { text }, {
-    maxTokens: 5,
-    timeoutMs: 5000,
-    fallback: () => sycophancyFallback(text),
-  });
+async function computeRisk(text: string, ctx: ExtensionContext): Promise<SycophancyRisk> {
+  const result = await classify(
+    ctx,
+    SYCOPHANCY_CRITERIA,
+    { text },
+    {
+      maxTokens: 5,
+      timeoutMs: 5000,
+      fallback: () => sycophancyFallback(text),
+    },
+  );
 
   if (result.label === "yes") {
     return {
@@ -114,12 +115,11 @@ const VBC_CRITERIA = {
     "text validates before correcting — i.e., it first agrees with the user's " +
     "premise then contradicts it.\n" +
     "Examples of VbC:\n" +
-    "- \"You're right that X... however Y\"\n" +
-    "- \"That's a fair point... but actually\"\n" +
-    "- \"I understand your concern... however the issue is\"\n" +
+    '- "You\'re right that X... however Y"\n' +
+    '- "That\'s a fair point... but actually"\n' +
+    '- "I understand your concern... however the issue is"\n' +
     "Answer only 'yes' or 'no'. Do not explain.",
-  userPrompt:
-    "Does this response do validation-before-correction?\n\n{{text}}",
+  userPrompt: "Does this response do validation-before-correction?\n\n{{text}}",
 };
 
 /** Heuristic fallback: preserve original VBC_PATTERNS */
@@ -145,24 +145,24 @@ interface VbCResult {
  * Uses utility model classification (fallback: heuristic patterns).
  * Replaces the 30s LLM auditor — this runs in ~50ms via the utility model.
  */
-async function detectVbC(
-  responseText: string,
-  ctx: ExtensionContext,
-): Promise<VbCResult> {
+async function detectVbC(responseText: string, ctx: ExtensionContext): Promise<VbCResult> {
   if (responseText.length < 100) {
     return { detected: false, severity: "low", score: 0, correction_hint: "" };
   }
 
   // Truncate long responses to keep prompt tokens reasonable
-  const truncated = responseText.length > 2000
-    ? responseText.slice(0, 2000) + "..."
-    : responseText;
+  const truncated = responseText.length > 2000 ? responseText.slice(0, 2000) + "..." : responseText;
 
-  const result = await classify(ctx, VBC_CRITERIA, { text: truncated }, {
-    maxTokens: 5,
-    timeoutMs: 5000,
-    fallback: () => detectVbCFallback(responseText),
-  });
+  const result = await classify(
+    ctx,
+    VBC_CRITERIA,
+    { text: truncated },
+    {
+      maxTokens: 5,
+      timeoutMs: 5000,
+      fallback: () => detectVbCFallback(responseText),
+    },
+  );
 
   if (result.label === "yes") {
     return {
@@ -197,10 +197,12 @@ async function handleSycophancy(
   // Get session history — use getBranch(), getCurrentSession() does not exist on SessionManager
   // Use safeSessionManager to avoid assertActive() crash on stale ctx
   const sm = safeSessionManager(ctx) as any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const entries: any[] = sm?.getBranch?.() ?? [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const messages: any[] = entries.filter((e: any) => e.type === "message").map((e: any) => e.message);
+
+  const messages: any[] = entries
+    .filter((e: any) => e.type === "message")
+    .map((e: any) => e.message);
 
   // Get the last user message
   const userMessages = messages.filter((m: any) => m.role === "user");

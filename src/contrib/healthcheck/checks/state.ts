@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { CheckResult } from "./types.js";
-import { HC_DIR, check } from "./helpers.js";
+import { check } from "./helpers.js";
 
 export function testMemoryAndState(): CheckResult[] {
   const checks: CheckResult[] = [];

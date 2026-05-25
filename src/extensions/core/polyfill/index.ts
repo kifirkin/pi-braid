@@ -20,7 +20,11 @@ import { resolveUtilityModel, resolveVisionModel } from "../../../lib/model-reso
 import { registerSessionCleanup } from "../../../lib/extension-state.js";
 
 /** Custom settings keys managed by /utility-model and /vision-model commands */
-import { getCustomModelKeys, UTILITY_MODEL_KEY, VISION_MODEL_KEY } from "../../../lib/global-state.js";
+import {
+  getCustomModelKeys,
+  UTILITY_MODEL_KEY,
+  VISION_MODEL_KEY,
+} from "../../../lib/global-state.js";
 
 interface SessionManagerLike {
   getSessionFile(): string | null;
@@ -181,7 +185,10 @@ export default function polyfillExtension(pi: ExtensionAPI) {
         return;
       }
       await setModelSetting(UTILITY_MODEL_KEY, text);
-      ctx.ui.notify(`Utility model set to: ${model.id} (classifications will use this model)`, "info");
+      ctx.ui.notify(
+        `Utility model set to: ${model.id} (classifications will use this model)`,
+        "info",
+      );
     },
   });
 

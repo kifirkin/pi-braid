@@ -22,21 +22,13 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
  * Usage:
  *   onEvent(pi, "tool_call", handler)  // instead of pi.on("tool_call" as never, handler)
  */
-export function onEvent(
-  pi: ExtensionAPI,
-  event: string,
-  handler: (...args: any[]) => any,
-): void {
+export function onEvent(pi: ExtensionAPI, event: string, handler: (...args: any[]) => any): void {
   (pi as any).on(event, handler);
 }
 
 /**
  * Register a one-shot handler via pi.
  */
-export function onceEvent(
-  pi: ExtensionAPI,
-  event: string,
-  handler: (...args: any[]) => any,
-): void {
+export function onceEvent(pi: ExtensionAPI, event: string, handler: (...args: any[]) => any): void {
   (pi as any).on(event, handler);
 }

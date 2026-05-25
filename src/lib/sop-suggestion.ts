@@ -54,7 +54,7 @@ export const DEFAULT_SOP_CONFIG: SopSuggestionConfig = {
   minSimilarity: 0.3,
   maxTotalTokens: 800,
   taskIncludePatterns: [],
-  taskExcludePatterns: [/\/retry/, /^\[retry\]/], // eslint-disable-line no-useless-escape
+  taskExcludePatterns: [/\/retry/, /^\[retry\]/],
   enabled: true,
 };
 

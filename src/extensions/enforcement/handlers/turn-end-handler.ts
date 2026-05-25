@@ -17,7 +17,14 @@ import {
 } from "./turn-analysis.js";
 import { detectOrphanChains } from "./orphan-chains.js";
 import { type NudgeManager } from "../nudge-manager.js";
-import { getState, markNudgeSent, shouldNudgeForMemory, markMemoryNudgeSent, recordContextTool, resetNudge } from "../state.js";
+import {
+  getState,
+  markNudgeSent,
+  shouldNudgeForMemory,
+  markMemoryNudgeSent,
+  recordContextTool,
+  resetNudge,
+} from "../state.js";
 import { recordNudgeSuppressed, getNudgeAnalytics } from "../../../lib/nudge-analytics.js";
 import { type TurnState } from "../types.js";
 import { validateTurn } from "../validation.js";
@@ -252,11 +259,7 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
     const madeFileChanges = actualTools.some((t: string) => ["edit", "write"].includes(t));
     const isComplexTurn = actualTools.length >= 3;
     const needsScratchpad = (madeFileChanges || isComplexTurn) && !scratchpadUpdated;
-    if (
-      !hadErrors &&
-      !inOverflowRecovery &&
-      needsScratchpad
-    ) {
+    if (!hadErrors && !inOverflowRecovery && needsScratchpad) {
       const cooldown = madeFileChanges ? 8 : 15; // Tighter for file changes, relaxed for complexity
       if (getState(ctx).currentTurn - getState(ctx).lastScratchpadNudgeTurn >= cooldown) {
         getState(ctx).lastScratchpadNudgeTurn = getState(ctx).currentTurn;
@@ -276,7 +279,9 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
     );
     const noThinkThisSession = getState(ctx).toolChain.lastThinkCall === 0;
     const thinkNeeded =
-      (noThinkThisSession && getState(ctx).currentTurn >= 5 && getState(ctx).currentTurn % 5 === 0) ||
+      (noThinkThisSession &&
+        getState(ctx).currentTurn >= 5 &&
+        getState(ctx).currentTurn % 5 === 0) ||
       (madeHighStakesAction && noThinkThisSession && getState(ctx).currentTurn >= 3);
     if (!hadErrors && !inOverflowRecovery && thinkNeeded) {
       sessionSignals.push(
@@ -339,13 +344,13 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
           markNudgeSent(getState(ctx), getState(ctx).currentTurn);
           sessionSignals.push(
             `Context at ${Math.round(usageTokens / 1000)}K tokens (${Math.round(usagePercent)}%). ` +
-            `Pipeline: context_tag → context_checkout → context_archive → compact (last resort).`,
+              `Pipeline: context_tag → context_checkout → context_archive → compact (last resort).`,
           );
         } else if (usageTokens >= USAGE_TOKENS_SOFT) {
           markNudgeSent(getState(ctx), getState(ctx).currentTurn);
           sessionSignals.push(
             `Context at ${Math.round(usageTokens / 1000)}K tokens. ` +
-            `Consider pruning old tool results (context_prune dry-run) or tagging position.`,
+              `Consider pruning old tool results (context_prune dry-run) or tagging position.`,
           );
         }
       }
@@ -365,7 +370,7 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
       if (usagePercent >= USAGE_COMPACT_MEDIUM) {
         sessionSignals.push(
           `Context at ${pct}%. Pipeline: context_tag → context_checkout → ` +
-          `context_archive → compact (last resort). Tag your position first.`,
+            `context_archive → compact (last resort). Tag your position first.`,
         );
       } else if (usagePercent >= USAGE_WHISPER_CRITICAL) {
         sessionSignals.push(
@@ -394,9 +399,14 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
       }
       // Check if agent has used any context management tool this turn
       const contextMgmtTools = new Set([
-        "context_compact", "context_prune", "context_archive",
-        "context_snapshot", "context_audit", "context_proposals",
-        "context_tag", "context_checkout",
+        "context_compact",
+        "context_prune",
+        "context_archive",
+        "context_snapshot",
+        "context_audit",
+        "context_proposals",
+        "context_tag",
+        "context_checkout",
       ]);
       const agentUsedContextTool = actualTools.some((t: string) => contextMgmtTools.has(t));
 
@@ -404,12 +414,12 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
         const entry = {
           turn: getState(ctx).currentTurn,
           text: signal,
-          acted: agentUsedContextTool && (
-            signal.includes("critical") ||
-            signal.includes("/compact") ||
-            signal.includes("context") ||
-            signal.includes("high")
-          ),
+          acted:
+            agentUsedContextTool &&
+            (signal.includes("critical") ||
+              signal.includes("/compact") ||
+              signal.includes("context") ||
+              signal.includes("high")),
         };
         if (signal.includes("nothing stored") || signal.includes("memory_store")) {
           enforcementSignals["memory"] = { ...entry, acted: getState(ctx).memoryNudgeSent };

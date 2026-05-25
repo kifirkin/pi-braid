@@ -5,7 +5,13 @@ const log = createLogger("enforcement");
  * Tool tracking - centralized tracking logic for all tool usage patterns
  */
 import { recordCodeChange } from "../detection/verification.js";
-import { getState, recordToolChainCall, recordMemoryAccess, recordContextTool, resetScratchpadNudge } from "../state.js";
+import {
+  getState,
+  recordToolChainCall,
+  recordMemoryAccess,
+  recordContextTool,
+  resetScratchpadNudge,
+} from "../state.js";
 import type { EnforcementState } from "../state.js";
 
 /**

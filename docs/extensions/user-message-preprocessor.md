@@ -31,16 +31,16 @@ If preprocessing changes the text, the editor is updated and the user must press
 
 ## Events Handled
 
-| Event   | Handler                                                                                           |
-| ------- | ------------------------------------------------------------------------------------------------- |
-| `input` | Preprocess user messages before they reach the agent. Runs classification pipeline, rewrites if needed. |
-| `agent_end` | Safety reset of preprocessing state |
-| `session_start` | Lazy-load compaction state check (avoids circular dependency) |
+| Event           | Handler                                                                                                 |
+| --------------- | ------------------------------------------------------------------------------------------------------- |
+| `input`         | Preprocess user messages before they reach the agent. Runs classification pipeline, rewrites if needed. |
+| `agent_end`     | Safety reset of preprocessing state                                                                     |
+| `session_start` | Lazy-load compaction state check (avoids circular dependency)                                           |
 
 ## Commands
 
-| Command | Description |
-| ------- | ----------- |
+| Command         | Description                 |
+| --------------- | --------------------------- |
 | `/preprocessor` | Toggle preprocessing on/off |
 
 ## Key Patterns

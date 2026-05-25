@@ -496,9 +496,8 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
   pi.on("session_start", async () => {
     if (!_isCompactionActive) {
       try {
-        const { isCompactionActive } = await import(
-          "../../memory/context-manager/handlers/shared.js"
-        );
+        const { isCompactionActive } =
+          await import("../../memory/context-manager/handlers/shared.js");
         _isCompactionActive = isCompactionActive;
       } catch {
         // Non-fatal — polisher will skip compaction check if import fails
@@ -513,10 +512,7 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
       const state = getState(ctx);
       state.config.enabled = !state.config.enabled;
       await saveGlobalSetting(SETTINGS_KEY, state.config.enabled);
-      ctx.ui.notify(
-        `Input polisher ${state.config.enabled ? "enabled" : "disabled"}`,
-        "info",
-      );
+      ctx.ui.notify(`Input polisher ${state.config.enabled ? "enabled" : "disabled"}`, "info");
     },
   });
 

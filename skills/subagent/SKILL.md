@@ -17,13 +17,13 @@ BRAID_ROOT="${BRAID_ROOT:-$HOME/projects/agents/pi-braid}"
 
 ## When to Spawn a Subagent
 
-| Situation | Subagent? | Why |
-|-----------|-----------|-----|
-| Parallel research on 3+ topics | Yes | Independent context, concurrent execution |
-| Task needs a clean context (no contamination) | Yes | Fresh session, no accumulated state |
-| Exploring risky code changes | Yes | Isolation — failure doesn't pollute your session |
-| Single straightforward task | No | Overhead exceeds benefit |
-| Task requires your accumulated context | No | Subagent starts from scratch |
+| Situation                                     | Subagent? | Why                                              |
+| --------------------------------------------- | --------- | ------------------------------------------------ |
+| Parallel research on 3+ topics                | Yes       | Independent context, concurrent execution        |
+| Task needs a clean context (no contamination) | Yes       | Fresh session, no accumulated state              |
+| Exploring risky code changes                  | Yes       | Isolation — failure doesn't pollute your session |
+| Single straightforward task                   | No        | Overhead exceeds benefit                         |
+| Task requires your accumulated context        | No        | Subagent starts from scratch                     |
 
 **Rule of thumb**: If the task is self-contained and benefits from parallelism or isolation, spawn.
 
@@ -76,14 +76,14 @@ tmux -S $SOCKET kill-session -t "worker-1"
 
 ### Choosing
 
-| Need | Mode |
-|------|------|
-| Structured result extraction | RPC subprocess |
-| Benchmark / automated testing | RPC subprocess |
-| Long task (>5 min) | tmux session |
-| Want to monitor progress | tmux session |
+| Need                             | Mode           |
+| -------------------------------- | -------------- |
+| Structured result extraction     | RPC subprocess |
+| Benchmark / automated testing    | RPC subprocess |
+| Long task (>5 min)               | tmux session   |
+| Want to monitor progress         | tmux session   |
 | Parallel fan-out with collection | RPC subprocess |
-| Interactive subagent | tmux session |
+| Interactive subagent             | tmux session   |
 
 ---
 
@@ -140,31 +140,35 @@ pi --mode rpc --no-session \
 ```
 
 **Send a task** (stdin):
+
 ```json
-{"type": "prompt", "message": "Your task description here"}
+{ "type": "prompt", "message": "Your task description here" }
 ```
 
 **Key events to handle** (stdout):
 
-| Event | Action |
-|-------|--------|
-| `extension_ui_request` | Respond immediately (cancel or provide value) — pi blocks until you do |
-| `message_update` with `text_delta` | Accumulate text output |
-| `agent_end` | Task complete — extract final message |
+| Event                              | Action                                                                 |
+| ---------------------------------- | ---------------------------------------------------------------------- |
+| `extension_ui_request`             | Respond immediately (cancel or provide value) — pi blocks until you do |
+| `message_update` with `text_delta` | Accumulate text output                                                 |
+| `agent_end`                        | Task complete — extract final message                                  |
 
 **Respond to UI request** (must respond within 2s):
+
 ```json
-{"type": "extension_ui_response", "id": "<id from request>", "cancelled": true}
+{ "type": "extension_ui_response", "id": "<id from request>", "cancelled": true }
 ```
 
 **Abort a running task**:
+
 ```json
-{"type": "abort"}
+{ "type": "abort" }
 ```
 
 **Get the last assistant text** (after task completes):
+
 ```json
-{"type": "get_last_assistant_text"}
+{ "type": "get_last_assistant_text" }
 ```
 
 ---
@@ -229,6 +233,7 @@ Look at the auth code and tell me if anything is wrong.
 ```
 
 **Structuring tips**:
+
 - State the exact files/paths to examine
 - Define the output format
 - Set scope boundaries ("only in src/auth/", "max 10 findings")
@@ -243,6 +248,7 @@ Look at the auth code and tell me if anything is wrong.
 RPC mode: send `{"type": "abort"}`, then retry with a clearer prompt.
 
 tmux mode:
+
 ```bash
 tmux -S $SOCKET send-keys -t "worker-1:0.0" C-c
 # Wait 2s, then kill if still running
@@ -252,6 +258,7 @@ tmux -S $SOCKET kill-session -t "worker-1"
 ### Subagent crashes
 
 Check stderr or log file for the error. Common causes:
+
 - Model rate limit → retry with backoff
 - Context overflow → use `--no-extensions` or a leaner model
 - Missing API key → ensure env vars are set in the spawn command
@@ -259,6 +266,7 @@ Check stderr or log file for the error. Common causes:
 ### Result quality is poor
 
 Re-run with:
+
 1. A more specific task prompt (add constraints, examples)
 2. A stronger model
 3. Explicit output format ("return valid JSON array")
@@ -287,9 +295,9 @@ done
 
 ## Existing Infrastructure
 
-| Component | Path | Purpose |
-|-----------|------|---------|
-| Python RPC client | `scripts/subagent-rpc.py` | Full RPC client with event handling |
-| DaemonOrchestrator | `braid-os/daemon/index.ts` | TypeScript tmux worker manager |
-| Daemon shell script | `braid-os/braid-daemon.sh` | CLI wrapper for daemon lifecycle |
-| RPC protocol docs | pi `docs/rpc.md` | Full RPC command/event reference |
+| Component           | Path                       | Purpose                             |
+| ------------------- | -------------------------- | ----------------------------------- |
+| Python RPC client   | `scripts/subagent-rpc.py`  | Full RPC client with event handling |
+| DaemonOrchestrator  | `braid-os/daemon/index.ts` | TypeScript tmux worker manager      |
+| Daemon shell script | `braid-os/braid-daemon.sh` | CLI wrapper for daemon lifecycle    |
+| RPC protocol docs   | pi `docs/rpc.md`           | Full RPC command/event reference    |

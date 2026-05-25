@@ -16,12 +16,48 @@ import type { EnforcementConfig, ToolChainState, ToolSequencePattern, TurnState 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "../../lib/extension-state.js";
 
-export { getVerificationJudgeView, type VerificationJudgeView, startJudge, completeJudge, shouldRunJudge, recordCalibration, getCalibrationError } from "./verification-judge-state.js";
-export { getContextHygieneView, type ContextHygieneView, markNudgeSent, resetNudge, recordContextTool, recordCompaction, recordOverflow, inOverflowRecovery, shouldCheckContext, getContextNudgeMessage } from "./context-hygiene-state.js";
-export { getMemoryHygieneView, type MemoryHygieneView, recordMemoryAccess, incrementTurnsSinceMemory, resetTurnsSinceMemory, shouldNudgeForMemory, markNudgeSent as markMemoryNudgeSent, resetMemoryHygiene } from "./memory-hygiene-state.js";
-import type { ThoughtChainEntry } from "./thought-chain-state.js";
+export {
+  startJudge,
+  completeJudge,
+  shouldRunJudge,
+  recordCalibration,
+  getCalibrationError,
+} from "./verification-judge-state.js";
+export {
+  markNudgeSent,
+  resetNudge,
+  recordContextTool,
+  recordCompaction,
+  recordOverflow,
+  inOverflowRecovery,
+  shouldCheckContext,
+  getContextNudgeMessage,
+} from "./context-hygiene-state.js";
+export {
+  recordMemoryAccess,
+  incrementTurnsSinceMemory,
+  resetTurnsSinceMemory,
+  shouldNudgeForMemory,
+  markMemoryNudgeSent,
+  resetMemoryHygiene,
+} from "./memory-hygiene-state.js";
+export {
+  recordThink,
+  incrementToolsSinceReflection,
+  recordSilentTurn,
+  resetSilentTurns,
+  isTooSilent,
+  getReflectionGapMessage,
+  resetThoughtChain,
+} from "./thought-chain-state.js";
 
-export { getThoughtChainView, type ThoughtChainView, recordThink, incrementToolsSinceReflection, recordSilentTurn, resetSilentTurns, isTooSilent, getReflectionGapMessage, resetThoughtChain } from "./thought-chain-state.js";
+// ── Local type for thought chain entries (was imported from sub-state, now local to avoid circular dep) ──
+interface ThoughtChainEntry {
+  id: string;
+  parentId: string | null;
+  type: string;
+  timestamp: number;
+}
 
 const log = createLogger("enforcement");
 
@@ -92,7 +128,12 @@ export function createState() {
       id: string;
       description: string;
       status: string;
-      steps: { description: string; status: string; expectedOutcome: string; actualOutcome?: string }[];
+      steps: {
+        description: string;
+        status: string;
+        expectedOutcome: string;
+        actualOutcome?: string;
+      }[];
     } | null,
     _localizationRisk: "",
 
@@ -176,7 +217,12 @@ export function resetState(s: EnforcementState): void {
   // Tool tracking
   s.totalToolCalls = 0;
   s.uniqueToolsUsed.clear();
-  s.toolChain = { lastThinkCall: 0, lastPlanCall: 0, recentEditWithoutThink: [], recentEditWithoutPlan: [] };
+  s.toolChain = {
+    lastThinkCall: 0,
+    lastPlanCall: 0,
+    recentEditWithoutThink: [],
+    recentEditWithoutPlan: [],
+  };
   s.toolSequencePatterns.clear();
   s.recentToolSequences = [];
   s.toolLog = [];

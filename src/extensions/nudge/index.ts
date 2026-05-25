@@ -21,10 +21,7 @@ const log = createLogger("feedback");
 import { FEEDBACK_DIR, METRICS_FILE } from "../../lib/braid-paths.js";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type {
-  ExtensionAPI,
-  ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import { getExtensionState } from "../../lib/extension-state.js";
 
@@ -478,7 +475,11 @@ export default function feedbackExtension(pi: ExtensionAPI) {
         const message =
           `${reason}\n\nUse the scratchpad tool to track:\n` +
           `- Current goal\n- Decisions made\n- Next steps\n\nThis helps maintain context in long sessions.`;
-        const nudgeDef = { severity: "warning" as const, message, action: "Call scratchpad tool to update your tracking." };
+        const nudgeDef = {
+          severity: "warning" as const,
+          message,
+          action: "Call scratchpad tool to update your tracking.",
+        };
         const nudge: Nudge = {
           id: `scratchpad-${Date.now()}`,
           timestamp: Date.now(),
@@ -510,9 +511,10 @@ export default function feedbackExtension(pi: ExtensionAPI) {
 
       if (thinkNeeded && !state.thinkToolNudgeActive) {
         state.thinkToolNudgeActive = true;
-        const message = madeHighStakesAction && noThinkEver
-          ? `High-stakes action without prior think(). Use think() to track:\n- Observation: what you discovered\n- Decision: what you decided\n- Reason: why you made that choice`
-          : `Consider using think() tool to record structured reasoning.\n\n${turnsSinceThink} turn(s) since think() was called. Use think() to track:\n- Observation: what you discovered\n- Decision: what you decided\n- Reason: why you made that choice`;
+        const message =
+          madeHighStakesAction && noThinkEver
+            ? `High-stakes action without prior think(). Use think() to track:\n- Observation: what you discovered\n- Decision: what you decided\n- Reason: why you made that choice`
+            : `Consider using think() tool to record structured reasoning.\n\n${turnsSinceThink} turn(s) since think() was called. Use think() to track:\n- Observation: what you discovered\n- Decision: what you decided\n- Reason: why you made that choice`;
         const nudge: Nudge = {
           id: `think-${Date.now()}`,
           timestamp: Date.now(),

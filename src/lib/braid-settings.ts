@@ -70,5 +70,3 @@ export function areCognitiveNudgesDisabled(): boolean {
   // Default: nudges are enabled (safe default — braid's value prop is ON)
   return false;
 }
-
-

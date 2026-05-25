@@ -35,7 +35,7 @@ const MAX_SNAPSHOTS = 10;
 const PROACTIVE_THRESHOLD_TURNS = 15;
 
 /** The usage ratio at which we consider context "full" (80%). */
-const PROJECTION_TARGET_RATIO = 0.80;
+const PROJECTION_TARGET_RATIO = 0.8;
 
 /** Default token limit used when limit is unknown. */
 const DEFAULT_TOKEN_LIMIT = 100_000;
@@ -233,7 +233,10 @@ export const contextHygieneModule: CognitiveModule = {
         );
       } else {
         // Rate-limit: at most one density whisper per 20 turns
-        if (currentTurn - autoCompactState.lastDensityWhisperTurn >= HYGIENE_DENSITY_WHISPER_COOLDOWN_TURNS) {
+        if (
+          currentTurn - autoCompactState.lastDensityWhisperTurn >=
+          HYGIENE_DENSITY_WHISPER_COOLDOWN_TURNS
+        ) {
           autoCompactState.lastDensityWhisperTurn = currentTurn;
           ctx.whisper?.(
             "Low context density (" +
@@ -244,7 +247,10 @@ export const contextHygieneModule: CognitiveModule = {
               ", Signal: " +
               density.signalMessages +
               ". Pipeline: context_tag → context_checkout to branch.",
-            { category: "cognitive", priority: density.density < DENSITY_VERY_LOW ? "high" : "medium" },
+            {
+              category: "cognitive",
+              priority: density.density < DENSITY_VERY_LOW ? "high" : "medium",
+            },
           );
         }
       }
@@ -255,7 +261,8 @@ export const contextHygieneModule: CognitiveModule = {
     // ── High-density large context whisper ────
     if (
       density.tokenRatio > TOKEN_RATIO_LARGE_CONTEXT &&
-      currentTurn - autoCompactState.lastLargeContextWhisperTurn >= HYGIENE_LARGE_CONTEXT_COOLDOWN_TURNS
+      currentTurn - autoCompactState.lastLargeContextWhisperTurn >=
+        HYGIENE_LARGE_CONTEXT_COOLDOWN_TURNS
     ) {
       autoCompactState.lastLargeContextWhisperTurn = currentTurn;
       ctx.whisper?.(
@@ -270,7 +277,11 @@ export const contextHygieneModule: CognitiveModule = {
     }
 
     // ── Duplicate whisper (cooldown) ─────────────────────
-    if (density.duplicates > 2 && currentTurn - autoCompactState.lastDuplicateWhisperTurn >= HYGIENE_DENSITY_WHISPER_COOLDOWN_TURNS) {
+    if (
+      density.duplicates > 2 &&
+      currentTurn - autoCompactState.lastDuplicateWhisperTurn >=
+        HYGIENE_DENSITY_WHISPER_COOLDOWN_TURNS
+    ) {
       autoCompactState.lastDuplicateWhisperTurn = currentTurn;
       ctx.whisper?.(
         density.duplicates +

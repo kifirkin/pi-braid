@@ -102,7 +102,6 @@ function autoDetectTarget(
     if (entry.type !== "message") continue;
     if (entry.message.role !== "assistant") continue;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const content = (entry.message as any).content;
     const text =
       typeof content === "string"

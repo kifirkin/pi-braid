@@ -71,8 +71,6 @@ import sleepFn from "../contrib/sleep/index.js";
 // nudge (feedback/nudge injection — from assistant/feedback)
 import feedbackFn from "../extensions/nudge/index.js";
 
-
-
 // watchdog (session monitoring, opt-in)
 import watchdogFn from "../extensions/watchdog/index.js";
 
@@ -149,7 +147,8 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
   {
     name: "core",
     label: "Core",
-    description: "Foundation: polyfill, metacognition, scratchpad, input-polisher, prompt-builder, agent-environment",
+    description:
+      "Foundation: polyfill, metacognition, scratchpad, input-polisher, prompt-builder, agent-environment",
     alwaysOn: true,
     extensions: [
       { name: "agent-patch", fn: coreAgentPatchFn },
@@ -161,12 +160,16 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
       { name: "agent-environment", fn: coreAgentEnvFn },
     ],
     listensTo: [
-      "session_start", "before_agent_start", "agent_end", "input",
-      "message_end", "turn_end", "session_shutdown", "context",
+      "session_start",
+      "before_agent_start",
+      "agent_end",
+      "input",
+      "message_end",
+      "turn_end",
+      "session_shutdown",
+      "context",
     ],
-    coupledWith: [
-      { module: "enforcement", via: "input event" },
-    ],
+    coupledWith: [{ module: "enforcement", via: "input event" }],
   },
 
   // ═════════════════════════════════════════════════════════════════════
@@ -181,7 +184,8 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
   {
     name: "cognitive-quality",
     label: "Cognitive Quality",
-    description: "Structured reasoning, verification, topic-drift, sycophancy detection, turn-outcome loop detection",
+    description:
+      "Structured reasoning, verification, topic-drift, sycophancy detection, turn-outcome loop detection",
     paper: "RepE Contrast / Silicon Mirror (2604.19117)",
     dependencies: ["core"],
     extensions: [
@@ -192,12 +196,8 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
       { name: "turn-outcome", fn: turnOutcomeFn },
       { name: "tool-safety", fn: toolSafetyFn },
     ],
-    listensTo: [
-      "before_agent_start", "message_end", "turn_end", "tool_call",
-    ],
-    coupledWith: [
-      { module: "enforcement", via: "message_end" },
-    ],
+    listensTo: ["before_agent_start", "message_end", "turn_end", "tool_call"],
+    coupledWith: [{ module: "enforcement", via: "message_end" }],
   },
 
   // ═════════════════════════════════════════════════════════════════════
@@ -213,13 +213,18 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
     description: "RepE-based behavioral enforcement, turn validation, contrast detection",
     paper: "Representation Engineering (RepE)",
     dependencies: ["core"],
-    extensions: [
-      { name: "enforcement", fn: enforcementFn },
-    ],
+    extensions: [{ name: "enforcement", fn: enforcementFn }],
     listensTo: [
-      "session_start", "session_shutdown", "input", "agent_end",
-      "message_end", "tool_call", "tool_result", "turn_end",
-      "session_compact", "auto_retry_end",
+      "session_start",
+      "session_shutdown",
+      "input",
+      "agent_end",
+      "message_end",
+      "tool_call",
+      "tool_result",
+      "turn_end",
+      "session_compact",
+      "auto_retry_end",
     ],
     coupledWith: [
       { module: "cognitive-quality", via: "message_end" },
@@ -242,7 +247,8 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
   {
     name: "memory",
     label: "Memory Stores",
-    description: "Three memory stores, session recall, context compaction + lifecycle, agent-facing memory tools",
+    description:
+      "Three memory stores, session recall, context compaction + lifecycle, agent-facing memory tools",
     paper: "Three Memory Stores (2604.14475)",
     dependencies: ["core"],
     extensions: [
@@ -253,8 +259,14 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
       { name: "memory-agent-bridge", fn: memoryAgentBridgeFn },
     ],
     listensTo: [
-      "session_start", "session_shutdown", "agent_end", "tool_result",
-      "turn_end", "model_select", "before_agent_start", "tool_call",
+      "session_start",
+      "session_shutdown",
+      "agent_end",
+      "tool_result",
+      "turn_end",
+      "model_select",
+      "before_agent_start",
+      "tool_call",
     ],
     coupledWith: [
       { module: "enforcement", via: "turn_end, tool_end" },
@@ -279,8 +291,13 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
       { name: "analytics", fn: analyticsFn },
     ],
     listensTo: [
-      "session_start", "session_shutdown", "agent_end", "turn_end",
-      "tool_call", "tool_execution_start", "tool_execution_end",
+      "session_start",
+      "session_shutdown",
+      "agent_end",
+      "turn_end",
+      "tool_call",
+      "tool_execution_start",
+      "tool_execution_end",
     ],
     coupledWith: [
       { module: "enforcement", via: "turn_end" },
@@ -303,7 +320,14 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
       { name: "auto-recovery", fn: autoRecoveryFn },
       { name: "latent-activator", fn: latentActivatorFn },
     ],
-    listensTo: ["turn_end", "tool_call", "tool_result", "turn_start", "session_start", "session_shutdown"],
+    listensTo: [
+      "turn_end",
+      "tool_call",
+      "tool_result",
+      "turn_start",
+      "session_start",
+      "session_shutdown",
+    ],
     coupledWith: [],
   },
 
@@ -318,12 +342,15 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
     label: "Nudge & Feedback",
     description: "Behavioral nudge injection, feedback whispers, turn-quality monitoring",
     dependencies: ["core"],
-    extensions: [
-      { name: "feedback", fn: feedbackFn },
-    ],
+    extensions: [{ name: "feedback", fn: feedbackFn }],
     listensTo: [
-      "session_start", "session_shutdown", "turn_start",
-      "message_end", "tool_call", "turn_end", "before_agent_start",
+      "session_start",
+      "session_shutdown",
+      "turn_start",
+      "message_end",
+      "tool_call",
+      "turn_end",
+      "before_agent_start",
     ],
     coupledWith: [{ module: "cognitive-quality", via: "message_end, tool_call" }],
   },
@@ -337,7 +364,8 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
   {
     name: "contrib",
     label: "Contrib Utilities",
-    description: "Peripheral utilities: diff, healthcheck, observatory, research, system-monitor, rate-limiter, tool-config",
+    description:
+      "Peripheral utilities: diff, healthcheck, observatory, research, system-monitor, rate-limiter, tool-config",
     dependencies: ["core"],
     extensions: [
       { name: "diff", fn: diffFn },

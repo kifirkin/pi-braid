@@ -63,23 +63,127 @@ const HEDGE_SEVERITY: Record<string, "low" | "medium" | "high"> = {
 
 const STOP_WORDS = new Set([
   // core English stop words
-  "the", "and", "for", "are", "but", "not", "you", "all", "can",
-  "had", "her", "was", "one", "our", "out", "get", "has", "him",
-  "his", "how", "its", "may", "new", "now", "old", "see", "way",
-  "who", "did", "let", "put", "say", "she", "too", "use", "that",
-  "with", "have", "this", "from", "they", "will", "would", "there",
-  "their", "what", "been", "more", "when", "your", "come", "could",
-  "only", "other", "than", "into", "some", "them", "then", "these",
-  "take", "made", "very", "just", "over", "such", "also", "back",
-  "after", "work", "first", "well", "even", "want", "because", "any",
-  "between", "don't", "it's", "should", "about", "going",
+  "the",
+  "and",
+  "for",
+  "are",
+  "but",
+  "not",
+  "you",
+  "all",
+  "can",
+  "had",
+  "her",
+  "was",
+  "one",
+  "our",
+  "out",
+  "get",
+  "has",
+  "him",
+  "his",
+  "how",
+  "its",
+  "may",
+  "new",
+  "now",
+  "old",
+  "see",
+  "way",
+  "who",
+  "did",
+  "let",
+  "put",
+  "say",
+  "she",
+  "too",
+  "use",
+  "that",
+  "with",
+  "have",
+  "this",
+  "from",
+  "they",
+  "will",
+  "would",
+  "there",
+  "their",
+  "what",
+  "been",
+  "more",
+  "when",
+  "your",
+  "come",
+  "could",
+  "only",
+  "other",
+  "than",
+  "into",
+  "some",
+  "them",
+  "then",
+  "these",
+  "take",
+  "made",
+  "very",
+  "just",
+  "over",
+  "such",
+  "also",
+  "back",
+  "after",
+  "work",
+  "first",
+  "well",
+  "even",
+  "want",
+  "because",
+  "any",
+  "between",
+  "don't",
+  "it's",
+  "should",
+  "about",
+  "going",
   // missing common stop words that add noise
-  "is", "in", "at", "on", "to", "of", "it", "as", "by", "an",
-  "or", "no", "if", "up", "be", "so", "do", "he", "my", "me",
-  "we", "am", "us", "i'", "its", "has", "can", "was", "had",
-  "were", "been", "being", "does", "done", "doing",
+  "is",
+  "in",
+  "at",
+  "on",
+  "to",
+  "of",
+  "it",
+  "as",
+  "by",
+  "an",
+  "or",
+  "no",
+  "if",
+  "up",
+  "be",
+  "so",
+  "do",
+  "he",
+  "my",
+  "me",
+  "we",
+  "am",
+  "us",
+  "i'",
+  "its",
+  "has",
+  "can",
+  "was",
+  "had",
+  "were",
+  "been",
+  "being",
+  "does",
+  "done",
+  "doing",
   // days (accidental stop words from previous list — keep for consistency)
-  "day", "boy",
+  "day",
+  "boy",
 ]);
 
 // ── Utility Model Criteria ─────────────────────────────────────────────────────
@@ -90,8 +194,7 @@ const CONTRADICTION_CRITERIA = {
     "context. Consider positive/negative polarity: if the claim says something is true " +
     "but the context says it is false (or vice versa), that is a contradiction.\n" +
     "Answer only 'yes' or 'no'. Do not explain.",
-  userPrompt:
-    "Claim: {{claim}}\nContext: {{context}}\nDoes the claim contradict the context?",
+  userPrompt: "Claim: {{claim}}\nContext: {{context}}\nDoes the claim contradict the context?",
 };
 
 /** Heuristic fallback: preserve original negation pattern + MATCH_PAIRS logic */
@@ -100,7 +203,8 @@ function contradictionFallback(claim: string, context: string): string {
   const contextLower = context.toLowerCase();
 
   // Phase 1 (heuristic): Pattern-based negation detection
-  const negationPattern = /\b(not|n't|never|no|isn't|aren't|wasn't|weren't|don't|doesn't|didn't|won't|wouldn't|can't|cannot|couldn't|shouldn't)\s+(\w{3,})/gi;
+  const negationPattern =
+    /\b(not|n't|never|no|isn't|aren't|wasn't|weren't|don't|doesn't|didn't|won't|wouldn't|can't|cannot|couldn't|shouldn't)\s+(\w{3,})/gi;
 
   const claimNegations: Array<{ word: string; negated: string }> = [];
   let match: RegExpExecArray | null;
@@ -149,9 +253,7 @@ function contradictionFallback(claim: string, context: string): string {
 function extractFeatures(text: string): Set<string> {
   // Extract content-bearing tokens (min 3 chars), skip stop words
   const normalized = text.toLowerCase();
-  const words = normalized
-    .split(/[^\w]+/)
-    .filter((t) => t.length >= 3 && !STOP_WORDS.has(t));
+  const words = normalized.split(/[^\w]+/).filter((t) => t.length >= 3 && !STOP_WORDS.has(t));
   return new Set(words);
 }
 
@@ -163,10 +265,7 @@ function extractFeatures(text: string): Set<string> {
 function featureIntersection(a: Set<string>, b: Set<string>): number {
   let count = 0;
   for (const token of a) {
-    if (
-      b.has(token) ||
-      Array.from(b).some((bt) => token.includes(bt) || bt.includes(token))
-    ) {
+    if (b.has(token) || Array.from(b).some((bt) => token.includes(bt) || bt.includes(token))) {
       count++;
     }
   }
@@ -185,11 +284,7 @@ function symmetricOverlap(a: Set<string>, b: Set<string>): number {
   return intersection / (a.size + b.size - intersection);
 }
 
-async function checkContradiction(
-  claim: string,
-  context: string,
-  ctx: ExtensionContext,
-) {
+async function checkContradiction(claim: string, context: string, ctx: ExtensionContext) {
   const claimFeatures = extractFeatures(claim);
   const contextFeatures = extractFeatures(context);
 

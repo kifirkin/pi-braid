@@ -325,15 +325,18 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
           const baseLevel = determineCompressionLevel(ctx, {
             turnCount: proxyTurnCount,
             turnsSinceCompression:
-              proxyTurnCount -
-              (getCmState(ctx).lastCompressionStats?.turnRange?.to ?? 0),
+              proxyTurnCount - (getCmState(ctx).lastCompressionStats?.turnRange?.to ?? 0),
             consecutiveFailures: 0,
             reasoningChainDepth: audit.recommendations.length > 3 ? 4 : 1,
             messageCount: prep.messagesToSummarize.length,
           }).level;
           // Escalate compression level when current context is near-full
           const compressionLevel =
-            currentUsage > 85 ? (baseLevel === "short-term" ? "medium-term" : "long-term") : baseLevel;
+            currentUsage > 85
+              ? baseLevel === "short-term"
+                ? "medium-term"
+                : "long-term"
+              : baseLevel;
 
           const { compressed, stats: scStats } = semanticCompress(
             (prep as any).messagesToSummarize as any[],
@@ -484,7 +487,8 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
 // for cases where pi does NOT retry (permanent failure, user needs guidance).
 
 export function registerCompactionEndHandler(pi: ExtensionAPI): void {
-  onEvent(pi,
+  onEvent(
+    pi,
     "compaction_end",
     async (
       event: {
@@ -571,4 +575,3 @@ export function registerCompactionEndHandler(pi: ExtensionAPI): void {
     tryRestoreAppendMessage(pi);
   });
 }
-

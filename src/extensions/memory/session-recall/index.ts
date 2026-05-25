@@ -27,7 +27,9 @@ import { basename, join } from "node:path";
 
 /** Async helper: check if a path exists (replaces existsSync). */
 async function asyncExists(p: string): Promise<boolean> {
-  return stat(p).then(() => true).catch(() => false);
+  return stat(p)
+    .then(() => true)
+    .catch(() => false);
 }
 import { homedir } from "node:os";
 import { AGENT } from "../../../lib/braid-paths.js";
@@ -40,7 +42,7 @@ interface SessionRecallConfig {
 
 // ── Default config (file loading was dead code — removed) ──
 
-  // Schemas
+// Schemas
 
 const sessionSearchSchema = Type.Object({
   query: Type.String({
@@ -317,7 +319,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
     ): Promise<any> => {
       const sessionsDir = getSessionsDir();
 
-      if (!await asyncExists(sessionsDir)) {
+      if (!(await asyncExists(sessionsDir))) {
         return {
           content: [{ type: "text" as const, text: "No sessions directory found." }],
           details: { error: true, matchCount: 0 },
@@ -416,7 +418,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
         };
       }
 
-      if (!await asyncExists(params.sessionPath)) {
+      if (!(await asyncExists(params.sessionPath))) {
         return {
           content: [
             { type: "text" as const, text: `Error: Session file not found: ${params.sessionPath}` },
@@ -543,12 +545,16 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
       typeof content === "string"
         ? content.slice(0, 300)
         : Array.isArray(content)
-          ? content.filter((c: any) => c.type === "text").map((c: any) => c.text).join(" ").slice(0, 300)
+          ? content
+              .filter((c: any) => c.type === "text")
+              .map((c: any) => c.text)
+              .join(" ")
+              .slice(0, 300)
           : "";
     if (!taskText || taskText.length < 20) return;
 
     const sessionsDir = getSessionsDir();
-    if (!await asyncExists(sessionsDir)) return;
+    if (!(await asyncExists(sessionsDir))) return;
 
     try {
       const results = await searchFiles(taskText, sessionsDir);

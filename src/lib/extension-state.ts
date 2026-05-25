@@ -14,7 +14,6 @@
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-
 // ── Session-scoped storage (stable across ctx recreation) ───────────────────
 const _sessionState = new Map<string, Map<string, unknown>>();
 

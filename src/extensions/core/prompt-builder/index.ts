@@ -2,12 +2,19 @@ import { stat, readdir, readFile } from "node:fs/promises";
 import { createPromptPreviewTool } from "./preview.js";
 import type { Skill } from "@mariozechner/pi-coding-agent";
 import { homedir } from "node:os";
-import { searchPastInsights, formatPastInsightsSection, deriveProjectIdFromCwd, type PastInsight } from "./past-insights.js";
+import {
+  searchPastInsights,
+  formatPastInsightsSection,
+  deriveProjectIdFromCwd,
+  type PastInsight,
+} from "./past-insights.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 
 /** Async helper: check if a path exists (replaces existsSync). */
 async function asyncExists(p: string): Promise<boolean> {
-  return stat(p).then(() => true).catch(() => false);
+  return stat(p)
+    .then(() => true)
+    .catch(() => false);
 }
 
 /**
@@ -91,14 +98,12 @@ function getPromptState(ctx: ExtensionContext): PromptBuilderState {
   }));
 }
 
-
-
 const HINT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const HINT_MAX_COUNT = 20; // max hints on disk
 
 async function loadConsolidatedHints(currentProject?: string): Promise<string[]> {
   try {
-    if (!await asyncExists(CONSOLIDATED_HINTS_FILE)) return [];
+    if (!(await asyncExists(CONSOLIDATED_HINTS_FILE))) return [];
     const content = await readFile(CONSOLIDATED_HINTS_FILE, "utf-8");
     const lines = content.split("\n").filter((l: string) => l.trim());
     if (lines.length === 0) return [];
@@ -122,10 +127,18 @@ async function loadConsolidatedHints(currentProject?: string): Promise<string[]>
     // if they pass a higher quality bar (score >= 80) — same logic as
     // isCrossProjectInjectionAllowed for episodic memory.
     const sameProject = currentProject
-      ? parsed.filter((h: any) => !h.project || h.project === currentProject || h.project === "unknown")
+      ? parsed.filter(
+          (h: any) => !h.project || h.project === currentProject || h.project === "unknown",
+        )
       : parsed;
     const crossProject = currentProject
-      ? parsed.filter((h: any) => h.project && h.project !== currentProject && h.project !== "unknown" && (h.score ?? 0) >= 80)
+      ? parsed.filter(
+          (h: any) =>
+            h.project &&
+            h.project !== currentProject &&
+            h.project !== "unknown" &&
+            (h.score ?? 0) >= 80,
+        )
       : [];
     const candidates = [...sameProject, ...crossProject];
 
@@ -163,9 +176,7 @@ const HINT_RELEVANCE_CRITERIA = {
     "a strategy or workflow that could apply to what the user is working on. " +
     "Generic hints like 'Fix type error: Reproduce → Locate → Apply' are NOT relevant. " +
     "Answer only 'yes' or 'no'. Do not explain.",
-  userPrompt:
-    "Hint: {{hint}}\n" +
-    "Is this hint relevant to the user's current work?",
+  userPrompt: "Hint: {{hint}}\n" + "Is this hint relevant to the user's current work?",
 };
 
 /** Heuristic fallback: reject generic-seeming hints. */
@@ -193,10 +204,7 @@ function hintRelevancePreFilter(hint: string): "no" | "maybe" {
  * Filter hints by relevance using the utility model.
  * Returns only hints classified as relevant to the current session.
  */
-async function filterRelevantHints(
-  hints: string[],
-  ctx: ExtensionContext,
-): Promise<string[]> {
+async function filterRelevantHints(hints: string[], ctx: ExtensionContext): Promise<string[]> {
   // Pre-filter: skip hints the cheap heuristic rejects outright.
   // This avoids LLM calls for known-generic patterns and prevents
   // the LLM from overriding the correct heuristic with a "yes".
@@ -204,11 +212,16 @@ async function filterRelevantHints(
 
   const results = await Promise.all(
     preFiltered.map((hint) =>
-      classify(ctx, HINT_RELEVANCE_CRITERIA, { hint }, {
-        maxTokens: 5,
-        timeoutMs: 3000,
-        fallback: () => hintRelevanceFallback(hint),
-      }),
+      classify(
+        ctx,
+        HINT_RELEVANCE_CRITERIA,
+        { hint },
+        {
+          maxTokens: 5,
+          timeoutMs: 3000,
+          fallback: () => hintRelevanceFallback(hint),
+        },
+      ),
     ),
   );
 
@@ -375,7 +388,7 @@ async function collectProjectContextStrings(cwd: string): Promise<string[]> {
     const candidates = ["AGENTS.md", "CLAUDE.md"];
     for (const filename of candidates) {
       const filePath = join(dir, filename);
-      if (await asyncExists(filePath) && !seenPaths.has(filePath)) {
+      if ((await asyncExists(filePath)) && !seenPaths.has(filePath)) {
         seenPaths.add(filePath);
         try {
           rawContents.push(await readFile(filePath, "utf-8"));
@@ -608,23 +621,21 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
   // ── resources_discover: Register bundled skills with pi's native discovery ──
   // pi's package manager calls this on all extensions to discover resources (skills, prompts, themes).
   // We register the bundled skills/ directory so pi can auto-discover them.
-  onEvent(_pi,
-    "resources_discover",
-    async (event: { cwd: string; reason: string }, _ctx: any) => {
-      return {
-        skillPaths: [SKILLS_DIR],
-      };
-    },
-  );
+  onEvent(_pi, "resources_discover", async (event: { cwd: string; reason: string }, _ctx: any) => {
+    return {
+      skillPaths: [SKILLS_DIR],
+    };
+  });
 
   _pi.on("before_agent_start", async (event, ctx) => {
     const ps = getPromptState(ctx);
     const cwd = ctx.cwd;
     const allTools = _pi.getAllTools();
     const activeToolNames = _pi.getActiveTools() ?? allTools.map((t) => t.name);
-    const tools = activeToolNames.length > 0
-      ? allTools.filter((t) => activeToolNames.includes(t.name))
-      : allTools;
+    const tools =
+      activeToolNames.length > 0
+        ? allTools.filter((t) => activeToolNames.includes(t.name))
+        : allTools;
     const toolNames = tools.map((t) => t.name);
     const hasRead = toolNames.includes("read");
 

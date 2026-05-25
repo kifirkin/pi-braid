@@ -441,18 +441,18 @@
 
 ### Dead Code / Unused Imports
 
-| File                                 | Unused Import                                                                                                                                            | Reason                         |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| handler-registry.ts (enforcement)    | `SessionCompactEvent`, `eventBus`, `detectMissingVerification`, `recordCodeChange`, `getNudgeAnalytics`, `validateTurn`, `knownFiles`, `loadFileContent` | 8 orphaned imports             |
-| turn-end-handler.ts (enforcement)    | `sendTrackedMessage`, `eventBus`, `recordNudgeSent`                                                                                                      | 3 orphaned imports             |
-| feedback/index.ts                    | `homedir`, `AgentToolResult`                                                                                                                             | 2 orphaned imports             |
-| cognitive-systems/index.ts           | `getAllConflictQAs`                                                                                                                                      | 1 orphaned import              |
-| modules/api.ts                       | `deps` variable, `overrides` variable                                                                                                                    | 2 computed-but-never-used      |
-| definitions.ts                       | `researchFn` (was orphaned)                                                                                                                               | ✅ Now registered in contrib module |
-| metacognition/index.ts               | `evaluateCognition`, `Type`                                                                                                                              | 2 orphaned imports             |
-| blocking.ts (enforcement)            | `queueBlockAction`                                                                                                                                       | 1 orphaned export/import       |
-| probe-handler.ts, routing-handler.ts | `ExtensionAPI`                                                                                                                                           | 2 files, each 1 unused import  |
-| handler-registry.ts (enforcement)          | `loadFileContent`                                                                                                                                        | 1 orphaned import              |
+| File                                 | Unused Import                                                                                                                                            | Reason                              |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| handler-registry.ts (enforcement)    | `SessionCompactEvent`, `eventBus`, `detectMissingVerification`, `recordCodeChange`, `getNudgeAnalytics`, `validateTurn`, `knownFiles`, `loadFileContent` | 8 orphaned imports                  |
+| turn-end-handler.ts (enforcement)    | `sendTrackedMessage`, `eventBus`, `recordNudgeSent`                                                                                                      | 3 orphaned imports                  |
+| feedback/index.ts                    | `homedir`, `AgentToolResult`                                                                                                                             | 2 orphaned imports                  |
+| cognitive-systems/index.ts           | `getAllConflictQAs`                                                                                                                                      | 1 orphaned import                   |
+| modules/api.ts                       | `deps` variable, `overrides` variable                                                                                                                    | 2 computed-but-never-used           |
+| definitions.ts                       | `researchFn` (was orphaned)                                                                                                                              | ✅ Now registered in contrib module |
+| metacognition/index.ts               | `evaluateCognition`, `Type`                                                                                                                              | 2 orphaned imports                  |
+| blocking.ts (enforcement)            | `queueBlockAction`                                                                                                                                       | 1 orphaned export/import            |
+| probe-handler.ts, routing-handler.ts | `ExtensionAPI`                                                                                                                                           | 2 files, each 1 unused import       |
+| handler-registry.ts (enforcement)    | `loadFileContent`                                                                                                                                        | 1 orphaned import                   |
 
 ### Known Blockers
 
@@ -486,14 +486,14 @@ All 12 modules fit the pi-braid subject ("metacognitive agent extension suite").
 
 ### Unfinished Work Priority
 
-| Priority | Item                                          | Why                                         |
-| -------- | --------------------------------------------- | ------------------------------------------- |
-| 🟩 DONE  | Wire researchFn into contrib module            | Was orphaned, now loads (contrib module) |
-| 🟥 P0    | Tool description truncation in prompt-builder | ~5000 tokens wasted per turn                |
-| 🟧 P1    | Clean 13 orphaned imports                     | Code quality, maintainability               |
-| 🟧 P1    | Fix modules/api.ts dead variables             | Half-finished features confuse users        |
-| 🟧 P1    | Version detection for agent-patch             | Remove when upstream fix ships              |
-| 🟨 P2    | Add context_prune blocker in tools docs       | Prevents future frustration                 |
-| 🟨 P2    | Test isolation for cognitive-memory test      | Tests should be isolated                    |
-| 🟩 P3    | utility-model command (polyfill)              | Parity with vision-model                    |
-| 🟩 P3    | Soft-start — load modules in parallel         | Startup perf                                |
+| Priority | Item                                          | Why                                      |
+| -------- | --------------------------------------------- | ---------------------------------------- |
+| 🟩 DONE  | Wire researchFn into contrib module           | Was orphaned, now loads (contrib module) |
+| 🟥 P0    | Tool description truncation in prompt-builder | ~5000 tokens wasted per turn             |
+| 🟧 P1    | Clean 13 orphaned imports                     | Code quality, maintainability            |
+| 🟧 P1    | Fix modules/api.ts dead variables             | Half-finished features confuse users     |
+| 🟧 P1    | Version detection for agent-patch             | Remove when upstream fix ships           |
+| 🟨 P2    | Add context_prune blocker in tools docs       | Prevents future frustration              |
+| 🟨 P2    | Test isolation for cognitive-memory test      | Tests should be isolated                 |
+| 🟩 P3    | utility-model command (polyfill)              | Parity with vision-model                 |
+| 🟩 P3    | Soft-start — load modules in parallel         | Startup perf                             |

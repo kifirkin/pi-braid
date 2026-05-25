@@ -43,7 +43,7 @@ console.log("\n[2] Module system registration");
 
   assert(defs.includes("observatoryFn"), "observatoryFn imported in definitions");
   assert(defs.includes("observatory"), "observatory listed in tools module");
-  assert(defs.includes("\"session_start\", \"session_shutdown\""), "observatory events in listensTo");
+  assert(defs.includes("\"session_tree\", \"session_shutdown\", \"context\""), "observatory events in listensTo");
 }
 
 // ── 

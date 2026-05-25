@@ -273,13 +273,13 @@ API-only providers (stepfun, minimax) don't expose activations/logprobs. RepE pr
 
 | #    | Task                                      | Effort            | Dependencies                                                                                       |
 | ---- | ----------------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------- |
-| P3.1 | Self-evolution automatic trigger          | ✅ Done           | isDegraded → health-maintenance evolver shouldActivate auto-trigger (turn 10 + degrade)                               |
+| P3.1 | Self-evolution automatic trigger          | ✅ Done           | isDegraded → health-maintenance evolver shouldActivate auto-trigger (turn 10 + degrade)            |
 | P3.2 | Lie-detector pattern (RepE)               | ✅ Done           | cross-turn claim tracking + enforcement whisper                                                    |
 | P3.3 | Rollback automation                       | ✅ Done           | state-checkpoint.ts: auto-checkpoint every 20 clean turns + auto-rollback on degrade via heartbeat |
 | P3.4 | Budget-Aware Planning (BAVT)              | ✅ Done           | P2                                                                                                 |
 | P3.5 | Memory Condensation (Decocted Experience) | ✅ Done           | P2                                                                                                 |
 | P3.6 | Process Supervision (step_check)          | ✅ Done           | P3                                                                                                 |
-| P3.7 | Exploratory Reasoning (explore_paths)     | ✅ Already exists | memory-agent-bridge/index.ts — spawns parallel sub-agents                                            |
+| P3.7 | Exploratory Reasoning (explore_paths)     | ✅ Already exists | memory-agent-bridge/index.ts — spawns parallel sub-agents                                          |
 | BV1  | Bidirectional Verifier Phase 1            | ✅ Done           | Forward Trace: file touch graph + localization risk detection                                      |
 | BR3  | Nudge A/B measurement                     | ✅ Done           | Variant-controlled nudge suppression for effectiveness testing                                     |
 | D0   | Dreamer module testing                    | ✅ Done           | test-dreamer.mjs: 6 tests for shouldActivate, cooldown, structure                                  |
@@ -318,13 +318,13 @@ npm run lint:check  # 0 warnings
 ## Current Gaps Summary
 
 | Gap                                       | Location       | Severity   |
-| ----------------------------------------- | -------------- | ---------- | --------------------------------------- |
+| ----------------------------------------- | -------------- | ---------- | -------------------------------------------- |
 | Budget-Aware Planning (BAVT)              | planner        | ✅ Done    |
 | Memory Condensation (Decocted Experience) | session-recall | ✅ Done    |
 | Process Supervision (step_check)          | reasoning      | ✅ Done    |
-| Lie-detector (RepE)                       | enforcement    | ✅ Done    | claim-tracker.ts + enforcement turn_end |
-| Self-evolution auto trigger               | evolve         | ✅ Done    | isDegraded→health-maintenance shouldActivate       |
-| Rollback automation                       | heartbeat      | ✅ Done    | state-checkpoint.ts                     |
+| Lie-detector (RepE)                       | enforcement    | ✅ Done    | claim-tracker.ts + enforcement turn_end      |
+| Self-evolution auto trigger               | evolve         | ✅ Done    | isDegraded→health-maintenance shouldActivate |
+| Rollback automation                       | heartbeat      | ✅ Done    | state-checkpoint.ts                          |
 | BM3 real-world task suite                 | evaluation/    | (excluded) |
 
 ---

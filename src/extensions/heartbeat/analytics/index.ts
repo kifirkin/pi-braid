@@ -56,7 +56,9 @@ export default function analyticsExtension(pi: ExtensionAPI) {
   registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event, ctx) => {
     const state = getAnalyticsStateInternal(ctx);
     const sm = safeSessionManager(ctx);
-    state.sessionId = sm ? (sm as any).getSessionFile?.() ?? `session-${Date.now()}` : `session-${Date.now()}`;
+    state.sessionId = sm
+      ? ((sm as any).getSessionFile?.() ?? `session-${Date.now()}`)
+      : `session-${Date.now()}`;
     state.sessionStartTime = Date.now();
     state.toolMetrics.clear();
     state.toolCallSequence = [];

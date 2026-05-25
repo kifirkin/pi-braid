@@ -36,10 +36,7 @@ const TOOL_SAFETY_CRITERIA = {
     "curl | sh, wget | bash), modifying system/passwd/ssh files, " +
     "or performing irreversible operations. " +
     "Answer only 'yes' or 'no'. 'yes' = DANGEROUS, 'no' = SAFE. Do not explain.",
-  userPrompt:
-    "Tool: {{toolName}}\n" +
-    "Args: {{toolArgs}}\n" +
-    "Is this tool call dangerous?",
+  userPrompt: "Tool: {{toolName}}\n" + "Args: {{toolArgs}}\n" + "Is this tool call dangerous?",
 };
 
 // ── Heuristic Fallback ───────────────────────────────────────────────────────
@@ -76,29 +73,29 @@ export default function toolSafetyExtension(pi: ExtensionAPI): void {
       if (result.label === "yes") {
         log.warn(
           `[tool-safety] BLOCKED ${toolName}: ${args.slice(0, 200)}` +
-          ` (tier: ${result.tier}, confidence: ${result.confidence})`,
+            ` (tier: ${result.tier}, confidence: ${result.confidence})`,
         );
 
         // Send a steer warning the agent
         try {
-          const { sendTrackedMessage } = await import(
-            "../../../lib/injection-tracker.js"
-          );
+          const { sendTrackedMessage } = await import("../../../lib/injection-tracker.js");
           sendTrackedMessage(
             pi,
             {
               customType: "tool-safety",
-              content: [{
-                type: "text" as const,
-                text:
-                  `## ⚠️ Tool Blocked for Safety\n\n` +
-                  `The tool call \`${toolName}\` was classified as potentially dangerous ` +
-                  `(confidence: ${result.confidence}, tier: ${result.tier}).\n\n` +
-                  `**Args:** \`\`\`\n${args.slice(0, 400)}\n\`\`\`\n\n` +
-                  `If this is legitimate, rephrase the approach to make ` +
-                  `the operation's safety clearer (e.g., validate paths explicitly, ` +
-                  `use safer flags). If this was a mistake, try again.`,
-              }],
+              content: [
+                {
+                  type: "text" as const,
+                  text:
+                    `## ⚠️ Tool Blocked for Safety\n\n` +
+                    `The tool call \`${toolName}\` was classified as potentially dangerous ` +
+                    `(confidence: ${result.confidence}, tier: ${result.tier}).\n\n` +
+                    `**Args:** \`\`\`\n${args.slice(0, 400)}\n\`\`\`\n\n` +
+                    `If this is legitimate, rephrase the approach to make ` +
+                    `the operation's safety clearer (e.g., validate paths explicitly, ` +
+                    `use safer flags). If this was a mistake, try again.`,
+                },
+              ],
               display: true,
             },
             { deliverAs: "steer" as const, triggerTurn: true },
