@@ -428,9 +428,8 @@ export function injectSopSuggestions(
 
     // Emit event for analytics
     try {
-      eventBus.emit({
-        type: "sop_suggestion_injected" as never,
-        // @ts-expect-error — custom analytics payload
+      (eventBus.emit as any)({
+        type: "sop_suggestion_injected",
         details: { count: injected, tokens: totalTokens },
       });
     } catch (err) {

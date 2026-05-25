@@ -5,7 +5,7 @@ const log = createLogger("enforcement");
  * Tool tracking - centralized tracking logic for all tool usage patterns
  */
 import { recordCodeChange } from "../detection/verification.js";
-import { getState } from "../state.js";
+import { getState, recordToolChainCall, recordMemoryAccess, recordContextTool, resetScratchpadNudge } from "../state.js";
 import type { EnforcementState } from "../state.js";
 
 /**
@@ -43,11 +43,8 @@ export function recordToolCall(toolName: string, ctx: any): void {
     recordCodeChange(s.currentTurn, ctx);
   }
 
-  // Track think
-  if (toolName === "think") {
-    s.toolChain.lastThinkCall = s.currentTurn;
-    s.thinkCalledInSession = true;
-  }
+  // Record general tool call (handles totals, unique tools, exploration)
+  recordToolChainCall(s, toolName);
 
   // Track plan
   if (toolName === "plan") {
@@ -57,22 +54,10 @@ export function recordToolCall(toolName: string, ctx: any): void {
   // Track memory tool usage
   const memoryTools = ["memory_store", "memory_recall", "memory_list"];
   if (memoryTools.includes(toolName)) {
-    s.lastMemoryCall = s.currentTurn;
-    s.turnsSinceMemory = 0;
-    s.toolCallsSinceLastMemory = 0;
-    s.memoryNudgeSent = false;
+    recordMemoryAccess(s, s.currentTurn);
     if (toolName === "memory_recall" && !s.hasRecalledOnStart) {
       s.hasRecalledOnStart = true;
     }
-  }
-
-  // Track exploration (read, grep, find, ls)
-  const exploreTools = ["read", "grep", "find", "ls"];
-  if (exploreTools.includes(toolName)) {
-    s.hasExplored = true;
-    s.exploreCalledInSession = true;
-    s.turnsSinceExplore = 0;
-    s.exploreBeforeActNudged = false;
   }
 
   // Track context management tools usage
@@ -84,23 +69,12 @@ export function recordToolCall(toolName: string, ctx: any): void {
     "context_audit",
   ];
   if (contextTools.includes(toolName)) {
-    s.lastContextCheckTurn = s.currentTurn;
-    s.contextNudgeSent = false;
+    recordContextTool(s, s.currentTurn);
   }
 
   // Track scratchpad usage as part of memory hygiene
   if (toolName === "scratchpad") {
-    s.lastScratchpadNudgeTurn = -100; // Reset scratchpad nudge cooldown
-  }
-
-  // Track total tool calls
-  s.totalToolCalls++;
-  s.toolCallsSinceLastMemory++;
-
-  // Track unique tools
-  const actionTools = ["bash", "read", "write", "edit", "grep", "find"];
-  if (actionTools.includes(toolName)) {
-    s.uniqueToolsUsed.add(toolName);
+    resetScratchpadNudge(s);
   }
 
   // Track tool sequence patterns

@@ -310,7 +310,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
 
       const { runVerificationJudge, formatVerificationNudge } =
         await import("./verification-judge.js");
-      const result = await runVerificationJudge(ctx as never, judgeCtx, { timeoutMs: 30000 });
+      const result = await runVerificationJudge(ctx, judgeCtx, { timeoutMs: 30000 });
 
       completeJudge(getState(ctx), getState(ctx).currentTurn);
 
