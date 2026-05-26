@@ -13,7 +13,7 @@ import { createLogger } from "../../../lib/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 import { existsSync, mkdirSync } from "node:fs";
 import { METRICS_FILE, METRICS_DIR } from "../../../lib/braid-paths.js";
-import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, AgentToolResult } from "@mariozechner/pi-coding-agent";
 import { safeSessionManager } from "../../../lib/extension-state.js";
 import { emitSignal } from "../../../lib/belief-policy-engine.js";
 import { eventBus } from "../../../lib/event-bus.js";
@@ -22,9 +22,7 @@ import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { areCognitiveNudgesDisabled } from "../../../lib/braid-settings.js";
 import { Type } from "typebox";
 
-import {
-  getAnalyticsStateInternal,
-} from "./shared.js";
+import { getAnalyticsStateInternal } from "./shared.js";
 import { recordError, recordToolSuccess } from "../../../lib/degradation-detector.js";
 export {
   updateContextDensity,
@@ -34,15 +32,7 @@ export {
   getAnalyticsSummary,
 } from "./shared.js";
 
-import {
-  recordToolCall,
-  getToolSequences,
-  getSessionMetrics,
-  computeSessionOutcome,
-  flushAnalytics,
-  loadAnalytics,
-} from "./core.js";
-import { loadAnalyticsByVariant } from "./ab-variant.js";
+import { recordToolCall, flushAnalytics } from "./core.js";
 import { formatCurrentSession, formatAllSessions } from "./format.js";
 
 const log = createLogger("analytics");
@@ -296,6 +286,123 @@ export default function analyticsExtension(pi: ExtensionAPI) {
     description: "Show A/B experiment results across variants",
     handler: async (_args, ctx) => {
       ctx.ui.notify((await import("./ab-variant.js")).formatABResults(), "info");
+    },
+  });
+
+  // ── Tools (agent-callable) ────────────────────────────────────────
+
+  pi.registerTool({
+    name: "get-session-metrics",
+    label: "Get Session Metrics",
+    description:
+      "Returns aggregated metrics for the current session: total tool calls, unique tools, duration, and per-tool breakdown.",
+    parameters: Type.Object({}),
+    execute: async (
+      _toolCallId: string,
+      _params: unknown,
+      _signal: AbortSignal | undefined,
+      _onUpdate: unknown,
+      ctx: ExtensionContext | undefined,
+    ): Promise<AgentToolResult<unknown>> => {
+      if (!ctx) return { content: [{ type: "text", text: "No context available" }], details: {} };
+
+      try {
+        const state = getAnalyticsStateInternal(ctx);
+        const durationMs = Date.now() - state.sessionStartTime;
+        const toolsBreakdown: Array<{ tool: string; calls: number; duration: string }> = [];
+        let totalCalls = 0;
+
+        for (const [tool, metrics] of state.toolMetrics) {
+          toolsBreakdown.push({
+            tool,
+            calls: metrics.totalCalls,
+            duration: `${(metrics.totalDurationMs / 1000).toFixed(1)}s`,
+          });
+          totalCalls += metrics.totalCalls;
+        }
+
+        toolsBreakdown.sort((a, b) => b.calls - a.calls);
+
+        const details = {
+          sessionId: state.sessionId,
+          duration: `${Math.floor(durationMs / 60000)}m ${Math.floor((durationMs % 60000) / 1000)}s`,
+          totalToolCalls: totalCalls,
+          uniqueTools: toolsBreakdown.length,
+          toolsBreakdown,
+          turnCount: state.localTurnCount,
+          nudgesSent: state.nudgesSent,
+          nudgesSuppressed: state.nudgesSuppressed,
+        };
+
+        return {
+          content: [{ type: "text", text: JSON.stringify(details, null, 2) }],
+          details,
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text", text: `Failed to get session metrics: ${(err as Error).message}` }],
+          details: { error: (err as Error).message },
+        };
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "get-tool-reliability",
+    label: "Get Tool Reliability",
+    description:
+      "Returns per-tool reliability stats: success/failure counts, success rate, and average duration.",
+    parameters: Type.Object({}),
+    execute: async (
+      _toolCallId: string,
+      _params: unknown,
+      _signal: AbortSignal | undefined,
+      _onUpdate: unknown,
+      ctx: ExtensionContext | undefined,
+    ): Promise<AgentToolResult<unknown>> => {
+      if (!ctx) return { content: [{ type: "text", text: "No context available" }], details: {} };
+
+      try {
+        const state = getAnalyticsStateInternal(ctx);
+        const tools: Array<{
+          tool: string;
+          calls: number;
+          successes: number;
+          failures: number;
+          successRate: number;
+          avgDurationMs: number;
+        }> = [];
+
+        for (const [tool, metrics] of state.toolMetrics) {
+          tools.push({
+            tool,
+            calls: metrics.totalCalls,
+            successes: metrics.successfulCalls,
+            failures: metrics.failedCalls,
+            successRate:
+              metrics.totalCalls > 0
+                ? Math.round((metrics.successfulCalls / metrics.totalCalls) * 1000) / 1000
+                : 0,
+            avgDurationMs:
+              metrics.totalCalls > 0
+                ? Math.round(metrics.totalDurationMs / metrics.totalCalls)
+                : 0,
+          });
+        }
+
+        tools.sort((a, b) => b.calls - a.calls);
+
+        const details = { tools };
+        return {
+          content: [{ type: "text", text: JSON.stringify(details, null, 2) }],
+          details,
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text", text: `Failed to get tool reliability: ${(err as Error).message}` }],
+          details: { error: (err as Error).message },
+        };
+      }
     },
   });
 }
