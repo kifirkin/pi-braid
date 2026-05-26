@@ -11,6 +11,7 @@
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState, hasExtensionState } from "./extension-state.js";
+import { marsOveruseMultiplier as dynamicOveruseMultiplier } from "./advice-tracker.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -50,8 +51,11 @@ function getState(ctx: ExtensionContext): MARSState {
 /** First N calls of each tool = learning phase, not flagged as pattern */
 const LEARNING_PHASE_CALLS = 5;
 
-/** Flag as overused only if > this multiple of average tool usage */
-const OVERUSE_MULTIPLIER = 3;
+/**
+ * Overuse multiplier. Starts at 3, dynamically adjusted by advice tracker.
+ * Accessed via live `let` export from advice-tracker.js.
+ */
+const OVERUSE_MULTIPLIER = dynamicOveruseMultiplier;
 
 /** Flag as overused only if success rate below this threshold */
 const MIN_SUCCESS_RATE_FOR_OVERUSE = 0.5;

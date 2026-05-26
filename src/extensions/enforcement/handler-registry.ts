@@ -54,6 +54,13 @@ import { knownFiles } from "./similarity.js";
 import { enforcementSignals, determineContrastMode } from "./signals.js";
 import { getState, recordThink, startJudge, completeJudge } from "./state.js";
 import { resetState } from "./state.js";
+import {
+  recordAdvice,
+  evaluatePendingAdvice,
+  resetAdviceTracker,
+  type EvaluationContext,
+} from "../../lib/advice-tracker.js";
+import { eventBus } from "../../lib/event-bus.js";
 import { onEvent } from "../../lib/event-types.js";
 import type { SessionEntry, SessionManager } from "../../lib/session-manager.js";
 
@@ -124,6 +131,27 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
       }
 
       getState(ctx).currentTurn++;
+
+      // Register event bus consumers (revival: make events actually do things)
+      eventBus.on("context_full", (event: { usagePercent: number }) => {
+        if (event.usagePercent > 80) {
+          sendTrackedMessage(
+            pi,
+            {
+              customType: "context",
+              display: true,
+              content: [{ type: "text", text: `[enforcement] Context at ${Math.round(event.usagePercent)}%. Consider context_tag → context_checkout → context_archive.` }],
+            },
+            { deliverAs: "steer", triggerTurn: false },
+            { type: "enforcement", source: "enforcement/event-bus" },
+          );
+        }
+      });
+
+      eventBus.on("enforcement_violation", (_event) => {
+        // Event already handled by enforcement/whisper.ts — bus consumer
+        // exists to prevent the event from being logged into the void.
+      });
     },
   );
 
@@ -402,6 +430,35 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     await dispatchTurnEndLoop(pi, event, ctx, nudgeManager);
   });
 
+  // Claim tracker — cross-turn contradiction detection (extracted from enforcement-loop
+  // into its own handler to reduce the monolithic turn-end handler).
+  registerTurnEndHandler("claim-tracker", 70, async (event, ctx) => {
+    if (!getState(ctx).enforcementActive) return;
+    const isBurst = getState(ctx).consecutiveErrorTurns >= 3;
+    if (isBurst || event.message?.role !== "assistant" || !event.message?.content) return;
+
+    const msgText = Array.isArray(event.message.content)
+      ? event.message.content
+          .filter((c: any) => c?.type === "text")
+          .map((c: any) => c?.text || "")
+          .join(" ")
+      : typeof event.message.content === "string"
+        ? event.message.content
+        : "";
+
+    if (msgText.length <= 50) return;
+    try {
+      const { processAgentResponse, formatContradictionWhisper } =
+        await import("../../lib/claim-tracker.js");
+      const contradictions = processAgentResponse(msgText, ctx, getState(ctx).currentTurn);
+      if (contradictions.length > 0) {
+        sendEnforcementWhisper(pi, ctx, formatContradictionWhisper(contradictions));
+      }
+    } catch {
+      // Non-fatal: claim tracker errors don't block the turn
+    }
+  });
+
   // Single pi.on("turn_end") entry point — dispatches to all registered handlers
   onEvent(pi, "turn_end", async (event: any, ctx: ExtensionContext) => {
     const { dispatchTurnEnd } = await import("../../lib/turn-end-coordinator.js");
@@ -605,6 +662,9 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
         { deliverAs: "steer", triggerTurn: false },
         { type: "enforcement", source: "enforcement/mars" },
       );
+      // Record MARS advice for feedback loop
+      const marsTool = _extractToolFromMarsMessage(marsAdvice.message);
+      recordAdvice("mars", marsAdvice.type, gs.currentTurn, marsTool);
     }
 
     const { dream } = await import("../../lib/dreamer.js");
@@ -624,7 +684,17 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
         { deliverAs: "steer", triggerTurn: false },
         { type: "enforcement", source: "enforcement/dreamer" },
       );
+      // Record Dreamer advice for feedback loop
+      recordAdvice("dreamer", dreamAdvice.prediction || "unknown", gs.currentTurn);
     }
+
+    // Evaluate pending advice for feedback loop
+    evaluatePendingAdvice({
+      currentTurn: gs.currentTurn,
+      consecutiveErrorTurns: gs.consecutiveErrorTurns,
+      toolLog: gs.toolLog,
+      uniqueToolsCount: gs.uniqueToolsUsed.size,
+    });
 
     if (gs.toolsSinceReflection >= 8) {
       emitSignal(ctx, "reflection", "absent", "info", false, {
@@ -645,6 +715,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
         `${state.verificationsDone} verifications, ${state.validationFailures} failures`,
     );
 
+    resetAdviceTracker();
     resetState(getState(ctx));
     log.info(`[session_shutdown] Enforcement state reset for session ${sessionId}`);
   });
@@ -661,6 +732,12 @@ function _classifyRetryError(
   if (/5\d\d|server.?error|internal|overloaded|unavailable/i.test(errorMsg)) return "server_error";
   if (/network|connection|fetch failed|socket|timeout|timed out/i.test(errorMsg)) return "network";
   return "unknown";
+}
+
+/** Extract tool name from MARS advice message (format: "[mars] <tool> used N/M times..."). */
+function _extractToolFromMarsMessage(msg: string): string | undefined {
+  const match = msg.match(/\[mars\]\s+(\w+)/);
+  return match?.[1];
 }
 
 function extractTextContent(msg: any): string {

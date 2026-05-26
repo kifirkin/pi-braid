@@ -192,31 +192,6 @@ export async function dispatchTurnEndLoop(
     sendEnforcementWhisper(pi, ctx, orphanResult.suggestion);
   }
 
-  // ── Claim tracker (cross-turn contradiction detection) ─────────────────
-  if (!isBurst && event.message?.role === "assistant" && event.message?.content) {
-    const msgText = Array.isArray(event.message.content)
-      ? event.message.content
-          .filter((c: any) => c?.type === "text")
-          .map((c: any) => c?.text || "")
-          .join(" ")
-      : typeof event.message.content === "string"
-        ? event.message.content
-        : "";
-
-    if (msgText.length > 50) {
-      try {
-        const { processAgentResponse, formatContradictionWhisper } =
-          await import("../../../lib/claim-tracker.js");
-        const contradictions = processAgentResponse(msgText, ctx, getState(ctx).currentTurn);
-        if (contradictions.length > 0) {
-          sendEnforcementWhisper(pi, ctx, formatContradictionWhisper(contradictions));
-        }
-      } catch (err) {
-        log.warn("claim-tracker error (suppressed):", err);
-      }
-    }
-  }
-
   // ── L2: Session Signals bundling ────────────────────────────────────────
 
   // BR3: Check A/B variant

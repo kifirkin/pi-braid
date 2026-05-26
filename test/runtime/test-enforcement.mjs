@@ -195,14 +195,16 @@ console.log("\n[5] Lazy-load verification");
     assert.ok(src.includes('await import("../../lib/dreamer.js")'), "dreamer should be lazy");
   });
 
-  test("claim-tracker lazily imported from turn-end-handler.ts", () => {
-    const hasAnyImport = src.includes('claim-tracker');
-    assert.ok(!hasAnyImport, "claim-tracker should NOT be in handler-registry.ts (moved to turn-end-handler.ts)");
+  test("claim-tracker lazily imported from handler-registry.ts (via coordinator)", () => {
+    // Claim tracker was extracted from turn-end-handler.ts into its own
+    // coordinator-registered handler in handler-registry.ts.
     const turnEndSrc = readFileSync(`${ROOT}/src/extensions/enforcement/handlers/turn-end-handler.ts`, "utf8");
-    const hasStatic = turnEndSrc.includes('from "../../../lib/claim-tracker.js"');
-    const hasDynamic = turnEndSrc.includes('await import("../../../lib/claim-tracker.js")');
-    assert.ok(!hasStatic, "turn-end-handler: claim-tracker should be lazy");
-    assert.ok(hasDynamic, "turn-end-handler: claim-tracker should be lazy");
+    const hasInTurnEnd = turnEndSrc.includes('claim-tracker');
+    assert.ok(!hasInTurnEnd, "claim-tracker should NOT be in turn-end-handler.ts (moved to handler-registry.ts)");
+    const hasStatic = src.includes('from "../../lib/claim-tracker.js"');
+    const hasDynamic = src.includes('await import("../../lib/claim-tracker.js")');
+    assert.ok(!hasStatic, "handler-registry: claim-tracker should be lazy");
+    assert.ok(hasDynamic, "handler-registry: claim-tracker should be lazy");
   });
 
   test("verification-judge not eagerly imported", () => {

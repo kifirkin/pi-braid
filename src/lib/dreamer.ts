@@ -10,6 +10,7 @@
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "./extension-state.js";
+import { dreamerCooldownMs as dynamicCooldown } from "./advice-tracker.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -25,19 +26,19 @@ export interface DreamAdvice {
   priority: number; // 1-10
   action: string;
   confidence: number; // 0-1
+  /** Prediction type for feedback loop: "stuck" | "failure" */
+  prediction?: string;
 }
 
 interface DreamerState {
   pathHistory: SimulatedPath[];
   lastDreamAt: number;
-  dreamCooldownMs: number;
 }
 
 function getState(ctx: ExtensionContext): DreamerState {
   return getExtensionState(ctx, "dreamer", () => ({
     pathHistory: [],
     lastDreamAt: 0,
-    dreamCooldownMs: 60_000,
   }));
 }
 
@@ -122,8 +123,8 @@ export function dream(
   const state = getState(ctx);
   const now = Date.now();
 
-  // Cooldown check
-  if (now - state.lastDreamAt < state.dreamCooldownMs) return null;
+  // Cooldown check — dynamic threshold adjusted by advice tracker feedback loop
+  if (now - state.lastDreamAt < dynamicCooldown) return null;
 
   const paths = simulatePaths(currentSequence, historicalSequences);
   if (paths.length === 0) return null;
@@ -140,6 +141,7 @@ export function dream(
       priority: 7,
       action: "Call think(type='reflection') to verify approach.",
       confidence: worst.probability,
+      prediction: "stuck",
     };
   }
 
@@ -151,6 +153,7 @@ export function dream(
       priority: 6,
       action: "Run verification before proceeding.",
       confidence: worst.probability,
+      prediction: "failure",
     };
   }
 
