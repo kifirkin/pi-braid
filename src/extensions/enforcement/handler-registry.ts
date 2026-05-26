@@ -16,13 +16,10 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../lib/logger.js";
 import { safeSessionManager } from "../../lib/extension-state.js";
-import {
-  sendTrackedMessage,
-  registerInjectionTracker,
-} from "../../lib/injection-tracker.js";
+import { sendTrackedMessage, registerInjectionTracker } from "../../lib/injection-tracker.js";
 import { registerSessionStartHandler, SessionPhase } from "../../lib/session-start-queue.js";
 import { detectMalformedToolCalls } from "./detection/malformed.js";
-import { getReplyInstruction, setLanguage, detectLanguage } from "../../lib/language-hint.js";
+import { setLanguage, detectLanguage } from "../../lib/language-hint.js";
 import { checkBlocking } from "./handlers/blocking.js";
 import {
   addEvidence,
@@ -50,9 +47,12 @@ import { dispatchTurnEndLoop } from "./handlers/turn-end-handler.js";
 import { type NudgeManager } from "./nudge-manager.js";
 
 import { sendEnforcementWhisper } from "./whisper.js";
+import {
+  registerTurnEndHandler,
+} from "../../lib/turn-end-coordinator.js";
 import { knownFiles } from "./similarity.js";
 import { enforcementSignals, determineContrastMode } from "./signals.js";
-import { getState, ENFORCEMENT_PARAMS, recordThink, startJudge, completeJudge } from "./state.js";
+import { getState, recordThink, startJudge, completeJudge } from "./state.js";
 import { resetState } from "./state.js";
 import { onEvent } from "../../lib/event-types.js";
 import type { SessionEntry, SessionManager } from "../../lib/session-manager.js";
@@ -89,7 +89,9 @@ export const HANDLER_REGISTRATIONS: Array<{ event: string; method: string; handl
  */
 export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): void {
   // Register injection tracker session lifecycle handler
-  registerInjectionTracker(pi as unknown as { on: (event: string, handler: (...args: any[]) => any) => void });
+  registerInjectionTracker(
+    pi as unknown as { on: (event: string, handler: (...args: any[]) => any) => void },
+  );
 
   pi.on("input", async (event: { text?: string; source?: string }, ctx: ExtensionContext) => {
     if (!getState(ctx).enforcementActive) return;
@@ -389,13 +391,21 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
   // pi.on() registration order (which varies with module load order).
   //   0. drift detection, BPE, MARS, dreamer, reflection gap
   //   1. main enforcement loop (error bursts, context, nudges, claim tracking)
-  onEvent(pi, "turn_end", async (event: any, ctx: ExtensionContext) => {
-    // Sub-handler 0: drift, BPE, MARS, dreamer
+  // Register turn_end sub-handlers via the coordinator so other extensions
+  // can register their own handlers without modifying enforcement code.
+  registerTurnEndHandler("enforcement-analysis", 100, async (event, ctx) => {
     const newRecType = await dispatchTurnEndAnalysis(pi, event, ctx);
     if (newRecType) _lastRecommendationType = newRecType;
+  });
 
-    // Sub-handler 1: main enforcement loop
+  registerTurnEndHandler("enforcement-loop", 90, async (event, ctx) => {
     await dispatchTurnEndLoop(pi, event, ctx, nudgeManager);
+  });
+
+  // Single pi.on("turn_end") entry point — dispatches to all registered handlers
+  onEvent(pi, "turn_end", async (event: any, ctx: ExtensionContext) => {
+    const { dispatchTurnEnd } = await import("../../lib/turn-end-coordinator.js");
+    await dispatchTurnEnd(event, ctx);
   });
 
   onEvent(pi, "session_compact", async (event: any, ctx: ExtensionContext) => {
@@ -434,9 +444,8 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
           text: `${unpersisted.length} key learning(s) not yet persisted - persist them now`,
           acted: false,
         };
+        // Emit contrast mode for prompt-builder truthfulness guardrails
         pi.events.emit("enforcement_signals", {
-          turn: getState(ctx).currentTurn,
-          signals: { ...enforcementSignals },
           contrastMode: determineContrastMode(ctx),
         });
       }
@@ -491,97 +500,140 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
   });
 
   async function dispatchTurnEndAnalysis(
-  pi: any,
-  _event: any,
-  ctx: ExtensionContext,
-  prevRecType: string | null = null,
-): Promise<string | null> {
-  const gs = getState(ctx);
-  if (!gs.enforcementActive || !gs.driftDetector) return null;
+    pi: any,
+    _event: any,
+    ctx: ExtensionContext,
+    prevRecType: string | null = null,
+  ): Promise<string | null> {
+    const gs = getState(ctx);
+    if (!gs.enforcementActive || !gs.driftDetector) return null;
 
-  const sm = safeSessionManager(ctx) as SessionManager | undefined;
-  const entries: SessionEntry[] = sm?.getBranch?.() ?? [];
-  const recentMsgs: Array<{ role?: string; content?: unknown }> = [];
-  for (let i = entries.length - 1; i >= 0 && recentMsgs.length < 4; i--) {
-    const entry = entries[i];
-    if (entry.type === "message" && entry.message) {
-      recentMsgs.unshift({ role: entry.message.role, content: entry.message.content });
+    const sm = safeSessionManager(ctx) as SessionManager | undefined;
+    const entries: SessionEntry[] = sm?.getBranch?.() ?? [];
+    const recentMsgs: Array<{ role?: string; content?: unknown }> = [];
+    for (let i = entries.length - 1; i >= 0 && recentMsgs.length < 4; i--) {
+      const entry = entries[i];
+      if (entry.type === "message" && entry.message) {
+        recentMsgs.unshift({ role: entry.message.role, content: entry.message.content });
+      }
     }
-  }
-  for (let i = recentMsgs.length - 1; i >= 0; i--) {
-    const msg = recentMsgs[i];
-    const text = extractTextContent(msg);
-    if (msg?.role === "user" && text.length > 10) {
-      gs.driftDetector.addTurn(text);
-      break;
+    for (let i = recentMsgs.length - 1; i >= 0; i--) {
+      const msg = recentMsgs[i];
+      const text = extractTextContent(msg);
+      if (msg?.role === "user" && text.length > 10) {
+        gs.driftDetector.addTurn(text);
+        break;
+      }
     }
-  }
-  const driftCheck = gs.driftDetector.check();
-  if (driftCheck.drifted) {
-    const whisper = gs.driftDetector.generateWhisper(driftCheck);
-    if (whisper) {
-      sendTrackedMessage(
-        pi,
-        { customType: "context", display: true, content: [{ type: "text", text: `[enforcement] ${whisper}` }] },
-        { deliverAs: "steer", triggerTurn: false },
-        { type: "enforcement", source: "enforcement/drift" },
+    const driftCheck = gs.driftDetector.check();
+    if (driftCheck.drifted) {
+      const whisper = gs.driftDetector.generateWhisper(driftCheck);
+      if (whisper) {
+        sendTrackedMessage(
+          pi,
+          {
+            customType: "context",
+            display: true,
+            content: [{ type: "text", text: `[enforcement] ${whisper}` }],
+          },
+          { deliverAs: "steer", triggerTurn: false },
+          { type: "enforcement", source: "enforcement/drift" },
+        );
+      }
+      emitSignal(
+        ctx,
+        "topic-drift",
+        "detected",
+        driftCheck.severity === "strong" ? "warn" : "info",
+        false,
+        {
+          severity: driftCheck.severity,
+        },
       );
     }
-    emitSignal(ctx, "topic-drift", "detected", driftCheck.severity === "strong" ? "warn" : "info", false, {
-      severity: driftCheck.severity,
-    });
-  }
 
-  if (prevRecType) {
-    const madeProgress = gs.totalToolCalls > (gs.toolCallsAtLastRecommendation ?? 0);
-    reportRecommendationOutcome(ctx, prevRecType, madeProgress);
-  }
+    if (prevRecType) {
+      const madeProgress = gs.totalToolCalls > (gs.toolCallsAtLastRecommendation ?? 0);
+      reportRecommendationOutcome(ctx, prevRecType, madeProgress);
+    }
 
-  let bpeRecType: string | null = null;
-  const bpeRec = getNextRecommendation(ctx);
-  if (bpeRec) {
-    bpeRecType = bpeRec.type;
-    gs.toolCallsAtLastRecommendation = gs.totalToolCalls;
-    sendTrackedMessage(
-      pi,
-      { customType: "context", display: true, content: [{ type: "text", text: `[policy] ${bpeRec.message}` }] },
-      { deliverAs: "steer", triggerTurn: false },
-      { type: "enforcement", source: "enforcement/policy" },
-    );
-  }
+    let bpeRecType: string | null = null;
+    const bpeRec = getNextRecommendation(ctx);
+    if (bpeRec) {
+      bpeRecType = bpeRec.type;
+      gs.toolCallsAtLastRecommendation = gs.totalToolCalls;
+      sendTrackedMessage(
+        pi,
+        {
+          customType: "context",
+          display: true,
+          content: [{ type: "text", text: `[policy] ${bpeRec.message}` }],
+        },
+        { deliverAs: "steer", triggerTurn: false },
+        { type: "enforcement", source: "enforcement/policy" },
+      );
+    }
 
-  const { shouldAdvise: marsShouldAdvise } = await import("../../lib/mars-reflector.js");
-  const marsAdvice = marsShouldAdvise(ctx);
-  if (marsAdvice) {
-    const signalType: any = marsAdvice.type === "tool_overuse" ? "tool-use" : marsAdvice.type === "error_recurrence" ? "error" : marsAdvice.type === "confidence_decline" ? "reasoning" : "stability";
-    const signalValue = marsAdvice.type === "tool_overuse" ? "overuse" : marsAdvice.type === "error_recurrence" ? "recurrence" : "decline";
-    emitSignal(ctx, signalType, signalValue, marsAdvice.severity, false, { type: marsAdvice.type, message: marsAdvice.message.slice(0, 200) });
-    sendTrackedMessage(
-      pi,
-      { customType: "context", display: true, content: [{ type: "text", text: `[enforcement] ${marsAdvice.message}` }] },
-      { deliverAs: "steer", triggerTurn: false },
-      { type: "enforcement", source: "enforcement/mars" },
-    );
-  }
+    const { shouldAdvise: marsShouldAdvise } = await import("../../lib/mars-reflector.js");
+    const marsAdvice = marsShouldAdvise(ctx);
+    if (marsAdvice) {
+      const signalType: any =
+        marsAdvice.type === "tool_overuse"
+          ? "tool-use"
+          : marsAdvice.type === "error_recurrence"
+            ? "error"
+            : marsAdvice.type === "confidence_decline"
+              ? "reasoning"
+              : "stability";
+      const signalValue =
+        marsAdvice.type === "tool_overuse"
+          ? "overuse"
+          : marsAdvice.type === "error_recurrence"
+            ? "recurrence"
+            : "decline";
+      emitSignal(ctx, signalType, signalValue, marsAdvice.severity, false, {
+        type: marsAdvice.type,
+        message: marsAdvice.message.slice(0, 200),
+      });
+      sendTrackedMessage(
+        pi,
+        {
+          customType: "context",
+          display: true,
+          content: [{ type: "text", text: `[enforcement] ${marsAdvice.message}` }],
+        },
+        { deliverAs: "steer", triggerTurn: false },
+        { type: "enforcement", source: "enforcement/mars" },
+      );
+    }
 
-  const { dream } = await import("../../lib/dreamer.js");
-  const dreamAdvice = dream(ctx, gs.toolLog);
-  if (dreamAdvice) {
-    emitSignal(ctx, "stability", "predicted-decline", "info", false, { source: "dreamer", message: dreamAdvice.message.slice(0, 200) });
-    sendTrackedMessage(
-      pi,
-      { customType: "context", display: true, content: [{ type: "text", text: `[enforcement] ${dreamAdvice.message}` }] },
-      { deliverAs: "steer", triggerTurn: false },
-      { type: "enforcement", source: "enforcement/dreamer" },
-    );
-  }
+    const { dream } = await import("../../lib/dreamer.js");
+    const dreamAdvice = dream(ctx, gs.toolLog);
+    if (dreamAdvice) {
+      emitSignal(ctx, "stability", "predicted-decline", "info", false, {
+        source: "dreamer",
+        message: dreamAdvice.message.slice(0, 200),
+      });
+      sendTrackedMessage(
+        pi,
+        {
+          customType: "context",
+          display: true,
+          content: [{ type: "text", text: `[enforcement] ${dreamAdvice.message}` }],
+        },
+        { deliverAs: "steer", triggerTurn: false },
+        { type: "enforcement", source: "enforcement/dreamer" },
+      );
+    }
 
-  if (gs.toolsSinceReflection >= 8) {
-    emitSignal(ctx, "reflection", "absent", "info", false, { toolsSince: gs.toolsSinceReflection });
-  }
+    if (gs.toolsSinceReflection >= 8) {
+      emitSignal(ctx, "reflection", "absent", "info", false, {
+        toolsSince: gs.toolsSinceReflection,
+      });
+    }
 
-  return bpeRecType;
-}
+    return bpeRecType;
+  }
 
   onEvent(pi, "session_shutdown", async (_event: any, ctx: ExtensionContext) => {
     const state = getState(ctx);

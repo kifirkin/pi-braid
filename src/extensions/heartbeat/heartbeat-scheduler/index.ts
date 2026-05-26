@@ -16,7 +16,6 @@ import {
   getPolicyEngine,
   getBeliefStore,
   cleanupSession,
-  type Policy,
   type PolicyContext,
 } from "../../../lib/belief-store.js";
 import { createLogger } from "../../../lib/logger.js";
@@ -299,7 +298,12 @@ function tick(
     .finally(() => {
       // Restore original whisper and flush buffer
       ctx.whisper = originalWhisper;
-      flushWhisperBuffer(whisperBuffer, originalWhisper as ((msg: string, opts?: { category?: string; priority?: string }) => void) | undefined);
+      flushWhisperBuffer(
+        whisperBuffer,
+        originalWhisper as
+          | ((msg: string, opts?: { category?: string; priority?: string }) => void)
+          | undefined,
+      );
     });
 }
 
@@ -412,14 +416,6 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     async (_event: any, ctx: ExtensionContext) => {
       const state = getState(ctx);
 
-      // Register Event Bus consumers
-      try {
-        const { registerEventConsumers } = await import("../../../lib/event-consumers.js");
-        registerEventConsumers();
-      } catch (err) {
-        log.error("Failed to register event consumers:", err);
-      }
-
       // Register built-in modules
       for (const module of builtInModules) {
         if (!state.modules.has(module.name)) {
@@ -440,7 +436,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
       state.policyTurnCount = 0;
       state.policyEngineReady = true;
 
-      const onSignal = (type: string, data: Record<string, unknown>) => {
+      const onSignal = (type: string, _data: Record<string, unknown>) => {
         state.activationHistory.push({
           tick: state.stats.totalTicks,
           moduleName: type,
@@ -480,7 +476,9 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
       // SOP Retrieval + Coach Decision
       try {
         const { retrieveEpisodes } =
-          (await import("../../memory/three-memory-stores/index.js")) as { retrieveEpisodes: Function };
+          (await import("../../memory/three-memory-stores/index.js")) as {
+            retrieveEpisodes: (...args: any[]) => any;
+          };
         const memState = getMemoryState(ctx);
         if (memState) {
           const project = ctx.cwd ?? "unknown";
@@ -505,8 +503,9 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
   pi.on("turn_start", async (_event: any, ctx: ExtensionContext) => {
     // Inject SOP suggestions based on the current turn's user message
     try {
-      const { retrieveEpisodes } =
-        (await import("../../memory/three-memory-stores/index.js")) as { retrieveEpisodes: Function };
+      const _retrieveEpisodes = (await import("../../memory/three-memory-stores/index.js")) as {
+        retrieveEpisodes: (...args: any[]) => any;
+      };
       const memState = getMemoryState(ctx);
       if (memState && memState.episodes) {
         // Use the user message from the event or the latest message in context
@@ -642,13 +641,6 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 
   pi.on("session_shutdown", async (_event: any, ctx: ExtensionContext) => {
     cleanupSession(ctx.cwd);
-    // Reset cross-session counters that accumulate across all sessions
-    try {
-      const { resetSessionCounters } = await import("../../../lib/event-consumers.js");
-      resetSessionCounters();
-    } catch {
-      // Non-fatal
-    }
     log.info("Heartbeat scheduler shutting down");
   });
 

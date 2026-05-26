@@ -1,36 +1,57 @@
 /**
  * Enforcement state — session-scoped state management.
  *
- * REFACTORED: Composed from focused sub-states instead of one flat factory.
- * Each sub-state file owns its properties and provides its own reset logic.
- * All exports preserved for backward compatibility.
- *
- * Access pattern:
- *   const enState = getState(ctx);
- *   enState.totalToolCalls++;  // direct property access (same as before)
- *   recordToolChainCall(enState, "edit", ctx);  // helper from tool-tracking-state
+ * Composed from focused sub-state interfaces instead of one flat factory.
+ * Each sub-state file owns its properties, factory, and reset logic.
+ * Sub-state files do NOT import state.ts (avoids circular dependency).
  *
  * Sub-state files:
- *   session-state.ts          — turn tracking, config, drift detector
- *   tool-tracking-state.ts    — tool usage, edit tracking, calibration
- *   error-tracking-state.ts   — errors, validation failures, nudge cooldowns
- *   behavioral-state.ts       — memory hygiene, scratchpad, context hygiene, thought chains
- *   context-hygiene-state.ts  — context nudge helpers (accesses shared state)
- *   memory-hygiene-state.ts   — memory nudge helpers
- *   thought-chain-state.ts    — think() tracking helpers
+ *   tool-tracking-state.ts      — tool usage, edit tracking, calibration
+ *   error-tracking-state.ts     — errors, validation failures, nudge cooldowns
+ *   session-state.ts            — turn tracking, config, drift detector
+ *   memory-hygiene-state.ts     — memory tool usage and nudges
+ *   scratchpad-state.ts         — scratchpad usage and verification nudges
+ *   context-hygiene-state.ts    — context usage, compaction, overflow
+ *   thought-chain-state.ts      — think() tracking and reflection gaps
  *   verification-judge-state.ts — judge/calibration helpers
  */
 
 import { createLogger } from "../../lib/logger.js";
-import type { TurnState } from "./types.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "../../lib/extension-state.js";
 
 // Import sub-state factories and resets
-import { createToolTrackingState, resetToolTrackingState, type ToolTrackingState } from "./tool-tracking-state.js";
-import { createErrorTrackingState, resetErrorTrackingState, type ErrorTrackingState } from "./error-tracking-state.js";
-import { createBehavioralState, resetBehavioralState, type BehavioralState } from "./behavioral-state.js";
+import {
+  createToolTrackingState,
+  resetToolTrackingState,
+  type ToolTrackingState,
+} from "./tool-tracking-state.js";
+import {
+  createErrorTrackingState,
+  resetErrorTrackingState,
+  type ErrorTrackingState,
+} from "./error-tracking-state.js";
 import { createSessionState, resetSessionState, type SessionState } from "./session-state.js";
+import {
+  createMemoryHygieneState,
+  resetMemoryHygieneState,
+  type MemoryHygieneState,
+} from "./memory-hygiene-state.js";
+import {
+  createScratchpadState,
+  resetScratchpadState,
+  type ScratchpadState,
+} from "./scratchpad-state.js";
+import {
+  createContextHygieneState,
+  resetContextHygieneState,
+  type ContextHygieneState,
+} from "./context-hygiene-state.js";
+import {
+  createThoughtChainState,
+  resetThoughtChainState,
+  type ThoughtChainState,
+} from "./thought-chain-state.js";
 
 // Re-export sub-module helpers (backward compat — consumers import from state.ts)
 export {
@@ -89,17 +110,23 @@ export const ENFORCEMENT_PARAMS = {
 // ── Composed state type ────────────────────────────────────────────────────
 
 /** Full enforcement state — intersection of all sub-states. */
-export interface EnforcementState extends ToolTrackingState, ErrorTrackingState, BehavioralState, SessionState {}
+export interface EnforcementState
+  extends ToolTrackingState, ErrorTrackingState, SessionState,
+    MemoryHygieneState, ScratchpadState, ContextHygieneState, ThoughtChainState {}
 
 // ── State factory (composed from sub-states) ───────────────────────────────
 
 export function createState(): EnforcementState {
-  return {
+  const state = {
     ...createToolTrackingState(),
     ...createErrorTrackingState(),
-    ...createBehavioralState(),
     ...createSessionState(),
+    ...createMemoryHygieneState(),
+    ...createScratchpadState(),
+    ...createContextHygieneState(),
+    ...createThoughtChainState(),
   } as EnforcementState;
+  return state;
 }
 
 export function getState(ctx: ExtensionContext): EnforcementState {
@@ -109,15 +136,18 @@ export function getState(ctx: ExtensionContext): EnforcementState {
 // ── Resets (delegates to each sub-state) ───────────────────────────────────
 
 export function resetState(s: EnforcementState): void {
-  resetSessionState(s);
   resetToolTrackingState(s);
   resetErrorTrackingState(s);
-  resetBehavioralState(s);
+  resetSessionState(s);
+  resetMemoryHygieneState(s);
+  resetScratchpadState(s);
+  resetContextHygieneState(s);
+  resetThoughtChainState(s);
 }
 
-// ── Accessor helpers (cross-cutting — not owned by any single sub-state) ───
+// ── Cross-cutting accessors ────────────────────────────────────────────────
 
 /** Reset scratchpad nudge timer (called when agent uses scratchpad). */
-export function resetScratchpadNudge(s: EnforcementState): void {
+export function resetScratchpadNudge(s: ScratchpadState): void {
   s.lastScratchpadNudgeTurn = -100;
 }

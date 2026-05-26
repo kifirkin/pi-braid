@@ -1,11 +1,11 @@
 /**
- * Dreamer Module — Proactive Cognitive Simulation
+ * Tool Sequence Predictor — simple Markov transition model
  *
- * Simulates likely future tool sequences based on historical patterns
- * and current session trajectory. Suggests proactive actions before
- * problems occur (not reactive like MARS).
+ * Simulates likely next tool from historical single-step transitions.
+ * Uses a 1-deep Markov chain: given the last tool, what tool typically follows?
+ * Outcome prediction is heuristic (self-loop rate thresholding).
  *
- * Based on: arXiv:2604.14178 Heartbeat Scheduling — proactive vs reactive
+ * Not a cognitive simulation — a simple histogram-based predictor.
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";

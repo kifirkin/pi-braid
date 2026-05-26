@@ -46,7 +46,6 @@ export { AGENT };
 export const MEMORY_DIR = path.join(BRAID, "memory");
 export const CHECKPOINT_DIR = path.join(BRAID, "checkpoints");
 export const ERROR_DIR = path.join(BRAID, "errors");
-export const FEEDBACK_DIR = path.join(BRAID, "feedback");
 export const SCRATCHPAD_DIR = path.join(BRAID, "scratchpads");
 export const METRICS_DIR = path.join(BRAID, "metrics");
 export const HEALTHCHECK_DIR = path.join(BRAID, "healthcheck");
@@ -69,12 +68,6 @@ export const CHECKPOINT_FILE = (sessionId: string) =>
 /** Error-capture: classified error log */
 export const ERROR_LOG_FILE = path.join(ERROR_DIR, "errors.jsonl");
 export const ERROR_FILE = ERROR_LOG_FILE;
-
-/** Feedback: per-model preferences + nudge history */
-export const FEEDBACK_FILE = path.join(FEEDBACK_DIR, "feedback.json");
-
-/** Feedback: analytics export */
-export const FEEDBACK_ANALYTICS_FILE = path.join(FEEDBACK_DIR, "analytics.jsonl");
 
 /** Consolidation: behavioral hints from successful patterns */
 export const CONSOLIDATED_HINTS_FILE = path.join(BRAID, "consolidated-hints.jsonl");
@@ -103,7 +96,6 @@ export function getAllBraidDirs(): string[] {
     MEMORY_DIR,
     CHECKPOINT_DIR,
     ERROR_DIR,
-    FEEDBACK_DIR,
     SCRATCHPAD_DIR,
     METRICS_DIR,
     HEALTHCHECK_DIR,

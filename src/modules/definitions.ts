@@ -66,8 +66,7 @@ import pathSecurityFn from "../contrib/path-security/index.js";
 import researchFn from "../contrib/research/index.js";
 import systemMonitorFn from "../contrib/system-monitor/index.js";
 import toolConfigFn from "../contrib/tool-config/index.js";
-// nudge (feedback/nudge injection — from assistant/feedback)
-import feedbackFn from "../extensions/nudge/index.js";
+
 
 // watchdog (session monitoring, opt-in)
 import watchdogFn from "../extensions/watchdog/index.js";
@@ -209,7 +208,7 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
     name: "enforcement",
     label: "Behavioral Enforcement",
     description: "RepE-based behavioral enforcement, turn validation, contrast detection",
-    paper: "Representation Engineering (RepE)",
+    paper: "Heuristic turn validation + tool tracking (not RepE)",
     dependencies: ["core"],
     extensions: [{ name: "enforcement", fn: enforcementFn }],
     listensTo: [
@@ -329,29 +328,7 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
     coupledWith: [],
   },
 
-  // ═════════════════════════════════════════════════════════════════════
-  // NUDGE — Feedback/nudge injection (from assistant/feedback)
-  //   EVENT-HANDLER — 7 event listeners. Injects behavioral nudges
-  //   and feedback via the whisper pattern (before_agent_start).
-  //   Renamed from "assistant/feedback" for clarity.
-  // ═════════════════════════════════════════════════════════════════════
-  {
-    name: "nudge",
-    label: "Nudge & Feedback",
-    description: "Behavioral nudge injection, feedback whispers, turn-quality monitoring",
-    dependencies: ["core"],
-    extensions: [{ name: "feedback", fn: feedbackFn }],
-    listensTo: [
-      "session_start",
-      "session_shutdown",
-      "turn_start",
-      "message_end",
-      "tool_call",
-      "turn_end",
-      "before_agent_start",
-    ],
-    coupledWith: [{ module: "cognitive-quality", via: "message_end, tool_call" }],
-  },
+
 
   // ═════════════════════════════════════════════════════════════════════
   // CONTRIB — Out-of-scope utilities (not cognitive architecture)

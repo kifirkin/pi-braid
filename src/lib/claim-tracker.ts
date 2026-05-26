@@ -1,20 +1,12 @@
 /**
- * @fileoverview Cross-Turn Claim Tracker — Lie-Detector Pattern (RepE)
+ * Cross-Turn Claim Tracker — heuristic contradiction detection
  *
  * Tracks factual claims made by the agent across turns and detects
  * when a new claim contradicts a previous one.
  *
- * Based on: RepE (2310.01405) §5 — honesty direction in residual stream,
- * adapted for text-level detection (API-only providers).
- *
- * Builds on existing infrastructure:
- * - reasoning-metrics.ts: countSelfContradictions() for within-response
- * - judge.ts: LLM-based single-response contradiction scoring
- * - evidence-pool.ts: extractClaim/normalize/tokenOverlap
- * - Process Supervision (stepConsistencyCheck): think-tool chain consistency
- *
- * WHAT THIS ADDS: cross-turn tracking — agent says X in turn 1,
- * then NOT-X in turn 10. The lie-detector catches it.
+ * Detection is heuristic (regex entity extraction + similarity comparison)
+ * — not based on internal model representations. The name references RepE
+ * as inspiration only; this code does not implement Representation Engineering.
  *
  * Detection strategy:
  * 1. Extract entity-claim pairs from agent text (simple heuristic: find
@@ -92,7 +84,7 @@ const NEGATION_WORDS = new Set([
 ]);
 
 /** Contradiction signal pairs: opposite-direction claims about same entity */
-const CONTRADICTION_PAIRS: [string, string][] = [
+const _CONTRADICTION_PAIRS: [string, string][] = [
   ["is", "is not"],
   ["is", "isn't"],
   ["was", "was not"],

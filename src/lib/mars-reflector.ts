@@ -1,8 +1,9 @@
 /**
- * MARS Reflection — Meta-Analysis of Reasoning Sessions
+ * Tool Usage Frequency Analyzer
  *
- * Analyzes agent behavior patterns over a session and generates adaptive advice.
- * Based on: ROADMAP-v0.6.md Task 6
+ * Analyzes agent tool usage patterns over a session and generates heuristic
+ * advice when a tool is used disproportionately or errors recur.
+ * Not based on any specific paper — simple statistical thresholding.
  *
  * Trigger: adaptive (not fixed N turns) — check on every turn_end.
  * Only whispers if actionable advice exists.
@@ -59,7 +60,7 @@ const MIN_SUCCESS_RATE_FOR_OVERUSE = 0.5;
 
 /** Build current session pattern from enforcement state */
 export function buildPattern(ctx: ExtensionContext): SessionPattern {
-  const state = getState(ctx);
+  const _state = getState(ctx);
   // Get pattern from enforcement state if available
   const eState = hasExtensionState(ctx, "enforcement")
     ? getExtensionState(

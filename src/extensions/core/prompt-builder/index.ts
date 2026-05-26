@@ -1,12 +1,10 @@
-import { stat, readdir, readFile } from "node:fs/promises";
+import { stat, readFile } from "node:fs/promises";
 import { createPromptPreviewTool } from "./preview.js";
 import type { Skill } from "@mariozechner/pi-coding-agent";
-import { homedir } from "node:os";
 import {
   searchPastInsights,
   formatPastInsightsSection,
   deriveProjectIdFromCwd,
-  type PastInsight,
 } from "./past-insights.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 
@@ -49,7 +47,7 @@ async function asyncExists(p: string): Promise<boolean> {
  */
 
 import { join } from "node:path";
-import { MEMORY_DIR, CONSOLIDATED_HINTS_FILE } from "../../../lib/braid-paths.js";
+import { CONSOLIDATED_HINTS_FILE } from "../../../lib/braid-paths.js";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import { loadSkills } from "@mariozechner/pi-coding-agent";
@@ -99,7 +97,6 @@ function getPromptState(ctx: ExtensionContext): PromptBuilderState {
 }
 
 const HINT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-const HINT_MAX_COUNT = 20; // max hints on disk
 
 async function loadConsolidatedHints(currentProject?: string): Promise<string[]> {
   try {
@@ -288,7 +285,7 @@ function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>)
   }
 
   // Always-included guidelines (pi-native)
-  addGuideline("Be concise in your responses");
+  addGuideline("Prefer clear, direct responses");
   addGuideline("Show file paths clearly when working with files");
   // Research backing: Bakhshi (2026) arXiv:2604.19768 - LLMs exhibit systematic epistemic-rhetorical patterns at ~2x human rate
   addGuideline(
@@ -541,7 +538,7 @@ async function formatSkillsWithLineCounts(
   const hiddenCount = scored.length - boosted.length;
 
   const lines = [
-    "\n\nSkills are your first tool call. Load all of the relevant ones with \`read\` before starting any task. ",
+    "\n\nSkills are your first tool call. Load all of the relevant ones with `read` before starting any task. ",
     "",
     "<available_skills>",
   ];
@@ -602,11 +599,7 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
   registerSessionStartHandler(_pi, SessionPhase.MemoryState, async (_event, ctx) => {
     const ps = getPromptState(ctx);
     _pi.events.on("enforcement_signals", (data: unknown) => {
-      const d = data as {
-        turn: number;
-        signals: Record<string, { turn: number; text: string; acted: boolean }>;
-        contrastMode?: string;
-      };
+      const d = data as { contrastMode?: string };
       if (d.contrastMode) ps.activeContrastMode = d.contrastMode;
     });
   });
@@ -614,7 +607,7 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
   // ── resources_discover: Register bundled skills with pi's native discovery ──
   // pi's package manager calls this on all extensions to discover resources (skills, prompts, themes).
   // We register the bundled skills/ directory so pi can auto-discover them.
-  onEvent(_pi, "resources_discover", async (event: { cwd: string; reason: string }, _ctx: any) => {
+  onEvent(_pi, "resources_discover", async (_event: { cwd: string; reason: string }, _ctx: any) => {
     return {
       skillPaths: [SKILLS_DIR],
     };

@@ -1,23 +1,15 @@
 /**
- * Consolidation Channel — Phase 3 Self-Evolution
+ * Experience Consolidation Queue
  *
  * Infrastructure for selecting, scoring, and scheduling experiences
- * for consolidation from episodic memory to experiential memory.
+ * for consolidation from episodic memory into reusable patterns.
  *
- * Based on: Contextual Agentic Memory (2604.27707), MARS (2601.11974)
- *
- * Architecture:
- *   Experience → Episodic Store (memory_store)
- *                   ↓
- *            [Consolidation Channel]
- *                   ↓
- *            Selection → Scoring → Queue → Scheduling
- *                   ↓
- *            Weight Update (LoRA/MEMIT — future)
+ * Scoring is heuristic (quality × value × confidence × novelty).
+ * Weight update (LoRA/MEMIT) is not implemented — this queues experience
+ * data for potential future training pipelines.
  */
 
 import { createLogger } from "./logger.js";
-import { eventBus } from "./event-bus.js";
 import { CONSOLIDATED_HINTS_FILE } from "./braid-paths.js";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -382,5 +374,3 @@ export function processConsolidationTick(): void {
 
   queue.complete(candidate);
 }
-
-

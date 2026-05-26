@@ -20,6 +20,8 @@ export interface CalibrationPair {
 
 export interface ToolTrackingState {
   totalToolCalls: number;
+  /** Tool call count at last BPE recommendation — used for progress tracking across turns. */
+  toolCallsAtLastRecommendation: number;
   uniqueToolsUsed: Set<string>;
   toolChain: ToolChainState;
   toolSequencePatterns: Map<string, ToolSequencePattern>;
@@ -42,7 +44,12 @@ export interface ToolTrackingState {
     id: string;
     description: string;
     status: string;
-    steps: { description: string; status: string; expectedOutcome: string; actualOutcome?: string }[];
+    steps: {
+      description: string;
+      status: string;
+      expectedOutcome: string;
+      actualOutcome?: string;
+    }[];
   } | null;
   _localizationRisk: string;
 
@@ -55,6 +62,7 @@ export interface ToolTrackingState {
 export function createToolTrackingState(): ToolTrackingState {
   return {
     totalToolCalls: 0,
+    toolCallsAtLastRecommendation: 0,
     uniqueToolsUsed: new Set<string>(),
     toolChain: {
       lastThinkCall: 0,
@@ -90,8 +98,14 @@ export function createToolTrackingState(): ToolTrackingState {
 
 export function resetToolTrackingState(s: ToolTrackingState): void {
   s.totalToolCalls = 0;
+  s.toolCallsAtLastRecommendation = 0;
   s.uniqueToolsUsed.clear();
-  s.toolChain = { lastThinkCall: 0, lastPlanCall: 0, recentEditWithoutThink: [], recentEditWithoutPlan: [] };
+  s.toolChain = {
+    lastThinkCall: 0,
+    lastPlanCall: 0,
+    recentEditWithoutThink: [],
+    recentEditWithoutPlan: [],
+  };
   s.toolSequencePatterns.clear();
   s.recentToolSequences = [];
   s.toolLog = [];
@@ -115,7 +129,10 @@ export function resetToolTrackingState(s: ToolTrackingState): void {
 
 // ── Accessor helpers ───────────────────────────────────────────────────────
 
-export function recordToolChainCall(s: ToolTrackingState & { currentTurn: number }, toolName: string): void {
+export function recordToolChainCall(
+  s: ToolTrackingState & { currentTurn: number },
+  toolName: string,
+): void {
   s.totalToolCalls++;
 
   if (["bash", "read", "write", "edit", "grep", "find"].includes(toolName)) {

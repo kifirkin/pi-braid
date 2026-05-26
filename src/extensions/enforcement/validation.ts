@@ -8,9 +8,7 @@ const log = createLogger("enforcement");
  * false positives for legitimate workflows (e.g. reading different files).
  */
 
-import { POST_TURN_VALIDATION_TEMPLATE } from "./prompts.js";
 import { ENFORCEMENT_PARAMS, getState } from "./state.js";
-import type { EnforcementState } from "./state.js";
 import type { TurnState, ValidationResult } from "./types.js";
 
 // Tools that are cheap to repeat legitimately (different files/targets)
@@ -31,7 +29,7 @@ function checkSemanticRepetition(
   prevSeqs: string[][],
   warnThreshold: number,
 ): string | null {
-  const uniqueInSeq = new Set(currentTools);
+  const _uniqueInSeq = new Set(currentTools);
   // Single-tool repetition: "read,read", "bash,bash"
   // These are NOT flagged as issues since read can hit different files,
   // bash can run different commands. Only flag if same PATH is targeted
@@ -70,7 +68,7 @@ function checkSemanticRepetition(
 function checkReReadWaste(
   currentTools: string[],
   prevTools: string[][],
-  recentlyReadFiles: Map<string, number>,
+  _recentlyReadFiles: Map<string, number>,
 ): string | null {
   // Only relevant for read-heavy turns
   const readCount = currentTools.filter((t) => t === "read").length;
@@ -171,10 +169,11 @@ export function validateTurn(
     }
     severity =
       s.validationFailures > 3 ? "critical" : s.validationFailures > 1 ? "warning" : "info";
-    nudge = POST_TURN_VALIDATION_TEMPLATE.replace(
-      "{issues}",
-      issues.map((i) => `- ${i}`).join("\n"),
-    );
+    nudge = `
+## Turn Validation Failed
+
+${issues.map((i) => `- ${i}`).join("\n")}
+`;
   }
 
   return {
@@ -184,4 +183,3 @@ export function validateTurn(
     severity,
   };
 }
-
