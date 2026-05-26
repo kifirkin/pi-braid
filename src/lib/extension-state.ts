@@ -13,6 +13,9 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { createLogger } from "./logger.js";
+
+const log = createLogger("extension-state");
 
 // ── Session-scoped storage (stable across ctx recreation) ───────────────────
 const _sessionState = new Map<string, Map<string, unknown>>();
@@ -158,6 +161,7 @@ export function safeSessionManager(ctx: ExtensionContext): unknown {
   try {
     return ctx.sessionManager;
   } catch {
+    log.warn("Stale ExtensionContext — sessionManager getter threw. Data-dependent subsystems (BPE, drift, memory) will operate on empty data.");
     return undefined;
   }
 }

@@ -42,7 +42,7 @@ Extensions are grouped by **actual coupling** (shared events, tools, state):
 | **memory**             | ✅        | Memory stores + context lifecycle     | three-memory-stores, session-recall, context-manager, context-lifecycle, memory-agent-bridge      |
 | **heartbeat**          | ✅        | Proactive cognitive scheduling        | heartbeat-scheduler, analytics                                                                    |
 | **tools**              | ✅        | Cognitive utility tools               | timer, latent-activator                                                                           |
-| **nudge**              | ✅        | Feedback/nudge injection              | feedback                                                                                          |
+| **nudge**              | ❌ removed | Merged into enforcement (was duplicate) | —                                                                                                 |
 | **contrib**            | ✅        | Peripheral utilities (not cog. arch.) | diff, healthcheck, observatory, research, system-monitor, rate-limiter, tool-config               |
 | **watchdog**           | ❌        | Error monitoring (opt-in)             | watchdog                                                                                          |
 | **health-maintenance** | ❌        | Degradation recovery (opt-in)         | health-maintenance                                                                                |

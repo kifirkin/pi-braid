@@ -2,6 +2,23 @@
 
 All notable changes to pi-braid are documented here.
 
+## v0.2.6 (2026-05-26)
+
+### Revival — Structural Cleanup
+
+- **Nudge module removed** (was duplicating enforcement's turn_end nudges).
+- **~2500 lines of dead code removed:** judge.ts, prompts.ts, event-consumers.ts, behavioral-state.ts, bidirectional-verifier Phase 2/4.
+- **BehavioralState decomposed** into 4 focused sub-states (MemoryHygieneState, ScratchpadState, ContextHygieneState, ThoughtChainState).
+- **as EnforcementState cast removed** — TypeScript now verifies the spread composition.
+- **Turn-end coordinator created** (`lib/turn-end-coordinator.ts`) — priority-ordered handler dispatch. Claim tracker extracted from monolithic handler.
+- **Advice tracker** (`lib/advice-tracker.ts`) — Dreamer/MARS predictions now get evaluated after 10 turns; thresholds adjust dynamically based on accuracy.
+- **Analytics hot-path sync I/O** converted to async append.
+- **Paper citations fixed** — 5 files updated to accurately describe heuristic implementations.
+- **`get-session-metrics` and `get-tool-reliability` tools** implemented (were stubs).
+- **safeSessionManager** now logs warning on stale ctx instead of silent failure.
+- **7 new test files, 66 new unit tests** covering 11 lib modules.
+- **Test suite: 63/63 pass** (previously 56/57 + 1).
+
 ## v0.2.5 (2026-05-14)
 
 ### Compaction Resume Fix (v2)
