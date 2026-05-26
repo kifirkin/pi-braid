@@ -199,19 +199,27 @@ export function clearAllBuckets(): void {
  * Call from an extension that has access to pi events.
  * Automatically scopes injections to the current session.
  */
-export function registerInjectionTracker(pi: { on: (event: string, handler: (...args: any[]) => any) => void }): void {
-  pi.on("session_start", (_event: unknown, ctx: { sessionManager?: { getSessionFile?: () => string; getSessionId?: () => string } }) => {
-    let sessionId: string | undefined;
-    try {
-      const sm = ctx?.sessionManager;
-      if (sm) {
-        sessionId = sm.getSessionFile?.() ?? sm.getSessionId?.();
+export function registerInjectionTracker(pi: {
+  on: (event: string, handler: (...args: any[]) => any) => void;
+}): void {
+  pi.on(
+    "session_start",
+    (
+      _event: unknown,
+      ctx: { sessionManager?: { getSessionFile?: () => string; getSessionId?: () => string } },
+    ) => {
+      let sessionId: string | undefined;
+      try {
+        const sm = ctx?.sessionManager;
+        if (sm) {
+          sessionId = sm.getSessionFile?.() ?? sm.getSessionId?.();
+        }
+      } catch {
+        // sessionManager getter may throw on stale ctx
       }
-    } catch {
-      // sessionManager getter may throw on stale ctx
-    }
-    setActiveSessionId(sessionId);
-  });
+      setActiveSessionId(sessionId);
+    },
+  );
 
   pi.on("session_shutdown", () => {
     setActiveSessionId(undefined);

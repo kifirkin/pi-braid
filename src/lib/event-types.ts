@@ -16,7 +16,7 @@
  * too fragile.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 // Known valid synchronous return types for pi event handlers.
 type ValidReturns =
@@ -28,10 +28,7 @@ type ValidReturns =
 
 // Accept sync, Promise-wrapped, or Promise<T | undefined> variants.
 // Conditional type via union: TypeScript checks each member.
-type OnEventReturn =
-  | ValidReturns
-  | Promise<ValidReturns>
-  | Promise<ValidReturns | undefined>;
+type OnEventReturn = ValidReturns | Promise<ValidReturns> | Promise<ValidReturns | undefined>;
 
 /** API with relaxed on() signature for custom event names, return-type constrained. */
 type PermissiveAPI = ExtensionAPI & {

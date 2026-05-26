@@ -20,9 +20,7 @@ import { createLogger } from "../../../lib/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 import { getExtensionState } from "../../../lib/extension-state.js";
 
-import type { SemanticSignal } from "./types.js";
 import {
-  createDefaultPolicies,
   createProposal,
   createSnapshot,
   isProposalEntry,
@@ -128,15 +126,27 @@ function createState(): ContextLifecycleState {
   };
 }
 
-function getState(ctx: ExtensionContext): ContextLifecycleState {
+function _getState(ctx: ExtensionContext): ContextLifecycleState {
   return getExtensionState(ctx, "context-lifecycle", createState);
 }
 
-// Module-level reference to current session state (set on session_start/turn_end)
-// This allows functions without ctx access to use the current session's state.
+// Module-level fallback state — used when `ctx` is not available.
+// Preferred pattern: use getState(ctx) wherever ctx is accessible.
+// Reset on session_start; turn_end uses the session-scoped getState(ctx).
+// FULL FIX: Thread ctx through all callers and remove this fallback.
 let _currentSessionState: ContextLifecycleState | null = null;
+let _currentSessionId: string | null = null;
+
+function ensureFreshState(sessionId?: string): void {
+  const sid = sessionId ?? _currentSessionId;
+  if (sid && sid !== _currentSessionId) {
+    _currentSessionState = createState();
+    _currentSessionId = sid;
+  }
+}
 
 function state(): ContextLifecycleState {
+  ensureFreshState();
   if (!_currentSessionState) {
     _currentSessionState = createState();
   }
@@ -145,6 +155,7 @@ function state(): ContextLifecycleState {
 
 function resetState(ctx: ExtensionContext): ContextLifecycleState {
   _currentSessionState = createState();
+  _currentSessionId = (ctx as any)?.cwd ?? null;
   return _currentSessionState;
 }
 

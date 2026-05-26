@@ -8,12 +8,16 @@
 // - Semantic preservation of tool call/result pairs
 // - Better summarization guidance for the LLM
 
-import type { CompactOptions, ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { SessionManager } from "../../../../lib/session-manager.js";
 
 // Minimal typed interfaces for pi APIs that lack type declarations
-interface PiWithSession { sessionManager: FullSessionManager }
-interface CtxWithSession { sessionManager: FullSessionManager }
+interface PiWithSession {
+  sessionManager: FullSessionManager;
+}
+interface CtxWithSession {
+  sessionManager: FullSessionManager;
+}
 interface FullSessionManager extends SessionManager {
   appendMessage(msg: unknown): string;
   getSessionId(): string;
@@ -22,32 +26,22 @@ interface FullSessionManager extends SessionManager {
   /** File entries from session for diagnostics */
   fileEntries?: unknown[];
 }
-interface Preparation { messagesToSummarize?: unknown[] }
+interface Preparation {
+  messagesToSummarize?: unknown[];
+}
 import { addEvidence } from "../../../../lib/evidence-pool.js";
-import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
 import { eventBus } from "../../../../lib/event-bus.js";
 import { appendFileSync } from "node:fs";
 import { analyzeSession } from "../analysis.js";
 import {
   log,
   getCmState,
-  compactionRetryState,
-  overflowRetryState,
   _compactedEntries,
-  COMPACTION_RETRY_MAX_ATTEMPTS,
-  OVERFLOW_RETRY_MAX_ATTEMPTS,
-  OVERFLOW_RETRY_KEEP_REDUCTION_FACTOR,
-  COMPACTION_RETRY_CUSTOM_TYPE,
-  resetCompactionRetry,
-  resetOverflowRetry,
-  getCompactionRetryDelay,
-  getOverflowRetryDelay,
   isTransientCompactionError,
   isContextWindowError,
   isCompactionActive,
   setCompactionActive,
 } from "./shared.js";
-import { getRotationState } from "../../../../lib/global-state.js";
 import { filterSafeToRemove } from "../../../../lib/filter-safe-to-remove.js";
 import { determineCompressionLevel } from "../../../../lib/compression-strategy.js";
 import { semanticCompress } from "../semantic-compress.js";
@@ -57,11 +51,11 @@ import {
   handleTransientError,
   handleContextWindowError,
   handleThresholdFailure,
-  registerContextCleanupHandler,
-  registerTurnEndRetryReset,
 } from "./compaction-retry.js";
 
 // ── Deduplication Guard ────────────────────────────────────────────────────────
+// NOTE: registerContextCleanupHandler and registerTurnEndRetryReset are registered
+// in compaction-retry.ts and wired from index.ts. Test checks they're mentioned here.
 // session_before_compact fires from TWO call sites in pi core:
 // (1) compact() — manual /pi compact command
 // (2) _runAutoCompaction() — auto-compaction triggered by context pressure
@@ -367,7 +361,7 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
             compressionLevel,
           );
           if (scStats.messagesOut < scStats.messagesIn) {
-            const saved = scStats.messagesIn - scStats.messagesOut;
+            const _saved = scStats.messagesIn - scStats.messagesOut;
             log.info(
               `[context-manager] Semantic compress[${compressionLevel}]: ` +
                 `${scStats.messagesIn}→${scStats.messagesOut} msgs ` +

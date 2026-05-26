@@ -42,14 +42,14 @@ async function asyncExists(p: string): Promise<boolean> {
 }
 import * as path from "node:path";
 import { EPISODES_FILE, LEGACY_MEMORY_FILE, METRICS_FILE } from "../../../lib/braid-paths.js";
-import { CognitiveMemory, getCognitiveMemory } from "../../../lib/cognitive-memory.js";
+import { getCognitiveMemory } from "../../../lib/cognitive-memory.js";
 
 // ── Re-export types ─────────────────────────────────────────────────────────
 export type { Episode, HeuristicRule, ToolStat, MemoryStoresState } from "./types.js";
 import type { MemoryStoresState, Episode } from "./types.js";
 
 // ── Sub-module imports ──────────────────────────────────────────────────────
-import { addEpisode, retrieveEpisodes, retrieveByRUMS, condenseInsights } from "./episodes.js";
+import { addEpisode, retrieveEpisodes, retrieveByRUMS } from "./episodes.js";
 import {
   addHeuristicRule,
   evolveHeuristic,

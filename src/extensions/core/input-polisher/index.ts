@@ -37,7 +37,7 @@ let _isCompactionActive: (() => boolean) | undefined;
  *   - Other config (minLength, skipCommands, etc.) stored in session memory
  */
 
-import { existsSync, mkdirSync, promises as fsPromises, readFileSync } from "node:fs";
+import { existsSync, promises as fsPromises, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Api, Model } from "@mariozechner/pi-ai";
@@ -302,11 +302,17 @@ async function processMessage(
     const timeoutMs = state.config.timeoutSeconds * 1000;
     const outputTokens = Math.min(Math.max(500, Math.floor(original.length / 4)), 4096);
 
-    const result = await callLlm(model as Model<Api>, apiKey, PERSONA, `${POLISH_INSTRUCTIONS}<user_message>${original}</user_message>`, {
-      maxTokens: outputTokens,
-      temperature: 0.1,
-      timeoutMs,
-    });
+    const result = await callLlm(
+      model as Model<Api>,
+      apiKey,
+      PERSONA,
+      `${POLISH_INSTRUCTIONS}<user_message>${original}</user_message>`,
+      {
+        maxTokens: outputTokens,
+        temperature: 0.1,
+        timeoutMs,
+      },
+    );
 
     if ("error" in result) {
       state.errorCount++;
@@ -482,7 +488,10 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
     if (roast.isCode || roast.isWellWritten) {
       state.skippedCount++;
       ctx.ui.setStatus("input-polisher", "✓ Text already clean — press Enter to send");
-      ctx.ui.notify("Text was not modified. Press Enter to send, or edit and press Enter again.", "info");
+      ctx.ui.notify(
+        "Text was not modified. Press Enter to send, or edit and press Enter again.",
+        "info",
+      );
       ctx.ui.setEditorText(original);
       state.polishingExhausted = true;
       state.polishedText = original;

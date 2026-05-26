@@ -1,12 +1,23 @@
 import type { HealthMaintenanceResult } from "./types.js";
 
 interface StatusData {
-  metrics?: { totalTurns: number; avgHealthcheck?: number; avgErrorRate: number; avgToolSuccess?: number; degraded: boolean };
+  metrics?: {
+    totalTurns: number;
+    avgHealthcheck?: number;
+    avgErrorRate: number;
+    avgToolSuccess?: number;
+    degraded: boolean;
+  };
   metacognition?: { confidence: number; knowledgeGaps?: string[] };
 }
 
-interface HealthData { overall?: string; score?: number }
-interface CheckData { degraded?: boolean }
+interface HealthData {
+  overall?: string;
+  score?: number;
+}
+interface CheckData {
+  degraded?: boolean;
+}
 
 export function formatHealthMaintenanceOutput(result: HealthMaintenanceResult): string {
   const lines: string[] = [];

@@ -211,7 +211,8 @@ export function registerContextPruningHandler(pi: ExtensionAPI): void {
           turnCount: Math.round(beforeCount / 2),
           turnsSinceCompression: pruningState.turnsSinceCompression ?? Infinity,
           consecutiveFailures: pruningState.consecutiveFailures ?? 0,
-          reasoningChainDepth: (pruningState as { reasoningChainDepth?: number }).reasoningChainDepth ?? 0,
+          reasoningChainDepth:
+            (pruningState as { reasoningChainDepth?: number }).reasoningChainDepth ?? 0,
           messageCount: beforeCount,
         });
         if (decision.estimatedSavings > 0) {
@@ -253,9 +254,10 @@ export function registerContextPruningHandler(pi: ExtensionAPI): void {
               // Tier 2: Confirm with utility model before summarization
               const lastContent = block.messages[block.messages.length - 1]?.content ?? "";
               if (lastContent.length > 50) {
-                const confirmed = await confirmReasoningBlock(lastContent, ctx as ExtensionContext).catch(
-                  () => true,
-                );
+                const confirmed = await confirmReasoningBlock(
+                  lastContent,
+                  ctx as ExtensionContext,
+                ).catch(() => true);
                 if (!confirmed) {
                   log.debug("context: reasoning block rejected by utility model, skipping");
                   continue;

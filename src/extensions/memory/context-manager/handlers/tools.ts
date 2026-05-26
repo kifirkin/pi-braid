@@ -658,7 +658,8 @@ export function registerTools(pi: ExtensionAPI): void {
       _onUpdate: any,
       ctx: any,
     ): Promise<any> => {
-      let { topic, startIndex, endIndex, summary } = params;
+      const { topic, summary } = params;
+      let { startIndex, endIndex } = params;
 
       // Auto-detect range if omitted
       if (startIndex === undefined || endIndex === undefined) {

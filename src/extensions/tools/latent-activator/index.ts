@@ -504,7 +504,12 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
           };
         }
         return {
-          content: [{ type: "text", text: `Unknown behavior: "${behavior}". Available behaviors: ${ACTIVATE_BEHAVIORS.join(", ")}. For predefined scenario combos (e.g., "refactoring", "debugging"), use activate_mix instead.` }],
+          content: [
+            {
+              type: "text",
+              text: `Unknown behavior: "${behavior}". Available behaviors: ${ACTIVATE_BEHAVIORS.join(", ")}. For predefined scenario combos (e.g., "refactoring", "debugging"), use activate_mix instead.`,
+            },
+          ],
           details: { behavior, available: ACTIVATE_BEHAVIORS, active: getActiveBehaviors() },
         };
       } catch (err: unknown) {

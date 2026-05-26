@@ -1,10 +1,6 @@
 import { StringEnum } from "@mariozechner/pi-ai";
 import { Type } from "typebox";
-import type {
-  AgentToolResult,
-  ExtensionAPI,
-  ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
+import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import {
   getConfig,
@@ -24,17 +20,8 @@ import {
 } from "../../lib/metacognitive-state.js";
 import { getExtensionState } from "../../lib/extension-state.js";
 
-import type {
-  BenchmarkResult,
-  HealthMaintenanceActionType,
-  HealthMaintenanceResult,
-} from "./types.js";
-import {
-  getAnalyticsMetrics,
-  startMetricsPersistence,
-  BENCHMARK_HISTORY,
-  MAX_BENCHMARK_HISTORY,
-} from "./helpers.js";
+import type { BenchmarkResult, HealthMaintenanceResult } from "./types.js";
+import { getAnalyticsMetrics, startMetricsPersistence } from "./helpers.js";
 import { formatHealthMaintenanceOutput } from "./format.js";
 
 const _log = createLogger("health-maintenance");
@@ -207,7 +194,7 @@ function executeCheck(): HealthMaintenanceResult {
   return { action: "check", success: true, data: { degraded, reasons: getDegradationReasons() } };
 }
 
-async function executeCommit(force: boolean, _pi: ExtensionAPI): Promise<HealthMaintenanceResult> {
+async function executeCommit(_force: boolean, _pi: ExtensionAPI): Promise<HealthMaintenanceResult> {
   return {
     action: "commit",
     success: true,

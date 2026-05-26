@@ -152,7 +152,7 @@ function categorizeTools(tools: string[]): Record<string, number> {
  * @returns Three-tier SOP (strategic, functional, atomic)
  */
 export function extractSOP(input: ExtractionInput): ExtractedSOP {
-  const { task, trajectory, solution, outcome } = input;
+  const { task, trajectory, outcome } = input;
 
   if (trajectory.length === 0) {
     return {
@@ -171,7 +171,7 @@ export function extractSOP(input: ExtractionInput): ExtractedSOP {
 
   // ── Strategic SOP (high-level) ────────────────────────────────────────
   // Describes WHAT to do at a strategy level
-  const categorySummary = Object.entries(categories)
+  const _categorySummary = Object.entries(categories)
     .sort((a, b) => b[1] - a[1])
     .map(([cat, count]) => `${count}x ${cat}`)
     .join(", ");

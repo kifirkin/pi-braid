@@ -10,7 +10,6 @@ import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-
 //   navigation.ts — tree navigation + checkout
 //   events.ts   — agent_end retry, auto_retry_end, context pruning
 
-import { Type } from "typebox";
 import type { ExtensionContext, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { log } from "./handlers/shared.js";
 import { registerTools } from "./handlers/tools.js";
@@ -19,10 +18,7 @@ import {
   registerSessionCompactHandler,
   registerCompactionEndHandler,
 } from "./handlers/compaction.js";
-import {
-  registerContextCleanupHandler,
-  registerTurnEndRetryReset,
-} from "./handlers/compaction-retry.js";
+import { registerTurnEndRetryReset } from "./handlers/compaction-retry.js";
 import { registerAgentEndRetryHandler, registerAutoRetryEndHandler } from "./handlers/events.js";
 import {
   registerBeforeTreeHandler,

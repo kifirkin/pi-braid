@@ -16,7 +16,7 @@
  *   - Agent-controlled: set, cancel, check status
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../../lib/logger.js";
 import { Type } from "typebox";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
@@ -38,7 +38,7 @@ const DEFAULT_TIMEOUT_SECONDS = 300; // 5 minutes
 
 // ── Watchdog Manager ─────────────────────────────────────────────────────────
 
-interface AutoSingletonState {
+interface _AutoSingletonState {
   active: boolean;
   timeoutMs: number;
   deadline: number; // renewed on each activity event

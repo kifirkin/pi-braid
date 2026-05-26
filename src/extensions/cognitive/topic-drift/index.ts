@@ -309,7 +309,11 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
     execute: async (_toolCallId: string, params: any): Promise<any> => {
       try {
         const p = params as { output?: string };
-        const state = getExtensionState({ cwd: "check" } as ExtensionContext, "topic-drift", createDriftState);
+        const state = getExtensionState(
+          { cwd: "check" } as ExtensionContext,
+          "topic-drift",
+          createDriftState,
+        );
         const output = p.output ?? "";
         const result = detectTopicDrift("check", output, state);
 
@@ -356,7 +360,11 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
     execute: async (_toolCallId: string, params: any): Promise<any> => {
       try {
         const p = params as { newRequest?: string };
-        const state = getExtensionState({ cwd: "reset" } as ExtensionContext, "topic-drift", createDriftState);
+        const state = getExtensionState(
+          { cwd: "reset" } as ExtensionContext,
+          "topic-drift",
+          createDriftState,
+        );
         const request = p.newRequest ?? state.originalRequest;
         resetAnchors(state, request);
 

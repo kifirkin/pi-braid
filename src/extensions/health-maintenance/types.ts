@@ -1,5 +1,3 @@
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-
 export interface HealthMaintenanceResult {
   action: string;
   success: boolean;

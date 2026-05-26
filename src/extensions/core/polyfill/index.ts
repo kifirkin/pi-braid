@@ -121,8 +121,7 @@ async function loadDisableConfirmations(): Promise<boolean> {
 function patchConfirmForAutoConfirm(ctx: any): void {
   if (!ctx.ui?.confirm) return;
 
-  const originalConfirm = ctx.ui.confirm.bind(ctx.ui);
-  ctx.ui.confirm = async (title: string, message: string, opts?: any): Promise<boolean> => {
+  ctx.ui.confirm = async (_title: string, _message: string, _opts?: any): Promise<boolean> => {
     // Auto-confirm all dialogs
     return true;
   };
@@ -388,7 +387,7 @@ function patchSessionManagerMethods(pi: any, ctx: any): void {
     pi.navigateTree = async (id: string) => sm.navigateTree?.(id);
   }
   if (typeof pi.abort !== "function" && typeof sm.abort === "function") {
-    pi.abort = (reason?: string) => {
+    pi.abort = (_reason?: string) => {
       sm.abort?.();
     };
   }

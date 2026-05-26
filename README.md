@@ -86,7 +86,7 @@ export BRAID_MODULES="all"
 export BRAID_MODULES="core,cognitive,memory,retry"
 ```
 
-See [docs/MODULES.md](docs/MODULES.md) for the full module catalog.
+See [pi-braid-docs](https://github.com/earendil-works/pi-braid-docs) for the full documentation (extracted to separate repo).
 
 ## Bundled Skills
 
@@ -136,16 +136,9 @@ npm run lint        # ESLint
 npm run format      # Prettier
 ```
 
-For the full development guide, see [AGENTS.md](AGENTS.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+For the full development guide, see [AGENTS.md](AGENTS.md).
 
-## Documentation
-
-- [Architecture](docs/ARCHITECTURE.md) — system design and data flow
-- [Extension docs](docs/extensions/) — per-extension documentation
-- [Library docs](docs/lib/README.md) — shared library catalog
-- [Skills catalog](docs/skills/README.md) — bundled skill descriptions
-- [Modules](docs/MODULES.md) — module definitions and toggling
-- [Errors](docs/ERRORS.md) — error classification reference
+Documentation has been extracted to a separate repository ([pi-braid-docs](https://github.com/earendil-works/pi-braid-docs)) to keep the codebase lean.
 
 ## License
 

@@ -10,8 +10,6 @@ const log = createLogger("enforcement");
  * Design: Non-blocking routing nudge that suggests alternative/specialized tools.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-
 export type TaskIntent =
   | "exploration" // Reading, searching, understanding
   | "implementation" // Writing, editing code

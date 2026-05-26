@@ -19,7 +19,6 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import * as os from "node:os";
 import { getExtensionState, hasExtensionState } from "./extension-state.js";
 import { createLogger } from "./logger.js";
 import { CHECKPOINT_DIR } from "./braid-paths.js";

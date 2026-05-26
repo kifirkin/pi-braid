@@ -15,7 +15,7 @@ import { getExtensionState } from "../../../../lib/extension-state.js";
 
 const log = createLogger("heartbeat:budget-tracker");
 
-interface BudgetTrackerState {
+interface _BudgetTrackerState {
   /** Set of "stepIndex:threshold" keys that have already fired. */
   firedThresholds: Set<string>;
 }

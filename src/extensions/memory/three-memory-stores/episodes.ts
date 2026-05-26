@@ -238,7 +238,8 @@ export function retrieveByRUMS(
   // but do NOT filter them out — user-initiated memory_recall needs them.
   // Callers that want filtering (e.g. auto-whisper) should do it at the call site.
   for (const ep of results) {
-    (ep as Record<string, unknown>)._crossSession = ep.sessionId && ep.sessionId !== currentSessionId;
+    (ep as Record<string, unknown>)._crossSession =
+      ep.sessionId && ep.sessionId !== currentSessionId;
   }
   log.debug(`RUMS retrieved ${results.length} episodes for "${query.slice(0, 30)}..."`);
   return results;

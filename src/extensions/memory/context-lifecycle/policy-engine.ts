@@ -19,13 +19,7 @@ const log = createLogger("context-lifecycle");
  * Outputs: immediate actions (compact) or proposals with constraint checking.
  */
 
-import type {
-  ContextPolicy,
-  GovernanceConstraint,
-  PolicyAction,
-  SemanticSignal,
-  ValidationResult,
-} from "./types.js";
+import type { ContextPolicy, GovernanceConstraint, PolicyAction, SemanticSignal } from "./types.js";
 import { createDefaultPolicies, createDefaultGovernance } from "./types.js";
 
 // ── Policy Evaluation ────────────────────────────────────────────────────────

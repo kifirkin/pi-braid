@@ -12,10 +12,13 @@ import { createLogger } from "../../../lib/logger.js";
 
 const log = createLogger("scratchpad");
 
-import { StringEnum } from "@mariozechner/pi-ai";
 import { Type } from "typebox";
-import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@mariozechner/pi-coding-agent";
-import type { AgentToolResult } from "@mariozechner/pi-coding-agent";
+import type {
+  AgentToolResult,
+  ExtensionAPI,
+  ExtensionContext,
+  ToolDefinition,
+} from "@mariozechner/pi-coding-agent";
 
 // ── Re-export types and persistence for importers ─────────────────────────
 export * from "./types.js";
@@ -23,11 +26,8 @@ export * from "./persistence.js";
 
 import type {
   TaskScratchpad,
-  PlanStep,
   Decision,
-  TaskStore,
   TaskItem,
-  SessionMeta,
   Constraint,
   KeyLearning,
   SessionPhase,
@@ -317,7 +317,6 @@ async function scratchpadExecute(
   const priority = params.priority as number | undefined;
   const dependencies = params.dependencies as string[] | undefined;
   const task_id = params.task_id as string | undefined;
-  const constraint_id = params.constraint_id as string | undefined;
   const expires_in_ms = params.expires_in_ms as number | undefined;
 
   const pad = await getOrCreateScratchpad(ctx);

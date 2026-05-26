@@ -93,10 +93,6 @@ export default async function modulesApiExtension(pi: ExtensionAPI): Promise<voi
       lines.push(`Modules (config: ${source}):`);
       for (const [name, info] of Object.entries(states)) {
         const status = info.enabled ? (info.loaded ? "●" : "○ pending") : "— disabled";
-        const deps = (() => {
-          const def = Object.values(states).find(() => true); // get def
-          return "";
-        })();
         lines.push(`  ${status.padEnd(12)} ${name}`);
         lines.push(`                 ${info.description}`);
       }
@@ -115,15 +111,15 @@ export default async function modulesApiExtension(pi: ExtensionAPI): Promise<voi
       const states = getModuleStates(ctx);
       const loaded = Object.values(states).filter((s) => s.loaded).length;
       const enabled = Object.values(states).filter((s) => s.enabled).length;
-      const overrides = Object.entries(states).filter(([, s]) => {
-        // Check if runtime override exists (simplified — best-effort)
-        return false;
-      });
-      ctx.ui.notify?.(
-        `Module state:\n  ${loaded} loaded, ${enabled} enabled\n` +
-          (Object.keys(states).length > 0 ? `  To toggle: modules-toggle <name>` : ""),
-        "info",
-      );
+      const lines: string[] = [
+        `Modules: ${loaded} loaded, ${enabled} enabled` +
+          ` (config: ${Object.values(states)[0]?.source ?? "?"})`,
+      ];
+      for (const [name, info] of Object.entries(states)) {
+        const status = info.enabled ? (info.loaded ? "●" : "○ pending") : "— disabled";
+        lines.push(`  ${status.padEnd(12)} ${name}`);
+      }
+      ctx.ui.notify?.(lines.join("\n"), "info");
     },
   });
 

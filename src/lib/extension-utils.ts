@@ -5,7 +5,6 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { AgentToolResult } from "@mariozechner/pi-coding-agent";
 
 /**
  * Build a valid AgentToolResult with text content.

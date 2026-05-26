@@ -137,7 +137,8 @@ export class NudgeManager {
     // Use stable string hash (cyrb53) for reliable dedup
     // https://github.com/bryc/code/blob/master/jshash/experimental/cyrb53.js
     const str = message.trim();
-    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    let h1 = 0xdeadbeef,
+      h2 = 0x41c6ce57;
     for (let i = 0, ch; i < str.length; i++) {
       ch = str.charCodeAt(i);
       h1 = Math.imul(h1 ^ ch, 2654435761);

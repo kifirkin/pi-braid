@@ -170,7 +170,7 @@ export function createDefaultPolicies(
             },
           ];
 
-        for (const { pct, priority, msg } of thresholds) {
+        for (const { pct, msg } of thresholds) {
           if (percent >= pct && !_firedThresholds.has(pct)) {
             _firedThresholds.add(pct);
             sendWhisper(

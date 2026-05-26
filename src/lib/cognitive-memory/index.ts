@@ -20,13 +20,7 @@ import {
   CATEGORY_BASE_UTILITY,
 } from "./constants.js";
 import { loadMemory, saveMemory } from "./storage.js";
-import {
-  jaccardSimilarity,
-  generateAutoTags,
-  generateId,
-  formatMemoryTimestamp,
-  formatMemoryEntry,
-} from "./utils.js";
+import { jaccardSimilarity, generateAutoTags, generateId } from "./utils.js";
 
 const _log = createLogger("cognitive-memory");
 

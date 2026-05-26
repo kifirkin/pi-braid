@@ -21,18 +21,10 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../lib/logger.js";
 
-import {
-  type ModuleDef,
-  type SubExtension,
-  MODULE_DEFINITIONS,
-  getModuleDef,
-  getDefaultEnabledModules,
-  getAllModuleNames,
-} from "./definitions.js";
+import { MODULE_DEFINITIONS, getModuleDef, getDefaultEnabledModules } from "./definitions.js";
 
 const log = createLogger("modules");
 
@@ -290,7 +282,7 @@ export async function loadModules(pi: ExtensionAPI, envOverride?: string): Promi
 // ──── Runtime toggling API (for researcher subagents) ────────────────────────
 
 /** Enable a module. Persists to pi's settings.json for next session. */
-export function enableModule(name: string, ctx?: ExtensionContext): boolean {
+export function enableModule(name: string, _ctx?: ExtensionContext): boolean {
   const def = getModuleDef(name);
   if (!def) return false;
   if (def.alwaysOn) return true;
@@ -301,7 +293,7 @@ export function enableModule(name: string, ctx?: ExtensionContext): boolean {
 }
 
 /** Disable a module. Persists to pi's settings.json for next session. */
-export function disableModule(name: string, ctx?: ExtensionContext): boolean {
+export function disableModule(name: string, _ctx?: ExtensionContext): boolean {
   const def = getModuleDef(name);
   if (!def) return false;
   if (def.alwaysOn) return false;
@@ -312,7 +304,7 @@ export function disableModule(name: string, ctx?: ExtensionContext): boolean {
 }
 
 /** Toggle a module on/off. Returns the new state or null. */
-export function toggleModule(name: string, ctx?: ExtensionContext): boolean | null {
+export function toggleModule(name: string, _ctx?: ExtensionContext): boolean | null {
   const def = getModuleDef(name);
   if (!def) return null;
   if (def.alwaysOn) return true;
@@ -326,7 +318,7 @@ export function toggleModule(name: string, ctx?: ExtensionContext): boolean | nu
 
 /** Get the current state of all modules with loading status. */
 export function getModuleStates(
-  ctx?: ExtensionContext,
+  _ctx?: ExtensionContext,
 ): Record<string, { enabled: boolean; loaded: boolean; source: string; description: string }> {
   const state = getLoaderState();
   const { enabled, source } = resolveEnabledModules();
@@ -348,9 +340,12 @@ export function getModuleStates(
   return result;
 }
 
-/** Reset all runtime overrides (does NOT clear settings.json). */
-export function resetModuleOverrides(ctx?: ExtensionContext): void {
-  getLoaderState().runtimeConfig.clear();
+/** Reset all runtime overrides and clears settings.json to restore defaults. */
+export function resetModuleOverrides(_ctx?: ExtensionContext): void {
+  const state = getLoaderState();
+  state.runtimeConfig.clear();
+  // Also clear persisted settings.json to restore defaults for next session
+  saveModuleOverridesToFile(new Map());
 }
 
 // ──── Helpers ────────────────────────────────────────────────────────────────

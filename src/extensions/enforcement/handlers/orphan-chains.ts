@@ -36,7 +36,7 @@ export function detectOrphanChains(state: EnforcementState): OrphanChainResult |
 
   // Orphan = chain with 3+ thoughts but no conclusion type
   const orphanChains: string[] = [];
-  for (const [chainId, thoughtIds] of rootMap) {
+  for (const [_chainId, thoughtIds] of rootMap) {
     if (thoughtIds.length >= 3) {
       const hasConclusion = thoughtIds.some((id) => {
         const t = state.thoughtChains.find((tc) => tc.id === id);

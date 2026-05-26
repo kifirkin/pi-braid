@@ -5,7 +5,7 @@
  * This replaces bash `sleep` which blocks the tool call.
  */
 
-import type { ExtensionAPI, AgentToolResult, ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../../lib/logger.js";
 import { Type } from "typebox";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";

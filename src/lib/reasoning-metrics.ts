@@ -177,12 +177,12 @@ export function countSelfContradictions(text: string): number {
       const negated = isMatch[2] ? "not_" : "";
       const claim = negated + isMatch[3].trim().toLowerCase();
       if (!claims.has(subject)) claims.set(subject, []);
-      claims.get(subject)!.push(claim);
+      claims.get(subject)?.push(claim);
     }
   }
 
   // Check for contradictions: same subject, opposite claims
-  for (const [subject, claimList] of claims) {
+  for (const [, claimList] of claims) {
     for (let i = 0; i < claimList.length; i++) {
       for (let j = i + 1; j < claimList.length; j++) {
         const a = claimList[i];

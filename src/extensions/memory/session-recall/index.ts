@@ -18,7 +18,7 @@ const log = createLogger("session-recall");
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import type { Model, Api } from "@mariozechner/pi-ai";
+import type { Model } from "@mariozechner/pi-ai";
 import { callLlm } from "../../../lib/llm-call.js";
 import { Type } from "typebox";
 import { execFileSync } from "node:child_process";
@@ -36,7 +36,7 @@ import { AGENT } from "../../../lib/braid-paths.js";
 
 // Config
 
-interface SessionRecallConfig {
+interface _SessionRecallConfig {
   queryModel?: { provider: string; id: string };
 }
 

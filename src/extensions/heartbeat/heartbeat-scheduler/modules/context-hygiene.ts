@@ -51,7 +51,7 @@ const DEFAULT_TOKEN_LIMIT = 100_000;
 function estimateRemainingTurns(
   snapshots: Array<{ turn: number; tokens: number }>,
   currentTokens: number,
-  currentTurn: number,
+  _currentTurn: number,
 ): number {
   if (snapshots.length < 2) return Infinity;
 

@@ -5,7 +5,6 @@
  */
 
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import { fileMutationQueue } from "../../../lib/file-mutation-queue.js";
 import { BRAID_DIR, SCRATCHPAD_DIR } from "../../../lib/braid-paths.js";

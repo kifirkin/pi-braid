@@ -1,6 +1,6 @@
 import { getAnalyticsState } from "../heartbeat/analytics/index.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { HealthMaintenanceResult, BenchmarkResult } from "./types.js";
+import type { BenchmarkResult } from "./types.js";
 
 // R9: Analytics feedback loop helpers
 export function getAnalyticsMetrics(ctx?: ExtensionContext) {

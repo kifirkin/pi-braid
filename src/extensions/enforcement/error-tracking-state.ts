@@ -10,8 +10,6 @@ export interface ErrorTrackingState {
   hasRecordedFailure: boolean;
   lastFailedToolTurn: number;
   escalationCounts: Record<string, number>;
-
-  // Nudge cooldowns (rate limiting)
   lastNudgeTime: number;
   nudgeCooldownMs: number;
   lastLazyNudgeTime: number;

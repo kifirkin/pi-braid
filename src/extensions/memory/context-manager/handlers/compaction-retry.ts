@@ -24,8 +24,6 @@ import {
   getCompactionRetryDelay,
   getOverflowRetryDelay,
   isContextWindowError,
-  isCompactionActive,
-  setCompactionActive,
 } from "./shared.js";
 
 // ── Overflow Failure Handler ──────────────────────────────────────────────────

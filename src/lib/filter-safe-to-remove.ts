@@ -23,14 +23,16 @@ function estimateMsgTokens(msg: AgentMessage): number {
     if (typeof content === "string") chars = content.length;
     else if (Array.isArray(content)) {
       for (const block of content) {
-        if (block.type === "text" && "text" in block) chars += (block as { text: string }).text.length;
+        if (block.type === "text" && "text" in block)
+          chars += (block as { text: string }).text.length;
       }
     }
   } else if (msg.role === "toolResult") {
     if (typeof msg.content === "string") chars = msg.content.length;
     else if (Array.isArray(msg.content)) {
       for (const block of msg.content) {
-        if (block.type === "text" && "text" in block) chars += (block as { text: string }).text.length;
+        if (block.type === "text" && "text" in block)
+          chars += (block as { text: string }).text.length;
       }
     }
   }
@@ -153,7 +155,11 @@ function filterSafeToRemoveInner(messages: AgentMessage[]): {
     // persisted through compaction. Filter them out to prevent the LLM
     // summary from conflating nudge content with real user intent.
     const details = (msg as Record<string, unknown>).details;
-    if (details && typeof details === "object" && (details as Record<string, unknown>)._braidInjected === true) {
+    if (
+      details &&
+      typeof details === "object" &&
+      (details as Record<string, unknown>)._braidInjected === true
+    ) {
       removed++;
       // Don't push — skip entirely
       continue;
@@ -188,7 +194,6 @@ function filterSafeToRemoveInner(messages: AgentMessage[]): {
         const lastOccurrence = readHistory.lastIndexOf(path);
         if (firstOccurrence !== lastOccurrence) {
           // Duplicate — but only remove if no write to this path occurred between
-          const pathIndex = readHistory.indexOf(path);
           removed++;
           result.push(msg);
           continue;
@@ -234,7 +239,10 @@ function filterSafeToRemoveInner(messages: AgentMessage[]): {
         if (toolCallId) {
           let toolName = "";
           for (const prev of messages) {
-            if (prev.role === "toolCall" && (prev as { toolCallId?: string }).toolCallId === toolCallId) {
+            if (
+              prev.role === "toolCall" &&
+              (prev as { toolCallId?: string }).toolCallId === toolCallId
+            ) {
               toolName = (prev.toolName ?? "").toLowerCase();
               break;
             }

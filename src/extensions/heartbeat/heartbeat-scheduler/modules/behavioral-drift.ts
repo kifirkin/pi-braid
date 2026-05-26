@@ -13,7 +13,7 @@
  *   3. Flag when Jensen-Shannon divergence exceeds threshold
  */
 
-import type { CognitiveModule, ModuleContext } from "../types.js";
+import type { CognitiveModule } from "../types.js";
 import { createLogger } from "../../../../lib/logger.js";
 
 const log = createLogger("heartbeat:behavioral-drift");

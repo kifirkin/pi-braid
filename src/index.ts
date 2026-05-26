@@ -68,7 +68,7 @@ export default async function braidExtension(pi: ExtensionAPI): Promise<void> {
 
 function getVersion(): string {
   try {
-    return "0.20.0";
+    return "0.2.5";
   } catch {
     return "dev";
   }
