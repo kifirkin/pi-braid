@@ -349,15 +349,11 @@ async function main() {
 	// ══════════════════════════════════════════════════════════════════════════
 	// 8. DOCUMENTATION
 	// ══════════════════════════════════════════════════════════════════════════
-	console.log("\n── Documentation ──");
+	console.log("\n── Documentation (extracted to pi-braid-docs) ──");
 
-	test("Top-level docs ≤ 10 essential files", () => {
-		const docs = readdirSync(join(ROOT, "docs")).filter(f => f.endsWith(".md"));
-		assert.ok(docs.length <= 15, `Too many top-level docs: ${docs.length} (${docs.join(", ")})`);
-	});
-
-	test("BENCHMARKS.md documents the suite", () => {
-		assert.ok(existsSync(join(ROOT, "docs/BENCHMARKS.md")));
+	test("docs directory removed (extracted to separate repo)", () => {
+		const hasDocs = existsSync(join(ROOT, "docs"));
+		assert.ok(!hasDocs, "docs/ directory should be removed (extracted to pi-braid-docs)");
 	});
 
 	// ══════════════════════════════════════════════════════════════════════════
