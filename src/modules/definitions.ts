@@ -66,8 +66,6 @@ import pathSecurityFn from "../contrib/path-security/index.js";
 import researchFn from "../contrib/research/index.js";
 import systemMonitorFn from "../contrib/system-monitor/index.js";
 import toolConfigFn from "../contrib/tool-config/index.js";
-import sleepFn from "../contrib/sleep/index.js";
-
 // nudge (feedback/nudge injection — from assistant/feedback)
 import feedbackFn from "../extensions/nudge/index.js";
 
@@ -376,7 +374,6 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
       { name: "system-monitor", fn: systemMonitorFn },
       { name: "rate-limiter", fn: contribRateLimiterFn },
       { name: "tool-config", fn: toolConfigFn },
-      // { name: "sleep", fn: sleepFn },
     ],
     listensTo: ["session_tree", "session_shutdown", "context"],
     coupledWith: [],

@@ -137,7 +137,8 @@ function writeToUI(ui: ExtensionUIContext, entry: LogEntry): void {
       ui.setStatus?.(entry.source, msg);
       break;
     case "warn":
-      ui.notify(msg, "warning");
+      // Warnings go to console + buffer only, not TUI.
+      // User-facing warnings should use pi.sendMessage() explicitly.
       break;
     case "error":
       ui.notify(msg, "error");

@@ -16,7 +16,10 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../lib/logger.js";
 import { safeSessionManager } from "../../lib/extension-state.js";
-import { sendTrackedMessage } from "../../lib/injection-tracker.js";
+import {
+  sendTrackedMessage,
+  registerInjectionTracker,
+} from "../../lib/injection-tracker.js";
 import { registerSessionStartHandler, SessionPhase } from "../../lib/session-start-queue.js";
 import { detectMalformedToolCalls } from "./detection/malformed.js";
 import { getReplyInstruction, setLanguage, detectLanguage } from "../../lib/language-hint.js";
@@ -43,10 +46,9 @@ import {
   updateProblemContext,
 } from "../../lib/bidirectional-verifier.js";
 import { analyzeMessage } from "./handlers/message-analysis.js";
-import { registerTurnEndHandler } from "./handlers/turn-end-handler.js";
+import { dispatchTurnEndLoop } from "./handlers/turn-end-handler.js";
 import { type NudgeManager } from "./nudge-manager.js";
 
-import { validateToolForPhase } from "./validation.js";
 import { sendEnforcementWhisper } from "./whisper.js";
 import { knownFiles } from "./similarity.js";
 import { enforcementSignals, determineContrastMode } from "./signals.js";
@@ -86,6 +88,9 @@ export const HANDLER_REGISTRATIONS: Array<{ event: string; method: string; handl
  * Register all enforcement event handlers on the given pi instance.
  */
 export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): void {
+  // Register injection tracker session lifecycle handler
+  registerInjectionTracker(pi as unknown as { on: (event: string, handler: (...args: any[]) => any) => void });
+
   pi.on("input", async (event: { text?: string; source?: string }, ctx: ExtensionContext) => {
     if (!getState(ctx).enforcementActive) return;
     const text = event.text || "";
@@ -182,16 +187,6 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     const blockResult = checkBlocking(pi, toolName, input, getState(ctx));
     if (blockResult.blocked) {
       return { block: true, reason: blockResult.reason };
-    }
-
-    // Phase validation nudge
-    const { message } = validateToolForPhase(toolName, getState(ctx).currentTurn, getState(ctx));
-    if (message) {
-      const now = Date.now();
-      if (now - getState(ctx).lastNudgeTime > getState(ctx).nudgeCooldownMs) {
-        getState(ctx).lastNudgeTime = now;
-        sendEnforcementWhisper(pi, ctx, message);
-      }
     }
 
     return undefined;
@@ -389,9 +384,19 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     }
   });
 
-  // ── turn_end: main enforcement loop ──────────────────────────────────
-  // Extracted to handlers/turn-end-handler.ts
-  registerTurnEndHandler(pi, nudgeManager);
+  // ── turn_end: enforcement coordinator (guaranteed priority ordering) ──
+  // Sequences enforcement sub-handlers explicitly instead of relying on
+  // pi.on() registration order (which varies with module load order).
+  //   0. drift detection, BPE, MARS, dreamer, reflection gap
+  //   1. main enforcement loop (error bursts, context, nudges, claim tracking)
+  onEvent(pi, "turn_end", async (event: any, ctx: ExtensionContext) => {
+    // Sub-handler 0: drift, BPE, MARS, dreamer
+    const newRecType = await dispatchTurnEndAnalysis(pi, event, ctx);
+    if (newRecType) _lastRecommendationType = newRecType;
+
+    // Sub-handler 1: main enforcement loop
+    await dispatchTurnEndLoop(pi, event, ctx, nudgeManager);
+  });
 
   onEvent(pi, "session_compact", async (event: any, ctx: ExtensionContext) => {
     if (!getState(ctx).enforcementActive) return;
@@ -447,7 +452,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
       getState(ctx).memoryNudgeSent = false;
       getState(ctx).turnsSinceMemory = 0;
     } catch {
-      /* Non-fatal: enforcement state access failed */
+      log.debug("session_compact handler: enforcement state access failed (stale ctx?)");
     }
   });
 
@@ -485,140 +490,98 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     }
   });
 
-  onEvent(pi, "turn_end", async (_event: any, ctx: ExtensionContext) => {
-    if (!getState(ctx).enforcementActive || !getState(ctx).driftDetector) return;
-    // Use getBranch() — getCurrentSession() does not exist on SessionManager
-    // Use safeSessionManager to avoid assertActive() crash on stale ctx
-    const sm = safeSessionManager(ctx) as SessionManager | undefined;
-    const entries: SessionEntry[] = sm?.getBranch?.() ?? [];
-    const recentMsgs: Array<{ role?: string; content?: unknown }> = [];
-    for (let i = entries.length - 1; i >= 0 && recentMsgs.length < 4; i--) {
-      const entry = entries[i];
-      if (entry.type === "message" && entry.message) {
-        recentMsgs.unshift({ role: entry.message.role, content: entry.message.content });
-      }
-    }
-    for (let i = recentMsgs.length - 1; i >= 0; i--) {
-      const msg = recentMsgs[i];
-      const text = extractTextContent(msg);
-      if (msg?.role === "user" && text.length > 10) {
-        getState(ctx).driftDetector.addTurn(text);
-        break;
-      }
-    }
-    const driftCheck = getState(ctx).driftDetector.check();
-    if (driftCheck.drifted) {
-      const whisper = getState(ctx).driftDetector.generateWhisper(driftCheck);
-      if (whisper) {
-        sendTrackedMessage(
-          pi,
-          {
-            customType: "context",
-            display: true,
-            content: [{ type: "text", text: `[enforcement] ${whisper}` }],
-          },
-          { deliverAs: "steer", triggerTurn: false },
-          { type: "enforcement", source: "enforcement/drift" },
-        );
-      }
-      emitSignal(
-        ctx,
-        "topic-drift",
-        "detected",
-        driftCheck.severity === "strong" ? "warn" : "info",
-        false,
-        { severity: driftCheck.severity },
-      );
-    }
+  async function dispatchTurnEndAnalysis(
+  pi: any,
+  _event: any,
+  ctx: ExtensionContext,
+  prevRecType: string | null = null,
+): Promise<string | null> {
+  const gs = getState(ctx);
+  if (!gs.enforcementActive || !gs.driftDetector) return null;
 
-    // D0: Report previous recommendation outcome
-    const enState = getState(ctx);
-    const lastRecType = _lastRecommendationType;
-    if (lastRecType) {
-      const madeProgress = enState.totalToolCalls > (enState.toolCallsAtLastRecommendation ?? 0);
-      reportRecommendationOutcome(ctx, lastRecType, madeProgress);
+  const sm = safeSessionManager(ctx) as SessionManager | undefined;
+  const entries: SessionEntry[] = sm?.getBranch?.() ?? [];
+  const recentMsgs: Array<{ role?: string; content?: unknown }> = [];
+  for (let i = entries.length - 1; i >= 0 && recentMsgs.length < 4; i--) {
+    const entry = entries[i];
+    if (entry.type === "message" && entry.message) {
+      recentMsgs.unshift({ role: entry.message.role, content: entry.message.content });
     }
-
-    // Belief Policy Engine - advisory, use hint (BPE recommendations are suggestions, not critical)
-    const bpeRec = getNextRecommendation(ctx);
-    if (bpeRec) {
-      _lastRecommendationType = bpeRec.type;
-      enState.toolCallsAtLastRecommendation = enState.totalToolCalls;
+  }
+  for (let i = recentMsgs.length - 1; i >= 0; i--) {
+    const msg = recentMsgs[i];
+    const text = extractTextContent(msg);
+    if (msg?.role === "user" && text.length > 10) {
+      gs.driftDetector.addTurn(text);
+      break;
+    }
+  }
+  const driftCheck = gs.driftDetector.check();
+  if (driftCheck.drifted) {
+    const whisper = gs.driftDetector.generateWhisper(driftCheck);
+    if (whisper) {
       sendTrackedMessage(
         pi,
-        {
-          customType: "context",
-          display: true,
-          content: [{ type: "text", text: `[policy] ${bpeRec.message}` }],
-        },
+        { customType: "context", display: true, content: [{ type: "text", text: `[enforcement] ${whisper}` }] },
         { deliverAs: "steer", triggerTurn: false },
-        { type: "enforcement", source: "enforcement/policy" },
+        { type: "enforcement", source: "enforcement/drift" },
       );
     }
+    emitSignal(ctx, "topic-drift", "detected", driftCheck.severity === "strong" ? "warn" : "info", false, {
+      severity: driftCheck.severity,
+    });
+  }
 
-    // MARS
-    const { shouldAdvise: marsShouldAdvise } = await import("../../lib/mars-reflector.js");
-    const marsAdvice = marsShouldAdvise(ctx);
-    if (marsAdvice) {
-      const signalType: any =
-        marsAdvice.type === "tool_overuse"
-          ? "tool-use"
-          : marsAdvice.type === "error_recurrence"
-            ? "error"
-            : marsAdvice.type === "confidence_decline"
-              ? "reasoning"
-              : "stability";
-      const signalValue =
-        marsAdvice.type === "tool_overuse"
-          ? "overuse"
-          : marsAdvice.type === "error_recurrence"
-            ? "recurrence"
-            : marsAdvice.type === "confidence_decline"
-              ? "decline"
-              : "decline";
-      emitSignal(ctx, signalType, signalValue, marsAdvice.severity, false, {
-        type: marsAdvice.type,
-        message: marsAdvice.message.slice(0, 200),
-      });
-      sendTrackedMessage(
-        pi,
-        {
-          customType: "context",
-          display: true,
-          content: [{ type: "text", text: `[enforcement] ${marsAdvice.message}` }],
-        },
-        { deliverAs: "steer", triggerTurn: false },
-        { type: "enforcement", source: "enforcement/mars" },
-      );
-    }
+  if (prevRecType) {
+    const madeProgress = gs.totalToolCalls > (gs.toolCallsAtLastRecommendation ?? 0);
+    reportRecommendationOutcome(ctx, prevRecType, madeProgress);
+  }
 
-    // Dreamer
-    const { dream } = await import("../../lib/dreamer.js");
-    const dreamAdvice = dream(ctx, getState(ctx).toolLog);
-    if (dreamAdvice) {
-      emitSignal(ctx, "stability", "predicted-decline", "info", false, {
-        source: "dreamer",
-        message: dreamAdvice.message.slice(0, 200),
-      });
-      sendTrackedMessage(
-        pi,
-        {
-          customType: "context",
-          display: true,
-          content: [{ type: "text", text: `[enforcement] ${dreamAdvice.message}` }],
-        },
-        { deliverAs: "steer", triggerTurn: false },
-        { type: "enforcement", source: "enforcement/dreamer" },
-      );
-    }
+  let bpeRecType: string | null = null;
+  const bpeRec = getNextRecommendation(ctx);
+  if (bpeRec) {
+    bpeRecType = bpeRec.type;
+    gs.toolCallsAtLastRecommendation = gs.totalToolCalls;
+    sendTrackedMessage(
+      pi,
+      { customType: "context", display: true, content: [{ type: "text", text: `[policy] ${bpeRec.message}` }] },
+      { deliverAs: "steer", triggerTurn: false },
+      { type: "enforcement", source: "enforcement/policy" },
+    );
+  }
 
-    // Reflection gap signal
-    if (getState(ctx).toolsSinceReflection >= 8) {
-      emitSignal(ctx, "reflection", "absent", "info", false, {
-        toolsSince: getState(ctx).toolsSinceReflection,
-      });
-    }
-  });
+  const { shouldAdvise: marsShouldAdvise } = await import("../../lib/mars-reflector.js");
+  const marsAdvice = marsShouldAdvise(ctx);
+  if (marsAdvice) {
+    const signalType: any = marsAdvice.type === "tool_overuse" ? "tool-use" : marsAdvice.type === "error_recurrence" ? "error" : marsAdvice.type === "confidence_decline" ? "reasoning" : "stability";
+    const signalValue = marsAdvice.type === "tool_overuse" ? "overuse" : marsAdvice.type === "error_recurrence" ? "recurrence" : "decline";
+    emitSignal(ctx, signalType, signalValue, marsAdvice.severity, false, { type: marsAdvice.type, message: marsAdvice.message.slice(0, 200) });
+    sendTrackedMessage(
+      pi,
+      { customType: "context", display: true, content: [{ type: "text", text: `[enforcement] ${marsAdvice.message}` }] },
+      { deliverAs: "steer", triggerTurn: false },
+      { type: "enforcement", source: "enforcement/mars" },
+    );
+  }
+
+  const { dream } = await import("../../lib/dreamer.js");
+  const dreamAdvice = dream(ctx, gs.toolLog);
+  if (dreamAdvice) {
+    emitSignal(ctx, "stability", "predicted-decline", "info", false, { source: "dreamer", message: dreamAdvice.message.slice(0, 200) });
+    sendTrackedMessage(
+      pi,
+      { customType: "context", display: true, content: [{ type: "text", text: `[enforcement] ${dreamAdvice.message}` }] },
+      { deliverAs: "steer", triggerTurn: false },
+      { type: "enforcement", source: "enforcement/dreamer" },
+    );
+  }
+
+  if (gs.toolsSinceReflection >= 8) {
+    emitSignal(ctx, "reflection", "absent", "info", false, { toolsSince: gs.toolsSinceReflection });
+  }
+
+  return bpeRecType;
+}
 
   onEvent(pi, "session_shutdown", async (_event: any, ctx: ExtensionContext) => {
     const state = getState(ctx);

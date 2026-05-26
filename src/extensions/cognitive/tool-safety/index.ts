@@ -107,7 +107,7 @@ export default function toolSafetyExtension(pi: ExtensionAPI): void {
         }
 
         // Block the tool
-        return { blocked: true, reason: "classified as dangerous" };
+        return { block: true, reason: "classified as dangerous" };
       }
 
       log.debug(`[tool-safety] ALLOWED ${toolName} (tier: ${result.tier})`);

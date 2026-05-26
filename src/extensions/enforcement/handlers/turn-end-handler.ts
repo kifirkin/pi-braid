@@ -43,9 +43,13 @@ import {
 const log = createLogger("enforcement:turn-end");
 const ERROR_BURST_THRESHOLD = 3;
 
-export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeManager): void {
-  onEvent(pi, "turn_end", async (event: any, ctx: ExtensionContext) => {
-    if (!getState(ctx).enforcementActive) return;
+export async function dispatchTurnEndLoop(
+  pi: ExtensionAPI,
+  event: any,
+  ctx: ExtensionContext,
+  nudgeManager: NudgeManager,
+): Promise<void> {
+  if (!getState(ctx).enforcementActive) return;
 
     const actualTools: string[] = (event.toolResults || [])
       .map((r: any) => r.toolName)
@@ -229,6 +233,9 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
     if (suppressNudges) {
       getState(ctx).nudgeSuppressedCount = (getState(ctx).nudgeSuppressedCount || 0) + 1;
       recordNudgeSuppressed(ctx);
+      if (getState(ctx).nudgeSuppressedCount === 1) {
+        log.debug("Nudge suppression active — L2 signals will be collected but not delivered");
+      }
     }
 
     const sessionSignals: string[] = [];
@@ -453,5 +460,4 @@ export function registerTurnEndHandler(pi: ExtensionAPI, nudgeManager: NudgeMana
         }
       }
     }
-  });
 }

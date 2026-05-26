@@ -228,7 +228,7 @@ export default function pathSecurityExtension(pi: ExtensionAPI): void {
           `[path-security] BLOCKED ${toolName}: ${filePath} → ${resolved} (outside project)`,
         );
         await sendBlockWhisper(ctx, toolName, filePath, resolved, cwd);
-        return { blocked: true, reason: `path outside project: ${filePath}` };
+        return { block: true, reason: `path outside project: ${filePath}` };
       }
     }
 
@@ -274,7 +274,7 @@ export default function pathSecurityExtension(pi: ExtensionAPI): void {
           );
           await sendBashBlockWhisper(ctx, command, regexResult.violations, classification, cwd);
           return {
-            blocked: true,
+            block: true,
             reason: `classified as filesystem escape (${classification.tier})`,
           };
         }
@@ -287,7 +287,7 @@ export default function pathSecurityExtension(pi: ExtensionAPI): void {
         // Classifier threw — deny-by-default for suspicious commands
         log.error(`[path-security] Classifier failed, blocking: ${err}`);
         await sendBashBlockWhisper(ctx, command, regexResult.violations, null, cwd);
-        return { blocked: true, reason: "security classifier unavailable — blocked as precaution" };
+        return { block: true, reason: "security classifier unavailable — blocked as precaution" };
       }
     }
   });

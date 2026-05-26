@@ -39,13 +39,13 @@ console.log("\n[1] Sleep extension structure");
 }
 
 // ── [2] Module system registration ───────────────────────────
-console.log("\n[2] Module system registration");
+console.log("\n[2] Module system registration (sleep removed — was dead code)");
 {
   const fs = await import("fs");
   const defs = fs.readFileSync(`${ROOT}/src/modules/definitions.ts`, "utf8");
 
-  assert(defs.includes("sleepFn"), "sleepFn imported in definitions");
-  assert(defs.includes('{ name: "sleep", fn: sleepFn }'), "sleep listed in contrib module extensions");
+  assert(!defs.includes("sleepFn"), "sleepFn import removed from definitions");
+  assert(!defs.includes('{ name: "sleep", fn: sleepFn }'), "sleep extension unregistered from contrib module");
 }
 
 // ── [3] Tool-security: tool-security.ts was dead code (graveyard → deleted) ──

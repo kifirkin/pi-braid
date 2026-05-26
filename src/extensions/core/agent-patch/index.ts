@@ -25,13 +25,15 @@
  */
 
 import { Agent } from "@mariozechner/pi-agent-core";
+import { createRequire } from "node:module";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../../lib/logger.js";
 
 const log = createLogger("agent-patch");
+const _require = createRequire(import.meta.url);
 
 /** Minimum pi-agent-core version that includes the upstream fix (unreleased). */
-const MIN_FIXED_VERSION = [0, 0, 0] as const; // Set to e.g. [0, 71, 0] when upstream fix lands
+const MIN_FIXED_VERSION: readonly [number, number, number] = [0, 0, 0]; // Set to e.g. [0, 71, 0] when upstream fix lands
 
 /** Check if pi-agent-core version meets the minimum fixed version. */
 function isVersionAtLeast(current: string, min: readonly [number, number, number]): boolean {
@@ -59,13 +61,13 @@ function applyPatch(): boolean {
   try {
     // Version gate: skip if upstream already has the fix
     try {
-      const pkg = require("@mariozechner/pi-agent-core/package.json");
+      const pkg = _require("@mariozechner/pi-agent-core/package.json");
       if (isVersionAtLeast(pkg.version, MIN_FIXED_VERSION)) {
         log.info("pi-agent-core version includes the handleRunFailure fix — patch skipped");
         return true;
       }
     } catch {
-      // Can't read package.json — apply patch defensively
+      log.debug("Cannot read pi-agent-core package.json — applying patch defensively");
     }
 
     // handleRunFailure is `private` in TS type defs, but JavaScript doesn't

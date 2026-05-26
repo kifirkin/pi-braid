@@ -8,32 +8,60 @@
  * Instead of scattering `as never` casts across 20+ sites, use the helper
  * below. The permissive `on` type isolates the escape — all callers get
  * proper typing without individual casts.
+ *
+ * Key design: handler RETURN type is constrained to known outcome types
+ * (void, block object, systemPrompt object) instead of `any`. This catches
+ * accidental returns at compile time. Handler parameters remain permissive
+ * because pi's event shapes vary per event and duplicating all of them is
+ * too fragile.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-// Some pi event handlers return values (e.g. tool_call → ToolCallEventResult
-// with { block, reason }). Use a generic type so return values flow through.
+// Known valid synchronous return types for pi event handlers.
+type ValidReturns =
+  | void
+  | undefined
+  | { block?: boolean; reason?: string }
+  | { systemPrompt?: string }
+  | { skillPaths?: string[] };
 
-/** API with relaxed on() signature for custom event names. */
+// Accept sync, Promise-wrapped, or Promise<T | undefined> variants.
+// Conditional type via union: TypeScript checks each member.
+type OnEventReturn =
+  | ValidReturns
+  | Promise<ValidReturns>
+  | Promise<ValidReturns | undefined>;
+
+/** API with relaxed on() signature for custom event names, return-type constrained. */
 type PermissiveAPI = ExtensionAPI & {
-  on(event: string, handler: (...args: any[]) => any): void;
+  on(event: string, handler: (...args: any[]) => OnEventReturn): void;
 };
 
 /**
- * Register an event handler, bypassing pi's literal event name check.
- * The handler may return anything (some pi events expect results).
+ * Register an event handler with return-type safety.
+ *
+ * Return type is constrained to known pi event outcomes (void, block, systemPrompt).
+ * Handler parameters are permissive (pi's per-event parameter types vary).
  *
  * Usage:
- *   onEvent(pi, "tool_call", handler)  // instead of pi.on("tool_call" as never, handler)
+ *   onEvent(pi, "tool_call", handler)
  */
-export function onEvent(pi: ExtensionAPI, event: string, handler: (...args: any[]) => any): void {
+export function onEvent(
+  pi: ExtensionAPI,
+  event: string,
+  handler: (...args: any[]) => OnEventReturn,
+): void {
   (pi as PermissiveAPI).on(event, handler);
 }
 
 /**
  * Register a one-shot handler via pi.
  */
-export function onceEvent(pi: ExtensionAPI, event: string, handler: (...args: any[]) => any): void {
+export function onceEvent(
+  pi: ExtensionAPI,
+  event: string,
+  handler: (...args: any[]) => OnEventReturn,
+): void {
   (pi as PermissiveAPI).on(event, handler);
 }

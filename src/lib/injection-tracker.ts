@@ -5,6 +5,9 @@
  * (enforcement whispers, memory nudges, retry prompts, etc.), users should be
  * able to see what the model sees.
  *
+ * State is keyed by optional sessionId to prevent cross-session leakage.
+ * Defaults to a "default" bucket when no sessionId is provided.
+ *
  * Usage:
  *   import { trackInjection, getInjections, clearInjections } from "./injection-tracker.js";
  *   trackInjection({ type: "enforcement", source: "enforcement/whisper", content: "..." });
@@ -13,23 +16,37 @@
 export interface Injection {
   id: string;
   type: "enforcement" | "memory" | "retry" | "heartbeat" | "context" | "other";
-  source: string; // e.g., "enforcement/whisper", "context-manager/compaction"
-  content: string; // first 200 chars
+  source: string;
+  content: string;
   timestamp: number;
-  display: boolean; // true = visible to model
-  steer: boolean; // true = delivered as steer
-  turn: number; // approximate turn at injection
+  display: boolean;
+  steer: boolean;
+  turn: number;
 }
 
-interface InjectionTrackerState {
+interface InjectionBucket {
   injections: Injection[];
   maxInjections: number;
 }
 
-const _state: InjectionTrackerState = {
-  injections: [],
-  maxInjections: 200,
-};
+const _buckets = new Map<string, InjectionBucket>();
+
+let _activeSessionId: string | undefined;
+
+/**
+ * Set the active session ID. Call on session_start to scope injections.
+ */
+export function setActiveSessionId(id: string | undefined): void {
+  _activeSessionId = id;
+}
+
+function getBucket(): InjectionBucket {
+  const key = _activeSessionId ?? "default";
+  if (!_buckets.has(key)) {
+    _buckets.set(key, { injections: [], maxInjections: 200 });
+  }
+  return _buckets.get(key)!;
+}
 
 /**
  * Track a message injection. Call this from any extension that sends
@@ -42,29 +59,64 @@ export function trackInjection(params: {
   display?: boolean;
   steer?: boolean;
   turn?: number;
+  sessionId?: string;
 }): void {
   const { type, source, content, display = true, steer = false, turn = 0 } = params;
-  const injection: Injection = {
+  const bucket = getBucket();
+
+  // If explicit sessionId provided, switch bucket temporarily
+  if (params.sessionId && params.sessionId !== _activeSessionId) {
+    const prev = _activeSessionId;
+    _activeSessionId = params.sessionId;
+    try {
+      const altBucket = getBucket();
+      altBucket.injections.push(createInjection(type, source, content, display, steer, turn));
+      trimBucket(altBucket);
+      return;
+    } finally {
+      _activeSessionId = prev;
+    }
+  }
+
+  bucket.injections.push(createInjection(type, source, content, display, steer, turn));
+  trimBucket(bucket);
+}
+
+function createInjection(
+  type: Injection["type"],
+  source: string,
+  content: string,
+  display: boolean,
+  steer: boolean,
+  turn: number,
+): Injection {
+  return {
     id: `inj-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     type,
     source,
-    content: content.slice(0, 500), // cap at 500 chars
+    content: content.slice(0, 500),
     timestamp: Date.now(),
     display,
     steer,
     turn,
   };
-  _state.injections.push(injection);
-  if (_state.injections.length > _state.maxInjections) {
-    _state.injections = _state.injections.slice(-_state.maxInjections);
+}
+
+function trimBucket(bucket: InjectionBucket): void {
+  if (bucket.injections.length > bucket.maxInjections) {
+    bucket.injections = bucket.injections.slice(-bucket.maxInjections);
   }
 }
 
 /**
- * Get all injections tracked this session.
+ * Get all injections tracked for the active session.
  */
-export function getInjections(): Injection[] {
-  return [..._state.injections];
+export function getInjections(sessionId?: string): Injection[] {
+  if (sessionId) {
+    const bucket = _buckets.get(sessionId);
+    return bucket ? [...bucket.injections] : [];
+  }
+  return [...getBucket().injections];
 }
 
 /**
@@ -126,6 +178,42 @@ export function sendTrackedMessage(
 /**
  * Clear injection history (e.g., on session_start fresh).
  */
-export function clearInjections(): void {
-  _state.injections = [];
+export function clearInjections(sessionId?: string): void {
+  if (sessionId) {
+    _buckets.delete(sessionId);
+  } else {
+    const key = _activeSessionId ?? "default";
+    _buckets.delete(key);
+  }
+}
+
+/**
+ * Clear ALL injection buckets. Nuclear option for testing.
+ */
+export function clearAllBuckets(): void {
+  _buckets.clear();
+}
+
+/**
+ * Register session lifecycle handlers for injection tracking.
+ * Call from an extension that has access to pi events.
+ * Automatically scopes injections to the current session.
+ */
+export function registerInjectionTracker(pi: { on: (event: string, handler: (...args: any[]) => any) => void }): void {
+  pi.on("session_start", (_event: unknown, ctx: { sessionManager?: { getSessionFile?: () => string; getSessionId?: () => string } }) => {
+    let sessionId: string | undefined;
+    try {
+      const sm = ctx?.sessionManager;
+      if (sm) {
+        sessionId = sm.getSessionFile?.() ?? sm.getSessionId?.();
+      }
+    } catch {
+      // sessionManager getter may throw on stale ctx
+    }
+    setActiveSessionId(sessionId);
+  });
+
+  pi.on("session_shutdown", () => {
+    setActiveSessionId(undefined);
+  });
 }

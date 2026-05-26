@@ -73,7 +73,7 @@ export function sendEnforcementWhisper(
     },
     critical
       ? { deliverAs: "steer", triggerTurn: true }
-      : { deliverAs: "followUp", triggerTurn: false },
+      : { deliverAs: "steer", triggerTurn: false },
     { type: "enforcement", source: "enforcement/whisper" },
   );
 }

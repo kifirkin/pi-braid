@@ -1,0 +1,59 @@
+/**
+ * Session State — turn tracking, configuration, topic drift detector.
+ *
+ * Owns: current turn, turn history, original request, config,
+ *       enforcement active flag, verification judge state, drift detector.
+ */
+
+import { TopicDriftDetector } from "../../lib/topic-drift-detector.js";
+import { ENFORCEMENT_PARAMS } from "./state.js";
+import type { TurnState } from "./types.js";
+
+export interface SessionState {
+  currentTurn: number;
+  turnHistory: Map<number, TurnState>;
+  originalRequest: string | undefined;
+  lastUserMessage: string;
+
+  // Configuration
+  config: { [K in keyof typeof ENFORCEMENT_PARAMS]: (typeof ENFORCEMENT_PARAMS)[K] };
+  enforcementActive: boolean;
+
+  // Verification judge (runs in background)
+  verificationJudgeRunning: boolean;
+  lastVerificationJudgeTurn: number;
+  lastCalibrationWhisperTime: number;
+
+  // Topic drift
+  driftDetector: TopicDriftDetector;
+}
+
+export function createSessionState(): SessionState {
+  return {
+    currentTurn: 0,
+    turnHistory: new Map(),
+    originalRequest: undefined,
+    lastUserMessage: "",
+    config: { ...ENFORCEMENT_PARAMS },
+    enforcementActive: true,
+    verificationJudgeRunning: false,
+    lastVerificationJudgeTurn: 0,
+    lastCalibrationWhisperTime: 0,
+    driftDetector: new TopicDriftDetector({
+      topicThreshold: 0.15,
+      minTurns: 4,
+      enableStructural: true,
+    }),
+  };
+}
+
+export function resetSessionState(s: SessionState): void {
+  s.currentTurn = 0;
+  s.turnHistory.clear();
+  s.originalRequest = undefined;
+  s.lastUserMessage = "";
+  s.verificationJudgeRunning = false;
+  s.lastVerificationJudgeTurn = 0;
+  s.lastCalibrationWhisperTime = 0;
+  s.driftDetector?.reset();
+}
