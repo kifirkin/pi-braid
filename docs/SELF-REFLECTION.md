@@ -56,7 +56,7 @@ _Generated: 2026-05-03 - Infinite Self-Reflection Loop_
 | Missing Event       | Impact                                                                                 |
 | ------------------- | -------------------------------------------------------------------------------------- |
 | `tool_error`        | ✅ Wired — `ToolErrorEvent` in `event-bus.ts`, emitted from `error-capture`            |
-| `memory_evict`      | ✅ Wired — emitted from `compaction.ts`, consumed by `event-consumers.ts`, observatory |
+| `memory_evict`      | ⚠️ Emitted from `compaction.ts` — consumers removed (event-consumers.ts deleted in revival) |
 | `context_full`      | ✅ Proactive — growth-rate projection in `context-hygiene.ts` emits before full        |
 | `analytics_alert`   | ✅ Wired — `AnalyticsAlertEvent` in `event-bus.ts`, 3 emission sites in analytics      |
 | `experiment_result` | Still missing — no event for A/B test results landing                                  |
@@ -403,7 +403,7 @@ Phase 3 (fire-and-forget): analytics, heartbeat, latent-activator
 
 - `handlers/input-handler.ts`
 - `handlers/tool-call-handler.ts`
-- `handlers/turn-end-handler.ts`
+- `handlers/turn-end-handler.ts` (now registered via coordinator as `enforcement-loop`)
 - `handlers/session-start-handler.ts`
 - etc.
 

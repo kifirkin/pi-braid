@@ -1,12 +1,12 @@
 # Extension: enforcement
 
 **Status**: ✅ Working
-**Tests**: 17 enforcement tests (v0.13.0)
-**Version**: v0.13.0
+**Tests**: 29 enforcement tests (v0.2.6)
+**Version**: v0.2.6
 
 ## Purpose
 
-Smart nudge delivery with semantic interrupts. Delivers hints/warnings/feedback to the agent without flooding it. Three-tier signal architecture.
+Turn validation, tool tracking, and heuristic advice. Delivers hints/warnings/feedback to the agent via three-tier signal architecture. Entry point for Dreamer/MARS advice systems.
 
 ## Signal Architecture (L1-L3)
 
@@ -16,70 +16,69 @@ Smart nudge delivery with semantic interrupts. Delivers hints/warnings/feedback 
 | L2   | Structured hints | Session Signals nudge/turn  | Redundancy, verification hints           |
 | L3   | Critical         | Individual semantic message | Overflow failures, infrastructure errors |
 
-**Key rule**: Agent gets ONE [auto] message per turn max for non-critical signals. Critical signals (L3) get individual messages.
+**Key rule**: Agent gets ONE [enforcement] message per turn max for non-critical signals. Critical signals (L3) get individual messages.
 
 ## Modules
 
 | Module                         | Purpose                                            |
 | ------------------------------ | -------------------------------------------------- |
-| `detection/malformed.ts`       | Detect malformed tool calls                        |
-| `detection/verification.ts`    | Detect missing verification                        |
+| `handler-registry.ts`          | All pi.on() registrations, coordinator dispatch    |
 | `handlers/blocking.ts`         | Block dangerous commands                           |
 | `handlers/tool-tracker.ts`     | Track bash commands, tool inputs                   |
 | `handlers/message-analysis.ts` | Analyze message structure                          |
 | `handlers/turn-analysis.ts`    | Detect redundancy, critical signals, orphan chains |
 | `handlers/orphan-chains.ts`    | Detect orphan tool call chains                     |
-| `handlers/routing-handler.ts`  | Detect intent, routing mismatches                  |
-| `judge.ts`                     | Core judge analysis logic                          |
-| `nudge-manager.ts`             | Nudge frequency management                         |
-| `verification-judge.ts`        | Verification-focused judge                         |
-| `whisper.ts`                   | Whisper queue and delivery                         |
+| `handlers/turn-end-handler.ts` | Main enforcement loop (error bursts, context, L2)  |
+| `verification-judge.ts`        | LLM-based work quality audit                       |
+| `whisper.ts`                   | Message delivery via sendTrackedMessage            |
 | `validation.ts`                | Turn and tool validation                           |
-| `state.ts`                     | Extension state                                    |
+| `state.ts`                     | Composed state (7 sub-states)                      |
 | `types.ts`                     | Shared types                                       |
+| `signals.ts`                   | Contrast mode detection                            |
+| `similarity.ts`                | Text similarity (redundancy detection)             |
+| `session-state.ts`             | Session turn tracking                              |
+| `tool-tracking-state.ts`       | Tool usage + calibration                           |
+| `error-tracking-state.ts`      | Error bursts + validation failures                 |
+| `memory-hygiene-state.ts`      | Memory tool nudges                                 |
+| `scratchpad-state.ts`          | Scratchpad nudges                                  |
+| `context-hygiene-state.ts`     | Context usage + overflow                           |
+| `thought-chain-state.ts`       | think() tracking + reflection gaps                 |
+| `verification-judge-state.ts`  | Judge/calibration state                            |
 
-## Events Handled (11)
+## Events Handled (via handler-registry.ts)
 
-| Event                   | Handler                             |
-| ----------------------- | ----------------------------------- |
-| `tool_execution_start`  | Tool input tracking                 |
-| `tool_execution_end`    | Result analysis, blocking check     |
-| `before_agent_start`    | Belief store init                   |
-| `agent_end`             | Turn analysis, evidence processing  |
-| `context_compact_start` | Pre-compaction evidence flush       |
-| `context_compact_end`   | Post-compaction re-registration     |
-| `context_prune`         | Pruning evidence flush              |
-| `before_tool_execution` | Blocking check, malformed detection |
-| `before_tree`           | Before-tree belief update           |
-| `message_end`           | Redundancy detection                |
-| `session_shutdown`      | Cleanup                             |
+| Event                      | Handler                        |
+| -------------------------- | ------------------------------ |
+| `input`                    | Language detection             |
+| `session_start`            | Drift detector init            |
+| `tool_call`                | Tool tracking + blocking       |
+| `message_end`              | Conflict + analysis + judge    |
+| `tool_result`              | Calibration                    |
+| `turn_end`                 | Coordinator dispatch (4 handlers) |
+| `session_compact`          | Hygiene reset + learnings      |
+| `auto_retry_end`           | Error classification           |
+| `session_shutdown`         | State reset                    |
 
 ## Key Features
 
+- **turn_end coordinator**: 4 registered sub-handlers (analysis, loop, claim-tracker, MARS/Dreamer)
+- **Advice tracker**: Dreamer/MARS predictions evaluated after 10 turns; thresholds adjust dynamically
+- **Claim tracker**: Registered as separate handler via coordinator (extracted from enforcement-loop)
 - **Evidence pool integration**: Conflicts from code/command changes tracked via `addEvidence`
-- **Conflict QA**: Uses `conflict-qa` lib for structured conflict resolution questions
 - **Belief policy engine**: Emits structured enforcement signals via `emitSignal`
-- **MARS reflector**: Uses `mars-reflector` for multi-anchor reflection signals
-- **Error classification**: Uses `error-classifier` lib for error categorization
-- **Nudge manager**: Prevents nudge fatigue by tracking nudge frequency per category
-- **Verification judge**: Specialized judge for missing verification detection
 - **Language hints**: Supports multilingual agents with `language-hint.ts` lib
 
 ## State
 
-`enforcement` state (`getState()`):
-
-```typescript
-{
-  signalsThisTurn: number,
-  lastRedundancyWarning: number | null,
-  pendingBlockAction: BlockAction | null,
-  pendingWhispers: Whisper[],
-  blockedTurn: boolean,
-  // ... see state.ts
-}
-```
+Composed from 7 focused sub-state interfaces via spread composition:
+- ToolTrackingState (tool usage, calibration)
+- ErrorTrackingState (error bursts, cooldowns)
+- SessionState (turn tracking, drift detector)
+- MemoryHygieneState (memory tool nudges)
+- ScratchpadState (scratchpad nudges)
+- ContextHygieneState (context usage, overflow)
+- ThoughtChainState (think() tracking, reflection gaps)
 
 ## Tools
 
-No tools registered directly — enforces via events and signal emission.
+No tools registered directly — enforces via events and coordinator-registered turn_end handlers.

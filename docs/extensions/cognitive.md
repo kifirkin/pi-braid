@@ -27,7 +27,7 @@ Total: 28 `.ts` files across 6 sub-extensions.
 
 **Nudge patterns:** repetition, drift, efficiency, tool_use, stakes, calibration — each with 3 urgency levels.
 
-**Judge scoring:** Score-based contradiction detection (replaced severity labels). Positive reinforcement when all 7 dimensions ≥90. Severity labels never exposed in nudges (compliance theater trigger per 2604.15224).
+**Verification:** LLM-based work quality audit at strategic checkpoints (pre-finalize, verification gap). Uses verification-judge.ts (separate from the deleted main judge.ts).
 
 ## See Also
 

@@ -1,6 +1,7 @@
 # pi-braid Architecture Review — Systematic Top-Down Analysis
 
 **Date**: 2026-05-08
+**Note**: Describes pre-revival codebase. See REVIVAL-PLAN.md for current state after ~2500L dead code removal, nudge module merge, BehavioralState decomposition, turn-end coordinator, and 63/63 test pass.
 **Method**: Entry-point → modules → extensions → lib → disabled modules
 **Framework**: Each piece gets 3 questions — (1) fits package subject? (2) well-architected/wired? (3) unfinished work?
 
@@ -294,7 +295,7 @@
 ### `analytics` — Metrics Collection
 
 **Files**: index.ts + core.ts, ab-variant.ts, format.ts
-**Events**: 4 | **Tools**: 9 (get-session-metrics, get-tool-reliability, get-ab-results, get-tool-addiction, error_list, error_get, error_clear, error_stats, hidden-messages)
+**Events**: 4 | **Tools**: 9 (get-session-metrics, get-tool-reliability, get-ab-results, get-tool-addiction, error_list, error_get, error_clear, error_stats)
 
 **1. Fits package subject?** ✅ Yes — measurement infrastructure.
 

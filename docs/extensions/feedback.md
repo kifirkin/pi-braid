@@ -1,6 +1,7 @@
-# Extension: feedback
+# Extension: feedback (REMOVED in v0.2.6)
 
-**Status**: ✅ Working
+**Status**: ❌ Removed — merged into enforcement turn_end dispatcher (was duplicating scratchpad/think-tool nudges).
+See docs/extensions/enforcement.md for the replacement.
 **Tests**: None (hard to unit test — UI component)
 **Version**: v0.9.x
 
