@@ -2,7 +2,7 @@
  * Analytics — core functions: metrics, sequences, persistence.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, promises as fs } from "node:fs";
 import { METRICS_FILE, METRICS_DIR } from "../../../lib/braid-paths.js";
 import { createLogger } from "../../../lib/logger.js";
 const log = createLogger("analytics:core");
@@ -116,11 +116,11 @@ export function flushAnalytics(s: AnalyticsState, taskCompleted = false): void {
     outcome: computeSessionOutcome(s),
   };
 
-  try {
-    writeFileSync(s.storagePath, `${JSON.stringify(entry)}\n`, { flag: "a" });
-  } catch (err) {
-    log.warn(`Could not persist session metric: ${err}`);
-  }
+  // Async append to avoid blocking the event loop on every analytics write.
+  // JSONL format is append-only so there's no read-modify-write race.
+  fs.appendFile(s.storagePath, `${JSON.stringify(entry)}\n`).catch((err) =>
+    log.warn(`Could not persist session metric: ${err}`),
+  );
 }
 
 export function loadAnalytics(storagePath?: string): AnalyticsSummary {
