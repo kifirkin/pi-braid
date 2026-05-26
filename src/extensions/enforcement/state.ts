@@ -117,7 +117,10 @@ export interface EnforcementState
 // ── State factory (composed from sub-states) ───────────────────────────────
 
 export function createState(): EnforcementState {
-  const state = {
+  // NOTE: No `as EnforcementState` cast here. If TypeScript reports an error,
+  // it means two sub-states have overlapping keys with incompatible types —
+  // which is a real bug the cast was hiding. Fix the sub-states, don't add the cast back.
+  const state: EnforcementState = {
     ...createToolTrackingState(),
     ...createErrorTrackingState(),
     ...createSessionState(),
@@ -125,7 +128,7 @@ export function createState(): EnforcementState {
     ...createScratchpadState(),
     ...createContextHygieneState(),
     ...createThoughtChainState(),
-  } as EnforcementState;
+  };
   return state;
 }
 
