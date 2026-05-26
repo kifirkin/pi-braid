@@ -706,6 +706,42 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     // 6. L1 environmental state
     parts.push(formatL1Environment(l1Env));
 
+    // 6b. OpenSpec spec context (inject SHALL/MUST requirements from active specs)
+    try {
+      const { join } = await import("node:path");
+      const { readdirSync, existsSync, readFileSync } = await import("node:fs");
+      const specDir = join(cwd, "openspec", "specs");
+      if (existsSync(specDir)) {
+        const specParts: string[] = [];
+        const domains = readdirSync(specDir, { withFileTypes: true });
+        let count = 0;
+        for (const domain of domains) {
+          if (!domain.isDirectory() || count >= 3) continue;
+          const specPath = join(specDir, domain.name, "spec.md");
+          if (!existsSync(specPath)) continue;
+          const content = readFileSync(specPath, "utf-8");
+          // Extract only SHALL/MUST/SHOULD requirements
+          const reqs: string[] = [];
+          for (const line of content.split("\n")) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith("### Requirement:") ||
+                /\b(SHALL|MUST|SHOULD)\b/.test(trimmed)) {
+              reqs.push(trimmed.replace(/^[#\s]+/, ""));
+            }
+          }
+          if (reqs.length > 0) {
+            specParts.push(`${domain.name}:\n${reqs.map((r) => `  ${r}`).join("\n")}`);
+            count++;
+          }
+        }
+        if (specParts.length > 0) {
+          parts.push(`## Active Specs\n\n${specParts.join("\n\n")}\n\nWhen editing, check openspec/specs/ for relevant requirements and update delta specs if behavior changes.`);
+        }
+      }
+    } catch {
+      // Spec dir missing or unreadable — skip silently
+    }
+
     // 7. Active contrast mode (truthfulness guardrails)
     parts.push(...formatContrastSection(ps.activeContrastMode));
 

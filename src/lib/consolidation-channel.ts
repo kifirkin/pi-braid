@@ -11,8 +11,8 @@
 
 import { createLogger } from "./logger.js";
 import { CONSOLIDATED_HINTS_FILE } from "./braid-paths.js";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 const log = createLogger("consolidation");
 
@@ -373,4 +373,64 @@ export function processConsolidationTick(): void {
   }
 
   queue.complete(candidate);
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// OpenSpec archive ingestion (Phase 3)
+// ═════════════════════════════════════════════════════════════════════════
+
+export interface ArchiveCandidate {
+  changeName: string;
+  archivePath: string;
+  hasProposal: boolean;
+  hasDesign: boolean;
+  specCount: number;
+}
+
+/**
+ * Scan openspec/changes/archive/ for new archives not yet ingested.
+ * Returns candidates for ingestion into the consolidation queue.
+ */
+export function scanArchives(projectRoot: string): ArchiveCandidate[] {
+  const archiveDir = join(projectRoot, "openspec", "changes", "archive");
+  if (!existsSync(archiveDir)) return [];
+
+  const candidates: ArchiveCandidate[] = [];
+  try {
+    const entries = readdirSync(archiveDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const changePath = join(archiveDir, entry.name);
+      candidates.push({
+        changeName: entry.name,
+        archivePath: changePath,
+        hasProposal: existsSync(join(changePath, "proposal.md")),
+        hasDesign: existsSync(join(changePath, "design.md")),
+        specCount: _countSpecs(changePath),
+      });
+    }
+  } catch (err) {
+    log.warn(`Failed to scan archives: ${(err as Error).message}`);
+  }
+
+  return candidates;
+}
+
+function _countSpecs(dir: string): number {
+  const specsDir = join(dir, "specs");
+  if (!existsSync(specsDir)) return 0;
+  let count = 0;
+  try {
+    const walk = (d: string) => {
+      const entries = readdirSync(d, { withFileTypes: true });
+      for (const e of entries) {
+        if (e.isDirectory()) walk(join(d, e.name));
+        else if (e.name.endsWith(".md")) count++;
+      }
+    };
+    walk(specsDir);
+  } catch {
+    // skip
+  }
+  return count;
 }

@@ -459,6 +459,41 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
     }
   });
 
+  // Spec verification — checks if edited files have spec coverage
+  registerTurnEndHandler("spec-verification", 30, async (_event, ctx) => {
+    if (!getState(ctx).enforcementActive) return;
+    try {
+      const { loadSpecs, checkSpecCoverage, getVerifierState } =
+        await import("../../lib/bidirectional-verifier.js");
+      const specs = loadSpecs(ctx);
+      if (specs.length === 0) return;
+      const state = getVerifierState(ctx);
+      const editedFiles = [...state.editedFiles];
+      if (editedFiles.length === 0) return;
+      const results = checkSpecCoverage(editedFiles, specs);
+      const violations = results.filter((r) => !r.covered);
+      if (violations.length > 0) {
+        const msg = `[spec] ${violations.length} spec requirement(s) affected by recent edits — verify openspec/specs/ remains accurate:\n${violations.map((v) => `  - ${v.strength}: ${v.requirement}`).join("\n")}`;
+        sendEnforcementWhisper(pi, ctx, msg);
+      }
+    } catch {
+      // Non-fatal: spec verification is best-effort
+    }
+  });
+
+  // Archive ingestion — scans openspec/changes/archive/ for new archives
+  registerTurnEndHandler("archive-ingestion", 10, async (_event, ctx) => {
+    try {
+      const { scanArchives } = await import("../../lib/consolidation-channel.js");
+      const archives = scanArchives(ctx.cwd);
+      if (archives.length > 0) {
+        log.info(`[archive-ingestion] Found ${archives.length} archive(s) to process`);
+      }
+    } catch {
+      // Non-fatal: archive scanning is best-effort
+    }
+  });
+
   // Single pi.on("turn_end") entry point — dispatches to all registered handlers
   onEvent(pi, "turn_end", async (event: any, ctx: ExtensionContext) => {
     const { dispatchTurnEnd } = await import("../../lib/turn-end-coordinator.js");
