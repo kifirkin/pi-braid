@@ -212,59 +212,12 @@ export function scoreEpisode(episode: {
   };
 }
 
-/**
- * Select the best episodes for consolidation from a list.
- */
-export function selectCandidates(
-  episodes: Array<{
-    id: string;
-    task: string;
-    outcome: "success" | "failure" | "partial";
-    project?: string;
-    quality?: number;
-    toolSequence?: string[];
-    strategicSOP?: string;
-    functionalSOP?: string[];
-  }>,
-  config: ConsolidationConfig = DEFAULT_CONSOLIDATION_CONFIG,
-): ConsolidationCandidate[] {
-  return episodes
-    .map(scoreEpisode)
-    .filter(
-      (c) =>
-        c.quality >= config.minQuality &&
-        c.valueScore >= config.minValueScore &&
-        c.confidenceScore >= config.minConfidence,
-    )
-    .sort((a, b) => b.consolidationScore - a.consolidationScore)
-    .slice(0, config.maxCandidatesPerTick);
-}
-
-/**
- * Get the best episode for consolidation from a list.
- */
-export function selectBestCandidate(
-  episodes: Array<{
-    id: string;
-    task: string;
-    outcome: "success" | "failure" | "partial";
-    project?: string;
-    quality?: number;
-    toolSequence?: string[];
-    strategicSOP?: string;
-    functionalSOP?: string[];
-  }>,
-  config?: ConsolidationConfig,
-): ConsolidationCandidate | null {
-  const candidates = selectCandidates(episodes, config);
-  return candidates[0] ?? null;
-}
-
 // ── Global Queue Instance ──────────────────────────────────────────────────
 
 const _queue = new ConsolidationQueue();
 
-export function getConsolidationQueue(): ConsolidationQueue {
+/** @internal Used by processConsolidationTick */
+function getConsolidationQueue(): ConsolidationQueue {
   return _queue;
 }
 
@@ -430,66 +383,4 @@ export function processConsolidationTick(): void {
   queue.complete(candidate);
 }
 
-/**
- * Add episodes to the consolidation queue.
- */
-export function queueForConsolidation(
-  episodes: Array<{
-    id: string;
-    task: string;
-    outcome: "success" | "failure" | "partial";
-    quality?: number;
-    toolSequence?: string[];
-    strategicSOP?: string;
-    functionalSOP?: string[];
-  }>,
-): { enqueued: number; skipped: number } {
-  const config = DEFAULT_CONSOLIDATION_CONFIG;
-  const candidates = selectCandidates(episodes, config);
-  const queue = getConsolidationQueue();
-  let enqueued = 0;
 
-  for (const candidate of candidates) {
-    if (queue.enqueue(candidate)) enqueued++;
-  }
-
-  log.info(
-    `[consolidation] Queued ${enqueued}/${candidates.length} ` + `(queue size: ${queue.size})`,
-  );
-
-  return { enqueued, skipped: candidates.length - enqueued };
-}
-
-// ── Diagnostics ────────────────────────────────────────────────────────────
-
-/**
- * Get consolidation channel diagnostics.
- */
-export function getConsolidationStatus(): string {
-  const queue = getConsolidationQueue();
-  const lines: string[] = [];
-
-  lines.push("=== Consolidation Channel ===");
-  lines.push(`Enabled: ${DEFAULT_CONSOLIDATION_CONFIG.enabled}`);
-  lines.push(`Queue: ${queue.size} pending`);
-  lines.push(`Completed: ${queue.completedCount}`);
-  lines.push(
-    `Config: minQuality=${DEFAULT_CONSOLIDATION_CONFIG.minQuality}, ` +
-      `minValue=${DEFAULT_CONSOLIDATION_CONFIG.minValueScore}, ` +
-      `minConfidence=${DEFAULT_CONSOLIDATION_CONFIG.minConfidence}`,
-  );
-  lines.push(`Interval: every ${DEFAULT_CONSOLIDATION_CONFIG.consolidationInterval} turns`);
-
-  if (queue.size > 0) {
-    lines.push("");
-    lines.push("Top candidates:");
-    for (const c of queue.all.slice(0, 3)) {
-      lines.push(
-        `  ${c.task}: score=${c.consolidationScore.toFixed(2)} ` +
-          `(value=${c.valueScore.toFixed(2)}, conf=${c.confidenceScore.toFixed(2)})`,
-      );
-    }
-  }
-
-  return lines.join("\n");
-}

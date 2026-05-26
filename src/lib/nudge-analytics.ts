@@ -33,7 +33,7 @@ let _lastNudgeState: NudgeState | null = null;
 
 function getNudgeState(ctx?: ExtensionContext): NudgeState {
   if (ctx) {
-    const s = getExtensionState(ctx, "analytics", createNudgeState);
+    const s = getExtensionState(ctx, "nudge-analytics", createNudgeState);
     _lastNudgeState = s;
     return s;
   }

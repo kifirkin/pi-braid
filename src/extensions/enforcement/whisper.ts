@@ -1,30 +1,24 @@
+/**
+ * Enforcement Whisper — direct message delivery.
+ *
+ * REMOVED: queueEnforcementWhisper / queueBlockAction / getPendingBlockAction /
+ * clearPendingBlockAction — all dead code. queueEnforcementWhisper accumulated
+ * messages in a process-global _default object that was never flushed.
+ * queueBlockAction had zero callers. Callers now use sendEnforcementWhisper
+ * directly.
+ *
+ * See git tag before-fixes for the removed code.
+ */
+
 import { createLogger } from "../../lib/logger.js";
 import { eventBus } from "../../lib/event-bus.js";
-
-const log = createLogger("enforcement");
-
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-
-import { getExtensionState } from "../../lib/extension-state.js";
 import { sendTrackedMessage } from "../../lib/injection-tracker.js";
 import { recordNudgeSent } from "../../lib/nudge-analytics.js";
 import { areCognitiveNudgesDisabled } from "../../lib/braid-settings.js";
 
-interface WhisperState {
-  pendingWhisper: string | null;
-  pendingBlockAction: { toolName: string; reason: string } | null;
-}
-
-function getWhisperState(ctx?: ExtensionContext): WhisperState {
-  if (ctx)
-    return getExtensionState(ctx, "enforcement-whisper", () => ({
-      pendingWhisper: null,
-      pendingBlockAction: null,
-    }));
-  return _default;
-}
-const _default: WhisperState = { pendingWhisper: null, pendingBlockAction: null };
+const log = createLogger("enforcement");
 
 /**
  * Send an enforcement whisper immediately using sendTrackedMessage().
@@ -36,8 +30,6 @@ const _default: WhisperState = { pendingWhisper: null, pendingBlockAction: null 
  *             triggerTurn: true ensures agent processes immediately
  *
  * Nudges are suppressed when braid.suppressNudges=true in settings.json.
- * Note: This is SEPARATE from disableConfirmations which only affects
- * blocking Y/n confirmation dialogs.
  */
 export function sendEnforcementWhisper(
   pi: ExtensionAPI,
@@ -84,43 +76,4 @@ export function sendEnforcementWhisper(
       : { deliverAs: "followUp", triggerTurn: false },
     { type: "enforcement", source: "enforcement/whisper" },
   );
-}
-
-/**
- * Queue an enforcement whisper to be injected on the next agent turn.
- * DEPRECATED: Now sends immediately via sendEnforcementWhisper.
- * Kept for backward compatibility with block actions.
- */
-export function queueEnforcementWhisper(message: string): void {
-  // No longer append - just store single message for block actions
-  const s = getWhisperState();
-  if (s.pendingWhisper) {
-    s.pendingWhisper = `${s.pendingWhisper}\n\n${message}`;
-  } else {
-    s.pendingWhisper = message;
-  }
-}
-
-/**
- * Queue a blocking action - the tool will be blocked AND the agent
- * will receive a whisper explaining why.
- */
-export function queueBlockAction(toolName: string, reason: string): void {
-  const s = getWhisperState();
-  s.pendingBlockAction = { toolName, reason };
-  queueEnforcementWhisper(`BLOCKED: ${reason}\n\nConsider addressing this before continuing.`);
-}
-
-/**
- * Get the pending block action (called from index.ts event handlers).
- */
-export function getPendingBlockAction(): { toolName: string; reason: string } | null {
-  return getWhisperState().pendingBlockAction;
-}
-
-/**
- * Clear the pending block action after it's been sent.
- */
-export function clearPendingBlockAction(): void {
-  getWhisperState().pendingBlockAction = null;
 }

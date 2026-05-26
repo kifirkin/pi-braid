@@ -296,7 +296,7 @@ async function processMessage(
     const timeoutMs = state.config.timeoutSeconds * 1000;
     const outputTokens = Math.min(Math.max(500, Math.floor(original.length / 4)), 4096);
 
-    const result = await callLlm(model as Model<Api>, apiKey, SYSTEM_PROMPT, original, {
+    const result = await callLlm(model as Model<Api>, apiKey, SYSTEM_PROMPT, `<user_message>${original}</user_message>`, {
       maxTokens: outputTokens,
       temperature: 0.1,
       timeoutMs,
@@ -402,7 +402,11 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
 
     if (original.length < state.config.minLength) {
       state.skippedCount++;
-      return { action: "continue" };
+      ctx.ui.setStatus("input-polisher", "✓ Short message — press Enter to send");
+      ctx.ui.setEditorText(original);
+      state.polishingExhausted = true;
+      state.polishedText = original;
+      return { action: "handled" };
     }
 
     // Polishing already done — user saw diff, now pressing Enter to send
@@ -441,8 +445,15 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
       state.skippedCount++;
       state.roastStats.skippedLongText++;
       log.debug(`Skipped long text (${newlineCount} newlines > ${state.config.maxNewlines} max)`);
-      return { action: "continue" };
+      ctx.ui.setStatus("input-polisher", "✓ Text too long to polish — press Enter to send");
+      ctx.ui.setEditorText(original);
+      state.polishingExhausted = true;
+      state.polishedText = original;
+      return { action: "handled" };
     }
+
+    // Show loading before classification
+    ctx.ui.setStatus("input-polisher", "⏳ Classifying input...");
 
     // Roast filter: classify input with utility model (or heuristic fallback)
     const roast = await roastInput(original, ctx);
@@ -461,7 +472,12 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
     if (isCodeRequest) state.roastStats.antiSlopTriggered++;
     if (roast.isCode || roast.isWellWritten) {
       state.skippedCount++;
-      return { action: "continue" };
+      ctx.ui.setStatus("input-polisher", "✓ Text already clean — press Enter to send");
+      ctx.ui.notify("Text was not modified. Press Enter to send, or edit and press Enter again.", "info");
+      ctx.ui.setEditorText(original);
+      state.polishingExhausted = true;
+      state.polishedText = original;
+      return { action: "handled" };
     }
 
     if (state.isProcessing) {

@@ -47,12 +47,7 @@ import { registerTurnEndHandler } from "./handlers/turn-end-handler.js";
 import { type NudgeManager } from "./nudge-manager.js";
 
 import { validateToolForPhase } from "./validation.js";
-import {
-  clearPendingBlockAction,
-  getPendingBlockAction,
-  queueEnforcementWhisper,
-  sendEnforcementWhisper,
-} from "./whisper.js";
+import { sendEnforcementWhisper } from "./whisper.js";
 import { knownFiles } from "./similarity.js";
 import { enforcementSignals, determineContrastMode } from "./signals.js";
 import { getState, ENFORCEMENT_PARAMS, recordThink, startJudge, completeJudge } from "./state.js";
@@ -122,23 +117,6 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
       }
 
       getState(ctx).currentTurn++;
-
-      // Block action must surface via system prompt
-      const pendingBlock = getPendingBlockAction();
-      clearPendingBlockAction();
-
-      if (pendingBlock) {
-        sendTrackedMessage(
-          pi,
-          {
-            customType: "context",
-            display: true,
-            content: [{ type: "text", text: `[enforcement] BLOCKED: ${pendingBlock.reason}` }],
-          },
-          { deliverAs: "steer", triggerTurn: true },
-          { type: "enforcement", source: "enforcement/block" },
-        );
-      }
     },
   );
 
@@ -212,7 +190,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
       const now = Date.now();
       if (now - getState(ctx).lastNudgeTime > getState(ctx).nudgeCooldownMs) {
         getState(ctx).lastNudgeTime = now;
-        queueEnforcementWhisper(message);
+        sendEnforcementWhisper(pi, ctx, message);
       }
     }
 
@@ -229,7 +207,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
       const newConflicts = detectConflicts(ctx);
       if (newConflicts.length > 0) {
         const msg = formatConflictMessage(newConflicts[0]);
-        queueEnforcementWhisper(msg);
+        sendEnforcementWhisper(pi, ctx, msg);
         emitSignal(
           ctx,
           "conflict",
@@ -245,7 +223,9 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
         emitSignal(ctx, "conflict", "unresolved", "info", false, { count: unresolved.length });
       }
       if (unresolved.length > 0 && unresolved.length % 5 === 0) {
-        queueEnforcementWhisper(
+        sendEnforcementWhisper(
+          pi,
+          ctx,
           `[conflict] ${unresolved.length} unresolved source conflicts. ` +
             `Consider resolving: memory_store content with conflict_verified tag.`,
         );
@@ -253,7 +233,7 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
 
       const newQAs = processConflictQAs(ctx);
       for (const qa of newQAs) {
-        queueEnforcementWhisper(formatConflictWhisper(qa));
+        sendEnforcementWhisper(pi, ctx, formatConflictWhisper(qa));
       }
     }
 

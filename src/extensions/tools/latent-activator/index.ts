@@ -448,15 +448,19 @@ function inferBehaviorsFromTask(task: string): AtomicBehavior[] {
   return [...new Set(inferred)];
 }
 
+const ACTIVATE_BEHAVIORS = Object.keys(LATENT_SIGNALS);
+
 const activateSchema = Type.Object({
   behavior: Type.String({
-    description: "Behavior to activate",
+    enum: ACTIVATE_BEHAVIORS,
+    description: `Behavior to activate. Available: ${ACTIVATE_BEHAVIORS.join(", ")}`,
   }),
 });
 
 const deactivateSchema = Type.Object({
   behavior: Type.String({
-    description: "Behavior to deactivate",
+    enum: ACTIVATE_BEHAVIORS,
+    description: `Behavior to deactivate. Available: ${ACTIVATE_BEHAVIORS.join(", ")}`,
   }),
 });
 
@@ -485,7 +489,7 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
     name: "activate_behavior",
     label: "Activate Behavior",
     description:
-      "Activate a behavior pattern like debugging or refactoring — use when the task matches that problem-solving mode. Behaviors shift how you approach problems.",
+      "Activate a behavior pattern (e.g., meticulous, debugger, explorer, architectural). Behaviors shift how you approach problems. Use get_active_behaviors to see current state; use activate_mix for predefined scenario combos like 'refactoring' or 'debugging'.",
     promptSnippet: "activate behavior patterns for different problem-solving modes",
     parameters: activateSchema,
     execute: async (_toolCallId, params: any) => {
@@ -500,8 +504,8 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
           };
         }
         return {
-          content: [{ type: "text", text: `Unknown behavior: ${behavior}` }],
-          details: { behavior, active: getActiveBehaviors() },
+          content: [{ type: "text", text: `Unknown behavior: "${behavior}". Available behaviors: ${ACTIVATE_BEHAVIORS.join(", ")}. For predefined scenario combos (e.g., "refactoring", "debugging"), use activate_mix instead.` }],
+          details: { behavior, available: ACTIVATE_BEHAVIORS, active: getActiveBehaviors() },
         };
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -518,7 +522,7 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
     name: "deactivate_behavior",
     label: "Deactivate Behavior",
     description:
-      "Deactivate a behavior pattern — use when it is no longer relevant to the current task.",
+      "Deactivate a behavior pattern — use when it is no longer relevant to the current task. Use get_active_behaviors to see which behaviors are active.",
     promptSnippet: "deactivate a behavior pattern when no longer relevant",
     parameters: deactivateSchema,
     execute: async (_toolCallId, params: any) => {

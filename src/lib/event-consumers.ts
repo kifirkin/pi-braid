@@ -35,10 +35,6 @@ export function onEnforcementViolation(event: {
   );
 }
 
-export function getViolationCount(): number {
-  return _violationCount;
-}
-
 // ── Handler: memory_evict → trigger consolidation queue ──────────────────────
 
 let _evictCount = 0;
@@ -46,10 +42,6 @@ let _evictCount = 0;
 export function onMemoryEvict(event: { reason: string; count: number }): void {
   _evictCount++;
   log.info(`[event] Memory evict #${_evictCount}: ${event.reason} (${event.count} messages)`);
-}
-
-export function getEvictCount(): number {
-  return _evictCount;
 }
 
 // ── Handler: context_full → trigger compaction ───────────────────────────────
@@ -70,18 +62,6 @@ export function onContextFull(event: { usagePercent: number }): void {
   );
 }
 
-export function getContextFullWarnings(): number {
-  return _contextFullWarnings;
-}
-
-/**
- * Get the peak usage % seen. Used by compaction to determine
- * compression aggressiveness — higher peak → more aggressive.
- */
-export function getPeakUsagePercent(): number {
-  return _peakUsagePercent;
-}
-
 // ── Handler: turn_complete → track module health ────────────────────────────
 
 let _turnCount = 0;
@@ -90,20 +70,12 @@ export function onTurnComplete(event: { turn: number; duration: number }): void 
   _turnCount = event.turn;
 }
 
-export function getLastTurn(): number {
-  return _turnCount;
-}
-
 // ── Handler: heartbeat_tick → track tick stats ──────────────────────────────
 
 let _tickCount = 0;
 
 export function onHeartbeatTick(event: { turn: number; tickCount: number }): void {
   _tickCount = event.tickCount;
-}
-
-export function getTickCount(): number {
-  return _tickCount;
 }
 
 // ── Handler: analytics_alert → structured alert channel ─────────────────────
@@ -134,14 +106,6 @@ export function onAnalyticsAlert(event: {
     `[event] Analytics alert #${_alertCount}: [${event.severity}] ` +
       `${event.alertType}: ${event.message.slice(0, 80)}`,
   );
-}
-
-export function getAlertCount(): number {
-  return _alertCount;
-}
-
-export function getRecentAlerts() {
-  return [..._recentAlerts];
 }
 
 /**
@@ -193,16 +157,4 @@ export function resetConsumerState(): void {
   _registered = false; // Allow re-registration
 }
 
-// ── Diagnostics ─────────────────────────────────────────────────────────────
 
-export function getConsumerStatus(): string {
-  const lines: string[] = [];
-  lines.push("=== Event Bus Consumers ===");
-  lines.push(`Violations tracked: ${_violationCount}`);
-  lines.push(`Memory evictions: ${_evictCount}`);
-  lines.push(`Context full warnings: ${_contextFullWarnings}`);
-  lines.push(`Turns tracked: ${_turnCount}`);
-  lines.push(`Ticks tracked: ${_tickCount}`);
-  lines.push(`Analytics alerts: ${_alertCount}`);
-  return lines.join("\n");
-}

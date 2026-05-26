@@ -1,20 +1,17 @@
 /**
  * Test: Event Consumers — reactive handlers for Event Bus events
+ *
+ * Removed tests for getViolationCount, getEvictCount, getContextFullWarnings,
+ * getLastTurn, getTickCount, getConsumerStatus — those getters were removed
+ * as unused (nothing consumed their values).
  */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-const {
-  registerEventConsumers,
-  resetConsumerState,
-  getViolationCount,
-  getEvictCount,
-  getContextFullWarnings,
-  getLastTurn,
-  getTickCount,
-  getConsumerStatus,
-} = await import("../../dist/lib/event-consumers.js");
+const { registerEventConsumers, resetConsumerState } = await import(
+  "../../dist/lib/event-consumers.js"
+);
 
 const { eventBus } = await import("../../dist/lib/event-bus.js");
 
@@ -28,53 +25,60 @@ describe("Event Consumers", () => {
     assert.equal(totalHandlers, 7, "Should have 7 persistent handlers");
   });
 
-  it("tracks enforcement violations", () => {
+  it("handles enforcement_violation events without error", () => {
     resetConsumerState();
     eventBus.clear();
     registerEventConsumers();
-    eventBus.emit({ type: "enforcement_violation", rule: "test", description: "test violation", severity: "high" });
-    eventBus.emit({ type: "enforcement_violation", rule: "test2", description: "another", severity: "low" });
-    assert.equal(getViolationCount(), 2);
+    eventBus.emit({
+      type: "enforcement_violation",
+      rule: "test",
+      description: "test violation",
+      severity: "high",
+    });
+    eventBus.emit({
+      type: "enforcement_violation",
+      rule: "test2",
+      description: "another",
+      severity: "low",
+    });
   });
 
-  it("tracks memory evictions", () => {
+  it("handles memory_evict events without error", () => {
     resetConsumerState();
     eventBus.clear();
     registerEventConsumers();
     eventBus.emit({ type: "memory_evict", reason: "ttl expired", count: 5 });
-    assert.equal(getEvictCount(), 1);
   });
 
-  it("tracks context full warnings", () => {
+  it("handles context_full events without error", () => {
     resetConsumerState();
     eventBus.clear();
     registerEventConsumers();
-    eventBus.emit({ type: "context_full", usagePercent: 85, tokensUsed: 5000, tokensLimit: 6000 });
-    assert.equal(getContextFullWarnings(), 1);
+    eventBus.emit({
+      type: "context_full",
+      usagePercent: 85,
+      tokensUsed: 5000,
+      tokensLimit: 6000,
+    });
   });
 
-  it("tracks turn_complete events", () => {
+  it("handles turn_complete events without error", () => {
     resetConsumerState();
     eventBus.clear();
     registerEventConsumers();
     eventBus.emit({ type: "turn_complete", turn: 42, duration: 1000 });
-    assert.equal(getLastTurn(), 42);
   });
 
-  it("tracks heartbeat ticks", () => {
+  it("handles heartbeat_tick events without error", () => {
     resetConsumerState();
     eventBus.clear();
     registerEventConsumers();
-    eventBus.emit({ type: "heartbeat_tick", turn: 10, tickCount: 3, timestamp: Date.now() });
-    assert.equal(getTickCount(), 3);
-  });
-
-  it("returns diagnostic status", () => {
-    resetConsumerState();
-    eventBus.clear();
-    registerEventConsumers();
-    const status = getConsumerStatus();
-    assert.ok(status.includes("Event Bus Consumers"), "Should identify itself");
+    eventBus.emit({
+      type: "heartbeat_tick",
+      turn: 10,
+      tickCount: 3,
+      timestamp: Date.now(),
+    });
   });
 });
 
