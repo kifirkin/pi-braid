@@ -32,12 +32,19 @@ import { registerToolResultHandler } from "./handlers/register-tool-result.js";
 import { registerSessionCompactHandler } from "./handlers/register-session-compact.js";
 import { registerAutoRetryEndHandler } from "./handlers/register-auto-retry-end.js";
 import { registerSessionShutdownHandler } from "./handlers/register-session-shutdown.js";
-import { dispatchTurnEndAnalysis } from "./handlers/dispatch-turn-end-analysis.js";
+import { driftHandler } from "./handlers/analysis/drift-handler.js";
+import {
+  bpeHandler,
+  getLastRecommendationType,
+  setLastRecommendationType,
+} from "./handlers/analysis/bpe-handler.js";
+import { marsHandler } from "./handlers/analysis/mars-handler.js";
+import { dreamerHandler } from "./handlers/analysis/dreamer-handler.js";
+import { feedbackHandler } from "./handlers/analysis/feedback-handler.js";
+import { reflectionHandler } from "./handlers/analysis/reflection-handler.js";
 import { dispatchTurnEndLoop } from "./handlers/turn-end-handler.js";
 
 const log = createLogger("enforcement");
-
-let _lastRecommendationType: string | null = null;
 
 /**
  * Handler registration metadata — used by tests instead of fragile source parsing.
@@ -55,7 +62,12 @@ export const HANDLER_REGISTRATIONS: Array<{ event: string; method: string; handl
   { event: "session_compact", method: "onEvent", handler: "hygiene reset" },
   { event: "auto_retry_end", method: "onEvent", handler: "error classification" },
   { event: "session_shutdown", method: "onEvent", handler: "state reset" },
-  { event: "turn_end", method: "registerTurnEndHandler", handler: "enforcement-analysis" },
+  { event: "turn_end", method: "registerTurnEndHandler", handler: "enforcement-drift" },
+  { event: "turn_end", method: "registerTurnEndHandler", handler: "enforcement-bpe" },
+  { event: "turn_end", method: "registerTurnEndHandler", handler: "enforcement-mars" },
+  { event: "turn_end", method: "registerTurnEndHandler", handler: "enforcement-dreamer" },
+  { event: "turn_end", method: "registerTurnEndHandler", handler: "enforcement-feedback" },
+  { event: "turn_end", method: "registerTurnEndHandler", handler: "enforcement-reflection" },
   { event: "turn_end", method: "registerTurnEndHandler", handler: "enforcement-loop" },
   { event: "turn_end", method: "registerTurnEndHandler", handler: "claim-tracker" },
   { event: "turn_end", method: "registerTurnEndHandler", handler: "spec-verification" },
@@ -83,10 +95,25 @@ function registerCompactAndSessionHandlers(pi: ExtensionAPI, _nudgeManager: Nudg
   registerAutoRetryEndHandler(pi);
   registerSessionShutdownHandler(pi);
 
-  // ── turn_end: enforcement analysis (drift + BPE + MARS + dreamer + reflection) ──
-  registerTurnEndHandler("enforcement-analysis", 100, async (event, ctx) => {
-    const newRecType = await dispatchTurnEndAnalysis(pi, event, ctx, _lastRecommendationType);
-    if (newRecType) _lastRecommendationType = newRecType;
+  // ── turn_end: individual analysis handlers (split from dispatch-turn-end-analysis) ──
+  registerTurnEndHandler("enforcement-drift", 100, async (event, ctx) => {
+    await driftHandler(pi, event, ctx);
+  });
+  registerTurnEndHandler("enforcement-bpe", 95, async (event, ctx) => {
+    const newRecType = await bpeHandler(pi, event, ctx);
+    if (newRecType) setLastRecommendationType(newRecType);
+  });
+  registerTurnEndHandler("enforcement-mars", 85, async (event, ctx) => {
+    await marsHandler(pi, event, ctx);
+  });
+  registerTurnEndHandler("enforcement-dreamer", 80, async (event, ctx) => {
+    await dreamerHandler(pi, event, ctx);
+  });
+  registerTurnEndHandler("enforcement-feedback", 60, async (_event, ctx) => {
+    await feedbackHandler(pi, null as any, ctx);
+  });
+  registerTurnEndHandler("enforcement-reflection", 50, async (_event, ctx) => {
+    await reflectionHandler(pi, null as any, ctx);
   });
 
   // ── turn_end: main enforcement loop ──
