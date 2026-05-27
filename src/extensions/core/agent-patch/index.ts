@@ -25,56 +25,24 @@
  */
 
 import { Agent } from "@mariozechner/pi-agent-core";
-import { createRequire } from "node:module";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../../lib/logger.js";
 
 const log = createLogger("agent-patch");
-const _require = createRequire(import.meta.url);
-
-/** Minimum pi-agent-core version that includes the upstream fix (unreleased). */
-const MIN_FIXED_VERSION: readonly [number, number, number] = [0, 0, 0]; // Set to e.g. [0, 71, 0] when upstream fix lands
-
-/** Check if pi-agent-core version meets the minimum fixed version. */
-function isVersionAtLeast(current: string, min: readonly [number, number, number]): boolean {
-  const parts = current.split(".").map(Number);
-  for (let i = 0; i < 3; i++) {
-    if ((parts[i] ?? 0) > min[i]) return true;
-    if ((parts[i] ?? 0) < min[i]) return false;
-  }
-  return true;
-}
 
 /**
- * Monkey-patch Agent.prototype.handleRunFailure to emit message lifecycle events.
+ * Apply patch unconditionally — it's idempotent.
  *
- * Original bug:
- *   handleRunFailure (error) → push to state.messages → emit agent_end
- *   Result: no message_start/message_end → session persistence never fires
+ * Original bug: Agent.handleRunFailure emits agent_end without message_start/message_end,
+ * skipping session persistence. Patch emits the full message lifecycle.
  *
- * Fix:
- *   handleRunFailure (error) → emit message_start → emit message_end
- *     (processEvents pushes to state.messages) → emit agent_end
- *   Result: session persistence fires on message_end ✓
+ * Version gate was removed (was inverted — [0,0,0] always matched so patch never applied).
+ * Patch is harmless to apply multiple times (just replaces the method).
+ * When upstream fixes the issue, we can remove this file, but until then it must apply.
  */
 function applyPatch(): boolean {
   try {
-    // Version gate: skip if upstream already has the fix
-    try {
-      const pkg = _require("@mariozechner/pi-agent-core/package.json");
-      if (isVersionAtLeast(pkg.version, MIN_FIXED_VERSION)) {
-        log.info("pi-agent-core version includes the handleRunFailure fix — patch skipped");
-        return true;
-      }
-    } catch {
-      log.debug("Cannot read pi-agent-core package.json — applying patch defensively");
-    }
-
-    // handleRunFailure is `private` in TS type defs, but JavaScript doesn't
-    // enforce visibility. The prototype is writable at runtime regardless.
-    // Cast through Record<string, unknown> instead of any for slightly better discipline.
     const proto = Agent.prototype as unknown as Record<string, unknown>;
-
     if (!proto) {
       log.warn("Agent class not found — patch skipped");
       return false;

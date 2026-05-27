@@ -11,8 +11,6 @@
  * A rate-limit circuit breaker skips calls for 60s after a 429 to avoid
  * cascading failures during provider congestion.
  *
- * Usage
- *
  * Usage:
  *   callLlm(model, apiKey, systemPrompt, userPrompt, options)
  *   Returns { text } on success or { error } on failure (discriminated union).
@@ -36,7 +34,7 @@ const DEFAULT_SDK_RETRIES = 3;
 /** Cooldown after a rate-limit hit before attempting calls again. */
 const RATE_LIMIT_COOLDOWN_MS = 60_000;
 
-/** Track the cooldown expiration deadline. Checks use this; lastRateLimitAt was removed (duplicate). */
+/** Track the cooldown expiration deadline. */
 let rateLimitCooldownUntil = 0;
 
 // ── Options ────────────────────────────────────────────────────────────────────
@@ -60,6 +58,8 @@ export interface LlmCallOptions {
 
 /**
  * Make an LLM call with two-tier retry, backoff, and rate-limit circuit breaker.
+ *
+ * Uses AbortSignal for timeout to avoid orphaned Promise.race timeouts.
  *
  * @param model        - pi-ai Model to call
  * @param apiKey       - API key for the provider
@@ -104,21 +104,25 @@ export async function callLlm(
       return { error: "Rate-limit cooldown active" };
     }
 
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error("LLM call timeout")), timeoutMs);
-    });
+    // Use AbortSignal for timeout instead of Promise.race — avoids orphaned timer
+    const timeoutController = new AbortController();
+    const timeoutId = setTimeout(() => timeoutController.abort(new Error("LLM call timeout")), timeoutMs);
+
+    // Combine external signal with timeout signal
+    const combinedSignal = signal
+      ? combineSignals(signal, timeoutController.signal)
+      : timeoutController.signal;
 
     try {
-      const result = await Promise.race([
-        completeSimple(model as Model<Api>, context, {
-          apiKey,
-          maxTokens,
-          temperature,
-          maxRetries: sdkMaxRetries,
-          signal,
-        }),
-        timeoutPromise,
-      ]);
+      const result = await completeSimple(model as Model<Api>, context, {
+        apiKey,
+        maxTokens,
+        temperature,
+        maxRetries: sdkMaxRetries,
+        signal: combinedSignal,
+      });
+
+      clearTimeout(timeoutId);
 
       if (result.errorMessage) {
         if (attempt <= maxRetries && isTransientError(result.errorMessage)) {
@@ -156,8 +160,10 @@ export async function callLlm(
 
       return { text };
     } catch (err) {
+      clearTimeout(timeoutId);
       const message = err instanceof Error ? err.message : String(err);
-      const isTimeout = message.includes("timeout") || message.includes("Timed");
+      const isTimeout = message.includes("timeout") || message.includes("Timed") ||
+        (err instanceof Error && err.name === "AbortError");
       if (attempt <= maxRetries && (isTimeout || isTransientError(message))) {
         const delay = backoffDelay(attempt);
         log.warn(
@@ -180,6 +186,17 @@ export async function callLlm(
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
+
+/**
+ * Combine two AbortSignals into one. When either signal aborts, the combined signal aborts.
+ */
+function combineSignals(s1: AbortSignal, s2: AbortSignal): AbortSignal {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  s1.addEventListener("abort", abort);
+  s2.addEventListener("abort", abort);
+  return controller.signal;
+}
 
 /** Detect errors that are worth retrying. */
 function isTransientError(message: string): boolean {

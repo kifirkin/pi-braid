@@ -38,6 +38,7 @@ export interface ToolTrackingState {
 
   hasCodeChanges: boolean;
   lastCodeChangeTurn: number;
+  pendingFinalize: boolean;
   hasRecalledOnStart: boolean;
   firstWorkDone: boolean;
   planAlignmentData: {
@@ -84,6 +85,7 @@ export function createToolTrackingState(): ToolTrackingState {
 
     hasCodeChanges: false,
     lastCodeChangeTurn: 0,
+    pendingFinalize: false,
     hasRecalledOnStart: false,
     firstWorkDone: false,
     planAlignmentData: null,
@@ -119,6 +121,7 @@ export function resetToolTrackingState(s: ToolTrackingState): void {
   s.recentlyReadFiles.clear();
   s.hasCodeChanges = false;
   s.lastCodeChangeTurn = 0;
+  s.pendingFinalize = false;
   s.hasRecalledOnStart = false;
   s.firstWorkDone = false;
   s.planAlignmentData = null;

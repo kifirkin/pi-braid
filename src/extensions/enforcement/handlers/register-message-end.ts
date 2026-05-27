@@ -149,15 +149,20 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
     if (getState(ctx).verificationJudgeRunning) return;
 
     const userHasBash = Array.from(getState(ctx).uniqueToolsUsed).includes("bash");
+    const currentTurn = getState(ctx).currentTurn;
+    const turnsSinceLastJudge = currentTurn - getState(ctx).lastVerificationJudgeTurn;
+    const timeSinceLastJudge = Date.now() - getState(ctx).lastJudgeTime;
 
-    if (
-      !getState(ctx).verificationJudgeRunning &&
-      turnState &&
-      turnState.actualTools.length === 0 &&
-      getState(ctx).hasCodeChanges &&
-      getState(ctx).currentTurn - getState(ctx).lastVerificationJudgeTurn >= 1
-    ) {
-      if (Date.now() - getState(ctx).lastJudgeTime < 60_000) return;
+    // Judge triggers (first one wins):
+    // 1. Always judge on finalize — agent is declaring done
+    // 2. Judge after code changes with reasonable gap (5+ turns)
+    // 3. Periodic check every 15 turns regardless
+    const shouldJudge =
+      getState(ctx).pendingFinalize ||
+      (getState(ctx).hasCodeChanges && turnsSinceLastJudge >= 5 && timeSinceLastJudge > 30_000) ||
+      (turnsSinceLastJudge >= 15 && timeSinceLastJudge > 60_000);
+
+    if (shouldJudge) {
       startJudge(getState(ctx));
 
       const toolLog: string[] = [];
@@ -179,6 +184,7 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
 
       const result = await runVerificationJudge(ctx, judgeCtx, { timeoutMs: 30000 });
 
+      getState(ctx).pendingFinalize = false;
       completeJudge(getState(ctx), getState(ctx).currentTurn);
 
       if (result) {

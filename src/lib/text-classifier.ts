@@ -1,12 +1,14 @@
 /**
  * Text Classifier — lightweight classification with configurable utility model.
  *
- * Three-tier fallback:
- *   Tier 1: Configured utility model (if set via /utility-model or settings.json)
- *   Tier 2: Session model (ctx.model) with minimal token budget
- *   Tier 3: Heuristic fallback callback (caller-provided)
+ * Three-tier fallback (heuristic-first):
+ *   Tier 1: Heuristic fallback callback (caller-provided). Fast, free.
+ *           If it returns a clear "yes"/"no", use it with 0.7 confidence.
+ *   Tier 2: Configured utility model (if set via /utility-model or settings.json)
+ *   Tier 3: Session model (ctx.model) with minimal token budget
  *
- * Each tier logs its result and latency. Degradation is always visible in logs.
+ * The heuristic tier is preferred because it's instant and costs nothing.
+ * LLM tiers are only consulted when the heuristic can't decide.
  */
 
 import { callLlm } from "./llm-call.js";
@@ -29,7 +31,7 @@ export interface ClassifierCriteria {
 export interface ClassificationResult {
   /** Parsed label — "yes" | "no" | fallback value. */
   label: string;
-  /** Confidence estimate: utility=0.9, session=0.6, heuristic=0.3, failed=0. */
+  /** Confidence estimate: utility=0.9, session=0.6, heuristic=0.7, failed=0. */
   confidence: number;
   /** Raw model output text. */
   raw: string;
@@ -42,14 +44,17 @@ export interface ClassificationResult {
 export interface ClassifierOptions {
   maxTokens?: number;
   timeoutMs?: number;
-  /** Heuristic fallback function — called when both model tiers fail. */
+  /** Heuristic fallback function — called first. If it returns a clear yes/no, skip LLM. */
   fallback?: () => Promise<string> | string;
 }
 
 // ── Classify ─────────────────────────────────────────────────────────────────
 
 /**
- * Classify text using the three-tier fallback system.
+ * Classify text using the three-tier fallback system (heuristic-first).
+ *
+ * Tier 1 (heuristic) runs first — it's fast and free. Only if the heuristic
+ * returns something ambiguous or isn't provided do we consult LLM tiers.
  *
  * @param ctx - Extension context for model resolution + API keys.
  * @param criteria - Prompt templates (system + user with {{key}} placeholders).
@@ -67,10 +72,29 @@ export async function classify(
   const maxTokens = options?.maxTokens ?? 10;
   const timeoutMs = options?.timeoutMs ?? 5000;
 
-  // Build prompts
+  // Build prompts (needed early for LLM tiers)
   const userMessage = replacePlaceholders(criteria.userPrompt, substitutions);
 
-  // ── Tier 1: Configured utility model ────────────────────────────────────
+  // ── Tier 1: Heuristic fallback (fast, no LLM cost) ──────────────────────
+  if (options?.fallback) {
+    const heuristicLabel = await options.fallback();
+    const lower = heuristicLabel?.trim().toLowerCase();
+    if (lower === "yes" || lower === "no") {
+      const latency = Date.now() - start;
+      log.debug(`[text-classifier] TIER 1 (heuristic): "${lower}" ${latency}ms`);
+      return {
+        label: lower,
+        confidence: 0.7,
+        raw: heuristicLabel,
+        tier: "heuristic",
+        latencyMs: latency,
+      };
+    }
+    // Heuristic was ambiguous — fall through to LLM
+    log.debug("[text-classifier] Heuristic ambiguous, falling to TIER 2");
+  }
+
+  // ── Tier 2: Configured utility model ────────────────────────────────────
   const utilityModel = resolveUtilityModel(ctx);
   if (utilityModel) {
     const tier1 = await tryModelCall(
@@ -85,7 +109,7 @@ export async function classify(
     if (tier1) {
       const latency = Date.now() - start;
       log.debug(
-        `[text-classifier] TIER 1 (utility → ${utilityModel.id}): "${tier1.label}" ${latency}ms`,
+        `[text-classifier] TIER 2 (utility → ${utilityModel.id}): "${tier1.label}" ${latency}ms`,
       );
       return {
         label: tier1.label,
@@ -95,10 +119,10 @@ export async function classify(
         latencyMs: latency,
       };
     }
-    log.warn("[text-classifier] TIER 1 failed (utility model error), falling to TIER 2");
+    log.warn("[text-classifier] TIER 2 failed (utility model error), falling to TIER 3");
   }
 
-  // ── Tier 2: Session model ───────────────────────────────────────────────
+  // ── Tier 3: Session model ───────────────────────────────────────────────
   const sessionModel = ctx.model;
   if (sessionModel) {
     const tier2 = await tryModelCall(
@@ -113,7 +137,7 @@ export async function classify(
     if (tier2) {
       const latency = Date.now() - start;
       log.debug(
-        `[text-classifier] TIER 2 (session → ${sessionModel.id}): "${tier2.label}" ${latency}ms`,
+        `[text-classifier] TIER 3 (session → ${sessionModel.id}): "${tier2.label}" ${latency}ms`,
       );
       return {
         label: tier2.label,
@@ -123,15 +147,7 @@ export async function classify(
         latencyMs: latency,
       };
     }
-    log.warn("[text-classifier] TIER 2 failed (session model error), falling to TIER 3");
-  }
-
-  // ── Tier 3: Heuristic fallback ──────────────────────────────────────────
-  if (options?.fallback) {
-    const label = await options.fallback();
-    const latency = Date.now() - start;
-    log.warn(`[text-classifier] TIER 3 (heuristic): "${label}" ${latency}ms — DEGRADED`);
-    return { label, confidence: 0.3, raw: "", tier: "heuristic", latencyMs: latency };
+    log.warn("[text-classifier] TIER 3 failed (session model error), returning 'unknown'");
   }
 
   const latency = Date.now() - start;

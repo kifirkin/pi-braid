@@ -53,8 +53,15 @@ export function registerSessionStart(pi: ExtensionAPI): void {
         }
       });
 
-      eventBus.on("enforcement_violation", () => {
-        // Consumer exists to prevent events from being logged into the void
+      eventBus.on("enforcement_violation", (event) => {
+        // Route enforcement violations to error tracking via tool_error event
+        eventBus.emit({
+          type: "tool_error",
+          toolName: event.rule,
+          error: event.description.slice(0, 500),
+          turn: getState(ctx).currentTurn,
+          timestamp: Date.now(),
+        });
       });
 
       eventBus.on("heartbeat_tick", (event) => {

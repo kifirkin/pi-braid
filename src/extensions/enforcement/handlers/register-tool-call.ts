@@ -58,6 +58,10 @@ export function registerToolCallHandler(pi: ExtensionAPI): void {
 
     getState(ctx).toolLog.push(`${toolName}`);
 
+    if (toolName === "finalize") {
+      getState(ctx).pendingFinalize = true;
+    }
+
     if (toolName === "think") {
       const thinkType = (input as { type?: string })?.type || "unknown";
       const parentId = (input as { parent_id?: string })?.parent_id || null;
