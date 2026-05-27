@@ -14,11 +14,7 @@ function _extractToolFromMarsMessage(msg: string): string | undefined {
   return match?.[1];
 }
 
-export async function marsHandler(
-  pi: any,
-  _event: any,
-  ctx: ExtensionContext,
-): Promise<void> {
+export async function marsHandler(pi: any, _event: any, ctx: ExtensionContext): Promise<void> {
   const gs = getState(ctx);
   if (!gs.enforcementActive) return;
 

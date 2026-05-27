@@ -16,10 +16,6 @@ import { getState } from "../../state.js";
 
 let _lastRecommendationType: string | null = null;
 
-export function getLastRecommendationType(): string | null {
-  return _lastRecommendationType;
-}
-
 export function setLastRecommendationType(val: string | null): void {
   _lastRecommendationType = val;
 }

@@ -23,10 +23,8 @@ const writeQueue = new Map<string, unknown>();
 /** True while a microtask flush is scheduled. */
 let flushScheduled = false;
 
-/** True once the beforeExit handler is registered. */
-let cleanupRegistered = false;
-
 /**
+ * Schedule a microtask to flush all pending writes.
  * Schedule a microtask to flush all pending writes.
  * Called on every saveState() — multiple calls collapse into a single microtask.
  */
@@ -109,17 +107,14 @@ export async function shutdownAsyncStorage(): Promise<void> {
   await flushAll();
 }
 
-// Register once — flush on process exit
-if (!cleanupRegistered) {
-  cleanupRegistered = true;
-  process.on("beforeExit", async () => {
-    await flushAll();
-  });
-  // Also catch SIGINT/SIGTERM when possible
-  process.on("SIGINT", async () => {
-    await flushAll();
-  });
-  process.on("SIGTERM", async () => {
-    await flushAll();
-  });
-}
+// Flush on process exit — module-level code runs once on load
+process.on("beforeExit", async () => {
+  await flushAll();
+});
+// Also catch SIGINT/SIGTERM when possible
+process.on("SIGINT", async () => {
+  await flushAll();
+});
+process.on("SIGTERM", async () => {
+  await flushAll();
+});

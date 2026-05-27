@@ -33,11 +33,7 @@ import { registerSessionCompactHandler } from "./handlers/register-session-compa
 import { registerAutoRetryEndHandler } from "./handlers/register-auto-retry-end.js";
 import { registerSessionShutdownHandler } from "./handlers/register-session-shutdown.js";
 import { driftHandler } from "./handlers/analysis/drift-handler.js";
-import {
-  bpeHandler,
-  getLastRecommendationType,
-  setLastRecommendationType,
-} from "./handlers/analysis/bpe-handler.js";
+import { bpeHandler, setLastRecommendationType } from "./handlers/analysis/bpe-handler.js";
 import { marsHandler } from "./handlers/analysis/mars-handler.js";
 import { dreamerHandler } from "./handlers/analysis/dreamer-handler.js";
 import { feedbackHandler } from "./handlers/analysis/feedback-handler.js";

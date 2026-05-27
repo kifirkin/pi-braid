@@ -9,11 +9,7 @@ import { dream } from "../../../../lib/dreamer.js";
 import { recordAdvice } from "../../../../lib/advice-tracker.js";
 import { getState } from "../../state.js";
 
-export async function dreamerHandler(
-  pi: any,
-  _event: any,
-  ctx: ExtensionContext,
-): Promise<void> {
+export async function dreamerHandler(pi: any, _event: any, ctx: ExtensionContext): Promise<void> {
   const gs = getState(ctx);
   if (!gs.enforcementActive) return;
 

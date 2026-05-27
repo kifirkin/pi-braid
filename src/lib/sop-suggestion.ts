@@ -363,7 +363,10 @@ function computeSimilarity(
   // Feedback boost: if this episode was previously suggested and agent followed it
   let union = queryKeywords.length + episodeSet.size;
   const sopState = ctx ? getSopState(ctx) : null;
-  if (episodeId && sopState?.suggestionFeedback.some((f) => f.episodeId === episodeId && f.followed)) {
+  if (
+    episodeId &&
+    sopState?.suggestionFeedback.some((f) => f.episodeId === episodeId && f.followed)
+  ) {
     union = Math.max(1, union - 1); // Slight boost to similarity
   }
 

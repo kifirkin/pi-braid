@@ -19,11 +19,7 @@ function extractTextContent(msg: any): string {
   return "";
 }
 
-export async function driftHandler(
-  pi: any,
-  _event: any,
-  ctx: ExtensionContext,
-): Promise<void> {
+export async function driftHandler(pi: any, _event: any, ctx: ExtensionContext): Promise<void> {
   const gs = getState(ctx);
   if (!gs.enforcementActive || !gs.driftDetector) return;
 

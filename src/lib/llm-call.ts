@@ -106,7 +106,10 @@ export async function callLlm(
 
     // Use AbortSignal for timeout instead of Promise.race — avoids orphaned timer
     const timeoutController = new AbortController();
-    const timeoutId = setTimeout(() => timeoutController.abort(new Error("LLM call timeout")), timeoutMs);
+    const timeoutId = setTimeout(
+      () => timeoutController.abort(new Error("LLM call timeout")),
+      timeoutMs,
+    );
 
     // Combine external signal with timeout signal
     const combinedSignal = signal
@@ -162,7 +165,9 @@ export async function callLlm(
     } catch (err) {
       clearTimeout(timeoutId);
       const message = err instanceof Error ? err.message : String(err);
-      const isTimeout = message.includes("timeout") || message.includes("Timed") ||
+      const isTimeout =
+        message.includes("timeout") ||
+        message.includes("Timed") ||
         (err instanceof Error && err.name === "AbortError");
       if (attempt <= maxRetries && (isTimeout || isTransientError(message))) {
         const delay = backoffDelay(attempt);

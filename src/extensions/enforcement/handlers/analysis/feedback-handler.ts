@@ -7,11 +7,7 @@ import { inferBeliefs } from "../../../../lib/belief-policy-engine.js";
 import { evaluatePendingAdvice } from "../../../../lib/advice-tracker.js";
 import { getState } from "../../state.js";
 
-export async function feedbackHandler(
-  _pi: any,
-  _event: any,
-  ctx: ExtensionContext,
-): Promise<void> {
+export async function feedbackHandler(_pi: any, _event: any, ctx: ExtensionContext): Promise<void> {
   const gs = getState(ctx);
   if (!gs.enforcementActive) return;
 
