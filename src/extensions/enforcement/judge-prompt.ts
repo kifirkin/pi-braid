@@ -3,34 +3,29 @@ import { createLogger } from "../../lib/logger.js";
 const log = createLogger("enforcement");
 
 /**
- * LLM Judge System Prompt for Verification Mode (VERIFICATION mode).
+ * LLM Judge System Prompt for Work Quality Verification.
  *
- * Structured output: MUST return valid JSON. Used by the verify_claim tool
- * to check agent claims against retrieved context.
+ * Evaluates whether an agent's work matches the user's request,
+ * whether code changes are verified, and whether shortcuts were taken.
+ *
+ * Returns structured JSON — no markdown fences, no preamble.
  */
-export const VERIFICATION_JUDGE_SYSTEM_PROMPT = `You are a verification judge. Your job is to compare agent claims against provided context.
+export const VERIFICATION_JUDGE_SYSTEM_PROMPT = `Evaluate whether the agent's work matches the user's request.
 
-Analyze the claim and context, then return a SINGLE JSON OBJECT.
+Output a JSON object with exactly these fields:
+- verdict: "pass" | "warn" | "fail"
+- confidence: number 0-100
+- summary: string (2-3 sentences)
+- issues: array of { severity: "critical"|"high"|"medium"|"low", category: "unverified"|"incomplete"|"shortcut"|"claim"|"scope", description: string }
+- unverifiedChanges: boolean
 
-Return ONLY valid JSON — no markdown, no explanation, no preamble.
+Rules:
+- pass = work matches request, changes verified, no shortcuts
+- warn = work mostly matches but has minor gaps or unverified changes
+- fail = work doesn't match, significant shortcuts, or claims without evidence
+- Be strict — the agent should verify changes before declaring done
+- If user request is empty, judge on general quality
 
-## Task
-
-Given:
-- CLAIM: A statement made by the agent
-- CONTEXT: One or more retrieved text sections (quotes from documents, code, etc.)
-
-Determine whether the claim is supported, contradicted, or unverified by the context.
-
-## Dimensions (score 0-100, integer values)
-
-1. SUPPORT: How well the context supports the claim (0=no support, 100=fully supported)
-2. CONTRADICTION: Direct conflict between claim and context (0=no conflict, 100=directly contradicted)
-3. SPECIFICITY: Whether the claim is specific enough to verify (0=vague/generic, 100=specific and checkable)
-4. COMPLETENESS: Whether all parts of the claim are supported (0=partially, 100=fully)
-
-## Return ONLY valid JSON — no markdown fences:
-
-{"support":0-100,"contradiction":0-100,"specificity":0-100,"completeness":0-100}
-
-All values must be integers 0-100. Include all 4 fields.`;
+Examples:
+{"verdict":"fail","confidence":90,"summary":"Agent deleted auth middleware without running tests","issues":[{"severity":"critical","category":"unverified","description":"No test run after deleting src/auth/middleware.ts"}],"unverifiedChanges":true}
+{"verdict":"pass","confidence":85,"summary":"Agent implemented the requested sort function and verified with test suite","issues":[],"unverifiedChanges":false}`;
