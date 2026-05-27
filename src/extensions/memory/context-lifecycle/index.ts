@@ -19,6 +19,7 @@ import { Type } from "typebox";
 import { createLogger } from "../../../lib/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 import { getExtensionState } from "../../../lib/extension-state.js";
+import { eventBus } from "../../../lib/event-bus.js";
 
 import {
   createProposal,
@@ -30,8 +31,20 @@ import {
   type ContextProposal,
   type ContextSnapshot,
 } from "./types.js";
-import { PolicyEngine, type EvaluatedAction, generateDensitySignals } from "./policy-engine.js";
-import { SignalDetector } from "./signal-detector.js";
+import {
+  createPolicyEngineState,
+  evaluatePolicies,
+  type EvaluatedAction,
+  generateDensitySignals,
+} from "./policy-engine.js";
+import {
+  createDetectorState,
+  detectSignals,
+  queueSignal,
+  resetDetectorState,
+  detectCompletionPattern,
+  type DetectorState,
+} from "./signal-detector.js";
 
 // ── Module State ─────────────────────────────────────────────────────────────
 
@@ -58,8 +71,8 @@ const CONTEXT_MGMT_TOOLS = new Set([
   "context_checkout",
 ]);
 
-const _policyEngine = new PolicyEngine();
-const _signalDetector = new SignalDetector();
+const _policyState = createPolicyEngineState();
+const _detectorState: DetectorState = createDetectorState();
 
 // Outcome tracking (closed-loop feedback) with TTL eviction — now session-scoped
 const MAX_OUTCOMES = 100;
@@ -312,7 +325,11 @@ async function executeAutoCompact(pi: ExtensionAPI, ctx: any): Promise<void> {
     // 1. Schedule resume timer BEFORE compacting
     try {
       const { scheduleTimer } = await import("../../tools/timer/index.js");
-      scheduleTimer(1500, "Auto-compaction done — continue your task", "auto-compaction-resume");
+      scheduleTimer(
+        3 * 60 * 1000,
+        "Auto-compaction done — continue your task",
+        "auto-compaction-resume",
+      );
       log.info("Scheduled resume timer before auto-compaction");
     } catch {
       log.warn("Timer unavailable for auto-compaction - agent must type to resume");
@@ -454,9 +471,19 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
   registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event: any, ctx: any) => {
     resetState(ctx);
     state().outcomes.length = 0;
-    _policyEngine.resetCooldowns();
-    _signalDetector.reset();
+    _policyState.cooldowns.clear();
+    resetDetectorState(_detectorState);
     clearInjections(); // Clear injection history on fresh session
+  });
+
+  // Subscribe to memory_evict events to adjust compact nudge escalation
+  eventBus.on("memory_evict", (event) => {
+    log.debug(`[context-lifecycle] Memory eviction: ${event.reason} (${event.count} entries)`);
+    // Large evictions increase compact urgency for the next proposal check
+    if (event.count > 5) {
+      const s = state();
+      s.ignoredCompactNudges = Math.min(5, s.ignoredCompactNudges + 1);
+    }
   });
 
   // ── before_agent_start ──────────────────────────────────────────────────
@@ -494,7 +521,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     state().agentActedOnContext = false;
 
     // ── RETRIEVAL: Detect signals from session content ──────────────────
-    const signals = _signalDetector.update(entries, usage);
+    const signals = detectSignals(_detectorState, entries, usage);
 
     // ── DENSITY: Generate context density signals (SimpleMem 2601.02553) ─
     // These feed into density-aware policies (prune, compress, dedup)
@@ -508,13 +535,19 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 
     // ── TASK COMPLETION DETECTION ────────────────────────────────────────
     // Check if session looks like a completed task
-    _signalDetector.checkAndEmitCompletionSignal();
-    const completionSignals = _signalDetector.getPending();
+    if (detectCompletionPattern(_detectorState)) {
+      queueSignal(_detectorState, "task_completion_candidate", {
+        topicHistory: _detectorState.topicHistory.slice(-3),
+        uniqueTools: new Set(_detectorState.toolSequence.slice(-10)).size,
+      });
+    }
+    const completionSignals = [..._detectorState.pendingSignals];
+    _detectorState.pendingSignals = [];
     if (completionSignals.length > 0) {
       signals.push(...completionSignals);
     }
 
-    const evaluated = _policyEngine.evaluate({
+    const evaluated = evaluatePolicies(_policyState, {
       signals,
       contextUsage: usage,
       contextTokens: getContextTokens(ctx),
@@ -588,15 +621,15 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
   // ── tool_call: Capture agent signals + compaction escalation reset ────────
   pi.on("tool_call", async (event: any) => {
     const toolName = event.toolName as string;
-    const input = event?.input as Record<string, unknown> | undefined;
+    const _input = event?.input as Record<string, unknown> | undefined;
 
     // ── Task boundary signals ──────────────────────────────────────────
     if (toolName === "context_tag") {
-      _signalDetector.queueSignal("task_boundary", { action: "tag", target: input?.name });
+      queueSignal(_detectorState, "task_boundary", { action: "tag", target: toolName });
     } else if (toolName === "context_archive") {
-      _signalDetector.queueSignal("task_boundary", { action: "compress" });
+      queueSignal(_detectorState, "task_boundary", { action: "compress" });
     } else if (toolName === "context_checkout") {
-      _signalDetector.queueSignal("task_boundary", { action: "checkout" });
+      queueSignal(_detectorState, "task_boundary", { action: "checkout" });
     }
 
     // ── Compaction escalation reset ────────────────────────────────────
@@ -750,8 +783,8 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
         }
 
         case "stats": {
-          const policies = _policyEngine.getPolicies();
-          const governance = _policyEngine.getGovernance();
+          const policies = _policyState.policies;
+          const governance = _policyState.governance;
 
           // Calculate outcome stats
           const total = state().outcomes.length;
@@ -774,8 +807,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
                   `**Governance:** ${governance.length} constraints`,
                   "",
                   "### Topic History",
-                  ..._signalDetector
-                    .getTopicHistory()
+                  ..._detectorState.topicHistory
                     .slice(-5)
                     .map((h) => `- Turn ${h.turn}: ${h.topic}`),
                 ].join("\n"),
@@ -787,7 +819,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
               outcomes: state().outcomes,
               policies,
               governance,
-              topicHistory: _signalDetector.getTopicHistory(),
+              topicHistory: _detectorState.topicHistory,
             },
           };
         }
@@ -819,7 +851,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
       const type = params.type;
       const note = params.note ?? "";
 
-      _signalDetector.queueSignal(type, { note, turn: state().turnCount });
+      queueSignal(_detectorState, type, { note, turn: state().turnCount });
 
       return {
         content: [

@@ -67,7 +67,7 @@ console.log("\n[4] Cross-store integration");
 	const fs = await import("fs");
 	// Check that heartbeat modules import from three-memory-stores
 	const recaller = fs.readFileSync(`${ROOT}/src/extensions/heartbeat/heartbeat-scheduler/modules/recaller.ts`, "utf8");
-	const dreamer = fs.readFileSync(`${ROOT}/src/extensions/heartbeat/heartbeat-scheduler/modules/dreamer.ts`, "utf8");
+	const dreamer = fs.readFileSync(`${ROOT}/src/extensions/heartbeat/heartbeat-scheduler/modules/reflection-consolidator.ts`, "utf8");
 	const evolver = fs.readFileSync(`${ROOT}/src/extensions/heartbeat/heartbeat-scheduler/modules/evolver.ts`, "utf8");
 	assert(recaller.includes("three-memory-stores") || dreamer.includes("three-memory-stores") || evolver.includes("three-memory-stores"), "heartbeat modules import from three-memory-stores");
 }

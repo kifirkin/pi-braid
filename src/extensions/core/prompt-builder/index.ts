@@ -724,8 +724,7 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
           const reqs: string[] = [];
           for (const line of content.split("\n")) {
             const trimmed = line.trim();
-            if (trimmed.startsWith("### Requirement:") ||
-                /\b(SHALL|MUST|SHOULD)\b/.test(trimmed)) {
+            if (trimmed.startsWith("### Requirement:") || /\b(SHALL|MUST|SHOULD)\b/.test(trimmed)) {
               reqs.push(trimmed.replace(/^[#\s]+/, ""));
             }
           }
@@ -735,7 +734,9 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
           }
         }
         if (specParts.length > 0) {
-          parts.push(`## Active Specs\n\n${specParts.join("\n\n")}\n\nWhen editing, check openspec/specs/ for relevant requirements and update delta specs if behavior changes.`);
+          parts.push(
+            `## Active Specs\n\n${specParts.join("\n\n")}\n\nWhen editing, check openspec/specs/ for relevant requirements and update delta specs if behavior changes.`,
+          );
         }
       }
     } catch {

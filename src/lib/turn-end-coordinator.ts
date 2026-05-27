@@ -24,10 +24,7 @@ import { createLogger } from "./logger.js";
 
 const log = createLogger("turn-end");
 
-export type TurnEndHandler = (
-  event: any,
-  ctx: ExtensionContext,
-) => void | Promise<void>;
+export type TurnEndHandler = (event: any, ctx: ExtensionContext) => void | Promise<void>;
 
 interface HandlerEntry {
   name: string;
@@ -73,10 +70,7 @@ export function unregisterTurnEndHandler(name: string): void {
  * Each handler is wrapped in try/catch so a failure in one
  * doesn't prevent others from running.
  */
-export async function dispatchTurnEnd(
-  event: any,
-  ctx: ExtensionContext,
-): Promise<void> {
+export async function dispatchTurnEnd(event: any, ctx: ExtensionContext): Promise<void> {
   if (_handlers.length === 0) return;
 
   for (const entry of _handlers) {

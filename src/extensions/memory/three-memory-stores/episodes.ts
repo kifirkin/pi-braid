@@ -7,6 +7,7 @@
  */
 
 import { createLogger } from "../../../lib/logger.js";
+import { eventBus } from "../../../lib/event-bus.js";
 import type { MemoryStoresState, Episode } from "./types.js";
 
 const log = createLogger("three-memory-stores:episodes");
@@ -246,10 +247,17 @@ export function retrieveByRUMS(
 }
 
 function pruneEpisodes(state: MemoryStoresState): void {
-  const outcomeScore = (ep: Episode) =>
-    (ep.outcome === "success" ? 2 : ep.outcome === "partial" ? 1 : 0) * 0.5 +
-    Math.max(0, 1 - (Date.now() - ep.timestamp) / (30 * 24 * 60 * 60 * 1000)) * 0.5;
+  const before = state.episodes.length;
+  const removed = before - Math.min(before, 500);
 
-  state.episodes.map((ep) => ({ ep, score: outcomeScore(ep) })).sort((a, b) => a.score - b.score);
+  if (removed > 0) {
+    // Emit memory_evict event so context-lifecycle can adjust proposal thresholds
+    eventBus.emit({
+      type: "memory_evict",
+      reason: "episode_prune",
+      count: removed,
+    });
+  }
+
   state.episodes = state.episodes.slice(-500);
 }

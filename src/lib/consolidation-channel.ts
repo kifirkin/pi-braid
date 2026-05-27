@@ -13,6 +13,7 @@ import { createLogger } from "./logger.js";
 import { CONSOLIDATED_HINTS_FILE } from "./braid-paths.js";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { extractSOP } from "./sop-extractor.js";
 
 const log = createLogger("consolidation");
 
@@ -211,6 +212,93 @@ const _queue = new ConsolidationQueue();
 /** @internal Used by processConsolidationTick */
 function getConsolidationQueue(): ConsolidationQueue {
   return _queue;
+}
+
+/**
+ * Enqueue a scored consolidation candidate for deferred processing.
+ * Returns true if enqueued, false if queue full or duplicate.
+ */
+export function enqueueCandidate(candidate: ConsolidationCandidate): boolean {
+  return getConsolidationQueue().enqueue(candidate);
+}
+
+// ── SOP Extraction Integration ────────────────────────────────────────────
+
+/**
+ * Execute full consolidation pipeline: extract SOP via sop-extractor,
+ * score the episode, enqueue for deferred hint writing.
+ *
+ * This bridges heartbeat episode retrieval with the consolidation queue.
+ * The actual hint file write happens asynchronously via processConsolidationTick.
+ */
+export function executeConsolidation(episode: {
+  id: string;
+  task: string;
+  outcome: "success" | "failure" | "partial";
+  project?: string;
+  quality?: number;
+  trajectory?: { toolName: string; success: boolean; error?: string }[];
+  solution?: string;
+  strategicSOP?: string;
+  functionalSOP?: string[];
+  toolSequence?: string[];
+}): ConsolidationCandidate | null {
+  // Step 1: Extract SOP via sop-extractor if not pre-populated
+  let strategicSOP = episode.strategicSOP;
+  let functionalSOP = episode.functionalSOP;
+  let toolSequence = episode.toolSequence;
+
+  if ((!strategicSOP || !functionalSOP) && episode.trajectory && episode.trajectory.length > 0) {
+    try {
+      const sop = extractSOP({
+        task: episode.task,
+        trajectory: episode.trajectory.map((t) => ({
+          toolName: t.toolName,
+          success: t.success,
+          error: t.error,
+        })),
+        solution: episode.solution ?? `Outcome: ${episode.outcome}`,
+        outcome: episode.outcome,
+      });
+      strategicSOP = sop.strategicSOP;
+      functionalSOP = sop.functionalSOP;
+      toolSequence = sop.atomicSOP;
+      log.info(
+        `[consolidation] Extracted SOP for "${episode.task.slice(0, 60)}": ` +
+          `${functionalSOP.length} steps, ${toolSequence.length} tools`,
+      );
+    } catch (err) {
+      log.warn(`[consolidation] SOP extraction failed: ${(err as Error).message}`);
+    }
+  }
+
+  // Step 2: Score the episode with available SOP data
+  const candidate = scoreEpisode({
+    id: episode.id,
+    task: episode.task,
+    outcome: episode.outcome,
+    project: episode.project,
+    quality: episode.quality,
+    toolSequence: toolSequence ?? episode.trajectory?.map((t) => t.toolName),
+    strategicSOP,
+    functionalSOP,
+  });
+
+  // Step 3: Enqueue if above quality threshold
+  if (candidate.consolidationScore >= DEFAULT_CONSOLIDATION_CONFIG.minQuality) {
+    enqueueCandidate(candidate);
+    log.info(
+      `[consolidation] Enqueued "${episode.task.slice(0, 50)}" ` +
+        `(score=${candidate.consolidationScore.toFixed(2)})`,
+    );
+    return candidate;
+  }
+
+  log.debug(
+    `[consolidation] Skipped "${episode.task.slice(0, 50)}" ` +
+      `(score=${candidate.consolidationScore.toFixed(2)} < min=${DEFAULT_CONSOLIDATION_CONFIG.minQuality})`,
+  );
+  return null;
 }
 
 // ── Hint Quality Filter ─────────────────────────────────────────────────────

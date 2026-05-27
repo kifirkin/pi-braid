@@ -17,9 +17,16 @@ import { vetWriteOperation, vetBashCommand } from "./vet-filter.js";
 const log = createLogger("path-security");
 // ── Tool classification ──────────────────────────────────────────────────────
 const READ_ONLY_TOOLS = new Set([
-    "read", "grep", "find", "ls",
-    "render_pdf_page", "read_document", "analyze_image",
-    "file_diff", "codebase_graph", "codebase_tree",
+    "read",
+    "grep",
+    "find",
+    "ls",
+    "render_pdf_page",
+    "read_document",
+    "analyze_image",
+    "file_diff",
+    "codebase_graph",
+    "codebase_tree",
 ]);
 const WRITE_TOOLS = new Set(["write", "edit"]);
 function createState() {
@@ -79,19 +86,31 @@ function recordVet(ctx, result) {
         if (!result.safe)
             state.blockedCount++;
     }
-    catch { /* non-fatal */ }
+    catch {
+        /* non-fatal */
+    }
 }
 // ── Steer Helpers ────────────────────────────────────────────────────────────
-async function sendBlockWhisper(ctx, toolName, filePath) {
+async function sendBlockWhisper(ctx, toolName, _filePath) {
     try {
-        ctx.whisper?.(`Blocked ${toolName}: path outside allowed directories`, { category: "cognitive", priority: "low" });
+        ctx.whisper?.(`Blocked ${toolName}: path outside allowed directories`, {
+            category: "cognitive",
+            priority: "low",
+        });
     }
-    catch { /* non-fatal */ }
+    catch {
+        /* non-fatal */
+    }
 }
-async function sendBashBlockWhisper(ctx, command) {
+async function sendBashBlockWhisper(ctx, _command) {
     try {
-        ctx.whisper?.(`Bash blocked: command classified as dangerous`, { category: "cognitive", priority: "low" });
+        ctx.whisper?.(`Bash blocked: command classified as dangerous`, {
+            category: "cognitive",
+            priority: "low",
+        });
     }
-    catch { /* non-fatal */ }
+    catch {
+        /* non-fatal */
+    }
 }
 //# sourceMappingURL=index.js.map

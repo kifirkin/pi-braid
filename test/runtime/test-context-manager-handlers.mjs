@@ -91,12 +91,15 @@ async function main() {
 
 	// ── Tool registrations ──────────────────────────────────────────────
 	console.log("\n[4] Tool registrations");
-	check("tools.ts registers all 6 tools + 1 command", () => {
-		const src = readFileSync(`${ROOT}/src/extensions/memory/context-manager/handlers/tools.ts`, "utf8");
-		for (const tool of ["context_tag", "context_log", "context_checkout", "context_prune", "context_audit", "context_archive"]) {
-			assert(src.includes(`name: "${tool}"`), `Missing tool: ${tool}`);
+	check("tools/ files register all tools + 1 command", () => {
+		let foundTools = 0;
+		for (const tool of ["context-tag", "context-log", "context-checkout", "context-prune", "context-audit", "context-archive"]) {
+			const src = readFileSync(`${ROOT}/src/extensions/memory/context-manager/handlers/tools/${tool}.ts`, "utf8");
+			if (src.includes(`name: "${tool.replace(/-/g, '_')}"`)) foundTools++;
 		}
-		assert(src.includes("registerCommand"), "Missing command registration");
+		assert(foundTools >= 6, `Expected 6 tool registrations, found ${foundTools}`);
+		const toolsMain = readFileSync(`${ROOT}/src/extensions/memory/context-manager/handlers/tools.ts`, "utf8");
+		assert(toolsMain.includes("registerCommand"), "Missing command registration");
 	});
 
 	// ── Event handler registration ──────────────────────────────────────
@@ -128,7 +131,7 @@ async function main() {
 	// ── Error handling ──────────────────────────────────────────────────
 	console.log("\n[7] Error handling in handlers");
 	for (const name of handlerFiles) {
-		if (name === "shared") continue; // pure functions, no async ops
+		if (name === "shared" || name === "tools") continue; // shared=pure, tools=thin registry
 		check(`${name}.ts has error handling`, () => {
 			const src = readFileSync(`${ROOT}/src/extensions/memory/context-manager/handlers/${name}.ts`, "utf8");
 			assert(src.includes("catch"), `${name}.ts missing try/catch`);

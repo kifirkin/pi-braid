@@ -26,6 +26,14 @@ export interface SessionState {
 
   // Topic drift
   driftDetector: TopicDriftDetector;
+
+  // Event bus integration
+  _lastHeartbeatTick: number;
+
+  // Conflict resolution tracking — IDs of pending conflicts and when they were detected
+  pendingConflictIds: string[];
+  /** Turn number when each conflict was first detected (conflictId → turn) */
+  conflictDetectionTurn: Map<string, number>;
 }
 
 export function createSessionState(): SessionState {
@@ -39,6 +47,9 @@ export function createSessionState(): SessionState {
     verificationJudgeRunning: false,
     lastVerificationJudgeTurn: 0,
     lastCalibrationWhisperTime: 0,
+    _lastHeartbeatTick: 0,
+    pendingConflictIds: [],
+    conflictDetectionTurn: new Map(),
     driftDetector: new TopicDriftDetector({
       topicThreshold: 0.15,
       minTurns: 4,
@@ -55,5 +66,8 @@ export function resetSessionState(s: SessionState): void {
   s.verificationJudgeRunning = false;
   s.lastVerificationJudgeTurn = 0;
   s.lastCalibrationWhisperTime = 0;
+  s._lastHeartbeatTick = 0;
+  s.pendingConflictIds = [];
+  s.conflictDetectionTurn.clear();
   s.driftDetector?.reset();
 }

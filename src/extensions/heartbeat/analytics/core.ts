@@ -2,7 +2,7 @@
  * Analytics — core functions: metrics, sequences, persistence.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, promises as fs } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, promises as fs } from "node:fs";
 import { METRICS_FILE, METRICS_DIR } from "../../../lib/braid-paths.js";
 import { createLogger } from "../../../lib/logger.js";
 const log = createLogger("analytics:core");

@@ -27,6 +27,76 @@ TARGET_HANDLE = bot_handle (without @)
 | Inline reply form  | `[data-testid="tweetTextarea_0"]`   | Already on bot's tweet page — no need to click reply |
 | Reply button       | `[data-testid="tweetButtonInline"]` | Text reads "Reply"                                   |
 | Reply icon (count) | `[data-testid="reply"]`             | `aria-label` e.g. "1 Reply. Reply"                   |
+| File input          | `input[type="file"]`                | Hidden by default, triggered by add-media button      |
+| Add media button    | `[aria-label="Add photos or video"]` | Click to expose file input                            |
+
+## Image Attachment
+
+### Method 1: Drag-and-Drop (Most Reliable)
+X's compose box supports drag-and-drop for images. No permission required.
+
+```js
+// Step 1: Generate the canvas image
+const cv = document.createElement('canvas');
+const gx = cv.getContext('2d');
+// ... draw content ...
+
+// Step 2: Convert to blob, then File
+const blob = await new Promise(resolve => cv.toBlob(resolve, 'image/png'));
+const file = new File([blob], 'image.png', { type: 'image/png' });
+
+// Step 3: Dispatch drop event
+const dt = new DataTransfer();
+dt.items.add(file);
+const ta = document.querySelector('[data-testid="tweetTextarea_0"]');
+const dropZone = ta.closest('[data-testid*="tweet"]') || ta.parentElement;
+dropZone.dispatchEvent(new DragEvent('drop', {
+  dataTransfer: dt, bubbles: true, cancelable: true
+}));
+```
+
+### Method 2: Clipboard Paste
+Chrome asks for clipboard permission once per session.
+
+```js
+await navigator.clipboard.write([
+  new ClipboardItem({ 'image/png': blob })
+]);
+const ta = document.querySelector('[data-testid="tweetTextarea_0"]');
+ta.focus();
+const dt = new DataTransfer();
+dt.items.add(new File([blob], 'image.png', { type: 'image/png' }));
+ta.dispatchEvent(new ClipboardEvent('paste', {
+  clipboardData: dt, bubbles: true, cancelable: true
+}));
+```
+
+### Method 3: CDP File Injection (Best for Automation)
+Uses `browser_upload_image` tool which injects files via CDP's `DOM.setFileInputFiles` at the protocol level. No clipboard, no React state issues.
+
+```js
+// In pi agent:
+browser_upload_image(
+  filePath="/path/to/image.png",
+  clickBtn="[aria-label='Add photos or video']"
+)
+```
+
+### Verification Checklist (Before Adding Text)
+```js
+const previews = document.querySelectorAll('img[src*="blob:"]');
+const attachments = document.querySelectorAll('[data-testid*="attachment"]');
+// Must be ≥ 1 each before proceeding
+console.log('previews:', previews.length, 'attachments:', attachments.length);
+```
+
+### Common Pitfalls
+| Problem | Fix |
+|---------|-----|
+| Clipboard denied | Use drag-and-drop instead (no permission)
+| Previews visible but no image in post | React state sync issue — drag-and-drop works better than clipboard
+| Blurry/pixelated image | Canvas-to-clipboard loses quality. Save as file and use CDP injection instead
+| Button disabled after text insert | execCommand sometimes fails to trigger React — clear and retry with shorter text
 
 ## Button State
 

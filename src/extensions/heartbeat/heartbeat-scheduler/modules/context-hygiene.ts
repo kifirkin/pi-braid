@@ -21,7 +21,7 @@ import {
 } from "../../../../lib/context-thresholds.js";
 import {
   generateDensitySignals,
-  evaluatePolicies,
+  evaluateDensityPolicies,
 } from "../../../memory/context-lifecycle/policy-engine.js";
 
 const log = createLogger("heartbeat:context-hygiene");
@@ -117,7 +117,7 @@ export const contextHygieneModule: CognitiveModule = {
         }));
         state.signalQueue.push(signal);
       }
-      const proposals = evaluatePolicies(ctx, signals);
+      const proposals = evaluateDensityPolicies(ctx, signals);
       for (const proposal of proposals) {
         if (proposal.action.type === "propose" && proposal.priority > 55) {
           const msg = interpolateMessage(proposal.action.message, {

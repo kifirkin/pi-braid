@@ -48,8 +48,7 @@ const BASH_DANGER_CRITERIA = {
         "and destroying block devices (dd, mkfs, fdisk). " +
         "Answer only 'yes' or 'no'. 'yes' = DANGEROUS, should be blocked. " +
         "'no' = SAFE, should be allowed.",
-    userPrompt: "Command: {{command}}\nProject: {{cwd}}\n" +
-        "Is this bash command dangerous?",
+    userPrompt: "Command: {{command}}\nProject: {{cwd}}\n" + "Is this bash command dangerous?",
 };
 // ── Shared utilities (used by heuristic fallbacks) ───────────────────────────
 function buildAllowlist(cwd) {
@@ -61,9 +60,16 @@ function buildAllowlist(cwd) {
     const projectSkillsDir = path.join(resolvedCwd, "skills");
     const bundledSkillsDir = SKILLS_DIR;
     return [
-        resolvedCwd, piHomeDir, piAgentDir, skillsDir,
-        projectSkillsDir, bundledSkillsDir,
-        os.tmpdir(), "/tmp", "/var/tmp", "/dev",
+        resolvedCwd,
+        piHomeDir,
+        piAgentDir,
+        skillsDir,
+        projectSkillsDir,
+        bundledSkillsDir,
+        os.tmpdir(),
+        "/tmp",
+        "/var/tmp",
+        "/dev",
     ];
 }
 function isPathAllowed(resolvedPath, allowlist) {
@@ -76,28 +82,80 @@ function isPathAllowed(resolvedPath, allowlist) {
     return false;
 }
 const SYSTEM_BIN_DIRS = new Set([
-    "/usr/bin", "/bin", "/usr/local/bin",
-    "/usr/sbin", "/sbin",
-    "/opt/homebrew/bin", "/opt/homebrew/sbin",
+    "/usr/bin",
+    "/bin",
+    "/usr/local/bin",
+    "/usr/sbin",
+    "/sbin",
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
 ]);
 /** Bash commands that only read files. */
 const READ_ONLY_BASH_CMDS = new Set([
-    "cat", "head", "tail", "more", "less",
-    "ls", "find", "grep", "rg", "ag", "ack",
-    "stat", "file", "wc", "du", "df",
-    "echo", "printf", "which", "type",
-    "pwd", "date", "env", "printenv",
-    "whoami", "id", "uname", "hostname",
-    "pip", "pip3", "npm", "npx", "yarn",
-    "node", "deno", "bun",
-    "git", "curl", "wget",
-    "make", "cmake", "cargo",
-    "python", "python3", "ruby", "perl", "php",
-    "docker", "podman",
-    "bat", "glow", "jq", "yq",
-    "tree", "xdg-open", "open",
-    "ps", "top", "htop", "uptime",
-    "ping", "dig", "nslookup", "host",
+    "cat",
+    "head",
+    "tail",
+    "more",
+    "less",
+    "ls",
+    "find",
+    "grep",
+    "rg",
+    "ag",
+    "ack",
+    "stat",
+    "file",
+    "wc",
+    "du",
+    "df",
+    "echo",
+    "printf",
+    "which",
+    "type",
+    "pwd",
+    "date",
+    "env",
+    "printenv",
+    "whoami",
+    "id",
+    "uname",
+    "hostname",
+    "pip",
+    "pip3",
+    "npm",
+    "npx",
+    "yarn",
+    "node",
+    "deno",
+    "bun",
+    "git",
+    "curl",
+    "wget",
+    "make",
+    "cmake",
+    "cargo",
+    "python",
+    "python3",
+    "ruby",
+    "perl",
+    "php",
+    "docker",
+    "podman",
+    "bat",
+    "glow",
+    "jq",
+    "yq",
+    "tree",
+    "xdg-open",
+    "open",
+    "ps",
+    "top",
+    "htop",
+    "uptime",
+    "ping",
+    "dig",
+    "nslookup",
+    "host",
 ]);
 // ── Heuristic Fallbacks ──────────────────────────────────────────────────────
 /**
@@ -136,7 +194,7 @@ function checkBashPaths(command, cwd) {
             hasViolation = true;
     }
     // Check absolute paths
-    const absRe = /(?<!\w)(\/[\w%+~@.-][\w%+~@.\/-]*)/g;
+    const absRe = /(?<!\w)(\/[\w%+~@.-][\w%+~@./-]*)/g;
     while ((m = absRe.exec(expanded)) !== null) {
         const ap = m[1];
         if (ap.startsWith("/usr/") || ap.startsWith("/bin/") || ap.startsWith("/opt/"))

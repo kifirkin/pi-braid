@@ -84,7 +84,7 @@ export function shouldRequestHelp(ctx?: ExtensionContext): boolean {
 
 // ── Lifecycle (no-ops — storage removed) ────────────────────────────────────────
 
-/** @deprecated Storage removed — state is now ctx-scoped. No-op. */
+/** @deprecated Will be removed in v0.3.0 — state is now ctx-scoped via getExtensionState. No-op. */
 export function initMetacognitiveState(_storageDir?: string): void {
   /* no-op */
 }

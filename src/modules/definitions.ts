@@ -67,7 +67,6 @@ import researchFn from "../contrib/research/index.js";
 import systemMonitorFn from "../contrib/system-monitor/index.js";
 import toolConfigFn from "../contrib/tool-config/index.js";
 
-
 // watchdog (session monitoring, opt-in)
 import watchdogFn from "../extensions/watchdog/index.js";
 
@@ -327,8 +326,6 @@ export const MODULE_DEFINITIONS: ModuleDef[] = [
     ],
     coupledWith: [],
   },
-
-
 
   // ═════════════════════════════════════════════════════════════════════
   // CONTRIB — Out-of-scope utilities (not cognitive architecture)

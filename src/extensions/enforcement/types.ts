@@ -18,7 +18,6 @@ export interface EnforcementConfig {
   maxClaimsBeforeVerification: number;
   // Blocking behavior
   blockExploreBeforeWrite: boolean;
-  blockThinkBeforeEdit: boolean; // DEPRECATED
 }
 
 export interface TurnState {

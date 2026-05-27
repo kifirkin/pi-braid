@@ -19,7 +19,8 @@
  *   to control module loading during benchmark experiments.
  */
 
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "./lib/logger.js";
 import { loadModules } from "./modules/loader.js";
@@ -68,7 +69,11 @@ export default async function braidExtension(pi: ExtensionAPI): Promise<void> {
 
 function getVersion(): string {
   try {
-    return "0.2.5";
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+    const pkgPath = join(__dirname, "..", "package.json");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { version?: string };
+    return pkg.version ?? "dev";
   } catch {
     return "dev";
   }

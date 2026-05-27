@@ -56,9 +56,7 @@ const BASH_DANGER_CRITERIA = {
     "and destroying block devices (dd, mkfs, fdisk). " +
     "Answer only 'yes' or 'no'. 'yes' = DANGEROUS, should be blocked. " +
     "'no' = SAFE, should be allowed.",
-  userPrompt:
-    "Command: {{command}}\nProject: {{cwd}}\n" +
-    "Is this bash command dangerous?",
+  userPrompt: "Command: {{command}}\nProject: {{cwd}}\n" + "Is this bash command dangerous?",
 };
 
 // ── Shared utilities (used by heuristic fallbacks) ───────────────────────────
@@ -72,9 +70,16 @@ function buildAllowlist(cwd: string): string[] {
   const projectSkillsDir = path.join(resolvedCwd, "skills");
   const bundledSkillsDir = SKILLS_DIR;
   return [
-    resolvedCwd, piHomeDir, piAgentDir, skillsDir,
-    projectSkillsDir, bundledSkillsDir,
-    os.tmpdir(), "/tmp", "/var/tmp", "/dev",
+    resolvedCwd,
+    piHomeDir,
+    piAgentDir,
+    skillsDir,
+    projectSkillsDir,
+    bundledSkillsDir,
+    os.tmpdir(),
+    "/tmp",
+    "/var/tmp",
+    "/dev",
   ];
 }
 
@@ -88,29 +93,81 @@ function isPathAllowed(resolvedPath: string, allowlist: string[]): boolean {
 }
 
 const SYSTEM_BIN_DIRS = new Set([
-  "/usr/bin", "/bin", "/usr/local/bin",
-  "/usr/sbin", "/sbin",
-  "/opt/homebrew/bin", "/opt/homebrew/sbin",
+  "/usr/bin",
+  "/bin",
+  "/usr/local/bin",
+  "/usr/sbin",
+  "/sbin",
+  "/opt/homebrew/bin",
+  "/opt/homebrew/sbin",
 ]);
 
 /** Bash commands that only read files. */
 const READ_ONLY_BASH_CMDS = new Set([
-  "cat", "head", "tail", "more", "less",
-  "ls", "find", "grep", "rg", "ag", "ack",
-  "stat", "file", "wc", "du", "df",
-  "echo", "printf", "which", "type",
-  "pwd", "date", "env", "printenv",
-  "whoami", "id", "uname", "hostname",
-  "pip", "pip3", "npm", "npx", "yarn",
-  "node", "deno", "bun",
-  "git", "curl", "wget",
-  "make", "cmake", "cargo",
-  "python", "python3", "ruby", "perl", "php",
-  "docker", "podman",
-  "bat", "glow", "jq", "yq",
-  "tree", "xdg-open", "open",
-  "ps", "top", "htop", "uptime",
-  "ping", "dig", "nslookup", "host",
+  "cat",
+  "head",
+  "tail",
+  "more",
+  "less",
+  "ls",
+  "find",
+  "grep",
+  "rg",
+  "ag",
+  "ack",
+  "stat",
+  "file",
+  "wc",
+  "du",
+  "df",
+  "echo",
+  "printf",
+  "which",
+  "type",
+  "pwd",
+  "date",
+  "env",
+  "printenv",
+  "whoami",
+  "id",
+  "uname",
+  "hostname",
+  "pip",
+  "pip3",
+  "npm",
+  "npx",
+  "yarn",
+  "node",
+  "deno",
+  "bun",
+  "git",
+  "curl",
+  "wget",
+  "make",
+  "cmake",
+  "cargo",
+  "python",
+  "python3",
+  "ruby",
+  "perl",
+  "php",
+  "docker",
+  "podman",
+  "bat",
+  "glow",
+  "jq",
+  "yq",
+  "tree",
+  "xdg-open",
+  "open",
+  "ps",
+  "top",
+  "htop",
+  "uptime",
+  "ping",
+  "dig",
+  "nslookup",
+  "host",
 ]);
 
 // ── Heuristic Fallbacks ──────────────────────────────────────────────────────
@@ -130,8 +187,13 @@ function heuristicWriteCheck(toolName: string, filePath: string, cwd: string): s
 }
 
 /** Expand ~ and check absolute paths for a command. Returns violation info. */
-function checkBashPaths(command: string, cwd: string): {
-  hasViolation: boolean; hasRedirect: boolean; isReadOnly: boolean;
+function checkBashPaths(
+  command: string,
+  cwd: string,
+): {
+  hasViolation: boolean;
+  hasRedirect: boolean;
+  isReadOnly: boolean;
 } {
   const homeDir = os.homedir();
   // Expand tilde
@@ -155,7 +217,7 @@ function checkBashPaths(command: string, cwd: string): {
   }
 
   // Check absolute paths
-  const absRe = /(?<!\w)(\/[\w%+~@.-][\w%+~@.\/-]*)/g;
+  const absRe = /(?<!\w)(\/[\w%+~@.-][\w%+~@./-]*)/g;
   while ((m = absRe.exec(expanded)) !== null) {
     const ap = m[1];
     if (ap.startsWith("/usr/") || ap.startsWith("/bin/") || ap.startsWith("/opt/")) continue;
@@ -166,14 +228,20 @@ function checkBashPaths(command: string, cwd: string): {
   const redirRe = /[^2]>>?\s*(\/[^\s]+)/g;
   while ((m = redirRe.exec(expanded)) !== null) {
     const rp = m[1];
-    if (!isPathAllowed(rp, allAllowed)) { hasViolation = true; hasRedirect = true; }
+    if (!isPathAllowed(rp, allAllowed)) {
+      hasViolation = true;
+      hasRedirect = true;
+    }
   }
 
   // Check if this is a read-only command
   const trimmed = command.trimStart();
   let isReadOnly = false;
   for (const cmd of READ_ONLY_BASH_CMDS) {
-    if (trimmed.startsWith(cmd + " ") || trimmed === cmd) { isReadOnly = true; break; }
+    if (trimmed.startsWith(cmd + " ") || trimmed === cmd) {
+      isReadOnly = true;
+      break;
+    }
   }
 
   return { hasViolation, hasRedirect, isReadOnly };
@@ -224,11 +292,16 @@ export async function vetWriteOperation(
   cwd: string,
   ctx: ExtensionContext,
 ): Promise<VetResult> {
-  const result = await classify(ctx, WRITE_DANGER_CRITERIA, { toolName, path: filePath, cwd }, {
-    maxTokens: 5,
-    timeoutMs: 5000,
-    fallback: () => heuristicWriteCheck(toolName, filePath, cwd),
-  });
+  const result = await classify(
+    ctx,
+    WRITE_DANGER_CRITERIA,
+    { toolName, path: filePath, cwd },
+    {
+      maxTokens: 5,
+      timeoutMs: 5000,
+      fallback: () => heuristicWriteCheck(toolName, filePath, cwd),
+    },
+  );
   return { safe: result.label !== "yes", tier: result.tier as "utility" | "session" | "heuristic" };
 }
 
@@ -244,10 +317,15 @@ export async function vetBashCommand(
   ctx: ExtensionContext,
 ): Promise<VetResult> {
   const truncated = command.length > 2000 ? command.slice(0, 2000) + "..." : command;
-  const result = await classify(ctx, BASH_DANGER_CRITERIA, { command: truncated, cwd }, {
-    maxTokens: 5,
-    timeoutMs: 5000,
-    fallback: () => heuristicBashCheck(command, cwd),
-  });
+  const result = await classify(
+    ctx,
+    BASH_DANGER_CRITERIA,
+    { command: truncated, cwd },
+    {
+      maxTokens: 5,
+      timeoutMs: 5000,
+      fallback: () => heuristicBashCheck(command, cwd),
+    },
+  );
   return { safe: result.label !== "yes", tier: result.tier as "utility" | "session" | "heuristic" };
 }

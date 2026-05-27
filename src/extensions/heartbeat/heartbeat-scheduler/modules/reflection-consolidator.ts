@@ -1,8 +1,11 @@
 /**
- * Dreamer Module — reflection and knowledge consolidation after sustained work.
+ * Reflection Consolidator — reflection and knowledge consolidation after sustained work.
  *
  * Analyzes tool usage patterns, generates reflection insights,
  * adds memory episodes for cross-session pattern learning.
+ *
+ * Formerly named "dreamer" — renamed to avoid collision with lib/dreamer.ts
+ * (Markov-chain tool sequence predictor).
  */
 
 import type { CognitiveModule } from "../types.js";
@@ -13,17 +16,17 @@ import {
   addHeuristicRule,
 } from "../../../memory/three-memory-stores/index.js";
 
-const log = createLogger("heartbeat:dreamer");
+const log = createLogger("heartbeat:reflection-consolidator");
 
-export const dreamerModule: CognitiveModule = {
-  name: "dreamer",
+export const reflectionConsolidatorModule: CognitiveModule = {
+  name: "reflection-consolidator",
   description: "Reflection and knowledge consolidation after sustained work",
   priority: 0.4,
 
   shouldActivate(context): boolean {
-    const lastDream = context.lastActivation.get("dreamer") ?? 0;
-    const turnsSinceDream = context.turnCount - lastDream;
-    if (turnsSinceDream < 25 || context.totalToolCalls < 15) return false;
+    const lastActivation = context.lastActivation.get("reflection-consolidator") ?? 0;
+    const turnsSinceActivation = context.turnCount - lastActivation;
+    if (turnsSinceActivation < 25 || context.totalToolCalls < 15) return false;
 
     const memState = getMemoryState(context.ctx);
     if (!memState) return context.totalToolCalls > 20;
@@ -71,7 +74,7 @@ export const dreamerModule: CognitiveModule = {
 
     addMemoryEpisode(memState, task, solution, "partial", toolsUsed, [
       "self-reflection",
-      "dreamer",
+      "reflection-consolidator",
       `turns-${context.turnCount}`,
     ]);
 

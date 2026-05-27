@@ -96,7 +96,7 @@ describe("D0 Dreamer Module", () => {
 
   it("shouldActivate respects cooldown (25 turns between activations)", () => {
     const lastActivation = new Map();
-    lastActivation.set("dreamer", 10);
+    lastActivation.set("reflection-consolidator", 10);
     const context = {
       ...DEFAULT_CONTEXT,
       turnCount: 30,
@@ -109,7 +109,7 @@ describe("D0 Dreamer Module", () => {
 
   it("shouldActivate works after cooldown expires", () => {
     const lastActivation = new Map();
-    lastActivation.set("dreamer", 5);
+    lastActivation.set("reflection-consolidator", 5);
     const context = {
       ...DEFAULT_CONTEXT,
       turnCount: 35,
@@ -121,7 +121,7 @@ describe("D0 Dreamer Module", () => {
   });
 
   it("module metadata is correctly structured", () => {
-    assert.equal(dreamerModule.name, "dreamer");
+    assert.equal(dreamerModule.name, "reflection-consolidator");
     assert.equal(dreamerModule.priority, 0.4);
     assert.ok(typeof dreamerModule.shouldActivate === "function");
     assert.ok(typeof dreamerModule.activate === "function");
@@ -191,7 +191,7 @@ describe("D0 Dreamer Module", () => {
     assert.ok(episodes.length > 0, "Should create at least one episode");
     const ep = episodes[episodes.length - 1];
     assert.ok(ep.task.match(/\d+ tool calls/), "Episode task should mention tool count, got: " + ep.task);
-    assert.ok(ep.tags.includes("dreamer"), "Episode should have dreamer tag");
+    assert.ok(ep.tags.includes("reflection-consolidator"), "Episode should have reflection-consolidator tag");
     assert.ok(ep.tags.includes("self-reflection"), "Episode should have self-reflection tag");
   });
 

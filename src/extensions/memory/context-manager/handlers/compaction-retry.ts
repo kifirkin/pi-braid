@@ -16,6 +16,7 @@ import {
   compactionRetryState,
   overflowRetryState,
   _compactedEntries,
+  triggerEmergencyRotation,
   COMPACTION_RETRY_MAX_ATTEMPTS,
   OVERFLOW_RETRY_MAX_ATTEMPTS,
   OVERFLOW_RETRY_KEEP_REDUCTION_FACTOR,
@@ -42,16 +43,12 @@ export async function handleOverflowFailure(
       log.warn(
         `[Critical] Context at ${analysis.usage.percent.toFixed(1)}% — triggering emergency rotation (overflow)`,
       );
-      const rotationModule = await import("./rotation.js");
-      const triggerEmergencyRotation = rotationModule?.triggerEmergencyRotation;
-      if (triggerEmergencyRotation) triggerEmergencyRotation(pi, ctx);
+      triggerEmergencyRotation(pi, ctx);
       return;
     }
   } catch {
     if (isContextWindowError(errMsg)) {
-      const rotationModule = await import("./rotation.js");
-      const triggerEmergencyRotation = rotationModule?.triggerEmergencyRotation;
-      if (triggerEmergencyRotation) triggerEmergencyRotation(pi, ctx);
+      triggerEmergencyRotation(pi, ctx);
       return;
     }
   }
@@ -134,9 +131,7 @@ export async function handleTransientError(
       log.warn(
         `[Critical] Context at ${analysis.usage.percent.toFixed(1)}% — triggering emergency rotation (transient)`,
       );
-      const rotationModule = await import("./rotation.js");
-      const triggerEmergencyRotation = rotationModule?.triggerEmergencyRotation;
-      if (triggerEmergencyRotation) triggerEmergencyRotation(pi, ctx);
+      triggerEmergencyRotation(pi, ctx);
       return;
     }
   } catch {
@@ -196,13 +191,9 @@ export async function handleContextWindowError(
   log.warn(`[Critical] ${errMsg}`);
 
   try {
-    const rotationModule = await import("./rotation.js");
-    const triggerEmergencyRotation = rotationModule?.triggerEmergencyRotation;
-    if (triggerEmergencyRotation) {
-      triggerEmergencyRotation(pi, ctx);
-      log.info("[ContextWindow] Emergency rotation triggered");
-      return;
-    }
+    triggerEmergencyRotation(pi, ctx);
+    log.info("[ContextWindow] Emergency rotation triggered");
+    return;
   } catch (e) {
     log.error("[ContextWindow] Failed to trigger emergency rotation:", e);
   }
@@ -245,9 +236,7 @@ export async function handleThresholdFailure(
       log.warn(
         `[Critical] Context at ${analysis.usage.percent.toFixed(1)}% — triggering emergency rotation (threshold)`,
       );
-      const rotationModule = await import("./rotation.js");
-      const triggerEmergencyRotation = rotationModule?.triggerEmergencyRotation;
-      if (triggerEmergencyRotation) triggerEmergencyRotation(pi, ctx);
+      triggerEmergencyRotation(pi, ctx);
       return;
     }
   } catch {

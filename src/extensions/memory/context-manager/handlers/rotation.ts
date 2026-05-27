@@ -14,8 +14,7 @@
 
 import { statSync } from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { getCmState } from "./shared.js";
-import { log } from "./shared.js";
+import { getCmState, log, buildContinuationSummary, triggerEmergencyRotation } from "./shared.js";
 import { getRotationState } from "../../../../lib/global-state.js";
 import type { RotationState } from "../../../../lib/global-state.js";
 import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
@@ -89,111 +88,6 @@ function shouldRotate(ctx: ExtensionContext): { needed: boolean; reason: string 
     };
   }
   return { needed: false, reason: "" };
-}
-
-// ── Build continuation summary ───────────────────────────────────────────────
-function buildContinuationSummary(ctx: ExtensionContext): string {
-  try {
-    const sm = ctx.sessionManager as {
-      getBranch?(): Array<{
-        id: string;
-        type?: string;
-        message?: { role?: string; content?: string | Array<{ text?: string }> };
-      }>;
-      getLabel?(id: string): string | undefined;
-    };
-    const branch = sm.getBranch?.() ?? [];
-    const tags: string[] = [];
-
-    // Collect all tags
-    for (const entry of branch) {
-      const label = sm.getLabel?.(entry.id);
-      if (label) tags.push(label);
-    }
-
-    const lines: string[] = [
-      "## Session Continuation",
-      "",
-      "This session continues from a previous session that was rotated.",
-      "",
-      `Previous session: ${branch.length} entries, ${tags.length} tags`,
-    ];
-
-    if (tags.length > 0) {
-      lines.push(`Tags preserved: ${tags.join(", ")}`);
-    }
-
-    // Find the most recent user messages to carry context
-    const recentUserMessages: string[] = [];
-    for (let i = branch.length - 1; i >= Math.max(0, branch.length - 5); i--) {
-      const entry = branch[i];
-      if (entry.type === "message" && entry.message?.role === "user") {
-        const text =
-          typeof entry.message.content === "string"
-            ? entry.message.content
-            : (entry.message.content?.[0]?.text ?? "");
-        if (text) recentUserMessages.unshift(text.slice(0, 200));
-      }
-    }
-
-    if (recentUserMessages.length > 0) {
-      lines.push("", "Recent context:");
-      for (const msg of recentUserMessages.slice(-3)) {
-        lines.push(`- ${msg}`);
-      }
-    }
-
-    lines.push("", "Use `memory_recall` to retrieve cross-session knowledge.");
-
-    return lines.join("\n");
-  } catch {
-    return "Session continuation from rotated session. Use memory_recall for context.";
-  }
-}
-
-// ── Emergency rotation trigger ─────────────────────────────────────────────
-// Called when context overflow is imminent to force rotation before cascade
-function triggerEmergencyRotation(pi: ExtensionAPI, ctx: ExtensionContext): void {
-  try {
-    const state = _sessionRotationState();
-    if (state.pendingRotation) {
-      log.info("[Emergency] Rotation already pending, skipping duplicate trigger");
-      return;
-    }
-
-    state.pendingRotation = true;
-    state.emergencyRotation = true;
-    state.continuationSummary = buildContinuationSummary(ctx);
-
-    // Send immediate notification to agent
-    sendTrackedMessage(
-      pi,
-      {
-        customType: "context",
-        content: [
-          {
-            type: "text" as const,
-            text: [
-              "## Session Rotation Required",
-              "",
-              "Context overflow detected. Automatic rotation triggered to prevent data loss.",
-              "",
-              "Please call `finalize()` to complete this task and start fresh.",
-              "",
-              "Rotation will happen automatically on next `finalize()`.",
-            ].join("\n"),
-          },
-        ],
-        display: true,
-      },
-      { deliverAs: "steer", triggerTurn: true },
-      { type: "context", source: "context-manager/rotation" },
-    );
-
-    log.info("[Emergency] Rotation triggered due to context overflow risk");
-  } catch (err) {
-    log.error("[Emergency] Rotation trigger failed:", err);
-  }
 }
 
 // ── Register rotation handlers ───────────────────────────────────────────────
@@ -377,4 +271,4 @@ export function registerSessionShutdownHandler(pi: ExtensionAPI): void {
 }
 
 // Export for use in compaction retry guard
-export { triggerEmergencyRotation };
+export { triggerEmergencyRotation, buildContinuationSummary };

@@ -1,78 +1,46 @@
 /**
- * Enforcement Handler Registry — all pi.on() registrations.
+ * Enforcement Handler Registry — thin orchestrator.
  *
- * Extracted from index.ts to reduce it from 1268L to a thin wrapper.
- * Exports a single function that registers all event handlers.
+ * Imports and registers each focused handler. Previously a 855-line monolith
+ * with inline event handlers and dynamic imports — now a ~60-line coordinator.
  *
- * Signal Architecture:
- * - L1 (Internal): Tool usage, context hygiene, turn validation tracked in state only
- * - L2 (Structured hints): Bundled per-turn into a SINGLE Session Signals nudge
- * - L3 (Critical): Overflow failures, infrastructure errors, dangerous commands
- *   that passed review - individual visible messages with semantic framing
- *
- * Key design: Agent gets ONE [enforcement] message per turn max for non-critical signals.
+ * Phase 3: God object split complete. Each handler lives in its own file
+ * under handlers/ for independent testing.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../lib/logger.js";
-import { safeSessionManager } from "../../lib/extension-state.js";
-import { sendTrackedMessage, registerInjectionTracker } from "../../lib/injection-tracker.js";
-import { registerSessionStartHandler, SessionPhase } from "../../lib/session-start-queue.js";
-import { detectMalformedToolCalls } from "./detection/malformed.js";
-import { setLanguage, detectLanguage } from "../../lib/language-hint.js";
-import { checkBlocking } from "./handlers/blocking.js";
-import {
-  addEvidence,
-  getUnresolvedConflicts,
-  detectConflicts,
-  formatConflictMessage,
-} from "../../lib/evidence-pool.js";
-import {
-  processConflicts as processConflictQAs,
-  formatConflictWhisper,
-} from "../../lib/conflict-qa.js";
-import {
-  emitSignal,
-  getNextRecommendation,
-  reportRecommendationOutcome,
-} from "../../lib/belief-policy-engine.js";
-import { recordBashDetails, recordToolCall, recordToolInput } from "./handlers/tool-tracker.js";
-import {
-  checkLocalizationRisk,
-  recordFileTouch,
-  updateProblemContext,
-} from "../../lib/bidirectional-verifier.js";
-import { analyzeMessage } from "./handlers/message-analysis.js";
-import { dispatchTurnEndLoop } from "./handlers/turn-end-handler.js";
-import { type NudgeManager } from "./nudge-manager.js";
-
-import { sendEnforcementWhisper } from "./whisper.js";
-import {
-  registerTurnEndHandler,
-} from "../../lib/turn-end-coordinator.js";
-import { knownFiles } from "./similarity.js";
-import { enforcementSignals, determineContrastMode } from "./signals.js";
-import { getState, recordThink, startJudge, completeJudge } from "./state.js";
-import { resetState } from "./state.js";
-import {
-  recordAdvice,
-  evaluatePendingAdvice,
-  resetAdviceTracker,
-  type EvaluationContext,
-} from "../../lib/advice-tracker.js";
-import { eventBus } from "../../lib/event-bus.js";
+import { guard } from "../../lib/error-guard.js";
+import { registerInjectionTracker } from "../../lib/injection-tracker.js";
+import { registerTurnEndHandler, dispatchTurnEnd } from "../../lib/turn-end-coordinator.js";
 import { onEvent } from "../../lib/event-types.js";
-import type { SessionEntry, SessionManager } from "../../lib/session-manager.js";
+import { type NudgeManager } from "./nudge-manager.js";
+import { sendEnforcementWhisper } from "./whisper.js";
+import { processAgentResponse, formatContradictionWhisper } from "../../lib/claim-tracker.js";
+import {
+  loadSpecs,
+  checkSpecCoverage,
+  getVerifierState,
+} from "../../lib/bidirectional-verifier.js";
+import { scanArchives } from "../../lib/consolidation-channel.js";
+import { getState } from "./state.js";
+import { registerInputHandler } from "./handlers/register-input-handler.js";
+import { registerSessionStart } from "./handlers/register-session-start.js";
+import { registerToolCallHandler } from "./handlers/register-tool-call.js";
+import { registerMessageEndHandler } from "./handlers/register-message-end.js";
+import { registerToolResultHandler } from "./handlers/register-tool-result.js";
+import { registerSessionCompactHandler } from "./handlers/register-session-compact.js";
+import { registerAutoRetryEndHandler } from "./handlers/register-auto-retry-end.js";
+import { registerSessionShutdownHandler } from "./handlers/register-session-shutdown.js";
+import { dispatchTurnEndAnalysis } from "./handlers/dispatch-turn-end-analysis.js";
+import { dispatchTurnEndLoop } from "./handlers/turn-end-handler.js";
 
 const log = createLogger("enforcement");
-const ERROR_BURST_THRESHOLD = 3;
 
-// Module-level tracking for last recommendation (one pi instance per extension load)
 let _lastRecommendationType: string | null = null;
 
 /**
  * Handler registration metadata — used by tests instead of fragile source parsing.
- * Each entry: [eventName, registrationMethod, handlerName]
  */
 export const HANDLER_REGISTRATIONS: Array<{ event: string; method: string; handler: string }> = [
   { event: "input", method: "pi.on", handler: "language detection" },
@@ -86,352 +54,47 @@ export const HANDLER_REGISTRATIONS: Array<{ event: string; method: string; handl
   { event: "tool_result", method: "pi.on", handler: "calibration" },
   { event: "session_compact", method: "onEvent", handler: "hygiene reset" },
   { event: "auto_retry_end", method: "onEvent", handler: "error classification" },
-  { event: "turn_end", method: "onEvent", handler: "drift + BPE + MARS + dreamer" },
   { event: "session_shutdown", method: "onEvent", handler: "state reset" },
-  { event: "turn_end", method: "registerTurnEndHandler", handler: "main enforcement loop" },
+  { event: "turn_end", method: "registerTurnEndHandler", handler: "enforcement-analysis" },
+  { event: "turn_end", method: "registerTurnEndHandler", handler: "enforcement-loop" },
+  { event: "turn_end", method: "registerTurnEndHandler", handler: "claim-tracker" },
+  { event: "turn_end", method: "registerTurnEndHandler", handler: "spec-verification" },
+  { event: "turn_end", method: "registerTurnEndHandler", handler: "archive-ingestion" },
 ];
 
 /**
  * Register all enforcement event handlers on the given pi instance.
  */
 export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): void {
-  // Register injection tracker session lifecycle handler
   registerInjectionTracker(
     pi as unknown as { on: (event: string, handler: (...args: any[]) => any) => void },
   );
 
-  pi.on("input", async (event: { text?: string; source?: string }, ctx: ExtensionContext) => {
-    if (!getState(ctx).enforcementActive) return;
-    const text = event.text || "";
-    if (!text || text.startsWith("/") || event.source === "extension") return;
+  registerInputHandler(pi);
+  registerSessionStart(pi);
+  registerToolCallHandler(pi);
+  registerMessageEndHandler(pi);
+  registerToolResultHandler(pi);
+  registerCompactAndSessionHandlers(pi, nudgeManager);
+}
 
-    const lang = detectLanguage(text);
-    if (lang.code === "EN") return;
+function registerCompactAndSessionHandlers(pi: ExtensionAPI, _nudgeManager: NudgeManager): void {
+  registerSessionCompactHandler(pi);
+  registerAutoRetryEndHandler(pi);
+  registerSessionShutdownHandler(pi);
 
-    setLanguage(ctx, lang.code, lang.name);
-    getState(ctx).lastUserMessage = text;
-    updateProblemContext(ctx, text);
-    // Note: system prompt append via getReplyInstruction() was previously attempted
-    // via getCurrentSession()/updateSystemPrompt() — neither API exists on SessionManager.
-    // Language hint is still tracked in state via setLanguage() above.
-  });
-
-  registerSessionStartHandler(
-    pi,
-    SessionPhase.CoreInit,
-    async (event: any, ctx: ExtensionContext) => {
-      if (!getState(ctx).enforcementActive) return;
-      const task =
-        (event as unknown as { task?: string; prompt?: string }).task ||
-        (event as unknown as { task?: string; prompt?: string }).prompt ||
-        getState(ctx).originalRequest ||
-        "";
-      if (task) {
-        getState(ctx).driftDetector?.setTaskContext(task);
-      }
-
-      getState(ctx).currentTurn++;
-
-      // Register event bus consumers (revival: make events actually do things)
-      eventBus.on("context_full", (event: { usagePercent: number }) => {
-        if (event.usagePercent > 80) {
-          sendTrackedMessage(
-            pi,
-            {
-              customType: "context",
-              display: true,
-              content: [{ type: "text", text: `[enforcement] Context at ${Math.round(event.usagePercent)}%. Consider context_tag → context_checkout → context_archive.` }],
-            },
-            { deliverAs: "steer", triggerTurn: false },
-            { type: "enforcement", source: "enforcement/event-bus" },
-          );
-        }
-      });
-
-      eventBus.on("enforcement_violation", (_event) => {
-        // Event already handled by enforcement/whisper.ts — bus consumer
-        // exists to prevent the event from being logged into the void.
-      });
-    },
-  );
-
-  onEvent(pi, "tool_call", async (event: any, ctx: ExtensionContext) => {
-    if (!getState(ctx).enforcementActive) {
-      return undefined;
-    }
-
-    const toolName = event.toolName;
-    const input = event?.input as Record<string, unknown> | undefined;
-
-    // Drop empty/whitespace-only tool calls (LLM hallucinations like proxy artifacts)
-    if (!toolName || !toolName.trim()) return undefined;
-
-    recordToolCall(toolName, ctx);
-    recordToolInput(toolName, input, getState(ctx));
-
-    if (toolName === "bash") {
-      const cmd = (input as { command?: string } | undefined)?.command || "";
-      recordBashDetails(cmd, getState(ctx));
-    }
-
-    if (toolName === "edit" || toolName === "write") {
-      getState(ctx).hasCodeChanges = true;
-      const fp = (input?.path as string) ?? (input?.target as string) ?? "";
-      if (fp) {
-        recordFileTouch(ctx, fp, getState(ctx).currentTurn, true);
-        const risk = checkLocalizationRisk(ctx, fp, getState(ctx).currentTurn);
-        if (risk) {
-          getState(ctx)._localizationRisk = risk;
-        }
-      }
-    }
-
-    if (toolName === "read" || toolName === "grep" || toolName === "find") {
-      const fp =
-        (input?.path as string) ?? (input?.target as string) ?? (input?.pattern as string) ?? "";
-      if (fp) {
-        recordFileTouch(ctx, fp, getState(ctx).currentTurn, false);
-      }
-    }
-
-    if (toolName === "edit" || toolName === "write") {
-      const filePath = (input as { path?: string } | undefined)?.path;
-      if (filePath) {
-        knownFiles.set(filePath, { content: "", turn: getState(ctx).currentTurn });
-      }
-    }
-
-    getState(ctx).toolLog.push(`${toolName}`);
-
-    // Task 4a: Reflection gap + Task 4b: Thought chain tracking
-    if (toolName === "think") {
-      const thinkType = (input as { type?: string })?.type || "unknown";
-      const parentId = (input as { parent_id?: string })?.parent_id || null;
-      const confidence = (input as { confidence?: number })?.confidence;
-      recordThink(getState(ctx), thinkType, parentId, confidence);
-    } else {
-      getState(ctx).toolsSinceReflection++;
-    }
-
-    // Blocking enforcement
-    const blockResult = checkBlocking(pi, toolName, input, getState(ctx));
-    if (blockResult.blocked) {
-      return { block: true, reason: blockResult.reason };
-    }
-
-    return undefined;
-  });
-
-  // ── message_end: combined handler (conflict detection → message analysis → verification judge) ──
-  onEvent(pi, "message_end", async (event: any, ctx: any) => {
-    if (!getState(ctx).enforcementActive) return;
-    const isBurst = getState(ctx).consecutiveErrorTurns >= ERROR_BURST_THRESHOLD;
-
-    // Part 1: Conflict detection (runs for all messages, not just assistant)
-    if (!isBurst) {
-      const newConflicts = detectConflicts(ctx);
-      if (newConflicts.length > 0) {
-        const msg = formatConflictMessage(newConflicts[0]);
-        sendEnforcementWhisper(pi, ctx, msg);
-        emitSignal(
-          ctx,
-          "conflict",
-          "detected",
-          newConflicts[0]?.for[0]?.confidence > 0.7 ? "warn" : "info",
-          false,
-          { conflictId: newConflicts[0]?.id },
-        );
-      }
-
-      const unresolved = getUnresolvedConflicts(ctx);
-      if (unresolved.length > 0) {
-        emitSignal(ctx, "conflict", "unresolved", "info", false, { count: unresolved.length });
-      }
-      if (unresolved.length > 0 && unresolved.length % 5 === 0) {
-        sendEnforcementWhisper(
-          pi,
-          ctx,
-          `[conflict] ${unresolved.length} unresolved source conflicts. ` +
-            `Consider resolving: memory_store content with conflict_verified tag.`,
-        );
-      }
-
-      const newQAs = processConflictQAs(ctx);
-      for (const qa of newQAs) {
-        sendEnforcementWhisper(pi, ctx, formatConflictWhisper(qa));
-      }
-    }
-
-    // Part 2: Message analysis + verification judge (assistant messages only)
-    if (event.message.role !== "assistant") return;
-
-    const textContent = event.message.content
-      .filter((c: any) => c.type === "text")
-      .map((c: any) => (c as { type: "text"; text: string }).text)
-      .join("\n");
-
-    const thinkingContent = event.message.content
-      .filter((c: any) => c.type === "thinking")
-      .map((c: any) => (c as { type: "thinking"; thinking: string }).thinking)
-      .join("\n");
-
-    const fullContent = thinkingContent
-      ? `## REASONING\n${thinkingContent}\n\n## RESPONSE\n${textContent}`
-      : textContent;
-
-    if (textContent.length < 100) return;
-
-    // ── Message Analysis ──────────────────────────────────────────────────
-    const analysisSignals = analyzeMessage(textContent, thinkingContent, getState(ctx));
-    getState(ctx).lastUserMessage = "";
-    const signalEntries = analysisSignals as Record<
-      string,
-      { turn: number; text: string; acted: boolean }
-    >;
-    for (const [key, signal] of Object.entries(signalEntries)) {
-      if (signal?.text) {
-        enforcementSignals[key] = signal;
-        if (key === "stability") {
-          emitSignal(ctx, "stability", "decline", "warn", false, {
-            overlap: signal.text.match(/overlap=([0-9.]+)/)?.[1] ?? 0,
-            reason: signal.text,
-          });
-        }
-      }
-    }
-
-    const turnState = getState(ctx).turnHistory.get(getState(ctx).currentTurn);
-    if (turnState) {
-      detectMalformedToolCalls(textContent, pi, ctx);
-    }
-
-    if (getState(ctx).verificationJudgeRunning) return;
-
-    const userHasBash = Array.from(getState(ctx).uniqueToolsUsed).includes("bash");
-
-    if (
-      !getState(ctx).verificationJudgeRunning &&
-      turnState &&
-      turnState.actualTools.length === 0 &&
-      getState(ctx).hasCodeChanges &&
-      getState(ctx).currentTurn - getState(ctx).lastVerificationJudgeTurn >= 1
-    ) {
-      if (Date.now() - getState(ctx).lastJudgeTime < 60_000) return;
-      startJudge(getState(ctx));
-
-      const toolLog: string[] = [];
-      for (const [, turn] of getState(ctx).turnHistory) {
-        if (turn.actualTools.length > 0) {
-          toolLog.push(`Turn ${turn.turnIndex}: [${turn.actualTools.join(", ")}]`);
-        }
-      }
-
-      const judgeCtx: any = {
-        userRequest: getState(ctx).originalRequest,
-        toolsUsed: Array.from(getState(ctx).uniqueToolsUsed),
-        toolLog,
-        hasCodeChanges: getState(ctx).hasCodeChanges,
-        hasVerification: userHasBash,
-        lastResponse: fullContent,
-        thinking: thinkingContent,
-      };
-
-      const { runVerificationJudge, formatVerificationNudge } =
-        await import("./verification-judge.js");
-      const result = await runVerificationJudge(ctx, judgeCtx, { timeoutMs: 30000 });
-
-      completeJudge(getState(ctx), getState(ctx).currentTurn);
-
-      if (result) {
-        if (result.verdict === "fail" || result.verdict === "warn") {
-          sendEnforcementWhisper(pi, ctx, formatVerificationNudge(result));
-          if (result.verdict === "fail") {
-            getState(ctx).validationFailures++;
-          }
-        }
-      }
-    }
-  });
-
-  pi.on("tool_result", async (event: any, ctx: ExtensionContext) => {
-    if (!getState(ctx).enforcementActive) return;
-    const isBurst = getState(ctx).consecutiveErrorTurns >= ERROR_BURST_THRESHOLD;
-    const toolName = event?.toolName || "";
-    // Drop empty/whitespace-only tool names (LLM hallucinations like proxy artifacts)
-    if (!toolName || !toolName.trim()) return;
-    if (toolName === "think") return;
-
-    const predicted = getState(ctx).lastThinkConfidence;
-
-    // Skip calibration if agent hasn't provided explicit confidence via think()
-    if (predicted === null) return;
-
-    const actual = event?.error ? 0 : 1;
-    getState(ctx).calibrationPairs.push({
-      predicted,
-      actual,
-      tool: toolName,
-      turn: getState(ctx).currentTurn,
-    });
-
-    if (getState(ctx).calibrationPairs.length > 50) {
-      getState(ctx).calibrationPairs = getState(ctx).calibrationPairs.slice(-50);
-    }
-
-    addEvidence(
-      ctx,
-      `Tool ${toolName} ${event?.error ? "failed" : "succeeded"}`,
-      "session",
-      `${toolName}: ${event?.error ? "failure" : "success"} (confidence: ${predicted.toFixed(2)})`,
-      predicted,
-    );
-
-    const error = Math.abs(predicted - actual);
-    if (!isBurst && getState(ctx).calibrationPairs.length >= 10 && error > 0.4) {
-      const recent = getState(ctx).calibrationPairs.slice(-10);
-      const avgError =
-        recent.reduce((s, p) => s + Math.abs(p.predicted - p.actual), 0) / recent.length;
-      if (avgError > 0.5) {
-        // Rate-limit: at most one calibration whisper per 120 seconds
-        const enState = getState(ctx);
-        const now = Date.now();
-        if (now - enState.lastCalibrationWhisperTime < 120_000) return;
-        enState.lastCalibrationWhisperTime = now;
-
-        emitSignal(ctx, "calibration", "high-error", "warn", false, {
-          error: avgError,
-          tool: toolName,
-          pairCount: getState(ctx).calibrationPairs.length,
-        });
-
-        sendEnforcementWhisper(
-          pi,
-          ctx,
-          `[calibration] High prediction error: ${(error * 100).toFixed(0)}% off on last ${toolName}. ` +
-            `Avg error last 10 tools: ${(avgError * 100).toFixed(0)}%`,
-        );
-      }
-    }
-  });
-
-  // ── turn_end: enforcement coordinator (guaranteed priority ordering) ──
-  // Sequences enforcement sub-handlers explicitly instead of relying on
-  // pi.on() registration order (which varies with module load order).
-  //   0. drift detection, BPE, MARS, dreamer, reflection gap
-  //   1. main enforcement loop (error bursts, context, nudges, claim tracking)
-  // Register turn_end sub-handlers via the coordinator so other extensions
-  // can register their own handlers without modifying enforcement code.
+  // ── turn_end: enforcement analysis (drift + BPE + MARS + dreamer + reflection) ──
   registerTurnEndHandler("enforcement-analysis", 100, async (event, ctx) => {
-    const newRecType = await dispatchTurnEndAnalysis(pi, event, ctx);
+    const newRecType = await dispatchTurnEndAnalysis(pi, event, ctx, _lastRecommendationType);
     if (newRecType) _lastRecommendationType = newRecType;
   });
 
+  // ── turn_end: main enforcement loop ──
   registerTurnEndHandler("enforcement-loop", 90, async (event, ctx) => {
-    await dispatchTurnEndLoop(pi, event, ctx, nudgeManager);
+    await dispatchTurnEndLoop(pi, event, ctx, _nudgeManager);
   });
 
-  // Claim tracker — cross-turn contradiction detection (extracted from enforcement-loop
-  // into its own handler to reduce the monolithic turn-end handler).
+  // ── turn_end: claim tracker — cross-turn contradiction detection ──
   registerTurnEndHandler("claim-tracker", 70, async (event, ctx) => {
     if (!getState(ctx).enforcementActive) return;
     const isBurst = getState(ctx).consecutiveErrorTurns >= 3;
@@ -447,340 +110,56 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
         : "";
 
     if (msgText.length <= 50) return;
-    try {
-      const { processAgentResponse, formatContradictionWhisper } =
-        await import("../../lib/claim-tracker.js");
-      const contradictions = processAgentResponse(msgText, ctx, getState(ctx).currentTurn);
-      if (contradictions.length > 0) {
-        sendEnforcementWhisper(pi, ctx, formatContradictionWhisper(contradictions));
-      }
-    } catch {
-      // Non-fatal: claim tracker errors don't block the turn
-    }
+    await guard(
+      "claim-tracker",
+      async () => {
+        const contradictions = processAgentResponse(msgText, ctx, getState(ctx).currentTurn);
+        if (contradictions.length > 0) {
+          sendEnforcementWhisper(pi, ctx, formatContradictionWhisper(contradictions));
+        }
+      },
+      log,
+    );
   });
 
-  // Spec verification — checks if edited files have spec coverage
+  // ── turn_end: spec verification — checks edited files against specs ──
   registerTurnEndHandler("spec-verification", 30, async (_event, ctx) => {
     if (!getState(ctx).enforcementActive) return;
-    try {
-      const { loadSpecs, checkSpecCoverage, getVerifierState } =
-        await import("../../lib/bidirectional-verifier.js");
-      const specs = loadSpecs(ctx);
-      if (specs.length === 0) return;
-      const state = getVerifierState(ctx);
-      const editedFiles = [...state.editedFiles];
-      if (editedFiles.length === 0) return;
-      const results = checkSpecCoverage(editedFiles, specs);
-      const violations = results.filter((r) => !r.covered);
-      if (violations.length > 0) {
-        const msg = `[spec] ${violations.length} spec requirement(s) affected by recent edits — verify openspec/specs/ remains accurate:\n${violations.map((v) => `  - ${v.strength}: ${v.requirement}`).join("\n")}`;
-        sendEnforcementWhisper(pi, ctx, msg);
-      }
-    } catch {
-      // Non-fatal: spec verification is best-effort
-    }
+    await guard(
+      "spec-verification",
+      async () => {
+        const specs = loadSpecs(ctx);
+        if (specs.length === 0) return;
+        const state = getVerifierState(ctx);
+        const editedFiles = [...state.editedFiles];
+        if (editedFiles.length === 0) return;
+        const results = checkSpecCoverage(editedFiles, specs);
+        const violations = results.filter((r) => !r.covered);
+        if (violations.length > 0) {
+          const msg = `[spec] ${violations.length} spec requirement(s) affected by recent edits:\n${violations.map((v) => `  - ${v.strength}: ${v.requirement}`).join("\n")}`;
+          sendEnforcementWhisper(pi, ctx, msg);
+        }
+      },
+      log,
+    );
   });
 
-  // Archive ingestion — scans openspec/changes/archive/ for new archives
+  // ── turn_end: archive ingestion ──
   registerTurnEndHandler("archive-ingestion", 10, async (_event, ctx) => {
-    try {
-      const { scanArchives } = await import("../../lib/consolidation-channel.js");
-      const archives = scanArchives(ctx.cwd);
-      if (archives.length > 0) {
-        log.info(`[archive-ingestion] Found ${archives.length} archive(s) to process`);
-      }
-    } catch {
-      // Non-fatal: archive scanning is best-effort
-    }
+    await guard(
+      "archive-ingestion",
+      async () => {
+        const archives = scanArchives(ctx.cwd);
+        if (archives.length > 0) {
+          log.info(`[archive-ingestion] Found ${archives.length} archive(s) to process`);
+        }
+      },
+      log,
+    );
   });
 
-  // Single pi.on("turn_end") entry point — dispatches to all registered handlers
-  onEvent(pi, "turn_end", async (event: any, ctx: ExtensionContext) => {
-    const { dispatchTurnEnd } = await import("../../lib/turn-end-coordinator.js");
+  // ── turn_end: coordinator dispatch ──
+  onEvent(pi, "turn_end", async (event: any, ctx: any) => {
     await dispatchTurnEnd(event, ctx);
   });
-
-  onEvent(pi, "session_compact", async (event: any, ctx: ExtensionContext) => {
-    if (!getState(ctx).enforcementActive) return;
-
-    const compactTurn = getState(ctx).currentTurn;
-
-    try {
-      const scratchpadResult = await (
-        ctx as unknown as { tools?: { scratchpad?(params: { action: string }): Promise<unknown> } }
-      ).tools?.scratchpad?.({ action: "read" });
-      const details = (
-        scratchpadResult as
-          | { details?: { key_learnings?: Array<{ persisted?: boolean }> } }
-          | undefined
-      )?.details;
-      const learnings = details?.key_learnings ?? [];
-      const unpersisted = learnings.filter((l) => !l.persisted);
-
-      if (unpersisted.length > 0) {
-        sendEnforcementWhisper(
-          pi,
-          ctx,
-          `Context compacted at turn ${compactTurn}. ` +
-            `${unpersisted.length} key learning(s) not yet persisted - these will be harder to recover:\n\n` +
-            unpersisted
-              .map(
-                (l: any) =>
-                  `- memory_store(content="${l.content}", memoryType="insight", tags=["${l.category}", "session"])`,
-              )
-              .join("\n") +
-            `\n\nPersist them now - this is the minimum-fidelity moment.`,
-        );
-        enforcementSignals["unpersisted_learnings"] = {
-          turn: getState(ctx).currentTurn,
-          text: `${unpersisted.length} key learning(s) not yet persisted - persist them now`,
-          acted: false,
-        };
-        // Emit contrast mode for prompt-builder truthfulness guardrails
-        pi.events.emit("enforcement_signals", {
-          contrastMode: determineContrastMode(ctx),
-        });
-      }
-
-      // Reset hygiene counters
-      getState(ctx).contextNudgeSent = false;
-      getState(ctx).lastContextCheckTurn = getState(ctx).currentTurn;
-      getState(ctx).lastCompactionTurn = compactTurn;
-      getState(ctx).lastScratchpadNudgeTurn = getState(ctx).currentTurn;
-      getState(ctx).overflowRecently = getState(ctx).currentTurn;
-      getState(ctx).hasCodeChanges = false;
-      getState(ctx).lastCodeChangeTurn = 0;
-      getState(ctx).memoryNudgeSent = false;
-      getState(ctx).turnsSinceMemory = 0;
-    } catch {
-      log.debug("session_compact handler: enforcement state access failed (stale ctx?)");
-    }
-  });
-
-  // ── auto_retry_end ────────────────────────────────────────────────────────
-  onEvent(pi, "auto_retry_end", async (event: any, ctx: ExtensionContext) => {
-    if (!getState(ctx).enforcementActive) return;
-
-    const { success, attempt, finalError } = event;
-
-    if (!success) {
-      getState(ctx).validationFailures++;
-
-      const now = Date.now();
-      if (now - getState(ctx).lastNudgeTime < getState(ctx).nudgeCooldownMs) return;
-      getState(ctx).lastNudgeTime = now;
-
-      const errorType = _classifyRetryError(finalError ?? "");
-
-      let msg = ""; // eslint-disable-line no-useless-assignment
-      if (errorType === "rate_limit") {
-        msg = `Rate limit after ${attempt} retry(s). Switch model with /model or wait.`;
-      } else if (errorType === "server_error") {
-        msg = `Server error after ${attempt} retry(s) (${finalError}). Provider may be overloaded.`;
-      } else if (errorType === "network") {
-        msg = `Network error after ${attempt} retry(s). Check your connection.`;
-      } else {
-        msg = `API error after ${attempt} retry(s): ${finalError ?? "unknown"}.`;
-      }
-
-      sendEnforcementWhisper(
-        pi,
-        ctx,
-        `## ⚠️ ${msg}\n\nStore for reference: memory_store(content="API error: ${finalError}", tags=["error", "api"])`,
-      );
-    }
-  });
-
-  async function dispatchTurnEndAnalysis(
-    pi: any,
-    _event: any,
-    ctx: ExtensionContext,
-    prevRecType: string | null = null,
-  ): Promise<string | null> {
-    const gs = getState(ctx);
-    if (!gs.enforcementActive || !gs.driftDetector) return null;
-
-    const sm = safeSessionManager(ctx) as SessionManager | undefined;
-    const entries: SessionEntry[] = sm?.getBranch?.() ?? [];
-    const recentMsgs: Array<{ role?: string; content?: unknown }> = [];
-    for (let i = entries.length - 1; i >= 0 && recentMsgs.length < 4; i--) {
-      const entry = entries[i];
-      if (entry.type === "message" && entry.message) {
-        recentMsgs.unshift({ role: entry.message.role, content: entry.message.content });
-      }
-    }
-    for (let i = recentMsgs.length - 1; i >= 0; i--) {
-      const msg = recentMsgs[i];
-      const text = extractTextContent(msg);
-      if (msg?.role === "user" && text.length > 10) {
-        gs.driftDetector.addTurn(text);
-        break;
-      }
-    }
-    const driftCheck = gs.driftDetector.check();
-    if (driftCheck.drifted) {
-      const whisper = gs.driftDetector.generateWhisper(driftCheck);
-      if (whisper) {
-        sendTrackedMessage(
-          pi,
-          {
-            customType: "context",
-            display: true,
-            content: [{ type: "text", text: `[enforcement] ${whisper}` }],
-          },
-          { deliverAs: "steer", triggerTurn: false },
-          { type: "enforcement", source: "enforcement/drift" },
-        );
-      }
-      emitSignal(
-        ctx,
-        "topic-drift",
-        "detected",
-        driftCheck.severity === "strong" ? "warn" : "info",
-        false,
-        {
-          severity: driftCheck.severity,
-        },
-      );
-    }
-
-    if (prevRecType) {
-      const madeProgress = gs.totalToolCalls > (gs.toolCallsAtLastRecommendation ?? 0);
-      reportRecommendationOutcome(ctx, prevRecType, madeProgress);
-    }
-
-    let bpeRecType: string | null = null;
-    const bpeRec = getNextRecommendation(ctx);
-    if (bpeRec) {
-      bpeRecType = bpeRec.type;
-      gs.toolCallsAtLastRecommendation = gs.totalToolCalls;
-      sendTrackedMessage(
-        pi,
-        {
-          customType: "context",
-          display: true,
-          content: [{ type: "text", text: `[policy] ${bpeRec.message}` }],
-        },
-        { deliverAs: "steer", triggerTurn: false },
-        { type: "enforcement", source: "enforcement/policy" },
-      );
-    }
-
-    const { shouldAdvise: marsShouldAdvise } = await import("../../lib/mars-reflector.js");
-    const marsAdvice = marsShouldAdvise(ctx);
-    if (marsAdvice) {
-      const signalType: any =
-        marsAdvice.type === "tool_overuse"
-          ? "tool-use"
-          : marsAdvice.type === "error_recurrence"
-            ? "error"
-            : marsAdvice.type === "confidence_decline"
-              ? "reasoning"
-              : "stability";
-      const signalValue =
-        marsAdvice.type === "tool_overuse"
-          ? "overuse"
-          : marsAdvice.type === "error_recurrence"
-            ? "recurrence"
-            : "decline";
-      emitSignal(ctx, signalType, signalValue, marsAdvice.severity, false, {
-        type: marsAdvice.type,
-        message: marsAdvice.message.slice(0, 200),
-      });
-      sendTrackedMessage(
-        pi,
-        {
-          customType: "context",
-          display: true,
-          content: [{ type: "text", text: `[enforcement] ${marsAdvice.message}` }],
-        },
-        { deliverAs: "steer", triggerTurn: false },
-        { type: "enforcement", source: "enforcement/mars" },
-      );
-      // Record MARS advice for feedback loop
-      const marsTool = _extractToolFromMarsMessage(marsAdvice.message);
-      recordAdvice("mars", marsAdvice.type, gs.currentTurn, marsTool);
-    }
-
-    const { dream } = await import("../../lib/dreamer.js");
-    const dreamAdvice = dream(ctx, gs.toolLog);
-    if (dreamAdvice) {
-      emitSignal(ctx, "stability", "predicted-decline", "info", false, {
-        source: "dreamer",
-        message: dreamAdvice.message.slice(0, 200),
-      });
-      sendTrackedMessage(
-        pi,
-        {
-          customType: "context",
-          display: true,
-          content: [{ type: "text", text: `[enforcement] ${dreamAdvice.message}` }],
-        },
-        { deliverAs: "steer", triggerTurn: false },
-        { type: "enforcement", source: "enforcement/dreamer" },
-      );
-      // Record Dreamer advice for feedback loop
-      recordAdvice("dreamer", dreamAdvice.prediction || "unknown", gs.currentTurn);
-    }
-
-    // Evaluate pending advice for feedback loop
-    evaluatePendingAdvice({
-      currentTurn: gs.currentTurn,
-      consecutiveErrorTurns: gs.consecutiveErrorTurns,
-      toolLog: gs.toolLog,
-      uniqueToolsCount: gs.uniqueToolsUsed.size,
-    });
-
-    if (gs.toolsSinceReflection >= 8) {
-      emitSignal(ctx, "reflection", "absent", "info", false, {
-        toolsSince: gs.toolsSinceReflection,
-      });
-    }
-
-    return bpeRecType;
-  }
-
-  onEvent(pi, "session_shutdown", async (_event: any, ctx: ExtensionContext) => {
-    const state = getState(ctx);
-    const sessionId = ctx.cwd ?? "default";
-
-    log.info(
-      `[session_shutdown] Session ${sessionId}: ` +
-        `${state.totalToolCalls} tool calls, ${state.uniqueToolsUsed.size} unique tools, ` +
-        `${state.verificationsDone} verifications, ${state.validationFailures} failures`,
-    );
-
-    resetAdviceTracker();
-    resetState(getState(ctx));
-    log.info(`[session_shutdown] Enforcement state reset for session ${sessionId}`);
-  });
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function _classifyRetryError(
-  errorMsg: string,
-): "rate_limit" | "server_error" | "network" | "unknown" {
-  // Use a simple heuristic classification without importing error-classifier.
-  // Covers the same patterns as classifyErrorLib but doesn't need the full module.
-  if (/429|rate.?limit/i.test(errorMsg)) return "rate_limit";
-  if (/5\d\d|server.?error|internal|overloaded|unavailable/i.test(errorMsg)) return "server_error";
-  if (/network|connection|fetch failed|socket|timeout|timed out/i.test(errorMsg)) return "network";
-  return "unknown";
-}
-
-/** Extract tool name from MARS advice message (format: "[mars] <tool> used N/M times..."). */
-function _extractToolFromMarsMessage(msg: string): string | undefined {
-  const match = msg.match(/\[mars\]\s+(\w+)/);
-  return match?.[1];
-}
-
-function extractTextContent(msg: any): string {
-  if (typeof msg.content === "string") return msg.content;
-  if (Array.isArray(msg.content)) {
-    return msg.content
-      .map((c: any) => (c.type === "text" ? c.text : c.type === "toolCall" ? `tool:${c.name}` : ""))
-      .join(" ");
-  }
-  return "";
 }

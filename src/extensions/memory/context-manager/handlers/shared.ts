@@ -3,9 +3,11 @@
 
 import { getExtensionState } from "../../../../lib/extension-state.js";
 import { createLogger } from "../../../../lib/logger.js";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { createPruningState } from "../pruning.js";
 import { getSessionManager } from "../../../../lib/session-manager.js";
+import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
+import { getRotationState } from "../../../../lib/global-state.js";
 
 export const log = createLogger("context-manager");
 
@@ -224,6 +226,162 @@ export function isContextWindowError(errorMessage?: string): boolean {
   ];
   return contextWindowPatterns.some((p) => p.test(errorMessage));
 }
+
+// ── Rotation Utilities (moved from rotation.ts to break cyclic deps) ─────────
+
+/**
+ * Build a summary of the current session for continuity across rotations.
+ */
+export function buildContinuationSummary(ctx: ExtensionContext): string {
+  try {
+    const sm = ctx.sessionManager as {
+      getBranch?(): Array<{
+        id: string;
+        type?: string;
+        message?: { role?: string; content?: string | Array<{ text?: string }> };
+      }>;
+      getLabel?(id: string): string | undefined;
+    };
+    const branch = sm.getBranch?.() ?? [];
+    const tags: string[] = [];
+
+    for (const entry of branch) {
+      const label = sm.getLabel?.(entry.id);
+      if (label) tags.push(label);
+    }
+
+    const lines: string[] = [
+      "## Session Continuation",
+      "",
+      "This session continues from a previous session that was rotated.",
+      "",
+      `Previous session: ${branch.length} entries, ${tags.length} tags`,
+    ];
+
+    if (tags.length > 0) {
+      lines.push(`Tags preserved: ${tags.join(", ")}`);
+    }
+
+    const recentUserMessages: string[] = [];
+    for (let i = branch.length - 1; i >= Math.max(0, branch.length - 5); i--) {
+      const entry = branch[i];
+      if (entry.type === "message" && entry.message?.role === "user") {
+        const text =
+          typeof entry.message.content === "string"
+            ? entry.message.content
+            : (entry.message.content?.[0]?.text ?? "");
+        if (text) recentUserMessages.unshift(text.slice(0, 200));
+      }
+    }
+
+    if (recentUserMessages.length > 0) {
+      lines.push("", "Recent context:");
+      for (const msg of recentUserMessages.slice(-3)) {
+        lines.push(`- ${msg}`);
+      }
+    }
+
+    lines.push("", "Use `memory_recall` to retrieve cross-session knowledge.");
+
+    return lines.join("\n");
+  } catch {
+    return "Session continuation from rotated session. Use memory_recall for context.";
+  }
+}
+
+/**
+ * Emergency rotation trigger — called when context overflow is imminent.
+ */
+export function triggerEmergencyRotation(pi: ExtensionAPI, ctx: ExtensionContext): void {
+  try {
+    const state = getRotationState();
+    if (state.pendingRotation) {
+      log.info("[Emergency] Rotation already pending, skipping duplicate trigger");
+      return;
+    }
+
+    state.pendingRotation = true;
+    state.emergencyRotation = true;
+    state.continuationSummary = buildContinuationSummary(ctx);
+
+    sendTrackedMessage(
+      pi,
+      {
+        customType: "context",
+        content: [
+          {
+            type: "text" as const,
+            text: [
+              "## Session Rotation Required",
+              "",
+              "Context overflow detected. Automatic rotation triggered to prevent data loss.",
+              "",
+              "Please call `finalize()` to complete this task and start fresh.",
+              "",
+              "Rotation will happen automatically on next `finalize()`.",
+            ].join("\n"),
+          },
+        ],
+        display: true,
+      },
+      { deliverAs: "steer", triggerTurn: true },
+      { type: "context", source: "context-manager/rotation" },
+    );
+
+    log.info("[Emergency] Rotation triggered due to context overflow risk");
+  } catch (err) {
+    log.error("[Emergency] Rotation trigger failed:", err);
+  }
+}
+
+// ── Compaction Health Metrics ──────────────────────────────────────────────
+// Tracks compaction outcomes across sessions for analytics and retry tuning.
+
+export interface CompactionHealth {
+  totalCompactions: number;
+  totalFailures: number;
+  totalTokensBefore: number;
+  totalTokensAfter: number;
+  totalEntriesRemoved: number;
+  lastOutcome: "success" | "failure" | "partial" | null;
+  lastErrorMessage?: string;
+}
+
+const compactionHealth: CompactionHealth = {
+  totalCompactions: 0,
+  totalFailures: 0,
+  totalTokensBefore: 0,
+  totalTokensAfter: 0,
+  totalEntriesRemoved: 0,
+  lastOutcome: null,
+};
+
+export function getCompactionHealth(): CompactionHealth {
+  return compactionHealth;
+}
+
+export function recordCompactionOutcome(
+  outcome: CompactionHealth["lastOutcome"],
+  details?: {
+    tokensBefore?: number;
+    tokensAfter?: number;
+    entriesRemoved?: number;
+    errorMessage?: string;
+  },
+): void {
+  compactionHealth.lastOutcome = outcome;
+  if (outcome === "success") {
+    compactionHealth.totalCompactions++;
+    if (details?.tokensBefore) compactionHealth.totalTokensBefore += details.tokensBefore;
+    if (details?.tokensAfter) compactionHealth.totalTokensAfter += details.tokensAfter;
+    if (details?.entriesRemoved) compactionHealth.totalEntriesRemoved += details.entriesRemoved;
+  } else {
+    compactionHealth.totalFailures++;
+    compactionHealth.lastErrorMessage = details?.errorMessage;
+  }
+}
+
+// ── Formatting helpers ────────────────────────────────────────────────────────
 
 export function formatPruneCandidates(candidates: any[], count?: number): string {
   const lines: string[] = [];

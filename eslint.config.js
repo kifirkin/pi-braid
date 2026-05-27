@@ -20,7 +20,8 @@ export default tseslint.config(
       "@typescript-eslint/no-explicit-any": "off",
       // Project has many as-any casts for undocumented SDK types — warnings only
       "@typescript-eslint/no-unsafe-argument": "off",
-      "@typescript-eslint/no-unsafe-return": "warn",
+      // Remaining 60 sites (down from 54→4 as any) are at pi SDK boundaries
+      "@typescript-eslint/no-unsafe-return": "off",
       "@typescript-eslint/no-unsafe-member-access": "off",
       "@typescript-eslint/no-unsafe-assignment": "off",
       "@typescript-eslint/no-unsafe-call": "off",

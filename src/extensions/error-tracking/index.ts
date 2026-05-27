@@ -117,6 +117,13 @@ const errorStatsSchema = Type.Object({});
 // Extension
 
 export default function errorCaptureExtension(pi: ExtensionAPI): void {
+  // Subscribe to tool_error events from enforcement's tool_result handler
+  eventBus.on("tool_error", (event) => {
+    captureError(event.toolName, event.error, undefined, {
+      turn: String(event.turn),
+    });
+  });
+
   // Capture tool execution errors from turn_end
   // NOTE: Empty tool names (from proxy hallucination, e.g. a0/venice) are silently dropped
   // to avoid polluting the error store with proxy artifacts.

@@ -78,6 +78,14 @@ export interface AnalyticsAlertEvent {
   timestamp: number;
 }
 
+export interface SopSuggestionEvent {
+  type: "sop_suggestion";
+  episodeId: string;
+  similarity: number;
+  message: string;
+  timestamp: number;
+}
+
 export type AgentEvent =
   | TimerEvent
   | MemoryEvictEvent
@@ -86,7 +94,8 @@ export type AgentEvent =
   | EnforcementEvent
   | HeartbeatTickEvent
   | ToolErrorEvent
-  | AnalyticsAlertEvent;
+  | AnalyticsAlertEvent
+  | SopSuggestionEvent;
 
 type Handler<T extends AgentEvent = AgentEvent> = (event: T) => void;
 

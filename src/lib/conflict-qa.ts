@@ -220,14 +220,6 @@ export function getQAForConflict(conflictId: string): ConflictQA[] {
 }
 
 /**
- * Answer a QA question (for testing or manual resolution).
- */
-export function answerQA(qaId: string, answer: string): void {
-  const qa = _qaRegistry.get(qaId);
-  if (qa) qa.answer = answer;
-}
-
-/**
  * Alias for processConflicts — detect new conflicts and generate QA records.
  * Returns the raw Conflict[] for callers that need the evidence pool format.
  */
@@ -301,9 +293,48 @@ export function getAllQAs(_ctx: unknown): ConflictQA[] {
   return [..._qaRegistry.values()];
 }
 
-/** Alias for answerQA (deprecated: use answerQA with ctx) */
-export function resolveQAText(qaId: string, answer: string): void {
-  answerQA(qaId, answer);
+/**
+// ── Conflict Resolution Detection ───────────────────────────────────────
+
+/**
+ * Keywords that suggest the agent's response addressed a conflict.
+ * When found in an assistant message, we attempt to resolve the conflict.
+ */
+const RESOLUTION_KEYWORDS = [
+  "resolved",
+  "conflict resolved",
+  "the correct answer is",
+  "after further investigation",
+  "sources disagree",
+];
+
+/**
+ * Check if a response text contains resolution language for a conflict QA.
+ * Returns the suspected verdict if resolution keywords detected, null otherwise.
+ */
+export function checkResponseForResolution(
+  text: string,
+): "resolved_for" | "resolved_against" | null {
+  const lower = text.toLowerCase();
+
+  // Check for explicit resolution keywords
+  const containsResolution = RESOLUTION_KEYWORDS.some((kw) => lower.includes(kw));
+  if (!containsResolution) return null;
+
+  // Determine direction from context
+  if (
+    lower.includes("based on higher reliability source") ||
+    lower.includes("the evidence supports") ||
+    lower.includes("confirm that")
+  ) {
+    return "resolved_for";
+  }
+  if (lower.includes("evidence does not support") || lower.includes("this claim is incorrect")) {
+    return "resolved_against";
+  }
+
+  // Default to resolved_for when uncertainty is acknowledged but a decision is made
+  return "resolved_for";
 }
 
 /**
@@ -325,6 +356,7 @@ export function getQAStats(_ctx: unknown) {
 }
 
 /**
+ * @deprecated Will be removed in v0.3.0 — use evidence-pool.resolveConflict() directly.
  * Resolve a conflict. Takes 3 args: (ctx, conflictId, verdict).
  * Used by cognitive-systems via `import { resolveQA as resolveConflictQA }`.
  */
@@ -335,6 +367,7 @@ export function resolveQA(_ctx: unknown, conflictId: string, verdict: string): v
     verdict as "resolved_for" | "resolved_against" | "uncertain",
     "agent",
   );
-  // Mark QA as answered using existing answerQA helper
-  answerQA(conflictId, verdict);
+  // Mark QA as answered
+  const qa = _qaRegistry.get(conflictId);
+  if (qa) qa.answer = verdict;
 }

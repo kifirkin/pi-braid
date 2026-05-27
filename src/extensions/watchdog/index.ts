@@ -9,6 +9,7 @@ import type { SessionManager } from "../../lib/session-manager.js";
 import { safeSessionManager } from "../../lib/extension-state.js";
 import { createLogger } from "../../lib/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../lib/session-start-queue.js";
+import { eventBus } from "../../lib/event-bus.js";
 
 // pi's native SessionManager has getSessionFile() not in our wrapper
 interface SmWithSessionFile extends SessionManager {
@@ -43,6 +44,15 @@ export default function (pi: ExtensionAPI) {
       isStreaming: false,
     });
     ctx.ui.setStatus("watchdog", "active");
+  });
+
+  // Subscribe to analytics_alert for monitoring alerts
+  eventBus.on("analytics_alert", (event) => {
+    if (event.severity === "critical") {
+      log.warn(`[watchdog] Critical analytics alert: ${event.message}`);
+    } else if (event.severity === "warn") {
+      log.info(`[watchdog] Analytics warning: ${event.message}`);
+    }
   });
 
   pi.on("message_end", async (_event, ctx) => {

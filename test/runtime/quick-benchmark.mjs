@@ -83,9 +83,9 @@ test("recallerModule surfaces via ctx.whisper", () => {
   deepEqual(src.includes("Proactive memory:"), true);
 });
 
-test("dreamerModule surfaces via ctx.whisper", () => {
-  const src = readFileSync("src/extensions/heartbeat/heartbeat-scheduler/modules/dreamer.ts", "utf-8");
-  deepEqual(src.includes("ctx.whisper?.(`Self-reflection:"), true);
+test("reflectionConsolidator surfaces via context.ctx.whisper", () => {
+  const src = readFileSync("src/extensions/heartbeat/heartbeat-scheduler/modules/reflection-consolidator.ts", "utf-8");
+  deepEqual(src.includes("context.ctx.whisper?.(`Self-reflection:"), true);
 });
 
 test("evolverModule surfaces via ctx.whisper", () => {

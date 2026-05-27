@@ -20,7 +20,7 @@ const log = createLogger("advice-tracker");
 
 export interface AdviceRecord {
   id: string;
-  source: "dreamer" | "mars";
+  source: "dreamer" | "mars" | "compaction";
   prediction: string;
   tool?: string;
   turn: number;
@@ -60,7 +60,7 @@ export const MIN_PREDICTIONS_FOR_ADJUSTMENT = 5;
 let _idCounter = 0;
 
 export function recordAdvice(
-  source: "dreamer" | "mars",
+  source: "dreamer" | "mars" | "compaction",
   prediction: string,
   turn: number,
   tool?: string,
@@ -113,6 +113,10 @@ export function evaluatePendingAdvice(ctx: EvaluationContext): number {
       record.correct = evaluateDreamerPrediction(record, ctx);
     } else if (record.source === "mars") {
       record.correct = evaluateMarsPrediction(record, ctx);
+    } else if (record.source === "compaction") {
+      // Compaction outcomes are evaluated immediately (success/failure known at emit time)
+      record.correct = record.prediction === "success";
+      record.evaluated = true;
     }
 
     // Update accuracy metrics
@@ -133,10 +137,7 @@ export function evaluatePendingAdvice(ctx: EvaluationContext): number {
   return evaluated;
 }
 
-function evaluateDreamerPrediction(
-  record: AdviceRecord,
-  ctx: EvaluationContext,
-): boolean {
+function evaluateDreamerPrediction(record: AdviceRecord, ctx: EvaluationContext): boolean {
   // Dreamer predicts "stuck" (self-loop) or "failure" (error)
   // Correct if the predicted outcome DID happen
 
@@ -144,7 +145,10 @@ function evaluateDreamerPrediction(
     // Stuck = same tool repeated in recent tool log, or very low unique tools
     const recentTools = ctx.toolLog.slice(-5);
     const uniqueRecent = new Set(recentTools).size;
-    return uniqueRecent <= 1 || recentTools.length > 0 && recentTools.every(t => t === recentTools[0]);
+    return (
+      uniqueRecent <= 1 ||
+      (recentTools.length > 0 && recentTools.every((t) => t === recentTools[0]))
+    );
   }
 
   if (record.prediction === "failure") {
@@ -156,10 +160,7 @@ function evaluateDreamerPrediction(
   return false;
 }
 
-function evaluateMarsPrediction(
-  record: AdviceRecord,
-  ctx: EvaluationContext,
-): boolean {
+function evaluateMarsPrediction(record: AdviceRecord, ctx: EvaluationContext): boolean {
   // MARS predicts a tool is overused and should be reduced
   // Correct if the agent reduced usage of that tool after the nudge
 
@@ -170,8 +171,8 @@ function evaluateMarsPrediction(
   const beforeAdvice = allToolLog.slice(0, record.turn);
   const afterAdvice = allToolLog.slice(record.turn);
 
-  const countBefore = beforeAdvice.filter(t => t === record.tool).length;
-  const countAfter = afterAdvice.filter(t => t === record.tool).length;
+  const countBefore = beforeAdvice.filter((t) => t === record.tool).length;
+  const countAfter = afterAdvice.filter((t) => t === record.tool).length;
 
   // Avoid division by zero
   if (countBefore === 0 && countAfter === 0) return true; // No usage either way
@@ -194,11 +195,15 @@ function adjustThresholds(): void {
     if (rate < 0.3) {
       // Too many false positives — increase cooldown to reduce frequency
       dreamerCooldownMs = Math.min(300_000, dreamerCooldownMs * 1.5);
-      log.info(`[advice-tracker] Dreamer accuracy ${(rate * 100).toFixed(0)}% — increased cooldown to ${(dreamerCooldownMs / 1000).toFixed(0)}s`);
+      log.info(
+        `[advice-tracker] Dreamer accuracy ${(rate * 100).toFixed(0)}% — increased cooldown to ${(dreamerCooldownMs / 1000).toFixed(0)}s`,
+      );
     } else if (rate > 0.7 && dreamerCooldownMs > 30_000) {
       // Good accuracy — allow more frequent advice
       dreamerCooldownMs = Math.max(30_000, dreamerCooldownMs * 0.8);
-      log.info(`[advice-tracker] Dreamer accuracy ${(rate * 100).toFixed(0)}% — decreased cooldown to ${(dreamerCooldownMs / 1000).toFixed(0)}s`);
+      log.info(
+        `[advice-tracker] Dreamer accuracy ${(rate * 100).toFixed(0)}% — decreased cooldown to ${(dreamerCooldownMs / 1000).toFixed(0)}s`,
+      );
     }
   }
 
@@ -209,18 +214,22 @@ function adjustThresholds(): void {
     if (rate < 0.3) {
       // Too many false positives — increase multiplier to reduce sensitivity
       marsOveruseMultiplier = Math.min(10, marsOveruseMultiplier + 1);
-      log.info(`[advice-tracker] MARS accuracy ${(rate * 100).toFixed(0)}% — increased overuse multiplier to ${marsOveruseMultiplier}`);
+      log.info(
+        `[advice-tracker] MARS accuracy ${(rate * 100).toFixed(0)}% — increased overuse multiplier to ${marsOveruseMultiplier}`,
+      );
     } else if (rate > 0.7 && marsOveruseMultiplier > 2) {
       // Good accuracy — allow more sensitivity
       marsOveruseMultiplier = Math.max(2, marsOveruseMultiplier - 1);
-      log.info(`[advice-tracker] MARS accuracy ${(rate * 100).toFixed(0)}% — decreased overuse multiplier to ${marsOveruseMultiplier}`);
+      log.info(
+        `[advice-tracker] MARS accuracy ${(rate * 100).toFixed(0)}% — decreased overuse multiplier to ${marsOveruseMultiplier}`,
+      );
     }
   }
 }
 
 // ── Querying ───────────────────────────────────────────────────────────────
 
-export function getSourceAccuracy(source: "dreamer" | "mars"): {
+export function getSourceAccuracy(source: "dreamer" | "mars" | "compaction"): {
   correct: number;
   total: number;
 } {

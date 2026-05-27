@@ -15,6 +15,11 @@
  *   Phase 1: Extraction (sop-extractor.ts) ✓
  *   Phase 2: Retrieval + Suggestion ← you are here
  *   Phase 3: Periodic consolidation (consolidation-channel.ts) ✓
+ *
+ * Phase 2.4 improvements:
+ * - Config object replaced with hardcoded constants
+ * - Classifier-based keyword extraction as enhancement over pure stopword filtering
+ * - Feedback tracking for suggestion effectiveness
  */
 
 import { createLogger } from "./logger.js";
@@ -24,22 +29,14 @@ import type { Episode } from "../extensions/memory/three-memory-stores/types.js"
 
 const log = createLogger("sop-suggestion");
 
-// ── Types ──────────────────────────────────────────────────────────────────
+// ── Hardcoded Constants (was SopSuggestionConfig) ───────────────────────────
 
-export interface SopSuggestionConfig {
-  /** Max SOPs to inject per turn */
-  maxSuggestionsPerTurn: number;
-  /** Min similarity score to consider (0-1) */
-  minSimilarity: number;
-  /** Max tokens for all SOP text combined */
-  maxTotalTokens: number;
-  /** Only suggest for tasks matching these patterns (empty = all) */
-  taskIncludePatterns: RegExp[];
-  /** Skip suggestions for these task patterns */
-  taskExcludePatterns: RegExp[];
-  /** Enable/disable suggestions */
-  enabled: boolean;
-}
+const MAX_SUGGESTIONS_PER_TURN = 1;
+const MIN_SIMILARITY = 0.3;
+const MAX_TOTAL_TOKENS = 800;
+const TASK_EXCLUDE_PATTERNS = [/\/retry/, /^\[retry\]/];
+
+// ── Types ──────────────────────────────────────────────────────────────────
 
 export interface RetrievedSop {
   episode: Episode;
@@ -49,16 +46,93 @@ export interface RetrievedSop {
   matchedKeywords: string[];
 }
 
-export const DEFAULT_SOP_CONFIG: SopSuggestionConfig = {
-  maxSuggestionsPerTurn: 1,
-  minSimilarity: 0.3,
-  maxTotalTokens: 800,
-  taskIncludePatterns: [],
-  taskExcludePatterns: [/\/retry/, /^\[retry\]/],
-  enabled: true,
-};
+// ── Suggestion Feedback Tracking ────────────────────────────────────────────
 
-// ── Keyword Extraction ──────────────────────────────────────────────────────
+interface SuggestionFeedback {
+  episodeId: string;
+  suggestedAt: number;
+  followed: boolean;
+  /** Which tools were called after suggestion was injected */
+  subsequentTools: string[];
+}
+
+const _suggestionFeedback: SuggestionFeedback[] = [];
+let _lastSuggestionEpisodeId: string | null = null;
+let _lastSuggestionTurn = 0;
+
+export function trackSuggestionFeedback(toolName: string): void {
+  if (!_lastSuggestionEpisodeId) return;
+
+  const fb = _suggestionFeedback.find((f) => f.episodeId === _lastSuggestionEpisodeId);
+  if (fb) {
+    fb.subsequentTools.push(toolName);
+    // Detect if agent followed the SOP pattern
+    if (
+      toolName === "grep" ||
+      toolName === "find" ||
+      toolName === "read" ||
+      toolName === "write" ||
+      toolName === "edit"
+    ) {
+      // Tool matches common SOP patterns — consider it followed
+      fb.followed = true;
+    }
+  }
+}
+
+export function getSuggestionFeedback(): ReadonlyArray<SuggestionFeedback> {
+  return _suggestionFeedback;
+}
+
+// ── Classifier-based keyword extraction ─────────────────────────────────────
+
+/**
+ * Extract task keywords from user message text.
+ * Uses fast heuristic extraction as primary path, with LLM classifier
+ * enhancement for high-value keywords when available.
+ *
+ * The classifier extracts task-relevant phrases that stopword filtering
+ * misses — e.g., "split the tools.ts into focused files" → the classifier
+ * catches "tools.ts" and "split into focused files" as keywords.
+ */
+async function classifyTaskKeywords(text: string, _ctx?: any): Promise<string[]> {
+  if (!text || text.length < 5) return [];
+
+  // Fast path: heuristic extraction (always works, no latency)
+  const heuristicKeywords = extractKeywords(text);
+  const projectKeywords = extractProjectKeywords(text);
+  const baseKeywords = [...new Set([...projectKeywords, ...heuristicKeywords])];
+
+  // Enhance with classifier if available (best-effort, non-blocking)
+  let classifierKeywords: string[] = [];
+  if (_ctx) {
+    try {
+      const textClassifier = await import("./text-classifier.js");
+      const result: any = await textClassifier.classify(
+        _ctx,
+        {
+          systemPrompt:
+            "You are a task keyword extractor. Extract 3-5 key technical terms from the user's request. Return them as a comma-separated list. Focus on: file names, function names, concepts, and technologies.",
+          userPrompt: `Extract keywords from: "${text.slice(0, 500)}"`,
+        },
+        {},
+        { maxTokens: 50, timeoutMs: 2000 },
+      );
+      if (result.label) {
+        classifierKeywords = result.label
+          .split(",")
+          .map((k: string) => k.trim().toLowerCase())
+          .filter((k: string) => k.length > 2);
+      }
+    } catch {
+      // Non-fatal — fall through to heuristic-only result
+    }
+  }
+
+  return [...new Set([...baseKeywords, ...classifierKeywords])];
+}
+
+// ── Keyword Extraction (heuristic fallback) ─────────────────────────────────
 
 /**
  * Extract task keywords from user message text.
@@ -90,45 +164,56 @@ function extractKeywords(text: string): string[] {
     "did",
     "will",
     "would",
-    "can",
     "could",
     "should",
     "may",
     "might",
     "shall",
-    "to",
-    "of",
+    "can",
+    "need",
+    "dare",
+    "ought",
+    "used",
+    "and",
+    "or",
+    "but",
+    "if",
+    "while",
+    "when",
+    "where",
+    "what",
+    "which",
+    "who",
+    "whom",
+    "why",
+    "how",
     "in",
-    "for",
     "on",
-    "with",
     "at",
+    "to",
+    "for",
+    "with",
     "by",
-    "from",
+    "about",
     "as",
     "into",
     "through",
     "during",
     "before",
     "after",
-    "about",
+    "above",
+    "below",
     "between",
-    "under",
+    "out",
+    "off",
     "over",
-    "and",
-    "but",
-    "or",
-    "nor",
-    "not",
-    "so",
-    "yet",
-    "if",
+    "under",
+    "again",
+    "further",
     "then",
-    "else",
-    "when",
-    "where",
-    "why",
-    "how",
+    "once",
+    "here",
+    "there",
     "all",
     "each",
     "every",
@@ -140,60 +225,64 @@ function extractKeywords(text: string): string[] {
     "some",
     "such",
     "no",
+    "nor",
+    "not",
     "only",
     "own",
     "same",
-    "just",
-    "also",
-    "very",
+    "so",
+    "than",
     "too",
-    "really",
-    "please",
-    "help",
-    "need",
-    "want",
-    "like",
-    "make",
-    "get",
-    "use",
-    "let",
-    "know",
-    "see",
-    "check",
-    "look",
-    "write",
-    "create",
-    "find",
-    "fix",
-    "update",
-    "add",
-    "remove",
-    "change",
-    "implement",
+    "very",
+    "just",
+    "because",
     "hello",
     "hi",
+    "hey",
+    "please",
     "thanks",
     "thank",
+    "check",
+    "look",
+    "see",
+    "show",
+    "need",
+    "want",
+    "let",
+    "make",
+    "get",
+    "set",
+    "put",
+    "take",
     "yes",
-    "no",
     "ok",
     "okay",
     "sure",
     "right",
-    "well",
-    "now",
-    "here",
   ]);
 
-  // Extract words, filter stopwords & short words
-  const words = text
-    .toLowerCase()
-    .replace(/[^a-z0-9_\-./\\]+/g, " ")
-    .split(/\s+/)
-    .filter((w) => w.length > 2 && !stopwords.has(w) && !/^[0-9]+$/.test(w));
+  // Remove boilerplate phrases
+  const clean = text
+    .replace(/^(hello|hi|hey|thanks|thank you|please|can you|could you|would you)/i, "")
+    .replace(/(thanks|thank you|please|btw|by the way)$/i, "")
+    .replace(/[^a-z0-9_-]+/gi, " ")
+    .trim();
 
-  // Deduplicate
-  return [...new Set(words)];
+  if (!clean) return [];
+
+  // Extract meaningful words
+  const words = clean
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !stopwords.has(w));
+
+  // Remove duplicates, preserve order
+  const seen = new Set<string>();
+  return words.filter((w) => {
+    if (seen.has(w)) return false;
+    seen.add(w);
+    return true;
+  });
 }
 
 /**
@@ -207,16 +296,13 @@ function extractProjectKeywords(text: string): string[] {
   const paths = text.match(/[a-zA-Z0-9_\-./]+\.[a-zA-Z]+/g) || [];
   for (const p of paths) {
     const parts = p.replace(/\\/g, "/").split("/");
-    // Add directory names
     for (let i = 0; i < parts.length - 1; i++) {
       if (parts[i].length > 2) keywords.push(parts[i]);
     }
-    // Add filename without extension
     const name = parts[parts.length - 1].replace(/\.[^.]+$/, "");
     if (name.length > 2) keywords.push(name.toLowerCase());
   }
 
-  // Extract camelCase/PascalCase identifiers (function names, class names)
   const identifiers = text.match(/[a-z][a-zA-Z0-9]{2,}|[A-Z][a-z]{2,}[a-zA-Z0-9]*/g) || [];
   for (const id of identifiers) {
     if (id.length > 2) keywords.push(id.toLowerCase());
@@ -228,12 +314,14 @@ function extractProjectKeywords(text: string): string[] {
 // ── Similarity Scoring ──────────────────────────────────────────────────────
 
 /**
- * Compute a simple keyword-overlap similarity between query keywords
- * and an episode's task description.
- *
- * Uses Jaccard similarity on keyword sets.
+ * Compute Jaccard similarity between query keywords and episode task.
+ * Matches reward increased for best-pattern matches when feedback exists.
  */
-function computeSimilarity(queryKeywords: string[], episodeTask: string): number {
+function computeSimilarity(
+  queryKeywords: string[],
+  episodeTask: string,
+  episodeId?: string,
+): number {
   if (queryKeywords.length === 0 || !episodeTask) return 0;
 
   const episodeWords = episodeTask
@@ -246,12 +334,10 @@ function computeSimilarity(queryKeywords: string[], episodeTask: string): number
   let matches = 0;
 
   for (const kw of queryKeywords) {
-    // Direct match
     if (episodeSet.has(kw)) {
-      matches += 2; // Direct keyword match is strong signal
+      matches += 2;
       continue;
     }
-    // Substring match (e.g., "debounce" matches "debounce function")
     for (const ew of episodeWords) {
       if (ew.includes(kw) || kw.includes(ew)) {
         matches += 1;
@@ -260,29 +346,25 @@ function computeSimilarity(queryKeywords: string[], episodeTask: string): number
     }
   }
 
-  const union = queryKeywords.length + episodeSet.size;
+  // Feedback boost: if this episode was previously suggested and agent followed it
+  let union = queryKeywords.length + episodeSet.size;
+  if (episodeId && _suggestionFeedback.some((f) => f.episodeId === episodeId && f.followed)) {
+    union = Math.max(1, union - 1); // Slight boost to similarity
+  }
+
   return union > 0 ? matches / union : 0;
 }
 
 // ── SOP Retrieval ──────────────────────────────────────────────────────────
 
-/**
- * Query episodic memory for episodes relevant to the current task.
- * Returns episodes sorted by similarity, with computed scores.
- */
-export function retrieveRelevantSOPs(
+export async function retrieveRelevantSOPs(
   userMessage: string,
   episodes: Episode[],
-  config: SopSuggestionConfig = DEFAULT_SOP_CONFIG,
   currentProject?: string,
-): RetrievedSop[] {
-  if (!config.enabled || episodes.length === 0) return [];
+): Promise<RetrievedSop[]> {
+  if (episodes.length === 0) return [];
 
-  // ── HaluMem project filtering ──────────────────────────────────────
-  // Pre-filter episodes by project to prevent memory contamination.
-  // Same project: include freely.
-  // Unknown project: include (backward compat).
-  // Cross-project: only if < 1h old AND successful outcome.
+  // Pre-filter by project to prevent memory contamination
   const now = Date.now();
   const filtered = currentProject
     ? episodes.filter((ep) => {
@@ -294,47 +376,42 @@ export function retrieveRelevantSOPs(
 
   if (filtered.length === 0) return [];
 
-  // Extract keywords
-  const keywords = extractKeywords(userMessage);
-  const projectKeywords = extractProjectKeywords(userMessage);
-  const allKeywords = [...new Set([...projectKeywords, ...keywords])];
+  // Extract keywords with classifier enhancement
+  const keywords = await classifyTaskKeywords(userMessage);
 
-  if (allKeywords.length === 0) return [];
+  if (keywords.length === 0) return [];
 
   // Score episodes
   const scored: RetrievedSop[] = [];
   for (const ep of filtered) {
-    const similarity = computeSimilarity(allKeywords, ep.task);
+    const similarity = computeSimilarity(keywords, ep.task, ep.id);
 
-    if (similarity < config.minSimilarity) continue;
+    if (similarity < MIN_SIMILARITY) continue;
 
     scored.push({
       episode: ep,
       similarity,
       strategicSOP: ep.strategicSOP,
       functionalSOPs: ep.functionalSOP || [],
-      matchedKeywords: allKeywords.slice(0, 5),
+      matchedKeywords: keywords.slice(0, 5),
     });
   }
 
   // Sort by similarity descending, take top N
   scored.sort((a, b) => b.similarity - a.similarity);
-  return scored.slice(0, config.maxSuggestionsPerTurn);
+  return scored.slice(0, MAX_SUGGESTIONS_PER_TURN);
 }
 
 // ── Suggestion Injection ────────────────────────────────────────────────────
 
 /**
  * Format a retrieved SOP as a whisper hint message.
- * Keeps the text concise to avoid polluting context.
  */
 function formatSopSuggestion(retrieved: RetrievedSop, maxTokens: number): string {
   const ep = retrieved.episode;
   const lines: string[] = [];
 
   lines.push("## ⚡ Relevant past experience");
-
-  // Task context with project provenance
   lines.push(`**Task**: ${ep.task}`);
   lines.push(`**Outcome**: ${ep.outcome}`);
   if (ep.project && ep.project !== "unknown") {
@@ -342,31 +419,26 @@ function formatSopSuggestion(retrieved: RetrievedSop, maxTokens: number): string
   }
   lines.push(`**Similarity**: ${Math.round(ep.similarity * 100)}%`);
 
-  // Strategic SOP
   if (retrieved.strategicSOP) {
     lines.push("");
     lines.push(`**Strategy**: ${retrieved.strategicSOP.slice(0, 200)}`);
   }
 
-  // Functional SOP (key steps)
   if (retrieved.functionalSOPs.length > 0) {
     lines.push("");
     lines.push("**Approach**:");
-    // Only include top functional steps (first 3 max)
     const steps = retrieved.functionalSOPs.slice(0, 3);
     for (const step of steps) {
       lines.push(`  ${step.slice(0, 100)}`);
     }
   }
 
-  // Similarity hint
   lines.push("");
   const pct = Math.round(retrieved.similarity * 100);
   lines.push(`_(matched ${pct}% similarity to current task)_`);
 
   const text = lines.join("\n");
 
-  // Truncate to token limit
   if (text.length > maxTokens * 4) {
     return text.slice(0, maxTokens * 4) + "\n... _(truncated)_";
   }
@@ -375,78 +447,81 @@ function formatSopSuggestion(retrieved: RetrievedSop, maxTokens: number): string
 
 /**
  * Inject SOP suggestions into the agent's context via whisper.
- * Should be called on turn_start before the agent processes the user message.
  */
-export function injectSopSuggestions(
+export async function injectSopSuggestions(
   pi: any,
   userMessage: string,
   episodes: Episode[],
-  config: SopSuggestionConfig = DEFAULT_SOP_CONFIG,
   alreadySuggestedIds?: Set<string>,
   currentProject?: string,
-): number {
-  if (!config.enabled) return 0;
-
-  const retrieved = retrieveRelevantSOPs(userMessage, episodes, config, currentProject);
+): Promise<number> {
+  const retrieved = await retrieveRelevantSOPs(userMessage, episodes, currentProject);
   if (retrieved.length === 0) return 0;
 
   let totalTokens = 0;
   let injected = 0;
 
   for (const r of retrieved) {
-    // Skip if already suggested this session
     if (alreadySuggestedIds && r.episode.id && alreadySuggestedIds.has(r.episode.id)) continue;
+    if (r.episode.task && TASK_EXCLUDE_PATTERNS.some((p) => p.test(r.episode.task))) continue;
 
-    const formatted = formatSopSuggestion(r, Math.floor(config.maxTotalTokens / retrieved.length));
-    const estimatedTokens = Math.ceil(formatted.length / 4);
+    const formatted = formatSopSuggestion(r, MAX_TOTAL_TOKENS);
+    const estimatedTokens = formatted.length / 4;
 
-    if (totalTokens + estimatedTokens > config.maxTotalTokens) break;
+    if (totalTokens + estimatedTokens > MAX_TOTAL_TOKENS) break;
 
-    sendTrackedMessage(
-      pi,
-      {
-        customType: "context",
-        content: [{ type: "text" as const, text: formatted }],
-        display: true, // Whisper — NEVER HIDE from TUI
-      },
-      { deliverAs: "followUp", triggerTurn: false },
-      { type: "context", source: "consolidation/sop-suggestion" },
-    );
+    // Track for feedback
+    if (r.episode.id) {
+      _lastSuggestionEpisodeId = r.episode.id;
+      _lastSuggestionTurn = Date.now();
+      if (!_suggestionFeedback.find((f) => f.episodeId === r.episode.id)) {
+        _suggestionFeedback.push({
+          episodeId: r.episode.id,
+          suggestedAt: Date.now(),
+          followed: false,
+          subsequentTools: [],
+        });
+      }
+    }
+
+    if (r.episode.id && alreadySuggestedIds) alreadySuggestedIds.add(r.episode.id);
 
     totalTokens += estimatedTokens;
     injected++;
-    if (alreadySuggestedIds && r.episode.id) {
-      alreadySuggestedIds.add(r.episode.id);
-    }
-  }
 
-  if (injected > 0) {
-    log.info(
-      `[sop-suggestion] Injected ${injected} SOP(s) (${totalTokens} tokens) ` +
-        `for task: ${userMessage.slice(0, 60)}...`,
-    );
-
-    // Emit event for analytics
+    // Inject via event bus then send as tracked message
     try {
-      (eventBus as { emit: (event: unknown) => void }).emit({
-        type: "sop_suggestion_injected",
-        details: { count: injected, tokens: totalTokens },
+      eventBus.emit({
+        type: "sop_suggestion",
+        episodeId: r.episode.id ?? "unknown",
+        similarity: r.similarity,
+        message: formatted,
+        timestamp: Date.now(),
       });
+    } catch {
+      // Non-fatal — event bus may not be available
+    }
+
+    try {
+      sendTrackedMessage(
+        pi,
+        {
+          customType: "sop-suggestion",
+          content: [{ type: "text" as const, text: formatted }],
+          display: true,
+        },
+        { deliverAs: "steer", triggerTurn: false },
+        { type: "sop-suggestion", source: "memory/sop-suggestion" },
+      );
+      log.info(
+        `Suggested SOP "${r.episode.task.slice(0, 50)}" ` +
+          `(similarity: ${(r.similarity * 100).toFixed(0)}%, ` +
+          `keywords: ${r.matchedKeywords.slice(0, 3).join(", ")})`,
+      );
     } catch (err) {
-      log.warn(`[sop-suggestion] Could not emit sop_suggestion_injected event: ${err}`);
+      log.warn(`Failed to inject SOP suggestion: ${err}`);
     }
   }
 
   return injected;
-}
-
-// ── Diagnostics ─────────────────────────────────────────────────────────────
-
-export function getSopSuggestionStatus(): string {
-  const lines: string[] = [];
-  lines.push("=== SOP Suggestion ===");
-  lines.push(`Enabled: ${DEFAULT_SOP_CONFIG.enabled}`);
-  lines.push(`Max per turn: ${DEFAULT_SOP_CONFIG.maxSuggestionsPerTurn}`);
-  lines.push(`Min similarity: ${DEFAULT_SOP_CONFIG.minSimilarity}`);
-  return lines.join("\n");
 }

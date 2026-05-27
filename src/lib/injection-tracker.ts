@@ -15,7 +15,7 @@
 
 export interface Injection {
   id: string;
-  type: "enforcement" | "memory" | "retry" | "heartbeat" | "context" | "other";
+  type: "enforcement" | "memory" | "retry" | "heartbeat" | "context" | "sop-suggestion" | "other";
   source: string;
   content: string;
   timestamp: number;

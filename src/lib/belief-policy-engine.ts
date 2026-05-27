@@ -300,6 +300,99 @@ export function emitSignal(
   evaluatePolicies(state);
 }
 
+/**
+ * Infer compound beliefs from accumulated signal patterns.
+ * Called after emitSignal to detect cross-signal patterns
+ * that individual signal mappings can't capture.
+ *
+ * Compound beliefs are higher-level inferences derived from
+ * multiple signal sources — e.g., "stability:declining" +
+ * "tool-use:overuse" → "reasoning:scattered".
+ */
+export function inferBeliefs(ctx: ExtensionContext): void {
+  const state = getState(ctx);
+  const signals = state.signals;
+  if (signals.length < 3) return;
+
+  const now = Date.now();
+
+  // Compound: stability:declining + tool-use:overuse → reasoning:scattered
+  const hasStabilityDecline =
+    signals.filter(
+      (s) => s.source === "stability" && (s.type === "decline" || s.type === "predicted-decline"),
+    ).length >= 2;
+  const hasToolOveruse =
+    signals.filter((s) => s.source === "tool-use" && s.type === "overuse").length >= 2;
+  if (hasStabilityDecline && hasToolOveruse) {
+    const existing = state.beliefs.get("reasoning:scattered");
+    if (existing) {
+      existing.confidence = Math.min(1, existing.confidence + 0.15);
+      existing.updatedAt = now;
+    } else {
+      state.beliefs.set("reasoning:scattered", {
+        key: "reasoning:scattered",
+        confidence: 0.6,
+        evidence: signals.slice(-5).map((s) => s.id),
+        updatedAt: now,
+      });
+    }
+  }
+
+  // Compound: topic:drifted + tool-use:overuse → focus:degraded
+  const hasTopicDrift =
+    signals.filter((s) => s.source === "topic-drift" && s.type === "detected").length >= 2;
+  if (hasTopicDrift && hasToolOveruse) {
+    const existing = state.beliefs.get("focus:degraded");
+    if (existing) {
+      existing.confidence = Math.min(1, existing.confidence + 0.2);
+      existing.updatedAt = now;
+    } else {
+      state.beliefs.set("focus:degraded", {
+        key: "focus:degraded",
+        confidence: 0.5,
+        evidence: signals.slice(-5).map((s) => s.id),
+        updatedAt: now,
+      });
+    }
+  }
+
+  // Compound: calibration:miscalibrated + stability:declining → confidence:overconfident
+  const hasCalError =
+    signals.filter((s) => s.source === "calibration" && s.type === "high-error").length >= 2;
+  if (hasCalError && hasStabilityDecline) {
+    const existing = state.beliefs.get("confidence:overconfident");
+    if (existing) {
+      existing.confidence = Math.min(1, existing.confidence + 0.2);
+      existing.updatedAt = now;
+    } else {
+      state.beliefs.set("confidence:overconfident", {
+        key: "confidence:overconfident",
+        confidence: 0.7,
+        evidence: signals.slice(-5).map((s) => s.id),
+        updatedAt: now,
+      });
+    }
+  }
+
+  // Compound: conflict present + reasoning declining → epistemic:uncertain
+  const hasConflicts =
+    signals.filter((s) => s.source === "conflict" && s.type !== "resolved").length >= 3;
+  if (hasConflicts && hasStabilityDecline) {
+    const existing = state.beliefs.get("epistemic:uncertain");
+    if (existing) {
+      existing.confidence = Math.min(1, existing.confidence + 0.1);
+      existing.updatedAt = now;
+    } else {
+      state.beliefs.set("epistemic:uncertain", {
+        key: "epistemic:uncertain",
+        confidence: 0.5,
+        evidence: signals.slice(-5).map((s) => s.id),
+        updatedAt: now,
+      });
+    }
+  }
+}
+
 /** Update belief state based on incoming signal */
 function updateBeliefs(state: BPEState, signal: SystemSignal): void {
   // Map signals to belief keys

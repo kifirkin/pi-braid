@@ -31,6 +31,7 @@ interface Preparation {
 }
 import { addEvidence } from "../../../../lib/evidence-pool.js";
 import { eventBus } from "../../../../lib/event-bus.js";
+import { recordAdvice } from "../../../../lib/advice-tracker.js";
 import { appendFileSync } from "node:fs";
 import { analyzeSession } from "../analysis.js";
 import {
@@ -41,6 +42,7 @@ import {
   isContextWindowError,
   isCompactionActive,
   setCompactionActive,
+  recordCompactionOutcome,
 } from "./shared.js";
 import { filterSafeToRemove } from "../../../../lib/filter-safe-to-remove.js";
 import { determineCompressionLevel } from "../../../../lib/compression-strategy.js";
@@ -557,12 +559,18 @@ export function registerCompactionEndHandler(pi: ExtensionAPI): void {
         // process) independent of agent disconnect during compaction.
         if (result) {
           log.info("[context-manager] Compaction completed successfully");
+          recordCompactionOutcome("success");
+          // Feed outcome into advice-tracker for retry strategy adjustment
+          recordAdvice("compaction", "success", 0);
           return;
         }
 
         // Handle failures below — intercept state already cleared above.
         // Context window error — context too large even for LLM summarization
         if (isContextWindowError(errorMessage)) {
+          recordCompactionOutcome("failure", { errorMessage });
+          // Feed outcome into advice-tracker for retry strategy adjustment
+          recordAdvice("compaction", "failure", 0);
           handleContextWindowError(pi, event, _ctx, errorMessage);
           return;
         }

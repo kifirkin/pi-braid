@@ -1,19 +1,16 @@
-import { createLogger } from "../../../lib/logger.js";
-
-const log = createLogger("context-lifecycle");
 /**
- * Signal Detector - Analyzes session content for semantic signals
+ * Signal Detector — Pure function for analyzing session content context signals.
  *
- * Reads from SessionManager to detect:
- * - Topic shifts (keyword analysis)
- * - Redundancy (content hashing)
- * - Task boundaries (tool patterns)
- * - Context pressure (usage metrics)
+ * Transformed from class-based SignalDetector to a pure function +
+ * externally-managed state object (no class instance, no methods).
  */
 
-import type { SessionEntry } from "@mariozechner/pi-coding-agent";
+import { createLogger } from "../../../lib/logger.js";
 import type { SemanticSignal, SemanticSignalType } from "./types.js";
 import { createSignal } from "./types.js";
+import type { SessionEntry } from "@mariozechner/pi-coding-agent";
+
+const log = createLogger("context-lifecycle");
 
 // ── Content Analysis ────────────────────────────────────────────────────────
 
@@ -84,242 +81,216 @@ function detectTopic(text: string): string {
   return bestScore > 0 ? bestTopic : "general";
 }
 
-// ── Signal Detector ─────────────────────────────────────────────────────────
+// ── Signal Detector State ───────────────────────────────────────────────────
 
-export class SignalDetector {
-  private lastTopic = "";
-  private lastTopicTurn = 0;
-  private topicHistory: Array<{ topic: string; turn: number }> = [];
-  private recentHashes = new Map<string, number>(); // hash → first seen turn
-  private toolSequence: string[] = [];
-  private lastTurn = 0;
-  private pendingSignals: SemanticSignal[] = [];
-  private contextUsage = 0;
-  private entryCount = 0;
+export interface DetectorState {
+  lastTopic: string;
+  lastTopicTurn: number;
+  topicHistory: Array<{ topic: string; turn: number }>;
+  recentHashes: Map<string, number>;
+  toolSequence: string[];
+  lastTurn: number;
+  pendingSignals: SemanticSignal[];
+  contextUsage: number;
+  entryCount: number;
+}
 
-  /** Update from SessionManager entries */
-  update(entries: SessionEntry[], contextUsage = 0): SemanticSignal[] {
-    const signals: SemanticSignal[] = [];
-    const newEntryCount = entries.length;
+export function createDetectorState(): DetectorState {
+  return {
+    lastTopic: "",
+    lastTopicTurn: 0,
+    topicHistory: [],
+    recentHashes: new Map(),
+    toolSequence: [],
+    lastTurn: 0,
+    pendingSignals: [],
+    contextUsage: 0,
+    entryCount: 0,
+  };
+}
 
-    // ── Session navigation detection ──────────────────────────────────
-    // If entry count drops sharply vs previous run, the session was
-    // restructured (/tree edit, /new, fork). Auto-reset to prevent stale
-    // topic/entry tracking from contaminating the new session.
-    if (this.entryCount > 0 && newEntryCount < this.entryCount - 2) {
-      log.warn(
-        `Session navigation detected: ${this.entryCount} → ${newEntryCount} entries, resetting`,
-      );
-      this.reset();
-    }
+// ── Pure Signal Detection ───────────────────────────────────────────────────
 
-    // Detect only new entries
-    if (newEntryCount <= this.entryCount) {
-      this.contextUsage = contextUsage;
-      this.entryCount = newEntryCount;
-      signals.push(...this.pendingSignals);
-      this.pendingSignals = [];
-      return signals;
-    }
+export function detectSignals(
+  state: DetectorState,
+  entries: SessionEntry[],
+  contextUsage = 0,
+): SemanticSignal[] {
+  const signals: SemanticSignal[] = [];
+  const newEntryCount = entries.length;
 
-    const newEntries = entries.slice(this.entryCount);
-    this.entryCount = newEntryCount;
-    this.contextUsage = contextUsage;
+  // Session navigation detection
+  if (state.entryCount > 0 && newEntryCount < state.entryCount - 2) {
+    log.warn(
+      `Session navigation detected: ${state.entryCount} → ${newEntryCount} entries, resetting`,
+    );
+    resetDetectorState(state);
+  }
 
-    // Advance turn counter for this batch
-    this.lastTurn++;
-    const turn = this.lastTurn;
-    const allText: string[] = [];
-    const hashes: string[] = [];
-    const toolCalls: string[] = [];
-
-    for (const entry of newEntries) {
-      const text = extractTextContent(entry);
-      if (text) {
-        allText.push(text);
-        hashes.push(hashContent(text));
-      }
-
-      // Track tool calls
-      if (entry.type === "message") {
-        const msg = (
-          entry as unknown as {
-            message?: {
-              role?: string;
-              toolName?: string;
-              content?: Array<{ type?: string; name?: string }>;
-            };
-          }
-        ).message;
-        if (msg?.role === "assistant" && Array.isArray(msg.content)) {
-          for (const block of msg.content) {
-            if (block?.type === "toolCall" && block?.name) {
-              toolCalls.push(block.name);
-            }
-          }
-        }
-        if (msg?.role === "toolResult" && msg?.toolName) {
-          toolCalls.push(msg.toolName);
-        }
-      }
-    }
-
-    // ── Redundancy detection ─────────────────────────────────────────────
-    let redundancyCount = 0;
-    for (const h of hashes) {
-      if (this.recentHashes.has(h)) {
-        redundancyCount++;
-      } else {
-        // Keep last 100 hashes
-        if (this.recentHashes.size >= 100) {
-          const oldest = Array.from(this.recentHashes.entries())
-            .sort((a, b) => a[1] - b[1])
-            .slice(0, 10);
-          for (const [k] of oldest) this.recentHashes.delete(k);
-        }
-        this.recentHashes.set(h, turn);
-      }
-    }
-    if (redundancyCount >= 2) {
-      signals.push(createSignal("redundancy_detected", turn, { count: redundancyCount }));
-    }
-
-    // ── Topic shift detection ───────────────────────────────────────────
-    const combinedText = allText.join(" ");
-    const currentTopic = detectTopic(combinedText);
-    if (currentTopic !== this.lastTopic && this.lastTopic !== "") {
-      signals.push(
-        createSignal("topic_shift", turn, {
-          from: this.lastTopic,
-          to: currentTopic,
-        }),
-      );
-      this.topicHistory.push({ topic: currentTopic, turn });
-      if (this.topicHistory.length > 20) {
-        this.topicHistory = this.topicHistory.slice(-20);
-      }
-    }
-    this.lastTopic = currentTopic;
-
-    // ── Tool sequence pattern ───────────────────────────────────────────
-    // ── Context pressure ───────────────────────────────────────────────
-    if (contextUsage >= 85) {
-      signals.push(createSignal("context_pressure", turn, { percent: contextUsage }));
-    } else if (contextUsage >= 70) {
-      signals.push(createSignal("context_pressure", turn, { percent: contextUsage }));
-    }
-
-    // ── Task boundary ──────────────────────────────────────────────────
-    // Detect task boundaries via tool patterns: explore → implement → verify
-    if (this.toolSequence.length >= 3) {
-      const last3 = this.toolSequence.slice(-3);
-      const hasExplore = ["grep", "read", "bash", "find", "analyze_image"].some((t) =>
-        last3.includes(t),
-      );
-      const hasImplement = ["write", "edit"].some((t) => last3.includes(t));
-      const hasVerify = ["bash", "test", "verify"].some((t) => last3.includes(t));
-
-      if (hasExplore && hasImplement && hasVerify) {
-        signals.push(createSignal("task_boundary", turn, { pattern: last3 }));
-      }
-    }
-
-    // ── Task complexity detection ──────────────────────────────────────
-    // Detected when: >=4 unique tool types used this turn OR >=5 tools total
-    const uniqueToolTypes = new Set(toolCalls).size;
-    const totalToolsThisTurn = toolCalls.length;
-    if (uniqueToolTypes >= 4 || totalToolsThisTurn >= 5) {
-      signals.push(
-        createSignal("task_complexity", turn, {
-          unique_tools: uniqueToolTypes,
-          total_tools: totalToolsThisTurn,
-        }),
-      );
-    }
-
-    // ── Decision density detection ─────────────────────────────────────
-    // Detected when multiple high-stakes actions occur in one turn
-    const highStakesActions = toolCalls.filter((t) =>
-      ["edit", "write", "finalize"].includes(t),
-    ).length;
-    const stateChanges = toolCalls.filter((t) =>
-      ["memory_store", "context_tag", "context_checkout", "context_archive"].includes(t),
-    ).length;
-    if (highStakesActions >= 2 || (highStakesActions >= 1 && stateChanges >= 1)) {
-      signals.push(
-        createSignal("decision_density", turn, {
-          high_stakes: highStakesActions,
-          state_changes: stateChanges,
-        }),
-      );
-    }
-
-    // Flush pending
-    signals.push(...this.pendingSignals);
-    this.pendingSignals = [];
-
+  if (newEntryCount <= state.entryCount) {
+    state.contextUsage = contextUsage;
+    state.entryCount = newEntryCount;
+    signals.push(...state.pendingSignals);
+    state.pendingSignals = [];
     return signals;
   }
 
-  /** Add a manual signal */
-  queueSignal(type: SemanticSignalType, data: Record<string, unknown> = {}): void {
-    this.pendingSignals.push(createSignal(type, this.lastTurn, data));
-  }
+  const newEntries = entries.slice(state.entryCount);
+  state.entryCount = newEntryCount;
+  state.contextUsage = contextUsage;
 
-  /** Get pending signals */
-  getPending(): SemanticSignal[] {
-    return [...this.pendingSignals];
-  }
+  state.lastTurn++;
+  const turn = state.lastTurn;
+  const allText: string[] = [];
+  const hashes: string[] = [];
+  const toolCalls: string[] = [];
 
-  /** Get topic history */
-  getTopicHistory(): Array<{ topic: string; turn: number }> {
-    return [...this.topicHistory];
-  }
+  for (const entry of newEntries) {
+    const text = extractTextContent(entry);
+    if (text) {
+      allText.push(text);
+      hashes.push(hashContent(text));
+    }
 
-  /** Check if session looks like task completion pattern
-   * Used by context-lifecycle to suggest finalize when appropriate
-   */
-  detectCompletionPattern(): boolean {
-    // Task boundary detected (explore → implement → verify)
-    const hasTaskBoundary = this.topicHistory.length >= 2;
-
-    // Low redundancy = no repeated work
-    const lowRedundancy = this.recentHashes.size > 5;
-
-    // Has verification tools (meaning work was validated)
-    const hasVerification = this.toolSequence.some((t) =>
-      ["bash", "test", "verify", "repl"].includes(t),
-    );
-
-    // Diverse tool usage (not stuck in one pattern)
-    const uniqueTools = new Set(this.toolSequence.slice(-10)).size;
-    const diverseTools = uniqueTools >= 4;
-
-    return hasTaskBoundary && lowRedundancy && hasVerification && diverseTools;
-  }
-
-  /** Emit completion candidate signal if pattern detected */
-  checkAndEmitCompletionSignal(): void {
-    if (this.detectCompletionPattern()) {
-      this.pendingSignals.push(
-        createSignal("task_completion_candidate", this.lastTurn, {
-          topicHistory: this.topicHistory.slice(-3),
-          uniqueTools: new Set(this.toolSequence.slice(-10)).size,
-        }),
-      );
+    if (entry.type === "message") {
+      const msg = (
+        entry as unknown as {
+          message?: {
+            role?: string;
+            toolName?: string;
+            content?: Array<{ type?: string; name?: string }>;
+          };
+        }
+      ).message;
+      if (msg?.role === "assistant" && Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          if (block?.type === "toolCall" && block?.name) {
+            toolCalls.push(block.name);
+            state.toolSequence.push(block.name);
+          }
+        }
+      }
+      if (msg?.role === "toolResult" && msg?.toolName) {
+        toolCalls.push(msg.toolName);
+        state.toolSequence.push(msg.toolName);
+      }
     }
   }
 
-  /** Reset state */
-  reset(): void {
-    this.lastTopic = "";
-    this.lastTopicTurn = 0;
-    this.topicHistory = [];
-    this.recentHashes.clear();
-    this.toolSequence = [];
-    this.lastTurn = 0;
-    this.pendingSignals = [];
-    this.contextUsage = 0;
-    this.entryCount = 0;
+  // Redundancy detection
+  let redundancyCount = 0;
+  for (const h of hashes) {
+    if (state.recentHashes.has(h)) {
+      redundancyCount++;
+    } else {
+      if (state.recentHashes.size >= 100) {
+        const oldest = Array.from(state.recentHashes.entries())
+          .sort((a, b) => a[1] - b[1])
+          .slice(0, 10);
+        for (const [k] of oldest) state.recentHashes.delete(k);
+      }
+      state.recentHashes.set(h, turn);
+    }
   }
+  if (redundancyCount >= 2) {
+    signals.push(createSignal("redundancy_detected", turn, { count: redundancyCount }));
+  }
+
+  // Topic shift detection
+  const combinedText = allText.join(" ");
+  const currentTopic = detectTopic(combinedText);
+  if (currentTopic !== state.lastTopic && state.lastTopic !== "") {
+    signals.push(createSignal("topic_shift", turn, { from: state.lastTopic, to: currentTopic }));
+    state.topicHistory.push({ topic: currentTopic, turn });
+    if (state.topicHistory.length > 20) state.topicHistory = state.topicHistory.slice(-20);
+  }
+  state.lastTopic = currentTopic;
+
+  // Context pressure
+  if (contextUsage >= 85) {
+    signals.push(createSignal("context_pressure", turn, { percent: contextUsage }));
+  } else if (contextUsage >= 70) {
+    signals.push(createSignal("context_pressure", turn, { percent: contextUsage }));
+  }
+
+  // Task boundary detection
+  if (state.toolSequence.length >= 3) {
+    const last3 = state.toolSequence.slice(-3);
+    const hasExplore = ["grep", "read", "bash", "find", "analyze_image"].some((t) =>
+      last3.includes(t),
+    );
+    const hasImplement = ["write", "edit"].some((t) => last3.includes(t));
+    const hasVerify = ["bash", "test", "verify"].some((t) => last3.includes(t));
+
+    if (hasExplore && hasImplement && hasVerify) {
+      signals.push(createSignal("task_boundary", turn, { pattern: last3 }));
+    }
+  }
+
+  // Task complexity
+  const uniqueToolTypes = new Set(toolCalls).size;
+  const totalToolsThisTurn = toolCalls.length;
+  if (uniqueToolTypes >= 4 || totalToolsThisTurn >= 5) {
+    signals.push(
+      createSignal("task_complexity", turn, {
+        unique_tools: uniqueToolTypes,
+        total_tools: totalToolsThisTurn,
+      }),
+    );
+  }
+
+  // Decision density
+  const highStakesActions = toolCalls.filter((t) =>
+    ["edit", "write", "finalize"].includes(t),
+  ).length;
+  const stateChanges = toolCalls.filter((t) =>
+    ["memory_store", "context_tag", "context_checkout", "context_archive"].includes(t),
+  ).length;
+  if (highStakesActions >= 2 || (highStakesActions >= 1 && stateChanges >= 1)) {
+    signals.push(
+      createSignal("decision_density", turn, {
+        high_stakes: highStakesActions,
+        state_changes: stateChanges,
+      }),
+    );
+  }
+
+  // Flush pending
+  signals.push(...state.pendingSignals);
+  state.pendingSignals = [];
+
+  return signals;
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+export function queueSignal(
+  state: DetectorState,
+  type: SemanticSignalType,
+  data: Record<string, unknown> = {},
+): void {
+  state.pendingSignals.push(createSignal(type, state.lastTurn, data));
+}
+
+export function resetDetectorState(state: DetectorState): void {
+  state.lastTopic = "";
+  state.lastTopicTurn = 0;
+  state.topicHistory = [];
+  state.recentHashes.clear();
+  state.toolSequence = [];
+  state.lastTurn = 0;
+  state.pendingSignals = [];
+  state.contextUsage = 0;
+  state.entryCount = 0;
+}
+
+export function detectCompletionPattern(state: DetectorState): boolean {
+  const hasTaskBoundary = state.topicHistory.length >= 2;
+  const lowRedundancy = state.recentHashes.size > 5;
+  const hasVerification = state.toolSequence.some((t) =>
+    ["bash", "test", "verify", "repl"].includes(t),
+  );
+  const uniqueTools = new Set(state.toolSequence.slice(-10)).size;
+  const diverseTools = uniqueTools >= 4;
+  return hasTaskBoundary && lowRedundancy && hasVerification && diverseTools;
 }

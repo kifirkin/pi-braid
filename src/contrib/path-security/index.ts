@@ -22,9 +22,16 @@ const log = createLogger("path-security");
 // ── Tool classification ──────────────────────────────────────────────────────
 
 const READ_ONLY_TOOLS = new Set([
-  "read", "grep", "find", "ls",
-  "render_pdf_page", "read_document", "analyze_image",
-  "file_diff", "codebase_graph", "codebase_tree",
+  "read",
+  "grep",
+  "find",
+  "ls",
+  "render_pdf_page",
+  "read_document",
+  "analyze_image",
+  "file_diff",
+  "codebase_graph",
+  "codebase_tree",
 ]);
 
 const WRITE_TOOLS = new Set(["write", "edit"]);
@@ -98,29 +105,35 @@ function recordVet(ctx: ExtensionContext, result: VetResult): void {
     else if (result.tier === "session") state.tierCounts.session++;
     else state.tierCounts.heuristic++;
     if (!result.safe) state.blockedCount++;
-  } catch { /* non-fatal */ }
+  } catch {
+    /* non-fatal */
+  }
 }
 
 // ── Steer Helpers ────────────────────────────────────────────────────────────
 
 async function sendBlockWhisper(
-  ctx: ExtensionContext, toolName: string, filePath: string,
+  ctx: ExtensionContext,
+  toolName: string,
+  _filePath: string,
 ): Promise<void> {
   try {
-    ctx.whisper?.(
-      `Blocked ${toolName}: path outside allowed directories`,
-      { category: "cognitive", priority: "low" },
-    );
-  } catch { /* non-fatal */ }
+    ctx.whisper?.(`Blocked ${toolName}: path outside allowed directories`, {
+      category: "cognitive",
+      priority: "low",
+    });
+  } catch {
+    /* non-fatal */
+  }
 }
 
-async function sendBashBlockWhisper(
-  ctx: ExtensionContext, command: string,
-): Promise<void> {
+async function sendBashBlockWhisper(ctx: ExtensionContext, _command: string): Promise<void> {
   try {
-    ctx.whisper?.(
-      `Bash blocked: command classified as dangerous`,
-      { category: "cognitive", priority: "low" },
-    );
-  } catch { /* non-fatal */ }
+    ctx.whisper?.(`Bash blocked: command classified as dangerous`, {
+      category: "cognitive",
+      priority: "low",
+    });
+  } catch {
+    /* non-fatal */
+  }
 }

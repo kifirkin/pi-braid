@@ -104,15 +104,20 @@ export const ENFORCEMENT_PARAMS = {
   verificationJudgeInterval: 15,
   maxClaimsBeforeVerification: 5,
   blockExploreBeforeWrite: true,
-  blockThinkBeforeEdit: false, // DEPRECATED
 } as const;
 
 // ── Composed state type ────────────────────────────────────────────────────
 
 /** Full enforcement state — intersection of all sub-states. */
 export interface EnforcementState
-  extends ToolTrackingState, ErrorTrackingState, SessionState,
-    MemoryHygieneState, ScratchpadState, ContextHygieneState, ThoughtChainState {}
+  extends
+    ToolTrackingState,
+    ErrorTrackingState,
+    SessionState,
+    MemoryHygieneState,
+    ScratchpadState,
+    ContextHygieneState,
+    ThoughtChainState {}
 
 // ── State factory (composed from sub-states) ───────────────────────────────
 

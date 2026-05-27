@@ -36,7 +36,7 @@ import { DEFAULT_CONFIG, getState, getMemoryState } from "./state.js";
 import { updateMetaLearning, getAdaptiveInterval } from "./meta-learning.js";
 import { createDefaultPolicies, VERIFICATION_TOOLS, WEB_TOOLS, CODE_TOOLS } from "./policies.js";
 import { recallerModule } from "./modules/recaller.js";
-import { dreamerModule } from "./modules/dreamer.js";
+import { reflectionConsolidatorModule } from "./modules/reflection-consolidator.js";
 import { contextHygieneModule } from "./modules/context-hygiene.js";
 import { measurementModule } from "./modules/measurement.js";
 import { budgetModule } from "./modules/budget.js";
@@ -45,7 +45,8 @@ import { timerReminderModule } from "./modules/timer-reminder.js";
 import { behavioralDriftModule } from "./modules/behavioral-drift.js";
 
 export { recallerModule };
-export { dreamerModule };
+export { reflectionConsolidatorModule };
+export { reflectionConsolidatorModule as dreamerModule };
 export { contextHygieneModule };
 export { evolverModule };
 export { measurementModule };
@@ -315,7 +316,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
   // Register built-in modules
   const builtInModules: CognitiveModule[] = [
     recallerModule,
-    dreamerModule,
+    reflectionConsolidatorModule,
     contextHygieneModule,
     measurementModule,
     evolverModule,
@@ -346,8 +347,17 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 
   // ── Event: tool_call ──────────────────────────────────────────────
 
-  pi.on("tool_call", (event: any, ctx: ExtensionContext) => {
+  pi.on("tool_call", async (event: any, ctx: ExtensionContext) => {
     const state = getState(ctx);
+
+    // Track SOP suggestion feedback
+    try {
+      const { trackSuggestionFeedback } = await import("../../../lib/sop-suggestion.js");
+      const toolName = event?.toolName as string;
+      if (toolName) trackSuggestionFeedback(toolName);
+    } catch {
+      // Non-fatal
+    }
 
     // Meta-learning signal detection
     if (state.metaLearning.pendingSignals.size > 0) {
@@ -524,7 +534,6 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
               pi,
               userText,
               memState.episodes,
-              undefined,
               sopState.suggestedEpisodeIds,
               currentProject,
             );
@@ -533,14 +542,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
             const cwdParts = (ctx.cwd ?? "").replace(/\\/g, "/").split("/").filter(Boolean);
             const currentProject =
               cwdParts.length >= 2 ? cwdParts.slice(-2).join("/") : (ctx.cwd ?? "unknown");
-            injectSopSuggestions(
-              pi,
-              userText,
-              memState.episodes,
-              undefined,
-              undefined,
-              currentProject,
-            );
+            injectSopSuggestions(pi, userText, memState.episodes, undefined, currentProject);
           }
         }
       }
@@ -612,8 +614,8 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
         // Queue for consolidation if successful
         if (success) {
           try {
-            const { scoreEpisode } = await import("../../../lib/consolidation-channel.js");
-            const candidate = scoreEpisode({
+            const { executeConsolidation } = await import("../../../lib/consolidation-channel.js");
+            const result = executeConsolidation({
               id: `ep-${Date.now()}`,
               task: taskDesc,
               outcome: "success",
@@ -621,10 +623,10 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
               functionalSOP: sop.functionalSOP,
               toolSequence: sop.atomicSOP,
             });
-            if (candidate.consolidationScore > 0.5) {
+            if (result) {
               log.info(
-                `[heartbeat] Candidate scored ${candidate.consolidationScore.toFixed(2)} ` +
-                  `— ready for consolidation`,
+                `[heartbeat] Consolidation candidate enqueued ` +
+                  `(score=${result.consolidationScore.toFixed(2)})`,
               );
             }
           } catch (err) {

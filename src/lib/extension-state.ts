@@ -161,11 +161,52 @@ export function safeSessionManager(ctx: ExtensionContext): unknown {
   try {
     return ctx.sessionManager;
   } catch {
-    log.warn("Stale ExtensionContext — sessionManager getter threw. Data-dependent subsystems (BPE, drift, memory) will operate on empty data.");
+    log.warn(
+      "Stale ExtensionContext — sessionManager getter threw. Data-dependent subsystems (BPE, drift, memory) will operate on empty data.",
+    );
     return undefined;
   }
 }
 
 export function clearAllSessions(): void {
   _sessionState.clear();
+  _cachedSessionManagers.clear();
+}
+
+// ── Cached SessionManager References ─────────────────────────────────────────
+// ctx.sessionManager is a getter that throws when ctx is stale. Cache the
+// reference at session_start (where ctx is guaranteed fresh) and use the
+// cached copy in turn_end handlers to avoid stale-ctx crashes.
+
+const _cachedSessionManagers = new Map<string, unknown>();
+
+/**
+ * Cache a sessionManager reference for later use. Call at session_start
+ * when the ExtensionContext is guaranteed fresh.
+ */
+export function cacheSessionManager(ctx: ExtensionContext): void {
+  const sessionKey = getSessionKey(ctx);
+  if (!sessionKey) return;
+  try {
+    const sm = ctx.sessionManager;
+    if (sm) {
+      _cachedSessionManagers.set(sessionKey, sm);
+    }
+  } catch {
+    // ctx sessionManager threw even at session_start — skip caching
+  }
+}
+
+/**
+ * Get the cached sessionManager reference, falling back to safeSessionManager.
+ * Use in turn_end and mid-turn handlers to avoid stale-ctx crashes.
+ */
+export function getCachedSessionManager(ctx: ExtensionContext): unknown {
+  const sessionKey = getSessionKey(ctx);
+  if (sessionKey) {
+    const cached = _cachedSessionManagers.get(sessionKey);
+    if (cached) return cached;
+  }
+  // Fallback to safe access if no cache hit
+  return safeSessionManager(ctx);
 }

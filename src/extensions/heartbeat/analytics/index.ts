@@ -13,7 +13,11 @@ import { createLogger } from "../../../lib/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 import { existsSync, mkdirSync } from "node:fs";
 import { METRICS_FILE, METRICS_DIR } from "../../../lib/braid-paths.js";
-import type { ExtensionAPI, ExtensionContext, AgentToolResult } from "@mariozechner/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionContext,
+  AgentToolResult,
+} from "@mariozechner/pi-coding-agent";
 import { safeSessionManager } from "../../../lib/extension-state.js";
 import { emitSignal } from "../../../lib/belief-policy-engine.js";
 import { eventBus } from "../../../lib/event-bus.js";
@@ -23,6 +27,7 @@ import { areCognitiveNudgesDisabled } from "../../../lib/braid-settings.js";
 import { Type } from "typebox";
 
 import { getAnalyticsStateInternal } from "./shared.js";
+import { getCompactionHealth } from "../../memory/context-manager/handlers/shared.js";
 import { recordError, recordToolSuccess } from "../../../lib/degradation-detector.js";
 export {
   updateContextDensity,
@@ -323,6 +328,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
 
         toolsBreakdown.sort((a, b) => b.calls - a.calls);
 
+        const ch = getCompactionHealth();
         const details = {
           sessionId: state.sessionId,
           duration: `${Math.floor(durationMs / 60000)}m ${Math.floor((durationMs % 60000) / 1000)}s`,
@@ -332,6 +338,12 @@ export default function analyticsExtension(pi: ExtensionAPI) {
           turnCount: state.localTurnCount,
           nudgesSent: state.nudgesSent,
           nudgesSuppressed: state.nudgesSuppressed,
+          compaction: {
+            total: ch.totalCompactions,
+            failures: ch.totalFailures,
+            lastOutcome: ch.lastOutcome,
+            entriesRemoved: ch.totalEntriesRemoved,
+          },
         };
 
         return {
@@ -340,7 +352,9 @@ export default function analyticsExtension(pi: ExtensionAPI) {
         };
       } catch (err) {
         return {
-          content: [{ type: "text", text: `Failed to get session metrics: ${(err as Error).message}` }],
+          content: [
+            { type: "text", text: `Failed to get session metrics: ${(err as Error).message}` },
+          ],
           details: { error: (err as Error).message },
         };
       }
@@ -384,9 +398,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
                 ? Math.round((metrics.successfulCalls / metrics.totalCalls) * 1000) / 1000
                 : 0,
             avgDurationMs:
-              metrics.totalCalls > 0
-                ? Math.round(metrics.totalDurationMs / metrics.totalCalls)
-                : 0,
+              metrics.totalCalls > 0 ? Math.round(metrics.totalDurationMs / metrics.totalCalls) : 0,
           });
         }
 
@@ -399,7 +411,9 @@ export default function analyticsExtension(pi: ExtensionAPI) {
         };
       } catch (err) {
         return {
-          content: [{ type: "text", text: `Failed to get tool reliability: ${(err as Error).message}` }],
+          content: [
+            { type: "text", text: `Failed to get tool reliability: ${(err as Error).message}` },
+          ],
           details: { error: (err as Error).message },
         };
       }

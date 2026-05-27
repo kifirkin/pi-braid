@@ -97,6 +97,7 @@ export function extractFileReferences(text: string): string[] {
   return [...new Set(refs)];
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function isLikelyFilePath(s: string): boolean {
   return (
     (s.includes("/") || /\.\w+$/.test(s)) &&
@@ -265,9 +266,8 @@ export function checkSpecCoverage(
 
   for (const spec of specs) {
     // Check if any edited file matches this spec's domain
-    const matchesDomain = editedFiles.some((f) =>
-      f.startsWith(`src/extensions/${spec.domain}`) ||
-      f.includes(`/specs/${spec.domain}/`),
+    const matchesDomain = editedFiles.some(
+      (f) => f.startsWith(`src/extensions/${spec.domain}`) || f.includes(`/specs/${spec.domain}/`),
     );
 
     if (!matchesDomain) continue;

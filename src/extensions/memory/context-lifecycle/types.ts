@@ -201,25 +201,12 @@ export function createSnapshot(
   };
 }
 
-// ── Outcome Tracking (Closed-Loop) ───────────────────────────────────────────
-
-export interface OutcomeRecord {
-  proposal_id: string;
-  policy_id: string;
-  action_type: string;
-  resolution: ContextProposal["resolution"];
-  turns_to_resolve: number;
-  context_delta: number;
-  timestamp: number;
-}
-
-export interface PolicyStats {
-  policy_id: string;
-  fired_count: number;
-  approval_rate: number;
-  avg_turns_to_resolve: number;
-  action_taken_rate: number;
-}
+// ── Outcome Tracking Removed ─────────────────────────────────────────────────
+// Proposal state machine types (resolution/outcome) removed in Phase 2.3
+// because they were only used for logging, never for decision-making.
+// ---
+// OutcomeRecord, PolicyStats, resolution tracking — removed.
+// Kept: ContextProposal structure without lifecycle tracking fields.
 
 // ── Session Entry Helpers ───────────────────────────────────────────────────
 

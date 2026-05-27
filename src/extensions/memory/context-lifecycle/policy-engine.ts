@@ -1,3 +1,10 @@
+/**
+ * Policy Engine — Pure function for evaluating context policies against signals.
+ *
+ * Transformed from class-based PolicyEngine to a pure evaluation function.
+ * Cooldown tracking is managed externally via a state object.
+ */
+
 import { createLogger } from "../../../lib/logger.js";
 import { getExtensionState } from "../../../lib/extension-state.js";
 import {
@@ -12,176 +19,37 @@ import {
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 const log = createLogger("context-lifecycle");
-/**
- * Policy Engine - Declarative rule evaluation for S-MMU
- *
- * Evaluates semantic signals against policies with governance validation.
- * Outputs: immediate actions (compact) or proposals with constraint checking.
- */
 
 import type { ContextPolicy, GovernanceConstraint, PolicyAction, SemanticSignal } from "./types.js";
 import { createDefaultPolicies, createDefaultGovernance } from "./types.js";
 
-// ── Policy Evaluation ────────────────────────────────────────────────────────
+// ── Policy Evaluation State ─────────────────────────────────────────────────
 
-function matchesTrigger(trigger: ContextPolicy["trigger"], ctx: PolicyContext): boolean {
-  switch (trigger.type) {
-    case "signal":
-      return ctx.signals.some((s) => s.type === trigger.signal);
+export interface PolicyEngineState {
+  cooldowns: Map<string, number>;
+  policies: ContextPolicy[];
+  governance: GovernanceConstraint[];
+}
 
-    case "context_usage":
-      return ctx.contextUsage >= trigger.threshold;
-
-    case "context_usage_tokens":
-      return ctx.contextTokens >= trigger.threshold;
-
-    case "turn_count":
-      return ctx.turnCount >= trigger.threshold;
-
-    case "redundancy":
-      return ctx.redundancyCount >= trigger.count;
-
-    case "any_signal":
-      return ctx.signals.length > 0;
-
-    default:
-      return false;
-  }
+export function createPolicyEngineState(
+  policies?: ContextPolicy[],
+  governance?: GovernanceConstraint[],
+): PolicyEngineState {
+  return {
+    cooldowns: new Map(),
+    policies: policies ?? createDefaultPolicies(),
+    governance: governance ?? createDefaultGovernance(),
+  };
 }
 
 // ── Policy Context ──────────────────────────────────────────────────────────
 
-interface PolicyContext {
+export interface PolicyContext {
   signals: SemanticSignal[];
-  contextUsage: number; // percentage (0-100)
-  contextTokens: number; // absolute token count
+  contextUsage: number;
+  contextTokens: number;
   turnCount: number;
   redundancyCount: number;
-}
-
-// ── Policy Engine ───────────────────────────────────────────────────────────
-
-export class PolicyEngine {
-  private policies: ContextPolicy[];
-  private cooldowns: Map<string, number> = new Map();
-  private governance: GovernanceConstraint[];
-
-  constructor(policies?: ContextPolicy[], governance?: GovernanceConstraint[]) {
-    this.policies = policies ?? createDefaultPolicies();
-    this.governance = governance ?? createDefaultGovernance();
-  }
-
-  /** Evaluate policies and return validated actions */
-  evaluate(ctx: PolicyContext): EvaluatedAction[] {
-    const actions: EvaluatedAction[] = [];
-    const now = Date.now();
-
-    // Sort by priority (higher first)
-    const sorted = [...this.policies].sort((a, b) => b.priority - a.priority);
-
-    for (const policy of sorted) {
-      // Check cooldown
-      const cooldown = this.cooldowns.get(policy.id);
-      if (cooldown && now - cooldown < policy.cooldown_ms) continue;
-
-      // Check confidence threshold
-      if (policy.min_confidence !== undefined) {
-        const maxSignalConfidence =
-          ctx.signals.length > 0 ? Math.max(...ctx.signals.map((s) => s.confidence)) : 0;
-        if (maxSignalConfidence < policy.min_confidence) continue;
-      }
-
-      // Check context usage threshold
-      if (policy.max_context_usage !== undefined) {
-        if (ctx.contextUsage > policy.max_context_usage) continue;
-      }
-
-      // Check trigger
-      if (!matchesTrigger(policy.trigger, ctx)) continue;
-
-      // Policy fires — find the matching signal to attach data
-      const matchingSignal =
-        policy.trigger.type === "signal"
-          ? ctx.signals.find(
-              (s) => s.type === (policy.trigger as { type: "signal"; signal: string }).signal,
-            )
-          : undefined;
-
-      const action: PolicyAction = policy.action;
-
-      // Apply governance validation
-      const validation = this.validateAction(action, ctx.signals);
-
-      actions.push({
-        action,
-        policy,
-        validation,
-        canExecute: validation.valid || validation.severity === "warn",
-        signal: matchingSignal,
-      });
-
-      this.cooldowns.set(policy.id, now);
-    }
-
-    return actions;
-  }
-
-  /** Validate an action against governance constraints */
-  private validateAction(action: PolicyAction, signals: SemanticSignal[]): GovernanceResult {
-    // Mock proposal for validation
-    const mockProposal = {
-      id: "validate",
-      type: "compact" as const,
-      message: "",
-      priority: "medium" as const,
-      created_at: Date.now(),
-      turn: 0,
-      policy_id: "",
-      confidence: signals[0]?.confidence ?? 0.5,
-      suggested_action: action.type === "propose" ? "context_archive" : undefined,
-    };
-
-    let blocked = false;
-    const warnings: string[] = [];
-
-    for (const constraint of this.governance) {
-      if (constraint.target !== "action" && constraint.target !== "proposal") continue;
-
-      const result = constraint.validate(mockProposal, signals);
-      if (!result.valid && constraint.severity === "block") {
-        blocked = true;
-        warnings.push(`BLOCKED: ${result.message}`);
-      } else if (result.message && constraint.severity === "warn") {
-        warnings.push(`WARN: ${result.message}`);
-      }
-    }
-
-    return {
-      valid: !blocked,
-      severity: blocked ? "block" : warnings.length > 0 ? "warn" : "ok",
-      messages: warnings,
-    };
-  }
-
-  /** Reset all cooldowns */
-  resetCooldowns(): void {
-    this.cooldowns.clear();
-  }
-
-  /** Get policies */
-  getPolicies(): ContextPolicy[] {
-    return [...this.policies];
-  }
-
-  /** Touch a specific policy cooldown */
-  touchCooldown(policyId: string): void {
-    this.cooldowns.set(policyId, Date.now());
-  }
-
-  /** Get governance constraints */
-  getGovernance(): GovernanceConstraint[] {
-    return [...this.governance];
-  }
 }
 
 // ── Evaluated Action ────────────────────────────────────────────────────────
@@ -191,7 +59,6 @@ export interface EvaluatedAction {
   policy: ContextPolicy;
   validation: GovernanceResult;
   canExecute: boolean;
-  /** The signal that triggered this policy action, if applicable */
   signal?: SemanticSignal;
 }
 
@@ -201,17 +68,117 @@ export interface GovernanceResult {
   messages: string[];
 }
 
+// ── Pure Evaluation ─────────────────────────────────────────────────────────
+
+function matchesTrigger(trigger: ContextPolicy["trigger"], ctx: PolicyContext): boolean {
+  switch (trigger.type) {
+    case "signal":
+      return ctx.signals.some((s) => s.type === trigger.signal);
+    case "context_usage":
+      return ctx.contextUsage >= trigger.threshold;
+    case "context_usage_tokens":
+      return ctx.contextTokens >= trigger.threshold;
+    case "turn_count":
+      return ctx.turnCount >= trigger.threshold;
+    case "redundancy":
+      return ctx.redundancyCount >= trigger.count;
+    case "any_signal":
+      return ctx.signals.length > 0;
+    default:
+      return false;
+  }
+}
+
+function validateAction(
+  action: PolicyAction,
+  signals: SemanticSignal[],
+  governance: GovernanceConstraint[],
+): GovernanceResult {
+  const mockProposal = {
+    id: "validate",
+    type: "compact" as const,
+    message: "",
+    priority: "medium" as const,
+    created_at: Date.now(),
+    turn: 0,
+    policy_id: "",
+    confidence: signals[0]?.confidence ?? 0.5,
+    suggested_action: action.type === "propose" ? "context_archive" : undefined,
+  };
+
+  let blocked = false;
+  const warnings: string[] = [];
+
+  for (const constraint of governance) {
+    if (constraint.target !== "action" && constraint.target !== "proposal") continue;
+    const result = constraint.validate(mockProposal, signals);
+    if (!result.valid && constraint.severity === "block") {
+      blocked = true;
+      warnings.push(`BLOCKED: ${result.message}`);
+    } else if (result.message && constraint.severity === "warn") {
+      warnings.push(`WARN: ${result.message}`);
+    }
+  }
+
+  return {
+    valid: !blocked,
+    severity: blocked ? "block" : warnings.length > 0 ? "warn" : "ok",
+    messages: warnings,
+  };
+}
+
+export function evaluatePolicies(state: PolicyEngineState, ctx: PolicyContext): EvaluatedAction[] {
+  const actions: EvaluatedAction[] = [];
+  const now = Date.now();
+
+  const sorted = [...state.policies].sort((a, b) => b.priority - a.priority);
+
+  for (const policy of sorted) {
+    const cooldown = state.cooldowns.get(policy.id);
+    if (cooldown && now - cooldown < policy.cooldown_ms) continue;
+
+    if (policy.min_confidence !== undefined) {
+      const maxSignalConfidence =
+        ctx.signals.length > 0 ? Math.max(...ctx.signals.map((s) => s.confidence)) : 0;
+      if (maxSignalConfidence < policy.min_confidence) continue;
+    }
+
+    if (policy.max_context_usage !== undefined) {
+      if (ctx.contextUsage > policy.max_context_usage) continue;
+    }
+
+    if (!matchesTrigger(policy.trigger, ctx)) continue;
+
+    const matchingSignal =
+      policy.trigger.type === "signal"
+        ? ctx.signals.find(
+            (s) => s.type === (policy.trigger as { type: "signal"; signal: string }).signal,
+          )
+        : undefined;
+
+    const action: PolicyAction = policy.action;
+    const validation = validateAction(action, ctx.signals, state.governance);
+
+    actions.push({
+      action,
+      policy,
+      validation,
+      canExecute: validation.valid || validation.severity === "warn",
+      signal: matchingSignal,
+    });
+
+    state.cooldowns.set(policy.id, now);
+  }
+
+  return actions;
+}
+
+export function touchCooldown(state: PolicyEngineState, policyId: string): void {
+  state.cooldowns.set(policyId, Date.now());
+}
+
 // ── Context Density Signal Generator ────────────────────────────────────────────
 
-/**
- * Evaluate context information density and emit signals.
- * Based on: SimpleMem (2601.02553), GenericAgent (2604.17091)
- *
- * density < DENSITY_LOW    → noisy context → aggressive pruning
- * density DENSITY_LOW–DENSITY_HIGH → mixed → semantic compression
- * density >= DENSITY_HIGH + large context → semantic compression opportunity
- * duplicates > 2 → dedup signal
- */
 export function generateDensitySignals(ctx: ExtensionContext): SemanticSignal[] {
   const signals: SemanticSignal[] = [];
   const density = evaluateContextDensity(ctx);
@@ -252,7 +219,6 @@ export function generateDensitySignals(ctx: ExtensionContext): SemanticSignal[] 
     });
   }
 
-  // Also add to extension state for policy evaluation
   const state = getExtensionState(ctx, "context-density", () => ({
     density: density.density,
     tokenRatio: density.tokenRatio,
@@ -271,13 +237,12 @@ export function generateDensitySignals(ctx: ExtensionContext): SemanticSignal[] 
 
 // ── Policy Evaluation for Density Signals ───────────────────────────────────────
 
-export function evaluatePolicies(ctx: ExtensionContext, signals: SemanticSignal[]): any[] {
+export function evaluateDensityPolicies(ctx: ExtensionContext, signals: SemanticSignal[]): any[] {
   const proposals: any[] = [];
 
   for (const signal of signals) {
     const signalType = signal.type;
 
-    // Map signal type to matching policies
     const policy_map: Record<
       string,
       { priority: number; message: string; suggested_action: string; min_confidence: number }
@@ -318,7 +283,6 @@ export function evaluatePolicies(ctx: ExtensionContext, signals: SemanticSignal[
     }
   }
 
-  // Sort by priority descending
   proposals.sort((a, b) => b.priority - a.priority);
   return proposals;
 }

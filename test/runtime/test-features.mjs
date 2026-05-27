@@ -351,9 +351,11 @@ async function main() {
 	// ══════════════════════════════════════════════════════════════════════════
 	console.log("\n── Documentation (extracted to pi-braid-docs) ──");
 
-	test("docs directory removed (extracted to separate repo)", () => {
-		const hasDocs = existsSync(join(ROOT, "docs"));
-		assert.ok(!hasDocs, "docs/ directory should be removed (extracted to pi-braid-docs)");
+	test("docs contains only import-dependency-map (Phase 0.2)", () => {
+		if (!existsSync(join(ROOT, "docs"))) return; // May be absent in CI
+		const files = readdirSync(join(ROOT, "docs"));
+		assert.equal(files.length, 1, `expected 1 file in docs/, found ${files.length}`);
+		assert.equal(files[0], "import-dependency-map.md", "only import-dependency-map.md should remain");
 	});
 
 	// ══════════════════════════════════════════════════════════════════════════
