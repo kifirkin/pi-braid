@@ -25,6 +25,8 @@
 import { createLogger } from "./logger.js";
 import { sendTrackedMessage } from "./injection-tracker.js";
 import { eventBus } from "./event-bus.js";
+import { getExtensionState } from "./extension-state.js";
+import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { Episode } from "../extensions/memory/three-memory-stores/types.js";
 
 const log = createLogger("sop-suggestion");
@@ -46,7 +48,7 @@ export interface RetrievedSop {
   matchedKeywords: string[];
 }
 
-// ── Suggestion Feedback Tracking ────────────────────────────────────────────
+// ── Suggestion Feedback Tracking (session-scoped) ───────────────────────────
 
 interface SuggestionFeedback {
   episodeId: string;
@@ -56,14 +58,25 @@ interface SuggestionFeedback {
   subsequentTools: string[];
 }
 
-const _suggestionFeedback: SuggestionFeedback[] = [];
-let _lastSuggestionEpisodeId: string | null = null;
-let _lastSuggestionTurn = 0;
+interface SopSuggestionState {
+  suggestionFeedback: SuggestionFeedback[];
+  lastSuggestionEpisodeId: string | null;
+  lastSuggestionTurn: number;
+}
 
-export function trackSuggestionFeedback(toolName: string): void {
-  if (!_lastSuggestionEpisodeId) return;
+function getSopState(ctx: ExtensionContext): SopSuggestionState {
+  return getExtensionState(ctx, "sop-suggestion-feedback", () => ({
+    suggestionFeedback: [],
+    lastSuggestionEpisodeId: null,
+    lastSuggestionTurn: 0,
+  }));
+}
 
-  const fb = _suggestionFeedback.find((f) => f.episodeId === _lastSuggestionEpisodeId);
+export function trackSuggestionFeedback(ctx: ExtensionContext, toolName: string): void {
+  const state = getSopState(ctx);
+  if (!state.lastSuggestionEpisodeId) return;
+
+  const fb = state.suggestionFeedback.find((f) => f.episodeId === state.lastSuggestionEpisodeId);
   if (fb) {
     fb.subsequentTools.push(toolName);
     // Detect if agent followed the SOP pattern
@@ -80,8 +93,8 @@ export function trackSuggestionFeedback(toolName: string): void {
   }
 }
 
-export function getSuggestionFeedback(): ReadonlyArray<SuggestionFeedback> {
-  return _suggestionFeedback;
+export function getSuggestionFeedback(ctx: ExtensionContext): ReadonlyArray<SuggestionFeedback> {
+  return getSopState(ctx).suggestionFeedback;
 }
 
 // ── Classifier-based keyword extraction ─────────────────────────────────────
@@ -318,6 +331,7 @@ function extractProjectKeywords(text: string): string[] {
  * Matches reward increased for best-pattern matches when feedback exists.
  */
 function computeSimilarity(
+  ctx: ExtensionContext,
   queryKeywords: string[],
   episodeTask: string,
   episodeId?: string,
@@ -348,7 +362,8 @@ function computeSimilarity(
 
   // Feedback boost: if this episode was previously suggested and agent followed it
   let union = queryKeywords.length + episodeSet.size;
-  if (episodeId && _suggestionFeedback.some((f) => f.episodeId === episodeId && f.followed)) {
+  const sopState = ctx ? getSopState(ctx) : null;
+  if (episodeId && sopState?.suggestionFeedback.some((f) => f.episodeId === episodeId && f.followed)) {
     union = Math.max(1, union - 1); // Slight boost to similarity
   }
 
@@ -358,6 +373,7 @@ function computeSimilarity(
 // ── SOP Retrieval ──────────────────────────────────────────────────────────
 
 export async function retrieveRelevantSOPs(
+  ctx: ExtensionContext,
   userMessage: string,
   episodes: Episode[],
   currentProject?: string,
@@ -384,7 +400,7 @@ export async function retrieveRelevantSOPs(
   // Score episodes
   const scored: RetrievedSop[] = [];
   for (const ep of filtered) {
-    const similarity = computeSimilarity(keywords, ep.task, ep.id);
+    const similarity = computeSimilarity(ctx, keywords, ep.task, ep.id);
 
     if (similarity < MIN_SIMILARITY) continue;
 
@@ -450,12 +466,13 @@ function formatSopSuggestion(retrieved: RetrievedSop, maxTokens: number): string
  */
 export async function injectSopSuggestions(
   pi: any,
+  ctx: ExtensionContext,
   userMessage: string,
   episodes: Episode[],
   alreadySuggestedIds?: Set<string>,
   currentProject?: string,
 ): Promise<number> {
-  const retrieved = await retrieveRelevantSOPs(userMessage, episodes, currentProject);
+  const retrieved = await retrieveRelevantSOPs(ctx, userMessage, episodes, currentProject);
   if (retrieved.length === 0) return 0;
 
   let totalTokens = 0;
@@ -470,12 +487,13 @@ export async function injectSopSuggestions(
 
     if (totalTokens + estimatedTokens > MAX_TOTAL_TOKENS) break;
 
-    // Track for feedback
+    // Track for feedback (session-scoped)
     if (r.episode.id) {
-      _lastSuggestionEpisodeId = r.episode.id;
-      _lastSuggestionTurn = Date.now();
-      if (!_suggestionFeedback.find((f) => f.episodeId === r.episode.id)) {
-        _suggestionFeedback.push({
+      const fbState = getSopState(ctx);
+      fbState.lastSuggestionEpisodeId = r.episode.id;
+      fbState.lastSuggestionTurn = Date.now();
+      if (!fbState.suggestionFeedback.find((f) => f.episodeId === r.episode.id)) {
+        fbState.suggestionFeedback.push({
           episodeId: r.episode.id,
           suggestedAt: Date.now(),
           followed: false,

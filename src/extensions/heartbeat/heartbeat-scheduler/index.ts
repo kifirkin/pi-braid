@@ -354,7 +354,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     try {
       const { trackSuggestionFeedback } = await import("../../../lib/sop-suggestion.js");
       const toolName = event?.toolName as string;
-      if (toolName) trackSuggestionFeedback(toolName);
+      if (toolName) trackSuggestionFeedback(ctx, toolName);
     } catch {
       // Non-fatal
     }
@@ -532,6 +532,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 
             injectSopSuggestions(
               pi,
+              ctx,
               userText,
               memState.episodes,
               sopState.suggestedEpisodeIds,
@@ -542,7 +543,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
             const cwdParts = (ctx.cwd ?? "").replace(/\\/g, "/").split("/").filter(Boolean);
             const currentProject =
               cwdParts.length >= 2 ? cwdParts.slice(-2).join("/") : (ctx.cwd ?? "unknown");
-            injectSopSuggestions(pi, userText, memState.episodes, undefined, currentProject);
+            injectSopSuggestions(pi, ctx, userText, memState.episodes, undefined, currentProject);
           }
         }
       }
