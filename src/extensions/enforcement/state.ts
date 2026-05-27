@@ -40,11 +40,9 @@ import {
 import {
   createScratchpadState,
   resetScratchpadState,
-  type ScratchpadState,
-} from "./scratchpad-state.js";
-import {
   createContextHygieneState,
   resetContextHygieneState,
+  type ScratchpadState,
   type ContextHygieneState,
 } from "./context-hygiene-state.js";
 import {
