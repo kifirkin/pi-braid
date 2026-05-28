@@ -12,6 +12,7 @@ import * as path from "node:path";
 import { Type } from "typebox";
 import type {
   AgentToolResult,
+  AgentToolUpdateCallback,
   ExtensionAPI,
   ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
@@ -225,7 +226,7 @@ export default function codebaseTreeExtension(pi: ExtensionAPI) {
       _toolCallId: string,
       params: Record<string, unknown>,
       _signal: AbortSignal | undefined,
-      _onUpdate: ((chunk: string) => void) | undefined,
+      _onUpdate: AgentToolUpdateCallback<Record<string, unknown>> | undefined,
       ctx: ExtensionContext,
     ): Promise<AgentToolResult<CodebaseTreeResult>> => {
       statCache.clear();

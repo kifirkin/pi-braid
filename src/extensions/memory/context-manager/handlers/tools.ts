@@ -3,25 +3,15 @@
 // Each tool is implemented in tools/<tool-name>.ts for independent testing.
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { registerContextTag } from "./tools/context-tag.js";
-import { registerContextLog } from "./tools/context-log.js";
-import { registerContextCheckout } from "./tools/context-checkout.js";
-import { registerContextPrune } from "./tools/context-prune.js";
-import { registerContextAudit } from "./tools/context-audit.js";
-import { registerContextSnapshot } from "./tools/context-snapshot.js";
-import { registerContextCompact } from "./tools/context-compact.js";
-import { registerContextArchive } from "./tools/context-archive.js";
+import { registerContextInspect } from "./tools/context-inspect.js";
+import { registerContextCompress } from "./tools/context-compress.js";
+import { registerContextNavigate } from "./tools/context-navigate.js";
 import { log, getCmState } from "./shared.js";
 
 export function registerTools(pi: ExtensionAPI): void {
-  registerContextTag(pi);
-  registerContextLog(pi);
-  registerContextCheckout(pi);
-  registerContextPrune(pi);
-  registerContextAudit(pi);
-  registerContextSnapshot(pi);
-  registerContextCompact(pi);
-  registerContextArchive(pi);
+  registerContextInspect(pi);
+  registerContextCompress(pi);
+  registerContextNavigate(pi);
 
   // ── context-stats Command ───────────────────────────────────────────
   pi.registerCommand("context-stats", {

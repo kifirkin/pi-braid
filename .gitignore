@@ -23,9 +23,6 @@ test/runtime/results/
 # OS
 .DS_Store
 
-# pi workspace extensions (auto-symlinked by pi, not part of this repo)
-src/contrib/pi-*
-
 # Editor
 .vscode/
 .idea/

@@ -39,13 +39,13 @@ console.log("\n[1] Sleep extension structure");
 }
 
 // ── [2] Module system registration ───────────────────────────
-console.log("\n[2] Extension manifest registration (sleep removed — was dead code)");
+console.log("\n[2] Extension manifest registration (sleep is active)");
 {
   const fs = await import("fs");
   const mani = fs.readFileSync(`${ROOT}/src/extensions/manifest.ts`, "utf8");
 
-  assert(!mani.includes("sleepFn"), "sleepFn import removed from manifest");
-  assert(!mani.includes('"sleep"'), "sleep extension unregistered from manifest");
+  assert(mani.includes("sleepFn"), "sleepFn imported in manifest");
+  assert(mani.includes('"sleep"'), "sleep extension registered in manifest");
 }
 
 // ── [3] Tool-security: tool-security.ts was dead code (graveyard → deleted) ──

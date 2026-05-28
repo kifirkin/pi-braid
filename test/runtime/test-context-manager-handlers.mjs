@@ -93,11 +93,11 @@ async function main() {
 	console.log("\n[4] Tool registrations");
 	check("tools/ files register all tools + 1 command", () => {
 		let foundTools = 0;
-		for (const tool of ["context-tag", "context-log", "context-checkout", "context-prune", "context-audit", "context-archive"]) {
+		for (const tool of ["context-inspect", "context-compress", "context-navigate"]) {
 			const src = readFileSync(`${ROOT}/src/extensions/memory/context-manager/handlers/tools/${tool}.ts`, "utf8");
 			if (src.includes(`name: "${tool.replace(/-/g, '_')}"`)) foundTools++;
 		}
-		assert(foundTools >= 6, `Expected 6 tool registrations, found ${foundTools}`);
+		assert(foundTools >= 3, `Expected 3 tool registrations, found ${foundTools}`);
 		const toolsMain = readFileSync(`${ROOT}/src/extensions/memory/context-manager/handlers/tools.ts`, "utf8");
 		assert(toolsMain.includes("registerCommand"), "Missing command registration");
 	});

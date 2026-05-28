@@ -57,14 +57,13 @@ import pathSecurityFn from "../contrib/path-security/index.js";
 import researchFn from "../contrib/research/index.js";
 import systemMonitorFn from "../contrib/system-monitor/index.js";
 import toolConfigFn from "../contrib/tool-config/index.js";
-
-// pi-* standalone tools (from ~/.pi/agent/extensions/)
-import codebaseTreeFn from "../contrib/pi-codebase-tree/index.js";
-import codebaseGraphFn from "../contrib/pi-codebase-graph/index.js";
-import browserFn from "../contrib/pi-browser/index.js";
-import docsFn from "../contrib/pi-docs/index.js";
-import replFn from "../contrib/pi-repl/index.js";
-import visionFn from "../contrib/pi-vision/index.js";
+import sleepFn from "../contrib/sleep/index.js";
+import codebaseTreeFn from "../contrib/codebase-tree/index.js";
+import codebaseGraphFn from "../contrib/codebase-graph/index.js";
+import browserFn from "../contrib/browser/index.js";
+import docsFn from "../contrib/docs/index.js";
+import replFn from "../contrib/repl/index.js";
+import visionFn from "../contrib/vision/index.js";
 
 // watchdog (session monitoring, opt-in)
 import watchdogFn from "./watchdog/index.js";
@@ -306,8 +305,12 @@ export const MANIFEST: ManifestEntry[] = [
     desc: "Interactive tool enable/disable UI",
     module: "contrib",
   },
-
-  // ── pi-* standalone tools (from ~/.pi/agent/extensions/) ────────────
+  {
+    id: "sleep",
+    fn: sleepFn,
+    desc: "Pause agent execution for a specified duration",
+    module: "contrib",
+  },
   {
     id: "codebase-tree",
     fn: codebaseTreeFn,

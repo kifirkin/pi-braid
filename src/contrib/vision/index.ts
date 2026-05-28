@@ -11,15 +11,38 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
+import { getCustomModelKey, VISION_MODEL_KEY } from "../../../lib/state/global-state.js";
+
 /**
- * Standalone vision model resolver.
- * Replaces pi-braid's resolveVisionModel import.
+ * Resolve the best vision-capable model from:
+ *   1. /vision-model custom key (via global state)
+ *   2. Current session model (if vision-capable)
+ *   3. First available vision-capable model from registry
  */
 function resolveVisionModel(ctx: ExtensionContext): any {
-  // Use current model if it supports vision (has image input capability)
+  // 1. Custom /vision-model setting
+  const customPattern = getCustomModelKey(VISION_MODEL_KEY);
+  if (customPattern) {
+    const slashIndex = customPattern.indexOf("/");
+    if (slashIndex >= 0) {
+      const provider = customPattern.slice(0, slashIndex);
+      const modelId = customPattern.slice(slashIndex + 1);
+      const resolved = ctx.modelRegistry.find(provider, modelId);
+      if (resolved?.input?.includes?.("image")) return resolved;
+    } else {
+      const all = ctx.modelRegistry.getAll?.() ?? ctx.modelRegistry.getAvailable?.() ?? [];
+      const resolved = all.find((m: any) => m.id === customPattern || m.id.endsWith("/" + customPattern));
+      if (resolved?.input?.includes?.("image")) return resolved;
+    }
+  }
+
+  // 2. Current model if vision-capable
   const model = ctx.model;
   if (model && (model as any).input?.includes?.('image')) return model;
-  return undefined;
+
+  // 3. First available vision-capable model
+  const available = ctx.modelRegistry.getAvailable?.() ?? [];
+  return available.find((m: any) => m?.input?.includes?.("image"));
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────

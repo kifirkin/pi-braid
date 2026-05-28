@@ -450,25 +450,25 @@ function inferBehaviorsFromTask(task: string): AtomicBehavior[] {
 
 const ACTIVATE_BEHAVIORS = Object.keys(LATENT_SIGNALS);
 
-const activateSchema = Type.Object({
-  behavior: Type.String({
-    enum: ACTIVATE_BEHAVIORS,
-    description: `Behavior to activate. Available: ${ACTIVATE_BEHAVIORS.join(", ")}`,
+const behaviorSchema = Type.Object({
+  action: Type.String({
+    enum: ["activate", "deactivate", "list", "mix"],
+    description:
+      "activate = enable a behavior pattern. deactivate = disable a behavior. " +
+      "list = show active behaviors. mix = activate predefined scenario combos.",
   }),
-});
-
-const deactivateSchema = Type.Object({
-  behavior: Type.String({
-    enum: ACTIVATE_BEHAVIORS,
-    description: `Behavior to deactivate. Available: ${ACTIVATE_BEHAVIORS.join(", ")}`,
-  }),
-});
-
-const activateMixSchema = Type.Object({
-  scenario: Type.String({
-    enum: Object.keys(BEHAVIOR_MIXES),
-    description: "Scenario to activate behaviors for",
-  }),
+  behavior: Type.Optional(
+    Type.String({
+      enum: ACTIVATE_BEHAVIORS,
+      description: `Behavior to activate/deactivate. Available: ${ACTIVATE_BEHAVIORS.join(", ")}. Required for action=activate|deactivate.`,
+    }),
+  ),
+  scenario: Type.Optional(
+    Type.String({
+      enum: Object.keys(BEHAVIOR_MIXES),
+      description: `Predefined scenario combo. Available: ${Object.keys(BEHAVIOR_MIXES).join(", ")}. Required for action=mix.`,
+    }),
+  ),
 });
 
 export default function latentActivatorExtension(pi: ExtensionAPI) {
@@ -483,125 +483,102 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
     }
   });
 
-  // Behavior inference disabled - use manual activate_behavior tool instead
+  // Behavior inference disabled - use manual behavior tool instead
 
   pi.registerTool({
-    name: "activate_behavior",
-    label: "Activate Behavior",
+    name: "behavior",
+    label: "Behavior",
     description:
-      "Activate a behavior pattern (e.g., meticulous, debugger, explorer, architectural). Behaviors shift how you approach problems. Use get_active_behaviors to see current state; use activate_mix for predefined scenario combos like 'refactoring' or 'debugging'.",
-    promptSnippet: "activate behavior patterns for different problem-solving modes",
-    parameters: activateSchema,
+      "Manage behavior patterns. Use action=activate to enable a behavior, action=deactivate to disable, " +
+      "action=list to see active behaviors, action=mix for predefined scenario combos (e.g., 'refactoring', 'debugging').",
+    promptSnippet: "manage behavior patterns for different problem-solving modes",
+    parameters: behaviorSchema,
     execute: async (_toolCallId, params: any) => {
       try {
-        const behavior = params.behavior as AtomicBehavior;
-        if (LATENT_SIGNALS[behavior]) {
-          activateBehavior(behavior);
-          const signal = LATENT_SIGNALS[behavior].activation[0];
-          return {
-            content: [{ type: "text", text: `Activated: ${behavior}. ${signal}` }],
-            details: { behavior, active: getActiveBehaviors() },
-          };
-        }
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Unknown behavior: "${behavior}". Available behaviors: ${ACTIVATE_BEHAVIORS.join(", ")}. For predefined scenario combos (e.g., "refactoring", "debugging"), use activate_mix instead.`,
-            },
-          ],
-          details: { behavior, available: ACTIVATE_BEHAVIORS, active: getActiveBehaviors() },
-        };
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        log.error(`activate_behavior failed: ${msg}`);
-        return {
-          content: [{ type: "text", text: `Error: ${msg}` }],
-          details: { error: msg },
-        } as AgentToolResult<unknown>;
-      }
-    },
-  });
+        const action = params.action;
 
-  pi.registerTool({
-    name: "deactivate_behavior",
-    label: "Deactivate Behavior",
-    description:
-      "Deactivate a behavior pattern — use when it is no longer relevant to the current task. Use get_active_behaviors to see which behaviors are active.",
-    promptSnippet: "deactivate a behavior pattern when no longer relevant",
-    parameters: deactivateSchema,
-    execute: async (_toolCallId, params: any) => {
-      try {
-        const behavior = params.behavior as AtomicBehavior;
-        deactivateBehavior(behavior);
-        return {
-          content: [{ type: "text", text: `Deactivated: ${behavior}` }],
-          details: { behavior, active: getActiveBehaviors() },
-        };
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        log.error(`deactivate_behavior failed: ${msg}`);
-        return {
-          content: [{ type: "text", text: `Error: ${msg}` }],
-          details: { error: msg },
-        } as AgentToolResult<unknown>;
-      }
-    },
-  });
-
-  pi.registerTool({
-    name: "get_active_behaviors",
-    label: "Get Active Behaviors",
-    description:
-      "Check which behavior patterns are currently active — use before activating a new one to avoid conflicts or duplicates.",
-    promptSnippet: "check what behavior patterns are currently active",
-    parameters: Type.Object({}),
-    execute: async () => {
-      try {
-        const active = getActiveBehaviors();
-        return {
-          content: [{ type: "text", text: `Active behaviors: ${active.join(", ") || "none"}` }],
-          details: { active },
-        };
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        log.error(`get_active_behaviors failed: ${msg}`);
-        return {
-          content: [{ type: "text", text: `Error: ${msg}` }],
-          details: { error: msg },
-        } as AgentToolResult<unknown>;
-      }
-    },
-  });
-
-  pi.registerTool({
-    name: "activate_mix",
-    label: "Activate Mix",
-    description:
-      "Activate a predefined behavior combination for common scenarios — use for debugging, refactoring, or code review.",
-    promptSnippet: "activate a predefined behavior mix for common scenarios",
-    parameters: activateMixSchema,
-    execute: async (_toolCallId, params: any) => {
-      try {
-        const behaviors = BEHAVIOR_MIXES[params.scenario];
-        if (behaviors) {
-          for (const b of behaviors) {
-            activateBehavior(b);
+        if (action === "activate") {
+          if (!params.behavior) {
+            return {
+              content: [{ type: "text", text: "behavior is required for action=activate" }],
+              details: { action, error: true },
+            };
+          }
+          const behavior = params.behavior as AtomicBehavior;
+          if (LATENT_SIGNALS[behavior]) {
+            activateBehavior(behavior);
+            const signal = LATENT_SIGNALS[behavior].activation[0];
+            return {
+              content: [{ type: "text", text: `Activated: ${behavior}. ${signal}` }],
+              details: { action, behavior, active: getActiveBehaviors() },
+            };
           }
           return {
             content: [
-              { type: "text", text: `Activated ${params.scenario} mode: ${behaviors.join(", ")}` },
+              {
+                type: "text",
+                text: `Unknown behavior: "${behavior}". Available behaviors: ${ACTIVATE_BEHAVIORS.join(", ")}.`,
+              },
             ],
-            details: { scenario: params.scenario, active: getActiveBehaviors() },
+            details: { action, behavior, available: ACTIVATE_BEHAVIORS, active: getActiveBehaviors() },
           };
         }
+
+        if (action === "deactivate") {
+          if (!params.behavior) {
+            return {
+              content: [{ type: "text", text: "behavior is required for action=deactivate" }],
+              details: { action, error: true },
+            };
+          }
+          const behavior = params.behavior as AtomicBehavior;
+          deactivateBehavior(behavior);
+          return {
+            content: [{ type: "text", text: `Deactivated: ${behavior}` }],
+            details: { action, behavior, active: getActiveBehaviors() },
+          };
+        }
+
+        if (action === "list") {
+          const active = getActiveBehaviors();
+          return {
+            content: [{ type: "text", text: `Active behaviors: ${active.join(", ") || "none"}` }],
+            details: { action, active },
+          };
+        }
+
+        if (action === "mix") {
+          if (!params.scenario) {
+            return {
+              content: [{ type: "text", text: "scenario is required for action=mix" }],
+              details: { action, error: true },
+            };
+          }
+          const behaviors = BEHAVIOR_MIXES[params.scenario];
+          if (behaviors) {
+            for (const b of behaviors) {
+              activateBehavior(b);
+            }
+            return {
+              content: [
+                { type: "text", text: `Activated ${params.scenario} mode: ${behaviors.join(", ")}` },
+              ],
+              details: { action, scenario: params.scenario, active: getActiveBehaviors() },
+            };
+          }
+          return {
+            content: [{ type: "text", text: `Unknown scenario: ${params.scenario}` }],
+            details: { action, scenario: params.scenario, active: getActiveBehaviors() },
+          };
+        }
+
         return {
-          content: [{ type: "text", text: `Unknown scenario: ${params.scenario}` }],
-          details: { scenario: params.scenario, active: getActiveBehaviors() },
+          content: [{ type: "text", text: "Unknown action. Use activate, deactivate, list, or mix." }],
+          details: { action, error: true },
         };
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        log.error(`activate_mix failed: ${msg}`);
+        log.error(`behavior tool failed: ${msg}`);
         return {
           content: [{ type: "text", text: `Error: ${msg}` }],
           details: { error: msg },

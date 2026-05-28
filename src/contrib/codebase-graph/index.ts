@@ -1,10 +1,10 @@
-// @ts-nocheck
 import * as fs from "node:fs/promises";
-import * as path from "node:path";
+import * as pathMod from "node:path";
 import * as os from "node:os";
 import { Type } from "typebox";
 import type {
   AgentToolResult,
+  AgentToolUpdateCallback,
   ExtensionAPI,
   ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
@@ -57,7 +57,7 @@ class GraphAnalyzer {
     try {
       const entries = await fs.readdir(dir, { withFileTypes: true });
       for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name);
+        const fullPath = pathMod.join(dir, entry.name);
         if (entry.isDirectory()) {
           if (!entry.name.startsWith(".") && entry.name !== "node_modules") {
             results.push(...(await this.findFiles(fullPath)));
@@ -95,8 +95,8 @@ class GraphAnalyzer {
         exports.push(filePath);
       }
 
-      const relPath = path.relative(this.root, filePath);
-      this.nodes.set(relPath, { path: relPath, name: path.basename(filePath), exports, imports, importedBy: [], isEntry: false });
+      const relPath = pathMod.relative(this.root, filePath);
+      this.nodes.set(relPath, { path: relPath, name: pathMod.basename(filePath), exports, imports, importedBy: [], isEntry: false });
     } catch (err) {
       this.parseErrors.push(`${filePath}: ${err}`);
     }
@@ -105,12 +105,12 @@ class GraphAnalyzer {
   private resolveImportedBy(): void {
     for (const edge of this.edges) {
       if (edge.isExternal) continue;
-      const resolved = path.resolve(path.dirname(edge.source), edge.target);
-      const rel = path.relative(this.root, resolved) + ".ts";
+      const resolved = pathMod.resolve(pathMod.dirname(edge.source), edge.target);
+      const rel = pathMod.relative(this.root, resolved) + ".ts";
       const targetNode = this.nodes.get(rel) || this.nodes.get(rel.replace(/\.ts$/, ".tsx"));
       if (targetNode) {
         targetNode.importedBy.push(edge.source);
-        const srcRel = path.relative(this.root, edge.source);
+        const srcRel = pathMod.relative(this.root, edge.source);
         const srcNode = this.nodes.get(srcRel);
         if (srcNode) srcNode.isEntry = srcNode.importedBy.length === 0 && !srcNode.exports.length;
       }
@@ -174,8 +174,8 @@ class GraphAnalyzer {
       for (const node of this.nodes.values()) {
         if (visited.has(node.path)) continue;
         if (node.imports.some((imp) => {
-          const resolved = path.resolve(path.join(this.root, path.dirname(node.path)), imp);
-          const rel = path.relative(this.root, resolved);
+          const resolved = pathMod.resolve(pathMod.join(this.root, pathMod.dirname(node.path)), imp);
+          const rel = pathMod.relative(this.root, resolved);
           return rel === filePath || rel === filePath.replace(/\.ts$/, ".tsx");
         })) {
           visited.add(node.path);
@@ -230,11 +230,11 @@ export default function codebaseGraphExtension(pi: ExtensionAPI) {
       _toolCallId: string,
       params: Record<string, unknown>,
       _signal: AbortSignal | undefined,
-      _onUpdate: ((chunk: string) => void) | undefined,
+      _onUpdate: AgentToolUpdateCallback<Record<string, unknown>> | undefined,
       ctx: ExtensionContext,
     ): Promise<AgentToolResult<Record<string, unknown>>> => {
       const rootDir = (params.path as string) ?? ctx.cwd ?? ".";
-      const resolvedRoot = rootDir.startsWith("~") ? rootDir.replace("~", os.homedir()) : path.resolve(rootDir);
+      const resolvedRoot = rootDir.startsWith("~") ? rootDir.replace("~", os.homedir()) : pathMod.resolve(rootDir);
       const findMode = params.find as string | undefined;
       const impactFile = params.impact as string | undefined;
 
@@ -256,22 +256,22 @@ export default function codebaseGraphExtension(pi: ExtensionAPI) {
       if (findMode && findMode !== "all") {
         switch (findMode) {
           case "dead-ends":
-            output.push(`# DEAD ENDS: ${path.basename(resolvedRoot)}`);
+            output.push(`# DEAD ENDS: ${pathMod.basename(resolvedRoot)}`);
             if (s.deadEnds.length) { for (const p of s.deadEnds) output.push(p); }
             else output.push("✅ No dead ends found.");
             break;
           case "orphans":
-            output.push(`# ORPHANS: ${path.basename(resolvedRoot)}`);
+            output.push(`# ORPHANS: ${pathMod.basename(resolvedRoot)}`);
             if (s.orphans.length) { for (const p of s.orphans) output.push(p); }
             else output.push("✅ No orphans found.");
             break;
           case "hubs":
-            output.push(`# HUBS: ${path.basename(resolvedRoot)}`);
+            output.push(`# HUBS: ${pathMod.basename(resolvedRoot)}`);
             if (s.topHubs.length) { for (const h of s.topHubs) output.push(`${h.path} ← ${h.fanIn} importers`); }
             else output.push("No high-fan-in hubs found.");
             break;
           case "cycles":
-            output.push(`# CYCLES: ${path.basename(resolvedRoot)}`);
+            output.push(`# CYCLES: ${pathMod.basename(resolvedRoot)}`);
             if (s.circularDeps.length) { for (const c of s.circularDeps) output.push(c.join(" → ")); }
             else output.push("✅ No circular dependencies found.");
             break;
@@ -296,7 +296,7 @@ export default function codebaseGraphExtension(pi: ExtensionAPI) {
       }
       if (s.circularDeps.length) {
         output.push(`## Circular Dependencies (${s.circularDeps.length})`);
-        for (const c of s.circularDeps.slice(0, 5)) output.push(c.map((p) => path.basename(p)).join(" → "));
+        for (const c of s.circularDeps.slice(0, 5)) output.push(c.map((p) => pathMod.basename(p)).join(" → "));
       }
       if (s.parseErrors.length) {
         output.push(`## Parse Errors (${s.parseErrors.length})`);

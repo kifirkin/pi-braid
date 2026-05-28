@@ -14,7 +14,7 @@ const src = readFileSync(join(ROOT, "src/extensions/tools/latent-activator/index
 	const toolMatches = [...src.matchAll(/registerTool\s*\(\s*\{[\s\S]*?name\s*:\s*["']([^"']+)["']/g)];
 	const toolNames = toolMatches.map((m) => m[1]);
 	console.log(`  Registered tools: ${toolNames.length} (${toolNames.join(", ")})`);
-	assert.ok(toolNames.length >= 4, `expected ≥4 tools, got ${toolNames.length}`);
+	assert.ok(toolNames.length >= 1, `expected at least 1 tool, got ${toolNames.length}`);
 	console.log("  ✅ All assertions passed");
 }
 

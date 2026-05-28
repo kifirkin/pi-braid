@@ -526,8 +526,11 @@ async function browserEval(input: Static<typeof evalParams>) {
   const client = tab.client;
 
   const startTime = Date.now();
+  // Wrap in block scope to isolate variable declarations between calls — prevents
+  // "Identifier 'ta' has already been declared" errors from const/let reuse
+  // without affecting completion value or top-level await
   const result = (await client.send("Runtime.evaluate", {
-    expression: input.code,
+    expression: `{\n${input.code}\n}`,
     returnByValue: true,
   })) as {
     result?: { type: string; value?: unknown; description?: string };
@@ -889,20 +892,39 @@ async function browserGenerateImage(input: Static<typeof generateImageParams>) {
 
   const client = tab.client;
 
-  // Execute the user's canvas code, expect a data URL back
+  // Execute user's canvas code. Intercept document.createElement temporarily to
+  // capture any created <canvas> — handles detached canvases that querySelector misses.
   const evalCode = `
     (async () => {
       try {
-        ${input.code}
-        // After user code runs, look for a canvas and return its data URL
-        const canvases = document.querySelectorAll('canvas');
-        if (canvases.length > 0) {
-          const c = canvases[canvases.length - 1];
-          return JSON.stringify({ ok: true, dataUrl: c.toDataURL('image/png'), width: c.width, height: c.height });
+        let __piCanvas = null;
+        const __origCreate = document.createElement.bind(document);
+        document.createElement = function(tag, ...args) {
+          const el = __origCreate(tag, ...args);
+          if (tag?.toLowerCase?.() === 'canvas') __piCanvas = el;
+          return el;
+        };
+
+        try {
+          ${input.code}
+        } finally {
+          document.createElement = __origCreate;
         }
-        const imgs = document.querySelectorAll('img[src*="data:image/png"]');
-        if (imgs.length > 0) {
-          return JSON.stringify({ ok: true, dataUrl: imgs[imgs.length - 1].src, width: 0, height: 0 });
+
+        if (__piCanvas) {
+          const dataUrl = __piCanvas.toDataURL('image/png');
+          return JSON.stringify({ ok: true, dataUrl, width: __piCanvas.width, height: __piCanvas.height });
+        }
+
+        // Fallback: check DOM for appended canvases
+        const canvases_ = document.querySelectorAll('canvas');
+        if (canvases_.length > 0) {
+          const cv_ = canvases_[canvases_.length - 1];
+          return JSON.stringify({ ok: true, dataUrl: cv_.toDataURL('image/png'), width: cv_.width, height: cv_.height });
+        }
+        const imgs_ = document.querySelectorAll('img[src*="data:image/png"]');
+        if (imgs_.length > 0) {
+          return JSON.stringify({ ok: true, dataUrl: imgs_[imgs_.length - 1].src, width: 0, height: 0 });
         }
         return JSON.stringify({ ok: false, error: 'No canvas or data URL image found after execution' });
       } catch (e) {
@@ -951,10 +973,8 @@ async function browserGenerateImage(input: Static<typeof generateImageParams>) {
 
   let outputPath = input.output;
   if (!outputPath) {
-    const screenshotsDir = path.join(os.homedir(), ".pi", "screenshots");
-    if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
     const timestamp = Date.now();
-    outputPath = path.join(screenshotsDir, `meme_${timestamp}.${format}`);
+    outputPath = path.join(process.cwd(), `meme_${timestamp}.${format}`);
   }
 
   fs.writeFileSync(outputPath, buffer);

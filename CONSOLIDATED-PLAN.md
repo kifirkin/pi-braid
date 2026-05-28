@@ -95,7 +95,7 @@ Total: **57 registered tools** + ~10 builtins = ~67 agent-visible tools.
 | **Metacognition** | 10 | core/metacognition, core/scratchpad, core/agent-environment, cognitive/verification, cognitive/topic-drift, core/prompt-builder |
 | **Context Management** | 10 | memory/context-manager (8), memory/context-lifecycle (2) |
 | **Memory** | 10 | memory/memory-agent-bridge (5), memory/three-memory-stores (3), memory/session-recall (2) |
-| **Browser** | 14 | contrib/pi-browser |
+| **)_** | 14 | contrib/pi-browser |
 | **Behavior** | 4 | tools/latent-activator |
 | **Timers** | 6 | tools/timer (3), tools/auto-singleton (3) |
 | **Monitoring** | 4 | contrib/system-monitor, contrib/healthcheck, heartbeat/analytics (2) |
