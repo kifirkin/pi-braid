@@ -1,5 +1,5 @@
-import { createLogger } from "../../../lib/logger.js";
-import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
+import { createLogger } from "../../../lib/core/logger.js";
+import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 
 const log = createLogger("latent-activator");
 /**
@@ -312,7 +312,7 @@ const BEHAVIOR_MIXES: Record<string, AtomicBehavior[]> = {
   "handover": ["witness", "translator", "archivist"],
 };
 
-import { getExtensionState } from "../../../lib/extension-state.js";
+import { getExtensionState } from "../../../lib/state/extension-state.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 interface ActivatorState {

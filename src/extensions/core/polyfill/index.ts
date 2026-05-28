@@ -1,4 +1,4 @@
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../../lib/core/logger.js";
 
 const log = createLogger("polyfill");
 /**
@@ -18,14 +18,14 @@ import { ModelSelectorComponent, SettingsManager } from "@mariozechner/pi-coding
 import type { Model, Api } from "@mariozechner/pi-ai";
 import { resolveUtilityModel, resolveVisionModel } from "../../../lib/model-resolver.js";
 import { onEvent } from "../../../lib/event-types.js";
-import { registerSessionCleanup } from "../../../lib/extension-state.js";
+import { registerSessionCleanup } from "../../../lib/state/extension-state.js";
 
 /** Custom settings keys managed by /utility-model and /vision-model commands */
 import {
   getCustomModelKeys,
   UTILITY_MODEL_KEY,
   VISION_MODEL_KEY,
-} from "../../../lib/global-state.js";
+} from "../../../lib/state/global-state.js";
 
 interface SessionManagerLike {
   getSessionFile(): string | null;
@@ -55,7 +55,7 @@ function hasImageInput(model: { input?: unknown }): boolean {
 }
 
 /** Shared sessionManager reference — used by patchSessionManagerMethods */
-import { getExtensionState } from "../../../lib/extension-state.js";
+import { getExtensionState } from "../../../lib/state/extension-state.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 function getPolyfillState(ctx?: ExtensionContext): { sessionManager: unknown } {

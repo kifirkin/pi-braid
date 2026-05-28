@@ -1,4 +1,4 @@
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../../lib/core/logger.js";
 
 const log = createLogger("enforcement");
 /**
@@ -8,7 +8,7 @@ const log = createLogger("enforcement");
  */
 
 import { sendEnforcementWhisper } from "../whisper.js";
-import { getExtensionState } from "../../../lib/extension-state.js";
+import { getExtensionState } from "../../../lib/state/extension-state.js";
 import type { ExtensionContext, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 interface VerificationState {

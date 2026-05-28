@@ -13,7 +13,7 @@
 
 import { callLlm } from "./llm-call.js";
 import { resolveUtilityModel } from "./model-resolver.js";
-import { createLogger } from "./logger.js";
+import { createLogger } from "./core/logger.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { Api, Model } from "@mariozechner/pi-ai";
 

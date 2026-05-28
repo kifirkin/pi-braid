@@ -1,4 +1,4 @@
-import { createLogger } from "../../lib/logger.js";
+import { createLogger } from "../../lib/core/logger.js";
 
 const log = createLogger("rate-limiter");
 /**

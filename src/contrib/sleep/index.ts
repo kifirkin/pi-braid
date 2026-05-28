@@ -15,7 +15,7 @@
 
 import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import { createLogger } from "../../lib/logger.js";
+import { createLogger } from "../../lib/core/logger.js";
 
 const log = createLogger("sleep");
 

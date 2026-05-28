@@ -2,9 +2,9 @@
  * Analytics — shared types, state, and exported helpers.
  */
 
-import { getExtensionState } from "../../../lib/extension-state.js";
+import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { eventBus } from "../../../lib/event-bus.js";
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../../lib/core/logger.js";
 import { ANALYTICS_DENSITY_FULL_EVENT } from "../../../lib/context-thresholds.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 

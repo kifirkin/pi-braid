@@ -3,8 +3,8 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { SessionEntry, SessionManager } from "../../../../lib/session-manager.js";
-import { getCachedSessionManager } from "../../../../lib/extension-state.js";
+import type { SessionEntry, SessionManager } from "../../../../lib/state/session-manager.js";
+import { getCachedSessionManager } from "../../../../lib/state/extension-state.js";
 import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
 import { emitSignal } from "../../../../lib/belief-policy-engine.js";
 import { getState } from "../../state.js";

@@ -18,7 +18,7 @@
  */
 
 import { callLlm } from "./llm-call.js";
-import { getExtensionState } from "./extension-state.js";
+import { getExtensionState } from "./state/extension-state.js";
 import { classify } from "./text-classifier.js";
 import { CRITICS } from "./critic-registry.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";

@@ -7,7 +7,7 @@
 
 import type { HeartbeatState } from "./types.js";
 import { META_LEARNING } from "./state.js";
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../../lib/core/logger.js";
 
 const log = createLogger("heartbeat:meta-learning");
 

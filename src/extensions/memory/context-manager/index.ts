@@ -1,4 +1,4 @@
-import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
+import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 
 // ── Context-Manager Extension ──────────────────────────────────────
 // Decomposed from 1141L monolith into 4 handler modules + slim index.

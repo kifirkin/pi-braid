@@ -7,8 +7,8 @@
 
 import { Type } from "typebox";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { getExtensionState } from "../../../../lib/extension-state.js";
-import { createLogger } from "../../../../lib/logger.js";
+import { getExtensionState } from "../../../../lib/state/extension-state.js";
+import { createLogger } from "../../../../lib/core/logger.js";
 import { getLastVerification } from "./verify.js";
 
 const log = createLogger("finalize");

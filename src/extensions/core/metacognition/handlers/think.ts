@@ -5,8 +5,8 @@
 import { Type } from "typebox";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { callLlm } from "../../../../lib/llm-call.js";
-import { getExtensionState } from "../../../../lib/extension-state.js";
-import { createLogger } from "../../../../lib/logger.js";
+import { getExtensionState } from "../../../../lib/state/extension-state.js";
+import { createLogger } from "../../../../lib/core/logger.js";
 
 const log = createLogger("metacognition");
 

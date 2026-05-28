@@ -22,10 +22,10 @@
  * - Feedback tracking for suggestion effectiveness
  */
 
-import { createLogger } from "./logger.js";
+import { createLogger } from "./core/logger.js";
 import { sendTrackedMessage } from "./injection-tracker.js";
 import { eventBus } from "./event-bus.js";
-import { getExtensionState } from "./extension-state.js";
+import { getExtensionState } from "./state/extension-state.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { Episode } from "../extensions/memory/three-memory-stores/types.js";
 

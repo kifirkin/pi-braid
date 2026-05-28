@@ -9,7 +9,7 @@
 // - Better summarization guidance for the LLM
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { SessionManager } from "../../../../lib/session-manager.js";
+import type { SessionManager } from "../../../../lib/state/session-manager.js";
 
 // Minimal typed interfaces for pi APIs that lack type declarations
 interface PiWithSession {

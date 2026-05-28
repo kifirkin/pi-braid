@@ -17,7 +17,7 @@
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 
-import { createLogger } from "../lib/logger.js";
+import { createLogger } from "../lib/core/logger.js";
 import {
   enableModule,
   disableModule,

@@ -15,8 +15,8 @@
 import { statSync } from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getCmState, log, buildContinuationSummary, triggerEmergencyRotation } from "./shared.js";
-import { getRotationState } from "../../../../lib/global-state.js";
-import type { RotationState } from "../../../../lib/global-state.js";
+import { getRotationState } from "../../../../lib/state/global-state.js";
+import type { RotationState } from "../../../../lib/state/global-state.js";
 import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
 import { tryRestoreAppendMessage, clearInterceptState } from "./compaction.js";
 

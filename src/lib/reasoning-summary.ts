@@ -7,8 +7,8 @@
  *     Runs on already-identified blocks, not individual messages.
  */
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { getExtensionState } from "./extension-state.js";
-import { createLogger } from "./logger.js";
+import { getExtensionState } from "./state/extension-state.js";
+import { createLogger } from "./core/logger.js";
 const log = createLogger("reasoning-summary");
 
 const REASONING_PATTERNS = [

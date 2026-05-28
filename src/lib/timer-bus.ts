@@ -7,7 +7,7 @@
  */
 
 import type { ScheduledTimer } from "../extensions/tools/timer/index.js";
-import { createLogger } from "./logger.js";
+import { createLogger } from "./core/logger.js";
 
 const log = createLogger("timer-bus");
 

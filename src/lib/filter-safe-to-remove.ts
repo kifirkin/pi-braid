@@ -1,7 +1,7 @@
 // Selective Hard Truncation — pre-filter 100%-certain-redundant items before LLM summarization.
 // This module is tested independently before being integrated into compaction.ts.
 
-import { createLogger } from "./logger.js";
+import { createLogger } from "./core/logger.js";
 
 const log = createLogger("filter-safe");
 

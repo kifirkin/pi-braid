@@ -12,7 +12,7 @@
  *   4. Adjust source thresholds if accuracy drops below 0.5
  */
 
-import { createLogger } from "./logger.js";
+import { createLogger } from "./core/logger.js";
 
 const log = createLogger("advice-tracker");
 

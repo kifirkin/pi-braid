@@ -9,7 +9,7 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { getExtensionState } from "./extension-state.js";
+import { getExtensionState } from "./state/extension-state.js";
 
 /** State shape for language-hint */
 interface LanguageHintState {

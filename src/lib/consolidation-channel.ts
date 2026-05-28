@@ -9,7 +9,7 @@
  * data for potential future training pipelines.
  */
 
-import { createLogger } from "./logger.js";
+import { createLogger } from "./core/logger.js";
 import { CONSOLIDATED_HINTS_FILE } from "./config/braid-paths.js";
 import { mkdir, readFile, writeFile, readdir, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";

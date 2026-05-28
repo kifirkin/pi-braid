@@ -6,7 +6,7 @@
  * MCQ accuracy 0.68 → 0.79.
  */
 
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../../lib/core/logger.js";
 import { eventBus } from "../../../lib/event-bus.js";
 import type { MemoryStoresState, Episode } from "./types.js";
 

@@ -1,5 +1,5 @@
-import { createLogger } from "../../../lib/logger.js";
-import { safeSessionManager } from "../../../lib/extension-state.js";
+import { createLogger } from "../../../lib/core/logger.js";
+import { safeSessionManager } from "../../../lib/state/extension-state.js";
 
 const log = createLogger("session-recall");
 /**
@@ -123,7 +123,7 @@ const MAX_SNIPPETS_PER_SESSION = 3;
 // Search
 
 type SearchBackend = "rg" | "grep" | "node";
-import { getExtensionState } from "../../../lib/extension-state.js";
+import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { onEvent } from "../../../lib/event-types.js";

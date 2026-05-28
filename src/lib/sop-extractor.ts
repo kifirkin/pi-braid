@@ -13,7 +13,7 @@
  * This is a heuristic-based extractor. No LLM calls — fast, deterministic.
  */
 
-import { createLogger } from "./logger.js";
+import { createLogger } from "./core/logger.js";
 
 const log = createLogger("sop-extractor");
 

@@ -5,7 +5,7 @@
  */
 
 import type { CognitiveModule } from "../types.js";
-import { createLogger } from "../../../../lib/logger.js";
+import { createLogger } from "../../../../lib/core/logger.js";
 import {
   isDegraded,
   getDegradationReasons,

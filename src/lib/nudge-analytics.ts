@@ -6,7 +6,7 @@
  * enforcement won't crash — these functions handle missing state gracefully.
  */
 
-import { getExtensionState } from "./extension-state.js";
+import { getExtensionState } from "./state/extension-state.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 // ── Shared analytics state shape (subset used by enforcement) ──────────────

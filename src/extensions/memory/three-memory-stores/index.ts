@@ -14,7 +14,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
-import type { SessionManager } from "../../../lib/session-manager.js";
+import type { SessionManager } from "../../../lib/state/session-manager.js";
 
 // Extended episode with dynamic metadata fields not in the base type
 interface RichEpisode extends Episode {
@@ -27,9 +27,9 @@ interface CtxSessionManager extends SessionManager {
   getSessionFile(): string;
 }
 
-import { createLogger } from "../../../lib/logger.js";
-import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
-import { getExtensionState, safeSessionManager } from "../../../lib/extension-state.js";
+import { createLogger } from "../../../lib/core/logger.js";
+import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
+import { getExtensionState, safeSessionManager } from "../../../lib/state/extension-state.js";
 import { emitSignal } from "../../../lib/belief-policy-engine.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { readFile as readFilePromise, stat, writeFile, mkdir } from "node:fs/promises";

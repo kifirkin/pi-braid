@@ -1,6 +1,6 @@
-import { createLogger } from "../../../lib/logger.js";
-import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
-import { getExtensionState } from "../../../lib/extension-state.js";
+import { createLogger } from "../../../lib/core/logger.js";
+import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
+import { getExtensionState } from "../../../lib/state/extension-state.js";
 
 const log = createLogger("agent-environment");
 /**

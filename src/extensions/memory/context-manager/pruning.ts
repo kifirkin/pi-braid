@@ -4,7 +4,7 @@
  */
 
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../../lib/core/logger.js";
 
 const log = createLogger("context-manager:pruning");
 

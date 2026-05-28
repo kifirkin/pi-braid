@@ -10,7 +10,7 @@
  * - arXiv:2604.14401 Credo Declarative Control
  */
 
-import { createLogger } from "./logger.js";
+import { createLogger } from "./core/logger.js";
 
 const log = createLogger("belief-store");
 

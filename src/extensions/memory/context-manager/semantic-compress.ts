@@ -16,7 +16,7 @@
  */
 
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../../lib/core/logger.js";
 import type { CompressionLevel } from "../../../lib/compression-strategy.js";
 const log = createLogger("semantic-compress");
 

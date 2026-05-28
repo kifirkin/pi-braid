@@ -1,4 +1,4 @@
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../../lib/core/logger.js";
 
 const log = createLogger("input-polisher");
 
@@ -48,7 +48,7 @@ import type {
   InputEventResult,
 } from "@mariozechner/pi-coding-agent";
 import { setLanguage, detectLanguage } from "../../../lib/language-hint.js";
-import { getExtensionState } from "../../../lib/extension-state.js";
+import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { roastInput, CODE_SUFFIX } from "./roast-filter.js";
 import { resolveUtilityModel } from "../../../lib/model-resolver.js";
 

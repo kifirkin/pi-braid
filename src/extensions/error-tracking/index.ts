@@ -1,4 +1,4 @@
-import { createLogger } from "../../lib/logger.js";
+import { createLogger } from "../../lib/core/logger.js";
 import { eventBus } from "../../lib/event-bus.js";
 
 const log = createLogger("error-capture");

@@ -10,7 +10,7 @@
  * See git tag before-fixes for the removed code.
  */
 
-import { createLogger } from "../../lib/logger.js";
+import { createLogger } from "../../lib/core/logger.js";
 import { eventBus } from "../../lib/event-bus.js";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";

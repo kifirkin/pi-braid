@@ -6,7 +6,7 @@
  */
 
 import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../../lib/core/logger.js";
 import { Type } from "typebox";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { eventBus } from "../../../lib/event-bus.js";

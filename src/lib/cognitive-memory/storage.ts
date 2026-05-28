@@ -4,7 +4,7 @@
 
 import * as fs from "node:fs/promises";
 import { fileMutationQueue } from "../file-mutation-queue.js";
-import { createLogger } from "../logger.js";
+import { createLogger } from "../core/logger.js";
 import { MEMORY_DIR, MEMORY_FILE, LEGACY_MEMORY_FILE_PATH } from "./constants.js";
 import type { CognitiveMemoryStore } from "./types.js";
 

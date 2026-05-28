@@ -6,7 +6,7 @@ import {
   formatPastInsightsSection,
   deriveProjectIdFromCwd,
 } from "./past-insights.js";
-import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
+import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 
 /** Async helper: check if a path exists (replaces existsSync). */
 async function asyncExists(p: string): Promise<boolean> {
@@ -80,7 +80,7 @@ const INTERACTION_STYLE = `You provide concise, production-quality solutions. Yo
 
 // ── L1: Enforcement Signal Surfacing ────────────────────────────────────────
 // Session-scoped state (migrated from module-level singletons)
-import { getExtensionState } from "../../../lib/extension-state.js";
+import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { onEvent } from "../../../lib/event-types.js";
 

@@ -9,9 +9,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { getExtensionState } from "./extension-state.js";
-import { saveStateImmediate } from "./async-storage.js";
-import { createLogger } from "./logger.js";
+import { getExtensionState } from "./state/extension-state.js";
+import { saveStateImmediate } from "./state/async-storage.js";
+import { createLogger } from "./core/logger.js";
 
 import { DEGRADATION_FILE } from "./config/braid-paths.js";
 

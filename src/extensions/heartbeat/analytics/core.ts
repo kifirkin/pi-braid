@@ -4,7 +4,7 @@
 
 import { existsSync, mkdirSync, readFileSync, promises as fs } from "node:fs";
 import { METRICS_FILE, METRICS_DIR } from "../../../lib/config/braid-paths.js";
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../../lib/core/logger.js";
 const log = createLogger("analytics:core");
 import type {
   AnalyticsState,

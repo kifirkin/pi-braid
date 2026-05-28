@@ -7,8 +7,8 @@
  */
 
 import type { CognitiveModule } from "../types.js";
-import { createLogger } from "../../../../lib/logger.js";
-import { getExtensionState } from "../../../../lib/extension-state.js";
+import { createLogger } from "../../../../lib/core/logger.js";
+import { getExtensionState } from "../../../../lib/state/extension-state.js";
 import { eventBus } from "../../../../lib/event-bus.js";
 import {
   DENSITY_LOW,

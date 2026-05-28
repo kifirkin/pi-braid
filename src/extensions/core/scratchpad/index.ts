@@ -8,7 +8,7 @@
  * Index re-exports both for backward compatibility.
  */
 
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../../lib/core/logger.js";
 
 const log = createLogger("scratchpad");
 
@@ -42,7 +42,7 @@ import {
   loadTaskStore,
 } from "./persistence.js";
 
-import { getExtensionState } from "../../../lib/extension-state.js";
+import { getExtensionState } from "../../../lib/state/extension-state.js";
 
 // ── Recycling Config ──────────────────────────────────────────────────────
 const RECYCLE = {

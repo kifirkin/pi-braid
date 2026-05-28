@@ -11,7 +11,7 @@
  *   if (result === undefined) { handle failure }
  */
 
-import type { Logger } from "./logger.js";
+import type { Logger } from "./core/logger.js";
 
 export async function guard<T>(
   label: string,

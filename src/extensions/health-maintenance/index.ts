@@ -12,13 +12,13 @@ import {
   saveMetrics,
   updateConfig,
 } from "../../lib/degradation-detector.js";
-import { createLogger } from "../../lib/logger.js";
+import { createLogger } from "../../lib/core/logger.js";
 import {
   getMetacognitiveState,
   getRecommendation,
   initMetacognitiveState,
-} from "../../lib/metacognitive-state.js";
-import { getExtensionState } from "../../lib/extension-state.js";
+} from "../../lib/state/metacognitive-state.js";
+import { getExtensionState } from "../../lib/state/extension-state.js";
 
 import type { BenchmarkResult, HealthMaintenanceResult } from "./types.js";
 import { getAnalyticsMetrics, startMetricsPersistence } from "./helpers.js";

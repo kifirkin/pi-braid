@@ -5,7 +5,7 @@
  * Heuristics are priority-tagged rules learned from success/failure feedback.
  */
 
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../../lib/core/logger.js";
 import type { MemoryStoresState, HeuristicRule } from "./types.js";
 
 const log = createLogger("three-memory-stores:heuristics");

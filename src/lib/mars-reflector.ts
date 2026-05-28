@@ -10,7 +10,7 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { getExtensionState, hasExtensionState } from "./extension-state.js";
+import { getExtensionState, hasExtensionState } from "./state/extension-state.js";
 import { marsOveruseMultiplier as dynamicOveruseMultiplier } from "./advice-tracker.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────

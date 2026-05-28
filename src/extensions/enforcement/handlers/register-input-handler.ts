@@ -6,7 +6,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { detectLanguage, setLanguage } from "../../../lib/language-hint.js";
 import { updateProblemContext } from "../../../lib/bidirectional-verifier.js";
 import { getState } from "../state.js";
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../../lib/core/logger.js";
 
 const log = createLogger("enforcement:input");
 

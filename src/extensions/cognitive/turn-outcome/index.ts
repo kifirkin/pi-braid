@@ -16,8 +16,8 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { createLogger } from "../../../lib/logger.js";
-import { getExtensionState } from "../../../lib/extension-state.js";
+import { createLogger } from "../../../lib/core/logger.js";
+import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { classify } from "../../../lib/text-classifier.js";
 import { CRITICS } from "../../../lib/critic-registry.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";

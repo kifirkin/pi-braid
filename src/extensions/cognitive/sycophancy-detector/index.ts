@@ -15,8 +15,8 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { sendEnforcementWhisper } from "../../enforcement/whisper.js";
 import { emitSignal } from "../../../lib/belief-policy-engine.js";
-import { createLogger } from "../../../lib/logger.js";
-import { getExtensionState, safeSessionManager } from "../../../lib/extension-state.js";
+import { createLogger } from "../../../lib/core/logger.js";
+import { getExtensionState, safeSessionManager } from "../../../lib/state/extension-state.js";
 import { classify } from "../../../lib/text-classifier.js";
 
 const log = createLogger("sycophancy-detector");

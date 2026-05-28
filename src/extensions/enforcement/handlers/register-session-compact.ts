@@ -7,7 +7,7 @@ import { onEvent } from "../../../lib/event-types.js";
 import { sendEnforcementWhisper } from "../whisper.js";
 import { getState } from "../state.js";
 import { enforcementSignals, determineContrastMode } from "../signals.js";
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../../lib/core/logger.js";
 
 const log = createLogger("enforcement:session-compact");
 

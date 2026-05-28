@@ -8,7 +8,7 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { createLogger } from "./logger.js";
+import { createLogger } from "./core/logger.js";
 
 const _log = createLogger("file-mutation-queue");
 

@@ -12,8 +12,8 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { getExtensionState } from "./extension-state.js";
-import { createLogger } from "./logger.js";
+import { getExtensionState } from "./state/extension-state.js";
+import { createLogger } from "./core/logger.js";
 
 const log = createLogger("bidirectional-verifier");
 

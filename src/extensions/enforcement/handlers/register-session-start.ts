@@ -3,12 +3,12 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
+import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { eventBus } from "../../../lib/event-bus.js";
-import { cacheSessionManager } from "../../../lib/extension-state.js";
+import { cacheSessionManager } from "../../../lib/state/extension-state.js";
 import { getState } from "../state.js";
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../../lib/core/logger.js";
 
 const log = createLogger("enforcement:session-start");
 

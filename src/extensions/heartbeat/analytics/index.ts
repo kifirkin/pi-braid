@@ -9,8 +9,8 @@
  * cross-session contamination.
  */
 
-import { createLogger } from "../../../lib/logger.js";
-import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
+import { createLogger } from "../../../lib/core/logger.js";
+import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 import { existsSync, mkdirSync } from "node:fs";
 import { METRICS_FILE, METRICS_DIR } from "../../../lib/config/braid-paths.js";
 import type {
@@ -18,7 +18,7 @@ import type {
   ExtensionContext,
   AgentToolResult,
 } from "@mariozechner/pi-coding-agent";
-import { safeSessionManager } from "../../../lib/extension-state.js";
+import { safeSessionManager } from "../../../lib/state/extension-state.js";
 import { emitSignal } from "../../../lib/belief-policy-engine.js";
 import { eventBus } from "../../../lib/event-bus.js";
 import { isDegraded, getDegradationReasons } from "../../../lib/degradation-detector.js";

@@ -1,4 +1,4 @@
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../../lib/core/logger.js";
 import {
   USAGE_WHISPER_ADVISORY,
   USAGE_COMPACT_MEDIUM,

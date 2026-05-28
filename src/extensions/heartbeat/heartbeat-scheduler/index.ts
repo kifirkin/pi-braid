@@ -18,13 +18,13 @@ import {
   cleanupSession,
   type PolicyContext,
 } from "../../../lib/belief-store.js";
-import { createLogger } from "../../../lib/logger.js";
-import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
-import { getExtensionState } from "../../../lib/extension-state.js";
+import { createLogger } from "../../../lib/core/logger.js";
+import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
+import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
 import { eventBus } from "../../../lib/event-bus.js";
 import { processConsolidationTick } from "../../../lib/consolidation-channel.js";
-import { heartbeatCheckpointTick } from "../../../lib/state-checkpoint.js";
+import { heartbeatCheckpointTick } from "../../../lib/state/state-checkpoint.js";
 import { extractSOP } from "../../../lib/sop-extractor.js";
 import { injectSopSuggestions } from "../../../lib/sop-suggestion.js";
 import type { TrajectoryEntry } from "../../../lib/sop-extractor.js";

@@ -5,7 +5,7 @@
  * externally-managed state object (no class instance, no methods).
  */
 
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../../lib/core/logger.js";
 import type { SemanticSignal, SemanticSignalType } from "./types.js";
 import { createSignal } from "./types.js";
 import type { SessionEntry } from "@mariozechner/pi-coding-agent";

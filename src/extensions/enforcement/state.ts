@@ -16,9 +16,9 @@
  *   verification-judge-state.ts — judge/calibration helpers
  */
 
-import { createLogger } from "../../lib/logger.js";
+import { createLogger } from "../../lib/core/logger.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { getExtensionState } from "../../lib/extension-state.js";
+import { getExtensionState } from "../../lib/state/extension-state.js";
 
 // Import sub-state factories and resets
 import {

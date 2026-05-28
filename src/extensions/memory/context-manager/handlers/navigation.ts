@@ -5,7 +5,7 @@ import type { ExtensionContext, ExtensionAPI } from "@mariozechner/pi-coding-age
 import { analyzeSession } from "../analysis.js";
 import { log, getCmState, overflowRetryState, resetOverflowRetry } from "./shared.js";
 import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
-import { getSessionManager } from "../../../../lib/session-manager.js";
+import { getSessionManager } from "../../../../lib/state/session-manager.js";
 
 // ── Session Before Tree ───────────────────────────────────────────────────────
 export function registerBeforeTreeHandler(pi: ExtensionAPI): void {

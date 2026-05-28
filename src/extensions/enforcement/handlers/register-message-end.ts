@@ -22,7 +22,7 @@ import { sendEnforcementWhisper } from "../whisper.js";
 import { getState, startJudge, completeJudge } from "../state.js";
 import { runVerificationJudge, formatVerificationNudge } from "../verification-judge.js";
 import { enforcementSignals } from "../signals.js";
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../../lib/core/logger.js";
 
 const log = createLogger("enforcement:message-end");
 const ERROR_BURST_THRESHOLD = 3;

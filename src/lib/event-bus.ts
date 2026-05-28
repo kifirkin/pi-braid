@@ -12,7 +12,7 @@
  * Paper: 2604.14178 — Cognitive Scheduling with Event-Driven Architecture
  */
 
-import { createLogger } from "./logger.js";
+import { createLogger } from "./core/logger.js";
 
 const log = createLogger("event-bus");
 

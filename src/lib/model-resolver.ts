@@ -8,7 +8,7 @@
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { Model, Api } from "@mariozechner/pi-ai";
-import { getCustomModelKey, UTILITY_MODEL_KEY, VISION_MODEL_KEY } from "./global-state.js";
+import { getCustomModelKey, UTILITY_MODEL_KEY, VISION_MODEL_KEY } from "./state/global-state.js";
 
 /**
  * Resolve a model from a pattern like "provider/model-id" or just "model-id".

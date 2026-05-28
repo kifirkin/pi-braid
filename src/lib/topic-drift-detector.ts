@@ -19,7 +19,7 @@
  *   Consider refocusing or updating task context.
  */
 
-import { createLogger } from "./logger.js";
+import { createLogger } from "./core/logger.js";
 import { classify } from "./text-classifier.js";
 import { CRITICS } from "./critic-registry.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";

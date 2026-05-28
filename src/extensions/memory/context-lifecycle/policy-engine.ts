@@ -5,8 +5,8 @@
  * Cooldown tracking is managed externally via a state object.
  */
 
-import { createLogger } from "../../../lib/logger.js";
-import { getExtensionState } from "../../../lib/extension-state.js";
+import { createLogger } from "../../../lib/core/logger.js";
+import { getExtensionState } from "../../../lib/state/extension-state.js";
 import {
   evaluateContextDensity,
   recommendCompressionStrategy,

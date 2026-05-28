@@ -1,13 +1,13 @@
 // ── Context-Manager Shared State & Helpers ────────────────────────────────────
 // Shared across all handler modules. Module-level singletons + session-scoped factories.
 
-import { getExtensionState } from "../../../../lib/extension-state.js";
-import { createLogger } from "../../../../lib/logger.js";
+import { getExtensionState } from "../../../../lib/state/extension-state.js";
+import { createLogger } from "../../../../lib/core/logger.js";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { createPruningState } from "../pruning.js";
-import { getSessionManager } from "../../../../lib/session-manager.js";
+import { getSessionManager } from "../../../../lib/state/session-manager.js";
 import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
-import { getRotationState } from "../../../../lib/global-state.js";
+import { getRotationState } from "../../../../lib/state/global-state.js";
 
 export const log = createLogger("context-manager");
 

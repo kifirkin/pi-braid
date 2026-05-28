@@ -1,4 +1,4 @@
-import { createLogger } from "../../../lib/logger.js";
+import { createLogger } from "../../../lib/core/logger.js";
 
 const log = createLogger("cognitive-systems");
 /**
@@ -22,7 +22,7 @@ import {
 } from "../../../lib/cognitive-memory.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { addEvidence } from "../../../lib/evidence-pool.js";
-import { getExtensionState } from "../../../lib/extension-state.js";
+import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { textResult } from "../../../lib/extension-utils.js";
 import type { MemoryStoresState } from "../three-memory-stores/index.js";
 import {

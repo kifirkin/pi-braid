@@ -10,9 +10,9 @@
  *
  * @module path-security
  */
-import { createLogger } from "../../lib/logger.js";
+import { createLogger } from "../../lib/core/logger.js";
 import { onEvent } from "../../lib/event-types.js";
-import { getExtensionState } from "../../lib/extension-state.js";
+import { getExtensionState } from "../../lib/state/extension-state.js";
 import { vetWriteOperation, vetBashCommand } from "./vet-filter.js";
 const log = createLogger("path-security");
 // ── Tool classification ──────────────────────────────────────────────────────
