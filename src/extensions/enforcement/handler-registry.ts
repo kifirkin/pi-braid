@@ -23,6 +23,8 @@ import {
   getVerifierState,
 } from "../../lib/bidirectional-verifier.js";
 import { scanArchives } from "../../lib/consolidation-channel.js";
+import { isDegraded } from "../../lib/degradation-detector.js";
+import { autoRollback } from "../../lib/state-checkpoint.js";
 import { getState } from "./state.js";
 import { registerInputHandler } from "./handlers/register-input-handler.js";
 import { registerSessionStart } from "./handlers/register-session-start.js";
@@ -59,6 +61,7 @@ export const HANDLER_REGISTRATIONS: Array<{ event: string; method: string; handl
   { event: "auto_retry_end", method: "onEvent", handler: "error classification" },
   { event: "session_shutdown", method: "onEvent", handler: "state reset" },
   { event: "turn_end", method: "registerTurnEndHandler", handler: "enforcement-drift" },
+  { event: "turn_end", method: "registerTurnEndHandler", handler: "degradation-rollback" },
   { event: "turn_end", method: "registerTurnEndHandler", handler: "enforcement-bpe" },
   { event: "turn_end", method: "registerTurnEndHandler", handler: "enforcement-mars" },
   { event: "turn_end", method: "registerTurnEndHandler", handler: "enforcement-dreamer" },
@@ -95,6 +98,19 @@ function registerCompactAndSessionHandlers(pi: ExtensionAPI, _nudgeManager: Nudg
   registerTurnEndHandler("enforcement-drift", 100, async (event, ctx) => {
     await driftHandler(pi, event, ctx);
   });
+
+  // ── turn_end: degradation→checkpoint rollback (before analysis handlers) ──
+  // heartbeatCheckpointTick runs every ~60s; this catches degradation between beats.
+  registerTurnEndHandler("degradation-rollback", 99, async (_event, ctx) => {
+    if (!getState(ctx).enforcementActive) return;
+    if (!isDegraded(ctx)) return;
+    const sessionId = (ctx as any).cwd ?? String(process.pid);
+    const result = await autoRollback(ctx, sessionId);
+    if (result.restored) {
+      log.warn(`Turn-end degradation rollback: ${result.note}`);
+    }
+  });
+
   registerTurnEndHandler("enforcement-bpe", 95, async (event, ctx) => {
     const newRecType = await bpeHandler(pi, event, ctx);
     if (newRecType) setLastRecommendationType(newRecType);
