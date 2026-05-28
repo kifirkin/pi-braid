@@ -188,7 +188,7 @@ function registerCompactAndSessionHandlers(pi: ExtensionAPI, _nudgeManager: Nudg
     await guard(
       "archive-ingestion",
       async () => {
-        const archives = scanArchives(ctx.cwd);
+        const archives = await scanArchives(ctx.cwd);
         if (archives.length > 0) {
           log.info(`[archive-ingestion] Found ${archives.length} archive(s) to process`);
         }

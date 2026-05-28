@@ -79,7 +79,7 @@ console.log("\n[2] Consolidation hint writing");
     "should have pruning constants",
   );
   assert.ok(
-    consolSrc.includes("writeFileSync") || consolSrc.includes("readFileSync"),
+    consolSrc.includes("writeFile") && consolSrc.includes("readFile"),
     "should use fs operations for hint pruning",
   );
 

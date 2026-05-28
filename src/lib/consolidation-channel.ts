@@ -11,7 +11,7 @@
 
 import { createLogger } from "./logger.js";
 import { CONSOLIDATED_HINTS_FILE } from "./braid-paths.js";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdir, readFile, writeFile, readdir, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { extractSOP } from "./sop-extractor.js";
 import { CRITICS } from "./critic-registry.js";
@@ -327,7 +327,7 @@ function isHintTooGeneric(task: string, steps: string[]): boolean {
  * Process consolidation queue on heartbeat tick.
  * Called by heartbeat scheduler on each tick.
  */
-export function processConsolidationTick(): void {
+export async function processConsolidationTick(): Promise<void> {
   if (!DEFAULT_CONSOLIDATION_CONFIG.enabled) return;
 
   const queue = getConsolidationQueue();
@@ -353,13 +353,13 @@ export function processConsolidationTick(): void {
     !isHintTooGeneric(candidate.task, candidate.functionalSOP)
   ) {
     try {
-      mkdirSync(dirname(CONSOLIDATED_HINTS_FILE), { recursive: true });
+      await mkdir(dirname(CONSOLIDATED_HINTS_FILE), { recursive: true });
 
       // Prune: keep only recent, non-stale hints (max 20, under 30 days old)
       const MAX_HINTS = 20;
       const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
       try {
-        const existing = readFileSync(CONSOLIDATED_HINTS_FILE, "utf-8");
+        const existing = await readFile(CONSOLIDATED_HINTS_FILE, "utf-8");
         const lines = existing.split("\n").filter((l) => l.trim());
         const now = Date.now();
         const fresh = lines
@@ -370,7 +370,7 @@ export function processConsolidationTick(): void {
           const kept = fresh
             .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
             .slice(0, MAX_HINTS - 1);
-          writeFileSync(
+          await writeFile(
             CONSOLIDATED_HINTS_FILE,
             kept.map((h) => JSON.stringify(h)).join("\n") + "\n",
           );
@@ -389,12 +389,14 @@ export function processConsolidationTick(): void {
         source: "consolidation",
         createdAt: now,
       };
-      // Use sync write to avoid race with concurrent ticks
-      // (appendFile is async and could interleave with readFileSync above)
+      // Migrated from sync I/O to async fs/promises
       try {
-        const existingContent = existsSync(CONSOLIDATED_HINTS_FILE)
-          ? readFileSync(CONSOLIDATED_HINTS_FILE, "utf-8")
-          : "";
+        let existingContent = "";
+        try {
+          existingContent = await readFile(CONSOLIDATED_HINTS_FILE, "utf-8");
+        } catch {
+          // File doesn't exist yet
+        }
         const allLines = existingContent.split("\n").filter((l) => l.trim());
         // Deduplicate: replace existing entry with the same task, or append
         const taskKey = candidate.task;
@@ -413,7 +415,7 @@ export function processConsolidationTick(): void {
         if (!replaced) {
           allLines.push(JSON.stringify(hint));
         }
-        writeFileSync(CONSOLIDATED_HINTS_FILE, allLines.join("\n") + "\n");
+        await writeFile(CONSOLIDATED_HINTS_FILE, allLines.join("\n") + "\n");
       } catch (writeErr) {
         log.warn(`Hint append failed: ${(writeErr as Error).message}`);
       }
@@ -437,26 +439,35 @@ export interface ArchiveCandidate {
   specCount: number;
 }
 
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await stat(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Scan openspec/changes/archive/ for new archives not yet ingested.
  * Returns candidates for ingestion into the consolidation queue.
  */
-export function scanArchives(projectRoot: string): ArchiveCandidate[] {
+export async function scanArchives(projectRoot: string): Promise<ArchiveCandidate[]> {
   const archiveDir = join(projectRoot, "openspec", "changes", "archive");
-  if (!existsSync(archiveDir)) return [];
+  if (!(await pathExists(archiveDir))) return [];
 
   const candidates: ArchiveCandidate[] = [];
   try {
-    const entries = readdirSync(archiveDir, { withFileTypes: true });
+    const entries = await readdir(archiveDir, { withFileTypes: true });
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       const changePath = join(archiveDir, entry.name);
       candidates.push({
         changeName: entry.name,
         archivePath: changePath,
-        hasProposal: existsSync(join(changePath, "proposal.md")),
-        hasDesign: existsSync(join(changePath, "design.md")),
-        specCount: _countSpecs(changePath),
+        hasProposal: await pathExists(join(changePath, "proposal.md")),
+        hasDesign: await pathExists(join(changePath, "design.md")),
+        specCount: await countSpecs(changePath),
       });
     }
   } catch (err) {
@@ -466,19 +477,19 @@ export function scanArchives(projectRoot: string): ArchiveCandidate[] {
   return candidates;
 }
 
-function _countSpecs(dir: string): number {
+async function countSpecs(dir: string): Promise<number> {
   const specsDir = join(dir, "specs");
-  if (!existsSync(specsDir)) return 0;
+  if (!(await pathExists(specsDir))) return 0;
   let count = 0;
   try {
-    const walk = (d: string) => {
-      const entries = readdirSync(d, { withFileTypes: true });
+    const walk = async (d: string): Promise<void> => {
+      const entries = await readdir(d, { withFileTypes: true });
       for (const e of entries) {
-        if (e.isDirectory()) walk(join(d, e.name));
+        if (e.isDirectory()) await walk(join(d, e.name));
         else if (e.name.endsWith(".md")) count++;
       }
     };
-    walk(specsDir);
+    await walk(specsDir);
   } catch {
     // skip
   }

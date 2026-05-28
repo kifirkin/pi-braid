@@ -273,12 +273,10 @@ function tick(
   // Auto-checkpoint + auto-rollback
   const sessionId = ctx.cwd ?? String(process.pid);
 
-  // Consolidation Channel
-  try {
-    processConsolidationTick();
-  } catch (err) {
+  // Consolidation Channel — fire-and-forget
+  processConsolidationTick().catch((err) => {
     log.error("Consolidation tick error:", err);
-  }
+  });
 
   heartbeatCheckpointTick(ctx, state.turnCount, sessionId, isDegraded(ctx))
     .then((result) => {
