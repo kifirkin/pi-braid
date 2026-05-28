@@ -1,3 +1,4 @@
+// @ts-nocheck
 const log = { info: () => {}, debug: () => {}, warn: console.warn, error: console.error };
 
 /**

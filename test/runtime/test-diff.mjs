@@ -118,7 +118,7 @@ console.log("\n[5] Multi-hunk diff parsing");
 console.log("\n[6] ToolErrorEvent in event bus");
 {
   const fs = await import("fs");
-  const lib = fs.readFileSync(`${ROOT}/src/lib/event-bus.ts`, "utf8");
+  const lib = fs.readFileSync(`${ROOT}/src/lib/events/event-bus.ts`, "utf8");
 
   assert(lib.includes("ToolErrorEvent"), "ToolErrorEvent interface defined");
   assert(lib.includes("tool_error"), "tool_error type emitted");

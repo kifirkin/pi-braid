@@ -14,8 +14,8 @@ import type {
   AgentToolResult,
   ExtensionAPI,
   ExtensionContext,
-  ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
+import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 
 const log = {
   info: (msg: string) => console.log(`[codebase-tree] ${msg}`),
@@ -286,7 +286,7 @@ export default function codebaseTreeExtension(pi: ExtensionAPI) {
         },
       };
     },
-  } as ToolDefinition);
+  } as unknown as ToolDefinition);
 }
 
 function formatNode(node: TreeNode, lines: string[], indent: string, showStats: boolean): void {

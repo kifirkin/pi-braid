@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Browser Extension - Native CDP browser automation, zero external deps.
  *

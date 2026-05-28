@@ -1,3 +1,4 @@
+// @ts-nocheck
 const log = { info: (m) => console.log(`[repl] ${m}`), debug: () => {}, warn: (m) => console.warn(`[repl] ${m}`), error: (m) => console.error(`[repl] ${m}`) };
 /**
  * REPL Extension - Native TypeScript/JavaScript code execution

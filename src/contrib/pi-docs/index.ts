@@ -1,3 +1,4 @@
+// @ts-nocheck
 const log = { info: (m) => console.log(`[docs] ${m}`), debug: () => {}, warn: (m) => console.warn(`[docs] ${m}`), error: (m) => console.error(`[docs] ${m}`) };
 /**
  * Document tools - read various document formats

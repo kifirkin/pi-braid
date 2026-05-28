@@ -63,7 +63,7 @@ console.log("\n[2] Consolidation hint writing");
 
   // Verify the consolidation channel imports braid-paths
   const consolSrc = readFileSync(
-    "/Users/kifir/projects/agents/pi-braid/src/lib/consolidation-channel.ts",
+    "/Users/kifir/projects/agents/pi-braid/src/lib/events/consolidation-channel.ts",
     "utf-8",
   );
   assert.ok(
