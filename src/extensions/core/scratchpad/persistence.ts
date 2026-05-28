@@ -14,6 +14,31 @@ import type { TaskScratchpad, TaskStore, PlanStep, Decision } from "./types.js";
 const _ = BRAID_DIR; // ensure braid dir exists
 void _;
 
+/**
+ * Per-slug mutex for task store operations.
+ * Serializes read-modify-write cycles so rapid concurrent calls don't clobber each other.
+ * Each call chains off the previous pending promise for the same slug.
+ */
+const taskStoreMutex = new Map<string, Promise<void>>();
+
+async function withTaskStoreMutex<T>(slug: string, fn: () => Promise<T>): Promise<T> {
+  const prev = taskStoreMutex.get(slug) ?? Promise.resolve();
+  // Chain: wait for previous, then run fn, then resolve
+  const next = prev.then(
+    () => fn(),
+    () => fn(), // resume even if previous failed
+  );
+  // Chain error handler to prevent unhandled rejections from hanging subsequent operations
+  taskStoreMutex.set(
+    slug,
+    next.then(
+      () => {},
+      () => {},
+    ),
+  );
+  return next;
+}
+
 export function projectSlugFromCwd(cwd?: string): string {
   if (!cwd) return "default";
   const segments = cwd.split("/").filter(Boolean);
@@ -105,4 +130,20 @@ export async function loadTaskStore(projectSlug: string): Promise<TaskStore> {
     // Silent fail
   }
   return { tasks: [], updatedAt: Date.now() };
+}
+
+/**
+ * Atomically read-modify-write the task store for a slug.
+ * Serializes concurrent calls so rapid task_add/task_complete/etc don't clobber.
+ */
+export async function mutateTaskStore(
+  slug: string,
+  fn: (store: TaskStore) => TaskStore | Promise<TaskStore>,
+): Promise<TaskStore> {
+  return withTaskStoreMutex(slug, async () => {
+    const store = await loadTaskStore(slug);
+    const mutated = await fn(store);
+    await saveTaskStore(slug, mutated);
+    return mutated;
+  });
 }

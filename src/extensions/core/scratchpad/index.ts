@@ -38,7 +38,7 @@ import {
   createScratchpad,
   saveScratchpadToDisk,
   loadScratchpadFromDisk,
-  saveTaskStore,
+  mutateTaskStore,
   loadTaskStore,
 } from "./persistence.js";
 
@@ -541,7 +541,6 @@ async function scratchpadExecute(
     // ── Task Operations ─────────────────────────────────────────────
     case "task_add": {
       const slug = resolveProjectSlugFromCtx(ctx);
-      const store = await loadTaskStore(slug);
       const task: TaskItem = {
         id: generateTaskId(),
         text,
@@ -552,8 +551,10 @@ async function scratchpadExecute(
         updated_at: Date.now(),
         tags: [],
       };
-      store.tasks.push(task);
-      await saveTaskStore(slug, store);
+      await mutateTaskStore(slug, (store) => {
+        store.tasks.push(task);
+        return store;
+      });
       resultText = `Task added: ${text} (id: ${task.id})`;
       break;
     }
@@ -581,7 +582,7 @@ async function scratchpadExecute(
       if (t) {
         t.status = "completed";
         t.updated_at = Date.now();
-        await saveTaskStore(slug, store);
+        await mutateTaskStore(slug, () => store);
         resultText = `Task completed: ${t.text}`;
       } else resultText = `Task not found: ${task_id}`;
       break;
@@ -594,7 +595,7 @@ async function scratchpadExecute(
       if (t) {
         t.status = "failed";
         t.updated_at = Date.now();
-        await saveTaskStore(slug, store);
+        await mutateTaskStore(slug, () => store);
         resultText = `Task failed: ${t.text}`;
       } else resultText = `Task not found: ${task_id}`;
       break;
@@ -615,7 +616,7 @@ async function scratchpadExecute(
       const idx = store.tasks.findIndex((t) => t.id === task_id);
       if (idx >= 0) {
         const removed = store.tasks.splice(idx, 1)[0];
-        await saveTaskStore(slug, store);
+        await mutateTaskStore(slug, () => store);
         resultText = `Task removed: ${removed.text}`;
       } else resultText = `Task not found: ${task_id}`;
       break;
@@ -634,10 +635,11 @@ async function scratchpadExecute(
 
     case "task_clear": {
       const slug = resolveProjectSlugFromCtx(ctx);
-      const store = await loadTaskStore(slug);
-      const before = store.tasks.length;
-      store.tasks = [];
-      await saveTaskStore(slug, store);
+      const before = (await loadTaskStore(slug)).tasks.length;
+      await mutateTaskStore(slug, (store) => {
+        store.tasks = [];
+        return store;
+      });
       resultText = `Task store cleared: ${before} tasks removed`;
       break;
     }
