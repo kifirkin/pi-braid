@@ -3,10 +3,10 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { onEvent } from "../../../lib/event-types.js";
+import { onEvent } from "../../../lib/events/event-types.js";
 import { checkBlocking } from "./blocking.js";
 import { recordToolCall, recordToolInput, recordBashDetails } from "./tool-tracker.js";
-import { checkLocalizationRisk, recordFileTouch } from "../../../lib/bidirectional-verifier.js";
+import { checkLocalizationRisk, recordFileTouch } from "../../../lib/store/bidirectional-verifier.js";
 import { knownFiles } from "../similarity.js";
 import { getState, recordThink } from "../state.js";
 

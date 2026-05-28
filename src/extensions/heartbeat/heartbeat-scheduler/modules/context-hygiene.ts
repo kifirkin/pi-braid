@@ -9,7 +9,7 @@
 import type { CognitiveModule } from "../types.js";
 import { createLogger } from "../../../../lib/core/logger.js";
 import { getExtensionState } from "../../../../lib/state/extension-state.js";
-import { eventBus } from "../../../../lib/event-bus.js";
+import { eventBus } from "../../../../lib/events/event-bus.js";
 import {
   DENSITY_LOW,
   DENSITY_VERY_LOW,

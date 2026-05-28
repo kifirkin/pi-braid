@@ -20,7 +20,7 @@ export const timerReminderModule: CognitiveModule = {
 
   async activate(context): Promise<void> {
     try {
-      const { drainTimerReminders } = await import("../../../../lib/timer-bus.js");
+      const { drainTimerReminders } = await import("../../../../lib/events/timer-bus.js");
       const reminders = drainTimerReminders();
       for (const { timer } of reminders) {
         context.ctx.whisper?.(

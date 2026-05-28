@@ -13,7 +13,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../lib/core/logger.js";
-import { onEvent } from "../../lib/event-types.js";
+import { onEvent } from "../../lib/events/event-types.js";
 import { getExtensionState } from "../../lib/state/extension-state.js";
 import { vetWriteOperation, vetBashCommand, type VetResult } from "./vet-filter.js";
 

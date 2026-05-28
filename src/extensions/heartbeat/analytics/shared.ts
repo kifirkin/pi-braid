@@ -3,7 +3,7 @@
  */
 
 import { getExtensionState } from "../../../lib/state/extension-state.js";
-import { eventBus } from "../../../lib/event-bus.js";
+import { eventBus } from "../../../lib/events/event-bus.js";
 import { createLogger } from "../../../lib/core/logger.js";
 import { ANALYTICS_DENSITY_FULL_EVENT } from "../../../lib/detection/context-thresholds.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";

@@ -126,7 +126,7 @@ export interface SessionArchiveEntry {
 
 // ── Policy Engine ────────────────────────────────────────────────────────────
 
-import type { Policy, PolicyContext } from "../../../lib/belief-store.js";
+import type { Policy, PolicyContext } from "../../../lib/store/belief-store.js";
 
 export interface PolicyEngine {
   register(policy: Policy): void;

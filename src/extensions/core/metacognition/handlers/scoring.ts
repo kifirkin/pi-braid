@@ -2,9 +2,9 @@
 // Heuristic + evidence-pool scoring for ranking hypotheses.
 // Extracted from metacognition/index.ts for decomposition.
 
-import { tokenOverlap } from "../../../../lib/evidence-pool.js";
+import { tokenOverlap } from "../../../../lib/store/evidence-pool.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { getEvidence } from "../../../../lib/evidence-pool.js";
+import { getEvidence } from "../../../../lib/store/evidence-pool.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

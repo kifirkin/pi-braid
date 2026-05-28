@@ -6,7 +6,7 @@
  * and proactive context monitoring with auto-finalize at 90%.
  */
 
-import type { Policy, PolicyContext, BeliefStore } from "../../../lib/belief-store.js";
+import type { Policy, PolicyContext, BeliefStore } from "../../../lib/store/belief-store.js";
 import type { ToolTracking } from "./types.js";
 import type { ContextUsage } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../../lib/core/logger.js";

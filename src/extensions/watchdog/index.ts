@@ -9,7 +9,7 @@ import type { SessionManager } from "../../lib/state/session-manager.js";
 import { safeSessionManager } from "../../lib/state/extension-state.js";
 import { createLogger } from "../../lib/core/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../lib/state/session-start-queue.js";
-import { eventBus } from "../../lib/event-bus.js";
+import { eventBus } from "../../lib/events/event-bus.js";
 
 // pi's native SessionManager has getSessionFile() not in our wrapper
 interface SmWithSessionFile extends SessionManager {

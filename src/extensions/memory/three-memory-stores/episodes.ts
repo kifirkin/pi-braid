@@ -7,7 +7,7 @@
  */
 
 import { createLogger } from "../../../lib/core/logger.js";
-import { eventBus } from "../../../lib/event-bus.js";
+import { eventBus } from "../../../lib/events/event-bus.js";
 import type { MemoryStoresState, Episode } from "./types.js";
 
 const log = createLogger("three-memory-stores:episodes");

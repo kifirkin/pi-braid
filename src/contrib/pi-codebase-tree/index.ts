@@ -105,7 +105,6 @@ async function buildTree(
           try {
             const realPath = await fs.realpath(fullPath);
             if (visited?.has(realPath)) {
-              // Cycle detected — show as placeholder, don't recurse
               tree.push({ name: entry.name + "/", type: "dir", size: 0, children: [] });
               dirs++;
               continue;
@@ -125,7 +124,6 @@ async function buildTree(
             }
             continue;
           } catch {
-            // Can't resolve symlink — skip it
             continue;
           }
         }
@@ -243,7 +241,6 @@ export default function codebaseTreeExtension(pi: ExtensionAPI) {
       const compact = params.compact === true;
       const maxDepth = Math.min(params.maxDepth as number ?? 3, 10);
 
-      // Initialise visited set for symlink cycle detection
       const visited = new Set<string>();
       try { visited.add(await fs.realpath(baseDir)); } catch { /* ignore */ }
       const result = await buildTree(baseDir, 0, maxDepth, patterns, undefined, undefined, undefined, visited);

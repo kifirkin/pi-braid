@@ -126,7 +126,7 @@ type SearchBackend = "rg" | "grep" | "node";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { onEvent } from "../../../lib/event-types.js";
+import { onEvent } from "../../../lib/events/event-types.js";
 
 function getRecallState(ctx?: ExtensionContext): { cachedBackend: SearchBackend | undefined } {
   if (ctx) return getExtensionState(ctx, "session-recall", () => ({ cachedBackend: undefined }));

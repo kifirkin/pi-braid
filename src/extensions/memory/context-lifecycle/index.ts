@@ -19,7 +19,7 @@ import { Type } from "typebox";
 import { createLogger } from "../../../lib/core/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
-import { eventBus } from "../../../lib/event-bus.js";
+import { eventBus } from "../../../lib/events/event-bus.js";
 
 import {
   createProposal,

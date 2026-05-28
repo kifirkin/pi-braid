@@ -3,7 +3,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { onEvent } from "../../../lib/event-types.js";
+import { onEvent } from "../../../lib/events/event-types.js";
 import { sendEnforcementWhisper } from "../whisper.js";
 import { getState } from "../state.js";
 

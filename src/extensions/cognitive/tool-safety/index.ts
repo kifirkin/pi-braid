@@ -16,7 +16,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { classify } from "../../../lib/ai/text-classifier.js";
 import { createLogger } from "../../../lib/core/logger.js";
 import { DESTRUCTIVE_TOOLS } from "../../../lib/constants/tool-constants.js";
-import { onEvent } from "../../../lib/event-types.js";
+import { onEvent } from "../../../lib/events/event-types.js";
 
 const log = createLogger("tool-safety");
 

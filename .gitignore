@@ -22,7 +22,9 @@ test/runtime/results/
 
 # OS
 .DS_Store
-Thumbs.db
+
+# pi workspace extensions (auto-symlinked by pi, not part of this repo)
+src/contrib/pi-*
 
 # Editor
 .vscode/

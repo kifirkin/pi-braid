@@ -3,11 +3,11 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { onEvent } from "../../../lib/event-types.js";
+import { onEvent } from "../../../lib/events/event-types.js";
 import { getState, resetState } from "../state.js";
 import { resetAdviceTracker } from "../../../lib/reasoning/advice-tracker.js";
 import { shutdownAsyncStorage } from "../../../lib/state/async-storage.js";
-import { clearVerifierState } from "../../../lib/bidirectional-verifier.js";
+import { clearVerifierState } from "../../../lib/store/bidirectional-verifier.js";
 import { createLogger } from "../../../lib/core/logger.js";
 
 const log = createLogger("enforcement:session-shutdown");

@@ -21,7 +21,7 @@ import {
   getCognitiveMemory,
 } from "../../../lib/cognitive-memory.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { addEvidence } from "../../../lib/evidence-pool.js";
+import { addEvidence } from "../../../lib/store/evidence-pool.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { textResult } from "../../../lib/utils/extension-utils.js";
 import type { MemoryStoresState } from "../three-memory-stores/index.js";
@@ -36,7 +36,7 @@ import {
   resolveQA as resolveConflictQA,
   getQAStats as getConflictQAStats,
   getRelevantQA,
-} from "../../../lib/conflict-qa.js";
+} from "../../../lib/store/conflict-qa.js";
 
 // explore-paths tool — parallel hypothesis investigation
 // Searches in pi-braid project root, uses glob for reliable file finding

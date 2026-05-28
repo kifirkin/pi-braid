@@ -63,7 +63,7 @@ async function recordToMemory(
     // This closes the loop: finalize → episode → consolidation → prompt hints.
     if (completed) {
       try {
-        const { executeConsolidation } = await import("../../../../lib/consolidation-channel.js");
+        const { executeConsolidation } = await import("../../../../lib/events/consolidation-channel.js");
         const result = executeConsolidation({
           id: episode.id,
           task: summary,
