@@ -4,16 +4,6 @@
  * The settings.json file mixes pi-native settings with braid config under a
  * top-level `braid` key. This module reads that config safely and provides
  * a single source of truth for all braid-related feature flags.
- *
- * Settings hierarchy:
- *   braid.suppressNudges   — if true, all cognitive whispers (enforcement,
- *                            heartbeat, feedback) are suppressed.
- *                            Default: false (nudges ENABLED by default).
- *                            This is SEPARATE from disableConfirmations which
- *                            only affects blocking Y/n confirmation dialogs.
- *
- *   disableConfirmations   — pi-native: skip blocking confirmation dialogs.
- *                            Does NOT affect cognitive whispers (see above).
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -27,7 +17,6 @@ interface BraidConfig {
 }
 
 interface Settings {
-  disableConfirmations?: boolean;
   braid?: BraidConfig;
 }
 
@@ -45,22 +34,14 @@ function readSettings(): Settings {
 }
 
 /**
- * Whether blocking confirmation dialogs (Y/n) should be auto-confirmed.
- * This is the pi-native disableConfirmations flag.
- */
-export function isConfirmDialogDisabled(): boolean {
-  return readSettings().disableConfirmations === true;
-}
-
-/**
  * Whether cognitive nudges (enforcement whispers, heartbeat suggestions,
  * feedback reminders) should be suppressed entirely.
  *
  * Controlled by braid.suppressNudges in settings.json.
  * Default: false — nudges are ENABLED by default.
  *
- * This is semantically SEPARATE from isConfirmDialogDisabled().
- * A user may want to skip Y/n prompts but still see cognitive reminders.
+ * A user who wants to skip Y/n prompts would set that in pi's native settings —
+ * this flag only affects braid's own cognitive nudges.
  */
 export function areCognitiveNudgesDisabled(): boolean {
   const settings = readSettings();

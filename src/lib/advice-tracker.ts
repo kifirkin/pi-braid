@@ -246,10 +246,6 @@ export function getSourceAccuracy(source: "dreamer" | "mars" | "compaction"): {
   return { correct, total };
 }
 
-export function getRecentAdvice(count = 10): AdviceRecord[] {
-  return _state.records.slice(-count);
-}
-
 export function getPendingAdvice(): AdviceRecord[] {
   return _state.records.filter((r) => !r.evaluated);
 }

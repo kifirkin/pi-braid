@@ -70,6 +70,25 @@ export function registerSessionStart(pi: ExtensionAPI): void {
           log.debug(`[enforcement] ${event.tickCount} heartbeat ticks registered`);
         }
       });
+
+      // Track turn_complete events from heartbeat scheduler for turn duration analytics.
+      // turn_complete fires at the end of each heartbeat tick cycle and carries
+      // the turn number and duration. We log it for consolidation analytics.
+      eventBus.on("turn_complete", (event) => {
+        const state = getState(ctx);
+        state.lastTurnDuration = event.duration;
+        log.info(`turn_complete: turn ${event.turn} (${event.duration}ms)`);
+      });
+
+      // Track sop_suggestion events for injection feedback monitoring.
+      // When SOP suggestions are injected by sop-suggestion.ts, this handler
+      // logs the event and records it for the enforcement feedback loop.
+      eventBus.on("sop_suggestion", (event) => {
+        log.debug(
+          `SOP suggestion: "${event.episodeId}" ` +
+            `(similarity: ${(event.similarity * 100).toFixed(0)}%)`,
+        );
+      });
     },
   );
 }

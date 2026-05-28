@@ -29,6 +29,8 @@ export interface SessionState {
 
   // Event bus integration
   _lastHeartbeatTick: number;
+  /** Duration of the most recent turn in ms (from turn_complete event) */
+  lastTurnDuration: number;
 
   // Conflict resolution tracking — IDs of pending conflicts and when they were detected
   pendingConflictIds: string[];
@@ -48,6 +50,7 @@ export function createSessionState(): SessionState {
     lastVerificationJudgeTurn: 0,
     lastCalibrationWhisperTime: 0,
     _lastHeartbeatTick: 0,
+    lastTurnDuration: 0,
     pendingConflictIds: [],
     conflictDetectionTurn: new Map(),
     driftDetector: new TopicDriftDetector({
@@ -67,6 +70,7 @@ export function resetSessionState(s: SessionState): void {
   s.lastVerificationJudgeTurn = 0;
   s.lastCalibrationWhisperTime = 0;
   s._lastHeartbeatTick = 0;
+  s.lastTurnDuration = 0;
   s.pendingConflictIds = [];
   s.conflictDetectionTurn.clear();
   s.driftDetector?.reset();

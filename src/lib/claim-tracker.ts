@@ -397,20 +397,4 @@ export function formatContradictionWhisper(
   return lines.join("\n");
 }
 
-/**
- * Get summary statistics for the current session.
- */
-export function getClaimStats(ctx: ExtensionContext): {
-  totalClaims: number;
-  uniqueEntities: number;
-  lastCheckMs: number;
-} {
-  const state = getClaimState(ctx);
-  const claims = state.claims ?? [];
-  const entities = new Set(claims.map((c) => c.entity));
-  return {
-    totalClaims: claims.length,
-    uniqueEntities: entities.size,
-    lastCheckMs: state.lastCheckMs ?? 0,
-  };
-}
+

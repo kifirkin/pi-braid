@@ -59,6 +59,31 @@ async function recordToMemory(
     );
     log.info(`R5: Recorded episode ${episode.id} (${outcome}) for: ${summary.slice(0, 60)}`);
 
+    // R6: Feed successful outcomes into consolidation pipeline for hint generation.
+    // This closes the loop: finalize → episode → consolidation → prompt hints.
+    if (completed) {
+      try {
+        const { executeConsolidation } = await import("../../../../lib/consolidation-channel.js");
+        const result = executeConsolidation({
+          id: episode.id,
+          task: summary,
+          outcome: "success",
+          project,
+          strategicSOP,
+          functionalSOP,
+          toolSequence: atomicSOP,
+        });
+        if (result) {
+          log.info(
+            `R6: Consolidation candidate enqueued ` +
+              `(score=${result.consolidationScore.toFixed(2)})`,
+          );
+        }
+      } catch (consolErr) {
+        log.debug(`R6: Consolidation skipped: ${(consolErr as Error).message}`);
+      }
+    }
+
     // On failure: extract principle and store as heuristic rule
     if (!completed) {
       const principle = extractPrinciple(ctx, summary);

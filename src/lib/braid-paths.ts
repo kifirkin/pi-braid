@@ -61,10 +61,6 @@ export const LEGACY_MEMORY_FILE = path.join(PI, "memory", "memory.json");
 /** Three-memory-stores retrospective episodes */
 export const EPISODES_FILE = path.join(MEMORY_DIR, "episodes.jsonl");
 
-/** State-checkpoint: extension state snapshots */
-export const CHECKPOINT_FILE = (sessionId: string) =>
-  path.join(CHECKPOINT_DIR, `checkpoint-${sessionId}.json`);
-
 /** Error-capture: classified error log */
 export const ERROR_LOG_FILE = path.join(ERROR_DIR, "errors.jsonl");
 export const ERROR_FILE = ERROR_LOG_FILE;
@@ -75,9 +71,6 @@ export const CONSOLIDATED_HINTS_FILE = path.join(BRAID, "consolidated-hints.json
 /** Assistant: custom tools config */
 export const TOOLS_CONFIG_FILE = path.join(BRAID, "tools-config.json");
 
-/** Session-recall: cross-session history */
-export const SESSION_RECALL_FILE = path.join(BRAID, "session-recall.json");
-
 /** Analytics: tool call metrics + A/B variant tracking */
 export const METRICS_FILE = path.join(METRICS_DIR, "braid-metrics.jsonl");
 
@@ -85,19 +78,3 @@ export const METRICS_FILE = path.join(METRICS_DIR, "braid-metrics.jsonl");
 export const DEGRADATION_FILE = path.join(METRICS_DIR, "degradation.json");
 
 // ── Ensure directories exist ─────────────────────────────────────────────
-
-/**
- * Get all braid directories that should exist on disk.
- * Useful for initialization and health checks.
- */
-export function getAllBraidDirs(): string[] {
-  return [
-    BRAID,
-    MEMORY_DIR,
-    CHECKPOINT_DIR,
-    ERROR_DIR,
-    SCRATCHPAD_DIR,
-    METRICS_DIR,
-    HEALTHCHECK_DIR,
-  ];
-}

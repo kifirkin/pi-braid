@@ -6,6 +6,8 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { onEvent } from "../../../lib/event-types.js";
 import { getState, resetState } from "../state.js";
 import { resetAdviceTracker } from "../../../lib/advice-tracker.js";
+import { shutdownAsyncStorage } from "../../../lib/async-storage.js";
+import { clearVerifierState } from "../../../lib/bidirectional-verifier.js";
 import { createLogger } from "../../../lib/logger.js";
 
 const log = createLogger("enforcement:session-shutdown");
@@ -21,6 +23,9 @@ export function registerSessionShutdownHandler(pi: ExtensionAPI): void {
         `${state.verificationsDone} verifications, ${state.validationFailures} failures`,
     );
 
+    // Flush pending async writes and clear cross-session state
+    await shutdownAsyncStorage();
+    clearVerifierState(ctx);
     resetAdviceTracker();
     resetState(getState(ctx));
     log.info(`[session_shutdown] Enforcement state reset for session ${sessionId}`);
