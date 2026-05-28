@@ -6,25 +6,17 @@
  * - ctx available with UI (interactive mode) → ctx.ui.notify() for warn/error
  * - ctx available without UI (RPC/print mode) → console only
  *
- * Usage in extensions:
+ * Usage:
  *   const log = createLogger("my-extension");
+ *   log.warn("Something unexpected");
+ *   log.info("Progress update");
  *
- *   export default function myExt(pi: ExtensionAPI): void {
- *     pi.registerTool("myTool", {
- *       async execute(toolCallId, params, signal, onUpdate, ctx) {
- *         log.bindContext(ctx);
- *         log.warn("Something unexpected"); // routes through TUI
- *         log.info("Progress update");      // console + status bar
- *       }
- *     });
- *   }
- *
- * Usage in lib/ (no ctx):
- *   const log = createLogger("evidence-pool");
- *   log.info("Pool initialized"); // console only
+ * All output goes to console (warn/error) and in-memory buffer. Removed:
+ * bindContext/unbindContext/hasContext — the context stack added complexity
+ * for a single caller. Errors remain visible in console + log buffer.
  */
 
-import type { ExtensionContext, ExtensionUIContext } from "@mariozechner/pi-coding-agent";
+
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -39,12 +31,6 @@ interface LogEntry {
 }
 
 export interface Logger {
-  /** Bind a context for this execution scope. Call at start of handler/tool. */
-  bindContext(ctx: ExtensionContext | undefined): void;
-  /** Unbind the current context. Call at end if you want strict scoping. */
-  unbindContext(): void;
-  /** Check if a context is currently bound. */
-  hasContext(): boolean;
   debug(message: string, data?: unknown): void;
   info(message: string, data?: unknown): void;
   warn(message: string, data?: unknown): void;
@@ -105,9 +91,7 @@ function formatConsole(entry: LogEntry): string {
   return `${ts} ${formatLevel(entry.level)} [${entry.source}] ${entry.message}${formatData(entry.data)}`;
 }
 
-function formatNotify(entry: LogEntry): string {
-  return `[${entry.source}] ${entry.message}${formatData(entry.data)}`;
-}
+// formatNotify removed — only used by the removed writeToUI function.
 
 // ── Core sink ──────────────────────────────────────────────────────────────
 
@@ -126,25 +110,8 @@ function writeToConsole(entry: LogEntry): void {
   }
 }
 
-function writeToUI(ui: ExtensionUIContext, entry: LogEntry): void {
-  const msg = formatNotify(entry);
-  switch (entry.level) {
-    case "debug":
-      // Debug goes to console only, not TUI
-      break;
-    case "info":
-      // Info sets status but doesn't notify (too noisy)
-      ui.setStatus?.(entry.source, msg);
-      break;
-    case "warn":
-      // Warnings go to console + buffer only, not TUI.
-      // User-facing warnings should use pi.sendMessage() explicitly.
-      break;
-    case "error":
-      ui.notify(msg, "error");
-      break;
-  }
-}
+// writeToUI removed — no longer needed after removing the context stack.
+// All output routes through console + in-memory buffer.
 
 function addToBuffer(entry: LogEntry): void {
   _logBuffer.push(entry);
@@ -157,27 +124,9 @@ function addToBuffer(entry: LogEntry): void {
 
 class LoggerImpl implements Logger {
   private _source: string;
-  private _ctxStack: (ExtensionContext | undefined)[] = [];
 
   constructor(source: string) {
     this._source = source;
-  }
-
-  bindContext(ctx: ExtensionContext | undefined): void {
-    this._ctxStack.push(ctx);
-  }
-
-  unbindContext(): void {
-    this._ctxStack.pop();
-  }
-
-  hasContext(): boolean {
-    return this._ctxStack.length > 0 && this._ctxStack[this._ctxStack.length - 1] !== undefined;
-  }
-
-  private _currentCtx(): ExtensionContext | undefined {
-    if (this._ctxStack.length === 0) return undefined;
-    return this._ctxStack[this._ctxStack.length - 1];
   }
 
   private _shouldLog(level: LogLevel): boolean {
@@ -200,11 +149,6 @@ class LoggerImpl implements Logger {
 
     addToBuffer(entry);
     writeToConsole(entry);
-
-    const ctx = this._currentCtx();
-    if (ctx?.hasUI && ctx.ui) {
-      writeToUI(ctx.ui, entry);
-    }
   }
 
   debug(message: string, data?: unknown): void {

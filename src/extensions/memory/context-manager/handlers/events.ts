@@ -191,7 +191,6 @@ export function registerAutoRetryEndHandler(pi: ExtensionAPI): void {
 export function registerContextPruningHandler(pi: ExtensionAPI): void {
   pi.on("context", async (event: any, ctx: any) => {
     try {
-      log.bindContext(ctx);
       const messages = event.messages;
       if (!messages || messages.length === 0) {
         log.debug("context: no messages, skipping");
@@ -339,8 +338,6 @@ export function registerContextPruningHandler(pi: ExtensionAPI): void {
       return { messages: cleaned };
     } catch (err) {
       log.error("context event error:", err);
-    } finally {
-      log.unbindContext();
     }
   });
 }
