@@ -23,11 +23,11 @@ import type {
 // ── Re-export types and persistence for importers ─────────────────────────
 export * from "./types.js";
 export * from "./persistence.js";
+import { taskExecute, taskParams } from "./task.js";
 
 import type {
   TaskScratchpad,
   Decision,
-  TaskItem,
   Constraint,
   KeyLearning,
   SessionPhase,
@@ -38,8 +38,6 @@ import {
   createScratchpad,
   saveScratchpadToDisk,
   loadScratchpadFromDisk,
-  mutateTaskStore,
-  loadTaskStore,
 } from "./persistence.js";
 
 import { getExtensionState } from "../../../lib/state/extension-state.js";
@@ -131,9 +129,6 @@ function capPush<T>(arr: T[], item: T, max: number): number {
   return 0;
 }
 
-function generateTaskId(): string {
-  return `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
 function generateLearningId(): string {
   return `lrn-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
 }
@@ -281,23 +276,12 @@ const readAction = Type.Union([
   Type.Literal("note_compact"),
   Type.Literal("elevate_to_goal"),
   Type.Literal("elevate_to_plan"),
-  Type.Literal("task_add"),
-  Type.Literal("task_list"),
-  Type.Literal("task_complete"),
-  Type.Literal("task_fail"),
-  Type.Literal("task_next"),
-  Type.Literal("task_remove"),
-  Type.Literal("task_stats"),
-  Type.Literal("task_clear"),
 ]);
 
 const scratchpadParams = Type.Object({
   action: readAction,
   text: Type.Optional(Type.String({ description: "Text content" })),
   successCriteria: Type.Optional(Type.Array(Type.String(), { description: "Success criteria" })),
-  priority: Type.Optional(Type.Number({ description: "Priority 0-10" })),
-  dependencies: Type.Optional(Type.Array(Type.String(), { description: "Dependencies" })),
-  task_id: Type.Optional(Type.String({ description: "Task ID" })),
   constraint_id: Type.Optional(Type.String({ description: "Constraint ID" })),
   expires_in_ms: Type.Optional(Type.Number({ description: "TTL in ms for constraint expiry" })),
 });
@@ -314,9 +298,6 @@ async function scratchpadExecute(
   const action = params.action as string;
   const text = (params.text as string) ?? "";
   const successCriteria = params.successCriteria as string[] | undefined;
-  const priority = params.priority as number | undefined;
-  const dependencies = params.dependencies as string[] | undefined;
-  const task_id = params.task_id as string | undefined;
   const expires_in_ms = params.expires_in_ms as number | undefined;
 
   const pad = await getOrCreateScratchpad(ctx);
@@ -538,114 +519,8 @@ async function scratchpadExecute(
       break;
     }
 
-    // ── Task Operations ─────────────────────────────────────────────
-    case "task_add": {
-      const slug = resolveProjectSlugFromCtx(ctx);
-      const task: TaskItem = {
-        id: generateTaskId(),
-        text,
-        priority: priority ?? 5,
-        dependencies: dependencies ?? [],
-        status: "pending",
-        created_at: Date.now(),
-        updated_at: Date.now(),
-        tags: [],
-      };
-      await mutateTaskStore(slug, (store) => {
-        store.tasks.push(task);
-        return store;
-      });
-      resultText = `Task added: ${text} (id: ${task.id})`;
-      break;
-    }
-
-    case "task_list": {
-      const slug = resolveProjectSlugFromCtx(ctx);
-      const store = await loadTaskStore(slug);
-      const tasksByStatus: Record<string, TaskItem[]> = {
-        pending: [],
-        in_progress: [],
-        completed: [],
-        failed: [],
-      };
-      for (const t of store.tasks) {
-        (tasksByStatus[t.status] ??= []).push(t);
-      }
-      resultText = `Tasks: ${store.tasks.length} total (${tasksByStatus.pending.length} pending, ${tasksByStatus.in_progress.length} in progress, ${tasksByStatus.completed.length} completed, ${tasksByStatus.failed.length} failed)`;
-      break;
-    }
-
-    case "task_complete": {
-      const slug = resolveProjectSlugFromCtx(ctx);
-      const store = await loadTaskStore(slug);
-      const t = store.tasks.find((t) => t.id === task_id);
-      if (t) {
-        t.status = "completed";
-        t.updated_at = Date.now();
-        await mutateTaskStore(slug, () => store);
-        resultText = `Task completed: ${t.text}`;
-      } else resultText = `Task not found: ${task_id}`;
-      break;
-    }
-
-    case "task_fail": {
-      const slug = resolveProjectSlugFromCtx(ctx);
-      const store = await loadTaskStore(slug);
-      const t = store.tasks.find((t) => t.id === task_id);
-      if (t) {
-        t.status = "failed";
-        t.updated_at = Date.now();
-        await mutateTaskStore(slug, () => store);
-        resultText = `Task failed: ${t.text}`;
-      } else resultText = `Task not found: ${task_id}`;
-      break;
-    }
-
-    case "task_next": {
-      const slug = resolveProjectSlugFromCtx(ctx);
-      const store = await loadTaskStore(slug);
-      const next = store.tasks.find((t) => t.status === "pending");
-      if (next) resultText = `Next task: ${next.text} (id: ${next.id})`;
-      else resultText = "No pending tasks.";
-      break;
-    }
-
-    case "task_remove": {
-      const slug = resolveProjectSlugFromCtx(ctx);
-      const store = await loadTaskStore(slug);
-      const idx = store.tasks.findIndex((t) => t.id === task_id);
-      if (idx >= 0) {
-        const removed = store.tasks.splice(idx, 1)[0];
-        await mutateTaskStore(slug, () => store);
-        resultText = `Task removed: ${removed.text}`;
-      } else resultText = `Task not found: ${task_id}`;
-      break;
-    }
-
-    case "task_stats": {
-      const slug = resolveProjectSlugFromCtx(ctx);
-      const store = await loadTaskStore(slug);
-      const byStatus = { pending: 0, in_progress: 0, completed: 0, failed: 0 };
-      for (const t of store.tasks) {
-        if (t.status in byStatus) byStatus[t.status as keyof typeof byStatus]++;
-      }
-      resultText = `Task stats: ${store.tasks.length} total, ${byStatus.pending} pending, ${byStatus.in_progress} in-progress, ${byStatus.completed} completed, ${byStatus.failed} failed`;
-      break;
-    }
-
-    case "task_clear": {
-      const slug = resolveProjectSlugFromCtx(ctx);
-      const before = (await loadTaskStore(slug)).tasks.length;
-      await mutateTaskStore(slug, (store) => {
-        store.tasks = [];
-        return store;
-      });
-      resultText = `Task store cleared: ${before} tasks removed`;
-      break;
-    }
-
     default:
-      resultText = `Unknown action: ${action}. Use: read, set_goal, add_plan, mark_done, add_decision, add_hypothesis, add_note, update_session, add_constraint, remove_constraint, add_learning, persist_learnings, note_compact, elevate_to_goal, elevate_to_plan, task_add, task_list, task_complete, task_fail, task_next, task_remove, task_stats, task_clear`;
+      resultText = `Unknown action: ${action}. Use: read, set_goal, add_plan, mark_done, add_decision, add_hypothesis, add_note, update_session, add_constraint, remove_constraint, add_learning, persist_learnings, note_compact, elevate_to_goal, elevate_to_plan. For task management, use the 'task' tool.`;
   }
 
   return {
@@ -662,8 +537,21 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
     label: "Scratchpad",
     promptSnippet: "Structured session memory for goal, plan, and decisions",
     description:
-      "Track goals, plans, and decisions throughout multi-step tasks using structured session memory. Use scratchpad(action='add_plan') at the start, add notes and learnings as you work.",
+      "Track goals, plans, and decisions throughout multi-step tasks using structured session memory. Use scratchpad(action='add_plan') at the start, add notes and learnings as you work. For task management, use the 'task' tool.",
     parameters: scratchpadParams,
     execute: scratchpadExecute,
+  } as unknown as ToolDefinition<any, any, any>);
+
+  // Register dedicated Task tool (extracted from scratchpad monolith)
+  pi.registerTool({
+    name: "task",
+    label: "Task",
+    promptSnippet: "Manage tasks: add, list, complete, fail, next, remove, stats, clear",
+    description:
+      "Manage tasks across sessions. Use action=add to create a task, action=list to see all tasks, " +
+      "action=complete/fail to update status, action=next to find the next pending task, " +
+      "action=remove to delete, action=stats for summary, action=clear to remove all.",
+    parameters: taskParams,
+    execute: taskExecute,
   } as unknown as ToolDefinition<any, any, any>);
 }
