@@ -8,6 +8,7 @@ import { getCachedSessionManager } from "../../../../lib/extension-state.js";
 import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
 import { emitSignal } from "../../../../lib/belief-policy-engine.js";
 import { getState } from "../../state.js";
+import { setCriticCtx } from "../../../../lib/topic-drift-detector.js";
 
 function extractTextContent(msg: any): string {
   if (typeof msg.content === "string") return msg.content;
@@ -22,6 +23,9 @@ function extractTextContent(msg: any): string {
 export async function driftHandler(pi: any, _event: any, ctx: ExtensionContext): Promise<void> {
   const gs = getState(ctx);
   if (!gs.enforcementActive || !gs.driftDetector) return;
+
+  // Provide ctx for triple-critic classify() calls
+  setCriticCtx(ctx);
 
   const sm = getCachedSessionManager(ctx) as SessionManager | undefined;
   const entries: SessionEntry[] = sm?.getBranch?.() ?? [];
@@ -41,7 +45,7 @@ export async function driftHandler(pi: any, _event: any, ctx: ExtensionContext):
     }
   }
 
-  const driftCheck = gs.driftDetector.check();
+  const driftCheck = await gs.driftDetector.check();
   if (driftCheck.drifted) {
     const whisper = gs.driftDetector.generateWhisper(driftCheck);
     if (whisper) {

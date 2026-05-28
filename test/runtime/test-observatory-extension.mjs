@@ -35,15 +35,14 @@ console.log("\n[1] Observatory extension structure");
   assert(src.includes("restart"), "has restart action");
 }
 
-// ── [2] Extension is registered in module definitions ────────────────
-console.log("\n[2] Module system registration");
+// ── [2] Extension is registered in extension manifest ────────────────
+console.log("\n[2] Extension manifest registration");
 {
   const fs = await import("fs");
-  const defs = fs.readFileSync(`${ROOT}/src/modules/definitions.ts`, "utf8");
+  const mani = fs.readFileSync(`${ROOT}/src/extensions/manifest.ts`, "utf8");
 
-  assert(defs.includes("observatoryFn"), "observatoryFn imported in definitions");
-  assert(defs.includes("observatory"), "observatory listed in tools module");
-  assert(defs.includes("\"session_tree\", \"session_shutdown\", \"context\""), "observatory events in listensTo");
+  assert(mani.includes("observatoryFn"), "observatoryFn imported in manifest");
+  assert(mani.includes("observatory"), "observatory listed in manifest");
 }
 
 // ── 

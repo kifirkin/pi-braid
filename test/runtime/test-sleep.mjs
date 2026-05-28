@@ -39,18 +39,18 @@ console.log("\n[1] Sleep extension structure");
 }
 
 // ── [2] Module system registration ───────────────────────────
-console.log("\n[2] Module system registration (sleep removed — was dead code)");
+console.log("\n[2] Extension manifest registration (sleep removed — was dead code)");
 {
   const fs = await import("fs");
-  const defs = fs.readFileSync(`${ROOT}/src/modules/definitions.ts`, "utf8");
+  const mani = fs.readFileSync(`${ROOT}/src/extensions/manifest.ts`, "utf8");
 
-  assert(!defs.includes("sleepFn"), "sleepFn import removed from definitions");
-  assert(!defs.includes('{ name: "sleep", fn: sleepFn }'), "sleep extension unregistered from contrib module");
+  assert(!mani.includes("sleepFn"), "sleepFn import removed from manifest");
+  assert(!mani.includes('"sleep"'), "sleep extension unregistered from manifest");
 }
 
 // ── [3] Tool-security: tool-security.ts was dead code (graveyard → deleted) ──
 // The file no longer exists, and the SAFE_TOOL_KEEP allowlist was abandoned.
-// Sleep tool registration in definitions.ts covers tool availability.
+// Sleep tool registration in manifest covers tool availability.
 console.log("\n[3] Tool-security check skipped (tool-security.ts was dead code)");
 
 // ── [4] Build artifact exists ────────────────────────────────

@@ -105,11 +105,11 @@ function registerCompactAndSessionHandlers(pi: ExtensionAPI, _nudgeManager: Nudg
   registerTurnEndHandler("enforcement-dreamer", 80, async (event, ctx) => {
     await dreamerHandler(pi, event, ctx);
   });
-  registerTurnEndHandler("enforcement-feedback", 60, async (_event, ctx) => {
-    await feedbackHandler(pi, null as any, ctx);
+  registerTurnEndHandler("enforcement-feedback", 60, async (event, ctx) => {
+    await feedbackHandler(pi, event, ctx);
   });
-  registerTurnEndHandler("enforcement-reflection", 50, async (_event, ctx) => {
-    await reflectionHandler(pi, null as any, ctx);
+  registerTurnEndHandler("enforcement-reflection", 50, async (event, ctx) => {
+    await reflectionHandler(pi, event, ctx);
   });
 
   // ── turn_end: main enforcement loop ──
@@ -136,7 +136,7 @@ function registerCompactAndSessionHandlers(pi: ExtensionAPI, _nudgeManager: Nudg
     await guard(
       "claim-tracker",
       async () => {
-        const contradictions = processAgentResponse(msgText, ctx, getState(ctx).currentTurn);
+        const contradictions = await processAgentResponse(msgText, ctx, getState(ctx).currentTurn);
         if (contradictions.length > 0) {
           sendEnforcementWhisper(pi, ctx, formatContradictionWhisper(contradictions));
         }

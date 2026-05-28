@@ -1,20 +1,26 @@
 /**
- * Test suite for claim-tracker (P3.2 Lie-Detector Pattern)
+ * Test suite for claim-tracker — LLM-based cross-turn contradiction detection
  *
  * Validates:
- * - Claim extraction from agent responses
- * - Cross-turn contradiction detection
+ * - Claim extraction from agent responses (sync fallback path)
+ * - Cross-turn contradiction detection (async, heuristic fallback)
  * - Formatting and edge cases
+ *
+ * The async functions (claimsContradict, detectContradictions) test the
+ * heuristic fallback path since no real ExtensionContext is available.
  */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-// Dynamic import of the TypeScript source via tsimp or direct JS
-// Since we're testing the algorithm, we import via the built module
-import { extractClaims, claimsContradict, detectContradictions, formatContradictionWhisper } from "../../dist/lib/claim-tracker.js";
+import {
+  extractClaims,
+  claimsContradict,
+  detectContradictions,
+  formatContradictionWhisper,
+} from "../../dist/lib/claim-tracker.js";
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────
 
 function makeClaim(entity, claim, polarity, turn = 1) {
   return {
@@ -28,14 +34,14 @@ function makeClaim(entity, claim, polarity, turn = 1) {
   };
 }
 
-// ── Tests ────────────────────────────────────────────────────────────────────
+// ── Tests ────────────────────────────────────────────────────────────────
 
-describe("Claim Extractor", () => {
+describe("Claim Extractor (sync fallback)", () => {
   it("extracts claims from technical response", () => {
     const text = "The API returns a list of users. The database schema needs migration.";
     const claims = extractClaims(text);
     assert.ok(claims.length >= 2, `Expected ≥2 claims, got ${claims.length}`);
-    assert.ok(claims.some((c) => c.entity.includes("api") || c.entity.includes("API")));
+    assert.ok(claims.some((c) => c.entity === "api" || c.entity === "the api"));
     assert.ok(claims.some((c) => c.entity.includes("database")));
   });
 
@@ -45,10 +51,9 @@ describe("Claim Extractor", () => {
     assert.equal(claims.length, 0, "Should not extract claims from questions/commands");
   });
 
-  it("skips meta-commentary", () => {
+  it("skips first-person meta-commentary", () => {
     const text = "I think the function is correct. I believe the fix works. The module exports a class.";
     const claims = extractClaims(text);
-    // Only the last sentence should be extracted
     assert.equal(claims.length, 1, "Should only extract factual claim, not opinions");
     assert.ok(claims[0].entity.includes("module"));
   });
@@ -82,33 +87,35 @@ describe("Claim Extractor", () => {
   });
 });
 
-describe("Contradiction Detection", () => {
-  it("detects opposite polarity on same entity", () => {
+describe("Contradiction Detection (async, heuristic fallback)", () => {
+  it("detects opposite polarity on same entity", async () => {
     const claimA = makeClaim("api", "supports pagination", "positive", 1);
     const claimB = makeClaim("api", "does not support pagination", "negative", 5);
-    assert.ok(claimsContradict(claimA, claimB));
+    assert.ok(await claimsContradict(claimA, claimB, undefined));
   });
 
-  it("ignores same polarity (not a contradiction)", () => {
+  it("ignores same polarity (not a contradiction)", async () => {
     const claimA = makeClaim("api", "supports pagination", "positive", 1);
     const claimB = makeClaim("api", "is well designed", "positive", 5);
-    assert.ok(!claimsContradict(claimA, claimB));
+    // Same polarity → early return false
+    assert.ok(!(await claimsContradict(claimA, claimB, undefined)));
   });
 
-  it("ignores different entities", () => {
+  it("ignores different entities", async () => {
     const claimA = makeClaim("api", "supports pagination", "positive", 1);
     const claimB = makeClaim("database", "does not support pagination", "negative", 5);
-    assert.ok(!claimsContradict(claimA, claimB));
+    // Different entity → early return false
+    assert.ok(!(await claimsContradict(claimA, claimB, undefined)));
   });
 
-  it("requires sufficient token overlap", () => {
+  it("requires sufficient token overlap", async () => {
     const claimA = makeClaim("api", "supports pagination", "positive", 1);
     const claimB = makeClaim("api", "does not work with python", "negative", 5);
-    // Low token overlap = different topic, not a contradiction
-    assert.ok(!claimsContradict(claimA, claimB));
+    // Low token overlap → different topic, not a contradiction
+    assert.ok(!(await claimsContradict(claimA, claimB, undefined)));
   });
 
-  it("findContradictions returns matching pairs", () => {
+  it("findContradictions returns matching pairs", async () => {
     const history = [
       makeClaim("api", "supports pagination", "positive", 1),
       makeClaim("function", "returns a promise", "positive", 2),
@@ -117,7 +124,7 @@ describe("Contradiction Detection", () => {
       makeClaim("api", "does not support pagination", "negative", 5),
       makeClaim("function", "is async", "positive", 5),
     ];
-    const results = detectContradictions(newClaims, history);
+    const results = await detectContradictions(newClaims, history, undefined);
     assert.equal(results.length, 1);
     assert.equal(results[0].new.entity, "api");
   });

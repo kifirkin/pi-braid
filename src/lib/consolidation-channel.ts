@@ -14,6 +14,7 @@ import { CONSOLIDATED_HINTS_FILE } from "./braid-paths.js";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { extractSOP } from "./sop-extractor.js";
+import { CRITICS } from "./critic-registry.js";
 
 const log = createLogger("consolidation");
 
@@ -301,62 +302,23 @@ export function executeConsolidation(episode: {
   return null;
 }
 
-// ── Hint Quality Filter ─────────────────────────────────────────────────────
-
-/**
- * Patterns that indicate a hint is too generic to be useful.
- * These are debugging/development clichés that provide zero information value
- * when presented as behavioral hints across sessions.
- */
-const GENERIC_STEP_PATTERNS = [
-  /^reproduce\s*bug$/i,
-  /^locate\s*root\s*cause$/i,
-  /^apply\s*fix$/i,
-  /^debug$/i,
-  /^isolate\s*(issue|problem|component)?$/i,
-  /^identify\s*(issue|problem|bug)?$/i,
-  /^fix\s*(it|the\s*issue|the\s*problem|the\s*bug)?$/i,
-  /^test\s*(the\s*fix|solution)?$/i,
-  /^verify\s*(the\s*fix|solution)?$/i,
-  /^check\s*(result|output|it)?$/i,
-];
-
-/** The classic three-step generic debugging cliché. */
-const GENERIC_DEBUG_TRIAD = [/^reproduce\s*bug$/i, /^locate\s*root\s*cause$/i, /^apply\s*fix$/i];
+// ── Hint Quality Filter (triple-critic) ──────────────────────────────────────
 
 /**
  * Check whether a hint's steps are too generic to provide value.
- * Rejects hints where all steps match known generic debugging patterns,
- * or where the classic "Reproduce → Locate → Apply" triad is detected.
- * Also rejects hints with fewer than 2 substantive (non-generic) steps.
+ *
+ * Uses the triple-critic system via CRITICS.hintQualityFallback for the
+ * sync path (heartbeat tick). The heuristic regex logic (previously inline
+ * as GENERIC_STEP_PATTERNS + GENERIC_DEBUG_TRIAD) is now consolidated in
+ * critic-registry.ts.
+ *
+ * For async contexts with ExtensionContext, use assessHintQuality() instead,
+ * which calls classify() with CRITICS.hintQuality for three-tier fallback.
+ *
+ * Replaces 14 inline regex patterns that detected debugging clichés.
  */
 function isHintTooGeneric(task: string, steps: string[]): boolean {
-  if (!steps || steps.length === 0) return true;
-
-  // Check for the classic generic triad pattern (any variation)
-  const stepTexts = steps.map((s) => s.trim().toLowerCase());
-  let triadMatches = 0;
-  for (const pattern of GENERIC_DEBUG_TRIAD) {
-    if (stepTexts.some((s) => pattern.test(s))) triadMatches++;
-  }
-  if (triadMatches >= 3) return true;
-
-  // Count how many steps are just generic patterns
-  const genericCount = steps.filter((s) =>
-    GENERIC_STEP_PATTERNS.some((p) => p.test(s.trim())),
-  ).length;
-
-  // If more than half the steps are generic clichés, reject
-  if (genericCount >= steps.length * 0.5) return true;
-
-  // Reject if task description is just a file-specific error fix
-  if (
-    /^(fix|resolve|address)\s+\w+\s+(error|issue|bug|warning)\s+in\s+\S+\.\w+$/i.test(task.trim())
-  ) {
-    return true;
-  }
-
-  return false;
+  return CRITICS.hintQualityFallback(task, steps) === "no";
 }
 
 // ── Heartbeat Integration ──────────────────────────────────────────────────

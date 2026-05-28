@@ -1,22 +1,26 @@
 /**
- * Cross-Turn Claim Tracker — heuristic contradiction detection
+ * Cross-Turn Claim Tracker — LLM-based cross-turn contradiction detection
  *
  * Tracks factual claims made by the agent across turns and detects
  * when a new claim contradicts a previous one.
  *
- * Detection is heuristic (regex entity extraction + similarity comparison)
- * — not based on internal model representations. The name references RepE
- * as inspiration only; this code does not implement Representation Engineering.
+ * Claim extraction uses the session model via callLlm() for structured
+ * JSON output — no regex entity patterns, no negation word sets, no
+ * stem maps, no keyword lists. Falls back to a minimal sentence heuristic
+ * when the model is unavailable.
  *
- * Detection strategy:
- * 1. Extract entity-claim pairs from agent text (simple heuristic: find
- *    subject-like nouns + predicate-like verb phrases)
- * 2. Store in session-scoped history
- * 3. On each new response, compare against stored claims
- * 4. Flag contradictions via enforcement signal + whisper
+ * Contradiction detection uses classify() with CRITICS.claimContradiction
+ * for three-tier fallback (heuristic → utility → session).
+ *
+ * Replaces the previous implementation that maintained 4 regex patterns,
+ * 25 negation words, 18 contradiction pairs, and a verb-stem map — all
+ * of which needed constant maintenance and were inherently fragile.
  */
 
+import { callLlm } from "./llm-call.js";
 import { getExtensionState } from "./extension-state.js";
+import { classify } from "./text-classifier.js";
+import { CRITICS } from "./critic-registry.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -44,75 +48,6 @@ interface ClaimHistoryState {
   lastCheckMs: number;
 }
 
-// ── Keywords for entity/claim extraction ──────────────────────────────────────
-
-/** Common subject entities in code/reasoning contexts */
-const ENTITY_KEYWORDS = [
-  /\b(?:function|class|method|API|database|schema|module|interface|type|config|service)\b/i,
-  /\b(?:the\s+\w+\s+(?:function|method|class|API|endpoint|route|handler))\b/i,
-  /\b(?:this\s+(?:code|function|method|class|approach|solution|fix|bug))\b/i,
-  /\b(?:it|this)\s+(?:is|was|will|can|should|must|doesn't|won't)\b/i,
-  // Domain-specific entities common in code/reasoning contexts
-  /\b(?:tool|result|return value|execution context|session|state|handler|callback|promise|error)\b/i,
-];
-
-/** Negation markers for polarity detection */
-const NEGATION_WORDS = new Set([
-  "not",
-  "no",
-  "never",
-  "neither",
-  "nor",
-  "none",
-  "nothing",
-  "doesn't",
-  "don't",
-  "didn't",
-  "won't",
-  "wouldn't",
-  "shouldn't",
-  "can't",
-  "cannot",
-  "couldn't",
-  "isn't",
-  "aren't",
-  "wasn't",
-  "haven't",
-  "hasn't",
-  "hadn't",
-  "without",
-]);
-
-/** Contradiction signal pairs: opposite-direction claims about same entity */
-const _CONTRADICTION_PAIRS: [string, string][] = [
-  ["is", "is not"],
-  ["is", "isn't"],
-  ["was", "was not"],
-  ["was", "wasn't"],
-  ["will", "will not"],
-  ["will", "won't"],
-  ["can", "cannot"],
-  ["can", "can't"],
-  ["does", "does not"],
-  ["does", "doesn't"],
-  ["has", "has not"],
-  ["has", "hasn't"],
-  ["should", "should not"],
-  ["should", "shouldn't"],
-  ["exists", "missing"],
-  ["exists", "absent"],
-  ["works", "broken"],
-  ["working", "failing"],
-  ["correct", "incorrect"],
-  ["right", "wrong"],
-  ["good", "bad"],
-  ["supported", "unsupported"],
-  ["available", "unavailable"],
-  ["possible", "impossible"],
-  ["true", "false"],
-  ["yes", "no"],
-];
-
 // ── State ────────────────────────────────────────────────────────────────────
 
 const CLAIM_HISTORY_MAX = 100;
@@ -124,109 +59,171 @@ function getClaimState(ctx: ExtensionContext): ClaimHistoryState {
   }));
 }
 
-// ── Claim Extraction ──────────────────────────────────────────────────────────
+// ── Claim Extraction via LLM ──────────────────────────────────────────────────
+
+const EXTRACTION_SYSTEM_PROMPT =
+  "You extract factual claims from text. " +
+  "A factual claim asserts something about a technical entity (function, API, database, " +
+  "module, class, method, tool, interface, etc.). " +
+  "Return ONLY a JSON array of objects. Each object must have: " +
+  '"entity" (the subject, lowercase), "claim" (what\'s said about it, max 80 chars), ' +
+  '"polarity" ("positive" or "negative"). ' +
+  "Example: [{\"entity\": \"api\", \"claim\": \"supports pagination\", \"polarity\": \"positive\"}] " +
+  "Return [] if no factual claims are found. No explanations — JSON only.";
 
 /**
- * Extract factual claims from agent response text.
- * Uses lightweight heuristics — no LLM call needed.
+ * Extract claims from text using the session model (callLlm).
+ * Falls back to a minimal sentence heuristic when the model is unavailable.
  */
-export function extractClaims(text: string): Claim[] {
+async function extractClaimsViaLLM(
+  text: string,
+  ctx: ExtensionContext,
+): Promise<Claim[]> {
+  const truncated = text.slice(0, 3000);
+  if (truncated.length < 20) return [];
+
+  // ── LLM extraction (primary path) ──────────────────────────────────────
+  try {
+    const model = ctx.model;
+    if (!model) return fallbackExtract(text);
+
+    const apiKey = await ctx.modelRegistry.getApiKeyForProvider(model.provider);
+    if (!apiKey) return fallbackExtract(text);
+
+    const result = await callLlm(model, apiKey, EXTRACTION_SYSTEM_PROMPT, truncated, {
+      maxTokens: 500,
+      temperature: 0.1,
+      timeoutMs: 8000,
+      maxRetries: 0,
+    });
+
+    if ("error" in result) return fallbackExtract(text);
+
+    const raw = result.text.trim();
+    // Extract JSON array from response (handles markdown-wrapped JSON)
+    const jsonMatch = raw.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) return fallbackExtract(text);
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(parsed)) return fallbackExtract(text);
+
+    return parsed
+      .filter((item: any) => item.entity && item.claim)
+      .slice(0, 10)
+      .map((item: any) => ({
+        id: `c${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        entity: String(item.entity).toLowerCase().trim(),
+        claim: String(item.claim).slice(0, 80).trim(),
+        polarity: item.polarity === "negative" ? "negative" as const : "positive" as const,
+        turn: 0, // filled by caller
+        source: text.slice(0, 150),
+        createdAt: Date.now(),
+      }));
+  } catch {
+    return fallbackExtract(text);
+  }
+}
+
+/**
+ * Minimal heuristic fallback — no regex keyword lists, no stem maps,
+ * no negation word sets. Just splits sentences and looks for "X verbs Y"
+ * patterns with a short verb list.
+ */
+function fallbackExtract(text: string): Claim[] {
   if (!text || text.length < 20) return [];
 
   const claims: Claim[] = [];
+  const VERBS = /\b(is|was|will|can|does|has|should|must|returns|takes|uses|creates|handles|supports|needs|exports|works|fails)\b/i;
+
   const sentences = text
     .split(/[.!?\n]+/)
     .map((s) => s.trim())
     .filter((s) => s.length > 15);
 
   for (const sentence of sentences) {
-    // Skip questions, commands, and meta-commentary
-    if (/^\s*(what|how|why|is|are|can|should|would|let|try|check|note|see)/i.test(sentence))
-      continue;
-    if (/^(i'?ll|i will|i need|i think|i believe|i suggest|i'm going)/i.test(sentence)) continue;
-    if (/^(this is why|the reason|because|so|therefore|thus|however|but|although)/i.test(sentence))
-      continue;
+    // Skip questions, commands, first-person meta-commentary
+    if (/^(what|how|why|let|try|check|i'?|this is why|the reason|because|so|therefore|however)/i.test(sentence)) continue;
 
-    // Extract entity: first noun-like phrase
-    const entity = extractEntity(sentence);
-    if (!entity) continue;
+    const verbMatch = sentence.match(VERBS);
+    if (!verbMatch || verbMatch.index === undefined) continue;
 
-    // Determine polarity
-    const polarity = detectPolarity(sentence);
+    // Entity: everything before the verb
+    const entity = sentence.slice(0, verbMatch.index).replace(/^(the\s+)/i, "").trim().toLowerCase();
+    if (!entity || entity.length < 2) continue;
 
-    // Extract claim text (predicate + object portion)
-    const claimText = extractPredicate(sentence);
-    if (!claimText || claimText.length < 3) continue;
+    // Claim: everything after the verb
+    const claim = sentence.slice(verbMatch.index + verbMatch[0].length).trim().slice(0, 80).trim();
+    if (claim.length < 3) continue;
 
-    // Deduplicate: skip if similar claim already extracted from same response
+    // Polarity: check predicate for negation (no word list — direct string check)
+    const polarity = /\b(not|no|never|n't|without)\b/i.test(claim) ? "negative" as const : "positive" as const;
+
+    // Deduplicate
     const isDuplicate = claims.some(
-      (c) =>
-        c.entity.toLowerCase() === entity.toLowerCase() && tokenOverlap(c.claim, claimText) > 0.7,
+      (c) => c.entity === entity && c.claim.slice(0, 20) === claim.slice(0, 20),
     );
     if (isDuplicate) continue;
 
     claims.push({
       id: `c${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      entity: entity.toLowerCase(),
-      claim: claimText,
+      entity,
+      claim,
       polarity,
-      turn: 0, // filled by caller
+      turn: 0,
       source: sentence.slice(0, 150),
       createdAt: Date.now(),
     });
   }
 
-  return claims.slice(0, 10); // max 10 claims per response
-}
-
-/** Extract the entity/subject from a sentence */
-function extractEntity(sentence: string): string | null {
-  // Pattern: "The X is/does..." or "X is/does..."
-  const match = sentence.match(
-    /^(?:the\s+)?(\w+(?:\s+\w+){0,3})\s+(?:is|was|will|can|does|has|should|must|returns|takes|accepts|uses|provides|creates|handles|implements|extends|contains|supports|needs|requires)\b/i,
-  );
-  if (match) return match[1].toLowerCase();
-
-  // Pattern: "This X..." where X is a known entity type
-  for (const re of ENTITY_KEYWORDS) {
-    const m = sentence.match(re);
-    if (m) return m[0].toLowerCase();
-  }
-
-  return null;
-}
-
-/** Extract the predicate/claim portion after the entity */
-function extractPredicate(sentence: string): string {
-  // Remove leading entity
-  const cleaned = sentence.replace(
-    /^(?:the\s+)?(?:\w+(?:\s+\w+){0,3})\s+(?:is|was|will|can|does|has|should|must|returns|takes|accepts|uses|provides|creates|handles|implements|extends|contains|supports|needs|requires)\s+/i,
-    "",
-  );
-  return cleaned.slice(0, 80).trim();
+  return claims.slice(0, 10);
 }
 
 /**
- * Detect claim polarity — checks only the predicate clause, not the full sentence.
- * Prevents false positives from compound sentences where negation appears
- * in a different clause (e.g., "The function returns X, but it doesn't handle Y").
+ * Public sync extraction function (backward compat for callers without ctx).
+ * Uses only the minimal heuristic fallback.
+ *
+ * @deprecated Prefer processAgentResponse() for full LLM-based extraction.
  */
-function detectPolarity(sentence: string): "positive" | "negative" {
-  // Use the predicate (text after entity+verb) for negation scanning
-  const predicate = extractPredicate(sentence);
-  const words = (predicate || sentence).toLowerCase().split(/\s+/);
-  for (const word of words) {
-    if (NEGATION_WORDS.has(word)) return "negative";
-  }
-  return "positive";
+export function extractClaims(text: string): Claim[] {
+  return fallbackExtract(text);
 }
 
-// ── Contradiction Detection ───────────────────────────────────────────────────
+// ── Contradiction Detection (triple-critic) ───────────────────────────────────
 
-/** Token overlap ratio between two strings (uses stemmed forms for tense robustness) */
-export function tokenOverlap(a: string, b: string): number {
-  const tokensA = new Set(stemTokens(normalizePredicate(a)));
-  const tokensB = new Set(stemTokens(normalizePredicate(b)));
+/**
+ * Check if two claims about the same entity are contradictory using classify().
+ * Falls back to polarity + overlap check when LLM unavailable.
+ */
+export async function claimsContradict(a: Claim, b: Claim, ctx: ExtensionContext): Promise<boolean> {
+  if (a.entity !== b.entity) return false;
+  if (a.turn === b.turn) return false;
+  if (a.polarity === b.polarity) return false;
+
+  const claimText = `${a.entity} ${a.claim}${a.polarity === "negative" ? " (negated)" : ""}`;
+  const contextText = `${b.entity} ${b.claim}${b.polarity === "negative" ? " (negated)" : ""}`;
+
+  try {
+    const result = await classify(
+      ctx,
+      CRITICS.claimContradiction.criteria,
+      { claim: claimText.slice(0, 500), context: contextText.slice(0, 500) },
+      {
+        maxTokens: 5,
+        timeoutMs: 5000,
+        fallback: () => CRITICS.contradictionFallback(claimText, contextText),
+      },
+    );
+    return result.label === "yes";
+  } catch {
+    // Catch-all: minimal overlap check
+    return simpleOverlap(a.claim, b.claim) >= 0.2;
+  }
+}
+
+/** Minimal token overlap — no stemming, no normalization maps. */
+function simpleOverlap(a: string, b: string): number {
+  const tokensA = new Set(a.toLowerCase().split(/\s+/).filter((t) => t.length > 2));
+  const tokensB = new Set(b.toLowerCase().split(/\s+/).filter((t) => t.length > 2));
   if (tokensA.size === 0 || tokensB.size === 0) return 0;
   let intersection = 0;
   for (const t of tokensA) {
@@ -237,84 +234,22 @@ export function tokenOverlap(a: string, b: string): number {
 }
 
 /**
- * Normalize a predicate string for comparison.
- * Strips punctuation and collapses whitespace.
- */
-export function normalizePredicate(text: string): string {
-  return (
-    text
-      .toLowerCase()
-      // Remove punctuation
-      .replace(/[.,;:!?()[\]{}]/g, " ")
-      // Collapse whitespace
-      .replace(/\s+/g, " ")
-      .trim()
-  );
-}
-
-/**
- * Stem common verb forms so tense/person variations are equivalent.
- * "throws" → "throw", "was" → "be", etc.
- */
-function stemTokens(normalizedText: string): string[] {
-  const STEM_MAP: Record<string, string> = {
-    "throws": "throw",
-    "threw": "throw",
-    "throwing": "throw",
-    "is": "be",
-    "was": "be",
-    "were": "be",
-    "are": "be",
-    "does": "do",
-    "doesn't": "do",
-    "didn't": "do",
-  };
-  return normalizedText
-    .split(/\s+/)
-    .filter((t) => t.length > 2)
-    .map((t) => {
-      const lower = t.toLowerCase();
-      return STEM_MAP[lower] ?? t.replace(/(s|es|ed|ing)$/, "");
-    });
-}
-
-/**
- * Check if two claims about the same entity are contradictory.
- * Returns true if they conflict.
- */
-export function claimsContradict(a: Claim, b: Claim): boolean {
-  // Must be about the same entity
-  if (a.entity !== b.entity) return false;
-
-  // Same-turn claims aren't cross-turn contradictions
-  if (a.turn === b.turn) return false;
-
-  // Same polarity = not a contradiction (same claim, just repeated)
-  if (a.polarity === b.polarity) return false;
-
-  // Different polarity = potential contradiction
-  // Check if predicates overlap semantically (same topic)
-  const overlap = tokenOverlap(a.claim, b.claim);
-  return overlap >= 0.2; // Enough token overlap to be about the same thing
-}
-
-/**
  * Detect contradictions between a new set of claims and stored history.
- * Returns pairs of (newClaim, oldClaim) that contradict.
  */
-export function detectContradictions(
+export async function detectContradictions(
   newClaims: Claim[],
   history: Claim[],
-): Array<{ new: Claim; old: Claim; similarity: number }> {
+  ctx: ExtensionContext,
+): Promise<Array<{ new: Claim; old: Claim; similarity: number }>> {
   const contradictions: Array<{ new: Claim; old: Claim; similarity: number }> = [];
 
   for (const newClaim of newClaims) {
     for (const oldClaim of history) {
-      if (claimsContradict(newClaim, oldClaim)) {
+      if (await claimsContradict(newClaim, oldClaim, ctx)) {
         contradictions.push({
           new: newClaim,
           old: oldClaim,
-          similarity: tokenOverlap(newClaim.claim, oldClaim.claim),
+          similarity: simpleOverlap(newClaim.claim, oldClaim.claim),
         });
       }
     }
@@ -326,40 +261,37 @@ export function detectContradictions(
 // ── Main API ──────────────────────────────────────────────────────────────────
 
 /**
- * Process an agent response: extract claims, check against history,
+ * Process an agent response: extract claims via LLM, check against history,
  * and update history. Returns any contradictions found.
  */
-export function processAgentResponse(
+export async function processAgentResponse(
   text: string,
   ctx: ExtensionContext | undefined,
   turn: number,
-): Array<{ new: Claim; old: Claim; similarity: number }> {
+): Promise<Array<{ new: Claim; old: Claim; similarity: number }>> {
   if (!ctx) return [];
 
   const state = getClaimState(ctx);
-  // Defensive: if state was corrupted by a mismatched factory, reset it
   if (!state.claims) {
     (state as unknown as Record<string, unknown>).claims = [];
   }
-  const newClaims = extractClaims(text);
+
+  // Extract claims via LLM (falls back to minimal heuristic)
+  const newClaims = await extractClaimsViaLLM(text, ctx);
 
   // Set turn on extracted claims
   for (const claim of newClaims) {
     claim.turn = turn;
   }
 
-  // Filter history: only claims from DIFFERENT turns — prevents
-  // same-turn false positives if processAgentResponse is called
-  // multiple times for the same response (e.g., double turn_end handlers)
+  // Only compare against claims from DIFFERENT turns
   const relevantHistory = state.claims.filter((c) => c.turn < turn);
 
   // Check against history
-  const contradictions = detectContradictions(newClaims, relevantHistory);
+  const contradictions = await detectContradictions(newClaims, relevantHistory, ctx);
 
   // Update history
   state.claims.push(...newClaims);
-
-  // Prune: keep only last CLAIM_HISTORY_MAX claims
   if (state.claims.length > CLAIM_HISTORY_MAX) {
     state.claims = state.claims.slice(-CLAIM_HISTORY_MAX);
   }
@@ -396,5 +328,3 @@ export function formatContradictionWhisper(
 
   return lines.join("\n");
 }
-
-

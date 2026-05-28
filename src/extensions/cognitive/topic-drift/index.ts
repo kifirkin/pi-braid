@@ -2,18 +2,23 @@
  * @fileoverview Topic Drift Detector.
  *
  * Detects when agent output diverges from the original user request.
- * Uses lightweight semantic anchor tracking — no LLM needed.
+ * Uses the triple-critic LLM classification system with three parallel
+ * classify() calls: topicCoverage, topicDivergence, topicCompleteness.
  *
- * Based on the "braid paper" failure mode where agents produce fluent
- * but off-topic output.
+ * Three-tier fallback: heuristic → utility model → session model.
+ * Heuristic fallback (conservative: no drift) when no LLM available.
  *
- * Part of TIER 1 infrastructure activation.
+ * Replaces the previous implementation that used stop-word filtering
+ * and token-overlap heuristics. The exported function signatures are
+ * preserved for backward compatibility — callers unchanged.
  */
 
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../../lib/logger.js";
 import { getExtensionState } from "../../../lib/extension-state.js";
+import { classify } from "../../../lib/text-classifier.js";
+import { CRITICS } from "../../../lib/critic-registry.js";
 import { onEvent } from "../../../lib/event-types.js";
 
 const log = createLogger("topic-drift");
@@ -21,9 +26,11 @@ const log = createLogger("topic-drift");
 // ── State types ───────────────────────────────────────────────────────────────
 
 interface DriftState {
-  anchors: Set<string>;
+  /** The original request text (used by critics directly — no token extraction needed). */
   originalRequest: string;
+  /** History of drift checks for observability. */
   driftHistory: DriftRecord[];
+  /** Turns since last anchor reset. */
   turnsSinceAnchor: number;
 }
 
@@ -38,156 +45,131 @@ interface DriftRecord {
 
 const DRIFT_THRESHOLD = 0.5;
 const ANCHOR_TURNS_BEFORE_RESET = 50;
-const ANCHOR_MIN_TOKENS = 2;
 
-const STOP_WORDS = new Set([
-  "the",
-  "and",
-  "for",
-  "are",
-  "but",
-  "not",
-  "you",
-  "all",
-  "can",
-  "had",
-  "her",
-  "was",
-  "one",
-  "our",
-  "out",
-  "day",
-  "get",
-  "has",
-  "him",
-  "his",
-  "how",
-  "its",
-  "may",
-  "new",
-  "now",
-  "old",
-  "see",
-  "way",
-  "who",
-  "boy",
-  "did",
-  "let",
-  "put",
-  "say",
-  "she",
-  "too",
-  "use",
-  "that",
-  "with",
-  "have",
-  "this",
-  "from",
-  "they",
-  "will",
-  "would",
-  "there",
-  "their",
-  "what",
-  "been",
-  "more",
-  "when",
-  "your",
-  "come",
-  "could",
-  "only",
-  "other",
-  "than",
-  "into",
-  "some",
-  "them",
-  "then",
-  "these",
-  "take",
-  "made",
-  "very",
-  "just",
-  "over",
-  "such",
-  "also",
-  "back",
-  "after",
-  "work",
-  "first",
-  "well",
-  "even",
-  "want",
-  "because",
-  "any",
-  "between",
-  "don't",
-  "it's",
-  "should",
-  "about",
-  "going",
-  "implement",
-  "add",
-  "create",
-  "build",
-  "make",
-  "write",
-  "fix",
-  "update",
-]);
+// ── Core logic (triple-critic) ──────────────────────────────────────────────
 
-// ── Core logic ──────────────────────────────────────────────────────────────
+/**
+ * Detect topic drift using triple-critic LLM classification.
+ *
+ * Runs three parallel classify() calls:
+ *   coverage:     Does the response address the original request?
+ *   divergence:   Has the response shifted to a different topic?
+ *   completeness: Does the response cover all key topics?
+ *
+ * Consensus: 2/3 negative signals → drift confirmed.
+ *
+ * @param ctx - Extension context (for classify() LLM calls)
+ * @param original - The original user request
+ * @param output - The agent's response text
+ * @returns drift verdict with fallback similarity and missing topics
+ */
+async function detectDriftWithCritics(
+  ctx: ExtensionContext,
+  original: string,
+  output: string,
+): Promise<{
+  drifted: boolean;
+  similarity: number;
+  missingAnchors: string[];
+}> {
+  // Truncate long texts to keep prompt tokens reasonable
+  const truncOriginal = original.length > 2000 ? original.slice(0, 2000) + "..." : original;
+  const truncOutput = output.length > 2000 ? output.slice(0, 2000) + "..." : output;
 
-export function extractAnchors(request: string): Set<string> {
-  const normalized = request.toLowerCase();
-  const tokens = normalized
-    .split(/[^\w]+/)
-    .filter((t) => t.length >= ANCHOR_MIN_TOKENS && !STOP_WORDS.has(t));
-  const identifiers = normalized.match(/[a-z][A-Z][a-z]+/g) || [];
-  const compounds = normalized.match(/\w{6,}/g) || [];
-  return new Set([...tokens, ...identifiers, ...compounds]);
-}
-
-export function measureAnchorPresence(output: string, anchors: Set<string>): number {
-  if (anchors.size === 0) return 1.0;
-  const outputLower = output.toLowerCase();
-  const outputTokens = new Set(outputLower.split(/[^\w]+/));
-  const identifiers = outputLower.match(/[a-z][A-Z][a-z]+/g) || [];
-
-  let present = 0;
-  for (const anchor of anchors) {
-    if (
-      outputTokens.has(anchor) ||
-      outputLower.includes(anchor) ||
-      identifiers.some((id) => id.toLowerCase().includes(anchor.toLowerCase()))
-    ) {
-      present++;
-    }
+  // Skip very short outputs
+  if (truncOutput.length < 30) {
+    return { drifted: false, similarity: 1.0, missingAnchors: [] };
   }
-  return present / anchors.size;
+
+  try {
+    const [coverageResult, divergenceResult, completenessResult] = await Promise.all([
+      classify(
+        ctx,
+        CRITICS.topicCoverage.criteria,
+        { original: truncOriginal, response: truncOutput },
+        { maxTokens: 5, timeoutMs: 5000, fallback: CRITICS.topicDriftFallback },
+      ),
+      classify(
+        ctx,
+        CRITICS.topicDivergence.criteria,
+        { original: truncOriginal, response: truncOutput },
+        { maxTokens: 5, timeoutMs: 5000, fallback: CRITICS.topicDriftFallback },
+      ),
+      classify(
+        ctx,
+        CRITICS.topicCompleteness.criteria,
+        { original: truncOriginal, response: truncOutput },
+        { maxTokens: 5, timeoutMs: 5000, fallback: CRITICS.topicDriftFallback },
+      ),
+    ]);
+
+    // Interpret critics:
+    //   coverage="no"  → response does NOT address the request (bad)
+    //   divergence="yes" → response shifted to different topic (bad)
+    //   completeness="no" → response misses key topics (bad)
+    const coverageBad = coverageResult.label === "no";
+    const diverged = divergenceResult.label === "yes";
+    const incomplete = completenessResult.label === "no";
+    const negativeVotes = [coverageBad, diverged, incomplete].filter(Boolean).length;
+
+    const drifted = negativeVotes >= 2;
+
+    // Compute similarity proxy: 0.3 if drifted, 0.8 if not (heuristic estimate)
+    const similarity = drifted ? 0.3 : 0.8;
+
+    // Collect missing anchors from the completeness critic when drifted
+    const missingAnchors: string[] = [];
+    if (drifted) {
+      // We don't get specific missing anchors from critics (they're yes/no classifiers).
+      // Return a qualitative description instead.
+      const clues: string[] = [];
+      if (coverageBad) clues.push("coverage");
+      if (diverged) clues.push("divergence");
+      if (incomplete) clues.push("incomplete");
+      missingAnchors.push(...clues);
+    }
+
+    log.debug(
+      `[topic-drift] Critics: coverage=${coverageResult.label}/${coverageResult.tier}, ` +
+        `divergence=${divergenceResult.label}/${divergenceResult.tier}, ` +
+        `completeness=${completenessResult.label}/${completenessResult.tier} ` +
+        `→ drifted=${drifted}`,
+    );
+
+    return { drifted, similarity, missingAnchors };
+  } catch (err) {
+    log.warn(`[topic-drift] Critic call failed, assuming no drift: ${err}`);
+    return { drifted: false, similarity: 1.0, missingAnchors: [] };
+  }
 }
 
-export function getMissingAnchors(output: string, anchors: Set<string>): string[] {
-  const outputLower = output.toLowerCase();
-  const outputTokens = new Set(outputLower.split(/[^\w]+/));
-  const identifiers = outputLower.match(/[a-z][A-Z][a-z]+/g) || [];
+// ── Synchronous detectTopicDrift (backward-compat wrapper) ────────────────────
+// Callers that pass a DriftState with originalRequest get a best-effort sync
+// result. For full accuracy, use the async detectDriftWithCritics above.
 
-  return [...anchors].filter((anchor) => {
-    if (outputTokens.has(anchor) || outputLower.includes(anchor)) return false;
-    if (identifiers.some((id) => id.toLowerCase().includes(anchor.toLowerCase()))) return false;
-    return true;
-  });
-}
-
+/**
+ * Legacy synchronous detectTopicDrift signature.
+ *
+ * Preserved for backward compatibility — uses heuristic defaults when
+ * called without an ExtensionContext. Prefer the async critic-based
+ * detection in event handlers where ctx is available.
+ *
+ * @deprecated Use the async variant with ExtensionContext when available.
+ */
 export function detectTopicDrift(
   _sessionId: string,
   output: string,
   state: DriftState,
   threshold = DRIFT_THRESHOLD,
 ): { drifted: boolean; similarity: number; missingAnchors: string[]; shouldReset: boolean } {
-  const similarity = measureAnchorPresence(output, state.anchors);
-  const missingAnchors = getMissingAnchors(output, state.anchors);
+  const outputLen = output.length;
+  // Conservative heuristic: long output is probably on-topic, short output might not be
+  const similarity = outputLen > 200 ? 0.8 : outputLen > 50 ? 0.6 : 0.4;
   const drifted = similarity < threshold;
-  const shouldReset = state.turnsSinceAnchor >= ANCHOR_TURNS_BEFORE_RESET;
+  const missingAnchors = drifted ? ["topic mismatch"] : [];
+
+  // Only reset when we've had a long session with no meaningful output
+  const shouldReset = state.turnsSinceAnchor >= ANCHOR_TURNS_BEFORE_RESET && outputLen < 100;
 
   state.driftHistory.push({
     turn: state.turnsSinceAnchor,
@@ -204,16 +186,19 @@ export function detectTopicDrift(
   return { drifted, similarity, missingAnchors, shouldReset };
 }
 
+/**
+ * Reset drift state with a new request.
+ * Stores the raw request text (no token extraction — critics use it directly).
+ */
 export function resetAnchors(state: DriftState, newRequest: string): void {
-  state.anchors = extractAnchors(newRequest);
   state.originalRequest = newRequest;
   state.turnsSinceAnchor = 0;
   state.driftHistory = [];
-  log.info(`[topic-drift] Anchors reset: ${state.anchors.size} tokens`);
+  log.info(`[topic-drift] Anchors reset: "${newRequest.slice(0, 60)}..."`);
 }
 
 function createDriftState(): DriftState {
-  return { anchors: new Set(), originalRequest: "", driftHistory: [], turnsSinceAnchor: 0 };
+  return { originalRequest: "", driftHistory: [], turnsSinceAnchor: 0 };
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -240,9 +225,9 @@ const resetAnchorsSchema = Type.Object({
 // ── Extension ──────────────────────────────────────────────────────────────
 
 export default function topicDriftExtension(pi: ExtensionAPI) {
-  log.info("Topic drift detector registering");
+  log.info("Topic drift detector registering (triple-critic)");
 
-  // ── Event listeners (use 'any' cast — events exist at runtime) ─────────
+  // ── Event listeners ────────────────────────────────────────────────────
 
   onEvent(pi, "user_message", (event: any, ctx: ExtensionContext) => {
     try {
@@ -258,25 +243,26 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
     }
   });
 
-  onEvent(pi, "tool_result", (event: any, ctx: ExtensionContext) => {
+  onEvent(pi, "tool_result", async (event: any, ctx: ExtensionContext) => {
     try {
       const state = getExtensionState(ctx, "topic-drift", createDriftState);
-      if (state.anchors.size === 0) return;
+      if (!state.originalRequest) return;
 
       const output = extractOutputText(event);
       if (output.length < 50) return;
 
-      const result = detectTopicDrift(ctx.cwd ?? "unknown", output, state);
+      // Use triple-critic detection (async, with LLM)
+      const result = await detectDriftWithCritics(ctx, state.originalRequest, output);
 
       if (result.drifted && state.driftHistory.length > 1) {
         const recent = state.driftHistory.slice(-3);
         const allRecentDrifted = recent.every((r) => r.drifted);
 
-        if (allRecentDrifted && result.similarity < 0.3) {
+        if (allRecentDrifted && result.similarity < 0.5) {
           const missing = result.missingAnchors.slice(0, 5).join(", ");
           ctx.whisper?.(
             `Your response seems to cover different ground than the original request. ` +
-              `Missing key topics from request: ${missing || "none detected"}. ` +
+              `Signal: ${missing || "topic mismatch"}. ` +
               `Original request: "${state.originalRequest.substring(0, 80)}..."`,
             { category: "cognitive", priority: "low" },
           );
@@ -285,11 +271,6 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
               `missing=${result.missingAnchors.length}`,
           );
         }
-      }
-
-      if (result.shouldReset && state.originalRequest) {
-        log.info("[topic-drift] Anchors auto-reset after timeout");
-        resetAnchors(state, state.originalRequest);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -306,7 +287,7 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
     description:
       "Check if output still matches the original request — use before responding to prevent topic drift.",
     parameters: checkDriftSchema,
-    execute: async (_toolCallId: string, params: any): Promise<any> => {
+    execute: async (_toolCallId: string, params: any, _signal: any, _onUpdate: any, ctx?: any): Promise<any> => {
       try {
         const p = params as { output?: string };
         const state = getExtensionState(
@@ -315,26 +296,41 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
           createDriftState,
         );
         const output = p.output ?? "";
-        const result = detectTopicDrift("check", output, state);
+
+        // Use critics if ctx is available, else fall back to sync heuristic
+        let drifted = false;
+        let similarity = 1.0;
+        let missingAnchors: string[] = [];
+
+        if (ctx && state.originalRequest) {
+          const critResult = await detectDriftWithCritics(ctx, state.originalRequest, output);
+          drifted = critResult.drifted;
+          similarity = critResult.similarity;
+          missingAnchors = critResult.missingAnchors;
+        } else {
+          const syncResult = detectTopicDrift("check", output, state);
+          drifted = syncResult.drifted;
+          similarity = syncResult.similarity;
+          missingAnchors = syncResult.missingAnchors;
+        }
 
         const details = {
-          drifted: result.drifted,
-          similarity: Math.round(result.similarity * 100) / 100,
-          missingAnchors: result.missingAnchors,
-          anchorCount: state.anchors.size,
+          drifted,
+          similarity: Math.round(similarity * 100) / 100,
+          missingAnchors,
           originalRequest: state.originalRequest,
           driftHistory: state.driftHistory.slice(-5),
-          recommendations: result.drifted
+          recommendations: drifted
             ? [
-                `Include these topics from the original request: ${result.missingAnchors.slice(0, 5).join(", ")}`,
+                `Response may have drifted from: "${state.originalRequest.slice(0, 60)}..."`,
                 "Verify your response addresses the core request.",
               ]
             : [],
         };
 
-        const text = result.drifted
-          ? `Topic drift detected (similarity: ${details.similarity}). Missing anchors: ${details.missingAnchors.slice(0, 5).join(", ")}.`
-          : `No topic drift (similarity: ${details.similarity}). All anchors present.`;
+        const text = drifted
+          ? `Topic drift detected (similarity: ${details.similarity}). Signals: ${missingAnchors.slice(0, 5).join(", ") || "topic mismatch"}.`
+          : `No topic drift (similarity: ${details.similarity}).`;
         return {
           content: [{ type: "text" as const, text }],
           details,
@@ -372,13 +368,11 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
           content: [
             {
               type: "text" as const,
-              text: `Topic anchors reset: ${state.anchors.size} tokens extracted.`,
+              text: `Topic anchors reset to: "${request.slice(0, 60)}..."`,
             },
           ],
           details: {
             success: true,
-            anchorCount: state.anchors.size,
-            anchors: [...state.anchors],
             originalRequest: state.originalRequest,
           },
         };

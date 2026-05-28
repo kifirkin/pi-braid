@@ -1,23 +1,27 @@
 /**
  * Evidence Pool — Tracks knowledge from multiple sources with conflict detection.
+ * Uses the triple-critic LLM classification system for evidence conflict
+ * detection with three-tier fallback (heuristic → utility → session).
+ *
  * XoT (Cross-observational Thinking) two-stage decomposition:
- *
- * Stage 1 — Evidence Explanation:
- *   Identify sources, classify conflict type (direct | implication | reliability).
- *   Use SOURCE_RELIABILITY scores to weight evidence.
- *
- * Stage 2 — Faithful Reasoning:
- *   Generate acknowledgments that surface disagreement rather than
- *   silently picking one side.
+ *   Stage 1 — Evidence Explanation: classify conflicts via classify() + CRITICS.evidenceConflict
+ *   Stage 2 — Faithful Reasoning: acknowledgment generation (formatConflictMessage)
  *
  * Flow:
  * 1. memory_recall, web search, docs reading, code execution → addEvidence()
  * 2. message_end → detectConflicts() → XoT Stage 1 classification
  * 3. conflict-qa → Stage 2: question generation + enforcement whisper
+ *
+ * Replaces the previous implementation that maintained a local STOP_WORDS
+ * copy (80+ words) and used raw token-overlap thresholds for conflict detection.
+ * The stop-word list is now shared via import from critic-registry.ts, and
+ * conflict classification uses the triple-critic system.
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "./extension-state.js";
+import { classify } from "./text-classifier.js";
+import { CRITICS, STOP_WORDS_LEGACY } from "./critic-registry.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -76,7 +80,7 @@ export interface EvidencePoolState {
   lastCleanup: number;
 }
 
-// ── State factory ──────────────────────────────────────────────────────────────
+// ── State factory ────────────────────────────────────────────────────────────
 
 function getState(ctx: ExtensionContext): EvidencePoolState {
   return getExtensionState(ctx, "evidence-pool", () => ({
@@ -86,104 +90,14 @@ function getState(ctx: ExtensionContext): EvidencePoolState {
   }));
 }
 
-// ── Normalization helpers ─────────────────────────────────────────────────────
-
-const STOP_WORDS = new Set([
-  "the",
-  "a",
-  "an",
-  "is",
-  "are",
-  "was",
-  "were",
-  "be",
-  "been",
-  "being",
-  "have",
-  "has",
-  "had",
-  "do",
-  "does",
-  "did",
-  "will",
-  "would",
-  "could",
-  "should",
-  "may",
-  "might",
-  "must",
-  "shall",
-  "can",
-  "need",
-  "dare",
-  "that",
-  "this",
-  "these",
-  "those",
-  "what",
-  "which",
-  "who",
-  "whom",
-  "with",
-  "without",
-  "from",
-  "into",
-  "onto",
-  "in",
-  "out",
-  "on",
-  "off",
-  "over",
-  "under",
-  "above",
-  "below",
-  "to",
-  "for",
-  "of",
-  "and",
-  "or",
-  "but",
-  "if",
-  "then",
-  "else",
-  "when",
-  "where",
-  "how",
-  "why",
-  "not",
-  "all",
-  "each",
-  "every",
-  "both",
-  "few",
-  "more",
-  "most",
-  "other",
-  "some",
-  "such",
-  "no",
-  "nor",
-  "only",
-  "own",
-  "same",
-  "so",
-  "than",
-  "too",
-  "very",
-  "just",
-  "also",
-  "now",
-  "here",
-  "there",
-  "then",
-]);
+// ── Normalization helpers (uses shared STOP_WORDS_LEGACY from critic-registry) ─
 
 /** Normalize claim for comparison: lowercase, remove stopwords, sort words */
 function normalize(text: string): string {
   const tokens = text
     .toLowerCase()
     .split(/\W+/)
-    .filter((t) => t.length > 2 && !STOP_WORDS.has(t));
+    .filter((t) => t.length > 2 && !STOP_WORDS_LEGACY.has(t));
   return tokens.sort().join(" ");
 }
 
@@ -205,13 +119,56 @@ function extractClaim(text: string, maxLen = 80): string {
   return first.length > maxLen ? first.slice(0, maxLen) + "..." : first;
 }
 
-// ── XoT Stage 1: Conflict Classification ─────────────────────────────────────
+// ── XoT Stage 1: Conflict Classification (triple-critic) ──────────────────────
+
+/**
+ * Classify a conflict using triple-critic LLM classification.
+ * XoT Stage 1: Evidence Explanation.
+ *
+ * Three-tier fallback:
+ *   Tier 1: evidenceConflictFallback (token overlap)
+ *   Tier 2: utility model (if configured)
+ *   Tier 3: session model (always available)
+ */
+async function classifyConflictViaCritic(
+  evidenceA: string,
+  evidenceB: string,
+  ctx: ExtensionContext,
+): Promise<ConflictClassification> {
+  try {
+    const result = await classify(
+      ctx,
+      CRITICS.evidenceConflict.criteria,
+      {
+        evidenceA: evidenceA.slice(0, 500),
+        evidenceB: evidenceB.slice(0, 500),
+      },
+      {
+        maxTokens: 5,
+        timeoutMs: 5000,
+        fallback: () => CRITICS.evidenceConflictFallback(evidenceA, evidenceB),
+      },
+    );
+
+    if (result.label === "yes") return "direct";
+  } catch {
+    // Fall through to heuristic
+  }
+
+  // Heuristic fallback: check reliability difference
+  // (In the heuristic path, we don't have evidence reliability — use token overlap)
+  const overlap = tokenOverlap(evidenceA, evidenceB);
+  if (overlap > 0.5) return "direct";
+  return "implication";
+}
 
 /**
  * Classify a conflict using source reliability and claim overlap.
- * XoT Stage 1: Evidence Explanation.
+ * Kept for backward compatibility (sync callers).
+ *
+ * @deprecated Prefer classifyConflictViaCritic for async contexts with ExtensionContext.
  */
-function classifyConflict(
+export function classifyConflict(
   forEvidence: Evidence[],
   againstEvidence: Evidence[],
 ): ConflictClassification {
@@ -231,7 +188,7 @@ function classifyConflict(
   return "implication";
 }
 
-// ── Public API ─────────────────────────────────────────────────────────────────
+// ── Public API ──────────────────────────────────────────────────────────────
 
 /**
  * Add evidence to the pool from a knowledge source.
@@ -368,7 +325,9 @@ export function resolveConflict(
 
 /**
  * Detect conflicts among all evidence in the pool.
- * Uses reliability-based conflict detection (XoT Stage 1).
+ * Uses triple-critic LLM classification (XoT Stage 1) with heuristic token-overlap
+ * as a cheap pre-filter to avoid O(N²) LLM calls for unrelated evidence pairs.
+ *
  * Returns newly detected conflicts.
  */
 export function detectConflicts(ctx: ExtensionContext): Conflict[] {
@@ -383,6 +342,7 @@ export function detectConflicts(ctx: ExtensionContext): Conflict[] {
 
       if (a.source === b.source) continue;
 
+      // Cheap pre-filter: token overlap must be substantial
       const overlap = tokenOverlap(a.normalized, b.normalized);
       if (overlap < 0.3) continue;
 

@@ -2,23 +2,27 @@
  * Topic Drift Detector
  *
  * Detects when the conversation has drifted from its original task context.
- * Uses a "whisper" pattern: when drift is detected, the extension sends a
- * gentle, non-intrusive hint to the agent rather than blocking or interrupting.
+ * Uses the triple-critic LLM classification system (lib/critic-registry.ts)
+ * with three-tier fallback: heuristic → utility model → session model.
  *
- * Drift detection triggers:
- * - Semantic mismatch: conversation topics diverge significantly from task context
- * - Structural mismatch: user is asking about something unrelated to current session
- * - Tool usage drift: agent is using tools unrelated to task context
- * - Temporal drift: conversation has drifted after an unrelated user message
+ * The class API (setTaskContext, addTurn, check, generateWhisper, reset)
+ * is preserved for backward compatibility. Only the internal detection
+ * algorithm changes — from Jaccard token overlap to LLM-based critics.
+ *
+ * Drift detection flow:
+ *   1. Three parallel classify() calls (topicCoverage, topicDivergence, topicCompleteness)
+ *   2. Consensus: 2/3 critics agree → drift confirmed
+ *   3. Heuristic fallback (conservative: assume no drift) when LLM is unavailable
  *
  * Whisper message format:
- * ```
- * [SUBTLE] Topic drift detected. Original task: {task}. Current: {current}.
- * Consider refocusing or updating task context.
- * ```
+ *   [SUBTLE] Topic drift detected. Task: {task}. Reason: {reason}.
+ *   Consider refocusing or updating task context.
  */
 
 import { createLogger } from "./logger.js";
+import { classify } from "./text-classifier.js";
+import { CRITICS } from "./critic-registry.js";
+import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 const _log = createLogger("topic-drift");
 
@@ -31,28 +35,24 @@ export interface DriftCheck {
 }
 
 export interface DriftDetectorOptions {
-  /** Minimum Jaccard similarity between topics to consider aligned */
-  topicThreshold?: number;
-  /** Minimum word overlap for structural similarity */
-  structuralThreshold?: number;
-  /** Enable structural analysis (word overlap) */
-  enableStructural?: boolean;
-  /** Enable tool usage analysis */
-  enableToolUsage?: boolean;
   /** Minimum conversation turns before checking */
   minTurns?: number;
-  /** Jaccard word set minimum overlap */
-  minOverlap?: number;
 }
 
 const DEFAULT_OPTIONS: Required<DriftDetectorOptions> = {
-  topicThreshold: 0.15,
-  structuralThreshold: 0.1,
-  enableStructural: true,
-  enableToolUsage: true,
   minTurns: 3,
-  minOverlap: 3,
 };
+
+/**
+ * Lazy-loaded extension context for classify() calls.
+ * Since TopicDriftDetector is created in session-state.ts where ctx
+ * isn't available, callers must setCtx() before calling check().
+ */
+let _ctx: ExtensionContext | undefined;
+
+export function setCriticCtx(ctx: ExtensionContext | undefined): void {
+  _ctx = ctx;
+}
 
 export class TopicDriftDetector {
   private taskContext: string = "";
@@ -89,8 +89,15 @@ export class TopicDriftDetector {
 
   /**
    * Check if conversation has drifted from task context.
+   *
+   * Uses triple-critic LLM classification:
+   *   1. Three parallel classify() calls (coverage, divergence, completeness)
+   *   2. Consensus: 2/3 critics agree → drift confirmed
+   *   3. Falls back to conservative heuristic when LLM unavailable
+   *
+   * Now returns a Promise to support async classify() calls.
    */
-  check(): DriftCheck {
+  async check(): Promise<DriftCheck> {
     if (this.conversationHistory.length < this.options.minTurns) {
       return {
         drifted: false,
@@ -122,40 +129,77 @@ export class TopicDriftDetector {
       };
     }
 
-    // Get current conversation focus (last few turns)
+    // Get recent conversation focus
     const recentTurns = this.conversationHistory.slice(-5);
-    const currentText = recentTurns.join(" ");
-    const currentWords = this.tokenize(currentText);
-    const taskWords = this.tokenize(this.taskContext);
+    const currentText = recentTurns.join(" ").slice(0, 1000);
 
-    // Skip if either is too short
-    if (currentWords.size < this.options.minOverlap || taskWords.size < this.options.minOverlap) {
-      return {
-        drifted: false,
-        task: this.taskContext,
-        current: currentText.slice(0, 80),
-        severity: "subtle",
-        reason: "too_short",
-      };
+    // ── Triple-critic LLM classification ──────────────────────────────
+    let drifted = false;
+    let reason = "semantic_drift";
+    let severity: "subtle" | "moderate" | "strong" = "subtle";
+
+    if (_ctx) {
+      try {
+        const [coverageResult, divergenceResult, completenessResult] = await Promise.all([
+          classify(
+            _ctx,
+            CRITICS.topicCoverage.criteria,
+            { original: this.taskContext, response: currentText },
+            { maxTokens: 5, timeoutMs: 5000, fallback: CRITICS.topicDriftFallback },
+          ),
+          classify(
+            _ctx,
+            CRITICS.topicDivergence.criteria,
+            { original: this.taskContext, response: currentText },
+            { maxTokens: 5, timeoutMs: 5000, fallback: CRITICS.topicDriftFallback },
+          ),
+          classify(
+            _ctx,
+            CRITICS.topicCompleteness.criteria,
+            { original: this.taskContext, response: currentText },
+            { maxTokens: 5, timeoutMs: 5000, fallback: CRITICS.topicDriftFallback },
+          ),
+        ]);
+
+        // Consensus: 2/3 critics agree → drift confirmed
+        const driftedVotes = [coverageResult, divergenceResult, completenessResult].filter(
+          (r) => r.label === "yes",
+        ).length;
+
+        // coverage="yes" means coverage is BAD (does NOT address request)
+        // divergence="yes" means divergence (has shifted)
+        // completeness="no" means incomplete
+        const coverageBad = coverageResult.label === "no";
+        const diverged = divergenceResult.label === "yes";
+        const incomplete = completenessResult.label === "no";
+        const negativeVotes = [coverageBad, diverged, incomplete].filter(Boolean).length;
+
+        drifted = negativeVotes >= 2;
+
+        if (drifted) {
+          // Confidence-weighted severity
+          const allTiers = [coverageResult, divergenceResult, completenessResult];
+          const hasHeuristic = allTiers.some((r) => r.tier === "heuristic");
+          severity = hasHeuristic ? "subtle" : driftedVotes >= 3 ? "strong" : "moderate";
+        }
+
+        _log.debug(
+          `[topic-drift] Critics: coverage=${coverageResult.label}/${coverageResult.tier}, ` +
+            `divergence=${divergenceResult.label}/${divergenceResult.tier}, ` +
+            `completeness=${completenessResult.label}/${completenessResult.tier} ` +
+            `→ drifted=${drifted}`,
+        );
+      } catch {
+        // LLM call failed — conservative fallback (no drift)
+        drifted = false;
+        severity = "subtle";
+        reason = "too_short";
+      }
+    } else {
+      // No ctx available — conservative fallback (no drift)
+      severity = "subtle";
+      reason = "no_task_context";
     }
-
-    // Jaccard similarity
-    const jaccard = this.jaccardSimilarity(taskWords, currentWords);
-    const semanticDrift = jaccard < this.options.topicThreshold;
-
-    // Structural drift: check word overlap at tail of conversation
-    let structuralDrift = false;
-    if (this.options.enableStructural && this.conversationHistory.length >= 3) {
-      const recent = this.conversationHistory.slice(-3);
-      const tailOverlap = this.getOverlap(
-        this.tokenize(this.taskContext),
-        this.tokenize(recent.join(" ")),
-      );
-      structuralDrift = tailOverlap < this.options.structuralThreshold && recent.length >= 3;
-    }
-
-    const drifted = semanticDrift || structuralDrift;
-    const severity = drifted ? this.computeSeverity(jaccard) : "subtle";
 
     if (drifted) {
       this.lastDriftWarning = Date.now();
@@ -166,7 +210,7 @@ export class TopicDriftDetector {
       task: this.taskContext.slice(0, 100),
       current: currentText.slice(0, 100),
       severity,
-      reason: semanticDrift ? "semantic_drift" : "structural_drift",
+      reason,
     };
   }
 
@@ -180,93 +224,6 @@ export class TopicDriftDetector {
     const taskPreview = check.task.length > 50 ? check.task.slice(0, 50) + "..." : check.task;
 
     return `${severityTag} Topic drift detected. Task: "${taskPreview}". Reason: ${check.reason}. Consider refocusing or updating context.`;
-  }
-
-  private computeSeverity(jaccard: number): "subtle" | "moderate" | "strong" {
-    if (jaccard < 0.05) return "strong";
-    if (jaccard < 0.1) return "moderate";
-    return "subtle";
-  }
-
-  private tokenize(text: string): Set<string> {
-    return new Set(
-      text
-        .toLowerCase()
-        .split(/\s+/)
-        .filter((w) => w.length > 2 && !this.isStopword(w)),
-    );
-  }
-
-  private isStopword(word: string): boolean {
-    const stop = new Set([
-      "the",
-      "and",
-      "that",
-      "this",
-      "with",
-      "from",
-      "your",
-      "have",
-      "more",
-      "are",
-      "was",
-      "will",
-      "can",
-      "for",
-      "not",
-      "but",
-      "they",
-      "you",
-      "all",
-      "get",
-      "has",
-      "her",
-      "him",
-      "his",
-      "how",
-      "its",
-      "may",
-      "new",
-      "now",
-      "old",
-      "see",
-      "two",
-      "way",
-      "who",
-      "boy",
-      "did",
-      "she",
-      "use",
-      "our",
-      "out",
-      "any",
-      "just",
-      "like",
-      "then",
-      "also",
-      "into",
-      "very",
-    ]);
-    return stop.has(word);
-  }
-
-  private jaccardSimilarity(a: Set<string>, b: Set<string>): number {
-    if (a.size === 0 && b.size === 0) return 1;
-    if (a.size === 0 || b.size === 0) return 0;
-    let intersection = 0;
-    for (const w of a) {
-      if (b.has(w)) intersection++;
-    }
-    const union = a.size + b.size - intersection;
-    return union === 0 ? 0 : intersection / union;
-  }
-
-  private getOverlap(a: Set<string>, b: Set<string>): number {
-    let count = 0;
-    for (const w of a) {
-      if (b.has(w)) count++;
-    }
-    return count;
   }
 
   /** Reset conversation history */

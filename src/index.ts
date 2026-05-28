@@ -2,21 +2,23 @@
  * pi-braid — metacognitive agent extension suite.
  *
  * Architecture:
- *   Extensions are organized into modules (see src/modules/definitions.ts).
- *   Modules are loaded config-drively via src/modules/loader.ts based on
- *   the `BRAID_MODULES` environment variable or runtime API overrides.
+ *   Each extension is a self-contained factory function registered in
+ *   src/extensions/manifest.ts. The loader (src/modules/loader.ts) resolves
+ *   which extensions to load based on BRAID_MODULES env var, settings.json,
+ *   or runtime API overrides.
  *
- *   This replaces the old flat extension registration. All research tracks
- *   (cognitive, memory, heartbeat, etc.) are now modular and toggleable.
+ *   Extensions are flat — no module grouping abstraction. The `module` tag
+ *   is a convenience label for the subagent toggle commands.
  *
  * Config:
- *   BRAID_MODULES=cognitive,memory,-heartbeat,+evolve
- *   Default: all non-disabled modules enabled.
+ *   BRAID_MODULES=enforcement,-turn-outcome,cognitive
+ *   Default: all non-disabled extensions enabled.
+ *   Reference targets: extension IDs ("enforcement") or module groups ("core").
  *
  * Subagent API:
  *   Researcher subagents can call `/modules-enable`, `/modules-disable`,
  *   `/modules-toggle`, `/modules-list`, `/modules-status`, `/modules-reset`
- *   to control module loading during benchmark experiments.
+ *   to control extension loading during benchmark experiments.
  */
 
 import { readFileSync } from "node:fs";
@@ -42,20 +44,20 @@ const log = createLogger("braid");
 export default async function braidExtension(pi: ExtensionAPI): Promise<void> {
   log.info(`pi-braid v${getVersion()} loading...`);
 
-  // 1. Load modules defined in src/modules/definitions.ts
-  //    Config source: BRAID_MODULES env var (format: +module,-module)
+  // 1. Load extensions from flat manifest
+  //    Config source: BRAID_MODULES env var (format: +id,-id,module-group)
   const report = await loadModules(pi);
 
   if (report.total === 0) {
-    log.warn("No extensions loaded — check BRAID_MODULES config or module definitions.");
+    log.warn("No extensions loaded — check BRAID_MODULES config or manifest.");
   } else {
-    log.info(`Loaded ${report.total} extensions (${report.loaded.length} modules).`);
+    log.info(`Loaded ${report.total} extensions (${report.loaded.length} succeeded).`);
 
-    for (const m of report.loaded) {
-      log.info(`  ● ${m.module} (${m.extensions} extensions)`);
+    for (const l of report.loaded) {
+      log.info(`  ● ${l.id} — ${l.desc}`);
     }
     for (const s of report.skipped) {
-      log.warn(`  ○ ${s.module}/${s.ext || "*"}: ${s.reason}`);
+      log.warn(`  ○ ${s.id}: ${s.reason}`);
     }
   }
 

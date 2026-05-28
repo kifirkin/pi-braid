@@ -54,9 +54,7 @@ export function createSessionState(): SessionState {
     pendingConflictIds: [],
     conflictDetectionTurn: new Map(),
     driftDetector: new TopicDriftDetector({
-      topicThreshold: 0.15,
       minTurns: 4,
-      enableStructural: true,
     }),
   };
 }

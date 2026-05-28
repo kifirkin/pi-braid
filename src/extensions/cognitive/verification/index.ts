@@ -1,413 +1,239 @@
 /**
  * @fileoverview Bidirectional verification tool.
  *
- * Cross-checks agent claims against retrieved context, detects contradictions,
- * unsupported assertions, and hedge word issues. Designed to prevent the
- * "braid paper" failure mode where agents produce fluent but off-topic output.
+ * Cross-checks agent claims against retrieved context using the triple-critic
+ * LLM classification system:
+ *   - claimContradiction:  Does the claim contradict the context?
+ *   - claimSupported:      Is the claim supported by the context?
+ *   - claimOverconfidence: Does the claim contain unwarranted certainty?
+ *   - decompositionComplete: Do subtasks fully cover the parent task?
  *
- * Part of TIER 1 infrastructure activation.
+ * Three-tier fallback (heuristic → utility model → session model) via
+ * lib/text-classifier.ts. The heuristic fallbacks are in lib/critic-registry.ts.
+ *
+ * Replaces the previous implementation that used stop-word filtering,
+ * negation-pair matching tables, and token-overlap heuristics.
  */
 
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../../lib/logger.js";
 import { classify } from "../../../lib/text-classifier.js";
+import { CRITICS } from "../../../lib/critic-registry.js";
 
 const log = createLogger("verification");
 
-// ── Hedge words that need verification ────────────────────────────────────────
-
-const HEDGE_WORDS = [
-  "should",
-  "probably",
-  "likely",
-  "typically",
-  "usually",
-  "always",
-  "never",
-  "must",
-  "guaranteed",
-  "certainly",
-  "definitely",
-  "obviously",
-  "clearly",
-  "everyone",
-  "no one",
-  "all",
-  "none",
-  "impossible",
-  "essential",
-] as const;
-
-const HEDGE_SEVERITY: Record<string, "low" | "medium" | "high"> = {
-  always: "high",
-  never: "high",
-  must: "medium",
-  guaranteed: "high",
-  certainly: "low",
-  definitely: "medium",
-  obviously: "low",
-  clearly: "low",
-  everyone: "medium",
-  no_one: "medium",
-  all: "medium",
-  none: "medium",
-  impossible: "high",
-  essential: "medium",
-  should: "low",
-  probably: "low",
-  likely: "low",
-  typically: "low",
-  usually: "low",
-};
-
-const STOP_WORDS = new Set([
-  // core English stop words
-  "the",
-  "and",
-  "for",
-  "are",
-  "but",
-  "not",
-  "you",
-  "all",
-  "can",
-  "had",
-  "her",
-  "was",
-  "one",
-  "our",
-  "out",
-  "get",
-  "has",
-  "him",
-  "his",
-  "how",
-  "its",
-  "may",
-  "new",
-  "now",
-  "old",
-  "see",
-  "way",
-  "who",
-  "did",
-  "let",
-  "put",
-  "say",
-  "she",
-  "too",
-  "use",
-  "that",
-  "with",
-  "have",
-  "this",
-  "from",
-  "they",
-  "will",
-  "would",
-  "there",
-  "their",
-  "what",
-  "been",
-  "more",
-  "when",
-  "your",
-  "come",
-  "could",
-  "only",
-  "other",
-  "than",
-  "into",
-  "some",
-  "them",
-  "then",
-  "these",
-  "take",
-  "made",
-  "very",
-  "just",
-  "over",
-  "such",
-  "also",
-  "back",
-  "after",
-  "work",
-  "first",
-  "well",
-  "even",
-  "want",
-  "because",
-  "any",
-  "between",
-  "don't",
-  "it's",
-  "should",
-  "about",
-  "going",
-  // missing common stop words that add noise
-  "is",
-  "in",
-  "at",
-  "on",
-  "to",
-  "of",
-  "it",
-  "as",
-  "by",
-  "an",
-  "or",
-  "no",
-  "if",
-  "up",
-  "be",
-  "so",
-  "do",
-  "he",
-  "my",
-  "me",
-  "we",
-  "am",
-  "us",
-  "i'",
-  "its",
-  "has",
-  "can",
-  "was",
-  "had",
-  "were",
-  "been",
-  "being",
-  "does",
-  "done",
-  "doing",
-  // days (accidental stop words from previous list — keep for consistency)
-  "day",
-  "boy",
-]);
-
-// ── Utility Model Criteria ─────────────────────────────────────────────────────
-
-const CONTRADICTION_CRITERIA = {
-  systemPrompt:
-    "You are a contradiction detector. Determine if the given claim contradicts the given " +
-    "context. Consider positive/negative polarity: if the claim says something is true " +
-    "but the context says it is false (or vice versa), that is a contradiction.\n" +
-    "Answer only 'yes' or 'no'. Do not explain.",
-  userPrompt: "Claim: {{claim}}\nContext: {{context}}\nDoes the claim contradict the context?",
-};
-
-/** Heuristic fallback: preserve original negation pattern + MATCH_PAIRS logic */
-function contradictionFallback(claim: string, context: string): string {
-  const claimLower = claim.toLowerCase();
-  const contextLower = context.toLowerCase();
-
-  // Phase 1 (heuristic): Pattern-based negation detection
-  const negationPattern =
-    /\b(not|n't|never|no|isn't|aren't|wasn't|weren't|don't|doesn't|didn't|won't|wouldn't|can't|cannot|couldn't|shouldn't)\s+(\w{3,})/gi;
-
-  const claimNegations: Array<{ word: string; negated: string }> = [];
-  let match: RegExpExecArray | null;
-  while ((match = negationPattern.exec(claimLower)) !== null) {
-    claimNegations.push({ word: match[1], negated: match[2] });
-  }
-  const contextNegations: Array<{ word: string; negated: string }> = [];
-  while ((match = negationPattern.exec(contextLower)) !== null) {
-    contextNegations.push({ word: match[1], negated: match[2] });
-  }
-
-  const claimFeatures = extractFeatures(claim);
-
-  for (const ctxNeg of contextNegations) {
-    for (const cf of claimFeatures) {
-      if (ctxNeg.negated.includes(cf) || cf.includes(ctxNeg.negated)) {
-        return "yes";
-      }
-    }
-  }
-
-  // Phase 2 (heuristic): Hardcoded positive-negation pair matching
-  const MATCH_PAIRS: [string, string][] = [
-    ["works", "doesn't work"],
-    ["works", "fails"],
-    ["supported", "not supported"],
-    ["compatible", "incompatible"],
-    ["can use", "cannot use"],
-    ["is defined", "is not defined"],
-    ["exists", "doesn't exist"],
-    ["succeeds", "fails"],
-    ["passes", "fails"],
-    ["correct", "incorrect"],
-  ];
-
-  for (const [pos, neg] of MATCH_PAIRS) {
-    if (claimLower.includes(pos) && contextLower.includes(neg)) return "yes";
-    if (claimLower.includes(neg) && contextLower.includes(pos)) return "yes";
-  }
-
-  return "no";
-}
-
-// ── Core logic ────────────────────────────────────────────────────────────────
-
-function extractFeatures(text: string): Set<string> {
-  // Extract content-bearing tokens (min 3 chars), skip stop words
-  const normalized = text.toLowerCase();
-  const words = normalized.split(/[^\w]+/).filter((t) => t.length >= 3 && !STOP_WORDS.has(t));
-  return new Set(words);
-}
+// ── Core logic (triple-critic) ────────────────────────────────────────────
 
 /**
- * Compute claim recall: what fraction of claim features appear in the context.
- * Uses Jaccard on features but this is only for the getContradiction fallback.
- * For checkSupport, we use claimRecall() directly (not penalized by long contexts).
+ * Check if a claim contradicts a context using the triple-critic system.
+ *
+ * Uses classify() with three-tier fallback:
+ *   Tier 1: heuristic fallback (CRITICS.contradictionFallback)
+ *   Tier 2: utility model (if configured)
+ *   Tier 3: session model (always available)
  */
-function featureIntersection(a: Set<string>, b: Set<string>): number {
-  let count = 0;
-  for (const token of a) {
-    if (b.has(token) || Array.from(b).some((bt) => token.includes(bt) || bt.includes(token))) {
-      count++;
-    }
-  }
-  return count;
-}
-
-function claimRecall(claimFeatures: Set<string>, contextFeatures: Set<string>): number {
-  if (claimFeatures.size === 0) return 1;
-  const found = featureIntersection(claimFeatures, contextFeatures);
-  return found / claimFeatures.size;
-}
-
-function symmetricOverlap(a: Set<string>, b: Set<string>): number {
-  if (a.size === 0 || b.size === 0) return 0;
-  const intersection = featureIntersection(a, b);
-  return intersection / (a.size + b.size - intersection);
-}
-
-async function checkContradiction(claim: string, context: string, ctx: ExtensionContext) {
-  const claimFeatures = extractFeatures(claim);
-  const contextFeatures = extractFeatures(context);
-
-  // Primary: classify via utility model
+async function checkContradiction(
+  claim: string,
+  context: string,
+  ctx: ExtensionContext,
+): Promise<{
+  type: "contradiction";
+  severity: "high" | "low";
+  description: string;
+  quote: string;
+  location: string;
+} | null> {
   const truncated = {
     claim: claim.length > 1500 ? claim.slice(0, 1500) + "..." : claim,
     context: context.length > 1500 ? context.slice(0, 1500) + "..." : context,
   };
 
-  const result = await classify(ctx, CONTRADICTION_CRITERIA, truncated, {
-    maxTokens: 5,
-    timeoutMs: 5000,
-    fallback: () => contradictionFallback(claim, context),
-  });
+  try {
+    const result = await classify(ctx, CRITICS.claimContradiction.criteria, truncated, {
+      maxTokens: 5,
+      timeoutMs: 5000,
+      fallback: () => CRITICS.contradictionFallback(claim, context),
+    });
 
-  if (result.label === "yes") {
-    return {
-      type: "contradiction" as const,
-      severity: "high" as const,
-      description: `Claim contradicts context (${result.tier} tier)`,
-      quote: claim,
-      location: "claim vs context",
-    };
-  }
-
-  // Phase 3: Semantic overlap check (topic drift — separate concern)
-  const overlap = symmetricOverlap(claimFeatures, contextFeatures);
-
-  if (overlap < 0.1 && claimFeatures.size > 3) {
-    return {
-      type: "contradiction" as const,
-      severity: "low" as const,
-      description: `Claim and context share very few features (${(overlap * 100).toFixed(0)}% overlap). Possible topic drift.`,
-      quote: claim,
-      location: "semantic mismatch",
-    };
+    if (result.label === "yes") {
+      return {
+        type: "contradiction" as const,
+        severity: "high" as const,
+        description: `Claim contradicts context (${result.tier} tier)`,
+        quote: claim.slice(0, 200),
+        location: "claim vs context",
+      };
+    }
+  } catch {
+    // classify() handles errors internally — this is a safety net
   }
 
   return null;
 }
 
-function checkSupport(claim: string, contexts: string[], threshold = 0.4): boolean {
-  const claimFeatures = extractFeatures(claim);
-  if (claimFeatures.size === 0) return true;
-  for (const ctx of contexts) {
-    const recall = claimRecall(claimFeatures, extractFeatures(ctx));
-    if (recall >= threshold) return true;
+/**
+ * Check if a claim is supported by any of the given contexts.
+ * Uses the claimSupported critic with heuristic fallback.
+ */
+async function checkSupport(
+  claim: string,
+  contexts: string[],
+  threshold: number,
+  ctx: ExtensionContext,
+): Promise<boolean> {
+  if (!claim || contexts.length === 0) return true;
+
+  // Run one classify() call per context, but limit to first 3 to avoid O(N²) cost
+  const contextsToCheck = contexts.slice(0, 3);
+
+  try {
+    const results = await Promise.all(
+      contextsToCheck.map((ctxStr) =>
+        classify(
+          ctx,
+          CRITICS.claimSupported.criteria,
+          { claim: truncate(claim, 1000), context: truncate(ctxStr, 1000) },
+          { maxTokens: 5, timeoutMs: 5000 },
+        ),
+      ),
+    );
+
+    // Supported if ANY context supports it (with confidence >= threshold)
+    const highConfidence = results.filter(
+      (r) => r.label === "yes" && r.confidence >= threshold,
+    ).length;
+    return highConfidence > 0;
+  } catch {
+    // Fall through to lenient default on error
+    return true;
   }
-  return false;
 }
 
-function checkHedgeWords(claim: string) {
-  const issues = [];
-  const claimLower = claim.toLowerCase();
-  for (const hedge of HEDGE_WORDS) {
-    if (claimLower.includes(hedge)) {
-      issues.push({
-        type: "hedge_warning",
-        severity: HEDGE_SEVERITY[hedge] ?? "low",
-        description: `Contains qualifier "${hedge}" — verify this is warranted by context`,
-        quote: claim,
-      });
+/**
+ * Check for overconfidence / hedge word issues using the claimOverconfidence critic.
+ */
+async function checkOverconfidence(
+  claim: string,
+  ctx: ExtensionContext,
+): Promise<
+  Array<{
+    type: string;
+    severity: "high" | "medium" | "low";
+    description: string;
+    quote: string;
+  }>
+> {
+  try {
+    const result = await classify(
+      ctx,
+      CRITICS.claimOverconfidence.criteria,
+      { claim: truncate(claim, 1000), context: "" },
+      { maxTokens: 5, timeoutMs: 5000 },
+    );
+
+    if (result.label === "yes") {
+      return [
+        {
+          type: "hedge_warning",
+          severity: "medium" as const,
+          description: `Claim may contain unwarranted certainty (${result.tier} tier)`,
+          quote: claim.slice(0, 200),
+        },
+      ];
     }
+  } catch {
+    // Non-critical — no overconfidence warning on error
   }
-  return issues;
+
+  return [];
 }
 
-function extractTaskFeatures(task: string): string[] {
-  const normalized = task.toLowerCase();
-  const words = normalized.split(/[^\w]+/).filter((t) => t.length >= 2 && !STOP_WORDS.has(t));
-  const compounds = normalized.match(/\w{4,}/g) || [];
-  return [...words, ...compounds].sort((a, b) => b.length - a.length).slice(0, 15);
-}
-
-function checkDecompositionCoverage(
+/**
+ * Check if subtasks fully cover the parent task.
+ * Uses the decompositionComplete critic for the binary verdict,
+ * with a simple word-overlap heuristic for filling in gap details.
+ */
+async function checkDecompositionCoverage(
   parentTask: string,
   subtasks: string[],
-  _constraints?: string[],
-) {
-  const parentFeatures = new Set(extractTaskFeatures(parentTask));
-  const subtaskFeatures = subtasks.map((st) => new Set(extractTaskFeatures(st)));
-  const allSubtaskFeatures = new Set<string>();
-  for (const sf of subtaskFeatures) for (const f of sf) allSubtaskFeatures.add(f);
-
-  const covered = new Set<string>();
-  for (const pf of parentFeatures) {
-    for (const sf of allSubtaskFeatures) {
-      if (pf.includes(sf) || sf.includes(pf) || pf === sf) {
-        covered.add(pf);
-        break;
-      }
-    }
+  ctx: ExtensionContext,
+): Promise<{
+  complete: boolean;
+  coverage: number;
+  gaps: string[];
+  coverageBySubtask: Array<{ subtask: string; featuresCovered: number; featuresMissing: number }>;
+  suggestions: string[];
+}> {
+  if (!parentTask || subtasks.length === 0) {
+    return { complete: false, coverage: 0, gaps: [], coverageBySubtask: [], suggestions: [] };
   }
 
-  const gaps = [...parentFeatures].filter((pf) => !covered.has(pf));
-  const coverage = parentFeatures.size > 0 ? covered.size / parentFeatures.size : 1.0;
+  try {
+    const result = await classify(
+      ctx,
+      CRITICS.decompositionComplete.criteria,
+      {
+        parentTask: truncate(parentTask, 1000),
+        subtasks: subtasks.map((s) => `- ${truncate(s, 200)}`).join("\n"),
+      },
+      { maxTokens: 5, timeoutMs: 5000 },
+    );
 
-  const coverageBySubtask = subtasks.map((st, i) => {
-    const sf = subtaskFeatures[i];
-    let coveredByThis = 0;
-    for (const pf of parentFeatures) {
-      for (const f of sf) {
-        if (pf.includes(f) || f.includes(pf) || pf === f) {
-          coveredByThis++;
-          break;
-        }
+    const complete = result.label === "yes";
+    const coverage = complete ? 1.0 : 0.5; // Heuristic estimate
+
+    // Simple gap heuristic: find parent words not mentioned in any subtask
+    const parentWords = new Set(
+      parentTask
+        .toLowerCase()
+        .split(/[^\w]+/)
+        .filter((w) => w.length > 3),
+    );
+    const subtaskText = subtasks.join(" ").toLowerCase();
+    const gaps = [...parentWords].filter((w) => !subtaskText.includes(w));
+
+    const coverageBySubtask = subtasks.slice(0, 5).map((st) => {
+      const stWords = new Set(
+        st
+          .toLowerCase()
+          .split(/[^\w]+/)
+          .filter((w) => w.length > 3),
+      );
+      let coveredByThis = 0;
+      for (const pw of parentWords) {
+        if (stWords.has(pw) || st.toLowerCase().includes(pw)) coveredByThis++;
       }
-    }
+      return {
+        subtask: st.substring(0, 80),
+        featuresCovered: coveredByThis,
+        featuresMissing: parentWords.size - coveredByThis,
+      };
+    });
+
+    const suggestions = gaps.slice(0, 3).map(
+      (g) => `Consider adding subtask addressing: "${g}"`,
+    );
+
+    return { complete, coverage, gaps: gaps.slice(0, 10), coverageBySubtask, suggestions };
+  } catch {
     return {
-      subtask: st.substring(0, 80),
-      featuresCovered: coveredByThis,
-      featuresMissing: parentFeatures.size - coveredByThis,
+      complete: false,
+      coverage: 0.5,
+      gaps: [],
+      coverageBySubtask: [],
+      suggestions: ["Could not verify decomposition coverage."],
     };
-  });
-
-  const suggestions = gaps.map(
-    (g) => `Add subtask addressing: "${g}" (no subtask currently covers this aspect)`,
-  );
-
-  return { complete: gaps.length === 0, coverage, gaps, coverageBySubtask, suggestions };
+  }
 }
 
-// ── Tool schemas ───────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────
+
+function truncate(text: string, maxLen: number): string {
+  return text.length > maxLen ? text.slice(0, maxLen) + "..." : text;
+}
+
+// ── Tool schemas ─────────────────────────────────────────────────────────
 
 const verifyClaimSchema = Type.Object({
   claim: Type.String({ description: "The claim or statement to verify" }),
@@ -432,10 +258,10 @@ const verifyDecompositionSchema = Type.Object({
   ),
 });
 
-// ── Extension registration ─────────────────────────────────────────────────────
+// ── Extension registration ───────────────────────────────────────────────
 
 export default function verificationExtension(pi: ExtensionAPI) {
-  log.info("Verification extension registering");
+  log.info("Verification extension registering (triple-critic)");
 
   pi.registerTool({
     name: "verify_claim",
@@ -465,12 +291,20 @@ export default function verificationExtension(pi: ExtensionAPI) {
         const threshold = p.threshold ?? 0.5;
         const issues: Record<string, unknown>[] = [];
 
-        for (const ctxStr of p.context) {
-          const result = await checkContradiction(p.claim, ctxStr, ctx!);
-          if (result) issues.push(result);
+        // Triple-critic checks in parallel: contradiction + support + overconfidence
+        const contradictionChecks = p.context.map((ctxStr) =>
+          checkContradiction(p.claim, ctxStr, ctx!),
+        );
+        const contradictionResults = await Promise.all(contradictionChecks);
+        for (const r of contradictionResults) {
+          if (r) issues.push(r);
         }
 
-        const supported = checkSupport(p.claim, p.context, threshold);
+        const [supported, overconfidenceIssues] = await Promise.all([
+          checkSupport(p.claim, p.context, threshold, ctx!),
+          checkOverconfidence(p.claim, ctx!),
+        ]);
+
         if (!supported && p.context.length > 0) {
           issues.push({
             type: "unsupported",
@@ -480,7 +314,7 @@ export default function verificationExtension(pi: ExtensionAPI) {
           });
         }
 
-        issues.push(...checkHedgeWords(p.claim));
+        issues.push(...overconfidenceIssues);
 
         const severityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
         issues.sort((a: any, b: any) => severityOrder[a.severity] - severityOrder[b.severity]);
@@ -526,7 +360,13 @@ export default function verificationExtension(pi: ExtensionAPI) {
     description:
       "Check a task decomposition for coverage gaps — use after breaking down a complex task into subtasks.",
     parameters: verifyDecompositionSchema,
-    execute: async (_toolCallId: string, params: any): Promise<Record<string, unknown>> => {
+    execute: async (
+      _toolCallId: string,
+      params: any,
+      _signal?: AbortSignal,
+      _onUpdate?: unknown,
+      ctx?: ExtensionContext,
+    ): Promise<Record<string, unknown>> => {
       try {
         const p = params as { parentTask: string; subtasks: string[]; constraints?: string[] };
         if (!p.parentTask || !Array.isArray(p.subtasks)) {
@@ -534,7 +374,7 @@ export default function verificationExtension(pi: ExtensionAPI) {
             "verify_decomposition requires 'parentTask' (string) and 'subtasks' (string array)",
           );
         }
-        const cov = checkDecompositionCoverage(p.parentTask, p.subtasks, p.constraints);
+        const cov = await checkDecompositionCoverage(p.parentTask, p.subtasks, ctx!);
         const text = cov.complete
           ? `Coverage complete (${(cov.coverage * 100).toFixed(0)}%).`
           : `Gaps: ${cov.gaps.length}. Coverage: ${(cov.coverage * 100).toFixed(0)}%. ${cov.suggestions.slice(0, 3).join("; ")}`;

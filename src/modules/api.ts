@@ -1,18 +1,18 @@
 /**
- * Subagent API for module toggling.
+ * Subagent API for module/toggle.
  *
- * Registers tools that a researcher subagent can call during benchmarks
- * to enable/disable modules and query their state:
+ * Registers commands that a researcher subagent can call during benchmarks
+ * to enable/disable extensions (or module groups) and query their state:
  *
- *   modules-enable <name>     — Enable a module
- *   modules-disable <name>    — Disable a module
- *   modules-toggle <name>     — Toggle a module on/off
- *   modules-list              — Show all modules and their state
- *   modules-status            — Show current session module state
- *   modules-reset             — Reset all runtime overrides
+ *   modules-enable <id>      — Enable an extension or module group
+ *   modules-disable <id>     — Disable an extension or module group
+ *   modules-toggle <id>      — Toggle an extension or module group
+ *   modules-list             — Show all extensions and their state
+ *   modules-status           — Show current session extension state
+ *   modules-reset            — Reset all runtime overrides
  *
- * These tools work by calling the module loader's runtime API, so the
- * effect is immediate for session_start handlers.
+ * Reference targets can be individual extension IDs (e.g. "enforcement")
+ * or module group names (e.g. "memory" expands to all memory extensions).
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
@@ -24,25 +24,28 @@ import {
   toggleModule,
   getModuleStates,
   resetModuleOverrides,
+  getAllRefNames,
 } from "./loader.js";
-import { getAllModuleNames } from "./definitions.js";
 
 const log = createLogger("modules-api");
 
 export default async function modulesApiExtension(pi: ExtensionAPI): Promise<void> {
   // ── enable ──────────────────────────────────────────────────────────
   pi.registerCommand("modules-enable", {
-    description: "Enable a module. Usage: modules-enable <name>",
+    description: "Enable an extension or module group. Usage: modules-enable <id>",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
       const name = _args.trim().toLowerCase();
-      const names = getAllModuleNames();
-      if (!name || !names.includes(name)) {
-        ctx.ui.notify?.(`Usage: modules-enable <name>\nAvailable: ${names.join(", ")}`, "warning");
+      const refs = getAllRefNames();
+      if (!name || !refs.includes(name)) {
+        ctx.ui.notify?.(
+          `Usage: modules-enable <id>\nAvailable: ${refs.join(", ")}`,
+          "warning",
+        );
         return;
       }
       const ok = enableModule(name, ctx);
       ctx.ui.notify?.(
-        ok ? `Module "${name}" enabled (next session startup).` : `Cannot enable "${name}".`,
+        ok ? `"${name}" enabled (next session startup).` : `Cannot enable "${name}".`,
         ok ? "info" : "error",
       );
     },
@@ -50,18 +53,18 @@ export default async function modulesApiExtension(pi: ExtensionAPI): Promise<voi
 
   // ── disable ─────────────────────────────────────────────────────────
   pi.registerCommand("modules-disable", {
-    description: "Disable a module. Usage: modules-disable <name>",
+    description: "Disable an extension or module group. Usage: modules-disable <id>",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
       const name = _args.trim().toLowerCase();
       if (!name) {
-        ctx.ui.notify?.("Usage: modules-disable <name>", "warning");
+        ctx.ui.notify?.("Usage: modules-disable <id>", "warning");
         return;
       }
       const ok = disableModule(name, ctx);
       ctx.ui.notify?.(
         ok
-          ? `Module "${name}" disabled (next session).`
-          : `Cannot disable "${name}" — it may be a core module.`,
+          ? `"${name}" disabled (next session).`
+          : `Cannot disable "${name}" — it may be a core extension.`,
         ok ? "info" : "error",
       );
     },
@@ -69,36 +72,36 @@ export default async function modulesApiExtension(pi: ExtensionAPI): Promise<voi
 
   // ── toggle ──────────────────────────────────────────────────────────
   pi.registerCommand("modules-toggle", {
-    description: "Toggle a module on/off. Usage: modules-toggle <name>",
+    description: "Toggle an extension or module group. Usage: modules-toggle <id>",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
       const name = _args.trim().toLowerCase();
       if (!name) {
-        ctx.ui.notify?.("Usage: modules-toggle <name>", "warning");
+        ctx.ui.notify?.("Usage: modules-toggle <id>", "warning");
         return;
       }
       const state = toggleModule(name, ctx);
-      if (state === null) ctx.ui.notify?.(`Module "${name}" not found.`, "error");
+      if (state === null) ctx.ui.notify?.(`"${name}" not found.`, "error");
       else
-        ctx.ui.notify?.(`Module "${name}" toggled ${state ? "ON" : "OFF"} (next session).`, "info");
+        ctx.ui.notify?.(`"${name}" toggled ${state ? "ON" : "OFF"} (next session).`, "info");
     },
   });
 
   // ── list ────────────────────────────────────────────────────────────
   pi.registerCommand("modules-list", {
-    description: "List all modules with their state, load status, and config source.",
+    description: "List all extensions with state, load status, and config source.",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
       const states = getModuleStates(ctx);
       const lines: string[] = [];
       const source = Object.values(states)[0]?.source ?? "?";
-      lines.push(`Modules (config: ${source}):`);
-      for (const [name, info] of Object.entries(states)) {
+      lines.push(`Extensions (config: ${source}):`);
+      for (const [id, info] of Object.entries(states)) {
         const status = info.enabled ? (info.loaded ? "●" : "○ pending") : "— disabled";
-        lines.push(`  ${status.padEnd(12)} ${name}`);
-        lines.push(`                 ${info.description}`);
+        lines.push(`  ${status.padEnd(12)} ${id}`);
+        lines.push(`                 ${info.desc}`);
       }
       lines.push("");
-      lines.push("Toggle: /modules-toggle <name>");
-      lines.push("Enable: /modules-enable <name>  Disable: /modules-disable <name>");
+      lines.push("Toggle: /modules-toggle <id>");
+      lines.push("Enable: /modules-enable <id>  Disable: /modules-disable <id>");
       lines.push("Reset:  /modules-reset");
       ctx.ui.notify?.(lines.join("\n"), "info");
     },
@@ -106,18 +109,18 @@ export default async function modulesApiExtension(pi: ExtensionAPI): Promise<voi
 
   // ── status ──────────────────────────────────────────────────────────
   pi.registerCommand("modules-status", {
-    description: "Show current runtime module overrides and load state.",
+    description: "Show current runtime overrides and load state.",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
       const states = getModuleStates(ctx);
       const loaded = Object.values(states).filter((s) => s.loaded).length;
       const enabled = Object.values(states).filter((s) => s.enabled).length;
       const lines: string[] = [
-        `Modules: ${loaded} loaded, ${enabled} enabled` +
+        `Extensions: ${loaded} loaded, ${enabled} enabled` +
           ` (config: ${Object.values(states)[0]?.source ?? "?"})`,
       ];
-      for (const [name, info] of Object.entries(states)) {
+      for (const [id, info] of Object.entries(states)) {
         const status = info.enabled ? (info.loaded ? "●" : "○ pending") : "— disabled";
-        lines.push(`  ${status.padEnd(12)} ${name}`);
+        lines.push(`  ${status.padEnd(12)} ${id}`);
       }
       ctx.ui.notify?.(lines.join("\n"), "info");
     },
@@ -125,11 +128,11 @@ export default async function modulesApiExtension(pi: ExtensionAPI): Promise<voi
 
   // ── reset ──────────────────────────────────────────────────────────
   pi.registerCommand("modules-reset", {
-    description: "Reset all runtime module overrides (restore defaults).",
+    description: "Reset all runtime overrides (restore defaults).",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
       resetModuleOverrides(ctx);
       ctx.ui.notify?.(
-        "All module overrides reset. Defaults will apply on next session start.",
+        "All overrides reset. Defaults will apply on next session start.",
         "info",
       );
     },

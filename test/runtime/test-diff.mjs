@@ -32,14 +32,14 @@ console.log("\n[1] Diff extension structure");
   assert(src.includes("DiffResult"), "exports DiffResult type");
 }
 
-// ── [2] Registered in module definitions ─────────────────────────
-console.log("\n[2] Module system registration");
+// ── [2] Registered in extension manifest ────────────────────────────
+console.log("\n[2] Extension manifest registration");
 {
   const fs = await import("fs");
-  const defs = fs.readFileSync(`${ROOT}/src/modules/definitions.ts`, "utf8");
+  const mani = fs.readFileSync(`${ROOT}/src/extensions/manifest.ts`, "utf8");
 
-  assert(defs.includes("diffFn"), "diffFn imported in definitions");
-  assert(defs.includes('"diff"'), "diff listed in tools module");
+  assert(mani.includes("diffFn"), "diffFn imported in manifest");
+  assert(mani.includes('"diff"'), "diff listed in manifest");
 }
 
 // ── [3] Parse unified diff ────────────────────────────────────────

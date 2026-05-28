@@ -37,13 +37,13 @@ console.log("\n[1] System monitor extension structure");
 }
 
 // ── [2] Module system registration ────────────────────────────
-console.log("\n[2] Module system registration");
+console.log("\n[2] Extension manifest registration");
 {
   const fs = await import("fs");
-  const defs = fs.readFileSync(`${ROOT}/src/modules/definitions.ts`, "utf8");
+  const mani = fs.readFileSync(`${ROOT}/src/extensions/manifest.ts`, "utf8");
 
-  assert(defs.includes("systemMonitorFn"), "systemMonitorFn imported in definitions");
-  assert(defs.includes("system-monitor"), "system-monitor listed in tools module");
+  assert(mani.includes("systemMonitorFn"), "systemMonitorFn imported in manifest");
+  assert(mani.includes("system-monitor"), "system-monitor listed in manifest");
 }
 
 // ── [3] Format helpers ────────────────────────────────────────
