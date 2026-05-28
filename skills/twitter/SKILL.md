@@ -166,30 +166,30 @@ Only method: inline reply form on the bot's tweet page. Never use `/compose/post
 
 Only method: search with live sorting. Never use the bot's profile page (`/with_replies`) — it's unreliable, content is truncated.
 
-1. **Check count** — navigate to `https://x.com/search?q=from%3AMY_HANDLE%20to%3ATARGET_HANDLE&f=live`. Wait 4s. Query the first article's reply button:
+### Key Insight: Bidirectional Search
+`from:MY_HANDLE to:TARGET_BOT` only shows YOUR tweets (sent TO the bot). The bot's replies back to you are `from:TARGET_BOT to:MY_HANDLE` — a different direction. Use OR to capture both:
 
-   ```js
-   const arts = document.querySelectorAll('article[data-testid="tweet"]');
-   const replyBtn = arts[0]?.querySelector('[data-testid="reply"]');
-   replyBtn?.getAttribute("aria-label"); // "1 Reply" means bot replied
-   ```
+> `(from:MY_HANDLE to:TARGET_BOT) OR (from:TARGET_BOT to:MY_HANDLE)`
 
-   Count 0 → bot hasn't replied yet. Set a timer (bot responds in 1-5 min). Count >0 → proceed.
-
-2. **Read reply** — use the SAME search page. The bot's replies appear as separate articles in the search results. Scan all articles for the bot's:
+1. **Check count + read replies** — navigate to `https://x.com/search?q=(from%3AMY_HANDLE%20to%3ATARGET_HANDLE)%20OR%20(from%3ATARGET_HANDLE%20to%3AMY_HANDLE)&f=live`. Wait 4s. Then scan ALL articles for both your tweets and the bot's replies:
 
    ```js
    const arts = document.querySelectorAll('article[data-testid="tweet"]');
    for (const a of arts) {
-     const author = a.querySelector('[data-testid="User-Name"]');
-     const txt = a.querySelector('[data-testid="tweetText"]');
-     if (author?.textContent.includes("TARGET_BOT")) botReplies.push(txt.textContent.trim());
+     const author = a.querySelector('[data-testid="User-Name"]')?.textContent || '';
+     const txt = a.querySelector('[data-testid="tweetText"]')?.textContent || '';
+     if (author.includes('TARGET_BOT')) {
+       botReplies.push(txt.trim());
+     }
    }
    ```
 
-   If the bot's reply isn't visible among the first N articles, use `browser_content()` to read the full page text instead — search renders all matching tweets.
+2. **Full page text** — if DOM parsing is incomplete, use `browser_content()` to read all visible text. The search page renders both directions in chronological order.
 
 3. **Classify** — template or custom? (see AGENTS.md for response patterns)
+
+### To Scan Bot's Recent Activity (All Users)
+Navigate to `https://x.com/search?q=from%3ATARGET_HANDLE&f=live` and scroll to load more. Use `browser_content()` to extract all visible text. This shows ALL of the bot's recent replies to every user — useful for tracking other researchers' progress and bot behavior patterns.
 
 ---
 

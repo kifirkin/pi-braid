@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { createLogger } from "../../lib/logger.js";
-import { HEALTHCHECK_DIR } from "../../lib/braid-paths.js";
+import { HEALTHCHECK_DIR } from "../../lib/config/braid-paths.js";
 import { Type } from "typebox";
 import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 

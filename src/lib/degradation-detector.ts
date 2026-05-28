@@ -13,7 +13,7 @@ import { getExtensionState } from "./extension-state.js";
 import { saveStateImmediate } from "./async-storage.js";
 import { createLogger } from "./logger.js";
 
-import { DEGRADATION_FILE } from "./braid-paths.js";
+import { DEGRADATION_FILE } from "./config/braid-paths.js";
 
 const _log = createLogger("degradation-detector");
 

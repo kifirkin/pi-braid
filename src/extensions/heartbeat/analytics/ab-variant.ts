@@ -3,7 +3,7 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { METRICS_FILE } from "../../../lib/braid-paths.js";
+import { METRICS_FILE } from "../../../lib/config/braid-paths.js";
 import { createLogger } from "../../../lib/logger.js";
 const log = createLogger("analytics:ab-variant");
 

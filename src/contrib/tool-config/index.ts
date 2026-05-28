@@ -1,6 +1,6 @@
 import { createLogger } from "../../lib/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../lib/session-start-queue.js";
-import { TOOLS_CONFIG_FILE } from "../../lib/braid-paths.js";
+import { TOOLS_CONFIG_FILE } from "../../lib/config/braid-paths.js";
 
 const log = createLogger("assistant");
 /**

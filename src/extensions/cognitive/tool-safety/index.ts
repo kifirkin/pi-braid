@@ -15,7 +15,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { classify } from "../../../lib/text-classifier.js";
 import { createLogger } from "../../../lib/logger.js";
-import { DESTRUCTIVE_TOOLS } from "../../../lib/tool-constants.js";
+import { DESTRUCTIVE_TOOLS } from "../../../lib/constants/tool-constants.js";
 import { onEvent } from "../../../lib/event-types.js";
 
 const log = createLogger("tool-safety");

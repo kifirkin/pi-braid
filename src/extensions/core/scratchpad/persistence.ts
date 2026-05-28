@@ -7,7 +7,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { fileMutationQueue } from "../../../lib/file-mutation-queue.js";
-import { BRAID_DIR, SCRATCHPAD_DIR } from "../../../lib/braid-paths.js";
+import { BRAID_DIR, SCRATCHPAD_DIR } from "../../../lib/config/braid-paths.js";
 import type { TaskScratchpad, TaskStore, PlanStep, Decision } from "./types.js";
 
 // SCRATCHPAD_DIR already points to ~/.pi/agent/braid/scratchpads

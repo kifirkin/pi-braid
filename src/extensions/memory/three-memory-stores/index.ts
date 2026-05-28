@@ -41,7 +41,7 @@ async function asyncExists(p: string): Promise<boolean> {
     .catch(() => false);
 }
 import * as path from "node:path";
-import { EPISODES_FILE, LEGACY_MEMORY_FILE, METRICS_FILE } from "../../../lib/braid-paths.js";
+import { EPISODES_FILE, LEGACY_MEMORY_FILE, METRICS_FILE } from "../../../lib/config/braid-paths.js";
 import { getCognitiveMemory } from "../../../lib/cognitive-memory.js";
 
 // ── Re-export types ─────────────────────────────────────────────────────────

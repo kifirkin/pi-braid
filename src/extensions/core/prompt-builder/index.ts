@@ -47,7 +47,7 @@ async function asyncExists(p: string): Promise<boolean> {
  */
 
 import { join } from "node:path";
-import { CONSOLIDATED_HINTS_FILE } from "../../../lib/braid-paths.js";
+import { CONSOLIDATED_HINTS_FILE } from "../../../lib/config/braid-paths.js";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import { loadSkills } from "@mariozechner/pi-coding-agent";

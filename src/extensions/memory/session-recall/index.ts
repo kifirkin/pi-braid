@@ -32,7 +32,7 @@ async function asyncExists(p: string): Promise<boolean> {
     .catch(() => false);
 }
 import { homedir } from "node:os";
-import { AGENT } from "../../../lib/braid-paths.js";
+import { AGENT } from "../../../lib/config/braid-paths.js";
 
 // Config
 

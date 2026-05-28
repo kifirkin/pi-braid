@@ -21,7 +21,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { getExtensionState, hasExtensionState } from "./extension-state.js";
 import { createLogger } from "./logger.js";
-import { CHECKPOINT_DIR } from "./braid-paths.js";
+import { CHECKPOINT_DIR } from "./config/braid-paths.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 const log = createLogger("checkpoint");

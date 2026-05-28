@@ -10,7 +10,7 @@ const log = createLogger("enforcement");
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { sendEnforcementWhisper } from "../whisper.js";
-import { MALFORMED_TOOL_CALL_RE, MALFORMED_TOOL_NAME_RE } from "../../../lib/tool-constants.js";
+import { MALFORMED_TOOL_CALL_RE, MALFORMED_TOOL_NAME_RE } from "../../../lib/constants/tool-constants.js";
 
 export function detectMalformedToolCalls(text: string, pi: ExtensionAPI, ctx: any): void {
   MALFORMED_TOOL_CALL_RE.lastIndex = 0;

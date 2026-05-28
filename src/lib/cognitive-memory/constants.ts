@@ -6,7 +6,7 @@ import {
   SEMANTIC_MEMORY_FILE,
   LEGACY_MEMORY_FILE,
   MEMORY_DIR as BRAID_MEMORY_DIR,
-} from "../braid-paths.js";
+} from "../config/braid-paths.js";
 import type { CognitiveMemoryType } from "./types.js";
 
 // Storage paths — consolidated under ~/.pi/agent/braid/memory/

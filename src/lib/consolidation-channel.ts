@@ -10,7 +10,7 @@
  */
 
 import { createLogger } from "./logger.js";
-import { CONSOLIDATED_HINTS_FILE } from "./braid-paths.js";
+import { CONSOLIDATED_HINTS_FILE } from "./config/braid-paths.js";
 import { mkdir, readFile, writeFile, readdir, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { extractSOP } from "./sop-extractor.js";

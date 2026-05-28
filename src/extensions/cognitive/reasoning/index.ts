@@ -63,7 +63,7 @@ function getReasoningState(ctx: ExtensionContext): ExtensionState {
 
 // Malformed Tool Call Detection
 
-import { MALFORMED_TOOL_CALL_RE, MALFORMED_TOOL_NAME_RE } from "../../../lib/tool-constants.js";
+import { MALFORMED_TOOL_CALL_RE, MALFORMED_TOOL_NAME_RE } from "../../../lib/constants/tool-constants.js";
 
 function detectMalformedToolCalls(text: string, pi: ExtensionAPI, s: ExtensionState): void {
   MALFORMED_TOOL_CALL_RE.lastIndex = 0;

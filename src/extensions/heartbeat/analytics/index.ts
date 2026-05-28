@@ -12,7 +12,7 @@
 import { createLogger } from "../../../lib/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/session-start-queue.js";
 import { existsSync, mkdirSync } from "node:fs";
-import { METRICS_FILE, METRICS_DIR } from "../../../lib/braid-paths.js";
+import { METRICS_FILE, METRICS_DIR } from "../../../lib/config/braid-paths.js";
 import type {
   ExtensionAPI,
   ExtensionContext,
@@ -23,7 +23,7 @@ import { emitSignal } from "../../../lib/belief-policy-engine.js";
 import { eventBus } from "../../../lib/event-bus.js";
 import { isDegraded, getDegradationReasons } from "../../../lib/degradation-detector.js";
 import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
-import { areCognitiveNudgesDisabled } from "../../../lib/braid-settings.js";
+import { areCognitiveNudgesDisabled } from "../../../lib/config/braid-settings.js";
 import { Type } from "typebox";
 
 import { getAnalyticsStateInternal } from "./shared.js";

@@ -35,7 +35,7 @@ interface ErrorEntry {
   handled: boolean;
 }
 
-import { ERROR_DIR, ERROR_FILE } from "../../lib/braid-paths.js";
+import { ERROR_DIR, ERROR_FILE } from "../../lib/config/braid-paths.js";
 
 const MAX_ERRORS = 100;
 
