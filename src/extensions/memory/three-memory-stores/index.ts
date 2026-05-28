@@ -30,8 +30,8 @@ interface CtxSessionManager extends SessionManager {
 import { createLogger } from "../../../lib/core/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 import { getExtensionState, safeSessionManager } from "../../../lib/state/extension-state.js";
-import { emitSignal } from "../../../lib/belief-policy-engine.js";
-import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
+import { emitSignal } from "../../../lib/reasoning/belief-policy-engine.js";
+import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { readFile as readFilePromise, stat, writeFile, mkdir } from "node:fs/promises";
 
 /** Async helper: check if a path exists (replaces existsSync). */

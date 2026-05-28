@@ -464,7 +464,7 @@ function queueProposal(evaluated: EvaluatedAction, ctx: any, branchLength: numbe
 
 // ── Extension Factory ────────────────────────────────────────────────────────
 
-import { clearInjections, sendTrackedMessage } from "../../../lib/injection-tracker.js";
+import { clearInjections, sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 
 export default function contextLifecycleExtension(pi: ExtensionAPI): void {
   // ── session_start ────────────────────────────────────────────────────────

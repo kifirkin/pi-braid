@@ -16,7 +16,7 @@ import * as os from "node:os";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { ModelSelectorComponent, SettingsManager } from "@mariozechner/pi-coding-agent";
 import type { Model, Api } from "@mariozechner/pi-ai";
-import { resolveUtilityModel, resolveVisionModel } from "../../../lib/model-resolver.js";
+import { resolveUtilityModel, resolveVisionModel } from "../../../lib/ai/model-resolver.js";
 import { onEvent } from "../../../lib/event-types.js";
 import { registerSessionCleanup } from "../../../lib/state/extension-state.js";
 

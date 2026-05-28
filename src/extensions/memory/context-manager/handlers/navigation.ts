@@ -4,7 +4,7 @@
 import type { ExtensionContext, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { analyzeSession } from "../analysis.js";
 import { log, getCmState, overflowRetryState, resetOverflowRetry } from "./shared.js";
-import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
+import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";
 import { getSessionManager } from "../../../../lib/state/session-manager.js";
 
 // ── Session Before Tree ───────────────────────────────────────────────────────

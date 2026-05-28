@@ -14,8 +14,8 @@ import { createLogger } from "../../lib/core/logger.js";
 import { eventBus } from "../../lib/event-bus.js";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { sendTrackedMessage } from "../../lib/injection-tracker.js";
-import { recordNudgeSent } from "../../lib/nudge-analytics.js";
+import { sendTrackedMessage } from "../../lib/utils/injection-tracker.js";
+import { recordNudgeSent } from "../../lib/reasoning/nudge-analytics.js";
 import { areCognitiveNudgesDisabled } from "../../lib/config/braid-settings.js";
 
 const log = createLogger("enforcement");

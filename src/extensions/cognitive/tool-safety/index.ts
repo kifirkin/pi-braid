@@ -13,7 +13,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { classify } from "../../../lib/text-classifier.js";
+import { classify } from "../../../lib/ai/text-classifier.js";
 import { createLogger } from "../../../lib/core/logger.js";
 import { DESTRUCTIVE_TOOLS } from "../../../lib/constants/tool-constants.js";
 import { onEvent } from "../../../lib/event-types.js";
@@ -78,7 +78,7 @@ export default function toolSafetyExtension(pi: ExtensionAPI): void {
 
         // Send a steer warning the agent
         try {
-          const { sendTrackedMessage } = await import("../../../lib/injection-tracker.js");
+          const { sendTrackedMessage } = await import("../../../lib/utils/injection-tracker.js");
           sendTrackedMessage(
             pi,
             {

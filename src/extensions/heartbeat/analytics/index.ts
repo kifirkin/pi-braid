@@ -19,16 +19,16 @@ import type {
   AgentToolResult,
 } from "@mariozechner/pi-coding-agent";
 import { safeSessionManager } from "../../../lib/state/extension-state.js";
-import { emitSignal } from "../../../lib/belief-policy-engine.js";
+import { emitSignal } from "../../../lib/reasoning/belief-policy-engine.js";
 import { eventBus } from "../../../lib/event-bus.js";
-import { isDegraded, getDegradationReasons } from "../../../lib/degradation-detector.js";
-import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
+import { isDegraded, getDegradationReasons } from "../../../lib/detection/degradation-detector.js";
+import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { areCognitiveNudgesDisabled } from "../../../lib/config/braid-settings.js";
 import { Type } from "typebox";
 
 import { getAnalyticsStateInternal } from "./shared.js";
 import { getCompactionHealth } from "../../memory/context-manager/handlers/shared.js";
-import { recordError, recordToolSuccess } from "../../../lib/degradation-detector.js";
+import { recordError, recordToolSuccess } from "../../../lib/detection/degradation-detector.js";
 export {
   updateContextDensity,
   recordNudgeSent,

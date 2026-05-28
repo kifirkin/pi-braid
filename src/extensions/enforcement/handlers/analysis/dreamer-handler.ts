@@ -3,10 +3,10 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
-import { emitSignal } from "../../../../lib/belief-policy-engine.js";
-import { dream } from "../../../../lib/dreamer.js";
-import { recordAdvice } from "../../../../lib/advice-tracker.js";
+import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";
+import { emitSignal } from "../../../../lib/reasoning/belief-policy-engine.js";
+import { dream } from "../../../../lib/reasoning/dreamer.js";
+import { recordAdvice } from "../../../../lib/reasoning/advice-tracker.js";
 import { getState } from "../../state.js";
 
 export async function dreamerHandler(pi: any, _event: any, ctx: ExtensionContext): Promise<void> {

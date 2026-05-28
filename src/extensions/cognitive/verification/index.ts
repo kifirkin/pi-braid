@@ -18,8 +18,8 @@
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../../lib/core/logger.js";
-import { classify } from "../../../lib/text-classifier.js";
-import { CRITICS } from "../../../lib/critic-registry.js";
+import { classify } from "../../../lib/ai/text-classifier.js";
+import { CRITICS } from "../../../lib/ai/critic-registry.js";
 
 const log = createLogger("verification");
 

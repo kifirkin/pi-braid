@@ -15,7 +15,7 @@ import {
   formatConflictWhisper,
   checkResponseForResolution,
 } from "../../../lib/conflict-qa.js";
-import { emitSignal } from "../../../lib/belief-policy-engine.js";
+import { emitSignal } from "../../../lib/reasoning/belief-policy-engine.js";
 import { detectMalformedToolCalls } from "../detection/malformed.js";
 import { analyzeMessage } from "./message-analysis.js";
 import { sendEnforcementWhisper } from "../whisper.js";

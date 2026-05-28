@@ -17,10 +17,10 @@
  * of which needed constant maintenance and were inherently fragile.
  */
 
-import { callLlm } from "../llm-call.js";
+import { callLlm } from "../ai/llm-call.js";
 import { getExtensionState } from "../state/extension-state.js";
-import { classify } from "../text-classifier.js";
-import { CRITICS } from "../critic-registry.js";
+import { classify } from "../ai/text-classifier.js";
+import { CRITICS } from "../ai/critic-registry.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 // ── Types ────────────────────────────────────────────────────────────────────

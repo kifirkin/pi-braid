@@ -3,7 +3,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { detectLanguage, setLanguage } from "../../../lib/language-hint.js";
+import { detectLanguage, setLanguage } from "../../../lib/ai/language-hint.js";
 import { updateProblemContext } from "../../../lib/bidirectional-verifier.js";
 import { getState } from "../state.js";
 import { createLogger } from "../../../lib/core/logger.js";

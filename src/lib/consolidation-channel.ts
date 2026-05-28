@@ -13,8 +13,8 @@ import { createLogger } from "./core/logger.js";
 import { CONSOLIDATED_HINTS_FILE } from "./config/braid-paths.js";
 import { mkdir, readFile, writeFile, readdir, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { extractSOP } from "./sop-extractor.js";
-import { CRITICS } from "./critic-registry.js";
+import { extractSOP } from "./utils/sop-extractor.js";
+import { CRITICS } from "./ai/critic-registry.js";
 
 const log = createLogger("consolidation");
 

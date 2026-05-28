@@ -18,7 +18,7 @@ import {
 import { detectOrphanChains } from "./orphan-chains.js";
 import { type NudgeManager } from "../nudge-manager.js";
 import { getState, markNudgeSent, shouldNudgeForMemory, markMemoryNudgeSent } from "../state.js";
-import { recordNudgeSuppressed, getNudgeAnalytics } from "../../../lib/nudge-analytics.js";
+import { recordNudgeSuppressed, getNudgeAnalytics } from "../../../lib/reasoning/nudge-analytics.js";
 import { type TurnState } from "../types.js";
 import { validateTurn } from "../validation.js";
 import { sendEnforcementWhisper } from "../whisper.js";
@@ -30,7 +30,7 @@ import {
   USAGE_COMPACT_MEDIUM,
   USAGE_TOKENS_SOFT,
   USAGE_TOKENS_WARNING,
-} from "../../../lib/context-thresholds.js";
+} from "../../../lib/detection/context-thresholds.js";
 
 const log = createLogger("enforcement:turn-end");
 const ERROR_BURST_THRESHOLD = 3;

@@ -54,7 +54,7 @@ import { loadSkills } from "@mariozechner/pi-coding-agent";
 import { SKILLS_DIR } from "../../../index.js";
 import { gatherL1State, formatL1Environment } from "./l1-environment.js";
 import { formatContrastSection } from "./contrast-phrase-library.js";
-import { classify } from "../../../lib/text-classifier.js";
+import { classify } from "../../../lib/ai/text-classifier.js";
 
 // ── Identity (THE key difference from native) ─────────────────────────────────
 // Identity framing is the behavioral filter - not directives
@@ -81,7 +81,7 @@ const INTERACTION_STYLE = `You provide concise, production-quality solutions. Yo
 // ── L1: Enforcement Signal Surfacing ────────────────────────────────────────
 // Session-scoped state (migrated from module-level singletons)
 import { getExtensionState } from "../../../lib/state/extension-state.js";
-import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
+import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { onEvent } from "../../../lib/event-types.js";
 
 interface PromptBuilderState {

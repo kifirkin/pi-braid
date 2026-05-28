@@ -41,16 +41,16 @@ import { existsSync, promises as fsPromises, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Api, Model } from "@mariozechner/pi-ai";
-import { callLlm } from "../../../lib/llm-call.js";
+import { callLlm } from "../../../lib/ai/llm-call.js";
 import type {
   ExtensionAPI,
   ExtensionContext,
   InputEventResult,
 } from "@mariozechner/pi-coding-agent";
-import { setLanguage, detectLanguage } from "../../../lib/language-hint.js";
+import { setLanguage, detectLanguage } from "../../../lib/ai/language-hint.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { roastInput, CODE_SUFFIX } from "./roast-filter.js";
-import { resolveUtilityModel } from "../../../lib/model-resolver.js";
+import { resolveUtilityModel } from "../../../lib/ai/model-resolver.js";
 
 const PERSONA = `You are a message preprocessor — a filter between the user and the main assistant. You clean text. You don't act on it.`;
 

@@ -13,7 +13,7 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { classify, type ClassificationResult } from "../../../lib/text-classifier.js";
+import { classify, type ClassificationResult } from "../../../lib/ai/text-classifier.js";
 
 // ── Classification Criteria ──────────────────────────────────────────────────
 

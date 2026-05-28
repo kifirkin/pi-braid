@@ -58,6 +58,14 @@ import researchFn from "../contrib/research/index.js";
 import systemMonitorFn from "../contrib/system-monitor/index.js";
 import toolConfigFn from "../contrib/tool-config/index.js";
 
+// pi-* standalone tools (from ~/.pi/agent/extensions/)
+import codebaseTreeFn from "../contrib/pi-codebase-tree/index.js";
+import codebaseGraphFn from "../contrib/pi-codebase-graph/index.js";
+import browserFn from "../contrib/pi-browser/index.js";
+import docsFn from "../contrib/pi-docs/index.js";
+import replFn from "../contrib/pi-repl/index.js";
+import visionFn from "../contrib/pi-vision/index.js";
+
 // watchdog (session monitoring, opt-in)
 import watchdogFn from "./watchdog/index.js";
 
@@ -296,6 +304,44 @@ export const MANIFEST: ManifestEntry[] = [
     id: "tool-config",
     fn: toolConfigFn,
     desc: "Interactive tool enable/disable UI",
+    module: "contrib",
+  },
+
+  // ── pi-* standalone tools (from ~/.pi/agent/extensions/) ────────────
+  {
+    id: "codebase-tree",
+    fn: codebaseTreeFn,
+    desc: "Codebase directory tree explorer",
+    module: "contrib",
+  },
+  {
+    id: "codebase-graph",
+    fn: codebaseGraphFn,
+    desc: "Codebase dependency graph analysis",
+    module: "contrib",
+  },
+  {
+    id: "browser",
+    fn: browserFn,
+    desc: "Browser automation tools (navigate, screenshot, eval)",
+    module: "contrib",
+  },
+  {
+    id: "docs",
+    fn: docsFn,
+    desc: "Document reader (pdf, docx, etc.)",
+    module: "contrib",
+  },
+  {
+    id: "repl",
+    fn: replFn,
+    desc: "JavaScript REPL tool",
+    module: "contrib",
+  },
+  {
+    id: "vision",
+    fn: visionFn,
+    desc: "Image analysis via vision models",
     module: "contrib",
   },
 

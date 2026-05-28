@@ -4,7 +4,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { addEvidence } from "../../../lib/evidence-pool.js";
-import { emitSignal } from "../../../lib/belief-policy-engine.js";
+import { emitSignal } from "../../../lib/reasoning/belief-policy-engine.js";
 import { eventBus } from "../../../lib/event-bus.js";
 import { sendEnforcementWhisper } from "../whisper.js";
 import { getState } from "../state.js";

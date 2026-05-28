@@ -18,9 +18,9 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../../lib/core/logger.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
-import { classify } from "../../../lib/text-classifier.js";
-import { CRITICS } from "../../../lib/critic-registry.js";
-import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
+import { classify } from "../../../lib/ai/text-classifier.js";
+import { CRITICS } from "../../../lib/ai/critic-registry.js";
+import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { onEvent } from "../../../lib/event-types.js";
 
 const log = createLogger("turn-outcome");

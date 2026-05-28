@@ -17,7 +17,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { getCmState, log, buildContinuationSummary, triggerEmergencyRotation } from "./shared.js";
 import { getRotationState } from "../../../../lib/state/global-state.js";
 import type { RotationState } from "../../../../lib/state/global-state.js";
-import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
+import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";
 import { tryRestoreAppendMessage, clearInterceptState } from "./compaction.js";
 
 // ── Rotation configuration ───────────────────────────────────────────────────

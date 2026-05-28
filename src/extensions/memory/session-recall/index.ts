@@ -19,7 +19,7 @@ const log = createLogger("session-recall");
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { Model } from "@mariozechner/pi-ai";
-import { callLlm } from "../../../lib/llm-call.js";
+import { callLlm } from "../../../lib/ai/llm-call.js";
 import { Type } from "typebox";
 import { execFileSync } from "node:child_process";
 import { stat, readdir, readFile } from "node:fs/promises";
@@ -124,7 +124,7 @@ const MAX_SNIPPETS_PER_SESSION = 3;
 
 type SearchBackend = "rg" | "grep" | "node";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
-import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
+import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { onEvent } from "../../../lib/event-types.js";
 

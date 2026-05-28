@@ -3,7 +3,7 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { emitSignal } from "../../../../lib/belief-policy-engine.js";
+import { emitSignal } from "../../../../lib/reasoning/belief-policy-engine.js";
 import { getState } from "../../state.js";
 
 export async function reflectionHandler(

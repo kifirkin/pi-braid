@@ -12,7 +12,7 @@ import { createThinkTool, recordCalibration } from "./handlers/think.js";
 import { createHypothesizeTool } from "./handlers/hypothesize.js";
 import { createFinalizeTool } from "./handlers/finalize.js";
 import { createVerifyTool } from "./handlers/verify.js";
-import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
+import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 
 interface MetaMetrics {
   thinks: number;

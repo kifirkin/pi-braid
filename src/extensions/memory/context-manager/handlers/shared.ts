@@ -6,7 +6,7 @@ import { createLogger } from "../../../../lib/core/logger.js";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { createPruningState } from "../pruning.js";
 import { getSessionManager } from "../../../../lib/state/session-manager.js";
-import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
+import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";
 import { getRotationState } from "../../../../lib/state/global-state.js";
 
 export const log = createLogger("context-manager");

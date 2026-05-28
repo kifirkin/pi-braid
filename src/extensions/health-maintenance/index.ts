@@ -11,7 +11,7 @@ import {
   resetMetrics,
   saveMetrics,
   updateConfig,
-} from "../../lib/degradation-detector.js";
+} from "../../lib/detection/degradation-detector.js";
 import { createLogger } from "../../lib/core/logger.js";
 import {
   getMetacognitiveState,

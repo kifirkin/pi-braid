@@ -11,8 +11,8 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../../lib/core/logger.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
-import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
-import { isDegraded, getDegradationReasons } from "../../../lib/degradation-detector.js";
+import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
+import { isDegraded, getDegradationReasons } from "../../../lib/detection/degradation-detector.js";
 import { onEvent } from "../../../lib/event-types.js";
 
 const log = createLogger("auto-recovery");

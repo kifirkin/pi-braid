@@ -31,7 +31,7 @@ interface Preparation {
 }
 import { addEvidence } from "../../../../lib/evidence-pool.js";
 import { eventBus } from "../../../../lib/event-bus.js";
-import { recordAdvice } from "../../../../lib/advice-tracker.js";
+import { recordAdvice } from "../../../../lib/reasoning/advice-tracker.js";
 import { appendFileSync } from "node:fs";
 import { analyzeSession } from "../analysis.js";
 import {
@@ -44,8 +44,8 @@ import {
   setCompactionActive,
   recordCompactionOutcome,
 } from "./shared.js";
-import { filterSafeToRemove } from "../../../../lib/filter-safe-to-remove.js";
-import { determineCompressionLevel } from "../../../../lib/compression-strategy.js";
+import { filterSafeToRemove } from "../../../../lib/utils/filter-safe-to-remove.js";
+import { determineCompressionLevel } from "../../../../lib/detection/compression-strategy.js";
 import { semanticCompress } from "../semantic-compress.js";
 import { onEvent } from "../../../../lib/event-types.js";
 import {

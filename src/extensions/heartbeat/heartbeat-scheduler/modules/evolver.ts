@@ -8,7 +8,7 @@
 import type { CognitiveModule } from "../types.js";
 import { createLogger } from "../../../../lib/core/logger.js";
 import { getMemoryState } from "../state.js";
-import { isDegraded } from "../../../../lib/degradation-detector.js";
+import { isDegraded } from "../../../../lib/detection/degradation-detector.js";
 
 const log = createLogger("heartbeat:evolver");
 

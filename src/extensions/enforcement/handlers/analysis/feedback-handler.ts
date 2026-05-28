@@ -3,8 +3,8 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { inferBeliefs } from "../../../../lib/belief-policy-engine.js";
-import { evaluatePendingAdvice } from "../../../../lib/advice-tracker.js";
+import { inferBeliefs } from "../../../../lib/reasoning/belief-policy-engine.js";
+import { evaluatePendingAdvice } from "../../../../lib/reasoning/advice-tracker.js";
 import { getState } from "../../state.js";
 
 export async function feedbackHandler(_pi: any, _event: any, ctx: ExtensionContext): Promise<void> {

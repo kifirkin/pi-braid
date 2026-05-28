@@ -19,7 +19,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../../lib/core/logger.js";
 import { Type } from "typebox";
-import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
+import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 
 const log = createLogger("auto-singleton");
 

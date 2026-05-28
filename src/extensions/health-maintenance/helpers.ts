@@ -67,7 +67,7 @@ export function startMetricsPersistence(): void {
 }
 
 import { createLogger } from "../../lib/core/logger.js";
-import { saveMetrics } from "../../lib/degradation-detector.js";
+import { saveMetrics } from "../../lib/detection/degradation-detector.js";
 const _log = createLogger("evolve");
 
 // Benchmark history

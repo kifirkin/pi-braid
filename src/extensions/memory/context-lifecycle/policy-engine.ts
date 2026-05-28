@@ -10,12 +10,12 @@ import { getExtensionState } from "../../../lib/state/extension-state.js";
 import {
   evaluateContextDensity,
   recommendCompressionStrategy,
-} from "../../../lib/context-density.js";
+} from "../../../lib/detection/context-density.js";
 import {
   DENSITY_LOW,
   DENSITY_HIGH,
   TOKEN_RATIO_LARGE_CONTEXT,
-} from "../../../lib/context-thresholds.js";
+} from "../../../lib/detection/context-thresholds.js";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 const log = createLogger("context-lifecycle");

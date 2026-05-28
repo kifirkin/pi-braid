@@ -16,7 +16,7 @@ import {
   USAGE_WHISPER_WARNING,
   USAGE_WHISPER_CRITICAL,
   USAGE_FIRED_RESET_BELOW,
-} from "../../../lib/context-thresholds.js";
+} from "../../../lib/detection/context-thresholds.js";
 
 const log = createLogger("heartbeat:policies");
 

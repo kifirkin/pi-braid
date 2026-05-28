@@ -11,7 +11,7 @@
  * Parallel to roast-filter.ts in input-polisher, but for security instead
  * of text quality. "Roast" critiques quality; "vet" checks security.
  */
-import { classify } from "../../lib/text-classifier.js";
+import { classify } from "../../lib/ai/text-classifier.js";
 import * as path from "node:path";
 import * as os from "node:os";
 import { SKILLS_DIR } from "../../index.js";

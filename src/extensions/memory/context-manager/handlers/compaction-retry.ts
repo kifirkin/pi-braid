@@ -7,7 +7,7 @@
  */
 
 import type { CompactOptions, ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
+import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";
 import { analyzeSession } from "../analysis.js";
 import { onEvent } from "../../../../lib/event-types.js";
 import {

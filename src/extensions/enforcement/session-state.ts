@@ -5,7 +5,7 @@
  *       enforcement active flag, verification judge state, drift detector.
  */
 
-import { TopicDriftDetector } from "../../lib/topic-drift-detector.js";
+import { TopicDriftDetector } from "../../lib/detection/topic-drift-detector.js";
 import { ENFORCEMENT_PARAMS } from "./state.js";
 import type { TurnState } from "./types.js";
 

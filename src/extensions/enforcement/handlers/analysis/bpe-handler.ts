@@ -7,11 +7,11 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
+import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";
 import {
   getNextRecommendation,
   reportRecommendationOutcome,
-} from "../../../../lib/belief-policy-engine.js";
+} from "../../../../lib/reasoning/belief-policy-engine.js";
 import { getState } from "../../state.js";
 
 let _lastRecommendationType: string | null = null;

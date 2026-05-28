@@ -21,14 +21,14 @@ import {
 import { createLogger } from "../../../lib/core/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
-import { sendTrackedMessage } from "../../../lib/injection-tracker.js";
+import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { eventBus } from "../../../lib/event-bus.js";
 import { processConsolidationTick } from "../../../lib/consolidation-channel.js";
 import { heartbeatCheckpointTick } from "../../../lib/state/state-checkpoint.js";
-import { extractSOP } from "../../../lib/sop-extractor.js";
-import { injectSopSuggestions } from "../../../lib/sop-suggestion.js";
-import type { TrajectoryEntry } from "../../../lib/sop-extractor.js";
-import { isDegraded, recordTurnMetrics } from "../../../lib/degradation-detector.js";
+import { extractSOP } from "../../../lib/utils/sop-extractor.js";
+import { injectSopSuggestions } from "../../../lib/utils/sop-suggestion.js";
+import type { TrajectoryEntry } from "../../../lib/utils/sop-extractor.js";
+import { isDegraded, recordTurnMetrics } from "../../../lib/detection/degradation-detector.js";
 import type { Episode } from "../../memory/three-memory-stores/index.js";
 
 import type { CognitiveModule, ModuleContext, PolicyEngine } from "./types.js";
@@ -350,7 +350,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 
     // Track SOP suggestion feedback
     try {
-      const { trackSuggestionFeedback } = await import("../../../lib/sop-suggestion.js");
+      const { trackSuggestionFeedback } = await import("../../../lib/utils/sop-suggestion.js");
       const toolName = event?.toolName as string;
       if (toolName) trackSuggestionFeedback(ctx, toolName);
     } catch {

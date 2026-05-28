@@ -3,10 +3,10 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
-import { emitSignal } from "../../../../lib/belief-policy-engine.js";
-import { shouldAdvise } from "../../../../lib/mars-reflector.js";
-import { recordAdvice } from "../../../../lib/advice-tracker.js";
+import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";
+import { emitSignal } from "../../../../lib/reasoning/belief-policy-engine.js";
+import { shouldAdvise } from "../../../../lib/reasoning/mars-reflector.js";
+import { recordAdvice } from "../../../../lib/reasoning/advice-tracker.js";
 import { getState } from "../../state.js";
 
 function _extractToolFromMarsMessage(msg: string): string | undefined {

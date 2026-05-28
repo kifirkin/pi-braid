@@ -14,7 +14,7 @@ const assert = (cond, msg) => cond ? (passed++, console.log("  ✅ " + msg)) : (
 console.log("\n[1] Degradation detector structure");
 {
   const fs = await import("fs");
-  const src = fs.readFileSync(`${ROOT}/src/lib/degradation-detector.ts`, "utf8");
+  const src = fs.readFileSync(`${ROOT}/src/lib/detection/degradation-detector.ts`, "utf8");
 
   // Core API functions
   assert(src.includes("export function isDegraded"), "exports isDegraded()");
@@ -41,7 +41,7 @@ console.log("\n[1] Degradation detector structure");
 console.log("\n[2] Interfaces and types");
 {
   const fs = await import("fs");
-  const src = fs.readFileSync(`${ROOT}/src/lib/degradation-detector.ts`, "utf8");
+  const src = fs.readFileSync(`${ROOT}/src/lib/detection/degradation-detector.ts`, "utf8");
 
   assert(src.includes("interface PerformanceMetrics"), "Defines PerformanceMetrics interface");
   assert(src.includes("interface DegradationConfig"), "Defines DegradationConfig interface");
@@ -66,7 +66,7 @@ console.log("\n[2] Interfaces and types");
 console.log("\n[3] Default configuration");
 {
   const fs = await import("fs");
-  const src = fs.readFileSync(`${ROOT}/src/lib/degradation-detector.ts`, "utf8");
+  const src = fs.readFileSync(`${ROOT}/src/lib/detection/degradation-detector.ts`, "utf8");
 
   assert(src.includes("healthcheckMinScore: 80"), "default healthcheckMinScore = 80");
   assert(src.includes("errorRateMax: 0.1"), "default errorRateMax = 0.1");
@@ -78,7 +78,7 @@ console.log("\n[3] Default configuration");
 console.log("\n[4] Degradation detection logic");
 {
   const fs = await import("fs");
-  const src = fs.readFileSync(`${ROOT}/src/lib/degradation-detector.ts`, "utf8");
+  const src = fs.readFileSync(`${ROOT}/src/lib/detection/degradation-detector.ts`, "utf8");
 
   // Check that updateDegradationStatusFrom checks all 4 conditions
   assert(src.includes("consecutiveErrors >= state.config.maxConsecutiveErrors"),
@@ -99,7 +99,7 @@ console.log("\n[4] Degradation detection logic");
 console.log("\n[5] Overloaded function patterns (ctx-aware)");
 {
   const fs = await import("fs");
-  const src = fs.readFileSync(`${ROOT}/src/lib/degradation-detector.ts`, "utf8");
+  const src = fs.readFileSync(`${ROOT}/src/lib/detection/degradation-detector.ts`, "utf8");
 
   assert(src.includes("export function recordHealthcheckScore(score: number): void;"),
     "recordHealthcheckScore overload (no ctx)");
@@ -116,7 +116,7 @@ console.log("\n[5] Overloaded function patterns (ctx-aware)");
 console.log("\n[6] createTurnMetrics logic");
 {
   const fs = await import("fs");
-  const src = fs.readFileSync(`${ROOT}/src/lib/degradation-detector.ts`, "utf8");
+  const src = fs.readFileSync(`${ROOT}/src/lib/detection/degradation-detector.ts`, "utf8");
 
   // toolSuccessRate = ((toolCalls - errors) / toolCalls) * 100
   assert(src.includes("((toolCalls - errors) / toolCalls) * 100"),
@@ -134,7 +134,7 @@ console.log("\n[6] createTurnMetrics logic");
 console.log("\n[7] Metrics storage limits");
 {
   const fs = await import("fs");
-  const src = fs.readFileSync(`${ROOT}/src/lib/degradation-detector.ts`, "utf8");
+  const src = fs.readFileSync(`${ROOT}/src/lib/detection/degradation-detector.ts`, "utf8");
 
   // Max 100 metrics stored
   assert(src.includes("s.metrics.length > 100"), "Limits storage to 100 metrics");
@@ -145,7 +145,7 @@ console.log("\n[7] Metrics storage limits");
 console.log("\n[8] Session-scoped state integration");
 {
   const fs = await import("fs");
-  const src = fs.readFileSync(`${ROOT}/src/lib/degradation-detector.ts`, "utf8");
+  const src = fs.readFileSync(`${ROOT}/src/lib/detection/degradation-detector.ts`, "utf8");
 
   // Uses getExtensionState
   assert(src.includes('getExtensionState(ctx, "degradation-detector"'),
@@ -159,7 +159,7 @@ console.log("\n[8] Session-scoped state integration");
 console.log("\n[9] Error handling");
 {
   const fs = await import("fs");
-  const src = fs.readFileSync(`${ROOT}/src/lib/degradation-detector.ts`, "utf8");
+  const src = fs.readFileSync(`${ROOT}/src/lib/detection/degradation-detector.ts`, "utf8");
 
   // saveMetrics has try-catch
   assert(src.includes("saveMetrics(): Promise<void>"), "saveMetrics exists");
@@ -174,7 +174,7 @@ console.log("\n[9] Error handling");
 console.log("\n[10] File persistence");
 {
   const fs = await import("fs");
-  const src = fs.readFileSync(`${ROOT}/src/lib/degradation-detector.ts`, "utf8");
+  const src = fs.readFileSync(`${ROOT}/src/lib/detection/degradation-detector.ts`, "utf8");
 
   assert(src.includes("METRICS_FILE"), "Defines METRICS_FILE path");
   assert(src.includes("DEGRADATION_FILE"),
@@ -186,7 +186,7 @@ console.log("\n[10] File persistence");
 console.log("\n[11] captureSystemMetrics");
 {
   const fs = await import("fs");
-  const src = fs.readFileSync(`${ROOT}/src/lib/degradation-detector.ts`, "utf8");
+  const src = fs.readFileSync(`${ROOT}/src/lib/detection/degradation-detector.ts`, "utf8");
 
   assert(src.includes("export function captureSystemMetrics()"),
     "captureSystemMetrics is exported");

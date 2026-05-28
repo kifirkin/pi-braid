@@ -5,10 +5,10 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { SessionEntry, SessionManager } from "../../../../lib/state/session-manager.js";
 import { getCachedSessionManager } from "../../../../lib/state/extension-state.js";
-import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
-import { emitSignal } from "../../../../lib/belief-policy-engine.js";
+import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";
+import { emitSignal } from "../../../../lib/reasoning/belief-policy-engine.js";
 import { getState } from "../../state.js";
-import { setCriticCtx } from "../../../../lib/topic-drift-detector.js";
+import { setCriticCtx } from "../../../../lib/detection/topic-drift-detector.js";
 
 function extractTextContent(msg: any): string {
   if (typeof msg.content === "string") return msg.content;

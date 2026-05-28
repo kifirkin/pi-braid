@@ -33,7 +33,7 @@ export const budgetModule: CognitiveModule = {
     try {
       const { loadScratchpadFromDisk, saveScratchpadToDisk } =
         await import("../../../core/scratchpad/index.js");
-      const { emitSignal } = await import("../../../../lib/belief-policy-engine.js");
+      const { emitSignal } = await import("../../../../lib/reasoning/belief-policy-engine.js");
 
       const cwd = (context.ctx as { cwd?: string }).cwd ?? "";
       const segments = cwd.split("/").filter(Boolean);

@@ -3,7 +3,7 @@
 
 import type { ExtensionContext, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { addEvidence } from "../../../../lib/evidence-pool.js";
-import { sendTrackedMessage } from "../../../../lib/injection-tracker.js";
+import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";
 import { applyPruningWorkflow } from "../pruning.js";
 import {
   findReasoningBlocks,
@@ -12,9 +12,9 @@ import {
   shouldSummarizeReasoning,
   estimateTokensSaved,
   extractReasoningSummary,
-} from "../../../../lib/reasoning-summary.js";
+} from "../../../../lib/reasoning/reasoning-summary.js";
 import { addEpisode, getState } from "../../three-memory-stores/index.js";
-import { determineCompressionLevel } from "../../../../lib/compression-strategy.js";
+import { determineCompressionLevel } from "../../../../lib/detection/compression-strategy.js";
 import { semanticCompress } from "../semantic-compress.js";
 import { updateContextDensity } from "../../../heartbeat/analytics/index.js";
 import { onEvent } from "../../../../lib/event-types.js";

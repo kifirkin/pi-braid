@@ -18,7 +18,7 @@ import {
   HYGIENE_DENSITY_WHISPER_COOLDOWN_TURNS,
   HYGIENE_LARGE_CONTEXT_COOLDOWN_TURNS,
   HYGIENE_AUTO_COMPACT_COOLDOWN_TURNS,
-} from "../../../../lib/context-thresholds.js";
+} from "../../../../lib/detection/context-thresholds.js";
 import {
   generateDensitySignals,
   evaluateDensityPolicies,
@@ -104,7 +104,7 @@ export const contextHygieneModule: CognitiveModule = {
 
   async activate(context): Promise<void> {
     const ctx = context.ctx;
-    const { evaluateContextDensity } = await import("../../../../lib/context-density.js");
+    const { evaluateContextDensity } = await import("../../../../lib/detection/context-density.js");
     const density = evaluateContextDensity(ctx);
 
     // Emit density signals into S-MMU lifecycle

@@ -10,8 +10,8 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { createLogger } from "../../lib/core/logger.js";
-import { guard } from "../../lib/error-guard.js";
-import { registerInjectionTracker } from "../../lib/injection-tracker.js";
+import { guard } from "../../lib/utils/error-guard.js";
+import { registerInjectionTracker } from "../../lib/utils/injection-tracker.js";
 import { registerTurnEndHandler, dispatchTurnEnd } from "../../lib/turn-end-coordinator.js";
 import { onEvent } from "../../lib/event-types.js";
 import { type NudgeManager } from "./nudge-manager.js";
@@ -23,7 +23,7 @@ import {
   getVerifierState,
 } from "../../lib/bidirectional-verifier.js";
 import { scanArchives } from "../../lib/consolidation-channel.js";
-import { isDegraded } from "../../lib/degradation-detector.js";
+import { isDegraded } from "../../lib/detection/degradation-detector.js";
 import { autoRollback } from "../../lib/state/state-checkpoint.js";
 import { getState } from "./state.js";
 import { registerInputHandler } from "./handlers/register-input-handler.js";

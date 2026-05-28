@@ -68,17 +68,62 @@ sg run -p 'oldName' -r 'newName' --update-all src/ --data-type=string || true
 sg run -p "'../lib/old-name.js'" -r "'../lib/new-name.js'" src/ --update-all
 ```
 
-### Pattern D: Batch edit across many files (when sg can't express the change)
+### Pattern E: Barrel file for backward compat (REQUIRED for moved files)
 
-Create a temporary script:
+Always create a barrel re-export at the old path when you move a file.
+Tests and dist imports may reference the old path directly.
+
+```typescript
+// src/lib/foo.ts — backward-compat barrel (old path)
+export * from "./subdir/foo.js";
+```
+
+Without this, `import { X } from "../../dist/lib/foo.js"` breaks in tests.
+
+### Pattern F: Cross-subdir relative paths (easy to get wrong)
+
+When you move file A from `lib/` to `lib/subdir/`, its OWN imports change:
+
+| Old relative path | New relative path (A now in subdir/) |
+|---|---|
+| `"./logger.js"` | `"../core/logger.js"` (sibling subdir) |
+| `"./config/foo.js"` | `"../config/foo.js"` (sibling subdir) |
+| `"./extension-state.js"` | `"../state/extension-state.js"` (sibling subdir) |
+| `"./sop-extractor.js"` | `"../sop-extractor.js"` (parent, still flat) |
+
+**Key rule:** If both files stay flat → `"./foo"` stays. If one moves to a
+subdir → the relative path needs `../` or stays `./` depending on target.
+
+### Pattern G: Use a scratch Node.js script for bulk rewrites
 
 ```mjs
-import { readFileSync, writeFileSync } from "fs";
-const files = ["a.ts", "b.ts"];
-for (const f of files) {
-  let c = readFileSync(f, "utf-8");
-  c = c.replace(/old/g, "new");
-  writeFileSync(f, c);
+import { readFileSync, writeFileSync, readdirSync, statSync } from "fs";
+const root = new URL(".", import.meta.url).pathname;
+
+const REWRITES = [
+  ["lib/old-name.js", "lib/subdir/old-name.js"],
+];
+
+function collect(dir) {
+  const out = [];
+  for (const n of readdirSync(dir)) {
+    const f = join(dir, n);
+    if (n === "node_modules") continue;
+    if (statSync(f).isDirectory()) out.push(...collect(f));
+    else if (n.endsWith(".ts")) out.push(f);
+  }
+  return out;
+}
+
+for (const full of collect(join(root, "src"))) {
+  let content = readFileSync(full, "utf-8");
+  let changed = false;
+  for (const [from, to] of REWRITES) {
+    const re = new RegExp(from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g");
+    const next = content.replace(re, to);
+    if (next !== content) { changed = true; content = next; }
+  }
+  if (changed) writeFileSync(full, content);
 }
 ```
 

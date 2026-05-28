@@ -8,7 +8,7 @@ const log = createLogger("enforcement");
  * of assistant messages at message_end boundaries.
  */
 
-import { measureStability } from "../../../lib/reasoning-metrics.js";
+import { measureStability } from "../../../lib/reasoning/reasoning-metrics.js";
 import { estimateComplexity, checkComplexityMismatch } from "./probe-handler.js";
 import { detectIntent, getRoutingHint, checkRoutingMismatch } from "./routing-handler.js";
 import type { EnforcementState } from "../state.js";

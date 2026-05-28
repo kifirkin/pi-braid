@@ -6,7 +6,7 @@ import {
   USAGE_TOKENS_SOFT,
   USAGE_TOKENS_ADVISORY,
   USAGE_TOKENS_WARNING,
-} from "../../../lib/context-thresholds.js";
+} from "../../../lib/detection/context-thresholds.js";
 
 const log = createLogger("context-lifecycle");
 /**

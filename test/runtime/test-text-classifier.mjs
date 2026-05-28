@@ -135,7 +135,7 @@ assert.strictEqual(typeof classify, "function", "classify() is a function");
 
 // Verify the exported types exist via source inspection
 const { readFileSync } = await import("node:fs");
-const src = readFileSync(join(ROOT, "src", "lib", "text-classifier.ts"), "utf-8");
+const src = readFileSync(join(ROOT, "src", "lib", "ai", "text-classifier.ts"), "utf-8");
 
 assert.ok(src.includes("export interface ClassificationResult"), "ClassificationResult exported");
 assert.ok(src.includes("export interface ClassifierCriteria"), "ClassifierCriteria exported");

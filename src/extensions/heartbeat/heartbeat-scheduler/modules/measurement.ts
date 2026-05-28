@@ -10,7 +10,7 @@ import {
   isDegraded,
   getDegradationReasons,
   getMetricsSummary,
-} from "../../../../lib/degradation-detector.js";
+} from "../../../../lib/detection/degradation-detector.js";
 
 const log = createLogger("heartbeat:measurement");
 
