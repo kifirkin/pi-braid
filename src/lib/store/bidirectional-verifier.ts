@@ -9,7 +9,6 @@
  * never called externally and have been removed.
  */
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";

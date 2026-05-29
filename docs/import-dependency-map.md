@@ -1,19 +1,21 @@
 # Import Dependency Map — `await import()` Sites
 
-Generated: 2026-05-27  
-Total: **33 `await import()` calls** across the codebase
+Generated: 2026-05-29 (updated after Phase 6.4 consolidation)
+Total: **26 `await import()` calls** across the codebase
 
 ## Classification Key
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| **MASK (circular)** | 17 | Dynamic imports used to break circular dependency chains between modules |
-| **LAZY (legitimate)** | 11 | Delayed loading for startup perf (node builtins, heavy modules) |
-| **UNSAFE (fragile)** | 5 | Dynamic imports in hot paths where a failed resolve would cascade |
+| **MASK (circular)** | 14 | Dynamic imports used to break circular dependency chains between modules |
+| **LAZY (legitimate)** | 8 | Delayed loading for startup perf (node builtins, heavy modules) |
+| **UNSAFE (fragile)** | 4 | Dynamic imports in hot paths where a failed resolve would cascade |
 
 ---
 
-## 1. Enforcement (handler-registry.ts) — 8 calls, all MASK
+The reduction from 33→26 is primarily from resolving the `await import()` calls in `handler-registry.ts` — those modules (verification-judge, claim-tracker, bidirectional-verifier, consolidation-channel, turn-end-coordinator, mars-reflector, dreamer) were converted to static imports after the enforcement god-object split broke circular dependency chains.
+
+## 1. Enforcement (handler-registry.ts) — 0 calls (was 8, all resolved)
 
 | Line | Target | Imported Symbol | Why Dynamic | Risk |
 |------|--------|----------------|-------------|------|

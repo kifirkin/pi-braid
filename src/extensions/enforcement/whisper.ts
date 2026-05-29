@@ -70,7 +70,7 @@ export function sendEnforcementWhisper(
     pi,
     {
       customType: "enforcement",
-      content: [{ type: "text" as const, text: message }],
+      content: [{ type: "text" as const, text: `[enforcement] ${message}` }],
       display: true,
     },
     critical
