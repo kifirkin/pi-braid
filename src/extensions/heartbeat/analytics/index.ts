@@ -10,6 +10,7 @@
  */
 
 import { createLogger } from "../../../lib/core/logger.js";
+import { resetCriticStats, getCriticStats } from "../../../lib/ai/critic-stats.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 import { existsSync, mkdirSync } from "node:fs";
 import { METRICS_FILE, METRICS_DIR } from "../../../lib/config/braid-paths.js";
@@ -45,6 +46,7 @@ const log = createLogger("analytics");
 export default function analyticsExtension(pi: ExtensionAPI) {
   // ── session_start ──────────────────────────────────────────────────
   registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event, ctx) => {
+    resetCriticStats();
     const state = getAnalyticsStateInternal(ctx);
     const sm = safeSessionManager(ctx) as { getSessionFile?(): string } | undefined;
     state.sessionId = sm
@@ -329,6 +331,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
         toolsBreakdown.sort((a, b) => b.calls - a.calls);
 
         const ch = getCompactionHealth();
+        const cs = getCriticStats();
         const details = {
           sessionId: state.sessionId,
           duration: `${Math.floor(durationMs / 60000)}m ${Math.floor((durationMs % 60000) / 1000)}s`,
@@ -343,6 +346,11 @@ export default function analyticsExtension(pi: ExtensionAPI) {
             failures: ch.totalFailures,
             lastOutcome: ch.lastOutcome,
             entriesRemoved: ch.totalEntriesRemoved,
+          },
+          criticStats: {
+            totalCalls: cs.totalCalls,
+            perTier: cs.totals,
+            perCritic: cs.perCritic,
           },
         };
 

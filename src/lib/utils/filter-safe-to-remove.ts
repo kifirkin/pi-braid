@@ -352,7 +352,7 @@ export async function assessBatchRemovability(
         toolName: "mixed",
         content: `Batch of ${messages.length} messages. Sample:\n${sample.slice(0, 5).join("\n")}`,
       },
-      { maxTokens: 5, timeoutMs: 5000 },
+      { maxTokens: 5, timeoutMs: 5000, label: CRITICS.removalSafety.label },
     );
     if (result.label === "yes") return "AGGRESSIVE";
   } catch {

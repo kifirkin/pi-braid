@@ -1,6 +1,6 @@
 # pi-braid Improvement Map
 
-Generated: 2026-05-29  
+Generated: 2026-05-29 (updated 15:23 EEST)
 Based on: April 2026 Tool Improvements Proposal, May 2026 LLM-Judge Refactoring
 
 ---
@@ -9,14 +9,20 @@ Based on: April 2026 Tool Improvements Proposal, May 2026 LLM-Judge Refactoring
 
 ### ✅ Already Implemented (May 2026)
 
-| Feature | Files Changed |
-|---------|---------------|
-| Barrel file elimination (46 → 0) | All `src/lib/*.ts`, `test/runtime/*.mjs` |
-| `contextDensity` LLM judge | `critic-registry.ts`, `context-density.ts` |
-| `compressionUrgency` LLM judge | `critic-registry.ts`, `compression-strategy.ts` |
-| `qualitativeDegradation` LLM judge | `critic-registry.ts`, `degradation-detector.ts` |
-| `removalSafety` LLM judge | `critic-registry.ts`, `filter-safe-to-remove.ts` |
-| Heuristic fallback simplification (×4) | `critic-registry.ts` |
+| Feature | Files Changed | Date |
+|---------|---------------|------|
+| Barrel file elimination (46 → 0) | All `src/lib/*.ts`, `test/runtime/*.mjs` | May 2026 |
+| `contextDensity` LLM judge | `critic-registry.ts`, `context-density.ts` | May 2026 |
+| `compressionUrgency` LLM judge | `critic-registry.ts`, `compression-strategy.ts` | May 2026 |
+| `qualitativeDegradation` LLM judge | `critic-registry.ts`, `degradation-detector.ts` | May 2026 |
+| `removalSafety` LLM judge | `critic-registry.ts`, `filter-safe-to-remove.ts` | May 2026 |
+| Heuristic fallback simplification (×4) | `critic-registry.ts` | May 2026 |
+| `errorType` LLM judge | `critic-registry.ts`, `register-auto-retry-end.ts` | 2026-05-29 |
+| `instructionStrength` LLM judge | `critic-registry.ts`, `bidirectional-verifier.ts` | 2026-05-29 |
+| `commandType` LLM judge | `critic-registry.ts`, `probe-handler.ts` | 2026-05-29 |
+| `complianceFraming` LLM judge | `critic-registry.ts`, `latent-activator.ts` | 2026-05-29 |
+| ERROR_BURST_THRESHOLD centralization | `enforcement/state.ts` (was 3 independent defs) | 2026-05-29 |
+| `polarityDetection` + `entityExtraction` critics + fallback | `critic-registry.ts`, `claim-tracker.ts` | 2026-05-29 |
 
 ### ✅ Implemented from April Proposal
 
@@ -53,16 +59,16 @@ Based on: April 2026 Tool Improvements Proposal, May 2026 LLM-Judge Refactoring
 
 ### Phase A — LLM Judge Adoption (extends May pattern)
 
-| Module | Heuristic | Fragility | Effort | Impact |
-|--------|-----------|-----------|--------|--------|
-| `claim-tracker.ts:145` | Verb leading-word filter (regex) | Medium | Small | Medium |
-| `claim-tracker.ts:159` | Polarity detection via 7 negation words | Medium | Small | Medium |
-| `bidirectional-verifier.ts:76-105` | Path detection via 5 regexes | Low | Small | Medium |
-| `bidirectional-verifier.ts:195-203` | SHALL/MUST/SHOULD keyword strength | Low | Small | Medium |
-| `conflict-qa.ts` | RESOLUTION_KEYWORDS array | Low | Small | Medium |
-| `sycophancy-detector/index.ts:30-51` | Flattery pattern regexes | High | Medium | High |
-| `sycophancy-detector/index.ts:120-133` | Footage/evidence pattern regexes | High | Medium | High |
-| `register-auto-retry-end.ts:48-50` | Error type regex classification | Medium | Small | High |
+| Module | Heuristic | Fragility | Effort | Impact | Status |
+|--------|-----------|-----------|--------|--------|--------|
+| `claim-tracker.ts:145` | Verb leading-word filter (regex) | Medium | Small | Medium | ✅ Addressed — `entityExtraction` critic + fallback utility |
+| `claim-tracker.ts:159` | Polarity detection via 7 negation words | Medium | Small | Medium | ✅ Addressed — `polarityDetection` critic + fallback utility |
+| `bidirectional-verifier.ts:76-105` | Path detection via 5 regexes | Low | Small | Medium | ⏸ Deferred — low fragility, small impact |
+| `bidirectional-verifier.ts:195-203` | SHALL/MUST/SHOULD keyword strength | Low | Small | Medium | ✅ Addressed — `instructionStrength` critic + sync fallback |
+| `conflict-qa.ts` | RESOLUTION_KEYWORDS array | Low | Small | Medium | ⏸ Deferred — low fragility |
+| `sycophancy-detector/index.ts:30-51` | Flattery pattern regexes | High | Medium | High | ⏸ Deferred — already three-tier design, correct as-is |
+| `sycophancy-detector/index.ts:120-133` | Footage/evidence pattern regexes | High | Medium | High | ⏸ Deferred — already three-tier design, correct as-is |
+| `register-auto-retry-end.ts:48-50` | Error type regex classification | Medium | Small | High | ✅ Addressed — `errorType` critic + heuristic fallback |
 
 ### Phase B — Tool v2 Implementation (extends April proposal)
 
@@ -89,19 +95,24 @@ Based on: April 2026 Tool Improvements Proposal, May 2026 LLM-Judge Refactoring
 
 ### Next (this week)
 1. **sycophancy-detector** → `sycophancyQuality` LLM judge (high impact, replaces fragile regex)
-2. **register-auto-retry-end** → `errorType` LLM judge (high impact, replaces error regex)
-3. **claim-tracker** → `entityExtraction` + `polarityDetection` judges (data quality)
 
 ### Next sprint
-4. **hypothesize() v2** — verification plans + evidence tracking + format options
-5. **memory_recall() v2** — time filters + context-aware ranking + relevance reasons
-6. **Bidirectional verifier** → `instructionStrength` LLM judge
+2. **hypothesize() v2** — verification plans + evidence tracking + format options
+3. **memory_recall() v2** — time filters + context-aware ranking + relevance reasons
 
 ### Next quarter
-7. **memory_store() v2** — linking + consolidation
-8. **Standard tool results** — metacognition refactor
-9. **Closed-loop outcome tracking** — new module
-10. **Architectural simplification** — event router, enforcement consolidation
+4. **memory_store() v2** — linking + consolidation
+5. **Standard tool results** — metacognition refactor
+6. **Closed-loop outcome tracking** — new module
+7. **Architectural simplification** — event router, enforcement consolidation
+
+### ✅ Completed this session (2026-05-29)
+- **register-auto-retry-end** → `errorType` LLM judge + heuristic fallback
+- **claim-tracker** → `entityExtraction` + `polarityDetection` critics with shared `entityClaimFromSentence()` fallback utility
+- **bidirectional-verifier** → `instructionStrength` LLM judge (async) + sync keyword regex preserved
+- **probe-handler** → `commandType` LLM judge (opt-in async) + sync heuristic fallback
+- **latent-activator** → `complianceFraming` LLM judge (opt-in async) + sync `hasComplianceFraming()` preserved
+- **ERROR_BURST_THRESHOLD** → centralized into `enforcement/state.ts` from 3 independent definitions
 
 ---
 

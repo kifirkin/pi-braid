@@ -13,6 +13,10 @@
  *   trackInjection({ type: "enforcement", source: "enforcement/whisper", content: "..." });
  */
 
+import { createLogger } from "../core/logger.js";
+
+const log = createLogger("injection-tracker");
+
 export interface Injection {
   id: string;
   type: "enforcement" | "memory" | "retry" | "heartbeat" | "context" | "sop-suggestion" | "other";
@@ -32,6 +36,16 @@ interface InjectionBucket {
 const _buckets = new Map<string, InjectionBucket>();
 
 let _activeSessionId: string | undefined;
+
+// ── Re-entry depth tracking for sendTrackedMessage ───────────────────────────
+// Prevents unbounded recursion when pi.sendMessage(steer) triggers synchronous
+// event chains (e.g., before_agent_start → sendCompactNudge → sendTrackedMessage
+// → pi.sendMessage → before_agent_start ...).
+// Incremented before pi.sendMessage, decremented after. If depth > MAX_REENTRY_DEPTH,
+// the message is dispatched via queueMicrotask to break the synchronous chain.
+let _sendDepth = 0;
+const MAX_REENTRY_DEPTH = 2;
+
 
 /**
  * Set the active session ID. Call on session_start to scope injections.
@@ -172,7 +186,25 @@ export function sendTrackedMessage(
     params.details = existingDetails;
   }
 
-  pi.sendMessage(params, options);
+  if (_sendDepth >= MAX_REENTRY_DEPTH) {
+    // Break synchronous re-entry by deferring to microtask.
+    // This prevents stack overflow when pi.sendMessage(steer) triggers
+    // a synchronous before_agent_start that calls sendTrackedMessage again.
+    log.warn(
+      `sendTrackedMessage re-entry depth ${_sendDepth}/${MAX_REENTRY_DEPTH} — deferring to microtask`,
+    );
+    queueMicrotask(() => {
+      pi.sendMessage(params, options);
+    });
+    return;
+  }
+
+  _sendDepth++;
+  try {
+    pi.sendMessage(params, options);
+  } finally {
+    _sendDepth--;
+  }
 }
 
 /**

@@ -7,7 +7,7 @@
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { getState } from "./state.js";
+import { getState, RECOVERY_GRACE_TURNS } from "./state.js";
 
 /** A single signal entry keyed by semantic type */
 export interface EnforcementSignalEntry {
@@ -35,7 +35,6 @@ export function determineContrastMode(ctx: ExtensionContext): string {
   if (state.consecutiveErrorTurns >= 1) return "TOOL-RELIABILITY";
 
   // Priority 2: Overflow recovery → EPISTEMIC CALIBRATION
-  const RECOVERY_GRACE_TURNS = 5;
   const inOverflowRecovery = state.currentTurn - state.overflowRecently < RECOVERY_GRACE_TURNS;
   if (state.overflowRecently > 0 && inOverflowRecovery) return "EPISTEMIC-CALIBRATION";
 

@@ -84,6 +84,7 @@ async function detectLoop(state: LoopDetectionState, ctx: ExtensionContext): Pro
       {
         maxTokens: 5,
         timeoutMs: 5000,
+        label: CRITICS.toolLoopDetected.label,
         fallback: () => CRITICS.toolLoopFallback(toolSequences),
       },
     );

@@ -14,6 +14,7 @@
 import { callLlm } from "../ai/llm-call.js";
 import { resolveUtilityModel } from "../ai/model-resolver.js";
 import { createLogger } from "../core/logger.js";
+import { recordCriticCall } from "./critic-stats.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
 
@@ -46,6 +47,8 @@ export interface ClassifierOptions {
   timeoutMs?: number;
   /** Heuristic fallback function — called first. If it returns a clear yes/no, skip LLM. */
   fallback?: () => Promise<string> | string;
+  /** Optional human-readable label for runtime observability (critic-stats tracking). */
+  label?: string;
 }
 
 // ── Classify ─────────────────────────────────────────────────────────────────
@@ -82,6 +85,7 @@ export async function classify(
     if (lower === "yes" || lower === "no") {
       const latency = Date.now() - start;
       log.debug(`[text-classifier] TIER 1 (heuristic): "${lower}" ${latency}ms`);
+      if (options.label) recordCriticCall(options.label, "heuristic", latency);
       return {
         label: lower,
         confidence: 0.7,
@@ -111,6 +115,7 @@ export async function classify(
       log.debug(
         `[text-classifier] TIER 2 (utility → ${utilityModel.id}): "${tier1.label}" ${latency}ms`,
       );
+      if (options?.label) recordCriticCall(options.label, "utility", latency);
       return {
         label: tier1.label,
         confidence: 0.9,
@@ -139,6 +144,7 @@ export async function classify(
       log.debug(
         `[text-classifier] TIER 3 (session → ${sessionModel.id}): "${tier2.label}" ${latency}ms`,
       );
+      if (options?.label) recordCriticCall(options.label, "session", latency);
       return {
         label: tier2.label,
         confidence: 0.6,
@@ -152,6 +158,7 @@ export async function classify(
 
   const latency = Date.now() - start;
   log.warn(`[text-classifier] ALL TIERS FAILED — returning "unknown" ${latency}ms`);
+  if (options?.label) recordCriticCall(options.label, "failed", latency);
   return { label: "unknown", confidence: 0, raw: "", tier: "failed", latencyMs: latency };
 }
 

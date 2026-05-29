@@ -10,18 +10,13 @@ import { createLogger } from "../../../lib/core/logger.js";
 import { Type } from "typebox";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { eventBus } from "../../../lib/events/event-bus.js";
+import type { ScheduledTimer } from "../../../lib/events/timer-types.js";
 
 const log = createLogger("timer");
 
 // ── Timer Manager ─────────────────────────────────────────────────────────────
 
-export interface ScheduledTimer {
-  id: string;
-  firesAt: number; // Unix timestamp (ms)
-  reason: string;
-  tag?: string;
-  createdAt: number;
-}
+export type { ScheduledTimer };
 
 class TimerManager {
   private timers: Map<string, ScheduledTimer> = new Map();

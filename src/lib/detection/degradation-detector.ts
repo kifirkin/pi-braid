@@ -383,6 +383,7 @@ export async function checkQualitativeDegradation(
       {
         maxTokens: 10,
         timeoutMs: 5000,
+        label: CRITICS.qualitativeDegradation.label,
         fallback: () => CRITICS.qualitativeDegradationFallback(),
       },
     );

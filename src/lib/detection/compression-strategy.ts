@@ -68,6 +68,7 @@ export async function determineCompressionLevel(
       {
         maxTokens: 10,
         timeoutMs: 5000,
+        label: CRITICS.compressionUrgency.label,
         fallback: () =>
           CRITICS.compressionUrgencyFallback({
             turnsSinceCompression: opts.turnsSinceCompression,

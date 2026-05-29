@@ -17,7 +17,7 @@ import {
 } from "./turn-analysis.js";
 import { detectOrphanChains } from "./orphan-chains.js";
 import { type NudgeManager } from "../nudge-manager.js";
-import { getState, ERROR_BURST_THRESHOLD, markNudgeSent, shouldNudgeForMemory, markMemoryNudgeSent } from "../state.js";
+import { getState, ERROR_BURST_THRESHOLD, RECOVERY_GRACE_TURNS, markNudgeSent, shouldNudgeForMemory, markMemoryNudgeSent } from "../state.js";
 import { recordNudgeSuppressed, getNudgeAnalytics } from "../../../lib/reasoning/nudge-analytics.js";
 import { type TurnState } from "../types.js";
 import { validateTurn } from "../validation.js";
@@ -211,7 +211,6 @@ export async function dispatchTurnEndLoop(
   }
 
   // Memory signal
-  const RECOVERY_GRACE_TURNS = 5;
   const inOverflowRecovery =
     getState(ctx).currentTurn - getState(ctx).overflowRecently < RECOVERY_GRACE_TURNS;
 

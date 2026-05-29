@@ -5,7 +5,8 @@
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { Episode, HeuristicRule } from "../../memory/three-memory-stores/index.js";
+import type { Episode } from "../../../lib/types/episode-types.js";
+import type { HeuristicRule } from "../../memory/three-memory-stores/index.js";
 
 // ── Cross-extension state access ─────────────────────────────────────────────
 

@@ -29,7 +29,7 @@ import { extractSOP } from "../../../lib/utils/sop-extractor.js";
 import { injectSopSuggestions } from "../../../lib/utils/sop-suggestion.js";
 import type { TrajectoryEntry } from "../../../lib/utils/sop-extractor.js";
 import { isDegraded, recordTurnMetrics } from "../../../lib/detection/degradation-detector.js";
-import type { Episode } from "../../memory/three-memory-stores/index.js";
+import type { Episode } from "../../../lib/types/episode-types.js";
 
 import type { CognitiveModule, ModuleContext, PolicyEngine } from "./types.js";
 import { DEFAULT_CONFIG, getState, getMemoryState } from "./state.js";

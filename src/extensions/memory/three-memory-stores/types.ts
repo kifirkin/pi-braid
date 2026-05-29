@@ -1,32 +1,12 @@
+import type { Episode } from "../../../lib/types/episode-types.js";
+
 /**
  * Three Memory Stores — type definitions
  *
  * Extracted from index.ts for maintainability and shared access.
  */
 
-/** Episode (experience) record */
-export interface Episode {
-  id: string;
-  task: string;
-  solution: string;
-  outcome: "success" | "failure" | "partial";
-  similarity: number;
-  timestamp: number;
-  toolSequence: string[];
-  tags: string[];
-  /** Project path where this episode was created. Provenance tag (HaluMem 2511.03506). */
-  project: string;
-  /** Session ID — enables cross-session contamination filtering. */
-  sessionId: string;
-  /** Quality score 0-1 (Decocted Experience 2604.03213): outcome × tool diversity × reasoning density. */
-  quality?: number;
-  /** Strategic SOP (high-level): Overall strategy used. */
-  strategicSOP?: string;
-  /** Functional SOP (mid-level): Key steps taken. */
-  functionalSOP?: string[];
-  /** Atomic SOP (low-level): Tool invocations — same as toolSequence. */
-  atomicSOP?: string[];
-}
+export type { Episode };
 
 /** Heuristic rule — procedural knowledge derived from experience */
 export interface HeuristicRule {

@@ -145,19 +145,19 @@ export class TopicDriftDetector {
             _ctx,
             CRITICS.topicCoverage.criteria,
             { original: this.taskContext, response: currentText },
-            { maxTokens: 5, timeoutMs: 5000, fallback: CRITICS.topicDriftFallback },
+            { maxTokens: 5, timeoutMs: 5000, label: CRITICS.topicCoverage.label, fallback: CRITICS.topicDriftFallback },
           ),
           classify(
             _ctx,
             CRITICS.topicDivergence.criteria,
             { original: this.taskContext, response: currentText },
-            { maxTokens: 5, timeoutMs: 5000, fallback: CRITICS.topicDriftFallback },
+            { maxTokens: 5, timeoutMs: 5000, label: CRITICS.topicDivergence.label, fallback: CRITICS.topicDriftFallback },
           ),
           classify(
             _ctx,
             CRITICS.topicCompleteness.criteria,
             { original: this.taskContext, response: currentText },
-            { maxTokens: 5, timeoutMs: 5000, fallback: CRITICS.topicDriftFallback },
+            { maxTokens: 5, timeoutMs: 5000, label: CRITICS.topicCompleteness.label, fallback: CRITICS.topicDriftFallback },
           ),
         ]);
 

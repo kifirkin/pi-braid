@@ -6,7 +6,7 @@
  * without direct imports (separate extension loading contexts).
  */
 
-import type { ScheduledTimer } from "../../extensions/tools/timer/index.js";
+import type { ScheduledTimer } from "./timer-types.js";
 import { createLogger } from "../core/logger.js";
 
 const log = createLogger("timer-bus");

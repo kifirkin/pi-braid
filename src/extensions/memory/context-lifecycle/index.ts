@@ -50,6 +50,11 @@ import {
 
 const log = createLogger("context-lifecycle");
 
+// Re-entrancy guard for before_agent_start.
+// Prevents "Maximum call stack size exceeded" when pi.sendMessage(steer)
+// triggers a synchronous before_agent_start that calls sendTrackedMessage again.
+let _inBeforeAgentStart = false;
+
 // Proposal rate limiting
 const MAX_PROPOSALS_PER_TURN = 2;
 const MAX_PROPOSALS_SESSION = 10;
@@ -489,8 +494,20 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
   // ── before_agent_start ──────────────────────────────────────────────────
   // R-CCAM loop: Retrieval → Cognition → Control → Action
   pi.on("before_agent_start", async (_event: any, ctx: any) => {
-    state().turnCount++;
-    state().proposalsThisTurn = 0; // Reset per-turn counter
+    // ── RE-ENTRANCY GUARD ────────────────────────────────────────────────
+    // If sendTrackedMessage → pi.sendMessage(steer) fires before_agent_start
+    // synchronously, prevent unbounded recursion. Without this guard, a
+    // nudge that triggers a steer can create a loop:
+    //   before_agent_start → sendCompactNudge → sendTrackedMessage →
+    //   pi.sendMessage(steer) → before_agent_start → ... (stack overflow)
+    if (_inBeforeAgentStart) {
+      log.warn("Re-entrant before_agent_start detected — skipping to prevent stack overflow");
+      return;
+    }
+    _inBeforeAgentStart = true;
+    try {
+      state().turnCount++;
+      state().proposalsThisTurn = 0; // Reset per-turn counter
 
     // Evict old outcomes on each turn (sliding window TTL)
     evictOldOutcomes(state());
@@ -615,6 +632,9 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
           timestamp: Date.now(),
         });
       }
+    }
+    } finally {
+      _inBeforeAgentStart = false;
     }
   });
 

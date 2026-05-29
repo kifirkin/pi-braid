@@ -53,6 +53,7 @@ async function checkContradiction(
     const result = await classify(ctx, CRITICS.claimContradiction.criteria, truncated, {
       maxTokens: 5,
       timeoutMs: 5000,
+      label: CRITICS.claimContradiction.label,
       fallback: () => CRITICS.contradictionFallback(claim, context),
     });
 
@@ -94,7 +95,7 @@ async function checkSupport(
           ctx,
           CRITICS.claimSupported.criteria,
           { claim: truncate(claim, 1000), context: truncate(ctxStr, 1000) },
-          { maxTokens: 5, timeoutMs: 5000 },
+          { maxTokens: 5, timeoutMs: 5000, label: CRITICS.claimSupported.label },
         ),
       ),
     );
@@ -129,7 +130,7 @@ async function checkOverconfidence(
       ctx,
       CRITICS.claimOverconfidence.criteria,
       { claim: truncate(claim, 1000), context: "" },
-      { maxTokens: 5, timeoutMs: 5000 },
+      { maxTokens: 5, timeoutMs: 5000, label: CRITICS.claimOverconfidence.label },
     );
 
     if (result.label === "yes") {
@@ -177,7 +178,7 @@ async function checkDecompositionCoverage(
         parentTask: truncate(parentTask, 1000),
         subtasks: subtasks.map((s) => `- ${truncate(s, 200)}`).join("\n"),
       },
-      { maxTokens: 5, timeoutMs: 5000 },
+      { maxTokens: 5, timeoutMs: 5000, label: CRITICS.decompositionComplete.label },
     );
 
     const complete = result.label === "yes";

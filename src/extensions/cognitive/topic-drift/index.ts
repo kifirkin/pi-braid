@@ -87,19 +87,19 @@ async function detectDriftWithCritics(
         ctx,
         CRITICS.topicCoverage.criteria,
         { original: truncOriginal, response: truncOutput },
-        { maxTokens: 5, timeoutMs: 5000, fallback: CRITICS.topicDriftFallback },
+        { maxTokens: 5, timeoutMs: 5000, label: CRITICS.topicCoverage.label, fallback: CRITICS.topicDriftFallback },
       ),
       classify(
         ctx,
         CRITICS.topicDivergence.criteria,
         { original: truncOriginal, response: truncOutput },
-        { maxTokens: 5, timeoutMs: 5000, fallback: CRITICS.topicDriftFallback },
+        { maxTokens: 5, timeoutMs: 5000, label: CRITICS.topicDivergence.label, fallback: CRITICS.topicDriftFallback },
       ),
       classify(
         ctx,
         CRITICS.topicCompleteness.criteria,
         { original: truncOriginal, response: truncOutput },
-        { maxTokens: 5, timeoutMs: 5000, fallback: CRITICS.topicDriftFallback },
+        { maxTokens: 5, timeoutMs: 5000, label: CRITICS.topicCompleteness.label, fallback: CRITICS.topicDriftFallback },
       ),
     ]);
 
@@ -287,14 +287,10 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
     description:
       "Check if output still matches the original request — use before responding to prevent topic drift.",
     parameters: checkDriftSchema,
-    execute: async (_toolCallId: string, params: any, _signal: any, _onUpdate: any, ctx?: any): Promise<any> => {
+    execute: async (_toolCallId: string, params: any, _signal: any, _onUpdate: any, ctx: ExtensionContext): Promise<any> => {
       try {
         const p = params as { output?: string };
-        const state = getExtensionState(
-          { cwd: "check" } as ExtensionContext,
-          "topic-drift",
-          createDriftState,
-        );
+        const state = getExtensionState(ctx, "topic-drift", createDriftState);
         const output = p.output ?? "";
 
         // Use critics if ctx is available, else fall back to sync heuristic
@@ -353,14 +349,10 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
     description:
       "Reset topic anchors to a new request or the current context — use when the task shifts to prevent false drift detection.",
     parameters: resetAnchorsSchema,
-    execute: async (_toolCallId: string, params: any): Promise<any> => {
+    execute: async (_toolCallId: string, params: any, _signal: any, _onUpdate: any, ctx: ExtensionContext): Promise<any> => {
       try {
         const p = params as { newRequest?: string };
-        const state = getExtensionState(
-          { cwd: "reset" } as ExtensionContext,
-          "topic-drift",
-          createDriftState,
-        );
+        const state = getExtensionState(ctx, "topic-drift", createDriftState);
         const request = p.newRequest ?? state.originalRequest;
         resetAnchors(state, request);
 

@@ -23,6 +23,10 @@ const _sessionState = new Map<string, Map<string, unknown>>();
 // ── Legacy WeakMap fallback (for ctx without sessionManager) ────────────────
 const _stateBuckets = new WeakMap<ExtensionContext, Map<string, unknown>>();
 
+// Last known session key — used as fallback when ctx is stale (after compaction).
+// This prevents state loss across event handlers when pi-core replaces ctx.
+let _lastSessionKey: string | undefined;
+
 function getSessionKey(ctx: ExtensionContext): string | undefined {
   // Prefer sessionManager's file path — stable across the whole session.
   // Wrapping entire access in try/catch because ctx.sessionManager is a
@@ -32,10 +36,17 @@ function getSessionKey(ctx: ExtensionContext): string | undefined {
     const sm = ctx.sessionManager;
     if (sm) {
       const file = sm.getSessionFile?.() ?? sm.getSessionId?.();
-      if (file) return String(file);
+      if (file) {
+        _lastSessionKey = String(file);
+        return _lastSessionKey;
+      }
     }
   } catch {
-    // ctx is stale or sessionManager not available
+    // ctx is stale or sessionManager not available.
+    // Fall back to the last known session key to prevent state loss.
+    if (_lastSessionKey) {
+      return _lastSessionKey;
+    }
   }
 
   return undefined;

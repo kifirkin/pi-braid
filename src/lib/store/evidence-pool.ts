@@ -146,6 +146,7 @@ async function classifyConflictViaCritic(
       {
         maxTokens: 5,
         timeoutMs: 5000,
+        label: CRITICS.evidenceConflict.label,
         fallback: () => CRITICS.evidenceConflictFallback(evidenceA, evidenceB),
       },
     );

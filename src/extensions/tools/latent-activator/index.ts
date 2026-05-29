@@ -412,6 +412,7 @@ async function hasComplianceFramingWithJudge(text: string, ctx: ExtensionContext
       {
         maxTokens: 5,
         timeoutMs: 3000,
+        label: CRITICS.complianceFraming.label,
         fallback: () => CRITICS.complianceFramingFallback(text),
       },
     );

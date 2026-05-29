@@ -150,6 +150,7 @@ async function extractClaimsViaClassify(
         {
           maxTokens: 5,
           timeoutMs: 3000,
+          label: CRITICS.entityExtraction.label,
           fallback: () => CRITICS.entityExtractionFallback(sentence),
         },
       );
@@ -163,6 +164,7 @@ async function extractClaimsViaClassify(
         {
           maxTokens: 5,
           timeoutMs: 3000,
+          label: CRITICS.polarityDetection.label,
           fallback: () => CRITICS.polarityDetectionFallback(sentence),
         },
       );
@@ -276,6 +278,7 @@ export async function claimsContradict(a: Claim, b: Claim, ctx: ExtensionContext
       {
         maxTokens: 5,
         timeoutMs: 5000,
+        label: CRITICS.claimContradiction.label,
         fallback: () => CRITICS.contradictionFallback(claimText, contextText),
       },
     );
