@@ -167,7 +167,7 @@ function registerCompactAndSessionHandlers(pi: ExtensionAPI, _nudgeManager: Nudg
     await guard(
       "spec-verification",
       async () => {
-        const specs = loadSpecs(ctx);
+        const specs = await loadSpecs(ctx);
         if (specs.length === 0) return;
         const state = getVerifierState(ctx);
         const editedFiles = [...state.editedFiles];

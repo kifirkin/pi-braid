@@ -5,12 +5,10 @@
  * File persistence is process-global (separate concern).
  */
 
-import * as fs from "node:fs";
 import * as os from "node:os";
-import * as path from "node:path";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "../state/extension-state.js";
-import { saveStateImmediate } from "../state/async-storage.js";
+import { saveStateImmediate, loadState } from "../state/async-storage.js";
 import { createLogger } from "../core/logger.js";
 
 import { DEGRADATION_FILE } from "../config/braid-paths.js";
@@ -292,8 +290,6 @@ export function getMetricsSummary(ctx?: ExtensionContext) {
 
 export async function saveMetrics(): Promise<void> {
   try {
-    const dir = path.dirname(METRICS_FILE);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     await saveStateImmediate(METRICS_FILE, _global);
   } catch (error) {
     _log.error("Failed to save degradation metrics:", error);
@@ -302,9 +298,8 @@ export async function saveMetrics(): Promise<void> {
 
 export async function loadMetrics(): Promise<void> {
   try {
-    if (fs.existsSync(METRICS_FILE)) {
-      const data = fs.readFileSync(METRICS_FILE, "utf-8");
-      const loaded = JSON.parse(data) as DegradationState;
+    const loaded = await loadState<DegradationState>(METRICS_FILE);
+    if (loaded) {
       _global = { ..._global, ...loaded, config: { ...DEFAULT_CONFIG, ...loaded.config } };
     }
   } catch (error) {

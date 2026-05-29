@@ -10,6 +10,7 @@
  */
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getExtensionState } from "../state/extension-state.js";
@@ -229,18 +230,26 @@ export function parseSpec(text: string): ParsedSpec {
  * Load and parse all spec files from openspec/specs/<domain>/spec.md
  * Returns empty array if openspec/ directory doesn't exist.
  */
-export function loadSpecs(ctx: ExtensionContext): ParsedSpec[] {
+export async function loadSpecs(ctx: ExtensionContext): Promise<ParsedSpec[]> {
   const specsDir = join(ctx.cwd, "openspec", "specs");
-  if (!existsSync(specsDir)) return [];
+  try {
+    await readdir(specsDir);
+  } catch {
+    return []; // directory doesn't exist
+  }
 
   const specs: ParsedSpec[] = [];
   try {
-    const domains = readdirSync(specsDir, { withFileTypes: true });
+    const domains = await readdir(specsDir, { withFileTypes: true });
     for (const domain of domains) {
       if (!domain.isDirectory()) continue;
       const specPath = join(specsDir, domain.name, "spec.md");
-      if (!existsSync(specPath)) continue;
-      const content = readFileSync(specPath, "utf-8");
+      let content: string;
+      try {
+        content = await readFile(specPath, "utf-8");
+      } catch {
+        continue; // spec file doesn't exist
+      }
       const parsed = parseSpec(content);
       parsed.domain = domain.name;
       specs.push(parsed);
