@@ -389,28 +389,36 @@ function generateLatentActivation(taskHint?: string): string {
 }
 
 /**
- * Check if task hints suggest certain behaviors
+ * Check if task hints suggest certain behaviors (sync heuristic).
  */
-const COMPLIANCE_PATTERNS = [
-  "must",
-  "required",
-  "ensure",
-  "verify",
-  "always",
-  "never",
-  "critical",
-  "strictly",
-  "mandatory",
-  "obligatory",
-  "shall",
-  "will be",
-  "is expected to",
-  "it is essential",
-];
-
 function hasComplianceFraming(text: string): boolean {
+  const keywords = ["must", "required", "ensure", "verify", "always", "never", "critical", "strictly", "mandatory", "shall"];
   const lower = text.toLowerCase();
-  return COMPLIANCE_PATTERNS.some((p) => lower.includes(p));
+  return keywords.some((k) => lower.includes(k));
+}
+
+/**
+ * Optional async LLM judge for compliance framing.
+ * Returns heuristic result when LLM unavailable.
+ */
+async function hasComplianceFramingWithJudge(text: string, ctx: ExtensionContext): Promise<boolean> {
+  try {
+    const { classify } = await import("../../../lib/ai/text-classifier.js");
+    const { CRITICS } = await import("../../../lib/ai/critic-registry.js");
+    const result = await classify(
+      ctx,
+      CRITICS.complianceFraming.criteria,
+      { text },
+      {
+        maxTokens: 5,
+        timeoutMs: 3000,
+        fallback: () => CRITICS.complianceFramingFallback(text),
+      },
+    );
+    return result.label === "yes";
+  } catch {
+    return hasComplianceFraming(text);
+  }
 }
 
 function inferBehaviorsFromTask(task: string): AtomicBehavior[] {

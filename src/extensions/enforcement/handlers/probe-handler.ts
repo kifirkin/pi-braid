@@ -26,7 +26,7 @@ const TOOL_COMPLEXITY_MAP: Record<string, ComplexityLevel> = {
   ls: "simple",
   find: "simple",
   grep: "simple",
-  bash: "moderate", // Depends on command
+  bash: "moderate",
   analyze_image: "simple",
   read_document: "simple",
   // Moderate: Can modify state but reversible
@@ -34,18 +34,21 @@ const TOOL_COMPLEXITY_MAP: Record<string, ComplexityLevel> = {
   edit: "moderate",
   think: "simple",
   hypothesize: "moderate",
-  // Complex: Side effects, data modification
-  // bash with write permissions
-  // git commands
-  // npm/package management
 };
 
 const COMPLEXITY_THRESHOLDS = {
-  // Files touched / complexity score
   SIMPLE: 0,
   MODERATE: 3,
   COMPLEX: 7,
 };
+
+/** Fast heuristic — classify command type without LLM. */
+function classifyCommandTypeHeuristic(cmd: string): string {
+  if (/\|\s*grep|\|\s*awk|\|\s*sed/.test(cmd) && !/npm|yarn|pnpm|xargs/.test(cmd)) return "pipeline";
+  if (/for|while|\$\(/.test(cmd)) return "loop";
+  if (/sudo|rm\s|>\s*\/|mv\s+.*\s+.*/.test(cmd)) return "dangerous";
+  return "info";
+}
 
 /**
  * Estimate task complexity from tool and parameters
@@ -59,35 +62,30 @@ export function estimateComplexity(
   let complexityScore =
     COMPLEXITY_THRESHOLDS[baseComplexity.toUpperCase() as keyof typeof COMPLEXITY_THRESHOLDS] || 1;
 
-  // Adjust based on parameters
   if (params) {
-    // File operations - count files
     if (params.path || params.paths) {
       const paths = Array.isArray(params.paths) ? params.paths : params.path ? [params.path] : [];
       complexityScore += paths.length * 0.5;
-      if (paths.length > 5) {
-        hints.push("Multiple files detected - consider batch approach");
-      }
+      if (paths.length > 5) hints.push("Multiple files detected - consider batch approach");
     }
 
-    // Bash commands - check for risky operations
     if (tool === "bash" && params.command) {
       const cmd = String(params.command);
-      if (/\|\s*grep|\|\s*awk|\|\s*sed/.test(cmd)) {
+      const cmdType = classifyCommandTypeHeuristic(cmd);
+      if (cmdType === "pipeline") {
         complexityScore += 1;
         hints.push("Pipeline detected - verify each step");
       }
-      if (/for|while|\$\(/.test(cmd)) {
+      if (cmdType === "loop") {
         complexityScore += 2;
         hints.push("Shell expansion detected - test script parts");
       }
-      if (/sudo|rm\s|>\s*\/|mv\s+.*\s+.*/.test(cmd)) {
+      if (cmdType === "dangerous") {
         complexityScore += 3;
         hints.push("Potentially destructive - verify carefully");
       }
     }
 
-    // Edit operations - check for patterns
     if (tool === "edit" && params.oldText) {
       const size = String(params.oldText).length;
       if (size > 500) {
@@ -100,16 +98,11 @@ export function estimateComplexity(
     }
   }
 
-  // Determine final complexity level
   let level: ComplexityLevel = "simple";
-  if (complexityScore >= COMPLEXITY_THRESHOLDS.COMPLEX) {
-    level = "complex";
-  } else if (complexityScore >= COMPLEXITY_THRESHOLDS.MODERATE) {
-    level = "moderate";
-  }
+  if (complexityScore >= COMPLEXITY_THRESHOLDS.COMPLEX) level = "complex";
+  else if (complexityScore >= COMPLEXITY_THRESHOLDS.MODERATE) level = "moderate";
 
   const confidence = Math.min(0.95, 0.5 + complexityScore * 0.05);
-
   return { tool, level, confidence, hints };
 }
 
@@ -120,7 +113,6 @@ export function checkComplexityMismatch(
   probe: ComplexityProbe,
   turnState: { totalToolCalls: number; contextUsage: number },
 ): { mismatch: boolean; suggestion: string } {
-  // High context usage + complex tool = potential overflow risk
   if (turnState.contextUsage > 70 && probe.level === "complex") {
     return {
       mismatch: true,
@@ -130,8 +122,6 @@ export function checkComplexityMismatch(
         "% - consider simpler approach or /compact first",
     };
   }
-
-  // Too many simple tools for what seems complex = inefficient
   if (turnState.totalToolCalls > 20 && probe.level === "simple") {
     return {
       mismatch: true,
@@ -139,6 +129,30 @@ export function checkComplexityMismatch(
         "20+ tool calls detected - consider summarizing progress with think() before continuing",
     };
   }
-
   return { mismatch: false, suggestion: "" };
+}
+
+/**
+ * Classify command type using LLM judge with heuristic fallback.
+ * Opt-in async — callers without ctx get heuristic only.
+ */
+export async function classifyCommandType(
+  cmd: string,
+  ctx?: import("../../../types/extension-context.js").ExtensionContext,
+): Promise<string> {
+  if (!ctx) return classifyCommandTypeHeuristic(cmd);
+
+  try {
+    const { classify } = await import("../../../lib/ai/text-classifier.js");
+    const { CRITICS } = await import("../../../lib/ai/critic-registry.js");
+    const result = await classify(
+      ctx,
+      CRITICS.commandType.criteria,
+      { cmd },
+      { maxTokens: 10, timeoutMs: 3000, fallback: () => CRITICS.commandTypeFallback(cmd) },
+    );
+    return result.label;
+  } catch {
+    return classifyCommandTypeHeuristic(cmd);
+  }
 }

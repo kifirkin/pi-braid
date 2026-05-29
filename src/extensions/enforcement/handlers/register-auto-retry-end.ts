@@ -6,6 +6,8 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { onEvent } from "../../../lib/events/event-types.js";
 import { sendEnforcementWhisper } from "../whisper.js";
 import { getState } from "../state.js";
+import { classify } from "../../../lib/ai/text-classifier.js";
+import { CRITICS } from "../../../lib/ai/critic-registry.js";
 
 export function registerAutoRetryEndHandler(pi: ExtensionAPI): void {
   onEvent(pi, "auto_retry_end", async (event: any, ctx: ExtensionContext) => {
@@ -20,7 +22,7 @@ export function registerAutoRetryEndHandler(pi: ExtensionAPI): void {
       if (now - getState(ctx).lastNudgeTime < getState(ctx).nudgeCooldownMs) return;
       getState(ctx).lastNudgeTime = now;
 
-      const errorType = classifyRetryError(finalError ?? "");
+      const errorType = await classifyRetryError(finalError ?? "", ctx);
 
       let msg: string;
       if (errorType === "rate_limit") {
@@ -29,6 +31,8 @@ export function registerAutoRetryEndHandler(pi: ExtensionAPI): void {
         msg = `Server error after ${attempt} retry(s) (${finalError}). Provider may be overloaded.`;
       } else if (errorType === "network") {
         msg = `Network error after ${attempt} retry(s). Check your connection.`;
+      } else if (errorType === "auth") {
+        msg = `Auth error after ${attempt} retry(s). Check API keys.`;
       } else {
         msg = `API error after ${attempt} retry(s): ${finalError ?? "unknown"}.`;
       }
@@ -42,11 +46,23 @@ export function registerAutoRetryEndHandler(pi: ExtensionAPI): void {
   });
 }
 
-function classifyRetryError(
+async function classifyRetryError(
   errorMsg: string,
-): "rate_limit" | "server_error" | "network" | "unknown" {
-  if (/429|rate.?limit/i.test(errorMsg)) return "rate_limit";
-  if (/5\d\d|server.?error|internal|overloaded|unavailable/i.test(errorMsg)) return "server_error";
-  if (/network|connection|fetch failed|socket|timeout|timed out/i.test(errorMsg)) return "network";
-  return "unknown";
+  ctx: ExtensionContext,
+): Promise<string> {
+  try {
+    const result = await classify(
+      ctx,
+      CRITICS.errorType.criteria,
+      { errorMsg },
+      {
+        maxTokens: 10,
+        timeoutMs: 5000,
+        fallback: () => CRITICS.errorTypeFallback(errorMsg),
+      },
+    );
+    return result.label;
+  } catch {
+    return CRITICS.errorTypeFallback(errorMsg);
+  }
 }

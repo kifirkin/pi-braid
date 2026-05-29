@@ -14,6 +14,8 @@ import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../state/extension-state.js";
 import { createLogger } from "../core/logger.js";
+import { classify } from "../ai/text-classifier.js";
+import { CRITICS } from "../ai/critic-registry.js";
 
 const log = createLogger("bidirectional-verifier");
 
@@ -177,7 +179,7 @@ export interface SpecValidationResult {
  * Understands OpenSpec format: SHALL/MUST/SHOULD/MAY keywords,
  * ### Requirement: <name> headers, #### Scenario: <title> blocks.
  */
-export function parseSpec(text: string): ParsedSpec {
+export async function parseSpec(text: string): Promise<ParsedSpec> {
   const purposeMatch = text.match(/## Purpose\s+([^#]+)/);
   const purpose = purposeMatch ? purposeMatch[1].trim() : "";
 
@@ -190,7 +192,8 @@ export function parseSpec(text: string): ParsedSpec {
     const name = match[1].trim();
     const body = match[2].trim();
 
-    // Determine requirement strength from SHALL/MUST/SHOULD/MAY
+    // Determine requirement strength from SHALL/MUST/SHOULD/MAY keywords
+    // (sync heuristic — async classifyRequirementStrength() available for ctx-aware callers)
     let strength: ParsedRequirement["strength"] = "MAY";
     if (/\bSHALL\b/.test(body)) strength = "SHALL";
     else if (/\bMUST\b/.test(body)) strength = "MUST";
@@ -226,6 +229,28 @@ export function parseSpec(text: string): ParsedSpec {
 }
 
 /**
+export async function classifyRequirementStrength(
+  body: string,
+  ctx: ExtensionContext,
+): Promise<string> {
+  try {
+    const result = await classify(
+      ctx,
+      CRITICS.instructionStrength.criteria,
+      { body },
+      {
+        maxTokens: 10,
+        timeoutMs: 5000,
+        fallback: () => CRITICS.instructionStrengthFallback(body),
+      },
+    );
+    return result.label;
+  } catch {
+    return CRITICS.instructionStrengthFallback(body);
+  }
+}
+
+/**
  * Load and parse all spec files from openspec/specs/<domain>/spec.md
  * Returns empty array if openspec/ directory doesn't exist.
  */
@@ -249,7 +274,7 @@ export async function loadSpecs(ctx: ExtensionContext): Promise<ParsedSpec[]> {
       } catch {
         continue; // spec file doesn't exist
       }
-      const parsed = parseSpec(content);
+      const parsed = await parseSpec(content);
       parsed.domain = domain.name;
       specs.push(parsed);
     }

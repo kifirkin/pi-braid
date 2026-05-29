@@ -547,6 +547,134 @@ export const CRITICS = {
     },
     options: { maxTokens: 5, timeoutMs: 5000 },
   } satisfies CriticDef,
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Error Type — register-auto-retry-end error classification
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Classify an error message into retry-handling category.
+   * Replaces the 3-line regex in register-auto-retry-end.ts.
+   */
+  errorType: {
+    label: "Error Type",
+    criteria: {
+      systemPrompt:
+        "You are a retry-error classifier. Given an error message, classify it " +
+        "into exactly one category. Answer only the category name. Do not explain.\n" +
+        "Categories:\n" +
+        "- rate_limit: 429, rate limiting, quota exceeded, too many requests\n" +
+        "- server_error: 5xx, server error, internal error, overloaded, unavailable\n" +
+        "- network: connection refused, fetch failed, socket hang up, timeout, dns\n" +
+        "- auth: 401, 403, unauthorized, forbidden, invalid key, authentication\n" +
+        "- unknown: anything else",
+      userPrompt: "{{errorMsg}}",
+    },
+    options: { maxTokens: 10, timeoutMs: 5000 },
+  } satisfies CriticDef,
+
+  /** Legacy fallback for error type classification. */
+  errorTypeFallback(errorMsg: string): string {
+    if (/429|rate.?limit/i.test(errorMsg)) return "rate_limit";
+    if (/5\d\d|server.?error|internal|overloaded|unavailable/i.test(errorMsg)) return "server_error";
+    if (/network|connection|fetch failed|socket|timeout|timed out/i.test(errorMsg)) return "network";
+    return "unknown";
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Instruction Strength — bidirectional-verifier RFC 2119 keyword
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Classify requirement strength from specification text.
+   * Replaces SHALL/MUST/SHOULD keyword matching.
+   */
+  instructionStrength: {
+    label: "Instruction Strength",
+    criteria: {
+      systemPrompt:
+        "You are a requirement classifier. Given a requirement body, determine " +
+        "its strength level according to RFC 2119 semantics:\n" +
+        "- SHALL/MUST: absolute requirement\n" +
+        "- SHOULD: recommended, not mandatory\n" +
+        "- MAY: optional\n" +
+        "Answer only the strength word. Do not explain.",
+      userPrompt: "{{body}}",
+    },
+    options: { maxTokens: 10, timeoutMs: 5000 },
+  } satisfies CriticDef,
+
+  /** Legacy fallback for instruction strength. */
+  instructionStrengthFallback(body: string): string {
+    if (/\bSHALL\b/.test(body)) return "SHALL";
+    if (/\bMUST\b/.test(body)) return "MUST";
+    if (/\bSHOULD\b/.test(body)) return "SHOULD";
+    return "MAY";
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Command Type — probe-handler command classification
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Classify a shell command into its execution pattern.
+   * Replaces probe-handler.ts command regex classification.
+   */
+  commandType: {
+    label: "Command Type",
+    criteria: {
+      systemPrompt:
+        "You are a shell command classifier. Given a command string, classify it " +
+        "into exactly one category. Answer only the category name. Do not explain.\n" +
+        "Categories:\n" +
+        "- pipeline: chaining commands with |, pipe, xargs\n" +
+        "- loop: iterative/conditional constructs like for, while, until\n" +
+        "- dangerous: destructive operations like rm -rf, dd, mkfs, chmod 777\n" +
+        "- edit: modifying files with sed, awk in-place, redirects >, >>\n" +
+        "- info: reading files, grep, find, ls, cat, head, tail\n" +
+        "- build: compile, install, npm/pip/yarn, make, cargo\n" +
+        "- safe: everything else",
+      userPrompt: "{{cmd}}",
+    },
+    options: { maxTokens: 10, timeoutMs: 3000 },
+  } satisfies CriticDef,
+
+  /** Legacy fallback for command type classification. */
+  commandTypeFallback(cmd: string): string {
+    if (/\|\s*grep|\|\s*awk|\|\s*sed/.test(cmd) && !/npm|yarn|pnpm|xargs/.test(cmd)) return "pipeline";
+    if (/for|while|\$\(/.test(cmd)) return "loop";
+    if (/sudo|rm\s|>\s*\/|mv\s+.*\s+.*/.test(cmd)) return "dangerous";
+    return "info";
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Compliance Framing — latent-activator compliance detection
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Detect if a task description uses compliance framing language.
+   * Replaces COMPLIANCE_PATTERNS keyword list in latent-activator.
+   */
+  complianceFraming: {
+    label: "Compliance Framing",
+    criteria: {
+      systemPrompt:
+        "You are a compliance framing detector. Determine if the given text " +
+        "uses language that frames the task as a compliance requirement — " +
+        "words like 'must', 'required', 'mandatory', 'shall', 'strictly', " +
+        "'obligatory', 'it is essential', 'is expected to'. " +
+        "Answer only 'yes' or 'no'. Do not explain.",
+      userPrompt: "{{text}}",
+    },
+    options: { maxTokens: 5, timeoutMs: 3000 },
+  } satisfies CriticDef,
+
+  /** Legacy fallback for compliance framing. */
+  complianceFramingFallback(text: string): string {
+    const keywords = ["must", "required", "ensure", "verify", "always", "never", "critical", "strictly", "mandatory", "shall"];
+    const lower = text.toLowerCase();
+    return keywords.some((k) => lower.includes(k)) ? "yes" : "no";
+  },
 } as const;
 
 /**
