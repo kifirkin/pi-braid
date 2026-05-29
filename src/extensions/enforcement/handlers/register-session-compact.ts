@@ -48,7 +48,7 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
           text: `${unpersisted.length} key learning(s) not yet persisted`,
           acted: false,
         };
-        (pi as any).events?.emit?.("enforcement_signals", {
+        pi.events.emit("enforcement_signals", {
           contrastMode: determineContrastMode(ctx),
         });
       }

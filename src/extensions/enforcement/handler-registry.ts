@@ -104,7 +104,7 @@ function registerCompactAndSessionHandlers(pi: ExtensionAPI, _nudgeManager: Nudg
   registerTurnEndHandler("degradation-rollback", 99, async (_event, ctx) => {
     if (!getState(ctx).enforcementActive) return;
     if (!isDegraded(ctx)) return;
-    const sessionId = (ctx as any).cwd ?? String(process.pid);
+    const sessionId = ctx.cwd ?? String(process.pid);
     const result = await autoRollback(ctx, sessionId);
     if (result.restored) {
       log.warn(`Turn-end degradation rollback: ${result.note}`);

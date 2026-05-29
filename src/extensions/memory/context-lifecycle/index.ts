@@ -168,7 +168,7 @@ function state(): ContextLifecycleState {
 
 function resetState(ctx: ExtensionContext): ContextLifecycleState {
   _currentSessionState = createState();
-  _currentSessionId = (ctx as any)?.cwd ?? null;
+  _currentSessionId = ctx.cwd ?? null;
   return _currentSessionState;
 }
 

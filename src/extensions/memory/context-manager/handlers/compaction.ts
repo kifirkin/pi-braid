@@ -44,6 +44,8 @@ import {
   setCompactionActive,
   recordCompactionOutcome,
 } from "./shared.js";
+import type { AgentMessage as CoreAgentMessage } from "@mariozechner/pi-agent-core";
+import type { AgentMessage as FilterMessage } from "../../../../lib/utils/filter-safe-to-remove.js";
 import { filterSafeToRemove } from "../../../../lib/utils/filter-safe-to-remove.js";
 import { determineCompressionLevel } from "../../../../lib/detection/compression-strategy.js";
 import { semanticCompress } from "../semantic-compress.js";
@@ -316,7 +318,7 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
       if (prep?.messagesToSummarize?.length) {
         // Type bridge: filterSafeToRemove uses its own AgentMessage interface;
         // pi's messagesToSummarize uses pi's AgentMessage. Structurally compatible.
-        const { filtered, stats } = filterSafeToRemove(prep.messagesToSummarize as any[]);
+        const { filtered, stats } = filterSafeToRemove(prep.messagesToSummarize as FilterMessage[]);
         if (stats.totalRemoved > 0) {
           const pct = Math.round((1 - stats.afterTokens / stats.beforeTokens) * 100);
           log.info(
@@ -359,7 +361,7 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
               : baseLevel;
 
           const { compressed, stats: scStats } = semanticCompress(
-            (prep as unknown as Preparation).messagesToSummarize as any[],
+            (prep as Preparation).messagesToSummarize as CoreAgentMessage[],
             compressionLevel,
           );
           if (scStats.messagesOut < scStats.messagesIn) {
