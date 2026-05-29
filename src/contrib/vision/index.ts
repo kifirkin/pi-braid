@@ -11,7 +11,7 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
-import { getCustomModelKey, VISION_MODEL_KEY } from "../../../lib/state/global-state.js";
+import { getCustomModelKey, VISION_MODEL_KEY } from "../../lib/state/global-state.js";
 
 /**
  * Resolve the best vision-capable model from:

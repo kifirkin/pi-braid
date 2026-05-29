@@ -62,13 +62,15 @@ export function sendEnforcementWhisper(
     log.warn("Failed to emit enforcement event:", err);
   }
 
-  // Tag all enforcement whispers as [enforcement] so the agent knows these are
-  // system-generated signals, not human messages.
+  // Tag all enforcement whispers with customType="enforcement" so the agent
+  // knows these are system-generated signals, not human messages.
+  // The content intentionally has no [enforcement] prefix — customType metadata
+  // is sufficient. The prefix was removed in Phase 2.4.
   sendTrackedMessage(
     pi,
     {
       customType: "enforcement",
-      content: [{ type: "text" as const, text: `[enforcement] ${message}` }],
+      content: [{ type: "text" as const, text: message }],
       display: true,
     },
     critical
