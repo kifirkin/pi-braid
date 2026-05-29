@@ -15,9 +15,10 @@ if (/5\d\d|server.?error|internal|overloaded|unavailable/i.test(errorMsg)) retur
 if (/network|connection|fetch failed|socket|timeout|timed out/i.test(errorMsg)) return "network";
 ```
 
+**Status**: ✅ REPLACED — `errorType` critic in critic-registry with heuristic fallback. Also added `auth` category.
+
 **Fragility**: Misses provider-specific error formats (Anthropic 529, OpenAI 503 with different phrasing, custom proxy errors).
-**Impact**: Wrong retry strategy → wasted retries or missed recovery.
-**Fix**: `errorType` critic in critic-registry with 3-label classify().
+**Fix**: `errorType` critic in critic-registry with 3-label classify() — done.
 **Effort**: ~30 minutes. Self-contained function, easy to swap.
 
 ### 2. `sycophancy-detector/index.ts` — Two Regex Fallbacks
@@ -44,10 +45,9 @@ if (/network|connection|fetch failed|socket|timeout|timed out/i.test(errorMsg)) 
 **Verb matching**: `const VERBS = /\b(is|was|has|have|had|does|did|will|could|would|should|may|might|shall|supports|uses|provides|requires|contains|includes|returns|creates|allows|implements|generates|handles|manages|configures|deploys)\b/i`
 **Polarity**: `/\b(not|no|never|n't|without)\b/i`
 
-**Fragility**: 28 hardcoded verbs — misses domain-specific verbs (initializes, validates, dispatches). Polarity check misses "lacks", "excludes".
-**Impact**: Data quality — missed claims, wrong polarity → confusion in belief store.
-**Fix**: `entityExtraction` + `polarityDetection` critics. But extraction needs structured output, not binary label — harder.
-**Effort**: ~2 hours (needs structured extraction, not just classify).
+**Status**: ✅ ALREADY WELL-ARCHITECTED. Primary path uses `callLlm` for structured JSON extraction. `extractClaimsViaClassify()` secondary path added May 29 via `polarityDetection` + `entityExtraction` critics with heuristic fallback. Fallback refactored into shared `entityClaimFromSentence()` utility with 25 verbs.
+
+**Legacy note**: This entry was written before the primary path was refactored to use `callLlm`. The heuristic catalog's recommendations are now fully addressed through the three-tier pipeline: callLlm (primary) → classify() via critics (secondary) → heuristic verb matching (sync fallback).
 
 ---
 
@@ -61,9 +61,11 @@ if (/for|while|\$\(/.test(cmd)) -> "loop"
 if (/sudo|rm\s|>\s*\/|mv\s+.*\s+.*/.test(cmd)) -> "dangerous"
 ```
 
+**Status**: ✅ ADDRESSED. `classifyCommandType()` async function added for opt-in LLM judge (5 category classifier with heuristic fallback). Sync `estimateComplexity()` unchanged for backward compat.
+
 **Fragility**: Misses PowerShell pipelines, `;` chaining, `&&` chaining, `npx` dangerous commands.
 **Impact**: Security classification misses → dangerous commands not flagged.
-**Fix**: `commandType` critic with 4-label classify(). But this is called per-tool-call — latency matters.
+**Fix**: `commandType` critic with 4-label classify().
 **Effort**: ~1 hour. Must be fast (heuristic + utility model, skip session model).
 
 ### 5. `bidirectional-verifier.ts:195-203` — Requirement Strength
@@ -74,9 +76,11 @@ else if (/\bMUST\b/.test(body)) strength = "MUST";
 else if (/\bSHOULD\b/.test(body)) strength = "SHOULD";
 ```
 
+**Status**: ✅ ADDRESSED. `classifyRequirementStrength()` async function added (uses `instructionStrength` critic + heuristic fallback). Sync `parseSpec()` retains keyword regex for backward compat.
+
 **Fragility**: Misses intent-level strength ("this is required", "it is critical that") that's not RFC 2119 keyword.
 **Impact**: Under-classifies soft requirements → agent treats them as optional.
-**Fix**: `instructionStrength` critic. Low effort, medium value.
+**Fix**: `instructionStrength` critic.
 **Effort**: ~30 minutes.
 
 ---
@@ -149,21 +153,38 @@ new RegExp(S("\\bcurl\\b.*\\|\\s*(?:bash|sh|zsh|ksh)\\s*$")), // curl ... | bash
 | `auto-singleton/index.ts` | MAX_TIMEOUT_SECONDS | 3600 | Safety limit |
 | `verification.ts` | VERIFICATION_REMINDER_THRESHOLD | 12 turns | Tuning parameter |
 | `context-density.ts` | MAX_RECENT | 20 | Rolling window size |
-| Various | ERROR_BURST_THRESHOLD | 3 | Appears in 3 files — duplication |
+| Various | ERROR_BURST_THRESHOLD | 3 | Centralized in enforcement/state.ts ✅ |
 
-**Fragility**: ERROR_BURST_THRESHOLD (3) appears in 3 files independently. If tuned, must update all.
+**Fragility**: ERROR_BURST_THRESHOLD (3) appears in 3 files — now centralized in state.ts ✅
 
 ---
 
-## Summary: Prioritized Fix List
+## Summary: Completed and Remaining
 
-| # | Module | Effort | Impact | Type |
-|---|--------|--------|--------|------|
-| 1 | `register-auto-retry-end` — error type | 30 min | High | Add `errorType` critic |
-| 2 | `claim-tracker` — entity/polarity | 2 hours | Medium | Add `entityExtraction` + `polarityDetection` critics |
-| 3 | `probe-handler` — command classification | 1 hour | Medium | Add `commandType` critic (latency-sensitive) |
-| 4 | `bidirectional-verifier` — requirement strength | 30 min | Medium | Add `instructionStrength` critic |
-| 5 | `latent-activator` — compliance framing | 30 min | Low | Add `complianceFraming` critic (optional) |
-| — | `sycophancy-detector` — fallback regexes | 0 | — | Already well-architected |
-| — | `reasoning-summary` — two-tier patterns | 0 | — | Correct pattern, no fix needed |
-| — | `vet-filter` — security patterns | N/A | — | Keep rule-based, DO NOT replace |
+### ✅ Completed (all converted to LLM judge + fallback pattern)
+
+| # | Module | Critics Added | Fallback Status |
+|---|--------|--------------|-----------------|
+| 1 | `register-auto-retry-end` — error type | `errorType` + `auth` category | Regex fallback preserved |
+| 2 | `claim-tracker` — entity/polarity | `entityExtraction`, `polarityDetection` | Shared `entityClaimFromSentence()` utility |
+| 3 | `probe-handler` — command classification | `commandType` (opt-in async) | Sync heuristic in `classifyCommandTypeHeuristic()` |
+| 4 | `bidirectional-verifier` — requirement strength | `instructionStrength` (async only) | Keyword regex in sync `parseSpec()` |
+| 5 | `latent-activator` — compliance framing | `complianceFraming` (opt-in async) | Sync `hasComplianceFraming()` preserved |
+| 6 | `enforcement/state.ts` — ERROR_BURST_THRESHOLD | Centralized export | Relocated from 3 independent definitions |
+
+### ⏸ Intentionally Deferred
+
+| Module | Reason |
+|--------|--------|
+| `sycophancy-detector` fallback | Already three-tier — correct pattern |
+| `reasoning-summary` patterns | Two-tier design catches misses in Tier 2 |
+| `vet-filter` security patterns | Must stay deterministic — no LLM judge |
+
+### 🚫 Pre-existing test failures (not blocking)
+
+| Test | Reason |
+|------|--------|
+| `quick-benchmark.mjs` | Timing-dependent (flaky) |
+| `test-browser.mjs` | Needs real browser |
+| `test-enforcement-integration.mjs` | Drift detection regression |
+| `test-enforcement.mjs` | References deleted file |
