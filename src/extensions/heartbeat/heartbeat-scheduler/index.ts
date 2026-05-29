@@ -10,20 +10,20 @@
  *   - modules/        Individual cognitive modules (recaller, dreamer, etc.)
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   createPolicyEngine,
   getPolicyEngine,
   getBeliefStore,
   cleanupSession,
   type PolicyContext,
-} from "../../../lib/belief-store.js";
+} from "../../../lib/store/belief-store.js";
 import { createLogger } from "../../../lib/core/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
-import { eventBus } from "../../../lib/event-bus.js";
-import { processConsolidationTick } from "../../../lib/consolidation-channel.js";
+import { eventBus } from "../../../lib/events/event-bus.js";
+import { processConsolidationTick } from "../../../lib/events/consolidation-channel.js";
 import { heartbeatCheckpointTick } from "../../../lib/state/state-checkpoint.js";
 import { extractSOP } from "../../../lib/utils/sop-extractor.js";
 import { injectSopSuggestions } from "../../../lib/utils/sop-suggestion.js";
@@ -613,7 +613,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
         // Queue for consolidation if successful
         if (success) {
           try {
-            const { executeConsolidation } = await import("../../../lib/consolidation-channel.js");
+            const { executeConsolidation } = await import("../../../lib/events/consolidation-channel.js");
             const result = executeConsolidation({
               id: `ep-${Date.now()}`,
               task: taskDesc,

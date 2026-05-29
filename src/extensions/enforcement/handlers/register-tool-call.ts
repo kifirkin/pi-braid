@@ -2,7 +2,7 @@
  * register-tool-call — Tool usage tracking + blocking enforcement.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { onEvent } from "../../../lib/events/event-types.js";
 import { checkBlocking } from "./blocking.js";
 import { recordToolCall, recordToolInput, recordBashDetails } from "./tool-tracker.js";

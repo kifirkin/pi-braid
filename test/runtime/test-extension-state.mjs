@@ -11,7 +11,7 @@ let passed = 0;
 let failed = 0;
 const assert = (cond, msg) => cond ? (passed++, console.log("  ✅ " + msg)) : (failed++, console.log("  ❌ " + msg));
 
-const { getExtensionState } = await import("../../dist/lib/extension-state.js");
+const { getExtensionState } = await import("../../dist/lib/state/extension-state.js");
 
 // ── [1] Basic state creation ──────────────────────────────────────
 console.log("\n[1] Basic state creation");

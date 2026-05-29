@@ -10,7 +10,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 const { scoreEpisode, processConsolidationTick } = await import(
-  "../../dist/lib/consolidation-channel.js"
+  "../../dist/lib/events/consolidation-channel.js"
 );
 
 // Sample episodes for testing

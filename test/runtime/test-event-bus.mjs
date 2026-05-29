@@ -5,7 +5,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-const { eventBus, EventBus } = await import("../../dist/lib/event-bus.js");
+const { eventBus, EventBus } = await import("../../dist/lib/events/event-bus.js");
 
 describe("Event Bus", () => {
   it("should be a singleton", () => {

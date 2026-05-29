@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 // Logger: public API tests
 // ═════════════════════════════════════════════════════════════════════════
 
-const logger = await import("../../dist/lib/logger.js");
+const logger = await import("../../dist/lib/core/logger.js");
 
 describe("logger", () => {
   it("createLogger returns a logger with expected methods", () => {
@@ -59,7 +59,7 @@ describe("logger", () => {
 // Advice tracker: threshold adjustment test
 // ═════════════════════════════════════════════════════════════════════════
 
-const advice = await import("../../dist/lib/advice-tracker.js");
+const advice = await import("../../dist/lib/reasoning/advice-tracker.js");
 
 describe("advice-tracker thresholds", () => {
   beforeEach(() => {

@@ -1,14 +1,14 @@
 /**
  * @fileoverview Extension context type augmentations for pi-braid.
  *
- * Centralizes knowledge of @mariozechner/pi-coding-agent's ExtensionContext
+ * Centralizes knowledge of @earendil-works/pi-coding-agent's ExtensionContext
  * structure — what is directly accessible vs. what must be obtained via ctx.
  */
 
-import type { ExtensionContext as BaseExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext as BaseExtensionContext } from "@earendil-works/pi-coding-agent";
 
 // Extended with pi-braid's own session state helpers
-declare module "@mariozechner/pi-coding-agent" {
+declare module "@earendil-works/pi-coding-agent" {
   interface ExtensionContext {
     /** Whisper a low-priority hint without blocking execution */
     whisper?(message: string, opts?: WhisperOptions): void;

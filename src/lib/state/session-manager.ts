@@ -2,7 +2,7 @@
 // Wraps ctx.sessionManager with full types, eliminating runtime monkey-patching.
 // Usage: const sm = getSessionManager(ctx); sm.getBranch(), sm.getLabel(id), etc.
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { safeSessionManager } from "./extension-state.js";
 
 export interface SessionEntry {

@@ -2,10 +2,10 @@
  * register-session-start — Session initialization: event bus wiring, drift init.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
-import { eventBus } from "../../../lib/event-bus.js";
+import { eventBus } from "../../../lib/events/event-bus.js";
 import { cacheSessionManager } from "../../../lib/state/extension-state.js";
 import { getState } from "../state.js";
 import { createLogger } from "../../../lib/core/logger.js";

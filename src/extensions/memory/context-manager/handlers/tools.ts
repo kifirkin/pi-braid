@@ -2,7 +2,7 @@
 // Thin orchestrator that imports and registers all individual tools.
 // Each tool is implemented in tools/<tool-name>.ts for independent testing.
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerContextInspect } from "./tools/context-inspect.js";
 import { registerContextCompress } from "./tools/context-compress.js";
 import { registerContextNavigate } from "./tools/context-navigate.js";

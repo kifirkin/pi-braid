@@ -18,7 +18,7 @@
  * conflict classification uses the triple-critic system.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../state/extension-state.js";
 import { classify } from "../ai/text-classifier.js";
 import { CRITICS, STOP_WORDS_LEGACY } from "../ai/critic-registry.js";

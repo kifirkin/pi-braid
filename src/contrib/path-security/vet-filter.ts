@@ -12,7 +12,7 @@
  * of text quality. "Roast" critiques quality; "vet" checks security.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { classify } from "../../lib/ai/text-classifier.js";
 import * as path from "node:path";
 import * as os from "node:os";

@@ -23,7 +23,7 @@
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "./lib/core/logger.js";
 import { loadModules } from "./modules/loader.js";
 import modulesApiExtension from "./modules/api.js";

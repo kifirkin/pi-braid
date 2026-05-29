@@ -2,19 +2,19 @@
  * register-message-end — Conflict detection → message analysis → verification judge.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { onEvent } from "../../../lib/event-types.js";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { onEvent } from "../../../lib/events/event-types.js";
 import {
   getUnresolvedConflicts,
   detectConflicts,
   formatConflictMessage,
   resolveConflict,
-} from "../../../lib/evidence-pool.js";
+} from "../../../lib/store/evidence-pool.js";
 import {
   processConflicts as processConflictQAs,
   formatConflictWhisper,
   checkResponseForResolution,
-} from "../../../lib/conflict-qa.js";
+} from "../../../lib/store/conflict-qa.js";
 import { emitSignal } from "../../../lib/reasoning/belief-policy-engine.js";
 import { detectMalformedToolCalls } from "../detection/malformed.js";
 import { analyzeMessage } from "./message-analysis.js";

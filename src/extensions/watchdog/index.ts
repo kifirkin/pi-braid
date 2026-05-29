@@ -4,7 +4,7 @@
  * Monitors session health without polluting stdout.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { SessionManager } from "../../lib/state/session-manager.js";
 import { safeSessionManager } from "../../lib/state/extension-state.js";
 import { createLogger } from "../../lib/core/logger.js";

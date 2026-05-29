@@ -12,7 +12,7 @@
  * future behavior, not the past response.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { sendEnforcementWhisper } from "../../enforcement/whisper.js";
 import { emitSignal } from "../../../lib/reasoning/belief-policy-engine.js";
 import { createLogger } from "../../../lib/core/logger.js";

@@ -2,7 +2,7 @@
  * dreamer-handler — Dreamer prediction advice dispatch on turn_end.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";
 import { emitSignal } from "../../../../lib/reasoning/belief-policy-engine.js";
 import { dream } from "../../../../lib/reasoning/dreamer.js";

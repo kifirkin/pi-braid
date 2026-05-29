@@ -13,8 +13,8 @@
  * - clamp() — number clamping
  */
 
-import type { Api, Model } from "@mariozechner/pi-ai";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { Api, Model } from "@earendil-works/pi-ai";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { callLlm as sharedCallLlm } from "../../lib/ai/llm-call.js";
 import type { LlmCallOptions } from "../../lib/ai/llm-call.js";
 

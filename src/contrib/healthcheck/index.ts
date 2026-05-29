@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import { createLogger } from "../../lib/core/logger.js";
 import { HEALTHCHECK_DIR } from "../../lib/config/braid-paths.js";
 import { Type } from "typebox";
-import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { AgentToolResult, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import type { HealthReport } from "./checks/types.js";
 import { cleanupHcDir, ensureHcDir } from "./checks/helpers.js";

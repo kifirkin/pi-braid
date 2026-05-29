@@ -2,7 +2,7 @@
  * reflection-handler — Reflection gap detection on turn_end.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { emitSignal } from "../../../../lib/reasoning/belief-policy-engine.js";
 import { getState } from "../../state.js";
 

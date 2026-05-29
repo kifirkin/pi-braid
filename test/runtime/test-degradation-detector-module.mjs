@@ -24,7 +24,7 @@ const assert = (cond, msg) => {
 
 async function main() {
   // Load the compiled JS module
-  const modulePath = join(ROOT, "dist/lib/degradation-detector.js");
+  const modulePath = join(ROOT, "dist/lib/detection/degradation-detector.js");
   degradationDetector = await import(modulePath);
 
   console.log("\n[1] Default Configuration");

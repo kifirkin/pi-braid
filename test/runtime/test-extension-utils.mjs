@@ -14,7 +14,7 @@ const {
   clamp,
   debounce,
   looksLikeFilePath,
-} = await import("../../dist/lib/extension-utils.js");
+} = await import("../../dist/lib/utils/extension-utils.js");
 
 describe("textResult", () => {
   it("returns content array with text entry", () => {

@@ -12,7 +12,7 @@
  * Based on: ROADMAP-v1.0-FULL.md P2.4 Belief Policy Engine
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../state/extension-state.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────

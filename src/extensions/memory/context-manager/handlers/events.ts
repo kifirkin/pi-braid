@@ -1,8 +1,8 @@
 // ── Context-Manager Event Handlers ───────────────────────────────────────────
 // agent_end (retry handling), auto_retry_end (API errors), context (pruning workflow).
 
-import type { ExtensionContext, ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { addEvidence } from "../../../../lib/evidence-pool.js";
+import type { ExtensionContext, ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { addEvidence } from "../../../../lib/store/evidence-pool.js";
 import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";
 import { applyPruningWorkflow } from "../pruning.js";
 import {
@@ -17,7 +17,7 @@ import { addEpisode, getState } from "../../three-memory-stores/index.js";
 import { determineCompressionLevel } from "../../../../lib/detection/compression-strategy.js";
 import { semanticCompress } from "../semantic-compress.js";
 import { updateContextDensity } from "../../../heartbeat/analytics/index.js";
-import { onEvent } from "../../../../lib/event-types.js";
+import { onEvent } from "../../../../lib/events/event-types.js";
 import {
   log,
   getCmState,
@@ -205,7 +205,7 @@ export function registerContextPruningHandler(pi: ExtensionAPI): void {
         log.debug(`context: ${beforeCount} messages before pruning`);
 
         // Determine compression level (Experience Compression Spectrum)
-        const decision = determineCompressionLevel(ctx as ExtensionContext, {
+        const decision = await determineCompressionLevel(ctx as ExtensionContext, {
           // ExtensionContext has no turnCount — use message count as proxy
           turnCount: Math.round(beforeCount / 2),
           turnsSinceCompression: pruningState.turnsSinceCompression ?? Infinity,

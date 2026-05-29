@@ -1,6 +1,6 @@
 import { stat, readFile } from "node:fs/promises";
 import { createPromptPreviewTool } from "./preview.js";
-import type { Skill } from "@mariozechner/pi-coding-agent";
+import type { Skill } from "@earendil-works/pi-coding-agent";
 import {
   searchPastInsights,
   formatPastInsightsSection,
@@ -48,9 +48,9 @@ async function asyncExists(p: string): Promise<boolean> {
 
 import { join } from "node:path";
 import { CONSOLIDATED_HINTS_FILE } from "../../../lib/config/braid-paths.js";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { getAgentDir } from "@mariozechner/pi-coding-agent";
-import { loadSkills } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { loadSkills } from "@earendil-works/pi-coding-agent";
 import { SKILLS_DIR } from "../../../index.js";
 import { gatherL1State, formatL1Environment } from "./l1-environment.js";
 import { formatContrastSection } from "./contrast-phrase-library.js";
@@ -82,7 +82,7 @@ const INTERACTION_STYLE = `You provide concise, production-quality solutions. Yo
 // Session-scoped state (migrated from module-level singletons)
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
-import { onEvent } from "../../../lib/event-types.js";
+import { onEvent } from "../../../lib/events/event-types.js";
 
 interface PromptBuilderState {
   activeContrastMode: string;
@@ -356,11 +356,15 @@ async function reconstructProjectContextSection(cwd: string): Promise<string> {
     return "";
   }
 
-  const lines = ["# Project Context", "", "Project-specific instructions and guidelines:", ""];
+  const lines = ["<project_context>", "", "Project-specific instructions and guidelines:", ""];
 
   for (const { path: filePath, content } of contextFiles) {
-    lines.push(`## ${filePath}`, "", content, "");
+    lines.push(`  <project_instructions path="${filePath}">`);
+    lines.push(content);
+    lines.push(`  </project_instructions>`);
   }
+
+  lines.push("</project_context>");
 
   return lines.join("\n");
 }
@@ -538,8 +542,7 @@ async function formatSkillsWithLineCounts(
   const hiddenCount = scored.length - boosted.length;
 
   const lines = [
-    "\n\nSkills are your first tool call. Load all of the relevant ones with `read` before starting any task. ",
-    "",
+    "Skills are your first knowledge in context. Load all of the relevant ones with `read` tool before starting any task. ",
     "<available_skills>",
   ];
 
@@ -638,7 +641,7 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     parts.push(SURGICAL_PRECISION);
     parts.push(BUDGET_AWARENESS);
 
-    // 2. Skills (know before you act — first tool call should be loading relevant ones)
+    // 2. Skills
     if (hasRead) {
       const projectContextStrings = await collectProjectContextStrings(cwd);
       const skillsSection = await reconstructSkillsSection(cwd, projectContextStrings);

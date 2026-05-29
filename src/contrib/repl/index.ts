@@ -13,6 +13,10 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve, relative } from "node:path";
 import { readdirSync } from "node:fs";
+import { createRequire } from "node:module";
+
+// Create require function for use inside Function() constructor in ESM context
+const _require = /* @__PURE__ */ createRequire(import.meta.url);
 // glob is optional — fallback to fs-based pattern matching
 let globSync = (pattern: string, opts: any): string[] => {
   try {
@@ -39,8 +43,8 @@ let globSync = (pattern: string, opts: any): string[] => {
   }
 };
 try { globSync = require("glob").globSync; } catch {}
-import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { StringEnum } from "@mariozechner/pi-ai";
+import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 
 // Maximum files to load from a glob pattern
@@ -70,7 +74,7 @@ function resetReplState(): void {
 const replSchema = Type.Object({
   code: Type.String({
     description:
-      "JavaScript code to execute. For expressions that return values, use `return expr`. Statements (const, if, for) work as-is. In RLM mode, use 'ctx' to access context data. Use `lastResult` to access the previous call's result.",
+      "JavaScript code to execute. For expressions that return values, use `return expr`. Statements (const, if, for) work as-is. In RLM mode, use 'ctx' to access context data. Use `lastResult` to access the previous call's result. Note: `import` and `export` statements are not supported — use `require()` for Node builtins or load data via the `context` parameter.",
   }),
   reset: Type.Optional(
     Type.Boolean({
@@ -279,8 +283,19 @@ function createRlmContext(data: unknown, depth: number, maxCalls: number) {
       replState.rlmDepth++;
       try {
         const subCtx = createRlmContext(replState.lastResult, replState.rlmDepth, maxCalls);
-        const fn = new Function("ctx", code);
-        return fn(subCtx);
+        let fn: Function;
+        try {
+          fn = new Function("ctx", "require", code);
+        } catch (err: any) {
+          if (err instanceof SyntaxError && /import|export/.test(err.message)) {
+            throw new Error(
+              "subCall does not support `import` or `export` statements. " +
+                "Use require() or access data via ctx.",
+            );
+          }
+          throw new Error(`Failed to parse subCall code: ${err.message}`);
+        }
+        return fn(subCtx, _require);
       } finally {
         replState.rlmDepth--;
       }
@@ -339,7 +354,7 @@ function createReplTool(): AgentTool<typeof replSchema> {
     name: "repl",
     label: "REPL",
     description:
-      "Execute JavaScript code. Use `return expr` for values. RLM mode provides ctx helpers (chunk, search, filter, map, reduce). Context: inline data, file path (auto-detects JSON/JSONL/text), or { pattern, baseDir } for glob.",
+      "Execute JavaScript code. Use `return expr` for values. RLM mode provides ctx helpers (chunk, search, filter, map, reduce). Context: inline data, file path (auto-detects JSON/JSONL/text), or { pattern, baseDir } for glob. Note: `import`/`export` not supported — use require() for Node builtins or load data via context.",
     parameters: replSchema,
     execute: async (_toolCallId: string, params: any) => {
       if (params.reset) resetReplState();
@@ -360,8 +375,8 @@ function createReplTool(): AgentTool<typeof replSchema> {
       const resolvedData = await resolveContext(params.context, params.cwd, params.baseDir);
       if (mode === "rlm") replState.rlmContext = resolvedData;
 
-      const evalKeys = [...Object.keys(replState.context), "lastResult"];
-      const evalValues = [...Object.values(replState.context), replState.lastResult];
+      const evalKeys = [...Object.keys(replState.context), "lastResult", "require"];
+      const evalValues = [...Object.values(replState.context), replState.lastResult, _require];
       let ctxObj: ReturnType<typeof createRlmContext> | undefined;
       if (mode === "rlm" && resolvedData !== undefined) {
         ctxObj = createRlmContext(resolvedData, 0, maxCalls);
@@ -369,7 +384,20 @@ function createReplTool(): AgentTool<typeof replSchema> {
         evalValues.push(ctxObj);
       }
 
-      const evalFn = new Function(...evalKeys, params.code);
+      let evalFn: Function;
+      try {
+        evalFn = new Function(...evalKeys, params.code);
+      } catch (err: any) {
+        if (err instanceof SyntaxError && /import|export/.test(err.message)) {
+          throw new Error(
+            "The REPL tool does not support `import` or `export` statements. " +
+              "Use `require()` (CommonJS) for Node.js builtin modules, or load data via the `context` parameter. " +
+              "Node.js builtins (fs, path, os) are always available via require(). " +
+              "Third-party modules are not available in the REPL — load their output via context instead.",
+          );
+        }
+        throw new Error(`Failed to parse code: ${err.message}`);
+      }
       let result: unknown;
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error(`Execution timed out after ${timeout}ms`)), timeout),
@@ -382,7 +410,7 @@ function createReplTool(): AgentTool<typeof replSchema> {
           if (err?.code === "ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING") {
             throw new Error(
               "Dynamic import() is not supported in the REPL tool. " +
-                "Use static imports at the top of your code or access values via the context parameter.",
+                "Use require() for Node.js builtin modules or load data via the context parameter.",
             );
           }
           throw err;

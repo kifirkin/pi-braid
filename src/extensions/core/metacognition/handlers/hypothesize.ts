@@ -2,7 +2,7 @@
 // Generate structured hypotheses about root causes using the session model.
 
 import { Type } from "typebox";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { callLlm } from "../../../../lib/ai/llm-call.js";
 import { scoreHypothesisOutput } from "./scoring.js";
 import { createLogger } from "../../../../lib/core/logger.js";

@@ -8,21 +8,21 @@
  * under handlers/ for independent testing.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../../lib/core/logger.js";
 import { guard } from "../../lib/utils/error-guard.js";
 import { registerInjectionTracker } from "../../lib/utils/injection-tracker.js";
-import { registerTurnEndHandler, dispatchTurnEnd } from "../../lib/turn-end-coordinator.js";
-import { onEvent } from "../../lib/event-types.js";
+import { registerTurnEndHandler, dispatchTurnEnd } from "../../lib/events/turn-end-coordinator.js";
+import { onEvent } from "../../lib/events/event-types.js";
 import { type NudgeManager } from "./nudge-manager.js";
 import { sendEnforcementWhisper } from "./whisper.js";
-import { processAgentResponse, formatContradictionWhisper } from "../../lib/claim-tracker.js";
+import { processAgentResponse, formatContradictionWhisper } from "../../lib/store/claim-tracker.js";
 import {
   loadSpecs,
   checkSpecCoverage,
   getVerifierState,
-} from "../../lib/bidirectional-verifier.js";
-import { scanArchives } from "../../lib/consolidation-channel.js";
+} from "../../lib/store/bidirectional-verifier.js";
+import { scanArchives } from "../../lib/events/consolidation-channel.js";
 import { isDegraded } from "../../lib/detection/degradation-detector.js";
 import { autoRollback } from "../../lib/state/state-checkpoint.js";
 import { getState } from "./state.js";

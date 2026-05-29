@@ -3,8 +3,8 @@
  * Run: node test/runtime/test-belief-policy.mjs
  */
 const ROOT = "/Users/kifir/projects/agents/pi-braid";
-const { emitSignal, getNextRecommendation, getBeliefs, getSignals, clearBeliefEngine } = await import(`${ROOT}/dist/lib/belief-policy-engine.js`);
-const extState = await import(`${ROOT}/dist/lib/extension-state.js`);
+const { emitSignal, getNextRecommendation, getBeliefs, getSignals, clearBeliefEngine } = await import(`${ROOT}/dist/lib/reasoning/belief-policy-engine.js`);
+const extState = await import(`${ROOT}/dist/lib/state/extension-state.js`);
 
 let passed = 0;
 let failed = 0;

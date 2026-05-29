@@ -16,7 +16,7 @@ import {
   DENSITY_HIGH,
   TOKEN_RATIO_LARGE_CONTEXT,
 } from "../../../lib/detection/context-thresholds.js";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const log = createLogger("context-lifecycle");
 

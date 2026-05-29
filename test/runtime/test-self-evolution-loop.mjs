@@ -59,7 +59,7 @@ console.log("\n[2] Consolidation hint writing");
     scoreEpisode,
     getConsolidationQueue,
     processConsolidationTick,
-  } = await import("../../dist/lib/consolidation-channel.js");
+  } = await import("../../dist/lib/events/consolidation-channel.js");
 
   // Verify the consolidation channel imports braid-paths
   const consolSrc = readFileSync(
@@ -195,7 +195,7 @@ console.log("\n[4] E2E hint file parsing");
 
 console.log("\n[5] CONSOLIDATED_HINTS_FILE path");
 {
-  const { CONSOLIDATED_HINTS_FILE } = await import("../../dist/lib/braid-paths.js");
+  const { CONSOLIDATED_HINTS_FILE } = await import("../../dist/lib/config/braid-paths.js");
   assert.ok(
     CONSOLIDATED_HINTS_FILE.includes("braid"),
     "hints file should be under braid directory",

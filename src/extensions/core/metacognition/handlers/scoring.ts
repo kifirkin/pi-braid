@@ -3,7 +3,7 @@
 // Extracted from metacognition/index.ts for decomposition.
 
 import { tokenOverlap } from "../../../../lib/store/evidence-pool.js";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getEvidence } from "../../../../lib/store/evidence-pool.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────

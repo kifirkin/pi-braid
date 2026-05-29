@@ -9,7 +9,7 @@
  * are verified, and whether shortcuts were taken.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { VERIFICATION_JUDGE_SYSTEM_PROMPT } from "./judge-prompt.js";
 import { callLlm, extractJson } from "./judge-utils.js";
 import { createLogger } from "../../lib/core/logger.js";

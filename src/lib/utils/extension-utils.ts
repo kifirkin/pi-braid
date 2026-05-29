@@ -4,7 +4,7 @@
  * These are small, universal helpers that every extension needs.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 /**
  * Build a valid AgentToolResult with text content.

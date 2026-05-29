@@ -2,10 +2,10 @@
  * register-tool-result — Calibration tracking on tool results.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { addEvidence } from "../../../lib/evidence-pool.js";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { addEvidence } from "../../../lib/store/evidence-pool.js";
 import { emitSignal } from "../../../lib/reasoning/belief-policy-engine.js";
-import { eventBus } from "../../../lib/event-bus.js";
+import { eventBus } from "../../../lib/events/event-bus.js";
 import { sendEnforcementWhisper } from "../whisper.js";
 import { getState } from "../state.js";
 

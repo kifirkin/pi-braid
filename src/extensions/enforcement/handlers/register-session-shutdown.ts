@@ -2,7 +2,7 @@
  * register-session-shutdown — State cleanup on session end.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { onEvent } from "../../../lib/events/event-types.js";
 import { getState, resetState } from "../state.js";
 import { resetAdviceTracker } from "../../../lib/reasoning/advice-tracker.js";

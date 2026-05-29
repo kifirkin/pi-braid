@@ -40,16 +40,16 @@ let _isCompactionActive: (() => boolean) | undefined;
 import { existsSync, promises as fsPromises, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { Api, Model } from "@mariozechner/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import { callLlm } from "../../../lib/ai/llm-call.js";
 import type {
   ExtensionAPI,
   ExtensionContext,
   InputEventResult,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { setLanguage, detectLanguage } from "../../../lib/ai/language-hint.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
-import { roastInput, CODE_SUFFIX } from "./roast-filter.js";
+import { roastInput } from "./roast-filter.js";
 import { resolveUtilityModel } from "../../../lib/ai/model-resolver.js";
 
 const PERSONA = `You are a message preprocessor — a filter between the user and the main assistant. You clean text. You don't act on it.`;
@@ -351,10 +351,6 @@ async function processMessage(
 
       // Update editor text with cleaned version — never auto-submit
       // User must press Enter to send, giving them a chance to review/revert.
-      // Uses classification from utility model (or heuristic fallback)
-      if (isCodeRequest) {
-        cleaned += CODE_SUFFIX;
-      }
 
       ctx.ui.setEditorText(cleaned);
 
@@ -409,6 +405,16 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
     const original = event.text;
 
     if (original.length === 0) {
+      return { action: "continue" };
+    }
+
+    // Skip polishing for mid-stream steers and queued follow-ups —
+    // these are urgent interruptions or continuations, not new messages.
+    if (event.streamingBehavior) {
+      state.skippedCount++;
+      ctx.ui.setStatus("input-polisher", "✓ Streaming input — skipping polish");
+      state.polishingExhausted = true;
+      state.polishedText = original;
       return { action: "continue" };
     }
 

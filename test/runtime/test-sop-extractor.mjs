@@ -1,13 +1,13 @@
 /**
  * Test: SOP Extractor — trajectory → structured SOP conversion.
  *
- * Runtime tests importing from dist/lib/sop-extractor.js.
+ * Runtime tests importing from dist/lib/utils/sop-extractor.js.
  */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-const { extractSOP } = await import("../../dist/lib/sop-extractor.js");
+const { extractSOP } = await import("../../dist/lib/utils/sop-extractor.js");
 
 describe("SOP Extractor", () => {
   it("handles empty trajectory", () => {

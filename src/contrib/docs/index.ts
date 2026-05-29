@@ -15,13 +15,13 @@ import * as fs from "node:fs/promises";
 import * as fsSync from "node:fs";
 let PDFParse: any;
 try { PDFParse = require("pdf-parse").PDFParse; } catch {}
-import { StringEnum } from "@mariozechner/pi-ai";
+import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import type {
   AgentToolResult,
   ExtensionAPI,
   ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 
 const readDocSchema = Type.Object({
   path: Type.String({ description: "Path to document file" }),

@@ -9,7 +9,7 @@ const log = createLogger("enforcement");
 
 import { sendEnforcementWhisper } from "../whisper.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
-import type { ExtensionContext, ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 interface VerificationState {
   pendingCodeChanges: boolean;

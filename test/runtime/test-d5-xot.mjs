@@ -1,8 +1,8 @@
 // D5 XoT validation: SOURCE_RELIABILITY scoring + conflict detection
 // Run: node test/runtime/test-d5-xot.mjs
 
-import { addEvidence, detectConflicts, getAllConflicts, getUnresolvedConflicts, resolveConflict, clearEvidence, tokenOverlap } from '../../dist/lib/evidence-pool.js';
-import { resolveConflictQA, getPendingQAs, getQAStats } from '../../dist/lib/conflict-qa.js';
+import { addEvidence, detectConflicts, getAllConflicts, getUnresolvedConflicts, resolveConflict, clearEvidence, tokenOverlap } from '../../dist/lib/store/evidence-pool.js';
+import { resolveConflictQA, getPendingQAs, getQAStats } from '../../dist/lib/store/conflict-qa.js';
 
 const ctx = {};
 let passed = 0, failed = 0;

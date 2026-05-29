@@ -144,14 +144,6 @@ export const STOP_WORDS_LEGACY = new Set([
   "boy",
 ]);
 
-function extractFeatures(text: string, minTokenLength = 2): Set<string> {
-  const normalized = text.toLowerCase();
-  const words = normalized
-    .split(/[^\w]+/)
-    .filter((t) => t.length >= minTokenLength && !STOP_WORDS_LEGACY.has(t));
-  return new Set(words);
-}
-
 // ── CRITICS — All critic prompt definitions ─────────────────────────────────
 
 export const CRITICS = {
@@ -258,66 +250,28 @@ export const CRITICS = {
     options: { maxTokens: 5, timeoutMs: 5000 },
   } satisfies CriticDef,
 
-  /** Legacy heuristic fallback for contradiction detection (negation + pair matching). */
+  /**
+   * Minimal conservative fallback for contradiction detection.
+   * Detects obvious polarity flips via negation patterns on shared terms.
+   * Returns "no" when uncertain — LLM tier (Tier 2/3) handles complex cases.
+   */
   contradictionFallback(claim: string, context: string): string {
     const claimLower = claim.toLowerCase();
     const contextLower = context.toLowerCase();
 
-    // Phase 1: Negation pattern matching
-    const negationPattern =
-      /\b(not|n't|never|no|isn't|aren't|wasn't|weren't|don't|doesn't|didn't|won't|wouldn't|can't|cannot|couldn't|shouldn't)\s+(\w{3,})/gi;
-
-    const claimNegations: Array<{ word: string; negated: string }> = [];
-    const contextNegations: Array<{ word: string; negated: string }> = [];
-    let match: RegExpExecArray | null;
-    while ((match = negationPattern.exec(claimLower)) !== null) {
-      claimNegations.push({ word: match[1], negated: match[2] });
-    }
-    while ((match = negationPattern.exec(contextLower)) !== null) {
-      contextNegations.push({ word: match[1], negated: match[2] });
-    }
-
-    const claimFeats = extractFeatures(claim);
-    const contextFeats = extractFeatures(context);
-
-    // Context-side negation vs claim features (original direction)
-    for (const ctxNeg of contextNegations) {
-      for (const cf of claimFeats) {
-        if (ctxNeg.negated.includes(cf) || cf.includes(ctxNeg.negated)) {
-          return "yes";
-        }
-      }
-    }
-
-    // Claim-side negation vs context features (reverse direction)
-    for (const claimNeg of claimNegations) {
-      for (const cf of contextFeats) {
-        if (claimNeg.negated.includes(cf) || cf.includes(claimNeg.negated)) {
-          return "yes";
-        }
-      }
-    }
-
-    // Phase 2: Hardcoded positive-negation pairs
-    const MATCH_PAIRS: [string, string][] = [
+    // Detect negation on same core word (e.g., "supports" vs "does not support")
+    const negationWords = [
+      ["supports", "does not support"],
+      ["supports", "doesn't support"],
+      ["supports", "not support"],
       ["works", "doesn't work"],
       ["works", "fails"],
       ["supported", "not supported"],
       ["compatible", "incompatible"],
-      ["can use", "cannot use"],
-      ["is defined", "is not defined"],
       ["exists", "doesn't exist"],
-      ["succeeds", "fails"],
       ["correct", "incorrect"],
-      ["supports", "does not support"],
-      ["supports", "doesn't support"],
-      ["supports", "not support"],
-      ["includes", "does not include"],
-      ["allows", "does not allow"],
-      ["enables", "does not enable"],
     ];
-
-    for (const [pos, neg] of MATCH_PAIRS) {
+    for (const [pos, neg] of negationWords) {
       if (claimLower.includes(pos) && contextLower.includes(neg)) return "yes";
       if (claimLower.includes(neg) && contextLower.includes(pos)) return "yes";
     }
@@ -366,58 +320,19 @@ export const CRITICS = {
   } satisfies CriticDef,
 
   /**
-   * Legacy heuristic fallback for tool loop detection.
-   * Checks tool sequence repetition + error echo + file churn patterns.
+   * Conservative fallback for tool loop detection.
+   * Returns "no" — LLM tier handles actual detection.
    */
-  toolLoopFallback(toolSequences: string): string {
-    // Parse tool sequences from the description
-    const lines = toolSequences.split("\n").filter((l) => l.trim().length > 0);
-    if (lines.length < 4) return "no";
-
-    // Extract tool names from each sequence
-    const sequences = lines.map((l) => {
-      const tools = (l.match(/`([^`]+)`/g) || []).map((t) => t.replace(/`/g, ""));
-      return tools;
-    }).filter((s) => s.length > 0);
-
-    if (sequences.length < 4) return "no";
-
-    // Tool repetition: last N turns used same (or subset of) tools
-    const lastSeq = sequences[sequences.length - 1];
-    const repeatCount = sequences.filter((seq) =>
-      lastSeq.length > 0 && lastSeq.every((t) => seq.includes(t)),
-    ).length;
-    if (repeatCount >= 4) return "yes";
-
-    // Error echo: same error messages repeated
-    const errorPattern = /error|fail|reject|denied|timeout/i;
-    const errorCount = sequences.filter((seq) =>
-      seq.some((t) => errorPattern.test(t)),
-    ).length;
-    if (errorCount >= 4) return "yes";
-
+  toolLoopFallback(_toolSequences: string): string {
     return "no";
   },
 
   /**
-   * Legacy heuristic fallback for evidence conflict detection.
-   * Uses token overlap ratio with threshold 0.3.
+   * Conservative fallback for evidence conflict detection.
+   * Returns "no" — LLM tier handles actual detection.
    */
-  evidenceConflictFallback(a: string, b: string): string {
-    const tokensA = new Set(
-      a.toLowerCase().split(/\W+/).filter((t) => t.length > 2 && !STOP_WORDS_LEGACY.has(t)),
-    );
-    const tokensB = new Set(
-      b.toLowerCase().split(/\W+/).filter((t) => t.length > 2 && !STOP_WORDS_LEGACY.has(t)),
-    );
-    if (tokensA.size === 0 || tokensB.size === 0) return "no";
-
-    let overlap = 0;
-    for (const t of tokensA) {
-      if (tokensB.has(t)) overlap++;
-    }
-    const ratio = overlap / Math.max(tokensA.size, tokensB.size);
-    return ratio >= 0.3 ? "yes" : "no";
+  evidenceConflictFallback(_a: string, _b: string): string {
+    return "no";
   },
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -489,51 +404,149 @@ export const CRITICS = {
   } satisfies CriticDef,
 
   /**
-   * Legacy heuristic fallback for hint quality.
-   * Mirrors the original GENERIC_STEP_PATTERNS + GENERIC_DEBUG_TRIAD logic
-   * from consolidation-channel.ts.
+   * Conservative fallback for hint quality.
+   * Returns "yes" (allow through) — LLM tier handles filtering.
    */
-  hintQualityFallback(task: string, steps: string[]): string {
-    if (!steps || steps.length === 0) return "no";
-
-    const GENERIC_PATTERNS = [
-      /^reproduce\s*bug$/i,
-      /^locate\s*root\s*cause$/i,
-      /^apply\s*fix$/i,
-      /^debug$/i,
-      /^isolate\s*(issue|problem|component)?$/i,
-      /^identify\s*(issue|problem|bug)?$/i,
-      /^fix\s*(it|the\s*issue|the\s*problem|the\s*bug)?$/i,
-      /^test\s*(the\s*fix|solution)?$/i,
-      /^verify\s*(the\s*fix|solution)?$/i,
-      /^check\s*(result|output|it)?$/i,
-    ];
-
-    const TRIAD = [/^reproduce\s*bug$/i, /^locate\s*root\s*cause$/i, /^apply\s*fix$/i];
-
-    const stepTexts = steps.map((s) => s.trim().toLowerCase());
-
-    // Check for classic three-step cliché triad
-    const triadMatches = TRIAD.filter((p) => stepTexts.some((s) => p.test(s))).length;
-    if (triadMatches >= 3) return "no";
-
-    // If more than half the steps are generic, reject
-    const genericCount = steps.filter((s) =>
-      GENERIC_PATTERNS.some((p) => p.test(s.trim())),
-    ).length;
-    if (genericCount >= steps.length * 0.5) return "no";
-
-    // Reject file-specific error fix patterns
-    if (
-      /^(fix|resolve|address)\s+\w+\s+(error|issue|bug|warning)\s+in\s+\S+\.\w+$/i.test(
-        task.trim(),
-      )
-    ) {
-      return "no";
-    }
-
+  hintQualityFallback(_task: string, _steps: string[]): string {
     return "yes";
   },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Context Density — Triple critic: signal ratio + duplication + compression urgency
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Evaluate the signal-to-noise ratio of a context message sample.
+   * Replaces the regex-based NOISE_PATTERNS + MIN_SIGNAL_LENGTH heuristics
+   * in detection/context-density.ts.
+   */
+  contextDensity: {
+    label: "Context Density",
+    criteria: {
+      systemPrompt:
+        "You are a context density evaluator. Given a sample of conversation " +
+        "messages, determine if the context has HIGH, MEDIUM, or LOW signal density. " +
+        "HIGH = most messages contain meaningful, non-boilerplate content. " +
+        "MEDIUM = mixed — some signal, some noise (duplicates, errors, boilerplate). " +
+        "LOW = mostly noise — repetitive commands, traceback dumps, trivial responses. " +
+        "Answer with exactly one word: HIGH, MEDIUM, or LOW. Do not explain.",
+      userPrompt:
+        "Context sample ({{sampleCount}} messages):\n{{messages}}\n" +
+        "Rate the signal density of this context.",
+    },
+    options: { maxTokens: 10, timeoutMs: 5000 },
+  } satisfies CriticDef,
+
+  /**
+   * Determine how urgently context compression is needed.
+   * Replaces the static threshold tree in detection/compression-strategy.ts.
+   */
+  compressionUrgency: {
+    label: "Compression Urgency",
+    criteria: {
+      systemPrompt:
+        "You are a context compression advisor. Given the current session state, " +
+        "determine the appropriate compression level. Consider: turn count, " +
+        "reasoning depth, failure rate, and time since last compression. " +
+        "Answer with exactly one word: NONE, CONSERVATIVE, SEMANTIC, or AGGRESSIVE. " +
+        "NONE = context is fresh and efficient. " +
+        "CONSERVATIVE = prune only obvious noise. " +
+        "SEMANTIC = summarize reasoning chains. " +
+        "AGGRESSIVE = extract patterns to memory, remove most raw context. " +
+        "Do not explain.",
+      userPrompt:
+        "Turns since last compression: {{turnsSinceCompression}}\n" +
+        "Total turns: {{totalTurns}}\n" +
+        "Consecutive failures: {{consecutiveFailures}}\n" +
+        "Reasoning chain depth: {{reasoningDepth}}\n" +
+        "Message count: {{messageCount}}\n" +
+        "What compression level is needed?",
+    },
+    options: { maxTokens: 10, timeoutMs: 5000 },
+  } satisfies CriticDef,
+
+  /**
+   * Legacy heuristic fallback for compression urgency.
+   * Returns the existing static-threshold logic from compression-strategy.ts.
+   */
+  compressionUrgencyFallback(opts: {
+    turnsSinceCompression: number;
+    totalTurns: number;
+    consecutiveFailures: number;
+    reasoningDepth: number;
+    messageCount: number;
+  }): string {
+    if (opts.consecutiveFailures >= 3) return "AGGRESSIVE";
+    if (opts.totalTurns >= 80) return "AGGRESSIVE";
+    if (opts.totalTurns >= 30 && opts.reasoningDepth > 3) return "SEMANTIC";
+    if (opts.totalTurns >= 30 && opts.turnsSinceCompression > 40) return "SEMANTIC";
+    if (opts.totalTurns >= 10 && opts.messageCount > 50) return "CONSERVATIVE";
+    return "NONE";
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Qualitative Degradation — Single critic: output quality
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Assess whether agent output quality has degraded qualitatively.
+   * Complements the metric-based degradation detector — catches cases
+   * where numeric metrics look fine but output is wrong.
+   */
+  qualitativeDegradation: {
+    label: "Qualitative Degradation",
+    criteria: {
+      systemPrompt:
+        "You are a quality degradation assessor. Given samples of recent agent " +
+        "output, determine if output quality has degraded. Look for: confused " +
+        "or contradictory statements, shallow analysis, repeated mistakes, " +
+        "loss of task focus, or decline in reasoning depth. " +
+        "Answer with exactly one word: DEGRADED or STABLE. Do not explain.",
+      userPrompt:
+        "Recent agent outputs:\n{{outputSamples}}\n" +
+        "Has agent output quality degraded?",
+    },
+    options: { maxTokens: 10, timeoutMs: 5000 },
+  } satisfies CriticDef,
+
+  /**
+   * Legacy heuristic fallback for qualitative degradation.
+   * Conservative: assume no degradation when LLM unavailable.
+   */
+  qualitativeDegradationFallback(): string {
+    return "STABLE";
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Removal Safety — filter-safe-to-remove batch assessment
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Assess whether a given message is safe to remove before context compaction.
+   * Replaces the rule-based heuristics in filter-safe-to-remove.ts
+   * (error markers, path matching, duplicate detection).
+   */
+  removalSafety: {
+    label: "Removal Safety",
+    criteria: {
+      systemPrompt:
+        "You are a context compaction assistant. Given a single conversation " +
+        "message, determine if it is SAFE to remove before LLM summarization. " +
+        "A message is safe to remove if it is clearly redundant, superseded, " +
+        "or non-essential: duplicate file reads, resolved error outputs, " +
+        "oversized non-critical tool results (ls/find/grep), ephemeral system " +
+        "steer messages, or resolved bug trace dumps. " +
+        "A message is NOT safe if it contains unique information, is a user " +
+        "request, is an assistant response, or is a write/modify operation. " +
+        "Answer only 'yes' or 'no'. Do not explain.",
+      userPrompt:
+        "Message role: {{role}}\n" +
+        "Tool name: {{toolName}}\n" +
+        "Content snippet: {{content}}\n" +
+        "Is this message safe to remove before compaction?",
+    },
+    options: { maxTokens: 5, timeoutMs: 5000 },
+  } satisfies CriticDef,
 } as const;
 
 /**

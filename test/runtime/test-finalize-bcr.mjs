@@ -28,7 +28,7 @@ async function assertOk(val, msg = "") {
 }
 
 const ROOT = "/Users/kifir/projects/agents/pi-braid";
-const FMQ = `${ROOT}/dist/lib/file-mutation-queue.js`;
+const FMQ = `${ROOT}/dist/lib/utils/file-mutation-queue.js`;
 
 await mkdir("/tmp", { recursive: true });
 

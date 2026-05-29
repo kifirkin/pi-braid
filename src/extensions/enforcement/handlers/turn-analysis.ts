@@ -8,7 +8,7 @@ const log = createLogger("enforcement");
  * that extracted handlers can receive as a parameter.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { EnforcementState } from "../state.js";
 
 export interface TurnAnalysisContext {

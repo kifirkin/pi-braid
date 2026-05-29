@@ -6,8 +6,8 @@
  * and falls back to sensible defaults when not configured.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { Model, Api } from "@mariozechner/pi-ai";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { Model, Api } from "@earendil-works/pi-ai";
 import { getCustomModelKey, UTILITY_MODEL_KEY, VISION_MODEL_KEY } from "../state/global-state.js";
 
 /**

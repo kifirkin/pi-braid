@@ -12,7 +12,7 @@ const {
   createCheckpoint,
   getCheckpointInfo,
   heartbeatCheckpointTick,
-} = await import("../../dist/lib/state-checkpoint.js");
+} = await import("../../dist/lib/state/state-checkpoint.js");
 
 function makeCtx(sessionId) {
   return {

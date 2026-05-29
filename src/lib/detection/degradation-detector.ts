@@ -6,7 +6,7 @@
  */
 
 import * as os from "node:os";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../state/extension-state.js";
 import { saveStateImmediate, loadState } from "../state/async-storage.js";
 import { createLogger } from "../core/logger.js";
@@ -342,4 +342,53 @@ export function createTurnMetrics(
     consecutiveErrors: errors > 0 ? errors : 0,
     tokenUsage: { input: inputTokens, output: outputTokens },
   };
+}
+
+// ── Qualitative Degradation Check ────────────────────────────────────────────
+
+/**
+ * Check for qualitative degradation using an LLM judge.
+ *
+ * Complements the metric-based degradation detector by assessing whether
+ * the agent's output quality has degraded qualitatively. Catches cases
+ * where numeric metrics look fine but output quality is poor (confused
+ * reasoning, shallow analysis, repeated mistakes).
+ *
+ * Uses classify() with the qualitativeDegradation critic. Falls back
+ * to "STABLE" when LLM is unavailable.
+ *
+ * @param ctx - Extension context for LLM access
+ * @param outputSamples - Recent agent output texts to assess
+ * @returns "DEGRADED" if quality has degraded, "STABLE" otherwise
+ */
+export async function checkQualitativeDegradation(
+  ctx: ExtensionContext,
+  outputSamples: string[],
+): Promise<"DEGRADED" | "STABLE"> {
+  const { classify } = await import("../ai/text-classifier.js");
+  const { CRITICS } = await import("../ai/critic-registry.js");
+
+  if (outputSamples.length === 0) return "STABLE";
+
+  const sampleText = outputSamples
+    .slice(0, 5)
+    .map((t, i) => `[Output ${i + 1}]\n${t.slice(0, 500)}`)
+    .join("\n---\n");
+
+  try {
+    const result = await classify(
+      ctx,
+      CRITICS.qualitativeDegradation.criteria,
+      { outputSamples: sampleText },
+      {
+        maxTokens: 10,
+        timeoutMs: 5000,
+        fallback: () => CRITICS.qualitativeDegradationFallback(),
+      },
+    );
+
+    return result.label.toUpperCase() === "DEGRADED" ? "DEGRADED" : "STABLE";
+  } catch {
+    return "STABLE";
+  }
 }

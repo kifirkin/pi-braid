@@ -18,9 +18,9 @@ const log = createLogger("agent-environment");
 
 import * as os from "node:os";
 import * as process from "node:process";
-import { StringEnum } from "@mariozechner/pi-ai";
+import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 // =============================================================================
 // L1 State - shared with prompt-builder for system prompt injection

@@ -13,7 +13,7 @@
 // - Key context is carried forward as a "continuation summary"
 
 import { statSync } from "node:fs";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getCmState, log, buildContinuationSummary, triggerEmergencyRotation } from "./shared.js";
 import { getRotationState } from "../../../../lib/state/global-state.js";
 import type { RotationState } from "../../../../lib/state/global-state.js";

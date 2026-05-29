@@ -18,7 +18,7 @@ import type {
   ExtensionAPI,
   ExtensionContext,
   ToolDefinition,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 
 // ── Re-export types and persistence for importers ─────────────────────────
 export * from "./types.js";

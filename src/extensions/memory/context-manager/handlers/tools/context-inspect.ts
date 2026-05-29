@@ -6,7 +6,7 @@
  */
 
 import { Type } from "typebox";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { analyzeSession } from "../../analysis.js";
 import { getCmState, formatPruneCandidates } from "../shared.js";
 

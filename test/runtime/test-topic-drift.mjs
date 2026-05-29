@@ -3,7 +3,7 @@
  * Run: node test/runtime/test-topic-drift.mjs
  */
 const ROOT = "/Users/kifir/projects/agents/pi-braid";
-const { TopicDriftDetector, setCriticCtx } = await import(`${ROOT}/dist/lib/topic-drift-detector.js`);
+const { TopicDriftDetector, setCriticCtx } = await import(`${ROOT}/dist/lib/detection/topic-drift-detector.js`);
 
 let passed = 0;
 let failed = 0;

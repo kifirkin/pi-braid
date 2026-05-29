@@ -17,10 +17,10 @@ import type {
   ExtensionAPI,
   ExtensionContext,
   AgentToolResult,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { safeSessionManager } from "../../../lib/state/extension-state.js";
 import { emitSignal } from "../../../lib/reasoning/belief-policy-engine.js";
-import { eventBus } from "../../../lib/event-bus.js";
+import { eventBus } from "../../../lib/events/event-bus.js";
 import { isDegraded, getDegradationReasons } from "../../../lib/detection/degradation-detector.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { areCognitiveNudgesDisabled } from "../../../lib/config/braid-settings.js";

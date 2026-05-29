@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 // ═════════════════════════════════════════════════════════════════════════
 
 const { isReasoningMessage, extractReasoningSummary } =
-  await import("../../dist/lib/reasoning-summary.js");
+  await import("../../dist/lib/reasoning/reasoning-summary.js");
 
 describe("reasoning-summary", () => {
   it("isReasoningMessage returns false for non-assistant messages", () => {
@@ -46,7 +46,7 @@ describe("reasoning-summary", () => {
 // language-hint: detectLanguage (basic — returns EN for most inputs)
 // ═════════════════════════════════════════════════════════════════════════
 
-const { detectLanguage } = await import("../../dist/lib/language-hint.js");
+const { detectLanguage } = await import("../../dist/lib/ai/language-hint.js");
 
 describe("language-hint", () => {
   it("detectLanguage always returns a code", () => {
@@ -65,7 +65,7 @@ describe("language-hint", () => {
 // injection-tracker: extractText
 // ═════════════════════════════════════════════════════════════════════════
 
-const { extractText } = await import("../../dist/lib/injection-tracker.js");
+const { extractText } = await import("../../dist/lib/utils/injection-tracker.js");
 
 describe("injection-tracker", () => {
   it("extractText handles empty array", () => {
@@ -90,7 +90,7 @@ const {
   getRegisteredHandlers,
   clearHandlers,
   handlerCount,
-} = await import("../../dist/lib/turn-end-coordinator.js");
+} = await import("../../dist/lib/events/turn-end-coordinator.js");
 
 describe("turn-end-coordinator", () => {
   // Note: these tests share state since coordinator is a module-level singleton.

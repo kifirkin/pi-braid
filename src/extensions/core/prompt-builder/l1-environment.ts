@@ -20,8 +20,8 @@ import * as os from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { getCognitiveMemory } from "../../../lib/cognitive-memory.js";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getCognitiveMemory } from "../../../lib/cognitive-memory/index.js";
 import { gatherL1Environment, formatL1EnvironmentSection } from "../agent-environment/index.js";
 
 interface L1Environment {
@@ -104,7 +104,7 @@ async function gatherL1State(
 function discoverPiRootPath(): string {
   // Strategy 1: Find pi binary in PATH and walk up to package.json
   // Most reliable for global installs (mise, npm, bun)
-  const PI_PACKAGE_NAMES = ["@earendil-works/pi-coding-agent", "@mariozechner/pi-coding-agent"];
+  const PI_PACKAGE_NAMES = ["@earendil-works/pi-coding-agent"];
   try {
     const piPath = execSync("which pi 2>/dev/null || echo ''", {
       encoding: "utf8",

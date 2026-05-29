@@ -17,7 +17,7 @@
  */
 
 import { createLogger } from "../../lib/core/logger.js";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../../lib/state/extension-state.js";
 
 // Import sub-state factories and resets

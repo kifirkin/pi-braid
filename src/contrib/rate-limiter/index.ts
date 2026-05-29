@@ -8,7 +8,7 @@ const log = createLogger("rate-limiter");
  * for LLM API calls. Ensures fair usage and prevents rate limit errors.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 interface RateLimitHistory {
   timestamp: number;

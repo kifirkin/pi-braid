@@ -18,7 +18,7 @@ import {
   claimsContradict,
   detectContradictions,
   formatContradictionWhisper,
-} from "../../dist/lib/claim-tracker.js";
+} from "../../dist/lib/store/claim-tracker.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 

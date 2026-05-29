@@ -6,7 +6,7 @@
  */
 
 import { Type } from "typebox";
-import type { ExtensionAPI, ExtensionContext, AgentToolResult } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, AgentToolResult } from "@earendil-works/pi-coding-agent";
 import { mutateTaskStore, loadTaskStore } from "./persistence.js";
 import type { TaskItem } from "./types.js";
 

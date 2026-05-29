@@ -8,7 +8,7 @@
  * Not a cognitive simulation — a simple histogram-based predictor.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../state/extension-state.js";
 import { dreamerCooldownMs as dynamicCooldown } from "../reasoning/advice-tracker.js";
 

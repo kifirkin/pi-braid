@@ -164,7 +164,7 @@ console.log("\n═══ 3. IMPORT RESOLUTION ═══");
 function checkImports(filePath, name) {
   const content = loadFile(filePath);
   if (!content) return;
-  
+
   // Skip commented-out imports (lines starting with //)
   const lines = content.split("\n");
   let hasUnresolved = false;
@@ -177,7 +177,7 @@ function checkImports(filePath, name) {
     const dir = dirname(resolve(ROOT, filePath));
     const resolved = resolve(dir, relPath);
     const tsPath = resolved.replace(/\.js$/, ".ts");
-    
+
     if (!existsSync(tsPath) && !existsSync(resolved)) {
       const indexPath = resolve(resolved.replace(/\.js$/, ""), "index.ts");
       if (!existsSync(indexPath)) {
@@ -248,13 +248,13 @@ const eventCounts = {};
 for (const extPath of extensionDirs) {
   const content = loadFile(extPath);
   if (!content) continue;
-  
+
   let src = content;
   if (extPath.includes("enforcement/index.ts")) {
     const handlerReg = loadFile("src/extensions/cognitive/enforcement/handler-registry.ts");
     if (handlerReg) src += "\n" + handlerReg;
   }
-  
+
   const handlers = src.matchAll(/pi\.on\("([^"]+)"[^)]*\)\s*=>|pi\.on\("([^"]+)"[^)]*as\s*(?:never|any)\s*,/g);
   for (const h of handlers) {
     const eventName = h[1];
@@ -339,7 +339,6 @@ if (preproc) {
   check(preproc.includes("isCodeHeavy"), "Code-heavy detection present");
   check(preproc.includes("looksWellWritten"), "Well-written text detection present");
   check(preproc.includes("matchesCodeRequest"), "Anti-slop code request detection");
-  check(preproc.includes("CODE_SUFFIX"), "Code suffix for anti-slop");
   check(preproc.includes("SYSTEM_PROMPT"), "LLM system prompt present");
   check(preproc.includes("getExtensionState"), "Session-scoped state used");
 } else {

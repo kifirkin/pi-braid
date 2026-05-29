@@ -8,9 +8,15 @@
  *
  * Key insight: Count-based thresholds miss the real problem. A 50-message context with
  * high signal is better than a 10-message context with mostly boilerplate.
+ *
+ * Density evaluation uses a two-tier approach:
+ *   Tier 1 (default): Fast heuristic — token counting + sample-based LLM judge
+ *   Tier 2 (opt-in): Full LLM judge via contextDensity critic for holistic assessment
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { classify } from "../ai/text-classifier.js";
+import { CRITICS } from "../ai/critic-registry.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -27,42 +33,17 @@ export interface DensityResult {
   totalTokens: number;
   /** tokens / tokenLimit, 0-1. */
   tokenRatio: number;
+  /** LLM judge density label if evaluateContextDensityWithJudge was used. */
+  judgeLabel?: "HIGH" | "MEDIUM" | "LOW";
 }
 
 export type CompressionStrategy = "aggressive" | "semantic" | "conservative" | "none";
-
-// ── Noise Patterns ───────────────────────────────────────────────────────────────
-
-/** Regex patterns that indicate boilerplate/noise in message content. */
-const NOISE_PATTERNS = [
-  // Python tracebacks
-  /\bFile "[^"]*", line \d+/,
-  // Import statements in tool results
-  /^(import |from "|\.\.\.)/m,
-  // npm/yarn package manager output
-  /(?:added|removed|changed) \d+ packages?/,
-  // HTTP headers
-  /^(GET|POST|PUT|DELETE|HEAD|OPTIONS) [^\n]+\n(?:[^\n]*\n)*(?:content-type|content-length|server|date)[^\n]*\n*/i,
-  // Very repetitive single characters (progress indicators)
-  /(.)\1{4,}/,
-];
 
 const MIN_SIGNAL_LENGTH = 30;
 const CHARS_PER_TOKEN = 4;
 
 function countTokens(text: string): number {
   return Math.ceil(text.length / CHARS_PER_TOKEN);
-}
-
-function isNoiseMessage(content: string): boolean {
-  if (!content || content.trim().length < MIN_SIGNAL_LENGTH) return true;
-  for (const pattern of NOISE_PATTERNS) {
-    if (pattern.test(content)) return true;
-  }
-  // Very repetitive content
-  const nonRepeat = content.replace(/(.)\1{4,}/g, "");
-  if (nonRepeat.length < MIN_SIGNAL_LENGTH) return true;
-  return false;
 }
 
 /** Simple string hash for duplicate detection. */
@@ -74,19 +55,16 @@ function simpleHash(s: string): number {
   return h;
 }
 
-// ── Main Evaluator ─────────────────────────────────────────────────────────────
+// ── Main Evaluator (heuristic + optional LLM judge) ──────────────────────────
 
 /**
  * Evaluate the information density of a session's context.
  *
+ * Uses fast heuristic (token counting + hash-based dedup). For semantic
+ * density assessment, call evaluateContextDensityWithJudge() instead.
+ *
  * @param ctx - ExtensionContext to access session entries
  * @returns DensityResult with aggregate metrics
- *
- * @example
- * const d = evaluateContextDensity(ctx);
- * if (d.density < 0.4) {
- *   ctx.whisper("Context density low — consider context_archive()");
- * }
  */
 export function evaluateContextDensity(ctx: ExtensionContext): DensityResult {
   let entries: any[] = [];
@@ -127,7 +105,7 @@ export function evaluateContextDensity(ctx: ExtensionContext): DensityResult {
 
     const tokens = countTokens(content);
     const clean = content.trim();
-    const isNoise = isNoiseMessage(clean);
+    const isTooShort = clean.length < MIN_SIGNAL_LENGTH;
 
     // Duplicate detection: hash of first 200 chars + length
     const hashKey = `${simpleHash(clean)}:${clean.length}`;
@@ -135,13 +113,12 @@ export function evaluateContextDensity(ctx: ExtensionContext): DensityResult {
     if (isDuplicate) duplicates++;
     recentHashes.add(hashKey);
     if (recentHashes.size > MAX_RECENT) {
-      // Evict oldest
       const first = recentHashes.values().next().value;
       if (first !== undefined) recentHashes.delete(first);
     }
 
     totalTokens += tokens;
-    if (isNoise || isDuplicate) noisyMessages++;
+    if (isTooShort || isDuplicate) noisyMessages++;
     else signalMessages++;
   }
 
@@ -151,6 +128,78 @@ export function evaluateContextDensity(ctx: ExtensionContext): DensityResult {
   const density = totalMessages > 0 ? signalMessages / totalMessages : 1;
 
   return { density, signalMessages, noisyMessages, duplicates, totalTokens, tokenRatio };
+}
+
+// ── LLM Judge Evaluation ─────────────────────────────────────────────────────
+
+/**
+ * Evaluate context density using an LLM judge for semantic assessment.
+ *
+ * Samples messages from the context and uses classify() with the
+ * contextDensity critic to assess signal-to-noise ratio holistically.
+ * Falls back to fast heuristic when LLM is unavailable.
+ *
+ * Call this when you need a deeper understanding of context quality
+ * (e.g., before deciding whether to compress or archive).
+ *
+ * @param ctx - ExtensionContext
+ * @returns DensityResult with an additional judgeLabel field
+ */
+export async function evaluateContextDensityWithJudge(
+  ctx: ExtensionContext,
+): Promise<DensityResult> {
+  const base = evaluateContextDensity(ctx);
+
+  // Build a sample of message content for the judge
+  let entries: any[] = [];
+  try {
+    entries = ctx.sessionManager?.getEntries?.() ?? [];
+  } catch {
+    /* fallback */
+  }
+
+  // Sample up to 10 messages: evenly spaced across the context
+  const sampleSize = Math.min(10, entries.length);
+  const step = entries.length > sampleSize ? Math.floor(entries.length / sampleSize) : 1;
+  const sample: string[] = [];
+  for (let i = 0; i < entries.length && sample.length < sampleSize; i += step) {
+    const entry = entries[i];
+    let text = "";
+    if (entry.type === "message" && entry.message) {
+      const msg = entry.message;
+      text =
+        typeof msg.content === "string"
+          ? msg.content.slice(0, 200)
+          : Array.isArray(msg.content)
+            ? msg.content.map((c: any) => (c.text ?? "").slice(0, 100)).join(" ")
+            : "";
+    } else if (entry.type === "tool_result" && entry.result) {
+      text = (typeof entry.result === "string" ? entry.result : JSON.stringify(entry.result)).slice(
+        0,
+        200,
+      );
+    }
+    if (text.trim()) sample.push(`[${entry.type}] ${text}`);
+  }
+
+  const messagesText = sample.map((m, i) => `--- Message ${i + 1} ---\n${m}`).join("\n\n");
+
+  try {
+    const result = await classify(
+      ctx,
+      CRITICS.contextDensity.criteria,
+      { sampleCount: String(sample.length), messages: messagesText },
+      { maxTokens: 10, timeoutMs: 5000 },
+    );
+
+    const label = result.label.toUpperCase() as "HIGH" | "MEDIUM" | "LOW";
+    const judgeLabel = label === "HIGH" || label === "MEDIUM" || label === "LOW" ? label : undefined;
+
+    return { ...base, judgeLabel };
+  } catch {
+    // LLM unavailable — return base heuristic result
+    return base;
+  }
 }
 
 // ── Compression Strategy Recommendation ───────────────────────────────────────────
@@ -163,6 +212,9 @@ export function evaluateContextDensity(ctx: ExtensionContext): DensityResult {
  * High density (> 0.7):     Conservative — only compress if context is large
  */
 export function recommendCompressionStrategy(density: DensityResult): CompressionStrategy {
+  // If LLM judge says LOW density, escalate
+  if (density.judgeLabel === "LOW") return "aggressive";
+
   if (density.tokenRatio > 0.85) {
     return density.density < 0.4 ? "aggressive" : "semantic";
   }

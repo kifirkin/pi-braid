@@ -10,7 +10,7 @@
  *   - signals.ts            (L1 enforcement signals + RepE contrast mode)
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { NudgeManager } from "./nudge-manager.js";
 import { registerHandlers } from "./handler-registry.js";
 

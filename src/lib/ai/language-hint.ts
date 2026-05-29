@@ -8,7 +8,7 @@
  * 2. Enforcement reads on session_start → getReplyInstruction(ctx) → inject into system prompt
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../state/extension-state.js";
 
 /** State shape for language-hint */

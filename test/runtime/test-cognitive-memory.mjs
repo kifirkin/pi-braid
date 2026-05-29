@@ -159,13 +159,14 @@ console.log("\n[8] Storage (storage.ts)");
   assert(src.includes("MEMORY_FILE"), "references MEMORY_FILE constant");
 }
 
-// ── [9] Main shim re-export ────────────────────────────────────────
-console.log("\n[9] Main shim re-export (cognitive-memory.ts)");
+// ── [9] Main shim re-export was removed — barrel files eliminated
+// The cognitive-memory code now lives at src/lib/cognitive-memory/index.ts
+// Direct import: import { getCognitiveMemory } from "../../dist/lib/cognitive-memory/index.js"
+console.log("[9] Main shim re-export: barrel removed (intentional)");
 {
   const fs = await import("fs");
-  const src = fs.readFileSync(`${ROOT}/src/lib/cognitive-memory.ts`, "utf8");
-
-  assert(src.includes("export { CognitiveMemory"), "re-exports CognitiveMemory class");
+  const src = fs.readFileSync(`${ROOT}/src/lib/cognitive-memory/index.ts`, "utf8");
+  assert(src.includes("export class CognitiveMemory"), "exports CognitiveMemory class");
 }
 
 // ── Report ────────────────────────────────────────────────────────

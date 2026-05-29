@@ -10,7 +10,7 @@ import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/se
 //   navigation.ts — tree navigation + checkout
 //   events.ts   — agent_end retry, auto_retry_end, context pruning
 
-import type { ExtensionContext, ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { log } from "./handlers/shared.js";
 import { registerTools } from "./handlers/tools.js";
 import {

@@ -26,7 +26,7 @@ import { createLogger } from "../core/logger.js";
 import { sendTrackedMessage } from "../utils/injection-tracker.js";
 import { eventBus } from "../events/event-bus.js";
 import { getExtensionState } from "../state/extension-state.js";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Episode } from "../../extensions/memory/three-memory-stores/types.js";
 
 const log = createLogger("sop-suggestion");

@@ -1,7 +1,7 @@
 // ── Navigation Handler ────────────────────────────────────────────────────────
 // Handles session_before_tree, turn_end checkout, and agent_end retry.
 
-import type { ExtensionContext, ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { analyzeSession } from "../analysis.js";
 import { log, getCmState, overflowRetryState, resetOverflowRetry } from "./shared.js";
 import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";

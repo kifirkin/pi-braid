@@ -5,11 +5,11 @@
  * This replaces bash `sleep` which blocks the tool call.
  */
 
-import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../../../lib/core/logger.js";
 import { Type } from "typebox";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
-import { eventBus } from "../../../lib/event-bus.js";
+import { eventBus } from "../../../lib/events/event-bus.js";
 
 const log = createLogger("timer");
 
@@ -88,7 +88,7 @@ export function cancelTimer(id: string): boolean {
 
 // ── Fire Handlers (via shared bus) ───────────────────────────────────
 // We import the shared bus to bridge timer fires → heartbeat surfacing
-import { emitTimerReminder } from "../../../lib/timer-bus.js";
+import { emitTimerReminder } from "../../../lib/events/timer-bus.js";
 
 // Internal handler count (kept for API compat — currently unused,
 // no callers register via onTimerFire. The event bus handles

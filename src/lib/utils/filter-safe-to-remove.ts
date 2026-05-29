@@ -1,5 +1,10 @@
 // Selective Hard Truncation — pre-filter 100%-certain-redundant items before LLM summarization.
 // This module is tested independently before being integrated into compaction.ts.
+//
+// Uses two-tier approach:
+//   Tier 1 (default): Fast rule-based heuristics for obvious removals
+//   Tier 2 (opt-in): LLM judge via filterMessagesWithJudge() for uncertain cases
+//   The removalSafety critic in critic-registry.ts provides semantic assessment
 
 import { createLogger } from "../core/logger.js";
 
@@ -292,4 +297,67 @@ function filterSafeToRemoveInner(messages: AgentMessage[]): {
       afterTokens,
     },
   };
+}
+
+/**
+ * Assess batch removability using LLM judge.
+ * Samples messages and uses removalSafety critic to assess if context
+ * has high proportion of removable messages.
+ */
+export async function assessBatchRemovability(
+  ctx: any,
+  messages: AgentMessage[],
+): Promise<"AGGRESSIVE" | "CONSERVATIVE" | "STANDARD"> {
+  const sampleSize = Math.min(8, messages.length);
+  const step = messages.length > sampleSize ? Math.floor(messages.length / sampleSize) : 1;
+  const sample: string[] = [];
+  for (let i = 0; i < messages.length && sample.length < sampleSize; i += step) {
+    const msg = messages[i];
+    const role = msg.role ?? "unknown";
+    const toolName = msg.toolName ?? "";
+    const content =
+      typeof msg.content === "string"
+        ? msg.content.slice(0, 150)
+        : Array.isArray(msg.content)
+          ? msg.content.map((c: any) => (c.text ?? "").slice(0, 100)).join(" ")
+          : "";
+    sample.push(`[${role}]${toolName ? ":" + toolName : ""} ${content}`);
+  }
+
+  let removableCount = 0;
+  for (const msg of messages) {
+    if (msg.role === "toolResult") {
+      const content = typeof msg.content === "string" ? msg.content.toLowerCase() : "";
+      const errorMarkers = ["error:", "failed:", "not found:", "no such", "cannot", "exception", "traceback", "err:"];
+      if (errorMarkers.some((m) => content.includes(m))) removableCount++;
+    }
+    if (msg.role === "toolCall") {
+      const tn = (msg.toolName ?? "").toLowerCase();
+      if (["ls", "find", "grep", "glob", "pwd", "tree", "codebase_tree", "dir"].includes(tn)) {
+        removableCount++;
+      }
+    }
+  }
+  const heuristicRatio = messages.length > 0 ? removableCount / messages.length : 0;
+  if (heuristicRatio < 0.2) return "STANDARD";
+
+  try {
+    const { classify } = await import("../ai/text-classifier.js");
+    const { CRITICS } = await import("../ai/critic-registry.js");
+    const result = await classify(
+      ctx,
+      CRITICS.removalSafety.criteria,
+      {
+        role: "batch",
+        toolName: "mixed",
+        content: `Batch of ${messages.length} messages. Sample:\n${sample.slice(0, 5).join("\n")}`,
+      },
+      { maxTokens: 5, timeoutMs: 5000 },
+    );
+    if (result.label === "yes") return "AGGRESSIVE";
+  } catch {
+    // LLM unavailable
+  }
+
+  return heuristicRatio > 0.5 ? "AGGRESSIVE" : "STANDARD";
 }

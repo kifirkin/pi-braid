@@ -12,7 +12,7 @@
  * from the input-polisher, replacing them with grounded NLP classification.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { classify, type ClassificationResult } from "../../../lib/ai/text-classifier.js";
 
 // ── Classification Criteria ──────────────────────────────────────────────────
@@ -189,10 +189,3 @@ export async function roastInput(text: string, ctx: ExtensionContext): Promise<R
     },
   };
 }
-
-/**
- * Anti-slop suffix appended when the roast filter detects a code-writing request.
- * Tells the assistant to output code directly without explanation.
- */
-export const CODE_SUFFIX =
-  "\n\nOutput the code directly. Do not explain, analyze, or describe it — output only the code.";

@@ -15,7 +15,7 @@
  *   boilerplate — Noise. DROP.
  */
 
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { createLogger } from "../../../lib/core/logger.js";
 import type { CompressionLevel } from "../../../lib/detection/compression-strategy.js";
 const log = createLogger("semantic-compress");

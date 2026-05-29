@@ -16,7 +16,7 @@ const log = createLogger("context-lifecycle");
  * All state is stored in SessionManager via CustomEntry/CustomMessageEntry.
  */
 
-import type { SessionEntry } from "@mariozechner/pi-coding-agent";
+import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 
 // ── Semantic Signals ────────────────────────────────────────────────────────
 

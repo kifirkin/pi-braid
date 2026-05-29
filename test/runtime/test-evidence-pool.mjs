@@ -3,7 +3,7 @@
  * Run: node test/runtime/test-evidence-pool.mjs
  */
 const ROOT = "/Users/kifir/projects/agents/pi-braid";
-const { addEvidence, getEvidence, getUnresolvedConflicts, detectConflicts, resolveConflict, clearEvidence } = await import(`${ROOT}/dist/lib/evidence-pool.js`);
+const { addEvidence, getEvidence, getUnresolvedConflicts, detectConflicts, resolveConflict, clearEvidence } = await import(`${ROOT}/dist/lib/store/evidence-pool.js`);
 
 let passed = 0;
 let failed = 0;

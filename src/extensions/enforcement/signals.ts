@@ -6,7 +6,7 @@
  * when the turn advances without new signals.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getState } from "./state.js";
 
 /** A single signal entry keyed by semantic type */

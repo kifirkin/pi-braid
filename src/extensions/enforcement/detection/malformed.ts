@@ -8,7 +8,7 @@ const log = createLogger("enforcement");
  * instead of using proper function calling format.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { sendEnforcementWhisper } from "../whisper.js";
 import { MALFORMED_TOOL_CALL_RE, MALFORMED_TOOL_NAME_RE } from "../../../lib/constants/tool-constants.js";
 

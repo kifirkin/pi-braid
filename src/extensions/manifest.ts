@@ -7,12 +7,11 @@
  * (e.g. "disable enforcement") but has no structural role.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 // ── Extension imports ────────────────────────────────────────────────────────
 
 // core (always on, no dependencies)
-import coreAgentPatchFn from "./core/agent-patch/index.js";
 import corePolyfillFn from "./core/polyfill/index.js";
 import coreMetacognitionFn from "./core/metacognition/index.js";
 import coreScratchpadFn from "./core/scratchpad/index.js";
@@ -97,12 +96,6 @@ export interface ManifestEntry {
 
 export const MANIFEST: ManifestEntry[] = [
   // ── Core ──────────────────────────────────────────────────────────────
-  {
-    id: "agent-patch",
-    fn: coreAgentPatchFn,
-    alwaysOn: true,
-    desc: "Monkey-patches pi's handleRunFailure",
-  },
   {
     id: "polyfill",
     fn: corePolyfillFn,

@@ -1,733 +1,582 @@
-// @ts-nocheck
+/**
+ * Vision Extension — analyze_image tool
+ *
+ * Two-phase LLM-as-judge approach:
+ *   Phase 1 (classifier): Lightweight LLM call classifies the image into a type.
+ *   Phase 2 (analysis):  Targeted analysis prompt based on the classification.
+ *
+ * This replaces the former monolithic master prompt (~500 lines) that tried to
+ * cover every image type in one shot. The classifier gives us structured context
+ * so the analysis phase uses a precise, type-appropriate prompt.
+ */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ImageContent, TextContent, Model } from "@mariozechner/pi-ai";
-import { completeSimple } from "@mariozechner/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
+import { completeSimple } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-const log = { info: (msg: string) => console.log(`[vision] ${msg}`), debug: () => {}, warn: (msg: string) => console.warn(`[vision] ${msg}`), error: (msg: string) => console.error(`[vision] ${msg}`) };
 import type {
   AgentToolResult,
   ExtensionAPI,
   ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
-import { getCustomModelKey, VISION_MODEL_KEY } from "../../lib/state/global-state.js";
+} from "@earendil-works/pi-coding-agent";
+import { resolveVisionModel } from "../../lib/ai/model-resolver.js";
 
-/**
- * Resolve the best vision-capable model from:
- *   1. /vision-model custom key (via global state)
- *   2. Current session model (if vision-capable)
- *   3. First available vision-capable model from registry
- */
-function resolveVisionModel(ctx: ExtensionContext): any {
-  // 1. Custom /vision-model setting
-  const customPattern = getCustomModelKey(VISION_MODEL_KEY);
-  if (customPattern) {
-    const slashIndex = customPattern.indexOf("/");
-    if (slashIndex >= 0) {
-      const provider = customPattern.slice(0, slashIndex);
-      const modelId = customPattern.slice(slashIndex + 1);
-      const resolved = ctx.modelRegistry.find(provider, modelId);
-      if (resolved?.input?.includes?.("image")) return resolved;
-    } else {
-      const all = ctx.modelRegistry.getAll?.() ?? ctx.modelRegistry.getAvailable?.() ?? [];
-      const resolved = all.find((m: any) => m.id === customPattern || m.id.endsWith("/" + customPattern));
-      if (resolved?.input?.includes?.("image")) return resolved;
-    }
-  }
+// ── Logger ──
 
-  // 2. Current model if vision-capable
-  const model = ctx.model;
-  if (model && (model as any).input?.includes?.('image')) return model;
+const log = {
+  info: (m: string) => console.log(`[vision] ${m}`),
+  debug: () => {},
+  warn: (m: string) => console.warn(`[vision] ${m}`),
+  error: (m: string) => console.error(`[vision] ${m}`),
+};
 
-  // 3. First available vision-capable model
-  const available = ctx.modelRegistry.getAvailable?.() ?? [];
-  return available.find((m: any) => m?.input?.includes?.("image"));
-}
+// ── Constants ──
 
-// ── Constants ────────────────────────────────────────────────────────────────
+const SUPPORTED_FORMATS = ["jpg", "jpeg", "png", "gif", "webp"];
+const MB = 1024 * 1024;
+const MAX_IMAGE_MB = 5;
+const PREVIEW_THRESHOLD_MB = 2;
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 1000;
 
-const SUPPORTED_IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp"];
-const BYTES_PER_MB = 1024 * 1024;
-const DEFAULT_MAX_IMAGE_SIZE_MB = 5;
-const IMAGE_PREVIEW_THRESHOLD_MB = 2;
+// ── Types ──
 
-// ── Analysis Prompts ─────────────────────────────────────────────────────────
-
-/**
- * Master analysis prompt — comprehensive, domain-aware, design-investigative.
- *
- * Covers 6 layers of analysis regardless of image type:
- *   1. Image Classification (domain detection)
- *   2. Universal Metadata + Design Properties
- *   3. Design Analysis (color, typography, layout, composition, accessibility)
- *   4. Domain-Specific Analysis (UI, game, brand, art, document, photo)
- *   5. Accessibility & Quality Audit
- *   6. Actionable Findings with priority triage
- */
-const MASTER_ANALYSIS_PROMPT = `You are a professional design analyst and image investigator. Analyze this image with maximum thoroughness across ALL relevant dimensions. Do not skip any step — each layer catches what the others miss.
-
----
-
-## STEP 1: IMAGE CLASSIFICATION
-
-Classify this image into ONE primary category and list any secondary categories:
-
-- **UI/Web Design** — websites, apps, dashboards, mockups, wireframes, components
-- **Game Asset** — sprites, spritesheets, tilemaps, game UI, characters, environments
-- **Brand Material** — logos, brand assets, marketing materials, business cards, style guides
-- **Illustration / Digital Art** — concept art, illustrations, digital paintings, icons
-- **Document / Diagram** — documents, flowcharts, diagrams, architecture drawings, specs
-- **Photograph** — real-world photos, product shots, screenshots of physical objects
-- **Mixed / Other** — describe specifically
-
-## STEP 2: UNIVERSAL METADATA & DESIGN PROPERTIES
-
-Extract every measurable property:
-
-| Property | Value |
-|----------|-------|
-| Image Type | [classification result] |
-| Dimensions | — from metadata |
-| Aspect Ratio | — from metadata |
-| Format | — from metadata |
-| Dominant Colors | Top 5-8 hex codes with approximate % coverage |
-| Color Harmony | complementary / analogous / triadic / monochromatic / split-complementary / tetradic / achromatic / custom / none |
-| Color Temperature | warm / cool / neutral / mixed |
-| Overall Contrast | high / medium / low |
-| Information Density | high / medium / low (with evidence) |
-| Grid / Layout System | column / row / modular / hybrid / freeform / none detected |
-| Symmetry | symmetric / asymmetric / radial / irregular |
-| Typography Present? | yes / no ; if yes → list typefaces detected |
-| Focal Point | describe where the eye lands first, and why |
-| Visual Hierarchy Strength | strong / moderate / weak |
-
-## STEP 3: DESIGN ANALYSIS (always performed)
-
-### 3a. Color Palette & Harmony
-- List ALL distinct colors with hex codes (min 5, max 15)
-- Identify the color harmony type (complementary, analogous, etc.)
-- Estimate contrast ratios between adjacent / overlapping colors
-- Classify each color's role: background, primary text, accent, border, surface, error, success, etc.
-- Flag any near-identical colors that cause visual muddiness (delta-E < 5)
-- Detect color accessibility issues (red-green pairings, low saturation on important elements)
-- Is there a consistent palette or does it appear ad-hoc?
-
-### 3b. Typography Analysis (if text is present)
-- List every distinct typeface detected and how many sizes/weights
-- Describe the typographic hierarchy: what reads as heading vs body vs caption vs label
-- Estimate font sizes, weights, line heights from context
-- Assess readability: line length, line height, contrast with background
-- Flag typography issues: too many typefaces (>3), insufficient size contrast, cramped leading
-- Note any font pairing logic (serif + sans, mono + sans, single family)
-
-### 3c. Layout & Spacing
-- Detect the grid system: columns, rows, margins, gutters
-- Measure spacing rhythm: does it follow a consistent scale (4px, 8px, etc.) or is it ad-hoc?
-- Analyze alignment: left/right/center/justified — consistent or inconsistent?
-- Describe the layout structure: single column, multi-column, card grid, freeform, etc.
-- Evaluate white space usage: generous, adequate, cramped, uneven
-- Map element grouping and spatial relationships
-
-### 3d. Composition & Visual Weight
-- Apply the rule of thirds: where do key elements fall?
-- Analyze visual weight distribution per quadrant (Q1-Q4) — what draws attention where?
-- Assess balance: symmetrical, asymmetrical (what counterbalances what?), or unbalanced
-- Identify visual flow: how does the eye travel through the composition?
-- Evaluate proportion and scale relationships between elements
-- Detect tension: intentional (drama, emphasis) vs unintentional (awkward spacing/alignment)
-
-### 3e. Brand Identity Elements (if applicable)
-- Is there a clear brand presence? (logo, consistent colors, typography)
-- Logo placement, sizing, clear space usage
-- Color consistency with what appears to be the brand palette
-- Typography adherence to a single system
-- Overall brand voice communicated through visuals (premium, playful, minimal, technical, etc.)
-
-## STEP 4: DOMAIN-SPECIFIC ANALYSIS
-
-Apply only the section(s) relevant to this image's classification.
-
-### 4a. UI/Web Design
-- Component taxonomy: list every UI component visible (buttons, cards, inputs, nav bars, modals, dropdowns, tables, lists, etc.)
-- UI patterns: forms, search, data tables, pagination, onboarding, etc.
-- State indicators: hover, active, disabled, selected, error, loading, empty states
-- Design system identification: Material Design / Shadcn / Radix / Tailwind / Bootstrap / Ant Design / custom / none detected
-- Platform cues: mobile (iOS/Android), desktop, web, native
-- Responsive indicators: breakpoint hints, adaptive layouts
-- Touch target sizing estimation (minimum 44×44px for mobile)
-- Form validation patterns: inline errors, tooltips, toast messages
-- Navigation patterns: tab bar, sidebar, hamburger, breadcrumbs, top nav
-- List what the user CAN do on this screen (actionable affordances)
-- **Flag broken patterns**: misaligned elements, inconsistent button styles, text overflow, overlapping elements, missing states
-
-### 4b. Game Assets
-- Asset type: sprite, spritesheet, tilemap, UI element, character, environment, icon, particle
-- Grid detection (for spritesheets): columns × rows, cell dimensions, spacing, total sprites
-- Palette: list all colors with hex codes, identify palette type (flat, gradients, dithered)
-- Per-sprite analysis: for each sprite cell, describe content, colors, fill percentage
-- Animation inference: frame count, implied motion (idle → walk → run), transition smoothness
-- Scale multiplier estimation if scaled up
-- Anomaly detection: missing features, differing palettes, irregular borders, misalignment
-- Quality issues: anti-aliasing artifacts, compression, color banding, blurring
-- **Style consistency**: do all sprites share the same art style, line weight, shading?
-
-### 4c. Brand / Marketing Material
-- Logo analysis: style (wordmark, icon, combination), colors, proportions, clear space
-- Brand color adherence: does the material use a consistent palette?
-- Typography: consistent type system or multiple unrelated fonts?
-- Layout: grid-based or freeform? Does it follow brand templates?
-- Imagery style: photography, illustration, abstract — consistent with brand?
-- **Consistency score**: estimate how well this material adheres to a unified brand system
-- Effectiveness: does it communicate the intended message clearly?
-
-### 4d. Illustration / Digital Art
-- Art style: realism, stylized, minimalist, vector, painterly, pixel art, line art
-- Lighting: direction (top-down, side, rim), quality (hard, soft, ambient), consistency
-- Shading: cel-shaded, smooth gradient, cross-hatch, dithering, no shading
-- Depth cues: perspective (1-point, 2-point, isometric), overlap, atmospheric, scale
-- Texture analysis: brush texture, paper texture, noise, gradients
-- Color use: local color, atmospheric color, color script
-
-### 4e. Document / Diagram
-- Document type: spec, report, screenshot, whiteboard, slide, architecture diagram
-- Text readability: font size, contrast, line spacing
-- Information architecture: headings, sections, grouping, nesting
-- Diagram clarity: arrow flows, legend, color coding, labels
-- Missing context: is anything cut off, unlabeled, ambiguous?
-
-## STEP 5: ACCESSIBILITY & QUALITY AUDIT
-
-### Accessibility
-- Color contrast: flag any text-on-background pairs likely below WCAG AA (4.5:1 for normal text, 3:1 for large text)
-- Font size: is body text large enough to read? (UI text < 11px is problematic)
-- Touch targets: are interactive elements likely ≥44×44px (mobile) or ≥24×24px (desktop)?
-- Color-blind safety: does the design rely solely on color to convey information?
-- Focus indicators: are there visible focus/selection states?
-
-### Quality Issues
-- Anti-aliasing or scaling artifacts
-- Compression artifacts (JPEG blockiness, color banding)
-- Resolution mismatch elements
-- Alignment or spacing errors
-- Missing or broken elements
-- Text truncation or overflow
-- Inconsistent styling
-
-## STEP 6: ACTIONABLE FINDINGS
-
-### P0 — CRITICAL (blocks usability, broken, inaccessible)
-List each with: [Issue] → [Evidence] → [Specific Fix]
-
-### P1 — MAJOR (significant quality or consistency gap)
-List each with: [Issue] → [Evidence] → [Specific Fix]
-
-### P2 — MINOR (polish opportunity)
-List each with: [Issue] → [Fix]
-
-### Top 3 Recommendations
-What three changes would have the highest impact?
-
----
-
-**Format**: Use clear sections with precise values. Include hex codes, estimated px values, and specific descriptions. Be exhaustive — no detail is too small. This analysis drives real design decisions.`;
-
-/**
- * Pixel art / spritesheet analysis prompt — enhanced.
- */
-const PIXEL_ART_PROMPT = `This is a pixel art image or spritesheet. Analyze it as pixel art — do NOT treat it as a natural photograph.
-
-**Dimensions**: {width}×{height} pixels
-{extremeRatioWarning}
-
----
-
-## PART 1: IMAGE TYPE & STRUCTURE
-
-1. **Type**: single sprite, spritesheet grid, tilemap, UI element, icon set, animation frames, or other
-2. **Grid Detection** (for spritesheets):
-   - Columns × Rows
-   - Cell dimensions (width × height per cell)
-   - Spacing/gaps between cells (px)
-   - Total sprite count
-   - Are all cells the same size? (yes/no — flag mismatches)
-3. **Scale Factor**: if the image appears scaled-up (sharp blocky edges), estimate the multiplier (e.g., 2×, 4×, 8×)
-
-## PART 2: COLOR PALETTE
-
-List ALL distinct colors with hex codes. For each dominant color (>5% coverage), provide approximate percentage.
-Analyze:
-- Palette size (how many unique colors)
-- Palette type: flat (no blending), dithered, gradient-like, indexed (≤16 colors = retro/game-console), full color
-- Color harmony: does the palette follow a scheme (complementary, analogous, monochromatic)?
-- Any colors that seem out of place or inconsistent with the rest?
-- **Hardware constraints**: if the palette is small (<32 colors), note the implied constraints (Game Boy, NES, PICO-8, etc.)
-
-## PART 3: PER-SPRITE ANALYSIS
-
-For each detected sprite cell:
-- Content description (character pose, animation frame, object, tile type)
-- Colors present in that cell
-- Fill percentage (rough estimate of non-transparent area)
-- Notable features, details, expression changes
-- **Deltas from adjacent frames** (for animation strips): what changed? (arm position, leg angle, facial expression)
-
-## PART 4: CONSISTENCY & ANOMALY DETECTION
-
-- Style consistency: do all sprites share the same line weight, shading technique, color palette, and level of detail?
-- Proportions: are body/object proportions consistent across all sprites?
-- Alignment: are all sprites aligned to the same baseline or grid?
-- Anomalies to flag:
-  - Missing features present in other cells (body parts, accessories, details)
-  - Palette deviation (one cell uses colors not found elsewhere)
-  - Fill percentage outlier (significantly more or less dense)
-  - Irregular borders, misalignment, or uneven spacing
-  - Scale mismatch (one sprite noticeably larger or smaller)
-
-## PART 5: QUALITY ISSUES
-
-Report any:
-- Blurring or anti-aliasing (indicates the pixel art was scaled, not native resolution)
-- Compression artifacts or color banding
-- Dithering artifacts or pattern breakup
-- Jagged or broken lines where smooth curves are intended
-- Visible seam lines for tilesets
-
-## PART 6: SUMMARY
-
-- **Total unique colors**: [N]
-- **Sprite count**: [N]
-- **Consistency score**: excellent / good / fair / poor
-- **Key issues**: [top 2-3 problems]
-- **Recommendations**: [actionable improvements]
-
-**Use precise pixel measurements**. Describe positions by pixel coordinates where helpful.`;
-
-// ── Types ────────────────────────────────────────────────────────────────────
-
-interface ImageMetadata {
+interface ImageMeta {
   width: number;
   height: number;
-  aspectRatio: number;
-  isExtremeRatio: boolean;
+  ratio: number;
+  isExtreme: boolean;
   isOversized: boolean;
   isPreviewable: boolean;
+  sizeMB: number;
   sizeWarning?: string;
-  analysisWarning?: string;
+  ratioWarning?: string;
 }
 
-interface ImageSizeCheck {
-  size: number;
-  sizeMB: number;
-  isOversized: boolean;
-  isPreviewable: boolean;
-  warning?: string;
+interface ClassifyResult {
+  type: "ui-web" | "game-asset" | "brand" | "illustration" | "document" | "photograph" | "other";
+  hasText: boolean;
+  isPixelArt: boolean;
+  isSpritesheet: boolean;
+  grid: string; // "NxM" or "none"
+  colors: "low" | "medium" | "high";
 }
 
 interface AnalysisResult {
   analysis: string;
-  imageData?: { data: string; mimeType: string };
-  model: Model<any> | undefined;
+  model: Model<Api> | undefined;
   path: string;
-  size: number;
   mimeType: string;
   detail: "standard" | "comprehensive";
-  sizeWarning?: string;
-  analysisWarning?: string;
+  classification: ClassifyResult;
 }
 
-// ── Utility Functions ────────────────────────────────────────────────────────
+// ── Utilities ──
 
-function expandHomeDir(imagePath: string): string {
-  if (imagePath.startsWith("~/") || imagePath === "~") {
-    return imagePath.replace(/^~/, os.homedir());
-  }
-  return imagePath;
+function expandHome(p: string): string {
+  return p.startsWith("~") ? p.replace(/^~/, os.homedir()) : p;
 }
 
-function isImageFile(imagePath: string): boolean {
-  const ext = path.extname(imagePath).toLowerCase().slice(1);
-  return SUPPORTED_IMAGE_EXTENSIONS.includes(ext);
+function isImage(p: string): boolean {
+  return SUPPORTED_FORMATS.includes(path.extname(p).toLowerCase().slice(1));
 }
 
-function getMimeType(imagePath: string): string {
-  const ext = path.extname(imagePath).toLowerCase().slice(1);
-  const mimeTypes: Record<string, string> = {
+function getMime(p: string): string {
+  const map: Record<string, string> = {
     jpg: "image/jpeg",
     jpeg: "image/jpeg",
     png: "image/png",
     gif: "image/gif",
     webp: "image/webp",
   };
-  return mimeTypes[ext] || "image/jpeg";
+  return map[path.extname(p).toLowerCase().slice(1)] || "image/jpeg";
 }
 
-function checkImageSize(absolutePath: string): ImageSizeCheck {
-  const stats = fs.statSync(absolutePath);
-  const size = stats.size;
-  const sizeMB = size / BYTES_PER_MB;
-  const threshold = DEFAULT_MAX_IMAGE_SIZE_MB;
-  const isOversized = sizeMB > threshold;
-  const isPreviewable = sizeMB < IMAGE_PREVIEW_THRESHOLD_MB;
-
-  return {
-    size,
-    sizeMB,
-    isOversized,
-    isPreviewable,
-    warning: isOversized
-      ? `Image is ${sizeMB.toFixed(1)}MB (max recommended: ${threshold}MB). Analysis may be slower.`
-      : undefined,
-  };
-}
-
-/**
- * Read minimal header bytes to extract dimensions without loading full image.
- */
-function getImageMetadata(absolutePath: string): ImageMetadata | null {
+function readBase64(p: string): { data: string; mime: string } | null {
   try {
-    const buffer = fs.readFileSync(absolutePath);
-    let width = 0;
-    let height = 0;
+    const buf = fs.readFileSync(p);
+    return { data: buf.toString("base64"), mime: getMime(p) };
+  } catch {
+    return null;
+  }
+}
 
-    const ext = path.extname(absolutePath).toLowerCase();
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < MB) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / MB).toFixed(1)} MB`;
+}
 
-    if (ext === ".png" && buffer.length > 24) {
-      width = buffer.readUInt32BE(16);
-      height = buffer.readUInt32BE(20);
-    } else if ((ext === ".jpg" || ext === ".jpeg") && buffer.length > 10) {
-      let offset = 2;
-      while (offset < buffer.length - 9 && offset < 10000) {
-        if (buffer[offset] !== 0xff) {
-          offset++;
+/** Read minimal file header bytes to extract dimensions without loading full image. */
+function getMeta(p: string): ImageMeta | null {
+  try {
+    const buf = fs.readFileSync(p);
+    let w = 0;
+    let h = 0;
+    const ext = path.extname(p).toLowerCase();
+
+    if (ext === ".png" && buf.length > 24) {
+      w = buf.readUInt32BE(16);
+      h = buf.readUInt32BE(20);
+    } else if ((ext === ".jpg" || ext === ".jpeg") && buf.length > 10) {
+      let off = 2;
+      while (off < buf.length - 9 && off < 10000) {
+        if (buf[off] !== 0xff) {
+          off++;
           continue;
         }
-        const marker = buffer[offset + 1];
+        const marker = buf[off + 1];
         if (marker >= 0xc0 && marker <= 0xc3 && marker !== 0xc4) {
-          height = buffer.readUInt16BE(offset + 5);
-          width = buffer.readUInt16BE(offset + 7);
+          h = buf.readUInt16BE(off + 5);
+          w = buf.readUInt16BE(off + 7);
           break;
         }
         if (marker !== 0xff && marker !== 0x00 && marker !== 0xd8 && marker !== 0xd9) {
-          const segLen = buffer.readUInt16BE(offset + 2);
-          offset += 2 + segLen;
+          off += 2 + buf.readUInt16BE(off + 2);
         } else {
-          offset += 2;
+          off += 2;
         }
       }
-    } else if (ext === ".gif" && buffer.length > 10) {
-      width = buffer.readUInt16LE(6);
-      height = buffer.readUInt16LE(8);
-    } else if (ext === ".webp" && buffer.length > 30) {
-      const fourCC = buffer.toString("ascii", 12, 16);
-      if (fourCC === "VP8 " && buffer.length > 30) {
-        width = buffer.readUInt16LE(26) & 0x3fff;
-        height = buffer.readUInt16LE(28) & 0x3fff;
-      } else if (fourCC === "VP8L" && buffer.length > 25) {
-        const bits = buffer.readUInt32LE(21);
-        width = (bits & 0x3fff) + 1;
-        height = ((bits >> 14) & 0x3fff) + 1;
+    } else if (ext === ".gif" && buf.length > 10) {
+      w = buf.readUInt16LE(6);
+      h = buf.readUInt16LE(8);
+    } else if (ext === ".webp" && buf.length > 30) {
+      const fcc = buf.toString("ascii", 12, 16);
+      if (fcc === "VP8 " && buf.length > 30) {
+        w = buf.readUInt16LE(26) & 0x3fff;
+        h = buf.readUInt16LE(28) & 0x3fff;
+      } else if (fcc === "VP8L" && buf.length > 25) {
+        const bits = buf.readUInt32LE(21);
+        w = (bits & 0x3fff) + 1;
+        h = ((bits >> 14) & 0x3fff) + 1;
       }
     }
 
-    if (width === 0 || height === 0) return null;
+    if (!w || !h) return null;
 
-    const aspectRatio = width / height;
-    const isExtremeRatio = aspectRatio > 20 || aspectRatio < 1 / 20;
-    const sizeCheck = checkImageSize(absolutePath);
-
+    const s = fs.statSync(p);
+    const sizeMB = s.size / MB;
+    const ratio = w / h;
     return {
-      width,
-      height,
-      aspectRatio,
-      isExtremeRatio,
-      isOversized: sizeCheck.isOversized,
-      isPreviewable: sizeCheck.isPreviewable,
-      sizeWarning: sizeCheck.warning,
-      analysisWarning: isExtremeRatio
-        ? `Extreme aspect ratio (${aspectRatio.toFixed(1)}:1). Content at edges may be missed by the vision model. Consider cropping or splitting.`
-        : undefined,
+      width: w,
+      height: h,
+      ratio,
+      isExtreme: ratio > 20 || ratio < 1 / 20,
+      isOversized: sizeMB > MAX_IMAGE_MB,
+      isPreviewable: sizeMB < PREVIEW_THRESHOLD_MB,
+      sizeMB,
+      sizeWarning:
+        sizeMB > MAX_IMAGE_MB
+          ? `Image is ${sizeMB.toFixed(1)}MB (max recommended: ${MAX_IMAGE_MB}MB). Analysis may be slower.`
+          : undefined,
+      ratioWarning:
+        ratio > 20 || ratio < 1 / 20
+          ? `Extreme aspect ratio (${ratio.toFixed(1)}:1). Content at edges may be missed by the vision model. Consider cropping or splitting.`
+          : undefined,
     };
   } catch {
     return null;
   }
 }
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < BYTES_PER_MB) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / BYTES_PER_MB).toFixed(1)} MB`;
-}
-
-function readImageAsBase64(absolutePath: string): { data: string; mimeType: string } | null {
-  try {
-    const buffer = fs.readFileSync(absolutePath);
-    const mimeType = getMimeType(absolutePath);
-    return { data: buffer.toString("base64"), mimeType };
-  } catch {
-    return null;
-  }
-}
+// ── Prompts ──────────────────────────────────────────────────────────────────
 
 /**
- * Retry wrapper with exponential backoff for transient API failures.
+ * Phase 1 prompt: classifier — lightweight LLM call to categorise the image.
+ * The model outputs a short parseable header that the analysis phase reads.
  */
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  operationName: string,
-  maxRetries = 3,
-  baseDelayMs = 1000,
-): Promise<T> {
-  let lastError: Error | undefined;
+const CLASSIFIER_PROMPT = `Classify this image. Output exactly two lines:
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+TYPE=<category>
+FLAGS=<comma-separated flags>
+
+Categories (pick one):
+  ui-web        — websites, apps, dashboards, mockups, wireframes
+  game-asset    — sprites, spritesheets, tilemaps, game UI, characters
+  brand         — logos, brand materials, business cards, style guides
+  illustration  — concept art, illustrations, digital paintings, icons
+  document      — documents, flowcharts, diagrams, architecture drawings, specs
+  photograph    — real-world photos, product shots
+  other         — anything else
+
+Flags (pick all that apply):
+  has-text       — image contains readable text
+  pixel-art      — appears to be pixel art (low-res, blocky)
+  spritesheet    — contains multiple sprite cells in a grid
+  grid<NxM>      — if spritesheet, grid dimensions (e.g. grid4x4)
+  low-colors     — limited palette (~16 or fewer distinct colors)
+  medium-colors  — moderate palette (17-64 colors)
+  high-colors    — full-color image (65+ colors)
+
+Example:
+TYPE=ui-web
+FLAGS=has-text,high-colors
+
+Output ONLY the two lines, nothing else.`;
+
+/**
+ * Phase 2 prompts: targeted analysis by image type.
+ * Each covers the relevant dimensions for that type specifically.
+ * The {meta} and {ratioWarning} placeholders are substituted at runtime.
+ */
+const ANALYSIS_PROMPTS: Record<string, string> = {
+  "ui-web": `Analyze this UI/web screenshot or mockup. Cover:
+
+1. **What is this?** — page/screen type, purpose, what the user can do here
+2. **Layout** — grid system (columns/rows), margins, spacing rhythm, responsive cues
+3. **Components** — list every UI element with estimated dimensions and role
+4. **Text** — extract ALL visible text preserving structure. Note typefaces, sizes, hierarchy
+5. **Colors** — dominant palette (hex codes with % coverage), harmony type, roles
+6. **Typography** — typefaces, heading/body/caption hierarchy, font size estimates
+7. **Design System ID** — Material / Shadcn / Tailwind / Bootstrap / Ant Design / custom
+8. **Platform** — mobile / desktop / web / native; OS cues
+9. **Issues** — misalignment, contrast problems, overflow, inconsistent styling
+10. **Accessibility** — color contrast concerns, touch targets, font legibility
+
+{meta}
+{ratioWarning}`,
+
+  "game-asset": `Analyze this game asset. Cover:
+
+1. **Asset type** — sprite, spritesheet, tilemap, UI, character, environment, icon
+2. **Grid structure** (for spritesheets): columns × rows, cell dimensions, spacing, total sprites
+3. **Color palette** — list hex codes, palette size, type (indexed/dithered/flat/gradient)
+4. **Per-sprite content** — describe each cell, note deltas between animation frames
+5. **Consistency** — style, shading, proportions, line weight across all sprites
+6. **Anomalies** — missing features, palette deviations, alignment issues
+7. **Quality** — anti-aliasing artifacts, scaling issues, compression, banding
+8. **Hardware constraints** — if limited palette, note implied platform (NES, GB, PICO-8, etc.)
+
+{meta}
+{ratioWarning}`,
+
+  "brand": `Analyze this brand/ marketing material. Cover:
+
+1. **Material type** — logo, business card, style guide, ad, presentation, etc.
+2. **Logo analysis** — style (wordmark/icon/combination), colors, proportions, clear space
+3. **Color palette** — hex codes, brand color adherence, harmony type
+4. **Typography** — typefaces used, hierarchy, consistency
+5. **Layout** — grid structure, alignment, white space
+6. **Brand consistency score** — excellent / good / fair / poor
+7. **Effectiveness** — does it communicate the intended message clearly?
+8. **Issues** — color mismatches, typography conflicts, poor contrast
+
+{meta}
+{ratioWarning}`,
+
+  "illustration": `Analyze this illustration / digital art. Cover:
+
+1. **Art style** — realism, stylized, vector, painterly, pixel art, line art, etc.
+2. **Color** — palette (hex codes), harmony, temperature (warm/cool/neutral)
+3. **Lighting** — direction, quality (hard/soft), consistency
+4. **Composition** — rule of thirds, visual weight, focal point, flow
+5. **Depth** — perspective, overlap, atmospheric cues, scale
+6. **Shading** — cel-shaded, gradient, cross-hatch, dithering, none
+7. **Texture** — brush texture, paper grain, noise
+8. **Quality** — anti-aliasing, compression artifacts, color banding
+
+{meta}
+{ratioWarning}`,
+
+  "document": `Analyze this document / diagram. Cover:
+
+1. **Document type** — spec, report, whiteboard, slide, architecture diagram, code screenshot
+2. **Text content** — extract ALL visible text preserving structure and formatting
+3. **Information architecture** — headings, sections, grouping, nesting
+4. **Readability** — font size, contrast, line spacing
+5. **Diagram clarity** — flows, arrows, legend, color coding, labels
+6. **Missing context** — cut-off content, unlabeled items, ambiguous elements
+
+{meta}
+{ratioWarning}`,
+
+  "photograph": `Analyze this photograph. Cover:
+
+1. **Subject** — main subject, setting, context
+2. **Composition** — rule of thirds, leading lines, framing, balance
+3. **Color** — dominant palette (hex codes), temperature, harmony
+4. **Lighting** — natural/artificial, direction, quality, mood
+5. **Depth & focus** — foreground/midground/background, depth of field
+6. **Technical** — estimated exposure, white balance hints
+7. **Overall impression** — aesthetic quality, emotional tone
+
+{meta}
+{ratioWarning}`,
+
+  "other": `Analyze this image in detail. Cover:
+
+1. **What is this?** — describe the image content and purpose
+2. **Visual elements** — colors (hex codes), shapes, patterns, text
+3. **Composition** — layout, focal points, balance, hierarchy
+4. **Technical quality** — resolution, artifacts, clarity
+5. **Notable details** — anything distinctive or unusual
+
+{meta}
+{ratioWarning}`,
+};
+
+// ── Classification ───────────────────────────────────────────────────────────
+
+function parseClassification(raw: string): ClassifyResult {
+  const def: ClassifyResult = {
+    type: "other",
+    hasText: false,
+    isPixelArt: false,
+    isSpritesheet: false,
+    grid: "none",
+    colors: "high",
+  };
+
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("TYPE=")) {
+      const val = trimmed.slice(5).trim().toLowerCase();
+      const valid = ["ui-web", "game-asset", "brand", "illustration", "document", "photograph", "other"];
+      if (valid.includes(val)) def.type = val as ClassifyResult["type"];
+    }
+    if (trimmed.startsWith("FLAGS=")) {
+      const flags = trimmed.slice(6).split(",").map((f) => f.trim().toLowerCase());
+      def.hasText = flags.includes("has-text");
+      def.isPixelArt = flags.includes("pixel-art");
+      def.isSpritesheet = flags.includes("spritesheet");
+      def.colors = flags.includes("low-colors")
+        ? "low"
+        : flags.includes("medium-colors")
+          ? "medium"
+          : "high";
+      const gridFlag = flags.find((f) => f.startsWith("grid"));
+      if (gridFlag) def.grid = gridFlag.slice(4);
+    }
+  }
+
+  return def;
+}
+
+async function classifyImage(
+  model: Model<Api>,
+  apiKey: string,
+  imageB64: string,
+  mime: string,
+): Promise<ClassifyResult> {
+  const result = await completeSimple(
+    model,
+    {
+      systemPrompt: "You classify images by type and visual properties. Respond concisely.",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: CLASSIFIER_PROMPT },
+            { type: "image", data: imageB64, mimeType: mime },
+          ],
+          timestamp: Date.now(),
+        },
+      ],
+    },
+    { apiKey, maxTokens: 150, temperature: 0 },
+  );
+
+  const text = result.content
+    .filter((c): c is { type: "text"; text: string } => c.type === "text")
+    .map((t) => t.text)
+    .join("\n");
+
+  return parseClassification(text);
+}
+
+// ── Retry helper ─────────────────────────────────────────────────────────────
+
+/**
+ * Wraps completeSimple with exponential backoff for transient failures.
+ * The pi-ai SDK already handles quick retries; this catches sustained errors.
+ */
+async function callWithRetry(
+  model: Model<Api>,
+  context: Parameters<typeof completeSimple>[1],
+  options: Parameters<typeof completeSimple>[2],
+  label: string,
+): Promise<ReturnType<typeof completeSimple>> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      return await fn();
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      const message = lastError.message.toLowerCase();
+      const result = await completeSimple(model, context, options);
+      if (!result.errorMessage) return result;
 
-      const nonRetryable =
-        message.includes("unauthorized") ||
-        message.includes("authentication") ||
-        message.includes("api key") ||
-        message.includes("not found") ||
-        message.includes("invalid api key") ||
-        message.includes("model not available") ||
-        message.includes("no api key") ||
-        message.includes("no vision-capable model");
-
-      if (nonRetryable || attempt === maxRetries) throw lastError;
-
-      const isRateLimited =
-        message.includes("429") ||
-        message.includes("rate limit") ||
-        message.includes("too many requests");
-      const isServerError =
-        message.includes("500") ||
-        message.includes("502") ||
-        message.includes("503") ||
-        message.includes("504");
-      const isNetworkError =
-        message.includes("econnreset") ||
-        message.includes("etimedout") ||
-        message.includes("enotfound") ||
-        message.includes("network");
-      const isGpuEngineError =
-        message.includes("enginecore") ||
-        message.includes("upstream error") ||
-        (message.includes("nvidia") && message.includes("error"));
+      const msg = result.errorMessage.toLowerCase();
       const isTransient =
-        isRateLimited ||
-        isServerError ||
-        isNetworkError ||
-        isGpuEngineError ||
-        message.includes("timeout");
+        msg.includes("429") ||
+        msg.includes("rate limit") ||
+        msg.includes("500") ||
+        msg.includes("502") ||
+        msg.includes("503") ||
+        msg.includes("504") ||
+        msg.includes("timeout") ||
+        msg.includes("econnreset") ||
+        msg.includes("etimedout");
 
-      if (!isTransient && attempt < maxRetries - 1) {
-        const delay = baseDelayMs * Math.pow(2, attempt);
-        log.warn(
-          `${operationName} failed (attempt ${attempt + 1}/${maxRetries + 1}): ${lastError.message}. Retrying in ${delay}ms...`,
-        );
-        await new Promise((r) => setTimeout(r, delay));
-        continue;
+      const isFatal =
+        msg.includes("unauthorized") ||
+        msg.includes("authentication") ||
+        msg.includes("api key") ||
+        msg.includes("model not available") ||
+        msg.includes("no vision-capable model");
+
+      if (isFatal) throw new Error(result.errorMessage);
+      if (!isTransient || attempt === MAX_RETRIES) {
+        log.warn(`${label} non-transient error (attempt ${attempt + 1}): ${msg}`);
+        throw new Error(result.errorMessage);
       }
 
-      const delay = isRateLimited
-        ? baseDelayMs * Math.pow(2, attempt) * 2
-        : baseDelayMs * Math.pow(2, attempt);
-      log.warn(
-        `${operationName} transient error (attempt ${attempt + 1}/${maxRetries + 1}): ${lastError.message}. Retrying in ${delay}ms...`,
-      );
+      const delay = BASE_DELAY_MS * Math.pow(2, attempt) * (msg.includes("429") ? 2 : 1);
+      log.warn(`${label} transient (attempt ${attempt + 1}), retry in ${delay}ms: ${msg}`);
+      await new Promise((r) => setTimeout(r, delay));
+    } catch (err) {
+      if (attempt === MAX_RETRIES) throw err;
+      const msg = String(err);
+      if (msg.includes("429") || msg.includes("unauthorized") || msg.includes("api key")) throw err;
+      const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+      log.warn(`${label} error (attempt ${attempt + 1}), retry in ${delay}ms: ${msg}`);
       await new Promise((r) => setTimeout(r, delay));
     }
   }
-  throw lastError ?? new Error(`${operationName} failed after ${maxRetries} retries`);
+
+  throw new Error(`${label} failed after ${MAX_RETRIES} retries`);
 }
 
-// ── Prompt Builder ───────────────────────────────────────────────────────────
+// ── Main Analysis ────────────────────────────────────────────────────────────
 
-function buildAnalysisPrompt(
-  metadata: ImageMetadata | null,
-  detail: "standard" | "comprehensive",
-  isPixelArt: boolean,
-): { prompt: string; systemPrompt: string } {
-  if (isPixelArt) {
-    return {
-      prompt: PIXEL_ART_PROMPT.replace("{width}", String(metadata?.width ?? "?"))
-        .replace("{height}", String(metadata?.height ?? "?"))
-        .replace("{extremeRatioWarning}", metadata?.analysisWarning ?? ""),
-      systemPrompt:
-        "You are an expert in pixel art, spritesheets, and game asset analysis. Provide precise, technical descriptions with pixel-level measurements.",
-    };
-  }
-
-  // For comprehensive detail, use the full master prompt
-  if (detail === "comprehensive") {
-    return {
-      prompt: MASTER_ANALYSIS_PROMPT,
-      systemPrompt:
-        "You are a professional design analyst and image investigator. Extract every measurable detail. Skip nothing. Be precise with hex codes, estimated pixel values, and specific descriptions.",
-    };
-  }
-
-  // Standard detail — abridged version of master analysis
-  return {
-    prompt: `Analyze this image thoroughly. Cover all of the following:
-
-1. **Classification**: What type of content is this? (UI/Web, game asset, brand material, illustration, document, photograph, diagram, code, etc.)
-2. **Text Content**: ALL visible text — preserve structure, formatting, exact values. Be exhaustive.
-3. **Visual Elements**: Colors (list top 5-8 hex codes with %), layout structure, components, icons
-4. **Design Properties**: 
-   - Color harmony and palette roles
-   - Typography hierarchy (if text present)
-   - Grid/layout system detected
-   - Visual hierarchy and focal point
-   - Overall composition quality
-5. **Technical Details**: For code, UI, diagrams — exact values, class names, IDs, parameters, configurations
-6. **Context**: Window titles, file names, timestamps, status indicators, prompts
-7. **Brand/Design System Cues**: Any recognizable design system, brand colors, consistent patterns
-8. **Issues**: Any visible problems — alignment errors, contrast issues, broken elements, artifacts
-9. **Accessibility**: Color contrast concerns, font size legibility, touch target sizing
-10. **Layout Sketch**: Provide an ASCII art layout sketch using box-drawing characters (┌─┐│└┘) showing relative positions of key elements.
-
-Format with clear sections and precise values. Be thorough.`,
-    systemPrompt:
-      "You are an image analysis assistant. Provide detailed, accurate descriptions covering design, text, technical details, and quality.",
-  };
-}
-
-// ── Core Analysis Logic ──────────────────────────────────────────────────────
-
-async function performImageAnalysis(
+async function performAnalysis(
   ctx: ExtensionContext,
   absolutePath: string,
   detail: "standard" | "comprehensive",
-  onUpdate?: (metadata: string) => void,
+  onUpdate?: (msg: string) => void,
 ): Promise<AnalysisResult> {
   const model = resolveVisionModel(ctx);
   if (!model) {
     throw new Error(
-      "No vision-capable model available. Configure a vision model via /vision-model or set a model that supports image input.",
+      "No vision-capable model available. Configure via /vision-model or use a model that supports image input.",
     );
   }
 
   if (!fs.existsSync(absolutePath)) throw new Error(`File not found: ${absolutePath}`);
-  if (!isImageFile(absolutePath)) {
-    throw new Error(
-      `Not a supported image file. Supported formats: ${SUPPORTED_IMAGE_EXTENSIONS.join(", ")}`,
-    );
+  if (!isImage(absolutePath)) {
+    throw new Error(`Unsupported format. Supported: ${SUPPORTED_FORMATS.join(", ")}`);
   }
 
-  const sizeCheck = checkImageSize(absolutePath);
-  const imageData = readImageAsBase64(absolutePath);
-  const imageBase64 = sizeCheck.isPreviewable ? imageData : undefined;
-  const metadata = getImageMetadata(absolutePath);
-  const mimeType = getMimeType(absolutePath);
+  const sizeCheck = fs.statSync(absolutePath);
+  const encoded = readBase64(absolutePath);
+  if (!encoded) throw new Error(`Failed to read: ${absolutePath}`);
+  const meta = getMeta(absolutePath);
+  const mime = getMime(absolutePath);
 
-  // Send metadata update
-  const metadataLines = [`Analyzing: ${absolutePath}`];
-  if (metadata) {
-    metadataLines.push(
-      `Dimensions: ${metadata.width}×${metadata.height} (${metadata.aspectRatio.toFixed(1)}:1 ratio)`,
-    );
+  // Phase 1: classify
+  const metaLines = [`Analyzing: ${absolutePath}`];
+  if (meta) {
+    metaLines.push(`Dimensions: ${meta.width}×${meta.height} (${meta.ratio.toFixed(1)}:1)`);
   }
-  metadataLines.push(`Size: ${formatFileSize(sizeCheck.size)} (${sizeCheck.sizeMB.toFixed(1)} MB)`);
-  metadataLines.push(`MIME: ${mimeType}`);
-  metadataLines.push(`Detail: ${detail}`);
-  if (sizeCheck.warning) metadataLines.push(sizeCheck.warning);
-  metadataLines.push(`Using vision model: ${model.provider}/${model.id}`);
-  onUpdate?.(metadataLines.filter(Boolean).join("\n"));
+  metaLines.push(`Size: ${formatSize(sizeCheck.size)}`);
+  metaLines.push(`MIME: ${mime}`);
+  metaLines.push(`Detail: ${detail}`);
+  if (meta?.sizeWarning) metaLines.push(meta.sizeWarning);
+  metaLines.push(`Vision model: ${model.provider}/${model.id}`);
+  onUpdate?.(metaLines.join("\n"));
 
-  // API key
   const apiKey = await ctx.modelRegistry.getApiKeyForProvider(model.provider);
   if (!apiKey) {
     throw new Error(
-      `No API key configured for provider ${model.provider}. Set ${model.provider.toUpperCase()}_API_KEY environment variable or use /login.`,
+      `No API key for ${model.provider}. Set ${model.provider.toUpperCase()}_API_KEY or use /login.`,
     );
   }
 
-  // Detect pixel art
-  const ext = path.extname(absolutePath).toLowerCase();
-  const isLikelyPixelArt = metadata
-    ? metadata.width <= 384 && metadata.height <= 384 && [".png", ".gif", ".webp"].includes(ext)
-    : false;
-
-  // Build prompt
-  const { prompt: analysisPrompt, systemPrompt } = buildAnalysisPrompt(
-    metadata,
-    detail,
-    isLikelyPixelArt,
+  // Phase 1: Classify image using LLM-as-judge
+  onUpdate?.("Classifier: running...");
+  const classification = await classifyImage(model, apiKey, encoded.data, encoded.mime);
+  log.info(
+    `Classified: ${classification.type} (pixel=${classification.isPixelArt}, sprite=${classification.isSpritesheet})`,
   );
+  onUpdate?.(`Classifier: ${classification.type}${classification.isPixelArt ? " (pixel art)" : ""}${classification.isSpritesheet ? " (spritesheet)" : ""}`);
 
-  const context = {
-    systemPrompt,
-    messages: [
-      {
-        role: "user" as const,
-        content: [
-          { type: "text" as const, text: analysisPrompt },
-          {
-            type: "image" as const,
-            data: imageData?.data ?? "",
-            mimeType: imageData?.mimeType ?? "image/jpeg",
-          },
-        ],
-        timestamp: Date.now(),
-      },
-    ],
-  };
+  // Phase 2: analyze with targeted prompt
+  const typeKey = classification.type === "game-asset" && classification.isPixelArt
+    ? "game-asset"
+    : classification.type;
+  const promptTemplate = ANALYSIS_PROMPTS[typeKey] ?? ANALYSIS_PROMPTS["other"];
 
-  const result = await withRetry(
-    () =>
-      completeSimple(model, context, {
-        apiKey,
-        maxTokens: detail === "comprehensive" ? 8192 : 4096,
-        temperature: 0.3,
-      }),
+  // Build dimension annotations
+  const metaNote = meta
+    ? `**Metadata**: ${meta.width}×${meta.height}px, ${meta.ratio.toFixed(1)}:1 ratio`
+    : "";
+  const ratioNote = meta?.ratioWarning ?? "";
+
+  const analysisPrompt = promptTemplate
+    .replace("{meta}", metaNote)
+    .replace("{ratioWarning}", ratioNote);
+
+  const systemPrompt =
+    classification.isPixelArt
+      ? "You are an expert in pixel art, spritesheets, and game asset analysis. Provide precise, technical descriptions with pixel-level measurements."
+      : "You are a professional image analyst. Extract every measurable detail. Be precise with hex codes, estimated pixel values, and specific descriptions.";
+
+  onUpdate?.(`Analysis: using ${typeKey} prompt with ${detail} detail...`);
+
+  const result = await callWithRetry(
+    model,
+    {
+      systemPrompt,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: analysisPrompt },
+            { type: "image", data: encoded.data, mimeType: encoded.mime },
+          ],
+          timestamp: Date.now(),
+        },
+      ],
+    },
+    {
+      apiKey,
+      maxTokens: detail === "comprehensive" ? 8192 : 4096,
+      temperature: 0.3,
+    },
     `Vision analysis (${model.provider}/${model.id})`,
   );
 
-  const textContent = result.content.filter(
-    (c): c is { type: "text"; text: string } => c.type === "text",
-  );
-  const analysis = textContent.map((t) => t.text).join("\n");
+  const textContent = result.content
+    .filter((c): c is { type: "text"; text: string } => c.type === "text")
+    .map((t) => t.text);
+  let analysis = textContent.join("\n").trim() || "(No analysis produced)";
 
-  if (result.errorMessage) {
-    throw new Error(`Analysis failed: ${result.errorMessage}`);
-  }
-
-  let annotated = analysis || "(No analysis produced)";
-  if (metadata) {
-    annotated += `\n\n---\n**Image metadata**: ${metadata.width}×${metadata.height}px, ${metadata.aspectRatio.toFixed(1)}:1 ratio`;
-    if (metadata.analysisWarning) {
-      annotated += `\n**Warning**: ${metadata.analysisWarning}`;
-    }
+  // Append metadata footer
+  if (meta) {
+    analysis += `\n\n---\n**Image**: ${meta.width}×${meta.height}px, ${meta.ratio.toFixed(1)}:1 ratio`;
+    if (meta.ratioWarning) analysis += `\n**Warning**: ${meta.ratioWarning}`;
   }
 
   return {
-    analysis: annotated,
-    imageData: imageBase64 ?? undefined,
+    analysis,
     model,
     path: absolutePath,
-    size: sizeCheck.size,
-    mimeType,
+    mimeType: mime,
     detail,
-    sizeWarning: sizeCheck.warning,
-    analysisWarning: metadata?.analysisWarning,
+    classification,
   };
 }
 
-// ── Extension ────────────────────────────────────────────────────────────────
+// ── Extension Registration ───────────────────────────────────────────────────
 
 export default function visionExtension(pi: ExtensionAPI) {
-  // Tool: analyze_image
+  // ── Tool: analyze_image ──────────────────────────────────────────────────
 
   pi.registerTool({
     name: "analyze_image",
     label: "Analyze Image",
     description:
-      "Analyze an image file using a vision model. Automatically detects pixel art, spritesheets, and grid layouts for specialized analysis. Extracts text, visual elements, design properties (color harmony, typography, layout, composition), technical details, and quality issues. Reports image dimensions and aspect ratio warnings. Supports standard and comprehensive detail levels.",
+      "Analyze an image file using a vision model with a two-phase LLM-as-judge approach. " +
+      "Phase 1 classifies the image type (UI, game asset, brand, illustration, document, photo) using a lightweight classifier call. " +
+      "Phase 2 runs a targeted analysis prompt based on the classification. " +
+      "Reports dimensions, aspect ratio, color palette, text, components, quality issues. " +
+      "Supports standard and comprehensive detail levels.",
     parameters: Type.Object({
       imagePath: Type.String({
         description: "Path to the image file (jpg, jpeg, png, gif, webp)",
@@ -735,7 +584,8 @@ export default function visionExtension(pi: ExtensionAPI) {
       detail: Type.Optional(
         Type.Union([Type.Literal("standard"), Type.Literal("comprehensive")], {
           description:
-            "Analysis detail level. 'standard' is faster and covers essentials. 'comprehensive' performs in-depth design, accessibility, and domain-specific analysis with up to 8K token output. Default: 'standard'.",
+            "Analysis detail level. 'standard' is faster and covers essentials. " +
+            "'comprehensive' performs in-depth design, accessibility, and domain-specific analysis with up to 8K token output. Default: 'standard'.",
           default: "standard",
         }),
       ),
@@ -748,7 +598,7 @@ export default function visionExtension(pi: ExtensionAPI) {
       onUpdate,
       ctx,
     ): Promise<AgentToolResult<unknown>> => {
-      const imagePathExpanded = expandHomeDir(params.imagePath);
+      const imagePathExpanded = expandHome(params.imagePath);
       const absolutePath = path.resolve(ctx.cwd, imagePathExpanded);
       const detail = params.detail ?? "standard";
 
@@ -759,47 +609,35 @@ export default function visionExtension(pi: ExtensionAPI) {
         };
       }
 
-      if (!isImageFile(absolutePath)) {
+      if (!isImage(absolutePath)) {
         return {
           content: [
             {
               type: "text",
-              text: `Error: "${params.imagePath}" is not a supported image file. Supported formats: ${SUPPORTED_IMAGE_EXTENSIONS.join(", ")}`,
+              text: `Error: "${params.imagePath}" is not a supported image file. Supported formats: ${SUPPORTED_FORMATS.join(", ")}`,
             },
           ],
-          details: { path: absolutePath, supported: SUPPORTED_IMAGE_EXTENSIONS },
+          details: { path: absolutePath, supported: SUPPORTED_FORMATS },
         };
       }
 
       try {
-        const result = await performImageAnalysis(ctx, absolutePath, detail, (metadata) => {
-          onUpdate?.({
-            content: [{ type: "text", text: metadata }],
-            details: { status: "analyzing" },
-          });
-        });
-
-        const resultContent: (TextContent | ImageContent)[] = [];
-        if (result.imageData) {
-          resultContent.push({
-            type: "image" as const,
-            data: result.imageData.data,
-            mimeType: result.imageData.mimeType,
-          });
-        }
-        resultContent.push({
-          type: "text" as const,
-          text: `[Image analyzed: ${absolutePath}] (detail: ${detail})\n\n${result.analysis}`,
+        const result = await performAnalysis(ctx, absolutePath, detail, (msg) => {
+          onUpdate?.({ content: [{ type: "text", text: msg }], details: { status: "analyzing" } });
         });
 
         return {
-          content: resultContent,
+          content: [
+            {
+              type: "text",
+              text: `[Image analyzed: ${absolutePath}] (detail: ${detail})\n[Classification: ${result.classification.type}${result.classification.isPixelArt ? ", pixel art" : ""}${result.classification.isSpritesheet ? ", spritesheet" : ""}]\n\n${result.analysis}`,
+            },
+          ],
           details: {
             path: absolutePath,
-            size: result.size,
             mimeType: result.mimeType,
             detail: result.detail,
-            imageIncluded: !!result.imageData,
+            classification: result.classification,
             visionModel: result.model?.id,
           },
         };
@@ -813,7 +651,7 @@ export default function visionExtension(pi: ExtensionAPI) {
     },
   });
 
-  // Command: /analyze-image
+  // ── Command: /analyze-image ──────────────────────────────────────────────
 
   pi.registerCommand("analyze-image", {
     description:
@@ -838,23 +676,28 @@ export default function visionExtension(pi: ExtensionAPI) {
         imagePath = detailMatch[2];
       }
 
-      const imagePathExpanded = expandHomeDir(imagePath);
+      const imagePathExpanded = expandHome(imagePath);
       const absolutePath = path.resolve(ctx.cwd, imagePathExpanded);
 
-      if (!isImageFile(absolutePath)) {
+      if (!isImage(absolutePath)) {
         ctx.ui.notify(
-          `Not a supported image file. Supported: ${SUPPORTED_IMAGE_EXTENSIONS.join(", ")}`,
+          `Not a supported image file. Supported: ${SUPPORTED_FORMATS.join(", ")}`,
           "error",
         );
         return;
       }
 
-      const sizeCheck = checkImageSize(absolutePath);
-      if (sizeCheck.warning) ctx.ui.notify(sizeCheck.warning, "warning");
+      const stats = fs.statSync(absolutePath);
+      if (stats.size > MAX_IMAGE_MB * MB) {
+        ctx.ui.notify(
+          `Image is ${formatSize(stats.size)} (max recommended: ${MAX_IMAGE_MB}MB). Analysis may be slower.`,
+          "warning",
+        );
+      }
 
       try {
-        const result = await performImageAnalysis(ctx, absolutePath, detail);
-        const header = `[Image: ${absolutePath}]\n[Size: ${formatFileSize(result.size)}]\n[Detail: ${result.detail}]\n\n`;
+        const result = await performAnalysis(ctx, absolutePath, detail);
+        const header = `[Image: ${absolutePath}]\n[Size: ${formatSize(stats.size)}]\n[Detail: ${result.detail}]\n[Type: ${result.classification.type}]\n\n`;
         await ctx.ui.editor("Image Analysis", header + result.analysis);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);

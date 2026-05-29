@@ -17,7 +17,7 @@ const assert = (cond, msg) => {
 };
 
 async function main() {
-  const modulePath = join(ROOT, "dist/lib/filter-safe-to-remove.js");
+  const modulePath = join(ROOT, "dist/lib/utils/filter-safe-to-remove.js");
   const mod = await import(modulePath);
 
   console.log("\n[1] Basic filtering — keeps user/assistant messages");

@@ -52,14 +52,14 @@ const {
 
 const {
   TopicDriftDetector,
-} = await import("../../dist/lib/topic-drift-detector.js");
+} = await import("../../dist/lib/detection/topic-drift-detector.js");
 
 const {
   emitSignal,
   getNextRecommendation,
   getBeliefs,
   clearBeliefEngine,
-} = await import("../../dist/lib/belief-policy-engine.js");
+} = await import("../../dist/lib/reasoning/belief-policy-engine.js");
 
 // ═══════════════════════════════════════════════════════════════════════
 // Mock ExtensionContext

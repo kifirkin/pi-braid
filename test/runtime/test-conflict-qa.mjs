@@ -1,12 +1,12 @@
 const ROOT = "/Users/kifir/projects/agents/pi-braid";
-const { addEvidence, detectConflicts, clearEvidence, getAllEvidence } = await import(`${ROOT}/dist/lib/evidence-pool.js`);
+const { addEvidence, detectConflicts, clearEvidence, getAllEvidence } = await import(`${ROOT}/dist/lib/store/evidence-pool.js`);
 const {
 	processConflicts,
 	getPendingQAs,
 	resolveQA,
 	getQAStats,
 	getRelevantQA,
-} = await import(`${ROOT}/dist/lib/conflict-qa.js`);
+} = await import(`${ROOT}/dist/lib/store/conflict-qa.js`);
 
 let passed = 0;
 let failed = 0;
@@ -65,7 +65,7 @@ console.log("\n[4] QA stats structure");
 
 console.log("\n[5] Empty whisper");
 {
-	const { formatConflictWhisper } = await import(`${ROOT}/dist/lib/conflict-qa.js`);
+	const { formatConflictWhisper } = await import(`${ROOT}/dist/lib/store/conflict-qa.js`);
 	assert(formatConflictWhisper([]) === "", "empty → empty whisper");
 }
 
@@ -78,7 +78,7 @@ console.log("\n[6] No QAs → null relevant");
 console.log("\n[7] All QAs getter");
 {
 	const ctx = fresh();
-	const all = (await import(`${ROOT}/dist/lib/conflict-qa.js`)).getAllQAs(ctx);
+	const all = (await import(`${ROOT}/dist/lib/store/conflict-qa.js`)).getAllQAs(ctx);
 	assert(Array.isArray(all), "getAllQAs returns array");
 }
 

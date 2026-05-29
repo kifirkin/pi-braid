@@ -12,8 +12,8 @@
 
 import { createLogger } from "../../lib/core/logger.js";
 import { eventBus } from "../../lib/events/event-bus.js";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { sendTrackedMessage } from "../../lib/utils/injection-tracker.js";
 import { recordNudgeSent } from "../../lib/reasoning/nudge-analytics.js";
 import { areCognitiveNudgesDisabled } from "../../lib/config/braid-settings.js";

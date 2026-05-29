@@ -13,7 +13,7 @@ const {
   filesAreRelated,
   clearVerifierState,
   getVerifierState,
-} = await import("../../dist/lib/bidirectional-verifier.js");
+} = await import("../../dist/lib/store/bidirectional-verifier.js");
 
 describe("BV1 Forward Trace", () => {
   it("extracts file references from absolute paths", () => {

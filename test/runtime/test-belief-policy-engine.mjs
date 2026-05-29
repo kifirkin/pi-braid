@@ -24,7 +24,7 @@ function makeCtx() {
 // Rule 1: stability_decline fires with 3+ stability/decline signals
 {
 	const ctx = makeCtx();
-	const { emitSignal, getNextRecommendation } = await import("../../dist/lib/belief-policy-engine.js");
+	const { emitSignal, getNextRecommendation } = await import("../../dist/lib/reasoning/belief-policy-engine.js");
 
 	emitSignal(ctx, "stability", "decline", "warn", false, { overlap: 0.7 });
 	emitSignal(ctx, "stability", "decline", "warn", false, { overlap: 0.6 });
@@ -41,7 +41,7 @@ function makeCtx() {
 // Rule 2: conflict_accumulation fires with 5+ unresolved conflicts
 {
 	const ctx = makeCtx();
-	const { emitSignal, getNextRecommendation } = await import("../../dist/lib/belief-policy-engine.js");
+	const { emitSignal, getNextRecommendation } = await import("../../dist/lib/reasoning/belief-policy-engine.js");
 
 	for (let i = 0; i < 4; i++) {
 		emitSignal(ctx, "conflict", "unresolved", "info", false, { count: i + 1 });
@@ -58,7 +58,7 @@ function makeCtx() {
 // Rule 3: drift_plus_scatter fires with topic-drift + 2+ tool-use
 {
 	const ctx = makeCtx();
-	const { emitSignal, getNextRecommendation } = await import("../../dist/lib/belief-policy-engine.js");
+	const { emitSignal, getNextRecommendation } = await import("../../dist/lib/reasoning/belief-policy-engine.js");
 
 	emitSignal(ctx, "topic-drift", "detected", "warn", false, { severity: "strong" });
 	emitSignal(ctx, "tool-use", "overuse", "warn", false, { tools: ["bash"] });
@@ -74,7 +74,7 @@ function makeCtx() {
 // Rule 4: calibration_error fires with 2+ high-error
 {
 	const ctx = makeCtx();
-	const { emitSignal, getNextRecommendation } = await import("../../dist/lib/belief-policy-engine.js");
+	const { emitSignal, getNextRecommendation } = await import("../../dist/lib/reasoning/belief-policy-engine.js");
 
 	emitSignal(ctx, "calibration", "high-error", "warn", false, { error: 0.5 });
 	const r1 = getNextRecommendation(ctx);
@@ -89,7 +89,7 @@ function makeCtx() {
 // Rule 5: reflection_gap fires with 8+ tool-use without reflection
 {
 	const ctx = makeCtx();
-	const { emitSignal, getNextRecommendation } = await import("../../dist/lib/belief-policy-engine.js");
+	const { emitSignal, getNextRecommendation } = await import("../../dist/lib/reasoning/belief-policy-engine.js");
 
 	for (let i = 0; i < 7; i++) {
 		emitSignal(ctx, "tool-use", "overuse", "warn", false, { tools: [`tool${i}`] });
@@ -106,7 +106,7 @@ function makeCtx() {
 // Rule 6: reasoning_plus_conflict
 {
 	const ctx = makeCtx();
-	const { emitSignal, getNextRecommendation } = await import("../../dist/lib/belief-policy-engine.js");
+	const { emitSignal, getNextRecommendation } = await import("../../dist/lib/reasoning/belief-policy-engine.js");
 
 	emitSignal(ctx, "reasoning", "decline", "warn", false, { overlap: 0.4 });
 	emitSignal(ctx, "conflict", "detected", "warn", false, {});
@@ -118,7 +118,7 @@ function makeCtx() {
 // Signal storage limit
 {
 	const ctx = makeCtx();
-	const { emitSignal, getNextRecommendation } = await import("../../dist/lib/belief-policy-engine.js");
+	const { emitSignal, getNextRecommendation } = await import("../../dist/lib/reasoning/belief-policy-engine.js");
 
 	for (let i = 0; i < 60; i++) {
 		emitSignal(ctx, "tool-use", "overuse", "warn", false, { tools: [`tool${i}`] });

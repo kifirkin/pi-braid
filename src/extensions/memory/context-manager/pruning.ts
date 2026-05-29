@@ -3,7 +3,7 @@
  * Applies deduplication, superseded writes, error purging, recency, and batch collapse.
  */
 
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { createLogger } from "../../../lib/core/logger.js";
 
 const log = createLogger("context-manager:pruning");

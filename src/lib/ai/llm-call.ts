@@ -17,8 +17,8 @@
  *   const text = result.text;
  */
 
-import type { Api, Context, Model } from "@mariozechner/pi-ai";
-import { completeSimple } from "@mariozechner/pi-ai";
+import type { Api, Context, Model } from "@earendil-works/pi-ai";
+import { completeSimple } from "@earendil-works/pi-ai";
 import { createLogger } from "../core/logger.js";
 
 const log = createLogger("llm-call");

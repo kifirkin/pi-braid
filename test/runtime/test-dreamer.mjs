@@ -161,7 +161,7 @@ describe("D0 Dreamer Module", () => {
     };
 
     // Pre-populate the extension state that getMemoryState reads
-    const { getExtensionState } = await import("../../dist/lib/extension-state.js");
+    const { getExtensionState } = await import("../../dist/lib/state/extension-state.js");
     getExtensionState(ctx, "three-memory-stores", () => ({
       episodes,
       heuristics: [],
@@ -210,7 +210,7 @@ describe("D0 Dreamer Module", () => {
       whisper: (msg, opts) => { whisperCalls.push({ msg, opts }); },
     };
 
-    const { getExtensionState } = await import("../../dist/lib/extension-state.js");
+    const { getExtensionState } = await import("../../dist/lib/state/extension-state.js");
     getExtensionState(ctx, "three-memory-stores", () => ({
       episodes,
       heuristics: [],
@@ -261,7 +261,7 @@ describe("D0 Dreamer Module", () => {
       whisper: (msg, opts) => { whisperCalls.push({ msg, opts }); },
     };
 
-    const { getExtensionState } = await import("../../dist/lib/extension-state.js");
+    const { getExtensionState } = await import("../../dist/lib/state/extension-state.js");
     getExtensionState(ctx, "three-memory-stores", () => ({
       episodes,
       heuristics: [],
@@ -300,7 +300,7 @@ describe("D0 Dreamer Module", () => {
       whisper: (msg, opts) => { whisperCalls.push({ msg, opts }); },
     };
 
-    const { getExtensionState } = await import("../../dist/lib/extension-state.js");
+    const { getExtensionState } = await import("../../dist/lib/state/extension-state.js");
     getExtensionState(ctx, "three-memory-stores", () => ({
       episodes,
       heuristics: [],

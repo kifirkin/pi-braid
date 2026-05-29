@@ -6,7 +6,7 @@
  * (only the BPE handlers read/write it).
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";
 import {
   getNextRecommendation,

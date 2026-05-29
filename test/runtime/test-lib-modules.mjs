@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 
 // ── consolidation-channel: scoreEpisode ─────────────────────────────────────
 
-const { scoreEpisode } = await import("../../dist/lib/consolidation-channel.js");
+const { scoreEpisode } = await import("../../dist/lib/events/consolidation-channel.js");
 
 describe("consolidation-channel", () => {
   it("scoreEpisode returns ConsolidationCandidate with episodeId", () => {
@@ -49,7 +49,7 @@ describe("consolidation-channel", () => {
 
 // ── filter-safe-to-remove: filterSafeToRemove ──────────────────────────────
 
-const { filterSafeToRemove } = await import("../../dist/lib/filter-safe-to-remove.js");
+const { filterSafeToRemove } = await import("../../dist/lib/utils/filter-safe-to-remove.js");
 
 describe("filter-safe-to-remove", () => {
   function msg(overrides = {}) {
@@ -87,7 +87,7 @@ describe("filter-safe-to-remove", () => {
 
 // ── context-density: recommendCompressionStrategy ───────────────────────────
 
-const { recommendCompressionStrategy } = await import("../../dist/lib/context-density.js");
+const { recommendCompressionStrategy } = await import("../../dist/lib/detection/context-density.js");
 
 describe("context-density", () => {
   /** Build a valid DensityResult. Uses density + tokenRatio as primary signals. */

@@ -13,7 +13,7 @@ const log = createLogger("research");
  */
 
 import { Type } from "typebox";
-import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { AgentToolResult, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const researchSchema = Type.Object({
   action: Type.String({

@@ -22,7 +22,7 @@ import * as path from "node:path";
 import { getExtensionState, hasExtensionState } from "./extension-state.js";
 import { createLogger } from "../core/logger.js";
 import { CHECKPOINT_DIR } from "../config/braid-paths.js";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const log = createLogger("checkpoint");
 

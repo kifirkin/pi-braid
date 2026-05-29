@@ -15,7 +15,7 @@
  * or module group names (e.g. "memory" expands to all memory extensions).
  */
 
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
 import { createLogger } from "../lib/core/logger.js";
 import {

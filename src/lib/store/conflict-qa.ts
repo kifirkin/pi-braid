@@ -10,7 +10,7 @@
  *   Uses tokenOverlap from evidence-pool (imported, not duplicated).
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   type Conflict,
   type EvidenceSource,

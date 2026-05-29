@@ -4,7 +4,7 @@
  * Heartbeat Scheduler — proactive cognitive scheduling based on paper 2604.14178.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Episode, HeuristicRule } from "../../memory/three-memory-stores/index.js";
 
 // ── Cross-extension state access ─────────────────────────────────────────────

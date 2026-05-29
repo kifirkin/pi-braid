@@ -2,7 +2,7 @@
  * feedback-handler — Belief inference + advice evaluation on turn_end.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { inferBeliefs } from "../../../../lib/reasoning/belief-policy-engine.js";
 import { evaluatePendingAdvice } from "../../../../lib/reasoning/advice-tracker.js";
 import { getState } from "../../state.js";

@@ -3,7 +3,7 @@
  * Run: node test/runtime/test-reasoning-metrics.mjs
  */
 const ROOT = "/Users/kifir/projects/agents/pi-braid";
-const { measureStability, extractAnchors, measureOverlap, measureBigramEntropy, countSelfContradictions } = await import(`${ROOT}/dist/lib/reasoning-metrics.js`);
+const { measureStability, extractAnchors, measureOverlap, measureBigramEntropy, countSelfContradictions } = await import(`${ROOT}/dist/lib/reasoning/reasoning-metrics.js`);
 
 let passed = 0, failed = 0;
 const assert = (cond, msg) => cond ? (passed++, console.log(`  ✅ ${msg}`)) : (failed++, console.log(`  ❌ ${msg}`));

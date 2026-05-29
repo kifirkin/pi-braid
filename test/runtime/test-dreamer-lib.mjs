@@ -8,7 +8,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-const { simulatePaths, resetDreamer } = await import("../../dist/lib/dreamer.js");
+const { simulatePaths, resetDreamer } = await import("../../dist/lib/reasoning/dreamer.js");
 
 describe("simulatePaths", () => {
   it("returns empty array for empty current sequence", () => {

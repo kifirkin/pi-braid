@@ -16,7 +16,7 @@ const {
   resetAdviceTracker,
   dreamerCooldownMs,
   marsOveruseMultiplier,
-} = await import("../../dist/lib/advice-tracker.js");
+} = await import("../../dist/lib/reasoning/advice-tracker.js");
 
 describe("Advice Tracking", () => {
   beforeEach(() => {

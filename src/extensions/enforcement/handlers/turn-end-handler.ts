@@ -7,7 +7,7 @@
  * Extracted from handler-registry.ts to reduce it from 1054L.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../../../lib/core/logger.js";
 import { detectMissingVerification, recordCodeChange } from "../detection/verification.js";
 import {

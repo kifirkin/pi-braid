@@ -6,7 +6,7 @@
  *   Tier 2 (utility model, async): Confirm ambiguous blocks via classify().
  *     Runs on already-identified blocks, not individual messages.
  */
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../state/extension-state.js";
 import { createLogger } from "../core/logger.js";
 const log = createLogger("reasoning-summary");

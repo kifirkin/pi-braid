@@ -7,7 +7,7 @@
  */
 
 import { getExtensionState } from "../state/extension-state.js";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 // ── Shared analytics state shape (subset used by enforcement) ──────────────
 

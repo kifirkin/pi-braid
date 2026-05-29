@@ -5,7 +5,7 @@
  * cross-extension memory state, and default configuration.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import type { HeartbeatState, HeartbeatConfig, MemoryStoresState } from "./types.js";
 

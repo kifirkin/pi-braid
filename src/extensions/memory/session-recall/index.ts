@@ -17,8 +17,8 @@ const log = createLogger("session-recall");
  * Storage: ~/.pi/agent/sessions/ (auto-discovered)
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import type { Model } from "@mariozechner/pi-ai";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { Model } from "@earendil-works/pi-ai";
 import { callLlm } from "../../../lib/ai/llm-call.js";
 import { Type } from "typebox";
 import { execFileSync } from "node:child_process";
@@ -125,7 +125,7 @@ const MAX_SNIPPETS_PER_SESSION = 3;
 type SearchBackend = "rg" | "grep" | "node";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { onEvent } from "../../../lib/events/event-types.js";
 
 function getRecallState(ctx?: ExtensionContext): { cachedBackend: SearchBackend | undefined } {

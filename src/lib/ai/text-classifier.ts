@@ -14,8 +14,8 @@
 import { callLlm } from "../ai/llm-call.js";
 import { resolveUtilityModel } from "../ai/model-resolver.js";
 import { createLogger } from "../core/logger.js";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { Api, Model } from "@mariozechner/pi-ai";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { Api, Model } from "@earendil-works/pi-ai";
 
 const log = createLogger("text-classifier");
 

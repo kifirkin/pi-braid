@@ -6,7 +6,7 @@
  */
 
 import { Type } from "typebox";
-import type { CompactOptions, ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { CompactOptions, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { analyzeSession } from "../../analysis.js";
 
 export const contextCompressSchema = Type.Object({

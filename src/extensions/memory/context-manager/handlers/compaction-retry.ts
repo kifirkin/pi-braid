@@ -6,7 +6,7 @@
  * threshold failures, retry triggers, and cleanup.
  */
 
-import type { CompactOptions, ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { CompactOptions, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";
 import { analyzeSession } from "../analysis.js";
 import { onEvent } from "../../../../lib/events/event-types.js";

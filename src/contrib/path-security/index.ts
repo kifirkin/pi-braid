@@ -11,7 +11,7 @@
  * @module path-security
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../../lib/core/logger.js";
 import { onEvent } from "../../lib/events/event-types.js";
 import { getExtensionState } from "../../lib/state/extension-state.js";

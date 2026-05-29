@@ -20,7 +20,7 @@ const log = createLogger("latent-activator");
  * 4. BEHAVIORAL DECOMPOSITION - atomic behaviors, not personas
  */
 
-import type { ExtensionAPI, AgentToolResult } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, AgentToolResult } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
 /**
@@ -313,7 +313,7 @@ const BEHAVIOR_MIXES: Record<string, AtomicBehavior[]> = {
 };
 
 import { getExtensionState } from "../../../lib/state/extension-state.js";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 interface ActivatorState {
   currentBehaviors: Set<AtomicBehavior>;

@@ -4,7 +4,7 @@
  * Run: node test/runtime/test-mars-reflector.mjs
  */
 const ROOT = "/Users/kifir/projects/agents/pi-braid";
-const { buildPattern, generateAdvice, resetMARS } = await import(`${ROOT}/dist/lib/mars-reflector.js`);
+const { buildPattern, generateAdvice, resetMARS } = await import(`${ROOT}/dist/lib/reasoning/mars-reflector.js`);
 
 let passed = 0;
 let failed = 0;

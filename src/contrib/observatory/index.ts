@@ -16,9 +16,9 @@
  *                     Event Bus (turn_complete, timer_fire, etc.)
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { StringEnum } from "@mariozechner/pi-ai";
+import { StringEnum } from "@earendil-works/pi-ai";
 import { createLogger } from "../../lib/core/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../lib/state/session-start-queue.js";
 import * as fs from "node:fs";

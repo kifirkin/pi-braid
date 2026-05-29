@@ -17,10 +17,10 @@
  * - /browser-start: Spawn Chrome with remote debugging (--profile for cookie sync)
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { truncateHead } from "@mariozechner/pi-coding-agent";
-import { Text, Image as TUIImage } from "@mariozechner/pi-tui";
-import { getCapabilities, renderImage, getPngDimensions } from "@mariozechner/pi-tui";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { truncateHead } from "@earendil-works/pi-coding-agent";
+import { Text, Image as TUIImage } from "@earendil-works/pi-tui";
+import { getCapabilities, renderImage, getPngDimensions } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
 const log = { info: console.log, debug: () => {}, warn: console.warn, error: console.error };
 import { CdpClient, isBrowserAvailable, listTabs, spawnChrome, waitForChrome } from "./cdp.js";

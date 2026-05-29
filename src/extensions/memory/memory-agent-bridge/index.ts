@@ -9,18 +9,18 @@ const log = createLogger("cognitive-systems");
  * - explore_paths: Parallel sub-agent exploration of hypotheses
  */
 
-import type { AgentToolResult } from "@mariozechner/pi-agent-core";
-import { StringEnum } from "@mariozechner/pi-ai";
+import type { AgentToolResult } from "@earendil-works/pi-agent-core";
+import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   type CognitiveMemoryEntry,
   type CognitiveMemoryType,
   formatMemoryEntry,
   formatMemoryTimestamp,
   getCognitiveMemory,
-} from "../../../lib/cognitive-memory.js";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+} from "../../../lib/cognitive-memory/index.js";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { addEvidence } from "../../../lib/store/evidence-pool.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { textResult } from "../../../lib/utils/extension-utils.js";

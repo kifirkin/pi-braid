@@ -8,7 +8,7 @@
 // - Semantic preservation of tool call/result pairs
 // - Better summarization guidance for the LLM
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { SessionManager } from "../../../../lib/state/session-manager.js";
 
 // Minimal typed interfaces for pi APIs that lack type declarations
@@ -29,8 +29,8 @@ interface FullSessionManager extends SessionManager {
 interface Preparation {
   messagesToSummarize?: unknown[];
 }
-import { addEvidence } from "../../../../lib/evidence-pool.js";
-import { eventBus } from "../../../../lib/event-bus.js";
+import { addEvidence } from "../../../../lib/store/evidence-pool.js";
+import { eventBus } from "../../../../lib/events/event-bus.js";
 import { recordAdvice } from "../../../../lib/reasoning/advice-tracker.js";
 import { appendFileSync } from "node:fs";
 import { analyzeSession } from "../analysis.js";
@@ -44,12 +44,12 @@ import {
   setCompactionActive,
   recordCompactionOutcome,
 } from "./shared.js";
-import type { AgentMessage as CoreAgentMessage } from "@mariozechner/pi-agent-core";
+import type { AgentMessage as CoreAgentMessage } from "@earendil-works/pi-agent-core";
 import type { AgentMessage as FilterMessage } from "../../../../lib/utils/filter-safe-to-remove.js";
 import { filterSafeToRemove } from "../../../../lib/utils/filter-safe-to-remove.js";
 import { determineCompressionLevel } from "../../../../lib/detection/compression-strategy.js";
 import { semanticCompress } from "../semantic-compress.js";
-import { onEvent } from "../../../../lib/event-types.js";
+import { onEvent } from "../../../../lib/events/event-types.js";
 import {
   handleOverflowFailure,
   handleTransientError,
@@ -344,14 +344,15 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
           const currentUsage = audit.usage.percent;
           // ExtensionContext has no turnCount — use audit.branchLength as proxy
           const proxyTurnCount = audit.branchLength ?? 0;
-          const baseLevel = determineCompressionLevel(ctx, {
+          const decision = await determineCompressionLevel(ctx, {
             turnCount: proxyTurnCount,
             turnsSinceCompression:
               proxyTurnCount - (getCmState(ctx).lastCompressionStats?.turnRange?.to ?? 0),
             consecutiveFailures: 0,
             reasoningChainDepth: audit.recommendations.length > 3 ? 4 : 1,
             messageCount: prep.messagesToSummarize.length,
-          }).level;
+          });
+          const baseLevel = decision.level;
           // Escalate compression level when current context is near-full
           const compressionLevel =
             currentUsage > 85

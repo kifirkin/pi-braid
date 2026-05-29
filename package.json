@@ -60,9 +60,10 @@
     "typescript-eslint": "8.59.1"
   },
   "peerDependencies": {
-    "@mariozechner/pi-agent-core": ">=0.70.0",
-    "@mariozechner/pi-ai": ">=0.70.0",
-    "@mariozechner/pi-coding-agent": ">=0.70.0"
+    "@earendil-works/pi-agent-core": ">=0.77.0",
+    "@earendil-works/pi-ai": ">=0.77.0",
+    "@earendil-works/pi-coding-agent": ">=0.77.0",
+    "@earendil-works/pi-tui": ">=0.77.0"
   },
   "keywords": [
     "pi",

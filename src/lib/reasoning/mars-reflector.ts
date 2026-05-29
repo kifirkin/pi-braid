@@ -9,7 +9,7 @@
  * Only whispers if actionable advice exists.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState, hasExtensionState } from "../state/extension-state.js";
 import { marsOveruseMultiplier as dynamicOveruseMultiplier } from "../reasoning/advice-tracker.js";
 

@@ -11,9 +11,9 @@
  * 3. Tool Reliability Controller — per-tool trustworthiness tracking (tool-reliability.ts)
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { StringEnum } from "@mariozechner/pi-ai";
+import { StringEnum } from "@earendil-works/pi-ai";
 import type { SessionManager } from "../../../lib/state/session-manager.js";
 
 // Extended episode with dynamic metadata fields not in the base type
@@ -42,7 +42,7 @@ async function asyncExists(p: string): Promise<boolean> {
 }
 import * as path from "node:path";
 import { EPISODES_FILE, LEGACY_MEMORY_FILE, METRICS_FILE } from "../../../lib/config/braid-paths.js";
-import { getCognitiveMemory } from "../../../lib/cognitive-memory.js";
+import { getCognitiveMemory } from "../../../lib/cognitive-memory/index.js";
 
 // ── Re-export types ─────────────────────────────────────────────────────────
 export type { Episode, HeuristicRule, ToolStat, MemoryStoresState } from "./types.js";
