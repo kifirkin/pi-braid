@@ -74,6 +74,17 @@ Uses `browser_generate_image` + `browser_upload_image` tools in sequence. No cli
 | Stroke | Black (#000000), 4px width, round join |
 | Template | Centered, white background above and below for text |
 | Injection | 12px monospace, #222222 on dark bg, bottom-left |
+| **Text placement** | **Depends on template — check where background/empty space is. Drake = bottom-right column, not center.** |
+
+## Template Notes
+
+Not all templates are symmetrical. Before placing text, analyze the template:
+
+**Drake template (1200×1200)**: Drake is left-center. Background is right side. Text goes at x=900, y=600 (right column) — NOT center (x=600, overlaps Drake).
+
+**This Is Fine template (580×282)**: Small canvas. Text goes under the dog (bottom third). 16-18px font max. Better to upscale to 1160×564 for readability.
+
+General rule: Place text where the background is clear, not over the subject.
 
 ## Quality Checklist
 

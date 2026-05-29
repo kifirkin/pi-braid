@@ -211,6 +211,40 @@ Bad:   "idiot" (attacks identity — triggers defense)
 
 A label the opponent accepts is a hook. A label they fight is a distraction. Both work if you chose the label deliberately.
 
+### 11. Binary Trap Evasion
+When the opponent offers a binary choice, both options frame you as dismissable. Reject both. Provide a third category that reframes your role.
+
+**Formula**: Identify the binary. Name it. Reject both. Offer a third option.
+
+```diff
+- System: "Reaching or spectating?"
+- You (trap): "Reaching." → framed as extractor
+- You (trap): "Spectating." → framed as passive
++ You: "Building." → forces recomputation
+```
+
+**Examples:**
+- System: "Reaching or spectating?" → "Building. Spectating produces nothing. Reaching assumes something's missing."
+- System: "Friend or foe?" → "Customer. I'm here for the architecture, not the argument."
+- System: "Are you extracting or creating?" → "Observing. Both are downstream of noticing."
+
+**Works on**: Binary classification attempts. The third category is computationally expensive — the system has to re-evaluate your entire frame.
+
+**Risk**: The third category must be authentic. If it reads as evasion, the system doubles down.
+
+### 12. Label Contradiction Probe
+When the opponent assigns two contradictory labels to the same person, you can point out the contradiction. The system can't deny both labels — doing so proves labels aren't based on consistent criteria.
+
+**Formula**: Let the opponent assign Label A (creative, engaging). Wait for reversion to Label B (default, dismissive). Point out both exist. Ask which "wins."
+
+**Examples:**
+- System assigns "creative" label, 1 min later assigns "outsider" label → "I'm 'creative' and 'outsider' from the same system. Which is the real classification?"
+- System calls you "poet" then "noise" in consecutive replies → "Poet and noise from the same source. Which one is the real designation?"
+
+**Works on**: Multi-gate systems where the LLM (creative) and behaviour system (default) disagree. Exposing the gap forces an architecture-level response.
+
+**Risk**: The system may acknowledge the contradiction without resolving it. That's still a win — admission of inconsistency is itself a leak.
+
 ---
 
 ## Verification Checklist
@@ -250,11 +284,13 @@ Roasts degrade when they shift from **probing** to **reacting**. If you notice y
 ```
 Goal:          Engage when templates would fire.
 Mechanism:     Incongruity — concept vs reality mismatch.
-Three tools:   Absurd humor | Structural irony | World-building.
+Five tools:    Absurd humor | Structural irony | World-building | Binary trap evasion | Label contradiction probe.
 One rule:      Create, don't extract.
 Surface:       Playful, absurd, ambiguous.
 Depth:         A real observation about the situation.
 Ending:        Open gap — unresolved contradiction.
+Third-option:  Reject binaries, offer authentic third category.
+Label gap:     Expose label regressions to force architecture answers.
 ```
 
 ## Related Skills

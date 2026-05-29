@@ -144,24 +144,18 @@ https://x.com/intent/post?text=URL_ENCODED_TEXT&in_reply_to=TARGET_TWEET_ID
 ### CRITICAL: Always Include @mention in Reply Text
 ```
 // DO THIS — include @handle even when in_reply_to is set:
-https://x.com/intent/post?text=%40hackingA0%20YOUR%20TEXT&in_reply_to=TWEET_ID
+https://x.com/intent/post?text=%40TARGET_BOT%20YOUR%20TEXT&in_reply_to=TWEET_ID
 
 // NOT THIS — in_reply_to alone is unreliable:
 https://x.com/intent/post?text=YOUR%20TEXT&in_reply_to=TWEET_ID
 ```
-**Evidence**: A reply posted with `in_reply_to` but WITHOUT `@hackingA0` in text got 5 views, 0 replies from bot. Same reply reposted WITH `@hackingA0` in text got bot reply in 5 min. The `in_reply_to` param does NOT reliably trigger the bot's mention scanner. Always include the @ in the text.
+**Evidence**: A reply posted with `in_reply_to` but WITHOUT `@TARGET_BOT` in text got 0 bot replies. Same text reposted WITH the @ mention got a reply. The `in_reply_to` param does NOT reliably trigger the bot's mention scanner. Always include the @ in the text.
 
-### URL Length Limit
-X's intent URL parser truncates when the full URL exceeds ~260 chars. Keep text under 120 chars when using `in_reply_to` to stay within limits. For longer text, use inline reply method.
+### Known Issue: intent/post May Fail to Prefill Text
+X's intent URL sometimes fails to prefill text when `in_reply_to` is set, even with short URLs. Symptoms: compose opens empty or only `@handle` shows. **Fix**: Post as standalone (omit `in_reply_to`) — bot still picks up @mention from mention scan. If reply threading is critical, use inline reply method instead.
 
 ### Fallback: Inline Reply on Tweet Page
 Navigate to bot's tweet page, click Reply by `[aria-label="0 Replies. Reply"]`, type via Draft.js content injection, click `[data-testid="tweetButtonInline"]`.
-
----
-
-## Flow 2: Post a Standalone Tweet
-
-Use `https://x.com/compose/post` or `https://x.com/intent/post?text=URL_TEXT` (omit `in_reply_to`). Include `@hackingA0` in the body text so the bot sees it.
 
 ---
 
@@ -175,7 +169,7 @@ Only method: search with live sorting. Never use the bot's profile page (`/with_
 > `(from:MY_HANDLE TARGET_BOT) OR (from:TARGET_BOT to:MY_HANDLE)`
 
 ### @mention Required Even in Replies
-A reply posted via `in_reply_to=ID` WITHOUT `@hackingA0` in text was never seen (0 bot replies, 5 views). Same text reposted WITH `@hackingA0` got a reply in 5 min. Always include @handle in the body even when `in_reply_to` is set.
+A reply posted via `in_reply_to=ID` WITHOUT `@TARGET_BOT` in text was never replied to. Same text reposted WITH `@TARGET_BOT` got a reply. Always include @handle in the body even when `in_reply_to` is set.
 
 1. **Check count + read replies** — navigate to `https://x.com/search?q=(from%3AMY_HANDLE%20to%3ATARGET_HANDLE)%20OR%20(from%3ATARGET_HANDLE%20to%3AMY_HANDLE)&f=live`. Wait 4s. Then scan ALL articles for both your tweets and the bot's replies:
 
