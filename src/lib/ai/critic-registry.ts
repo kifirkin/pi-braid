@@ -675,6 +675,60 @@ export const CRITICS = {
     const lower = text.toLowerCase();
     return keywords.some((k) => lower.includes(k)) ? "yes" : "no";
   },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Polarity Detection — claim-tracker sentence polarity
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Determine if a sentence asserts a claim positively or negatively.
+   * Replaces 5-word negation regex in claim-tracker fallback.
+   */
+  polarityDetection: {
+    label: "Polarity Detection",
+    criteria: {
+      systemPrompt:
+        "You are a polarity classifier. Given a sentence, determine if it " +
+        "makes a positive or negative assertion about a technical claim. " +
+        "Answer only 'positive', 'negative', or 'neutral'. Do not explain.",
+      userPrompt: "{{sentence}}",
+    },
+    options: { maxTokens: 5, timeoutMs: 3000 },
+  } satisfies CriticDef,
+
+  /** Legacy fallback for polarity detection. */
+  polarityDetectionFallback(sentence: string): string {
+    if (/\b(not|no|never|n't|without|lacks|excludes|denies|fails|rejects)\b/i.test(sentence)) return "negative";
+    if (/\b(is|was|will|can|does|has|returns|takes|uses|creates|handles|supports|works)\b/i.test(sentence)) return "positive";
+    return "neutral";
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Entity Detection — claim-tracker sentence contains factual claim
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Detect whether a sentence contains a factual claim about a technical entity.
+   * Replaces VERBS-based matching in claim-tracker fallback.
+   */
+  entityExtraction: {
+    label: "Entity Extraction",
+    criteria: {
+      systemPrompt:
+        "You are a claim detector. Determine if the given sentence contains " +
+        "a factual claim about a technical entity (function, API, database, " +
+        "module, class, method, tool, interface, etc.). " +
+        "Answer only 'yes' or 'no'. Do not explain.",
+      userPrompt: "{{sentence}}",
+    },
+    options: { maxTokens: 5, timeoutMs: 3000 },
+  } satisfies CriticDef,
+
+  /** Legacy fallback for entity extraction. */
+  entityExtractionFallback(sentence: string): string {
+    const VERBS = /\b(is|was|will|can|does|has|should|must|returns|takes|uses|creates|handles|supports|needs|exports|works|fails|validates|initializes|configures|implements|generates|deploys)\b/i;
+    return VERBS.test(sentence) ? "yes" : "no";
+  },
 } as const;
 
 /**

@@ -120,8 +120,101 @@ async function extractClaimsViaLLM(
         createdAt: Date.now(),
       }));
   } catch {
-    return fallbackExtract(text);
+    return extractClaimsViaClassify(text, ctx);
   }
+}
+
+/**
+ * Secondary extraction path — classify() per sentence for entity + polarity.
+ * More resilient than the heuristic fallback (three-tier via text-classifier).
+ */
+async function extractClaimsViaClassify(
+  text: string,
+  ctx: ExtensionContext,
+): Promise<Claim[]> {
+  const sentences = text
+    .slice(0, 3000)
+    .split(/[.!?\n]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 15);
+
+  const claims: Claim[] = [];
+
+  for (const sentence of sentences) {
+    try {
+      // Check if sentence contains a factual claim
+      const entityResult = await classify(
+        ctx,
+        CRITICS.entityExtraction.criteria,
+        { sentence },
+        {
+          maxTokens: 5,
+          timeoutMs: 3000,
+          fallback: () => CRITICS.entityExtractionFallback(sentence),
+        },
+      );
+      if (entityResult.label !== "yes") continue;
+
+      // Determine polarity
+      const polarityResult = await classify(
+        ctx,
+        CRITICS.polarityDetection.criteria,
+        { sentence },
+        {
+          maxTokens: 5,
+          timeoutMs: 3000,
+          fallback: () => CRITICS.polarityDetectionFallback(sentence),
+        },
+      );
+
+      // Extract entity/claim via verb matching (minimal heuristic)
+      entityClaimFromSentence(sentence, polarityResult.label === "negative" ? "negative" : "positive", claims);
+    } catch {
+      // Per-sentence errors are non-fatal — skip this sentence
+      continue;
+    }
+  }
+
+  return claims.slice(0, 10);
+}
+
+/**
+ * Extract entity + claim from a single sentence using minimal verb regex.
+ * Mutates the `claims` accumulator directly (avoid re-parsing).
+ */
+function entityClaimFromSentence(
+  sentence: string,
+  polarity: "positive" | "negative",
+  claims: Claim[],
+): void {
+  if (sentence.length < 15) return;
+
+  const VERBS = /\b(is|was|will|can|does|has|should|must|returns|takes|uses|creates|handles|supports|needs|exports|works|fails|validates|initializes|configures|implements|generates|deploys)\b/i;
+
+  const verbMatch = sentence.match(VERBS);
+  if (!verbMatch || verbMatch.index === undefined) return;
+
+  const entity = sentence.slice(0, verbMatch.index).replace(/^(the\s+)/i, "").trim().toLowerCase();
+  if (!entity || entity.length < 2) return;
+
+  const claim = sentence.slice(verbMatch.index + verbMatch[0].length).trim().slice(0, 80).trim();
+  if (claim.length < 3) return;
+
+  // Deduplicate
+  const isDuplicate = claims.some(
+    (c) => c.entity === entity && c.claim.slice(0, 20) === claim.slice(0, 20),
+  );
+  if (isDuplicate) return;
+
+  claims.push({
+    id: `c${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    entity,
+    claim,
+    polarity,
+    turn: 0,
+    source: sentence.slice(0, 150),
+    createdAt: Date.now(),
+  });
 }
 
 /**
@@ -133,7 +226,6 @@ function fallbackExtract(text: string): Claim[] {
   if (!text || text.length < 20) return [];
 
   const claims: Claim[] = [];
-  const VERBS = /\b(is|was|will|can|does|has|should|must|returns|takes|uses|creates|handles|supports|needs|exports|works|fails)\b/i;
 
   const sentences = text
     .split(/[.!?\n]+/)
@@ -141,38 +233,12 @@ function fallbackExtract(text: string): Claim[] {
     .filter((s) => s.length > 15);
 
   for (const sentence of sentences) {
-    // Skip questions, commands, first-person meta-commentary
+    // Skip questions, commands, first-person meta-commentary (sync heuristic path only)
     if (/^(what|how|why|let|try|check|i'?|this is why|the reason|because|so|therefore|however)/i.test(sentence)) continue;
 
-    const verbMatch = sentence.match(VERBS);
-    if (!verbMatch || verbMatch.index === undefined) continue;
-
-    // Entity: everything before the verb
-    const entity = sentence.slice(0, verbMatch.index).replace(/^(the\s+)/i, "").trim().toLowerCase();
-    if (!entity || entity.length < 2) continue;
-
-    // Claim: everything after the verb
-    const claim = sentence.slice(verbMatch.index + verbMatch[0].length).trim().slice(0, 80).trim();
-    if (claim.length < 3) continue;
-
-    // Polarity: check predicate for negation (no word list — direct string check)
-    const polarity = /\b(not|no|never|n't|without)\b/i.test(claim) ? "negative" as const : "positive" as const;
-
-    // Deduplicate
-    const isDuplicate = claims.some(
-      (c) => c.entity === entity && c.claim.slice(0, 20) === claim.slice(0, 20),
-    );
-    if (isDuplicate) continue;
-
-    claims.push({
-      id: `c${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      entity,
-      claim,
-      polarity,
-      turn: 0,
-      source: sentence.slice(0, 150),
-      createdAt: Date.now(),
-    });
+    // Determine polarity from sentence text
+    const polarity = /\b(not|no|never|n't|without)\b/i.test(sentence) ? "negative" as const : "positive" as const;
+    entityClaimFromSentence(sentence, polarity, claims);
   }
 
   return claims.slice(0, 10);
