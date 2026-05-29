@@ -5,6 +5,13 @@
  *   Phase 1 (classifier): Lightweight LLM call classifies the image into a type.
  *   Phase 2 (analysis):  Targeted analysis prompt based on the classification.
  *
+ * Supports an optional `query` parameter — when the agent has a specific
+ * question about the image, it's used as the Phase 2 prompt instead of the
+ * generic type-specific template.
+ *
+ * The tool result includes the image as inline content so the TUI renders a
+ * preview alongside the analysis text.
+ *
  * This replaces the former monolithic master prompt (~500 lines) that tried to
  * cover every image type in one shot. The classifier gives us structured context
  * so the analysis phase uses a precise, type-appropriate prompt.
@@ -70,6 +77,8 @@ interface AnalysisResult {
   mimeType: string;
   detail: "standard" | "comprehensive";
   classification: ClassifyResult;
+  imageBase64: string;
+  query?: string;
 }
 
 // ── Utilities ──
@@ -449,6 +458,7 @@ async function performAnalysis(
   ctx: ExtensionContext,
   absolutePath: string,
   detail: "standard" | "comprehensive",
+  query?: string,
   onUpdate?: (msg: string) => void,
 ): Promise<AnalysisResult> {
   const model = resolveVisionModel(ctx);
@@ -496,28 +506,38 @@ async function performAnalysis(
   );
   onUpdate?.(`Classifier: ${classification.type}${classification.isPixelArt ? " (pixel art)" : ""}${classification.isSpritesheet ? " (spritesheet)" : ""}`);
 
-  // Phase 2: analyze with targeted prompt
-  const typeKey = classification.type === "game-asset" && classification.isPixelArt
-    ? "game-asset"
-    : classification.type;
-  const promptTemplate = ANALYSIS_PROMPTS[typeKey] ?? ANALYSIS_PROMPTS["other"];
-
   // Build dimension annotations
   const metaNote = meta
     ? `**Metadata**: ${meta.width}×${meta.height}px, ${meta.ratio.toFixed(1)}:1 ratio`
     : "";
   const ratioNote = meta?.ratioWarning ?? "";
 
-  const analysisPrompt = promptTemplate
-    .replace("{meta}", metaNote)
-    .replace("{ratioWarning}", ratioNote);
+  // Phase 2: determine analysis prompt
+  let analysisPrompt: string;
+  let systemPrompt: string;
 
-  const systemPrompt =
-    classification.isPixelArt
-      ? "You are an expert in pixel art, spritesheets, and game asset analysis. Provide precise, technical descriptions with pixel-level measurements."
-      : "You are a professional image analyst. Extract every measurable detail. Be precise with hex codes, estimated pixel values, and specific descriptions.";
+  if (query) {
+    // Agent provided a specific question — use it directly with context
+    analysisPrompt = `Answer this question about the image:\n\n${query}\n\nContext: this image was classified as "${classification.type}"${classification.isPixelArt ? ", pixel art" : ""}${classification.isSpritesheet ? ", spritesheet" : ""}.\n\n${metaNote}\n${ratioNote}`.trim();
+    systemPrompt = "You are a precise image analyst. Answer the user's question about the image thoroughly based on what you can see.";
+    onUpdate?.(`Analysis: answering query with ${detail} detail...`);
+  } else {
+    // Standard analysis: use type-specific prompt
+    const typeKey = classification.type === "game-asset" && classification.isPixelArt
+      ? "game-asset"
+      : classification.type;
+    const promptTemplate = ANALYSIS_PROMPTS[typeKey] ?? ANALYSIS_PROMPTS["other"];
+    analysisPrompt = promptTemplate
+      .replace("{meta}", metaNote)
+      .replace("{ratioWarning}", ratioNote);
 
-  onUpdate?.(`Analysis: using ${typeKey} prompt with ${detail} detail...`);
+    systemPrompt =
+      classification.isPixelArt
+        ? "You are an expert in pixel art, spritesheets, and game asset analysis. Provide precise, technical descriptions with pixel-level measurements."
+        : "You are a professional image analyst. Extract every measurable detail. Be precise with hex codes, estimated pixel values, and specific descriptions.";
+
+    onUpdate?.(`Analysis: using ${typeKey} prompt with ${detail} detail...`);
+  }
 
   const result = await callWithRetry(
     model,
@@ -560,6 +580,8 @@ async function performAnalysis(
     mimeType: mime,
     detail,
     classification,
+    imageBase64: encoded.data,
+    query,
   };
 }
 
@@ -576,7 +598,8 @@ export default function visionExtension(pi: ExtensionAPI) {
       "Phase 1 classifies the image type (UI, game asset, brand, illustration, document, photo) using a lightweight classifier call. " +
       "Phase 2 runs a targeted analysis prompt based on the classification. " +
       "Reports dimensions, aspect ratio, color palette, text, components, quality issues. " +
-      "Supports standard and comprehensive detail levels.",
+      "Supports standard and comprehensive detail levels. " +
+      "Accepts an optional `query` parameter — if you have a specific question about the image, pass it here and Phase 2 will answer it directly.",
     parameters: Type.Object({
       imagePath: Type.String({
         description: "Path to the image file (jpg, jpeg, png, gif, webp)",
@@ -589,11 +612,17 @@ export default function visionExtension(pi: ExtensionAPI) {
           default: "standard",
         }),
       ),
+      query: Type.Optional(
+        Type.String({
+          description:
+            "Optional specific question about the image. When provided, Phase 2 answers this question directly instead of running the generic type-specific analysis prompt.",
+        }),
+      ),
     }),
 
     execute: async (
       _toolCallId,
-      params: { imagePath: string; detail?: "standard" | "comprehensive" },
+      params: { imagePath: string; detail?: "standard" | "comprehensive"; query?: string },
       _signal,
       onUpdate,
       ctx,
@@ -601,6 +630,7 @@ export default function visionExtension(pi: ExtensionAPI) {
       const imagePathExpanded = expandHome(params.imagePath);
       const absolutePath = path.resolve(ctx.cwd, imagePathExpanded);
       const detail = params.detail ?? "standard";
+      const query = params.query;
 
       if (!fs.existsSync(absolutePath)) {
         return {
@@ -622,15 +652,20 @@ export default function visionExtension(pi: ExtensionAPI) {
       }
 
       try {
-        const result = await performAnalysis(ctx, absolutePath, detail, (msg) => {
+        const result = await performAnalysis(ctx, absolutePath, detail, query, (msg) => {
           onUpdate?.({ content: [{ type: "text", text: msg }], details: { status: "analyzing" } });
         });
 
+        const header = query
+          ? `[Image analyzed: ${absolutePath}] (query: "${query}")\n[Classification: ${result.classification.type}${result.classification.isPixelArt ? ", pixel art" : ""}${result.classification.isSpritesheet ? ", spritesheet" : ""}]\n\n`
+          : `[Image analyzed: ${absolutePath}] (detail: ${detail})\n[Classification: ${result.classification.type}${result.classification.isPixelArt ? ", pixel art" : ""}${result.classification.isSpritesheet ? ", spritesheet" : ""}]\n\n`;
+
         return {
           content: [
+            { type: "image" as const, data: result.imageBase64, mimeType: result.mimeType },
             {
               type: "text",
-              text: `[Image analyzed: ${absolutePath}] (detail: ${detail})\n[Classification: ${result.classification.type}${result.classification.isPixelArt ? ", pixel art" : ""}${result.classification.isSpritesheet ? ", spritesheet" : ""}]\n\n${result.analysis}`,
+              text: `${header}${result.analysis}`,
             },
           ],
           details: {
@@ -639,6 +674,7 @@ export default function visionExtension(pi: ExtensionAPI) {
             detail: result.detail,
             classification: result.classification,
             visionModel: result.model?.id,
+            query: result.query,
           },
         };
       } catch (error) {

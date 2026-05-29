@@ -542,7 +542,7 @@ async function formatSkillsWithLineCounts(
   const hiddenCount = scored.length - boosted.length;
 
   const lines = [
-    "Skills are your first knowledge in context. Load all of the relevant ones with `read` tool before starting any task. ",
+    "Skills are your first knowledge in context. Read all of the relevant ones with `read` tool before starting any task.",
     "<available_skills>",
   ];
 
