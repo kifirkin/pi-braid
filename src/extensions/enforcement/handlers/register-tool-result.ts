@@ -7,9 +7,7 @@ import { addEvidence } from "../../../lib/store/evidence-pool.js";
 import { emitSignal } from "../../../lib/reasoning/belief-policy-engine.js";
 import { eventBus } from "../../../lib/events/event-bus.js";
 import { sendEnforcementWhisper } from "../whisper.js";
-import { getState } from "../state.js";
-
-const ERROR_BURST_THRESHOLD = 3;
+import { getState, ERROR_BURST_THRESHOLD } from "../state.js";
 
 export function registerToolResultHandler(pi: ExtensionAPI): void {
   pi.on("tool_result", async (event: any, ctx: ExtensionContext) => {

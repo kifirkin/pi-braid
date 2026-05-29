@@ -17,7 +17,7 @@ import {
 } from "./turn-analysis.js";
 import { detectOrphanChains } from "./orphan-chains.js";
 import { type NudgeManager } from "../nudge-manager.js";
-import { getState, markNudgeSent, shouldNudgeForMemory, markMemoryNudgeSent } from "../state.js";
+import { getState, ERROR_BURST_THRESHOLD, markNudgeSent, shouldNudgeForMemory, markMemoryNudgeSent } from "../state.js";
 import { recordNudgeSuppressed, getNudgeAnalytics } from "../../../lib/reasoning/nudge-analytics.js";
 import { type TurnState } from "../types.js";
 import { validateTurn } from "../validation.js";
@@ -33,7 +33,6 @@ import {
 } from "../../../lib/detection/context-thresholds.js";
 
 const log = createLogger("enforcement:turn-end");
-const ERROR_BURST_THRESHOLD = 3;
 
 export async function dispatchTurnEndLoop(
   pi: ExtensionAPI,

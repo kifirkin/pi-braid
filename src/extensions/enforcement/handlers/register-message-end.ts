@@ -19,13 +19,12 @@ import { emitSignal } from "../../../lib/reasoning/belief-policy-engine.js";
 import { detectMalformedToolCalls } from "../detection/malformed.js";
 import { analyzeMessage } from "./message-analysis.js";
 import { sendEnforcementWhisper } from "../whisper.js";
-import { getState, startJudge, completeJudge } from "../state.js";
+import { getState, ERROR_BURST_THRESHOLD, startJudge, completeJudge } from "../state.js";
 import { runVerificationJudge, formatVerificationNudge } from "../verification-judge.js";
 import { enforcementSignals } from "../signals.js";
 import { createLogger } from "../../../lib/core/logger.js";
 
 const log = createLogger("enforcement:message-end");
-const ERROR_BURST_THRESHOLD = 3;
 
 export function registerMessageEndHandler(pi: ExtensionAPI): void {
   onEvent(pi, "message_end", async (event: any, ctx: any) => {

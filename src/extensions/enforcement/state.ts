@@ -16,6 +16,11 @@
  *   verification-judge-state.ts — judge/calibration helpers
  */
 
+// ── Shared Constants ─────────────────────────────────────────────────────────
+
+/** Consecutive error turns before a burst is declared. Centralized here. */
+export const ERROR_BURST_THRESHOLD = 3;
+
 import { createLogger } from "../../lib/core/logger.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../../lib/state/extension-state.js";
