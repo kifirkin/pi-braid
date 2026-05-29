@@ -42,7 +42,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint src/ --max-warnings 0",
-    "lint:fix": "eslint src/ --fix"
+    "lint:fix": "eslint src/ --fix",
+    "check:deps": "node scripts/check-deps.mjs",
+    "ci:check": "npm run check:deps && npx tsc --noEmit && npm test"
   },
   "dependencies": {
     "typebox": "1.1.34"

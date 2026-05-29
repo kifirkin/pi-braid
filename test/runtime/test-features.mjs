@@ -351,11 +351,9 @@ async function main() {
 	// ══════════════════════════════════════════════════════════════════════════
 	console.log("\n── Documentation (extracted to pi-braid-docs) ──");
 
-	test("docs contains import-dependency-map + improvement-map", () => {
+	test("docs contains improvement-map", () => {
 		if (!existsSync(join(ROOT, "docs"))) return; // May be absent in CI
-		const files = readdirSync(join(ROOT, "docs"));
-		assert.ok(files.includes("import-dependency-map.md"), "import-dependency-map.md should exist");
-		assert.ok(files.includes("improvement-map.md"), "improvement-map.md should exist");
+		assert.ok(existsSync(join(ROOT, "docs", "improvement-map.md")), "improvement-map.md should exist");
 	});
 
 	// ══════════════════════════════════════════════════════════════════════════
