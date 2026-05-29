@@ -194,12 +194,29 @@ export async function callLlm(
 
 /**
  * Combine two AbortSignals into one. When either signal aborts, the combined signal aborts.
+ *
+ * If either parent signal is already aborted, returns just the *other* signal unmodified
+ * rather than creating an immediately-aborted controller. This prevents stale external
+ * signals (e.g. from timed-out tool executions) from instant-killing the combined signal
+ * on retry.
+ *
+ * Cleans up event listeners after the combined signal fires to prevent memory leaks
+ * across repeated calls (e.g. retry loops creating new combined signals).
  */
 function combineSignals(s1: AbortSignal, s2: AbortSignal): AbortSignal {
+  // If either signal is already dead, just return the other — combining into an
+  // already-aborted signal is a no-op that would only propagate the stale abort.
+  if (s1.aborted) return s2;
+  if (s2.aborted) return s1;
+
   const controller = new AbortController();
-  const abort = () => controller.abort();
-  s1.addEventListener("abort", abort);
-  s2.addEventListener("abort", abort);
+  const onAbort = () => {
+    controller.abort();
+    s1.removeEventListener("abort", onAbort);
+    s2.removeEventListener("abort", onAbort);
+  };
+  s1.addEventListener("abort", onAbort);
+  s2.addEventListener("abort", onAbort);
   return controller.signal;
 }
 

@@ -479,7 +479,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
           : "";
 
         const llmResult = await callLlm(model, apiKey, QUERY_SYSTEM_PROMPT, userMessage, {
-          signal: _signal,
+          timeoutMs: 180_000,
         });
 
         if ("error" in llmResult) {
