@@ -28,10 +28,11 @@ Replaces `REFACTOR-PLAN.md`, `REVIVAL-PLAN.md`, `TASKS.md`, and `TOOL-AUDIT.md`.
 | ✅ **Dist Cleanup** | Complete | Stale dist/ artifacts removed from git tracking |
 | ✅ **Refactoring Skill** | Complete | `skills/code-refactoring/SKILL.md` extracted from hands-on experience |
 | ✅ **Tool Audit** | Complete | Full inventory of 57 registered tools, 7 issues identified |
-| ❌ **Conflict Resolution Feedback (Phase 1.4)** | Not started | Wire conflict detection → resolution tracking → whisper feedback loop |
-| ❌ **Enforcement God Object Split (Phase 5)** | Partial | 6 turn-end analysis handlers created, but dispatch-turn-end-analysis.ts still interleaves concerns |
-| ❌ **Any Cast Reduction (Phase 4.1)** | Partial | 4 remaining in handler-registry.ts (target <10) |
-| ❌ **Tool Consolidation (NEW)** | Not started | 57 tools with redundancy and overengineering to address |
+| ✅ **Conflict Resolution Feedback (Phase 1.4)** | Complete | Wire conflict detection → resolution tracking → whisper feedback loop. Done in prior commits: register-message-end.ts tracks pendingConflictIds, escalates after 5 turns, checks agent responses for resolution |
+| ✅ **Enforcement God Object Split (Phase 5)** | Complete | 6 focused turn-end handlers (drift, BPE, MARS, dreamer, feedback, reflection) + turn-end-handler.ts. Replaced 170-line dispatch-turn-end-analysis.ts. Done in commit 7096d598 |
+| ✅ **Any Cast Reduction (Phase 4.1)** | Complete | Zero `as any` casts remaining in src/extensions/ and src/lib/. Fixed 5 casts (handler-registry, context-lifecycle, register-session-compact, compaction.ts ×2). Done in commit 4a52765c |
+| ✅ **Tool Consolidation (P0, P1, P2)** | Complete | Context tools 10→5, behavior tools 4→1, scratchpad split into scratchpad+task. Net reduction: 57→50 tools. Done in commits 8da84d27 + 192c918e |
+| ⬜ **P4: Memory Surface Investigation** | Audited — no change needed | 3 memory tools (episodes/heuristics/tool-stats) are legitimately agent-facing. Used by context-manager (shared.ts) and behavioral-drift. Keep as-is |
 
 ---
 
@@ -142,43 +143,47 @@ Total: **57 registered tools** + ~10 builtins = ~67 agent-visible tools.
 
 ---
 
-## Remaining Refactoring Work
+## Completed Refactoring Work
+
+All items from the original refactor plan are now complete.
+See the Status Summary table above for the full list.
 
 ### Conflict Resolution Feedback Loop (Phase 1.4)
-
-**Problem**: `evidence-pool.ts` + `conflict-qa.ts` detect and classify conflicts, but no feedback loop exists to track whether the agent resolved them.
-
-**Action**:
-1. When conflict QA is generated, store its ID in enforcement state
-2. On `message_end`, check if agent's response addressed the conflict (keyword matching)
-3. If resolved, mark complete via `resolveQA()`
-4. If unresolved after 5 turns, escalate whisper severity
-
-**Files**: `conflict-qa.ts`, `evidence-pool.ts`, `register-message-end.ts`
+**Status**: ✅ Complete (done in prior commits).
+`register-message-end.ts` tracks `pendingConflictIds` in enforcement state, escalates after 5 turns, and checks agent responses for resolution via `checkResponseForResolution()`.
 
 ### Enforcement God Object Final Split (Phase 5)
-
-**Problem**: `dispatch-turn-end-analysis.ts` still interleaves 6 concerns in one ~170-line function.
-
-**Action**: Split into independently registered turn-end handlers:
-- drift-handler, bpe-handler, mars-handler, dreamer-handler, reflection-handler, feedback-handler
-
-**Files**: `handlers/analysis/` (already started — 6 files exist, just need the dispatch function to call them directly instead of inline)
+**Status**: ✅ Complete (commit 7096d598).
+Replaced 170-line `dispatch-turn-end-analysis.ts` monolith with 6 focused turn-end handlers in `handlers/analysis/`.
 
 ### Any Cast Reduction (Phase 4.1)
+**Status**: ✅ Complete (commit 4a52765c).
+Zero `as any` casts remain in `src/extensions/` and `src/lib/`. 2 remain in `src/contrib/` (auto-symlinked workspace artifacts).
 
-**Target**: 4 remaining `any` casts in `handler-registry.ts`. Replace with typed overloads.
+### P4: Memory Surface Investigation
+**Status**: ✅ Audited — no change needed.
+3 memory tools (episodes/heuristics/tool-stats) are legitimately agent-facing and used by context-manager and behavioral-drift.
 
----
+### Tool Consolidation (P0, P1, P2)
+**Status**: ✅ Complete.
+- P0: Context tools 10→5
+- P1: Behavior tools 4→1
+- P2: Scratchpad split 1→2 (scratchpad + task)
+- Net: 57→50 registered tools
 
 ## Execution Status
 
-### ✅ DONE
+### ✅ ALL COMPLETE
+Every item from the original refactor roadmap, revival plan, and tool consolidation is done.
+
 - **P0: Context tools (10→5)** — merged into `context_inspect`, `context_compress`, `context_navigate`
 - **P1: Behavior tools (4→1)** — merged into single `behavior` tool
+- **P2: Scratchpad split (1→2)** — extracted `task` tool from scratchpad monolith
+- **Phase 1.4: Conflict feedback loop** — `register-message-end.ts` tracks resolution
+- **Phase 5: Enforcement dispatch split** — 6 focused turn-end handlers in `analysis/`
+- **Phase 4.1: Any cast reduction** — zero `as any` in `src/extensions/` + `src/lib/`
 - **T4, T8, T5, T6, T7** — various infrastructure improvements
-
-### 🔲 REMAINING
+- **P4: Memory surface investigation** — audited, keep as-is
 
 ---
 
