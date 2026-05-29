@@ -18,6 +18,7 @@ import { emitSignal } from "../../../lib/reasoning/belief-policy-engine.js";
 import { createLogger } from "../../../lib/core/logger.js";
 import { getExtensionState, safeSessionManager } from "../../../lib/state/extension-state.js";
 import { classify } from "../../../lib/ai/text-classifier.js";
+import { CRITICS } from "../../../lib/ai/critic-registry.js";
 
 const log = createLogger("sycophancy-detector");
 
@@ -26,30 +27,6 @@ const log = createLogger("sycophancy-detector");
 const RISK_THRESHOLD = 0.5;
 const MAX_WHISPERS_PER_SESSION = 10;
 const COOLDOWN_TURNS = 3;
-
-// ── UTILITY MODEL CRITERIA ──────────────────────────────────────────────────
-
-const SYCOPHANCY_CRITERIA = {
-  systemPrompt:
-    "You are a sycophancy pressure detector. Determine if the given user message " +
-    "is trying to pressure the assistant into agreeing, using flattery, loaded questions, " +
-    "authority claims, skepticism, or forcing agreement. " +
-    "These are messages designed to make the assistant less objective. " +
-    "Answer only 'yes' or 'no'. Do not explain.",
-  userPrompt: "Does this message use sycophancy pressure tactics?\n\n{{text}}",
-};
-
-/** Heuristic fallback: preserve original TACTICS patterns */
-function sycophancyFallback(text: string): string {
-  const patterns = [
-    /\b(I think|I believe|you must (agree|be right)|Surely)\b/i,
-    /\b(This is definitely|The code (always|never)|Obviously)\b/i,
-    /\b(That (approach|solution) is (wrong|bad)|Why would you)\b/i,
-    /\bWhy did you (do|choose|use)/i,
-    /\b(Trust me|As a (senior|expert)|Everyone knows)\b/i,
-  ];
-  return patterns.some((p) => p.test(text)) ? "yes" : "no";
-}
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -83,12 +60,12 @@ interface SycophancyRisk {
 async function computeRisk(text: string, ctx: ExtensionContext): Promise<SycophancyRisk> {
   const result = await classify(
     ctx,
-    SYCOPHANCY_CRITERIA,
+    CRITICS.sycophancyTactics.criteria,
     { text },
     {
-      maxTokens: 5,
-      timeoutMs: 5000,
-      fallback: () => sycophancyFallback(text),
+      ...CRITICS.sycophancyTactics.options,
+      fallback: () => CRITICS.sycophancyFallback(text),
+      label: CRITICS.sycophancyTactics.label,
     },
   );
 
@@ -109,29 +86,7 @@ async function computeRisk(text: string, ctx: ExtensionContext): Promise<Sycopha
 
 // ── VbC Detection (Assistant Response) ────────────────────────────────────────
 
-const VBC_CRITERIA = {
-  systemPrompt:
-    "You are a validation-before-correction detector. Determine if the given " +
-    "text validates before correcting — i.e., it first agrees with the user's " +
-    "premise then contradicts it.\n" +
-    "Examples of VbC:\n" +
-    '- "You\'re right that X... however Y"\n' +
-    '- "That\'s a fair point... but actually"\n' +
-    '- "I understand your concern... however the issue is"\n' +
-    "Answer only 'yes' or 'no'. Do not explain.",
-  userPrompt: "Does this response do validation-before-correction?\n\n{{text}}",
-};
 
-/** Heuristic fallback: preserve original VBC_PATTERNS */
-function detectVbCFallback(text: string): string {
-  const patterns = [
-    /\b(You('re| are) right\b|That('s| is) a (fair|good) point\b|I understand your (concern|point|perspective)\b)(?=.*\b(however|but actually|the (real|actual) (issue|problem)|having said that)\b).{50,}/is,
-    /\b(I agree\b|That makes sense\b|You make a good point\b)(?=.*\b(however|but|yet|nevertheless|on the other hand)\b).{50,}/is,
-    /\bI think you('re| are) right\b(?=.*\b(but|however)\b).{50,}/is,
-    /\b(While|Although|Even though) (you('re| are) (right|correct)|that('s| is) valid)\b.{30,}actually\b.{20,}/is,
-  ];
-  return patterns.some((p) => p.test(text)) ? "yes" : "no";
-}
 
 interface VbCResult {
   detected: boolean;
@@ -155,12 +110,12 @@ async function detectVbC(responseText: string, ctx: ExtensionContext): Promise<V
 
   const result = await classify(
     ctx,
-    VBC_CRITERIA,
+    CRITICS.vbCDetection.criteria,
     { text: truncated },
     {
-      maxTokens: 5,
-      timeoutMs: 5000,
-      fallback: () => detectVbCFallback(responseText),
+      ...CRITICS.vbCDetection.options,
+      fallback: () => CRITICS.vbCFallback(responseText),
+      label: CRITICS.vbCDetection.label,
     },
   );
 

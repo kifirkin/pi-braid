@@ -6,12 +6,28 @@
  */
 import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
 const testDir = resolve(root, "test/runtime");
+
+/** Recursively find all .mjs test files in subdirectories too. */
+function findTests(dir) {
+	const results = [];
+	try {
+		for (const entry of readdirSync(dir, { withFileTypes: true })) {
+			const full = join(dir, entry.name);
+			if (entry.isDirectory()) {
+				results.push(...findTests(full));
+			} else if (entry.name.endsWith(".mjs") && !SKIP.has(entry.name)) {
+				results.push(relative(testDir, full));
+			}
+		}
+	} catch { /* */ }
+	return results;
+}
 
 const SKIP = new Set([
 	"test-all.mjs",           // aggregator, duplicates individual
@@ -19,9 +35,7 @@ const SKIP = new Set([
 	"test-br1-trap-tasks.mjs",  // SLOW — requires API calls, run separately with 300s timeout
 ]);
 
-const tests = readdirSync(testDir)
-	.filter((f) => f.endsWith(".mjs") && !SKIP.has(f))
-	.sort();
+const tests = findTests(testDir).sort();
 
 let passed = 0;
 let failed = 0;

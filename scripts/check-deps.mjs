@@ -251,8 +251,19 @@ for (const f of TEST_FILES) {
   const rel = relative(ROOT, f);
   const content = readFileSync(f, "utf-8");
 
+  // Skip lines that look like test assertions — they contain test data strings,
+  // not deliberate source file references. Only flag lines that use
+  // readFileSync or import-based patterns.
+  const lines = content.split("\n");
   const fileRefs = [...content.matchAll(/["'`](src\/[^"'`]+)["'`]/g)];
   for (const m of fileRefs) {
+    // Get the line for context
+    const lineIndex = content.slice(0, m.index).split("\n").length - 1;
+    const line = lines[lineIndex];
+
+    // Skip if line is inside a test assertion (test data, not real refs)
+    if (/\b(assert|deepEqual|test\(|it\()/.test(line) && !/readFileSync/.test(line)) continue;
+
     const target = join(ROOT, m[1]);
     try {
       statSync(target);
@@ -303,6 +314,86 @@ for (const name of readdirSync(extBase)) {
   }
   if (!hasEntry) {
     issuesStale.push({ type: "missing_extension_entry", file: `src/extensions/${name}`, import: "index.ts" });
+  }
+}
+
+// ── API surface drift: tool registration consistency ───────────────────────────
+
+/**
+ * Validate that tool registrations across all extensions/contrib are consistent.
+ * Checks for:
+ *   1. Duplicate tool names (two extensions registering the same tool)
+ *   2. Tools with empty/minimal descriptions
+ *   3. Tools with no parameters schema
+ */
+const toolDups = [];
+const toolNames = new Map();
+
+for (const f of TS_FILES) {
+  const rel = relative(ROOT, f);
+  const content = readFileSync(f, "utf-8");
+
+  // Find each pi.registerTool({...}) block using brace counting
+  let idx = 0;
+  while (idx < content.length) {
+    const regStart = content.indexOf("pi.registerTool({", idx);
+    if (regStart === -1) break;
+
+    // Find closing brace accounting for nesting
+    let depth = 1;
+    let i = regStart + "pi.registerTool({".length;
+    while (i < content.length && depth > 0) {
+      if (content[i] === "{") depth++;
+      else if (content[i] === "}") depth--;
+      i++;
+    }
+    const block = content.slice(regStart, i);
+    idx = i;
+
+    // Extract name
+    const nameMatch = block.match(/name:\s*["']([^"']+)["']/);
+    if (!nameMatch) continue;
+    const name = nameMatch[1];
+
+    // Check for duplicate
+    if (toolNames.has(name)) {
+      const existing = toolNames.get(name);
+      toolDups.push({ name, file1: existing.file, file2: rel });
+      continue;
+    }
+
+    // Extract description
+    const descMatch = block.match(/description:\s*["']([^"']*)["']/);
+    const hasGoodDesc = descMatch ? descMatch[1].length > 10 : false;
+
+    // Check if parameters property exists
+    const hasParams = /\bparameters\b/.test(block);
+
+    toolNames.set(name, { file: rel, hasGoodDesc, hasParams });
+  }
+}
+
+// Report issues
+for (const dup of toolDups) {
+  issuesBoundary.push({
+    type: "duplicate_tool_name",
+    file: dup.file1,
+    import: `"${dup.name}" also registered in ${dup.file2}`,
+    resolved: dup.file2,
+    from: dup.file1,
+    to: dup.file2,
+  });
+}
+
+// Null-op just to track counts; no gate failures — this is advisory
+// but can be escalated to warnings later.
+// Tracked in `issuesStale` so they appear in output.
+for (const [name, info] of toolNames) {
+  if (!info.hasGoodDesc) {
+    issuesStale.push({ type: "short_tool_description", file: info.file, import: `"${name}" description` });
+  }
+  if (!info.hasParams && !info.file.includes("contrib/")) {
+    issuesStale.push({ type: "missing_tool_params", file: info.file, import: `"${name}" no parameters` });
   }
 }
 

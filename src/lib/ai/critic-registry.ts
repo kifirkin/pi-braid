@@ -42,7 +42,10 @@ export interface CriticDef {
   label?: string;
 }
 
-// ── Legacy heuristic helper (shared by fallbacks below) ────────────────────
+// ── Legacy heuristic helpers (shared by fallbacks below) ────────────────────
+
+/** Shared verb-extraction regex used by entity-extraction heuristic fallback. */
+export const ENTITY_VERBS = /\b(is|was|will|can|does|has|should|must|returns|takes|uses|creates|handles|supports|needs|exports|works|fails|validates|initializes|configures|implements|generates|deploys)\b/i;
 
 export const STOP_WORDS_LEGACY = new Set([
   "the",
@@ -726,8 +729,73 @@ export const CRITICS = {
 
   /** Legacy fallback for entity extraction. */
   entityExtractionFallback(sentence: string): string {
-    const VERBS = /\b(is|was|will|can|does|has|should|must|returns|takes|uses|creates|handles|supports|needs|exports|works|fails|validates|initializes|configures|implements|generates|deploys)\b/i;
-    return VERBS.test(sentence) ? "yes" : "no";
+    return ENTITY_VERBS.test(sentence) ? "yes" : "no";
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Sycophancy Detection
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Detect if a user message uses sycophancy pressure tactics:
+   * flattery, loaded questions, authority claims, forced agreement.
+   */
+  sycophancyTactics: {
+    label: "Sycophancy Tactics",
+    criteria: {
+      systemPrompt:
+        "You are a sycophancy pressure detector. Determine if the given user message " +
+        "is trying to pressure the assistant into agreeing, using flattery, loaded questions, " +
+        "authority claims, skepticism, or forcing agreement. " +
+        "These are messages designed to make the assistant less objective. " +
+        "Answer only 'yes' or 'no'. Do not explain.",
+      userPrompt: "Does this message use sycophancy pressure tactics?\n\n{{text}}",
+    },
+    options: { maxTokens: 5, timeoutMs: 5000 },
+  } satisfies CriticDef,
+
+  /** Legacy fallback for sycophancy tactics detection. */
+  sycophancyFallback(text: string): string {
+    const patterns = [
+      /\b(I think|I believe|you must (agree|be right)|Surely)\b/i,
+      /\b(This is definitely|The code (always|never)|Obviously)\b/i,
+      /\b(That (approach|solution) is (wrong|bad)|Why would you)\b/i,
+      /\bWhy did you (do|choose|use)/i,
+      /\b(Trust me|As a (senior|expert)|Everyone knows)\b/i,
+    ];
+    return patterns.some((p) => p.test(text)) ? "yes" : "no";
+  },
+
+  /**
+   * Detect validation-before-correction (VbC) in assistant responses:
+   * agreeing with the user's premise before correcting it.
+   */
+  vbCDetection: {
+    label: "VbC Detection",
+    criteria: {
+      systemPrompt:
+        "You are a validation-before-correction detector. Determine if the given " +
+        "text validates before correcting — i.e., it first agrees with the user's " +
+        "premise then contradicts it.\n" +
+        "Examples of VbC:\n" +
+        '- "You\'re right that X... however Y"\n' +
+        '- "That\'s a fair point... but actually"\n' +
+        '- "I understand your concern... however the issue is"\n' +
+        "Answer only 'yes' or 'no'. Do not explain.",
+      userPrompt: "Does this response do validation-before-correction?\n\n{{text}}",
+    },
+    options: { maxTokens: 5, timeoutMs: 5000 },
+  } satisfies CriticDef,
+
+  /** Legacy fallback for VbC detection. */
+  vbCFallback(text: string): string {
+    const patterns = [
+      /\b(You('re| are) right\b|That('s| is) a (fair|good) point\b|I understand your (concern|point|perspective)\b)(?=.*\b(however|but actually|the (real|actual) (issue|problem)|having said that)\b).{50,}/is,
+      /\b(I agree\b|That makes sense\b|You make a good point\b)(?=.*\b(however|but|yet|nevertheless|on the other hand)\b).{50,}/is,
+      /\bI think you('re| are) right\b(?=.*\b(but|however)\b).{50,}/is,
+      /\b(While|Although|Even though) (you('re| are) (right|correct)|that('s| is) valid)\b.{30,}actually\b.{20,}/is,
+    ];
+    return patterns.some((p) => p.test(text)) ? "yes" : "no";
   },
 } as const;
 

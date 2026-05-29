@@ -284,7 +284,17 @@ export class CognitiveMemory {
 
   async recall(
     query: string,
-    options?: { type?: CognitiveMemoryType; limit?: number; tags?: string[] },
+    options?: {
+      type?: CognitiveMemoryType;
+      limit?: number;
+      tags?: string[];
+      /** Boost memories tagged with this project path (provenance). */
+      currentProject?: string;
+      /** Penalize memories from a different session (cross-session contamination guard). */
+      currentSessionId?: string;
+      /** Number of times a memory was accessed before — higher = more useful. */
+      accessBoost?: number;
+    },
   ): Promise<Array<{ memory: CognitiveMemoryEntry; relevance: number }>> {
     const lowerQuery = query.toLowerCase();
     const queryWords = lowerQuery.split(/\s+/).filter((w) => w.length > 2);
@@ -306,7 +316,7 @@ export class CognitiveMemory {
         if (lowerQuery.includes(tag.toLowerCase())) matches += 2;
       }
 
-      const relevance = matches * (0.5 + memory.utility * 0.5);
+      let relevance = matches * (0.5 + memory.utility * 0.5);
       if (relevance > 0) {
         // Freshness scoring: penalize stale memories.
         // Half-life of 7 days (604800000ms) — after 7 days, relevance decays by 50%.
@@ -314,7 +324,23 @@ export class CognitiveMemory {
         const ageMs = Date.now() - memory.timestamp;
         const HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000;
         const freshnessFactor = Math.pow(0.5, ageMs / HALF_LIFE_MS);
-        const adjustedRelevance = relevance * (0.4 + 0.6 * freshnessFactor);
+        let adjustedRelevance = relevance * (0.4 + 0.6 * freshnessFactor);
+
+        // Context-aware boosts
+        if (options?.currentProject && memory.tags.some((t) => t.includes(options.currentProject!))) {
+          adjustedRelevance *= 1.3; // +30% for same-project memories
+        }
+        if (options?.currentSessionId && memory.context?.error) {
+          // Memories with error context from the current session are highly relevant
+          adjustedRelevance *= 1.2;
+        }
+        if (memory.accessCount > (options?.accessBoost ?? 5)) {
+          adjustedRelevance *= 1.15; // +15% for frequently accessed (high utility)
+        }
+        if (memory.type === "error" || memory.type === "goal") {
+          adjustedRelevance *= 1.1; // +10% for error/goal memories (operationally important)
+        }
+
         results.push({ memory, relevance: adjustedRelevance });
       }
     }
@@ -356,6 +382,19 @@ export class CognitiveMemory {
       await saveMemory(this.memoryStore);
     }
     return memory;
+  }
+
+  /** Synchronous getById for consolidation operations (no side-effects). */
+  getByIdSync(id: string): CognitiveMemoryEntry | undefined {
+    return this.findById(id);
+  }
+
+  /** Delete a memory by ID. Used during consolidation to remove merged entries. */
+  deleteById(id: string): boolean {
+    const idx = this.findIndexById(id);
+    if (idx === -1) return false;
+    this.memoryStore.memories.splice(idx, 1);
+    return true;
   }
 
   getAll(limit = 20): CognitiveMemoryEntry[] {

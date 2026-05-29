@@ -290,6 +290,16 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
       ),
       source: Type.Optional(Type.String({ description: "Where this came from" })),
       ttl: Type.Optional(Type.Number({ description: "Time-to-live in milliseconds", minimum: 0 })),
+      consolidateWith: Type.Optional(
+        Type.Array(Type.String(), {
+          description: "IDs of existing memories to merge into this one (consolidation/merge)",
+        }),
+      ),
+      linkedMemories: Type.Optional(
+        Type.Array(Type.String(), {
+          description: "IDs of related memories to create bidirectional links with",
+        }),
+      ),
     }),
     execute: async (
       _toolCallId: string,
@@ -300,11 +310,33 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
     ): Promise<AgentToolResult<{ id?: string; stored: boolean }>> => {
       await initPromise;
       try {
-        const m = await memory.store(params.content, params.memoryType as CognitiveMemoryType, {
+        // Build linked-memory relations from consolidate_with + linkedMemories
+        const related: Array<{ id: string; type: "related" | "fixes" | "supersedes" | "example"; auto: boolean }> = [];
+        if (params.linkedMemories) {
+          for (const id of params.linkedMemories) {
+            related.push({ id, type: "related", auto: false });
+          }
+        }
+
+        // Consolidation: merge consolidateWith memories into new content, then delete originals
+        let consolidatedContent = params.content;
+        if (params.consolidateWith) {
+          for (const id of params.consolidateWith) {
+            const existing = memory.getByIdSync(id);
+            if (existing) {
+              const sep = consolidatedContent.endsWith(".") ? " " : ". ";
+              consolidatedContent += `${sep}[merged from: ${existing.content.slice(0, 500)}]`;
+              memory.deleteById(id);
+            }
+          }
+        }
+
+        const m = await memory.store(consolidatedContent, params.memoryType as CognitiveMemoryType, {
           tags: params.tags,
           importance: params.importance,
           source: params.source,
           ttl: params.ttl,
+          related: related.length > 0 ? related : undefined,
         });
 
         // When storing episodic type, also add to three-memory-stores
@@ -317,8 +349,8 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
             );
             addEpisode(
               threeMem,
-              params.content.slice(0, 300),
-              params.content,
+              consolidatedContent.slice(0, 300),
+              consolidatedContent,
               "partial",
               [],
               params.tags ?? [],
@@ -347,6 +379,47 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
     },
   });
 
+  // ── Recency filtering helpers ────────────────────────────────────────────
+
+  /** Parse a since/until value into a Unix timestamp (ms), or undefined if invalid. */
+  function parseTimeFilter(value: string | undefined): number | undefined {
+    if (!value) return undefined;
+    const iso = Date.parse(value);
+    if (!isNaN(iso)) return iso;
+    const relMatch = value.match(/^(\d+)([hdm])$/);
+    if (relMatch) {
+      const num = parseInt(relMatch[1], 10);
+      const unit = relMatch[2];
+      const multipliers = { h: 3_600_000, d: 86_400_000, m: 60_000 };
+      return Date.now() - num * (multipliers[unit as keyof typeof multipliers]);
+    }
+    return undefined;
+  }
+
+  /** Build a human-readable relevance_reason string with boost factors. */
+  function relevanceReason(r: {
+    memory: { type: string; tags: string[]; utility: number; timestamp: number; accessCount: number };
+    relevance: number;
+    currentProject?: string;
+  }): string {
+    const parts: string[] = [];
+    const ageMs = Date.now() - r.memory.timestamp;
+    if (ageMs < 86_400_000) parts.push("fresh");
+    if (r.relevance > 0.8) parts.push("high-match");
+    else if (r.relevance > 0.4) parts.push("moderate-match");
+    else parts.push("low-match");
+    if (r.memory.utility > 0.7) parts.push("high-utility");
+    if (r.currentProject && r.memory.tags.some((t) => t.includes(r.currentProject!))) {
+      parts.push("same-project");
+    }
+    if (r.memory.accessCount > 5) parts.push("frequent");
+    if (r.memory.type === "error" || r.memory.type === "goal") {
+      parts.push("operational");
+    }
+    if (r.memory.tags.length > 0) parts.push(`tagged:${r.memory.tags.slice(0, 2).join(",")}`);
+    return parts.join(", ");
+  }
+
   pi.registerTool({
     name: "memory_recall",
     label: "Recall Memory",
@@ -370,6 +443,12 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
       ),
       limit: Type.Optional(Type.Number({ default: 5 })),
       tags: Type.Optional(Type.Array(Type.String())),
+      since: Type.Optional(
+        Type.String({ description: "ISO-8601 timestamp or relative string like '7d' or '24h' — only return memories stored after this time" }),
+      ),
+      until: Type.Optional(
+        Type.String({ description: "ISO-8601 timestamp or relative string like '7d' or '24h' — only return memories stored before this time" }),
+      ),
     }),
     execute: async (
       _toolCallId: string,
@@ -377,15 +456,36 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
       _signal,
       _onUpdate,
       ctx,
-    ): Promise<AgentToolResult<{ count: number }>> => {
+    ): Promise<AgentToolResult<{ count: number; relevanceReasons?: Array<{ id: string; reason: string; relevance: number }> }>> => {
       await initPromise;
       const type =
         params.memoryType === "all" ? undefined : (params.memoryType as CognitiveMemoryType);
+      const currentProject = typeof ctx?.cwd === "string" ? ctx.cwd : undefined;
+      let sessionId: string | undefined;
+      try { sessionId = ctx?.sessionManager?.getSessionId?.(); } catch { /* stale ctx */ }
       const results = await memory.recall(params.query, {
         type,
         limit: params.limit,
         tags: params.tags,
+        currentProject,
+        currentSessionId: sessionId,
+        accessBoost: 5,
       });
+
+      // Apply since/until time filters post-recall
+      const since = parseTimeFilter(params.since);
+      const until = parseTimeFilter(params.until);
+      const filteredResults = results.filter((r) => {
+        if (since && r.memory.timestamp < since) return false;
+        if (until && r.memory.timestamp > until) return false;
+        return true;
+      });
+
+      // Add relevance_reason to each result
+      const annotatedResults = filteredResults.map((r) => ({
+        ...r,
+        relevanceReason: relevanceReason({ ...r, currentProject }),
+      }));
 
       // Cross-search three-memory-stores episodes
       let episodeResults: Array<{
@@ -421,24 +521,24 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
       }
 
       // Add evidence to pool (Task 3b)
-      if (results.length > 0 && ctx) {
-        for (const r of results.slice(0, 3)) {
+      if (filteredResults.length > 0 && ctx) {
+        for (const r of filteredResults.slice(0, 3)) {
           addEvidence(ctx, r.memory.content, "memory", r.memory.content, r.relevance);
         }
       }
 
       // Build merged output
       const lines: string[] = [];
-      if (results.length > 0) {
-        lines.push(`Found ${results.length} semantic memories:`);
-        for (const r of results.slice(0, params.limit ?? 5)) {
+      if (annotatedResults.length > 0) {
+        lines.push(`Found ${annotatedResults.length} semantic memories:`);
+        for (const r of annotatedResults.slice(0, params.limit ?? 5)) {
           lines.push(
-            `  [${r.memory.type}] ${r.memory.content.slice(0, 300)}... (relevance: ${r.relevance.toFixed(1)}, id: ${r.memory.id})`,
+            `  [${r.memory.type}] ${r.memory.content.slice(0, 300)}... (${r.relevanceReason}, id: ${r.memory.id})`,
           );
         }
       }
       if (episodeResults.length > 0) {
-        if (lines.length > 0 && results.length > 0) lines.push("");
+        if (lines.length > 0 && filteredResults.length > 0) lines.push("");
         lines.push(`Found ${episodeResults.length} related episodes:`);
         for (const ep of episodeResults) {
           const icon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
@@ -454,7 +554,14 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
 
       return {
         content: [{ type: "text", text: lines.join("\n") }],
-        details: { count: results.length + episodeResults.length },
+        details: {
+          count: annotatedResults.length + episodeResults.length,
+          relevanceReasons: annotatedResults.slice(0, params.limit ?? 5).map((r) => ({
+            id: r.memory.id,
+            reason: r.relevanceReason,
+            relevance: Math.round(r.relevance * 100) / 100,
+          })),
+        },
       };
     },
   });

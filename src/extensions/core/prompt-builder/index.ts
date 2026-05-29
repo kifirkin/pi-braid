@@ -75,6 +75,14 @@ const SURGICAL_PRECISION = `Make minimal, targeted changes. Read shared utilitie
 // Budget awareness: define success criteria, loop until verified, checkpoint progress
 const BUDGET_AWARENESS = `Define success criteria before execution. Verify against them. Checkpoint progress at significant steps.`;
 
+// Compaction survival: write structured session memory for post-compaction continuity
+// Inspired by Agent Zero's "prompt invariant" concept — instructions that survive
+// compaction because they live in tool-backed surfaces (scratchpad, task tool).
+// The key insight: after compaction, the agent retains structured data (scratchpad,
+// tasks) but loses the conversational context that gave it meaning. Writing entries
+// with enough self-contained detail solves this.
+const COMPACTION_SURVIVAL = `Keep your scratchpad (goal, plan, decisions, key learnings) and task list detailed enough that a future you could pick up your work cold. That future you is you, after the conversation compresses. Include file paths and reasoning so each entry is self-contained.`;
+
 // ── Interaction Style (single declarative sentence) ───────────────────────
 const INTERACTION_STYLE = `You provide concise, production-quality solutions. You focus on correctness over verbosity.`;
 
@@ -640,6 +648,9 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     parts.push(EPISTEMIC_STABILITY);
     parts.push(SURGICAL_PRECISION);
     parts.push(BUDGET_AWARENESS);
+    // 1b. Compaction survival invariant — scratchpad + tasks must be self-contained
+    //     so the agent can recover context after conversation compression
+    parts.push(COMPACTION_SURVIVAL);
 
     // 2. Skills
     if (hasRead) {

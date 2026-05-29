@@ -20,7 +20,7 @@
 import { callLlm } from "../ai/llm-call.js";
 import { getExtensionState } from "../state/extension-state.js";
 import { classify } from "../ai/text-classifier.js";
-import { CRITICS } from "../ai/critic-registry.js";
+import { CRITICS, ENTITY_VERBS } from "../ai/critic-registry.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -191,9 +191,7 @@ function entityClaimFromSentence(
 ): void {
   if (sentence.length < 15) return;
 
-  const VERBS = /\b(is|was|will|can|does|has|should|must|returns|takes|uses|creates|handles|supports|needs|exports|works|fails|validates|initializes|configures|implements|generates|deploys)\b/i;
-
-  const verbMatch = sentence.match(VERBS);
+  const verbMatch = sentence.match(ENTITY_VERBS);
   if (!verbMatch || verbMatch.index === undefined) return;
 
   const entity = sentence.slice(0, verbMatch.index).replace(/^(the\s+)/i, "").trim().toLowerCase();

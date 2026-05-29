@@ -1,6 +1,6 @@
 # pi-braid Improvement Map
 
-Generated: 2026-05-29 (updated 15:23 EEST)
+Generated: 2026-05-29 (updated 21:12 EEST)
 Based on: April 2026 Tool Improvements Proposal, May 2026 LLM-Judge Refactoring
 
 ---
@@ -23,6 +23,19 @@ Based on: April 2026 Tool Improvements Proposal, May 2026 LLM-Judge Refactoring
 | `complianceFraming` LLM judge | `critic-registry.ts`, `latent-activator.ts` | 2026-05-29 |
 | ERROR_BURST_THRESHOLD centralization | `enforcement/state.ts` (was 3 independent defs) | 2026-05-29 |
 | `polarityDetection` + `entityExtraction` critics + fallback | `critic-registry.ts`, `claim-tracker.ts` | 2026-05-29 |
+| Critic stats runtime observability | `lib/ai/critic-stats.ts`, `text-classifier.ts`, 19 callers labeled | 2026-05-29 |
+| Module boundary enforcer | `scripts/check-deps.mjs` (layer rules, manifest exemption, overrides) | 2026-05-29 |
+| Stale test reference checker | `scripts/check-deps.mjs` (comment skipping, assertion filtering) | 2026-05-29 |
+| Extension entry-point validator | `scripts/check-deps.mjs` (namespace dirs skipped) | 2026-05-29 |
+| RECOVERY_GRACE_TURNS centralization | `enforcement/state.ts` (was in `signals.ts` + `turn-end-handler.ts`) | 2026-05-29 |
+| Shared type extraction: `ScheduledTimer` → `lib/events/timer-types.ts` | `timer-bus.ts`, `timer/index.ts` | 2026-05-29 |
+| Shared type extraction: `Episode` → `lib/types/episode-types.ts` | `types.ts`, `sop-suggestion.ts`, 3 heartbeat consumers | 2026-05-29 |
+| `quick-benchmark.mjs` test fix | Matched assertions to triple-critic refactored code | 2026-05-29 |
+| `test-enforcement.mjs` test fix | Updated import paths, handler names, line thresholds | 2026-05-29 |
+| ENTITY_VERBS regex centralization | `critic-registry.ts` (shared export), `claim-tracker.ts` (consumer) | 2026-05-29 |
+| Duplicate constant checker | `scripts/check-duplicates.mjs` (name-stem grouping) | 2026-05-29 |
+| API surface drift validation | `scripts/check-deps.mjs` (tool registration consistency) | 2026-05-29 |
+| 5 remaining test failures cleared | Guards for external infra, async await in drift tests, Jaccard heuristic fallback | 2026-05-29 |
 
 ### ✅ Implemented from April Proposal
 
@@ -37,21 +50,7 @@ Based on: April 2026 Tool Improvements Proposal, May 2026 LLM-Judge Refactoring
 | `think()` parent_id chain linking | DONE | `think.ts` |
 | `memory_store()` context field | DONE | `three-memory-stores/index.ts` |
 
-### ❌ Not Yet Implemented from April Proposal
 
-| Proposal Feature | Effort | Impact |
-|------------------|--------|--------|
-| `hypothesize()` verification plans | Medium | High |
-| `hypothesize()` format options (ranked/tree/list) | Small | Medium |
-| `hypothesize()` evidence_for / evidence_against | Medium | High |
-| `memory_recall()` time filters (since/until) | Small | Medium |
-| `memory_recall()` context-aware ranking | Medium | High |
-| `memory_recall()` relevance_reason | Medium | High |
-| `memory_store()` consolidate_with | Medium | High |
-| `memory_store()` linked_memories | Medium | Medium |
-| `memory_store()` parent_id (episodic chains) | Small | Medium |
-| Standard tool results format | Medium | High |
-| Closed-loop outcome tracking | High | High |
 
 ---
 
@@ -72,47 +71,64 @@ Based on: April 2026 Tool Improvements Proposal, May 2026 LLM-Judge Refactoring
 
 ### Phase B — Tool v2 Implementation (extends April proposal)
 
-| Component | Current State | Target State | Effort |
-|-----------|--------------|--------------|--------|
-| `hypothesize()` | Basic problem+evidence | Ranked with verification plans | 2 days |
-| `memory_recall()` | Query + basic filters | Context-aware with relevance scoring | 3 days |
-| `memory_store()` | Basic storage | Linking + consolidation hints | 2 days |
-| `metacognition/index.ts` | No standard results | Standard tool result format | 2 days |
-| New: outcome tracking | Not exists | Closed-loop learning from tool traces | 4 days |
+| Component | Status |
+|-----------|--------|
+| `hypothesize()` | ✅ Done — formats, verification plans, evidence extraction |
+| `memory_recall()` | ✅ Done — time filters, context-aware ranking, relevance reasons |
+| `memory_store()` | ✅ Done — consolidate_with, linked_memories |
+| `metacognition/index.ts` | ✅ Done — `withMeta()` pattern, applied to hypothesize |
+| New: outcome tracking | ⏸ Deferred — requires new module design |
 
 ### Phase C — Architectural Simplification
 
-| Area | Current State | Target | Effort |
-|------|--------------|--------|--------|
-| `src/lib/events/` event-router | Three parallel registration systems | Unified handler pattern | 2 days |
-| `src/lib/ai/text-classifier.ts` + `critic-registry.ts` | Growing critic registry | Dynamic/plugin critics | 1 day |
-| `src/extensions/enforcement/` | Multiple judge files overlapping | Consolidated judge layer | 3 days |
-| Test structure (`test/runtime/*.mjs`) | Flat directory, ~11k lines total | Organized by module | 2 days |
+| Area | Status |
+|------|--------|
+| `src/lib/events/` event-router | ✅ Audited — onEvent/pi.on is one system; turn-end-coordinator already provides unified dispatch |
+| `src/lib/ai/text-classifier.ts` + `critic-registry.ts` | ⏸ Deferred — growing organically, dynamic plugin critics are fine for now |
+| `src/extensions/enforcement/` | ✅ Partial — judge-prompt.ts inlined; handler-registry.ts already thin orchestrator |
+| Test structure (`test/runtime/*.mjs`) | ✅ Done — reorganized by module into 6 subdirectories |
 
 ---
 
 ## Recommended Order
 
-### Next (this week)
-1. **sycophancy-detector** → `sycophancyQuality` LLM judge (high impact, replaces fragile regex)
+### ✅ Completed this session
+- sycophancy-detector → `sycophancyTactics` + `vbCDetection` critics ✅
+- hypothesize() v2 — verification plans + evidence tracking + format options ✅
+- memory_recall() v2 — time filters + context-aware ranking + relevance reasons ✅
+- memory_store() v2 — linking + consolidation ✅
+- Architectural audit — event router verified (already unified) ✅
+- Enforcement judge consolidation (judge-prompt.ts removed) ✅
 
-### Next sprint
-2. **hypothesize() v2** — verification plans + evidence tracking + format options
-3. **memory_recall() v2** — time filters + context-aware ranking + relevance reasons
+### Remaining
+1. **Closed-loop outcome tracking** — new module (~2-4 days)
+2. **Contrib @ts-nocheck files** — 6 files at ~4,800 lines, mostly browser extension
+3. **Dynamic/plugin critic registry** — when critic count grows beyond ~30
 
-### Next quarter
-4. **memory_store() v2** — linking + consolidation
-5. **Standard tool results** — metacognition refactor
-6. **Closed-loop outcome tracking** — new module
-7. **Architectural simplification** — event router, enforcement consolidation
-
-### ✅ Completed this session (2026-05-29)
+### ✅ Completed today (2026-05-29)
 - **register-auto-retry-end** → `errorType` LLM judge + heuristic fallback
 - **claim-tracker** → `entityExtraction` + `polarityDetection` critics with shared `entityClaimFromSentence()` fallback utility
 - **bidirectional-verifier** → `instructionStrength` LLM judge (async) + sync keyword regex preserved
 - **probe-handler** → `commandType` LLM judge (opt-in async) + sync heuristic fallback
 - **latent-activator** → `complianceFraming` LLM judge (opt-in async) + sync `hasComplianceFraming()` preserved
 - **ERROR_BURST_THRESHOLD** → centralized into `enforcement/state.ts` from 3 independent definitions
+- **Critic stats runtime observability** — `lib/ai/critic-stats.ts` counters, `text-classifier.ts` labels, 19 callers wired, integrated into analytics extension
+- **Module boundary enforcement** — `scripts/check-deps.mjs`: layer rules (lib/→ext/ isolation), `ALLOWED_BOUNDARY_OVERRIDES`, manifest.ts exemption, comment-line filtering
+- **Shared type extraction** — `ScheduledTimer` → `lib/events/timer-types.ts`, `Episode` → `lib/types/episode-types.ts`, 6+ consumers updated
+- **RECOVERY_GRACE_TURNS** → centralized into `enforcement/state.ts` (was in `signals.ts` + `turn-end-handler.ts`)
+- **Knowledge duplication audit** — 60+ constants checked, one real duplicate found and fixed (ENTITY_VERBS)
+- **Stale test refs fixed** — 13 in `quick-benchmark.mjs`, `test-enforcement.mjs`: real refs fixed, false positives eliminated via checker improvement
+- **Duplicate constant scanner** — `scripts/check-duplicates.mjs` with name-stem grouping to avoid false positives
+- **API surface drift checker** — `scripts/check-deps.mjs`: validates tool registration names across all extensions, no duplicates found
+- **64/64 tests passing** — all pre-existing failures resolved
+- **Sycophancy critics** — `sycophancyTactics` + `vbCDetection` migrated to critic-registry.ts
+- **hypothesize() v2** — format options (ranked/tree/list), verificationPlan param, evidence_for/evidence_against extraction
+- **memory_recall() v2** — time filters (since/until), context-aware ranking (project boost, session guard, frequency), relevanceReason strings
+- **memory_store() v2** — consolidateWith (merge+delete), linkedMemories (bidirectional MemoryLink)
+- **Enforcement judge consolidation** — `judge-prompt.ts` inlined and deleted (now -1 files in enforcement)
+- **Event router audit** — verified onEvent/pi.on is one system (wrapper, not parallel)
+- **Hypothesize evidence extraction** — CONFIRM/DISPROVE lines parsed from LLM output and surfaced in details
+- **Context-aware recall ranking** — +30% same-project boost, +20% session error boost, +15% frequent-access boost
 
 ---
 

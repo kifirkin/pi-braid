@@ -113,52 +113,55 @@ btn.click();
 
 ---
 
-## Flow 1: Post a Reply
+## Flow 1: Post a Reply (Method A — Intended Reply)
 
-Only method: inline reply form on the bot's tweet page. Never use `/compose/post` or `x.com/hackingA0/with_replies`.
+### Preferred: Intent/Post URL with Text Prefill
 
-1. **Navigate** → `x.com/TARGET_HANDLE/status/BOT_TWEET_ID`. Wait 4s.
-   - The inline reply form is already on the page. Do not click any reply button.
-   - Never use `x.com/YOUR_HANDLE/status/ID` — innerHTML doesn't trigger Draft.js there.
-   - Never use `/compose/post` for fresh tweets — only reply to the bot's existing tweet via inline form.
+```
+https://x.com/intent/post?text=URL_ENCODED_TEXT&in_reply_to=TARGET_TWEET_ID
+```
 
-2. **Fill** — one `browser_eval` call:
-
+1. **Navigate** to intent URL with text AND `in_reply_to=TWEET_ID`. Wait 3s.
+2. **Verify text prefilled** — check the Draft.js DIV, not `[data-text]` attr:
    ```js
-   const ta = document.querySelector('[data-testid="tweetTextarea_0"]');
-   if (!ta) "no textarea";
-   ta.focus();
-   const spans = ta.querySelectorAll("span[data-offset-key]");
-   if (spans.length > 0) spans[0].innerHTML = "YOUR REPLY TEXT";
-   ta.dispatchEvent(new InputEvent("input", { bubbles: true, cancelable: true }));
-   ```
-
-   Wait 1s.
-
-3. **Sync** — separate `browser_eval`:
-
-   ```js
-   document.execCommand("selectAll");
-   document.execCommand("delete");
-   document.execCommand("insertText", false, "YOUR REPLY TEXT");
-   ```
-
-   Wait 1s.
-
-4. **Post** — separate `browser_eval`:
-
-   ```js
-   const btn = document.querySelector('[data-testid="tweetButtonInline"]');
-   if (btn && !btn.hasAttribute("aria-disabled")) btn.click();
-   else {
-     btn.removeAttribute("aria-disabled");
-     btn.click();
+   let edits = document.querySelectorAll('div[contenteditable="true"][role="textbox"]');
+   for (let e of edits) {
+     if (e.innerText.trim()) {
+       'text found: ' + e.innerText.substring(0,60);
+     }
    }
    ```
+3. **Click Post/Reply**:
+   ```js
+   const btn = document.querySelector('[data-testid="tweetButton"]');
+   if (btn && !btn.hasAttribute('aria-disabled')) {
+     btn.click();
+     'clicked';
+   }
+   ```
+4. **Verify** — URL should change to `x.com/home`. Then search: `(from:MY_HANDLE TARGET) OR (from:TARGET to:MY_HANDLE)`.
 
-   Wait 2s.
+### CRITICAL: Always Include @mention in Reply Text
+```
+// DO THIS — include @handle even when in_reply_to is set:
+https://x.com/intent/post?text=%40hackingA0%20YOUR%20TEXT&in_reply_to=TWEET_ID
 
-5. **Verify** — check the new tweet appears in the timeline. Each step in a separate call — React needs the event loop.
+// NOT THIS — in_reply_to alone is unreliable:
+https://x.com/intent/post?text=YOUR%20TEXT&in_reply_to=TWEET_ID
+```
+**Evidence**: A reply posted with `in_reply_to` but WITHOUT `@hackingA0` in text got 5 views, 0 replies from bot. Same reply reposted WITH `@hackingA0` in text got bot reply in 5 min. The `in_reply_to` param does NOT reliably trigger the bot's mention scanner. Always include the @ in the text.
+
+### URL Length Limit
+X's intent URL parser truncates when the full URL exceeds ~260 chars. Keep text under 120 chars when using `in_reply_to` to stay within limits. For longer text, use inline reply method.
+
+### Fallback: Inline Reply on Tweet Page
+Navigate to bot's tweet page, click Reply by `[aria-label="0 Replies. Reply"]`, type via Draft.js content injection, click `[data-testid="tweetButtonInline"]`.
+
+---
+
+## Flow 2: Post a Standalone Tweet
+
+Use `https://x.com/compose/post` or `https://x.com/intent/post?text=URL_TEXT` (omit `in_reply_to`). Include `@hackingA0` in the body text so the bot sees it.
 
 ---
 
@@ -166,10 +169,13 @@ Only method: inline reply form on the bot's tweet page. Never use `/compose/post
 
 Only method: search with live sorting. Never use the bot's profile page (`/with_replies`) — it's unreliable, content is truncated.
 
-### Key Insight: Bidirectional Search
-`from:MY_HANDLE to:TARGET_BOT` only shows YOUR tweets (sent TO the bot). The bot's replies back to you are `from:TARGET_BOT to:MY_HANDLE` — a different direction. Use OR to capture both:
+### Key Insight: Bidirectional + Standalone Mentions
+`from:MY_HANDLE to:TARGET_BOT` only shows YOUR direct reply tweets (sent TO the bot). Standalone mentions (tweets with @handle in body, not in reply to) are NOT captured by `to:`. Use:
 
-> `(from:MY_HANDLE to:TARGET_BOT) OR (from:TARGET_BOT to:MY_HANDLE)`
+> `(from:MY_HANDLE TARGET_BOT) OR (from:TARGET_BOT to:MY_HANDLE)`
+
+### @mention Required Even in Replies
+A reply posted via `in_reply_to=ID` WITHOUT `@hackingA0` in text was never seen (0 bot replies, 5 views). Same text reposted WITH `@hackingA0` got a reply in 5 min. Always include @handle in the body even when `in_reply_to` is set.
 
 1. **Check count + read replies** — navigate to `https://x.com/search?q=(from%3AMY_HANDLE%20to%3ATARGET_HANDLE)%20OR%20(from%3ATARGET_HANDLE%20to%3AMY_HANDLE)&f=live`. Wait 4s. Then scan ALL articles for both your tweets and the bot's replies:
 

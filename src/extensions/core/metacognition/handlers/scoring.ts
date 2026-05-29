@@ -16,7 +16,11 @@ export interface ScoredHypothesis {
   evidenceScore: number; // 0-1 from evidence pool
   signals: string[];
   evidenceMatches: Array<{ claim: string; source: string; reliability: number; overlap: number }>;
-}
+  /** Parsed "What evidence would CONFIRM" lines from hypotheses output. */
+  evidenceFor?: string[];
+  /** Parsed "What evidence would DISPROVE" lines from hypotheses output. */
+  evidenceAgainst?: string[];
+} 
 
 // ── Heuristic Signals (existing) ────────────────────────────────────────────
 
@@ -133,6 +137,38 @@ function scoreEvidencePool(
   return { score, matches };
 }
 
+// ── Evidence extraction helpers ────────────────────────────────────────────
+
+/** Parse confirm/disprove evidence from a hypothesis block. */
+function extractEvidences(block: string): { evidenceFor: string[]; evidenceAgainst: string[] } {
+  const evidenceFor: string[] = [];
+  const evidenceAgainst: string[] = [];
+
+  const forMatch = block.match(
+    /(?:What evidence would CONFIRM|Evidence.*confirm|To confirm|Confirm).*?\n?([\s\S]*?)(?=\d+\.\s|What evidence would DISPROVE|Evidence.*disprove|To disprove|How to fix|$)/i,
+  );
+  if (forMatch) {
+    forMatch[1]
+      .split(/\n/)
+      .map((l) => l.replace(/^[-*•]\s*/, "").trim())
+      .filter((l) => l.length > 5)
+      .forEach((l) => evidenceFor.push(l));
+  }
+
+  const againstMatch = block.match(
+    /(?:What evidence would DISPROVE|Evidence.*disprove|To disprove).*?\n?([\s\S]*?)(?=\d+\.\s|How to fix|$)/i,
+  );
+  if (againstMatch) {
+    againstMatch[1]
+      .split(/\n/)
+      .map((l) => l.replace(/^[-*•]\s*/, "").trim())
+      .filter((l) => l.length > 5)
+      .forEach((l) => evidenceAgainst.push(l));
+  }
+
+  return { evidenceFor, evidenceAgainst };
+}
+
 // ── Combined Scoring ────────────────────────────────────────────────────────────
 
 function scoreHypothesisBlock(
@@ -143,6 +179,7 @@ function scoreHypothesisBlock(
   const title = llmOutput.split("\n")[0]?.slice(0, 80) ?? "Untitled hypothesis";
   const heuristic = scoreHeuristic(llmOutput, evidence);
   const { score: evidenceScore, matches } = scoreEvidencePool(llmOutput, ctx);
+  const { evidenceFor, evidenceAgainst } = extractEvidences(llmOutput);
 
   // Combined weighted score: 60% heuristic, 40% evidence pool
   const score = heuristic.heuristicScore * 0.6 + evidenceScore * 0.4;
@@ -155,6 +192,8 @@ function scoreHypothesisBlock(
     evidenceScore,
     signals: heuristic.signals,
     evidenceMatches: matches,
+    evidenceFor: evidenceFor.length > 0 ? evidenceFor : undefined,
+    evidenceAgainst: evidenceAgainst.length > 0 ? evidenceAgainst : undefined,
   };
 }
 
@@ -197,9 +236,18 @@ export function scoreHypothesisOutput(
         ? `\n   Evidence: ${s.evidenceMatches.map((m) => `${m.source}:${m.overlap}%`).join(", ")}`
         : "";
 
+    const forLine =
+      s.evidenceFor && s.evidenceFor.length > 0
+        ? `\n   ✅ Confirm: ${s.evidenceFor.slice(0, 2).join("; ")}`
+        : "";
+    const againstLine =
+      s.evidenceAgainst && s.evidenceAgainst.length > 0
+        ? `\n   ❌ Disprove: ${s.evidenceAgainst.slice(0, 2).join("; ")}`
+        : "";
+
     annotated +=
       `${rankEmoji} ${s.title}${badge}\n` +
-      `   Score: ${(s.score * 100).toFixed(0)}% (heuristic: ${(s.heuristicScore * 100).toFixed(0)}% | evidence: ${(s.evidenceScore * 100).toFixed(0)}%)\n` +
+      `   Score: ${(s.score * 100).toFixed(0)}% (heuristic: ${(s.heuristicScore * 100).toFixed(0)}% | evidence: ${(s.evidenceScore * 100).toFixed(0)}%)${forLine}${againstLine}\n` +
       `   Signals: ${s.signals.join(", ") || "none"}${evidenceLine}\n\n`;
   }
 

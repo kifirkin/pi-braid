@@ -37,10 +37,13 @@ export interface DriftCheck {
 export interface DriftDetectorOptions {
   /** Minimum conversation turns before checking */
   minTurns?: number;
+  /** Jaccard similarity threshold for heuristic fallback (0-1). Lower = stricter. */
+  topicThreshold?: number;
 }
 
 const DEFAULT_OPTIONS: Required<DriftDetectorOptions> = {
   minTurns: 3,
+  topicThreshold: 0.15,
 };
 
 /**
@@ -196,9 +199,22 @@ export class TopicDriftDetector {
         reason = "too_short";
       }
     } else {
-      // No ctx available — conservative fallback (no drift)
-      severity = "subtle";
-      reason = "no_task_context";
+      // No ctx available — use Jaccard similarity heuristic
+      const taskWords = new Set(
+        this.taskContext.toLowerCase().split(/[^\w]+/).filter(Boolean),
+      );
+      const currentWords = currentText.toLowerCase().split(/[^\w]+/).filter(Boolean);
+      if (taskWords.size > 0 && currentWords.length > 0) {
+        const intersection = currentWords.filter((w) => taskWords.has(w)).length;
+        const union = new Set([...taskWords, ...currentWords]).size;
+        const jaccard = intersection / union;
+        drifted = jaccard < this.options.topicThreshold;
+        reason = drifted ? `semantic_drift (jaccard=${jaccard.toFixed(2)})` : "on_topic";
+        severity = drifted ? (jaccard < this.options.topicThreshold * 0.5 ? "strong" : "moderate") : "subtle";
+      } else {
+        severity = "subtle";
+        reason = "no_task_context";
+      }
     }
 
     if (drifted) {

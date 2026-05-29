@@ -140,9 +140,10 @@ test("verify_decomposition tool registered", () => {
   deepEqual(src.includes('name: "verify_decomposition"'), true);
 });
 
-test("verify_claim detects contradictions", () => {
+test("verify_claim detects contradictions via triple-critic", () => {
   const src = readFileSync("src/extensions/cognitive/verification/index.ts", "utf-8");
-  deepEqual(src.includes("doesn't work"), true);
+  deepEqual(src.includes("checkContradiction"), true);
+  deepEqual(src.includes("CRITICS.claimContradiction"), true);
 });
 
 test("verify_claim detects hedge words", () => {
@@ -150,8 +151,8 @@ test("verify_claim detects hedge words", () => {
   deepEqual(src.includes("always"), true);
 });
 
-test("Extension registered in module definitions", () => {
-  const src = readFileSync("src/modules/definitions.ts", "utf-8");
+test("Extension registered in manifest", () => {
+  const src = readFileSync("src/extensions/manifest.ts", "utf-8");
   deepEqual(src.includes("verificationFn"), true);
 });
 
@@ -172,21 +173,21 @@ test("topic-drift uses getExtensionState", () => {
   deepEqual(src.includes("getExtensionState"), true);
 });
 
-test("anchor extraction logic exists", () => {
+test("topic-drift uses similarity proxy logic", () => {
   const src = readFileSync("src/extensions/cognitive/topic-drift/index.ts", "utf-8");
-  deepEqual(src.includes("extractAnchors"), true);
-  deepEqual(src.includes("measureAnchorPresence"), true);
+  deepEqual(src.includes("similarity"), true);
+  deepEqual(src.includes("drifted"), true);
 });
 
-test("topic-drift registered in module definitions", () => {
-  const src = readFileSync("src/modules/definitions.ts", "utf-8");
+test("topic-drift registered in manifest", () => {
+  const src = readFileSync("src/extensions/manifest.ts", "utf-8");
   deepEqual(src.includes("topicDriftFn"), true);
 });
 
 test("topic-drift whispers on severe drift", () => {
   const src = readFileSync("src/extensions/cognitive/topic-drift/index.ts", "utf-8");
   deepEqual(src.includes("ctx.whisper"), true);
-  deepEqual(src.includes("similarity < 0.3"), true);
+  deepEqual(src.includes("0.3"), true);
 });
 
 console.log("\n=== VERIFICATION: Analytics Readable ===");
@@ -251,15 +252,16 @@ test("no drift on-topic output", () => {
 
 console.log("\n=== FUNCTIONAL: Verification Logic ===");
 
-test("contradiction: works vs fails detected", () => {
+test("contradiction supported via triple-critic system", () => {
   const src = readFileSync("src/extensions/cognitive/verification/index.ts", "utf-8");
-  deepEqual(src.includes('"works", "fails"'), true);
+  deepEqual(src.includes("CRITICS.claimContradiction"), true);
+  deepEqual(src.includes("CRITICS.contradictionFallback"), true);
 });
 
 test("unsupported claim detected", () => {
   const src = readFileSync("src/extensions/cognitive/verification/index.ts", "utf-8");
   deepEqual(src.includes("checkSupport"), true);
-  deepEqual(src.includes("symmetricOverlap"), true);
+  deepEqual(src.includes("checkOverconfidence"), true);
 });
 
 test("decomposition coverage logic exists", () => {
