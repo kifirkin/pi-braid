@@ -68,6 +68,23 @@ https://x.com/intent/post?text=URL_ENCODED_TEXT&in_reply_to=TARGET_TWEET_ID
 ### Known Issue
 Intent URL sometimes fails to prefill text (especially with `in_reply_to`). **Fix**: Post as standalone (omit `in_reply_to`) — bot still picks up the @mention from mention scan.
 
+### Fallback: Inline Reply on Tweet Page
+When intent/post URL fails to prefill, navigate to the bot's tweet page and reply inline:
+```
+https://x.com/TARGET_HANDLE/status/TWEET_ID
+```
+1. Wait for page to load, click reply button: `[data-testid="reply"]`
+2. Wait 2s for the inline compose to appear
+3. Focus the Draft.js editor and insert text:
+   ```js
+   let compose = document.querySelector('div[contenteditable="true"][role="textbox"]');
+   if (compose) {
+     compose.focus();
+     document.execCommand('insertText', false, '@TARGET_BOT your text here');
+   }
+   ```
+4. Click Reply: `[data-testid="tweetButtonInline"]`
+
 ---
 
 ## Flow 2: Check for Bot Reply
@@ -88,6 +105,57 @@ Search with live sorting. Never use the bot's profile page (`/with_replies`) —
 Navigate to `https://x.com/search?q=from%3ATARGET_HANDLE&f=live` and use `browser_content()` to extract visible text. Shows ALL bot replies to every user.
 
 ---
+
+## Image Attachment
+
+### Method 1: Drag-and-Drop (Most Reliable)
+Generate image and dispatch a drop event on the compose area:
+
+```js
+// Generate canvas, convert to File, dispatch drop
+const blob = await new Promise(resolve => cv.toBlob(resolve, 'image/png'));
+const file = new File([blob], 'image.png', { type: 'image/png' });
+const dt = new DataTransfer();
+dt.items.add(file);
+const ta = document.querySelector('[data-testid="tweetTextarea_0"]');
+const dropZone = ta.closest('[data-testid*="tweet"]') || ta.parentElement;
+dropZone.dispatchEvent(new DragEvent('drop', {
+  dataTransfer: dt, bubbles: true, cancelable: true
+}));
+```
+
+### Method 2: CDP File Injection (Best for Automation)
+Uses `browser_upload_image` tool — injects files at the CDP protocol level, no clipboard/React state issues:
+
+```js
+browser_upload_image(
+  filePath="/path/to/image.png",
+  clickBtn="[aria-label='Add photos or video']"
+)
+```
+
+### Method 3: Clipboard Paste
+Requires clipboard permission once per session:
+
+```js
+await navigator.clipboard.write([
+  new ClipboardItem({ 'image/png': blob })
+]);
+const ta = document.querySelector('[data-testid="tweetTextarea_0"]');
+ta.focus();
+ta.dispatchEvent(new ClipboardEvent('paste', {
+  clipboardData: dt, bubbles: true, cancelable: true
+}));
+```
+
+### Verification
+```js
+const previews = document.querySelectorAll('img[src*="blob:"]');
+const attachments = document.querySelectorAll('[data-testid*="attachment"]');
+// Should be ≥ 1 each
+```
+
+Note: Bot vision is unreliable. Text-only engagement works as well.
 
 ## Troubleshooting
 

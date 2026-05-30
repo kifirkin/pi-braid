@@ -16,6 +16,7 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { callLlm as sharedCallLlm } from "../../lib/ai/llm-call.js";
+import { resolveUtilityModel } from "../../lib/ai/model-resolver.js";
 import type { LlmCallOptions } from "../../lib/ai/llm-call.js";
 
 export type { LlmCallOptions };
@@ -54,7 +55,9 @@ export async function callLlm(
   userPrompt: string,
   options: LlmCallOptions = {},
 ): Promise<{ text: string } | { error: string }> {
-  const model = getJudgeModel(ctx);
+  // Prefer utility model if configured (cheaper, faster for judgment tasks)
+  const utilityModel = resolveUtilityModel(ctx);
+  const model = utilityModel ?? getJudgeModel(ctx);
   if (!model) return { error: "No model available" };
 
   const apiKey = await ctx.modelRegistry.getApiKeyForProvider(model.provider);

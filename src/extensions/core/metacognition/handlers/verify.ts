@@ -16,6 +16,7 @@
 import { Type } from "typebox";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { callLlm } from "../../../../lib/ai/llm-call.js";
+import { resolveUtilityModel } from "../../../../lib/ai/model-resolver.js";
 import { getExtensionState } from "../../../../lib/state/extension-state.js";
 import { createLogger } from "../../../../lib/core/logger.js";
 
@@ -250,7 +251,8 @@ Only report real issues. If everything looks correct, set issues to [].
 Do not invent problems that are not supported by the text.`;
 
   try {
-    if (!ctx.model) {
+    const utilModel = resolveUtilityModel(ctx);
+    if (!ctx.model && !utilModel) {
       // Model unavailable — cannot run LLM verification. Return neutral confidence
       // so the caller's heuristic confidence is not dragged down.
       return {
@@ -259,8 +261,10 @@ Do not invent problems that are not supported by the text.`;
         confidence: 1.0,
       };
     }
-    const apiKey = await ctx.modelRegistry.getApiKeyForProvider(ctx.model.provider);
-    const llmResult = await callLlm(ctx.model, apiKey, "", prompt, {
+    // Prefer utility model (cheaper for verification), fall back to session model
+    const verifyModel = utilModel ?? ctx.model!;
+    const apiKey = await ctx.modelRegistry.getApiKeyForProvider(verifyModel.provider);
+    const llmResult = await callLlm(verifyModel, apiKey, "", prompt, {
       maxTokens: 1024,
       temperature: 0.1,
       signal,

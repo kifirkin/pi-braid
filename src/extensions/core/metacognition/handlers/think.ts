@@ -5,6 +5,7 @@
 import { Type } from "typebox";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { callLlm } from "../../../../lib/ai/llm-call.js";
+import { resolveUtilityModel } from "../../../../lib/ai/model-resolver.js";
 import { getExtensionState } from "../../../../lib/state/extension-state.js";
 import { createLogger } from "../../../../lib/core/logger.js";
 
@@ -442,9 +443,12 @@ export function createThinkTool() {
             .replace("{decision}", decision)
             .replace("{reason}", reason);
 
-          const apiKey = await ctx.modelRegistry.getApiKeyForProvider(ctx.model.provider);
+          // Prefer utility model (cheaper for review), fall back to session model
+          const utilityModel = resolveUtilityModel(ctx);
+          const reviewModel = utilityModel ?? ctx.model;
+          const apiKey = await ctx.modelRegistry.getApiKeyForProvider(reviewModel.provider);
           const llmResult = await callLlm(
-            ctx.model,
+            reviewModel,
             apiKey,
             "You are a sharp, critical thinker who reviews the reasoning of other agents.",
             prompt,

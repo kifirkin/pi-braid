@@ -5,6 +5,7 @@ import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { callLlm } from "../../../../lib/ai/llm-call.js";
+import { resolveUtilityModel } from "../../../../lib/ai/model-resolver.js";
 import { scoreHypothesisOutput } from "./scoring.js";
 import { createLogger } from "../../../../lib/core/logger.js";
 import { withMeta } from "../../../../lib/types/standard-result.js";
@@ -104,9 +105,12 @@ export function createHypothesizeTool(): ToolDefinition<any, any, any> {
       try {
         const prompt = buildPrompt({ problem, evidence, maxHypotheses, format, verificationPlan });
 
-        const apiKey = await ctx.modelRegistry.getApiKeyForProvider(ctx.model.provider);
+        // Prefer utility model (cheaper), fall back to session model
+        const utilityModel = resolveUtilityModel(ctx);
+        const hypoModel = utilityModel ?? ctx.model;
+        const apiKey = await ctx.modelRegistry.getApiKeyForProvider(hypoModel.provider);
         const llmResult = await callLlm(
-          ctx.model,
+          hypoModel,
           apiKey,
           "You are an expert debugging assistant that analyzes problems and generates testable hypotheses.",
           prompt,
