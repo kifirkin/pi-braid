@@ -43,6 +43,27 @@ const CODE_REQUEST_CRITERIA = {
   userPrompt: "Does this ask the assistant to write code? {{text}}",
 };
 
+/** Is this message clear and coherent, or is it confusing and rambling? */
+const CLARITY_CRITERIA = {
+  systemPrompt:
+    "You are a clarity classifier. Determine if the given message is clearly written, " +
+    "coherent, and easy to understand. A clear message has a logical flow and " +
+    "communicates its intent effectively. A confusing message is rambling, " +
+    "contradictory, or hard to follow. Answer only 'yes' or 'no'. Do not explain.",
+  userPrompt: "Is this message clear and coherent? {{text}}",
+};
+
+/** Does this message contain vague or ambiguous requests that need clarification? */
+const AMBIGUITY_CRITERIA = {
+  systemPrompt:
+    "You are an ambiguity classifier. Determine if the given message contains " +
+    "vague, underspecified, or ambiguous requests that would need clarification " +
+    "before the assistant can act effectively. Ambiguous messages use words like " +
+    "'it', 'that thing', 'do the needful' without clear referents, or ask questions " +
+    "that could be interpreted multiple ways. Answer only 'yes' or 'no'. Do not explain.",
+  userPrompt: "Is this message ambiguous or underspecified? {{text}}",
+};
+
 // ── Heuristic Fallbacks (graceful degradation) ───────────────────────────────
 
 /** Characters that indicate code content */
@@ -105,6 +126,38 @@ function isCodeRequestFallback(text: string): string {
   return CODE_REQUEST_PATTERNS.some((p) => p.test(text)) ? "yes" : "no";
 }
 
+/**
+ * Fallback: check clarity heuristically.
+ * Short texts (<10 words) are considered unclear. Very long run-on sentences indicate confusion.
+ */
+function isClearFallback(text: string): string {
+  const words = text.trim().split(/\s+/);
+  if (words.length < 3) return "no";
+  // Check for very long sentences (>50 words without punctuation)
+  const sentences = text.split(/[.!?]+/);
+  for (const s of sentences) {
+    if (s.trim().split(/\s+/).length > 50) return "no";
+  }
+  // Check for contradictory markers
+  const lower = text.toLowerCase();
+  const contradictionCount = (lower.match(/\b(but|however|actually|wait|no\s+(wait|i mean|actually)|on\s+(the\s+)?other\s+hand)/g) || []).length;
+  if (contradictionCount > 2) return "no";
+  return "yes";
+}
+
+/**
+ * Fallback: detect ambiguity via common vague patterns.
+ */
+function isAmbiguousFallback(text: string): string {
+  const lower = text.toLowerCase();
+  const vaguePatterns = [
+    /\b(do the needful|fix it|make it work|handle it|take care of it|you know what i mean)\b/i,
+    /\b(this|that|it)\b.*\b(thing|stuff|part|bit)\b/i,
+    /^\w+$/m,  // single-word messages
+  ];
+  return vaguePatterns.some((p) => p.test(text)) ? "yes" : "no";
+}
+
 // ── Roast Filter ─────────────────────────────────────────────────────────────
 
 export interface RoastResult {
@@ -112,14 +165,20 @@ export interface RoastResult {
   isCode: boolean;
   /** True if the text is well-written — skip polishing. */
   isWellWritten: boolean;
+  /** True if the text is clearly written and coherent. */
+  isClear: boolean;
+  /** True if the text is vague or ambiguous — may need clarification prompt. */
+  isAmbiguous: boolean;
   /** True if the text asks to write code — append anti-slop suffix. */
   isCodeRequest: boolean;
-  /** Lowest-confidence tier across all three checks. */
+  /** Lowest-confidence tier across all checks. */
   tier: "utility" | "session" | "heuristic";
   /** Per-check results for observability. */
   checks: {
     codeHeavy: ClassificationResult;
     wellWritten: ClassificationResult;
+    clarity: ClassificationResult;
+    ambiguity: ClassificationResult;
     codeRequest: ClassificationResult;
   };
 }
@@ -136,55 +195,30 @@ export async function roastInput(text: string, ctx: ExtensionContext): Promise<R
   // Truncate very long text to keep prompt tokens reasonable
   const truncated = text.length > 2000 ? text.slice(0, 2000) + "..." : text;
 
-  const [codeResult, wellWrittenResult, codeRequestResult] = await Promise.all([
-    classify(
-      ctx,
-      CODE_HEAVY_CRITERIA,
-      { text: truncated },
-      {
-        maxTokens: 5,
-        timeoutMs: 5000,
-        fallback: () => isCodeHeavyFallback(text),
-      },
-    ),
-    classify(
-      ctx,
-      WELL_WRITTEN_CRITERIA,
-      { text: truncated },
-      {
-        maxTokens: 5,
-        timeoutMs: 5000,
-        fallback: () => isWellWrittenFallback(text),
-      },
-    ),
-    classify(
-      ctx,
-      CODE_REQUEST_CRITERIA,
-      { text: truncated },
-      {
-        maxTokens: 5,
-        timeoutMs: 5000,
-        fallback: () => isCodeRequestFallback(text),
-      },
-    ),
+  const [codeResult, wellWrittenResult, clarityResult, ambiguityResult, codeRequestResult] = await Promise.all([
+    classify(ctx, CODE_HEAVY_CRITERIA, { text: truncated }, { maxTokens: 5, timeoutMs: 5000, fallback: () => isCodeHeavyFallback(text) }),
+    classify(ctx, WELL_WRITTEN_CRITERIA, { text: truncated }, { maxTokens: 5, timeoutMs: 5000, fallback: () => isWellWrittenFallback(text) }),
+    classify(ctx, CLARITY_CRITERIA, { text: truncated }, { maxTokens: 5, timeoutMs: 5000, fallback: () => isClearFallback(text) }),
+    classify(ctx, AMBIGUITY_CRITERIA, { text: truncated }, { maxTokens: 5, timeoutMs: 5000, fallback: () => isAmbiguousFallback(text) }),
+    classify(ctx, CODE_REQUEST_CRITERIA, { text: truncated }, { maxTokens: 5, timeoutMs: 5000, fallback: () => isCodeRequestFallback(text) }),
   ]);
 
-  // Determine the overall tier (lowest confidence across all three)
-  const tiers = [codeResult.tier, wellWrittenResult.tier, codeRequestResult.tier];
-  const overallTier = tiers.includes("heuristic")
-    ? ("heuristic" as const)
-    : tiers.includes("session")
-      ? ("session" as const)
-      : ("utility" as const);
+  // Determine the overall tier (lowest across all five)
+  const tiers = [codeResult.tier, wellWrittenResult.tier, clarityResult.tier, ambiguityResult.tier, codeRequestResult.tier];
+  const overallTier = tiers.includes("heuristic") ? "heuristic" as const : tiers.includes("session") ? "session" as const : "utility" as const;
 
   return {
     isCode: codeResult.label === "yes",
     isWellWritten: wellWrittenResult.label === "yes",
+    isClear: clarityResult.label === "yes",
+    isAmbiguous: ambiguityResult.label === "yes",
     isCodeRequest: codeRequestResult.label === "yes",
     tier: overallTier,
     checks: {
       codeHeavy: codeResult,
       wellWritten: wellWrittenResult,
+      clarity: clarityResult,
+      ambiguity: ambiguityResult,
       codeRequest: codeRequestResult,
     },
   };

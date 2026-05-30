@@ -19,6 +19,7 @@ import {
   resolveConflict as epResolve,
   tokenOverlap,
 } from "./evidence-pool.js";
+import { classify } from "../ai/text-classifier.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -305,44 +306,63 @@ export function getAllQAs(_ctx: unknown): ConflictQA[] {
 // ── Conflict Resolution Detection ───────────────────────────────────────
 
 /**
- * Keywords that suggest the agent's response addressed a conflict.
- * When found in an assistant message, we attempt to resolve the conflict.
+ * Classification criteria for detecting conflict resolution in agent responses.
+ * Uses classify() three-tier fallback (utility model → session model → heuristics).
  */
-const RESOLUTION_KEYWORDS = [
-  "resolved",
-  "conflict resolved",
-  "the correct answer is",
-  "after further investigation",
-  "sources disagree",
-];
+const RESOLUTION_CRITERIA = {
+  systemPrompt:
+    "You are a resolution classifier for an AI agent's knowledge conflict system. " +
+    "Determine if the given text contains language that RESOLVES a knowledge conflict " +
+    "(deciding which evidence to trust). " +
+    "Answer with exactly one word: 'resolved_for', 'resolved_against', or 'none'. " +
+    "'resolved_for' = text selects and favors one side of a conflict. " +
+    "'resolved_against' = text explicitly rejects or disproves a claim. " +
+    "'none' = text does not resolve any conflict. Do not explain.",
+  userPrompt: "Does this message resolve a knowledge conflict? {{text}}",
+};
 
 /**
- * Check if a response text contains resolution language for a conflict QA.
- * Returns the suspected verdict if resolution keywords detected, null otherwise.
+ * Fallback: keyword-based heuristics for conflict resolution detection.
+ * Preserves the original logic as graceful degradation.
  */
-export function checkResponseForResolution(
-  text: string,
-): "resolved_for" | "resolved_against" | null {
+function resolutionFallback(text: string): string {
   const lower = text.toLowerCase();
-
-  // Check for explicit resolution keywords
-  const containsResolution = RESOLUTION_KEYWORDS.some((kw) => lower.includes(kw));
-  if (!containsResolution) return null;
-
-  // Determine direction from context
+  const keywords = ["resolved", "conflict resolved", "the correct answer is", "after further investigation", "sources disagree"];
+  if (!keywords.some((kw) => lower.includes(kw))) return "none";
   if (
     lower.includes("based on higher reliability source") ||
     lower.includes("the evidence supports") ||
     lower.includes("confirm that")
-  ) {
-    return "resolved_for";
-  }
-  if (lower.includes("evidence does not support") || lower.includes("this claim is incorrect")) {
-    return "resolved_against";
-  }
-
-  // Default to resolved_for when uncertainty is acknowledged but a decision is made
+  ) return "resolved_for";
+  if (lower.includes("evidence does not support") || lower.includes("this claim is incorrect")) return "resolved_against";
   return "resolved_for";
+}
+
+/**
+ * Check if a response text contains resolution language for a conflict QA.
+ * Uses classify() with three-tier fallback.
+ */
+export async function checkResponseForResolution(
+  ctx: ExtensionContext,
+  text: string,
+): Promise<"resolved_for" | "resolved_against" | null> {
+  const truncated = text.length > 2000 ? text.slice(0, 2000) + "..." : text;
+
+  const result = await classify(
+    ctx,
+    RESOLUTION_CRITERIA,
+    { text: truncated },
+    {
+      maxTokens: 5,
+      timeoutMs: 5000,
+      label: "Conflict Resolution",
+      fallback: () => resolutionFallback(text),
+    },
+  );
+
+  if (result.label === "resolved_for") return "resolved_for";
+  if (result.label === "resolved_against") return "resolved_against";
+  return null;
 }
 
 /**

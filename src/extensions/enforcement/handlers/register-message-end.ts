@@ -81,7 +81,7 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
           : String(event.message.content ?? "");
 
         if (textContent.length > 50 && getState(ctx).pendingConflictIds.length > 0) {
-          const verdict = checkResponseForResolution(textContent);
+          const verdict = await checkResponseForResolution(ctx, textContent);
           if (verdict) {
             for (const conflictId of getState(ctx).pendingConflictIds) {
               resolveConflict(ctx, conflictId, verdict, "agent");
