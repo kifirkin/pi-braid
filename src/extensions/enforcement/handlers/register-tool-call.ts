@@ -9,9 +9,10 @@ import { recordToolCall, recordToolInput, recordBashDetails } from "./tool-track
 import { checkLocalizationRisk, recordFileTouch } from "../../../lib/store/bidirectional-verifier.js";
 import { knownFiles } from "../similarity.js";
 import { getState, recordThink } from "../state.js";
+import { TOOL_CALL } from "../../../lib/core/event-names.js";
 
 export function registerToolCallHandler(pi: ExtensionAPI): void {
-  onEvent(pi, "tool_call", async (event: any, ctx: ExtensionContext) => {
+  onEvent(pi, TOOL_CALL, async (event: any, ctx: ExtensionContext) => {
     if (!getState(ctx).enforcementActive) {
       return undefined;
     }

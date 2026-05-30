@@ -29,7 +29,7 @@
   "homepage": "https://github.com/kifirkin/pi-braid#readme",
   "pi": {
     "extensions": [
-      "./src/index.ts"
+      "./index.ts"
     ]
   },
   "scripts": {

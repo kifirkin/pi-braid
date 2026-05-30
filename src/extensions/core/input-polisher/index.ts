@@ -51,6 +51,7 @@ import { setLanguage, detectLanguage } from "../../../lib/ai/language-hint.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { roastInput } from "./roast-filter.js";
 import { resolveUtilityModel } from "../../../lib/ai/model-resolver.js";
+import { SESSION_START } from "../../../lib/core/event-names.js";
 
 const PERSONA = `You are a message preprocessor — a filter between the user and the main assistant. You clean text. You don't act on it.`;
 
@@ -533,7 +534,7 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
 
   // Lazy-load the compaction state check on first session. This avoids a
   // circular dependency with compaction.ts — compaction imports shared.js.
-  pi.on("session_start", async () => {
+  pi.on(SESSION_START, async () => {
     if (!_isCompactionActive) {
       try {
         const { isCompactionActive } =

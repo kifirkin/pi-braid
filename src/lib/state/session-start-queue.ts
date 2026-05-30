@@ -16,10 +16,11 @@
  *   });
  *
  * The first call to registerSessionStartHandler() also registers the single
- * pi.on("session_start") listener that runs all phased handlers.
+ * pi.on(SESSION_START) listener that runs all phased handlers.
  */
 
 import { createLogger } from "../core/logger.js";
+import { SESSION_START } from "../../lib/core/event-names.js";
 
 const _log = createLogger("session-start-queue");
 
@@ -44,7 +45,7 @@ let initialized = false;
 
 /**
  * Register a session_start handler with a specific phase.
- * The coordinator's pi.on("session_start") is registered lazily on first call.
+ * The coordinator's pi.on(SESSION_START) is registered lazily on first call.
  */
 export function registerSessionStartHandler(
   pi: any,
@@ -56,7 +57,7 @@ export function registerSessionStartHandler(
 
   if (!initialized) {
     initialized = true;
-    pi.on("session_start", async (event: any, ctx: any) => {
+    pi.on(SESSION_START, async (event: any, ctx: any) => {
       const startMs = Date.now();
 
       // ── Phase 1: CoreInit (sequential, blocking) ──

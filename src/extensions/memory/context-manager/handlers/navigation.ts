@@ -6,6 +6,7 @@ import { analyzeSession } from "../analysis.js";
 import { log, getCmState, overflowRetryState, resetOverflowRetry } from "./shared.js";
 import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";
 import { getSessionManager } from "../../../../lib/state/session-manager.js";
+import { TURN_END } from "../../../../lib/core/event-names.js";
 
 // ── Session Before Tree ───────────────────────────────────────────────────────
 export function registerBeforeTreeHandler(pi: ExtensionAPI): void {
@@ -50,7 +51,7 @@ export function registerBeforeTreeHandler(pi: ExtensionAPI): void {
 
 // ── Turn End Checkout ─────────────────────────────────────────────────────────
 export function registerTurnEndCheckoutHandler(pi: ExtensionAPI): void {
-  pi.on("turn_end", async (_event: any, ctx: ExtensionContext) => {
+  pi.on(TURN_END, async (_event: any, ctx: ExtensionContext) => {
     try {
       const state = getCmState(ctx);
       if (state.checkoutParams) {

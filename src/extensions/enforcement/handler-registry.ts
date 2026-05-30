@@ -41,6 +41,7 @@ import { dreamerHandler } from "./handlers/analysis/dreamer-handler.js";
 import { feedbackHandler } from "./handlers/analysis/feedback-handler.js";
 import { reflectionHandler } from "./handlers/analysis/reflection-handler.js";
 import { dispatchTurnEndLoop } from "./handlers/turn-end-handler.js";
+import { SESSION_START, TOOL_CALL, TURN_END } from "../../lib/core/event-names.js";
 
 const log = createLogger("enforcement");
 
@@ -50,27 +51,27 @@ const log = createLogger("enforcement");
 export const HANDLER_REGISTRATIONS: Array<{ event: string; method: string; handler: string }> = [
   { event: "input", method: "pi.on", handler: "language detection" },
   {
-    event: "session_start",
+    event: SESSION_START,
     method: "registerSessionStartHandler",
     handler: "phase:CoreInit:block check",
   },
-  { event: "tool_call", method: "onEvent", handler: "tool tracking + blocking" },
+  { event: TOOL_CALL, method: "onEvent", handler: "tool tracking + blocking" },
   { event: "message_end", method: "onEvent", handler: "conflict + analysis + judge (merged)" },
   { event: "tool_result", method: "pi.on", handler: "calibration" },
   { event: "session_compact", method: "onEvent", handler: "hygiene reset" },
   { event: "auto_retry_end", method: "onEvent", handler: "error classification" },
   { event: "session_shutdown", method: "onEvent", handler: "state reset" },
-  { event: "turn_end", method: "registerTurnEndHandler", handler: "enforcement-drift" },
-  { event: "turn_end", method: "registerTurnEndHandler", handler: "degradation-rollback" },
-  { event: "turn_end", method: "registerTurnEndHandler", handler: "enforcement-bpe" },
-  { event: "turn_end", method: "registerTurnEndHandler", handler: "enforcement-mars" },
-  { event: "turn_end", method: "registerTurnEndHandler", handler: "enforcement-dreamer" },
-  { event: "turn_end", method: "registerTurnEndHandler", handler: "enforcement-feedback" },
-  { event: "turn_end", method: "registerTurnEndHandler", handler: "enforcement-reflection" },
-  { event: "turn_end", method: "registerTurnEndHandler", handler: "enforcement-loop" },
-  { event: "turn_end", method: "registerTurnEndHandler", handler: "claim-tracker" },
-  { event: "turn_end", method: "registerTurnEndHandler", handler: "spec-verification" },
-  { event: "turn_end", method: "registerTurnEndHandler", handler: "archive-ingestion" },
+  { event: TURN_END, method: "registerTurnEndHandler", handler: "enforcement-drift" },
+  { event: TURN_END, method: "registerTurnEndHandler", handler: "degradation-rollback" },
+  { event: TURN_END, method: "registerTurnEndHandler", handler: "enforcement-bpe" },
+  { event: TURN_END, method: "registerTurnEndHandler", handler: "enforcement-mars" },
+  { event: TURN_END, method: "registerTurnEndHandler", handler: "enforcement-dreamer" },
+  { event: TURN_END, method: "registerTurnEndHandler", handler: "enforcement-feedback" },
+  { event: TURN_END, method: "registerTurnEndHandler", handler: "enforcement-reflection" },
+  { event: TURN_END, method: "registerTurnEndHandler", handler: "enforcement-loop" },
+  { event: TURN_END, method: "registerTurnEndHandler", handler: "claim-tracker" },
+  { event: TURN_END, method: "registerTurnEndHandler", handler: "spec-verification" },
+  { event: TURN_END, method: "registerTurnEndHandler", handler: "archive-ingestion" },
 ];
 
 /**
@@ -198,7 +199,7 @@ function registerCompactAndSessionHandlers(pi: ExtensionAPI, _nudgeManager: Nudg
   });
 
   // ── turn_end: coordinator dispatch ──
-  onEvent(pi, "turn_end", async (event: any, ctx: any) => {
+  onEvent(pi, TURN_END, async (event: any, ctx: any) => {
     await dispatchTurnEnd(event, ctx);
   });
 }

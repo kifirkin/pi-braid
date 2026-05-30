@@ -10,6 +10,7 @@ import type { CompactOptions, ExtensionAPI, ExtensionContext } from "@earendil-w
 import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";
 import { analyzeSession } from "../analysis.js";
 import { onEvent } from "../../../../lib/events/event-types.js";
+import { TURN_END } from "../../../../lib/core/event-names.js";
 import {
   log,
   getCmState,
@@ -362,7 +363,7 @@ export function registerContextCleanupHandler(pi: ExtensionAPI): void {
 
 // ── Turn End Retry Reset ────────────────────────────────────────────────────────
 export function registerTurnEndRetryReset(pi: ExtensionAPI): void {
-  pi.on("turn_end", async () => {
+  pi.on(TURN_END, async () => {
     if (compactionRetryState.attempt > 0 && !compactionRetryState.retryTimeout) {
       resetCompactionRetry();
       log.debug("[Compaction] Retry state reset (turn_end)");

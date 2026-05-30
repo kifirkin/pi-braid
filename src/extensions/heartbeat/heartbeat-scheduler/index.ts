@@ -43,6 +43,7 @@ import { budgetModule } from "./modules/budget.js";
 import { evolverModule } from "./modules/evolver.js";
 import { timerReminderModule } from "./modules/timer-reminder.js";
 import { behavioralDriftModule } from "./modules/behavioral-drift.js";
+import { TURN_END, TOOL_CALL } from "../../../lib/core/event-names.js";
 
 export { recallerModule };
 export { reflectionConsolidatorModule };
@@ -325,7 +326,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 
   // ── Event: turn_end ───────────────────────────────────────────────
 
-  pi.on("turn_end", async (_event: any, ctx: ExtensionContext) => {
+  pi.on(TURN_END, async (_event: any, ctx: ExtensionContext) => {
     const state = getState(ctx);
     if (!state.enabled || !config.enabled) return;
 
@@ -345,7 +346,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 
   // ── Event: tool_call ──────────────────────────────────────────────
 
-  pi.on("tool_call", async (event: any, ctx: ExtensionContext) => {
+  pi.on(TOOL_CALL, async (event: any, ctx: ExtensionContext) => {
     const state = getState(ctx);
 
     // Track SOP suggestion feedback

@@ -470,6 +470,7 @@ function queueProposal(evaluated: EvaluatedAction, ctx: any, branchLength: numbe
 // ── Extension Factory ────────────────────────────────────────────────────────
 
 import { clearInjections, sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
+import { TOOL_CALL } from "../../../lib/core/event-names.js";
 
 export default function contextLifecycleExtension(pi: ExtensionAPI): void {
   // ── session_start ────────────────────────────────────────────────────────
@@ -639,7 +640,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
   });
 
   // ── tool_call: Capture agent signals + compaction escalation reset ────────
-  pi.on("tool_call", async (event: any) => {
+  pi.on(TOOL_CALL, async (event: any) => {
     const toolName = event.toolName as string;
     const _input = event?.input as Record<string, unknown> | undefined;
 

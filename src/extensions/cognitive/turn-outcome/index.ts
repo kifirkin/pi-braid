@@ -22,6 +22,7 @@ import { classify } from "../../../lib/ai/text-classifier.js";
 import { CRITICS } from "../../../lib/ai/critic-registry.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { onEvent } from "../../../lib/events/event-types.js";
+import { TURN_END } from "../../../lib/core/event-names.js";
 
 const log = createLogger("turn-outcome");
 
@@ -119,7 +120,7 @@ function formatSteerMessage(details: string): string {
 // ── Extension ────────────────────────────────────────────────────────────────
 
 export default function turnOutcomeExtension(pi: ExtensionAPI): void {
-  onEvent(pi, "turn_end", async (event: any, ctx: ExtensionContext) => {
+  onEvent(pi, TURN_END, async (event: any, ctx: ExtensionContext) => {
     const state = getState(ctx);
 
     // Collect tool results from the turn

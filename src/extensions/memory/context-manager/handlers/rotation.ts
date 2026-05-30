@@ -19,6 +19,7 @@ import { getRotationState } from "../../../../lib/state/global-state.js";
 import type { RotationState } from "../../../../lib/state/global-state.js";
 import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";
 import { tryRestoreAppendMessage, clearInterceptState } from "./compaction.js";
+import { TURN_END } from "../../../../lib/core/event-names.js";
 
 // ── Rotation configuration ───────────────────────────────────────────────────
 const MAX_SESSION_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
@@ -93,7 +94,7 @@ function shouldRotate(ctx: ExtensionContext): { needed: boolean; reason: string 
 // ── Register rotation handlers ───────────────────────────────────────────────
 export function registerRotationHandlers(pi: ExtensionAPI): void {
   // Check rotation need on each turn_end
-  pi.on("turn_end", async (_event: any, ctx: ExtensionContext) => {
+  pi.on(TURN_END, async (_event: any, ctx: ExtensionContext) => {
     try {
       const state = _sessionRotationState();
       state.turnsSinceRotation++;

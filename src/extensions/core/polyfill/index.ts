@@ -57,6 +57,7 @@ function hasImageInput(model: { input?: unknown }): boolean {
 /** Shared sessionManager reference — used by patchSessionManagerMethods */
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { SESSION_END } from "../../../lib/core/event-names.js";
 
 function getPolyfillState(ctx?: ExtensionContext): { sessionManager: unknown } {
   if (ctx) return getExtensionState(ctx, "polyfill", () => ({ sessionManager: undefined }));
@@ -148,7 +149,7 @@ export default function polyfillExtension(pi: ExtensionAPI) {
   // D1: Clean up all extension state on session rotation.
   // This prevents memory leaks across sessions (cognitive stores, analytics,
   // enforcement state, etc.). registerSessionCleanup clears per-ctx WeakMap state.
-  onEvent(pi, "session_end", registerSessionCleanup());
+  onEvent(pi, SESSION_END, registerSessionCleanup());
 
   // Register settings commands for model selection
   // ── Utility model command ──────────────────────────────────────────

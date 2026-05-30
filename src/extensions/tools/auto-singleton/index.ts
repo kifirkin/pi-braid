@@ -20,6 +20,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../../../lib/core/logger.js";
 import { Type } from "typebox";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
+import { TOOL_CALL, TURN_END } from "../../../lib/core/event-names.js";
 
 const log = createLogger("auto-singleton");
 
@@ -336,7 +337,7 @@ export default function autoSingletonExtension(pi: ExtensionAPI): void {
 
   // ── Event hooks: renew deadline on agent activity ──────────────────────────
 
-  pi.on("tool_call", () => {
+  pi.on(TOOL_CALL, () => {
     manager.renew();
   });
 
@@ -344,7 +345,7 @@ export default function autoSingletonExtension(pi: ExtensionAPI): void {
     manager.renew();
   });
 
-  pi.on("turn_end", () => {
+  pi.on(TURN_END, () => {
     manager.renew();
   });
 

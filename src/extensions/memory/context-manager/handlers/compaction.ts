@@ -50,6 +50,7 @@ import { filterSafeToRemove } from "../../../../lib/utils/filter-safe-to-remove.
 import { determineCompressionLevel } from "../../../../lib/detection/compression-strategy.js";
 import { semanticCompress } from "../semantic-compress.js";
 import { onEvent } from "../../../../lib/events/event-types.js";
+import { SESSION_END } from "../../../../lib/core/event-names.js";
 import {
   handleOverflowFailure,
   handleTransientError,
@@ -612,7 +613,7 @@ export function registerCompactionEndHandler(pi: ExtensionAPI): void {
   // Prevents _processedCompacts memory leak across sessions. Module-level state
   // must be explicitly cleared; LRU eviction alone is insufficient for
   // long-running agent processes with many session rotations.
-  onEvent(pi, "session_end", () => {
+  onEvent(pi, SESSION_END, () => {
     _processedCompacts.clear();
   });
 }

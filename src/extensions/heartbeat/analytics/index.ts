@@ -40,6 +40,7 @@ export {
 
 import { recordToolCall, flushAnalytics } from "./core.js";
 import { formatCurrentSession, formatAllSessions } from "./format.js";
+import { TURN_END } from "../../../lib/core/event-names.js";
 
 const log = createLogger("analytics");
 
@@ -101,7 +102,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
   });
 
   // ── turn_end: addiction detection + degradation ─────────────────────
-  pi.on("turn_end", async (_event: any, ctx: any) => {
+  pi.on(TURN_END, async (_event: any, ctx: any) => {
     try {
       const state = getAnalyticsStateInternal(ctx);
       state.localTurnCount++;

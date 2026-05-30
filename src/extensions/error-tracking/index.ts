@@ -36,6 +36,7 @@ interface ErrorEntry {
 }
 
 import { ERROR_DIR, ERROR_FILE } from "../../lib/config/braid-paths.js";
+import { TURN_END } from "../../lib/core/event-names.js";
 
 const MAX_ERRORS = 100;
 
@@ -127,7 +128,7 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
   // Capture tool execution errors from turn_end
   // NOTE: Empty tool names (from proxy hallucination, e.g. a0/venice) are silently dropped
   // to avoid polluting the error store with proxy artifacts.
-  pi.on("turn_end", async (event) => {
+  pi.on(TURN_END, async (event) => {
     const results = event.toolResults || [];
     for (const result of results) {
       if (result.isError && result.toolName && result.toolName.trim()) {
