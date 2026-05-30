@@ -19,7 +19,6 @@ import inputPolisherFn from "./core/input-polisher/index.js";
 import corePromptBuilderFn from "./core/prompt-builder/index.js";
 import coreAgentEnvFn from "./core/agent-environment/index.js";
 import coreWorkspaceSnapshotFn from "./core/workspace-snapshot/index.js";
-import contribRateLimiterFn from "../contrib/rate-limiter/index.js";
 
 // cognitive-quality (reasoning tools, verification, topic control, turn-outcome)
 import reasoningFn from "./cognitive/reasoning/index.js";
@@ -48,22 +47,6 @@ import timerFn from "./tools/timer/index.js";
 import latentActivatorFn from "./tools/latent-activator/index.js";
 import autoSingletonFn from "./tools/auto-singleton/index.js";
 import autoRecoveryFn from "./tools/auto-recovery/index.js";
-
-// contrib (out-of-scope utilities)
-import diffFn from "../contrib/diff/index.js";
-import healthcheckFn from "../contrib/healthcheck/index.js";
-import observatoryFn from "../contrib/observatory/index.js";
-import pathSecurityFn from "../contrib/path-security/index.js";
-import researchFn from "../contrib/research/index.js";
-import systemMonitorFn from "../contrib/system-monitor/index.js";
-import toolConfigFn from "../contrib/tool-config/index.js";
-import sleepFn from "../contrib/sleep/index.js";
-import codebaseTreeFn from "../contrib/codebase-tree/index.js";
-import codebaseGraphFn from "../contrib/codebase-graph/index.js";
-import browserFn from "../contrib/browser/index.js";
-import docsFn from "../contrib/docs/index.js";
-import replFn from "../contrib/repl/index.js";
-import visionFn from "../contrib/vision/index.js";
 
 // watchdog (session monitoring, opt-in)
 import watchdogFn from "./watchdog/index.js";
@@ -254,98 +237,6 @@ export const MANIFEST: ManifestEntry[] = [
     id: "latent-activator",
     fn: latentActivatorFn,
     desc: "Latent behavior activator",
-  },
-
-  // ── Contrib ──────────────────────────────────────────────────────────
-  {
-    id: "diff",
-    fn: diffFn,
-    desc: "File diff tool",
-    module: "contrib",
-  },
-  {
-    id: "healthcheck",
-    fn: healthcheckFn,
-    desc: "System health check tool",
-    module: "contrib",
-  },
-  {
-    id: "observatory",
-    fn: observatoryFn,
-    desc: "Agent observability dashboard",
-    module: "contrib",
-  },
-  {
-    id: "path-security",
-    fn: pathSecurityFn,
-    desc: "Path security checks",
-    module: "contrib",
-  },
-  {
-    id: "research",
-    fn: researchFn,
-    desc: "System prompt research tool",
-    module: "contrib",
-  },
-  {
-    id: "system-monitor",
-    fn: systemMonitorFn,
-    desc: "System monitoring tool",
-    module: "contrib",
-  },
-  {
-    id: "rate-limiter",
-    fn: contribRateLimiterFn,
-    desc: "Rate limiter for LLM calls",
-    module: "contrib",
-  },
-  {
-    id: "tool-config",
-    fn: toolConfigFn,
-    desc: "Interactive tool enable/disable UI",
-    module: "contrib",
-  },
-  {
-    id: "sleep",
-    fn: sleepFn,
-    desc: "Pause agent execution for a specified duration",
-    module: "contrib",
-  },
-  {
-    id: "codebase-tree",
-    fn: codebaseTreeFn,
-    desc: "Codebase directory tree explorer",
-    module: "contrib",
-  },
-  {
-    id: "codebase-graph",
-    fn: codebaseGraphFn,
-    desc: "Codebase dependency graph analysis",
-    module: "contrib",
-  },
-  {
-    id: "browser",
-    fn: browserFn,
-    desc: "Browser automation tools (navigate, screenshot, eval)",
-    module: "contrib",
-  },
-  {
-    id: "docs",
-    fn: docsFn,
-    desc: "Document reader (pdf, docx, etc.)",
-    module: "contrib",
-  },
-  {
-    id: "repl",
-    fn: replFn,
-    desc: "JavaScript REPL tool",
-    module: "contrib",
-  },
-  {
-    id: "vision",
-    fn: visionFn,
-    desc: "Image analysis via vision models",
-    module: "contrib",
   },
 
   // ── Watchdog (opt-in) ────────────────────────────────────────────────

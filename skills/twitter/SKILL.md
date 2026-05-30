@@ -97,6 +97,7 @@ console.log('previews:', previews.length, 'attachments:', attachments.length);
 | Previews visible but no image in post | React state sync issue — drag-and-drop works better than clipboard
 | Blurry/pixelated image | Canvas-to-clipboard loses quality. Save as file and use CDP injection instead
 | Button disabled after text insert | execCommand sometimes fails to trigger React — clear and retry with shorter text
+| Text appears empty after intent navigation **(NEW)** | Draft.js needs 3-5s to hydrate. Don't check immediately. Or fall back to standalone URL (omit `in_reply_to`).
 
 ## Button State
 
@@ -104,12 +105,20 @@ X uses `aria-disabled="true"`, not `.disabled`:
 
 ```js
 // Check if enabled:
-btn.hasAttribute("aria-disabled"); // true = disabled
+btn.hasAttribute("aria-disabled"); // true = disabled, false = enabled
 
-// Force-enable on desync (safe, React desync is the real cause):
-btn.removeAttribute("aria-disabled");
-btn.click();
+// Click if enabled:
+if (btn && !btn.hasAttribute("aria-disabled")) {
+  btn.click();
+}
 ```
+
+### 🚫 CRITICAL: Never Force-Click
+Do NOT remove `aria-disabled` and click. This was a persistent wrong assumption. Force-clicking navigates to /home without actually submitting — the tweet never posts. If the button is disabled:
+- Wait 3-5s more for Draft.js to hydrate
+- Check if text is actually present
+- If text is set and button stays disabled, re-navigate with a simpler URL
+- Never: `btn.removeAttribute('aria-disabled'); btn.click();`
 
 ---
 
@@ -121,25 +130,24 @@ btn.click();
 https://x.com/intent/post?text=URL_ENCODED_TEXT&in_reply_to=TARGET_TWEET_ID
 ```
 
-1. **Navigate** to intent URL with text AND `in_reply_to=TWEET_ID`. Wait 3s.
-2. **Verify text prefilled** — check the Draft.js DIV, not `[data-text]` attr:
+1. **Navigate** to intent URL with text AND `in_reply_to=TWEET_ID`.
+2. **Wait 3-5s** — Draft.js editor needs time to hydrate after navigation. Checking too early returns empty even though text is prefilled.
+3. **Verify text prefilled** — check the only contenteditable div with role="textbox". Use innerText (NOT `[data-text]` attr — that doesn't exist on Draft.js):
    ```js
-   let edits = document.querySelectorAll('div[contenteditable="true"][role="textbox"]');
-   for (let e of edits) {
-     if (e.innerText.trim()) {
-       'text found: ' + e.innerText.substring(0,60);
-     }
-   }
+   const compose = document.querySelector('div[contenteditable="true"][role="textbox"]');
+   compose?.innerText?.trim() || '(empty — wait longer or text failed to prefill)';
    ```
-3. **Click Post/Reply**:
+   If empty: the page may still be loading, or the intent URL failed. Re-navigate with a simpler URL (shorter text, no in_reply_to).
+4. **Check button state** — X uses `aria-disabled="true"`, not `.disabled`. Button should be enabled if text is present:
    ```js
    const btn = document.querySelector('[data-testid="tweetButton"]');
-   if (btn && !btn.hasAttribute('aria-disabled')) {
-     btn.click();
-     'clicked';
-   }
+   btn?.hasAttribute('aria-disabled'); // false = enabled
+   btn?.click();
    ```
-4. **Verify** — URL should change to `x.com/home`. Then search: `(from:MY_HANDLE TARGET) OR (from:TARGET to:MY_HANDLE)`.
+5. **Verify post** — URL should change to `x.com/home`. Then search: `(from:MY_HANDLE TARGET) OR (from:TARGET to:MY_HANDLE)`.
+
+### CRITICAL: Never Force-Click
+Force-removing `aria-disabled` and clicking never actually posts — it navigates to /home without submitting. If the button is disabled, the text didn't prefill correctly. Fix the text prefill, don't force the click an intent/post URL, the Draft.js editor takes 1-3 seconds to hydrate the text from the URL parameters. If you check for text too early, it appears empty. Always wait 3-5 seconds before verifying. The button will also remain disabled until text is present, so timing is critical for both verification and posting.
 
 ### CRITICAL: Always Include @mention in Reply Text
 ```
