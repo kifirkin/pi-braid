@@ -22,7 +22,7 @@ import {
   checkSpecCoverage,
   getVerifierState,
 } from "../../lib/store/bidirectional-verifier.js";
-import { scanArchives } from "../../lib/events/consolidation-channel.js";
+import { scanArchives, ingestArchives } from "../../lib/events/consolidation-channel.js";
 import { isDegraded } from "../../lib/detection/degradation-detector.js";
 import { autoRollback } from "../../lib/state/state-checkpoint.js";
 import { getState } from "./state.js";
@@ -188,9 +188,9 @@ function registerCompactAndSessionHandlers(pi: ExtensionAPI, _nudgeManager: Nudg
     await guard(
       "archive-ingestion",
       async () => {
-        const archives = await scanArchives(ctx.cwd);
-        if (archives.length > 0) {
-          log.info(`[archive-ingestion] Found ${archives.length} archive(s) to process`);
+        const ingested = await ingestArchives(ctx.cwd);
+        if (ingested > 0) {
+          log.info(`[archive-ingestion] Ingested ${ingested} archive(s) into consolidation queue`);
         }
       },
       log,

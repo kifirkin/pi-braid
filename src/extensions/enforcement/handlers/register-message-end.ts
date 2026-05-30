@@ -9,6 +9,7 @@ import {
   detectConflicts,
   formatConflictMessage,
   resolveConflict,
+  pruneResolvedEvidence,
 } from "../../../lib/store/evidence-pool.js";
 import {
   processConflicts as processConflictQAs,
@@ -63,9 +64,11 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
       const newQAs = processConflictQAs(ctx);
       for (const qa of newQAs) {
         sendEnforcementWhisper(pi, ctx, formatConflictWhisper(qa));
-        if (!getState(ctx).pendingConflictIds.includes(qa.id)) {
-          getState(ctx).pendingConflictIds.push(qa.id);
-          getState(ctx).conflictDetectionTurn.set(qa.id, getState(ctx).currentTurn);
+        // Bridge qa-xxx → c-xxx ID space: store conflictId so resolveConflict() can find it
+        const cId = qa.conflictId || qa.id;
+        if (!getState(ctx).pendingConflictIds.includes(cId)) {
+          getState(ctx).pendingConflictIds.push(cId);
+          getState(ctx).conflictDetectionTurn.set(cId, getState(ctx).currentTurn);
         }
       }
 
@@ -85,6 +88,14 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
               log.info(`[conflict] Resolved ${conflictId} (${verdict}) from agent response`);
             }
             getState(ctx).pendingConflictIds = [];
+          }
+        }
+
+        // Periodic evidence pool cleanup — prune evidence tied to resolved conflicts
+        if (getState(ctx).currentTurn % 5 === 0) {
+          const pruned = pruneResolvedEvidence(ctx);
+          if (pruned > 0) {
+            log.debug(`[evidence-pool] Pruned ${pruned} evidence entries from resolved conflicts`);
           }
         }
 

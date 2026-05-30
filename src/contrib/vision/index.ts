@@ -28,15 +28,11 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { resolveVisionModel } from "../../lib/ai/model-resolver.js";
+import { createLogger } from "../../lib/core/logger.js";
 
 // ── Logger ──
 
-const log = {
-  info: (m: string) => console.log(`[vision] ${m}`),
-  debug: () => {},
-  warn: (m: string) => console.warn(`[vision] ${m}`),
-  error: (m: string) => console.error(`[vision] ${m}`),
-};
+const log = createLogger("vision");
 
 // ── Constants ──
 

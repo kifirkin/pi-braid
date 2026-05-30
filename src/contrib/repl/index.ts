@@ -1,5 +1,6 @@
 // @ts-nocheck
-const log = { info: (m) => console.log(`[repl] ${m}`), debug: () => {}, warn: (m) => console.warn(`[repl] ${m}`), error: (m) => console.error(`[repl] ${m}`) };
+import { createLogger } from "../../lib/core/logger.js";
+const log = createLogger("repl");
 /**
  * REPL Extension - Native TypeScript/JavaScript code execution
  *

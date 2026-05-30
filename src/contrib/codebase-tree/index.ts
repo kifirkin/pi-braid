@@ -17,13 +17,9 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { createLogger } from "../../lib/core/logger.js";
 
-const log = {
-  info: (msg: string) => console.log(`[codebase-tree] ${msg}`),
-  debug: (msg: string) => {},
-  warn: (msg: string) => console.warn(`[codebase-tree] ${msg}`),
-  error: (msg: string) => console.error(`[codebase-tree] ${msg}`),
-};
+const log = createLogger("codebase-tree");
 
 const DEFAULT_EXCLUDE = [".DS_Store", "Thumbs.db", "*.log", ".env.local", ".env.*.local"];
 const TRUNCATED_DIRS = [".git", ".svn", ".hg", "node_modules"];

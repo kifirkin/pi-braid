@@ -192,14 +192,14 @@ test("topic-drift whispers on severe drift", () => {
 
 console.log("\n=== VERIFICATION: Analytics Readable ===");
 
-test("get-session-metrics tool registered", () => {
+test("get_session_metrics tool registered", () => {
   const src = readFileSync("src/extensions/heartbeat/analytics/index.ts", "utf-8");
-  deepEqual(src.includes('name: "get-session-metrics"'), true);
+  deepEqual(src.includes('name: "get_session_metrics"'), true);
 });
 
-test("get-tool-reliability tool registered", () => {
+test("get_tool_reliability tool registered", () => {
   const src = readFileSync("src/extensions/heartbeat/analytics/index.ts", "utf-8");
-  deepEqual(src.includes('name: "get-tool-reliability"'), true);
+  deepEqual(src.includes('name: "get_tool_reliability"'), true);
 });
 
 test("analytics Type import added", () => {

@@ -18,6 +18,7 @@ import coreScratchpadFn from "./core/scratchpad/index.js";
 import inputPolisherFn from "./core/input-polisher/index.js";
 import corePromptBuilderFn from "./core/prompt-builder/index.js";
 import coreAgentEnvFn from "./core/agent-environment/index.js";
+import coreWorkspaceSnapshotFn from "./core/workspace-snapshot/index.js";
 import contribRateLimiterFn from "../contrib/rate-limiter/index.js";
 
 // cognitive-quality (reasoning tools, verification, topic control, turn-outcome)
@@ -131,6 +132,12 @@ export const MANIFEST: ManifestEntry[] = [
     fn: coreAgentEnvFn,
     alwaysOn: true,
     desc: "time_status, L1 context injection",
+  },
+  {
+    id: "workspace-snapshot",
+    fn: coreWorkspaceSnapshotFn,
+    alwaysOn: true,
+    desc: "workspace_snapshot tool — capture/list/diff/restore file snapshots",
   },
 
   // ── Cognitive Quality ─────────────────────────────────────────────────

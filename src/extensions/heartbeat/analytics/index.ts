@@ -299,7 +299,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
   // ── Tools (agent-callable) ────────────────────────────────────────
 
   pi.registerTool({
-    name: "get-session-metrics",
+    name: "get_session_metrics",
     label: "Get Session Metrics",
     description:
       "Returns aggregated metrics for the current session: total tool calls, unique tools, duration, and per-tool breakdown.",
@@ -370,7 +370,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
   });
 
   pi.registerTool({
-    name: "get-tool-reliability",
+    name: "get_tool_reliability",
     label: "Get Tool Reliability",
     description:
       "Returns per-tool reliability stats: success/failure counts, success rate, and average duration.",

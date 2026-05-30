@@ -64,7 +64,7 @@ export default function autoRecoveryExtension(pi: ExtensionAPI): void {
         `## ⚠️ System Degradation Detected\n\n` +
         `**Degradation reasons:**\n${reasonList}\n\n` +
         `**Recommended actions:**\n` +
-        `1. Run \`health-maintenance(action="check")\` (if available) to assess the current state\n` +
+        `1. Run \`health_maintenance(action="check")\` (if available) to assess the current state\n` +
         `2. Consider whether a different approach would avoid the recurring errors\n` +
         `3. If the current approach keeps failing, use \`think()\` to re-plan\n` +
         `4. Use \`finalize()\` with task decomposition if scope is too large\n\n` +

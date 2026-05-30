@@ -477,6 +477,49 @@ export async function scanArchives(projectRoot: string): Promise<ArchiveCandidat
   return candidates;
 }
 
+/**
+ * Convert an ArchiveCandidate into a ConsolidationCandidate and enqueue it.
+ */
+function ingestOneArchive(projectRoot: string, archive: ArchiveCandidate): void {
+  const candidate: ConsolidationCandidate = {
+    episodeId: `archive:${archive.changeName}`,
+    task: archive.changeName,
+    outcome: "success",
+    project: projectRoot,
+    strategicSOP: archive.changeName,
+    functionalSOP: [
+      `Archive: ${archive.changeName}`,
+      `Source: openspec/changes/archive/${archive.changeName}`,
+    ],
+    quality: 0.85,
+    valueScore: 0.7,
+    confidenceScore: 0.9,
+    noveltyScore: 0.6,
+    consolidationScore: 0.75,
+    queuedAt: Date.now(),
+    status: "pending",
+  };
+  enqueueCandidate(candidate);
+}
+
+/**
+ * Ingest scanned archives into the consolidation queue.
+ * Called from the enforcement turn-end handler.
+ */
+export async function ingestArchives(projectRoot: string): Promise<number> {
+  const archives = await scanArchives(projectRoot);
+  if (archives.length === 0) return 0;
+
+  let ingested = 0;
+  for (const archive of archives) {
+    if (archive.hasProposal || archive.specCount > 0) {
+      ingestOneArchive(projectRoot, archive);
+      ingested++;
+    }
+  }
+  return ingested;
+}
+
 async function countSpecs(dir: string): Promise<number> {
   const specsDir = join(dir, "specs");
   if (!(await pathExists(specsDir))) return 0;

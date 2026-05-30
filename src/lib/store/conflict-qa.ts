@@ -162,6 +162,14 @@ const _qaRegistry = new Map<string, ConflictQA>();
  * Process all unresolved conflicts and generate QA records.
  * Returns ConflictQA[] for the conflict-qa tool.
  */
+/**
+ * Get the evidence-pool conflict ID for a QA ID.
+ * Needed because QA IDs (qa-xxx) differ from evidence-pool conflict IDs (c-xxx).
+ */
+export function getConflictIdForQA(qaId: string): string | undefined {
+  return _qaRegistry.get(qaId)?.conflictId;
+}
+
 export function processConflicts(ctx: unknown): ConflictQA[] {
   _qaRegistry.clear();
   const conflicts = getUnresolvedConflicts(ctx as ExtensionContext);
@@ -360,14 +368,19 @@ export function getQAStats(_ctx: unknown) {
  * Resolve a conflict. Takes 3 args: (ctx, conflictId, verdict).
  * Used by cognitive-systems via `import { resolveQA as resolveConflictQA }`.
  */
-export function resolveQA(_ctx: unknown, conflictId: string, verdict: string): void {
+export function resolveQA(_ctx: unknown, qaId: string, verdict: string): void {
+  // Look up QA to bridge qa-xxx → c-xxx ID space
+  const qa = _qaRegistry.get(qaId);
+  if (!qa) return;
+
+  // Use conflictId (c-xxx) for evidence-pool resolution
   epResolve(
     _ctx as ExtensionContext,
-    conflictId,
+    qa.conflictId,
     verdict as "resolved_for" | "resolved_against" | "uncertain",
     "agent",
   );
+
   // Mark QA as answered
-  const qa = _qaRegistry.get(conflictId);
-  if (qa) qa.answer = verdict;
+  qa.answer = verdict;
 }

@@ -53,6 +53,18 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
         });
       }
 
+      // Always send re-orientation whisper after compaction so the agent
+      // knows to recover context from persisted surfaces (scratchpad, task tool).
+      // This is the "prompt invariant" in action — the scratchpad survives
+      // compaction because it's tool-backed, not conversation-backed.
+      sendEnforcementWhisper(
+        pi,
+        ctx,
+        `Context compacted at turn ${compactTurn}. ` +
+          `Re-orient: read scratchpad for goal/plan/learnings, then check next pending task. ` +
+          `These surfaces survive compaction — continue from there.`,
+      );
+
       getState(ctx).contextNudgeSent = false;
       getState(ctx).lastContextCheckTurn = getState(ctx).currentTurn;
       getState(ctx).lastCompactionTurn = compactTurn;

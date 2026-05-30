@@ -448,6 +448,36 @@ export function formatConflictMessage(conflict: Conflict): string {
 }
 
 /**
+ * Prune evidence entries that are only referenced by resolved conflicts.
+ * Cleans up the evidence pool without losing unresolved or validated data.
+ */
+export function pruneResolvedEvidence(ctx: ExtensionContext): number {
+  const state = getState(ctx);
+  const unresolvedIds = new Set(
+    state.conflicts.filter((c) => c.verdict === "unresolved").map((c) => c.id),
+  );
+  const activeEvidenceIds = new Set<string>();
+  for (const c of state.conflicts) {
+    if (unresolvedIds.has(c.id)) {
+      for (const e of c.for) activeEvidenceIds.add(e.id);
+      for (const e of c.against) activeEvidenceIds.add(e.id);
+    }
+  }
+  // Keep evidence in unresolved conflicts, plus the "for" side of resolved_for conflicts (validated)
+  for (const c of state.conflicts) {
+    if (c.verdict === "resolved_for") {
+      for (const e of c.for) activeEvidenceIds.add(e.id);
+    }
+    if (c.verdict === "resolved_against") {
+      for (const e of c.against) activeEvidenceIds.add(e.id);
+    }
+  }
+  const before = state.evidence.length;
+  state.evidence = state.evidence.filter((e) => activeEvidenceIds.has(e.id));
+  return before - state.evidence.length;
+}
+
+/**
  * Clear all evidence and conflicts (for testing or session reset).
  */
 export function clearEvidence(ctx: ExtensionContext): void {

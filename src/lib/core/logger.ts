@@ -195,24 +195,9 @@ export function unsuppressLogger(source: string): void {
   _suppressedSources.delete(source);
 }
 
-/** Suppress ALL loggers. */
-export function suppressAllLoggers(): void {
-  _globallySuppressed = true;
-}
-
-/** Unsuppress all loggers. */
-export function unsuppressAllLoggers(): void {
-  _globallySuppressed = false;
-}
-
-/** Set the minimum log level globally. */
-export function setGlobalLogLevel(level: LogLevel): void {
-  _globalMinLevel = level;
-}
-
-/** Set the minimum level that reaches the process console. */
-export function setConsoleLogLevel(level: LogLevel): void {
-  _consoleMinLevel = level;
+/** Get all active logger source names. */
+export function getActiveLoggerSources(): string[] {
+  return Array.from(_loggers.keys());
 }
 
 /** Get the in-memory log buffer (for debugging / crash reports). */
@@ -230,17 +215,11 @@ export function formatLogBuffer(): string {
   return _logBuffer.map(formatConsole).join("\n");
 }
 
-/** Get all active logger source names. */
-export function getActiveLoggerSources(): string[] {
-  return Array.from(_loggers.keys());
+/** Set the minimum log level globally. */
+export function setGlobalLogLevel(level: LogLevel): void {
+  _globalMinLevel = level;
 }
 
 // ── Backwards compatibility ────────────────────────────────────────────────
 // taggedConsole was a quick-and-dirty console wrapper. Removed in favor of
-// the proper Logger interface above. If you have code using taggedConsole,
-// replace:
-//   import { taggedConsole } from "../../lib/core/logger.js";
-//   const log = taggedConsole("source");
-// With:
-//   import { createLogger } from "../../lib/core/logger.js";
 //   const log = createLogger("source");

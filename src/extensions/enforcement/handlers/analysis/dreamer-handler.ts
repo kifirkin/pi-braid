@@ -13,7 +13,15 @@ export async function dreamerHandler(pi: any, _event: any, ctx: ExtensionContext
   const gs = getState(ctx);
   if (!gs.enforcementActive) return;
 
-  const dreamAdvice = dream(ctx, gs.toolLog);
+  // Build historical sequences from per-turn tool data for Markov transitions
+  const historicalSequences: string[][] = [];
+  for (const [, turn] of gs.turnHistory) {
+    if (turn.actualTools.length > 0) {
+      historicalSequences.push(turn.actualTools);
+    }
+  }
+
+  const dreamAdvice = dream(ctx, gs.toolLog, historicalSequences);
   if (!dreamAdvice) return;
 
   emitSignal(ctx, "stability", "predicted-decline", "info", false, {

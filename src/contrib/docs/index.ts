@@ -1,5 +1,6 @@
 // @ts-nocheck
-const log = { info: (m) => console.log(`[docs] ${m}`), debug: () => {}, warn: (m) => console.warn(`[docs] ${m}`), error: (m) => console.error(`[docs] ${m}`) };
+import { createLogger } from "../../lib/core/logger.js";
+const log = createLogger("docs");
 /**
  * Document tools - read various document formats
  *

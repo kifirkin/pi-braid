@@ -85,7 +85,7 @@ export default function healthMaintenanceExtension(pi: ExtensionAPI) {
   });
 
   pi.registerTool({
-    name: "health-maintenance",
+    name: "health_maintenance",
     label: "Health Maintenance",
     promptSnippet: "Health maintenance commands for agent self-improvement",
     description:

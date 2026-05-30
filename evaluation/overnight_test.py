@@ -41,7 +41,7 @@ TASKS = [
     },
     {
         "name": "analytics_query",
-        "prompt": "Run get-session-metrics to see your current session statistics. Then run get-tool-reliability to check tool success rates. Report the results.",
+        "prompt": "Run get_session_metrics to see your current session statistics. Then run get_tool_reliability to check tool success rates. Report the results.",
         "timeout": 60,
     },
     {

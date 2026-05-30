@@ -1,5 +1,6 @@
 // @ts-nocheck
-const log = { info: () => {}, debug: () => {}, warn: console.warn, error: console.error };
+import { createLogger } from "../../lib/core/logger.js";
+const log = createLogger("browser:readability");
 
 /**
  * HTML content extraction - lightweight readability without external deps.

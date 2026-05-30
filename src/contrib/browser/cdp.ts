@@ -5,8 +5,9 @@
  */
 
 import * as os from "node:os";
+import { createLogger } from "../../lib/core/logger.js";
 
-const log = { info: console.log, debug: () => {}, warn: console.warn, error: console.error };
+const log = createLogger("browser:cdp");
 
 interface CdpCommand {
   id: number;

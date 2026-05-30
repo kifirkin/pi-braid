@@ -8,13 +8,9 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { createLogger } from "../../lib/core/logger.js";
 
-const log = {
-  info: (msg: string) => console.log(`[codebase-graph] ${msg}`),
-  debug: () => {},
-  warn: (msg: string) => console.warn(`[codebase-graph] ${msg}`),
-  error: (msg: string) => console.error(`[codebase-graph] ${msg}`),
-};
+const log = createLogger("codebase-graph");
 
 interface Node {
   path: string;

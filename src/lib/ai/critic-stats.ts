@@ -5,7 +5,7 @@
  * and latency. Module-level counters are safe within a single-agent session;
  * call `resetCriticStats()` on session boundaries.
  *
- * Integrates with heartbeat/analytics to surface in `get-session-metrics`.
+ * Integrates with heartbeat/analytics to surface in `get_session_metrics`.
  */
 
 // ── Types ────────────────────────────────────────────────────────────────────
