@@ -6,6 +6,7 @@ import { Type } from "typebox";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { callLlm } from "../../../../lib/ai/llm-call.js";
 import { resolveUtilityModel } from "../../../../lib/ai/model-resolver.js";
+import { criticGate } from "../../../../lib/ai/critic-gate.js";
 import { getExtensionState } from "../../../../lib/state/extension-state.js";
 import { createLogger } from "../../../../lib/core/logger.js";
 
@@ -438,47 +439,73 @@ export function createThinkTool() {
       ].filter(Boolean);
 
       if (useDeepReview && ctx?.model) {
-        try {
-          const prompt = FRESH_EYES_PROMPT.replace("{observation}", observation)
-            .replace("{decision}", decision)
-            .replace("{reason}", reason);
+        // Pre-check: does this decision warrant a deep review?
+        const wantsReview = await criticGate(ctx, {
+          name: "fresh-eyes-precheck",
+          criteria: {
+            systemPrompt:
+              "You are a triage classifier for reasoning review. Determine if the given decision " +
+              "is complex enough to warrant a 'fresh eyes' deep review. " +
+              "Answer 'yes' if the decision involves trade-offs, uncertainty, or significant impact. " +
+              "Answer 'no' for simple routine decisions (e.g., 'reading a file', 'trivial fix'). " +
+              "Answer 'deep' if the decision crosses architectural boundaries or has high stakes. " +
+              "Answer with exactly one word: 'yes', 'no', or 'deep'. Do not explain.",
+            userPrompt: "Observation: {{observation}}\nDecision: {{decision}}\nReason: {{reason}}",
+          },
+          input: { observation, decision: decision || "(not stated)", reason: reason || "(not stated)" },
+          fallback: () => {
+            // Heuristic: decisions mentioning complexity keywords deserve review
+            const keywords = ["refactor", "delete", "remove", "redesign", "migrate", "replace", "significant", "critical", "architecture", "breaking"];
+            return keywords.some((kw) => (decision + " " + (reason || "")).toLowerCase().includes(kw)) ? "deep" : "yes";
+          },
+          maxTokens: 5,
+          timeoutMs: 3000,
+        });
 
-          // Prefer utility model (cheaper for review), fall back to session model
-          const utilityModel = resolveUtilityModel(ctx);
-          const reviewModel = utilityModel ?? ctx.model;
-          const apiKey = await ctx.modelRegistry.getApiKeyForProvider(reviewModel.provider);
-          const llmResult = await callLlm(
-            reviewModel,
-            apiKey,
-            "You are a sharp, critical thinker who reviews the reasoning of other agents.",
-            prompt,
-            { maxTokens: budget.tokens, temperature: 0.4, signal },
-          );
+        if (!wantsReview.shouldProceed) {
+          lines.push("", `[_Fresh eyes skipped: ${wantsReview.message}_]`);
+        } else {
+          try {
+            const prompt = FRESH_EYES_PROMPT.replace("{observation}", observation)
+              .replace("{decision}", decision)
+              .replace("{reason}", reason);
 
-          let reviewText = "";
-          if (!("error" in llmResult)) {
-            reviewText = llmResult.text;
+            // Prefer utility model (cheaper for review), fall back to session model
+            const utilityModel = resolveUtilityModel(ctx);
+            const reviewModel = utilityModel ?? ctx.model;
+            const apiKey = await ctx.modelRegistry.getApiKeyForProvider(reviewModel.provider);
+            const llmResult = await callLlm(
+              reviewModel,
+              apiKey,
+              "You are a sharp, critical thinker who reviews the reasoning of other agents.",
+              prompt,
+              { maxTokens: wantsReview.suggestedDepth === "deep" ? Math.min(budget.tokens * 2, 2000) : budget.tokens, temperature: 0.4, signal },
+            );
+
+            let reviewText = "";
+            if (!("error" in llmResult)) {
+              reviewText = llmResult.text;
+            }
+
+            // Track tokens used
+            if (ctx) {
+              const chain = getChainState(ctx);
+              const record = chain.thoughts.find((t) => t.id === thoughtId);
+              if (record) record.tokensUsed = tokensUsed;
+            }
+
+            if (reviewText) {
+              lines.push("", "---");
+              lines.push("**Fresh Eyes (session model):**", reviewText);
+              result.modelUsed = ctx!.model.id;
+            }
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            lines.push("", `[_Session model review error: ${message}_]`);
+            result.modelError = message;
           }
-
-          // Track tokens used
-          if (ctx) {
-            const chain = getChainState(ctx);
-            const record = chain.thoughts.find((t) => t.id === thoughtId);
-            if (record) record.tokensUsed = tokensUsed;
-          }
-
-          if (reviewText) {
-            lines.push("", "---");
-            lines.push("**Fresh Eyes (session model):**", reviewText);
-            result.modelUsed = ctx!.model.id;
-          }
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          lines.push("", `[_Session model review error: ${message}_]`);
-          result.modelError = message;
         }
       }
-
       // Process Supervision: inject consistency check results
       if (consistencyIssues.length > 0) {
         lines.push("", "⚠️ Consistency check:");

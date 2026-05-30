@@ -6,6 +6,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { callLlm } from "../../../../lib/ai/llm-call.js";
 import { resolveUtilityModel } from "../../../../lib/ai/model-resolver.js";
+import { criticGate } from "../../../../lib/ai/critic-gate.js";
 import { scoreHypothesisOutput } from "./scoring.js";
 import { createLogger } from "../../../../lib/core/logger.js";
 import { withMeta } from "../../../../lib/types/standard-result.js";
@@ -102,8 +103,45 @@ export function createHypothesizeTool(): ToolDefinition<any, any, any> {
         );
       }
 
+      // Pre-check: is this problem worth deep analysis?
+      const gate = await criticGate(ctx, {
+        name: "hypothesis-precheck",
+        criteria: {
+          systemPrompt:
+            "You are a triage classifier. Determine if the given problem has enough " +
+            "specific evidence for meaningful root-cause hypothesis generation. " +
+            "Answer 'yes' if there is concrete evidence (error messages, code diffs, " +
+            "stack traces, specific observations). Answer 'no' if the problem is vague, " +
+            "has no evidence, or is purely speculative. Answer 'deep' if the evidence " +
+            "is detailed enough to warrant multi-hypothesis analysis. " +
+            "Answer with exactly one word: 'yes', 'no', or 'deep'. Do not explain.",
+          userPrompt: "Problem: {{problem}}\nEvidence: {{evidence}}",
+        },
+        input: { problem, evidence: evidence || "(none provided)" },
+        fallback: () => (problem.length > 50 && (evidence?.length ?? 0) > 30 ? "deep" : "yes"),
+        maxTokens: 5,
+        timeoutMs: 3000,
+      });
+
+      if (!gate.shouldProceed) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `🔍 **Problem**: ${problem.slice(0, 200)}${problem.length > 200 ? "..." : ""}\n\n` +
+                (evidence ? `**Evidence**: ${evidence.slice(0, 200)}${evidence.length > 200 ? "..." : ""}\n\n` : "") +
+                `**Gate decision**: ${gate.message}\n\n` +
+                `**Hypothesis generation skipped** — the input lacks sufficient specific evidence for meaningful root-cause analysis. ` +
+                `Provide concrete evidence (error messages, code diffs, test failures) for better results.`,
+            },
+          ],
+          details: { problem, evidence: evidence ?? "", skipped: true, reason: gate.message },
+        };
+      }
+
+      // Proceed with generative LLM call (normal or deep depth)
       try {
-        const prompt = buildPrompt({ problem, evidence, maxHypotheses, format, verificationPlan });
+        const prompt = buildPrompt({ problem, evidence, maxHypotheses: gate.suggestedDepth === "deep" ? Math.max(maxHypotheses, 5) : maxHypotheses, format, verificationPlan });
 
         // Prefer utility model (cheaper), fall back to session model
         const utilityModel = resolveUtilityModel(ctx);
