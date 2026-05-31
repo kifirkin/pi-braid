@@ -41,7 +41,7 @@ import { dreamerHandler } from "./handlers/analysis/dreamer-handler.js";
 import { feedbackHandler } from "./handlers/analysis/feedback-handler.js";
 import { reflectionHandler } from "./handlers/analysis/reflection-handler.js";
 import { dispatchTurnEndLoop } from "./handlers/turn-end-handler.js";
-import { SESSION_START, TOOL_CALL, TURN_END } from "../../lib/core/event-names.js";
+import { SESSION_START, TOOL_CALL, TURN_END, MESSAGE_END, SESSION_SHUTDOWN } from "../../lib/core/event-names.js";
 
 const log = createLogger("enforcement");
 
@@ -56,11 +56,11 @@ export const HANDLER_REGISTRATIONS: Array<{ event: string; method: string; handl
     handler: "phase:CoreInit:block check",
   },
   { event: TOOL_CALL, method: "onEvent", handler: "tool tracking + blocking" },
-  { event: "message_end", method: "onEvent", handler: "conflict + analysis + judge (merged)" },
+  { event: MESSAGE_END, method: "onEvent", handler: "conflict + analysis + judge (merged)" },
   { event: "tool_result", method: "pi.on", handler: "calibration" },
   { event: "session_compact", method: "onEvent", handler: "hygiene reset" },
   { event: "auto_retry_end", method: "onEvent", handler: "error classification" },
-  { event: "session_shutdown", method: "onEvent", handler: "state reset" },
+  { event: SESSION_SHUTDOWN, method: "onEvent", handler: "state reset" },
   { event: TURN_END, method: "registerTurnEndHandler", handler: "enforcement-drift" },
   { event: TURN_END, method: "registerTurnEndHandler", handler: "degradation-rollback" },
   { event: TURN_END, method: "registerTurnEndHandler", handler: "enforcement-bpe" },

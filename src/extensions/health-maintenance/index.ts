@@ -23,6 +23,7 @@ import { getExtensionState } from "../../lib/state/extension-state.js";
 import type { BenchmarkResult, HealthMaintenanceResult } from "./types.js";
 import { getAnalyticsMetrics, startMetricsPersistence } from "./helpers.js";
 import { formatHealthMaintenanceOutput } from "./format.js";
+import { SESSION_SHUTDOWN } from "../../lib/core/event-names.js";
 
 const _log = createLogger("health-maintenance");
 
@@ -76,7 +77,7 @@ const healthMaintenanceSchema = Type.Object({
 export default function healthMaintenanceExtension(pi: ExtensionAPI) {
   startMetricsPersistence();
 
-  pi.on("session_shutdown", async (event, ctx) => {
+  pi.on(SESSION_SHUTDOWN, async (event, ctx) => {
     const state = getExtensionState(ctx, "health-maintenance", () => ({ saveTimer: null }));
     if (state.saveTimer) {
       clearInterval(state.saveTimer);

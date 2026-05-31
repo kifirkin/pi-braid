@@ -14,6 +14,7 @@
  */
 
 import { createLogger } from "../core/logger.js";
+import { SESSION_SHUTDOWN } from "../core/event-names.js";
 
 const log = createLogger("injection-tracker");
 
@@ -253,7 +254,7 @@ export function registerInjectionTracker(pi: {
     },
   );
 
-  pi.on("session_shutdown", () => {
+  pi.on(SESSION_SHUTDOWN, () => {
     setActiveSessionId(undefined);
   });
 }

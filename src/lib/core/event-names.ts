@@ -10,12 +10,17 @@
 
 export const SESSION_START = "session_start" as const;
 export const SESSION_END = "session_end" as const;
+export const SESSION_BEFORE_COMPACT = "session_before_compact" as const;
+export const SESSION_SHUTDOWN = "session_shutdown" as const;
 
-// ── Turn Lifecycle ──────────────────────────────────────────────────────────
+// ── Turn & Message Lifecycle ───────────────────────────────────────────────
 
 export const TURN_END = "turn_end" as const;
 export const TURN_COMPLETE = "turn_complete" as const;
 export const TOOL_CALL = "tool_call" as const;
+export const MESSAGE_END = "message_end" as const;
+export const TOOL_EXECUTION_START = "tool_execution_start" as const;
+export const TOOL_EXECUTION_END = "tool_execution_end" as const;
 
 // ── Memory & Context ────────────────────────────────────────────────────────
 
@@ -26,6 +31,7 @@ export const MEMORY_RECALL = "memory_recall" as const;
 
 export const EXTENSION_UI_REQUEST = "extension_ui_request" as const;
 export const SESSION_TREE = "session_tree" as const;
+export const RESOURCES_DISCOVER = "resources_discover" as const;
 
 // ── Nudge / Enforcement ─────────────────────────────────────────────────────
 
@@ -41,13 +47,19 @@ export const TURN_ANALYTICS = "turn_analytics" as const;
 export const ALL_EVENT_NAMES = new Set([
   SESSION_START,
   SESSION_END,
+  SESSION_BEFORE_COMPACT,
+  SESSION_SHUTDOWN,
   TURN_END,
   TURN_COMPLETE,
   TOOL_CALL,
+  MESSAGE_END,
+  TOOL_EXECUTION_START,
+  TOOL_EXECUTION_END,
   MEMORY_STORE,
   MEMORY_RECALL,
   EXTENSION_UI_REQUEST,
   SESSION_TREE,
+  RESOURCES_DISCOVER,
   NUDGE,
   SIGNAL,
   TURN_ANALYTICS,

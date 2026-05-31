@@ -43,7 +43,7 @@ import { budgetModule } from "./modules/budget.js";
 import { evolverModule } from "./modules/evolver.js";
 import { timerReminderModule } from "./modules/timer-reminder.js";
 import { behavioralDriftModule } from "./modules/behavioral-drift.js";
-import { TURN_END, TOOL_CALL } from "../../../lib/core/event-names.js";
+import { TURN_END, TOOL_CALL, SESSION_SHUTDOWN } from "../../../lib/core/event-names.js";
 
 export { recallerModule };
 export { reflectionConsolidatorModule };
@@ -641,7 +641,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 
   // ── Event: session_shutdown ───────────────────────────────────────
 
-  pi.on("session_shutdown", async (_event: any, ctx: ExtensionContext) => {
+  pi.on(SESSION_SHUTDOWN, async (_event: any, ctx: ExtensionContext) => {
     cleanupSession(ctx.cwd);
     log.info("Heartbeat scheduler shutting down");
   });

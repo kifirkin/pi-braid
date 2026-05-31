@@ -21,6 +21,7 @@ import * as process from "node:process";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { MESSAGE_END } from "../../../lib/core/event-names.js";
 
 // =============================================================================
 // L1 State - shared with prompt-builder for system prompt injection
@@ -280,7 +281,7 @@ export default function agentEnvironmentExtension(pi: ExtensionAPI) {
     _state.metrics.assistantMessageCount = 0;
   });
 
-  pi.on("message_end", (event, ctx) => {
+  pi.on(MESSAGE_END, (event, ctx) => {
     if (event.message.role === "assistant") {
       _state.turnCount++;
       // Persist to extension state so turn count survives extension reload

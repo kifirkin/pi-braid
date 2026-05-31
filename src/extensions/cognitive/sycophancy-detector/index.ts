@@ -19,6 +19,7 @@ import { createLogger } from "../../../lib/core/logger.js";
 import { getExtensionState, safeSessionManager } from "../../../lib/state/extension-state.js";
 import { classify } from "../../../lib/ai/text-classifier.js";
 import { CRITICS } from "../../../lib/ai/critic-registry.js";
+import { MESSAGE_END } from "../../../lib/core/event-names.js";
 
 const log = createLogger("sycophancy-detector");
 
@@ -235,7 +236,7 @@ async function handleSycophancy(
 
 export default function sycophancyDetector(): (pi: ExtensionAPI) => void {
   return function register(pi: ExtensionAPI): void {
-    pi.on("message_end", async (event: any, ctx: ExtensionContext) => {
+    pi.on(MESSAGE_END, async (event: any, ctx: ExtensionContext) => {
       try {
         if (event.message?.role !== "assistant") return;
 

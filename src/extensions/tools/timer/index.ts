@@ -84,7 +84,7 @@ export function cancelTimer(id: string): boolean {
 // ── Fire Handlers (via shared bus) ───────────────────────────────────
 // We import the shared bus to bridge timer fires → heartbeat surfacing
 import { emitTimerReminder } from "../../../lib/events/timer-bus.js";
-import { TURN_END } from "../../../lib/core/event-names.js";
+import { TURN_END, SESSION_SHUTDOWN } from "../../../lib/core/event-names.js";
 
 // Internal handler count (kept for API compat — currently unused,
 // no callers register via onTimerFire. The event bus handles
@@ -309,7 +309,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
   });
 
   // Clean up polling on shutdown
-  pi.on("session_shutdown", () => {
+  pi.on(SESSION_SHUTDOWN, () => {
     stopTimerPolling();
   });
 

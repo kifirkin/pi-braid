@@ -24,11 +24,12 @@ import { getState, ERROR_BURST_THRESHOLD, startJudge, completeJudge } from "../s
 import { runVerificationJudge, formatVerificationNudge } from "../verification-judge.js";
 import { enforcementSignals } from "../signals.js";
 import { createLogger } from "../../../lib/core/logger.js";
+import { MESSAGE_END } from "../../../lib/core/event-names.js";
 
 const log = createLogger("enforcement:message-end");
 
 export function registerMessageEndHandler(pi: ExtensionAPI): void {
-  onEvent(pi, "message_end", async (event: any, ctx: any) => {
+  onEvent(pi, MESSAGE_END, async (event: any, ctx: any) => {
     if (!getState(ctx).enforcementActive) return;
     const isBurst = getState(ctx).consecutiveErrorTurns >= ERROR_BURST_THRESHOLD;
 

@@ -13,6 +13,7 @@ import { createHypothesizeTool } from "./handlers/hypothesize.js";
 import { createFinalizeTool } from "./handlers/finalize.js";
 import { createVerifyTool } from "./handlers/verify.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
+import { TOOL_EXECUTION_END } from "../../../lib/core/event-names.js";
 
 interface MetaMetrics {
   thinks: number;
@@ -75,7 +76,7 @@ export default function metacognitionExtension(pi: ExtensionAPI) {
   pi.registerTool(createVerifyTool() as ToolDefinition<any, any, any>);
 
   // Track tool usage
-  pi.on("tool_execution_end", (event: any, ctx: ExtensionContext) => {
+  pi.on(TOOL_EXECUTION_END, (event: any, ctx: ExtensionContext) => {
     const toolName = event?.toolName ?? "";
     if (!ctx || !toolName) return;
     const state = getMetaState(ctx);

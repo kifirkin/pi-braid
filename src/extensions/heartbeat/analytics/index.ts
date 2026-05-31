@@ -40,7 +40,7 @@ export {
 
 import { recordToolCall, flushAnalytics } from "./core.js";
 import { formatCurrentSession, formatAllSessions } from "./format.js";
-import { TURN_END } from "../../../lib/core/event-names.js";
+import { TURN_END, TOOL_EXECUTION_START, TOOL_EXECUTION_END, SESSION_SHUTDOWN } from "../../../lib/core/event-names.js";
 
 const log = createLogger("analytics");
 
@@ -66,7 +66,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
   });
 
   // ── tool_execution_start ───────────────────────────────────────────
-  pi.on("tool_execution_start", async (event, ctx) => {
+  pi.on(TOOL_EXECUTION_START, async (event, ctx) => {
     try {
       const state = getAnalyticsStateInternal(ctx);
       state.pendingToolCalls.set(event.toolCallId, {
@@ -79,7 +79,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
   });
 
   // ── tool_execution_end ─────────────────────────────────────────────
-  pi.on("tool_execution_end", async (event, ctx) => {
+  pi.on(TOOL_EXECUTION_END, async (event, ctx) => {
     try {
       const state = getAnalyticsStateInternal(ctx);
       const pending = state.pendingToolCalls.get(event.toolCallId);
@@ -265,7 +265,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
   });
 
   // ── session_shutdown ───────────────────────────────────────────────
-  pi.on("session_shutdown", async (_event, ctx) => {
+  pi.on(SESSION_SHUTDOWN, async (_event, ctx) => {
     const state = getAnalyticsStateInternal(ctx);
     if (state.toolCallSequence.length > 0) flushAnalytics(state, false);
   });

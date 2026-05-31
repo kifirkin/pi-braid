@@ -64,6 +64,7 @@ function getReasoningState(ctx: ExtensionContext): ExtensionState {
 // Malformed Tool Call Detection
 
 import { MALFORMED_TOOL_CALL_RE, MALFORMED_TOOL_NAME_RE } from "../../../lib/constants/tool-constants.js";
+import { MESSAGE_END } from "../../../lib/core/event-names.js";
 
 function detectMalformedToolCalls(text: string, pi: ExtensionAPI, s: ExtensionState): void {
   MALFORMED_TOOL_CALL_RE.lastIndex = 0;
@@ -104,7 +105,7 @@ export default function reasoningExtension(pi: ExtensionAPI) {
 
   // Message End: Check for malformed tool calls
 
-  pi.on("message_end", async (event, ctx) => {
+  pi.on(MESSAGE_END, async (event, ctx) => {
     if (event.message.role !== "assistant") return;
 
     const state = getReasoningState(ctx);

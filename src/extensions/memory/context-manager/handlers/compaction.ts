@@ -50,7 +50,7 @@ import { filterSafeToRemove } from "../../../../lib/utils/filter-safe-to-remove.
 import { determineCompressionLevel } from "../../../../lib/detection/compression-strategy.js";
 import { semanticCompress } from "../semantic-compress.js";
 import { onEvent } from "../../../../lib/events/event-types.js";
-import { SESSION_END } from "../../../../lib/core/event-names.js";
+import { SESSION_END, SESSION_BEFORE_COMPACT, MESSAGE_END } from "../../../../lib/core/event-names.js";
 import {
   handleOverflowFailure,
   handleTransientError,
@@ -301,7 +301,7 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
     }
   });
 
-  pi.on("session_before_compact", async (event: any, ctx: ExtensionContext) => {
+  pi.on(SESSION_BEFORE_COMPACT, async (event: any, ctx: ExtensionContext) => {
     try {
       setCompactionActive(true);
       // STEP 0: Deduplicate — prevent two entries from manual+auto call sites
@@ -605,7 +605,7 @@ export function registerCompactionEndHandler(pi: ExtensionAPI): void {
   // ── message_end backup cleanup ────────────────────────────────────────────
   // Catches edge cases where turn_end is missed (no tools called that turn).
   // Ensures intercept state is always cleaned up before the next assistant turn.
-  onEvent(pi, "message_end", async () => {
+  onEvent(pi, MESSAGE_END, async () => {
     tryRestoreAppendMessage(pi);
   });
 

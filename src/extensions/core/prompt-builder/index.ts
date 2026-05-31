@@ -91,6 +91,7 @@ const INTERACTION_STYLE = `You provide concise, production-quality solutions. Yo
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { onEvent } from "../../../lib/events/event-types.js";
+import { RESOURCES_DISCOVER } from "../../../lib/core/event-names.js";
 
 interface PromptBuilderState {
   activeContrastMode: string;
@@ -618,7 +619,7 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
   // ── resources_discover: Register bundled skills with pi's native discovery ──
   // pi's package manager calls this on all extensions to discover resources (skills, prompts, themes).
   // We register the bundled skills/ directory so pi can auto-discover them.
-  onEvent(_pi, "resources_discover", async (_event: { cwd: string; reason: string }, _ctx: any) => {
+  onEvent(_pi, RESOURCES_DISCOVER, async (_event: { cwd: string; reason: string }, _ctx: any) => {
     return {
       skillPaths: [SKILLS_DIR],
     };

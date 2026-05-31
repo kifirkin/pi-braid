@@ -19,7 +19,7 @@ import { getRotationState } from "../../../../lib/state/global-state.js";
 import type { RotationState } from "../../../../lib/state/global-state.js";
 import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";
 import { tryRestoreAppendMessage, clearInterceptState } from "./compaction.js";
-import { TURN_END } from "../../../../lib/core/event-names.js";
+import { TURN_END, SESSION_SHUTDOWN } from "../../../../lib/core/event-names.js";
 
 // ── Rotation configuration ───────────────────────────────────────────────────
 const MAX_SESSION_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
@@ -256,7 +256,7 @@ export function registerRotationHandlers(pi: ExtensionAPI): void {
 // Prevents stale state from leaking between sessions.
 
 export function registerSessionShutdownHandler(pi: ExtensionAPI): void {
-  pi.on("session_shutdown", async (_event: unknown, ctx: ExtensionContext) => {
+  pi.on(SESSION_SHUTDOWN, async (_event: unknown, ctx: ExtensionContext) => {
     log.debug("Session shutdown: clearing compaction retry state and intercept");
     const cmState = getCmState(ctx);
     cmState.compactionRetryActive = false;

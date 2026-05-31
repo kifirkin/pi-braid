@@ -9,11 +9,12 @@ import { resetAdviceTracker } from "../../../lib/reasoning/advice-tracker.js";
 import { shutdownAsyncStorage } from "../../../lib/state/async-storage.js";
 import { clearVerifierState } from "../../../lib/store/bidirectional-verifier.js";
 import { createLogger } from "../../../lib/core/logger.js";
+import { SESSION_SHUTDOWN } from "../../../lib/core/event-names.js";
 
 const log = createLogger("enforcement:session-shutdown");
 
 export function registerSessionShutdownHandler(pi: ExtensionAPI): void {
-  onEvent(pi, "session_shutdown", async (_event: any, ctx: ExtensionContext) => {
+  onEvent(pi, SESSION_SHUTDOWN, async (_event: any, ctx: ExtensionContext) => {
     const state = getState(ctx);
     const sessionId = ctx.cwd ?? "default";
 

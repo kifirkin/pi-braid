@@ -10,6 +10,7 @@ import { safeSessionManager } from "../../lib/state/extension-state.js";
 import { createLogger } from "../../lib/core/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../lib/state/session-start-queue.js";
 import { eventBus } from "../../lib/events/event-bus.js";
+import { MESSAGE_END } from "../../lib/core/event-names.js";
 
 // pi's native SessionManager has getSessionFile() not in our wrapper
 interface SmWithSessionFile extends SessionManager {
@@ -55,7 +56,7 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  pi.on("message_end", async (_event, ctx) => {
+  pi.on(MESSAGE_END, async (_event, ctx) => {
     const sm = safeSessionManager(ctx) as unknown as SmWithSessionFile;
     const path = sm?.getSessionFile?.() ?? ctx.cwd;
     const sessionState = sessions.get(path);

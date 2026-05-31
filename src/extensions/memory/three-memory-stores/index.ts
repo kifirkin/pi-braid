@@ -58,7 +58,7 @@ import {
   BUILTIN_HEURISTICS,
 } from "./heuristics.js";
 import { recordToolCall, getToolReliability, selectBestTool } from "./tool-reliability.js";
-import { TURN_END } from "../../../lib/core/event-names.js";
+import { TURN_END, SESSION_SHUTDOWN } from "../../../lib/core/event-names.js";
 
 // ── Project Identifier ───────────────────────────────────────────────────────
 function deriveProjectId(cwd: string): string {
@@ -636,7 +636,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
   });
 
   // ── Event: session_shutdown ────────────────────────────────────────────
-  pi.on("session_shutdown", async (_event: any, _ctx: ExtensionContext) => {
+  pi.on(SESSION_SHUTDOWN, async (_event: any, _ctx: ExtensionContext) => {
     const state = getState(_ctx);
     if (state.episodes.length > 0) {
       try {
