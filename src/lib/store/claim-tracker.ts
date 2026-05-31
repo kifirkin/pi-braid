@@ -18,6 +18,7 @@
  */
 
 import { callLlm } from "../ai/llm-call.js";
+import { resolveUtilityModel } from "../ai/model-resolver.js";
 import { getExtensionState } from "../state/extension-state.js";
 import { classify } from "../ai/text-classifier.js";
 import { CRITICS, ENTITY_VERBS } from "../ai/critic-registry.js";
@@ -84,7 +85,9 @@ async function extractClaimsViaLLM(
 
   // ── LLM extraction (primary path) ──────────────────────────────────────
   try {
-    const model = ctx.model;
+    // Prefer utility model (cheaper for extraction), fall back to session model
+    const utilityModel = resolveUtilityModel(ctx);
+    const model = utilityModel ?? ctx.model;
     if (!model) return fallbackExtract(text);
 
     const apiKey = await ctx.modelRegistry.getApiKeyForProvider(model.provider);

@@ -20,6 +20,7 @@ const log = createLogger("session-recall");
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { Model } from "@earendil-works/pi-ai";
 import { callLlm } from "../../../lib/ai/llm-call.js";
+import { resolveUtilityModel } from "../../../lib/ai/model-resolver.js";
 import { Type } from "typebox";
 import { execFileSync } from "node:child_process";
 import { stat, readdir, readFile } from "node:fs/promises";
@@ -438,7 +439,9 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
       }
 
       // Get model from ctx (runtime) with fallback to cached model_select event
-      const model = ctx?.model ?? currentModel;
+      // Prefer utility model (cheaper for recall), fall back to session model
+      const baseModel = resolveUtilityModel(ctx) ?? ctx?.model ?? currentModel;
+      const model = baseModel;
       const contextWindow = model?.contextWindow ?? 200000;
       const tokenBudget = Math.floor(contextWindow * 0.8);
 
