@@ -220,6 +220,8 @@ interface RoastStats {
   skippedLongText: number;
   polishUtilityCount: number;
   polishSessionCount: number;
+  skippedUnclear: number;
+  foundAmbiguous: number;
 }
 
 interface PolisherState {
@@ -252,6 +254,8 @@ function createPolisherState(): PolisherState {
       failedTier: 0,
       skippedCode: 0,
       skippedWellWritten: 0,
+      skippedUnclear: 0,
+      foundAmbiguous: 0,
       antiSlopTriggered: 0,
       skippedLongText: 0,
       polishUtilityCount: 0,
@@ -486,13 +490,15 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
     else state.roastStats.heuristicTier++;
     if (roast.isCode) state.roastStats.skippedCode++;
     if (roast.isWellWritten) state.roastStats.skippedWellWritten++;
+    if (!roast.isClear) state.roastStats.skippedUnclear++;
+    if (roast.isAmbiguous) state.roastStats.foundAmbiguous++;
     // Only append anti-slop suffix when utility model confirms it's a code request.
     // Heuristic regexes and session model produce too many false positives —
     // a false negative (missing the suffix) is far less harmful than a false
     // positive (spamming the user with "Output the code directly...").
     const isCodeRequest = roast.isCodeRequest && roast.checks.codeRequest.tier === "utility";
     if (isCodeRequest) state.roastStats.antiSlopTriggered++;
-    if (roast.isCode || roast.isWellWritten) {
+    if (roast.isCode || (roast.isWellWritten && roast.isClear)) {
       state.skippedCount++;
       ctx.ui.setStatus("input-polisher", "✓ Text already clean — press Enter to send");
       ctx.ui.notify(
@@ -575,6 +581,8 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
       lines.push(`Skipped (code):      ${s.skippedCode}`);
       lines.push(`Skipped (well-written): ${s.skippedWellWritten}`);
       lines.push(`Skipped (long text):     ${s.skippedLongText}`);
+      lines.push(`Found unclear:           ${s.skippedUnclear}`);
+      lines.push(`Found ambiguous:         ${s.foundAmbiguous}`);
       lines.push(`Anti-slop triggered:    ${s.antiSlopTriggered}`);
       if (s.polishUtilityCount > 0 || s.polishSessionCount > 0) {
         lines.push(`Polish model tier:`);
