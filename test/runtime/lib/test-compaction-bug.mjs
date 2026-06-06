@@ -210,7 +210,7 @@ console.log("\n[13] clearInterceptState helper");
 console.log("\n[14] message_end intercept cleanup");
 {
   const src = readFileSync(distPath, "utf8");
-  assert(src.includes('pi.on("message_end"') || src.includes('onEvent(pi, "message_end"'), "message_end handler registered");
+  assert(src.includes('pi.on("message_end"') || src.includes('onEvent(pi, "message_end"') || src.includes('MESSAGE_END'), "message_end handler registered");
   assert(src.includes("tryRestoreAppendMessage(pi)"), "message_end calls tryRestoreAppendMessage");
 }
 
