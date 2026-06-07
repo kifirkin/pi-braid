@@ -11,4 +11,13 @@ export interface ScheduledTimer {
   reason: string;
   tag?: string;
   createdAt: number;
+  /**
+   * If true, the timer fire whisper uses triggerTurn: true to wake the
+   * agent (auto-resume behavior). Used by the post-compaction resume
+   * timer to recover from a stuck session. Default: false (safer).
+   *
+   * The busy guard (TOOL_CALL → busy=true, TURN_END → busy=false)
+   * still prevents mid-tool-execution firing even when wake: true.
+   */
+  wake?: boolean;
 }

@@ -8,10 +8,19 @@ All exported from `extensions/tools/timer/index.ts`:
 
 | Function | Purpose |
 |---|---|
-| `scheduleTimer(delayMs, reason, tag?)` | Schedule a timer. Returns timer ID. |
+| `scheduleTimer(delayMs, reason, tag?, wake?)` | Schedule a timer. Returns timer ID. `wake=true` makes the fire whisper auto-resume the agent (used by post-compaction resume timer). |
 | `cancelTimer(id)` | Cancel a timer by ID. |
 | `cancelTimersByTag(tag)` | Cancel all timers matching a tag. Returns count cancelled. |
 | `onTimerFire(handler)` | Subscribe to fire events. Returns unsubscribe function. |
+
+## Wake flag (`triggerTurn` contract)
+
+| `wake` | `triggerTurn` | When to use |
+|---|---|---|
+| `true` | `true` | Post-compaction resume timer. Auto-wakes the agent if it didn't continue on its own. Safe because the busy guard prevents mid-tool firing. |
+| `false` (default) | `false` | User-scheduled timers ("check the build in 60s"). Whisper is visible but does not force a new turn. |
+
+The post-compaction stack overflow was caused by `triggerTurn: true` firing **mid-tool-execution**. The fix is the **busy guard** (below), not removing the auto-resume. The resume path needs auto-resume; user timers don't.
 
 ## Tag conventions
 
@@ -28,10 +37,10 @@ All exported from `extensions/tools/timer/index.ts`:
 Timer fires deliver a `[timer] <reason>` whisper via `sendTrackedMessage` with:
 
 - `customType: "timer"`
-- `deliverAs: "steer"`, **`triggerTurn: false`**
-- `details._braidInjected: true`, `details._braidSource: "timer/fire"`, `details.timerId`
+- `deliverAs: "steer"`, `triggerTurn: timer.wake === true` (see Wake flag above)
+- `details._braidInjected: true`, `details._braidSource: "timer/fire"`, `details.timerId`, `details.wake`
 
-`triggerTurn: false` matches the `[enforcement]` whisper contract. **Do not** set it to `true` — the host would start a new turn mid-tool-execution, causing re-entrant `before_agent_start` calls and a stack overflow. See `test/runtime/lib/test-post-compaction-fixes.mjs` for the regression test.
+The whisper survives compaction (via `_braidInjected`), matching the `[enforcement]` contract. See `test/runtime/lib/test-post-compaction-fixes.mjs` for the regression test on the triggerTurn derivation.
 
 ## Busy guard
 

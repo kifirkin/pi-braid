@@ -102,6 +102,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
               3 * 60 * 1000,
               "Context compaction done — continue your task",
               "compaction-resume",
+              true, // wake — auto-resume agent after compaction
             );
           } catch {
             // Non-fatal — timer unavailable

@@ -335,10 +335,14 @@ async function executeAutoCompact(pi: ExtensionAPI, ctx: any): Promise<void> {
       // an unrelated TURN_END and produce a stray [timer] whisper.
       timerMod.cancelTimersByTag("compaction-resume");
       timerMod.cancelTimersByTag("auto-compaction-resume");
+      // wake: true preserves the original auto-resume behavior. The
+      // busy guard in the timer module prevents this from firing
+      // mid-tool-execution, so triggerTurn: true is safe.
       timerMod.scheduleTimer(
         3 * 60 * 1000,
         "Auto-compaction done — continue your task",
         "auto-compaction-resume",
+        true, // wake
       );
       log.info("Scheduled resume timer before auto-compaction");
     } catch {

@@ -21,12 +21,12 @@ export type { ScheduledTimer };
 class TimerManager {
   private timers: Map<string, ScheduledTimer> = new Map();
 
-  setTimer(delayMs: number, reason: string, tag?: string): string {
+  setTimer(delayMs: number, reason: string, tag?: string, wake: boolean = false): string {
     const id = `timer_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const firesAt = Date.now() + delayMs;
 
-    this.timers.set(id, { id, firesAt, reason, tag, createdAt: Date.now() });
-    log.info(`[timer] set: ${id} fires in ${Math.round(delayMs / 1000)}s — ${reason}`);
+    this.timers.set(id, { id, firesAt, reason, tag, createdAt: Date.now(), wake });
+    log.info(`[timer] set: ${id} fires in ${Math.round(delayMs / 1000)}s — ${reason}${wake ? " (wake)" : ""}`);
     return id;
   }
 
@@ -71,9 +71,19 @@ const timerManager = new TimerManager();
 /**
  * Programmatic timer API — schedule a timer from any extension.
  * Returns the timer ID. Timer fires and delivers a steer to the agent.
+ *
+ * @param wake if true, the fire whisper uses triggerTurn: true to wake
+ *   the agent (auto-resume). Used by the post-compaction resume timer.
+ *   Default: false. Safe in all cases because the busy guard prevents
+ *   mid-tool-execution firing regardless of wake.
  */
-export function scheduleTimer(delayMs: number, reason: string, tag?: string): string {
-  return timerManager.setTimer(delayMs, reason, tag);
+export function scheduleTimer(
+  delayMs: number,
+  reason: string,
+  tag?: string,
+  wake: boolean = false,
+): string {
+  return timerManager.setTimer(delayMs, reason, tag, wake);
 }
 
 /** Cancel a timer by ID. */
@@ -192,12 +202,21 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
 
   log.info(`[timer] fired: ${timer.id} — ${timer.reason}`);
   // Try to wake the agent with a steer message if between turns.
-  // triggerTurn: false matches the contract used by the [enforcement] whisper:
-  // the message is visible in TUI and survives compaction (via _braidInjected),
-  // but does NOT force a synchronous re-entry into the agent loop. This is
-  // critical: triggerTurn: true was the root cause of the post-compaction
-  // stack overflow — the timer fired mid-tool-execution, the host started a
-  // new turn, and the resulting re-entrant before_agent_start chain overflowed.
+  //
+  // triggerTurn contract:
+  //   - wake: true (post-compaction resume timer) → triggerTurn: true
+  //     Auto-resume the agent. This is the original design intent of the
+  //     3-minute resume timer — wake the agent if it didn't continue on
+  //     its own. Safe because the busy guard prevents mid-tool firing.
+  //   - wake: false (default) → triggerTurn: false
+  //     Whisper is visible and survives compaction (via _braidInjected)
+  //     but does NOT force a new turn. Safer default for user-scheduled
+  //     timers (e.g. "check the build in 60s").
+  //
+  // The post-compaction stack overflow was caused by wake: true firing
+  // MID-tool-execution. The fix is the busy guard, not removing wake:
+  // true entirely. The resume path needs auto-resume; user timers don't.
+  const triggerTurn = timer.wake === true;
   try {
     sendTrackedMessage(
       pi,
@@ -205,9 +224,9 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
         customType: "timer",
         content: [{ type: "text" as const, text: `[timer] ${timer.reason}` }],
         display: true,
-        details: { _braidInjected: true, _braidSource: "timer/fire", timerId: timer.id },
+        details: { _braidInjected: true, _braidSource: "timer/fire", timerId: timer.id, wake: triggerTurn },
       },
-      { deliverAs: "steer", triggerTurn: false },
+      { deliverAs: "steer", triggerTurn },
       { type: "heartbeat", source: "timer/fire" },
     );
   } catch (e) {

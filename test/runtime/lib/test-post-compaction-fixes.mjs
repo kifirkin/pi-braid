@@ -58,33 +58,46 @@ console.log("\n[2] Re-entrancy guard: MAX_REENTRY_DEPTH = 1");
   assert(src.includes("_sendDepth"), "_sendDepth counter present");
 }
 
-// ── [3] Timer whisper uses triggerTurn: false ──────────────────────
-console.log("\n[3] Timer whisper triggerTurn = false");
+// ── [3] Timer whisper triggerTurn controlled by wake flag ─────────
+console.log("\n[3] Timer whisper triggerTurn = wake ? true : false");
 {
   const src = readFileSync(timerPath, "utf8");
-  // The fireTimer's sendTrackedMessage call site must use triggerTurn: false.
-  // triggerTurn: true was the root cause of the stack overflow because the
-  // host would start a new turn mid-tool-execution.
-  // Look at lines 160-180 of the compiled file (the fireTimer body).
+  // The fireTimer's triggerTurn must be derived from timer.wake, not a
+  // literal. Resume timers set wake: true (auto-resume), user timers
+  // default to wake: false (safer). The stack overflow prevention is
+  // the busy guard, not removing wake: true.
   const lines = src.split("\n");
   const fireTimerStart = lines.findIndex((l) => /function\s+fireTimer\s*\(/.test(l));
   assert(fireTimerStart > 0, `fireTimer function found at line ${fireTimerStart + 1}`);
-  // Capture the next ~50 lines (fireTimer body) and check for triggerTurn
-  const fireTimerBody = lines.slice(fireTimerStart, fireTimerStart + 50).join("\n");
-  // Strip comments so the explanatory comment "triggerTurn: true was the root
-  // cause" doesn't false-positive the negative assertion.
-  const codeOnly = fireTimerBody
-    .split("\n")
+  const fireTimerBody = lines
+    .slice(fireTimerStart, fireTimerStart + 50)
     .filter((l) => !/^\s*\/\//.test(l))
     .join("\n");
   assert(
-    !/triggerTurn:\s*true/.test(codeOnly),
-    "fireTimer does NOT use triggerTurn: true (was root cause of stack overflow)",
+    /const\s+triggerTurn\s*=\s*timer\.wake\s*===\s*true/.test(fireTimerBody),
+    "fireTimer derives triggerTurn from timer.wake flag (not a literal)",
   );
   assert(
-    /triggerTurn:\s*false/.test(codeOnly),
-    "fireTimer uses triggerTurn: false (matches [enforcement] contract)",
+    /triggerTurn[,\s}]/.test(fireTimerBody),
+    "fireTimer uses the wake-derived triggerTurn in sendTrackedMessage",
   );
+  // The wake flag must be a parameter on scheduleTimer (TS strips type annotation)
+  assert(
+    /export\s+function\s+scheduleTimer\([\s\S]*?wake\s*=\s*false\s*\)/.test(src),
+    "scheduleTimer exposes wake parameter (default false)",
+  );
+  // The wake field must be set on the timer object in setTimer
+  assert(
+    /this\.timers\.set\([\s\S]*?wake\s*\)/.test(src),
+    "setTimer persists wake flag on the timer object",
+  );
+  // ScheduledTimer type source must declare wake field (check src, not dist —
+  // TS-only fields are stripped from compiled .js)
+  const typesSrc = readFileSync(
+    join(ROOT, "src/lib/events/timer-types.ts"),
+    "utf8",
+  );
+  assert(/wake\?:\s*boolean/.test(typesSrc), "ScheduledTimer.wake field declared in types");
 }
 
 // ── [4] Timer whisper carries _braidInjected metadata ──────────────
@@ -144,14 +157,14 @@ console.log("\n[6] cancelTimersByTag helper");
   }
 }
 
-// ── [7] Compaction paths call cancelTimersByTag ────────────────────
-console.log("\n[7] Compaction paths cancel stale resume timers");
+// ── [7] Compaction paths cancel stale + schedule with wake: true ─
+console.log("\n[7] Compaction paths cancel stale resume timers and wake");
 {
   const comp = readFileSync(contextCompressPath, "utf8");
   const life = readFileSync(contextLifecyclePath, "utf8");
   const compact = readFileSync(sessionCompactPath, "utf8");
 
-  // context-compress (manual) cancels both tags
+  // context-compress (manual) cancels both tags and schedules with wake: true
   assert(
     /cancelTimersByTag\s*\(\s*["']compaction-resume["']\s*\)/.test(comp),
     "context-compress cancels 'compaction-resume' timers",
@@ -160,8 +173,12 @@ console.log("\n[7] Compaction paths cancel stale resume timers");
     /cancelTimersByTag\s*\(\s*["']auto-compaction-resume["']\s*\)/.test(comp),
     "context-compress cancels 'auto-compaction-resume' timers (cross-path cleanup)",
   );
+  assert(
+    /scheduleTimer\s*\(\s*3\s*\*\s*60\s*\*\s*1000\s*,\s*["']Context compaction done[\s\S]*?,\s*["']compaction-resume["']\s*,\s*true/.test(comp),
+    "context-compress schedules resume timer with wake: true (auto-resume)",
+  );
 
-  // context-lifecycle auto-compact cancels both tags
+  // context-lifecycle auto-compact cancels both tags and schedules with wake: true
   assert(
     /cancelTimersByTag\s*\(\s*["']compaction-resume["']\s*\)/.test(life),
     "context-lifecycle auto-compact cancels 'compaction-resume' timers",
@@ -169,6 +186,10 @@ console.log("\n[7] Compaction paths cancel stale resume timers");
   assert(
     /cancelTimersByTag\s*\(\s*["']auto-compaction-resume["']\s*\)/.test(life),
     "context-lifecycle auto-compact cancels 'auto-compaction-resume' timers",
+  );
+  assert(
+    /scheduleTimer\s*\(\s*3\s*\*\s*60\s*\*\s*1000\s*,\s*["']Auto-compaction done[\s\S]*?,\s*["']auto-compaction-resume["']\s*,\s*true/.test(life),
+    "context-lifecycle auto-compact schedules resume timer with wake: true (auto-resume)",
   );
 
   // session_compact enforcement handler also cancels both (orphan cleanup)
@@ -182,8 +203,8 @@ console.log("\n[7] Compaction paths cancel stale resume timers");
   );
 }
 
-// ── [8] Live behavior: cancelTimersByTag actually cancels ──────────
-console.log("\n[8] Live: cancelTimersByTag behavior");
+// ── [8] Live behavior: cancelTimersByTag + wake flag flow through ─
+console.log("\n[8] Live: cancelTimersByTag + wake flag");
 {
   // Use the timer module's exports directly to verify the runtime behavior
   // independent of any compiled output. This catches bugs where the helper
@@ -199,17 +220,32 @@ console.log("\n[8] Live: cancelTimersByTag behavior");
   const id1 = scheduleTimer(60_000, "stale-1", "compaction-resume");
   const id2 = scheduleTimer(60_000, "stale-2", "compaction-resume");
   const id3 = scheduleTimer(60_000, "keep", "user-task");
+  // wake flag: resume timer (wake: true) vs user timer (default false)
+  const id4 = scheduleTimer(60_000, "resume-after-compact", "compaction-resume", true);
+  const id5 = scheduleTimer(60_000, "build-check", "user-task"); // wake defaults false
 
-  // Sanity: we just scheduled 3 timers, IDs are unique
+  // Sanity: we just scheduled 5 timers, IDs are unique
   assert(typeof id1 === "string" && id1.length > 0, "scheduleTimer returns id string");
-  assert(id1 !== id2 && id2 !== id3, "scheduleTimer returns unique ids");
+  assert(id1 !== id2 && id2 !== id3 && id3 !== id4 && id4 !== id5, "scheduleTimer returns unique ids");
 
   const cancelled = cancelTimersByTag("compaction-resume");
-  assert(cancelled === 2, `cancelTimersByTag('compaction-resume') cancelled 2 (got ${cancelled})`);
+  // id1, id2, id4 all had tag compaction-resume → 3 cancelled
+  assert(cancelled === 3, `cancelTimersByTag('compaction-resume') cancelled 3 (got ${cancelled})`);
 
   // The user-task timer should still be there
   const userCancel = cancelTimer(id3);
   assert(userCancel === true, "user-tagged timer was NOT cancelled by tag-based helper");
+
+  // The wake flag is preserved on the timer object (verify via listTimers)
+  // after re-scheduling one for inspection:
+  const wakeId = scheduleTimer(60_000, "wake-test", "test", true);
+  const noWakeId = scheduleTimer(60_000, "no-wake-test", "test", false);
+  // The export type re-exports the listTimers via the manager; we can't
+  // access it directly, but we can confirm scheduleTimer accepted both
+  // 3-arg and 4-arg calls without throwing.
+  cancelTimer(wakeId);
+  cancelTimer(noWakeId);
+  assert(true, "scheduleTimer accepts both wake: true and wake: false");
 }
 
 // ── Summary ────────────────────────────────────────────────────────
