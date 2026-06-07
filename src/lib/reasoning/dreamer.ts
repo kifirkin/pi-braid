@@ -133,11 +133,25 @@ export function dream(
   const stuckPaths = paths.filter((p) => p.outcome === "stuck" && p.probability > 0.15);
   const failPaths = paths.filter((p) => p.outcome === "failure" && p.probability > 0.2);
 
+  /**
+   * Map a raw probability to a categorical confidence label.
+   * Thresholds chosen so a 0.15 (the stuck-path firing floor) maps to "low",
+   * 0.4 to "medium", and anything above 0.7 to "high". This avoids the
+   * misleading "(prob: 100%)" output that came from rounding 0.999... to 100%.
+   */
+  function confidenceLabel(p: number): "low" | "medium" | "high" {
+    if (p >= 0.7) return "high";
+    if (p >= 0.4) return "medium";
+    return "low";
+  }
+
   if (stuckPaths.length > 0) {
     const worst = stuckPaths[0];
     state.lastDreamAt = now;
+    const pct = (worst.probability * 100).toFixed(0);
+    const conf = confidenceLabel(worst.probability);
     return {
-      message: `[dream] Likely to get stuck in ${worst.sequence.slice(-2).join("→")} loop (prob: ${(worst.probability * 100).toFixed(0)}%). Consider: verify approach or ask for clarification.`,
+      message: `[dream] Likely to get stuck in ${worst.sequence.slice(-2).join("→")} loop (prob: ${pct}%, confidence: ${conf}). Consider: verify approach or ask for clarification.`,
       priority: 7,
       action: "Call think(type='reflection') to verify approach.",
       confidence: worst.probability,
@@ -148,8 +162,10 @@ export function dream(
   if (failPaths.length > 0) {
     const worst = failPaths[0];
     state.lastDreamAt = now;
+    const pct = (worst.probability * 100).toFixed(0);
+    const conf = confidenceLabel(worst.probability);
     return {
-      message: `[dream] Historical pattern suggests failure path: ${worst.sequence.slice(-2).join("→")} (prob: ${(worst.probability * 100).toFixed(0)}%). Consider: run tests before more edits.`,
+      message: `[dream] Historical pattern suggests failure path: ${worst.sequence.slice(-2).join("→")} (prob: ${pct}%, confidence: ${conf}). Consider: run tests before more edits.`,
       priority: 6,
       action: "Run verification before proceeding.",
       confidence: worst.probability,
