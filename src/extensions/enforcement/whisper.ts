@@ -64,8 +64,10 @@ export function sendEnforcementWhisper(
 
   // Tag all enforcement whispers with customType="enforcement" so the agent
   // knows these are system-generated signals, not human messages.
-  // The content intentionally has no [enforcement] prefix — customType metadata
-  // is sufficient. The prefix was removed in Phase 2.4.
+  // We intentionally keep the "[enforcement]" prefix in the rendered text in
+  // addition to the customType metadata, so the signal is visible in any UI
+  // that only renders the text payload (logs, third-party frontends, etc.).
+  // Other handlers in this directory follow the same convention.
   sendTrackedMessage(
     pi,
     {
