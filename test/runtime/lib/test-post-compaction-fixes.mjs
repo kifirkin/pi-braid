@@ -1,12 +1,13 @@
 /**
- * Test: Post-Compaction Fixes (stack overflow + whisper ordering)
+ * Test: Post-Compaction Fixes (stack overflow + whisper ordering + wake audit)
  *
  * Verifies the bundle of fixes for:
  *  1. Re-entrancy guard MAX_REENTRY_DEPTH = 1 (was 2) — stops stack overflow
  *     when pi.sendMessage(steer) chains into a fresh before_agent_start loop.
- *  2. Timer module: triggerTurn: false on the resume whisper (was true).
- *     triggerTurn: true was the root cause of the post-compaction stack
- *     overflow because the host would start a new turn mid-tool-execution.
+ *  2. Timer module: triggerTurn derived from wake flag (resume=wake:true,
+ *     user-scheduled=wake:true by default). Busy guard prevents mid-tool
+ *     firing — the original post-compaction stack overflow chain is closed
+ *     off without losing auto-resume behavior.
  *  3. Timer module: _braidInjected metadata on the resume whisper (was missing).
  *     Consistent with the [enforcement] whisper contract so compaction can
  *     identify and preserve the message.
@@ -14,6 +15,9 @@
  *  5. cancelTimersByTag helper — new programmatic API on the timer module.
  *  6. Compaction paths actually call cancelTimersByTag to invalidate stale
  *     resume timers from previous compaction cycles.
+ *  7. Wake audit: critical whispers (compaction-retry errors, navigation
+ *     checkout prepared, context 80%+, tool reliability) use triggerTurn:true
+ *     so the agent wakes up and acts.
  */
 
 import { readFileSync, existsSync } from "fs";
@@ -83,8 +87,8 @@ console.log("\n[3] Timer whisper triggerTurn = wake ? true : false");
   );
   // The wake flag must be a parameter on scheduleTimer (TS strips type annotation)
   assert(
-    /export\s+function\s+scheduleTimer\([\s\S]*?wake\s*=\s*false\s*\)/.test(src),
-    "scheduleTimer exposes wake parameter (default false)",
+    /export\s+function\s+scheduleTimer\([\s\S]*?wake\s*=\s*true\s*\)/.test(src),
+    "scheduleTimer exposes wake parameter (default true — user timers wake the agent)",
   );
   // The wake field must be set on the timer object in setTimer
   assert(
@@ -213,6 +217,7 @@ console.log("\n[8] Live: cancelTimersByTag + wake flag");
     scheduleTimer,
     cancelTimersByTag,
     cancelTimer,
+    listTimers,
   } = await import(join(ROOT, "dist/extensions/tools/timer/index.js"));
 
   // Helper to introspect internal state via the public listTimers API
@@ -246,6 +251,72 @@ console.log("\n[8] Live: cancelTimersByTag + wake flag");
   cancelTimer(wakeId);
   cancelTimer(noWakeId);
   assert(true, "scheduleTimer accepts both wake: true and wake: false");
+
+  // Verify default wake is true (the fix for "common timers not waking")
+  const defaultId = scheduleTimer(60_000, "default-wake-test", "default-test");
+  const defaultTimer = listTimers().find((t) => t.id === defaultId);
+  assert(
+    defaultTimer && defaultTimer.wake === true,
+    "scheduleTimer defaults wake to true (user-set timers wake the agent)",
+  );
+  cancelTimer(defaultId);
+}
+
+// ── [9] Wake audit: critical whispers use triggerTurn: true ──────
+console.log("\n[9] Wake audit: critical whispers triggerTurn: true");
+{
+  const timerSrc = readFileSync(join(ROOT, "dist/extensions/tools/timer/index.js"), "utf8");
+  const compactRetrySrc = readFileSync(join(ROOT, "dist/extensions/memory/context-manager/handlers/compaction-retry.js"), "utf8");
+  const navigationSrc = readFileSync(join(ROOT, "dist/extensions/memory/context-manager/handlers/navigation.js"), "utf8");
+  const sessionStartSrc = readFileSync(join(ROOT, "dist/extensions/enforcement/handlers/register-session-start.js"), "utf8");
+  const threeMemStoresSrc = readFileSync(join(ROOT, "dist/extensions/memory/three-memory-stores/index.js"), "utf8");
+
+  // Timer fire: triggerTurn derived from wake, default wake=true
+  assert(
+    /const\s+triggerTurn\s*=\s*timer\.wake\s*===\s*true/.test(timerSrc),
+    "Timer fire: triggerTurn = timer.wake === true",
+  );
+
+  // compaction-retry: critical exhausted/error messages wake the agent
+  // These are the ones where retries are spent and the agent must pivot.
+  // The compiled JS has structure: { triggerTurn: true }, { source: "compaction/...-exhausted" }
+  // so check the source label follows the triggerTurn: true within ~150 chars.
+  const wakeExhausted = (label) =>
+    new RegExp(
+      `triggerTurn:\\s*true\\s*\\}\\s*,\\s*\\{\\s*type:\\s*"context"\\s*,\\s*source:\\s*"context-manager/compaction/${label}"`,
+    ).test(compactRetrySrc);
+  assert(wakeExhausted("overflow-exhausted"), "compaction-retry: overflow-exhausted uses triggerTurn: true");
+  assert(wakeExhausted("transient-exhausted"), "compaction-retry: transient-exhausted uses triggerTurn: true");
+  assert(wakeExhausted("context-window"), "compaction-retry: context-window uses triggerTurn: true");
+  assert(wakeExhausted("threshold-exhausted"), "compaction-retry: threshold-exhausted uses triggerTurn: true (was already correct)");
+
+  // In-progress retry messages stay triggerTurn: false (agent is waiting)
+  const keepSilent = (label) =>
+    new RegExp(
+      `triggerTurn:\\s*false\\s*\\}\\s*,\\s*\\{\\s*type:\\s*"context"\\s*,\\s*source:\\s*"context-manager/compaction/${label}"`,
+    ).test(compactRetrySrc);
+  assert(keepSilent("overflow"), "compaction-retry: overflow (in-progress) keeps triggerTurn: false");
+  assert(keepSilent("transient"), "compaction-retry: transient (in-progress) keeps triggerTurn: false");
+
+  // Navigation "Context checkout prepared" — direct action instruction
+  assert(
+    /source:\s*["']context-manager\/navigation["']/.test(navigationSrc) &&
+      /Context checkout prepared[\s\S]{0,500}?triggerTurn:\s*true/.test(navigationSrc),
+    "navigation: 'Context checkout prepared' uses triggerTurn: true (direct action)",
+  );
+
+  // Context 80%+ enforcement — agent should wake to act before escalation
+  assert(
+    /Context at \$\{Math\.round\(event\.usagePercent\)\}%[\s\S]{0,500}?triggerTurn:\s*true/.test(sessionStartSrc),
+    "enforcement: context 80%+ uses triggerTurn: true (proactive action)",
+  );
+
+  // Three-memory-stores reliability alert — agent should know a tool is failing
+  assert(
+    /source:\s*["']three-memory-stores\/reliability["'][\s\S]{0,300}?triggerTurn:\s*true/.test(threeMemStoresSrc) ||
+      /has better reliability[\s\S]{0,500}?triggerTurn:\s*true/.test(threeMemStoresSrc),
+    "memory: tool reliability alert uses triggerTurn: true (significant gap)",
+  );
 }
 
 // ── Summary ────────────────────────────────────────────────────────

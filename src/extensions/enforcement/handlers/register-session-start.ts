@@ -47,7 +47,10 @@ export function registerSessionStart(pi: ExtensionAPI): void {
                 },
               ],
             },
-            { deliverAs: "steer", triggerTurn: false },
+            // triggerTurn: true — context at 80%+ needs proactive action
+            // (context_tag / context_checkout / context_archive). Wakes the
+            // agent so it can respond before the next compact escalation.
+            { deliverAs: "steer", triggerTurn: true },
             { type: "enforcement", source: "enforcement/event-bus" },
           );
         }

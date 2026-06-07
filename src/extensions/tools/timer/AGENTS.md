@@ -17,10 +17,12 @@ All exported from `extensions/tools/timer/index.ts`:
 
 | `wake` | `triggerTurn` | When to use |
 |---|---|---|
-| `true` | `true` | Post-compaction resume timer. Auto-wakes the agent if it didn't continue on its own. Safe because the busy guard prevents mid-tool firing. |
-| `false` (default) | `false` | User-scheduled timers ("check the build in 60s"). Whisper is visible but does not force a new turn. |
+| `true` (default) | `true` | User-scheduled reminders (timer_set tool). The agent scheduled it expecting a wake-up. Safe because the busy guard prevents mid-tool firing. |
+| `false` | `false` | Background heartbeats and silent reminders. Visible in TUI but does not force a new turn. |
 
-The post-compaction stack overflow was caused by `triggerTurn: true` firing **mid-tool-execution**. The fix is the **busy guard** (below), not removing the auto-resume. The resume path needs auto-resume; user timers don't.
+**Default is `wake: true`.** This is the principle: if the user (or the agent) scheduled a timer, they expect to be woken when it fires. Pass `wake: false` explicitly for silent reminders.
+
+The post-compaction stack overflow was caused by `triggerTurn: true` firing **mid-tool-execution**. The fix is the **busy guard** (below), not removing the auto-resume. The resume path needs auto-resume; user timers want it.
 
 ## Tag conventions
 

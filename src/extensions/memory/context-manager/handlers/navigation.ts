@@ -67,7 +67,10 @@ export function registerTurnEndCheckoutHandler(pi: ExtensionAPI): void {
             ],
             display: true,
           },
-          { deliverAs: "steer", triggerTurn: false },
+          // triggerTurn: true — direct action instruction ("Run context_checkout").
+          // Wakes the agent so it can execute the prepared checkout instead of
+          // waiting for user input.
+          { deliverAs: "steer", triggerTurn: true },
           { type: "context", source: "context-manager/navigation" },
         );
         state.checkoutParams = null;

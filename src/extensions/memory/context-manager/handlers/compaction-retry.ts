@@ -111,7 +111,9 @@ export async function handleOverflowFailure(
       ],
       display: true,
     },
-    { deliverAs: "steer", triggerTurn: false },
+    // triggerTurn: true — retries are exhausted; agent must act (switch model,
+    // rotate, store learnings). Wakes the agent so it can take action.
+    { deliverAs: "steer", triggerTurn: true },
     { type: "context", source: "context-manager/compaction/overflow-exhausted" },
   );
   resetOverflowRetry();
@@ -176,7 +178,9 @@ export async function handleTransientError(
       ],
       display: true,
     },
-    { deliverAs: "steer", triggerTurn: false },
+    // triggerTurn: true — retries exhausted; agent must decide whether to
+    // wait for the server to recover, switch model, or rotate.
+    { deliverAs: "steer", triggerTurn: true },
     { type: "context", source: "context-manager/compaction/transient-exhausted" },
   );
 }
@@ -217,7 +221,8 @@ export async function handleContextWindowError(
       ],
       display: true,
     },
-    { deliverAs: "steer", triggerTurn: false },
+    // triggerTurn: true — session is dead in the water, agent must rotate.
+    { deliverAs: "steer", triggerTurn: true },
     { type: "context", source: "context-manager/compaction/context-window" },
   );
 }

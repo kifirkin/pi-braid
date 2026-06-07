@@ -21,12 +21,12 @@ export type { ScheduledTimer };
 class TimerManager {
   private timers: Map<string, ScheduledTimer> = new Map();
 
-  setTimer(delayMs: number, reason: string, tag?: string, wake: boolean = false): string {
+  setTimer(delayMs: number, reason: string, tag?: string, wake: boolean = true): string {
     const id = `timer_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const firesAt = Date.now() + delayMs;
 
     this.timers.set(id, { id, firesAt, reason, tag, createdAt: Date.now(), wake });
-    log.info(`[timer] set: ${id} fires in ${Math.round(delayMs / 1000)}s — ${reason}${wake ? " (wake)" : ""}`);
+    log.info(`[timer] set: ${id} fires in ${Math.round(delayMs / 1000)}s — ${reason}${wake ? " (wake)" : " (silent)"}`);
     return id;
   }
 
@@ -72,16 +72,18 @@ const timerManager = new TimerManager();
  * Programmatic timer API — schedule a timer from any extension.
  * Returns the timer ID. Timer fires and delivers a steer to the agent.
  *
- * @param wake if true, the fire whisper uses triggerTurn: true to wake
- *   the agent (auto-resume). Used by the post-compaction resume timer.
- *   Default: false. Safe in all cases because the busy guard prevents
- *   mid-tool-execution firing regardless of wake.
+ * @param wake if true (default), the fire whisper uses triggerTurn: true
+ *   to wake the agent. This matches the principle that user-scheduled
+ *   reminders (timer_set tool) expect a wake-up. The busy guard prevents
+ *   mid-tool-execution firing even when wake: true, so this is safe in
+ *   all cases. Pass wake: false for silent reminders (visible in TUI
+ *   but no forced turn) — used by background heartbeats and similar.
  */
 export function scheduleTimer(
   delayMs: number,
   reason: string,
   tag?: string,
-  wake: boolean = false,
+  wake: boolean = true,
 ): string {
   return timerManager.setTimer(delayMs, reason, tag, wake);
 }
@@ -89,6 +91,11 @@ export function scheduleTimer(
 /** Cancel a timer by ID. */
 export function cancelTimer(id: string): boolean {
   return timerManager.cancelTimer(id);
+}
+
+/** List all active timers (read-only). Sorted by firesAt. */
+export function listTimers(): ScheduledTimer[] {
+  return timerManager.listTimers();
 }
 
 /**

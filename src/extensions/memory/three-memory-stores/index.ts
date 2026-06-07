@@ -525,7 +525,10 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
                     },
                   ],
                 },
-                { deliverAs: "steer", triggerTurn: false },
+                // triggerTurn: true — significant reliability gap (>0.2)
+                // means the current tool is consistently failing for this
+                // task type. Wakes the agent so it can switch tools.
+                { deliverAs: "steer", triggerTurn: true },
                 { type: "memory", source: "three-memory-stores/reliability" },
               );
             }
