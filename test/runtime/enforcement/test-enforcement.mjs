@@ -74,8 +74,11 @@ console.log("\n[3] handler-registry.ts");
   const src = readFileSync(join(ROOT, "src/extensions/enforcement/handler-registry.ts"), "utf-8");
 
   const lines = src.split("\n").length;
-  test("handler-registry.ts is now thin (< 210 lines)", () => {
-    assert.ok(lines <= 210, `expected <= 210 lines, got ${lines}`);
+  test("handler-registry.ts is now thin (< 220 lines)", () => {
+    // Threshold raised from 210 to 220 when the turn-dedup beginTurn() hook
+    // was added to the input event handler. The extra ~8 lines are
+    // load-bearing — they wire the dedup registry lifecycle.
+    assert.ok(lines <= 220, `expected <= 220 lines, got ${lines}`);
   });
 
   test("exports HANDLER_REGISTRATIONS metadata", () => {
