@@ -185,21 +185,88 @@ async function loadConsolidatedHints(currentProject?: string): Promise<string[]>
 const HINT_RELEVANCE_CRITERIA = {
   systemPrompt:
     "You are a relevance classifier. Determine if the given behavioral hint " +
-    "is relevant to the user's current task. A hint is relevant if it describes " +
-    "a strategy or workflow that could apply to what the user is working on. " +
-    "Generic hints like 'Fix type error: Reproduce → Locate → Apply' are NOT relevant. " +
+    "is relevant to the user's current task. A hint is relevant ONLY if it " +
+    "describes a strategy or workflow that could plausibly apply to the " +
+    "current task based on shared topic, tool, or methodology. " +
+    "Generic hints like 'Fix type error: Reproduce → Locate → Apply' are NOT " +
+    "relevant even if vaguely applicable. " +
     "Answer only 'yes' or 'no'. Do not explain.",
-  userPrompt: "Hint: {{hint}}\n" + "Is this hint relevant to the user's current work?",
+  userPrompt:
+    "Current task: {{currentTask}}\n" +
+    "Hint: {{hint}}\n" +
+    "Is this hint relevant to the current task?",
 };
 
 /** Heuristic fallback: reject generic-seeming hints. */
-function hintRelevanceFallback(hint: string): string {
+function hintRelevanceFallback(hint: string, currentTask: string): string {
   // Reject hints shorter than 30 chars or that match generic patterns
   if (hint.length < 30) return "no";
   if (/Fix \w+ error:/.test(hint)) return "no";
   if (/Debug.*isolate/.test(hint)) return "no";
   if (/Reproduce.*Locate.*Apply/.test(hint)) return "no";
-  return "yes";
+  // Keyword overlap check: require at least one significant word (3+ chars,
+  // not a stop word) in common between the hint and the current task.
+  // This catches obvious false positives like a "session_outcome" hint
+  // being suggested for a code refactoring task.
+  const hintWords = new Set(extractKeywords(hint));
+  const taskWords = new Set(extractKeywords(currentTask));
+  for (const w of hintWords) {
+    if (taskWords.has(w)) return "yes";
+  }
+  return "no";
+}
+
+/** Common stop words that don't count for keyword overlap. */
+const HINT_STOP_WORDS = new Set([
+  "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+  "have", "has", "had", "do", "does", "did", "will", "would", "could",
+  "should", "may", "might", "must", "shall", "can", "need",
+  "that", "this", "these", "those", "what", "which", "who", "whom",
+  "with", "without", "from", "into", "onto", "and", "or", "but",
+  "if", "then", "else", "when", "where", "how", "why", "not",
+  "all", "each", "every", "both", "few", "more", "most", "other",
+  "some", "such", "no", "nor", "only", "own", "same", "so",
+  "than", "too", "very", "just", "also", "now", "here", "there",
+  "use", "used", "using", "via", "for", "make", "made", "run",
+]);
+
+/** Extract lowercase keywords (3+ chars, alphanumeric) excluding stop words. */
+function extractKeywords(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 3 && !HINT_STOP_WORDS.has(w));
+}
+
+/**
+ * Extract the current task from the session — the most recent user message.
+ * Returns a short summary, max ~200 chars.
+ */
+function getCurrentTask(ctx: ExtensionContext): string {
+  try {
+    const sm = ctx.sessionManager;
+    if (!sm || typeof sm.getBranch !== "function") return "";
+    const branch = sm.getBranch();
+    for (let i = branch.length - 1; i >= 0; i--) {
+      const entry = branch[i];
+      if (entry?.type === "message" && entry.message?.role === "user") {
+        const content = entry.message.content;
+        let text = "";
+        if (typeof content === "string") text = content;
+        else if (Array.isArray(content)) {
+          text = content
+            .filter((c: any) => c?.type === "text")
+            .map((c: any) => c?.text || "")
+            .join(" ");
+        }
+        return text.trim().slice(0, 500);
+      }
+    }
+  } catch {
+    // Non-fatal: empty current task means keyword check rejects all hints,
+    // which is the safe default.
+  }
+  return "";
 }
 
 /**
@@ -213,19 +280,21 @@ function hintRelevanceFallback(hint: string): string {
  * Returns only hints classified as relevant to the current session.
  */
 async function filterRelevantHints(hints: string[], ctx: ExtensionContext): Promise<string[]> {
-  // No pre-filter: let the LLM classify all hints. The heuristic fallback
-  // (hintRelevanceFallback) is only used when the LLM call fails.
+  const currentTask = getCurrentTask(ctx);
+  // Empty current task → reject all hints. Better to surface nothing
+  // than to inject a hint that has no task to be relevant to.
+  if (!currentTask) return [];
 
   const results = await Promise.all(
     hints.map((hint) =>
       classify(
         ctx,
         HINT_RELEVANCE_CRITERIA,
-        { hint },
+        { hint, currentTask },
         {
           maxTokens: 5,
           timeoutMs: 3000,
-          fallback: () => hintRelevanceFallback(hint),
+          fallback: () => hintRelevanceFallback(hint, currentTask),
         },
       ),
     ),
