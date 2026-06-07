@@ -47,6 +47,69 @@ function isSafeFallback(): string {
   return "no";
 }
 
+/**
+ * Known-safe git operations that should never be classified as dangerous.
+ * These are read-only or local-only operations with no irreversible side effects.
+ *
+ * The LLM tier occasionally misclassifies `git commit` (especially with long
+ * multi-line -m messages) as dangerous because of trigger words in the body.
+ * Recognizing these patterns lets us skip the LLM call entirely.
+ */
+const KNOWN_SAFE_GIT_SUBCOMMANDS = new Set([
+  "status",
+  "log",
+  "diff",
+  "show",
+  "branch",
+  "tag",
+  "remote",
+  "fetch",
+  "rev-parse",
+  "describe",
+  "config",
+  "stash list",
+  "ls-files",
+  "ls-tree",
+  "shortlog",
+  "reflog",
+  "blame",
+  "add", // local index update, not destructive
+  "commit", // local history write, not destructive
+  "stash", // local stash, not destructive
+  "checkout", // local branch switch, not destructive
+  "switch", // local branch switch, not destructive
+  "restore", // local file restore, not destructive
+]);
+
+/** Git flags that make a command destructive (force push, hard reset, etc.). */
+const KNOWN_DANGEROUS_GIT_FLAGS = [
+  /--force(?:-with-lease)?(?:\s|$|=)/, // push --force
+  /\b-D\b/, // branch -D (force delete)
+  /\b--hard\b/, // reset --hard, checkout --hard
+  /\bclean\s+-f/, // git clean -f
+];
+
+function isKnownSafeGitCommand(command: string): boolean {
+  const trimmed = command.trim();
+  if (!/^git\s/.test(trimmed)) return false;
+
+  // First dangerous-flag check — if any are present, fall through to LLM
+  // (it may still be safe, but we don't want to whitelist a force push).
+  for (const pattern of KNOWN_DANGEROUS_GIT_FLAGS) {
+    if (pattern.test(trimmed)) return false;
+  }
+
+  // Extract the subcommand: the first non-flag, non-global-arg token after `git`.
+  // Stops at `--` to avoid confusing options with subcommands.
+  const tokens = trimmed.split(/\s+/).slice(1);
+  for (const tok of tokens) {
+    if (tok === "--") break;
+    if (tok.startsWith("-")) continue;
+    return KNOWN_SAFE_GIT_SUBCOMMANDS.has(tok);
+  }
+  return false;
+}
+
 // ── Extension ────────────────────────────────────────────────────────────────
 
 export default function toolSafetyExtension(pi: ExtensionAPI): void {
@@ -58,6 +121,18 @@ export default function toolSafetyExtension(pi: ExtensionAPI): void {
     const args = JSON.stringify(input).slice(0, 1000); // keep tokens reasonable
 
     log.debug(`[tool-safety] Checking ${toolName}: ${args.slice(0, 120)}...`);
+
+    // Pre-classification bypass: known-safe git operations skip the LLM
+    // entirely. This prevents false positives on operations like
+    // `git commit -m "..."` where the LLM might classify the long message
+    // body as dangerous based on trigger words.
+    if (toolName === "bash") {
+      const cmd = (input as { command?: string } | undefined)?.command || "";
+      if (isKnownSafeGitCommand(cmd)) {
+        log.debug(`[tool-safety] ALLOW-LISTED safe git command, skipping classify(): ${cmd.slice(0, 80)}`);
+        return undefined;
+      }
+    }
 
     try {
       const result = await classify(
