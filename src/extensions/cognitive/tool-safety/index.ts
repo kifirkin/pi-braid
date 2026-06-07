@@ -5,7 +5,7 @@
  * classifies the operation with the configured utility model before execution.
  * If classified as "unsafe", blocks execution with a steer.
  *
- * Three-tier fallback (same as roast filter): utility → session → heuristic.
+ * Three-tier fallback (same as input critic): utility → session → heuristic.
  * Heuristic is conservative — always allows through on degradation.
  * Timeout (2s) also allows through — safety check never blocks.
  *

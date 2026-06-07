@@ -15,7 +15,7 @@
  * This registry is the single source of truth for all classifier prompts.
  * Callers import CRITICS and pass the value to classify().
  *
- * Pattern from: input-polisher/roast-filter.ts
+ * Pattern from: input-polisher/input-critic.ts
  *   Three parallel classify() calls, each with criteria + heuristic fallback.
  *   The result is a consensus verdict across critics.
  *

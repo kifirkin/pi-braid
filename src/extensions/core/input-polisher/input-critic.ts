@@ -1,9 +1,9 @@
 /**
- * Roast Filter — Utility-model pre-classification for input-polisher.
+ * Input Critic — Utility-model pre-classification for input-polisher.
  *
  * Each check is a lightweight yes/no classification call to the configured
- * utility model (or session model fallback). The utility model "roasts"
- * (critiques) the input quality and intention before the polisher acts.
+ * utility model (or session model fallback). The utility model critiques
+ * the input quality and intention before the polisher acts.
  *
  * Three-tier fallback: utility model → session model → heuristic.
  * Heuristics are preserved as graceful degradation, not the primary path.
@@ -158,9 +158,9 @@ function isAmbiguousFallback(text: string): string {
   return vaguePatterns.some((p) => p.test(text)) ? "yes" : "no";
 }
 
-// ── Roast Filter ─────────────────────────────────────────────────────────────
+// ── Input Critic ─────────────────────────────────────────────────────────────
 
-export interface RoastResult {
+export interface CritiqueResult {
   /** True if the text is primarily code — skip polishing. */
   isCode: boolean;
   /** True if the text is well-written — skip polishing. */
@@ -184,14 +184,14 @@ export interface RoastResult {
 }
 
 /**
- * Run all three roast checks in parallel.
+ * Run all five classification checks in parallel.
  *
  * Each check runs classify() with its own heuristic fallback.
- * If the utility model is configured, all three finish in ~50ms parallel.
- * If not configured, all three use the session model (~100ms parallel).
- * If no model works, all three use heuristics (~0.03ms).
+ * If the utility model is configured, all five finish in ~50ms parallel.
+ * If not configured, all five use the session model (~100ms parallel).
+ * If no model works, all five use heuristics (~0.03ms).
  */
-export async function roastInput(text: string, ctx: ExtensionContext): Promise<RoastResult> {
+export async function critiqueInput(text: string, ctx: ExtensionContext): Promise<CritiqueResult> {
   // Truncate very long text to keep prompt tokens reasonable
   const truncated = text.length > 2000 ? text.slice(0, 2000) + "..." : text;
 

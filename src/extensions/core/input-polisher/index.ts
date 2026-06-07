@@ -16,7 +16,7 @@ let _isCompactionActive: (() => boolean) | undefined;
  *
  * Smart content detection (skips unchanged):
  * - Long/copy-pasted text (>8 newlines by default)
- * - Code-heavy messages (classified by roast filter)
+ * - Code-heavy messages (classified by input critic)
  * - Well-written English text
  * - Messages with images attached
  * - Commands (/command, !command)
@@ -49,7 +49,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { setLanguage, detectLanguage } from "../../../lib/ai/language-hint.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
-import { roastInput } from "./roast-filter.js";
+import { critiqueInput } from "./input-critic.js";
 import { resolveUtilityModel } from "../../../lib/ai/model-resolver.js";
 import { SESSION_START } from "../../../lib/core/event-names.js";
 
@@ -127,7 +127,7 @@ async function saveGlobalSetting<T>(key: string, value: T): Promise<void> {
 }
 
 // ============================================================================
-// The roast filter replaces all heuristics below.
+// The input critic replaces all heuristics below.
 // ============================================================================
 
 // ============================================================================
@@ -208,7 +208,7 @@ interface QueuedMessage {
   isCodeRequest: boolean;
 }
 
-interface RoastStats {
+interface InputCriticStats {
   totalClassifications: number;
   utilityTier: number;
   sessionTier: number;
@@ -233,7 +233,7 @@ interface PolisherState {
   isProcessing: boolean;
   polishedText: string | undefined;
   polishingExhausted: boolean;
-  roastStats: RoastStats;
+  inputCriticStats: InputCriticStats;
 }
 
 function createPolisherState(): PolisherState {
@@ -246,7 +246,7 @@ function createPolisherState(): PolisherState {
     isProcessing: false,
     polishedText: undefined,
     polishingExhausted: false,
-    roastStats: {
+    inputCriticStats: {
       totalClassifications: 0,
       utilityTier: 0,
       sessionTier: 0,
@@ -283,10 +283,10 @@ async function processMessage(
     const model = utilityModel ?? ctx.model;
     if (model) {
       if (utilityModel) {
-        state.roastStats.polishUtilityCount++;
+        state.inputCriticStats.polishUtilityCount++;
         log.info(`Polishing with utility model: ${model.id}`);
       } else {
-        state.roastStats.polishSessionCount++;
+        state.inputCriticStats.polishSessionCount++;
         log.info(`Polishing with session model: ${model.id}`);
       }
     }
@@ -456,7 +456,7 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
     }
 
     // Skip during active compaction — input is queued in compaction.ts
-    // and delivered after compaction completes. Check BEFORE the roast filter
+    // and delivered after compaction completes. Check BEFORE the input critic
     // to avoid wasting model calls during compaction.
     if (_isCompactionActive?.()) {
       state.skippedCount++;
@@ -469,7 +469,7 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
     const newlineCount = (original.match(/\n/g) || []).length;
     if (newlineCount > state.config.maxNewlines) {
       state.skippedCount++;
-      state.roastStats.skippedLongText++;
+      state.inputCriticStats.skippedLongText++;
       log.debug(`Skipped long text (${newlineCount} newlines > ${state.config.maxNewlines} max)`);
       ctx.ui.setStatus("input-polisher", "✓ Text too long to polish — press Enter to send");
       ctx.ui.setEditorText(original);
@@ -481,24 +481,24 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
     // Show loading before classification
     ctx.ui.setStatus("input-polisher", "⏳ Classifying input...");
 
-    // Roast filter: classify input with utility model (or heuristic fallback)
-    const roast = await roastInput(original, ctx);
-    state.roastStats.totalClassifications++;
-    const tier = roast.tier;
-    if (tier === "utility") state.roastStats.utilityTier++;
-    else if (tier === "session") state.roastStats.sessionTier++;
-    else state.roastStats.heuristicTier++;
-    if (roast.isCode) state.roastStats.skippedCode++;
-    if (roast.isWellWritten) state.roastStats.skippedWellWritten++;
-    if (!roast.isClear) state.roastStats.skippedUnclear++;
-    if (roast.isAmbiguous) state.roastStats.foundAmbiguous++;
+    // Input critic: classify input with utility model (or heuristic fallback)
+    const critique = await critiqueInput(original, ctx);
+    state.inputCriticStats.totalClassifications++;
+    const tier = critique.tier;
+    if (tier === "utility") state.inputCriticStats.utilityTier++;
+    else if (tier === "session") state.inputCriticStats.sessionTier++;
+    else state.inputCriticStats.heuristicTier++;
+    if (critique.isCode) state.inputCriticStats.skippedCode++;
+    if (critique.isWellWritten) state.inputCriticStats.skippedWellWritten++;
+    if (!critique.isClear) state.inputCriticStats.skippedUnclear++;
+    if (critique.isAmbiguous) state.inputCriticStats.foundAmbiguous++;
     // Only append anti-slop suffix when utility model confirms it's a code request.
     // Heuristic regexes and session model produce too many false positives —
     // a false negative (missing the suffix) is far less harmful than a false
     // positive (spamming the user with "Output the code directly...").
-    const isCodeRequest = roast.isCodeRequest && roast.checks.codeRequest.tier === "utility";
-    if (isCodeRequest) state.roastStats.antiSlopTriggered++;
-    if (roast.isCode || (roast.isWellWritten && roast.isClear)) {
+    const isCodeRequest = critique.isCodeRequest && critique.checks.codeRequest.tier === "utility";
+    if (isCodeRequest) state.inputCriticStats.antiSlopTriggered++;
+    if (critique.isCode || (critique.isWellWritten && critique.isClear)) {
       state.skippedCount++;
       ctx.ui.setStatus("input-polisher", "✓ Text already clean — press Enter to send");
       ctx.ui.notify(
@@ -563,11 +563,11 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
     },
   });
 
-  pi.registerCommand("roast-stats", {
-    description: "Show roast filter classification tier statistics",
+  pi.registerCommand("critic-stats", {
+    description: "Show input critic classification tier statistics",
     handler: async (_args, ctx) => {
       const state = getState(ctx);
-      const s = state.roastStats;
+      const s = state.inputCriticStats;
       const lines: string[] = [];
       lines.push(`Total classifications: ${s.totalClassifications}`);
       lines.push(`  Utility model tier: ${s.utilityTier}`);
