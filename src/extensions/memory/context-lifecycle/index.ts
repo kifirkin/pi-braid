@@ -329,8 +329,13 @@ async function executeAutoCompact(pi: ExtensionAPI, ctx: any): Promise<void> {
   try {
     // 1. Schedule resume timer BEFORE compacting
     try {
-      const { scheduleTimer } = await import("../../tools/timer/index.js");
-      scheduleTimer(
+      const timerMod = await import("../../tools/timer/index.js");
+      // Cancel any stale resume timer from a previous compaction cycle
+      // (manual or auto). Without this, an old timer can fire later during
+      // an unrelated TURN_END and produce a stray [timer] whisper.
+      timerMod.cancelTimersByTag("compaction-resume");
+      timerMod.cancelTimersByTag("auto-compaction-resume");
+      timerMod.scheduleTimer(
         3 * 60 * 1000,
         "Auto-compaction done — continue your task",
         "auto-compaction-resume",

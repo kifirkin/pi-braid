@@ -81,10 +81,25 @@ export function cancelTimer(id: string): boolean {
   return timerManager.cancelTimer(id);
 }
 
+/**
+ * Cancel all active timers matching a tag. Used by compaction paths to
+ * invalidate stale resume timers from a previous compaction cycle.
+ * Returns the number of timers cancelled.
+ */
+export function cancelTimersByTag(tag: string): number {
+  let cancelled = 0;
+  for (const t of timerManager.listTimers()) {
+    if (t.tag === tag) {
+      if (timerManager.cancelTimer(t.id)) cancelled++;
+    }
+  }
+  return cancelled;
+}
+
 // ── Fire Handlers (via shared bus) ───────────────────────────────────
 // We import the shared bus to bridge timer fires → heartbeat surfacing
 import { emitTimerReminder } from "../../../lib/events/timer-bus.js";
-import { TURN_END, SESSION_SHUTDOWN } from "../../../lib/core/event-names.js";
+import { TURN_END, TOOL_CALL, SESSION_SHUTDOWN } from "../../../lib/core/event-names.js";
 
 // Internal handler count (kept for API compat — currently unused,
 // no callers register via onTimerFire. The event bus handles
@@ -108,6 +123,11 @@ const POLL_INTERVAL_MS = 1000;
 class TimerPoller {
   pollHandle: ReturnType<typeof setInterval> | null = null;
   piRef: ExtensionAPI | null = null;
+  // busy guard: when true, the poller skips fireTimer() to prevent whisper
+  // injection mid-tool-execution (which can chain into synchronous re-entry
+  // and overflow the stack — see issue: stack overflow on scratchpad after
+  // compaction). Set true on TOOL_CALL, false on TURN_END.
+  busy = false;
 
   setPiRef(pi: ExtensionAPI): void {
     this.piRef = pi;
@@ -126,9 +146,14 @@ class TimerPoller {
     }
   }
 
+  setBusy(busy: boolean): void {
+    this.busy = busy;
+  }
+
   private poll(): void {
     const pi = this.piRef;
     if (!pi) return;
+    if (this.busy) return; // bail — defer fire to next non-busy tick or TURN_END
     const expired = timerManager.checkExpired(Date.now());
     for (const timer of expired) {
       fireTimer(timer, pi);
@@ -166,7 +191,13 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
   }
 
   log.info(`[timer] fired: ${timer.id} — ${timer.reason}`);
-  // Try to wake the agent with a steer message if between turns
+  // Try to wake the agent with a steer message if between turns.
+  // triggerTurn: false matches the contract used by the [enforcement] whisper:
+  // the message is visible in TUI and survives compaction (via _braidInjected),
+  // but does NOT force a synchronous re-entry into the agent loop. This is
+  // critical: triggerTurn: true was the root cause of the post-compaction
+  // stack overflow — the timer fired mid-tool-execution, the host started a
+  // new turn, and the resulting re-entrant before_agent_start chain overflowed.
   try {
     sendTrackedMessage(
       pi,
@@ -174,8 +205,9 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
         customType: "timer",
         content: [{ type: "text" as const, text: `[timer] ${timer.reason}` }],
         display: true,
+        details: { _braidInjected: true, _braidSource: "timer/fire", timerId: timer.id },
       },
-      { deliverAs: "steer", triggerTurn: true },
+      { deliverAs: "steer", triggerTurn: false },
       { type: "heartbeat", source: "timer/fire" },
     );
   } catch (e) {
@@ -300,8 +332,14 @@ export default function timerExtension(pi: ExtensionAPI): void {
   // Start real-time polling on load
   startTimerPolling(pi);
 
-  // Fallback: check expired timers on turn_end (catches anything the poll missed)
+  // Busy guard: set true on tool_call, false on turn_end. The poller bails
+  // while busy so a fired timer cannot interrupt a tool mid-execution
+  // (which was the root cause of the post-compaction stack overflow).
+  pi.on(TOOL_CALL, () => {
+    poller.setBusy(true);
+  });
   pi.on(TURN_END, () => {
+    poller.setBusy(false);
     const expired = timerManager.checkExpired(Date.now());
     for (const timer of expired) {
       fireTimer(timer, pi);

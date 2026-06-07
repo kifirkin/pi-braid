@@ -92,8 +92,13 @@ export function registerContextCompress(pi: ExtensionAPI): void {
           };
 
           try {
-            const { scheduleTimer } = await import("../../../../tools/timer/index.js");
-            scheduleTimer(
+            const timerMod = await import("../../../../tools/timer/index.js");
+            // Cancel any stale resume timer from a previous compaction cycle.
+            // Without this, an old timer can fire during a later TURN_END and
+            // deliver a misplaced [timer] whisper (the "strange order" issue).
+            timerMod.cancelTimersByTag("compaction-resume");
+            timerMod.cancelTimersByTag("auto-compaction-resume");
+            timerMod.scheduleTimer(
               3 * 60 * 1000,
               "Context compaction done — continue your task",
               "compaction-resume",

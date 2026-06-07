@@ -45,7 +45,11 @@ let _activeSessionId: string | undefined;
 // Incremented before pi.sendMessage, decremented after. If depth > MAX_REENTRY_DEPTH,
 // the message is dispatched via queueMicrotask to break the synchronous chain.
 let _sendDepth = 0;
-const MAX_REENTRY_DEPTH = 2;
+// MAX_REENTRY_DEPTH = 1: only allow 1 synchronous pi.sendMessage call before
+// deferring to microtask. With ~25 extensions each registering before_agent_start
+// hooks, the runtime re-entry depth can far exceed 2 if every nested call is
+// allowed through. 1 is the safe floor — anything deeper is unsafe.
+const MAX_REENTRY_DEPTH = 1;
 
 
 /**
@@ -191,6 +195,9 @@ export function sendTrackedMessage(
     // Break synchronous re-entry by deferring to microtask.
     // This prevents stack overflow when pi.sendMessage(steer) triggers
     // a synchronous before_agent_start that calls sendTrackedMessage again.
+    // The runtime's own re-entry depth (across extension hooks) is not visible
+    // to this counter, so we keep MAX_REENTRY_DEPTH conservative (1) to stop
+    // the chain before it can grow during a tool execution.
     log.warn(
       `sendTrackedMessage re-entry depth ${_sendDepth}/${MAX_REENTRY_DEPTH} — deferring to microtask`,
     );

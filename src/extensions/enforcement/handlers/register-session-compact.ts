@@ -17,6 +17,21 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
 
     const compactTurn = getState(ctx).currentTurn;
 
+    // Cancel any stale resume timer from a previous compaction cycle.
+    // The compaction-resume and auto-compaction-resume tags are scheduled by
+    // the context_compress tool and the context-lifecycle auto-compact path
+    // respectively. They were never cancelled when a new compaction began,
+    // which produced a misplaced [timer] whisper during the next TURN_END.
+    try {
+      const { cancelTimersByTag } = await import("../../tools/timer/index.js");
+      const cancelled = cancelTimersByTag("compaction-resume") + cancelTimersByTag("auto-compaction-resume");
+      if (cancelled > 0) {
+        log.debug(`Cancelled ${cancelled} stale compaction resume timer(s)`);
+      }
+    } catch {
+      // Non-fatal — timer module unavailable
+    }
+
     try {
       const scratchpadResult = await (
         ctx as unknown as { tools?: { scratchpad?(params: { action: string }): Promise<unknown> } }
