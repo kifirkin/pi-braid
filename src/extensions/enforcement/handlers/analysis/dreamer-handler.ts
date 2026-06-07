@@ -7,6 +7,7 @@ import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";
 import { emitSignal } from "../../../../lib/reasoning/belief-policy-engine.js";
 import { dream } from "../../../../lib/reasoning/dreamer.js";
 import { recordAdvice } from "../../../../lib/reasoning/advice-tracker.js";
+import { tryClaim } from "../../../../lib/enforcement/turn-dedup.js";
 import { getState } from "../../state.js";
 
 export async function dreamerHandler(pi: any, _event: any, ctx: ExtensionContext): Promise<void> {
@@ -28,6 +29,10 @@ export async function dreamerHandler(pi: any, _event: any, ctx: ExtensionContext
     source: "dreamer",
     message: dreamAdvice.message.slice(0, 200),
   });
+  // Dedup: turn-outcome is the critical loop detector. If it already
+  // claimed the "loop" category for this turn, the dreamer's advisory
+  // adds no new information and is suppressed.
+  if (!tryClaim("dreamer", "loop")) return;
   sendTrackedMessage(
     pi,
     {

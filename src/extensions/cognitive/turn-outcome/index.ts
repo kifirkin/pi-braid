@@ -21,6 +21,7 @@ import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { classify } from "../../../lib/ai/text-classifier.js";
 import { CRITICS } from "../../../lib/ai/critic-registry.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
+import { tryClaim } from "../../../lib/enforcement/turn-dedup.js";
 import { onEvent } from "../../../lib/events/event-types.js";
 import { TURN_END } from "../../../lib/core/event-names.js";
 
@@ -152,6 +153,14 @@ export default function turnOutcomeExtension(pi: ExtensionAPI): void {
     // Send steer
     const message = formatSteerMessage(details);
     log.info(`[turn-outcome] Loop detected: ${details}`);
+
+    // Dedup: claim the "loop" category so the dreamer's loop advisory
+    // doesn't double-fire for the same condition. The dreamer will see
+    // this claim and return without sending.
+    if (!tryClaim("turn-outcome", "loop")) {
+      log.info(`[turn-outcome] Loop detected but "loop" category already claimed; skipping steer`);
+      return;
+    }
 
     try {
       sendTrackedMessage(

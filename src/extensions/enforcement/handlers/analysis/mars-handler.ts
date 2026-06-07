@@ -7,6 +7,7 @@ import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";
 import { emitSignal } from "../../../../lib/reasoning/belief-policy-engine.js";
 import { shouldAdvise } from "../../../../lib/reasoning/mars-reflector.js";
 import { recordAdvice } from "../../../../lib/reasoning/advice-tracker.js";
+import { tryClaim } from "../../../../lib/enforcement/turn-dedup.js";
 import { getState } from "../../state.js";
 
 function _extractToolFromMarsMessage(msg: string): string | undefined {
@@ -39,6 +40,8 @@ export async function marsHandler(pi: any, _event: any, ctx: ExtensionContext): 
     type: marsAdvice.type,
     message: marsAdvice.message.slice(0, 200),
   });
+  // Dedup: share the "advisory" slot with bpe/drift — first claim wins.
+  if (!tryClaim("mars", "advisory")) return;
   sendTrackedMessage(
     pi,
     {

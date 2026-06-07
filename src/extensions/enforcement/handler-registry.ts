@@ -41,6 +41,7 @@ import { dreamerHandler } from "./handlers/analysis/dreamer-handler.js";
 import { feedbackHandler } from "./handlers/analysis/feedback-handler.js";
 import { reflectionHandler } from "./handlers/analysis/reflection-handler.js";
 import { dispatchTurnEndLoop } from "./handlers/turn-end-handler.js";
+import { beginTurn } from "../../lib/enforcement/turn-dedup.js";
 import { SESSION_START, TOOL_CALL, TURN_END, MESSAGE_END, SESSION_SHUTDOWN } from "../../lib/core/event-names.js";
 
 const log = createLogger("enforcement");
@@ -85,6 +86,13 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
   registerInputHandler(pi);
   registerSessionStart(pi);
   registerToolCallHandler(pi);
+
+  // Clear the turn-scoped whisper dedup registry at the start of each
+  // new user turn. Any pending claims from the previous turn are dropped
+  // so each turn gets a fresh dedup budget.
+  onEvent(pi, "input", () => {
+    beginTurn();
+  });
   registerMessageEndHandler(pi);
   registerToolResultHandler(pi);
   registerCompactAndSessionHandlers(pi, nudgeManager);

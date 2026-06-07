@@ -7,6 +7,7 @@ import type { SessionEntry, SessionManager } from "../../../../lib/state/session
 import { getCachedSessionManager } from "../../../../lib/state/extension-state.js";
 import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";
 import { emitSignal } from "../../../../lib/reasoning/belief-policy-engine.js";
+import { tryClaim } from "../../../../lib/enforcement/turn-dedup.js";
 import { getState } from "../../state.js";
 import { setCriticCtx } from "../../../../lib/detection/topic-drift-detector.js";
 
@@ -49,6 +50,18 @@ export async function driftHandler(pi: any, _event: any, ctx: ExtensionContext):
   if (driftCheck.drifted) {
     const whisper = gs.driftDetector.generateWhisper(driftCheck);
     if (whisper) {
+      // Dedup: share the "advisory" slot with bpe/mars — first claim wins.
+      if (!tryClaim("drift", "advisory")) {
+        emitSignal(
+          ctx,
+          "topic-drift",
+          "detected",
+          driftCheck.severity === "strong" ? "warn" : "info",
+          false,
+          { severity: driftCheck.severity },
+        );
+        return;
+      }
       sendTrackedMessage(
         pi,
         {

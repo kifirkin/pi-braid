@@ -12,6 +12,7 @@ import {
   getNextRecommendation,
   reportRecommendationOutcome,
 } from "../../../../lib/reasoning/belief-policy-engine.js";
+import { tryClaim } from "../../../../lib/enforcement/turn-dedup.js";
 import { getState } from "../../state.js";
 
 let _lastRecommendationType: string | null = null;
@@ -37,6 +38,10 @@ export async function bpeHandler(
   if (bpeRec) {
     _lastRecommendationType = bpeRec.type;
     gs.toolCallsAtLastRecommendation = gs.totalToolCalls;
+    // Dedup: if another advisory already fired this turn, suppress.
+    if (!tryClaim("bpe", "advisory")) {
+      return bpeRec.type;
+    }
     sendTrackedMessage(
       pi,
       {
