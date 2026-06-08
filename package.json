@@ -36,6 +36,7 @@
     "prepublishOnly": "npm run typecheck && npm run build",
     "prepare": "npm run build",
     "typecheck": "tsc --noEmit",
+    "prebuild": "npm run clean",
     "build": "tsc",
     "test": "npm run build && node scripts/run-tests.mjs",
     "clean": "rm -rf dist *.tsbuildinfo",
