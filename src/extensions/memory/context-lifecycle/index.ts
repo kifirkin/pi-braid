@@ -12,9 +12,9 @@
  * - Memory: CustomEntry persistence with outcome tracking
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, SessionEntry, SessionManager, AgentToolResult, AgentToolUpdateCallback, ToolCallEvent } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
-import { Type } from "typebox";
+import { Type, type Static } from "typebox";
 
 import { createLogger } from "../../../lib/core/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
@@ -30,6 +30,7 @@ import {
   SNAPSHOT_CUSTOM_TYPE,
   type ContextProposal,
   type ContextSnapshot,
+  type SemanticSignalType,
 } from "./types.js";
 import {
   createPolicyEngineState,
@@ -200,7 +201,7 @@ function sendCompactNudge(pi: ExtensionAPI, evaluated: EvaluatedAction, usage: n
  * we auto-trigger the same timer+compact pattern that context_compact tool uses.
  * The timer fires after compaction completes and resumes the agent.
  */
-async function executeAutoCompact(pi: ExtensionAPI, ctx: any): Promise<void> {
+async function executeAutoCompact(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
   try {
     // 1. Cancel stale resume timers from previous compaction cycles
     try {
@@ -253,7 +254,7 @@ async function executeAutoCompact(pi: ExtensionAPI, ctx: any): Promise<void> {
 function executeAction(
   evaluated: EvaluatedAction,
   pi: ExtensionAPI,
-  ctx: any,
+  ctx: ExtensionContext,
   usage: number,
   branchLength: number,
 ): void {
@@ -269,7 +270,7 @@ function executeAction(
     case "snapshot":
       if (evaluated.canExecute) {
         const snapshot = createSnapshot(action.reason, branchLength, Math.round(usage * 2));
-        const sm = ctx.sessionManager;
+        const sm = ctx.sessionManager as unknown as SessionManager;
         sm.appendCustomEntry(SNAPSHOT_CUSTOM_TYPE, snapshot);
         log.debug(`Created snapshot: ${snapshot.id}`);
       }
@@ -294,7 +295,7 @@ function executeAction(
   }
 }
 
-function queueProposal(evaluated: EvaluatedAction, ctx: any, branchLength: number): void {
+function queueProposal(evaluated: EvaluatedAction, ctx: ExtensionContext, branchLength: number): void {
   if (evaluated.action.type !== "propose") return;
 
   // ── Rate limiting: prevent proposal spam ────────────────────────────────
@@ -332,7 +333,7 @@ function queueProposal(evaluated: EvaluatedAction, ctx: any, branchLength: numbe
     0.7,
   );
 
-  const sm = ctx.sessionManager;
+  const sm = ctx.sessionManager as unknown as SessionManager;
   sm.appendCustomMessageEntry(
     PROPOSAL_CUSTOM_TYPE,
     [
@@ -354,7 +355,7 @@ import { TOOL_CALL } from "../../../lib/core/event-names.js";
 
 export default function contextLifecycleExtension(pi: ExtensionAPI): void {
   // ── session_start ────────────────────────────────────────────────────────
-  registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event: any, ctx: any) => {
+  registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event: unknown, ctx: ExtensionContext) => {
     resetState(ctx);
     state().outcomes.length = 0;
     _policyState.cooldowns.clear();
@@ -374,7 +375,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 
   // ── before_agent_start ──────────────────────────────────────────────────
   // R-CCAM loop: Retrieval → Cognition → Control → Action
-  pi.on("before_agent_start", async (_event: any, ctx: any) => {
+  pi.on("before_agent_start", async (_event: unknown, ctx: ExtensionContext) => {
     // ── RE-ENTRANCY GUARD ────────────────────────────────────────────────
     // If sendTrackedMessage → pi.sendMessage(steer) fires before_agent_start
     // synchronously, prevent unbounded recursion. Without this guard, a
@@ -394,8 +395,8 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     evictOldOutcomes(state());
 
     const usage = getContextUsage(ctx);
-    const entries = getAllEntries(ctx);
-    const branch = getBranchEntries(ctx);
+    const entries = getAllEntries(ctx) as SessionEntry[];
+    const branch = getBranchEntries(ctx) as SessionEntry[];
 
     // ── COMPACTION ESCALATION CHECK ────────────────────────────────────────
     // If we sent a compact nudge last turn and the agent didn't use any
@@ -520,7 +521,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
   });
 
   // ── tool_call: Capture agent signals + compaction escalation reset ────────
-  pi.on(TOOL_CALL, async (event: any) => {
+  pi.on(TOOL_CALL, async (event: ToolCallEvent) => {
     const toolName = event.toolName as string;
     const _input = event?.input as Record<string, unknown> | undefined;
 
@@ -555,12 +556,12 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     parameters: contextProposalsSchema,
     execute: async (
       _toolCallId: string,
-      params: any,
-      _signal: any,
-      _onUpdate: any,
-      ctx: any,
-    ): Promise<any> => {
-      const entries = getAllEntries(ctx);
+      params: Static<typeof contextProposalsSchema>,
+      _signal: AbortSignal | undefined,
+      _onUpdate: AgentToolUpdateCallback<unknown> | undefined,
+      ctx: ExtensionContext,
+    ): Promise<AgentToolResult<unknown>> => {
+      const entries = getAllEntries(ctx) as SessionEntry[];
       const proposals = readProposalsFromSession(entries);
       const pending = proposals.filter((p) => !p.resolution);
       const snapshots = readSnapshotsFromSession(entries);
@@ -744,15 +745,15 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     parameters: contextSignalSchema,
     execute: async (
       _toolCallId: string,
-      params: any,
-      _signal: any,
-      _onUpdate: any,
-      _ctx: any,
-    ): Promise<any> => {
+      params: Static<typeof contextSignalSchema>,
+      _signal: AbortSignal | undefined,
+      _onUpdate: AgentToolUpdateCallback<unknown> | undefined,
+      _ctx: ExtensionContext,
+    ): Promise<AgentToolResult<unknown>> => {
       const type = params.type;
       const note = params.note ?? "";
 
-      queueSignal(_detectorState, type, { note, turn: state().turnCount });
+      queueSignal(_detectorState, type as SemanticSignalType, { note, turn: state().turnCount });
 
       return {
         content: [

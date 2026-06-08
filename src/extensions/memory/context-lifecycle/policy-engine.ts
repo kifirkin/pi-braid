@@ -237,8 +237,22 @@ export function generateDensitySignals(ctx: ExtensionContext): SemanticSignal[] 
 
 // ── Policy Evaluation for Density Signals ───────────────────────────────────────
 
-export function evaluateDensityPolicies(ctx: ExtensionContext, signals: SemanticSignal[]): any[] {
-  const proposals: any[] = [];
+/**
+ * Shape of a density-policy proposal. Distinct from `EvaluatedAction`
+ * because density proposals have an id and a numeric priority for sorting.
+ */
+export interface DensityPolicyProposal {
+    id: string;
+    policy_id: string;
+    action: PolicyAction;
+    priority: number;
+    canExecute: boolean;
+    signal?: SemanticSignal;
+    confidence?: number;
+}
+
+export function evaluateDensityPolicies(ctx: ExtensionContext, signals: SemanticSignal[]): DensityPolicyProposal[] {
+  const proposals: DensityPolicyProposal[] = [];
 
   for (const signal of signals) {
     const signalType = signal.type;
