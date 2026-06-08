@@ -226,7 +226,7 @@ export const MANIFEST: ManifestEntry[] = [
   {
     id: "auto-singleton",
     fn: autoSingletonFn,
-    desc: "Auto-singleton watchdog",
+    desc: "Auto-singleton inactivity timer (one-shot)",
   },
   {
     id: "auto-recovery",
