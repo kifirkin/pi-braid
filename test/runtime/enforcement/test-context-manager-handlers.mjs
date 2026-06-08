@@ -16,7 +16,9 @@ async function main() {
 
 	// ── Module structure verification ────────────────────────────────────
 	console.log("\n[1] Handler module structure");
-	const handlerFiles = ["shared", "tools", "compaction", "navigation", "events"];
+	// tools.ts was inlined into index.ts (was a thin 41L orchestrator).
+	// handlers/tools/ subdir still contains the 3 tool definitions.
+	const handlerFiles = ["shared", "compaction", "navigation", "events"];
 	for (const name of handlerFiles) {
 		if (name === "shared") continue; // pure functions, no async ops
 		check(`${name}.ts exists and is substantial`, () => {
@@ -25,16 +27,18 @@ async function main() {
 		});
 	}
 
-	check("index.ts is slim (< 100 lines)", () => {
+	check("index.ts is slim (< 200 lines, was < 100 but tools.ts was inlined)", () => {
 		const src = readFileSync(`${ROOT}/src/extensions/memory/context-manager/index.ts`, "utf8");
 		const lines = src.split("\n").length;
-		assert(lines < 100, `index.ts is ${lines} lines, expected < 100`);
+		assert(lines < 200, `index.ts is ${lines} lines, expected < 200`);
 	});
 
 	check("index.ts imports all handler modules", () => {
 		const src = readFileSync(`${ROOT}/src/extensions/memory/context-manager/index.ts`, "utf8");
 		assert(src.includes("from \"./handlers/shared.js\""));
-		assert(src.includes("from \"./handlers/tools.js\""));
+		assert(src.includes("from \"./handlers/tools/context-compress.js\""));
+		assert(src.includes("from \"./handlers/tools/context-inspect.js\""));
+		assert(src.includes("from \"./handlers/tools/context-navigate.js\""));
 		assert(src.includes("from \"./handlers/compaction.js\""));
 		assert(src.includes("from \"./handlers/navigation.js\""));
 		assert(src.includes("from \"./handlers/events.js\""));
@@ -91,15 +95,16 @@ async function main() {
 
 	// ── Tool registrations ──────────────────────────────────────────────
 	console.log("\n[4] Tool registrations");
-	check("tools/ files register all tools + 1 command", () => {
+	check("tools/ files register all tools, command is in index.ts", () => {
 		let foundTools = 0;
 		for (const tool of ["context-inspect", "context-compress", "context-navigate"]) {
 			const src = readFileSync(`${ROOT}/src/extensions/memory/context-manager/handlers/tools/${tool}.ts`, "utf8");
 			if (src.includes(`name: "${tool.replace(/-/g, '_')}"`)) foundTools++;
 		}
 		assert(foundTools >= 3, `Expected 3 tool registrations, found ${foundTools}`);
-		const toolsMain = readFileSync(`${ROOT}/src/extensions/memory/context-manager/handlers/tools.ts`, "utf8");
-		assert(toolsMain.includes("registerCommand"), "Missing command registration");
+		// command moved to index.ts (tools.ts was inlined)
+		const indexSrc = readFileSync(`${ROOT}/src/extensions/memory/context-manager/index.ts`, "utf8");
+		assert(indexSrc.includes("registerCommand") && indexSrc.includes("context-stats"), "Missing command registration in index.ts");
 	});
 
 	// ── Event handler registration ──────────────────────────────────────

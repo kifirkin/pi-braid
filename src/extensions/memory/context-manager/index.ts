@@ -1,18 +1,24 @@
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 
 // ── Context-Manager Extension ──────────────────────────────────────
-// Decomposed from 1141L monolith into 4 handler modules + slim index.
+// Decomposed from 1141L monolith into slim index + 6 handler modules
+// + 3 sub-tools in handlers/tools/.
 //
 // Handlers:
 //   shared.ts   — state, helpers, retry logic, navigation
-//   tools.ts    — 6 tool registrations + 1 command
 //   compaction.ts — compaction events + retry + smart instructions
-//   navigation.ts — tree navigation + checkout
+//   compaction-retry.ts — turn-end retry reset
 //   events.ts   — agent_end retry, auto_retry_end, context pruning
+//   navigation.ts — tree navigation + checkout
+//   rotation.ts — session rotation + shutdown
+//   tools/      — context_compress, context_inspect, context_navigate
+//                 (registered inline below)
 
 import type { ExtensionContext, ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { log } from "./handlers/shared.js";
-import { registerTools } from "./handlers/tools.js";
+import { log, getCmState } from "./handlers/shared.js";
+import { registerContextInspect } from "./handlers/tools/context-inspect.js";
+import { registerContextCompress } from "./handlers/tools/context-compress.js";
+import { registerContextNavigate } from "./handlers/tools/context-navigate.js";
 import {
   registerBeforeCompactHandler,
   registerSessionCompactHandler,
@@ -55,8 +61,36 @@ export default function contextManagerExtension(pi: ExtensionAPI): void {
     },
   );
 
+  // ── Register tools (3 LLM-callable + 1 TUI command) ─────────
+  registerContextInspect(pi);
+  registerContextCompress(pi);
+  registerContextNavigate(pi);
+  pi.registerCommand("context-stats", {
+    description: "Show context pruning statistics",
+    handler: async (_args: string | undefined, ctx: ExtensionContext) => {
+      const stats = getCmState(ctx).pruningState.stats;
+      const rules = getCmState(ctx)
+        .pruningState.rules.filter((r: { enabled: boolean }) => r.enabled)
+        .map((r: { id: string }) => r.id);
+      ctx.ui?.notify(
+        [
+          "Context Pruning Stats:",
+          `  Total pruned: ${stats.totalPruned}`,
+          `  Total processed: ${stats.totalProcessed}`,
+          `  Active rules: ${rules.join(", ") || "none"}`,
+          `  Keep recent: ${getCmState(ctx).pruningState.keepRecentCount} messages`,
+          `  Prune reasons: ${
+            Object.entries(stats.pruneReasons)
+              .map(([k, v]) => `${k}=${v}`)
+              .join(", ") || "none"
+          }`,
+        ].join("\n"),
+        "info",
+      );
+    },
+  });
+
   // ── Register handlers from modules ───────────────────────────
-  registerTools(pi);
   registerBeforeCompactHandler(pi);
   registerSessionCompactHandler(pi);
   registerCompactionEndHandler(pi);
