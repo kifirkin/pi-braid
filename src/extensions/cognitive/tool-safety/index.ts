@@ -163,7 +163,7 @@ export default function toolSafetyExtension(pi: ExtensionAPI): void {
                 {
                   type: "text" as const,
                   text:
-                    `## ⚠️ Tool Blocked for Safety\n\n` +
+                    `## Tool Blocked for Safety\n\n` +
                     `The tool call \`${toolName}\` was classified as potentially dangerous ` +
                     `(confidence: ${result.confidence}, tier: ${result.tier}).\n\n` +
                     `**Args:** \`\`\`\n${args.slice(0, 400)}\n\`\`\`\n\n` +

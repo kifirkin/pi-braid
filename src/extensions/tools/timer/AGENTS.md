@@ -46,7 +46,26 @@ The whisper survives compaction (via `_braidInjected`), matching the `[enforceme
 
 ## Busy guard
 
-The 1s `setInterval` poller bails while the agent is mid-tool-execution. `TOOL_CALL` sets `poller.busy = true`; `TURN_END` clears it. The `TURN_END` handler is the fallback fire path (catches anything the poll missed while busy).
+The 1s `setInterval` poller bails while the agent is mid-tool-execution. This prevents whisper injection during a tool call, which was the root cause of the post-compaction stack overflow (whisper → synchronous re-entry → stack overflow).
+
+**Busy guard lifecycle (current design):**
+
+| Event | `poller.busy` | Fires expired timers? |
+|---|---|---|
+| `TOOL_CALL` (tool starts) | `true` | No (tool is running) |
+| `TOOL_EXECUTION_END` (tool returns) | `false` | **Yes (primary fire path)** |
+| `TURN_END` (turn ends) | `false` | Yes (backup) |
+
+**Why `TOOL_EXECUTION_END` and not `TURN_END` for the primary path:**
+
+An earlier design used `TURN_END` to clear busy. This had a bug: a long-running tool (e.g., `bash` with `sleep 60`) followed by a long LLM thinking phase kept `busy = true` for the entire turn. A 30s timer set just before the slow tool would be stuck waiting for `turn_end` (which might be minutes away if the LLM is thinking), even though the actual tool was long done. The user saw "timer didn't fire" even though the tool was complete.
+
+The correct guard is per-tool-execution:
+- `tool_call` → busy=true (tool is starting)
+- `tool_execution_end` → busy=false (tool returned) + fire expired timers
+- `turn_end` → busy=false + fire expired timers (safety net for turns with no tools)
+
+This is still safe against the post-compaction stack overflow because it blocks whisper injection only during actual tool execution, not during LLM thinking (which can't chain into synchronous re-entry).
 
 ## Local Contracts
 

@@ -116,7 +116,7 @@ export function cancelTimersByTag(tag: string): number {
 // ── Fire Handlers (via shared bus) ───────────────────────────────────
 // We import the shared bus to bridge timer fires → heartbeat surfacing
 import { emitTimerReminder } from "../../../lib/events/timer-bus.js";
-import { TURN_END, TOOL_CALL, SESSION_SHUTDOWN } from "../../../lib/core/event-names.js";
+import { TURN_END, TOOL_CALL, TOOL_EXECUTION_END, SESSION_SHUTDOWN } from "../../../lib/core/event-names.js";
 
 // Internal handler count (kept for API compat — currently unused,
 // no callers register via onTimerFire. The event bus handles
@@ -358,14 +358,40 @@ export default function timerExtension(pi: ExtensionAPI): void {
   // Start real-time polling on load
   startTimerPolling(pi);
 
-  // Busy guard: set true on tool_call, false on turn_end. The poller bails
-  // while busy so a fired timer cannot interrupt a tool mid-execution
-  // (which was the root cause of the post-compaction stack overflow).
+  // Busy guard: set true on tool_call, false on tool_execution_end.
+  //
+  // Earlier this guard used TURN_END to reset busy, but that had a bug:
+  // a long-running tool followed by a long LLM thinking phase would keep
+  // busy=true for the entire turn, even though the actual tool was long
+  // done. A 30s timer set just before a slow tool would be stuck waiting
+  // for turn_end (which might be minutes away if the LLM is thinking).
+  //
+  // The correct guard is per-tool-execution:
+  // - tool_call (before tool runs) → busy=true
+  // - tool_execution_end (after tool returns) → busy=false
+  // - turn_end → busy=false (safety net for turns with no tool calls)
+  //
+  // This is still safe against the post-compaction stack overflow because
+  // it blocks whisper injection only during actual tool execution, not
+  // during LLM thinking (which can't chain into synchronous re-entry).
   pi.on(TOOL_CALL, () => {
     poller.setBusy(true);
   });
+  pi.on(TOOL_EXECUTION_END, () => {
+    poller.setBusy(false);
+    // Opportunistically fire any expired timers that piled up during the
+    // tool execution. This is the primary fire path for timers that
+    // expired mid-tool — they don't have to wait for turn_end.
+    const expired = timerManager.checkExpired(Date.now());
+    for (const timer of expired) {
+      fireTimer(timer, pi);
+    }
+  });
   pi.on(TURN_END, () => {
     poller.setBusy(false);
+    // Backup fire path: catch any expired timers the per-tool path missed
+    // (e.g., turns with no tool calls, or edge cases where TOOL_EXECUTION_END
+    // didn't fire).
     const expired = timerManager.checkExpired(Date.now());
     for (const timer of expired) {
       fireTimer(timer, pi);

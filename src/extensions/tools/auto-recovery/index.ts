@@ -61,7 +61,7 @@ export default function autoRecoveryExtension(pi: ExtensionAPI): void {
 
       const reasonList = reasons.map((r) => `- ${r}`).join("\n");
       const message =
-        `## ⚠️ System Degradation Detected\n\n` +
+        `## System Degradation Detected\n\n` +
         `**Degradation reasons:**\n${reasonList}\n\n` +
         `**Recommended actions:**\n` +
         `1. Run \`health_maintenance(action="check")\` (if available) to assess the current state\n` +
