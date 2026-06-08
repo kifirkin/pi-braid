@@ -51,7 +51,7 @@ import { CONSOLIDATED_HINTS_FILE } from "../../../lib/config/braid-paths.js";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { loadSkills } from "@earendil-works/pi-coding-agent";
-import { SKILLS_DIR } from "../../../index.js";
+import { SKILLS_DIR } from "../../../lib/config/project-paths.js";
 import { gatherL1State, formatL1Environment } from "./l1-environment.js";
 import { formatContrastSection } from "./contrast-phrase-library.js";
 import { classify } from "../../../lib/ai/text-classifier.js";
