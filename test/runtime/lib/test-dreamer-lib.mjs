@@ -22,20 +22,31 @@ describe("simulatePaths", () => {
   });
 
   it("returns predicted paths from historical sequences", () => {
+    // Use ≥ MIN_SAMPLE_FOR_PREDICTION transitions to satisfy the sample-size guard.
+    const history = Array.from({ length: 6 }, () => ["read", "edit", "read"]);
+    const paths = simulatePaths(["read"], history);
+    assert.ok(paths.length > 0, "should return predicted paths");
+    assert.ok(paths.every((p) => p.probability > 0), "all probabilities positive");
+  });
+
+  it("returns [] when sample is below MIN_SAMPLE_FOR_PREDICTION", () => {
+    // With only 3 observations of read→*, the predictor bails (insufficient
+    // data). This is the small-sample fix.
     const history = [
       ["read", "edit", "read"],
       ["read", "edit", "bash"],
       ["read", "grep", "edit"],
     ];
     const paths = simulatePaths(["read"], history);
-    assert.ok(paths.length > 0, "should return predicted paths");
-    assert.ok(paths.every((p) => p.probability > 0), "all probabilities positive");
+    assert.deepEqual(paths, [], "with <5 transitions, predictor stays silent");
   });
 
   it("sorts paths by probability descending", () => {
     const history = [
       ["read", "edit"],
       ["read", "edit"],
+      ["read", "edit"],
+      ["read", "grep"],
       ["read", "edit"],
       ["read", "grep"],
     ];

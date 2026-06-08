@@ -44,6 +44,30 @@ function getState(ctx: ExtensionContext): DreamerState {
 
 // ── Path Simulation ─────────────────────────────────────────────────────────
 
+/** Minimum number of transitions out of a tool before we trust any rate. */
+const MIN_SAMPLE_FOR_PREDICTION = 5;
+
+/** Minimum consecutive same-tool calls in the CURRENT sequence to flag as a loop. */
+const MIN_CURRENT_LOOP_LENGTH = 4;
+
+/**
+ * Compute the longest run of consecutive identical tool names at the tail
+ * of the current sequence. Returns the length and the tool name.
+ *
+ * Example: `["a", "b", "read", "read", "read"]` → `{ tool: "read", length: 3 }`
+ * Example: `["a", "b", "c"]` → `{ tool: null, length: 0 }`
+ */
+function tailRun(seq: string[]): { tool: string | null; length: number } {
+  if (seq.length === 0) return { tool: null, length: 0 };
+  const last = seq[seq.length - 1];
+  let length = 0;
+  for (let i = seq.length - 1; i >= 0; i--) {
+    if (seq[i] === last) length++;
+    else break;
+  }
+  return { tool: last, length };
+}
+
 /**
  * Simulate likely future paths from current tool sequence.
  * Uses simple Markov-style transition probabilities from historical data.
@@ -74,6 +98,10 @@ export function simulatePaths(
 
   const total = [...nextCounts.values()].reduce((a, b) => a + b, 0);
 
+  // Refuse to predict with too few observations. With `total` of 1, every
+  // observed transition is "100%" and the prediction is noise.
+  if (total < MIN_SAMPLE_FOR_PREDICTION) return [];
+
   const paths: SimulatedPath[] = [];
   for (const [nextTool, count] of nextCounts) {
     const prob = count / total;
@@ -86,14 +114,20 @@ export function simulatePaths(
 
     if (nextNext) {
       const nextTotal = [...nextNext.values()].reduce((a, b) => a + b, 0);
-      // If next step leads to high-frequency same-tool transitions → stuck
-      const selfLoopRate = (nextNext.get(nextTool) ?? 0) / nextTotal;
-      if (selfLoopRate > 0.5) {
-        outcome = "stuck";
-        estimatedTurns = 5;
-      } else if (selfLoopRate > 0.3) {
-        outcome = "failure";
-        estimatedTurns = 3;
+      // Only flag a self-loop pattern when we have enough data to trust it.
+      // The next-tool's sample must also meet the minimum.
+      if (nextTotal < MIN_SAMPLE_FOR_PREDICTION) {
+        outcome = "success";
+      } else {
+        // If next step leads to high-frequency same-tool transitions → stuck
+        const selfLoopRate = (nextNext.get(nextTool) ?? 0) / nextTotal;
+        if (selfLoopRate > 0.5) {
+          outcome = "stuck";
+          estimatedTurns = 5;
+        } else if (selfLoopRate > 0.3) {
+          outcome = "failure";
+          estimatedTurns = 3;
+        }
       }
     }
 
@@ -126,22 +160,40 @@ export function dream(
   // Cooldown check — dynamic threshold adjusted by advice tracker feedback loop
   if (now - state.lastDreamAt < dynamicCooldown) return null;
 
+  // Path 1: detect an actual loop in the current sequence.
+  // This is reliable regardless of history size — if the agent has just
+  // called the same tool 4+ times in a row, it's likely a loop.
+  const run = tailRun(currentSequence);
+  if (run.length >= MIN_CURRENT_LOOP_LENGTH) {
+    state.lastDreamAt = now;
+    return {
+      message:
+        `[dream] Detected ${run.length} consecutive ${run.tool} calls with no progress. ` +
+        `This pattern suggests a stuck loop. Consider: verify approach, switch tool, or ask for clarification.`,
+      priority: 7,
+      action: "Call think(type='reflection') to verify approach.",
+      confidence: 0.8,
+      prediction: "stuck",
+    };
+  }
+
+  // Path 2: Markov-based prediction. Returns [] when sample is too small.
   const paths = simulatePaths(currentSequence, historicalSequences);
   if (paths.length === 0) return null;
 
-  // Find most concerning path
-  const stuckPaths = paths.filter((p) => p.outcome === "stuck" && p.probability > 0.15);
-  const failPaths = paths.filter((p) => p.outcome === "failure" && p.probability > 0.2);
+  // Find most concerning path. Probability floor is 0.6 — below that, the
+  // prediction is too noisy to act on.
+  const stuckPaths = paths.filter((p) => p.outcome === "stuck" && p.probability > 0.6);
+  const failPaths = paths.filter((p) => p.outcome === "failure" && p.probability > 0.6);
 
   /**
    * Map a raw probability to a categorical confidence label.
-   * Thresholds chosen so a 0.15 (the stuck-path firing floor) maps to "low",
-   * 0.4 to "medium", and anything above 0.7 to "high". This avoids the
-   * misleading "(prob: 100%)" output that came from rounding 0.999... to 100%.
+   * Thresholds: 0.6 = "low" (the minimum firing probability), 0.8 = "medium",
+   * 0.95 = "high". High confidence now requires genuinely strong evidence.
    */
   function confidenceLabel(p: number): "low" | "medium" | "high" {
-    if (p >= 0.7) return "high";
-    if (p >= 0.4) return "medium";
+    if (p >= 0.95) return "high";
+    if (p >= 0.8) return "medium";
     return "low";
   }
 
