@@ -83,12 +83,7 @@ const _detectorState: DetectorState = createDetectorState();
 const MAX_OUTCOMES = 100;
 const OUTCOME_TTL_MS = 30 * 60 * 1000;
 
-interface Outcome {
-  proposalId: string;
-  resolution: string;
-  turnsToResolve: number;
-  timestamp: number;
-}
+// Outcome interface now lives in ./state.ts (extracted to break the state↔helpers cycle)
 
 function evictOldOutcomes(s: ContextLifecycleState): void {
   const now = Date.now();
@@ -104,78 +99,29 @@ function evictOldOutcomes(s: ContextLifecycleState): void {
   }
 }
 
-// ── Session-scoped state ─────────────────────────────────────────────────────
-
-interface ContextLifecycleState {
-  proposalsThisTurn: number;
-  proposalsTotal: number;
-  initialized: boolean;
-  sessionStartMs: number;
-  turnCount: number;
-  proposalsByEntryId: Map<string, any>;
-  outcomes: Outcome[];
-  // ── Compaction escalation tracking ──────────────────────────────────────
-  /** How many compact nudges the agent has ignored consecutively */
-  ignoredCompactNudges: number;
-  /** Turn number when we last sent a compact nudge */
-  lastCompactNudgeTurn: number;
-  /** Context usage % at the time of last compact nudge */
-  lastCompactNudgeUsage: number;
-  /** Whether a compact nudge is currently waiting for agent action */
-  compactNudgeActive: boolean;
-  /** Whether the agent called a context management tool since the last nudge check */
-  agentActedOnContext: boolean;
-}
-
-function createState(): ContextLifecycleState {
-  return {
-    proposalsThisTurn: 0,
-    proposalsTotal: 0,
-    initialized: false,
-    sessionStartMs: Date.now(),
-    turnCount: 0,
-    proposalsByEntryId: new Map(),
-    outcomes: [],
-    ignoredCompactNudges: 0,
-    lastCompactNudgeTurn: 0,
-    lastCompactNudgeUsage: 0,
-    compactNudgeActive: false,
-    agentActedOnContext: false,
-  };
-}
-
-function _getState(ctx: ExtensionContext): ContextLifecycleState {
-  return getExtensionState(ctx, "context-lifecycle", createState);
-}
-
-// Module-level fallback state — used when `ctx` is not available.
-// Preferred pattern: use getState(ctx) wherever ctx is accessible.
-// Reset on session_start; turn_end uses the session-scoped getState(ctx).
-// FULL FIX: Thread ctx through all callers and remove this fallback.
-let _currentSessionState: ContextLifecycleState | null = null;
-let _currentSessionId: string | null = null;
-
-function ensureFreshState(sessionId?: string): void {
-  const sid = sessionId ?? _currentSessionId;
-  if (sid && sid !== _currentSessionId) {
-    _currentSessionState = createState();
-    _currentSessionId = sid;
-  }
-}
-
-function state(): ContextLifecycleState {
-  ensureFreshState();
-  if (!_currentSessionState) {
-    _currentSessionState = createState();
-  }
-  return _currentSessionState;
-}
-
-function resetState(ctx: ExtensionContext): ContextLifecycleState {
-  _currentSessionState = createState();
-  _currentSessionId = ctx.cwd ?? null;
-  return _currentSessionState;
-}
+// ── Session-scoped state (extracted to ./state.ts) ─────────────────────────
+// Note: turn_end handlers in this module use the session-scoped getState(ctx)
+// pattern to read the latest state. Module-level `state()` is the fallback
+// when ctx is not available.
+import {
+  type ContextLifecycleState,
+  type Outcome,
+  state,
+  createState,
+  _getState,
+  ensureFreshState,
+  resetState,
+} from "./state.js";
+// Re-export for backward compat
+export {
+  type ContextLifecycleState,
+  type Outcome,
+  state,
+  createState,
+  _getState,
+  ensureFreshState,
+  resetState,
+} from "./state.js";
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
@@ -189,99 +135,28 @@ const contextSignalSchema = Type.Object({
   note: Type.Optional(Type.String({ description: "Optional note about the signal" })),
 });
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function getContextUsage(ctx: any): number {
-  try {
-    const usage = ctx.getContextUsage?.();
-    return usage?.percent ?? 0;
-  } catch {
-    return 0;
-  }
-}
-
-function getContextTokens(ctx: any): number {
-  try {
-    const usage = ctx.getContextUsage?.();
-    return usage?.tokens ?? 0;
-  } catch {
-    return 0;
-  }
-}
-
-function getAllEntries(ctx: any) {
-  try {
-    const sm = ctx.sessionManager;
-    return sm.getEntries?.() ?? [];
-  } catch {
-    return [];
-  }
-}
-
-function getBranchEntries(ctx: any) {
-  try {
-    const sm = ctx.sessionManager;
-    return sm.getBranch?.() ?? [];
-  } catch {
-    return [];
-  }
-}
-
-function readProposalsFromSession(entries: any[]): ContextProposal[] {
-  const proposals: ContextProposal[] = [];
-  for (const entry of entries) {
-    if (isProposalEntry(entry)) {
-      // Use details (set via appendCustomMessageEntry's 4th param)
-      const data = entry.details as ContextProposal;
-      if (data && data.id && data.created_at !== undefined) {
-        proposals.push(data);
-        state().proposalsByEntryId.set(entry.id, data);
-      }
-    }
-  }
-  return proposals;
-}
-
-function readSnapshotsFromSession(entries: any[]): ContextSnapshot[] {
-  const now = Date.now();
-  const snapshots: ContextSnapshot[] = [];
-  for (const entry of entries) {
-    if (isSnapshotEntry(entry)) {
-      // appendCustomEntry uses .data field
-      const data = (entry as unknown as { data?: ContextSnapshot }).data;
-      if (data && data.id && data.expires_at > now) {
-        snapshots.push(data);
-      }
-    }
-  }
-  return snapshots;
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(0)}s`;
-  return `${(ms / 60000).toFixed(0)}m`;
-}
-
-function interpolateMessage(
-  message: string,
-  ctx: any,
-  signalData?: Record<string, unknown>,
-): string {
-  const usage = getContextUsage(ctx);
-  const tokens = getContextTokens(ctx);
-  let result = message.replace("{percent}", `${usage.toFixed(0)}%`);
-  result = result.replace("{tokens}", `${Math.round(tokens / 1000)}K`);
-
-  // Interpolate signal data fields (e.g., {noise}, {signal}, {count}, {density}, {token_ratio})
-  if (signalData) {
-    for (const [key, value] of Object.entries(signalData)) {
-      result = result.replaceAll(`{${key}}`, String(value ?? ""));
-    }
-  }
-
-  return result;
-}
+// ── Helpers (extracted to ./helpers.ts) ───────────────────────────────────
+import {
+  getContextUsage,
+  getContextTokens,
+  getAllEntries,
+  getBranchEntries,
+  readProposalsFromSession,
+  readSnapshotsFromSession,
+  formatDuration,
+  interpolateMessage,
+} from "./helpers.js";
+// Re-export for backward compat
+export {
+  getContextUsage,
+  getContextTokens,
+  getAllEntries,
+  getBranchEntries,
+  readProposalsFromSession,
+  readSnapshotsFromSession,
+  formatDuration,
+  interpolateMessage,
+} from "./helpers.js";
 
 // ── Action Execution ─────────────────────────────────────────────────────────
 
