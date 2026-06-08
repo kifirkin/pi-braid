@@ -22,12 +22,35 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
     // the context_compress tool and the context-lifecycle auto-compact path
     // respectively. They were never cancelled when a new compaction began,
     // which produced a misplaced [timer] whisper during the next TURN_END.
+    //
+    // We also schedule a NEW resume timer here, AFTER cancellation. This is
+    // the right place because:
+    // 1. session_compact fires only AFTER ctx.compact() completes, when
+    //    the session is in a known post-compaction state.
+    // 2. The cancellation above ensures no stale timers fire later.
+    // 3. The new timer is created in this same handler, so it survives
+    //    (is not cancelled by us).
+    //
+    // Earlier designs scheduled the timer in the context_compress tool or
+    // auto-compact path BEFORE triggering compact. That design had a bug:
+    // the session_compact handler (us) immediately cancelled the tag, so
+    // the resume timer never fired and the agent never woke up.
     try {
-      const { cancelTimersByTag } = await import("../../tools/timer/index.js");
-      const cancelled = cancelTimersByTag("compaction-resume") + cancelTimersByTag("auto-compaction-resume");
+      const timerMod = await import("../../tools/timer/index.js");
+      const cancelled =
+        timerMod.cancelTimersByTag("compaction-resume") +
+        timerMod.cancelTimersByTag("auto-compaction-resume");
       if (cancelled > 0) {
         log.debug(`Cancelled ${cancelled} stale compaction resume timer(s)`);
       }
+      // Schedule the fresh resume timer. wake: true makes it trigger a new
+      // turn after 3 minutes if the agent hasn't already continued.
+      timerMod.scheduleTimer(
+        3 * 60 * 1000,
+        "Context compaction done — continue your task",
+        "compaction-resume",
+        true, // wake — auto-resume agent after compaction
+      );
     } catch {
       // Non-fatal — timer module unavailable
     }

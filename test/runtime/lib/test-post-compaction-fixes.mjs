@@ -168,7 +168,8 @@ console.log("\n[7] Compaction paths cancel stale resume timers and wake");
   const life = readFileSync(contextLifecyclePath, "utf8");
   const compact = readFileSync(sessionCompactPath, "utf8");
 
-  // context-compress (manual) cancels both tags and schedules with wake: true
+  // context-compress (manual) cancels both tags (defensive cleanup only —
+  // scheduling is done in the session_compact handler, see below)
   assert(
     /cancelTimersByTag\s*\(\s*["']compaction-resume["']\s*\)/.test(comp),
     "context-compress cancels 'compaction-resume' timers",
@@ -177,12 +178,17 @@ console.log("\n[7] Compaction paths cancel stale resume timers and wake");
     /cancelTimersByTag\s*\(\s*["']auto-compaction-resume["']\s*\)/.test(comp),
     "context-compress cancels 'auto-compaction-resume' timers (cross-path cleanup)",
   );
+  // context-compress must NOT schedule the resume timer here — the
+  // session_compact handler cancels the tag immediately, so a timer
+  // created in this scope would never fire. Scheduling lives in
+  // session_compact enforcement handler instead.
   assert(
-    /scheduleTimer\s*\(\s*3\s*\*\s*60\s*\*\s*1000\s*,\s*["']Context compaction done[\s\S]*?,\s*["']compaction-resume["']\s*,\s*true/.test(comp),
-    "context-compress schedules resume timer with wake: true (auto-resume)",
+    !/scheduleTimer\s*\(\s*3\s*\*\s*60\s*\*\s*1000\s*,\s*["']Context compaction done[\s\S]*?,\s*["']compaction-resume["']/.test(comp),
+    "context-compress does NOT schedule the resume timer (avoids cancel race)",
   );
 
-  // context-lifecycle auto-compact cancels both tags and schedules with wake: true
+  // context-lifecycle auto-compact also cancels both tags and must NOT
+  // schedule the timer (same reason as above)
   assert(
     /cancelTimersByTag\s*\(\s*["']compaction-resume["']\s*\)/.test(life),
     "context-lifecycle auto-compact cancels 'compaction-resume' timers",
@@ -192,11 +198,12 @@ console.log("\n[7] Compaction paths cancel stale resume timers and wake");
     "context-lifecycle auto-compact cancels 'auto-compaction-resume' timers",
   );
   assert(
-    /scheduleTimer\s*\(\s*3\s*\*\s*60\s*\*\s*1000\s*,\s*["']Auto-compaction done[\s\S]*?,\s*["']auto-compaction-resume["']\s*,\s*true/.test(life),
-    "context-lifecycle auto-compact schedules resume timer with wake: true (auto-resume)",
+    !/scheduleTimer\s*\(\s*3\s*\*\s*60\s*\*\s*1000\s*,\s*["']Auto-compaction done[\s\S]*?,\s*["']auto-compaction-resume["']/.test(life),
+    "context-lifecycle auto-compact does NOT schedule the resume timer (avoids cancel race)",
   );
 
-  // session_compact enforcement handler also cancels both (orphan cleanup)
+  // session_compact enforcement handler cancels both AND schedules a fresh
+  // resume timer. This is the new (correct) location for the timer.
   assert(
     /cancelTimersByTag\s*\(\s*["']compaction-resume["']\s*\)/.test(compact),
     "session_compact enforcement handler cancels 'compaction-resume' timers",
@@ -204,6 +211,10 @@ console.log("\n[7] Compaction paths cancel stale resume timers and wake");
   assert(
     /cancelTimersByTag\s*\(\s*["']auto-compaction-resume["']\s*\)/.test(compact),
     "session_compact enforcement handler cancels 'auto-compaction-resume' timers",
+  );
+  assert(
+    /scheduleTimer\s*\(\s*3\s*\*\s*60\s*\*\s*1000\s*,\s*["']Context compaction done[\s\S]*?,\s*["']compaction-resume["']\s*,\s*true/.test(compact),
+    "session_compact enforcement handler schedules fresh resume timer with wake: true",
   );
 }
 

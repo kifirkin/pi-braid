@@ -4,15 +4,28 @@ Context lifecycle, three-memory-stores, memory-agent-bridge, session-recall.
 
 ## Compaction paths and resume-timer hygiene
 
-The module schedules "resume" timers on three code paths, all of which use a 3-minute delay with `wake: true` (auto-resume). **All three paths must cancel stale resume tags before scheduling** to prevent misplaced `[timer]` whispers on later TURN_END events.
+The module schedules "resume" timers on three code paths, all of which use a 3-minute delay with `wake: true` (auto-resume). **All paths must cancel stale resume tags to prevent misplaced `[timer]` whispers on later TURN_END events.**
 
-| Path | File | Tag |
-|---|---|---|
-| Manual `context_compress` tool | `context-manager/handlers/tools/context-compress.ts` | `compaction-resume` |
-| Auto-compact escalation | `context-lifecycle/index.ts` | `auto-compaction-resume` |
-| Cleanup on `session_compact` | `enforcement/handlers/register-session-compact.ts` | both (orphan cleanup) |
+| Path | File | Tag | Schedules timer? |
+|---|---|---|---|
+| Manual `context_compress` tool | `context-manager/handlers/tools/context-compress.ts` | `compaction-resume` | NO (cancel only) |
+| Auto-compact escalation | `context-lifecycle/index.ts` | `auto-compaction-resume` | NO (cancel only) |
+| `session_compact` enforcement handler | `enforcement/handlers/register-session-compact.ts` | both | **YES (after cancel)** |
 
-The `cancelTimersByTag` helper from `extensions/tools/timer/index.ts` is the shared API. The enforcement `session_compact` handler cancels both tags as a safety net (in case a previous compaction was interrupted before its tool-side cancellation ran).
+**Critical design point**: the resume timer is scheduled ONLY in the `session_compact` handler, NOT in the tool or auto-compact path. Earlier designs scheduled the timer in the tool/auto-compact scope, but the `session_compact` handler (which fires shortly after) cancelled the same tag — so the timer was created and immediately destroyed, never firing. The agent never woke up.
+
+The correct sequence is:
+1. Tool or auto-compact: cancel stale timers from previous cycles (defensive).
+2. Tool or auto-compact: call `ctx.compact(options)` to trigger compaction.
+3. `session_compact` event fires (post-compaction).
+4. `session_compact` handler: cancel any stale timers (now this is a no-op since step 1 just ran), then schedule a FRESH 3-minute resume timer.
+5. After 3 minutes of no agent activity, the timer fires with `wake: true` to auto-resume the agent.
+
+The `cancelTimersByTag` helper from `extensions/tools/timer/index.ts` is the shared API.
+
+## Parallel-tool-call constraint
+
+`context_compress` MUST NOT be called in a parallel batch with other tools. The pi core's `ctx.compact()` aborts the current turn via `_disconnectFromAgent()` + `abort()`, which discards any pending tool results from the same parallel batch. The tool description explicitly warns against this. If the agent must run other tools in parallel with compaction, it should split them across separate turns.
 
 ## Whisper wake-up policy in this module
 

@@ -55,7 +55,10 @@ export function registerContextCompress(pi: ExtensionAPI): void {
       "action=compact: remove obsolete/duplicate entries (like context_compact). " +
       "Supports optional `keep` to preserve recent N messages. Auto-resumes after completion. " +
       "action=archive: compress a range of messages into a topic summary (like context_archive). " +
-      "Original messages preserved in session file. Auto-selects oldest ~20% when range omitted.",
+      "Original messages preserved in session file. Auto-selects oldest ~20% when range omitted. " +
+      "IMPORTANT: do NOT call this tool in the same parallel batch as other tools. " +
+      "ctx.compact() aborts the current turn, which discards any pending tool " +
+      "results from the same batch. Issue this tool call alone.",
     parameters: contextCompressSchema,
     execute: async (
       _toolCallId: string,
@@ -98,12 +101,12 @@ export function registerContextCompress(pi: ExtensionAPI): void {
             // deliver a misplaced [timer] whisper (the "strange order" issue).
             timerMod.cancelTimersByTag("compaction-resume");
             timerMod.cancelTimersByTag("auto-compaction-resume");
-            timerMod.scheduleTimer(
-              3 * 60 * 1000,
-              "Context compaction done — continue your task",
-              "compaction-resume",
-              true, // wake — auto-resume agent after compaction
-            );
+            // NOTE: We intentionally do NOT call scheduleTimer() here. The
+            // session_compact handler in register-session-compact.ts cancels
+            // the resume tag immediately, so any timer created in this scope
+            // would be cancelled before it ever fires. Instead, the handler
+            // schedules a FRESH resume timer after compaction completes,
+            // when the session is in a known state.
           } catch {
             // Non-fatal — timer unavailable
           }

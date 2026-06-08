@@ -327,7 +327,7 @@ function sendCompactNudge(pi: ExtensionAPI, evaluated: EvaluatedAction, usage: n
  */
 async function executeAutoCompact(pi: ExtensionAPI, ctx: any): Promise<void> {
   try {
-    // 1. Schedule resume timer BEFORE compacting
+    // 1. Cancel stale resume timers from previous compaction cycles
     try {
       const timerMod = await import("../../tools/timer/index.js");
       // Cancel any stale resume timer from a previous compaction cycle
@@ -335,16 +335,12 @@ async function executeAutoCompact(pi: ExtensionAPI, ctx: any): Promise<void> {
       // an unrelated TURN_END and produce a stray [timer] whisper.
       timerMod.cancelTimersByTag("compaction-resume");
       timerMod.cancelTimersByTag("auto-compaction-resume");
-      // wake: true preserves the original auto-resume behavior. The
-      // busy guard in the timer module prevents this from firing
-      // mid-tool-execution, so triggerTurn: true is safe.
-      timerMod.scheduleTimer(
-        3 * 60 * 1000,
-        "Auto-compaction done — continue your task",
-        "auto-compaction-resume",
-        true, // wake
-      );
-      log.info("Scheduled resume timer before auto-compaction");
+      // NOTE: We intentionally do NOT call scheduleTimer() here. The
+      // session_compact handler in register-session-compact.ts cancels the
+      // resume tag immediately, so any timer created in this scope would be
+      // cancelled before it ever fires. Instead, the handler schedules a
+      // FRESH resume timer after compaction completes, when the session is
+      // in a known state.
     } catch {
       log.warn("Timer unavailable for auto-compaction - agent must type to resume");
     }
