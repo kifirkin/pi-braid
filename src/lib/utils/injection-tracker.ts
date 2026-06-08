@@ -15,6 +15,7 @@
 
 import { createLogger } from "../core/logger.js";
 import { SESSION_SHUTDOWN } from "../core/event-names.js";
+import { tryWhisper, type WhisperPriority } from "../enforcement/turn-dedup.js";
 
 const log = createLogger("injection-tracker");
 
@@ -154,6 +155,31 @@ export function extractText(content: unknown[]): string {
  * Wrapper around pi.sendMessage that also tracks the injection.
  * Use this instead of pi.sendMessage for all extension-injected messages.
  */
+/**
+ * Map a source to a priority tier for the per-turn whisper cap.
+ * Default: "low" (most whispers are advisory).
+ *
+ * Critical: tool-safety, auto-singleton, auto-recovery, agent loops
+ * High:     enforcement-critical, compaction-retry exhausted, threshold-exhausted
+ * Medium:   context-80%+, analytics, navigation
+ * Low:      hints, suggestions, drift, dreamer, etc.
+ */
+function priorityFromSource(source: string, options?: { triggerTurn?: boolean }): WhisperPriority {
+  if (/tool-safety|auto-singleton|auto-recovery|turn-outcome\/loop/.test(source)) {
+    return "critical";
+  }
+  if (
+    /enforcement\/whisper|exhausted|compaction-retry|context-manager\/rotation/.test(source) ||
+    options?.triggerTurn === true
+  ) {
+    return "high";
+  }
+  if (/analytics|navigation|context-full|register-session-start/.test(source)) {
+    return "medium";
+  }
+  return "low";
+}
+
 export function sendTrackedMessage(
   pi: any,
   params: {
@@ -169,6 +195,26 @@ export function sendTrackedMessage(
     steer?: boolean;
   } = { type: "other", source: "unknown" },
 ): void {
+  // Per-turn whisper cap (flood protection). Critical paths always pass;
+  // other priorities are capped per WHISPER_CAPS in turn-dedup.ts.
+  // We track the suppressed whisper in the injection log so users can see
+  // it was filtered (not silently lost).
+  const priority = priorityFromSource(injectionMeta.source, options);
+  if (!tryWhisper(priority, injectionMeta.source)) {
+    trackInjection({
+      type: injectionMeta.type,
+      source: injectionMeta.source,
+      content: extractText(params.content),
+      display: false,
+      steer: false,
+      turn: 0,
+    });
+    log.debug(
+      `[flood-cap] ${priority} whisper from ${injectionMeta.source} suppressed`,
+    );
+    return;
+  }
+
   const text = extractText(params.content);
   trackInjection({
     type: injectionMeta.type,
