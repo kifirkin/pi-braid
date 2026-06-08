@@ -5,6 +5,9 @@
  * Each sub-state file owns its properties, factory, and reset logic.
  * Sub-state files do NOT import state.ts (avoids circular dependency).
  *
+ * ENFORCEMENT_PARAMS and EnforcementState live in `enforcement-types.ts`
+ * to break the state.ts ↔ session-state.ts cycle.
+ *
  * Sub-state files:
  *   tool-tracking-state.ts      — tool usage, edit tracking, calibration
  *   error-tracking-state.ts     — errors, validation failures, nudge cooldowns
@@ -28,22 +31,25 @@ import { createLogger } from "../../lib/core/logger.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../../lib/state/extension-state.js";
 
+// Import shared types/constants for in-file use
+import { ENFORCEMENT_PARAMS, type EnforcementState } from "./enforcement-types.js";
+
+// Re-export shared types/constants (backward compat — consumers import from state.ts)
+export { ENFORCEMENT_PARAMS, type EnforcementState } from "./enforcement-types.js";
+
 // Import sub-state factories and resets
 import {
   createToolTrackingState,
   resetToolTrackingState,
-  type ToolTrackingState,
 } from "./tool-tracking-state.js";
 import {
   createErrorTrackingState,
   resetErrorTrackingState,
-  type ErrorTrackingState,
 } from "./error-tracking-state.js";
-import { createSessionState, resetSessionState, type SessionState } from "./session-state.js";
+import { createSessionState, resetSessionState } from "./session-state.js";
 import {
   createMemoryHygieneState,
   resetMemoryHygieneState,
-  type MemoryHygieneState,
 } from "./memory-hygiene-state.js";
 import {
   createScratchpadState,
@@ -51,12 +57,10 @@ import {
   createContextHygieneState,
   resetContextHygieneState,
   type ScratchpadState,
-  type ContextHygieneState,
 } from "./context-hygiene-state.js";
 import {
   createThoughtChainState,
   resetThoughtChainState,
-  type ThoughtChainState,
 } from "./thought-chain-state.js";
 
 // Re-export sub-module helpers (backward compat — consumers import from state.ts)
@@ -98,32 +102,6 @@ export { isErrorBurst, updateErrorBurst } from "./error-tracking-state.js";
 export { recordToolChainCall, type CalibrationPair } from "./tool-tracking-state.js";
 
 const log = createLogger("enforcement");
-
-// ── Tunable thresholds ─────────────────────────────────────────────────────
-
-export const ENFORCEMENT_PARAMS = {
-  memoryNudgeThreshold: 15,
-  maxSilentTurns: 6,
-  warnOnToolSequenceRepetition: 3,
-  judgeCooldownMs: 20000,
-  judgeSkipTurns: 1,
-  verificationJudgeInterval: 15,
-  maxClaimsBeforeVerification: 5,
-  blockExploreBeforeWrite: true,
-} as const;
-
-// ── Composed state type ────────────────────────────────────────────────────
-
-/** Full enforcement state — intersection of all sub-states. */
-export interface EnforcementState
-  extends
-    ToolTrackingState,
-    ErrorTrackingState,
-    SessionState,
-    MemoryHygieneState,
-    ScratchpadState,
-    ContextHygieneState,
-    ThoughtChainState {}
 
 // ── State factory (composed from sub-states) ───────────────────────────────
 

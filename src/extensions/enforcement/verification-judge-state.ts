@@ -6,7 +6,7 @@
  * circular dependencies.
  */
 
-import type { EnforcementState } from "./state.js";
+import type { EnforcementState } from "./enforcement-types.js";
 
 // ── Helpers (mutate EnforcementState directly) ──────────────────────────────
 
