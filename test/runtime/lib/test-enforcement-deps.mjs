@@ -21,6 +21,7 @@ import { fileURLToPath } from "url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "../../../");
 const ENF_DIR = join(ROOT, "dist/extensions/enforcement");
+const ENF_SUBSTATE_DIR = join(ENF_DIR, "substate");
 
 if (!existsSync(ENF_DIR)) {
   console.error("❌ dist/extensions/enforcement missing — run `npm run build`");
@@ -182,9 +183,9 @@ console.log("\n[5] enforcement-types.ts exists");
 // ── session-state.ts imports from enforcement-types.ts, not state.ts ──
 console.log("\n[6] session-state.ts no longer imports from state.ts");
 {
-  const sessionSrc = readFileSync(join(ENF_DIR, "session-state.js"), "utf8");
+  const sessionSrc = readFileSync(join(ENF_SUBSTATE_DIR, "session-state.js"), "utf8");
   assert(
-    /from\s*['"]\.\/enforcement-types\.js['"]/.test(sessionSrc),
+    /from\s*['"]\.\.\/enforcement-types\.js['"]/.test(sessionSrc),
     "session-state.ts imports ENFORCEMENT_PARAMS from enforcement-types.ts",
   );
   assert(
@@ -198,11 +199,11 @@ console.log("\n[7] verification-judge-state.ts imports from enforcement-types.ts
 {
   // Type-only imports are elided by tsc in the dist JS, so check the source TS
   const judgeSrc = readFileSync(
-    join(ROOT, "src/extensions/enforcement/verification-judge-state.ts"),
+    join(ROOT, "src/extensions/enforcement/substate/verification-judge-state.ts"),
     "utf8",
   );
   assert(
-    /from\s*['"]\.\/enforcement-types\.js['"]/.test(judgeSrc),
+    /from\s*['"]\.\.\/enforcement-types\.js['"]/.test(judgeSrc),
     "verification-judge-state.ts imports EnforcementState from enforcement-types.ts",
   );
   assert(

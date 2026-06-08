@@ -68,7 +68,7 @@ import {
   USAGE_COMPACT_MEDIUM,
   USAGE_TOKENS_SOFT,
   USAGE_TOKENS_WARNING,
-} from "../../lib/detection/context-thresholds.js";
+} from "../../../lib/detection/context-thresholds.js";
 
 /** Mark context nudge as sent (system sends nudge to agent). */
 export function markNudgeSent(s: ContextHygieneState, turn: number): void {

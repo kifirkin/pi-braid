@@ -41,27 +41,27 @@ export { ENFORCEMENT_PARAMS, type EnforcementState } from "./enforcement-types.j
 import {
   createToolTrackingState,
   resetToolTrackingState,
-} from "./tool-tracking-state.js";
+} from "./substate/tool-tracking-state.js";
 import {
   createErrorTrackingState,
   resetErrorTrackingState,
-} from "./error-tracking-state.js";
-import { createSessionState, resetSessionState } from "./session-state.js";
+} from "./substate/error-tracking-state.js";
+import { createSessionState, resetSessionState } from "./substate/session-state.js";
 import {
   createMemoryHygieneState,
   resetMemoryHygieneState,
-} from "./memory-hygiene-state.js";
+} from "./substate/memory-hygiene-state.js";
 import {
   createScratchpadState,
   resetScratchpadState,
   createContextHygieneState,
   resetContextHygieneState,
   type ScratchpadState,
-} from "./context-hygiene-state.js";
+} from "./substate/context-hygiene-state.js";
 import {
   createThoughtChainState,
   resetThoughtChainState,
-} from "./thought-chain-state.js";
+} from "./substate/thought-chain-state.js";
 
 // Re-export sub-module helpers (backward compat — consumers import from state.ts)
 export {
@@ -70,7 +70,7 @@ export {
   shouldRunJudge,
   recordCalibration,
   getCalibrationError,
-} from "./verification-judge-state.js";
+} from "./substate/verification-judge-state.js";
 export {
   markNudgeSent,
   resetNudge,
@@ -80,7 +80,7 @@ export {
   inOverflowRecovery,
   shouldCheckContext,
   getContextNudgeMessage,
-} from "./context-hygiene-state.js";
+} from "./substate/context-hygiene-state.js";
 export {
   recordMemoryAccess,
   incrementTurnsSinceMemory,
@@ -88,7 +88,7 @@ export {
   shouldNudgeForMemory,
   markMemoryNudgeSent,
   resetMemoryHygiene,
-} from "./memory-hygiene-state.js";
+} from "./substate/memory-hygiene-state.js";
 export {
   recordThink,
   incrementToolsSinceReflection,
@@ -97,9 +97,9 @@ export {
   isTooSilent,
   getReflectionGapMessage,
   resetThoughtChain,
-} from "./thought-chain-state.js";
-export { isErrorBurst, updateErrorBurst } from "./error-tracking-state.js";
-export { recordToolChainCall, type CalibrationPair } from "./tool-tracking-state.js";
+} from "./substate/thought-chain-state.js";
+export { isErrorBurst, updateErrorBurst } from "./substate/error-tracking-state.js";
+export { recordToolChainCall, type CalibrationPair } from "./substate/tool-tracking-state.js";
 
 const log = createLogger("enforcement");
 

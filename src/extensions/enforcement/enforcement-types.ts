@@ -12,12 +12,12 @@
  *   - EnforcementState:   the composed interface (intersection of sub-states)
  */
 
-import type { ToolTrackingState } from "./tool-tracking-state.js";
-import type { ErrorTrackingState } from "./error-tracking-state.js";
-import type { SessionState } from "./session-state.js";
-import type { MemoryHygieneState } from "./memory-hygiene-state.js";
-import type { ScratchpadState, ContextHygieneState } from "./context-hygiene-state.js";
-import type { ThoughtChainState } from "./thought-chain-state.js";
+import type { ToolTrackingState } from "./substate/tool-tracking-state.js";
+import type { ErrorTrackingState } from "./substate/error-tracking-state.js";
+import type { SessionState } from "./substate/session-state.js";
+import type { MemoryHygieneState } from "./substate/memory-hygiene-state.js";
+import type { ScratchpadState, ContextHygieneState } from "./substate/context-hygiene-state.js";
+import type { ThoughtChainState } from "./substate/thought-chain-state.js";
 
 // ── Tunable thresholds ─────────────────────────────────────────────────────
 

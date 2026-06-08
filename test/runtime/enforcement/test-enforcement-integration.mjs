@@ -43,18 +43,18 @@ const {
   updateErrorBurst,
   createErrorTrackingState,
   resetErrorTrackingState,
-} = await import("../../../dist/extensions/enforcement/error-tracking-state.js");
+} = await import("../../../dist/extensions/enforcement/substate/error-tracking-state.js");
 
 const {
   createToolTrackingState,
   resetToolTrackingState,
   recordToolChainCall,
-} = await import("../../../dist/extensions/enforcement/tool-tracking-state.js");
+} = await import("../../../dist/extensions/enforcement/substate/tool-tracking-state.js");
 
 const {
   createSessionState,
   resetSessionState,
-} = await import("../../../dist/extensions/enforcement/session-state.js");
+} = await import("../../../dist/extensions/enforcement/substate/session-state.js");
 
 const {
   createState,

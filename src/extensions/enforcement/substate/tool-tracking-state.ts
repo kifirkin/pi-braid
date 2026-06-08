@@ -5,7 +5,7 @@
  *       explore/think patterns.
  */
 
-import type { ToolChainState, ToolSequencePattern } from "./types.js";
+import type { ToolChainState, ToolSequencePattern } from "../types.js";
 
 // ── Calibration pair ───────────────────────────────────────────────────────
 
