@@ -31,6 +31,7 @@ import type {
   Constraint,
   KeyLearning,
   SessionPhase,
+  PlanStep,
 } from "./types.js";
 
 import {
@@ -278,9 +279,79 @@ const readAction = Type.Union([
   Type.Literal("elevate_to_plan"),
 ]);
 
+const VALID_LEARNING_CATEGORIES = [
+  "root_cause",
+  "pattern",
+  "fix",
+  "constraint",
+  "codebase_fact",
+] as const;
+type LearningCategory = (typeof VALID_LEARNING_CATEGORIES)[number];
+
+/** Aliases that map to canonical categories. Lowercased before matching. */
+const LEARNING_CATEGORY_ALIASES: Record<string, LearningCategory> = {
+  // root_cause aliases
+  rootcause: "root_cause",
+  "root-cause": "root_cause",
+  root: "root_cause",
+  cause: "root_cause",
+  bug: "root_cause",
+  defect: "root_cause",
+  // pattern aliases
+  pattern: "pattern",
+  convention: "pattern",
+  idiom: "pattern",
+  heuristic: "pattern",
+  insight: "pattern",
+  // fix aliases
+  fix: "fix",
+  solution: "fix",
+  solution_summary: "fix",
+  resolved: "fix",
+  workaround: "fix",
+  patch: "fix",
+  // constraint aliases
+  constraint: "constraint",
+  rule: "constraint",
+  limit: "constraint",
+  invariant: "constraint",
+  requirement: "constraint",
+  // codebase_fact aliases
+  codebase_fact: "codebase_fact",
+  codebase: "codebase_fact",
+  fact: "codebase_fact",
+  "codebase-fact": "codebase_fact",
+  "code-fact": "codebase_fact",
+  codefact: "codebase_fact",
+};
+
+function resolveCategory(raw: string): LearningCategory | null {
+  const key = raw.trim().toLowerCase().replace(/\s+/g, "_");
+  if ((VALID_LEARNING_CATEGORIES as readonly string[]).includes(key)) {
+    return key as LearningCategory;
+  }
+  return LEARNING_CATEGORY_ALIASES[key] ?? null;
+}
+
 const scratchpadParams = Type.Object({
   action: readAction,
   text: Type.Optional(Type.String({ description: "Text content" })),
+  category: Type.Optional(
+    Type.String({
+      description:
+        "Category for add_learning (alternative to pipe-delimited text). One of: root_cause, pattern, fix, constraint, codebase_fact (aliases accepted).",
+    }),
+  ),
+  content: Type.Optional(
+    Type.String({
+      description: "Learning content for add_learning (alternative to pipe-delimited text).",
+    }),
+  ),
+  scope: Type.Optional(
+    Type.Array(Type.String(), {
+      description: "Optional scope tags for add_learning (file paths, areas, etc.).",
+    }),
+  ),
   successCriteria: Type.Optional(Type.Array(Type.String(), { description: "Success criteria" })),
   constraint_id: Type.Optional(Type.String({ description: "Constraint ID" })),
   expires_in_ms: Type.Optional(Type.Number({ description: "TTL in ms for constraint expiry" })),
@@ -338,16 +409,16 @@ async function scratchpadExecute(
         budgetCalls = parseInt(budgetMatch[1], 10);
         planText = text.slice(0, budgetMatch.index!).trim();
       }
-      pad.plan.push({
+      const step: PlanStep = {
         text: planText,
         budgetCalls,
         spentCalls: 0,
         startTurn: pad.session.turn,
         doneTurn: 0,
         startTotalCalls: 0,
-      });
+      };
       const budgetStr = budgetCalls ? ` [budget: ${budgetCalls} calls]` : "";
-      capPush(pad.plan, pad.plan[pad.plan.length - 1], RECYCLE.MAX_PLAN);
+      capPush(pad.plan, step, RECYCLE.MAX_PLAN);
       await mutateAndSave(pad);
       resultText = `Step added: ${planText}${budgetStr}`;
       break;
@@ -357,12 +428,10 @@ async function scratchpadExecute(
       const step = pad.plan.find((s) => s.text === text);
       if (step) {
         step.doneTurn = pad.session.turn;
-        pad.done.push(text);
         capPush(pad.done, text, RECYCLE.MAX_DONE);
         resultText = `Completed: ${text}`;
       } else {
         // Fallback: just add to done
-        pad.done.push(text);
         capPush(pad.done, text, RECYCLE.MAX_DONE);
         resultText = `Completed: ${text}`;
       }
@@ -380,7 +449,6 @@ async function scratchpadExecute(
         reason = text.slice(sepIndex + 1).trim();
       }
       const decision: Decision = { text: decisionText, reason, turn: pad.session.turn };
-      pad.decisions.push(decision);
       capPush(pad.decisions, decision, RECYCLE.MAX_DECISIONS);
       await mutateAndSave(pad);
       resultText = `Decision recorded: ${decisionText}${reason ? ` (${reason})` : ""}`;
@@ -388,7 +456,6 @@ async function scratchpadExecute(
     }
 
     case "add_hypothesis": {
-      pad.hypotheses.push(text);
       capPush(pad.hypotheses, text, RECYCLE.MAX_HYPOTHESES);
       await mutateAndSave(pad);
       resultText = `Hypothesis added: ${text}`;
@@ -396,7 +463,6 @@ async function scratchpadExecute(
     }
 
     case "add_note": {
-      pad.notes.push(text);
       capPush(pad.notes, text, RECYCLE.MAX_NOTES);
       await mutateAndSave(pad);
       resultText = `Note added: ${text}`;
@@ -429,7 +495,6 @@ async function scratchpadExecute(
         expires_at: expires_in_ms ? Date.now() + expires_in_ms : 0,
         acknowledged: false,
       };
-      pad.constraints.push(constraint);
       capPush(pad.constraints, constraint, RECYCLE.MAX_CONSTRAINTS);
       await mutateAndSave(pad);
       resultText = `Constraint added: [${constraint.type}] ${desc} (id: ${constraint.id})`;
@@ -449,14 +514,55 @@ async function scratchpadExecute(
     }
 
     case "add_learning": {
-      // Format: "category|content|scope"
-      const parts = text.split("|").map((s) => s.trim());
-      const category = parts[0] as KeyLearning["category"];
-      const content = parts[1] || parts[0];
-      const scope = parts[2] ? parts[2].split(",").map((s) => s.trim()) : [];
+      // Two accepted formats (prefer the explicit fields):
+      //   1. Explicit: params.category + params.content + params.scope
+      //   2. Legacy pipe-delimited text: "category|content|scope1,scope2"
+      //
+      // The legacy format is still supported for backward compatibility, but
+      // the explicit fields are easier for the model to use correctly.
+      let rawCategory: string;
+      let content: string;
+      let scope: string[];
 
-      if (!["root_cause", "pattern", "fix", "constraint", "codebase_fact"].includes(category)) {
-        resultText = `Invalid category: ${category}. Use: root_cause, pattern, fix, constraint, codebase_fact`;
+      const explicitCategory = params.category as string | undefined;
+      const explicitContent = params.content as string | undefined;
+      const explicitScope = params.scope as string[] | undefined;
+
+      if (explicitCategory || explicitContent) {
+        // Explicit-field path
+        rawCategory = (explicitCategory ?? "").trim();
+        content = (explicitContent ?? "").trim();
+        scope = Array.isArray(explicitScope) ? explicitScope : [];
+        if (!rawCategory || !content) {
+          resultText =
+            `add_learning requires both 'category' and 'content'. ` +
+            `Got: category=${JSON.stringify(explicitCategory)}, content=${JSON.stringify(explicitContent)}. ` +
+            `Valid categories: ${VALID_LEARNING_CATEGORIES.join(", ")} (aliases accepted).`;
+          break;
+        }
+      } else {
+        // Legacy pipe-delimited text path
+        const parts = text.split("|").map((s) => s.trim());
+        rawCategory = parts[0] ?? "";
+        content = (parts[1] || parts[0] || "").trim();
+        scope = parts[2] ? parts[2].split(",").map((s) => s.trim()).filter(Boolean) : [];
+        if (!rawCategory) {
+          resultText =
+            `Invalid add_learning format. Provide 'category' and 'content' as separate fields, ` +
+            `or use pipe-delimited text: "category|content|scope". ` +
+            `Valid categories: ${VALID_LEARNING_CATEGORIES.join(", ")} (aliases accepted).`;
+          break;
+        }
+      }
+
+      const category = resolveCategory(rawCategory);
+      if (!category) {
+        resultText =
+          `Invalid category: "${rawCategory}". ` +
+          `Valid: ${VALID_LEARNING_CATEGORIES.join(", ")}. ` +
+          `Common aliases: bug/defect→root_cause, insight/idiom→pattern, ` +
+          `solution/patch→fix, rule/requirement→constraint, fact/codefact→codebase_fact. ` +
+          `Tip: use the explicit 'category' and 'content' fields to avoid pipe-format confusion.`;
         break;
       }
 
@@ -468,7 +574,6 @@ async function scratchpadExecute(
         added_at: Date.now(),
         persisted: false,
       };
-      pad.key_learnings.push(learning);
       capPush(pad.key_learnings, learning, RECYCLE.MAX_LEARNINGS);
       await mutateAndSave(pad);
       resultText = `Learning added: [${category}] ${content} (scope: ${scope.join(", ") || "all"}) (id: ${learning.id})`;
@@ -505,14 +610,15 @@ async function scratchpadExecute(
 
     case "elevate_to_plan": {
       if (text) {
-        pad.plan.push({
+        const step: PlanStep = {
           text,
           budgetCalls: undefined,
           spentCalls: 0,
           startTurn: pad.session.turn,
           doneTurn: 0,
           startTotalCalls: 0,
-        });
+        };
+        capPush(pad.plan, step, RECYCLE.MAX_PLAN);
       }
       await mutateAndSave(pad);
       resultText = `Elevated to plan: ${text || "current plan"}`;
@@ -537,7 +643,10 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
     label: "Scratchpad",
     promptSnippet: "Structured session memory for goal, plan, and decisions",
     description:
-      "Track goals, plans, and decisions throughout multi-step tasks using structured session memory. Use scratchpad(action='add_plan') at the start, add notes and learnings as you work. For task management, use the 'task' tool.",
+      "Track goals, plans, notes, and learnings throughout multi-step tasks using structured session memory. " +
+      "Common actions: set_goal, add_plan, add_note, add_decision, add_learning, read. " +
+      "For add_learning, prefer explicit 'category' + 'content' fields over pipe-delimited text. " +
+      "For task management, use the 'task' tool.",
     parameters: scratchpadParams,
     execute: scratchpadExecute,
   } as unknown as ToolDefinition<any, any, any>);
