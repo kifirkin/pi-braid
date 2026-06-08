@@ -42,110 +42,11 @@ export interface CriticDef {
   label?: string;
 }
 
-// ── Legacy heuristic helpers (shared by fallbacks below) ────────────────────
-
-/** Shared verb-extraction regex used by entity-extraction heuristic fallback. */
-export const ENTITY_VERBS = /\b(is|was|will|can|does|has|should|must|returns|takes|uses|creates|handles|supports|needs|exports|works|fails|validates|initializes|configures|implements|generates|deploys)\b/i;
-
-export const STOP_WORDS_LEGACY = new Set([
-  "the",
-  "a",
-  "an",
-  "is",
-  "are",
-  "was",
-  "were",
-  "be",
-  "been",
-  "being",
-  "have",
-  "has",
-  "had",
-  "do",
-  "does",
-  "did",
-  "will",
-  "would",
-  "could",
-  "should",
-  "may",
-  "might",
-  "must",
-  "shall",
-  "can",
-  "need",
-  "dare",
-  "that",
-  "this",
-  "these",
-  "those",
-  "what",
-  "which",
-  "who",
-  "whom",
-  "with",
-  "without",
-  "from",
-  "into",
-  "onto",
-  "in",
-  "out",
-  "on",
-  "off",
-  "over",
-  "under",
-  "above",
-  "below",
-  "to",
-  "for",
-  "of",
-  "and",
-  "or",
-  "but",
-  "if",
-  "then",
-  "else",
-  "when",
-  "where",
-  "how",
-  "why",
-  "not",
-  "all",
-  "each",
-  "every",
-  "both",
-  "few",
-  "more",
-  "most",
-  "other",
-  "some",
-  "such",
-  "no",
-  "nor",
-  "only",
-  "own",
-  "same",
-  "so",
-  "than",
-  "too",
-  "very",
-  "just",
-  "also",
-  "now",
-  "here",
-  "there",
-  "then",
-  "implement",
-  "add",
-  "create",
-  "build",
-  "make",
-  "write",
-  "fix",
-  "update",
-  "day",
-  "boy",
-]);
+// Helpers (ENTITY_VERBS, STOP_WORDS_LEGACY) and the criticLabel() lookup
+// were extracted to critic-helpers.ts to keep this file focused on
+// the CRITICS object. Re-exported below for backward compat.
+import { ENTITY_VERBS } from "./critic-helpers.js";
+export { ENTITY_VERBS, STOP_WORDS_LEGACY, criticLabel } from "./critic-helpers.js";
 
 // ── CRITICS — All critic prompt definitions ─────────────────────────────────
 
@@ -798,18 +699,3 @@ export const CRITICS = {
     return patterns.some((p) => p.test(text)) ? "yes" : "no";
   },
 } as const;
-
-/**
- * Return the human-readable label for a critic, if available.
- */
-/**
- * Return the human-readable label for a critic, if available.
- * Only works for CriticDef entries (not fallback functions).
- */
-export function criticLabel(key: string): string | undefined {
-  const entry = (CRITICS as Record<string, unknown>)[key];
-  if (entry && typeof entry === "object" && "label" in entry) {
-    return (entry as { label?: string }).label;
-  }
-  return undefined;
-}

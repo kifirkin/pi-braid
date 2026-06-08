@@ -111,8 +111,11 @@ function checkKeyTypeExports(filesByRel) {
     if (!absPath) { violations.push({ file: relPath, issue: "FILE NOT FOUND" }); continue; }
     const src = readFileSync(absPath, "utf-8");
     for (const exp of expectedExports) {
-      const pattern = new RegExp(`export (default |async )?(function|const|enum|interface|type) ${exp}\\b`);
-      if (!pattern.test(src)) {
+      // Accept either: `export (default|async)? (function|const|enum|interface|type) <name>`
+      // OR a re-export: `export { <name>, ... } from "..."`
+      const directPattern = new RegExp(`export (default |async )?(function|const|enum|interface|type) ${exp}\\b`);
+      const reExportPattern = new RegExp(`export\\s*\\{[^}]*\\b${exp}\\b[^}]*\\}\\s*from`);
+      if (!directPattern.test(src) && !reExportPattern.test(src)) {
         violations.push({ file: relPath, issue: `Missing export: ${exp}` });
       }
     }
