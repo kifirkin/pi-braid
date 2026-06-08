@@ -210,7 +210,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
     label: "Recall Memory",
     promptSnippet: "Search memory for relevant information",
     description:
-      "Search memory for past learnings and patterns — use when you need to recall before answering. Uses semantic text search to find relevant stored information.",
+      "Search memory for past learnings and patterns — use when you need to recall before answering. Uses semantic text search to find relevant stored information. To browse by recency, use memory_list. To fetch a specific memory by ID, use memory_get.",
     parameters: Type.Object({
       query: Type.String({ description: "What to search for (natural language)" }),
       memoryType: Type.Optional(
@@ -356,7 +356,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
     label: "List Memories",
     promptSnippet: "List all stored memories sorted by recency",
     description:
-      "List stored memories sorted by recency — use before searching or recalling to see what's available.",
+      "List stored memories sorted by recency — use before searching or recalling to see what's available. For semantic search, use memory_recall. To fetch a specific memory by ID, use memory_get.",
     parameters: Type.Object({
       limit: Type.Optional(Type.Number({ default: 20 })),
       full: Type.Optional(
@@ -423,7 +423,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
     label: "Get Memory",
     promptSnippet: "Get a specific memory by ID",
     description:
-      "Retrieve a specific memory by its full ID — use after listing or searching to inspect complete details.",
+      "Retrieve a specific memory by its full ID — use after listing or searching to inspect complete details. For semantic search, use memory_recall. To browse by recency, use memory_list.",
     parameters: Type.Object({
       id: Type.String({ description: "Memory ID to retrieve" }),
     }),
