@@ -21,7 +21,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { getCognitiveMemory } from "../../../lib/cognitive-memory/index.js";
+import { getCognitiveMemory } from "../../../lib/memory/index.js";
 import { gatherL1Environment, formatL1EnvironmentSection } from "../agent-environment/index.js";
 
 interface L1Environment {

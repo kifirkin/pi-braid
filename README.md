@@ -52,7 +52,7 @@ npm install
 npm run build
 
 # Run with pi
-pi -e /path/to/pi-braid/src/index.ts
+pi -e /path/to/pi-braid
 ```
 
 ### Prerequisites

@@ -17,7 +17,7 @@ npm run build
 | ------------------- | ---------------------------- |
 | `npm run typecheck` | TypeScript check (no emit)   |
 | `npm run build`     | Compile to `dist/`           |
-| `npm run test`      | Build + run 61 runtime tests |
+| `npm run test`      | Build + run runtime tests    |
 | `npm run lint`      | ESLint check                 |
 | `npm run format`    | Prettier formatting          |
 | `npm run clean`     | Remove build artifacts       |
@@ -27,9 +27,10 @@ npm run build
 ```
 src/
   index.ts              # Extension registration entry point
-  extensions/           # All extensions (cognitive, memory, tools, etc.)
-  lib/                  # Shared libraries (cognitive-memory, belief-store, etc.)
-  modules/              # Module definitions and loader
+  extensions/           # All extensions (one subdir per extension)
+  lib/                  # Shared libraries (memory, detection, state, etc.)
+  loader/               # Runtime extension loader and subagent API
+  types/                # Ambient .d.ts declarations
 skills/                 # Bundled skills (SKILL.md per skill)
 test/runtime/           # Runtime test files (test-*.mjs)
 docs/                   # Documentation
@@ -94,13 +95,20 @@ node test/runtime/test-enforcement.mjs
 
 ## Module System
 
-Extensions are grouped into modules defined in `src/modules/definitions.ts`. New extensions should be added to the appropriate module or a new one created.
+Extensions are registered in the flat manifest at
+[`src/extensions/manifest.ts`](src/extensions/manifest.ts). The `module` field
+on each entry is a label used by the subagent API to enable/disable a group of
+extensions. It has no structural role in the directory tree.
 
-Modules are loaded based on the `BRAID_MODULES` environment variable (default: all enabled).
+Extensions are loaded based on the `BRAID_MODULES` environment variable
+(default: all non-opt-in extensions enabled). See [AGENTS.md](AGENTS.md) for
+the full config resolution order.
 
 ## Storage Convention
 
-All braid-specific data goes under `~/.pi/agent/braid/`. Use constants from `src/lib/braid-paths.ts` — never hardcode paths.
+All braid-specific data goes under `~/.pi/agent/braid/`. Use constants from
+[`src/lib/config/braid-paths.ts`](src/lib/config/braid-paths.ts) — never
+hardcode paths.
 
 ## Questions?
 

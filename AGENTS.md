@@ -1,42 +1,50 @@
 # pi-braid Developer Guide
 
-## Module System
+## Extension Loading
 
-Extensions are grouped into **modules** (`src/modules/definitions.ts`). Each module maps to a research track or logical concern.
+Every extension is a self-contained subdirectory under `src/extensions/`, with
+`index.ts` exporting a default factory. The flat registry lives in
+[`src/extensions/manifest.ts`](./src/extensions/manifest.ts) — there is **no
+module-grouping abstraction**. The `module` field on each manifest entry is a
+label used by the subagent API to enable/disable a group of extensions
+(e.g., `BRAID_MODULES=+heartbeat`); it has no structural role in the
+directory tree.
 
-### Config-Driven Loading
+The runtime loader is `src/loader/loader.ts`. Config sources (highest
+priority first): subagent API → `~/.pi/agent/settings.json` under `braid.modules`
+→ `BRAID_MODULES` env var → manifest defaults.
 
-Modules are loaded based on `BRAID_MODULES` environment variable:
+### Common `BRAID_MODULES` patterns
 
 ```bash
-# Enable everything (default)
-export BRAID_MODULES="all"
+# Default — all non-opt-in extensions enabled
+unset BRAID_MODULES
 
-# Enable specific modules
-export BRAID_MODULES="core,cognitive-quality,enforcement,memory"
+# Toggle individual extensions: +name to enable, -name to disable
+export BRAID_MODULES="all,-error-tracking"           # everything except error-tracking
+export BRAID_MODULES="core,+health-maintenance"     # core + opt-in health-maintenance
+export BRAID_MODULES="-heartbeat"                   # everything except heartbeat group
 
-# Toggle individual modules: +name to enable, -name to disable
-export BRAID_MODULES="all,-contrib,-tools"          # disable contrib + tools
-export BRAID_MODULES="core,+error-tracking"          # core + opt-in error tracking
-export BRAID_MODULES="-heartbeat"                    # everything except heartbeat
+# Group toggle (only works for entries with a `module` field)
+export BRAID_MODULES="+heartbeat"                   # enable both heartbeat extensions
 ```
 
-Available modules: `core`, `cognitive-quality`, `enforcement`, `memory`, `heartbeat`, `tools`, `nudge`, `contrib`, `watchdog`, `health-maintenance`, `error-tracking`.
-
-Peripheral utilities (`contrib`) live at `src/contrib/` instead of `src/extensions/`.
+The `module` field is set on sub-extensions that should be toggled as a group
+(heartbeat). Single-extension modules use their own id as the label.
 
 ## Build & Test
 
 ```bash
 npm run typecheck  # TypeScript check only
 npm run build      # Compile to dist/
-npm run test       # Build + run 63 runtime tests
+npm run test       # Build + run runtime tests
 npm run clean      # Remove dist/ and .tsbuildinfo
 ```
 
 ## State Management
 
-Use `getExtensionState(ctx, key, factory)` for per-session state. Module-level `let` for mutable state leaks across sessions — use the state factory instead.
+Use `getExtensionState(ctx, key, factory)` for per-session state. Module-level
+`let` for mutable state leaks across sessions — use the state factory instead.
 
 Event handlers receive `(event, ctx: ExtensionContext)`. Tool execute functions receive `(toolCallId, params, signal, onUpdate, ctx)`.
 
