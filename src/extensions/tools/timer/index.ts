@@ -3,9 +3,18 @@
  *
  * Agent sets a timer, continues working, gets a reminder when it fires.
  * This replaces bash `sleep` which blocks the tool call.
+ *
+ * ── SESSION SCOPING ─────────────────────────────────────────────────────
+ * Timers are stored per-session (keyed by ctx.sessionManager.getSessionId()).
+ * Each pi session has its own poller that only fires its own timers.
+ * This prevents cross-session leaks: when session A's context_compress
+ * cancels its resume timers, session B's resume timers are untouched.
+ *
+ * The sessionId is required for cancelTimersByTag() (fail fast) and is
+ * stamped on each ScheduledTimer for traceability.
  */
 
-import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ToolDefinition, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../../../lib/core/logger.js";
 import { Type } from "typebox";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
@@ -18,58 +27,120 @@ const log = createLogger("timer");
 
 export type { ScheduledTimer };
 
+/**
+ * Per-session timer store. Outer map: sessionId → (inner map: timerId → timer).
+ *
+ * Module-level singleton — this is the global registry. Each session's timers
+ * live in their own inner map, so cross-session operations are impossible.
+ * Use the exported session-scoped functions below; do NOT touch this class
+ * directly from external code.
+ */
 class TimerManager {
-  private timers: Map<string, ScheduledTimer> = new Map();
+  private timersBySession: Map<string, Map<string, ScheduledTimer>> = new Map();
 
-  setTimer(delayMs: number, reason: string, tag?: string, wake: boolean = true): string {
+  setTimer(
+    sessionId: string,
+    delayMs: number,
+    reason: string,
+    tag?: string,
+    wake: boolean = true,
+  ): string {
     const id = `timer_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const firesAt = Date.now() + delayMs;
 
-    this.timers.set(id, { id, firesAt, reason, tag, createdAt: Date.now(), wake });
-    log.info(`[timer] set: ${id} fires in ${Math.round(delayMs / 1000)}s — ${reason}${wake ? " (wake)" : " (silent)"}`);
+    let sessionTimers = this.timersBySession.get(sessionId);
+    if (!sessionTimers) {
+      sessionTimers = new Map();
+      this.timersBySession.set(sessionId, sessionTimers);
+    }
+    sessionTimers.set(id, { id, firesAt, reason, tag, createdAt: Date.now(), wake, sessionId });
+    log.info(
+      `[timer] set: ${id} session=${sessionId} fires in ${Math.round(delayMs / 1000)}s — ${reason}${wake ? " (wake)" : " (silent)"}`,
+    );
     return id;
   }
 
-  cancelTimer(id: string): boolean {
-    const deleted = this.timers.delete(id);
-    if (deleted) log.info(`[timer] cancelled: ${id}`);
+  cancelTimer(sessionId: string, id: string): boolean {
+    const sessionTimers = this.timersBySession.get(sessionId);
+    if (!sessionTimers) return false;
+    const deleted = sessionTimers.delete(id);
+    if (deleted) log.info(`[timer] cancelled: ${id} (session=${sessionId})`);
     return deleted;
   }
 
-  listTimers(): ScheduledTimer[] {
-    return Array.from(this.timers.values()).sort((a, b) => a.firesAt - b.firesAt);
+  /** Cancel all timers for a session. Returns number cancelled. Used on session_shutdown. */
+  clearSession(sessionId: string): number {
+    const sessionTimers = this.timersBySession.get(sessionId);
+    if (!sessionTimers) return 0;
+    const n = sessionTimers.size;
+    this.timersBySession.delete(sessionId);
+    if (n > 0) log.info(`[timer] cleared session ${sessionId}: ${n} timer(s)`);
+    return n;
   }
 
-  /** Check for expired timers — removes them from the map and returns them */
-  checkExpired(nowMs: number): ScheduledTimer[] {
+  listTimers(sessionId: string): ScheduledTimer[] {
+    const sessionTimers = this.timersBySession.get(sessionId);
+    if (!sessionTimers) return [];
+    return Array.from(sessionTimers.values()).sort((a, b) => a.firesAt - b.firesAt);
+  }
+
+  /** Check for expired timers in a session — removes them and returns them. */
+  checkExpired(sessionId: string, nowMs: number): ScheduledTimer[] {
+    const sessionTimers = this.timersBySession.get(sessionId);
+    if (!sessionTimers) return [];
     const expired: ScheduledTimer[] = [];
-    for (const [id, timer] of this.timers) {
+    for (const [id, timer] of sessionTimers) {
       if (timer.firesAt <= nowMs) {
         expired.push(timer);
-        this.timers.delete(id);
-        log.info(`[timer] fired: ${id} — ${timer.reason}`);
+        sessionTimers.delete(id);
+        log.info(`[timer] fired: ${id} (session=${sessionId}) — ${timer.reason}`);
       }
     }
     return expired;
   }
 
-  getActiveCount(): number {
-    return this.timers.size;
+  cancelTimersByTag(sessionId: string, tag: string): number {
+    const sessionTimers = this.timersBySession.get(sessionId);
+    if (!sessionTimers) return 0;
+    let cancelled = 0;
+    for (const [id, t] of sessionTimers) {
+      if (t.tag === tag) {
+        sessionTimers.delete(id);
+        cancelled++;
+      }
+    }
+    if (cancelled > 0) {
+      log.info(`[timer] cancelled ${cancelled} timer(s) with tag="${tag}" (session=${sessionId})`);
+    }
+    return cancelled;
   }
 
-  /** Check if any timer is expired without removing (for polling guard) */
-  hasExpiredIn(nowMs: number): boolean {
-    for (const timer of this.timers.values()) {
-      if (timer.firesAt <= nowMs) return true;
-    }
-    return false;
+  getActiveCount(sessionId: string): number {
+    return this.timersBySession.get(sessionId)?.size ?? 0;
+  }
+
+  /** Total across all sessions. For diagnostics/tests only. */
+  getTotalCount(): number {
+    let n = 0;
+    for (const s of this.timersBySession.values()) n += s.size;
+    return n;
   }
 }
 
 const timerManager = new TimerManager();
 
 /**
- * Programmatic timer API — schedule a timer from any extension.
+ * Defensive sessionId extraction. Returns "anonymous" if the ctx is missing
+ * or sessionManager is unavailable — those timers will be cancelled together
+ * in the "anonymous" bucket. Prefer passing a real sessionId.
+ */
+function getSessionId(ctx: unknown): string {
+  const c = ctx as { sessionManager?: { getSessionId?: () => string | undefined } } | undefined;
+  return c?.sessionManager?.getSessionId?.() ?? "anonymous";
+}
+
+/**
+ * Programmatic timer API — schedule a timer for a specific session.
  * Returns the timer ID. Timer fires and delivers a steer to the agent.
  *
  * @param wake if true (default), the fire whisper uses triggerTurn: true
@@ -80,43 +151,45 @@ const timerManager = new TimerManager();
  *   but no forced turn) — used by background heartbeats and similar.
  */
 export function scheduleTimer(
+  sessionId: string,
   delayMs: number,
   reason: string,
   tag?: string,
   wake: boolean = true,
 ): string {
-  return timerManager.setTimer(delayMs, reason, tag, wake);
+  return timerManager.setTimer(sessionId, delayMs, reason, tag, wake);
 }
 
-/** Cancel a timer by ID. */
-export function cancelTimer(id: string): boolean {
-  return timerManager.cancelTimer(id);
+/** Cancel a timer by ID in a specific session. */
+export function cancelTimer(sessionId: string, id: string): boolean {
+  return timerManager.cancelTimer(sessionId, id);
 }
 
-/** List all active timers (read-only). Sorted by firesAt. */
-export function listTimers(): ScheduledTimer[] {
-  return timerManager.listTimers();
+/** List all active timers for a session. Sorted by firesAt. */
+export function listTimers(sessionId: string): ScheduledTimer[] {
+  return timerManager.listTimers(sessionId);
 }
 
 /**
- * Cancel all active timers matching a tag. Used by compaction paths to
- * invalidate stale resume timers from a previous compaction cycle.
+ * Cancel all active timers for a session matching a tag.
+ * Used by compaction paths to invalidate stale resume timers from a
+ * previous compaction cycle. CRITICAL: only cancels the given session's
+ * timers — does NOT touch other sessions running in the same process.
  * Returns the number of timers cancelled.
  */
-export function cancelTimersByTag(tag: string): number {
-  let cancelled = 0;
-  for (const t of timerManager.listTimers()) {
-    if (t.tag === tag) {
-      if (timerManager.cancelTimer(t.id)) cancelled++;
-    }
-  }
-  return cancelled;
+export function cancelTimersByTag(sessionId: string, tag: string): number {
+  return timerManager.cancelTimersByTag(sessionId, tag);
+}
+
+/** Clear all timers for a session. Used on session_shutdown to free memory. */
+export function clearSessionTimers(sessionId: string): number {
+  return timerManager.clearSession(sessionId);
 }
 
 // ── Fire Handlers (via shared bus) ───────────────────────────────────
 // We import the shared bus to bridge timer fires → heartbeat surfacing
 import { emitTimerReminder } from "../../../lib/events/timer-bus.js";
-import { TURN_END, TOOL_CALL, TOOL_EXECUTION_END, SESSION_SHUTDOWN } from "../../../lib/core/event-names.js";
+import { TURN_END, TOOL_CALL, TOOL_EXECUTION_END, SESSION_SHUTDOWN, SESSION_START } from "../../../lib/core/event-names.js";
 
 // Internal handler count (kept for API compat — currently unused,
 // no callers register via onTimerFire. The event bus handles
@@ -129,12 +202,15 @@ export function onTimerFire(handler: TimerFireHandler): () => void {
   return () => fireHandlers.delete(handler);
 }
 
-// ── Real-time polling ───────────────────────────────────────────────────────
+// ── Real-time polling (per-pi instance) ──────────────────────────────────────
 // Timer expiry checked every second — independent of turn_end so timers fire
 // even when the agent is between turns or blocked in a long tool call.
 // This is the primary fire mechanism; turn_end is a backup.
-// NOTE: Polling state is encapsulated in TimerPoller class. A single interval
-// serves all sessions. piRef is the most recently registered pi instance.
+//
+// PER-PI: each pi instance gets its own poller that only fires its own
+// session's timers. Previously the poller was a module-level singleton
+// with one piRef — if two sessions ran, only the most recently registered
+// session received timer fires. Now each session is independent.
 const POLL_INTERVAL_MS = 1000;
 
 class TimerPoller {
@@ -146,6 +222,11 @@ class TimerPoller {
   // compaction). Set true on TOOL_CALL, false on TURN_END.
   busy = false;
 
+  constructor(
+    private sessionId: string,
+    private getCtx: () => ExtensionContext | undefined,
+  ) {}
+
   setPiRef(pi: ExtensionAPI): void {
     this.piRef = pi;
   }
@@ -153,7 +234,7 @@ class TimerPoller {
   start(): void {
     if (this.pollHandle) return;
     this.pollHandle = setInterval(() => this.poll(), POLL_INTERVAL_MS);
-    log.info(`[timer] polling started (every ${POLL_INTERVAL_MS}ms)`);
+    log.info(`[timer] polling started (session=${this.sessionId}, every ${POLL_INTERVAL_MS}ms)`);
   }
 
   stop(): void {
@@ -171,7 +252,7 @@ class TimerPoller {
     const pi = this.piRef;
     if (!pi) return;
     if (this.busy) return; // bail — defer fire to next non-busy tick or TURN_END
-    const expired = timerManager.checkExpired(Date.now());
+    const expired = timerManager.checkExpired(this.sessionId, Date.now());
     for (const timer of expired) {
       fireTimer(timer, pi);
     }
@@ -180,9 +261,17 @@ class TimerPoller {
   isRunning(): boolean {
     return this.pollHandle !== null;
   }
-}
 
-const poller = new TimerPoller();
+  /** Fire any expired timers now (called from TOOL_EXECUTION_END / TURN_END). */
+  fireExpired(): ScheduledTimer[] {
+    if (!this.piRef) return [];
+    const expired = timerManager.checkExpired(this.sessionId, Date.now());
+    for (const timer of expired) {
+      fireTimer(timer, this.piRef);
+    }
+    return expired;
+  }
+}
 
 function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
   for (const h of fireHandlers) {
@@ -207,7 +296,7 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
     log.warn("[timer] failed to send steer for fired timer: " + timer.id);
   }
 
-  log.info(`[timer] fired: ${timer.id} — ${timer.reason}`);
+  log.info(`[timer] fired: ${timer.id} (session=${timer.sessionId}) — ${timer.reason}`);
   // Try to wake the agent with a steer message if between turns.
   //
   // triggerTurn contract:
@@ -231,7 +320,13 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
         customType: "timer",
         content: [{ type: "text" as const, text: `[timer] ${timer.reason}` }],
         display: true,
-        details: { _braidInjected: true, _braidSource: "timer/fire", timerId: timer.id, wake: triggerTurn },
+        details: {
+          _braidInjected: true,
+          _braidSource: "timer/fire",
+          timerId: timer.id,
+          sessionId: timer.sessionId,
+          wake: triggerTurn,
+        },
       },
       { deliverAs: "steer", triggerTurn },
       { type: "heartbeat", source: "timer/fire" },
@@ -241,19 +336,14 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
   }
 }
 
-function startTimerPolling(pi: ExtensionAPI): void {
-  if (poller.isRunning()) return;
-  poller.setPiRef(pi);
-  poller.start();
-}
-
-function stopTimerPolling(): void {
-  poller.stop();
-}
-
 // ── Extension ───────────────────────────────────────────────────────────────
 
 export default function timerExtension(pi: ExtensionAPI): void {
+  // sessionId is determined lazily on first tool call. We register a
+  // session_start handler to capture it eagerly.
+  let sessionId = "anonymous";
+  let sessionIdResolved = false;
+
   // timer_set
   pi.registerTool({
     name: "timer_set",
@@ -261,13 +351,18 @@ export default function timerExtension(pi: ExtensionAPI): void {
     promptSnippet: "Set a non-blocking timer for background processes",
     description:
       "Set a non-blocking timer for builds, background processes, and long-running tasks — use when you need a process to run in the background without blocking. Returns immediately without hanging. " +
-      "Use for: builds, background processes, pomodoro cycles, escalation chains.",
+      "Use for: builds, background processes, pomodoro cycles, escalation chains. " +
+      "Timers are scoped to the current session — timer_cancel in another session will not affect this one.",
     parameters: Type.Object({
       delay_seconds: Type.Number({ minimum: 1, maximum: 86400 }),
       reason: Type.String({ minLength: 1 }),
       tag: Type.Optional(Type.String()),
     }),
-    execute: async (_id: string, params: any): Promise<any> => {
+    execute: async (_id: string, params: any, _signal: any, _onUpdate: any, ctx: any): Promise<any> => {
+      if (!sessionIdResolved) {
+        sessionId = getSessionId(ctx);
+        sessionIdResolved = true;
+      }
       const { delay_seconds, reason, tag } = params ?? {};
 
       if (tag && !/^[a-zA-Z0-9_-]+$/.test(tag)) {
@@ -275,21 +370,22 @@ export default function timerExtension(pi: ExtensionAPI): void {
       }
 
       const delayMs = (delay_seconds ?? 60) * 1000;
-      const id = timerManager.setTimer(delayMs, reason ?? "Timer", tag);
+      const id = timerManager.setTimer(sessionId, delayMs, reason ?? "Timer", tag);
       const firesAt = Date.now() + delayMs;
 
       return {
         content: [
           {
             type: "text" as const,
-            text: `Timer set for ${delay_seconds}s (ID: ${id}). Will fire at ${new Date(firesAt).toLocaleTimeString()}. Continue working — reminder will arrive automatically. Use timer_cancel with this ID to cancel.`,
+            text: `Timer set for ${delay_seconds}s (ID: ${id}, session=${sessionId}). Will fire at ${new Date(firesAt).toLocaleTimeString()}. Continue working — reminder will arrive automatically. Use timer_cancel with this ID to cancel.`,
           },
         ],
         details: {
           timer_id: id,
           fires_at: new Date(firesAt).toISOString(),
           fires_in_seconds: delay_seconds,
-          active_timers: timerManager.getActiveCount(),
+          active_timers: timerManager.getActiveCount(sessionId),
+          session_id: sessionId,
         },
       };
     },
@@ -299,18 +395,22 @@ export default function timerExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "timer_list",
     label: "Timer List",
-    promptSnippet: "List all active timers",
+    promptSnippet: "List all active timers for this session",
     description:
-      "List all active timers — use to check if background processes have completed or need attention.",
+      "List all active timers for the current session — use to check if background processes have completed or need attention. Only shows timers in this session (cross-session isolation).",
     parameters: Type.Object({}),
-    execute: async (): Promise<any> => {
-      const timers = timerManager.listTimers();
+    execute: async (_id: string, _params: any, _signal: any, _onUpdate: any, ctx: any): Promise<any> => {
+      if (!sessionIdResolved) {
+        sessionId = getSessionId(ctx);
+        sessionIdResolved = true;
+      }
+      const timers = timerManager.listTimers(sessionId);
       const now = Date.now();
 
       if (timers.length === 0) {
         return {
           content: [{ type: "text" as const, text: "No active timers." }],
-          details: { active_timers: 0, timers: [] },
+          details: { active_timers: 0, timers: [], session_id: sessionId },
         };
       }
 
@@ -329,7 +429,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
             text: `${timers.length} active timer(s). ${formatted.map((t) => `ID:${t.timer_id} [${t.tag}] fires in ${t.fires_in_seconds}s: ${t.reason}`).join("; ")}`,
           },
         ],
-        details: { active_timers: timers.length, timers: formatted },
+        details: { active_timers: timers.length, timers: formatted, session_id: sessionId },
       };
     },
   } as ToolDefinition);
@@ -340,23 +440,45 @@ export default function timerExtension(pi: ExtensionAPI): void {
     label: "Timer Cancel",
     promptSnippet: "Cancel an active timer before it fires",
     description:
-      "Cancel an active timer when the timed task is no longer needed. The timer_id is returned by timer_set and shown in timer_list output.",
+      "Cancel an active timer in the current session. The timer_id is returned by timer_set and shown in timer_list output. Only cancels timers in this session.",
     parameters: Type.Object({ timer_id: Type.String() }),
-    execute: async (_id: string, params: any): Promise<any> => {
+    execute: async (_id: string, params: any, _signal: any, _onUpdate: any, ctx: any): Promise<any> => {
+      if (!sessionIdResolved) {
+        sessionId = getSessionId(ctx);
+        sessionIdResolved = true;
+      }
       const { timer_id } = params ?? {};
-      const cancelled = timerManager.cancelTimer(timer_id);
+      const cancelled = timerManager.cancelTimer(sessionId, timer_id);
       if (!cancelled) {
-        throw new Error(`Timer "${timer_id}" not found or already fired.`);
+        throw new Error(`Timer "${timer_id}" not found in session ${sessionId} or already fired.`);
       }
       return {
         content: [{ type: "text" as const, text: `Timer "${timer_id}" cancelled.` }],
-        details: { cancelled: true, timer_id, active_timers: timerManager.getActiveCount() },
+        details: { cancelled: true, timer_id, active_timers: timerManager.getActiveCount(sessionId), session_id: sessionId },
       };
     },
   } as ToolDefinition);
 
-  // Start real-time polling on load
-  startTimerPolling(pi);
+  // ── Per-pi poller: one per session ────────────────────────────────────
+  // The poller is created LAZILY on first session-aware event, because we
+  // need the sessionId. Once captured, it lives until SESSION_SHUTDOWN.
+  let poller: TimerPoller | null = null;
+  const ensurePoller = (ctx: unknown): TimerPoller => {
+    if (!poller) {
+      const sid = getSessionId(ctx);
+      sessionId = sid;
+      sessionIdResolved = true;
+      poller = new TimerPoller(sid, () => ctx as ExtensionContext | undefined);
+    }
+    return poller;
+  };
+
+  // Start polling on session_start so we have a sessionId available
+  pi.on(SESSION_START, (event: any, ctx: unknown) => {
+    const p = ensurePoller(ctx);
+    p.setPiRef(pi);
+    p.start();
+  });
 
   // Busy guard: set true on tool_call, false on tool_execution_end.
   //
@@ -374,33 +496,38 @@ export default function timerExtension(pi: ExtensionAPI): void {
   // This is still safe against the post-compaction stack overflow because
   // it blocks whisper injection only during actual tool execution, not
   // during LLM thinking (which can't chain into synchronous re-entry).
-  pi.on(TOOL_CALL, () => {
-    poller.setBusy(true);
+  pi.on(TOOL_CALL, (_event: unknown, ctx: unknown) => {
+    const p = ensurePoller(ctx);
+    p.setBusy(true);
   });
-  pi.on(TOOL_EXECUTION_END, () => {
-    poller.setBusy(false);
+  pi.on(TOOL_EXECUTION_END, (_event: unknown, ctx: unknown) => {
+    const p = ensurePoller(ctx);
+    p.setBusy(false);
     // Opportunistically fire any expired timers that piled up during the
     // tool execution. This is the primary fire path for timers that
     // expired mid-tool — they don't have to wait for turn_end.
-    const expired = timerManager.checkExpired(Date.now());
-    for (const timer of expired) {
-      fireTimer(timer, pi);
-    }
+    p.fireExpired();
   });
-  pi.on(TURN_END, () => {
-    poller.setBusy(false);
+  pi.on(TURN_END, (_event: unknown, ctx: unknown) => {
+    const p = ensurePoller(ctx);
+    p.setBusy(false);
     // Backup fire path: catch any expired timers the per-tool path missed
     // (e.g., turns with no tool calls, or edge cases where TOOL_EXECUTION_END
     // didn't fire).
-    const expired = timerManager.checkExpired(Date.now());
-    for (const timer of expired) {
-      fireTimer(timer, pi);
-    }
+    p.fireExpired();
   });
 
-  // Clean up polling on shutdown
-  pi.on(SESSION_SHUTDOWN, () => {
-    stopTimerPolling();
+  // Clean up polling + clear session timers on shutdown to prevent leaks
+  pi.on(SESSION_SHUTDOWN, (_event: unknown, ctx: unknown) => {
+    if (poller) {
+      poller.stop();
+      poller = null;
+    }
+    const sid = getSessionId(ctx);
+    const cleared = timerManager.clearSession(sid);
+    if (cleared > 0) {
+      log.info(`[timer] session ${sid} shutdown: cleared ${cleared} timer(s)`);
+    }
   });
 
   log.info("[timer] loaded: timer_set, timer_list, timer_cancel");

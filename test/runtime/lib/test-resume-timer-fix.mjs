@@ -49,18 +49,19 @@ console.log("\n[2] context-compress does NOT schedule the resume timer");
 {
   const comp = readFileSync(compPath, "utf8");
   // The 3-minute resume timer must NOT be created in this scope
+  // (After per-session refactor, scheduleTimer takes sessionId first; check both forms.)
   assert(
-    !/scheduleTimer\s*\(\s*3\s*\*\s*60\s*\*\s*1000/.test(comp),
+    !/scheduleTimer\s*\([^)]*3\s*\*\s*60\s*\*\s*1000/.test(comp),
     "context-compress does not call scheduleTimer with 3*60*1000",
   );
-  // It should still cancel stale tags (defensive)
+  // It should still cancel stale tags (defensive). Calls now take sessionId.
   assert(
-    /cancelTimersByTag\s*\(\s*["']compaction-resume["']\s*\)/.test(comp),
-    "context-compress still cancels 'compaction-resume' tag (defensive cleanup)",
+    /cancelTimersByTag\s*\(\s*\w+\s*,\s*["']compaction-resume["']\s*\)/.test(comp),
+    "context-compress still cancels 'compaction-resume' tag (defensive cleanup, session-scoped)",
   );
   assert(
-    /cancelTimersByTag\s*\(\s*["']auto-compaction-resume["']\s*\)/.test(comp),
-    "context-compress still cancels 'auto-compaction-resume' tag (defensive cleanup)",
+    /cancelTimersByTag\s*\(\s*\w+\s*,\s*["']auto-compaction-resume["']\s*\)/.test(comp),
+    "context-compress still cancels 'auto-compaction-resume' tag (defensive cleanup, session-scoped)",
   );
 }
 
@@ -69,16 +70,16 @@ console.log("\n[3] context-lifecycle auto-compact does NOT schedule the resume t
 {
   const life = readFileSync(lifePath, "utf8");
   assert(
-    !/scheduleTimer\s*\(\s*3\s*\*\s*60\s*\*\s*1000/.test(life),
+    !/scheduleTimer\s*\([^)]*3\s*\*\s*60\s*\*\s*1000/.test(life),
     "context-lifecycle auto-compact does not call scheduleTimer with 3*60*1000",
   );
   assert(
-    /cancelTimersByTag\s*\(\s*["']compaction-resume["']\s*\)/.test(life),
-    "context-lifecycle still cancels 'compaction-resume' tag (defensive cleanup)",
+    /cancelTimersByTag\s*\(\s*\w+\s*,\s*["']compaction-resume["']\s*\)/.test(life),
+    "context-lifecycle still cancels 'compaction-resume' tag (defensive cleanup, session-scoped)",
   );
   assert(
-    /cancelTimersByTag\s*\(\s*["']auto-compaction-resume["']\s*\)/.test(life),
-    "context-lifecycle still cancels 'auto-compaction-resume' tag (defensive cleanup)",
+    /cancelTimersByTag\s*\(\s*\w+\s*,\s*["']auto-compaction-resume["']\s*\)/.test(life),
+    "context-lifecycle still cancels 'auto-compaction-resume' tag (defensive cleanup, session-scoped)",
   );
 }
 
@@ -86,23 +87,25 @@ console.log("\n[3] context-lifecycle auto-compact does NOT schedule the resume t
 console.log("\n[4] session_compact handler schedules the fresh resume timer");
 {
   const compact = readFileSync(compactPath, "utf8");
-  // Must cancel stale timers (current behavior preserved)
+  // Must cancel stale timers (current behavior preserved). Session-scoped.
   assert(
-    /cancelTimersByTag\s*\(\s*["']compaction-resume["']\s*\)/.test(compact),
-    "session_compact cancels 'compaction-resume' tag",
+    /cancelTimersByTag\s*\(\s*\w+\s*,\s*["']compaction-resume["']\s*\)/.test(compact),
+    "session_compact cancels 'compaction-resume' tag (session-scoped)",
   );
   assert(
-    /cancelTimersByTag\s*\(\s*["']auto-compaction-resume["']\s*\)/.test(compact),
-    "session_compact cancels 'auto-compaction-resume' tag",
+    /cancelTimersByTag\s*\(\s*\w+\s*,\s*["']auto-compaction-resume["']\s*\)/.test(compact),
+    "session_compact cancels 'auto-compaction-resume' tag (session-scoped)",
   );
-  // Must schedule fresh resume timer (NEW behavior)
+  // Must schedule fresh resume timer (NEW behavior).
+  // After per-session refactor, scheduleTimer takes sessionId as first arg.
   assert(
-    /scheduleTimer\s*\(\s*3\s*\*\s*60\s*\*\s*1000\s*,\s*["']Context compaction done[\s\S]*?,\s*["']compaction-resume["']\s*,\s*true/.test(compact),
-    "session_compact schedules fresh resume timer (3-min, wake:true, tag=compaction-resume)",
+    /scheduleTimer\s*\(\s*\w+\s*,\s*3\s*\*\s*60\s*\*\s*1000\s*,\s*["']Context compaction done[\s\S]*?,\s*["']compaction-resume["']\s*,\s*true/.test(compact),
+    "session_compact schedules fresh resume timer (sessionId, 3-min, wake:true, tag=compaction-resume)",
   );
-  // Schedule must come AFTER the cancel (ordering matters)
-  const cancelIdx = compact.indexOf("cancelTimersByTag(\"compaction-resume\")");
-  const scheduleIdx = compact.indexOf("scheduleTimer(3 * 60 * 1000");
+  // Schedule must come AFTER the cancel (ordering matters).
+  // Match the new API: cancelTimersByTag(sessionId, "tag") and scheduleTimer(sessionId, ...).
+  const cancelIdx = compact.indexOf("cancelTimersByTag(sessionId, \"compaction-resume\")");
+  const scheduleIdx = compact.indexOf("scheduleTimer(sessionId, 3 * 60 * 1000");
   assert(
     cancelIdx > 0 && scheduleIdx > 0 && scheduleIdx > cancelIdx,
     "scheduleTimer comes AFTER cancelTimersByTag in source order",
@@ -156,10 +159,12 @@ console.log("\n[7] End-to-end ordering check");
     assert(false, "session_compact handler found");
   } else {
     const handlerBody = compact.slice(handlerStart, handlerStart + 4000);
-    // The two cancel calls must come before the schedule
-    const cancel1 = handlerBody.indexOf("cancelTimersByTag(\"compaction-resume\")");
-    const cancel2 = handlerBody.indexOf("cancelTimersByTag(\"auto-compaction-resume\")");
-    const schedule = handlerBody.indexOf("scheduleTimer(3 * 60 * 1000");
+    // The two cancel calls must come before the schedule.
+    // After per-session refactor: cancelTimersByTag(sessionId, "tag")
+    // and scheduleTimer(sessionId, 3*60*1000, ...).
+    const cancel1 = handlerBody.indexOf("cancelTimersByTag(sessionId, \"compaction-resume\")");
+    const cancel2 = handlerBody.indexOf("cancelTimersByTag(sessionId, \"auto-compaction-resume\")");
+    const schedule = handlerBody.indexOf("scheduleTimer(sessionId, 3 * 60 * 1000");
     assert(cancel1 > 0, "cancel 'compaction-resume' present in handler body");
     assert(cancel2 > 0, "cancel 'auto-compaction-resume' present in handler body");
     assert(schedule > 0, "scheduleTimer call present in handler body");

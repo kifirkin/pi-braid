@@ -37,15 +37,22 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
     // the resume timer never fired and the agent never woke up.
     try {
       const timerMod = await import("../../tools/timer/index.js");
+      // Scope timer ops to current session — timer module stores per-session.
+      // (Earlier designs used a module-level Map shared across all sessions;
+      // cancelling by tag globally would cancel other sessions' resume timers.)
+      const sessionId =
+        (ctx as { sessionManager?: { getSessionId?: () => string } })?.sessionManager?.getSessionId?.() ??
+        "anonymous";
       const cancelled =
-        timerMod.cancelTimersByTag("compaction-resume") +
-        timerMod.cancelTimersByTag("auto-compaction-resume");
+        timerMod.cancelTimersByTag(sessionId, "compaction-resume") +
+        timerMod.cancelTimersByTag(sessionId, "auto-compaction-resume");
       if (cancelled > 0) {
         log.debug(`Cancelled ${cancelled} stale compaction resume timer(s)`);
       }
       // Schedule the fresh resume timer. wake: true makes it trigger a new
       // turn after 3 minutes if the agent hasn't already continued.
       timerMod.scheduleTimer(
+        sessionId,
         3 * 60 * 1000,
         "Context compaction done — continue your task",
         "compaction-resume",

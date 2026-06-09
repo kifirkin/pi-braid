@@ -69,12 +69,15 @@ console.log("\n[2] Busy guard resets on TOOL_EXECUTION_END");
     /setBusy\s*\(\s*false\s*\)/.test(handlerBody),
     "TOOL_EXECUTION_END handler calls setBusy(false)",
   );
+  // After per-pi refactor, expired-timer firing is encapsulated in
+  // poller.fireExpired() (which internally calls checkExpired + fireTimer).
+  // Both patterns are acceptable.
   assert(
-    /checkExpired/.test(handlerBody),
+    /checkExpired|fireExpired/.test(handlerBody),
     "TOOL_EXECUTION_END handler checks for expired timers (primary fire path)",
   );
   assert(
-    /fireTimer/.test(handlerBody),
+    /fireTimer|fireExpired/.test(handlerBody),
     "TOOL_EXECUTION_END handler fires expired timers",
   );
 }
@@ -88,15 +91,15 @@ console.log("\n[3] Both handlers fire expired timers");
   assert(toolExecIdx > 0, "TOOL_EXECUTION_END handler exists");
   assert(turnEndIdx > 0, "TURN_END handler exists");
 
-  // Both should call checkExpired and fireTimer
+  // Both should call checkExpired and fireTimer (or the encapsulated fireExpired helper)
   const toolExecBlock = src.slice(toolExecIdx, toolExecIdx + 1500);
   const turnEndBlock = src.slice(turnEndIdx, turnEndIdx + 1500);
   assert(
-    /checkExpired[\s\S]{0,500}fireTimer/.test(toolExecBlock),
+    /checkExpired[\s\S]{0,500}fireTimer|fireExpired/.test(toolExecBlock),
     "TOOL_EXECUTION_END: checkExpired then fireTimer",
   );
   assert(
-    /checkExpired[\s\S]{0,500}fireTimer/.test(turnEndBlock),
+    /checkExpired[\s\S]{0,500}fireTimer|fireExpired/.test(turnEndBlock),
     "TURN_END: checkExpired then fireTimer (backup)",
   );
 }

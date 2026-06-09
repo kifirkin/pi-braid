@@ -91,8 +91,9 @@ console.log("\n[3] Timer whisper triggerTurn = wake ? true : false");
     "scheduleTimer exposes wake parameter (default true — user timers wake the agent)",
   );
   // The wake field must be set on the timer object in setTimer
+  // (After per-session refactor, storage is in sessionTimers not this.timers.)
   assert(
-    /this\.timers\.set\([\s\S]*?wake\s*\)/.test(src),
+    /(sessionTimers|this\.timers)\.set\([\s\S]*?wake\s*[,}]/.test(src),
     "setTimer persists wake flag on the timer object",
   );
   // ScheduledTimer type source must declare wake field (check src, not dist —
@@ -146,18 +147,29 @@ console.log("\n[6] cancelTimersByTag helper");
   const src = readFileSync(timerPath, "utf8");
   assert(
     /export\s+function\s+cancelTimersByTag\s*\(/.test(src),
-    "cancelTimersByTag(tag: string) is exported",
+    "cancelTimersByTag(sessionId, tag) is exported",
   );
-  // The implementation must iterate listTimers() and call cancelTimer
+  // The implementation must scope by sessionId then filter by tag.
+  // (After per-session refactor, it iterates the session's map and filters
+  // entries by tag — not the global listTimers() anymore.)
   const helperMatch = src.match(
     /export\s+function\s+cancelTimersByTag\s*\([^)]*\)\s*\{[\s\S]*?\n\}/,
   );
   assert(helperMatch !== null, "cancelTimersByTag body found");
   if (helperMatch) {
     const body = helperMatch[0];
-    assert(body.includes("listTimers()"), "cancelTimersByTag iterates listTimers()");
-    assert(body.includes("cancelTimer"), "cancelTimersByTag calls cancelTimer");
-    assert(body.includes("t.tag === tag") || body.includes(".tag===\""), "cancelTimersByTag filters by tag");
+    assert(body.includes("sessionId"), "cancelTimersByTag takes sessionId param");
+    assert(body.includes("tag"), "cancelTimersByTag takes tag param");
+    // After per-session refactor: the export delegates to a class method.
+    // Check the class method body too — that's where the actual filtering lives.
+    const classBody = src.match(
+      /cancelTimersByTag\s*\(\s*sessionId\s*,\s*tag\s*\)\s*\{[\s\S]*?\n\s{4}\}/,
+    );
+    const allBodies = [body, classBody ? classBody[0] : ""].join("\n");
+    assert(
+      /sessionTimers|t\.tag|timer\.tag/.test(allBodies),
+      "cancelTimersByTag iterates session timers and filters by tag",
+    );
   }
 }
 
@@ -169,52 +181,54 @@ console.log("\n[7] Compaction paths cancel stale resume timers and wake");
   const compact = readFileSync(sessionCompactPath, "utf8");
 
   // context-compress (manual) cancels both tags (defensive cleanup only —
-  // scheduling is done in the session_compact handler, see below)
+  // scheduling is done in the session_compact handler, see below).
+  // After per-session refactor, calls pass sessionId as first arg.
   assert(
-    /cancelTimersByTag\s*\(\s*["']compaction-resume["']\s*\)/.test(comp),
-    "context-compress cancels 'compaction-resume' timers",
+    /cancelTimersByTag\s*\(\s*\w+\s*,\s*["']compaction-resume["']\s*\)/.test(comp),
+    "context-compress cancels 'compaction-resume' timers (session-scoped)",
   );
   assert(
-    /cancelTimersByTag\s*\(\s*["']auto-compaction-resume["']\s*\)/.test(comp),
-    "context-compress cancels 'auto-compaction-resume' timers (cross-path cleanup)",
+    /cancelTimersByTag\s*\(\s*\w+\s*,\s*["']auto-compaction-resume["']\s*\)/.test(comp),
+    "context-compress cancels 'auto-compaction-resume' timers (session-scoped, cross-path cleanup)",
   );
   // context-compress must NOT schedule the resume timer here — the
   // session_compact handler cancels the tag immediately, so a timer
   // created in this scope would never fire. Scheduling lives in
   // session_compact enforcement handler instead.
   assert(
-    !/scheduleTimer\s*\(\s*3\s*\*\s*60\s*\*\s*1000\s*,\s*["']Context compaction done[\s\S]*?,\s*["']compaction-resume["']/.test(comp),
+    !/scheduleTimer\s*\([^)]*3\s*\*\s*60\s*\*\s*1000\s*,\s*["']Context compaction done[\s\S]*?,\s*["']compaction-resume["']/.test(comp),
     "context-compress does NOT schedule the resume timer (avoids cancel race)",
   );
 
   // context-lifecycle auto-compact also cancels both tags and must NOT
   // schedule the timer (same reason as above)
   assert(
-    /cancelTimersByTag\s*\(\s*["']compaction-resume["']\s*\)/.test(life),
-    "context-lifecycle auto-compact cancels 'compaction-resume' timers",
+    /cancelTimersByTag\s*\(\s*\w+\s*,\s*["']compaction-resume["']\s*\)/.test(life),
+    "context-lifecycle auto-compact cancels 'compaction-resume' timers (session-scoped)",
   );
   assert(
-    /cancelTimersByTag\s*\(\s*["']auto-compaction-resume["']\s*\)/.test(life),
-    "context-lifecycle auto-compact cancels 'auto-compaction-resume' timers",
+    /cancelTimersByTag\s*\(\s*\w+\s*,\s*["']auto-compaction-resume["']\s*\)/.test(life),
+    "context-lifecycle auto-compact cancels 'auto-compaction-resume' timers (session-scoped)",
   );
   assert(
-    !/scheduleTimer\s*\(\s*3\s*\*\s*60\s*\*\s*1000\s*,\s*["']Auto-compaction done[\s\S]*?,\s*["']auto-compaction-resume["']/.test(life),
+    !/scheduleTimer\s*\([^)]*3\s*\*\s*60\s*\*\s*1000\s*,\s*["']Auto-compaction done[\s\S]*?,\s*["']auto-compaction-resume["']/.test(life),
     "context-lifecycle auto-compact does NOT schedule the resume timer (avoids cancel race)",
   );
 
   // session_compact enforcement handler cancels both AND schedules a fresh
   // resume timer. This is the new (correct) location for the timer.
+  // After per-session refactor, scheduleTimer takes sessionId as first arg.
   assert(
-    /cancelTimersByTag\s*\(\s*["']compaction-resume["']\s*\)/.test(compact),
-    "session_compact enforcement handler cancels 'compaction-resume' timers",
+    /cancelTimersByTag\s*\(\s*\w+\s*,\s*["']compaction-resume["']\s*\)/.test(compact),
+    "session_compact enforcement handler cancels 'compaction-resume' timers (session-scoped)",
   );
   assert(
-    /cancelTimersByTag\s*\(\s*["']auto-compaction-resume["']\s*\)/.test(compact),
-    "session_compact enforcement handler cancels 'auto-compaction-resume' timers",
+    /cancelTimersByTag\s*\(\s*\w+\s*,\s*["']auto-compaction-resume["']\s*\)/.test(compact),
+    "session_compact enforcement handler cancels 'auto-compaction-resume' timers (session-scoped)",
   );
   assert(
-    /scheduleTimer\s*\(\s*3\s*\*\s*60\s*\*\s*1000\s*,\s*["']Context compaction done[\s\S]*?,\s*["']compaction-resume["']\s*,\s*true/.test(compact),
-    "session_compact enforcement handler schedules fresh resume timer with wake: true",
+    /scheduleTimer\s*\(\s*\w+\s*,\s*3\s*\*\s*60\s*\*\s*1000\s*,\s*["']Context compaction done[\s\S]*?,\s*["']compaction-resume["']\s*,\s*true/.test(compact),
+    "session_compact enforcement handler schedules fresh resume timer (sessionId, 3min, wake:true, tag=compaction-resume)",
   );
 }
 
@@ -229,48 +243,55 @@ console.log("\n[8] Live: cancelTimersByTag + wake flag");
     cancelTimersByTag,
     cancelTimer,
     listTimers,
+    clearSessionTimers,
   } = await import(join(ROOT, "dist/extensions/tools/timer/index.js"));
+
+  // Use a unique test session id so this test doesn't leak into other
+  // tests (or vice versa) since timer storage is per-session globally.
+  const SESSION = "test-post-compaction-" + Math.random().toString(36).slice(2, 8);
+  clearSessionTimers(SESSION); // start clean
 
   // Helper to introspect internal state via the public listTimers API
   // (we import the manager indirectly by scheduling a tagged timer)
-  const id1 = scheduleTimer(60_000, "stale-1", "compaction-resume");
-  const id2 = scheduleTimer(60_000, "stale-2", "compaction-resume");
-  const id3 = scheduleTimer(60_000, "keep", "user-task");
+  const id1 = scheduleTimer(SESSION, 60_000, "stale-1", "compaction-resume");
+  const id2 = scheduleTimer(SESSION, 60_000, "stale-2", "compaction-resume");
+  const id3 = scheduleTimer(SESSION, 60_000, "keep", "user-task");
   // wake flag: resume timer (wake: true) vs user timer (default false)
-  const id4 = scheduleTimer(60_000, "resume-after-compact", "compaction-resume", true);
-  const id5 = scheduleTimer(60_000, "build-check", "user-task"); // wake defaults false
+  const id4 = scheduleTimer(SESSION, 60_000, "resume-after-compact", "compaction-resume", true);
+  const id5 = scheduleTimer(SESSION, 60_000, "build-check", "user-task"); // wake defaults false
 
   // Sanity: we just scheduled 5 timers, IDs are unique
   assert(typeof id1 === "string" && id1.length > 0, "scheduleTimer returns id string");
   assert(id1 !== id2 && id2 !== id3 && id3 !== id4 && id4 !== id5, "scheduleTimer returns unique ids");
 
-  const cancelled = cancelTimersByTag("compaction-resume");
+  const cancelled = cancelTimersByTag(SESSION, "compaction-resume");
   // id1, id2, id4 all had tag compaction-resume → 3 cancelled
-  assert(cancelled === 3, `cancelTimersByTag('compaction-resume') cancelled 3 (got ${cancelled})`);
+  assert(cancelled === 3, `cancelTimersByTag(SESSION, 'compaction-resume') cancelled 3 (got ${cancelled})`);
 
   // The user-task timer should still be there
-  const userCancel = cancelTimer(id3);
+  const userCancel = cancelTimer(SESSION, id3);
   assert(userCancel === true, "user-tagged timer was NOT cancelled by tag-based helper");
 
   // The wake flag is preserved on the timer object (verify via listTimers)
   // after re-scheduling one for inspection:
-  const wakeId = scheduleTimer(60_000, "wake-test", "test", true);
-  const noWakeId = scheduleTimer(60_000, "no-wake-test", "test", false);
+  const wakeId = scheduleTimer(SESSION, 60_000, "wake-test", "test", true);
+  const noWakeId = scheduleTimer(SESSION, 60_000, "no-wake-test", "test", false);
   // The export type re-exports the listTimers via the manager; we can't
   // access it directly, but we can confirm scheduleTimer accepted both
   // 3-arg and 4-arg calls without throwing.
-  cancelTimer(wakeId);
-  cancelTimer(noWakeId);
+  cancelTimer(SESSION, wakeId);
+  cancelTimer(SESSION, noWakeId);
   assert(true, "scheduleTimer accepts both wake: true and wake: false");
 
   // Verify default wake is true (the fix for "common timers not waking")
-  const defaultId = scheduleTimer(60_000, "default-wake-test", "default-test");
-  const defaultTimer = listTimers().find((t) => t.id === defaultId);
+  const defaultId = scheduleTimer(SESSION, 60_000, "default-wake-test", "default-test");
+  const defaultTimer = listTimers(SESSION).find((t) => t.id === defaultId);
   assert(
     defaultTimer && defaultTimer.wake === true,
     "scheduleTimer defaults wake to true (user-set timers wake the agent)",
   );
-  cancelTimer(defaultId);
+  cancelTimer(SESSION, defaultId);
+  clearSessionTimers(SESSION); // cleanup
 }
 
 // ── [9] Wake audit: critical whispers use triggerTurn: true ──────

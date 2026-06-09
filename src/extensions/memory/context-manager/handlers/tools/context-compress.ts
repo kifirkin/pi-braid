@@ -99,8 +99,17 @@ export function registerContextCompress(pi: ExtensionAPI): void {
             // Cancel any stale resume timer from a previous compaction cycle.
             // Without this, an old timer can fire during a later TURN_END and
             // deliver a misplaced [timer] whisper (the "strange order" issue).
-            timerMod.cancelTimersByTag("compaction-resume");
-            timerMod.cancelTimersByTag("auto-compaction-resume");
+            //
+            // CRITICAL: must scope to current session — if multiple pi
+            // sessions are running, cancelling by tag globally would
+            // cancel other sessions' resume timers. See:
+            // src/extensions/tools/timer/index.ts for the per-session
+            // timer store implementation.
+            const sessionId =
+              (ctx as { sessionManager?: { getSessionId?: () => string } })?.sessionManager?.getSessionId?.() ??
+              "anonymous";
+            timerMod.cancelTimersByTag(sessionId, "compaction-resume");
+            timerMod.cancelTimersByTag(sessionId, "auto-compaction-resume");
             // NOTE: We intentionally do NOT call scheduleTimer() here. The
             // session_compact handler in register-session-compact.ts cancels
             // the resume tag immediately, so any timer created in this scope

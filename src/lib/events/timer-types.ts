@@ -20,4 +20,11 @@ export interface ScheduledTimer {
    * still prevents mid-tool-execution firing even when wake: true.
    */
   wake?: boolean;
+  /**
+   * Owning session ID. Each pi session has its own timer bucket. The
+   * timer module uses this to scope cancel/list operations to one
+   * session, preventing cross-session timer leaks when multiple pi
+   * sessions run in the same Node process.
+   */
+  sessionId?: string;
 }
