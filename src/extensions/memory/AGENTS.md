@@ -41,3 +41,22 @@ Advisory whispers (memory recall, past insights, hint injection, SOP suggestions
 ## Re-entrancy safety
 
 Both `context-lifecycle/index.ts` (line 56) and `lib/utils/injection-tracker.ts` (line 47) maintain re-entrancy guards for `before_agent_start` and `sendTrackedMessage` respectively. The latter uses `MAX_REENTRY_DEPTH = 1` — only 1 synchronous `pi.sendMessage` call is allowed before deferring to `queueMicrotask`. This is the safe floor for the runtime's re-entry depth (which the counter cannot see, since each extension's before_agent_start hook re-enters independently).
+
+## Agent-facing tool summary
+
+The memory extensions expose 7 LLM-callable tools. Each has a focused role — this is intentional, not a sprawl problem.
+
+| Tool | Extension | Store | When to use |
+|---|---|---|---|
+| `memory_store` | memory-agent-bridge | semantic (unified) | Save insights/patterns for cross-session recall |
+| `memory_recall` | memory-agent-bridge | semantic (unified) | Search long-term memory |
+| `memory_list` | memory-agent-bridge | semantic (unified) | List memories with filters |
+| `memory_get` | memory-agent-bridge | semantic (unified) | Fetch a specific memory by ID |
+| `memory_episodes` | three-memory-stores | episodic | Search past task episodes (case-based reasoning) |
+| `memory_heuristics` | three-memory-stores | procedural | View/evolve adaptive behavior rules |
+| `memory_tool_stats` | three-memory-stores | tool reliability | Inspect per-tool success rates |
+
+**Rule of thumb:** start with `memory_recall` for "have I seen this before?". Use `memory_episodes` for "how did a similar task go?". Use `memory_heuristics` and `memory_tool_stats` only when investigating behavior tuning or tool selection.
+
+The data-layer functions (`addEpisode`, `addPrinciple`, `recordToolCall`, etc.) live in `three-memory-stores/episodes.ts`, `heuristics.ts`, `tool-reliability.ts` and are imported by many extensions (e.g. `finalize.ts` adds episodes on task completion). These are infrastructure and should not be moved out of the directory.
+
