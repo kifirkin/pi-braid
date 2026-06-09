@@ -21,11 +21,9 @@ const ROOT = new URL("..", import.meta.url).pathname;
 // Layer model:
 //   lib/        — Foundation. Depends only on itself and npm packages.
 //   extensions/ — Pi extensions. Each subdirectory is an isolated module.
-//                 Can depend on lib/ and npm, but NOT on other extensions
-//                 or contrib/.
-//   contrib/    — Contributed utilities. Same rules as extensions/.
-//   modules/    — Module registration. Can depend on lib/, extensions/,
-//                 and npm but NOT contrib/.
+//                 Can depend on lib/ and npm, but NOT on other extensions.
+//   loader/     — Runtime extension loader and subagent API. Can depend
+//                 on lib/, extensions/ (to load them), and npm.
 //   types/      — Type declarations. Depends only on npm.
 //   root (src/) — Entry point. Can import anything.
 //
@@ -34,8 +32,7 @@ const ROOT = new URL("..", import.meta.url).pathname;
 
 const LAYER_RULES = {
   lib:     { parent: null, allowExtensions: false,   allowOtherLayers: false, allowCrossExtension: false },
-  modules: { parent: null, allowExtensions: true,    allowOtherLayers: false, allowCrossExtension: false },
-  contrib: { parent: null, allowExtensions: false,   allowOtherLayers: false, allowCrossExtension: false },
+  loader:  { parent: null, allowExtensions: true,    allowOtherLayers: false, allowCrossExtension: false },
 };
 
 // Known architecturally-validated cross-extension dependencies.
@@ -50,6 +47,8 @@ const ALLOWED_BOUNDARY_OVERRIDES = [
   "ext/health-maintenance → ext/heartbeat",
   // sycophancy-detector → enforcement: Sycophancy signals enforcement whisper
   "ext/cognitive → ext/enforcement",
+  // analytics → reasoning: Analytics surfaces reasoning stability in get_session_metrics
+  "ext/heartbeat → ext/cognitive",
 ];
 
 // ── File collection ────────────────────────────────────────────────────────
@@ -81,8 +80,7 @@ const TEST_FILES = collectFiles(join(ROOT, "test"), (n) => /\.(mjs|js)$/.test(n)
 function getFileLayer(absPath) {
   const rel = relative(ROOT, absPath);
   if (rel.startsWith("src/lib/"))        return { layer: "lib",     group: null };
-  if (rel.startsWith("src/modules/"))    return { layer: "modules", group: null };
-  if (rel.startsWith("src/contrib/"))    return { layer: "contrib", group: null };
+  if (rel.startsWith("src/loader/"))     return { layer: "loader",  group: null };
   if (rel.startsWith("src/types/"))      return { layer: "types",   group: null };
 
   const extMatch = rel.match(/^src\/extensions\/([^/]+)/);
@@ -117,8 +115,7 @@ function isLayerAllowed(sourceLayer, sourceGroup, targetLayer, targetGroup) {
   // Target is a concrete non-extension layer
   if (targetLayer === "lib")   return true;
   if (targetLayer === "root")  return true;
-  if (targetLayer === "modules") return rule.allowOtherLayers;
-  if (targetLayer === "contrib") return rule.allowOtherLayers;
+  if (targetLayer === "loader") return rule.allowOtherLayers;
   if (targetLayer === "types")   return rule.allowOtherLayers;
 
   return false;

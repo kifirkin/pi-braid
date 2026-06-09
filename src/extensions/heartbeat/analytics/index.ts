@@ -30,6 +30,7 @@ import { Type } from "typebox";
 import { getAnalyticsStateInternal } from "./shared.js";
 import { getCompactionHealth } from "../../memory/context-manager/handlers/shared.js";
 import { recordError, recordToolSuccess } from "../../../lib/detection/degradation-detector.js";
+import { getReasoningStateView } from "../../cognitive/reasoning/index.js";
 export {
   updateContextDensity,
   recordNudgeSent,
@@ -283,13 +284,8 @@ export default function analyticsExtension(pi: ExtensionAPI) {
       _ctx.ui.notify(formatAllSessions(), "info");
     },
   });
-  pi.registerCommand("analytics:setVariant", {
-    description: "Set A/B experiment variant for this session",
-    handler: async (args, ctx) => {
-      const parsed = typeof args === "string" ? JSON.parse(args) : args;
-      getAnalyticsStateInternal(ctx).abVariant = parsed.variant;
-    },
-  });
+  // Removed `analytics:setVariant` slash command — promoted to a tool below
+  // so the agent can set its own A/B variant without a human-typed slash command.
   pi.registerCommand("analytics:ab", {
     description: "Show A/B experiment results across variants",
     handler: async (_args, ctx) => {
@@ -353,6 +349,20 @@ export default function analyticsExtension(pi: ExtensionAPI) {
             perTier: cs.totals,
             perCritic: cs.perCritic,
           },
+          reasoning: (() => {
+            try {
+              const rs = getReasoningStateView(ctx);
+              return {
+                turnCount: rs.turnCount,
+                unstableStreak: rs.unstableStreak,
+                lastReason: rs.lastReason,
+                lastStability: rs.lastStability,
+                verifyRemindersSent: rs.verifyRemindersSent,
+              };
+            } catch {
+              return { error: "reasoning extension not active" };
+            }
+          })(),
         };
 
         return {
@@ -367,6 +377,31 @@ export default function analyticsExtension(pi: ExtensionAPI) {
           details: { error: (err as Error).message },
         };
       }
+    },
+  });
+
+  pi.registerTool({
+    name: "set_ab_variant",
+    label: "Set A/B Variant",
+    description:
+      "Set the A/B experiment variant for this session. Use to opt into a specific behavior " +
+      "cohort for testing. Pass `variant` as a string (e.g. 'A', 'B', 'control').",
+    parameters: Type.Object({
+      variant: Type.String({ description: "Variant identifier (e.g. 'A', 'B', 'control')" }),
+    }),
+    execute: async (
+      _toolCallId: string,
+      params: { variant: string },
+      _signal: AbortSignal | undefined,
+      _onUpdate: unknown,
+      ctx: ExtensionContext | undefined,
+    ): Promise<AgentToolResult<{ variant: string }>> => {
+      if (!ctx) return { content: [{ type: "text", text: "No context available" }], details: { variant: "" } };
+      getAnalyticsStateInternal(ctx).abVariant = params.variant;
+      return {
+        content: [{ type: "text", text: `A/B variant set to: ${params.variant}` }],
+        details: { variant: params.variant },
+      };
     },
   });
 
