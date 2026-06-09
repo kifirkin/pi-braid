@@ -13,6 +13,17 @@ const log = createLogger("latent-activator");
  *
  * Key insight: Models have INERTIA - persistent biases. Framework works WITH biases.
  *
+ * Safety bounds on the `behavior` tool:
+ * - **Session reset:** every new session starts with `["planner", "executor"]` —
+ *   behaviors never leak across sessions.
+ * - **Active cap:** max 5 behaviors active at once. Activation beyond the cap is
+ *   refused with a clear error; the agent must deactivate first (or use
+ *   `action="deactivate_all"` to clear all and start fresh).
+ * - **Idempotent `mix`:** `action="mix"` clears existing behaviors first, so a
+ *   scenario combo is a known good state regardless of prior activations.
+ * - **No auto-activation:** the latent-activation inference path is disabled
+ *   (see comment above the tool). The agent must explicitly call the tool.
+ *
  * Design principles:
  * 1. IMPLICIT > EXPLICIT - subtle cues > direct commands
  * 2. ACTIVATION > INSTRUCTION - trigger capabilities vs tell what to do
@@ -334,16 +345,32 @@ const _default: ActivatorState = {
 };
 
 /**
+ * Maximum behaviors active at once. The agent can stack more, but the
+ * activate handler will warn the user and refuse to add (so they have to
+ * explicitly deactivate first). This prevents a runaway accumulation where
+ * the agent activates "meticulous" + "pragmatic" + "architectural" + ... and
+ * then the prompt is dominated by behavior-specific instructions.
+ */
+const MAX_ACTIVE_BEHAVIORS = 5;
+
+/**
  * Activate a behavior
  */
-function activateBehavior(behavior: AtomicBehavior): void {
+function activateBehavior(behavior: AtomicBehavior): { ok: true } | { ok: false; reason: string } {
   const s = getActivatorState();
+  if (s.currentBehaviors.size >= MAX_ACTIVE_BEHAVIORS && !s.currentBehaviors.has(behavior)) {
+    return {
+      ok: false,
+      reason: `Already at max (${MAX_ACTIVE_BEHAVIORS}) active behaviors: ${getActiveBehaviors().join(", ")}. Deactivate one first or use action="deactivate_all".`,
+    };
+  }
   s.currentBehaviors.add(behavior);
   s.activationHistory.push({ behavior, timestamp: Date.now() });
 
   if (s.activationHistory.length > 100) {
     s.activationHistory = s.activationHistory.slice(-50);
   }
+  return { ok: true };
 }
 
 /**
@@ -461,10 +488,11 @@ const ACTIVATE_BEHAVIORS = Object.keys(LATENT_SIGNALS);
 
 const behaviorSchema = Type.Object({
   action: Type.String({
-    enum: ["activate", "deactivate", "list", "mix"],
+    enum: ["activate", "deactivate", "deactivate_all", "list", "mix"],
     description:
       "activate = enable a behavior pattern. deactivate = disable a behavior. " +
-      "list = show active behaviors. mix = activate predefined scenario combos.",
+      "deactivate_all = clear all active behaviors. list = show active behaviors. " +
+      "mix = activate predefined scenario combos (clears existing first).",
   }),
   behavior: Type.Optional(
     Type.String({
@@ -515,7 +543,13 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
           }
           const behavior = params.behavior as AtomicBehavior;
           if (LATENT_SIGNALS[behavior]) {
-            activateBehavior(behavior);
+            const result = activateBehavior(behavior);
+            if (!result.ok) {
+              return {
+                content: [{ type: "text", text: result.reason }],
+                details: { action, behavior, error: true, active: getActiveBehaviors() },
+              };
+            }
             const signal = LATENT_SIGNALS[behavior].activation[0];
             return {
               content: [{ type: "text", text: `Activated: ${behavior}. ${signal}` }],
@@ -556,6 +590,17 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
           };
         }
 
+        if (action === "deactivate_all") {
+          const before = getActiveBehaviors();
+          for (const b of before) {
+            deactivateBehavior(b);
+          }
+          return {
+            content: [{ type: "text", text: `Deactivated all (${before.length}): ${before.join(", ") || "none"}` }],
+            details: { action, deactivated: before, active: getActiveBehaviors() },
+          };
+        }
+
         if (action === "mix") {
           if (!params.scenario) {
             return {
@@ -565,12 +610,24 @@ export default function latentActivatorExtension(pi: ExtensionAPI) {
           }
           const behaviors = BEHAVIOR_MIXES[params.scenario];
           if (behaviors) {
+            // Clear existing first so `mix` is idempotent regardless of cap.
+            for (const b of getActiveBehaviors()) {
+              deactivateBehavior(b);
+            }
+            const skipped: string[] = [];
             for (const b of behaviors) {
-              activateBehavior(b);
+              const result = activateBehavior(b);
+              if (!result.ok) skipped.push(b);
             }
             return {
               content: [
-                { type: "text", text: `Activated ${params.scenario} mode: ${behaviors.join(", ")}` },
+                {
+                  type: "text",
+                  text:
+                    skipped.length > 0
+                      ? `Activated ${params.scenario} mode: ${behaviors.join(", ")} (skipped due to cap: ${skipped.join(", ")})`
+                      : `Activated ${params.scenario} mode: ${behaviors.join(", ")}`,
+                },
               ],
               details: { action, scenario: params.scenario, active: getActiveBehaviors() },
             };
