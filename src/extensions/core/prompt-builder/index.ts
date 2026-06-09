@@ -679,14 +679,14 @@ async function reconstructSkillsSection(
 
 // ── Main Extension ───────────────────────────────────────────────────────────
 
-export default function promptBuilderExtension(_pi: ExtensionAPI) {
+export default function promptBuilderExtension(pi: ExtensionAPI) {
   // L1 state is now gathered per-request, not global
 
   // 4b: Listen for enforcement_signals events - replaces direct coupling via module-level singleton.
   // enforcement emits these on every turn_end and session_compact.
-  registerSessionStartHandler(_pi, SessionPhase.MemoryState, async (_event, ctx) => {
+  registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event, ctx) => {
     const ps = getPromptState(ctx);
-    _pi.events.on("enforcement_signals", (data: unknown) => {
+    pi.events.on("enforcement_signals", (data: unknown) => {
       const d = data as { contrastMode?: string };
       if (d.contrastMode) ps.activeContrastMode = d.contrastMode;
     });
@@ -695,17 +695,17 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
   // ── resources_discover: Register bundled skills with pi's native discovery ──
   // pi's package manager calls this on all extensions to discover resources (skills, prompts, themes).
   // We register the bundled skills/ directory so pi can auto-discover them.
-  onEvent(_pi, RESOURCES_DISCOVER, async (_event: { cwd: string; reason: string }, _ctx: any) => {
+  onEvent(pi, RESOURCES_DISCOVER, async (_event: { cwd: string; reason: string }, _ctx: any) => {
     return {
       skillPaths: [SKILLS_DIR],
     };
   });
 
-  _pi.on("before_agent_start", async (event, ctx) => {
+  pi.on("before_agent_start", async (event, ctx) => {
     const ps = getPromptState(ctx);
     const cwd = ctx.cwd;
-    const allTools = _pi.getAllTools();
-    const activeToolNames = _pi.getActiveTools() ?? allTools.map((t) => t.name);
+    const allTools = pi.getAllTools();
+    const activeToolNames = pi.getActiveTools() ?? allTools.map((t) => t.name);
     const tools =
       activeToolNames.length > 0
         ? allTools.filter((t) => activeToolNames.includes(t.name))
@@ -713,7 +713,7 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
     const toolNames = tools.map((t) => t.name);
     const hasRead = toolNames.includes("read");
 
-    const l1Env = await gatherL1State(_pi, ctx);
+    const l1Env = await gatherL1State(pi, ctx);
 
     const parts: string[] = [];
 
@@ -756,7 +756,7 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
       if (insightsText) {
         try {
           sendTrackedMessage(
-            _pi,
+            pi,
             {
               customType: "context",
               display: true,
@@ -779,7 +779,7 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
           const relevantHints = await filterRelevantHints(allHints, ctx);
           for (const hint of relevantHints) {
             sendTrackedMessage(
-              _pi,
+              pi,
               {
                 customType: "hint",
                 display: true,
@@ -858,7 +858,7 @@ export default function promptBuilderExtension(_pi: ExtensionAPI) {
   });
 
   // Prompt preview tool - makes the system prompt observable to the agent
-  _pi.registerTool(createPromptPreviewTool());
+  pi.registerTool(createPromptPreviewTool());
 }
 
 export { gatherL1State, formatL1Environment };
