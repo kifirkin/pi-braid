@@ -8,7 +8,7 @@ import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 const { CognitiveMemory } = await import(
-  "../../../dist/lib/cognitive-memory/index.js"
+  "../../../dist/lib/memory/index.js"
 );
 
 function uid() {
