@@ -131,29 +131,35 @@ test("ctx.whisper wired in session_start", () => {
 console.log("\n=== VERIFICATION: Verification Tool ===");
 
 test("verify_claim tool registered", () => {
-  const src = readFileSync("src/extensions/cognitive/verification/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/core/metacognition/handlers/claim-verification.ts", "utf-8");
   deepEqual(src.includes('name: "verify_claim"'), true);
 });
 
 test("verify_decomposition tool registered", () => {
-  const src = readFileSync("src/extensions/cognitive/verification/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/core/metacognition/handlers/claim-verification.ts", "utf-8");
   deepEqual(src.includes('name: "verify_decomposition"'), true);
 });
 
 test("verify_claim detects contradictions via triple-critic", () => {
-  const src = readFileSync("src/extensions/cognitive/verification/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/core/metacognition/handlers/claim-verification.ts", "utf-8");
   deepEqual(src.includes("checkContradiction"), true);
   deepEqual(src.includes("CRITICS.claimContradiction"), true);
 });
 
 test("verify_claim detects hedge words", () => {
-  const src = readFileSync("src/extensions/cognitive/verification/index.ts", "utf-8");
-  deepEqual(src.includes("always"), true);
+  // Hedge detection is now done via the claimOverconfidence critic rather
+  // than a hand-rolled regex. Verify the wiring instead of a literal string.
+  const src = readFileSync("src/extensions/core/metacognition/handlers/claim-verification.ts", "utf-8");
+  deepEqual(src.includes("claimOverconfidence"), true);
 });
 
-test("Extension registered in manifest", () => {
-  const src = readFileSync("src/extensions/manifest.ts", "utf-8");
-  deepEqual(src.includes("verificationFn"), true);
+test("Claim verification tools registered in metacognition", () => {
+  // The cognitive/verification extension was removed — claim verification
+  // tools (verify_claim, verify_decomposition) now live under metacognition.
+  const src = readFileSync("src/extensions/core/metacognition/index.ts", "utf-8");
+  deepEqual(src.includes("registerClaimVerificationTools"), true);
+  const manifest = readFileSync("src/extensions/manifest.ts", "utf-8");
+  deepEqual(manifest.includes("verificationFn"), false, "verificationFn should be removed from manifest");
 });
 
 console.log("\n=== VERIFICATION: Topic Drift Detector ===");
@@ -253,19 +259,19 @@ test("no drift on-topic output", () => {
 console.log("\n=== FUNCTIONAL: Verification Logic ===");
 
 test("contradiction supported via triple-critic system", () => {
-  const src = readFileSync("src/extensions/cognitive/verification/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/core/metacognition/handlers/claim-verification.ts", "utf-8");
   deepEqual(src.includes("CRITICS.claimContradiction"), true);
   deepEqual(src.includes("CRITICS.contradictionFallback"), true);
 });
 
 test("unsupported claim detected", () => {
-  const src = readFileSync("src/extensions/cognitive/verification/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/core/metacognition/handlers/claim-verification.ts", "utf-8");
   deepEqual(src.includes("checkSupport"), true);
   deepEqual(src.includes("checkOverconfidence"), true);
 });
 
 test("decomposition coverage logic exists", () => {
-  const src = readFileSync("src/extensions/cognitive/verification/index.ts", "utf-8");
+  const src = readFileSync("src/extensions/core/metacognition/handlers/claim-verification.ts", "utf-8");
   deepEqual(src.includes("checkDecompositionCoverage"), true);
 });
 
@@ -273,7 +279,7 @@ console.log("\n=== STATIC: No Common Bugs ===");
 
 test("No TODO comments in new extensions", () => {
   const files = [
-    "src/extensions/cognitive/verification/index.ts",
+    "src/extensions/core/metacognition/handlers/claim-verification.ts",
     "src/extensions/cognitive/topic-drift/index.ts",
     "src/extensions/heartbeat/heartbeat-scheduler/index.ts",
   ];
@@ -286,7 +292,7 @@ test("No TODO comments in new extensions", () => {
 
 test("No console.log in production code", () => {
   const files = [
-    "src/extensions/cognitive/verification/index.ts",
+    "src/extensions/core/metacognition/handlers/claim-verification.ts",
     "src/extensions/cognitive/topic-drift/index.ts",
   ];
   for (const file of files) {
@@ -299,7 +305,7 @@ test("No console.log in production code", () => {
 
 test("All new extensions have JSDoc", () => {
   const files = [
-    "src/extensions/cognitive/verification/index.ts",
+    "src/extensions/core/metacognition/handlers/claim-verification.ts",
     "src/extensions/cognitive/topic-drift/index.ts",
   ];
   for (const file of files) {

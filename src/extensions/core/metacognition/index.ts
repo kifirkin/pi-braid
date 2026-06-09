@@ -12,6 +12,7 @@ import { createThinkTool, recordCalibration } from "./handlers/think.js";
 import { createHypothesizeTool } from "./handlers/hypothesize.js";
 import { createFinalizeTool } from "./handlers/finalize.js";
 import { createVerifyTool } from "./handlers/verify.js";
+import { registerClaimVerificationTools } from "./handlers/claim-verification.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { TOOL_EXECUTION_END } from "../../../lib/core/event-names.js";
 
@@ -74,6 +75,9 @@ export default function metacognitionExtension(pi: ExtensionAPI) {
 
   // ── Verify Tool ───────────────────────────────────────────────────────────
   pi.registerTool(createVerifyTool() as ToolDefinition<any, any, any>);
+
+  // ── Claim Verification Tools (moved from cognitive/verification/) ──────────
+  registerClaimVerificationTools(pi);
 
   // Track tool usage
   pi.on(TOOL_EXECUTION_END, (event: any, ctx: ExtensionContext) => {
