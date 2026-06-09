@@ -16,11 +16,14 @@
  * ```
  */
 
+/** Reasons a response can fail the stability check. Source of truth for downstream consumers. */
+export type StabilityReason = "ok" | "repetitive" | "topic_drift" | "self_contradiction";
+
 /** Check if a response is reasoning-stable relative to a request */
 export function measureStability(
   request: string,
   response: string,
-): { stable: boolean; reason: string; metrics: StabilityMetrics } {
+): { stable: boolean; reason: StabilityReason; metrics: StabilityMetrics } {
   const anchors = extractAnchors(request);
   const overlap = anchors.size > 0 ? measureOverlap(response, anchors) : 1.0;
   const entropy = measureBigramEntropy(response);

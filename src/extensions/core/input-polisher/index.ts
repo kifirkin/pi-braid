@@ -208,22 +208,6 @@ interface QueuedMessage {
   isCodeRequest: boolean;
 }
 
-interface InputCriticStats {
-  totalClassifications: number;
-  utilityTier: number;
-  sessionTier: number;
-  heuristicTier: number;
-  failedTier: number;
-  skippedCode: number;
-  skippedWellWritten: number;
-  antiSlopTriggered: number;
-  skippedLongText: number;
-  polishUtilityCount: number;
-  polishSessionCount: number;
-  skippedUnclear: number;
-  foundAmbiguous: number;
-}
-
 interface PolisherState {
   config: PolisherConfig;
   polishedCount: number;
@@ -233,7 +217,10 @@ interface PolisherState {
   isProcessing: boolean;
   polishedText: string | undefined;
   polishingExhausted: boolean;
-  inputCriticStats: InputCriticStats;
+  // Note: per-call classification stats are tracked centrally by
+  // lib/ai/critic-stats.ts and surfaced via the analytics extension's
+  // `get_session_metrics` tool. The polisher no longer keeps a local
+  // duplicate — see git history for the removed `InputCriticStats`.
 }
 
 function createPolisherState(): PolisherState {
@@ -246,21 +233,6 @@ function createPolisherState(): PolisherState {
     isProcessing: false,
     polishedText: undefined,
     polishingExhausted: false,
-    inputCriticStats: {
-      totalClassifications: 0,
-      utilityTier: 0,
-      sessionTier: 0,
-      heuristicTier: 0,
-      failedTier: 0,
-      skippedCode: 0,
-      skippedWellWritten: 0,
-      skippedUnclear: 0,
-      foundAmbiguous: 0,
-      antiSlopTriggered: 0,
-      skippedLongText: 0,
-      polishUtilityCount: 0,
-      polishSessionCount: 0,
-    },
   };
 }
 
@@ -283,10 +255,8 @@ async function processMessage(
     const model = utilityModel ?? ctx.model;
     if (model) {
       if (utilityModel) {
-        state.inputCriticStats.polishUtilityCount++;
         log.info(`Polishing with utility model: ${model.id}`);
       } else {
-        state.inputCriticStats.polishSessionCount++;
         log.info(`Polishing with session model: ${model.id}`);
       }
     }
@@ -469,7 +439,6 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
     const newlineCount = (original.match(/\n/g) || []).length;
     if (newlineCount > state.config.maxNewlines) {
       state.skippedCount++;
-      state.inputCriticStats.skippedLongText++;
       log.debug(`Skipped long text (${newlineCount} newlines > ${state.config.maxNewlines} max)`);
       ctx.ui.setStatus("input-polisher", "✓ Text too long to polish — press Enter to send");
       ctx.ui.setEditorText(original);
@@ -483,21 +452,11 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
 
     // Input critic: classify input with utility model (or heuristic fallback)
     const critique = await critiqueInput(original, ctx);
-    state.inputCriticStats.totalClassifications++;
-    const tier = critique.tier;
-    if (tier === "utility") state.inputCriticStats.utilityTier++;
-    else if (tier === "session") state.inputCriticStats.sessionTier++;
-    else state.inputCriticStats.heuristicTier++;
-    if (critique.isCode) state.inputCriticStats.skippedCode++;
-    if (critique.isWellWritten) state.inputCriticStats.skippedWellWritten++;
-    if (!critique.isClear) state.inputCriticStats.skippedUnclear++;
-    if (critique.isAmbiguous) state.inputCriticStats.foundAmbiguous++;
     // Only append anti-slop suffix when utility model confirms it's a code request.
     // Heuristic regexes and session model produce too many false positives —
     // a false negative (missing the suffix) is far less harmful than a false
     // positive (spamming the user with "Output the code directly...").
     const isCodeRequest = critique.isCodeRequest && critique.checks.codeRequest.tier === "utility";
-    if (isCodeRequest) state.inputCriticStats.antiSlopTriggered++;
     if (critique.isCode || (critique.isWellWritten && critique.isClear)) {
       state.skippedCount++;
       ctx.ui.setStatus("input-polisher", "✓ Text already clean — press Enter to send");
@@ -560,36 +519,6 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
       state.config.enabled = !state.config.enabled;
       await saveGlobalSetting(SETTINGS_KEY, state.config.enabled);
       ctx.ui.notify(`Input polisher ${state.config.enabled ? "enabled" : "disabled"}`, "info");
-    },
-  });
-
-  pi.registerCommand("critic-stats", {
-    description: "Show input critic classification tier statistics",
-    handler: async (_args, ctx) => {
-      const state = getState(ctx);
-      const s = state.inputCriticStats;
-      const lines: string[] = [];
-      lines.push(`Total classifications: ${s.totalClassifications}`);
-      lines.push(`  Utility model tier: ${s.utilityTier}`);
-      lines.push(`  Session model tier: ${s.sessionTier}`);
-      lines.push(`  Heuristic fallback:  ${s.heuristicTier}`);
-      lines.push(`  Failed:              ${s.failedTier}`);
-      if (s.totalClassifications > 0) {
-        const utilityPct = ((s.utilityTier / s.totalClassifications) * 100).toFixed(0);
-        lines.push(`  Utility model usage: ${utilityPct}%`);
-      }
-      lines.push(`Skipped (code):      ${s.skippedCode}`);
-      lines.push(`Skipped (well-written): ${s.skippedWellWritten}`);
-      lines.push(`Skipped (long text):     ${s.skippedLongText}`);
-      lines.push(`Found unclear:           ${s.skippedUnclear}`);
-      lines.push(`Found ambiguous:         ${s.foundAmbiguous}`);
-      lines.push(`Anti-slop triggered:    ${s.antiSlopTriggered}`);
-      if (s.polishUtilityCount > 0 || s.polishSessionCount > 0) {
-        lines.push(`Polish model tier:`);
-        lines.push(`  Utility model:       ${s.polishUtilityCount}`);
-        lines.push(`  Session model:       ${s.polishSessionCount}`);
-      }
-      ctx.ui.notify(lines.join("\n"), "info");
     },
   });
 }
