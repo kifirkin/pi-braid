@@ -128,8 +128,8 @@ console.log("\n[3] Hint loading with relevance filtering");
     "loadConsolidatedHints should exist (returns string[])",
   );
   assert.ok(
-    promptSrc.includes("HINT_RELEVANCE_CRITERIA"),
-    "should have relevance criteria for utility model filtering",
+    promptSrc.includes("CRITICS.hintRelevance"),
+    "should use CRITICS.hintRelevance for utility model filtering",
   );
   assert.ok(
     promptSrc.includes("filterRelevantHints"),

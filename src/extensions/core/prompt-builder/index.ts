@@ -182,45 +182,19 @@ async function loadConsolidatedHints(currentProject?: string): Promise<string[]>
 
 // HINT_RELEVANCE_CRITERIA was moved to CRITICS.hintRelevance in critic-registry.ts
 
-/** Heuristic fallback: reject generic-seeming hints. */
-function hintRelevanceFallback(hint: string, currentTask: string): string {
-  // Reject hints shorter than 30 chars or that match generic patterns
+/**
+ * Heuristic fallback (Tier 1 graceful degradation).
+ * Only the obviously-generic patterns are rejected here. The semantic
+ * matching ("does this hint apply to the current task?") is left to
+ * the LLM tier — keyword-overlap Jaccard was tried and removed because
+ * it produced too many false positives and false negatives.
+ */
+function hintRelevanceFallback(hint: string, _currentTask: string): string {
   if (hint.length < 30) return "no";
   if (/Fix \w+ error:/.test(hint)) return "no";
   if (/Debug.*isolate/.test(hint)) return "no";
   if (/Reproduce.*Locate.*Apply/.test(hint)) return "no";
-  // Keyword overlap check: require at least one significant word (3+ chars,
-  // not a stop word) in common between the hint and the current task.
-  // This catches obvious false positives like a "session_outcome" hint
-  // being suggested for a code refactoring task.
-  const hintWords = new Set(extractKeywords(hint));
-  const taskWords = new Set(extractKeywords(currentTask));
-  for (const w of hintWords) {
-    if (taskWords.has(w)) return "yes";
-  }
-  return "no";
-}
-
-/** Common stop words that don't count for keyword overlap. */
-const HINT_STOP_WORDS = new Set([
-  "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-  "have", "has", "had", "do", "does", "did", "will", "would", "could",
-  "should", "may", "might", "must", "shall", "can", "need",
-  "that", "this", "these", "those", "what", "which", "who", "whom",
-  "with", "without", "from", "into", "onto", "and", "or", "but",
-  "if", "then", "else", "when", "where", "how", "why", "not",
-  "all", "each", "every", "both", "few", "more", "most", "other",
-  "some", "such", "no", "nor", "only", "own", "same", "so",
-  "than", "too", "very", "just", "also", "now", "here", "there",
-  "use", "used", "using", "via", "for", "make", "made", "run",
-]);
-
-/** Extract lowercase keywords (3+ chars, alphanumeric) excluding stop words. */
-function extractKeywords(text: string): string[] {
-  return text
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((w) => w.length >= 3 && !HINT_STOP_WORDS.has(w));
+  return "yes";
 }
 
 /**

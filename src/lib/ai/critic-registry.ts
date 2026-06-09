@@ -609,37 +609,12 @@ export const CRITICS = {
     options: { maxTokens: 5, timeoutMs: 5000 },
   } satisfies CriticDef,
 
-  /** Does this message ask the assistant to WRITE new code? */
-  inputCodeRequest: {
-    label: "Input Code-Request",
-    criteria: {
-      systemPrompt:
-        "You are a request classifier. Determine if the given message asks the assistant " +
-        "to WRITE new code (not explain, read, review, or modify existing code). " +
-        "Answer only 'yes' or 'no'. Do not explain.",
-      userPrompt: "Does this ask the assistant to write code? {{text}}",
-    },
-    options: { maxTokens: 5, timeoutMs: 5000 },
-  } satisfies CriticDef,
-
   // Heuristic fallbacks (graceful degradation when LLM unavailable).
-  // The CODE_CHARS set and CODE_REQUEST_PATTERNS regex live here as
-  // module-level constants so the fallbacks don't need to import from
-  // the input-polisher.
+  // The CODE_CHARS set lives here as a module-level constant so the
+  // inputCodeHeavyFallback doesn't need to import from the input-polisher.
 
   /** Characters that indicate code content. */
   CODE_CHARS: new Set("{}[]();=>+-*/|&<>@#$%^~`\\"),
-
-  /** Code-writing request patterns (EN + RU). */
-  CODE_REQUEST_PATTERNS: [
-    /\b(write|create|implement|build)\s+(a\s+)?(function|class|method|module|component|script|file|program|handler|service|util)/i,
-    /\b(write|show|give)\s+me\s+(the\s+)?code/i,
-    /\brefactor\b.*\bcode\b/i,
-    /\bfix\b.*\bfunction\b.*\breturn\b/i,
-    /\b(напиши|создай|реализуй|сделай)\s+(функци|класс|метод|модул|компонент|скрипт|файл|программ|обработчик|сервис|утилит)/i,
-    /\b(напиши|покажи|дай)\s+мне\s+код/i,
-    /\bрефакторинг\b.*\bкод\b/i,
-  ],
 
   /** Heuristic fallback: >30% non-whitespace chars are code-like = code-heavy. */
   inputCodeHeavyFallback(text: string): string {
@@ -700,11 +675,6 @@ export const CRITICS = {
       /^\w+$/m,
     ];
     return vaguePatterns.some((p) => p.test(text)) ? "yes" : "no";
-  },
-
-  /** Heuristic fallback: code-writing keyword/pattern match (EN + RU). */
-  inputCodeRequestFallback(text: string): string {
-    return (CRITICS.CODE_REQUEST_PATTERNS as readonly RegExp[]).some((p) => p.test(text)) ? "yes" : "no";
   },
 
   // ═══════════════════════════════════════════════════════════════════════

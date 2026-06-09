@@ -205,7 +205,6 @@ function generateDiffLines(original: string, cleaned: string): string[] {
 interface QueuedMessage {
   text: string;
   resolve: (result: InputEventResult) => void;
-  isCodeRequest: boolean;
 }
 
 interface PolisherState {
@@ -244,7 +243,6 @@ async function processMessage(
   original: string,
   ctx: ExtensionContext,
   resolve: (result: InputEventResult) => void,
-  isCodeRequest = false,
 ) {
   const state = getState(ctx);
   state.isProcessing = true;
@@ -363,7 +361,7 @@ function processQueue(ctx: ExtensionContext) {
   }
 
   const next = state.queue.shift()!;
-  processMessage(next.text, ctx, next.resolve, next.isCodeRequest);
+  processMessage(next.text, ctx, next.resolve);
 
   if (state.queue.length > 0) {
     ctx.ui.setStatus("input-polisher", `⏳ Queue: ${state.queue.length + 1} messages...`);
@@ -452,11 +450,6 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
 
     // Input critic: classify input with utility model (or heuristic fallback)
     const critique = await critiqueInput(original, ctx);
-    // Only append anti-slop suffix when utility model confirms it's a code request.
-    // Heuristic regexes and session model produce too many false positives —
-    // a false negative (missing the suffix) is far less harmful than a false
-    // positive (spamming the user with "Output the code directly...").
-    const isCodeRequest = critique.isCodeRequest && critique.checks.codeRequest.tier === "utility";
     if (critique.isCode || (critique.isWellWritten && critique.isClear)) {
       state.skippedCount++;
       ctx.ui.setStatus("input-polisher", "✓ Text already clean — press Enter to send");
@@ -478,13 +471,12 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
         state.queue.push({
           text: original,
           resolve,
-          isCodeRequest,
         });
       });
     }
 
     return new Promise<InputEventResult>((resolve) => {
-      processMessage(original, ctx, resolve, isCodeRequest);
+      processMessage(original, ctx, resolve);
     });
   });
 

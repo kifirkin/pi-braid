@@ -31,8 +31,6 @@ export interface CritiqueResult {
 	isClear: boolean;
 	/** True if the text is vague or ambiguous — may need clarification prompt. */
 	isAmbiguous: boolean;
-	/** True if the text asks to write code — append anti-slop suffix. */
-	isCodeRequest: boolean;
 	/** Lowest-confidence tier across all checks. */
 	tier: "utility" | "session" | "heuristic";
 	/** Per-check results for observability. */
@@ -41,7 +39,6 @@ export interface CritiqueResult {
 		wellWritten: ClassificationResult;
 		clarity: ClassificationResult;
 		ambiguity: ClassificationResult;
-		codeRequest: ClassificationResult;
 	};
 }
 
@@ -58,68 +55,51 @@ export async function critiqueInput(text: string, ctx: ExtensionContext): Promis
 	// Truncate very long text to keep prompt tokens reasonable
 	const truncated = text.length > 2000 ? text.slice(0, 2000) + "..." : text;
 
-	const [codeResult, wellWrittenResult, clarityResult, ambiguityResult, codeRequestResult] =
-		await Promise.all([
-			classify(
-				ctx,
-				CRITICS.inputCodeHeavy.criteria,
-				{ text: truncated },
-				{
-					maxTokens: 5,
-					timeoutMs: 5000,
-					fallback: () => CRITICS.inputCodeHeavyFallback(text),
-				},
-			),
-			classify(
-				ctx,
-				CRITICS.inputWellWritten.criteria,
-				{ text: truncated },
-				{
-					maxTokens: 5,
-					timeoutMs: 5000,
-					fallback: () => CRITICS.inputWellWrittenFallback(text),
-				},
-			),
-			classify(
-				ctx,
-				CRITICS.inputClarity.criteria,
-				{ text: truncated },
-				{
-					maxTokens: 5,
-					timeoutMs: 5000,
-					fallback: () => CRITICS.inputClarityFallback(text),
-				},
-			),
-			classify(
-				ctx,
-				CRITICS.inputAmbiguity.criteria,
-				{ text: truncated },
-				{
-					maxTokens: 5,
-					timeoutMs: 5000,
-					fallback: () => CRITICS.inputAmbiguityFallback(text),
-				},
-			),
-			classify(
-				ctx,
-				CRITICS.inputCodeRequest.criteria,
-				{ text: truncated },
-				{
-					maxTokens: 5,
-					timeoutMs: 5000,
-					fallback: () => CRITICS.inputCodeRequestFallback(text),
-				},
-			),
-		]);
+	const [codeResult, wellWrittenResult, clarityResult, ambiguityResult] = await Promise.all([
+		classify(
+			ctx,
+			CRITICS.inputCodeHeavy.criteria,
+			{ text: truncated },
+			{
+				maxTokens: 5,
+				timeoutMs: 5000,
+				fallback: () => CRITICS.inputCodeHeavyFallback(text),
+			},
+		),
+		classify(
+			ctx,
+			CRITICS.inputWellWritten.criteria,
+			{ text: truncated },
+			{
+				maxTokens: 5,
+				timeoutMs: 5000,
+				fallback: () => CRITICS.inputWellWrittenFallback(text),
+			},
+		),
+		classify(
+			ctx,
+			CRITICS.inputClarity.criteria,
+			{ text: truncated },
+			{
+				maxTokens: 5,
+				timeoutMs: 5000,
+				fallback: () => CRITICS.inputClarityFallback(text),
+			},
+		),
+		classify(
+			ctx,
+			CRITICS.inputAmbiguity.criteria,
+			{ text: truncated },
+			{
+				maxTokens: 5,
+				timeoutMs: 5000,
+				fallback: () => CRITICS.inputAmbiguityFallback(text),
+			},
+		),
+	]);
 
-	// Determine the overall tier (lowest across all five)
-	const tiers = [
-		codeResult.tier,
-		wellWrittenResult.tier,
-		clarityResult.tier,
-		ambiguityResult.tier,
-		codeRequestResult.tier,
-	];
+	// Determine the overall tier (lowest across all four)
+	const tiers = [codeResult.tier, wellWrittenResult.tier, clarityResult.tier, ambiguityResult.tier];
 	const overallTier = tiers.includes("heuristic")
 		? ("heuristic" as const)
 		: tiers.includes("session")
@@ -131,14 +111,12 @@ export async function critiqueInput(text: string, ctx: ExtensionContext): Promis
 		isWellWritten: wellWrittenResult.label === "yes",
 		isClear: clarityResult.label === "yes",
 		isAmbiguous: ambiguityResult.label === "yes",
-		isCodeRequest: codeRequestResult.label === "yes",
 		tier: overallTier,
 		checks: {
 			codeHeavy: codeResult,
 			wellWritten: wellWrittenResult,
 			clarity: clarityResult,
 			ambiguity: ambiguityResult,
-			codeRequest: codeRequestResult,
 		},
 	};
 }
