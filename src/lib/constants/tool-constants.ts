@@ -15,9 +15,7 @@ export const DESTRUCTIVE_TOOLS: readonly string[] = [...FILE_CHURN_TOOLS, "bash"
 
 /**
  * Regex to detect XML-like tool tags emitted as plain text instead of
- * proper function-calling format. Previously duplicated in:
- *   - extensions/enforcement/detection/malformed.ts
- *   - extensions/cognitive/reasoning/index.ts
+ * proper function-calling format. Used by extensions/enforcement/detection/malformed.ts.
  */
 export const MALFORMED_TOOL_CALL_RE =
   /<(function|write|edit|read|bash|grep|find|ls|think|plan|scratchpad)[^>]*>[\s\S]*?<\/(function|write|edit|read|bash|grep|find|ls|think|plan|scratchpad)>/gi;

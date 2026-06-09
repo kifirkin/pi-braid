@@ -20,9 +20,11 @@ import corePromptBuilderFn from "./core/prompt-builder/index.js";
 import coreAgentEnvFn from "./core/agent-environment/index.js";
 import coreWorkspaceSnapshotFn from "./core/workspace-snapshot/index.js";
 
-// cognitive-quality (reasoning tools, verification, topic control, turn-outcome)
+// cognitive-quality (reasoning tools, topic control, turn-outcome)
+// Note: claim verification tools (verify_claim, verify_decomposition) were
+// moved into core/metacognition/handlers/claim-verification.ts so the entire
+// verify family lives in one directory.
 import reasoningFn from "./cognitive/reasoning/index.js";
-import verificationFn from "./cognitive/verification/index.js";
 import topicDriftFn from "./cognitive/topic-drift/index.js";
 import sycophancyDetectorFn from "./cognitive/sycophancy-detector/index.js";
 import turnOutcomeFn from "./cognitive/turn-outcome/index.js";
@@ -127,14 +129,7 @@ export const MANIFEST: ManifestEntry[] = [
   {
     id: "reasoning",
     fn: reasoningFn,
-    dependencies: ["agent-environment"],
-    desc: "Structured reasoning tools",
-  },
-  {
-    id: "verification",
-    fn: verificationFn,
-    dependencies: ["agent-environment"],
-    desc: "verify_claim, verify_decomposition tools",
+    desc: "Reasoning quality detector (stability analysis + verify-before-done nudge)",
   },
   {
     id: "topic-drift",
@@ -175,30 +170,35 @@ export const MANIFEST: ManifestEntry[] = [
     fn: memoryStoresFn,
     dependencies: ["agent-environment"],
     desc: "Core memory infrastructure",
+    module: "memory",
   },
   {
     id: "session-recall",
     fn: sessionRecallFn,
     dependencies: ["three-memory-stores"],
     desc: "Session recall tools (session_search, session_query)",
+    module: "memory",
   },
   {
     id: "context-manager",
     fn: contextManagerFn,
     dependencies: ["three-memory-stores"],
     desc: "Context compaction/pruning tools",
+    module: "memory",
   },
   {
     id: "context-lifecycle",
     fn: contextLifecycleFn,
     dependencies: ["three-memory-stores"],
     desc: "Context proposals, signal, lifecycle",
+    module: "memory",
   },
   {
     id: "memory-agent-bridge",
     fn: memoryAgentBridgeFn,
     dependencies: ["three-memory-stores"],
     desc: "Agent-facing memory tools (store/recall/list/get)",
+    module: "memory",
   },
 
   // ── Heartbeat ─────────────────────────────────────────────────────────

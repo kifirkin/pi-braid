@@ -2,141 +2,187 @@ import { createLogger } from "../../../lib/core/logger.js";
 
 const log = createLogger("reasoning");
 /**
- * Reasoning Extension - Minimal Thinking Helper
+ * Reasoning Extension — Minimal Thinking Helper
  *
- * Key features:
- * 1. Detects malformed tool calls (XML tags as text) - catches common LLM errors
- * 2. Tracks simple step count for progress
- * 3. Reminds to verify before claiming done
+ * Lightweight reasoning quality analyzer. On every assistant MESSAGE_END
+ * it runs `measureStability()` from lib/reasoning/reasoning-metrics.ts and:
  *
- * Simple and helpful, not prescriptive.
- * Note: System prompt modification is handled exclusively by prompt-builder.
+ *   1. Emits a `reasoning` signal on the belief bus when stability degrades
+ *      (repetitive / topic_drift / self_contradiction), with a `unstableStreak`
+ *      counter that escalates severity as the streak grows.
+ *   2. Sends a whisper nudge suggesting `verify()` when a stable response
+ *      contains a completion claim and the cooldown has elapsed — closes the
+ *      loop with the verify tool in core/metacognition.
+ *
+ * Why this lives in cognitive/ and not enforcement/:
+ *   Enforcement has its own stability check (see enforcement/handlers/
+ *   message-analysis.ts) that fires whisper nudges. This extension is the
+ *   agent-facing reasoning quality surface — it emits structured signals
+ *   for downstream consumers (analytics, dreamer) and tracks unstable
+ *   streaks, which is work enforcement doesn't do.
+ *
+ * Tool-call shape validation (e.g., XML tags emitted as text instead of
+ * function calls) lives in enforcement/detection/malformed.ts, not here.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
-import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
-
-// Helper: Send Enforcement Message as Custom (for visual distinction in TUI)
-
-/**
- * Send a enforcement/nudge message that will be visually distinct in the TUI.
- * Uses role: "custom" with customType: "enforcement" so it renders with purple
- * background and [enforcement] label instead of looking like a user message.
- */
-function sendSteerMessage(pi: ExtensionAPI, message: string): void {
-  sendTrackedMessage(
-    pi,
-    {
-      customType: "enforcement",
-      content: [{ type: "text" as const, text: `[reasoning] ${message}` }],
-      display: true,
-    },
-    { deliverAs: "steer", triggerTurn: true },
-    { type: "enforcement", source: "reasoning/steer" },
-  );
-}
-
-// Types
-
-interface ReasoningState {
-  step: number;
-  goal: string;
-  timestamp: number;
-}
-
-interface ExtensionState {
-  current: ReasoningState | null;
-  history: ReasoningState[];
-  turnCount: number;
-}
-
-// ── Session-scoped State ────────────────────────────────────────────────────
-
-function createReasoningState(): ExtensionState {
-  return { current: null, history: [], turnCount: 0 };
-}
-
-function getReasoningState(ctx: ExtensionContext): ExtensionState {
-  return getExtensionState(ctx, "reasoning", createReasoningState);
-}
-
-// Malformed Tool Call Detection
-
-import { MALFORMED_TOOL_CALL_RE, MALFORMED_TOOL_NAME_RE } from "../../../lib/constants/tool-constants.js";
+import { sendEnforcementWhisper } from "../../enforcement/whisper.js";
+import { emitSignal } from "../../../lib/reasoning/belief-policy-engine.js";
+import {
+	measureStability,
+	type StabilityMetrics,
+	type StabilityReason,
+} from "../../../lib/reasoning/reasoning-metrics.js";
 import { MESSAGE_END } from "../../../lib/core/event-names.js";
 
-function detectMalformedToolCalls(text: string, pi: ExtensionAPI, s: ExtensionState): void {
-  MALFORMED_TOOL_CALL_RE.lastIndex = 0;
-  const match = MALFORMED_TOOL_CALL_RE.exec(text);
-  MALFORMED_TOOL_CALL_RE.lastIndex = 0;
+// ── Constants ────────────────────────────────────────────────────────────────
 
-  if (match) {
-    const toolNameMatch = text.match(MALFORMED_TOOL_NAME_RE);
-    const detectedTool = toolNameMatch ? toolNameMatch[1].toLowerCase() : "unknown";
+/** Minimum assistant response length (chars) before stability is analyzed. */
+const MIN_RESPONSE_LENGTH = 100;
 
-    if (s.current) {
-      s.current.step++;
-    }
+/** Consecutive unstable turns before the signal severity escalates to "warn". */
+const UNSTABLE_STREAK_ESCALATION = 3;
 
-    sendSteerMessage(
-      pi,
-      "Malformed tool call detected: <" +
-        detectedTool +
-        "> as TEXT. Use proper function calling format - do NOT output XML tags as plain text.",
-    );
-  }
+/** Minimum turns between verify-reminder whispers. */
+const VERIFY_REMINDER_COOLDOWN = 5;
+
+/** Patterns that suggest the agent is about to declare the task done. */
+const COMPLETION_CLAIM_PATTERNS: readonly RegExp[] = [
+	/\b(that should|this should|should (now )?work)\b/i,
+	/\b(we('re| are) done|we('ve| have) finished|all (set|done))\b/i,
+	/\b(task (is )?complete|fix(ed|es)? the (issue|bug|problem))\b/i,
+	/\b(this (fix|solution) (should|works?))\b/i,
+];
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+export interface ReasoningState {
+	/** Total turns elapsed in this session. */
+	turnCount: number;
+	/** Consecutive unstable turns; resets to 0 on a stable check. */
+	unstableStreak: number;
+	/** Most recent stability verdict. */
+	lastReason: StabilityReason;
+	/** Most recent stability metrics (null until the first check). */
+	lastStability: StabilityMetrics | null;
+	/** Most recent user message (used as the stability anchor). */
+	lastUserMessage: string;
+	/** Turn index of the most recent verify-reminder whisper (-cooldown means "ready"). */
+	lastVerifyReminderTurn: number;
+	/** Total verify-reminder whispers sent this session. */
+	verifyRemindersSent: number;
 }
 
-// Extension Factory
+function createReasoningState(): ReasoningState {
+	return {
+		turnCount: 0,
+		unstableStreak: 0,
+		lastReason: "ok",
+		lastStability: null,
+		lastUserMessage: "",
+		lastVerifyReminderTurn: -VERIFY_REMINDER_COOLDOWN,
+		verifyRemindersSent: 0,
+	};
+}
+
+function getReasoningState(ctx: ExtensionContext): ReasoningState {
+	return getExtensionState(ctx, "reasoning", createReasoningState);
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function extractTextContent(message: { content: unknown }): string {
+	if (!Array.isArray(message.content)) return "";
+	return message.content
+		.filter(
+			(c): c is { type: "text"; text: string } =>
+				typeof c === "object" &&
+				c !== null &&
+				(c as { type?: string }).type === "text" &&
+				typeof (c as { text?: unknown }).text === "string",
+		)
+		.map((c) => c.text)
+		.join("\n");
+}
+
+function hasCompletionClaim(text: string): boolean {
+	return COMPLETION_CLAIM_PATTERNS.some((p) => p.test(text));
+}
+
+// ── Extension Factory ────────────────────────────────────────────────────────
 
 export default function reasoningExtension(pi: ExtensionAPI) {
-  // Pre-Turn: Track turn count and state (no system prompt modification)
-  // System prompt is now managed exclusively by prompt-builder extension
-  pi.on("before_agent_start", async (_event, ctx) => {
-    const state = getReasoningState(ctx);
-    state.turnCount++;
+	// Pre-Turn: bump turn counter (used to throttle the verify reminder).
+	pi.on("before_agent_start", async (_event, ctx) => {
+		const state = getReasoningState(ctx);
+		state.turnCount++;
+	});
 
-    // Initialize state if needed
-    if (!state.current) {
-      state.current = { step: 1, goal: "", timestamp: Date.now() };
-    }
-  });
+	// Message End: stability check + verify-before-done nudge.
+	pi.on(MESSAGE_END, async (event, ctx) => {
+		const state = getReasoningState(ctx);
+		const message = event.message as { role: string; content: unknown };
+		const textContent = extractTextContent(message);
 
-  // Message End: Check for malformed tool calls
+		// Track user messages so measureStability() can anchor to the request.
+		if (message.role === "user") {
+			state.lastUserMessage = textContent;
+			return;
+		}
 
-  pi.on(MESSAGE_END, async (event, ctx) => {
-    if (event.message.role !== "assistant") return;
+		if (message.role !== "assistant") return;
+		if (textContent.length < MIN_RESPONSE_LENGTH) return;
 
-    const state = getReasoningState(ctx);
+		// ── Stability check ──────────────────────────────────────────────
+		const result = measureStability(state.lastUserMessage, textContent);
+		state.lastStability = result.metrics;
+		state.lastReason = result.reason;
 
-    // Extract text content
-    const textContent = event.message.content
-      .filter((c) => c.type === "text")
-      .map((c) => (c as { type: "text"; text: string }).text)
-      .join("\n");
+		if (!result.stable) {
+			state.unstableStreak++;
+			const severity =
+				state.unstableStreak >= UNSTABLE_STREAK_ESCALATION ? "warn" : "info";
+			emitSignal(ctx, "reasoning", "unstable", severity, false, {
+				reason: result.reason,
+				metrics: result.metrics,
+				streak: state.unstableStreak,
+				turn: state.turnCount,
+			});
+			log.debug(
+				`reasoning: unstable (${result.reason}) streak=${state.unstableStreak} turn=${state.turnCount}`,
+			);
+		} else {
+			state.unstableStreak = 0;
+		}
 
-    // Always check for malformed tool calls
-    detectMalformedToolCalls(textContent, pi, state);
-
-    // Increment step count for tracking
-    if (state.current) {
-      state.current.step++;
-    }
-  });
-
-  // Commands
-
-  // No agent-facing commands — reasoning works via event handlers
-  // (malformed tool call detection, step tracking, verify-before-done nudge)
+		// ── Verify-before-done nudge ──────────────────────────────────────
+		// Only nudge on stable responses that look like a completion claim
+		// — an unstable response is not the right moment to suggest a tool.
+		if (
+			result.stable &&
+			hasCompletionClaim(textContent) &&
+			state.turnCount - state.lastVerifyReminderTurn >= VERIFY_REMINDER_COOLDOWN
+		) {
+			sendEnforcementWhisper(
+				pi,
+				ctx,
+				"[reasoning] Response looks complete. Consider calling verify() to catch any " +
+					"issues before finalizing.",
+			);
+			state.lastVerifyReminderTurn = state.turnCount;
+			state.verifyRemindersSent++;
+		}
+	});
 }
 
-// Utilities (used by other extensions — require ctx for session-scoped state)
+// ── Public view (for analytics + downstream consumers) ───────────────────────
 
-export function getCurrentReasoning(ctx: ExtensionContext): ReasoningState | null {
-  return getReasoningState(ctx).current;
-}
-
-export function getReasoningHistory(ctx: ExtensionContext): ReasoningState[] {
-  return [...getReasoningState(ctx).history];
+/**
+ * Read-only view of the reasoning state for a given session.
+ * Used by analytics and any future extension that wants to surface
+ * reasoning quality to the user.
+ */
+export function getReasoningStateView(ctx: ExtensionContext): Readonly<ReasoningState> {
+	return getReasoningState(ctx);
 }
