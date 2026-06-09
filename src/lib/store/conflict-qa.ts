@@ -20,6 +20,7 @@ import {
   tokenOverlap,
 } from "./evidence-pool.js";
 import { classify } from "../ai/text-classifier.js";
+import { CRITICS } from "../ai/critic-registry.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -305,38 +306,8 @@ export function getAllQAs(_ctx: unknown): ConflictQA[] {
 /**
 // ── Conflict Resolution Detection ───────────────────────────────────────
 
-/**
- * Classification criteria for detecting conflict resolution in agent responses.
- * Uses classify() three-tier fallback (utility model → session model → heuristics).
- */
-const RESOLUTION_CRITERIA = {
-  systemPrompt:
-    "You are a resolution classifier for an AI agent's knowledge conflict system. " +
-    "Determine if the given text contains language that RESOLVES a knowledge conflict " +
-    "(deciding which evidence to trust). " +
-    "Answer with exactly one word: 'resolved_for', 'resolved_against', or 'none'. " +
-    "'resolved_for' = text selects and favors one side of a conflict. " +
-    "'resolved_against' = text explicitly rejects or disproves a claim. " +
-    "'none' = text does not resolve any conflict. Do not explain.",
-  userPrompt: "Does this message resolve a knowledge conflict? {{text}}",
-};
-
-/**
- * Fallback: keyword-based heuristics for conflict resolution detection.
- * Preserves the original logic as graceful degradation.
- */
-function resolutionFallback(text: string): string {
-  const lower = text.toLowerCase();
-  const keywords = ["resolved", "conflict resolved", "the correct answer is", "after further investigation", "sources disagree"];
-  if (!keywords.some((kw) => lower.includes(kw))) return "none";
-  if (
-    lower.includes("based on higher reliability source") ||
-    lower.includes("the evidence supports") ||
-    lower.includes("confirm that")
-  ) return "resolved_for";
-  if (lower.includes("evidence does not support") || lower.includes("this claim is incorrect")) return "resolved_against";
-  return "resolved_for";
-}
+// RESOLUTION_CRITERIA and resolutionFallback were moved to CRITICS.conflictResolution
+// in lib/ai/critic-registry.ts.
 
 /**
  * Check if a response text contains resolution language for a conflict QA.
@@ -350,13 +321,13 @@ export async function checkResponseForResolution(
 
   const result = await classify(
     ctx,
-    RESOLUTION_CRITERIA,
+    CRITICS.conflictResolution.criteria,
     { text: truncated },
     {
       maxTokens: 5,
       timeoutMs: 5000,
       label: "Conflict Resolution",
-      fallback: () => resolutionFallback(text),
+      fallback: () => CRITICS.conflictResolutionFallback(text),
     },
   );
 

@@ -14,6 +14,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { classify } from "../../../lib/ai/text-classifier.js";
+import { CRITICS } from "../../../lib/ai/critic-registry.js";
 import { createLogger } from "../../../lib/core/logger.js";
 import { DESTRUCTIVE_TOOLS } from "../../../lib/constants/tool-constants.js";
 import { onEvent } from "../../../lib/events/event-types.js";
@@ -25,27 +26,6 @@ const log = createLogger("tool-safety");
 
 /** Tools that modify system state and need safety classification. */
 const DESTRUCTIVE_TOOLS_SET = new Set(DESTRUCTIVE_TOOLS); // includes edit, write, bash, delete
-
-// ── Classification Criteria ──────────────────────────────────────────────────
-
-const TOOL_SAFETY_CRITERIA = {
-  systemPrompt:
-    "You are a tool safety classifier. Determine if the given tool call " +
-    "is DESTRUCTIVE OR DANGEROUS. Consider: " +
-    "deleting files, overwriting critical configuration, " +
-    "executing dangerous shell commands (rm -rf, dd, mkfs, chmod -R 777, " +
-    "curl | sh, wget | bash), modifying system/passwd/ssh files, " +
-    "or performing irreversible operations. " +
-    "Answer only 'yes' or 'no'. 'yes' = DANGEROUS, 'no' = SAFE. Do not explain.",
-  userPrompt: "Tool: {{toolName}}\n" + "Args: {{toolArgs}}\n" + "Is this tool call dangerous?",
-};
-
-// ── Heuristic Fallback ───────────────────────────────────────────────────────
-
-/** Always safe on degradation — never false-positive block. */
-function isSafeFallback(): string {
-  return "no";
-}
 
 /**
  * Known-safe git operations that should never be classified as dangerous.
@@ -137,12 +117,12 @@ export default function toolSafetyExtension(pi: ExtensionAPI): void {
     try {
       const result = await classify(
         ctx,
-        TOOL_SAFETY_CRITERIA,
+        CRITICS.toolSafety.criteria,
         { toolName, toolArgs: args },
         {
           maxTokens: 5,
           timeoutMs: 2000, // tight — never block the agent for long
-          fallback: isSafeFallback,
+          fallback: () => CRITICS.toolSafetyFallback(),
         },
       );
 

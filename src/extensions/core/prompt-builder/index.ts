@@ -55,6 +55,7 @@ import { SKILLS_DIR } from "../../../lib/config/project-paths.js";
 import { gatherL1State, formatL1Environment } from "./l1-environment.js";
 import { formatContrastSection } from "./contrast-phrase-library.js";
 import { classify } from "../../../lib/ai/text-classifier.js";
+import { CRITICS } from "../../../lib/ai/critic-registry.js";
 
 // ── Identity (THE key difference from native) ─────────────────────────────────
 // Identity framing is the behavioral filter - not directives
@@ -179,23 +180,7 @@ async function loadConsolidatedHints(currentProject?: string): Promise<string[]>
   }
 }
 
-/**
- * Relevance criteria for hints — uses the hint text and a context summary.
- */
-const HINT_RELEVANCE_CRITERIA = {
-  systemPrompt:
-    "You are a relevance classifier. Determine if the given behavioral hint " +
-    "is relevant to the user's current task. A hint is relevant ONLY if it " +
-    "describes a strategy or workflow that could plausibly apply to the " +
-    "current task based on shared topic, tool, or methodology. " +
-    "Generic hints like 'Fix type error: Reproduce → Locate → Apply' are NOT " +
-    "relevant even if vaguely applicable. " +
-    "Answer only 'yes' or 'no'. Do not explain.",
-  userPrompt:
-    "Current task: {{currentTask}}\n" +
-    "Hint: {{hint}}\n" +
-    "Is this hint relevant to the current task?",
-};
+// HINT_RELEVANCE_CRITERIA was moved to CRITICS.hintRelevance in critic-registry.ts
 
 /** Heuristic fallback: reject generic-seeming hints. */
 function hintRelevanceFallback(hint: string, currentTask: string): string {
@@ -289,7 +274,7 @@ async function filterRelevantHints(hints: string[], ctx: ExtensionContext): Prom
     hints.map((hint) =>
       classify(
         ctx,
-        HINT_RELEVANCE_CRITERIA,
+        CRITICS.hintRelevance.criteria,
         { hint, currentTask },
         {
           maxTokens: 5,

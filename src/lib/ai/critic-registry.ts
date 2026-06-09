@@ -552,6 +552,280 @@ export const CRITICS = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════
+  // Input Polish Critics — input-polisher pre-classification
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /** Is this text primarily code (not natural language)? */
+  inputCodeHeavy: {
+    label: "Input Code-Heavy",
+    criteria: {
+      systemPrompt:
+        "You are a text classifier. Determine if the given message is primarily code " +
+        "(not natural language). Answer only 'yes' or 'no'. Do not explain.",
+      userPrompt: "Is this message primarily code? {{text}}",
+    },
+    options: { maxTokens: 5, timeoutMs: 5000 },
+  } satisfies CriticDef,
+
+  /** Is this text well-written with correct grammar/spelling/structure? */
+  inputWellWritten: {
+    label: "Input Well-Written",
+    criteria: {
+      systemPrompt:
+        "You are a text quality classifier. Determine if the given text is well-written " +
+        "with correct grammar, spelling, and proper sentence structure. English only. " +
+        "Answer only 'yes' or 'no'. Do not explain.",
+      userPrompt: "Is this text well-written? {{text}}",
+    },
+    options: { maxTokens: 5, timeoutMs: 5000 },
+  } satisfies CriticDef,
+
+  /** Is this message clearly written and coherent? */
+  inputClarity: {
+    label: "Input Clarity",
+    criteria: {
+      systemPrompt:
+        "You are a clarity classifier. Determine if the given message is clearly written, " +
+        "coherent, and easy to understand. A clear message has a logical flow and " +
+        "communicates its intent effectively. A confusing message is rambling, " +
+        "contradictory, or hard to follow. Answer only 'yes' or 'no'. Do not explain.",
+      userPrompt: "Is this message clear and coherent? {{text}}",
+    },
+    options: { maxTokens: 5, timeoutMs: 5000 },
+  } satisfies CriticDef,
+
+  /** Does this message contain vague or ambiguous requests? */
+  inputAmbiguity: {
+    label: "Input Ambiguity",
+    criteria: {
+      systemPrompt:
+        "You are an ambiguity classifier. Determine if the given message contains " +
+        "vague, underspecified, or ambiguous requests that would need clarification " +
+        "before the assistant can act effectively. Ambiguous messages use words like " +
+        "'it', 'that thing', 'do the needful' without clear referents, or ask questions " +
+        "that could be interpreted multiple ways. Answer only 'yes' or 'no'. Do not explain.",
+      userPrompt: "Is this message ambiguous or underspecified? {{text}}",
+    },
+    options: { maxTokens: 5, timeoutMs: 5000 },
+  } satisfies CriticDef,
+
+  /** Does this message ask the assistant to WRITE new code? */
+  inputCodeRequest: {
+    label: "Input Code-Request",
+    criteria: {
+      systemPrompt:
+        "You are a request classifier. Determine if the given message asks the assistant " +
+        "to WRITE new code (not explain, read, review, or modify existing code). " +
+        "Answer only 'yes' or 'no'. Do not explain.",
+      userPrompt: "Does this ask the assistant to write code? {{text}}",
+    },
+    options: { maxTokens: 5, timeoutMs: 5000 },
+  } satisfies CriticDef,
+
+  // Heuristic fallbacks (graceful degradation when LLM unavailable).
+  // The CODE_CHARS set and CODE_REQUEST_PATTERNS regex live here as
+  // module-level constants so the fallbacks don't need to import from
+  // the input-polisher.
+
+  /** Characters that indicate code content. */
+  CODE_CHARS: new Set("{}[]();=>+-*/|&<>@#$%^~`\\"),
+
+  /** Code-writing request patterns (EN + RU). */
+  CODE_REQUEST_PATTERNS: [
+    /\b(write|create|implement|build)\s+(a\s+)?(function|class|method|module|component|script|file|program|handler|service|util)/i,
+    /\b(write|show|give)\s+me\s+(the\s+)?code/i,
+    /\brefactor\b.*\bcode\b/i,
+    /\bfix\b.*\bfunction\b.*\breturn\b/i,
+    /\b(напиши|создай|реализуй|сделай)\s+(функци|класс|метод|модул|компонент|скрипт|файл|программ|обработчик|сервис|утилит)/i,
+    /\b(напиши|покажи|дай)\s+мне\s+код/i,
+    /\bрефакторинг\b.*\bкод\b/i,
+  ],
+
+  /** Heuristic fallback: >30% non-whitespace chars are code-like = code-heavy. */
+  inputCodeHeavyFallback(text: string): string {
+    let totalChars = 0;
+    let codeChars = 0;
+    for (const char of text) {
+      if (!/\s/.test(char)) {
+        totalChars++;
+        if ((CRITICS.CODE_CHARS as ReadonlySet<string>).has(char)) codeChars++;
+      }
+    }
+    return totalChars > 0 && codeChars / totalChars > 0.3 ? "yes" : "no";
+  },
+
+  /** Heuristic fallback: sentence count + capitalization + repeated chars. */
+  inputWellWrittenFallback(text: string): string {
+    const sentenceCount = (text.match(/[.!?]+\s/g) || []).length;
+    if (sentenceCount < 1) return "no";
+
+    const sentenceEndings = text.split(/[.!?]+(\s|$)/);
+    let capitalizedCount = 0;
+    let totalSentencesChecked = 0;
+    for (const s of sentenceEndings) {
+      const trimmed = s.trim();
+      if (trimmed.length > 1) {
+        totalSentencesChecked++;
+        if (/^[A-Z]/.test(trimmed)) capitalizedCount++;
+      }
+    }
+    if (totalSentencesChecked > 0 && capitalizedCount / totalSentencesChecked < 0.5) return "no";
+    if (/(.)\1{4,}/.test(text)) return "no";
+
+    return "yes";
+  },
+
+  /** Heuristic fallback: short text + long run-on sentences + contradiction markers. */
+  inputClarityFallback(text: string): string {
+    const words = text.trim().split(/\s+/);
+    if (words.length < 3) return "no";
+    const sentences = text.split(/[.!?]+/);
+    for (const s of sentences) {
+      if (s.trim().split(/\s+/).length > 50) return "no";
+    }
+    const lower = text.toLowerCase();
+    const contradictionCount = (
+      lower.match(/\b(but|however|actually|wait|no\s+(wait|i mean|actually)|on\s+(the\s+)?other\s+hand)/g) ||
+      []
+    ).length;
+    if (contradictionCount > 2) return "no";
+    return "yes";
+  },
+
+  /** Heuristic fallback: vague phrases + single-word messages. */
+  inputAmbiguityFallback(text: string): string {
+    const vaguePatterns = [
+      /\b(do the needful|fix it|make it work|handle it|take care of it|you know what i mean)\b/i,
+      /\b(this|that|it)\b.*\b(thing|stuff|part|bit)\b/i,
+      /^\w+$/m,
+    ];
+    return vaguePatterns.some((p) => p.test(text)) ? "yes" : "no";
+  },
+
+  /** Heuristic fallback: code-writing keyword/pattern match (EN + RU). */
+  inputCodeRequestFallback(text: string): string {
+    return (CRITICS.CODE_REQUEST_PATTERNS as readonly RegExp[]).some((p) => p.test(text)) ? "yes" : "no";
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Tool Safety — tool-safety pre-execution check
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Determine if a tool call is dangerous (destructive or irreversible).
+   * Replaces inline TOOL_SAFETY_CRITERIA in tool-safety/.
+   */
+  toolSafety: {
+    label: "Tool Safety",
+    criteria: {
+      systemPrompt:
+        "You are a tool safety classifier. Determine if the given tool call " +
+        "is DESTRUCTIVE OR DANGEROUS. Consider: " +
+        "deleting files, overwriting critical configuration, " +
+        "executing dangerous shell commands (rm -rf, dd, mkfs, chmod -R 777, " +
+        "curl | sh, wget | bash), modifying system/passwd/ssh files, " +
+        "or performing irreversible operations. " +
+        "Answer only 'yes' or 'no'. 'yes' = DANGEROUS, 'no' = SAFE. Do not explain.",
+      userPrompt: "Tool: {{toolName}}\nArgs: {{toolArgs}}\nIs this tool call dangerous?",
+    },
+    options: { maxTokens: 5, timeoutMs: 2000 },
+  } satisfies CriticDef,
+
+  /**
+   * Safety fallback: always allow on degradation.
+   * Tool safety must NEVER false-positive block (the agent must keep working).
+   * A false negative (missing a dangerous call) is the lesser evil.
+   */
+  toolSafetyFallback(): string {
+    return "no";
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Hint Relevance — prompt-builder hint filtering
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Determine if a behavioral hint is relevant to the current task.
+   * Replaces inline HINT_RELEVANCE_CRITERIA in prompt-builder.
+   */
+  hintRelevance: {
+    label: "Hint Relevance",
+    criteria: {
+      systemPrompt:
+        "You are a relevance classifier. Determine if the given behavioral hint " +
+        "is relevant to the user's current task. A hint is relevant ONLY if it " +
+        "describes a strategy or workflow that could plausibly apply to the " +
+        "current task based on shared topic, tool, or methodology. " +
+        "Generic hints like 'Fix type error: Reproduce → Locate → Apply' are NOT " +
+        "relevant even if vaguely applicable. " +
+        "Answer only 'yes' or 'no'. Do not explain.",
+      userPrompt:
+        "Current task: {{currentTask}}\n" +
+        "Hint: {{hint}}\n" +
+        "Is this hint relevant to the current task?",
+    },
+    options: { maxTokens: 5, timeoutMs: 3000 },
+  } satisfies CriticDef,
+
+  /** Heuristic fallback: reject very short hints and obvious generic templates. */
+  hintRelevanceFallback(hint: string, _currentTask: string): string {
+    if (hint.length < 30) return "no";
+    if (/Fix \w+ error:/.test(hint)) return "no";
+    if (/Reproduce.*Locate.*Apply/i.test(hint)) return "no";
+    return "yes";
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Conflict Resolution — conflict-qa response classification
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Classify whether an agent's response resolves a knowledge conflict.
+   * Replaces inline RESOLUTION_CRITERIA in lib/store/conflict-qa.ts.
+   * Returns one of: 'resolved_for', 'resolved_against', 'none'.
+   */
+  conflictResolution: {
+    label: "Conflict Resolution",
+    criteria: {
+      systemPrompt:
+        "You are a resolution classifier for an AI agent's knowledge conflict system. " +
+        "Determine if the given text contains language that RESOLVES a knowledge conflict " +
+        "(deciding which evidence to trust). " +
+        "Answer with exactly one word: 'resolved_for', 'resolved_against', or 'none'. " +
+        "'resolved_for' = text selects and favors one side of a conflict. " +
+        "'resolved_against' = text explicitly rejects or disproves a claim. " +
+        "'none' = text does not resolve any conflict. Do not explain.",
+      userPrompt: "Does this message resolve a knowledge conflict? {{text}}",
+    },
+    options: { maxTokens: 5, timeoutMs: 5000 },
+  } satisfies CriticDef,
+
+  /**
+   * Heuristic fallback for conflict resolution detection.
+   * Preserves the original keyword-based logic as graceful degradation.
+   */
+  conflictResolutionFallback(text: string): string {
+    const lower = text.toLowerCase();
+    const keywords = [
+      "resolved",
+      "conflict resolved",
+      "the correct answer is",
+      "after further investigation",
+      "sources disagree",
+    ];
+    if (!keywords.some((kw) => lower.includes(kw))) return "none";
+    if (
+      lower.includes("based on higher reliability source") ||
+      lower.includes("the evidence supports") ||
+      lower.includes("confirm that")
+    )
+      return "resolved_for";
+    if (lower.includes("evidence does not support") || lower.includes("this claim is incorrect"))
+      return "resolved_against";
+    return "resolved_for";
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
   // Compliance Framing — latent-activator compliance detection
   // ═══════════════════════════════════════════════════════════════════════
 
