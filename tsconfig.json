@@ -16,5 +16,5 @@
     "typeRoots": ["./node_modules/@types", "./src/types"]
   },
   "include": ["src/**/*.ts", "src/types/**/*.d.ts"],
-  "exclude": ["node_modules", "dist", "src/extensions/session-recall", "src/contrib/pi-codebase-tree", "src/contrib/pi-codebase-graph", "src/contrib/pi-browser", "src/contrib/pi-docs", "src/contrib/pi-repl", "src/contrib/pi-vision"]
+  "exclude": ["node_modules", "dist"]
 }

@@ -45,14 +45,14 @@ async function main() {
 
   // Import cognitive-memory (reads current memory.json on init)
   const { getCognitiveMemory } = await import(
-    join(process.cwd(), "dist/lib/cognitive-memory/index.js")
+    join(process.cwd(), "dist/lib/memory/index.js")
   );
   const cm = getCognitiveMemory();
   await cm.init();
 
   // Before: check current count
   const { loadMemory } = await import(
-    join(process.cwd(), "dist/lib/cognitive-memory/storage.js")
+    join(process.cwd(), "dist/lib/memory/storage.js")
   );
   let before = await loadMemory();
   console.log(`Before import: ${before.memories.length} memories in store`);

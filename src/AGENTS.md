@@ -9,7 +9,7 @@ with a distinct role.
 |---|---|---|
 | `extensions/` | Extension modules (loaded by the manifest) | One subdir per extension, each with `index.ts` exporting a default factory. |
 | `lib/` | Library code (imported by extensions) | Pure utilities, state, types, event infrastructure. NOT loaded as extensions. |
-| `modules/` | Module loader (config + subagent API) | The flat-extension loader. Replaces the old module-group system. |
+| `loader/` | Extension loader and subagent API | The flat-extension loader. Reads `BRAID_MODULES` / `settings.json` / runtime overrides, invokes each factory. |
 | `types/` | Ambient `.d.ts` declarations | Type augmentations for the `ExtensionContext` interface. Listed in `tsconfig.json` `typeRoots`. |
 
 ## The contract between `extensions/` and `lib/`
@@ -42,4 +42,4 @@ A sub-extension follows the same pattern: a subdir with `index.ts`.
 
 - `extensions/AGENTS.md` — not present; each extension subdir has its own AGENTS.md
 - `lib/AGENTS.md` — index of all `lib/` subdirs
-- `../AGENTS.md` (root) — build, test, module system
+- `../AGENTS.md` (root) — build, test, extension loading

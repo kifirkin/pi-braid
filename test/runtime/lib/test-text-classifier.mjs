@@ -22,7 +22,7 @@ console.log("=== text-classifier Regression Tests ===\n");
 // ── Import ────────────────────────────────────────────────────────────────────
 
 const { normalizeLabel, replacePlaceholders } = await import(
-  join(ROOT, "dist", "lib", "text-classifier.js")
+  join(ROOT, "dist", "lib", "ai", "text-classifier.js")
 );
 
 // ─── normalizeLabel() ─────────────────────────────────────────────────────────
@@ -129,7 +129,7 @@ console.log("  ✅ 9/9 replacePlaceholders assertions passed");
 console.log("\n[3] classify() — API surface...");
 
 const { classify } = await import(
-  join(ROOT, "dist", "lib", "text-classifier.js")
+  join(ROOT, "dist", "lib", "ai", "text-classifier.js")
 );
 assert.strictEqual(typeof classify, "function", "classify() is a function");
 

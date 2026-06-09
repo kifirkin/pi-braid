@@ -12,7 +12,6 @@
     "dist/",
     "skills/",
     "docs/",
-    "braid-os/",
     "src/",
     "README.md",
     "LICENSE",
@@ -29,7 +28,7 @@
   "homepage": "https://github.com/kifirkin/pi-braid#readme",
   "pi": {
     "extensions": [
-      "./index.ts"
+      "./src/index.ts"
     ]
   },
   "scripts": {

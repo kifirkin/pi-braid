@@ -1,5 +1,5 @@
 /**
- * Module loader — flat extension loading with runtime toggling.
+ * Extension loader — flat loading with runtime toggling.
  *
  * Config sources (priority: high → low):
  *   1. Runtime subagent API — /modules-toggle, /modules-enable, /modules-disable
@@ -7,9 +7,9 @@
  *   3. Environment variable — BRAID_MODULES (+id to enable, -id to disable)
  *   4. Default — all extensions enabled (except opt-in/disabledByDefault)
  *
- * Unlike the previous module system (ModuleDef groups), this loader works
- * on individual extensions from the flat manifest. The `module` tag on each
- * entry is just a convenience label for the subagent API — no structural role.
+ * The loader works on individual extensions from the flat manifest. The
+ * `module` field on each entry is a convenience label for the subagent API —
+ * it has no structural role in the directory tree.
  *
  * Config references can be:
  *   - An extension ID (e.g. "enforcement", "three-memory-stores")

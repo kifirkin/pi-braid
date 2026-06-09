@@ -62,7 +62,7 @@ function assertMatch(actual, regex, msg = "") {
 // ============================================================================
 
 test("cognitive-memory: loadMemory returns store", async () => {
-  const { loadMemory } = await import("../src/lib/cognitive-memory.js").catch(() => null) ||
+  const { loadMemory } = await import("../src/lib/memory.js").catch(() => null) ||
     // Fallback for direct testing
     (() => {
       // Re-implement minimal version for testing
@@ -198,7 +198,7 @@ test("vision: checkImageSize uses async fs.stat", async () => {
 // ============================================================================
 
 const MODULE_PATHS = [
-  "src/lib/cognitive-memory/storage.ts",
+  "src/lib/memory/storage.ts",
   "src/extensions/core/scratchpad/persistence.ts",
   "src/extensions/enforcement/similarity.ts",
   "src/extensions/error-tracking/index.ts",
