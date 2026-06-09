@@ -19,7 +19,7 @@ import {
   formatMemoryEntry,
   formatMemoryTimestamp,
   getCognitiveMemory,
-} from "../../../lib/cognitive-memory/index.js";
+} from "../../../lib/memory/index.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { addEvidence } from "../../../lib/store/evidence-pool.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";

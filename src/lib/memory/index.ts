@@ -22,7 +22,7 @@ import {
 import { loadMemory, saveMemory } from "./storage.js";
 import { jaccardSimilarity, generateAutoTags, generateId } from "./utils.js";
 
-const _log = createLogger("cognitive-memory");
+const _log = createLogger("semantic-memory");
 
 // ── Re-exports for backward compatibility ─────────────────────────────────────
 

@@ -7,7 +7,11 @@ Shared types and result wrappers used across the codebase.
 | File | Purpose |
 |---|---|
 | `standard-result.ts` | The standard result wrapper for tool execution. All tool `execute` functions should return this shape. |
-| `extension-context.d.ts` | Type augmentation for the ExtensionContext from pi core. |
+| `episode-types.ts` | The `Episode` interface shared by three-memory-stores, heartbeat-scheduler, and sop-suggestion. |
+
+> **Note:** `extension-context.d.ts` lives in `src/types/` (a TypeScript
+> `typeRoot`), not here. That's where ambient declarations are picked up by
+> `tsc` and by the IDE.
 
 ## Local Contracts
 

@@ -9,7 +9,7 @@
  *   ├── agent/
  *   │   ├── braid/              ← ALL braid data
  *   │   │   ├── memory/
- *   │   │   │   ├── semantic.json      (cognitive-memory: semantic + episodic memories)
+ *   │   │   │   ├── semantic.json      (lib/memory: semantic + episodic memories)
  *   │   │   │   ├── episodes.jsonl    (three-memory-stores: retrospective episodes)
  *   │   │   │   └── projects/         (project-scoped memory)
  *   │   │   ├── checkpoints/          (state-checkpoint: extension state snapshots)
@@ -23,7 +23,7 @@
  *   │   │   └── scratchpads/         (scratchpad: task state per project)
  *   │   └── settings.json       (pi-native + braid config)
  *   └── memory/
- *       └── memory.json          (cognitive-memory legacy path — kept for migration compat)
+ *       └── memory.json          (lib/memory legacy path — kept for migration compat)
  *
  * Paths NOT under braid/ (appropriate elsewhere):
  *   - ~/.pi/agent/settings.json       → pi-native config location
@@ -52,10 +52,10 @@ export const HEALTHCHECK_DIR = path.join(BRAID, "healthcheck");
 
 // ── File paths ─────────────────────────────────────────────────────────────
 
-/** Cognitive-memory semantic + episodic store */
+/** lib/memory semantic + episodic store */
 export const SEMANTIC_MEMORY_FILE = path.join(MEMORY_DIR, "semantic.json");
 
-/** Legacy path for cognitive-memory (kept for graceful migration) */
+/** Legacy path for lib/memory (kept for graceful migration) */
 export const LEGACY_MEMORY_FILE = path.join(PI, "memory", "memory.json");
 
 /** Three-memory-stores retrospective episodes */

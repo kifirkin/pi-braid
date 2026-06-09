@@ -8,7 +8,7 @@ extension tree. Each subdirectory has a distinct purpose; this file is the index
 | Subdir | Purpose |
 |---|---|
 | [`ai/`](./ai/AGENTS.md) | LLM utilities — critic registry, model resolution, text classification, structured LLM call wrapper. |
-| [`cognitive-memory/`](./cognitive-memory/AGENTS.md) | Cognitive memory subsystem — the underlying storage and reasoning layer for memory-related extensions. |
+| [`memory/`](./memory/AGENTS.md) | Memory engine — the underlying storage and reasoning layer for memory-related extensions. |
 | [`config/`](./config/AGENTS.md) | Configuration loading and merging. |
 | [`constants/`](./constants/AGENTS.md) | Project-wide constants and enums. |
 | [`core/`](./core/AGENTS.md) | Foundation utilities — logger, event-name constants. Anything that's truly cross-cutting lives here. |

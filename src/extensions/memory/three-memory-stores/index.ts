@@ -9,6 +9,19 @@
  * 1. Retrospective Episodes — case-based reasoning from past tasks (episodes.ts)
  * 2. Adaptive Procedural Heuristics — priority-tagged rules that evolve (heuristics.ts)
  * 3. Tool Reliability Controller — per-tool trustworthiness tracking (tool-reliability.ts)
+ *
+ * Two surfaces:
+ * - **Internal API** (episodes.ts / heuristics.ts / tool-reliability.ts):
+ *   data-layer functions like `addEpisode`, `addPrinciple`, `recordToolCall`.
+ *   Many extensions import these directly (e.g. finalize.ts adds episodes
+ *   on task completion, recaller.ts retrieves them for cross-task context).
+ *   Treat as infrastructure — do not move.
+ * - **Agent-facing tools** (`memory_episodes`, `memory_heuristics`,
+ *   `memory_tool_stats`): the LLM-callable surface that exposes the three
+ *   stores to the agent. The agent also has the higher-level
+ *   `memory_store/recall/list/get` tools from `memory-agent-bridge/` for
+ *   the unified semantic-memory view; these three are the
+ *   store-specific accessors.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -42,7 +55,7 @@ async function asyncExists(p: string): Promise<boolean> {
 }
 import * as path from "node:path";
 import { EPISODES_FILE, LEGACY_MEMORY_FILE, METRICS_FILE } from "../../../lib/config/braid-paths.js";
-import { getCognitiveMemory } from "../../../lib/cognitive-memory/index.js";
+import { getCognitiveMemory } from "../../../lib/memory/index.js";
 
 // ── Re-export types ─────────────────────────────────────────────────────────
 export type { Episode, HeuristicRule, ToolStat, MemoryStoresState } from "./types.js";
@@ -564,7 +577,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
         whisperRecall(state, ctx, `Past solution might apply:`, relevant);
       }
 
-      // Cross-search cognitive-memory for relevant semantic insights
+      // Cross-search semantic memory for relevant insights
       // Uses a separate cooldown so it doesn't interfere with episode recall's timer.
       if (now - state.lastSemanticRecallTime < RECALL_COOLDOWN_MS) return;
       state.lastSemanticRecallTime = now;
@@ -608,7 +621,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
           );
         }
       } catch {
-        /* cognitive-memory not available */
+        /* semantic memory unavailable */
       }
     } catch (err) {
       log.error("[three-mem-turn-end] error:", err);
@@ -699,7 +712,7 @@ async function loadPastEpisodes(state: MemoryStoresState): Promise<number> {
     /* non-fatal */
   }
 
-  // Backward compat: load episodic items from cognitive-memory legacy path
+  // Backward compat: load episodic items from the legacy memory file path
   const legacyMemPath = LEGACY_MEMORY_FILE;
   try {
     if (await asyncExists(legacyMemPath)) {

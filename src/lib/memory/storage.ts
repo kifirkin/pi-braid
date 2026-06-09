@@ -8,7 +8,7 @@ import { createLogger } from "../core/logger.js";
 import { MEMORY_DIR, MEMORY_FILE, LEGACY_MEMORY_FILE_PATH } from "./constants.js";
 import type { CognitiveMemoryStore } from "./types.js";
 
-const _log = createLogger("cognitive-memory:storage");
+const _log = createLogger("semantic-memory:storage");
 
 async function ensureMemoryDir(): Promise<void> {
   await fs.mkdir(MEMORY_DIR, { recursive: true });

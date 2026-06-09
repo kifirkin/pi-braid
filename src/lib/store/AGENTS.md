@@ -1,8 +1,8 @@
 # src/lib/store/ — Persistent Stores
 
 Persistent stores for ad-hoc claims, evidence, conflicts, and beliefs.
-Different from `lib/cognitive-memory/` (which is the structured
-three-store memory) — these are smaller, domain-specific stores.
+Different from `lib/memory/` (which is the structured three-store memory) —
+these are smaller, domain-specific stores.
 
 ## Files
 
