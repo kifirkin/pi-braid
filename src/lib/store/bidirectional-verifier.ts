@@ -99,16 +99,6 @@ export function extractFileReferences(text: string): string[] {
   return [...new Set(refs)];
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function isLikelyFilePath(s: string): boolean {
-  return (
-    (s.includes("/") || /\.\w+$/.test(s)) &&
-    !/^https?:\/\//.test(s) &&
-    !/^[A-Z][a-z]+$/.test(s) &&
-    s.length > 2
-  );
-}
-
 // ── File touch tracking ────────────────────────────────────────────────────
 
 export function updateProblemContext(ctx: ExtensionContext, text: string): void {

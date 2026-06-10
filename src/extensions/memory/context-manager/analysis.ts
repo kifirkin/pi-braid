@@ -39,10 +39,6 @@ export interface AuditResult {
 // 5-entry list was a data-drift hazard (missing context_archive,
 // context_proposals, context_signal).
 
-// (kept as re-export for any external callers)
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export { isInternal };
-
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function findNearestTag(ctx: any, entryId: string): { label: string; distance: number } {
