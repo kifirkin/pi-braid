@@ -26,6 +26,7 @@ import { createLogger } from "../core/logger.js";
 import { sendTrackedMessage } from "../utils/injection-tracker.js";
 import { eventBus } from "../events/event-bus.js";
 import { getExtensionState } from "../state/extension-state.js";
+import { STOP_WORDS_LEGACY } from "../ai/critic-registry.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Episode } from "../types/episode-types.js";
 
@@ -149,130 +150,12 @@ async function classifyTaskKeywords(text: string, _ctx?: any): Promise<string[]>
 
 /**
  * Extract task keywords from user message text.
- * Strips common stopwords and boilerplate, returns meaningful identifiers.
+ * Uses the centralized STOP_WORDS_LEGACY list (replaces a 100-word
+ * inline list that duplicated most of the centralized set plus a few
+ * conversation openers). Returns meaningful identifiers.
  */
 function extractKeywords(text: string): string[] {
   if (!text || text.length < 5) return [];
-
-  const stopwords = new Set([
-    "the",
-    "a",
-    "an",
-    "this",
-    "that",
-    "these",
-    "those",
-    "is",
-    "are",
-    "was",
-    "were",
-    "be",
-    "been",
-    "being",
-    "have",
-    "has",
-    "had",
-    "do",
-    "does",
-    "did",
-    "will",
-    "would",
-    "could",
-    "should",
-    "may",
-    "might",
-    "shall",
-    "can",
-    "need",
-    "dare",
-    "ought",
-    "used",
-    "and",
-    "or",
-    "but",
-    "if",
-    "while",
-    "when",
-    "where",
-    "what",
-    "which",
-    "who",
-    "whom",
-    "why",
-    "how",
-    "in",
-    "on",
-    "at",
-    "to",
-    "for",
-    "with",
-    "by",
-    "about",
-    "as",
-    "into",
-    "through",
-    "during",
-    "before",
-    "after",
-    "above",
-    "below",
-    "between",
-    "out",
-    "off",
-    "over",
-    "under",
-    "again",
-    "further",
-    "then",
-    "once",
-    "here",
-    "there",
-    "all",
-    "each",
-    "every",
-    "both",
-    "few",
-    "more",
-    "most",
-    "other",
-    "some",
-    "such",
-    "no",
-    "nor",
-    "not",
-    "only",
-    "own",
-    "same",
-    "so",
-    "than",
-    "too",
-    "very",
-    "just",
-    "because",
-    "hello",
-    "hi",
-    "hey",
-    "please",
-    "thanks",
-    "thank",
-    "check",
-    "look",
-    "see",
-    "show",
-    "need",
-    "want",
-    "let",
-    "make",
-    "get",
-    "set",
-    "put",
-    "take",
-    "yes",
-    "ok",
-    "okay",
-    "sure",
-    "right",
-  ]);
 
   // Remove boilerplate phrases
   const clean = text
@@ -287,7 +170,7 @@ function extractKeywords(text: string): string[] {
   const words = clean
     .toLowerCase()
     .split(/\s+/)
-    .filter((w) => w.length > 2 && !stopwords.has(w));
+    .filter((w) => w.length > 2 && !STOP_WORDS_LEGACY.has(w));
 
   // Remove duplicates, preserve order
   const seen = new Set<string>();
