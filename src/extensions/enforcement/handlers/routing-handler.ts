@@ -1,4 +1,5 @@
 import { createLogger } from "../../../lib/core/logger.js";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const log = createLogger("enforcement");
 /**
@@ -8,6 +9,11 @@ const log = createLogger("enforcement");
  * Uses task classification + tool recommendation.
  *
  * Design: Non-blocking routing nudge that suggests alternative/specialized tools.
+ *
+ * Intent detection uses CRITICS.topicClassification (LLM judge) instead of
+ * a hand-tuned keyword map. The keyword map was fragile: e.g. "explore" was
+ * in the exploration list but also implicitly triggered 'debugging' via
+ * "look[ing for]" intent. The LLM handles semantic intent correctly.
  */
 
 export type TaskIntent =
@@ -69,85 +75,57 @@ const INTENT_TOOLS: ToolMapping[] = [
   },
 ];
 
-// Detect intent from recent tool sequence and context
-export function detectIntent(
+// ── Topic → TaskIntent mapping ───────────────────────────────────────────────
+
+/** Map CRITICS.topicClassification labels to routing TaskIntents. */
+const TOPIC_TO_INTENT: Record<string, TaskIntent> = {
+  implementation: "implementation",
+  debugging: "debugging",
+  refactoring: "refactoring",
+  testing: "verification",
+  exploration: "exploration",
+  documentation: "documentation",
+  planning: "planning",
+  verification: "verification",
+  general: "unknown",
+};
+
+/**
+ * Detect the current task intent from recent tools + message via the
+ * LLM topic critic. Replaces the previous hand-tuned keyword map
+ * (~50 keywords across 7 intents) which produced too many false
+ * attributions (e.g. "look[ing for]" was in exploration but
+ * also triggered debugging via "fix" detection elsewhere).
+ *
+ * Falls back to "unknown" on degradation (LLM unavailable, timeout,
+ * or unknown label).
+ */
+export async function detectIntent(
   recentTools: string[],
   message: string,
-): { intent: TaskIntent; confidence: number; reasoning: string } {
-  const toolSet = new Set(recentTools);
-  const msg = message.toLowerCase();
-
-  // Count intent matches
-  const scores: Record<TaskIntent, number> = {
-    exploration: 0,
-    implementation: 0,
-    verification: 0,
-    refactoring: 0,
-    debugging: 0,
-    planning: 0,
-    documentation: 0,
-    unknown: 0,
-  };
-
-  // Tool-based scoring
-  for (const mapping of INTENT_TOOLS) {
-    for (const tool of mapping.primaryTools) {
-      if (toolSet.has(tool)) {
-        scores[mapping.intent] += 2;
-      }
-    }
-    for (const tool of mapping.specializedTools) {
-      if (toolSet.has(tool)) {
-        scores[mapping.intent] += 3; // Specialized tools are strong signals
-      }
-    }
+  ctx: ExtensionContext,
+): Promise<{ intent: TaskIntent; confidence: number; reasoning: string }> {
+  const combined = `Recent tools: ${recentTools.length > 0 ? recentTools.join(", ") : "(none)"}\n\nMessage:\n${message.slice(0, 1500)}`;
+  try {
+    const { classify } = await import("../../../lib/ai/text-classifier.js");
+    const { CRITICS } = await import("../../../lib/ai/critic-registry.js");
+    const result = await classify(
+      ctx,
+      CRITICS.topicClassification.criteria,
+      { text: combined },
+      { maxTokens: 10, timeoutMs: 3000, fallback: () => "general" },
+    );
+    const label = result.label.trim().toLowerCase();
+    const intent = TOPIC_TO_INTENT[label] ?? "unknown";
+    return {
+      intent,
+      confidence: result.confidence,
+      reasoning: `LLM topic classification: ${label}`,
+    };
+  } catch (err) {
+    log.debug(`detectIntent failed: ${err}`);
+    return { intent: "unknown", confidence: 0, reasoning: "LLM unavailable" };
   }
-
-  // Message-based scoring
-  const intentKeywords: Record<TaskIntent, string[]> = {
-    exploration: [
-      "find",
-      "search",
-      "look",
-      "where",
-      "how does",
-      "what is",
-      "understand",
-      "explore",
-    ],
-    implementation: ["write", "create", "add", "implement", "build", "make"],
-    verification: ["test", "verify", "check", "run", "validate", "confirm"],
-    refactoring: ["refactor", "improve", "clean", "restructure", "simplify"],
-    debugging: ["bug", "fix", "error", "crash", "issue", "problem", "wrong", "broken", "debug"],
-    planning: ["plan", "think", "design", "approach", "strategy", "how should"],
-    documentation: ["doc", "comment", "readme", "explain", "describe", "document"],
-    unknown: [],
-  };
-
-  for (const [intent, keywords] of Object.entries(intentKeywords)) {
-    if (intent === "unknown") continue;
-    for (const keyword of keywords) {
-      if (msg.includes(keyword)) {
-        scores[intent as TaskIntent] += 1;
-      }
-    }
-  }
-
-  // Find highest scoring intent
-  let bestIntent: TaskIntent = "unknown";
-  let bestScore = 0;
-  for (const [intent, score] of Object.entries(scores)) {
-    if (score > bestScore) {
-      bestScore = score;
-      bestIntent = intent as TaskIntent;
-    }
-  }
-
-  // Confidence based on score
-  const confidence = Math.min(0.95, bestScore * 0.15 + 0.2);
-  const reasoning = `Based on ${recentTools.length} recent tools and message analysis`;
-
-  return { intent: bestIntent, confidence, reasoning };
 }
 
 /**

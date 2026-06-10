@@ -1,4 +1,5 @@
 import { createLogger } from "../../../lib/core/logger.js";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const log = createLogger("enforcement");
 /**
@@ -23,11 +24,12 @@ export interface AnalysisSignals {
  * Analyze assistant message for complexity, intent, and stability signals.
  * Returns enforcement signals to be stored in enforcementSignals map.
  */
-export function analyzeMessage(
+export async function analyzeMessage(
   textContent: string,
   thinkingContent: string,
   state: EnforcementState,
-): AnalysisSignals {
+  ctx: ExtensionContext,
+): Promise<AnalysisSignals> {
   const signals: AnalysisSignals = {};
 
   if (textContent.length < 100) return signals;
@@ -61,7 +63,7 @@ export function analyzeMessage(
   }
 
   // ── ROUTING-BASED: Intent signals ─────────────────────────────────────
-  const intent = detectIntent(recentTools.slice(-10), fullContent);
+  const intent = await detectIntent(recentTools.slice(-10), fullContent, ctx);
   let routingSuggestion = getRoutingHint(intent.intent, recentTools) ?? "";
 
   if (lastTool && intent.confidence > 0.5) {

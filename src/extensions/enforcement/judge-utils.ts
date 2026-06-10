@@ -68,35 +68,87 @@ export async function callLlm(
 
 /**
  * Extract and clean JSON from LLM output.
- * Handles markdown code blocks, non-JSON prefixes/suffixes.
+ *
+ * Handles three wrappers in order:
+ *   1. Markdown code blocks: ```json ... ```
+ *   2. Leading prose / explanations before the JSON starts
+ *   3. Trailing prose / explanations after the JSON ends
+ *
+ * The trailing-prose trim is the subtle part: we can't just use
+ * `lastIndexOf("}")` because a JSON string value may legitimately
+ * contain a `}` character (e.g. `{"key": "a}b"}`). Instead we walk
+ * the string tracking string context (with backslash-escape handling)
+ * and depth, returning the substring from the opening bracket to the
+ * matching closing bracket.
+ *
+ * Returns null if no balanced JSON object/array is found.
  */
 export function extractJson(raw: string): string | null {
   if (!raw || typeof raw !== "string") return null;
 
-  let jsonStr = raw.trim();
+  let s = raw;
 
-  // Remove markdown code blocks
-  const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (jsonMatch?.[1]) {
-    jsonStr = jsonMatch[1].trim();
+  // 1. Strip markdown code block wrapper if present.
+  const codeBlock = s.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlock?.[1]) {
+    s = codeBlock[1];
   }
 
-  // Find JSON start
-  const jsonStartMatch = jsonStr.match(/[[{]/);
-  if (jsonStartMatch) {
-    jsonStr = jsonStr.slice(jsonStartMatch.index!);
+  // 2. Find the first opening bracket (object or array).
+  let start = -1;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === "{" || ch === "[") {
+      start = i;
+      break;
+    }
+  }
+  if (start === -1) return null;
+  s = s.slice(start);
+
+  // 3. Walk forward, respecting string contexts, to find the matching
+  //    closing bracket. Handles:
+  //    - String literals with escape sequences ("a\"b")
+  //    - Nested objects and arrays
+  //    - Trailing prose after the JSON
+  const openCh = s[0];
+  const closeCh = openCh === "{" ? "}" : "]";
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let end = -1;
+
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+
+    if (inString) {
+      // Inside a string literal: only the closing unescaped quote ends it.
+      if (escape) {
+        escape = false;
+      } else if (ch === "\\") {
+        escape = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === openCh) {
+      depth++;
+    } else if (ch === closeCh) {
+      depth--;
+      if (depth === 0) {
+        end = i;
+        break;
+      }
+    }
   }
 
-  // Find JSON end
-  const lastBrace = jsonStr.lastIndexOf("}");
-  const lastBracket = jsonStr.lastIndexOf("]");
-  const jsonEnd = Math.max(lastBrace, lastBracket);
-  if (jsonEnd > 0 && jsonEnd < jsonStr.length - 1) {
-    jsonStr = jsonStr.slice(0, jsonEnd + 1);
-  }
-
-  if (!jsonStr || jsonStr.length < 10) return null;
-
+  if (end === -1) return null;
+  const jsonStr = s.slice(0, end + 1).trim();
+  if (jsonStr.length < 2) return null;
   return jsonStr;
 }
 

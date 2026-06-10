@@ -134,7 +134,7 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
 
     if (textContent.length < 100) return;
 
-    const analysisSignals = analyzeMessage(textContent, thinkingContent, getState(ctx));
+    const analysisSignals = await analyzeMessage(textContent, thinkingContent, getState(ctx), ctx);
     getState(ctx).lastUserMessage = "";
     const signalEntries = analysisSignals as Record<
       string,
