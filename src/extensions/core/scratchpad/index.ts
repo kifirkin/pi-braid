@@ -23,7 +23,6 @@ import type {
 // ── Re-export types and persistence for importers ─────────────────────────
 export * from "./types.js";
 export * from "./persistence.js";
-import { taskExecute, taskParams } from "./task.js";
 
 import type {
   TaskScratchpad,
@@ -643,24 +642,12 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
     label: "Scratchpad",
     promptSnippet: "Structured session memory for goal, plan, and decisions",
     description:
-      "Track goals, plans, notes, and learnings throughout multi-step tasks using structured session memory. " +
-      "Common actions: set_goal, add_plan, add_note, add_decision, add_learning, read. " +
+      "Track goals, plans, TODOs, notes, decisions, and learnings throughout multi-step tasks using structured session memory. " +
+      "Common actions: set_goal, add_plan, mark_done, add_note, add_decision, add_learning, read. " +
       "For add_learning, prefer explicit 'category' + 'content' fields over pipe-delimited text. " +
-      "For task management, use the 'task' tool.",
+      "Plan items (added via add_plan, completed via mark_done) serve as the task list. " +
+      "For richer task state (priority, dependencies, tags, fail/next/clear), add plan items and use read to view them.",
     parameters: scratchpadParams,
     execute: scratchpadExecute,
-  } as unknown as ToolDefinition<any, any, any>);
-
-  // Register dedicated Task tool (extracted from scratchpad monolith)
-  pi.registerTool({
-    name: "task",
-    label: "Task",
-    promptSnippet: "Manage tasks: add, list, complete, fail, next, remove, stats, clear",
-    description:
-      "Manage tasks across sessions. Use action=add to create a task, action=list to see all tasks, " +
-      "action=complete/fail to update status, action=next to find the next pending task, " +
-      "action=remove to delete, action=stats for summary, action=clear to remove all.",
-    parameters: taskParams,
-    execute: taskExecute,
   } as unknown as ToolDefinition<any, any, any>);
 }

@@ -355,9 +355,9 @@ async function main() {
 	// ══════════════════════════════════════════════════════════════════════════
 	console.log("\n── Documentation (extracted to pi-braid-docs) ──");
 
-	test("docs contains improvement-map", () => {
+	test("docs contains tool-inventory-audit", () => {
 		if (!existsSync(join(ROOT, "docs"))) return; // May be absent in CI
-		assert.ok(existsSync(join(ROOT, "docs", "improvement-map.md")), "improvement-map.md should exist");
+		assert.ok(existsSync(join(ROOT, "docs", "TOOL-INVENTORY-AUDIT.md")), "TOOL-INVENTORY-AUDIT.md should exist");
 	});
 
 	// ══════════════════════════════════════════════════════════════════════════

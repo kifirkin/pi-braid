@@ -81,23 +81,9 @@ export interface Decision {
   turn: number;
 }
 
-/** Task item for persistent task store */
-export interface TaskItem {
-  id: string;
-  text: string;
-  priority: number;
-  dependencies: string[];
-  status: "pending" | "in_progress" | "completed" | "failed";
-  created_at: number;
-  updated_at: number;
-  tags: string[];
-}
-
-/** Task store — persistent task management */
-export interface TaskStore {
-  tasks: TaskItem[];
-  updatedAt: number;
-}
+// TaskItem and TaskStore were used by the now-removed 'task' tool (task.ts).
+// The scratchpad's PlanStep[] (with add_plan / mark_done actions) covers
+// the same use case without a separate type tree.
 
 /** Main scratchpad type */
 export interface TaskScratchpad {
