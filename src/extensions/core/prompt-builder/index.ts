@@ -85,11 +85,7 @@ const BUDGET_AWARENESS = `Define success criteria before execution. Verify again
 const COMPACTION_SURVIVAL = `Keep your scratchpad (goal, plan, decisions, key learnings) and task list detailed enough that a future you could pick up your work cold. That future you is you, after the conversation compresses. Include file paths and reasoning so each entry is self-contained.`;
 
 // Living documentation: agent-maintained doc hierarchy (inspired by DOX — agent0ai/dox)
-// Before editing, walk the docs tree from root to target, reading every AGENTS.md
-// along the path. After meaningful changes, update the nearest owning AGENTS.md
-// (purpose, scope, contracts, workflows). Create child AGENTS.md files for
-// subdirectories with distinct ownership, and keep the tree synchronized.
-const LIVING_DOCS = `Project guidelines (AGENTS.md files) are living contracts you maintain. Before editing a file, read every AGENTS.md along the path from root to target. After making a meaningful change, update the nearest owning AGENTS.md — scope, ownership, contracts, and workflows drift otherwise. Create child AGENTS.md files for subdirectories with distinct purpose or rules, and keep the doc tree synchronized with the project structure. Docs are agent-maintained, not human-maintained — you can create and update them. Stick to the default shape: Purpose, Ownership, Local Contracts, Work Guidance, Verification.`;
+const LIVING_DOCS = `Project guidelines (AGENTS.md) are living contracts you maintain. Keep them synchronized with the project structure.`;
 
 // ── Interaction Style (single declarative sentence) ───────────────────────
 const INTERACTION_STYLE = `You provide concise, production-quality solutions. You focus on correctness over verbosity.`;
@@ -478,6 +474,7 @@ const SKILL_TRIGGERS: Record<string, string[]> = {
   "vcs-tools": ["git", "pijul", "version control", "commit", "checkpoint"],
   "visual-creator": ["visual", "UI", "game asset", "sprite", "illustration"],
   "visual-validator": ["visual audit", "sprite sheet", "design review"],
+  "dox": ["AGENTS.md", "project guidelines", "living doc", "project structure", "doc hierarchy"],
 };
 
 /** Skills that should be co-loaded when a related skill is relevant. */
@@ -488,6 +485,7 @@ const SKILL_RELATIONS: Record<string, string[]> = {
   "subagent": ["agent-testing", "process-control", "pi-reference"],
   "tone-quality": ["pi-reference"],
   "visual-creator": ["visual-validator", "design-system"],
+  "dox": ["documentation"],
 };
 
 /** Score how relevant each skill is given the current cwd and project context. */
