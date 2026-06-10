@@ -288,7 +288,7 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
   // ── Tools ────────────────────────────────────────────────────────────────
 
   pi.registerTool({
-    name: "check_topic_drift",
+    name: "topic_drift",
     label: "Topic Drift",
     promptSnippet: "Check output for topic drift or reset anchors",
     description:
