@@ -1,4 +1,5 @@
 import { createLogger } from "../../../lib/core/logger.js";
+import { isInternal } from "./handlers/shared.js";
 
 const log = createLogger("context-manager");
 /**
@@ -33,17 +34,14 @@ export interface AuditResult {
 
 // ── Internal Tools ───────────────────────────────────────────────────────────
 
-const INTERNAL_TOOLS = [
-  "context_tag",
-  "context_log",
-  "context_checkout",
-  "context_prune",
-  "context_audit",
-];
+// isInternal is imported from ./handlers/shared.js — the canonical
+// 8-entry list used by context-navigate.ts. The local duplicate
+// 5-entry list was a data-drift hazard (missing context_archive,
+// context_proposals, context_signal).
 
-export function isInternal(name: string): boolean {
-  return INTERNAL_TOOLS.includes(name);
-}
+// (kept as re-export for any external callers)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export { isInternal };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
