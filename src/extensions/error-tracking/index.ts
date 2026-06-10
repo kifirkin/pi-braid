@@ -11,11 +11,11 @@ const log = createLogger("error-capture");
  *
  * Logs to: ~/.pi/agent/errors/error-log.jsonl
  *
- * Tools provided:
- * - error_list: List recent errors with counts
- * - error_get: Get detailed error by ID
- * - error_clear: Clear an error after handling
- * - error_stats: Get error statistics by type/source
+ * Tools provided (consolidated to one tool with 4 actions):
+ * - error action=list:   List recent errors with counts
+ * - error action=get:    Get detailed error by ID
+ * - error action=clear:  Mark an error as handled
+ * - error action=stats:  Get error statistics by type/source
  */
 
 import * as fs from "node:fs/promises";
@@ -97,23 +97,30 @@ async function captureError(
 
 // Schema
 
-const errorListSchema = Type.Object({
-  limit: Type.Optional(Type.Number({ default: 10, description: "Max errors to return" })),
-  source: Type.Optional(Type.String({ description: "Filter by source (extension or tool name)" })),
-  unhandledOnly: Type.Optional(
-    Type.Boolean({ default: false, description: "Only show unhandled errors" }),
+// Consolidated into one schema with action discriminator.
+// action=list:   list recent errors (optional limit/source/unhandledOnly)
+// action=get:    retrieve one error by id
+// action=clear:  mark error as handled (requires id)
+// action=stats:  aggregate stats (no params)
+const errorSchema = Type.Object({
+  action: Type.Union(
+    [
+      Type.Literal("list"),
+      Type.Literal("get"),
+      Type.Literal("clear"),
+      Type.Literal("stats"),
+    ],
+    { description: "Action: list | get | clear | stats" },
   ),
+  // list-only
+  limit: Type.Optional(Type.Number({ default: 10, description: "Max errors to return (list)" })),
+  source: Type.Optional(Type.String({ description: "Filter by source (list)" })),
+  unhandledOnly: Type.Optional(
+    Type.Boolean({ default: false, description: "Only show unhandled errors (list)" }),
+  ),
+  // get / clear
+  id: Type.Optional(Type.String({ description: "Error ID (get/clear)" })),
 });
-
-const errorGetSchema = Type.Object({
-  id: Type.String({ description: "Error ID to retrieve" }),
-});
-
-const errorClearSchema = Type.Object({
-  id: Type.String({ description: "Error ID to mark as handled" }),
-});
-
-const errorStatsSchema = Type.Object({});
 
 // Extension
 
@@ -146,161 +153,144 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
     }
   });
 
-  // Error list tool
-  const errorListTool = {
-    name: "error_list",
+  // Consolidated error tool with 4 actions (list/get/clear/stats)
+  const errorTool = {
+    name: "error",
     description:
-      "List recent errors captured by the system before inspecting individual errors or clearing handled ones by source and type.",
-    label: "Error List",
-    parameters: errorListSchema,
+      "Inspect, get details, clear, and aggregate captured extension errors. " +
+      "Use action=list to see recent errors, action=get id=<id> for details, " +
+      "action=clear id=<id> to mark as handled, action=stats for aggregation.",
+    label: "Error",
+    parameters: errorSchema,
     execute: async (_toolCallId: string, params: any) => {
-      const entries = await loadErrors();
-      const limit = params.limit ?? 10;
-      const source = params.source;
-      const unhandledOnly = params.unhandledOnly ?? false;
+      switch (params.action) {
+        case "list": {
+          const entries = await loadErrors();
+          const limit = params.limit ?? 10;
+          const source = params.source;
+          const unhandledOnly = params.unhandledOnly ?? false;
 
-      let filtered = entries;
-      if (source) {
-        filtered = filtered.filter((e) => e.source.includes(source));
+          let filtered = entries;
+          if (source) filtered = filtered.filter((e) => e.source.includes(source));
+          if (unhandledOnly) filtered = filtered.filter((e) => !e.handled);
+
+          const recent = filtered.slice(-limit).reverse();
+
+          if (recent.length === 0) {
+            return {
+              content: [{ type: "text" as const, text: "No errors captured." }],
+              details: { count: 0, total: 0 },
+            };
+          }
+
+          const lines = recent.map((e) => {
+            const age = Math.round((Date.now() - e.timestamp) / 60000);
+            const status = e.handled ? "[handled]" : "[NEW]";
+            return `${status} ${e.id} [${e.source}] ${age}m ago: ${e.message.slice(0, 100)}`;
+          });
+
+          return {
+            content: [{ type: "text" as const, text: lines.join("\n") }],
+            details: { count: recent.length, total: filtered.length },
+          };
+        }
+        case "get": {
+          if (!params.id) {
+            return {
+              content: [{ type: "text" as const, text: "action=get requires id parameter" }],
+              details: { error: "missing_id" },
+            };
+          }
+          const entries = await loadErrors();
+          const entry = entries.find((e) => e.id === params.id);
+
+          if (!entry) {
+            return {
+              content: [{ type: "text" as const, text: `Error ${params.id} not found.` }],
+              details: { found: false },
+            };
+          }
+
+          const age = Math.round((Date.now() - entry.timestamp) / 60000);
+          const text = [
+            `Error: ${entry.id}`,
+            `Source: ${entry.source}`,
+            `Time: ${age}m ago`,
+            `Status: ${entry.handled ? "handled" : "UNHANDLED"}`,
+            `\nMessage: ${entry.message}`,
+            entry.stack ? `\nStack:\n${entry.stack}` : "",
+            entry.context ? `\nContext: ${JSON.stringify(entry.context)}` : "",
+          ].join("\n");
+
+          return {
+            content: [{ type: "text" as const, text }],
+            details: { found: true, ...entry },
+          };
+        }
+        case "clear": {
+          if (!params.id) {
+            return {
+              content: [{ type: "text" as const, text: "action=clear requires id parameter" }],
+              details: { error: "missing_id" },
+            };
+          }
+          const entries = await loadErrors();
+          const idx = entries.findIndex((e) => e.id === params.id);
+
+          if (idx === -1) {
+            return {
+              content: [{ type: "text" as const, text: `Error ${params.id} not found.` }],
+              details: { found: false },
+            };
+          }
+
+          entries[idx].handled = true;
+          await fs.writeFile(ERROR_FILE, entries.map((e) => JSON.stringify(e)).join("\n") + "\n");
+
+          return {
+            content: [{ type: "text" as const, text: `Error ${params.id} marked as handled.` }],
+            details: { found: true, id: params.id },
+          };
+        }
+        case "stats": {
+          const entries = await loadErrors();
+          const bySource: Record<string, number> = {};
+          const byType: Record<string, number> = {};
+
+          let unhandled = 0;
+          for (const e of entries) {
+            bySource[e.source] = (bySource[e.source] || 0) + 1;
+            const type = e.message.split(" ")[0] || "unknown";
+            byType[type] = (byType[type] || 0) + 1;
+            if (!e.handled) unhandled++;
+          }
+
+          const topSources = Object.entries(bySource)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5)
+            .map(([s, c]) => `${s}: ${c}`)
+            .join("\n");
+
+          const text = [
+            `Total errors: ${entries.length}`,
+            `Unhandled: ${unhandled}`,
+            `\nTop sources:`,
+            topSources || "none",
+          ].join("\n");
+
+          return {
+            content: [{ type: "text" as const, text }],
+            details: { bySource, byType, unhandled, total: entries.length },
+          };
+        }
+        default:
+          return {
+            content: [{ type: "text" as const, text: `Unknown action: ${params.action}. Use: list, get, clear, stats.` }],
+            details: { error: "unknown_action" },
+          };
       }
-      if (unhandledOnly) {
-        filtered = filtered.filter((e) => !e.handled);
-      }
-
-      const recent = filtered.slice(-limit).reverse();
-
-      if (recent.length === 0) {
-        return {
-          content: [{ type: "text" as const, text: "No errors captured." }],
-          details: { count: 0, total: 0 },
-        };
-      }
-
-      const lines = recent.map((e) => {
-        const age = Math.round((Date.now() - e.timestamp) / 60000);
-        const status = e.handled ? "[handled]" : "[NEW]";
-        return `${status} ${e.id} [${e.source}] ${age}m ago: ${e.message.slice(0, 100)}`;
-      });
-
-      return {
-        content: [{ type: "text" as const, text: lines.join("\n") }],
-        details: { count: recent.length, total: filtered.length },
-      };
     },
   };
 
-  pi.registerTool(errorListTool);
-
-  // Error get tool
-  const errorGetTool = {
-    name: "error_get",
-    label: "Error Get",
-    promptSnippet: "Get detailed error information by ID",
-    description:
-      "Get detailed error information by ID after listing errors to inspect specific issues.",
-    parameters: errorGetSchema,
-    execute: async (_toolCallId: string, params: any) => {
-      const entries = await loadErrors();
-      const entry = entries.find((e) => e.id === params.id);
-
-      if (!entry) {
-        return {
-          content: [{ type: "text" as const, text: `Error ${params.id} not found.` }],
-          details: { found: false },
-        };
-      }
-
-      const age = Math.round((Date.now() - entry.timestamp) / 60000);
-      const text = [
-        `Error: ${entry.id}`,
-        `Source: ${entry.source}`,
-        `Time: ${age}m ago`,
-        `Status: ${entry.handled ? "handled" : "UNHANDLED"}`,
-        `\nMessage: ${entry.message}`,
-        entry.stack ? `\nStack:\n${entry.stack}` : "",
-        entry.context ? `\nContext: ${JSON.stringify(entry.context)}` : "",
-      ].join("\n");
-
-      return {
-        content: [{ type: "text" as const, text }],
-        details: { found: true, ...entry },
-      };
-    },
-  };
-
-  pi.registerTool(errorGetTool);
-
-  // Error clear tool
-  const errorClearTool = {
-    name: "error_clear",
-    label: "Error Clear",
-    promptSnippet: "Mark an error as handled",
-    description:
-      "Mark an error as handled after inspecting or resolving it to clear it from the active error list.",
-    parameters: errorClearSchema,
-    execute: async (_toolCallId: string, params: any) => {
-      const entries = await loadErrors();
-      const idx = entries.findIndex((e) => e.id === params.id);
-
-      if (idx === -1) {
-        return {
-          content: [{ type: "text" as const, text: `Error ${params.id} not found.` }],
-          details: { found: false },
-        };
-      }
-
-      entries[idx].handled = true;
-      await fs.writeFile(ERROR_FILE, entries.map((e) => JSON.stringify(e)).join("\n") + "\n");
-
-      return {
-        content: [{ type: "text" as const, text: `Error ${params.id} marked as handled.` }],
-        details: { found: true, id: params.id },
-      };
-    },
-  };
-
-  pi.registerTool(errorClearTool);
-
-  // Error stats tool
-  const errorStatsTool = {
-    name: "error_stats",
-    label: "Error Stats",
-    promptSnippet: "Get error statistics by source and type",
-    description:
-      "Get error statistics grouped by source and type to identify patterns and recurring issues.",
-    parameters: errorStatsSchema,
-    execute: async () => {
-      const entries = await loadErrors();
-      const bySource: Record<string, number> = {};
-      const byType: Record<string, number> = {};
-
-      let unhandled = 0;
-      for (const e of entries) {
-        bySource[e.source] = (bySource[e.source] || 0) + 1;
-        const type = e.message.split(" ")[0] || "unknown";
-        byType[type] = (byType[type] || 0) + 1;
-        if (!e.handled) unhandled++;
-      }
-
-      const topSources = Object.entries(bySource)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([s, c]) => `${s}: ${c}`)
-        .join("\n");
-
-      const text = [
-        `Total errors: ${entries.length}`,
-        `Unhandled: ${unhandled}`,
-        `\nTop sources:`,
-        topSources || "none",
-      ].join("\n");
-
-      return {
-        content: [{ type: "text" as const, text }],
-        details: { bySource, byType, unhandled, total: entries.length },
-      };
-    },
-  };
-
-  pi.registerTool(errorStatsTool);
+  pi.registerTool(errorTool as unknown as Parameters<typeof pi.registerTool>[0]);
 }

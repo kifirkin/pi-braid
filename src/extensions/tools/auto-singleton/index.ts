@@ -218,122 +218,123 @@ export default function autoSingletonExtension(pi: ExtensionAPI): void {
   // Keep piRef current across potential re-registrations
   manager.registerPi(pi);
 
-  // ── auto_singleton_set ──────────────────────────────────────────────────
+  // ── auto_singleton tool (consolidated: set/cancel/status) ────────────
   pi.registerTool({
-    name: "auto_singleton_set",
-    label: "Auto Singleton Set",
+    name: "auto_singleton",
+    label: "Auto Singleton",
     promptSnippet: "Arm inactivity watchdog for autonomous session recovery",
     description:
-      "Arm a one-shot inactivity watchdog timer. Every tool_call and turn_end " +
+      "Manage the inactivity watchdog timer. Every tool_call and turn_end " +
       "renews the deadline. If no activity occurs for `timeout_seconds`, the watchdog " +
       "fires — delivering a steer to wake the agent. Only one watchdog can be active " +
-      "at a time (calling this replaces any existing one). After firing, the watchdog " +
-      "auto-cancels; re-arm explicitly for continued protection. " +
+      "at a time (calling set again replaces any existing one). " +
+      "Use action=set with timeout_seconds to arm. " +
+      "Use action=cancel to disarm. " +
+      "Use action=status to check. " +
       "Use for: autonomous sessions, long-running builds, recovery from transient hangs.",
     parameters: Type.Object({
-      timeout_seconds: Type.Number({
-        minimum: MIN_TIMEOUT_SECONDS,
-        maximum: MAX_TIMEOUT_SECONDS,
-        default: DEFAULT_TIMEOUT_SECONDS,
-        description: "Inactivity timeout (30-3600s, default 300)",
-      }),
+      action: Type.Union(
+        [Type.Literal("set"), Type.Literal("cancel"), Type.Literal("status")],
+        { description: "Action: set | cancel | status" },
+      ),
+      timeout_seconds: Type.Optional(
+        Type.Number({
+          minimum: MIN_TIMEOUT_SECONDS,
+          maximum: MAX_TIMEOUT_SECONDS,
+          default: DEFAULT_TIMEOUT_SECONDS,
+          description: "Inactivity timeout (30-3600s, default 300) (set)",
+        }),
+      ),
       message: Type.Optional(
         Type.String({
-          description: "Custom message delivered on fire (default: generic wake-up)",
+          description: "Custom message delivered on fire (set)",
         }),
       ),
     }),
     execute: async (_id: string, params: any): Promise<any> => {
-      const { timeout_seconds, message } = params ?? {};
-      manager.set(pi, timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS, message);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text:
-              `Auto-singleton armed for ${timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS}s inactivity. ` +
-              `Will fire at ${new Date(Date.now() + (timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000).toLocaleTimeString()} ` +
-              `if no activity detected. Use auto_singleton_cancel() to disarm.`,
-          },
-        ],
-        details: {
-          active: true,
-          timeout_seconds: timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS,
-          deadline: new Date(
-            Date.now() + (timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000,
-          ).toISOString(),
-        },
-      };
-    },
-  });
+      switch (params?.action) {
+        case "set": {
+          const { timeout_seconds, message } = params;
+          const t = timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS;
+          manager.set(pi, t, message);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text:
+                  `Auto-singleton armed for ${t}s inactivity. ` +
+                  `Will fire at ${new Date(Date.now() + t * 1000).toLocaleTimeString()} ` +
+                  `if no activity detected. Use auto_singleton action=cancel to disarm.`,
+              },
+            ],
+            details: {
+              active: true,
+              timeout_seconds: t,
+              deadline: new Date(Date.now() + t * 1000).toISOString(),
+            },
+          };
+        }
+        case "cancel": {
+          const wasActive = manager.status().active;
+          manager.cancel();
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: wasActive
+                  ? "Auto-singleton watchdog disarmed."
+                  : "No auto-singleton watchdog was active.",
+              },
+            ],
+            details: { cancelled: wasActive, active: false },
+          };
+        }
+        case "status": {
+          const s = manager.status();
+          if (!s.active) {
+            const fireNote = s.fired
+              ? " Watchdog has fired (re-arm with auto_singleton action=set to continue)."
+              : "";
+            return {
+              content: [
+                { type: "text" as const, text: `No active auto-singleton watchdog.${fireNote}` },
+              ],
+              details: { active: false, fired: s.fired },
+            };
+          }
+          const remaining = Math.max(0, Math.ceil((s.deadline! - Date.now()) / 1000));
+          const lastActivity =
+            s.lastActivityAgoMs < 1000 ? "just now" : `${Math.round(s.lastActivityAgoMs / 1000)}s ago`;
 
-  // ── auto_singleton_cancel ───────────────────────────────────────────────
-  pi.registerTool({
-    name: "auto_singleton_cancel",
-    label: "Auto Singleton Cancel",
-    promptSnippet: "Disarm the inactivity watchdog",
-    description:
-      "Disarm the auto-singleton inactivity watchdog. Safe to call when no watchdog is active.",
-    parameters: Type.Object({}),
-    execute: async (): Promise<any> => {
-      const wasActive = manager.status().active;
-      manager.cancel();
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: wasActive
-              ? "Auto-singleton watchdog disarmed."
-              : "No auto-singleton watchdog was active.",
-          },
-        ],
-        details: { cancelled: wasActive, active: false },
-      };
-    },
-  });
-
-  // ── auto_singleton_status ─────────────────────────────────────────────────
-  pi.registerTool({
-    name: "auto_singleton_status",
-    label: "Auto Singleton Status",
-    promptSnippet: "Check inactivity watchdog status",
-    description:
-      "Check whether the auto-singleton inactivity watchdog is active, how long until expiry, and whether it has fired.",
-    parameters: Type.Object({}),
-    execute: async (): Promise<any> => {
-      const s = manager.status();
-      if (!s.active) {
-        const fireNote = s.fired
-          ? " Watchdog has fired (re-arm with auto_singleton_set to continue)."
-          : "";
-        return {
-          content: [
-            { type: "text" as const, text: `No active auto-singleton watchdog.${fireNote}` },
-          ],
-          details: { active: false, fired: s.fired },
-        };
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Auto-singleton: active, fires in ${remaining}s if idle. Last activity: ${lastActivity}. Timeout: ${s.timeoutSeconds}s.`,
+              },
+            ],
+            details: {
+              active: true,
+              fired: false,
+              remaining_seconds: remaining,
+              timeout_seconds: s.timeoutSeconds,
+              last_activity_ago_ms: s.lastActivityAgoMs,
+            },
+          };
+        }
+        default:
+          throw new Error(`Unknown auto_singleton action: ${params?.action}. Use: set, cancel, status.`);
       }
-      const remaining = Math.max(0, Math.ceil((s.deadline! - Date.now()) / 1000));
-      const lastActivity =
-        s.lastActivityAgoMs < 1000 ? "just now" : `${Math.round(s.lastActivityAgoMs / 1000)}s ago`;
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Auto-singleton: active, fires in ${remaining}s if idle. Last activity: ${lastActivity}. Timeout: ${s.timeoutSeconds}s.`,
-          },
-        ],
-        details: {
-          active: true,
-          fired: false,
-          remaining_seconds: remaining,
-          timeout_seconds: s.timeoutSeconds,
-          last_activity_ago_ms: s.lastActivityAgoMs,
-        },
-      };
     },
   });
+
+  // Legacy tool shapes below kept for reference only — the consolidated
+  // auto_singleton tool above replaces all three. These would be removed
+  // in the next cleanup pass.
+  void 0;
+  // (Originals were: auto_singleton_set, auto_singleton_cancel,
+  //  auto_singleton_status — now combined into auto_singleton.)
+
 
   // ── Event hooks: renew deadline on agent activity ──────────────────────────
 

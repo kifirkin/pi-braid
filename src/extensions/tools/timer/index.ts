@@ -344,118 +344,99 @@ export default function timerExtension(pi: ExtensionAPI): void {
   let sessionId = "anonymous";
   let sessionIdResolved = false;
 
-  // timer_set
+  // Consolidated timer tool with 3 actions (set/list/cancel)
   pi.registerTool({
-    name: "timer_set",
-    label: "Timer Set",
-    promptSnippet: "Set a non-blocking timer for background processes",
+    name: "timer",
+    label: "Timer",
+    promptSnippet: "Set, list, or cancel non-blocking session-scoped timers",
     description:
-      "Set a non-blocking timer for builds, background processes, and long-running tasks — use when you need a process to run in the background without blocking. Returns immediately without hanging. " +
-      "Use for: builds, background processes, pomodoro cycles, escalation chains. " +
-      "Timers are scoped to the current session — timer_cancel in another session will not affect this one.",
+      "Manage non-blocking timers for the current session. " +
+      "Use action=set with delay_seconds/reason (and optional tag) to schedule. " +
+      "Use action=list to see active timers. " +
+      "Use action=cancel with timer_id to cancel. " +
+      "Timers are scoped to the current session; another session's timer_cancel will not affect this one.",
     parameters: Type.Object({
-      delay_seconds: Type.Number({ minimum: 1, maximum: 86400 }),
-      reason: Type.String({ minLength: 1 }),
-      tag: Type.Optional(Type.String()),
+      action: Type.Union([Type.Literal("set"), Type.Literal("list"), Type.Literal("cancel")], {
+        description: "Action: set | list | cancel",
+      }),
+      // set-only
+      delay_seconds: Type.Optional(
+        Type.Number({ minimum: 1, maximum: 86400, description: "Delay in seconds (set)" }),
+      ),
+      reason: Type.Optional(Type.String({ minLength: 1, description: "Reason text (set)" })),
+      tag: Type.Optional(Type.String({ description: "Optional tag for grouping (set)" })),
+      // cancel-only
+      timer_id: Type.Optional(Type.String({ description: "Timer ID to cancel (cancel)" })),
     }),
     execute: async (_id: string, params: any, _signal: any, _onUpdate: any, ctx: any): Promise<any> => {
       if (!sessionIdResolved) {
         sessionId = getSessionId(ctx);
         sessionIdResolved = true;
       }
-      const { delay_seconds, reason, tag } = params ?? {};
-
-      if (tag && !/^[a-zA-Z0-9_-]+$/.test(tag)) {
-        throw new Error(`Invalid tag "${tag}" — use alphanumeric + dash/underscore`);
+      switch (params?.action) {
+        case "set": {
+          const { delay_seconds, reason, tag } = params;
+          if (tag && !/^[a-zA-Z0-9_-]+$/.test(tag)) {
+            throw new Error(`Invalid tag "${tag}" — use alphanumeric + dash/underscore`);
+          }
+          const delayMs = (delay_seconds ?? 60) * 1000;
+          const id = timerManager.setTimer(sessionId, delayMs, reason ?? "Timer", tag);
+          const firesAt = Date.now() + delayMs;
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Timer set for ${delay_seconds}s (ID: ${id}, session=${sessionId}). Will fire at ${new Date(firesAt).toLocaleTimeString()}. Continue working — reminder will arrive automatically. Use timer action=cancel with this ID to cancel.`,
+              },
+            ],
+            details: {
+              timer_id: id,
+              fires_at: new Date(firesAt).toISOString(),
+              fires_in_seconds: delay_seconds,
+              active_timers: timerManager.getActiveCount(sessionId),
+              session_id: sessionId,
+            },
+          };
+        }
+        case "list": {
+          const timers = timerManager.listTimers(sessionId);
+          const now = Date.now();
+          if (timers.length === 0) {
+            return {
+              content: [{ type: "text" as const, text: "No active timers." }],
+              details: { active_timers: 0, timers: [], session_id: sessionId },
+            };
+          }
+          const formatted = timers.map((t) => ({
+            timer_id: t.id,
+            tag: t.tag ?? "(untagged)",
+            reason: t.reason,
+            fires_in_seconds: Math.max(0, Math.ceil((t.firesAt - now) / 1000)),
+            fires_at: new Date(t.firesAt).toLocaleTimeString(),
+          }));
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `${timers.length} active timer(s). ${formatted.map((t) => `ID:${t.timer_id} [${t.tag}] fires in ${t.fires_in_seconds}s: ${t.reason}`).join("; ")}`,
+              },
+            ],
+            details: { active_timers: timers.length, timers: formatted, session_id: sessionId },
+          };
+        }
+        case "cancel": {
+          const cancelled = timerManager.cancelTimer(sessionId, params.timer_id);
+          if (!cancelled) {
+            throw new Error(`Timer "${params.timer_id}" not found in session ${sessionId} or already fired.`);
+          }
+          return {
+            content: [{ type: "text" as const, text: `Timer "${params.timer_id}" cancelled.` }],
+            details: { cancelled: true, timer_id: params.timer_id, active_timers: timerManager.getActiveCount(sessionId), session_id: sessionId },
+          };
+        }
+        default:
+          throw new Error(`Unknown timer action: ${params?.action}. Use: set, list, cancel.`);
       }
-
-      const delayMs = (delay_seconds ?? 60) * 1000;
-      const id = timerManager.setTimer(sessionId, delayMs, reason ?? "Timer", tag);
-      const firesAt = Date.now() + delayMs;
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Timer set for ${delay_seconds}s (ID: ${id}, session=${sessionId}). Will fire at ${new Date(firesAt).toLocaleTimeString()}. Continue working — reminder will arrive automatically. Use timer_cancel with this ID to cancel.`,
-          },
-        ],
-        details: {
-          timer_id: id,
-          fires_at: new Date(firesAt).toISOString(),
-          fires_in_seconds: delay_seconds,
-          active_timers: timerManager.getActiveCount(sessionId),
-          session_id: sessionId,
-        },
-      };
-    },
-  } as ToolDefinition);
-
-  // timer_list
-  pi.registerTool({
-    name: "timer_list",
-    label: "Timer List",
-    promptSnippet: "List all active timers for this session",
-    description:
-      "List all active timers for the current session — use to check if background processes have completed or need attention. Only shows timers in this session (cross-session isolation).",
-    parameters: Type.Object({}),
-    execute: async (_id: string, _params: any, _signal: any, _onUpdate: any, ctx: any): Promise<any> => {
-      if (!sessionIdResolved) {
-        sessionId = getSessionId(ctx);
-        sessionIdResolved = true;
-      }
-      const timers = timerManager.listTimers(sessionId);
-      const now = Date.now();
-
-      if (timers.length === 0) {
-        return {
-          content: [{ type: "text" as const, text: "No active timers." }],
-          details: { active_timers: 0, timers: [], session_id: sessionId },
-        };
-      }
-
-      const formatted = timers.map((t) => ({
-        timer_id: t.id,
-        tag: t.tag ?? "(untagged)",
-        reason: t.reason,
-        fires_in_seconds: Math.max(0, Math.ceil((t.firesAt - now) / 1000)),
-        fires_at: new Date(t.firesAt).toLocaleTimeString(),
-      }));
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `${timers.length} active timer(s). ${formatted.map((t) => `ID:${t.timer_id} [${t.tag}] fires in ${t.fires_in_seconds}s: ${t.reason}`).join("; ")}`,
-          },
-        ],
-        details: { active_timers: timers.length, timers: formatted, session_id: sessionId },
-      };
-    },
-  } as ToolDefinition);
-
-  // timer_cancel
-  pi.registerTool({
-    name: "timer_cancel",
-    label: "Timer Cancel",
-    promptSnippet: "Cancel an active timer before it fires",
-    description:
-      "Cancel an active timer in the current session. The timer_id is returned by timer_set and shown in timer_list output. Only cancels timers in this session.",
-    parameters: Type.Object({ timer_id: Type.String() }),
-    execute: async (_id: string, params: any, _signal: any, _onUpdate: any, ctx: any): Promise<any> => {
-      if (!sessionIdResolved) {
-        sessionId = getSessionId(ctx);
-        sessionIdResolved = true;
-      }
-      const { timer_id } = params ?? {};
-      const cancelled = timerManager.cancelTimer(sessionId, timer_id);
-      if (!cancelled) {
-        throw new Error(`Timer "${timer_id}" not found in session ${sessionId} or already fired.`);
-      }
-      return {
-        content: [{ type: "text" as const, text: `Timer "${timer_id}" cancelled.` }],
-        details: { cancelled: true, timer_id, active_timers: timerManager.getActiveCount(sessionId), session_id: sessionId },
-      };
     },
   } as ToolDefinition);
 
