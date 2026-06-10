@@ -1,6 +1,6 @@
 {
   "name": "pi-braid",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "description": "Metacognitive extension suite for Pi: memory, enforcement, project management and llm assisted tools, with self-improvement and self-reflection in mind.",
   "type": "module",
   "main": "./dist/index.js",
@@ -11,11 +11,11 @@
   "files": [
     "dist/**/*.js",
     "dist/**/*.d.ts",
-    "skills/",
     "src/",
     "README.md",
     "LICENSE",
     "AGENTS.md",
+    "CONTRIBUTING.md",
     "tsconfig.json"
   ],
   "repository": {

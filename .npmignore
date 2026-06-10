@@ -18,5 +18,9 @@ eslint.config.js
 # node_modules
 node_modules/
 
+# Python (none should exist, but defensive)
+*.py
+__pycache__/
+
 # NOTE: tsconfig.json IS published (in package.json "files") because
 # downstream tsc users need it.

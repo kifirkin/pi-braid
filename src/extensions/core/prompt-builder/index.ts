@@ -50,7 +50,7 @@ import { CONSOLIDATED_HINTS_FILE } from "../../../lib/config/braid-paths.js";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { loadSkills } from "@earendil-works/pi-coding-agent";
-import { SKILLS_DIR } from "../../../lib/config/project-paths.js";
+// SKILLS_DIR import removed — skills moved to pi-braid-skills package.
 import { gatherL1State, formatL1Environment } from "./l1-environment.js";
 import { formatContrastSection } from "./contrast-phrase-library.js";
 import { classify } from "../../../lib/ai/text-classifier.js";
@@ -627,7 +627,7 @@ async function reconstructSkillsSection(
   const result = loadSkills({
     cwd,
     agentDir: getAgentDir(),
-    skillPaths: [SKILLS_DIR],
+    skillPaths: [],
     includeDefaults: true,
   });
   return formatSkillsWithLineCounts(result.skills, cwd, projectContextFileContents);
@@ -648,13 +648,11 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     });
   });
 
-  // ── resources_discover: Register bundled skills with pi's native discovery ──
-  // pi's package manager calls this on all extensions to discover resources (skills, prompts, themes).
-  // We register the bundled skills/ directory so pi can auto-discover them.
+  // ── resources_discover: No bundled skills ──
+  // Skills have been moved to a separate package: pi-braid-skills.
+  // Users can install that package and configure their own skill paths.
   onEvent(pi, RESOURCES_DISCOVER, async (_event: { cwd: string; reason: string }, _ctx: any) => {
-    return {
-      skillPaths: [SKILLS_DIR],
-    };
+    return { skillPaths: [] };
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
