@@ -19,6 +19,7 @@ import { callLlm } from "../../../../lib/ai/llm-call.js";
 import { resolveUtilityModel } from "../../../../lib/ai/model-resolver.js";
 import { getExtensionState } from "../../../../lib/state/extension-state.js";
 import { createLogger } from "../../../../lib/core/logger.js";
+import { extractJson } from "../../../../lib/utils/extract-json.js";
 
 const log = createLogger("metacognition:verify");
 
@@ -230,14 +231,14 @@ Do not invent problems that are not supported by the text.`;
       return { issues: [], suggestions: [], confidence: 0.5 };
     }
 
-    // Extract JSON from response
-    const jsonMatch = llmResult.text.match(/{[\s\S]*?}/);
-    if (!jsonMatch) {
+    // Extract JSON from response (use shared robust extractor)
+    const jsonStr = extractJson(llmResult.text);
+    if (!jsonStr) {
       log.debug("verify: could not parse LLM response as JSON");
       return { issues: [], suggestions: [], confidence: 0.5 };
     }
 
-    const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = JSON.parse(jsonStr);
     return {
       issues: Array.isArray(parsed.issues) ? parsed.issues.filter(Boolean).slice(0, 10) : [],
       suggestions: Array.isArray(parsed.suggestions)

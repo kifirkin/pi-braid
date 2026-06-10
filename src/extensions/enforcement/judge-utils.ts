@@ -7,6 +7,11 @@
  * LLM calls are delegated to the shared callLlm utility (src/lib/llm-call.ts)
  * which provides two-tier retry + rate-limit circuit breaker.
  *
+ * extractJson is re-exported from the shared location at
+ * `../../../lib/utils/extract-json.js` so both the enforcement
+ * pipeline and other consumers (metacognition verify) use the
+ * same robust implementation.
+ *
  * This module retains judge-specific logic:
  * - getJudgeModel() — picks a non-reasoning model when the session model is reasoning
  * - extractJson() — parses structured JSON from LLM output
@@ -82,75 +87,11 @@ export async function callLlm(
  * matching closing bracket.
  *
  * Returns null if no balanced JSON object/array is found.
+ *
+ * Canonical implementation lives in `src/lib/utils/extract-json.ts`;
+ * re-exported here for backward compatibility with existing imports.
  */
-export function extractJson(raw: string): string | null {
-  if (!raw || typeof raw !== "string") return null;
-
-  let s = raw;
-
-  // 1. Strip markdown code block wrapper if present.
-  const codeBlock = s.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (codeBlock?.[1]) {
-    s = codeBlock[1];
-  }
-
-  // 2. Find the first opening bracket (object or array).
-  let start = -1;
-  for (let i = 0; i < s.length; i++) {
-    const ch = s[i];
-    if (ch === "{" || ch === "[") {
-      start = i;
-      break;
-    }
-  }
-  if (start === -1) return null;
-  s = s.slice(start);
-
-  // 3. Walk forward, respecting string contexts, to find the matching
-  //    closing bracket. Handles:
-  //    - String literals with escape sequences ("a\"b")
-  //    - Nested objects and arrays
-  //    - Trailing prose after the JSON
-  const openCh = s[0];
-  const closeCh = openCh === "{" ? "}" : "]";
-  let depth = 0;
-  let inString = false;
-  let escape = false;
-  let end = -1;
-
-  for (let i = 0; i < s.length; i++) {
-    const ch = s[i];
-
-    if (inString) {
-      // Inside a string literal: only the closing unescaped quote ends it.
-      if (escape) {
-        escape = false;
-      } else if (ch === "\\") {
-        escape = true;
-      } else if (ch === '"') {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (ch === '"') {
-      inString = true;
-    } else if (ch === openCh) {
-      depth++;
-    } else if (ch === closeCh) {
-      depth--;
-      if (depth === 0) {
-        end = i;
-        break;
-      }
-    }
-  }
-
-  if (end === -1) return null;
-  const jsonStr = s.slice(0, end + 1).trim();
-  if (jsonStr.length < 2) return null;
-  return jsonStr;
-}
+export { extractJson } from "../../lib/utils/extract-json.js";
 
 /**
  * Clamp a number to a range.
