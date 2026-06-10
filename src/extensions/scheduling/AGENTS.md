@@ -1,0 +1,25 @@
+# src/extensions/scheduling/ — Time-Based Events
+
+Extensions that fire on time-based triggers (recurring reminders, inactivity
+watchdogs). Distinct from `self/` (which is self-management) and `heartbeat/`
+(which runs scheduled background policies).
+
+## Sub-extensions
+
+| Path | Tool | Purpose |
+|---|---|---|
+| `timer/` | `timer` (action=set\|list\|cancel) | Non-blocking Pomodoro-style reminders. Agent schedules, continues working, gets a whisper when timer fires. |
+| `auto-singleton/` | `auto_singleton` (action=set\|cancel\|status) | One-shot watchdog: fires ONCE after N seconds of inactivity, then auto-cancels. |
+
+## Local Contracts
+
+- **All tool names use snake_case.**
+- Both are always-on (not opt-in).
+- Scheduling is per-session but the timer map is process-global; new sessions replace the `pi` reference.
+
+## Distinction from related categories
+
+- `scheduling/` = when the AGENT (or user) wants to be reminded
+- `self/auto-recovery` = when the SYSTEM detects degradation
+- `self/latent-activator` = proactive cognitive mode injection (not time-based)
+- `heartbeat/` = proactive background policies (scheduled, but not "remind me in 5 min")

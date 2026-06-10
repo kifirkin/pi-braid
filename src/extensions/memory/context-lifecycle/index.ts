@@ -205,7 +205,7 @@ async function executeAutoCompact(pi: ExtensionAPI, ctx: ExtensionContext): Prom
   try {
     // 1. Cancel stale resume timers from previous compaction cycles
     try {
-      const timerMod = await import("../../tools/timer/index.js");
+      const timerMod = await import("../../scheduling/timer/index.js");
       // Cancel any stale resume timer from a previous compaction cycle
       // (manual or auto). Without this, an old timer can fire later during
       // an unrelated TURN_END and produce a stray [timer] whisper.

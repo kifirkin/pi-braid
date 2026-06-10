@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = join(import.meta.dirname, "../../../");
-const src = readFileSync(join(ROOT, "src/extensions/tools/latent-activator/index.ts"), "utf-8");
+const src = readFileSync(join(ROOT, "src/extensions/self/latent-activator/index.ts"), "utf-8");
 
 {
 	console.log("=== Latent Activator ===");

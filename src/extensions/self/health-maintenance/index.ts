@@ -11,19 +11,19 @@ import {
   resetMetrics,
   saveMetrics,
   updateConfig,
-} from "../../lib/detection/degradation-detector.js";
-import { createLogger } from "../../lib/core/logger.js";
+} from "../../../lib/detection/degradation-detector.js";
+import { createLogger } from "../../../lib/core/logger.js";
 import {
   getMetacognitiveState,
   getRecommendation,
   initMetacognitiveState,
-} from "../../lib/state/metacognitive-state.js";
-import { getExtensionState } from "../../lib/state/extension-state.js";
+} from "../../../lib/state/metacognitive-state.js";
+import { getExtensionState } from "../../../lib/state/extension-state.js";
 
 import type { BenchmarkResult, HealthMaintenanceResult } from "./types.js";
 import { getAnalyticsMetrics, startMetricsPersistence } from "./helpers.js";
 import { formatHealthMaintenanceOutput } from "./format.js";
-import { SESSION_SHUTDOWN } from "../../lib/core/event-names.js";
+import { SESSION_SHUTDOWN } from "../../../lib/core/event-names.js";
 
 const _log = createLogger("health-maintenance");
 

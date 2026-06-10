@@ -1,5 +1,5 @@
-import { createLogger } from "../../lib/core/logger.js";
-import { eventBus } from "../../lib/events/event-bus.js";
+import { createLogger } from "../../../lib/core/logger.js";
+import { eventBus } from "../../../lib/events/event-bus.js";
 
 const log = createLogger("error-capture");
 /**
@@ -35,8 +35,8 @@ interface ErrorEntry {
   handled: boolean;
 }
 
-import { ERROR_DIR, ERROR_FILE } from "../../lib/config/braid-paths.js";
-import { TURN_END } from "../../lib/core/event-names.js";
+import { ERROR_DIR, ERROR_FILE } from "../../../lib/config/braid-paths.js";
+import { TURN_END } from "../../../lib/core/event-names.js";
 
 const MAX_ERRORS = 100;
 

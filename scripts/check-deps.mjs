@@ -43,8 +43,8 @@ const ALLOWED_BOUNDARY_OVERRIDES = [
   // heartbeat ↔ memory: Heartbeat scheduler coordinates memory health checks
   "ext/heartbeat → ext/memory",
   "ext/memory → ext/heartbeat",
-  // health-maintenance ↔ heartbeat: Health maintenance reports to analytics
-  "ext/health-maintenance → ext/heartbeat",
+  // self/health-maintenance ↔ heartbeat: Health maintenance reports to analytics
+  "ext/self → ext/heartbeat",
   // sycophancy-detector → enforcement: Sycophancy signals enforcement whisper
   "ext/cognitive → ext/enforcement",
   // analytics → reasoning: Analytics surfaces reasoning stability in get_session_metrics

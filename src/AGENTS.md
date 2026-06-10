@@ -30,12 +30,13 @@ The flat tree keeps the layout predictable and makes `find src/extensions/...` r
 
 Some extensions are large enough to have their own sub-structure:
 
-- `extensions/memory/` — 5 sub-extensions (context-lifecycle, context-manager, memory-agent-bridge, session-recall, three-memory-stores)
-- `extensions/heartbeat/` — 2 sub-extensions (heartbeat-scheduler, analytics)
+- `extensions/memory/` — 7 sub-extensions (context-lifecycle, context-manager, memory-agent-bridge, scratchpad, session-recall, three-memory-stores, workspace-snapshot)
 - `extensions/cognitive/` — 6 sub-extensions (metacognition, reasoning, sycophancy-detector, tool-safety, topic-drift, turn-outcome)
-- `extensions/core/` — 3 sub-extensions (polyfill, agent-environment, prompt-builder)
-- `extensions/agent/` — 3 sub-extensions (scratchpad, input-polisher, workspace-snapshot)
-- `extensions/tools/` — 4 sub-extensions (timer, auto-singleton, auto-recovery, latent-activator)
+- `extensions/core/` — 4 sub-extensions (polyfill, agent-environment, prompt-builder, input-polisher)
+- `extensions/self/` — 5 sub-extensions (health-maintenance, error-tracking, watchdog, auto-recovery, latent-activator)
+- `extensions/scheduling/` — 2 sub-extensions (timer, auto-singleton)
+- `extensions/heartbeat/` — 2 sub-extensions (heartbeat-scheduler, analytics)
+- `extensions/enforcement/` — 1 root + 3 private sub-dirs (detection, handlers, substate)
 
 A sub-extension follows the same pattern: a subdir with `index.ts`.
 
@@ -45,17 +46,17 @@ A sub-extension follows the same pattern: a subdir with `index.ts`.
 - `lib/AGENTS.md` — index of all `lib/` subdirs
 - `../AGENTS.md` (root) — build, test, extension loading
 
-## Top-level extension layout
+## Top-level extension layout (agent-loop model)
 
-| Directory | Role | Sub-extensions |
+Each category corresponds to a phase of the agent's processing loop or
+a cross-cutting concern:
+
+| Directory | Loop phase | Sub-extensions |
 |---|---|---|
-| `core/` | Always-on infrastructure (other extensions depend on) | polyfill, agent-environment, prompt-builder |
-| `cognitive/` | Reasoning tools + detectors | metacognition, reasoning, sycophancy-detector, topic-drift, turn-outcome, tool-safety |
-| `agent/` | Agent's working-state tools | scratchpad, input-polisher, workspace-snapshot |
-| `enforcement/` | Heavy event handling, turn pipeline | (single root extension) |
-| `error-tracking/` | Error capture/replay | (single root extension) |
-| `health-maintenance/` | Health checks + self-evolution | (single root extension) |
-| `heartbeat/` | Proactive cognitive scheduling | heartbeat-scheduler, analytics |
-| `memory/` | Three-store memory + context lifecycle | context-lifecycle, context-manager, memory-agent-bridge, session-recall, three-memory-stores |
-| `tools/` | Utility tool providers | timer, auto-singleton, auto-recovery, latent-activator |
-| `watchdog/` | Cross-cutting safety checks | (single root extension) |
+| `core/` | Input/Output (what LLM sees) | polyfill, agent-environment, prompt-builder, input-polisher |
+| `cognitive/` | Thinking (reasoning + detection) | metacognition, reasoning, sycophancy-detector, tool-safety, topic-drift, turn-outcome |
+| `memory/` | Remembering (all persistent state) | three-memory-stores, memory-agent-bridge, session-recall, context-manager, context-lifecycle, scratchpad, workspace-snapshot |
+| `scheduling/` | When to act (time triggers) | timer, auto-singleton |
+| `self/` | Self-management (state, health, modes) | health-maintenance, error-tracking, watchdog, auto-recovery, latent-activator |
+| `heartbeat/` | Background proactive | heartbeat-scheduler, analytics |
+| `enforcement/` | Turn pipeline infrastructure | (1 root + detection/handlers/substate) |

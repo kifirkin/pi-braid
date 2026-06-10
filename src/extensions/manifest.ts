@@ -11,52 +11,46 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 // ── Extension imports ────────────────────────────────────────────────────────
 
-// core (always-on infrastructure: polyfills, environment, prompt assembly)
+// core (input/output shaping: platform, env, prompt, input polish)
 import corePolyfillFn from "./core/polyfill/index.js";
-import corePromptBuilderFn from "./core/prompt-builder/index.js";
 import coreAgentEnvFn from "./core/agent-environment/index.js";
+import corePromptBuilderFn from "./core/prompt-builder/index.js";
+import inputPolisherFn from "./core/input-polisher/index.js";
 
 // cognitive (reasoning tools + detectors: think, verify, topic-drift, ...)
-import coreMetacognitionFn from "./cognitive/metacognition/index.js";
+import metacognitionFn from "./cognitive/metacognition/index.js";
 import reasoningFn from "./cognitive/reasoning/index.js";
 import topicDriftFn from "./cognitive/topic-drift/index.js";
 import sycophancyDetectorFn from "./cognitive/sycophancy-detector/index.js";
 import turnOutcomeFn from "./cognitive/turn-outcome/index.js";
 import toolSafetyFn from "./cognitive/tool-safety/index.js";
 
-// agent (working-state tools: scratchpad, snapshots, input polishing)
-import coreScratchpadFn from "./agent/scratchpad/index.js";
-import inputPolisherFn from "./agent/input-polisher/index.js";
-import coreWorkspaceSnapshotFn from "./agent/workspace-snapshot/index.js";
-
-// enforcement (heavy event handling, split from cognitive-quality)
-import enforcementFn from "./enforcement/index.js";
-
-// memory (three-store memory + context lifecycle + agent-facing bridge)
+// memory (persistent state: three stores, bridge, session recall, working memory, file state)
 import memoryStoresFn from "./memory/three-memory-stores/index.js";
+import memoryAgentBridgeFn from "./memory/memory-agent-bridge/index.js";
 import sessionRecallFn from "./memory/session-recall/index.js";
 import contextManagerFn from "./memory/context-manager/index.js";
 import contextLifecycleFn from "./memory/context-lifecycle/index.js";
-import memoryAgentBridgeFn from "./memory/memory-agent-bridge/index.js";
+import scratchpadFn from "./memory/scratchpad/index.js";
+import workspaceSnapshotFn from "./memory/workspace-snapshot/index.js";
 
-// heartbeat (proactive cognitive scheduling)
+// scheduling (time-based events: reminders, watchdog)
+import timerFn from "./scheduling/timer/index.js";
+import autoSingletonFn from "./scheduling/auto-singleton/index.js";
+
+// self (self-management: health, errors, recovery, behavior, session monitor)
+import healthMaintenanceFn from "./self/health-maintenance/index.js";
+import errorCaptureFn from "./self/error-tracking/index.js";
+import watchdogFn from "./self/watchdog/index.js";
+import autoRecoveryFn from "./self/auto-recovery/index.js";
+import latentActivatorFn from "./self/latent-activator/index.js";
+
+// enforcement (turn pipeline: handlers, detection, substate)
+import enforcementFn from "./enforcement/index.js";
+
+// heartbeat (proactive background services: scheduler, analytics)
 import heartbeatSchedulerFn from "./heartbeat/heartbeat-scheduler/index.js";
 import analyticsFn from "./heartbeat/analytics/index.js";
-
-// tools (utility tools, pure tool-providers)
-import timerFn from "./tools/timer/index.js";
-import latentActivatorFn from "./tools/latent-activator/index.js";
-import autoSingletonFn from "./tools/auto-singleton/index.js";
-import autoRecoveryFn from "./tools/auto-recovery/index.js";
-
-// watchdog (session monitoring, opt-in)
-import watchdogFn from "./watchdog/index.js";
-
-// health-maintenance (degradation detection + checkpointing, opt-in)
-import healthMaintenanceFn from "./health-maintenance/index.js";
-
-// error-tracking (error logging tools, opt-in)
-import errorCaptureFn from "./error-tracking/index.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -89,13 +83,13 @@ export const MANIFEST: ManifestEntry[] = [
   },
   {
     id: "metacognition",
-    fn: coreMetacognitionFn,
+    fn: metacognitionFn,
     alwaysOn: true,
     desc: "think, hypothesize, finalize, verify tools",
   },
   {
     id: "scratchpad",
-    fn: coreScratchpadFn,
+    fn: scratchpadFn,
     alwaysOn: true,
     desc: "scratchpad tool",
   },
@@ -119,7 +113,7 @@ export const MANIFEST: ManifestEntry[] = [
   },
   {
     id: "workspace-snapshot",
-    fn: coreWorkspaceSnapshotFn,
+    fn: workspaceSnapshotFn,
     alwaysOn: true,
     desc: "workspace_snapshot tool — capture/list/diff/restore file snapshots",
   },

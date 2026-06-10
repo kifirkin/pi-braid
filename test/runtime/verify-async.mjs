@@ -199,9 +199,9 @@ test("vision: checkImageSize uses async fs.stat", async () => {
 
 const MODULE_PATHS = [
   "src/lib/memory/storage.ts",
-  "src/extensions/agent/scratchpad/persistence.ts",
+  "src/extensions/memory/scratchpad/persistence.ts",
   "src/extensions/enforcement/similarity.ts",
-  "src/extensions/error-tracking/index.ts",
+  "src/extensions/self/error-tracking/index.ts",
 ];
 
 for (const modPath of MODULE_PATHS) {
