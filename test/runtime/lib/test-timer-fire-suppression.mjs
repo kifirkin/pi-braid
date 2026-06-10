@@ -1,25 +1,35 @@
 /**
- * Regression test: timer fire whisper silently suppressed by per-turn flood cap.
+ * Regression test: timer fire whisper must reach the agent even when the
+ * per-turn whisper flood cap is saturated by other high-priority whispers.
  *
- * ROOT CAUSE (confirmed):
- *   The timer extension calls sendTrackedMessage with source "timer/fire" and
- *   triggerTurn: true. priorityFromSource maps this to "high" priority.
- *   WHISPER_CAPS.high = 3 (per turn, all sources combined).
- *   PER_SOURCE_CAP = 2 (per source per turn).
+ * HISTORY (see commit messages & scratchpad):
+ *   Prior to the fix, "timer_set sometimes doesn't fire" was traced to
+ *   sendTrackedMessage silently dropping the timer whisper when 3+ high-
+ *   priority whispers already fired in the same turn. Source "timer/fire"
+ *   + triggerTurn: true was mapped to "high" priority, where
+ *   WHISPER_CAPS.high = 3 (combined from all sources).
  *
- *   If 3+ high-priority whispers already fired in the same turn, the timer
- *   whisper is silently dropped (log.debug only). The agent never sees the
- *   reminder. The user perceives "timer didn't fire."
+ *   The user scheduled a timer, the agent entered a degraded turn (e.g.,
+ *   2 enforcement/whisper + 1 compaction-retry/exhausted), and the timer
+ *   whisper — the 4th high-priority — was silently dropped. The user
+ *   perceived "timer didn't fire."
  *
- * BACKUP CHANNEL: emitTimerReminder pushes to a queue that the heartbeat-
- * scheduler's timer-reminder module drains on the next turn_end, delivering
- * via ctx.whisper (which is uncapped, but delayed by one turn).
+ * FIX: priorityFromSource in src/lib/utils/injection-tracker.ts now maps
+ * "timer/fire" to "critical" priority. Critical bypasses WHISPER_CAPS.high
+ * entirely; it is only subject to PER_SOURCE_CAP (2 per turn from the same
+ * source). This is a single-line regex change.
  *
- * This test pins down the exact failure mode so it can't regress silently.
+ * WHY "critical" is semantically right: a user-scheduled or compaction-
+ * resume timer is time-critical by definition. If 3 other high-priority
+ * whispers already fired, dropping the timer is exactly the wrong thing
+ * to do — the timer is the one the user is actively waiting on.
  *
- * FIX DIRECTION: promote "timer/fire" to "critical" priority in
- * priorityFromSource — bypasses the high cap while keeping per-source
- * fairness (max 2 timer fires per turn).
+ * Per-source cap of 2 still applies: setting 3+ timers that all expire in
+ * the same turn will still suppress the 3rd. This is acceptable; the user
+ * can stagger their timers.
+ *
+ * This test pins down both the fixed behavior and the residual constraint
+ * so neither can regress silently.
  */
 
 import { describe, it, beforeEach } from "node:test";
@@ -46,7 +56,7 @@ const {
 // ── Re-derive priorityFromSource (must match src/lib/utils/injection-tracker.ts) ──
 
 function priorityFromSource(source, options) {
-  if (/tool-safety|auto-singleton|auto-recovery|turn-outcome\/loop/.test(source)) {
+  if (/tool-safety|auto-singleton|auto-recovery|turn-outcome\/loop|timer\/fire/.test(source)) {
     return "critical";
   }
   if (
@@ -76,45 +86,48 @@ function makeMockPi() {
 describe("Whisper cap invariants", () => {
   beforeEach(() => _resetForTests());
 
-  it("WHISPER_CAPS.high = 3 (the limit before timer fires are suppressed)", () => {
+  it("WHISPER_CAPS.high = 3 (the limit that USED TO suppress timer fires)", () => {
     assert.equal(WHISPER_CAPS.high, 3);
   });
 
-  it("3 high-priority whispers pass; 4th is suppressed", () => {
+  it("3 high-priority whispers pass; 4th is suppressed (cap unchanged)", () => {
     beginTurn();
     assert.equal(tryWhisper("high", "enforcement/whisper"), true);
     assert.equal(tryWhisper("high", "enforcement/whisper"), true);
     assert.equal(tryWhisper("high", "compaction-retry/exhausted"), true);
-    assert.equal(tryWhisper("high", "timer/fire"), false, "timer is the 4th high → suppressed");
+    assert.equal(tryWhisper("high", "context-manager/rotation"), false, "4th high is suppressed");
     assert.equal(_snapshot().suppressed, 1);
-  });
-
-  it("3 timer fires in same turn: 1st and 2nd pass, 3rd is per-source suppressed", () => {
-    beginTurn();
-    assert.equal(tryWhisper("high", "timer/fire"), true);
-    assert.equal(tryWhisper("high", "timer/fire"), true);
-    assert.equal(tryWhisper("high", "timer/fire"), false, "per-source cap (PER_SOURCE_CAP=2)");
   });
 });
 
-// ── Source-priority mapping ────────────────────────────────────────────────
+// ── Source-priority mapping (the fix) ─────────────────────────────────────
 
-describe("Timer source → priority mapping", () => {
-  it("user-set timer (wake default = true) → triggerTurn=true → high", () => {
-    // From src/extensions/scheduling/timer/index.ts:
-    //   setTimer(... wake: boolean = true)  // default true
-    //   fireTimer: const triggerTurn = timer.wake === true
-    //   timer tool: setTimer(sessionId, delay, reason, tag) // wake defaults to true
-    const wake = true;
-    const triggerTurn = wake === true;
-    assert.equal(priorityFromSource("timer/fire", { triggerTurn }), "high");
+describe("Timer source → priority mapping (post-fix)", () => {
+  it("FIX: timer/fire → critical (bypasses high cap, only per-source capped)", () => {
+    assert.equal(priorityFromSource("timer/fire", { triggerTurn: true }), "critical");
   });
 
-  it("compaction-resume timer (wake=true) → high", () => {
-    // From register-session-compact.ts:
-    //   scheduleTimer(sessionId, 3*60*1000, "...", "compaction-resume", true)
-    const triggerTurn = true;
-    assert.equal(priorityFromSource("timer/fire", { triggerTurn }), "high");
+  it("FIX: timer/fire is critical even without triggerTurn", () => {
+    // The wake flag / triggerTurn no longer affects priority for timer.
+    // This is intentional: timer is critical by category, not by trigger.
+    assert.equal(priorityFromSource("timer/fire", { triggerTurn: false }), "critical");
+  });
+
+  it("FIX: timer/fire is critical regardless of wake flag (the wake flag is still passed to sendTrackedMessage options for runtime wake-up behavior)", () => {
+    assert.equal(priorityFromSource("timer/fire", undefined), "critical");
+  });
+
+  it("Other critical sources still map to critical (no regression)", () => {
+    assert.equal(priorityFromSource("tool-safety/critical-stop", {}), "critical");
+    assert.equal(priorityFromSource("auto-singleton/watchdog", {}), "critical");
+    assert.equal(priorityFromSource("auto-recovery/retry", {}), "critical");
+    assert.equal(priorityFromSource("turn-outcome/loop-detected", {}), "critical");
+  });
+
+  it("Other high-priority sources still map to high (no regression)", () => {
+    assert.equal(priorityFromSource("enforcement/whisper", {}), "high");
+    assert.equal(priorityFromSource("compaction-retry/exhausted", {}), "high");
+    assert.equal(priorityFromSource("context-manager/rotation", {}), "high");
   });
 });
 
@@ -140,19 +153,20 @@ describe("Timer fire end-to-end through sendTrackedMessage", () => {
     );
   }
 
-  it("REGRESSION: timer fire in fresh turn reaches the runtime", () => {
+  it("PASS: timer fire in fresh turn reaches the runtime", () => {
     beginTurn();
     const pi = makeMockPi();
     fireTimerWhisper(pi);
     const timerSent = pi.sent.filter((m) => m.params.customType === "timer");
     assert.equal(timerSent.length, 1, "fresh turn → timer reaches runtime");
+    assert.equal(timerSent[0].options.triggerTurn, true, "triggerTurn preserved");
   });
 
-  it("REGRESSION: timer fire after 3 high-priority whispers is silently dropped", () => {
+  it("FIX: timer fire is NOT suppressed by 3 high-priority whispers from other sources", () => {
     beginTurn();
     const pi = makeMockPi();
 
-    // Simulate the realistic degraded-turn scenario
+    // Saturate the high cap: 2 enforcement/whisper + 1 compaction-retry/exhausted
     sendTrackedMessage(
       pi,
       { content: [{ type: "text", text: "v1" }] },
@@ -172,25 +186,66 @@ describe("Timer fire end-to-end through sendTrackedMessage", () => {
       { type: "context", source: "compaction-retry/exhausted" },
     );
 
-    // The 4th high-priority whisper — the timer — must not reach the runtime
+    // 4th high would be suppressed, but timer is now critical — must pass
     fireTimerWhisper(pi);
 
     const timerSent = pi.sent.filter((m) => m.params.customType === "timer");
     assert.equal(
       timerSent.length,
-      0,
-      "timer was silently suppressed — the user sees nothing in this turn",
+      1,
+      "timer whisper reaches runtime even with 3 high-priority whispers saturating the cap",
     );
-    // The 3 high-priority whispers DID reach
-    assert.equal(pi.sent.length, 3);
-
-    // The suppression is recorded in the injection log (for diagnostics)
-    const suppressed = getInjections().find((i) => i.source === "timer/fire");
-    assert.ok(suppressed, "suppression recorded in injection log");
-    assert.equal(suppressed.display, false);
+    assert.equal(pi.sent.length, 4, "all 4 whispers reach");
   });
 
-  it("REGRESSION: 3rd timer fire in same turn is per-source suppressed", () => {
+  it("FIX: compaction-resume timer also bypasses the high cap", () => {
+    // Compaction-resume timer (tag: "compaction-resume", wake: true) uses
+    // source "timer/fire" with triggerTurn: true — same fix path. The
+    // post-compaction auto-resume wake-up is now reliable.
+    beginTurn();
+    const pi = makeMockPi();
+
+    // Saturate the high cap as above
+    sendTrackedMessage(
+      pi,
+      { content: [{ type: "text", text: "v1" }] },
+      { triggerTurn: false },
+      { type: "enforcement", source: "enforcement/whisper" },
+    );
+    sendTrackedMessage(
+      pi,
+      { content: [{ type: "text", text: "v2" }] },
+      { triggerTurn: false },
+      { type: "enforcement", source: "enforcement/whisper" },
+    );
+    sendTrackedMessage(
+      pi,
+      { content: [{ type: "text", text: "exhausted" }] },
+      { triggerTurn: false },
+      { type: "context", source: "compaction-retry/exhausted" },
+    );
+
+    // The post-compaction resume wake-up
+    sendTrackedMessage(
+      pi,
+      {
+        customType: "timer",
+        content: [{ type: "text", text: "[timer] Context compaction done — continue your task" }],
+        display: true,
+        details: { _braidInjected: true },
+      },
+      { deliverAs: "steer", triggerTurn: true },
+      { type: "heartbeat", source: "timer/fire" },
+    );
+
+    const timerSent = pi.sent.filter((m) => m.params.customType === "timer");
+    assert.equal(timerSent.length, 1, "compaction-resume timer reaches runtime");
+  });
+
+  it("RESIDUAL: 3rd timer fire in same turn is per-source suppressed (PER_SOURCE_CAP=2)", () => {
+    // Acceptable: per-source cap of 2 still applies to critical. The user
+    // can stagger their timers to avoid this. This documents the constraint
+    // so it doesn't regress.
     beginTurn();
     const pi = makeMockPi();
     fireTimerWhisper(pi);

@@ -1,23 +1,22 @@
 # Source maps (bloat the package needlessly)
-*.map
+# Note: package.json "files" with negation patterns handles this more reliably
+# See package.json: "dist/**/*.js", "dist/**/*.d.ts" (no .map)
 
-# Development/test
+# Development/test (not for consumers)
 test/
 evaluation/
 scripts/
-skills/.archive/
 
-# Config files
-.eslintrc*
-.prettierrc*
-.prettierignore
-tsconfig.json
+# Internal config files (not for consumers)
 .gitignore
+.githooks/
+.prettierignore
+.prettierrc
+.eslintrc*
+eslint.config.js
 
-# Source (compiled to dist/ so not needed at runtime)
-# But keep src/ for extension loading via pi.json extensions field
-# Actually pi needs src/ to find the extensions entry point
-# so we DO include src/ and dist/ but not all dev tools
-
-# No node_modules
+# node_modules
 node_modules/
+
+# NOTE: tsconfig.json IS published (in package.json "files") because
+# downstream tsc users need it.

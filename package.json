@@ -9,7 +9,8 @@
     ".": "./dist/index.js"
   },
   "files": [
-    "dist/",
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
     "skills/",
     "src/",
     "README.md",
