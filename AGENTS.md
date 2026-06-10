@@ -54,3 +54,25 @@ Event handlers receive `(event, ctx: ExtensionContext)`. Tool execute functions 
 - Tools added by extensions are auto-enabled on first session
 - Prompt-builder overrides the system prompt entirely (no native loading)
 - Decompose large handlers into `handlers/*.ts` sub-modules
+
+## Tool Inventory
+
+42 tools are registered across extensions. The full audit with
+overlap analysis, out-of-scope candidates, and consolidation plan
+is in `docs/TOOL-INVENTORY-AUDIT.md`. Key points:
+
+- **In scope** (braid's value-add): cognitive, metacognition, memory,
+  context management, error tracking, health, behavior, timer,
+  auto-singleton. Keep these.
+- **Out of scope** (debug/research affordances): `prompt_preview`,
+  `time_status`, `set_ab_variant`, `context_signal`. Candidate removal.
+- **CRUD-shaped (consolidation candidates)**: `error_*` (4), `timer_*`
+  (3), `auto_singleton_*` (3), `verify_claim`/`verify_decomposition`,
+  `check_topic_drift`/`reset_topic_anchors`, `session_search`/`session_query`,
+  `memory_list`/`memory_get`. Each can be one tool with actions.
+- **scratchpad vs task**: both track progress but serve different
+  purposes. scratchpad = structured state (goal/plan/decisions/learnings
+  with priority + persistence + recycling). task = simple TODO list
+  with priority + dependencies. Document the distinction in each tool's
+  description; do not merge.
+
