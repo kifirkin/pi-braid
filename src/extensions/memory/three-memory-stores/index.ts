@@ -17,7 +17,7 @@
  *   on task completion, recaller.ts retrieves them for cross-task context).
  *   Treat as infrastructure — do not move.
  * - **Agent-facing tools** (`memory_episodes`, `memory_heuristics`,
- *   `memory_tool_stats`): the LLM-callable surface that exposes the three
+ *the LLM-callable surface that exposes the three
  *   stores to the agent. The agent also has the higher-level
  *   `memory_store/recall/list/get` tools from `memory-agent-bridge/` for
  *   the unified semantic-memory view; these three are the
@@ -282,65 +282,6 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     },
   });
 
-  // ── memory_tool_stats tool ──────────────────────────────────────────
-  pi.registerTool({
-    name: "memory_tool_stats",
-    label: "Memory Tool Stats",
-    promptSnippet: "View tool reliability statistics across sessions",
-    description:
-      "View tool reliability statistics across sessions — use to find which tools work best for each task type.",
-    parameters: Type.Object({
-      action: StringEnum(["list", "reliability", "best"]),
-      tool: Type.Optional(Type.String({ description: "Tool name (reliability action)" })),
-      task_type: Type.Optional(Type.String({ description: "Task type (reliability/best action)" })),
-      candidates: Type.Optional(
-        Type.Array(Type.String(), { description: "Candidate tools (best action)" }),
-      ),
-    }),
-    execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
-      const state = getState(ctx);
-      const tp = params as {
-        action: string;
-        tool?: string;
-        task_type?: string;
-        candidates?: string[];
-      };
-      const { action, tool, task_type, candidates } = tp;
-
-      if (action === "list") {
-        if (state.toolStats.size === 0) return textResult("No tool stats recorded.");
-        const lines: string[] = ["Tool Reliability Stats:\n"];
-        for (const stat of state.toolStats.values()) {
-          const rate =
-            stat.attempts > 0 ? ((stat.successes / stat.attempts) * 100).toFixed(0) : "N/A";
-          lines.push(
-            `${stat.tool} (${stat.taskType}): ${rate}% success (${stat.attempts} attempts)`,
-          );
-        }
-        return textResult(lines.join("\n"));
-      }
-
-      if (action === "reliability") {
-        if (!tool || !task_type) return textResult("Error: tool and task_type are required");
-        const reliability = getToolReliability(state, tool, task_type);
-        return textResult(
-          `${tool} reliability for "${task_type}": ${(reliability * 100).toFixed(0)}%`,
-        );
-      }
-
-      if (action === "best") {
-        if (!task_type || !candidates || candidates.length === 0)
-          return textResult("Error: task_type and candidates are required");
-        const best = selectBestTool(state, task_type, candidates);
-        if (!best) return textResult("No tool stats available for candidates");
-        return textResult(
-          `Best tool for "${task_type}": ${best} (${(getToolReliability(state, best, task_type) * 100).toFixed(0)}% reliability)`,
-        );
-      }
-
-      return textResult(`Unknown action: ${action}. Use list, reliability, or best.`);
-    },
-  });
 
   // ── Event: session_start ────────────────────────────────────────────
   registerSessionStartHandler(

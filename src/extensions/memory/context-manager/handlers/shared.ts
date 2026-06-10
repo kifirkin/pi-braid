@@ -32,7 +32,6 @@ export const INTERNAL_TOOLS = new Set([
   "memory_get",
   "memory_episodes",
   "memory_heuristics",
-  "memory_tool_stats",
   "goal",
   "plan",
   "scratchpad",

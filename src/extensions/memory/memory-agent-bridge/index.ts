@@ -205,14 +205,25 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
     return parts.join(", ");
   }
 
+  // Consolidated memory_recall tool (was memory_recall + memory_list + memory_get).
+  // action=search: semantic search for relevant memories
+  // action=list:   list recent memories
+  // action=get:    get a specific memory by ID
   pi.registerTool({
     name: "memory_recall",
-    label: "Recall Memory",
-    promptSnippet: "Search memory for relevant information",
+    label: "Memory Recall",
+    promptSnippet: "Search, list, or get memories",
     description:
-      "Search memory for past learnings and patterns — use when you need to recall before answering. Uses semantic text search to find relevant stored information. To browse by recency, use memory_list. To fetch a specific memory by ID, use memory_get.",
+      "Search, list, or get stored memories. " +
+      "Use action=search with query for semantic search. " +
+      "Use action=list to browse recent. " +
+      "Use action=get with id to fetch a specific memory.",
     parameters: Type.Object({
-      query: Type.String({ description: "What to search for (natural language)" }),
+      action: Type.Union([Type.Literal("search"), Type.Literal("list"), Type.Literal("get")], {
+        description: "Action: search | list | get",
+      }),
+      // search-only
+      query: Type.Optional(Type.String({ description: "What to search for (action=search)" })),
       memoryType: Type.Optional(
         StringEnum([
           "insight",
@@ -226,145 +237,21 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
           "all",
         ]),
       ),
-      limit: Type.Optional(Type.Number({ default: 5 })),
       tags: Type.Optional(Type.Array(Type.String())),
       since: Type.Optional(
-        Type.String({ description: "ISO-8601 timestamp or relative string like '7d' or '24h' — only return memories stored after this time" }),
+        Type.String({ description: "ISO-8601 or relative (e.g. '7d'). Only memories stored after this time (action=search)." }),
       ),
       until: Type.Optional(
-        Type.String({ description: "ISO-8601 timestamp or relative string like '7d' or '24h' — only return memories stored before this time" }),
+        Type.String({ description: "ISO-8601 or relative (e.g. '7d'). Only memories stored before this time (action=search)." }),
       ),
-    }),
-    execute: async (
-      _toolCallId: string,
-      params,
-      _signal,
-      _onUpdate,
-      ctx,
-    ): Promise<AgentToolResult<{ count: number; relevanceReasons?: Array<{ id: string; reason: string; relevance: number }> }>> => {
-      await initPromise;
-      const type =
-        params.memoryType === "all" ? undefined : (params.memoryType as CognitiveMemoryType);
-      const currentProject = typeof ctx?.cwd === "string" ? ctx.cwd : undefined;
-      let sessionId: string | undefined;
-      try { sessionId = ctx?.sessionManager?.getSessionId?.(); } catch { /* stale ctx */ }
-      const results = await memory.recall(params.query, {
-        type,
-        limit: params.limit,
-        tags: params.tags,
-        currentProject,
-        currentSessionId: sessionId,
-        accessBoost: 5,
-      });
-
-      // Apply since/until time filters post-recall
-      const since = parseTimeFilter(params.since);
-      const until = parseTimeFilter(params.until);
-      const filteredResults = results.filter((r) => {
-        if (since && r.memory.timestamp < since) return false;
-        if (until && r.memory.timestamp > until) return false;
-        return true;
-      });
-
-      // Add relevance_reason to each result
-      const annotatedResults = filteredResults.map((r) => ({
-        ...r,
-        relevanceReason: relevanceReason({ ...r, currentProject }),
-      }));
-
-      // Cross-search three-memory-stores episodes
-      let episodeResults: Array<{
-        task: string;
-        solution: string;
-        outcome: string;
-        similarity: number;
-      }> = [];
-      if (ctx) {
-        try {
-          const threeMem = getExtensionState<MemoryStoresState>(
-            ctx,
-            "three-memory-stores",
-            createMemoryStoresState,
-          );
-          if (threeMem.episodes.length > 0) {
-            const episodes = retrieveByRUMS(
-              threeMem,
-              params.query,
-              params.limit ?? 3,
-              threeMem.currentSessionId,
-            );
-            episodeResults = episodes.map((ep) => ({
-              task: ep.task,
-              solution: ep.solution.slice(0, 500),
-              outcome: ep.outcome,
-              similarity: ep.similarity ?? 0,
-            }));
-          }
-        } catch {
-          /* three-memory-stores not available */
-        }
-      }
-
-      // Add evidence to pool (Task 3b)
-      if (filteredResults.length > 0 && ctx) {
-        for (const r of filteredResults.slice(0, 3)) {
-          addEvidence(ctx, r.memory.content, "memory", r.memory.content, r.relevance);
-        }
-      }
-
-      // Build merged output
-      const lines: string[] = [];
-      if (annotatedResults.length > 0) {
-        lines.push(`Found ${annotatedResults.length} semantic memories:`);
-        for (const r of annotatedResults.slice(0, params.limit ?? 5)) {
-          lines.push(
-            `  [${r.memory.type}] ${r.memory.content.slice(0, 300)}... (${r.relevanceReason}, id: ${r.memory.id})`,
-          );
-        }
-      }
-      if (episodeResults.length > 0) {
-        if (lines.length > 0 && filteredResults.length > 0) lines.push("");
-        lines.push(`Found ${episodeResults.length} related episodes:`);
-        for (const ep of episodeResults) {
-          const icon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
-          const sol = ep.solution ? ` Solution: ${ep.solution}` : "";
-          lines.push(
-            `  ${icon} [episodic] ${ep.task}${sol} (similarity: ${ep.similarity.toFixed(2)})`,
-          );
-        }
-      }
-      if (lines.length === 0) {
-        lines.push("No matching memories found.");
-      }
-
-      return {
-        content: [{ type: "text", text: lines.join("\n") }],
-        details: {
-          count: annotatedResults.length + episodeResults.length,
-          relevanceReasons: annotatedResults.slice(0, params.limit ?? 5).map((r) => ({
-            id: r.memory.id,
-            reason: r.relevanceReason,
-            relevance: Math.round(r.relevance * 100) / 100,
-          })),
-        },
-      };
-    },
-  });
-
-  pi.registerTool({
-    name: "memory_list",
-    label: "List Memories",
-    promptSnippet: "List all stored memories sorted by recency",
-    description:
-      "List stored memories sorted by recency — use before searching or recalling to see what's available. For semantic search, use memory_recall. To fetch a specific memory by ID, use memory_get.",
-    parameters: Type.Object({
-      limit: Type.Optional(Type.Number({ default: 20 })),
+      // list-only
       full: Type.Optional(
-        Type.Boolean({
-          description: "Show full details including timestamps",
-          default: false,
-        }),
+        Type.Boolean({ description: "Show full details including timestamps (action=list)" }),
       ),
+      // get-only
+      id: Type.Optional(Type.String({ description: "Memory ID to retrieve (action=get)" })),
+      // common
+      limit: Type.Optional(Type.Number({ default: 5, description: "Max results to return" })),
     }),
     execute: async (
       _toolCallId: string,
@@ -372,126 +259,215 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
       _signal,
       _onUpdate,
       ctx,
-    ): Promise<AgentToolResult<{ memories: CognitiveMemoryEntry[] }>> => {
-      const memories = memory.getAll(params.limit ?? 20);
-      const showFull = params.full ?? false;
-      const lines: string[] = [];
-      if (memories.length > 0) {
-        lines.push("Semantic memories:");
-        lines.push(memories.map((m) => `- ${formatMemoryEntry(m, showFull)}`).join("\n"));
-      }
-
-      // Cross-list three-memory-stores episodes
-      if (ctx) {
-        try {
-          const threeMem = getExtensionState<MemoryStoresState>(
-            ctx,
-            "three-memory-stores",
-            createMemoryStoresState,
-          );
-          const recent = threeMem.episodes
-            .slice()
-            .sort((a, b) => b.timestamp - a.timestamp)
-            .slice(0, Math.min(params.limit ?? 5, 5));
-          if (recent.length > 0) {
-            if (lines.length > 0) lines.push("");
-            lines.push(`Recent episodes (${threeMem.episodes.length} total):`);
-            for (const ep of recent) {
-              const icon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
-              const time = new Date(ep.timestamp).toLocaleDateString();
-              lines.push(`  ${icon} [id:${ep.id}] ${time} — ${ep.task.slice(0, 60)}`);
+    ): Promise<AgentToolResult<unknown>> => {
+      try {
+        switch (params?.action) {
+          case "search": {
+            if (!params.query) {
+              return {
+                content: [{ type: "text", text: "action=search requires 'query' parameter" }],
+                details: { error: true, action: "search" },
+              };
             }
-          }
-        } catch {
-          /* three-memory-stores not available */
-        }
-      }
-
-      if (lines.length === 0) {
-        lines.push("No memories stored yet.");
-      }
-
-      return {
-        content: [{ type: "text", text: lines.join("\n") }],
-        details: { memories: memories as CognitiveMemoryEntry[] },
-      };
-    },
-  });
-
-  pi.registerTool({
-    name: "memory_get",
-    label: "Get Memory",
-    promptSnippet: "Get a specific memory by ID",
-    description:
-      "Retrieve a specific memory by its full ID — use after listing or searching to inspect complete details. For semantic search, use memory_recall. To browse by recency, use memory_list.",
-    parameters: Type.Object({
-      id: Type.String({ description: "Memory ID to retrieve" }),
-    }),
-    execute: async (
-      _toolCallId: string,
-      params,
-      _signal,
-      _onUpdate,
-      ctx,
-    ): Promise<AgentToolResult<{ found: boolean; memory?: CognitiveMemoryEntry }>> => {
-      await initPromise;
-      const m = await memory.getById(params.id);
-
-      // Also search three-memory-stores episodes by ID
-      if (!m && ctx) {
-        try {
-          const threeMem = getExtensionState<MemoryStoresState>(
-            ctx,
-            "three-memory-stores",
-            createMemoryStoresState,
-          );
-          const ep = threeMem.episodes.find((e) => e.id === params.id);
-          if (ep) {
-            const time = formatMemoryTimestamp(ep.timestamp);
-            const tags = ep.tags?.length ? ` [${ep.tags.join(", ")}]` : "";
+            await initPromise;
+            const type = params.memoryType === "all" ? undefined : (params.memoryType as CognitiveMemoryType);
+            const currentProject = typeof ctx?.cwd === "string" ? ctx.cwd : undefined;
+            let sessionId: string | undefined;
+            try { sessionId = ctx?.sessionManager?.getSessionId?.(); } catch { /* stale ctx */ }
+            const results = await memory.recall(params.query, {
+              type,
+              limit: params.limit,
+              tags: params.tags,
+              currentProject,
+              currentSessionId: sessionId,
+              accessBoost: 5,
+            });
+            const since = parseTimeFilter(params.since);
+            const until = parseTimeFilter(params.until);
+            const filteredResults = results.filter((r) => {
+              if (since && r.memory.timestamp < since) return false;
+              if (until && r.memory.timestamp > until) return false;
+              return true;
+            });
+            const annotatedResults = filteredResults.map((r) => ({
+              ...r,
+              relevanceReason: relevanceReason({ ...r, currentProject }),
+            }));
+            let episodeResults: Array<{ task: string; solution: string; outcome: string; similarity: number }> = [];
+            if (ctx) {
+              try {
+                const threeMem = getExtensionState<MemoryStoresState>(
+                  ctx,
+                  "three-memory-stores",
+                  createMemoryStoresState,
+                );
+                if (threeMem.episodes.length > 0) {
+                  const episodes = retrieveByRUMS(
+                    threeMem,
+                    params.query,
+                    params.limit ?? 3,
+                    threeMem.currentSessionId,
+                  );
+                  episodeResults = episodes.map((ep) => ({
+                    task: ep.task,
+                    solution: ep.solution.slice(0, 500),
+                    outcome: ep.outcome,
+                    similarity: ep.similarity ?? 0,
+                  }));
+                }
+              } catch { /* three-memory-stores not available */ }
+            }
+            if (filteredResults.length > 0 && ctx) {
+              for (const r of filteredResults.slice(0, 3)) {
+                addEvidence(ctx, r.memory.content, "memory", r.memory.content, r.relevance);
+              }
+            }
+            const lines: string[] = [];
+            if (annotatedResults.length > 0) {
+              lines.push(`Found ${annotatedResults.length} semantic memories:`);
+              for (const r of annotatedResults.slice(0, params.limit ?? 5)) {
+                lines.push(
+                  `  [${r.memory.type}] ${r.memory.content.slice(0, 300)}... (${r.relevanceReason}, id: ${r.memory.id})`,
+                );
+              }
+            }
+            if (episodeResults.length > 0) {
+              if (lines.length > 0 && filteredResults.length > 0) lines.push("");
+              lines.push(`Found ${episodeResults.length} related episodes:`);
+              for (const ep of episodeResults) {
+                const icon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
+                const sol = ep.solution ? ` Solution: ${ep.solution}` : "";
+                lines.push(
+                  `  ${icon} [episodic] ${ep.task}${sol} (similarity: ${ep.similarity.toFixed(2)})`,
+                );
+              }
+            }
+            if (lines.length === 0) {
+              lines.push("No matching memories found.");
+            }
             return {
-              content: [
-                {
-                  type: "text",
-                  text: `[episodic] ${time}${tags}\n  Task: ${ep.task}\n  Solution: ${ep.solution}\n  Outcome: ${ep.outcome}`,
-                },
-              ],
+              content: [{ type: "text", text: lines.join("\n") }],
               details: {
-                found: true,
-                memory: {
-                  id: ep.id,
-                  content: `${ep.task}: ${ep.solution}`,
-                  type: "episodic",
-                  tags: ep.tags ?? [],
-                  timestamp: ep.timestamp,
-                  accessCount: 0,
-                  lastAccessed: 0,
-                  importance: 0.5,
-                  utility: 0.5,
-                },
+                count: annotatedResults.length + episodeResults.length,
+                relevanceReasons: annotatedResults.slice(0, params.limit ?? 5).map((r) => ({
+                  id: r.memory.id,
+                  reason: r.relevanceReason,
+                  relevance: Math.round(r.relevance * 100) / 100,
+                })),
               },
             };
           }
-        } catch {
-          /* three-memory-stores not available */
+          case "list": {
+            const limit = params.limit ?? 20;
+            const memories = memory.getAll(limit);
+            const showFull = params.full ?? false;
+            const lines: string[] = [];
+            if (memories.length > 0) {
+              lines.push("Semantic memories:");
+              lines.push(memories.map((m) => `- ${formatMemoryEntry(m, showFull)}`).join("\n"));
+            }
+            if (ctx) {
+              try {
+                const threeMem = getExtensionState<MemoryStoresState>(
+                  ctx,
+                  "three-memory-stores",
+                  createMemoryStoresState,
+                );
+                const recent = threeMem.episodes
+                  .slice()
+                  .sort((a, b) => b.timestamp - a.timestamp)
+                  .slice(0, Math.min(limit, 5));
+                if (recent.length > 0) {
+                  if (lines.length > 0) lines.push("");
+                  lines.push(`Recent episodes (${threeMem.episodes.length} total):`);
+                  for (const ep of recent) {
+                    const icon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
+                    const time = new Date(ep.timestamp).toLocaleDateString();
+                    lines.push(`  ${icon} [id:${ep.id}] ${time} — ${ep.task.slice(0, 60)}`);
+                  }
+                }
+              } catch { /* three-memory-stores not available */ }
+            }
+            if (lines.length === 0) {
+              lines.push("No memories stored yet.");
+            }
+            return {
+              content: [{ type: "text", text: lines.join("\n") }],
+              details: { memories: memories as CognitiveMemoryEntry[] },
+            };
+          }
+          case "get": {
+            if (!params.id) {
+              return {
+                content: [{ type: "text", text: "action=get requires 'id' parameter" }],
+                details: { error: true, action: "get" },
+              };
+            }
+            await initPromise;
+            const m = await memory.getById(params.id);
+            if (!m && ctx) {
+              try {
+                const threeMem = getExtensionState<MemoryStoresState>(
+                  ctx,
+                  "three-memory-stores",
+                  createMemoryStoresState,
+                );
+                const ep = threeMem.episodes.find((e) => e.id === params.id);
+                if (ep) {
+                  const time = formatMemoryTimestamp(ep.timestamp);
+                  const tags = ep.tags?.length ? ` [${ep.tags.join(", ")}]` : "";
+                  return {
+                    content: [
+                      {
+                        type: "text",
+                        text: `[episodic] ${time}${tags}\n  Task: ${ep.task}\n  Solution: ${ep.solution}\n  Outcome: ${ep.outcome}`,
+                      },
+                    ],
+                    details: {
+                      found: true,
+                      memory: {
+                        id: ep.id,
+                        content: `${ep.task}: ${ep.solution}`,
+                        type: "episodic",
+                        tags: ep.tags ?? [],
+                        timestamp: ep.timestamp,
+                        accessCount: 0,
+                        lastAccessed: 0,
+                        importance: 0.5,
+                        utility: 0.5,
+                      },
+                    },
+                  };
+                }
+              } catch { /* three-memory-stores not available */ }
+            }
+            if (!m) {
+              return {
+                content: [{ type: "text", text: `Memory ${params.id} not found` }],
+                details: { found: false },
+              };
+            }
+            const time = formatMemoryTimestamp(m.timestamp);
+            const tags = m.tags.length > 0 ? ` [${m.tags.join(", ")}]` : "";
+            const source = m.source ? `\n  Source: ${m.source}` : "";
+            return {
+              content: [{ type: "text", text: `[${m.type}] ${time}${tags}\n  ${m.content}${source}` }],
+              details: { found: true, memory: m },
+            };
+          }
+          default:
+            throw new Error(`Unknown memory_recall action: ${params?.action}. Use: search, list, get.`);
         }
-      }
-
-      if (!m) {
+      } catch (err) {
         return {
-          content: [{ type: "text", text: `Memory ${params.id} not found` }],
-          details: { found: false },
+          content: [{ type: "text", text: `Error: ${err}` }],
+          details: { error: true, action: params?.action },
         };
       }
-      const time = formatMemoryTimestamp(m.timestamp);
-      const tags = m.tags.length > 0 ? ` [${m.tags.join(", ")}]` : "";
-      const source = m.source ? `\n  Source: ${m.source}` : "";
-      return {
-        content: [{ type: "text", text: `[${m.type}] ${time}${tags}\n  ${m.content}${source}` }],
-        details: { found: true, memory: m },
-      };
     },
   });
+
+
 
   // Explore paths tool (inlined)
   const explorePathsTool = createExplorePathsTool();
