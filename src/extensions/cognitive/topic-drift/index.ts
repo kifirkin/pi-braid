@@ -214,12 +214,19 @@ function extractOutputText(event: any): string {
 
 // ── Tool schemas ───────────────────────────────────────────────────────────
 
-const checkDriftSchema = Type.Object({
-  output: Type.String({ description: "Output text to check against anchors" }),
-});
-
-const resetAnchorsSchema = Type.Object({
-  newRequest: Type.Optional(Type.String({ description: "New request to extract anchors from" })),
+// Consolidated topic_drift schema (was checkDriftSchema + resetAnchorsSchema).
+// action=check:   check if output matches original request
+// action=reset:   reset anchors to a new request or current context
+const topicDriftSchema = Type.Object({
+  action: Type.Union([Type.Literal("check"), Type.Literal("reset")], {
+    description: "Action: check | reset",
+  }),
+  output: Type.Optional(
+    Type.String({ description: "Output text to check (action=check)" }),
+  ),
+  newRequest: Type.Optional(
+    Type.String({ description: "New request to extract anchors from (action=reset)" }),
+  ),
 });
 
 // ── Extension ──────────────────────────────────────────────────────────────
@@ -282,102 +289,78 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
 
   pi.registerTool({
     name: "check_topic_drift",
-    label: "Check Topic Drift",
-    promptSnippet: "Check if output matches the original user request",
+    label: "Topic Drift",
+    promptSnippet: "Check output for topic drift or reset anchors",
     description:
-      "Check if output still matches the original request — use before responding to prevent topic drift.",
-    parameters: checkDriftSchema,
+      "Check if output matches the original user request, or reset the topic anchors. " +
+      "Use action=check with output before responding to prevent drift. " +
+      "Use action=reset with newRequest (or no params) to re-anchor to a new task.",
+    parameters: topicDriftSchema,
     execute: async (_toolCallId: string, params: any, _signal: any, _onUpdate: any, ctx: ExtensionContext): Promise<any> => {
       try {
-        const p = params as { output?: string };
-        const state = getExtensionState(ctx, "topic-drift", createDriftState);
-        const output = p.output ?? "";
-
-        // Use critics if ctx is available, else fall back to sync heuristic
-        let drifted = false;
-        let similarity = 1.0;
-        let missingAnchors: string[] = [];
-
-        if (ctx && state.originalRequest) {
-          const critResult = await detectDriftWithCritics(ctx, state.originalRequest, output);
-          drifted = critResult.drifted;
-          similarity = critResult.similarity;
-          missingAnchors = critResult.missingAnchors;
-        } else {
-          const syncResult = detectTopicDrift("check", output, state);
-          drifted = syncResult.drifted;
-          similarity = syncResult.similarity;
-          missingAnchors = syncResult.missingAnchors;
+        switch (params?.action) {
+          case "check": {
+            const state = getExtensionState(ctx, "topic-drift", createDriftState);
+            const output = params.output ?? "";
+            let drifted = false;
+            let similarity = 1.0;
+            let missingAnchors: string[] = [];
+            if (ctx && state.originalRequest) {
+              const critResult = await detectDriftWithCritics(ctx, state.originalRequest, output);
+              drifted = critResult.drifted;
+              similarity = critResult.similarity;
+              missingAnchors = critResult.missingAnchors;
+            } else {
+              const syncResult = detectTopicDrift("check", output, state);
+              drifted = syncResult.drifted;
+              similarity = syncResult.similarity;
+              missingAnchors = syncResult.missingAnchors;
+            }
+            const details = {
+              drifted,
+              similarity: Math.round(similarity * 100) / 100,
+              missingAnchors,
+              originalRequest: state.originalRequest,
+              driftHistory: state.driftHistory.slice(-5),
+              recommendations: drifted
+                ? [
+                    `Response may have drifted from: "${state.originalRequest.slice(0, 60)}..."`,
+                    "Verify your response addresses the core request.",
+                  ]
+                : [],
+            };
+            const text = drifted
+              ? `Topic drift detected (similarity: ${details.similarity}). Signals: ${missingAnchors.slice(0, 5).join(", ") || "topic mismatch"}.`
+              : `No topic drift (similarity: ${details.similarity}).`;
+            return { content: [{ type: "text" as const, text }], details };
+          }
+          case "reset": {
+            const state = getExtensionState(ctx, "topic-drift", createDriftState);
+            const request = params.newRequest ?? state.originalRequest;
+            resetAnchors(state, request);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Topic anchors reset to: "${request.slice(0, 60)}..."`,
+                },
+              ],
+              details: { success: true, originalRequest: state.originalRequest },
+            };
+          }
+          default:
+            throw new Error(`Unknown topic_drift action: ${params?.action}. Use: check, reset.`);
         }
-
-        const details = {
-          drifted,
-          similarity: Math.round(similarity * 100) / 100,
-          missingAnchors,
-          originalRequest: state.originalRequest,
-          driftHistory: state.driftHistory.slice(-5),
-          recommendations: drifted
-            ? [
-                `Response may have drifted from: "${state.originalRequest.slice(0, 60)}..."`,
-                "Verify your response addresses the core request.",
-              ]
-            : [],
-        };
-
-        const text = drifted
-          ? `Topic drift detected (similarity: ${details.similarity}). Signals: ${missingAnchors.slice(0, 5).join(", ") || "topic mismatch"}.`
-          : `No topic drift (similarity: ${details.similarity}).`;
-        return {
-          content: [{ type: "text" as const, text }],
-          details,
-        };
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        log.error(`check_topic_drift failed: ${msg}`);
+        log.error(`topic_drift failed: ${msg}`);
         return {
           content: [{ type: "text" as const, text: `Error: ${msg}` }],
-          details: { drifted: false, similarity: 0, error: msg },
+          details: { error: msg, action: params?.action },
         };
       }
     },
   } as ToolDefinition);
 
-  pi.registerTool({
-    name: "reset_topic_anchors",
-    label: "Reset Topic Anchors",
-    promptSnippet: "Reset topic anchors to a new request or context",
-    description:
-      "Reset topic anchors to a new request or the current context — use when the task shifts to prevent false drift detection.",
-    parameters: resetAnchorsSchema,
-    execute: async (_toolCallId: string, params: any, _signal: any, _onUpdate: any, ctx: ExtensionContext): Promise<any> => {
-      try {
-        const p = params as { newRequest?: string };
-        const state = getExtensionState(ctx, "topic-drift", createDriftState);
-        const request = p.newRequest ?? state.originalRequest;
-        resetAnchors(state, request);
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Topic anchors reset to: "${request.slice(0, 60)}..."`,
-            },
-          ],
-          details: {
-            success: true,
-            originalRequest: state.originalRequest,
-          },
-        };
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        log.error(`reset_topic_anchors failed: ${msg}`);
-        return {
-          content: [{ type: "text" as const, text: `Error: ${msg}` }],
-          details: { success: false, error: msg },
-        };
-      }
-    },
-  } as ToolDefinition);
-
-  log.info("Topic drift detector registered: check_topic_drift, reset_topic_anchors");
+  log.info("Topic drift detector registered: topic_drift (check + reset actions)");
 }
