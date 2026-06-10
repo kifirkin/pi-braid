@@ -32,8 +32,9 @@ Some extensions are large enough to have their own sub-structure:
 
 - `extensions/memory/` — 5 sub-extensions (context-lifecycle, context-manager, memory-agent-bridge, session-recall, three-memory-stores)
 - `extensions/heartbeat/` — 2 sub-extensions (heartbeat-scheduler, analytics)
-- `extensions/cognitive/` — 6 sub-extensions (reasoning, sycophancy-detector, tool-safety, topic-drift, turn-outcome, verification)
-- `extensions/core/` — 7 sub-extensions (agent-environment, input-polisher, metacognition, polyfill, prompt-builder, scratchpad, workspace-snapshot)
+- `extensions/cognitive/` — 6 sub-extensions (metacognition, reasoning, sycophancy-detector, tool-safety, topic-drift, turn-outcome)
+- `extensions/core/` — 3 sub-extensions (polyfill, agent-environment, prompt-builder)
+- `extensions/agent/` — 3 sub-extensions (scratchpad, input-polisher, workspace-snapshot)
 - `extensions/tools/` — 4 sub-extensions (timer, auto-singleton, auto-recovery, latent-activator)
 
 A sub-extension follows the same pattern: a subdir with `index.ts`.
@@ -43,3 +44,18 @@ A sub-extension follows the same pattern: a subdir with `index.ts`.
 - `extensions/AGENTS.md` — not present; each extension subdir has its own AGENTS.md
 - `lib/AGENTS.md` — index of all `lib/` subdirs
 - `../AGENTS.md` (root) — build, test, extension loading
+
+## Top-level extension layout
+
+| Directory | Role | Sub-extensions |
+|---|---|---|
+| `core/` | Always-on infrastructure (other extensions depend on) | polyfill, agent-environment, prompt-builder |
+| `cognitive/` | Reasoning tools + detectors | metacognition, reasoning, sycophancy-detector, topic-drift, turn-outcome, tool-safety |
+| `agent/` | Agent's working-state tools | scratchpad, input-polisher, workspace-snapshot |
+| `enforcement/` | Heavy event handling, turn pipeline | (single root extension) |
+| `error-tracking/` | Error capture/replay | (single root extension) |
+| `health-maintenance/` | Health checks + self-evolution | (single root extension) |
+| `heartbeat/` | Proactive cognitive scheduling | heartbeat-scheduler, analytics |
+| `memory/` | Three-store memory + context lifecycle | context-lifecycle, context-manager, memory-agent-bridge, session-recall, three-memory-stores |
+| `tools/` | Utility tool providers | timer, auto-singleton, auto-recovery, latent-activator |
+| `watchdog/` | Cross-cutting safety checks | (single root extension) |

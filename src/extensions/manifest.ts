@@ -11,24 +11,23 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 // ── Extension imports ────────────────────────────────────────────────────────
 
-// core (always on, no dependencies)
+// core (always-on infrastructure: polyfills, environment, prompt assembly)
 import corePolyfillFn from "./core/polyfill/index.js";
-import coreMetacognitionFn from "./core/metacognition/index.js";
-import coreScratchpadFn from "./core/scratchpad/index.js";
-import inputPolisherFn from "./core/input-polisher/index.js";
 import corePromptBuilderFn from "./core/prompt-builder/index.js";
 import coreAgentEnvFn from "./core/agent-environment/index.js";
-import coreWorkspaceSnapshotFn from "./core/workspace-snapshot/index.js";
 
-// cognitive-quality (reasoning tools, topic control, turn-outcome)
-// Note: claim verification tools (verify_claim, verify_decomposition) were
-// moved into core/metacognition/handlers/claim-verification.ts so the entire
-// verify family lives in one directory.
+// cognitive (reasoning tools + detectors: think, verify, topic-drift, ...)
+import coreMetacognitionFn from "./cognitive/metacognition/index.js";
 import reasoningFn from "./cognitive/reasoning/index.js";
 import topicDriftFn from "./cognitive/topic-drift/index.js";
 import sycophancyDetectorFn from "./cognitive/sycophancy-detector/index.js";
 import turnOutcomeFn from "./cognitive/turn-outcome/index.js";
 import toolSafetyFn from "./cognitive/tool-safety/index.js";
+
+// agent (working-state tools: scratchpad, snapshots, input polishing)
+import coreScratchpadFn from "./agent/scratchpad/index.js";
+import inputPolisherFn from "./agent/input-polisher/index.js";
+import coreWorkspaceSnapshotFn from "./agent/workspace-snapshot/index.js";
 
 // enforcement (heavy event handling, split from cognitive-quality)
 import enforcementFn from "./enforcement/index.js";

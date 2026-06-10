@@ -12,7 +12,7 @@ const log = createLogger("reasoning");
  *      counter that escalates severity as the streak grows.
  *   2. Sends a whisper nudge suggesting `verify()` when a stable response
  *      contains a completion claim and the cooldown has elapsed — closes the
- *      loop with the verify tool in core/metacognition.
+ *      loop with the verify tool in cognitive/metacognition.
  *
  * Why this lives in cognitive/ and not enforcement/:
  *   Enforcement has its own stability check (see enforcement/handlers/

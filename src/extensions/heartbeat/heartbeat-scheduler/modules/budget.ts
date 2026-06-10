@@ -32,7 +32,7 @@ export const budgetModule: CognitiveModule = {
   async activate(context): Promise<void> {
     try {
       const { loadScratchpadFromDisk, saveScratchpadToDisk } =
-        await import("../../../core/scratchpad/index.js");
+        await import("../../../agent/scratchpad/index.js");
       const { emitSignal } = await import("../../../../lib/reasoning/belief-policy-engine.js");
 
       const cwd = (context.ctx as { cwd?: string }).cwd ?? "";

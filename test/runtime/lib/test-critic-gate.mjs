@@ -19,8 +19,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
 const FILES = {
   criticGate: join(ROOT, "src/lib/ai/critic-gate.ts"),
-  hypothesize: join(ROOT, "src/extensions/core/metacognition/handlers/hypothesize.ts"),
-  think: join(ROOT, "src/extensions/core/metacognition/handlers/think.ts"),
+  hypothesize: join(ROOT, "src/extensions/cognitive/metacognition/handlers/hypothesize.ts"),
+  think: join(ROOT, "src/extensions/cognitive/metacognition/handlers/think.ts"),
 };
 
 for (const [name, path] of Object.entries(FILES)) {
