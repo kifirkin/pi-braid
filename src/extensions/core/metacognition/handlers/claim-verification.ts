@@ -29,7 +29,13 @@ function truncate(text: string, maxLen: number): string {
 
 // ── Tool schemas ─────────────────────────────────────────────────────────
 
+// Consolidated verify_claim schema (was verify_claim + verify_decomposition).
+// action=claim:         verify a single claim against retrieved context
+// action=decomposition: verify a task decomposition covers the parent task
 const verifyClaimSchema = Type.Object({
+	action: Type.Union([Type.Literal("claim"), Type.Literal("decomposition")], {
+		description: "Action: claim | decomposition",
+	}),
 	claim: Type.String({ description: "The claim or statement to verify" }),
 	context: Type.Array(Type.String(), {
 		description: "Retrieved context strings to verify against",
@@ -44,13 +50,6 @@ const verifyClaimSchema = Type.Object({
 	),
 });
 
-const verifyDecompositionSchema = Type.Object({
-	parentTask: Type.String({ description: "Original task description" }),
-	subtasks: Type.Array(Type.String(), { description: "List of subtask descriptions" }),
-	constraints: Type.Optional(
-		Type.Array(Type.String(), { description: "Optional known constraints" }),
-	),
-});
 
 // ── Core logic (triple-critic) ────────────────────────────────────────────
 
@@ -275,42 +274,6 @@ export function registerClaimVerificationTools(pi: ExtensionAPI): void {
 		},
 	} as unknown as ToolDefinition<any, any, any>);
 
-	pi.registerTool({
-		name: "verify_decomposition",
-		label: "Verify Decomposition",
-		promptSnippet: "Verify task decomposition fully covers the parent task",
-		description:
-			"Check a task decomposition for coverage gaps — use after breaking down a complex task into subtasks. For verifying individual claims against evidence, use verify_claim instead.",
-		parameters: verifyDecompositionSchema,
-		execute: async (
-			_toolCallId: string,
-			params: any,
-			_signal?: AbortSignal,
-			_onUpdate?: unknown,
-			ctx?: ExtensionContext,
-		): Promise<Record<string, unknown>> => {
-			try {
-				const p = params as { parentTask: string; subtasks: string[]; constraints?: string[] };
-				if (!p.parentTask || !Array.isArray(p.subtasks)) {
-					throw new Error(
-						"verify_decomposition requires 'parentTask' (string) and 'subtasks' (string array)",
-					);
-				}
-				const cov = await checkDecompositionCoverage(p.parentTask, p.subtasks, ctx!);
-				const text = cov.complete
-					? `Coverage complete (${(cov.coverage * 100).toFixed(0)}%).`
-					: `Gaps: ${cov.gaps.length}. Coverage: ${(cov.coverage * 100).toFixed(0)}%. ${cov.suggestions.slice(0, 3).join("; ")}`;
-				return { content: [{ type: "text" as const, text }], details: cov };
-			} catch (err: unknown) {
-				const msg = err instanceof Error ? err.message : String(err);
-				log.error(`verify_decomposition failed: ${msg}`);
-				return {
-					content: [{ type: "text" as const, text: `Error: ${msg}` }],
-					details: { complete: false, coverage: 0, gaps: [], error: msg },
-				};
-			}
-		},
-	} as unknown as ToolDefinition<any, any, any>);
 
-	log.info("Registered claim verification tools: verify_claim, verify_decomposition");
+	log.info("Registered claim verification tool: verify_claim (claim + decomposition actions)");
 }
