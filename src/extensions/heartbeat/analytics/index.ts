@@ -380,30 +380,9 @@ export default function analyticsExtension(pi: ExtensionAPI) {
     },
   });
 
-  pi.registerTool({
-    name: "set_ab_variant",
-    label: "Set A/B Variant",
-    description:
-      "Set the A/B experiment variant for this session. Use to opt into a specific behavior " +
-      "cohort for testing. Pass `variant` as a string (e.g. 'A', 'B', 'control').",
-    parameters: Type.Object({
-      variant: Type.String({ description: "Variant identifier (e.g. 'A', 'B', 'control')" }),
-    }),
-    execute: async (
-      _toolCallId: string,
-      params: { variant: string },
-      _signal: AbortSignal | undefined,
-      _onUpdate: unknown,
-      ctx: ExtensionContext | undefined,
-    ): Promise<AgentToolResult<{ variant: string }>> => {
-      if (!ctx) return { content: [{ type: "text", text: "No context available" }], details: { variant: "" } };
-      getAnalyticsStateInternal(ctx).abVariant = params.variant;
-      return {
-        content: [{ type: "text", text: `A/B variant set to: ${params.variant}` }],
-        details: { variant: params.variant },
-      };
-    },
-  });
+  // Note: set_ab_variant tool removed (out of scope — research-only,
+  // the agent doesn't need to A/B test itself). The A/B variant can
+  // still be set programmatically via getAnalyticsStateInternal(ctx).abVariant.
 
   pi.registerTool({
     name: "get_tool_reliability",

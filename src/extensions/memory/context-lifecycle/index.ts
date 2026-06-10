@@ -741,32 +741,9 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     },
   });
 
-  // ── context_signal: Manual semantic signals ────────────────────────────────
-  pi.registerTool({
-    name: "context_signal",
-    label: "Context Signal",
-    promptSnippet: "Emit a semantic signal to the S-MMU policy engine",
-    description:
-      "Emit a semantic signal to the policy engine — use when the conversation topic shifts or a task boundary is reached to help context management.",
-    parameters: contextSignalSchema,
-    execute: async (
-      _toolCallId: string,
-      params: Static<typeof contextSignalSchema>,
-      _signal: AbortSignal | undefined,
-      _onUpdate: AgentToolUpdateCallback<unknown> | undefined,
-      _ctx: ExtensionContext,
-    ): Promise<AgentToolResult<unknown>> => {
-      const type = params.type;
-      const note = params.note ?? "";
-
-      queueSignal(_detectorState, type as SemanticSignalType, { note, turn: state().turnCount });
-
-      return {
-        content: [
-          { type: "text" as const, text: `✓ Signal emitted: ${type}${note ? ` - ${note}` : ""}` },
-        ],
-        details: { signal: type, note },
-      };
-    },
-  });
+  // Note: context_signal tool removed (out of scope — internal API).
+  // queueSignal() is still exported from signal-detector.ts and can be
+  // called from other extensions directly:
+  //   import { queueSignal, createDetectorState } from "./signal-detector.js";
+  //   queueSignal(detectorState, "task_boundary", { action: "tag" });
 }

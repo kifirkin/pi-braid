@@ -814,8 +814,8 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     return { systemPrompt: newPrompt };
   });
 
-  // Prompt preview tool - makes the system prompt observable to the agent
-  pi.registerTool(createPromptPreviewTool());
+  // Note: prompt_preview tool removed (out of scope — dev/debug affordance, not agent use).
+  // createPromptPreviewTool() is still exported from preview.ts for any future dev/research use.
 }
 
 export { gatherL1State, formatL1Environment };
