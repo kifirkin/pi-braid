@@ -98,24 +98,14 @@ async function recordToMemory(
 /**
  * Extract principle from failed task.
  * MARS 2601.11974: Principle-based reflection ("What general rule should I follow?")
+ *
+ * The previous implementation used three fragile keyword regexes
+ * (looking for "learned:" / "avoid" / "should|always|never" prefixes)
+ * that always defaulted to a summary slice when no keyword matched.
+ * The LLM tier does the principled extraction; the heuristic is just
+ * a truncation that always succeeds and stores something useful.
  */
 function extractPrinciple(_ctx: ExtensionContext, summary: string): string {
-  // Extract a concise principle from the outcome summary.
-  // Uses keyword matching to generate a meaningful rule.
-  // For now: simple pattern extraction; could use LLM in future.
-  const lower = summary.toLowerCase();
-  if (lower.includes("learned:") || lower.includes("principle:")) {
-    const match = summary.match(/(?:learned|principle):\s*([^.]+)/i);
-    if (match) return match[1].trim();
-  }
-  if (lower.includes("avoid")) {
-    const match = summary.match(/avoid[^.]*/i);
-    if (match) return match[0].trim();
-  }
-  if (lower.includes("should") || lower.includes("always") || lower.includes("never")) {
-    const match = summary.match(/(?:should|always|never)[^.]*/i);
-    if (match) return match[0].trim();
-  }
   return summary.length > 120 ? summary.slice(0, 117) + "..." : summary;
 }
 

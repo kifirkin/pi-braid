@@ -98,6 +98,28 @@ export const CRITICS = {
     },
   } satisfies CriticDef,
 
+  /**
+   * Does a subtask list fully cover the parent task?
+   * Used by verify_decomposition. Binary yes/no.
+   */
+  decompositionCoverage: {
+    label: "Decomposition Coverage",
+    criteria: {
+      systemPrompt:
+        "You are a task decomposition reviewer. Given a parent task and a list " +
+        "of proposed subtasks, determine if the subtasks together fully cover " +
+        "the parent task. A subtask list 'covers' the parent when every feature, " +
+        "component, and concern of the parent is represented in at least one " +
+        "subtask. Missing minor naming or wording is acceptable. " +
+        "Answer only 'yes' or 'no'. Do not explain.",
+      userPrompt:
+        "Parent task: {{parentTask}}\n\n" +
+        "Proposed subtasks:\n- {{subtasks}}\n\n" +
+        "Do the subtasks together fully cover the parent task?",
+    },
+    options: { maxTokens: 5, timeoutMs: 5000 },
+  } satisfies CriticDef,
+
   /** Legacy heuristic fallback for topic drift (stop-word anchor matching). */
   topicDriftFallback(): string {
     return "no"; // Conservative: assume no drift when LLM unavailable

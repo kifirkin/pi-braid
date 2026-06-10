@@ -149,25 +149,22 @@ async function checkDecompositionCoverage(
 	try {
 		const result = await classify(
 			ctx,
-			CRITICS.topicCompleteness.criteria,
+			CRITICS.decompositionCoverage.criteria,
 			{ parentTask, subtasks: subtasks.join("\n- ") },
-			{
-				maxTokens: 256,
-				fallback: () => "no",
-			},
+			{ maxTokens: 5, fallback: () => "no" },
 		);
-		// Parse the LLM response into structured coverage info
-		const responseText = result.label;
-		const coverageMatch = responseText.match(/coverage[:\s]+([0-9.]+)/i);
-		const coverage = coverageMatch ? parseFloat(coverageMatch[1]) : 0.5;
-		const gapsMatch = responseText.match(/gaps?[:\s]+(.+?)(?:\n|$)/i);
-		const gaps = gapsMatch ? [gapsMatch[1].trim()] : [];
+		// Binary yes/no answer. We don't try to extract specific gap strings
+		// from the LLM — those are inherently non-deterministic and the
+		// previous regex extraction was always falling through to the 0.5
+		// default. If the LLM says 'yes', coverage is full; if 'no', we
+		// surface a generic suggestion to ask the agent to enumerate gaps.
+		const complete = result.label === "yes";
 		return {
-			complete: coverage >= 0.8,
-			coverage,
-			gaps,
-			coverageBySubtask: subtasks.map((s) => ({ subtask: s, covered: true })),
-			suggestions: gaps.length > 0 ? gaps : ["Coverage looks complete."],
+			complete,
+			coverage: complete ? 1.0 : 0.5,
+			gaps: complete ? [] : ["LLM did not specify gaps; review the decomposition manually."],
+			coverageBySubtask: subtasks.map((s) => ({ subtask: s, covered: complete })),
+			suggestions: complete ? ["Coverage looks complete."] : ["Enumerate which parent features are not covered."],
 		};
 	} catch (err) {
 		log.debug(`checkDecompositionCoverage failed: ${err}`);
