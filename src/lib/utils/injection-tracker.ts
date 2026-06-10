@@ -159,13 +159,19 @@ export function extractText(content: unknown[]): string {
  * Map a source to a priority tier for the per-turn whisper cap.
  * Default: "low" (most whispers are advisory).
  *
- * Critical: tool-safety, auto-singleton, auto-recovery, agent loops
+ * Critical: tool-safety, auto-singleton, auto-recovery, agent loops,
+ *           timer/fire (user-scheduled and compaction-resume wake-ups).
+ *           Bypasses WHISPER_CAPS.high — only subject to PER_SOURCE_CAP.
+ *           A user-set timer is time-critical by definition: if 3 other
+ *           high-priority whispers have already fired in the turn, the
+ *           timer whisper must still reach the agent, otherwise the user
+ *           perceives "timer didn't fire." See test-timer-fire-suppression.
  * High:     enforcement-critical, compaction-retry exhausted, threshold-exhausted
  * Medium:   context-80%+, analytics, navigation
  * Low:      hints, suggestions, drift, dreamer, etc.
  */
 function priorityFromSource(source: string, options?: { triggerTurn?: boolean }): WhisperPriority {
-  if (/tool-safety|auto-singleton|auto-recovery|turn-outcome\/loop/.test(source)) {
+  if (/tool-safety|auto-singleton|auto-recovery|turn-outcome\/loop|timer\/fire/.test(source)) {
     return "critical";
   }
   if (
