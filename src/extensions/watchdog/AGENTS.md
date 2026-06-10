@@ -10,7 +10,7 @@ There are TWO different things called "watchdog" in pi-braid:
 | Concept | Path | Purpose | Interface |
 |---|---|---|---|
 | **Session watchdog (this one)** | `extensions/watchdog/` | Tracks session uptime / idle time / message count | `pi.registerCommand("watchdog-status")` — TUI-only, not LLM-callable |
-| **Auto-singleton watchdog** | `extensions/tools/auto-singleton/` | Timer that fires ONCE after N seconds of inactivity, then auto-cancels. Agent-controlled via `auto_singleton_set`. | `pi.registerTool` — LLM-callable tools |
+| **Auto-singleton watchdog** | `extensions/tools/auto-singleton/` | Timer that fires ONCE after N seconds of inactivity, then auto-cancels. Agent-controlled via `auto_singleton` tool (action=set\|cancel\|status). | `pi.registerTool` — LLM-callable tools |
 
 They are different concerns:
 - `watchdog/` is a **passive observer** (it doesn't act).

@@ -19,11 +19,11 @@ They are different concerns:
 
 ## Tools
 
-| Tool | Purpose |
-|---|---|
-| `auto_singleton_set` | Arm the watchdog with a timeout. Replaces any existing one. |
-| `auto_singleton_cancel` | Cancel the active watchdog. |
-| `auto_singleton_status` | Show time remaining + last renewal. |
+| Tool | Action | Purpose |
+|---|---|---|
+| `auto_singleton` | `set` | Arm the watchdog with a timeout. Replaces any existing one. |
+| `auto_singleton` | `cancel` | Cancel the active watchdog. |
+| `auto_singleton` | `status` | Show time remaining + last renewal. |
 
 ## Local Contracts
 
@@ -40,5 +40,5 @@ They are different concerns:
 extension. The general timer can set multiple timers with arbitrary wake policies.
 The auto-singleton is constrained to: at-most-one, auto-renew, one-shot, fires on
 inactivity. The agent should use the right tool for the job:
-- "remind me in 5 minutes" → `timer_set`
-- "if I'm idle for 30 seconds, wake me" → `auto_singleton_set`
+- "remind me in 5 minutes" → `timer` action=set
+- "if I'm idle for 30 seconds, wake me" → `auto_singleton` action=set

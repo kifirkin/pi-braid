@@ -7,8 +7,8 @@ event handlers. Each subdir is a self-contained tool extension.
 
 | Path | Tools | Event handlers? | Purpose |
 |---|---|---|---|
-| `timer/` | `timer_set`, `timer_list`, `timer_cancel` | Yes | Set/list/cancel reminders. |
-| `auto-singleton/` | `auto_singleton_set`, `auto_singleton_cancel`, `auto_singleton_status` | Yes | Singleton fire-once timer. |
+| `timer/` | `timer` (action=set\|list\|cancel) | Yes | Set/list/cancel reminders. |
+| `auto-singleton/` | `auto_singleton` (action=set\|cancel\|status) | Yes | Singleton fire-once timer. |
 | `auto-recovery/` | (whisper-only) | Yes | Auto-recovery on errors. |
 | `latent-activator/` | (whisper-only) | Yes | Activates latent knowledge at the right moment. |
 
@@ -36,13 +36,13 @@ Several other extensions live in `extensions/<other>/` and are "pure tool
 providers" — they register LLM tools but have NO `pi.on(...)` event handlers.
 This is a valid pattern for stateless tools:
 
-- `topic-drift/` — 2 tools, 0 handlers
-- `verification/` — 2 tools, 0 handlers
-- `latent-activator/` — 1 tool, 0 handlers (also in this dir; has handlers)
-- `workspace-snapshot/` — 1 tool, 0 handlers
-- `scratchpad/` — 2 tools, 0 handlers
-- `context-manager/` — 2 tools, 0 handlers
-- `memory-agent-bridge/` — 6 tools, 0 handlers
+- `topic-drift/` — 1 tool, 0 handlers
+- `latent-activator/` — 0 tools (whisper-only; also in this dir)
+- `workspace-snapshot/` — 1 tool, 0 handlers (now in `agent/`)
+- `scratchpad/` — 1 tool, 0 handlers (now in `agent/`)
+- `context-manager/` — 1 tool, 0 handlers
+- `memory-agent-bridge/` — 2 tools, 0 handlers (memory_store, memory_recall)
+- `error-tracking/` — 1 tool, 0 handlers
 
 The reason they're not all in `extensions/tools/` is historical — they
 were added before that pattern was formalized. A future refactor could

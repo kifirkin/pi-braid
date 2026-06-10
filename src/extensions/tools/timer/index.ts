@@ -145,7 +145,7 @@ function getSessionId(ctx: unknown): string {
  *
  * @param wake if true (default), the fire whisper uses triggerTurn: true
  *   to wake the agent. This matches the principle that user-scheduled
- *   reminders (timer_set tool) expect a wake-up. The busy guard prevents
+ *   reminders (timer action=set) expect a wake-up. The busy guard prevents
  *   mid-tool-execution firing even when wake: true, so this is safe in
  *   all cases. Pass wake: false for silent reminders (visible in TUI
  *   but no forced turn) — used by background heartbeats and similar.
@@ -511,5 +511,5 @@ export default function timerExtension(pi: ExtensionAPI): void {
     }
   });
 
-  log.info("[timer] loaded: timer_set, timer_list, timer_cancel");
+  log.info("[timer] loaded: timer (set/list/cancel actions)");
 }

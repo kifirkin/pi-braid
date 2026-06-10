@@ -34,6 +34,7 @@ underscores as word boundaries and hyphens as part of the word).
 - This extension is **opt-in** (`disabledByDefault: true`). The user has
   to explicitly enable it via `BRAID_MODULES=+health-maintenance` or
   `~/.pi/agent/settings.json`.
-- Depends on `agent-environment` (must be loaded first).
+- Uses `getMetacognitiveState` from `lib/state/metacognitive-state.ts` to read
+  per-session metric history; no other extension is a hard dependency.
 - The tool is the only LLM-visible entry point; all the analytical logic
   runs in the background and is exposed via the tool's output.

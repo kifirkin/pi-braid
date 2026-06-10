@@ -17,7 +17,7 @@ All exported from `extensions/tools/timer/index.ts`:
 
 | `wake` | `triggerTurn` | When to use |
 |---|---|---|
-| `true` (default) | `true` | User-scheduled reminders (timer_set tool). The agent scheduled it expecting a wake-up. Safe because the busy guard prevents mid-tool firing. |
+| `true` (default) | `true` | User-scheduled reminders (`timer` action=set). The agent scheduled it expecting a wake-up. Safe because the busy guard prevents mid-tool firing. |
 | `false` | `false` | Background heartbeats and silent reminders. Visible in TUI but does not force a new turn. |
 
 **Default is `wake: true`.** This is the principle: if the user (or the agent) scheduled a timer, they expect to be woken when it fires. Pass `wake: false` explicitly for silent reminders.
@@ -30,7 +30,7 @@ The post-compaction stack overflow was caused by `triggerTurn: true` firing **mi
 |---|---|---|
 | `compaction-resume` | `context_compress` tool | New `context_compress`, new `auto-compact`, `session_compact` |
 | `auto-compaction-resume` | `context-lifecycle` auto-compact | New `context_compress`, new `auto-compact`, `session_compact` |
-| `<user-tag>` | `timer_set` tool | `timer_cancel` tool only |
+| `<user-tag>` | `timer` action=set | `timer` action=cancel only |
 
 **Always cancel stale resume tags** when scheduling a new one — the `timers` Map is process-global and never garbage-collected. Without explicit cancellation, an old resume timer can fire during a later, unrelated TURN_END and produce a misplaced `[timer]` whisper (the "strange order" issue).
 

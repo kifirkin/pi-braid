@@ -28,8 +28,6 @@ export const INTERNAL_TOOLS = new Set([
   "cognition_evaluate",
   "memory_store",
   "memory_recall",
-  "memory_list",
-  "memory_get",
   "memory_episodes",
   "memory_heuristics",
   "goal",

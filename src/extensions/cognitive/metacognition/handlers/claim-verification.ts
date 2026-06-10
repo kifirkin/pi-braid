@@ -1,5 +1,5 @@
 /**
- * @fileoverview Claim Verification Tools — verify_claim and verify_decomposition.
+ * @fileoverview Claim Verification Tool — verify_claim (action=claim|decomposition).
  *
  * Cross-checks agent claims against retrieved context and verifies task
  * decomposition coverage. Uses the triple-critic LLM classification system

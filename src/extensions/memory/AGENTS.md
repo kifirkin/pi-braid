@@ -44,19 +44,17 @@ Both `context-lifecycle/index.ts` (line 56) and `lib/utils/injection-tracker.ts`
 
 ## Agent-facing tool summary
 
-The memory extensions expose 7 LLM-callable tools. Each has a focused role — this is intentional, not a sprawl problem.
+The memory extensions expose 5 LLM-callable tools. Each has a focused role — this is intentional, not a sprawl problem.
 
 | Tool | Extension | Store | When to use |
 |---|---|---|---|
 | `memory_store` | memory-agent-bridge | semantic (unified) | Save insights/patterns for cross-session recall |
-| `memory_recall` | memory-agent-bridge | semantic (unified) | Search long-term memory |
-| `memory_list` | memory-agent-bridge | semantic (unified) | List memories with filters |
-| `memory_get` | memory-agent-bridge | semantic (unified) | Fetch a specific memory by ID |
+| `memory_recall` | memory-agent-bridge | semantic (unified) | Search/list/get memories (action=search\|list\|get) |
 | `memory_episodes` | three-memory-stores | episodic | Search past task episodes (case-based reasoning) |
 | `memory_heuristics` | three-memory-stores | procedural | View/evolve adaptive behavior rules |
-| `memory_tool_stats` | three-memory-stores | tool reliability | Inspect per-tool success rates |
+| `session` | session-recall | session log | Search past sessions (action=search) or query one (action=query) |
 
-**Rule of thumb:** start with `memory_recall` for "have I seen this before?". Use `memory_episodes` for "how did a similar task go?". Use `memory_heuristics` and `memory_tool_stats` only when investigating behavior tuning or tool selection.
+**Rule of thumb:** start with `memory_recall` for "have I seen this before?". Use `memory_episodes` for "how did a similar task go?". Use `memory_heuristics` when investigating behavior tuning. Use `session` for cross-session history.
 
 The data-layer functions (`addEpisode`, `addPrinciple`, `recordToolCall`, etc.) live in `three-memory-stores/episodes.ts`, `heuristics.ts`, `tool-reliability.ts` and are imported by many extensions (e.g. `finalize.ts` adds episodes on task completion). These are infrastructure and should not be moved out of the directory.
 

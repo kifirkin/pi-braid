@@ -100,7 +100,7 @@ export const CRITICS = {
 
   /**
    * Does a subtask list fully cover the parent task?
-   * Used by verify_decomposition. Binary yes/no.
+   * Used by verify_claim action=decomposition. Binary yes/no.
    */
   decompositionCoverage: {
     label: "Decomposition Coverage",

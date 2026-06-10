@@ -58,7 +58,7 @@ export function recordToolCall(toolName: string, ctx: any): void {
   }
 
   // Track memory tool usage
-  const memoryTools = ["memory_store", "memory_recall", "memory_list"];
+  const memoryTools = ["memory_store", "memory_recall"];
   if (memoryTools.includes(toolName)) {
     recordMemoryAccess(s, s.currentTurn);
     if (toolName === "memory_recall" && !s.hasRecalledOnStart) {

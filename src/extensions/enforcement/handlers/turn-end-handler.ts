@@ -109,7 +109,7 @@ export async function dispatchTurnEndLoop(
   }
 
   const memoryUpdated = actualTools.some((t: string) =>
-    ["memory_store", "memory_recall", "memory_list"].includes(t),
+    ["memory_store", "memory_recall"].includes(t),
   );
 
   if (memoryUpdated && enforcementSignals["unpersisted_learnings"]) {

@@ -361,6 +361,6 @@ export default function autoSingletonExtension(pi: ExtensionAPI): void {
   manager.start(pi);
 
   log.info(
-    "[auto-singleton] loaded: auto_singleton_set, auto_singleton_cancel, auto_singleton_status",
+    "[auto-singleton] loaded: auto_singleton (set/cancel/status actions)",
   );
 }

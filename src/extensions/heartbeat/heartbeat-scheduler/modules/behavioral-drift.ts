@@ -38,8 +38,6 @@ const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   // Memory tools
   "memory_store": "memory",
   "memory_recall": "memory",
-  "memory_list": "memory",
-  "memory_get": "memory",
   "memory_episodes": "memory",
   // Browser tools
   "browser_navigate": "browser",
