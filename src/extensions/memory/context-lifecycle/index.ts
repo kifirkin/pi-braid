@@ -426,7 +426,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     state().agentActedOnContext = false;
 
     // ── RETRIEVAL: Detect signals from session content ──────────────────
-    const signals = detectSignals(_detectorState, entries, usage);
+    const signals = await detectSignals(_detectorState, entries, ctx, usage);
 
     // ── DENSITY: Generate context density signals (SimpleMem 2601.02553) ─
     // These feed into density-aware policies (prune, compress, dedup)

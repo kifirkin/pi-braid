@@ -120,6 +120,36 @@ export const CRITICS = {
     options: { maxTokens: 5, timeoutMs: 5000 },
   } satisfies CriticDef,
 
+  /**
+   * Classify the current work topic from assistant text.
+   * Used by context-lifecycle/signal-detector to detect topic shifts.
+   * Replaces the hardcoded TOPIC_KEYWORDS keyword map (8 topics × 5-8
+   * keywords each) which produced too many false negatives.
+   * Answer with ONE topic label: implementation, debugging, refactoring,
+   * testing, exploration, documentation, planning, verification, or general.
+   */
+  topicClassification: {
+    label: "Topic Classification",
+    criteria: {
+      systemPrompt:
+        "You are a work-topic classifier. Given a chunk of assistant activity " +
+        "(text from a recent turn or sequence of tool calls), determine the " +
+        "primary topic of the work. Answer with exactly ONE label, lowercase, " +
+        "no explanation:\n" +
+        "- implementation: writing new code or adding features\n" +
+        "- debugging: fixing bugs, diagnosing errors, tracing failures\n" +
+        "- refactoring: restructuring code without changing behavior\n" +
+        "- testing: writing tests, running tests, asserting correctness\n" +
+        "- exploration: reading, searching, browsing, investigating unknown code\n" +
+        "- documentation: writing docs, comments, READMEs, explanations\n" +
+        "- planning: designing approaches, listing steps, choosing strategies\n" +
+        "- verification: confirming a prior result, sanity-checking, finalizing\n" +
+        "- general: none of the above fits",
+      userPrompt: "Recent assistant activity:\n{{text}}",
+    },
+    options: { maxTokens: 10, timeoutMs: 3000 },
+  } satisfies CriticDef,
+
   /** Legacy heuristic fallback for topic drift (stop-word anchor matching). */
   topicDriftFallback(): string {
     return "no"; // Conservative: assume no drift when LLM unavailable

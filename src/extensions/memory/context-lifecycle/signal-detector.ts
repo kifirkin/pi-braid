@@ -8,7 +8,21 @@
 import { createLogger } from "../../../lib/core/logger.js";
 import type { SemanticSignal, SemanticSignalType } from "./types.js";
 import { createSignal } from "./types.js";
-import type { SessionEntry } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
+import { classify } from "../../../lib/ai/text-classifier.js";
+import { CRITICS } from "../../../lib/ai/critic-registry.js";
+
+const VALID_TOPICS = new Set([
+  "implementation",
+  "debugging",
+  "refactoring",
+  "testing",
+  "exploration",
+  "documentation",
+  "planning",
+  "verification",
+  "general",
+]);
 
 const log = createLogger("context-lifecycle");
 
@@ -52,6 +66,7 @@ function hashContent(text: string): string {
 // ── Topic Detection ─────────────────────────────────────────────────────────
 
 const TOPIC_KEYWORDS: Record<string, Set<string>> = {
+  // Kept for backward compat but unused — see detectTopic() below.
   implementation: new Set(["implement", "write", "create", "add", "build", "code", "function"]),
   debugging: new Set(["bug", "fix", "error", "crash", "debug", "issue", "broken"]),
   refactoring: new Set(["refactor", "rename", "restructure", "clean", "improve"]),
@@ -62,23 +77,31 @@ const TOPIC_KEYWORDS: Record<string, Set<string>> = {
   verification: new Set(["verify", "check", "validate", "confirm"]),
 };
 
-function detectTopic(text: string): string {
-  const lower = text.toLowerCase();
-  let bestTopic = "general";
-  let bestScore = 0;
-
-  for (const [topic, keywords] of Object.entries(TOPIC_KEYWORDS)) {
-    let score = 0;
-    for (const keyword of keywords) {
-      if (lower.includes(keyword)) score++;
-    }
-    if (score > bestScore) {
-      bestScore = score;
-      bestTopic = topic;
-    }
+/**
+ * Classify the current work topic via CRITICS.topicClassification.
+ * Replaces the previous hardcoded TOPIC_KEYWORDS map (8 topics × 5-8
+ * keywords each) which produced too many false negatives — phrases
+ * like "investigate why the parser fails" matched nothing, and
+ * "investigate" appeared in both exploration and debugging lists
+ * arbitrarily. The LLM handles semantic understanding correctly.
+ *
+ * On degradation, returns "general" (conservative default).
+ */
+async function detectTopic(text: string, ctx: ExtensionContext): Promise<string> {
+  if (!text || text.length < 5) return "general";
+  try {
+    const result = await classify(
+      ctx,
+      CRITICS.topicClassification.criteria,
+      { text: text.slice(0, 1500) },
+      { maxTokens: 10, timeoutMs: 3000, fallback: () => "general" },
+    );
+    const label = result.label.trim().toLowerCase();
+    return VALID_TOPICS.has(label) ? label : "general";
+  } catch (err) {
+    log.debug(`detectTopic failed: ${err}`);
+    return "general";
   }
-
-  return bestScore > 0 ? bestTopic : "general";
 }
 
 // ── Signal Detector State ───────────────────────────────────────────────────
@@ -111,11 +134,12 @@ export function createDetectorState(): DetectorState {
 
 // ── Pure Signal Detection ───────────────────────────────────────────────────
 
-export function detectSignals(
+export async function detectSignals(
   state: DetectorState,
   entries: SessionEntry[],
+  ctx: ExtensionContext,
   contextUsage = 0,
-): SemanticSignal[] {
+): Promise<SemanticSignal[]> {
   const signals: SemanticSignal[] = [];
   const newEntryCount = entries.length;
 
@@ -196,9 +220,9 @@ export function detectSignals(
     signals.push(createSignal("redundancy_detected", turn, { count: redundancyCount }));
   }
 
-  // Topic shift detection
+  // Topic shift detection (async — LLM topic classification)
   const combinedText = allText.join(" ");
-  const currentTopic = detectTopic(combinedText);
+  const currentTopic = await detectTopic(combinedText, ctx);
   if (currentTopic !== state.lastTopic && state.lastTopic !== "") {
     signals.push(createSignal("topic_shift", turn, { from: state.lastTopic, to: currentTopic }));
     state.topicHistory.push({ topic: currentTopic, turn });
