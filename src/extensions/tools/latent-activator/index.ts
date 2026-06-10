@@ -388,101 +388,14 @@ function getActiveBehaviors(): AtomicBehavior[] {
 }
 
 /**
- * Generate implicit activation prompt from current behaviors.
- * Optionally accepts a task hint to infer and activate relevant behaviors first.
+ * Note: prior versions of this file had `generateLatentActivation`,
+ * `hasComplianceFraming`, `hasComplianceFramingWithJudge`, and
+ * `inferBehaviorsFromTask` (a 14-keyword task→behavior map + 10-keyword
+ * compliance list). All four were dead code: exported but never
+ * called from anywhere. The behavior auto-inference was explicitly
+ * disabled ("Behavior inference disabled - use manual behavior tool
+ * instead"). Removed in the fragile-pattern cleanup.
  */
-function generateLatentActivation(taskHint?: string): string {
-  const s = getActivatorState();
-  if (taskHint) {
-    const inferred = inferBehaviorsFromTask(taskHint);
-    for (const b of inferred) {
-      s.currentBehaviors.add(b);
-      s.activationHistory.push({ behavior: b, timestamp: Date.now() });
-    }
-  }
-
-  if (s.currentBehaviors.size === 0) return "";
-
-  const sorted = Array.from(s.currentBehaviors)
-    .map((b) => ({ behavior: b, signal: LATENT_SIGNALS[b] }))
-    .sort((a, b) => b.signal.priority - a.signal.priority)
-    .slice(0, 3);
-
-  const cues = sorted.map(
-    ({ signal }) => signal.activation[Math.floor(Math.random() * signal.activation.length)],
-  );
-
-  return cues.join(". ") + ".";
-}
-
-/**
- * Check if task hints suggest certain behaviors (sync heuristic).
- */
-function hasComplianceFraming(text: string): boolean {
-  const keywords = ["must", "required", "ensure", "verify", "always", "never", "critical", "strictly", "mandatory", "shall"];
-  const lower = text.toLowerCase();
-  return keywords.some((k) => lower.includes(k));
-}
-
-/**
- * Optional async LLM judge for compliance framing.
- * Returns heuristic result when LLM unavailable.
- */
-async function hasComplianceFramingWithJudge(text: string, ctx: ExtensionContext): Promise<boolean> {
-  try {
-    const { classify } = await import("../../../lib/ai/text-classifier.js");
-    const { CRITICS } = await import("../../../lib/ai/critic-registry.js");
-    const result = await classify(
-      ctx,
-      CRITICS.complianceFraming.criteria,
-      { text },
-      {
-        maxTokens: 5,
-        timeoutMs: 3000,
-        label: CRITICS.complianceFraming.label,
-        fallback: () => CRITICS.complianceFramingFallback(text),
-      },
-    );
-    return result.label === "yes";
-  } catch {
-    return hasComplianceFraming(text);
-  }
-}
-
-function inferBehaviorsFromTask(task: string): AtomicBehavior[] {
-  const lowerTask = task.toLowerCase();
-  const inferred: AtomicBehavior[] = [];
-
-  // Detect compliance framing and inject reflection to counter compliance theater
-  if (hasComplianceFraming(task)) {
-    inferred.push("reflection");
-  }
-
-  const keywordMap: Array<[string, AtomicBehavior[]]> = [
-    ["bug", ["detective", "debugger", "forensic"]],
-    ["fix", ["healer", "catalyst"]],
-    ["implement", ["executor", "pragmatic", "hammer"]],
-    ["design", ["architectural", "artist", "planner"]],
-    ["refactor", ["architectural", "meticulous", "scalpel"]],
-    ["review", ["reviewer", "validator", "guardian"]],
-    ["test", ["validator", "scientist", "guardian"]],
-    ["explore", ["explorer", "wanderer", "lens"]],
-    ["explain", ["teacher", "translator", "bridge"]],
-    ["optimize", ["scientist", "scalpel", "architectural"]],
-    ["debug", ["detective", "forensic", "oracle"]],
-    ["investigate", ["detective", "forensic", "witness"]],
-    ["plan", ["planner", "compass", "architectural"]],
-    ["create", ["artist", "pioneer", "executor"]],
-  ];
-
-  for (const [keyword, behaviors] of keywordMap) {
-    if (lowerTask.includes(keyword)) {
-      inferred.push(...behaviors);
-    }
-  }
-
-  return [...new Set(inferred)];
-}
 
 const ACTIVATE_BEHAVIORS = Object.keys(LATENT_SIGNALS);
 
@@ -658,8 +571,6 @@ export {
   activateBehavior,
   deactivateBehavior,
   getActiveBehaviors,
-  generateLatentActivation,
-  inferBehaviorsFromTask,
   LATENT_SIGNALS,
   BEHAVIOR_MIXES,
 };
