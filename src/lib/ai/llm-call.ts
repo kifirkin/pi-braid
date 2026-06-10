@@ -222,36 +222,40 @@ function combineSignals(s1: AbortSignal, s2: AbortSignal): AbortSignal {
 
 /** Detect errors that are worth retrying. */
 function isTransientError(message: string): boolean {
-  const transientCodes = ["429", "529", "502", "503", "504"];
-  const transientPatterns = [
-    "rate limit",
-    "too many requests",
-    "overloaded",
-    "service unavailable",
-    "temporarily",
-    "try again later",
-    "please retry",
-    "throttled",
-    "network connection lost",
-    "upstream connect",
-    "connection refused",
-  ];
-  const lower = message.toLowerCase();
-  return (
-    transientCodes.some((code) => message.startsWith(code)) ||
-    transientPatterns.some((p) => lower.includes(p))
-  );
+  return isRateLimitError(message) || matchesTransientOnly(message);
 }
+
+/** Patterns that indicate HTTP rate-limit (429/throttle). */
+const RATE_LIMIT_PATTERNS = [
+  "rate limit",
+  "too many requests",
+  "throttled",
+] as const;
 
 /** Check if an error message indicates a rate-limit condition specifically. */
 function isRateLimitError(message: string): boolean {
+  if (message.startsWith("429")) return true;
   const lower = message.toLowerCase();
-  return (
-    message.startsWith("429") ||
-    lower.includes("rate limit") ||
-    lower.includes("too many requests") ||
-    lower.includes("throttled")
-  );
+  return RATE_LIMIT_PATTERNS.some((p) => lower.includes(p));
+}
+
+/** Patterns that indicate transient failure but not rate-limit. */
+const TRANSIENT_ONLY_PATTERNS = [
+  "overloaded",
+  "service unavailable",
+  "temporarily",
+  "try again later",
+  "please retry",
+  "network connection lost",
+  "upstream connect",
+  "connection refused",
+] as const;
+const TRANSIENT_ONLY_CODES = ["529", "502", "503", "504"] as const;
+
+function matchesTransientOnly(message: string): boolean {
+  if (TRANSIENT_ONLY_CODES.some((code) => message.startsWith(code))) return true;
+  const lower = message.toLowerCase();
+  return TRANSIENT_ONLY_PATTERNS.some((p) => lower.includes(p));
 }
 
 /**
