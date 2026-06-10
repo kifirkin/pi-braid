@@ -150,6 +150,41 @@ export const CRITICS = {
     options: { maxTokens: 10, timeoutMs: 3000 },
   } satisfies CriticDef,
 
+  /**
+   * Classify a tool-call trajectory into a workflow pattern name.
+   * Used by sop-extractor to produce human-readable pattern names like
+   * 'Read-Fix-Verify' or 'Error-Diagnose-Fix'. Replaces the hardcoded
+   * 9-entry COMMON_PATTERNS list which required exact 3-tool-window
+   * matches and missed everything else.
+   *
+   * The LLM is given the known vocabulary of pattern names plus a
+   * fallback instruction to generate a descriptive one if none fit.
+   * The text is a short, comma-separated tool sequence.
+   */
+  trajectoryPattern: {
+    label: "Trajectory Pattern",
+    criteria: {
+      systemPrompt:
+        "You are a workflow-pattern classifier. Given a comma-separated sequence " +
+        "of tool names from a completed agent task, name the dominant workflow " +
+        "pattern. Prefer one of these known patterns (exact spelling, hyphenated):\n" +
+        "- Read-Fix-Verify: read file, edit, run command to verify\n" +
+        "- Read-Fix-Test: read file, edit, run tests (multiple bash)\n" +
+        "- Read-Create-Verify: read existing, write new file, verify\n" +
+        "- Error-Diagnose-Fix: error from command, read output, edit\n" +
+        "- Read-Test-Fix-Verify: read, test, edit, test again\n" +
+        "- Research-Read-Fix-Verify: web search, read, edit, verify\n" +
+        "- Repeated-Test: multiple verify/test commands in a row\n" +
+        "- Multi-Source-Investigation: read multiple files to understand\n" +
+        "- Iterative-Fix-Verify: edit-edit-test loop\n" +
+        "If none of the above fit, invent a concise hyphenated name like " +
+        "'Read-Edit-Edit' or 'Investigate-Write'. The name should be 1-4 " +
+        "words, each word 1-12 chars. Return only the pattern name, no explanation.",
+      userPrompt: "Tool sequence: {{tools}}",
+    },
+    options: { maxTokens: 20, timeoutMs: 3000 },
+  } satisfies CriticDef,
+
   /** Legacy heuristic fallback for topic drift (stop-word anchor matching). */
   topicDriftFallback(): string {
     return "no"; // Conservative: assume no drift when LLM unavailable

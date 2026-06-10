@@ -586,12 +586,13 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
                 .filter((h) => h.moduleName === "tool_call" || h.reason === "tool")
                 .map((h) => ({ toolName: h.moduleName, success: true }));
 
-        // Extract SOP from the trajectory
-        const sop = extractSOP({
+        // Extract SOP from the trajectory (uses LLM pattern detection when ctx available)
+        const sop = await extractSOP({
           task: taskDesc,
           trajectory,
           solution: `Ticks:${state.stats.totalTicks} Tools:${state.metaLearning.toolTracking.totalToolsUsed}`,
           outcome: success ? "success" : "partial",
+          ctx,
         });
 
         addEpisode(
@@ -615,7 +616,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
         if (success) {
           try {
             const { executeConsolidation } = await import("../../../lib/events/consolidation-channel.js");
-            const result = executeConsolidation({
+            const result = await executeConsolidation({
               id: `ep-${Date.now()}`,
               task: taskDesc,
               outcome: "success",

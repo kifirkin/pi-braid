@@ -2,6 +2,12 @@
  * Test: SOP Extractor — trajectory → structured SOP conversion.
  *
  * Runtime tests importing from dist/lib/utils/sop-extractor.js.
+ *
+ * Note: extractSOP is now async (it may use an LLM-based pattern
+ * detector when called with a ctx). When called WITHOUT a ctx
+ * (as these tests do), it falls through to the sync heuristic
+ * pattern matcher, so the assertions on the pattern names
+ * (Read-Fix-Verify, etc.) remain valid.
  */
 
 import { describe, it } from "node:test";
@@ -10,8 +16,8 @@ import assert from "node:assert/strict";
 const { extractSOP } = await import("../../../dist/lib/utils/sop-extractor.js");
 
 describe("SOP Extractor", () => {
-  it("handles empty trajectory", () => {
-    const sop = extractSOP({
+  it("handles empty trajectory", async () => {
+    const sop = await extractSOP({
       task: "Fix the bug",
       trajectory: [],
       solution: "Did nothing",
@@ -22,8 +28,8 @@ describe("SOP Extractor", () => {
     assert.equal(sop.atomicSOP.length, 0);
   });
 
-  it("extracts read-edit-bash pattern", () => {
-    const sop = extractSOP({
+  it("extracts read-edit-bash pattern", async () => {
+    const sop = await extractSOP({
       task: "Fix syntax error",
       trajectory: [
         { toolName: "read", success: true },
@@ -38,8 +44,8 @@ describe("SOP Extractor", () => {
     assert.deepEqual(sop.atomicSOP, ["read", "edit", "bash"]);
   });
 
-  it("extracts read-write-bash pattern", () => {
-    const sop = extractSOP({
+  it("extracts read-write-bash pattern", async () => {
+    const sop = await extractSOP({
       task: "Create a new file",
       trajectory: [
         { toolName: "read", success: true },
@@ -52,8 +58,8 @@ describe("SOP Extractor", () => {
     assert.ok(sop.strategicSOP.includes("Read-Create-Verify"));
   });
 
-  it("extracts multi-source investigation", () => {
-    const sop = extractSOP({
+  it("extracts multi-source investigation", async () => {
+    const sop = await extractSOP({
       task: "Research codebase",
       trajectory: [
         { toolName: "read", success: true },
@@ -68,8 +74,8 @@ describe("SOP Extractor", () => {
     assert.equal(sop.functionalSOP.length, 1);
   });
 
-  it("deduplicates consecutive tool repeats in atomic SOP", () => {
-    const sop = extractSOP({
+  it("deduplicates consecutive tool repeats in atomic SOP", async () => {
+    const sop = await extractSOP({
       task: "Test multiple times",
       trajectory: [
         { toolName: "bash", success: true },
@@ -83,8 +89,8 @@ describe("SOP Extractor", () => {
     assert.ok(sop.atomicSOP.some((s) => s.includes("×")));
   });
 
-  it("works with write-read-bash pattern", () => {
-    const sop = extractSOP({
+  it("works with write-read-bash pattern", async () => {
+    const sop = await extractSOP({
       task: "Implement feature",
       trajectory: [
         { toolName: "write", success: true },
@@ -101,8 +107,8 @@ describe("SOP Extractor", () => {
     assert.ok(sop.atomicSOP.length > 0, "has atomic steps");
   });
 
-  it("generates functional steps from category summary when no phase transitions", () => {
-    const sop = extractSOP({
+  it("generates functional steps from category summary when no phase transitions", async () => {
+    const sop = await extractSOP({
       task: "Complex task",
       trajectory: [
         { toolName: "grep", success: true },
@@ -115,8 +121,8 @@ describe("SOP Extractor", () => {
     assert.ok(sop.functionalSOP.length > 0);
   });
 
-  it("includes tool counts in strategic SOP on success", () => {
-    const sop = extractSOP({
+  it("includes tool counts in strategic SOP on success", async () => {
+    const sop = await extractSOP({
       task: "Verify build",
       trajectory: [
         { toolName: "bash", success: true },

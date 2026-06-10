@@ -232,7 +232,7 @@ export function enqueueCandidate(candidate: ConsolidationCandidate): boolean {
  * This bridges heartbeat episode retrieval with the consolidation queue.
  * The actual hint file write happens asynchronously via processConsolidationTick.
  */
-export function executeConsolidation(episode: {
+export async function executeConsolidation(episode: {
   id: string;
   task: string;
   outcome: "success" | "failure" | "partial";
@@ -243,7 +243,7 @@ export function executeConsolidation(episode: {
   strategicSOP?: string;
   functionalSOP?: string[];
   toolSequence?: string[];
-}): ConsolidationCandidate | null {
+}): Promise<ConsolidationCandidate | null> {
   // Step 1: Extract SOP via sop-extractor if not pre-populated
   let strategicSOP = episode.strategicSOP;
   let functionalSOP = episode.functionalSOP;
@@ -251,7 +251,7 @@ export function executeConsolidation(episode: {
 
   if ((!strategicSOP || !functionalSOP) && episode.trajectory && episode.trajectory.length > 0) {
     try {
-      const sop = extractSOP({
+      const sop = await extractSOP({
         task: episode.task,
         trajectory: episode.trajectory.map((t) => ({
           toolName: t.toolName,

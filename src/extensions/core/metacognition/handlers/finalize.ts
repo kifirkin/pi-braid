@@ -64,7 +64,7 @@ async function recordToMemory(
     if (completed) {
       try {
         const { executeConsolidation } = await import("../../../../lib/events/consolidation-channel.js");
-        const result = executeConsolidation({
+        const result = await executeConsolidation({
           id: episode.id,
           task: summary,
           outcome: "success",

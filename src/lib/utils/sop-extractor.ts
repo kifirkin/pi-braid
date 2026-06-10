@@ -11,9 +11,15 @@
  *   - Atomic SOP: 5-20x compression (episodic memory)
  *
  * This is a heuristic-based extractor. No LLM calls — fast, deterministic.
+ * The LLM-only path (detectPatternWithLLM) is used by the heartbeat
+ * scheduler when a context is available; the consolidation channel
+ * uses the sync heuristic since it runs in a periodic background tick.
  */
 
 import { createLogger } from "../core/logger.js";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { classify } from "../ai/text-classifier.js";
+import { CRITICS } from "../ai/critic-registry.js";
 
 const log = createLogger("sop-extractor");
 
@@ -38,6 +44,10 @@ export interface ExtractionInput {
   solution: string;
   /** Whether the task was completed successfully */
   outcome: "success" | "failure" | "partial";
+  /** Optional ExtensionContext. When provided, the trajectory-pattern
+   *  detection uses CRITICS.trajectoryPattern (LLM judge) instead of the
+   *  sync heuristic window-matcher. */
+  ctx?: ExtensionContext;
 }
 
 export interface ExtractedSOP {
@@ -111,8 +121,12 @@ const COMMON_PATTERNS: Array<{ match: string[]; description: string }> = [
 /**
  * Detect the dominant tool sequence pattern in a trajectory.
  * Returns the best-matching pattern description or a generated summary.
+ *
+ * Sync (heuristic) path. Used by the consolidation channel which runs
+ * in a periodic background tick without an ExtensionContext. For
+ * runtime use, prefer detectPatternWithLLM.
  */
-function detectPattern(tools: string[]): string {
+export function detectPattern(tools: string[]): string {
   // Check for known patterns (consecutive 3-tool windows)
   for (let i = 0; i <= tools.length - 3; i++) {
     const window = tools.slice(i, i + 3);
@@ -129,6 +143,34 @@ function detectPattern(tools: string[]): string {
   if (phases.length === 1)
     return `Focused ${phases[0].charAt(0).toUpperCase() + phases[0].slice(1)}`;
   return "General workflow";
+}
+
+/**
+ * LLM-based pattern detection. Replaces the 9-hardcoded-pattern
+ * window-matching with a single classify() call. The LLM is given
+ * the known pattern vocabulary and asked to match or invent a
+ * concise descriptive name.
+ *
+ * On LLM unavailability or degradation, falls back to detectPattern.
+ */
+export async function detectPatternWithLLM(
+  tools: string[],
+  ctx: ExtensionContext,
+): Promise<string> {
+  if (tools.length === 0) return "General workflow";
+  try {
+    const result = await classify(
+      ctx,
+      CRITICS.trajectoryPattern.criteria,
+      { tools: tools.join(", ") },
+      { maxTokens: 20, timeoutMs: 3000, fallback: () => "" },
+    );
+    const label = result.label.trim();
+    if (label && label.length <= 60) return label;
+  } catch (err) {
+    log.debug(`detectPatternWithLLM failed: ${err}`);
+  }
+  return detectPattern(tools);
 }
 
 /**
@@ -151,7 +193,7 @@ function categorizeTools(tools: string[]): Record<string, number> {
  * @param input - The task, trajectory, solution, and outcome
  * @returns Three-tier SOP (strategic, functional, atomic)
  */
-export function extractSOP(input: ExtractionInput): ExtractedSOP {
+export async function extractSOP(input: ExtractionInput): Promise<ExtractedSOP> {
   const { task, trajectory, outcome } = input;
 
   if (trajectory.length === 0) {
@@ -163,7 +205,13 @@ export function extractSOP(input: ExtractionInput): ExtractedSOP {
   }
 
   const tools = trajectory.map((t) => t.toolName);
-  const pattern = detectPattern(tools);
+  // Use LLM pattern detection when a context is available, else
+  // fall through to the sync heuristic. The pattern is part of the
+  // strategic SOP so the LLM's better name attribution is worth
+  // the small extra cost on the success-path of task completion.
+  const pattern = input.ctx
+    ? await detectPatternWithLLM(tools, input.ctx)
+    : detectPattern(tools);
   const categories = categorizeTools(tools);
   const uniqueTools = [...new Set(tools)];
   const successfulTools = trajectory.filter((t) => t.success).length;
