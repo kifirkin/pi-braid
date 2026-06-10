@@ -1,5 +1,4 @@
 import { stat, readFile } from "node:fs/promises";
-import { createPromptPreviewTool } from "./preview.js";
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import {
   searchPastInsights,
@@ -815,7 +814,6 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
   });
 
   // Note: prompt_preview tool removed (out of scope — dev/debug affordance, not agent use).
-  // createPromptPreviewTool() is still exported from preview.ts for any future dev/research use.
 }
 
 export { gatherL1State, formatL1Environment };

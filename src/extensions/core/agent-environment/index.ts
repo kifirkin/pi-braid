@@ -8,8 +8,8 @@ const log = createLogger("agent-environment");
  *
  * Provides the agent with awareness of its runtime environment and session state.
  * This is the L1 (Internal) layer - context state surfaced to the agent via:
- *   1. `time_status` tool - explicit time queries
- *   2. L1 system prompt injection - automatic context awareness
+ *   1. L1 system prompt injection - automatic context awareness
+ *   2. Turn/turn-count tracking for adaptive behaviour
  *
  * L1 data: session time, turn count, last event, tool call metrics, machine info.
  * These are surfaced in the system prompt so the agent is always context-aware
@@ -144,15 +144,6 @@ export function formatL1EnvironmentSection(data: L1EnvironmentData): string {
 }
 
 // =============================================================================
-// time_status tool
-// =============================================================================
-// time_status tool — REMOVED
-// =============================================================================
-// The time_status tool was removed because it's out of scope: the agent
-// can get the same information via `bash date` (one line). The function
-// createTimeStatusTool and its schema were deleted with the tool.
-
-// =============================================================================
 // Extension registration
 // =============================================================================
 
@@ -188,6 +179,4 @@ export default function agentEnvironmentExtension(pi: ExtensionAPI) {
     }
   });
 
-  // Note: time_status tool removed (out of scope — agent can use 'bash date' for the same info).
-  // createTimeStatusTool() is still exported above for any future dev/research use.
 }

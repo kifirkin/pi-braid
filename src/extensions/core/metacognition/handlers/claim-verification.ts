@@ -180,7 +180,7 @@ async function checkDecompositionCoverage(
 // ── Tool factory ──────────────────────────────────────────────────────────
 
 /**
- * Register the verify_claim and verify_decomposition tools.
+ * Register the verify_claim tool (action=claim|decomposition).
  * Called by metacognition/index.ts during extension setup.
  */
 export function registerClaimVerificationTools(pi: ExtensionAPI): void {
@@ -189,7 +189,7 @@ export function registerClaimVerificationTools(pi: ExtensionAPI): void {
 		label: "Verify Claim",
 		promptSnippet: "Verify agent claims against retrieved context",
 		description:
-			"Verify agent claims against retrieved context — use when conclusions depend on evidence. Detects contradictions, unsupported assertions, and hedge word issues. For task decomposition coverage, use verify_decomposition instead.",
+			"Verify agent claims against retrieved context — use when conclusions depend on evidence. Detects contradictions, unsupported assertions, and hedge word issues. For task decomposition coverage, use action=decomposition.",
 		parameters: verifyClaimSchema,
 		execute: async (
 			_toolCallId: string,
