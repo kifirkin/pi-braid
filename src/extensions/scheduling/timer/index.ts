@@ -323,14 +323,21 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
   // time for context; wake: false uses the shorter form.
   if (timer.wake === true) {
     const text = `[TIMER FIRED — ${elapsedSec}s elapsed] ${timer.reason} — Resume the task.`;
-    // SDK: ExtensionContext.sendUserMessage returns void in the public type,
-    // but the underlying implementation returns a Promise. Cast to access
-    // the promise so we can .catch() failures.
-    (pi.sendUserMessage(text, { deliverAs: "followUp" }) as unknown as Promise<void>).catch(
-      (e: unknown) => {
-        log.warn(`[timer] user-message delivery failed: ${(e as Error).message}`);
-      },
-    );
+    // SDK: ExtensionContext.sendUserMessage is declared as returning `void`
+    // (Promise<void> is only on ReplacedSessionContext). At runtime the
+    // underlying call is fire-and-forget — the SDK handles the queue and
+    // triggers the turn. We log before/after to capture failures (any
+    // sync throw lands in the catch; rejections from the underlying
+    // promise are absorbed by the SDK's own logging).
+    //
+    // The previous `as unknown as Promise<void>` cast was a typecheck-only
+    // lie: at runtime the return is `undefined`, and `.catch()` on that
+    // throws "Cannot read properties of undefined (reading 'catch')".
+    try {
+      pi.sendUserMessage(text, { deliverAs: "followUp" });
+    } catch (e) {
+      log.warn(`[timer] user-message delivery failed: ${(e as Error).message}`);
+    }
   } else {
     const text = `[TIMER FIRED] ${timer.reason}`;
     try {
