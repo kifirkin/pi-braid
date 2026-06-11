@@ -297,42 +297,63 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
   }
 
   log.info(`[timer] fired: ${timer.id} (session=${timer.sessionId}) — ${timer.reason}`);
-  // Try to wake the agent with a steer message if between turns.
+
+  // Compute elapsed time for the wake message
+  const elapsedSec = Math.round((Date.now() - timer.createdAt) / 1000);
+
+  // Two delivery paths based on `wake`:
   //
-  // triggerTurn contract:
-  //   - wake: true (post-compaction resume timer) → triggerTurn: true
-  //     Auto-resume the agent. This is the original design intent of the
-  //     3-minute resume timer — wake the agent if it didn't continue on
-  //     its own. Safe because the busy guard prevents mid-tool firing.
-  //   - wake: false (default) → triggerTurn: false
-  //     Whisper is visible and survives compaction (via _braidInjected)
-  //     but does NOT force a new turn. Safer default for user-scheduled
-  //     timers (e.g. "check the build in 60s").
+  //   wake: true (post-compaction resume timer, user-explicit auto-resume)
+  //     → pi.sendUserMessage(text, { deliverAs: "followUp" })
+  //     A USER-STYLE message that "Always triggers a turn" per the SDK
+  //     contract. Bypasses the per-source flood cap because auto-resume
+  //     is user-explicit and time-critical: if 2 timer fires land in the
+  //     same turn, the user wants BOTH. Bypasses sendTrackedMessage
+  //     because the soft-nudge nature of sendMessage(steer) can be
+  //     ignored by the agent mid-stream.
   //
-  // The post-compaction stack overflow was caused by wake: true firing
-  // MID-tool-execution. The fix is the busy guard, not removing wake:
-  // true entirely. The resume path needs auto-resume; user timers don't.
-  const triggerTurn = timer.wake === true;
-  try {
-    sendTrackedMessage(
-      pi,
-      {
-        customType: "timer",
-        content: [{ type: "text" as const, text: `[timer] ${timer.reason}` }],
-        display: true,
-        details: {
-          _braidInjected: true,
-          _braidSource: "timer/fire",
-          timerId: timer.id,
-          sessionId: timer.sessionId,
-          wake: triggerTurn,
-        },
+  //   wake: false (silent reminder, default for user-scheduled timers)
+  //     → sendTrackedMessage (custom-message whisper, per-source cap applies)
+  //     Whisper is visible in TUI and survives compaction (via
+  //     _braidInjected) but does NOT force a new turn. Safer default
+  //     for "remind me in 5 minutes" type timers.
+  //
+  // Both paths emit the [TIMER FIRED] prefix so the agent can recognize
+  // them in the conversation stream. wake: true prepends the elapsed
+  // time for context; wake: false uses the shorter form.
+  if (timer.wake === true) {
+    const text = `[TIMER FIRED — ${elapsedSec}s elapsed] ${timer.reason} — Resume the task.`;
+    // SDK: ExtensionContext.sendUserMessage returns void in the public type,
+    // but the underlying implementation returns a Promise. Cast to access
+    // the promise so we can .catch() failures.
+    (pi.sendUserMessage(text, { deliverAs: "followUp" }) as unknown as Promise<void>).catch(
+      (e: unknown) => {
+        log.warn(`[timer] user-message delivery failed: ${(e as Error).message}`);
       },
-      { deliverAs: "steer", triggerTurn },
-      { type: "heartbeat", source: "timer/fire" },
     );
-  } catch (e) {
-    log.warn(`[timer] steer delivery failed (agent may be mid-turn): ${(e as Error).message}`);
+  } else {
+    const text = `[TIMER FIRED] ${timer.reason}`;
+    try {
+      sendTrackedMessage(
+        pi,
+        {
+          customType: "timer",
+          content: [{ type: "text" as const, text }],
+          display: true,
+          details: {
+            _braidInjected: true,
+            _braidSource: "timer/fire",
+            timerId: timer.id,
+            sessionId: timer.sessionId,
+            wake: false,
+          },
+        },
+        { deliverAs: "steer", triggerTurn: false },
+        { type: "heartbeat", source: "timer/fire" },
+      );
+    } catch (e) {
+      log.warn(`[timer] steer delivery failed (agent may be mid-turn): ${(e as Error).message}`);
+    }
   }
 }
 

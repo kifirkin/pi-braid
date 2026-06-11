@@ -86,6 +86,13 @@ const COMPACTION_SURVIVAL = `Keep your scratchpad (goal, plan, decisions, key le
 // Living documentation: agent-maintained doc hierarchy (inspired by DOX — agent0ai/dox)
 const LIVING_DOCS = `Project guidelines (AGENTS.md) are living contracts you maintain. Keep them synchronized with the project structure.`;
 
+// Timer fires: how to handle a forced wake-up from a scheduled timer.
+// A `[TIMER FIRED — Ns elapsed] <reason>` message is a USER-STYLE message
+// (via pi.sendUserMessage) that always triggers a turn. Acknowledge it
+// briefly and decide next step: continue the previous task if still
+// relevant, or start the new one named in the reason.
+const TIMER_FIRE_HANDLING = `When you see "[TIMER FIRED — Ns elapsed] <reason>", this is a forced wake-up from a scheduled timer. Acknowledge briefly: "Resuming after Ns — <reason>." Then decide: continue the previous task if still relevant, or pivot to the reason-named task. If neither fits, ask the user for direction. Do not ignore the timer.`;
+
 // ── Interaction Style (single declarative sentence) ───────────────────────
 const INTERACTION_STYLE = `You provide concise, production-quality solutions. You focus on correctness over verbosity.`;
 
@@ -685,6 +692,10 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     // 1c. Living documentation invariant — agent maintains AGENTS.md hierarchy
     //     Walk tree before edit, update docs after change (from DOX — agent0ai/dox)
     parts.push(LIVING_DOCS);
+    // 1d. Timer fires: how to handle a forced wake-up from a scheduled timer
+    //     (the [TIMER FIRED] message is a user-style message that always
+    //     triggers a turn — agent must acknowledge and act).
+    parts.push(TIMER_FIRE_HANDLING);
 
     // 2. Skills
     if (hasRead) {
