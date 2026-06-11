@@ -94,7 +94,6 @@ const INTERACTION_STYLE = `You provide concise, production-quality solutions. Yo
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { onEvent } from "../../../lib/events/event-types.js";
-import { RESOURCES_DISCOVER } from "../../../lib/core/event-names.js";
 
 interface PromptBuilderState {
   activeContrastMode: string;
@@ -648,12 +647,13 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     });
   });
 
-  // ── resources_discover: No bundled skills ──
-  // Skills have been moved to a separate package: pi-braid-skills.
-  // Users can install that package and configure their own skill paths.
-  onEvent(pi, RESOURCES_DISCOVER, async (_event: { cwd: string; reason: string }, _ctx: any) => {
-    return { skillPaths: [] };
-  });
+  // ── resources_discover: No-op ──
+  // pi-braid does not bundle skills. The pi-braid-skills package is a
+  // separate package that registers its own skills via its own
+  // RESOURCES_DISCOVER handler. We do not register a handler here so
+  // that pi core can use its default skill discovery (which includes
+  // any extension paths configured in settings.json, including
+  // pi-braid-skills).
 
   pi.on("before_agent_start", async (event, ctx) => {
     const ps = getPromptState(ctx);
