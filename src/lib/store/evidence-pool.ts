@@ -21,7 +21,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../state/extension-state.js";
 import { classify } from "../ai/text-classifier.js";
-import { CRITICS, STOP_WORDS_LEGACY } from "../ai/critic-registry.js";
+import { CRITICS, STOP_WORDS } from "../ai/critic-registry.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -90,14 +90,14 @@ function getState(ctx: ExtensionContext): EvidencePoolState {
   }));
 }
 
-// ── Normalization helpers (uses shared STOP_WORDS_LEGACY from critic-registry) ─
+// ── Normalization helpers (uses shared STOP_WORDS from critic-registry) ─
 
 /** Normalize claim for comparison: lowercase, remove stopwords, sort words */
 function normalize(text: string): string {
   const tokens = text
     .toLowerCase()
     .split(/\W+/)
-    .filter((t) => t.length > 2 && !STOP_WORDS_LEGACY.has(t));
+    .filter((t) => t.length > 2 && !STOP_WORDS.has(t));
   return tokens.sort().join(" ");
 }
 

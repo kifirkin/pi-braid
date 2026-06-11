@@ -42,11 +42,12 @@ export interface CriticDef {
   label?: string;
 }
 
-// Helpers (ENTITY_VERBS, STOP_WORDS_LEGACY) and the criticLabel() lookup
+// Helpers (ENTITY_VERBS, STOP_WORDS) and the criticLabel() lookup
 // were extracted to critic-helpers.ts to keep this file focused on
 // the CRITICS object. Re-exported below for backward compat.
+// (STOP_WORDS_LEGACY kept as a deprecated alias for the same reason.)
 import { ENTITY_VERBS } from "./critic-helpers.js";
-export { ENTITY_VERBS, STOP_WORDS_LEGACY, criticLabel } from "./critic-helpers.js";
+export { ENTITY_VERBS, STOP_WORDS, STOP_WORDS_LEGACY, criticLabel } from "./critic-helpers.js";
 
 // ── CRITICS — All critic prompt definitions ─────────────────────────────────
 

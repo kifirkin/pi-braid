@@ -26,7 +26,7 @@ import { createLogger } from "../core/logger.js";
 import { sendTrackedMessage } from "../utils/injection-tracker.js";
 import { eventBus } from "../events/event-bus.js";
 import { getExtensionState } from "../state/extension-state.js";
-import { STOP_WORDS_LEGACY } from "../ai/critic-registry.js";
+import { STOP_WORDS } from "../ai/critic-registry.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Episode } from "../types/episode-types.js";
 
@@ -150,7 +150,7 @@ async function classifyTaskKeywords(text: string, _ctx?: any): Promise<string[]>
 
 /**
  * Extract task keywords from user message text.
- * Uses the centralized STOP_WORDS_LEGACY list (replaces a 100-word
+ * Uses the centralized STOP_WORDS list (replaces a 100-word
  * inline list that duplicated most of the centralized set plus a few
  * conversation openers). Returns meaningful identifiers.
  */
@@ -170,7 +170,7 @@ function extractKeywords(text: string): string[] {
   const words = clean
     .toLowerCase()
     .split(/\s+/)
-    .filter((w) => w.length > 2 && !STOP_WORDS_LEGACY.has(w));
+    .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
 
   // Remove duplicates, preserve order
   const seen = new Set<string>();

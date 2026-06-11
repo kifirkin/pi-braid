@@ -283,18 +283,12 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
   }
   emitTimerReminder(timer); // → heartbeat bus → agent reminder on next tick
 
-  // Emit via event bus (unified event-driven path)
-  try {
-    eventBus.emit({
-      type: "timer_fire",
-      id: timer.id,
-      reason: timer.reason,
-      tag: timer.tag,
-      payload: `⏰ Timer "${timer.reason}" has fired. Action required.`,
-    });
-  } catch {
-    log.warn("[timer] failed to send steer for fired timer: " + timer.id);
-  }
+  // (Previously emitted eventBus.emit({ type: "timer_fire", ... }) here.
+  // Removed in fresh-eyes audit 2026-06-11: no listener was ever registered
+  // for "timer_fire" — the emit was dead code. The actual wake-up path is
+  // via sendUserMessage (wake:true) or sendTrackedMessage (wake:false)
+  // below, NOT through the event bus. If a future feature needs to react
+  // to timer fires asynchronously, register a listener first.)
 
   log.info(`[timer] fired: ${timer.id} (session=${timer.sessionId}) — ${timer.reason}`);
 

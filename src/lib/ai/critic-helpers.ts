@@ -7,7 +7,7 @@
  *
  * Contains:
  *  - ENTITY_VERBS: shared verb-extraction regex (used by entity-detection fallback)
- *  - STOP_WORDS_LEGACY: shared stop-word list (used by normalizeText)
+ *  - STOP_WORDS: shared stop-word list (used by normalizeText)
  *  - criticLabel: lookup helper to get a critic's human-readable label
  */
 
@@ -16,7 +16,18 @@ import { CRITICS } from "./critic-registry.js";
 /** Shared verb-extraction regex used by entity-extraction heuristic fallback. */
 export const ENTITY_VERBS = /\b(is|was|will|can|does|has|should|must|returns|takes|uses|creates|handles|supports|needs|exports|works|fails|validates|initializes|configures|implements|generates|deploys)\b/i;
 
-export const STOP_WORDS_LEGACY = new Set([
+/**
+ * Shared stop-word list. Used by normalizeText() in evidence-pool.ts
+ * and sop-suggestion.ts to filter out non-content words before
+ * similarity computation. The previous local 100-word list in
+ * sop-extractor.ts was consolidated here.
+ *
+ * Renamed from STOP_WORDS_LEGACY in fresh-eyes audit 2026-06-11 —
+ * the "_LEGACY" suffix was misleading (this is the current
+ * centralized list, not a legacy one). The old name is kept as a
+ * deprecated alias for back-compat.
+ */
+export const STOP_WORDS = new Set([
   "the",
   "a",
   "an",
@@ -115,6 +126,12 @@ export const STOP_WORDS_LEGACY = new Set([
   "day",
   "boy",
 ]);
+
+/**
+ * @deprecated Use STOP_WORDS instead. Kept as a back-compat alias
+ * (renamed in fresh-eyes audit 2026-06-11).
+ */
+export const STOP_WORDS_LEGACY = STOP_WORDS;
 
 /**
  * Return the human-readable label for a critic, if available.
