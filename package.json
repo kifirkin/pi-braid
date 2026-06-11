@@ -16,6 +16,7 @@
     "LICENSE",
     "AGENTS.md",
     "CONTRIBUTING.md",
+    "CHANGELOG.md",
     "tsconfig.json"
   ],
   "repository": {
