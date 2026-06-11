@@ -646,7 +646,8 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
       "Common actions: set_goal, add_plan, mark_done, add_note, add_decision, add_learning, read. " +
       "For add_learning, prefer explicit 'category' + 'content' fields over pipe-delimited text. " +
       "Plan items (added via add_plan, completed via mark_done) serve as the task list. " +
-      "For richer task state (priority, dependencies, tags, fail/next/clear), add plan items and use read to view them.",
+      "For richer task state (priority, dependencies, tags, fail/next/clear), add plan items and use read to view them. " +
+      "Use this scratchpad for project-scoped work — do NOT use the SDK's separate 'task' tool for the same purpose.",
     parameters: scratchpadParams,
     execute: scratchpadExecute,
   } as unknown as ToolDefinition<any, any, any>);
