@@ -79,7 +79,7 @@
     "self-improvement",
     "memory-management"
   ],
-  "author": "Kifir Kifirkin",
+  "author": "Alex Mironoff",
   "license": "MIT",
   "engines": {
     "node": ">=20.0.0"

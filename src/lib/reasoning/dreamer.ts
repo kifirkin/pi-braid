@@ -48,7 +48,7 @@ function getState(ctx: ExtensionContext): DreamerState {
 const MIN_SAMPLE_FOR_PREDICTION = 5;
 
 /** Minimum consecutive same-tool calls in the CURRENT sequence to flag as a loop. */
-const MIN_CURRENT_LOOP_LENGTH = 4;
+const MIN_CURRENT_LOOP_LENGTH = 8;
 
 /**
  * Compute the longest run of consecutive identical tool names at the tail
