@@ -2,13 +2,21 @@ import { createLogger } from "../../../lib/core/logger.js";
 
 const log = createLogger("prompt-builder");
 /**
- * L1 Environmental Awareness System - merged from agent-environment
+ * Prompt-builder's L1 environmental awareness layer.
  *
- * Combines:
- * - Agent environment: session time, turn count, last event
- * - Memory: stored cognitive memories
- * - Context: context usage percentage
- * - Pi paths: documentation locations (when discoverable)
+ * Layering (bottom → top):
+ *   1. `agent-environment/index.ts` exposes `gatherL1Environment()` and
+ *      `formatL1EnvironmentSection()` — raw data (pid, session time,
+ *      turn count, machine) and a fixed "## System State" block.
+ *   2. THIS file consumes the above and adds: context-usage percentage,
+ *      memory count, steps since last checkpoint, pi package root.
+ *   3. The composer's only API is `l1EnvSection()` (a `PromptSection`).
+ *
+ * Naming distinction: the lower-level functions in `agent-environment`
+ * end in `Environment` / `EnvironmentSection`; the prompt-builder
+ * versions end in `Section` and live in this file. Both layers are
+ * required; the prompt-builder cannot format its L1 block without
+ * the lower-level "## System State" sub-block.
  *
  * The native system already handles skill loading guidance.
  * Don't duplicate native sections here.
@@ -182,7 +190,7 @@ function discoverPiRootPath(): string {
   return "";
 }
 
-function formatL1Environment(env: L1Environment): PromptSection {
+function formatL1EnvironmentInternal(env: L1Environment): PromptSection {
   return {
     name: "l1-environment",
     render: () => {
@@ -237,4 +245,4 @@ export function getMachineInfo(): { platform: string; hostname: string; arch: st
   };
 }
 
-export { formatL1Environment, gatherL1State };
+export { formatL1EnvironmentInternal as l1EnvSection, gatherL1State };

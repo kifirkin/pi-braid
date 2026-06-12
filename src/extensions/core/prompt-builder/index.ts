@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import {
   searchPastInsights,
-  formatPastInsightsSection,
+  pastInsightsSection,
   deriveProjectIdFromCwd,
 } from "./past-insights.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
@@ -16,7 +16,7 @@ import { asyncExists } from "../../../lib/utils/async-fs.js";
  *
  * Sections built from structured data:
  * - Tools: pi.getAllTools() (with promptSnippet)
- * - Skills: formatSkillsWithLineCounts() re-formats skills from
+ * - Skills: skillsSection() re-formats skills from
  *   event.systemPromptOptions.skills (the fully resolved list pi built via its
  *   package manager — includes user, project, AND package skills). This is the
  *   canonical pattern from pi's own docs: extensions should not re-discover
@@ -54,8 +54,8 @@ import { getAgentDir } from "@earendil-works/pi-coding-agent";
 // its full package manager pipeline (user dirs, project dirs, .agents/skills,
 // packages, CLI --skill, settings.json skills). Re-walking dirs ourselves
 // would miss package skills (e.g. pi-braid-skills) and other pi sources.
-import { gatherL1State, formatL1Environment } from "./l1-environment.js";
-import { formatContrastSection } from "./contrast-phrase-library.js";
+import { gatherL1State, l1EnvSection } from "./l1-environment.js";
+import { contrastSection } from "./contrast-phrase-library.js";
 import { activeSpecsSection } from "./openspec.js";
 import { classify } from "../../../lib/ai/text-classifier.js";
 import { CRITICS } from "../../../lib/ai/critic-registry.js";
@@ -291,7 +291,7 @@ function firstSentence(text: string): string {
   return t.length <= 120 ? t : t.slice(0, 117) + "...";
 }
 
-function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>): PromptSection {
+function toolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>): PromptSection {
   // pi-native stores promptSnippets internally but getAllTools() doesn't expose them.
   // KNOWN_SNIPPETS covers pi-native core tools (their descriptions are parameter schemas,
   // not prose). For all other tools, extract first sentence from t.description.
@@ -347,7 +347,7 @@ function reconstructToolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>)
   };
 }
 
-async function reconstructProjectContextSection(cwd: string): Promise<PromptSection> {
+async function projectContextSection(cwd: string): Promise<PromptSection> {
   // Re-implemented from loadProjectContextFiles (not exported from pi)
   // Searches for AGENTS.md or CLAUDE.md in cwd and ancestors
   // NOTE: pi's native loading is overridden by prompt-builder, so we must replicate here
@@ -465,7 +465,7 @@ async function getSkillMeta(skill: Skill): Promise<SkillMeta> {
  * always `read` any of them on demand. Skills with
  * `disable-model-invocation: true` are excluded, matching native.
  */
-async function formatSkillsWithLineCounts(skills: Skill[]): Promise<PromptSection> {
+async function skillsSection(skills: Skill[]): Promise<PromptSection> {
   return {
     name: "skills",
     render: async () => {
@@ -538,7 +538,7 @@ async function reconstructSkillsSection(
   // Render immediately so the cache holds the final string. The fingerprint
   // already captures the input identity; we don't need to re-derive the
   // PromptSection on cache hits.
-  const section = await (await formatSkillsWithLineCounts(skills as Skill[])).render();
+  const section = await (await skillsSection(skills as Skill[])).render();
   skillsSectionCache = { fingerprint, section };
   return section;
 }
@@ -591,7 +591,7 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     // with the rest of the prompt assembly.
     if (!ps.insightsSent) {
       const pastInsights = await searchPastInsights(cwd);
-      const insightsText = await formatPastInsightsSection(pastInsights).render();
+      const insightsText = await pastInsightsSection(pastInsights).render();
       if (insightsText) {
         try {
           sendTrackedMessage(
@@ -662,7 +662,10 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       simpleSection("interaction-style", INTERACTION_STYLE),
     ];
 
-    // 2. Skills (only when the read tool is available)
+    // 2. Available tools
+    sections.push(toolsSection(tools));
+
+    // 3. Skills (only when the read tool is available)
     if (hasRead) {
       // Use skills resolved by pi's full resource loader — this includes
       // package skills (e.g. pi-braid-skills), user/project skill dirs,
@@ -676,27 +679,32 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       if (skillsText) sections.push(simpleSection("skills", skillsText));
     }
 
-    // 3. Available tools
-    sections.push(reconstructToolsSection(tools));
-
     // 4. Project context (replaces pi-native loading which prompt-builder overrides)
     // Render ahead of append so it goes into the dedup set before the user
     // append can be checked against it.
-    const projectContext = await (await reconstructProjectContextSection(cwd)).render();
+    const projectContext = await (await projectContextSection(cwd)).render();
     if (projectContext) {
       sections.push(simpleSection("project-context", projectContext));
     }
 
-    // 6. L1 environmental state
-    sections.push(formatL1Environment(l1Env));
+    // 5. L1 environmental state
+    sections.push(l1EnvSection(l1Env));
 
-    // 6b. OpenSpec spec context (inject SHALL/MUST requirements from active specs)
+    // 6. Date and cwd
+    sections.push(
+      simpleSection(
+        "environment",
+        `Current time: ${new Date().toISOString()}\nCurrent working directory: ${cwd.replace(/\\/g, "/")}`,
+      ),
+    );
+
+    // 7. OpenSpec spec context (inject SHALL/MUST requirements from active specs)
     sections.push(activeSpecsSection(cwd));
 
-    // 7. Active contrast mode (truthfulness guardrails)
-    sections.push(formatContrastSection(ps.activeContrastMode));
+    // 8. Active contrast mode (truthfulness guardrails)
+    sections.push(contrastSection(ps.activeContrastMode));
 
-    // P0: Preserve appendSystemPrompt from pi-native. Deduplicated against
+    // 9: Preserve appendSystemPrompt from pi-native. Deduplicated against
     // everything above via the dedup set; user-provided append content that
     // matches an existing section is silently dropped.
     const appendPrompt = event.systemPromptOptions?.appendSystemPrompt;
@@ -704,20 +712,10 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       sections.push(simpleSection("append", appendPrompt));
     }
 
-    // 9. Date and cwd (footer)
-    sections.push(
-      simpleSection(
-        "footer",
-        `Current time: ${new Date().toISOString()}\nCurrent working directory: ${cwd.replace(/\\/g, "/")}`,
-      ),
-    );
-
     const dedupSet = new Set<string>();
     const newPrompt = await composeSections(sections, "\n\n", dedupSet);
     return { systemPrompt: newPrompt };
   });
-
-  // Note: prompt_preview tool removed (out of scope - dev/debug affordance, not agent use).
 }
 
-export { gatherL1State, formatL1Environment };
+export { gatherL1State, l1EnvSection };

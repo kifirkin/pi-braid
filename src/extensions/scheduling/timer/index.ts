@@ -14,7 +14,11 @@
  * stamped on each ScheduledTimer for traceability.
  */
 
-import type { ExtensionAPI, ToolDefinition, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ToolDefinition,
+  ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../../../lib/core/logger.js";
 import { Type } from "typebox";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
@@ -193,7 +197,13 @@ export function clearSessionTimers(sessionId: string): number {
 // ── Fire Handlers (via shared bus) ───────────────────────────────────
 // We import the shared bus to bridge timer fires → heartbeat surfacing
 import { emitTimerReminder } from "../../../lib/events/timer-bus.js";
-import { TURN_END, TOOL_CALL, TOOL_EXECUTION_END, SESSION_SHUTDOWN, SESSION_START } from "../../../lib/core/event-names.js";
+import {
+  TURN_END,
+  TOOL_CALL,
+  TOOL_EXECUTION_END,
+  SESSION_SHUTDOWN,
+  SESSION_START,
+} from "../../../lib/core/event-names.js";
 
 // Internal handler count (kept for API compat - currently unused,
 // no callers register via onTimerFire. The event bus handles
@@ -335,9 +345,10 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
   if (timer.wake === true) {
     const text = `[TIMER FIRED - ${elapsedSec}s elapsed] ${timer.reason} - Resume the task.`;
     try {
-      pi.sendMessage(
+      sendTrackedMessage(
+        pi,
         {
-          customType: "timer-fire",
+          customType: "timer",
           content: [{ type: "text" as const, text }],
           display: true,
           details: {
@@ -349,7 +360,8 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
             elapsedSec,
           },
         },
-        { triggerTurn: true },
+        { deliverAs: "steer", triggerTurn: true },
+        { type: "heartbeat", source: "timer/fire" },
       );
     } catch (e) {
       log.warn(`[timer] whisper-wake delivery failed: ${(e as Error).message}`);
@@ -412,7 +424,13 @@ export default function timerExtension(pi: ExtensionAPI): void {
       // cancel-only
       timer_id: Type.Optional(Type.String({ description: "Timer ID to cancel (cancel)" })),
     }),
-    execute: async (_id: string, params: any, _signal: any, _onUpdate: any, ctx: any): Promise<any> => {
+    execute: async (
+      _id: string,
+      params: any,
+      _signal: any,
+      _onUpdate: any,
+      ctx: any,
+    ): Promise<any> => {
       if (!sessionIdResolved) {
         sessionId = getSessionId(ctx);
         sessionIdResolved = true;
@@ -471,11 +489,18 @@ export default function timerExtension(pi: ExtensionAPI): void {
         case "cancel": {
           const cancelled = timerManager.cancelTimer(sessionId, params.timer_id);
           if (!cancelled) {
-            throw new Error(`Timer "${params.timer_id}" not found in session ${sessionId} or already fired.`);
+            throw new Error(
+              `Timer "${params.timer_id}" not found in session ${sessionId} or already fired.`,
+            );
           }
           return {
             content: [{ type: "text" as const, text: `Timer "${params.timer_id}" cancelled.` }],
-            details: { cancelled: true, timer_id: params.timer_id, active_timers: timerManager.getActiveCount(sessionId), session_id: sessionId },
+            details: {
+              cancelled: true,
+              timer_id: params.timer_id,
+              active_timers: timerManager.getActiveCount(sessionId),
+              session_id: sessionId,
+            },
           };
         }
         default:

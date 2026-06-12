@@ -149,7 +149,7 @@ function extractTaskFromEntry(entry: Record<string, unknown>): string | null {
   return null;
 }
 
-export function formatPastInsightsSection(insights: PastInsight[]): PromptSection {
+export function pastInsightsSection(insights: PastInsight[]): PromptSection {
   return {
     name: "past-insights",
     render: () => {

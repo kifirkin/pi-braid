@@ -9,7 +9,7 @@
  *   enforcement turn_end → determineContrastMode(ctx) → "TOOL-RELIABILITY"
  *     → enforcement_signals event { contrastMode: "TOOL-RELIABILITY" }
  *     → prompt-builder listener → ps.activeContrastMode = "TOOL-RELIABILITY"
- *     → formatContrastSection("TOOL-RELIABILITY") → active relevant phrases
+ *     → contrastSection("TOOL-RELIABILITY") → active relevant phrases
  *
  * Phrases match the original index.ts local constants (NOT constants.ts - those
  * are a separate shorthand set). This ensures backward-compatible prompt content.
@@ -112,7 +112,7 @@ import type { PromptSection } from "./section.js";
  * @returns A `PromptSection` that renders to the contrast block. Returns
  *          a section (never an array) per the PromptSection contract.
  */
-export function formatContrastSection(activeMode: string): PromptSection {
+export function contrastSection(activeMode: string): PromptSection {
   const mode = MODES[activeMode] ?? DEFAULT_MODE;
   return {
     name: "contrast",
