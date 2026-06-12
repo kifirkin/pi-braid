@@ -101,28 +101,36 @@ const DEFAULT_MODE = MODES["TRUTH-SEEKING"];
 
 // ── Formatting ──────────────────────────────────────────────────────────────
 
+import type { PromptSection } from "./section.js";
+
 /**
  * Build the RepE contrast vectors section for the system prompt.
  *
  * @param activeMode - Current contrast mode from enforcement signal state.
  *                     Must match a key in MODES (e.g. "TRUTH-SEEKING").
  *                     Falls back to TRUTH-SEEKING for unknown modes.
- * @returns Lines to push into the prompt parts array.
+ * @returns A `PromptSection` that renders to the contrast block. Returns
+ *          a section (never an array) per the PromptSection contract.
  */
-export function formatContrastSection(activeMode: string): string[] {
+export function formatContrastSection(activeMode: string): PromptSection {
   const mode = MODES[activeMode] ?? DEFAULT_MODE;
-  const parts: string[] = [];
-
-  // Active mode with proper section heading for visual separation
-  // from L1 state above and interaction style below.
-  parts.push(`## Active Mode`);
-  parts.push(`**${mode.label}** - ${mode.description}`);
-
-  // Primary contrast phrase(s) for the active mode
-  for (const phrase of mode.phrases) {
-    parts.push("");
-    parts.push(phrase);
-  }
-
-  return parts;
+  return {
+    name: "contrast",
+    render: () => {
+      // The original implementation returned an array of strings, with
+      // a leading "" before each phrase so the top-level `parts.join("\n\n")`
+      // produced the right number of blank lines. We preserve that exact
+      // output by joining the array internally with the same separator.
+      // The final string is what the top-level handler pushes as one element
+      // of its own parts array, so the outer join is unchanged.
+      const lines: string[] = [];
+      lines.push(`## Active Mode`);
+      lines.push(`**${mode.label}** - ${mode.description}`);
+      for (const phrase of mode.phrases) {
+        lines.push("");
+        lines.push(phrase);
+      }
+      return lines.join("\n\n");
+    },
+  };
 }

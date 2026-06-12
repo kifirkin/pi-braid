@@ -696,7 +696,7 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     }
 
     // 7. Active contrast mode (truthfulness guardrails)
-    parts.push(...formatContrastSection(ps.activeContrastMode));
+    parts.push(await formatContrastSection(ps.activeContrastMode).render());
 
     // 8. Interaction style
     parts.push(INTERACTION_STYLE);
