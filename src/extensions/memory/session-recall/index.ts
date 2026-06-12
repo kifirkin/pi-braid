@@ -23,15 +23,9 @@ import { callLlm } from "../../../lib/ai/llm-call.js";
 import { resolveUtilityModel } from "../../../lib/ai/model-resolver.js";
 import { Type } from "typebox";
 import { execFileSync } from "node:child_process";
-import { stat, readdir, readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-
-/** Async helper: check if a path exists (replaces existsSync). */
-async function asyncExists(p: string): Promise<boolean> {
-  return stat(p)
-    .then(() => true)
-    .catch(() => false);
-}
+import { asyncExists } from "../../../lib/utils/async-fs.js";
 import { homedir } from "node:os";
 import { AGENT } from "../../../lib/config/braid-paths.js";
 

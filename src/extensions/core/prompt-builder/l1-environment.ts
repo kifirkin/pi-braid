@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getCognitiveMemory } from "../../../lib/memory/index.js";
 import { gatherL1Environment, formatL1EnvironmentSection } from "../agent-environment/index.js";
+import type { PromptSection } from "./section.js";
 
 interface L1Environment {
   contextPercent: number;
@@ -181,35 +182,40 @@ function discoverPiRootPath(): string {
   return "";
 }
 
-function formatL1Environment(env: L1Environment): string {
-  const lines: string[] = [];
+function formatL1Environment(env: L1Environment): PromptSection {
+  return {
+    name: "l1-environment",
+    render: () => {
+      const lines: string[] = [];
 
-  // Time / session awareness (from agent-environment)
-  lines.push(formatL1EnvironmentSection(env.agentEnv));
+      // Time / session awareness (from agent-environment)
+      lines.push(formatL1EnvironmentSection(env.agentEnv));
 
-  // Context warning only when critical
-  if (env.contextPercent > 75) {
-    lines.push(`Context: ${env.contextPercent.toFixed(0)}%`);
-  }
+      // Context warning only when critical
+      if (env.contextPercent > 75) {
+        lines.push(`Context: ${env.contextPercent.toFixed(0)}%`);
+      }
 
-  // Memory count
-  if (env.memoryCount > 0) {
-    lines.push(`${env.memoryCount} prior experience(s)`);
-  }
+      // Memory count
+      if (env.memoryCount > 0) {
+        lines.push(`${env.memoryCount} prior experience(s)`);
+      }
 
-  // Checkpoint awareness (proactive: lower threshold)
-  if (env.stepsSinceCheckpoint > 0) {
-    lines.push(
-      `${env.stepsSinceCheckpoint} step(s) since last checkpoint - consider tagging context`,
-    );
-  }
+      // Checkpoint awareness (proactive: lower threshold)
+      if (env.stepsSinceCheckpoint > 0) {
+        lines.push(
+          `${env.stepsSinceCheckpoint} step(s) since last checkpoint - consider tagging context`,
+        );
+      }
 
-  // Pi package root (environmental awareness)
-  if (env.piRoot) {
-    lines.push(`Root: ${env.piRoot}`);
-  }
+      // Pi package root (environmental awareness)
+      if (env.piRoot) {
+        lines.push(`Root: ${env.piRoot}`);
+      }
 
-  return lines.join("\n");
+      return lines.join("\n");
+    },
+  };
 }
 
 /**

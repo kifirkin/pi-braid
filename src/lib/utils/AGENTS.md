@@ -13,6 +13,7 @@ Misc utilities that don't fit a more specific subdir.
 | `sop-extractor.ts` | Extracts Standard Operating Procedures from agent behavior. |
 | `sop-suggestion.ts` | Suggests SOPs based on repeated patterns. |
 | `error-guard.ts` | Wraps handler errors with logging and recovery. |
+| `async-fs.ts` | Async filesystem primitives (`asyncExists`). Replaces duplicate `existsSync` checks. |
 
 ## Local Contracts
 

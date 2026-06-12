@@ -44,14 +44,8 @@ import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/se
 import { getExtensionState, safeSessionManager } from "../../../lib/state/extension-state.js";
 import { emitSignal } from "../../../lib/reasoning/belief-policy-engine.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
-import { readFile as readFilePromise, stat, writeFile, mkdir } from "node:fs/promises";
-
-/** Async helper: check if a path exists (replaces existsSync). */
-async function asyncExists(p: string): Promise<boolean> {
-  return stat(p)
-    .then(() => true)
-    .catch(() => false);
-}
+import { readFile as readFilePromise, writeFile, mkdir } from "node:fs/promises";
+import { asyncExists } from "../../../lib/utils/async-fs.js";
 import * as path from "node:path";
 import { EPISODES_FILE, LEGACY_MEMORY_FILE, METRICS_FILE } from "../../../lib/config/braid-paths.js";
 import { getCognitiveMemory } from "../../../lib/memory/index.js";

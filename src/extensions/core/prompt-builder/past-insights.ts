@@ -8,14 +8,9 @@
 
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { stat, readdir, readFile } from "node:fs/promises";
-
-/** Async helper: check if a path exists. */
-async function asyncExists(p: string): Promise<boolean> {
-  return stat(p)
-    .then(() => true)
-    .catch(() => false);
-}
+import { readdir, readFile } from "node:fs/promises";
+import type { PromptSection } from "./section.js";
+import { asyncExists } from "../../../lib/utils/async-fs.js";
 
 export interface PastInsight {
   type: "episode" | "session";
@@ -154,26 +149,31 @@ function extractTaskFromEntry(entry: Record<string, unknown>): string | null {
   return null;
 }
 
-export function formatPastInsightsSection(insights: PastInsight[]): string {
-  if (insights.length === 0) return "";
+export function formatPastInsightsSection(insights: PastInsight[]): PromptSection {
+  return {
+    name: "past-insights",
+    render: () => {
+      if (insights.length === 0) return "";
 
-  const hasSignal = (content: string): boolean => {
-    const metricsOnly = /^(\[\w+\]\s*)?(session_outcome|outcome):\s*\w+/i;
-    if (metricsOnly.test(content.trim())) return false;
-    if (content.trim().length < 15) return false;
-    return true;
+      const hasSignal = (content: string): boolean => {
+        const metricsOnly = /^(\[\w+\]\s*)?(session_outcome|outcome):\s*\w+/i;
+        if (metricsOnly.test(content.trim())) return false;
+        if (content.trim().length < 15) return false;
+        return true;
+      };
+
+      const filtered = insights.filter((i) => hasSignal(i.content));
+      if (filtered.length === 0) return "";
+
+      // Preserve the leading blank line from the original lines-based impl
+      // so callers that prepend a section title don't lose a visual separator.
+      const lines = [
+        "",
+        "## Past Insights",
+        "*(Relevant experience from previous sessions)*",
+        ...filtered.map((insight) => `- ${insight.content}`),
+      ];
+      return lines.join("\n");
+    },
   };
-
-  const filtered = insights.filter((i) => hasSignal(i.content));
-  if (filtered.length === 0) return "";
-
-  const lines: string[] = [
-    "",
-    "## Past Insights",
-    "*(Relevant experience from previous sessions)*",
-  ];
-  for (const insight of filtered) {
-    lines.push(`- ${insight.content}`);
-  }
-  return lines.join("\n");
 }

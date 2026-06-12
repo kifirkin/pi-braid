@@ -43,15 +43,101 @@ export interface PromptSection {
  * Compose an ordered list of sections with a section separator.
  * Empty sections (after trim) are dropped. Default separator is the
  * canonical double newline used by the rest of the prompt-builder.
+ *
+ * If `dedupSet` is provided, sections whose rendered output is already
+ * in the set are skipped, and the set is updated with each kept section.
+ * This is the canonical primitive for `appendSystemPrompt`-style dedup
+ * (where user-provided content may duplicate a static section).
  */
 export async function composeSections(
   sections: readonly PromptSection[],
   separator = "\n\n",
+  dedupSet?: Set<string>,
 ): Promise<string> {
   const parts: string[] = [];
   for (const s of sections) {
     const text = (await s.render()).trim();
-    if (text) parts.push(text);
+    if (!text) continue;
+    if (dedupSet) {
+      if (dedupSet.has(text)) continue;
+      dedupSet.add(text);
+    }
+    parts.push(text);
   }
   return parts.join(separator);
+}
+
+// ── Section builders ───────────────────────────────────────────────────────
+//
+// These are the canonical ways to construct a `PromptSection`. They replace
+// the ad-hoc patterns (parts.push, lines.push, addGuideline, inline
+// template literal) that used to coexist in the prompt-builder.
+//
+// Each builder enforces one rule: the section returns a single string.
+// Internal line arrangement is the builder's concern; the section as a
+// whole is opaque to the top-level handler.
+
+/**
+ * A single block of text. Trims the content; emits "" if empty.
+ * Use for sections that have no internal structure (identity, footer,
+ * interaction style, etc.).
+ */
+export function simpleSection(name: string, content: string): PromptSection {
+  return {
+    name,
+    render: () => content.trim(),
+  };
+}
+
+/**
+ * A section that joins an ordered list of lines with "\n".
+ *
+ * - Trims each line and drops empties.
+ * - `dedup: true` skips duplicate lines (the `addGuideline` semantic).
+ * - Use for guideline lists, L1 env blocks, contrast phrase lists, etc.
+ */
+export function linesSection(
+  name: string,
+  lines: readonly string[],
+  opts: { dedup?: boolean } = {},
+): PromptSection {
+  return {
+    name,
+    render: () => {
+      const seen = opts.dedup ? new Set<string>() : null;
+      const out: string[] = [];
+      for (const l of lines) {
+        const t = l.trim();
+        if (!t) continue;
+        if (seen) {
+          if (seen.has(t)) continue;
+          seen.add(t);
+        }
+        out.push(t);
+      }
+      return out.join("\n");
+    },
+  };
+}
+
+/**
+ * A section with a markdown heading prefix.
+ *
+ * - Renders to `## ${heading}\n${body}`.
+ * - Returns "" if the body (after trim) is empty.
+ * - Use for the "Active Mode" section, the project context block, etc.
+ */
+export function headingSection(
+  name: string,
+  heading: string,
+  body: string,
+): PromptSection {
+  return {
+    name,
+    render: () => {
+      const trimmed = body.trim();
+      if (!trimmed) return "";
+      return `## ${heading}\n${trimmed}`;
+    },
+  };
 }
