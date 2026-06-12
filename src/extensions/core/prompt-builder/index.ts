@@ -84,14 +84,7 @@ const BUDGET_AWARENESS = `Define success criteria before execution. Verify again
 const COMPACTION_SURVIVAL = `Keep your scratchpad (goal, plan, decisions, key learnings) and task list detailed enough that a future you could pick up your work cold. That future you is you, after the conversation compresses. Include file paths and reasoning so each entry is self-contained.`;
 
 // Living documentation: agent-maintained doc hierarchy (inspired by DOX — agent0ai/dox)
-const LIVING_DOCS = `Project guidelines (AGENTS.md) are living contracts you maintain. Keep them synchronized with the project structure.`;
-
-// Timer fires: how to handle a forced wake-up from a scheduled timer.
-// A `[TIMER FIRED — Ns elapsed] <reason>` message is a USER-STYLE message
-// (via pi.sendUserMessage) that always triggers a turn. Acknowledge it
-// briefly and decide next step: continue the previous task if still
-// relevant, or start the new one named in the reason.
-const TIMER_FIRE_HANDLING = `When you see "[TIMER FIRED — Ns elapsed] <reason>", this is a forced wake-up from a scheduled timer. Acknowledge briefly: "Resuming after Ns — <reason>." Then decide: continue the previous task if still relevant, or pivot to the reason-named task. If neither fits, ask the user for direction. Do not ignore the timer.`;
+const LIVING_DOCS = `Project guidelines are living contracts you maintain. Keep them synchronized with the project structure.`;
 
 // ── Interaction Style (single declarative sentence) ───────────────────────
 const INTERACTION_STYLE = `You provide concise, production-quality solutions. You focus on correctness over verbosity.`;
@@ -100,7 +93,6 @@ const INTERACTION_STYLE = `You provide concise, production-quality solutions. Yo
 // Session-scoped state (migrated from module-level singletons)
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
-import { onEvent } from "../../../lib/events/event-types.js";
 
 interface PromptBuilderState {
   activeContrastMode: string;
@@ -692,10 +684,6 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     // 1c. Living documentation invariant — agent maintains AGENTS.md hierarchy
     //     Walk tree before edit, update docs after change (from DOX — agent0ai/dox)
     parts.push(LIVING_DOCS);
-    // 1d. Timer fires: how to handle a forced wake-up from a scheduled timer
-    //     (the [TIMER FIRED] message is a user-style message that always
-    //     triggers a turn — agent must acknowledge and act).
-    parts.push(TIMER_FIRE_HANDLING);
 
     // 2. Skills
     if (hasRead) {

@@ -141,14 +141,18 @@ function getSessionId(ctx: unknown): string {
 
 /**
  * Programmatic timer API — schedule a timer for a specific session.
- * Returns the timer ID. Timer fires and delivers a steer to the agent.
+ * Returns the timer ID. Timer fires and delivers a CustomMessage
+ * (whisper-style) that wakes the agent when wake: true.
  *
- * @param wake if true (default), the fire whisper uses triggerTurn: true
- *   to wake the agent. This matches the principle that user-scheduled
- *   reminders (timer action=set) expect a wake-up. The busy guard prevents
- *   mid-tool-execution firing even when wake: true, so this is safe in
- *   all cases. Pass wake: false for silent reminders (visible in TUI
- *   but no forced turn) — used by background heartbeats and similar.
+ * @param wake if true (default), the fire delivers a CustomMessage
+ *   (pi.sendMessage with customType "timer-fire" and triggerTurn: true).
+ *   This shows as a whisper in the TUI, not a filled-in input box, and
+ *   wakes the agent immediately (subject to the busy guard which defers
+ *   mid-tool-execution to TOOL_EXECUTION_END). This is the right path
+ *   for automatic timers (post-compaction auto-resume, agent-scheduled
+ *   reminders): no human is typing, and the input box should not be
+ *   filled with "[TIMER FIRED]". Pass wake: false for silent reminders
+ *   (visible in TUI but no forced turn) — used by background heartbeats.
  */
 export function scheduleTimer(
   sessionId: string,
@@ -297,40 +301,58 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
 
   // Two delivery paths based on `wake`:
   //
-  //   wake: true (post-compaction resume timer, user-explicit auto-resume)
-  //     → pi.sendUserMessage(text, { deliverAs: "followUp" })
-  //     A USER-STYLE message that "Always triggers a turn" per the SDK
-  //     contract. Bypasses the per-source flood cap because auto-resume
-  //     is user-explicit and time-critical: if 2 timer fires land in the
-  //     same turn, the user wants BOTH. Bypasses sendTrackedMessage
-  //     because the soft-nudge nature of sendMessage(steer) can be
-  //     ignored by the agent mid-stream.
+  //   wake: true (default for user/agent-scheduled timers AND
+  //         post-compaction auto-resume)
+  //     → pi.sendMessage({ customType, content, display: true }, { triggerTurn: true })
+  //     A CustomMessage (whisper-style in TUI, distinguishable from
+  //     user input) that wakes the agent. Per SDK docs:
+  //     'sendUserMessage ... sends an actual user message that appears
+  //     as if typed by the user. Always triggers a turn.' That is the
+  //     WRONG behavior for an automatic timer: no human is typing, and
+  //     filling the input box with "[TIMER FIRED]" looks nonsensical
+  //     in the TUI. sendMessage + triggerTurn:true is the correct path
+  //     for automatic wake-ups.
   //
-  //   wake: false (silent reminder, default for user-scheduled timers)
+  //     Why not deliverAs:'steer'? The 'steer' mode defers delivery
+  //     until the current tool call finishes, which means if the agent
+  //     is mid-tool when a resume timer fires, the wake is delayed. For
+  //     'remind me in 5 min' that's acceptable. For post-compaction
+  //     auto-resume it's bad: the agent may be idle, and we want the
+  //     wake to land NOW. triggerTurn:true handles both: if the agent
+  //     is idle it triggers immediately; if it's mid-stream, the busy
+  //     guard (TOOL_EXECUTION_END fallback in the poller) defers to
+  //     the next non-busy tick. We do NOT use deliverAs:'steer' here
+  //     to avoid the SDK's own deferral that ignores mid-tool state.
+  //
+  //   wake: false (silent reminder, used for background heartbeats etc.)
   //     → sendTrackedMessage (custom-message whisper, per-source cap applies)
   //     Whisper is visible in TUI and survives compaction (via
-  //     _braidInjected) but does NOT force a new turn. Safer default
-  //     for "remind me in 5 minutes" type timers.
+  //     _braidInjected) but does NOT force a new turn.
   //
   // Both paths emit the [TIMER FIRED] prefix so the agent can recognize
   // them in the conversation stream. wake: true prepends the elapsed
   // time for context; wake: false uses the shorter form.
   if (timer.wake === true) {
     const text = `[TIMER FIRED — ${elapsedSec}s elapsed] ${timer.reason} — Resume the task.`;
-    // SDK: ExtensionContext.sendUserMessage is declared as returning `void`
-    // (Promise<void> is only on ReplacedSessionContext). At runtime the
-    // underlying call is fire-and-forget — the SDK handles the queue and
-    // triggers the turn. We log before/after to capture failures (any
-    // sync throw lands in the catch; rejections from the underlying
-    // promise are absorbed by the SDK's own logging).
-    //
-    // The previous `as unknown as Promise<void>` cast was a typecheck-only
-    // lie: at runtime the return is `undefined`, and `.catch()` on that
-    // throws "Cannot read properties of undefined (reading 'catch')".
     try {
-      pi.sendUserMessage(text, { deliverAs: "followUp" });
+      pi.sendMessage(
+        {
+          customType: "timer-fire",
+          content: [{ type: "text" as const, text }],
+          display: true,
+          details: {
+            _braidInjected: true,
+            _braidSource: "timer/fire",
+            timerId: timer.id,
+            sessionId: timer.sessionId,
+            wake: true,
+            elapsedSec,
+          },
+        },
+        { triggerTurn: true },
+      );
     } catch (e) {
-      log.warn(`[timer] user-message delivery failed: ${(e as Error).message}`);
+      log.warn(`[timer] whisper-wake delivery failed: ${(e as Error).message}`);
     }
   } else {
     const text = `[TIMER FIRED] ${timer.reason}`;
