@@ -26,10 +26,10 @@ and emits alerts on degradation/anomaly.
 
 ## Tools exposed
 
-| Tool                  | Purpose                                                    |
-| --------------------- | ---------------------------------------------------------- |
-| `get_session_metrics` | Read current session's metrics (counts, rates, sequences)   |
-| `get_tool_reliability`| Read per-tool reliability stats                            |
+_(None — both `get_session_metrics` and `get_tool_reliability` removed in
+2026-06 tool-inventory audit. They were passive observability with no
+internal consumers. Background tracking and the `analytics:all` slash
+command remain.)_
 
 ## Event-bus contract
 

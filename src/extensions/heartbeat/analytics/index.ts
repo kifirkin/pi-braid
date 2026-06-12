@@ -17,7 +17,6 @@ import { METRICS_FILE, METRICS_DIR } from "../../../lib/config/braid-paths.js";
 import type {
   ExtensionAPI,
   ExtensionContext,
-  AgentToolResult,
 } from "@earendil-works/pi-coding-agent";
 import { safeSessionManager } from "../../../lib/state/extension-state.js";
 import { emitSignal } from "../../../lib/reasoning/belief-policy-engine.js";
@@ -294,152 +293,15 @@ export default function analyticsExtension(pi: ExtensionAPI) {
   });
 
   // ── Tools (agent-callable) ────────────────────────────────────────
+  // Note: get_session_metrics and get_tool_reliability tools removed
+  // in the 2026-06 tool-inventory audit (see docs/CUT-CANDIDATES-DEEP-DIVE.md).
+  // These were passive observability tools: the agent rarely needs to know
+  // its own session metrics or per-tool reliability, and no internal caller
+  // used them. Background tracking (toolMetrics, sessionStartTime) is still
+  // active and consumed by event-bus alerts and the analytics:all slash
+  // command. The A/B variant can still be set programmatically via
+  // getAnalyticsStateInternal(ctx).abVariant.
 
-  pi.registerTool({
-    name: "get_session_metrics",
-    label: "Get Session Metrics",
-    description:
-      "Returns aggregated metrics for the current session: total tool calls, unique tools, duration, and per-tool breakdown.",
-    parameters: Type.Object({}),
-    execute: async (
-      _toolCallId: string,
-      _params: unknown,
-      _signal: AbortSignal | undefined,
-      _onUpdate: unknown,
-      ctx: ExtensionContext | undefined,
-    ): Promise<AgentToolResult<unknown>> => {
-      if (!ctx) return { content: [{ type: "text", text: "No context available" }], details: {} };
-
-      try {
-        const state = getAnalyticsStateInternal(ctx);
-        const durationMs = Date.now() - state.sessionStartTime;
-        const toolsBreakdown: Array<{ tool: string; calls: number; duration: string }> = [];
-        let totalCalls = 0;
-
-        for (const [tool, metrics] of state.toolMetrics) {
-          toolsBreakdown.push({
-            tool,
-            calls: metrics.totalCalls,
-            duration: `${(metrics.totalDurationMs / 1000).toFixed(1)}s`,
-          });
-          totalCalls += metrics.totalCalls;
-        }
-
-        toolsBreakdown.sort((a, b) => b.calls - a.calls);
-
-        const ch = getCompactionHealth();
-        const cs = getCriticStats();
-        const details = {
-          sessionId: state.sessionId,
-          duration: `${Math.floor(durationMs / 60000)}m ${Math.floor((durationMs % 60000) / 1000)}s`,
-          totalToolCalls: totalCalls,
-          uniqueTools: toolsBreakdown.length,
-          toolsBreakdown,
-          turnCount: state.localTurnCount,
-          nudgesSent: state.nudgesSent,
-          nudgesSuppressed: state.nudgesSuppressed,
-          compaction: {
-            total: ch.totalCompactions,
-            failures: ch.totalFailures,
-            lastOutcome: ch.lastOutcome,
-            entriesRemoved: ch.totalEntriesRemoved,
-          },
-          criticStats: {
-            totalCalls: cs.totalCalls,
-            perTier: cs.totals,
-            perCritic: cs.perCritic,
-          },
-          reasoning: (() => {
-            try {
-              const rs = getReasoningStateView(ctx);
-              return {
-                turnCount: rs.turnCount,
-                unstableStreak: rs.unstableStreak,
-                lastReason: rs.lastReason,
-                lastStability: rs.lastStability,
-                verifyRemindersSent: rs.verifyRemindersSent,
-              };
-            } catch {
-              return { error: "reasoning extension not active" };
-            }
-          })(),
-        };
-
-        return {
-          content: [{ type: "text", text: JSON.stringify(details, null, 2) }],
-          details,
-        };
-      } catch (err) {
-        return {
-          content: [
-            { type: "text", text: `Failed to get session metrics: ${(err as Error).message}` },
-          ],
-          details: { error: (err as Error).message },
-        };
-      }
-    },
-  });
-
-  // Note: set_ab_variant tool removed (out of scope — research-only,
-  // the agent doesn't need to A/B test itself). The A/B variant can
-  // still be set programmatically via getAnalyticsStateInternal(ctx).abVariant.
-
-  pi.registerTool({
-    name: "get_tool_reliability",
-    label: "Get Tool Reliability",
-    description:
-      "Returns per-tool reliability stats: success/failure counts, success rate, and average duration.",
-    parameters: Type.Object({}),
-    execute: async (
-      _toolCallId: string,
-      _params: unknown,
-      _signal: AbortSignal | undefined,
-      _onUpdate: unknown,
-      ctx: ExtensionContext | undefined,
-    ): Promise<AgentToolResult<unknown>> => {
-      if (!ctx) return { content: [{ type: "text", text: "No context available" }], details: {} };
-
-      try {
-        const state = getAnalyticsStateInternal(ctx);
-        const tools: Array<{
-          tool: string;
-          calls: number;
-          successes: number;
-          failures: number;
-          successRate: number;
-          avgDurationMs: number;
-        }> = [];
-
-        for (const [tool, metrics] of state.toolMetrics) {
-          tools.push({
-            tool,
-            calls: metrics.totalCalls,
-            successes: metrics.successfulCalls,
-            failures: metrics.failedCalls,
-            successRate:
-              metrics.totalCalls > 0
-                ? Math.round((metrics.successfulCalls / metrics.totalCalls) * 1000) / 1000
-                : 0,
-            avgDurationMs:
-              metrics.totalCalls > 0 ? Math.round(metrics.totalDurationMs / metrics.totalCalls) : 0,
-          });
-        }
-
-        tools.sort((a, b) => b.calls - a.calls);
-
-        const details = { tools };
-        return {
-          content: [{ type: "text", text: JSON.stringify(details, null, 2) }],
-          details,
-        };
-      } catch (err) {
-        return {
-          content: [
-            { type: "text", text: `Failed to get tool reliability: ${(err as Error).message}` },
-          ],
-          details: { error: (err as Error).message },
-        };
-      }
-    },
-  });
+  // (deleted tool: get_session_metrics — see audit)
+  // (deleted tool: get_tool_reliability — see audit)
 }
