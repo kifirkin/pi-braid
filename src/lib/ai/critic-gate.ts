@@ -1,5 +1,5 @@
 /**
- * Critic Gate — cheap classify() pre-check before expensive generative LLM calls.
+ * Critic Gate - cheap classify() pre-check before expensive generative LLM calls.
  *
  * Pattern: before firing a heavy generative call (hypothesize, fresh-eyes review,
  * session recall query), run a quick classify() to determine if the call is

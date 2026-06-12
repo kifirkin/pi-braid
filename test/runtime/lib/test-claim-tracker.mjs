@@ -1,5 +1,5 @@
 /**
- * Test suite for claim-tracker — LLM-based cross-turn contradiction detection
+ * Test suite for claim-tracker - LLM-based cross-turn contradiction detection
  *
  * Validates:
  * - Claim extraction from agent responses (sync fallback path)

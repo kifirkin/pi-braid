@@ -1,4 +1,4 @@
-# src/extensions/error-tracking/ — Error Log Tool
+# src/extensions/error-tracking/ - Error Log Tool
 
 Auto-catches extension errors and persists them to a JSONL log. Provides
 a single LLM-callable tool to query and manage the error history.
@@ -27,10 +27,10 @@ a single LLM-callable tool to query and manage the error history.
 
 ## Related modules
 
-- `lib/utils/error-guard.ts` — wraps handler errors with logging + recovery (for in-process errors).
-- `extensions/enforcement/whisper.ts` — whisper cap suppresses noisy errors as whispers.
+- `lib/utils/error-guard.ts` - wraps handler errors with logging + recovery (for in-process errors).
+- `extensions/enforcement/whisper.ts` - whisper cap suppresses noisy errors as whispers.
 
 ## Related modules
 
-- `lib/utils/error-guard.ts` — wraps handler errors with logging + recovery (for in-process errors).
-- `extensions/enforcement/whisper.ts` — whisper cap suppresses noisy errors as whispers.
+- `lib/utils/error-guard.ts` - wraps handler errors with logging + recovery (for in-process errors).
+- `extensions/enforcement/whisper.ts` - whisper cap suppresses noisy errors as whispers.

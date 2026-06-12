@@ -1,5 +1,5 @@
 /**
- * Enforcement Integration Tests — validates the enforcement pipeline end-to-end.
+ * Enforcement Integration Tests - validates the enforcement pipeline end-to-end.
  *
  * Tests that sub-modules work together to detect bad behavior patterns:
  * 1. Error burst detection: 8+ consecutive errors → burst triggers
@@ -97,7 +97,7 @@ function makeMockCtx() {
 // Section 1: Error burst detection
 // ═══════════════════════════════════════════════════════════════════════
 
-console.log("\n[1] Error burst detection — updateErrorBurst + isErrorBurst");
+console.log("\n[1] Error burst detection - updateErrorBurst + isErrorBurst");
 
 {
   const state = createErrorTrackingState();
@@ -228,7 +228,7 @@ console.log("\n[3] Topic drift detection");
       enableStructural: true,
     });
     d.setTaskContext("Quantum computing entanglement and superposition theory");
-    // All turns are about weather/travel — zero overlap with quantum topic
+    // All turns are about weather/travel - zero overlap with quantum topic
     d.addTurn("what is the weather like today");
     d.addTurn("i want to book a flight to tokyo");
     d.addTurn("the best hiking trails near this city");
@@ -272,10 +272,10 @@ console.log("\n[3] Topic drift detection");
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Section 4: Calibration — high prediction error triggers signal
+// Section 4: Calibration - high prediction error triggers signal
 // ═══════════════════════════════════════════════════════════════════════
 
-console.log("\n[4] Calibration — high prediction error detection");
+console.log("\n[4] Calibration - high prediction error detection");
 
 {
   // Simulate the calibration logic from handler-registry's tool_result handler.
@@ -328,7 +328,7 @@ console.log("\n[5] Signal → Belief → Policy recommendation pipeline");
   // getExtensionState uses Map<string, Map<string, any>> via the pi SDK.
   // We can't easily mock it. Instead, test the pure logic by calling emitSignal
   // which uses getExtensionState internally. We'll need the `getExtensionState`
-  // to work. Let's do it differently — test belief-policy-engine directly
+  // to work. Let's do it differently - test belief-policy-engine directly
   // by exercising its functions if we can get a ctx.
 
   // Actually, getExtensionState requires a properly wired ExtensionContext
@@ -355,7 +355,7 @@ console.log("\n[5] Signal → Belief → Policy recommendation pipeline");
   test("stability:decline + conflict signals should trigger policy rules", () => {
     // The stability_decline rule fires after 3+ stability:decline signals
     // The conflict_accumulation rule fires after 5+ unresolved conflict signals
-    // These are pure stateless evaluations — we test the rule threshold logic
+    // These are pure stateless evaluations - we test the rule threshold logic
     const signals = [];
 
     // Add 3 stability:decline signals (triggers stability_decline rule)

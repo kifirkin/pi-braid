@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * pi-braid vs Naked pi — node.js comparison runner v2
+ * pi-braid vs Naked pi - node.js comparison runner v2
  *
  * Runs each SDK benchmark as a subprocess with PI_CODING_AGENT_DIR set
  * for the naked baseline. Each benchmark mode has its own overall timeout
@@ -101,7 +101,7 @@ console.log('COMPARISON RESULTS');
 console.log('='.repeat(50));
 
 const md = [];
-md.push('# pi-braid vs Naked pi — Comparison Results');
+md.push('# pi-braid vs Naked pi - Comparison Results');
 md.push('');
 md.push(`**Generated**: ${new Date().toISOString()}`);
 md.push('**Model**: stepfun/step-3.5-flash');
@@ -112,7 +112,7 @@ md.push('|-----------|-------|-------|-------|');
 for (const [name, { braid, naked }] of Object.entries(results)) {
   const b = braid ?? '?';
   const n = naked ?? '?';
-  let delta = '—';
+  let delta = '-';
   if (typeof b === 'number' && typeof n === 'number') {
     const d = b - n;
     delta = `${d > 0 ? '+' : ''}${d.toFixed(1)}`;

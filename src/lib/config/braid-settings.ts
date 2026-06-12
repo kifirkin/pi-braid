@@ -1,5 +1,5 @@
 /**
- * Braid Settings — unified reader for pi settings.json braid config.
+ * Braid Settings - unified reader for pi settings.json braid config.
  *
  * The settings.json file mixes pi-native settings with braid config under a
  * top-level `braid` key. This module reads that config safely and provides
@@ -20,7 +20,7 @@ interface Settings {
   braid?: BraidConfig;
 }
 
-/** Read and parse settings.json. Not cached — always reads fresh to respect runtime changes. */
+/** Read and parse settings.json. Not cached - always reads fresh to respect runtime changes. */
 function readSettings(): Settings {
   let result: Settings = {};
   try {
@@ -38,9 +38,9 @@ function readSettings(): Settings {
  * feedback reminders) should be suppressed entirely.
  *
  * Controlled by braid.suppressNudges in settings.json.
- * Default: false — nudges are ENABLED by default.
+ * Default: false - nudges are ENABLED by default.
  *
- * A user who wants to skip Y/n prompts would set that in pi's native settings —
+ * A user who wants to skip Y/n prompts would set that in pi's native settings -
  * this flag only affects braid's own cognitive nudges.
  */
 export function areCognitiveNudgesDisabled(): boolean {
@@ -48,6 +48,6 @@ export function areCognitiveNudgesDisabled(): boolean {
   if (settings.braid?.suppressNudges !== undefined) {
     return settings.braid.suppressNudges === true;
   }
-  // Default: nudges are enabled (safe default — braid's value prop is ON)
+  // Default: nudges are enabled (safe default - braid's value prop is ON)
   return false;
 }

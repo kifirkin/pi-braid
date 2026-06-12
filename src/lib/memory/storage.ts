@@ -1,5 +1,5 @@
 /**
- * Cognitive Memory — file I/O for persistent storage.
+ * Cognitive Memory - file I/O for persistent storage.
  */
 
 import * as fs from "node:fs/promises";

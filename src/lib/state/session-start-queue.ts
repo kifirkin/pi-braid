@@ -1,13 +1,13 @@
 /**
- * Session Start Queue — phased lazy loading of session_start handlers.
+ * Session Start Queue - phased lazy loading of session_start handlers.
  *
  * Problem: 14+ extensions register synchronous session_start handlers.
  * All fire sequentially when a session starts, blocking startup.
  *
  * Solution: Batch into phases:
- *   Phase 1 (CoreInit) — sequential, critical for agent operation
- *   Phase 2 (MemoryState) — parallel await-all, state loading
- *   Phase 3 (Background) — fire-and-forget, non-critical
+ *   Phase 1 (CoreInit) - sequential, critical for agent operation
+ *   Phase 2 (MemoryState) - parallel await-all, state loading
+ *   Phase 3 (Background) - fire-and-forget, non-critical
  *
  * Usage (in any extension):
  *   import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
@@ -25,11 +25,11 @@ import { SESSION_START } from "../../lib/core/event-names.js";
 const _log = createLogger("session-start-queue");
 
 export enum SessionPhase {
-  /** Critical path — blocks agent start. Runs sequentially. */
+  /** Critical path - blocks agent start. Runs sequentially. */
   CoreInit = 0,
-  /** State loading / memory initialization — runs in parallel via Promise.all. */
+  /** State loading / memory initialization - runs in parallel via Promise.all. */
   MemoryState = 1,
-  /** Non-critical setup — fire-and-forget. Errors are logged, not thrown. */
+  /** Non-critical setup - fire-and-forget. Errors are logged, not thrown. */
   Background = 2,
 }
 

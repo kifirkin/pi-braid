@@ -13,9 +13,9 @@
  * same robust implementation.
  *
  * This module retains judge-specific logic:
- * - getJudgeModel() — picks a non-reasoning model when the session model is reasoning
- * - extractJson() — parses structured JSON from LLM output
- * - clamp() — number clamping
+ * - getJudgeModel() - picks a non-reasoning model when the session model is reasoning
+ * - extractJson() - parses structured JSON from LLM output
+ * - clamp() - number clamping
  */
 
 import type { Api, Model } from "@earendil-works/pi-ai";

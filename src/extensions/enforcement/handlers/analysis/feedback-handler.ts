@@ -1,5 +1,5 @@
 /**
- * feedback-handler — Belief inference + advice evaluation on turn_end.
+ * feedback-handler - Belief inference + advice evaluation on turn_end.
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";

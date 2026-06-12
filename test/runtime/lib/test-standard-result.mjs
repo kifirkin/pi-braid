@@ -1,5 +1,5 @@
 /**
- * Test: standard-result — ToolResultMeta and withMeta helper.
+ * Test: standard-result - ToolResultMeta and withMeta helper.
  *
  * Verifies that withMeta adds standard fields to any tool's return value
  * without overwriting existing tool-specific details.

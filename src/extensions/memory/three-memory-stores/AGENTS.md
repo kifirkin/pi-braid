@@ -50,7 +50,7 @@ references them 3+ times across sessions.
 
 | Emits           | Listens to    |
 | --------------- | ------------- |
-| `memory_evict`  | (none — passive emit on eviction) |
+| `memory_evict`  | (none - passive emit on eviction) |
 
 ## Local Contracts
 
@@ -58,5 +58,5 @@ references them 3+ times across sessions.
   for in-memory caches. Disk persistence in `BRAID_DATA_DIR/memory/`.
 - **Three-tier promotion** is automatic but agent-overridable: the
   agent can pin a memory to a specific tier via the `type` field.
-- **Heuristic tier is hand-coded and intentionally fragile** — kept
+- **Heuristic tier is hand-coded and intentionally fragile** - kept
   as a fast-path; LLM critic is the fallback.

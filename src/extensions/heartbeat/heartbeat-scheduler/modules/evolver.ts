@@ -1,5 +1,5 @@
 /**
- * Evolver Module — evolves heuristics based on session performance (Hyperagents pattern).
+ * Evolver Module - evolves heuristics based on session performance (Hyperagents pattern).
  *
  * After sufficient turns, evaluates session performance, boosts successful
  * heuristics, penalizes failing ones, and applies diversity penalty.

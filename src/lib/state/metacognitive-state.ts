@@ -1,5 +1,5 @@
 /**
- * Metacognitive State — session-scoped via ExtensionContext
+ * Metacognitive State - session-scoped via ExtensionContext
  *
  * Tracks: confidence, knowledge gaps, strengths, weaknesses.
  * Supports ctx-scoped calls AND global fallback (for legacy tool handlers without ctx).
@@ -23,7 +23,7 @@ const DEFAULT_STATE = (): MetacognitiveState => ({
   weaknesses: [],
 });
 
-// ── Global fallback (legacy — for tool handlers without ctx) ────────────────────
+// ── Global fallback (legacy - for tool handlers without ctx) ────────────────────
 const _globalState: MetacognitiveState = DEFAULT_STATE();
 
 // ── State access ────────────────────────────────────────────────────────────────
@@ -82,9 +82,9 @@ export function shouldRequestHelp(ctx?: ExtensionContext): boolean {
   return getStateFrom(ctx).confidence < 0.3;
 }
 
-// ── Lifecycle (no-ops — storage removed) ────────────────────────────────────────
+// ── Lifecycle (no-ops - storage removed) ────────────────────────────────────────
 
-/** @deprecated Will be removed in v0.3.0 — state is now ctx-scoped via getExtensionState. No-op. */
+/** @deprecated Will be removed in v0.3.0 - state is now ctx-scoped via getExtensionState. No-op. */
 export function initMetacognitiveState(_storageDir?: string): void {
   /* no-op */
 }

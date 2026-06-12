@@ -12,7 +12,7 @@ The module schedules "resume" timers on three code paths, all of which use a 3-m
 | Auto-compact escalation | `context-lifecycle/index.ts` | `auto-compaction-resume` | NO (cancel only) |
 | `session_compact` enforcement handler | `enforcement/handlers/register-session-compact.ts` | both | **YES (after cancel)** |
 
-**Critical design point**: the resume timer is scheduled ONLY in the `session_compact` handler, NOT in the tool or auto-compact path. Earlier designs scheduled the timer in the tool/auto-compact scope, but the `session_compact` handler (which fires shortly after) cancelled the same tag — so the timer was created and immediately destroyed, never firing. The agent never woke up.
+**Critical design point**: the resume timer is scheduled ONLY in the `session_compact` handler, NOT in the tool or auto-compact path. Earlier designs scheduled the timer in the tool/auto-compact scope, but the `session_compact` handler (which fires shortly after) cancelled the same tag - so the timer was created and immediately destroyed, never firing. The agent never woke up.
 
 The correct sequence is:
 1. Tool or auto-compact: cancel stale timers from previous cycles (defensive).
@@ -36,15 +36,15 @@ Whispers from compaction-retry, navigation, and memory hooks use `triggerTurn: t
 - **three-memory-stores** (`memory/three-memory-stores/index.ts`): tool reliability alerts (gap > 0.2) wake the agent so it can switch tools.
 - **rotation** (`context-manager/handlers/shared.ts:327`, `rotation.ts:171`): emergency rotation and rotation followUp both wake.
 
-Advisory whispers (memory recall, past insights, hint injection, SOP suggestions) stay `triggerTurn: false` — they provide context for the agent's natural flow.
+Advisory whispers (memory recall, past insights, hint injection, SOP suggestions) stay `triggerTurn: false` - they provide context for the agent's natural flow.
 
 ## Re-entrancy safety
 
-Both `context-lifecycle/index.ts` (line 56) and `lib/utils/injection-tracker.ts` (line 47) maintain re-entrancy guards for `before_agent_start` and `sendTrackedMessage` respectively. The latter uses `MAX_REENTRY_DEPTH = 1` — only 1 synchronous `pi.sendMessage` call is allowed before deferring to `queueMicrotask`. This is the safe floor for the runtime's re-entry depth (which the counter cannot see, since each extension's before_agent_start hook re-enters independently).
+Both `context-lifecycle/index.ts` (line 56) and `lib/utils/injection-tracker.ts` (line 47) maintain re-entrancy guards for `before_agent_start` and `sendTrackedMessage` respectively. The latter uses `MAX_REENTRY_DEPTH = 1` - only 1 synchronous `pi.sendMessage` call is allowed before deferring to `queueMicrotask`. This is the safe floor for the runtime's re-entry depth (which the counter cannot see, since each extension's before_agent_start hook re-enters independently).
 
 ## Agent-facing tool summary
 
-The memory extensions expose 5 LLM-callable tools. Each has a focused role — this is intentional, not a sprawl problem.
+The memory extensions expose 5 LLM-callable tools. Each has a focused role - this is intentional, not a sprawl problem.
 
 | Tool | Extension | Store | When to use |
 |---|---|---|---|

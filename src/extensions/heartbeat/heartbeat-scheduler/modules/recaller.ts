@@ -1,5 +1,5 @@
 /**
- * Recaller Module — proactive memory retrieval using RUMS (mutual information).
+ * Recaller Module - proactive memory retrieval using RUMS (mutual information).
  *
  * Triggers on: high tool failures, deep decomposition, silent turns, high tool usage.
  * Retrieves relevant episodes and heuristics to guide the agent.

@@ -32,13 +32,13 @@ import {
 } from "../three-memory-stores/index.js";
 import {
   getPendingQAs as getPendingConflictQAs,
-  // NOTE: getAllQAs aliased as getAllConflictQAs — verify if alias is needed
+  // NOTE: getAllQAs aliased as getAllConflictQAs - verify if alias is needed
   resolveQA as resolveConflictQA,
   getQAStats as getConflictQAStats,
   getRelevantQA,
 } from "../../../lib/store/conflict-qa.js";
 
-// explore-paths tool — parallel hypothesis investigation
+// explore-paths tool - parallel hypothesis investigation
 // Extracted to ./explore-paths.ts for cleaner separation
 import { createExplorePathsTool } from "./explore-paths.js";
 
@@ -54,7 +54,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
     label: "Store Memory",
     promptSnippet: "Store information in long-term memory",
     description:
-      "Persist insights, patterns, and errors to long-term memory — use when saving findings for cross-session recall. Supports structured content, memory linking, and TTL-based expiration.",
+      "Persist insights, patterns, and errors to long-term memory - use when saving findings for cross-session recall. Supports structured content, memory linking, and TTL-based expiration.",
     parameters: Type.Object({
       content: Type.String({
         description: "The information to remember (can be JSON for structured content)",
@@ -383,7 +383,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
                   for (const ep of recent) {
                     const icon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
                     const time = new Date(ep.timestamp).toLocaleDateString();
-                    lines.push(`  ${icon} [id:${ep.id}] ${time} — ${ep.task.slice(0, 60)}`);
+                    lines.push(`  ${icon} [id:${ep.id}] ${time} - ${ep.task.slice(0, 60)}`);
                   }
                 }
               } catch { /* three-memory-stores not available */ }
@@ -487,7 +487,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
     label: "Conflict QA",
     promptSnippet: "View and resolve knowledge conflicts from evidence pool",
     description:
-      "Resolve contradictions between sources or beliefs using the evidence pool — use when sources disagree. Shows contradiction classification, resolution strategy, and source confidence.",
+      "Resolve contradictions between sources or beliefs using the evidence pool - use when sources disagree. Shows contradiction classification, resolution strategy, and source confidence.",
     parameters: Type.Object({
       action: StringEnum(["list", "stats", "resolve", "search"]),
       qa_id: Type.Optional(Type.String({ description: "QA ID to resolve (resolve action)" })),

@@ -1,5 +1,5 @@
 /**
- * Measurement Module — proactive degradation detection and reasoning quality measurement.
+ * Measurement Module - proactive degradation detection and reasoning quality measurement.
  *
  * Checks agent degradation status and surfaces metrics summaries.
  */

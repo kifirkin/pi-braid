@@ -1,18 +1,18 @@
 /**
- * Workspace Snapshot Tool — lightweight Time Travel for Braid.
+ * Workspace Snapshot Tool - lightweight Time Travel for Braid.
  *
  * Captures atomic workspace snapshots: file state (only files the agent
  * modified) + session position + extension state reference + working context.
  * Disk-backed, no git dependency, no user repo pollution.
  *
  * Actions:
- *   capture  — snapshot current workspace state
- *   list     — show all snapshots
- *   info     — show single snapshot metadata
- *   diff     — what changed between a snapshot and current workspace
- *   preview  — see what files would be restored (dry run)
- *   restore  — apply files from a snapshot (with preview confirmation)
- *   delete   — remove a snapshot
+ *   capture  - snapshot current workspace state
+ *   list     - show all snapshots
+ *   info     - show single snapshot metadata
+ *   diff     - what changed between a snapshot and current workspace
+ *   preview  - see what files would be restored (dry run)
+ *   restore  - apply files from a snapshot (with preview confirmation)
+ *   delete   - remove a snapshot
  */
 
 import { Type } from "typebox";
@@ -59,7 +59,7 @@ export default function workspaceSnapshotExtension(pi: ExtensionAPI): void {
     promptSnippet:
       "Time Travel for workspace state: capture, list, diff, preview, restore file snapshots",
     description:
-      "Time Travel for your workspace state — capture workspace snapshots (file contents + session position + context) " +
+      "Time Travel for your workspace state - capture workspace snapshots (file contents + session position + context) " +
       "so you can return to any point in your editing history. " +
       "Surgical restore: only apply files that actually changed. " +
       "Actions: capture (save current state), list (show history), info (view metadata), " +
@@ -162,7 +162,7 @@ async function handleCapture(
     const verifier = getVerifierState(ctx);
     modifiedFiles = Array.from(verifier.editedFiles);
 
-    // Also include files read during this session — they may have been created via write
+    // Also include files read during this session - they may have been created via write
     for (const filePath of verifier.readFiles) {
       const absPath = filePath.startsWith("/") ? filePath : path.resolve(cwd, filePath);
       if (!modifiedFiles.includes(absPath) && absPath.startsWith(cwd)) {
@@ -170,7 +170,7 @@ async function handleCapture(
       }
     }
   } catch {
-    // Bidirectional verifier state not available — fall through
+    // Bidirectional verifier state not available - fall through
   }
   const meta = await captureSnapshot(ctx, reason, modifiedFiles, cwd);
 
@@ -319,7 +319,7 @@ async function handleDiff(id: string | undefined, cwd: string): Promise<ActionRe
 
   if (modified.length === 0) {
     return {
-      text: `No differences from snapshot **${meta.id}** — workspace is identical.`,
+      text: `No differences from snapshot **${meta.id}** - workspace is identical.`,
       details: { meta, diff },
     };
   }
@@ -332,7 +332,7 @@ async function handleDiff(id: string | undefined, cwd: string): Promise<ActionRe
       `**${modified.length}** file(s) differ from snapshot. **${unchanged}** unchanged.`,
       "",
       ...modified.map(
-        (d) => `${statusIcon(d.status)} **${d.filePath}** — ${d.status}`,
+        (d) => `${statusIcon(d.status)} **${d.filePath}** - ${d.status}`,
       ),
       "",
       "Use `workspace_snapshot(action='preview', id='<id>')` to see restore details.",
@@ -363,7 +363,7 @@ async function handlePreview(id: string | undefined, cwd: string): Promise<Actio
 
   if (toRestore.length === 0) {
     return {
-      text: `Preview: no files would change — workspace already matches **${meta.id}**.`,
+      text: `Preview: no files would change - workspace already matches **${meta.id}**.`,
       details: { meta, toRestore: [], skipped },
     };
   }
@@ -376,7 +376,7 @@ async function handlePreview(id: string | undefined, cwd: string): Promise<Actio
       `**${toRestore.length}** file(s) would be restored.`,
       "",
       ...toRestore.map(
-        (d) => `${statusIcon(d.status)} \`${d.filePath}\` — ${d.status}`,
+        (d) => `${statusIcon(d.status)} \`${d.filePath}\` - ${d.status}`,
       ),
       ...(skipped.length > 0
         ? [
@@ -387,7 +387,7 @@ async function handlePreview(id: string | undefined, cwd: string): Promise<Actio
         : []),
       "",
       "Run \`workspace_snapshot(action='restore', id='<id>')\` to apply these changes.",
-      "**This is a dry run — no files were modified.**",
+      "**This is a dry run - no files were modified.**",
     ].join("\n"),
     details: { meta, toRestore, skipped, dryRun: true },
   };
@@ -432,11 +432,11 @@ async function handleRestore(id: string | undefined, cwd: string): Promise<Actio
       `✅ Restored **${toRestore.length}** file(s) from **${meta.id}** (${meta.reason}):`,
       "",
       ...toRestore.map(
-        (d) => `- \`${d.filePath}\` — ${d.status === "modified" ? "reverted" : "created"}`,
+        (d) => `- \`${d.filePath}\` - ${d.status === "modified" ? "reverted" : "created"}`,
       ),
       skipped.length > 0 ? `⚠️ ${skipped.length} file(s) skipped (security policy)` : "",
       "",
-      "**History preserved** — this snapshot is still available. Capture a new one after verifying the restore.",
+      "**History preserved** - this snapshot is still available. Capture a new one after verifying the restore.",
     ].join("\n"),
     details: { restored: toRestore.length, skipped: skipped.length, files: toRestore.map((d) => d.filePath) },
   };

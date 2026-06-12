@@ -6,7 +6,7 @@ accumulation, behavioral drift, budget exhaustion.
 
 ## Architecture
 
-This file (`index.ts`) is the **extension entry point** — registers pi
+This file (`index.ts`) is the **extension entry point** - registers pi
 event handlers and the heartbeat tick. The actual scheduling logic is
 decomposed into sub-modules for clarity and testability:
 

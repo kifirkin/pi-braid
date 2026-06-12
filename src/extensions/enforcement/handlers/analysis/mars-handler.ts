@@ -1,5 +1,5 @@
 /**
- * mars-handler — MARS overuse reflection advice dispatch on turn_end.
+ * mars-handler - MARS overuse reflection advice dispatch on turn_end.
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -40,7 +40,7 @@ export async function marsHandler(pi: any, _event: any, ctx: ExtensionContext): 
     type: marsAdvice.type,
     message: marsAdvice.message.slice(0, 200),
   });
-  // Dedup: share the "advisory" slot with bpe/drift — first claim wins.
+  // Dedup: share the "advisory" slot with bpe/drift - first claim wins.
   if (!tryClaim("mars", "advisory")) return;
   sendTrackedMessage(
     pi,

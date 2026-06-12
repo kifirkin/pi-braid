@@ -1,5 +1,5 @@
 /**
- * Shared extension utilities — use these instead of duplicating across extensions.
+ * Shared extension utilities - use these instead of duplicating across extensions.
  *
  * These are small, universal helpers that every extension needs.
  */
@@ -71,7 +71,7 @@ export function clamp(value: number, min: number, max: number): number {
 }
 
 /**
- * Debounce a function — returns a debounced version that delays execution.
+ * Debounce a function - returns a debounced version that delays execution.
  */
 export function debounce<T extends (...args: any[]) => any>(
   fn: T,

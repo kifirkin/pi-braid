@@ -1,5 +1,5 @@
 /**
- * Context Hygiene Module — proactive context management.
+ * Context Hygiene Module - proactive context management.
  *
  * Based on SimpleMem (2601.02553) and GenericAgent (2604.17091).
  * Monitors context density, token usage, and duplicate messages.
@@ -214,7 +214,7 @@ export const contextHygieneModule: CognitiveModule = {
         const ticks = autoCompactState.consecutiveLowDensity;
         autoCompactState.lastAutoCompactTurn = currentTurn;
         autoCompactState.consecutiveLowDensity = 0;
-        // Whisper a high-priority suggestion — don't call ctx.compact()
+        // Whisper a high-priority suggestion - don't call ctx.compact()
         // as it aborts the agent mid-turn (agent-session.js:1245)
         ctx.whisper?.(
           "Context density still low (" +
@@ -229,7 +229,7 @@ export const contextHygieneModule: CognitiveModule = {
         );
         log.info(
           `Low density persisted: ${Math.round(density.density * 100)}% ` +
-            `for ${ticks}+ ticks — suggested compaction to agent`,
+            `for ${ticks}+ ticks - suggested compaction to agent`,
         );
       } else {
         // Rate-limit: at most one density whisper per 20 turns

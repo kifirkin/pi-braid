@@ -1,5 +1,5 @@
 /**
- * Analytics — A/B variant measurement (BR3).
+ * Analytics - A/B variant measurement (BR3).
  */
 
 import { existsSync, readFileSync } from "node:fs";

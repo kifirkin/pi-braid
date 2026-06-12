@@ -1,5 +1,5 @@
 /**
- * Analytics — core functions: metrics, sequences, persistence.
+ * Analytics - core functions: metrics, sequences, persistence.
  */
 
 import { existsSync, mkdirSync, readFileSync, promises as fs } from "node:fs";

@@ -7,12 +7,12 @@ capabilities (behaviors) based on context. Based on research:
 - HumanLLM (2601.10198): Psychological patterns as causal forces
 - DPRF (2510.14205): Dynamic persona refinement
 
-**Key insight**: models have INERTIA — persistent biases. This
+**Key insight**: models have INERTIA - persistent biases. This
 framework works WITH biases, not against them.
 
 ## What this extension owns
 
-- The `behavior` tool — the agent-facing interface for activating
+- The `behavior` tool - the agent-facing interface for activating
   predefined behavior patterns
 - The behavior catalog (38 predefined patterns, grouped into
   scenarios)
@@ -29,7 +29,7 @@ framework works WITH biases, not against them.
 
 ## Safety bounds on the `behavior` tool
 
-- **Session reset:** every new session starts with `["planner", "executor"]` —
+- **Session reset:** every new session starts with `["planner", "executor"]` -
   behaviors never leak across sessions.
 - **Active cap:** max 5 behaviors active at once. Activation beyond the
   cap is refused with a clear error; the agent must deactivate first

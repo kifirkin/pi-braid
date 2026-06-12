@@ -1,19 +1,19 @@
 /**
- * Extension loader — flat loading with runtime toggling.
+ * Extension loader - flat loading with runtime toggling.
  *
  * Config sources (priority: high → low):
- *   1. Runtime subagent API — /modules-toggle, /modules-enable, /modules-disable
- *   2. Pi's native settings — `braid.modules` property in ~/.pi/agent/settings.json
- *   3. Environment variable — BRAID_MODULES (+id to enable, -id to disable)
- *   4. Default — all extensions enabled (except opt-in/disabledByDefault)
+ *   1. Runtime subagent API - /modules-toggle, /modules-enable, /modules-disable
+ *   2. Pi's native settings - `braid.modules` property in ~/.pi/agent/settings.json
+ *   3. Environment variable - BRAID_MODULES (+id to enable, -id to disable)
+ *   4. Default - all extensions enabled (except opt-in/disabledByDefault)
  *
  * The loader works on individual extensions from the flat manifest. The
- * `module` field on each entry is a convenience label for the subagent API —
+ * `module` field on each entry is a convenience label for the subagent API -
  * it has no structural role in the directory tree.
  *
  * Config references can be:
  *   - An extension ID (e.g. "enforcement", "three-memory-stores")
- *   - A module group name (e.g. "core", "memory") — expands to all member IDs
+ *   - A module group name (e.g. "core", "memory") - expands to all member IDs
  */
 
 import { readFileSync, writeFileSync } from "node:fs";

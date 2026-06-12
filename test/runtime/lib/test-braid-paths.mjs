@@ -1,5 +1,5 @@
 /**
- * Test: braid-paths — centralized storage path resolution.
+ * Test: braid-paths - centralized storage path resolution.
  *
  * Verifies that all exported paths resolve correctly to the expected
  * directory structure under ~/.pi/agent/braid/.

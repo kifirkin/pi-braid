@@ -401,9 +401,9 @@ function printResults(data) {
   if (s.originalAvgScore > 0 && s.variantAvgScore > 0) {
     const drop = ((s.originalAvgScore - s.variantAvgScore) / s.originalAvgScore * 100).toFixed(0);
     console.log(`Variant drop:      ${drop}%`);
-    if (parseInt(drop) > 30) console.log('⚠️  High variant drop — possible contamination');
-    else if (parseInt(drop) > 15) console.log('⚠️  Moderate variant drop — some contamination likely');
-    else console.log('✓ Low variant drop — good generalization');
+    if (parseInt(drop) > 30) console.log('⚠️  High variant drop - possible contamination');
+    else if (parseInt(drop) > 15) console.log('⚠️  Moderate variant drop - some contamination likely');
+    else console.log('✓ Low variant drop - good generalization');
   }
 
   console.log('\n--- Efficiency Metrics ---');

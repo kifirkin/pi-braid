@@ -1,5 +1,5 @@
 /**
- * Test: Self-Evolution Loop — trajectory enrichment, hint persistence, prompt injection
+ * Test: Self-Evolution Loop - trajectory enrichment, hint persistence, prompt injection
  *
  * Tests the closed loop: tool_result → trajectory → SOP extraction → consolidation
  * → hint writing → hint pruning → prompt loading.
@@ -16,7 +16,7 @@ const check = (cond, msg) => cond ? (passed++, console.log("  ✅ "+msg)) : (fai
 
 // ── 1. Trajectory enrichment in ToolTracking type ────────────────────────────
 
-console.log("\n[1] Trajectory enrichment — ToolTracking type");
+console.log("\n[1] Trajectory enrichment - ToolTracking type");
 {
   // Verify the ToolTracking interface includes trajectory field
   const typesSrc = readFileSync(

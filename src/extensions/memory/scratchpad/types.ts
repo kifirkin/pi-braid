@@ -1,5 +1,5 @@
 /**
- * Scratchpad Types — session memory model (CCA L2)
+ * Scratchpad Types - session memory model (CCA L2)
  *
  * All type definitions used by scratchpad and imported by other modules.
  * Split from scratchpad/index.ts for maintainability.

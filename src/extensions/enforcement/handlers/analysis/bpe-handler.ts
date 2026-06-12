@@ -1,5 +1,5 @@
 /**
- * bpe-handler — Belief Policy Engine recommendation dispatch on turn_end.
+ * bpe-handler - Belief Policy Engine recommendation dispatch on turn_end.
  *
  * Reports previous recommendation outcome, gets next recommendation, sends
  * tracked message. Shared _lastRecommendationType state is module-level here

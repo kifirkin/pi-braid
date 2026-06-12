@@ -1,5 +1,5 @@
 /**
- * Cognitive Memory — utility functions.
+ * Cognitive Memory - utility functions.
  *
  * Pure functions for formatting, parsing, auto-tagging, and ID generation.
  */

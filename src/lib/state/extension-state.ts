@@ -1,5 +1,5 @@
 /**
- * Extension State — Session-Scoped State Management
+ * Extension State - Session-Scoped State Management
  *
  * Problem: module-level `const state = {}` is process-global. If pi ever runs
  * multiple sessions in one process, state bleeds between sessions.
@@ -23,14 +23,14 @@ const _sessionState = new Map<string, Map<string, unknown>>();
 // ── Legacy WeakMap fallback (for ctx without sessionManager) ────────────────
 const _stateBuckets = new WeakMap<ExtensionContext, Map<string, unknown>>();
 
-// Last known session key — used as fallback when ctx is stale (after compaction).
+// Last known session key - used as fallback when ctx is stale (after compaction).
 // This prevents state loss across event handlers when pi-core replaces ctx.
 let _lastSessionKey: string | undefined;
 
 function getSessionKey(ctx: ExtensionContext): string | undefined {
-  // Prefer sessionManager's file path — stable across the whole session.
+  // Prefer sessionManager's file path - stable across the whole session.
   // Wrapping entire access in try/catch because ctx.sessionManager is a
-  // getter that calls ExtensionRunner.assertActive() — throws when the ctx
+  // getter that calls ExtensionRunner.assertActive() - throws when the ctx
   // is stale after session replacement or reload (observed in turn_end).
   try {
     const sm = ctx.sessionManager;
@@ -161,7 +161,7 @@ export function registerSessionCleanup(): (event: any, ctx: ExtensionContext) =>
 /**
  * Safely access ctx.sessionManager, returning undefined on stale ctx.
  *
- * ctx.sessionManager is a getter that calls ExtensionRunner.assertActive() —
+ * ctx.sessionManager is a getter that calls ExtensionRunner.assertActive() -
  * throws when the ctx is stale after session replacement or reload.
  * Optional chaining (ctx.sessionManager?.method()) does NOT protect against
  * this because the getter itself throws before the `?.` operand is evaluated.
@@ -173,7 +173,7 @@ export function safeSessionManager(ctx: ExtensionContext): unknown {
     return ctx.sessionManager;
   } catch {
     log.warn(
-      "Stale ExtensionContext — sessionManager getter threw. Data-dependent subsystems (BPE, drift, memory) will operate on empty data.",
+      "Stale ExtensionContext - sessionManager getter threw. Data-dependent subsystems (BPE, drift, memory) will operate on empty data.",
     );
     return undefined;
   }
@@ -204,7 +204,7 @@ export function cacheSessionManager(ctx: ExtensionContext): void {
       _cachedSessionManagers.set(sessionKey, sm);
     }
   } catch {
-    // ctx sessionManager threw even at session_start — skip caching
+    // ctx sessionManager threw even at session_start - skip caching
   }
 }
 

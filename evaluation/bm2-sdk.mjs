@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * BM2: Code Quality Benchmark — SDK version
+ * BM2: Code Quality Benchmark - SDK version
  *
  * Asks agent to write code, then evaluates quality:
  * - ESLint score (0-100)
@@ -317,9 +317,9 @@ async function runTask(task, modelConfig, timeout = 90) {
               if (/^(\s*)(const|let|function|class|module\.exports|import|export|var)/.test(line)) {
                 inCode = true;
               } else if (inCode && /^\s*$/.test(line) && codeLines.length > 0) {
-                // Empty line after starting code — continue (JS has blank lines)
+                // Empty line after starting code - continue (JS has blank lines)
               } else if (inCode && !/^\s*(\/\/|\*|\/\*\*)/.test(line) && !/^(\s*)(const|let|function|class|module\.exports|import|export|var|if|for|while|return|try|catch|})/.test(line)) {
-                // Line doesn't match code patterns and isn't a comment — could be end of code
+                // Line doesn't match code patterns and isn't a comment - could be end of code
                 if (codeLines.length > 5) break;
               }
               if (inCode) {

@@ -1,5 +1,5 @@
 /**
- * Enforcement types — shared interfaces and constants.
+ * Enforcement types - shared interfaces and constants.
  *
  * This file exists to break the circular dependency between
  * state.ts ↔ session-state.ts (via ENFORCEMENT_PARAMS) and
@@ -34,7 +34,7 @@ export const ENFORCEMENT_PARAMS = {
 
 // ── Composed state type ────────────────────────────────────────────────────
 
-/** Full enforcement state — intersection of all sub-states. */
+/** Full enforcement state - intersection of all sub-states. */
 export interface EnforcementState
   extends
     ToolTrackingState,

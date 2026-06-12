@@ -1,5 +1,5 @@
 /**
- * SOP Retrieval & Suggestion — Consolidation Channel Phase 2
+ * SOP Retrieval & Suggestion - Consolidation Channel Phase 2
  *
  * Queries three-memory-stores for relevant SOPs when a new task starts,
  * surfaces them via whisper (injected context) so the agent benefits
@@ -88,7 +88,7 @@ export function trackSuggestionFeedback(ctx: ExtensionContext, toolName: string)
       toolName === "write" ||
       toolName === "edit"
     ) {
-      // Tool matches common SOP patterns — consider it followed
+      // Tool matches common SOP patterns - consider it followed
       fb.followed = true;
     }
   }
@@ -106,7 +106,7 @@ export function getSuggestionFeedback(ctx: ExtensionContext): ReadonlyArray<Sugg
  * enhancement for high-value keywords when available.
  *
  * The classifier extracts task-relevant phrases that stopword filtering
- * misses — e.g., "split the tools.ts into focused files" → the classifier
+ * misses - e.g., "split the tools.ts into focused files" → the classifier
  * catches "tools.ts" and "split into focused files" as keywords.
  */
 async function classifyTaskKeywords(text: string, _ctx?: any): Promise<string[]> {
@@ -139,7 +139,7 @@ async function classifyTaskKeywords(text: string, _ctx?: any): Promise<string[]>
           .filter((k: string) => k.length > 2);
       }
     } catch {
-      // Non-fatal — fall through to heuristic-only result
+      // Non-fatal - fall through to heuristic-only result
     }
   }
 
@@ -403,7 +403,7 @@ export async function injectSopSuggestions(
         timestamp: Date.now(),
       });
     } catch {
-      // Non-fatal — event bus may not be available
+      // Non-fatal - event bus may not be available
     }
 
     try {

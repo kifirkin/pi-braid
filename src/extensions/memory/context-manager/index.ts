@@ -5,13 +5,13 @@ import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/se
 // + 3 sub-tools in handlers/tools/.
 //
 // Handlers:
-//   shared.ts   — state, helpers, retry logic, navigation
-//   compaction.ts — compaction events + retry + smart instructions
-//   compaction-retry.ts — turn-end retry reset
-//   events.ts   — agent_end retry, auto_retry_end, context pruning
-//   navigation.ts — tree navigation + checkout
-//   rotation.ts — session rotation + shutdown
-//   tools/      — context_compress, context_inspect, context_navigate
+//   shared.ts   - state, helpers, retry logic, navigation
+//   compaction.ts - compaction events + retry + smart instructions
+//   compaction-retry.ts - turn-end retry reset
+//   events.ts   - agent_end retry, auto_retry_end, context pruning
+//   navigation.ts - tree navigation + checkout
+//   rotation.ts - session rotation + shutdown
+//   tools/      - context_compress, context_inspect, context_navigate
 //                 (registered inline below)
 
 import type { ExtensionContext, ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -32,7 +32,7 @@ import {
   registerAgentEndRetryHandler as registerNavAgentEndRetry,
 } from "./handlers/navigation.js";
 
-// NOTE: registerContextPruningHandler DISABLED — the "context" event fires per-streaming-message
+// NOTE: registerContextPruningHandler DISABLED - the "context" event fires per-streaming-message
 // (not pre-compaction). Its return value is ignored by pi. Logic to be migrated to
 // session_before_compact handler in compaction.ts where return value is respected.
 // import { registerContextPruningHandler } from "./handlers/events.js";

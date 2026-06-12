@@ -1,5 +1,5 @@
 /**
- * Test: lib/dreamer.ts — tool sequence predictor (enforcement dreamer).
+ * Test: lib/dreamer.ts - tool sequence predictor (enforcement dreamer).
  *
  * Tests the pure functions: simulatePaths() and dream() return values.
  * Does NOT test the heartbeat dreamer module (test-dreamer.mjs covers that).

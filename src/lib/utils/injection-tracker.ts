@@ -1,5 +1,5 @@
 /**
- * Injection Tracker — tracks all messages sent via pi.sendMessage/sendUserMessage.
+ * Injection Tracker - tracks all messages sent via pi.sendMessage/sendUserMessage.
  *
  * Purpose: Make the model's context visible. When extensions inject messages
  * (enforcement whispers, memory nudges, retry prompts, etc.), users should be
@@ -49,7 +49,7 @@ let _sendDepth = 0;
 // MAX_REENTRY_DEPTH = 1: only allow 1 synchronous pi.sendMessage call before
 // deferring to microtask. With ~25 extensions each registering before_agent_start
 // hooks, the runtime re-entry depth can far exceed 2 if every nested call is
-// allowed through. 1 is the safe floor — anything deeper is unsafe.
+// allowed through. 1 is the safe floor - anything deeper is unsafe.
 const MAX_REENTRY_DEPTH = 1;
 
 
@@ -161,7 +161,7 @@ export function extractText(content: unknown[]): string {
  *
  * Critical: tool-safety, auto-singleton, auto-recovery, agent loops,
  *           timer/fire (user-scheduled and compaction-resume wake-ups).
- *           Bypasses WHISPER_CAPS.high — only subject to PER_SOURCE_CAP.
+ *           Bypasses WHISPER_CAPS.high - only subject to PER_SOURCE_CAP.
  *           A user-set timer is time-critical by definition: if 3 other
  *           high-priority whispers have already fired in the turn, the
  *           timer whisper must still reach the agent, otherwise the user
@@ -251,7 +251,7 @@ export function sendTrackedMessage(
     // to this counter, so we keep MAX_REENTRY_DEPTH conservative (1) to stop
     // the chain before it can grow during a tool execution.
     log.warn(
-      `sendTrackedMessage re-entry depth ${_sendDepth}/${MAX_REENTRY_DEPTH} — deferring to microtask`,
+      `sendTrackedMessage re-entry depth ${_sendDepth}/${MAX_REENTRY_DEPTH} - deferring to microtask`,
     );
     queueMicrotask(() => {
       pi.sendMessage(params, options);

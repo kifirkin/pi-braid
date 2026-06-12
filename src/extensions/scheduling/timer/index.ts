@@ -1,5 +1,5 @@
 /**
- * Timer Extension — Non-blocking Pomodoro-style reminders
+ * Timer Extension - Non-blocking Pomodoro-style reminders
  *
  * Agent sets a timer, continues working, gets a reminder when it fires.
  * This replaces bash `sleep` which blocks the tool call.
@@ -30,7 +30,7 @@ export type { ScheduledTimer };
 /**
  * Per-session timer store. Outer map: sessionId → (inner map: timerId → timer).
  *
- * Module-level singleton — this is the global registry. Each session's timers
+ * Module-level singleton - this is the global registry. Each session's timers
  * live in their own inner map, so cross-session operations are impossible.
  * Use the exported session-scoped functions below; do NOT touch this class
  * directly from external code.
@@ -55,7 +55,7 @@ class TimerManager {
     }
     sessionTimers.set(id, { id, firesAt, reason, tag, createdAt: Date.now(), wake, sessionId });
     log.info(
-      `[timer] set: ${id} session=${sessionId} fires in ${Math.round(delayMs / 1000)}s — ${reason}${wake ? " (wake)" : " (silent)"}`,
+      `[timer] set: ${id} session=${sessionId} fires in ${Math.round(delayMs / 1000)}s - ${reason}${wake ? " (wake)" : " (silent)"}`,
     );
     return id;
   }
@@ -84,7 +84,7 @@ class TimerManager {
     return Array.from(sessionTimers.values()).sort((a, b) => a.firesAt - b.firesAt);
   }
 
-  /** Check for expired timers in a session — removes them and returns them. */
+  /** Check for expired timers in a session - removes them and returns them. */
   checkExpired(sessionId: string, nowMs: number): ScheduledTimer[] {
     const sessionTimers = this.timersBySession.get(sessionId);
     if (!sessionTimers) return [];
@@ -93,7 +93,7 @@ class TimerManager {
       if (timer.firesAt <= nowMs) {
         expired.push(timer);
         sessionTimers.delete(id);
-        log.info(`[timer] fired: ${id} (session=${sessionId}) — ${timer.reason}`);
+        log.info(`[timer] fired: ${id} (session=${sessionId}) - ${timer.reason}`);
       }
     }
     return expired;
@@ -131,7 +131,7 @@ const timerManager = new TimerManager();
 
 /**
  * Defensive sessionId extraction. Returns "anonymous" if the ctx is missing
- * or sessionManager is unavailable — those timers will be cancelled together
+ * or sessionManager is unavailable - those timers will be cancelled together
  * in the "anonymous" bucket. Prefer passing a real sessionId.
  */
 function getSessionId(ctx: unknown): string {
@@ -140,7 +140,7 @@ function getSessionId(ctx: unknown): string {
 }
 
 /**
- * Programmatic timer API — schedule a timer for a specific session.
+ * Programmatic timer API - schedule a timer for a specific session.
  * Returns the timer ID. Timer fires and delivers a CustomMessage
  * (whisper-style) that wakes the agent when wake: true.
  *
@@ -152,7 +152,7 @@ function getSessionId(ctx: unknown): string {
  *   for automatic timers (post-compaction auto-resume, agent-scheduled
  *   reminders): no human is typing, and the input box should not be
  *   filled with "[TIMER FIRED]". Pass wake: false for silent reminders
- *   (visible in TUI but no forced turn) — used by background heartbeats.
+ *   (visible in TUI but no forced turn) - used by background heartbeats.
  */
 export function scheduleTimer(
   sessionId: string,
@@ -178,7 +178,7 @@ export function listTimers(sessionId: string): ScheduledTimer[] {
  * Cancel all active timers for a session matching a tag.
  * Used by compaction paths to invalidate stale resume timers from a
  * previous compaction cycle. CRITICAL: only cancels the given session's
- * timers — does NOT touch other sessions running in the same process.
+ * timers - does NOT touch other sessions running in the same process.
  * Returns the number of timers cancelled.
  */
 export function cancelTimersByTag(sessionId: string, tag: string): number {
@@ -195,7 +195,7 @@ export function clearSessionTimers(sessionId: string): number {
 import { emitTimerReminder } from "../../../lib/events/timer-bus.js";
 import { TURN_END, TOOL_CALL, TOOL_EXECUTION_END, SESSION_SHUTDOWN, SESSION_START } from "../../../lib/core/event-names.js";
 
-// Internal handler count (kept for API compat — currently unused,
+// Internal handler count (kept for API compat - currently unused,
 // no callers register via onTimerFire. The event bus handles
 // timer_fire delivery. Kept for future use but with zero-current-cost.)
 type TimerFireHandler = (timer: ScheduledTimer) => void;
@@ -207,13 +207,13 @@ export function onTimerFire(handler: TimerFireHandler): () => void {
 }
 
 // ── Real-time polling (per-pi instance) ──────────────────────────────────────
-// Timer expiry checked every second — independent of turn_end so timers fire
+// Timer expiry checked every second - independent of turn_end so timers fire
 // even when the agent is between turns or blocked in a long tool call.
 // This is the primary fire mechanism; turn_end is a backup.
 //
 // PER-PI: each pi instance gets its own poller that only fires its own
 // session's timers. Previously the poller was a module-level singleton
-// with one piRef — if two sessions ran, only the most recently registered
+// with one piRef - if two sessions ran, only the most recently registered
 // session received timer fires. Now each session is independent.
 const POLL_INTERVAL_MS = 1000;
 
@@ -222,7 +222,7 @@ class TimerPoller {
   piRef: ExtensionAPI | null = null;
   // busy guard: when true, the poller skips fireTimer() to prevent whisper
   // injection mid-tool-execution (which can chain into synchronous re-entry
-  // and overflow the stack — see issue: stack overflow on scratchpad after
+  // and overflow the stack - see issue: stack overflow on scratchpad after
   // compaction). Set true on TOOL_CALL, false on TURN_END.
   busy = false;
 
@@ -255,7 +255,7 @@ class TimerPoller {
   private poll(): void {
     const pi = this.piRef;
     if (!pi) return;
-    if (this.busy) return; // bail — defer fire to next non-busy tick or TURN_END
+    if (this.busy) return; // bail - defer fire to next non-busy tick or TURN_END
     const expired = timerManager.checkExpired(this.sessionId, Date.now());
     for (const timer of expired) {
       fireTimer(timer, pi);
@@ -289,12 +289,12 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
 
   // (Previously emitted eventBus.emit({ type: "timer_fire", ... }) here.
   // Removed in fresh-eyes audit 2026-06-11: no listener was ever registered
-  // for "timer_fire" — the emit was dead code. The actual wake-up path is
+  // for "timer_fire" - the emit was dead code. The actual wake-up path is
   // via sendUserMessage (wake:true) or sendTrackedMessage (wake:false)
   // below, NOT through the event bus. If a future feature needs to react
   // to timer fires asynchronously, register a listener first.)
 
-  log.info(`[timer] fired: ${timer.id} (session=${timer.sessionId}) — ${timer.reason}`);
+  log.info(`[timer] fired: ${timer.id} (session=${timer.sessionId}) - ${timer.reason}`);
 
   // Compute elapsed time for the wake message
   const elapsedSec = Math.round((Date.now() - timer.createdAt) / 1000);
@@ -333,7 +333,7 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
   // them in the conversation stream. wake: true prepends the elapsed
   // time for context; wake: false uses the shorter form.
   if (timer.wake === true) {
-    const text = `[TIMER FIRED — ${elapsedSec}s elapsed] ${timer.reason} — Resume the task.`;
+    const text = `[TIMER FIRED - ${elapsedSec}s elapsed] ${timer.reason} - Resume the task.`;
     try {
       pi.sendMessage(
         {
@@ -421,7 +421,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
         case "set": {
           const { delay_seconds, reason, tag } = params;
           if (tag && !/^[a-zA-Z0-9_-]+$/.test(tag)) {
-            throw new Error(`Invalid tag "${tag}" — use alphanumeric + dash/underscore`);
+            throw new Error(`Invalid tag "${tag}" - use alphanumeric + dash/underscore`);
           }
           const delayMs = (delay_seconds ?? 60) * 1000;
           const id = timerManager.setTimer(sessionId, delayMs, reason ?? "Timer", tag);
@@ -430,7 +430,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
             content: [
               {
                 type: "text" as const,
-                text: `Timer set for ${delay_seconds}s (ID: ${id}, session=${sessionId}). Will fire at ${new Date(firesAt).toLocaleTimeString()}. Continue working — reminder will arrive automatically. Use timer action=cancel with this ID to cancel.`,
+                text: `Timer set for ${delay_seconds}s (ID: ${id}, session=${sessionId}). Will fire at ${new Date(firesAt).toLocaleTimeString()}. Continue working - reminder will arrive automatically. Use timer action=cancel with this ID to cancel.`,
               },
             ],
             details: {
@@ -530,7 +530,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
     p.setBusy(false);
     // Opportunistically fire any expired timers that piled up during the
     // tool execution. This is the primary fire path for timers that
-    // expired mid-tool — they don't have to wait for turn_end.
+    // expired mid-tool - they don't have to wait for turn_end.
     p.fireExpired();
   });
   pi.on(TURN_END, (_event: unknown, ctx: unknown) => {

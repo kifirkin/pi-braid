@@ -1,5 +1,5 @@
 /**
- * Critic Helpers — shared utilities used by critic definitions in
+ * Critic Helpers - shared utilities used by critic definitions in
  * critic-registry.ts.
  *
  * Extracted from critic-registry.ts to keep that file focused on
@@ -22,7 +22,7 @@ export const ENTITY_VERBS = /\b(is|was|will|can|does|has|should|must|returns|tak
  * similarity computation. The previous local 100-word list in
  * sop-extractor.ts was consolidated here.
  *
- * Renamed from STOP_WORDS_LEGACY in fresh-eyes audit 2026-06-11 —
+ * Renamed from STOP_WORDS_LEGACY in fresh-eyes audit 2026-06-11 -
  * the "_LEGACY" suffix was misleading (this is the current
  * centralized list, not a legacy one). The old name is kept as a
  * deprecated alias for back-compat.

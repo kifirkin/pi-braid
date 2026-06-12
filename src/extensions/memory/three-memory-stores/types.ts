@@ -1,14 +1,14 @@
 import type { Episode } from "../../../lib/types/episode-types.js";
 
 /**
- * Three Memory Stores — type definitions
+ * Three Memory Stores - type definitions
  *
  * Extracted from index.ts for maintainability and shared access.
  */
 
 export type { Episode };
 
-/** Heuristic rule — procedural knowledge derived from experience */
+/** Heuristic rule - procedural knowledge derived from experience */
 export interface HeuristicRule {
   id: string;
   condition: string;
@@ -43,7 +43,7 @@ export interface MemoryStoresState {
   lastSkillType: string;
   skillTransitionCount: number;
   recentErrors: string[];
-  /** Current session ID — enables cross-session contamination filtering. */
+  /** Current session ID - enables cross-session contamination filtering. */
   currentSessionId: string;
   /** Session-scoped recall cooldown timestamp (prevents cross-session leak). */
   lastRecallTime: number;

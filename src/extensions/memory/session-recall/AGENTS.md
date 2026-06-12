@@ -30,7 +30,7 @@ This keeps the index small and the search fast.
 
 Sessions are stored as JSONL in `BRAID_DATA_DIR/sessions/`. Each
 session is a single file. The index is built on first search (no
-precomputed index — sessions are small enough that linear scan is
+precomputed index - sessions are small enough that linear scan is
 fast enough for the typical use case).
 
 ## Performance

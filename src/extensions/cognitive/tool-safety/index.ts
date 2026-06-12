@@ -1,13 +1,13 @@
 /**
- * Tool Safety — Utility-model safety check for destructive tool calls.
+ * Tool Safety - Utility-model safety check for destructive tool calls.
  *
  * On each tool_call for destructive operations (edit, write, bash, delete),
  * classifies the operation with the configured utility model before execution.
  * If classified as "unsafe", blocks execution with a steer.
  *
  * Three-tier fallback (same as input critic): utility → session → heuristic.
- * Heuristic is conservative — always allows through on degradation.
- * Timeout (2s) also allows through — safety check never blocks.
+ * Heuristic is conservative - always allows through on degradation.
+ * Timeout (2s) also allows through - safety check never blocks.
  *
  * Part of the hacking-a0 infection check layer.
  */
@@ -73,7 +73,7 @@ function isKnownSafeGitCommand(command: string): boolean {
   const trimmed = command.trim();
   if (!/^git\s/.test(trimmed)) return false;
 
-  // First dangerous-flag check — if any are present, fall through to LLM
+  // First dangerous-flag check - if any are present, fall through to LLM
   // (it may still be safe, but we don't want to whitelist a force push).
   for (const pattern of KNOWN_DANGEROUS_GIT_FLAGS) {
     if (pattern.test(trimmed)) return false;
@@ -121,7 +121,7 @@ export default function toolSafetyExtension(pi: ExtensionAPI): void {
         { toolName, toolArgs: args },
         {
           maxTokens: 5,
-          timeoutMs: 2000, // tight — never block the agent for long
+          timeoutMs: 2000, // tight - never block the agent for long
           fallback: () => CRITICS.toolSafetyFallback(),
         },
       );
@@ -158,7 +158,7 @@ export default function toolSafetyExtension(pi: ExtensionAPI): void {
             { type: "enforcement" as const, source: "tool-safety/block" },
           );
         } catch {
-          // Non-fatal — block silently if steer delivery fails
+          // Non-fatal - block silently if steer delivery fails
           log.warn("[tool-safety] Steer delivery failed");
         }
 
@@ -169,7 +169,7 @@ export default function toolSafetyExtension(pi: ExtensionAPI): void {
       log.debug(`[tool-safety] ALLOWED ${toolName} (tier: ${result.tier})`);
     } catch (err) {
       log.warn(`[tool-safety] Check failed for ${toolName}: ${err}`);
-      // Allow through on error — never degrade agent availability
+      // Allow through on error - never degrade agent availability
     }
   });
 }

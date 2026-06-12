@@ -1,5 +1,5 @@
 /**
- * pi-braid Variant Task Generator — Tier 2 Benchmark
+ * pi-braid Variant Task Generator - Tier 2 Benchmark
  *
  * VAR-MATH-inspired variant tasks: same skill, different surface form.
  * Used to measure true generalization vs contamination.

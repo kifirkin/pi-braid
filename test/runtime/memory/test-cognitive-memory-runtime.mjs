@@ -1,5 +1,5 @@
 /**
- * Test: CognitiveMemory — in-memory store, recall, search, and lifecycle.
+ * Test: CognitiveMemory - in-memory store, recall, search, and lifecycle.
  *
  * Uses highly differentiated content to avoid Jaccard-similarity dedup.
  */

@@ -90,7 +90,7 @@ export default function healthMaintenanceExtension(pi: ExtensionAPI) {
     label: "Health Maintenance",
     promptSnippet: "Health maintenance commands for agent self-improvement",
     description:
-      "Health maintenance commands for agent improvement — use to check health, commit changes, rollback issues, or benchmark performance.",
+      "Health maintenance commands for agent improvement - use to check health, commit changes, rollback issues, or benchmark performance.",
     parameters: healthMaintenanceSchema,
     execute: async (
       _toolCallId,

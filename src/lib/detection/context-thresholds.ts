@@ -1,9 +1,9 @@
 /**
- * Context Management Thresholds — single source of truth.
+ * Context Management Thresholds - single source of truth.
  *
  * Separates two semantically distinct concepts:
- *   CONTEXT_USAGE — how full the token window is (% of limit filled)
- *   DENSITY      — signal-to-noise ratio of content (0-1)
+ *   CONTEXT_USAGE - how full the token window is (% of limit filled)
+ *   DENSITY      - signal-to-noise ratio of content (0-1)
  *
  * Tune these values to adjust reminder cadence without hunting through 6+ files.
  */
@@ -12,16 +12,16 @@
 // CONTEXT USAGE THRESHOLDS (% of context window filled)
 // ═════════════════════════════════════════════════════════════════════════════
 
-/** First soft whisper — gentle suggestion to archive completed work. */
+/** First soft whisper - gentle suggestion to archive completed work. */
 export const USAGE_WHISPER_SOFT = 40;
 
-/** Advisory — suggest specific action (context_archive / finalize). */
+/** Advisory - suggest specific action (context_archive / finalize). */
 export const USAGE_WHISPER_ADVISORY = 50;
 
-/** Warning — stronger language, medium priority. */
+/** Warning - stronger language, medium priority. */
 export const USAGE_WHISPER_WARNING = 60;
 
-/** Critical — high priority, suggest immediate action. */
+/** Critical - high priority, suggest immediate action. */
 export const USAGE_WHISPER_CRITICAL = 75;
 
 /** Auto-compaction: medium level at this usage. */
@@ -38,7 +38,7 @@ export const USAGE_FIRED_RESET_BELOW = 50;
 // ═════════════════════════════════════════════════════════════════════════════
 // Percentages fire too late for large context windows (200K+).
 // Token-count thresholds provide preventive nudges before context is heavy.
-// These complement the percentage thresholds — both triggers are evaluated.
+// These complement the percentage thresholds - both triggers are evaluated.
 
 /** Soft whisper: consider pruning old tool results. */
 export const USAGE_TOKENS_SOFT = 30_000;
@@ -46,7 +46,7 @@ export const USAGE_TOKENS_SOFT = 30_000;
 /** Advisory: tag position, consider archiving completed work. */
 export const USAGE_TOKENS_ADVISORY = 50_000;
 
-/** Warning: context growing — suggest tag → checkout → archive pipeline. */
+/** Warning: context growing - suggest tag → checkout → archive pipeline. */
 export const USAGE_TOKENS_WARNING = 75_000;
 
 /** Above this, percentage thresholds take over naturally. */

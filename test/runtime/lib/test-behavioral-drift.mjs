@@ -40,7 +40,7 @@ console.log("\n[2] shouldActivate gating");
   console.log("  ✅ shouldActivate gating correct");
 }
 
-console.log("\n[3] Source analysis — behavioral drift module structure");
+console.log("\n[3] Source analysis - behavioral drift module structure");
 {
   const fs = await import("fs");
   const src = fs.readFileSync(

@@ -1,5 +1,5 @@
 /**
- * Reasoning Chain Summarization (2604.15877) — Medium-Term Compression
+ * Reasoning Chain Summarization (2604.15877) - Medium-Term Compression
  *
  * Two-tier detection:
  *   Tier 1 (regex, sync): Fast pre-filter to find candidate reasoning messages.

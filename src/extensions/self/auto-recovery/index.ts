@@ -1,5 +1,5 @@
 /**
- * Auto-Recovery from Degradation — Automatic Health Check & Recovery
+ * Auto-Recovery from Degradation - Automatic Health Check & Recovery
  *
  * On each turn_start, checks if the system is in a degraded state via
  * isDegraded(). If degraded and a recovery hasn't been suggested recently,

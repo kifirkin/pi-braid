@@ -1,5 +1,5 @@
 /**
- * Thought Chain — state interface and helpers for think() tracking.
+ * Thought Chain - state interface and helpers for think() tracking.
  * Does NOT import state.ts (breaks circular dependency).
  */
 
@@ -77,7 +77,7 @@ export function getReflectionGapMessage(
   minToolsSinceReflection = 8,
 ): string | null {
   if (s.toolsSinceReflection < minToolsSinceReflection) return null;
-  return `${minToolsSinceReflection} turns without think() — consider think(observation, decision, reason) to track reasoning`;
+  return `${minToolsSinceReflection} turns without think() - consider think(observation, decision, reason) to track reasoning`;
 }
 
 /** Reset thought chain state. */

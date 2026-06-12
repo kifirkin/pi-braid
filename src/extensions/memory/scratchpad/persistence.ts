@@ -1,5 +1,5 @@
 /**
- * Scratchpad Persistence — disk I/O for session memory
+ * Scratchpad Persistence - disk I/O for session memory
  *
  * Split from scratchpad/index.ts for maintainability.
  */
@@ -53,7 +53,7 @@ export async function saveScratchpadToDisk(scratchpad: TaskScratchpad): Promise<
     const filePath = scratchpadFilePath(scratchpad.projectSlug);
     await fileMutationQueue.write(filePath, scratchpad);
   } catch {
-    // Silent fail — operates in memory if disk write fails
+    // Silent fail - operates in memory if disk write fails
   }
 }
 
@@ -78,7 +78,7 @@ export async function loadScratchpadFromDisk(projectSlug: string): Promise<TaskS
     if (!data.key_learnings) data.key_learnings = [];
     return data as TaskScratchpad;
   } catch {
-    // Silent fail — file doesn't exist or parse error
+    // Silent fail - file doesn't exist or parse error
   }
   return null;
 }

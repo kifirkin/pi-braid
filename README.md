@@ -11,14 +11,14 @@ Metacognitive extension suite for [pi-coding-agent](https://github.com/mariozech
 
 pi-braid extends pi with a layered cognitive architecture:
 
-- **Enforcement** — belief policy engine, structured signal delivery (L1–L3 severity), sycophancy detection, verification nudges
-- **Memory** — dual-store memory system: semantic (cognitive-memory) + episodic (three-memory-stores) with cross-search
-- **Reasoning** — reasoning quality metrics, topic drift detection, bidirectional verification
-- **Self-improvement** — heuristic evolution, dreamer (offline consolidation), SOP extraction, degradation detection
-- **Session management** — context lifecycle (S-MMU), auto-finalize at 90%, scratchpad task tracking
-- **Utilities** — healthcheck, timers, system monitoring, web research, code search
+- **Enforcement** - belief policy engine, structured signal delivery (L1-L3 severity), sycophancy detection, verification nudges
+- **Memory** - dual-store memory system: semantic (cognitive-memory) + episodic (three-memory-stores) with cross-search
+- **Reasoning** - reasoning quality metrics, topic drift detection, bidirectional verification
+- **Self-improvement** - heuristic evolution, dreamer (offline consolidation), SOP extraction, degradation detection
+- **Session management** - context lifecycle (S-MMU), auto-finalize at 90%, scratchpad task tracking
+- **Utilities** - healthcheck, timers, system monitoring, web research, code search
 
-The agent doesn't just execute tools — it reflects, remembers, and adapts.
+The agent doesn't just execute tools - it reflects, remembers, and adapts.
 
 ## Architecture
 

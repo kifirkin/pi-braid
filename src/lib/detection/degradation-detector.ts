@@ -56,7 +56,7 @@ const DEFAULT_CONFIG: DegradationConfig = {
 
 const METRICS_FILE = DEGRADATION_FILE;
 
-// Global fallback (legacy — for tool handlers without ctx)
+// Global fallback (legacy - for tool handlers without ctx)
 let _global: DegradationState = {
   metrics: [],
   config: { ...DEFAULT_CONFIG },

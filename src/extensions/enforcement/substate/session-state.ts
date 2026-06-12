@@ -1,5 +1,5 @@
 /**
- * Session State — turn tracking, configuration, topic drift detector.
+ * Session State - turn tracking, configuration, topic drift detector.
  *
  * Owns: current turn, turn history, original request, config,
  *       enforcement active flag, verification judge state, drift detector.
@@ -32,7 +32,7 @@ export interface SessionState {
   /** Duration of the most recent turn in ms (from turn_complete event) */
   lastTurnDuration: number;
 
-  // Conflict resolution tracking — IDs of pending conflicts and when they were detected
+  // Conflict resolution tracking - IDs of pending conflicts and when they were detected
   pendingConflictIds: string[];
   /** Turn number when each conflict was first detected (conflictId → turn) */
   conflictDetectionTurn: Map<string, number>;

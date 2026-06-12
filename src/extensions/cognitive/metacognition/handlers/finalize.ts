@@ -25,7 +25,7 @@ async function recordToMemory(
 ): Promise<void> {
   if (!ctx) return;
   try {
-    // @ts-expect-error dynamic import — runtime resolves after build, type-check not needed
+    // @ts-expect-error dynamic import - runtime resolves after build, type-check not needed
     const { addEpisode, addPrinciple } = await import("../../memory/three-memory-stores/index.js");
     const state = getExtensionState<any>(ctx, "three-memory-stores", () => ({
       episodes: [],
@@ -265,7 +265,7 @@ finalize(completed=true, summary="Fixed the bug", tasksRemaining=["write tests"]
               content: [
                 {
                   type: "text" as const,
-                  text: `**⚠️ FINALIZE BLOCKED — verify() found unresolved issues**
+                  text: `**⚠️ FINALIZE BLOCKED - verify() found unresolved issues**
 
 Last verification (${Math.round(elapsedMs / 1000)}s ago):
 - Target: ${lastVerification.target}
@@ -323,7 +323,7 @@ Run \`verify()\` again after fixing the issues, or set \`completed: true\` to fi
       messages.push("");
       messages.push("**IMPORTANT: DO NOT call any tools after this message.**");
       messages.push(
-        "The agent loop terminates cleanly when you respond with text only — no tool calls.",
+        "The agent loop terminates cleanly when you respond with text only - no tool calls.",
       );
       messages.push("Acknowledge completion in a brief text response, then stop.");
 

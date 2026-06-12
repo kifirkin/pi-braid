@@ -1,5 +1,5 @@
 /**
- * Agent Event Bus — unified async event routing
+ * Agent Event Bus - unified async event routing
  *
  * Event-driven handlers for cross-cutting events that span multiple
  * extensions. Sources: heartbeat tick, memory eviction, tool errors,
@@ -7,12 +7,12 @@
  *
  * Note: the `timer_fire` event type is kept in the union for type
  * safety (test-event-bus.mjs uses it as a generic test type) but is
- * NOT currently emitted by the timer module — the actual wake-up
+ * NOT currently emitted by the timer module - the actual wake-up
  * path is direct (sendUserMessage for wake:true, sendTrackedMessage
  * for wake:false). If a future feature needs to react to timer fires
  * asynchronously, add a listener in this file's listeners section.
  *
- * Paper: 2604.14178 — Cognitive Scheduling with Event-Driven Architecture
+ * Paper: 2604.14178 - Cognitive Scheduling with Event-Driven Architecture
  */
 
 import { createLogger } from "../core/logger.js";

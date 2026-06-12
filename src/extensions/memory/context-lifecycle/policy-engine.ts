@@ -1,5 +1,5 @@
 /**
- * Policy Engine — Pure function for evaluating context policies against signals.
+ * Policy Engine - Pure function for evaluating context policies against signals.
  *
  * Transformed from class-based PolicyEngine to a pure evaluation function.
  * Cooldown tracking is managed externally via a state object.

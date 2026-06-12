@@ -1,5 +1,5 @@
 /**
- * Test: Bidirectional Verifier — File Touch Tracking
+ * Test: Bidirectional Verifier - File Touch Tracking
  *
  * Tests the remaining externally-called functions after Phase 2/4 removal:
  *   extractFileReferences, filesAreRelated, clearVerifierState

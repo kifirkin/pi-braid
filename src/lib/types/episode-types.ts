@@ -1,5 +1,5 @@
 /**
- * Episode Types — shared experience record definitions.
+ * Episode Types - shared experience record definitions.
  *
  * Extracted from extensions/memory/three-memory-stores/types.ts so that
  * lib/utils/sop-suggestion.ts can import types without creating a lib→ext dependency.
@@ -18,7 +18,7 @@ export interface Episode {
   tags: string[];
   /** Project path where this episode was created. Provenance tag (HaluMem 2511.03506). */
   project: string;
-  /** Session ID — enables cross-session contamination filtering. */
+  /** Session ID - enables cross-session contamination filtering. */
   sessionId: string;
   /** Quality score 0-1 (Decocted Experience 2604.03213): outcome × tool diversity × reasoning density. */
   quality?: number;
@@ -26,6 +26,6 @@ export interface Episode {
   strategicSOP?: string;
   /** Functional SOP (mid-level): Key steps taken. */
   functionalSOP?: string[];
-  /** Atomic SOP (low-level): Tool invocations — same as toolSequence. */
+  /** Atomic SOP (low-level): Tool invocations - same as toolSequence. */
   atomicSOP?: string[];
 }

@@ -7,7 +7,7 @@
  *
  * The class API (setTaskContext, addTurn, check, generateWhisper, reset)
  * is preserved for backward compatibility. Only the internal detection
- * algorithm changes — from Jaccard token overlap to LLM-based critics.
+ * algorithm changes - from Jaccard token overlap to LLM-based critics.
  *
  * Drift detection flow:
  *   1. Three parallel classify() calls (topicCoverage, topicDivergence, topicCompleteness)
@@ -193,13 +193,13 @@ export class TopicDriftDetector {
             `→ drifted=${drifted}`,
         );
       } catch {
-        // LLM call failed — conservative fallback (no drift)
+        // LLM call failed - conservative fallback (no drift)
         drifted = false;
         severity = "subtle";
         reason = "too_short";
       }
     } else {
-      // No ctx available — use Jaccard similarity heuristic
+      // No ctx available - use Jaccard similarity heuristic
       const taskWords = new Set(
         this.taskContext.toLowerCase().split(/[^\w]+/).filter(Boolean),
       );

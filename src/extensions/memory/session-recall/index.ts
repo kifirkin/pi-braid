@@ -41,7 +41,7 @@ interface _SessionRecallConfig {
   queryModel?: { provider: string; id: string };
 }
 
-// ── Default config (file loading was dead code — removed) ──
+// ── Default config (file loading was dead code - removed) ──
 
 // Schemas
 

@@ -1,5 +1,5 @@
 /**
- * Critic Registry — centralized pool of critic prompt templates.
+ * Critic Registry - centralized pool of critic prompt templates.
  *
  * The "triple critic" system:
  *   Each critic is a named classification task with:
@@ -8,7 +8,7 @@
  *   3. An optional heuristic fallback (Tier 1 in classify())
  *
  * Critics are evaluated via lib/text-classifier.ts's three-tier fallback:
- *   Tier 1: Heuristic fallback (fast, free, crude — preferred)
+ *   Tier 1: Heuristic fallback (fast, free, crude - preferred)
  *   Tier 2: Utility model (configured via /utility-model)
  *   Tier 3: Session model (always available)
  *
@@ -49,11 +49,11 @@ export interface CriticDef {
 import { ENTITY_VERBS } from "./critic-helpers.js";
 export { ENTITY_VERBS, STOP_WORDS, STOP_WORDS_LEGACY, criticLabel } from "./critic-helpers.js";
 
-// ── CRITICS — All critic prompt definitions ─────────────────────────────────
+// ── CRITICS - All critic prompt definitions ─────────────────────────────────
 
 export const CRITICS = {
   // ═══════════════════════════════════════════════════════════════════════
-  // Topic Drift — Triple critic: coverage + divergence + completeness
+  // Topic Drift - Triple critic: coverage + divergence + completeness
   // ═══════════════════════════════════════════════════════════════════════
 
   /** Does the response still address the original request? (topic coverage) */
@@ -192,7 +192,7 @@ export const CRITICS = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Claim Contradiction — Triple critic: contradiction + support + overconfidence
+  // Claim Contradiction - Triple critic: contradiction + support + overconfidence
   // ═══════════════════════════════════════════════════════════════════════
 
   /** Does a claim directly contradict a given context? */
@@ -232,7 +232,7 @@ export const CRITICS = {
     criteria: {
       systemPrompt:
         "You are a confidence assessor. Determine if the claim contains unwarranted " +
-        "certainty — absolutes like 'always', 'never', 'guaranteed', 'definitely', " +
+        "certainty - absolutes like 'always', 'never', 'guaranteed', 'definitely', " +
         "'impossible', 'must', or superlatives that aren't supported by the context. " +
         "Answer only 'yes' or 'no'. Do not explain.",
       userPrompt:
@@ -245,7 +245,7 @@ export const CRITICS = {
   /**
    * Minimal conservative fallback for contradiction detection.
    * Detects obvious polarity flips via negation patterns on shared terms.
-   * Returns "no" when uncertain — LLM tier (Tier 2/3) handles complex cases.
+   * Returns "no" when uncertain - LLM tier (Tier 2/3) handles complex cases.
    */
   contradictionFallback(claim: string, context: string): string {
     const claimLower = claim.toLowerCase();
@@ -313,7 +313,7 @@ export const CRITICS = {
 
   /**
    * Conservative fallback for tool loop detection.
-   * Returns "no" — LLM tier handles actual detection.
+   * Returns "no" - LLM tier handles actual detection.
    */
   toolLoopFallback(_toolSequences: string): string {
     return "no";
@@ -321,7 +321,7 @@ export const CRITICS = {
 
   /**
    * Conservative fallback for evidence conflict detection.
-   * Returns "no" — LLM tier handles actual detection.
+   * Returns "no" - LLM tier handles actual detection.
    */
   evidenceConflictFallback(_a: string, _b: string): string {
     return "no";
@@ -397,14 +397,14 @@ export const CRITICS = {
 
   /**
    * Conservative fallback for hint quality.
-   * Returns "yes" (allow through) — LLM tier handles filtering.
+   * Returns "yes" (allow through) - LLM tier handles filtering.
    */
   hintQualityFallback(_task: string, _steps: string[]): string {
     return "yes";
   },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Context Density — Triple critic: signal ratio + duplication + compression urgency
+  // Context Density - Triple critic: signal ratio + duplication + compression urgency
   // ═══════════════════════════════════════════════════════════════════════
 
   /**
@@ -419,8 +419,8 @@ export const CRITICS = {
         "You are a context density evaluator. Given a sample of conversation " +
         "messages, determine if the context has HIGH, MEDIUM, or LOW signal density. " +
         "HIGH = most messages contain meaningful, non-boilerplate content. " +
-        "MEDIUM = mixed — some signal, some noise (duplicates, errors, boilerplate). " +
-        "LOW = mostly noise — repetitive commands, traceback dumps, trivial responses. " +
+        "MEDIUM = mixed - some signal, some noise (duplicates, errors, boilerplate). " +
+        "LOW = mostly noise - repetitive commands, traceback dumps, trivial responses. " +
         "Answer with exactly one word: HIGH, MEDIUM, or LOW. Do not explain.",
       userPrompt:
         "Context sample ({{sampleCount}} messages):\n{{messages}}\n" +
@@ -477,12 +477,12 @@ export const CRITICS = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Qualitative Degradation — Single critic: output quality
+  // Qualitative Degradation - Single critic: output quality
   // ═══════════════════════════════════════════════════════════════════════
 
   /**
    * Assess whether agent output quality has degraded qualitatively.
-   * Complements the metric-based degradation detector — catches cases
+   * Complements the metric-based degradation detector - catches cases
    * where numeric metrics look fine but output is wrong.
    */
   qualitativeDegradation: {
@@ -510,7 +510,7 @@ export const CRITICS = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Removal Safety — filter-safe-to-remove batch assessment
+  // Removal Safety - filter-safe-to-remove batch assessment
   // ═══════════════════════════════════════════════════════════════════════
 
   /**
@@ -541,7 +541,7 @@ export const CRITICS = {
   } satisfies CriticDef,
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Error Type — register-auto-retry-end error classification
+  // Error Type - register-auto-retry-end error classification
   // ═══════════════════════════════════════════════════════════════════════
 
   /**
@@ -574,7 +574,7 @@ export const CRITICS = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Instruction Strength — bidirectional-verifier RFC 2119 keyword
+  // Instruction Strength - bidirectional-verifier RFC 2119 keyword
   // ═══════════════════════════════════════════════════════════════════════
 
   /**
@@ -605,7 +605,7 @@ export const CRITICS = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Command Type — probe-handler command classification
+  // Command Type - probe-handler command classification
   // ═══════════════════════════════════════════════════════════════════════
 
   /**
@@ -640,7 +640,7 @@ export const CRITICS = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Input Polish Critics — input-polisher pre-classification
+  // Input Polish Critics - input-polisher pre-classification
   // ═══════════════════════════════════════════════════════════════════════
 
   /** Is this text primarily code (not natural language)? */
@@ -766,7 +766,7 @@ export const CRITICS = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Tool Safety — tool-safety pre-execution check
+  // Tool Safety - tool-safety pre-execution check
   // ═══════════════════════════════════════════════════════════════════════
 
   /**
@@ -799,7 +799,7 @@ export const CRITICS = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Hint Relevance — prompt-builder hint filtering
+  // Hint Relevance - prompt-builder hint filtering
   // ═══════════════════════════════════════════════════════════════════════
 
   /**
@@ -834,7 +834,7 @@ export const CRITICS = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Conflict Resolution — conflict-qa response classification
+  // Conflict Resolution - conflict-qa response classification
   // ═══════════════════════════════════════════════════════════════════════
 
   /**
@@ -884,7 +884,7 @@ export const CRITICS = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Compliance Framing — latent-activator compliance detection
+  // Compliance Framing - latent-activator compliance detection
   // ═══════════════════════════════════════════════════════════════════════
 
   /**
@@ -896,7 +896,7 @@ export const CRITICS = {
     criteria: {
       systemPrompt:
         "You are a compliance framing detector. Determine if the given text " +
-        "uses language that frames the task as a compliance requirement — " +
+        "uses language that frames the task as a compliance requirement - " +
         "words like 'must', 'required', 'mandatory', 'shall', 'strictly', " +
         "'obligatory', 'it is essential', 'is expected to'. " +
         "Answer only 'yes' or 'no'. Do not explain.",
@@ -913,7 +913,7 @@ export const CRITICS = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Polarity Detection — claim-tracker sentence polarity
+  // Polarity Detection - claim-tracker sentence polarity
   // ═══════════════════════════════════════════════════════════════════════
 
   /**
@@ -940,7 +940,7 @@ export const CRITICS = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Entity Detection — claim-tracker sentence contains factual claim
+  // Entity Detection - claim-tracker sentence contains factual claim
   // ═══════════════════════════════════════════════════════════════════════
 
   /**
@@ -1008,7 +1008,7 @@ export const CRITICS = {
     criteria: {
       systemPrompt:
         "You are a validation-before-correction detector. Determine if the given " +
-        "text validates before correcting — i.e., it first agrees with the user's " +
+        "text validates before correcting - i.e., it first agrees with the user's " +
         "premise then contradicts it.\n" +
         "Examples of VbC:\n" +
         '- "You\'re right that X... however Y"\n' +

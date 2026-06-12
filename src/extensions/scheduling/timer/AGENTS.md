@@ -32,7 +32,7 @@ The post-compaction stack overflow was caused by `triggerTurn: true` firing **mi
 | `auto-compaction-resume` | `context-lifecycle` auto-compact | New `context_compress`, new `auto-compact`, `session_compact` |
 | `<user-tag>`             | `timer` action=set               | `timer` action=cancel only                                    |
 
-**Always cancel stale resume tags** when scheduling a new one — the `timers` Map is process-global and never garbage-collected. Without explicit cancellation, an old resume timer can fire during a later, unrelated TURN_END and produce a misplaced `[timer]` whisper (the "strange order" issue).
+**Always cancel stale resume tags** when scheduling a new one - the `timers` Map is process-global and never garbage-collected. Without explicit cancellation, an old resume timer can fire during a later, unrelated TURN_END and produce a misplaced `[timer]` whisper (the "strange order" issue).
 
 ## Whisper contract
 

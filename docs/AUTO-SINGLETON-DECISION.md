@@ -1,4 +1,4 @@
-# auto_singleton — Decision Document
+# auto_singleton - Decision Document
 
 After deeper investigation, the proposed `auto_singleton` → `timer.set_auto` merge
 turned out to be more complex than the initial inventory suggested. This doc
@@ -22,7 +22,7 @@ extends its deadline every time the agent is active, so it only fires if the
 agent is genuinely idle.
 
 This is the watchdog pattern: "if I'm not making progress, wake me up to
-check what's stuck". A fixed-delay timer can't do this — it would fire while
+check what's stuck". A fixed-delay timer can't do this - it would fire while
 the agent is in the middle of a long operation, which is a real failure mode
 in pi-braid (sleep-during-tool-execution is documented).
 

@@ -1,6 +1,6 @@
 // ── Compaction Handler ────────────────────────────────────────────────────────
 // Handles session_before_compact, session_compact, compaction_end, and retry logic.
-// This is the core of context management — compaction quality directly affects
+// This is the core of context management - compaction quality directly affects
 // agent performance on long sessions.
 //
 // Key improvements over v0.7:
@@ -62,8 +62,8 @@ import {
 // NOTE: registerContextCleanupHandler and registerTurnEndRetryReset are registered
 // in compaction-retry.ts and wired from index.ts. Test checks they're mentioned here.
 // session_before_compact fires from TWO call sites in pi core:
-// (1) compact() — manual /pi compact command
-// (2) _runAutoCompaction() — auto-compaction triggered by context pressure
+// (1) compact() - manual /pi compact command
+// (2) _runAutoCompaction() - auto-compaction triggered by context pressure
 // Without a guard, our handler fires twice per compaction cycle.
 const MAX_PROCESSED_COMPACTS = 200;
 const _processedCompacts = new Map<string, number>();
@@ -115,7 +115,7 @@ let _queuedDuringCompaction: string | undefined;
 /** Entry ID of the message pre-appended to sessionManager. */
 let _preAppendedEntryId: string | undefined;
 
-/** Original sessionManager.appendMessage — restored after intercept window. */
+/** Original sessionManager.appendMessage - restored after intercept window. */
 let _origAppendMessage: ((msg: any) => string) | undefined;
 
 /** Whether the intercept is currently active. Guard against stale intercepts after session replacement. */
@@ -132,18 +132,18 @@ let _interceptedSmRef: any = undefined;
 function skipDuplicateAppend(sessionManager: any): (msg: any) => string {
   return (msg: any) => {
     // Only messages with content[] can be the duplicate user message.
-    // BashExecutionMessage has NO `content` field — must pass through.
+    // BashExecutionMessage has NO `content` field - must pass through.
     const content = msg?.content;
     if (Array.isArray(content)) {
       const text = content[0]?.text;
       if (typeof text === "string" && text === _queuedDuringCompaction) {
-        // Skip — this is the duplicate from session.prompt()'s message_end handler.
+        // Skip - this is the duplicate from session.prompt()'s message_end handler.
         // The original from session_compact is already in sessionManager.
         // Return the pre-appended entry ID so the caller gets a valid ID.
         return _preAppendedEntryId ?? "";
       }
     }
-    // Intercept is active — delegate to real appendMessage.
+    // Intercept is active - delegate to real appendMessage.
     // Use _origAppendMessage which is non-null when intercept is active.
     return _origAppendMessage?.call(sessionManager, msg) ?? sessionManager.appendMessage(msg);
   };
@@ -159,9 +159,9 @@ export function tryRestoreAppendMessage(pi: ExtensionAPI): void {
   const sm = (pi as unknown as PiWithSession).sessionManager;
   // Only restore if the sessionManager is the same one we intercepted.
   // After session replacement (reload/newSession), sm is a new instance
-  // and the old _origAppendMessage is stale — DO NOT restore.
+  // and the old _origAppendMessage is stale - DO NOT restore.
   if (sm !== _interceptedSmRef) {
-    log.debug("[context-manager] Skipped intercept restore — sessionManager replaced");
+    log.debug("[context-manager] Skipped intercept restore - sessionManager replaced");
     _interceptActive = false;
     _origAppendMessage = undefined;
     _interceptedSmRef = undefined;
@@ -170,7 +170,7 @@ export function tryRestoreAppendMessage(pi: ExtensionAPI): void {
   // Verify appendMessage is still our wrapper (not further mutated).
   // If it's no longer the wrapper, someone else already restored it.
   if (typeof sm.appendMessage !== "function" || sm.appendMessage === _origAppendMessage) {
-    // Not wrapped or already restored — nothing to do.
+    // Not wrapped or already restored - nothing to do.
     _interceptActive = false;
     _origAppendMessage = undefined;
     _interceptedSmRef = undefined;
@@ -233,31 +233,31 @@ function buildCompactionInstructions(audit: any): string[] {
     );
   }
 
-  // 2. Prune candidates — tell model what to cut
+  // 2. Prune candidates - tell model what to cut
   const highPriorityPrune = audit.candidates?.filter((c: any) => c.score >= 0.6) ?? [];
   if (highPriorityPrune.length > 3) {
     instructions.push(
-      `${highPriorityPrune.length} entries are prune candidates with low semantic value — summarize briefly.`,
+      `${highPriorityPrune.length} entries are prune candidates with low semantic value - summarize briefly.`,
     );
   }
 
-  // 3. Context pressure — tell model how aggressive to be
+  // 3. Context pressure - tell model how aggressive to be
   if (audit.usage.percent > 85) {
     instructions.push(
-      `CRITICAL: Context at ${audit.usage.percent.toFixed(0)}% — aggressively summarize. ` +
+      `CRITICAL: Context at ${audit.usage.percent.toFixed(0)}% - aggressively summarize. ` +
         `Preserve: (1) active task/goals, (2) key file paths and edits, (3) error states. ` +
         `Discard: verbose tool outputs, repeated reads, exploration logs.`,
     );
   } else if (audit.usage.percent > 70) {
     instructions.push(
-      `Context at ${audit.usage.percent.toFixed(0)}% — moderate summarization. ` +
+      `Context at ${audit.usage.percent.toFixed(0)}% - moderate summarization. ` +
         `Keep: task context, recent decisions, pending work. Summarize: older tool outputs.`,
     );
   }
 
   // 4. Semantic preservation rules
   instructions.push(
-    "Preserve tool-call/result pairs together — never split a tool call from its result. " +
+    "Preserve tool-call/result pairs together - never split a tool call from its result. " +
       "If a tool call produced an error, keep both the call and the error.",
   );
 
@@ -272,14 +272,14 @@ function buildCompactionInstructions(audit: any): string[] {
 // ── Session Before Compact ────────────────────────────────────────────────────
 // Provides custom instructions before compaction for smarter LLM summarization.
 //
-// KEY INSIGHT: We ALWAYS use LLM summarization — it's fast (a few seconds) and
+// KEY INSIGHT: We ALWAYS use LLM summarization - it's fast (a few seconds) and
 // produces better summaries than hard truncation. The hard truncation bypass has been
 // removed. pi core handles its own last-resort safety net.
 //
 // Flow:
-//  1. Deduplicate — prevent two compaction entries from manual+auto call sites
-//  2. Pre-filter — remove 100%-safe-to-remove items (STEP 1)
-//  3. Instruct — inject smart summarization instructions (STEP 2)
+//  1. Deduplicate - prevent two compaction entries from manual+auto call sites
+//  2. Pre-filter - remove 100%-safe-to-remove items (STEP 1)
+//  3. Instruct - inject smart summarization instructions (STEP 2)
 //     pi core then calls LLM summarization with our instructions
 //
 // Previously (v0.22): hard truncation bypass at 70% threshold.
@@ -304,11 +304,11 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
   pi.on(SESSION_BEFORE_COMPACT, async (event: any, ctx: ExtensionContext) => {
     try {
       setCompactionActive(true);
-      // STEP 0: Deduplicate — prevent two entries from manual+auto call sites
+      // STEP 0: Deduplicate - prevent two entries from manual+auto call sites
       const sessionId = (ctx as unknown as CtxWithSession).sessionManager?.getSessionId?.() ?? "?";
       const leafId = (ctx as unknown as CtxWithSession).sessionManager?.getLeafId?.() ?? "?";
       if (!markCompactProcessed(sessionId, leafId)) {
-        log.info("[context-manager] session_before_compact duplicate — skipping");
+        log.info("[context-manager] session_before_compact duplicate - skipping");
         return;
       }
       const prep = event.preparation;
@@ -343,7 +343,7 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
           // (getPeakUsagePercent leaked peakUsage across sessions, causing
           // aggressive compression in sessions that never hit high usage).
           const currentUsage = audit.usage.percent;
-          // ExtensionContext has no turnCount — use audit.branchLength as proxy
+          // ExtensionContext has no turnCount - use audit.branchLength as proxy
           const proxyTurnCount = audit.branchLength ?? 0;
           const decision = await determineCompressionLevel(ctx, {
             turnCount: proxyTurnCount,
@@ -397,7 +397,7 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
 
       // STEP 2: Inject smart summarization instructions.
       // pi core passes these to the LLM summarization call. The LLM handles all
-      // chunking — we just tell it WHAT to preserve.
+      // chunking - we just tell it WHAT to preserve.
       const audit = analyzeSession(ctx);
       const instructions = buildCompactionInstructions(audit);
       if (instructions.length > 0) {
@@ -456,7 +456,7 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
             _origAppendMessage = sm.appendMessage.bind(sm);
             sm.appendMessage = skipDuplicateAppend(sm);
             // Track the sessionManager instance to detect replacement.
-            // If session reload/newSession happens, sm changes — we must NOT
+            // If session reload/newSession happens, sm changes - we must NOT
             // restore the old wrapper to the new sm.
             _interceptedSmRef = sm;
             _interceptActive = true;
@@ -533,7 +533,7 @@ export function registerCompactionEndHandler(pi: ExtensionAPI): void {
       try {
         const { reason, willRetry, aborted, errorMessage, result } = event;
 
-        // pi core is retrying — nothing to do, let pi handle it
+        // pi core is retrying - nothing to do, let pi handle it
         if (willRetry) {
           setCompactionActive(false);
           return;
@@ -549,7 +549,7 @@ export function registerCompactionEndHandler(pi: ExtensionAPI): void {
         tryRestoreAppendMessage(pi);
         clearInterceptState();
 
-        // Aborted — user cancelled. Clear dedup guard so next compaction can run.
+        // Aborted - user cancelled. Clear dedup guard so next compaction can run.
         if (aborted) {
           clearProcessedCompacts(
             (_ctx as unknown as CtxWithSession).sessionManager?.getSessionId?.() ?? "?",
@@ -569,8 +569,8 @@ export function registerCompactionEndHandler(pi: ExtensionAPI): void {
           return;
         }
 
-        // Handle failures below — intercept state already cleared above.
-        // Context window error — context too large even for LLM summarization
+        // Handle failures below - intercept state already cleared above.
+        // Context window error - context too large even for LLM summarization
         if (isContextWindowError(errorMessage)) {
           recordCompactionOutcome("failure", { errorMessage });
           // Feed outcome into advice-tracker for retry strategy adjustment

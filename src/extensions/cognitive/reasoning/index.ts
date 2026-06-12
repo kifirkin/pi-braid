@@ -2,7 +2,7 @@ import { createLogger } from "../../../lib/core/logger.js";
 
 const log = createLogger("reasoning");
 /**
- * Reasoning Extension — Minimal Thinking Helper
+ * Reasoning Extension - Minimal Thinking Helper
  *
  * Lightweight reasoning quality analyzer. On every assistant MESSAGE_END
  * it runs `measureStability()` from lib/reasoning/reasoning-metrics.ts and:
@@ -11,13 +11,13 @@ const log = createLogger("reasoning");
  *      (repetitive / topic_drift / self_contradiction), with a `unstableStreak`
  *      counter that escalates severity as the streak grows.
  *   2. Sends a whisper nudge suggesting `verify()` when a stable response
- *      contains a completion claim and the cooldown has elapsed — closes the
+ *      contains a completion claim and the cooldown has elapsed - closes the
  *      loop with the verify tool in cognitive/metacognition.
  *
  * Why this lives in cognitive/ and not enforcement/:
  *   Enforcement has its own stability check (see enforcement/handlers/
  *   message-analysis.ts) that fires whisper nudges. This extension is the
- *   agent-facing reasoning quality surface — it emits structured signals
+ *   agent-facing reasoning quality surface - it emits structured signals
  *   for downstream consumers (analytics, dreamer) and tracks unstable
  *   streaks, which is work enforcement doesn't do.
  *
@@ -158,7 +158,7 @@ export default function reasoningExtension(pi: ExtensionAPI) {
 
 		// ── Verify-before-done nudge ──────────────────────────────────────
 		// Only nudge on stable responses that look like a completion claim
-		// — an unstable response is not the right moment to suggest a tool.
+		// - an unstable response is not the right moment to suggest a tool.
 		if (
 			result.stable &&
 			hasCompletionClaim(textContent) &&

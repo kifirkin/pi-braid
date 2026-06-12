@@ -41,7 +41,7 @@ out-of-scope tools. Recommend cuts/merges based on actual call-site usage.
 | `workspace_snapshot` | Capture/list/diff/restore | 1 |
 
 ### Heartbeat / Analytics (0)
-_(Removed: `get_session_metrics`, `get_tool_reliability` — see `docs/CUT-CANDIDATES-DEEP-DIVE.md`.)_
+_(Removed: `get_session_metrics`, `get_tool_reliability` - see `docs/CUT-CANDIDATES-DEEP-DIVE.md`.)_
 
 Background tracking and the `analytics:all` slash command remain in the
 analytics module. The 2 tools were passive observability with 0 internal
@@ -52,7 +52,7 @@ callers.
 |------|---------|-------|
 | `timer` | Set/clear/list timed reminders | 3 |
 
-_(Removed: `auto_singleton` — see `docs/AUTO-SINGLETON-DECISION.md`.)_
+_(Removed: `auto_singleton` - see `docs/AUTO-SINGLETON-DECISION.md`.)_
 
 ### Self-management (4)
 | Tool | Purpose | Files |
@@ -76,7 +76,7 @@ _(Removed: `auto_singleton` — see `docs/AUTO-SINGLETON-DECISION.md`.)_
 
 The user identified these as the first removal candidates. Deep investigation:
 
-### 1. `auto_singleton` — watchdog, one-shot
+### 1. `auto_singleton` - watchdog, one-shot
 
 **What it is**: Single-purpose inactivity watchdog. Arms with a timeout, renews
 on every tool_call/turn_end, fires once if no activity for N seconds, auto-cancels.
@@ -88,18 +88,18 @@ to: at-most-one, auto-renew, one-shot, fires on inactivity."
 
 **Question**: Can `timer` subsume `auto_singleton`?
 - `timer` supports `set/list/cancel` with arbitrary delay
-- `timer` does NOT auto-renew on activity — that's a special property
+- `timer` does NOT auto-renew on activity - that's a special property
 - Adding `set_auto` action to `timer` would consolidate, but adds complexity
 
 **Assessment**: 1 reference in source (its own definition). Not heavily used.
 Could either be (a) merged into `timer` as `set_auto` action, or (b) cut
 entirely if "inactivity watchdog" isn't a common need. The agent rarely needs
-this — it's mostly for autonomous session recovery.
+this - it's mostly for autonomous session recovery.
 
 **Recommendation**: MERGE into `timer` (add `set_auto` action with auto-renew).
 Cuts 1 tool. The `timer` description should explain when to use `set_auto`.
 
-### 2. `health_maintenance` — opt-in health + checkpointing
+### 2. `health_maintenance` - opt-in health + checkpointing
 
 **What it is**: Monitors agent health (degradation detection), supports
 checkpoint/rollback. 8 actions: `status`, `health`, `check`, `commit`, `rollback`,
@@ -107,7 +107,7 @@ checkpoint/rollback. 8 actions: `status`, `health`, `check`, `commit`, `rollback
 
 **Opt-in**: `disabledByDefault: true`. Not in default extensions.
 
-**Usage**: 2 files. Heavyweight — pulls in `degradation-detector`,
+**Usage**: 2 files. Heavyweight - pulls in `degradation-detector`,
 `metacognitive-state`, plus its own `helpers.ts` and `format.ts`.
 
 **Question**: Is this in scope for pi-braid?
@@ -120,12 +120,12 @@ checkpoint/rollback. 8 actions: `status`, `health`, `check`, `commit`, `rollback
 rollback) are real and useful, but:
 - They might be better as internal infrastructure (no tool, just events)
 - Or broken into smaller, more focused extensions
-- The single tool with 8 actions is a Swiss Army knife — a sign of bloat
+- The single tool with 8 actions is a Swiss Army knife - a sign of bloat
 
 **Recommendation**: KEEP for now (opt-in) but flag for later review. Could be
 split into `checkpoint` + `health` (two tools) if bloat becomes obvious.
 
-### 3. `error` — opt-in error log inspection
+### 3. `error` - opt-in error log inspection
 
 **What it is**: Logs extension errors to `~/.pi/agent/braid/errors/errors.jsonl`,
 provides a single tool with 4 actions (`list`, `get`, `clear`, `stats`).
@@ -147,7 +147,7 @@ Question is whether the agent ever benefits from reading back errors.
 **Recommendation**: KEEP for now (opt-in). Could be cut if the agent never
 calls it. Monitor for usage.
 
-### 4. `get_session_metrics` — passive session stats
+### 4. `get_session_metrics` - passive session stats
 
 **What it is**: Reads aggregated session metrics (call counts, rates, sequences).
 
@@ -165,7 +165,7 @@ than for the agent itself. Pi has its own metrics affordances.
 **Recommendation**: CUT or make opt-in. If we keep it, mark `disabledByDefault:
 true` in the manifest.
 
-### 5. `get_tool_reliability` — passive per-tool stats
+### 5. `get_tool_reliability` - passive per-tool stats
 
 **What it is**: Reads per-tool success/failure rates.
 
@@ -176,7 +176,7 @@ true` in the manifest.
 - Could be useful for a meta-tool that routes to the most reliable tool, but
   the agent doesn't have such a router.
 
-**Assessment**: Same as #4 — observability, not agent-actionable.
+**Assessment**: Same as #4 - observability, not agent-actionable.
 
 **Recommendation**: CUT or make opt-in. Same as above.
 
@@ -189,7 +189,7 @@ The `task` tool was cut earlier. We found:
   has 9 stale tasks from May 29 (orphaned storage file)
 - The `scratchpad` AGENTS.md comment says "For richer task state (priority,
   dependencies, tags, fail/next/clear), add plan items and use read to view them."
-  This is good — it explicitly directs agents away from the SDK's `task`.
+  This is good - it explicitly directs agents away from the SDK's `task`.
 
 **Action**: Delete the orphan `tasks.json` file. Verify no other references.
 
@@ -203,7 +203,7 @@ The `task` tool was cut earlier. We found:
 |--------|---------|--------|--------|
 | CUT | `auto_singleton` | -1 tool | **DONE** (5ffacd7b) |
 | CUT | `get_session_metrics`, `get_tool_reliability` | -2 tools | **DONE** (8824877a) |
-| OPT-IN | (none — analytics cuts are full CUT) | n/a | n/a |
+| OPT-IN | (none - analytics cuts are full CUT) | n/a | n/a |
 | KEEP-OPT | `health_maintenance`, `error` | 0 changes (already opt-in) | n/a |
 | CLEANUP | orphan `tasks.json` file | -0 tools, but storage cleanup | pending user |
 | MERGE | `memory_recall`/`episodes`/`heuristics` → `memory` | -2 tools | pending |

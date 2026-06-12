@@ -1,4 +1,4 @@
-# src/extensions/self/ — Self-Management Extensions
+# src/extensions/self/ - Self-Management Extensions
 
 Extensions that manage the agent's own state and behavior. Mostly opt-in
 because they're specialized tools the user enables when they want them.
@@ -24,5 +24,5 @@ because they're specialized tools the user enables when they want them.
 - `self/` = about the AGENT'S STATE (health, errors, modes, recovery)
 - `memory/` = about the agent's PERSISTENT KNOWLEDGE (episodes, semantic memory)
 - `scheduling/` = about TIME-BASED TRIGGERS (reminders, watchdogs)
-- `monitoring` (if added later) would be about PASSIVE OBSERVABILITY — but currently
+- `monitoring` (if added later) would be about PASSIVE OBSERVABILITY - but currently
   we have nothing that doesn't fit under `self/`

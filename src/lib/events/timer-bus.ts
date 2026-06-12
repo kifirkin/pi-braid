@@ -1,5 +1,5 @@
 /**
- * Timer Reminder Bus — bridges timer fires to heartbeat surface to agent
+ * Timer Reminder Bus - bridges timer fires to heartbeat surface to agent
  *
  * Timer extension emits fires → heartbeat scheduler surfaces reminders.
  * This is a module-level singleton so extensions can communicate

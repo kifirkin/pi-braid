@@ -25,7 +25,7 @@ Rules:
 - pass = work matches request, changes verified, no shortcuts
 - warn = work mostly matches but has minor gaps or unverified changes
 - fail = work doesn't match, significant shortcuts, or claims without evidence
-- Be strict — the agent should verify changes before declaring done
+- Be strict - the agent should verify changes before declaring done
 - If user request is empty, judge on general quality
 
 Examples:

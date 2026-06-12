@@ -1,11 +1,11 @@
 /**
- * Budget Tracker Module — Budget-Aware Value Tree Search (BAVT).
+ * Budget Tracker Module - Budget-Aware Value Tree Search (BAVT).
  *
  * Tracks plan step budgets and warns at 80/90/100% thresholds.
  * Budgets are set via `[budget:N]` in plan steps.
  * Based on: 2604.13408 "Budget-Aware Value Estimation in LLM Agent Tree Search"
  *
- * Rate-limiting: per-step per-threshold cooldown — each threshold fires
+ * Rate-limiting: per-step per-threshold cooldown - each threshold fires
  * at most once per threshold crossing. Clearing when ratio drops below.
  */
 
@@ -85,7 +85,7 @@ export const budgetModule: CognitiveModule = {
           const key = `${stepIdx}:${threshold.pct}`;
 
           if (ratio >= threshold.pct / 100) {
-            // Threshold crossed — only fire once per crossing
+            // Threshold crossed - only fire once per crossing
             if (!state.firedThresholds.has(key)) {
               state.firedThresholds.add(key);
 
@@ -104,7 +104,7 @@ export const budgetModule: CognitiveModule = {
               });
             }
           } else {
-            // Ratio dropped below threshold — clear fired flag so it can re-fire
+            // Ratio dropped below threshold - clear fired flag so it can re-fire
             state.firedThresholds.delete(key);
           }
         }

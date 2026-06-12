@@ -106,9 +106,9 @@ Replace `wake: boolean` with a 3-valued enum:
 ```ts
 type TimerWakeMode = "user" | "steer" | "silent";
 
-// "user"   → sendUserMessage (forced turn, fills input) — for auto-resume
-// "steer"  → sendMessage({ triggerTurn: true }) (whisper that wakes) — for reminders
-// "silent" → sendTrackedMessage (whisper, no wake) — for heartbeats
+// "user"   → sendUserMessage (forced turn, fills input) - for auto-resume
+// "steer"  → sendMessage({ triggerTurn: true }) (whisper that wakes) - for reminders
+// "silent" → sendTrackedMessage (whisper, no wake) - for heartbeats
 ```
 
 - Default: `"steer"` (most common case: agent wants a reminder, but
@@ -175,13 +175,44 @@ urgent reminders it might not be.
 
 | Delivery | What the user sees | When used |
 |----------|-------------------|-----------|
-| `sendUserMessage` (current `wake:true`) | Text in input box + auto-submit | Post-compaction auto-resume (currently only this) |
-| `sendMessage({ triggerTurn: true })` (proposed) | Whisper-style message in TUI + LLM wakes | Should be the default for agent-scheduled reminders |
-| `sendTrackedMessage` (current `wake:false`) | Whisper in TUI, no forced turn | Background heartbeats |
+| `sendUserMessage` (BROKEN - avoid) | Text in input box, unsent | (was wake:true, now removed) |
+| `sendMessage({ triggerTurn: true })` (FIX) | Whisper-style message in TUI + LLM wakes | wake:true (post-compaction auto-resume, agent-scheduled reminders) |
+| `sendTrackedMessage` (unchanged) | Whisper in TUI, no forced turn | wake:false (background heartbeats) |
 
-The user's request is to switch from "user input" to "whisper" delivery
-for the wake=true path. The fix is straightforward: replace
-`sendUserMessage` with `sendMessage({ triggerTurn: true })` in the
-`wake: true` branch. Post-compaction auto-resume will still wake the
-agent (via `triggerTurn: true` on the custom message), but it will no
-longer fill the input box.
+## Root cause (confirmed by user investigation)
+
+The user identified why `sendUserMessage` was filling the input box:
+**the input polisher intercepts the message, treats it as user input,
+and re-fills the input box WITHOUT actually sending it**. So the
+[TIMER FIRED] text appears in the input unsent, looking like the
+user started typing.
+
+This is why `sendUserMessage` is fundamentally wrong for automatic
+timers in this codebase. The input polisher is a constant intermediary
+that catches all `sendUserMessage` calls.
+
+## Resolution (commit 07e3de9e)
+
+1. **Removed `TIMER_FIRE_HANDLING` constant from prompt-builder** -
+   unnecessary noise in the system prompt. The `[TIMER FIRED]` prefix
+   in the message itself is sufficient signal.
+
+2. **Removed the now-unused `onEvent` import in prompt-builder** -
+   cleanup from the same change.
+
+3. **Switched `wake: true` from `sendUserMessage` to `sendMessage`** -
+   CustomMessage (whisper-style) that wakes the agent without going
+   through the input polisher.
+
+4. **Test updated** - was verifying the buggy sendUserMessage behavior;
+   now verifies the new sendMessage + triggerTurn + customType:
+   "timer-fire" behavior.
+
+## Why `sendMessage` is safe for the wake case
+
+- `triggerTurn: true` wakes the agent (per SDK contract)
+- The custom message is a `customType: "timer-fire"` so it can be
+  rendered distinctly from user input
+- No input-box fill, no polisher interception
+- The busy guard still defers mid-tool-execution firing (defer to
+  TOOL_EXECUTION_END) so we don't disturb long-running tool calls

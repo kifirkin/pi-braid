@@ -1,5 +1,5 @@
 /**
- * Test: State Checkpoint — checkpoint creation and lifecycle.
+ * Test: State Checkpoint - checkpoint creation and lifecycle.
  *
  * Uses unique session IDs per test to avoid state bleeding via
  * getExtensionState's session-keyed state buckets.

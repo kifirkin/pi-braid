@@ -1,6 +1,6 @@
 // ── Think Tool v2 ──────────────────────────────────────────────────────────────
 // Records structured thinking with chain tracking, calibration feedback, and depth budgets.
-// Uses the session model (ctx.model) directly — no separate utility model.
+// Uses the session model (ctx.model) directly - no separate utility model.
 
 import { Type } from "typebox";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -52,7 +52,7 @@ function getChainState(ctx: ExtensionContext): ThoughtChainState {
   }));
 }
 
-// ── Complexity Estimation (ODAR — Optimal Depth Allocation Routing) ──────────────────
+// ── Complexity Estimation (ODAR - Optimal Depth Allocation Routing) ──────────────────
 // Estimates task complexity (0-1) from task description for Fast/Slow routing.
 // Heuristic: keyword counting + length threshold. Not a learned routing algorithm.
 // References: docs/research/braid-loop-research.md (Improvement 3: Fast/Slow System Routing)

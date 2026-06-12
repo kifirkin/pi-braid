@@ -1,5 +1,5 @@
 /**
- * context_compress — Free up context space by compaction or archiving.
+ * context_compress - Free up context space by compaction or archiving.
  *
  * Consolidates context_compact (trigger compaction), context_archive (compress
  * to summary), and context_prune execute mode into one tool with action param.
@@ -78,7 +78,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
               {
                 type: "text" as const,
                 text: [
-                  `**Compaction triggered** — agent will resume after compression.`,
+                  `**Compaction triggered** - agent will resume after compression.`,
                   `  Before: ${audit.usage.percent.toFixed(1)}% used (${Math.round(audit.usage.tokens / 1024)}K tokens)`,
                   `  Keep recent: ${params?.keep ?? "auto"}`,
                   ``,
@@ -100,7 +100,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
             // Without this, an old timer can fire during a later TURN_END and
             // deliver a misplaced [timer] whisper (the "strange order" issue).
             //
-            // CRITICAL: must scope to current session — if multiple pi
+            // CRITICAL: must scope to current session - if multiple pi
             // sessions are running, cancelling by tag globally would
             // cancel other sessions' resume timers. See:
             // src/extensions/scheduling/timer/index.ts for the per-session
@@ -117,7 +117,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
             // schedules a FRESH resume timer after compaction completes,
             // when the session is in a known state.
           } catch {
-            // Non-fatal — timer unavailable
+            // Non-fatal - timer unavailable
           }
 
           const options: CompactOptions = {};
@@ -129,7 +129,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
             try {
               ctx.compact(options);
             } catch {
-              // Agent already disconnected — non-fatal
+              // Agent already disconnected - non-fatal
             }
           }, 0);
 

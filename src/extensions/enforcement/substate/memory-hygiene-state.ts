@@ -1,5 +1,5 @@
 /**
- * Memory Hygiene — state interface and helpers for tracking memory tool usage.
+ * Memory Hygiene - state interface and helpers for tracking memory tool usage.
  * Does NOT import state.ts (breaks circular dependency). Helpers use
  * intersection types instead of EnforcementState.
  */

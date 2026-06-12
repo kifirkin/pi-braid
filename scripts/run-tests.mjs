@@ -32,7 +32,7 @@ function findTests(dir) {
 const SKIP = new Set([
 	"test-all.mjs",           // aggregator, duplicates individual
 	"test-async.mjs",         // file does not exist
-	"test-br1-trap-tasks.mjs",  // SLOW — requires API calls, run separately with 300s timeout
+	"test-br1-trap-tasks.mjs",  // SLOW - requires API calls, run separately with 300s timeout
 ]);
 
 const tests = findTests(testDir).sort();

@@ -1,4 +1,4 @@
-# src/extensions/memory/scratchpad/ — Working Memory
+# src/extensions/memory/scratchpad/ - Working Memory
 
 The agent's working memory: goals, plans, decisions, hypotheses, notes,
 learnings, constraints. Persists to per-project file so state survives

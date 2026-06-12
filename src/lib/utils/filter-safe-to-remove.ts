@@ -1,4 +1,4 @@
-// Selective Hard Truncation — pre-filter 100%-certain-redundant items before LLM summarization.
+// Selective Hard Truncation - pre-filter 100%-certain-redundant items before LLM summarization.
 // This module is tested independently before being integrated into compaction.ts.
 //
 // Uses two-tier approach:
@@ -156,7 +156,7 @@ function filterSafeToRemoveInner(messages: AgentMessage[]): {
   // Pass 3: filter
   for (const msg of messages) {
     // Rule 0: System-injected messages (enforcement whispers, timer steers, etc.)
-    // These are ephemeral — they guide the current turn but should NOT be
+    // These are ephemeral - they guide the current turn but should NOT be
     // persisted through compaction. Filter them out to prevent the LLM
     // summary from conflating nudge content with real user intent.
     const details = (msg as Record<string, unknown>).details;
@@ -166,7 +166,7 @@ function filterSafeToRemoveInner(messages: AgentMessage[]): {
       (details as Record<string, unknown>)._braidInjected === true
     ) {
       removed++;
-      // Don't push — skip entirely
+      // Don't push - skip entirely
       continue;
     }
 
@@ -194,11 +194,11 @@ function filterSafeToRemoveInner(messages: AgentMessage[]): {
     if (msg.role === "toolCall") {
       const path = extractReadPath(msg);
       if (path && !writePaths.has(path)) {
-        // Count occurrences — if this path appeared before, it's a duplicate
+        // Count occurrences - if this path appeared before, it's a duplicate
         const firstOccurrence = readHistory.indexOf(path);
         const lastOccurrence = readHistory.lastIndexOf(path);
         if (firstOccurrence !== lastOccurrence) {
-          // Duplicate — but only remove if no write to this path occurred between
+          // Duplicate - but only remove if no write to this path occurred between
           removed++;
           result.push(msg);
           continue;

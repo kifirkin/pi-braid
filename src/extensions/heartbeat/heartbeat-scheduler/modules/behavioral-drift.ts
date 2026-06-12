@@ -1,5 +1,5 @@
 /**
- * Behavioral Drift Detection — flags when tool-use patterns shift significantly
+ * Behavioral Drift Detection - flags when tool-use patterns shift significantly
  * from the session baseline.
  *
  * Why this matters: Agents that suddenly change their tool-use patterns (e.g.,

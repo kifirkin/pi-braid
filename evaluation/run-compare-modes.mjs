@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * run-compare-modes — Compare 2 modes: naked vs braid
+ * run-compare-modes - Compare 2 modes: naked vs braid
  *
  * Modes:
- *   naked — plain pi with only stepfun provider (no pi-braid extensions)
- *   braid  — full pi-braid (all extensions)
+ *   naked - plain pi with only stepfun provider (no pi-braid extensions)
+ *   braid  - full pi-braid (all extensions)
  *
  * Usage:
  *   node run-compare-modes.mjs --bm2        # BM2 code quality
@@ -233,7 +233,7 @@ async function main() {
   const toRun = benches.length ? benches : ['bm2'];
 
   console.log('\n' + '='.repeat(60));
-  console.log('  PI-BRAID — NAKED VS BRAID COMPARISON');
+  console.log('  PI-BRAID - NAKED VS BRAID COMPARISON');
   console.log('='.repeat(60));
   console.log(`  Model: ${process.env.PI_MODEL || 'step-3.5-flash'} (${process.env.PI_PROVIDER || 'stepfun'})`);
   console.log(`  Benchmarks: ${toRun.join(', ')}`);

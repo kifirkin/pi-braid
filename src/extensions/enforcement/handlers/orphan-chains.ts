@@ -2,7 +2,7 @@ import { createLogger } from "../../../lib/core/logger.js";
 
 const log = createLogger("enforcement");
 /**
- * Orphan Chain Detector — extracted from enforcement/index.ts
+ * Orphan Chain Detector - extracted from enforcement/index.ts
  *
  * Finds reasoning chains (grouped by parent_id) with 3+ thoughts but no
  * conclusion/reflection type. Suggests the agent close the chain.

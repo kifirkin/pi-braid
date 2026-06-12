@@ -54,7 +54,7 @@ function hasImageInput(model: { input?: unknown }): boolean {
   return Array.isArray(input) && (input as unknown[]).includes("image");
 }
 
-/** Shared sessionManager reference — used by patchSessionManagerMethods */
+/** Shared sessionManager reference - used by patchSessionManagerMethods */
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { SESSION_END } from "../../../lib/core/event-names.js";

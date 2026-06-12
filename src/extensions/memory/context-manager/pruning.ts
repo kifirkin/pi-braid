@@ -257,7 +257,7 @@ interface _BCRMetadata {
   bcrKey?: string;
 }
 
-// Batch Context Reduction (BCR) — P4
+// Batch Context Reduction (BCR) - P4
 // Collapses consecutive repeated tool calls. Extended with failure awareness
 // (2604.15877): 3+ failures → collapse + summarize error pattern.
 

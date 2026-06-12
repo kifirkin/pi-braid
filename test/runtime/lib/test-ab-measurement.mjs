@@ -1,5 +1,5 @@
 /**
- * Test: BR3 A/B measurement — variant outcome tracking
+ * Test: BR3 A/B measurement - variant outcome tracking
  *
  * Verifies that:
  * 1. computeSessionOutcome() correctly classifies sessions
@@ -185,6 +185,6 @@ console.log("\nTest 5: loadAnalyticsByVariant groups sessions by variant");
 
 console.log("\n🎯 All A/B measurement tests passed!");
 console.log("\nUsage:");
-console.log("  /analytics:setVariant {\"variant\": \"no_nudges\"} — suppress nudges");
-console.log("  /analytics:ab — show A/B comparison table");
-console.log("  get-ab-results — programmatic access");
+console.log("  /analytics:setVariant {\"variant\": \"no_nudges\"} - suppress nudges");
+console.log("  /analytics:ab - show A/B comparison table");
+console.log("  get-ab-results - programmatic access");

@@ -1,5 +1,5 @@
 /**
- * Turn-End Coordinator — centralized dispatch for post-turn analysis.
+ * Turn-End Coordinator - centralized dispatch for post-turn analysis.
  *
  * Problem: Enforcement owned the turn_end slot exclusively. Every new
  * post-turn concern had to be added to enforcement's handler chain,

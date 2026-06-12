@@ -53,11 +53,11 @@ package: **[pi-braid-skills](https://github.com/kifirkin/pi-braid-skills)**.
 
 - TypeScript strict mode
 - ESM modules (`.js` extension in imports)
-- `createLogger(name)` for logging — no `console.log`
+- `createLogger(name)` for logging - no `console.log`
 - `getExtensionState(ctx, key, factory)` for session-scoped state
 - Async functions must use `fs/promises`, not sync I/O
-- Empty `catch {}` blocks only for JSON.parse of untrusted data — otherwise log
-- No Python — the project is pure JS/TS
+- Empty `catch {}` blocks only for JSON.parse of untrusted data - otherwise log
+- No Python - the project is pure JS/TS
 
 ## Extension Anatomy
 
@@ -109,7 +109,7 @@ pi.registerTool({
 ## Testing
 
 Tests are in `test/runtime/` as `.mjs` files. The test runner
-(`scripts/run-tests.mjs`) is recursive — it auto-discovers all `.mjs`
+(`scripts/run-tests.mjs`) is recursive - it auto-discovers all `.mjs`
 files in the test tree.
 
 ```bash
@@ -122,7 +122,7 @@ node test/runtime/test-enforcement.mjs
 
 Test quality bar: each test should have real assertions on real behavior,
 not just file-existence checks or reimplementations of algorithms. A test
-with zero real assertions is a "nonsense test" — delete it.
+with zero real assertions is a "nonsense test" - delete it.
 
 ## Pull Requests
 
@@ -151,7 +151,7 @@ the full config resolution order.
 ## Storage Convention
 
 All braid-specific data goes under `~/.pi/agent/braid/`. Use constants from
-[`src/lib/config/braid-paths.ts`](src/lib/config/braid-paths.ts) — never
+[`src/lib/config/braid-paths.ts`](src/lib/config/braid-paths.ts) - never
 hardcode paths.
 
 ## Release Process
@@ -163,10 +163,10 @@ verification, and npm publish.
 
 Add a new section at the top under `## [VERSION] - DATE` with:
 
-- **Added** — new features, new tools, new modules
-- **Changed** — modifications to existing behavior, refactors
-- **Fixed** — bug fixes
-- **Removed** — deleted features, dropped tools, removed files
+- **Added** - new features, new tools, new modules
+- **Changed** - modifications to existing behavior, refactors
+- **Fixed** - bug fixes
+- **Removed** - deleted features, dropped tools, removed files
 
 Use the previous release's section as a template for tone and depth.
 
@@ -194,13 +194,13 @@ npm pack --dry-run
 ```
 
 Check the output for:
-- **Total files** — should be ~600 (was 1007 before publish-prep)
-- **Package size** — should be ~785 KB
-- **No source maps** (`.map` files) — confirmed by the `dist/**/*.js` +
+- **Total files** - should be ~600 (was 1007 before publish-prep)
+- **Package size** - should be ~785 KB
+- **No source maps** (`.map` files) - confirmed by the `dist/**/*.js` +
   `dist/**/*.d.ts` pattern in `package.json` `files`
-- **No Python** (`.py` files) — confirmed by `.npmignore` and the
+- **No Python** (`.py` files) - confirmed by `.npmignore` and the
   project's pure-JS/TS policy
-- **No dev configs** (eslint, prettier, .gitignore) — confirmed by
+- **No dev configs** (eslint, prettier, .gitignore) - confirmed by
   `.npmignore`
 
 ### 5. Tag and publish

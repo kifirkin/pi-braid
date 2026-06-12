@@ -171,7 +171,7 @@ async function main() {
 
   // Critical: verify bash survived compaction
   if (final.compact > 0 && final.bash > 0) {
-    console.log('✓ Bash messages SURVIVED compaction — bug fix verified');
+    console.log('✓ Bash messages SURVIVED compaction - bug fix verified');
   }
 
   process.exit(final.issues.length > 0 ? 1 : 0);

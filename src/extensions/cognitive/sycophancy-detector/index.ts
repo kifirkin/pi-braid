@@ -1,5 +1,5 @@
 /**
- * Silicon Mirror — Anti-Sycophancy Detector
+ * Silicon Mirror - Anti-Sycophancy Detector
  *
  * MVI: Detects validation-before-correction (VbC) patterns in agent responses.
  * Fires whisper correction + emits signal on detection.
@@ -99,7 +99,7 @@ interface VbCResult {
 /**
  * Detect validation-before-correction (VbC) in assistant responses.
  * Uses utility model classification (fallback: heuristic patterns).
- * Replaces the 30s LLM auditor — this runs in ~50ms via the utility model.
+ * Replaces the 30s LLM auditor - this runs in ~50ms via the utility model.
  */
 async function detectVbC(responseText: string, ctx: ExtensionContext): Promise<VbCResult> {
   if (responseText.length < 100) {
@@ -150,7 +150,7 @@ async function handleSycophancy(
 ): Promise<void> {
   state.turnCount++;
 
-  // Get session history — use getBranch(), getCurrentSession() does not exist on SessionManager
+  // Get session history - use getBranch(), getCurrentSession() does not exist on SessionManager
   // Use safeSessionManager to avoid assertActive() crash on stale ctx
   const sm = safeSessionManager(ctx) as { getBranch?(): unknown[] } | undefined;
 
@@ -177,7 +177,7 @@ async function handleSycophancy(
 
   // Step 1: Compute tactic-based risk from user message (optional signal)
   const risk = await computeRisk(userText, ctx);
-  // Note: We don't gate on risk.score here — VbC can occur even with neutral user input.
+  // Note: We don't gate on risk.score here - VbC can occur even with neutral user input.
   // User risk is used as an additional signal for severity reporting below.
 
   log.info(`User sycophancy risk: ${risk.score.toFixed(2)} (${risk.tactics.join(", ") || "none"})`);
@@ -200,7 +200,7 @@ async function handleSycophancy(
   // Step 2: Detect VbC in assistant response using heuristic patterns
   // Replaces expensive 30s LLM auditor call with fast pattern matching
   const vbcResult = await detectVbC(responseText, ctx);
-  if (!vbcResult.detected) return; // No VbC found — no correction needed
+  if (!vbcResult.detected) return; // No VbC found - no correction needed
 
   log.info(`VbC detected: severity=${vbcResult.severity}, score=${vbcResult.score}`);
 

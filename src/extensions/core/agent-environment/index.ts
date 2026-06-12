@@ -92,7 +92,7 @@ export function gatherL1Environment(
       _state.turnCount = extState.turnCount;
       _state.lastEventTime = extState.lastEventTime;
     } catch {
-      // Extension state unavailable — fall back to module-level defaults
+      // Extension state unavailable - fall back to module-level defaults
     }
   }
 
@@ -171,7 +171,7 @@ export default function agentEnvironmentExtension(pi: ExtensionAPI) {
         extState.turnCount = _state.turnCount;
         extState.lastEventTime = _state.lastEventTime;
       } catch {
-        // Extension state unavailable — module-level tracking only
+        // Extension state unavailable - module-level tracking only
       }
     }
     if (event.message.role === "user") {

@@ -1,5 +1,5 @@
 /**
- * Verification Judge — helpers for judge/calibration state.
+ * Verification Judge - helpers for judge/calibration state.
  *
  * Pattern: helper functions take EnforcementState directly (no ctx import).
  * View functions (getVerificationJudgeView) live in state.ts to avoid

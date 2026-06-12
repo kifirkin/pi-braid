@@ -1,5 +1,5 @@
 /**
- * Enforcement state — session-scoped state management.
+ * Enforcement state - session-scoped state management.
  *
  * Composed from focused sub-state interfaces instead of one flat factory.
  * Each sub-state file owns its properties, factory, and reset logic.
@@ -9,14 +9,14 @@
  * to break the state.ts ↔ session-state.ts cycle.
  *
  * Sub-state files:
- *   tool-tracking-state.ts      — tool usage, edit tracking, calibration
- *   error-tracking-state.ts     — errors, validation failures, nudge cooldowns
- *   session-state.ts            — turn tracking, config, drift detector
- *   memory-hygiene-state.ts     — memory tool usage and nudges
- *   scratchpad-state.ts         — scratchpad usage and verification nudges
- *   context-hygiene-state.ts    — context usage, compaction, overflow
- *   thought-chain-state.ts      — think() tracking and reflection gaps
- *   verification-judge-state.ts — judge/calibration helpers
+ *   tool-tracking-state.ts      - tool usage, edit tracking, calibration
+ *   error-tracking-state.ts     - errors, validation failures, nudge cooldowns
+ *   session-state.ts            - turn tracking, config, drift detector
+ *   memory-hygiene-state.ts     - memory tool usage and nudges
+ *   scratchpad-state.ts         - scratchpad usage and verification nudges
+ *   context-hygiene-state.ts    - context usage, compaction, overflow
+ *   thought-chain-state.ts      - think() tracking and reflection gaps
+ *   verification-judge-state.ts - judge/calibration helpers
  */
 
 // ── Shared Constants ─────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ import { getExtensionState } from "../../lib/state/extension-state.js";
 // Import shared types/constants for in-file use
 import { ENFORCEMENT_PARAMS, type EnforcementState } from "./enforcement-types.js";
 
-// Re-export shared types/constants (backward compat — consumers import from state.ts)
+// Re-export shared types/constants (backward compat - consumers import from state.ts)
 export { ENFORCEMENT_PARAMS, type EnforcementState } from "./enforcement-types.js";
 
 // Import sub-state factories and resets
@@ -63,7 +63,7 @@ import {
   resetThoughtChainState,
 } from "./substate/thought-chain-state.js";
 
-// Re-export sub-module helpers (backward compat — consumers import from state.ts)
+// Re-export sub-module helpers (backward compat - consumers import from state.ts)
 export {
   startJudge,
   completeJudge,
@@ -107,7 +107,7 @@ const log = createLogger("enforcement");
 
 export function createState(): EnforcementState {
   // NOTE: No `as EnforcementState` cast here. If TypeScript reports an error,
-  // it means two sub-states have overlapping keys with incompatible types —
+  // it means two sub-states have overlapping keys with incompatible types -
   // which is a real bug the cast was hiding. Fix the sub-states, don't add the cast back.
   const state: EnforcementState = {
     ...createToolTrackingState(),

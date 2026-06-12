@@ -1,5 +1,5 @@
 /**
- * BM2: Code Quality — task definitions only.
+ * BM2: Code Quality - task definitions only.
  *
  * Each task: agent writes a JS module from scratch.
  * Scoring: 50% code quality (style, idioms, docs), 50% tests passing.

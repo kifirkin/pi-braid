@@ -3,7 +3,7 @@
  *
  * Architecture: Heartbeat-driven cognitive scheduling with declarative policies.
  * - Beliefs: Immutable records of agent knowledge with provenance
- * - Policies: Declarative rules — if(trigger) then(action)
+ * - Policies: Declarative rules - if(trigger) then(action)
  *
  * Inspired by:
  * - arXiv:2604.14178 Heartbeat Scheduling
@@ -21,7 +21,7 @@ export type BeliefSource = "memory" | "web" | "code" | "parametric" | "user" | "
 export interface Belief {
   id: string;
   content: string;
-  confidence: number; // 0–1
+  confidence: number; // 0-1
   timestamp: number; // Date.now()
   source: BeliefSource;
   tags?: string[];

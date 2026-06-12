@@ -9,9 +9,9 @@
  * - Phase 2: On degrade detection, restore extension state from checkpoint
  *
  * Checkpoint stores:
- * - Extension state (getExtensionState keys) — serialized to JSON
- * - File mutation queue — pending write/edit operations
- * - Scratchpad state — goal/plan/decisions
+ * - Extension state (getExtensionState keys) - serialized to JSON
+ * - File mutation queue - pending write/edit operations
+ * - Scratchpad state - goal/plan/decisions
  *
  * Since extension state is in-memory (WeakMap), checkpoints are stored
  * in a disk-backed JSON file in ~/.pi/agent/checkpoints/
@@ -182,7 +182,7 @@ export async function createCheckpoint(
 
 /**
  * Restore extension state from the most recent checkpoint.
- * Only restores tracked keys — full state restoration is best-effort.
+ * Only restores tracked keys - full state restoration is best-effort.
  */
 export async function autoRollback(
   ctx: ExtensionContext,

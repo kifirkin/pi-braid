@@ -1,4 +1,4 @@
-# src/extensions/core/ — Input/Output Shaping
+# src/extensions/core/ - Input/Output Shaping
 
 Extensions that shape what the LLM sees at runtime: platform shims,
 environmental awareness, system prompt assembly, and user input transformation.

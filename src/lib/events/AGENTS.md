@@ -1,4 +1,4 @@
-# src/lib/events/ — Event Infrastructure
+# src/lib/events/ - Event Infrastructure
 
 Internal event bus and channel infrastructure. Used for cross-extension
 communication that doesn't fit pi core's event model.

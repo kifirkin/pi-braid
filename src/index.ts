@@ -1,5 +1,5 @@
 /**
- * pi-braid — metacognitive agent extension suite.
+ * pi-braid - metacognitive agent extension suite.
  *
  * Architecture:
  *   Each extension is a self-contained factory function registered in
@@ -7,7 +7,7 @@
  *   which extensions to load based on BRAID_MODULES env var, settings.json,
  *   or runtime API overrides.
  *
- *   Extensions are flat — no module grouping abstraction. The `module` tag
+ *   Extensions are flat - no module grouping abstraction. The `module` tag
  *   is a convenience label for the subagent toggle commands.
  *
  * Config:
@@ -31,7 +31,7 @@ import modulesApiExtension from "./loader/api.js";
 // ── Shared constants (imported by extensions) ────────────────────────────────
 
 // ESM-safe: use import.meta.url to resolve skills dir reliably.
-// __dirname is undefined in ESM — using it as fallback caused skills to resolve
+// __dirname is undefined in ESM - using it as fallback caused skills to resolve
 // to a non-existent directory outside the project.
 import { fileURLToPath } from "node:url";
 
@@ -47,12 +47,12 @@ export default async function braidExtension(pi: ExtensionAPI): Promise<void> {
   const report = await loadModules(pi);
 
   if (report.total === 0) {
-    log.warn("No extensions loaded — check BRAID_MODULES config or manifest.");
+    log.warn("No extensions loaded - check BRAID_MODULES config or manifest.");
   } else {
     log.info(`Loaded ${report.total} extensions (${report.loaded.length} succeeded).`);
 
     for (const l of report.loaded) {
-      log.info(`  ● ${l.id} — ${l.desc}`);
+      log.info(`  ● ${l.id} - ${l.desc}`);
     }
     for (const s of report.skipped) {
       log.warn(`  ○ ${s.id}: ${s.reason}`);

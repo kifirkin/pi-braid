@@ -3,7 +3,7 @@
  * Check for duplicate numeric constants across source files.
  *
  * Flags numeric constants that share the same value AND a similar name
- * across different module directories — these are likely accidental
+ * across different module directories - these are likely accidental
  * duplications that should be centralized.
  *
  * Usage: node scripts/check-duplicates.mjs
@@ -121,7 +121,7 @@ for (const [stem, instances] of byStem) {
 }
 
 if (foundDuplicates) {
-  console.log("\n⚠️  Same-named constants with same value across directories — consider centralizing.");
+  console.log("\n⚠️  Same-named constants with same value across directories - consider centralizing.");
   process.exit(1);
 } else {
   console.log("✅ No duplicate constants detected.");

@@ -5,9 +5,9 @@
  * Based on: MEASUREMENT_GAP_SOLUTION.md
  *
  * Three metrics:
- * 1. Topic anchor overlap — did the response stay on topic?
- * 2. Bigram entropy — is output repetitive (overconfident) or chaotic (uncertain)?
- * 3. Self-contradiction — did the response contradict itself?
+ * 1. Topic anchor overlap - did the response stay on topic?
+ * 2. Bigram entropy - is output repetitive (overconfident) or chaotic (uncertain)?
+ * 3. Self-contradiction - did the response contradict itself?
  *
  * Usage:
  * ```ts
@@ -31,7 +31,7 @@ export function measureStability(
 
   const metrics: StabilityMetrics = { overlap, entropy, contradictions };
 
-  // Thresholds (conservative — warn-only, never block)
+  // Thresholds (conservative - warn-only, never block)
   // Entropy check first: repetitive is stronger signal than topic drift
   if (entropy < 0.15) {
     return { stable: false, reason: "repetitive", metrics };

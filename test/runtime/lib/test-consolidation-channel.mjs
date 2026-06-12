@@ -1,8 +1,8 @@
 /**
- * Test: Consolidation Channel — experience scoring + tick processing
+ * Test: Consolidation Channel - experience scoring + tick processing
  *
  * Removed tests for selectCandidates, selectBestCandidate, queueForConsolidation,
- * getConsolidationStatus, getConsolidationQueue — those functions were removed
+ * getConsolidationStatus, getConsolidationQueue - those functions were removed
  * as unreachable dead code.
  */
 

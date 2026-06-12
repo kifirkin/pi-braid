@@ -5,7 +5,7 @@
  * for consolidation from episodic memory into reusable patterns.
  *
  * Scoring is heuristic (quality × value × confidence × novelty).
- * Weight update (LoRA/MEMIT) is not implemented — this queues experience
+ * Weight update (LoRA/MEMIT) is not implemented - this queues experience
  * data for potential future training pipelines.
  */
 
@@ -376,7 +376,7 @@ export async function processConsolidationTick(): Promise<void> {
           );
         }
       } catch {
-        // File doesn't exist yet — that's fine
+        // File doesn't exist yet - that's fine
       }
 
       const now = Date.now();

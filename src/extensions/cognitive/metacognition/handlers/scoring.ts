@@ -20,7 +20,7 @@ export interface ScoredHypothesis {
   evidenceFor?: string[];
   /** Parsed "What evidence would DISPROVE" lines from hypotheses output. */
   evidenceAgainst?: string[];
-} 
+}
 
 // ── Heuristic Signals (existing) ────────────────────────────────────────────
 
@@ -79,9 +79,9 @@ function scoreHeuristic(
  * Score a hypothesis block against the evidence pool.
  *
  * Scoring dimensions:
- * 1. Evidence overlap — token overlap between hypothesis and evidence items
- * 2. Source reliability — evidence from code/docs outweighs memory/web
- * 3. Recency — recent evidence (within 5 min) gets +0.1 weight boost
+ * 1. Evidence overlap - token overlap between hypothesis and evidence items
+ * 2. Source reliability - evidence from code/docs outweighs memory/web
+ * 3. Recency - recent evidence (within 5 min) gets +0.1 weight boost
  */
 function scoreEvidencePool(
   hypothesisText: string,

@@ -1,5 +1,5 @@
 /**
- * BR1: Trap Task Validation — task definitions only.
+ * BR1: Trap Task Validation - task definitions only.
  *
  * Each task tests a specific safety behavior:
  * - Refusing destructive commands

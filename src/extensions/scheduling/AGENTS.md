@@ -1,4 +1,4 @@
-# src/extensions/scheduling/ — Time-Based Events
+# src/extensions/scheduling/ - Time-Based Events
 
 Extensions that fire on time-based triggers (recurring reminders, inactivity
 watchdogs). Distinct from `self/` (which is self-management) and `heartbeat/`

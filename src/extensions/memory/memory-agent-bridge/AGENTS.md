@@ -17,7 +17,7 @@ storage layer).
 - The LLM-callable tool surface for memory (the three-memory-stores
   extension owns the *storage* layer; this extension owns the
   *tool shape* and *agent-facing semantics*).
-- The `explore_paths` tool — spawns parallel sub-agents to
+- The `explore_paths` tool - spawns parallel sub-agents to
   investigate hypotheses concurrently (different from subagent API).
 
 ## Tools exposed

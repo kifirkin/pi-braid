@@ -1,5 +1,5 @@
 /**
- * Test: Critic Gate — pre-check classifier for generative LLM calls.
+ * Test: Critic Gate - pre-check classifier for generative LLM calls.
  *
  * Tests the source file for:
  *   - Correct export of criticGate function
@@ -48,11 +48,11 @@ assert.ok(gateSrc.includes("fallback: opts.fallback"), "should pass fallback to 
 // Test 3: Uses classify() under the hood
 assert.ok(gateSrc.includes("from \"./text-classifier.js\""), "should import classify from text-classifier");
 
-// Test 4: Integration — hypothesize.ts imports criticGate
+// Test 4: Integration - hypothesize.ts imports criticGate
 assert.ok(hypotSrc.includes("critic-gate"), "hypothesize.ts should import from critic-gate");
 assert.ok(hypotSrc.includes("criticGate"), "hypothesize.ts should call criticGate");
 
-// Test 5: Integration — think.ts imports criticGate
+// Test 5: Integration - think.ts imports criticGate
 assert.ok(thinkSrc.includes("critic-gate"), "think.ts should import from critic-gate");
 assert.ok(thinkSrc.includes("criticGate"), "think.ts should call criticGate");
 

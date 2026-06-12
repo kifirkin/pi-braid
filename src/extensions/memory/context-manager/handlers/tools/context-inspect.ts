@@ -1,5 +1,5 @@
 /**
- * context_inspect — Inspect session context health at any detail level.
+ * context_inspect - Inspect session context health at any detail level.
  *
  * Consolidates context_snapshot (quick), context_audit (detailed), and
  * context_prune dry-run into one tool with a `detail` parameter.
@@ -79,7 +79,7 @@ export function registerContextInspect(pi: ExtensionAPI): void {
         lines.push(`**Hygiene:** ${scoreIcon} ${(hygieneScore * 100).toFixed(0)}%`);
         lines.push(`**Prune candidates:** ${audit.candidates.length}`);
         if (topRec.length > 0) {
-          lines.push(`**Top action:** ${topRec[0].action} — ${topRec[0].reason}`);
+          lines.push(`**Top action:** ${topRec[0].action} - ${topRec[0].reason}`);
         }
         return {
           content: [{ type: "text" as const, text: lines.join("\n") }],
@@ -155,7 +155,7 @@ export function registerContextInspect(pi: ExtensionAPI): void {
           );
         }
         const topCandidates = candidates.slice(0, 15);
-        lines.push(`## Context Prune — ${topCandidates.length} of ${candidates.length} candidates`);
+        lines.push(`## Context Prune - ${topCandidates.length} of ${candidates.length} candidates`);
         lines.push("\nTo remove these, use `context_compress` with `action=compact`.");
         lines.push(
           `\n**Context Usage:** ${audit.usage.percent.toFixed(1)}% (${Math.round(audit.usage.tokens / 1024)}K tokens)`,

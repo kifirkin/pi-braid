@@ -6,16 +6,16 @@
  * outperform single memory. MCQ accuracy 0.68 → 0.79.
  *
  * Architecture:
- * 1. Retrospective Episodes — case-based reasoning from past tasks (episodes.ts)
- * 2. Adaptive Procedural Heuristics — priority-tagged rules that evolve (heuristics.ts)
- * 3. Tool Reliability Controller — per-tool trustworthiness tracking (tool-reliability.ts)
+ * 1. Retrospective Episodes - case-based reasoning from past tasks (episodes.ts)
+ * 2. Adaptive Procedural Heuristics - priority-tagged rules that evolve (heuristics.ts)
+ * 3. Tool Reliability Controller - per-tool trustworthiness tracking (tool-reliability.ts)
  *
  * Two surfaces:
  * - **Internal API** (episodes.ts / heuristics.ts / tool-reliability.ts):
  *   data-layer functions like `addEpisode`, `addPrinciple`, `recordToolCall`.
  *   Many extensions import these directly (e.g. finalize.ts adds episodes
  *   on task completion, recaller.ts retrieves them for cross-task context).
- *   Treat as infrastructure — do not move.
+ *   Treat as infrastructure - do not move.
  * - **Agent-facing tools** (`memory_episodes`, `memory_heuristics`,
  *the LLM-callable surface that exposes the three
  *   stores to the agent. The agent also has the higher-level
@@ -220,7 +220,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     label: "Memory Heuristics",
     promptSnippet: "View and manage adaptive procedural heuristics",
     description:
-      "View and manage adaptive procedural heuristics — use to inspect or evolve behavior rules learned from session performance.",
+      "View and manage adaptive procedural heuristics - use to inspect or evolve behavior rules learned from session performance.",
     parameters: Type.Object({
       action: StringEnum(["list", "add", "evolve"]),
       context: Type.Optional(
@@ -383,7 +383,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     state.lastEpisodeRecallSignature = signature;
 
     const crossSession = filtered.filter((ep: any) => ep._crossSession);
-    // Only emit contamination signal for repeated cross-session — batch per session
+    // Only emit contamination signal for repeated cross-session - batch per session
     if (crossSession.length > 0 && state.recentErrors.length < 10) {
       emitSignal(ctx, "memory", "contamination", "warn", false, {
         count: crossSession.length,
@@ -479,7 +479,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
                     },
                   ],
                 },
-                // triggerTurn: true — significant reliability gap (>0.2)
+                // triggerTurn: true - significant reliability gap (>0.2)
                 // means the current tool is consistently failing for this
                 // task type. Wakes the agent so it can switch tools.
                 { deliverAs: "steer", triggerTurn: true },
@@ -527,7 +527,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
         const semanticResults = await cm.recall(stableQuery, { type: undefined, limit: 2 });
 
         // Filter: only surface highly relevant results (adjusted relevance > 1.5)
-        // and skip ephemeral types (episodic, procedural) — only goal/pattern,semantic,insight
+        // and skip ephemeral types (episodic, procedural) - only goal/pattern,semantic,insight
         const relevantTypes = new Set(["goal", "pattern", "semantic", "insight"]);
         const filtered = semanticResults.filter(
           (r: any) => r.relevance > 1.5 && relevantTypes.has(r.memory.type),

@@ -1,5 +1,5 @@
 /**
- * Standard tool result types — shared result metadata for all tools.
+ * Standard tool result types - shared result metadata for all tools.
  *
  * Every tool returns `{ content, details }`. The `details` field is ad-hoc
  * per tool. This module defines a standard envelope that metacognition tools

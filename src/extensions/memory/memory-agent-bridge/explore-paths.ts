@@ -1,5 +1,5 @@
 /**
- * explore-paths tool — parallel hypothesis investigation
+ * explore-paths tool - parallel hypothesis investigation
  *
  * Extracted from memory-agent-bridge/index.ts for cleaner separation of concerns.
  * Self-contained: file-finding helpers + the explore_paths tool.
@@ -15,7 +15,7 @@ import { addEvidence } from "../../../lib/store/evidence-pool.js";
 
 const execFileAsync = promisify(execFile);
 
-// pi-braid project root — resolved from this file's location so searches work from any CWD
+// pi-braid project root - resolved from this file's location so searches work from any CWD
 const PROJECT_ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../../..");
 
 /** Extract candidate file names from a hypothesis string using multiple patterns */
@@ -89,7 +89,7 @@ export function createExplorePathsTool() {
     label: "Explore Paths",
     promptSnippet: "Spawn parallel sub-agents to explore root causes",
     description:
-      "Spawn parallel sub-agents to explore multiple potential root causes before fixing bugs and gather evidence first. All hypotheses must lead to proper solutions — never use monkey patching.",
+      "Spawn parallel sub-agents to explore multiple potential root causes before fixing bugs and gather evidence first. All hypotheses must lead to proper solutions - never use monkey patching.",
     parameters: Type.Object({
       hypothesis_1: Type.String({
         description:
@@ -131,8 +131,8 @@ export function createExplorePathsTool() {
 
         const candidates = extractFileCandidates(hyp);
         if (candidates.length === 0) {
-          // No files found — try keyword search
-          localResults.push("No file candidates extracted — trying keyword search...");
+          // No files found - try keyword search
+          localResults.push("No file candidates extracted - trying keyword search...");
           const words = hyp
             .split(/\W+/)
             .filter(
@@ -201,7 +201,7 @@ export function createExplorePathsTool() {
 
       results.push("---");
       results.push("**Next steps:**");
-      results.push("1. Review the evidence above — files found show the actual code path");
+      results.push("1. Review the evidence above - files found show the actual code path");
       results.push("2. Identify which hypothesis has supporting evidence");
       results.push("3. Trace the code path for the most likely hypothesis");
       results.push("4. Propose a PROPER fix (no shortcuts, no technical debt)");

@@ -1,5 +1,5 @@
 /**
- * Error Tracking State — consecutive errors, validation failures, nudge cooldowns.
+ * Error Tracking State - consecutive errors, validation failures, nudge cooldowns.
  *
  * Owns: error burst tracking, validation failures, nudge rate-limiting timers.
  */

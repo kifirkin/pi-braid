@@ -1,5 +1,5 @@
 /**
- * Critic Stats — lightweight runtime observability for LLM judge calls.
+ * Critic Stats - lightweight runtime observability for LLM judge calls.
  *
  * Tracks per-critic call counts by tier (heuristic/utility/session/failed)
  * and latency. Module-level counters are safe within a single-agent session;
@@ -16,7 +16,7 @@ export interface CriticCallEntry {
   tier: CriticTier;
   /** Total calls to this critic resolved at this tier. */
   count: number;
-  /** Total latency across all calls (ms) — for average calculation. */
+  /** Total latency across all calls (ms) - for average calculation. */
   totalLatencyMs: number;
 }
 

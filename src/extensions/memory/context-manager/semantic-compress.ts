@@ -1,18 +1,18 @@
 /**
  * Semantic Compression Prototype (2604.15877)
- * Compress at the semantic level — not just syntactic. Different content
+ * Compress at the semantic level - not just syntactic. Different content
  * types need different compression strategies.
  *
  * Input: raw `AgentMessage[]` from the pi context event.
  * Output: compressed `AgentMessage[]` for the next pipeline stage.
  *
  * Unit Types:
- *   problem    — What we're solving. PRESERVE fully.
- *   reasoning  — How we're thinking. PRESERVE key decisions, trim intermediate.
- *   tool       — What we're doing. COLLAPSE repetitions, keep last result+count.
- *   result     — What worked. PRESERVE key outcomes.
- *   summary    — What we concluded. PRESERVE entirely.
- *   boilerplate — Noise. DROP.
+ *   problem    - What we're solving. PRESERVE fully.
+ *   reasoning  - How we're thinking. PRESERVE key decisions, trim intermediate.
+ *   tool       - What we're doing. COLLAPSE repetitions, keep last result+count.
+ *   result     - What worked. PRESERVE key outcomes.
+ *   summary    - What we concluded. PRESERVE entirely.
+ *   boilerplate - Noise. DROP.
  */
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";

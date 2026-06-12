@@ -2,7 +2,7 @@ import { createLogger } from "../../../lib/core/logger.js";
 
 const log = createLogger("enforcement");
 /**
- * Turn Analysis Context — shared context for turn_end handler subroutines.
+ * Turn Analysis Context - shared context for turn_end handler subroutines.
  *
  * Bundles enforcement state + closure variables into a single object
  * that extracted handlers can receive as a parameter.

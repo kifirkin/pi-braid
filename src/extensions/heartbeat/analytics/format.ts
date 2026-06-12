@@ -1,5 +1,5 @@
 /**
- * Analytics — formatting helpers for /analytics command output.
+ * Analytics - formatting helpers for /analytics command output.
  */
 
 import type { AnalyticsState } from "./shared.js";

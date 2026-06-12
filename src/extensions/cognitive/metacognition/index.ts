@@ -1,8 +1,8 @@
 /**
- * Metacognition Extension — structured thinking, hypothesis generation, and task finalization.
+ * Metacognition Extension - structured thinking, hypothesis generation, and task finalization.
  *
  * Decomposed into: think, hypothesize, finalize (each in handlers/).
- * All tools use the session model (ctx.model) directly — no separate utility model.
+ * All tools use the session model (ctx.model) directly - no separate utility model.
  * Research: docs/research/bicameral-mind-analysis.md
  */
 

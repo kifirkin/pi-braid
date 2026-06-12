@@ -4,7 +4,7 @@
  * Provides debounced async file I/O to replace synchronous readFileSync/writeFileSync
  * calls that block the Node.js event loop.
  *
- * Uses microtask-based batching instead of setTimeout debouncing — writes are
+ * Uses microtask-based batching instead of setTimeout debouncing - writes are
  * flushed before the event loop continues, eliminating the data-loss window
  * that existed with pending setTimeout callbacks on process exit.
  *
@@ -26,7 +26,7 @@ let flushScheduled = false;
 /**
  * Schedule a microtask to flush all pending writes.
  * Schedule a microtask to flush all pending writes.
- * Called on every saveState() — multiple calls collapse into a single microtask.
+ * Called on every saveState() - multiple calls collapse into a single microtask.
  */
 function scheduleFlush(): void {
   if (flushScheduled) return;
@@ -107,7 +107,7 @@ export async function shutdownAsyncStorage(): Promise<void> {
   await flushAll();
 }
 
-// Flush on process exit — module-level code runs once on load
+// Flush on process exit - module-level code runs once on load
 process.on("beforeExit", async () => {
   await flushAll();
 });

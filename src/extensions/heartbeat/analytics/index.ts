@@ -1,5 +1,5 @@
 /**
- * Analytics Extension — self-contained tool usage analytics.
+ * Analytics Extension - self-contained tool usage analytics.
  *
  * Tracks tool call counts, durations, success/failure rates,
  * tool sequences and patterns, session-level metrics, and
@@ -165,7 +165,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
                   content: [
                     {
                       type: "text",
-                      text: `[analytics] Tool addiction pattern detected: ${warnings.join("; ")}. Assess intent — heavy single-tool use may be valid if the task demands it.`,
+                      text: `[analytics] Tool addiction pattern detected: ${warnings.join("; ")}. Assess intent - heavy single-tool use may be valid if the task demands it.`,
                     },
                   ],
                   display: true,
@@ -283,7 +283,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
       _ctx.ui.notify(formatAllSessions(), "info");
     },
   });
-  // Removed `analytics:setVariant` slash command — promoted to a tool below
+  // Removed `analytics:setVariant` slash command - promoted to a tool below
   // so the agent can set its own A/B variant without a human-typed slash command.
   pi.registerCommand("analytics:ab", {
     description: "Show A/B experiment results across variants",
@@ -302,6 +302,6 @@ export default function analyticsExtension(pi: ExtensionAPI) {
   // command. The A/B variant can still be set programmatically via
   // getAnalyticsStateInternal(ctx).abVariant.
 
-  // (deleted tool: get_session_metrics — see audit)
-  // (deleted tool: get_tool_reliability — see audit)
+  // (deleted tool: get_session_metrics - see audit)
+  // (deleted tool: get_tool_reliability - see audit)
 }

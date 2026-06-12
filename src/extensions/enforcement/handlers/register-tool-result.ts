@@ -1,5 +1,5 @@
 /**
- * register-tool-result — Calibration tracking on tool results.
+ * register-tool-result - Calibration tracking on tool results.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";

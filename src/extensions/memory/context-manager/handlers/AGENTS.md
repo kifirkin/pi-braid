@@ -1,4 +1,4 @@
-# src/extensions/memory/context-manager/handlers/ — Compaction & Tool Handlers
+# src/extensions/memory/context-manager/handlers/ - Compaction & Tool Handlers
 
 The context-manager extension is decomposed into 6 handler modules + 3
 sub-tool definitions. The `tools.ts` orchestrator was inlined into

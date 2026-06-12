@@ -1,5 +1,5 @@
 /**
- * Signal Detector — Pure function for analyzing session content context signals.
+ * Signal Detector - Pure function for analyzing session content context signals.
  *
  * Transformed from class-based SignalDetector to a pure function +
  * externally-managed state object (no class instance, no methods).
@@ -66,7 +66,7 @@ function hashContent(text: string): string {
 // ── Topic Detection ─────────────────────────────────────────────────────────
 
 const TOPIC_KEYWORDS: Record<string, Set<string>> = {
-  // Kept for backward compat but unused — see detectTopic() below.
+  // Kept for backward compat but unused - see detectTopic() below.
   implementation: new Set(["implement", "write", "create", "add", "build", "code", "function"]),
   debugging: new Set(["bug", "fix", "error", "crash", "debug", "issue", "broken"]),
   refactoring: new Set(["refactor", "rename", "restructure", "clean", "improve"]),
@@ -80,7 +80,7 @@ const TOPIC_KEYWORDS: Record<string, Set<string>> = {
 /**
  * Classify the current work topic via CRITICS.topicClassification.
  * Replaces the previous hardcoded TOPIC_KEYWORDS map (8 topics × 5-8
- * keywords each) which produced too many false negatives — phrases
+ * keywords each) which produced too many false negatives - phrases
  * like "investigate why the parser fails" matched nothing, and
  * "investigate" appeared in both exploration and debugging lists
  * arbitrarily. The LLM handles semantic understanding correctly.
@@ -220,7 +220,7 @@ export async function detectSignals(
     signals.push(createSignal("redundancy_detected", turn, { count: redundancyCount }));
   }
 
-  // Topic shift detection (async — LLM topic classification)
+  // Topic shift detection (async - LLM topic classification)
   const combinedText = allText.join(" ");
   const currentTopic = await detectTopic(combinedText, ctx);
   if (currentTopic !== state.lastTopic && state.lastTopic !== "") {

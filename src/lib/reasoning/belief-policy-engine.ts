@@ -1,5 +1,5 @@
 /**
- * Belief Policy Engine — Unifies all pi-braid subsystems via a signal bus.
+ * Belief Policy Engine - Unifies all pi-braid subsystems via a signal bus.
  *
  * Problem: topic-drift, MARS, conflict detection, reasoning metrics are isolated
  * systems that don't talk to each other. The Belief Policy Engine connects them.
@@ -167,7 +167,7 @@ const POLICY_RULES: PolicyRule[] = [
       const recent = reflectionSignals.slice(-5);
       const hasReflection = recent.length > 0;
       if (!hasReflection) {
-        // No reflection in last 5 signals — might need one
+        // No reflection in last 5 signals - might need one
         const toolSignals = signals.filter((s) => s.source === "tool-use");
         if (toolSignals.length >= 8) {
           return [
@@ -208,7 +208,7 @@ const POLICY_RULES: PolicyRule[] = [
       return [];
     },
   },
-  // Rule 7: Memory contamination — only warn on repeated cross-session recall (3+ signals)
+  // Rule 7: Memory contamination - only warn on repeated cross-session recall (3+ signals)
   {
     name: "memory_contamination",
     evaluate(signals, _beliefs): PolicyRecommendation[] {
@@ -224,7 +224,7 @@ const POLICY_RULES: PolicyRule[] = [
             id: `pr-${Date.now()}-mc`,
             type: "memory_contamination",
             priority: 5,
-            message: `[memory] ${count} cross-session memory recall(s) — verify relevant to current project before acting.`,
+            message: `[memory] ${count} cross-session memory recall(s) - verify relevant to current project before acting.`,
             beliefs: ["memory:contamination", "memory:verify-before-act"],
             timestamp: Date.now(),
           },
@@ -306,7 +306,7 @@ export function emitSignal(
  * that individual signal mappings can't capture.
  *
  * Compound beliefs are higher-level inferences derived from
- * multiple signal sources — e.g., "stability:declining" +
+ * multiple signal sources - e.g., "stability:declining" +
  * "tool-use:overuse" → "reasoning:scattered".
  */
 export function inferBeliefs(ctx: ExtensionContext): void {
@@ -453,7 +453,7 @@ function evaluatePolicies(state: BPEState): void {
         newRecs.push(rec);
       }
     } catch {
-      /* silent — policy evaluation errors shouldn't break enforcement */
+      /* silent - policy evaluation errors shouldn't break enforcement */
     }
   }
 

@@ -1,5 +1,5 @@
 /**
- * Heartbeat Scheduler — proactive cognitive scheduling based on paper 2604.14178.
+ * Heartbeat Scheduler - proactive cognitive scheduling based on paper 2604.14178.
  *
  * Triggers interventions before problems arise: silence, context overflow, error accumulation.
  * This file is the extension entry point. Logic is decomposed into sub-modules:
@@ -274,7 +274,7 @@ function tick(
   // Auto-checkpoint + auto-rollback
   const sessionId = ctx.cwd ?? String(process.pid);
 
-  // Consolidation Channel — fire-and-forget
+  // Consolidation Channel - fire-and-forget
   processConsolidationTick().catch((err) => {
     log.error("Consolidation tick error:", err);
   });
@@ -396,7 +396,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     }
   });
 
-  // ── Event: tool_result — collect tool success/failure for trajectory enrichment
+  // ── Event: tool_result - collect tool success/failure for trajectory enrichment
   pi.on("tool_result", (event: any, ctx: ExtensionContext) => {
     const state = getState(ctx);
     const toolName = event?.toolName as string;
@@ -507,7 +507,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     },
   );
 
-  // ── Event: turn_start — inject relevant SOPs from past episodes ─────
+  // ── Event: turn_start - inject relevant SOPs from past episodes ─────
 
   pi.on("turn_start", async (_event: any, ctx: ExtensionContext) => {
     // Inject SOP suggestions based on the current turn's user message

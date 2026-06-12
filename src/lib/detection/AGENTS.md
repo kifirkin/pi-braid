@@ -1,4 +1,4 @@
-# src/lib/detection/ — Detection Primitives
+# src/lib/detection/ - Detection Primitives
 
 Pure-logic detectors used by extensions to identify patterns.
 
@@ -14,6 +14,6 @@ Pure-logic detectors used by extensions to identify patterns.
 
 ## Local Contracts
 
-- All detectors are **pure** — they take state in, return signal out. No side effects.
+- All detectors are **pure** - they take state in, return signal out. No side effects.
 - Detectors don't emit whispers. They return a signal that handlers in `extensions/` translate into whispers.
 - Detectors should be testable in isolation (no pi core dependency).

@@ -1,5 +1,5 @@
 /**
- * reflection-handler — Reflection gap detection on turn_end.
+ * reflection-handler - Reflection gap detection on turn_end.
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";

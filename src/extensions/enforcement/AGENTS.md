@@ -1,4 +1,4 @@
-# src/extensions/enforcement/ — Enforcement Layer
+# src/extensions/enforcement/ - Enforcement Layer
 
 The enforcement layer. Translates signals from detectors/heartbeat/agents
 into whispers. Implements the per-turn whisper cap, the dedup logic, and
@@ -17,7 +17,7 @@ the wake-up policy.
 | `validation.ts` | Validation of whisper payloads. |
 | `similarity.ts` | Cosine similarity for dedup. |
 | `nudge-manager.ts` | Manages nudge cooldowns and dedup. |
-| `verification-judge.ts` | The verification judge — runs in background. |
+| `verification-judge.ts` | The verification judge - runs in background. |
 | `verification-judge-state.ts` | Judge/calibration helpers. |
 | `handler-registry.ts` | Thin orchestrator that wires all handlers. |
 | `event-types.ts` | Types for events that flow through the enforcement layer. |
@@ -27,7 +27,7 @@ the wake-up policy.
 
 | Path | Purpose |
 |---|---|
-| `handlers/` | Event handlers — register-session-*, turn-*, message-*, tool-*. |
+| `handlers/` | Event handlers - register-session-*, turn-*, message-*, tool-*. |
 
 ## State architecture (CRITICAL)
 

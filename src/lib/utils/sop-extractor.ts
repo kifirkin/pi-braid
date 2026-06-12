@@ -1,5 +1,5 @@
 /**
- * SOP Extractor — Trajectory → Structured SOP Conversion
+ * SOP Extractor - Trajectory → Structured SOP Conversion
  *
  * Analyzes tool call trajectories from successful task completions and
  * extracts three-tier SOPs (Strategic / Functional / Atomic) for
@@ -10,7 +10,7 @@
  *   - Functional SOP: 50-500x compression (procedural skills)
  *   - Atomic SOP: 5-20x compression (episodic memory)
  *
- * This is a heuristic-based extractor. No LLM calls — fast, deterministic.
+ * This is a heuristic-based extractor. No LLM calls - fast, deterministic.
  * The LLM-only path (detectPatternWithLLM) is used by the heartbeat
  * scheduler when a context is available; the consolidation channel
  * uses the sync heuristic since it runs in a periodic background tick.

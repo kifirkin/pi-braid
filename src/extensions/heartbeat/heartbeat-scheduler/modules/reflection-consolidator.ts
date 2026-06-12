@@ -1,10 +1,10 @@
 /**
- * Reflection Consolidator — reflection and knowledge consolidation after sustained work.
+ * Reflection Consolidator - reflection and knowledge consolidation after sustained work.
  *
  * Analyzes tool usage patterns, generates reflection insights,
  * adds memory episodes for cross-session pattern learning.
  *
- * Formerly named "dreamer" — renamed to avoid collision with lib/dreamer.ts
+ * Formerly named "dreamer" - renamed to avoid collision with lib/dreamer.ts
  * (Markov-chain tool sequence predictor).
  */
 
@@ -80,7 +80,7 @@ export const reflectionConsolidatorModule: CognitiveModule = {
 
     log.info(
       `${toolsUsed.length} tool calls, ${uniqueTools.size} unique tools, ` +
-        `${verificationCount} verifications, ${codeCount} code ops — added reflection episode`,
+        `${verificationCount} verifications, ${codeCount} code ops - added reflection episode`,
     );
 
     if (insights.length > 0) {

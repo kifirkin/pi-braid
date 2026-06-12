@@ -1,7 +1,7 @@
 # Context Lifecycle Extension
 
 The AUTOMATION layer for context management. Works WITH
-`context-manager` (which exposes the tools) — does NOT expose new tools.
+`context-manager` (which exposes the tools) - does NOT expose new tools.
 Implements the R-CCAM (Retrieval-Cognition-Control-Action-Memory) loop
 in cognitive-memory theory.
 
@@ -39,7 +39,7 @@ The R-CCAM loop runs on `turn_end`:
 tools by detecting when they're needed and either proposing them
 (via custom entry) or executing them directly.
 
-**The LLM never calls context-lifecycle directly** — it's a daemon.
+**The LLM never calls context-lifecycle directly** - it's a daemon.
 The LLM can call the context-manager tools at any time, in which case
 context-lifecycle sees the result and updates its state.
 
@@ -47,12 +47,12 @@ context-lifecycle sees the result and updates its state.
 
 | Emits    | Listens to        |
 | -------- | ----------------- |
-| (none)   | `memory_evict` (from `lib/store/...`) — updates its own state |
+| (none)   | `memory_evict` (from `lib/store/...`) - updates its own state |
 
 ## Local Contracts
 
 - **Session-scoped state** via `getExtensionState(ctx, key, factory)`.
-- **No new tools** — the design is "extend the agent's context
+- **No new tools** - the design is "extend the agent's context
   awareness without adding to its tool inventory".
 - **Proposal injection** uses `customEntry` (`propose` type) so the
   LLM sees it as a suggestion, not an instruction.

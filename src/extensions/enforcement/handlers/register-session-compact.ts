@@ -1,5 +1,5 @@
 /**
- * register-session-compact — Hygiene reset after context compaction.
+ * register-session-compact - Hygiene reset after context compaction.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -37,7 +37,7 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
     // the resume timer never fired and the agent never woke up.
     try {
       const timerMod = await import("../../scheduling/timer/index.js");
-      // Scope timer ops to current session — timer module stores per-session.
+      // Scope timer ops to current session - timer module stores per-session.
       // (Earlier designs used a module-level Map shared across all sessions;
       // cancelling by tag globally would cancel other sessions' resume timers.)
       const sessionId =
@@ -54,12 +54,12 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
       timerMod.scheduleTimer(
         sessionId,
         3 * 60 * 1000,
-        "Context compaction done — continue your task",
+        "Context compaction done - continue your task",
         "compaction-resume",
-        true, // wake — auto-resume agent after compaction
+        true, // wake - auto-resume agent after compaction
       );
     } catch {
-      // Non-fatal — timer module unavailable
+      // Non-fatal - timer module unavailable
     }
 
     try {
@@ -100,14 +100,14 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
 
       // Always send re-orientation whisper after compaction so the agent
       // knows to recover context from persisted surfaces (scratchpad, task tool).
-      // This is the "prompt invariant" in action — the scratchpad survives
+      // This is the "prompt invariant" in action - the scratchpad survives
       // compaction because it's tool-backed, not conversation-backed.
       sendEnforcementWhisper(
         pi,
         ctx,
         `Context compacted at turn ${compactTurn}. ` +
           `Re-orient: read scratchpad for goal/plan/learnings, then check next pending task. ` +
-          `These surfaces survive compaction — continue from there.`,
+          `These surfaces survive compaction - continue from there.`,
       );
 
       getState(ctx).contextNudgeSent = false;

@@ -1,5 +1,5 @@
 /**
- * Scratchpad Extension — Structured Session Memory (CCA L2)
+ * Scratchpad Extension - Structured Session Memory (CCA L2)
  *
  * Per-loop persistent state for continuity of thought across turns.
  * Persists to disk per-project so it survives process restarts.
@@ -647,7 +647,7 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
       "For add_learning, prefer explicit 'category' + 'content' fields over pipe-delimited text. " +
       "Plan items (added via add_plan, completed via mark_done) serve as the task list. " +
       "For richer task state (priority, dependencies, tags, fail/next/clear), add plan items and use read to view them. " +
-      "Use this scratchpad for project-scoped work — do NOT use the SDK's separate 'task' tool for the same purpose.",
+      "Use this scratchpad for project-scoped work - do NOT use the SDK's separate 'task' tool for the same purpose.",
     parameters: scratchpadParams,
     execute: scratchpadExecute,
   } as unknown as ToolDefinition<any, any, any>);

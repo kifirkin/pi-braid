@@ -18,7 +18,7 @@ function loadLog(path) {
 }
 
 const lines = [];
-lines.push('# Overnight Sprint — Benchmark Results Summary');
+lines.push('# Overnight Sprint - Benchmark Results Summary');
 lines.push('');
 lines.push(`Generated: ${new Date().toISOString()}`);
 lines.push('');

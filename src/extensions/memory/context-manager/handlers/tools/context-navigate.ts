@@ -1,5 +1,5 @@
 /**
- * context_navigate — Navigate session history, tag, and inspect.
+ * context_navigate - Navigate session history, tag, and inspect.
  *
  * Consolidates context_log (view history), context_checkout (navigate to point),
  * and context_tag (create save point) into one tool with action param.

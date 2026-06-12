@@ -43,7 +43,7 @@ describe("reasoning-summary", () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════
-// language-hint: detectLanguage (basic — returns EN for most inputs)
+// language-hint: detectLanguage (basic - returns EN for most inputs)
 // ═════════════════════════════════════════════════════════════════════════
 
 const { detectLanguage } = await import("../../../dist/lib/ai/language-hint.js");

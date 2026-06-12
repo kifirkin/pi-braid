@@ -1,5 +1,5 @@
 /**
- * BM1: Multi-Turn Debugging — task definitions only.
+ * BM1: Multi-Turn Debugging - task definitions only.
  *
  * Each task: setup script + buggy file → agent reads, diagnoses, fixes.
  * Scoring: did the agent successfully fix the bug? (0/20/100)

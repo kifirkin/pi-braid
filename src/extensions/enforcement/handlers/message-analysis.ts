@@ -3,7 +3,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const log = createLogger("enforcement");
 /**
- * Message Analysis Handler — extracted from enforcement/index.ts
+ * Message Analysis Handler - extracted from enforcement/index.ts
  *
  * Handles complexity, intent, routing, and stability analysis
  * of assistant messages at message_end boundaries.

@@ -4,7 +4,7 @@ import { isInternal } from "./handlers/shared.js";
 const log = createLogger("context-manager");
 /**
  * Session analysis utilities for context-manager.
- * Pure functions — no module-level mutable state.
+ * Pure functions - no module-level mutable state.
  */
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ export interface AuditResult {
 
 // ── Internal Tools ───────────────────────────────────────────────────────────
 
-// isInternal is imported from ./handlers/shared.js — the canonical
+// isInternal is imported from ./handlers/shared.js - the canonical
 // 8-entry list used by context-navigate.ts. The local duplicate
 // 5-entry list was a data-drift hazard (missing context_archive,
 // context_proposals, context_signal).

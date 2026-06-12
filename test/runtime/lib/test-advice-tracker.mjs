@@ -1,5 +1,5 @@
 /**
- * Test: Advice Tracker — feedback loop for Dreamer/MARS predictions.
+ * Test: Advice Tracker - feedback loop for Dreamer/MARS predictions.
  *
  * Tests recording, evaluation, and threshold adjustment logic.
  * All tests use pure functions with no pi dependency.

@@ -45,7 +45,7 @@ function recordAction(state, toolName) {
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
-console.log("Test 1: First nudge at threshold — should fire");
+console.log("Test 1: First nudge at threshold - should fire");
 {
   const state = getRotationState();
   Object.assign(state, {
@@ -62,7 +62,7 @@ console.log("Test 1: First nudge at threshold — should fire");
   console.log("✅ PASS: First nudge fires");
 }
 
-console.log("\nTest 2: Same turn — should suppress");
+console.log("\nTest 2: Same turn - should suppress");
 {
   const state = getRotationState();
   state.turnsSinceRotation = 500;
@@ -73,7 +73,7 @@ console.log("\nTest 2: Same turn — should suppress");
   console.log("✅ PASS: Same-turn suppression works");
 }
 
-console.log("\nTest 3: Action taken, within cooldown — should suppress");
+console.log("\nTest 3: Action taken, within cooldown - should suppress");
 {
   const state = getRotationState();
   state.turnsSinceRotation = 520;
@@ -86,7 +86,7 @@ console.log("\nTest 3: Action taken, within cooldown — should suppress");
   console.log("✅ PASS: Action-taken cooldown works");
 }
 
-console.log("\nTest 4: Action taken, cooldown expired — should fire");
+console.log("\nTest 4: Action taken, cooldown expired - should fire");
 {
   const state = getRotationState();
   state.turnsSinceRotation = 560;

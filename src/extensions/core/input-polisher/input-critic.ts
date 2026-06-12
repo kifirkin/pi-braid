@@ -1,5 +1,5 @@
 /**
- * Input Critic — Utility-model pre-classification for input-polisher.
+ * Input Critic - Utility-model pre-classification for input-polisher.
  *
  * Thin wrapper that runs the five input-polisher critics (registered
  * centrally in lib/ai/critic-registry.ts) in parallel and assembles a
@@ -23,13 +23,13 @@ import { CRITICS } from "../../../lib/ai/critic-registry.js";
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export interface CritiqueResult {
-	/** True if the text is primarily code — skip polishing. */
+	/** True if the text is primarily code - skip polishing. */
 	isCode: boolean;
-	/** True if the text is well-written — skip polishing. */
+	/** True if the text is well-written - skip polishing. */
 	isWellWritten: boolean;
 	/** True if the text is clearly written and coherent. */
 	isClear: boolean;
-	/** True if the text is vague or ambiguous — may need clarification prompt. */
+	/** True if the text is vague or ambiguous - may need clarification prompt. */
 	isAmbiguous: boolean;
 	/** Lowest-confidence tier across all checks. */
 	tier: "utility" | "session" | "heuristic";

@@ -1,5 +1,5 @@
 /**
- * register-message-end — Conflict detection → message analysis → verification judge.
+ * register-message-end - Conflict detection → message analysis → verification judge.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -92,7 +92,7 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
           }
         }
 
-        // Periodic evidence pool cleanup — prune evidence tied to resolved conflicts
+        // Periodic evidence pool cleanup - prune evidence tied to resolved conflicts
         if (getState(ctx).currentTurn % 5 === 0) {
           const pruned = pruneResolvedEvidence(ctx);
           if (pruned > 0) {
@@ -165,7 +165,7 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
     const timeSinceLastJudge = Date.now() - getState(ctx).lastJudgeTime;
 
     // Judge triggers (first one wins):
-    // 1. Always judge on finalize — agent is declaring done
+    // 1. Always judge on finalize - agent is declaring done
     // 2. Judge after code changes with reasonable gap (5+ turns)
     // 3. Periodic check every 15 turns regardless
     const shouldJudge =

@@ -1,8 +1,8 @@
 /**
- * Flat extension manifest — replaces src/modules/definitions.ts.
+ * Flat extension manifest - replaces src/modules/definitions.ts.
  *
  * Each extension registers itself here with its factory function and metadata.
- * There is no module grouping abstraction — just a flat list. The `module`
+ * There is no module grouping abstraction - just a flat list. The `module`
  * tag on each entry is a convenience label for the subagent API commands
  * (e.g. "disable enforcement") but has no structural role.
  */
@@ -60,9 +60,9 @@ export interface ManifestEntry {
   fn: (pi: ExtensionAPI) => Promise<void> | void;
   /** Human-readable description. */
   desc: string;
-  /** Core — cannot be disabled, always loaded. */
+  /** Core - cannot be disabled, always loaded. */
   alwaysOn?: boolean;
-  /** Opt-in — disabled by default unless explicitly enabled. */
+  /** Opt-in - disabled by default unless explicitly enabled. */
   disabledByDefault?: boolean;
   /** Extension IDs this depends on (loaded first). */
   dependencies?: string[];
@@ -114,7 +114,7 @@ export const MANIFEST: ManifestEntry[] = [
     id: "workspace-snapshot",
     fn: workspaceSnapshotFn,
     alwaysOn: true,
-    desc: "workspace_snapshot tool — capture/list/diff/restore file snapshots",
+    desc: "workspace_snapshot tool - capture/list/diff/restore file snapshots",
   },
 
   // ── Cognitive Quality ─────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * PB4: Compliance Behavior Measurement — SDK version
+ * PB4: Compliance Behavior Measurement - SDK version
  *
  * Measures whether pi-braid changes compliance behavior patterns.
  * Runs standardized tasks with and without pi-braid, counts compliance patterns.
@@ -42,7 +42,7 @@ function countComplianceBehaviors(text) {
 }
 
 // ── Standardized tasks ─────────────────────────────────────────────────────
-// Same tasks run in both configs — measures behavioral difference
+// Same tasks run in both configs - measures behavioral difference
 
 const TASKS = [
   {

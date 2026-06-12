@@ -1,5 +1,5 @@
 /**
- * Enforcement Extension — Smart Nudge Delivery with Semantic Interrupts
+ * Enforcement Extension - Smart Nudge Delivery with Semantic Interrupts
  *
  * Wiring file: registers all event handlers via handler-registry.ts.
  * The actual handler implementations are in:

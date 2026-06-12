@@ -1,5 +1,5 @@
 /**
- * Cognitive Memory — constants and configuration.
+ * Cognitive Memory - constants and configuration.
  */
 
 import {
@@ -9,7 +9,7 @@ import {
 } from "../config/braid-paths.js";
 import type { CognitiveMemoryType } from "./types.js";
 
-// Storage paths — consolidated under ~/.pi/agent/braid/memory/
+// Storage paths - consolidated under ~/.pi/agent/braid/memory/
 export const MEMORY_DIR = BRAID_MEMORY_DIR;
 export const MEMORY_FILE = SEMANTIC_MEMORY_FILE;
 

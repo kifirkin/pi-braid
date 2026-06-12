@@ -1,5 +1,5 @@
 /**
- * File Mutation Queue — serializes writes to the same file.
+ * File Mutation Queue - serializes writes to the same file.
  *
  * Problem: Concurrent async writes to the same file can cause corruption.
  * Solution: Per-file write queue with TTL-based deduplication and immediate

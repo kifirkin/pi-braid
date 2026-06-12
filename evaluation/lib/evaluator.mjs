@@ -1,5 +1,5 @@
 /**
- * Evaluator — shared benchmark runner for pi-braid.
+ * Evaluator - shared benchmark runner for pi-braid.
  *
  * Pure JS (.mjs), no TS syntax. Works in any Node >= 18.
  *
@@ -27,7 +27,7 @@ const ROOT = join(__dirname, '..', '..');
 export function verifyBuild() {
   const distDir = join(ROOT, 'dist');
   if (!existsSync(distDir)) {
-    console.error('[evaluator] dist/ missing — running npm build...');
+    console.error('[evaluator] dist/ missing - running npm build...');
     execSync('npm run build', { cwd: ROOT, stdio: 'inherit', timeout: 120000 });
   }
   const required = ['dist/lib/tool-security.js'];
@@ -221,7 +221,7 @@ export function formatResultsTable(results) {
       : r.toolsUsed.join(',');
     const error = r.error ? `✗ ${r.error.slice(0, 30)}` : '✓';
     const dur = (r.duration / 1000).toFixed(1);
-    return `| ${r.taskId} | ${dur}s | ${r.turns} | ${tools || '—'} | ${error} |`;
+    return `| ${r.taskId} | ${dur}s | ${r.turns} | ${tools || '-'} | ${error} |`;
   });
   return [header, sep, ...rows].join('\n');
 }

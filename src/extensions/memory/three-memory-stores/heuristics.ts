@@ -1,5 +1,5 @@
 /**
- * Heuristics Store — adaptive procedural rules that evolve from experience.
+ * Heuristics Store - adaptive procedural rules that evolve from experience.
  *
  * Paper: 2604.14475 Evo-MedAgent
  * Heuristics are priority-tagged rules learned from success/failure feedback.

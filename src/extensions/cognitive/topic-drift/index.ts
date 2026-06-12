@@ -10,7 +10,7 @@
  *
  * Replaces the previous implementation that used stop-word filtering
  * and token-overlap heuristics. The exported function signatures are
- * preserved for backward compatibility — callers unchanged.
+ * preserved for backward compatibility - callers unchanged.
  */
 
 import { Type } from "typebox";
@@ -26,7 +26,7 @@ const log = createLogger("topic-drift");
 // ── State types ───────────────────────────────────────────────────────────────
 
 interface DriftState {
-  /** The original request text (used by critics directly — no token extraction needed). */
+  /** The original request text (used by critics directly - no token extraction needed). */
   originalRequest: string;
   /** History of drift checks for observability. */
   driftHistory: DriftRecord[];
@@ -150,7 +150,7 @@ async function detectDriftWithCritics(
 /**
  * Legacy synchronous detectTopicDrift signature.
  *
- * Preserved for backward compatibility — uses heuristic defaults when
+ * Preserved for backward compatibility - uses heuristic defaults when
  * called without an ExtensionContext. Prefer the async critic-based
  * detection in event handlers where ctx is available.
  *
@@ -188,7 +188,7 @@ export function detectTopicDrift(
 
 /**
  * Reset drift state with a new request.
- * Stores the raw request text (no token extraction — critics use it directly).
+ * Stores the raw request text (no token extraction - critics use it directly).
  */
 export function resetAnchors(state: DriftState, newRequest: string): void {
   state.originalRequest = newRequest;

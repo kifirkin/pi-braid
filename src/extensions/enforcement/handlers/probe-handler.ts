@@ -42,7 +42,7 @@ const COMPLEXITY_THRESHOLDS = {
   COMPLEX: 7,
 };
 
-/** Fast heuristic — classify command type without LLM. */
+/** Fast heuristic - classify command type without LLM. */
 function classifyCommandTypeHeuristic(cmd: string): string {
   if (/\|\s*grep|\|\s*awk|\|\s*sed/.test(cmd) && !/npm|yarn|pnpm|xargs/.test(cmd)) return "pipeline";
   if (/for|while|\$\(/.test(cmd)) return "loop";
@@ -134,7 +134,7 @@ export function checkComplexityMismatch(
 
 /**
  * Classify command type using LLM judge with heuristic fallback.
- * Opt-in async — callers without ctx get heuristic only.
+ * Opt-in async - callers without ctx get heuristic only.
  */
 export async function classifyCommandType(
   cmd: string,

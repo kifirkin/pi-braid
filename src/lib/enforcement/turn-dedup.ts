@@ -3,7 +3,7 @@
  *
  * Multiple subsystems (BPE, dreamer, mars, drift, turn-outcome) all fire
  * `sendTrackedMessage` on `turn_end`. Without coordination, a single degraded
- * turn can produce 4–5 simultaneous steers, each nudging the agent in a
+ * turn can produce 4-5 simultaneous steers, each nudging the agent in a
  * slightly different direction. The agent is forced to triage noise rather
  * than act.
  *
@@ -12,7 +12,7 @@
  * second is rejected. The registry is cleared at the start of each new turn
  * (the `input` event) so the same warning can fire again on a future turn.
  *
- * Categories — handlers in the same category deduplicate against each other.
+ * Categories - handlers in the same category deduplicate against each other.
  * Different categories are independent. Default is `"default"`:
  *
  *   "loop"      : dreamer, turn-outcome (loop detection)
@@ -65,7 +65,7 @@ export type WhisperPriority = "critical" | "high" | "medium" | "low";
  * can still produce a "[Heartbeat Summary]" (counts as 1).
  */
 export const WHISPER_CAPS: Record<WhisperPriority, number> = {
-  critical: 5, // generous — tool-safety, auto-singleton, auto-recovery
+  critical: 5, // generous - tool-safety, auto-singleton, auto-recovery
   high: 3, // enforcement critical, compaction-retry exhausted
   medium: 2, // analytics, context 80%+, navigation
   low: 1, // hints, suggestions, dreams (filtered)
@@ -91,7 +91,7 @@ let _state: DedupState = {
 
 /**
  * Bump the turn counter and clear all claims. Call this from the `input`
- * event handler — it represents the start of a new assistant turn.
+ * event handler - it represents the start of a new assistant turn.
  */
 export function beginTurn(): void {
   _state.currentTurn += 1;
@@ -107,12 +107,12 @@ export function beginTurn(): void {
  * `false` if a different type in the same category already claimed this turn
  * (caller should suppress).
  *
- * Calling `tryClaim` twice for the same `type` always returns `true` — the
+ * Calling `tryClaim` twice for the same `type` always returns `true` - the
  * first claim is idempotent for the same type.
  */
 export function tryClaim(type: string, category: string = "default"): boolean {
   const state = getState();
-  // Drop stale claims from previous turns (defensive — beginTurn() should
+  // Drop stale claims from previous turns (defensive - beginTurn() should
   // have already cleared these).
   state.claims = state.claims.filter((c) => c.claimedAt > 0);
 
@@ -134,7 +134,7 @@ export function tryClaim(type: string, category: string = "default"): boolean {
 }
 
 /**
- * Reset dedup state — primarily for tests.
+ * Reset dedup state - primarily for tests.
  */
 export function _resetForTests(): void {
   _state = {

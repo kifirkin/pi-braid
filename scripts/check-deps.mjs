@@ -19,15 +19,15 @@ const ROOT = new URL("..", import.meta.url).pathname;
 // ── Layer Configuration ────────────────────────────────────────────────────
 //
 // Layer model:
-//   lib/        — Foundation. Depends only on itself and npm packages.
-//   extensions/ — Pi extensions. Each subdirectory is an isolated module.
+//   lib/        - Foundation. Depends only on itself and npm packages.
+//   extensions/ - Pi extensions. Each subdirectory is an isolated module.
 //                 Can depend on lib/ and npm, but NOT on other extensions.
-//   loader/     — Runtime extension loader and subagent API. Can depend
+//   loader/     - Runtime extension loader and subagent API. Can depend
 //                 on lib/, extensions/ (to load them), and npm.
-//   types/      — Type declarations. Depends only on npm.
-//   root (src/) — Entry point. Can import anything.
+//   types/      - Type declarations. Depends only on npm.
+//   root (src/) - Entry point. Can import anything.
 //
-// manifest.ts is exempted — it's the extension registration orchestrator
+// manifest.ts is exempted - it's the extension registration orchestrator
 // that legitimately references all extension subdirectories.
 
 const LAYER_RULES = {
@@ -94,16 +94,16 @@ function getFileLayer(absPath) {
  * Check whether importing from `source` to `target` is allowed by layer rules.
  */
 function isLayerAllowed(sourceLayer, sourceGroup, targetLayer, targetGroup) {
-  // Same layer (and same group for ext) — always allowed
+  // Same layer (and same group for ext) - always allowed
   if (sourceLayer === targetLayer) {
     if (sourceLayer === "ext" && sourceGroup !== targetGroup) {
-      // Cross-extension import — not allowed
+      // Cross-extension import - not allowed
       return false;
     }
     return true;
   }
 
-  // Neither layer has specific rules — allow
+  // Neither layer has specific rules - allow
   const rule = LAYER_RULES[sourceLayer];
   if (!rule) return true;
 
@@ -134,7 +134,7 @@ function resolveImport(sourceFile, importPath) {
   const base = dirname(sourceFile);
   let abs = resolve(base, importPath);
 
-  // TypeScript resolves `.js` imports to `.ts` in source — strip `.js` first
+  // TypeScript resolves `.js` imports to `.ts` in source - strip `.js` first
   if (abs.endsWith(".js")) {
     try {
       if (statSync(abs).isFile()) return abs;
@@ -203,10 +203,10 @@ for (const f of TS_FILES) {
     const line = lines[lineIndex];
     if (lineCommentPattern.test(line) || /^\s*\*/.test(line)) continue;
 
-    // Non-relative imports (npm packages) — always allowed
+    // Non-relative imports (npm packages) - always allowed
     if (!raw.startsWith(".") && !raw.startsWith("/")) continue;
 
-    // Exempt manifest.ts from boundary checks — it's the extension registry
+    // Exempt manifest.ts from boundary checks - it's the extension registry
     const isManifest = relPath === "src/extensions/manifest.ts";
 
     const resolved = resolveImport(f, raw);
@@ -248,7 +248,7 @@ for (const f of TEST_FILES) {
   const rel = relative(ROOT, f);
   const content = readFileSync(f, "utf-8");
 
-  // Skip lines that look like test assertions — they contain test data strings,
+  // Skip lines that look like test assertions - they contain test data strings,
   // not deliberate source file references. Only flag lines that use
   // readFileSync or import-based patterns.
   const lines = content.split("\n");
@@ -382,7 +382,7 @@ for (const dup of toolDups) {
   });
 }
 
-// Null-op just to track counts; no gate failures — this is advisory
+// Null-op just to track counts; no gate failures - this is advisory
 // but can be escalated to warnings later.
 // Tracked in `issuesStale` so they appear in output.
 for (const [name, info] of toolNames) {
@@ -399,7 +399,7 @@ for (const [name, info] of toolNames) {
 const allIssues = [...issuesMissing, ...issuesBoundary, ...issuesStale];
 
 if (allIssues.length === 0) {
-  console.log(`✅ Dependency check clean — ${TS_FILES.length} source files, ${TEST_FILES.length} test files`);
+  console.log(`✅ Dependency check clean - ${TS_FILES.length} source files, ${TEST_FILES.length} test files`);
   process.exit(0);
 }
 

@@ -1,5 +1,5 @@
 /**
- * dreamer-handler — Dreamer prediction advice dispatch on turn_end.
+ * dreamer-handler - Dreamer prediction advice dispatch on turn_end.
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";

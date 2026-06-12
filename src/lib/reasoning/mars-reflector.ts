@@ -3,9 +3,9 @@
  *
  * Analyzes agent tool usage patterns over a session and generates heuristic
  * advice when a tool is used disproportionately or errors recur.
- * Not based on any specific paper — simple statistical thresholding.
+ * Not based on any specific paper - simple statistical thresholding.
  *
- * Trigger: adaptive (not fixed N turns) — check on every turn_end.
+ * Trigger: adaptive (not fixed N turns) - check on every turn_end.
  * Only whispers if actionable advice exists.
  */
 

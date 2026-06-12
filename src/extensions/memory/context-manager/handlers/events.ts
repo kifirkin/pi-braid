@@ -206,7 +206,7 @@ export function registerContextPruningHandler(pi: ExtensionAPI): void {
 
         // Determine compression level (Experience Compression Spectrum)
         const decision = await determineCompressionLevel(ctx as ExtensionContext, {
-          // ExtensionContext has no turnCount — use message count as proxy
+          // ExtensionContext has no turnCount - use message count as proxy
           turnCount: Math.round(beforeCount / 2),
           turnsSinceCompression: pruningState.turnsSinceCompression ?? Infinity,
           consecutiveFailures: pruningState.consecutiveFailures ?? 0,
@@ -216,7 +216,7 @@ export function registerContextPruningHandler(pi: ExtensionAPI): void {
         });
         if (decision.estimatedSavings > 0) {
           log.info(
-            `context: compression ${decision.level} (${decision.trigger}) — ${decision.reason}`,
+            `context: compression ${decision.level} (${decision.trigger}) - ${decision.reason}`,
           );
         }
 
@@ -247,7 +247,7 @@ export function registerContextPruningHandler(pi: ExtensionAPI): void {
           );
           if (blocks.length > 0) {
             log.info(
-              `context: ${blocks.length} reasoning block(s) found — medium-term compression opportunity`,
+              `context: ${blocks.length} reasoning block(s) found - medium-term compression opportunity`,
             );
             for (const block of blocks) {
               // Tier 2: Confirm with utility model before summarization
@@ -280,7 +280,7 @@ export function registerContextPruningHandler(pi: ExtensionAPI): void {
                   ["reasoning-chain"],
                 );
               } catch {
-                // Non-fatal — three-memory-stores may not be available
+                // Non-fatal - three-memory-stores may not be available
               }
             }
             if (pruningState)
@@ -345,13 +345,13 @@ export function registerContextPruningHandler(pi: ExtensionAPI): void {
 // ── Retry trigger helpers (for agent_end) ─────────────────────────────────────
 // These helpers are kept for backward compatibility but now simply update status.
 // Actual compaction retries are handled by compaction.ts via ctx.compact() calls.
-// No more triggerTurn:true hidden turns — they caused context bloat.
+// No more triggerTurn:true hidden turns - they caused context bloat.
 function triggerCompactionRetryFromAgentEnd(
   _pi: ExtensionAPI,
   _attempt: number,
   _errorMessage: string,
 ): void {
-  // Intentionally empty — compaction.ts handles retries via ctx.compact()
+  // Intentionally empty - compaction.ts handles retries via ctx.compact()
   // The agent_end handler just updates the retry counter above
   log.debug("[Compaction] agent_end retry signal received, compaction.ts handles actual retry");
 }
@@ -362,6 +362,6 @@ function triggerOverflowRetryFromAgentEnd(
   _errorMessage: string,
   _ctx: any,
 ): void {
-  // Intentionally empty — compaction.ts handles retries via ctx.compact()
+  // Intentionally empty - compaction.ts handles retries via ctx.compact()
   log.debug("[Overflow] agent_end overflow signal received, compaction.ts handles actual retry");
 }

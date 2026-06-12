@@ -1,5 +1,5 @@
 /**
- * Turn End Handler — main enforcement loop.
+ * Turn End Handler - main enforcement loop.
  *
  * Fires on turn_end: error burst detection, context overflow, redundancy,
  * critical signals, orphan chain detection, claim tracking, L2 signal bundling.
@@ -200,7 +200,7 @@ export async function dispatchTurnEndLoop(
     getState(ctx).nudgeSuppressedCount = (getState(ctx).nudgeSuppressedCount || 0) + 1;
     recordNudgeSuppressed(ctx);
     if (getState(ctx).nudgeSuppressedCount === 1) {
-      log.debug("Nudge suppression active — L2 signals will be collected but not delivered");
+      log.debug("Nudge suppression active - L2 signals will be collected but not delivered");
     }
   }
 
@@ -226,7 +226,7 @@ export async function dispatchTurnEndLoop(
     );
   }
 
-  // Scratchpad signal — widened: fires on (a) write/edit without scratchpad,
+  // Scratchpad signal - widened: fires on (a) write/edit without scratchpad,
   // or (b) complex turn (3+ tools) without scratchpad
   const madeFileChanges = actualTools.some((t: string) => ["edit", "write"].includes(t));
   const isComplexTurn = actualTools.length >= 3;
@@ -242,7 +242,7 @@ export async function dispatchTurnEndLoop(
     }
   }
 
-  // Think tool enforcement — widened: fires on (a) no think ever called by turn 5,
+  // Think tool enforcement - widened: fires on (a) no think ever called by turn 5,
   // or (b) high-stakes actions (edit/write/finalize) without prior think this session
   const madeHighStakesAction = actualTools.some((t: string) =>
     ["edit", "write", "finalize"].includes(t),
@@ -255,7 +255,7 @@ export async function dispatchTurnEndLoop(
     sessionSignals.push(
       madeHighStakesAction
         ? `High-stakes action without prior think(). Consider think(observation, decision, reason) before the next change.`
-        : `${getState(ctx).currentTurn} turns without think() — consider think(observation, decision, reason) to track reasoning`,
+        : `${getState(ctx).currentTurn} turns without think() - consider think(observation, decision, reason) to track reasoning`,
     );
   }
 

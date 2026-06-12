@@ -1,5 +1,5 @@
 /**
- * Verify Tool — Recursive Verification Loop for Metacognition
+ * Verify Tool - Recursive Verification Loop for Metacognition
  *
  * Validates code, reasoning, plans, or tool results before finalization.
  * Research: docs/research/braid-loop-research.md (Improvement 1: Agentic Verifier)
@@ -94,7 +94,7 @@ const DEFAULT_CRITERIA: Record<VerificationTarget, string[]> = {
 function autoDetectTarget(
   ctx: ExtensionContext,
 ): { target: VerificationTarget; text: string } | null {
-  // Use getBranch() — getCurrentSession() does not exist on SessionManager
+  // Use getBranch() - getCurrentSession() does not exist on SessionManager
   const entries = ctx.sessionManager?.getBranch();
   if (!entries || entries.length === 0) return null;
 
@@ -137,7 +137,7 @@ function autoDetectTarget(
  * Tier 1 fallback (no LLM available) for verify() at 'quick' depth.
  *
  * Only the deterministic, low-false-positive code-safety checks are kept
- * here — TODO/FIXME markers, eval(), innerHTML assignment, and the
+ * here - TODO/FIXME markers, eval(), innerHTML assignment, and the
  * misleading `delete obj, {...}` comma syntax. Everything else (brace
  * balance, claim ratios, plan step ordering, placeholder text) was
  * removed because it produced too many false positives on real-world
@@ -156,10 +156,10 @@ export function heuristicCheck(
     checksRun.push("safety-patterns");
     if (/\b(TODO|FIXME|HACK|XXX)\b/.test(text))
       issues.push("Contains unresolved TODO/FIXME markers");
-    if (/\beval\s*\(/.test(text)) issues.push("Use of eval() detected — security risk");
-    if (/\.innerHTML\s*=/.test(text)) issues.push("Direct innerHTML assignment — XSS risk");
+    if (/\beval\s*\(/.test(text)) issues.push("Use of eval() detected - security risk");
+    if (/\.innerHTML\s*=/.test(text)) issues.push("Direct innerHTML assignment - XSS risk");
     if (/delete\s+\w+\s*,\s*{/.test(text))
-      issues.push("Delete with comma syntax — may be unintended");
+      issues.push("Delete with comma syntax - may be unintended");
   }
   // Other targets: no heuristic checks. The LLM tier is responsible.
 
@@ -209,7 +209,7 @@ Do not invent problems that are not supported by the text.`;
   try {
     const utilModel = resolveUtilityModel(ctx);
     if (!ctx.model && !utilModel) {
-      // Model unavailable — cannot run LLM verification. Return neutral confidence
+      // Model unavailable - cannot run LLM verification. Return neutral confidence
       // so the caller's heuristic confidence is not dragged down.
       return {
         issues: [],
@@ -249,7 +249,7 @@ Do not invent problems that are not supported by the text.`;
     };
   } catch (err) {
     log.debug(`verify: LLM call failed: ${err}`);
-    // LLM verification failed — return neutral values so the caller's heuristic
+    // LLM verification failed - return neutral values so the caller's heuristic
     // confidence is not penalized. The caller will keep heuristic confidence.
     return {
       issues: [],
@@ -270,7 +270,7 @@ function getVerifyState(ctx: ExtensionContext): VerifyState {
   }));
 }
 
-/** Export for use by finalize handler — checks if recent verification passed. */
+/** Export for use by finalize handler - checks if recent verification passed. */
 export function getLastVerification(ctx: ExtensionContext): VerificationRecord | null {
   return getVerifyState(ctx).lastVerification;
 }

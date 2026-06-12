@@ -1,4 +1,4 @@
-# src/lib/utils/ — Utility Functions
+# src/lib/utils/ - Utility Functions
 
 Misc utilities that don't fit a more specific subdir.
 
@@ -16,5 +16,5 @@ Misc utilities that don't fit a more specific subdir.
 
 ## Local Contracts
 
-- **`injection-tracker.ts` is the canonical chokepoint for sending messages to the agent.** Don't use `pi.sendMessage` directly — use `sendTrackedMessage` so whispers get capped and tracked.
+- **`injection-tracker.ts` is the canonical chokepoint for sending messages to the agent.** Don't use `pi.sendMessage` directly - use `sendTrackedMessage` so whispers get capped and tracked.
 - See `extensions/enforcement/whisper.ts` for the pattern.

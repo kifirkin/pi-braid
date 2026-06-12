@@ -10,7 +10,7 @@
  * high signal is better than a 10-message context with mostly boilerplate.
  *
  * Density evaluation uses a two-tier approach:
- *   Tier 1 (default): Fast heuristic — token counting + sample-based LLM judge
+ *   Tier 1 (default): Fast heuristic - token counting + sample-based LLM judge
  *   Tier 2 (opt-in): Full LLM judge via contextDensity critic for holistic assessment
  */
 
@@ -197,7 +197,7 @@ export async function evaluateContextDensityWithJudge(
 
     return { ...base, judgeLabel };
   } catch {
-    // LLM unavailable — return base heuristic result
+    // LLM unavailable - return base heuristic result
     return base;
   }
 }
@@ -207,9 +207,9 @@ export async function evaluateContextDensityWithJudge(
 /**
  * Recommend a compression strategy based on context density.
  *
- * Low density (< 0.4):     Aggressive pruning — remove noise, keep signal
- * Medium density (0.4-0.7): Semantic compression — summarize without losing meaning
- * High density (> 0.7):     Conservative — only compress if context is large
+ * Low density (< 0.4):     Aggressive pruning - remove noise, keep signal
+ * Medium density (0.4-0.7): Semantic compression - summarize without losing meaning
+ * High density (> 0.7):     Conservative - only compress if context is large
  */
 export function recommendCompressionStrategy(density: DensityResult): CompressionStrategy {
   // If LLM judge says LOW density, escalate

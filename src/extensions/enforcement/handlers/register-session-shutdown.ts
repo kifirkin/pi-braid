@@ -1,5 +1,5 @@
 /**
- * register-session-shutdown — State cleanup on session end.
+ * register-session-shutdown - State cleanup on session end.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";

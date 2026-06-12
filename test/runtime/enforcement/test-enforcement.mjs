@@ -1,5 +1,5 @@
 /**
- * Enforcement Extension Tests — validates sub-modules extracted from the
+ * Enforcement Extension Tests - validates sub-modules extracted from the
  * 1268L monolithic index.ts.
  *
  * Covers: similarity.ts, signals.ts, handler-registry.ts registration pattern.
@@ -29,7 +29,7 @@ function test(name, fn) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// [1] similarity.ts — knownFiles map
+// [1] similarity.ts - knownFiles map
 // ═══════════════════════════════════════════════════════════════════════
 
 console.log("\n[1] similarity.ts");
@@ -47,7 +47,7 @@ console.log("\n[1] similarity.ts");
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// [2] signals.ts — enforcement signals
+// [2] signals.ts - enforcement signals
 // ═══════════════════════════════════════════════════════════════════════
 
 console.log("\n[2] signals.ts");
@@ -65,7 +65,7 @@ console.log("\n[2] signals.ts");
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// [3] handler-registry.ts — registration metadata + extracted helpers
+// [3] handler-registry.ts - registration metadata + extracted helpers
 // ═══════════════════════════════════════════════════════════════════════
 
 console.log("\n[3] handler-registry.ts");
@@ -77,7 +77,7 @@ console.log("\n[3] handler-registry.ts");
   test("handler-registry.ts is now thin (< 220 lines)", () => {
     // Threshold raised from 210 to 220 when the turn-dedup beginTurn() hook
     // was added to the input event handler. The extra ~8 lines are
-    // load-bearing — they wire the dedup registry lifecycle.
+    // load-bearing - they wire the dedup registry lifecycle.
     assert.ok(lines <= 220, `expected <= 220 lines, got ${lines}`);
   });
 
@@ -110,7 +110,7 @@ console.log("\n[3] handler-registry.ts");
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// [4] Extracted handler files — helpers in the right places
+// [4] Extracted handler files - helpers in the right places
 // ═══════════════════════════════════════════════════════════════════════
 
 console.log("\n[4] Extracted handler files");
@@ -130,10 +130,10 @@ console.log("\n[4] Extracted handler files");
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// [5] index.ts — thin wrapper verification
+// [5] index.ts - thin wrapper verification
 // ═══════════════════════════════════════════════════════════════════════
 
-console.log("\n[5] index.ts — thin wrapper");
+console.log("\n[5] index.ts - thin wrapper");
 
 {
   const src = readFileSync(join(ROOT, "src/extensions/enforcement/index.ts"), "utf-8");
@@ -159,7 +159,7 @@ console.log("\n[5] index.ts — thin wrapper");
 // imports in enforcement directory are fully eliminated (0 remaining).
 // ═══════════════════════════════════════════════════════════════════════
 
-console.log("\n[6] Static import verification (Phase 3.3 — dynamic imports eliminated)");
+console.log("\n[6] Static import verification (Phase 3.3 - dynamic imports eliminated)");
 
 {
   const driftSrc = readFileSync(join(ROOT, "src/extensions/enforcement/handlers/analysis/drift-handler.ts"), "utf-8");

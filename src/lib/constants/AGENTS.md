@@ -1,6 +1,6 @@
-# src/lib/constants/ — Project-wide Constants
+# src/lib/constants/ - Project-wide Constants
 
-Shared constants and enums. Keep this dir minimal — most constants should
+Shared constants and enums. Keep this dir minimal - most constants should
 live with the code that uses them.
 
 ## When to add a constant here

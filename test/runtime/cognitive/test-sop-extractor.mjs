@@ -1,5 +1,5 @@
 /**
- * Test: SOP Extractor — trajectory → structured SOP conversion.
+ * Test: SOP Extractor - trajectory → structured SOP conversion.
  *
  * Runtime tests importing from dist/lib/utils/sop-extractor.js.
  *

@@ -5,7 +5,7 @@
  * getExtensionState() because they span separate extension contexts.
  *
  * Previously used globalThis symbols for cross-bundle safety, but pi
- * runs all extensions in a single process — plain module-level state
+ * runs all extensions in a single process - plain module-level state
  * is simpler, faster, and equally correct.
  *
  * IMPORTANT: These should only be used when module-level state won't work.

@@ -4,12 +4,12 @@
  * Registers commands that a researcher subagent can call during benchmarks
  * to enable/disable extensions (or module groups) and query their state:
  *
- *   modules-enable <id>      — Enable an extension or module group
- *   modules-disable <id>     — Disable an extension or module group
- *   modules-toggle <id>      — Toggle an extension or module group
- *   modules-list             — Show all extensions and their state
- *   modules-status           — Show current session extension state
- *   modules-reset            — Reset all runtime overrides
+ *   modules-enable <id>      - Enable an extension or module group
+ *   modules-disable <id>     - Disable an extension or module group
+ *   modules-toggle <id>      - Toggle an extension or module group
+ *   modules-list             - Show all extensions and their state
+ *   modules-status           - Show current session extension state
+ *   modules-reset            - Reset all runtime overrides
  *
  * Reference targets can be individual extension IDs (e.g. "enforcement")
  * or module group names (e.g. "memory" expands to all memory extensions).
@@ -64,7 +64,7 @@ export default async function modulesApiExtension(pi: ExtensionAPI): Promise<voi
       ctx.ui.notify?.(
         ok
           ? `"${name}" disabled (next session).`
-          : `Cannot disable "${name}" — it may be a core extension.`,
+          : `Cannot disable "${name}" - it may be a core extension.`,
         ok ? "info" : "error",
       );
     },
@@ -95,7 +95,7 @@ export default async function modulesApiExtension(pi: ExtensionAPI): Promise<voi
       const source = Object.values(states)[0]?.source ?? "?";
       lines.push(`Extensions (config: ${source}):`);
       for (const [id, info] of Object.entries(states)) {
-        const status = info.enabled ? (info.loaded ? "●" : "○ pending") : "— disabled";
+        const status = info.enabled ? (info.loaded ? "●" : "○ pending") : "- disabled";
         lines.push(`  ${status.padEnd(12)} ${id}`);
         lines.push(`                 ${info.desc}`);
       }
@@ -119,7 +119,7 @@ export default async function modulesApiExtension(pi: ExtensionAPI): Promise<voi
           ` (config: ${Object.values(states)[0]?.source ?? "?"})`,
       ];
       for (const [id, info] of Object.entries(states)) {
-        const status = info.enabled ? (info.loaded ? "●" : "○ pending") : "— disabled";
+        const status = info.enabled ? (info.loaded ? "●" : "○ pending") : "- disabled";
         lines.push(`  ${status.padEnd(12)} ${id}`);
       }
       ctx.ui.notify?.(lines.join("\n"), "info");

@@ -1,5 +1,5 @@
 /**
- * Enforcement Signals — shared L1 signal state for prompt-builder.
+ * Enforcement Signals - shared L1 signal state for prompt-builder.
  *
  * enforcementSignals is a writable object - prompt-builder reads it directly
  * (same process, no IPC needed). Turn-keyed so stale signals are dropped

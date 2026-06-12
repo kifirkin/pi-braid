@@ -1,4 +1,4 @@
-# src/extensions/memory/workspace-snapshot/ — File State Time-Travel
+# src/extensions/memory/workspace-snapshot/ - File State Time-Travel
 
 Captures and restores file states for safe time-travel experimentation. The
 agent can snapshot a directory, make changes, and roll back if things go wrong.
@@ -11,7 +11,7 @@ agent can snapshot a directory, make changes, and roll back if things go wrong.
 
 ## Why "memory/" and not "core/" or "tools/"
 
-- It's a state-management tool (saves/restores file states) — fits the memory theme
-- It's not infrastructure other extensions depend on — doesn't fit core/
-- It's not time-based — doesn't fit scheduling/
-- The captures themselves are persistent state — fits the "remembering" theme
+- It's a state-management tool (saves/restores file states) - fits the memory theme
+- It's not infrastructure other extensions depend on - doesn't fit core/
+- It's not time-based - doesn't fit scheduling/
+- The captures themselves are persistent state - fits the "remembering" theme

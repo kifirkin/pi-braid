@@ -1,5 +1,5 @@
 /**
- * BM2 Test Templates — test files that validate agent-written code.
+ * BM2 Test Templates - test files that validate agent-written code.
  *
  * Each test: requires the agent's module, runs assertions,
  * prints "passed"/"failed" for each test.

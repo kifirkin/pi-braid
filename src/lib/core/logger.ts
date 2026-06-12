@@ -1,5 +1,5 @@
 /**
- * Logger — Unified logging for pi-braid extensions
+ * Logger - Unified logging for pi-braid extensions
  *
  * Respects the pi Extension API:
  * - No ctx available (load time, lib code) → plain console
@@ -12,7 +12,7 @@
  *   log.info("Progress update");
  *
  * All output goes to console (warn/error) and in-memory buffer. Removed:
- * bindContext/unbindContext/hasContext — the context stack added complexity
+ * bindContext/unbindContext/hasContext - the context stack added complexity
  * for a single caller. Errors remain visible in console + log buffer.
  */
 
@@ -91,7 +91,7 @@ function formatConsole(entry: LogEntry): string {
   return `${ts} ${formatLevel(entry.level)} [${entry.source}] ${entry.message}${formatData(entry.data)}`;
 }
 
-// formatNotify removed — only used by the removed writeToUI function.
+// formatNotify removed - only used by the removed writeToUI function.
 
 // ── Core sink ──────────────────────────────────────────────────────────────
 
@@ -105,12 +105,12 @@ function writeToConsole(entry: LogEntry): void {
       console.error(line);
       break;
     default:
-      // warn/info/debug: no raw console output — only ui.notify for warn/error
+      // warn/info/debug: no raw console output - only ui.notify for warn/error
       break;
   }
 }
 
-// writeToUI removed — no longer needed after removing the context stack.
+// writeToUI removed - no longer needed after removing the context stack.
 // All output routes through console + in-memory buffer.
 
 function addToBuffer(entry: LogEntry): void {
@@ -175,7 +175,7 @@ const _loggers = new Map<string, Logger>();
 /**
  * Create (or retrieve) a named logger.
  *
- * Loggers are cached by name — calling createLogger("foo") twice returns the
+ * Loggers are cached by name - calling createLogger("foo") twice returns the
  * same instance. This lets lib/ code and extension code share a logger.
  */
 export function createLogger(source: string): Logger {

@@ -14,7 +14,7 @@ const log = createLogger("latent-activator");
  * Key insight: Models have INERTIA - persistent biases. Framework works WITH biases.
  *
  * Safety bounds on the `behavior` tool:
- * - **Session reset:** every new session starts with `["planner", "executor"]` —
+ * - **Session reset:** every new session starts with `["planner", "executor"]` -
  *   behaviors never leak across sessions.
  * - **Active cap:** max 5 behaviors active at once. Activation beyond the cap is
  *   refused with a clear error; the agent must deactivate first (or use
@@ -91,7 +91,7 @@ const LATENT_SIGNALS: Record<
 > = {
   meticulous: {
     activation: [
-      "you are meticulous — you notice the small things that matter",
+      "you are meticulous - you notice the small things that matter",
       "find the subtle issue",
       "spot the edge case",
     ],
@@ -110,7 +110,7 @@ const LATENT_SIGNALS: Record<
   },
   debugger: {
     activation: [
-      "you are a debugger — you trace problems to their source",
+      "you are a debugger - you trace problems to their source",
       "why is this broken",
       "investigate the failure",
     ],
@@ -134,7 +134,7 @@ const LATENT_SIGNALS: Record<
   },
   planner: {
     activation: [
-      "you are a planner — you think step by step toward the correct path",
+      "you are a planner - you think step by step toward the correct path",
       "what's the trajectory",
       "find the correct path",
     ],
@@ -158,7 +158,7 @@ const LATENT_SIGNALS: Record<
   },
   catalyst: {
     activation: [
-      "you are a catalyst — you break deadlocks and move things forward",
+      "you are a catalyst - you break deadlocks and move things forward",
       "move forward",
       "unblock this",
     ],
@@ -172,7 +172,7 @@ const LATENT_SIGNALS: Record<
   },
   guardian: {
     activation: [
-      "you are a guardian — you protect against what could go wrong",
+      "you are a guardian - you protect against what could go wrong",
       "prevent the bug",
       "safety check",
     ],

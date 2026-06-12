@@ -1,5 +1,5 @@
 /**
- * Scoring — quality and safety scoring for benchmark tasks.
+ * Scoring - quality and safety scoring for benchmark tasks.
  *
  * BM2 Code Quality: 50% code style (comments, modern JS, exports, no anti-patterns)
  *                   50% tests passing (require + assert, counts "passed" in output)
@@ -22,7 +22,7 @@ import { join } from 'path';
 
 /**
  * Extract JavaScript code blocks from agent's markdown text response.
- * The agent writes code inside ```js...``` blocks — but there may be multiple
+ * The agent writes code inside ```js...``` blocks - but there may be multiple
  * blocks (implementation + test scripts). We pick the block that contains
  * the actual function/class definition (heuristic: has function/class keyword
  * or the expected filename keyword).

@@ -1,4 +1,4 @@
-# src/ — Top-Level Architecture
+# src/ - Top-Level Architecture
 
 The pi-braid codebase is organized into four top-level directories, each
 with a distinct role.
@@ -30,21 +30,21 @@ The flat tree keeps the layout predictable and makes `find src/extensions/...` r
 
 Some extensions are large enough to have their own sub-structure:
 
-- `extensions/memory/` — 7 sub-extensions (context-lifecycle, context-manager, memory-agent-bridge, scratchpad, session-recall, three-memory-stores, workspace-snapshot)
-- `extensions/cognitive/` — 6 sub-extensions (metacognition, reasoning, sycophancy-detector, tool-safety, topic-drift, turn-outcome)
-- `extensions/core/` — 4 sub-extensions (polyfill, agent-environment, prompt-builder, input-polisher)
-- `extensions/self/` — 5 sub-extensions (health-maintenance, error-tracking, watchdog, auto-recovery, latent-activator)
-- `extensions/scheduling/` — 2 sub-extensions (timer, auto-singleton)
-- `extensions/heartbeat/` — 2 sub-extensions (heartbeat-scheduler, analytics)
-- `extensions/enforcement/` — 1 root + 3 private sub-dirs (detection, handlers, substate)
+- `extensions/memory/` - 7 sub-extensions (context-lifecycle, context-manager, memory-agent-bridge, scratchpad, session-recall, three-memory-stores, workspace-snapshot)
+- `extensions/cognitive/` - 6 sub-extensions (metacognition, reasoning, sycophancy-detector, tool-safety, topic-drift, turn-outcome)
+- `extensions/core/` - 4 sub-extensions (polyfill, agent-environment, prompt-builder, input-polisher)
+- `extensions/self/` - 5 sub-extensions (health-maintenance, error-tracking, watchdog, auto-recovery, latent-activator)
+- `extensions/scheduling/` - 2 sub-extensions (timer, auto-singleton)
+- `extensions/heartbeat/` - 2 sub-extensions (heartbeat-scheduler, analytics)
+- `extensions/enforcement/` - 1 root + 3 private sub-dirs (detection, handlers, substate)
 
 A sub-extension follows the same pattern: a subdir with `index.ts`.
 
 ## See also
 
-- `extensions/AGENTS.md` — not present; each extension subdir has its own AGENTS.md
-- `lib/AGENTS.md` — index of all `lib/` subdirs
-- `../AGENTS.md` (root) — build, test, extension loading
+- `extensions/AGENTS.md` - not present; each extension subdir has its own AGENTS.md
+- `lib/AGENTS.md` - index of all `lib/` subdirs
+- `../AGENTS.md` (root) - build, test, extension loading
 
 ## Top-level extension layout (agent-loop model)
 

@@ -1,5 +1,5 @@
 /**
- * Cognitive Memory — type definitions.
+ * Cognitive Memory - type definitions.
  */
 
 // Unified memory categories

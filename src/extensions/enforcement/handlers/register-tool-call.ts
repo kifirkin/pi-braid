@@ -1,5 +1,5 @@
 /**
- * register-tool-call — Tool usage tracking + blocking enforcement.
+ * register-tool-call - Tool usage tracking + blocking enforcement.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";

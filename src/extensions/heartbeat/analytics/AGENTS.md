@@ -21,12 +21,12 @@ and emits alerts on degradation/anomaly.
 - **Tool sequences**: which tools tend to be called together (used by SOP suggestion)
 - **Session metrics**: turn count, total tokens, error rate
 - **A/B variants**: which experimental branch a session is on (set via
-  `set_ab_variant` — note: that tool was removed in the 0.3.0 audit; A/B
+  `set_ab_variant` - note: that tool was removed in the 0.3.0 audit; A/B
   state is now set via `behavior` action=activate)
 
 ## Tools exposed
 
-_(None — both `get_session_metrics` and `get_tool_reliability` removed in
+_(None - both `get_session_metrics` and `get_tool_reliability` removed in
 2026-06 tool-inventory audit. They were passive observability with no
 internal consumers. Background tracking and the `analytics:all` slash
 command remain.)_

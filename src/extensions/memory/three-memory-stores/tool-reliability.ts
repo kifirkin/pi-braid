@@ -1,5 +1,5 @@
 /**
- * Tool Reliability Controller — per-tool trustworthiness tracking.
+ * Tool Reliability Controller - per-tool trustworthiness tracking.
  *
  * Paper: 2604.14475 Evo-MedAgent
  * Tracks attempt/success counts per tool+task type. Used for tool selection.

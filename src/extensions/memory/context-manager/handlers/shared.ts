@@ -287,7 +287,7 @@ export function buildContinuationSummary(ctx: ExtensionContext): string {
 }
 
 /**
- * Emergency rotation trigger — called when context overflow is imminent.
+ * Emergency rotation trigger - called when context overflow is imminent.
  */
 export function triggerEmergencyRotation(pi: ExtensionAPI, ctx: ExtensionContext): void {
   try {

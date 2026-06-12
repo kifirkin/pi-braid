@@ -1,5 +1,5 @@
 /**
- * Tool Tracking State — tool usage, edit tracking, calibration.
+ * Tool Tracking State - tool usage, edit tracking, calibration.
  *
  * Owns: tool usage tracking, edit/change tracking, confidence calibration,
  *       explore/think patterns.
@@ -20,7 +20,7 @@ export interface CalibrationPair {
 
 export interface ToolTrackingState {
   totalToolCalls: number;
-  /** Tool call count at last BPE recommendation — used for progress tracking across turns. */
+  /** Tool call count at last BPE recommendation - used for progress tracking across turns. */
   toolCallsAtLastRecommendation: number;
   uniqueToolsUsed: Set<string>;
   toolChain: ToolChainState;

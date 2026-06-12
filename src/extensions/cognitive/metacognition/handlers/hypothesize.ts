@@ -76,7 +76,7 @@ For each hypothesis:
 5. How to fix it (proper solution, not a workaround)
 
 ${formatLine}
-You aim for proper, well-designed solutions — not quick patches or workarounds.${verificationSection}`;
+You aim for proper, well-designed solutions - not quick patches or workarounds.${verificationSection}`;
 }
 
 export function createHypothesizeTool(): ToolDefinition<any, any, any> {
@@ -131,7 +131,7 @@ export function createHypothesizeTool(): ToolDefinition<any, any, any> {
               text: `🔍 **Problem**: ${problem.slice(0, 200)}${problem.length > 200 ? "..." : ""}\n\n` +
                 (evidence ? `**Evidence**: ${evidence.slice(0, 200)}${evidence.length > 200 ? "..." : ""}\n\n` : "") +
                 `**Gate decision**: ${gate.message}\n\n` +
-                `**Hypothesis generation skipped** — the input lacks sufficient specific evidence for meaningful root-cause analysis. ` +
+                `**Hypothesis generation skipped** - the input lacks sufficient specific evidence for meaningful root-cause analysis. ` +
                 `Provide concrete evidence (error messages, code diffs, test failures) for better results.`,
             },
           ],
@@ -206,7 +206,7 @@ export function createHypothesizeTool(): ToolDefinition<any, any, any> {
         );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        throw new Error(`hypothesize: model analysis failed — ${message}`, { cause: err });
+        throw new Error(`hypothesize: model analysis failed - ${message}`, { cause: err });
       }
     },
   };

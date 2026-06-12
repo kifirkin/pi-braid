@@ -11,7 +11,7 @@
  *
  *   The user scheduled a timer, the agent entered a degraded turn (e.g.,
  *   2 enforcement/whisper + 1 compaction-retry/exhausted), and the timer
- *   whisper — the 4th high-priority — was silently dropped. The user
+ *   whisper - the 4th high-priority - was silently dropped. The user
  *   perceived "timer didn't fire."
  *
  * FIX: priorityFromSource in src/lib/utils/injection-tracker.ts now maps
@@ -22,7 +22,7 @@
  * WHY "critical" is semantically right: a user-scheduled or compaction-
  * resume timer is time-critical by definition. If 3 other high-priority
  * whispers already fired, dropping the timer is exactly the wrong thing
- * to do — the timer is the one the user is actively waiting on.
+ * to do - the timer is the one the user is actively waiting on.
  *
  * Per-source cap of 2 still applies: setting 3+ timers that all expire in
  * the same turn will still suppress the 3rd. This is acceptable; the user
@@ -186,7 +186,7 @@ describe("Timer fire end-to-end through sendTrackedMessage", () => {
       { type: "context", source: "compaction-retry/exhausted" },
     );
 
-    // 4th high would be suppressed, but timer is now critical — must pass
+    // 4th high would be suppressed, but timer is now critical - must pass
     fireTimerWhisper(pi);
 
     const timerSent = pi.sent.filter((m) => m.params.customType === "timer");
@@ -200,7 +200,7 @@ describe("Timer fire end-to-end through sendTrackedMessage", () => {
 
   it("FIX: compaction-resume timer also bypasses the high cap", () => {
     // Compaction-resume timer (tag: "compaction-resume", wake: true) uses
-    // source "timer/fire" with triggerTurn: true — same fix path. The
+    // source "timer/fire" with triggerTurn: true - same fix path. The
     // post-compaction auto-resume wake-up is now reliable.
     beginTurn();
     const pi = makeMockPi();
@@ -230,7 +230,7 @@ describe("Timer fire end-to-end through sendTrackedMessage", () => {
       pi,
       {
         customType: "timer",
-        content: [{ type: "text", text: "[timer] Context compaction done — continue your task" }],
+        content: [{ type: "text", text: "[timer] Context compaction done - continue your task" }],
         display: true,
         details: { _braidInjected: true },
       },

@@ -1,5 +1,5 @@
 /**
- * Context Hygiene & Scratchpad — state interface and helpers for context usage
+ * Context Hygiene & Scratchpad - state interface and helpers for context usage
  * tracking and scratchpad nudge timing. Merged because both track nudge timing
  * and recordCompaction() already cross-references lastScratchpadNudgeTurn.
  * Does NOT import state.ts (breaks circular dependency).

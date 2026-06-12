@@ -1,4 +1,4 @@
-# src/extensions/core/metacognition/handlers/ — Tool Factories
+# src/extensions/core/metacognition/handlers/ - Tool Factories
 
 The 4 LLM-callable metacognition tools are defined here as factory functions.
 Each file exports a `<name>Execute` function and a `<name>Params` schema, plus
@@ -14,10 +14,10 @@ self-contained: it owns its Typebox schema, its execute function, and the
 
 | File | Purpose |
 |---|---|
-| `think.ts` | The `think` tool — structured thinking with chain tracking, calibration feedback, depth budgets. |
-| `hypothesize.ts` | The `hypothesize` tool — generate ranked hypotheses with heuristic + evidence-pool scoring (uses `./scoring.ts`). |
-| `verify.ts` | The `verify` tool — recursive verification of code/reasoning/plans. |
-| `finalize.ts` | The `finalize` tool — pre-flight check before final answer. |
+| `think.ts` | The `think` tool - structured thinking with chain tracking, calibration feedback, depth budgets. |
+| `hypothesize.ts` | The `hypothesize` tool - generate ranked hypotheses with heuristic + evidence-pool scoring (uses `./scoring.ts`). |
+| `verify.ts` | The `verify` tool - recursive verification of code/reasoning/plans. |
+| `finalize.ts` | The `finalize` tool - pre-flight check before final answer. |
 | `scoring.ts` | Internal helper: heuristic + evidence-pool scoring for hypotheses. Imported by `hypothesize.ts` only. |
 
 ## Why not in `tools/`?

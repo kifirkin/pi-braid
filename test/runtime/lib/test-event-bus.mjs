@@ -1,5 +1,5 @@
 /**
- * Test: Event Bus — unified async event routing
+ * Test: Event Bus - unified async event routing
  */
 
 import { describe, it } from "node:test";
@@ -59,7 +59,7 @@ describe("Event Bus", () => {
   it("should not crash on handler errors", () => {
     eventBus.on("timer_fire", () => { throw new Error("handler crash"); });
     eventBus.emit({ type: "timer_fire", id: "t1", reason: "test", payload: "crash", tag: undefined });
-    // Should not throw — handler error is caught
+    // Should not throw - handler error is caught
     assert.ok(true);
   });
 

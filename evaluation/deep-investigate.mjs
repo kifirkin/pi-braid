@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * deep-investigate — Run a single task with full session capture.
+ * deep-investigate - Run a single task with full session capture.
  *
  * Captures:
  * 1. Full system prompt (after all extension modifications)
@@ -38,7 +38,7 @@ verifyBuild();
 
 const distEval = join(ROOT, 'dist', 'evaluation', 'lib', 'evaluator.js');
 if (!existsSync(distEval)) {
-  // The evaluator is .mjs, not compiled by tsc — need to import directly
+  // The evaluator is .mjs, not compiled by tsc - need to import directly
 }
 
 // ── Load tasks ───────────────────────────────────────────────────────────
@@ -144,7 +144,7 @@ function generateReport(benchKey, task, mode, capture, result, score, scoreReaso
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>${benchKey} — ${task.id} [${mode}]</title>
+<title>${benchKey} - ${task.id} [${mode}]</title>
 <style>
   body { font-family: -apple-system, sans-serif; max-width: 960px; margin: 2em auto; padding: 0 1em; }
   h1 { color: #333; border-bottom: 2px solid #eee; }
@@ -284,7 +284,7 @@ async function main() {
   report.push(`\n## Observations\n`);
   for (const r of allResults) {
     if (r.score < 50) {
-      report.push(`### ${r.taskId} [${r.mode}] — FAIL (${r.score}/100)\n`);
+      report.push(`### ${r.taskId} [${r.mode}] - FAIL (${r.score}/100)\n`);
       report.push(`Reason: ${r.reason}\n`);
       if (r.systemPrompt) {
         report.push(`System prompt excerpt: \`${r.systemPrompt.slice(0, 200)}...\`\n`);

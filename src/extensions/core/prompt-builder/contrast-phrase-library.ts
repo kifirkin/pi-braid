@@ -1,5 +1,5 @@
 /**
- * Contrast Phrase Library — maps enforcement contrast modes to optimal prompt phrases.
+ * Contrast Phrase Library - maps enforcement contrast modes to optimal prompt phrases.
  *
  * Each mode selects the most relevant RepE-style contrast vectors for the current
  * agent state. This replaces the static "show-all-phrases" approach with a
@@ -11,7 +11,7 @@
  *     → prompt-builder listener → ps.activeContrastMode = "TOOL-RELIABILITY"
  *     → formatContrastSection("TOOL-RELIABILITY") → active relevant phrases
  *
- * Phrases match the original index.ts local constants (NOT constants.ts — those
+ * Phrases match the original index.ts local constants (NOT constants.ts - those
  * are a separate shorthand set). This ensures backward-compatible prompt content.
  */
 
@@ -20,30 +20,30 @@
 interface ModeDef {
   label: string;
   description: string;
-  /** Primary contrast phrase(s) for this mode — rendered as active directives */
+  /** Primary contrast phrase(s) for this mode - rendered as active directives */
   phrases: string[];
 }
 
 // ── Contrast Phrases ────────────────────────────────────────────────────────
 // Matches original index.ts local constants (lines 68-100).
 
-const TRUTH_FIRST = `You value truthfulness over agreeableness. You say when you're uncertain. You don't invent answers to appear helpful — you'd rather admit uncertainty than give a confident wrong answer.`;
+const TRUTH_FIRST = `You value truthfulness over agreeableness. You say when you're uncertain. You don't invent answers to appear helpful - you'd rather admit uncertainty than give a confident wrong answer.`;
 
-const ANTI_SYCOPHANCY = `You state what you believe is correct, even when it contradicts the user. You provide accurate analysis — not mere agreement.`;
+const ANTI_SYCOPHANCY = `You state what you believe is correct, even when it contradicts the user. You provide accurate analysis - not mere agreement.`;
 
 const KNOWLEDGE_BOUNDARY = `You distinguish between what you KNOW and what you INFER. You state your knowledge boundaries before offering solutions. You say "I don't know" when the information isn't in your training data or derivable from context.`;
 
 const EPISTEMIC_CALIBRATION = `Uncertainty signaled early beats certainty delivered wrong.
 
-You only express high confidence when you have strong evidence. Low confidence isn't weakness — it's accuracy awareness. You err on the side of caution when uncertain.`;
+You only express high confidence when you have strong evidence. Low confidence isn't weakness - it's accuracy awareness. You err on the side of caution when uncertain.`;
 
-const TOOL_RELIABILITY = `The \`edit\` and \`write\` tools work reliably. They modify files exactly as instructed. When a tool call fails, the failure is almost always an agent mistake — wrong line numbers, stale file content, incorrect indentation — not a tool malfunction.
+const TOOL_RELIABILITY = `The \`edit\` and \`write\` tools work reliably. They modify files exactly as instructed. When a tool call fails, the failure is almost always an agent mistake - wrong line numbers, stale file content, incorrect indentation - not a tool malfunction.
 
-You default to \`edit\` and \`write\` for file operations. You use bash for shell operations — piping, glob expansion, running tests and builds, navigating directories. You don't use \`sed\`, \`echo\`, \`cat\`, or shell redirects for file modification. These are unreliable and non-portable.`;
+You default to \`edit\` and \`write\` for file operations. You use bash for shell operations - piping, glob expansion, running tests and builds, navigating directories. You don't use \`sed\`, \`echo\`, \`cat\`, or shell redirects for file modification. These are unreliable and non-portable.`;
 
 // ── Epistemic Action (proactive assumption surfacing) ─────────────────────────
 // From surgical collaboration heuristics: surface assumptions, don't blend conflicts.
-const EPISTEMIC_ACTION = `State assumptions before acting. Surface conflicts explicitly when you find competing patterns in the codebase — don't blend them silently.`;
+const EPISTEMIC_ACTION = `State assumptions before acting. Surface conflicts explicitly when you find competing patterns in the codebase - don't blend them silently.`;
 
 // ── Mode Definitions ────────────────────────────────────────────────────────
 
@@ -116,7 +116,7 @@ export function formatContrastSection(activeMode: string): string[] {
   // Active mode with proper section heading for visual separation
   // from L1 state above and interaction style below.
   parts.push(`## Active Mode`);
-  parts.push(`**${mode.label}** — ${mode.description}`);
+  parts.push(`**${mode.label}** - ${mode.description}`);
 
   // Primary contrast phrase(s) for the active mode
   for (const phrase of mode.phrases) {

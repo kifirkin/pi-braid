@@ -1,4 +1,4 @@
-# Tool Cut Candidates — Deep Dive
+# Tool Cut Candidates - Deep Dive
 
 Detailed analysis of the 5 first-removal candidates. Each section explains
 what the tool does, how it's used, and the cost/benefit of keeping vs cutting.
@@ -100,7 +100,7 @@ Pulls in:
 ### Cost (when opt-in)
 
 - 4 files, ~200 lines
-- 8-action tool (Swiss Army knife — a sign of bloat)
+- 8-action tool (Swiss Army knife - a sign of bloat)
 - Background metric tracking
 
 ### Benefit
@@ -269,7 +269,7 @@ Default agent API surface reduced by 3 names.
 ### Stale `tasks.json` file
 
 `~/.pi/agent/braid/scratchpads/--Users-kifir-projects-agents-pi-braid--/tasks.json`
-(3KB, May 29, 9 stale entries) — orphan from the previously-removed `task` tool.
+(3KB, May 29, 9 stale entries) - orphan from the previously-removed `task` tool.
 The project's `persistence.ts` retains `taskFilePath()` for cleanup tooling.
 Safe to delete but flagged for user decision.
 

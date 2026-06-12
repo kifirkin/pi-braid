@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * run‑overnight — Autonomous benchmark marathon.
+ * run‑overnight - Autonomous benchmark marathon.
  *
  * Runs the full sequence unattended:
  *   1. Compaction stress test

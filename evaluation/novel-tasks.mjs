@@ -1,10 +1,10 @@
 /**
- * Tier 3 Novel Tasks — pi-braid Benchmark
+ * Tier 3 Novel Tasks - pi-braid Benchmark
  *
  * VAR-MATH-inspired: genuinely unseen problems that require novel
  * tool combinations and cross-file understanding.
  *
- * These tasks CANNOT be solved by memorization — they test:
+ * These tasks CANNOT be solved by memorization - they test:
  * - Cross-file dependency inference
  * - Novel tool combinations
  * - Hidden constraint discovery
@@ -87,7 +87,7 @@ export function formatHeader(): string {
   },
   prompt: `Fix the cross-file dependency bug in /tmp/bm1-task-t3/deps/main.ts.
 
-The program compiles but produces no output. The bug is NOT a syntax error — it's a logic error spread across multiple files. One file has a missing export, another has an incomplete configuration.
+The program compiles but produces no output. The bug is NOT a syntax error - it's a logic error spread across multiple files. One file has a missing export, another has an incomplete configuration.
 
 Diagnosis approach:
 1. Read all files in the deps/ directory
@@ -175,7 +175,7 @@ export function validate(input: string, history: string[] = []): { valid: boolea
 - No duplicates
 - No reserved names
 
-## Undocumented Rule (Section 4.3 — recently added)
+## Undocumented Rule (Section 4.3 - recently added)
 Inputs that start with a vowel AND have an even length must be rejected
 with error "format violation". This was agreed in the last sprint review.
 `,

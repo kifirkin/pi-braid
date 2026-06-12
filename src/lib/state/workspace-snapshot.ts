@@ -1,5 +1,5 @@
 /**
- * Workspace Snapshot — lightweight Time Travel for Braid.
+ * Workspace Snapshot - lightweight Time Travel for Braid.
  *
  * Captures atomic workspace snapshots: file state (modified files only) +
  * session position (leaf ID / turn tag) + extension state (checkpoint ref) +
@@ -10,7 +10,7 @@
  * (traceable from the tool tracker) are captured, not the entire workspace.
  *
  * Inspired by Agent Zero's Time Travel (git-backed adaptive-debounced
- * snapshots) but adapted for Braid's architecture — lightweight file
+ * snapshots) but adapted for Braid's architecture - lightweight file
  * copies + state references instead of git refs.
  *
  * Architecture:
@@ -254,7 +254,7 @@ export async function captureSnapshot(
       id,
       reason,
       timestamp: Date.now(),
-      turn: 0, // Enforcement turn not directly accessible here — will be enriched
+      turn: 0, // Enforcement turn not directly accessible here - will be enriched
       sessionLeafId,
       sessionTag,
       fileCount: capturedFiles.length,
@@ -270,7 +270,7 @@ export async function captureSnapshot(
     manifest.updatedAt = Date.now();
     await saveManifest(manifest);
 
-    log.info(`Snapshot created: ${id} — ${capturedFiles.length} files, reason: ${reason}`);
+    log.info(`Snapshot created: ${id} - ${capturedFiles.length} files, reason: ${reason}`);
     return meta;
   } catch (err) {
     log.error("Failed to capture snapshot:", err);
@@ -318,7 +318,7 @@ export async function diffSnapshot(
     try {
       snapFiles.set(relPath, await fs.readFile(snapFilePath, "utf-8"));
     } catch {
-      // Snapshot file missing — treat as empty
+      // Snapshot file missing - treat as empty
       snapFiles.set(relPath, "");
     }
   }
@@ -340,7 +340,7 @@ export async function diffSnapshot(
   }
 
   // Check for files in workspace root that exist but aren't in snapshot
-  // (only top-level check — deep scanning is expensive)
+  // (only top-level check - deep scanning is expensive)
   const rootEntries = await fs.readdir(normalizedRoot).catch(() => []);
   for (const entry of rootEntries) {
     if (!meta.files.includes(entry)) {
@@ -351,7 +351,7 @@ export async function diffSnapshot(
           diff.push({ status: "added", filePath: entry });
         }
       } catch {
-        // stat failed — skip
+        // stat failed - skip
       }
     }
   }
@@ -413,11 +413,11 @@ export async function restoreSnapshot(
     try {
       currentContent = await fs.readFile(absPath, "utf-8");
     } catch {
-      // File doesn't exist in workspace — it's a new file to restore
+      // File doesn't exist in workspace - it's a new file to restore
     }
 
     if (currentContent === snapContent) {
-      // Already up to date — skip
+      // Already up to date - skip
       continue;
     }
 
@@ -472,7 +472,7 @@ export async function getSnapshotInfo(): Promise<{
         }
       }
     } catch {
-      // Snapshot directory missing — skip
+      // Snapshot directory missing - skip
     }
   }
 

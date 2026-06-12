@@ -66,7 +66,7 @@ function shouldRotate(ctx: ExtensionContext): { needed: boolean; reason: string 
       );
       return { needed: false, reason: "" };
     }
-    // Grace period expired — reset actionTaken so nudges can resume if still needed
+    // Grace period expired - reset actionTaken so nudges can resume if still needed
     state.actionTaken = false;
   }
 
@@ -106,7 +106,7 @@ export function registerRotationHandlers(pi: ExtensionAPI): void {
         const sm = ctx.sessionManager as { getBranch?(): unknown[] };
         const branch = sm.getBranch?.() ?? [];
         if (branch.length > 150) {
-          log.warn(`Branch ${branch.length} entries deep — consider context_tag + session_compact`);
+          log.warn(`Branch ${branch.length} entries deep - consider context_tag + session_compact`);
         }
       } catch {
         /* non-fatal */
@@ -144,7 +144,7 @@ export function registerRotationHandlers(pi: ExtensionAPI): void {
       state.continuationSummary = buildContinuationSummary(ctx);
       state.pendingRotation = true;
 
-      // Notify agent — ONCE — with identity-framed language (not compliance directives)
+      // Notify agent - ONCE - with identity-framed language (not compliance directives)
       sendTrackedMessage(
         pi,
         {
@@ -159,9 +159,9 @@ export function registerRotationHandlers(pi: ExtensionAPI): void {
                 reason,
                 "",
                 "The session has grown large. To keep working smoothly:",
-                "1. **`finalize()`** — when done with current work; rotates session with summary",
-                "2. **`context_archive(start, end, summary)`** — archive completed work mid-session",
-                "3. **`memory_store(...)`** — preserve critical facts before compression",
+                "1. **`finalize()`** - when done with current work; rotates session with summary",
+                "2. **`context_archive(start, end, summary)`** - archive completed work mid-session",
+                "3. **`memory_store(...)`** - preserve critical facts before compression",
                 "",
                 "Taking any of these actions will reset the session counter for 25 turns.",
               ].join("\n"),
@@ -206,7 +206,7 @@ export function registerRotationHandlers(pi: ExtensionAPI): void {
       const state = _sessionRotationState();
       if (!state.pendingRotation) return;
 
-      // Rotation triggered by finalize — task boundary detected
+      // Rotation triggered by finalize - task boundary detected
       state.pendingRotation = false;
       state.rotationCount++;
       state.lastRotationTimestamp = Date.now();

@@ -1,5 +1,5 @@
 /**
- * Text Classifier — lightweight classification with configurable utility model.
+ * Text Classifier - lightweight classification with configurable utility model.
  *
  * Three-tier fallback (heuristic-first):
  *   Tier 1: Heuristic fallback callback (caller-provided). Fast, free.
@@ -30,7 +30,7 @@ export interface ClassifierCriteria {
 }
 
 export interface ClassificationResult {
-  /** Parsed label — "yes" | "no" | fallback value. */
+  /** Parsed label - "yes" | "no" | fallback value. */
   label: string;
   /** Confidence estimate: utility=0.9, session=0.6, heuristic=0.7, failed=0. */
   confidence: number;
@@ -45,7 +45,7 @@ export interface ClassificationResult {
 export interface ClassifierOptions {
   maxTokens?: number;
   timeoutMs?: number;
-  /** Heuristic fallback function — called first. If it returns a clear yes/no, skip LLM. */
+  /** Heuristic fallback function - called first. If it returns a clear yes/no, skip LLM. */
   fallback?: () => Promise<string> | string;
   /** Optional human-readable label for runtime observability (critic-stats tracking). */
   label?: string;
@@ -56,7 +56,7 @@ export interface ClassifierOptions {
 /**
  * Classify text using the three-tier fallback system (heuristic-first).
  *
- * Tier 1 (heuristic) runs first — it's fast and free. Only if the heuristic
+ * Tier 1 (heuristic) runs first - it's fast and free. Only if the heuristic
  * returns something ambiguous or isn't provided do we consult LLM tiers.
  *
  * @param ctx - Extension context for model resolution + API keys.
@@ -94,7 +94,7 @@ export async function classify(
         latencyMs: latency,
       };
     }
-    // Heuristic was ambiguous — fall through to LLM
+    // Heuristic was ambiguous - fall through to LLM
     log.debug("[text-classifier] Heuristic ambiguous, falling to TIER 2");
   }
 
@@ -108,7 +108,7 @@ export async function classify(
       userMessage,
       maxTokens,
       timeoutMs,
-      0, // maxRetries: 0 — classify calls should fail fast, not retry
+      0, // maxRetries: 0 - classify calls should fail fast, not retry
     );
     if (tier1) {
       const latency = Date.now() - start;
@@ -137,7 +137,7 @@ export async function classify(
       userMessage,
       maxTokens,
       timeoutMs,
-      0, // maxRetries: 0 — classify calls should fail fast, not retry
+      0, // maxRetries: 0 - classify calls should fail fast, not retry
     );
     if (tier2) {
       const latency = Date.now() - start;
@@ -157,7 +157,7 @@ export async function classify(
   }
 
   const latency = Date.now() - start;
-  log.warn(`[text-classifier] ALL TIERS FAILED — returning "unknown" ${latency}ms`);
+  log.warn(`[text-classifier] ALL TIERS FAILED - returning "unknown" ${latency}ms`);
   if (options?.label) recordCriticCall(options.label, "failed", latency);
   return { label: "unknown", confidence: 0, raw: "", tier: "failed", latencyMs: latency };
 }

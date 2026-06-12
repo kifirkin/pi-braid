@@ -1,4 +1,4 @@
-# src/extensions/health-maintenance/ — Health & Checkpointing
+# src/extensions/health-maintenance/ - Health & Checkpointing
 
 Provides the `health_maintenance` tool, which monitors agent health, detects
 degradation, and supports checkpoint/rollback.
@@ -15,7 +15,7 @@ namespaces. The kebab-case version appears in module/group config (e.g.,
 `BRAID_MODULES=+health-maintenance`). The snake_case version is what the
 LLM calls as a tool.
 
-**Do not unify them** — module config and tool APIs have different naming
+**Do not unify them** - module config and tool APIs have different naming
 conventions for good reason (config keys prefer hyphens for readability;
 tool names prefer underscores because the LLM's prompt grammar treats
 underscores as word boundaries and hyphens as part of the word).

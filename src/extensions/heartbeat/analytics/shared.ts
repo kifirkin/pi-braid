@@ -1,5 +1,5 @@
 /**
- * Analytics — shared types, state, and exported helpers.
+ * Analytics - shared types, state, and exported helpers.
  */
 
 import { getExtensionState } from "../../../lib/state/extension-state.js";
@@ -76,7 +76,7 @@ export interface AnalyticsState {
   wasDegraded: boolean;
   nudgesSent: number;
   nudgesSuppressed: number;
-  /** Local turn counter (incremented each turn_end) — ExtensionContext has no turnCount */
+  /** Local turn counter (incremented each turn_end) - ExtensionContext has no turnCount */
   localTurnCount: number;
 }
 

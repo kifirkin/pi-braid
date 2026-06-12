@@ -1,5 +1,5 @@
 /**
- * Skip Registry — central registry for intentionally skipped tests.
+ * Skip Registry - central registry for intentionally skipped tests.
  *
  * Every skipped test must:
  * 1. Have a documented reason
@@ -7,7 +7,7 @@
  * 3. Be registered here AND the test must call `isSkipped(name)` + return early
  *
  * Tests with expired skip dates are flagged at runtime.
- * No indefinite skips — every skip must have an expiry.
+ * No indefinite skips - every skip must have an expiry.
  *
  * Usage:
  *   import { isSkipped } from "../skip-registry.mjs";
@@ -21,7 +21,7 @@ export function isSkipped(name) {
   if (!entry) return false;
   const expired = new Date(entry.expiry) < new Date();
   if (expired) {
-    console.error(`⚠️  SKIP EXPIRED: "${name}" — expired ${entry.expiry}, fix or extend`);
+    console.error(`⚠️  SKIP EXPIRED: "${name}" - expired ${entry.expiry}, fix or extend`);
   }
   return true;
 }

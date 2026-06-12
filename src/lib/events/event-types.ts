@@ -1,12 +1,12 @@
 /**
- * Safe Event Registration — centralizes pi.on() type escapes.
+ * Safe Event Registration - centralizes pi.on() type escapes.
  *
  * pi's ExtensionAPI.on() uses overloaded literal types for event names.
  * Custom braid events (enforcement_signals, compaction_end, etc.) and
  * handlers with `any` parameter types don't match the strict overloads.
  *
  * Instead of scattering `as never` casts across 20+ sites, use the helper
- * below. The permissive `on` type isolates the escape — all callers get
+ * below. The permissive `on` type isolates the escape - all callers get
  * proper typing without individual casts.
  *
  * Key design: handler RETURN type is constrained to known outcome types

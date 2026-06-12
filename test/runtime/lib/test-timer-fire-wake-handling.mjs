@@ -94,7 +94,7 @@ test("Layer 2: wake: true branch calls pi.sendMessage (whisper)", () => {
 test("Layer 2: wake: true does NOT use sendUserMessage (the bug we're fixing)", () => {
   // The wake:true branch must NOT call sendUserMessage. That API
   // "sends an actual user message that appears as if typed by the
-  // user" — wrong for an automatic timer. Use sendMessage instead.
+  // user" - wrong for an automatic timer. Use sendMessage instead.
   const wakeBranchStart = TIMER_SRC.indexOf("if (timer.wake === true)");
   const elseIdx = TIMER_SRC.indexOf("} else {", wakeBranchStart);
   if (elseIdx < 0) {
@@ -200,7 +200,7 @@ test("Layer 3: wake: false text is shorter form (whisper only)", () => {
 // ── Sanity: previous regression test still passes (priority fix) ─────
 
 test("Sanity: priorityFromSource still maps timer/fire to critical (Layer 1)", () => {
-  // The previous fix (Layer 1) — priority:critical — must still hold.
+  // The previous fix (Layer 1) - priority:critical - must still hold.
   const trackerSrc = readFileSync(
     join(ROOT, "src/lib/utils/injection-tracker.ts"),
     "utf-8",

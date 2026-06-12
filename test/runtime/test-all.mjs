@@ -1,4 +1,4 @@
-// Test aggregator — runs all runtime test suites
+// Test aggregator - runs all runtime test suites
 import { execSync } from "child_process";
 import { readdirSync } from "fs";
 import { fileURLToPath } from "url";
@@ -32,7 +32,7 @@ for (const file of files) {
         totalFailed += parseInt(match[2]);
       }
     }
-    console.log(`✅ ${file}${resultLine ? " — " + resultLine.trim() : ""}`);
+    console.log(`✅ ${file}${resultLine ? " - " + resultLine.trim() : ""}`);
   } catch (err) {
     const stderr = err.stderr?.toString() || "";
     const stdout = err.stdout?.toString() || "";
@@ -47,7 +47,7 @@ for (const file of files) {
       }
     }
     totalFailed++;
-    console.log(`❌ ${file} — FAILED`);
+    console.log(`❌ ${file} - FAILED`);
     if (output.length > 0) {
       console.log(output.split("\n").slice(-5).join("\n"));
     }

@@ -1,5 +1,5 @@
 /**
- * Timer Reminder Module — bridges timer fires from timer extension → agent reminders.
+ * Timer Reminder Module - bridges timer fires from timer extension → agent reminders.
  *
  * Drains timer reminders from the timer bus on each tick and surfaces them as whispers.
  */
@@ -32,7 +32,7 @@ export const timerReminderModule: CognitiveModule = {
         );
       }
     } catch {
-      // Timer bus not loaded — silent ignore
+      // Timer bus not loaded - silent ignore
     }
   },
 };

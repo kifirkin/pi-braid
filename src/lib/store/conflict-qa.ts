@@ -1,5 +1,5 @@
 /**
- * Conflict QA — Cross-observational Thinking (XoT) two-stage reasoning for knowledge conflicts.
+ * Conflict QA - Cross-observational Thinking (XoT) two-stage reasoning for knowledge conflicts.
  *
  * Stage 1 (in evidence-pool.ts):
  *   Source identification + conflict classification (direct | implication | reliability)
@@ -91,14 +91,14 @@ function generateQuestionCandidates(conflict: Conflict): QuestionCandidate[] {
 
     if (forSource?.source === "code" && againstSource?.source !== "code") {
       candidates.push({
-        question: `"${claim.slice(0, 60)}" — code evidence contradicts non-code.`,
+        question: `"${claim.slice(0, 60)}" - code evidence contradicts non-code.`,
         type,
         strategy: "favor_text",
       });
     }
     if (againstSource?.source === "code" && forSource?.source !== "code") {
       candidates.push({
-        question: `"${claim.slice(0, 60)}" — code evidence contradicts non-code.`,
+        question: `"${claim.slice(0, 60)}" - code evidence contradicts non-code.`,
         type,
         strategy: "favor_text",
       });
@@ -107,14 +107,14 @@ function generateQuestionCandidates(conflict: Conflict): QuestionCandidate[] {
     if (forSource && againstSource) {
       if (forSource.timestamp > againstSource.timestamp + 3600000) {
         candidates.push({
-          question: `"${claim.slice(0, 60)}" — for evidence is more recent. Trust it?`,
+          question: `"${claim.slice(0, 60)}" - for evidence is more recent. Trust it?`,
           type,
           strategy: "favor_recent",
         });
       }
       if (againstSource.timestamp > forSource.timestamp + 3600000) {
         candidates.push({
-          question: `"${claim.slice(0, 60)}" — against evidence is more recent. Trust it?`,
+          question: `"${claim.slice(0, 60)}" - against evidence is more recent. Trust it?`,
           type,
           strategy: "favor_recent",
         });
@@ -122,7 +122,7 @@ function generateQuestionCandidates(conflict: Conflict): QuestionCandidate[] {
     }
 
     candidates.push({
-      question: `"${claim.slice(0, 60)}" — conflicting sources. Should higher reliability source win?`,
+      question: `"${claim.slice(0, 60)}" - conflicting sources. Should higher reliability source win?`,
       type,
       strategy: "acknowledge",
     });
@@ -147,7 +147,7 @@ function generateQuestionCandidates(conflict: Conflict): QuestionCandidate[] {
   // ── Implication conflicts ────────────────────────────────────────────────
   if (type === "implication") {
     candidates.push({
-      question: `"${claim.slice(0, 60)}" — claims may contradict via implication. Investigate further?`,
+      question: `"${claim.slice(0, 60)}" - claims may contradict via implication. Investigate further?`,
       type,
       strategy: "acknowledge",
     });
@@ -230,7 +230,7 @@ export function getQAForConflict(conflictId: string): ConflictQA[] {
 }
 
 /**
- * Alias for processConflicts — detect new conflicts and generate QA records.
+ * Alias for processConflicts - detect new conflicts and generate QA records.
  * Returns the raw Conflict[] for callers that need the evidence pool format.
  */
 export function processConflictQAs(ctx: unknown): Conflict[] {
@@ -355,7 +355,7 @@ export function getQAStats(_ctx: unknown) {
 }
 
 /**
- * @deprecated Will be removed in v0.3.0 — use evidence-pool.resolveConflict() directly.
+ * @deprecated Will be removed in v0.3.0 - use evidence-pool.resolveConflict() directly.
  * Resolve a conflict. Takes 3 args: (ctx, conflictId, verdict).
  * Used by cognitive-systems via `import { resolveQA as resolveConflictQA }`.
  */

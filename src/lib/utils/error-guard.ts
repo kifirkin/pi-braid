@@ -1,5 +1,5 @@
 /**
- * Error Guard — Consistent error handling helper.
+ * Error Guard - Consistent error handling helper.
  *
  * Wraps an async function with try/catch logging.
  * Replaces empty catch blocks with at-minimum-logged errors.

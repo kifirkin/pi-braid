@@ -1,5 +1,5 @@
 /**
- * @fileoverview Claim Verification Tool — verify_claim (action=claim|decomposition).
+ * @fileoverview Claim Verification Tool - verify_claim (action=claim|decomposition).
  *
  * Cross-checks agent claims against retrieved context and verifies task
  * decomposition coverage. Uses the triple-critic LLM classification system
@@ -153,7 +153,7 @@ async function checkDecompositionCoverage(
 			{ maxTokens: 5, fallback: () => "no" },
 		);
 		// Binary yes/no answer. We don't try to extract specific gap strings
-		// from the LLM — those are inherently non-deterministic and the
+		// from the LLM - those are inherently non-deterministic and the
 		// previous regex extraction was always falling through to the 0.5
 		// default. If the LLM says 'yes', coverage is full; if 'no', we
 		// surface a generic suggestion to ask the agent to enumerate gaps.
@@ -189,7 +189,7 @@ export function registerClaimVerificationTools(pi: ExtensionAPI): void {
 		label: "Verify Claim",
 		promptSnippet: "Verify agent claims against retrieved context",
 		description:
-			"Verify agent claims against retrieved context — use when conclusions depend on evidence. Detects contradictions, unsupported assertions, and hedge word issues. For task decomposition coverage, use action=decomposition.",
+			"Verify agent claims against retrieved context - use when conclusions depend on evidence. Detects contradictions, unsupported assertions, and hedge word issues. For task decomposition coverage, use action=decomposition.",
 		parameters: verifyClaimSchema,
 		execute: async (
 			_toolCallId: string,

@@ -1,5 +1,5 @@
 /**
- * register-input-handler — Language detection on user input.
+ * register-input-handler - Language detection on user input.
  */
 
 import type {
@@ -20,7 +20,7 @@ export function registerInputHandler(pi: ExtensionAPI): void {
     const text = event.text || "";
     if (!text || text.startsWith("/") || event.source === "extension") return;
 
-    // Skip language detection for mid-stream steers and queued follow-ups —
+    // Skip language detection for mid-stream steers and queued follow-ups -
     // these aren't new user messages, so they shouldn't update language hints
     // or problem context.
     if (event.streamingBehavior) return;

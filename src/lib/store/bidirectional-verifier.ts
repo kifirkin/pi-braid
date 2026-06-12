@@ -1,5 +1,5 @@
 /**
- * Bidirectional Verifier — file touch tracking for enforcement.
+ * Bidirectional Verifier - file touch tracking for enforcement.
  *
  * Tracks which files the agent reads/edits, checks if edits relate to the
  * problem context, and flags localization risks (editing unrelated files).
@@ -183,7 +183,7 @@ export async function parseSpec(text: string): Promise<ParsedSpec> {
     const body = match[2].trim();
 
     // Determine requirement strength from SHALL/MUST/SHOULD/MAY keywords
-    // (sync heuristic — async classifyRequirementStrength() available for ctx-aware callers)
+    // (sync heuristic - async classifyRequirementStrength() available for ctx-aware callers)
     let strength: ParsedRequirement["strength"] = "MAY";
     if (/\bSHALL\b/.test(body)) strength = "SHALL";
     else if (/\bMUST\b/.test(body)) strength = "MUST";

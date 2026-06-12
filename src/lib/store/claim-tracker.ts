@@ -1,11 +1,11 @@
 /**
- * Cross-Turn Claim Tracker — LLM-based cross-turn contradiction detection
+ * Cross-Turn Claim Tracker - LLM-based cross-turn contradiction detection
  *
  * Tracks factual claims made by the agent across turns and detects
  * when a new claim contradicts a previous one.
  *
  * Claim extraction uses the session model via callLlm() for structured
- * JSON output — no regex entity patterns, no negation word sets, no
+ * JSON output - no regex entity patterns, no negation word sets, no
  * stem maps, no keyword lists. Falls back to a minimal sentence heuristic
  * when the model is unavailable.
  *
@@ -13,7 +13,7 @@
  * for three-tier fallback (heuristic → utility → session).
  *
  * Replaces the previous implementation that maintained 4 regex patterns,
- * 25 negation words, 18 contradiction pairs, and a verb-stem map — all
+ * 25 negation words, 18 contradiction pairs, and a verb-stem map - all
  * of which needed constant maintenance and were inherently fragile.
  */
 
@@ -70,7 +70,7 @@ const EXTRACTION_SYSTEM_PROMPT =
   '"entity" (the subject, lowercase), "claim" (what\'s said about it, max 80 chars), ' +
   '"polarity" ("positive" or "negative"). ' +
   "Example: [{\"entity\": \"api\", \"claim\": \"supports pagination\", \"polarity\": \"positive\"}] " +
-  "Return [] if no factual claims are found. No explanations — JSON only.";
+  "Return [] if no factual claims are found. No explanations - JSON only.";
 
 /**
  * Extract claims from text using the session model (callLlm).
@@ -128,7 +128,7 @@ async function extractClaimsViaLLM(
 }
 
 /**
- * Secondary extraction path — classify() per sentence for entity + polarity.
+ * Secondary extraction path - classify() per sentence for entity + polarity.
  * More resilient than the heuristic fallback (three-tier via text-classifier).
  */
 async function extractClaimsViaClassify(
@@ -175,7 +175,7 @@ async function extractClaimsViaClassify(
       // Extract entity/claim via verb matching (minimal heuristic)
       entityClaimFromSentence(sentence, polarityResult.label === "negative" ? "negative" : "positive", claims);
     } catch {
-      // Per-sentence errors are non-fatal — skip this sentence
+      // Per-sentence errors are non-fatal - skip this sentence
       continue;
     }
   }
@@ -221,7 +221,7 @@ function entityClaimFromSentence(
 }
 
 /**
- * Minimal heuristic fallback — no regex keyword lists, no stem maps,
+ * Minimal heuristic fallback - no regex keyword lists, no stem maps,
  * no negation word sets. Just splits sentences and looks for "X verbs Y"
  * patterns with a short verb list.
  */
@@ -290,7 +290,7 @@ export async function claimsContradict(a: Claim, b: Claim, ctx: ExtensionContext
   }
 }
 
-/** Minimal token overlap — no stemming, no normalization maps. */
+/** Minimal token overlap - no stemming, no normalization maps. */
 function simpleOverlap(a: string, b: string): number {
   const tokensA = new Set(a.toLowerCase().split(/\s+/).filter((t) => t.length > 2));
   const tokensB = new Set(b.toLowerCase().split(/\s+/).filter((t) => t.length > 2));

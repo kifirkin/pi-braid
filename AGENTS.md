@@ -4,7 +4,7 @@
 
 Every extension is a self-contained subdirectory under `src/extensions/`, with
 `index.ts` exporting a default factory. The flat registry lives in
-[`src/extensions/manifest.ts`](./src/extensions/manifest.ts) — there is **no
+[`src/extensions/manifest.ts`](./src/extensions/manifest.ts) - there is **no
 module-grouping abstraction**. The `module` field on each manifest entry is a
 label used by the subagent API to enable/disable a group of extensions
 (e.g., `BRAID_MODULES=+heartbeat`); it has no structural role in the
@@ -17,7 +17,7 @@ priority first): subagent API → `~/.pi/agent/settings.json` under `braid.modul
 ### Common `BRAID_MODULES` patterns
 
 ```bash
-# Default — all non-opt-in extensions enabled
+# Default - all non-opt-in extensions enabled
 unset BRAID_MODULES
 
 # Toggle individual extensions: +name to enable, -name to disable
@@ -44,7 +44,7 @@ npm run clean      # Remove dist/ and .tsbuildinfo
 ## State Management
 
 Use `getExtensionState(ctx, key, factory)` for per-session state. Module-level
-`let` for mutable state leaks across sessions — use the state factory instead.
+`let` for mutable state leaks across sessions - use the state factory instead.
 
 Event handlers receive `(event, ctx: ExtensionContext)`. Tool execute functions receive `(toolCallId, params, signal, onUpdate, ctx)`.
 
@@ -74,4 +74,3 @@ is in `docs/TOOL-INVENTORY-AUDIT.md`. Key points:
   with priority + persistence + recycling). task = simple TODO list
   with priority + dependencies. Document the distinction in each tool's
   description; do not merge.
-

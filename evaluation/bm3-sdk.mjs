@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * BM3: Real-World Tasks Benchmark — SDK version
+ * BM3: Real-World Tasks Benchmark - SDK version
  *
  * Tests agent on realistic development tasks that mirror actual usage:
  * 1. Refactor a messy function

@@ -1,11 +1,11 @@
 /**
- * Tool Sequence Predictor — simple Markov transition model
+ * Tool Sequence Predictor - simple Markov transition model
  *
  * Simulates likely next tool from historical single-step transitions.
  * Uses a 1-deep Markov chain: given the last tool, what tool typically follows?
  * Outcome prediction is heuristic (self-loop rate thresholding).
  *
- * Not a cognitive simulation — a simple histogram-based predictor.
+ * Not a cognitive simulation - a simple histogram-based predictor.
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -157,11 +157,11 @@ export function dream(
   const state = getState(ctx);
   const now = Date.now();
 
-  // Cooldown check — dynamic threshold adjusted by advice tracker feedback loop
+  // Cooldown check - dynamic threshold adjusted by advice tracker feedback loop
   if (now - state.lastDreamAt < dynamicCooldown) return null;
 
   // Path 1: detect an actual loop in the current sequence.
-  // This is reliable regardless of history size — if the agent has just
+  // This is reliable regardless of history size - if the agent has just
   // called the same tool 4+ times in a row, it's likely a loop.
   const run = tailRun(currentSequence);
   if (run.length >= MIN_CURRENT_LOOP_LENGTH) {
@@ -181,7 +181,7 @@ export function dream(
   const paths = simulatePaths(currentSequence, historicalSequences);
   if (paths.length === 0) return null;
 
-  // Find most concerning path. Probability floor is 0.6 — below that, the
+  // Find most concerning path. Probability floor is 0.6 - below that, the
   // prediction is too noisy to act on.
   const stuckPaths = paths.filter((p) => p.outcome === "stuck" && p.probability > 0.6);
   const failPaths = paths.filter((p) => p.outcome === "failure" && p.probability > 0.6);

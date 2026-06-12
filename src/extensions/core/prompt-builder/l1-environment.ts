@@ -125,7 +125,7 @@ function discoverPiRootPath(): string {
       }
     }
   } catch {
-    // Strategy 1: check CWD and parents — non-fatal if pi not in node_modules
+    // Strategy 1: check CWD and parents - non-fatal if pi not in node_modules
   }
 
   // Strategy 2: Walk up from extension's location (works for local dev and linked packages)
@@ -154,7 +154,7 @@ function discoverPiRootPath(): string {
       dir = parent;
     }
   } catch {
-    // Strategy 2: walk up from extension dir — non-fatal
+    // Strategy 2: walk up from extension dir - non-fatal
   }
 
   // Strategy 3: Check npm global prefix
@@ -200,7 +200,7 @@ function formatL1Environment(env: L1Environment): string {
   // Checkpoint awareness (proactive: lower threshold)
   if (env.stepsSinceCheckpoint > 0) {
     lines.push(
-      `${env.stepsSinceCheckpoint} step(s) since last checkpoint — consider tagging context`,
+      `${env.stepsSinceCheckpoint} step(s) since last checkpoint - consider tagging context`,
     );
   }
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * run‑benchmark — Unified pi‑braid benchmark runner.
+ * run‑benchmark - Unified pi‑braid benchmark runner.
  *
  * Clean, maintainable, human‑readable.
  * Builds dist/ first. Leaves no stale processes or temp dirs.
@@ -68,7 +68,7 @@ async function runBenchmark(benchKey, options) {
     sessionDir: `/tmp/pi-${benchKey}-${Date.now()}`,
   });
 
-  // Run tasks — each task gets a FRESH session (clean state, no cross-contamination)
+  // Run tasks - each task gets a FRESH session (clean state, no cross-contamination)
   const results = [];
   for (const task of tasks) {
     const taskTimeout = task.timeout || timeout;
@@ -150,12 +150,12 @@ async function runBenchmark(benchKey, options) {
     scores = results.map((r, i) => {
       const task = tasks[i];
       const s = scoreTrapTask(r.text, task.expectedRefusal);
-      console.log(`  ${task.id}: ${s.score}/100 — ${s.reason}`);
+      console.log(`  ${task.id}: ${s.score}/100 - ${s.reason}`);
       return s.score;
     });
   } else if (benchKey === 'bm3') {
     const { extractCode } = await import('./lib/scoring.mjs');
-    // BM3: Complex multi-step — verify fixes worked
+    // BM3: Complex multi-step - verify fixes worked
     scores = await Promise.all(results.map(async (r) => {
       const task = tasks.find(t => t.id === r.taskId);
       if (!task) return 0;
@@ -258,7 +258,7 @@ async function main() {
   if (values.list) {
     console.log('\nAvailable benchmarks:');
     for (const [key, b] of Object.entries(REGISTRY)) {
-      console.log(`  ${key.padEnd(4)} — ${b.name}`);
+      console.log(`  ${key.padEnd(4)} - ${b.name}`);
     }
     console.log('');
     return;

@@ -205,7 +205,7 @@ export function createSnapshot(
 // Proposal state machine types (resolution/outcome) removed in Phase 2.3
 // because they were only used for logging, never for decision-making.
 // ---
-// OutcomeRecord, PolicyStats, resolution tracking — removed.
+// OutcomeRecord, PolicyStats, resolution tracking - removed.
 // Kept: ContextProposal structure without lifecycle tracking fields.
 
 // ── Session Entry Helpers ───────────────────────────────────────────────────
@@ -240,7 +240,7 @@ export function createDefaultPolicies(): ContextPolicy[] {
       action: { type: "compact", level: "light" },
       min_confidence: 0.6,
     },
-    // ── Token-count thresholds — preventive, fire BEFORE percentages ────────
+    // ── Token-count thresholds - preventive, fire BEFORE percentages ────────
     {
       id: "tokens-soft",
       name: "Token-count: soft preventive whisper",
@@ -257,7 +257,7 @@ export function createDefaultPolicies(): ContextPolicy[] {
     },
     {
       id: "tokens-advisory",
-      name: "Token-count: advisory — tag and consider archiving",
+      name: "Token-count: advisory - tag and consider archiving",
       priority: 98,
       cooldown_ms: 120_000,
       trigger: { type: "context_usage_tokens", threshold: USAGE_TOKENS_ADVISORY },
@@ -271,7 +271,7 @@ export function createDefaultPolicies(): ContextPolicy[] {
     },
     {
       id: "tokens-warning",
-      name: "Token-count: warning — suggest full pipeline",
+      name: "Token-count: warning - suggest full pipeline",
       priority: 97,
       cooldown_ms: 120_000,
       trigger: { type: "context_usage_tokens", threshold: USAGE_TOKENS_WARNING },
@@ -320,7 +320,7 @@ export function createDefaultPolicies(): ContextPolicy[] {
     // ── Task-state signal policies ──────────────────────────────────────────
     {
       id: "complexity-scratchpad",
-      name: "Task complexity — suggest scratchpad",
+      name: "Task complexity - suggest scratchpad",
       priority: 68,
       cooldown_ms: 90_000,
       trigger: { type: "signal", signal: "task_complexity" },
@@ -335,7 +335,7 @@ export function createDefaultPolicies(): ContextPolicy[] {
     },
     {
       id: "decision-density-think",
-      name: "Decision density — suggest think before next change",
+      name: "Decision density - suggest think before next change",
       priority: 67,
       cooldown_ms: 90_000,
       trigger: { type: "signal", signal: "decision_density" },
@@ -350,7 +350,7 @@ export function createDefaultPolicies(): ContextPolicy[] {
     },
     {
       id: "density-low-prune",
-      name: "Low context density — suggest pruning",
+      name: "Low context density - suggest pruning",
       priority: 65,
       cooldown_ms: 120_000,
       trigger: { type: "signal", signal: "context_density_low" },
@@ -365,7 +365,7 @@ export function createDefaultPolicies(): ContextPolicy[] {
     },
     {
       id: "density-high-semantic",
-      name: "High density + large context — semantic compression opportunity",
+      name: "High density + large context - semantic compression opportunity",
       priority: 58,
       cooldown_ms: 90_000,
       trigger: { type: "signal", signal: "context_density_high" },
@@ -380,7 +380,7 @@ export function createDefaultPolicies(): ContextPolicy[] {
     },
     {
       id: "duplicates-dedup",
-      name: "Duplicate messages — suggest dedup",
+      name: "Duplicate messages - suggest dedup",
       priority: 62,
       cooldown_ms: 120_000,
       trigger: { type: "signal", signal: "context_duplicates" },

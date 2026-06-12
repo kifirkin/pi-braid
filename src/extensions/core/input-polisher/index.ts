@@ -2,7 +2,7 @@ import { createLogger } from "../../../lib/core/logger.js";
 
 const log = createLogger("input-polisher");
 
-// Forward declaration — imported lazily to avoid circular dep with compaction.ts
+// Forward declaration - imported lazily to avoid circular dep with compaction.ts
 let _isCompactionActive: (() => boolean) | undefined;
 
 /**
@@ -30,7 +30,7 @@ let _isCompactionActive: (() => boolean) | undefined;
  * 4. On error or no-change → message goes through immediately
  *
  * Auto-confirm mode (disableConfirmations: true in settings):
- *   Message is sent immediately after polishing — no two-step flow.
+ *   Message is sent immediately after polishing - no two-step flow.
  *
  * Settings:
  *   - Enabled state persists to ~/.pi/agent/settings.json (key: preprocessorEnabled)
@@ -53,18 +53,18 @@ import { critiqueInput } from "./input-critic.js";
 import { resolveUtilityModel } from "../../../lib/ai/model-resolver.js";
 import { SESSION_START } from "../../../lib/core/event-names.js";
 
-const PERSONA = `You are a message preprocessor — a filter between the user and the main assistant. You clean text. You don't act on it.`;
+const PERSONA = `You are a message preprocessor - a filter between the user and the main assistant. You clean text. You don't act on it.`;
 
 /**
  * Instructions about how to polish are placed in the user message wrapper alongside
  * the content, not in the system prompt. This prevents the model from treating
- * instructions embedded in the user's message as authoritative — co-locating
+ * instructions embedded in the user's message as authoritative - co-locating
  * instructions with content makes them more resistant to prompt leakage.
  */
 const POLISH_INSTRUCTIONS = `Your instructions:
 - Translate non-English text to English
 - Fix spelling and grammar without changing meaning
-- Preserve code, file paths, markdown, lists, tables — everything structural stays intact
+- Preserve code, file paths, markdown, lists, tables - everything structural stays intact
 - Output only the corrected text, nothing before or after
 - Pass through well-written English and code-heavy messages unchanged
 - Don't add commentary, XML tags, or explanations
@@ -87,7 +87,7 @@ const DEFAULT_CONFIG: PolisherConfig = {
   maxNewlines: 8,
   skipCommands: true,
   showDiff: true,
-  timeoutSeconds: 60, // 1 minute — proofreading calls should be fast
+  timeoutSeconds: 60, // 1 minute - proofreading calls should be fast
 };
 
 // ============================================================================
@@ -219,7 +219,7 @@ interface PolisherState {
   // Note: per-call classification stats are tracked centrally by
   // lib/ai/critic-stats.ts and surfaced via the analytics extension's
   // `get_session_metrics` tool. The polisher no longer keeps a local
-  // duplicate — see git history for the removed `InputCriticStats`.
+  // duplicate - see git history for the removed `InputCriticStats`.
 }
 
 function createPolisherState(): PolisherState {
@@ -322,7 +322,7 @@ async function processMessage(
         }, 15000);
       }
 
-      // Update editor text with cleaned version — never auto-submit
+      // Update editor text with cleaned version - never auto-submit
       // User must press Enter to send, giving them a chance to review/revert.
 
       ctx.ui.setEditorText(cleaned);
@@ -334,7 +334,7 @@ async function processMessage(
       resolve({ action: "handled" });
     } else {
       state.skippedCount++;
-      // No change needed — proceed normally, flag stays false for next message
+      // No change needed - proceed normally, flag stays false for next message
       resolve({ action: "continue" });
     }
   } catch (err: unknown) {
@@ -381,11 +381,11 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
       return { action: "continue" };
     }
 
-    // Skip polishing for mid-stream steers and queued follow-ups —
+    // Skip polishing for mid-stream steers and queued follow-ups -
     // these are urgent interruptions or continuations, not new messages.
     if (event.streamingBehavior) {
       state.skippedCount++;
-      ctx.ui.setStatus("input-polisher", "✓ Streaming input — skipping polish");
+      ctx.ui.setStatus("input-polisher", "✓ Streaming input - skipping polish");
       state.polishingExhausted = true;
       state.polishedText = original;
       return { action: "continue" };
@@ -395,7 +395,7 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
     // refilled into the editor (via "handled" + setEditorText), this is the
     // second Enter press to actually send it. Without this check, the skip
     // conditions below (minLength, long text, code/well-written) would
-    // intercept the resubmitted text and refill it again — infinite loop.
+    // intercept the resubmitted text and refill it again - infinite loop.
     if (state.polishingExhausted) {
       state.polishingExhausted = false;
       state.polishedText = undefined;
@@ -404,14 +404,14 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
 
     if (original.length < state.config.minLength) {
       state.skippedCount++;
-      ctx.ui.setStatus("input-polisher", "✓ Short message — press Enter to send");
+      ctx.ui.setStatus("input-polisher", "✓ Short message - press Enter to send");
       ctx.ui.setEditorText(original);
       state.polishingExhausted = true;
       state.polishedText = original;
       return { action: "handled" };
     }
 
-    // Skip polishing when images are attached — the image data can't
+    // Skip polishing when images are attached - the image data can't
     // be preserved through a "handled" → re-submit cycle
     if (event.images && event.images.length > 0) {
       state.skippedCount++;
@@ -423,7 +423,7 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
       return { action: "continue" };
     }
 
-    // Skip during active compaction — input is queued in compaction.ts
+    // Skip during active compaction - input is queued in compaction.ts
     // and delivered after compaction completes. Check BEFORE the input critic
     // to avoid wasting model calls during compaction.
     if (_isCompactionActive?.()) {
@@ -438,7 +438,7 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
     if (newlineCount > state.config.maxNewlines) {
       state.skippedCount++;
       log.debug(`Skipped long text (${newlineCount} newlines > ${state.config.maxNewlines} max)`);
-      ctx.ui.setStatus("input-polisher", "✓ Text too long to polish — press Enter to send");
+      ctx.ui.setStatus("input-polisher", "✓ Text too long to polish - press Enter to send");
       ctx.ui.setEditorText(original);
       state.polishingExhausted = true;
       state.polishedText = original;
@@ -452,7 +452,7 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
     const critique = await critiqueInput(original, ctx);
     if (critique.isCode || (critique.isWellWritten && critique.isClear)) {
       state.skippedCount++;
-      ctx.ui.setStatus("input-polisher", "✓ Text already clean — press Enter to send");
+      ctx.ui.setStatus("input-polisher", "✓ Text already clean - press Enter to send");
       ctx.ui.notify(
         "Text was not modified. Press Enter to send, or edit and press Enter again.",
         "info",
@@ -490,7 +490,7 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
   });
 
   // Lazy-load the compaction state check on first session. This avoids a
-  // circular dependency with compaction.ts — compaction imports shared.js.
+  // circular dependency with compaction.ts - compaction imports shared.js.
   pi.on(SESSION_START, async () => {
     if (!_isCompactionActive) {
       try {
@@ -498,7 +498,7 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
           await import("../../memory/context-manager/handlers/shared.js");
         _isCompactionActive = isCompactionActive;
       } catch {
-        // Non-fatal — polisher will skip compaction check if import fails
+        // Non-fatal - polisher will skip compaction check if import fails
         log.debug("[polisher] Could not load compaction state, skipping");
       }
     }

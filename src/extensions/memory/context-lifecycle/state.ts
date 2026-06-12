@@ -17,7 +17,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 
-/** A single outcome record with TTL — for closed-loop feedback. */
+/** A single outcome record with TTL - for closed-loop feedback. */
 export interface Outcome {
     proposalId: string;
     resolution: string;
@@ -67,7 +67,7 @@ export function _getState(ctx: ExtensionContext): ContextLifecycleState {
     return getExtensionState(ctx, "context-lifecycle", createState);
 }
 
-// Module-level fallback state — used when `ctx` is not available.
+// Module-level fallback state - used when `ctx` is not available.
 // Preferred pattern: use getState(ctx) wherever ctx is accessible.
 // Reset on session_start; turn_end uses the session-scoped getState(ctx).
 // FULL FIX: Thread ctx through all callers and remove this fallback.

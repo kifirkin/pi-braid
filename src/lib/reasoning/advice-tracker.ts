@@ -1,5 +1,5 @@
 /**
- * Advice Tracker — records advice predictions and evaluates accuracy.
+ * Advice Tracker - records advice predictions and evaluates accuracy.
  *
  * Dreamer predicts "stuck" or "failure" outcomes. MARS flags tool overuse.
  * This module tracks those predictions, evaluates them after N turns,
@@ -35,13 +35,13 @@ interface AdviceTrackerState {
   accuracy: Map<string, { correct: number; total: number }>;
 }
 
-// Module-level state (process-wide — advice tracking doesn't need session scoping)
+// Module-level state (process-wide - advice tracking doesn't need session scoping)
 const _state: AdviceTrackerState = {
   records: [],
   accuracy: new Map(),
 };
 
-// ── Threshold configs (mutable — adjusted by feedback loop) ────────────────
+// ── Threshold configs (mutable - adjusted by feedback loop) ────────────────
 
 /** Dreamer cooldown in ms. Starts at 60s, adjusted by accuracy. */
 export let dreamerCooldownMs = 60_000;
@@ -156,7 +156,7 @@ function evaluateDreamerPrediction(record: AdviceRecord, ctx: EvaluationContext)
     return ctx.consecutiveErrorTurns >= 2;
   }
 
-  // Unknown prediction type — can't evaluate
+  // Unknown prediction type - can't evaluate
   return false;
 }
 
@@ -193,16 +193,16 @@ function adjustThresholds(): void {
   if (dreamerAccuracy.total >= MIN_PREDICTIONS_FOR_ADJUSTMENT) {
     const rate = dreamerAccuracy.correct / dreamerAccuracy.total;
     if (rate < 0.3) {
-      // Too many false positives — increase cooldown to reduce frequency
+      // Too many false positives - increase cooldown to reduce frequency
       dreamerCooldownMs = Math.min(300_000, dreamerCooldownMs * 1.5);
       log.info(
-        `[advice-tracker] Dreamer accuracy ${(rate * 100).toFixed(0)}% — increased cooldown to ${(dreamerCooldownMs / 1000).toFixed(0)}s`,
+        `[advice-tracker] Dreamer accuracy ${(rate * 100).toFixed(0)}% - increased cooldown to ${(dreamerCooldownMs / 1000).toFixed(0)}s`,
       );
     } else if (rate > 0.7 && dreamerCooldownMs > 30_000) {
-      // Good accuracy — allow more frequent advice
+      // Good accuracy - allow more frequent advice
       dreamerCooldownMs = Math.max(30_000, dreamerCooldownMs * 0.8);
       log.info(
-        `[advice-tracker] Dreamer accuracy ${(rate * 100).toFixed(0)}% — decreased cooldown to ${(dreamerCooldownMs / 1000).toFixed(0)}s`,
+        `[advice-tracker] Dreamer accuracy ${(rate * 100).toFixed(0)}% - decreased cooldown to ${(dreamerCooldownMs / 1000).toFixed(0)}s`,
       );
     }
   }
@@ -212,16 +212,16 @@ function adjustThresholds(): void {
   if (marsAccuracy.total >= MIN_PREDICTIONS_FOR_ADJUSTMENT) {
     const rate = marsAccuracy.correct / marsAccuracy.total;
     if (rate < 0.3) {
-      // Too many false positives — increase multiplier to reduce sensitivity
+      // Too many false positives - increase multiplier to reduce sensitivity
       marsOveruseMultiplier = Math.min(10, marsOveruseMultiplier + 1);
       log.info(
-        `[advice-tracker] MARS accuracy ${(rate * 100).toFixed(0)}% — increased overuse multiplier to ${marsOveruseMultiplier}`,
+        `[advice-tracker] MARS accuracy ${(rate * 100).toFixed(0)}% - increased overuse multiplier to ${marsOveruseMultiplier}`,
       );
     } else if (rate > 0.7 && marsOveruseMultiplier > 2) {
-      // Good accuracy — allow more sensitivity
+      // Good accuracy - allow more sensitivity
       marsOveruseMultiplier = Math.max(2, marsOveruseMultiplier - 1);
       log.info(
-        `[advice-tracker] MARS accuracy ${(rate * 100).toFixed(0)}% — decreased overuse multiplier to ${marsOveruseMultiplier}`,
+        `[advice-tracker] MARS accuracy ${(rate * 100).toFixed(0)}% - decreased overuse multiplier to ${marsOveruseMultiplier}`,
       );
     }
   }

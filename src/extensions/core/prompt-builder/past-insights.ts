@@ -1,5 +1,5 @@
 /**
- * Proactive Past Insights — extracted from prompt-builder/index.ts.
+ * Proactive Past Insights - extracted from prompt-builder/index.ts.
  *
  * R6: Injects relevant experience from previous sessions into prompt.
  * Uses three-memory-stores (episodes) + session-recall (sessions).
@@ -31,7 +31,7 @@ const MEMORY_DIR = join(homedir(), ".pi", "memory");
  * Derive a project identifier from a cwd path.
  * Returns the last 2 path components.
  */
-/** Derive project identifier from cwd — exported for main prompt builder. */
+/** Derive project identifier from cwd - exported for main prompt builder. */
 export function deriveProjectIdFromCwd(cwd: string): string {
   const parts = cwd.replace(/\\/g, "/").split("/").filter(Boolean);
   if (parts.length < 2) return cwd || "unknown";

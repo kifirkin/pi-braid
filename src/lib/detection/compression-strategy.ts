@@ -1,11 +1,11 @@
 /**
- * Adaptive Compression Strategy (2604.15877) — Experience Compression Spectrum
+ * Adaptive Compression Strategy (2604.15877) - Experience Compression Spectrum
  * Different temporal scales require different compression strategies.
  *
  * Levels:
- *   short-term  — pruning: remove noise, collapse repetitions (BCR)
- *   medium-term — reasoning summarization: chains → conclusions
- *   long-term   — episodic: extract patterns to memory
+ *   short-term  - pruning: remove noise, collapse repetitions (BCR)
+ *   medium-term - reasoning summarization: chains → conclusions
+ *   long-term   - episodic: extract patterns to memory
  *
  * Compression level determination uses an LLM judge via classify() with
  * the compressionUrgency critic. Falls back to static thresholds when
@@ -117,7 +117,7 @@ export async function determineCompressionLevel(
       estimatedSavings: 0,
     };
   } catch {
-    // LLM unavailable — fall through to heuristic below
+    // LLM unavailable - fall through to heuristic below
   }
 
   // Fallback: detect consecutive failures (always compress)
@@ -126,7 +126,7 @@ export async function determineCompressionLevel(
       level: "short-term",
       trigger: "bcr",
       turnsSinceCompression: opts.turnsSinceCompression,
-      reason: `${opts.consecutiveFailures}x consecutive failures — collapse error pattern.`,
+      reason: `${opts.consecutiveFailures}x consecutive failures - collapse error pattern.`,
       estimatedSavings: 0.4,
     };
   }
@@ -139,8 +139,8 @@ export async function determineCompressionLevel(
       turnsSinceCompression: opts.turnsSinceCompression,
       reason:
         opts.turnCount >= 80
-          ? "Late session (≥80 turns) — extract to episodic memory."
-          : `High density (${Math.round(density.density * 100)}%) — aggressive compression.`,
+          ? "Late session (≥80 turns) - extract to episodic memory."
+          : `High density (${Math.round(density.density * 100)}%) - aggressive compression.`,
       estimatedSavings: 0.65,
     };
   }
@@ -151,7 +151,7 @@ export async function determineCompressionLevel(
       level: "medium-term",
       trigger: "reasoning",
       turnsSinceCompression: opts.turnsSinceCompression,
-      reason: `Deep reasoning chain (${opts.reasoningChainDepth} steps) — medium-term compression opportunity.`,
+      reason: `Deep reasoning chain (${opts.reasoningChainDepth} steps) - medium-term compression opportunity.`,
       estimatedSavings: 0.55,
     };
   }
@@ -162,7 +162,7 @@ export async function determineCompressionLevel(
       level: "medium-term",
       trigger: "density",
       turnsSinceCompression: opts.turnsSinceCompression,
-      reason: "40+ turns since compression — prevent bloat.",
+      reason: "40+ turns since compression - prevent bloat.",
       estimatedSavings: 0.35,
     };
   }

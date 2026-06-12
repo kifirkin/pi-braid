@@ -1,8 +1,8 @@
 /**
- * Enforcement Handler Registry — thin orchestrator.
+ * Enforcement Handler Registry - thin orchestrator.
  *
  * Imports and registers each focused handler. Previously a 855-line monolith
- * with inline event handlers and dynamic imports — now a ~60-line coordinator.
+ * with inline event handlers and dynamic imports - now a ~60-line coordinator.
  *
  * Phase 3: God object split complete. Each handler lives in its own file
  * under handlers/ for independent testing.
@@ -47,7 +47,7 @@ import { SESSION_START, TOOL_CALL, TURN_END, MESSAGE_END, SESSION_SHUTDOWN } fro
 const log = createLogger("enforcement");
 
 /**
- * Handler registration metadata — used by tests instead of fragile source parsing.
+ * Handler registration metadata - used by tests instead of fragile source parsing.
  */
 export const HANDLER_REGISTRATIONS: Array<{ event: string; method: string; handler: string }> = [
   { event: "input", method: "pi.on", handler: "language detection" },
@@ -142,7 +142,7 @@ function registerCompactAndSessionHandlers(pi: ExtensionAPI, _nudgeManager: Nudg
     await dispatchTurnEndLoop(pi, event, ctx, _nudgeManager);
   });
 
-  // ── turn_end: claim tracker — cross-turn contradiction detection ──
+  // ── turn_end: claim tracker - cross-turn contradiction detection ──
   registerTurnEndHandler("claim-tracker", 70, async (event, ctx) => {
     if (!getState(ctx).enforcementActive) return;
     const isBurst = getState(ctx).consecutiveErrorTurns >= 3;
@@ -170,7 +170,7 @@ function registerCompactAndSessionHandlers(pi: ExtensionAPI, _nudgeManager: Nudg
     );
   });
 
-  // ── turn_end: spec verification — checks edited files against specs ──
+  // ── turn_end: spec verification - checks edited files against specs ──
   registerTurnEndHandler("spec-verification", 30, async (_event, ctx) => {
     if (!getState(ctx).enforcementActive) return;
     await guard(

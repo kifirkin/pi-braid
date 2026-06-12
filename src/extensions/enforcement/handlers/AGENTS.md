@@ -1,11 +1,11 @@
-# src/extensions/enforcement/handlers/ — Event Wiring + Analysis Pipeline
+# src/extensions/enforcement/handlers/ - Event Wiring + Analysis Pipeline
 
 The enforcement extension is the largest in pi-braid. Its `handlers/`
 directory contains 16+ files with TWO distinct concerns:
 
-1. **Framework event wiring** — files named `register-*.ts` that
+1. **Framework event wiring** - files named `register-*.ts` that
    subscribe to pi core events (`registerTool`, `pi.on(...)`, etc.)
-2. **Analysis pipeline** — files in `analysis/` subdir that run as
+2. **Analysis pipeline** - files in `analysis/` subdir that run as
    part of the per-turn analysis phase
 
 ## What "handlers" means here

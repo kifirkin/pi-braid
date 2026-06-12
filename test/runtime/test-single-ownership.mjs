@@ -8,7 +8,7 @@
  *   - Every event name string used with pi.on() or onEvent() should
  *     import from lib/core/event-names.ts
  *
- * This is a structural invariant test — it fails if the pattern is violated.
+ * This is a structural invariant test - it fails if the pattern is violated.
  */
 
 import { readFileSync, readdirSync, statSync } from "node:fs";

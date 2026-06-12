@@ -27,7 +27,7 @@ const { normalizeLabel, replacePlaceholders } = await import(
 
 // ─── normalizeLabel() ─────────────────────────────────────────────────────────
 
-console.log("[1] normalizeLabel() — prefix matching...");
+console.log("[1] normalizeLabel() - prefix matching...");
 
 // Exact matches
 assert.strictEqual(normalizeLabel("yes"), "yes", 'exact "yes"');
@@ -50,11 +50,11 @@ assert.strictEqual(normalizeLabel("  yes  "), "yes", '"  yes  " trimmed');
 // Non-matching cases
 assert.strictEqual(normalizeLabel("maybe"), null, '"maybe" null');
 assert.strictEqual(normalizeLabel(""), null, 'empty string null');
-assert.strictEqual(normalizeLabel("YesYes"), null, '"YesYes" — no word boundary after "Yes"');
+assert.strictEqual(normalizeLabel("YesYes"), null, '"YesYes" - no word boundary after "Yes"');
 
 // Edge: word boundary after "yes"/"no"
-assert.strictEqual(normalizeLabel("yesterday"), null, '"yesterday" — "yes" isn\'t a word');
-assert.strictEqual(normalizeLabel("notable"), null, '"notable" — "no" isn\'t a word boundary');
+assert.strictEqual(normalizeLabel("yesterday"), null, '"yesterday" - "yes" isn\'t a word');
+assert.strictEqual(normalizeLabel("notable"), null, '"notable" - "no" isn\'t a word boundary');
 
 // Edge: punctuation after prefix
 assert.strictEqual(normalizeLabel("No!"), "no", '"No!" prefix with exclamation');
@@ -64,7 +64,7 @@ console.log("  ✅ 15/15 normalizeLabel assertions passed");
 
 // ─── replacePlaceholders() ────────────────────────────────────────────────────
 
-console.log("\n[2] replacePlaceholders() — template interpolation...");
+console.log("\n[2] replacePlaceholders() - template interpolation...");
 
 // Basic substitution
 assert.strictEqual(
@@ -80,14 +80,14 @@ assert.strictEqual(
   '{{claim}} + {{context}}',
 );
 
-// No placeholders — passthrough
+// No placeholders - passthrough
 assert.strictEqual(
   replacePlaceholders("Hello world", {}),
   "Hello world",
   'no placeholders',
 );
 
-// Unrecognized placeholder — preserved literally
+// Unrecognized placeholder - preserved literally
 assert.strictEqual(
   replacePlaceholders("{{unknown}} here", {}),
   "{{unknown}} here",
@@ -126,7 +126,7 @@ console.log("  ✅ 9/9 replacePlaceholders assertions passed");
 
 // ─── classify() exports ───────────────────────────────────────────────────────
 
-console.log("\n[3] classify() — API surface...");
+console.log("\n[3] classify() - API surface...");
 
 const { classify } = await import(
   join(ROOT, "dist", "lib", "ai", "text-classifier.js")

@@ -1,5 +1,5 @@
 /**
- * Analytics — type definitions
+ * Analytics - type definitions
  *
  * Extracted from index.ts for maintainability.
  */

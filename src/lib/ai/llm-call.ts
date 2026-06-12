@@ -3,9 +3,9 @@
  *
  * Wraps pi-ai's completeSimple with a two-tier retry strategy:
  *
- * Tier 1 — Provider SDK: Handles fast transient blips (quick network drops)
+ * Tier 1 - Provider SDK: Handles fast transient blips (quick network drops)
  *           via completeSimple's maxRetries (default: 1 SDK-level retry).
- * Tier 2 — This module: Handles sustained rate limits with longer backoff
+ * Tier 2 - This module: Handles sustained rate limits with longer backoff
  *           (5s → 15s → 30s → 60s) so the provider gets real cooldown time.
  *
  * A rate-limit circuit breaker skips calls for 60s after a 429 to avoid
@@ -42,7 +42,7 @@ let rateLimitCooldownUntil = 0;
 export interface LlmCallOptions {
   /** Temperature for generation. Default: 0.1 */
   temperature?: number;
-  /** Max output tokens. Default: auto from prompt length (500–2000) */
+  /** Max output tokens. Default: auto from prompt length (500-2000) */
   maxTokens?: number;
   /** Per-attempt timeout in ms. Default: 30000 */
   timeoutMs?: number;
@@ -79,7 +79,7 @@ export async function callLlm(
   const now = Date.now();
   if (rateLimitCooldownUntil > 0 && now < rateLimitCooldownUntil) {
     const remaining = rateLimitCooldownUntil - now;
-    log.debug(`Skipping LLM call — rate-limit cooldown ${remaining}ms remaining`);
+    log.debug(`Skipping LLM call - rate-limit cooldown ${remaining}ms remaining`);
     return { error: "Rate-limit cooldown active" };
   }
 
@@ -100,11 +100,11 @@ export async function callLlm(
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
     // ── circuit breaker re-check inside retry loop ──
     if (rateLimitCooldownUntil > 0 && Date.now() < rateLimitCooldownUntil) {
-      log.warn(`Skipping retry ${attempt} — rate-limit cooldown active`);
+      log.warn(`Skipping retry ${attempt} - rate-limit cooldown active`);
       return { error: "Rate-limit cooldown active" };
     }
 
-    // Use AbortSignal for timeout instead of Promise.race — avoids orphaned timer
+    // Use AbortSignal for timeout instead of Promise.race - avoids orphaned timer
     const timeoutController = new AbortController();
     const timeoutId = setTimeout(
       () => timeoutController.abort(new Error("LLM call timeout")),
@@ -143,7 +143,7 @@ export async function callLlm(
           continue;
         }
 
-        // Non-retryable or exhausted — log and return
+        // Non-retryable or exhausted - log and return
         if (isRateLimitError(result.errorMessage)) {
           rateLimitCooldownUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
           log.warn(
@@ -155,7 +155,7 @@ export async function callLlm(
         return { error: result.errorMessage };
       }
 
-      // Success — extract text content
+      // Success - extract text content
       const textContent = result.content.filter(
         (c): c is { type: "text"; text: string } => c.type === "text",
       );
@@ -204,7 +204,7 @@ export async function callLlm(
  * across repeated calls (e.g. retry loops creating new combined signals).
  */
 function combineSignals(s1: AbortSignal, s2: AbortSignal): AbortSignal {
-  // If either signal is already dead, just return the other — combining into an
+  // If either signal is already dead, just return the other - combining into an
   // already-aborted signal is a no-op that would only propagate the stale abort.
   if (s1.aborted) return s2;
   if (s2.aborted) return s1;

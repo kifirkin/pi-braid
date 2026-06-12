@@ -1,11 +1,11 @@
 /**
- * Evidence Pool — Tracks knowledge from multiple sources with conflict detection.
+ * Evidence Pool - Tracks knowledge from multiple sources with conflict detection.
  * Uses the triple-critic LLM classification system for evidence conflict
  * detection with three-tier fallback (heuristic → utility → session).
  *
  * XoT (Cross-observational Thinking) two-stage decomposition:
- *   Stage 1 — Evidence Explanation: classify conflicts via classify() + CRITICS.evidenceConflict
- *   Stage 2 — Faithful Reasoning: acknowledgment generation (formatConflictMessage)
+ *   Stage 1 - Evidence Explanation: classify conflicts via classify() + CRITICS.evidenceConflict
+ *   Stage 2 - Faithful Reasoning: acknowledgment generation (formatConflictMessage)
  *
  * Flow:
  * 1. memory_recall, web search, docs reading, code execution → addEvidence()
@@ -27,14 +27,14 @@ import { CRITICS, STOP_WORDS } from "../ai/critic-registry.js";
 
 export type EvidenceSource = "memory" | "web" | "docs" | "code" | "session" | "unknown";
 
-/** How the confidence was derived — affects reliability weighting (XoT Stage 1) */
+/** How the confidence was derived - affects reliability weighting (XoT Stage 1) */
 export type EvidenceConfidenceType = "parametric" | "retrieved" | "observed";
 
 /** XoT Stage 1: Conflict classification */
 export type ConflictClassification = "direct" | "implication" | "reliability";
 
 /**
- * Source reliability baseline scores — prior probability that source is accurate.
+ * Source reliability baseline scores - prior probability that source is accurate.
  * Used as multiplicative factor when computing evidence reliability.
  */
 const SOURCE_RELIABILITY: Record<EvidenceSource, number> = {
@@ -70,7 +70,7 @@ export interface Conflict {
   resolvedBy?: string;
   resolvedAt?: number;
   detectedAt: number;
-  /** XoT Stage 1 result — how the conflict was classified */
+  /** XoT Stage 1 result - how the conflict was classified */
   classification: ConflictClassification;
 }
 
@@ -157,7 +157,7 @@ async function classifyConflictViaCritic(
   }
 
   // Heuristic fallback: check reliability difference
-  // (In the heuristic path, we don't have evidence reliability — use token overlap)
+  // (In the heuristic path, we don't have evidence reliability - use token overlap)
   const overlap = tokenOverlap(evidenceA, evidenceB);
   if (overlap > 0.5) return "direct";
   return "implication";
@@ -250,7 +250,7 @@ export function getEvidence(
   if (minConfidence !== undefined) result = result.filter((e) => e.confidence >= minConfidence);
   if (maxAgeMs !== undefined) result = result.filter((e) => Date.now() - e.timestamp <= maxAgeMs);
 
-  // HaluMem (2511.03506): Cross-session isolation — project-aware filtering
+  // HaluMem (2511.03506): Cross-session isolation - project-aware filtering
   if (project !== undefined) {
     result = result.filter((e) => e.project === project);
   } else if (source === undefined) {
@@ -432,7 +432,7 @@ function detectConflictsFor(ctx: ExtensionContext, evidenceId: string): Conflict
 
 /**
  * Generate a faithful conflict acknowledgment message for enforcement.
- * XoT Stage 2: Faithful reasoning — surfaces disagreement rather than picking sides.
+ * XoT Stage 2: Faithful reasoning - surfaces disagreement rather than picking sides.
  */
 export function formatConflictMessage(conflict: Conflict): string {
   const forSource = conflict.for[0]?.source || "unknown";

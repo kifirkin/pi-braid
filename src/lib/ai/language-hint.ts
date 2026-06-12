@@ -1,5 +1,5 @@
 /**
- * Language hint module — tracks detected language for reply instructions.
+ * Language hint module - tracks detected language for reply instructions.
  *
  * Session-scoped via ExtensionContext. All stateful functions take ctx.
  *

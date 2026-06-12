@@ -10,7 +10,7 @@
  * helpers are called from many different call sites: ExtensionContext from
  * tool exec, partial ctx objects from event handlers, the writable
  * SessionManager, etc. They all expose a duck-typed `getContextUsage()`,
- * `sessionManager.getEntries()`, `sessionManager.getBranch()` shape — but
+ * `sessionManager.getEntries()`, `sessionManager.getBranch()` shape - but
  * TypeScript can't unify them statically, so we use unknown + narrowing.
  */
 

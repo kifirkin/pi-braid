@@ -1,7 +1,7 @@
 /**
  * Types for the Heartbeat Scheduler extension.
  *
- * Heartbeat Scheduler — proactive cognitive scheduling based on paper 2604.14178.
+ * Heartbeat Scheduler - proactive cognitive scheduling based on paper 2604.14178.
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";

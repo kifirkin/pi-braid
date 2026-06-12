@@ -1,5 +1,5 @@
 /**
- * Episode Store — case-based reasoning from past tasks.
+ * Episode Store - case-based reasoning from past tasks.
  *
  * Paper: 2604.14475 Evo-MedAgent
  * Key finding: Episode memory outperforms single memory.
@@ -236,7 +236,7 @@ export function retrieveByRUMS(
     .map((s) => ({ ...s.ep, similarity: s.score }));
 
   // Mark cross-session episodes (for display/auto-whisper filtering)
-  // but do NOT filter them out — user-initiated memory_recall needs them.
+  // but do NOT filter them out - user-initiated memory_recall needs them.
   // Callers that want filtering (e.g. auto-whisper) should do it at the call site.
   for (const ep of results) {
     (ep as Record<string, unknown>)._crossSession =

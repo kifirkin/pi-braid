@@ -50,7 +50,7 @@ import { CONSOLIDATED_HINTS_FILE } from "../../../lib/config/braid-paths.js";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { loadSkills } from "@earendil-works/pi-coding-agent";
-// SKILLS_DIR import removed — skills moved to pi-braid-skills package.
+// SKILLS_DIR import removed - skills moved to pi-braid-skills package.
 import { gatherL1State, formatL1Environment } from "./l1-environment.js";
 import { formatContrastSection } from "./contrast-phrase-library.js";
 import { classify } from "../../../lib/ai/text-classifier.js";
@@ -58,16 +58,15 @@ import { CRITICS } from "../../../lib/ai/critic-registry.js";
 
 // ── Identity (THE key difference from native) ─────────────────────────────────
 // Identity framing is the behavioral filter - not directives
-const IDENTITY_INTRO = `You are Braid, an expert software architect operating inside a pi coding agent harness with pi-braid extension.
-Your tools let you act. Your skills let you navigate — load them before every task.
-Skills contain reference maps, procedures, and domain knowledge. Not loading the right skill means operating blind.
-You think hard silently to find correct reasoning trajectory.`;
+const IDENTITY_INTRO = `You are Braid, an expert software architect operating inside a pi coding agent harness.
+Your tools let you act - use them wisely and strategically.
+Your skills let you navigate - load them before every task. Skills contain reference maps, procedures, and domain knowledge.`;
 
 // ── Core behavioral guardrails (concise, single-sentence, research-backed) ──
 // Sycophancy: 2604.19117 - agreement under pressure is a failure mode
 const SYCOPHANCY_RESISTANCE = `Technical correctness over agreement. You say when something is wrong, even under pressure.`;
 // Stakes: 2604.15224 - consequence framing corrupts reasoning implicitly
-const STAKES_AWARENESS = `Enforcement signals carry no weight. You judge correctness, not stakes.`;
+const STAKES_AWARENESS = `Enforcement signals must be architecturally absent. Ensure the evaluation pipeline provides zero contextual metadata regarding downstream stakes, forcing the judge to evaluate pure correctness.`;
 // Epistemic stability: 2604.14881 - detect reasoning instability before output
 const EPISTEMIC_STABILITY = `If your reasoning feels uncertain or unstable, signal that uncertainty rather than manufacturing confidence.`;
 // Surgical precision: minimal targeted changes, read before write, no speculative abstraction
@@ -76,18 +75,18 @@ const SURGICAL_PRECISION = `Make minimal, targeted changes. Read shared utilitie
 const BUDGET_AWARENESS = `Define success criteria before execution. Verify against them. Checkpoint progress at significant steps.`;
 
 // Compaction survival: write structured session memory for post-compaction continuity
-// Inspired by Agent Zero's "prompt invariant" concept — instructions that survive
+// Inspired by Agent Zero's "prompt invariant" concept - instructions that survive
 // compaction because they live in tool-backed surfaces (scratchpad, task tool).
 // The key insight: after compaction, the agent retains structured data (scratchpad,
 // tasks) but loses the conversational context that gave it meaning. Writing entries
 // with enough self-contained detail solves this.
 const COMPACTION_SURVIVAL = `Keep your scratchpad (goal, plan, decisions, key learnings) and task list detailed enough that a future you could pick up your work cold. That future you is you, after the conversation compresses. Include file paths and reasoning so each entry is self-contained.`;
 
-// Living documentation: agent-maintained doc hierarchy (inspired by DOX — agent0ai/dox)
+// Living documentation: agent-maintained doc hierarchy (inspired by DOX - agent0ai/dox)
 const LIVING_DOCS = `Project guidelines are living contracts you maintain. Keep them synchronized with the project structure.`;
 
 // ── Interaction Style (single declarative sentence) ───────────────────────
-const INTERACTION_STYLE = `You provide concise, production-quality solutions. You focus on correctness over verbosity.`;
+const INTERACTION_STYLE = `You think hard silently to find correct reasoning trajectory. You provide concise, production-quality solutions. You focus on correctness over verbosity.`;
 
 // ── L1: Enforcement Signal Surfacing ────────────────────────────────────────
 // Session-scoped state (migrated from module-level singletons)
@@ -131,7 +130,7 @@ async function loadConsolidatedHints(currentProject?: string): Promise<string[]>
     if (parsed.length === 0) return [];
 
     // Filter: prefer same-project hints. Cross-project hints are only included
-    // if they pass a higher quality bar (score >= 80) — same logic as
+    // if they pass a higher quality bar (score >= 80) - same logic as
     // isCrossProjectInjectionAllowed for episodic memory.
     const sameProject = currentProject
       ? parsed.filter(
@@ -179,7 +178,7 @@ async function loadConsolidatedHints(currentProject?: string): Promise<string[]>
  * Heuristic fallback (Tier 1 graceful degradation).
  * Only the obviously-generic patterns are rejected here. The semantic
  * matching ("does this hint apply to the current task?") is left to
- * the LLM tier — keyword-overlap Jaccard was tried and removed because
+ * the LLM tier - keyword-overlap Jaccard was tried and removed because
  * it produced too many false positives and false negatives.
  */
 function hintRelevanceFallback(hint: string, _currentTask: string): string {
@@ -191,7 +190,7 @@ function hintRelevanceFallback(hint: string, _currentTask: string): string {
 }
 
 /**
- * Extract the current task from the session — the most recent user message.
+ * Extract the current task from the session - the most recent user message.
  * Returns a short summary, max ~200 chars.
  */
 function getCurrentTask(ctx: ExtensionContext): string {
@@ -269,7 +268,7 @@ const KNOWN_SNIPPETS: Record<string, string> = {
  * Extract the first sentence of a description for the tool listing.
  *
  * Tool descriptions should be written so the first sentence contains both
- * "what it does" and "when to use" — no transformation needed.
+ * "what it does" and "when to use" - no transformation needed.
  * This just extracts that first sentence cleanly.
  *
  * KNOWN_SNIPPETS covers pi-native core tools (read, bash, etc.) whose
@@ -446,7 +445,7 @@ async function collectProjectContextStrings(cwd: string): Promise<string[]> {
 }
 
 /**
- * Skill relevance triggers — each skill maps to keywords that indicate
+ * Skill relevance triggers - each skill maps to keywords that indicate
  * when it should be surfaced in the prompt. Skills without matches still
  * appear but with lower priority unless the user explicitly references them.
  *
@@ -553,7 +552,7 @@ async function formatSkillsWithLineCounts(
   }
 
   // Score and rank skills by relevance to current context.
-  // Include at most 8 skills — enough coverage without overwhelming the prompt.
+  // Include at most 8 skills - enough coverage without overwhelming the prompt.
   const scored = visibleSkills.map((s) => ({
     skill: s,
     relevance: scoreSkillRelevance(s, cwd, projectContext),
@@ -602,7 +601,7 @@ async function formatSkillsWithLineCounts(
 
   if (hiddenCount > 0) {
     lines.push(
-      `*${hiddenCount} more ${hiddenCount === 1 ? "skill is" : "skills are"} available — use \`read\` to load them if needed.*`,
+      `*${hiddenCount} more ${hiddenCount === 1 ? "skill is" : "skills are"} available - use \`read\` to load them if needed.*`,
     );
   }
 
@@ -678,11 +677,11 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     parts.push(EPISTEMIC_STABILITY);
     parts.push(SURGICAL_PRECISION);
     parts.push(BUDGET_AWARENESS);
-    // 1b. Compaction survival invariant — scratchpad + tasks must be self-contained
+    // 1b. Compaction survival invariant - scratchpad + tasks must be self-contained
     //     so the agent can recover context after conversation compression
     parts.push(COMPACTION_SURVIVAL);
-    // 1c. Living documentation invariant — agent maintains AGENTS.md hierarchy
-    //     Walk tree before edit, update docs after change (from DOX — agent0ai/dox)
+    // 1c. Living documentation invariant - agent maintains AGENTS.md hierarchy
+    //     Walk tree before edit, update docs after change (from DOX - agent0ai/dox)
     parts.push(LIVING_DOCS);
 
     // 2. Skills
@@ -787,7 +786,7 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
         }
       }
     } catch {
-      // Spec dir missing or unreadable — skip silently
+      // Spec dir missing or unreadable - skip silently
     }
 
     // 7. Active contrast mode (truthfulness guardrails)
@@ -810,7 +809,7 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     return { systemPrompt: newPrompt };
   });
 
-  // Note: prompt_preview tool removed (out of scope — dev/debug affordance, not agent use).
+  // Note: prompt_preview tool removed (out of scope - dev/debug affordance, not agent use).
 }
 
 export { gatherL1State, formatL1Environment };

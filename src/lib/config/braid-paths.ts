@@ -1,5 +1,5 @@
 /**
- * Braid Paths — centralized storage paths under ~/.pi/agent/braid/
+ * Braid Paths - centralized storage paths under ~/.pi/agent/braid/
  *
  * All braid-specific persistent storage is consolidated here.
  * This makes it easy to find, audit, and migrate braid data.
@@ -22,7 +22,7 @@
  *   │   │   └── scratchpads/         (scratchpad: task state per project)
  *   │   └── settings.json       (pi-native + braid config)
  *   └── memory/
- *       └── memory.json          (lib/memory legacy path — kept for migration compat)
+ *       └── memory.json          (lib/memory legacy path - kept for migration compat)
  *
  * Paths NOT under braid/ (appropriate elsewhere):
  *   - ~/.pi/agent/settings.json       → pi-native config location

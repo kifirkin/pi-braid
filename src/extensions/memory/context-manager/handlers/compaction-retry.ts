@@ -1,5 +1,5 @@
 /**
- * Compaction Retry & Overflow Handlers — extracted from compaction.ts
+ * Compaction Retry & Overflow Handlers - extracted from compaction.ts
  * to reduce that file from 929L to ~580L.
  *
  * Handles: overflow failures, transient errors, context-window errors,
@@ -42,7 +42,7 @@ export async function handleOverflowFailure(
     const analysis = await analyzeSession(ctx);
     if (analysis.usage.percent >= 75) {
       log.warn(
-        `[Critical] Context at ${analysis.usage.percent.toFixed(1)}% — triggering emergency rotation (overflow)`,
+        `[Critical] Context at ${analysis.usage.percent.toFixed(1)}% - triggering emergency rotation (overflow)`,
       );
       triggerEmergencyRotation(pi, ctx);
       return;
@@ -111,7 +111,7 @@ export async function handleOverflowFailure(
       ],
       display: true,
     },
-    // triggerTurn: true — retries are exhausted; agent must act (switch model,
+    // triggerTurn: true - retries are exhausted; agent must act (switch model,
     // rotate, store learnings). Wakes the agent so it can take action.
     { deliverAs: "steer", triggerTurn: true },
     { type: "context", source: "context-manager/compaction/overflow-exhausted" },
@@ -132,7 +132,7 @@ export async function handleTransientError(
     const analysis = await analyzeSession(ctx);
     if (analysis.usage.percent >= 75) {
       log.warn(
-        `[Critical] Context at ${analysis.usage.percent.toFixed(1)}% — triggering emergency rotation (transient)`,
+        `[Critical] Context at ${analysis.usage.percent.toFixed(1)}% - triggering emergency rotation (transient)`,
       );
       triggerEmergencyRotation(pi, ctx);
       return;
@@ -178,7 +178,7 @@ export async function handleTransientError(
       ],
       display: true,
     },
-    // triggerTurn: true — retries exhausted; agent must decide whether to
+    // triggerTurn: true - retries exhausted; agent must decide whether to
     // wait for the server to recover, switch model, or rotate.
     { deliverAs: "steer", triggerTurn: true },
     { type: "context", source: "context-manager/compaction/transient-exhausted" },
@@ -221,7 +221,7 @@ export async function handleContextWindowError(
       ],
       display: true,
     },
-    // triggerTurn: true — session is dead in the water, agent must rotate.
+    // triggerTurn: true - session is dead in the water, agent must rotate.
     { deliverAs: "steer", triggerTurn: true },
     { type: "context", source: "context-manager/compaction/context-window" },
   );
@@ -240,7 +240,7 @@ export async function handleThresholdFailure(
     const analysis = await analyzeSession(ctx);
     if (analysis.usage.percent >= 75) {
       log.warn(
-        `[Critical] Context at ${analysis.usage.percent.toFixed(1)}% — triggering emergency rotation (threshold)`,
+        `[Critical] Context at ${analysis.usage.percent.toFixed(1)}% - triggering emergency rotation (threshold)`,
       );
       triggerEmergencyRotation(pi, ctx);
       return;
@@ -310,7 +310,7 @@ export function triggerCompactionRetry(
     compactionRetryState.retryTimeout = null;
     const cmState = getCmState(ctx);
     if (cmState.compactionRetryActive) {
-      log.info("[Compaction] Retry skipped — already active");
+      log.info("[Compaction] Retry skipped - already active");
       resetCompactionRetry();
       return;
     }
@@ -333,7 +333,7 @@ export function triggerOverflowRetry(
     overflowRetryState.retryTimeout = null;
     const cmState = getCmState(ctx);
     if (cmState.overflowRetryActive) {
-      log.info("[Overflow] Retry skipped — already active");
+      log.info("[Overflow] Retry skipped - already active");
       resetOverflowRetry();
       return;
     }

@@ -1,5 +1,5 @@
 /**
- * Turn Outcome Classification — Repetitive Loop Detection (triple-critic)
+ * Turn Outcome Classification - Repetitive Loop Detection (triple-critic)
  *
  * Detects when the agent is stuck in a repetitive loop using classify() with
  * CRITICS.toolLoopDetected. Three-tier fallback:
@@ -12,7 +12,7 @@
  *
  * Replaces the previous implementation with three separate heuristic
  * functions (detectToolRepetition, detectErrorEcho, detectFileChurn)
- * — now consolidated into a single classify() call with structured history.
+ * - now consolidated into a single classify() call with structured history.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -112,7 +112,7 @@ function formatSteerMessage(details: string): string {
     `The outcome hasn't changed.\n\n` +
     `**Suggested actions:**\n` +
     `1. Use \`think()\` to re-evaluate your approach\n` +
-    `2. Check if the problem has changed — you may be solving the wrong issue\n` +
+    `2. Check if the problem has changed - you may be solving the wrong issue\n` +
     `3. Consider breaking the task into smaller steps\n` +
     `4. Use \`memory_recall\` to find past solutions to similar problems`
   );

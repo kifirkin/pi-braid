@@ -1,8 +1,8 @@
 /**
- * Enforcement Whisper — direct message delivery.
+ * Enforcement Whisper - direct message delivery.
  *
  * REMOVED: queueEnforcementWhisper / queueBlockAction / getPendingBlockAction /
- * clearPendingBlockAction — all dead code. queueEnforcementWhisper accumulated
+ * clearPendingBlockAction - all dead code. queueEnforcementWhisper accumulated
  * messages in a process-global _default object that was never flushed.
  * queueBlockAction had zero callers. Callers now use sendEnforcementWhisper
  * directly.
@@ -37,7 +37,7 @@ export function sendEnforcementWhisper(
   message: string,
   critical: boolean = false,
 ): void {
-  // Cognitive nudge suppression — separate from confirm dialogs
+  // Cognitive nudge suppression - separate from confirm dialogs
   if (areCognitiveNudgesDisabled()) {
     log.debug("[whisper] Cognitive nudges suppressed via braid.suppressNudges=true");
     return;

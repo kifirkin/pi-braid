@@ -1,5 +1,5 @@
 /**
- * Enforcement Event Types — strongly typed interfaces for pi event shapes.
+ * Enforcement Event Types - strongly typed interfaces for pi event shapes.
  *
  * Created during Phase 3 God Object split to eliminate `any` parameters
  * in handler-registry.ts and its extracted sub-handlers.

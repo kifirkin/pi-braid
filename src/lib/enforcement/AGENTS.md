@@ -1,4 +1,4 @@
-# src/lib/enforcement/ — Cross-Extension Enforcement
+# src/lib/enforcement/ - Cross-Extension Enforcement
 
 Utilities used by the enforcement extension and by other extensions that
 need to participate in the enforcement layer (whisper cap, turn dedup).

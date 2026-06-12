@@ -1,4 +1,4 @@
-# src/extensions/cognitive/ — Cognitive Analysis & Reasoning
+# src/extensions/cognitive/ - Cognitive Analysis & Reasoning
 
 The `cognitive` group contains the agent's reasoning tools and the detectors
 that produce signals for the enforcement layer. All extensions here analyze
@@ -21,6 +21,6 @@ either the agent's own behavior or its outputs.
 
 ## Local Contracts
 
-- Detectors are **read-only** — they analyze events, they don't mutate state.
-- Detectors are **stateless across turns** — they read state from `getExtensionState(ctx, ...)`.
+- Detectors are **read-only** - they analyze events, they don't mutate state.
+- Detectors are **stateless across turns** - they read state from `getExtensionState(ctx, ...)`.
 - See `extensions/enforcement/handlers/analysis/` for how detectors are wired into the turn pipeline.

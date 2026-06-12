@@ -18,7 +18,7 @@ export default tseslint.config(
       "no-tabs": "error",
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_|^log$", caughtErrorsIgnorePattern: "^_$" }],
       "@typescript-eslint/no-explicit-any": "off",
-      // Project has many as-any casts for undocumented SDK types — warnings only
+      // Project has many as-any casts for undocumented SDK types - warnings only
       "@typescript-eslint/no-unsafe-argument": "off",
       // Remaining 60 sites (down from 54→4 as any) are at pi SDK boundaries
       "@typescript-eslint/no-unsafe-return": "off",

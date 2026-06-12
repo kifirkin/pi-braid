@@ -1,5 +1,5 @@
 /**
- * Unified Cognitive Memory System — CognitiveMemory class.
+ * Unified Cognitive Memory System - CognitiveMemory class.
  *
  * The class and all re-exports. Types, constants, storage, and utility
  * helpers are in sibling modules (types.ts, constants.ts, storage.ts, utils.ts).
@@ -292,7 +292,7 @@ export class CognitiveMemory {
       currentProject?: string;
       /** Penalize memories from a different session (cross-session contamination guard). */
       currentSessionId?: string;
-      /** Number of times a memory was accessed before — higher = more useful. */
+      /** Number of times a memory was accessed before - higher = more useful. */
       accessBoost?: number;
     },
   ): Promise<Array<{ memory: CognitiveMemoryEntry; relevance: number }>> {
@@ -319,7 +319,7 @@ export class CognitiveMemory {
       let relevance = matches * (0.5 + memory.utility * 0.5);
       if (relevance > 0) {
         // Freshness scoring: penalize stale memories.
-        // Half-life of 7 days (604800000ms) — after 7 days, relevance decays by 50%.
+        // Half-life of 7 days (604800000ms) - after 7 days, relevance decays by 50%.
         // This ensures recent insights surface above old ones with equal utility.
         const ageMs = Date.now() - memory.timestamp;
         const HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000;

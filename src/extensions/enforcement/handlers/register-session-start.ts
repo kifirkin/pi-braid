@@ -1,5 +1,5 @@
 /**
- * register-session-start — Session initialization: event bus wiring, drift init.
+ * register-session-start - Session initialization: event bus wiring, drift init.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -47,7 +47,7 @@ export function registerSessionStart(pi: ExtensionAPI): void {
                 },
               ],
             },
-            // triggerTurn: true — context at 80%+ needs proactive action
+            // triggerTurn: true - context at 80%+ needs proactive action
             // (context_tag / context_checkout / context_archive). Wakes the
             // agent so it can respond before the next compact escalation.
             { deliverAs: "steer", triggerTurn: true },

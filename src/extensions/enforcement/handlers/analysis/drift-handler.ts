@@ -1,5 +1,5 @@
 /**
- * drift-handler — Topic drift detection on turn_end.
+ * drift-handler - Topic drift detection on turn_end.
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -50,7 +50,7 @@ export async function driftHandler(pi: any, _event: any, ctx: ExtensionContext):
   if (driftCheck.drifted) {
     const whisper = gs.driftDetector.generateWhisper(driftCheck);
     if (whisper) {
-      // Dedup: share the "advisory" slot with bpe/mars — first claim wins.
+      // Dedup: share the "advisory" slot with bpe/mars - first claim wins.
       if (!tryClaim("drift", "advisory")) {
         emitSignal(
           ctx,

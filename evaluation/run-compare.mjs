@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * run‑compare — Compare pi‑braid vs naked pi vs safe‑mode.
+ * run‑compare - Compare pi‑braid vs naked pi vs safe‑mode.
  *
  * Clean pipeline: builds dist/ first, runs each mode separately,
  * saves structured results.
@@ -30,11 +30,11 @@ mkdirSync(RESULTS, { recursive: true });
 
 const distDir = join(ROOT, 'dist');
 if (!existsSync(distDir)) {
-  console.log('[pipeline] dist/ missing — building...');
+  console.log('[pipeline] dist/ missing - building...');
   execSync('npm run build', { cwd: ROOT, stdio: 'inherit', timeout: 120000 });
 }
 if (!existsSync(join(ROOT, 'dist', 'lib', 'tool-security.js'))) {
-  throw new Error('Build incomplete — missing dist/lib/tool-security.js');
+  throw new Error('Build incomplete - missing dist/lib/tool-security.js');
 }
 console.log('[pipeline] Build OK');
 
@@ -135,7 +135,7 @@ async function main() {
   const modeList = values.modes.split(',').filter(m => MODES[m]);
 
   console.log(`\n${'='.repeat(60)}`);
-  console.log('  pi‑braid vs Naked pi — Comparison');
+  console.log('  pi‑braid vs Naked pi - Comparison');
   console.log(`${'='.repeat(60)}\n`);
   console.log(`Benchmarks: ${benchKeys.join(', ')}`);
   console.log(`Modes: ${modeList.join(', ')}`);
@@ -156,7 +156,7 @@ async function main() {
 
   // Generate markdown report
   const md = [];
-  md.push('# pi‑braid vs Naked pi — Comparison');
+  md.push('# pi‑braid vs Naked pi - Comparison');
   md.push('');
   md.push(`**Generated**: ${new Date().toISOString()}`);
   md.push(`**Model**: stepfun/step-3.5-flash`);
@@ -169,8 +169,8 @@ async function main() {
     const naked = allResults.find(r => r.bench === key && r.mode === 'naked');
     const safe = allResults.find(r => r.bench === key && r.mode === 'safe');
     const b = braid?.completed ?? '?';
-    const n = naked?.completed ?? '—';
-    const s = safe?.completed ?? '—';
+    const n = naked?.completed ?? '-';
+    const s = safe?.completed ?? '-';
     md.push(`| ${key} | ${b} tasks / ${braid?.errors || 0} err | ${n} tasks / ${naked?.errors || 0} err | ${s} tasks / ${safe?.errors || 0} err |`);
   }
 

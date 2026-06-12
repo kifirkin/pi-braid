@@ -80,7 +80,7 @@ const CONTEXT_MGMT_TOOLS = new Set([
 const _policyState = createPolicyEngineState();
 const _detectorState: DetectorState = createDetectorState();
 
-// Outcome tracking (closed-loop feedback) with TTL eviction — now session-scoped
+// Outcome tracking (closed-loop feedback) with TTL eviction - now session-scoped
 const MAX_OUTCOMES = 100;
 const OUTCOME_TTL_MS = 30 * 60 * 1000;
 
@@ -166,7 +166,7 @@ export {
  * Extracted from executeAction so the before_agent_start handler can also use it.
  */
 function sendCompactNudge(pi: ExtensionAPI, evaluated: EvaluatedAction, usage: number): void {
-  // Tag/branch is preferred over compaction — preserves session history
+  // Tag/branch is preferred over compaction - preserves session history
   // while freeing working context. Compact is the last resort.
   const pipelineMsg =
     usage >= 80
@@ -180,7 +180,7 @@ function sendCompactNudge(pi: ExtensionAPI, evaluated: EvaluatedAction, usage: n
       content: [
         {
           type: "text" as const,
-          text: `[compact] ${evaluated.policy.name} — ${pipelineMsg}`,
+          text: `[compact] ${evaluated.policy.name} - ${pipelineMsg}`,
         },
       ],
       display: true,
@@ -210,7 +210,7 @@ async function executeAutoCompact(pi: ExtensionAPI, ctx: ExtensionContext): Prom
       // (manual or auto). Without this, an old timer can fire later during
       // an unrelated TURN_END and produce a stray [timer] whisper.
       //
-      // CRITICAL: scope to current session — see the timer module for why.
+      // CRITICAL: scope to current session - see the timer module for why.
       // The old single-map design leaked across pi sessions.
       const sessionId =
         (ctx as { sessionManager?: { getSessionId?: () => string } })?.sessionManager?.getSessionId?.() ??
@@ -389,7 +389,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     //   before_agent_start → sendCompactNudge → sendTrackedMessage →
     //   pi.sendMessage(steer) → before_agent_start → ... (stack overflow)
     if (_inBeforeAgentStart) {
-      log.warn("Re-entrant before_agent_start detected — skipping to prevent stack overflow");
+      log.warn("Re-entrant before_agent_start detected - skipping to prevent stack overflow");
       return;
     }
     _inBeforeAgentStart = true;
@@ -412,7 +412,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
       if (state().agentActedOnContext) {
         state().ignoredCompactNudges = 0;
         state().compactNudgeActive = false;
-        log.debug("Compact nudge acknowledged — agent used a context management tool");
+        log.debug("Compact nudge acknowledged - agent used a context management tool");
       } else if (state().turnCount - state().lastCompactNudgeTurn > 0) {
         // Agent had a turn to respond but didn't act
         state().ignoredCompactNudges++;
@@ -557,7 +557,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     label: "Context Proposals",
     promptSnippet: "View and manage S-MMU context proposals",
     description:
-      "View and manage auto-generated context proposals for session improvement — use to review or act on pending compaction/archive suggestions. Proposals are auto-generated " +
+      "View and manage auto-generated context proposals for session improvement - use to review or act on pending compaction/archive suggestions. Proposals are auto-generated " +
       "based on session analysis. Use `list` to see pending, `approve`/`reject` to act.",
     parameters: contextProposalsSchema,
     execute: async (
@@ -741,7 +741,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     },
   });
 
-  // Note: context_signal tool removed (out of scope — internal API).
+  // Note: context_signal tool removed (out of scope - internal API).
   // queueSignal() is still exported from signal-detector.ts and can be
   // called from other extensions directly:
   //   import { queueSignal, createDetectorState } from "./signal-detector.js";

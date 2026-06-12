@@ -1,5 +1,5 @@
 /**
- * Project-local paths — paths within the project repo (not in ~/.pi/agent/braid/).
+ * Project-local paths - paths within the project repo (not in ~/.pi/agent/braid/).
  *
  * `lib/config/braid-paths.ts` is for `~/.pi/agent/braid/` (user data).
  * This file is for paths inside the pi-braid project itself.

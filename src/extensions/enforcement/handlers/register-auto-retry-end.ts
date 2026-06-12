@@ -1,5 +1,5 @@
 /**
- * register-auto-retry-end — Error classification on API retry exhaustion.
+ * register-auto-retry-end - Error classification on API retry exhaustion.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";

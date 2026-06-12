@@ -2,7 +2,7 @@
  * @fileoverview Extension context type augmentations for pi-braid.
  *
  * Centralizes knowledge of @earendil-works/pi-coding-agent's ExtensionContext
- * structure — what is directly accessible vs. what must be obtained via ctx.
+ * structure - what is directly accessible vs. what must be obtained via ctx.
  */
 
 import type { ExtensionContext as BaseExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -38,7 +38,7 @@ declare module "@earendil-works/pi-coding-agent" {
  * - settingsManager: user settings (getDefaultProvider(), getDefaultModel(), etc.)
  * - toolRegistry: registered tools
  *
- * Tool execute functions DO NOT receive ctx directly — they only get:
+ * Tool execute functions DO NOT receive ctx directly - they only get:
  *   (toolCallId, params, signal, onUpdate, _ctx)
  * where _ctx is undefined for extension tools (only builtin tools get it).
  *

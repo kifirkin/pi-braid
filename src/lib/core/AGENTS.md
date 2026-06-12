@@ -1,4 +1,4 @@
-# src/lib/core/ — Foundation Utilities
+# src/lib/core/ - Foundation Utilities
 
 Cross-cutting foundation code. Imported by virtually every other module.
 
@@ -6,7 +6,7 @@ Cross-cutting foundation code. Imported by virtually every other module.
 
 | File | Purpose |
 |---|---|
-| `logger.ts` | `createLogger(scope)` factory. Use this instead of `console.log` — it adds scope prefix, level filtering, and log file output. |
+| `logger.ts` | `createLogger(scope)` factory. Use this instead of `console.log` - it adds scope prefix, level filtering, and log file output. |
 | `event-names.ts` | Centralized event name constants (e.g., `TOOL_CALL`, `TURN_END`, `SESSION_COMPACT`). Structural test enforces that all event names are declared here. |
 
 ## Local Contracts
