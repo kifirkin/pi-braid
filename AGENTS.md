@@ -62,12 +62,11 @@ overlap analysis, out-of-scope candidates, and consolidation plan
 is in `docs/TOOL-INVENTORY-AUDIT.md`. Key points:
 
 - **In scope** (braid's value-add): cognitive, metacognition, memory,
-  context management, error tracking, health, behavior, timer,
-  auto-singleton. Keep these.
+  context management, error tracking, health, behavior, timer. Keep these.
 - **Out of scope** (debug/research affordances): `prompt_preview`,
   `time_status`, `set_ab_variant`, `context_signal`. Candidate removal.
 - **CRUD-shaped (consolidation candidates)**: `error_*` (4), `timer_*`
-  (3), `auto_singleton_*` (3), `verify_claim`/`verify_decomposition`,
+  (3), `verify_claim`/`verify_decomposition`,
   `check_topic_drift`/`reset_topic_anchors`, `session_search`/`session_query`,
   `memory_list`/`memory_get`. Each can be one tool with actions.
 - **scratchpad vs task**: both track progress but serve different

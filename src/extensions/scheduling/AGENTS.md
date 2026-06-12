@@ -9,7 +9,6 @@ watchdogs). Distinct from `self/` (which is self-management) and `heartbeat/`
 | Path | Tool | Purpose |
 |---|---|---|
 | `timer/` | `timer` (action=set\|list\|cancel) | Non-blocking Pomodoro-style reminders. Agent schedules, continues working, gets a whisper when timer fires. |
-| `auto-singleton/` | `auto_singleton` (action=set\|cancel\|status) | One-shot watchdog: fires ONCE after N seconds of inactivity, then auto-cancels. |
 
 ## Local Contracts
 

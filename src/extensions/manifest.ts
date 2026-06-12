@@ -34,9 +34,8 @@ import contextLifecycleFn from "./memory/context-lifecycle/index.js";
 import scratchpadFn from "./memory/scratchpad/index.js";
 import workspaceSnapshotFn from "./memory/workspace-snapshot/index.js";
 
-// scheduling (time-based events: reminders, watchdog)
+// scheduling (time-based events: reminders)
 import timerFn from "./scheduling/timer/index.js";
-import autoSingletonFn from "./scheduling/auto-singleton/index.js";
 
 // self (self-management: health, errors, recovery, behavior, session monitor)
 import healthMaintenanceFn from "./self/health-maintenance/index.js";
@@ -215,11 +214,6 @@ export const MANIFEST: ManifestEntry[] = [
     id: "timer",
     fn: timerFn,
     desc: "Timer tool",
-  },
-  {
-    id: "auto-singleton",
-    fn: autoSingletonFn,
-    desc: "Auto-singleton inactivity timer (one-shot)",
   },
   {
     id: "auto-recovery",

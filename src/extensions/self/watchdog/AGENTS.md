@@ -5,16 +5,13 @@ count) and surfaces them via a TUI command. No LLM-callable tools.
 
 ## Disambiguation: this is NOT the only "watchdog" in the codebase
 
-There are TWO different things called "watchdog" in pi-braid:
+This is the only thing called "watchdog" now. Previously there was an
+`auto-singleton/` watchdog (an agent-callable inactivity timer), but that
+was removed in the 2026-06 tool-inventory audit (see
+`docs/AUTO-SINGLETON-DECISION.md`). The `timer` tool covers the
+use case it addressed.
 
-| Concept | Path | Purpose | Interface |
-|---|---|---|---|
-| **Session watchdog (this one)** | `extensions/watchdog/` | Tracks session uptime / idle time / message count | `pi.registerCommand("watchdog-status")` — TUI-only, not LLM-callable |
-| **Auto-singleton watchdog** | `extensions/tools/auto-singleton/` | Timer that fires ONCE after N seconds of inactivity, then auto-cancels. Agent-controlled via `auto_singleton` tool (action=set\|cancel\|status). | `pi.registerTool` — LLM-callable tools |
-
-They are different concerns:
-- `watchdog/` is a **passive observer** (it doesn't act).
-- `auto-singleton/` is an **active reminder** (it fires a steer to wake the agent).
+The Session watchdog is purely a **passive observer** (it doesn't act).
 
 ## Files
 
@@ -27,4 +24,3 @@ They are different concerns:
 - Module is opt-in (`disabledByDefault: true`).
 - Module id: `watchdog` (kebab-case).
 - Not LLM-callable. The agent cannot trigger it — only the user can, via the `watchdog-status` command.
-- For agent-controlled inactivity timers, see `extensions/tools/auto-singleton/AGENTS.md`.
