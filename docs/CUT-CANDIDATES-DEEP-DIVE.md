@@ -50,18 +50,14 @@ The AGENTS.md says: "The agent should use the right tool for the job".
 
 ### Recommendation
 
-**MERGE into `timer` as `set_auto` action with auto-renew semantics.**
-- Cuts 1 tool definition
-- Keeps the functionality for autonomous sessions
-- Single timer subsystem to maintain
-
-Implementation sketch:
-- `timer` action=set with `auto_renew: true` flag
-- `timer` action=cancel handles both regular and auto timers
-- `timer` action=list shows mode (regular | auto_renew)
-
-The polling loop is the cost. If we keep it for `auto_renew=true` only,
-most sessions pay nothing.
+~~**MERGE into `timer` as `set_auto` action with auto-renew semantics.**~~
+**CUT entirely** (per `docs/AUTO-SINGLETON-DECISION.md`, 2026-06).
+The merge would have touched 5-7 files and risked regressing the
+carefully-session-scoped `TimerManager`. The simpler and safer path
+is to remove the niche watchdog tool entirely. The plain `timer`
+covers the 90% case. The watchdog use case (if anyone needs it) is
+recoverable via a thin script that uses `timer` with manual
+re-scheduling on activity.
 
 ---
 
@@ -257,15 +253,15 @@ Does the agent benefit from knowing each tool's reliability?
 
 ## Net summary
 
-| # | Tool | Cost | Benefit | Verdict |
-|---|------|------|---------|---------|
-| 1 | `auto_singleton` | Low | Real | MERGE into `timer.set_auto` |
-| 2 | `health_maintenance` | High | Real | KEEP (opt-in, review later) |
-| 3 | `error` | Low | Marginal | KEEP (opt-in, monitor) |
-| 4 | `get_session_metrics` | Low | Unclear | CUT or opt-in |
-| 5 | `get_tool_reliability` | Low | Unclear | CUT or opt-in |
+| # | Tool | Cost | Benefit | Verdict | Status |
+|---|------|------|---------|---------|--------|
+| 1 | `auto_singleton` | Low | Real | **CUT** | **DONE** |
+| 2 | `health_maintenance` | High | Real | KEEP (opt-in, review later) | pending |
+| 3 | `error` | Low | Marginal | KEEP (opt-in, monitor) | pending |
+| 4 | `get_session_metrics` | Low | Unclear | CUT or opt-in | pending |
+| 5 | `get_tool_reliability` | Low | Unclear | CUT or opt-in | pending |
 
-After #1 (merge) and #4, #5 (opt-in), the default tool count drops by 3
+After #1 (done) and #4, #5 (opt-in), the default tool count drops by 3
 and the agent has a clearer API.
 
 ## Other findings (from this investigation)

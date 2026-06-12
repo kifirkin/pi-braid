@@ -46,11 +46,12 @@ out-of-scope tools. Recommend cuts/merges based on actual call-site usage.
 | `get_session_metrics` | Aggregated session stats | 1 |
 | `get_tool_reliability` | Per-tool success/failure rates | 1 |
 
-### Scheduling (2)
+### Scheduling (1)
 | Tool | Purpose | Files |
 |------|---------|-------|
 | `timer` | Set/clear/list timed reminders | 3 |
-| `auto_singleton` | One-shot inactivity watchdog | 1 |
+
+_(Removed: `auto_singleton` — see `docs/AUTO-SINGLETON-DECISION.md`.)_
 
 ### Self-management (4)
 | Tool | Purpose | Files |
@@ -197,16 +198,16 @@ The `task` tool was cut earlier. We found:
 
 ## Net cut/merge recommendations
 
-| Action | Tool(s) | Result |
-|--------|---------|--------|
-| MERGE | `auto_singleton` → `timer.set_auto` | -1 tool |
-| OPT-IN | `get_session_metrics`, `get_tool_reliability` | 0 tools, but 2 fewer defaults |
-| KEEP-OPT | `health_maintenance`, `error` | 0 changes (already opt-in) |
-| CLEANUP | orphan `tasks.json` file | -0 tools, but storage cleanup |
-| MERGE | `memory_recall`/`episodes`/`heuristics` → `memory` | -2 tools |
+| Action | Tool(s) | Result | Status |
+|--------|---------|--------|--------|
+| CUT | `auto_singleton` | -1 tool | **DONE** (commit pending) |
+| OPT-IN | `get_session_metrics`, `get_tool_reliability` | 0 tools, but 2 fewer defaults | pending |
+| KEEP-OPT | `health_maintenance`, `error` | 0 changes (already opt-in) | n/a |
+| CLEANUP | orphan `tasks.json` file | -0 tools, but storage cleanup | pending user |
+| MERGE | `memory_recall`/`episodes`/`heuristics` → `memory` | -2 tools | pending |
 
-After all: **30 → 25 tools** with cleaner API and clearer tool-vs-internal
-separation.
+After all: **30 → 24 tools** with cleaner API and clearer tool-vs-internal
+separation. (29 after this commit; pending: 1 more merge + 2 opt-ins.)
 
 ## Priority order (high confidence first)
 
