@@ -255,14 +255,14 @@ Does the agent benefit from knowing each tool's reliability?
 
 | # | Tool | Cost | Benefit | Verdict | Status |
 |---|------|------|---------|---------|--------|
-| 1 | `auto_singleton` | Low | Real | **CUT** | **DONE** |
+| 1 | `auto_singleton` | Low | Real | **CUT** | **DONE** (5ffacd7b) |
 | 2 | `health_maintenance` | High | Real | KEEP (opt-in, review later) | pending |
 | 3 | `error` | Low | Marginal | KEEP (opt-in, monitor) | pending |
-| 4 | `get_session_metrics` | Low | Unclear | CUT or opt-in | pending |
-| 5 | `get_tool_reliability` | Low | Unclear | CUT or opt-in | pending |
+| 4 | `get_session_metrics` | Low | Unclear | **CUT** | **DONE** (8824877a) |
+| 5 | `get_tool_reliability` | Low | Unclear | **CUT** | **DONE** (8824877a) |
 
-After #1 (done) and #4, #5 (opt-in), the default tool count drops by 3
-and the agent has a clearer API.
+After all cuts: tool count dropped by 3 (auto_singleton + 2 analytics).
+Default agent API surface reduced by 3 names.
 
 ## Other findings (from this investigation)
 
