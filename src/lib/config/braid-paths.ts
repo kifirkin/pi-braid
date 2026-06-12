@@ -18,7 +18,6 @@
  *   │   │   ├── metrics/
  *   │   │   │   ├── braid-metrics.jsonl  (analytics: tool call metrics + A/B variants)
  *   │   │   │   └── degradation.json     (degradation detector state)
- *   │   │   ├── tools-config.json     (assistant: custom tools config)
  *   │   │   ├── session-recall.json   (session-recall: cross-session history)
  *   │   │   └── scratchpads/         (scratchpad: task state per project)
  *   │   └── settings.json       (pi-native + braid config)
@@ -67,9 +66,6 @@ export const ERROR_FILE = ERROR_LOG_FILE;
 
 /** Consolidation: behavioral hints from successful patterns */
 export const CONSOLIDATED_HINTS_FILE = path.join(BRAID, "consolidated-hints.jsonl");
-
-/** Assistant: custom tools config */
-export const TOOLS_CONFIG_FILE = path.join(BRAID, "tools-config.json");
 
 /** Analytics: tool call metrics + A/B variant tracking */
 export const METRICS_FILE = path.join(METRICS_DIR, "braid-metrics.jsonl");

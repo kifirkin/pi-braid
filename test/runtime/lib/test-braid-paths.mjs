@@ -12,7 +12,7 @@ import * as os from "node:os";
 const {
   BRAID_DIR, AGENT, MEMORY_DIR, CHECKPOINT_DIR, ERROR_DIR, SCRATCHPAD_DIR, METRICS_DIR,
   SEMANTIC_MEMORY_FILE, EPISODES_FILE, ERROR_LOG_FILE, CONSOLIDATED_HINTS_FILE,
-  TOOLS_CONFIG_FILE, METRICS_FILE, DEGRADATION_FILE, LEGACY_MEMORY_FILE,
+  METRICS_FILE, DEGRADATION_FILE, LEGACY_MEMORY_FILE,
 } = await import("../../../dist/lib/config/braid-paths.js");
 
 const HOME = os.homedir();
@@ -73,9 +73,6 @@ test("CONSOLIDATED_HINTS_FILE is <braid>/consolidated-hints.jsonl", () => {
   assert.equal(CONSOLIDATED_HINTS_FILE, path.join(EXPECTED_BRAID, "consolidated-hints.jsonl"));
 });
 
-test("TOOLS_CONFIG_FILE is <braid>/tools-config.json", () => {
-  assert.equal(TOOLS_CONFIG_FILE, path.join(EXPECTED_BRAID, "tools-config.json"));
-});
 
 test("METRICS_FILE is <metrics>/braid-metrics.jsonl", () => {
   assert.equal(METRICS_FILE, path.join(METRICS_DIR, "braid-metrics.jsonl"));
@@ -100,7 +97,6 @@ test("All file paths are under their parent directories", () => {
   assert.ok(METRICS_FILE.startsWith(METRICS_DIR));
   assert.ok(DEGRADATION_FILE.startsWith(METRICS_DIR));
   assert.ok(CONSOLIDATED_HINTS_FILE.startsWith(BRAID_DIR));
-  assert.ok(TOOLS_CONFIG_FILE.startsWith(BRAID_DIR));
 });
 
 console.log(`\n📊 Results: ${passed} passed, ${failed} failed`);

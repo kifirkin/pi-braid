@@ -107,7 +107,7 @@ async function detectLoop(state: LoopDetectionState, ctx: ExtensionContext): Pro
 
 function formatSteerMessage(details: string): string {
   return (
-    `## 🔄 Repetitive Loop Detected\n\n` +
+    `## Repetitive Loop Detected\n\n` +
     `- **Tool repetition**: Using \`${details}\` every turn for the last several turns. ` +
     `The outcome hasn't changed.\n\n` +
     `**Suggested actions:**\n` +
