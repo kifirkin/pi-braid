@@ -22,7 +22,11 @@ async function asyncExists(p: string): Promise<boolean> {
  *
  * Sections built from structured data:
  * - Tools: pi.getAllTools() (with promptSnippet)
- * - Skills: loadSkills() + formatSkillsWithLineCounts() (pi-braid enhanced)
+ * - Skills: formatSkillsWithLineCounts() re-formats skills from
+ *   event.systemPromptOptions.skills (the fully resolved list pi built via its
+ *   package manager — includes user, project, AND package skills). This is the
+ *   canonical pattern from pi's own docs: extensions should not re-discover
+ *   skills; they should reformat what pi already loaded.
  * - Guidelines: fixed template based on tool availability
  * - Date/Cwd: computed directly
  *
@@ -47,10 +51,15 @@ async function asyncExists(p: string): Promise<boolean> {
 
 import { join } from "node:path";
 import { CONSOLIDATED_HINTS_FILE } from "../../../lib/config/braid-paths.js";
+import { RESOURCES_DISCOVER } from "../../../lib/core/event-names.js";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { loadSkills } from "@earendil-works/pi-coding-agent";
 // SKILLS_DIR import removed - skills moved to pi-braid-skills package.
+// NOTE: we deliberately do NOT call loadSkills() here. Skills are now sourced
+// from event.systemPromptOptions.skills, which pi has already resolved through
+// its full package manager pipeline (user dirs, project dirs, .agents/skills,
+// packages, CLI --skill, settings.json skills). Re-walking dirs ourselves
+// would miss package skills (e.g. pi-braid-skills) and other pi sources.
 import { gatherL1State, formatL1Environment } from "./l1-environment.js";
 import { formatContrastSection } from "./contrast-phrase-library.js";
 import { classify } from "../../../lib/ai/text-classifier.js";
@@ -406,116 +415,10 @@ async function reconstructProjectContextSection(cwd: string): Promise<string> {
 }
 
 /**
- * Collect raw project context file contents for skill relevance scoring.
- * Avoids re-reading files that reconstructProjectContextSection already loaded.
+ * Skill metadata: counts lines and extracts section headings from each
+ * SKILL.md so the agent can size up a skill before reading the full file.
+ * Surfaced as `<lines>` and `<sections>` XML attributes in <available_skills>.
  */
-async function collectProjectContextStrings(cwd: string): Promise<string[]> {
-  const agentDir = getAgentDir();
-  const seenPaths = new Set<string>();
-  const rawContents: string[] = [];
-
-  async function loadRaw(dir: string): Promise<void> {
-    const candidates = ["AGENTS.md", "CLAUDE.md"];
-    for (const filename of candidates) {
-      const filePath = join(dir, filename);
-      if ((await asyncExists(filePath)) && !seenPaths.has(filePath)) {
-        seenPaths.add(filePath);
-        try {
-          rawContents.push(await readFile(filePath, "utf-8"));
-        } catch {
-          // skip unreadable
-        }
-      }
-    }
-  }
-
-  await loadRaw(agentDir);
-
-  const root = join("/");
-  let currentDir = cwd;
-  while (true) {
-    await loadRaw(currentDir);
-    if (currentDir === root) break;
-    const parentDir = join(currentDir, "..");
-    if (parentDir === currentDir) break;
-    currentDir = parentDir;
-  }
-
-  return rawContents;
-}
-
-/**
- * Skill relevance triggers - each skill maps to keywords that indicate
- * when it should be surfaced in the prompt. Skills without matches still
- * appear but with lower priority unless the user explicitly references them.
- *
- * Phase 1 of dynamic skill loading (SKILL-LOADING-RESEARCH.md):
- * Relevance-based filtering at prompt construction time. Phase 2 will add
- * heartbeat-triggered activation and mid-session loading/unloading.
- */
-const SKILL_TRIGGERS: Record<string, string[]> = {
-  "agent-testing": ["benchmark", "test", "evaluat", "RPC", "trial", "harness", "subagent"],
-  "code-search": ["search", "grep", "codemod", "refactor", "find"],
-  "design-system": ["design token", "brand", "visual identity", "DESIGN.md"],
-  "documentation": ["documentation", "README", "ARCHITECTURE.md", "doc", "readme"],
-  "healthcheck": ["healthcheck", "diagnos", "setup", "troubleshoot", "env"],
-  "meta-improvement": ["skill", "experiment", "self-improve", "metric"],
-  "paper-writer": ["paper", "LaTeX", "arXiv", "research paper", "academic"],
-  "pi-reference": ["pi", "SDK", "extension", "plugin", "provider", "model"],
-  "process-control": ["tmux", "nohup", "long-run", "background", "daemon", "subagent"],
-  "research": ["research", "web search", "fact-check", "literature", "find"],
-  "software-engineer": ["code", "debug", "implement", "refactor", "bug"],
-  "subagent": ["subagent", "spawn", "worker", "orchestrat", "parallel", "fan-out", "RPC mode"],
-  "tone-quality": ["tone", "writing", "voice", "style", "prompt", "skill", "documentation"],
-  "vcs-tools": ["git", "pijul", "version control", "commit", "checkpoint"],
-  "visual-creator": ["visual", "UI", "game asset", "sprite", "illustration"],
-  "visual-validator": ["visual audit", "sprite sheet", "design review"],
-  "dox": ["AGENTS.md", "project guidelines", "living doc", "project structure", "doc hierarchy"],
-};
-
-/** Skills that should be co-loaded when a related skill is relevant. */
-const SKILL_RELATIONS: Record<string, string[]> = {
-  "agent-testing": ["process-control", "pi-reference"],
-  "meta-improvement": ["tone-quality", "pi-reference"],
-  "process-control": ["agent-testing"],
-  "subagent": ["agent-testing", "process-control", "pi-reference"],
-  "tone-quality": ["pi-reference"],
-  "visual-creator": ["visual-validator", "design-system"],
-  "dox": ["documentation"],
-};
-
-/** Score how relevant each skill is given the current cwd and project context. */
-function scoreSkillRelevance(skill: Skill, cwd: string, projectContextFiles: string[]): number {
-  // Always include skills the agent has explicitly used before (base relevance)
-  let score = 0.1;
-
-  // Boost from cwd path patterns
-  const cwdLower = cwd.toLowerCase();
-  if (cwdLower.includes("paper") || cwdLower.includes("arxiv")) score += 0.3;
-  if (cwdLower.includes("test") || cwdLower.includes("benchmark")) score += 0.2;
-  if (cwdLower.includes("design") || cwdLower.includes("brand")) score += 0.2;
-  if (cwdLower.includes("docs") || cwdLower.includes("doc")) score += 0.15;
-  if (cwdLower.includes("research")) score += 0.2;
-  if (cwdLower.includes("pi") || cwdLower.includes("extension") || cwdLower.includes("plugin"))
-    score += 0.2;
-
-  // Boost from project context file contents
-  const contextText = projectContextFiles.join(" ").toLowerCase();
-  const triggers = SKILL_TRIGGERS[skill.name] ?? [];
-  for (const trigger of triggers) {
-    if (contextText.includes(trigger.toLowerCase())) {
-      score += 0.3;
-    }
-  }
-
-  // Boost from skill description matching cwd activity
-  const desc = skill.description.toLowerCase();
-  if (cwdLower.includes("paper") && desc.includes("research")) score += 0.2;
-  if (cwdLower.includes("test") && desc.includes("test")) score += 0.2;
-
-  return Math.min(score, 1.0);
-}
-
 interface SkillMeta {
   totalLines: number;
   sections: string[];
@@ -541,50 +444,32 @@ async function getSkillMeta(skill: Skill): Promise<SkillMeta> {
   }
 }
 
-async function formatSkillsWithLineCounts(
-  skills: Skill[],
-  cwd: string,
-  projectContext: string[],
-): Promise<string> {
+/**
+ * Format all skills for inclusion in the system prompt.
+ *
+ * Mirrors the native pi format (one <skill> entry per resolved skill with
+ * name, description, and location) plus a braid enhancement: each entry
+ * also carries <lines> and <sections> so the agent can size up a skill
+ * before reading the full file. No relevance scoring, no cap, no hidden
+ * list — every skill the loader produced is here, so the agent can
+ * always `read` any of them on demand. Skills with
+ * `disable-model-invocation: true` are excluded, matching native.
+ */
+async function formatSkillsWithLineCounts(skills: Skill[]): Promise<string> {
   const visibleSkills = skills.filter((s) => !s.disableModelInvocation);
   if (visibleSkills.length === 0) {
     return "";
   }
 
-  // Score and rank skills by relevance to current context.
-  // Include at most 8 skills - enough coverage without overwhelming the prompt.
-  const scored = visibleSkills.map((s) => ({
-    skill: s,
-    relevance: scoreSkillRelevance(s, cwd, projectContext),
-  }));
-  scored.sort((a, b) => b.relevance - a.relevance);
-
-  const MAX_VISIBLE_SKILLS = 8;
-  const topSkills = scored.slice(0, MAX_VISIBLE_SKILLS);
-
-  // Boost related skills: if a high-scoring skill has relations, boost those too
-  const topNames = new Set(topSkills.map(({ skill }) => skill.name));
-  for (const { skill, relevance } of scored) {
-    if (relevance >= 0.3 && SKILL_RELATIONS[skill.name]) {
-      for (const related of SKILL_RELATIONS[skill.name]) {
-        const idx = scored.findIndex((s) => s.skill.name === related);
-        if (idx >= 0 && !topNames.has(related)) {
-          scored[idx].relevance = Math.max(scored[idx].relevance, 0.25);
-        }
-      }
-    }
-  }
-  // Re-sort after boosting
-  scored.sort((a, b) => b.relevance - a.relevance);
-  const boosted = scored.slice(0, MAX_VISIBLE_SKILLS);
-  const hiddenCount = scored.length - boosted.length;
+  // Sort alphabetically for stable, predictable output. No scoring, no cap.
+  const sorted = [...visibleSkills].sort((a, b) => a.name.localeCompare(b.name));
 
   const lines = [
-    "Skills are your first knowledge in context. Read all of the relevant ones with `read` tool before starting any task.",
+    "Skills are your first knowledge in context. Read all of the relevant ones with `read` tool before starting a task.",
     "<available_skills>",
   ];
 
-  for (const { skill } of boosted) {
+  for (const skill of sorted) {
     const meta = await getSkillMeta(skill);
     lines.push("  <skill>");
     lines.push(`    <name>${escapeXml(skill.name)}</name>`);
@@ -599,12 +484,6 @@ async function formatSkillsWithLineCounts(
 
   lines.push("</available_skills>");
 
-  if (hiddenCount > 0) {
-    lines.push(
-      `*${hiddenCount} more ${hiddenCount === 1 ? "skill is" : "skills are"} available - use \`read\` to load them if needed.*`,
-    );
-  }
-
   return lines.join("\n");
 }
 
@@ -617,17 +496,37 @@ function escapeXml(str: string): string {
     .replace(/'/g, "&apos;");
 }
 
+// Cache the formatted skills section per skill-set fingerprint so we don't
+// re-read every SKILL.md and re-score relevance on every turn. Invalidated
+// when the set of loaded skills changes (e.g. after /reload or session start).
+let skillsSectionCache:
+  | { fingerprint: string; section: string }
+  | undefined;
+
+function fingerprintSkills(skills: readonly Skill[]): string {
+  // Stable, order-independent hash of the resolved skill set.
+  // filePath is unique per skill within a single resolution; name disambiguates
+  // collisions (loadSkills emits a diagnostic in that case).
+  return skills
+    .map((s) => `${s.name}\u0000${s.filePath}`)
+    .sort()
+    .join("\n");
+}
+
 async function reconstructSkillsSection(
-  cwd: string,
-  projectContextFileContents: string[],
+  skills: readonly Skill[],
 ): Promise<string> {
-  const result = loadSkills({
-    cwd,
-    agentDir: getAgentDir(),
-    skillPaths: [],
-    includeDefaults: true,
-  });
-  return formatSkillsWithLineCounts(result.skills, cwd, projectContextFileContents);
+  const fingerprint = fingerprintSkills(skills);
+  if (skillsSectionCache?.fingerprint === fingerprint) {
+    return skillsSectionCache.section;
+  }
+  const section = await formatSkillsWithLineCounts(skills as Skill[]);
+  skillsSectionCache = { fingerprint, section };
+  return section;
+}
+
+function resetSkillsSectionCache(): void {
+  skillsSectionCache = undefined;
 }
 
 // ── Main Extension ───────────────────────────────────────────────────────────
@@ -645,13 +544,14 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     });
   });
 
-  // ── resources_discover: No-op ──
-  // pi-braid does not bundle skills. The pi-braid-skills package is a
-  // separate package that registers its own skills via its own
-  // RESOURCES_DISCOVER handler. We do not register a handler here so
-  // that pi core can use its default skill discovery (which includes
-  // any extension paths configured in settings.json, including
-  // pi-braid-skills).
+  // ── resources_discover: invalidate skills cache ──
+  // When resources are re-discovered (e.g. /reload, or session replacement),
+  // pi re-resolves skills and the next before_agent_start will receive an
+  // updated systemPromptOptions.skills list. We invalidate our format cache
+  // so the new list gets reformatted.
+  pi.on(RESOURCES_DISCOVER, () => {
+    resetSkillsSectionCache();
+  });
 
   pi.on("before_agent_start", async (event, ctx) => {
     const ps = getPromptState(ctx);
@@ -686,8 +586,14 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
 
     // 2. Skills
     if (hasRead) {
-      const projectContextStrings = await collectProjectContextStrings(cwd);
-      const skillsSection = await reconstructSkillsSection(cwd, projectContextStrings);
+      // Use skills resolved by pi's full resource loader — this includes
+      // package skills (e.g. pi-braid-skills), user/project skill dirs,
+      // .agents/skills, and CLI --skill paths. We only re-format with
+      // braid's line-count/section metadata; we do NOT re-discover skills
+      // ourselves and we do NOT cap or filter them. Every skill is listed
+      // with its full path so the agent can `read` any of them on demand.
+      const resolvedSkills = event.systemPromptOptions?.skills ?? [];
+      const skillsSection = await reconstructSkillsSection(resolvedSkills);
       if (skillsSection) parts.push(skillsSection);
     }
 
