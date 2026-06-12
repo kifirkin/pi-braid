@@ -52,7 +52,7 @@ export function checkBlocking(
     stateRef.toolChain.recentEditWithoutThink.push(stateRef.currentTurn);
   }
 
-  // L2: First meaningful work without memory_recall - track for Session Signals bundle
+  // L2: First meaningful work without memory - track for Session Signals bundle
   if (!stateRef.hasRecalledOnStart && !stateRef.firstWorkDone) {
     stateRef.firstWorkDone = true;
   }

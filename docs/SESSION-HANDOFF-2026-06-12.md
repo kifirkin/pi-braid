@@ -60,22 +60,18 @@ fragile-pattern fixes (commits, oldest to newest):
 
 ## Outstanding work (in priority order)
 
-### 1. Merge 3 memory read tools into 1 (RECOMMENDED NEXT)
+### 1. ~~Merge 3 memory read tools into 1~~ (DONE)
 
-Per `docs/TOOL-INVENTORY-AUDIT.md` and `docs/CUT-CANDIDATES-DEEP-DIVE.md`:
+Merged `memory_recall` + `memory_episodes` + `memory_heuristics` into a
+single `memory` tool with 9 actions:
 
-- `memory_recall` (search memory by query) — 6 file refs
-- `memory_episodes` (list recent episodes) — 3 file refs
-- `memory_heuristics` (view/manage heuristics) — 2 file refs
+- `recall_search`, `recall_list`, `recall_get` (semantic unified memory)
+- `episodes_search`, `episodes_list`, `episodes_add` (episodic store)
+- `heuristics_list`, `heuristics_add`, `heuristics_evolve` (procedural rules)
 
-These are 3 separate tool names for read access into the same
-`three-memory-stores` extension. The user originally proposed merging
-them into a single `memory` tool with `action=recall|episodes|heuristics`
-(like the existing `scratchpad` tool pattern).
-
-**Caveat from the user**: this needs to follow the `scratchpad` pattern
-that's already proven. Confirm no caller depends on the 3 separate
-tool names before removing them.
+Pattern follows the `scratchpad` tool's flat action namespace. Tool lives
+in `src/extensions/memory/memory-agent-bridge/index.ts`; data-layer
+functions stay in `three-memory-stores/`. Tool count now **25** (was 27).
 
 ### 2. `tools-config.json` orphan file (LOW PRIORITY)
 
@@ -129,9 +125,7 @@ When the user opens a fresh chat and asks to continue, look at:
 
 1. **git log --oneline -10** — see the most recent commits
 2. **This file** (`docs/SESSION-HANDOFF-2026-06-12.md`) — current state
-3. **docs/TOOL-INVENTORY-AUDIT.md** — what's recommended next
-4. **src/extensions/memory/memory-agent-bridge/index.ts** — the 3 tools
-   to potentially merge
+3. **docs/TOOL-INVENTORY-AUDIT.md** — tool inventory status (25 tools)
 
-The user's preferred next step: merge `memory_recall` + `memory_episodes`
-+ `memory_heuristics` into a single `memory` tool.
+The memory-tool merge is complete. The remaining items (orphan tasks.json,
+two slug paths) are low-priority cleanups.

@@ -37,8 +37,7 @@ const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   "code-search": "search",
   // Memory tools
   "memory_store": "memory",
-  "memory_recall": "memory",
-  "memory_episodes": "memory",
+  "memory": "memory",
   // Browser tools
   "browser_navigate": "browser",
   "browser_snapshot": "browser",

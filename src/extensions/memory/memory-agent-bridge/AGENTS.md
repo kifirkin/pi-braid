@@ -19,16 +19,20 @@ storage layer).
   *tool shape* and *agent-facing semantics*).
 - The `explore_paths` tool - spawns parallel sub-agents to
   investigate hypotheses concurrently (different from subagent API).
+- The unified `memory` tool covering all three memory domains
+  (semantic recall, episodic case-based reasoning, procedural
+  heuristics). Previously this surface was split across three
+  tools (`memory_recall`, `memory_episodes`, `memory_heuristics`)
+  that have now been consolidated.
 
 ## Tools exposed
 
 | Tool             | Purpose                                                        |
 | ---------------- | -------------------------------------------------------------- |
 | `memory_store`   | Save a memory entry (delegates to lib/memory)                  |
-| `memory_recall`  | Search/list/get memories (delegates to lib/memory)             |
-| `memory_episodes`| Browse episodes (delegates to three-memory-stores)             |
-| `memory_heuristics` | Inspect/manage heuristic rules                              |
+| `memory`         | Unified read/write across recall (semantic), episodes, heuristics. 9 actions: `recall_search\|recall_list\|recall_get\|episodes_search\|episodes_list\|episodes_add\|heuristics_list\|heuristics_add\|heuristics_evolve` |
 | `explore_paths`  | Parallel sub-agent exploration of root causes                  |
+| `conflict_qa`    | View/resolve conflict questions from the evidence pool         |
 
 ## Relationship to three-memory-stores
 
@@ -44,3 +48,6 @@ talks to memory*, storage is about *how memory is organized*.
   subagent API (`BRAID_MODULES=+<module>` toggle), not via OS
   processes. See `src/loader/loader.ts` for the subagent mechanism.
 - **No whisper emission**: pure tool surface.
+- **Unified `memory` tool action namespace**: flat 9-action enum
+  with prefix-by-domain (recall_*, episodes_*, heuristics_*).
+  Mirrors the scratchpad tool's pattern.

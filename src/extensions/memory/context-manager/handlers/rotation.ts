@@ -236,7 +236,7 @@ export function registerRotationHandlers(pi: ExtensionAPI): void {
                 "",
                 `Rotation #${state.rotationCount} completed at task boundary.`,
                 "Key context has been preserved in memory stores.",
-                "Use `memory_recall` to retrieve relevant context.",
+                "Use the `memory` tool to retrieve relevant context.",
               ].join("\n"),
             },
           ],

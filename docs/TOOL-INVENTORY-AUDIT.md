@@ -24,13 +24,11 @@ out-of-scope tools. Recommend cuts/merges based on actual call-site usage.
 | `finalize` | Mark task complete, trigger calibration | 10 |
 | `verify_claim` | Evidence-pool claim verification | 2 |
 
-### Memory (12)
+### Memory (10)
 | Tool | Purpose | Files |
 |------|---------|-------|
 | `memory_store` | Persist a memory item | 8 |
-| `memory_recall` | Search memory by query | 6 |
-| `memory_episodes` | List recent episodes | 3 |
-| `memory_heuristics` | View/manage adaptive heuristics | 2 |
+| `memory` | Unified read/write: recall_* + episodes_* + heuristics_* (9 actions, was memory_recall + memory_episodes + memory_heuristics) | 11 |
 | `session` | Past-session search/query | 14 |
 | `conflict_qa` | Resolve conflicting memories | 1 |
 | `explore_paths` | Sub-agent parallel hypothesis exploration | 2 |
@@ -206,10 +204,10 @@ The `task` tool was cut earlier. We found:
 | OPT-IN | (none - analytics cuts are full CUT) | n/a | n/a |
 | KEEP-OPT | `health_maintenance`, `error` | 0 changes (already opt-in) | n/a |
 | CLEANUP | orphan `tasks.json` file | -0 tools, but storage cleanup | pending user |
-| MERGE | `memory_recall`/`episodes`/`heuristics` → `memory` | -2 tools | pending |
+| MERGE | `memory_recall`/`episodes`/`heuristics` → `memory` | -2 tools | **DONE** |
 
 After all: **30 → 25 tools** with cleaner API and clearer tool-vs-internal
-separation. (Currently 27 after the 3 cuts; pending: 1 more merge.)
+separation. (Currently 25: 30 - 3 cuts - 2 merge.)
 
 ## Priority order (high confidence first)
 
@@ -221,5 +219,5 @@ separation. (Currently 27 after the 3 cuts; pending: 1 more merge.)
 4. Merge `auto_singleton` into `timer.set_auto` (small refactor, removes tool)
 
 Lower priority:
-5. Merge 3 memory read tools into 1 `memory` tool (touches more call sites)
+5. ~~Merge 3 memory read tools into 1 `memory` tool (touches more call sites)~~ **DONE**
 6. Decide on `health_maintenance` / `error` long-term (out of scope for this pass)

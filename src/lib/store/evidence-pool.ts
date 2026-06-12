@@ -8,7 +8,7 @@
  *   Stage 2 - Faithful Reasoning: acknowledgment generation (formatConflictMessage)
  *
  * Flow:
- * 1. memory_recall, web search, docs reading, code execution → addEvidence()
+ * 1. memory (recall_search), web search, docs reading, code execution → addEvidence()
  * 2. message_end → detectConflicts() → XoT Stage 1 classification
  * 3. conflict-qa → Stage 2: question generation + enforcement whisper
  *

@@ -44,17 +44,15 @@ Both `context-lifecycle/index.ts` (line 56) and `lib/utils/injection-tracker.ts`
 
 ## Agent-facing tool summary
 
-The memory extensions expose 5 LLM-callable tools. Each has a focused role - this is intentional, not a sprawl problem.
+The memory extensions expose 4 LLM-callable tools. The unified `memory` tool covers the three read-heavy domains (recall/episodes/heuristics) with 9 actions.
 
 | Tool | Extension | Store | When to use |
 |---|---|---|---|
 | `memory_store` | memory-agent-bridge | semantic (unified) | Save insights/patterns for cross-session recall |
-| `memory_recall` | memory-agent-bridge | semantic (unified) | Search/list/get memories (action=search\|list\|get) |
-| `memory_episodes` | three-memory-stores | episodic | Search past task episodes (case-based reasoning) |
-| `memory_heuristics` | three-memory-stores | procedural | View/evolve adaptive behavior rules |
+| `memory` | memory-agent-bridge | all three | Unified access: `recall_search` (semantic search, also cross-searches episodes), `recall_list`, `recall_get`, `episodes_search` (case-based reasoning), `episodes_list`, `episodes_add`, `heuristics_list`, `heuristics_add`, `heuristics_evolve` |
 | `session` | session-recall | session log | Search past sessions (action=search) or query one (action=query) |
 
-**Rule of thumb:** start with `memory_recall` for "have I seen this before?". Use `memory_episodes` for "how did a similar task go?". Use `memory_heuristics` when investigating behavior tuning. Use `session` for cross-session history.
+**Rule of thumb:** start with `memory` action=recall_search for "have I seen this before?". Use `memory` action=episodes_search for "how did a similar task go?". Use `memory` action=heuristics_list when investigating behavior tuning. Use `session` for cross-session history.
 
 The data-layer functions (`addEpisode`, `addPrinciple`, `recordToolCall`, etc.) live in `three-memory-stores/episodes.ts`, `heuristics.ts`, `tool-reliability.ts` and are imported by many extensions (e.g. `finalize.ts` adds episodes on task completion). These are infrastructure and should not be moved out of the directory.
 

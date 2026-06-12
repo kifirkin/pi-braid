@@ -16,12 +16,11 @@
  *   Many extensions import these directly (e.g. finalize.ts adds episodes
  *   on task completion, recaller.ts retrieves them for cross-task context).
  *   Treat as infrastructure - do not move.
- * - **Agent-facing tools** (`memory_episodes`, `memory_heuristics`,
- *the LLM-callable surface that exposes the three
- *   stores to the agent. The agent also has the higher-level
- *   `memory_store/recall/list/get` tools from `memory-agent-bridge/` for
- *   the unified semantic-memory view; these three are the
- *   store-specific accessors.
+ * - **Agent-facing tools** live in `memory-agent-bridge/` as the unified
+ *   `memory` tool (actions: recall_search|recall_list|recall_get,
+ *   episodes_search|episodes_list|episodes_add,
+ *   heuristics_list|heuristics_add|heuristics_evolve).
+ *   The separate `memory_store` tool covers the unified semantic-memory write side.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -115,173 +114,9 @@ export function getState(ctx: ExtensionContext): MemoryStoresState {
 // ── Extension ────────────────────────────────────────────────────────────────
 
 export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
-  // ── memory_episodes tool ────────────────────────────────────────────
-  pi.registerTool({
-    name: "memory_episodes",
-    label: "Memory Episodes",
-    promptSnippet: "Search retrospective episodes for similar past tasks",
-    description:
-      "Search retrospective episodes for similar past tasks before debugging known problems. Use action='search' to find past solutions and outcomes.",
-    parameters: Type.Object({
-      action: StringEnum(["search", "add", "list"]),
-      query: Type.Optional(
-        Type.String({ description: "Task description to search for (search action)" }),
-      ),
-      task: Type.Optional(Type.String({ description: "Task description (add action)" })),
-      solution: Type.Optional(Type.String({ description: "Solution description (add action)" })),
-      outcome: Type.Optional(
-        StringEnum(["success", "failure", "partial"], {
-          description: "Outcome of the task (add action)",
-        }),
-      ),
-      limit: Type.Optional(Type.Number({ description: "Max results (default: 3)", default: 3 })),
-      tags: Type.Optional(
-        Type.Array(Type.String(), { description: "Tags for the episode (add action)" }),
-      ),
-    }),
-    execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
-      const state = getState(ctx);
-      const p = params as {
-        action: string;
-        query?: string;
-        task?: string;
-        solution?: string;
-        outcome?: string;
-        limit?: number;
-        tags?: string[];
-      };
-      const { action, query, task, solution, outcome, limit = 3, tags = [] } = p;
-
-      if (action === "search") {
-        if (!query) return textResult("Error: query is required for search action");
-        const episodes = retrieveEpisodes(state, query, limit, deriveProjectId(ctx?.cwd ?? ""));
-        if (episodes.length === 0) return textResult("No relevant episodes found.");
-
-        const lines: string[] = [`Found ${episodes.length} relevant episodes:\n`];
-        for (const ep of episodes) {
-          const outcomeIcon =
-            ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
-          const ageMinutes = Math.round((Date.now() - ep.timestamp) / 60000);
-          const provenance = `[MEMORY project=${ep.project || "unknown"} ttl=${ageMinutes}m ago]`;
-          const _rich = ep! as unknown as RichEpisode;
-          const confTag =
-            _rich.memoryConfidence != null
-              ? ` conf=${(_rich.memoryConfidence * 100).toFixed(0)}%`
-              : "";
-          const crossTag = _rich._crossSession ? " [CROSS-SESSION]" : "";
-          const qualityTag = ep.quality != null ? ` quality=${(ep.quality * 100).toFixed(0)}%` : "";
-          lines.push(
-            `${provenance}${confTag}${qualityTag}${crossTag} ${outcomeIcon} [${ep.outcome}] ${ep.task}`,
-          );
-          lines.push(
-            `   Solution: ${ep.solution.slice(0, 500)}${ep.solution.length > 500 ? "..." : ""}`,
-          );
-          lines.push(`   Tools: ${ep.toolSequence.join(" → ")}`);
-          lines.push(`   Similarity: ${(ep.similarity * 100).toFixed(0)}%`);
-          lines.push("");
-        }
-        return textResult(lines.join("\n"));
-      }
-
-      if (action === "add") {
-        if (!task || !solution || !outcome) {
-          return textResult("Error: task, solution, and outcome are required for add action");
-        }
-        const episode = addEpisode(
-          state,
-          task,
-          solution,
-          outcome as Episode["outcome"],
-          [],
-          tags,
-          deriveProjectId(ctx?.cwd ?? ""),
-        );
-        return textResult(`Episode added: "${task.slice(0, 50)}..." (${outcome}) [${episode.id}]`);
-      }
-
-      if (action === "list") {
-        if (state.episodes.length === 0) return textResult("No episodes stored.");
-        const lines: string[] = [`Episodes (${state.episodes.length} total):\n`];
-        for (const ep of state.episodes.slice(-10).reverse()) {
-          const outcomeIcon =
-            ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
-          lines.push(`${outcomeIcon} ${ep.task.slice(0, 60)}...`);
-        }
-        return textResult(lines.join("\n"));
-      }
-
-      return textResult(`Unknown action: ${action}. Use search, add, or list.`);
-    },
-  });
-
-  // ── memory_heuristics tool ──────────────────────────────────────────
-  pi.registerTool({
-    name: "memory_heuristics",
-    label: "Memory Heuristics",
-    promptSnippet: "View and manage adaptive procedural heuristics",
-    description:
-      "View and manage adaptive procedural heuristics - use to inspect or evolve behavior rules learned from session performance.",
-    parameters: Type.Object({
-      action: StringEnum(["list", "add", "evolve"]),
-      context: Type.Optional(
-        Type.String({ description: "Current context to match rules against (list action)" }),
-      ),
-      condition: Type.Optional(Type.String({ description: "Rule condition pattern (add action)" })),
-      action_text: Type.Optional(
-        Type.String({ description: "Rule action description (add action)" }),
-      ),
-      rule_id: Type.Optional(Type.String({ description: "Rule ID to evolve (evolve action)" })),
-      success: Type.Optional(
-        Type.Boolean({ description: "Whether the rule application succeeded (evolve action)" }),
-      ),
-    }),
-    execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
-      const state = getState(ctx);
-      const hp = params as {
-        action: string;
-        context?: string;
-        condition?: string;
-        action_text?: string;
-        rule_id?: string;
-        success?: boolean;
-      };
-      const { action, context, condition, action_text, rule_id, success } = hp;
-
-      if (action === "list") {
-        const rules = context
-          ? getApplicableHeuristics(state, context)
-          : getPrioritizedHeuristics(state);
-        if (rules.length === 0) return textResult("No heuristics found.");
-        const lines: string[] = [`Heuristics (${rules.length} total):\n`];
-        for (const rule of rules) {
-          lines.push(`[${rule.priority.toFixed(2)}] ${rule.condition}`);
-          lines.push(`   → ${rule.action}`);
-          lines.push(
-            `   Success rate: ${(rule.successRate * 100).toFixed(0)}% (${rule.uses} uses)`,
-          );
-          lines.push("");
-        }
-        return textResult(lines.join("\n"));
-      }
-
-      if (action === "add") {
-        if (!condition || !action_text)
-          return textResult("Error: condition and action_text are required for add action");
-        const rule = addHeuristicRule(state, condition, action_text);
-        return textResult(`Heuristic added: "${condition}" → "${action_text}" [${rule.id}]`);
-      }
-
-      if (action === "evolve") {
-        if (!rule_id || success === undefined)
-          return textResult("Error: rule_id and success are required for evolve action");
-        evolveHeuristic(state, rule_id, success);
-        return textResult(`Heuristic evolved: ${rule_id} (success: ${success})`);
-      }
-
-      return textResult(`Unknown action: ${action}. Use list, add, or evolve.`);
-    },
-  });
-
+  // Agent-facing tool surface is owned by `memory-agent-bridge/` (the unified `memory` tool
+  // exposes episodes_* and heuristics_* actions). This extension owns the data layer
+  // (episodes, heuristics, tool-reliability) and the event-driven auto-recall loop.
 
   // ── Event: session_start ────────────────────────────────────────────
   registerSessionStartHandler(
@@ -623,7 +458,7 @@ function inferTaskType(_ctx: ExtensionContext, _toolName: string): string {
     grep: "search",
     find: "search",
     think: "reasoning",
-    memory_recall: "memory_access",
+    memory: "memory_access",
   };
   return toolTypeMap[_toolName] || "general";
 }

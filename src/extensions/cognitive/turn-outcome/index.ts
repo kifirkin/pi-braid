@@ -114,7 +114,7 @@ function formatSteerMessage(details: string): string {
     `1. Use \`think()\` to re-evaluate your approach\n` +
     `2. Check if the problem has changed - you may be solving the wrong issue\n` +
     `3. Consider breaking the task into smaller steps\n` +
-    `4. Use \`memory_recall\` to find past solutions to similar problems`
+    `4. Use the \`memory\` tool to find past solutions to similar problems`
   );
 }
 

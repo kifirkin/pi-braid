@@ -20,8 +20,8 @@ prefix was redundant - it's just the memory subsystem, mirrored by the
 ## Relationship to other layers
 
 - `lib/memory/` is the **engine** - pure data and logic.
-- `extensions/memory/three-memory-stores/` is the **agent-facing tool wrapper** - exposes `memory_episodes`, `memory_heuristics` as LLM-callable tools.
-- `extensions/memory/memory-agent-bridge/` exposes `memory_store` and `memory_recall` (action=search|list|get).
+- `extensions/memory/three-memory-stores/` is the **data layer** (episodes, heuristics, tool-reliability). It owns the storage + event-driven auto-recall loop, not the agent-facing tool surface.
+- `extensions/memory/memory-agent-bridge/` exposes `memory_store` (write) and the unified `memory` tool (read/write across recall, episodes, heuristics via 9 actions: `recall_search|recall_list|recall_get|episodes_search|episodes_list|episodes_add|heuristics_list|heuristics_add|heuristics_evolve`).
 - `extensions/memory/session-recall/` exposes `session` (action=search|query).
 - `lib/store/` is for **ad-hoc persistent claims** (verifier output, conflict resolution). Different from the structured three-store memory.
 

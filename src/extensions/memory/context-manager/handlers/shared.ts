@@ -27,9 +27,7 @@ export const INTERNAL_TOOLS = new Set([
   "heuristics_evaluate",
   "cognition_evaluate",
   "memory_store",
-  "memory_recall",
-  "memory_episodes",
-  "memory_heuristics",
+  "memory",
   "goal",
   "plan",
   "scratchpad",
@@ -278,11 +276,11 @@ export function buildContinuationSummary(ctx: ExtensionContext): string {
       }
     }
 
-    lines.push("", "Use `memory_recall` to retrieve cross-session knowledge.");
+    lines.push("", "Use the `memory` tool to retrieve cross-session knowledge.");
 
     return lines.join("\n");
   } catch {
-    return "Session continuation from rotated session. Use memory_recall for context.";
+    return "Session continuation from rotated session. Use the `memory` tool for context.";
   }
 }
 

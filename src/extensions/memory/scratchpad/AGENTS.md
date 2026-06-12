@@ -7,7 +7,7 @@ compaction and even across sessions.
 ## Distinction from `memory/` data layer
 
 - `lib/memory/` = the long-term engine (episodes, semantic memory, etc).
-- `extensions/memory/` = the agent-facing tools (memory_store, memory_recall, ...)
+- `extensions/memory/` = the agent-facing tools (memory_store, memory, ...)
 - `extensions/memory/scratchpad/` = the WORKING memory tool (in-session, structured)
 
 The scratchpad is a state tool, not a knowledge tool. It's where the agent

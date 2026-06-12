@@ -24,12 +24,14 @@ promotion paths.
 
 ## Tools exposed
 
+This extension owns the **data layer** and the **event-driven
+auto-recall loop**, not the agent-facing tool surface. The unified
+`memory` tool (in `memory-agent-bridge/`) exposes episodes_* and
+heuristics_* actions that delegate to this extension's data layer.
+
 | Tool                | Purpose                                                       |
 | ------------------- | ------------------------------------------------------------- |
-| `memory_store`      | Store a new memory (heuristic auto-categorizes type)          |
-| `memory_recall`     | Search memories (action=search|list|get)                       |
-| `memory_episodes`   | Browse episodes (chronological or by tool)                    |
-| `memory_heuristics` | Read/manipulate the heuristic rules                           |
+| (none)              | Tool surface lives in `memory-agent-bridge/` as `memory`      |
 
 ## Heuristic tier (BUILTIN_HEURISTICS)
 
