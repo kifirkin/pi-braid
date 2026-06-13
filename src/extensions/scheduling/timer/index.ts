@@ -345,10 +345,9 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
   if (timer.wake === true) {
     const text = `[TIMER FIRED - ${elapsedSec}s elapsed] ${timer.reason} - Resume the task.`;
     try {
-      sendTrackedMessage(
-        pi,
+      pi.sendMessage(
         {
-          customType: "timer",
+          customType: "timer-fire",
           content: [{ type: "text" as const, text }],
           display: true,
           details: {
@@ -360,8 +359,7 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
             elapsedSec,
           },
         },
-        { deliverAs: "steer", triggerTurn: true },
-        { type: "heartbeat", source: "timer/fire" },
+        { triggerTurn: true },
       );
     } catch (e) {
       log.warn(`[timer] whisper-wake delivery failed: ${(e as Error).message}`);
