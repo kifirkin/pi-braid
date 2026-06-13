@@ -1,8 +1,6 @@
-import { readFile } from "node:fs/promises";
 import { deliverPastInsights } from "../../memory/past-insights.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
-import { asyncExists } from "../../../lib/utils/async-fs.js";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, loadProjectContextFiles } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { RESOURCES_DISCOVER } from "../../../lib/core/event-names.js";
@@ -53,16 +51,10 @@ import {
  * - L1 environmental state
  * - Enforcement signals
  *
- * CHANGES from implicit-framing research:
- * - Removed 5 sections (THINK_SILENTLY, BEHAVIORAL_GUIDELINES, KEY_TOOL_COMBINATIONS, VERIFICATION_REMINDER, IMPLICIT_BUDGET)
- * - Condensed INTERACTION_STYLE to single sentence
- * - Removed directive guidelines - behaviors are latent, not from directives
- * - Removed latent behavior activation from prompt (moved to runtime)
- * - Added sycophancy resistance (2604.19117), stakes awareness (2604.15224), epistemic stability (2604.14881)
- * - Added surgical precision (minimal targeted changes) + budget awareness (goal-driven execution)
- * - Removed 7 sections (SYCOPHANCY_RESISTANCE as section, STAKES_AWARENESS as section, IMPLICIT_NORMS,
- *   TOOL_TRUST, format guidance, RepE jargon header, all-modes listing)
- * - Truncated tool descriptions to first line only
+ * Historical change log moved to CHANGELOG.md. The current shape is the
+ * post-implicit-framing research state: single-sentence interaction style,
+ * 5 research-backed single-sentence guardrails, no latent-behavior
+ * activation in the prompt (moved to runtime via `latent-activator`).
  */
 
 // ── L1: Enforcement Signal Surfacing ────────────────────────────────────────
@@ -169,59 +161,17 @@ function toolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>): PromptSec
 }
 
 async function projectContextSection(cwd: string): Promise<PromptSection> {
-  // Re-implemented from loadProjectContextFiles (not exported from pi)
-  // Searches for AGENTS.md or CLAUDE.md in cwd and ancestors
-  // NOTE: pi's native loading is overridden by prompt-builder, so we must replicate here
+  // Uses pi-core's exported `loadProjectContextFiles` instead of a local
+  // re-implementation. The SDK exports this as a standalone utility
+  // (see pi CHANGELOG for #3142). This keeps us in sync with the
+  // canonical resolution order: agent-dir global context, then
+  // cwd-ancestors (most-root last), deduped by path.
 
-  const contextFiles: Array<{ path: string; content: string }> = [];
-  const seenPaths = new Set<string>();
-
-  async function loadContextFromDir(
-    dir: string,
-  ): Promise<{ path: string; content: string } | null> {
-    const candidates = ["AGENTS.md", "CLAUDE.md"];
-    for (const filename of candidates) {
-      const filePath = join(dir, filename);
-      if (await asyncExists(filePath)) {
-        try {
-          return {
-            path: filePath,
-            content: await readFile(filePath, "utf-8"),
-          };
-        } catch {
-          // Skip files that can't be read
-          /* Non-fatal: prompt parsing failed */
-        }
-      }
-    }
-    return null;
-  }
-
-  // Global context (agent dir)
-  const agentDir = getAgentDir();
-  const globalContext = await loadContextFromDir(agentDir);
-  if (globalContext) {
-    contextFiles.push(globalContext);
-    seenPaths.add(globalContext.path);
-  }
-
-  // Ancestor context files (from cwd up to root)
-  const root = join("/");
-  let currentDir = cwd;
-
-  while (true) {
-    const contextFile = await loadContextFromDir(currentDir);
-    if (contextFile && !seenPaths.has(contextFile.path)) {
-      contextFiles.unshift(contextFile);
-      seenPaths.add(contextFile.path);
-    }
-
-    if (currentDir === root) break;
-
-    const parentDir = join(currentDir, "..");
-    if (parentDir === currentDir) break;
-    currentDir = parentDir;
-  }
+  // loadProjectContextFiles is sync, so wrap the call in a microtask
+  // so the function remains `async` (matches PromptSection contract).
+  const contextFiles = await Promise.resolve().then(() =>
+    loadProjectContextFiles({ cwd, agentDir: getAgentDir() }),
+  );
 
   return {
     name: "project-context",

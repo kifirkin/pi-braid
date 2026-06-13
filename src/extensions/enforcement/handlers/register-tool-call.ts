@@ -8,7 +8,7 @@ import { checkBlocking } from "./blocking.js";
 import { recordToolCall, recordToolInput, recordBashDetails } from "./tool-tracker.js";
 import { checkLocalizationRisk, recordFileTouch } from "../../../lib/store/bidirectional-verifier.js";
 import { knownFiles } from "../similarity.js";
-import { getState, recordThink } from "../state.js";
+import { getState, recordThink, incrementToolsSinceReflection } from "../state.js";
 import { TOOL_CALL } from "../../../lib/core/event-names.js";
 
 export function registerToolCallHandler(pi: ExtensionAPI): void {
@@ -69,7 +69,7 @@ export function registerToolCallHandler(pi: ExtensionAPI): void {
       const confidence = (input as { confidence?: number })?.confidence;
       recordThink(getState(ctx), thinkType, parentId, confidence);
     } else {
-      getState(ctx).toolsSinceReflection++;
+      incrementToolsSinceReflection(getState(ctx));
     }
 
     const blockResult = checkBlocking(pi, toolName, input, getState(ctx));
