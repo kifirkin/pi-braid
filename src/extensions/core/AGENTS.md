@@ -9,7 +9,7 @@ environmental awareness, system prompt assembly, and user input transformation.
 |---|---|---|
 | `polyfill/` | Polyfills for missing pi core features. | (foundation) |
 | `agent-environment/` | L1 environmental awareness: working dir, time, machine info. | `prompt-builder` |
-| `prompt-builder/` | Builds the agent's system prompt. Composed of L1 environment, past insights, contrast phrases. | (final assembly) |
+| `prompt-builder/` | Builds the agent's system prompt. Composes sections; orchestrates once-per-session whisper deliveries from `memory/` and `cognitive/`. | (final assembly) |
 | `input-polisher/` | Proofreads and translates user input before sending to the LLM. Uses utility model. | (event handler) |
 
 ## Local Contracts
@@ -21,3 +21,4 @@ environmental awareness, system prompt assembly, and user input transformation.
 - Cognitive analysis tools (think/verify/etc, detectors) live in `cognitive/`.
 - Self-management extensions live in `self/`.
 - Time-based events live in `scheduling/`.
+- Whisper deliveries (hints, past insights, OpenSpec) live in their natural homes (`cognitive/`, `memory/`). The prompt-builder orchestrates the once-per-session call to each `deliver*` function but does not own the data pipeline.
