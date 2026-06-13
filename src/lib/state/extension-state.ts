@@ -1,6 +1,14 @@
 /**
  * Extension State - Session-Scoped State Management
  *
+ * ⚠️ This is the ONLY sanctioned state holder for extension runtime data.
+ *    The `AGENTS.md` contract forbids module-level `let` mutable state
+ *    because it leaks across sessions when pi runs multiple sessions in
+ *    one process. If you need a per-extension state object, use
+ *    `getExtensionState(ctx, "key", factory)`. See
+ *    `docs/CODE-QUALITY-REMEDIATION-PLAN.md` TASK-2.1 for the audit
+ *    of violations and the migration plan.
+ *
  * Problem: module-level `const state = {}` is process-global. If pi ever runs
  * multiple sessions in one process, state bleeds between sessions.
  *
@@ -10,6 +18,12 @@
  *
  * Fallback: if no stable session id is available, fall back to the ctx
  * WeakMap (legacy behavior).
+ *
+ * Exceptions (process-globals that are explicitly OK here): see the four
+ * module-level holders declared below (`_sessionState`, `_stateBuckets`,
+ * `_lastSessionKey`, `_cachedSessionManagers`). They are bookkeeping for
+ * the state system itself, not extension state. New module-level mutable
+ * bindings elsewhere in `lib/` need to be audited against this rule.
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
