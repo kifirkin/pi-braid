@@ -119,7 +119,7 @@ console.log("\n[3] Hint loading with relevance filtering");
 {
   // Hint pipeline lives in its own file after the whisper-conversion refactor.
   const hintsSrc = readFileSync(
-    "/Users/kifir/projects/agents/pi-braid/src/extensions/core/prompt-builder/hints.ts",
+    "/Users/kifir/projects/agents/pi-braid/src/extensions/cognitive/hints.ts",
     "utf-8",
   );
 
