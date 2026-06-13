@@ -117,26 +117,27 @@ console.log("\n[2] Consolidation hint writing");
 
 console.log("\n[3] Hint loading with relevance filtering");
 {
-  const promptSrc = readFileSync(
-    "/Users/kifir/projects/agents/pi-braid/src/extensions/core/prompt-builder/index.ts",
+  // Hint pipeline lives in its own file after the whisper-conversion refactor.
+  const hintsSrc = readFileSync(
+    "/Users/kifir/projects/agents/pi-braid/src/extensions/core/prompt-builder/hints.ts",
     "utf-8",
   );
 
   // loadConsolidatedHints returns string[] (3 most recent hints)
   assert.ok(
-    promptSrc.includes("function loadConsolidatedHints"),
+    hintsSrc.includes("function loadConsolidatedHints"),
     "loadConsolidatedHints should exist (returns string[])",
   );
   assert.ok(
-    promptSrc.includes("CRITICS.hintRelevance"),
+    hintsSrc.includes("CRITICS.hintRelevance"),
     "should use CRITICS.hintRelevance for utility model filtering",
   );
   assert.ok(
-    promptSrc.includes("filterRelevantHints"),
+    hintsSrc.includes("filterRelevantHints"),
     "should have filterRelevantHints that uses classify()",
   );
   assert.ok(
-    promptSrc.includes("hintRelevanceFallback"),
+    hintsSrc.includes("hintRelevanceFallback"),
     "should have heuristic fallback for hint relevance",
   );
 

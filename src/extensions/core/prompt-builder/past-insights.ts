@@ -1,15 +1,21 @@
 /**
  * Proactive Past Insights - extracted from prompt-builder/index.ts.
  *
- * R6: Injects relevant experience from previous sessions into prompt.
+ * R6: Surfaces relevant experience from previous sessions to the agent.
  * Uses three-memory-stores (episodes) + session-recall (sessions).
  * Memory confidence threshold: only inject if relevance >= 0.7.
+ *
+ * Delivery model: WHISPER. The insights are sent once per session as a
+ * `context` custom message (steer, no trigger). The agent sees them in
+ * the next turn but they do NOT live in the system prompt - this keeps
+ * the prompt lean and the insights transient.
  */
 
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readdir, readFile } from "node:fs/promises";
-import type { PromptSection } from "./section.js";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { asyncExists } from "../../../lib/utils/async-fs.js";
 
 export interface PastInsight {
@@ -26,7 +32,6 @@ const MEMORY_DIR = join(homedir(), ".pi", "memory");
  * Derive a project identifier from a cwd path.
  * Returns the last 2 path components.
  */
-/** Derive project identifier from cwd - exported for main prompt builder. */
 export function deriveProjectIdFromCwd(cwd: string): string {
   const parts = cwd.replace(/\\/g, "/").split("/").filter(Boolean);
   if (parts.length < 2) return cwd || "unknown";
@@ -56,12 +61,11 @@ export async function searchPastInsights(cwd: string): Promise<PastInsight[]> {
   const insights: PastInsight[] = [];
 
   // Search three-memory-stores episodes
-  const memoryDir = MEMORY_DIR;
-  if (await asyncExists(memoryDir)) {
+  if (await asyncExists(MEMORY_DIR)) {
     try {
-      const episodeFiles = (await readdir(memoryDir)).filter((f) => f.startsWith("episodes"));
+      const episodeFiles = (await readdir(MEMORY_DIR)).filter((f) => f.startsWith("episodes"));
       for (const file of episodeFiles.slice(0, 3)) {
-        const content = await readFile(join(memoryDir, file), "utf-8");
+        const content = await readFile(join(MEMORY_DIR, file), "utf-8");
         const lines = content.split("\n").filter((l) => l.trim());
         for (const line of lines.slice(-5)) {
           try {
@@ -149,31 +153,65 @@ function extractTaskFromEntry(entry: Record<string, unknown>): string | null {
   return null;
 }
 
-export function pastInsightsSection(insights: PastInsight[]): PromptSection {
-  return {
-    name: "past-insights",
-    render: () => {
-      if (insights.length === 0) return "";
+/**
+ * Filter out insights whose content is just metrics (no actionable signal).
+ * Returns "" if no insights have signal, or the rendered section if any do.
+ */
+function renderInsightsAsSection(insights: PastInsight[]): string {
+  if (insights.length === 0) return "";
 
-      const hasSignal = (content: string): boolean => {
-        const metricsOnly = /^(\[\w+\]\s*)?(session_outcome|outcome):\s*\w+/i;
-        if (metricsOnly.test(content.trim())) return false;
-        if (content.trim().length < 15) return false;
-        return true;
-      };
-
-      const filtered = insights.filter((i) => hasSignal(i.content));
-      if (filtered.length === 0) return "";
-
-      // Preserve the leading blank line from the original lines-based impl
-      // so callers that prepend a section title don't lose a visual separator.
-      const lines = [
-        "",
-        "## Past Insights",
-        "*(Relevant experience from previous sessions)*",
-        ...filtered.map((insight) => `- ${insight.content}`),
-      ];
-      return lines.join("\n");
-    },
+  const hasSignal = (content: string): boolean => {
+    const metricsOnly = /^(\[\w+\]\s*)?(session_outcome|outcome):\s*\w+/i;
+    if (metricsOnly.test(content.trim())) return false;
+    if (content.trim().length < 15) return false;
+    return true;
   };
+
+  const filtered = insights.filter((i) => hasSignal(i.content));
+  if (filtered.length === 0) return "";
+
+  // Preserve the leading blank line from the original lines-based impl
+  // so the whisper text matches the section format the agent used to see.
+  const lines = [
+    "",
+    "## Past Insights",
+    "*(Relevant experience from previous sessions)*",
+    ...filtered.map((insight) => `- ${insight.content}`),
+  ];
+  return lines.join("\n");
+}
+
+/**
+ * Deliver past insights as a whisper (once per session).
+ * Best-effort: any failure (missing dirs, malformed JSON) is swallowed.
+ */
+export async function deliverPastInsights(
+  cwd: string,
+  pi: ExtensionAPI,
+  _ctx: ExtensionContext,
+): Promise<void> {
+  let insights: PastInsight[];
+  try {
+    insights = await searchPastInsights(cwd);
+  } catch {
+    return;
+  }
+
+  const text = renderInsightsAsSection(insights);
+  if (!text) return;
+
+  try {
+    sendTrackedMessage(
+      pi,
+      {
+        customType: "context",
+        display: true,
+        content: [{ type: "text" as const, text }],
+      },
+      { deliverAs: "steer", triggerTurn: false },
+      { type: "memory", source: "prompt-builder/insights" },
+    );
+  } catch {
+    // Non-fatal: steer message send is best-effort
+  }
 }

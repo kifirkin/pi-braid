@@ -1,24 +1,30 @@
 /**
  * OpenSpec spec context - inject SHALL/MUST/SHOULD requirements from active
- * specs into the system prompt.
+ * specs into the agent's context.
  *
- * Extracted from the inline `try { ... }` block in `before_agent_start`.
- * Now uses async I/O (matches the rest of the prompt-builder) and exports
- * a `PromptSection` that the main handler composes.
+ * Delivery model: WHISPER. The active spec requirements are sent once per
+ * session as an `openspec` custom message (steer, no trigger). The agent
+ * sees them in the next turn but they do NOT live in the system prompt.
+ *
+ * Rationale: spec context is supplemental. It can be 100+ lines for projects
+ * with many domains. Keeping it out of the system prompt keeps every turn's
+ * baseline cost low; the agent still has the spec content in its next turn
+ * via the whisper and can `read` the full spec.md if it needs more detail.
  *
  * Behavior:
  * - Walks `cwd/openspec/specs/<domain>/spec.md` for up to 3 domains.
  * - Extracts the `### Requirement:` headings and any line containing
  *   SHALL/MUST/SHOULD.
- * - Renders as `## Active Specs` followed by per-domain requirement lists,
+ * - Sends as a `## Active Specs` block with per-domain requirement lists,
  *   plus a footer reminder to update delta specs.
  *
- * If the spec dir is missing or unreadable, the section renders to "".
+ * If the spec dir is missing or unreadable, the whisper is skipped.
  */
 
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { headingSection } from "./section.js";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { asyncExists } from "../../../lib/utils/async-fs.js";
 
 const MAX_DOMAINS = 3;
@@ -72,33 +78,53 @@ async function readActiveSpecs(cwd: string): Promise<DomainSpecs[]> {
 }
 
 /**
- * Build the `## Active Specs` section. Returns "" if no spec domains
- * were found or no requirements could be extracted.
+ * Build the whisper text for the `## Active Specs` block.
+ * Returns "" if no spec domains were found or no requirements could be extracted.
  */
-export function activeSpecsSection(cwd: string) {
-  return {
-    name: "openspec",
-    render: async () => {
-      let specs: DomainSpecs[];
-      try {
-        specs = await readActiveSpecs(cwd);
-      } catch {
-        return "";
-      }
-      if (specs.length === 0) return "";
+function renderSpecsText(specs: DomainSpecs[]): string {
+  if (specs.length === 0) return "";
 
-      const body = specs
-        .map(
-          (s) =>
-            `${s.domain}:\n${s.requirements.map((r) => `  ${r}`).join("\n")}`,
-        )
-        .join("\n\n");
+  const body = specs
+    .map(
+      (s) =>
+        `${s.domain}:\n${s.requirements.map((r) => `  ${r}`).join("\n")}`,
+    )
+    .join("\n\n");
 
-      return headingSection(
-        "openspec",
-        "Active Specs",
-        `${body}\n\nWhen editing, check openspec/specs/ for relevant requirements and update delta specs if behavior changes.`,
-      ).render();
-    },
-  };
+  return `## Active Specs\n\n${body}\n\nWhen editing, check openspec/specs/ for relevant requirements and update delta specs if behavior changes.`;
+}
+
+/**
+ * Deliver active OpenSpec spec context as a whisper (once per session).
+ * Best-effort: any failure (missing dirs, unreadable files) is swallowed.
+ */
+export async function deliverActiveSpecs(
+  cwd: string,
+  pi: ExtensionAPI,
+  _ctx: ExtensionContext,
+): Promise<void> {
+  let specs: DomainSpecs[];
+  try {
+    specs = await readActiveSpecs(cwd);
+  } catch {
+    return;
+  }
+
+  const text = renderSpecsText(specs);
+  if (!text) return;
+
+  try {
+    sendTrackedMessage(
+      pi,
+      {
+        customType: "openspec",
+        display: true,
+        content: [{ type: "text" as const, text }],
+      },
+      { deliverAs: "steer", triggerTurn: false },
+      { type: "memory", source: "prompt-builder/openspec" },
+    );
+  } catch {
+    // Non-fatal: steer message send is best-effort
+  }
 }

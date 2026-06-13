@@ -1,10 +1,6 @@
 import { readFile } from "node:fs/promises";
 import type { Skill } from "@earendil-works/pi-coding-agent";
-import {
-  searchPastInsights,
-  pastInsightsSection,
-  deriveProjectIdFromCwd,
-} from "./past-insights.js";
+import { deliverPastInsights } from "./past-insights.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 import { asyncExists } from "../../../lib/utils/async-fs.js";
 
@@ -56,9 +52,8 @@ import { getAgentDir } from "@earendil-works/pi-coding-agent";
 // would miss package skills (e.g. pi-braid-skills) and other pi sources.
 import { gatherL1State, l1EnvSection } from "./l1-environment.js";
 import { contrastSection } from "./contrast-phrase-library.js";
-import { activeSpecsSection } from "./openspec.js";
-import { classify } from "../../../lib/ai/text-classifier.js";
-import { CRITICS } from "../../../lib/ai/critic-registry.js";
+import { deliverActiveSpecs } from "./openspec.js";
+import { deliverRelevantHints } from "./hints.js";
 import type { PromptSection } from "./section.js";
 import { linesSection, simpleSection, composeSections } from "./section.js";
 
@@ -97,7 +92,6 @@ const INTERACTION_STYLE = `You think hard silently to find correct reasoning tra
 // ── L1: Enforcement Signal Surfacing ────────────────────────────────────────
 // Session-scoped state (migrated from module-level singletons)
 import { getExtensionState } from "../../../lib/state/extension-state.js";
-import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 
 interface PromptBuilderState {
   activeContrastMode: string;
@@ -109,155 +103,6 @@ function getPromptState(ctx: ExtensionContext): PromptBuilderState {
     activeContrastMode: "TRUTH-SEEKING",
     insightsSent: false,
   }));
-}
-
-const HINT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-
-async function loadConsolidatedHints(currentProject?: string): Promise<string[]> {
-  try {
-    if (!(await asyncExists(CONSOLIDATED_HINTS_FILE))) return [];
-    const content = await readFile(CONSOLIDATED_HINTS_FILE, "utf-8");
-    const lines = content.split("\n").filter((l: string) => l.trim());
-    if (lines.length === 0) return [];
-
-    const now = Date.now();
-    const parsed = lines
-      .map((l: string) => {
-        try {
-          return JSON.parse(l);
-        } catch {
-          return null;
-        }
-      })
-      .filter((h: any): h is Record<string, any> => h !== null)
-      .filter((h: any) => h.steps && (h.steps as string[]).length > 0)
-      .filter((h: any) => now - (h.createdAt ?? 0) < HINT_MAX_AGE_MS);
-
-    if (parsed.length === 0) return [];
-
-    // Filter: prefer same-project hints. Cross-project hints are only included
-    // if they pass a higher quality bar (score >= 80) - same logic as
-    // isCrossProjectInjectionAllowed for episodic memory.
-    const sameProject = currentProject
-      ? parsed.filter(
-          (h: any) => !h.project || h.project === currentProject || h.project === "unknown",
-        )
-      : parsed;
-    const crossProject = currentProject
-      ? parsed.filter(
-          (h: any) =>
-            h.project &&
-            h.project !== currentProject &&
-            h.project !== "unknown" &&
-            (h.score ?? 0) >= 80,
-        )
-      : [];
-    const candidates = [...sameProject, ...crossProject];
-
-    // Deduplicate by task: keep only the most recent entry per task
-    const byTask = new Map<string, any>();
-    for (const h of candidates) {
-      const key = h.task ?? "";
-      const existing = byTask.get(key);
-      if (!existing || (h.createdAt ?? 0) > (existing.createdAt ?? 0)) {
-        byTask.set(key, h);
-      }
-    }
-    const deduped = Array.from(byTask.values())
-      .filter((h) => h.createdAt != null)
-      .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
-
-    // Take the 3 most recent, render as readable strings
-    return deduped.slice(-3).map((h) => {
-      const task = (h.task ?? "unknown").slice(0, 80);
-      const steps = (h.steps as string[]).slice(0, 3).join(" → ");
-      return `When working on "${task}": ${steps}`;
-    });
-  } catch {
-    return [];
-  }
-}
-
-// HINT_RELEVANCE_CRITERIA was moved to CRITICS.hintRelevance in critic-registry.ts
-
-/**
- * Heuristic fallback (Tier 1 graceful degradation).
- * Only the obviously-generic patterns are rejected here. The semantic
- * matching ("does this hint apply to the current task?") is left to
- * the LLM tier - keyword-overlap Jaccard was tried and removed because
- * it produced too many false positives and false negatives.
- */
-function hintRelevanceFallback(hint: string, _currentTask: string): string {
-  if (hint.length < 30) return "no";
-  if (/Fix \w+ error:/.test(hint)) return "no";
-  if (/Debug.*isolate/.test(hint)) return "no";
-  if (/Reproduce.*Locate.*Apply/.test(hint)) return "no";
-  return "yes";
-}
-
-/**
- * Extract the current task from the session - the most recent user message.
- * Returns a short summary, max ~200 chars.
- */
-function getCurrentTask(ctx: ExtensionContext): string {
-  try {
-    const sm = ctx.sessionManager;
-    if (!sm || typeof sm.getBranch !== "function") return "";
-    const branch = sm.getBranch();
-    for (let i = branch.length - 1; i >= 0; i--) {
-      const entry = branch[i];
-      if (entry?.type === "message" && entry.message?.role === "user") {
-        const content = entry.message.content;
-        let text = "";
-        if (typeof content === "string") text = content;
-        else if (Array.isArray(content)) {
-          text = content
-            .filter((c: any) => c?.type === "text")
-            .map((c: any) => c?.text || "")
-            .join(" ");
-        }
-        return text.trim().slice(0, 500);
-      }
-    }
-  } catch {
-    // Non-fatal: empty current task means keyword check rejects all hints,
-    // which is the safe default.
-  }
-  return "";
-}
-
-/**
- * Pre-filter: run the cheap heuristic BEFORE the LLM classifier.
- * If the heuristic says "no", skip the expensive LLM call entirely.
- * This prevents known-bad hints from slipping through when the LLM
- * misclassifies them despite instructions to reject generic patterns.
- */
-/**
- * Filter hints by relevance using the utility model.
- * Returns only hints classified as relevant to the current session.
- */
-async function filterRelevantHints(hints: string[], ctx: ExtensionContext): Promise<string[]> {
-  const currentTask = getCurrentTask(ctx);
-  // Empty current task → reject all hints. Better to surface nothing
-  // than to inject a hint that has no task to be relevant to.
-  if (!currentTask) return [];
-
-  const results = await Promise.all(
-    hints.map((hint) =>
-      classify(
-        ctx,
-        CRITICS.hintRelevance.criteria,
-        { hint, currentTask },
-        {
-          maxTokens: 5,
-          timeoutMs: 3000,
-          fallback: () => hintRelevanceFallback(hint, currentTask),
-        },
-      ),
-    ),
-  );
-
-  return hints.filter((_, i) => results[i].label === "yes");
 }
 const KNOWN_SNIPPETS: Record<string, string> = {
   // pi-native core tools (consistent one-liners regardless of version)
@@ -585,54 +430,18 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
 
     const l1Env = await gatherL1State(pi, ctx);
 
-    // 5. Past insights + hints → offloaded to steer whisper (once per session)
-    // Avoids per-turn disk I/O and system prompt bloat for supplemental context.
-    // Done BEFORE building sections so the offloaded work happens in parallel
-    // with the rest of the prompt assembly.
+    // 5. Supplemental context (past insights, hints, OpenSpec specs) →
+    // offloaded to steer whispers (once per session). Avoids per-turn disk
+    // I/O and system prompt bloat for context the agent can re-load via
+    // `read` if needed.
     if (!ps.insightsSent) {
-      const pastInsights = await searchPastInsights(cwd);
-      const insightsText = await pastInsightsSection(pastInsights).render();
-      if (insightsText) {
-        try {
-          sendTrackedMessage(
-            pi,
-            {
-              customType: "context",
-              display: true,
-              content: [{ type: "text" as const, text: insightsText }],
-            },
-            { deliverAs: "steer", triggerTurn: false },
-            { type: "memory", source: "prompt-builder/insights" },
-          );
-        } catch {
-          // Non-fatal: steer message send is best-effort
-        }
-      }
-
-      // Load and filter hints by utility model relevance, deliver as whispers
-      // Pass project ID so cross-project hints are deprioritized.
-      const projectId = deriveProjectIdFromCwd(cwd);
-      const allHints = await loadConsolidatedHints(projectId);
-      if (allHints.length > 0) {
-        try {
-          const relevantHints = await filterRelevantHints(allHints, ctx);
-          for (const hint of relevantHints) {
-            sendTrackedMessage(
-              pi,
-              {
-                customType: "hint",
-                display: true,
-                content: [{ type: "text" as const, text: `[hint] ${hint}` }],
-              },
-              { deliverAs: "steer", triggerTurn: false },
-              { type: "memory", source: "prompt-builder/hint" },
-            );
-          }
-        } catch {
-          // Non-fatal: hint delivery is best-effort
-        }
-      }
-
+      // Run in parallel - each delivery is independent and best-effort.
+      // allSettled ensures one failure doesn't block the others.
+      await Promise.allSettled([
+        deliverPastInsights(cwd, pi, ctx),
+        deliverRelevantHints(cwd, pi, ctx),
+        deliverActiveSpecs(cwd, pi, ctx),
+      ]);
       ps.insightsSent = true;
     }
 
@@ -698,10 +507,7 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       ),
     );
 
-    // 7. OpenSpec spec context (inject SHALL/MUST requirements from active specs)
-    sections.push(activeSpecsSection(cwd));
-
-    // 8. Active contrast mode (truthfulness guardrails)
+    // 7. Active contrast mode (truthfulness guardrails)
     sections.push(contrastSection(ps.activeContrastMode));
 
     // 9: Preserve appendSystemPrompt from pi-native. Deduplicated against
