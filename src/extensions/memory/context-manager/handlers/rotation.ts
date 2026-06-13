@@ -20,10 +20,14 @@ import type { RotationState } from "../../../../lib/state/global-state.js";
 import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";
 import { tryRestoreAppendMessage, clearInterceptState } from "./compaction.js";
 import { TURN_END, SESSION_SHUTDOWN } from "../../../../lib/core/event-names.js";
+import {
+  MAX_SESSION_AGE_MS,
+  NUDGE_COOLDOWN_TURNS,
+  NUDGE_COOLDOWN_MS,
+} from "../../../../lib/constants/session-thresholds.js";
 
 // ── Rotation configuration ───────────────────────────────────────────────────
 const MAX_SESSION_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
-const MAX_SESSION_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const MAX_TURNS_SINCE_ROTATION = 500; // 500 turns
 
 // Rotation state provided by global-state.ts (Symbol-keyed, DRY)
@@ -125,7 +129,7 @@ export function registerRotationHandlers(pi: ExtensionAPI): void {
         ? Date.now() - state.lastNudgeTimestamp
         : Infinity;
       const turnsSinceNudge = currentTurn - state.lastNudgeTurn;
-      if (turnsSinceNudge < 50 && timeSinceNudge < 5 * 60 * 1000) {
+      if (turnsSinceNudge < NUDGE_COOLDOWN_TURNS && timeSinceNudge < NUDGE_COOLDOWN_MS) {
         log.debug(
           `Nudge suppressed: ${turnsSinceNudge} turns, ${Math.round(timeSinceNudge / 1000)}s since last`,
         );

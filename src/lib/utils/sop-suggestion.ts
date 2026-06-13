@@ -25,6 +25,7 @@
 import { createLogger } from "../core/logger.js";
 import { sendTrackedMessage } from "../utils/injection-tracker.js";
 import { eventBus } from "../events/event-bus.js";
+import { classify as textClassifier } from "../ai/text-classifier.js";
 import { getExtensionState } from "../state/extension-state.js";
 import { STOP_WORDS } from "../ai/critic-registry.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -121,8 +122,7 @@ async function classifyTaskKeywords(text: string, _ctx?: any): Promise<string[]>
   let classifierKeywords: string[] = [];
   if (_ctx) {
     try {
-      const textClassifier = await import("../ai/text-classifier.js");
-      const result: any = await textClassifier.classify(
+      const result: any = await textClassifier(
         _ctx,
         {
           systemPrompt:

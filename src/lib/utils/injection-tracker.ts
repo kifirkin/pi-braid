@@ -16,6 +16,7 @@
 import { createLogger } from "../core/logger.js";
 import { SESSION_SHUTDOWN } from "../core/event-names.js";
 import { tryWhisper, type WhisperPriority } from "../enforcement/turn-dedup.js";
+import { BRAID_INJECTED, BRAID_SOURCE } from "../constants/injection-details.js";
 
 const log = createLogger("injection-tracker");
 
@@ -35,6 +36,12 @@ interface InjectionBucket {
   maxInjections: number;
 }
 
+// ── Module-level state (PROCESS-GLOBAL — see extension-state.ts header) ────────
+// _buckets: keyed by sessionId, so it IS effectively session-scoped despite
+//   living at module level. Cleared via `registerSessionCleanup` on SESSION_END.
+// _activeSessionId: pointer to the most recent sessionId; fallback for callers
+//   that lose ctx (e.g. after compaction).
+// _sendDepth: process-global re-entry counter for sendTrackedMessage.
 const _buckets = new Map<string, InjectionBucket>();
 
 let _activeSessionId: string | undefined;
@@ -238,8 +245,8 @@ export function sendTrackedMessage(
       typeof params.details === "object" && params.details !== null
         ? (params.details as Record<string, unknown>)
         : {};
-    existingDetails._braidInjected = true;
-    existingDetails._braidSource = injectionMeta.source;
+    existingDetails[BRAID_INJECTED] = true;
+    existingDetails[BRAID_SOURCE] = injectionMeta.source;
     params.details = existingDetails;
   }
 

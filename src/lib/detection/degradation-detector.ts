@@ -12,6 +12,8 @@ import { saveStateImmediate, loadState } from "../state/async-storage.js";
 import { createLogger } from "../core/logger.js";
 
 import { DEGRADATION_FILE } from "../config/braid-paths.js";
+import { classify } from "../ai/text-classifier.js";
+import { CRITICS } from "../ai/critic-registry.js";
 
 const _log = createLogger("degradation-detector");
 
@@ -365,9 +367,6 @@ export async function checkQualitativeDegradation(
   ctx: ExtensionContext,
   outputSamples: string[],
 ): Promise<"DEGRADED" | "STABLE"> {
-  const { classify } = await import("../ai/text-classifier.js");
-  const { CRITICS } = await import("../ai/critic-registry.js");
-
   if (outputSamples.length === 0) return "STABLE";
 
   const sampleText = outputSamples

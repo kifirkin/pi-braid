@@ -8,6 +8,7 @@ import { sendEnforcementWhisper } from "../whisper.js";
 import { getState } from "../state.js";
 import { enforcementSignals, determineContrastMode } from "../signals.js";
 import { createLogger } from "../../../lib/core/logger.js";
+import * as timerMod from "../../scheduling/timer/index.js";
 
 const log = createLogger("enforcement:session-compact");
 
@@ -36,7 +37,6 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
     // the session_compact handler (us) immediately cancelled the tag, so
     // the resume timer never fired and the agent never woke up.
     try {
-      const timerMod = await import("../../scheduling/timer/index.js");
       // Scope timer ops to current session - timer module stores per-session.
       // (Earlier designs used a module-level Map shared across all sessions;
       // cancelling by tag globally would cancel other sessions' resume timers.)

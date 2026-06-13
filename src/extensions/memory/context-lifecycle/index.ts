@@ -184,7 +184,7 @@ function sendCompactNudge(pi: ExtensionAPI, evaluated: EvaluatedAction, usage: n
         },
       ],
       display: true,
-      details: { _braidInjected: true, _braidSource: "context-lifecycle/compact-suggestion" },
+      details: { [BRAID_INJECTED]: true, [BRAID_SOURCE]: "context-lifecycle/compact-suggestion" },
     },
     undefined,
     { type: "context" as const, source: "context-lifecycle/compact-suggestion" },
@@ -205,7 +205,6 @@ async function executeAutoCompact(pi: ExtensionAPI, ctx: ExtensionContext): Prom
   try {
     // 1. Cancel stale resume timers from previous compaction cycles
     try {
-      const timerMod = await import("../../scheduling/timer/index.js");
       // Cancel any stale resume timer from a previous compaction cycle
       // (manual or auto). Without this, an old timer can fire later during
       // an unrelated TURN_END and produce a stray [timer] whisper.
@@ -243,7 +242,7 @@ async function executeAutoCompact(pi: ExtensionAPI, ctx: ExtensionContext): Prom
           },
         ],
         display: true,
-        details: { _braidInjected: true, _braidSource: "context-lifecycle/auto-compact" },
+        details: { [BRAID_INJECTED]: true, [BRAID_SOURCE]: "context-lifecycle/auto-compact" },
       },
       undefined,
       { type: "context" as const, source: "context-lifecycle/auto-compact" },
@@ -357,7 +356,9 @@ function queueProposal(evaluated: EvaluatedAction, ctx: ExtensionContext, branch
 // ── Extension Factory ────────────────────────────────────────────────────────
 
 import { clearInjections, sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
+import { BRAID_INJECTED, BRAID_SOURCE } from "../../../lib/constants/injection-details.js";
 import { TOOL_CALL } from "../../../lib/core/event-names.js";
+import * as timerMod from "../../scheduling/timer/index.js";
 
 export default function contextLifecycleExtension(pi: ExtensionAPI): void {
   // ── session_start ────────────────────────────────────────────────────────

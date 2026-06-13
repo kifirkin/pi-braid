@@ -27,6 +27,7 @@ import { sendTrackedMessage } from "../../lib/utils/injection-tracker.js";
 import { classify } from "../../lib/ai/text-classifier.js";
 import { CRITICS } from "../../lib/ai/critic-registry.js";
 import { deriveProjectIdFromCwd } from "../memory/past-insights.js";
+import { HINT_MAX_AGE_MS } from "../../lib/constants/session-thresholds.js";
 
 /** Async helper: check if a path exists. */
 async function asyncExists(p: string): Promise<boolean> {
@@ -34,8 +35,6 @@ async function asyncExists(p: string): Promise<boolean> {
     .then(() => true)
     .catch(() => false);
 }
-
-const HINT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 interface ParsedHint {
   task?: string;

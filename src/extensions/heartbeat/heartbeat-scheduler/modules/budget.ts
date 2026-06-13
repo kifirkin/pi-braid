@@ -12,6 +12,8 @@
 import type { CognitiveModule } from "../types.js";
 import { createLogger } from "../../../../lib/core/logger.js";
 import { getExtensionState } from "../../../../lib/state/extension-state.js";
+import { loadScratchpadFromDisk, saveScratchpadToDisk } from "../../../memory/scratchpad/index.js";
+import { emitSignal } from "../../../../lib/reasoning/belief-policy-engine.js";
 
 const log = createLogger("heartbeat:budget-tracker");
 
@@ -31,10 +33,6 @@ export const budgetModule: CognitiveModule = {
 
   async activate(context): Promise<void> {
     try {
-      const { loadScratchpadFromDisk, saveScratchpadToDisk } =
-        await import("../../../memory/scratchpad/index.js");
-      const { emitSignal } = await import("../../../../lib/reasoning/belief-policy-engine.js");
-
       const cwd = (context.ctx as { cwd?: string }).cwd ?? "";
       const segments = cwd.split("/").filter(Boolean);
       const slug = "--" + segments.join("-") + "--";

@@ -2,8 +2,10 @@
  * Enforcement Signals - shared L1 signal state for prompt-builder.
  *
  * enforcementSignals is a writable object - prompt-builder reads it directly
- * (same process, no IPC needed). Turn-keyed so stale signals are dropped
- * when the turn advances without new signals.
+ * (same process, no IPC needed). Stale entries are cleaned up on each
+ * TURN_END (see `turn-end-handler.ts:361`): entries whose `turn` is more
+ * than 1 behind `currentTurn` are deleted. So the live set is bounded
+ * to signals from the current and previous turn.
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";

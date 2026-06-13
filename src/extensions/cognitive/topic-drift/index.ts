@@ -20,6 +20,7 @@ import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { classify } from "../../../lib/ai/text-classifier.js";
 import { CRITICS } from "../../../lib/ai/critic-registry.js";
 import { onEvent } from "../../../lib/events/event-types.js";
+import { ANCHOR_TURNS_BEFORE_RESET } from "../../../lib/constants/session-thresholds.js";
 
 const log = createLogger("topic-drift");
 
@@ -44,7 +45,8 @@ interface DriftRecord {
 // ── Configuration ───────────────────────────────────────────────────────────
 
 const DRIFT_THRESHOLD = 0.5;
-const ANCHOR_TURNS_BEFORE_RESET = 50;
+// ANCHOR_TURNS_BEFORE_RESET is now imported from
+// lib/constants/session-thresholds.ts. See that file for the source of truth.
 
 // ── Core logic (triple-critic) ──────────────────────────────────────────────
 

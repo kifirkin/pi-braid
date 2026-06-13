@@ -23,6 +23,7 @@ import { createLogger } from "../../../lib/core/logger.js";
 import { Type } from "typebox";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { eventBus } from "../../../lib/events/event-bus.js";
+import { BRAID_INJECTED, BRAID_SOURCE } from "../../../lib/constants/injection-details.js";
 import type { ScheduledTimer } from "../../../lib/events/timer-types.js";
 
 const log = createLogger("timer");
@@ -374,8 +375,8 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
           content: [{ type: "text" as const, text }],
           display: true,
           details: {
-            _braidInjected: true,
-            _braidSource: "timer/fire",
+            [BRAID_INJECTED]: true,
+            [BRAID_SOURCE]: "timer/fire",
             timerId: timer.id,
             sessionId: timer.sessionId,
             wake: false,

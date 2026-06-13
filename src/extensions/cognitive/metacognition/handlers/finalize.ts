@@ -10,6 +10,8 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../../../../lib/state/extension-state.js";
 import { createLogger } from "../../../../lib/core/logger.js";
 import { getLastVerification } from "./verify.js";
+import { addEpisode, addPrinciple } from "../../../memory/three-memory-stores/index.js";
+import { executeConsolidation } from "../../../../lib/events/consolidation-channel.js";
 
 const log = createLogger("finalize");
 
@@ -25,8 +27,6 @@ async function recordToMemory(
 ): Promise<void> {
   if (!ctx) return;
   try {
-    // @ts-expect-error dynamic import - runtime resolves after build, type-check not needed
-    const { addEpisode, addPrinciple } = await import("../../memory/three-memory-stores/index.js");
     const state = getExtensionState<any>(ctx, "three-memory-stores", () => ({
       episodes: [],
       heuristics: [],
@@ -63,7 +63,6 @@ async function recordToMemory(
     // This closes the loop: finalize → episode → consolidation → prompt hints.
     if (completed) {
       try {
-        const { executeConsolidation } = await import("../../../../lib/events/consolidation-channel.js");
         const result = await executeConsolidation({
           id: episode.id,
           task: summary,

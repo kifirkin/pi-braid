@@ -1,4 +1,6 @@
 import { createLogger } from "../../../lib/core/logger.js";
+import { classify } from "../../../lib/ai/text-classifier.js";
+import { CRITICS } from "../../../lib/ai/critic-registry.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const log = createLogger("enforcement");
@@ -107,8 +109,6 @@ export async function detectIntent(
 ): Promise<{ intent: TaskIntent; confidence: number; reasoning: string }> {
   const combined = `Recent tools: ${recentTools.length > 0 ? recentTools.join(", ") : "(none)"}\n\nMessage:\n${message.slice(0, 1500)}`;
   try {
-    const { classify } = await import("../../../lib/ai/text-classifier.js");
-    const { CRITICS } = await import("../../../lib/ai/critic-registry.js");
     const result = await classify(
       ctx,
       CRITICS.topicClassification.criteria,

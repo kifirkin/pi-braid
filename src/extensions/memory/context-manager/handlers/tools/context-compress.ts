@@ -8,6 +8,7 @@
 import { Type } from "typebox";
 import type { CompactOptions, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { analyzeSession } from "../../analysis.js";
+import * as timerMod from "../../../../scheduling/timer/index.js";
 
 export const contextCompressSchema = Type.Object({
   action: Type.String({
@@ -95,7 +96,6 @@ export function registerContextCompress(pi: ExtensionAPI): void {
           };
 
           try {
-            const timerMod = await import("../../../../scheduling/timer/index.js");
             // Cancel any stale resume timer from a previous compaction cycle.
             // Without this, an old timer can fire during a later TURN_END and
             // deliver a misplaced [timer] whisper (the "strange order" issue).

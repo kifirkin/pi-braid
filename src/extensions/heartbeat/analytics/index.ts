@@ -27,6 +27,7 @@ import { areCognitiveNudgesDisabled } from "../../../lib/config/braid-settings.j
 import { Type } from "typebox";
 
 import { getAnalyticsStateInternal } from "./shared.js";
+import { formatABResults } from "./ab-variant.js";
 import { getCompactionHealth } from "../../memory/context-manager/handlers/shared.js";
 import { recordError, recordToolSuccess } from "../../../lib/detection/degradation-detector.js";
 import { getReasoningStateView } from "../../cognitive/reasoning/index.js";
@@ -288,7 +289,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
   pi.registerCommand("analytics:ab", {
     description: "Show A/B experiment results across variants",
     handler: async (_args, ctx) => {
-      ctx.ui.notify((await import("./ab-variant.js")).formatABResults(), "info");
+      ctx.ui.notify(formatABResults(), "info");
     },
   });
 

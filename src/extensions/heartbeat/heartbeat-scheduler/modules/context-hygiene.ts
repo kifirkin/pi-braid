@@ -8,6 +8,7 @@
 
 import type { CognitiveModule } from "../types.js";
 import { createLogger } from "../../../../lib/core/logger.js";
+import { evaluateContextDensity } from "../../../../lib/detection/context-density.js";
 import { getExtensionState } from "../../../../lib/state/extension-state.js";
 import { eventBus } from "../../../../lib/events/event-bus.js";
 import {
@@ -104,7 +105,6 @@ export const contextHygieneModule: CognitiveModule = {
 
   async activate(context): Promise<void> {
     const ctx = context.ctx;
-    const { evaluateContextDensity } = await import("../../../../lib/detection/context-density.js");
     const density = evaluateContextDensity(ctx);
 
     // Emit density signals into S-MMU lifecycle

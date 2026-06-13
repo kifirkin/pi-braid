@@ -20,6 +20,7 @@ import { getExtensionState, safeSessionManager } from "../../../lib/state/extens
 import { classify } from "../../../lib/ai/text-classifier.js";
 import { CRITICS } from "../../../lib/ai/critic-registry.js";
 import { MESSAGE_END } from "../../../lib/core/event-names.js";
+import { MIN_TEXT_LENGTH_FOR_CLASSIFY } from "../../../lib/constants/session-thresholds.js";
 
 const log = createLogger("sycophancy-detector");
 
@@ -195,7 +196,7 @@ async function handleSycophancy(
             .join("\n")
         : "";
 
-  if (responseText.length < 50) return;
+  if (responseText.length < MIN_TEXT_LENGTH_FOR_CLASSIFY) return;
 
   // Step 2: Detect VbC in assistant response using heuristic patterns
   // Replaces expensive 30s LLM auditor call with fast pattern matching
@@ -245,7 +246,7 @@ export default function sycophancyDetector(): (pi: ExtensionAPI) => void {
           .filter((c: any): c is { type: "text"; text: string } => c.type === "text")
           .map((c: { type: "text"; text: string }) => c.text)
           .join("\n");
-        if (textContent.length < 50) return;
+        if (textContent.length < MIN_TEXT_LENGTH_FOR_CLASSIFY) return;
 
         const state = getState(ctx);
         await handleSycophancy(pi, ctx, state);

@@ -6,6 +6,7 @@
 
 import type { CognitiveModule } from "../types.js";
 import { createLogger } from "../../../../lib/core/logger.js";
+import { drainTimerReminders } from "../../../../lib/events/timer-bus.js";
 
 const log = createLogger("heartbeat:timer-reminder");
 
@@ -20,7 +21,6 @@ export const timerReminderModule: CognitiveModule = {
 
   async activate(context): Promise<void> {
     try {
-      const { drainTimerReminders } = await import("../../../../lib/events/timer-bus.js");
       const reminders = drainTimerReminders();
       for (const { timer } of reminders) {
         context.ctx.whisper?.(

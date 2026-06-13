@@ -19,6 +19,7 @@ import { createLogger } from "../../../lib/core/logger.js";
 import { DESTRUCTIVE_TOOLS } from "../../../lib/constants/tool-constants.js";
 import { onEvent } from "../../../lib/events/event-types.js";
 import { TOOL_CALL } from "../../../lib/core/event-names.js";
+import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 
 const log = createLogger("tool-safety");
 
@@ -134,7 +135,6 @@ export default function toolSafetyExtension(pi: ExtensionAPI): void {
 
         // Send a steer warning the agent
         try {
-          const { sendTrackedMessage } = await import("../../../lib/utils/injection-tracker.js");
           sendTrackedMessage(
             pi,
             {

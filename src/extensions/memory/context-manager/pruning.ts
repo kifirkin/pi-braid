@@ -5,6 +5,7 @@
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { createLogger } from "../../../lib/core/logger.js";
+import { hashForDedup } from "../../../lib/utils/dedup.js";
 
 const log = createLogger("context-manager:pruning");
 
@@ -58,14 +59,7 @@ export interface PruningState {
 // ── Utility Functions ────────────────────────────────────────────────────────
 
 function hashMessage(msg: AgentMessage): string {
-  const content = extractMessageContent(msg);
-  let hash = 0;
-  for (let i = 0; i < content.length; i++) {
-    const char = content.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  return Math.abs(hash).toString(36);
+  return hashForDedup(extractMessageContent(msg));
 }
 
 function extractMessageContent(msg: AgentMessage): string {

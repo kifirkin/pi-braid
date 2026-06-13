@@ -11,6 +11,7 @@ import { createSignal } from "./types.js";
 import type { ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
 import { classify } from "../../../lib/ai/text-classifier.js";
 import { CRITICS } from "../../../lib/ai/critic-registry.js";
+import { hashForDedup } from "../../../lib/utils/dedup.js";
 
 const VALID_TOPICS = new Set([
   "implementation",
@@ -54,13 +55,7 @@ function extractTextContent(entry: SessionEntry): string {
 }
 
 function hashContent(text: string): string {
-  let hash = 0;
-  for (let i = 0; i < text.length; i++) {
-    const char = text.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  return Math.abs(hash).toString(36);
+  return hashForDedup(text);
 }
 
 // ── Topic Detection ─────────────────────────────────────────────────────────

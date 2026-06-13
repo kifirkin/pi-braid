@@ -9,6 +9,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../state/extension-state.js";
 import { createLogger } from "../core/logger.js";
+import { classify } from "../ai/text-classifier.js";
 const log = createLogger("reasoning-summary");
 
 const REASONING_PATTERNS = [
@@ -48,7 +49,6 @@ export async function confirmReasoningBlock(
   ctx: ExtensionContext,
 ): Promise<boolean> {
   try {
-    const { classify } = await import("../ai/text-classifier.js");
     const result = await classify(
       ctx,
       {

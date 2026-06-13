@@ -1,9 +1,10 @@
 import { createLogger } from "../../../lib/core/logger.js";
+import { isCompactionActive } from "../../memory/context-manager/handlers/shared.js";
 
 const log = createLogger("input-polisher");
 
 // Forward declaration - imported lazily to avoid circular dep with compaction.ts
-let _isCompactionActive: (() => boolean) | undefined;
+let _isCompactionActive: (() => boolean) | undefined = isCompactionActive;
 
 /**
  * Input Polisher Extension
@@ -493,14 +494,7 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
   // circular dependency with compaction.ts - compaction imports shared.js.
   pi.on(SESSION_START, async () => {
     if (!_isCompactionActive) {
-      try {
-        const { isCompactionActive } =
-          await import("../../memory/context-manager/handlers/shared.js");
-        _isCompactionActive = isCompactionActive;
-      } catch {
-        // Non-fatal - polisher will skip compaction check if import fails
-        log.debug("[polisher] Could not load compaction state, skipping");
-      }
+      _isCompactionActive = isCompactionActive;
     }
   });
 

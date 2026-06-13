@@ -46,6 +46,33 @@ A sub-extension follows the same pattern: a subdir with `index.ts`.
 - `lib/AGENTS.md` - index of all `lib/` subdirs
 - `../AGENTS.md` (root) - build, test, extension loading
 
+## The "What does NOT belong here" pattern
+
+Every `extensions/<name>/AGENTS.md` should contain a `### What does NOT belong here`
+section that explicitly enumerates the things that other AGENTS.md or sibling
+extension directories are responsible for. This prevents:
+
+- Code that belongs to extension A drifting into extension B.
+- Tool-name coupling (e.g., enforcement knowing the name of a tool registered
+  by context-manager).
+- New contributors putting logic in the first folder they find that imports
+  the right lib module.
+
+The first `AGENTS.md` to use this pattern was `core/prompt-builder/AGENTS.md`.
+The convention is:
+
+> If the same paragraph could be written in two siblings' AGENTS.md, write
+> it once in the parent (`extensions/<category>/AGENTS.md`) or the top-level
+> `src/AGENTS.md` and link to it from each child.
+
+A `### What does NOT belong here` section should answer four questions:
+
+1. What do sibling extensions own that I should NOT touch?
+2. What does `lib/` own that I should NOT re-implement?
+3. What tools / events / types do other extensions publish that I consume?
+4. What is the canonical pattern for something I want to do that has
+   already been done in another extension?
+
 ## Top-level extension layout (agent-loop model)
 
 Each category corresponds to a phase of the agent's processing loop or

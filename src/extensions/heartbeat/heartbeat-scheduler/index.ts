@@ -23,13 +23,14 @@ import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/se
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { eventBus } from "../../../lib/events/event-bus.js";
-import { processConsolidationTick } from "../../../lib/events/consolidation-channel.js";
+import { processConsolidationTick, executeConsolidation } from "../../../lib/events/consolidation-channel.js";
 import { heartbeatCheckpointTick } from "../../../lib/state/state-checkpoint.js";
 import { extractSOP } from "../../../lib/utils/sop-extractor.js";
-import { injectSopSuggestions } from "../../../lib/utils/sop-suggestion.js";
+import { injectSopSuggestions, trackSuggestionFeedback } from "../../../lib/utils/sop-suggestion.js";
 import type { TrajectoryEntry } from "../../../lib/utils/sop-extractor.js";
 import { isDegraded, recordTurnMetrics } from "../../../lib/detection/degradation-detector.js";
 import type { Episode } from "../../../lib/types/episode-types.js";
+import { retrieveEpisodes, addEpisode } from "../../memory/three-memory-stores/index.js";
 
 import type { CognitiveModule, ModuleContext, PolicyEngine } from "./types.js";
 import { DEFAULT_CONFIG, getState, getMemoryState } from "./state.js";
@@ -351,7 +352,6 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 
     // Track SOP suggestion feedback
     try {
-      const { trackSuggestionFeedback } = await import("../../../lib/utils/sop-suggestion.js");
       const toolName = event?.toolName as string;
       if (toolName) trackSuggestionFeedback(ctx, toolName);
     } catch {
@@ -484,10 +484,6 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 
       // SOP Retrieval + Coach Decision
       try {
-        const { retrieveEpisodes } =
-          (await import("../../memory/three-memory-stores/index.js")) as {
-            retrieveEpisodes: (...args: any[]) => any;
-          };
         const memState = getMemoryState(ctx);
         if (memState) {
           const project = ctx.cwd ?? "unknown";
@@ -512,9 +508,6 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
   pi.on("turn_start", async (_event: any, ctx: ExtensionContext) => {
     // Inject SOP suggestions based on the current turn's user message
     try {
-      const _retrieveEpisodes = (await import("../../memory/three-memory-stores/index.js")) as {
-        retrieveEpisodes: (...args: any[]) => any;
-      };
       const memState = getMemoryState(ctx);
       if (memState && memState.episodes) {
         // Use the user message from the event or the latest message in context
@@ -567,7 +560,6 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     }
 
     try {
-      const { addEpisode } = await import("../../memory/three-memory-stores/index.js");
       const memState = getMemoryState(ctx);
       if (memState) {
         const taskDesc = _event?.task ?? "session_outcome";
@@ -615,7 +607,6 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
         // Queue for consolidation if successful
         if (success) {
           try {
-            const { executeConsolidation } = await import("../../../lib/events/consolidation-channel.js");
             const result = await executeConsolidation({
               id: `ep-${Date.now()}`,
               task: taskDesc,

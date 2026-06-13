@@ -1,4 +1,6 @@
 import { createLogger } from "../../../lib/core/logger.js";
+import { classify } from "../../../lib/ai/text-classifier.js";
+import { CRITICS } from "../../../lib/ai/critic-registry.js";
 
 const log = createLogger("enforcement");
 /**
@@ -143,8 +145,6 @@ export async function classifyCommandType(
   if (!ctx) return classifyCommandTypeHeuristic(cmd);
 
   try {
-    const { classify } = await import("../../../lib/ai/text-classifier.js");
-    const { CRITICS } = await import("../../../lib/ai/critic-registry.js");
     const result = await classify(
       ctx,
       CRITICS.commandType.criteria,
