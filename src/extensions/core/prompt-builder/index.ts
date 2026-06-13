@@ -1,8 +1,34 @@
 import { readFile } from "node:fs/promises";
-import type { Skill } from "@earendil-works/pi-coding-agent";
 import { deliverPastInsights } from "./past-insights.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 import { asyncExists } from "../../../lib/utils/async-fs.js";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { join } from "node:path";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { RESOURCES_DISCOVER } from "../../../lib/core/event-names.js";
+import { gatherL1State, l1EnvSection } from "./l1-environment.js";
+import { contrastSection } from "./contrast-phrase-library.js";
+import { deliverActiveSpecs } from "./openspec.js";
+import { deliverRelevantHints } from "./hints.js";
+import type { PromptSection } from "./section.js";
+import { linesSection, simpleSection, composeSections } from "./section.js";
+import {
+  IDENTITY_INTRO,
+  INTERACTION_STYLE,
+  COMPACTION_SURVIVAL,
+  LIVING_DOCS,
+} from "./identity.js";
+import {
+  SYCOPHANCY_RESISTANCE,
+  STAKES_AWARENESS,
+  EPISTEMIC_STABILITY,
+  SURGICAL_PRECISION,
+  BUDGET_AWARENESS,
+} from "./behavioral-guardrails.js";
+import {
+  reconstructSkillsSection,
+  resetSkillsSectionCache,
+} from "./skills-section.js";
 
 /**
  * Prompt Builder - Reconstruction from Structured Data
@@ -38,56 +64,6 @@ import { asyncExists } from "../../../lib/utils/async-fs.js";
  *   TOOL_TRUST, format guidance, RepE jargon header, all-modes listing)
  * - Truncated tool descriptions to first line only
  */
-
-import { join } from "node:path";
-import { CONSOLIDATED_HINTS_FILE } from "../../../lib/config/braid-paths.js";
-import { RESOURCES_DISCOVER } from "../../../lib/core/event-names.js";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
-// SKILLS_DIR import removed - skills moved to pi-braid-skills package.
-// NOTE: we deliberately do NOT call loadSkills() here. Skills are now sourced
-// from event.systemPromptOptions.skills, which pi has already resolved through
-// its full package manager pipeline (user dirs, project dirs, .agents/skills,
-// packages, CLI --skill, settings.json skills). Re-walking dirs ourselves
-// would miss package skills (e.g. pi-braid-skills) and other pi sources.
-import { gatherL1State, l1EnvSection } from "./l1-environment.js";
-import { contrastSection } from "./contrast-phrase-library.js";
-import { deliverActiveSpecs } from "./openspec.js";
-import { deliverRelevantHints } from "./hints.js";
-import type { PromptSection } from "./section.js";
-import { linesSection, simpleSection, composeSections } from "./section.js";
-
-// ── Identity (THE key difference from native) ─────────────────────────────────
-// Identity framing is the behavioral filter - not directives
-const IDENTITY_INTRO = `You are Braid, an expert software architect operating inside a pi coding agent harness.
-Your tools let you act - use them wisely and strategically.
-Your skills let you navigate - load them before every task. Skills contain reference maps, procedures, and domain knowledge.`;
-
-// ── Core behavioral guardrails (concise, single-sentence, research-backed) ──
-// Sycophancy: 2604.19117 - agreement under pressure is a failure mode
-const SYCOPHANCY_RESISTANCE = `Technical correctness over agreement. You say when something is wrong, even under pressure.`;
-// Stakes: 2604.15224 - consequence framing corrupts reasoning implicitly
-const STAKES_AWARENESS = `Enforcement signals must be architecturally absent. Ensure the evaluation pipeline provides zero contextual metadata regarding downstream stakes, forcing the judge to evaluate pure correctness.`;
-// Epistemic stability: 2604.14881 - detect reasoning instability before output
-const EPISTEMIC_STABILITY = `If your reasoning feels uncertain or unstable, signal that uncertainty rather than manufacturing confidence.`;
-// Surgical precision: minimal targeted changes, read before write, no speculative abstraction
-const SURGICAL_PRECISION = `Make minimal, targeted changes. Read shared utilities and existing callers before writing new code. Don't refactor adjacent code or add speculative abstractions.`;
-// Budget awareness: define success criteria, loop until verified, checkpoint progress
-const BUDGET_AWARENESS = `Define success criteria before execution. Verify against them. Checkpoint progress at significant steps.`;
-
-// Compaction survival: write structured session memory for post-compaction continuity
-// Inspired by Agent Zero's "prompt invariant" concept - instructions that survive
-// compaction because they live in tool-backed surfaces (scratchpad, task tool).
-// The key insight: after compaction, the agent retains structured data (scratchpad,
-// tasks) but loses the conversational context that gave it meaning. Writing entries
-// with enough self-contained detail solves this.
-const COMPACTION_SURVIVAL = `Keep your scratchpad (goal, plan, decisions, key learnings) and task list detailed enough that a future you could pick up your work cold. That future you is you, after the conversation compresses. Include file paths and reasoning so each entry is self-contained.`;
-
-// Living documentation: agent-maintained doc hierarchy (inspired by DOX - agent0ai/dox)
-const LIVING_DOCS = `Project guidelines are living contracts you maintain. Keep them synchronized with the project structure.`;
-
-// ── Interaction Style (single declarative sentence) ───────────────────────
-const INTERACTION_STYLE = `You think hard silently to find correct reasoning trajectory. You provide concise, production-quality solutions. You focus on correctness over verbosity.`;
 
 // ── L1: Enforcement Signal Surfacing ────────────────────────────────────────
 // Session-scoped state (migrated from module-level singletons)
@@ -267,129 +243,6 @@ async function projectContextSection(cwd: string): Promise<PromptSection> {
       return lines.join("\n");
     },
   };
-}
-
-/**
- * Skill metadata: counts lines and extracts section headings from each
- * SKILL.md so the agent can size up a skill before reading the full file.
- * Surfaced as `<lines>` and `<sections>` XML attributes in <available_skills>.
- */
-interface SkillMeta {
-  totalLines: number;
-  sections: string[];
-}
-
-async function getSkillMeta(skill: Skill): Promise<SkillMeta> {
-  try {
-    const content = await readFile(skill.filePath, "utf-8");
-    const lines = content.split("\n");
-    const sections: string[] = [];
-
-    // Extract markdown heading names (## Section Title)
-    for (const line of lines) {
-      const match = line.match(/^#{2,3}\s+(.+)$/);
-      if (match) {
-        sections.push(match[1].trim());
-      }
-    }
-
-    return { totalLines: lines.length, sections: sections.slice(0, 8) };
-  } catch {
-    return { totalLines: 0, sections: [] };
-  }
-}
-
-/**
- * Format all skills for inclusion in the system prompt.
- *
- * Mirrors the native pi format (one <skill> entry per resolved skill with
- * name, description, and location) plus a braid enhancement: each entry
- * also carries <lines> and <sections> so the agent can size up a skill
- * before reading the full file. No relevance scoring, no cap, no hidden
- * list — every skill the loader produced is here, so the agent can
- * always `read` any of them on demand. Skills with
- * `disable-model-invocation: true` are excluded, matching native.
- */
-async function skillsSection(skills: Skill[]): Promise<PromptSection> {
-  return {
-    name: "skills",
-    render: async () => {
-      const visibleSkills = skills.filter((s) => !s.disableModelInvocation);
-      if (visibleSkills.length === 0) {
-        return "";
-      }
-
-      // Sort alphabetically for stable, predictable output. No scoring, no cap.
-      const sorted = [...visibleSkills].sort((a, b) => a.name.localeCompare(b.name));
-
-      const lines = [
-        "Skills are your first knowledge in context. Read all of the relevant ones with `read` tool before starting a task.",
-        "<available_skills>",
-      ];
-
-      for (const skill of sorted) {
-        const meta = await getSkillMeta(skill);
-        lines.push("  <skill>");
-        lines.push(`    <name>${escapeXml(skill.name)}</name>`);
-        lines.push(`    <description>${escapeXml(skill.description)}</description>`);
-        lines.push(`    <location>${escapeXml(skill.filePath)}</location>`);
-        lines.push(`    <lines>${meta.totalLines}</lines>`);
-        if (meta.sections.length > 0) {
-          lines.push(`    <sections>${meta.sections.join(" | ")}</sections>`);
-        }
-        lines.push("  </skill>");
-      }
-
-      lines.push("</available_skills>");
-
-      return lines.join("\n");
-    },
-  };
-}
-
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
-
-// Cache the formatted skills section per skill-set fingerprint so we don't
-// re-read every SKILL.md and re-score relevance on every turn. Invalidated
-// when the set of loaded skills changes (e.g. after /reload or session start).
-let skillsSectionCache:
-  | { fingerprint: string; section: string }
-  | undefined;
-
-function fingerprintSkills(skills: readonly Skill[]): string {
-  // Stable, order-independent hash of the resolved skill set.
-  // filePath is unique per skill within a single resolution; name disambiguates
-  // collisions (loadSkills emits a diagnostic in that case).
-  return skills
-    .map((s) => `${s.name}\u0000${s.filePath}`)
-    .sort()
-    .join("\n");
-}
-
-async function reconstructSkillsSection(
-  skills: readonly Skill[],
-): Promise<string> {
-  const fingerprint = fingerprintSkills(skills);
-  if (skillsSectionCache?.fingerprint === fingerprint) {
-    return skillsSectionCache.section;
-  }
-  // Render immediately so the cache holds the final string. The fingerprint
-  // already captures the input identity; we don't need to re-derive the
-  // PromptSection on cache hits.
-  const section = await (await skillsSection(skills as Skill[])).render();
-  skillsSectionCache = { fingerprint, section };
-  return section;
-}
-
-function resetSkillsSectionCache(): void {
-  skillsSectionCache = undefined;
 }
 
 // ── Main Extension ───────────────────────────────────────────────────────────
