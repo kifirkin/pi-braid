@@ -84,7 +84,7 @@ async function detectDriftWithCritics(
   }
 
   try {
-    const [coverageResult, divergenceResult, completenessResult] = await Promise.all([
+    const [coverageResult, divergenceResult, completenessResult] = await Promise.allSettled([
       classify(
         ctx,
         CRITICS.topicCoverage.criteria,
@@ -105,13 +105,20 @@ async function detectDriftWithCritics(
       ),
     ]);
 
+    // Unwrap allSettled: failed calls become safe defaults.
+    const unwrap = (r: PromiseSettledResult<Awaited<ReturnType<typeof classify>>>) =>
+      r.status === "fulfilled" ? r.value : null;
+    const coverageValue = unwrap(coverageResult);
+    const divergenceValue = unwrap(divergenceResult);
+    const completenessValue = unwrap(completenessResult);
+
     // Interpret critics:
     //   coverage="no"  → response does NOT address the request (bad)
     //   divergence="yes" → response shifted to different topic (bad)
     //   completeness="no" → response misses key topics (bad)
-    const coverageBad = coverageResult.label === "no";
-    const diverged = divergenceResult.label === "yes";
-    const incomplete = completenessResult.label === "no";
+    const coverageBad = coverageValue?.label === "no";
+    const diverged = divergenceValue?.label === "yes";
+    const incomplete = completenessValue?.label === "no";
     const negativeVotes = [coverageBad, diverged, incomplete].filter(Boolean).length;
 
     const drifted = negativeVotes >= 2;
@@ -132,9 +139,9 @@ async function detectDriftWithCritics(
     }
 
     log.debug(
-      `[topic-drift] Critics: coverage=${coverageResult.label}/${coverageResult.tier}, ` +
-        `divergence=${divergenceResult.label}/${divergenceResult.tier}, ` +
-        `completeness=${completenessResult.label}/${completenessResult.tier} ` +
+      `[topic-drift] Critics: coverage=${coverageValue?.label}/${coverageValue?.tier}, ` +
+        `divergence=${divergenceValue?.label}/${divergenceValue?.tier}, ` +
+        `completeness=${completenessValue?.label}/${completenessValue?.tier} ` +
         `→ drifted=${drifted}`,
     );
 

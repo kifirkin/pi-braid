@@ -216,15 +216,17 @@ export function registerClaimVerificationTools(pi: ExtensionAPI): void {
 				const contradictionChecks = p.context.map((ctxStr) =>
 					checkContradiction(p.claim, ctxStr, ctx!),
 				);
-				const contradictionResults = await Promise.all(contradictionChecks);
+				const contradictionResults = await Promise.allSettled(contradictionChecks);
 				for (const r of contradictionResults) {
-					if (r) issues.push(r);
+					if (r.status === "fulfilled" && r.value) issues.push(r.value);
 				}
 
-				const [supported, overconfidenceIssues] = await Promise.all([
+				const [supportedSettled, overconfidenceIssuesSettled] = await Promise.allSettled([
 					checkSupport(p.claim, p.context, threshold, ctx!),
 					checkOverconfidence(p.claim, ctx!),
 				]);
+				const supported = supportedSettled.status === "fulfilled" ? supportedSettled.value : false;
+				const overconfidenceIssues = overconfidenceIssuesSettled.status === "fulfilled" ? overconfidenceIssuesSettled.value : [];
 
 				if (!supported && p.context.length > 0) {
 					issues.push({

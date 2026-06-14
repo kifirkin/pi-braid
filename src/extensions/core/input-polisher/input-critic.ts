@@ -55,7 +55,7 @@ export async function critiqueInput(text: string, ctx: ExtensionContext): Promis
 	// Truncate very long text to keep prompt tokens reasonable
 	const truncated = text.length > 2000 ? text.slice(0, 2000) + "..." : text;
 
-	const [codeResult, wellWrittenResult, clarityResult, ambiguityResult] = await Promise.all([
+	const [codeSettled, wellWrittenSettled, claritySettled, ambiguitySettled] = await Promise.allSettled([
 		classify(
 			ctx,
 			CRITICS.inputCodeHeavy.criteria,
@@ -98,8 +98,16 @@ export async function critiqueInput(text: string, ctx: ExtensionContext): Promis
 		),
 	]);
 
+	// Unwrap allSettled: a failed call becomes null (treated as 'no' label).
+	const unwrap = (r: PromiseSettledResult<Awaited<ReturnType<typeof classify>>>) =>
+		r.status === "fulfilled" ? r.value : null;
+	const codeResult = unwrap(codeSettled);
+	const wellWrittenResult = unwrap(wellWrittenSettled);
+	const clarityResult = unwrap(claritySettled);
+	const ambiguityResult = unwrap(ambiguitySettled);
+
 	// Determine the overall tier (lowest across all four)
-	const tiers = [codeResult.tier, wellWrittenResult.tier, clarityResult.tier, ambiguityResult.tier];
+	const tiers = [codeResult?.tier, wellWrittenResult?.tier, clarityResult?.tier, ambiguityResult?.tier];
 	const overallTier = tiers.includes("heuristic")
 		? ("heuristic" as const)
 		: tiers.includes("session")
@@ -107,16 +115,27 @@ export async function critiqueInput(text: string, ctx: ExtensionContext): Promis
 			: ("utility" as const);
 
 	return {
-		isCode: codeResult.label === "yes",
-		isWellWritten: wellWrittenResult.label === "yes",
-		isClear: clarityResult.label === "yes",
-		isAmbiguous: ambiguityResult.label === "yes",
+		isCode: codeResult?.label === "yes",
+		isWellWritten: wellWrittenResult?.label === "yes",
+		isClear: clarityResult?.label === "yes",
+		isAmbiguous: ambiguityResult?.label === "yes",
 		tier: overallTier,
 		checks: {
-			codeHeavy: codeResult,
-			wellWritten: wellWrittenResult,
-			clarity: clarityResult,
-			ambiguity: ambiguityResult,
+			codeHeavy: codeResult ?? failedResult,
+			wellWritten: wellWrittenResult ?? failedResult,
+			clarity: clarityResult ?? failedResult,
+			ambiguity: ambiguityResult ?? failedResult,
 		},
 	};
 }
+
+// Fallback ClassificationResult for failed (rejected) allSettled calls.
+// The label is empty (not "yes"/"no") so consumers can treat it as
+// "no signal" rather than misreading it as a positive classification.
+const failedResult: ClassificationResult = {
+	label: "",
+	confidence: 0,
+	raw: "",
+	tier: "heuristic",
+	latencyMs: 0,
+};

@@ -170,7 +170,7 @@ async function filterRelevantHints(hints: string[], ctx: ExtensionContext): Prom
   // than to inject a hint that has no task to be relevant to.
   if (!currentTask) return [];
 
-  const results = await Promise.all(
+  const results = await Promise.allSettled(
     hints.map((hint) =>
       classify(
         ctx,
@@ -185,7 +185,10 @@ async function filterRelevantHints(hints: string[], ctx: ExtensionContext): Prom
     ),
   );
 
-  return hints.filter((_, i) => results[i].label === "yes");
+  return hints.filter((_, i) => {
+    const r = results[i];
+    return r.status === "fulfilled" && r.value.label === "yes";
+  });
 }
 
 /**

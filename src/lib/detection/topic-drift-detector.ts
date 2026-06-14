@@ -143,7 +143,7 @@ export class TopicDriftDetector {
 
     if (_ctx) {
       try {
-        const [coverageResult, divergenceResult, completenessResult] = await Promise.all([
+        const [coverageSettled, divergenceSettled, completenessSettled] = await Promise.allSettled([
           classify(
             _ctx,
             CRITICS.topicCoverage.criteria,
@@ -164,17 +164,24 @@ export class TopicDriftDetector {
           ),
         ]);
 
+        // Unwrap allSettled: a failed call becomes null (treated as 'no vote').
+        const unwrap = (r: PromiseSettledResult<Awaited<ReturnType<typeof classify>>>) =>
+          r.status === "fulfilled" ? r.value : null;
+        const coverageResult = unwrap(coverageSettled);
+        const divergenceResult = unwrap(divergenceSettled);
+        const completenessResult = unwrap(completenessSettled);
+
         // Consensus: 2/3 critics agree → drift confirmed
         const driftedVotes = [coverageResult, divergenceResult, completenessResult].filter(
-          (r) => r.label === "yes",
+          (r) => r?.label === "yes",
         ).length;
 
         // coverage="yes" means coverage is BAD (does NOT address request)
         // divergence="yes" means divergence (has shifted)
         // completeness="no" means incomplete
-        const coverageBad = coverageResult.label === "no";
-        const diverged = divergenceResult.label === "yes";
-        const incomplete = completenessResult.label === "no";
+        const coverageBad = coverageResult?.label === "no";
+        const diverged = divergenceResult?.label === "yes";
+        const incomplete = completenessResult?.label === "no";
         const negativeVotes = [coverageBad, diverged, incomplete].filter(Boolean).length;
 
         drifted = negativeVotes >= 2;
@@ -182,14 +189,14 @@ export class TopicDriftDetector {
         if (drifted) {
           // Confidence-weighted severity
           const allTiers = [coverageResult, divergenceResult, completenessResult];
-          const hasHeuristic = allTiers.some((r) => r.tier === "heuristic");
+          const hasHeuristic = allTiers.some((r) => r?.tier === "heuristic");
           severity = hasHeuristic ? "subtle" : driftedVotes >= 3 ? "strong" : "moderate";
         }
 
         _log.debug(
-          `[topic-drift] Critics: coverage=${coverageResult.label}/${coverageResult.tier}, ` +
-            `divergence=${divergenceResult.label}/${divergenceResult.tier}, ` +
-            `completeness=${completenessResult.label}/${completenessResult.tier} ` +
+          `[topic-drift] Critics: coverage=${coverageResult?.label}/${coverageResult?.tier}, ` +
+            `divergence=${divergenceResult?.label}/${divergenceResult?.tier}, ` +
+            `completeness=${completenessResult?.label}/${completenessResult?.tier} ` +
             `→ drifted=${drifted}`,
         );
       } catch {

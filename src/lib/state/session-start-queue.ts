@@ -78,7 +78,10 @@ export function registerSessionStartHandler(
             _log.error(`[session-start] Phase2 error in "${h.name}":`, err);
           }),
         );
-      await Promise.all(phase2);
+      // Phase 2 already wraps each handler with .catch() so individual
+      // failures are logged and don't block siblings. allSettled adds
+      // belt-and-suspenders against any handler that throws synchronously.
+      await Promise.allSettled(phase2);
 
       // ── Phase 3: Background (fire-and-forget) ──
       for (const h of handlers.filter((h) => h.phase === SessionPhase.Background)) {
