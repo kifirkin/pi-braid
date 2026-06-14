@@ -258,14 +258,16 @@ export async function dispatchTurnEndLoop(
     );
   }
 
-  // Context usage signal
-  if (
-    actualTools.some((t: string) =>
-      ["context_tag", "context_log", "context_checkout", "context_prune", "context_audit"].includes(
-        t,
-      ),
-    )
-  ) {
+  // Context usage signal: agent called one of the real context tools
+  // (consolidated from the old context_tag/context_log/context_checkout/
+  // context_prune/context_audit sub-action names).
+  const contextToolNames = new Set([
+    "context_inspect",
+    "context_compress",
+    "context_navigate",
+    "context_proposals",
+  ]);
+  if (actualTools.some((t) => contextToolNames.has(t))) {
     getState(ctx).lastContextCheckTurn = getState(ctx).currentTurn;
     getState(ctx).contextNudgeSent = false;
   }
@@ -302,13 +304,13 @@ export async function dispatchTurnEndLoop(
         markNudgeSent(getState(ctx), getState(ctx).currentTurn);
         sessionSignals.push(
           `Context at ${Math.round(usageTokens / 1000)}K tokens (${Math.round(usagePercent)}%). ` +
-            `Pipeline: context_tag → context_checkout → context_archive → compact (last resort).`,
+            `Pipeline: context_navigate(action="tag") → context_compress(action="archive") → compact (last resort).`,
         );
       } else if (usageTokens >= USAGE_TOKENS_SOFT) {
         markNudgeSent(getState(ctx), getState(ctx).currentTurn);
         sessionSignals.push(
           `Context at ${Math.round(usageTokens / 1000)}K tokens. ` +
-            `Consider pruning old tool results (context_prune dry-run) or tagging position.`,
+            `Consider context_inspect(detail="prune") to see candidates, or tag position with context_navigate(action="tag").`,
         );
       }
     }
@@ -327,12 +329,12 @@ export async function dispatchTurnEndLoop(
     const pct = Math.round(usagePercent);
     if (usagePercent >= USAGE_COMPACT_MEDIUM) {
       sessionSignals.push(
-        `Context at ${pct}%. Pipeline: context_tag → context_checkout → ` +
-          `context_archive → compact (last resort). Tag your position first.`,
+        `Context at ${pct}%. Pipeline: context_navigate(action="tag") → ` +
+          `context_compress(action="archive") → compact (last resort). Tag your position first.`,
       );
     } else if (usagePercent >= USAGE_WHISPER_CRITICAL) {
       sessionSignals.push(
-        `Context at ${pct}%. Tag with context_tag, then context_checkout to branch with a summary.`,
+        `Context at ${pct}%. Tag with context_navigate(action="tag"), then context_compress(action="archive") to branch with a summary.`,
       );
     }
   }

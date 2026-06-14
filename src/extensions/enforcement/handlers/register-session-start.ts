@@ -43,12 +43,12 @@ export function registerSessionStart(pi: ExtensionAPI): void {
               content: [
                 {
                   type: "text",
-                  text: `[enforcement] Context at ${Math.round(event.usagePercent)}%. Consider context_tag → context_checkout → context_archive.`,
+                  text: `[enforcement] Context at ${Math.round(event.usagePercent)}%. Consider context_navigate(action="tag") → context_compress(action="archive").`,
                 },
               ],
             },
             // triggerTurn: true - context at 80%+ needs proactive action
-            // (context_tag / context_checkout / context_archive). Wakes the
+            // (context_navigate("tag") / context_compress("archive")). Wakes the
             // agent so it can respond before the next compact escalation.
             { deliverAs: "steer", triggerTurn: true },
             { type: "enforcement", source: "enforcement/event-bus" },

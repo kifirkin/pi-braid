@@ -66,15 +66,18 @@ export function recordToolCall(toolName: string, ctx: any): void {
     }
   }
 
-  // Track context management tools usage
-  const contextTools = [
-    "context_tag",
-    "context_log",
-    "context_checkout",
-    "context_prune",
-    "context_audit",
-  ];
-  if (contextTools.includes(toolName)) {
+  // Track context management tools usage. The actual tool names registered
+  // by context-manager are context_inspect, context_compress, context_navigate
+  // (and context_proposals from context-lifecycle). The old names
+  // (context_tag/context_log/context_checkout/context_prune/context_audit)
+  // were sub-actions that lived on those tools.
+  const contextTools = new Set([
+    "context_inspect",
+    "context_compress",
+    "context_navigate",
+    "context_proposals",
+  ]);
+  if (contextTools.has(toolName)) {
     recordContextTool(s, s.currentTurn);
   }
 

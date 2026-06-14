@@ -7,7 +7,8 @@ const log = createLogger("polyfill");
  * Two concerns:
  * 1. Model selection: /utility-model and /vision-model commands open the ModelSelectorComponent UI.
  *    Model resolution is handled by src/lib/model-resolver.ts (used by vision/metacognition tools directly).
- * 2. Session manager patches: context_tag/checkout commands need SessionManager methods in --no-session mode.
+ * 2. Session manager patches: context_navigate and context_compress tools
+ *    need SessionManager methods in --no-session mode.
  */
 
 import * as fs from "node:fs/promises";
@@ -354,7 +355,8 @@ async function openModelSelectorUI(
 // Session manager patches for --no-session mode
 
 /**
- * Patch SessionManager methods onto the pi ExtensionAPI so context_tag/checkout commands
+ * Patch SessionManager methods onto the pi ExtensionAPI so context_navigate
+ * (action="tag"/"checkout") and context_compress can work in --no-session mode.
  * work in --no-session mode (where AgentSession doesn't bind them).
  */
 function patchSessionManagerMethods(pi: any, ctx: any): void {
