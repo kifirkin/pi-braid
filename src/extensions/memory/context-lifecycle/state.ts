@@ -7,11 +7,19 @@
  * 3. Make state management testable in isolation
  *
  * State lifecycle:
- * - Module-level fallback (this file) is used when ctx is not available
- * - Session-scoped state (via getExtensionState) is preferred when ctx is accessible
- * - Reset on session_start
+ * - Module-level fallback (this file's `state()`) is used when `ctx` is
+ *   not available at the call site (e.g. `helpers.ts:readProposalsFromSession`
+ *   which operates on raw session entries during context replay).
+ * - Session-scoped state (via getExtensionState) is preferred when ctx
+ *   is accessible. Use `_getState(ctx)` from extension event handlers.
+ * - `resetState(ctx)` is called from the session_start handler.
  *
- * TODO: Thread ctx through all callers and remove the module-level fallback.
+ * Why the module-level fallback stays: helpers.ts:readProposalsFromSession
+ * is called from contexts that don't have ExtensionContext (during
+ * session replay from disk). Threading ctx would require redesigning
+ * the replay flow. Module-level state is acceptable here because the
+ * lifetime of `helpers.ts` operations is bounded by the extension's
+ * own execution; cross-session leakage isn't a risk in practice.
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
