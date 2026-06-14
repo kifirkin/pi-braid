@@ -104,8 +104,14 @@ function writeToConsole(entry: LogEntry): void {
     case "error":
       console.error(line);
       break;
-    default:
-      // warn/info/debug: no raw console output - only ui.notify for warn/error
+    case "warn":
+      console.warn(line);
+      break;
+    case "info":
+      console.info(line);
+      break;
+    case "debug":
+      console.debug(line);
       break;
   }
 }
@@ -215,9 +221,16 @@ export function formatLogBuffer(): string {
   return _logBuffer.map(formatConsole).join("\n");
 }
 
-/** Set the minimum log level globally. */
+/** Set the minimum log level globally (gates which entries are emitted at all). */
 export function setGlobalLogLevel(level: LogLevel): void {
   _globalMinLevel = level;
+}
+
+/** Set the minimum level that writes to the process console.
+ *  Default is "warn" (error/warn visible; info/debug only in the in-memory buffer).
+ *  Callers can lower this to "info" or "debug" for verbose tracing. */
+export function setConsoleLogLevel(level: LogLevel): void {
+  _consoleMinLevel = level;
 }
 
 // ── Backwards compatibility ────────────────────────────────────────────────
