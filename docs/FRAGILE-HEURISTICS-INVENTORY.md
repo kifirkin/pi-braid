@@ -373,13 +373,13 @@ Each is called from `text-classifier.ts` Tier 1.
 
 | Risk | Count | Action |
 |---|---|---|
-| **A** Accuracy-critical | **19** | Replace with LLM (Tier 2) |
-| **B** Categorical | **18** | Replace with LLM or constrain tightly |
-| **C** Cheap pre-filter | **15** | Keep with tests |
-| **D** Format / syntax | **28** | Keep |
-| **Total heuristics** | **80** | |
+| **A** Accuracy-critical | **17** | Replace with LLM (Tier 2) |
+| **B** Categorical | **12** | Replace with LLM or constrain tightly |
+| **C** Cheap pre-filter | **16** | Keep with tests |
+| **D** Format / syntax | **31** | Keep |
+| **Total heuristics** | **76** | |
 
-**A + B = 37 heuristics to replace with LLM calls** (~46% of all
+**A + B = 29 heuristics to replace with LLM calls** (~38% of all
 heuristics in pi-braid).
 
 # Replacement plan
