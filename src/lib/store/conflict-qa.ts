@@ -158,6 +158,10 @@ function generateQuestionCandidates(conflict: Conflict): QuestionCandidate[] {
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
+// _qaRegistry: PROCESS-GLOBAL map of QA ID → ConflictQA. Conflict
+// resolution is per-session (reads from per-session evidence pool),
+// but the QA records persist across sessions for cross-session
+// analytics. Not a leak risk.
 const _qaRegistry = new Map<string, ConflictQA>();
 
 /**

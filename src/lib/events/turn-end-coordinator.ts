@@ -32,6 +32,11 @@ interface HandlerEntry {
   handler: TurnEndHandler;
 }
 
+// _handlers: PROCESS-GLOBAL registry. Handler registration happens
+// at extension-load time and persists for the lifetime of the
+// process. Each session's `dispatchTurnEnd` walks the same list.
+// Not a leak risk because handler registration is intentionally
+// cross-session (the same extension registers once on first load).
 const _handlers: HandlerEntry[] = [];
 
 /**

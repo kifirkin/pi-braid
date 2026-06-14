@@ -207,7 +207,9 @@ export function scoreEpisode(episode: {
 }
 
 // ── Global Queue Instance ──────────────────────────────────────────────────
-
+// _queue: PROCESS-GLOBAL singleton. The consolidation queue is
+// cross-session by design (candidates from past sessions inform
+// future hint generation). Not a leak risk.
 const _queue = new ConsolidationQueue();
 
 /** @internal Used by processConsolidationTick */

@@ -149,6 +149,18 @@ function consolidate(store: CognitiveMemoryStore): CognitiveMemoryStore {
 }
 
 // ── Singleton ────────────────────────────────────────────────────────────────
+//
+// INTENTIONAL: CognitiveMemory is a cross-session knowledge base (memories
+// from past sessions inform new sessions via memory-recall). The singleton
+// pattern here means all callers share the same in-memory store, which is
+// the desired behavior for cross-session recall.
+//
+// If pi ever runs in a process model that requires per-session memory
+// isolation, this should be replaced with a per-session lookup via
+// `getExtensionState(ctx, "cognitive-memory", factory)`.
+//
+// The class is renamed to "process-global" here, distinct from the
+// per-session pattern used in `extension-state.ts`.
 
 let _singletonInstance: CognitiveMemory | null = null;
 
