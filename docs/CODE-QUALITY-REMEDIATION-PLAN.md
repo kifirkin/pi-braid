@@ -69,7 +69,7 @@ the code doesn't. Two options: **(a)** restore a console path for `warn`
 (matches docs), or **(b)** change the docs to "errors only; warn/info
 are buffer-only." **Which?**
 __
-Q1: Seems we need to properly restore all loging but consult pi docs itself to find best practicies (seems console.* is for high severety ad ctx.ui.notify for low or maybe pass all logs through tui and not touch console.* at all?)
+A1: Seems we need to properly restore all loging but consult pi docs itself to find best practicies (seems console.* is for high severety ad ctx.ui.notify for low or maybe pass all logs through tui and not touch console.* at all?)
 __
 
 **Q2.** The 4 arXiv citations in `prompt-builder/behavioral-guardrails.ts`
@@ -80,7 +80,7 @@ real, do you want me to verify they resolve?** If placeholders, **do
 you want citations removed entirely, or marked as `[TODO: cite
 source]`**?
 __
-Q2:  Papers are real and you researched them and designed an improvements for braid based on them but now need to reread all papers and maybe rethink if we implemented papers correctly and properly.
+A2: Papers are real and you researched them and designed an improvements for braid based on them but now need to reread all papers and maybe rethink if we implemented papers correctly and properly.
 __
 
 **Q3.** The `_nudgeManager: NudgeManager` parameter in
@@ -89,7 +89,7 @@ you want me to **(a)** wire it into the inline `sendSmartNudge` call in
 handlers, **(b)** delete it and the constructor in
 `enforcement/index.ts`, or **(c)** keep it for now and revisit?
 __
-Q3: Seems need to deeply investigate, understand the design and wire up everything properly
+A3: Seems need to deeply investigate, understand the design and wire up everything properly
 __
 
 **Q4.** `KNOWN_SAFE_GIT_SUBCOMMANDS` (24 entries) and
@@ -100,7 +100,7 @@ optimization to skip the LLM for known-safe operations. Do you want to
 for safety (slower but safer), or **(c)** keep the allow-list and add
 a "this is a perf optimization, not a security guarantee" comment?
 __
-Q4 : tool safety was cut and removed completely
+A4: tool safety was cut and removed completely
 __
 
 **Q5.** Module-level state: 20+ `let` bindings violate the documented
@@ -110,7 +110,7 @@ to admit exceptions (e.g., "module-level state OK for read-only
 constants and process-global flags"), or **(c)** full migration, full
 audit, structural test to prevent regression. **Which scope?**
 __
-Q5: Need to properly identify and fix literally all issues and fix them systemically with planning and task management before execution and implementation.
+A5: Need to properly identify and fix literally all issues and fix them systemically with planning and task management before execution and implementation.
 __
 
 **Q6.** `HANDLER_REGISTRATIONS` in
@@ -120,7 +120,7 @@ truth), **(b)** replace with runtime introspection of the live event
 bus, or **(c)** keep but add a CI check that compares array entries
 to actual `registerTurnEndHandler` calls. **Which?**
 __
-Q6 : seems better to remove and delete completely that fragile thing
+A6: seems better to remove and delete completely that fragile thing
 __
 
 **Q7.** The "two state systems" pattern (`extension-state.ts` +
@@ -129,7 +129,7 @@ __
 `global-state.ts` for true process-globals only and audit
 back, or **(c)** leave it as-is and document the distinction? **Which?**
 __
-Q7: need to do a full deep audit, investigation and understanging of issue and how to properly fix it.
+A7: need to do a full deep audit, investigation and understanging of issue and how to properly fix it.
 __
 
 **Q8.** The `Promise.all` (10) vs `Promise.allSettled` (2) ratio
@@ -137,7 +137,7 @@ suggests inconsistent error handling. Do you want a code-review
 checklist rule (**"all best-effort fan-out must use `allSettled`"**)
 or a lint rule, or both? **Both is recommended but slower to land.**
 __
-Q8 : seems do both is best solution
+A8: seems do both is best solution
 __
 
 **Q9.** Tier-1 fallback bug: `polarityDetectionFallback` and similar
@@ -147,7 +147,7 @@ to accept the actual returned values per critic, **(b)** rewrite the
 fallbacks to return "yes"/"no" only, or **(c)** add per-critic
 `acceptLabels: string[]` config? **Which is least invasive?**
 __
-Q9 : Seems this one is hard and need very deep unnderstanding and investigation of best solution option
+A9: Seems this one is hard and need very deep unnderstanding and investigation of best solution option
 __
 
 **Q10.** The `auto-singleton` decision (CUT) was made in
@@ -159,7 +159,7 @@ Do you want me to **(a)** execute the CUT now as TASK-1.7, **(b)** just
 clean the stale references and keep auto-singleton around, or **(c)**
 defer — focus on other work first? **Which?**
 __
-Q10: Seems need to cut as there is a background behind that desicion.
+A10: Seems need to cut as there is a background behind that desicion.
 __
 
 **Q11.** Two large state-state systems in the enforcement layer:
@@ -171,7 +171,7 @@ session boundary; the module-level one doesn't. Is the module-level
 one intentionally process-global (so it spans sessions), or is it a
 bug? **If bug: migrate to session-scoped. If intentional: document.**
 __
-Q11 : Need deep investigation as I don't remember if process-global state is intentional
+A11: Need deep investigation as I don't remember if process-global state is intentional
 __
 
 **Q12.** `enforcementSignals` (signals.ts) is described as
@@ -180,7 +180,7 @@ unbounded. Three options: **(a)** implement turn-keyed eviction
 (matches doc), **(b)** add a hard cap (e.g., 50 entries), **(c)** both.
 **Which?**
 __
-Q12 : Seems also need deeper understanding and investigation but option A) seems best for me
+A12: Seems also need deeper understanding and investigation but option A) seems best for me
 __
 
 **Q13.** The 7+ `index.ts` files over 500 lines (`scratchpad`,
@@ -189,7 +189,7 @@ __
 probably be split. Aggressive: split all in one pass. Conservative: only
 split the worst 2-3. **Which scope?**
 __
-Q13 : 
+A13: That's needs a detailed planning and systemic execution (not aggressive but complete and full)
 __
 
 **Q14.** 23 sites use `Date.now() + Math.random()` for IDs, making
@@ -197,7 +197,7 @@ tests non-deterministic. Do you want a single `idFactory.ts` utility
 in `lib/utils/` (with an injectable seed for tests) and a refactor of
 all 23 sites, or accept the testability cost? **Which?**
 __
-Q14: seems adding single utility factory to fix this issue is obvious and doesn't need my decision
+A14: seems adding single utility factory to fix this issue is obvious
 __
 
 **Q15.** Are there code-style/lint rules I should be aware of? I see
@@ -205,6 +205,9 @@ __
 add specific lint rules to enforce some of the contracts I'm finding
 violated (e.g., no module-level `let` outside `lib/state/`, no dynamic
 `import()` outside `lib/`, no `Date.now()`-based IDs)?
+__
+A15: seems that's and open question, need proper research and deep understanging and investigation of a proper solution. but I see you already thinkning in right direction 
+__
 
 ---
 
@@ -231,6 +234,47 @@ hand-coded fallbacks are reviewed and intentional; treating
 their output as authoritative is safer than silently consulting
 the LLM. If a fallback is wrong, that's a separate bug — fix the
 fallback, not the matcher. Documented in TASK-1.4.
+
+**D-5: 2026-06-13** — User answered all remaining Q1–Q15 inline
+in the plan. Summary:
+
+| Q | Answer | Action |
+|---|---|---|
+| Q1 (logger) | Properly restore; consult pi docs; `console.*` for high severity / `ctx.ui.notify` for low / or pass all through tui | Research pi logging patterns; restore logger |
+| Q2 (arXiv) | Papers real, but re-read and verify implementation | Re-verify each paper's claims against current implementation |
+| Q3 (`_nudgeManager`) | Deeply investigate, then wire up properly | Investigate the design; wire or remove based on findings |
+| Q4 (tool-safety) | Cut and remove | ✓ done (commit `b3152c75`) |
+| Q5 (module-level `let`) | Full systemic fix with planning | Full migration (multi-batch epic) |
+| Q6 (`HANDLER_REGISTRATIONS`) | Remove and delete | Delete the array |
+| Q7 (state systems) | Full deep audit and proper fix | Full audit; resolve the dual-system pattern |
+| Q8 (Promise.all/allSettled) | Both — lint rule + checklist rule | Add ESLint rule + document convention |
+| Q9 (tier-1 matcher) | Deep investigation, pick best | Re-investigate; may revert D-4 if a better solution exists |
+| Q10 (auto-singleton) | Cut | Execute final cut (refs already cleaned) |
+| Q11 (BPE state) | Deep investigation | Determine intent; migrate or document |
+| Q12 (signals.ts) | Option A: implement turn-keyed eviction | Implement bounded eviction matching the doc |
+| Q13 (split index.ts) | Detailed planning + systemic execution, complete and full | Plan + execute the splits |
+| Q14 (id factory) | Single utility factory | ✓ done (commit `dace97d6`) |
+| Q15 (lint rules) | Open question, research needed | Research ESLint plugin authoring; design rules |
+
+**Execution order for the remaining work** (my recommendation):
+
+1. **Q6** (delete `HANDLER_REGISTRATIONS`) — 5 min, low risk.
+2. **Q10** (execute auto-singleton CUT) — 10 min, low risk.
+3. **Q12** (signals.ts turn-keyed eviction) — small refactor, real fix.
+4. **Q3** (investigate `_nudgeManager`) — small, scoped.
+5. **Q11** (investigate BPE state) — small, scoped.
+6. **Q9** (re-investigate and re-decide) — may revert D-4.
+7. **Q1** (research pi logging; restore logger) — research first, then implement.
+8. **Q2** (re-verify papers) — research-heavy; might surface bugs in current implementation.
+9. **Q7** (full state-systems audit) — design pass first.
+10. **Q5** (full module-level `let` migration) — biggest scope; do this as a multi-batch epic.
+11. **Q13** (split large index.ts files) — design + plan + execute.
+12. **Q8** (lint + checklist) — design lint rule; update docs.
+13. **Q15** (lint rule authoring) — research first.
+
+The D-4 default on Q9 may be revisited once I investigate further.
+The user's answer "deep investigation" suggests they want a better
+solution than the current widening.
 
 ---
 
