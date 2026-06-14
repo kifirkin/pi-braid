@@ -23,6 +23,7 @@ import { getExtensionState } from "../state/extension-state.js";
 import { classify } from "../ai/text-classifier.js";
 import { CRITICS, ENTITY_VERBS } from "../ai/critic-registry.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { nextId } from "../utils/id.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -114,7 +115,7 @@ async function extractClaimsViaLLM(
       .filter((item: any) => item.entity && item.claim)
       .slice(0, 10)
       .map((item: any) => ({
-        id: `c${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        id: nextId('c'),
         entity: String(item.entity).toLowerCase().trim(),
         claim: String(item.claim).slice(0, 80).trim(),
         polarity: item.polarity === "negative" ? "negative" as const : "positive" as const,
@@ -210,7 +211,7 @@ function entityClaimFromSentence(
   if (isDuplicate) return;
 
   claims.push({
-    id: `c${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    id: nextId('c'),
     entity,
     claim,
     polarity,

@@ -17,6 +17,7 @@ import { createLogger } from "../core/logger.js";
 import { SESSION_SHUTDOWN } from "../core/event-names.js";
 import { tryWhisper, type WhisperPriority } from "../enforcement/turn-dedup.js";
 import { BRAID_INJECTED, BRAID_SOURCE } from "../constants/injection-details.js";
+import { nextId } from "./id.js";
 
 const log = createLogger("injection-tracker");
 
@@ -118,7 +119,7 @@ function createInjection(
   turn: number,
 ): Injection {
   return {
-    id: `inj-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    id: nextId('inj'),
     type,
     source,
     content: content.slice(0, 500),

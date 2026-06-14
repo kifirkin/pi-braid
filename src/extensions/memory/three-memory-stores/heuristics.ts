@@ -7,6 +7,7 @@
 
 import { createLogger } from "../../../lib/core/logger.js";
 import type { MemoryStoresState, HeuristicRule } from "./types.js";
+import { nextId } from "../../../lib/utils/id.js";
 
 const log = createLogger("three-memory-stores:heuristics");
 
@@ -17,7 +18,7 @@ export function addHeuristicRule(
   initialPriority: number = 0.5,
 ): HeuristicRule {
   const rule: HeuristicRule = {
-    id: `hr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id: nextId('hr'),
     condition,
     action,
     priority: initialPriority,
@@ -38,7 +39,7 @@ export function addPrinciple(
   context: string,
 ): HeuristicRule {
   const rule: HeuristicRule = {
-    id: `pr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id: nextId('pr'),
     condition: context,
     action: principle,
     priority: 0.2,

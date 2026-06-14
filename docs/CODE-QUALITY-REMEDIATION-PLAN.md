@@ -79,6 +79,9 @@ real papers you've read, or are they placeholders to be replaced? **If
 real, do you want me to verify they resolve?** If placeholders, **do
 you want citations removed entirely, or marked as `[TODO: cite
 source]`**?
+__
+Q2:  Papers are real and you researched them and designed an improvements for braid based on them but now need to reread all papers and maybe rethink if we implemented papers correctly and properly.
+__
 
 **Q3.** The `_nudgeManager: NudgeManager` parameter in
 `enforcement/handler-registry.ts:99` is constructed but never used. Do
@@ -86,7 +89,7 @@ you want me to **(a)** wire it into the inline `sendSmartNudge` call in
 handlers, **(b)** delete it and the constructor in
 `enforcement/index.ts`, or **(c)** keep it for now and revisit?
 __
-Q3:
+Q3: Seems need to deeply investigate, understand the design and wire up everything properly
 __
 
 **Q4.** `KNOWN_SAFE_GIT_SUBCOMMANDS` (24 entries) and
@@ -96,6 +99,9 @@ optimization to skip the LLM for known-safe operations. Do you want to
 **(a)** relabel and document honestly, **(b)** make the LLM mandatory
 for safety (slower but safer), or **(c)** keep the allow-list and add
 a "this is a perf optimization, not a security guarantee" comment?
+__
+Q4 : tool safety was cut and removed completely
+__
 
 **Q5.** Module-level state: 20+ `let` bindings violate the documented
 contract. Migration is multi-week work. Pragmatic approach: **(a)** pick
@@ -113,6 +119,9 @@ that drifts. Three options: **(a)** delete it (the inline code is the
 truth), **(b)** replace with runtime introspection of the live event
 bus, or **(c)** keep but add a CI check that compares array entries
 to actual `registerTurnEndHandler` calls. **Which?**
+__
+Q6 : seems better to remove and delete completely that fragile thing
+__
 
 **Q7.** The "two state systems" pattern (`extension-state.ts` +
 `global-state.ts`) is used in 11+ files. Do you want to **(a)** make
@@ -127,6 +136,9 @@ __
 suggests inconsistent error handling. Do you want a code-review
 checklist rule (**"all best-effort fan-out must use `allSettled`"**)
 or a lint rule, or both? **Both is recommended but slower to land.**
+__
+Q8 : seems do both is best solution
+__
 
 **Q9.** Tier-1 fallback bug: `polarityDetectionFallback` and similar
 return values that `classify()`'s tier-1 check (`lower === "yes" || lower
@@ -134,6 +146,9 @@ return values that `classify()`'s tier-1 check (`lower === "yes" || lower
 to accept the actual returned values per critic, **(b)** rewrite the
 fallbacks to return "yes"/"no" only, or **(c)** add per-critic
 `acceptLabels: string[]` config? **Which is least invasive?**
+__
+Q9 : Seems this one is hard and need very deep unnderstanding and investigation of best solution option
+__
 
 **Q10.** The `auto-singleton` decision (CUT) was made in
 `AUTO-SINGLETON-DECISION.md` but never executed. There are 3 stale
@@ -155,18 +170,27 @@ Same data, two mechanisms. The session-scoped version gets reset on
 session boundary; the module-level one doesn't. Is the module-level
 one intentionally process-global (so it spans sessions), or is it a
 bug? **If bug: migrate to session-scoped. If intentional: document.**
+__
+Q11 : Need deep investigation as I don't remember if process-global state is intentional
+__
 
 **Q12.** `enforcementSignals` (signals.ts) is described as
 "turn-keyed" in the comment but never evicts. The records grow
 unbounded. Three options: **(a)** implement turn-keyed eviction
 (matches doc), **(b)** add a hard cap (e.g., 50 entries), **(c)** both.
 **Which?**
+__
+Q12 : Seems also need deeper understanding and investigation but option A) seems best for me
+__
 
 **Q13.** The 7+ `index.ts` files over 500 lines (`scratchpad`,
 `memory-agent-bridge`, `context-lifecycle`, `heartbeat-scheduler`,
 `timer`, `metacognition/handlers/think.ts`, `compaction.ts`) should
 probably be split. Aggressive: split all in one pass. Conservative: only
 split the worst 2-3. **Which scope?**
+__
+Q13 : 
+__
 
 **Q14.** 23 sites use `Date.now() + Math.random()` for IDs, making
 tests non-deterministic. Do you want a single `idFactory.ts` utility

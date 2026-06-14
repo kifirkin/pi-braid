@@ -19,6 +19,7 @@ import type {
   ToolDefinition,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { nextId } from "../../../lib/utils/id.js";
 import { createLogger } from "../../../lib/core/logger.js";
 import { Type } from "typebox";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
@@ -50,7 +51,7 @@ class TimerManager {
     tag?: string,
     wake: boolean = true,
   ): string {
-    const id = `timer_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const id = nextId('timer');
     const firesAt = Date.now() + delayMs;
 
     let sessionTimers = this.timersBySession.get(sessionId);

@@ -1,3 +1,4 @@
+import { nextId } from "../../../lib/utils/id.js";
 /**
  * Thought Chain - state interface and helpers for think() tracking.
  * Does NOT import state.ts (breaks circular dependency).
@@ -32,7 +33,7 @@ export function recordThink(
   parentId: string | null,
   confidence: number | undefined,
 ): void {
-  const thoughtId = `t${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const thoughtId = nextId('t');
   s.thoughtChains.push({
     id: thoughtId,
     parentId,

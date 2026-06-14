@@ -1,5 +1,6 @@
 import { createLogger } from "../../../lib/core/logger.js";
 import { eventBus } from "../../../lib/events/event-bus.js";
+import { nextId } from "../../../lib/utils/id.js";
 
 const log = createLogger("error-capture");
 /**
@@ -70,7 +71,7 @@ async function saveError(entry: ErrorEntry): Promise<void> {
 }
 
 function generateErrorId(): string {
-  return `err-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+  return nextId('err');
 }
 
 // Error Capture Logic

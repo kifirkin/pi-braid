@@ -11,6 +11,7 @@ import {
   evaluateContextDensity,
   recommendCompressionStrategy,
 } from "../../../lib/detection/context-density.js";
+import { nextId } from "../../../lib/utils/id.js";
 import {
   DENSITY_LOW,
   DENSITY_HIGH,
@@ -186,7 +187,7 @@ export function generateDensitySignals(ctx: ExtensionContext): SemanticSignal[] 
 
   if (density.density < DENSITY_LOW) {
     signals.push({
-      id: `sig-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      id: nextId('sig'),
       type: "context_density_low",
       data: {
         density: density.density,
@@ -199,7 +200,7 @@ export function generateDensitySignals(ctx: ExtensionContext): SemanticSignal[] 
     });
   } else if (density.density >= DENSITY_HIGH && density.tokenRatio > TOKEN_RATIO_LARGE_CONTEXT) {
     signals.push({
-      id: `sig-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      id: nextId('sig'),
       type: "context_density_high",
       data: { density: density.density, token_ratio: density.tokenRatio },
       timestamp: Date.now(),
@@ -210,7 +211,7 @@ export function generateDensitySignals(ctx: ExtensionContext): SemanticSignal[] 
 
   if (density.duplicates > 2) {
     signals.push({
-      id: `sig-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      id: nextId('sig'),
       type: "context_duplicates",
       data: { count: density.duplicates },
       timestamp: Date.now(),

@@ -9,6 +9,7 @@
  */
 
 import { createLogger } from "../../../lib/core/logger.js";
+import { nextId } from "../../../lib/utils/id.js";
 
 const log = createLogger("scratchpad");
 
@@ -130,10 +131,10 @@ function capPush<T>(arr: T[], item: T, max: number): number {
 }
 
 function generateLearningId(): string {
-  return `lrn-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
+  return nextId('lrn');
 }
 function generateConstraintId(): string {
-  return `con-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
+  return nextId('con');
 }
 
 // ── Format Scratchpad ─────────────────────────────────────────────────────

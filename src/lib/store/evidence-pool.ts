@@ -22,6 +22,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../state/extension-state.js";
 import { classify } from "../ai/text-classifier.js";
 import { CRITICS, STOP_WORDS } from "../ai/critic-registry.js";
+import { nextId } from "../utils/id.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -206,7 +207,7 @@ export function addEvidence(
   const state = getState(ctx);
 
   const evidence: Evidence = {
-    id: `e${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    id: nextId('e'),
     claim: extractClaim(claim),
     normalized: normalize(claim),
     content: content.slice(0, 500),
@@ -362,7 +363,7 @@ export function detectConflicts(ctx: ExtensionContext): Conflict[] {
       const againstEvidence = a.reliability > b.reliability ? [b] : [a];
 
       const conflict: Conflict = {
-        id: `c${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        id: nextId('c'),
         claim:
           overlap >= 0.5 ? a.claim : `${a.claim.slice(0, 40)}... vs ${b.claim.slice(0, 40)}...`,
         for: forEvidence,
@@ -412,7 +413,7 @@ function detectConflictsFor(ctx: ExtensionContext, evidenceId: string): Conflict
       newEvidence.reliability > existing.reliability ? [existing] : [newEvidence];
 
     const conflict: Conflict = {
-      id: `c${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      id: nextId('c'),
       claim:
         overlap >= 0.5
           ? newEvidence.claim

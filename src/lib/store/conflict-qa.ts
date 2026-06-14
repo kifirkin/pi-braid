@@ -19,6 +19,7 @@ import {
   resolveConflict as epResolve,
   tokenOverlap,
 } from "./evidence-pool.js";
+import { nextId } from "../utils/id.js";
 import { classify } from "../ai/text-classifier.js";
 import { CRITICS } from "../ai/critic-registry.js";
 
@@ -186,7 +187,7 @@ export function processConflicts(ctx: unknown): ConflictQA[] {
     const best = candidates[0];
 
     const qa: ConflictQA = {
-      id: `qa-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      id: nextId('qa'),
       conflictId: conflict.id,
       question: best.question,
       type: best.type,

@@ -9,6 +9,7 @@
 import { createLogger } from "../../../lib/core/logger.js";
 import { eventBus } from "../../../lib/events/event-bus.js";
 import type { MemoryStoresState, Episode } from "./types.js";
+import { nextId } from "../../../lib/utils/id.js";
 
 const log = createLogger("three-memory-stores:episodes");
 
@@ -34,7 +35,7 @@ export function addEpisode(
     100;
 
   const episode: Episode = {
-    id: `ep-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id: nextId('ep'),
     task,
     solution,
     outcome,

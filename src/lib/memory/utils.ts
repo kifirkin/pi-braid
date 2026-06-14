@@ -5,6 +5,7 @@
  */
 
 import type { CognitiveMemoryEntry, MemoryContext } from "./types.js";
+import { nextId } from "../utils/id.js";
 
 /**
  * Format timestamp for display
@@ -168,5 +169,5 @@ export function generateAutoTags(content: string, context?: MemoryContext): stri
  * Generate a unique ID for a memory entry.
  */
 export function generateId(): string {
-  return `mem-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 9)}`;
+  return nextId('mem');
 }

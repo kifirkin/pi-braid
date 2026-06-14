@@ -7,6 +7,7 @@ import {
   USAGE_TOKENS_ADVISORY,
   USAGE_TOKENS_WARNING,
 } from "../../../lib/detection/context-thresholds.js";
+import { nextId } from "../../../lib/utils/id.js";
 
 const log = createLogger("context-lifecycle");
 /**
@@ -52,7 +53,7 @@ export function createSignal(
   confidence = 1.0,
 ): SemanticSignal {
   return {
-    id: `sig-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    id: nextId('sig'),
     type,
     timestamp: Date.now(),
     turn,
@@ -131,7 +132,7 @@ export function createProposal(
   suggestedAction?: string,
 ): ContextProposal {
   return {
-    id: `prop-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    id: nextId('prop'),
     type,
     message,
     priority,

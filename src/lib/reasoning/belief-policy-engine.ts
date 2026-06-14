@@ -14,6 +14,7 @@
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../state/extension-state.js";
+import { nextId } from "../utils/id.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -278,7 +279,7 @@ export function emitSignal(
 ): void {
   const state = getState(ctx);
   const signal: SystemSignal = {
-    id: `sig-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    id: nextId('sig'),
     source,
     type,
     severity,

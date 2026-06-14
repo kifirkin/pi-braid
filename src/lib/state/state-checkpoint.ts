@@ -23,6 +23,7 @@ import { getExtensionState, hasExtensionState } from "./extension-state.js";
 import { createLogger } from "../core/logger.js";
 import { CHECKPOINT_DIR } from "../config/braid-paths.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { nextId } from "../utils/id.js";
 
 const log = createLogger("checkpoint");
 
@@ -155,7 +156,7 @@ export async function createCheckpoint(
   }
 
   const checkpoint: Checkpoint = {
-    id: `cp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    id: nextId('cp'),
     timestamp: Date.now(),
     turnCount,
     stateSnapshots: snapshots,
