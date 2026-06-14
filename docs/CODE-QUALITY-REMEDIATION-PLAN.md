@@ -68,6 +68,9 @@ bottom.
 the code doesn't. Two options: **(a)** restore a console path for `warn`
 (matches docs), or **(b)** change the docs to "errors only; warn/info
 are buffer-only." **Which?**
+__
+Q1: Seems we need to properly restore all loging but consult pi docs itself to find best practicies (seems console.* is for high severety ad ctx.ui.notify for low or maybe pass all logs through tui and not touch console.* at all?)
+__
 
 **Q2.** The 4 arXiv citations in `prompt-builder/behavioral-guardrails.ts`
 and the comment at `prompt-builder/index.ts:160-161` (references
@@ -82,6 +85,9 @@ source]`**?
 you want me to **(a)** wire it into the inline `sendSmartNudge` call in
 handlers, **(b)** delete it and the constructor in
 `enforcement/index.ts`, or **(c)** keep it for now and revisit?
+__
+Q3:
+__
 
 **Q4.** `KNOWN_SAFE_GIT_SUBCOMMANDS` (24 entries) and
 `KNOWN_DANGEROUS_GIT_FLAGS` (4 regex) in `tool-safety/index.ts` are
@@ -97,6 +103,9 @@ the top 5 most leak-prone and migrate those, **(b)** update the contract
 to admit exceptions (e.g., "module-level state OK for read-only
 constants and process-global flags"), or **(c)** full migration, full
 audit, structural test to prevent regression. **Which scope?**
+__
+Q5: Need to properly identify and fix literally all issues and fix them systemically with planning and task management before execution and implementation.
+__
 
 **Q6.** `HANDLER_REGISTRATIONS` in
 `enforcement/handler-registry.ts:45-69` is a hand-coded test fixture
@@ -110,6 +119,9 @@ to actual `registerTurnEndHandler` calls. **Which?**
 `global-state.ts` session-scoped (full migration), **(b)** keep
 `global-state.ts` for true process-globals only and audit
 back, or **(c)** leave it as-is and document the distinction? **Which?**
+__
+Q7: need to do a full deep audit, investigation and understanging of issue and how to properly fix it.
+__
 
 **Q8.** The `Promise.all` (10) vs `Promise.allSettled` (2) ratio
 suggests inconsistent error handling. Do you want a code-review
@@ -131,6 +143,9 @@ references (`src/AGENTS.md:37,59`, `injection-tracker.ts:162,174`,
 Do you want me to **(a)** execute the CUT now as TASK-1.7, **(b)** just
 clean the stale references and keep auto-singleton around, or **(c)**
 defer — focus on other work first? **Which?**
+__
+Q10: Seems need to cut as there is a background behind that desicion.
+__
 
 **Q11.** Two large state-state systems in the enforcement layer:
 `enforcement/state.ts` (session-scoped via WeakMap) and
@@ -157,6 +172,9 @@ split the worst 2-3. **Which scope?**
 tests non-deterministic. Do you want a single `idFactory.ts` utility
 in `lib/utils/` (with an injectable seed for tests) and a refactor of
 all 23 sites, or accept the testability cost? **Which?**
+__
+Q14: seems adding single utility factory to fix this issue is obvious and doesn't need my decision
+__
 
 **Q15.** Are there code-style/lint rules I should be aware of? I see
 `eslint.config.js` and `.prettierrc` in the repo. Do you want me to

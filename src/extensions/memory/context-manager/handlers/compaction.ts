@@ -34,6 +34,7 @@ import { eventBus } from "../../../../lib/events/event-bus.js";
 import { recordAdvice } from "../../../../lib/reasoning/advice-tracker.js";
 import { appendFileSync } from "node:fs";
 import { analyzeSession } from "../analysis.js";
+import { getSessionIdSafe, getLeafIdSafe } from "../../../../lib/state/extension-state.js";
 import {
   log,
   getCmState,
@@ -305,8 +306,8 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
     try {
       setCompactionActive(true);
       // STEP 0: Deduplicate - prevent two entries from manual+auto call sites
-      const sessionId = (ctx as unknown as CtxWithSession).sessionManager?.getSessionId?.() ?? "?";
-      const leafId = (ctx as unknown as CtxWithSession).sessionManager?.getLeafId?.() ?? "?";
+      const sessionId = getSessionIdSafe(ctx);
+      const leafId = getLeafIdSafe(ctx);
       if (!markCompactProcessed(sessionId, leafId)) {
         log.info("[context-manager] session_before_compact duplicate - skipping");
         return;
@@ -500,8 +501,8 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
       cmState.compactionRetryActive = false;
       cmState.overflowRetryActive = false;
       clearProcessedCompacts(
-        (ctx as unknown as CtxWithSession).sessionManager?.getSessionId?.() ?? "?",
-        (ctx as unknown as CtxWithSession).sessionManager?.getLeafId?.() ?? "?",
+        getSessionIdSafe(ctx),
+        getLeafIdSafe(ctx),
       );
     } catch (err) {
       log.error("session_compact error:", err);
@@ -552,8 +553,8 @@ export function registerCompactionEndHandler(pi: ExtensionAPI): void {
         // Aborted - user cancelled. Clear dedup guard so next compaction can run.
         if (aborted) {
           clearProcessedCompacts(
-            (_ctx as unknown as CtxWithSession).sessionManager?.getSessionId?.() ?? "?",
-            (_ctx as unknown as CtxWithSession).sessionManager?.getLeafId?.() ?? "?",
+            getSessionIdSafe(_ctx),
+            getLeafIdSafe(_ctx),
           );
           return;
         }

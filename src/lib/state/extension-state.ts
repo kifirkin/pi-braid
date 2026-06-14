@@ -235,3 +235,45 @@ export function getCachedSessionManager(ctx: ExtensionContext): unknown {
   // Fallback to safe access if no cache hit
   return safeSessionManager(ctx);
 }
+
+/**
+ * Get a stable session ID with safe fallback. Returns "?" if the
+ * context is stale or no sessionManager is available. This is the
+ * canonical helper for handlers that need a session identifier
+ * (e.g. for logging, scoping timers, indexing per-session data).
+ *
+ * Replaces the pattern:
+ *   (ctx as unknown as CtxWithSession).sessionManager?.getSessionId?.() ?? "?"
+ * which was duplicated across many files.
+ */
+export function getSessionIdSafe(ctx: ExtensionContext | undefined): string {
+  if (!ctx) return "?";
+  const sm = getCachedSessionManager(ctx) as
+    | { getSessionId?: () => string | undefined }
+    | undefined
+    | null;
+  try {
+    return sm?.getSessionId?.() ?? "?";
+  } catch {
+    return "?";
+  }
+}
+
+/**
+ * Get a stable leaf ID with safe fallback. Returns "?" if the
+ * context is stale or no sessionManager is available. See
+ * `getSessionIdSafe` for the rationale and the pattern this
+ * replaces.
+ */
+export function getLeafIdSafe(ctx: ExtensionContext | undefined): string {
+  if (!ctx) return "?";
+  const sm = getCachedSessionManager(ctx) as
+    | { getLeafId?: () => string | undefined }
+    | undefined
+    | null;
+  try {
+    return sm?.getLeafId?.() ?? "?";
+  } catch {
+    return "?";
+  }
+}
