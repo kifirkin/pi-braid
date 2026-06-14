@@ -22,6 +22,9 @@ export interface ToolTrackingState {
   totalToolCalls: number;
   /** Tool call count at last BPE recommendation - used for progress tracking across turns. */
   toolCallsAtLastRecommendation: number;
+  /** Type of the last BPE recommendation (e.g. "verify", "consolidate"). Reported back
+   *  to the policy engine on the next TURN_END so it can track outcomes. */
+  lastRecommendationType: string | null;
   uniqueToolsUsed: Set<string>;
   toolChain: ToolChainState;
   toolSequencePatterns: Map<string, ToolSequencePattern>;
@@ -64,6 +67,7 @@ export function createToolTrackingState(): ToolTrackingState {
   return {
     totalToolCalls: 0,
     toolCallsAtLastRecommendation: 0,
+    lastRecommendationType: null,
     uniqueToolsUsed: new Set<string>(),
     toolChain: {
       lastThinkCall: 0,
@@ -101,6 +105,7 @@ export function createToolTrackingState(): ToolTrackingState {
 export function resetToolTrackingState(s: ToolTrackingState): void {
   s.totalToolCalls = 0;
   s.toolCallsAtLastRecommendation = 0;
+  s.lastRecommendationType = null;
   s.uniqueToolsUsed.clear();
   s.toolChain = {
     lastThinkCall: 0,

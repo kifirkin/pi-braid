@@ -11,7 +11,6 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { NudgeManager } from "./nudge-manager.js";
 import { registerHandlers } from "./handler-registry.js";
 
 const log = createLogger("enforcement");
@@ -21,9 +20,9 @@ export { enforcementSignals, determineContrastMode, pruneSignals } from "./signa
 import { createLogger } from "../../lib/core/logger.js";
 
 export default function enforcementExtension(pi: ExtensionAPI) {
-  const nudgeManager = new NudgeManager();
-
-  registerHandlers(pi, nudgeManager);
+  // NudgeManager is now per-session via getNudgeManager(ctx). Handlers
+  // retrieve the real instance via ctx.
+  registerHandlers(pi);
 
   log.info("Enforcement extension registered.");
 }

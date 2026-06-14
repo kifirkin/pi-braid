@@ -71,10 +71,10 @@ const actualCount = actualKeys.length;
 
 // ── Baseline (update when adding intentional new keys) ─────────────────────
 
-const BASELINE_COUNT = 65;
+const BASELINE_COUNT = 66;
 
 const SENTINEL_KEYS = {
-  "tool-tracking-state": ["totalToolCalls", "uniqueToolsUsed", "toolChain"],
+  "tool-tracking-state": ["totalToolCalls", "uniqueToolsUsed", "toolChain", "lastRecommendationType"],
   "error-tracking-state": ["consecutiveErrorTurns", "lastFailedToolTurn", "validationFailures"],
   "session-state": ["currentTurn", "turnHistory", "originalRequest", "driftDetector"],
   "memory-hygiene-state": ["lastMemoryCall", "turnsSinceMemory", "memoryNudgeSent"],

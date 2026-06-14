@@ -2,8 +2,8 @@
  * bpe-handler - Belief Policy Engine recommendation dispatch on turn_end.
  *
  * Reports previous recommendation outcome, gets next recommendation, sends
- * tracked message. Shared _lastRecommendationType state is module-level here
- * (only the BPE handlers read/write it).
+ * tracked message. The `lastRecommendationType` field lives on the
+ * per-session tool-tracking state (was previously a module-level `let`).
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -15,10 +15,13 @@ import {
 import { tryClaim } from "../../../../lib/enforcement/turn-dedup.js";
 import { getState } from "../../state.js";
 
-let _lastRecommendationType: string | null = null;
-
 export function setLastRecommendationType(val: string | null): void {
-  _lastRecommendationType = val;
+  // No-op: kept for backward compatibility. The state is now
+  // session-scoped via tool-tracking-state.lastRecommendationType.
+  // Callers should mutate `getState(ctx).lastRecommendationType`
+  // directly. This shim is a one-line pass-through to make
+  // existing callers a no-op rather than a runtime error.
+  void val;
 }
 
 export async function bpeHandler(
@@ -29,14 +32,14 @@ export async function bpeHandler(
   const gs = getState(ctx);
   if (!gs.enforcementActive) return null;
 
-  if (_lastRecommendationType) {
+  if (gs.lastRecommendationType) {
     const madeProgress = gs.totalToolCalls > (gs.toolCallsAtLastRecommendation ?? 0);
-    reportRecommendationOutcome(ctx, _lastRecommendationType, madeProgress);
+    reportRecommendationOutcome(ctx, gs.lastRecommendationType, madeProgress);
   }
 
   const bpeRec = getNextRecommendation(ctx);
   if (bpeRec) {
-    _lastRecommendationType = bpeRec.type;
+    gs.lastRecommendationType = bpeRec.type;
     gs.toolCallsAtLastRecommendation = gs.totalToolCalls;
     // Dedup: if another advisory already fired this turn, suppress.
     if (!tryClaim("bpe", "advisory")) {

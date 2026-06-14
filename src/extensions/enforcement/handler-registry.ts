@@ -14,7 +14,7 @@ import { guard } from "../../lib/utils/error-guard.js";
 import { registerInjectionTracker } from "../../lib/utils/injection-tracker.js";
 import { registerTurnEndHandler, dispatchTurnEnd } from "../../lib/events/turn-end-coordinator.js";
 import { onEvent } from "../../lib/events/event-types.js";
-import { type NudgeManager } from "./nudge-manager.js";
+import { getNudgeManager } from "./nudge-manager.js";
 import { sendEnforcementWhisper } from "./whisper.js";
 import { processAgentResponse, formatContradictionWhisper } from "../../lib/store/claim-tracker.js";
 import {
@@ -56,7 +56,7 @@ const log = createLogger("enforcement");
 /**
  * Register all enforcement event handlers on the given pi instance.
  */
-export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): void {
+export function registerHandlers(pi: ExtensionAPI): void {
   registerInjectionTracker(
     pi as unknown as { on: (event: string, handler: (...args: any[]) => any) => void },
   );
@@ -73,10 +73,10 @@ export function registerHandlers(pi: ExtensionAPI, nudgeManager: NudgeManager): 
   });
   registerMessageEndHandler(pi);
   registerToolResultHandler(pi);
-  registerCompactAndSessionHandlers(pi, nudgeManager);
+  registerCompactAndSessionHandlers(pi);
 }
 
-function registerCompactAndSessionHandlers(pi: ExtensionAPI, _nudgeManager: NudgeManager): void {
+function registerCompactAndSessionHandlers(pi: ExtensionAPI): void {
   registerSessionCompactHandler(pi);
   registerAutoRetryEndHandler(pi);
   registerSessionShutdownHandler(pi);
@@ -117,7 +117,7 @@ function registerCompactAndSessionHandlers(pi: ExtensionAPI, _nudgeManager: Nudg
 
   // ── turn_end: main enforcement loop ──
   registerTurnEndHandler("enforcement-loop", 90, async (event, ctx) => {
-    await dispatchTurnEndLoop(pi, event, ctx, _nudgeManager);
+    await dispatchTurnEndLoop(pi, event, ctx);
   });
 
   // ── turn_end: claim tracker - cross-turn contradiction detection ──

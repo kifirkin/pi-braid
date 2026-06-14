@@ -13,6 +13,7 @@ const log = createLogger("enforcement");
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getExtensionState } from "../../lib/state/extension-state.js";
 import { sendEnforcementWhisper } from "./whisper.js";
 
 // Nudge Types
@@ -79,6 +80,16 @@ export function calculateAdaptiveAnalysisThreshold(totalToolCalls: number): numb
 }
 
 // Nudge Manager
+
+/**
+ * Get the per-session NudgeManager. Cooldowns are scoped to the session:
+ * a new session starts with a fresh history (no carry-over). This is
+ * the canonical accessor; the enforcement index no longer constructs
+ * a NudgeManager directly.
+ */
+export function getNudgeManager(ctx: ExtensionContext): NudgeManager {
+  return getExtensionState(ctx, "enforcement/nudge-manager", () => new NudgeManager());
+}
 
 export class NudgeManager {
   private history: Map<NudgeType, NudgeHistory> = new Map();

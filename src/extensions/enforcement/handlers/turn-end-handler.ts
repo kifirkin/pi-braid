@@ -16,7 +16,7 @@ import {
   handleCriticalSignals,
 } from "./turn-analysis.js";
 import { detectOrphanChains } from "./orphan-chains.js";
-import { type NudgeManager } from "../nudge-manager.js";
+import { type NudgeManager, getNudgeManager } from "../nudge-manager.js";
 import { getState, ERROR_BURST_THRESHOLD, RECOVERY_GRACE_TURNS, markNudgeSent, shouldNudgeForMemory, markMemoryNudgeSent } from "../state.js";
 import { recordNudgeSuppressed, getNudgeAnalytics } from "../../../lib/reasoning/nudge-analytics.js";
 import { type TurnState } from "../types.js";
@@ -38,7 +38,6 @@ export async function dispatchTurnEndLoop(
   pi: ExtensionAPI,
   event: any,
   ctx: ExtensionContext,
-  nudgeManager: NudgeManager,
 ): Promise<void> {
   if (!getState(ctx).enforcementActive) return;
 
@@ -183,7 +182,7 @@ export async function dispatchTurnEndLoop(
     sendWhisper: (msg) => sendEnforcementWhisper(pi, ctx, msg),
     loadFileContent,
   };
-  handleCriticalSignals(tac, prevTurn, turnState, nudgeManager, validateTurn);
+  handleCriticalSignals(tac, prevTurn, turnState, getNudgeManager(ctx), validateTurn);
 
   // ── Orphan thought chain detection ─────────────────────────────────────
   const orphanResult = detectOrphanChains(getState(ctx));
@@ -362,7 +361,7 @@ export async function dispatchTurnEndLoop(
     // BR3: Only bundle and send if nudges are not suppressed
     if (!suppressNudges && sessionSignals.length > 0) {
       const bundled = `[Session Signals]\n${sessionSignals.map((s) => `- ${s}`).join("\n")}`;
-      const { shouldSend } = nudgeManager.shouldSendNudge("scratchpad", bundled);
+      const { shouldSend } = getNudgeManager(ctx).shouldSendNudge("scratchpad", bundled);
       if (shouldSend) {
         sendEnforcementWhisper(pi, ctx, bundled);
       }
