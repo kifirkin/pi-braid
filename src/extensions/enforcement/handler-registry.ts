@@ -46,34 +46,12 @@ import { SESSION_START, TOOL_CALL, TURN_END, MESSAGE_END, SESSION_SHUTDOWN } fro
 
 const log = createLogger("enforcement");
 
-/**
- * Handler registration metadata - used by tests instead of fragile source parsing.
- */
-export const HANDLER_REGISTRATIONS: Array<{ event: string; method: string; handler: string }> = [
-  { event: "input", method: "pi.on", handler: "language detection" },
-  {
-    event: SESSION_START,
-    method: "registerSessionStartHandler",
-    handler: "phase:CoreInit:block check",
-  },
-  { event: TOOL_CALL, method: "onEvent", handler: "tool tracking + blocking" },
-  { event: MESSAGE_END, method: "onEvent", handler: "conflict + analysis + judge (merged)" },
-  { event: "tool_result", method: "pi.on", handler: "calibration" },
-  { event: "session_compact", method: "onEvent", handler: "hygiene reset" },
-  { event: "auto_retry_end", method: "onEvent", handler: "error classification" },
-  { event: SESSION_SHUTDOWN, method: "onEvent", handler: "state reset" },
-  { event: TURN_END, method: "registerTurnEndHandler", handler: "enforcement-drift" },
-  { event: TURN_END, method: "registerTurnEndHandler", handler: "degradation-rollback" },
-  { event: TURN_END, method: "registerTurnEndHandler", handler: "enforcement-bpe" },
-  { event: TURN_END, method: "registerTurnEndHandler", handler: "enforcement-mars" },
-  { event: TURN_END, method: "registerTurnEndHandler", handler: "enforcement-dreamer" },
-  { event: TURN_END, method: "registerTurnEndHandler", handler: "enforcement-feedback" },
-  { event: TURN_END, method: "registerTurnEndHandler", handler: "enforcement-reflection" },
-  { event: TURN_END, method: "registerTurnEndHandler", handler: "enforcement-loop" },
-  { event: TURN_END, method: "registerTurnEndHandler", handler: "claim-tracker" },
-  { event: TURN_END, method: "registerTurnEndHandler", handler: "spec-verification" },
-  { event: TURN_END, method: "registerTurnEndHandler", handler: "archive-ingestion" },
-];
+// Handler registration metadata was previously exported as
+// HANDLER_REGISTRATIONS (an array of {event, method, handler} entries
+// hand-coded to mirror actual registerTurnEndHandler calls). It was
+// removed in 2026-06-13 (TASK-1.8 / Q6 — user decided to remove
+// the fragile thing). If a structural test is later needed, replace
+// with runtime introspection of the live event bus.
 
 /**
  * Register all enforcement event handlers on the given pi instance.

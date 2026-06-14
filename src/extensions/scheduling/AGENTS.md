@@ -13,7 +13,7 @@ watchdogs). Distinct from `self/` (which is self-management) and `heartbeat/`
 ## Local Contracts
 
 - **All tool names use snake_case.**
-- Both are always-on (not opt-in).
+- The timer extension is always-on (not opt-in).
 - Scheduling is per-session but the timer map is process-global; new sessions replace the `pi` reference.
 
 ## Distinction from related categories

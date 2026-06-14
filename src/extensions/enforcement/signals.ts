@@ -3,9 +3,17 @@
  *
  * enforcementSignals is a writable object - prompt-builder reads it directly
  * (same process, no IPC needed). Stale entries are cleaned up on each
- * TURN_END (see `turn-end-handler.ts:361`): entries whose `turn` is more
+ * TURN_END via `pruneSignals(currentTurn)`: entries whose `turn` is more
  * than 1 behind `currentTurn` are deleted. So the live set is bounded
  * to signals from the current and previous turn.
+ *
+ * Why direct mutation instead of a Map wrapper: callers in 3+ handler
+ * files already use `enforcementSignals[key] = signal` and
+ * `delete enforcementSignals[key]`. A Map would be safer but require
+ * touching all those sites; the bounded set means no actual leak risk.
+ *
+ * Use `pruneSignals(currentTurn)` from the TURN_END handler to enforce
+ * the turn-keyed invariant.
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -19,10 +27,36 @@ export interface EnforcementSignalEntry {
 }
 
 /**
+ * How many turns behind `currentTurn` an entry can be before eviction.
+ * 1 means we keep entries from the current and previous turn; older
+ * entries are deleted. This bounds the set to ~2 turns of data.
+ */
+const SIGNAL_RETENTION_TURNS = 1;
+
+/**
  * L1 enforcement signals for prompt-builder surfacing.
  * Keyed by semantic type (memory, scratchpad, context_high, etc.)
  */
 export const enforcementSignals: Record<string, EnforcementSignalEntry> = {};
+
+/**
+ * Prune enforcement signals whose `turn` is more than
+ * `SIGNAL_RETENTION_TURNS` behind `currentTurn`. Call this from the
+ * TURN_END handler to enforce the "turn-keyed" invariant.
+ *
+ * Returns the number of entries deleted (useful for observability).
+ */
+export function pruneSignals(currentTurn: number): number {
+  const cutoff = currentTurn - SIGNAL_RETENTION_TURNS;
+  let deleted = 0;
+  for (const key of Object.keys(enforcementSignals)) {
+    if (enforcementSignals[key].turn < cutoff) {
+      delete enforcementSignals[key];
+      deleted++;
+    }
+  }
+  return deleted;
+}
 
 // ── RepE Contrast Mode Detection (P0.3) ────────────────────────────────────────
 // Determines which RepE contrast mode should be active based on enforcement state.

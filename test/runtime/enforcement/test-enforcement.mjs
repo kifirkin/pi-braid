@@ -81,10 +81,6 @@ console.log("\n[3] handler-registry.ts");
     assert.ok(lines <= 220, `expected <= 220 lines, got ${lines}`);
   });
 
-  test("exports HANDLER_REGISTRATIONS metadata", () => {
-    assert.ok(src.includes("export const HANDLER_REGISTRATIONS"), "should export HANDLER_REGISTRATIONS");
-  });
-
   test("exports registerHandlers function", () => {
     assert.ok(src.includes("export function registerHandlers"), "should export registerHandlers");
   });

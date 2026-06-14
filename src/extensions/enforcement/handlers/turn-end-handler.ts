@@ -23,7 +23,7 @@ import { type TurnState } from "../types.js";
 import { validateTurn } from "../validation.js";
 import { sendEnforcementWhisper } from "../whisper.js";
 import { knownFiles, loadFileContent } from "../similarity.js";
-import { enforcementSignals, determineContrastMode } from "../signals.js";
+import { enforcementSignals, determineContrastMode, pruneSignals } from "../signals.js";
 import {
   USAGE_WHISPER_CRITICAL,
   USAGE_FIRED_RESET_BELOW,
@@ -357,11 +357,7 @@ export async function dispatchTurnEndLoop(
 
   // Clean up stale enforcement signals (kept for cross-turn MARS readback)
   if (sessionSignals.length > 0) {
-    for (const key of Object.keys(enforcementSignals)) {
-      if (enforcementSignals[key].turn < getState(ctx).currentTurn - 1) {
-        delete enforcementSignals[key];
-      }
-    }
+    pruneSignals(getState(ctx).currentTurn);
 
     // BR3: Only bundle and send if nudges are not suppressed
     if (!suppressNudges && sessionSignals.length > 0) {
