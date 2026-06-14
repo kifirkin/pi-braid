@@ -2,7 +2,7 @@
  * Tool Constants - Shared definitions for tool categorization.
  *
  * Centralizes hardcoded tool-name lists that were previously duplicated
- * across turn-outcome, tool-safety, and enforcement extensions.
+ * across turn-outcome and enforcement extensions.
  */
 
 /** Tools that directly modify files on disk. */

@@ -45,8 +45,8 @@ allow sub-state modules to be tested in isolation.
 
 ## Wake-up policy
 
-- **`triggerTurn: true`**: enforcement-critical, tool-safety, turn-outcome,
-  reasoning, metacognition, auto-singleton, auto-recovery, analytics-degrade,
+- **`triggerTurn: true`**: enforcement-critical, turn-outcome,
+  reasoning, metacognition, auto-recovery, analytics-degrade,
   threshold-exhausted, emergency-rotation, navigation-checkout, context-80%+,
   three-memory-reliability, compaction-retry errors.
 - **`triggerTurn: false`**: SOP suggestions, session-recall, memory hints,

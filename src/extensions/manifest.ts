@@ -23,7 +23,6 @@ import reasoningFn from "./cognitive/reasoning/index.js";
 import topicDriftFn from "./cognitive/topic-drift/index.js";
 import sycophancyDetectorFn from "./cognitive/sycophancy-detector/index.js";
 import turnOutcomeFn from "./cognitive/turn-outcome/index.js";
-import toolSafetyFn from "./cognitive/tool-safety/index.js";
 
 // memory (persistent state: three stores, bridge, session recall, working memory, file state)
 import memoryStoresFn from "./memory/three-memory-stores/index.js";
@@ -140,12 +139,6 @@ export const MANIFEST: ManifestEntry[] = [
     fn: turnOutcomeFn,
     dependencies: ["agent-environment"],
     desc: "Turn outcome loop detection",
-  },
-  {
-    id: "tool-safety",
-    fn: toolSafetyFn,
-    dependencies: ["agent-environment"],
-    desc: "Tool safety checks",
   },
 
   // ── Enforcement ───────────────────────────────────────────────────────

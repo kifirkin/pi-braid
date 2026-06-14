@@ -177,6 +177,19 @@ The plan stands; will revisit when user picks an answer.
 tasks required new lint rules; will revisit if/when the user adds
 answers to the other questions.
 
+**D-3: 2026-06-13** — Q4 (`KNOWN_SAFE_GIT_SUBCOMMANDS` heuristic)
+resolved by **removal** of the entire `tool-safety` extension.
+User decision: the extension's heuristics were too fragile AND
+out of scope for braid (a metacognitive tool, not a safety
+shell). Documented in TASK-1.6.
+
+**D-4: 2026-06-13** — Q9 (tier-1 fallback contract) defaulted to
+**widening the matcher to accept any short string label**. The
+hand-coded fallbacks are reviewed and intentional; treating
+their output as authoritative is safer than silently consulting
+the LLM. If a fallback is wrong, that's a separate bug — fix the
+fallback, not the matcher. Documented in TASK-1.4.
+
 ---
 
 ## P0 — Functional bugs
@@ -344,7 +357,8 @@ answers to the other questions.
 
 ### TASK-1.4: Resolve the tier-1 fallback contract bug
 
-- **Status**: [ ]
+- **Status**: [x] DONE (2026-06-13) — defaulted to widening the
+  tier-1 matcher to accept any short string. Documented as D-4.
 - **Files**: `src/lib/ai/text-classifier.ts:88`,
   `src/lib/ai/critic-registry.ts` (all `*Fallback` functions)
 - **Problem**: `classify()` tier-1 fast path requires
@@ -374,8 +388,23 @@ answers to the other questions.
 
 ### TASK-1.6: Document the reality of `KNOWN_SAFE_GIT_SUBCOMMANDS`
 
-- **Status**: [ ]
-- **Files**: `src/extensions/cognitive/tool-safety/index.ts:42-68, 88-107`
+- **Status**: [x] DONE (2026-06-13) — **by removal of the entire
+  `tool-safety` extension**, not by documentation. User decided
+  the heuristics were too fragile AND out of scope for braid.
+- **Files** removed/changed:
+  - `src/extensions/cognitive/tool-safety/index.ts` (deleted, 175 lines)
+  - `src/lib/ai/critic-registry.ts` — removed `CRITICS.toolSafety`
+    and `toolSafetyFallback()` (~25 lines).
+  - `src/extensions/manifest.ts` — removed import + entry.
+  - `src/lib/utils/injection-tracker.ts` — removed `tool-safety`
+    from critical-source regex.
+  - `src/lib/constants/tool-constants.ts` — header comment updated.
+  - `src/lib/enforcement/turn-dedup.ts` — removed from priority
+    cap comment.
+  - `src/extensions/enforcement/AGENTS.md` — removed from
+    triggerTurn list.
+  - `test/runtime/lib/test-timer-fire-suppression.mjs` — removed
+    2 test assertions.
 - **Problem**: 24-entry allow-list + 4-regex deny list is described
   as "Part of the hacking-a0 infection check layer" — implying
   security. Actually a perf optimization to skip the LLM for known
@@ -385,6 +414,13 @@ answers to the other questions.
 - **Decision needed**: yes — **Q4**
 - **Effort**: S
 - **Risk**: low
+- **Implementation**: the user decided the entire extension is
+  out of scope for braid (a metacognitive tool, not a safety
+  shell). Deleted the extension + all its references across 8
+  files. Net: -200+ lines. Manifest went from 26 to 25
+  extensions. Test suite still 35/35 (the deleted test assertions
+  were redundant — other source patterns still cover the
+  remaining critical sources).
 
 ### TASK-1.7: Execute or defer the `auto-singleton` CUT
 

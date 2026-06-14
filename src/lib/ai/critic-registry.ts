@@ -766,39 +766,6 @@ export const CRITICS = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Tool Safety - tool-safety pre-execution check
-  // ═══════════════════════════════════════════════════════════════════════
-
-  /**
-   * Determine if a tool call is dangerous (destructive or irreversible).
-   * Replaces inline TOOL_SAFETY_CRITERIA in tool-safety/.
-   */
-  toolSafety: {
-    label: "Tool Safety",
-    criteria: {
-      systemPrompt:
-        "You are a tool safety classifier. Determine if the given tool call " +
-        "is DESTRUCTIVE OR DANGEROUS. Consider: " +
-        "deleting files, overwriting critical configuration, " +
-        "executing dangerous shell commands (rm -rf, dd, mkfs, chmod -R 777, " +
-        "curl | sh, wget | bash), modifying system/passwd/ssh files, " +
-        "or performing irreversible operations. " +
-        "Answer only 'yes' or 'no'. 'yes' = DANGEROUS, 'no' = SAFE. Do not explain.",
-      userPrompt: "Tool: {{toolName}}\nArgs: {{toolArgs}}\nIs this tool call dangerous?",
-    },
-    options: { maxTokens: 5, timeoutMs: 2000 },
-  } satisfies CriticDef,
-
-  /**
-   * Safety fallback: always allow on degradation.
-   * Tool safety must NEVER false-positive block (the agent must keep working).
-   * A false negative (missing a dangerous call) is the lesser evil.
-   */
-  toolSafetyFallback(): string {
-    return "no";
-  },
-
-  // ═══════════════════════════════════════════════════════════════════════
   // Hint Relevance - prompt-builder hint filtering
   // ═══════════════════════════════════════════════════════════════════════
 

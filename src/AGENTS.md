@@ -34,7 +34,7 @@ Some extensions are large enough to have their own sub-structure:
 - `extensions/cognitive/` - 6 sub-extensions (metacognition, reasoning, sycophancy-detector, tool-safety, topic-drift, turn-outcome)
 - `extensions/core/` - 4 sub-extensions (polyfill, agent-environment, prompt-builder, input-polisher)
 - `extensions/self/` - 5 sub-extensions (health-maintenance, error-tracking, watchdog, auto-recovery, latent-activator)
-- `extensions/scheduling/` - 2 sub-extensions (timer, auto-singleton)
+- `extensions/scheduling/` - 1 sub-extension (timer)
 - `extensions/heartbeat/` - 2 sub-extensions (heartbeat-scheduler, analytics)
 - `extensions/enforcement/` - 1 root + 3 private sub-dirs (detection, handlers, substate)
 
@@ -83,7 +83,7 @@ a cross-cutting concern:
 | `core/` | Input/Output (what LLM sees) | polyfill, agent-environment, prompt-builder, input-polisher |
 | `cognitive/` | Thinking (reasoning + detection) | metacognition, reasoning, sycophancy-detector, tool-safety, topic-drift, turn-outcome |
 | `memory/` | Remembering (all persistent state) | three-memory-stores, memory-agent-bridge, session-recall, context-manager, context-lifecycle, scratchpad, workspace-snapshot |
-| `scheduling/` | When to act (time triggers) | timer, auto-singleton |
+| `scheduling/` | When to act (time triggers) | timer |
 | `self/` | Self-management (state, health, modes) | health-maintenance, error-tracking, watchdog, auto-recovery, latent-activator |
 | `heartbeat/` | Background proactive | heartbeat-scheduler, analytics |
 | `enforcement/` | Turn pipeline infrastructure | (1 root + detection/handlers/substate) |

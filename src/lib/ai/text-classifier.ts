@@ -82,7 +82,18 @@ export async function classify(
   if (options?.fallback) {
     const heuristicLabel = await options.fallback();
     const lower = heuristicLabel?.trim().toLowerCase();
-    if (lower === "yes" || lower === "no") {
+    // Accept any non-empty short string as a valid fallback label.
+    // Previously the check was `=== "yes" || === "no"` which silently
+    // dropped fallbacks returning labels like "positive"/"negative",
+    // "rate_limit"/"server_error", "SHALL"/"MUST"/"SHOULD"/"MAY",
+    // "STABLE"/"DEGRADED", "pipeline"/"loop"/"info"/"edit" — and
+    // consulted the LLM anyway, defeating the "fast and free" promise
+    // of tier 1 for ~30% of critics.
+    //
+    // Sanity cap at 20 chars: a real classification label is short;
+    // anything longer is probably a verbose error message and should
+    // fall through to the LLM.
+    if (lower && lower.length > 0 && lower.length <= 20) {
       const latency = Date.now() - start;
       log.debug(`[text-classifier] TIER 1 (heuristic): "${lower}" ${latency}ms`);
       if (options.label) recordCriticCall(options.label, "heuristic", latency);

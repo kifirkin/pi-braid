@@ -65,7 +65,7 @@ export type WhisperPriority = "critical" | "high" | "medium" | "low";
  * can still produce a "[Heartbeat Summary]" (counts as 1).
  */
 export const WHISPER_CAPS: Record<WhisperPriority, number> = {
-  critical: 5, // generous - tool-safety, auto-singleton, auto-recovery
+  critical: 5, // generous - auto-recovery
   high: 3, // enforcement critical, compaction-retry exhausted
   medium: 2, // analytics, context 80%+, navigation
   low: 1, // hints, suggestions, dreams (filtered)

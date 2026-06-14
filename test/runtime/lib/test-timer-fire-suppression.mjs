@@ -56,7 +56,7 @@ const {
 // ── Re-derive priorityFromSource (must match src/lib/utils/injection-tracker.ts) ──
 
 function priorityFromSource(source, options) {
-  if (/tool-safety|auto-singleton|auto-recovery|turn-outcome\/loop|timer\/fire/.test(source)) {
+  if (/auto-recovery|turn-outcome\/loop|timer\/fire/.test(source)) {
     return "critical";
   }
   if (
@@ -118,8 +118,6 @@ describe("Timer source → priority mapping (post-fix)", () => {
   });
 
   it("Other critical sources still map to critical (no regression)", () => {
-    assert.equal(priorityFromSource("tool-safety/critical-stop", {}), "critical");
-    assert.equal(priorityFromSource("auto-singleton/watchdog", {}), "critical");
     assert.equal(priorityFromSource("auto-recovery/retry", {}), "critical");
     assert.equal(priorityFromSource("turn-outcome/loop-detected", {}), "critical");
   });

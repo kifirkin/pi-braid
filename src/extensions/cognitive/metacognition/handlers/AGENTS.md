@@ -20,8 +20,9 @@ self-contained: it owns its Typebox schema, its execute function, and the
 | `finalize.ts` | The `finalize` tool - pre-flight check before final answer. |
 | `scoring.ts` | Internal helper: heuristic + evidence-pool scoring for hypotheses. Imported by `hypothesize.ts` only. |
 
-## Why not in `tools/`?
+## Why not in `scheduling/` or `tools/`?
 
-`extensions/tools/` is for utility-style tools (timer, auto-singleton). The
-metacognition tools are tightly coupled to session state and reflect on the
-agent's own reasoning. They belong with the metacognition extension.
+Utility-style tools that have no metacognitive role (e.g. `timer`) live in
+`extensions/scheduling/`. There is no `extensions/tools/` directory.
+The metacognition tools are tightly coupled to session state and reflect on
+the agent's own reasoning. They belong with the metacognition extension.
