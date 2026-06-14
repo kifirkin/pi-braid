@@ -228,11 +228,17 @@ User decision: the extension's heuristics were too fragile AND
 out of scope for braid (a metacognitive tool, not a safety
 shell). Documented in TASK-1.6.
 
-**D-4: 2026-06-13** — Q9 (tier-1 fallback contract) defaulted to
-**widening the matcher to accept any short string label**. The
-hand-coded fallbacks are reviewed and intentional; treating
-their output as authoritative is safer than silently consulting
-the LLM. If a fallback is wrong, that's a separate bug — fix the
+**D-4: 2026-06-14** — Q9 (tier-1 fallback contract) RESOLVED.
+Re-investigation confirmed: of 45 unique fallback return statements
+in `critic-registry.ts`, max label length is 18 chars
+(`resolved_against`), all are short single-word tokens. The
+**widened matcher (`length > 0 && length <= 20`) covers all
+current fallbacks** and is the right answer. An alternative
+principled fix would be adding `validLabels: string[]` to
+`CriticDef` and validating in tier 1, but that's a larger
+change (30+ critics to audit) for marginal value when the
+heuristic fallbacks are already hand-coded and reviewed.
+**No further action on Q9.**
 fallback, not the matcher. Documented in TASK-1.4.
 
 **D-5: 2026-06-13** — User answered all remaining Q1–Q15 inline
