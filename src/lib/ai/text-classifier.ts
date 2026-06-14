@@ -47,6 +47,21 @@ export interface ClassifierOptions {
   timeoutMs?: number;
   /** Heuristic fallback function - called first. If it returns a clear yes/no, skip LLM. */
   fallback?: () => Promise<string> | string;
+  /**
+   * Tier policy controls when the heuristic is consulted.
+   *  - "prefer-heuristic" (default): try heuristic first, fall through to LLM on ambiguity.
+   *  - "fallback-only": heuristic is best-effort and its label is treated as low-confidence
+   *    (0.5). Used when the heuristic is known-fragile but still useful.
+   *  - "always-llm": skip heuristic entirely. Required for accuracy-critical classifiers
+   *    where a wrong heuristic answer is worse than an LLM cost.
+   */
+  tierPolicy?: "prefer-heuristic" | "fallback-only" | "always-llm";
+  /**
+   * Optional whitelist of valid labels. If set and the heuristic returns a label
+   * NOT in this set, fall through to the LLM. Useful for multi-class classifiers
+   * where the heuristic might guess a wrong category.
+   */
+  validLabels?: string[];
   /** Optional human-readable label for runtime observability (critic-stats tracking). */
   label?: string;
 }
@@ -79,7 +94,9 @@ export async function classify(
   const userMessage = replacePlaceholders(criteria.userPrompt, substitutions);
 
   // ── Tier 1: Heuristic fallback (fast, no LLM cost) ──────────────────────
-  if (options?.fallback) {
+  // Skipped entirely when tierPolicy === "always-llm" (accuracy-critical
+  // classifiers where a wrong heuristic answer is worse than LLM cost).
+  if (options?.fallback && options?.tierPolicy !== "always-llm") {
     const heuristicLabel = await options.fallback();
     const lower = heuristicLabel?.trim().toLowerCase();
     // Accept any non-empty short string as a valid fallback label.
@@ -94,19 +111,35 @@ export async function classify(
     // anything longer is probably a verbose error message and should
     // fall through to the LLM.
     if (lower && lower.length > 0 && lower.length <= 20) {
-      const latency = Date.now() - start;
-      log.debug(`[text-classifier] TIER 1 (heuristic): "${lower}" ${latency}ms`);
-      if (options.label) recordCriticCall(options.label, "heuristic", latency);
-      return {
-        label: lower,
-        confidence: 0.7,
-        raw: heuristicLabel,
-        tier: "heuristic",
-        latencyMs: latency,
-      };
+      // If a validLabels whitelist is set, the heuristic's answer must
+      // match. Otherwise fall through to LLM. This prevents the
+      // tier-1 widening bug from silently accepting wrong categories.
+      const inValidSet =
+        !options.validLabels || options.validLabels.includes(lower);
+      if (inValidSet) {
+        // tierPolicy === "fallback-only" reduces confidence to 0.5 to
+        // signal the heuristic is known-fragile; downstream code can
+        // treat this as "trust but verify".
+        const confidence = options.tierPolicy === "fallback-only" ? 0.5 : 0.7;
+        const latency = Date.now() - start;
+        log.debug(`[text-classifier] TIER 1 (heuristic): "${lower}" ${latency}ms`);
+        if (options.label) recordCriticCall(options.label, "heuristic", latency);
+        return {
+          label: lower,
+          confidence,
+          raw: heuristicLabel,
+          tier: "heuristic",
+          latencyMs: latency,
+        };
+      }
+      log.debug(
+        `[text-classifier] TIER 1 heuristic "${lower}" not in validLabels, falling to TIER 2`,
+      );
     }
     // Heuristic was ambiguous - fall through to LLM
     log.debug("[text-classifier] Heuristic ambiguous, falling to TIER 2");
+  } else if (options?.tierPolicy === "always-llm") {
+    log.debug("[text-classifier] TIER 1 skipped (tierPolicy=always-llm)");
   }
 
   // ── Tier 2: Configured utility model ────────────────────────────────────
