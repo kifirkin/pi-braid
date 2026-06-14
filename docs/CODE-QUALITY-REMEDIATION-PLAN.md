@@ -228,17 +228,30 @@ User decision: the extension's heuristics were too fragile AND
 out of scope for braid (a metacognitive tool, not a safety
 shell). Documented in TASK-1.6.
 
-**D-4: 2026-06-14** — Q9 (tier-1 fallback contract) RESOLVED.
-Re-investigation confirmed: of 45 unique fallback return statements
-in `critic-registry.ts`, max label length is 18 chars
-(`resolved_against`), all are short single-word tokens. The
-**widened matcher (`length > 0 && length <= 20`) covers all
-current fallbacks** and is the right answer. An alternative
-principled fix would be adding `validLabels: string[]` to
-`CriticDef` and validating in tier 1, but that's a larger
-change (30+ critics to audit) for marginal value when the
-heuristic fallbacks are already hand-coded and reviewed.
-**No further action on Q9.**
+**D-4: 2026-06-14** — Q9 (tier-1 fallback contract) REVERTED.
+User correction: hand-coded heuristic fallbacks (regex,
+string-match, stop-word lists) are fragile. The widened
+matcher that just accepts any short string is **not** the
+fix — it makes the system silently trust the wrong answer
+when a heuristic misfires.
+
+Correct direction: **replace fragile heuristic fallbacks
+with proper LLM critic calls.** The tier system in
+`text-classifier.ts` already supports tier 2 (utility
+model) and tier 3 (session model). The fix is to:
+1. Mark heuristic fallbacks as **explicitly wrong on edge
+   cases** (annotate the regex/string-match code as known-
+     fragile)
+2. Force tier-2 LLM fallback when the heuristic would
+   misfire on adversarial/borderline inputs
+3. Or remove the heuristic entirely for critics where the
+   accuracy matters (topic coverage, contradiction, etc.)
+
+**Action:** audit `critic-registry.ts`'s 21 heuristic
+fallbacks. For each: decide (a) keep with tier-2 always
+forced, (b) keep with regression tests + monitoring, or
+(c) remove and require LLM. This is a design decision
+the user owns; the previous D-4 default was wrong.
 fallback, not the matcher. Documented in TASK-1.4.
 
 **D-5: 2026-06-13** — User answered all remaining Q1–Q15 inline
