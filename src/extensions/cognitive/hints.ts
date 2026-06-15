@@ -179,7 +179,11 @@ async function filterRelevantHints(hints: string[], ctx: ExtensionContext): Prom
         {
           maxTokens: 5,
           timeoutMs: 3000,
+          // Q9 B-class: hintRelevanceFallback is permissive (accepts
+          // most hints). tierPolicy: fallback-only downweights to 0.5
+          // confidence so the consumer can tell the heuristic was used.
           fallback: () => hintRelevanceFallback(hint, currentTask),
+          tierPolicy: "fallback-only",
         },
       ),
     ),

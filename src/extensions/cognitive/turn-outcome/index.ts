@@ -87,7 +87,11 @@ async function detectLoop(state: LoopDetectionState, ctx: ExtensionContext): Pro
         maxTokens: 5,
         timeoutMs: 5000,
         label: CRITICS.toolLoopDetected.label,
+        // Q9 B-class: toolLoopFallback returns "no" by default (safe but
+        // uninformative). tierPolicy: fallback-only downweights the
+        // heuristic to 0.5 confidence so consumers can tell it's degraded.
         fallback: () => CRITICS.toolLoopFallback(toolSequences),
+        tierPolicy: "fallback-only",
       },
     );
 

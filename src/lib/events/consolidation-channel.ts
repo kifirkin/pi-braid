@@ -15,6 +15,8 @@ import { mkdir, readFile, writeFile, readdir, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { extractSOP } from "../utils/sop-extractor.js";
 import { CRITICS } from "../ai/critic-registry.js";
+import { classify } from "../ai/text-classifier.js";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const log = createLogger("consolidation");
 
@@ -309,18 +311,40 @@ export async function executeConsolidation(episode: {
 /**
  * Check whether a hint's steps are too generic to provide value.
  *
- * Uses the triple-critic system via CRITICS.hintQualityFallback for the
- * sync path (heartbeat tick). The heuristic regex logic (previously inline
- * as GENERIC_STEP_PATTERNS + GENERIC_DEBUG_TRIAD) is now consolidated in
- * critic-registry.ts.
+ * Routes through classify() with CRITICS.hintQuality so the LLM tier
+ * (Tier 2 utility model / Tier 3 session model) is tried first. The
+ * heuristic fallback (CRITICS.hintQualityFallback) is B-class (returns
+ * "yes" by default - permissive) and downweighted to 0.5 confidence
+ * via tierPolicy: "fallback-only". If both LLM and heuristic fail or
+ * the heuristic says "yes" (allow through), the hint is kept.
  *
- * For async contexts with ExtensionContext, use assessHintQuality() instead,
- * which calls classify() with CRITICS.hintQuality for three-tier fallback.
- *
- * Replaces 14 inline regex patterns that detected debugging clichés.
+ * Replaces 14 inline regex patterns (GENERIC_STEP_PATTERNS +
+ * GENERIC_DEBUG_TRIAD) that detected debugging clichés. The patterns
+ * were previously the ONLY quality gate in the sync path, but
+ * consolidating to critic-registry lost the actual filter because the
+ * sync fallback always returned "yes". This classify() path restores
+ * real filtering.
  */
-function isHintTooGeneric(task: string, steps: string[]): boolean {
-  return CRITICS.hintQualityFallback(task, steps) === "no";
+async function isHintTooGeneric(
+  task: string,
+  steps: string[],
+  ctx: ExtensionContext,
+): Promise<boolean> {
+  const result = await classify(
+    ctx,
+    CRITICS.hintQuality.criteria,
+    { task, steps: steps.join("\n") },
+    {
+      maxTokens: 5,
+      timeoutMs: 3000,
+      label: CRITICS.hintQuality.label,
+      // Q9 B-class: heuristic is permissive ("yes" by default).
+      // tierPolicy: fallback-only downweights to 0.5 confidence.
+      fallback: () => CRITICS.hintQualityFallback(task, steps),
+      tierPolicy: "fallback-only",
+    },
+  );
+  return result.label === "no";
 }
 
 // ── Heartbeat Integration ──────────────────────────────────────────────────
@@ -329,7 +353,7 @@ function isHintTooGeneric(task: string, steps: string[]): boolean {
  * Process consolidation queue on heartbeat tick.
  * Called by heartbeat scheduler on each tick.
  */
-export async function processConsolidationTick(): Promise<void> {
+export async function processConsolidationTick(ctx: ExtensionContext): Promise<void> {
   if (!DEFAULT_CONSOLIDATION_CONFIG.enabled) return;
 
   const queue = getConsolidationQueue();
@@ -352,7 +376,7 @@ export async function processConsolidationTick(): Promise<void> {
   if (
     candidate.consolidationScore > 0.7 &&
     candidate.functionalSOP &&
-    !isHintTooGeneric(candidate.task, candidate.functionalSOP)
+    !(await isHintTooGeneric(candidate.task, candidate.functionalSOP, ctx))
   ) {
     try {
       await mkdir(dirname(CONSOLIDATED_HINTS_FILE), { recursive: true });

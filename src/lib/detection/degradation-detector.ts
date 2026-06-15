@@ -383,7 +383,12 @@ export async function checkQualitativeDegradation(
         maxTokens: 10,
         timeoutMs: 5000,
         label: CRITICS.qualitativeDegradation.label,
+        // Q9 B-class: qualitativeDegradationFallback returns "STABLE" by
+        // default which masks real degradation. tierPolicy: fallback-only
+        // downweights to 0.5 confidence so the consumer can act on the
+        // degraded signal.
         fallback: () => CRITICS.qualitativeDegradationFallback(),
+        tierPolicy: "fallback-only",
       },
     );
 

@@ -276,7 +276,7 @@ function tick(
   const sessionId = ctx.cwd ?? String(process.pid);
 
   // Consolidation Channel - fire-and-forget
-  processConsolidationTick().catch((err) => {
+  processConsolidationTick(ctx).catch((err) => {
     log.error("Consolidation tick error:", err);
   });
 
