@@ -73,6 +73,15 @@ async function detectDriftWithCritics(
   drifted: boolean;
   similarity: number;
   missingAnchors: string[];
+  /**
+   * True when all three classifier calls failed (tier === "failed" on
+   * every result). Same anti-pattern fix as the lib version in
+   * lib/detection/topic-drift-detector.ts (commit b25006f3):
+   * never silently default to "no problem" when the classifier is
+   * down. Surface the offline state to the agent (via tool result)
+   * and to the operator (via the /logs command).
+   */
+  classifierDown?: boolean;
 }> {
   // Truncate long texts to keep prompt tokens reasonable
   const truncOriginal = original.length > 2000 ? original.slice(0, 2000) + "..." : original;
@@ -83,6 +92,7 @@ async function detectDriftWithCritics(
     return { drifted: false, similarity: 1.0, missingAnchors: [] };
   }
 
+  let classifierDown = false;
   try {
     const [coverageResult, divergenceResult, completenessResult] = await Promise.allSettled([
       classify(
@@ -111,6 +121,16 @@ async function detectDriftWithCritics(
     const coverageValue = unwrap(coverageResult);
     const divergenceValue = unwrap(divergenceResult);
     const completenessValue = unwrap(completenessResult);
+
+    // Detect the "all classifiers failed" case. If every result is
+    // tier === "failed" (or null), the LLM signal is unreliable and
+    // we cannot trust the "no drift" default. Surface this so the
+    // consumer can include a "drift detector offline" hint in the
+    // tool result and the operator can see the degraded state.
+    const allTiers = [coverageValue, divergenceValue, completenessValue];
+    classifierDown = allTiers.every(
+      (r) => r === null || r.tier === "failed",
+    );
 
     // Interpret critics:
     //   coverage="no"  → response does NOT address the request (bad)
@@ -142,13 +162,14 @@ async function detectDriftWithCritics(
       `[topic-drift] Critics: coverage=${coverageValue?.label}/${coverageValue?.tier}, ` +
         `divergence=${divergenceValue?.label}/${divergenceValue?.tier}, ` +
         `completeness=${completenessValue?.label}/${completenessValue?.tier} ` +
-        `→ drifted=${drifted}`,
+        `→ drifted=${drifted} classifierDown=${classifierDown}`,
     );
 
-    return { drifted, similarity, missingAnchors };
+    return { drifted, similarity, missingAnchors, classifierDown };
   } catch (err) {
     log.warn(`[topic-drift] Critic call failed, assuming no drift: ${err}`);
-    return { drifted: false, similarity: 1.0, missingAnchors: [] };
+    classifierDown = true;
+    return { drifted: false, similarity: 1.0, missingAnchors: [], classifierDown: true };
   }
 }
 
@@ -270,6 +291,19 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
       // Use triple-critic detection (async, with LLM)
       const result = await detectDriftWithCritics(ctx, state.originalRequest, output);
 
+      // Surface the "drift detector offline" case as a soft whisper
+      // so the agent knows the monitor is degraded. Same pattern as
+      // the lib version (b25006f3).
+      if (result.classifierDown) {
+        ctx.whisper?.(
+          `Topic drift monitor is offline (classifier unavailable this turn). ` +
+            `If you suspect you're drifting, self-check against the original request: ` +
+            `"${state.originalRequest.substring(0, 80)}..."`,
+          { category: "cognitive", priority: "low" },
+        );
+        return;
+      }
+
       if (result.drifted && state.driftHistory.length > 1) {
         const recent = state.driftHistory.slice(-3);
         const allRecentDrifted = recent.every((r) => r.drifted);
@@ -314,11 +348,13 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
             let drifted = false;
             let similarity = 1.0;
             let missingAnchors: string[] = [];
+            let classifierDown = false;
             if (ctx && state.originalRequest) {
               const critResult = await detectDriftWithCritics(ctx, state.originalRequest, output);
               drifted = critResult.drifted;
               similarity = critResult.similarity;
               missingAnchors = critResult.missingAnchors;
+              classifierDown = critResult.classifierDown ?? false;
             } else {
               const syncResult = detectTopicDrift("check", output, state);
               drifted = syncResult.drifted;
@@ -331,16 +367,28 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
               missingAnchors,
               originalRequest: state.originalRequest,
               driftHistory: state.driftHistory.slice(-5),
+              classifierDown,
               recommendations: drifted
                 ? [
                     `Response may have drifted from: "${state.originalRequest.slice(0, 60)}..."`,
                     "Verify your response addresses the core request.",
                   ]
-                : [],
+                : classifierDown
+                  ? [
+                      "Topic drift check is offline (classifier unavailable this turn).",
+                      "Manually verify your response addresses the original request.",
+                    ]
+                  : [],
             };
-            const text = drifted
-              ? `Topic drift detected (similarity: ${details.similarity}). Signals: ${missingAnchors.slice(0, 5).join(", ") || "topic mismatch"}.`
-              : `No topic drift (similarity: ${details.similarity}).`;
+            // Surface the "drift detector offline" case in the text so
+            // the agent doesn't read 'No topic drift' and think the
+            // check ran normally. Same anti-pattern fix as the lib
+            // version (b25006f3).
+            const text = classifierDown
+              ? `Topic drift check unavailable this turn (classifier offline). Run /logs level info for the underlying error.`
+              : drifted
+                ? `Topic drift detected (similarity: ${details.similarity}). Signals: ${missingAnchors.slice(0, 5).join(", ") || "topic mismatch"}.`
+                : `No topic drift (similarity: ${details.similarity}).`;
             return { content: [{ type: "text" as const, text }], details };
           }
           case "reset": {
