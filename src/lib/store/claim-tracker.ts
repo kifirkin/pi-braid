@@ -155,7 +155,8 @@ async function extractClaimsViaClassify(
           maxTokens: 5,
           timeoutMs: 3000,
           label: CRITICS.entityExtraction.label,
-          fallback: () => CRITICS.entityExtractionFallback(sentence),
+          // Q9: ENTITY_VERBS regex misses most entities. Always use LLM.
+          tierPolicy: "always-llm",
         },
       );
       if (entityResult.label !== "yes") continue;
@@ -169,7 +170,8 @@ async function extractClaimsViaClassify(
           maxTokens: 5,
           timeoutMs: 3000,
           label: CRITICS.polarityDetection.label,
-          fallback: () => CRITICS.polarityDetectionFallback(sentence),
+          // Q9: negation-word list breaks on double-negation. Always use LLM.
+          tierPolicy: "always-llm",
         },
       );
 
@@ -281,7 +283,8 @@ export async function claimsContradict(a: Claim, b: Claim, ctx: ExtensionContext
         maxTokens: 5,
         timeoutMs: 5000,
         label: CRITICS.claimContradiction.label,
-        fallback: () => CRITICS.contradictionFallback(claimText, contextText),
+        // Q9: heuristic negation-word overlap has many false positives. Always LLM.
+        tierPolicy: "always-llm",
       },
     );
     return result.label === "yes";

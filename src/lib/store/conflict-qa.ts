@@ -332,7 +332,8 @@ export async function checkResponseForResolution(
       maxTokens: 5,
       timeoutMs: 5000,
       label: "Conflict Resolution",
-      fallback: () => CRITICS.conflictResolutionFallback(text),
+      // Q9: keyword overlap heuristic misses nuanced resolution. Always use LLM.
+      tierPolicy: "always-llm",
     },
   );
 

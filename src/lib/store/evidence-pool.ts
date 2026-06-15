@@ -148,7 +148,8 @@ async function classifyConflictViaCritic(
         maxTokens: 5,
         timeoutMs: 5000,
         label: CRITICS.evidenceConflict.label,
-        fallback: () => CRITICS.evidenceConflictFallback(evidenceA, evidenceB),
+        // Q9: returning "no" by default silently suppresses conflicts. Always LLM.
+        tierPolicy: "always-llm",
       },
     );
 

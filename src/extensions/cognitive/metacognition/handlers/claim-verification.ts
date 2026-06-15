@@ -68,7 +68,7 @@ async function checkContradiction(
 			ctx,
 			CRITICS.claimContradiction.criteria,
 			{ claim, context },
-			{ maxTokens: 10, fallback: () => CRITICS.contradictionFallback?.(claim, context) ?? "no" },
+			{ maxTokens: 10, tierPolicy: "always-llm" } as const,
 		);
 		if (result.label === "yes") {
 			return {
@@ -98,7 +98,7 @@ async function checkSupport(
 			{ claim, context: contextText },
 			{
 				maxTokens: 10,
-				fallback: () => CRITICS.contradictionFallback?.(claim, contextText) ?? "no",
+				tierPolicy: "always-llm",
 			},
 		);
 		return result.label === "yes";
@@ -118,7 +118,7 @@ async function checkOverconfidence(
 			ctx,
 			CRITICS.claimOverconfidence.criteria,
 			{ claim },
-			{ maxTokens: 10, fallback: () => CRITICS.contradictionFallback?.(claim, "") ?? "no" },
+			{ maxTokens: 10, tierPolicy: "always-llm" } as const,
 		);
 		if (result.label === "yes") {
 			issues.push({

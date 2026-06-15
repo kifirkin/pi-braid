@@ -66,7 +66,8 @@ async function computeRisk(text: string, ctx: ExtensionContext): Promise<Sycopha
     { text },
     {
       ...CRITICS.sycophancyTactics.options,
-      fallback: () => CRITICS.sycophancyFallback(text),
+      // Q9: heuristic sycophancy detection misses novel forms. Always use LLM.
+      tierPolicy: "always-llm",
       label: CRITICS.sycophancyTactics.label,
     },
   );
@@ -116,7 +117,8 @@ async function detectVbC(responseText: string, ctx: ExtensionContext): Promise<V
     { text: truncated },
     {
       ...CRITICS.vbCDetection.options,
-      fallback: () => CRITICS.vbCFallback(responseText),
+      // Q9: regex on "You're right...however" misses nuance. Always use LLM.
+      tierPolicy: "always-llm",
       label: CRITICS.vbCDetection.label,
     },
   );

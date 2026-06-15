@@ -73,7 +73,7 @@ export async function critiqueInput(text: string, ctx: ExtensionContext): Promis
 			{
 				maxTokens: 5,
 				timeoutMs: 5000,
-				fallback: () => CRITICS.inputWellWrittenFallback(text),
+				tierPolicy: "always-llm" as const,
 			},
 		),
 		classify(
@@ -83,7 +83,7 @@ export async function critiqueInput(text: string, ctx: ExtensionContext): Promis
 			{
 				maxTokens: 5,
 				timeoutMs: 5000,
-				fallback: () => CRITICS.inputClarityFallback(text),
+				tierPolicy: "always-llm" as const,
 			},
 		),
 		classify(
@@ -93,7 +93,7 @@ export async function critiqueInput(text: string, ctx: ExtensionContext): Promis
 			{
 				maxTokens: 5,
 				timeoutMs: 5000,
-				fallback: () => CRITICS.inputAmbiguityFallback(text),
+				tierPolicy: "always-llm" as const,
 			},
 		),
 	]);
