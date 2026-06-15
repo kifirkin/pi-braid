@@ -34,7 +34,7 @@ import { eventBus } from "../../../../lib/events/event-bus.js";
 import { recordAdvice } from "../../../../lib/reasoning/advice-tracker.js";
 import { appendFileSync } from "node:fs";
 import { analyzeSession } from "../analysis.js";
-import { getSessionIdSafe, getLeafIdSafe } from "../../../../lib/state/extension-state.js";
+import { getSessionIdSafe, getLeafIdSafe, getExtensionState } from "../../../../lib/state/extension-state.js";
 import {
   log,
   getCmState,
@@ -107,46 +107,63 @@ function clearProcessedCompacts(sessionId: string, leafId: string): void {
 // message_end handler). We skip the duplicate by returning the pre-appended
 // entry ID instead of creating a new one.
 
-// ── Shared compaction state (exported via shared.ts for preprocessor access) ────
-// _compactionActive is now exported directly from shared.ts.
+// ── Session-scoped compaction intercept state ─────────────────────────────────
+// The 5 fields below are all part of the same lifecycle: capture a user
+// message during compaction, pre-append it, intercept the duplicate, then
+// restore. They were previously 5 separate module-level `let` variables
+// which leaked across sessions in multi-session pi-core deployments.
+// Consolidated into a single per-session state object.
 
-/** Text of the user's message queued during compaction. */
-let _queuedDuringCompaction: string | undefined;
+interface CompactionInterceptState {
+  /** Text of the user's message queued during compaction. */
+  queuedDuringCompaction: string | undefined;
+  /** Entry ID of the message pre-appended to sessionManager. */
+  preAppendedEntryId: string | undefined;
+  /** Original sessionManager.appendMessage - restored after intercept window. */
+  origAppendMessage: ((msg: any) => string) | undefined;
+  /** Whether the intercept is currently active. */
+  interceptActive: boolean;
+  /** SessionManager reference at time of intercept setup. */
+  interceptedSmRef: any;
+}
 
-/** Entry ID of the message pre-appended to sessionManager. */
-let _preAppendedEntryId: string | undefined;
+const EMPTY_INTERCEPT_STATE: CompactionInterceptState = {
+  queuedDuringCompaction: undefined,
+  preAppendedEntryId: undefined,
+  origAppendMessage: undefined,
+  interceptActive: false,
+  interceptedSmRef: undefined,
+};
 
-/** Original sessionManager.appendMessage - restored after intercept window. */
-let _origAppendMessage: ((msg: any) => string) | undefined;
-
-/** Whether the intercept is currently active. Guard against stale intercepts after session replacement. */
-let _interceptActive = false;
-
-/** SessionManager reference at time of intercept setup. Used to validate on restore. */
-let _interceptedSmRef: any = undefined;
+function getInterceptState(ctx: ExtensionContext): CompactionInterceptState {
+  return getExtensionState(ctx, "context-manager/compaction-intercept", () => ({
+    ...EMPTY_INTERCEPT_STATE,
+  }));
+}
 
 /**
  * Intercept sessionManager.appendMessage to skip the duplicate when
  * flushCompactionQueue's session.prompt() fires after our pre-append.
  * Returns the pre-appended entry ID to avoid creating a duplicate entry.
  */
-function skipDuplicateAppend(sessionManager: any): (msg: any) => string {
+function skipDuplicateAppend(sessionManager: any, ctx: ExtensionContext): (msg: any) => string {
   return (msg: any) => {
+    const st = getInterceptState(ctx);
     // Only messages with content[] can be the duplicate user message.
     // BashExecutionMessage has NO `content` field - must pass through.
     const content = msg?.content;
     if (Array.isArray(content)) {
       const text = content[0]?.text;
-      if (typeof text === "string" && text === _queuedDuringCompaction) {
+      if (typeof text === "string" && text === st.queuedDuringCompaction) {
         // Skip - this is the duplicate from session.prompt()'s message_end handler.
         // The original from session_compact is already in sessionManager.
         // Return the pre-appended entry ID so the caller gets a valid ID.
-        return _preAppendedEntryId ?? "";
+        return st.preAppendedEntryId ?? "";
       }
     }
     // Intercept is active - delegate to real appendMessage.
-    // Use _origAppendMessage which is non-null when intercept is active.
-    return _origAppendMessage?.call(sessionManager, msg) ?? sessionManager.appendMessage(msg);
+    // Use st.origAppendMessage which is non-null when intercept is active.
+    return st.origAppendMessage?.call(sessionManager, msg) ?? sessionManager.appendMessage(msg);
   };
 }
 
@@ -155,42 +172,44 @@ function skipDuplicateAppend(sessionManager: any): (msg: any) => string {
  * Called from both turn_end and message_end handlers to handle edge cases
  * where one event might not fire (e.g., session replacement mid-turn).
  */
-export function tryRestoreAppendMessage(pi: ExtensionAPI): void {
-  if (!_interceptActive || !_origAppendMessage) return;
+export function tryRestoreAppendMessage(pi: ExtensionAPI, ctx: ExtensionContext): void {
+  const st = getInterceptState(ctx);
+  if (!st.interceptActive || !st.origAppendMessage) return;
   const sm = (pi as unknown as PiWithSession).sessionManager;
   // Only restore if the sessionManager is the same one we intercepted.
   // After session replacement (reload/newSession), sm is a new instance
-  // and the old _origAppendMessage is stale - DO NOT restore.
-  if (sm !== _interceptedSmRef) {
+  // and the old st.origAppendMessage is stale - DO NOT restore.
+  if (sm !== st.interceptedSmRef) {
     log.debug("[context-manager] Skipped intercept restore - sessionManager replaced");
-    _interceptActive = false;
-    _origAppendMessage = undefined;
-    _interceptedSmRef = undefined;
+    st.interceptActive = false;
+    st.origAppendMessage = undefined;
+    st.interceptedSmRef = undefined;
     return;
   }
   // Verify appendMessage is still our wrapper (not further mutated).
   // If it's no longer the wrapper, someone else already restored it.
-  if (typeof sm.appendMessage !== "function" || sm.appendMessage === _origAppendMessage) {
+  if (typeof sm.appendMessage !== "function" || sm.appendMessage === st.origAppendMessage) {
     // Not wrapped or already restored - nothing to do.
-    _interceptActive = false;
-    _origAppendMessage = undefined;
-    _interceptedSmRef = undefined;
+    st.interceptActive = false;
+    st.origAppendMessage = undefined;
+    st.interceptedSmRef = undefined;
     return;
   }
-  sm.appendMessage = _origAppendMessage;
-  _origAppendMessage = undefined;
-  _interceptActive = false;
-  _interceptedSmRef = undefined;
+  sm.appendMessage = st.origAppendMessage;
+  st.origAppendMessage = undefined;
+  st.interceptActive = false;
+  st.interceptedSmRef = undefined;
   log.debug("[context-manager] AppendMessage intercept restored");
 }
 
-export function clearInterceptState(): void {
-  _queuedDuringCompaction = undefined;
-  _preAppendedEntryId = undefined;
-  _origAppendMessage = undefined;
-  _interceptActive = false;
-  _interceptedSmRef = undefined;
-  setCompactionActive(false);
+export function clearInterceptState(ctx: ExtensionContext): void {
+  const st = getInterceptState(ctx);
+  st.queuedDuringCompaction = undefined;
+  st.preAppendedEntryId = undefined;
+  st.origAppendMessage = undefined;
+  st.interceptActive = false;
+  st.interceptedSmRef = undefined;
+  setCompactionActive(false, ctx);
 }
 
 /**
@@ -292,19 +311,22 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
   // TUI's compactionQueuedMessages (not persisted to sessionManager yet).
   // We capture the text here so we can pre-append it to sessionManager in
   // session_compact (before TUI's rebuildChatFromMessages runs).
-  pi.on("input", (event: any) => {
+  pi.on("input", (event: any, ctx: ExtensionContext) => {
     if (!event?.text) return;
     // Guard: only capture messages typed DURING active compaction.
     // Messages typed before compaction starts are already in sessionManager
     // and should NOT be pre-appended (would create a duplicate).
-    if (isCompactionActive() && _queuedDuringCompaction === undefined) {
-      _queuedDuringCompaction = event.text;
+    if (isCompactionActive()) {
+      const st = getInterceptState(ctx);
+      if (st.queuedDuringCompaction === undefined) {
+        st.queuedDuringCompaction = event.text;
+      }
     }
   });
 
   pi.on(SESSION_BEFORE_COMPACT, async (event: any, ctx: ExtensionContext) => {
     try {
-      setCompactionActive(true);
+      setCompactionActive(true, ctx);
       // STEP 0: Deduplicate - prevent two entries from manual+auto call sites
       const sessionId = getSessionIdSafe(ctx);
       const leafId = getLeafIdSafe(ctx);
@@ -444,30 +466,31 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
       // compaction_end fires (which triggers TUI's rebuildChatFromMessages).
       // Intercept appendMessage to skip the duplicate from flushCompactionQueue's
       // session.prompt() → message_end → appendMessage call.
-      if (_queuedDuringCompaction) {
+      const st = getInterceptState(ctx);
+      if (st.queuedDuringCompaction) {
         const sm = (ctx as unknown as CtxWithSession).sessionManager;
         if (sm && typeof sm.appendMessage === "function") {
           try {
             const messageObj = {
               role: "user" as const,
-              content: [{ type: "text" as const, text: _queuedDuringCompaction }],
+              content: [{ type: "text" as const, text: st.queuedDuringCompaction }],
               timestamp: Date.now(),
             };
-            _preAppendedEntryId = sm.appendMessage(messageObj);
-            _origAppendMessage = sm.appendMessage.bind(sm);
-            sm.appendMessage = skipDuplicateAppend(sm);
+            st.preAppendedEntryId = sm.appendMessage(messageObj);
+            st.origAppendMessage = sm.appendMessage.bind(sm);
+            sm.appendMessage = skipDuplicateAppend(sm, ctx);
             // Track the sessionManager instance to detect replacement.
             // If session reload/newSession happens, sm changes - we must NOT
             // restore the old wrapper to the new sm.
-            _interceptedSmRef = sm;
-            _interceptActive = true;
+            st.interceptedSmRef = sm;
+            st.interceptActive = true;
             // CRITICAL: Force-persist immediately after pre-append.
             // sessionManager._persist() has a no-assistant guard that returns early,
             // so our pre-appended user message won't be written to disk automatically.
             // This causes the message to be lost on session reload.
             forcePersistSession(sm);
             log.info(
-              `[context-manager] Pre-appended queued message (entry: ${_preAppendedEntryId})`,
+              `[context-manager] Pre-appended queued message (entry: ${st.preAppendedEntryId})`,
             );
           } catch (e) {
             log.error("[context-manager] Failed to setup pre-append intercept:", e);
@@ -477,10 +500,10 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
             // message to create a DUPLICATE entry in sessionManager (logged to file,
             // but TUI rebuilds from a snapshot taken before session_compact → message
             // missing from TUI → "lost" message despite being in file).
-            clearInterceptState();
+            clearInterceptState(ctx);
           }
         }
-        // NOTE: _queuedDuringCompaction stays set after intercept setup.
+        // NOTE: st.queuedDuringCompaction stays set after intercept setup.
         // It must survive until flushCompactionQueue's session.prompt()
         // fires AFTER session_compact returns, so skipDuplicateAppend can
         // detect the duplicate user message. Cleared on turn_end or abort.
@@ -536,19 +559,19 @@ export function registerCompactionEndHandler(pi: ExtensionAPI): void {
 
         // pi core is retrying - nothing to do, let pi handle it
         if (willRetry) {
-          setCompactionActive(false);
+          setCompactionActive(false, _ctx);
           return;
         }
 
-        setCompactionActive(false);
+        setCompactionActive(false, _ctx);
 
         // CRITICAL: Always clear intercept state on compaction_end, regardless of outcome.
         // The intercept was set in session_compact to skip the duplicate from
         // flushCompactionQueue's session.prompt() → message_end → appendMessage call.
         // If we don't clear it, future appendMessage calls get intercepted incorrectly,
         // breaking session persistence for all subsequent messages.
-        tryRestoreAppendMessage(pi);
-        clearInterceptState();
+        tryRestoreAppendMessage(pi, _ctx);
+        clearInterceptState(_ctx);
 
         // Aborted - user cancelled. Clear dedup guard so next compaction can run.
         if (aborted) {
@@ -606,8 +629,8 @@ export function registerCompactionEndHandler(pi: ExtensionAPI): void {
   // ── message_end backup cleanup ────────────────────────────────────────────
   // Catches edge cases where turn_end is missed (no tools called that turn).
   // Ensures intercept state is always cleaned up before the next assistant turn.
-  onEvent(pi, MESSAGE_END, async () => {
-    tryRestoreAppendMessage(pi);
+  onEvent(pi, MESSAGE_END, async (_event, _ctx) => {
+    tryRestoreAppendMessage(pi, _ctx);
   });
 
   // ── Session lifecycle cleanup ──────────────────────────────────────────────

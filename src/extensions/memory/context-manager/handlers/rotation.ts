@@ -267,11 +267,11 @@ export function registerSessionShutdownHandler(pi: ExtensionAPI): void {
     cmState.overflowRetryActive = false;
 
     // CRITICAL: Clear intercept state to prevent stale intercept on next session.
-    // The intercept (_interceptActive, _origAppendMessage, etc.) was set up
-    // during compaction. If session ends without proper cleanup (e.g., crash,
-    // force quit), the intercept could remain active in the new session.
-    tryRestoreAppendMessage(pi);
-    clearInterceptState();
+    // The intercept was set up during compaction. If session ends without
+    // proper cleanup (e.g., crash, force quit), the intercept could remain
+    // active in the new session.
+    tryRestoreAppendMessage(pi, ctx);
+    clearInterceptState(ctx);
   });
 }
 

@@ -3,8 +3,14 @@ import { isCompactionActive } from "../../memory/context-manager/handlers/shared
 
 const log = createLogger("input-polisher");
 
-// Forward declaration - imported lazily to avoid circular dep with compaction.ts
-let _isCompactionActive: (() => boolean) | undefined = isCompactionActive;
+// Forward declaration - imported lazily to avoid circular dep with compaction.ts.
+// The function reference is set once in SESSION_START and never reassigned
+// afterward, so this is effectively const. We use a wrapper to make the
+// "lazy assignment" intent explicit.
+let _isCompactionActiveImpl: (() => boolean) = () => false;
+function getIsCompactionActive(): boolean {
+  return _isCompactionActiveImpl();
+}
 
 /**
  * Input Polisher Extension
@@ -427,7 +433,7 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
     // Skip during active compaction - input is queued in compaction.ts
     // and delivered after compaction completes. Check BEFORE the input critic
     // to avoid wasting model calls during compaction.
-    if (_isCompactionActive?.()) {
+    if (getIsCompactionActive()) {
       state.skippedCount++;
       return { action: "continue" };
     }
@@ -493,9 +499,7 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
   // Lazy-load the compaction state check on first session. This avoids a
   // circular dependency with compaction.ts - compaction imports shared.js.
   pi.on(SESSION_START, async () => {
-    if (!_isCompactionActive) {
-      _isCompactionActive = isCompactionActive;
-    }
+    _isCompactionActiveImpl = isCompactionActive;
   });
 
   pi.registerCommand("input-polisher", {

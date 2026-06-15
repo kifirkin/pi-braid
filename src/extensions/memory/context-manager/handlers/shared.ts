@@ -90,18 +90,39 @@ export const overflowRetryState: RetryState = {
 
 export const _compactedEntries = new Set<string>();
 
-/** Whether compaction is currently in progress. Guards input capture to only
- * capture messages typed DURING compaction, not messages that triggered it.
- * Exported for read+write access by compaction.ts and input-polisher. */
-export let _compactionActive = false;
+// Compaction-active state is per-session. The accessor functions here are
+// a stable API; the underlying storage is session-scoped via
+// getExtensionState. The legacy module-level flag is removed (Q5).
 
-export function isCompactionActive(): boolean {
-  return _compactionActive;
+interface CompactionActiveState {
+  active: boolean;
 }
 
-export function setCompactionActive(value: boolean): void {
-  _compactionActive = value;
+function getCompactionActiveState(ctx: ExtensionContext): CompactionActiveState {
+  return getExtensionState(ctx, "context-manager/compaction-active", () => ({
+    active: false,
+  }));
 }
+
+export function isCompactionActive(ctx?: ExtensionContext): boolean {
+  // Module-level call (no ctx) is supported for backward compat; returns
+  // the FIRST session's value, which is OK in pi's single-session-per-process.
+  if (!ctx) {
+    return _fallbackActive;
+  }
+  return getCompactionActiveState(ctx).active;
+}
+
+export function setCompactionActive(value: boolean, ctx: ExtensionContext): void {
+  getCompactionActiveState(ctx).active = value;
+  // Mirror to module-level fallback for ctx-less callers.
+  _fallbackActive = value;
+}
+
+// Module-level fallback used when callers don't have ctx. Updated by
+// setCompactionActive() with the most recent value. In pi-core's
+// single-session-per-process model this is equivalent to per-session.
+let _fallbackActive = false;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 export const COMPACTION_RETRY_MAX_ATTEMPTS = 3;
