@@ -32,7 +32,7 @@ export interface CritiqueResult {
 	/** True if the text is vague or ambiguous - may need clarification prompt. */
 	isAmbiguous: boolean;
 	/** Lowest-confidence tier across all checks. */
-	tier: "utility" | "session" | "heuristic";
+	tier: "utility" | "session" | "heuristic" | "failed";
 	/** Per-check results for observability. */
 	checks: {
 		codeHeavy: ClassificationResult;
@@ -106,13 +106,23 @@ export async function critiqueInput(text: string, ctx: ExtensionContext): Promis
 	const clarityResult = unwrap(claritySettled);
 	const ambiguityResult = unwrap(ambiguitySettled);
 
-	// Determine the overall tier (lowest across all four)
+	// Determine the overall tier (lowest-confidence across all four).
+	// The 4 tiers in priority order (highest signal first):
+	//   utility  - configured utility model succeeded
+	//   session  - session model succeeded
+	//   heuristic - heuristic fallback succeeded
+	//   failed   - all tiers failed, label is "unknown"
+	// If ANY check failed and NONE succeeded, overall = "failed".
+	// Otherwise the lowest tier that produced a result wins.
 	const tiers = [codeResult?.tier, wellWrittenResult?.tier, clarityResult?.tier, ambiguityResult?.tier];
-	const overallTier = tiers.includes("heuristic")
-		? ("heuristic" as const)
-		: tiers.includes("session")
-			? ("session" as const)
-			: ("utility" as const);
+	const anySucceeded = tiers.some(t => t === "utility" || t === "session" || t === "heuristic");
+	const overallTier: "utility" | "session" | "heuristic" | "failed" = !anySucceeded
+		? "failed"
+		: tiers.includes("heuristic")
+			? ("heuristic" as const)
+			: tiers.includes("session")
+				? ("session" as const)
+				: ("utility" as const);
 
 	return {
 		isCode: codeResult?.label === "yes",

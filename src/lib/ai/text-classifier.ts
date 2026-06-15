@@ -246,14 +246,30 @@ async function tryModelCall(
       maxRetries,
     });
 
-    if ("error" in result) return null;
+    if ("error" in result) {
+      // Surface the actual error to the caller's log so the operator
+      // can diagnose why the classifier is failing. Previously this was
+      // swallowed (returned null) and only "TIER X failed" was logged
+      // with no detail. The classifier's value is in its signal, but
+      // when it fails, its value is in its diagnostic info.
+      log.debug(`[text-classifier] ${model.id} callLlm error: ${result.error}`);
+      return null;
+    }
 
     const raw = result.text.trim();
     const label = normalizeLabel(raw);
-    if (!label) return null;
+    if (!label) {
+      // Model responded but with unparseable text. Surface the raw
+      // text in the log so we can tell if the prompt needs tuning.
+      log.debug(
+        `[text-classifier] ${model.id} returned unparseable label: ${JSON.stringify(raw).slice(0, 200)}`,
+      );
+      return null;
+    }
 
     return { raw, label };
-  } catch {
+  } catch (e) {
+    log.debug(`[text-classifier] ${model.id} threw: ${(e as Error).message}`);
     return null;
   }
 }

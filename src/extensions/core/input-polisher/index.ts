@@ -457,6 +457,20 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
 
     // Input critic: classify input with utility model (or heuristic fallback)
     const critique = await critiqueInput(original, ctx);
+    if (critique.tier === "failed") {
+      // Classifier failed entirely (all LLM tiers down). The safe default
+      // is to NOT polish - we'd rather let the user send text unpolished
+      // than trigger an expensive polish LLM call when we don't know if
+      // the input needs work. The classifier's TIER 2 + TIER 3 will
+      // recover on subsequent inputs once the LLM is back.
+      state.skippedCount++;
+      log.warn("Input classifier failed (all tiers down) - skipping polish");
+      ctx.ui.setStatus("input-polisher", "⚠ Classifier unavailable - press Enter to send");
+      ctx.ui.setEditorText(original);
+      state.polishingExhausted = true;
+      state.polishedText = original;
+      return { action: "handled" };
+    }
     if (critique.isCode || (critique.isWellWritten && critique.isClear)) {
       state.skippedCount++;
       ctx.ui.setStatus("input-polisher", "✓ Text already clean - press Enter to send");
