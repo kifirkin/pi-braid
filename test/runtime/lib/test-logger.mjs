@@ -126,3 +126,67 @@ assert.ok(
 );
 
 console.log("✅ logger.ts contract: _consoleMinLevel='none' (TUI-safe), ConsoleLogLevel includes 'none', all 4 levels routed, buffer always populated.");
+
+// ── 9. setLoggerContext API + ctx.ui.notify routing ───────────────────────
+
+assert.ok(
+  /export function setLoggerContext\(ctx: LoggerContext \| null\)/.test(src),
+  "setLoggerContext must be exported (so src/index.ts can bind on session_start)",
+);
+
+assert.ok(
+  /export function getLoggerContext\(\)/.test(src),
+  "getLoggerContext must be exported (for tests + debugging)",
+);
+
+assert.ok(
+  /export interface LoggerContext/.test(src),
+  "LoggerContext interface must be exported (callers can type their bind)",
+);
+
+// writeToConsole must check _boundContext FIRST and route to ctx.ui.notify
+const writeBlock = src.match(/function writeToConsole\([\s\S]*?\n\}/);
+assert.ok(writeBlock, "writeToConsole must exist");
+const writeBody = writeBlock[0];
+assert.ok(
+  /_boundContext\?\.ui\?\.notify/.test(writeBody),
+  "writeToConsole must route through _boundContext.ui.notify when bound (TUI-safe)",
+);
+
+// Severity mapping for ctx.ui.notify
+assert.ok(
+  /notifySeverityForLevel/.test(writeBody) || /"error"|"warning"/.test(writeBody),
+  "writeToConsole must map log level to ctx.ui.notify severity (error/warning/info)",
+);
+
+// Bound ctx routing must happen BEFORE any console.* call
+const notifyIdx = writeBody.indexOf("_boundContext?.ui?.notify");
+const consoleIdx = writeBody.search(/console\.(error|warn|info|debug)/);
+if (notifyIdx !== -1 && consoleIdx !== -1) {
+  assert.ok(
+    notifyIdx < consoleIdx,
+    "Bound ctx routing (ctx.ui.notify) must be checked BEFORE any console.* call",
+  );
+}
+
+// ── 10. Session-start binding in src/index.ts ─────────────────────────────
+
+const indexSrc = readFileSync(join(ROOT, "src/index.ts"), "utf-8");
+assert.ok(
+  /setLoggerContext\(ctx\)/.test(indexSrc),
+  "src/index.ts must call setLoggerContext(ctx) on session_start",
+);
+assert.ok(
+  /setLoggerContext\(null\)/.test(indexSrc),
+  "src/index.ts must call setLoggerContext(null) on session_shutdown",
+);
+assert.ok(
+  /pi\.on\(SESSION_START/.test(indexSrc),
+  "src/index.ts must use the SESSION_START constant (not raw 'session_start' string)",
+);
+assert.ok(
+  /pi\.on\(SESSION_SHUTDOWN/.test(indexSrc),
+  "src/index.ts must use the SESSION_SHUTDOWN constant (not raw 'session_shutdown' string)",
+);
+
+console.log("✅ setLoggerContext API + session_start binding verified.");

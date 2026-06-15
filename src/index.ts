@@ -24,9 +24,10 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { createLogger } from "./lib/core/logger.js";
+import { createLogger, setLoggerContext } from "./lib/core/logger.js";
 import { loadModules } from "./loader/loader.js";
 import modulesApiExtension from "./loader/api.js";
+import { SESSION_START, SESSION_SHUTDOWN } from "./lib/core/event-names.js";
 
 // ── Shared constants (imported by extensions) ────────────────────────────────
 
@@ -61,6 +62,18 @@ export default async function braidExtension(pi: ExtensionAPI): Promise<void> {
 
   // 2. Register subagent API (always available so researcher can toggle modules)
   await modulesApiExtension(pi);
+
+  // 3. Bind the logger context once per session so all log.* calls
+  //    route to ctx.ui.notify (TUI-safe). Lib/ code (pre-session) and
+  //    pre-session-start logs still go through console (suppressed by
+  //    default). This makes log.warn / log.info visible to the user
+  //    without breaking the TUI.
+  pi.on(SESSION_START, (_event, ctx) => {
+    setLoggerContext(ctx);
+  });
+  pi.on(SESSION_SHUTDOWN, (_event, _ctx) => {
+    setLoggerContext(null);
+  });
 
   log.info("pi-braid ready.");
 }

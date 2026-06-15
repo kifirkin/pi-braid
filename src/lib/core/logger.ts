@@ -2,18 +2,30 @@
  * Logger - Unified logging for pi-braid extensions
  *
  * Respects the pi Extension API:
- * - No ctx available (load time, lib code) → plain console
- * - ctx available with UI (interactive mode) → ctx.ui.notify() for warn/error
- * - ctx available without UI (RPC/print mode) → console only
+ * - No ctx bound (load time, lib code) → in-memory buffer only by default
+ *   (console writes are suppressed to protect TUI rendering)
+ * - ctx bound via setLoggerContext() → log lines route to ctx.ui.notify
+ *   so the user sees them as TUI notifications, not stdout pollution
+ * - The in-memory buffer is ALWAYS populated regardless of ctx binding
+ *   (retrieve via /logs slash command or formatLogBuffer())
  *
  * Usage:
  *   const log = createLogger("my-extension");
  *   log.warn("Something unexpected");
  *   log.info("Progress update");
  *
- * All output goes to console (warn/error) and in-memory buffer. Removed:
- * bindContext/unbindContext/hasContext - the context stack added complexity
- * for a single caller. Errors remain visible in console + log buffer.
+ * Routing logic when ctx is bound:
+ *   log.error  → ctx.ui.notify(msg, "error")
+ *   log.warn   → ctx.ui.notify(msg, "warning")
+ *   log.info   → ctx.ui.notify(msg, "info")
+ *   log.debug  → ctx.ui.notify(msg, "info")  // debug is informational when visible
+ *
+ * The /logs slash command and the in-memory buffer remain available
+ * even when ctx is bound, for debugging sessions.
+ *
+ * LIMITATION: setLoggerContext binds a single global ctx. Pi runs one
+ * session per process, so this is fine in practice. If you need
+ * per-session isolation, the buffer is the safe channel.
  */
 
 
@@ -24,6 +36,13 @@ export type LogLevel = "debug" | "info" | "warn" | "error";
 
 /** Sentinel: "no level writes to console." The in-memory buffer is still populated. */
 export type ConsoleLogLevel = LogLevel | "none";
+
+/** Minimal context shape needed for log routing. Compatible with ExtensionContext. */
+export interface LoggerContext {
+  ui?: {
+    notify?: (message: string, notifyType?: "info" | "warning" | "error") => void;
+  };
+}
 
 interface LogEntry {
   timestamp: number;
@@ -48,6 +67,10 @@ const _LEVEL_PRIORITY: Record<LogLevel, number> = {
   warn: 2,
   error: 3,
 };
+
+/** Currently bound logger context (set via setLoggerContext). When set,
+ *  log lines route to ctx.ui.notify instead of console (TUI-safe). */
+let _boundContext: LoggerContext | null = null;
 
 /** Priority for "none" - higher than any real level so nothing writes. */
 const _NONE_PRIORITY = 4;
@@ -114,8 +137,32 @@ function formatConsole(entry: LogEntry): string {
 
 // ── Core sink ──────────────────────────────────────────────────────────────
 
+/** Map log level to the severity used by ctx.ui.notify. */
+function notifySeverityForLevel(level: LogLevel): "info" | "warning" | "error" {
+  if (level === "error") return "error";
+  if (level === "warn") return "warning";
+  return "info"; // debug + info both surface as info
+}
+
 function writeToConsole(entry: LogEntry): void {
-  if (_consoleMinLevel === "none") return; // TUI-safe default: never write to console
+  // When a logger context is bound, route through ctx.ui.notify so the
+  // user sees the message as a TUI notification (NOT as stdout pollution
+  // that would break TUI cursor positioning). Console writes are skipped
+  // entirely in this mode.
+  if (_boundContext?.ui?.notify) {
+    try {
+      _boundContext.ui.notify(formatConsole(entry), notifySeverityForLevel(entry.level));
+    } catch {
+      // If notify throws (no UI in RPC/print mode), fall through to the
+      // buffer-only path below. The entry is already in the buffer.
+    }
+    return;
+  }
+
+  // No ctx bound: fall back to console. By default _consoleMinLevel is
+  // 'none' so nothing is written (TUI-safe). For explicit debug sessions
+  // the user can call setConsoleLogLevel("info") via /logs level.
+  if (_consoleMinLevel === "none") return;
   if (_LEVEL_PRIORITY[entry.level] < _LEVEL_PRIORITY[_consoleMinLevel as LogLevel]) {
     return; // below threshold
   }
@@ -209,6 +256,34 @@ export function createLogger(source: string): Logger {
     _loggers.set(source, new LoggerImpl(source));
   }
   return _loggers.get(source)!;
+}
+
+/**
+ * Bind a context for log routing. When bound, log lines route to
+ * ctx.ui.notify instead of console (TUI-safe). Pass null to unbind
+ * (e.g., on session_shutdown).
+ *
+ * USAGE: call from a `session_start` handler with the received ctx.
+ * The braid's main extension does this once per process:
+ *
+ *   pi.on("session_start", (_event, ctx) => {
+ *     setLoggerContext(ctx);
+ *   });
+ *   pi.on("session_shutdown", (_event, _ctx) => {
+ *     setLoggerContext(null);
+ *   });
+ *
+ * LIMITATION: this is a global binding. Pi runs one session per process,
+ * so this is fine in practice. If two sessions ran in the same process,
+ * they would share the same ctx binding.
+ */
+export function setLoggerContext(ctx: LoggerContext | null): void {
+  _boundContext = ctx;
+}
+
+/** Get the currently bound logger context (for tests / debugging). */
+export function getLoggerContext(): LoggerContext | null {
+  return _boundContext;
 }
 
 /** Suppress a specific source (e.g. during tests). */
