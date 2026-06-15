@@ -1,26 +1,59 @@
 # Code Quality Remediation — Final Status
 
-**Last updated:** 2026-06-15
-**Status:** Session complete. All high-value tasks shipped.
+**Last updated:** 2026-06-15 (continued after first wrap)
+**Status:** Two additional rounds of fixes shipped after initial wrap.
 
-## Headline numbers (as of 2026-06-15)
+## Headline numbers
 
-| Metric | Start of session | End of session |
-|---|---|---|
-| Source files | 199 .ts | 199 .ts |
-| Test files | ~35 .mjs | 42 .mjs |
-| Tests pass | 32/32 | 40/40 |
-| Unused identifiers (tsc --noUnusedLocals) | 89 | 0 |
-| Module-level `let` violations | 20+ | 2 (documented exceptions) |
-| A-class fragile fallbacks | 11 | 0 (all → `tierPolicy: "always-llm"`) |
-| B-class fragile fallbacks | 12 | 0 (all → `tierPolicy: "fallback-only"` or removed) |
-| `Promise.all` with LLM fanout | 8 | 0 (all → `allSettled`) |
-| Hallucinated tool names in messages | 7 | 0 (all corrected) |
-| Dynamic `await import()` in src/ | 16 | 0 (all static) |
-| `Date.now() + Math.random()` IDs | 23 | 0 (all `nextId()`) |
-| `as any` / `as unknown as` casts | 48 | 43 |
-| Tool count | 30 | 30 (tool-safety removed, no additions) |
-| Commits this session | — | 28 |
+| Metric | Start | After first wrap | After classifier-down fixes |
+|---|---|---|---|
+| Source files | 199 | 199 | 199 |
+| Test files | ~35 | 42 | 45 |
+| Tests pass | 32/32 | 40/40 | 46/46 |
+| Unused identifiers (tsc --noUnusedLocals) | 89 | 0 | 0 |
+| Module-level `let` violations | 20+ | 2 (documented) | 2 (documented) |
+| A-class fragile fallbacks | 11 | 0 | 0 |
+| B-class fragile fallbacks | 12 | 0 | 0 |
+| `Promise.all` with LLM fanout | 8 | 0 | 0 |
+| Hallucinated tool names | 7 | 0 | 0 |
+| Dynamic `await import()` | 16 | 0 | 0 |
+| `Date.now() + Math.random()` IDs | 23 | 0 | 0 |
+| `as any` / `as unknown as` casts | 48 | 43 | 43 |
+| Tool count | 30 | 30 | 30 |
+| Commits this session (total) | — | 28 | 38 |
+
+## What was done after first wrap (commits `5eef50cf` → `??`)
+
+### User-flagged issue: input polisher classifier failures
+- **Investigation** (`979f635d`): Found that the "Branch X entries deep" log.warn was actionable advice for the agent going to console, not the agent. Replaced with a throttled `sendTrackedMessage` whisper.
+- **Concurrent BUG-M2 + BUG-M3** (`5cba90a7`): `since`/`until` filter applied only to semantic memories, not episodes. Double-encoded unicode in episodes.jsonl. Fixed with `.filter()` chain + `sanitizeEpisode()` at load time.
+- **Classifier "always failing" investigation** (`9966c8ad`): When all classify() tiers fail, the input-polisher was proceeding with expensive LLM polish. Added `tier: "failed"` to `CritiqueResult` union; polisher now checks `critique.tier === "failed"` and skips the polish call.
+- **Per-model concurrency limiter** (`0eb8c8e2`): `MAX_CONCURRENT_PER_MODEL = 2` semaphore. The 4-way burst in `input-critic.ts` was triggering rate limits on the user's "minimax-m3 a0-venice" model. Slot acquired once per `callLlm`, released in `finally`. Coexists with the rate-limit cooldown (different safety nets).
+
+### Logging architecture overhaul (user direction)
+- **TUI-safe default** (`2bdb000f`): `_consoleMinLevel` defaults to `"none"` so `console.*` writes never corrupt the TUI. In-memory buffer always populated. New `/logs` slash command for retrieval with subcommands (show N / clear / level).
+- **Routing via ctx.ui.notify** (`435a76a3`): When session ctx is bound (via `setLoggerContext` on `session_start`), all `log.*` calls route to `ctx.ui.notify` instead of console. Zero call site changes. The 206 existing `log.*` callsites benefit transparently.
+- **Delivery channel rules pinned in `src/AGENTS.md`** (`85795fa1`, `b3ce9c54`): The 6-channel matrix (notify/setStatus/setWidget/log/console/sendTrackedMessage) is now part of the documented contract.
+
+### "Classifier fails silently" pattern (this round)
+Following the input-polisher precedent (`9966c8ad`): detectors that call `classify()` must not silently default to "no problem" when the classifier is down. Surface the offline state.
+
+- **topic-drift-detector** (`fix(detectors): ...`): `DriftCheck.classifierDown?: boolean`. `check()` sets it true when all 3 results are null OR `tier === "failed"`. `drift-handler` dispatches on it: emits `classifier_down` signal with warn severity and distinct source label.
+- **sycophancy-detector** (same commit): `SycophancyRisk.classifierDown?: boolean`. `computeRisk` flags it on the safe-default return (score still 0; we don't false-positive). `handleSycophancy` emits a separate `user_risk_classifier_down` signal.
+
+### Tests added in this continuation
+- `test-episode-sanitizer.mjs` — 8 assertions (BUG-M3 + BUG-M2)
+- `test-input-critic-failed-tier.mjs` — input-polisher classifier-down
+- `test-logs-command.mjs` — 14 assertions (TUI-safe logging + `/logs`)
+- `test-llm-call-concurrency.mjs` — 12 assertions (per-model semaphore)
+- `test-drift-classifier-down.mjs` — 13 assertions (topic-drift)
+- `test-sycophancy-classifier-down.mjs` — 6 assertions
+
+## Decisions log (additions)
+
+- **D-8 (2026-06-15)**: When fixing fragile-fallback bugs, fix the ROOT CAUSE (proper unified API like `bypassFloodCap`) rather than forking the path. Tests should assert architectural invariants, not brittle source patterns.
+- **D-9 (2026-06-15)**: When sync fallback for LLM extraction is unused (no callers, `@deprecated`), REMOVE the fragile heuristic. Better to have empty result than wrong result.
+- **D-10 (2026-06-15)**: Detectors that call `classify()` must propagate `classifierDown` rather than silently defaulting to "no problem." Pattern documented in the two new tests; future classifier consumers should follow it.
 
 ## What was done
 
