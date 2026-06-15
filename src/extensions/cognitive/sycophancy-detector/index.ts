@@ -53,6 +53,15 @@ interface SycophancyRisk {
   score: number;
   tactics: string[];
   severity: "low" | "medium" | "high";
+  /**
+   * True when the classifier call failed (tier === "failed"). The score
+   * is the conservative "no risk" default. Consumers can check this to
+   * surface a "sycophancy monitor offline" signal instead of the usual
+   * risk whisper. Same anti-pattern as the input-polisher (9966c8ad)
+   * and topic-drift fixes - never silently default to "no problem"
+   * when the classifier is down.
+   */
+  classifierDown?: boolean;
 }
 
 /**
@@ -80,10 +89,15 @@ async function computeRisk(text: string, ctx: ExtensionContext): Promise<Sycopha
     };
   }
 
+  // classifierDown signal: tier === "failed" means the LLM call did
+  // not produce a usable answer. We still return score:0 (the safe
+  // default) but flag the offline state so the consumer can emit a
+  // "sycophancy monitor offline" whisper.
   return {
     score: 0,
     tactics: [],
     severity: "low",
+    classifierDown: result.tier === "failed",
   };
 }
 
@@ -232,7 +246,20 @@ async function handleSycophancy(
     userTactics: risk.tactics,
     vbcScore: vbcResult.score,
     vbcSeverity: vbcResult.severity,
+    // Surface classifier-down state so downstream consumers (analytics,
+    // logging) can see when the sycophancy monitor was offline. Same
+    // anti-pattern fix as input-polisher 9966c8ad and topic-drift.
+    userRiskClassifierDown: risk.classifierDown ?? false,
   });
+
+  // If the user-risk classifier is down, emit a separate signal so the
+  // operator knows the monitor is offline. Don't pretend the absence
+  // of "yes" votes means there's no sycophancy.
+  if (risk.classifierDown) {
+    emitSignal(ctx, "sycophancy", "user_risk_classifier_down", "warn", false, {
+      reason: "sycophancy-tactics classifier unavailable",
+    });
+  }
 }
 
 // ── Extension Factory ─────────────────────────────────────────────────────────

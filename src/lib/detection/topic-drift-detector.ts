@@ -32,6 +32,17 @@ export interface DriftCheck {
   current: string;
   severity: "subtle" | "moderate" | "strong";
   reason: string;
+  /**
+   * True when all three LLM classification calls failed (tier === "failed"
+   * on every result). The detector could not determine drift with high
+   * confidence; the drifted flag is the conservative "no drift" default
+   * to avoid false positives. Consumers can check this to emit a "drift
+   * detector offline" whisper instead of the usual drift whisper.
+   *
+   * Pattern matches input-polisher 9966c8ad: don't silently default to
+   * "no problem" when the classifier is down. Let the operator know.
+   */
+  classifierDown?: boolean;
 }
 
 export interface DriftDetectorOptions {
@@ -140,6 +151,7 @@ export class TopicDriftDetector {
     let drifted = false;
     let reason = "semantic_drift";
     let severity: "subtle" | "moderate" | "strong" = "subtle";
+    let classifierDown = false;
 
     if (_ctx) {
       try {
@@ -171,10 +183,19 @@ export class TopicDriftDetector {
         const divergenceResult = unwrap(divergenceSettled);
         const completenessResult = unwrap(completenessSettled);
 
+        // Detect the "all classifiers failed" case. If every result is
+        // tier === "failed", the LLM signal is unreliable; we cannot
+        // trust the "no drift" default. Surface this so consumers can
+        // emit a "detector offline" whisper instead of the usual one.
+        // (Same anti-pattern as input-polisher 9966c8ad: never silently
+        // default to "no problem" when the classifier is down.)
+        const allTiers = [coverageResult, divergenceResult, completenessResult];
+        classifierDown = allTiers.every(
+          (r) => r === null || r.tier === "failed",
+        );
+
         // Consensus: 2/3 critics agree → drift confirmed
-        const driftedVotes = [coverageResult, divergenceResult, completenessResult].filter(
-          (r) => r?.label === "yes",
-        ).length;
+        const driftedVotes = allTiers.filter((r) => r?.label === "yes").length;
 
         // coverage="yes" means coverage is BAD (does NOT address request)
         // divergence="yes" means divergence (has shifted)
@@ -188,22 +209,26 @@ export class TopicDriftDetector {
 
         if (drifted) {
           // Confidence-weighted severity
-          const allTiers = [coverageResult, divergenceResult, completenessResult];
           const hasHeuristic = allTiers.some((r) => r?.tier === "heuristic");
           severity = hasHeuristic ? "subtle" : driftedVotes >= 3 ? "strong" : "moderate";
+        }
+
+        if (classifierDown) {
+          reason = "classifier_unavailable";
         }
 
         _log.debug(
           `[topic-drift] Critics: coverage=${coverageResult?.label}/${coverageResult?.tier}, ` +
             `divergence=${divergenceResult?.label}/${divergenceResult?.tier}, ` +
             `completeness=${completenessResult?.label}/${completenessResult?.tier} ` +
-            `→ drifted=${drifted}`,
+            `→ drifted=${drifted} classifierDown=${classifierDown}`,
         );
       } catch {
         // LLM call failed - conservative fallback (no drift)
         drifted = false;
         severity = "subtle";
         reason = "too_short";
+        classifierDown = true;
       }
     } else {
       // No ctx available - use Jaccard similarity heuristic
@@ -234,6 +259,7 @@ export class TopicDriftDetector {
       current: currentText.slice(0, 100),
       severity,
       reason,
+      classifierDown,
     };
   }
 
@@ -241,6 +267,13 @@ export class TopicDriftDetector {
    * Generate whisper message for drift detection.
    */
   generateWhisper(check: DriftCheck): string | null {
+    if (check.classifierDown) {
+      // Same pattern as input-polisher 9966c8ad: when the classifier is
+      // offline, surface that fact to the operator instead of pretending
+      // everything is fine. The detector could not determine drift, so
+      // we say so explicitly.
+      return `[drift-detector] Classifier unavailable - could not check topic drift this turn. Topic monitoring is offline until the utility model recovers. Run /logs level info for the underlying error.`;
+    }
     if (!check.drifted) return null;
 
     const severityTag = check.severity === "strong" ? "[WARN]" : "[SUBTLE]";

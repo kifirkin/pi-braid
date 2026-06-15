@@ -47,7 +47,12 @@ export async function driftHandler(pi: any, _event: any, ctx: ExtensionContext):
   }
 
   const driftCheck = await gs.driftDetector.check();
-  if (driftCheck.drifted) {
+
+  // The detector now reports classifierDown separately from the
+  // "no drift detected" verdict. When the classifier is offline, we
+  // still want to whisper so the agent knows the monitor is down -
+  // not silently treat the absence of signal as "all good".
+  if (driftCheck.drifted || driftCheck.classifierDown) {
     const whisper = gs.driftDetector.generateWhisper(driftCheck);
     if (whisper) {
       // Dedup: share the "advisory" slot with bpe/mars - first claim wins.
@@ -55,10 +60,10 @@ export async function driftHandler(pi: any, _event: any, ctx: ExtensionContext):
         emitSignal(
           ctx,
           "topic-drift",
-          "detected",
-          driftCheck.severity === "strong" ? "warn" : "info",
+          driftCheck.classifierDown ? "classifier_down" : "detected",
+          driftCheck.classifierDown ? "warn" : (driftCheck.severity === "strong" ? "warn" : "info"),
           false,
-          { severity: driftCheck.severity },
+          { severity: driftCheck.severity, classifierDown: driftCheck.classifierDown ?? false },
         );
         return;
       }
@@ -70,16 +75,16 @@ export async function driftHandler(pi: any, _event: any, ctx: ExtensionContext):
           content: [{ type: "text", text: `[enforcement] ${whisper}` }],
         },
         { deliverAs: "steer", triggerTurn: false },
-        { type: "enforcement", source: "enforcement/drift" },
+        { type: "enforcement", source: driftCheck.classifierDown ? "enforcement/drift/offline" : "enforcement/drift" },
       );
     }
     emitSignal(
       ctx,
       "topic-drift",
-      "detected",
-      driftCheck.severity === "strong" ? "warn" : "info",
+      driftCheck.classifierDown ? "classifier_down" : "detected",
+      driftCheck.classifierDown ? "warn" : (driftCheck.severity === "strong" ? "warn" : "info"),
       false,
-      { severity: driftCheck.severity },
+      { severity: driftCheck.severity, classifierDown: driftCheck.classifierDown ?? false },
     );
   }
 }
