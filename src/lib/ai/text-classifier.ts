@@ -144,6 +144,7 @@ export async function classify(
 
   // ── Tier 2: Configured utility model ────────────────────────────────────
   const utilityModel = resolveUtilityModel(ctx);
+  let tier2FailureReason: string | null = null;
   if (utilityModel) {
     const tier1 = await tryModelCall(
       ctx,
@@ -154,7 +155,7 @@ export async function classify(
       timeoutMs,
       0, // maxRetries: 0 - classify calls should fail fast, not retry
     );
-    if (tier1) {
+    if (tier1 && tier1.ok) {
       const latency = Date.now() - start;
       log.debug(
         `[text-classifier] TIER 2 (utility → ${utilityModel.id}): "${tier1.label}" ${latency}ms`,
@@ -168,17 +169,18 @@ export async function classify(
         latencyMs: latency,
       };
     }
-    // The actual error was already logged at debug level by tryModelCall.
-    // Surface a stable WARN so the operator sees TIER-2 failure even at
-    // /logs level none (the WARN is the user-visible signal). Include
-    // the model id so the user can tell which model is failing.
+    // Capture the actual failure reason so the WARN line tells the
+    // user WHY the tier failed, not just THAT it failed. The user
+    // shouldn't have to dig into /logs to find out.
+    tier2FailureReason = tier1 && !tier1.ok ? tier1.reason : "unknown failure";
     log.warn(
-      `[text-classifier] TIER 2 failed (utility model '${utilityModel.id}'), falling to TIER 3. Run /logs level info for the actual error.`,
+      `[text-classifier] TIER 2 failed (utility model '${utilityModel.id}'): ${tier2FailureReason}. Falling to TIER 3.`,
     );
   }
 
   // ── Tier 3: Session model ───────────────────────────────────────────────
   const sessionModel = ctx.model;
+  let tier3FailureReason: string | null = null;
   if (sessionModel) {
     const tier2 = await tryModelCall(
       ctx,
@@ -189,7 +191,7 @@ export async function classify(
       timeoutMs,
       0, // maxRetries: 0 - classify calls should fail fast, not retry
     );
-    if (tier2) {
+    if (tier2 && tier2.ok) {
       const latency = Date.now() - start;
       log.debug(
         `[text-classifier] TIER 3 (session → ${sessionModel.id}): "${tier2.label}" ${latency}ms`,
@@ -203,11 +205,18 @@ export async function classify(
         latencyMs: latency,
       };
     }
-    log.warn("[text-classifier] TIER 3 failed (session model error), returning 'unknown'");
+    tier3FailureReason = tier2 && !tier2.ok ? tier2.reason : "unknown failure";
+    log.warn(
+      `[text-classifier] TIER 3 failed (session model '${sessionModel.id}'): ${tier3FailureReason}.`,
+    );
   }
 
   const latency = Date.now() - start;
-  log.warn(`[text-classifier] ALL TIERS FAILED - returning "unknown" ${latency}ms`);
+  log.warn(
+    `[text-classifier] ALL TIERS FAILED - returning "unknown" ${latency}ms. ` +
+      `TIER 2: ${tier2FailureReason ?? "no utility model configured"}. ` +
+      `TIER 3: ${tier3FailureReason ?? "no session model"}.`,
+  );
   if (options?.label) recordCriticCall(options.label, "failed", latency);
   return { label: "unknown", confidence: 0, raw: "", tier: "failed", latencyMs: latency };
 }
@@ -240,10 +249,14 @@ async function tryModelCall(
   maxTokens: number,
   timeoutMs: number,
   maxRetries = 0,
-): Promise<{ raw: string; label: string } | null> {
+): Promise<
+  | { ok: true; raw: string; label: string }
+  | { ok: false; reason: string }
+  | null
+> {
   try {
     const apiKey = await ctx.modelRegistry.getApiKeyForProvider(model.provider);
-    if (!apiKey) return null;
+    if (!apiKey) return { ok: false, reason: `no API key for provider ${model.provider}` };
 
     const result = await callLlm(model, apiKey, systemPrompt, userMessage, {
       maxTokens,
@@ -254,12 +267,12 @@ async function tryModelCall(
 
     if ("error" in result) {
       // Surface the actual error to the caller's log so the operator
-      // can diagnose why the classifier is failing. Previously this was
-      // swallowed (returned null) and only "TIER X failed" was logged
-      // with no detail. The classifier's value is in its signal, but
-      // when it fails, its value is in its diagnostic info.
+      // can diagnose why the classifier is failing. The classify()
+      // function threads this into the TIER 2/3 failed warn so the
+      // user sees the actual underlying error in the TUI without
+      // having to dig into /logs.
       log.debug(`[text-classifier] ${model.id} callLlm error: ${result.error}`);
-      return null;
+      return { ok: false, reason: result.error };
     }
 
     const raw = result.text.trim();
@@ -270,13 +283,14 @@ async function tryModelCall(
       log.debug(
         `[text-classifier] ${model.id} returned unparseable label: ${JSON.stringify(raw).slice(0, 200)}`,
       );
-      return null;
+      return { ok: false, reason: `unparseable label: ${JSON.stringify(raw).slice(0, 80)}` };
     }
 
-    return { raw, label };
+    return { ok: true, raw, label };
   } catch (e) {
-    log.debug(`[text-classifier] ${model.id} threw: ${(e as Error).message}`);
-    return null;
+    const message = (e as Error).message;
+    log.debug(`[text-classifier] ${model.id} threw: ${message}`);
+    return { ok: false, reason: `threw: ${message}` };
   }
 }
 
