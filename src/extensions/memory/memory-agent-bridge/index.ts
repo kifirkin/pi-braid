@@ -418,12 +418,21 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
                   createMemoryStoresState,
                 );
                 if (threeMem.episodes.length > 0) {
+                  // Apply the same since/until filter to episodes that
+                  // we apply to semantic memories above. Without this,
+                  // BUG-M2: a recall_search with since=2020-01-01,
+                  // until=2020-12-31 returned episodes from 2026 (the
+                  // filter only applied to the semantic path).
                   const episodes = retrieveByRUMS(
                     threeMem,
                     params.query,
                     params.limit ?? 3,
                     threeMem.currentSessionId,
-                  );
+                  ).filter((ep) => {
+                    if (since && ep.timestamp < since) return false;
+                    if (until && ep.timestamp > until) return false;
+                    return true;
+                  });
                   episodeResults = episodes.map((ep) => ({
                     task: ep.task,
                     solution: ep.solution.slice(0, 500),

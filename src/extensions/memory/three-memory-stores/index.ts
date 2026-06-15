@@ -455,6 +455,48 @@ function inferTaskType(_ctx: ExtensionContext, _toolName: string): string {
   return toolTypeMap[_toolName] || "general";
 }
 
+/**
+ * Sanitize an episode's string fields by decoding literal `\uXXXX` escape
+ * sequences that may have been written by a previous code path that
+ * double-encoded unicode (BUG-M3). The agent-facing `recall_search` and
+ * `episodes_search` displays otherwise show literal `\u2192` instead of
+ * the real character `→`. We apply this at load time so existing data
+ * files are healed without requiring a destructive migration.
+ *
+ * Detection: a string containing `\\u[0-9a-fA-F]{4}` is candidate. We
+ * try `JSON.parse('"' + s + '"')` and use the result if it round-trips
+ * to a different value (i.e. the literal escape decoded to a real char).
+ * Strings that legitimately contain backslash-u sequences (e.g. a regex
+ * pattern) are left alone.
+ */
+function unescapeUnicodeIfDoubleEncoded(s: string): string {
+  if (typeof s !== "string") return s;
+  if (!/\\u[0-9a-fA-F]{4}/.test(s)) return s;
+  try {
+    const decoded = JSON.parse(`"${s.replace(/"/g, '\\"')}"`);
+    if (typeof decoded === "string" && decoded !== s) return decoded;
+  } catch {
+    /* not valid JSON-escaped, leave as-is */
+  }
+  return s;
+}
+
+function sanitizeEpisode(ep: Episode): Episode {
+  return {
+    ...ep,
+    task: unescapeUnicodeIfDoubleEncoded(ep.task),
+    solution: unescapeUnicodeIfDoubleEncoded(ep.solution),
+    // outcome is a small enum, not affected
+    // toolSequence, tags, etc. are arrays - recurse over string entries
+    toolSequence: ep.toolSequence?.map(unescapeUnicodeIfDoubleEncoded),
+    tags: ep.tags?.map(unescapeUnicodeIfDoubleEncoded),
+    project: unescapeUnicodeIfDoubleEncoded(ep.project),
+    strategicSOP: ep.strategicSOP ? unescapeUnicodeIfDoubleEncoded(ep.strategicSOP) : undefined,
+    functionalSOP: ep.functionalSOP?.map(unescapeUnicodeIfDoubleEncoded),
+    atomicSOP: ep.atomicSOP?.map(unescapeUnicodeIfDoubleEncoded),
+  };
+}
+
 async function loadPastEpisodes(state: MemoryStoresState): Promise<number> {
   let loaded = 0;
 
@@ -467,8 +509,9 @@ async function loadPastEpisodes(state: MemoryStoresState): Promise<number> {
       for (const line of lines) {
         try {
           const ep: Episode = JSON.parse(line);
-          if (!state.episodes.some((e) => e.id === ep.id)) {
-            state.episodes.push(ep);
+          const sanitized = sanitizeEpisode(ep);
+          if (!state.episodes.some((e) => e.id === sanitized.id)) {
+            state.episodes.push(sanitized);
             loaded++;
           }
         } catch {
