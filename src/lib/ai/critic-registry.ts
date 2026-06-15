@@ -871,13 +871,9 @@ export const CRITICS = {
     },
     options: { maxTokens: 5, timeoutMs: 3000 },
   } satisfies CriticDef,
-
-  /** Legacy fallback for compliance framing. */
-  complianceFramingFallback(text: string): string {
-    const keywords = ["must", "required", "ensure", "verify", "always", "never", "critical", "strictly", "mandatory", "shall"];
-    const lower = text.toLowerCase();
-    return keywords.some((k) => lower.includes(k)) ? "yes" : "no";
-  },
+  // complianceFramingFallback was previously defined here but is not
+  // called anywhere (replaced by direct LLM-only call sites in
+  // latent-activator). Removed as dead code.
 
   // ═══════════════════════════════════════════════════════════════════════
   // Polarity Detection - claim-tracker sentence polarity

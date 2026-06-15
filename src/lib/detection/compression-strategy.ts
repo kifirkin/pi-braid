@@ -69,6 +69,9 @@ export async function determineCompressionLevel(
         maxTokens: 10,
         timeoutMs: 5000,
         label: CRITICS.compressionUrgency.label,
+        // Q9 B-class: compressionUrgencyFallback has 4-way classification
+        // (AGGRESSIVE/SEMANTIC/CONSERVATIVE/NONE) from threshold-based
+        // heuristic. tierPolicy: fallback-only downweights to 0.5.
         fallback: () =>
           CRITICS.compressionUrgencyFallback({
             turnsSinceCompression: opts.turnsSinceCompression,
@@ -77,6 +80,7 @@ export async function determineCompressionLevel(
             reasoningDepth: opts.reasoningChainDepth,
             messageCount: opts.messageCount,
           }),
+        tierPolicy: "fallback-only",
       },
     );
 

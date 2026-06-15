@@ -59,8 +59,11 @@ describe("Consolidation Channel", () => {
   });
 
   it("processConsolidationTick runs without error on empty queue", () => {
-    // Should not throw when queue is empty
-    processConsolidationTick();
+    // Should not throw when queue is empty. processConsolidationTick
+    // now takes ctx (required for the isHintTooGeneric classify() call
+    // when a candidate is processed); with an empty queue the function
+    // returns early before ctx is used, so a minimal mock is fine.
+    processConsolidationTick({} /* mock ExtensionContext */);
   });
 });
 
