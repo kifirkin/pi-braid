@@ -3,16 +3,22 @@
  *
  * Locks the contract that was broken in Q1: warn/info/debug were
  * silently dropped (empty default switch case in writeToConsole).
- * This test catches any regression where the switch case falls
- * through without writing to console.
+ *
+ * This test was UPDATED (2026-06-15) when the default was changed from
+ * "warn" to "none" - the rationale is that pi is a TUI process and
+ * writing to stdout/stderr from an extension handler corrupts the TUI
+ * cursor positioning. The in-memory buffer is always populated; the
+ * /logs slash command exposes it to the user.
  *
  * What it checks:
- *   1. _consoleMinLevel default is "warn" (info/debug stay silent by default)
- *   2. _consoleMinLevel can be lowered via setConsoleLogLevel
- *   3. writeToConsole has an explicit case for each LogLevel
+ *   1. _consoleMinLevel default is "none" (TUI-safe)
+ *   2. setConsoleLogLevel accepts "none" | LogLevel
+ *   3. writeToConsole early-returns when _consoleMinLevel === "none"
+ *   4. writeToConsole has an explicit case for each LogLevel
  *      (no empty default that would silently drop messages)
- *   4. setGlobalLogLevel exists and gates the buffer emit
- *   5. The "warn" and "error" cases route to console.warn / console.error
+ *   5. setGlobalLogLevel exists and gates the buffer emit
+ *   6. The "warn" and "error" cases route to console.warn / console.error
+ *   7. The in-memory buffer is populated regardless of console level
  */
 
 import { strict as assert } from "node:assert";
@@ -32,21 +38,35 @@ for (const [name, path] of Object.entries(FILES)) {
 
 const src = readFileSync(FILES.logger, "utf-8");
 
-// ── 1. Default _consoleMinLevel is "warn" ─────────────────────────────────
+// ── 1. Default _consoleMinLevel is "none" (TUI-safe) ───────────────────────
 
 assert.ok(
-  /let _consoleMinLevel: LogLevel = "warn"/.test(src),
-  "_consoleMinLevel must default to 'warn' (don't spam raw terminal)",
+  /let _consoleMinLevel: ConsoleLogLevel = "none"/.test(src),
+  "_consoleMinLevel must default to 'none' (TUI-safe: never write to stdout/stderr from extensions)",
 );
 
-// ── 2. setConsoleLogLevel exists ───────────────────────────────────────────
+// ── 2. ConsoleLogLevel is a union that includes "none" ─────────────────────
 
 assert.ok(
-  /export function setConsoleLogLevel/.test(src),
-  "setConsoleLogLevel must be exported so callers can opt into verbose logging",
+  /export type ConsoleLogLevel = LogLevel \| "none"/.test(src),
+  "ConsoleLogLevel type must include 'none' sentinel for TUI-safe mode",
 );
 
-// ── 3. writeToConsole has explicit case for each level ─────────────────────
+// ── 3. writeToConsole early-returns on "none" ─────────────────────────────
+
+assert.ok(
+  /function writeToConsole[\s\S]*?if \(_consoleMinLevel === "none"\) return/.test(src),
+  "writeToConsole must early-return when _consoleMinLevel is 'none'",
+);
+
+// ── 4. setConsoleLogLevel exists and accepts ConsoleLogLevel ──────────────
+
+assert.ok(
+  /export function setConsoleLogLevel\(level: ConsoleLogLevel\)/.test(src),
+  "setConsoleLogLevel must accept ConsoleLogLevel (LogLevel | 'none')",
+);
+
+// ── 5. writeToConsole has explicit case for each level ─────────────────────
 //   The old bug was: default case did nothing, so warn/info/debug were
 //   silently dropped. This regex catches that regression.
 
@@ -61,14 +81,14 @@ assert.deepEqual(
   `writeToConsole must have a case for every level. Found: ${caseLevels.join(", ")}. Empty default = silent drop bug.`,
 );
 
-// ── 4. setGlobalLogLevel still exported ────────────────────────────────────
+// ── 6. setGlobalLogLevel still exported (gates buffer) ────────────────────
 
 assert.ok(
   /export function setGlobalLogLevel/.test(src),
-  "setGlobalLogLevel must remain exported",
+  "setGlobalLogLevel must remain exported (gates in-memory buffer emit)",
 );
 
-// ── 5. warn routes to console.warn, error to console.error ────────────────
+// ── 7. warn routes to console.warn, error to console.error ────────────────
 
 const switchBody = switchBlock[1];
 assert.ok(
@@ -88,11 +108,21 @@ assert.ok(
   "'debug' case must call console.debug (same reasoning)",
 );
 
-// ── 6. Module-level state is annotated as such ────────────────────────────
+// ── 8. In-memory buffer is populated even at "none" console level ─────────
 
 assert.ok(
-  /Module state/.test(src),
-  "Module state section header should be present (state-ownership contract)",
+  /addToBuffer\(entry\);[\s\S]*?writeToConsole\(entry\)/.test(src),
+  "addToBuffer must be called BEFORE writeToConsole so the in-memory buffer is populated even when console writes are suppressed",
 );
 
-console.log("✅ logger.ts contract: _consoleMinLevel='warn', setConsoleLogLevel exported, all 4 levels routed.");
+assert.ok(
+  /export function getLogBuffer/.test(src),
+  "getLogBuffer must be exported (for /logs slash command or debugging)",
+);
+
+assert.ok(
+  /export function formatLogBuffer/.test(src),
+  "formatLogBuffer must be exported (for the /logs slash command)",
+);
+
+console.log("✅ logger.ts contract: _consoleMinLevel='none' (TUI-safe), ConsoleLogLevel includes 'none', all 4 levels routed, buffer always populated.");

@@ -22,6 +22,9 @@
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
+/** Sentinel: "no level writes to console." The in-memory buffer is still populated. */
+export type ConsoleLogLevel = LogLevel | "none";
+
 interface LogEntry {
   timestamp: number;
   level: LogLevel;
@@ -46,12 +49,28 @@ const _LEVEL_PRIORITY: Record<LogLevel, number> = {
   error: 3,
 };
 
+/** Priority for "none" - higher than any real level so nothing writes. */
+const _NONE_PRIORITY = 4;
+
 const _suppressedSources = new Set<string>();
 let _globalMinLevel: LogLevel = "info";
 let _globallySuppressed = false;
 
-/** Minimum level that writes to the process console. info/debug are TUI/buffer only. */
-let _consoleMinLevel: LogLevel = "warn";
+/** Minimum level that writes to the process console.
+ *  Default is "none" (nothing writes to console). pi is a TUI process:
+ *  writing to stdout/stderr from an extension handler corrupts the
+ *  TUI's cursor positioning. The native pi docs use console.error in
+ *  error paths, but for third-party extensions, the correct pattern is
+ *  to use ctx.ui.notify for user-facing messages and keep all
+ *  diagnostics in the in-memory buffer (retrievable via /logs).
+ *
+ *  Callers can lower this to "info" or "debug" for verbose tracing
+ *  (e.g., during a debugging session) - but be aware that doing so
+ *  will corrupt the TUI rendering for that session.
+ *
+ *  Use "none" (the default) for normal operation. The buffer is
+ *  always populated regardless of this setting. */
+let _consoleMinLevel: ConsoleLogLevel = "none";
 
 /** In-memory log buffer for the current session (last 200 entries) */
 const _logBuffer: LogEntry[] = [];
@@ -96,8 +115,9 @@ function formatConsole(entry: LogEntry): string {
 // ── Core sink ──────────────────────────────────────────────────────────────
 
 function writeToConsole(entry: LogEntry): void {
-  if (_LEVEL_PRIORITY[entry.level] < _LEVEL_PRIORITY[_consoleMinLevel]) {
-    return; // info/debug stay in buffer / TUI, don't spam the raw terminal
+  if (_consoleMinLevel === "none") return; // TUI-safe default: never write to console
+  if (_LEVEL_PRIORITY[entry.level] < _LEVEL_PRIORITY[_consoleMinLevel as LogLevel]) {
+    return; // below threshold
   }
   const line = formatConsole(entry);
   switch (entry.level) {
@@ -227,9 +247,13 @@ export function setGlobalLogLevel(level: LogLevel): void {
 }
 
 /** Set the minimum level that writes to the process console.
- *  Default is "warn" (error/warn visible; info/debug only in the in-memory buffer).
- *  Callers can lower this to "info" or "debug" for verbose tracing. */
-export function setConsoleLogLevel(level: LogLevel): void {
+ *  Default is "none" (nothing writes to console; the TUI is never
+ *  corrupted by stderr pollution from extensions). Lower to "warn" /
+ *  "info" / "debug" for verbose tracing during a debugging session
+ *  (be aware this will corrupt the TUI rendering while active).
+ *  The in-memory buffer is always populated regardless of this setting
+ *  - retrieve it via the /logs slash command or formatLogBuffer(). */
+export function setConsoleLogLevel(level: ConsoleLogLevel): void {
   _consoleMinLevel = level;
 }
 

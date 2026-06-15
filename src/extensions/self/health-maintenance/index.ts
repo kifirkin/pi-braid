@@ -13,6 +13,7 @@ import {
   updateConfig,
 } from "../../../lib/detection/degradation-detector.js";
 import { createLogger } from "../../../lib/core/logger.js";
+import { getLogBuffer, formatLogBuffer, clearLogBuffer, setConsoleLogLevel } from "../../../lib/core/logger.js";
 import {
   getMetacognitiveState,
   getRecommendation,
@@ -116,6 +117,62 @@ export default function healthMaintenanceExtension(pi: ExtensionAPI) {
           details: errorResult,
         };
       }
+    },
+  });
+
+  // ── /logs slash command ───────────────────────────────────────────────
+  // Retrieve the in-memory log buffer. By default console writes are
+  // suppressed (TUI-safe); the buffer is always populated and this is
+  // how the user (or agent) can read it. Subcommands:
+  //   /logs            - show last 50 entries
+  //   /logs N          - show last N entries
+  //   /logs clear      - clear the buffer
+  //   /logs level <X>  - set console level (none|error|warn|info|debug)
+  // The level command is for debugging only - setting anything other
+  // than "none" will corrupt the TUI rendering.
+  pi.registerCommand("logs", {
+    description: "Show/clear the in-memory log buffer (TUI-safe default: no console writes)",
+    handler: async (args: string | undefined, ctx) => {
+      const trimmed = (args ?? "").trim();
+      const parts = trimmed.split(/\s+/);
+      const sub = parts[0];
+
+      if (sub === "clear") {
+        clearLogBuffer();
+        ctx.ui.notify("Log buffer cleared", "info");
+        return;
+      }
+
+      if (sub === "level") {
+        const level = parts[1] as "none" | "error" | "warn" | "info" | "debug" | undefined;
+        if (!level || !["none", "error", "warn", "info", "debug"].includes(level)) {
+          ctx.ui.notify(
+            "Usage: /logs level <none|error|warn|info|debug>\nNote: anything other than 'none' will corrupt TUI rendering.",
+            "warning",
+          );
+          return;
+        }
+        setConsoleLogLevel(level);
+        ctx.ui.notify(
+          `Console log level set to '${level}'. ${level === "none" ? "TUI-safe." : "WARNING: this will corrupt the TUI rendering. Use /logs level none to restore."}`,
+          level === "none" ? "info" : "warning",
+        );
+        return;
+      }
+
+      const requested = sub ? parseInt(sub, 10) : 50;
+      const limit = Number.isFinite(requested) && requested > 0 ? Math.min(requested, 500) : 50;
+      const entries = getLogBuffer();
+      if (entries.length === 0) {
+        ctx.ui.notify("Log buffer is empty", "info");
+        return;
+      }
+      const slice = entries.slice(-limit);
+      const lines = slice.map(
+        (e) => `${new Date(e.timestamp).toISOString().slice(11, 23)} ${e.level.toUpperCase().padEnd(5)} [${e.source}] ${e.message}`,
+      );
+      const header = `Showing last ${slice.length} of ${entries.length} log entries (use /logs N to set limit, /logs clear to clear):`;
+      ctx.ui.notify([header, ...lines].join("\n"), "info");
     },
   });
 
