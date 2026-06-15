@@ -58,9 +58,7 @@ import type { MemoryStoresState, Episode } from "./types.js";
 import { retrieveByRUMS } from "./episodes.js";
 import {
   addHeuristicRule,
-  evolveHeuristic,
   getPrioritizedHeuristics,
-  getApplicableHeuristics,
   BUILTIN_HEURISTICS,
 } from "./heuristics.js";
 import { recordToolCall, getToolReliability } from "./tool-reliability.js";

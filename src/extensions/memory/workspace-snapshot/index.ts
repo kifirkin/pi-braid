@@ -21,7 +21,6 @@ import type { ExtensionAPI, ExtensionContext, AgentToolResult } from "@earendil-
 
 import {
   captureSnapshot,
-  listSnapshots,
   getSnapshot,
   diffSnapshot,
   restoreSnapshot,

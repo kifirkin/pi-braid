@@ -77,7 +77,7 @@ const healthMaintenanceSchema = Type.Object({
 export default function healthMaintenanceExtension(pi: ExtensionAPI) {
   startMetricsPersistence();
 
-  pi.on(SESSION_SHUTDOWN, async (event, ctx) => {
+  pi.on(SESSION_SHUTDOWN, async (_event, ctx) => {
     const state = getExtensionState(ctx, "health-maintenance", () => ({ saveTimer: null }));
     if (state.saveTimer) {
       clearInterval(state.saveTimer);

@@ -77,7 +77,6 @@ export function analyzeSession(ctx: any): AuditResult {
   const sm = ctx.sessionManager;
   const branch = sm.getBranch();
   const tree = sm.getTree();
-  const _currentLeafId = sm.getLeafId();
 
   let usage = { percent: 0, tokens: 0, contextWindow: 0 };
   try {

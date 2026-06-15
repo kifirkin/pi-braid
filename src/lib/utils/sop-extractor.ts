@@ -219,10 +219,6 @@ export async function extractSOP(input: ExtractionInput): Promise<ExtractedSOP> 
 
   // ── Strategic SOP (high-level) ────────────────────────────────────────
   // Describes WHAT to do at a strategy level
-  const _categorySummary = Object.entries(categories)
-    .sort((a, b) => b[1] - a[1])
-    .map(([cat, count]) => `${count}x ${cat}`)
-    .join(", ");
 
   const strategyParts: string[] = [`Use ${pattern} approach to ${task.toLowerCase()}`];
   if (uniqueTools.length > 0) {

@@ -20,8 +20,7 @@
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../state/extension-state.js";
-import { classify } from "../ai/text-classifier.js";
-import { CRITICS, STOP_WORDS } from "../ai/critic-registry.js";
+import { STOP_WORDS } from "../ai/critic-registry.js";
 import { nextId } from "../utils/id.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────

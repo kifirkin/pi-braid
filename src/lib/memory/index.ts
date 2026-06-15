@@ -175,7 +175,6 @@ export function getCognitiveMemory(): CognitiveMemory {
 
 export class CognitiveMemory {
   private memoryStore: CognitiveMemoryStore;
-  private _initialized: boolean = false;
 
   constructor() {
     this.memoryStore = { version: 1, memories: [], lastConsolidation: 0, turnCount: 0 };
@@ -183,7 +182,6 @@ export class CognitiveMemory {
 
   async init(): Promise<void> {
     this.memoryStore = await loadMemory();
-    this._initialized = true;
   }
 
   initialize(_storageDir?: string): void {

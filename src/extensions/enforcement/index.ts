@@ -10,7 +10,7 @@
  *   - signals.ts            (L1 enforcement signals + RepE contrast mode)
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerHandlers } from "./handler-registry.js";
 
 const log = createLogger("enforcement");

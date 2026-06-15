@@ -64,7 +64,6 @@ const MIN_SUCCESS_RATE_FOR_OVERUSE = 0.5;
 
 /** Build current session pattern from enforcement state */
 export function buildPattern(ctx: ExtensionContext): SessionPattern {
-  const _state = getState(ctx);
   // Get pattern from enforcement state if available
   const eState = hasExtensionState(ctx, "enforcement")
     ? getExtensionState(

@@ -87,7 +87,6 @@ async function checkContradiction(
 async function checkSupport(
 	claim: string,
 	context: string[],
-	threshold: number,
 	ctx: ExtensionContext,
 ): Promise<boolean> {
 	const contextText = context.join("\n\n---\n\n");
@@ -134,48 +133,11 @@ async function checkOverconfidence(
 	return issues;
 }
 
-async function checkDecompositionCoverage(
-	parentTask: string,
-	subtasks: string[],
-	ctx: ExtensionContext,
-): Promise<{
-	complete: boolean;
-	coverage: number;
-	gaps: string[];
-	coverageBySubtask: Array<{ subtask: string; covered: boolean }>;
-	suggestions: string[];
-}> {
-	try {
-		const result = await classify(
-			ctx,
-			CRITICS.decompositionCoverage.criteria,
-			{ parentTask, subtasks: subtasks.join("\n- ") },
-			{ maxTokens: 5, fallback: () => "no" },
-		);
-		// Binary yes/no answer. We don't try to extract specific gap strings
-		// from the LLM - those are inherently non-deterministic and the
-		// previous regex extraction was always falling through to the 0.5
-		// default. If the LLM says 'yes', coverage is full; if 'no', we
-		// surface a generic suggestion to ask the agent to enumerate gaps.
-		const complete = result.label === "yes";
-		return {
-			complete,
-			coverage: complete ? 1.0 : 0.5,
-			gaps: complete ? [] : ["LLM did not specify gaps; review the decomposition manually."],
-			coverageBySubtask: subtasks.map((s) => ({ subtask: s, covered: complete })),
-			suggestions: complete ? ["Coverage looks complete."] : ["Enumerate which parent features are not covered."],
-		};
-	} catch (err) {
-		log.debug(`checkDecompositionCoverage failed: ${err}`);
-		return {
-			complete: false,
-			coverage: 0.5,
-			gaps: [],
-			coverageBySubtask: [],
-			suggestions: ["Could not verify decomposition coverage."],
-		};
-	}
-}
+// checkDecompositionCoverage was previously used by verify.ts for
+// decomposition coverage. It is no longer called (the verify_decomposition
+// tool now uses verify_claim with action=decomposition, which goes
+// through claimContradiction + claimSupported). Keeping the function
+// would be dead code. Removed.
 
 // ── Tool factory ──────────────────────────────────────────────────────────
 
@@ -209,7 +171,6 @@ export function registerClaimVerificationTools(pi: ExtensionAPI): void {
 					throw new Error("verify_claim requires 'claim' (string) and 'context' (string array)");
 				}
 				const claimId = p.claimId ?? `claim-${Date.now()}`;
-				const threshold = p.threshold ?? 0.5;
 				const issues: Record<string, unknown>[] = [];
 
 				// Triple-critic checks in parallel: contradiction + support + overconfidence
@@ -222,7 +183,7 @@ export function registerClaimVerificationTools(pi: ExtensionAPI): void {
 				}
 
 				const [supportedSettled, overconfidenceIssuesSettled] = await Promise.allSettled([
-					checkSupport(p.claim, p.context, threshold, ctx!),
+					checkSupport(p.claim, p.context, ctx!),
 					checkOverconfidence(p.claim, ctx!),
 				]);
 				const supported = supportedSettled.status === "fulfilled" ? supportedSettled.value : false;

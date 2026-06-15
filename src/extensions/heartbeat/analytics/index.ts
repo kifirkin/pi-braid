@@ -14,10 +14,7 @@ import { resetCriticStats } from "../../../lib/ai/critic-stats.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 import { existsSync, mkdirSync } from "node:fs";
 import { METRICS_FILE, METRICS_DIR } from "../../../lib/config/braid-paths.js";
-import type {
-  ExtensionAPI,
-  ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { safeSessionManager } from "../../../lib/state/extension-state.js";
 import { emitSignal } from "../../../lib/reasoning/belief-policy-engine.js";
 import { eventBus } from "../../../lib/events/event-bus.js";

@@ -13,7 +13,7 @@ import * as timerMod from "../../scheduling/timer/index.js";
 const log = createLogger("enforcement:session-compact");
 
 export function registerSessionCompactHandler(pi: ExtensionAPI): void {
-  onEvent(pi, "session_compact", async (event: any, ctx: ExtensionContext) => {
+  onEvent(pi, "session_compact", async (_event: any, ctx: ExtensionContext) => {
     if (!getState(ctx).enforcementActive) return;
 
     const compactTurn = getState(ctx).currentTurn;

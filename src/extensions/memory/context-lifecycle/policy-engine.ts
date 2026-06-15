@@ -252,7 +252,7 @@ export interface DensityPolicyProposal {
     confidence?: number;
 }
 
-export function evaluateDensityPolicies(ctx: ExtensionContext, signals: SemanticSignal[]): DensityPolicyProposal[] {
+export function evaluateDensityPolicies(_ctx: ExtensionContext, signals: SemanticSignal[]): DensityPolicyProposal[] {
   const proposals: DensityPolicyProposal[] = [];
 
   for (const signal of signals) {

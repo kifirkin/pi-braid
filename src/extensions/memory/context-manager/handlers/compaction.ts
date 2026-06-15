@@ -390,7 +390,6 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
             compressionLevel,
           );
           if (scStats.messagesOut < scStats.messagesIn) {
-            const _saved = scStats.messagesIn - scStats.messagesOut;
             log.info(
               `[context-manager] Semantic compress[${compressionLevel}]: ` +
                 `${scStats.messagesIn}→${scStats.messagesOut} msgs ` +

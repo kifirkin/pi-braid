@@ -536,7 +536,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
   };
 
   // Start polling on session_start so we have a sessionId available
-  pi.on(SESSION_START, (event: any, ctx: unknown) => {
+  pi.on(SESSION_START, (_event: any, ctx: unknown) => {
     const p = ensurePoller(ctx);
     p.setPiRef(pi);
     p.start();

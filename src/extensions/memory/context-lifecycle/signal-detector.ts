@@ -60,18 +60,6 @@ function hashContent(text: string): string {
 
 // ── Topic Detection ─────────────────────────────────────────────────────────
 
-const TOPIC_KEYWORDS: Record<string, Set<string>> = {
-  // Kept for backward compat but unused - see detectTopic() below.
-  implementation: new Set(["implement", "write", "create", "add", "build", "code", "function"]),
-  debugging: new Set(["bug", "fix", "error", "crash", "debug", "issue", "broken"]),
-  refactoring: new Set(["refactor", "rename", "restructure", "clean", "improve"]),
-  testing: new Set(["test", "spec", "verify", "assert", "coverage"]),
-  exploration: new Set(["explore", "find", "search", "grep", "read", "discover"]),
-  documentation: new Set(["doc", "comment", "readme", "explain", "describe"]),
-  planning: new Set(["plan", "design", "architecture", "approach", "strategy"]),
-  verification: new Set(["verify", "check", "validate", "confirm"]),
-};
-
 /**
  * Classify the current work topic via CRITICS.topicClassification.
  * Replaces the previous hardcoded TOPIC_KEYWORDS map (8 topics × 5-8

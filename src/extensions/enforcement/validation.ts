@@ -29,7 +29,6 @@ function checkSemanticRepetition(
   prevSeqs: string[][],
   warnThreshold: number,
 ): string | null {
-  const _uniqueInSeq = new Set(currentTools);
   // Single-tool repetition: "read,read", "bash,bash"
   // These are NOT flagged as issues since read can hit different files,
   // bash can run different commands. Only flag if same PATH is targeted
