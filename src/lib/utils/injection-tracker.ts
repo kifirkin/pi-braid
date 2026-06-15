@@ -208,25 +208,38 @@ export function sendTrackedMessage(
     source: string;
     steer?: boolean;
   } = { type: "other", source: "unknown" },
+  /**
+   * `bypassFloodCap: true` skips the per-source / per-priority flood
+   * protection in `turn-dedup.tryWhisper`. Use this ONLY for
+   * user/agent-contracted events where dropping the message is a
+   * correctness bug: timer fires (user scheduled, post-compaction
+   * resume), session-shutdown warnings, hard errors. The cap still
+   * applies to other system whispers (enforcement, dreamer, heartbeats).
+   */
+  bypass: { bypassFloodCap?: boolean } = {},
 ): void {
   // Per-turn whisper cap (flood protection). Critical paths always pass;
   // other priorities are capped per WHISPER_CAPS in turn-dedup.ts.
   // We track the suppressed whisper in the injection log so users can see
   // it was filtered (not silently lost).
-  const priority = priorityFromSource(injectionMeta.source, options);
-  if (!tryWhisper(priority, injectionMeta.source)) {
-    trackInjection({
-      type: injectionMeta.type,
-      source: injectionMeta.source,
-      content: extractText(params.content),
-      display: false,
-      steer: false,
-      turn: 0,
-    });
-    log.debug(
-      `[flood-cap] ${priority} whisper from ${injectionMeta.source} suppressed`,
-    );
-    return;
+  // bypassFloodCap:true skips the cap entirely - reserved for
+  // user/agent-contracted events (see JSDoc).
+  if (!bypass.bypassFloodCap) {
+    const priority = priorityFromSource(injectionMeta.source, options);
+    if (!tryWhisper(priority, injectionMeta.source)) {
+      trackInjection({
+        type: injectionMeta.type,
+        source: injectionMeta.source,
+        content: extractText(params.content),
+        display: false,
+        steer: false,
+        turn: 0,
+      });
+      log.debug(
+        `[flood-cap] ${priority} whisper from ${injectionMeta.source} suppressed`,
+      );
+      return;
+    }
   }
 
   const text = extractText(params.content);

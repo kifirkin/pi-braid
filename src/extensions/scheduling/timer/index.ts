@@ -346,8 +346,13 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
   // time for context; wake: false uses the shorter form.
   if (timer.wake === true) {
     const text = `[TIMER FIRED - ${elapsedSec}s elapsed] ${timer.reason} - Resume the task.`;
+    // sendTrackedMessage (unified delivery path). bypassFloodCap ensures
+    // the timer fire reaches the agent even when 2+ timer fires already
+    // happened in this turn (per-source cap would otherwise drop this one).
+    // trackInjection records the wake for observability.
     try {
-      pi.sendMessage(
+      sendTrackedMessage(
+        pi,
         {
           customType: "timer-fire",
           content: [{ type: "text" as const, text }],
@@ -362,12 +367,18 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
           },
         },
         { triggerTurn: true },
+        { type: "heartbeat", source: "timer/fire" },
+        { bypassFloodCap: true },
       );
     } catch (e) {
       log.warn(`[timer] whisper-wake delivery failed: ${(e as Error).message}`);
     }
   } else {
     const text = `[TIMER FIRED] ${timer.reason}`;
+    // sendTrackedMessage (unified delivery path). bypassFloodCap ensures
+    // the silent reminder reaches the agent even when 2+ timer fires
+    // already happened in this turn. See wake:true branch above for the
+    // rationale.
     try {
       sendTrackedMessage(
         pi,
@@ -385,6 +396,7 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
         },
         { deliverAs: "steer", triggerTurn: false },
         { type: "heartbeat", source: "timer/fire" },
+        { bypassFloodCap: true },
       );
     } catch (e) {
       log.warn(`[timer] steer delivery failed (agent may be mid-turn): ${(e as Error).message}`);
