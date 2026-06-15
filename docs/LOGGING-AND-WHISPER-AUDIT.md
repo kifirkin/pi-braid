@@ -3,18 +3,26 @@
 **Date:** 2026-06-15 (revised after user correction)
 **Scope:** All `console.*`, `log.*`, `ctx.ui.notify`, `sendTrackedMessage`, and `pi.sendMessage` call sites in `src/`. Plus the fix for the "Branch X entries deep" warning.
 
-## TL;DR — corrected
+## TL;DR — corrected (2026-06-15)
 
 The audience model has **two** consumers, not three:
 
 | Audience | Sees | Delivery channels |
 |---|---|---|
-| **User** (the human in the TUI) | Terminal scrollback + structured notifications | `console.*` (stdout/stderr), `log.*` (which wraps `console.*`), `ctx.ui.notify` |
+| **User** (the human in the TUI) | TUI notifications, persistent UI, in-memory log buffer | `ctx.ui.notify`, `ctx.ui.setStatus`, `ctx.ui.setWidget`, `/logs` retrieval. `console.*` and `log.*` are **suppressed by default** (TUI-safe mode). |
 | **Agent** (the LLM in its next turn) | Injected messages, exactly as if the system said them | `sendTrackedMessage` — the only path |
 
-There is no "operator" persona. The "user" sees everything in their TUI, including raw `console.log` output from extensions. The `createLogger` abstraction is a prefix-and-timestamp wrapper around `console.*`; same audience, slightly different idiom.
+### TUI corruption fix (commit `2bdb000f`)
 
-The right way to "log" for the user is `ctx.ui.notify` (structured, severity-tagged, typically appears as a TUI notification that doesn't pollute scrollback the way `console.log` does). `log.*` is acceptable for freeform diagnostics the user will scroll back through, but the choice between `log.*` and `ctx.ui.notify` is about **delivery idiom**, not about audience.
+The user's deeper concern: `console.*` writes from extension handlers corrupt the TUI's cursor positioning. pi is a TUI process; any stdout/stderr write from an event handler runs while the TUI is in an indeterminate render state.
+
+**Fix:** `_consoleMinLevel` defaults to `"none"` (a new sentinel). Nothing writes to console by default. The in-memory buffer is always populated regardless. The `/logs` slash command (in health-maintenance) retrieves the buffer. Subcommands:
+- `/logs` — show last 50 entries
+- `/logs N` — show last N entries (capped at 500)
+- `/logs clear` — clear the buffer
+- `/logs level <X>` — set console level for debug (will corrupt TUI)
+
+There is no "operator" persona. The "user" sees everything in their TUI, but the in-memory buffer is the recommended channel for diagnostics. `createLogger` is a thin wrapper that pipes to console when configured; with the new "none" default, the TUI is never corrupted.
 
 The ONLY way to send a message to the agent is `sendTrackedMessage`. The only direct `pi.sendMessage(...)` calls in `src/` are inside `sendTrackedMessage` itself (`src/lib/utils/injection-tracker.ts:278, 285`). All 37 whisper callsites in extensions go through `sendTrackedMessage`. This is the correct architecture.
 
@@ -51,10 +59,12 @@ The new message is conversational and clearly an *invitation*, not a directive:
 
 When adding a new log/notify/whisper:
 
-1. **`ctx.ui.notify`** — use for user-facing notifications tied to user-initiated actions. The user pressed Enter on a tool; tell them what happened. Severity levels: `info` / `warning` / `error`. The TUI typically shows these as toast notifications or as inline status.
-2. **`console.*` / `log.*`** — use for freeform diagnostics the user might scroll back to read during a debug session. `log.*` adds a `[source-name]` prefix and an ISO timestamp; same audience, slightly easier to grep. Don't put "consider X" / "you should Y" advice here — the agent can't see scrollback.
-3. **`sendTrackedMessage`** — the ONLY path for messages the agent will read on its next turn. Use for any actionable advice, nudge, or course correction. Set `bypassFloodCap: true` ONLY for events that are correctness-critical (timer fire wake-ups, post-compaction resume) where dropping the message is a bug.
-4. **Never** call `pi.sendMessage` directly. Always go through `sendTrackedMessage` so the per-source rate cap, re-entry depth guard, and tracking markers all work.
+1. **`ctx.ui.notify(msg, severity)`** — use for user-facing notifications tied to user-initiated actions. The user pressed Enter on a tool; tell them what happened. Severity levels: `info` / `warning` / `error`. The TUI typically shows these as toast notifications or as inline status. **This is the correct native API for user-facing messages.**
+2. **`ctx.ui.setStatus(key, text)` / `ctx.ui.setWidget(key, lines)`** — use for persistent state the user should see across renders (footer indicator, content above/below editor). For ongoing operations ("compaction in progress", "X nudges suppressed this session").
+3. **`log.*` / in-memory buffer + `/logs`** — use for freeform diagnostics. The buffer is always populated. By default nothing writes to console (TUI-safe). To read the buffer, the user runs `/logs` (or the agent invokes the corresponding tool). Do not put "consider X" / "you should Y" advice here — the agent can't see scrollback.
+4. **`console.*`** — **suppressed by default** in third-party extensions. Will corrupt TUI rendering. Use only via `/logs level <X>` for explicit debug sessions.
+5. **`sendTrackedMessage`** — the ONLY path for messages the agent will read on its next turn. Use for any actionable advice, nudge, or course correction. Set `bypassFloodCap: true` ONLY for events that are correctness-critical (timer fire wake-ups, post-compaction resume) where dropping the message is a bug.
+6. **Never** call `pi.sendMessage` directly. Always go through `sendTrackedMessage` so the per-source rate cap, re-entry depth guard, and tracking markers all work.
 
 ## Survey of all `log.warn` / `log.info` in context-manager (audited)
 
@@ -80,13 +90,16 @@ The `[Critical]` and `[Emergency]` prefixes are intentional — these tell the u
 
 ## What `log.*` is for, and when to use `ctx.ui.notify` instead
 
-`log.warn` / `log.error` → user scrollback, easy to grep, hard to miss in a debug session. Best for: "I made a decision the user might want to know about" (action records, escalations, internal state).
+`log.warn` / `log.error` → in-memory buffer (by default console writes are suppressed). Use `/logs` to retrieve. Best for: "I made a decision the user might want to know about" (action records, escalations, internal state).
 
 `ctx.ui.notify(msg, severity)` → TUI notification, sometimes ephemeral. Best for: "the user invoked a tool and wants to see the outcome" (tool result confirmations).
 
 A reasonable rewrite would migrate "tool result confirmations" from `log.info` to `ctx.ui.notify`. The reverse migration (turning notifications into logs) is rarely correct because the user can't see a `log.info` line as easily as a TUI notification.
 
-The `createLogger` abstraction itself is questionable — the native pi extension model uses `console.log` directly in its examples (see `docs/extensions.md`). Keeping `log.*` as a thin wrapper is fine, but new code should reach for `console.log` (or `ctx.ui.notify` for user-facing) without a strong reason to use `log.*`.
+The `createLogger` abstraction itself is questionable — the native pi extension model uses `console.log` directly in its examples (see `docs/extensions.md`). Keeping `log.*` as a thin wrapper is fine, but the correct pattern for **new** code is:
+- For user-facing information tied to an action: `ctx.ui.notify` directly
+- For diagnostics: let them go through `log.*` (in-memory buffer); retrieve with `/logs` when needed
+- For persistent state: `ctx.ui.setStatus` / `ctx.ui.setWidget`
 
 ## Architecture verification: `pi.sendMessage` direct calls
 

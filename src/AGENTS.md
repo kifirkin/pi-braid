@@ -94,14 +94,16 @@ There are two audiences. Pick the channel that matches:
 
 | Audience | Sees | Channels |
 |---|---|---|
-| **User** (the human in the TUI) | Terminal scrollback + TUI notifications | `console.*`, `log.*` (prefix-and-timestamp wrapper around `console.*`), `ctx.ui.notify` |
+| **User** (the human in the TUI) | TUI notifications, persistent UI, in-memory log buffer (via `/logs`) | `ctx.ui.notify`, `ctx.ui.setStatus`, `ctx.ui.setWidget`, `log.*` (in-memory only) |
 | **Agent** (the LLM in its next turn) | Injected messages, exactly as if the system said them | `sendTrackedMessage` — the **only** path |
 
 Rules:
 
-1. **`ctx.ui.notify(msg, severity)`** — use for user-facing notifications tied to user-initiated actions (tool result confirmations). Severity: `info` / `warning` / `error`. Appears as a TUI notification, doesn't pollute scrollback the way `console.log` does.
-2. **`console.*` / `log.*`** — use for freeform diagnostics the user might scroll back to read during a debug session. **Do NOT** put "consider X" / "you should Y" advice here — the agent cannot read scrollback. The `createLogger` abstraction is a thin wrapper; new code can use `console.log` directly.
-3. **`sendTrackedMessage(pi, params, options, meta, bypass?)`** — the **only** path for messages the agent will read on its next turn. Set `bypassFloodCap: true` ONLY for correctness-critical wake-ups (timer fires, post-compaction resume, overflow recovery exhausted) where dropping the message is a bug. The flood cap exists because some sources (context-manager rotation nudge, deep-branch whisper) can otherwise fire every turn.
-4. **Never** call `pi.sendMessage(...)` directly outside `src/lib/utils/injection-tracker.ts`. All 37 whisper sites in extensions go through `sendTrackedMessage`; the only direct `pi.sendMessage` calls in `src/` are inside `sendTrackedMessage` itself.
+1. **`ctx.ui.notify(msg, severity)`** — use for user-facing notifications tied to user-initiated actions (tool result confirmations). Severity: `info` / `warning` / `error`. Appears as a TUI notification. **This is the correct native API for user-facing messages.**
+2. **`ctx.ui.setStatus(key, text)` / `ctx.ui.setWidget(key, lines)`** — use for persistent state the user should see across renders. Footer indicator, content above/below editor. For ongoing operations ("compaction in progress", "X nudges suppressed").
+3. **`log.*`** — in-memory buffer by default. Nothing writes to console (TUI-safe). Use `/logs` to retrieve. Do not put "consider X" / "you should Y" advice here — the agent cannot read scrollback.
+4. **`console.*`** — **suppressed by default** in third-party extensions. Will corrupt TUI rendering. Use only via `/logs level <X>` for explicit debug sessions.
+5. **`sendTrackedMessage(pi, params, options, meta, bypass?)`** — the **only** path for messages the agent will read on its next turn. Set `bypassFloodCap: true` ONLY for correctness-critical wake-ups (timer fires, post-compaction resume, overflow recovery exhausted).
+6. **Never** call `pi.sendMessage(...)` directly outside `src/lib/utils/injection-tracker.ts`.
 
-Common anti-pattern: putting actionable advice in `log.warn`. The agent cannot see scrollback, so the advice is invisible to the audience that can act on it. If the message contains "consider X" or "you should Y" or names a tool the agent can call, it belongs in `sendTrackedMessage`, not in `log.*`.
+Common anti-pattern: putting actionable advice in `log.warn`. The agent cannot see scrollback. If the message contains "consider X" or names a tool the agent can call, it belongs in `sendTrackedMessage`.
