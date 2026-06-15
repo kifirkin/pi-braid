@@ -64,6 +64,17 @@ function getState(ctx: ExtensionContext): LoopDetectionState {
  * and passes it to classify() with CRITICS.toolLoopDetected.
  * The heuristic fallback (toolLoopFallback) handles the LLM-unavailable case.
  */
+/**
+ * Sentinel return value when the loop detector is offline (the LLM
+ * classify() call failed at all tiers). Distinct from the null
+ * "not in a loop" return so the consumer can branch on it.
+ *
+ * Same anti-pattern as input-polisher 9966c8ad, topic-drift
+ * (b25006f3), and sycophancy (b25006f3): when the classifier is
+ * down, never silently default to "no problem."
+ */
+export const LOOP_DETECTOR_OFFLINE = "__loop_detector_offline__" as const;
+
 async function detectLoop(state: LoopDetectionState, ctx: ExtensionContext): Promise<string | null> {
   if (state.history.length < 4) return null;
 
@@ -78,8 +89,9 @@ async function detectLoop(state: LoopDetectionState, ctx: ExtensionContext): Pro
     })
     .join("\n");
 
+  let result: Awaited<ReturnType<typeof classify>> | null = null;
   try {
-    const result = await classify(
+    result = await classify(
       ctx,
       CRITICS.toolLoopDetected.criteria,
       { toolSequences: toolSequences.slice(0, 2000) },
@@ -99,6 +111,19 @@ async function detectLoop(state: LoopDetectionState, ctx: ExtensionContext): Pro
       // Extract the repeating tools from the last turn
       const lastTurnTools = recent[recent.length - 1]?.tools ?? [];
       return lastTurnTools.join(", ") || "unknown tools";
+    }
+
+    // Detect the "classifier failed" case. The LLM could not produce a
+    // usable answer; the agent might be in a loop and we just can't
+    // see it. Return the LOOP_DETECTOR_OFFLINE sentinel so the consumer
+    // can emit a "detector offline" steer instead of the usual
+    // "no loop detected" silent return.
+    if (result.tier === "failed") {
+      log.warn(
+        `[turn-outcome] Loop detector classifier unavailable ` +
+          `(tier=failed, latency=${result.latencyMs}ms). Run /logs level info for details.`,
+      );
+      return LOOP_DETECTOR_OFFLINE;
     }
   } catch {
     // classify() handles errors internally
@@ -146,6 +171,42 @@ export default function turnOutcomeExtension(pi: ExtensionAPI): void {
     // Detect loop via triple-critic
     const details = await detectLoop(state, ctx);
     if (!details) return;
+
+    // Handle the "loop detector offline" case. When the LLM classify()
+    // call failed at all tiers, the agent might be in a loop but the
+    // detector can't see it. Emit a softer "detector offline" steer
+    // (no specific tool names, just the warning) so the agent knows
+    // to be cautious. Cooldown still applies so we don't spam.
+    if (details === LOOP_DETECTOR_OFFLINE) {
+      const lastFiredOffline = state.lastFired["loop-detector-offline"] ?? 0;
+      const currentTurnOffline = state.history.length;
+      if (currentTurnOffline - lastFiredOffline < LOOP_COOLDOWN_TURNS) return;
+      state.lastFired["loop-detector-offline"] = currentTurnOffline;
+
+      log.info(`[turn-outcome] Loop detector offline; sending soft-warning steer`);
+      const offlineMessage =
+        `## Loop Detector Offline\n\n` +
+        `The loop-detection classifier is unavailable this turn, so this check could not run normally. ` +
+        `If you are in a repetitive loop, this extension cannot detect it. ` +
+        `Please self-monitor: if you notice yourself calling the same tools with the same results ` +
+        `for several turns, use \`think()\` to re-evaluate your approach, or consider \`context_archive\` ` +
+        `to checkpoint your work.`;
+      try {
+        sendTrackedMessage(
+          pi,
+          {
+            customType: "turn-outcome",
+            content: [{ type: "text" as const, text: offlineMessage }],
+            display: true,
+          },
+          { deliverAs: "steer", triggerTurn: false },
+          { type: "enforcement", source: "turn-outcome/loop-detector-offline" },
+        );
+      } catch {
+        /* non-fatal */
+      }
+      return;
+    }
 
     // Check cooldown
     const lastFired = state.lastFired["tool-loop"] ?? 0;
