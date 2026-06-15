@@ -17,7 +17,6 @@
 import type {
   ExtensionAPI,
   ToolDefinition,
-  ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { nextId } from "../../../lib/utils/id.js";
 import { createLogger } from "../../../lib/core/logger.js";
@@ -240,7 +239,6 @@ class TimerPoller {
 
   constructor(
     private sessionId: string,
-    private getCtx: () => ExtensionContext | undefined,
   ) {}
 
   setPiRef(pi: ExtensionAPI): void {
@@ -530,7 +528,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
       const sid = getSessionId(ctx);
       sessionId = sid;
       sessionIdResolved = true;
-      poller = new TimerPoller(sid, () => ctx as ExtensionContext | undefined);
+      poller = new TimerPoller(sid);
     }
     return poller;
   };

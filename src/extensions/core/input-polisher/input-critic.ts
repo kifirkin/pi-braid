@@ -61,8 +61,8 @@ export async function critiqueInput(text: string, ctx: ExtensionContext): Promis
 			CRITICS.inputCodeHeavy.criteria,
 			{ text: truncated },
 			{
-				maxTokens: 5,
-				timeoutMs: 5000,
+				maxTokens: 10,
+				timeoutMs: 10000,
 				fallback: () => CRITICS.inputCodeHeavyFallback(text),
 			},
 		),
@@ -71,8 +71,8 @@ export async function critiqueInput(text: string, ctx: ExtensionContext): Promis
 			CRITICS.inputWellWritten.criteria,
 			{ text: truncated },
 			{
-				maxTokens: 5,
-				timeoutMs: 5000,
+				maxTokens: 10,
+				timeoutMs: 10000,
 				tierPolicy: "always-llm" as const,
 			},
 		),
@@ -81,8 +81,8 @@ export async function critiqueInput(text: string, ctx: ExtensionContext): Promis
 			CRITICS.inputClarity.criteria,
 			{ text: truncated },
 			{
-				maxTokens: 5,
-				timeoutMs: 5000,
+				maxTokens: 10,
+				timeoutMs: 10000,
 				tierPolicy: "always-llm" as const,
 			},
 		),
@@ -91,8 +91,8 @@ export async function critiqueInput(text: string, ctx: ExtensionContext): Promis
 			CRITICS.inputAmbiguity.criteria,
 			{ text: truncated },
 			{
-				maxTokens: 5,
-				timeoutMs: 5000,
+				maxTokens: 10,
+				timeoutMs: 10000,
 				tierPolicy: "always-llm" as const,
 			},
 		),
