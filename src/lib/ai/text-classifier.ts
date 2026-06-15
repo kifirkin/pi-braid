@@ -168,7 +168,13 @@ export async function classify(
         latencyMs: latency,
       };
     }
-    log.warn("[text-classifier] TIER 2 failed (utility model error), falling to TIER 3");
+    // The actual error was already logged at debug level by tryModelCall.
+    // Surface a stable WARN so the operator sees TIER-2 failure even at
+    // /logs level none (the WARN is the user-visible signal). Include
+    // the model id so the user can tell which model is failing.
+    log.warn(
+      `[text-classifier] TIER 2 failed (utility model '${utilityModel.id}'), falling to TIER 3. Run /logs level info for the actual error.`,
+    );
   }
 
   // ── Tier 3: Session model ───────────────────────────────────────────────

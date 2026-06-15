@@ -37,6 +37,46 @@ const RATE_LIMIT_COOLDOWN_MS = 60_000;
 /** Track the cooldown expiration deadline. */
 let rateLimitCooldownUntil = 0;
 
+// ── Per-model concurrency limiter ────────────────────────────────────────────
+
+/** Max concurrent in-flight LLM calls per model. Provider-side rate
+ *  limits are typically expressed as requests-per-second or concurrent-
+ *  connections; serializing bursts through a small pool prevents 4
+ *  parallel classify() calls (e.g., input-critic's 4-way Promise.allSettled)
+ *  from triggering rate-limits. The default of 2 means at most 2 calls
+ *  to a given model are in-flight at any time; the rest queue. */
+const MAX_CONCURRENT_PER_MODEL = 2;
+
+/** Per-model semaphore: active count + waiters. */
+type ModelLock = { active: number; waiters: Array<() => void> };
+const _modelLocks = new Map<string, ModelLock>();
+
+async function acquireModelSlot(modelId: string): Promise<void> {
+  let lock = _modelLocks.get(modelId);
+  if (!lock) {
+    lock = { active: 0, waiters: [] };
+    _modelLocks.set(modelId, lock);
+  }
+  if (lock.active < MAX_CONCURRENT_PER_MODEL) {
+    lock.active++;
+    return;
+  }
+  return new Promise<void>((resolve) => {
+    lock!.waiters.push(() => {
+      lock!.active++;
+      resolve();
+    });
+  });
+}
+
+function releaseModelSlot(modelId: string): void {
+  const lock = _modelLocks.get(modelId);
+  if (!lock) return;
+  lock.active = Math.max(0, lock.active - 1);
+  const next = lock.waiters.shift();
+  if (next) next();
+}
+
 // ── Options ────────────────────────────────────────────────────────────────────
 
 export interface LlmCallOptions {
@@ -97,97 +137,106 @@ export async function callLlm(
     messages: [{ role: "user", content: userPrompt, timestamp: Date.now() }],
   };
 
-  for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
-    // ── circuit breaker re-check inside retry loop ──
-    if (rateLimitCooldownUntil > 0 && Date.now() < rateLimitCooldownUntil) {
-      log.warn(`Skipping retry ${attempt} - rate-limit cooldown active`);
-      return { error: "Rate-limit cooldown active" };
-    }
+  // ── per-model concurrency limiter: acquire ONCE at function entry, release in finally ──
+  // (One slot per callLlm invocation, not per retry - otherwise retries could
+  // pile up beyond MAX_CONCURRENT_PER_MODEL.)
+  await acquireModelSlot(model.id);
 
-    // Use AbortSignal for timeout instead of Promise.race - avoids orphaned timer
-    const timeoutController = new AbortController();
-    const timeoutId = setTimeout(
-      () => timeoutController.abort(new Error("LLM call timeout")),
-      timeoutMs,
-    );
+  try {
+    for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+      // ── circuit breaker re-check inside retry loop ──
+      if (rateLimitCooldownUntil > 0 && Date.now() < rateLimitCooldownUntil) {
+        log.warn(`Skipping retry ${attempt} - rate-limit cooldown active`);
+        return { error: "Rate-limit cooldown active" };
+      }
 
-    // Combine external signal with timeout signal
-    const combinedSignal = signal
-      ? combineSignals(signal, timeoutController.signal)
-      : timeoutController.signal;
+      // Use AbortSignal for timeout instead of Promise.race - avoids orphaned timer
+      const timeoutController = new AbortController();
+      const timeoutId = setTimeout(
+        () => timeoutController.abort(new Error("LLM call timeout")),
+        timeoutMs,
+      );
 
-    try {
-      const result = await completeSimple(model as Model<Api>, context, {
-        apiKey,
-        maxTokens,
-        temperature,
-        maxRetries: sdkMaxRetries,
-        signal: combinedSignal,
-      });
+      // Combine external signal with timeout signal
+      const combinedSignal = signal
+        ? combineSignals(signal, timeoutController.signal)
+        : timeoutController.signal;
 
-      clearTimeout(timeoutId);
+      try {
+        const result = await completeSimple(model as Model<Api>, context, {
+          apiKey,
+          maxTokens,
+          temperature,
+          maxRetries: sdkMaxRetries,
+          signal: combinedSignal,
+        });
 
-      if (result.errorMessage) {
-        if (attempt <= maxRetries && isTransientError(result.errorMessage)) {
-          const delay = backoffDelay(attempt);
-          log.warn(
-            `LLM transient error (attempt ${attempt}/${maxRetries + 1}), ` +
-              `retrying in ${delay}ms: ${result.errorMessage}`,
-          );
+        clearTimeout(timeoutId);
 
-          if (isRateLimitError(result.errorMessage)) {
-            rateLimitCooldownUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+        if (result.errorMessage) {
+          if (attempt <= maxRetries && isTransientError(result.errorMessage)) {
+            const delay = backoffDelay(attempt);
+            log.warn(
+              `LLM transient error (attempt ${attempt}/${maxRetries + 1}), ` +
+                `retrying in ${delay}ms: ${result.errorMessage}`,
+            );
+
+            if (isRateLimitError(result.errorMessage)) {
+              rateLimitCooldownUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+            }
+
+            await sleep(delay);
+            continue;
           }
 
+          // Non-retryable or exhausted - log and return
+          if (isRateLimitError(result.errorMessage)) {
+            rateLimitCooldownUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+            log.warn(
+              `LLM rate-limited, giving up (cooldown ${RATE_LIMIT_COOLDOWN_MS}ms): ${result.errorMessage}`,
+            );
+          } else {
+            log.error("LLM error:", result.errorMessage);
+          }
+          return { error: result.errorMessage };
+        }
+
+        // Success - extract text content
+        const textContent = result.content.filter(
+          (c): c is { type: "text"; text: string } => c.type === "text",
+        );
+        const text = textContent.length > 0 ? textContent[0].text : "";
+
+        return { text };
+      } catch (err) {
+        clearTimeout(timeoutId);
+        const message = err instanceof Error ? err.message : String(err);
+        const isTimeout =
+          message.includes("timeout") ||
+          message.includes("Timed") ||
+          (err instanceof Error && err.name === "AbortError");
+        if (attempt <= maxRetries && (isTimeout || isTransientError(message))) {
+          const delay = backoffDelay(attempt);
+          log.warn(
+            `LLM error (attempt ${attempt}/${maxRetries + 1}), ` +
+              `retrying in ${delay}ms: ${message}`,
+          );
           await sleep(delay);
           continue;
         }
-
-        // Non-retryable or exhausted - log and return
-        if (isRateLimitError(result.errorMessage)) {
-          rateLimitCooldownUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
-          log.warn(
-            `LLM rate-limited, giving up (cooldown ${RATE_LIMIT_COOLDOWN_MS}ms): ${result.errorMessage}`,
-          );
-        } else {
-          log.error("LLM error:", result.errorMessage);
-        }
-        return { error: result.errorMessage };
-      }
-
-      // Success - extract text content
-      const textContent = result.content.filter(
-        (c): c is { type: "text"; text: string } => c.type === "text",
-      );
-      const text = textContent.length > 0 ? textContent[0].text : "";
-
-      return { text };
-    } catch (err) {
-      clearTimeout(timeoutId);
-      const message = err instanceof Error ? err.message : String(err);
-      const isTimeout =
-        message.includes("timeout") ||
-        message.includes("Timed") ||
-        (err instanceof Error && err.name === "AbortError");
-      if (attempt <= maxRetries && (isTimeout || isTransientError(message))) {
-        const delay = backoffDelay(attempt);
-        log.warn(
-          `LLM error (attempt ${attempt}/${maxRetries + 1}), ` +
-            `retrying in ${delay}ms: ${message}`,
+        log.error(
+          isTimeout
+            ? `LLM call timed out after ${maxRetries + 1} attempts`
+            : `LLM call failed: ${message}`,
         );
-        await sleep(delay);
-        continue;
+        return { error: message };
       }
-      log.error(
-        isTimeout
-          ? `LLM call timed out after ${maxRetries + 1} attempts`
-          : `LLM call failed: ${message}`,
-      );
-      return { error: message };
     }
-  }
 
-  return { error: `LLM call failed after ${maxRetries + 1} attempts` };
+    return { error: `LLM call failed after ${maxRetries + 1} attempts` };
+  } finally {
+    releaseModelSlot(model.id);
+  }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
