@@ -54,7 +54,7 @@ export function resetTurnsSinceMemory(s: MemoryHygieneState): void {
 /** Check if memory nudge should fire. Returns true if nudge was sent. */
 export function shouldNudgeForMemory(
   s: MemoryHygieneState & { hasCodeChanges?: boolean },
-  currentTurn: number,
+  _currentTurn: number,
   threshold = 20,
 ): boolean {
   return !s.memoryNudgeSent && !!s.hasCodeChanges && s.turnsSinceMemory >= threshold;

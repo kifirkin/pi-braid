@@ -31,9 +31,9 @@ import { AGENT } from "../../../lib/config/braid-paths.js";
 
 // Config
 
-interface _SessionRecallConfig {
-  queryModel?: { provider: string; id: string };
-}
+
+
+
 
 // ── Default config (file loading was dead code - removed) ──
 

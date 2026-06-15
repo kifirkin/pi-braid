@@ -254,10 +254,10 @@ async function mutateAndSave(scratchpad: TaskScratchpad): Promise<void> {
   await saveScratchpadToDisk(scratchpad);
 }
 
-function resolveProjectSlugFromCtx(ctx: ExtensionContext): string {
-  const cwd = (ctx as { cwd?: string }).cwd ?? "";
-  return resolveProjectSlug(cwd);
-}
+
+
+
+
 
 // ── Tool Schemas ──────────────────────────────────────────────────────────
 
@@ -360,7 +360,7 @@ const scratchpadParams = Type.Object({
 // ── Tool Execute ──────────────────────────────────────────────────────────
 
 async function scratchpadExecute(
-  toolCallId: string,
+  _toolCallId: string,
   params: Record<string, unknown>,
   _signal: AbortSignal,
   _onUpdate: (chunk: string) => void,

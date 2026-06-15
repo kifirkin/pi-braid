@@ -25,12 +25,9 @@ import {
   createProposal,
   createSnapshot,
   isProposalEntry,
-  isSnapshotEntry,
   PROPOSAL_CUSTOM_TYPE,
   SNAPSHOT_CUSTOM_TYPE,
   type ContextProposal,
-  type ContextSnapshot,
-  type SemanticSignalType,
 } from "./types.js";
 import {
   createPolicyEngineState,
@@ -107,11 +104,8 @@ function evictOldOutcomes(s: ContextLifecycleState): void {
 // when ctx is not available.
 import {
   type ContextLifecycleState,
-  type Outcome,
   state,
-  createState,
   _getState,
-  ensureFreshState,
   resetState,
 } from "./state.js";
 // Re-export for backward compat
@@ -132,10 +126,10 @@ const contextProposalsSchema = Type.Object({
   id: Type.Optional(Type.String({ description: "Proposal ID to approve/reject" })),
 });
 
-const contextSignalSchema = Type.Object({
-  type: StringEnum(["task_boundary", "topic_shift"], { description: "Signal type" }),
-  note: Type.Optional(Type.String({ description: "Optional note about the signal" })),
-});
+
+
+
+
 
 // ── Helpers (extracted to ./helpers.ts) ───────────────────────────────────
 import {
@@ -534,7 +528,6 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
   // ── tool_call: Capture agent signals + compaction escalation reset ────────
   pi.on(TOOL_CALL, async (event: ToolCallEvent) => {
     const toolName = event.toolName as string;
-    const _input = event?.input as Record<string, unknown> | undefined;
 
     // ── Task boundary signals ──────────────────────────────────────────
     if (toolName === "context_tag") {

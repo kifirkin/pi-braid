@@ -10,7 +10,7 @@
  */
 
 import { createLogger } from "../../../lib/core/logger.js";
-import { resetCriticStats, getCriticStats } from "../../../lib/ai/critic-stats.js";
+import { resetCriticStats } from "../../../lib/ai/critic-stats.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 import { existsSync, mkdirSync } from "node:fs";
 import { METRICS_FILE, METRICS_DIR } from "../../../lib/config/braid-paths.js";
@@ -24,13 +24,13 @@ import { eventBus } from "../../../lib/events/event-bus.js";
 import { isDegraded, getDegradationReasons } from "../../../lib/detection/degradation-detector.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { areCognitiveNudgesDisabled } from "../../../lib/config/braid-settings.js";
-import { Type } from "typebox";
+
 
 import { getAnalyticsStateInternal } from "./shared.js";
 import { formatABResults } from "./ab-variant.js";
-import { getCompactionHealth } from "../../memory/context-manager/handlers/shared.js";
+
 import { recordError, recordToolSuccess } from "../../../lib/detection/degradation-detector.js";
-import { getReasoningStateView } from "../../cognitive/reasoning/index.js";
+
 export {
   updateContextDensity,
   recordNudgeSent,

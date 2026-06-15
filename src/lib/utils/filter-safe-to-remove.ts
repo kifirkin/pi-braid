@@ -8,7 +8,7 @@
 // to `filterSafeToRemove({ useLLMJudge: true, ctx })`.
 
 import { createLogger } from "../core/logger.js";
-import { classify } from "../ai/text-classifier.js";
+
 import { BRAID_INJECTED } from "../constants/injection-details.js";
 
 const log = createLogger("filter-safe");

@@ -17,10 +17,10 @@ import { emitSignal } from "../../../../lib/reasoning/belief-policy-engine.js";
 
 const log = createLogger("heartbeat:budget-tracker");
 
-interface _BudgetTrackerState {
-  /** Set of "stepIndex:threshold" keys that have already fired. */
-  firedThresholds: Set<string>;
-}
+
+
+
+
 
 export const budgetModule: CognitiveModule = {
   name: "budget-tracker",

@@ -32,7 +32,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../../lib/state/extension-state.js";
 
 // Import shared types/constants for in-file use
-import { ENFORCEMENT_PARAMS, type EnforcementState } from "./enforcement-types.js";
+import { type EnforcementState } from "./enforcement-types.js";
 
 // Re-export shared types/constants (backward compat - consumers import from state.ts)
 export { ENFORCEMENT_PARAMS, type EnforcementState } from "./enforcement-types.js";

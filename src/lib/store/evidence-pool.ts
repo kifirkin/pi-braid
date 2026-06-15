@@ -131,39 +131,39 @@ function extractClaim(text: string, maxLen = 80): string {
  *   Tier 2: utility model (if configured)
  *   Tier 3: session model (always available)
  */
-async function classifyConflictViaCritic(
-  evidenceA: string,
-  evidenceB: string,
-  ctx: ExtensionContext,
-): Promise<ConflictClassification> {
-  try {
-    const result = await classify(
-      ctx,
-      CRITICS.evidenceConflict.criteria,
-      {
-        evidenceA: evidenceA.slice(0, 500),
-        evidenceB: evidenceB.slice(0, 500),
-      },
-      {
-        maxTokens: 5,
-        timeoutMs: 5000,
-        label: CRITICS.evidenceConflict.label,
-        // Q9: returning "no" by default silently suppresses conflicts. Always LLM.
-        tierPolicy: "always-llm",
-      },
-    );
 
-    if (result.label === "yes") return "direct";
-  } catch {
-    // Fall through to heuristic
-  }
 
-  // Heuristic fallback: check reliability difference
-  // (In the heuristic path, we don't have evidence reliability - use token overlap)
-  const overlap = tokenOverlap(evidenceA, evidenceB);
-  if (overlap > 0.5) return "direct";
-  return "implication";
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /**
  * Classify a conflict using source reliability and claim overlap.

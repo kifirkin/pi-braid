@@ -23,7 +23,7 @@ import { nextId } from "../../../lib/utils/id.js";
 import { createLogger } from "../../../lib/core/logger.js";
 import { Type } from "typebox";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
-import { eventBus } from "../../../lib/events/event-bus.js";
+
 import { BRAID_INJECTED, BRAID_SOURCE } from "../../../lib/constants/injection-details.js";
 import type { ScheduledTimer } from "../../../lib/events/timer-types.js";
 

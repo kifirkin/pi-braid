@@ -128,7 +128,7 @@ ${messages.map((m, i) => `${i + 1}. ${m}`).join("\n")}`;
 // ── Tick Engine ─────────────────────────────────────────────────────────────
 
 function tick(
-  pi: ExtensionAPI,
+  _pi: ExtensionAPI,
   state: import("./types.js").HeartbeatState,
   config: import("./types.js").HeartbeatConfig,
   ctx: ExtensionContext,

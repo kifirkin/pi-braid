@@ -25,7 +25,7 @@
  */
 
 import { createLogger } from "../core/logger.js";
-import { getExtensionState } from "../state/extension-state.js";
+
 
 const log = createLogger("turn-dedup");
 

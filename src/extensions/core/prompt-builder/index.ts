@@ -1,7 +1,7 @@
 import { deliverPastInsights } from "../../memory/past-insights.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 import { getAgentDir, loadProjectContextFiles } from "@earendil-works/pi-coding-agent";
-import { join } from "node:path";
+
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { RESOURCES_DISCOVER } from "../../../lib/core/event-names.js";
 import { gatherL1State, l1EnvSection } from "./l1-environment.js";

@@ -14,8 +14,8 @@ import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../state/extension-state.js";
 import { createLogger } from "../core/logger.js";
-import { classify } from "../ai/text-classifier.js";
-import { CRITICS } from "../ai/critic-registry.js";
+
+
 
 const log = createLogger("bidirectional-verifier");
 

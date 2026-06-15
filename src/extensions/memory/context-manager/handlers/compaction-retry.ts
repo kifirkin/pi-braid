@@ -298,7 +298,7 @@ export async function handleThresholdFailure(
 
 // ── Retry Trigger Functions ───────────────────────────────────────────────────
 export function triggerCompactionRetry(
-  pi: ExtensionAPI,
+  _pi: ExtensionAPI,
   ctx: ExtensionContext,
   attempt: number,
   _errorMessage: string,
@@ -320,7 +320,7 @@ export function triggerCompactionRetry(
 }
 
 export function triggerOverflowRetry(
-  pi: ExtensionAPI,
+  _pi: ExtensionAPI,
   ctx: ExtensionContext,
   attempt: number,
   _errorMessage: string,

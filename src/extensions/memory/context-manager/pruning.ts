@@ -245,24 +245,24 @@ function createRecencyRule(keepRecentCount: number): PruneRule {
 // Batch Context Reduction (BCR) - P4
 // Collapse consecutive repeated tool call sequences into single entries with count.
 // E.g., three `read` calls on same file → one entry with count=3.
-interface _BCRMetadata {
-  bcrCount?: number;
-  bcrCollapsed?: boolean;
-  bcrKey?: string;
-}
+
+
+
+
+
 
 // Batch Context Reduction (BCR) - P4
 // Collapses consecutive repeated tool calls. Extended with failure awareness
 // (2604.15877): 3+ failures → collapse + summarize error pattern.
 
 /** @deprecated - kept for backward compat */
-interface _BCRMetadata {
-  bcrCount?: number;
-  bcrCollapsed?: boolean;
-  bcrKey?: string;
-  failureCount?: number;
-  lastError?: string;
-}
+
+
+
+
+
+
+
 
 const batchCollapseRule: PruneRule = {
   id: "batch_collapse",

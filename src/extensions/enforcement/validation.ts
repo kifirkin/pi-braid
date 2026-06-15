@@ -102,7 +102,7 @@ function checkReReadWaste(
  * Validate a turn's tool usage
  */
 export function validateTurn(
-  previousState: TurnState | undefined,
+  _previousState: TurnState | undefined,
   currentState: TurnState,
   ctx: any,
   erroredTools: Set<string> = new Set(),

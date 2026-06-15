@@ -146,11 +146,11 @@ function isExcluded(filePath: string): boolean {
  * Resolve a relative file path against a base directory.
  * Returns the absolute path, or null if the result escapes the base.
  */
-function resolveSafe(baseDir: string, filePath: string): string | null {
-  const resolved = path.resolve(baseDir, filePath);
-  if (!resolved.startsWith(baseDir)) return null;
-  return resolved;
-}
+
+
+
+
+
 
 // ── Core Operations ─────────────────────────────────────────────────────────
 

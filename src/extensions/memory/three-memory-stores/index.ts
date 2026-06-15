@@ -24,8 +24,8 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-import { StringEnum } from "@earendil-works/pi-ai";
+
+
 import type { SessionManager } from "../../../lib/state/session-manager.js";
 
 // Extended episode with dynamic metadata fields not in the base type
@@ -55,7 +55,7 @@ export type { Episode, HeuristicRule, ToolStat, MemoryStoresState } from "./type
 import type { MemoryStoresState, Episode } from "./types.js";
 
 // ── Sub-module imports ──────────────────────────────────────────────────────
-import { addEpisode, retrieveEpisodes, retrieveByRUMS } from "./episodes.js";
+import { retrieveByRUMS } from "./episodes.js";
 import {
   addHeuristicRule,
   evolveHeuristic,
@@ -63,23 +63,23 @@ import {
   getApplicableHeuristics,
   BUILTIN_HEURISTICS,
 } from "./heuristics.js";
-import { recordToolCall, getToolReliability, selectBestTool } from "./tool-reliability.js";
+import { recordToolCall, getToolReliability } from "./tool-reliability.js";
 import { TURN_END, SESSION_SHUTDOWN } from "../../../lib/core/event-names.js";
 
 // ── Project Identifier ───────────────────────────────────────────────────────
-function deriveProjectId(cwd: string): string {
-  const parts = cwd.replace(/\\/g, "/").split("/").filter(Boolean);
-  if (parts.length < 2) return cwd || "unknown";
-  return parts.slice(-2).join("/");
-}
+
+
+
+
+
 
 const log = createLogger("three-memory-stores");
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function textResult(text: string) {
-  return { content: [{ type: "text" as const, text }], details: {} };
-}
+
+
+
 
 // ── Factory ──────────────────────────────────────────────────────────────────
 

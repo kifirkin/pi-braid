@@ -20,7 +20,7 @@ export interface BlockResult {
 
 /** Check if a tool call should be blocked based on enforcement rules */
 export function checkBlocking(
-  pi: ExtensionAPI,
+  _pi: ExtensionAPI,
   toolName: string,
   eventInput: Record<string, unknown> | undefined,
   stateRef: EnforcementState,

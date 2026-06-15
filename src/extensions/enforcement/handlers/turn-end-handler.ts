@@ -16,7 +16,7 @@ import {
   handleCriticalSignals,
 } from "./turn-analysis.js";
 import { detectOrphanChains } from "./orphan-chains.js";
-import { type NudgeManager, getNudgeManager } from "../nudge-manager.js";
+import { getNudgeManager } from "../nudge-manager.js";
 import { getState, ERROR_BURST_THRESHOLD, RECOVERY_GRACE_TURNS, markNudgeSent, shouldNudgeForMemory, markMemoryNudgeSent } from "../state.js";
 import { recordNudgeSuppressed, getNudgeAnalytics } from "../../../lib/reasoning/nudge-analytics.js";
 import { type TurnState } from "../types.js";
