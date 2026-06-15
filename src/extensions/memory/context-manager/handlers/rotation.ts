@@ -105,23 +105,71 @@ export function registerRotationHandlers(pi: ExtensionAPI): void {
 
       const { needed, reason } = shouldRotate(ctx);
 
-      // Session tree auto-compaction: warn on deep branch
-      try {
-        const sm = ctx.sessionManager as { getBranch?(): unknown[] };
-        const branch = sm.getBranch?.() ?? [];
-        if (branch.length > 150) {
-          log.warn(`Branch ${branch.length} entries deep - consider context_tag + session_compact`);
-        }
-      } catch {
-        /* non-fatal */
-      }
-
       if (!needed) return;
 
       // NUDGE DEDUPLICATION: suppress duplicate nudges within cooldown
       const currentTurn = state.turnsSinceRotation;
 
       // If we already nudged this turn, skip (prevents rapid-fire during single turn)
+      // Deep-branch whisper to the agent (if needed). Fires BEFORE the
+      // rotation-nudge check so a deep branch always gets a whisper,
+      // independent of whether the session also needs rotation. The
+      // throttle (NUDGE_COOLDOWN_TURNS / NUDGE_COOLDOWN_MS) ensures at
+      // most one whisper per cooldown period - previously this was
+      // log.warn that fired every turn when branch was > 150, spamming
+      // the operator console. The advice is for the agent (use
+      // context_tag / context_compress / finalize) so it should go
+      // through sendTrackedMessage.
+      try {
+        const sm = ctx.sessionManager as { getBranch?(): unknown[] };
+        const branch = sm.getBranch?.() ?? [];
+        if (branch.length > 150) {
+          const timeSinceDeepBranchWhisper = state.lastDeepBranchWhisperTimestamp
+            ? Date.now() - state.lastDeepBranchWhisperTimestamp
+            : Infinity;
+          if (
+            state.lastDeepBranchWhisperTurn !== currentTurn &&
+            (currentTurn - state.lastDeepBranchWhisperTurn >= NUDGE_COOLDOWN_TURNS ||
+              timeSinceDeepBranchWhisper >= NUDGE_COOLDOWN_MS)
+          ) {
+            state.lastDeepBranchWhisperTurn = currentTurn;
+            state.lastDeepBranchWhisperTimestamp = Date.now();
+            try {
+              sendTrackedMessage(
+                pi,
+                {
+                  customType: "context",
+                  display: true,
+                  content: [
+                    {
+                      type: "text" as const,
+                      text: [
+                        "## Session Branch Depth Notice",
+                        "",
+                        `The current branch is ${branch.length} entries deep. Deep branches can slow down context operations.`,
+                        "",
+                        "To keep the session manageable:",
+                        "1. **`context_tag`** - mark a checkpoint before continuing on a long thread",
+                        "2. **`session_compact` / `context_compress`** - compress completed work mid-session",
+                        "3. **`finalize()`** - when done with current work; rotates session with summary",
+                        "",
+                        "These are non-urgent suggestions - take them when natural in your workflow.",
+                      ].join("\n"),
+                    },
+                  ],
+                },
+                { deliverAs: "followUp", triggerTurn: false },
+                { type: "context", source: "context-manager/deep-branch" },
+              );
+            } catch (err) {
+              log.error("deep-branch whisper failed:", err);
+            }
+          }
+        }
+      } catch {
+        /* non-fatal */
+      }
+
       if (state.lastNudgeTurn === currentTurn) return;
 
       // Suppress nudge if: not enough turns passed (<50) AND too soon since last nudge (<5 min)

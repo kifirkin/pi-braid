@@ -55,6 +55,10 @@ export interface RotationState {
   actionTaken: boolean;
   actionTakenAtTurn: number; // turn count when action was taken (for grace period)
   emergencyRotation: boolean;
+  // Deep-branch whisper throttle (separate from rotation nudge so a
+  // very-deep branch doesn't share a counter with a soon-to-rotate one)
+  lastDeepBranchWhisperTimestamp: number;
+  lastDeepBranchWhisperTurn: number;
 }
 
 function createDefaultRotationState(): RotationState {
@@ -66,6 +70,8 @@ function createDefaultRotationState(): RotationState {
     continuationSummary: "",
     lastNudgeTimestamp: 0,
     lastNudgeTurn: 0,
+    lastDeepBranchWhisperTimestamp: 0,
+    lastDeepBranchWhisperTurn: 0,
     nudgeCount: 0,
     actionTaken: false,
     actionTakenAtTurn: 0,
