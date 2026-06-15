@@ -62,6 +62,15 @@ async function checkContradiction(
 	severity: "high" | "low";
 	description: string;
 	quote: string;
+	/**
+	 * True when the classifier call failed (tier === "failed"). The
+	 * safe default is "no contradiction found" - this flag signals
+	 * the check couldn't run at all, so the consumer can surface
+	 * the degraded state. Same anti-pattern fix as input-polisher
+	 * 9966c8ad, topic-drift, sycophancy, and turn-outcome: never
+	 * silently default to "no problem" when the classifier is down.
+	 */
+	classifierDown?: boolean;
 } | null> {
 	try {
 		const result = await classify(
@@ -76,19 +85,27 @@ async function checkContradiction(
 				severity: "high",
 				description: `Claim contradicts context: ${truncate(claim, 100)}`,
 				quote: claim,
+				classifierDown: result.tier === "failed",
 			};
 		}
+		// No contradiction found. If the classifier was down, the
+		// returned null already means "no issue" (the safe default).
+		// The consumer doesn't need to know the classifier was down
+		// for THIS specific check (it might be a different call).
+		// The classifierDown surfacing is for the AGGREGATE tool
+		// result, computed at the execute() boundary.
+		return null;
 	} catch (err) {
 		log.debug(`checkContradiction failed: ${err}`);
+		return null;
 	}
-	return null;
 }
 
 async function checkSupport(
 	claim: string,
 	context: string[],
 	ctx: ExtensionContext,
-): Promise<boolean> {
+): Promise<{ supported: boolean; classifierDown: boolean }> {
 	const contextText = context.join("\n\n---\n\n");
 	try {
 		const result = await classify(
@@ -100,17 +117,25 @@ async function checkSupport(
 				tierPolicy: "always-llm",
 			},
 		);
-		return result.label === "yes";
+		return {
+			supported: result.label === "yes",
+			classifierDown: result.tier === "failed",
+		};
 	} catch (err) {
 		log.debug(`checkSupport failed: ${err}`);
-		return false;
+		// Thrown error: classifier unreachable. Return safe default
+		// (supported=false) but flag the offline state.
+		return { supported: false, classifierDown: true };
 	}
 }
 
 async function checkOverconfidence(
 	claim: string,
 	ctx: ExtensionContext,
-): Promise<Array<{ type: string; severity: string; description: string; quote: string }>> {
+): Promise<{
+	issues: Array<{ type: string; severity: string; description: string; quote: string }>;
+	classifierDown: boolean;
+}> {
 	const issues: Array<{ type: string; severity: string; description: string; quote: string }> = [];
 	try {
 		const result = await classify(
@@ -127,10 +152,13 @@ async function checkOverconfidence(
 				quote: claim,
 			});
 		}
+		return { issues, classifierDown: result.tier === "failed" };
 	} catch (err) {
 		log.debug(`checkOverconfidence failed: ${err}`);
+		// Thrown error: classifier unreachable. Return empty issues
+		// (the safe default) but flag the offline state.
+		return { issues: [], classifierDown: true };
 	}
-	return issues;
 }
 
 // checkDecompositionCoverage was previously used by verify.ts for
@@ -186,8 +214,18 @@ export function registerClaimVerificationTools(pi: ExtensionAPI): void {
 					checkSupport(p.claim, p.context, ctx!),
 					checkOverconfidence(p.claim, ctx!),
 				]);
-				const supported = supportedSettled.status === "fulfilled" ? supportedSettled.value : false;
-				const overconfidenceIssues = overconfidenceIssuesSettled.status === "fulfilled" ? overconfidenceIssuesSettled.value : [];
+				const supportedResult = supportedSettled.status === "fulfilled" ? supportedSettled.value : { supported: false, classifierDown: true };
+				const overconfidenceResult = overconfidenceIssuesSettled.status === "fulfilled" ? overconfidenceIssuesSettled.value : { issues: [], classifierDown: true };
+				const supported = supportedResult.supported;
+				const overconfidenceIssues = overconfidenceResult.issues;
+
+				// Track if any sub-check's classifier was down. We surface
+				// this in the tool result so the agent (and operator) knows
+				// the verify_claim check was degraded, not actually a clean
+				// pass. Same anti-pattern fix as input-polisher 9966c8ad,
+				// topic-drift, sycophancy, and turn-outcome.
+				const anyClassifierDown =
+					supportedResult.classifierDown || overconfidenceResult.classifierDown;
 
 				if (!supported && p.context.length > 0) {
 					issues.push({
@@ -204,8 +242,9 @@ export function registerClaimVerificationTools(pi: ExtensionAPI): void {
 				issues.sort((a: any, b: any) => severityOrder[a.severity] - severityOrder[b.severity]);
 
 				const highIssues = issues.filter((i: any) => i.severity === "high");
-				const summary =
-					highIssues.length > 0
+				const summary = anyClassifierDown
+					? `Claim verification DEGRADED: classifier unavailable this turn. No issues were positively detected, but the check could not run normally. Treat this result as "not verified, not contradicted" rather than "verified." Run /logs level info for the underlying error.`
+					: highIssues.length > 0
 						? `${highIssues.length} high-severity issue(s): ${highIssues.map((i: any) => i.description).join("; ")}`
 						: issues.length > 0
 							? `${issues.length} issue(s): ${issues.map((i: any) => `${i.type}(${i.severity})`).join(", ")}`
@@ -215,9 +254,10 @@ export function registerClaimVerificationTools(pi: ExtensionAPI): void {
 					content: [{ type: "text" as const, text: summary }],
 					details: {
 						claimId,
-						verified: highIssues.length === 0,
+						verified: highIssues.length === 0 && !anyClassifierDown,
 						issues,
 						summary,
+						classifierDown: anyClassifierDown,
 						checks: {
 							contradictions: issues.filter((i: any) => i.type === "contradiction").length,
 							unsupported: issues.filter((i: any) => i.type === "unsupported").length,
