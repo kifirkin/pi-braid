@@ -1,8 +1,8 @@
-import { createLogger } from "../../../lib/core/logger.js";
+
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 
-const log = createLogger("agent-environment");
+
 /**
  * Agent Environment Extension - L1 Environmental Awareness
  *

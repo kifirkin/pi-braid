@@ -8,10 +8,10 @@
  * Index re-exports both for backward compatibility.
  */
 
-import { createLogger } from "../../../lib/core/logger.js";
+
 import { nextId } from "../../../lib/utils/id.js";
 
-const log = createLogger("scratchpad");
+
 
 import { Type } from "typebox";
 import type {

@@ -10,9 +10,9 @@ import type {
 import { detectLanguage, setLanguage } from "../../../lib/ai/language-hint.js";
 import { updateProblemContext } from "../../../lib/store/bidirectional-verifier.js";
 import { getState } from "../state.js";
-import { createLogger } from "../../../lib/core/logger.js";
 
-const log = createLogger("enforcement:input");
+
+
 
 export function registerInputHandler(pi: ExtensionAPI): void {
   pi.on("input", async (event: InputEvent, ctx: ExtensionContext) => {

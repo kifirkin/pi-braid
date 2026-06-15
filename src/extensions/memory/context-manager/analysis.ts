@@ -1,7 +1,7 @@
-import { createLogger } from "../../../lib/core/logger.js";
+
 import { isInternal } from "./handlers/shared.js";
 
-const log = createLogger("context-manager");
+
 /**
  * Session analysis utilities for context-manager.
  * Pure functions - no module-level mutable state.

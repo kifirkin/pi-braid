@@ -1,6 +1,6 @@
-import { createLogger } from "../../../lib/core/logger.js";
 
-const log = createLogger("polyfill");
+
+
 /**
  * Polyfill Extension - Patches missing API methods on ExtensionContext
  *

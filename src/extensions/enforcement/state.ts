@@ -27,7 +27,7 @@ export const ERROR_BURST_THRESHOLD = 3;
 /** Turns of grace after overflow recovery before signal priority resets. */
 export const RECOVERY_GRACE_TURNS = 5;
 
-import { createLogger } from "../../lib/core/logger.js";
+
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../../lib/state/extension-state.js";
 
@@ -101,7 +101,7 @@ export {
 export { isErrorBurst, updateErrorBurst } from "./substate/error-tracking-state.js";
 export { recordToolChainCall, type CalibrationPair } from "./substate/tool-tracking-state.js";
 
-const log = createLogger("enforcement");
+
 
 // ── State factory (composed from sub-states) ───────────────────────────────
 

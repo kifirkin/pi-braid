@@ -1,4 +1,4 @@
-import { createLogger } from "../../../lib/core/logger.js";
+
 import {
   USAGE_WHISPER_ADVISORY,
   USAGE_COMPACT_MEDIUM,
@@ -9,7 +9,7 @@ import {
 } from "../../../lib/detection/context-thresholds.js";
 import { nextId } from "../../../lib/utils/id.js";
 
-const log = createLogger("context-lifecycle");
+
 /**
  * Context Lifecycle Types - S-MMU Core Interfaces
  *

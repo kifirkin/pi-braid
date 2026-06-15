@@ -5,10 +5,10 @@
  */
 
 import type { CognitiveModule } from "../types.js";
-import { createLogger } from "../../../../lib/core/logger.js";
+
 import { drainTimerReminders } from "../../../../lib/events/timer-bus.js";
 
-const log = createLogger("heartbeat:timer-reminder");
+
 
 export const timerReminderModule: CognitiveModule = {
   name: "timer-reminder",

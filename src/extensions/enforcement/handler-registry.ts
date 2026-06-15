@@ -14,7 +14,6 @@ import { guard } from "../../lib/utils/error-guard.js";
 import { registerInjectionTracker } from "../../lib/utils/injection-tracker.js";
 import { registerTurnEndHandler, dispatchTurnEnd } from "../../lib/events/turn-end-coordinator.js";
 import { onEvent } from "../../lib/events/event-types.js";
-import { getNudgeManager } from "./nudge-manager.js";
 import { sendEnforcementWhisper } from "./whisper.js";
 import { processAgentResponse, formatContradictionWhisper } from "../../lib/store/claim-tracker.js";
 import {
@@ -22,7 +21,7 @@ import {
   checkSpecCoverage,
   getVerifierState,
 } from "../../lib/store/bidirectional-verifier.js";
-import { scanArchives, ingestArchives } from "../../lib/events/consolidation-channel.js";
+import { ingestArchives } from "../../lib/events/consolidation-channel.js";
 import { isDegraded } from "../../lib/detection/degradation-detector.js";
 import { autoRollback } from "../../lib/state/state-checkpoint.js";
 import { getState } from "./state.js";
@@ -42,7 +41,7 @@ import { feedbackHandler } from "./handlers/analysis/feedback-handler.js";
 import { reflectionHandler } from "./handlers/analysis/reflection-handler.js";
 import { dispatchTurnEndLoop } from "./handlers/turn-end-handler.js";
 import { beginTurn } from "../../lib/enforcement/turn-dedup.js";
-import { SESSION_START, TOOL_CALL, TURN_END, MESSAGE_END, SESSION_SHUTDOWN } from "../../lib/core/event-names.js";
+import { TURN_END } from "../../lib/core/event-names.js";
 
 const log = createLogger("enforcement");
 

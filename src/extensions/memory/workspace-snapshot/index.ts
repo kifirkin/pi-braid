@@ -30,10 +30,10 @@ import {
   type WorkspaceSnapshotMeta,
 } from "../../../lib/state/workspace-snapshot.js";
 import * as path from "node:path";
-import { createLogger } from "../../../lib/core/logger.js";
+
 import { getVerifierState } from "../../../lib/store/bidirectional-verifier.js";
 
-const log = createLogger("workspace-snapshot");
+
 
 // ── Tool Registration ────────────────────────────────────────────────────────
 

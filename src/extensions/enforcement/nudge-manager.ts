@@ -1,7 +1,7 @@
-import { createLogger } from "../../lib/core/logger.js";
+
 import { hashForDedup } from "../../lib/utils/dedup.js";
 
-const log = createLogger("enforcement");
+
 /**
  * Enforcement Nudge System - Smart Nudge Management
  *

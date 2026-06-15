@@ -8,10 +8,10 @@ import { callLlm } from "../../../../lib/ai/llm-call.js";
 import { resolveUtilityModel } from "../../../../lib/ai/model-resolver.js";
 import { criticGate } from "../../../../lib/ai/critic-gate.js";
 import { scoreHypothesisOutput } from "./scoring.js";
-import { createLogger } from "../../../../lib/core/logger.js";
+
 import { withMeta } from "../../../../lib/types/standard-result.js";
 
-const log = createLogger("metacognition");
+
 
 const FORMAT_OPTIONS = ["ranked", "tree", "list"] as const;
 

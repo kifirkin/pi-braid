@@ -1,8 +1,8 @@
-import { createLogger } from "../../../lib/core/logger.js";
+
 import { classify } from "../../../lib/ai/text-classifier.js";
 import { CRITICS } from "../../../lib/ai/critic-registry.js";
 
-const log = createLogger("enforcement");
+
 /**
  * Probe Handler - Analyze task complexity before tool use
  *

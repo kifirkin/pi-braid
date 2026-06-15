@@ -1,7 +1,7 @@
-import { createLogger } from "../../../lib/core/logger.js";
+
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-const log = createLogger("enforcement");
+
 /**
  * Message Analysis Handler - extracted from enforcement/index.ts
  *

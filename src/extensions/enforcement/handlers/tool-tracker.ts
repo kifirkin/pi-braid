@@ -1,6 +1,6 @@
-import { createLogger } from "../../../lib/core/logger.js";
 
-const log = createLogger("enforcement");
+
+
 /**
  * Tool tracking - centralized tracking logic for all tool usage patterns
  */

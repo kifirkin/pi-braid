@@ -1,8 +1,8 @@
-import { createLogger } from "../../../lib/core/logger.js";
+
 import { eventBus } from "../../../lib/events/event-bus.js";
 import { nextId } from "../../../lib/utils/id.js";
 
-const log = createLogger("error-capture");
+
 /**
  * Error Capture Extension - Auto-catches and logs extension errors
  *

@@ -1,6 +1,6 @@
-import { createLogger } from "../../lib/core/logger.js";
 
-const log = createLogger("enforcement");
+
+
 /**
  * Enforcement types - Shared interfaces and type definitions
  */

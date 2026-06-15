@@ -5,7 +5,7 @@
  * Cooldown tracking is managed externally via a state object.
  */
 
-import { createLogger } from "../../../lib/core/logger.js";
+
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import {
   evaluateContextDensity,
@@ -19,7 +19,7 @@ import {
 } from "../../../lib/detection/context-thresholds.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-const log = createLogger("context-lifecycle");
+
 
 import type { ContextPolicy, GovernanceConstraint, PolicyAction, SemanticSignal } from "./types.js";
 import { createDefaultPolicies, createDefaultGovernance } from "./types.js";
