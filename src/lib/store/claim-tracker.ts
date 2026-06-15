@@ -89,10 +89,10 @@ async function extractClaimsViaLLM(
     // Prefer utility model (cheaper for extraction), fall back to session model
     const utilityModel = resolveUtilityModel(ctx);
     const model = utilityModel ?? ctx.model;
-    if (!model) return fallbackExtract(text);
+    if (!model) return []; // no LLM available - return empty (no claims)
 
     const apiKey = await ctx.modelRegistry.getApiKeyForProvider(model.provider);
-    if (!apiKey) return fallbackExtract(text);
+    if (!apiKey) return []; // no API key - return empty (no claims)
 
     const result = await callLlm(model, apiKey, EXTRACTION_SYSTEM_PROMPT, truncated, {
       maxTokens: 500,
@@ -101,15 +101,15 @@ async function extractClaimsViaLLM(
       maxRetries: 0,
     });
 
-    if ("error" in result) return fallbackExtract(text);
+    if ("error" in result) return []; // LLM call failed - return empty (no claims)
 
     const raw = result.text.trim();
     // Extract JSON array from response (handles markdown-wrapped JSON)
     const jsonMatch = raw.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) return fallbackExtract(text);
+    if (!jsonMatch) return []; // no JSON in response - return empty (no claims)
 
     const parsed = JSON.parse(jsonMatch[0]);
-    if (!Array.isArray(parsed)) return fallbackExtract(text);
+    if (!Array.isArray(parsed)) return []; // malformed JSON - return empty (no claims)
 
     return parsed
       .filter((item: any) => item.entity && item.claim)
@@ -221,43 +221,6 @@ function entityClaimFromSentence(
     source: sentence.slice(0, 150),
     createdAt: Date.now(),
   });
-}
-
-/**
- * Minimal heuristic fallback - no regex keyword lists, no stem maps,
- * no negation word sets. Just splits sentences and looks for "X verbs Y"
- * patterns with a short verb list.
- */
-function fallbackExtract(text: string): Claim[] {
-  if (!text || text.length < 20) return [];
-
-  const claims: Claim[] = [];
-
-  const sentences = text
-    .split(/[.!?\n]+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 15);
-
-  for (const sentence of sentences) {
-    // Skip questions, commands, first-person meta-commentary (sync heuristic path only)
-    if (/^(what|how|why|let|try|check|i'?|this is why|the reason|because|so|therefore|however)/i.test(sentence)) continue;
-
-    // Determine polarity from sentence text
-    const polarity = /\b(not|no|never|n't|without)\b/i.test(sentence) ? "negative" as const : "positive" as const;
-    entityClaimFromSentence(sentence, polarity, claims);
-  }
-
-  return claims.slice(0, 10);
-}
-
-/**
- * Public sync extraction function (backward compat for callers without ctx).
- * Uses only the minimal heuristic fallback.
- *
- * @deprecated Prefer processAgentResponse() for full LLM-based extraction.
- */
-export function extractClaims(text: string): Claim[] {
-  return fallbackExtract(text);
 }
 
 // ── Contradiction Detection (triple-critic) ───────────────────────────────────
