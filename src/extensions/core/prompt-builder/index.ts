@@ -215,8 +215,8 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
   // pi re-resolves skills and the next before_agent_start will receive an
   // updated systemPromptOptions.skills list. We invalidate our format cache
   // so the new list gets reformatted.
-  pi.on(RESOURCES_DISCOVER, () => {
-    resetSkillsSectionCache();
+  pi.on(RESOURCES_DISCOVER, async (_event, ctx) => {
+    resetSkillsSectionCache(ctx);
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
@@ -287,6 +287,7 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       // with its full path so the agent can `read` any of them on demand.
       const skillsText = await reconstructSkillsSection(
         event.systemPromptOptions?.skills ?? [],
+        ctx,
       );
       if (skillsText) sections.push(simpleSection("skills", skillsText));
     }

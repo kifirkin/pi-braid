@@ -90,12 +90,16 @@ export async function skillsSection(skills: Skill[]): Promise<PromptSection> {
   };
 }
 
-// Cache the rendered string per skill-set fingerprint. Held at module
-// scope because the fingerprint is the only identity we need; the cache
-// is invalidated by `resetSkillsSectionCache()` on `RESOURCES_DISCOVER`.
-let skillsSectionCache:
-  | { fingerprint: string; section: string }
-  | undefined;
+// Cache the rendered string per skill-set fingerprint. Per-session: skills
+// discovery is workspace-scoped and may differ across sessions. The cache
+// is invalidated by `resetSkillsSectionCache(ctx)` on `RESOURCES_DISCOVER`.
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getExtensionState } from "../../../lib/state/extension-state.js";
+
+interface SkillsCacheState {
+  fingerprint?: string;
+  section?: string;
+}
 
 /** Stable, order-independent fingerprint of a skill set. */
 export function fingerprintSkills(skills: readonly Skill[]): string {
@@ -108,20 +112,33 @@ export function fingerprintSkills(skills: readonly Skill[]): string {
 /** Get the cached section if the fingerprint matches, otherwise render + cache. */
 export async function reconstructSkillsSection(
   skills: readonly Skill[],
+  ctx: ExtensionContext,
 ): Promise<string> {
   const fingerprint = fingerprintSkills(skills);
-  if (skillsSectionCache?.fingerprint === fingerprint) {
-    return skillsSectionCache.section;
+  const cache = getExtensionState<SkillsCacheState>(
+    ctx,
+    "prompt-builder/skills-cache",
+    () => ({ fingerprint: undefined, section: undefined }),
+  );
+  if (cache.fingerprint === fingerprint && cache.section !== undefined) {
+    return cache.section;
   }
   // Render immediately so the cache holds the final string. The fingerprint
   // already captures the input identity; we don't need to re-derive the
   // PromptSection on cache hits.
   const section = await (await skillsSection(skills as Skill[])).render();
-  skillsSectionCache = { fingerprint, section };
+  cache.fingerprint = fingerprint;
+  cache.section = section;
   return section;
 }
 
 /** Invalidate the cache. Called on `RESOURCES_DISCOVER`. */
-export function resetSkillsSectionCache(): void {
-  skillsSectionCache = undefined;
+export function resetSkillsSectionCache(ctx: ExtensionContext): void {
+  const cache = getExtensionState<SkillsCacheState>(
+    ctx,
+    "prompt-builder/skills-cache",
+    () => ({ fingerprint: undefined, section: undefined }),
+  );
+  cache.fingerprint = undefined;
+  cache.section = undefined;
 }

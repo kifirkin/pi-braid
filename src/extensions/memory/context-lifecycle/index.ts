@@ -51,10 +51,11 @@ import {
 
 const log = createLogger("context-lifecycle");
 
-// Re-entrancy guard for before_agent_start.
+// Re-entrancy guard for before_agent_start. Per-session so a stale
+// 'true' from a crashed previous turn can't poison the next session.
 // Prevents "Maximum call stack size exceeded" when pi.sendMessage(steer)
 // triggers a synchronous before_agent_start that calls sendTrackedMessage again.
-let _inBeforeAgentStart = false;
+interface ReentrancyState { inBeforeAgentStart: boolean; }
 
 // Proposal rate limiting
 const MAX_PROPOSALS_PER_TURN = 2;
@@ -389,11 +390,14 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     // nudge that triggers a steer can create a loop:
     //   before_agent_start → sendCompactNudge → sendTrackedMessage →
     //   pi.sendMessage(steer) → before_agent_start → ... (stack overflow)
-    if (_inBeforeAgentStart) {
+    const reentrancy = getExtensionState<ReentrancyState>(ctx, "context-lifecycle/reentrancy", () => ({
+      inBeforeAgentStart: false,
+    }));
+    if (reentrancy.inBeforeAgentStart) {
       log.warn("Re-entrant before_agent_start detected - skipping to prevent stack overflow");
       return;
     }
-    _inBeforeAgentStart = true;
+    reentrancy.inBeforeAgentStart = true;
     try {
       state().turnCount++;
       state().proposalsThisTurn = 0; // Reset per-turn counter
@@ -523,7 +527,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
       }
     }
     } finally {
-      _inBeforeAgentStart = false;
+      reentrancy.inBeforeAgentStart = false;
     }
   });
 

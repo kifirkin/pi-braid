@@ -102,6 +102,10 @@ export function createAnalyticsState(): AnalyticsState {
   };
 }
 
+// Memoized reference to the most recent session's analytics state.
+// Mirrors the getAnalyticsStateInternal return value. Used by the ctx-less
+// getAnalyticsState() fallback. In pi-core's single-session-per-process
+// model this is equivalent to per-session.
 let _lastState: AnalyticsState | null = null;
 
 export function getAnalyticsStateInternal(ctx: ExtensionContext): AnalyticsState {

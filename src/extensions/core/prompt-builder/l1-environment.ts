@@ -54,7 +54,7 @@ interface L1Environment {
 
 async function gatherL1State(
   pi: ExtensionAPI,
-  ctx: ExtensionContext | undefined,
+  ctx: ExtensionContext,
 ): Promise<L1Environment> {
   let contextPercent = 0;
   let stepsSinceCheckpoint = 0;
