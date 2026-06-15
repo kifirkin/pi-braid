@@ -26,6 +26,13 @@ export interface SessionManager {
   setLabel(id: string, label: string): void;
   getChildren(id: string): string[];
   branchWithSummary(targetId: string, summary: string): Promise<void>;
+  /**
+   * Returns the on-disk path of the current session file, or null if
+   * the session is ephemeral (e.g. RPC/print mode). This is a
+   * convenience over `session?.filePath` because some pi versions
+   * return it via a method rather than a field. Either is fine.
+   */
+  getSessionFile(): string | null;
   session?: { filePath?: string };
 }
 

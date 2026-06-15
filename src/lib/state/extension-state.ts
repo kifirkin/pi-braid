@@ -193,6 +193,21 @@ export function safeSessionManager(ctx: ExtensionContext): unknown {
   }
 }
 
+/**
+ * Like safeSessionManager, but returns the typed SessionManager
+ * (with getSessionFile and other convenience methods). Use this in
+ * extension code that needs to call getSessionFile or other
+ * convenience methods without re-declaring an SmWithSessionFile
+ * local interface for every callsite. Replaces the pattern
+ * `safeSessionManager(ctx) as unknown as SmWithSessionFile` that
+ * appeared in 5+ files.
+ */
+export function safeSessionManagerTyped(ctx: ExtensionContext): import("./session-manager.js").SessionManager | undefined {
+  const sm = safeSessionManager(ctx);
+  if (!sm) return undefined;
+  return sm as import("./session-manager.js").SessionManager;
+}
+
 export function clearAllSessions(): void {
   _sessionState.clear();
   _cachedSessionManagers.clear();
