@@ -99,19 +99,19 @@ async function detectDriftWithCritics(
         ctx,
         CRITICS.topicCoverage.criteria,
         { original: truncOriginal, response: truncOutput },
-        { maxTokens: 16, timeoutMs: 5000, label: CRITICS.topicCoverage.label, fallback: CRITICS.topicDriftFallback },
+        { timeoutMs: 5000, label: CRITICS.topicCoverage.label, fallback: CRITICS.topicDriftFallback },
       ),
       classify(
         ctx,
         CRITICS.topicDivergence.criteria,
         { original: truncOriginal, response: truncOutput },
-        { maxTokens: 16, timeoutMs: 5000, label: CRITICS.topicDivergence.label, fallback: CRITICS.topicDriftFallback },
+        { timeoutMs: 5000, label: CRITICS.topicDivergence.label, fallback: CRITICS.topicDriftFallback },
       ),
       classify(
         ctx,
         CRITICS.topicCompleteness.criteria,
         { original: truncOriginal, response: truncOutput },
-        { maxTokens: 16, timeoutMs: 5000, label: CRITICS.topicCompleteness.label, fallback: CRITICS.topicDriftFallback },
+        { timeoutMs: 5000, label: CRITICS.topicCompleteness.label, fallback: CRITICS.topicDriftFallback },
       ),
     ]);
 

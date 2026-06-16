@@ -113,7 +113,7 @@ export async function detectIntent(
       ctx,
       CRITICS.topicClassification.criteria,
       { text: combined },
-      { maxTokens: 10, timeoutMs: 3000, fallback: () => "general" },
+      { timeoutMs: 3000, fallback: () => "general" },
     );
     const label = result.label.trim().toLowerCase();
     const intent = TOPIC_TO_INTENT[label] ?? "unknown";

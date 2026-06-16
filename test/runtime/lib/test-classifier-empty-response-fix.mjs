@@ -1,5 +1,5 @@
 /**
- * Test: classifier passes reasoning: "minimal" + no default maxTokens.
+ * Test: classifier passes reasoning: "off" + no default maxTokens.
  *
  * BACKGROUND (2026-06-16):
  *   User report: mistral-small-2603 and minimax-m3 both have
@@ -18,11 +18,13 @@
  *      model uses 1-2 tokens for yes/no either way; setting a cap
  *      caused the bug. pi-ai / the provider picks a reasonable
  *      default.
- *   2. classify() passes `reasoning: "minimal"` on every call.
- *      pi-ai's clampThinkingLevel maps "minimal" to the lowest
- *      available level for the model (effectively "off" for models
- *      that support it, otherwise "minimal" or "low" - whichever
- *      is available). This minimizes thinking-token consumption.
+ *   2. classify() passes `reasoning: "off"` on every call.
+ *      pi-ai's clampThinkingLevel accepts "off" and gracefully
+ *      maps it:
+ *        - Models with "off" in their thinkingLevelMap: thinking
+ *          disabled entirely (most efficient)
+ *        - Models without "off" support: clamped to the lowest
+ *          available level (e.g. "minimal")
  *   3. callLlm() plumbs the `reasoning` option through to
  *      completeSimple (was previously dropped on the floor).
  *
@@ -51,7 +53,7 @@ for (const [name, path] of Object.entries(FILES)) {
 const classifierSrc = readFileSync(FILES.textClassifier, "utf-8");
 const llmCallSrc = readFileSync(FILES.llmCall, "utf-8");
 
-console.log("=== classifier: reasoning: minimal + maxTokens: 64 by default ===\n");
+console.log("=== classifier: reasoning: off + no default maxTokens ===\n");
 
 let passed = 0;
 let failed = 0;
@@ -94,11 +96,14 @@ test("classify() default maxTokens is undefined (we removed it entirely)", () =>
   );
 });
 
-test("classify() passes reasoning: 'minimal' on every callLlm call (THE fix)", () => {
-  // The tryModelCall function must pass reasoning: "minimal"
+test("classify() passes reasoning: 'off' on every callLlm call (THE fix)", () => {
+  // The tryModelCall function must pass reasoning: "off"
   // to callLlm. Without this, modern reasoning-capable models
   // (mistral-small, minimax-m3) burn max_tokens on thinking
-  // and produce 0 output tokens.
+  // and produce 0 output tokens. pi-ai's clampThinkingLevel
+  // accepts "off" and gracefully maps it:
+  //   - Models with "off" in thinkingLevelMap: thinking disabled
+  //   - Models without "off" support: clamped to lowest available
   const tryModelCallBody = classifierSrc.match(
     /async function tryModelCall[\s\S]*?\n\}/,
   );
@@ -106,8 +111,8 @@ test("classify() passes reasoning: 'minimal' on every callLlm call (THE fix)", (
   const body = tryModelCallBody[0];
   assert.match(
     body,
-    /reasoning:\s*["']minimal["']/,
-    "tryModelCall must pass reasoning: 'minimal' to callLlm to suppress thinking tokens",
+    /reasoning:\s*["']off["']/,
+    'tryModelCall must pass reasoning: "off" to callLlm to suppress thinking tokens',
   );
 });
 
@@ -127,11 +132,18 @@ test("callLlm() has a `reasoning` option in its public type", () => {
 test("callLlm() plumbs the reasoning option through to completeSimple", () => {
   // The actual plumbing: when options.reasoning is set, it must
   // be passed to completeSimple. Without this the option is just
-  // a documentation-only change.
+  // a documentation-only change. The new code builds an
+  // `simpleOptions` object and assigns reasoning conditionally.
   assert.match(
     llmCallSrc,
-    /options\.reasoning\s*\?\s*\{[\s\S]*?reasoning:\s*options\.reasoning[\s\S]*?\}\s*:\s*\{\}/,
-    "callLlm must pass options.reasoning to completeSimple when set",
+    /if\s*\(\s*options\.reasoning\s*!==\s*undefined\s*\)/,
+    "callLlm must conditionally include options.reasoning in simpleOptions",
+  );
+  // And the simpleOptions must be passed to completeSimple.
+  assert.match(
+    llmCallSrc,
+    /simpleOptions\s*\.\s*reasoning\s*=\s*options\.reasoning/,
+    "callLlm must set simpleOptions.reasoning from options.reasoning",
   );
 });
 

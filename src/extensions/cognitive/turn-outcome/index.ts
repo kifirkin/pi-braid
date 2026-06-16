@@ -96,7 +96,6 @@ async function detectLoop(state: LoopDetectionState, ctx: ExtensionContext): Pro
       CRITICS.toolLoopDetected.criteria,
       { toolSequences: toolSequences.slice(0, 2000) },
       {
-        maxTokens: 16,
         timeoutMs: 5000,
         label: CRITICS.toolLoopDetected.label,
         // Q9 B-class: toolLoopFallback returns "no" by default (safe but

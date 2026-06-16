@@ -163,7 +163,7 @@ export async function detectPatternWithLLM(
       ctx,
       CRITICS.trajectoryPattern.criteria,
       { tools: tools.join(", ") },
-      { maxTokens: 20, timeoutMs: 3000, fallback: () => "" },
+      { timeoutMs: 3000, fallback: () => "" },
     );
     const label = result.label.trim();
     if (label && label.length <= 60) return label;

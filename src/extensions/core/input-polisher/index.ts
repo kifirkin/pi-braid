@@ -290,6 +290,14 @@ async function processMessage(
       {
         maxTokens: outputTokens,
         temperature: 0.1,
+        // Disable reasoning for the polish task. Models with
+        // `reasoning: true` in their pi-ai spec (mistral-small,
+        // minimax-m3, ...) burn the max_tokens budget on internal
+        // thinking. For polishing a user message, thinking isn't
+        // needed - the model just rewrites the text. pi-ai's
+        // clampThinkingLevel accepts "off" and maps it to "off"
+        // (when supported) or the lowest available level.
+        reasoning: "off",
         timeoutMs,
       },
     );

@@ -458,7 +458,6 @@ export function createThinkTool() {
             const keywords = ["refactor", "delete", "remove", "redesign", "migrate", "replace", "significant", "critical", "architecture", "breaking"];
             return keywords.some((kw) => (decision + " " + (reason || "")).toLowerCase().includes(kw)) ? "deep" : "yes";
           },
-          maxTokens: 5,
           timeoutMs: 3000,
         });
 
@@ -479,7 +478,19 @@ export function createThinkTool() {
               apiKey,
               "You are a sharp, critical thinker who reviews the reasoning of other agents.",
               prompt,
-              { maxTokens: wantsReview.suggestedDepth === "deep" ? Math.min(budget.tokens * 2, 2000) : budget.tokens, temperature: 0.4, signal },
+              {
+                maxTokens: wantsReview.suggestedDepth === "deep" ? Math.min(budget.tokens * 2, 2000) : budget.tokens,
+                temperature: 0.4,
+                // The think tool is fundamentally about reasoning
+                // - reviewing another agent's reasoning requires
+                // extended thinking. Use "high" so the model can
+                // allocate a substantial thinking budget before
+                // producing the review. pi-ai's clampThinkingLevel
+                // gracefully maps "high" to whatever the model
+                // supports (most reasoning models do).
+                reasoning: "high",
+                signal,
+              },
             );
 
             let reviewText = "";

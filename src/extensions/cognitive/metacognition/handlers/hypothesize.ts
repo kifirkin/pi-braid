@@ -119,7 +119,6 @@ export function createHypothesizeTool(): ToolDefinition<any, any, any> {
         },
         input: { problem, evidence: evidence || "(none provided)" },
         fallback: () => (problem.length > 50 && (evidence?.length ?? 0) > 30 ? "deep" : "yes"),
-        maxTokens: 5,
         timeoutMs: 3000,
       });
 
@@ -152,7 +151,7 @@ export function createHypothesizeTool(): ToolDefinition<any, any, any> {
           apiKey,
           "You are an expert debugging assistant that analyzes problems and generates testable hypotheses.",
           prompt,
-          { maxTokens: 2048, temperature: 0.3, signal },
+          { temperature: 0.3, signal },
         );
 
         if ("error" in llmResult) {

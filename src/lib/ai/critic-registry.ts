@@ -25,7 +25,7 @@
  *
  *   const result = await classify(ctx, CRITICS.topicCoverage.criteria,
  *     { original: req, response: resp },
- *     { maxTokens: 5, timeoutMs: 5000, fallback: CRITICS.topicCoverage.fallback },
+ *     { timeoutMs: 5000, fallback: CRITICS.topicCoverage.fallback },
  *   );
  */
 
@@ -118,7 +118,7 @@ export const CRITICS = {
         "Proposed subtasks:\n- {{subtasks}}\n\n" +
         "Do the subtasks together fully cover the parent task?",
     },
-    options: { maxTokens: 5, timeoutMs: 5000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /**
@@ -148,7 +148,7 @@ export const CRITICS = {
         "- general: none of the above fits",
       userPrompt: "Recent assistant activity:\n{{text}}",
     },
-    options: { maxTokens: 10, timeoutMs: 3000 },
+    options: { timeoutMs: 3000 },
   } satisfies CriticDef,
 
   /**
@@ -183,7 +183,7 @@ export const CRITICS = {
         "words, each word 1-12 chars. Return only the pattern name, no explanation.",
       userPrompt: "Tool sequence: {{tools}}",
     },
-    options: { maxTokens: 20, timeoutMs: 3000 },
+    options: { timeoutMs: 3000 },
   } satisfies CriticDef,
 
   /** Legacy heuristic fallback for topic drift (stop-word anchor matching). */
@@ -208,7 +208,7 @@ export const CRITICS = {
         "Claim: {{claim}}\nContext: {{context}}\n" +
         "Does the claim contradict the context?",
     },
-    options: { maxTokens: 5, timeoutMs: 5000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /** Is the claim sufficiently supported by the context? */
@@ -223,7 +223,7 @@ export const CRITICS = {
         "Claim: {{claim}}\nContext: {{context}}\n" +
         "Is the claim supported by the context?",
     },
-    options: { maxTokens: 5, timeoutMs: 5000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /** Does the claim contain unwarranted certainty (overconfidence)? */
@@ -239,7 +239,7 @@ export const CRITICS = {
         "Claim: {{claim}}\nAvailable context: {{context}}\n" +
         "Does the claim contain unwarranted certainty?",
     },
-    options: { maxTokens: 5, timeoutMs: 5000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /**
@@ -288,7 +288,7 @@ export const CRITICS = {
         "Recent tool usage (most recent first):\n{{toolSequences}}\n" +
         "Is the agent in a repetitive loop?",
     },
-    options: { maxTokens: 5, timeoutMs: 5000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -308,7 +308,7 @@ export const CRITICS = {
         "Evidence A: {{evidenceA}}\nEvidence B: {{evidenceB}}\n" +
         "Do they contradict each other?",
     },
-    options: { maxTokens: 5, timeoutMs: 5000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /**
@@ -344,7 +344,7 @@ export const CRITICS = {
         "Task: {{task}}\nSolution approach: {{solution}}\n" +
         "Is this a high-quality, reusable approach worth storing as an SOP?",
     },
-    options: { maxTokens: 5, timeoutMs: 5000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -364,7 +364,7 @@ export const CRITICS = {
         "Parent task: {{parentTask}}\nSubtasks:\n{{subtasks}}\n" +
         "Do the subtasks fully cover the parent task?",
     },
-    options: { maxTokens: 5, timeoutMs: 5000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -392,7 +392,7 @@ export const CRITICS = {
         "Task: {{task}}\nSteps:\n{{steps}}\n" +
         "Is this hint genuinely informative and worth storing for future sessions?",
     },
-    options: { maxTokens: 5, timeoutMs: 5000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /**
@@ -426,7 +426,7 @@ export const CRITICS = {
         "Context sample ({{sampleCount}} messages):\n{{messages}}\n" +
         "Rate the signal density of this context.",
     },
-    options: { maxTokens: 10, timeoutMs: 5000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /**
@@ -454,7 +454,7 @@ export const CRITICS = {
         "Message count: {{messageCount}}\n" +
         "What compression level is needed?",
     },
-    options: { maxTokens: 10, timeoutMs: 5000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /**
@@ -498,7 +498,7 @@ export const CRITICS = {
         "Recent agent outputs:\n{{outputSamples}}\n" +
         "Has agent output quality degraded?",
     },
-    options: { maxTokens: 10, timeoutMs: 5000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /**
@@ -537,7 +537,7 @@ export const CRITICS = {
         "Content snippet: {{content}}\n" +
         "Is this message safe to remove before compaction?",
     },
-    options: { maxTokens: 5, timeoutMs: 5000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -562,7 +562,7 @@ export const CRITICS = {
         "- unknown: anything else",
       userPrompt: "{{errorMsg}}",
     },
-    options: { maxTokens: 10, timeoutMs: 5000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /** Legacy fallback for error type classification. */
@@ -593,7 +593,7 @@ export const CRITICS = {
         "Answer only the strength word. Do not explain.",
       userPrompt: "{{body}}",
     },
-    options: { maxTokens: 10, timeoutMs: 5000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /** Legacy fallback for instruction strength. */
@@ -628,7 +628,7 @@ export const CRITICS = {
         "- safe: everything else",
       userPrompt: "{{cmd}}",
     },
-    options: { maxTokens: 10, timeoutMs: 3000 },
+    options: { timeoutMs: 3000 },
   } satisfies CriticDef,
 
   /** Legacy fallback for command type classification. */
@@ -663,7 +663,7 @@ export const CRITICS = {
         "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
         "<text>\n{{text}}\n</text>",
     },
-    options: { maxTokens: 5, timeoutMs: 5000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /** Is this text well-written with correct grammar/spelling/structure? */
@@ -679,7 +679,7 @@ export const CRITICS = {
         "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
         "<text>\n{{text}}\n</text>",
     },
-    options: { maxTokens: 5, timeoutMs: 5000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /** Is this message clearly written and coherent? */
@@ -695,7 +695,7 @@ export const CRITICS = {
         "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
         "<text>\n{{text}}\n</text>",
     },
-    options: { maxTokens: 5, timeoutMs: 5000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /** Does this message contain vague or ambiguous requests? */
@@ -712,7 +712,7 @@ export const CRITICS = {
         "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
         "<text>\n{{text}}\n</text>",
     },
-    options: { maxTokens: 5, timeoutMs: 5000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   // Heuristic fallbacks (graceful degradation when LLM unavailable).
@@ -807,7 +807,7 @@ export const CRITICS = {
         "Hint: {{hint}}\n" +
         "Is this hint relevant to the current task?",
     },
-    options: { maxTokens: 5, timeoutMs: 3000 },
+    options: { timeoutMs: 3000 },
   } satisfies CriticDef,
 
   /** Heuristic fallback: reject very short hints and obvious generic templates. */
@@ -840,7 +840,7 @@ export const CRITICS = {
         "'none' = text does not resolve any conflict. Do not explain.",
       userPrompt: "Does this message resolve a knowledge conflict? {{text}}",
     },
-    options: { maxTokens: 5, timeoutMs: 5000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /**
@@ -887,7 +887,7 @@ export const CRITICS = {
         "Answer only 'yes' or 'no'. Do not explain.",
       userPrompt: "{{text}}",
     },
-    options: { maxTokens: 5, timeoutMs: 3000 },
+    options: { timeoutMs: 3000 },
   } satisfies CriticDef,
   // complianceFramingFallback was previously defined here but is not
   // called anywhere (replaced by direct LLM-only call sites in
@@ -910,7 +910,7 @@ export const CRITICS = {
         "Answer only 'positive', 'negative', or 'neutral'. Do not explain.",
       userPrompt: "{{sentence}}",
     },
-    options: { maxTokens: 5, timeoutMs: 3000 },
+    options: { timeoutMs: 3000 },
   } satisfies CriticDef,
 
   /** Legacy fallback for polarity detection. */
@@ -938,7 +938,7 @@ export const CRITICS = {
         "Answer only 'yes' or 'no'. Do not explain.",
       userPrompt: "{{sentence}}",
     },
-    options: { maxTokens: 5, timeoutMs: 3000 },
+    options: { timeoutMs: 3000 },
   } satisfies CriticDef,
 
   /** Legacy fallback for entity extraction. */
@@ -965,7 +965,7 @@ export const CRITICS = {
         "Answer only 'yes' or 'no'. Do not explain.",
       userPrompt: "Does this message use sycophancy pressure tactics?\n\n{{text}}",
     },
-    options: { maxTokens: 5, timeoutMs: 5000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /** Legacy fallback for sycophancy tactics detection. */
@@ -998,7 +998,7 @@ export const CRITICS = {
         "Answer only 'yes' or 'no'. Do not explain.",
       userPrompt: "Does this response do validation-before-correction?\n\n{{text}}",
     },
-    options: { maxTokens: 5, timeoutMs: 5000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /** Legacy fallback for VbC detection. */

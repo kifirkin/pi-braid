@@ -77,7 +77,7 @@ async function checkContradiction(
 			ctx,
 			CRITICS.claimContradiction.criteria,
 			{ claim, context },
-			{ maxTokens: 10, tierPolicy: "always-llm" } as const,
+			{ tierPolicy: "always-llm" } as const,
 		);
 		if (result.label === "yes") {
 			return {
@@ -113,7 +113,6 @@ async function checkSupport(
 			CRITICS.claimSupported.criteria,
 			{ claim, context: contextText },
 			{
-				maxTokens: 10,
 				tierPolicy: "always-llm",
 			},
 		);
@@ -142,7 +141,7 @@ async function checkOverconfidence(
 			ctx,
 			CRITICS.claimOverconfidence.criteria,
 			{ claim },
-			{ maxTokens: 10, tierPolicy: "always-llm" } as const,
+			{ tierPolicy: "always-llm" } as const,
 		);
 		if (result.label === "yes") {
 			issues.push({

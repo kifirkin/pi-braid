@@ -66,7 +66,6 @@ export async function determineCompressionLevel(
         messageCount: String(opts.messageCount),
       },
       {
-        maxTokens: 10,
         timeoutMs: 5000,
         label: CRITICS.compressionUrgency.label,
         // Q9 B-class: compressionUrgencyFallback has 4-way classification

@@ -221,7 +221,6 @@ Do not invent problems that are not supported by the text.`;
     const verifyModel = utilModel ?? ctx.model!;
     const apiKey = await ctx.modelRegistry.getApiKeyForProvider(verifyModel.provider);
     const llmResult = await callLlm(verifyModel, apiKey, "", prompt, {
-      maxTokens: 1024,
       temperature: 0.1,
       signal,
     });

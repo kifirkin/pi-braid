@@ -292,14 +292,17 @@ async function tryModelCall(
       // Disable reasoning for yes/no classification.
       // Many modern models (mistral-small, minimax-m3, ...) have
       // `reasoning: true` by default. Thinking tokens count
-      // against max_tokens, so even a 64-token budget can burn
+      // against max_tokens, so even a generous budget can burn
       // entirely on thinking and produce 0 output tokens - the
       // 'unparseable label: ""' symptom. pi-ai's clampThinkingLevel
-      // gracefully maps "minimal" to whatever the lowest supported
-      // level is for the model (effectively "off" for models that
-      // support it, otherwise "minimal" or "low" - whichever is
-      // available).
-      reasoning: "minimal",
+      // accepts "off" and gracefully maps it:
+      //   - Models with "off" in their thinkingLevelMap: thinking
+      //     disabled entirely (most efficient)
+      //   - Models without "off" support: clamped to the lowest
+      //     available level (e.g. "minimal")
+      // For classification, "off" is the right choice - yes/no
+      // is mechanical, no thinking needed.
+      reasoning: "off",
       timeoutMs,
       maxRetries,
     });

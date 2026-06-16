@@ -380,7 +380,6 @@ export async function checkQualitativeDegradation(
       CRITICS.qualitativeDegradation.criteria,
       { outputSamples: sampleText },
       {
-        maxTokens: 10,
         timeoutMs: 5000,
         label: CRITICS.qualitativeDegradation.label,
         // Q9 B-class: qualitativeDegradationFallback returns "STABLE" by

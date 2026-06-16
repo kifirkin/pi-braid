@@ -95,7 +95,6 @@ async function extractClaimsViaLLM(
     if (!apiKey) return []; // no API key - return empty (no claims)
 
     const result = await callLlm(model, apiKey, EXTRACTION_SYSTEM_PROMPT, truncated, {
-      maxTokens: 500,
       temperature: 0.1,
       timeoutMs: 8000,
       maxRetries: 0,
@@ -152,7 +151,6 @@ async function extractClaimsViaClassify(
         CRITICS.entityExtraction.criteria,
         { sentence },
         {
-          maxTokens: 5,
           timeoutMs: 3000,
           label: CRITICS.entityExtraction.label,
           // Q9: ENTITY_VERBS regex misses most entities. Always use LLM.
@@ -167,7 +165,6 @@ async function extractClaimsViaClassify(
         CRITICS.polarityDetection.criteria,
         { sentence },
         {
-          maxTokens: 5,
           timeoutMs: 3000,
           label: CRITICS.polarityDetection.label,
           // Q9: negation-word list breaks on double-negation. Always use LLM.
@@ -243,7 +240,6 @@ export async function claimsContradict(a: Claim, b: Claim, ctx: ExtensionContext
       CRITICS.claimContradiction.criteria,
       { claim: claimText.slice(0, 500), context: contextText.slice(0, 500) },
       {
-        maxTokens: 5,
         timeoutMs: 5000,
         label: CRITICS.claimContradiction.label,
         // Q9: heuristic negation-word overlap has many false positives. Always LLM.

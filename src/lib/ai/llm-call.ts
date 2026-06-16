@@ -86,16 +86,29 @@ export interface LlmCallOptions {
   maxTokens?: number;
   /**
    * Reasoning effort level. Pass "off" to disable thinking entirely
-   * for short mechanical tasks (yes/no classification, etc.).
-   * Reasoning tokens count against max_tokens for most providers, so
-   * a yes/no classifier with default reasoning enabled will burn
-   * its entire budget on thinking and produce 0 output tokens
-   * (the empty-string symptom). pi-ai's clampThinkingLevel handles
-   * "off" gracefully - it maps to "off" if the model supports it,
-   * otherwise to the lowest available level.
+   * for short mechanical tasks (yes/no classification, polishing).
+   * Pass "high" / "xhigh" for tasks that benefit from extended
+   * thinking (e.g. the think tool's review pass).
+   *
+   * Reasoning tokens count against max_tokens for most providers,
+   * so a yes/no classifier with default reasoning enabled will
+   * burn its entire budget on thinking and produce 0 output tokens
+   * (the empty-string symptom).
+   *
+   * pi-ai's clampThinkingLevel accepts "off" at runtime and
+   * gracefully maps it:
+   *   - Models with "off" in their thinkingLevelMap: thinking
+   *     disabled entirely (most efficient)
+   *   - Models without "off" support: clamped to the lowest
+   *     available level (e.g. "minimal")
+   *
+   * The function signature accepts "off" at runtime even though
+   * the public ThinkingLevel type is stricter - we cast at the
+   * call site.
+   *
    * Default: undefined (provider default).
    */
-  reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh";
+  reasoning?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
   /** Per-attempt timeout in ms. Default: 30000 */
   timeoutMs?: number;
   /** Outer retry attempts. Default: 3 */
@@ -178,14 +191,40 @@ export async function callLlm(
         : timeoutController.signal;
 
       try {
-        const result = await completeSimple(model as Model<Api>, context, {
+        // Build options object first so we can cast 'reasoning'
+        // (which accepts "off" at runtime) to the public
+        // ThinkingLevel type. The spread pattern would infer the
+        // wider union and fail the type check.
+        //
+        // We always pass the reasoning value when set, including
+        // "off" - pi-ai's clampThinkingLevel accepts "off" and
+        // gracefully maps it (off if supported, else lowest
+        // available level like "minimal").
+        const simpleOptions: {
+          apiKey: string | undefined;
+          maxTokens: number;
+          temperature: number;
+          maxRetries: number;
+          // The public type is narrower; we cast at the boundary.
+          reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "off";
+          signal: AbortSignal;
+        } = {
           apiKey,
           maxTokens,
           temperature,
           maxRetries: sdkMaxRetries,
-          ...(options.reasoning ? { reasoning: options.reasoning } : {}),
           signal: combinedSignal,
-        });
+        };
+        if (options.reasoning !== undefined) {
+          simpleOptions.reasoning = options.reasoning;
+        }
+        // Cast to SimpleStreamOptions-compatible at the call site.
+        // The runtime accepts "off"; the public type doesn't list it.
+        const result = await completeSimple(
+          model as Model<Api>,
+          context,
+          simpleOptions as unknown as Parameters<typeof completeSimple>[2],
+        );
 
         clearTimeout(timeoutId);
 

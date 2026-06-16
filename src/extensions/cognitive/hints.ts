@@ -177,7 +177,6 @@ async function filterRelevantHints(hints: string[], ctx: ExtensionContext): Prom
         CRITICS.hintRelevance.criteria,
         { hint, currentTask },
         {
-          maxTokens: 16,
           timeoutMs: 3000,
           // Q9 B-class: hintRelevanceFallback is permissive (accepts
           // most hints). tierPolicy: fallback-only downweights to 0.5

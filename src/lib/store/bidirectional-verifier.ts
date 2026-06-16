@@ -229,7 +229,6 @@ export async function classifyRequirementStrength(
       CRITICS.instructionStrength.criteria,
       { body },
       {
-        maxTokens: 10,
         timeoutMs: 5000,
         label: CRITICS.instructionStrength.label,
         fallback: () => CRITICS.instructionStrengthFallback(body),
