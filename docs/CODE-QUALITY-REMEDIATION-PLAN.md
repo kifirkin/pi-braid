@@ -5,22 +5,22 @@
 
 ## Headline numbers
 
-| Metric | Start | After first wrap | After classifier-down fixes |
-|---|---|---|---|
-| Source files | 199 | 199 | 199 |
-| Test files | ~35 | 42 | 45 |
-| Tests pass | 32/32 | 40/40 | 46/46 |
-| Unused identifiers (tsc --noUnusedLocals) | 89 | 0 | 0 |
-| Module-level `let` violations | 20+ | 2 (documented) | 2 (documented) |
-| A-class fragile fallbacks | 11 | 0 | 0 |
-| B-class fragile fallbacks | 12 | 0 | 0 |
-| `Promise.all` with LLM fanout | 8 | 0 | 0 |
-| Hallucinated tool names | 7 | 0 | 0 |
-| Dynamic `await import()` | 16 | 0 | 0 |
-| `Date.now() + Math.random()` IDs | 23 | 0 | 0 |
-| `as any` / `as unknown as` casts | 48 | 43 | 43 |
-| Tool count | 30 | 30 | 30 |
-| Commits this session (total) | — | 28 | 38 |
+| Metric | Start | After first wrap | After classifier-down fixes | After stopReason+maxTokens16 |
+|---|---|---|---|---|
+| Source files | 199 | 199 | 199 | 199 |
+| Test files | ~35 | 42 | 45 | 51 |
+| Tests pass | 32/32 | 40/40 | 46/46 | 51/51 |
+| Unused identifiers (tsc --noUnusedLocals) | 89 | 0 | 0 | 0 |
+| Module-level `let` violations | 20+ | 2 (documented) | 2 (documented) | 2 (documented) |
+| A-class fragile fallbacks | 11 | 0 | 0 | 0 |
+| B-class fragile fallbacks | 12 | 0 | 0 | 0 |
+| `Promise.all` with LLM fanout | 8 | 0 | 0 | 0 |
+| Hallucinated tool names | 7 | 0 | 0 | 0 |
+| Dynamic `await import()` | 16 | 0 | 0 | 0 |
+| `Date.now() + Math.random()` IDs | 23 | 0 | 0 | 0 |
+| `as any` / `as unknown as` casts | 48 | 43 | 43 | 37 (4 more cleaned in `self/watchdog/`) |
+| Tool count | 30 | 30 | 30 | 30 |
+| Commits this session (total) | — | 28 | 38 | 41 |
 
 ## What was done after first wrap (commits `5eef50cf` → `??`)
 
@@ -41,6 +41,17 @@ Following the input-polisher precedent (`9966c8ad`): detectors that call `classi
 - **topic-drift-detector** (`fix(detectors): ...`): `DriftCheck.classifierDown?: boolean`. `check()` sets it true when all 3 results are null OR `tier === "failed"`. `drift-handler` dispatches on it: emits `classifier_down` signal with warn severity and distinct source label.
 - **sycophancy-detector** (same commit): `SycophancyRisk.classifierDown?: boolean`. `computeRisk` flags it on the safe-default return (score still 0; we don't false-positive). `handleSycophancy` emits a separate `user_risk_classifier_down` signal.
 
+### "Classifier empty string" investigation (root-cause fix)
+User report (2026-06-15 16:42): mistral-small-2603 and minimax-m3 both return `""` to classifier calls. The TIER 2/3 WARN said only `unparseable label: ""` with no hint about why. Two commits:
+
+- **`8a89f4d7` - inline actual error reason in TIER 2/3 warns**: `tryModelCall` returns `{ ok: true, raw, label } | { ok: false, reason } | null`. The TIER 2/3 WARN now inlines the actual reason. The `Run /logs level info for the actual error` pointer was removed. 12-assertion test pins the contract.
+- **`3c91ef19` - input-polisher prompt pattern**: 4 input-polisher critics (inputCodeHeavy, inputWellWritten, inputClarity, inputAmbiguity) refactored to use PERSONA-in-system / instructions+`<text>`-wrap-in-user pattern (same as the working input-polisher). The other 6 critic prompts not yet migrated (consistency is the next task).
+- **`b1365ce7` - surface stopReason + usage in unparseable-label warn**: `callLlm` return type now includes `stopReason?: string` and `usage?: { inputTokens?, outputTokens?, totalTokens? }`. The classifier unparseable-label reason now includes `(stopReason=length, used 5/5 tokens)` inline. This was the ROOT CAUSE: the model hits the max_tokens ceiling and returns empty AssistantMessage with no text. Users now see the cause directly. Also bumped `classify()` default `maxTokens` from 10 to 16.
+- **`31217cb6` - bump maxTokens 5/10 -> 16 at all critic callers**: input-critic.ts (4 sites), topic-drift/index.ts (3), cognitive/hints.ts, cognitive/turn-outcome/index.ts. Even before the stopReason diagnostic helps, the larger budget prevents the empty-on-length case for typical yes/no answers.
+
+### Cast cleanup
+- **`68dc3ab3` - `safeSessionManagerTyped`**: 5 `safeSessionManager(ctx) as unknown as SmWithSessionFile` casts in `self/watchdog/index.ts` removed. New `safeSessionManagerTyped(ctx)` returns the typed wrapper directly. `SessionManager.getSessionFile(): string | null` added to the canonical interface. Local `SmWithSessionFile` interface declarations no longer needed. 10-assertion test pins the contract.
+
 ### Tests added in this continuation
 - `test-episode-sanitizer.mjs` — 8 assertions (BUG-M3 + BUG-M2)
 - `test-input-critic-failed-tier.mjs` — input-polisher classifier-down
@@ -48,6 +59,11 @@ Following the input-polisher precedent (`9966c8ad`): detectors that call `classi
 - `test-llm-call-concurrency.mjs` — 12 assertions (per-model semaphore)
 - `test-drift-classifier-down.mjs` — 13 assertions (topic-drift)
 - `test-sycophancy-classifier-down.mjs` — 6 assertions
+- `test-turn-outcome-classifier-down.mjs` — 9 assertions (turn-outcome loop-detector offline)
+- `test-cognitive-topic-drift-classifier-down.mjs` — 13 assertions
+- `test-claim-verification-classifier-down.mjs` — 9 assertions
+- `test-text-classifier-warn-detail.mjs` — 13 assertions (TIER 2/3 warn inline reason)
+- `test-safe-session-manager-typed.mjs` — 10 assertions (watchdog cast cleanup)
 
 ## Decisions log (additions)
 
