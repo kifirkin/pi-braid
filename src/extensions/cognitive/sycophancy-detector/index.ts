@@ -16,11 +16,12 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { sendEnforcementWhisper } from "../../enforcement/whisper.js";
 import { emitSignal } from "../../../lib/reasoning/belief-policy-engine.js";
 import { createLogger } from "../../../lib/core/logger.js";
-import { getExtensionState, safeSessionManager } from "../../../lib/state/extension-state.js";
+import { getExtensionState, safeSessionManagerTyped } from "../../../lib/state/extension-state.js";
 import { classify } from "../../../lib/ai/text-classifier.js";
 import { CRITICS } from "../../../lib/ai/critic-registry.js";
 import { MESSAGE_END } from "../../../lib/core/event-names.js";
 import { MIN_TEXT_LENGTH_FOR_CLASSIFY } from "../../../lib/constants/session-thresholds.js";
+import type { SessionEntry } from "../../../lib/state/session-manager.js";
 
 const log = createLogger("sycophancy-detector");
 
@@ -168,10 +169,10 @@ async function handleSycophancy(
   state.turnCount++;
 
   // Get session history - use getBranch(), getCurrentSession() does not exist on SessionManager
-  // Use safeSessionManager to avoid assertActive() crash on stale ctx
-  const sm = safeSessionManager(ctx) as { getBranch?(): unknown[] } | undefined;
+  // Use safeSessionManagerTyped to avoid assertActive() crash on stale ctx
+  const sm = safeSessionManagerTyped(ctx);
 
-  const entries: unknown[] = sm?.getBranch?.() ?? [];
+  const entries: SessionEntry[] = sm?.getBranch?.() ?? [];
 
   const messages: any[] = entries
     .filter((e: any) => e.type === "message")

@@ -1,5 +1,5 @@
 import { createLogger } from "../../../lib/core/logger.js";
-import { safeSessionManager } from "../../../lib/state/extension-state.js";
+import { safeSessionManagerTyped } from "../../../lib/state/extension-state.js";
 
 const log = createLogger("session-recall");
 /**
@@ -523,8 +523,8 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
     midTaskRecallDone = true;
 
     // Extract first user message as task context
-    // Use safeSessionManager to avoid assertActive() crash on stale ctx
-    const manager = safeSessionManager(ctx) as { getBranch?(): any[] } | undefined;
+    // Use safeSessionManagerTyped to avoid assertActive() crash on stale ctx
+    const manager = safeSessionManagerTyped(ctx);
     const entries = manager?.getBranch?.();
     if (!entries || entries.length === 0) return;
     const firstUserMsg = entries.find(

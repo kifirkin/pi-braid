@@ -33,6 +33,10 @@ const FILES = {
   sessionManager: join(ROOT, "src/lib/state/session-manager.ts"),
   extensionState: join(ROOT, "src/lib/state/extension-state.ts"),
   watchdog: join(ROOT, "src/extensions/self/watchdog/index.ts"),
+  sycophancy: join(ROOT, "src/extensions/cognitive/sycophancy-detector/index.ts"),
+  analytics: join(ROOT, "src/extensions/heartbeat/analytics/index.ts"),
+  threeMemoryStores: join(ROOT, "src/extensions/memory/three-memory-stores/index.ts"),
+  sessionRecall: join(ROOT, "src/extensions/memory/session-recall/index.ts"),
 };
 
 for (const [name, path] of Object.entries(FILES)) {
@@ -180,6 +184,70 @@ test("Watchdog callsites use ?.getSessionFile?.() for safety (typed wrapper, but
   assert.ok(
     sm.length >= 4,
     `Watchdog should have multiple 'sm?.getSessionFile?.() ?? ctx.cwd' callsites. Found: ${sm.length}`,
+  );
+});
+
+// ── Other migrated sites (round 2) ────────────────────────────────────────
+
+test("Sycophancy detector uses safeSessionManagerTyped (no SmWithSessionFile-style local interface)", () => {
+  const src = readFileSync(FILES.sycophancy, "utf-8");
+  assert.match(
+    src,
+    /import.*safeSessionManagerTyped/,
+    "Sycophancy detector must import safeSessionManagerTyped",
+  );
+  assert.ok(
+    !/safeSessionManager\(ctx\) as \{ getBranch/.test(src),
+    "Sycophancy detector must not use the old 'safeSessionManager(ctx) as {getBranch?()}' cast pattern",
+  );
+  assert.match(
+    src,
+    /safeSessionManagerTyped\(ctx\)/,
+    "Sycophancy detector must have a safeSessionManagerTyped(ctx) callsite",
+  );
+});
+
+test("Heartbeat analytics uses safeSessionManagerTyped (was: 'as {getSessionFile?(): string}')", () => {
+  const src = readFileSync(FILES.analytics, "utf-8");
+  assert.match(
+    src,
+    /import.*safeSessionManagerTyped/,
+    "Heartbeat analytics must import safeSessionManagerTyped",
+  );
+  assert.ok(
+    !/safeSessionManager\(ctx\) as \{ getSessionFile/.test(src),
+    "Heartbeat analytics must not use the old 'safeSessionManager(ctx) as {getSessionFile?()}' cast pattern",
+  );
+});
+
+test("Three-memory-stores uses safeSessionManagerTyped (was: 'as CtxSessionManager')", () => {
+  const src = readFileSync(FILES.threeMemoryStores, "utf-8");
+  assert.match(
+    src,
+    /import.*safeSessionManagerTyped/,
+    "Three-memory-stores must import safeSessionManagerTyped",
+  );
+  assert.ok(
+    !/safeSessionManager\(ctx\) as CtxSessionManager/.test(src),
+    "Three-memory-stores must not use the old CtxSessionManager local interface cast",
+  );
+  // The CtxSessionManager local interface should be gone
+  assert.ok(
+    !/interface CtxSessionManager extends SessionManager/.test(src),
+    "Three-memory-stores must not declare a local CtxSessionManager interface (use safeSessionManagerTyped)",
+  );
+});
+
+test("Session-recall uses safeSessionManagerTyped (was: 'as {getBranch?(): any[]}')", () => {
+  const src = readFileSync(FILES.sessionRecall, "utf-8");
+  assert.match(
+    src,
+    /import.*safeSessionManagerTyped/,
+    "Session-recall must import safeSessionManagerTyped",
+  );
+  assert.ok(
+    !/safeSessionManager\(ctx\) as \{ getBranch\?\(\): any\[\]/.test(src),
+    "Session-recall must not use the old 'safeSessionManager(ctx) as {getBranch?(): any[]}' cast pattern",
   );
 });
 

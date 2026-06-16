@@ -26,22 +26,20 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 
-import type { SessionManager } from "../../../lib/state/session-manager.js";
-
 // Extended episode with dynamic metadata fields not in the base type
 interface RichEpisode extends Episode {
   memoryConfidence?: number;
   _crossSession?: boolean;
 }
 
-// Extended session manager with getSessionFile (pi-native, not in our wrapper)
-interface CtxSessionManager extends SessionManager {
-  getSessionFile(): string;
-}
+// getSessionFile is now part of the canonical SessionManager wrapper
+// (lib/state/session-manager.ts). The CtxSessionManager local
+// interface is no longer needed - use safeSessionManagerTyped()
+// which returns the typed SessionManager | undefined directly.
 
 import { createLogger } from "../../../lib/core/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
-import { getExtensionState, safeSessionManager } from "../../../lib/state/extension-state.js";
+import { getExtensionState, safeSessionManagerTyped } from "../../../lib/state/extension-state.js";
 import { emitSignal } from "../../../lib/reasoning/belief-policy-engine.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { readFile as readFilePromise, writeFile, mkdir } from "node:fs/promises";
@@ -116,7 +114,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     SessionPhase.MemoryState,
     async (_event: any, ctx: ExtensionContext) => {
       const state = getState(ctx);
-      const sm = safeSessionManager(ctx) as CtxSessionManager | undefined;
+      const sm = safeSessionManagerTyped(ctx);
       state.currentSessionId = sm?.getSessionFile?.() ?? `session-${Date.now()}`;
 
       if (state.episodes.length === 0) {

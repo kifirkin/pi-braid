@@ -15,7 +15,7 @@ import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/se
 import { existsSync, mkdirSync } from "node:fs";
 import { METRICS_FILE, METRICS_DIR } from "../../../lib/config/braid-paths.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { safeSessionManager } from "../../../lib/state/extension-state.js";
+import { safeSessionManagerTyped } from "../../../lib/state/extension-state.js";
 import { emitSignal } from "../../../lib/reasoning/belief-policy-engine.js";
 import { eventBus } from "../../../lib/events/event-bus.js";
 import { isDegraded, getDegradationReasons } from "../../../lib/detection/degradation-detector.js";
@@ -47,7 +47,7 @@ export default function analyticsExtension(pi: ExtensionAPI) {
   registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event, ctx) => {
     resetCriticStats();
     const state = getAnalyticsStateInternal(ctx);
-    const sm = safeSessionManager(ctx) as { getSessionFile?(): string } | undefined;
+    const sm = safeSessionManagerTyped(ctx);
     state.sessionId = sm
       ? (sm.getSessionFile?.() ?? `session-${Date.now()}`)
       : `session-${Date.now()}`;
