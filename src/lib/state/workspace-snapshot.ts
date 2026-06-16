@@ -29,6 +29,7 @@ import * as path from "node:path";
 import { createLogger } from "../core/logger.js";
 import { BRAID_DIR } from "../config/braid-paths.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { callScratchpadTool } from "./extension-state.js";
 
 const log = createLogger("workspace-snapshot");
 
@@ -233,9 +234,7 @@ export async function captureSnapshot(
     // 6. Capture working context from scratchpad (best-effort)
     let context;
     try {
-      const scratchpadResult = await (
-        ctx as unknown as { tools?: { scratchpad?(params: { action: string }): Promise<{ details?: { goal?: string; plan?: unknown[]; decisions?: unknown[]; key_learnings?: unknown[] } }> } }
-      ).tools?.scratchpad?.({ action: "read" });
+      const scratchpadResult = await callScratchpadTool(ctx, { action: "read" });
       const d = scratchpadResult?.details;
       if (d) {
         context = {

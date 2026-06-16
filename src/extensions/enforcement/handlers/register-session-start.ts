@@ -6,7 +6,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { eventBus } from "../../../lib/events/event-bus.js";
-import { cacheSessionManager } from "../../../lib/state/extension-state.js";
+import { cacheSessionManager, getSessionStartTask } from "../../../lib/state/extension-state.js";
 import { getState } from "../state.js";
 import { createLogger } from "../../../lib/core/logger.js";
 
@@ -22,11 +22,7 @@ export function registerSessionStart(pi: ExtensionAPI): void {
       // Cache fresh sessionManager reference for stale-safe access in turn_end handlers
       cacheSessionManager(ctx);
 
-      const task =
-        (event as unknown as { task?: string; prompt?: string }).task ||
-        (event as unknown as { task?: string; prompt?: string }).prompt ||
-        getState(ctx).originalRequest ||
-        "";
+      const task = getSessionStartTask(event) || getState(ctx).originalRequest || "";
       if (task) {
         getState(ctx).driftDetector?.setTaskContext(task);
       }

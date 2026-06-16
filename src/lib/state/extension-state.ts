@@ -292,3 +292,113 @@ export function getLeafIdSafe(ctx: ExtensionContext | undefined): string {
     return "?";
   }
 }
+
+// ── Type-narrowing helpers for event/message/ctx ──────────────────────────────────
+//
+// pi's public types are deliberately narrow (e.g. AssistantMessage has
+// `{role, content}` but not `stopReason` in all shapes). Extension
+// handlers need to read internal fields like `stopReason`, `ctx`,
+// `tools.scratchpad`, etc. The conventional pattern was:
+//   (event as unknown as { stopReason?: string }).stopReason
+// which appeared in 5+ files. These helpers encapsulate the narrowing
+// so the cast lives in exactly one place per field.
+
+/**
+ * Read `stopReason` from a message-shaped object without inlining
+ * the type cast. Returns undefined if not present. Replaces the
+ * pattern `event.message as unknown as { stopReason?: string }`
+ * which appeared 3+ times in turn-end-handler.ts.
+ */
+export function getStopReason(message: unknown): string | undefined {
+  if (!message || typeof message !== "object") return undefined;
+  const sr = (message as { stopReason?: unknown }).stopReason;
+  return typeof sr === "string" ? sr : undefined;
+}
+
+/**
+ * Read `content` from a message-shaped object. Returns an empty
+ * array if not present or not an array. Replaces the pattern
+ * `event.message as unknown as { content?: Array<...> }` in
+ * turn-end-handler.ts:73.
+ */
+export function getMessageContent(
+  message: unknown,
+): Array<{ type: string; text?: string }> {
+  if (!message || typeof message !== "object") return [];
+  const content = (message as { content?: unknown }).content;
+  if (!Array.isArray(content)) return [];
+  return content as Array<{ type: string; text?: string }>;
+}
+
+/**
+ * Get the session_start task/prompt string with type-narrowing.
+ * pi's `session_start` event payload can be shaped as either
+ * `{task: string}` (old) or `{prompt: string}` (new). Replaces
+ * the pattern `(event as unknown as { task?: string; prompt?: string })`
+ * in register-session-start.ts:26-27.
+ */
+export function getSessionStartTask(event: unknown): string {
+  if (!event || typeof event !== "object") return "";
+  const e = event as { task?: unknown; prompt?: unknown };
+  return (typeof e.task === "string" ? e.task : "") ||
+    (typeof e.prompt === "string" ? e.prompt : "");
+}
+
+/**
+ * Get the optional `ctx` field from a turn_end or similar event,
+ * returning it typed as a function-bearing object. Replaces the
+ * pattern `event as unknown as { ctx?: { getContextUsage?() } }`
+ * in turn-end-handler.ts:279.
+ */
+export function getContextUsageFromEvent(
+  event: unknown,
+): { percent?: number; tokens?: number } | undefined {
+  if (!event || typeof event !== "object") return undefined;
+  const ctx = (event as { ctx?: unknown }).ctx;
+  if (!ctx || typeof ctx !== "object") return undefined;
+  const fn = (ctx as { getContextUsage?: () => unknown }).getContextUsage;
+  if (typeof fn !== "function") return undefined;
+  try {
+    return fn.call(ctx) as { percent?: number; tokens?: number } | undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Type for the result of calling ctx.tools.scratchpad(...).
+ * Only the fields used by extension code are typed; other fields
+ * pass through as `unknown`.
+ */
+export type ScratchpadToolResult = {
+  details?: {
+    goal?: string;
+    plan?: unknown[];
+    decisions?: unknown[];
+    key_learnings?: Array<{ persisted?: boolean }>;
+  };
+};
+
+/**
+ * Call `ctx.tools.scratchpad` with type-narrowing. Returns undefined
+ * if the tool is not registered (e.g. when scratchpad extension is
+ * disabled). Replaces the pattern
+ *   `(ctx as unknown as { tools?: { scratchpad? } }).tools?.scratchpad?.(...)`
+ * which appeared in register-session-compact.ts and
+ * workspace-snapshot.ts.
+ */
+export async function callScratchpadTool(
+  ctx: ExtensionContext,
+  params: { action: string },
+): Promise<ScratchpadToolResult | undefined> {
+  if (!ctx || typeof ctx !== "object") return undefined;
+  const tools = (ctx as { tools?: unknown }).tools;
+  if (!tools || typeof tools !== "object") return undefined;
+  const fn = (tools as { scratchpad?: (p: { action: string }) => Promise<unknown> }).scratchpad;
+  if (typeof fn !== "function") return undefined;
+  try {
+    return (await fn.call(tools, params)) as ScratchpadToolResult | undefined;
+  } catch {
+    return undefined;
+  }
+}

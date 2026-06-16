@@ -8,6 +8,7 @@ import { sendEnforcementWhisper } from "../whisper.js";
 import { getState } from "../state.js";
 import { enforcementSignals, determineContrastMode } from "../signals.js";
 import { createLogger } from "../../../lib/core/logger.js";
+import { callScratchpadTool } from "../../../lib/state/extension-state.js";
 import * as timerMod from "../../scheduling/timer/index.js";
 
 const log = createLogger("enforcement:session-compact");
@@ -63,14 +64,8 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
     }
 
     try {
-      const scratchpadResult = await (
-        ctx as unknown as { tools?: { scratchpad?(params: { action: string }): Promise<unknown> } }
-      ).tools?.scratchpad?.({ action: "read" });
-      const details = (
-        scratchpadResult as
-          | { details?: { key_learnings?: Array<{ persisted?: boolean }> } }
-          | undefined
-      )?.details;
+      const scratchpadResult = await callScratchpadTool(ctx, { action: "read" });
+      const details = scratchpadResult?.details;
       const learnings = details?.key_learnings ?? [];
       const unpersisted = learnings.filter((l) => !l.persisted);
 

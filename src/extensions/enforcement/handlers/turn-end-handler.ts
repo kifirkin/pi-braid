@@ -19,6 +19,7 @@ import { detectOrphanChains } from "./orphan-chains.js";
 import { getNudgeManager } from "../nudge-manager.js";
 import { getState, ERROR_BURST_THRESHOLD, RECOVERY_GRACE_TURNS, markNudgeSent, shouldNudgeForMemory, markMemoryNudgeSent } from "../state.js";
 import { recordNudgeSuppressed, getNudgeAnalytics } from "../../../lib/reasoning/nudge-analytics.js";
+import { getStopReason, getMessageContent, getContextUsageFromEvent } from "../../../lib/state/extension-state.js";
 import { type TurnState } from "../types.js";
 import { validateTurn } from "../validation.js";
 import { sendEnforcementWhisper } from "../whisper.js";
@@ -69,13 +70,11 @@ export async function dispatchTurnEndLoop(
   const isBurst = getState(ctx).consecutiveErrorTurns >= ERROR_BURST_THRESHOLD;
 
   // ── Context overflow detection ─────────────────────────────────────────
-  const msgContent =
-    (event.message as unknown as { content?: Array<{ type: string; text?: string }> })?.content ??
-    [];
+  const msgContent = getMessageContent(event.message);
   const isOverflowTurn =
     event.message.role === "assistant" &&
     "stopReason" in event.message &&
-    (event.message as unknown as { stopReason?: string }).stopReason === "error" &&
+    getStopReason(event.message) === "error" &&
     msgContent
       .filter((c: any) => c?.type === "text")
       .map((c: any) => c?.text || "")
@@ -149,7 +148,7 @@ export async function dispatchTurnEndLoop(
       state: getState(ctx),
       event: {
         role: event.message.role,
-        stopReason: (event.message as unknown as { stopReason?: string }).stopReason,
+        stopReason: getStopReason(event.message),
       },
       actualTools,
       erroredTools,
@@ -172,7 +171,7 @@ export async function dispatchTurnEndLoop(
     state: getState(ctx),
     event: {
       role: event.message.role,
-      stopReason: (event.message as unknown as { stopReason?: string }).stopReason,
+      stopReason: getStopReason(event.message),
     },
     actualTools,
     erroredTools,
@@ -275,10 +274,7 @@ export async function dispatchTurnEndLoop(
   let usagePercent = 0;
   let usageTokens = 0;
   try {
-    const ctxFromEvent = (
-      event as unknown as { ctx?: { getContextUsage?(): { percent?: number; tokens?: number } } }
-    )?.ctx;
-    const usage = ctxFromEvent?.getContextUsage?.();
+    const usage = getContextUsageFromEvent(event);
     if (usage) {
       usagePercent = usage.percent ?? 0;
       usageTokens = usage.tokens ?? 0;
