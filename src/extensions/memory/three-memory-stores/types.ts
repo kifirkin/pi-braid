@@ -8,6 +8,26 @@ import type { Episode } from "../../../lib/types/episode-types.js";
 
 export type { Episode };
 
+/**
+ * Episode with dynamic metadata fields populated at runtime.
+ *
+ * `memoryConfidence` is set by the recall ranking pipeline.
+ * `_crossSession` is set when an episode is loaded from a different
+ * session than the current one (used to filter contamination).
+ *
+ * NOTE: `similarity` and `sessionId` are already declared in the base
+ * Episode type as required fields, so we don't re-declare them here.
+ * RichEpisode inherits them.
+ *
+ * This is a structural-type extension - the base Episode type doesn't
+ * declare these extra fields but they are added by the recall and
+ * persistence layers. The cast is at the call site, not here.
+ */
+export interface RichEpisode extends Episode {
+  memoryConfidence?: number;
+  _crossSession?: boolean;
+}
+
 /** Heuristic rule - procedural knowledge derived from experience */
 export interface HeuristicRule {
   id: string;

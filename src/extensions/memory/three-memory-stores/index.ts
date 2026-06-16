@@ -26,11 +26,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 
-// Extended episode with dynamic metadata fields not in the base type
-interface RichEpisode extends Episode {
-  memoryConfidence?: number;
-  _crossSession?: boolean;
-}
+// RichEpisode is now defined in ./types.ts so sub-modules can import it.
 
 // getSessionFile is now part of the canonical SessionManager wrapper
 // (lib/state/session-manager.ts). The CtxSessionManager local
@@ -50,7 +46,7 @@ import { getCognitiveMemory } from "../../../lib/memory/index.js";
 
 // ── Re-export types ─────────────────────────────────────────────────────────
 export type { Episode, HeuristicRule, ToolStat, MemoryStoresState } from "./types.js";
-import type { MemoryStoresState, Episode } from "./types.js";
+import type { MemoryStoresState, Episode, RichEpisode } from "./types.js";
 
 // ── Sub-module imports ──────────────────────────────────────────────────────
 import { retrieveByRUMS } from "./episodes.js";
@@ -60,6 +56,7 @@ import {
   BUILTIN_HEURISTICS,
 } from "./heuristics.js";
 import { recordToolCall, getToolReliability } from "./tool-reliability.js";
+import { whisperRecall, AUTO_RECALL_ENABLED, RECALL_COOLDOWN_MS } from "./handlers/whisper-recall.js";
 import { TURN_END, SESSION_SHUTDOWN } from "../../../lib/core/event-names.js";
 
 // ── Project Identifier ───────────────────────────────────────────────────────
@@ -177,72 +174,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
   );
 
   // ── Auto-Recall Cooldown (raised from 30s to 120s to reduce flooding) ───
-  const RECALL_COOLDOWN_MS = 120_000;
-  const AUTO_RECALL_ENABLED = true;
-
-  function whisperRecall(
-    state: MemoryStoresState,
-    ctx: ExtensionContext,
-    title: string,
-    episodes: Episode[],
-  ): void {
-    if (!AUTO_RECALL_ENABLED || episodes.length === 0) return;
-
-    // Filter out cross-session episodes from auto-whisper unless highly relevant (>0.6)
-    // Episode doesn't declare _crossSession; RichEpisode does. The cast
-    // narrows to RichEpisode for the similarity check.
-    const filtered = episodes.filter((ep) => {
-      const rich = ep as RichEpisode;
-      if (!rich._crossSession) return true;
-      return rich.similarity > 0.6;
-    });
-    if (filtered.length === 0) return;
-
-    const now = Date.now();
-    if (now - state.lastRecallTime < RECALL_COOLDOWN_MS) return;
-    state.lastRecallTime = now;
-
-    // Deduplicate: skip if same title + episodes as last emission
-    const signature = `${title}|${filtered
-      .slice(0, 2)
-      .map((ep: Episode) => ep.id)
-      .join("|")}`;
-    if (signature === state.lastEpisodeRecallSignature) return;
-    state.lastEpisodeRecallSignature = signature;
-
-    const crossSession = filtered.filter((ep: any) => ep._crossSession);
-    // Only emit contamination signal for repeated cross-session - batch per session
-    if (crossSession.length > 0 && state.recentErrors.length < 10) {
-      emitSignal(ctx, "memory", "contamination", "warn", false, {
-        count: crossSession.length,
-        sessionIds: crossSession.map((ep: any) => ep.sessionId).slice(0, 3),
-      });
-    }
-
-    const lines: string[] = [`[recall] ${title}`];
-    for (const ep of filtered.slice(0, 2) as Episode[]) {
-      const icon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
-      const _richEp = ep! as RichEpisode;
-      const crossMark = _richEp._crossSession ? " [CROSS-SESSION]" : "";
-      const conf =
-        _richEp.memoryConfidence != null
-          ? ` (conf ${(_richEp.memoryConfidence * 100).toFixed(0)}%)`
-          : "";
-      lines.push(`  ${icon}${crossMark}${conf} ${ep.task.slice(0, 80)}`);
-      lines.push(`    Solution: ${ep.solution.slice(0, 300)}`);
-    }
-
-    sendTrackedMessage(
-      pi,
-      {
-        customType: "memory",
-        display: true,
-        content: [{ type: "text", text: lines.join("\n") }],
-      },
-      { deliverAs: "steer", triggerTurn: false },
-      { type: "memory", source: "three-memory-stores/recall" },
-    );
-  }
+  // (whisperRecall and its constants are in ./handlers/whisper-recall.ts)
 
   // ── Event: tool_result ────────────────────────────────────────────────
   pi.on("tool_result", async (event: any, ctx: ExtensionContext) => {
@@ -266,7 +198,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
             state.currentSessionId,
           );
           if (relevant.length > 0 && relevant[0].similarity > 0.4) {
-            whisperRecall(state, ctx, `Approach hint for ${taskType} tasks:`, relevant);
+            whisperRecall(state, ctx, pi, `Approach hint for ${taskType} tasks:`, relevant);
           }
         }
       }
@@ -279,7 +211,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
         const errorQuery = `${toolName} ${taskType} failure error`;
         const similarFailures = retrieveByRUMS(state, errorQuery, 2, state.currentSessionId);
         if (similarFailures.length > 0 && similarFailures[0].similarity > 0.35) {
-          whisperRecall(state, ctx, `Similar past issue with ${toolName}:`, similarFailures);
+          whisperRecall(state, ctx, pi, `Similar past issue with ${toolName}:`, similarFailures);
         }
 
         if (toolName !== "bash") {
@@ -343,7 +275,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
       const relevant = retrieveByRUMS(state, stableQuery, 1, state.currentSessionId);
 
       if (relevant.length > 0 && relevant[0].similarity > 0.4) {
-        whisperRecall(state, ctx, `Past solution might apply:`, relevant);
+        whisperRecall(state, ctx, pi, `Past solution might apply:`, relevant);
       }
 
       // Cross-search semantic memory for relevant insights
