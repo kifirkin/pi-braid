@@ -22,12 +22,12 @@
 
 import { stat, readFile } from "node:fs/promises";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { CONSOLIDATED_HINTS_FILE } from "../../lib/config/braid-paths.js";
-import { sendTrackedMessage } from "../../lib/utils/injection-tracker.js";
-import { classify } from "../../lib/ai/text-classifier.js";
-import { CRITICS } from "../../lib/ai/critic-registry.js";
+import { CONSOLIDATED_HINTS_FILE } from "../config/braid-paths.js";
+import { sendTrackedMessage } from "../utils/injection-tracker.js";
+import { classify } from "../ai/text-classifier.js";
+import { CRITICS } from "../ai/critic-registry.js";
 import { deriveProjectIdFromCwd } from "../memory/past-insights.js";
-import { HINT_MAX_AGE_MS } from "../../lib/constants/session-thresholds.js";
+import { HINT_MAX_AGE_MS } from "../constants/session-thresholds.js";
 
 /** Async helper: check if a path exists. */
 async function asyncExists(p: string): Promise<boolean> {

@@ -258,8 +258,14 @@ for (const f of TEST_FILES) {
     const lineIndex = content.slice(0, m.index).split("\n").length - 1;
     const line = lines[lineIndex];
 
-    // Skip if line is inside a test assertion (test data, not real refs)
-    if (/\b(assert|deepEqual|test\(|it\()/.test(line) && !/readFileSync/.test(line)) continue;
+    // Skip if line is inside a test assertion (test data, not real refs).
+    // The line containing the path is the message string of assert.ok/equal,
+    // but the call is on a previous line - look at the surrounding context
+    // (3 lines back) to catch multi-line assert.ok patterns.
+    const prevLine = lineIndex > 0 ? lines[lineIndex - 1] : "";
+    const twoBack = lineIndex > 1 ? lines[lineIndex - 2] : "";
+    const ctx = `${prevLine}\n${twoBack}\n${line}`;
+    if (/\b(assert|deepEqual|test\(|it\()/.test(ctx) && !/readFileSync/.test(ctx)) continue;
 
     const target = join(ROOT, m[1]);
     try {

@@ -15,8 +15,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { readdir, readFile } from "node:fs/promises";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { sendTrackedMessage } from "../../lib/utils/injection-tracker.js";
-import { asyncExists } from "../../lib/utils/async-fs.js";
+import { sendTrackedMessage } from "../utils/injection-tracker.js";
+import { asyncExists } from "../utils/async-fs.js";
 
 export interface PastInsight {
   type: "episode" | "session";

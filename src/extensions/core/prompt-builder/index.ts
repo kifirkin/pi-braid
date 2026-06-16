@@ -1,4 +1,4 @@
-import { deliverPastInsights } from "../../memory/past-insights.js";
+import { deliverPastInsights } from "../../../lib/memory/past-insights.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 import { getAgentDir, loadProjectContextFiles } from "@earendil-works/pi-coding-agent";
 
@@ -6,8 +6,8 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { RESOURCES_DISCOVER } from "../../../lib/core/event-names.js";
 import { gatherL1State, l1EnvSection } from "./l1-environment.js";
 import { contrastSection } from "./contrast-phrase-library.js";
-import { deliverActiveSpecs } from "../../cognitive/openspec.js";
-import { deliverRelevantHints } from "../../cognitive/hints.js";
+import { deliverActiveSpecs } from "../../../lib/cognitive/openspec.js";
+import { deliverRelevantHints } from "../../../lib/cognitive/hints.js";
 import type { PromptSection } from "./section.js";
 import { linesSection, simpleSection, composeSections } from "./section.js";
 import {
