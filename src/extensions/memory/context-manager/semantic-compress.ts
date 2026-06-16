@@ -187,9 +187,13 @@ function compressToolUnit(unit: SemanticUnit): AgentMessage[] {
     if (toolMsgs.length === 1) {
       result.push(toolMsgs[0]);
     } else {
-      const last = toolMsgs[toolMsgs.length - 1];
-      (last as unknown as Record<string, unknown>)._bcrCount = toolMsgs.length;
-      result.push(last);
+      // Collapse N consecutive tool calls of the same tool to just the last one.
+      // Note: the count of collapsed siblings is no longer carried on the message
+      // (a prior version stored _bcrCount on AgentMessage via `as unknown as`,
+      // but that field was never read by any consumer). If we ever need it
+      // back, plumb it through a parallel Map<AgentMessage, number> instead of
+      // mutating the message.
+      result.push(toolMsgs[toolMsgs.length - 1]);
     }
   }
   return result;

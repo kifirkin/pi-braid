@@ -305,9 +305,7 @@ export async function processAgentResponse(
   if (!ctx) return [];
 
   const state = getClaimState(ctx);
-  if (!state.claims) {
-    (state as unknown as Record<string, unknown>).claims = [];
-  }
+  // state.claims is always initialized to [] by getClaimState; no defensive reset needed.
 
   // Extract claims via LLM (falls back to minimal heuristic)
   const newClaims = await extractClaimsViaLLM(text, ctx);
