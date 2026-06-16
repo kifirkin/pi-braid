@@ -299,7 +299,7 @@ async function tryModelCall(
       // clear diagnostic in the user-facing warn.
       const stopReason = result.stopReason;
       const usageInfo = result.usage
-        ? `, used ${result.usage.outputTokens ?? "?"} tokens (limit ${maxTokens})`
+        ? `, used ${result.usage.output ?? "?"} tokens (limit ${maxTokens})`
         : "";
       log.debug(
         `[text-classifier] ${model.id} returned unparseable label: ` +
@@ -309,7 +309,7 @@ async function tryModelCall(
         ok: false,
         reason: `unparseable label: ${JSON.stringify(raw).slice(0, 80)}` +
           (stopReason ? ` (stopReason=${stopReason}` +
-            (result.usage?.outputTokens !== undefined ? `, used ${result.usage.outputTokens}/${maxTokens} tokens` : "") +
+            (result.usage?.output !== undefined ? `, used ${result.usage.output}/${maxTokens} tokens` : "") +
             ")" : ""),
       };
     }

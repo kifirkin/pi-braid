@@ -115,8 +115,12 @@ test("tryModelCall unparseable-label reason surfaces stopReason + token usage (t
   // no error. The previous WARN said only 'unparseable label: ""',
   // giving no hint about WHY. With stopReason=length and usage info
   // surfaced inline, the user sees:
-  //   'unparseable label: "" (stopReason=length, used 5/10 tokens)'
+  //   'unparseable label: "" (stopReason=length, used 0/16 tokens)'
   // which directly identifies the max_tokens ceiling as the cause.
+  //
+  // Usage field name: pi-ai uses { input, output, totalTokens }
+  // (NOT { inputTokens, outputTokens }) - the test pins the
+  // correct field name to prevent re-introducing the wrong name.
   const fnBody = src.match(
     /async function tryModelCall[\s\S]*?\n\}/,
   );
@@ -129,8 +133,8 @@ test("tryModelCall unparseable-label reason surfaces stopReason + token usage (t
   );
   assert.match(
     body,
-    /usage\.outputTokens|outputTokens/,
-    "tryModelCall unparseable branch must reference usage.outputTokens in the reason",
+    /usage\.output\b/,
+    "tryModelCall unparseable branch must reference usage.output in the reason (pi-ai field name)",
   );
 });
 

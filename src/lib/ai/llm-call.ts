@@ -115,7 +115,7 @@ export async function callLlm(
   userPrompt: string,
   options: LlmCallOptions = {},
 ): Promise<
-  | { text: string; stopReason?: string; usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number } }
+  | { text: string; stopReason?: string; usage?: { input?: number; output?: number; totalTokens?: number } }
   | { error: string }
 > {
   // ── circuit breaker: skip if we recently hit a rate limit ─────────
@@ -213,12 +213,19 @@ export async function callLlm(
         // Surface stopReason and usage so callers can diagnose empty
         // responses (e.g. "stopReason=length" means the model hit the
         // max_tokens ceiling, which is why the response is empty).
-        // These are optional so existing {text}/{error} discrimination
-        // is unchanged for the 34 call sites that don't inspect them.
+        // pi-ai's Usage has fields { input, output, totalTokens, ... }
+        // (not { inputTokens, outputTokens }) - the field names below
+        // mirror the upstream type.
         return {
           text,
           stopReason: result.stopReason,
-          usage: result.usage,
+          usage: result.usage
+            ? {
+                input: result.usage.input,
+                output: result.usage.output,
+                totalTokens: result.usage.totalTokens,
+              }
+            : undefined,
         };
       } catch (err) {
         clearTimeout(timeoutId);
