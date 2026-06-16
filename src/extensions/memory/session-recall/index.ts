@@ -28,6 +28,12 @@ import { basename, join } from "node:path";
 import { asyncExists } from "../../../lib/utils/async-fs.js";
 import { homedir } from "node:os";
 import { AGENT } from "../../../lib/config/braid-paths.js";
+import * as import_textUtils from "./text-utils.js";
+
+// Local re-exports so internal callers can use the short names.
+const extractMessageText = import_textUtils.extractMessageText;
+const snippetAround = import_textUtils.snippetAround;
+const estimateTokens = import_textUtils.estimateTokens;
 
 // Config
 
@@ -87,41 +93,9 @@ function dateFromPath(sessionPath: string): string {
   return match?.[1] ?? "unknown";
 }
 
-function extractMessageText(jsonLine: string): { role: string; text: string } | null {
-  try {
-    const entry = JSON.parse(jsonLine);
-    if (entry.type !== "message") return null;
-    const msg = entry.message as {
-      role: string;
-      content?: Array<{ type?: string; text?: string }>;
-    };
-    const role = msg.role;
-    const texts = (msg.content ?? [])
-      .filter((c) => c.type === "text")
-      .map((c) => c.text)
-      .join(" ");
-    if (!texts) return null;
-    return { role, text: texts };
-  } catch {
-    return null;
-  }
-  /* Non-fatal: prior session read failed */
-}
-
-function snippetAround(text: string, keyword: string, radius = 100): string {
-  const lower = text.toLowerCase();
-  const idx = lower.indexOf(keyword.toLowerCase());
-  if (idx === -1) return text.slice(0, radius * 2);
-  const start = Math.max(0, idx - radius);
-  const end = Math.min(text.length, idx + keyword.length + radius);
-  const prefix = start > 0 ? "..." : "";
-  const suffix = end < text.length ? "..." : "";
-  return prefix + text.slice(start, end) + suffix;
-}
-
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
-}
+// extractMessageText, snippetAround, estimateTokens are imported from
+// ./text-utils.js (see top of file). Local re-exports of snippetAround
+// and estimateTokens as `const` aliases preserve the short names.
 
 const MAX_SEARCH_RESULTS = 10;
 const MAX_SNIPPETS_PER_SESSION = 3;
