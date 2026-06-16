@@ -315,7 +315,10 @@ export function clearAllBuckets(): void {
 export function registerInjectionTracker(pi: {
   on: (event: string, handler: (...args: any[]) => any) => void;
 }): void {
-  pi.on(
+  // The local type widens ExtensionAPI's overloaded on() so we can
+  // pass any event name + handler without TypeScript asking which
+  // overload applies. The caller must provide a real ExtensionAPI.
+  (pi.on as (event: string, handler: (...args: any[]) => any) => void)(
     "session_start",
     (
       _event: unknown,

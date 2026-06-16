@@ -56,9 +56,7 @@ const log = createLogger("enforcement");
  * Register all enforcement event handlers on the given pi instance.
  */
 export function registerHandlers(pi: ExtensionAPI): void {
-  registerInjectionTracker(
-    pi as unknown as { on: (event: string, handler: (...args: any[]) => any) => void },
-  );
+  registerInjectionTracker(pi as Parameters<typeof registerInjectionTracker>[0]);
 
   registerInputHandler(pi);
   registerSessionStart(pi);

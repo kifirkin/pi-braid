@@ -216,14 +216,14 @@ export function isProposalEntry(
 ): entry is SessionEntry & { type: "custom_message" } {
   return (
     entry.type === "custom_message" &&
-    (entry as unknown as { customType?: string }).customType === PROPOSAL_CUSTOM_TYPE
+    (entry as { customType?: string }).customType === PROPOSAL_CUSTOM_TYPE
   );
 }
 
 export function isSnapshotEntry(entry: SessionEntry): entry is SessionEntry & { type: "custom" } {
   return (
     entry.type === "custom" &&
-    (entry as unknown as { customType?: string }).customType === SNAPSHOT_CUSTOM_TYPE
+    (entry as { customType?: string }).customType === SNAPSHOT_CUSTOM_TYPE
   );
 }
 

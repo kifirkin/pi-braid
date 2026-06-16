@@ -1,7 +1,7 @@
 # Code Quality Remediation — Final Status
 
 **Last updated:** 2026-06-16 (continued after first wrap)
-**Status:** Three additional rounds of fixes shipped after initial wrap.
+**Status:** Four rounds of fixes shipped after initial wrap.
 
 ## Headline numbers
 
@@ -18,7 +18,7 @@
 | Hallucinated tool names | 7 | 0 | 0 | 0 | 0 |
 | Dynamic `await import()` | 16 | 0 | 0 | 0 | 0 |
 | `Date.now() + Math.random()` IDs | 23 | 0 | 0 | 0 | 0 |
-| `as any` / `as unknown as` casts | 48 | 43 | 43 | 37 | 37 (4 `safeSessionManager(ctx) as { ... }` casts also cleaned) |
+| `as any` / `as unknown as` casts | 48 | 43 | 43 | 37 | 28 (after 8 new type-narrowing helpers in `extension-state.ts`) |
 | `safeSessionManager(ctx) as { ... }` casts | 5+ | 5+ | 5+ | 1 (just the docs comment) | 0 (all migrated to `safeSessionManagerTyped`) |
 | Tool count | 30 | 30 | 30 | 30 | 30 |
 | Commits this session (total) | — | 28 | 38 | 41 | 43 |

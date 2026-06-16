@@ -32,7 +32,7 @@ const log = createLogger("context-lifecycle");
 function extractTextContent(entry: SessionEntry): string {
   if (entry.type !== "message") return "";
   const msg = (
-    entry as unknown as {
+    entry as {
       message?: { content?: string | Array<{ type?: string; text?: string; name?: string }> };
     }
   ).message;
@@ -161,7 +161,7 @@ export async function detectSignals(
 
     if (entry.type === "message") {
       const msg = (
-        entry as unknown as {
+        entry as {
           message?: {
             role?: string;
             toolName?: string;
