@@ -84,6 +84,18 @@ export interface LlmCallOptions {
   temperature?: number;
   /** Max output tokens. Default: auto from prompt length (500-2000) */
   maxTokens?: number;
+  /**
+   * Reasoning effort level. Pass "off" to disable thinking entirely
+   * for short mechanical tasks (yes/no classification, etc.).
+   * Reasoning tokens count against max_tokens for most providers, so
+   * a yes/no classifier with default reasoning enabled will burn
+   * its entire budget on thinking and produce 0 output tokens
+   * (the empty-string symptom). pi-ai's clampThinkingLevel handles
+   * "off" gracefully - it maps to "off" if the model supports it,
+   * otherwise to the lowest available level.
+   * Default: undefined (provider default).
+   */
+  reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh";
   /** Per-attempt timeout in ms. Default: 30000 */
   timeoutMs?: number;
   /** Outer retry attempts. Default: 3 */
@@ -171,6 +183,7 @@ export async function callLlm(
           maxTokens,
           temperature,
           maxRetries: sdkMaxRetries,
+          ...(options.reasoning ? { reasoning: options.reasoning } : {}),
           signal: combinedSignal,
         });
 

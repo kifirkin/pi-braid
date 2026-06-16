@@ -87,12 +87,15 @@ export async function classify(
   options?: ClassifierOptions,
 ): Promise<ClassificationResult> {
   const start = Date.now();
-  // Default maxTokens: 16 (was 10). Some smaller / routed models
-  // (mistral-small, Venice-routed) return empty when constrained to
-  // very low max_tokens even for "yes"/"no" answers. 16 is small
-  // enough to be cheap but large enough to give the model room to
-  // produce at least 1-2 tokens of output reliably.
-  const maxTokens = options?.maxTokens ?? 16;
+  // Default maxTokens: 64 (was 16, was 10). Some smaller / routed
+  // models (mistral-small, minimax-m3, Venice-routed) have
+  // `reasoning: true` in their model spec - the provider default
+  // enables thinking, which burns the max_tokens budget on internal
+  // thinking tokens and produces 0 output tokens for the visible
+  // answer. To prevent this we pass `reasoning: "minimal"` below
+  // (smallest possible thinking budget) AND bump the budget itself
+  // to 64 so even a yes/no answer has plenty of room.
+  const maxTokens = options?.maxTokens ?? 64;
   const timeoutMs = options?.timeoutMs ?? 5000;
 
   // Build prompts (needed early for LLM tiers)
@@ -274,6 +277,17 @@ async function tryModelCall(
     const result = await callLlm(model, apiKey, systemPrompt, userMessage, {
       maxTokens,
       temperature: 0,
+      // Disable reasoning for yes/no classification.
+      // Many modern models (mistral-small, minimax-m3, ...) have
+      // `reasoning: true` by default. Thinking tokens count
+      // against max_tokens, so even a 64-token budget can burn
+      // entirely on thinking and produce 0 output tokens - the
+      // 'unparseable label: ""' symptom. pi-ai's clampThinkingLevel
+      // gracefully maps "minimal" to whatever the lowest supported
+      // level is for the model (effectively "off" for models that
+      // support it, otherwise "minimal" or "low" - whichever is
+      // available).
+      reasoning: "minimal",
       timeoutMs,
       maxRetries,
     });
