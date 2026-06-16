@@ -25,6 +25,7 @@ import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 
 import { BRAID_INJECTED, BRAID_SOURCE } from "../../../lib/constants/injection-details.js";
 import type { ScheduledTimer } from "../../../lib/events/timer-types.js";
+import { TimerPoller } from "./poller.js";
 
 const log = createLogger("timer");
 
@@ -222,70 +223,9 @@ export function onTimerFire(handler: TimerFireHandler): () => void {
 // even when the agent is between turns or blocked in a long tool call.
 // This is the primary fire mechanism; turn_end is a backup.
 //
-// PER-PI: each pi instance gets its own poller that only fires its own
-// session's timers. Previously the poller was a module-level singleton
-// with one piRef - if two sessions ran, only the most recently registered
-// session received timer fires. Now each session is independent.
-const POLL_INTERVAL_MS = 1000;
-
-class TimerPoller {
-  pollHandle: ReturnType<typeof setInterval> | null = null;
-  piRef: ExtensionAPI | null = null;
-  // busy guard: when true, the poller skips fireTimer() to prevent whisper
-  // injection mid-tool-execution (which can chain into synchronous re-entry
-  // and overflow the stack - see issue: stack overflow on scratchpad after
-  // compaction). Set true on TOOL_CALL, false on TURN_END.
-  busy = false;
-
-  constructor(
-    private sessionId: string,
-  ) {}
-
-  setPiRef(pi: ExtensionAPI): void {
-    this.piRef = pi;
-  }
-
-  start(): void {
-    if (this.pollHandle) return;
-    this.pollHandle = setInterval(() => this.poll(), POLL_INTERVAL_MS);
-    log.info(`[timer] polling started (session=${this.sessionId}, every ${POLL_INTERVAL_MS}ms)`);
-  }
-
-  stop(): void {
-    if (this.pollHandle) {
-      clearInterval(this.pollHandle);
-      this.pollHandle = null;
-    }
-  }
-
-  setBusy(busy: boolean): void {
-    this.busy = busy;
-  }
-
-  private poll(): void {
-    const pi = this.piRef;
-    if (!pi) return;
-    if (this.busy) return; // bail - defer fire to next non-busy tick or TURN_END
-    const expired = timerManager.checkExpired(this.sessionId, Date.now());
-    for (const timer of expired) {
-      fireTimer(timer, pi);
-    }
-  }
-
-  isRunning(): boolean {
-    return this.pollHandle !== null;
-  }
-
-  /** Fire any expired timers now (called from TOOL_EXECUTION_END / TURN_END). */
-  fireExpired(): ScheduledTimer[] {
-    if (!this.piRef) return [];
-    const expired = timerManager.checkExpired(this.sessionId, Date.now());
-    for (const timer of expired) {
-      fireTimer(timer, this.piRef);
-    }
-    return expired;
-  }
-}
+// TimerPoller extracted to ./poller.ts. The class is constructed with
+// callbacks for expired-timer lookup and fire (so it doesn't depend on
+// the closure-scoped timerManager and fireTimer in this file).
 
 function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
   for (const h of fireHandlers) {
@@ -528,7 +468,12 @@ export default function timerExtension(pi: ExtensionAPI): void {
       const sid = getSessionId(ctx);
       sessionId = sid;
       sessionIdResolved = true;
-      poller = new TimerPoller(sid);
+      poller = new TimerPoller(
+        sid,
+        (sessionId, now) => timerManager.checkExpired(sessionId, now),
+        fireTimer,
+        log,
+      );
     }
     return poller;
   };
