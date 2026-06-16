@@ -1,26 +1,27 @@
 # Code Quality Remediation — Final Status
 
-**Last updated:** 2026-06-15 (continued after first wrap)
-**Status:** Two additional rounds of fixes shipped after initial wrap.
+**Last updated:** 2026-06-16 (continued after first wrap)
+**Status:** Three additional rounds of fixes shipped after initial wrap.
 
 ## Headline numbers
 
-| Metric | Start | After first wrap | After classifier-down fixes | After stopReason+maxTokens16 |
-|---|---|---|---|---|
-| Source files | 199 | 199 | 199 | 199 |
-| Test files | ~35 | 42 | 45 | 51 |
-| Tests pass | 32/32 | 40/40 | 46/46 | 51/51 |
-| Unused identifiers (tsc --noUnusedLocals) | 89 | 0 | 0 | 0 |
-| Module-level `let` violations | 20+ | 2 (documented) | 2 (documented) | 2 (documented) |
-| A-class fragile fallbacks | 11 | 0 | 0 | 0 |
-| B-class fragile fallbacks | 12 | 0 | 0 | 0 |
-| `Promise.all` with LLM fanout | 8 | 0 | 0 | 0 |
-| Hallucinated tool names | 7 | 0 | 0 | 0 |
-| Dynamic `await import()` | 16 | 0 | 0 | 0 |
-| `Date.now() + Math.random()` IDs | 23 | 0 | 0 | 0 |
-| `as any` / `as unknown as` casts | 48 | 43 | 43 | 37 (4 more cleaned in `self/watchdog/`) |
-| Tool count | 30 | 30 | 30 | 30 |
-| Commits this session (total) | — | 28 | 38 | 41 |
+| Metric | Start | After first wrap | After classifier-down fixes | After stopReason+maxTokens16 | After 4 more typed-wrapper migrations |
+|---|---|---|---|---|---|
+| Source files | 199 | 199 | 199 | 199 | 199 |
+| Test files | ~35 | 42 | 45 | 51 | 52 |
+| Tests pass | 32/32 | 40/40 | 46/46 | 51/51 | 52/52 |
+| Unused identifiers (tsc --noUnusedLocals) | 89 | 0 | 0 | 0 | 0 |
+| Module-level `let` violations | 20+ | 2 (documented) | 2 (documented) | 2 (documented) | 2 (documented) |
+| A-class fragile fallbacks | 11 | 0 | 0 | 0 | 0 |
+| B-class fragile fallbacks | 12 | 0 | 0 | 0 | 0 |
+| `Promise.all` with LLM fanout | 8 | 0 | 0 | 0 | 0 |
+| Hallucinated tool names | 7 | 0 | 0 | 0 | 0 |
+| Dynamic `await import()` | 16 | 0 | 0 | 0 | 0 |
+| `Date.now() + Math.random()` IDs | 23 | 0 | 0 | 0 | 0 |
+| `as any` / `as unknown as` casts | 48 | 43 | 43 | 37 | 37 (4 `safeSessionManager(ctx) as { ... }` casts also cleaned) |
+| `safeSessionManager(ctx) as { ... }` casts | 5+ | 5+ | 5+ | 1 (just the docs comment) | 0 (all migrated to `safeSessionManagerTyped`) |
+| Tool count | 30 | 30 | 30 | 30 | 30 |
+| Commits this session (total) | — | 28 | 38 | 41 | 43 |
 
 ## What was done after first wrap (commits `5eef50cf` → `??`)
 
