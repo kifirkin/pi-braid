@@ -189,9 +189,12 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     if (!AUTO_RECALL_ENABLED || episodes.length === 0) return;
 
     // Filter out cross-session episodes from auto-whisper unless highly relevant (>0.6)
-    const filtered = episodes.filter((ep: any) => {
-      if (!ep._crossSession) return true;
-      return (ep! as unknown as RichEpisode).similarity > 0.6;
+    // Episode doesn't declare _crossSession; RichEpisode does. The cast
+    // narrows to RichEpisode for the similarity check.
+    const filtered = episodes.filter((ep) => {
+      const rich = ep as RichEpisode;
+      if (!rich._crossSession) return true;
+      return rich.similarity > 0.6;
     });
     if (filtered.length === 0) return;
 
@@ -219,7 +222,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
     const lines: string[] = [`[recall] ${title}`];
     for (const ep of filtered.slice(0, 2) as Episode[]) {
       const icon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
-      const _richEp = ep! as unknown as RichEpisode;
+      const _richEp = ep! as RichEpisode;
       const crossMark = _richEp._crossSession ? " [CROSS-SESSION]" : "";
       const conf =
         _richEp.memoryConfidence != null

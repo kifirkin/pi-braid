@@ -356,7 +356,7 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
             `[context-manager] Pre-filter: removed ${stats.totalRemoved} messages ` +
               `(from ${stats.beforeTokens} to ${stats.afterTokens} tokens, saved ~${pct}%)`,
           );
-          (prep as unknown as Preparation).messagesToSummarize = filtered;
+          (prep as Preparation).messagesToSummarize = filtered;
         }
       }
 
@@ -402,7 +402,7 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
                 `${scStats.messagesIn}→${scStats.messagesOut} msgs ` +
                 `(${scStats.unitsCollapsed} collapsed, ${scStats.unitsDropped} dropped)`,
             );
-            (prep as unknown as Preparation).messagesToSummarize = compressed;
+            (prep as Preparation).messagesToSummarize = compressed;
 
             // Store compression metadata for retrieval quality scoring
             try {

@@ -24,7 +24,7 @@ export function formatHealthMaintenanceOutput(result: HealthMaintenanceResult): 
 
   switch (result.action) {
     case "status": {
-      const data = result.data as unknown as StatusData;
+      const data = result.data as StatusData;
       lines.push("# Agent Evolution Status");
       lines.push("");
 
@@ -52,7 +52,7 @@ export function formatHealthMaintenanceOutput(result: HealthMaintenanceResult): 
     }
 
     case "health": {
-      const data = result.data as unknown as HealthData;
+      const data = result.data as HealthData;
       lines.push("# Healthcheck Result");
       lines.push("");
       lines.push(`**Status:** ${(data?.overall ?? "unknown").toUpperCase()}`);
@@ -61,7 +61,7 @@ export function formatHealthMaintenanceOutput(result: HealthMaintenanceResult): 
     }
 
     case "check": {
-      const data = result.data as unknown as CheckData;
+      const data = result.data as CheckData;
       lines.push("# Degradation Check");
       lines.push("");
       lines.push(`**Degraded:** ${data?.degraded ? "🔴 YES" : "🟢 NO"}`);
