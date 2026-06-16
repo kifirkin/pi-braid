@@ -34,7 +34,7 @@ import { eventBus } from "../../../../lib/events/event-bus.js";
 import { recordAdvice } from "../../../../lib/reasoning/advice-tracker.js";
 import { appendFileSync } from "node:fs";
 import { analyzeSession } from "../analysis.js";
-import { getSessionIdSafe, getLeafIdSafe, getExtensionState } from "../../../../lib/state/extension-state.js";
+import { getSessionIdSafe, getLeafIdSafe, getExtensionState, getFullSessionManager, getPiSessionManager } from "../../../../lib/state/extension-state.js";
 import {
   log,
   getCmState,
@@ -175,7 +175,14 @@ function skipDuplicateAppend(sessionManager: any, ctx: ExtensionContext): (msg: 
 export function tryRestoreAppendMessage(pi: ExtensionAPI, ctx: ExtensionContext): void {
   const st = getInterceptState(ctx);
   if (!st.interceptActive || !st.origAppendMessage) return;
-  const sm = (pi as unknown as PiWithSession).sessionManager;
+  const sm = getPiSessionManager(pi);
+  if (!sm) {
+    // No sessionManager available - clear intercept state.
+    st.interceptActive = false;
+    st.origAppendMessage = undefined;
+    st.interceptedSmRef = undefined;
+    return;
+  }
   // Only restore if the sessionManager is the same one we intercepted.
   // After session replacement (reload/newSession), sm is a new instance
   // and the old st.origAppendMessage is stale - DO NOT restore.
@@ -467,7 +474,7 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
       // session.prompt() → message_end → appendMessage call.
       const st = getInterceptState(ctx);
       if (st.queuedDuringCompaction) {
-        const sm = (ctx as unknown as CtxWithSession).sessionManager;
+        const sm = getFullSessionManager(ctx);
         if (sm && typeof sm.appendMessage === "function") {
           try {
             const messageObj = {

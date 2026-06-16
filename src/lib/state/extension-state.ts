@@ -402,3 +402,46 @@ export async function callScratchpadTool(
     return undefined;
   }
 }
+
+/**
+ * Get `ctx.sessionManager` (the `appendMessage`-capable form) with
+ * type-narrowing, falling back to the cached reference. Returns
+ * undefined if no sessionManager is available. Replaces the pattern
+ *   `(ctx as unknown as { sessionManager?: FullSessionManager }).sessionManager`
+ * which appeared in compaction.ts:470 and 178.
+ */
+export function getFullSessionManager(
+  ctx: ExtensionContext,
+): { appendMessage(msg: unknown): string; getSessionId(): string } | undefined {
+  const sm = getCachedSessionManager(ctx) as
+    | { appendMessage?: (msg: unknown) => string; getSessionId?: () => string }
+    | undefined
+    | null;
+  if (!sm || typeof sm.appendMessage !== "function" || typeof sm.getSessionId !== "function") {
+    return undefined;
+  }
+  return sm as { appendMessage(msg: unknown): string; getSessionId(): string };
+}
+
+/**
+ * Get `pi.sessionManager` with type-narrowing. Same as
+ * getFullSessionManager but reads from the ExtensionAPI parameter
+ * (used in handlers that have `pi: ExtensionAPI` and need to read
+ * sessionManager from it). Replaces the pattern
+ *   `(pi as unknown as PiWithSession).sessionManager`
+ * which appeared in compaction.ts:178.
+ */
+export function getPiSessionManager(pi: unknown): {
+  appendMessage(msg: unknown): string;
+  getSessionId(): string;
+} | undefined {
+  if (!pi || typeof pi !== "object") return undefined;
+  const sm = (pi as { sessionManager?: unknown }).sessionManager;
+  if (!sm || typeof sm !== "object") return undefined;
+  const appendMessage = (sm as { appendMessage?: unknown }).appendMessage;
+  const getSessionId = (sm as { getSessionId?: unknown }).getSessionId;
+  if (typeof appendMessage !== "function" || typeof getSessionId !== "function") {
+    return undefined;
+  }
+  return sm as { appendMessage(msg: unknown): string; getSessionId(): string };
+}

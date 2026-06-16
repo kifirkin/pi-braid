@@ -15,6 +15,7 @@
 
 import type { CognitiveModule } from "../types.js";
 import { createLogger } from "../../../../lib/core/logger.js";
+import { getExtensionState } from "../../../../lib/state/extension-state.js";
 
 const log = createLogger("heartbeat:behavioral-drift");
 
@@ -151,22 +152,13 @@ export const behavioralDriftModule: CognitiveModule = {
 
   async activate(context): Promise<void> {
     const ctx = context.ctx;
-    const state = (
-      ctx as unknown as {
-        getExtensionState?: (key: string, factory: () => DriftState) => DriftState;
-      }
-    ).getExtensionState?.("behavioral-drift", () => ({
+    const state = getExtensionState<DriftState>(ctx, "behavioral-drift", () => ({
       baselineCalls: [],
       baselineDist: null,
       recentCalls: [],
       baselineEstablished: false,
       warningCount: 0,
     }));
-
-    if (!state) {
-      // No state API available, skip drift detection
-      return;
-    }
 
     // Collect tool calls
     const recentTools = context.toolCallsSinceLastTick ?? [];
