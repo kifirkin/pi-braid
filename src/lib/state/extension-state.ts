@@ -445,3 +445,47 @@ export function getPiSessionManager(pi: unknown): {
   }
   return sm as { appendMessage(msg: unknown): string; getSessionId(): string };
 }
+
+/**
+ * Get `ctx.sessionManager.getLeafId()` with safe fallback. Returns
+ * undefined if no sessionManager is available. Replaces the pattern
+ *   `(ctx as unknown as { sessionManager?: { getLeafId(): string } }).sessionManager?.getLeafId()`
+ * which appeared in workspace-snapshot.ts:224.
+ */
+export function getSessionLeafIdSafe(ctx: ExtensionContext | undefined): string | undefined {
+  if (!ctx) return undefined;
+  const sm = getCachedSessionManager(ctx) as
+    | { getLeafId?: () => string | undefined }
+    | undefined
+    | null;
+  if (!sm || typeof sm.getLeafId !== "function") return undefined;
+  try {
+    return sm.getLeafId();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Get the label of a session leaf by ID with safe fallback. Returns
+ * undefined if no sessionManager is available or the leaf has no label.
+ * Replaces the pattern
+ *   `(ctx as unknown as { sessionManager?: { getLabel(id): string | undefined } }).sessionManager?.getLabel(id)`
+ * which appeared in workspace-snapshot.ts:226.
+ */
+export function getSessionLabelSafe(
+  ctx: ExtensionContext | undefined,
+  leafId: string,
+): string | undefined {
+  if (!ctx) return undefined;
+  const sm = getCachedSessionManager(ctx) as
+    | { getLabel?: (id: string) => string | undefined }
+    | undefined
+    | null;
+  if (!sm || typeof sm.getLabel !== "function") return undefined;
+  try {
+    return sm.getLabel(leafId);
+  } catch {
+    return undefined;
+  }
+}

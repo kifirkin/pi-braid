@@ -29,7 +29,7 @@ import * as path from "node:path";
 import { createLogger } from "../core/logger.js";
 import { BRAID_DIR } from "../config/braid-paths.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { callScratchpadTool } from "./extension-state.js";
+import { callScratchpadTool, getSessionLeafIdSafe, getSessionLabelSafe } from "./extension-state.js";
 
 const log = createLogger("workspace-snapshot");
 
@@ -221,11 +221,11 @@ export async function captureSnapshot(
     let sessionLeafId = "";
     let sessionTag: string | undefined;
     try {
-      const sm = (ctx as unknown as { sessionManager?: { getLeafId(): string; getLabel(id: string): string | undefined } }).sessionManager;
-      if (sm) {
-        sessionLeafId = sm.getLeafId();
+      const leafId = getSessionLeafIdSafe(ctx);
+      if (leafId) {
+        sessionLeafId = leafId;
         // Check if current leaf has a tag
-        sessionTag = sm.getLabel(sessionLeafId);
+        sessionTag = getSessionLabelSafe(ctx, leafId);
       }
     } catch {
       // Non-fatal: session position is best-effort
