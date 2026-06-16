@@ -93,37 +93,9 @@ export function formatSOPForWhisper(episode: Episode): string {
 }
 
 // ── Whisper Batching ───────────────────────────────────────────────────────
-
-/**
- * Flush batched whispers: group by priority tier, concatenate per tier,
- * and send as aggregated messages. This prevents N separate injected
- * messages per heartbeat tick when multiple modules activate.
- */
-function flushWhisperBuffer(
-  buffer: Array<{ message: string; priority: string }>,
-  send: ((msg: string, opts?: { category?: string; priority?: string }) => void) | undefined,
-): void {
-  if (buffer.length === 0 || !send) return;
-
-  // Group by priority
-  const groups = new Map<string, string[]>();
-  for (const entry of buffer) {
-    const p = entry.priority;
-    if (!groups.has(p)) groups.set(p, []);
-    groups.get(p)!.push(entry.message);
-  }
-
-  // Flush one message per priority tier
-  for (const [priority, messages] of groups) {
-    if (messages.length === 1) {
-      send(messages[0], { category: "cognitive", priority: priority });
-    } else {
-      const combined = `[Heartbeat Summary]
-${messages.map((m, i) => `${i + 1}. ${m}`).join("\n")}`;
-      send(combined, { category: "cognitive", priority: priority });
-    }
-  }
-}
+// flushWhisperBuffer lives in ./whisper-batcher.ts. The tick function
+// imports it to flush module whispers as aggregated messages.
+import { flushWhisperBuffer } from "./whisper-batcher.js";
 
 // ── Tick Engine ─────────────────────────────────────────────────────────────
 
