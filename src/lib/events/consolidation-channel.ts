@@ -18,6 +18,10 @@ import { CRITICS } from "../ai/critic-registry.js";
 import { classify } from "../ai/text-classifier.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { hintQualityFallback } from "../ai/critic-fallbacks.js";
+import { scoreEpisode } from "./consolidation-scoring.js";
+// Re-exported for backward compat with tests and other consumers
+// that import scoreEpisode from consolidation-channel.
+export { scoreEpisode };
 
 const log = createLogger("consolidation");
 
@@ -134,79 +138,6 @@ class ConsolidationQueue {
   clear(): void {
     this.queue = [];
   }
-}
-
-// ── Scoring Engine ─────────────────────────────────────────────────────────
-
-function computeValue(outcome: string, quality?: number, toolSequence?: string[]): number {
-  let value = 0;
-
-  // Outcome-based value
-  if (outcome === "success") value += 0.5;
-  else if (outcome === "partial") value += 0.2;
-
-  // Quality bonus
-  if (quality) value += quality * 0.3;
-
-  // Tool diversity bonus (more diverse = more valuable)
-  const uniqueTools = new Set(toolSequence || []);
-  const diversity = Math.min(1, uniqueTools.size / 10);
-  value += diversity * 0.2;
-
-  return Math.min(1, value);
-}
-
-function computeConfidence(strategicSOP?: string, functionalSOP?: string[]): number {
-  let confidence = 0.3; // Base
-
-  // SOP completeness: strategic + functional = higher confidence
-  if (strategicSOP) confidence += 0.2;
-  if (functionalSOP && functionalSOP.length > 0) {
-    confidence += Math.min(0.5, functionalSOP.length * 0.1);
-  }
-
-  return Math.min(1, confidence);
-}
-
-function computeNovelty(): number {
-  // Placeholder: in full implementation, compare against existing
-  // consolidated patterns. For now return moderate novelty.
-  return 0.5;
-}
-
-/**
- * Score a single episode for consolidation worthiness.
- */
-export function scoreEpisode(episode: {
-  id: string;
-  task: string;
-  outcome: "success" | "failure" | "partial";
-  project?: string;
-  quality?: number;
-  toolSequence?: string[];
-  strategicSOP?: string;
-  functionalSOP?: string[];
-}): ConsolidationCandidate {
-  const valueScore = computeValue(episode.outcome, episode.quality, episode.toolSequence);
-  const confidenceScore = computeConfidence(episode.strategicSOP, episode.functionalSOP);
-  const noveltyScore = computeNovelty();
-  const consolidationScore = valueScore * 0.4 + confidenceScore * 0.3 + noveltyScore * 0.3;
-
-  return {
-    episodeId: episode.id,
-    task: episode.task,
-    outcome: episode.outcome,
-    project: episode.project,
-    strategicSOP: episode.strategicSOP,
-    functionalSOP: episode.functionalSOP,
-    quality: episode.quality ?? 0,
-    valueScore,
-    confidenceScore,
-    noveltyScore,
-    consolidationScore,
-    queuedAt: Date.now(),
-    status: "pending",
-  };
 }
 
 // ── Global Queue Instance ──────────────────────────────────────────────────
