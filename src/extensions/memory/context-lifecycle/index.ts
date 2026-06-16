@@ -18,7 +18,7 @@ import { Type, type Static } from "typebox";
 
 import { createLogger } from "../../../lib/core/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
-import { getExtensionState } from "../../../lib/state/extension-state.js";
+import { getExtensionState, getCachedSessionManager } from "../../../lib/state/extension-state.js";
 import { eventBus } from "../../../lib/events/event-bus.js";
 
 import {
@@ -333,8 +333,8 @@ function queueProposal(evaluated: EvaluatedAction, ctx: ExtensionContext, branch
     0.7,
   );
 
-  const sm = ctx.sessionManager as unknown as SessionManager;
-  sm.appendCustomMessageEntry(
+  const sm = getCachedSessionManager(ctx) as { appendCustomMessageEntry?: (type: string, entry: unknown, persistent: boolean, meta: unknown) => void } | undefined;
+  sm?.appendCustomMessageEntry?.(
     PROPOSAL_CUSTOM_TYPE,
     [
       {
