@@ -1,5 +1,5 @@
 /**
- * Test: classifier passes reasoning: "minimal" + maxTokens: 64 by default.
+ * Test: classifier passes reasoning: "minimal" + no default maxTokens.
  *
  * BACKGROUND (2026-06-16):
  *   User report: mistral-small-2603 and minimax-m3 both have
@@ -13,9 +13,11 @@
  *   The "used 0/N" smoking gun reveals: the model didn't even try
  *   to answer, it spent all the budget on thinking.
  *
- * FIX:
- *   1. classify() default maxTokens: 10 -> 16 -> 64. Generous
- *      headroom for yes/no answers.
+ * FIX (current):
+ *   1. classify() REMOVES its default maxTokens entirely. The
+ *      model uses 1-2 tokens for yes/no either way; setting a cap
+ *      caused the bug. pi-ai / the provider picks a reasonable
+ *      default.
  *   2. classify() passes `reasoning: "minimal"` on every call.
  *      pi-ai's clampThinkingLevel maps "minimal" to the lowest
  *      available level for the model (effectively "off" for models
@@ -23,6 +25,9 @@
  *      is available). This minimizes thinking-token consumption.
  *   3. callLlm() plumbs the `reasoning` option through to
  *      completeSimple (was previously dropped on the floor).
+ *
+ *   Callers can still pass `maxTokens` explicitly if they need a
+ *   hard cap. The default is `undefined` (no cap).
  *
  * This test pins the contract.
  */
@@ -63,15 +68,29 @@ function test(name, fn) {
 
 // ── classify() defaults ──────────────────────────────────────────────
 
-test("classify() default maxTokens is 64 (not 10 or 16)", () => {
-  // The default lives in classify() and is referenced by the
-  // `options?.maxTokens ?? <N>` line.
-  const match = classifierSrc.match(/options\?\.maxTokens\s*\?\?\s*(\d+)/);
-  assert.ok(match, "Could not find default maxTokens in classify()");
-  assert.strictEqual(
-    Number(match[1]),
-    64,
-    `classify() default maxTokens should be 64, got ${match[1]}`,
+test("classify() default maxTokens is undefined (we removed it entirely)", () => {
+  // The new design: classify() no longer sets a default maxTokens.
+  // For yes/no answers the model uses 1-2 tokens either way, and
+  // setting it too low caused the empty-string bug for
+  // reasoning-capable models. We let pi-ai / the provider decide.
+  //
+  // The pattern in classify() is `const maxTokens = options?.maxTokens;`
+  // (no `?? <number>`). We verify this is the case.
+  const classifyBody = classifierSrc.match(
+    /export async function classify[\s\S]*?\n\}/,
+  );
+  assert.ok(classifyBody, "classify() function not found");
+  const body = classifyBody[0];
+  // Must NOT have `?? <number>` after options?.maxTokens
+  assert.ok(
+    !/options\?\.maxTokens\s*\?\?\s*\d+/.test(body),
+    "classify() must NOT have a numeric default for maxTokens (we removed it)",
+  );
+  // Must have `const maxTokens = options?.maxTokens` (or similar)
+  assert.match(
+    body,
+    /const\s+maxTokens\s*=\s*options\?\.maxTokens\b/,
+    "classify() must have 'const maxTokens = options?.maxTokens' (no default fallback)",
   );
 });
 

@@ -87,15 +87,23 @@ export async function classify(
   options?: ClassifierOptions,
 ): Promise<ClassificationResult> {
   const start = Date.now();
-  // Default maxTokens: 64 (was 16, was 10). Some smaller / routed
-  // models (mistral-small, minimax-m3, Venice-routed) have
-  // `reasoning: true` in their model spec - the provider default
-  // enables thinking, which burns the max_tokens budget on internal
-  // thinking tokens and produces 0 output tokens for the visible
-  // answer. To prevent this we pass `reasoning: "minimal"` below
-  // (smallest possible thinking budget) AND bump the budget itself
-  // to 64 so even a yes/no answer has plenty of room.
-  const maxTokens = options?.maxTokens ?? 64;
+  // Default maxTokens: undefined (was 64, was 16, was 10).
+  //
+  // Why we removed the default entirely:
+  //   1. Yes/no answers are 1-2 tokens. The model can stop early
+  //      without us capping it.
+  //   2. Setting maxTokens too LOW (10, 16) caused the empty-string
+  //      bug for reasoning-capable models (mistral-small,
+  //      minimax-m3) - thinking tokens ate the budget and
+  //      produced 0 output tokens.
+  //   3. Setting maxTokens too HIGH (64, 1000) is a no-op for
+  //      classification - the model uses 1-2 tokens either way.
+  //   4. pi-ai defaults to a reasonable provider-side budget.
+  //
+  // Callers can still pass `maxTokens` explicitly if they need a
+  // hard cap (e.g., for a custom reason). Otherwise we let
+  // pi-ai / the provider decide.
+  const maxTokens = options?.maxTokens;
   const timeoutMs = options?.timeoutMs ?? 5000;
 
   // Build prompts (needed early for LLM tiers)
@@ -262,7 +270,7 @@ async function tryModelCall(
   model: Model<Api>,
   systemPrompt: string,
   userMessage: string,
-  maxTokens: number,
+  maxTokens: number | undefined,
   timeoutMs: number,
   maxRetries = 0,
 ): Promise<
@@ -275,7 +283,11 @@ async function tryModelCall(
     if (!apiKey) return { ok: false, reason: `no API key for provider ${model.provider}` };
 
     const result = await callLlm(model, apiKey, systemPrompt, userMessage, {
-      maxTokens,
+      // maxTokens is conditionally included so undefined defaults
+      // (let the provider / pi-ai decide) take effect. Passing
+      // `undefined` explicitly would be a no-op in TypeScript but
+      // the spread pattern is clearer at the call site.
+      ...(maxTokens !== undefined ? { maxTokens } : {}),
       temperature: 0,
       // Disable reasoning for yes/no classification.
       // Many modern models (mistral-small, minimax-m3, ...) have
@@ -312,8 +324,11 @@ async function tryModelCall(
       // the latter is a prompt-format issue and benefits from a
       // clear diagnostic in the user-facing warn.
       const stopReason = result.stopReason;
+      // When maxTokens is undefined (the new default for classifier
+      // calls), we don't show the limit - the provider decides.
+      const limitInfo = maxTokens !== undefined ? `/${maxTokens}` : "";
       const usageInfo = result.usage
-        ? `, used ${result.usage.output ?? "?"} tokens (limit ${maxTokens})`
+        ? `, used ${result.usage.output ?? "?"}${limitInfo} tokens`
         : "";
       log.debug(
         `[text-classifier] ${model.id} returned unparseable label: ` +
@@ -323,7 +338,9 @@ async function tryModelCall(
         ok: false,
         reason: `unparseable label: ${JSON.stringify(raw).slice(0, 80)}` +
           (stopReason ? ` (stopReason=${stopReason}` +
-            (result.usage?.output !== undefined ? `, used ${result.usage.output}/${maxTokens} tokens` : "") +
+            (result.usage?.output !== undefined
+              ? `, used ${result.usage.output}${limitInfo} tokens`
+              : "") +
             ")" : ""),
       };
     }
