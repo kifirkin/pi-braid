@@ -270,8 +270,8 @@ function executeAction(
     case "snapshot":
       if (evaluated.canExecute) {
         const snapshot = createSnapshot(action.reason, branchLength, Math.round(usage * 2));
-        const sm = ctx.sessionManager as unknown as SessionManager;
-        sm.appendCustomEntry(SNAPSHOT_CUSTOM_TYPE, snapshot);
+        const sm = getCachedSessionManager(ctx) as { appendCustomEntry?: (type: string, entry: unknown) => void } | undefined;
+        sm?.appendCustomEntry?.(SNAPSHOT_CUSTOM_TYPE, snapshot);
         log.debug(`Created snapshot: ${snapshot.id}`);
       }
       break;
