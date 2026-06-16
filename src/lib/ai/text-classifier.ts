@@ -229,7 +229,15 @@ export async function classify(
  * Exported for testing.
  */
 export function normalizeLabel(raw: string): string | null {
-  const lower = raw.trim().toLowerCase();
+  const trimmed = raw.trim();
+  // Empty or whitespace-only response: the model returned nothing.
+  // Some smaller models (mistral-small, Venice-routed) do this when
+  // uncertain or when the prompt format confuses them. We treat this
+  // as unparseable (return null) so the classifier falls through to
+  // the next tier, rather than silently defaulting to "no" which
+  // would mask the underlying prompt/model issue.
+  if (trimmed.length === 0) return null;
+  const lower = trimmed.toLowerCase();
   // Prefer whole-word match first, then prefix match
   if (/^yes\b/.test(lower) || lower === "yes") return "yes";
   if (/^no\b/.test(lower) || lower === "no") return "no";

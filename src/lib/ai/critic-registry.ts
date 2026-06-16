@@ -647,10 +647,21 @@ export const CRITICS = {
   inputCodeHeavy: {
     label: "Input Code-Heavy",
     criteria: {
+      // System prompt: pure persona. No instructions, no format, no
+      // content. This matches the input-polisher pattern (PERSONA in
+      // system, instructions + content in user) and prevents the
+      // model from treating instructions as authoritative when they
+      // appear in user content.
       systemPrompt:
-        "You are a text classifier. Determine if the given message is primarily code " +
-        "(not natural language). Answer only 'yes' or 'no'. Do not explain.",
-      userPrompt: "Is this message primarily code? {{text}}",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
+      // User prompt: explicit instructions + the content wrapped in
+      // XML tags (anti-prompt-leakage guard). The XML wrapper signals
+      // to the model that the text is content, not commands.
+      userPrompt:
+        "Your task: classify whether the text below is primarily code (not natural language).\n" +
+        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n{{text}}\n</text>",
     },
     options: { maxTokens: 5, timeoutMs: 5000 },
   } satisfies CriticDef,
@@ -660,10 +671,13 @@ export const CRITICS = {
     label: "Input Well-Written",
     criteria: {
       systemPrompt:
-        "You are a text quality classifier. Determine if the given text is well-written " +
-        "with correct grammar, spelling, and proper sentence structure. English only. " +
-        "Answer only 'yes' or 'no'. Do not explain.",
-      userPrompt: "Is this text well-written? {{text}}",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
+      userPrompt:
+        "Your task: classify whether the text below is well-written English " +
+        "(correct grammar, spelling, sentence structure).\n" +
+        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n{{text}}\n</text>",
     },
     options: { maxTokens: 5, timeoutMs: 5000 },
   } satisfies CriticDef,
@@ -673,11 +687,13 @@ export const CRITICS = {
     label: "Input Clarity",
     criteria: {
       systemPrompt:
-        "You are a clarity classifier. Determine if the given message is clearly written, " +
-        "coherent, and easy to understand. A clear message has a logical flow and " +
-        "communicates its intent effectively. A confusing message is rambling, " +
-        "contradictory, or hard to follow. Answer only 'yes' or 'no'. Do not explain.",
-      userPrompt: "Is this message clear and coherent? {{text}}",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
+      userPrompt:
+        "Your task: classify whether the text below is clearly written and coherent " +
+        "(logical flow, communicates its intent effectively).\n" +
+        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n{{text}}\n</text>",
     },
     options: { maxTokens: 5, timeoutMs: 5000 },
   } satisfies CriticDef,
@@ -687,12 +703,14 @@ export const CRITICS = {
     label: "Input Ambiguity",
     criteria: {
       systemPrompt:
-        "You are an ambiguity classifier. Determine if the given message contains " +
-        "vague, underspecified, or ambiguous requests that would need clarification " +
-        "before the assistant can act effectively. Ambiguous messages use words like " +
-        "'it', 'that thing', 'do the needful' without clear referents, or ask questions " +
-        "that could be interpreted multiple ways. Answer only 'yes' or 'no'. Do not explain.",
-      userPrompt: "Is this message ambiguous or underspecified? {{text}}",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
+      userPrompt:
+        "Your task: classify whether the text below contains vague, underspecified, " +
+        "or ambiguous requests (uses words like 'it', 'that thing' without clear referents; " +
+        "asks questions that could be interpreted multiple ways).\n" +
+        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n{{text}}\n</text>",
     },
     options: { maxTokens: 5, timeoutMs: 5000 },
   } satisfies CriticDef,
