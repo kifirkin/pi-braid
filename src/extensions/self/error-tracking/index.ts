@@ -293,5 +293,5 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
     },
   };
 
-  pi.registerTool(errorTool as unknown as Parameters<typeof pi.registerTool>[0]);
+  pi.registerTool(errorTool as Parameters<typeof pi.registerTool>[0]);
 }

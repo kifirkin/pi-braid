@@ -618,12 +618,11 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
                 ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
               const ageMinutes = Math.round((Date.now() - ep.timestamp) / 60000);
               const provenance = `[MEMORY project=${ep.project || "unknown"} ttl=${ageMinutes}m ago]`;
-              const _rich = ep! as unknown as { memoryConfidence?: number; _crossSession?: boolean };
               const confTag =
-                _rich.memoryConfidence != null
-                  ? ` conf=${(_rich.memoryConfidence * 100).toFixed(0)}%`
+                (ep as { memoryConfidence?: number }).memoryConfidence != null
+                  ? ` conf=${((ep as { memoryConfidence?: number }).memoryConfidence! * 100).toFixed(0)}%`
                   : "";
-              const crossTag = _rich._crossSession ? " [CROSS-SESSION]" : "";
+              const crossTag = (ep as { _crossSession?: boolean })._crossSession ? " [CROSS-SESSION]" : "";
               const qualityTag =
                 ep.quality != null ? ` quality=${(ep.quality * 100).toFixed(0)}%` : "";
               lines.push(
