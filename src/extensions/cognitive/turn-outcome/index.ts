@@ -24,6 +24,7 @@ import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { tryClaim } from "../../../lib/enforcement/turn-dedup.js";
 import { onEvent } from "../../../lib/events/event-types.js";
 import { TURN_END } from "../../../lib/core/event-names.js";
+import { toolLoopFallback } from "../../../lib/ai/critic-fallbacks.js";
 
 const log = createLogger("turn-outcome");
 
@@ -101,7 +102,7 @@ async function detectLoop(state: LoopDetectionState, ctx: ExtensionContext): Pro
         // Q9 B-class: toolLoopFallback returns "no" by default (safe but
         // uninformative). tierPolicy: fallback-only downweights the
         // heuristic to 0.5 confidence so consumers can tell it's degraded.
-        fallback: () => CRITICS.toolLoopFallback(toolSequences),
+        fallback: () => toolLoopFallback(toolSequences),
         tierPolicy: "fallback-only",
       },
     );

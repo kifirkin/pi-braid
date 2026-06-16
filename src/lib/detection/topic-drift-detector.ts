@@ -23,6 +23,7 @@ import { createLogger } from "../core/logger.js";
 import { classify } from "../ai/text-classifier.js";
 import { CRITICS } from "../ai/critic-registry.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { topicDriftFallback } from "../ai/critic-fallbacks.js";
 
 const _log = createLogger("topic-drift");
 
@@ -160,19 +161,19 @@ export class TopicDriftDetector {
             _ctx,
             CRITICS.topicCoverage.criteria,
             { original: this.taskContext, response: currentText },
-            { timeoutMs: 5000, label: CRITICS.topicCoverage.label, fallback: CRITICS.topicDriftFallback },
+            { timeoutMs: 5000, label: CRITICS.topicCoverage.label, fallback: topicDriftFallback },
           ),
           classify(
             _ctx,
             CRITICS.topicDivergence.criteria,
             { original: this.taskContext, response: currentText },
-            { timeoutMs: 5000, label: CRITICS.topicDivergence.label, fallback: CRITICS.topicDriftFallback },
+            { timeoutMs: 5000, label: CRITICS.topicDivergence.label, fallback: topicDriftFallback },
           ),
           classify(
             _ctx,
             CRITICS.topicCompleteness.criteria,
             { original: this.taskContext, response: currentText },
-            { timeoutMs: 5000, label: CRITICS.topicCompleteness.label, fallback: CRITICS.topicDriftFallback },
+            { timeoutMs: 5000, label: CRITICS.topicCompleteness.label, fallback: topicDriftFallback },
           ),
         ]);
 

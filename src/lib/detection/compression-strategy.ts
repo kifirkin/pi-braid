@@ -16,6 +16,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { classify } from "../ai/text-classifier.js";
 import { CRITICS } from "../ai/critic-registry.js";
 import { evaluateContextDensity } from "../detection/context-density.js";
+import { compressionUrgencyFallback } from "../ai/critic-fallbacks.js";
 
 export type CompressionLevel = "short-term" | "medium-term" | "long-term";
 export type CompressionTrigger = "bcr" | "reasoning" | "episodic" | "density";
@@ -72,7 +73,7 @@ export async function determineCompressionLevel(
         // (AGGRESSIVE/SEMANTIC/CONSERVATIVE/NONE) from threshold-based
         // heuristic. tierPolicy: fallback-only downweights to 0.5.
         fallback: () =>
-          CRITICS.compressionUrgencyFallback({
+          compressionUrgencyFallback({
             turnsSinceCompression: opts.turnsSinceCompression,
             totalTurns: opts.turnCount,
             consecutiveFailures: opts.consecutiveFailures,

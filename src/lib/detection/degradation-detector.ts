@@ -14,6 +14,7 @@ import { createLogger } from "../core/logger.js";
 import { DEGRADATION_FILE } from "../config/braid-paths.js";
 import { classify } from "../ai/text-classifier.js";
 import { CRITICS } from "../ai/critic-registry.js";
+import { qualitativeDegradationFallback } from "../ai/critic-fallbacks.js";
 
 const _log = createLogger("degradation-detector");
 
@@ -386,7 +387,7 @@ export async function checkQualitativeDegradation(
         // default which masks real degradation. tierPolicy: fallback-only
         // downweights to 0.5 confidence so the consumer can act on the
         // degraded signal.
-        fallback: () => CRITICS.qualitativeDegradationFallback(),
+        fallback: () => qualitativeDegradationFallback(),
         tierPolicy: "fallback-only",
       },
     );

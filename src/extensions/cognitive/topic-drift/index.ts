@@ -21,6 +21,7 @@ import { classify } from "../../../lib/ai/text-classifier.js";
 import { CRITICS } from "../../../lib/ai/critic-registry.js";
 import { onEvent } from "../../../lib/events/event-types.js";
 import { ANCHOR_TURNS_BEFORE_RESET } from "../../../lib/constants/session-thresholds.js";
+import { topicDriftFallback } from "../../../lib/ai/critic-fallbacks.js";
 
 const log = createLogger("topic-drift");
 
@@ -99,19 +100,19 @@ async function detectDriftWithCritics(
         ctx,
         CRITICS.topicCoverage.criteria,
         { original: truncOriginal, response: truncOutput },
-        { timeoutMs: 5000, label: CRITICS.topicCoverage.label, fallback: CRITICS.topicDriftFallback },
+        { timeoutMs: 5000, label: CRITICS.topicCoverage.label, fallback: topicDriftFallback },
       ),
       classify(
         ctx,
         CRITICS.topicDivergence.criteria,
         { original: truncOriginal, response: truncOutput },
-        { timeoutMs: 5000, label: CRITICS.topicDivergence.label, fallback: CRITICS.topicDriftFallback },
+        { timeoutMs: 5000, label: CRITICS.topicDivergence.label, fallback: topicDriftFallback },
       ),
       classify(
         ctx,
         CRITICS.topicCompleteness.criteria,
         { original: truncOriginal, response: truncOutput },
-        { timeoutMs: 5000, label: CRITICS.topicCompleteness.label, fallback: CRITICS.topicDriftFallback },
+        { timeoutMs: 5000, label: CRITICS.topicCompleteness.label, fallback: topicDriftFallback },
       ),
     ]);
 

@@ -8,6 +8,7 @@ import { sendEnforcementWhisper } from "../whisper.js";
 import { getState } from "../state.js";
 import { classify } from "../../../lib/ai/text-classifier.js";
 import { CRITICS } from "../../../lib/ai/critic-registry.js";
+import { errorTypeFallback } from "../../../lib/ai/critic-fallbacks.js";
 
 export function registerAutoRetryEndHandler(pi: ExtensionAPI): void {
   onEvent(pi, "auto_retry_end", async (event: any, ctx: ExtensionContext) => {
@@ -58,11 +59,11 @@ async function classifyRetryError(
       {
         timeoutMs: 5000,
         label: CRITICS.errorType.label,
-        fallback: () => CRITICS.errorTypeFallback(errorMsg),
+        fallback: () => errorTypeFallback(errorMsg),
       },
     );
     return result.label;
   } catch {
-    return CRITICS.errorTypeFallback(errorMsg);
+    return errorTypeFallback(errorMsg);
   }
 }

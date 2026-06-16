@@ -19,6 +19,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { classify, type ClassificationResult } from "../../../lib/ai/text-classifier.js";
 import { CRITICS } from "../../../lib/ai/critic-registry.js";
+import { inputCodeHeavyFallback } from "../../../lib/ai/critic-fallbacks.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -62,7 +63,7 @@ export async function critiqueInput(text: string, ctx: ExtensionContext): Promis
 			{ text: truncated },
 			{
 				timeoutMs: 10000,
-				fallback: () => CRITICS.inputCodeHeavyFallback(text),
+				fallback: () => inputCodeHeavyFallback(text),
 			},
 		),
 		classify(

@@ -17,6 +17,7 @@ import { extractSOP } from "../utils/sop-extractor.js";
 import { CRITICS } from "../ai/critic-registry.js";
 import { classify } from "../ai/text-classifier.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { hintQualityFallback } from "../ai/critic-fallbacks.js";
 
 const log = createLogger("consolidation");
 
@@ -313,7 +314,7 @@ export async function executeConsolidation(episode: {
  *
  * Routes through classify() with CRITICS.hintQuality so the LLM tier
  * (Tier 2 utility model / Tier 3 session model) is tried first. The
- * heuristic fallback (CRITICS.hintQualityFallback) is B-class (returns
+ * heuristic fallback (hintQualityFallback) is B-class (returns
  * "yes" by default - permissive) and downweighted to 0.5 confidence
  * via tierPolicy: "fallback-only". If both LLM and heuristic fail or
  * the heuristic says "yes" (allow through), the hint is kept.
@@ -339,7 +340,7 @@ async function isHintTooGeneric(
       label: CRITICS.hintQuality.label,
       // Q9 B-class: heuristic is permissive ("yes" by default).
       // tierPolicy: fallback-only downweights to 0.5 confidence.
-      fallback: () => CRITICS.hintQualityFallback(task, steps),
+      fallback: () => hintQualityFallback(task, steps),
       tierPolicy: "fallback-only",
     },
   );

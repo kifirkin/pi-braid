@@ -187,9 +187,6 @@ export const CRITICS = {
   } satisfies CriticDef,
 
   /** Legacy heuristic fallback for topic drift (stop-word anchor matching). */
-  topicDriftFallback(): string {
-    return "no"; // Conservative: assume no drift when LLM unavailable
-  },
 
   // ═══════════════════════════════════════════════════════════════════════
   // Claim Contradiction - Triple critic: contradiction + support + overconfidence
@@ -247,29 +244,6 @@ export const CRITICS = {
    * Detects obvious polarity flips via negation patterns on shared terms.
    * Returns "no" when uncertain - LLM tier (Tier 2/3) handles complex cases.
    */
-  contradictionFallback(claim: string, context: string): string {
-    const claimLower = claim.toLowerCase();
-    const contextLower = context.toLowerCase();
-
-    // Detect negation on same core word (e.g., "supports" vs "does not support")
-    const negationWords = [
-      ["supports", "does not support"],
-      ["supports", "doesn't support"],
-      ["supports", "not support"],
-      ["works", "doesn't work"],
-      ["works", "fails"],
-      ["supported", "not supported"],
-      ["compatible", "incompatible"],
-      ["exists", "doesn't exist"],
-      ["correct", "incorrect"],
-    ];
-    for (const [pos, neg] of negationWords) {
-      if (claimLower.includes(pos) && contextLower.includes(neg)) return "yes";
-      if (claimLower.includes(neg) && contextLower.includes(pos)) return "yes";
-    }
-
-    return "no";
-  },
 
   // ═══════════════════════════════════════════════════════════════════════
   // Turn Loop Detection
@@ -315,17 +289,11 @@ export const CRITICS = {
    * Conservative fallback for tool loop detection.
    * Returns "no" - LLM tier handles actual detection.
    */
-  toolLoopFallback(_toolSequences: string): string {
-    return "no";
-  },
 
   /**
    * Conservative fallback for evidence conflict detection.
    * Returns "no" - LLM tier handles actual detection.
    */
-  evidenceConflictFallback(_a: string, _b: string): string {
-    return "no";
-  },
 
   // ═══════════════════════════════════════════════════════════════════════
   // SOP Quality Assessment
@@ -399,9 +367,6 @@ export const CRITICS = {
    * Conservative fallback for hint quality.
    * Returns "yes" (allow through) - LLM tier handles filtering.
    */
-  hintQualityFallback(_task: string, _steps: string[]): string {
-    return "yes";
-  },
 
   // ═══════════════════════════════════════════════════════════════════════
   // Context Density - Triple critic: signal ratio + duplication + compression urgency
@@ -461,20 +426,6 @@ export const CRITICS = {
    * Legacy heuristic fallback for compression urgency.
    * Returns the existing static-threshold logic from compression-strategy.ts.
    */
-  compressionUrgencyFallback(opts: {
-    turnsSinceCompression: number;
-    totalTurns: number;
-    consecutiveFailures: number;
-    reasoningDepth: number;
-    messageCount: number;
-  }): string {
-    if (opts.consecutiveFailures >= 3) return "AGGRESSIVE";
-    if (opts.totalTurns >= 80) return "AGGRESSIVE";
-    if (opts.totalTurns >= 30 && opts.reasoningDepth > 3) return "SEMANTIC";
-    if (opts.totalTurns >= 30 && opts.turnsSinceCompression > 40) return "SEMANTIC";
-    if (opts.totalTurns >= 10 && opts.messageCount > 50) return "CONSERVATIVE";
-    return "NONE";
-  },
 
   // ═══════════════════════════════════════════════════════════════════════
   // Qualitative Degradation - Single critic: output quality
@@ -505,9 +456,6 @@ export const CRITICS = {
    * Legacy heuristic fallback for qualitative degradation.
    * Conservative: assume no degradation when LLM unavailable.
    */
-  qualitativeDegradationFallback(): string {
-    return "STABLE";
-  },
 
   // ═══════════════════════════════════════════════════════════════════════
   // Removal Safety - filter-safe-to-remove batch assessment
@@ -566,12 +514,6 @@ export const CRITICS = {
   } satisfies CriticDef,
 
   /** Legacy fallback for error type classification. */
-  errorTypeFallback(errorMsg: string): string {
-    if (/429|rate.?limit/i.test(errorMsg)) return "rate_limit";
-    if (/5\d\d|server.?error|internal|overloaded|unavailable/i.test(errorMsg)) return "server_error";
-    if (/network|connection|fetch failed|socket|timeout|timed out/i.test(errorMsg)) return "network";
-    return "unknown";
-  },
 
   // ═══════════════════════════════════════════════════════════════════════
   // Instruction Strength - bidirectional-verifier RFC 2119 keyword
@@ -597,12 +539,6 @@ export const CRITICS = {
   } satisfies CriticDef,
 
   /** Legacy fallback for instruction strength. */
-  instructionStrengthFallback(body: string): string {
-    if (/\bSHALL\b/.test(body)) return "SHALL";
-    if (/\bMUST\b/.test(body)) return "MUST";
-    if (/\bSHOULD\b/.test(body)) return "SHOULD";
-    return "MAY";
-  },
 
   // ═══════════════════════════════════════════════════════════════════════
   // Command Type - probe-handler command classification
@@ -632,12 +568,6 @@ export const CRITICS = {
   } satisfies CriticDef,
 
   /** Legacy fallback for command type classification. */
-  commandTypeFallback(cmd: string): string {
-    if (/\|\s*grep|\|\s*awk|\|\s*sed/.test(cmd) && !/npm|yarn|pnpm|xargs/.test(cmd)) return "pipeline";
-    if (/for|while|\$\(/.test(cmd)) return "loop";
-    if (/sudo|rm\s|>\s*\/|mv\s+.*\s+.*/.test(cmd)) return "dangerous";
-    return "info";
-  },
 
   // ═══════════════════════════════════════════════════════════════════════
   // Input Polish Critics - input-polisher pre-classification
@@ -715,73 +645,16 @@ export const CRITICS = {
     options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
-  // Heuristic fallbacks (graceful degradation when LLM unavailable).
-  // The CODE_CHARS set lives here as a module-level constant so the
   // inputCodeHeavyFallback doesn't need to import from the input-polisher.
 
-  /** Characters that indicate code content. */
-  CODE_CHARS: new Set("{}[]();=>+-*/|&<>@#$%^~`\\"),
 
   /** Heuristic fallback: >30% non-whitespace chars are code-like = code-heavy. */
-  inputCodeHeavyFallback(text: string): string {
-    let totalChars = 0;
-    let codeChars = 0;
-    for (const char of text) {
-      if (!/\s/.test(char)) {
-        totalChars++;
-        if ((CRITICS.CODE_CHARS as ReadonlySet<string>).has(char)) codeChars++;
-      }
-    }
-    return totalChars > 0 && codeChars / totalChars > 0.3 ? "yes" : "no";
-  },
 
   /** Heuristic fallback: sentence count + capitalization + repeated chars. */
-  inputWellWrittenFallback(text: string): string {
-    const sentenceCount = (text.match(/[.!?]+\s/g) || []).length;
-    if (sentenceCount < 1) return "no";
-
-    const sentenceEndings = text.split(/[.!?]+(\s|$)/);
-    let capitalizedCount = 0;
-    let totalSentencesChecked = 0;
-    for (const s of sentenceEndings) {
-      const trimmed = s.trim();
-      if (trimmed.length > 1) {
-        totalSentencesChecked++;
-        if (/^[A-Z]/.test(trimmed)) capitalizedCount++;
-      }
-    }
-    if (totalSentencesChecked > 0 && capitalizedCount / totalSentencesChecked < 0.5) return "no";
-    if (/(.)\1{4,}/.test(text)) return "no";
-
-    return "yes";
-  },
 
   /** Heuristic fallback: short text + long run-on sentences + contradiction markers. */
-  inputClarityFallback(text: string): string {
-    const words = text.trim().split(/\s+/);
-    if (words.length < 3) return "no";
-    const sentences = text.split(/[.!?]+/);
-    for (const s of sentences) {
-      if (s.trim().split(/\s+/).length > 50) return "no";
-    }
-    const lower = text.toLowerCase();
-    const contradictionCount = (
-      lower.match(/\b(but|however|actually|wait|no\s+(wait|i mean|actually)|on\s+(the\s+)?other\s+hand)/g) ||
-      []
-    ).length;
-    if (contradictionCount > 2) return "no";
-    return "yes";
-  },
 
   /** Heuristic fallback: vague phrases + single-word messages. */
-  inputAmbiguityFallback(text: string): string {
-    const vaguePatterns = [
-      /\b(do the needful|fix it|make it work|handle it|take care of it|you know what i mean)\b/i,
-      /\b(this|that|it)\b.*\b(thing|stuff|part|bit)\b/i,
-      /^\w+$/m,
-    ];
-    return vaguePatterns.some((p) => p.test(text)) ? "yes" : "no";
-  },
 
   // ═══════════════════════════════════════════════════════════════════════
   // Hint Relevance - prompt-builder hint filtering
@@ -811,12 +684,6 @@ export const CRITICS = {
   } satisfies CriticDef,
 
   /** Heuristic fallback: reject very short hints and obvious generic templates. */
-  hintRelevanceFallback(hint: string, _currentTask: string): string {
-    if (hint.length < 30) return "no";
-    if (/Fix \w+ error:/.test(hint)) return "no";
-    if (/Reproduce.*Locate.*Apply/i.test(hint)) return "no";
-    return "yes";
-  },
 
   // ═══════════════════════════════════════════════════════════════════════
   // Conflict Resolution - conflict-qa response classification
@@ -847,26 +714,6 @@ export const CRITICS = {
    * Heuristic fallback for conflict resolution detection.
    * Preserves the original keyword-based logic as graceful degradation.
    */
-  conflictResolutionFallback(text: string): string {
-    const lower = text.toLowerCase();
-    const keywords = [
-      "resolved",
-      "conflict resolved",
-      "the correct answer is",
-      "after further investigation",
-      "sources disagree",
-    ];
-    if (!keywords.some((kw) => lower.includes(kw))) return "none";
-    if (
-      lower.includes("based on higher reliability source") ||
-      lower.includes("the evidence supports") ||
-      lower.includes("confirm that")
-    )
-      return "resolved_for";
-    if (lower.includes("evidence does not support") || lower.includes("this claim is incorrect"))
-      return "resolved_against";
-    return "resolved_for";
-  },
 
   // ═══════════════════════════════════════════════════════════════════════
   // Compliance Framing - latent-activator compliance detection
@@ -914,11 +761,6 @@ export const CRITICS = {
   } satisfies CriticDef,
 
   /** Legacy fallback for polarity detection. */
-  polarityDetectionFallback(sentence: string): string {
-    if (/\b(not|no|never|n't|without|lacks|excludes|denies|fails|rejects)\b/i.test(sentence)) return "negative";
-    if (/\b(is|was|will|can|does|has|returns|takes|uses|creates|handles|supports|works)\b/i.test(sentence)) return "positive";
-    return "neutral";
-  },
 
   // ═══════════════════════════════════════════════════════════════════════
   // Entity Detection - claim-tracker sentence contains factual claim
@@ -942,9 +784,6 @@ export const CRITICS = {
   } satisfies CriticDef,
 
   /** Legacy fallback for entity extraction. */
-  entityExtractionFallback(sentence: string): string {
-    return ENTITY_VERBS.test(sentence) ? "yes" : "no";
-  },
 
   // ═══════════════════════════════════════════════════════════════════════
   // Sycophancy Detection
@@ -969,16 +808,6 @@ export const CRITICS = {
   } satisfies CriticDef,
 
   /** Legacy fallback for sycophancy tactics detection. */
-  sycophancyFallback(text: string): string {
-    const patterns = [
-      /\b(I think|I believe|you must (agree|be right)|Surely)\b/i,
-      /\b(This is definitely|The code (always|never)|Obviously)\b/i,
-      /\b(That (approach|solution) is (wrong|bad)|Why would you)\b/i,
-      /\bWhy did you (do|choose|use)/i,
-      /\b(Trust me|As a (senior|expert)|Everyone knows)\b/i,
-    ];
-    return patterns.some((p) => p.test(text)) ? "yes" : "no";
-  },
 
   /**
    * Detect validation-before-correction (VbC) in assistant responses:
@@ -1002,13 +831,4 @@ export const CRITICS = {
   } satisfies CriticDef,
 
   /** Legacy fallback for VbC detection. */
-  vbCFallback(text: string): string {
-    const patterns = [
-      /\b(You('re| are) right\b|That('s| is) a (fair|good) point\b|I understand your (concern|point|perspective)\b)(?=.*\b(however|but actually|the (real|actual) (issue|problem)|having said that)\b).{50,}/is,
-      /\b(I agree\b|That makes sense\b|You make a good point\b)(?=.*\b(however|but|yet|nevertheless|on the other hand)\b).{50,}/is,
-      /\bI think you('re| are) right\b(?=.*\b(but|however)\b).{50,}/is,
-      /\b(While|Although|Even though) (you('re| are) (right|correct)|that('s| is) valid)\b.{30,}actually\b.{20,}/is,
-    ];
-    return patterns.some((p) => p.test(text)) ? "yes" : "no";
-  },
 } as const;

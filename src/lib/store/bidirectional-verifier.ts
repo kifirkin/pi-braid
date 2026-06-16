@@ -14,6 +14,7 @@ import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../state/extension-state.js";
 import { createLogger } from "../core/logger.js";
+import { instructionStrengthFallback } from "../ai/critic-fallbacks.js";
 
 
 
@@ -231,12 +232,12 @@ export async function classifyRequirementStrength(
       {
         timeoutMs: 5000,
         label: CRITICS.instructionStrength.label,
-        fallback: () => CRITICS.instructionStrengthFallback(body),
+        fallback: () => instructionStrengthFallback(body),
       },
     );
     return result.label;
   } catch {
-    return CRITICS.instructionStrengthFallback(body);
+    return instructionStrengthFallback(body);
   }
 }
 

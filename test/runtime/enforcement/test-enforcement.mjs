@@ -116,7 +116,8 @@ console.log("\n[4] Extracted handler files");
   test("register-auto-retry-end.ts uses text-classifier with critic labels", () => {
     assert.ok(autoRetrySrc.includes('classify'), "should use classify");
     assert.ok(autoRetrySrc.includes('CRITICS.errorType'), "should use errorType critic");
-    assert.ok(autoRetrySrc.includes('CRITICS.errorTypeFallback'), "should use errorTypeFallback");
+    assert.ok(autoRetrySrc.includes('errorTypeFallback'), "should import errorTypeFallback from critic-fallbacks.js");
+    assert.ok(!autoRetrySrc.includes('CRITICS.errorTypeFallback'), "should NOT use the old CRITICS.errorTypeFallback path");
   });
 
   const analysisSrc = readFileSync(join(ROOT, "src/extensions/enforcement/handlers/analysis/drift-handler.ts"), "utf-8");
