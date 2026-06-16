@@ -199,3 +199,41 @@ Authoring custom rules (e.g., "no `Promise.all` over LLM-fanout", "no `Date.now(
 - `docs/TIMER-DELIVERY-INVESTIGATION.md` — historical (from prior session)
 - `docs/AUTO-SINGLETON-DECISION.md` — historical (from prior session)
 - `docs/CUT-CANDIDATES-DEEP-DIVE.md` — historical (from prior session)
+
+## Round 6 (commits `53e144d9` → `d83b4f74`)
+
+Continued splitting the largest files and tightening cast cleanup.
+
+### Large-file splits (10 commits, ~550 lines extracted)
+
+| File | Before | After | Extracted to |
+|---|---|---|---|
+| `latent-activator/index.ts` | 576 | 296 | `types.ts`, `signals.ts`, `mixes.ts` |
+| `three-memory-stores/index.ts` | 569 | 501 | `handlers/whisper-recall.ts`, `types.ts` |
+| `timer/index.ts` | 594 | 539 | `poller.ts` (TimerPoller class) |
+| `session-recall/index.ts` | 578 | 552 | `text-utils.ts` |
+| `lib/ai/critic-registry.ts` | 1014 | 834 | `critic-fallbacks.ts` (20 fallbacks) |
+| `lib/memory/index.ts` | 655 | 563 | `lifecycle.ts` (4 functions) |
+| `lib/reasoning/belief-policy-engine.ts` | 572 | 377 | `belief-types.ts`, `policy-rules.ts` |
+| `heartbeat-scheduler/index.ts` | 660 | 632 | `whisper-batcher.ts` |
+| `metacognition/handlers/think.ts` | 589 | 454 | `think-budget.ts` (ODAR + budgets) |
+| `lib/events/consolidation-channel.ts` | 566 | 494 | `consolidation-scoring.ts` |
+
+### Cast cleanup (1 commit, 2 more casts eliminated: 6 → 4)
+
+- `claim-tracker.ts:308-310` — removed dead defensive `if (!state.claims)` check. The factory always initializes `claims: []`.
+- `semantic-compress.ts:191` — removed dead `_bcrCount` write. The field was assigned via cast but never read by any consumer.
+
+### Remaining 4 casts — all genuine type gaps
+
+- `claim-verification.ts:277` + `scratchpad/index.ts:654` — `as unknown as ToolDefinition<any, any, any>`. The `execute()` function's return type (`Promise<Record<string, unknown>>` with simpler `onUpdate`) doesn't match pi's strict `ToolDefinition` signature (`Promise<AgentToolResult<TDetails>>` + `AgentToolUpdateCallback`). Real signature mismatch, not loose types.
+- `extension-utils.ts:37` — bridges pi's `ExtensionContext` missing the private `getExtensionState` method at type level. Real private API access.
+- `llm-call.ts:226` — bridges pi-ai's `ThinkingLevel` not including `"off"` at type level (it does accept it at runtime via `clampThinkingLevel`).
+
+### Test count
+
+53/53 pass. New tests added this round: 0 (existing tests cover all extracted modules).
+
+### File organization
+
+3 misplaced files relocated: `extensions/cognitive/hints.ts` → `lib/cognitive/hints.ts`, `extensions/cognitive/openspec.ts` → `lib/cognitive/openspec.ts`, `extensions/memory/past-insights.ts` → `lib/memory/past-insights.ts`. They were libraries (no `default export function xExtension`) misclassified as extensions.
