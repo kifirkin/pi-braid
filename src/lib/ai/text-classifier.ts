@@ -87,7 +87,12 @@ export async function classify(
   options?: ClassifierOptions,
 ): Promise<ClassificationResult> {
   const start = Date.now();
-  const maxTokens = options?.maxTokens ?? 10;
+  // Default maxTokens: 16 (was 10). Some smaller / routed models
+  // (mistral-small, Venice-routed) return empty when constrained to
+  // very low max_tokens even for "yes"/"no" answers. 16 is small
+  // enough to be cheap but large enough to give the model room to
+  // produce at least 1-2 tokens of output reliably.
+  const maxTokens = options?.maxTokens ?? 16;
   const timeoutMs = options?.timeoutMs ?? 5000;
 
   // Build prompts (needed early for LLM tiers)
@@ -286,12 +291,27 @@ async function tryModelCall(
     const raw = result.text.trim();
     const label = normalizeLabel(raw);
     if (!label) {
-      // Model responded but with unparseable text. Surface the raw
-      // text in the log so we can tell if the prompt needs tuning.
+      // Model responded but with unparseable text. Distinguish the
+      // "stopReason=length" case (model hit max_tokens ceiling) from
+      // the "model returned a wrong-format answer" case. The former
+      // is recoverable with a one-shot retry at higher max_tokens -
+      // the latter is a prompt-format issue and benefits from a
+      // clear diagnostic in the user-facing warn.
+      const stopReason = result.stopReason;
+      const usageInfo = result.usage
+        ? `, used ${result.usage.outputTokens ?? "?"} tokens (limit ${maxTokens})`
+        : "";
       log.debug(
-        `[text-classifier] ${model.id} returned unparseable label: ${JSON.stringify(raw).slice(0, 200)}`,
+        `[text-classifier] ${model.id} returned unparseable label: ` +
+          `${JSON.stringify(raw).slice(0, 200)} (stopReason=${stopReason ?? "?"}${usageInfo})`,
       );
-      return { ok: false, reason: `unparseable label: ${JSON.stringify(raw).slice(0, 80)}` };
+      return {
+        ok: false,
+        reason: `unparseable label: ${JSON.stringify(raw).slice(0, 80)}` +
+          (stopReason ? ` (stopReason=${stopReason}` +
+            (result.usage?.outputTokens !== undefined ? `, used ${result.usage.outputTokens}/${maxTokens} tokens` : "") +
+            ")" : ""),
+      };
     }
 
     return { ok: true, raw, label };

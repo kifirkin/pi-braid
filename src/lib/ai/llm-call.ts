@@ -114,7 +114,10 @@ export async function callLlm(
   systemPrompt: string,
   userPrompt: string,
   options: LlmCallOptions = {},
-): Promise<{ text: string } | { error: string }> {
+): Promise<
+  | { text: string; stopReason?: string; usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number } }
+  | { error: string }
+> {
   // ── circuit breaker: skip if we recently hit a rate limit ─────────
   const now = Date.now();
   if (rateLimitCooldownUntil > 0 && now < rateLimitCooldownUntil) {
@@ -207,7 +210,16 @@ export async function callLlm(
         );
         const text = textContent.length > 0 ? textContent[0].text : "";
 
-        return { text };
+        // Surface stopReason and usage so callers can diagnose empty
+        // responses (e.g. "stopReason=length" means the model hit the
+        // max_tokens ceiling, which is why the response is empty).
+        // These are optional so existing {text}/{error} discrimination
+        // is unchanged for the 34 call sites that don't inspect them.
+        return {
+          text,
+          stopReason: result.stopReason,
+          usage: result.usage,
+        };
       } catch (err) {
         clearTimeout(timeoutId);
         const message = err instanceof Error ? err.message : String(err);

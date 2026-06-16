@@ -99,10 +99,38 @@ test("tryModelCall returns { ok: false, reason } on unparseable label", () => {
   );
   assert.ok(fnBody, "tryModelCall function not found");
   const body = fnBody[0];
+  // The reason must include 'unparseable label' so classify() can
+  // include the actual reason in TIER 2/3 warns. The exact string
+  // format may evolve (we now also include stopReason and usage),
+  // but the leading prefix is stable.
   assert.match(
     body,
-    /return \{ ok: false, reason: `unparseable label:/,
+    /ok:\s*false[,\s]+reason:.*unparseable label/s,
     "Unparseable label branch must return a reason that includes 'unparseable label'",
+  );
+});
+
+test("tryModelCall unparseable-label reason surfaces stopReason + token usage (the real fix)", () => {
+  // User report (2026-06-15): mistral-small-2603 returns empty with
+  // no error. The previous WARN said only 'unparseable label: ""',
+  // giving no hint about WHY. With stopReason=length and usage info
+  // surfaced inline, the user sees:
+  //   'unparseable label: "" (stopReason=length, used 5/10 tokens)'
+  // which directly identifies the max_tokens ceiling as the cause.
+  const fnBody = src.match(
+    /async function tryModelCall[\s\S]*?\n\}/,
+  );
+  assert.ok(fnBody, "tryModelCall function not found");
+  const body = fnBody[0];
+  assert.match(
+    body,
+    /stopReason/,
+    "tryModelCall unparseable branch must reference stopReason in the reason it returns",
+  );
+  assert.match(
+    body,
+    /usage\.outputTokens|outputTokens/,
+    "tryModelCall unparseable branch must reference usage.outputTokens in the reason",
   );
 });
 
