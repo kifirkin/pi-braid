@@ -200,7 +200,7 @@ export default function polyfillExtension(pi: ExtensionAPI) {
       if (!args || args.trim() === "") {
         if (ctx.hasUI) {
           const visionFilter = (m: Model<Api>) =>
-            hasImageInput(m as unknown as { input?: unknown });
+            hasImageInput(m as { input?: unknown });
           await openModelSelectorUI(ctx, VISION_MODEL_KEY, "Vision", visionFilter);
         } else {
           const model = resolveVisionModel(ctx);
