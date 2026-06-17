@@ -174,6 +174,7 @@ export async function classify(
       maxTokens,
       timeoutMs,
       0, // maxRetries: 0 - classify calls should fail fast, not retry
+      options?.validLabels,
     );
     if (tier1 && tier1.ok) {
       const latency = Date.now() - start;
@@ -210,6 +211,7 @@ export async function classify(
       maxTokens,
       timeoutMs,
       0, // maxRetries: 0 - classify calls should fail fast, not retry
+      options?.validLabels,
     );
     if (tier2 && tier2.ok) {
       const latency = Date.now() - start;
@@ -244,11 +246,24 @@ export async function classify(
 // ── Internals ────────────────────────────────────────────────────────────────
 
 /**
- * Normalize a model response to "yes" or "no".
- * Returns null if the response doesn't match either pattern.
+ * Normalize a model response to a valid label.
+ *
+ * - If `validLabels` is provided, accept any label in that set
+ *   (case-insensitive exact match). This is the multi-class path used by
+ *   critics like `trajectoryPattern` that return hyphenated pattern names
+ *   like "Read-Edit-Bash" instead of yes/no.
+ * - Otherwise fall back to binary yes/no (the default for ~30 critics).
+ *
+ * Returns null if the response doesn't match. The classifier then falls
+ * through to the next tier, rather than silently defaulting to "no" which
+ * would mask the underlying prompt/model issue.
+ *
  * Exported for testing.
  */
-export function normalizeLabel(raw: string): string | null {
+export function normalizeLabel(
+  raw: string,
+  validLabels?: string[],
+): string | null {
   const trimmed = raw.trim();
   // Empty or whitespace-only response: the model returned nothing.
   // Some smaller models (mistral-small, Venice-routed) do this when
@@ -258,7 +273,18 @@ export function normalizeLabel(raw: string): string | null {
   // would mask the underlying prompt/model issue.
   if (trimmed.length === 0) return null;
   const lower = trimmed.toLowerCase();
-  // Prefer whole-word match first, then prefix match
+  // Multi-class path: any label in the whitelist is accepted verbatim.
+  // We compare case-insensitively because some models (mistral-small
+  // in particular) return "read-edit-bash" instead of "Read-Edit-Bash".
+  if (validLabels && validLabels.length > 0) {
+    const validSet = new Set(validLabels.map((l) => l.toLowerCase()));
+    if (validSet.has(lower)) return lower;
+    // Don't return null yet - fall through to the yes/no check below
+    // in case the critic's validLabels is a small whitelist and the
+    // model produced a "yes"/"no" answer (e.g. when uncertain about
+    // which pattern fits). This is a defensive fallback.
+  }
+  // Binary yes/no path (default for the majority of critics).
   if (/^yes\b/.test(lower) || lower === "yes") return "yes";
   if (/^no\b/.test(lower) || lower === "no") return "no";
   return null;
@@ -277,6 +303,7 @@ async function tryModelCall(
   maxTokens: number | undefined,
   timeoutMs: number,
   maxRetries = 0,
+  validLabels?: string[],
 ): Promise<
   | { ok: true; raw: string; label: string }
   | { ok: false; reason: string }
@@ -322,7 +349,7 @@ async function tryModelCall(
     }
 
     const raw = result.text.trim();
-    const label = normalizeLabel(raw);
+    const label = normalizeLabel(raw, validLabels);
     if (!label) {
       // Model responded but with unparseable text. Distinguish the
       // "stopReason=length" case (model hit max_tokens ceiling) from

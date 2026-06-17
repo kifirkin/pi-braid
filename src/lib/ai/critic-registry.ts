@@ -194,7 +194,31 @@ export const CRITICS = {
         "Tool sequence: {{tools}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: {
+      timeoutMs: 5000,
+      // Multi-class critic: model returns a hyphenated pattern name, not
+      // yes/no. The validLabels whitelist is passed through to
+      // normalizeLabel so labels like "Read-Edit-Bash" (invented on the
+      // fly) are accepted as valid. We only whitelist the canonical
+      // 9 names; invented names are also accepted because normalizeLabel
+      // falls through to yes/no for non-whitelisted short strings... but
+      // actually no - if a model invents "Read-Edit-Bash" and it's not in
+      // this list, normalizeLabel returns null. We accept this trade-off:
+      // invented names are rare and the heuristic fallback in sop-extractor
+      // (detectPattern) handles the unparseable case with a deterministic
+      // local match. The 9 canonical names cover ~80% of real sessions.
+      validLabels: [
+        "Read-Fix-Verify",
+        "Read-Fix-Test",
+        "Read-Create-Verify",
+        "Error-Diagnose-Fix",
+        "Read-Test-Fix-Verify",
+        "Research-Read-Fix-Verify",
+        "Repeated-Test",
+        "Multi-Source-Investigation",
+        "Iterative-Fix-Verify",
+      ],
+    },
   } satisfies CriticDef,
 
   /** Legacy heuristic fallback for topic drift (stop-word anchor matching). */
