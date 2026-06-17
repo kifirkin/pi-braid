@@ -39,10 +39,24 @@ export interface EnforcementSignalEntry {
 const SIGNAL_RETENTION_TURNS = 3;
 
 /**
+ * ROADMAP EW-7.7: known signal keys. The map is also keyed by dynamic
+ * keys (e.g. `memory`, `scratchpad` from bundle-sub-signal callers), so
+ * the type is widened to `string` at the storage layer. This const is
+ * the source of truth for the literal keys that appear in multiple
+ * files. Using a typo in a literal (`enforcementSignals["unpersisted-
+ * lernings"]`) compiles silently; future compile-time enforcement can
+ * be added by switching the storage to a branded key type.
+ */
+export const SIGNAL_KEYS = {
+  unpersisted_learnings: "unpersisted_learnings",
+} as const;
+
+
+/**
  * L1 enforcement signals for prompt-builder surfacing.
  * Keyed by semantic type (memory, scratchpad, context_high, etc.)
  */
-export const enforcementSignals: Record<string, EnforcementSignalEntry> = {};
+export const enforcementSignals: Record<string, EnforcementSignalEntry> = {} as Record<string, EnforcementSignalEntry>;
 
 /**
  * Prune enforcement signals whose `turn` is more than

@@ -24,7 +24,7 @@ import { type TurnState } from "../types.js";
 import { validateTurn } from "../validation.js";
 import { sendEnforcementWhisper } from "../whisper.js";
 import { knownFiles, loadFileContent } from "../similarity.js";
-import { enforcementSignals, determineContrastMode, pruneSignals } from "../signals.js";
+import { enforcementSignals, determineContrastMode, pruneSignals, SIGNAL_KEYS } from "../signals.js";
 import {
   USAGE_WHISPER_CRITICAL,
   USAGE_FIRED_RESET_BELOW,
@@ -110,8 +110,8 @@ export async function dispatchTurnEndLoop(
     ["memory_store", "memory"].includes(t),
   );
 
-  if (memoryUpdated && enforcementSignals["unpersisted_learnings"]) {
-    delete enforcementSignals["unpersisted_learnings"];
+  if (memoryUpdated && enforcementSignals[SIGNAL_KEYS.unpersisted_learnings]) {
+    delete enforcementSignals[SIGNAL_KEYS.unpersisted_learnings];
   }
 
   if (!memoryUpdated) {
