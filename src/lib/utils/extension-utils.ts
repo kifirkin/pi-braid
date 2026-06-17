@@ -5,6 +5,7 @@
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getPrivateExtensionState } from "../state/extension-state.js";
 
 /**
  * Build a valid AgentToolResult with text content.
@@ -34,7 +35,7 @@ export function textParts(...parts: string[]): any {
  */
 export function getExtensionStateOrNull<T>(ctx: ExtensionContext, key: string): T | null {
   try {
-    const fn = (ctx as unknown as { getExtensionState?(key: string): unknown })?.getExtensionState;
+    const fn = getPrivateExtensionState(ctx);
     if (typeof fn === "function") {
       return fn(key) as T | null;
     }

@@ -447,6 +447,24 @@ export function getPiSessionManager(pi: unknown): {
 }
 
 /**
+ * Safely access pi-core's private `getExtensionState` method on the
+ * ExtensionContext. This is a pi-core internal that isn't in the public
+ * `.d.ts`; we use it inside `getExtensionStateOrNull` to peek at other
+ * extensions' state buckets. Returns undefined if the method is absent.
+ *
+ * Replaces the inline cast pattern
+ *   `(ctx as unknown as { getExtensionState?(key: string): unknown })?.getExtensionState`
+ * that appeared in extension-utils.ts:37.
+ */
+export function getPrivateExtensionState(
+  ctx: unknown,
+): ((key: string) => unknown) | undefined {
+  if (!ctx || typeof ctx !== "object") return undefined;
+  const fn = (ctx as { getExtensionState?: unknown }).getExtensionState;
+  return typeof fn === "function" ? (fn as (key: string) => unknown) : undefined;
+}
+
+/**
  * Get `ctx.sessionManager.getLeafId()` with safe fallback. Returns
  * undefined if no sessionManager is available. Replaces the pattern
  *   `(ctx as unknown as { sessionManager?: { getLeafId(): string } }).sessionManager?.getLeafId()`
