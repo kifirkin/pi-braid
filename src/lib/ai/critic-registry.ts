@@ -61,12 +61,16 @@ export const CRITICS = {
     label: "Topic Coverage",
     criteria: {
       systemPrompt:
-        "You are a topic coherence evaluator. Determine if the agent's response " +
-        "still addresses the original user request. Consider: are the same entities, " +
-        "tasks, and goals being discussed? Answer only 'yes' or 'no'. Do not explain.",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
       userPrompt:
-        "Original request: {{original}}\nAgent response: {{response}}\n" +
-        "Does the response still address the original request?",
+        "Your task: determine if the agent's response still addresses the original user request. " +
+        "Consider: are the same entities, tasks, and goals being discussed?\n" +
+        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n" +
+        "Original request: {{original}}\n" +
+        "Agent response: {{response}}\n" +
+        "</text>",
     },
   } satisfies CriticDef,
 
@@ -75,13 +79,16 @@ export const CRITICS = {
     label: "Topic Divergence",
     criteria: {
       systemPrompt:
-        "You are a topic drift detector. Determine if the agent's response has " +
-        "shifted to a substantially different topic than the original request. " +
-        "A response that discusses implementation details of the same task is NOT drifted. " +
-        "Answer only 'yes' or 'no'. Do not explain.",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
       userPrompt:
-        "Original request: {{original}}\nAgent response: {{response}}\n" +
-        "Has the response shifted to a different topic?",
+        "Your task: determine if the agent's response has shifted to a substantially different topic " +
+        "than the original request. A response that discusses implementation details of the same task is NOT drifted.\n" +
+        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n" +
+        "Original request: {{original}}\n" +
+        "Agent response: {{response}}\n" +
+        "</text>",
     },
   } satisfies CriticDef,
 
@@ -90,12 +97,16 @@ export const CRITICS = {
     label: "Topic Completeness",
     criteria: {
       systemPrompt:
-        "You are a completeness checker. Determine if the agent's response covers " +
-        "all the key topics mentioned in the original user request. Missing one minor " +
-        "detail is acceptable. Answer only 'yes' or 'no'. Do not explain.",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
       userPrompt:
-        "Original request: {{original}}\nAgent response: {{response}}\n" +
-        "Does the response cover all key topics from the request?",
+        "Your task: determine if the agent's response covers all the key topics mentioned in the original " +
+        "user request. Missing one minor detail is acceptable.\n" +
+        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n" +
+        "Original request: {{original}}\n" +
+        "Agent response: {{response}}\n" +
+        "</text>",
     },
   } satisfies CriticDef,
 
@@ -107,16 +118,17 @@ export const CRITICS = {
     label: "Decomposition Coverage",
     criteria: {
       systemPrompt:
-        "You are a task decomposition reviewer. Given a parent task and a list " +
-        "of proposed subtasks, determine if the subtasks together fully cover " +
-        "the parent task. A subtask list 'covers' the parent when every feature, " +
-        "component, and concern of the parent is represented in at least one " +
-        "subtask. Missing minor naming or wording is acceptable. " +
-        "Answer only 'yes' or 'no'. Do not explain.",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
       userPrompt:
+        "Your task: determine if the proposed subtasks together fully cover the parent task. " +
+        "A subtask list 'covers' the parent when every feature, component, and concern of the " +
+        "parent is represented in at least one subtask. Missing minor naming or wording is acceptable.\n" +
+        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n" +
         "Parent task: {{parentTask}}\n\n" +
-        "Proposed subtasks:\n- {{subtasks}}\n\n" +
-        "Do the subtasks together fully cover the parent task?",
+        "Proposed subtasks:\n- {{subtasks}}\n" +
+        "</text>",
     },
     options: { timeoutMs: 5000 },
   } satisfies CriticDef,
@@ -133,20 +145,15 @@ export const CRITICS = {
     label: "Topic Classification",
     criteria: {
       systemPrompt:
-        "You are a work-topic classifier. Given a chunk of assistant activity " +
-        "(text from a recent turn or sequence of tool calls), determine the " +
-        "primary topic of the work. Answer with exactly ONE label, lowercase, " +
-        "no explanation:\n" +
-        "- implementation: writing new code or adding features\n" +
-        "- debugging: fixing bugs, diagnosing errors, tracing failures\n" +
-        "- refactoring: restructuring code without changing behavior\n" +
-        "- testing: writing tests, running tests, asserting correctness\n" +
-        "- exploration: reading, searching, browsing, investigating unknown code\n" +
-        "- documentation: writing docs, comments, READMEs, explanations\n" +
-        "- planning: designing approaches, listing steps, choosing strategies\n" +
-        "- verification: confirming a prior result, sanity-checking, finalizing\n" +
-        "- general: none of the above fits",
-      userPrompt: "Recent assistant activity:\n{{text}}",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
+      userPrompt:
+        "Your task: determine the primary work topic of the assistant activity below. " +
+        "Reply with exactly one word from this list (lowercase, no explanation):\n" +
+        "implementation, debugging, refactoring, testing, exploration, documentation, planning, verification, general.\n\n" +
+        "<text>\n" +
+        "Recent assistant activity:\n{{text}}\n" +
+        "</text>",
     },
     options: { timeoutMs: 3000 },
   } satisfies CriticDef,
@@ -161,27 +168,31 @@ export const CRITICS = {
    * The LLM is given the known vocabulary of pattern names plus a
    * fallback instruction to generate a descriptive one if none fit.
    * The text is a short, comma-separated tool sequence.
+   *
+   * Note: this critic returns a pattern name (often multi-word, hyphenated)
+   * rather than a yes/no, so it does not strictly follow the "one word"
+   * pattern. The <text> wrap is still applied to keep the content
+   * separated from the instruction, preventing the model from
+   * interpreting the tool sequence as a new prompt to answer.
    */
   trajectoryPattern: {
     label: "Trajectory Pattern",
     criteria: {
       systemPrompt:
-        "You are a workflow-pattern classifier. Given a comma-separated sequence " +
-        "of tool names from a completed agent task, name the dominant workflow " +
-        "pattern. Prefer one of these known patterns (exact spelling, hyphenated):\n" +
-        "- Read-Fix-Verify: read file, edit, run command to verify\n" +
-        "- Read-Fix-Test: read file, edit, run tests (multiple bash)\n" +
-        "- Read-Create-Verify: read existing, write new file, verify\n" +
-        "- Error-Diagnose-Fix: error from command, read output, edit\n" +
-        "- Read-Test-Fix-Verify: read, test, edit, test again\n" +
-        "- Research-Read-Fix-Verify: web search, read, edit, verify\n" +
-        "- Repeated-Test: multiple verify/test commands in a row\n" +
-        "- Multi-Source-Investigation: read multiple files to understand\n" +
-        "- Iterative-Fix-Verify: edit-edit-test loop\n" +
-        "If none of the above fit, invent a concise hyphenated name like " +
-        "'Read-Edit-Edit' or 'Investigate-Write'. The name should be 1-4 " +
-        "words, each word 1-12 chars. Return only the pattern name, no explanation.",
-      userPrompt: "Tool sequence: {{tools}}",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
+      userPrompt:
+        "Your task: name the dominant workflow pattern of the tool sequence below. " +
+        "Prefer one of these known patterns (exact spelling, hyphenated):\n" +
+        "Read-Fix-Verify, Read-Fix-Test, Read-Create-Verify, Error-Diagnose-Fix, " +
+        "Read-Test-Fix-Verify, Research-Read-Fix-Verify, Repeated-Test, " +
+        "Multi-Source-Investigation, Iterative-Fix-Verify.\n" +
+        "If none of the above fit, invent a concise hyphenated name like 'Read-Edit-Edit' " +
+        "or 'Investigate-Write' (1-4 words, each word 1-12 chars).\n" +
+        "Reply with only the pattern name. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n" +
+        "Tool sequence: {{tools}}\n" +
+        "</text>",
     },
     options: { timeoutMs: 3000 },
   } satisfies CriticDef,
@@ -197,13 +208,17 @@ export const CRITICS = {
     label: "Claim Contradiction",
     criteria: {
       systemPrompt:
-        "You are a contradiction detector. Determine if a claim directly contradicts " +
-        "a given context. Consider positive/negative polarity: if the claim says " +
-        "something is true but the context says it is false (or vice versa), that is " +
-        "a contradiction. Answer only 'yes' or 'no'. Do not explain.",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
       userPrompt:
-        "Claim: {{claim}}\nContext: {{context}}\n" +
-        "Does the claim contradict the context?",
+        "Your task: determine if the claim directly contradicts the context. " +
+        "Consider positive/negative polarity: if the claim says something is true but " +
+        "the context says it is false (or vice versa), that is a contradiction.\n" +
+        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n" +
+        "Claim: {{claim}}\n" +
+        "Context: {{context}}\n" +
+        "</text>",
     },
     options: { timeoutMs: 5000 },
   } satisfies CriticDef,
@@ -213,12 +228,16 @@ export const CRITICS = {
     label: "Claim Support",
     criteria: {
       systemPrompt:
-        "You are a claim verifier. Determine if the given claim is supported by " +
-        "the provided context. The context must contain factual information that " +
-        "directly backs up the claim. Answer only 'yes' or 'no'. Do not explain.",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
       userPrompt:
-        "Claim: {{claim}}\nContext: {{context}}\n" +
-        "Is the claim supported by the context?",
+        "Your task: determine if the claim is supported by the provided context. " +
+        "The context must contain factual information that directly backs up the claim.\n" +
+        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n" +
+        "Claim: {{claim}}\n" +
+        "Context: {{context}}\n" +
+        "</text>",
     },
     options: { timeoutMs: 5000 },
   } satisfies CriticDef,
@@ -228,13 +247,17 @@ export const CRITICS = {
     label: "Overconfidence",
     criteria: {
       systemPrompt:
-        "You are a confidence assessor. Determine if the claim contains unwarranted " +
-        "certainty - absolutes like 'always', 'never', 'guaranteed', 'definitely', " +
-        "'impossible', 'must', or superlatives that aren't supported by the context. " +
-        "Answer only 'yes' or 'no'. Do not explain.",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
       userPrompt:
-        "Claim: {{claim}}\nAvailable context: {{context}}\n" +
-        "Does the claim contain unwarranted certainty?",
+        "Your task: determine if the claim contains unwarranted certainty - " +
+        "absolutes like 'always', 'never', 'guaranteed', 'definitely', 'impossible', " +
+        "'must', or superlatives that aren't supported by the context.\n" +
+        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n" +
+        "Claim: {{claim}}\n" +
+        "Available context: {{context}}\n" +
+        "</text>",
     },
     options: { timeoutMs: 5000 },
   } satisfies CriticDef,
@@ -254,13 +277,16 @@ export const CRITICS = {
     label: "Tool Loop Detection",
     criteria: {
       systemPrompt:
-        "You are a behavioral loop detector. Determine if the agent is repeating " +
-        "the same tool calls across consecutive turns without making progress. " +
-        "Reading different files is fine. Calling the same tool on the same file " +
-        "repeatedly without progress is a loop. Answer only 'yes' or 'no'. Do not explain.",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
       userPrompt:
+        "Your task: determine if the agent is repeating the same tool calls across consecutive " +
+        "turns without making progress. Reading different files is fine. Calling the same tool " +
+        "on the same file repeatedly without progress is a loop.\n" +
+        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n" +
         "Recent tool usage (most recent first):\n{{toolSequences}}\n" +
-        "Is the agent in a repetitive loop?",
+        "</text>",
     },
     options: { timeoutMs: 5000 },
   } satisfies CriticDef,
@@ -274,13 +300,17 @@ export const CRITICS = {
     label: "Evidence Conflict",
     criteria: {
       systemPrompt:
-        "You are an evidence conflict analyzer. Determine if two pieces of " +
-        "evidence directly contradict each other. Different wording about the same " +
-        "factual claim is a contradiction. Complementary information is not. " +
-        "Answer only 'yes' or 'no'. Do not explain.",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
       userPrompt:
-        "Evidence A: {{evidenceA}}\nEvidence B: {{evidenceB}}\n" +
-        "Do they contradict each other?",
+        "Your task: determine if the two pieces of evidence directly contradict each other. " +
+        "Different wording about the same factual claim is a contradiction. Complementary " +
+        "information is not.\n" +
+        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n" +
+        "Evidence A: {{evidenceA}}\n" +
+        "Evidence B: {{evidenceB}}\n" +
+        "</text>",
     },
     options: { timeoutMs: 5000 },
   } satisfies CriticDef,
@@ -304,13 +334,16 @@ export const CRITICS = {
     label: "SOP Quality",
     criteria: {
       systemPrompt:
-        "You are a procedure quality assessor. Evaluate if the described solution " +
-        "approach is high-quality, reusable, and well-structured. A good SOP has " +
-        "clear steps, concrete actions, and generalizable patterns. " +
-        "Answer only 'yes' or 'no'. Do not explain.",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
       userPrompt:
-        "Task: {{task}}\nSolution approach: {{solution}}\n" +
-        "Is this a high-quality, reusable approach worth storing as an SOP?",
+        "Your task: evaluate if the described solution approach is high-quality, reusable, " +
+        "and well-structured. A good SOP has clear steps, concrete actions, and generalizable patterns.\n" +
+        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n" +
+        "Task: {{task}}\n" +
+        "Solution approach: {{solution}}\n" +
+        "</text>",
     },
     options: { timeoutMs: 5000 },
   } satisfies CriticDef,
@@ -324,13 +357,16 @@ export const CRITICS = {
     label: "Decomposition Coverage",
     criteria: {
       systemPrompt:
-        "You are a task decomposition reviewer. Determine if the set of subtasks " +
-        "fully covers all aspects of the parent task without gaps. A minor missing " +
-        "detail is okay. A significant missing requirement is a gap. " +
-        "Answer only 'yes' or 'no'. Do not explain.",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
       userPrompt:
-        "Parent task: {{parentTask}}\nSubtasks:\n{{subtasks}}\n" +
-        "Do the subtasks fully cover the parent task?",
+        "Your task: determine if the set of subtasks fully covers all aspects of the parent " +
+        "task without gaps. A minor missing detail is okay. A significant missing requirement is a gap.\n" +
+        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n" +
+        "Parent task: {{parentTask}}\n" +
+        "Subtasks:\n{{subtasks}}\n" +
+        "</text>",
     },
     options: { timeoutMs: 5000 },
   } satisfies CriticDef,
@@ -350,15 +386,18 @@ export const CRITICS = {
     label: "Hint Quality",
     criteria: {
       systemPrompt:
-        "You are a hint quality assessor. Determine if the described task and " +
-        "solution steps represent a genuinely useful, reusable behavioral hint. " +
-        "A good hint has concrete, project-specific steps with real tool usage. " +
-        "A bad hint uses generic debugging clichés: 'reproduce the bug', " +
-        "'locate root cause', 'apply fix', 'test the fix', 'debug it', " +
-        "'isolate the issue', etc. Answer only 'yes' or 'no'. Do not explain.",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
       userPrompt:
-        "Task: {{task}}\nSteps:\n{{steps}}\n" +
-        "Is this hint genuinely informative and worth storing for future sessions?",
+        "Your task: determine if the described task and solution steps represent a genuinely " +
+        "useful, reusable behavioral hint. A good hint has concrete, project-specific steps with " +
+        "real tool usage. A bad hint uses generic debugging clichés: 'reproduce the bug', " +
+        "'locate root cause', 'apply fix', 'test the fix', 'debug it', 'isolate the issue', etc.\n" +
+        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n" +
+        "Task: {{task}}\n" +
+        "Steps:\n{{steps}}\n" +
+        "</text>",
     },
     options: { timeoutMs: 5000 },
   } satisfies CriticDef,
@@ -381,15 +420,18 @@ export const CRITICS = {
     label: "Context Density",
     criteria: {
       systemPrompt:
-        "You are a context density evaluator. Given a sample of conversation " +
-        "messages, determine if the context has HIGH, MEDIUM, or LOW signal density. " +
-        "HIGH = most messages contain meaningful, non-boilerplate content. " +
-        "MEDIUM = mixed - some signal, some noise (duplicates, errors, boilerplate). " +
-        "LOW = mostly noise - repetitive commands, traceback dumps, trivial responses. " +
-        "Answer with exactly one word: HIGH, MEDIUM, or LOW. Do not explain.",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
       userPrompt:
+        "Your task: rate the signal density of the conversation sample below. " +
+        "Reply with exactly one word from this list (uppercase, no explanation):\n" +
+        "HIGH, MEDIUM, LOW.\n" +
+        "HIGH = most messages contain meaningful, non-boilerplate content.\n" +
+        "MEDIUM = mixed - some signal, some noise (duplicates, errors, boilerplate).\n" +
+        "LOW = mostly noise - repetitive commands, traceback dumps, trivial responses.\n\n" +
+        "<text>\n" +
         "Context sample ({{sampleCount}} messages):\n{{messages}}\n" +
-        "Rate the signal density of this context.",
+        "</text>",
     },
     options: { timeoutMs: 5000 },
   } satisfies CriticDef,
@@ -402,22 +444,23 @@ export const CRITICS = {
     label: "Compression Urgency",
     criteria: {
       systemPrompt:
-        "You are a context compression advisor. Given the current session state, " +
-        "determine the appropriate compression level. Consider: turn count, " +
-        "reasoning depth, failure rate, and time since last compression. " +
-        "Answer with exactly one word: NONE, CONSERVATIVE, SEMANTIC, or AGGRESSIVE. " +
-        "NONE = context is fresh and efficient. " +
-        "CONSERVATIVE = prune only obvious noise. " +
-        "SEMANTIC = summarize reasoning chains. " +
-        "AGGRESSIVE = extract patterns to memory, remove most raw context. " +
-        "Do not explain.",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
       userPrompt:
+        "Your task: determine the appropriate compression level for the session state below. " +
+        "Reply with exactly one word from this list (uppercase, no explanation):\n" +
+        "NONE, CONSERVATIVE, SEMANTIC, AGGRESSIVE.\n" +
+        "NONE = context is fresh and efficient.\n" +
+        "CONSERVATIVE = prune only obvious noise.\n" +
+        "SEMANTIC = summarize reasoning chains.\n" +
+        "AGGRESSIVE = extract patterns to memory, remove most raw context.\n\n" +
+        "<text>\n" +
         "Turns since last compression: {{turnsSinceCompression}}\n" +
         "Total turns: {{totalTurns}}\n" +
         "Consecutive failures: {{consecutiveFailures}}\n" +
         "Reasoning chain depth: {{reasoningDepth}}\n" +
         "Message count: {{messageCount}}\n" +
-        "What compression level is needed?",
+        "</text>",
     },
     options: { timeoutMs: 5000 },
   } satisfies CriticDef,
@@ -440,14 +483,16 @@ export const CRITICS = {
     label: "Qualitative Degradation",
     criteria: {
       systemPrompt:
-        "You are a quality degradation assessor. Given samples of recent agent " +
-        "output, determine if output quality has degraded. Look for: confused " +
-        "or contradictory statements, shallow analysis, repeated mistakes, " +
-        "loss of task focus, or decline in reasoning depth. " +
-        "Answer with exactly one word: DEGRADED or STABLE. Do not explain.",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
       userPrompt:
+        "Your task: determine if output quality has degraded. Look for: confused or " +
+        "contradictory statements, shallow analysis, repeated mistakes, loss of task focus, " +
+        "or decline in reasoning depth.\n" +
+        "Reply with exactly one word: DEGRADED or STABLE. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n" +
         "Recent agent outputs:\n{{outputSamples}}\n" +
-        "Has agent output quality degraded?",
+        "</text>",
     },
     options: { timeoutMs: 5000 },
   } satisfies CriticDef,
@@ -470,20 +515,21 @@ export const CRITICS = {
     label: "Removal Safety",
     criteria: {
       systemPrompt:
-        "You are a context compaction assistant. Given a single conversation " +
-        "message, determine if it is SAFE to remove before LLM summarization. " +
-        "A message is safe to remove if it is clearly redundant, superseded, " +
-        "or non-essential: duplicate file reads, resolved error outputs, " +
-        "oversized non-critical tool results (ls/find/grep), ephemeral system " +
-        "steer messages, or resolved bug trace dumps. " +
-        "A message is NOT safe if it contains unique information, is a user " +
-        "request, is an assistant response, or is a write/modify operation. " +
-        "Answer only 'yes' or 'no'. Do not explain.",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
       userPrompt:
+        "Your task: determine if the conversation message below is SAFE to remove before " +
+        "LLM summarization. A message is safe to remove if it is clearly redundant, superseded, " +
+        "or non-essential: duplicate file reads, resolved error outputs, oversized non-critical " +
+        "tool results (ls/find/grep), ephemeral system steer messages, or resolved bug trace dumps. " +
+        "A message is NOT safe if it contains unique information, is a user request, is an " +
+        "assistant response, or is a write/modify operation.\n" +
+        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n" +
         "Message role: {{role}}\n" +
         "Tool name: {{toolName}}\n" +
         "Content snippet: {{content}}\n" +
-        "Is this message safe to remove before compaction?",
+        "</text>",
     },
     options: { timeoutMs: 5000 },
   } satisfies CriticDef,
@@ -500,15 +546,20 @@ export const CRITICS = {
     label: "Error Type",
     criteria: {
       systemPrompt:
-        "You are a retry-error classifier. Given an error message, classify it " +
-        "into exactly one category. Answer only the category name. Do not explain.\n" +
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
+      userPrompt:
+        "Your task: classify the error message below into exactly one category. " +
+        "Reply with exactly one word: the category name. No explanation, no punctuation, no other text.\n" +
         "Categories:\n" +
-        "- rate_limit: 429, rate limiting, quota exceeded, too many requests\n" +
-        "- server_error: 5xx, server error, internal error, overloaded, unavailable\n" +
-        "- network: connection refused, fetch failed, socket hang up, timeout, dns\n" +
-        "- auth: 401, 403, unauthorized, forbidden, invalid key, authentication\n" +
-        "- unknown: anything else",
-      userPrompt: "{{errorMsg}}",
+        "rate_limit (429, rate limiting, quota exceeded, too many requests), " +
+        "server_error (5xx, server error, internal error, overloaded, unavailable), " +
+        "network (connection refused, fetch failed, socket hang up, timeout, dns), " +
+        "auth (401, 403, unauthorized, forbidden, invalid key, authentication), " +
+        "unknown (anything else).\n\n" +
+        "<text>\n" +
+        "{{errorMsg}}\n" +
+        "</text>",
     },
     options: { timeoutMs: 5000 },
   } satisfies CriticDef,
@@ -527,13 +578,15 @@ export const CRITICS = {
     label: "Instruction Strength",
     criteria: {
       systemPrompt:
-        "You are a requirement classifier. Given a requirement body, determine " +
-        "its strength level according to RFC 2119 semantics:\n" +
-        "- SHALL/MUST: absolute requirement\n" +
-        "- SHOULD: recommended, not mandatory\n" +
-        "- MAY: optional\n" +
-        "Answer only the strength word. Do not explain.",
-      userPrompt: "{{body}}",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
+      userPrompt:
+        "Your task: determine the strength level of the requirement below according to RFC 2119 semantics. " +
+        "Reply with exactly one word: SHALL, MUST, SHOULD, or MAY. No explanation, no punctuation, no other text.\n" +
+        "SHALL/MUST = absolute requirement. SHOULD = recommended, not mandatory. MAY = optional.\n\n" +
+        "<text>\n" +
+        "{{body}}\n" +
+        "</text>",
     },
     options: { timeoutMs: 5000 },
   } satisfies CriticDef,
@@ -552,17 +605,22 @@ export const CRITICS = {
     label: "Command Type",
     criteria: {
       systemPrompt:
-        "You are a shell command classifier. Given a command string, classify it " +
-        "into exactly one category. Answer only the category name. Do not explain.\n" +
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
+      userPrompt:
+        "Your task: classify the shell command below into exactly one category. " +
+        "Reply with exactly one word: the category name. No explanation, no punctuation, no other text.\n" +
         "Categories:\n" +
-        "- pipeline: chaining commands with |, pipe, xargs\n" +
-        "- loop: iterative/conditional constructs like for, while, until\n" +
-        "- dangerous: destructive operations like rm -rf, dd, mkfs, chmod 777\n" +
-        "- edit: modifying files with sed, awk in-place, redirects >, >>\n" +
-        "- info: reading files, grep, find, ls, cat, head, tail\n" +
-        "- build: compile, install, npm/pip/yarn, make, cargo\n" +
-        "- safe: everything else",
-      userPrompt: "{{cmd}}",
+        "pipeline (chaining commands with |, pipe, xargs), " +
+        "loop (iterative/conditional constructs like for, while, until), " +
+        "dangerous (destructive operations like rm -rf, dd, mkfs, chmod 777), " +
+        "edit (modifying files with sed, awk in-place, redirects >, >>), " +
+        "info (reading files, grep, find, ls, cat, head, tail), " +
+        "build (compile, install, npm/pip/yarn, make, cargo), " +
+        "safe (everything else).\n\n" +
+        "<text>\n" +
+        "{{cmd}}\n" +
+        "</text>",
     },
     options: { timeoutMs: 3000 },
   } satisfies CriticDef,
@@ -668,17 +726,19 @@ export const CRITICS = {
     label: "Hint Relevance",
     criteria: {
       systemPrompt:
-        "You are a relevance classifier. Determine if the given behavioral hint " +
-        "is relevant to the user's current task. A hint is relevant ONLY if it " +
-        "describes a strategy or workflow that could plausibly apply to the " +
-        "current task based on shared topic, tool, or methodology. " +
-        "Generic hints like 'Fix type error: Reproduce → Locate → Apply' are NOT " +
-        "relevant even if vaguely applicable. " +
-        "Answer only 'yes' or 'no'. Do not explain.",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
       userPrompt:
+        "Your task: determine if the behavioral hint below is relevant to the user's current " +
+        "task. A hint is relevant ONLY if it describes a strategy or workflow that could " +
+        "plausibly apply to the current task based on shared topic, tool, or methodology. " +
+        "Generic hints like 'Fix type error: Reproduce \u2192 Locate \u2192 Apply' are NOT relevant " +
+        "even if vaguely applicable.\n" +
+        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n" +
         "Current task: {{currentTask}}\n" +
         "Hint: {{hint}}\n" +
-        "Is this hint relevant to the current task?",
+        "</text>",
     },
     options: { timeoutMs: 3000 },
   } satisfies CriticDef,
@@ -698,14 +758,18 @@ export const CRITICS = {
     label: "Conflict Resolution",
     criteria: {
       systemPrompt:
-        "You are a resolution classifier for an AI agent's knowledge conflict system. " +
-        "Determine if the given text contains language that RESOLVES a knowledge conflict " +
-        "(deciding which evidence to trust). " +
-        "Answer with exactly one word: 'resolved_for', 'resolved_against', or 'none'. " +
-        "'resolved_for' = text selects and favors one side of a conflict. " +
-        "'resolved_against' = text explicitly rejects or disproves a claim. " +
-        "'none' = text does not resolve any conflict. Do not explain.",
-      userPrompt: "Does this message resolve a knowledge conflict? {{text}}",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
+      userPrompt:
+        "Your task: determine if the text below contains language that RESOLVES a knowledge " +
+        "conflict (deciding which evidence to trust). " +
+        "Reply with exactly one word: resolved_for, resolved_against, or none. No explanation, no punctuation, no other text.\n" +
+        "resolved_for = text selects and favors one side of a conflict. " +
+        "resolved_against = text explicitly rejects or disproves a claim. " +
+        "none = text does not resolve any conflict.\n\n" +
+        "<text>\n" +
+        "{{text}}\n" +
+        "</text>",
     },
     options: { timeoutMs: 5000 },
   } satisfies CriticDef,
@@ -727,12 +791,16 @@ export const CRITICS = {
     label: "Compliance Framing",
     criteria: {
       systemPrompt:
-        "You are a compliance framing detector. Determine if the given text " +
-        "uses language that frames the task as a compliance requirement - " +
-        "words like 'must', 'required', 'mandatory', 'shall', 'strictly', " +
-        "'obligatory', 'it is essential', 'is expected to'. " +
-        "Answer only 'yes' or 'no'. Do not explain.",
-      userPrompt: "{{text}}",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
+      userPrompt:
+        "Your task: determine if the text below uses language that frames the task as a " +
+        "compliance requirement - words like 'must', 'required', 'mandatory', 'shall', " +
+        "'strictly', 'obligatory', 'it is essential', 'is expected to'.\n" +
+        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n" +
+        "{{text}}\n" +
+        "</text>",
     },
     options: { timeoutMs: 3000 },
   } satisfies CriticDef,
@@ -752,10 +820,15 @@ export const CRITICS = {
     label: "Polarity Detection",
     criteria: {
       systemPrompt:
-        "You are a polarity classifier. Given a sentence, determine if it " +
-        "makes a positive or negative assertion about a technical claim. " +
-        "Answer only 'positive', 'negative', or 'neutral'. Do not explain.",
-      userPrompt: "{{sentence}}",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
+      userPrompt:
+        "Your task: determine if the sentence below makes a positive, negative, or " +
+        "neutral assertion about a technical claim.\n" +
+        "Reply with exactly one word: positive, negative, or neutral. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n" +
+        "{{sentence}}\n" +
+        "</text>",
     },
     options: { timeoutMs: 3000 },
   } satisfies CriticDef,
@@ -774,11 +847,15 @@ export const CRITICS = {
     label: "Entity Extraction",
     criteria: {
       systemPrompt:
-        "You are a claim detector. Determine if the given sentence contains " +
-        "a factual claim about a technical entity (function, API, database, " +
-        "module, class, method, tool, interface, etc.). " +
-        "Answer only 'yes' or 'no'. Do not explain.",
-      userPrompt: "{{sentence}}",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
+      userPrompt:
+        "Your task: determine if the sentence below contains a factual claim about a " +
+        "technical entity (function, API, database, module, class, method, tool, interface, etc.).\n" +
+        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n" +
+        "{{sentence}}\n" +
+        "</text>",
     },
     options: { timeoutMs: 3000 },
   } satisfies CriticDef,
@@ -797,12 +874,16 @@ export const CRITICS = {
     label: "Sycophancy Tactics",
     criteria: {
       systemPrompt:
-        "You are a sycophancy pressure detector. Determine if the given user message " +
-        "is trying to pressure the assistant into agreeing, using flattery, loaded questions, " +
-        "authority claims, skepticism, or forcing agreement. " +
-        "These are messages designed to make the assistant less objective. " +
-        "Answer only 'yes' or 'no'. Do not explain.",
-      userPrompt: "Does this message use sycophancy pressure tactics?\n\n{{text}}",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
+      userPrompt:
+        "Your task: determine if the user message below is trying to pressure the assistant " +
+        "into agreeing, using flattery, loaded questions, authority claims, skepticism, or " +
+        "forcing agreement. These are messages designed to make the assistant less objective.\n" +
+        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n" +
+        "{{text}}\n" +
+        "</text>",
     },
     options: { timeoutMs: 5000 },
   } satisfies CriticDef,
@@ -817,15 +898,18 @@ export const CRITICS = {
     label: "VbC Detection",
     criteria: {
       systemPrompt:
-        "You are a validation-before-correction detector. Determine if the given " +
-        "text validates before correcting - i.e., it first agrees with the user's " +
-        "premise then contradicts it.\n" +
-        "Examples of VbC:\n" +
-        '- "You\'re right that X... however Y"\n' +
-        '- "That\'s a fair point... but actually"\n' +
-        '- "I understand your concern... however the issue is"\n' +
-        "Answer only 'yes' or 'no'. Do not explain.",
-      userPrompt: "Does this response do validation-before-correction?\n\n{{text}}",
+        "You are a binary text classifier. You do one thing: " +
+        "look at text inside <text> tags and decide if it matches a criterion.",
+      userPrompt:
+        "Your task: determine if the response below validates before correcting - " +
+        "i.e., it first agrees with the user's premise then contradicts it.\n" +
+        "Examples of VbC: 'You're right that X... however Y', " +
+        "'That's a fair point... but actually', " +
+        "'I understand your concern... however the issue is'.\n" +
+        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
+        "<text>\n" +
+        "{{text}}\n" +
+        "</text>",
     },
     options: { timeoutMs: 5000 },
   } satisfies CriticDef,

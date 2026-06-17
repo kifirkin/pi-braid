@@ -267,7 +267,7 @@ async function isHintTooGeneric(
     CRITICS.hintQuality.criteria,
     { task, steps: steps.join("\n") },
     {
-      timeoutMs: 3000,
+      timeoutMs: 5000,
       label: CRITICS.hintQuality.label,
       // Q9 B-class: heuristic is permissive ("yes" by default).
       // tierPolicy: fallback-only downweights to 0.5 confidence.

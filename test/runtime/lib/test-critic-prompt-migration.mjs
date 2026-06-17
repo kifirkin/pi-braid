@@ -51,11 +51,62 @@ function test(name, fn) {
   }
 }
 
+// All 32 critics are now migrated to the input-polisher prompt pattern.
+// (persona-only system, instructions + <text> wrap in user, "Reply with
+// exactly one word: ..." reply instruction). This list must stay in
+// sync with critic-registry.ts. To check coverage:
+//
+//   grep -c 'You are a binary text classifier' src/lib/ai/critic-registry.ts
+//   = 32 (32 critics)
 const MIGRATED_CRITICS = [
+  // Topic drift (3)
+  "topicCoverage",
+  "topicDivergence",
+  "topicCompleteness",
+  // Decomposition (2)
+  "decompositionCoverage",
+  "decompositionComplete",
+  // Topic classification (2)
+  "topicClassification",
+  "trajectoryPattern",
+  // Claim verification (3)
+  "claimContradiction",
+  "claimSupported",
+  "claimOverconfidence",
+  // Turn-outcome (1)
+  "toolLoopDetected",
+  // Evidence (1)
+  "evidenceConflict",
+  // SOP (1)
+  "sopQuality",
+  // Hint quality (1)
+  "hintQuality",
+  // Context density (2)
+  "contextDensity",
+  "compressionUrgency",
+  // Degradation (1)
+  "qualitativeDegradation",
+  // Removal safety (1)
+  "removalSafety",
+  // Error/command (3)
+  "errorType",
+  "instructionStrength",
+  "commandType",
+  // Input polisher (4 - original set)
   "inputCodeHeavy",
   "inputWellWritten",
   "inputClarity",
   "inputAmbiguity",
+  // Hint relevance + conflict (2)
+  "hintRelevance",
+  "conflictResolution",
+  // Compliance/polarity/entity (3)
+  "complianceFraming",
+  "polarityDetection",
+  "entityExtraction",
+  // Sycophancy (2)
+  "sycophancyTactics",
+  "vbCDetection",
 ];
 
 function extractCriticPrompt(criticName, field) {
@@ -124,24 +175,48 @@ for (const criticName of MIGRATED_CRITICS) {
     assert.ok(up.includes("</text>"), `${criticName} userPrompt should have </text> tag`);
   });
 
-  test(`${criticName} user prompt has 'Your task:' + 'yes or no' format`, () => {
+  test(`${criticName} user prompt has 'Your task:' instruction`, () => {
     const up = extractCriticPrompt(criticName, "userPrompt");
     assert.ok(/Your task:/i.test(up), `${criticName} should start with 'Your task:'`);
-    assert.ok(/yes or no/i.test(up), `${criticName} should request 'yes or no' format`);
+  });
+
+  test(`${criticName} user prompt has reply-format instruction (yes/no or category list)`, () => {
+    const up = extractCriticPrompt(criticName, "userPrompt");
+    // Either "yes or no" (yes/no critics) or "Reply with exactly one word:"
+    // (category critics with category lists). All critics should have
+    // some form of "Reply with exactly one word" instruction.
+    const hasYesNo = /yes or no/i.test(up);
+    const hasCategory = /exactly one word/i.test(up) || /Reply with only/i.test(up);
+    assert.ok(
+      hasYesNo || hasCategory,
+      `${criticName} should request a short reply format (yes/no or category)`,
+    );
   });
 }
 
-// ── Asymmetry is documented and intentional ───────────────────────────
+// ── All critics migrated ────────────────────────────────────────────
 
-test("The 4 input-polisher critics are the ONLY ones in the migrated set", () => {
-  // This assertion pins the asymmetry: 4 migrated, 16+ not migrated.
-  // If you add a 5th critic to the migration, update MIGRATED_CRITICS
-  // AND verify it actually has the new pattern (the per-critic tests
+test("All 32 critics are migrated (no stragglers in the old pattern)", () => {
+  // This assertion pins the count: 32 migrated, 0 not migrated.
+  // If you add a 33rd critic, add it to MIGRATED_CRITICS AND
+  // verify it actually has the new pattern (the per-critic tests
   // above will catch a half-migration).
   assert.strictEqual(
     MIGRATED_CRITICS.length,
-    4,
-    "MIGRATED_CRITICS list should have exactly 4 entries (the input-polisher critics)",
+    32,
+    "MIGRATED_CRITICS list should have exactly 32 entries (all critics)",
+  );
+});
+
+test("critic-registry.ts has 32 'binary text classifier' system prompts", () => {
+  // Sanity check: the count of "binary text classifier" occurrences
+  // should match the MIGRATED_CRITICS length. If you add a critic
+  // but forget to migrate it, this test fails.
+  const occurrences = (src.match(/You are a binary text classifier/g) || []).length;
+  assert.strictEqual(
+    occurrences,
+    32,
+    `critic-registry.ts should have 32 'binary text classifier' system prompts, found ${occurrences}`,
   );
 });
 
