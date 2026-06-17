@@ -205,7 +205,6 @@ export async function callLlm(
           maxTokens: number;
           temperature: number;
           maxRetries: number;
-          // The public type is narrower; we cast at the boundary.
           reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "off";
           signal: AbortSignal;
         } = {
@@ -218,12 +217,10 @@ export async function callLlm(
         if (options.reasoning !== undefined) {
           simpleOptions.reasoning = options.reasoning;
         }
-        // Cast to SimpleStreamOptions-compatible at the call site.
-        // The runtime accepts "off"; the public type doesn't list it.
         const result = await completeSimple(
           model as Model<Api>,
           context,
-          simpleOptions as unknown as Parameters<typeof completeSimple>[2],
+          toCompleteSimpleOptions(simpleOptions),
         );
 
         clearTimeout(timeoutId);
@@ -383,6 +380,32 @@ function matchesTransientOnly(message: string): boolean {
  * attempt 1 → 5s, attempt 2 → 15s, attempt 3 → 30s, attempt 4 → 60s
  * With ±20% jitter. Capped at 60s.
  */
+/**
+ * Cast our locally-typed `simpleOptions` (which permits
+ * `reasoning: "off"`) to the public `SimpleStreamOptions` shape that
+ * `completeSimple` expects.
+ *
+ * Why this exists: pi-ai's runtime accepts "off" as a reasoning value
+ * and gracefully maps it (off if the model supports it, else the
+ * lowest available level like "minimal"). The public type union doesn't
+ * list "off" yet, so a direct assignment would fail to typecheck. We
+ * centralize the cast in this one helper so the boundary is explicit
+ * and findable. If pi-ai later adds "off" to its public type, this
+ * helper becomes a no-op identity cast and can be deleted.
+ */
+function toCompleteSimpleOptions(
+  opts: {
+    apiKey: string | undefined;
+    maxTokens: number;
+    temperature: number;
+    maxRetries: number;
+    reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "off";
+    signal: AbortSignal;
+  },
+): Parameters<typeof completeSimple>[2] {
+  return opts as unknown as Parameters<typeof completeSimple>[2];
+}
+
 function backoffDelay(attempt: number): number {
   const delays = [5_000, 15_000, 30_000, 60_000];
   const base = delays[Math.min(attempt - 1, delays.length - 1)];
