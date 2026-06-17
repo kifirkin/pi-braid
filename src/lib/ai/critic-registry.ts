@@ -155,7 +155,7 @@ export const CRITICS = {
         "Recent assistant activity:\n{{text}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 3000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /**
@@ -194,7 +194,7 @@ export const CRITICS = {
         "Tool sequence: {{tools}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 3000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /** Legacy heuristic fallback for topic drift (stop-word anchor matching). */
@@ -622,7 +622,7 @@ export const CRITICS = {
         "{{cmd}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 3000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /** Legacy fallback for command type classification. */
@@ -740,7 +740,7 @@ export const CRITICS = {
         "Hint: {{hint}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 3000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /** Heuristic fallback: reject very short hints and obvious generic templates. */
@@ -802,7 +802,7 @@ export const CRITICS = {
         "{{text}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 3000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
   // complianceFramingFallback was previously defined here but is not
   // called anywhere (replaced by direct LLM-only call sites in
@@ -830,7 +830,7 @@ export const CRITICS = {
         "{{sentence}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 3000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /** Legacy fallback for polarity detection. */
@@ -857,7 +857,7 @@ export const CRITICS = {
         "{{sentence}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 3000 },
+    options: { timeoutMs: 5000 },
   } satisfies CriticDef,
 
   /** Legacy fallback for entity extraction. */

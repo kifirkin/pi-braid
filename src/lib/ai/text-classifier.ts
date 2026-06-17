@@ -104,7 +104,11 @@ export async function classify(
   // hard cap (e.g., for a custom reason). Otherwise we let
   // pi-ai / the provider decide.
   const maxTokens = options?.maxTokens;
-  const timeoutMs = options?.timeoutMs ?? 5000;
+  // Default 8s per tier. Slow models (minimax-m3, mistral-small) regularly
+  // take 3-5s for a single classification; 5s was too tight at session
+  // end (where the model is busy with finalization and the network round-trip
+  // has higher latency). Total budget is 2x = 16s for both tiers.
+  const timeoutMs = options?.timeoutMs ?? 8000;
 
   // Build prompts (needed early for LLM tiers)
   const userMessage = replacePlaceholders(criteria.userPrompt, substitutions);
