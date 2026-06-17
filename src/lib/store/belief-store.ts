@@ -72,17 +72,54 @@ export class BeliefStore {
 
   // ── CRUD ────────────────────────────────────────────────────────────────
 
-  add(belief: Belief): void {
+  /**
+   * Atomically add a belief if no belief with the same id exists.
+   * Returns `{ added: true, belief }` on success, or
+   * `{ added: false, existing }` if a belief with the same id was
+   * already present.
+   *
+   * This is the canonical API for callers that want to know whether
+   * their add actually inserted. The plain `add()` method is kept
+   * for fire-and-forget callers but uses tryAdd internally so the
+   * check-then-set is atomic.
+   */
+  tryAdd(belief: Belief): { added: true; belief: Belief } | { added: false; existing: Belief } {
     const b: Belief = { ...belief, timestamp: belief.timestamp ?? Date.now() };
-    if (this.beliefs.has(b.id)) {
-      log.warn("Belief " + b.id + " already exists, skipping duplicate");
-      return;
+    const existing = this.beliefs.get(b.id);
+    if (existing) {
+      return { added: false, existing };
     }
     this.beliefs.set(b.id, b);
     const ids = this.bySource.get(b.source) ?? [];
     ids.push(b.id);
     this.bySource.set(b.source, ids);
-    log.debug("Belief added: " + b.id + " (source=" + b.source + ", conf=" + b.confidence + ")");
+    return { added: true, belief: b };
+  }
+
+  /**
+   * Add a belief. Idempotent: if a belief with the same id already
+   * exists, the call is a silent no-op (logged at debug). The system
+   * is designed to handle parallel adds from multiple handlers
+   * (heartbeat, enforcement, tool-call observers) that may all
+   * observe the same event in the same millisecond, so the dedup
+   * is expected behavior, not a bug.
+   *
+   * Use `tryAdd()` if you need to know whether the add actually
+   * inserted (e.g. to decide whether to broadcast a notification).
+   */
+  add(belief: Belief): void {
+    const result = this.tryAdd(belief);
+    if (result.added) {
+      log.debug("Belief added: " + result.belief.id + " (source=" + result.belief.source + ", conf=" + result.belief.confidence + ")");
+    } else {
+      // Demoted from warn to debug: the dedup is expected behavior
+      // (multiple handlers observing the same event in the same ms
+      // produces the same Date.now()-based id). The warn-level log
+      // was creating noise in the end-of-loop logs without indicating
+      // a real problem - the belief was correctly stored by the first
+      // add and is queryable; subsequent adds correctly no-op.
+      log.debug("Belief " + belief.id + " already exists, skipping duplicate add");
+    }
   }
 
   update(id: string, patch: Partial<Belief>): boolean {
