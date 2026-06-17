@@ -342,6 +342,14 @@ export async function dispatchTurnEndLoop(
   }
 
   // Suppress L2 signals during error burst
+  // ROADMAP P3-6 / EW-7.15: rename intent. Previously labeled as broad
+  // "burst suppression" but only the L2 `sessionSignals` bundle was
+  // wiped. L1 `enforcementSignals`, claim-tracker, verification judge,
+  // and conflict detection continued to fire. The original goal of
+  // burst suppression is to reduce noise during a crash; the current
+  // implementation only freezes the Session Signals bundle. Keeping
+  // the narrower scope intentional, but documenting it here so future
+  // contributors don't assume broader suppression.
   if (isBurst) {
     sessionSignals.length = 0;
   }

@@ -31,6 +31,7 @@ import type { TrajectoryEntry } from "../../../lib/utils/sop-extractor.js";
 import { isDegraded, recordTurnMetrics } from "../../../lib/detection/degradation-detector.js";
 import type { Episode } from "../../../lib/types/episode-types.js";
 import { retrieveEpisodes, addEpisode } from "../../memory/three-memory-stores/index.js";
+import { getSessionIdSafe } from "../../../lib/state/extension-state.js";
 
 import type { CognitiveModule, ModuleContext, PolicyEngine } from "./types.js";
 import { DEFAULT_CONFIG, getState, getMemoryState } from "./state.js";
@@ -142,7 +143,7 @@ function tick(
 
   // Evaluate policies on each tick
   if (state.policyEngineReady) {
-    const sessionId = ctx.cwd ?? String(process.pid);
+    const sessionId = getSessionIdSafe(ctx) ?? ctx.cwd ?? String(process.pid);
     const engine = getPolicyEngine(sessionId);
     if (engine) {
       const policyCtx: PolicyContext = {
@@ -245,7 +246,7 @@ function tick(
     });
 
   // Auto-checkpoint + auto-rollback
-  const sessionId = ctx.cwd ?? String(process.pid);
+  const sessionId = getSessionIdSafe(ctx) ?? ctx.cwd ?? String(process.pid);
 
   // Consolidation Channel - fire-and-forget
   processConsolidationTick(ctx).catch((err) => {
@@ -354,7 +355,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     }
 
     // Update belief store
-    const sessionId = ctx.cwd ?? String(process.pid);
+    const sessionId = getSessionIdSafe(ctx) ?? ctx.cwd ?? String(process.pid);
     const store = getBeliefStore(sessionId);
     if (store) {
       store.add({
@@ -412,7 +413,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
       }
 
       // Initialize policy engine
-      const sessionId = ctx.cwd ?? String(process.pid);
+      const sessionId = getSessionIdSafe(ctx) ?? ctx.cwd ?? String(process.pid);
       const engine = createPolicyEngine(sessionId);
       state.policyTurnCount = 0;
       state.policyEngineReady = true;

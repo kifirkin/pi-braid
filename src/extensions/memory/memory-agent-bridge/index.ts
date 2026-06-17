@@ -466,7 +466,15 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
               }
             }
             if (filteredResults.length > 0 && ctx) {
+              // ROADMAP P3-14 / DR-M-10: dedupe addEvidence by memory id+type.
+              // The old code added the same evidence every time the same
+              // content appeared in the top 3 results, biasing the
+              // relevance pool toward frequently-searched memories.
+              const seen = new Set<string>();
               for (const r of filteredResults.slice(0, 3)) {
+                const key = `${r.memory.type}:${r.memory.id}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
                 addEvidence(ctx, r.memory.content, "memory", r.memory.content, r.relevance);
               }
             }

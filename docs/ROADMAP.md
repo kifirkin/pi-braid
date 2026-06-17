@@ -834,6 +834,22 @@ lower-impact.
   remove fireHandlers dead code, P3-16 getSessionIdSafe in timer,
   P3-20 stats summary counts, P3-22 typed CognitiveMemory wrapper,
   P3-23 single-pass findByIdOrText.
+- **v1.2** (2026-06-17): second wave. **EW items:** EW-7.4
+  classifier-offline helper created at
+  `src/lib/reasoning/classifier-offline.ts` (callers not yet
+  migrated — 3 sites can adopt the new `classifyWithOffline` API
+  in a follow-up), EW-7.5 checkBlocking dead tracking removed
+  (`firstWorkDone`, `toolDiversityNudged` fields deleted from
+  `ToolTrackingState`), EW-7.14 nudgeSuppressedCount surfaced
+  to TUI every 5 suppressions, EW-7.15 burst-suppression scope
+  documented (only L2 wiped, L1 continues). **P3 (additional 3):**
+  P3-5 nudgeSuppressedCount TUI, P3-14 addEvidence dedup by
+  memory id+type, P3-21 heartbeat-scheduler uses getSessionIdSafe
+  (4 call sites: lines 145, 248, 357, 415).
+
+  Test verification: tsc clean, no-module-level-let passes
+  (213 files), no-console-outside-logger passes (213 files),
+  scratchpad-long-session 50/50.
 - **Future revisions:** bump when P0 ships; when half of P1 ships; etc.
 
 This document supersedes the actionable sections of the archived audits.

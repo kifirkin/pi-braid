@@ -52,25 +52,11 @@ export function checkBlocking(
     stateRef.toolChain.recentEditWithoutThink.push(stateRef.currentTurn);
   }
 
-  // L2: First meaningful work without memory - track for Session Signals bundle
-  if (!stateRef.hasRecalledOnStart && !stateRef.firstWorkDone) {
-    stateRef.firstWorkDone = true;
-  }
-
   // L2: Edit without plan - track for Session Signals bundle
   if (toolName === "edit") {
     const turnsSincePlan = stateRef.currentTurn - stateRef.toolChain.lastPlanCall;
     if (turnsSincePlan > 3 && stateRef.thinkCalledInSession) {
       stateRef.toolChain.recentEditWithoutPlan.push(stateRef.currentTurn);
-    }
-  }
-
-  // L2: Tool diversity low - track for Session Signals bundle
-  const actionTools = ["bash", "read", "write", "edit", "grep", "find"];
-  if (stateRef.totalToolCalls >= 10) {
-    const actionToolCount = actionTools.filter((t) => stateRef.uniqueToolsUsed.has(t)).length;
-    if (actionToolCount <= 2 && !stateRef.toolDiversityNudged) {
-      stateRef.toolDiversityNudged = true;
     }
   }
 
