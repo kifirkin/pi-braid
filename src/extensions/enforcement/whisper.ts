@@ -50,16 +50,22 @@ export function sendEnforcementWhisper(
     log.warn("Failed to record nudge sent:", err);
   }
 
-  // Emit via event bus
-  try {
-    eventBus.emit({
-      type: "enforcement_violation",
-      rule: "enforcement",
-      description: message,
-      severity: critical ? "high" : "medium",
-    });
-  } catch (err) {
-    log.warn("Failed to emit enforcement event:", err);
+  // Emit via event bus. ROADMAP P0-6 / EW-7.1: only emit as a violation
+  // when actually critical. Advisory nudges were propagating as `tool_error`
+  // events (via register-session-start), which then triggered MARS
+  // error-recurrence and auto-recovery on the next turn — amplifying a
+  // benign advisory into an error burst.
+  if (critical) {
+    try {
+      eventBus.emit({
+        type: "enforcement_violation",
+        rule: "enforcement",
+        description: message,
+        severity: "high",
+      });
+    } catch (err) {
+      log.warn("Failed to emit enforcement event:", err);
+    }
   }
 
   // Tag all enforcement whispers with customType="enforcement" so the agent

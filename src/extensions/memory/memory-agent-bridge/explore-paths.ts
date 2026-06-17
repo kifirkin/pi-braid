@@ -87,9 +87,9 @@ export function createExplorePathsTool() {
   return {
     name: "explore_paths",
     label: "Explore Paths",
-    promptSnippet: "Spawn parallel sub-agents to explore root causes",
+    promptSnippet: "Search for files and read first lines to gather evidence",
     description:
-      "Spawn parallel sub-agents to explore multiple potential root causes before fixing bugs and gather evidence first. All hypotheses must lead to proper solutions - never use monkey patching.",
+      "For each hypothesis, search the project for matching files (by name or by keyword) and read the first 15 lines. Use to gather evidence before fixing bugs. The search is local (find/grep/head), NOT a sub-agent invocation. All hypotheses must lead to proper solutions - never use monkey patching.",
     parameters: Type.Object({
       hypothesis_1: Type.String({
         description:

@@ -336,9 +336,9 @@ export async function dispatchTurnEndLoop(
   }
 
   // BV1: Surface localization risk
-  if (getState(ctx)._localizationRisk) {
-    sessionSignals.push(`[localization] ${getState(ctx)._localizationRisk}`);
-    getState(ctx)._localizationRisk = "";
+  if (getState(ctx).localizationRisk) {
+    sessionSignals.push(`[localization] ${getState(ctx).localizationRisk}`);
+    getState(ctx).localizationRisk = "";
   }
 
   // Suppress L2 signals during error burst

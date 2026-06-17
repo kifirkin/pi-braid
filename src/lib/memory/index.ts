@@ -74,8 +74,18 @@ import {
 
 import { getCognitiveMemoryInstance, setCognitiveMemoryInstance } from "../state/global-state.js";
 
+// ROADMAP P3-22 / DR-L-9: typed wrapper. The getCognitiveMemoryInstance
+// global getter returns `unknown` to keep the slot declaration free of
+// imports of the heavy CognitiveMemory class. Callers were casting
+// `as CognitiveMemory | null` at every use site, which bypassed the
+// type system. This wrapper centralizes the cast.
+function getCognitiveMemoryTyped(): CognitiveMemory | null {
+  const inst = getCognitiveMemoryInstance();
+  return (inst ?? null) as CognitiveMemory | null;
+}
+
 export function getCognitiveMemory(): CognitiveMemory {
-  let instance = getCognitiveMemoryInstance() as CognitiveMemory | null;
+  let instance = getCognitiveMemoryTyped();
   if (!instance) {
     instance = new CognitiveMemory();
     setCognitiveMemoryInstance(instance);

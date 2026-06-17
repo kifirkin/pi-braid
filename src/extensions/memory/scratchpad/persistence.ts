@@ -211,12 +211,8 @@ function migrateScratchpad(data: Record<string, unknown>): TaskScratchpad {
 }
 
 export async function saveScratchpadToDisk(scratchpad: TaskScratchpad): Promise<void> {
-  try {
-    const filePath = scratchpadFilePath(scratchpad.projectSlug);
-    await fileMutationQueue.write(filePath, scratchpad);
-  } catch {
-    // Silent fail - operates in memory if disk write fails
-  }
+  const filePath = scratchpadFilePath(scratchpad.projectSlug);
+  await fileMutationQueue.write(filePath, scratchpad);
 }
 
 export async function loadScratchpadFromDisk(projectSlug: string): Promise<TaskScratchpad | null> {
@@ -240,10 +236,12 @@ export async function loadScratchpadFromDisk(projectSlug: string): Promise<TaskS
     if (!data.key_learnings) data.key_learnings = [];
     // Migrate list items to ID-based addressing.
     return migrateScratchpad(data);
-  } catch {
-    // Silent fail - file doesn't exist or parse error
+  } catch (err) {
+    // ENOENT (file doesn't exist on first session) is expected; re-throw
+    // everything else so the caller can surface a real error to the user.
+    if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return null;
+    throw err;
   }
-  return null;
 }
 
 function taskFilePath(projectSlug: string): string {

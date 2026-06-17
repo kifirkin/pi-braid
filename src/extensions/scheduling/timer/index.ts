@@ -22,6 +22,7 @@ import { nextId } from "../../../lib/utils/id.js";
 import { createLogger } from "../../../lib/core/logger.js";
 import { Type } from "typebox";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
+import { getSessionIdSafe } from "../../../lib/state/extension-state.js";
 
 import { BRAID_INJECTED, BRAID_SOURCE } from "../../../lib/constants/injection-details.js";
 import type { ScheduledTimer } from "../../../lib/events/timer-types.js";
@@ -139,10 +140,13 @@ const timerManager = new TimerManager();
  * Defensive sessionId extraction. Returns "anonymous" if the ctx is missing
  * or sessionManager is unavailable - those timers will be cancelled together
  * in the "anonymous" bucket. Prefer passing a real sessionId.
+ *
+ * ROADMAP P3-16 / DR-L-2: delegates to the canonical `getSessionIdSafe`
+ * helper in `lib/state/extension-state.ts`. The old inline `as` cast
+ * pattern duplicated logic that the typed helper was created to centralize.
  */
 function getSessionId(ctx: unknown): string {
-  const c = ctx as { sessionManager?: { getSessionId?: () => string | undefined } } | undefined;
-  return c?.sessionManager?.getSessionId?.() ?? "anonymous";
+  return getSessionIdSafe(ctx as Parameters<typeof getSessionIdSafe>[0]) ?? "anonymous";
 }
 
 /**
@@ -207,16 +211,13 @@ import {
   SESSION_START,
 } from "../../../lib/core/event-names.js";
 
-// Internal handler count (kept for API compat - currently unused,
-// no callers register via onTimerFire. The event bus handles
-// timer_fire delivery. Kept for future use but with zero-current-cost.)
-type TimerFireHandler = (timer: ScheduledTimer) => void;
-const fireHandlers: Set<TimerFireHandler> = new Set();
+// ROADMAP P3-15 / DR-L-1: removed dead onTimerFire API. The handler set
+// was exported but no callers ever registered. The fireTimer loop that
+// invoked fireHandlers is now a no-op (the emitTimerReminder call below
+// is the real delivery path). If a future feature needs this hook,
+// re-introduce it with a real consumer.
 
-export function onTimerFire(handler: TimerFireHandler): () => void {
-  fireHandlers.add(handler);
-  return () => fireHandlers.delete(handler);
-}
+// ── Fire Handlers (via shared bus) ───────────────────────────────────
 
 // ── Real-time polling (per-pi instance) ──────────────────────────────────────
 // Timer expiry checked every second - independent of turn_end so timers fire
@@ -228,13 +229,6 @@ export function onTimerFire(handler: TimerFireHandler): () => void {
 // the closure-scoped timerManager and fireTimer in this file).
 
 function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
-  for (const h of fireHandlers) {
-    try {
-      h(timer);
-    } catch (e) {
-      log.warn(`[timer] fireHandler error: ${(e as Error).message}`);
-    }
-  }
   emitTimerReminder(timer); // → heartbeat bus → agent reminder on next tick
 
   // (Previously emitted eventBus.emit({ type: "timer_fire", ... }) here.

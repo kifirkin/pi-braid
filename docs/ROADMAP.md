@@ -820,6 +820,20 @@ lower-impact.
 
 - **v1.0** (2026-06-17): initial compilation from prior audits + deep
   review. Replaces the 4 archived docs.
+- **v1.1** (2026-06-17): first wave of items shipped.
+  **P0 (all 7):** DR-C-1 ctx.whisper violations [DEFERRED — too
+  cross-cutting for autonomous pass], P0-2 scratchpad disk-write
+  surfacing, P0-3 episodic twin surfacing, P0-4 archive_done atomic
+  delete, P0-5 extractOutputText JSON fallback, P0-6 enforcement_violation
+  amplification fix, P0-7 SIGNAL_RETENTION_TURNS=3. **P1 (3/8):** P1-6
+  relevanceReason substring match, P1-7 explore_paths description,
+  P1-8 recall_get fake entry discriminator. **P3 (8/25):** P3-4
+  _localizationRisk rename, P3-8 note_compact skip save, P3-10
+  elevate_to_goal successCriteria, P3-11 remove_constraint uses
+  params.constraint_id, P3-13 episodes_search "ttl=" → "age=", P3-15
+  remove fireHandlers dead code, P3-16 getSessionIdSafe in timer,
+  P3-20 stats summary counts, P3-22 typed CognitiveMemory wrapper,
+  P3-23 single-pass findByIdOrText.
 - **Future revisions:** bump when P0 ships; when half of P1 ships; etc.
 
 This document supersedes the actionable sections of the archived audits.

@@ -28,10 +28,15 @@ export interface EnforcementSignalEntry {
 
 /**
  * How many turns behind `currentTurn` an entry can be before eviction.
- * 1 means we keep entries from the current and previous turn; older
- * entries are deleted. This bounds the set to ~2 turns of data.
+ *
+ * ROADMAP P0-7 / EW-7.6: was 1. Bumped to 3 to cover MARS lookback
+ * (`mars-reflector.ts:175` uses `stabilityTrend.slice(-3)` to detect a
+ * stability_decline pattern). With retention=1, the trend is incomplete
+ * by the time MARS is supposed to fire - effectively dead code. The
+ * prompt-builder's RepE contrast consumer still works fine with the
+ * larger window; it reads the most-recent signal of each key.
  */
-const SIGNAL_RETENTION_TURNS = 1;
+const SIGNAL_RETENTION_TURNS = 3;
 
 /**
  * L1 enforcement signals for prompt-builder surfacing.

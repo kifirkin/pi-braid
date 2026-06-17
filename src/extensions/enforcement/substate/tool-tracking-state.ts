@@ -55,7 +55,7 @@ export interface ToolTrackingState {
       actualOutcome?: string;
     }[];
   } | null;
-  _localizationRisk: string;
+  localizationRisk: string;
 
   calibrationPairs: CalibrationPair[];
   lastThinkConfidence: number | null;
@@ -93,7 +93,7 @@ export function createToolTrackingState(): ToolTrackingState {
     hasRecalledOnStart: false,
     firstWorkDone: false,
     planAlignmentData: null,
-    _localizationRisk: "",
+    localizationRisk: "",
 
     calibrationPairs: [],
     lastThinkConfidence: null,
@@ -130,7 +130,7 @@ export function resetToolTrackingState(s: ToolTrackingState): void {
   s.hasRecalledOnStart = false;
   s.firstWorkDone = false;
   s.planAlignmentData = null;
-  s._localizationRisk = "";
+  s.localizationRisk = "";
   s.calibrationPairs = [];
   s.lastThinkConfidence = null;
 }

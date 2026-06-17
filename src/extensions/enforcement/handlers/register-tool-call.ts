@@ -37,7 +37,7 @@ export function registerToolCallHandler(pi: ExtensionAPI): void {
         recordFileTouch(ctx, fp, getState(ctx).currentTurn, true);
         const risk = checkLocalizationRisk(ctx, fp, getState(ctx).currentTurn);
         if (risk) {
-          getState(ctx)._localizationRisk = risk;
+          getState(ctx).localizationRisk = risk;
         }
       }
     }

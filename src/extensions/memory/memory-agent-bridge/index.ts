@@ -23,6 +23,9 @@ import {
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { addEvidence } from "../../../lib/store/evidence-pool.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
+import { createLogger } from "../../../lib/core/logger.js";
+
+const log = createLogger("memory-agent-bridge");
 import { textResult } from "../../../lib/utils/extension-utils.js";
 import type { Episode, MemoryStoresState } from "../three-memory-stores/index.js";
 import {
@@ -97,7 +100,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
       _signal,
       _onUpdate,
       ctx,
-    ): Promise<AgentToolResult<{ id?: string; stored: boolean }>> => {
+    ): Promise<AgentToolResult<{ id?: string; stored: boolean; episodic_twin_failed?: boolean }>> => {
       await initPromise;
       try {
         // Build linked-memory relations from consolidate_with + linkedMemories
@@ -131,6 +134,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
 
         // When storing episodic type, also add to three-memory-stores
         if (params.memoryType === "episodic" && ctx) {
+          let episodicTwinFailed: string | null = null;
           try {
             const threeMem = getExtensionState<MemoryStoresState>(
               ctx,
@@ -146,8 +150,25 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
               params.tags ?? [],
               undefined,
             );
-          } catch {
-            /* three-memory-stores not available */
+          } catch (err) {
+            // ROADMAP P0-3 / DR-H-5: surface the failure. Previously the
+            // catch was empty with a misleading comment claiming "not
+            // available" - but getExtensionState doesn't throw on missing.
+            // This catches real addEpisode errors. Surface in response so
+            // the user can retry or investigate.
+            episodicTwinFailed = err instanceof Error ? err.message : String(err);
+            log.warn(`[memory-agent-bridge] episodic twin addEpisode failed: ${episodicTwinFailed}`);
+          }
+          if (episodicTwinFailed) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Stored semantic memory ${m.id}, but episodic twin failed: ${episodicTwinFailed}. The unified memory is saved; the three-stores episode was NOT.`,
+                },
+              ],
+              details: { id: m.id, stored: true, episodic_twin_failed: true },
+            };
           }
         }
 
@@ -570,8 +591,10 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
                     },
                   };
                 }
-              } catch {
-                /* three-memory-stores not available */
+              } catch (err) {
+                // ROADMAP P1-8 / DR-H-6: surface the failure. Previously
+                // empty catch.
+                log.warn(`[memory-agent-bridge] three-memory-stores lookup failed: ${err}`);
               }
             }
             if (!m) {
@@ -617,7 +640,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
               const outcomeIcon =
                 ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
               const ageMinutes = Math.round((Date.now() - ep.timestamp) / 60000);
-              const provenance = `[MEMORY project=${ep.project || "unknown"} ttl=${ageMinutes}m ago]`;
+              const provenance = `[MEMORY project=${ep.project || "unknown"} age=${ageMinutes}m ago]`;
               const confTag =
                 (ep as { memoryConfidence?: number }).memoryConfidence != null
                   ? ` conf=${((ep as { memoryConfidence?: number }).memoryConfidence! * 100).toFixed(0)}%`

@@ -310,9 +310,19 @@ async function getOrCreateScratchpad(
   return pad;
 }
 
-async function mutateAndSave(scratchpad: TaskScratchpad): Promise<void> {
+async function mutateAndSave(scratchpad: TaskScratchpad): Promise<string | null> {
   scratchpad.updatedAt = Date.now();
-  await saveScratchpadToDisk(scratchpad);
+  try {
+    await saveScratchpadToDisk(scratchpad);
+    return null;
+  } catch (err) {
+    // ROADMAP P0-2 / DR-H-4: surface disk-write failures. Previously silent.
+    // The in-memory pad is still updated; the user's next session will lose
+    // these changes. Return the error so the caller can append a hint to the
+    // tool result.
+    const msg = err instanceof Error ? err.message : String(err);
+    return `⚠️ Disk write failed: ${msg}. Your changes are in memory only and will be lost on restart.`;
+  }
 }
 
 
@@ -476,6 +486,9 @@ async function scratchpadExecute(
 
   const priorGoal = pad.goal;
   let resultText = ""; // eslint-disable-line no-useless-assignment
+  // ROADMAP P0-2 / DR-H-4: capture disk-write failures from mutateAndSave
+  // and surface to the user at the end of the tool result.
+  let lastSaveError: string | null = null;
 
   switch (action) {
     case "read": {
@@ -497,7 +510,7 @@ async function scratchpadExecute(
       }
       pad.goal = text;
       pad.prior_goal = pad.prior_goal || priorGoal;
-      await mutateAndSave(pad);
+      lastSaveError = await mutateAndSave(pad);
       resultText = `Goal set: ${text}`;
       break;
     }
@@ -522,7 +535,7 @@ async function scratchpadExecute(
       };
       const budgetStr = budgetCalls ? ` [budget: ${budgetCalls} calls]` : "";
       capPush(pad.plan, step, RECYCLE.MAX_PLAN);
-      await mutateAndSave(pad);
+      lastSaveError = await mutateAndSave(pad);
       resultText = `Step added: ${planText}${budgetStr} (id: ${step.id})`;
       break;
     }
@@ -555,7 +568,7 @@ async function scratchpadExecute(
         capPush(pad.done, doneItem, RECYCLE.MAX_DONE);
         resultText = `Completed: ${text} (id: ${doneItem.id})`;
       }
-      await mutateAndSave(pad);
+      lastSaveError = await mutateAndSave(pad);
       break;
     }
 
@@ -575,7 +588,7 @@ async function scratchpadExecute(
         turn: pad.session.turn,
       };
       capPush(pad.decisions, decision, RECYCLE.MAX_DECISIONS);
-      await mutateAndSave(pad);
+      lastSaveError = await mutateAndSave(pad);
       resultText = `Decision recorded: ${decisionText}${reason ? ` (${reason})` : ""} (id: ${decision.id})`;
       break;
     }
@@ -588,7 +601,7 @@ async function scratchpadExecute(
         addedAt: Date.now(),
       };
       capPush(pad.hypotheses, hyp, RECYCLE.MAX_HYPOTHESES);
-      await mutateAndSave(pad);
+      lastSaveError = await mutateAndSave(pad);
       resultText = `Hypothesis added: ${text} (id: ${hyp.id})`;
       break;
     }
@@ -601,7 +614,7 @@ async function scratchpadExecute(
         addedAt: Date.now(),
       };
       capPush(pad.notes, note, RECYCLE.MAX_NOTES);
-      await mutateAndSave(pad);
+      lastSaveError = await mutateAndSave(pad);
       resultText = `Note added: ${text} (id: ${note.id})`;
       break;
     }
@@ -612,7 +625,7 @@ async function scratchpadExecute(
       if (params.mode !== undefined)
         pad.session.mode = params.mode as "normal" | "deep_think" | "recovery";
       pad.session.updated_at = Date.now();
-      await mutateAndSave(pad);
+      lastSaveError = await mutateAndSave(pad);
       resultText = `Session: turn=${pad.session.turn}, phase=${pad.session.phase}, mode=${pad.session.mode}`;
       break;
     }
@@ -633,7 +646,7 @@ async function scratchpadExecute(
         acknowledged: false,
       };
       capPush(pad.constraints, constraint, RECYCLE.MAX_CONSTRAINTS);
-      await mutateAndSave(pad);
+      lastSaveError = await mutateAndSave(pad);
       resultText = `Constraint added: [${constraint.type}] ${desc} (id: ${constraint.id})`;
       break;
     }
@@ -642,7 +655,7 @@ async function scratchpadExecute(
       const idx = pad.constraints.findIndex((c) => c.id === text);
       if (idx >= 0) {
         pad.constraints.splice(idx, 1);
-        await mutateAndSave(pad);
+        lastSaveError = await mutateAndSave(pad);
         resultText = `Constraint removed: ${text}`;
       } else {
         resultText = `Constraint not found: ${text}`;
@@ -712,7 +725,7 @@ async function scratchpadExecute(
         persisted: false,
       };
       capPush(pad.key_learnings, learning, RECYCLE.MAX_LEARNINGS);
-      await mutateAndSave(pad);
+      lastSaveError = await mutateAndSave(pad);
       resultText = `Learning added: [${category}] ${content} (scope: ${scope.join(", ") || "all"}) (id: ${learning.id})`;
       break;
     }
@@ -721,14 +734,21 @@ async function scratchpadExecute(
       const unp = pad.key_learnings.filter((l) => !l.persisted);
       resultText = `${unp.length} unp persisted learnings flagged for persistence (id: ${unp.map((l) => l.id).join(", ")})`;
       for (const l of unp) l.persisted = true;
-      await mutateAndSave(pad);
+      lastSaveError = await mutateAndSave(pad);
       break;
     }
 
     case "note_compact": {
       const stats = scratchpadClean(pad);
-      await mutateAndSave(pad);
-      resultText = `Scratchpad compacted: plan(-${stats.pruned_plan}), done(-${stats.pruned_done}), decisions(-${stats.pruned_decisions}), hypotheses(-${stats.pruned_hypotheses}), notes(-${stats.pruned_notes})`;
+      // ROADMAP P3-8 / DR-M-1: skip disk write when nothing was pruned.
+      // The old code always saved, causing I/O churn on long sessions
+      // that call note_compact periodically.
+      if (stats.total_pruned > 0) {
+        lastSaveError = await mutateAndSave(pad);
+        resultText = `Scratchpad compacted: plan(-${stats.pruned_plan}), done(-${stats.pruned_done}), decisions(-${stats.pruned_decisions}), hypotheses(-${stats.pruned_hypotheses}), notes(-${stats.pruned_notes})`;
+      } else {
+        resultText = "Scratchpad already compact (nothing to prune).";
+      }
       break;
     }
 
@@ -740,7 +760,7 @@ async function scratchpadExecute(
       if (successCriteria) {
         /* stored for future use */
       }
-      await mutateAndSave(pad);
+      lastSaveError = await mutateAndSave(pad);
       resultText = `Elevated to goal: ${text || "current goal"}`;
       break;
     }
@@ -758,7 +778,7 @@ async function scratchpadExecute(
         };
         capPush(pad.plan, step, RECYCLE.MAX_PLAN);
       }
-      await mutateAndSave(pad);
+      lastSaveError = await mutateAndSave(pad);
       resultText = `Elevated to plan: ${text || "current plan"}`;
       break;
     }
@@ -776,7 +796,7 @@ async function scratchpadExecute(
         break;
       }
       pad.plan.splice(index, 1);
-      await mutateAndSave(pad);
+      lastSaveError = await mutateAndSave(pad);
       resultText = `Plan step removed: ${item.text} (id: ${item.id})`;
       break;
     }
@@ -793,7 +813,7 @@ async function scratchpadExecute(
         break;
       }
       pad.notes.splice(index, 1);
-      await mutateAndSave(pad);
+      lastSaveError = await mutateAndSave(pad);
       resultText = `Note removed: ${item.text} (id: ${item.id})`;
       break;
     }
@@ -810,7 +830,7 @@ async function scratchpadExecute(
         break;
       }
       pad.decisions.splice(index, 1);
-      await mutateAndSave(pad);
+      lastSaveError = await mutateAndSave(pad);
       resultText = `Decision removed: ${item.text} (id: ${item.id})`;
       break;
     }
@@ -827,7 +847,7 @@ async function scratchpadExecute(
         break;
       }
       pad.hypotheses.splice(index, 1);
-      await mutateAndSave(pad);
+      lastSaveError = await mutateAndSave(pad);
       resultText = `Hypothesis removed: ${item.text} (id: ${item.id})`;
       break;
     }
@@ -836,7 +856,7 @@ async function scratchpadExecute(
     case "clear_done": {
       const count = pad.done.length;
       pad.done = [];
-      await mutateAndSave(pad);
+      lastSaveError = await mutateAndSave(pad);
       resultText = `Cleared ${count} done items.`;
       break;
     }
@@ -863,7 +883,7 @@ async function scratchpadExecute(
       }
       const count = pad.done.length;
       pad.done = [];
-      await mutateAndSave(pad);
+      lastSaveError = await mutateAndSave(pad);
       resultText = `Archived ${count} done items to ${archivePath}`;
       break;
     }
@@ -872,9 +892,21 @@ async function scratchpadExecute(
       resultText = `Unknown action: ${action}. Use: read, set_goal, add_plan, mark_done, add_decision, add_hypothesis, add_note, update_session, add_constraint, remove_constraint, add_learning, persist_learnings, note_compact, elevate_to_goal, elevate_to_plan. For task management, use the 'task' tool.`;
   }
 
+  // ROADMAP P0-2 / DR-H-4: append disk-write error to result if the most
+  // recent save failed. The in-memory pad is still updated; the next
+  // session will lose these changes.
+  if (lastSaveError) {
+    resultText = `${resultText}\n\n${lastSaveError}`;
+  }
+
   return {
     content: [{ type: "text" as const, text: resultText }],
-    details: { action, prior_goal: pad.prior_goal ? "exists" : undefined, plan: pad.plan.length },
+    details: {
+      action,
+      prior_goal: pad.prior_goal ? "exists" : undefined,
+      plan: pad.plan.length,
+      save_error: lastSaveError ? true : undefined,
+    },
   };
 }
 

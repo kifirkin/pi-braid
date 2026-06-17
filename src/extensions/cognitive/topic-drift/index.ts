@@ -240,7 +240,12 @@ function extractOutputText(event: any): string {
   if (typeof event?.result?.text === "string") return event.result.text;
   if (typeof event?.output === "string") return event.output;
   if (typeof event?.text === "string") return event.text;
-  return JSON.stringify(event?.result ?? event ?? "").substring(0, 2000);
+  // Non-text result (image, binary, structured data). Returning "" causes
+  // callers to skip drift detection via the `output.length < 50` early-exit.
+  // Previously this returned a JSON.stringify dump that got fed to the LLM
+  // classifiers as "the agent's response" - which produced nonsense drift
+  // signals. (ROADMAP P0-5 / DR-H-3)
+  return "";
 }
 
 // ── Tool schemas ───────────────────────────────────────────────────────────
