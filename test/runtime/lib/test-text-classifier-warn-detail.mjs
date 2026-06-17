@@ -183,18 +183,29 @@ test("classify() captures tier3 reason from tryModelCall result", () => {
 });
 
 test("TIER 2 warn includes the actual reason inline (not behind /logs)", () => {
+  // 2026-06-17: TIER 2/3 warns now go through a logTierFailure helper
+  // that demotes to log.debug when bestEffort is set or the failure
+  // was an abort. The reason-inline contract is preserved: the helper
+  // is called with a string template that includes the failure reason.
   assert.match(
     src,
-    /log\.warn\(\s*`\[text-classifier\] TIER 2 failed \(utility model '\$\{utilityModel\.id\}'\): \$\{tier2FailureReason\}\. Falling to TIER 3\.`/,
-    "TIER 2 warn must inline the reason: '[text-classifier] TIER 2 failed (utility model 'X'): <reason>. Falling to TIER 3.'",
+    /logTierFailure\(\s*`TIER 2 failed \(utility model '\$\{utilityModel\.id\}'\): \$\{tier2FailureReason\}\. Falling to TIER 3\.[`\s,)]/,
+    "TIER 2 warn must inline the reason: logTierFailure('TIER 2 failed (utility model X): <reason>. Falling to TIER 3.')",
+  );
+  // Verify the helper does emit log.warn (not just log.debug) for
+  // the non-bestEffort, non-abort case.
+  assert.match(
+    src,
+    /log\.warn\(`\[text-classifier\] \$\{reason\}`\)/,
+    "logTierFailure helper must route non-bestEffort, non-abort to log.warn",
   );
 });
 
 test("TIER 3 warn includes the actual reason inline", () => {
   assert.match(
     src,
-    /log\.warn\(\s*`\[text-classifier\] TIER 3 failed \(session model '\$\{sessionModel\.id\}'\): \$\{tier3FailureReason\}\.`/,
-    "TIER 3 warn must inline the reason: '[text-classifier] TIER 3 failed (session model 'Y'): <reason>.'",
+    /logTierFailure\(\s*`TIER 3 failed \(session model '\$\{sessionModel\.id\}'\): \$\{tier3FailureReason\}\.[`\s,)]/,
+    "TIER 3 warn must inline the reason: logTierFailure('TIER 3 failed (session model Y): <reason>.')",
   );
 });
 

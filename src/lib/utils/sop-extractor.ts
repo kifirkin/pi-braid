@@ -163,7 +163,20 @@ export async function detectPatternWithLLM(
       ctx,
       CRITICS.trajectoryPattern.criteria,
       { tools: tools.join(", ") },
-      { timeoutMs: 3000, fallback: () => "" },
+      {
+        // Inherit all critic options (including validLabels whitelist
+        // for the multi-class pattern name) and add our local overrides.
+        ...CRITICS.trajectoryPattern.options,
+        timeoutMs: 3000,
+        // bestEffort: this runs post-session when the session signal
+        // is being torn down. TIER 2/3 aborts are expected; we use a
+        // 3s timeout and demote failure warns to debug to keep the
+        // end-of-loop logs clean. The classifier still returns a result
+        // (label: "unknown" on failure) which we treat the same as the
+        // heuristic fallback.
+        bestEffort: true,
+        fallback: () => "",
+      },
     );
     const label = result.label.trim();
     if (label && label.length <= 60) return label;

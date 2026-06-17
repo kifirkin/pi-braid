@@ -41,8 +41,10 @@ assert.ok(
 
 // ── 3. Tier 1 skip on always-llm ───────────────────────────────────────────
 
-// Find the Tier 1 block and verify it gates on tierPolicy
-const tier1Block = src.match(/Tier 1:.*?\n  \}/s);
+// Find the Tier 1 block and verify it gates on tierPolicy.
+// Anchor on the section header (with box-drawing chars) to avoid matching
+// the JSDoc "Tier 1: Heuristic fallback callback..." line.
+const tier1Block = src.match(/\/\/ ── Tier 1:[\s\S]*?\n  \}/);
 assert.ok(tier1Block, "Tier 1 block should be present");
 assert.ok(
   /tierPolicy !== "always-llm"/.test(tier1Block[0]),

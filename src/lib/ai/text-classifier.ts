@@ -64,6 +64,16 @@ export interface ClassifierOptions {
   validLabels?: string[];
   /** Optional human-readable label for runtime observability (critic-stats tracking). */
   label?: string;
+  /**
+   * Best-effort mode: shorter timeout, demote failure warns to debug.
+   * Use for post-loop / session-end analysis where the result is nice-to-have
+   * and aborts are expected (the session signal cascades to in-flight calls
+   * when the agent's main turn ends). The classifier still returns a result
+   * (label: "unknown" on failure), but the logs stay clean.
+   *
+   * Default: false (use 8s timeout + warn on failure).
+   */
+  bestEffort?: boolean;
 }
 
 // ── Classify ─────────────────────────────────────────────────────────────────
@@ -108,7 +118,23 @@ export async function classify(
   // take 3-5s for a single classification; 5s was too tight at session
   // end (where the model is busy with finalization and the network round-trip
   // has higher latency). Total budget is 2x = 16s for both tiers.
-  const timeoutMs = options?.timeoutMs ?? 8000;
+  //
+  // bestEffort callers (post-loop analysis) get a 3s timeout instead -
+  // fast enough to fit in a session-end teardown, and the warn logs
+  // are demoted to debug so the end-of-loop noise is reduced.
+  const timeoutMs =
+    options?.timeoutMs ?? (options?.bestEffort ? 3000 : 8000);
+  // Demote the per-tier failure warns and the "ALL TIERS FAILED" warn
+  // to debug when bestEffort is set OR the failure was an abort.
+  // Aborts at session end are expected behavior (the session signal
+  // cascades to in-flight calls), not real failures.
+  const logTierFailure = (reason: string): void => {
+    if (options?.bestEffort || /abort/i.test(reason)) {
+      log.debug(`[text-classifier] ${reason}`);
+    } else {
+      log.warn(`[text-classifier] ${reason}`);
+    }
+  };
 
   // Build prompts (needed early for LLM tiers)
   const userMessage = replacePlaceholders(criteria.userPrompt, substitutions);
@@ -194,8 +220,8 @@ export async function classify(
     // user WHY the tier failed, not just THAT it failed. The user
     // shouldn't have to dig into /logs to find out.
     tier2FailureReason = tier1 && !tier1.ok ? tier1.reason : "unknown failure";
-    log.warn(
-      `[text-classifier] TIER 2 failed (utility model '${utilityModel.id}'): ${tier2FailureReason}. Falling to TIER 3.`,
+    logTierFailure(
+      `TIER 2 failed (utility model '${utilityModel.id}'): ${tier2FailureReason}. Falling to TIER 3.`,
     );
   }
 
@@ -228,17 +254,17 @@ export async function classify(
       };
     }
     tier3FailureReason = tier2 && !tier2.ok ? tier2.reason : "unknown failure";
-    log.warn(
-      `[text-classifier] TIER 3 failed (session model '${sessionModel.id}'): ${tier3FailureReason}.`,
+    logTierFailure(
+      `TIER 3 failed (session model '${sessionModel.id}'): ${tier3FailureReason}.`,
     );
   }
 
   const latency = Date.now() - start;
-  log.warn(
-    `[text-classifier] ALL TIERS FAILED - returning "unknown" ${latency}ms. ` +
-      `TIER 2: ${tier2FailureReason ?? "no utility model configured"}. ` +
-      `TIER 3: ${tier3FailureReason ?? "no session model"}.`,
-  );
+  const allFailedMsg =
+    `ALL TIERS FAILED - returning "unknown" ${latency}ms. ` +
+    `TIER 2: ${tier2FailureReason ?? "no utility model configured"}. ` +
+    `TIER 3: ${tier3FailureReason ?? "no session model"}.`;
+  logTierFailure(allFailedMsg);
   if (options?.label) recordCriticCall(options.label, "failed", latency);
   return { label: "unknown", confidence: 0, raw: "", tier: "failed", latencyMs: latency };
 }
