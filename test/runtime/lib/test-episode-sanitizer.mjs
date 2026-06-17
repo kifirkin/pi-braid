@@ -30,12 +30,15 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-const SRC = join(ROOT, "src/extensions/memory/three-memory-stores/index.ts");
+// 2026-06-17: unescapeUnicodeIfDoubleEncoded + sanitizeEpisode moved from
+// index.ts to episodes.ts so addEpisode can call the same sanitizer at
+// write time (BUG-M3 hardening). Source-level checks now read episodes.ts.
+const EPISODES_SRC_PATH = join(ROOT, "src/extensions/memory/three-memory-stores/episodes.ts");
 const MEMORY_BRIDGE_SRC = readFileSync(
   join(ROOT, "src/extensions/memory/memory-agent-bridge/index.ts"),
   "utf-8",
 );
-const STORE_SRC = readFileSync(SRC, "utf-8");
+const STORE_SRC = readFileSync(EPISODES_SRC_PATH, "utf-8");
 
 console.log("=== Episode sanitizer (BUG-M3) + BUG-M2 regression ===\n");
 
@@ -63,8 +66,9 @@ test("unescapeUnicodeIfDoubleEncoded function exists in source", () => {
 });
 
 test("sanitizeEpisode function exists and applies sanitizer to all string fields", () => {
-  assert.match(STORE_SRC, /function\s+sanitizeEpisode/, "sanitizeEpisode must be defined");
-  const m = STORE_SRC.match(/function\s+sanitizeEpisode\([^)]*\)\s*:\s*Episode\s*\{([\s\S]*?)\n\}/);
+  // 2026-06-17: sanitizeEpisode now exported (was private to index.ts).
+  assert.match(STORE_SRC, /export\s+function\s+sanitizeEpisode/, "sanitizeEpisode must be defined and exported");
+  const m = STORE_SRC.match(/export\s+function\s+sanitizeEpisode\([^)]*\)\s*:\s*Episode\s*\{([\s\S]*?)\n\}/);
   assert.ok(m, "sanitizeEpisode body not found");
   const body = m[1];
   for (const field of ["task", "solution", "project", "toolSequence", "tags", "strategicSOP", "functionalSOP", "atomicSOP"]) {
@@ -73,10 +77,24 @@ test("sanitizeEpisode function exists and applies sanitizer to all string fields
 });
 
 test("loadPastEpisodes calls sanitizeEpisode after JSON.parse", () => {
+  // loadPastEpisodes lives in index.ts now (still consumes the exported
+  // sanitizeEpisode from episodes.ts). Read both files for this check.
+  const indexSrc = readFileSync(
+    join(ROOT, "src/extensions/memory/three-memory-stores/index.ts"),
+    "utf-8",
+  );
   assert.match(
-    STORE_SRC,
+    indexSrc,
     /JSON\.parse\(line\);\s*const\s+sanitized\s*=\s*sanitizeEpisode\(ep\)/,
     "loadPastEpisodes must call sanitizeEpisode on each parsed line",
+  );
+});
+
+test("addEpisode calls sanitizeEpisode before storing (BUG-M3 write-time hardening)", () => {
+  assert.match(
+    STORE_SRC,
+    /const\s+episode:\s*Episode\s*=\s*sanitizeEpisode\(\{/,
+    "addEpisode must wrap the constructed episode in sanitizeEpisode() before pushing to state.episodes",
   );
 });
 
@@ -96,18 +114,21 @@ test("BUG-M2: since/until filter is applied to episode results", () => {
 
 // Re-implement the spec locally. Source-level tests above prove the
 // actual implementation in src/ matches this spec.
+//
+// 2026-06-17: switched from JSON.parse-based decoding to regex replace.
+// The previous spec silently FAILED for any string containing raw newline
+// characters (the common case for multi-line task/solution fields):
+// JSON.parse throws on raw \n inside a JSON string literal, the catch
+// block returned the input unchanged, and literal \u2192 remained in
+// agent-facing output. Regex-replace doesn't have that failure mode.
 const UNESCAPE_RE = /\\u[0-9a-fA-F]{4}/;
 
 function unescapeUnicodeIfDoubleEncoded(s) {
   if (typeof s !== "string") return s;
   if (!UNESCAPE_RE.test(s)) return s;
-  try {
-    const decoded = JSON.parse(`"${s.replace(/"/g, '\\"')}"`);
-    if (typeof decoded === "string" && decoded !== s) return decoded;
-  } catch {
-    /* not valid JSON-escaped, leave as-is */
-  }
-  return s;
+  return s.replace(/\\u([0-9a-fA-F]{4})/g, (_match, hex) =>
+    String.fromCodePoint(parseInt(hex, 16)),
+  );
 }
 
 test("decodes a literal \\u2192 escape to real → character", () => {
@@ -139,6 +160,27 @@ test("non-string values pass through", () => {
   assert.strictEqual(unescapeUnicodeIfDoubleEncoded(undefined), undefined);
   assert.strictEqual(unescapeUnicodeIfDoubleEncoded(true), true);
   assert.deepStrictEqual(unescapeUnicodeIfDoubleEncoded([1, 2]), [1, 2]);
+});
+
+// 2026-06-17: this is the actual root cause case that the JSON.parse-based
+// sanitizer silently dropped. The legacy BUG-M3 entry had a multi-line task
+// field; the raw newlines caused JSON.parse to throw, the catch block
+// returned the input unchanged, and literal \u2192 leaked through to
+// agent-facing output. The regex-replace approach handles this correctly.
+test("decodes escapes in strings with raw newlines (the actual BUG-M3 case)", () => {
+  const multiLineWithEscape = "line one\nline two \\u2192 line three\nline four";
+  const output = unescapeUnicodeIfDoubleEncoded(multiLineWithEscape);
+  assert.ok(
+    output.includes("\u2192"),
+    `output should contain real \u2192 after multi-line decode, got: ${JSON.stringify(output)}`,
+  );
+  assert.ok(
+    !output.includes("\\u2192"),
+    `output should not contain literal \\u2192, got: ${JSON.stringify(output)}`,
+  );
+  // Newlines should be preserved (the regex-replace approach doesn't
+  // touch them).
+  assert.ok(output.includes("\n"), "newlines should be preserved");
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

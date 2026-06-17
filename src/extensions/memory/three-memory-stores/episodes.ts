@@ -13,6 +13,58 @@ import { nextId } from "../../../lib/utils/id.js";
 
 const log = createLogger("three-memory-stores:episodes");
 
+/**
+ * Sanitize a string by decoding literal `\uXXXX` escape sequences that
+ * may have been written by a previous code path that double-encoded
+ * unicode (BUG-M3). The agent-facing `recall_search` and `episodes_search`
+ * displays otherwise show literal `\u2192` instead of the real character
+ * `→`. Applied at load time AND at write time (in `addEpisode`) so both
+ * existing data files and new writes are healed.
+ *
+ * The previous implementation used `JSON.parse('"' + s + '"')` for safety
+ * (verify round-trip changes the value before accepting). That approach
+ * silently FAILED for any string containing raw newline/control characters
+ * — which is the common case for task and solution fields that contain
+ * multi-line text. JSON.parse throws on raw \n inside string literals.
+ * The sanitizer returned the input unchanged, so the literal `\u2192`
+ * remained in agent-facing output.
+ *
+ * Current implementation: regex-replace each `\uXXXX` with the decoded
+ * code point. Detection: only run if the string contains at least one
+ * `\uXXXX` pattern. The safety trade-off: legitimate backslash-u text
+ * (rare in episode data) would also be decoded. Acceptable for this
+ * store; episode content is model output and natural language, not
+ * regex patterns.
+ */
+export function unescapeUnicodeIfDoubleEncoded(s: string): string {
+  if (typeof s !== "string") return s;
+  if (!/\\u[0-9a-fA-F]{4}/.test(s)) return s;
+  return s.replace(/\\u([0-9a-fA-F]{4})/g, (_match, hex: string) =>
+    String.fromCodePoint(parseInt(hex, 16)),
+  );
+}
+
+/**
+ * Apply unescapeUnicodeIfDoubleEncoded to all string-bearing fields of
+ * an episode. Used at load time and write time to ensure no literal
+ * `\u2192` sequences leak into agent-facing output.
+ */
+export function sanitizeEpisode(ep: Episode): Episode {
+  return {
+    ...ep,
+    task: unescapeUnicodeIfDoubleEncoded(ep.task),
+    solution: unescapeUnicodeIfDoubleEncoded(ep.solution),
+    // outcome is a small enum, not affected
+    // toolSequence, tags, etc. are arrays - recurse over string entries
+    toolSequence: ep.toolSequence?.map(unescapeUnicodeIfDoubleEncoded),
+    tags: ep.tags?.map(unescapeUnicodeIfDoubleEncoded),
+    project: unescapeUnicodeIfDoubleEncoded(ep.project),
+    strategicSOP: ep.strategicSOP ? unescapeUnicodeIfDoubleEncoded(ep.strategicSOP) : undefined,
+    functionalSOP: ep.functionalSOP?.map(unescapeUnicodeIfDoubleEncoded),
+    atomicSOP: ep.atomicSOP?.map(unescapeUnicodeIfDoubleEncoded),
+  };
+}
+
 export function addEpisode(
   state: MemoryStoresState,
   task: string,
@@ -34,7 +86,11 @@ export function addEpisode(
     Math.round(outcomeScore * (toolDiversity * 0.4 + 0.6) * (reasoningDensity * 0.4 + 0.6) * 100) /
     100;
 
-  const episode: Episode = {
+  // Sanitize string fields before storing so newly-added episodes
+  // never reintroduce literal \uXXXX sequences (BUG-M3 hardening).
+  // The load-time sanitizer in index.ts:loadPastEpisodes handles
+  // already-stored entries.
+  const episode: Episode = sanitizeEpisode({
     id: nextId('ep'),
     task,
     solution,
@@ -49,7 +105,7 @@ export function addEpisode(
     strategicSOP,
     functionalSOP,
     atomicSOP,
-  };
+  });
   state.episodes.push(episode);
 
   if (state.episodes.length > 500) {
