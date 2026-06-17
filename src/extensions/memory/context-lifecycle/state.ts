@@ -25,6 +25,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 
+
 /** A single outcome record with TTL - for closed-loop feedback. */
 export interface Outcome {
     proposalId: string;
@@ -90,7 +91,23 @@ export function ensureFreshState(sessionId?: string): void {
     }
 }
 
-export function state(): ContextLifecycleState {
+/**
+ * ROADMAP P1-1 / DR-C-2: `state()` now prefers per-session state when ctx
+ * is provided. The module-level fallback is retained for callers that
+ * genuinely have no ctx (e.g. helpers.ts:readProposalsFromSession during
+ * session replay). Pass ctx to get correct per-session behavior.
+ *
+ * Migration: callers that have ctx available should call `state(ctx)`.
+ * The old `state()` (no args) is still supported for the small set of
+ * legacy callers, but should be considered for migration.
+ */
+export function state(ctx?: ExtensionContext): ContextLifecycleState {
+    if (ctx) {
+        // Per-session path: use the canonical getExtensionState. This
+        // resets on session_start, so the fallback's manual resetState
+        // (below) is no longer needed when ctx is available.
+        return _getState(ctx);
+    }
     ensureFreshState();
     if (!_currentSessionState) {
         _currentSessionState = createState();
@@ -99,7 +116,10 @@ export function state(): ContextLifecycleState {
 }
 
 export function resetState(ctx: ExtensionContext): ContextLifecycleState {
-    _currentSessionState = createState();
+    // Clear both the per-session bucket and the module-level fallback.
+    // The per-session bucket is recreated lazily on next access.
+    const fresh = createState();
+    _currentSessionState = fresh;
     _currentSessionId = ctx.cwd ?? null;
-    return _currentSessionState;
+    return fresh;
 }

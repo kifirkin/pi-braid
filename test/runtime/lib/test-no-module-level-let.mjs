@@ -51,8 +51,8 @@ function* walk(dir) {
 //   F. Mutable config values (tunable parameters) - exported
 const EXEMPT_LINES = [
   // ── A. Re-entry guards (sync-flow protection) ──────────────────────────
-  { file: "src/extensions/memory/context-lifecycle/state.ts", line: 82, pattern: "let _currentSessionState" },
-  { file: "src/extensions/memory/context-lifecycle/state.ts", line: 83, pattern: "let _currentSessionId" },
+  { file: "src/extensions/memory/context-lifecycle/state.ts", line: 83, pattern: "let _currentSessionState" },
+  { file: "src/extensions/memory/context-lifecycle/state.ts", line: 84, pattern: "let _currentSessionId" },
   { file: "src/lib/utils/injection-tracker.ts", line: 48, pattern: "let _activeSessionId" },
   { file: "src/lib/utils/injection-tracker.ts", line: 56, pattern: "let _sendDepth" },
   { file: "src/lib/enforcement/turn-dedup.ts", line: 84, pattern: "let _state" },

@@ -299,17 +299,17 @@ function queueProposal(evaluated: EvaluatedAction, ctx: ExtensionContext, branch
   if (evaluated.action.type !== "propose") return;
 
   // ── Rate limiting: prevent proposal spam ────────────────────────────────
-  state().proposalsThisTurn++;
-  state().proposalsTotal++;
-  if (state().proposalsThisTurn > MAX_PROPOSALS_PER_TURN) {
+  state(ctx).proposalsThisTurn++;
+  state(ctx).proposalsTotal++;
+  if (state(ctx).proposalsThisTurn > MAX_PROPOSALS_PER_TURN) {
     log.debug(
-      `Rate limited: ${state().proposalsThisTurn} proposals this turn (max ${MAX_PROPOSALS_PER_TURN})`,
+      `Rate limited: ${state(ctx).proposalsThisTurn} proposals this turn (max ${MAX_PROPOSALS_PER_TURN})`,
     );
     return;
   }
-  if (state().proposalsTotal > MAX_PROPOSALS_SESSION) {
+  if (state(ctx).proposalsTotal > MAX_PROPOSALS_SESSION) {
     log.debug(
-      `Session limit reached: ${state().proposalsTotal} proposals (max ${MAX_PROPOSALS_SESSION})`,
+      `Session limit reached: ${state(ctx).proposalsTotal} proposals (max ${MAX_PROPOSALS_SESSION})`,
     );
     return;
   }
@@ -393,11 +393,11 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     }
     reentrancy.inBeforeAgentStart = true;
     try {
-      state().turnCount++;
-      state().proposalsThisTurn = 0; // Reset per-turn counter
+      state(ctx).turnCount++;
+      state(ctx).proposalsThisTurn = 0; // Reset per-turn counter
 
     // Evict old outcomes on each turn (sliding window TTL)
-    evictOldOutcomes(state());
+    evictOldOutcomes(state(ctx));
 
     const usage = getContextUsage(ctx);
     const entries = getAllEntries(ctx) as SessionEntry[];
@@ -407,22 +407,22 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     // If we sent a compact nudge last turn and the agent didn't use any
     // context management tool, increment the ignored counter.
     // If they DID use a tool, reset the counter.
-    if (state().compactNudgeActive) {
-      if (state().agentActedOnContext) {
-        state().ignoredCompactNudges = 0;
-        state().compactNudgeActive = false;
+    if (state(ctx).compactNudgeActive) {
+      if (state(ctx).agentActedOnContext) {
+        state(ctx).ignoredCompactNudges = 0;
+        state(ctx).compactNudgeActive = false;
         log.debug("Compact nudge acknowledged - agent used a context management tool");
-      } else if (state().turnCount - state().lastCompactNudgeTurn > 0) {
+      } else if (state(ctx).turnCount - state(ctx).lastCompactNudgeTurn > 0) {
         // Agent had a turn to respond but didn't act
-        state().ignoredCompactNudges++;
+        state(ctx).ignoredCompactNudges++;
         log.info(
-          `Compact nudge ignored (${state().ignoredCompactNudges}/${COMPACT_ESCALATION_THRESHOLD}) ` +
+          `Compact nudge ignored (${state(ctx).ignoredCompactNudges}/${COMPACT_ESCALATION_THRESHOLD}) ` +
             `usage=${usage.toFixed(0)}%`,
         );
       }
     }
     // Reset agent action flag for this turn
-    state().agentActedOnContext = false;
+    state(ctx).agentActedOnContext = false;
 
     // ── RETRIEVAL: Detect signals from session content ──────────────────
     const signals = await detectSignals(_detectorState, entries, ctx, usage);
@@ -477,20 +477,20 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
         // still above 85%, auto-compact with a pre-scheduled resume timer.
         // This avoids the mid-task overflow death spiral (scenario 2.2).
         if (
-          state().ignoredCompactNudges >= COMPACT_ESCALATION_THRESHOLD &&
+          state(ctx).ignoredCompactNudges >= COMPACT_ESCALATION_THRESHOLD &&
           usage >= COMPACT_ESCALATION_USAGE
         ) {
           log.warn(
-            `Escalating: auto-compacting (${state().ignoredCompactNudges} ignored nudges, ` +
+            `Escalating: auto-compacting (${state(ctx).ignoredCompactNudges} ignored nudges, ` +
               `usage=${usage.toFixed(0)}%)`,
           );
           await executeAutoCompact(pi, ctx);
-          state().ignoredCompactNudges = 0;
-          state().compactNudgeActive = false;
+          state(ctx).ignoredCompactNudges = 0;
+          state(ctx).compactNudgeActive = false;
         } else {
           // Normal: send compact nudge
           sendCompactNudge(pi, ev, usage);
-          state().compactNudgeActive = true;
+          state(ctx).compactNudgeActive = true;
           state().lastCompactNudgeTurn = state().turnCount;
           state().lastCompactNudgeUsage = usage;
         }
