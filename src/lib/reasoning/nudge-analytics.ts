@@ -7,6 +7,7 @@
  */
 
 import { getExtensionState } from "../state/extension-state.js";
+import { getNudgeAnalyticsFallback } from "../state/global-state.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 // ── Shared analytics state shape (subset used by enforcement) ──────────────
@@ -29,16 +30,31 @@ function createNudgeState(): NudgeState {
   };
 }
 
-let _lastNudgeState: NudgeState | null = null;
-
+// Module-level `let` removed; see global-state.ts getNudgeAnalyticsFallback().
+// The fallback is a process-global mirror of the most recent per-session state,
+// used only by callers that no longer hold an ExtensionContext. It is reset
+// implicitly by process restart (pi runs all extensions in a single process).
 function getNudgeState(ctx?: ExtensionContext): NudgeState {
   if (ctx) {
     const s = getExtensionState(ctx, "nudge-analytics", createNudgeState);
-    _lastNudgeState = s;
+    // Mirror the per-session state into the global fallback so callers
+    // without a ctx can still see the most recent values.
+    const fallback = getNudgeAnalyticsFallback();
+    fallback.nudgesSent = s.nudgesSent;
+    fallback.nudgesSuppressed = s.nudgesSuppressed;
+    fallback.abVariant = s.abVariant;
+    fallback.contextDensity = s.contextDensity;
+    fallback.wasDegraded = s.wasDegraded;
     return s;
   }
-  if (_lastNudgeState) return _lastNudgeState;
-  return createNudgeState();
+  const fallback = getNudgeAnalyticsFallback();
+  return {
+    nudgesSent: fallback.nudgesSent,
+    nudgesSuppressed: fallback.nudgesSuppressed,
+    abVariant: fallback.abVariant,
+    contextDensity: fallback.contextDensity,
+    wasDegraded: fallback.wasDegraded,
+  };
 }
 
 // ── Exported helpers ───────────────────────────────────────────────────────

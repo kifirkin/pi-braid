@@ -88,3 +88,67 @@ export function getRotationState(): RotationState {
   }
   return _rotationState;
 }
+
+// ── Nudge Analytics Fallback (nudge-analytics.ts) ──────────────────────────
+
+/**
+ * Last-known nudge state from the most recent session.
+ * Used by code paths that read nudge state without an ExtensionContext
+ * (e.g., a tool result handler that already returned to the agent loop).
+ * When a ctx is available, prefer getExtensionState(ctx, "nudge-analytics").
+ */
+export interface NudgeAnalyticsFallbackState {
+  nudgesSent: number;
+  nudgesSuppressed: number;
+  abVariant: string;
+  contextDensity: number;
+  wasDegraded: boolean;
+}
+
+function createDefaultNudgeAnalyticsFallback(): NudgeAnalyticsFallbackState {
+  return {
+    nudgesSent: 0,
+    nudgesSuppressed: 0,
+    abVariant: "control",
+    contextDensity: 0,
+    wasDegraded: false,
+  };
+}
+
+let _nudgeAnalyticsFallback: NudgeAnalyticsFallbackState | undefined;
+
+/** Get the shared nudge-analytics fallback object (process-global mirror). */
+export function getNudgeAnalyticsFallback(): NudgeAnalyticsFallbackState {
+  if (!_nudgeAnalyticsFallback) {
+    _nudgeAnalyticsFallback = createDefaultNudgeAnalyticsFallback();
+  }
+  return _nudgeAnalyticsFallback;
+}
+
+// ── CognitiveMemory Singleton (lib/memory/index.ts) ─────────────────────────
+
+/**
+ * Process-global singleton instance of CognitiveMemory.
+ * The class is renamed to "process-global" here, distinct from the
+ * per-session pattern used in `extension-state.ts`. Used because the
+ * memory engine maintains indices in memory that are expensive to
+ * rebuild on every session start.
+ */
+export interface CognitiveMemoryInstance {
+  // Opaque type - the actual class lives in lib/memory/index.ts. The
+  // getter/setter pattern here lets us declare the slot in global-state
+  // without importing the (heavy) class.
+  readonly _brand: unique symbol;
+}
+
+let _cognitiveMemoryInstance: unknown = null;
+
+/** Set the shared CognitiveMemory instance (called once at first use). */
+export function setCognitiveMemoryInstance(instance: unknown): void {
+  _cognitiveMemoryInstance = instance;
+}
+
+/** Get the shared CognitiveMemory instance (or null if not yet initialized). */
+export function getCognitiveMemoryInstance(): unknown {
+  return _cognitiveMemoryInstance;
+}

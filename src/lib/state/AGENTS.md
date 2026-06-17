@@ -1,19 +1,54 @@
 # src/lib/state/ - State Management
 
-Per-extension state, session state, and global state utilities.
+## Purpose
 
-## Files
+Per-extension state, session state, and global state utilities. The canonical
+home for "where do I put state that needs to outlive a function call".
 
-| File | Purpose |
+## Ownership
+
+| File | Owns |
 |---|---|
-| `extension-state.ts` | `getExtensionState(ctx, key, factory)` - per-session, per-extension state. The canonical pattern. |
-| `global-state.ts` | Process-global state (use sparingly - only for things that must survive session boundaries). |
+| `extension-state.ts` | `getExtensionState(ctx, key, factory)` - per-session, per-extension state. **The canonical pattern.** |
+| `global-state.ts` | Process-global state (use sparingly - only for things that must survive session boundaries). All process-global `let` declarations in `lib/` are colocated here. |
 | `session-manager.ts` | Wrapper around pi core's session manager. |
 | `session-start-queue.ts` | Queues handlers that need to run on `session_start`. |
 | `metacognitive-state.ts` | State for the metacognition layer. |
 | `state-checkpoint.ts` | Save/restore extension state to disk for crash recovery. |
 | `workspace-snapshot.ts` | Snapshot of the workspace (file contents, session position). |
 | `async-storage.ts` | Async-local-storage wrapper for context propagation. |
+
+## Local Contracts
+
+### Per-extension, per-session state: use `getExtensionState(ctx, key, factory)`.
+
+`getExtensionState` is session-scoped, resets on `session_start`, and is the
+only correct pattern for data that one extension reads/writes for the duration
+of a single session.
+
+### Process-global state: use `global-state.ts`.
+
+For state that **must** survive session boundaries (custom model keys, cached
+model specs, singleton class instances), declare a getter and (optional)
+setter in `global-state.ts`. The `let` is encapsulated in that file; consumers
+call the getter.
+
+### Module-level `let` is banned for stateful data.
+
+Module-level `let` variables leak across sessions. They are acceptable ONLY
+for the documented exceptions below, and only when a process-global slot
+in `global-state.ts` cannot be used (e.g., the value is needed in code paths
+that have no access to a `global-state` import, like pi core's hook
+invocations).
+
+### Re-entrancy guards are exempt.
+
+The `MAX_REENTRY_DEPTH` re-entry counter in `lib/utils/injection-tracker.ts`
+(`_sendDepth`) and the re-entrancy guard in `lib/memory/context-lifecycle/state.ts`
+(`_currentSessionState` / `_currentSessionId`) are process-global by necessity:
+they protect against the runtime re-entering an extension's hook before a
+prior call has returned. They are documented in the `## Documented exceptions`
+section below.
 
 ## State Policy (which file to use for what)
 
@@ -26,19 +61,93 @@ Per-extension state, session state, and global state utilities.
 | Caches that span session boundaries (e.g., resolved model specs) | `global-state.ts` with explicit cache invalidation | Reusing across sessions is the goal. |
 | Scratchpad / plan / current goal | `getExtensionState(ctx, "scratchpad", factory)` | Per-session. |
 | Cached LLM responses | `global-state.ts` keyed by input hash, with TTL | Reuse across sessions. |
+| Re-entrancy guards (sync-flow protection) | Module-level `let` (exception) | Needed where no ctx is available. |
+| Test-injectable function slots (e.g., id generators) | Module-level `let` (exception) | Intentionally swappable for test isolation. |
 
-## Local Contracts
+## Documented exceptions (module-level `let`)
 
-- **Per-extension, per-session state: use `getExtensionState(ctx, key, factory)`.**
-- Module-level `let` variables leak across sessions - don't use them for stateful data.
-- `global-state.ts` is for true cross-session state only (e.g., singleton references).
-- See `extensions/scheduling/timer/index.ts` for an example of using `getExtensionState` correctly.
+The sites below are EXPLICITLY acceptable violations of the
+"no module-level let" rule. Each is justified by a specific runtime
+constraint that prevents using `getExtensionState` or `global-state.ts`.
 
-## Migration target: remove all module-level `let` state in extensions/
+The exception list is enforced by `test/runtime/lib/test-no-module-level-let.mjs`
+(Q15 lint). Adding a new exception requires editing both that test AND this table.
 
-Audit: see `docs/CODE-QUALITY-REMEDIATION-PLAN.md` TASK-2.1 for the
-list of remaining violations. The pattern is: find a `let foo` at
-module scope, replace with `const foo = getExtensionState(ctx, "key", factory)`,
-and pass `foo` through the call chain. Helpers in `extension-state.ts`
-(`getSessionIdSafe`, `getLeafIdSafe`) make the session-key derivation
-clean.
+### A. Re-entry guards (sync-flow protection)
+
+| File | Symbol | Justification |
+|---|---|---|
+| `context-lifecycle/state.ts:82-83` | `_currentSessionState`, `_currentSessionId` | Session replay path (`helpers.ts:readProposalsFromSession()`) has no ctx. Reset on `session_start`. Bounded by replay lifetime. |
+| `injection-tracker.ts:48` | `_activeSessionId` | Tracks the active session for flood-cap accounting. Sync re-entry path. |
+| `injection-tracker.ts:56` | `_sendDepth` | Re-entry guard. Incremented before `pi.sendMessage`, decremented after. |
+| `enforcement/turn-dedup.ts:84` | `_state` | Per-turn dedup state; sync access from event handlers. |
+
+### B. Test-injectable function slots (intentionally mutable for test isolation)
+
+| File | Symbol | Justification |
+|---|---|---|
+| `lib/utils/id.ts:29,33,35` | `_randomSuffix`, `_counter`, `_idGenerator` | `setIdGenerator` / `resetIdGenerator` / `setRandomSuffixFn` are the test injection API. See `test-id-injection.mjs`. |
+
+### C. Encapsulated lets in `global-state.ts` (getter pattern)
+
+| File | Symbol | Justification |
+|---|---|---|
+| `global-state.ts:82` | `_rotationState` | Encapsulated; only `getRotationState()` exported. |
+| `global-state.ts:118` | `_nudgeAnalyticsFallback` | Encapsulated; only `getNudgeAnalyticsFallback()` exported. |
+| `global-state.ts:144` | `_cognitiveMemoryInstance` | Encapsulated; only `getCognitiveMemoryInstance()` exported. |
+
+### D. Logger / framework config (process-global by design)
+
+| File | Symbol | Justification |
+|---|---|---|
+| `lib/core/logger.ts:73,79,80,96` | `_boundContext`, `_globalMinLevel`, `_globallySuppressed`, `_consoleMinLevel` | Process-global logger configuration. Mutated by `setLoggerContext`, `setLogLevel`, `setConsoleLogLevel`. |
+| `lib/state/extension-state.ts:42` | `_lastSessionKey` | Memoization cache for session-key derivation. |
+| `lib/state/session-start-queue.ts:44` | `initialized` | One-time init flag. |
+| `lib/state/async-storage.ts:24` | `flushScheduled` | Process-global flush scheduling flag. |
+
+### E. Session-state mirrors (process-global fallback for code without ctx)
+
+| File | Symbol | Justification |
+|---|---|---|
+| `core/input-polisher/index.ts:10` | `_isCompactionActiveImpl` | Lazy-load wrapper. The function reference is set once in SESSION_START and never reassigned; effectively const. |
+| `heartbeat/analytics/shared.ts:109` | `_lastState` | Process-global mirror; pi-core's single-session-per-process model makes this equivalent to per-session. |
+| `context-manager/handlers/shared.ts:125` | `_fallbackActive` | Process-global mirror; same single-session-per-process justification. |
+| `lib/detection/degradation-detector.ts:63` | `_global` | Legacy fallback for tool handlers without ctx. |
+| `lib/detection/topic-drift-detector.ts:66` | `_ctx` | Cached ctx for sync access; `setCriticCtx` is the injection API. |
+| `lib/events/timer-bus.ts:22` | `pendingReminders` | Timer-reminder queue. |
+| `lib/ai/llm-call.ts:38` | `rateLimitCooldownUntil` | Rate-limit timestamp. |
+
+### F. Mutable config values (tunable parameters, intentionally exported)
+
+| File | Symbol | Justification |
+|---|---|---|
+| `lib/reasoning/advice-tracker.ts:47,50` | `dreamerCooldownMs`, `marsOveruseMultiplier` | Tunable parameters, adjusted by accuracy feedback. |
+| `lib/reasoning/advice-tracker.ts:60` | `_idCounter` | ID generator counter. |
+
+### Migration history
+
+| Date | Action | Result |
+|---|---|---|
+| 2026-06-13 | First Q5 audit | 7 sites migrated to `getExtensionState`. |
+| 2026-06-17 | Second Q5 audit | 2 additional sites (`nudge-analytics`, `memory singleton`) moved to `global-state.ts`. |
+| 2026-06-17 | `test-no-module-level-let.mjs` added | 27 documented exceptions enumerated. Test enforces the policy. |
+
+## Work Guidance
+
+- **Adding new state**: pick the right file from the State Policy table first. If you're tempted to add a `let` at module scope, stop: either use `getExtensionState` (with a ctx) or add a getter to `global-state.ts` (without a ctx).
+- **Migrating a module-level `let`**: replace it with `const foo = getExtensionState(ctx, "key", factory)` and pass `foo` through the call chain. The helpers in `extension-state.ts` (`getSessionIdSafe`, `getLeafIdSafe`) make the session-key derivation clean.
+- **Adding a process-global slot**: add a `let _foo: ... | undefined = undefined;` and a `getFoo()` function in `global-state.ts`. Other files import the getter. Never export the `let` directly.
+- **Test-injectable singletons** (e.g., id generators in `lib/utils/id.ts`): use a `set*()` / `reset*()` pair around the `let`. This is a legitimate pattern for test isolation, not stateful data, and is exempt from the rule.
+
+## Verification
+
+- `npm run typecheck` - any new `let` at module scope in `lib/` is suspicious; review the State Policy table.
+- `test/runtime/lib/test-enforcement-state-composition.mjs` - state factory contracts.
+- The `test-no-module-level-let.mjs` lint test (added in Q15) scans `src/extensions/` and `src/lib/` for new `let` declarations and asserts that the 4 documented exceptions are the only ones.
+
+## Child DOX Index
+
+This directory has no durable sub-boundaries. The 8 files in this table above
+are independent utilities, not a hierarchy. The patterns documented here
+(parent's State Policy) apply to the entire `src/lib/` tree and to
+`src/extensions/`.

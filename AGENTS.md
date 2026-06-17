@@ -1,5 +1,10 @@
 # pi-braid Developer Guide
 
+> **DOX framework active.** This AGENTS.md is a binding work contract for the
+> entire repository. Read it (and every parent/child AGENTS.md along any path
+> you intend to touch) before editing. See the [dox skill](../agents/pi-braid-skills/skills/dox/SKILL.md)
+> for the full contract. Last DOX pass: 2026-06-17.
+
 ## Extension Loading
 
 Every extension is a self-contained subdirectory under `src/extensions/`, with
@@ -75,3 +80,30 @@ is in `docs/TOOL-INVENTORY-AUDIT.md`. Key points:
   with priority + persistence + recycling). task = simple TODO list
   with priority + dependencies. Document the distinction in each tool's
   description; do not merge.
+
+## Child DOX Index
+
+| Path | Owns | AGENTS.md |
+|---|---|---|
+| `src/` | Top-level architecture: extensions/lib/loader/types split, delivery channel rules | [src/AGENTS.md](src/AGENTS.md) |
+| `src/extensions/` | All 25+ extensions grouped by agent-loop phase (core/cognitive/memory/scheduling/self/heartbeat/enforcement) | (per-extension AGENTS.md below) |
+| `src/extensions/core/` | Prompt-builder, input-polisher, agent-environment, polyfill | [src/extensions/core/AGENTS.md](src/extensions/core/AGENTS.md) |
+| `src/extensions/cognitive/` | Metacognition, reasoning, sycophancy/topic-drift/turn-outcome detectors | [src/extensions/cognitive/AGENTS.md](src/extensions/cognitive/AGENTS.md) |
+| `src/extensions/enforcement/` | Turn-pipeline infrastructure (handlers, detection, substate) | [src/extensions/enforcement/AGENTS.md](src/extensions/enforcement/AGENTS.md) |
+| `src/extensions/heartbeat/` | Background daemons (scheduler, analytics) | [src/extensions/heartbeat/AGENTS.md](src/extensions/heartbeat/AGENTS.md) |
+| `src/extensions/memory/` | All persistent state (context-lifecycle, three-stores, agent-bridge, etc.) | [src/extensions/memory/AGENTS.md](src/extensions/memory/AGENTS.md) |
+| `src/extensions/scheduling/` | Time triggers (timer) | [src/extensions/scheduling/AGENTS.md](src/extensions/scheduling/AGENTS.md) |
+| `src/extensions/self/` | Self-management (health, error-tracking, watchdog, etc.) | [src/extensions/self/AGENTS.md](src/extensions/self/AGENTS.md) |
+| `src/lib/` | Library subsystems (13 subdirs, all have AGENTS.md) | [src/lib/AGENTS.md](src/lib/AGENTS.md) |
+| `src/loader/` | Extension loader + subagent API | [src/loader/AGENTS.md](src/loader/AGENTS.md) |
+| `docs/` | Reference docs (plan, audits, deep-dives) - NOT a DOX subtree, but referenced | (no AGENTS.md - durable reference) |
+| `test/` | Test harness; no AGENTS.md needed (tests are leaf) | (no AGENTS.md) |
+| `scripts/` | Build/lint helpers; leaf | (no AGENTS.md) |
+| `evaluation/` | Benchmarks (JS only post-2026-06-10); leaf | (no AGENTS.md) |
+
+## User Preferences (durable)
+
+- **Prefer implementing, improving, or fixing over removal.** Only remove truly dead code (unreferenced, deprecated with no path forward). This is a hard project rule.
+- **Braid is a value-add layer over pi core.** Out-of-scope tools (debug/research affordances) get flagged in the plan but not auto-removed. See `docs/TOOL-INVENTORY-AUDIT.md`.
+- **Test-based lint over ESLint custom rules.** Q15 was deferred. Use scan-style test files (e.g., `test-promise-allsettled-pattern.mjs`) as the linting substrate. ESLint setup is a separate project.
+- **Module-level `let` is banned for stateful data.** Use `getExtensionState(ctx, key, factory)` for per-session state, `global-state.ts` for process-global. The 4 documented exceptions live in `src/lib/state/AGENTS.md`.

@@ -68,15 +68,19 @@ import {
 // `getExtensionState(ctx, "cognitive-memory", factory)`.
 //
 // The class is renamed to "process-global" here, distinct from the
-// per-session pattern used in `extension-state.ts`.
+// per-session pattern used in `extension-state.ts`. The singleton slot
+// lives in `lib/state/global-state.ts` so all process-global mirrors
+// are colocated.
 
-let _singletonInstance: CognitiveMemory | null = null;
+import { getCognitiveMemoryInstance, setCognitiveMemoryInstance } from "../state/global-state.js";
 
 export function getCognitiveMemory(): CognitiveMemory {
-  if (!_singletonInstance) {
-    _singletonInstance = new CognitiveMemory();
+  let instance = getCognitiveMemoryInstance() as CognitiveMemory | null;
+  if (!instance) {
+    instance = new CognitiveMemory();
+    setCognitiveMemoryInstance(instance);
   }
-  return _singletonInstance;
+  return instance;
 }
 
 // ── Main Class ───────────────────────────────────────────────────────────────

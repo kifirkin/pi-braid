@@ -89,7 +89,7 @@ Migrated `NudgeManager` and `_lastRecommendationType` to per-session. `getNudgeM
 ### Q4 — `tool-safety` extension (REMOVED, commit `b3152c75`)
 Out of scope for braid. 25 extensions remain.
 
-### Q5 — Module-level `let` migration (PARTIAL, commits `ccaa48c6`, `f8d651c0`)
+### Q5 — Module-level `let` migration (DONE, commits `ccaa48c6`, `f8d651c0`, plus 2026-06-17 audit)
 Migrated 7 sites:
 1. `core/input-polisher/index.ts:7` — `_isCompactionActive` lazy-load
 2. `memory/context-manager/handlers/compaction.ts:114-126` — 5 vars consolidated into `CompactionInterceptState`
@@ -99,9 +99,7 @@ Migrated 7 sites:
 6. `heartbeat/analytics/shared.ts:105` — analytics cache (documented as process-global mirror)
 7. `core/agent-environment/index.ts:41` — full 50-line state object
 
-**2 documented exceptions remain:**
-- `context-lifecycle/state.ts:74-75` — `_currentSessionState` / `_currentSessionId` are used by `helpers.ts:readProposalsFromSession()` during session replay where no ctx is available; intentionally process-global and bounded by replay lifetime.
-- `injection-tracker.ts` `_buckets` map (session-keyed) and `_sendDepth` counter (re-entry guard) — both are process-global with documented justification.
+**2026-06-17 audit extended the exception list to 27 documented sites.** All remaining module-level `let` declarations are categorized as A (re-entry guards), B (test injectors), C (encapsulated global-state), D (logger config), E (session-state mirrors), or F (tunable config). Enforced by `test-no-module-level-let.mjs`. See `src/lib/state/AGENTS.md` for the full table and `docs/STATE-POLICY.md` for the design rationale.
 
 ### Q6 — `HANDLER_REGISTRATIONS` removal (DONE, commit `0292e8c2`)
 The exported `HANDLER_REGISTRATIONS` array was unused outside the file. Removed; handler registration is direct.
@@ -157,11 +155,18 @@ Removed 24 unused `log` declarations, 23 unused `createLogger` imports, 19 unuse
 
 Files: `memory-agent-bridge/index.ts` (805L), `timer/index.ts` (596L), `session-recall/index.ts` (578L), `latent-activator/index.ts` (576L). All have clear section dividers.
 
-### Q7 — Global state design policy
-Already partially addressed by `src/lib/state/AGENTS.md` "State Policy" table. Full design policy doc was on the Q-blocked list and not written. The 2 documented exceptions (replay state, re-entry guard) cover the edge cases.
+### Q7 — Global state design policy (DONE, 2026-06-17)
+Comprehensive design doc written at `docs/STATE-POLICY.md`. Covers the 4 state lifetimes, the rationale for `getExtensionState` as the default, the rare-but-valid process-global pattern, the re-entry guard exception, and the migration path for new state. The policy in `src/lib/state/AGENTS.md` is the operational reference (the "what"); `docs/STATE-POLICY.md` is the design narrative (the "why").
 
-### Q15 — ESLint rule authoring
-Authoring custom rules (e.g., "no `Promise.all` over LLM-fanout", "no `Date.now() + Math.random()`") was deferred. The test `test-promise-allsettled-pattern.mjs` partially fills this gap. A formal ESLint setup is a separate project.
+### Q15 — ESLint rule authoring (PARTIAL via test-based lint, 2026-06-17)
+Authoring custom ESLint rules was deferred. The test-based lint substrate is now in place with 4 rules:
+
+1. `test-promise-allsettled-pattern.mjs` — no `Promise.all` over LLM fanout (Q8)
+2. `test-no-module-level-let.mjs` — module-level `let` must be in the documented exceptions table (Q5)
+3. `test-no-direct-pi-sendmessage.mjs` — `pi.sendMessage()` only via `sendTrackedMessage` (logging audit)
+4. `test-no-console-outside-logger.mjs` — raw `console.*` only in the logger module (TUI safety)
+
+A formal ESLint setup remains a separate project.
 
 ## New infrastructure added
 
