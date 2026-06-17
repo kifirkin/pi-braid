@@ -113,14 +113,29 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
 
         // Consolidation: merge consolidateWith memories into new content, then delete originals
         let consolidatedContent = params.content;
-        if (params.consolidateWith) {
-          for (const id of params.consolidateWith) {
+        // ROADMAP P3-12 / DR-M-7: cap the number of merge markers and
+        // log the source IDs. The old code appended up to 500 chars
+        // per source with no cap; consolidating 5 large memories would
+        // produce 2500+ chars of marker text and zero visibility into
+        // which sources were merged.
+        const MAX_CONSOLIDATE_SOURCES = 10;
+        const mergedSourceIds: string[] = [];
+        if (params.consolidateWith && params.consolidateWith.length > 0) {
+          for (const id of params.consolidateWith.slice(0, MAX_CONSOLIDATE_SOURCES)) {
             const existing = memory.getByIdSync(id);
             if (existing) {
               const sep = consolidatedContent.endsWith(".") ? " " : ". ";
               consolidatedContent += `${sep}[merged from: ${existing.content.slice(0, 500)}]`;
+              mergedSourceIds.push(id);
               memory.deleteById(id);
             }
+          }
+          if (params.consolidateWith.length > MAX_CONSOLIDATE_SOURCES) {
+            log.warn(
+              `[memory-agent-bridge] consolidateWith capped to ${MAX_CONSOLIDATE_SOURCES} sources ` +
+                `(${params.consolidateWith.length} requested). ` +
+                `Excess sources were not merged.`,
+            );
           }
         }
 
@@ -172,10 +187,17 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
           }
         }
 
-        return {
-          content: [{ type: "text", text: `Stored memory ${m.id} (${params.memoryType})` }],
+        // ROADMAP P3-12: include merged source IDs in the response so
+        // the user has visibility into the consolidation.
+        const storedResponse: { content: Array<{ type: "text"; text: string }>; details: { id: string; stored: boolean; merged_from?: string[] } } = {
+          content: [{ type: "text" as const, text: `Stored memory ${m.id} (${params.memoryType})` }],
           details: { id: m.id, stored: true },
         };
+        if (mergedSourceIds.length > 0) {
+          storedResponse.details.merged_from = mergedSourceIds;
+          storedResponse.content[0]!.text += ` (merged from ${mergedSourceIds.length} source(s))`;
+        }
+        return storedResponse;
       } catch (e) {
         return {
           content: [
