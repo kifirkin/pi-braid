@@ -57,137 +57,157 @@ export function createScratchpad(goal: string, projectSlug: string): TaskScratch
 }
 
 /**
+ * Per-type migration helpers. Each takes the raw `unknown[]` from the
+ * loaded JSON and returns a freshly-typed array. Keeps the main
+ * migrateScratchpad function clean and avoids mutating the input record.
+ */
+
+function migrateDoneItems(items: unknown[], fallbackAddedAt: number): DoneItem[] {
+  return items.map((item): DoneItem => {
+    if (typeof item === "string") {
+      return {
+        id: nextId("dn"),
+        text: item,
+        turn: 0,
+        addedAt: fallbackAddedAt,
+      };
+    }
+    if (typeof item === "object" && item !== null) {
+      const obj = item as Partial<DoneItem>;
+      return {
+        id: obj.id ?? nextId("dn"),
+        text: obj.text ?? "",
+        turn: obj.turn ?? 0,
+        addedAt: obj.addedAt ?? fallbackAddedAt,
+      };
+    }
+    return { id: nextId("dn"), text: String(item), turn: 0, addedAt: Date.now() };
+  });
+}
+
+function migratePlanSteps(items: unknown[]): PlanStep[] {
+  return items.map((item): PlanStep => {
+    if (typeof item === "object" && item !== null) {
+      const obj = item as Partial<PlanStep>;
+      return {
+        id: obj.id ?? nextId("pl"),
+        text: obj.text ?? "",
+        estimateCalls: obj.estimateCalls,
+        budgetCalls: obj.budgetCalls,
+        spentCalls: obj.spentCalls ?? 0,
+        startTurn: obj.startTurn ?? 0,
+        doneTurn: obj.doneTurn ?? 0,
+        startTotalCalls: obj.startTotalCalls ?? 0,
+      };
+    }
+    return {
+      id: nextId("pl"),
+      text: String(item),
+      spentCalls: 0,
+      startTurn: 0,
+      doneTurn: 0,
+      startTotalCalls: 0,
+    };
+  });
+}
+
+function migrateNoteItems(items: unknown[], fallbackAddedAt: number): NoteItem[] {
+  return items.map((item): NoteItem => {
+    if (typeof item === "string") {
+      return {
+        id: nextId("nt"),
+        text: item,
+        turn: 0,
+        addedAt: fallbackAddedAt,
+      };
+    }
+    if (typeof item === "object" && item !== null) {
+      const obj = item as Partial<NoteItem>;
+      return {
+        id: obj.id ?? nextId("nt"),
+        text: obj.text ?? "",
+        turn: obj.turn ?? 0,
+        addedAt: obj.addedAt ?? fallbackAddedAt,
+      };
+    }
+    return { id: nextId("nt"), text: String(item), turn: 0, addedAt: Date.now() };
+  });
+}
+
+function migrateDecisions(items: unknown[]): Decision[] {
+  return items.map((item): Decision => {
+    if (typeof item === "object" && item !== null) {
+      const obj = item as Partial<Decision>;
+      return {
+        id: obj.id ?? nextId("dc"),
+        text: obj.text ?? "",
+        reason: obj.reason,
+        turn: obj.turn ?? 0,
+      };
+    }
+    return { id: nextId("dc"), text: String(item), turn: 0 };
+  });
+}
+
+function migrateHypotheses(items: unknown[], fallbackAddedAt: number): HypothesisItem[] {
+  return items.map((item): HypothesisItem => {
+    if (typeof item === "string") {
+      return {
+        id: nextId("hp"),
+        text: item,
+        turn: 0,
+        addedAt: fallbackAddedAt,
+      };
+    }
+    if (typeof item === "object" && item !== null) {
+      const obj = item as Partial<HypothesisItem>;
+      return {
+        id: obj.id ?? nextId("hp"),
+        text: obj.text ?? "",
+        turn: obj.turn ?? 0,
+        addedAt: obj.addedAt ?? fallbackAddedAt,
+      };
+    }
+    return { id: nextId("hp"), text: String(item), turn: 0, addedAt: Date.now() };
+  });
+}
+
+/**
  * Migrate an old-format scratchpad loaded from disk to the current schema.
  * Adds IDs to items that pre-date the ID system. Idempotent: if items
  * already have IDs (e.g., reloaded after a save), the migration is a no-op.
+ *
+ * Builds a fresh TaskScratchpad from the input record - the input is never
+ * mutated. This lets TypeScript verify the result type structurally with
+ * no `as unknown as` cast at the boundary.
  */
 function migrateScratchpad(data: Record<string, unknown>): TaskScratchpad {
-  // done: was string[]; is now DoneItem[]
-  if (Array.isArray(data.done)) {
-    data.done = data.done.map((item: unknown, i: number): DoneItem => {
-      if (typeof item === "string") {
-        return {
-          id: nextId("dn"),
-          text: item,
-          turn: 0,
-          addedAt: (data.updatedAt as number) ?? Date.now(),
-        };
-      }
-      if (typeof item === "object" && item !== null) {
-        const obj = item as Partial<DoneItem>;
-        return {
-          id: obj.id ?? nextId("dn"),
-          text: obj.text ?? "",
-          turn: obj.turn ?? 0,
-          addedAt: obj.addedAt ?? (data.updatedAt as number) ?? Date.now(),
-        };
-      }
-      return { id: nextId("dn"), text: String(item), turn: 0, addedAt: Date.now() };
-    });
-  } else {
-    data.done = [];
-  }
+  const fallbackAddedAt = (data.updatedAt as number) ?? Date.now();
+  const session = (data.session as TaskScratchpad["session"]) ?? {
+    turn: 0,
+    phase: "idle" as const,
+    mode: "normal" as const,
+    last_compact_turn: 0,
+    session_start: fallbackAddedAt,
+    updated_at: fallbackAddedAt,
+  };
 
-  // plan: was PlanStep[] without id; is now PlanStep[] with id
-  if (Array.isArray(data.plan)) {
-    data.plan = data.plan.map((item: unknown): PlanStep => {
-      if (typeof item === "object" && item !== null) {
-        const obj = item as Partial<PlanStep>;
-        return {
-          id: obj.id ?? nextId("pl"),
-          text: obj.text ?? "",
-          estimateCalls: obj.estimateCalls,
-          budgetCalls: obj.budgetCalls,
-          spentCalls: obj.spentCalls ?? 0,
-          startTurn: obj.startTurn ?? 0,
-          doneTurn: obj.doneTurn ?? 0,
-          startTotalCalls: obj.startTotalCalls ?? 0,
-        };
-      }
-      return {
-        id: nextId("pl"),
-        text: String(item),
-        spentCalls: 0,
-        startTurn: 0,
-        doneTurn: 0,
-        startTotalCalls: 0,
-      };
-    });
-  } else {
-    data.plan = [];
-  }
-
-  // notes: was string[]; is now NoteItem[]
-  if (Array.isArray(data.notes)) {
-    data.notes = data.notes.map((item: unknown): NoteItem => {
-      if (typeof item === "string") {
-        return {
-          id: nextId("nt"),
-          text: item,
-          turn: 0,
-          addedAt: (data.updatedAt as number) ?? Date.now(),
-        };
-      }
-      if (typeof item === "object" && item !== null) {
-        const obj = item as Partial<NoteItem>;
-        return {
-          id: obj.id ?? nextId("nt"),
-          text: obj.text ?? "",
-          turn: obj.turn ?? 0,
-          addedAt: obj.addedAt ?? (data.updatedAt as number) ?? Date.now(),
-        };
-      }
-      return { id: nextId("nt"), text: String(item), turn: 0, addedAt: Date.now() };
-    });
-  } else {
-    data.notes = [];
-  }
-
-  // decisions: was Decision[] without id; is now Decision[] with id
-  if (Array.isArray(data.decisions)) {
-    data.decisions = data.decisions.map((item: unknown): Decision => {
-      if (typeof item === "object" && item !== null) {
-        const obj = item as Partial<Decision>;
-        return {
-          id: obj.id ?? nextId("dc"),
-          text: obj.text ?? "",
-          reason: obj.reason,
-          turn: obj.turn ?? 0,
-        };
-      }
-      return { id: nextId("dc"), text: String(item), turn: 0 };
-    });
-  } else {
-    data.decisions = [];
-  }
-
-  // hypotheses: was string[]; is now HypothesisItem[]
-  if (Array.isArray(data.hypotheses)) {
-    data.hypotheses = data.hypotheses.map((item: unknown): HypothesisItem => {
-      if (typeof item === "string") {
-        return {
-          id: nextId("hp"),
-          text: item,
-          turn: 0,
-          addedAt: (data.updatedAt as number) ?? Date.now(),
-        };
-      }
-      if (typeof item === "object" && item !== null) {
-        const obj = item as Partial<HypothesisItem>;
-        return {
-          id: obj.id ?? nextId("hp"),
-          text: obj.text ?? "",
-          turn: obj.turn ?? 0,
-          addedAt: obj.addedAt ?? (data.updatedAt as number) ?? Date.now(),
-        };
-      }
-      return { id: nextId("hp"), text: String(item), turn: 0, addedAt: Date.now() };
-    });
-  } else {
-    data.hypotheses = [];
-  }
-
-  return data as unknown as TaskScratchpad;
+  return {
+    goal: (data.goal as string) ?? "",
+    prior_goal: (data.prior_goal as string) ?? "",
+    plan: Array.isArray(data.plan) ? migratePlanSteps(data.plan) : [],
+    done: Array.isArray(data.done) ? migrateDoneItems(data.done, fallbackAddedAt) : [],
+    decisions: Array.isArray(data.decisions) ? migrateDecisions(data.decisions) : [],
+    hypotheses: Array.isArray(data.hypotheses)
+      ? migrateHypotheses(data.hypotheses, fallbackAddedAt)
+      : [],
+    notes: Array.isArray(data.notes) ? migrateNoteItems(data.notes, fallbackAddedAt) : [],
+    session,
+    constraints: (data.constraints as TaskScratchpad["constraints"]) ?? [],
+    key_learnings: (data.key_learnings as TaskScratchpad["key_learnings"]) ?? [],
+    updatedAt: (data.updatedAt as number) ?? Date.now(),
+    projectSlug: (data.projectSlug as string) ?? "default",
+  };
 }
 
 export async function saveScratchpadToDisk(scratchpad: TaskScratchpad): Promise<void> {

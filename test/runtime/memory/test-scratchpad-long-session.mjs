@@ -61,11 +61,11 @@ console.log("\n[2] Migration logic in persistence.ts");
   const src = readFileSync(PERSISTENCE, "utf-8");
   check(src.includes("migrateScratchpad"), "migrateScratchpad function exists");
   check(/loadScratchpadFromDisk[\s\S]*migrateScratchpad/m.test(src), "loadScratchpadFromDisk calls migrateScratchpad");
-  check(/data\.done = data\.done\.map/m.test(src), "Migration handles done (was string[])");
-  check(/data\.plan = data\.plan\.map/m.test(src), "Migration handles plan (was no id)");
-  check(/data\.notes = data\.notes\.map/m.test(src), "Migration handles notes (was string[])");
-  check(/data\.decisions = data\.decisions\.map/m.test(src), "Migration handles decisions (was no id)");
-  check(/data\.hypotheses = data\.hypotheses\.map/m.test(src), "Migration handles hypotheses (was string[])");
+  check(/migrateDoneItems\(/.test(src), "Migration handles done (was string[])");
+  check(/migratePlanSteps\(/.test(src), "Migration handles plan (was no id)");
+  check(/migrateNoteItems\(/.test(src), "Migration handles notes (was string[])");
+  check(/migrateDecisions\(/.test(src), "Migration handles decisions (was no id)");
+  check(/migrateHypotheses\(/.test(src), "Migration handles hypotheses (was string[])");
 }
 
 console.log("\n[3] New actions in index.ts");
