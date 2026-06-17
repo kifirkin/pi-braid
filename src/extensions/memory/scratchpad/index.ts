@@ -10,6 +10,9 @@
 
 
 import { nextId } from "../../../lib/utils/id.js";
+import { SCRATCHPAD_DIR } from "../../../lib/config/braid-paths.js";
+import * as path from "node:path";
+import { appendFile } from "node:fs/promises";
 
 
 
@@ -32,6 +35,9 @@ import type {
   KeyLearning,
   SessionPhase,
   PlanStep,
+  DoneItem,
+  NoteItem,
+  HypothesisItem,
 } from "./types.js";
 
 import {
@@ -137,43 +143,97 @@ function generateConstraintId(): string {
   return nextId('con');
 }
 
+/**
+ * Find an item in a list by id (preferred) or by text match (fallback).
+ * Returns the item and its index, or { item: null, index: -1 } if not found.
+ */
+function findByIdOrText<T extends { id: string; text: string }>(
+  list: T[],
+  idOrText: string,
+): { item: T | null; index: number } {
+  // Try exact id match first
+  const idxById = list.findIndex((it) => it.id === idOrText);
+  if (idxById >= 0) return { item: list[idxById]!, index: idxById };
+  // Fall back to text match
+  const idxByText = list.findIndex((it) => it.text === idOrText);
+  if (idxByText >= 0) return { item: list[idxByText]!, index: idxByText };
+  return { item: null, index: -1 };
+}
+
 // ── Format Scratchpad ─────────────────────────────────────────────────────
 
-export function formatScratchpad(pad: TaskScratchpad): string {
+export function formatScratchpad(
+  pad: TaskScratchpad,
+  filter?: {
+    ids?: string[];
+    sinceTurn?: number;
+    untilTurn?: number;
+    category?: string;
+    limit?: number;
+  },
+): string {
   const lines: string[] = [];
   lines.push(`Goal: ${pad.goal}`);
   if (pad.prior_goal) lines.push(`Prior goal: ${pad.prior_goal}`);
 
+  // ── Filter helpers ─────────────────────────────────────────────────
+  // Apply id / turn-range filter to a list. If filter.ids is set, only
+  // matching items are shown. If sinceTurn/untilTurn is set, items with
+  // a turn field are filtered by turn number. limit caps total shown.
+  const applyListFilter = <T extends { id: string; turn?: number }>(
+    list: T[],
+  ): T[] => {
+    let out = list;
+    if (filter?.ids && filter.ids.length > 0) {
+      const idSet = new Set(filter.ids);
+      out = out.filter((it) => idSet.has(it.id));
+    }
+    if (filter?.sinceTurn !== undefined) {
+      out = out.filter((it) => (it.turn ?? 0) >= (filter.sinceTurn ?? 0));
+    }
+    if (filter?.untilTurn !== undefined) {
+      out = out.filter((it) => (it.turn ?? 0) <= (filter.untilTurn ?? 0));
+    }
+    if (filter?.limit !== undefined && filter.limit > 0 && out.length > filter.limit) {
+      out = out.slice(-filter.limit);
+    }
+    return out;
+  };
+
   // Plan
-  if (pad.plan.length > 0) {
+  const filteredPlan = applyListFilter(pad.plan);
+  if (filteredPlan.length > 0) {
     lines.push("\nPlan:");
-    for (let i = 0; i < pad.plan.length; i++) {
-      const step = pad.plan[i];
+    for (let i = 0; i < filteredPlan.length; i++) {
+      const step = filteredPlan[i];
       const status = step.doneTurn > 0 ? "✅" : step.startTurn > 0 ? "🔄" : "⬜";
       const budget = step.budgetCalls ? `/${step.budgetCalls}` : "";
       const over = step.budgetCalls && step.spentCalls > step.budgetCalls ? " ⚠" : "";
-      lines.push(`  ${i + 1}. ${status} ${step.text} [${step.spentCalls}${budget} calls${over}]`);
+      lines.push(`  ${i + 1}. ${status} ${step.text} [${step.spentCalls}${budget} calls${over}] (${step.id})`);
     }
   }
 
   // Done
-  if (pad.done.length > 0) {
-    lines.push(`\nDone (${pad.done.length}):`);
-    for (const d of pad.done) lines.push(`  ✅ ${d}`);
+  const filteredDone = applyListFilter(pad.done);
+  if (filteredDone.length > 0) {
+    lines.push(`\nDone (${filteredDone.length}${filter ? ` of ${pad.done.length}` : ""}):`);
+    for (const d of filteredDone) lines.push(`  ✅ ${d.text} (${d.id})`);
   }
 
   // Decisions
-  if (pad.decisions.length > 0) {
+  const filteredDecisions = applyListFilter(pad.decisions);
+  if (filteredDecisions.length > 0) {
     lines.push("\nDecisions:");
-    for (const d of pad.decisions.slice(-5)) {
-      lines.push(`  - ${d.text}${d.reason ? ` (${d.reason})` : ""}`);
+    for (const d of filteredDecisions.slice(-5)) {
+      lines.push(`  - ${d.text}${d.reason ? ` (${d.reason})` : ""} (${d.id})`);
     }
   }
 
   // Notes
-  if (pad.notes.length > 0) {
+  const filteredNotes = applyListFilter(pad.notes);
+  if (filteredNotes.length > 0) {
     lines.push("\nNotes:");
-    for (const n of pad.notes.slice(-5)) lines.push(`  ${n}`);
+    for (const n of filteredNotes.slice(-5)) lines.push(`  ${n.text} (${n.id})`);
   }
 
   // CCA L2 sections
@@ -277,6 +337,17 @@ const readAction = Type.Union([
   Type.Literal("note_compact"),
   Type.Literal("elevate_to_goal"),
   Type.Literal("elevate_to_plan"),
+  // Targeted removal actions for long-session hygiene.
+  // Accept either an id ("pl-1234567-abc") or a text match.
+  Type.Literal("remove_plan"),
+  Type.Literal("remove_note"),
+  Type.Literal("remove_decision"),
+  Type.Literal("remove_hypothesis"),
+  // Bulk actions for clearing history.
+  Type.Literal("clear_done"),
+  // Archive done items to disk (does NOT delete from memory; moves to
+  // <slug>/archive.jsonl and removes from the active list).
+  Type.Literal("archive_done"),
 ]);
 
 const VALID_LEARNING_CATEGORIES = [
@@ -355,6 +426,28 @@ const scratchpadParams = Type.Object({
   successCriteria: Type.Optional(Type.Array(Type.String(), { description: "Success criteria" })),
   constraint_id: Type.Optional(Type.String({ description: "Constraint ID" })),
   expires_in_ms: Type.Optional(Type.Number({ description: "TTL in ms for constraint expiry" })),
+  // ID for targeted removal of plan/note/decision/hypothesis items.
+  // Accepts the id returned by add_* / mark_done, or a text match.
+  id: Type.Optional(
+    Type.String({
+      description: "ID for remove_* actions. Falls back to text match if not an exact id.",
+    }),
+  ),
+  // Filter for the read action.
+  filter: Type.Optional(
+    Type.Object({
+      /** Show only items with id in this list. */
+      ids: Type.Optional(Type.Array(Type.String())),
+      /** Show only items added after this turn. */
+      sinceTurn: Type.Optional(Type.Number()),
+      /** Show only items added before this turn. */
+      untilTurn: Type.Optional(Type.Number()),
+      /** Show only items in this category (for key_learnings). */
+      category: Type.Optional(Type.String()),
+      /** Limit total items returned per list. */
+      limit: Type.Optional(Type.Number()),
+    }),
+  ),
 });
 
 // ── Tool Execute ──────────────────────────────────────────────────────────
@@ -385,7 +478,15 @@ async function scratchpadExecute(
 
   switch (action) {
     case "read": {
-      resultText = formatScratchpad(pad);
+      resultText = formatScratchpad(pad, params.filter as
+        | {
+            ids?: string[];
+            sinceTurn?: number;
+            untilTurn?: number;
+            category?: string;
+            limit?: number;
+          }
+        | undefined);
       break;
     }
 
@@ -410,6 +511,7 @@ async function scratchpadExecute(
         planText = text.slice(0, budgetMatch.index!).trim();
       }
       const step: PlanStep = {
+        id: nextId("pl"),
         text: planText,
         budgetCalls,
         spentCalls: 0,
@@ -420,20 +522,37 @@ async function scratchpadExecute(
       const budgetStr = budgetCalls ? ` [budget: ${budgetCalls} calls]` : "";
       capPush(pad.plan, step, RECYCLE.MAX_PLAN);
       await mutateAndSave(pad);
-      resultText = `Step added: ${planText}${budgetStr}`;
+      resultText = `Step added: ${planText}${budgetStr} (id: ${step.id})`;
       break;
     }
 
     case "mark_done": {
-      const step = pad.plan.find((s) => s.text === text);
+      // Accept either text match (legacy) or id (preferred).
+      const idOrText = (params.id as string | undefined) ?? text;
+      const step = pad.plan.find(
+        (s) => s.id === idOrText || s.text === idOrText,
+      );
+      const now = Date.now();
       if (step) {
         step.doneTurn = pad.session.turn;
-        capPush(pad.done, text, RECYCLE.MAX_DONE);
-        resultText = `Completed: ${text}`;
+        const doneItem: DoneItem = {
+          id: nextId("dn"),
+          text: step.text,
+          turn: pad.session.turn,
+          addedAt: now,
+        };
+        capPush(pad.done, doneItem, RECYCLE.MAX_DONE);
+        resultText = `Completed: ${step.text} (id: ${doneItem.id})`;
       } else {
-        // Fallback: just add to done
-        capPush(pad.done, text, RECYCLE.MAX_DONE);
-        resultText = `Completed: ${text}`;
+        // Fallback: just add to done (no plan step matched)
+        const doneItem: DoneItem = {
+          id: nextId("dn"),
+          text,
+          turn: pad.session.turn,
+          addedAt: now,
+        };
+        capPush(pad.done, doneItem, RECYCLE.MAX_DONE);
+        resultText = `Completed: ${text} (id: ${doneItem.id})`;
       }
       await mutateAndSave(pad);
       break;
@@ -448,24 +567,41 @@ async function scratchpadExecute(
         decisionText = text.slice(0, sepIndex).trim();
         reason = text.slice(sepIndex + 1).trim();
       }
-      const decision: Decision = { text: decisionText, reason, turn: pad.session.turn };
+      const decision: Decision = {
+        id: nextId("dc"),
+        text: decisionText,
+        reason,
+        turn: pad.session.turn,
+      };
       capPush(pad.decisions, decision, RECYCLE.MAX_DECISIONS);
       await mutateAndSave(pad);
-      resultText = `Decision recorded: ${decisionText}${reason ? ` (${reason})` : ""}`;
+      resultText = `Decision recorded: ${decisionText}${reason ? ` (${reason})` : ""} (id: ${decision.id})`;
       break;
     }
 
     case "add_hypothesis": {
-      capPush(pad.hypotheses, text, RECYCLE.MAX_HYPOTHESES);
+      const hyp: HypothesisItem = {
+        id: nextId("hp"),
+        text,
+        turn: pad.session.turn,
+        addedAt: Date.now(),
+      };
+      capPush(pad.hypotheses, hyp, RECYCLE.MAX_HYPOTHESES);
       await mutateAndSave(pad);
-      resultText = `Hypothesis added: ${text}`;
+      resultText = `Hypothesis added: ${text} (id: ${hyp.id})`;
       break;
     }
 
     case "add_note": {
-      capPush(pad.notes, text, RECYCLE.MAX_NOTES);
+      const note: NoteItem = {
+        id: nextId("nt"),
+        text,
+        turn: pad.session.turn,
+        addedAt: Date.now(),
+      };
+      capPush(pad.notes, note, RECYCLE.MAX_NOTES);
       await mutateAndSave(pad);
-      resultText = `Note added: ${text}`;
+      resultText = `Note added: ${text} (id: ${note.id})`;
       break;
     }
 
@@ -611,6 +747,7 @@ async function scratchpadExecute(
     case "elevate_to_plan": {
       if (text) {
         const step: PlanStep = {
+          id: nextId("pl"),
           text,
           budgetCalls: undefined,
           spentCalls: 0,
@@ -622,6 +759,111 @@ async function scratchpadExecute(
       }
       await mutateAndSave(pad);
       resultText = `Elevated to plan: ${text || "current plan"}`;
+      break;
+    }
+
+    // ── Targeted removal (long-session hygiene) ─────────────────────────
+    case "remove_plan": {
+      const target = (params.id as string | undefined) ?? text;
+      if (!target) {
+        resultText = "remove_plan requires 'id' or 'text'.";
+        break;
+      }
+      const { item, index } = findByIdOrText(pad.plan, target);
+      if (!item) {
+        resultText = `Plan step not found: ${target}`;
+        break;
+      }
+      pad.plan.splice(index, 1);
+      await mutateAndSave(pad);
+      resultText = `Plan step removed: ${item.text} (id: ${item.id})`;
+      break;
+    }
+
+    case "remove_note": {
+      const target = (params.id as string | undefined) ?? text;
+      if (!target) {
+        resultText = "remove_note requires 'id' or 'text'.";
+        break;
+      }
+      const { item, index } = findByIdOrText(pad.notes, target);
+      if (!item) {
+        resultText = `Note not found: ${target}`;
+        break;
+      }
+      pad.notes.splice(index, 1);
+      await mutateAndSave(pad);
+      resultText = `Note removed: ${item.text} (id: ${item.id})`;
+      break;
+    }
+
+    case "remove_decision": {
+      const target = (params.id as string | undefined) ?? text;
+      if (!target) {
+        resultText = "remove_decision requires 'id' or 'text'.";
+        break;
+      }
+      const { item, index } = findByIdOrText(pad.decisions, target);
+      if (!item) {
+        resultText = `Decision not found: ${target}`;
+        break;
+      }
+      pad.decisions.splice(index, 1);
+      await mutateAndSave(pad);
+      resultText = `Decision removed: ${item.text} (id: ${item.id})`;
+      break;
+    }
+
+    case "remove_hypothesis": {
+      const target = (params.id as string | undefined) ?? text;
+      if (!target) {
+        resultText = "remove_hypothesis requires 'id' or 'text'.";
+        break;
+      }
+      const { item, index } = findByIdOrText(pad.hypotheses, target);
+      if (!item) {
+        resultText = `Hypothesis not found: ${target}`;
+        break;
+      }
+      pad.hypotheses.splice(index, 1);
+      await mutateAndSave(pad);
+      resultText = `Hypothesis removed: ${item.text} (id: ${item.id})`;
+      break;
+    }
+
+    // ── Bulk actions (long-session hygiene) ─────────────────────────────
+    case "clear_done": {
+      const count = pad.done.length;
+      pad.done = [];
+      await mutateAndSave(pad);
+      resultText = `Cleared ${count} done items.`;
+      break;
+    }
+
+    case "archive_done": {
+      // Append archived done items to <slug>/archive.jsonl. Items are
+      // NOT deleted from memory; this just moves them to disk in
+      // append-only form so a future session can query them.
+      const slug = pad.projectSlug;
+      const archivePath = path.join(
+        SCRATCHPAD_DIR,
+        slug,
+        "archive.jsonl",
+      );
+      const lines = pad.done.map((d) =>
+        JSON.stringify({ kind: "done", text: d.text, turn: d.turn, addedAt: d.addedAt, id: d.id }),
+      );
+      if (lines.length > 0) {
+        try {
+          await appendFile(archivePath, lines.join("\n") + "\n", "utf-8");
+        } catch {
+          // Best-effort archive
+        }
+      }
+      const count = pad.done.length;
+      pad.done = [];
+      await mutateAndSave(pad);
+      resultText = `Archived ${count} done items to ${archivePath}`;
       break;
     }
 

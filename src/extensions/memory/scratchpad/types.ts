@@ -65,6 +65,8 @@ export interface KeyLearning {
 
 /** A single plan step with optional budget metadata (BAVT) */
 export interface PlanStep {
+  /** Stable ID for targeted removal. Generated at add time. */
+  id: string;
   text: string;
   estimateCalls?: number;
   budgetCalls?: number;
@@ -76,9 +78,38 @@ export interface PlanStep {
 
 /** A decision with reasoning context */
 export interface Decision {
+  /** Stable ID for targeted removal. */
+  id: string;
   text: string;
   reason?: string;
   turn: number;
+}
+
+/** A note in the scratchpad */
+export interface NoteItem {
+  /** Stable ID for targeted removal. */
+  id: string;
+  text: string;
+  turn: number;
+  addedAt: number;
+}
+
+/** A hypothesis in the scratchpad */
+export interface HypothesisItem {
+  /** Stable ID for targeted removal. */
+  id: string;
+  text: string;
+  turn: number;
+  addedAt: number;
+}
+
+/** A completed plan step (archived here for history) */
+export interface DoneItem {
+  /** Stable ID for targeted removal. */
+  id: string;
+  text: string;
+  turn: number;
+  addedAt: number;
 }
 
 // TaskItem and TaskStore were used by the now-removed 'task' tool (task.ts).
@@ -94,13 +125,13 @@ export interface TaskScratchpad {
   /** Steps to complete */
   plan: PlanStep[];
   /** Steps completed */
-  done: string[];
+  done: DoneItem[];
   /** Key decisions made */
   decisions: Decision[];
   /** Multiple hypotheses (for debugging) */
-  hypotheses: string[];
+  hypotheses: HypothesisItem[];
   /** Notes/thoughts */
-  notes: string[];
+  notes: NoteItem[];
 
   // ── CCA L2: Structured Session Memory ───────────────────────────────
 
