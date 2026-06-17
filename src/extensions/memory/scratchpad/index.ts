@@ -19,6 +19,7 @@ import { appendFile } from "node:fs/promises";
 import { Type } from "typebox";
 import type {
   AgentToolResult,
+  AgentToolUpdateCallback,
   ExtensionAPI,
   ExtensionContext,
   ToolDefinition,
@@ -455,8 +456,8 @@ const scratchpadParams = Type.Object({
 async function scratchpadExecute(
   _toolCallId: string,
   params: Record<string, unknown>,
-  _signal: AbortSignal,
-  _onUpdate: (chunk: string) => void,
+  _signal: AbortSignal | undefined,
+  _onUpdate: AgentToolUpdateCallback<unknown> | undefined,
   ctx: ExtensionContext,
 ): Promise<AgentToolResult<unknown>> {
   const action = params.action as string;
@@ -893,5 +894,5 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
       "Use this scratchpad for project-scoped work - do NOT use the SDK's separate 'task' tool for the same purpose.",
     parameters: scratchpadParams,
     execute: scratchpadExecute,
-  } as unknown as ToolDefinition<any, any, any>);
+  } as ToolDefinition<any, any, any>);
 }
