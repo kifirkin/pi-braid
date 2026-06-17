@@ -137,7 +137,7 @@ test("checkContradiction includes classifierDown in the success-path return", ()
 
 test("Tool execute() destructures classifierDown from sub-checks", () => {
   const toolBody = src.match(
-    /execute: async[\s\S]*?\} as unknown as ToolDefinition/,
+    /execute: async[\s\S]*?\} as ToolDefinition/,
   );
   assert.ok(toolBody, "Tool execute() body not found");
   const body = toolBody[0];
@@ -157,7 +157,7 @@ test("Tool execute() destructures classifierDown from sub-checks", () => {
 
 test("Tool result summary mentions 'DEGRADED' when classifier is down", () => {
   const toolBody = src.match(
-    /execute: async[\s\S]*?\} as unknown as ToolDefinition/,
+    /execute: async[\s\S]*?\} as ToolDefinition/,
   );
   assert.ok(toolBody, "Tool execute() body not found");
   const body = toolBody[0];
@@ -175,7 +175,7 @@ test("Tool result summary mentions 'DEGRADED' when classifier is down", () => {
 
 test("Tool result 'verified' field is false when classifier is down", () => {
   const toolBody = src.match(
-    /execute: async[\s\S]*?\} as unknown as ToolDefinition/,
+    /execute: async[\s\S]*?\} as ToolDefinition/,
   );
   assert.ok(toolBody, "Tool execute() body not found");
   const body = toolBody[0];
@@ -188,7 +188,7 @@ test("Tool result 'verified' field is false when classifier is down", () => {
 
 test("Tool result details object includes classifierDown flag", () => {
   const toolBody = src.match(
-    /execute: async[\s\S]*?\} as unknown as ToolDefinition/,
+    /execute: async[\s\S]*?\} as ToolDefinition/,
   );
   assert.ok(toolBody, "Tool execute() body not found");
   const body = toolBody[0];

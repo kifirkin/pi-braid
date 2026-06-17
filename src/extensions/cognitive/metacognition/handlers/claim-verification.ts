@@ -186,7 +186,7 @@ export function registerClaimVerificationTools(pi: ExtensionAPI): void {
 			_signal?: AbortSignal,
 			_onUpdate?: unknown,
 			ctx?: ExtensionContext,
-		): Promise<Record<string, unknown>> => {
+		): Promise<any> => {
 			try {
 				const p = params as {
 					claim: string;
@@ -274,7 +274,7 @@ export function registerClaimVerificationTools(pi: ExtensionAPI): void {
 				};
 			}
 		},
-	} as unknown as ToolDefinition<any, any, any>);
+	} as ToolDefinition<any, any, any>);
 
 
 	log.info("Registered claim verification tool: verify_claim (claim + decomposition actions)");
