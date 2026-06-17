@@ -129,11 +129,11 @@ Removed 24 unused `log` declarations, 23 unused `createLogger` imports, 19 unuse
 
 ### Investigations (commits `c3e3d1cb`, `4555e871`, `eb8bb07c`, `43a1ae31`)
 
-1. **Logging audit** — `docs/WHISPER-AND-LOGGING-AUDIT.md`. 0 anti-patterns: all 31 `ctx.ui.notify` are user-facing, 206 `createLogger` for diagnostics, 0 raw `console.*` outside logger.
+1. **Logging audit** — `docs/archive/WHISPER-AND-LOGGING-AUDIT.md` (archived 2026-06-17). 0 anti-patterns: all 31 `ctx.ui.notify` are user-facing, 206 `createLogger` for diagnostics, 0 raw `console.*` outside logger.
 2. **Whisper audit** — same doc. 37 `sendTrackedMessage` callsites, 0 direct `pi.sendMessage` outside the tracker.
 3. **Timer flood cap bug** — fixed. Per-source cap (2/turn) was dropping 3rd timer fire. Replaced 2-path workaround (wake:true direct, wake:false through sendTrackedMessage) with unified `sendTrackedMessage(pi, params, options, meta, { bypassFloodCap: true })` path. The 5th `bypass` argument is a new API for user/agent-contracted events.
 4. **Consolidation hint gate bug** — fixed. `isHintTooGeneric` was calling `CRITICS.hintQualityFallback()` directly (not through `classify()`), so the LLM tier never ran and the heuristic always returned "yes" (allow through). Generic debugging-cliché hints were never filtered. Now `isHintTooGeneric(task, steps, ctx)` is async and goes through `classify()` with `tierPolicy: "fallback-only"`.
-5. **Q13 split large index.ts** — `docs/Q13-SPLIT-INDEX-STATUS.md`. 4 of 8 large files are already split (sub-module pattern). 4 are mechanical candidates (`memory-agent-bridge`, `timer`, `session-recall`, `latent-activator`) — deferred with documented trigger conditions.
+5. **Q13 split large index.ts** — `docs/archive/Q13-SPLIT-INDEX-STATUS.md` (archived 2026-06-17). 4 of 8 large files are already split (sub-module pattern). 4 are mechanical candidates (`memory-agent-bridge`, `timer`, `session-recall`, `latent-activator`) — deferred with documented trigger conditions.
 
 ## Decisions log
 
@@ -198,9 +198,10 @@ A formal ESLint setup remains a separate project.
 
 - `docs/CODE-QUALITY-REMEDIATION-PLAN.md` — this doc
 - `docs/FRAGILE-HEURISTICS-INVENTORY.md` — 76 heuristics classified A/B/C/D
-- `docs/WHISPER-AND-LOGGING-AUDIT.md` — 37 sendTrackedMessage callsites, 31 ctx.ui.notify
+- `docs/archive/WHISPER-AND-LOGGING-AUDIT.md` (archived 2026-06-17) — 37 sendTrackedMessage callsites, 31 ctx.ui.notify
 - `docs/ARXIV-CITATIONS-AUDIT.md` — 7 cited papers, all real
-- `docs/Q13-SPLIT-INDEX-STATUS.md` — split deferral rationale
+- `docs/archive/Q13-SPLIT-INDEX-STATUS.md` (archived 2026-06-17) — split deferral rationale
+- `docs/ROADMAP.md` — current consolidated actionable roadmap (replaces the 4 archived docs)
 - `docs/TIMER-DELIVERY-INVESTIGATION.md` — historical (from prior session)
 - `docs/AUTO-SINGLETON-DECISION.md` — historical (from prior session)
 - `docs/CUT-CANDIDATES-DEEP-DIVE.md` — historical (from prior session)

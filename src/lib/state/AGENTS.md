@@ -143,7 +143,7 @@ The exception list is enforced by `test/runtime/lib/test-no-module-level-let.mjs
 
 - `npm run typecheck` - any new `let` at module scope in `lib/` is suspicious; review the State Policy table.
 - `test/runtime/lib/test-enforcement-state-composition.mjs` - state factory contracts.
-- The `test-no-module-level-let.mjs` lint test (added in Q15) scans `src/extensions/` and `src/lib/` for new `let` declarations and asserts that the 4 documented exceptions are the only ones.
+- The `test-no-module-level-let.mjs` lint test (added in Q15) scans `src/extensions/` and `src/lib/` for new `let` declarations and asserts that the 27 documented exceptions (in the table above) are the only ones.
 
 ## Child DOX Index
 

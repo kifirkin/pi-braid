@@ -64,7 +64,7 @@ Event handlers receive `(event, ctx: ExtensionContext)`. Tool execute functions 
 
 42 tools are registered across extensions. The full audit with
 overlap analysis, out-of-scope candidates, and consolidation plan
-is in `docs/TOOL-INVENTORY-AUDIT.md`. Key points:
+is in `docs/archive/TOOL-INVENTORY-AUDIT.md` (archived 2026-06-17 — see `docs/ROADMAP.md` for current state). Key points:
 
 - **In scope** (braid's value-add): cognitive, metacognition, memory,
   context management, error tracking, health, behavior, timer. Keep these.
@@ -96,7 +96,7 @@ is in `docs/TOOL-INVENTORY-AUDIT.md`. Key points:
 | `src/extensions/self/` | Self-management (health, error-tracking, watchdog, etc.) | [src/extensions/self/AGENTS.md](src/extensions/self/AGENTS.md) |
 | `src/lib/` | Library subsystems (13 subdirs, all have AGENTS.md) | [src/lib/AGENTS.md](src/lib/AGENTS.md) |
 | `src/loader/` | Extension loader + subagent API | [src/loader/AGENTS.md](src/loader/AGENTS.md) |
-| `docs/` | Reference docs (plan, audits, deep-dives) - NOT a DOX subtree, but referenced | (no AGENTS.md - durable reference) |
+| `docs/` | Reference docs: `ROADMAP.md` (actionable), `CODE-QUALITY-REMEDIATION-PLAN.md` (shipped record), `ENFORCEMENT-WHISPER-CONTENT-AUDIT.md` (whisper catalog), `FRAGILE-HEURISTICS-INVENTORY.md`, `STATE-POLICY.md`, `ARXIV-CITATIONS-AUDIT.md`. 4 superseded audits in `archive/`. See `docs/README.md`. | (no AGENTS.md - durable reference) |
 | `test/` | Test harness; no AGENTS.md needed (tests are leaf) | (no AGENTS.md) |
 | `scripts/` | Build/lint helpers; leaf | (no AGENTS.md) |
 | `evaluation/` | Benchmarks (JS only post-2026-06-10); leaf | (no AGENTS.md) |
@@ -104,6 +104,6 @@ is in `docs/TOOL-INVENTORY-AUDIT.md`. Key points:
 ## User Preferences (durable)
 
 - **Prefer implementing, improving, or fixing over removal.** Only remove truly dead code (unreferenced, deprecated with no path forward). This is a hard project rule.
-- **Braid is a value-add layer over pi core.** Out-of-scope tools (debug/research affordances) get flagged in the plan but not auto-removed. See `docs/TOOL-INVENTORY-AUDIT.md`.
+- **Braid is a value-add layer over pi core.** Out-of-scope tools (debug/research affordances) get flagged in the plan but not auto-removed. See `docs/archive/TOOL-INVENTORY-AUDIT.md` (archived 2026-06-17) and the current state in `docs/ROADMAP.md`.
 - **Test-based lint over ESLint custom rules.** Q15 was deferred. Use scan-style test files (e.g., `test-promise-allsettled-pattern.mjs`) as the linting substrate. ESLint setup is a separate project.
-- **Module-level `let` is banned for stateful data.** Use `getExtensionState(ctx, key, factory)` for per-session state, `global-state.ts` for process-global. The 4 documented exceptions live in `src/lib/state/AGENTS.md`.
+- **Module-level `let` is banned for stateful data.** Use `getExtensionState(ctx, key, factory)` for per-session state, `global-state.ts` for process-global. The 27 documented exceptions live in `src/lib/state/AGENTS.md`.

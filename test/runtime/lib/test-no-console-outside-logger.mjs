@@ -8,7 +8,7 @@
  * This test scans src/ for `console.log|warn|error|info|debug` calls and
  * asserts none appear outside the logger module and test files.
  *
- * See: docs/WHISPER-AND-LOGGING-AUDIT.md, src/lib/core/logger.ts.
+ * See: docs/archive/WHISPER-AND-LOGGING-AUDIT.md (archived 2026-06-17) and src/lib/core/logger.ts. The audit finding (0 raw `console.*` outside logger) is still valid and pinned by this test.
  */
 
 import { strict as assert } from "node:assert";

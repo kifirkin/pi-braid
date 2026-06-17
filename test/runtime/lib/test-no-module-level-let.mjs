@@ -4,11 +4,11 @@
  * Locks Q5 (module-level let migration). The pattern:
  *   - Use getExtensionState(ctx, "key", factory) for per-session state.
  *   - Use global-state.ts getters for process-global state.
- *   - Module-level `let` is banned except for the 4 documented exceptions:
- *     1. context-lifecycle/state.ts:_currentSessionState + _currentSessionId
- *     2. injection-tracker.ts:_sendDepth
- *     3. lib/utils/id.ts:_randomSuffix + _counter + _idGenerator (test injectors)
- *     4. lib/state/global-state.ts:private lets (encapsulated; only getters exported)
+ *   - Module-level `let` is banned except for the 27 documented exceptions
+ *     (organized in 6 categories A–F: re-entry guards, test injectors,
+ *     encapsulated global-state, logger config, session-state mirrors,
+ *     tunable config). See src/lib/state/AGENTS.md "Documented exceptions"
+ *     table for the full list with justifications.
  *
  * This test scans src/ for `^let ` or `^export let` at module scope and asserts
  * the only matches are the documented exceptions. Test injectors (id.ts) and

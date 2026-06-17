@@ -1,3 +1,11 @@
+> **⚠️ ARCHIVED — 2026-06-17**
+>
+> This document is preserved for historical reference. Its actionable
+> content has been folded into [`docs/ROADMAP.md`](../ROADMAP.md). The
+> recommendations here are either shipped, deferred, or superseded by
+> items in the new roadmap. See the linked roadmap section for the
+> current status of each item.
+
 # Q13 Status: Split Large index.ts Files
 
 **Date:** 2026-06-15

@@ -1,3 +1,11 @@
+> **⚠️ ARCHIVED — 2026-06-17**
+>
+> This document is preserved for historical reference. Its actionable
+> content has been folded into [`docs/ROADMAP.md`](../ROADMAP.md). The
+> recommendations here are either shipped, deferred, or superseded by
+> items in the new roadmap. See the linked roadmap section for the
+> current status of each item.
+
 # Tool Inventory Audit (June 2026)
 
 Audit of the 30 tools registered by pi-braid. Goal: identify bloat, redundancy, and

@@ -60,7 +60,7 @@ Most "I need to remember X across function calls" needs are either per-session (
 
 The runtime can call an extension's `before_agent_start` hook synchronously inside the extension's own `pi.sendMessage` call. If the extension uses `getExtensionState` for its re-entry counter, the counter is keyed by session, so it correctly persists across re-entries within a session. But the re-entry counter needs to be visible to code that doesn't have a ctx, and the synchronous call chain can't safely re-enter `getExtensionState`. The module-level `let` is the simplest correct pattern.
 
-The 4 documented exceptions (in `src/lib/state/AGENTS.md` "Documented exceptions" table) all match this pattern or its near variants. They are explicitly enumerated so future contributors can:
+The 27 documented exceptions (in `src/lib/state/AGENTS.md` "Documented exceptions" table) all match this pattern or its near variants. They are explicitly enumerated so future contributors can:
 - See the list, and
 - Avoid adding new `let` declarations without consulting this doc.
 
@@ -85,4 +85,4 @@ When a new state is needed:
 
 - `src/lib/state/AGENTS.md` - the policy table (the "what")
 - `docs/CODE-QUALITY-REMEDIATION-PLAN.md` Q5, Q7 - the audit history
-- `docs/Q13-SPLIT-INDEX-STATUS.md` - related cleanup of large index.ts files
+- `docs/archive/Q13-SPLIT-INDEX-STATUS.md` (archived 2026-06-17) - related cleanup of large index.ts files
