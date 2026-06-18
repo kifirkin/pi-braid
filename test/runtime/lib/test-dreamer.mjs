@@ -179,6 +179,8 @@ describe("D0 Dreamer Module", () => {
       totalToolCalls: 25,
       lastActivation: new Map(),
       ctx,
+      // v1.7+ ModuleContext: module calls context.whisper(), not ctx.whisper.
+      whisper: (msg, opts) => { whisperCalls.push({ msg, opts }); },
       sessionAge: 30,
       toolCallsSinceLastTick: [],
       silentTurns: 0,
@@ -228,6 +230,8 @@ describe("D0 Dreamer Module", () => {
       totalToolCalls: 26,
       lastActivation: new Map(),
       ctx,
+      // v1.7+ ModuleContext: module calls context.whisper(), not ctx.whisper.
+      whisper: (msg, opts) => { whisperCalls.push({ msg, opts }); },
       sessionAge: 30,
       toolCallsSinceLastTick: [],
       silentTurns: 0,
@@ -279,6 +283,8 @@ describe("D0 Dreamer Module", () => {
       totalToolCalls: 20,
       lastActivation: new Map(),
       ctx,
+      // v1.7+ ModuleContext: module calls context.whisper(), not ctx.whisper.
+      whisper: (msg, opts) => { whisperCalls.push({ msg, opts }); },
       sessionAge: 30,
       toolCallsSinceLastTick: [],
       silentTurns: 0,
@@ -318,6 +324,8 @@ describe("D0 Dreamer Module", () => {
       totalToolCalls: 25,
       lastActivation: new Map(),
       ctx,
+      // v1.7+ ModuleContext: module calls context.whisper(), not ctx.whisper.
+      whisper: (msg, opts) => { whisperCalls.push({ msg, opts }); },
       sessionAge: 30,
       toolCallsSinceLastTick: [],
       silentTurns: 0,

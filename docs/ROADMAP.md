@@ -945,18 +945,47 @@ the heartbeat-scheduler monkey-patch to be safe.
   resolved: every agent-facing whisper now goes through
   `sendTrackedMessage` (proper flood cap + injection tracking).
 
-## Final autonomous-pass tally (v1.0 - v1.8)
+  **Correction (v1.8.1, 2026-06-18):** the v1.8 commit's "All
+  test suites pass" claim is **incorrect**. `test-dreamer.mjs`
+  fails 3 subtests with `TypeError: context.whisper is not a
+  function` at `modules/reflection-consolidator.ts:87` (the
+  migrated line). Root cause: the test mock built a `context`
+  object with `whisper` on `context.ctx` but not on the
+  `context` wrapper. The v1.8 commit never re-ran the test
+  suite. **Lesson logged:** autonomous passes that touch a
+  contract that tests pin must re-run the relevant test files,
+  not just the contract test, before claiming success.
+- **v1.8.1** (2026-06-18): fix the v1.8 regression + add
+  regression-prevention contract test. `test-dreamer.mjs`:
+  added `whisper: (msg, opts) => { whisperCalls.push(...) }`
+  to the 4 inline `context` objects (tests 8, 9, 10, 11) so
+  the module's `context.whisper()` call lands in the test's
+  capture array. 11/11 subtests now pass. New contract test
+  `test/runtime/lib/test-no-ctx-whisper-in-modules.mjs`:
+  scans `src/extensions/heartbeat/heartbeat-scheduler/modules/*.ts`
+  for direct `ctx.whisper(` calls (the forbidden pattern);
+  allows comments only. Smoke-tested: temporarily
+  reintroducing the violation makes the test fail with the
+  exact file:line and a fix message. 8 module files scanned.
 
-**9 commits. 33 files changed. 511 insertions, 1020 deletions
+  **Test verification:** 58/58 pass (was 56/57 with the
+  v1.8 regression). tsc clean.
+
+## Final autonomous-pass tally (v1.0 - v1.8.1)
+
+**10 commits. 35 files changed. ~515 insertions, ~1020 deletions
 (most of the deletions are ROADMAP.md itself, which was
-folded in from 5 prior audit documents).**
+folded in from 5 prior audit documents). 1 regression shipped
+in v1.8 and fixed in v1.8.1.
 
-**33 of 51 actionable items shipped.** All test suites pass:
+**33 of 51 actionable items shipped.** All test suites pass
+(58/58, including the new `test-no-ctx-whisper-in-modules.mjs`):
 
 - `tsc --noEmit` — clean
 - `test-no-module-level-let.mjs` — 213 files, 0 violations
 - `test-no-console-outside-logger.mjs` — 213 files, 0 violations
 - `test-no-direct-pi-sendmessage.mjs` — 213 files, 0 violations
+- `test-no-ctx-whisper-in-modules.mjs` — 8 module files, 0 violations (v1.8.1)
 - `test-promise-allsettled-pattern.mjs` — 210 files, 0 violations
 - `test-a-class-critic-policy.mjs` — 0 violations
 - `test-timer-fire-wake-handling.mjs` — 11/11
@@ -964,6 +993,7 @@ folded in from 5 prior audit documents).**
 - `test-text-classifier-tier-policy.mjs` — clean
 - `test-scratchpad-long-session.mjs` — 50/50
 - `test-cognitive-memory-runtime.mjs` — clean
+- `test-dreamer.mjs` — 11/11 (v1.8.1: was 8/11 due to v1.8 regression)
 
 ### Shipped items by priority tier
 
