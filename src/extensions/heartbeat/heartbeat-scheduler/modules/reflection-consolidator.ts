@@ -84,7 +84,7 @@ export const reflectionConsolidatorModule: CognitiveModule = {
     );
 
     if (insights.length > 0) {
-      context.ctx.whisper?.(`Self-reflection: ${insights.join(" ")}`, { category: "cognitive" });
+      context.whisper(`Self-reflection: ${insights.join(" ")}`, { category: "cognitive" });
     }
 
     // ── Cross-session pattern learning ────────────────────────────

@@ -51,7 +51,7 @@ export const evolverModule: CognitiveModule = {
         `${memState.heuristics.filter((h) => h.uses > 0).length}/${memState.heuristics.length} heuristics used)`,
     );
 
-    context.ctx.whisper?.(
+    context.whisper(
       `Meta-learning: session archived. ${memState.heuristics.filter((h) => h.uses > 0).length}/${memState.heuristics.length} heuristics applied. ${memState.heuristics.length} total active.`,
       { category: "cognitive" },
     );

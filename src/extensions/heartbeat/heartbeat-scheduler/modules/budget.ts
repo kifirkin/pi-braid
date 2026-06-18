@@ -96,7 +96,7 @@ export const budgetModule: CognitiveModule = {
                 });
               }
 
-              context.ctx.whisper?.(threshold.msg, {
+              context.whisper(threshold.msg, {
                 category: "cognitive",
                 priority: threshold.priority as "low" | "medium",
               });

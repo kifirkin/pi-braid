@@ -30,7 +30,7 @@ export const measurementModule: CognitiveModule = {
     if (degraded) {
       const reasons = getDegradationReasons(context.ctx);
       log.warn(`Degradation detected: ${reasons.join(", ")}`);
-      context.ctx.whisper?.(
+      context.whisper(
         `Degradation detected: ${reasons.join(", ")}. Consider: context audit, session recall, or wrapping up.`,
         { category: "cognitive", priority: "medium" },
       );

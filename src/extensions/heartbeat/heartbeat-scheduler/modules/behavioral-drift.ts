@@ -202,7 +202,7 @@ export const behavioralDriftModule: CognitiveModule = {
         `If this shift isn't from task requirements, consider whether implicit ` +
         `signals are redirecting behavior.`;
 
-      ctx.whisper?.(msg, { category: "cognitive", priority: "low" });
+      context.whisper(msg, { category: "cognitive", priority: "low" });
       log.info(msg);
     }
   },

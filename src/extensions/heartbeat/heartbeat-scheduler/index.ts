@@ -454,7 +454,28 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
       const defaultPolicies = createDefaultPolicies(
         () => state.metaLearning.toolTracking,
         onSignal,
-        (msg: string) => ctx.whisper?.(msg, { category: "cognitive", priority: "low" }),
+        // ROADMAP P0-1 / DR-C-1: policy engine whisper uses the proper
+        // sendTrackedMessage channel (honors flood cap and injection
+        // tracking) instead of ctx.whisper. The per-tick aggregation
+        // (whisperBuffer) is for module whispers; policy whispers are
+        // signal-triggered and fire independently of the tick.
+        (msg: string) => {
+          try {
+            sendTrackedMessage(
+              pi,
+              {
+                customType: "heartbeat",
+                content: [{ type: "text" as const, text: msg }],
+                display: true,
+                details: { [BRAID_INJECTED]: true, [BRAID_SOURCE]: "heartbeat/policy" },
+              },
+              { deliverAs: "steer", triggerTurn: false },
+              { type: "heartbeat", source: "heartbeat/policy" },
+            );
+          } catch (err) {
+            log.warn(`[heartbeat] policy whisper failed: ${err}`);
+          }
+        },
         () => ctx.getContextUsage(),
         (msg: string) => {
           sendTrackedMessage(

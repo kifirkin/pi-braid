@@ -22,6 +22,8 @@ import { CRITICS } from "../../../lib/ai/critic-registry.js";
 import { onEvent } from "../../../lib/events/event-types.js";
 import { ANCHOR_TURNS_BEFORE_RESET } from "../../../lib/constants/session-thresholds.js";
 import { topicDriftFallback } from "../../../lib/ai/critic-fallbacks.js";
+import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
+import { BRAID_INJECTED, BRAID_SOURCE } from "../../../lib/constants/injection-details.js";
 
 const log = createLogger("topic-drift");
 
@@ -301,12 +303,33 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
       // so the agent knows the monitor is degraded. Same pattern as
       // the lib version (b25006f3).
       if (result.classifierDown) {
-        ctx.whisper?.(
-          `Topic drift monitor is offline (classifier unavailable this turn). ` +
-            `If you suspect you're drifting, self-check against the original request: ` +
-            `"${state.originalRequest.substring(0, 80)}..."`,
-          { category: "cognitive", priority: "low" },
-        );
+        // ROADMAP P0-1 / DR-C-1: use sendTrackedMessage instead of
+        // ctx.whisper. The latter bypasses the per-source flood cap
+        // and injection tracking. The text + customType are identical
+        // so downstream consumers (e.g. the TUI) see the same format.
+        try {
+          sendTrackedMessage(
+            pi,
+            {
+              customType: "topic-drift",
+              content: [
+                {
+                  type: "text" as const,
+                  text:
+                    `Topic drift monitor is offline (classifier unavailable this turn). ` +
+                    `If you suspect you're drifting, self-check against the original request: ` +
+                    `"${state.originalRequest.substring(0, 80)}..."`,
+                },
+              ],
+              display: true,
+              details: { [BRAID_INJECTED]: true, [BRAID_SOURCE]: "topic-drift/offline" },
+            },
+            { deliverAs: "steer", triggerTurn: false },
+            { type: "context", source: "topic-drift/offline" },
+          );
+        } catch (err) {
+          log.warn(`[topic-drift] offline whisper failed: ${err}`);
+        }
         return;
       }
 
@@ -316,12 +339,30 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
 
         if (allRecentDrifted && result.similarity < 0.5) {
           const missing = result.missingAnchors.slice(0, 5).join(", ");
-          ctx.whisper?.(
-            `Your response seems to cover different ground than the original request. ` +
-              `Signal: ${missing || "topic mismatch"}. ` +
-              `Original request: "${state.originalRequest.substring(0, 80)}..."`,
-            { category: "cognitive", priority: "low" },
-          );
+          // ROADMAP P0-1 / DR-C-1: use sendTrackedMessage.
+          try {
+            sendTrackedMessage(
+              pi,
+              {
+                customType: "topic-drift",
+                content: [
+                  {
+                    type: "text" as const,
+                    text:
+                      `Your response seems to cover different ground than the original request. ` +
+                      `Signal: ${missing || "topic mismatch"}. ` +
+                      `Original request: "${state.originalRequest.substring(0, 80)}..."`,
+                  },
+                ],
+                display: true,
+                details: { [BRAID_INJECTED]: true, [BRAID_SOURCE]: "topic-drift/drift-detected" },
+              },
+              { deliverAs: "steer", triggerTurn: false },
+              { type: "context", source: "topic-drift/drift-detected" },
+            );
+          } catch (err) {
+            log.warn(`[topic-drift] drift whisper failed: ${err}`);
+          }
           log.info(
             `[topic-drift] Drift: similarity=${result.similarity.toFixed(2)}, ` +
               `missing=${result.missingAnchors.length}`,

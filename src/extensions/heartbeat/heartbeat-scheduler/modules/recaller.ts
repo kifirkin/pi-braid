@@ -72,7 +72,7 @@ export const recallerModule: CognitiveModule = {
 
       if (applicableHeuristics.length > 0) {
         log.info(`${applicableHeuristics.length} applicable heuristics for task suggestion`);
-        context.ctx.whisper?.(
+        context.whisper(
           `Proactive memory: ${applicableHeuristics.length} heuristics may apply to your current task. Consider: ${applicableHeuristics
             .map((h: any) => h.condition)
             .slice(0, 2)

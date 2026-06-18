@@ -23,7 +23,7 @@ export const timerReminderModule: CognitiveModule = {
     try {
       const reminders = drainTimerReminders();
       for (const { timer } of reminders) {
-        context.ctx.whisper?.(
+        context.whisper(
           `[timer] ${timer.reason}\n` +
             `Timer ID: ${timer.id}` +
             (timer.tag ? ` (tag: ${timer.tag})` : "") +

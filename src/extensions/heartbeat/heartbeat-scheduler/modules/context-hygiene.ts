@@ -127,7 +127,7 @@ export const contextHygieneModule: CognitiveModule = {
             ratio: Math.round(density.tokenRatio * 100),
             count: density.duplicates,
           });
-          ctx.whisper?.(msg, { category: "cognitive", priority: "medium" });
+          context.whisper(msg, { category: "cognitive", priority: "medium" });
         }
       }
     } catch {
@@ -179,7 +179,7 @@ export const contextHygieneModule: CognitiveModule = {
       }
 
       const projectedPercent = Math.min(Math.round(projectedUsage * 100), 100);
-      ctx.whisper?.(
+      context.whisper(
         `[proactive] Context projected at ${projectedPercent}% in ` +
           `${Math.ceil(remainingTurns)} turns (${(density.totalTokens / 1000).toFixed(0)}K tokens, ` +
           `${(density.tokenRatio * 100).toFixed(0)}% now). ` +
@@ -216,7 +216,7 @@ export const contextHygieneModule: CognitiveModule = {
         autoCompactState.consecutiveLowDensity = 0;
         // Whisper a high-priority suggestion - don't call ctx.compact()
         // as it aborts the agent mid-turn (agent-session.js:1245)
-        ctx.whisper?.(
+        context.whisper(
           "Context density still low (" +
             Math.round(density.density * 100) +
             "% signal). " +
@@ -238,7 +238,7 @@ export const contextHygieneModule: CognitiveModule = {
           HYGIENE_DENSITY_WHISPER_COOLDOWN_TURNS
         ) {
           autoCompactState.lastDensityWhisperTurn = currentTurn;
-          ctx.whisper?.(
+          context.whisper(
             "Low context density (" +
               Math.round(density.density * 100) +
               "% signal). " +
@@ -265,7 +265,7 @@ export const contextHygieneModule: CognitiveModule = {
         HYGIENE_LARGE_CONTEXT_COOLDOWN_TURNS
     ) {
       autoCompactState.lastLargeContextWhisperTurn = currentTurn;
-      ctx.whisper?.(
+      context.whisper(
         "High density (" +
           Math.round(density.density * 100) +
           "%) but large context (" +
@@ -283,7 +283,7 @@ export const contextHygieneModule: CognitiveModule = {
         HYGIENE_DENSITY_WHISPER_COOLDOWN_TURNS
     ) {
       autoCompactState.lastDuplicateWhisperTurn = currentTurn;
-      ctx.whisper?.(
+      context.whisper(
         density.duplicates +
           " near-duplicate messages in context. " +
           "Consider: context_prune() to remove redundant context.",
