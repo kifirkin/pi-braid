@@ -6,7 +6,7 @@
  * Research: docs/research/bicameral-mind-analysis.md
  */
 
-import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { createThinkTool, recordCalibration } from "./handlers/think.js";
 import { createHypothesizeTool } from "./handlers/hypothesize.js";
@@ -47,9 +47,11 @@ function getMetaState(ctx: ExtensionContext): MetaMetrics {
 }
 
 export default function metacognitionExtension(pi: ExtensionAPI) {
-  // Register tools
-  pi.registerTool(createThinkTool() as ToolDefinition<any, any, any>);
-  pi.registerTool(createHypothesizeTool() as ToolDefinition<any, any, any>);
+  // Register tools. Each factory returns a properly typed
+  // ToolDefinition<any, any, any> now (ROADMAP P2-1: typed-adapter
+  // pattern) so the call site needs no `as` cast.
+  pi.registerTool(createThinkTool());
+  pi.registerTool(createHypothesizeTool());
   pi.registerTool(
     createFinalizeTool({
       onFinalize: (_summary, _completed) => {
@@ -70,11 +72,11 @@ export default function metacognitionExtension(pi: ExtensionAPI) {
         );
       },
       recordCalibration,
-    }) as ToolDefinition<any, any, any>,
+    }),
   );
 
   // ── Verify Tool ───────────────────────────────────────────────────────────
-  pi.registerTool(createVerifyTool() as ToolDefinition<any, any, any>);
+  pi.registerTool(createVerifyTool());
 
   // ── Claim Verification Tools (moved from cognitive/verification/) ──────────
   registerClaimVerificationTools(pi);

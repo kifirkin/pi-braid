@@ -423,7 +423,7 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
         };
       }
     },
-  } as ToolDefinition);
+  } as ToolDefinition<any, any, any>);
 
   log.info("Topic drift detector registered: topic_drift (check + reset actions)");
 }

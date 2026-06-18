@@ -3,7 +3,7 @@
 // Uses the session model (ctx.model) directly - no separate utility model.
 
 import { Type } from "typebox";
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { callLlm } from "../../../../lib/ai/llm-call.js";
 import { resolveUtilityModel } from "../../../../lib/ai/model-resolver.js";
 import { estimateComplexity, complexityToDepth, getBudget, getCalibrationStats, computeCalibrationError } from "./think-budget.js";
@@ -214,7 +214,7 @@ export function stepConsistencyCheck(
 
 // ── Main Tool ────────────────────────────────────────────────────────────────
 
-export function createThinkTool() {
+export function createThinkTool(): ToolDefinition<any, any, any> {
   return {
     name: "think" as const,
     label: "Think",

@@ -14,7 +14,7 @@
  */
 
 import { Type } from "typebox";
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { callLlm } from "../../../../lib/ai/llm-call.js";
 import { resolveUtilityModel } from "../../../../lib/ai/model-resolver.js";
 import { getExtensionState } from "../../../../lib/state/extension-state.js";
@@ -276,9 +276,10 @@ export function getLastVerification(ctx: ExtensionContext): VerificationRecord |
 
 // ── Tool ──────────────────────────────────────────────────────────────────────
 
-export function createVerifyTool() {
+export function createVerifyTool(): ToolDefinition<any, any, any> {
   return {
     name: "verify",
+    label: "Verify",
     promptSnippet: "Verify code, reasoning, or tool results before finalization",
     description:
       "Verify code, reasoning, or results after writing code or when uncertain about an approach to catch errors early. Provide specific criteria for targeted checks.",

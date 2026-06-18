@@ -451,7 +451,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
           throw new Error(`Unknown timer action: ${params?.action}. Use: set, list, cancel.`);
       }
     },
-  } as ToolDefinition);
+  } as ToolDefinition<any, any, any>);
 
   // ── Per-pi poller: one per session ────────────────────────────────────
   // The poller is created LAZILY on first session-aware event, because we

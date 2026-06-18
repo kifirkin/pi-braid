@@ -6,7 +6,7 @@
 // Pre-flight: checks if recent verify() passed, blocks finalization if unresolved issues remain.
 
 import { Type } from "typebox";
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../../../../lib/state/extension-state.js";
 import { createLogger } from "../../../../lib/core/logger.js";
 import { getLastVerification } from "./verify.js";
@@ -217,7 +217,7 @@ export interface FinalizeCallbacks {
   ) => void;
 }
 
-export function createFinalizeTool(callbacks: FinalizeCallbacks = {}) {
+export function createFinalizeTool(callbacks: FinalizeCallbacks = {}): ToolDefinition<any, any, any> {
   const { onFinalize, sendNextTask, recordCalibration } = callbacks;
 
   return {
