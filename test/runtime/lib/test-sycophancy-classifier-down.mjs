@@ -62,12 +62,20 @@ test("SycophancyRisk interface includes classifierDown field", () => {
   );
 });
 
-test("computeRisk sets classifierDown = result.tier === 'failed'", () => {
-  // The function must detect the failed tier and propagate it.
+test("computeRisk sets classifierDown = result.classifierDown", () => {
+  // After EW-7.4 migration to classifyWithOffline(), the offline
+  // signal is exposed as result.classifierDown (not the raw tier).
+  // The function must propagate it to the safe-default return.
   assert.match(
     src,
-    /classifierDown:\s*result\.tier === "failed"/,
-    "computeRisk must set classifierDown = (result.tier === 'failed') on the safe-default return",
+    /classifierDown:\s*result\.classifierDown/,
+    "computeRisk must set classifierDown = result.classifierDown on the safe-default return",
+  );
+  // And it must use classifyWithOffline() now
+  assert.match(
+    src,
+    /classifyWithOffline\(/,
+    "computeRisk should call classifyWithOffline() (EW-7.4 migration)",
   );
 });
 
@@ -85,7 +93,7 @@ test("computeRisk safe-default still returns score:0 (don't false-positive)", ()
     "computeRisk must still return score:0 on the safe-default path",
   );
   assert.ok(
-    /classifierDown:\s*result\.tier === "failed"/.test(body),
+    /classifierDown:\s*result\.classifierDown/.test(body),
     "computeRisk must add classifierDown flag to the safe-default return",
   );
 });

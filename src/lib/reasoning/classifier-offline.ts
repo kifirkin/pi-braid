@@ -21,7 +21,12 @@
  * ROADMAP P2-3 / EW-7.4.
  */
 
-import { classify, type ClassificationResult, type ClassifierCriteria } from "../ai/text-classifier.js";
+import {
+  classify,
+  type ClassificationResult,
+  type ClassifierCriteria,
+  type ClassifierOptions,
+} from "../ai/text-classifier.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 /** A classify() call wrapped with offline detection. */
@@ -29,7 +34,19 @@ export interface ClassifyWithOfflineResult<T> {
   value: T;
   classifierDown: boolean;
   tier: ClassificationResult["tier"];
+  /** Latency of the underlying classify() call in ms (0 if tier === "heuristic" failed before LLM). */
+  latencyMs: number;
 }
+
+/**
+ * Options for classifyWithOffline. Pass-through to classify() for
+ * everything except the offline-fallback semantics. The `fallback`
+ * is used both as the tier-1 heuristic AND as the safe default
+ * returned when the LLM tier fails.
+ */
+export type ClassifyWithOfflineOptions = Omit<ClassifierOptions, "fallback"> & {
+  fallback?: () => string;
+};
 
 /**
  * Run a classifier and capture the offline state. The caller passes a
@@ -40,7 +57,7 @@ export interface ClassifyWithOfflineResult<T> {
  * @param ctx          The ExtensionContext (for classify() LLM call)
  * @param criteria     The classifier criteria (systemPrompt + userPrompt) for classify()
  * @param input        Input data for the prompt substitutions
- * @param options      Optional timeout and fallback function
+ * @param options      Optional timeout, fallback, tierPolicy, label, validLabels, etc.
  * @returns value (the verdict), classifierDown (true on LLM failure), tier
  *
  * @example
@@ -56,17 +73,23 @@ export async function classifyWithOffline<T extends string>(
   ctx: ExtensionContext,
   criteria: ClassifierCriteria,
   input: Record<string, string>,
-  options: { timeoutMs?: number; fallback: () => T } = { fallback: () => "no" as T },
+  options: ClassifyWithOfflineOptions = {},
 ): Promise<ClassifyWithOfflineResult<T>> {
+  const fallback = options.fallback ?? ((): T => "no" as T);
   const result = await classify(ctx, criteria, input, {
     timeoutMs: options.timeoutMs,
-    fallback: options.fallback,
+    maxTokens: options.maxTokens,
+    tierPolicy: options.tierPolicy,
+    validLabels: options.validLabels,
+    label: options.label,
+    bestEffort: options.bestEffort,
+    fallback,
   });
   const tier = result.tier;
   if (tier === "failed") {
-    return { value: options.fallback(), classifierDown: true, tier };
+    return { value: fallback() as T, classifierDown: true, tier, latencyMs: result.latencyMs };
   }
-  return { value: result.label as T, classifierDown: false, tier };
+  return { value: result.label as T, classifierDown: false, tier, latencyMs: result.latencyMs };
 }
 
 /**

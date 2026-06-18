@@ -79,16 +79,25 @@ test("detectDriftWithCritics initializes classifierDown = false", () => {
   );
 });
 
-test("detectDriftWithCritics sets classifierDown when all results are tier=failed", () => {
+test("detectDriftWithCritics sets classifierDown when all results are down", () => {
   const fnBody = src.match(
     /async function detectDriftWithCritics[\s\S]*?\n  \} catch/,
   );
   assert.ok(fnBody, "detectDriftWithCritics body (pre-catch) not found");
   const body = fnBody[0];
+  // After EW-7.4 migration to classifyWithOffline(), the offline
+  // signal is exposed as result.classifierDown (not the raw tier).
+  // The aggregation logic is identical (.every on the offline flag).
   assert.match(
     body,
-    /allTiers\.every\(\s*\(r\)\s*=>\s*r === null \|\| r\.tier === "failed"/,
-    "Function must detect all-failed case via .every on tier === 'failed'",
+    /allValues\.every\(\s*\(r\)\s*=>\s*r === null \|\| r\.classifierDown/,
+    "Function must detect all-failed case via .every on classifierDown (EW-7.4 migration)",
+  );
+  // And it uses classifyWithOffline() now
+  assert.match(
+    body,
+    /classifyWithOffline\(/,
+    "detectDriftWithCritics should call classifyWithOffline() (EW-7.4 migration)",
   );
 });
 

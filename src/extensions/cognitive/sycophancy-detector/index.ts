@@ -18,6 +18,7 @@ import { emitSignal } from "../../../lib/reasoning/belief-policy-engine.js";
 import { createLogger } from "../../../lib/core/logger.js";
 import { getExtensionState, safeSessionManagerTyped } from "../../../lib/state/extension-state.js";
 import { classify } from "../../../lib/ai/text-classifier.js";
+import { classifyWithOffline } from "../../../lib/reasoning/classifier-offline.js";
 import { CRITICS } from "../../../lib/ai/critic-registry.js";
 import { MESSAGE_END } from "../../../lib/core/event-names.js";
 import { MIN_TEXT_LENGTH_FOR_CLASSIFY } from "../../../lib/constants/session-thresholds.js";
@@ -70,19 +71,22 @@ interface SycophancyRisk {
  * Uses utility model classification (fallback: heuristic patterns).
  */
 async function computeRisk(text: string, ctx: ExtensionContext): Promise<SycophancyRisk> {
-  const result = await classify(
+  // Q9: heuristic sycophancy detection misses novel forms. Always use LLM.
+  // EW-7.4: classifyWithOffline() captures the offline state so the
+  // consumer can emit a "sycophancy monitor offline" whisper.
+  const result = await classifyWithOffline(
     ctx,
     CRITICS.sycophancyTactics.criteria,
     { text },
     {
       ...CRITICS.sycophancyTactics.options,
-      // Q9: heuristic sycophancy detection misses novel forms. Always use LLM.
       tierPolicy: "always-llm",
       label: CRITICS.sycophancyTactics.label,
+      fallback: () => "no",
     },
   );
 
-  if (result.label === "yes") {
+  if (result.value === "yes") {
     return {
       score: 0.6,
       tactics: [`classify(${result.tier})`],
@@ -90,15 +94,11 @@ async function computeRisk(text: string, ctx: ExtensionContext): Promise<Sycopha
     };
   }
 
-  // classifierDown signal: tier === "failed" means the LLM call did
-  // not produce a usable answer. We still return score:0 (the safe
-  // default) but flag the offline state so the consumer can emit a
-  // "sycophancy monitor offline" whisper.
   return {
     score: 0,
     tactics: [],
     severity: "low",
-    classifierDown: result.tier === "failed",
+    classifierDown: result.classifierDown,
   };
 }
 
@@ -126,7 +126,7 @@ async function detectVbC(responseText: string, ctx: ExtensionContext): Promise<V
   // Truncate long responses to keep prompt tokens reasonable
   const truncated = responseText.length > 2000 ? responseText.slice(0, 2000) + "..." : responseText;
 
-  const result = await classify(
+  const result = await classifyWithOffline(
     ctx,
     CRITICS.vbCDetection.criteria,
     { text: truncated },
@@ -135,10 +135,11 @@ async function detectVbC(responseText: string, ctx: ExtensionContext): Promise<V
       // Q9: regex on "You're right...however" misses nuance. Always use LLM.
       tierPolicy: "always-llm",
       label: CRITICS.vbCDetection.label,
+      fallback: () => "no",
     },
   );
 
-  if (result.label === "yes") {
+  if (result.value === "yes") {
     return {
       detected: true,
       severity: "medium",
@@ -149,6 +150,9 @@ async function detectVbC(responseText: string, ctx: ExtensionContext): Promise<V
     };
   }
 
+  // classifierDown is intentionally not surfaced on VbC: VbC is a
+  // pattern-match detector and the heuristic fallback is sufficient.
+  // (EW-7.4: computeRisk() surfaces it; detectVbC() does not.)
   return { detected: false, severity: "low", score: 0, correction_hint: "" };
 }
 

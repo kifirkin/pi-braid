@@ -1094,15 +1094,74 @@ the heartbeat-scheduler monkey-patch to be safe.
     natural follow-up but is a separate item.
 
   **Test verification:** 59/59 pass. tsc clean.
+- **v2.1** (2026-06-18): **EW-7.4** complete — migrate the
+  remaining 3 call sites to `classifyWithOffline()`. The
+  helper itself was created in v1.2 but the migration was
+  not finished. This closes the loop.
 
-## Final autonomous-pass tally (v1.0 - v2.0)
+  **What shipped:**
 
-**12 commits. 37 files changed. ~530 insertions, ~1020 deletions
+  1. `src/lib/reasoning/classifier-offline.ts`:
+     - Extended options to pass through
+       `maxTokens`, `tierPolicy`, `validLabels`, `label`,
+       `bestEffort` to the underlying `classify()` call
+     - Added `latencyMs` to `ClassifyWithOfflineResult`
+       (callers previously needed it for log messages)
+
+  2. `src/extensions/cognitive/turn-outcome/index.ts`:
+     1 classify call → `classifyWithOffline()`. The
+     `LOOP_DETECTOR_OFFLINE` sentinel flow is preserved.
+
+  3. `src/extensions/cognitive/sycophancy-detector/index.ts`:
+     2 classify calls (computeRisk + detectVbC) → both
+     use `classifyWithOffline()`. The
+     `SycophancyRisk.classifierDown` propagation is
+     preserved.
+
+  4. `src/extensions/cognitive/topic-drift/index.ts`:
+     3 parallel classify calls in `Promise.allSettled` →
+     all use `classifyWithOffline()`. The "all 3 down"
+     aggregation logic is preserved (just changed from
+     `r.tier === "failed"` to `r.classifierDown`).
+
+  5. 3 test files updated to pin the new contract:
+     - `test-turn-outcome-classifier-down.mjs`
+     - `test-sycophancy-classifier-down.mjs`
+     - `test-cognitive-topic-drift-classifier-down.mjs`
+     All 3 now check for `classifyWithOffline()` usage and
+     the `result.classifierDown` / `result.value` shape.
+
+  **Why this matters:**
+
+  The 3 sites had near-identical "check result.tier === failed,
+  return safe default, flag offline" logic. After migration,
+  the pattern is centralized in `classifyWithOffline()`. Any
+  new classifier integration in the future MUST use the helper
+  (the AGENTS.md for `lib/reasoning/` already says this).
+
+  **What this does NOT do (out of scope):**
+
+  - The lib version
+    (`src/lib/detection/topic-drift-detector.ts`) was
+    already migrated in v1.2 (commit b25006f3). No work
+    needed there.
+  - The AGENTS.md for `lib/reasoning/` is not updated
+    to call out EW-7.4 completion. The comment that
+    already exists in `classifier-offline.ts` ("Use this
+    helper from any new classifier integration") is
+    sufficient. Deferred — would be a documentation-only
+    change.
+
+  **Test verification:** 59/59 pass. tsc clean.
+
+## Final autonomous-pass tally (v1.0 - v2.1)
+
+**13 commits. 40 files changed. ~560 insertions, ~1020 deletions
 (most of the deletions are ROADMAP.md itself, which was
 folded in from 5 prior audit documents). 1 regression shipped
 in v1.8 and fixed in v1.8.1.
 
-**34 of 51 actionable items shipped** (1 item, P3-19,
+**35 of 51 actionable items shipped** (1 item, P3-19,
 partially advanced — textResult/textParts now properly
 typed; full sweep of 245 `: any` annotations is a
 separate P2-class effort). All test suites pass

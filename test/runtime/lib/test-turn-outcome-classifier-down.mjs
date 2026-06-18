@@ -77,27 +77,34 @@ test("Sentinel comment documents the same anti-pattern as the other fixes", () =
   );
 });
 
-test("detectLoop returns LOOP_DETECTOR_OFFLINE when result.tier === 'failed'", () => {
+test("detectLoop returns LOOP_DETECTOR_OFFLINE when classifier is down", () => {
   const detectLoopBody = src.match(
     /async function detectLoop[\s\S]*?\n\}/,
   );
   assert.ok(detectLoopBody, "detectLoop body not found");
   const body = detectLoopBody[0];
-  // The detection must come AFTER the normal "label === yes" branch
+  // After EW-7.4 migration to classifyWithOffline(), the contract
+  // changed from result.tier === "failed" to result.classifierDown.
+  // The detection must come AFTER the normal "value === yes" branch
   // (we still want to return the loop details if the model succeeded)
   // but BEFORE the final "return null" (so the sentinel is the offline
   // signal, not the silent "no" default).
-  const yesIdx = body.indexOf('result.label === "yes"');
-  const failedIdx = body.indexOf('result.tier === "failed"');
+  const yesIdx = body.indexOf('result.value === "yes"');
+  const downIdx = body.indexOf("result.classifierDown");
   const returnNullIdx = body.lastIndexOf("return null");
-  assert.ok(yesIdx !== -1, "Normal 'label === yes' branch must exist");
-  assert.ok(failedIdx !== -1, "Failed-tier check must exist");
-  assert.ok(yesIdx < failedIdx, "yes-branch must come before the failed-tier check");
-  assert.ok(failedIdx < returnNullIdx, "failed-tier check must come before the silent return null");
-  // The failed-tier check must return the sentinel
+  assert.ok(yesIdx !== -1, "Normal 'value === yes' branch must exist");
+  assert.ok(downIdx !== -1, "classifierDown check must exist");
+  assert.ok(yesIdx < downIdx, "yes-branch must come before the classifierDown check");
+  assert.ok(downIdx < returnNullIdx, "classifierDown check must come before the silent return null");
+  // The classifierDown check must return the sentinel
   assert.ok(
-    /result\.tier === "failed"[\s\S]*?return LOOP_DETECTOR_OFFLINE/.test(body),
-    "Failed-tier branch must return the LOOP_DETECTOR_OFFLINE sentinel",
+    /result\.classifierDown[\s\S]*?return LOOP_DETECTOR_OFFLINE/.test(body),
+    "classifierDown branch must return the LOOP_DETECTOR_OFFLINE sentinel",
+  );
+  // And we use classifyWithOffline() now
+  assert.ok(
+    /classifyWithOffline\(/.test(body),
+    "detectLoop should call classifyWithOffline() (EW-7.4 migration)",
   );
 });
 
@@ -107,9 +114,11 @@ test("detectLoop logs a warn with /logs level info hint when classifier is down"
   );
   assert.ok(detectLoopBody, "detectLoop body not found");
   const body = detectLoopBody[0];
+  // After EW-7.4 migration, the warn lives inside the
+  // result.classifierDown branch (was result.tier === "failed" branch).
   assert.ok(
     /log\.warn\([\s\S]*?\/logs level info/.test(body),
-    "Failed-tier branch must log a warn pointing the operator to /logs level info",
+    "classifierDown branch must log a warn pointing the operator to /logs level info",
   );
 });
 

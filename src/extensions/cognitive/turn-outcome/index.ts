@@ -19,6 +19,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { createLogger } from "../../../lib/core/logger.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { classify } from "../../../lib/ai/text-classifier.js";
+import { classifyWithOffline } from "../../../lib/reasoning/classifier-offline.js";
 import { CRITICS } from "../../../lib/ai/critic-registry.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { tryClaim } from "../../../lib/enforcement/turn-dedup.js";
@@ -90,24 +91,24 @@ async function detectLoop(state: LoopDetectionState, ctx: ExtensionContext): Pro
     })
     .join("\n");
 
-  let result: Awaited<ReturnType<typeof classify>> | null = null;
+  let result: Awaited<ReturnType<typeof classifyWithOffline>> | null = null;
   try {
-    result = await classify(
+    // Q9 B-class: toolLoopFallback returns "no" by default (safe but
+    // uninformative). tierPolicy: fallback-only downweights the
+    // heuristic to 0.5 confidence so consumers can tell it's degraded.
+    result = await classifyWithOffline(
       ctx,
       CRITICS.toolLoopDetected.criteria,
       { toolSequences: toolSequences.slice(0, 2000) },
       {
         timeoutMs: 5000,
         label: CRITICS.toolLoopDetected.label,
-        // Q9 B-class: toolLoopFallback returns "no" by default (safe but
-        // uninformative). tierPolicy: fallback-only downweights the
-        // heuristic to 0.5 confidence so consumers can tell it's degraded.
         fallback: () => toolLoopFallback(toolSequences),
         tierPolicy: "fallback-only",
       },
     );
 
-    if (result.label === "yes") {
+    if (result.value === "yes") {
       // Extract the repeating tools from the last turn
       const lastTurnTools = recent[recent.length - 1]?.tools ?? [];
       return lastTurnTools.join(", ") || "unknown tools";
@@ -118,7 +119,7 @@ async function detectLoop(state: LoopDetectionState, ctx: ExtensionContext): Pro
     // see it. Return the LOOP_DETECTOR_OFFLINE sentinel so the consumer
     // can emit a "detector offline" steer instead of the usual
     // "no loop detected" silent return.
-    if (result.tier === "failed") {
+    if (result.classifierDown) {
       log.warn(
         `[turn-outcome] Loop detector classifier unavailable ` +
           `(tier=failed, latency=${result.latencyMs}ms). Run /logs level info for details.`,
@@ -126,7 +127,7 @@ async function detectLoop(state: LoopDetectionState, ctx: ExtensionContext): Pro
       return LOOP_DETECTOR_OFFLINE;
     }
   } catch {
-    // classify() handles errors internally
+    // classifyWithOffline() handles errors internally
   }
 
   return null;

@@ -18,6 +18,7 @@ import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-w
 import { createLogger } from "../../../lib/core/logger.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { classify } from "../../../lib/ai/text-classifier.js";
+import { classifyWithOffline } from "../../../lib/reasoning/classifier-offline.js";
 import { CRITICS } from "../../../lib/ai/critic-registry.js";
 import { onEvent } from "../../../lib/events/event-types.js";
 import { ANCHOR_TURNS_BEFORE_RESET } from "../../../lib/constants/session-thresholds.js";
@@ -97,20 +98,24 @@ async function detectDriftWithCritics(
 
   let classifierDown = false;
   try {
+    // EW-7.4: classifyWithOffline() captures the offline state per
+    // classifier. "all 3 down" → classifierDown = true (same logic as
+    // before, but the offline check is now on the helper's return value
+    // instead of the raw tier field).
     const [coverageResult, divergenceResult, completenessResult] = await Promise.allSettled([
-      classify(
+      classifyWithOffline(
         ctx,
         CRITICS.topicCoverage.criteria,
         { original: truncOriginal, response: truncOutput },
         { timeoutMs: 5000, label: CRITICS.topicCoverage.label, fallback: topicDriftFallback },
       ),
-      classify(
+      classifyWithOffline(
         ctx,
         CRITICS.topicDivergence.criteria,
         { original: truncOriginal, response: truncOutput },
         { timeoutMs: 5000, label: CRITICS.topicDivergence.label, fallback: topicDriftFallback },
       ),
-      classify(
+      classifyWithOffline(
         ctx,
         CRITICS.topicCompleteness.criteria,
         { original: truncOriginal, response: truncOutput },
@@ -119,29 +124,30 @@ async function detectDriftWithCritics(
     ]);
 
     // Unwrap allSettled: failed calls become safe defaults.
-    const unwrap = (r: PromiseSettledResult<Awaited<ReturnType<typeof classify>>>) =>
-      r.status === "fulfilled" ? r.value : null;
+    const unwrap = (
+      r: PromiseSettledResult<Awaited<ReturnType<typeof classifyWithOffline>>>,
+    ) => (r.status === "fulfilled" ? r.value : null);
     const coverageValue = unwrap(coverageResult);
     const divergenceValue = unwrap(divergenceResult);
     const completenessValue = unwrap(completenessResult);
 
     // Detect the "all classifiers failed" case. If every result is
-    // tier === "failed" (or null), the LLM signal is unreliable and
+    // classifierDown (or null), the LLM signal is unreliable and
     // we cannot trust the "no drift" default. Surface this so the
     // consumer can include a "drift detector offline" hint in the
     // tool result and the operator can see the degraded state.
-    const allTiers = [coverageValue, divergenceValue, completenessValue];
-    classifierDown = allTiers.every(
-      (r) => r === null || r.tier === "failed",
+    const allValues = [coverageValue, divergenceValue, completenessValue];
+    classifierDown = allValues.every(
+      (r) => r === null || r.classifierDown,
     );
 
     // Interpret critics:
     //   coverage="no"  → response does NOT address the request (bad)
     //   divergence="yes" → response shifted to different topic (bad)
     //   completeness="no" → response misses key topics (bad)
-    const coverageBad = coverageValue?.label === "no";
-    const diverged = divergenceValue?.label === "yes";
-    const incomplete = completenessValue?.label === "no";
+    const coverageBad = coverageValue?.value === "no";
+    const diverged = divergenceValue?.value === "yes";
+    const incomplete = completenessValue?.value === "no";
     const negativeVotes = [coverageBad, diverged, incomplete].filter(Boolean).length;
 
     const drifted = negativeVotes >= 2;
@@ -162,9 +168,9 @@ async function detectDriftWithCritics(
     }
 
     log.debug(
-      `[topic-drift] Critics: coverage=${coverageValue?.label}/${coverageValue?.tier}, ` +
-        `divergence=${divergenceValue?.label}/${divergenceValue?.tier}, ` +
-        `completeness=${completenessValue?.label}/${completenessValue?.tier} ` +
+      `[topic-drift] Critics: coverage=${coverageValue?.value}/${coverageValue?.tier}, ` +
+        `divergence=${divergenceValue?.value}/${divergenceValue?.tier}, ` +
+        `completeness=${completenessValue?.value}/${completenessValue?.tier} ` +
         `→ drifted=${drifted} classifierDown=${classifierDown}`,
     );
 
