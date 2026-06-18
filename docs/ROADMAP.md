@@ -1303,15 +1303,56 @@ the heartbeat-scheduler monkey-patch to be safe.
     a separate item — see the v1.0 entry. Unchanged.
 
   **Test verification:** 61/61 pass. tsc clean.
+- **v2.4** (2026-06-18): **EW-7.8** partial — promote
+  `nudgeCooldownMs` to a named constant. The "remove"
+  path needs per-NudgeType design decisions and is
+  deferred.
 
-## Final autonomous-pass tally (v1.0 - v2.3)
+  **What shipped:**
 
-**15 commits. 44 files changed. ~750 insertions, ~1020 deletions
+  1. `src/lib/constants/session-thresholds.ts`:
+     added `ERROR_TRACKING_NUDGE_COOLDOWN_MS = 60_000`
+     (1 minute). The existing `NUDGE_COOLDOWN_MS` is
+     5 minutes (cross-session cap) — different semantic,
+     so a new constant is needed.
+
+  2. `src/extensions/enforcement/substate/error-tracking-state.ts`:
+     imported the new constant and used it as the
+     default for `nudgeCooldownMs`. No behavior change.
+
+  **What this does NOT do (out of scope):**
+
+  - **The "remove" path.** Converting the 3 sites
+    (`turn-analysis.ts:62,129` and
+    `register-auto-retry-end.ts:23`) to use
+    NudgeManager requires:
+    - Adding 2 new NudgeTypes ("redundancy",
+      "autoRetry" — `recordFailure` already exists
+      but uses 20s cooldown vs the 60s the sites
+      use today)
+    - Picking per-NudgeType cooldowns (the 3 sites
+      all use 60s; should they share, or be
+      independent?)
+    - Deciding whether `recordFailure` should be
+      renamed to match the use case
+    These are design decisions, not mechanical
+    changes. Deferred.
+  - **Removing the `nudgeCooldownMs` field from
+    the state.** Once the 3 sites use NudgeManager,
+    the field is dead. But until the migration is
+    done, removing it would break the 3 sites.
+    Deferred.
+
+  **Test verification:** 61/61 pass. tsc clean.
+
+## Final autonomous-pass tally (v1.0 - v2.4)
+
+**16 commits. 45 files changed. ~770 insertions, ~1020 deletions
 (most of the deletions are ROADMAP.md itself, which was
 folded in from 5 prior audit documents). 1 regression shipped
 in v1.8 and fixed in v1.8.1.
 
-**37 of 51 actionable items shipped** (1 item, P3-19,
+**38 of 51 actionable items shipped** (1 item, P3-19,
 partially advanced — textResult/textParts now properly
 typed; full sweep of 245 `: any` annotations is a
 separate P2-class effort). All test suites pass

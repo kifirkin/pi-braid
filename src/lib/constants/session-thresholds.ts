@@ -22,6 +22,18 @@ export const NUDGE_COOLDOWN_TURNS = 50;
 /** Cooldown after a nudge before another nudge can fire (ms). */
 export const NUDGE_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 
+/**
+ * Per-call-site cooldown for the 3 enforcement nudge sites that share
+ * a single time-based gate (redundancy check, failure recording, auto
+ * retry end). Distinct from the 5-minute `NUDGE_COOLDOWN_MS` which is
+ * a cross-session cap; this is the per-site rate-limit value.
+ *
+ * EW-7.8: promote to constant. The "remove" path (delete the field,
+ * rely on NudgeManager) needs per-NudgeType cooldown decisions and
+ * is deferred.
+ */
+export const ERROR_TRACKING_NUDGE_COOLDOWN_MS = 60_000; // 1 minute
+
 // ═════════════════════════════════════════════════════════════════════════════
 // CROSS-SESSION MEMORY
 // ═════════════════════════════════════════════════════════════════════════════

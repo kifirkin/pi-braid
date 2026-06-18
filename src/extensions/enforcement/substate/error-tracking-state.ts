@@ -4,6 +4,8 @@
  * Owns: error burst tracking, validation failures, nudge rate-limiting timers.
  */
 
+import { ERROR_TRACKING_NUDGE_COOLDOWN_MS } from "../../../lib/constants/session-thresholds.js";
+
 export interface ErrorTrackingState {
   consecutiveErrorTurns: number;
   validationFailures: number;
@@ -27,7 +29,7 @@ export function createErrorTrackingState(): ErrorTrackingState {
     lastNudgeTime: 0,
     lastLazyNudgeTime: 0,
     lastJudgeTime: 0,
-    nudgeCooldownMs: 60_000,
+    nudgeCooldownMs: ERROR_TRACKING_NUDGE_COOLDOWN_MS,
     nudgeSuppressedCount: 0,
   };
 }
