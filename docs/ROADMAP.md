@@ -970,15 +970,72 @@ the heartbeat-scheduler monkey-patch to be safe.
 
   **Test verification:** 58/58 pass (was 56/57 with the
   v1.8 regression). tsc clean.
+- **v1.9** (2026-06-18): Track A + Track B (P3-19 partial,
+  P1-2 verified no-op, P3-24 verified). Selected after a
+  deep analysis of the project's next-move options (see
+  conversation context). The v1.8 regression was identified
+  by running the full test suite; the autonomous pass
+  claimed "all tests pass" but had not actually run
+  test-dreamer.mjs after the ModuleContext migration.
 
-## Final autonomous-pass tally (v1.0 - v1.8.1)
+  **P3-19 (DR-L-6) partial — properly type `textResult` and
+  `textParts`.** `src/lib/utils/extension-utils.ts:14,21`
+  both returned `any`. Imported `AgentToolResult` from
+  `@earendil-works/pi-coding-agent` and changed the return
+  type to `AgentToolResult<unknown>`. These are 20+ callsite
+  hot-path helpers (memory-agent-bridge action handlers),
+  so the typing makes the consumer-side call signatures
+  (which already type their returns as
+  `Promise<AgentToolResult>`) actually carry the type.
+  2 of 245 remaining `: any` annotations eliminated. The
+  remaining 243 are mostly handler signatures
+  (`event: any, ctx: any`) where pi-core event types are
+  genuinely untyped, or data-shape `any` (e.g. `item: any`
+  in list comprehensions) that would require defining
+  domain interfaces. Sweeping the rest is a separate
+  P2-class effort (would need per-extension review).
 
-**10 commits. 35 files changed. ~515 insertions, ~1020 deletions
+  **P1-2 (DR-C-3) verified no-op.** The v1.0 ROADMAP
+  described `AGENTS.md:146` and `STATE-POLICY.md:63` as
+  saying "4 documented exceptions" while the actual count
+  is 27. **The "4" text does not exist in the current
+  files.** AGENTS.md:133, AGENTS.md:146, and
+  STATE-POLICY.md:63 all say "27 documented exceptions."
+  The v1.0 ROADMAP was based on a stale observation (or
+  a misreading). No work needed. Side observation: the
+  table in `src/lib/state/AGENTS.md` "Documented
+  exceptions" has 21 visible rows but the test
+  `EXEMPT_LINES` has 30 entries; the test comment says
+  "27 documented exceptions." Some exceptions span
+  multiple lines (e.g. `lib/utils/id.ts:29,33,35` is one
+  exception with 3 line numbers), so 30 EXEMPT_LINES
+  can map to 21 table rows. But 27 vs 21 is undocumented.
+  Not fixed in this round (out of scope; would need a
+  careful audit of every EXEMPT_LINES entry vs table row).
+
+  **P3-24 verified — 10 orphan `tasks.json` files in
+  user state.** `find ~/.pi/agent/braid -name tasks.json`
+  returns 10 files (up from 5 at v1.4). These are
+  user-state files from the old `task` tool (pre-tool-
+  consolidation 2026-06-10), not repo files. Not
+  auto-deleted per the v1.4 stance (the user owns
+  user-state). User can clean manually via
+  `rm ~/.pi/agent/braid/scratchpads/*/tasks.json` if
+  desired. No commit.
+
+  **Test verification:** 58/58 pass. tsc clean.
+
+## Final autonomous-pass tally (v1.0 - v1.9)
+
+**11 commits. 35 files changed. ~515 insertions, ~1020 deletions
 (most of the deletions are ROADMAP.md itself, which was
 folded in from 5 prior audit documents). 1 regression shipped
 in v1.8 and fixed in v1.8.1.
 
-**33 of 51 actionable items shipped.** All test suites pass
+**33 of 51 actionable items shipped** (1 item, P3-19,
+partially advanced — textResult/textParts now properly
+typed; full sweep of 245 `: any` annotations is a
+separate P2-class effort). All test suites pass
 (58/58, including the new `test-no-ctx-whisper-in-modules.mjs`):
 
 - `tsc --noEmit` — clean

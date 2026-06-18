@@ -4,21 +4,21 @@
  * These are small, universal helpers that every extension needs.
  */
 
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { AgentToolResult, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getPrivateExtensionState } from "../state/extension-state.js";
 
 /**
  * Build a valid AgentToolResult with text content.
  * Use this instead of returning raw strings or duplicating the pattern.
  */
-export function textResult(text: string): any {
+export function textResult(text: string): AgentToolResult<unknown> {
   return { content: [{ type: "text" as const, text }], details: {} };
 }
 
 /**
  * Build an AgentToolResult with multiple text parts.
  */
-export function textParts(...parts: string[]): any {
+export function textParts(...parts: string[]): AgentToolResult<unknown> {
   return {
     content: parts.map((text) => ({ type: "text" as const, text })),
     details: {},
