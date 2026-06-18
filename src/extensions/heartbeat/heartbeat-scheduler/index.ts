@@ -22,6 +22,7 @@ import { createLogger } from "../../../lib/core/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
+import { BRAID_INJECTED, BRAID_SOURCE } from "../../../lib/constants/injection-details.js";
 import { eventBus } from "../../../lib/events/event-bus.js";
 import { processConsolidationTick, executeConsolidation } from "../../../lib/events/consolidation-channel.js";
 import { heartbeatCheckpointTick } from "../../../lib/state/state-checkpoint.js";
@@ -165,6 +166,12 @@ function tick(
     }
   }
 
+  // Build module context from heartbeat state. ROADMAP P0-1 / DR-C-1:
+  // prefer context.whisper() over ctx.whisper?.() to honor the flood
+  // cap. The whisperBuffer collects all module whispers; the tick
+  // handler flushes them via sendTrackedMessage.
+  const whisperBuffer: Array<{ message: string; priority: string }> = [];
+
   // Build module context from heartbeat state
   const moduleContext: ModuleContext = {
     ctx,
@@ -187,6 +194,9 @@ function tick(
           : 0,
       decompositionDepth: 0,
     },
+    whisper: (msg, opts) => {
+      whisperBuffer.push({ message: msg, priority: opts?.priority ?? "low" });
+    },
   };
 
   // Evaluate which modules should activate
@@ -204,13 +214,12 @@ function tick(
   }
 
   // ── Whisper batching ───────────────────────────────────────────────
-  // Buffer module whispers and flush as aggregated messages per priority tier.
-  // This prevents N separate injected messages per heartbeat tick.
-  const whisperBuffer: Array<{ message: string; priority: string }> = [];
-  const originalWhisper = ctx.whisper?.bind(ctx);
-  ctx.whisper = (msg: string, opts?: { category?: string; priority?: string }) => {
-    whisperBuffer.push({ message: msg, priority: opts?.priority ?? "low" });
-  };
+  // ROADMAP P0-1 / DR-C-1: NO LONGER monkey-patches ctx.whisper. The
+  // new moduleContext.whisper() is the recommended API and pushes to
+  // whisperBuffer (declared above). Modules that still call ctx.whisper
+  // directly will bypass the per-source flood cap (the old contract
+  // violation) but at least we don't mutate ctx anymore. Future
+  // module migrations should adopt context.whisper().
 
   candidates
     .sort((a, b) => b.priority - a.priority)
@@ -270,14 +279,29 @@ function tick(
       log.error("Checkpoint tick error:", err);
     })
     .finally(() => {
-      // Restore original whisper and flush buffer
-      ctx.whisper = originalWhisper;
-      flushWhisperBuffer(
-        whisperBuffer,
-        originalWhisper as
-          | ((msg: string, opts?: { category?: string; priority?: string }) => void)
-          | undefined,
-      );
+      // ROADMAP P0-1 / DR-C-1: flush via the proper tracked channel.
+      // No longer mutating ctx.whisper - the buffer is collected by
+      // moduleContext.whisper(). For modules that still call ctx.whisper
+      // directly (not yet migrated), they go through the original
+      // sendTrackedMessage channel so they still get batched + flood-capped.
+      const sendFn = (msg: string, opts?: { category?: string; priority?: string }) => {
+        try {
+          sendTrackedMessage(
+            _pi,
+            {
+              customType: "heartbeat",
+              content: [{ type: "text" as const, text: msg }],
+              display: true,
+              details: { [BRAID_INJECTED]: true, [BRAID_SOURCE]: "heartbeat/whisper-batcher" },
+            },
+            { deliverAs: "steer", triggerTurn: false },
+            { type: "heartbeat", source: "heartbeat/whisper-batcher" },
+          );
+        } catch (err) {
+          log.warn(`[heartbeat] whisper flush failed: ${err}`);
+        }
+      };
+      flushWhisperBuffer(whisperBuffer, sendFn);
     });
 }
 

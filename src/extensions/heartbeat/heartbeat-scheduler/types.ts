@@ -45,6 +45,14 @@ export interface ModuleContext {
   totalToolCalls: number;
   silentTurns: number;
   metadata: Record<string, unknown>;
+  /**
+   * ROADMAP P0-1 / DR-C-1: prefer `whisper()` over `ctx.whisper?.()`.
+   * The heartbeat tick handler batches all module whispers into one
+   * aggregated message and flushes via sendTrackedMessage, which
+   * honors the per-source flood cap. Calling `ctx.whisper` directly
+   * bypasses the cap and injection tracking. See heartbeat-batcher.ts.
+   */
+  whisper(msg: string, opts?: { category?: string; priority?: string }): void;
 }
 
 // ── Configuration ────────────────────────────────────────────────────────────
