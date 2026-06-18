@@ -1024,15 +1024,85 @@ the heartbeat-scheduler monkey-patch to be safe.
   desired. No commit.
 
   **Test verification:** 58/58 pass. tsc clean.
+- **v2.0** (2026-06-18): Q16 (cost analysis) — the
+  measurement foundation needed for P2-11 B-class fallback
+  conversions. The `recordCriticCall` infrastructure already
+  tracked per-critic call counts and latency. The missing
+  piece was **token usage** — without it, cost analysis was
+  impossible. The session model is the only `utility` model
+  typically configured (most users don't have a separate
+  utility tier), so Tier 3 cost is the actual cost of the
+  classifier network.
 
-## Final autonomous-pass tally (v1.0 - v1.9)
+  **What shipped:**
 
-**11 commits. 35 files changed. ~515 insertions, ~1020 deletions
+  1. `src/lib/ai/critic-stats.ts`:
+     - Added `totalInputTokens` + `totalOutputTokens` to
+       `CriticCallEntry`
+     - Added optional `usage` parameter (new
+       `CriticUsage` interface) to `recordCriticCall`
+     - Added `totalsInputTokens` + `totalsOutputTokens`
+       aggregate fields to `CriticStats`
+     - `getCriticStats()` now aggregates tokens across
+       all critics and all tiers
+
+  2. `src/lib/ai/text-classifier.ts`:
+     - `tryModelCall()` now returns `usage` on the
+       success path
+     - All 4 `recordCriticCall` call sites updated:
+       Tier 2 (utility) and Tier 3 (session) pass
+       `usage`; Tier 1 (heuristic) and the "failed"
+       path correctly omit it (no LLM tokens to count)
+
+  3. `test/runtime/lib/test-critic-stats-tokens.mjs`:
+     new contract test (5 subtests) that verifies the
+     runtime behavior — records calls with and without
+     usage, checks per-critic + aggregate token totals,
+     and pins the `CriticUsage` export in source. This
+     prevents a future refactor from silently breaking
+     the token tracking.
+
+  **What this enables:**
+
+  - **P2-11 (7 B-class fallbacks → LLM replacement):**
+    we can now measure the actual cost of converting
+    each fallback. The decision is no longer
+    "should we?" but "how much per turn? is the
+    quality worth the cost?"
+  - **EW-7.9 (per-signal gating):** the same token
+    data drives the gate logic.
+  - **Future cost dashboards:** `getCriticStats()`
+    now returns enough data to render a
+    per-critic cost table without further work.
+
+  **What this does NOT do (out of scope):**
+
+  - Cost-per-1k-token pricing is provider-specific.
+    The infrastructure exposes raw tokens; computing
+    USD cost is a separate function (lookup table
+    by model.provider + model.id). Deferred to a
+    later round when there's user demand.
+  - Failed-tier token tracking. The current
+    implementation records 0 tokens for failed
+    calls because the failure path doesn't carry
+    usage. To track failed-call tokens would
+    require extending `tryModelCall` to return
+    `usage` on the `{ ok: false }` paths too.
+    Marginal value (failed calls are not the
+    cost driver) — deferred.
+  - Q17 (hash-based short-window cache) is the
+    natural follow-up but is a separate item.
+
+  **Test verification:** 59/59 pass. tsc clean.
+
+## Final autonomous-pass tally (v1.0 - v2.0)
+
+**12 commits. 37 files changed. ~530 insertions, ~1020 deletions
 (most of the deletions are ROADMAP.md itself, which was
 folded in from 5 prior audit documents). 1 regression shipped
 in v1.8 and fixed in v1.8.1.
 
-**33 of 51 actionable items shipped** (1 item, P3-19,
+**34 of 51 actionable items shipped** (1 item, P3-19,
 partially advanced — textResult/textParts now properly
 typed; full sweep of 245 `: any` annotations is a
 separate P2-class effort). All test suites pass

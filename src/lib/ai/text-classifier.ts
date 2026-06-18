@@ -207,7 +207,7 @@ export async function classify(
       log.debug(
         `[text-classifier] TIER 2 (utility → ${utilityModel.id}): "${tier1.label}" ${latency}ms`,
       );
-      if (options?.label) recordCriticCall(options.label, "utility", latency);
+      if (options?.label) recordCriticCall(options.label, "utility", latency, tier1.usage);
       return {
         label: tier1.label,
         confidence: 0.9,
@@ -244,7 +244,7 @@ export async function classify(
       log.debug(
         `[text-classifier] TIER 3 (session → ${sessionModel.id}): "${tier2.label}" ${latency}ms`,
       );
-      if (options?.label) recordCriticCall(options.label, "session", latency);
+      if (options?.label) recordCriticCall(options.label, "session", latency, tier2.usage);
       return {
         label: tier2.label,
         confidence: 0.6,
@@ -331,7 +331,7 @@ async function tryModelCall(
   maxRetries = 0,
   validLabels?: string[],
 ): Promise<
-  | { ok: true; raw: string; label: string }
+  | { ok: true; raw: string; label: string; usage: { input?: number; output?: number; totalTokens?: number } | undefined }
   | { ok: false; reason: string }
   | null
 > {
@@ -405,7 +405,7 @@ async function tryModelCall(
       };
     }
 
-    return { ok: true, raw, label };
+    return { ok: true, raw, label, usage: result.usage };
   } catch (e) {
     const message = (e as Error).message;
     log.debug(`[text-classifier] ${model.id} threw: ${message}`);
