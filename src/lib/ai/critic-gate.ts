@@ -32,6 +32,14 @@ export interface CriticGateOptions {
   maxTokens?: number;
   /** Timeout in ms (default: 3000). */
   timeoutMs?: number;
+  /**
+   * Tier policy passed through to classify(). P2-11: B-class
+   * gates (e.g., the think/hypothesize depth heuristics) should
+   * use "fallback-only" to downweight the heuristic to 0.5
+   * confidence. A-class gates should use "always-llm" to skip
+   * Tier 1 entirely.
+   */
+  tierPolicy?: "prefer-heuristic" | "fallback-only" | "always-llm";
 }
 
 export interface CriticGateResult {
@@ -62,6 +70,7 @@ export async function criticGate(
     timeoutMs: opts.timeoutMs ?? 3000,
     label: opts.name,
     fallback: opts.fallback,
+    tierPolicy: opts.tierPolicy,
   });
 
   const label = result.label;

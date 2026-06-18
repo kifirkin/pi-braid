@@ -1429,15 +1429,100 @@ the heartbeat-scheduler monkey-patch to be safe.
     returns the typed definition.
 
   **Test verification:** 62/62 pass. tsc clean.
+- **v2.7** (2026-06-18): **P2-11** complete — 7 B-class
+  fallbacks all now carry `tierPolicy: "fallback-only"`.
 
-## Final autonomous-pass tally (v1.0 - v2.6)
+  **Background:**
 
-**18 commits. 49 files changed. ~880 insertions, ~1020 deletions
+  The 7 B-class fallbacks identified in
+  `docs/FRAGILE-HEURISTICS-INVENTORY.md` had a
+  two-stage migration plan:
+  1. Set `tierPolicy: "fallback-only"` so the
+     heuristic is downweighted to 0.5 confidence
+     and the Tier 2 LLM gets the final say.
+  2. Document the heuristic as "best-effort,
+     biased toward over-triggering" in code
+     comments.
+
+  **What shipped:**
+
+  1. 5 sites had `tierPolicy: "fallback-only"`
+     set in earlier rounds:
+     - `src/lib/detection/compression-strategy.ts:83`
+       (`compressionUrgencyFallback` - Q9 round 4-5)
+     - `src/lib/cognitive/hints.ts:185`
+       (`hintRelevanceFallback` - Q9 round 4-5)
+     - `src/lib/detection/degradation-detector.ts:391`
+       (`qualitativeDegradationFallback` - Q9 round 4-5)
+     - `src/lib/events/consolidation-channel.ts:275`
+       (`hintQualityFallback` - Q9 round 4-5)
+     - `src/extensions/cognitive/turn-outcome/index.ts:106`
+       (`toolLoopDetected` - v1.x)
+
+  2. 2 sites added in this round:
+     - `src/extensions/cognitive/metacognition/handlers/think.ts:321`
+       (fresh-eyes keyword-list heuristic for plan
+       detection)
+     - `src/extensions/cognitive/metacognition/handlers/hypothesize.ts:121`
+       (length-based heuristic for "deep analysis"
+       decision)
+
+  3. **Infrastructure change:**
+     `src/lib/ai/critic-gate.ts` now accepts
+     `tierPolicy?: "prefer-heuristic" | "fallback-only"
+     | "always-llm"` on `CriticGateOptions` and
+     passes it through to the underlying `classify()`
+     call. This was the missing piece — the 2
+     metacognition callers use `criticGate()` (a
+     wrapper around `classify()`), which previously
+     had no way to declare the policy. Without this
+     change, the B-class heuristics on those callers
+     ran with default `prefer-heuristic` (full 0.7
+     confidence) and could short-circuit the Tier 2
+     LLM.
+
+  4. `test/runtime/lib/test-critic-gate-tier-policy.mjs`
+     (new): 5 subtests pinning:
+     - `CriticGateOptions.tierPolicy` declaration
+     - `criticGate()` passes `tierPolicy` through
+     - think.ts/hypothesize.ts set `tierPolicy:
+       "fallback-only"`
+     - Both have P2-11 justification comments
+
+  **What this does NOT do (out of scope):**
+
+  - **Not all heuristics have been replaced with
+    LLM calls.** The B-class heuristic FUNCTIONS
+    still exist; they just run with reduced
+    confidence so Tier 2 LLM overrides them when
+    available. The "proper" fix (replace the
+    heuristic entirely with a Tier 2 LLM call)
+    would mean each critic becomes an
+    unconditional LLM call — ~50ms extra latency
+    per call. That's a 7-call per-turn cost
+    increase. Deferred until cost analysis (v2.0
+    Q16) provides the data to justify it.
+  - **Other B-class heuristics not covered:**
+    `scoring.ts` regex signals (verify/causal/
+    quality/edge), `semantic-compress.ts`
+    semantic type patterns, `sop-suggestion.ts`
+    stop-word filter. These are C-class
+    effectively (cumulative signal scoring, not
+    categorical decisions). They don't have
+    critic-style fallback functions to apply
+    `tierPolicy` to. Deferred to a future round
+    if/when they cause real signal errors.
+
+  **Test verification:** 63/63 pass. tsc clean.
+
+## Final autonomous-pass tally (v1.0 - v2.7)
+
+**19 commits. 51 files changed. ~960 insertions, ~1020 deletions
 (most of the deletions are ROADMAP.md itself, which was
 folded in from 5 prior audit documents). 1 regression shipped
 in v1.8 and fixed in v1.8.1.
 
-**40 of 51 actionable items shipped** (1 item, P3-19,
+**41 of 51 actionable items shipped** (1 item, P3-19,
 partially advanced — textResult/textParts now properly
 typed; full sweep of 245 `: any` annotations is a
 separate P2-class effort). All test suites pass
