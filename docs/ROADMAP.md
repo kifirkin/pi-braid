@@ -1384,15 +1384,60 @@ the heartbeat-scheduler monkey-patch to be safe.
     (not currently needed; deferred).
 
   **Test verification:** 62/62 pass. tsc clean.
+- **v2.6** (2026-06-18): **P2-1** complete — eliminate
+  the remaining 4 `as ToolDefinition<any, any, any>`
+  casts. The typed-adapter pattern from v1.6 (factory
+  function returning `ToolDefinition<any, any, any>`)
+  applied to the 4 sites that were deferred.
 
-## Final autonomous-pass tally (v1.0 - v2.5)
+  **What shipped:**
 
-**17 commits. 46 files changed. ~830 insertions, ~1020 deletions
+  1. `src/extensions/cognitive/metacognition/handlers/claim-verification.ts`:
+     extracted `createVerifyClaimTool()`. Updated
+     `test-claim-verification-classifier-down.mjs` to
+     match the new pattern (4 regex updates).
+
+  2. `src/extensions/scheduling/timer/index.ts`:
+     extracted `createTimerTool(sessionState)`. The
+     sessionId is now wrapped in a state object
+     (`{ id, resolved }`) so the factory function
+     can mutate it (objects pass by reference;
+     primitives don't). Updated `ensurePoller` to
+     read from the same state object.
+
+  3. `src/extensions/cognitive/topic-drift/index.ts`:
+     extracted `createTopicDriftTool()`.
+
+  4. `src/extensions/memory/scratchpad/index.ts`:
+     extracted `createScratchpadTool()`.
+
+  **What this does NOT do (out of scope):**
+
+  - **The 3 generic `any`s in the return type
+    `ToolDefinition<any, any, any>` are still
+    there.** The factory functions return the
+    same generic. The "proper" type fix would
+    require specifying the actual TParams
+    (TypeBox schema), TDetails (the details
+    object shape), and TStatic (UI rendering)
+    types. That's a bigger refactor — each tool
+    would need a typed Details interface. Deferred
+    to a future round.
+  - **No new contracts added.** The behavior is
+    unchanged; only the code structure. The 4
+    sites now have a clean factory function that
+    returns the typed definition.
+
+  **Test verification:** 62/62 pass. tsc clean.
+
+## Final autonomous-pass tally (v1.0 - v2.6)
+
+**18 commits. 49 files changed. ~880 insertions, ~1020 deletions
 (most of the deletions are ROADMAP.md itself, which was
 folded in from 5 prior audit documents). 1 regression shipped
 in v1.8 and fixed in v1.8.1.
 
-**39 of 51 actionable items shipped** (1 item, P3-19,
+**40 of 51 actionable items shipped** (1 item, P3-19,
 partially advanced — textResult/textParts now properly
 typed; full sweep of 245 `: any` annotations is a
 separate P2-class effort). All test suites pass

@@ -913,7 +913,8 @@ async function scratchpadExecute(
 // ── Tool Registration ─────────────────────────────────────────────────────
 
 export default function scratchpadExtension(pi: ExtensionAPI): void {
-  pi.registerTool({
+function createScratchpadTool(): ToolDefinition<any, any, any> {
+  return {
     name: "scratchpad",
     label: "Scratchpad",
     promptSnippet: "Structured session memory for goal, plan, and decisions",
@@ -926,5 +927,9 @@ export default function scratchpadExtension(pi: ExtensionAPI): void {
       "Use this scratchpad for project-scoped work - do NOT use the SDK's separate 'task' tool for the same purpose.",
     parameters: scratchpadParams,
     execute: scratchpadExecute,
-  } as ToolDefinition<any, any, any>);
+  };
 }
+
+// ── Tool Registration ─────────────────────────────────────────────────────
+
+pi.registerTool(createScratchpadTool());}

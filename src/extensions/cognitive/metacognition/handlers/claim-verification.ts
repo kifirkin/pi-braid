@@ -172,8 +172,8 @@ async function checkOverconfidence(
  * Register the verify_claim tool (action=claim|decomposition).
  * Called by metacognition/index.ts during extension setup.
  */
-export function registerClaimVerificationTools(pi: ExtensionAPI): void {
-	pi.registerTool({
+export function createVerifyClaimTool(): ToolDefinition<any, any, any> {
+	return {
 		name: "verify_claim",
 		label: "Verify Claim",
 		promptSnippet: "Verify agent claims against retrieved context",
@@ -274,8 +274,11 @@ export function registerClaimVerificationTools(pi: ExtensionAPI): void {
 				};
 			}
 		},
-	} as ToolDefinition<any, any, any>);
+	};
+}
 
+export function registerClaimVerificationTools(pi: ExtensionAPI): void {
+	pi.registerTool(createVerifyClaimTool());
 
 	log.info("Registered claim verification tool: verify_claim (claim + decomposition actions)");
 }

@@ -338,14 +338,8 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
 
 // ── Extension ───────────────────────────────────────────────────────────────
 
-export default function timerExtension(pi: ExtensionAPI): void {
-  // sessionId is determined lazily on first tool call. We register a
-  // session_start handler to capture it eagerly.
-  let sessionId = "anonymous";
-  let sessionIdResolved = false;
-
-  // Consolidated timer tool with 3 actions (set/list/cancel)
-  pi.registerTool({
+function createTimerTool(sessionState: { id: string; resolved: boolean }): ToolDefinition<any, any, any> {
+  return {
     name: "timer",
     label: "Timer",
     promptSnippet: "Set, list, or cancel non-blocking session-scoped timers",
@@ -375,9 +369,9 @@ export default function timerExtension(pi: ExtensionAPI): void {
       _onUpdate: any,
       ctx: any,
     ): Promise<any> => {
-      if (!sessionIdResolved) {
-        sessionId = getSessionId(ctx);
-        sessionIdResolved = true;
+      if (!sessionState.resolved) {
+        sessionState.id = getSessionId(ctx);
+        sessionState.resolved = true;
       }
       switch (params?.action) {
         case "set": {
@@ -386,31 +380,31 @@ export default function timerExtension(pi: ExtensionAPI): void {
             throw new Error(`Invalid tag "${tag}" - use alphanumeric + dash/underscore`);
           }
           const delayMs = (delay_seconds ?? 60) * 1000;
-          const id = timerManager.setTimer(sessionId, delayMs, reason ?? "Timer", tag);
+          const id = timerManager.setTimer(sessionState.id, delayMs, reason ?? "Timer", tag);
           const firesAt = Date.now() + delayMs;
           return {
             content: [
               {
                 type: "text" as const,
-                text: `Timer set for ${delay_seconds}s (ID: ${id}, session=${sessionId}). Will fire at ${new Date(firesAt).toLocaleTimeString()}. Continue working - reminder will arrive automatically. Use timer action=cancel with this ID to cancel.`,
+                text: `Timer set for ${delay_seconds}s (ID: ${id}, session=${sessionState.id}). Will fire at ${new Date(firesAt).toLocaleTimeString()}. Continue working - reminder will arrive automatically. Use timer action=cancel with this ID to cancel.`,
               },
             ],
             details: {
               timer_id: id,
               fires_at: new Date(firesAt).toISOString(),
               fires_in_seconds: delay_seconds,
-              active_timers: timerManager.getActiveCount(sessionId),
-              session_id: sessionId,
+              active_timers: timerManager.getActiveCount(sessionState.id),
+              session_id: sessionState.id,
             },
           };
         }
         case "list": {
-          const timers = timerManager.listTimers(sessionId);
+          const timers = timerManager.listTimers(sessionState.id);
           const now = Date.now();
           if (timers.length === 0) {
             return {
               content: [{ type: "text" as const, text: "No active timers." }],
-              details: { active_timers: 0, timers: [], session_id: sessionId },
+              details: { active_timers: 0, timers: [], session_id: sessionState.id },
             };
           }
           const formatted = timers.map((t) => ({
@@ -427,14 +421,14 @@ export default function timerExtension(pi: ExtensionAPI): void {
                 text: `${timers.length} active timer(s). ${formatted.map((t) => `ID:${t.timer_id} [${t.tag}] fires in ${t.fires_in_seconds}s: ${t.reason}`).join("; ")}`,
               },
             ],
-            details: { active_timers: timers.length, timers: formatted, session_id: sessionId },
+            details: { active_timers: timers.length, timers: formatted, session_id: sessionState.id },
           };
         }
         case "cancel": {
-          const cancelled = timerManager.cancelTimer(sessionId, params.timer_id);
+          const cancelled = timerManager.cancelTimer(sessionState.id, params.timer_id);
           if (!cancelled) {
             throw new Error(
-              `Timer "${params.timer_id}" not found in session ${sessionId} or already fired.`,
+              `Timer "${params.timer_id}" not found in session ${sessionState.id} or already fired.`,
             );
           }
           return {
@@ -442,8 +436,8 @@ export default function timerExtension(pi: ExtensionAPI): void {
             details: {
               cancelled: true,
               timer_id: params.timer_id,
-              active_timers: timerManager.getActiveCount(sessionId),
-              session_id: sessionId,
+              active_timers: timerManager.getActiveCount(sessionState.id),
+              session_id: sessionState.id,
             },
           };
         }
@@ -451,7 +445,18 @@ export default function timerExtension(pi: ExtensionAPI): void {
           throw new Error(`Unknown timer action: ${params?.action}. Use: set, list, cancel.`);
       }
     },
-  } as ToolDefinition<any, any, any>);
+  };
+}
+
+export default function timerExtension(pi: ExtensionAPI): void {
+  // sessionId is determined lazily on first tool call. We register a
+  // session_start handler to capture it eagerly.
+  // Wrapped in a state object so the createTimerTool() factory can
+  // mutate it (objects pass by reference; primitives don't).
+  const sessionState = { id: "anonymous", resolved: false };
+
+  // Consolidated timer tool with 3 actions (set/list/cancel)
+  pi.registerTool(createTimerTool(sessionState));
 
   // ── Per-pi poller: one per session ────────────────────────────────────
   // The poller is created LAZILY on first session-aware event, because we
@@ -460,8 +465,8 @@ export default function timerExtension(pi: ExtensionAPI): void {
   const ensurePoller = (ctx: unknown): TimerPoller => {
     if (!poller) {
       const sid = getSessionId(ctx);
-      sessionId = sid;
-      sessionIdResolved = true;
+      sessionState.id = sid;
+      sessionState.resolved = true;
       poller = new TimerPoller(
         sid,
         (sessionId, now) => timerManager.checkExpired(sessionId, now),

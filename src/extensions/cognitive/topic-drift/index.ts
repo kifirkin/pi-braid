@@ -383,7 +383,8 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
 
   // ── Tools ────────────────────────────────────────────────────────────────
 
-  pi.registerTool({
+function createTopicDriftTool(): ToolDefinition<any, any, any> {
+  return {
     name: "topic_drift",
     label: "Topic Drift",
     promptSnippet: "Check output for topic drift or reset anchors",
@@ -470,7 +471,11 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
         };
       }
     },
-  } as ToolDefinition<any, any, any>);
+  };
+}
 
+// ── Tools ────────────────────────────────────────────────────────────────
+
+pi.registerTool(createTopicDriftTool());
   log.info("Topic drift detector registered: topic_drift (check + reset actions)");
 }
