@@ -11,7 +11,7 @@
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type CriticTier = "heuristic" | "utility" | "session" | "failed";
+export type CriticTier = "heuristic" | "utility" | "session" | "failed" | "cache";
 
 export interface CriticCallEntry {
   tier: CriticTier;
@@ -119,6 +119,7 @@ export function getCriticStats(): CriticStats {
     utility: 0,
     session: 0,
     failed: 0,
+    cache: 0,
   };
   let totalsInputTokens = 0;
   let totalsOutputTokens = 0;

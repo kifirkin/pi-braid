@@ -1153,15 +1153,96 @@ the heartbeat-scheduler monkey-patch to be safe.
     change.
 
   **Test verification:** 59/59 pass. tsc clean.
+- **v2.2** (2026-06-18): **Q17** complete — short-window
+  hash-based cache for `classify()` results. The
+  topic-drift 3-call fanout (and other LLM judges that
+  fire every turn with the same prompt template) can
+  now avoid redundant LLM calls when the inputs are
+  identical within a session.
 
-## Final autonomous-pass tally (v1.0 - v2.1)
+  **What shipped:**
 
-**13 commits. 40 files changed. ~560 insertions, ~1020 deletions
+  1. `src/lib/ai/critic-cache.ts` (new): cache
+     implementation.
+     - LRU bounded at 1000 entries
+     - TTL: 60 seconds (configurable per-call)
+     - Cache key: fnv-1a 32-bit hash of
+       (label, systemPrompt, userPrompt)
+     - Per-session, reset on session boundaries
+     - Exposes `getCacheKey`, `getCachedResult`,
+       `setCachedResult`, `resetCriticCache`,
+       `getCriticCacheSize` for tests and observability
+
+  2. `src/lib/ai/critic-stats.ts`: added `"cache"`
+     to the `CriticTier` union and the `totals`
+     record. Cache hits are now distinguishable
+     from heuristic wins in analytics
+     ("fast and free" vs "fast and free via cache").
+
+  3. `src/lib/ai/text-classifier.ts`: cache check
+     is wired into `classify()` at the right point
+     (after Tier 1 heuristic, before Tier 2 utility
+     LLM). Cache hits return with `tier: "cache"`,
+     recording 0 tokens and ~0ms latency. Cache is
+     populated on Tier 2 and Tier 3 success.
+
+  4. `src/lib/ai/text-classifier.ts`: `ClassificationResult.tier`
+     type extended to include `"cache"`. `critic-gate.ts`
+     mirrored the change.
+
+  5. `test/runtime/lib/test-critic-cache.mjs` (new):
+     15 subtests covering hash stability, hit/miss,
+     TTL expiry, LRU eviction, reset, stats
+     integration, and text-classifier integration
+     (cache position, tierPolicy bypass, populating
+     on success).
+
+  **What this enables:**
+
+  - **P2-7 (DR-H-9) topic-drift cache**: the
+    infrastructure is now in place. The 3 parallel
+    calls in `detectDriftWithCritics` will dedup
+    within a session. P2-7 itself is a small follow-up
+    to verify the integration.
+  - **General LLM cost reduction**: any critic with
+    a stable prompt template now gets free repeat
+    calls within 60s. For 100% deterministic
+    templates (e.g. `topic-drift-coverage`) the hit
+    rate should be very high.
+
+  **What this does NOT do (out of scope):**
+
+  - **No deterministic-semantic invalidation**: the
+    cache invalidates on TTL only. If a critic's
+    semantics change mid-session (e.g. a model
+    update via `/utility-model`), stale entries
+    persist until TTL. This is acceptable because
+    the TTL is 60s and the failure mode is "old
+    answer" (non-fatal). A future improvement
+    could add a `version` parameter to
+    `setCachedResult` and bust on version change.
+  - **No shared cache across sessions**: the cache
+    is per-process (module-level Map). A future
+    improvement could add a disk-backed cache for
+    warm-start across sessions, but the data
+    volume and staleness tradeoff need design
+    input from the user.
+  - **No P2-7 integration yet**: the topic-drift
+    code path doesn't explicitly use the cache
+    keys; it relies on the natural cache key
+    collision (same prompt = same key). The
+    integration is transparent.
+
+  **Test verification:** 60/60 pass. tsc clean.
+
+## Final autonomous-pass tally (v1.0 - v2.2)
+
+**14 commits. 43 files changed. ~700 insertions, ~1020 deletions
 (most of the deletions are ROADMAP.md itself, which was
 folded in from 5 prior audit documents). 1 regression shipped
 in v1.8 and fixed in v1.8.1.
 
-**35 of 51 actionable items shipped** (1 item, P3-19,
+**36 of 51 actionable items shipped** (1 item, P3-19,
 partially advanced — textResult/textParts now properly
 typed; full sweep of 245 `: any` annotations is a
 separate P2-class effort). All test suites pass

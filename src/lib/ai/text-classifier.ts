@@ -15,6 +15,7 @@ import { callLlm } from "../ai/llm-call.js";
 import { resolveUtilityModel } from "../ai/model-resolver.js";
 import { createLogger } from "../core/logger.js";
 import { recordCriticCall } from "./critic-stats.js";
+import { getCacheKey, getCachedResult, setCachedResult } from "./critic-cache.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
 
@@ -37,7 +38,7 @@ export interface ClassificationResult {
   /** Raw model output text. */
   raw: string;
   /** Which tier produced this result. */
-  tier: "utility" | "session" | "heuristic" | "failed";
+  tier: "utility" | "session" | "heuristic" | "failed" | "cache";
   /** Latency in milliseconds. */
   latencyMs: number;
 }
@@ -188,6 +189,36 @@ export async function classify(
     log.debug("[text-classifier] TIER 1 skipped (tierPolicy=always-llm)");
   }
 
+  // ── Q17 cache check: between Tier 1 (heuristic) and Tier 2 (LLM) ─────────
+  // Skip the cache for tierPolicy=always-llm (the caller explicitly wants
+  // an LLM call, not a cached or heuristic result). Also skip when no
+  // label is provided (we have nothing to record the cache hit against
+  // and the caller doesn't care about analytics).
+  if (options?.label && options?.tierPolicy !== "always-llm") {
+    const cacheKey = getCacheKey(options.label, criteria.systemPrompt, userMessage);
+    const cached = getCachedResult(cacheKey);
+    if (cached) {
+      const latency = Date.now() - start;
+      log.debug(
+        `[text-classifier] CACHE HIT for "${options.label}" ${latency}ms (was ${cached.tier})`,
+      );
+      // Record as "cache" tier with the cached usage (0 tokens since the
+      // result was from cache, not an LLM call) so analytics can
+      // distinguish cache hits from heuristic wins.
+      recordCriticCall(options.label, "cache", latency, {
+        input: 0,
+        output: 0,
+      });
+      return {
+        label: cached.label,
+        confidence: cached.confidence,
+        raw: cached.raw,
+        tier: "cache",
+        latencyMs: latency,
+      };
+    }
+  }
+
   // ── Tier 2: Configured utility model ────────────────────────────────────
   const utilityModel = resolveUtilityModel(ctx);
   let tier2FailureReason: string | null = null;
@@ -208,6 +239,19 @@ export async function classify(
         `[text-classifier] TIER 2 (utility → ${utilityModel.id}): "${tier1.label}" ${latency}ms`,
       );
       if (options?.label) recordCriticCall(options.label, "utility", latency, tier1.usage);
+      // Q17: cache the result for future identical calls within TTL
+      if (options?.label) {
+        setCachedResult(
+          getCacheKey(options.label, criteria.systemPrompt, userMessage),
+          {
+            label: tier1.label,
+            confidence: 0.9,
+            raw: tier1.raw,
+            tier: "utility",
+            latencyMs: latency,
+          },
+        );
+      }
       return {
         label: tier1.label,
         confidence: 0.9,
@@ -245,6 +289,19 @@ export async function classify(
         `[text-classifier] TIER 3 (session → ${sessionModel.id}): "${tier2.label}" ${latency}ms`,
       );
       if (options?.label) recordCriticCall(options.label, "session", latency, tier2.usage);
+      // Q17: cache the result for future identical calls within TTL
+      if (options?.label) {
+        setCachedResult(
+          getCacheKey(options.label, criteria.systemPrompt, userMessage),
+          {
+            label: tier2.label,
+            confidence: 0.6,
+            raw: tier2.raw,
+            tier: "session",
+            latencyMs: latency,
+          },
+        );
+      }
       return {
         label: tier2.label,
         confidence: 0.6,

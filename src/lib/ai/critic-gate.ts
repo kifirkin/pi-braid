@@ -42,7 +42,7 @@ export interface CriticGateResult {
   /** Descriptive message for the agent if skipped. */
   message: string;
   /** Which tier the decision came from. */
-  tier: "utility" | "session" | "heuristic" | "failed";
+  tier: "utility" | "session" | "heuristic" | "failed" | "cache";
 }
 
 /**
