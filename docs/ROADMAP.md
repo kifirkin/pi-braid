@@ -1234,15 +1234,84 @@ the heartbeat-scheduler monkey-patch to be safe.
     integration is transparent.
 
   **Test verification:** 60/60 pass. tsc clean.
+- **v2.3** (2026-06-18): **P1-4** (EW-7.3) complete —
+  `braid.suppressNudges` is now applied universally via
+  the `sendTrackedMessage` wrapper, not at each call site.
 
-## Final autonomous-pass tally (v1.0 - v2.2)
+  **What shipped:**
 
-**14 commits. 43 files changed. ~700 insertions, ~1020 deletions
+  1. `src/lib/utils/injection-tracker.ts`: added
+     `areCognitiveNudgesDisabled()` check at the START
+     of `sendTrackedMessage`, before the flood-cap check
+     and before any tracking. Imported from
+     `braid-settings.js`. Early-returns when on, with
+     a debug log identifying the source.
+
+  2. `test/runtime/lib/test-suppress-nudges-applied.mjs`
+     (new): 5 subtests pinning the contract:
+     - The import is correct
+     - The function signature is correct
+     - The check happens at the START (before flood-cap)
+     - The debug log includes the canonical
+       "braid.suppressNudges=true" string
+     - The check is in the function body (not in a
+       type-specific branch)
+
+  **What this fixes:**
+
+  - 4 sites had the check: `sendEnforcementWhisper`
+    (the wrapper used by ~10 sites) + 3 sites in
+    `heartbeat/analytics/index.ts` (addiction,
+    degradation, recovery).
+  - 11+ sites were MISSING the check: every
+    `sendTrackedMessage` caller outside
+    enforcement/analytics (memory, hints, drift,
+    dreamer, timer, openspec, etc.).
+  - After this change, all 20+ `sendTrackedMessage`
+    call sites respect the off-switch.
+
+  **Why the wrapper (not per-site checks)?**
+
+  The pre-existing 4 sites that explicitly check
+  (the 3 analytics ones + `sendEnforcementWhisper`)
+  are intentionally LEFT IN PLACE. The wrapper checks
+  first, so they are now redundant, but:
+  - The analytics sites have more specific log
+    messages (e.g. "[analytics] Addiction alert
+    suppressed" vs the generic
+    "[injection-tracker] Tracked message suppressed")
+  - Removing them would be 3 more file changes
+    with no behavior change (the wrapper handles it)
+  - The redundancy is a defense-in-depth: if a future
+    refactor accidentally removes the wrapper check,
+    the analytics sites still work
+
+  **What this does NOT do (out of scope):**
+
+  - **Critical-message bypass:** the off-switch
+    suppresses ALL messages, including critical
+    ones (timer fires, error bursts). The ROADMAP
+    P1-4 description doesn't ask for a bypass; the
+    design is "user toggle = absolute off." If the
+    user later wants critical messages to bypass
+    the off-switch, that's a new flag on
+    `sendTrackedMessage` (parallel to the existing
+    `bypassFloodCap` flag). Deferred.
+  - **P1-5 (EW-7.2) NudgeType wiring** is a separate
+    item — see the v1.0 entry. Unchanged.
+  - **EW-7.11 braid.enforcement settings block** is
+    a separate item — see the v1.0 entry. Unchanged.
+
+  **Test verification:** 61/61 pass. tsc clean.
+
+## Final autonomous-pass tally (v1.0 - v2.3)
+
+**15 commits. 44 files changed. ~750 insertions, ~1020 deletions
 (most of the deletions are ROADMAP.md itself, which was
 folded in from 5 prior audit documents). 1 regression shipped
 in v1.8 and fixed in v1.8.1.
 
-**36 of 51 actionable items shipped** (1 item, P3-19,
+**37 of 51 actionable items shipped** (1 item, P3-19,
 partially advanced — textResult/textParts now properly
 typed; full sweep of 245 `: any` annotations is a
 separate P2-class effort). All test suites pass

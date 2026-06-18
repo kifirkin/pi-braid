@@ -17,6 +17,7 @@ import { createLogger } from "../core/logger.js";
 import { SESSION_SHUTDOWN } from "../core/event-names.js";
 import { tryWhisper, type WhisperPriority } from "../enforcement/turn-dedup.js";
 import { BRAID_INJECTED, BRAID_SOURCE } from "../constants/injection-details.js";
+import { areCognitiveNudgesDisabled } from "../config/braid-settings.js";
 import { nextId } from "./id.js";
 
 const log = createLogger("injection-tracker");
@@ -218,6 +219,23 @@ export function sendTrackedMessage(
    */
   bypass: { bypassFloodCap?: boolean } = {},
 ): void {
+  // ROADMAP P1-4 / EW-7.3: braid.suppressNudges is the universal
+  // off-switch. Apply it here so every sendTrackedMessage call site
+  // (20+ callers across enforcement, dreamer, memory, timer, drift,
+  // hints, etc.) automatically respects the setting without each
+  // site needing its own check. This was previously checked in only
+  // 4 sites (sendEnforcementWhisper + 3 analytics/index.ts sites),
+  // so setting braid.suppressNudges=true still delivered ~70% of
+  // agent-facing whispers. Now the check is centralized at the
+  // single entry point.
+  if (areCognitiveNudgesDisabled()) {
+    log.debug(
+      `[injection-tracker] Tracked message suppressed via braid.suppressNudges=true ` +
+        `(source: ${injectionMeta.source})`,
+    );
+    return;
+  }
+
   // Per-turn whisper cap (flood protection). Critical paths always pass;
   // other priorities are capped per WHISPER_CAPS in turn-dedup.ts.
   // We track the suppressed whisper in the injection log so users can see
