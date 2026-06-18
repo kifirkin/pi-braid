@@ -74,6 +74,29 @@ export const WHISPER_CAPS: Record<WhisperPriority, number> = {
 /** Per-source cap (a single subsystem can't flood). */
 export const PER_SOURCE_CAP = 2;
 
+/**
+ * Per-source cap overrides. Use these to raise the cap for sources that
+ * legitimately need more headroom (e.g. enforcement during a degraded
+ * turn where dropping a critical steer is the worst outcome). Lower
+ * caps than PER_SOURCE_CAP are NOT supported via overrides - if a
+ * source needs a lower cap, add a new explicit value here.
+ *
+ * EW-7.13: drop the all-sources-share cap so high-priority sources
+ * can get through during a degraded turn.
+ */
+export const PER_SOURCE_CAP_OVERRIDES: Record<string, number> = {
+  // Enforcement whispers are critical/high priority. A 3rd
+  // triggerTurn:true whisper in a degraded turn is more valuable
+  // than dropping it (the alternative is the agent missing a
+  // real signal).
+  "enforcement/whisper": 3,
+};
+
+/** Resolve the per-source cap for a given source (override or default). */
+export function getPerSourceCap(source: string): number {
+  return PER_SOURCE_CAP_OVERRIDES[source] ?? PER_SOURCE_CAP;
+}
+
 function getState(): DedupState {
   // We use a no-op key and module-level singleton. The dedup state is
   // intentionally process-global, not per-session, because the `input` event
@@ -187,9 +210,10 @@ export function tryWhisper(priority: WhisperPriority, source: string): boolean {
   // critical source from monopolizing the channel).
   if (priority === "critical") {
     const sourceCount = state.whisperBySource[source] ?? 0;
-    if (sourceCount >= PER_SOURCE_CAP) {
+    const sourceCap = getPerSourceCap(source);
+    if (sourceCount >= sourceCap) {
       state.suppressed++;
-      log.debug(`[turn-dedup] critical "${source}" suppressed (per-source cap)`);
+      log.debug(`[turn-dedup] critical "${source}" suppressed (per-source cap ${sourceCap})`);
       return false;
     }
     state.whisperCounts.critical++;
@@ -207,12 +231,13 @@ export function tryWhisper(priority: WhisperPriority, source: string): boolean {
     return false;
   }
 
-  // Per-source fairness cap
+  // Per-source fairness cap (override-aware)
   const sourceCount = state.whisperBySource[source] ?? 0;
-  if (sourceCount >= PER_SOURCE_CAP) {
+  const sourceCap = getPerSourceCap(source);
+  if (sourceCount >= sourceCap) {
     state.suppressed++;
     log.debug(
-      `[turn-dedup] ${priority} "${source}" suppressed (per-source cap ${PER_SOURCE_CAP})`,
+      `[turn-dedup] ${priority} "${source}" suppressed (per-source cap ${sourceCap})`,
     );
     return false;
   }

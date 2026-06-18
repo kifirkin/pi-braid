@@ -1344,15 +1344,55 @@ the heartbeat-scheduler monkey-patch to be safe.
     Deferred.
 
   **Test verification:** 61/61 pass. tsc clean.
+- **v2.5** (2026-06-18): **EW-7.13** complete — per-source
+  priority-aware caps for `tryWhisper()`. Previously all
+  sources shared `PER_SOURCE_CAP = 2`; a 3rd
+  `triggerTurn: true` enforcement whisper in a degraded
+  turn was silently dropped.
 
-## Final autonomous-pass tally (v1.0 - v2.4)
+  **What shipped:**
 
-**16 commits. 45 files changed. ~770 insertions, ~1020 deletions
+  1. `src/lib/enforcement/turn-dedup.ts`:
+     - Added `PER_SOURCE_CAP_OVERRIDES: Record<string, number>`
+     - Default override: `"enforcement/whisper": 3`
+       (high-priority source; 3 steers in a degraded turn
+       is better than 0)
+     - Added `getPerSourceCap(source)` accessor that
+       resolves override or falls back to `PER_SOURCE_CAP`
+     - `tryWhisper` now uses `getPerSourceCap(source)`
+       in BOTH the critical and non-critical paths
+
+  2. `test/runtime/lib/test-per-source-cap-overrides.mjs`
+     (new): 7 subtests, both runtime (verifying the
+     cap actually allows 3 from the override source and
+     only 2 from a default source) and source-level
+     (verifying the function uses the override-aware cap
+     in both branches).
+
+  **What this does NOT do (out of scope):**
+
+  - **Lowering caps via overrides:** the override
+    mechanism only raises. A source that needs a lower
+    cap than 2 would have to be added as a separate
+    constant (not currently needed; deferred).
+  - **Per-priority overrides:** the current
+    implementation uses the same cap for all priorities
+    from a given source. If a source needs different
+    caps per priority (e.g. high: 3, medium: 1), the
+    override map would need to be
+    `Record<string, Partial<Record<WhisperPriority, number>>>`
+    (not currently needed; deferred).
+
+  **Test verification:** 62/62 pass. tsc clean.
+
+## Final autonomous-pass tally (v1.0 - v2.5)
+
+**17 commits. 46 files changed. ~830 insertions, ~1020 deletions
 (most of the deletions are ROADMAP.md itself, which was
 folded in from 5 prior audit documents). 1 regression shipped
 in v1.8 and fixed in v1.8.1.
 
-**38 of 51 actionable items shipped** (1 item, P3-19,
+**39 of 51 actionable items shipped** (1 item, P3-19,
 partially advanced — textResult/textParts now properly
 typed; full sweep of 245 `: any` annotations is a
 separate P2-class effort). All test suites pass
