@@ -17,7 +17,53 @@ writes "what I'm doing right now" not "what I've learned in general."
 
 | Tool | Actions | Purpose |
 |---|---|---|
-| `scratchpad` | set_goal, add_plan, mark_done, add_decision, add_hypothesis, add_note, add_learning, **remove_plan**, **remove_note**, **remove_decision**, **remove_hypothesis**, **clear_done**, **archive_done**, ... | Structured session state management. |
+| `scratchpad` | set_goal, add_plan, mark_done, add_decision, add_hypothesis, add_note, add_learning, **remove_plan**, **remove_note**, **remove_decision**, **remove_hypothesis**, **clear_done**, **archive_done**, **continue** (D-41 resumption digest), ... | Structured session state management. |
+
+## Session resumption (D-41)
+
+When a fresh session starts, or the user says "continue", call:
+
+```
+scratchpad(action="continue")
+```
+
+This returns a focused resumption digest:
+
+```
+# Resumption digest
+Goal: <current goal>
+Prior goal: <previous goal if different>
+
+## Open plan (N)
+  1. 🔄 <in-progress step>
+  2. ⬜ <pending step>
+
+## Recently completed
+  ✅ <last done item>
+  ...
+
+## Recent decisions
+  - <last decision> (<reason>)
+  ...
+
+## Recent notes
+  <last note>
+  ...
+
+## Active constraints
+  [<type>] <description>
+  ...
+
+## Session: turn=N, phase=X, mode=Y
+```
+
+This is the **first call** at session start, before reading. It's cheaper than
+`read` and structured to answer "what was I doing, what's next". Use `read`
+after `continue` if the agent needs the full picture (hypotheses, full done
+list, all learnings).
+
+The convention is documented in the tool description so the agent follows
+it automatically.
 
 ## Files
 
