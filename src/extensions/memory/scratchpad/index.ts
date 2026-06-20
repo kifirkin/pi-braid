@@ -254,6 +254,94 @@ export function formatScratchpad(
   return lines.join("\n");
 }
 
+/**
+ * Resumption digest for "continue" — the focused summary a fresh session
+ * needs to pick up work without reading the entire scratchpad.
+ *
+ * Shows:
+ *   - Current goal (what am I trying to do)
+ *   - Prior goal (what was the previous goal, if changed)
+ *   - Open plan items (what's pending)
+ *   - Last 3 completed items (what was just done)
+ *   - Last 3 decisions (recent context)
+ *   - Last 3 notes (recent context)
+ *   - Active constraints (only first 3 to avoid noise)
+ *
+ * Skips: full done list, all hypotheses, full learnings list, prior-goal
+ * archives. Use `read` for the complete picture.
+ */
+export function formatContinueDigest(pad: TaskScratchpad): string {
+  const lines: string[] = [];
+  lines.push(`# Resumption digest`);
+  lines.push("");
+  lines.push(`Goal: ${pad.goal}`);
+  if (pad.prior_goal && pad.prior_goal !== pad.goal) {
+    lines.push(`Prior goal: ${pad.prior_goal}`);
+  }
+  lines.push("");
+
+  // Open plan items (doneTurn === 0 means not started or in progress)
+  const openPlan = pad.plan.filter((s) => s.doneTurn === 0);
+  if (openPlan.length > 0) {
+    lines.push(`## Open plan (${openPlan.length})`);
+    for (let i = 0; i < openPlan.length; i++) {
+      const step = openPlan[i];
+      const status = step.startTurn > 0 ? "🔄" : "⬜";
+      const budget = step.budgetCalls ? ` [budget: ${step.budgetCalls}]` : "";
+      lines.push(`  ${i + 1}. ${status} ${step.text}${budget}`);
+    }
+    lines.push("");
+  } else {
+    lines.push(`## Open plan: (none)`);
+    lines.push("");
+  }
+
+  // Last 3 done items (what was just completed)
+  if (pad.done.length > 0) {
+    const lastDone = pad.done.slice(-3);
+    lines.push(`## Recently completed`);
+    for (const d of lastDone) lines.push(`  ✅ ${d.text}`);
+    lines.push("");
+  }
+
+  // Last 3 decisions
+  if (pad.decisions.length > 0) {
+    const lastDec = pad.decisions.slice(-3);
+    lines.push(`## Recent decisions`);
+    for (const d of lastDec) {
+      lines.push(`  - ${d.text}${d.reason ? ` (${d.reason})` : ""}`);
+    }
+    lines.push("");
+  }
+
+  // Last 3 notes
+  if (pad.notes.length > 0) {
+    const lastNotes = pad.notes.slice(-3);
+    lines.push(`## Recent notes`);
+    for (const n of lastNotes) lines.push(`  ${n.text}`);
+    lines.push("");
+  }
+
+  // Active constraints (first 3)
+  const activeConstraints = pad.constraints.filter(
+    (c) => !c.acknowledged || c.expires_at === 0 || c.expires_at > Date.now(),
+  );
+  if (activeConstraints.length > 0) {
+    lines.push(`## Active constraints (${activeConstraints.length})`);
+    for (const c of activeConstraints.slice(0, 3)) {
+      lines.push(`  [${c.type}] ${c.description}`);
+    }
+    lines.push("");
+  }
+
+  // Session context
+  if (pad.session.turn > 0) {
+    lines.push(`## Session: turn=${pad.session.turn}, phase=${pad.session.phase}, mode=${pad.session.mode}`);
+  }
+
+  return lines.join("\n");
+}
+
 export function formatSessionSummary(pad: TaskScratchpad): {
   cycles: number;
   pruned: number;
@@ -359,6 +447,10 @@ const readAction = Type.Union([
   // Archive done items to disk (does NOT delete from memory; moves to
   // <slug>/archive.jsonl and removes from the active list).
   Type.Literal("archive_done"),
+  // Resumption digest for fresh sessions. Call this with `continue` to
+  // see goal + open plan + recent decisions + recent notes in one shot.
+  // Cheaper than `read` for picking up where you left off.
+  Type.Literal("continue"),
 ]);
 
 const VALID_LEARNING_CATEGORIES = [
@@ -501,6 +593,15 @@ async function scratchpadExecute(
             limit?: number;
           }
         | undefined);
+      break;
+    }
+
+    case "continue": {
+      // Resumption digest: goal + open plan + recent context.
+      // Use this at session start (or when the user says "continue")
+      // to pick up where you left off without re-reading the full
+      // scratchpad. Cheaper than `read` and structured for action.
+      resultText = formatContinueDigest(pad);
       break;
     }
 
@@ -920,10 +1021,12 @@ function createScratchpadTool(): ToolDefinition<any, any, any> {
     promptSnippet: "Structured session memory for goal, plan, and decisions",
     description:
       "Track goals, plans, TODOs, notes, decisions, and learnings throughout multi-step tasks using structured session memory. " +
-      "Common actions: set_goal, add_plan, mark_done, add_note, add_decision, add_learning, read. " +
+      "Common actions: set_goal, add_plan, mark_done, add_note, add_decision, add_learning. " +
+      "**At session start, or when the user says 'continue', call `scratchpad(action=\"continue\")` first** to get a focused resumption digest (goal + open plan + recent context). " +
+      "Use `read` for the full picture, or `read` with a `filter` for targeted inspection of long lists. " +
+      "Long-session hygiene: `remove_plan/remove_note/remove_decision/remove_hypothesis` (by id), `clear_done`, `archive_done` (moves done to disk). " +
       "For add_learning, prefer explicit 'category' + 'content' fields over pipe-delimited text. " +
       "Plan items (added via add_plan, completed via mark_done) serve as the task list. " +
-      "For richer task state (priority, dependencies, tags, fail/next/clear), add plan items and use read to view them. " +
       "Use this scratchpad for project-scoped work - do NOT use the SDK's separate 'task' tool for the same purpose.",
     parameters: scratchpadParams,
     execute: scratchpadExecute,
