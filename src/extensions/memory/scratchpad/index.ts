@@ -9,12 +9,7 @@
  */
 
 
-import { nextId } from "../../../lib/utils/id.js";
-import { SCRATCHPAD_DIR } from "../../../lib/config/braid-paths.js";
-import * as path from "node:path";
-import { appendFile } from "node:fs/promises";
-
-
+import { getExtensionState } from "../../../lib/state/extension-state.js";
 
 import { Type } from "typebox";
 import type {
@@ -28,138 +23,85 @@ import type {
 // ── Re-export types and persistence for importers ─────────────────────────
 export * from "./types.js";
 export * from "./persistence.js";
+// Re-export shared utilities (handlers.ts imports from utils.ts; index.ts
+// keeps the public surface for backward compat with any external importers).
+export {
+  RECYCLE,
+  scratchpadClean,
+  capPush,
+  generateLearningId,
+  generateConstraintId,
+  findByIdOrText,
+  resolveCategory,
+  VALID_LEARNING_CATEGORIES,
+  LEARNING_CATEGORY_ALIASES,
+  mutateAndSave,
+} from "./utils.js";
+// Import handler functions for local use (and re-export them).
+import {
+  handleRead,
+  handleContinue,
+  handleSetGoal,
+  handleAddPlan,
+  handleMarkDone,
+  handleAddDecision,
+  handleAddHypothesis,
+  handleAddNote,
+  handleAddConstraint,
+  handleRemoveConstraint,
+  handleAddLearning,
+  handlePersistLearnings,
+  handleNoteCompact,
+  handleUpdateSession,
+  handleElevateToGoal,
+  handleElevateToPlan,
+  handleRemovePlan,
+  handleRemoveNote,
+  handleRemoveDecision,
+  handleRemoveHypothesis,
+  handleClearDone,
+  handleArchiveDone,
+} from "./handlers.js";
+export {
+  handleRead,
+  handleContinue,
+  handleSetGoal,
+  handleAddPlan,
+  handleMarkDone,
+  handleAddDecision,
+  handleAddHypothesis,
+  handleAddNote,
+  handleAddConstraint,
+  handleRemoveConstraint,
+  handleAddLearning,
+  handlePersistLearnings,
+  handleNoteCompact,
+  handleUpdateSession,
+  handleElevateToGoal,
+  handleElevateToPlan,
+  handleRemovePlan,
+  handleRemoveNote,
+  handleRemoveDecision,
+  handleRemoveHypothesis,
+  handleClearDone,
+  handleArchiveDone,
+} from "./handlers.js";
 
 import type {
   TaskScratchpad,
-  Decision,
-  Constraint,
-  KeyLearning,
-  SessionPhase,
-  PlanStep,
-  DoneItem,
-  NoteItem,
-  HypothesisItem,
 } from "./types.js";
 
 import {
   projectSlugFromCwd,
   createScratchpad,
-  saveScratchpadToDisk,
   loadScratchpadFromDisk,
 } from "./persistence.js";
 
-import { getExtensionState } from "../../../lib/state/extension-state.js";
-
-// ── Recycling Config ──────────────────────────────────────────────────────
-const RECYCLE = {
-  MAX_PLAN: 20,
-  MAX_DONE: 50,
-  MAX_DECISIONS: 30,
-  MAX_HYPOTHESES: 20,
-  MAX_NOTES: 30,
-  MAX_LEARNINGS: 50,
-  MAX_CONSTRAINTS: 20,
-  MAX_TASKS: 50,
-  GOAL_HISTORY: 3,
-} as const;
-
-type RecycleStats = {
-  pruned_plan: number;
-  pruned_done: number;
-  pruned_decisions: number;
-  pruned_hypotheses: number;
-  pruned_notes: number;
-  pruned_learnings: number;
-  pruned_constraints: number;
-  archived_goal: string | null;
-  total_pruned: number;
-};
-
-function scratchpadClean(pad: TaskScratchpad): RecycleStats {
-  const stats: RecycleStats = {
-    pruned_plan: 0,
-    pruned_done: 0,
-    pruned_decisions: 0,
-    pruned_hypotheses: 0,
-    pruned_notes: 0,
-    pruned_learnings: 0,
-    pruned_constraints: 0,
-    archived_goal: null,
-    total_pruned: 0,
-  };
-
-  if (pad.plan.length > RECYCLE.MAX_PLAN) {
-    stats.pruned_plan = pad.plan.length - RECYCLE.MAX_PLAN;
-    pad.plan = pad.plan.slice(-RECYCLE.MAX_PLAN);
-  }
-  if (pad.done.length > RECYCLE.MAX_DONE) {
-    stats.pruned_done = pad.done.length - RECYCLE.MAX_DONE;
-    pad.done = pad.done.slice(-RECYCLE.MAX_DONE);
-  }
-  if (pad.decisions.length > RECYCLE.MAX_DECISIONS) {
-    stats.pruned_decisions = pad.decisions.length - RECYCLE.MAX_DECISIONS;
-    pad.decisions = pad.decisions.slice(-RECYCLE.MAX_DECISIONS);
-  }
-  if (pad.hypotheses.length > RECYCLE.MAX_HYPOTHESES) {
-    stats.pruned_hypotheses = pad.hypotheses.length - RECYCLE.MAX_HYPOTHESES;
-    pad.hypotheses = pad.hypotheses.slice(-RECYCLE.MAX_HYPOTHESES);
-  }
-  if (pad.notes.length > RECYCLE.MAX_NOTES) {
-    stats.pruned_notes = pad.notes.length - RECYCLE.MAX_NOTES;
-    pad.notes = pad.notes.slice(-RECYCLE.MAX_NOTES);
-  }
-  if (pad.key_learnings.length > RECYCLE.MAX_LEARNINGS) {
-    stats.pruned_learnings = pad.key_learnings.length - RECYCLE.MAX_LEARNINGS;
-    pad.key_learnings = pad.key_learnings.slice(-RECYCLE.MAX_LEARNINGS);
-  }
-  if (pad.constraints.length > RECYCLE.MAX_CONSTRAINTS) {
-    stats.pruned_constraints = pad.constraints.length - RECYCLE.MAX_CONSTRAINTS;
-    pad.constraints = pad.constraints.slice(-RECYCLE.MAX_CONSTRAINTS);
-  }
-  stats.total_pruned =
-    stats.pruned_plan +
-    stats.pruned_done +
-    stats.pruned_decisions +
-    stats.pruned_hypotheses +
-    stats.pruned_notes +
-    stats.pruned_learnings +
-    stats.pruned_constraints;
-  return stats;
-}
-
-function capPush<T>(arr: T[], item: T, max: number): number {
-  arr.push(item);
-  if (arr.length > max) {
-    const excess = arr.length - max;
-    arr.splice(0, excess);
-    return excess;
-  }
-  return 0;
-}
-
-function generateLearningId(): string {
-  return nextId('lrn');
-}
-function generateConstraintId(): string {
-  return nextId('con');
-}
-
-/**
- * Find an item in a list by id (preferred) or by text match (fallback).
- * Returns the item and its index, or { item: null, index: -1 } if not found.
- */
-function findByIdOrText<T extends { id: string; text: string }>(
-  list: T[],
-  idOrText: string,
-): { item: T | null; index: number } {
-  // Try exact id match first
-  const idxById = list.findIndex((it) => it.id === idOrText);
-  if (idxById >= 0) return { item: list[idxById]!, index: idxById };
-  // Fall back to text match
-  const idxByText = list.findIndex((it) => it.text === idOrText);
-  if (idxByText >= 0) return { item: list[idxByText]!, index: idxByText };
-  return { item: null, index: -1 };
-}
+// ── Note: RECYCLE, scratchpadClean, capPush, generateLearningId,
+// generateConstraintId, findByIdOrText, mutateAndSave are imported from
+// ./utils.js (re-exported above for backward compat). Validation
+// category resolution (resolveCategory, VALID_LEARNING_CATEGORIES,
+// LEARNING_CATEGORY_ALIASES) also lives in utils.ts.
 
 // ── Format Scratchpad ─────────────────────────────────────────────────────
 
@@ -398,24 +340,6 @@ async function getOrCreateScratchpad(
   return pad;
 }
 
-async function mutateAndSave(scratchpad: TaskScratchpad): Promise<string | null> {
-  scratchpad.updatedAt = Date.now();
-  try {
-    await saveScratchpadToDisk(scratchpad);
-    return null;
-  } catch (err) {
-    // ROADMAP P0-2 / DR-H-4: surface disk-write failures. Previously silent.
-    // The in-memory pad is still updated; the user's next session will lose
-    // these changes. Return the error so the caller can append a hint to the
-    // tool result.
-    const msg = err instanceof Error ? err.message : String(err);
-    return `⚠️ Disk write failed: ${msg}. Your changes are in memory only and will be lost on restart.`;
-  }
-}
-
-
-
-
 
 
 // ── Tool Schemas ──────────────────────────────────────────────────────────
@@ -452,60 +376,6 @@ const readAction = Type.Union([
   // Cheaper than `read` for picking up where you left off.
   Type.Literal("continue"),
 ]);
-
-const VALID_LEARNING_CATEGORIES = [
-  "root_cause",
-  "pattern",
-  "fix",
-  "constraint",
-  "codebase_fact",
-] as const;
-type LearningCategory = (typeof VALID_LEARNING_CATEGORIES)[number];
-
-/** Aliases that map to canonical categories. Lowercased before matching. */
-const LEARNING_CATEGORY_ALIASES: Record<string, LearningCategory> = {
-  // root_cause aliases
-  rootcause: "root_cause",
-  "root-cause": "root_cause",
-  root: "root_cause",
-  cause: "root_cause",
-  bug: "root_cause",
-  defect: "root_cause",
-  // pattern aliases
-  pattern: "pattern",
-  convention: "pattern",
-  idiom: "pattern",
-  heuristic: "pattern",
-  insight: "pattern",
-  // fix aliases
-  fix: "fix",
-  solution: "fix",
-  solution_summary: "fix",
-  resolved: "fix",
-  workaround: "fix",
-  patch: "fix",
-  // constraint aliases
-  constraint: "constraint",
-  rule: "constraint",
-  limit: "constraint",
-  invariant: "constraint",
-  requirement: "constraint",
-  // codebase_fact aliases
-  codebase_fact: "codebase_fact",
-  codebase: "codebase_fact",
-  fact: "codebase_fact",
-  "codebase-fact": "codebase_fact",
-  "code-fact": "codebase_fact",
-  codefact: "codebase_fact",
-};
-
-function resolveCategory(raw: string): LearningCategory | null {
-  const key = raw.trim().toLowerCase().replace(/\s+/g, "_");
-  if ((VALID_LEARNING_CATEGORIES as readonly string[]).includes(key)) {
-    return key as LearningCategory;
-  }
-  return LEARNING_CATEGORY_ALIASES[key] ?? null;
-}
 
 const scratchpadParams = Type.Object({
   action: readAction,
@@ -554,6 +424,10 @@ const scratchpadParams = Type.Object({
 });
 
 // ── Tool Execute ──────────────────────────────────────────────────────────
+//
+// The actual case-by-case logic is in handlers.ts. This file is a thin
+// router that extracts common params, calls the right handler, and wraps
+// the result in the AgentToolResult envelope.
 
 async function scratchpadExecute(
   _toolCallId: string,
@@ -566,6 +440,7 @@ async function scratchpadExecute(
   const text = (params.text as string) ?? "";
   const successCriteria = params.successCriteria as string[] | undefined;
   const expires_in_ms = params.expires_in_ms as number | undefined;
+  const idOrText = (params.id as string | undefined) ?? text;
 
   const pad = await getOrCreateScratchpad(ctx);
 
@@ -577,420 +452,157 @@ async function scratchpadExecute(
   }
 
   const priorGoal = pad.goal;
-  let resultText = ""; // eslint-disable-line no-useless-assignment
-  // ROADMAP P0-2 / DR-H-4: capture disk-write failures from mutateAndSave
-  // and surface to the user at the end of the tool result.
+  let resultText = "";
   let lastSaveError: string | null = null;
 
+  // ── Route to handler ──────────────────────────────────────────────
   switch (action) {
     case "read": {
-      resultText = formatScratchpad(pad, params.filter as
-        | {
-            ids?: string[];
-            sinceTurn?: number;
-            untilTurn?: number;
-            category?: string;
-            limit?: number;
-          }
-        | undefined);
+      resultText = handleRead(
+        pad,
+        params.filter as
+          | {
+              ids?: string[];
+              sinceTurn?: number;
+              untilTurn?: number;
+              category?: string;
+              limit?: number;
+            }
+          | undefined,
+      ).resultText;
       break;
     }
-
-    case "continue": {
-      // Resumption digest: goal + open plan + recent context.
-      // Use this at session start (or when the user says "continue")
-      // to pick up where you left off without re-reading the full
-      // scratchpad. Cheaper than `read` and structured for action.
-      resultText = formatContinueDigest(pad);
+    case "continue":
+      resultText = handleContinue(pad).resultText;
       break;
-    }
-
     case "set_goal": {
-      if (pad.goal && pad.goal !== "Untitled" && pad.goal !== text) {
-        pad.prior_goal = pad.goal;
-      }
-      pad.goal = text;
-      pad.prior_goal = pad.prior_goal || priorGoal;
-      lastSaveError = await mutateAndSave(pad);
-      resultText = `Goal set: ${text}`;
+      const r = await handleSetGoal(pad, text, priorGoal);
+      resultText = r.resultText;
+      lastSaveError = r.saveError ?? null;
       break;
     }
-
     case "add_plan": {
-      // Parse optional budget field [budget:N]
-      let budgetCalls: number | undefined;
-      let planText = text;
-      const budgetMatch = text.match(/\s*\[budget:\s*(\d+)\]\s*$/i);
-      if (budgetMatch) {
-        budgetCalls = parseInt(budgetMatch[1], 10);
-        planText = text.slice(0, budgetMatch.index!).trim();
-      }
-      const step: PlanStep = {
-        id: nextId("pl"),
-        text: planText,
-        budgetCalls,
-        spentCalls: 0,
-        startTurn: pad.session.turn,
-        doneTurn: 0,
-        startTotalCalls: 0,
-      };
-      const budgetStr = budgetCalls ? ` [budget: ${budgetCalls} calls]` : "";
-      capPush(pad.plan, step, RECYCLE.MAX_PLAN);
-      lastSaveError = await mutateAndSave(pad);
-      resultText = `Step added: ${planText}${budgetStr} (id: ${step.id})`;
+      const r = await handleAddPlan(pad, text);
+      resultText = r.resultText;
+      lastSaveError = r.saveError ?? null;
       break;
     }
-
     case "mark_done": {
-      // Accept either text match (legacy) or id (preferred).
-      const idOrText = (params.id as string | undefined) ?? text;
-      const step = pad.plan.find(
-        (s) => s.id === idOrText || s.text === idOrText,
-      );
-      const now = Date.now();
-      if (step) {
-        step.doneTurn = pad.session.turn;
-        const doneItem: DoneItem = {
-          id: nextId("dn"),
-          text: step.text,
-          turn: pad.session.turn,
-          addedAt: now,
-        };
-        capPush(pad.done, doneItem, RECYCLE.MAX_DONE);
-        resultText = `Completed: ${step.text} (id: ${doneItem.id})`;
-      } else {
-        // Fallback: just add to done (no plan step matched)
-        const doneItem: DoneItem = {
-          id: nextId("dn"),
-          text,
-          turn: pad.session.turn,
-          addedAt: now,
-        };
-        capPush(pad.done, doneItem, RECYCLE.MAX_DONE);
-        resultText = `Completed: ${text} (id: ${doneItem.id})`;
-      }
-      lastSaveError = await mutateAndSave(pad);
+      const r = await handleMarkDone(pad, text, idOrText);
+      resultText = r.resultText;
+      lastSaveError = r.saveError ?? null;
       break;
     }
-
     case "add_decision": {
-      // Parse optional reason: "decision|reason"
-      let decisionText = text;
-      let reason: string | undefined;
-      const sepIndex = text.indexOf("|");
-      if (sepIndex > 0) {
-        decisionText = text.slice(0, sepIndex).trim();
-        reason = text.slice(sepIndex + 1).trim();
-      }
-      const decision: Decision = {
-        id: nextId("dc"),
-        text: decisionText,
-        reason,
-        turn: pad.session.turn,
-      };
-      capPush(pad.decisions, decision, RECYCLE.MAX_DECISIONS);
-      lastSaveError = await mutateAndSave(pad);
-      resultText = `Decision recorded: ${decisionText}${reason ? ` (${reason})` : ""} (id: ${decision.id})`;
+      const r = await handleAddDecision(pad, text);
+      resultText = r.resultText;
+      lastSaveError = r.saveError ?? null;
       break;
     }
-
     case "add_hypothesis": {
-      const hyp: HypothesisItem = {
-        id: nextId("hp"),
-        text,
-        turn: pad.session.turn,
-        addedAt: Date.now(),
-      };
-      capPush(pad.hypotheses, hyp, RECYCLE.MAX_HYPOTHESES);
-      lastSaveError = await mutateAndSave(pad);
-      resultText = `Hypothesis added: ${text} (id: ${hyp.id})`;
+      const r = await handleAddHypothesis(pad, text);
+      resultText = r.resultText;
+      lastSaveError = r.saveError ?? null;
       break;
     }
-
     case "add_note": {
-      const note: NoteItem = {
-        id: nextId("nt"),
-        text,
-        turn: pad.session.turn,
-        addedAt: Date.now(),
-      };
-      capPush(pad.notes, note, RECYCLE.MAX_NOTES);
-      lastSaveError = await mutateAndSave(pad);
-      resultText = `Note added: ${text} (id: ${note.id})`;
+      const r = await handleAddNote(pad, text);
+      resultText = r.resultText;
+      lastSaveError = r.saveError ?? null;
       break;
     }
-
     case "update_session": {
-      if (params.turn !== undefined) pad.session.turn = params.turn as number;
-      if (params.phase !== undefined) pad.session.phase = params.phase as SessionPhase;
-      if (params.mode !== undefined)
-        pad.session.mode = params.mode as "normal" | "deep_think" | "recovery";
-      pad.session.updated_at = Date.now();
-      lastSaveError = await mutateAndSave(pad);
-      resultText = `Session: turn=${pad.session.turn}, phase=${pad.session.phase}, mode=${pad.session.mode}`;
+      const r = await handleUpdateSession(pad, params);
+      resultText = r.resultText;
+      lastSaveError = r.saveError ?? null;
       break;
     }
-
     case "add_constraint": {
-      // Format: "type|description"
-      const [type, ...descParts] = text.split("|");
-      const desc = descParts.join("|") || type;
-      const cType = (type as Constraint["type"]) || "custom";
-      const constraint: Constraint = {
-        id: generateConstraintId(),
-        type: ["blocker", "enforcement_rule", "invariant", "custom"].includes(cType)
-          ? cType
-          : "custom",
-        description: desc,
-        added_at: Date.now(),
-        expires_at: expires_in_ms ? Date.now() + expires_in_ms : 0,
-        acknowledged: false,
-      };
-      capPush(pad.constraints, constraint, RECYCLE.MAX_CONSTRAINTS);
-      lastSaveError = await mutateAndSave(pad);
-      resultText = `Constraint added: [${constraint.type}] ${desc} (id: ${constraint.id})`;
+      const r = await handleAddConstraint(pad, text, expires_in_ms);
+      resultText = r.resultText;
+      lastSaveError = r.saveError ?? null;
       break;
     }
-
     case "remove_constraint": {
-      const idx = pad.constraints.findIndex((c) => c.id === text);
-      if (idx >= 0) {
-        pad.constraints.splice(idx, 1);
-        lastSaveError = await mutateAndSave(pad);
-        resultText = `Constraint removed: ${text}`;
-      } else {
-        resultText = `Constraint not found: ${text}`;
-      }
+      const r = await handleRemoveConstraint(pad, text);
+      resultText = r.resultText;
+      lastSaveError = r.saveError ?? null;
       break;
     }
-
     case "add_learning": {
-      // Two accepted formats (prefer the explicit fields):
-      //   1. Explicit: params.category + params.content + params.scope
-      //   2. Legacy pipe-delimited text: "category|content|scope1,scope2"
-      //
-      // The legacy format is still supported for backward compatibility, but
-      // the explicit fields are easier for the model to use correctly.
-      let rawCategory: string;
-      let content: string;
-      let scope: string[];
-
-      const explicitCategory = params.category as string | undefined;
-      const explicitContent = params.content as string | undefined;
-      const explicitScope = params.scope as string[] | undefined;
-
-      if (explicitCategory || explicitContent) {
-        // Explicit-field path
-        rawCategory = (explicitCategory ?? "").trim();
-        content = (explicitContent ?? "").trim();
-        scope = Array.isArray(explicitScope) ? explicitScope : [];
-        if (!rawCategory || !content) {
-          resultText =
-            `add_learning requires both 'category' and 'content'. ` +
-            `Got: category=${JSON.stringify(explicitCategory)}, content=${JSON.stringify(explicitContent)}. ` +
-            `Valid categories: ${VALID_LEARNING_CATEGORIES.join(", ")} (aliases accepted).`;
-          break;
-        }
-      } else {
-        // Legacy pipe-delimited text path
-        const parts = text.split("|").map((s) => s.trim());
-        rawCategory = parts[0] ?? "";
-        content = (parts[1] || parts[0] || "").trim();
-        scope = parts[2] ? parts[2].split(",").map((s) => s.trim()).filter(Boolean) : [];
-        if (!rawCategory) {
-          resultText =
-            `Invalid add_learning format. Provide 'category' and 'content' as separate fields, ` +
-            `or use pipe-delimited text: "category|content|scope". ` +
-            `Valid categories: ${VALID_LEARNING_CATEGORIES.join(", ")} (aliases accepted).`;
-          break;
-        }
-      }
-
-      const category = resolveCategory(rawCategory);
-      if (!category) {
-        resultText =
-          `Invalid category: "${rawCategory}". ` +
-          `Valid: ${VALID_LEARNING_CATEGORIES.join(", ")}. ` +
-          `Common aliases: bug/defect→root_cause, insight/idiom→pattern, ` +
-          `solution/patch→fix, rule/requirement→constraint, fact/codefact→codebase_fact. ` +
-          `Tip: use the explicit 'category' and 'content' fields to avoid pipe-format confusion.`;
-        break;
-      }
-
-      const learning: KeyLearning = {
-        id: generateLearningId(),
-        content,
-        category,
-        scope,
-        added_at: Date.now(),
-        persisted: false,
-      };
-      capPush(pad.key_learnings, learning, RECYCLE.MAX_LEARNINGS);
-      lastSaveError = await mutateAndSave(pad);
-      resultText = `Learning added: [${category}] ${content} (scope: ${scope.join(", ") || "all"}) (id: ${learning.id})`;
+      const r = await handleAddLearning(
+        pad,
+        text,
+        params.category as string | undefined,
+        params.content as string | undefined,
+        params.scope as string[] | undefined,
+      );
+      resultText = r.resultText;
+      lastSaveError = r.saveError ?? null;
       break;
     }
-
     case "persist_learnings": {
-      const unp = pad.key_learnings.filter((l) => !l.persisted);
-      resultText = `${unp.length} unp persisted learnings flagged for persistence (id: ${unp.map((l) => l.id).join(", ")})`;
-      for (const l of unp) l.persisted = true;
-      lastSaveError = await mutateAndSave(pad);
+      const r = await handlePersistLearnings(pad);
+      resultText = r.resultText;
+      lastSaveError = r.saveError ?? null;
       break;
     }
-
     case "note_compact": {
-      const stats = scratchpadClean(pad);
-      // ROADMAP P3-8 / DR-M-1: skip disk write when nothing was pruned.
-      // The old code always saved, causing I/O churn on long sessions
-      // that call note_compact periodically.
-      if (stats.total_pruned > 0) {
-        lastSaveError = await mutateAndSave(pad);
-        resultText = `Scratchpad compacted: plan(-${stats.pruned_plan}), done(-${stats.pruned_done}), decisions(-${stats.pruned_decisions}), hypotheses(-${stats.pruned_hypotheses}), notes(-${stats.pruned_notes})`;
-      } else {
-        resultText = "Scratchpad already compact (nothing to prune).";
-      }
+      const r = await handleNoteCompact(pad);
+      resultText = r.resultText;
+      lastSaveError = r.saveError ?? null;
       break;
     }
-
     case "elevate_to_goal": {
-      if (text) {
-        if (pad.goal && pad.goal !== "Untitled") pad.prior_goal = pad.goal;
-        pad.goal = text;
-      }
-      if (successCriteria) {
-        /* stored for future use */
-      }
-      lastSaveError = await mutateAndSave(pad);
-      resultText = `Elevated to goal: ${text || "current goal"}`;
+      const r = await handleElevateToGoal(pad, text, successCriteria);
+      resultText = r.resultText;
+      lastSaveError = r.saveError ?? null;
       break;
     }
-
     case "elevate_to_plan": {
-      if (text) {
-        const step: PlanStep = {
-          id: nextId("pl"),
-          text,
-          budgetCalls: undefined,
-          spentCalls: 0,
-          startTurn: pad.session.turn,
-          doneTurn: 0,
-          startTotalCalls: 0,
-        };
-        capPush(pad.plan, step, RECYCLE.MAX_PLAN);
-      }
-      lastSaveError = await mutateAndSave(pad);
-      resultText = `Elevated to plan: ${text || "current plan"}`;
+      const r = await handleElevateToPlan(pad, text);
+      resultText = r.resultText;
+      lastSaveError = r.saveError ?? null;
       break;
     }
-
-    // ── Targeted removal (long-session hygiene) ─────────────────────────
     case "remove_plan": {
-      const target = (params.id as string | undefined) ?? text;
-      if (!target) {
-        resultText = "remove_plan requires 'id' or 'text'.";
-        break;
-      }
-      const { item, index } = findByIdOrText(pad.plan, target);
-      if (!item) {
-        resultText = `Plan step not found: ${target}`;
-        break;
-      }
-      pad.plan.splice(index, 1);
-      lastSaveError = await mutateAndSave(pad);
-      resultText = `Plan step removed: ${item.text} (id: ${item.id})`;
+      const r = await handleRemovePlan(pad, idOrText);
+      resultText = r.resultText;
+      lastSaveError = r.saveError ?? null;
       break;
     }
-
     case "remove_note": {
-      const target = (params.id as string | undefined) ?? text;
-      if (!target) {
-        resultText = "remove_note requires 'id' or 'text'.";
-        break;
-      }
-      const { item, index } = findByIdOrText(pad.notes, target);
-      if (!item) {
-        resultText = `Note not found: ${target}`;
-        break;
-      }
-      pad.notes.splice(index, 1);
-      lastSaveError = await mutateAndSave(pad);
-      resultText = `Note removed: ${item.text} (id: ${item.id})`;
+      const r = await handleRemoveNote(pad, idOrText);
+      resultText = r.resultText;
+      lastSaveError = r.saveError ?? null;
       break;
     }
-
     case "remove_decision": {
-      const target = (params.id as string | undefined) ?? text;
-      if (!target) {
-        resultText = "remove_decision requires 'id' or 'text'.";
-        break;
-      }
-      const { item, index } = findByIdOrText(pad.decisions, target);
-      if (!item) {
-        resultText = `Decision not found: ${target}`;
-        break;
-      }
-      pad.decisions.splice(index, 1);
-      lastSaveError = await mutateAndSave(pad);
-      resultText = `Decision removed: ${item.text} (id: ${item.id})`;
+      const r = await handleRemoveDecision(pad, idOrText);
+      resultText = r.resultText;
+      lastSaveError = r.saveError ?? null;
       break;
     }
-
     case "remove_hypothesis": {
-      const target = (params.id as string | undefined) ?? text;
-      if (!target) {
-        resultText = "remove_hypothesis requires 'id' or 'text'.";
-        break;
-      }
-      const { item, index } = findByIdOrText(pad.hypotheses, target);
-      if (!item) {
-        resultText = `Hypothesis not found: ${target}`;
-        break;
-      }
-      pad.hypotheses.splice(index, 1);
-      lastSaveError = await mutateAndSave(pad);
-      resultText = `Hypothesis removed: ${item.text} (id: ${item.id})`;
+      const r = await handleRemoveHypothesis(pad, idOrText);
+      resultText = r.resultText;
+      lastSaveError = r.saveError ?? null;
       break;
     }
-
-    // ── Bulk actions (long-session hygiene) ─────────────────────────────
     case "clear_done": {
-      const count = pad.done.length;
-      pad.done = [];
-      lastSaveError = await mutateAndSave(pad);
-      resultText = `Cleared ${count} done items.`;
+      const r = await handleClearDone(pad);
+      resultText = r.resultText;
+      lastSaveError = r.saveError ?? null;
       break;
     }
-
     case "archive_done": {
-      // Append archived done items to <slug>/archive.jsonl. Items are
-      // NOT deleted from memory; this just moves them to disk in
-      // append-only form so a future session can query them.
-      const slug = pad.projectSlug;
-      const archivePath = path.join(
-        SCRATCHPAD_DIR,
-        slug,
-        "archive.jsonl",
-      );
-      const lines = pad.done.map((d) =>
-        JSON.stringify({ kind: "done", text: d.text, turn: d.turn, addedAt: d.addedAt, id: d.id }),
-      );
-      if (lines.length > 0) {
-        try {
-          await appendFile(archivePath, lines.join("\n") + "\n", "utf-8");
-        } catch {
-          // Best-effort archive
-        }
-      }
-      const count = pad.done.length;
-      pad.done = [];
-      lastSaveError = await mutateAndSave(pad);
-      resultText = `Archived ${count} done items to ${archivePath}`;
+      const r = await handleArchiveDone(pad);
+      resultText = r.resultText;
+      lastSaveError = r.saveError ?? null;
       break;
     }
-
     default:
-      resultText = `Unknown action: ${action}. Use: read, set_goal, add_plan, mark_done, add_decision, add_hypothesis, add_note, update_session, add_constraint, remove_constraint, add_learning, persist_learnings, note_compact, elevate_to_goal, elevate_to_plan. For task management, use the 'task' tool.`;
+      resultText = `Unknown action: ${action}. Use: read, continue, set_goal, add_plan, mark_done, add_decision, add_hypothesis, add_note, update_session, add_constraint, remove_constraint, add_learning, persist_learnings, note_compact, elevate_to_goal, elevate_to_plan, remove_plan, remove_note, remove_decision, remove_hypothesis, clear_done, archive_done. For task management, use the 'task' tool.`;
   }
 
   // ROADMAP P0-2 / DR-H-4: append disk-write error to result if the most
@@ -1013,7 +625,6 @@ async function scratchpadExecute(
 
 // ── Tool Registration ─────────────────────────────────────────────────────
 
-export default function scratchpadExtension(pi: ExtensionAPI): void {
 function createScratchpadTool(): ToolDefinition<any, any, any> {
   return {
     name: "scratchpad",
@@ -1033,6 +644,6 @@ function createScratchpadTool(): ToolDefinition<any, any, any> {
   };
 }
 
-// ── Tool Registration ─────────────────────────────────────────────────────
-
-pi.registerTool(createScratchpadTool());}
+export default function scratchpadExtension(pi: ExtensionAPI): void {
+  pi.registerTool(createScratchpadTool());
+}

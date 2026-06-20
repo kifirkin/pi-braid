@@ -25,6 +25,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const TYPES = join(ROOT, "src/extensions/memory/scratchpad/types.ts");
 const PERSISTENCE = join(ROOT, "src/extensions/memory/scratchpad/persistence.ts");
 const INDEX = join(ROOT, "src/extensions/memory/scratchpad/index.ts");
+const HANDLERS = join(ROOT, "src/extensions/memory/scratchpad/handlers.ts");
+const UTILS = join(ROOT, "src/extensions/memory/scratchpad/utils.ts");
 
 let passed = 0;
 let failed = 0;
@@ -79,24 +81,32 @@ console.log("\n[3] New actions in index.ts");
   check(src.includes('Type.Literal("clear_done")'), 'clear_done action registered');
   check(src.includes('Type.Literal("archive_done")'), 'archive_done action registered');
   // findByIdOrText helper
-  check(src.includes("findByIdOrText"), "findByIdOrText helper exists");
-  // All add_* cases now use nextId
-  check(/add_plan[\s\S]*?id: nextId\("pl"\)/.test(src), "add_plan uses nextId('pl')");
-  check(/add_decision[\s\S]*?id: nextId\("dc"\)/.test(src), "add_decision uses nextId('dc')");
-  check(/add_hypothesis[\s\S]*?id: nextId\("hp"\)/.test(src), "add_hypothesis uses nextId('hp')");
-  check(/add_note[\s\S]*?id: nextId\("nt"\)/.test(src), "add_note uses nextId('nt')");
-  check(/mark_done[\s\S]*?id: nextId\("dn"\)/.test(src), "mark_done uses nextId('dn')");
+  check(src.includes("findByIdOrText") || readFileSync(UTILS, "utf-8").includes("findByIdOrText"), "findByIdOrText helper exists");
   // ID parameter
-  check(/id: Type\.Optional\(Type\.String/, "id parameter registered");
+  check(/id: Type\.Optional\(Type\.String/.test(src), "id parameter registered");
   // Filter parameter
-  check(/filter: Type\.Optional/, "filter parameter registered");
+  check(/filter: Type\.Optional/.test(src), "filter parameter registered");
+}
+
+console.log("\n[3.5] Handlers file: per-action logic");
+{
+  const src = readFileSync(HANDLERS, "utf-8");
+  // All add_* cases now use nextId
+  check(/handleAddPlan[\s\S]*?id: nextId\("pl"\)/.test(src), "handleAddPlan uses nextId('pl')");
+  check(/handleAddDecision[\s\S]*?id: nextId\("dc"\)/.test(src), "handleAddDecision uses nextId('dc')");
+  check(/handleAddHypothesis[\s\S]*?id: nextId\("hp"\)/.test(src), "handleAddHypothesis uses nextId('hp')");
+  check(/handleAddNote[\s\S]*?id: nextId\("nt"\)/.test(src), "handleAddNote uses nextId('nt')");
+  check(/handleMarkDone[\s\S]*?id: nextId\("dn"\)/.test(src), "handleMarkDone uses nextId('dn')");
+  // archive_done uses appendFile
+  check(/handleArchiveDone[\s\S]*?appendFile/m.test(src), "handleArchiveDone uses appendFile");
+  check(/handleArchiveDone[\s\S]*?archive\.jsonl/.test(src), "handleArchiveDone uses archive.jsonl");
 }
 
 console.log("\n[4] archive_done writes to archive.jsonl");
 {
-  const src = readFileSync(INDEX, "utf-8");
+  const src = readFileSync(HANDLERS, "utf-8");
   check(src.includes("archive.jsonl"), "archive_done writes to archive.jsonl");
-  check(/archive_done[\s\S]*?appendFile/m.test(src), "archive_done uses appendFile");
+  check(/handleArchiveDone[\s\S]*?appendFile/m.test(src), "archive_done uses appendFile");
 }
 
 console.log("\n[5] Read filter support");
@@ -158,31 +168,34 @@ console.log("\n[5.5] continue action for session resumption");
 
 console.log("\n[6] Removal helpers don't leave stale references");
 {
-  const src = readFileSync(INDEX, "utf-8");
-  // Use a non-greedy match with explicit end-marker to avoid greedy match
-  // across the entire switch statement.
-  const casePattern = (name) => {
-    const re = new RegExp(`case "${name}": \\{[\\s\\S]*?\\n    \\}`);
+  // After the P2-2 split, case bodies live in handlers.ts. The router
+  // in index.ts just calls the right handler. Verify handler logic
+  // matches the original case bodies.
+  const src = readFileSync(HANDLERS, "utf-8");
+  // For each remove_*/clear_*/archive_*, find the handler function body
+  // and assert it does the right thing.
+  const handlerPattern = (name) => {
+    const re = new RegExp(`export async function ${name}\\([\\s\\S]*?\\n\\}`);
     return src.match(re);
   };
-  const removePlanMatch = casePattern("remove_plan");
-  check(!!removePlanMatch, "remove_plan case body present");
+  const removePlanMatch = handlerPattern("handleRemovePlan");
+  check(!!removePlanMatch, "handleRemovePlan body present");
   if (removePlanMatch) {
     check(removePlanMatch[0].includes("mutateAndSave"), "remove_plan persists changes");
     check(removePlanMatch[0].includes("splice"), "remove_plan removes from array");
   }
-  const removeNoteMatch = casePattern("remove_note");
-  check(!!removeNoteMatch, "remove_note case body present");
+  const removeNoteMatch = handlerPattern("handleRemoveNote");
+  check(!!removeNoteMatch, "handleRemoveNote body present");
   if (removeNoteMatch) {
     check(removeNoteMatch[0].includes("splice"), "remove_note removes from array");
   }
-  const clearDoneMatch = casePattern("clear_done");
-  check(!!clearDoneMatch, "clear_done case body present");
+  const clearDoneMatch = handlerPattern("handleClearDone");
+  check(!!clearDoneMatch, "handleClearDone body present");
   if (clearDoneMatch) {
     check(clearDoneMatch[0].includes("mutateAndSave"), "clear_done persists");
   }
-  const archiveDoneMatch = casePattern("archive_done");
-  check(!!archiveDoneMatch, "archive_done case body present");
+  const archiveDoneMatch = handlerPattern("handleArchiveDone");
+  check(!!archiveDoneMatch, "handleArchiveDone body present");
   if (archiveDoneMatch) {
     check(archiveDoneMatch[0].includes("appendFile"), "archive_done appends to file");
   }
