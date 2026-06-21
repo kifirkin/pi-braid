@@ -105,19 +105,13 @@ function evictOldOutcomes(s: ContextLifecycleState): void {
 import {
   type ContextLifecycleState,
   state,
-  _getState,
   resetState,
 } from "./state.js";
-// Re-export for backward compat
-export {
-  type ContextLifecycleState,
-  type Outcome,
-  state,
-  createState,
-  _getState,
-  ensureFreshState,
-  resetState,
-} from "./state.js";
+// Note: state.ts types and functions are intentionally NOT re-exported.
+// All consumers (this file, helpers.ts) access them via the import above.
+// External callers should depend on `./state.js` directly if they need
+// access to state types or functions. This removes the public-API surface
+// area documented in DR-L-4 as dead code (zero external callers).
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
@@ -359,7 +353,8 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
   // ── session_start ────────────────────────────────────────────────────────
   registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event: unknown, ctx: ExtensionContext) => {
     resetState(ctx);
-    state().outcomes.length = 0;
+    // ROADMAP P3-17 / DR-L-3: use session-scoped state(ctx) when available.
+    state(ctx).outcomes.length = 0;
     _policyState.cooldowns.clear();
     resetDetectorState(_detectorState);
     clearInjections(); // Clear injection history on fresh session
@@ -491,8 +486,9 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
           // Normal: send compact nudge
           sendCompactNudge(pi, ev, usage);
           state(ctx).compactNudgeActive = true;
-          state().lastCompactNudgeTurn = state().turnCount;
-          state().lastCompactNudgeUsage = usage;
+          // ROADMAP P3-17 / DR-L-3: use session-scoped state(ctx) when available.
+          state(ctx).lastCompactNudgeTurn = state(ctx).turnCount;
+          state(ctx).lastCompactNudgeUsage = usage;
         }
       } else {
         executeAction(ev, pi, ctx, usage, branch.length);
@@ -509,13 +505,14 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
       if (Date.now() - proposal.created_at > 120_000) {
         proposal.resolution = "implicit_approved";
         proposal.resolved_at = Date.now();
-        state().proposalsByEntryId.set(entry.id, proposal);
+        // ROADMAP P3-17 / DR-L-3: use session-scoped state(ctx) when available.
+        state(ctx).proposalsByEntryId.set(entry.id, proposal);
 
         // Track outcome for closed-loop feedback
-        state().outcomes.push({
+        state(ctx).outcomes.push({
           proposalId: proposal.id,
           resolution: "implicit_approved",
-          turnsToResolve: state().turnCount - proposal.turn,
+          turnsToResolve: state(ctx).turnCount - proposal.turn,
           timestamp: Date.now(),
         });
       }
@@ -526,7 +523,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
   });
 
   // ── tool_call: Capture agent signals + compaction escalation reset ────────
-  pi.on(TOOL_CALL, async (event: ToolCallEvent) => {
+  pi.on(TOOL_CALL, async (event: ToolCallEvent, ctx: ExtensionContext) => {
     const toolName = event.toolName as string;
 
     // ── Task boundary signals ──────────────────────────────────────────
@@ -542,9 +539,10 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     // If the agent calls any context management tool, the compaction nudge
     // is considered "acted upon" and we reset the escalation counter.
     if (CONTEXT_MGMT_TOOLS.has(toolName)) {
-      state().agentActedOnContext = true;
-      state().ignoredCompactNudges = 0;
-      state().compactNudgeActive = false;
+      // ROADMAP P3-17 / DR-L-3: use session-scoped state(ctx) when available.
+      state(ctx).agentActedOnContext = true;
+      state(ctx).ignoredCompactNudges = 0;
+      state(ctx).compactNudgeActive = false;
       log.debug(`Context management tool "${toolName}" called - reset compaction escalation`);
     }
   });
@@ -615,12 +613,13 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 
           proposal.resolution = "approved";
           proposal.resolved_at = Date.now();
-          state().proposalsByEntryId.set(id, proposal);
+          // ROADMAP P3-17 / DR-L-3: use session-scoped state(ctx) when available.
+          state(ctx).proposalsByEntryId.set(id, proposal);
 
-          state().outcomes.push({
+          state(ctx).outcomes.push({
             proposalId: id,
             resolution: "approved",
-            turnsToResolve: state().turnCount - proposal.turn,
+            turnsToResolve: state(ctx).turnCount - proposal.turn,
             timestamp: Date.now(),
           });
 
@@ -649,12 +648,13 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 
           proposal.resolution = "rejected";
           proposal.resolved_at = Date.now();
-          state().proposalsByEntryId.set(id, proposal);
+          // ROADMAP P3-17 / DR-L-3: use session-scoped state(ctx) when available.
+          state(ctx).proposalsByEntryId.set(id, proposal);
 
-          state().outcomes.push({
+          state(ctx).outcomes.push({
             proposalId: id,
             resolution: "rejected",
-            turnsToResolve: state().turnCount - proposal.turn,
+            turnsToResolve: state(ctx).turnCount - proposal.turn,
             timestamp: Date.now(),
           });
 
@@ -693,12 +693,14 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
           const governance = _policyState.governance;
 
           // Calculate outcome stats
-          const total = state().outcomes.length;
-          const approved = state().outcomes.filter(
+          // ROADMAP P3-17 / DR-L-3: use session-scoped state(ctx) when available.
+          const ctxState = state(ctx);
+          const total = ctxState.outcomes.length;
+          const approved = ctxState.outcomes.filter(
             (o) => o.resolution === "approved" || o.resolution === "implicit_approved",
           ).length;
           const avgTurns =
-            total > 0 ? state().outcomes.reduce((sum, o) => sum + o.turnsToResolve, 0) / total : 0;
+            total > 0 ? ctxState.outcomes.reduce((sum, o) => sum + o.turnsToResolve, 0) / total : 0;
 
           return {
             content: [
@@ -706,7 +708,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
                 type: "text" as const,
                 text: [
                   "## S-MMU Statistics",
-                  `**Session:** ${state().turnCount} turns | ${formatDuration(Date.now() - state().sessionStartMs)}`,
+                  `**Session:** ${ctxState.turnCount} turns | ${formatDuration(Date.now() - ctxState.sessionStartMs)}`,
                   `**Proposals:** ${pending.length} pending, ${proposals.filter((p) => p.resolution).length} resolved`,
                   `**Outcomes:** ${approved}/${total} approved (${avgTurns.toFixed(1)} turns avg)`,
                   `**Policies:** ${policies.length} active`,
@@ -720,9 +722,9 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
               },
             ],
             details: {
-              turns: state().turnCount,
+              turns: ctxState.turnCount,
               proposals,
-              outcomes: state().outcomes,
+              outcomes: ctxState.outcomes,
               policies,
               governance,
               topicHistory: _detectorState.topicHistory,
