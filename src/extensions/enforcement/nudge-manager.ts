@@ -33,7 +33,11 @@ export type NudgeType =
   | "dangerousCommand"
   | "judge"
   | "context"
-  | "contextTool";
+  | "contextTool"
+  // EW-7.9: L2 "Session Signals" bundle. Each sub-signal gets its own
+  // per-key history so adding/removing a signal doesn't re-arm the
+  // others. Pass subKey="memory" | "scratchpad-edit" | "think" | etc.
+  | "sessionSignals";
 
 export interface NudgeConfig {
   /** Base cooldown in ms (minimum between nudges of this type) */
@@ -60,6 +64,10 @@ export const DEFAULT_NUDGE_CONFIGS: Record<NudgeType, NudgeConfig> = {
   judge: { baseCooldownMs: 30_000, escalateAfter: 2, deduplicate: true },
   context: { baseCooldownMs: 90_000, escalateAfter: 2, deduplicate: true },
   contextTool: { baseCooldownMs: 120_000, escalateAfter: 3, deduplicate: true },
+  // EW-7.9: per-signal gating for the L2 bundle. Each subKey has its
+  // own history entry; the 60s cooldown matches the original
+  // "scratchpad" gate that the bundle used before per-signal splitting.
+  sessionSignals: { baseCooldownMs: 60_000, escalateAfter: 2, deduplicate: true },
 };
 
 // Nudge State Tracking
@@ -92,7 +100,11 @@ export function getNudgeManager(ctx: ExtensionContext): NudgeManager {
 }
 
 export class NudgeManager {
-  private history: Map<NudgeType, NudgeHistory> = new Map();
+  // EW-7.9: history is keyed by composite `${type}:${subKey ?? ""}` so
+  // a single NudgeType can have independent cooldown + dedup slots per
+  // sub-signal. When subKey is omitted, the key reduces to just the
+  // type — preserving the original single-slot-per-type behavior.
+  private history: Map<string, NudgeHistory> = new Map();
   private readonly config: Record<NudgeType, NudgeConfig>;
 
   constructor(customConfig?: Partial<Record<NudgeType, Partial<NudgeConfig>>>) {
@@ -107,15 +119,28 @@ export class NudgeManager {
     }
   }
 
+  /**
+   * Decide whether to send a nudge.
+   *
+   * @param type   Nudge category (cooldown + dedup config bucket).
+   * @param message  The full message text — used for hash dedup.
+   * @param subKey  Optional. When set, isolates this call's history
+   *                from other sub-signals of the same type. Without
+   *                subKey, the call shares history with all other
+   *                callers of the same type (legacy behavior).
+   * @param _now   Optional override for the current time (tests).
+   */
   shouldSendNudge(
     type: NudgeType,
     message: string,
+    subKey?: string,
     _now: number = Date.now(),
   ): { shouldSend: boolean; escalated: boolean } {
     const cfg = this.config[type];
     if (!cfg) return { shouldSend: false, escalated: false };
 
-    const existing = this.history.get(type);
+    const key = subKey ? `${type}:${subKey}` : type;
+    const existing = this.history.get(key);
     const history: NudgeHistory = existing
       ? { ...existing }
       : { lastSent: 0, count: 0, lastMessageHash: "" };
@@ -140,7 +165,7 @@ export class NudgeManager {
     history.count++;
     const escalated = history.count % cfg.escalateAfter === 0;
 
-    this.history.set(type, history);
+    this.history.set(key, history);
 
     return { shouldSend: true, escalated };
   }
@@ -149,8 +174,13 @@ export class NudgeManager {
     return hashForDedup(message.trim());
   }
 
-  getHistory(type: NudgeType): NudgeHistory | undefined {
-    return this.history.get(type);
+  /**
+   * Look up history for a (type, subKey) pair. Without subKey, returns
+   * the un-scoped history for that type.
+   */
+  getHistory(type: NudgeType, subKey?: string): NudgeHistory | undefined {
+    const key = subKey ? `${type}:${subKey}` : type;
+    return this.history.get(key);
   }
 
   getAllStats(): Record<string, { count: number; lastSent: number }> {

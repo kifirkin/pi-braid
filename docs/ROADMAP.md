@@ -1515,9 +1515,95 @@ the heartbeat-scheduler monkey-patch to be safe.
 
   **Test verification:** 63/63 pass. tsc clean.
 
-## Final autonomous-pass tally (v1.0 - v2.7)
+- **v2.8** (2026-06-18): **EW-7.9** complete — L2 "Session
+  Signals" bundle is now gated per-sub-signal.
 
-**19 commits. 51 files changed. ~960 insertions, ~1020 deletions
+  **Background:**
+
+  Before v2.8, `turn-end-handler.ts` pushed L2 signals
+  into a `string[]`, bundled them into one big string,
+  and gated the entire bundle by
+  `getNudgeManager(ctx).shouldSendNudge("scratchpad", bundled)`.
+  Because the dedup hash was computed over the entire
+  bundle, adding a single new L2 line (e.g. a memory
+  nudge on top of an existing scratchpad nudge) re-armed
+  the entire bundle — previously-suppressed signals
+  would fire again whenever anything else was added. The
+  L2 bundle was unreliable in long sessions.
+
+  **What shipped:**
+
+  1. `NudgeManager.shouldSendNudge()` now accepts an
+     optional 3rd parameter `subKey?: string`. When set,
+     the call's history (cooldown + dedup) is isolated
+     under a composite key `${type}:${subKey}`. When
+     omitted, the key reduces to just the type —
+     preserving the original single-slot-per-type
+     behavior for all existing 2-arg callers.
+
+  2. Added `"sessionSignals"` to the `NudgeType` enum
+     with config matching the old bundle gate (60s
+     cooldown, dedup true, escalate 2). This new type
+     is dedicated to the L2 bundle; all sub-signals
+     share it but use distinct subKeys.
+
+  3. `turn-end-handler.ts` now pushes
+     `{ key, content }` per sub-signal. Each push site
+     uses a distinct stable key:
+     - `memory` — memory nudge
+     - `scratchpad` — scratchpad-update nudge
+     - `think` — no-prior-think nudge
+     - `context-tokens` — token-based context nudge
+     - `context-percent` — percent-based context nudge
+     - `localization` — localization risk signal
+
+  4. The emission block now loops through
+     `sessionSignals`, calling
+     `shouldSendNudge("sessionSignals", sig.content, sig.key)`
+     for each. Only the signals that pass the per-signal
+     gate are bundled + sent. The bundle is now a
+     function of only the surviving signals, not the
+     full set, so adding a signal can never re-arm
+     previously-suppressed ones.
+
+  5. `test/runtime/lib/test-session-signals-per-signal.mjs`
+     (new): 14 subtests pinning:
+     - `sessionSignals` is a registered `NudgeType`
+     - Config matches the old bundle behavior
+       (60s cooldown, dedup, escalate 2)
+     - Different subKeys have independent cooldown
+     - Different subKeys have independent dedup
+     - Legacy 2-arg call still works (backward compat)
+     - Without subKey, two callers share history
+       (legacy behavior)
+     - `getHistory` returns per-subKey history
+     - All 4 distinct sub-signals fire on first turn
+     - The original bug: previously-suppressed signal
+       is NOT re-armed by new signals
+     - Source-level: `NudgeType` enum includes
+       `sessionSignals` with EW-7.9 justification
+     - Source-level: `shouldSendNudge` signature has
+       `subKey`
+     - Source-level: history map key is composite
+     - Source-level: handler pushes `{key, content}`
+     - Source-level: handler uses per-signal gating
+       loop (and the old single-bundle call is gone)
+
+  **What this does NOT do (out of scope):**
+
+  - **The 14 unwired NudgeType values (EW-7.2)** are
+    still unwired. EW-7.9 only fixes the bundle bug
+    for the 6 L2 sub-signals that already fire today.
+    Wiring the other 8 NudgeTypes (malformed, lazy,
+    claim, toolDiversity, exploreBeforeAct, etc.)
+    requires per-type design decisions and is
+    deferred per the EW-7.2 deferral note.
+
+  **Test verification:** 64/64 pass. tsc clean.
+
+## Final autonomous-pass tally (v1.0 - v2.8)
+
+**21 commits. 53 files changed. ~1050 insertions, ~1030 deletions
 (most of the deletions are ROADMAP.md itself, which was
 folded in from 5 prior audit documents). 1 regression shipped
 in v1.8 and fixed in v1.8.1.
@@ -1541,6 +1627,7 @@ separate P2-class effort). All test suites pass
 - `test-scratchpad-long-session.mjs` — 50/50
 - `test-cognitive-memory-runtime.mjs` — clean
 - `test-dreamer.mjs` — 11/11 (v1.8.1: was 8/11 due to v1.8 regression)
+- `test-session-signals-per-signal.mjs` — 14/14 (v2.8)
 
 ### Shipped items by priority tier
 
@@ -1554,22 +1641,20 @@ P0-7 SIGNAL_RETENTION_TURNS=3.
 P1-6 relevanceReason substring match, P1-7 explore_paths
 description, P1-8 recall_get fake entry discriminator.
 
-**P2 (1 of 11):** P2-1 typed-adapter pattern (4 of 6 missed
-casts eliminated).
+**P2 (2 of 11):** P2-1 typed-adapter pattern (full 6 sites
+now covered in v2.6), P2-2 scratchpad split into handler
+groups (P2-2).
 
 **P3 (15 of 25):** P3-4, P3-5, P3-6, P3-8, P3-10, P3-11, P3-12,
 P3-13, P3-14, P3-15, P3-16, P3-19, P3-20, P3-21, P3-22, P3-23.
 
-**EW items (6 of 15):** EW-7.1, EW-7.4, EW-7.5, EW-7.7,
-EW-7.14, EW-7.15.
+**EW items (7 of 15):** EW-7.1, EW-7.4, EW-7.5, EW-7.7,
+EW-7.9 (v2.8), EW-7.14, EW-7.15.
 
-### Remaining 18 items (deferred)
+### Remaining 16 items (deferred)
 
 The remaining items are either:
 
-- **Multi-site type refactors** (P2-2 split scratchpadExecute,
-  P2-7 drift-classifier cache) — require non-trivial new
-  infrastructure.
 - **NudgeType wiring** (P1-5 14 unwired NudgeTypes) — requires
   design decisions per type (some should be deleted, some wired,
   some deferred as future features).
@@ -1578,8 +1663,8 @@ The remaining items are either:
   original Q13 decision.
 - **Settings block** (EW-7.11 braid.enforcement) — requires
   config plumbing + validation.
-- **Larger UX** (P1-4 suppressNudges everywhere, EW-7.12 prefix
-  convention) — policy decisions best made with user input.
+- **Larger UX** (EW-7.12 prefix convention, P1-3 timer state) —
+  policy decisions best made with user input.
 
 These are listed in the P1/P2/P3 tables above and remain
 actionable for a future sprint.

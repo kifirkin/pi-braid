@@ -202,7 +202,10 @@ export async function dispatchTurnEndLoop(
     }
   }
 
-  const sessionSignals: string[] = [];
+  // EW-7.9: each L2 session signal carries its own subKey so per-signal
+  // cooldowns and dedup are independent. Adding/removing a signal no
+  // longer re-arms the others (was the bundle bug fixed here).
+  const sessionSignals: { key: string; content: string }[] = [];
 
   if (suppressNudges) {
     // Skip all L2 signal collection when nudges are suppressed
@@ -218,10 +221,12 @@ export async function dispatchTurnEndLoop(
     shouldNudgeForMemory(getState(ctx), getState(ctx).currentTurn, 20)
   ) {
     markMemoryNudgeSent(getState(ctx));
-    sessionSignals.push(
-      "Code changed but nothing stored. Capture the key pattern or fix: " +
+    sessionSignals.push({
+      key: "memory",
+      content:
+        "Code changed but nothing stored. Capture the key pattern or fix: " +
         'memory_store(content="...", tags=["pattern", "fix"])',
-    );
+    });
   }
 
   // Scratchpad signal - widened: fires on (a) write/edit without scratchpad,
@@ -236,7 +241,10 @@ export async function dispatchTurnEndLoop(
       const reason = madeFileChanges
         ? "Code changed without updating scratchpad"
         : `Complex turn (${actualTools.length} tools) without scratchpad`;
-      sessionSignals.push(`${reason}. Consider updating scratchpad(action="add_note", text="...")`);
+      sessionSignals.push({
+        key: "scratchpad",
+        content: `${reason}. Consider updating scratchpad(action="add_note", text="...")`,
+      });
     }
   }
 
@@ -250,11 +258,12 @@ export async function dispatchTurnEndLoop(
     (noThinkThisSession && getState(ctx).currentTurn >= 5 && getState(ctx).currentTurn % 5 === 0) ||
     (madeHighStakesAction && noThinkThisSession && getState(ctx).currentTurn >= 3);
   if (!hadErrors && !inOverflowRecovery && thinkNeeded) {
-    sessionSignals.push(
-      madeHighStakesAction
+    sessionSignals.push({
+      key: "think",
+      content: madeHighStakesAction
         ? `High-stakes action without prior think(). Consider think(observation, decision, reason) before the next change.`
         : `${getState(ctx).currentTurn} turns without think() - consider think(observation, decision, reason) to track reasoning`,
-    );
+    });
   }
 
   // Context usage signal: agent called one of the real context tools
@@ -298,16 +307,20 @@ export async function dispatchTurnEndLoop(
     if (turnsSinceLastCheck >= tokenCheckInterval) {
       if (usageTokens >= USAGE_TOKENS_WARNING) {
         markNudgeSent(getState(ctx), getState(ctx).currentTurn);
-        sessionSignals.push(
-          `Context at ${Math.round(usageTokens / 1000)}K tokens (${Math.round(usagePercent)}%). ` +
+        sessionSignals.push({
+          key: "context-tokens",
+          content:
+            `Context at ${Math.round(usageTokens / 1000)}K tokens (${Math.round(usagePercent)}%). ` +
             `Pipeline: context_navigate(action="tag") → context_compress(action="archive") → compact (last resort).`,
-        );
+        });
       } else if (usageTokens >= USAGE_TOKENS_SOFT) {
         markNudgeSent(getState(ctx), getState(ctx).currentTurn);
-        sessionSignals.push(
-          `Context at ${Math.round(usageTokens / 1000)}K tokens. ` +
+        sessionSignals.push({
+          key: "context-tokens",
+          content:
+            `Context at ${Math.round(usageTokens / 1000)}K tokens. ` +
             `Consider context_inspect(detail="prune") to see candidates, or tag position with context_navigate(action="tag").`,
-        );
+        });
       }
     }
   }
@@ -324,20 +337,27 @@ export async function dispatchTurnEndLoop(
     markNudgeSent(getState(ctx), getState(ctx).currentTurn);
     const pct = Math.round(usagePercent);
     if (usagePercent >= USAGE_COMPACT_MEDIUM) {
-      sessionSignals.push(
-        `Context at ${pct}%. Pipeline: context_navigate(action="tag") → ` +
+      sessionSignals.push({
+        key: "context-percent",
+        content:
+          `Context at ${pct}%. Pipeline: context_navigate(action="tag") → ` +
           `context_compress(action="archive") → compact (last resort). Tag your position first.`,
-      );
+      });
     } else if (usagePercent >= USAGE_WHISPER_CRITICAL) {
-      sessionSignals.push(
-        `Context at ${pct}%. Tag with context_navigate(action="tag"), then context_compress(action="archive") to branch with a summary.`,
-      );
+      sessionSignals.push({
+        key: "context-percent",
+        content:
+          `Context at ${pct}%. Tag with context_navigate(action="tag"), then context_compress(action="archive") to branch with a summary.`,
+      });
     }
   }
 
   // BV1: Surface localization risk
   if (getState(ctx).localizationRisk) {
-    sessionSignals.push(`[localization] ${getState(ctx).localizationRisk}`);
+    sessionSignals.push({
+      key: "localization",
+      content: `[localization] ${getState(ctx).localizationRisk}`,
+    });
     getState(ctx).localizationRisk = "";
   }
 
@@ -364,11 +384,26 @@ export async function dispatchTurnEndLoop(
   if (sessionSignals.length > 0) {
     pruneSignals(getState(ctx).currentTurn);
 
-    // BR3: Only bundle and send if nudges are not suppressed
-    if (!suppressNudges && sessionSignals.length > 0) {
-      const bundled = `[Session Signals]\n${sessionSignals.map((s) => `- ${s}`).join("\n")}`;
-      const { shouldSend } = getNudgeManager(ctx).shouldSendNudge("scratchpad", bundled);
-      if (shouldSend) {
+    // BR3: Only bundle and send if nudges are not suppressed.
+    // EW-7.9: per-signal gating. Each sub-signal has its own cooldown
+    // + dedup history keyed by `sig.key`. The bundle is built from
+    // only the signals that pass the gate, so adding a new signal
+    // does NOT re-arm previously-suppressed ones (the old bundle bug).
+    if (!suppressNudges) {
+      const nudgeManager = getNudgeManager(ctx);
+      const unsent: string[] = [];
+      for (const sig of sessionSignals) {
+        const { shouldSend } = nudgeManager.shouldSendNudge(
+          "sessionSignals",
+          sig.content,
+          sig.key,
+        );
+        if (shouldSend) {
+          unsent.push(sig.content);
+        }
+      }
+      if (unsent.length > 0) {
+        const bundled = `[Session Signals]\n${unsent.map((s) => `- ${s}`).join("\n")}`;
         sendEnforcementWhisper(pi, ctx, bundled);
       }
     }
