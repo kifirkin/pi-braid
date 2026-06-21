@@ -89,14 +89,22 @@ export function scratchpadClean(pad: TaskScratchpad): RecycleStats {
   return stats;
 }
 
-export function capPush<T>(arr: T[], item: T, max: number): number {
+/**
+ * Append an item to an array, evicting the oldest items if the array
+ * exceeds the cap. Eviction is silent (no return value) — observable
+ * pruning stats are computed by `scratchpadClean()` for the
+ * `note_compact` action. Callers can use `scratchpadClean()` after a
+ * batch of writes if they need an eviction count.
+ *
+ * ROADMAP P3-9 / DR-M-2: previously returned the number of evicted
+ * items, but no caller used the return value. Dropped to simplify
+ * the API and avoid the appearance of meaningful signal.
+ */
+export function capPush<T>(arr: T[], item: T, max: number): void {
   arr.push(item);
   if (arr.length > max) {
-    const excess = arr.length - max;
-    arr.splice(0, excess);
-    return excess;
+    arr.splice(0, arr.length - max);
   }
-  return 0;
 }
 
 // ── ID generation ───────────────────────────────────────────────────────
