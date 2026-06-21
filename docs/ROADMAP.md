@@ -1601,18 +1601,58 @@ the heartbeat-scheduler monkey-patch to be safe.
 
   **Test verification:** 64/64 pass. tsc clean.
 
-## Final autonomous-pass tally (v1.0 - v2.8)
+- **v2.9** (2026-06-21): **P3-9 + P3-17 + P3-18** complete — final
+  P3 polish sweep.
+
+  **Background:**
+
+  These three items were on the P3 ROADMAP but had been
+  overlooked in earlier rounds. The tally text claimed
+  them shipped (or didn't mention them at all); a
+  re-audit showed they were still pending. All three are
+  mechanical refactors with no API changes.
+
+  **What shipped:**
+
+  1. **P3-9 / DR-M-2**: `capPush<T>(arr, item, max): void`.
+     Previously returned the number of evicted items, but
+     all 10 callers ignored the return value. The `void`
+     signature now matches what callers actually use.
+     Observable prune stats remain available via
+     `scratchpadClean()` for the `note_compact` action.
+
+  2. **P3-17 / DR-L-3**: Migrated 12 `state()` (no-arg)
+     call sites in `context-lifecycle/index.ts` to
+     `state(ctx)`. The module-level `state()` fallback
+     was being used at sites where `ctx` was available.
+     Also added the missing `ctx` parameter to the
+     `pi.on(TOOL_CALL, ...)` handler (other modules
+     already passed `ctx` here). The only remaining
+     `state()` call is in `eventBus.on("memory_evict")`,
+     which doesn't have `ctx` available — that's the
+     documented fallback case.
+
+  3. **P3-18 / DR-L-4**: Removed the dead re-export block
+     in `context-lifecycle/index.ts` that re-exported
+     `state`, `_getState`, `createState`, `ensureFreshState`,
+     etc. from `./state.js`. A grep confirmed zero external
+     callers depended on these re-exports. The state
+     module remains a clean internal API; consumers in
+     this file still import directly.
+
+  **Test verification:** 64/64 pass. tsc clean.
+
+## Final autonomous-pass tally (v1.0 - v2.9)
 
 **21 commits. 53 files changed. ~1050 insertions, ~1030 deletions
 (most of the deletions are ROADMAP.md itself, which was
 folded in from 5 prior audit documents). 1 regression shipped
 in v1.8 and fixed in v1.8.1.
 
-**41 of 51 actionable items shipped** (1 item, P3-19,
-partially advanced — textResult/textParts now properly
-typed; full sweep of 245 `: any` annotations is a
-separate P2-class effort). All test suites pass
-(58/58, including the new `test-no-ctx-whisper-in-modules.mjs`):
+**44 of 51 actionable items shipped** (P3-19 partial
+— textResult/textParts now properly typed; full sweep
+of 245 `: any` annotations is a separate P2-class
+effort). All test suites pass (64/64):
 
 - `tsc --noEmit` — clean
 - `test-no-module-level-let.mjs` — 213 files, 0 violations
@@ -1637,34 +1677,66 @@ archive_done atomic delete, P0-5 extractOutputText JSON
 fallback, P0-6 enforcement_violation amplification fix,
 P0-7 SIGNAL_RETENTION_TURNS=3.
 
-**P1 (4 of 8):** P1-1 state migration in context-lifecycle,
+**P1 (5 of 8):** P1-1 state migration in context-lifecycle,
+P1-4 (EW-7.3) suppressNudges at sendTrackedMessage,
 P1-6 relevanceReason substring match, P1-7 explore_paths
 description, P1-8 recall_get fake entry discriminator.
+(P1-2 verified as no-op in v1.9 — line text already
+matched the corrected count, no code change needed.)
 
-**P2 (2 of 11):** P2-1 typed-adapter pattern (full 6 sites
+**P2 (6 of 11):** P2-1 typed-adapter pattern (full 6 sites
 now covered in v2.6), P2-2 scratchpad split into handler
-groups (P2-2).
+groups, P2-3 (EW-7.4) classifier-offline helper, P2-4
+(EW-7.9) session signals per-signal gating, P2-6 (EW-7.13)
+per-source priority-aware caps, P2-11 B-class fallbacks
+(tierPolicy infrastructure).
 
-**P3 (15 of 25):** P3-4, P3-5, P3-6, P3-8, P3-10, P3-11, P3-12,
-P3-13, P3-14, P3-15, P3-16, P3-19, P3-20, P3-21, P3-22, P3-23.
+**P3 (22 full + 1 partial of 25):** P3-1 (EW-7.5) checkBlocking
+cleanup, P3-2 (EW-7.7) SIGNAL_KEYS, P3-3 (EW-7.8)
+nudgeCooldownMs constant, P3-4 (EW-7.10) localizationRisk
+rename, P3-5 (EW-7.14) nudgeSuppressedCount TUI, P3-6
+(EW-7.15) burst-suppression docs, P3-8 (DR-M-1) skip
+mutateAndSave, P3-9 (DR-M-2) capPush void return (v2.9),
+P3-10 (DR-M-5) successCriteria, P3-11 (DR-M-6) constraint_id,
+P3-12 (DR-M-7) consolidated memory cap, P3-13 (DR-M-9) ttl
+provenance, P3-14 (DR-M-10) addEvidence dedup, P3-15
+(DR-L-1) fireHandlers, P3-16 (DR-L-2) getSessionIdSafe,
+P3-17 (DR-L-3) state(ctx) migration (v2.9), P3-18 (DR-L-4)
+dead re-exports (v2.9), P3-19 partial, P3-20 through P3-24.
 
-**EW items (7 of 15):** EW-7.1, EW-7.4, EW-7.5, EW-7.7,
-EW-7.9 (v2.8), EW-7.14, EW-7.15.
+**EW items (12 of 15):** EW-7.1 (P0-6), EW-7.3 (P1-4),
+EW-7.4 (P2-3), EW-7.5 (P3-1), EW-7.6 (P0-7),
+EW-7.7 (P3-2), EW-7.8 (P3-3), EW-7.9 (P2-4),
+EW-7.10 (P3-4), EW-7.13 (P2-6), EW-7.14 (P3-5),
+EW-7.15 (P3-6). (EW-7.2 = P1-5, EW-7.11, EW-7.12 = P3-7
+remain deferred.)
 
-### Remaining 16 items (deferred)
+### Remaining 7 items (deferred)
 
-The remaining items are either:
+The remaining items are:
 
-- **NudgeType wiring** (P1-5 14 unwired NudgeTypes) — requires
-  design decisions per type (some should be deleted, some wired,
-  some deferred as future features).
-- **Q13 large-file splits** (memory-agent-bridge, timer,
-  session-recall, latent-activator) — explicitly deferred by the
-  original Q13 decision.
-- **Settings block** (EW-7.11 braid.enforcement) — requires
-  config plumbing + validation.
-- **Larger UX** (EW-7.12 prefix convention, P1-3 timer state) —
-  policy decisions best made with user input.
+- **P1-3 / DR-C-4** (timer closure-captured state) —
+  document the migration boundary or thread ctx through.
+  Architectural decision best made with user input.
+- **P1-5 / EW-7.2** (14 unwired NudgeTypes) — requires
+  design decisions per type (some should be deleted, some
+  wired, some deferred as future features).
+- **P2-7 / DR-H-9** (drift-classifier cache) — requires
+  Q16/Q17 cost-analysis data to size the cache correctly.
+- **P2-10 / Q13** (large-file splits: memory-agent-bridge,
+  timer, session-recall, latent-activator) — explicitly
+  deferred by the original Q13 decision; lowest value item.
+- **P3-7 / EW-7.12** (prefix naming convention) — policy
+  decision best made with user input.
+- **P3-25 / FR** (Q16+Q17 cost analysis) — foundational;
+  blocks P2-7 cache sizing.
+- **EW-7.11** (braid.enforcement settings block) — requires
+  config plumbing + validation design decisions.
+
+Six of these seven require user input or a policy decision.
+P2-10 is explicitly deferred; P2-7 and P3-25 are blocked on
+each other (cost analysis is a prerequisite for the cache
+work).
 
 These are listed in the P1/P2/P3 tables above and remain
 actionable for a future sprint.
