@@ -1601,6 +1601,61 @@ the heartbeat-scheduler monkey-patch to be safe.
 
   **Test verification:** 64/64 pass. tsc clean.
 
+- **v3.0** (2026-06-21): **P3-25** complete — cost-report
+  layer built on Q16 critic-stats.
+
+  **Background:**
+
+  P3-25 (FR) was framed as "Q16+Q17 cost analysis and
+  caching strategy" — a Hard item that needed production
+  data. Re-auditing after v2.9 showed that Q16 (v2.0)
+  shipped the data-collection infrastructure (`recordCriticCall`
+  tracks input + output tokens; `getCriticStats()` aggregates
+  them). What's missing is the *consumer* of that data: a
+  function that turns token counts into USD estimates at
+  configurable pricing rates. That's small enough to ship
+  now without production data; the resulting report is the
+  cost baseline that informs P2-7 cache sizing.
+
+  **What shipped:**
+
+  1. `src/lib/ai/cost-report.ts` — new module exporting:
+     - `computeCriticCost(stats, pricing?)` — pure function
+       that takes `CriticStats` and returns a `CriticCostReport`
+       with per-critic, per-tier cost breakdown plus aggregate
+       totals.
+     - `DEFAULT_PRICING` — Sonnet-class defaults ($3/M input,
+       $15/M output as of 2026-06). Override per-model.
+     - `formatCriticCostReport(report)` — Markdown table for
+       surfacing in `get_session_metrics` or similar tools.
+
+  2. Cache-savings estimate: `cacheHits × avgLLMCallCost`.
+     Each cache hit is assumed to have replaced an average-cost
+     LLM call. Approximation is fine for budgeting — exact
+     savings would require knowing which cached call would
+     have fired, which the stats don't track.
+
+  3. `test/runtime/lib/test-critic-cost.mjs` (new): 9 subtests
+     pinning:
+     - Default pricing math (1000 input + 100 output = $0.0045)
+     - Multi-critic aggregation
+     - Cache savings formula
+     - Zero cache savings when no LLM tiers fired
+     - Empty stats handling
+     - Custom pricing override
+     - Markdown table format
+     - Source-level: cost-report.ts exports the API
+     - Source-level: DEFAULT_PRICING matches Sonnet defaults
+
+  **What this does NOT do (out of scope):**
+
+  - **The 6 remaining items** (P1-3, P1-5, P3-7, EW-7.11,
+    P2-10, P2-7) all require user input or policy decisions.
+    P2-7 (drift-classifier cache TTL) can now be sized
+    against the cost baseline from this report.
+
+  **Test verification:** 65/65 pass (was 64). tsc clean.
+
 - **v2.9** (2026-06-21): **P3-9 + P3-17 + P3-18** complete — final
   P3 polish sweep.
 
@@ -1642,17 +1697,17 @@ the heartbeat-scheduler monkey-patch to be safe.
 
   **Test verification:** 64/64 pass. tsc clean.
 
-## Final autonomous-pass tally (v1.0 - v2.9)
+## Final autonomous-pass tally (v1.0 - v3.0)
 
-**21 commits. 53 files changed. ~1050 insertions, ~1030 deletions
+**23 commits. 56 files changed. ~1180 insertions, ~1100 deletions
 (most of the deletions are ROADMAP.md itself, which was
 folded in from 5 prior audit documents). 1 regression shipped
 in v1.8 and fixed in v1.8.1.
 
-**44 of 51 actionable items shipped** (P3-19 partial
+**45 of 51 actionable items shipped** (P3-19 partial
 — textResult/textParts now properly typed; full sweep
 of 245 `: any` annotations is a separate P2-class
-effort). All test suites pass (64/64):
+effort). All test suites pass (65/65):
 
 - `tsc --noEmit` — clean
 - `test-no-module-level-let.mjs` — 213 files, 0 violations
@@ -1668,6 +1723,7 @@ effort). All test suites pass (64/64):
 - `test-cognitive-memory-runtime.mjs` — clean
 - `test-dreamer.mjs` — 11/11 (v1.8.1: was 8/11 due to v1.8 regression)
 - `test-session-signals-per-signal.mjs` — 14/14 (v2.8)
+- `test-critic-cost.mjs` — 9/9 (v3.0)
 
 ### Shipped items by priority tier
 
@@ -1702,7 +1758,8 @@ P3-12 (DR-M-7) consolidated memory cap, P3-13 (DR-M-9) ttl
 provenance, P3-14 (DR-M-10) addEvidence dedup, P3-15
 (DR-L-1) fireHandlers, P3-16 (DR-L-2) getSessionIdSafe,
 P3-17 (DR-L-3) state(ctx) migration (v2.9), P3-18 (DR-L-4)
-dead re-exports (v2.9), P3-19 partial, P3-20 through P3-24.
+dead re-exports (v2.9), P3-19 partial, P3-20 through P3-24,
+P3-25 cost-report module (v3.0).
 
 **EW items (12 of 15):** EW-7.1 (P0-6), EW-7.3 (P1-4),
 EW-7.4 (P2-3), EW-7.5 (P3-1), EW-7.6 (P0-7),
@@ -1711,7 +1768,7 @@ EW-7.10 (P3-4), EW-7.13 (P2-6), EW-7.14 (P3-5),
 EW-7.15 (P3-6). (EW-7.2 = P1-5, EW-7.11, EW-7.12 = P3-7
 remain deferred.)
 
-### Remaining 7 items (deferred)
+### Remaining 6 items (deferred)
 
 The remaining items are:
 
@@ -1721,22 +1778,27 @@ The remaining items are:
 - **P1-5 / EW-7.2** (14 unwired NudgeTypes) — requires
   design decisions per type (some should be deleted, some
   wired, some deferred as future features).
-- **P2-7 / DR-H-9** (drift-classifier cache) — requires
-  Q16/Q17 cost-analysis data to size the cache correctly.
+- **P2-7 / DR-H-9** (drift-classifier cache) — *partially
+  unblocked* by v3.0: Q17's hash cache is already in place
+  via `text-classifier.ts`, and v3.0's cost-report provides
+  the per-call USD baseline. The remaining work is the
+  prompt-collapse optimization (3 yes/no classifiers → 1
+  multi-label) and TTL tuning — both require design calls.
 - **P2-10 / Q13** (large-file splits: memory-agent-bridge,
   timer, session-recall, latent-activator) — explicitly
   deferred by the original Q13 decision; lowest value item.
 - **P3-7 / EW-7.12** (prefix naming convention) — policy
   decision best made with user input.
-- **P3-25 / FR** (Q16+Q17 cost analysis) — foundational;
-  blocks P2-7 cache sizing.
 - **EW-7.11** (braid.enforcement settings block) — requires
   config plumbing + validation design decisions.
 
-Six of these seven require user input or a policy decision.
-P2-10 is explicitly deferred; P2-7 and P3-25 are blocked on
-each other (cost analysis is a prerequisite for the cache
-work).
+All six of these require user input or a policy decision.
+P2-10 is explicitly deferred. P2-7 (cache TTL sizing) is now
+*unblocked* by v3.0's cost-report layer: the report provides
+the per-call cost baseline that informs a TTL choice, though
+the actual implementation still requires a design call (how
+aggressive to be with caching, what to do on cache eviction,
+etc.).
 
 These are listed in the P1/P2/P3 tables above and remain
 actionable for a future sprint.

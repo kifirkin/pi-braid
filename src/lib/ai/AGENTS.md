@@ -10,7 +10,8 @@ and result parsing.
 |---|---|
 | `critic-registry.ts` | Catalog of available critics (judges that evaluate LLM output). Each critic has a tier, name, and prompt template. |
 | `critic-gate.ts` | Utility-model-first gate pattern - uses a small/fast model to decide whether the full critic should run. Reduces cost. |
-| `critic-stats.ts` | Statistics on critic invocations (success rate, duration, tier distribution). |
+| `critic-stats.ts` | Statistics on critic invocations (success rate, duration, tier distribution, Q16 token counts). |
+| `cost-report.ts` | USD cost estimates from `critic-stats` token data (P3-25). Computes per-critic + aggregate spend at configurable pricing rates. |
 | `text-classifier.ts` | Generic text classifier - runs utility model with structured schema, returns typed result. |
 | `language-hint.ts` | Detects the language of input text (used to route language-specific processing). |
 | `llm-call.ts` | Low-level wrapper around `pi.getModel()` + `streamSimple`. Handles abort, retry, and structured output parsing. |
