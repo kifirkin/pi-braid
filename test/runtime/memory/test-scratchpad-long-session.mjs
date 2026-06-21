@@ -155,13 +155,18 @@ console.log("\n[5.5] continue action for session resumption");
     check(digestBody.includes("Recent notes"), "Digest includes 'Recent notes' section");
     check(/slice\(-3\)/.test(digestBody), "Digest uses slice(-3) for recency");
   }
-  // Tool description must mention continue for session-start use
+  // Tool description must document the continue action (what it does),
+  // not prescribe when to call it.
   const descMatch = src.match(/description:[\s\S]*?"Use this scratchpad for/);
   check(!!descMatch, "Tool description found");
   if (descMatch) {
     check(
-      /session start.*continue|says 'continue'/i.test(descMatch[0]),
-      "Tool description directs agents to use continue for session resumption",
+      /`continue`/.test(descMatch[0]),
+      "Tool description lists `continue` among the actions",
+    );
+    check(
+      /resumption digest/i.test(descMatch[0]),
+      "Tool description says continue returns a resumption digest",
     );
   }
 }

@@ -632,9 +632,8 @@ function createScratchpadTool(): ToolDefinition<any, any, any> {
     promptSnippet: "Structured session memory for goal, plan, and decisions",
     description:
       "Track goals, plans, TODOs, notes, decisions, and learnings throughout multi-step tasks using structured session memory. " +
-      "Common actions: set_goal, add_plan, mark_done, add_note, add_decision, add_learning. " +
-      "**At session start, or when the user says 'continue', call `scratchpad(action=\"continue\")` first** to get a focused resumption digest (goal + open plan + recent context). " +
-      "Use `read` for the full picture, or `read` with a `filter` for targeted inspection of long lists. " +
+      "Common actions: set_goal, add_plan, mark_done, add_note, add_decision, add_learning, continue, read. " +
+      "The `continue` action returns a focused resumption digest (goal + open plan + recent context); `read` gives the full picture, or accept a `filter` for targeted inspection of long lists. " +
       "Long-session hygiene: `remove_plan/remove_note/remove_decision/remove_hypothesis` (by id), `clear_done`, `archive_done` (moves done to disk). " +
       "For add_learning, prefer explicit 'category' + 'content' fields over pipe-delimited text. " +
       "Plan items (added via add_plan, completed via mark_done) serve as the task list. " +

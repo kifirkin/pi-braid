@@ -19,15 +19,9 @@ writes "what I'm doing right now" not "what I've learned in general."
 |---|---|---|
 | `scratchpad` | set_goal, add_plan, mark_done, add_decision, add_hypothesis, add_note, add_learning, **remove_plan**, **remove_note**, **remove_decision**, **remove_hypothesis**, **clear_done**, **archive_done**, **continue** (D-41 resumption digest), ... | Structured session state management. |
 
-## Session resumption (D-41)
+## `continue` action (D-41)
 
-When a fresh session starts, or the user says "continue", call:
-
-```
-scratchpad(action="continue")
-```
-
-This returns a focused resumption digest:
+The `continue` action returns a focused resumption digest:
 
 ```
 # Resumption digest
@@ -57,13 +51,8 @@ Prior goal: <previous goal if different>
 ## Session: turn=N, phase=X, mode=Y
 ```
 
-This is the **first call** at session start, before reading. It's cheaper than
-`read` and structured to answer "what was I doing, what's next". Use `read`
-after `continue` if the agent needs the full picture (hypotheses, full done
-list, all learnings).
-
-The convention is documented in the tool description so the agent follows
-it automatically.
+Cheaper than `read`. `read` is the right call when the full picture is
+needed (hypotheses, full done list, all learnings, filtered by id/turn).
 
 ## Files
 
