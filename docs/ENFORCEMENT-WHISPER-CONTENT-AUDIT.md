@@ -522,6 +522,13 @@ A naming convention (e.g., lowercase kebab `[<subsystem>-<event>]`) would
 help downstream filtering, the TUI's display logic, and user-level rules
 (e.g., a user wanting to suppress all `[drift]` whispers).
 
+**Status: RESOLVED 2026-06-21** by EW-7.16 (universal whisper envelope).
+Every system-injected message now starts with `[braid-whisper · <subsystem>]`,
+applied centrally at the trunk (`sendTrackedMessage`). Body-level sub-tags
+(e.g. `[dream]`, `[recall]`, `[TIMER FIRED]`, `## Session Size Notice`) are
+preserved as a second filter level. See `lib/utils/whisper-format.ts` for
+the design and migration story.
+
 ### 6.13 Burst-suppression wipes L2 but not L1
 
 `turn-end-handler.ts:347-349` sets `sessionSignals.length = 0` when
@@ -779,6 +786,11 @@ Migrate one prefix at a time as files are touched. Document the convention so ne
 
 **Estimated impact:** Self-documenting. Improves the user experience in `/logs` and TUI notifications. Backward-compatible if done by adding new prefix text alongside the old.
 
+**Status: SUPERSEDED by EW-7.16.** The proposed gradual migration was
+too weak to address the agent's confusion with human input. EW-7.16
+implements a universal envelope at the trunk instead, which immediately
+fixes 100% of system-injected messages without per-site changes.
+
 ### 7.13 Add per-source priority-aware caps — **MEDIUM / MEDIUM**
 
 **Problem:** All sources share the same `PER_SOURCE_CAP = 2`. A 3rd `enforcement/whisper` critical message in a turn is silently dropped.
@@ -825,6 +837,91 @@ if (nudgeSuppressedCount > 0 && nudgeSuppressedCount % 5 === 0) {
 - (b) Rename "burst" to "l2-burst" and document that it only freezes the Session Signals bundle.
 
 **Estimated impact:** Removes ambiguity in the burst-handling logic. Option (a) is a behavior change; option (b) is documentation only.
+
+### 7.16 Universal whisper envelope — **HIGH / EASY** _(shipped 2026-06-21)_
+
+**Problem:** §6.12 found that ~30% of system-injected messages had no
+prefix at all (`Context at 80%`, `## Session Size Notice`, `VbC
+correction:`) and the rest had inconsistent prefixes (`[enforcement]`,
+`[Quality]`, `[chains]`, `[TIMER FIRED]`). The agent could confuse
+these with human user input, especially because many use imperative
+voice (`Consider X`, `Run Y`). §7.12's "gradual migration" was too weak
+to address this — there was no single source of truth and no guarantee
+that future call sites would follow the convention.
+
+**Fix:** Add a universal envelope, applied at the trunk
+(`sendTrackedMessage`), so every system-injected message gets a
+consistent, unambiguous prefix automatically.
+
+- New file `src/lib/utils/whisper-format.ts` with
+  `formatWhisperEnvelope(source)` returning `[braid-whisper · <subsystem>]`
+  and `applyWhisperEnvelope(content, source)` which mutates the content
+  array in place to prepend the envelope to the first text element.
+- The subsystem is derived from the source path's first segment
+  (e.g. `enforcement/whisper` → `enforcement`,
+        `memory/context-manager` → `memory`,
+        `cognitive/sycophancy-detector` → `cognitive`).
+- `sendTrackedMessage` calls `applyWhisperEnvelope(params.content,
+  injectionMeta.source)` after the suppressNudges check and before the
+  flood cap. So the tracked (and possibly suppressed) content reflects
+  what would have been delivered.
+- The redundant inline `[enforcement] ` prefix is removed from the
+  wrapper (`whisper.ts`) and 4 analysis/critical handlers (dreamer,
+  mars, drift, register-session-start's `context_full` event).
+- Body-level sub-tags (`[dream]`, `[recall]`, `[policy]`,
+  `[TIMER FIRED]`, `## Session Size Notice`) are preserved as a second
+  filter level.
+- New test file `test/runtime/lib/test-whisper-envelope.mjs` (18
+  assertions) pins the contract at both runtime and source levels.
+
+**Example:**
+
+```
+Before: [enforcement] [dream] Likely to get stuck in edit loop (prob: 100%, confidence: high). Consider: verify approach or ask for clarification.
+After:  [braid-whisper · enforcement] [dream] Likely to get stuck in edit loop (prob: 100%, confidence: high). Consider: verify approach or ask for clarification.
+```
+
+The universal prefix is added by the trunk; the body-level `[dream]`
+sub-tag is preserved.
+
+**Migration story for user filters:**
+
+- Filters on the bare subsystem name (e.g. `grep enforcement`,
+  `grep memory`) keep working — `enforcement` is a substring of
+  `[braid-whisper · enforcement]`.
+- Filters on the old bracket-wrapped prefix (e.g. `grep '\[enforcement\]'`)
+  need to be updated to the new canonical form
+  (`grep '\[braid-whisper · enforcement\]'`) or the bare substring
+  (`grep enforcement`).
+- The audit's proposed kebab-case subsystem tags (`[drift]`, `[recall]`,
+  etc.) can still be added inside the message body as a second filter
+  level — the envelope is one level above them.
+
+**Estimated impact:** Eliminates the "no prefix at all" case for 100%
+of system-injected messages. Eliminates the "inconsistent prefix" case
+for the universal layer. Body-level sub-tags (the audit's proposed
+convention) remain as a second filter. The agent can now distinguish
+system-injected messages from human user input purely by the universal
+prefix — no inference needed.
+
+**Files changed:**
+
+- `src/lib/utils/whisper-format.ts` (new, 110 LOC)
+- `src/lib/utils/injection-tracker.ts` (import + 1 call site, ~10 LOC
+  delta)
+- `src/extensions/enforcement/whisper.ts` (removed inline `[enforcement] `
+  prefix)
+- `src/extensions/enforcement/handlers/analysis/dreamer-handler.ts`
+  (removed inline `[enforcement] ` prefix)
+- `src/extensions/enforcement/handlers/analysis/mars-handler.ts`
+  (removed inline `[enforcement] ` prefix)
+- `src/extensions/enforcement/handlers/analysis/drift-handler.ts`
+  (removed inline `[enforcement] ` prefix)
+- `src/extensions/enforcement/handlers/register-session-start.ts`
+  (removed inline `[enforcement] ` prefix from the `context_full` event)
+- `test/runtime/lib/test-whisper-envelope.mjs` (new, 18 assertions)
+- `docs/ENFORCEMENT-WHISPER-CONTENT-AUDIT.md` (this entry + §6.12
+  status + §7.12 superseded note)
 
 ## 8. Summary
 

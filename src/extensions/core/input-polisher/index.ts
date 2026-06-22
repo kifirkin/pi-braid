@@ -299,6 +299,14 @@ async function processMessage(
         // (when supported) or the lowest available level.
         reasoning: "off",
         timeoutMs,
+        // Thread ctx.signal so ESC during polish aborts cleanly.
+        // Polishing runs from the input event handler, where
+        // ctx.signal is defined when the agent is mid-turn
+        // (e.g. user steers mid-stream) and undefined when the
+        // agent is idle (normal input submit). We pass it
+        // conditionally so a stale signal from a prior turn
+        // can't instant-abort a fresh polish call.
+        ...(ctx.signal ? { signal: ctx.signal } : {}),
       },
     );
 

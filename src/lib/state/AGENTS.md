@@ -77,7 +77,7 @@ The exception list is enforced by `test/runtime/lib/test-no-module-level-let.mjs
 
 | File | Symbol | Justification |
 |---|---|---|
-| `context-lifecycle/state.ts:82-83` | `_currentSessionState`, `_currentSessionId` | Session replay path (`helpers.ts:readProposalsFromSession()`) has no ctx. Reset on `session_start`. Bounded by replay lifetime. |
+| `context-lifecycle/state.ts:100-101` | `_currentSessionState`, `_currentSessionId` | Session replay path (`helpers.ts:readProposalsFromSession()`) has no ctx. Reset on `session_start`. Bounded by replay lifetime. (Line numbers shifted 2026-06-22 when policyEngine + detector fields were added to ContextLifecycleState as part of DR-C-2 migration.) |
 | `injection-tracker.ts:48` | `_activeSessionId` | Tracks the active session for flood-cap accounting. Sync re-entry path. |
 | `injection-tracker.ts:56` | `_sendDepth` | Re-entry guard. Incremented before `pi.sendMessage`, decremented after. |
 | `enforcement/turn-dedup.ts:84` | `_state` | Per-turn dedup state; sync access from event handlers. |
@@ -86,6 +86,7 @@ The exception list is enforced by `test/runtime/lib/test-no-module-level-let.mjs
 
 | File | Symbol | Justification |
 |---|---|---|
+| `lib/ai/llm-call.ts:53` | `_completeSimple` | Stub `completeSimple` for behavioral testing (timeout, signal abort, retry) without a real LLM provider. Reset to production via `__setCompleteSimpleForTest(null)`. See `test-call-llm-behavior.mjs`. |
 | `lib/utils/id.ts:29,33,35` | `_randomSuffix`, `_counter`, `_idGenerator` | `setIdGenerator` / `resetIdGenerator` / `setRandomSuffixFn` are the test injection API. See `test-id-injection.mjs`. |
 
 ### C. Encapsulated lets in `global-state.ts` (getter pattern)
@@ -95,6 +96,7 @@ The exception list is enforced by `test/runtime/lib/test-no-module-level-let.mjs
 | `global-state.ts:82` | `_rotationState` | Encapsulated; only `getRotationState()` exported. |
 | `global-state.ts:118` | `_nudgeAnalyticsFallback` | Encapsulated; only `getNudgeAnalyticsFallback()` exported. |
 | `global-state.ts:144` | `_cognitiveMemoryInstance` | Encapsulated; only `getCognitiveMemoryInstance()` exported. |
+| `global-state.ts:172` | `_postLoopTimeoutMs` | Encapsulated; only `getPostLoopTimeoutMs()` / `setPostLoopTimeoutMs()` exported. Defaulted from `DEFAULT_POST_LOOP_TIMEOUT_MS` (30_000). Tunable so the post-loop timeout can change without code edits. |
 
 ### D. Logger / framework config (process-global by design)
 
@@ -115,7 +117,7 @@ The exception list is enforced by `test/runtime/lib/test-no-module-level-let.mjs
 | `lib/detection/degradation-detector.ts:63` | `_global` | Legacy fallback for tool handlers without ctx. |
 | `lib/detection/topic-drift-detector.ts:66` | `_ctx` | Cached ctx for sync access; `setCriticCtx` is the injection API. |
 | `lib/events/timer-bus.ts:22` | `pendingReminders` | Timer-reminder queue. |
-| `lib/ai/llm-call.ts:38` | `rateLimitCooldownUntil` | Rate-limit timestamp. |
+| `lib/ai/llm-call.ts:78` | `rateLimitCooldownUntil` | Rate-limit timestamp. |
 
 ### F. Mutable config values (tunable parameters, intentionally exported)
 

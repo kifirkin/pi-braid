@@ -296,7 +296,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
     execute: async (
       _toolCallId,
       params: any,
-      _signal: any,
+      signal: AbortSignal | undefined,
       _onUpdate: any,
       _ctx: any,
     ): Promise<any> => {
@@ -438,6 +438,17 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
                 : "";
               const llmResult = await callLlm(model, apiKey, QUERY_SYSTEM_PROMPT, userMessage, {
                 timeoutMs: 180_000,
+                // Thread the tool's execute signal so ESC during a
+                // session query aborts cleanly. The tool's `signal`
+                // is the canonical cancel path; without this the
+                // query runs to completion (or its 3-minute timeout)
+                // even after the user cancels the agent turn. Note:
+                // we prefer the tool's signal here over ctx.signal
+                // because the tool's signal is the user's cancel
+                // intent for THIS tool call (e.g. ESC during a long
+                // session query), whereas ctx.signal may be the
+                // session-level cancel.
+                ...(signal ? { signal } : {}),
               });
               if ("error" in llmResult) {
                 return {
