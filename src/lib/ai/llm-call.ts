@@ -23,6 +23,46 @@ import { createLogger } from "../core/logger.js";
 
 const log = createLogger("llm-call");
 
+// ── Test-only injection point ────────────────────────────────────────────────
+//
+// Production code calls `completeSimple` directly from pi-ai. For
+// behavioral tests (timeout, signal abort, retry behavior), we need
+// to stub completeSimple without going through a real LLM provider.
+// The injection is opt-in: production behavior is identical unless
+// `__setCompleteSimpleForTest` is called. The setter is intentionally
+// a module-private mutation (not a parameter on callLlm) because
+// adding test-only parameters to the public API would pollute the
+// surface and invite callers to "configure" test hooks by accident.
+//
+// Usage in tests:
+//   import { __setCompleteSimpleForTest, __resetCompleteSimpleForTest } from "...";
+//   __setCompleteSimpleForTest(async (model, ctx, opts) => {
+//     // hang until aborted, then return error
+//     return new Promise((resolve) => {
+//       opts.signal.addEventListener("abort", () => resolve({ ... }));
+//     });
+//   });
+//   // ... run test ...
+//   __resetCompleteSimpleForTest();
+//
+// The setter only takes effect for the current process. There is no
+// global state mutation across test files unless they import the
+// module in the same process - which is fine for the test runner we
+// use (one process per .mjs file via spawnSync).
+
+let _completeSimple = completeSimple;
+
+/**
+ * @internal Test-only: override completeSimple for behavioral testing.
+ * Pass `null` to reset to the production implementation. NOT for use
+ * in production code paths.
+ */
+export function __setCompleteSimpleForTest(
+  fn: typeof completeSimple | null,
+): void {
+  _completeSimple = fn ?? completeSimple;
+}
+
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 /** Default outer retry attempts (each may trigger SDK inner retries). */
@@ -217,7 +257,7 @@ export async function callLlm(
         if (options.reasoning !== undefined) {
           simpleOptions.reasoning = options.reasoning;
         }
-        const result = await completeSimple(
+        const result = await _completeSimple(
           model as Model<Api>,
           context,
           toCompleteSimpleOptions(simpleOptions),
@@ -246,6 +286,25 @@ export async function callLlm(
             rateLimitCooldownUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
             log.warn(
               `LLM rate-limited, giving up (cooldown ${RATE_LIMIT_COOLDOWN_MS}ms): ${result.errorMessage}`,
+            );
+          } else if (
+            // Demote "Request was aborted" to debug when caused by the
+            // caller's external signal (ESC, session shutdown). These
+            // are expected cancellations, not real errors. Without
+            // this gate, the user sees an ERROR line every time they
+            // press ESC during a turn that had braid LLM calls in
+            // flight (consolidation, classify, sop-extract, etc.).
+            //
+            // The distinguishing signal is `signal.aborted` - it becomes
+            // true when EITHER the timeout fires OR the external signal
+            // fires. We can't tell them apart from `result.errorMessage`
+            // alone (pi-ai returns "Request was aborted" for both), so
+            // we check the original external signal: if it was set and
+            // is now aborted, this is a user-driven cancellation.
+            signal?.aborted === true
+          ) {
+            log.debug(
+              `LLM call aborted by external signal (likely ESC or session shutdown): ${result.errorMessage}`,
             );
           } else {
             log.error("LLM error:", result.errorMessage);
@@ -292,11 +351,21 @@ export async function callLlm(
           await sleep(delay);
           continue;
         }
-        log.error(
-          isTimeout
-            ? `LLM call timed out after ${maxRetries + 1} attempts`
-            : `LLM call failed: ${message}`,
-        );
+        // Demote to debug when an external signal (ESC / session shutdown)
+        // caused the abort. This matches the demotion in the result.errorMessage
+        // branch above. Without this, the catch path still emits ERROR lines
+        // for expected cancellations.
+        if (signal?.aborted === true) {
+          log.debug(
+            `LLM call aborted by external signal (likely ESC or session shutdown): ${message}`,
+          );
+        } else {
+          log.error(
+            isTimeout
+              ? `LLM call timed out after ${maxRetries + 1} attempts`
+              : `LLM call failed: ${message}`,
+          );
+        }
         return { error: message };
       }
     }
@@ -319,8 +388,11 @@ export async function callLlm(
  *
  * Cleans up event listeners after the combined signal fires to prevent memory leaks
  * across repeated calls (e.g. retry loops creating new combined signals).
+ *
+ * @internal Exported for behavioral testing (test-call-llm-behavior.mjs).
+ * Production code should not call this directly.
  */
-function combineSignals(s1: AbortSignal, s2: AbortSignal): AbortSignal {
+export function combineSignals(s1: AbortSignal, s2: AbortSignal): AbortSignal {
   // If either signal is already dead, just return the other - combining into an
   // already-aborted signal is a no-op that would only propagate the stale abort.
   if (s1.aborted) return s2;

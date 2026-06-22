@@ -377,6 +377,21 @@ export function normalizeLabel(
  * Attempt a single classification model call.
  * Returns the full trimmed lowercase response on success, null on any failure.
  * The caller should use normalizeLabel() to parse the result.
+ *
+ * Signal handling (2026-06-21):
+ *   Threads `ctx.signal` (when present) through to callLlm. Without this,
+ *   pressing ESC during the user's main turn only aborts the turn's LLM
+ *   call - braid's parallel classify() / consolidation / sop-extractor
+ *   calls keep running until their own internal timeouts fire, producing
+ *   misleading "Request was aborted" error logs long after the user
+ *   already moved on.
+ *
+ *   ctx.signal is defined when the agent is streaming OR when its session
+ *   signal is still active. For post-loop best-effort callers (e.g.
+ *   detectPatternWithLLM from agent_end), ctx.signal is typically undefined
+ *   because the agent is idle - in that case the internal timeout is the
+ *   only abort path. That's the right behavior: post-loop work shouldn't
+ *   abort when the agent goes idle.
  */
 async function tryModelCall(
   ctx: ExtensionContext,
@@ -419,6 +434,13 @@ async function tryModelCall(
       reasoning: "off",
       timeoutMs,
       maxRetries,
+      // Thread the session signal so ESC + session-shutdown aborts
+      // braid's parallel LLM calls cleanly instead of letting them
+      // run until the internal timeout fires. ctx.signal is undefined
+      // when the agent is idle (e.g. detectPatternWithLLM from agent_end),
+      // so the spread skips cleanly and only the timeout-based abort
+      // path remains.
+      ...(ctx.signal ? { signal: ctx.signal } : {}),
     });
 
     if ("error" in result) {
