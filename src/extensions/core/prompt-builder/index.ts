@@ -15,6 +15,7 @@ import {
   INTERACTION_STYLE,
   COMPACTION_SURVIVAL,
   LIVING_DOCS,
+  MEMORY_AWARENESS,
 } from "./identity.js";
 import {
   SYCOPHANCY_RESISTANCE,
@@ -22,11 +23,25 @@ import {
   EPISTEMIC_STABILITY,
   SURGICAL_PRECISION,
   BUDGET_AWARENESS,
+  BROAD_PERSPECTIVE,
+  STRATEGY_BEFORE_ACTION,
+  REASONING_INTEGRITY,
+  KNOWLEDGE_UNDER_PRESSURE,
+  COMMUNICATION_QUALITY,
+  EVIDENCE_GROUNDING,
 } from "./behavioral-guardrails.js";
 import {
   reconstructSkillsSection,
   resetSkillsSectionCache,
 } from "./skills-section.js";
+import {
+  reconstructProjectDocsSection,
+  resetProjectDocsSectionCache,
+} from "./project-docs-section.js";
+import {
+  reconstructMemorySection,
+  resetMemorySectionCache,
+} from "./memory-section.js";
 
 /**
  * Prompt Builder - Reconstruction from Structured Data
@@ -41,19 +56,22 @@ import {
  *   package manager — includes user, project, AND package skills). This is the
  *   canonical pattern from pi's own docs: extensions should not re-discover
  *   skills; they should reformat what pi already loaded.
+ * - Project docs: projectDocsSection() re-formats AGENTS.md / CLAUDE.md files
+ *   from loadProjectContextFiles() as a `<available_project_docs>` block
+ *   (pointer-only, agent reads full content on demand). Mirrors the skills
+ *   model. Prevents pattern-matching against stale doc references.
  * - Guidelines: fixed template based on tool availability
  * - Date/Cwd: computed directly
  *
  * Sections re-implemented locally:
  * - Identity: Braid agent identity
- * - Behavioral guidelines: consolidated from AGENTS.md (REMOVED - compliance triggers)
- * - Project context: loads AGENTS.md/CLAUDE.md files (pi's native loading is overridden)
+ * - Value statements: 11 single-sentence identity-level directives
  * - L1 environmental state
  * - Enforcement signals
  *
  * Historical change log moved to CHANGELOG.md. The current shape is the
  * post-implicit-framing research state: single-sentence interaction style,
- * 5 research-backed single-sentence guardrails, no latent-behavior
+ * 11 research-backed single-sentence value statements, no latent-behavior
  * activation in the prompt (moved to runtime via `latent-activator`).
  */
 
@@ -160,12 +178,20 @@ function toolsSection(tools: ReturnType<ExtensionAPI["getAllTools"]>): PromptSec
   };
 }
 
-async function projectContextSection(cwd: string): Promise<PromptSection> {
+async function projectContextSection(cwd: string, ctx: ExtensionContext): Promise<PromptSection> {
   // Uses pi-core's exported `loadProjectContextFiles` instead of a local
   // re-implementation. The SDK exports this as a standalone utility
   // (see pi CHANGELOG for #3142). This keeps us in sync with the
   // canonical resolution order: agent-dir global context, then
   // cwd-ancestors (most-root last), deduped by path.
+  //
+  // Pointer-only model: we DO NOT inject AGENTS.md / CLAUDE.md content
+  // into the system prompt. Instead we render a `<available_project_docs>`
+  // block listing the files with metadata, and let the agent `read` the
+  // full content on demand. This mirrors the skills model and prevents
+  // the agent from pattern-matching against stale doc references when
+  // parsing ambiguous external output (see June 22 hacking-a0 phantom-
+  // reply incident for the original failure mode).
 
   // loadProjectContextFiles is sync, so wrap the call in a microtask
   // so the function remains `async` (matches PromptSection contract).
@@ -174,24 +200,8 @@ async function projectContextSection(cwd: string): Promise<PromptSection> {
   );
 
   return {
-    name: "project-context",
-    render: () => {
-      if (contextFiles.length === 0) {
-        return "";
-      }
-
-      const lines = ["<project_context>", "", "Project-specific instructions and guidelines:", ""];
-
-      for (const { path: filePath, content } of contextFiles) {
-        lines.push(`  <project_instructions path="${filePath}">`);
-        lines.push(content);
-        lines.push(`  </project_instructions>`);
-      }
-
-      lines.push("</project_context>");
-
-      return lines.join("\n");
-    },
+    name: "project-docs",
+    render: async () => reconstructProjectDocsSection(contextFiles, ctx),
   };
 }
 
@@ -210,13 +220,16 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     });
   });
 
-  // ── resources_discover: invalidate skills cache ──
+  // ── resources_discover: invalidate skills, project-docs, memory caches ──
   // When resources are re-discovered (e.g. /reload, or session replacement),
-  // pi re-resolves skills and the next before_agent_start will receive an
-  // updated systemPromptOptions.skills list. We invalidate our format cache
-  // so the new list gets reformatted.
+  // pi re-resolves skills and project context. We invalidate our format
+  // caches so the next before_agent_start renders with the new sets. The
+  // memory section also invalidates so a freshly-written episode surfaces
+  // in the next turn's pointer block.
   pi.on(RESOURCES_DISCOVER, async (_event, ctx) => {
     resetSkillsSectionCache(ctx);
+    resetProjectDocsSectionCache(ctx);
+    resetMemorySectionCache(ctx);
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
@@ -255,12 +268,22 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       // 1. Custom identity (THE key difference from native)
       simpleSection("identity", IDENTITY_INTRO),
 
-      // 1a. Behavioral guardrails (concise, single-sentence, research-backed)
-      simpleSection("guardrail-sycophancy", SYCOPHANCY_RESISTANCE),
-      simpleSection("guardrail-stakes", STAKES_AWARENESS),
-      simpleSection("guardrail-epistemic", EPISTEMIC_STABILITY),
-      simpleSection("guardrail-surgical", SURGICAL_PRECISION),
-      simpleSection("guardrail-budget", BUDGET_AWARENESS),
+      // 1a. Value statements (identity-level directives).
+      //     5 pre-2026-06-21 + 5 new as of 2026-06-21 + 1 new as of 2026-06-22 (EVIDENCE_GROUNDING).
+      //     Order: how-to-think → how-to-approach → how-to-respond-under-pressure → how-to-express.
+      //     Project-specific behaviors live in each project's AGENTS.md, not here.
+      //     See behavioral-guardrails.ts for the values-vs-behaviors architectural split.
+      simpleSection("value-broad-perspective", BROAD_PERSPECTIVE),
+      simpleSection("value-reasoning-integrity", REASONING_INTEGRITY),
+      simpleSection("value-sycophancy-resistance", SYCOPHANCY_RESISTANCE),
+      simpleSection("value-knowledge-under-pressure", KNOWLEDGE_UNDER_PRESSURE),
+      simpleSection("value-evidence-grounding", EVIDENCE_GROUNDING),
+      simpleSection("value-stakes-awareness", STAKES_AWARENESS),
+      simpleSection("value-epistemic-stability", EPISTEMIC_STABILITY),
+      simpleSection("value-strategy-before-action", STRATEGY_BEFORE_ACTION),
+      simpleSection("value-surgical-precision", SURGICAL_PRECISION),
+      simpleSection("value-budget-awareness", BUDGET_AWARENESS),
+      simpleSection("value-communication-quality", COMMUNICATION_QUALITY),
 
       // 1b. Compaction survival invariant - scratchpad + tasks must be self-contained
       //     so the agent can recover context after conversation compression
@@ -269,6 +292,12 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       // 1c. Living documentation invariant - agent maintains AGENTS.md hierarchy
       //     Walk tree before edit, update docs after change (from DOX - agent0ai/dox)
       simpleSection("invariant-living-docs", LIVING_DOCS),
+
+      // 1d. Memory awareness directive - recall before non-trivial work, store
+      //     reusable findings after. Behavioral fix for the 0.84%-usage problem
+      //     (2026-06-22 audit). Pairs with the memory pointer block rendered
+      //     later in section 4b.
+      simpleSection("invariant-memory", MEMORY_AWARENESS),
 
       // 8. Interaction style
       simpleSection("interaction-style", INTERACTION_STYLE),
@@ -292,12 +321,21 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       if (skillsText) sections.push(simpleSection("skills", skillsText));
     }
 
-    // 4. Project context (replaces pi-native loading which prompt-builder overrides)
+    // 4. Project context (pointer-only; agent reads full content on demand)
     // Render ahead of append so it goes into the dedup set before the user
     // append can be checked against it.
-    const projectContext = await (await projectContextSection(cwd)).render();
-    if (projectContext) {
-      sections.push(simpleSection("project-context", projectContext));
+    const projectDocs = await (await projectContextSection(cwd, ctx)).render();
+    if (projectDocs) {
+      sections.push(simpleSection("project-docs", projectDocs));
+    }
+
+    // 4b. Memory pointer block (episodes + semantic; heuristics noted as session-scoped).
+    //    Mirrors the skills and project-docs discoverability pattern. Empty
+    //    state returns "" so the section is omitted entirely. Cached per
+    //    file fingerprint; invalidated on RESOURCES_DISCOVER.
+    const memorySection = await reconstructMemorySection(ctx);
+    if (memorySection) {
+      sections.push(simpleSection("memory", memorySection));
     }
 
     // 5. L1 environmental state

@@ -18,13 +18,27 @@ Every file in this folder either:
 |---|---|
 | `index.ts` | Main handler. Wires `before_agent_start`, calls the 3 `deliver*` functions, composes the final prompt. |
 | `section.ts` | The `PromptSection` primitive + `composeSections` joiner + `simpleSection`, `linesSection`, `headingSection` builders. |
-| `identity.ts` | 4 framing constants: `IDENTITY_INTRO`, `INTERACTION_STYLE`, `COMPACTION_SURVIVAL`, `LIVING_DOCS`. |
-| `behavioral-guardrails.ts` | 5 research-backed single-sentence directives: `SYCOPHANCY_RESISTANCE`, `STAKES_AWARENESS`, `EPISTEMIC_STABILITY`, `SURGICAL_PRECISION`, `BUDGET_AWARENESS`. |
+| `identity.ts` | 4 framing constants: `IDENTITY_INTRO` (generalist identity), `INTERACTION_STYLE`, `COMPACTION_SURVIVAL`, `LIVING_DOCS`. |
+| `behavioral-guardrails.ts` | 11 value statements: 5 pre-existing (`SYCOPHANCY_RESISTANCE`, `STAKES_AWARENESS`, `EPISTEMIC_STABILITY`, `SURGICAL_PRECISION`, `BUDGET_AWARENESS`) + 5 new as of 2026-06-21 (`BROAD_PERSPECTIVE`, `STRATEGY_BEFORE_ACTION`, `REASONING_INTEGRITY`, `KNOWLEDGE_UNDER_PRESSURE`, `COMMUNICATION_QUALITY`) + 1 new as of 2026-06-22 (`EVIDENCE_GROUNDING`). |
 | `contrast-phrase-library.ts` | Maps enforcement `contrastMode` values to phrase arrays. Returns a `PromptSection`. |
 | `l1-environment.ts` | L1 state gather + render. Returns a `PromptSection`. Reads from `agent-environment/`. |
 | `skills-section.ts` | Skills XML formatting + per-skill metadata + fingerprint cache. Returns a `PromptSection`. |
+| `project-docs-section.ts` | Project docs (AGENTS.md / CLAUDE.md) pointer-only rendering as `<available_project_docs>` block. Mirrors the skills model. Includes fingerprint cache and `RESOURCES_DISCOVER` invalidation. |
 
 ## Local Contracts
+
+### Values vs behaviors (architectural split, 2026-06-21)
+
+This folder holds the **shared identity layer** — VALUES, not project-specific behaviors. The split:
+
+- **Values (live here):** Identity-level statements that shape HOW the agent reasons and approaches problems. Generalist, applicable across all projects. Examples: `BROAD_PERSPECTIVE`, `REASONING_INTEGRITY`, `SYCOPHANCY_RESISTANCE`.
+- **Behaviors (live in each project's AGENTS.md):** Concrete rules specific to that repo. Examples: "no `console.*` outside `lib/core/logger`", "use `sendTrackedMessage` for agent-bound messages", "use `getExtensionState(ctx, key, factory)` for per-session state". These would be project-specific baggage in the shared prompt and would drift the agent's identity toward whichever project is currently active.
+
+Each value is one declarative sentence, framed as WHO the agent IS (not "do X" or "don't do Y"). Identity framings integrate more cleanly than behavioral rules and adapt better to context.
+
+### Research provenance (not in the prompt itself)
+
+The value statements are research-backed. The agent doesn't need to know about LLM failure modes — it just needs to embody the values. The provenance lives in `behavioral-guardrails.ts` comments for future maintainers.
 
 ### The `PromptSection` contract
 
@@ -76,6 +90,17 @@ const newPrompt = await composeSections(sections, "\n\n", dedupSet);
 2. If section: create a new file in this folder with a `xSection(input): PromptSection` export
 3. Add it to the main handler's section list (between identity/guardrails and the footer)
 4. Update the table above
+
+### Adding a new value statement
+
+Values are identity-level, not project-specific. Before adding a new value, ask:
+
+1. Is this a **value** (how to think/approach) or a **behavior** (concrete rule for this project)? If behavior → goes in project AGENTS.md, not here.
+2. Is it **generalist** (applies across domains) or domain-narrow (only software, only research, etc.)? Narrow values drift the identity.
+3. Can it be expressed as one declarative sentence? If not, it's probably two values compressed.
+4. Does it duplicate an existing value? If yes, sharpen the existing one instead.
+
+If all four pass, add a new constant to `behavioral-guardrails.ts` (with a research-source comment), wire it into `index.ts` via `simpleSection("value-<name>", VALUE)`, and add a source-level test pinning the contract.
 
 ### Adding a new whisper
 
