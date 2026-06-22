@@ -152,3 +152,47 @@ export function setCognitiveMemoryInstance(instance: unknown): void {
 export function getCognitiveMemoryInstance(): unknown {
   return _cognitiveMemoryInstance;
 }
+
+// ── Post-Loop Timeout (post-loop-classify.ts) ──────────────────────────────
+
+/**
+ * Default per-LLM-tier timeout for post-loop classify() calls. The
+ * post-loop path runs at session end, when the session model may be
+ * busy with finalization. A 30s budget per tier (60s worst-case when
+ * both utility and session are tried) is the current tuning.
+ *
+ * History (from post-loop-classify.ts):
+ *   - 3s (pre-2026-06-21): too tight under session-end load.
+ *   - 5s (2026-06-21 fix): improvement, still tight for slow models.
+ *   - 8s (2026-06-21 follow-up): still hit by very slow paths.
+ *   - 30s (current): full headroom for worst-case post-loop paths.
+ */
+export const DEFAULT_POST_LOOP_TIMEOUT_MS = 30_000;
+
+let _postLoopTimeoutMs: number | undefined;
+
+/**
+ * Get the per-LLM-tier timeout for post-loop classify() calls.
+ * Defaults to DEFAULT_POST_LOOP_TIMEOUT_MS (30_000). Tunable via
+ * setPostLoopTimeoutMs() - typically called from a /command or
+ * startup config so the value can be changed without code changes.
+ */
+export function getPostLoopTimeoutMs(): number {
+  if (_postLoopTimeoutMs === undefined) {
+    _postLoopTimeoutMs = DEFAULT_POST_LOOP_TIMEOUT_MS;
+  }
+  return _postLoopTimeoutMs;
+}
+
+/** Override the post-loop timeout. Pass a positive number in ms. */
+export function setPostLoopTimeoutMs(value: number): void {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`setPostLoopTimeoutMs: value must be a positive finite number, got ${value}`);
+  }
+  _postLoopTimeoutMs = value;
+}
+
+/** Reset the post-loop timeout to the default. Test helper. */
+export function resetPostLoopTimeoutMs(): void {
+  _postLoopTimeoutMs = undefined;
+}
