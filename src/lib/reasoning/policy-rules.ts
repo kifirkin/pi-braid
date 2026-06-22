@@ -113,32 +113,14 @@ export const POLICY_RULES: PolicyRule[] = [
     },
   },
 
-  // Rule 5: Reflection gap → reasoning without reflection
-  {
-    name: "reflection_gap",
-    evaluate(signals, _beliefs): PolicyRecommendation[] {
-      const reflectionSignals = signals.filter((s) => s.source === "reflection");
-      const recent = reflectionSignals.slice(-5);
-      const hasReflection = recent.length > 0;
-      if (!hasReflection) {
-        // No reflection in last 5 signals - might need one
-        const toolSignals = signals.filter((s) => s.source === "tool-use");
-        if (toolSignals.length >= 8) {
-          return [
-            {
-              id: `pr-${Date.now()}-rg`,
-              type: "reflection_gap",
-              priority: 5,
-              message: `[reflection] 8+ consecutive tool calls without reflection. Consider: think(type="reflection") before proceeding.`,
-              beliefs: ["reflection:absent", "reasoning:shallow"],
-              timestamp: Date.now(),
-            },
-          ];
-        }
-      }
-      return [];
-    },
-  },
+  // Rule 5: REMOVED (2026-06-22) - "reflection_gap"
+  // This rule fired on 8+ tool calls without a think(type="reflection")
+  // interspersed. It is now subsumed by lib/detection/tool-loop-detector,
+  // which catches the same condition (8+ consecutive same-tool calls) with
+  // a unified whisper message. Keeping this rule produced a contradictory
+  // `[reflection] 8+ consecutive tool calls without reflection ...`
+  // whisper alongside the detector's `## Tool Loop Detected ...` for the
+  // same condition. See ROADMAP DR-NEW (tool-loop-detector consolidation).
 
   // Rule 6: Reasoning decline + conflict → believe carefully
   {
