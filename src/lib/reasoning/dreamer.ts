@@ -11,6 +11,10 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../state/extension-state.js";
 import { dreamerCooldownMs as dynamicCooldown } from "../reasoning/advice-tracker.js";
+import {
+  TOOL_LOOP_THRESHOLD,
+  detectToolLoopFromSequence,
+} from "../detection/tool-loop-detector.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -46,27 +50,6 @@ function getState(ctx: ExtensionContext): DreamerState {
 
 /** Minimum number of transitions out of a tool before we trust any rate. */
 const MIN_SAMPLE_FOR_PREDICTION = 5;
-
-/** Minimum consecutive same-tool calls in the CURRENT sequence to flag as a loop. */
-const MIN_CURRENT_LOOP_LENGTH = 8;
-
-/**
- * Compute the longest run of consecutive identical tool names at the tail
- * of the current sequence. Returns the length and the tool name.
- *
- * Example: `["a", "b", "read", "read", "read"]` → `{ tool: "read", length: 3 }`
- * Example: `["a", "b", "c"]` → `{ tool: null, length: 0 }`
- */
-function tailRun(seq: string[]): { tool: string | null; length: number } {
-  if (seq.length === 0) return { tool: null, length: 0 };
-  const last = seq[seq.length - 1];
-  let length = 0;
-  for (let i = seq.length - 1; i >= 0; i--) {
-    if (seq[i] === last) length++;
-    else break;
-  }
-  return { tool: last, length };
-}
 
 /**
  * Simulate likely future paths from current tool sequence.
@@ -160,16 +143,21 @@ export function dream(
   // Cooldown check - dynamic threshold adjusted by advice tracker feedback loop
   if (now - state.lastDreamAt < dynamicCooldown) return null;
 
-  // Path 1: detect an actual loop in the current sequence.
-  // This is reliable regardless of history size - if the agent has just
-  // called the same tool 4+ times in a row, it's likely a loop.
-  const run = tailRun(currentSequence);
-  if (run.length >= MIN_CURRENT_LOOP_LENGTH) {
+  // Path 1: detect a tool loop in the current sequence. This is the
+  // consecutive-same-tool heuristic. The threshold, window, cooldown,
+  // and message format are all owned by lib/detection/tool-loop-detector
+  // (the single source of truth - see that file's comment for the
+  // full architectural history).
+  //
+  // The dreamer used to do this check itself with MIN_CURRENT_LOOP_LENGTH
+  // and its own message format ("[dream] Detected N consecutive ..."),
+  // but that produced contradictory whispers with turn-outcome and
+  // policy-rules when all three fired in the same turn.
+  const loopResult = detectToolLoopFromSequence(currentSequence);
+  if (loopResult.isLoop) {
     state.lastDreamAt = now;
     return {
-      message:
-        `[dream] Detected ${run.length} consecutive ${run.tool} calls with no progress. ` +
-        `This pattern suggests a stuck loop. Consider: verify approach, switch tool, or ask for clarification.`,
+      message: loopResult.message,
       priority: 7,
       action: "Call think(type='reflection') to verify approach.",
       confidence: 0.8,
