@@ -24,6 +24,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { addEvidence } from "../../../lib/store/evidence-pool.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { createLogger } from "../../../lib/core/logger.js";
+import { SESSION_SHUTDOWN } from "../../../lib/core/event-names.js";
 
 const log = createLogger("memory-agent-bridge");
 import { textResult } from "../../../lib/utils/extension-utils.js";
@@ -52,10 +53,98 @@ import { createExplorePathsTool } from "./explore-paths.js";
 
 // explore-paths tool registered later in this file
 
+// ── Memory tool usage tracking (2026-06-22) ────────────────────────────────
+//
+// An audit of 246 sessions found 0.84% of tool calls hit a memory_* tool,
+// and 8 of the last 10 sessions used zero memory tools. The fix has three
+// parts:
+//   1. Behavioral: a new MEMORY_AWARENESS directive in
+//      src/extensions/core/prompt-builder/identity.ts.
+//   2. Discoverability: pointer-block rendering in
+//      src/extensions/core/prompt-builder/memory-section.ts.
+//   3. Measurement (this block): a per-session counter, logged at
+//      session_end, so the next 100 sessions can show whether (1) and
+//      (2) actually move the needle.
+//
+// The audit baseline (0.84%) is included in the zero-call log line so
+// the contrast is visible at a glance.
+export interface MemoryBridgeStats {
+  memoryToolCalls: number;
+  firstCallAt: number | null;
+  lastCallAt: number | null;
+  /** Per-tool counts. For the unified `memory` tool, the key includes
+   *  the action, e.g. "memory:recall_search". */
+  perToolCounts: Record<string, number>;
+}
+
+function createMemoryBridgeStats(): MemoryBridgeStats {
+  return {
+    memoryToolCalls: 0,
+    firstCallAt: null,
+    lastCallAt: null,
+    perToolCounts: {},
+  };
+}
+
+export { createMemoryBridgeStats };
+
+function getMemoryBridgeStats(ctx: ExtensionContext | undefined): MemoryBridgeStats | null {
+  if (!ctx) return null;
+  return getExtensionState<MemoryBridgeStats>(
+    ctx,
+    "memory-bridge-stats",
+    createMemoryBridgeStats,
+  );
+}
+
+/** Record one memory_* tool invocation. Safe to call with no ctx. */
+function recordMemoryToolCall(ctx: ExtensionContext | undefined, tool: string): void {
+  const stats = getMemoryBridgeStats(ctx);
+  if (!stats) return;
+  const now = Date.now();
+  stats.memoryToolCalls++;
+  stats.perToolCounts[tool] = (stats.perToolCounts[tool] ?? 0) + 1;
+  if (stats.firstCallAt === null) stats.firstCallAt = now;
+  stats.lastCallAt = now;
+}
+
+export { getMemoryBridgeStats, recordMemoryToolCall };
+
 export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
   const memory = getCognitiveMemory();
   // Initialize async - tools will await before first use
   const initPromise: Promise<void> | null = memory.init();
+
+  // ── Session-end memory usage summary ────────────────────────────────────
+  // See the MemoryBridgeStats block above for the rationale (audit
+  // baseline 0.84%, MEMORY_AWARENESS directive is the fix, this log is
+  // the measurement). The log line includes the audit baseline so the
+  // contrast is visible at a glance.
+  //
+  // Note: we use SESSION_SHUTDOWN (the actual end-of-session hook on
+  // ExtensionAPI), not the SESSION_END constant from
+  // lib/core/event-names.ts (which is for the internal event-bus, not
+  // pi.on). The event-names SESSION_END is a misnomer; pi's real
+  // end-of-session event is session_shutdown.
+  pi.on(SESSION_SHUTDOWN, async (_event: unknown, ctx: ExtensionContext) => {
+    const stats = getMemoryBridgeStats(ctx);
+    if (!stats) return;
+    if (stats.memoryToolCalls === 0) {
+      log.info(
+        "[memory-agent-bridge] Session memory tool usage: 0 calls " +
+          "(audit baseline 0.84% - MEMORY_AWARENESS directive not landing)",
+      );
+    } else {
+      const breakdown = Object.entries(stats.perToolCounts)
+        .sort(([, a], [, b]) => b - a)
+        .map(([t, c]) => `${t}=${c}`)
+        .join(", ");
+      log.info(
+        `[memory-agent-bridge] Session memory tool usage: ${stats.memoryToolCalls} calls (${breakdown}) ` +
+          `(audit baseline 0.84% - check whether MEMORY_AWARENESS is moving the needle)`,
+      );
+    }
+  });
 
   pi.registerTool({
     name: "memory_store",
@@ -101,6 +190,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
       _onUpdate,
       ctx,
     ): Promise<AgentToolResult<{ id?: string; stored: boolean; episodic_twin_failed?: boolean }>> => {
+      recordMemoryToolCall(ctx, "memory_store");
       await initPromise;
       try {
         // Build linked-memory relations from consolidate_with + linkedMemories
@@ -404,6 +494,10 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
       _onUpdate,
       ctx,
     ): Promise<AgentToolResult<unknown>> => {
+      // Record per-action: e.g. "memory:recall_search", "memory:episodes_add".
+      // The action may be undefined if the caller sent a malformed request;
+      // record as "memory:unknown" in that case so it's still counted.
+      recordMemoryToolCall(ctx, `memory:${params?.action ?? "unknown"}`);
       try {
         switch (params?.action) {
           // ── recall_* ──────────────────────────────────────────────────
