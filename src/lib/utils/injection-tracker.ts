@@ -19,6 +19,7 @@ import { tryWhisper, type WhisperPriority } from "../enforcement/turn-dedup.js";
 import { BRAID_INJECTED, BRAID_SOURCE } from "../constants/injection-details.js";
 import { areCognitiveNudgesDisabled } from "../config/braid-settings.js";
 import { nextId } from "./id.js";
+import { applyWhisperEnvelope } from "./whisper-format.js";
 
 const log = createLogger("injection-tracker");
 
@@ -235,6 +236,13 @@ export function sendTrackedMessage(
     );
     return;
   }
+
+  // ROADMAP EW-7.12+: apply the universal whisper envelope so the agent
+  // can distinguish system-injected messages from human user input. Done
+  // before the flood cap so the tracked (and potentially suppressed)
+  // content reflects what would have been delivered. See
+  // `lib/utils/whisper-format.ts` for the rationale and migration story.
+  applyWhisperEnvelope(params.content, injectionMeta.source);
 
   // Per-turn whisper cap (flood protection). Critical paths always pass;
   // other priorities are capped per WHISPER_CAPS in turn-dedup.ts.

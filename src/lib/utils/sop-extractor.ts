@@ -18,7 +18,7 @@
 
 import { createLogger } from "../core/logger.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { classify } from "../ai/text-classifier.js";
+import { postLoopClassify } from "../ai/post-loop-classify.js";
 import { CRITICS } from "../ai/critic-registry.js";
 
 const log = createLogger("sop-extractor");
@@ -151,7 +151,10 @@ export function detectPattern(tools: string[]): string {
  * the known pattern vocabulary and asked to match or invent a
  * concise descriptive name.
  *
- * On LLM unavailability or degradation, falls back to detectPattern.
+ * On LLM unavailability, timeout, or external abort, falls back to
+ * the synchronous heuristic detectPattern(tools). The fallback
+ * contract is bundled by postLoopClassify so we can't ship a
+ * regression that embeds "unknown" in the strategic SOP.
  */
 export async function detectPatternWithLLM(
   tools: string[],
@@ -159,31 +162,39 @@ export async function detectPatternWithLLM(
 ): Promise<string> {
   if (tools.length === 0) return "General workflow";
   try {
-    const result = await classify(
+    const result = await postLoopClassify(
       ctx,
       CRITICS.trajectoryPattern.criteria,
       { tools: tools.join(", ") },
       {
-        // Inherit all critic options (including validLabels whitelist
-        // for the multi-class pattern name) and add our local overrides.
+        // Inherit critic options (validLabels whitelist etc.) and
+        // supply the onFailure hook. The wrapper handles bestEffort,
+        // signal thread, abort demotion, and 5s timeout automatically.
         ...CRITICS.trajectoryPattern.options,
-        timeoutMs: 3000,
-        // bestEffort: this runs post-session when the session signal
-        // is being torn down. TIER 2/3 aborts are expected; we use a
-        // 3s timeout and demote failure warns to debug to keep the
-        // end-of-loop logs clean. The classifier still returns a result
-        // (label: "unknown" on failure) which we treat the same as the
-        // heuristic fallback.
-        bestEffort: true,
-        fallback: () => "",
+        onFailure: () => detectPattern(tools),
+        label: CRITICS.trajectoryPattern.label,
+        silent: true, // we log a custom debug line below
       },
     );
-    const label = result.label.trim();
-    if (label && label.length <= 60) return label;
+    // 60-char sanity cap on the LLM label (matches old behavior).
+    // On tier === "failed" the label is already detectPattern(tools)'s
+    // result, which is always a short string - no cap needed.
+    if (result.tier === "failed") {
+      log.debug(
+        `detectPatternWithLLM: LLM tiers failed, used heuristic (${result.latencyMs}ms)`,
+      );
+      return result.label;
+    }
+    const trimmed = result.label.trim();
+    if (trimmed && trimmed.length <= 60) return trimmed;
+    log.debug(
+      `detectPatternWithLLM: empty/oversized LLM label "${result.label}", falling back to heuristic`,
+    );
+    return detectPattern(tools);
   } catch (err) {
     log.debug(`detectPatternWithLLM failed: ${err}`);
+    return detectPattern(tools);
   }
-  return detectPattern(tools);
 }
 
 /**
