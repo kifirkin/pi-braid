@@ -190,15 +190,29 @@ export function formatVerificationNudge(result: VerificationVerdict): string {
  *
  * @param ctx - Extension context for model access
  * @param judgeContext - Context snapshot for analysis
+ * @param options - Optional timeout + cancellation signal.
+ *                  The signal is threaded into the underlying callLlm
+ *                  so ESC / session shutdown aborts the judge cleanly
+ *                  instead of letting it run to its 30s timeout.
+ *                  Pass `signal: ctx.signal` from the caller (the
+ *                  MESSAGE_END handler receives ctx but not an
+ *                  execute-style signal parameter).
  * @returns Verification verdict or null on failure
  */
 export async function runVerificationJudge(
   ctx: ExtensionContext,
   judgeContext: JudgeContext,
-  options: { timeoutMs?: number } = {},
+  options: { timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<VerificationVerdict | null> {
   const prompt = buildVerificationPrompt(judgeContext);
-  const result = await callLlm(ctx, VERIFICATION_JUDGE_SYSTEM_PROMPT, prompt, options);
+  const result = await callLlm(ctx, VERIFICATION_JUDGE_SYSTEM_PROMPT, prompt, {
+    ...options,
+    // The judge-utils wrapper accepts signal through LlmCallOptions
+    // (it's part of the shared callLlm signature), so just spread
+    // options through. We re-state signal explicitly so the
+    // signal-threading contract is grep-able at this call site.
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
 
   if ("error" in result) {
     log.warn("Verification judge error:", result.error);

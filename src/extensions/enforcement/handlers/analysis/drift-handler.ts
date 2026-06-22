@@ -72,7 +72,7 @@ export async function driftHandler(pi: any, _event: any, ctx: ExtensionContext):
         {
           customType: "context",
           display: true,
-          content: [{ type: "text", text: `[enforcement] ${whisper}` }],
+          content: [{ type: "text", text: whisper }],
         },
         { deliverAs: "steer", triggerTurn: false },
         { type: "enforcement", source: driftCheck.classifierDown ? "enforcement/drift/offline" : "enforcement/drift" },

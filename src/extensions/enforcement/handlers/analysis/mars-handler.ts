@@ -47,7 +47,7 @@ export async function marsHandler(pi: any, _event: any, ctx: ExtensionContext): 
     {
       customType: "context",
       display: true,
-      content: [{ type: "text", text: `[enforcement] ${marsAdvice.message}` }],
+      content: [{ type: "text", text: marsAdvice.message }],
     },
     { deliverAs: "steer", triggerTurn: false },
     { type: "enforcement", source: "enforcement/mars" },

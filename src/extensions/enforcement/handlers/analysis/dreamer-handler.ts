@@ -38,7 +38,7 @@ export async function dreamerHandler(pi: any, _event: any, ctx: ExtensionContext
     {
       customType: "context",
       display: true,
-      content: [{ type: "text", text: `[enforcement] ${dreamAdvice.message}` }],
+      content: [{ type: "text", text: dreamAdvice.message }],
     },
     { deliverAs: "steer", triggerTurn: false },
     { type: "enforcement", source: "enforcement/dreamer" },

@@ -193,7 +193,18 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
         thinking: thinkingContent,
       };
 
-      const result = await runVerificationJudge(ctx, judgeCtx, { timeoutMs: 30000 });
+      const result = await runVerificationJudge(ctx, judgeCtx, {
+        timeoutMs: 30000,
+        // Thread ctx.signal so ESC / session shutdown aborts the
+        // judge cleanly. The MESSAGE_END handler runs while the
+        // session is still active (subsequent assistant messages
+        // may follow, or the agent may finalize); without this the
+        // judge runs to its 30s timeout even after the user cancels.
+        // ctx.signal is undefined when the agent is idle, in which
+        // case the 30s timeout is the only abort path - which is
+        // the right behavior for a background audit.
+        ...(ctx.signal ? { signal: ctx.signal } : {}),
+      });
 
       getState(ctx).pendingFinalize = false;
       completeJudge(getState(ctx), getState(ctx).currentTurn);

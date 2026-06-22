@@ -70,15 +70,14 @@ export function sendEnforcementWhisper(
 
   // Tag all enforcement whispers with customType="enforcement" so the agent
   // knows these are system-generated signals, not human messages.
-  // We intentionally keep the "[enforcement]" prefix in the rendered text in
-  // addition to the customType metadata, so the signal is visible in any UI
-  // that only renders the text payload (logs, third-party frontends, etc.).
-  // Other handlers in this directory follow the same convention.
+  // The universal "[braid-whisper · enforcement]" envelope is applied by
+  // `sendTrackedMessage` (the trunk) so this wrapper just passes the raw
+  // message through. See `lib/utils/whisper-format.ts` for the full design.
   sendTrackedMessage(
     pi,
     {
       customType: "enforcement",
-      content: [{ type: "text" as const, text: `[enforcement] ${message}` }],
+      content: [{ type: "text" as const, text: message }],
       display: true,
     },
     critical
