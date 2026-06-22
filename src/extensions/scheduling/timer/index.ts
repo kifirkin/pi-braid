@@ -12,6 +12,32 @@
  *
  * The sessionId is required for cancelTimersByTag() (fail fast) and is
  * stamped on each ScheduledTimer for traceability.
+ *
+ * ── ROADMAP DR-C-4: SINGLE-PROCESS-PER-SESSION ASSUMPTION ────────────────
+ * The `poller` below is a closure-captured `let` inside the extension
+ * factory. Each call to `timerExtension(pi)` creates a fresh closure
+ * with its own `poller` variable, which is correct for the standard
+ * pi lifecycle (one process per session, one extension registration
+ * per session, one poller per session).
+ *
+ * The assumption breaks if a single Node process ever runs MORE THAN
+ * ONE pi session concurrently, because the `poller`, `sessionState`,
+ * and `sessionIdResolved` closures would conflict. The `TimerManager`
+ * class (above) is already keyed by sessionId and is safe across
+ * concurrent sessions; only the extension-factory state is not.
+ *
+ * If multi-session-per-process ever becomes a real requirement, the
+ * fix is to migrate `poller` and `sessionState` to
+ * `getExtensionState(ctx, "timer", ...)` keyed by the ctx's session
+ * id. The factory pattern of getExtensionState doesn't accept ctx in
+ * the factory closure, so this requires either (a) adding a
+ * `setExtensionState` setter or (b) a custom WeakMap. Documented
+ * here so future contributors know the assumption is load-bearing.
+ *
+ * A debug-mode counter (`_extensionFactoryCallCount`) at the bottom
+ * of this file logs a warning if `timerExtension(pi)` is called more
+ * than once in the same process. In dev/CI this catches the
+ * accidental double-registration early.
  */
 
 import type {
