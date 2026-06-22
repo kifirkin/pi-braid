@@ -24,6 +24,8 @@
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
+import { createPolicyEngineState, type PolicyEngineState } from "./policy-engine.js";
+import { createDetectorState, type DetectorState } from "./signal-detector.js";
 
 
 /** A single outcome record with TTL - for closed-loop feedback. */
@@ -53,6 +55,19 @@ export interface ContextLifecycleState {
     compactNudgeActive: boolean;
     /** Whether the agent called a context management tool since the last nudge check */
     agentActedOnContext: boolean;
+    // ── Policy + detector (migrated 2026-06-22, was DR-C-2) ─────────────────
+    /**
+     * The signal-policy engine state: cooldowns, policies, governance.
+     * Migrated from a module-level const to per-session so each session
+     * starts with a fresh engine (no cross-session cooldowns leaking).
+     */
+    policyEngine: PolicyEngineState;
+    /**
+     * The signal-detector state: topic history, tool sequence, pending
+     * signals, completion tracking. Migrated from a module-level const
+     * to per-session for the same reason.
+     */
+    detector: DetectorState;
 }
 
 export function createState(): ContextLifecycleState {
@@ -69,6 +84,8 @@ export function createState(): ContextLifecycleState {
         lastCompactNudgeUsage: 0,
         compactNudgeActive: false,
         agentActedOnContext: false,
+        policyEngine: createPolicyEngineState(),
+        detector: createDetectorState(),
     };
 }
 

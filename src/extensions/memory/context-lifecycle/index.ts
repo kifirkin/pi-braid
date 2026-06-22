@@ -30,18 +30,14 @@ import {
   type ContextProposal,
 } from "./types.js";
 import {
-  createPolicyEngineState,
   evaluatePolicies,
   type EvaluatedAction,
   generateDensitySignals,
 } from "./policy-engine.js";
 import {
-  createDetectorState,
   detectSignals,
   queueSignal,
-  resetDetectorState,
   detectCompletionPattern,
-  type DetectorState,
 } from "./signal-detector.js";
 
 // ── Module State ─────────────────────────────────────────────────────────────
@@ -75,8 +71,11 @@ const CONTEXT_MGMT_TOOLS = new Set([
   "context_checkout",
 ]);
 
-const _policyState = createPolicyEngineState();
-const _detectorState: DetectorState = createDetectorState();
+// Policy engine + signal-detector state are now per-session fields of
+// ContextLifecycleState (see ./state.ts). The migration (DR-C-2,
+// 2026-06-22) replaced the module-level singletons so each session
+// starts with a fresh engine + detector. The fields are accessed via
+// `state(ctx).policyEngine` and `state(ctx).detector`.
 
 // Outcome tracking (closed-loop feedback) with TTL eviction - now session-scoped
 const MAX_OUTCOMES = 100;
@@ -353,10 +352,12 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
   // ── session_start ────────────────────────────────────────────────────────
   registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event: unknown, ctx: ExtensionContext) => {
     resetState(ctx);
-    // ROADMAP P3-17 / DR-L-3: use session-scoped state(ctx) when available.
+    // ROADMAP DR-C-2: state(ctx) is now fresh per session; the policy
+    // engine and signal detector live inside the per-session state, so
+    // no manual reset is needed for them. clearInjections() is a
+    // process-global tracker (see lib/utils/injection-tracker.ts) and
+    // must be cleared explicitly on session boundaries.
     state(ctx).outcomes.length = 0;
-    _policyState.cooldowns.clear();
-    resetDetectorState(_detectorState);
     clearInjections(); // Clear injection history on fresh session
   });
 
@@ -420,7 +421,8 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     state(ctx).agentActedOnContext = false;
 
     // ── RETRIEVAL: Detect signals from session content ──────────────────
-    const signals = await detectSignals(_detectorState, entries, ctx, usage);
+    const s = state(ctx);
+    const signals = await detectSignals(s.detector, entries, ctx, usage);
 
     // ── DENSITY: Generate context density signals (SimpleMem 2601.02553) ─
     // These feed into density-aware policies (prune, compress, dedup)
@@ -434,19 +436,19 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 
     // ── TASK COMPLETION DETECTION ────────────────────────────────────────
     // Check if session looks like a completed task
-    if (detectCompletionPattern(_detectorState)) {
-      queueSignal(_detectorState, "task_completion_candidate", {
-        topicHistory: _detectorState.topicHistory.slice(-3),
-        uniqueTools: new Set(_detectorState.toolSequence.slice(-10)).size,
+    if (detectCompletionPattern(s.detector)) {
+      queueSignal(s.detector, "task_completion_candidate", {
+        topicHistory: s.detector.topicHistory.slice(-3),
+        uniqueTools: new Set(s.detector.toolSequence.slice(-10)).size,
       });
     }
-    const completionSignals = [..._detectorState.pendingSignals];
-    _detectorState.pendingSignals = [];
+    const completionSignals = [...s.detector.pendingSignals];
+    s.detector.pendingSignals = [];
     if (completionSignals.length > 0) {
       signals.push(...completionSignals);
     }
 
-    const evaluated = evaluatePolicies(_policyState, {
+    const evaluated = evaluatePolicies(s.policyEngine, {
       signals,
       contextUsage: usage,
       contextTokens: getContextTokens(ctx),
@@ -527,12 +529,13 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     const toolName = event.toolName as string;
 
     // ── Task boundary signals ──────────────────────────────────────────
+    const detectorState = state(ctx).detector;
     if (toolName === "context_tag") {
-      queueSignal(_detectorState, "task_boundary", { action: "tag", target: toolName });
+      queueSignal(detectorState, "task_boundary", { action: "tag", target: toolName });
     } else if (toolName === "context_archive") {
-      queueSignal(_detectorState, "task_boundary", { action: "compress" });
+      queueSignal(detectorState, "task_boundary", { action: "compress" });
     } else if (toolName === "context_checkout") {
-      queueSignal(_detectorState, "task_boundary", { action: "checkout" });
+      queueSignal(detectorState, "task_boundary", { action: "checkout" });
     }
 
     // ── Compaction escalation reset ────────────────────────────────────
@@ -689,12 +692,14 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
         }
 
         case "stats": {
-          const policies = _policyState.policies;
-          const governance = _policyState.governance;
+          // ROADMAP DR-C-2: policies, governance, topicHistory now come
+          // from the per-session state via state(ctx).policyEngine /
+          // state(ctx).detector. Each session sees its own engine.
+          const ctxState = state(ctx);
+          const policies = ctxState.policyEngine.policies;
+          const governance = ctxState.policyEngine.governance;
 
           // Calculate outcome stats
-          // ROADMAP P3-17 / DR-L-3: use session-scoped state(ctx) when available.
-          const ctxState = state(ctx);
           const total = ctxState.outcomes.length;
           const approved = ctxState.outcomes.filter(
             (o) => o.resolution === "approved" || o.resolution === "implicit_approved",
@@ -715,7 +720,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
                   `**Governance:** ${governance.length} constraints`,
                   "",
                   "### Topic History",
-                  ..._detectorState.topicHistory
+                  ...ctxState.detector.topicHistory
                     .slice(-5)
                     .map((h) => `- Turn ${h.turn}: ${h.topic}`),
                 ].join("\n"),
@@ -727,7 +732,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
               outcomes: ctxState.outcomes,
               policies,
               governance,
-              topicHistory: _detectorState.topicHistory,
+              topicHistory: ctxState.detector.topicHistory,
             },
           };
         }
