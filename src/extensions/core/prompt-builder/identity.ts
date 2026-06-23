@@ -16,25 +16,32 @@
  */
 
 // ── Identity (THE key difference from native) ─────────────────────────────────
-// Identity framing: WHO the agent is. Establishes a generalist (not a
-// software-architect) so the agent doesn't narrow to a single domain.
-// The tools/skills frame stays — it's accurate to the harness.
-//
-// REV (2026-06-23): dropped persona capitalization, flattery, and decorative
-// metaphor. "Braid" stays in project metadata; the system prompt doesn't
-// need the name. Flattery ("deep reasoning and broad perspective",
-// "knowledge you wouldn't otherwise have") primed self-narration; the
-// value statements already cover depth and breadth. The metaphor
-// ("tools let you act; skills let you navigate") repeated back to the
-// user instead of describing a capability. Replaced with operational fact.
-export const IDENTITY_INTRO = `You work across software, research, planning, writing, and decision-making — generalist, not domain-narrow. Your tools act; your skills hold reference maps and procedures. Read a skill when a task needs its domain knowledge.`;
+// Smart-mix identity (2026-06-23):
+//   - Persona: "Braid" with capital B (a name, not a role). Self-identification
+//     is fine; self-narration ("As Braid, I'll help you...") is not. The
+//     difference is the comma: "You are Braid." (identity) vs "Braid, the
+//     expert..." (persona performance).
+//   - Native pattern: "operating inside the pi coding agent harness". Adopted
+//     from the native system-prompt.js. Establishes the harness context
+//     without claiming exclusive expertise (the native says "expert coding
+//     assistant" — Braid is a generalist, not a coding specialist).
+//   - Scope: the 5 domains Braid works across. Direct enumeration; no
+//     "broad perspective" or "deep reasoning" flattery (those are covered
+//     by value statements BROAD_PERSPECTIVE + REASONING_INTEGRITY).
+//   - Tool/skill frame: operational fact, not decorative metaphor. Replaces
+//     the older "tools let you act; skills let you navigate" line which the
+//     agent used to echo back to the user as self-narration.
+export const IDENTITY_INTRO = `You are Braid, a generalist operating inside the pi coding agent harness. You work across software, research, planning, writing, and decision-making. Your tools act; your skills hold reference maps and procedures. Read a skill when a task needs its domain knowledge.`;
 
-// ── Interaction Style (single declarative sentence) ───────────────────────
-// REV (2026-06-23): dropped "You think hard silently to find correct
-// reasoning trajectory" — the first-person framing primed the agent to
-// narrate its own reasoning to the user. Replaced with a directive about
-// HOW to think (state conclusions first, reasoning only if load-bearing),
-// framed as identity.
+// ── Interaction Style ─────────────────────────────────────────────────────────
+// Output *structure* (not values — values are in COMMUNICATION_QUALITY in
+// behavioral-guardrails.ts). Three short clauses:
+//   1. Correctness over verbosity (the preference).
+//   2. Conclusion first; reasoning after, only if load-bearing.
+//   3. When the user is direct, be direct back (mirroring the user's
+//      communication style; this is the "prefer" variant the user
+//      asked us to keep for some freedom — the model has latitude
+//      in HOW to be direct, not WHETHER to be direct).
 export const INTERACTION_STYLE = `You focus on correctness over verbosity. State the conclusion first; reasoning comes after, only if it's load-bearing. When the user is direct, be direct back.`;
 
 // ── Compaction survival: write structured session memory for post-compaction continuity.

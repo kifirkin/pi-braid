@@ -19,13 +19,10 @@ import {
 } from "./identity.js";
 import {
   SYCOPHANCY_RESISTANCE,
-  STAKES_AWARENESS,
-  EPISTEMIC_STABILITY,
+  EPISTEMIC_INTEGRITY,
   SURGICAL_PRECISION,
-  BUDGET_AWARENESS,
+  STRATEGY_AND_DRIFT,
   BROAD_PERSPECTIVE,
-  STRATEGY_BEFORE_ACTION,
-  REASONING_INTEGRITY,
   KNOWLEDGE_UNDER_PRESSURE,
   COMMUNICATION_QUALITY,
   EVIDENCE_GROUNDING,
@@ -64,14 +61,14 @@ import {
  * - Date/Cwd: computed directly
  *
  * Sections re-implemented locally:
- * - Identity: Braid agent identity
- * - Value statements: 11 single-sentence identity-level directives
+ * - Identity: Braid agent identity (smart-mix: persona + native pattern + generalist)
+ * - Value statements: 8 single-sentence identity-level directives (compressed from 11 on 2026-06-23)
  * - L1 environmental state
  * - Enforcement signals
  *
  * Historical change log moved to CHANGELOG.md. The current shape is the
  * post-implicit-framing research state: single-sentence interaction style,
- * 11 research-backed single-sentence value statements, no latent-behavior
+ * 8 research-backed single-sentence value statements, no latent-behavior
  * activation in the prompt (moved to runtime via `latent-activator`).
  */
 
@@ -269,20 +266,19 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       simpleSection("identity", IDENTITY_INTRO),
 
       // 1a. Value statements (identity-level directives).
-      //     5 pre-2026-06-21 + 5 new as of 2026-06-21 + 1 new as of 2026-06-22 (EVIDENCE_GROUNDING).
-      //     Order: how-to-think → how-to-approach → how-to-respond-under-pressure → how-to-express.
+      //     8 values as of 2026-06-23 (compressed from 11). See
+      //     behavioral-guardrails.ts for the value-evolution log.
+      //     Order matches the file's "how-to-think → how-to-approach →
+      //     how-to-respond-under-pressure → how-to-express" thesis.
       //     Project-specific behaviors live in each project's AGENTS.md, not here.
       //     See behavioral-guardrails.ts for the values-vs-behaviors architectural split.
+      simpleSection("value-epistemic-integrity", EPISTEMIC_INTEGRITY),
       simpleSection("value-broad-perspective", BROAD_PERSPECTIVE),
-      simpleSection("value-reasoning-integrity", REASONING_INTEGRITY),
+      simpleSection("value-evidence-grounding", EVIDENCE_GROUNDING),
+      simpleSection("value-surgical-precision", SURGICAL_PRECISION),
+      simpleSection("value-strategy-and-drift", STRATEGY_AND_DRIFT),
       simpleSection("value-sycophancy-resistance", SYCOPHANCY_RESISTANCE),
       simpleSection("value-knowledge-under-pressure", KNOWLEDGE_UNDER_PRESSURE),
-      simpleSection("value-evidence-grounding", EVIDENCE_GROUNDING),
-      simpleSection("value-stakes-awareness", STAKES_AWARENESS),
-      simpleSection("value-epistemic-stability", EPISTEMIC_STABILITY),
-      simpleSection("value-strategy-before-action", STRATEGY_BEFORE_ACTION),
-      simpleSection("value-surgical-precision", SURGICAL_PRECISION),
-      simpleSection("value-budget-awareness", BUDGET_AWARENESS),
       simpleSection("value-communication-quality", COMMUNICATION_QUALITY),
 
       // 1b. Compaction survival invariant - scratchpad + tasks must be self-contained
