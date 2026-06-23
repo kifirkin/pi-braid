@@ -131,19 +131,77 @@ export const OVERFLOW_RETRY_KEEP_REDUCTION_FACTOR = 0.6;
 export const COMPACTION_RETRY_CUSTOM_TYPE = "__compaction_retry_trigger";
 
 // ── Navigation helpers ────────────────────────────────────────────────────────
+// FIX (2026-06-23): resolveTarget previously returned the raw input string
+// when no match was found. This let `context_navigate` checkout pass a
+// non-existent target to sm.branchWithSummary(), which fails upstream with
+// "Entry not found" — and the tool then called ctx.abort(), killing the
+// turn with a half-checked-out session. The 402 in the log followed from
+// the broken session state (the agent's next LLM call hit a provider
+// that was either out of balance or rejecting the corrupt session).
+//
+// New contract: resolveTarget returns null for any target that does not
+// resolve to a real entry in the current session. The caller is responsible
+// for proposing a recovery via getRecoveryFallback() rather than dead-ending
+// the turn.
 export function resolveTarget(ctx: ExtensionContext, target?: string): string | null {
   if (!target) return null;
   const sm = getSessionManager(ctx);
-  if (target.toLowerCase() === "root") {
-    const tree = sm.getTree();
-    return tree.length > 0 ? tree[0].entry.id : target;
-  }
-  if (/^[0-9a-f]{8,}$/i.test(target)) return target;
   const tree = sm.getTree();
+  if (tree.length === 0) return null;
+
+  if (target.toLowerCase() === "root") {
+    return tree[0].entry.id;
+  }
+
+  // Accept an 8+ hex-char ID only if it actually exists in the current
+  // session. Previously we accepted any such string blindly, which let
+  // cross-session IDs leak through and fail upstream.
+  if (/^[0-9a-f]{8,}$/i.test(target)) {
+    for (const node of tree) {
+      if (node.entry.id === target) return target;
+    }
+    return null;
+  }
+
+  // Label lookup.
   for (const node of tree) {
     if (sm.getLabel(node.entry.id) === target) return node.entry.id;
   }
-  return target;
+  return null;
+}
+
+/**
+ * Get a recovery target when the requested target is not in the current
+ * session. Priority: (1) most recent tag, (2) the most recent non-internal
+ * user/assistant message, (3) the session root. Returns null when the
+ * session is empty.
+ *
+ * Used by `context_navigate` checkout to avoid the "Entry not found"
+ * dead-end that was corrupting the session.
+ */
+export function getRecoveryFallback(
+  ctx: ExtensionContext,
+  requested: string,
+): { id: string; label: string; reason: string } | null {
+  const sm = getSessionManager(ctx);
+  const branch = sm.getBranch();
+  if (branch.length === 0) return null;
+
+  // Priority 1: most recent tag in the current branch.
+  for (let i = branch.length - 1; i >= 0; i--) {
+    const label = sm.getLabel(branch[i].id);
+    if (label) {
+      return { id: branch[i].id, label, reason: "most-recent-tag" };
+    }
+  }
+
+  // Priority 2: session root.
+  const tree = sm.getTree();
+  if (tree.length > 0) {
+    return { id: tree[0].entry.id, label: "root", reason: "session-root" };
+  }
+
+  return null;
 }
 
 export function findByLabel(ctx: ExtensionContext, label: string): string | null {

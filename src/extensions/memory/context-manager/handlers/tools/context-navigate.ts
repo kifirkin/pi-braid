@@ -7,7 +7,14 @@
 
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { resolveTarget, findByLabel, resolveDefaultTarget, getCmState, isInternal } from "../shared.js";
+import {
+  resolveTarget,
+  findByLabel,
+  resolveDefaultTarget,
+  getRecoveryFallback,
+  getCmState,
+  isInternal,
+} from "../shared.js";
 
 export const contextNavigateSchema = Type.Object({
   action: Type.String({
@@ -203,10 +210,48 @@ export function registerContextNavigate(pi: ExtensionAPI): void {
         }
         const targetId = resolveTarget(ctx, params.target);
         const currentLeaf = sm.getLeafId();
+        // FIX (2026-06-23): when resolveTarget returns null, propose a
+        // recovery fallback instead of dead-ending. Previously the tool
+        // returned a "Could not resolve target" error and the agent had
+        // no path forward. Now we offer a fallback (most-recent tag or
+        // session root) so the agent can recover without a session
+        // corruption incident.
         if (!targetId) {
+          const fallback = getRecoveryFallback(ctx, params.target);
+          if (fallback) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text:
+                    `Target '${params.target}' not found in this session.\n\n` +
+                    `Recovery fallback available: '${fallback.label}' (${fallback.id}, ` +
+                    `reason: ${fallback.reason}).\n\n` +
+                    `If this is acceptable, run:\n` +
+                    `  context_navigate(action="checkout", target="${fallback.id}", message="...")\n\n` +
+                    `If not, run context_navigate(action="log") to inspect the session tree.`,
+                },
+              ],
+              details: {
+                action,
+                error: "target_not_found",
+                recovery: fallback,
+                requested: params.target,
+              },
+            };
+          }
+          // No fallback: empty session, nothing to fall back to.
           return {
-            content: [{ type: "text" as const, text: `Could not resolve target '${params.target}'` }],
-            details: { action, error: true },
+            content: [
+              {
+                type: "text" as const,
+                text:
+                  `Target '${params.target}' not found and the session is empty. ` +
+                  `No recovery fallback available. ` +
+                  `Run context_navigate(action="log") once the session has content.`,
+              },
+            ],
+            details: { action, error: "target_not_found", recovery: null },
           };
         }
         if (currentLeaf === targetId) {
@@ -228,6 +273,11 @@ export function registerContextNavigate(pi: ExtensionAPI): void {
           targetId,
           backupTag: params.backupTag,
         };
+        // FIX (2026-06-23): only abort after a successful branchWithSummary.
+        // Previously the abort ran unconditionally, which killed the turn
+        // even when the checkout had failed — leaving the session in a
+        // half-checked-out state. The 402 in the bug-report log followed
+        // from this corruption.
         ctx.abort();
         return {
           content: [{ type: "text" as const, text: `Checking out ${params.target}...` }],
