@@ -31,6 +31,7 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getCognitiveMemory } from "../../../lib/memory/index.js";
 import { gatherL1Environment, formatL1EnvironmentSection } from "../agent-environment/index.js";
+import { getSessionHealth } from "../../enforcement/session-health.js";
 import type { PromptSection } from "./section.js";
 
 interface L1Environment {
@@ -38,6 +39,8 @@ interface L1Environment {
   memoryCount: number;
   stepsSinceCheckpoint: number;
   piRoot: string;
+  /** Session health (Layer 8) - rendered only when non-healthy. */
+  sessionHealth?: { mode: string; lastErrorCategory?: string };
   agentEnv: {
     pid: number;
     sessionElapsedMs: number;
@@ -99,10 +102,24 @@ async function gatherL1State(
   // Pi package root path (for docs, examples, etc.)
   const piRoot = discoverPiRootPath();
 
+  // Session health (Layer 8) - gather here so render() doesn't need ctx.
+  let sessionHealth: L1Environment["sessionHealth"];
+  try {
+    const health = getSessionHealth(ctx);
+    if (health.mode !== "healthy") {
+      sessionHealth = {
+        mode: health.mode,
+        lastErrorCategory: health.lastError?.category,
+      };
+    }
+  } catch {
+    // enforcement may not be loaded; non-fatal
+  }
+
   // Machine info (platform, hostname) - already in agentEnv from gatherL1Environment
   // The OS is now included in agentEnv.machine
 
-  return { contextPercent, memoryCount, stepsSinceCheckpoint, piRoot, agentEnv };
+  return { contextPercent, memoryCount, stepsSinceCheckpoint, piRoot, sessionHealth, agentEnv };
 }
 
 /**
@@ -202,6 +219,16 @@ function formatL1EnvironmentInternal(env: L1Environment): PromptSection {
       // Context warning only when critical
       if (env.contextPercent > 75) {
         lines.push(`Context: ${env.contextPercent.toFixed(0)}%`);
+      }
+
+      // Session health (Layer 8) - surfaced only when non-healthy.
+      // The whisper channel already carries the full recovery message;
+      // the L1 block is the at-a-glance indicator.
+      if (env.sessionHealth) {
+        const errorDetail = env.sessionHealth.lastErrorCategory
+          ? ` (last error: ${env.sessionHealth.lastErrorCategory})`
+          : "";
+        lines.push(`Session health: ${env.sessionHealth.mode}${errorDetail}`);
       }
 
       // Memory count

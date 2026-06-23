@@ -9,6 +9,14 @@ import { eventBus } from "../../../lib/events/event-bus.js";
 import { cacheSessionManager, getSessionStartTask } from "../../../lib/state/extension-state.js";
 import { getState } from "../state.js";
 import { createLogger } from "../../../lib/core/logger.js";
+import { setLlmCallListeners } from "../../../lib/ai/llm-call.js";
+import {
+  recordLlmError,
+  recordLlmSuccess,
+  resetSessionHealth,
+  tickSessionHealth,
+} from "../session-health.js";
+import { classifyLlmError } from "../../../lib/errors/llm-error.js";
 
 const log = createLogger("enforcement:session-start");
 
@@ -21,6 +29,33 @@ export function registerSessionStart(pi: ExtensionAPI): void {
 
       // Cache fresh sessionManager reference for stale-safe access in turn_end handlers
       cacheSessionManager(ctx);
+
+      // Layer 2 wiring (2026-06-23): register LLM call listeners that
+      // route every call outcome into SessionHealthState. The listener
+      // uses a closure over `ctx` so it always updates the right session.
+      // Single-listener design: Braid typically runs one session per
+      // process; multi-session support is a future concern (Layer 3).
+      setLlmCallListeners({
+        onError: (err) => {
+          try {
+            const classified = classifyLlmError(err);
+            recordLlmError(ctx, classified);
+            tickSessionHealth(ctx);
+          } catch (e) {
+            log.warn(`session-health listener error (non-fatal): ${(e as Error).message}`);
+          }
+        },
+        onSuccess: () => {
+          try {
+            recordLlmSuccess(ctx);
+          } catch {
+            // non-fatal
+          }
+        },
+      });
+
+      // Reset health on session start (preserves history for diagnostics).
+      resetSessionHealth(ctx, { preserveHistory: true });
 
       const task = getSessionStartTask(event) || getState(ctx).originalRequest || "";
       if (task) {

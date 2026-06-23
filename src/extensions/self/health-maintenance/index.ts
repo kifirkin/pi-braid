@@ -25,6 +25,7 @@ import type { BenchmarkResult, HealthMaintenanceResult } from "./types.js";
 import { getAnalyticsMetrics, startMetricsPersistence } from "./helpers.js";
 import { formatHealthMaintenanceOutput } from "./format.js";
 import { SESSION_SHUTDOWN } from "../../../lib/core/event-names.js";
+import { registerSessionHealthTool } from "./handlers/session-health-tool.js";
 
 const _log = createLogger("health-maintenance");
 
@@ -119,6 +120,13 @@ export default function healthMaintenanceExtension(pi: ExtensionAPI) {
       }
     },
   });
+
+  // ── session_health tool (LLM provider health) ──────────────────────
+  // Layer 7 of the session-recovery proposal (2026-06-23). Introspection
+  // surface for the enforcement-owned SessionHealthState. Lives here
+  // because it is a health-related tool, and the health-maintenance
+  // module is the canonical home for health tooling.
+  registerSessionHealthTool(pi);
 
   // ── /logs slash command ───────────────────────────────────────────────
   // Retrieve the in-memory log buffer. By default console writes are

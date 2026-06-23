@@ -26,6 +26,7 @@ import { BRAID_INJECTED, BRAID_SOURCE } from "../../../lib/constants/injection-d
 import { eventBus } from "../../../lib/events/event-bus.js";
 import { processConsolidationTick, executeConsolidation } from "../../../lib/events/consolidation-channel.js";
 import { heartbeatCheckpointTick } from "../../../lib/state/state-checkpoint.js";
+import { getSessionHealth } from "../../enforcement/session-health.js";
 import { extractSOP } from "../../../lib/utils/sop-extractor.js";
 import { injectSopSuggestions, trackSuggestionFeedback } from "../../../lib/utils/sop-suggestion.js";
 import type { TrajectoryEntry } from "../../../lib/utils/sop-extractor.js";
@@ -624,23 +625,39 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 
         // Queue for consolidation if successful
         if (success) {
-          try {
-            const result = await executeConsolidation({
-              id: `ep-${Date.now()}`,
-              task: taskDesc,
-              outcome: "success",
-              strategicSOP: sop.strategicSOP,
-              functionalSOP: sop.functionalSOP,
-              toolSequence: sop.atomicSOP,
-            });
-            if (result) {
-              log.info(
-                `[heartbeat] Consolidation candidate enqueued ` +
-                  `(score=${result.consolidationScore.toFixed(2)})`,
-              );
+          // Layer 6 (2026-06-23): gate consolidation on session health.
+          // When the LLM provider is unavailable (balance, auth) or the
+          // session is degraded, the consolidation pipeline is a 402
+          // waiting to happen. Score the candidate (so it persists) but
+          // skip execution; the SessionHealthState tracks this so the
+          // next healthy session drains the queue.
+          const health = getSessionHealth(ctx);
+          if (health.mode === "balance" || health.mode === "auth" || health.mode === "degraded") {
+            log.warn(
+              `[heartbeat] Skipping consolidation: session health is ${health.mode} ` +
+                `(consecutive errors: ${health.consecutiveErrors})`,
+            );
+            // Still record the episode - we want the history even when we can't act on it.
+            // The episode will surface in the next healthy session via retrieveEpisodes().
+          } else {
+            try {
+              const result = await executeConsolidation({
+                id: `ep-${Date.now()}`,
+                task: taskDesc,
+                outcome: "success",
+                strategicSOP: sop.strategicSOP,
+                functionalSOP: sop.functionalSOP,
+                toolSequence: sop.atomicSOP,
+              });
+              if (result) {
+                log.info(
+                  `[heartbeat] Consolidation candidate enqueued ` +
+                    `(score=${result.consolidationScore.toFixed(2)})`,
+                );
+              }
+            } catch (err) {
+              log.warn(`[heartbeat] Could not score consolidation candidate: ${err}`);
             }
-          } catch (err) {
-            log.warn(`[heartbeat] Could not score consolidation candidate: ${err}`);
           }
         }
       }

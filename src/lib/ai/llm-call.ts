@@ -91,6 +91,29 @@ const MAX_CONCURRENT_PER_MODEL = 2;
 type ModelLock = { active: number; waiters: Array<() => void> };
 const _modelLocks = new Map<string, ModelLock>();
 
+// ── LLM call listeners (Layer 2 wiring) ─────────────────────────────────────
+//
+// The session-recovery proposal (2026-06-23) routes every LLM call outcome
+// through SessionHealthState. To avoid forcing every call site to pass a
+// callback, we expose a process-wide listener registration. The enforcement
+// extension registers listeners at session_start with a closure over the
+// current ctx; calls go to whichever listener is currently registered.
+//
+// Single-listener design: only one consumer is expected (the enforcement
+// extension). Multi-session / multi-consumer scenarios are a future concern.
+type LlmErrorListener = (err: unknown) => void;
+type LlmSuccessListener = () => void;
+let _llmErrorListener: LlmErrorListener | null = null;
+let _llmSuccessListener: LlmSuccessListener | null = null;
+
+export function setLlmCallListeners(listeners: {
+  onError?: LlmErrorListener;
+  onSuccess?: LlmSuccessListener;
+}): void {
+  _llmErrorListener = listeners.onError ?? null;
+  _llmSuccessListener = listeners.onSuccess ?? null;
+}
+
 async function acquireModelSlot(modelId: string): Promise<void> {
   let lock = _modelLocks.get(modelId);
   if (!lock) {
@@ -309,6 +332,12 @@ export async function callLlm(
           } else {
             log.error("LLM error:", result.errorMessage);
           }
+          // Notify listener (Layer 2 wiring) - non-fatal if it throws.
+          try {
+            _llmErrorListener?.(result.errorMessage);
+          } catch {
+            // non-fatal
+          }
           return { error: result.errorMessage };
         }
 
@@ -317,6 +346,13 @@ export async function callLlm(
           (c): c is { type: "text"; text: string } => c.type === "text",
         );
         const text = textContent.length > 0 ? textContent[0].text : "";
+
+        // Notify listener (Layer 2 wiring) - non-fatal if the listener throws.
+        try {
+          _llmSuccessListener?.();
+        } catch {
+          // non-fatal
+        }
 
         // Surface stopReason and usage so callers can diagnose empty
         // responses (e.g. "stopReason=length" means the model hit the
@@ -365,6 +401,12 @@ export async function callLlm(
               ? `LLM call timed out after ${maxRetries + 1} attempts`
               : `LLM call failed: ${message}`,
           );
+        }
+        // Notify listener (Layer 2 wiring) - non-fatal if it throws.
+        try {
+          _llmErrorListener?.(message);
+        } catch {
+          // non-fatal
         }
         return { error: message };
       }
