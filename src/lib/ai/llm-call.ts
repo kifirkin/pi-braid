@@ -8,7 +8,6 @@
  * evaluates pure correctness; the agent being judged sees no signal
  * about what the judgment is for. The test-arxiv-citations.mjs and
  * test-prompt-builder-values.mjs suites verify the agent-side invariant.
- */
  *
  * Wraps pi-ai's completeSimple with a two-tier retry strategy:
  *
