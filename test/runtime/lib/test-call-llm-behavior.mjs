@@ -229,7 +229,13 @@ await test("callLlm: timeoutMs fires the abort within the configured window", as
   }, null);
 });
 
-await test("callLlm: timeout error is logged at ERROR level (not demoted)", async () => {
+await test("callLlm: timeout error is logged at DEBUG level (universal abort demotion)", async () => {
+  // 2026-06-23 behavior change: aborts of any kind (timeout, signal,
+  // session-end backpressure) are demoted to debug. The user wants
+  // aborts to be quiet so end-of-loop / session-shutdown errors don't
+  // flood the TUI. The 10-minute default timeout means a real
+  // provider timeout is unlikely; if it does happen, debug logs
+  // preserve the signal for diagnostic purposes.
   await withStub(async () => {
     clearLogBuffer();
     __setCompleteSimpleForTest(hangingStub());
@@ -246,17 +252,14 @@ await test("callLlm: timeout error is logged at ERROR level (not demoted)", asyn
     const debugAbortLogs = llmCallLogs.filter(
       (l) => l.level === "debug" && /aborted|external signal/i.test(l.message),
     );
-    assert.ok(
-      errorLogs.length >= 1,
-      `expected ≥1 ERROR log from llm-call on timeout; got ${errorLogs.length}. All logs: ${JSON.stringify(logs)}`,
-    );
-    // The timeout path must NOT be demoted to debug - only external
-    // aborts (ESC, session shutdown) get that treatment. A timeout is
-    // a real failure (the model was too slow), the user wants to know.
     assert.strictEqual(
-      debugAbortLogs.length,
+      errorLogs.length,
       0,
-      `timeout must NOT be demoted to debug; got: ${JSON.stringify(debugAbortLogs)}`,
+      `timeout must NOT be logged at ERROR (universal abort demotion); got: ${JSON.stringify(errorLogs)}`,
+    );
+    assert.ok(
+      debugAbortLogs.length >= 1,
+      `expected ≥1 debug abort log; got ${debugAbortLogs.length}. All logs: ${JSON.stringify(logs)}`,
     );
   }, null);
 });

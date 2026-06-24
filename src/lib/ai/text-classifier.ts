@@ -115,16 +115,20 @@ export async function classify(
   // hard cap (e.g., for a custom reason). Otherwise we let
   // pi-ai / the provider decide.
   const maxTokens = options?.maxTokens;
-  // Default 8s per tier. Slow models (minimax-m3, mistral-small) regularly
-  // take 3-5s for a single classification; 5s was too tight at session
-  // end (where the model is busy with finalization and the network round-trip
-  // has higher latency). Total budget is 2x = 16s for both tiers.
+  // 10-minute default per tier (was 8s; bestEffort was 3s). Aborts
+  // should be signal-driven (ESC, session shutdown), not
+  // timeout-driven. A timeout here is a fallback for orphaned calls
+  // (caller crashed, signal never fired) - not the normal
+  // cancellation path. Slow models (minimax-m3, mistral-small)
+  // regularly take 3-5s for a single classification, but worst-case
+  // paths (large prompts, network jitter, session-end backpressure)
+  // can take 30s+. Callers can still pass a tighter timeoutMs if
+  // they want a hard ceiling.
   //
-  // bestEffort callers (post-loop analysis) get a 3s timeout instead -
-  // fast enough to fit in a session-end teardown, and the warn logs
-  // are demoted to debug so the end-of-loop noise is reduced.
-  const timeoutMs =
-    options?.timeoutMs ?? (options?.bestEffort ? 3000 : 8000);
+  // The bestEffort flag no longer affects the timeout - it now only
+  // demotes failure logs to debug. Both modes get the same 10-min
+  // default; the difference is just whether aborts are noisy.
+  const timeoutMs = options?.timeoutMs ?? 600_000;
   // Demote the per-tier failure warns and the "ALL TIERS FAILED" warn
   // to debug when bestEffort is set OR the failure was an abort.
   // Aborts at session end are expected behavior (the session signal

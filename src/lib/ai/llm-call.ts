@@ -109,18 +109,21 @@ const _modelLocks = new Map<string, ModelLock>();
 //
 // Single-listener design: only one consumer is expected (the enforcement
 // extension). Multi-session / multi-consumer scenarios are a future concern.
-type LlmErrorListener = (err: unknown) => void;
-type LlmSuccessListener = () => void;
-let _llmErrorListener: LlmErrorListener | null = null;
-let _llmSuccessListener: LlmSuccessListener | null = null;
+//
+// Listener slots live in `lib/state/global-state.ts` to satisfy the
+// no-module-level-let contract; this file uses getter/setter wrappers.
+import {
+  setLlmCallListeners,
+  getLlmErrorListener,
+  getLlmSuccessListener,
+  type LlmErrorListener,
+  type LlmSuccessListener,
+} from "../state/global-state.js";
 
-export function setLlmCallListeners(listeners: {
-  onError?: LlmErrorListener;
-  onSuccess?: LlmSuccessListener;
-}): void {
-  _llmErrorListener = listeners.onError ?? null;
-  _llmSuccessListener = listeners.onSuccess ?? null;
-}
+// Re-export the setter so existing callers (enforcement extension) keep
+// working without changes.
+export { setLlmCallListeners };
+export type { LlmErrorListener, LlmSuccessListener };
 
 async function acquireModelSlot(modelId: string): Promise<void> {
   let lock = _modelLocks.get(modelId);
@@ -226,7 +229,12 @@ export async function callLlm(
 
   const maxTokens =
     options.maxTokens ?? Math.min(Math.max(1000, Math.floor(userPrompt.length / 8)), 4000);
-  const timeoutMs = options.timeoutMs ?? 30_000;
+  // 10-minute default (was 30s). Aborts should be signal-driven (ESC,
+  // session shutdown), not timeout-driven. A timeout here is a fallback
+  // for orphaned calls (caller crashed, signal never fired) — not the
+  // normal cancellation path. Callers can still pass a tighter
+  // timeoutMs if they want a hard ceiling.
+  const timeoutMs = options.timeoutMs ?? 600_000;
   const temperature = options.temperature ?? 0.1;
   const sdkMaxRetries = options.sdkRetries ?? DEFAULT_SDK_RETRIES;
   const signal = options.signal;
@@ -332,17 +340,25 @@ export async function callLlm(
             // alone (pi-ai returns "Request was aborted" for both), so
             // we check the original external signal: if it was set and
             // is now aborted, this is a user-driven cancellation.
-            signal?.aborted === true
+            //
+            // Universal fallback: if the error message contains
+            // "abort" (any case) we also demote to debug. This covers
+            // post-loop callers (heartbeat, context-hygiene) where
+            // ctx.signal is undefined and the only abort source is
+            // the timeout itself firing under session-end load - the
+            // user didn't ask for that to be logged at ERROR.
+            signal?.aborted === true ||
+            /abort/i.test(result.errorMessage)
           ) {
             log.debug(
-              `LLM call aborted by external signal (likely ESC or session shutdown): ${result.errorMessage}`,
+              `LLM call aborted (signal=${signal ? "set" : "unset"}, message=${result.errorMessage})`,
             );
           } else {
             log.error("LLM error:", result.errorMessage);
           }
           // Notify listener (Layer 2 wiring) - non-fatal if it throws.
           try {
-            _llmErrorListener?.(result.errorMessage);
+            getLlmErrorListener()?.(result.errorMessage);
           } catch {
             // non-fatal
           }
@@ -357,7 +373,7 @@ export async function callLlm(
 
         // Notify listener (Layer 2 wiring) - non-fatal if the listener throws.
         try {
-          _llmSuccessListener?.();
+          getLlmSuccessListener()?.();
         } catch {
           // non-fatal
         }
@@ -396,12 +412,15 @@ export async function callLlm(
           continue;
         }
         // Demote to debug when an external signal (ESC / session shutdown)
-        // caused the abort. This matches the demotion in the result.errorMessage
-        // branch above. Without this, the catch path still emits ERROR lines
-        // for expected cancellations.
-        if (signal?.aborted === true) {
+        // caused the abort, OR when the message is itself an abort
+        // (covered by the universal /abort/i fallback in the
+        // result.errorMessage branch above). This matches the
+        // demotion there. Without this, the catch path still emits
+        // ERROR lines for expected cancellations and post-loop
+        // timeouts fired under session-end load.
+        if (signal?.aborted === true || /abort/i.test(message)) {
           log.debug(
-            `LLM call aborted by external signal (likely ESC or session shutdown): ${message}`,
+            `LLM call aborted (signal=${signal ? "set" : "unset"}, message=${message})`,
           );
         } else {
           log.error(
@@ -412,7 +431,7 @@ export async function callLlm(
         }
         // Notify listener (Layer 2 wiring) - non-fatal if it throws.
         try {
-          _llmErrorListener?.(message);
+          getLlmErrorListener()?.(message);
         } catch {
           // non-fatal
         }

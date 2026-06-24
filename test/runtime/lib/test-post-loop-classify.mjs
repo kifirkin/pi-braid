@@ -102,23 +102,25 @@ const GS_PATH = join(ROOT, "src/lib/state/global-state.ts");
 assert.ok(existsSync(GS_PATH), "global-state source must exist");
 const gsSrc = readFileSync(GS_PATH, "utf-8");
 
-await test("DEFAULT_POST_LOOP_TIMEOUT_MS is 30000 in global-state.ts (latest tuning)", () => {
+await test("DEFAULT_POST_LOOP_TIMEOUT_MS is 600000 in global-state.ts (latest tuning)", () => {
   const m = gsSrc.match(
     /export\s+const\s+DEFAULT_POST_LOOP_TIMEOUT_MS\s*=\s*([\d_]+)\s*;/,
   );
   assert.ok(m, "DEFAULT_POST_LOOP_TIMEOUT_MS must be exported from global-state.ts");
   const value = parseInt(m[1].replace(/_/g, ""), 10);
-  // History: 3000 → 5000 → 8000 → 30000. The current value (30000)
-  // reflects the user's "a minute or more" guidance. Bump the test
-  // constant when bumping the source value.
+  // History: 3000 → 5000 → 8000 → 30000 → 600000. The current value
+  // (600_000 = 10min) reflects the user's 2026-06-23 request: "make
+  // huge one like 10 minutes but keep proper esc key handling".
+  // Aborts are signal-driven; the timeout is a fallback for orphaned
+  // calls. Bump the test constant when bumping the source value.
   assert.strictEqual(
     value,
-    30000,
-    `DEFAULT_POST_LOOP_TIMEOUT_MS must be 30000 (was 3s→5s→8s→30s). Got: ${value}`,
+    600000,
+    `DEFAULT_POST_LOOP_TIMEOUT_MS must be 600000 (was 3s→5s→8s→30s→600s). Got: ${value}`,
   );
 });
 
-await test("getPostLoopTimeoutMs() returns 30000 by default", () => {
+await test("getPostLoopTimeoutMs() returns 600000 by default", () => {
   assert.match(
     gsSrc,
     /export\s+function\s+getPostLoopTimeoutMs/,

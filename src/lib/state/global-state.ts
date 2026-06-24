@@ -158,16 +158,24 @@ export function getCognitiveMemoryInstance(): unknown {
 /**
  * Default per-LLM-tier timeout for post-loop classify() calls. The
  * post-loop path runs at session end, when the session model may be
- * busy with finalization. A 30s budget per tier (60s worst-case when
- * both utility and session are tried) is the current tuning.
+ * busy with finalization. A 10-minute budget per tier (20 min
+ * worst-case when both utility and session are tried) is the current
+ * tuning. Aborts should be signal-driven (ESC, session shutdown), not
+ * timeout-driven - the timeout is a fallback for orphaned calls.
  *
  * History (from post-loop-classify.ts):
  *   - 3s (pre-2026-06-21): too tight under session-end load.
  *   - 5s (2026-06-21 fix): improvement, still tight for slow models.
  *   - 8s (2026-06-21 follow-up): still hit by very slow paths.
- *   - 30s (current): full headroom for worst-case post-loop paths.
+ *   - 30s (2026-06-22 → 2026-06-23): still hit by slowest paths and
+ *     session-end backpressure.
+ *   - 600s / 10min (2026-06-23): user request - "completely remove
+ *     timeouts (or make huge one like 10 minutes) but keep proper
+ *     esc key handling". The default is now high enough that
+ *     real provider issues surface as real errors, while signal-
+ *     driven aborts (ESC) remain the normal cancellation path.
  */
-export const DEFAULT_POST_LOOP_TIMEOUT_MS = 30_000;
+export const DEFAULT_POST_LOOP_TIMEOUT_MS = 600_000;
 
 let _postLoopTimeoutMs: number | undefined;
 
@@ -195,4 +203,54 @@ export function setPostLoopTimeoutMs(value: number): void {
 /** Reset the post-loop timeout to the default. Test helper. */
 export function resetPostLoopTimeoutMs(): void {
   _postLoopTimeoutMs = undefined;
+}
+
+// ── LLM Call Listeners (llm-call.ts) ─────────────────────────────────────
+//
+// The session-recovery proposal (2026-06-23) routes every LLM call outcome
+// through SessionHealthState. To avoid forcing every call site to pass a
+// callback, lib/ai/llm-call.ts exposes a process-wide listener registration.
+// The enforcement extension registers listeners at session_start with a
+// closure over the current ctx; calls go to whichever listener is currently
+// registered.
+//
+// Single-listener design: only one consumer is expected (the enforcement
+// extension). Multi-session / multi-consumer scenarios are a future concern.
+//
+// Encapsulated in global-state.ts (not module-level let in llm-call.ts) so
+// the no-module-level-let contract is satisfied and the listeners can be
+// reset between test runs via resetLlmCallListeners().
+export type LlmErrorListener = (err: unknown) => void;
+export type LlmSuccessListener = () => void;
+
+let _llmErrorListener: LlmErrorListener | null = null;
+let _llmSuccessListener: LlmSuccessListener | null = null;
+
+/** Set the current LLM call listeners. Pass `null` to clear a slot. */
+export function setLlmCallListeners(listeners: {
+  onError?: LlmErrorListener | null;
+  onSuccess?: LlmSuccessListener | null;
+}): void {
+  if (listeners.onError !== undefined) {
+    _llmErrorListener = listeners.onError ?? null;
+  }
+  if (listeners.onSuccess !== undefined) {
+    _llmSuccessListener = listeners.onSuccess ?? null;
+  }
+}
+
+/** Read-only access to the current error listener (for the callLlm() body). */
+export function getLlmErrorListener(): LlmErrorListener | null {
+  return _llmErrorListener;
+}
+
+/** Read-only access to the current success listener (for the callLlm() body). */
+export function getLlmSuccessListener(): LlmSuccessListener | null {
+  return _llmSuccessListener;
+}
+
+/** Clear all listeners. Test helper. */
+export function resetLlmCallListeners(): void {
+  _llmErrorListener = null;
+  _llmSuccessListener = null;
 }

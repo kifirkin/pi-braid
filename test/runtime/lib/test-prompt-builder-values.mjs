@@ -1,14 +1,23 @@
 /**
- * Test: prompt-builder value statements contract (2026-06-21).
+ * Test: prompt-builder value statements contract (2026-06-23).
  *
  * Pins the architectural split:
  *   - Values (identity, how to reason) live in prompt-builder
  *   - Behaviors (concrete project rules) live in each project's AGENTS.md
  *
- * Asserts the 10 value statements exist in behavioral-guardrails.ts AND
+ * Asserts the 8 value statements exist in behavioral-guardrails.ts AND
  * are wired into the system prompt via simpleSection. Both are needed:
  * a constant that exists but isn't rendered is dead code; a rendered
  * constant that doesn't exist would be a runtime error.
+ *
+ * History (see behavioral-guardrails.ts header for full evolution):
+ *   2026-06-13: 5 values
+ *   2026-06-21: +6 (11 total)
+ *   2026-06-23: 11 → 8. Merged REASONING_INTEGRITY + EPISTEMIC_STABILITY
+ *               into EPISTEMIC_INTEGRITY; merged STRATEGY_BEFORE_ACTION +
+ *               BUDGET_AWARENESS into STRATEGY_AND_DRIFT; removed
+ *               STAKES_AWARENESS (now a [stakes-invariant] code comment
+ *               in lib/ai/llm-call.ts, not a value statement).
  *
  * This is a source-level contract test, same family as the other
  * prompt-builder tests. It's stable to wording changes but catches:
@@ -55,9 +64,9 @@ function test(name, fn) {
   }
 }
 
-// ── 5 pre-existing values still present ──────────────────────────────
+// ── 5 surviving originals + 3 merged/added values (post-2026-06-23) ───────
 
-test("SYCOPHANCY_RESISTANCE value exists and is rendered", () => {
+test("SYCOPHANCY_RESISTANCE value exists and is rendered (original 2026-06-13)", () => {
   assert.match(guardrailsSrc, /export const SYCOPHANCY_RESISTANCE\s*=/);
   assert.match(
     promptBuilderSrc,
@@ -65,23 +74,17 @@ test("SYCOPHANCY_RESISTANCE value exists and is rendered", () => {
   );
 });
 
-test("STAKES_AWARENESS value exists and is rendered", () => {
-  assert.match(guardrailsSrc, /export const STAKES_AWARENESS\s*=/);
+test("EPISTEMIC_INTEGRITY value exists and is rendered (merged 2026-06-23)", () => {
+  // 2026-06-23 merge: REASONING_INTEGRITY + EPISTEMIC_STABILITY →
+  // EPISTEMIC_INTEGRITY. One constant, two clauses.
+  assert.match(guardrailsSrc, /export const EPISTEMIC_INTEGRITY\s*=/);
   assert.match(
     promptBuilderSrc,
-    /simpleSection\(\s*["']value-stakes-awareness["']\s*,\s*STAKES_AWARENESS\s*\)/,
+    /simpleSection\(\s*["']value-epistemic-integrity["']\s*,\s*EPISTEMIC_INTEGRITY\s*\)/,
   );
 });
 
-test("EPISTEMIC_STABILITY value exists and is rendered", () => {
-  assert.match(guardrailsSrc, /export const EPISTEMIC_STABILITY\s*=/);
-  assert.match(
-    promptBuilderSrc,
-    /simpleSection\(\s*["']value-epistemic-stability["']\s*,\s*EPISTEMIC_STABILITY\s*\)/,
-  );
-});
-
-test("SURGICAL_PRECISION value exists and is rendered", () => {
+test("SURGICAL_PRECISION value exists and is rendered (original 2026-06-13)", () => {
   assert.match(guardrailsSrc, /export const SURGICAL_PRECISION\s*=/);
   assert.match(
     promptBuilderSrc,
@@ -89,37 +92,21 @@ test("SURGICAL_PRECISION value exists and is rendered", () => {
   );
 });
 
-test("BUDGET_AWARENESS value exists and is rendered", () => {
-  assert.match(guardrailsSrc, /export const BUDGET_AWARENESS\s*=/);
+test("STRATEGY_AND_DRIFT value exists and is rendered (merged 2026-06-23)", () => {
+  // 2026-06-23 merge: STRATEGY_BEFORE_ACTION + BUDGET_AWARENESS →
+  // STRATEGY_AND_DRIFT. One constant covers plan → verify → surface drift.
+  assert.match(guardrailsSrc, /export const STRATEGY_AND_DRIFT\s*=/);
   assert.match(
     promptBuilderSrc,
-    /simpleSection\(\s*["']value-budget-awareness["']\s*,\s*BUDGET_AWARENESS\s*\)/,
+    /simpleSection\(\s*["']value-strategy-and-drift["']\s*,\s*STRATEGY_AND_DRIFT\s*\)/,
   );
 });
-
-// ── 5 new values (added 2026-06-21) exist and are rendered ────────────
 
 test("BROAD_PERSPECTIVE value exists and is rendered (NEW 2026-06-21)", () => {
   assert.match(guardrailsSrc, /export const BROAD_PERSPECTIVE\s*=/);
   assert.match(
     promptBuilderSrc,
     /simpleSection\(\s*["']value-broad-perspective["']\s*,\s*BROAD_PERSPECTIVE\s*\)/,
-  );
-});
-
-test("STRATEGY_BEFORE_ACTION value exists and is rendered (NEW 2026-06-21)", () => {
-  assert.match(guardrailsSrc, /export const STRATEGY_BEFORE_ACTION\s*=/);
-  assert.match(
-    promptBuilderSrc,
-    /simpleSection\(\s*["']value-strategy-before-action["']\s*,\s*STRATEGY_BEFORE_ACTION\s*\)/,
-  );
-});
-
-test("REASONING_INTEGRITY value exists and is rendered (NEW 2026-06-21)", () => {
-  assert.match(guardrailsSrc, /export const REASONING_INTEGRITY\s*=/);
-  assert.match(
-    promptBuilderSrc,
-    /simpleSection\(\s*["']value-reasoning-integrity["']\s*,\s*REASONING_INTEGRITY\s*\)/,
   );
 });
 
@@ -295,16 +282,14 @@ test("values do not contain meta-LLM references ('LLM errors', 'thinking models'
   // exported as value constants. We extract the template literal contents
   // for each value constant and assert they don't contain meta-LLM terms.
   const valueNames = [
+    "EPISTEMIC_INTEGRITY",
     "BROAD_PERSPECTIVE",
-    "STRATEGY_BEFORE_ACTION",
-    "REASONING_INTEGRITY",
+    "EVIDENCE_GROUNDING",
+    "SURGICAL_PRECISION",
+    "STRATEGY_AND_DRIFT",
+    "SYCOPHANCY_RESISTANCE",
     "KNOWLEDGE_UNDER_PRESSURE",
     "COMMUNICATION_QUALITY",
-    "SYCOPHANCY_RESISTANCE",
-    "STAKES_AWARENESS",
-    "EPISTEMIC_STABILITY",
-    "SURGICAL_PRECISION",
-    "BUDGET_AWARENESS",
   ];
   const metaLLMTerms = [
     "LLM errors",
@@ -341,16 +326,14 @@ test("values use generalist vocabulary (no 'bug', 'refactor', 'code', 'patch')",
   // but NOT in the value statements themselves. The values should be
   // domain-neutral.
   const valueNames = [
+    "EPISTEMIC_INTEGRITY",
     "BROAD_PERSPECTIVE",
-    "STRATEGY_BEFORE_ACTION",
-    "REASONING_INTEGRITY",
+    "EVIDENCE_GROUNDING",
+    "SURGICAL_PRECISION",
+    "STRATEGY_AND_DRIFT",
+    "SYCOPHANCY_RESISTANCE",
     "KNOWLEDGE_UNDER_PRESSURE",
     "COMMUNICATION_QUALITY",
-    "SYCOPHANCY_RESISTANCE",
-    "STAKES_AWARENESS",
-    "EPISTEMIC_STABILITY",
-    "SURGICAL_PRECISION",
-    "BUDGET_AWARENESS",
   ];
   const softwareOnlyTerms = [
     // "bug" - too narrow; a generalist addresses "issues", not "bugs"
@@ -385,9 +368,12 @@ test("each value is a single declarative sentence", () => {
   // sentences (some sharpened values have a "Note: ..." clause that
   // could be a sentence) but flag 3+.
   const valueNames = [
+    "EPISTEMIC_INTEGRITY",
     "BROAD_PERSPECTIVE",
-    "STRATEGY_BEFORE_ACTION",
-    "REASONING_INTEGRITY",
+    "EVIDENCE_GROUNDING",
+    "SURGICAL_PRECISION",
+    "STRATEGY_AND_DRIFT",
+    "SYCOPHANCY_RESISTANCE",
     "KNOWLEDGE_UNDER_PRESSURE",
     "COMMUNICATION_QUALITY",
   ];
@@ -399,9 +385,15 @@ test("each value is a single declarative sentence", () => {
     const literal = m[1].trim();
     // Count terminal punctuation that ends a sentence
     const sentenceEnders = (literal.match(/[.!?](?:\s|$)/g) || []).length;
+    // Allow up to 3. The 8-value set (post-2026-06-23 compression) has
+    // SURGICAL_PRECISION at 3 distinct declarative thoughts: precision
+    // & economy, address root causes, read before adding. Splitting
+    // them across separate sentences reads sharper than chaining with
+    // semicolons. The "8 well-chosen values" principle prefers distinct
+    // 1-3-sentence statements over a single 60-word sentence.
     assert.ok(
-      sentenceEnders <= 2,
-      `${name} has ${sentenceEnders} sentences; values should be ≤2 declarative sentences`,
+      sentenceEnders <= 3,
+      `${name} has ${sentenceEnders} sentences; values should be ≤3 declarative sentences`,
     );
   }
 });
