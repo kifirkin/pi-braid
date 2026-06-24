@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/lib/constants/ - Project-wide Constants
 
 Shared constants and enums. Keep this dir minimal - most constants should

@@ -1,3 +1,5 @@
+<!-- status: historical -->
+
 > **⚠️ ARCHIVED — 2026-06-17**
 >
 > This document is preserved for historical reference. Its actionable

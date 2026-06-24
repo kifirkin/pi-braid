@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/extensions/core/prompt-builder/ - System Prompt Composition
 
 Builds the agent's system prompt by composing `PromptSection` fragments.

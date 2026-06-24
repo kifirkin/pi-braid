@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # lib/cognitive
 
 Whisper-delivery libraries for cognitive features.

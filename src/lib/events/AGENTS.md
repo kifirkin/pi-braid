@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/lib/events/ - Event Infrastructure
 
 Internal event bus and channel infrastructure. Used for cross-extension

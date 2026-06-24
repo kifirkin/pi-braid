@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # Context Lifecycle Extension
 
 The AUTOMATION layer for context management. Works WITH

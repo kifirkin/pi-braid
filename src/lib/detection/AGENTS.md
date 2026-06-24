@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/lib/detection/ - Detection Primitives
 
 Pure-logic detectors used by extensions to identify patterns.

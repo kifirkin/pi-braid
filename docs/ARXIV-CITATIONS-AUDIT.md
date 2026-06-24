@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # arXiv Citations Audit
 
 **Date:** 2026-06-15

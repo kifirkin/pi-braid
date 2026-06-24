@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/extensions/enforcement/ - Enforcement Layer
 
 The enforcement layer. Translates signals from detectors/heartbeat/agents

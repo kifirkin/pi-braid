@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/extensions/health-maintenance/ - Health & Checkpointing
 
 Provides the `health_maintenance` tool, which monitors agent health, detects

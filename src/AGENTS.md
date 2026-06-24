@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/ - Top-Level Architecture
 
 The pi-braid codebase is organized into four top-level directories, each

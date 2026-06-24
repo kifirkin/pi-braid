@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # Memory Module
 
 Context lifecycle, three-memory-stores, memory-agent-bridge, session-recall.

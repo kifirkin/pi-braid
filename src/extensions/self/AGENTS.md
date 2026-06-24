@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/extensions/self/ - Self-Management Extensions
 
 Extensions that manage the agent's own state and behavior. Mostly opt-in

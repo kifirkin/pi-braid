@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # Session Recall Extension
 
 Search and query past sessions. The agent can call this to find prior

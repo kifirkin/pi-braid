@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/lib/config/ - Configuration
 
 Configuration loading and merging for the extension tree.

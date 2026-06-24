@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/extensions/enforcement/handlers/analysis/ - Analysis Handlers
 
 Specialized handlers that run as part of the **analysis pipeline** during

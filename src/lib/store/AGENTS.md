@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/lib/store/ - Persistent Stores
 
 Persistent stores for ad-hoc claims, evidence, conflicts, and beliefs.

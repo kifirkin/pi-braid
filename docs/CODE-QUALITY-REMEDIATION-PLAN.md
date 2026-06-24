@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # Code Quality Remediation — Final Status
 
 **Last updated:** 2026-06-16 (continued after first wrap)

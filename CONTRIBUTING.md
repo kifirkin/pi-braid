@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # Contributing to pi-braid
 
 Thanks for your interest. Here's how to get started.

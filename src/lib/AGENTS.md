@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/lib/ - Shared Library Subsystems
 
 This directory contains **library code** (non-extension modules) used across the

@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # Timer Extension
 
 Non-blocking Pomodoro-style reminders. Agent sets a timer, continues working, gets a reminder when it fires.

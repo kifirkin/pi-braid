@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # State Policy — Design Document
 
 **Status:** Active. Last revised 2026-06-17.

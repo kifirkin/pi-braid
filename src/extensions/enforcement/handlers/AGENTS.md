@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/extensions/enforcement/handlers/ - Event Wiring + Analysis Pipeline
 
 The enforcement extension is the largest in pi-braid. Its `handlers/`

@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # Three-Memory-Stores Extension
 
 The persistent memory system. Stores agent knowledge across three

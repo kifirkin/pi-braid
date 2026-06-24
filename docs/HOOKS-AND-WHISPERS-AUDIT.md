@@ -1,3 +1,5 @@
+<!-- status: forward-looking -->
+
 # Hooks & Whispers Audit — 2026-06-23
 
 > Companion to the session-management enforcement task. Maps every pi

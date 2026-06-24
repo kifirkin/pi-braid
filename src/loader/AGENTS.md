@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/loader/ - Extension Loader + Subagent API
 
 Runtime machinery that decides which extensions to load and exposes

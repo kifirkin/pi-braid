@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/extensions/memory/workspace-snapshot/ - File State Time-Travel
 
 Captures and restores file states for safe time-travel experimentation. The

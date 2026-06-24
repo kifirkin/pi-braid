@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/lib/memory/ - Memory Engine
 
 The underlying engine behind the memory-related extensions

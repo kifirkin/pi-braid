@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/lib/state/ - State Management
 
 ## Purpose

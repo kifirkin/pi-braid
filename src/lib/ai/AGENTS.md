@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/lib/ai/ - LLM Utilities
 
 Helpers for calling LLMs in a structured way. Used by extensions that need
@@ -15,7 +17,7 @@ and result parsing.
 | `text-classifier.ts` | Generic text classifier - runs utility model with structured schema, returns typed result. |
 | `post-loop-classify.ts` | Thin wrapper around `classify()` bundling the 4 post-loop guarantees (signal thread, abort demotion, 8s default timeout, caller-supplied onFailure fallback). Use this for `agent_end` / post-loop LLM calls. |
 | `language-hint.ts` | Detects the language of input text (used to route language-specific processing). |
-| `llm-call.ts` | Low-level wrapper around `pi.getModel()` + `streamSimple`. Handles abort, retry, and structured output parsing. |
+| `llm-call.ts` | Low-level wrapper around `pi.getModel()` + `completeSimple`. Handles abort, retry, and structured output parsing. |
 | `model-resolver.ts` | Resolves model by alias (e.g., "utility" → cheapest model). |
 
 ## Local Contracts
@@ -28,5 +30,5 @@ and result parsing.
 
 ## Anti-patterns
 
-- Don't call `streamSimple` directly from extensions. Use `llm-call.ts`.
+- Don't call `completeSimple` directly from extensions. Use `llm-call.ts`.
 - Don't parse LLM JSON inline. Use `text-classifier.ts` which handles `withTypeBox` schemas.

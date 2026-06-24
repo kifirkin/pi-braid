@@ -1,3 +1,5 @@
+<!-- status: forward-looking -->
+
 # Fragile Heuristics Inventory
 
 **Generated 2026-06-14** as part of Q9 deep investigation (per user:

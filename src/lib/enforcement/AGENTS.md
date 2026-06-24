@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/lib/enforcement/ - Cross-Extension Enforcement
 
 Utilities used by the enforcement extension and by other extensions that

@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/extensions/core/ - Input/Output Shaping
 
 Extensions that shape what the LLM sees at runtime: platform shims,

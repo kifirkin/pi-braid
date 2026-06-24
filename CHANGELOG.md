@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # Changelog
 
 All notable changes to pi-braid are documented here. The format is based on
@@ -5,6 +7,33 @@ All notable changes to pi-braid are documented here. The format is based on
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- **Doc discipline layer** (DR-NEW-DOC-DISCIPLINE). Every `.md` file in
+  `docs/`, every `src/**/AGENTS.md`, and every top-level `*.md` now
+  carries a `<!-- status: ... -->` marker (`current`, `forward-looking`,
+  `aspirational`, or `historical`). Two scripts enforce it:
+  - `scripts/check-doc-status.mjs` (`npm run check:docs`) — fails if
+    any in-scope doc is missing the marker.
+  - `scripts/check-doc-drift.mjs` (`npm run check:doc-drift`) — greps
+    for tracked API names (`completeSimple`, `streamSimple`,
+    `__setCompleteSimpleForTest`, `createModels`, `Models`) in docs vs
+    source, fails if a `current`-status doc references an API not in
+    code. Initial tracked list captures the pi-ai v0.80 migration drift
+    surface; extend `TRACKED_NAMES` as new surfaces emerge.
+  Both are wired into `npm run ci:check`. The discipline caught the
+  v0.80 port's invisible drift (audit doc marked `forward-looking`,
+  AGENTS.md corrected to use `completeSimple` rather than
+  `streamSimple`).
+
+### Changed
+
+- `src/lib/ai/AGENTS.md` lines 18, 31 corrected from `streamSimple` to
+  `completeSimple` to match current code (was drift, not aspirational).
+- `docs/HOOKS-AND-WHISPERS-AUDIT.md` marked `forward-looking` (describes
+  target state for the enforcement-loop pipeline; reconcile to `current`
+  when P0-8 ships).
 
 ### Fixed
 

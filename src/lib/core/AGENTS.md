@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/lib/core/ - Foundation Utilities
 
 Cross-cutting foundation code. Imported by virtually every other module.

@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/extensions/memory/context-manager/handlers/ - Compaction & Tool Handlers
 
 The context-manager extension is decomposed into 6 handler modules + 3

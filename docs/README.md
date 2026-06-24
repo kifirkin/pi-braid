@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # `docs/` Reference Index
 
 **Entry point for all pi-braid documentation.** Read [`ROADMAP.md`](ROADMAP.md) first.

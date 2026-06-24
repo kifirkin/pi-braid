@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # Memory Agent Bridge Extension
 
 The agent-facing interface to cognitive memory. Provides tools for

@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/extensions/memory/scratchpad/ - Working Memory
 
 The agent's working memory: goals, plans, decisions, hypotheses, notes,

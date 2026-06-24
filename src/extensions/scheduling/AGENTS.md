@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/extensions/scheduling/ - Time-Based Events
 
 Extensions that fire on time-based triggers (recurring reminders, inactivity

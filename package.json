@@ -45,7 +45,9 @@
     "lint": "eslint src/ --max-warnings 0",
     "lint:fix": "eslint src/ --fix",
     "check:deps": "node scripts/check-deps.mjs",
-    "ci:check": "npm run check:deps && npx tsc --noEmit && npm test"
+    "check:docs": "node scripts/check-doc-status.mjs",
+    "check:doc-drift": "node scripts/check-doc-drift.mjs",
+    "ci:check": "npm run check:docs && npm run check:doc-drift && npm run check:deps && npx tsc --noEmit && npm test"
   },
   "dependencies": {
     "typebox": "1.1.34"

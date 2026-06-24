@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # Latent Activator Extension
 
 Dynamic implicit identity/persona system. Activates latent

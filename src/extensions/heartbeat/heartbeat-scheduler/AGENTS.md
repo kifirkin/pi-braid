@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # Heartbeat Scheduler Extension
 
 Proactive cognitive scheduling based on paper 2604.14178. Triggers

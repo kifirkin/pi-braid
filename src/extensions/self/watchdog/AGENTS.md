@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/extensions/watchdog/ - Session Health Monitor
 
 A **background monitor** that tracks session metrics (uptime, idle time, message

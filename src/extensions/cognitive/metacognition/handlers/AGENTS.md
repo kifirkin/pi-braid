@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/extensions/core/metacognition/handlers/ - Tool Factories
 
 The 4 LLM-callable metacognition tools are defined here as factory functions.

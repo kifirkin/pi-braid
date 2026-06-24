@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # Analytics Extension
 
 Self-contained tool usage analytics. Tracks tool call counts, durations,

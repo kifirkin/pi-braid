@@ -1,3 +1,5 @@
+<!-- status: forward-looking -->
+
 # pi-braid Improvement Roadmap
 
 **Compiled:** 2026-06-17
@@ -693,6 +695,7 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
 | P0-5 | [DR-H-3](#dr-h-3) skip drift detection when `extractOutputText` falls through | Easy | `topic-drift/index.ts:158-164` |
 | P0-6 | [EW-7.1](#41-ew-71-fix-enforcement_violation--tool_error-amplification--high--easy) fix `enforcement_violation → tool_error` amplification | Easy | `whisper.ts:51-58` |
 | P0-7 | [EW-7.6](#46-ew-76-fix-enforcementsignals-pruning-vs-mars-lookback--medium--easy) fix MARS lookback pruning collision | Easy | `signals.ts:49-57` |
+| P0-8 | [DR-NEW-v0.80](#dr-new-v080-pi-ai-v080-port) pi-ai v0.80 port — `completeSimple` relocated from top-level export to `Models` interface method | Medium | `lib/ai/llm-call.ts`, peer-deps, 1 test, 2 docs |
 
 ### 6.2 P1 — Contract / architectural (this session, ~5-8 dev days)
 
@@ -797,6 +800,64 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
    - `docs/STATE-POLICY.md` — Q13 reference (now archived) + the "4
      documented exceptions" bug (corrected to 27)
    - `docs/CODE-QUALITY-REMEDIATION-PLAN.md` — 4 references to archived docs
+
+9. **[DR-NEW-DOC-DISCIPLINE] Doc discipline layer** (shipped in v3.1).
+   Every doc in `docs/`, every `src/**/AGENTS.md`, and every top-level
+   `.md` file now carries a `<!-- status: ... -->` marker (one of
+   `current`, `forward-looking`, `aspirational`, `historical`). Two new
+   scripts enforce it:
+   - `scripts/check-doc-status.mjs` — fails CI if a marker is missing
+     or unknown. Run before any commit that touches docs.
+   - `scripts/check-doc-drift.mjs` — greps for tracked API names in
+     docs vs code; fails CI if a `current` (or unmarked) doc references
+     an API not in code. Initial tracked list: pi-ai v0.80 surface
+     (`completeSimple`, `streamSimple`, `__setCompleteSimpleForTest`,
+     `createModels`, `Models`). Extend `TRACKED_NAMES` in the script as
+     new drift surfaces emerge.
+   The discipline caught the v0.80 port's invisible drift at commit
+   time (see P0-8) before any code change. Without this layer, the
+   pi-ai v0.80 audit doc would have stayed as forward-looking prose
+   that misrepresented current state.
+
+10. **DR-NEW-v0.80: pi-ai v0.80 port.** Tracked as a single ticket with
+    sub-tasks (one commit should land all of them; partial migrations
+    are not safe):
+
+    - [ ] Bump peer-dep floor in `package.json`: `>=0.77.0` → `>=0.80.0`.
+    - [ ] Migrate `src/lib/ai/llm-call.ts`: top-level
+      `import { completeSimple } from "@earendil-works/pi-ai"` →
+      method on the `Models` interface (verified that
+      `completeSimple` exists in pi-ai 0.80.2 at
+      `dist/models.d.ts:82`; relocation, not removal).
+    - [ ] Update `__setCompleteSimpleForTest` injection hook in
+      `llm-call.ts` to take a method-shaped stub (model, context,
+      options) → AssistantMessage rather than a free function.
+    - [ ] Update behavioral tests in
+      `test/runtime/lib/test-call-llm-behavior.mjs` to match the new
+      injection shape.
+    - [ ] Reconcile `src/lib/ai/AGENTS.md` — already marked
+      `current` and references `completeSimple` (the post-0.77
+      `streamSimple` references were fixed in the v3.1 doc-discipline
+      pass).
+    - [ ] Reconcile `docs/HOOKS-AND-WHISPERS-AUDIT.md` — currently
+      marked `forward-looking`; once the port lands, change the table
+      row for `llm-call.ts` to `current` (it'll then describe shipped
+      behavior).
+    - [ ] Add CHANGELOG entry under `[Unreleased]` documenting the
+      migration (call out the import-shape change for any out-of-tree
+      consumers of `lib/ai/llm-call.ts`).
+    - [ ] Run full test suite, verify 76/76+ still pass.
+    - [ ] Update pi-braid-contrib to point at the new pi-braid release
+      (or coordinate with its release).
+
+    Verified scope (2026-06-23):
+    - 13 source files import from `@earendil-works/pi-ai`. Only
+      `lib/ai/llm-call.ts` consumes a runtime API (the rest are
+      `type` imports of `Api`, `Model`, `Context`, or the
+      `StringEnum` utility which is unchanged across 0.77 → 0.80).
+    - 2 docs reference `streamSimple`; both flagged by
+      `check-doc-drift.mjs` and reconciled (audit marked
+      `forward-looking`, AGENTS.md corrected to `completeSimple`).
 
 ---
 

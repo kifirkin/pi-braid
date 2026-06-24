@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/lib/types/ - Shared Type Definitions
 
 Shared types and result wrappers used across the codebase.

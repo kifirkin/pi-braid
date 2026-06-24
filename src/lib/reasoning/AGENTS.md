@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/lib/reasoning/ - Reasoning Engines
 
 Pure reasoning modules used by the enforcement layer and reasoning

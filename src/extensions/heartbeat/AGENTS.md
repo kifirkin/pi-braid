@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/extensions/heartbeat/ - Background Daemons
 
 Background services that run continuously during a session. Unlike

@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/lib/utils/ - Utility Functions
 
 Misc utilities that don't fit a more specific subdir.

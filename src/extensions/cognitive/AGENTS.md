@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/extensions/cognitive/ - Cognitive Analysis & Reasoning
 
 The `cognitive` group contains the agent's reasoning tools and the detectors

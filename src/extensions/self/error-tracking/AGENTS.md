@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # src/extensions/error-tracking/ - Error Log Tool
 
 Auto-catches extension errors and persists them to a JSONL log. Provides

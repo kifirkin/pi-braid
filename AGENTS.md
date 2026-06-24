@@ -1,3 +1,5 @@
+<!-- status: current -->
+
 # pi-braid Developer Guide
 
 > **DOX framework active.** This AGENTS.md is a binding work contract for the
@@ -59,6 +61,38 @@ Event handlers receive `(event, ctx: ExtensionContext)`. Tool execute functions 
 - Tools added by extensions are auto-enabled on first session
 - Prompt-builder overrides the system prompt entirely (no native loading)
 - Decompose large handlers into `handlers/*.ts` sub-modules
+
+## Doc Discipline (added 2026-06-23)
+
+Every `.md` file in `docs/`, every `src/**/AGENTS.md`, and every top-level
+`*.md` carries a `<!-- status: ... -->` HTML comment near the top. The
+marker is one of:
+
+- **`current`** — doc accurately describes the codebase as-is
+- **`forward-looking`** — doc describes planned/target state, not yet shipped
+- **`aspirational`** — doc describes long-term vision without a concrete plan
+- **`historical`** — doc describes past state, archived or completed
+
+Two scripts enforce the discipline (run via `npm run check:docs` and
+`npm run check:doc-drift`; both are part of `npm run ci:check`):
+
+- **`scripts/check-doc-status.mjs`** fails if any in-scope doc is missing
+  the marker or has an unknown value. Catch missing markers at commit time.
+- **`scripts/check-doc-drift.mjs`** greps for tracked API names (e.g.
+  `completeSimple`, `streamSimple`) in docs vs source. Fails if a doc
+  marked `current` (or unmarked) references an API not present in code.
+  This is the gate that catches target-state documentation getting
+  committed as if it were current-state documentation.
+
+Why this exists: when an audit doc describes the future state of the
+codebase and lands alongside code that matches the current state, the
+mismatch is invisible to a code-only review. The drift script makes
+that mismatch a CI failure. When you change an API surface, update
+both code and any docs that reference it — or mark the doc
+`forward-looking` if it's the plan.
+
+Add new API names to `TRACKED_NAMES` in `check-doc-drift.mjs` as new
+drift surfaces emerge.
 
 ## Tool Inventory
 

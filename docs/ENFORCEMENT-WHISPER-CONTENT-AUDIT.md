@@ -1,3 +1,5 @@
+<!-- status: forward-looking -->
+
 # Enforcement Whisper Content & Taxonomy Audit
 
 **Date:** 2026-06-17
