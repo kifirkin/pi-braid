@@ -14,6 +14,30 @@ const SETTINGS_PATH = join(homedir(), ".pi", "agent", "settings.json");
 
 interface BraidConfig {
   suppressNudges?: boolean;
+  /**
+   * Enforcement-layer overrides. Schema-validated at read time by the
+   * NudgeManager (which owns the NudgeType schema); invalid entries
+   * are logged and dropped. Empty object = no overrides (use defaults).
+   *
+   * Example:
+   *   "braid": {
+   *     "enforcement": {
+   *       "nudgeConfigs": {
+   *         "validation": { "baseCooldownMs": 30000 },
+   *         "malformed": { "deduplicate": false }
+   *       }
+   *     }
+   *   }
+   */
+  enforcement?: {
+    /**
+     * Per-NudgeType config overrides. Keys are NudgeType values
+     * (validation, recordFailure, malformed, memory, scratchpad,
+     * context, sessionSignals). Values are partial NudgeConfig -
+     * only the fields to override.
+     */
+    nudgeConfigs?: Record<string, unknown>;
+  };
 }
 
 interface Settings {
@@ -50,4 +74,27 @@ export function areCognitiveNudgesDisabled(): boolean {
   }
   // Default: nudges are enabled (safe default - braid's value prop is ON)
   return false;
+}
+
+/**
+ * Read the raw braid.enforcement.nudgeConfigs block from settings.json.
+ *
+ * Returns an UNVALIDATED shape. Callers must pass the result through
+ * NudgeManager.validateNudgeConfig() (or parseNudgeConfigOverrides())
+ * before constructing a NudgeManager - the validation lives next to
+ * the NudgeType schema to keep the type knowledge in one place.
+ *
+ * Returns {} when:
+ *   - settings.json doesn't exist
+ *   - the braid key isn't present
+ *   - the enforcement key isn't present
+ *   - nudgeConfigs is missing or not an object
+ */
+export function getRawNudgeConfigOverrides(): Record<string, unknown> {
+  const settings = readSettings();
+  const raw = settings.braid?.enforcement?.nudgeConfigs;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {};
+  }
+  return raw as Record<string, unknown>;
 }

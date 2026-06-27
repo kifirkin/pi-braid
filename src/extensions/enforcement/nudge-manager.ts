@@ -15,6 +15,10 @@ import { hashForDedup } from "../../lib/utils/dedup.js";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../../lib/state/extension-state.js";
 import { sendEnforcementWhisper } from "./whisper.js";
+import { createLogger } from "../../lib/core/logger.js";
+import { getRawNudgeConfigOverrides } from "../../lib/config/braid-settings.js";
+
+const log = createLogger("enforcement:nudge-manager");
 
 // Nudge Types
 //
@@ -111,9 +115,136 @@ export function calculateAdaptiveAnalysisThreshold(totalToolCalls: number): numb
  * a new session starts with a fresh history (no carry-over). This is
  * the canonical accessor; the enforcement index no longer constructs
  * a NudgeManager directly.
+ *
+ * EW-7.11: passes settings.json overrides (validated via
+ * parseNudgeConfigOverrides) into the NudgeManager constructor. The
+ * `customConfig` constructor parameter was previously a dead hook;
+ * the only caller now wires the validated settings through it.
  */
 export function getNudgeManager(ctx: ExtensionContext): NudgeManager {
-  return getExtensionState(ctx, "enforcement/nudge-manager", () => new NudgeManager());
+  const overrides = parseNudgeConfigOverrides(getRawNudgeConfigOverrides());
+  return getExtensionState(
+    ctx,
+    "enforcement/nudge-manager",
+    () => new NudgeManager(overrides),
+  );
+}
+
+// ── Settings validation (EW-7.11) ──────────────────────────────────────────────────────
+
+const VALID_NUDGE_CONFIG_FIELDS: ReadonlySet<keyof NudgeConfig> = new Set([
+  "baseCooldownMs",
+  "escalateAfter",
+  "deduplicate",
+]);
+
+export interface NudgeConfigValidation {
+  valid: boolean;
+  /** Human-readable error messages; logged but never thrown. */
+  errors: string[];
+  /**
+   * The validated partial. Invalid fields are dropped from `parsed`;
+   * the rest of the override is preserved (defense in depth: one bad
+   * field doesn't lose the whole entry).
+   */
+  parsed: Partial<NudgeConfig>;
+}
+
+/**
+ * Validate a single NudgeConfig partial.
+ *
+ * Rules:
+ *   - cfg must be a plain object (not null, not array)
+ *   - each key must be a valid NudgeConfig field name
+ *     (`baseCooldownMs` | `escalateAfter` | `deduplicate`)
+ *   - `deduplicate` must be boolean
+ *   - `baseCooldownMs` and `escalateAfter` must be non-negative integers
+ *
+ * Invalid fields are dropped from `parsed`; valid fields in the same
+ * entry are preserved. Empty `{}` is valid (no overrides).
+ */
+export function validateNudgeConfig(type: string, cfg: unknown): NudgeConfigValidation {
+  const errors: string[] = [];
+  const parsed: Partial<NudgeConfig> = {};
+
+  if (typeof cfg !== "object" || cfg === null || Array.isArray(cfg)) {
+    const got = cfg === null ? "null" : Array.isArray(cfg) ? "array" : typeof cfg;
+    errors.push(
+      `[nudge-config] braid.enforcement.nudgeConfigs.${type} must be an object, got ${got}`,
+    );
+    return { valid: false, errors, parsed };
+  }
+
+  const obj = cfg as Record<string, unknown>;
+  for (const [key, value] of Object.entries(obj)) {
+    const path = `braid.enforcement.nudgeConfigs.${type}.${key}`;
+    if (!VALID_NUDGE_CONFIG_FIELDS.has(key as keyof NudgeConfig)) {
+      errors.push(
+        `[nudge-config] ${path} is not a valid field ` +
+          `(valid: ${[...VALID_NUDGE_CONFIG_FIELDS].join(", ")})`,
+      );
+      continue;
+    }
+
+    if (key === "deduplicate") {
+      if (typeof value !== "boolean") {
+        errors.push(`[nudge-config] ${path} must be a boolean, got ${typeof value}`);
+      } else {
+        parsed.deduplicate = value;
+      }
+    } else {
+      // baseCooldownMs | escalateAfter
+      if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+        const got = typeof value === "number" ? String(value) : typeof value;
+        errors.push(
+          `[nudge-config] ${path} must be a non-negative integer, got ${got}`,
+        );
+      } else if (key === "baseCooldownMs") {
+        parsed.baseCooldownMs = value;
+      } else {
+        parsed.escalateAfter = value;
+      }
+    }
+  }
+
+  return { valid: errors.length === 0, errors, parsed };
+}
+
+/**
+ * Parse the raw braid.enforcement.nudgeConfigs block into the shape
+ * NudgeManager expects.
+ *
+ * Two layers of filtering:
+ *   1. Unknown NudgeType keys are dropped (with a warning).
+ *   2. Per-entry validation drops invalid fields but keeps valid
+ *      ones in the same entry.
+ *
+ * The result is always usable (empty on full failure); NudgeManager
+ * always falls back to DEFAULT_NUDGE_CONFIGS for any type without
+ * an override entry.
+ */
+export function parseNudgeConfigOverrides(
+  raw: Record<string, unknown>,
+): Partial<Record<NudgeType, Partial<NudgeConfig>>> {
+  const validTypes = new Set(Object.keys(DEFAULT_NUDGE_CONFIGS) as NudgeType[]);
+  const overrides: Partial<Record<NudgeType, Partial<NudgeConfig>>> = {};
+
+  for (const [type, cfg] of Object.entries(raw)) {
+    if (!validTypes.has(type as NudgeType)) {
+      log.warn(
+        `[nudge-config] braid.enforcement.nudgeConfigs.${type} is not a valid NudgeType ` +
+          `(valid: ${[...validTypes].join(", ")}); ignored`,
+      );
+      continue;
+    }
+    const { errors, parsed } = validateNudgeConfig(type, cfg);
+    for (const err of errors) log.warn(err);
+    if (Object.keys(parsed).length > 0) {
+      overrides[type as NudgeType] = parsed;
+    }
+  }
+
+  return overrides;
 }
 
 export class NudgeManager {
