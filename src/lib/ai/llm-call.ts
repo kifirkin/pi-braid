@@ -26,17 +26,24 @@
  */
 
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
-import { completeSimple } from "@earendil-works/pi-ai";
+// pi-ai v0.80 moved `completeSimple` out of the top-level export.
+// It's still available at the `/compat` subpath (compat.d.ts:64) as a
+// "Temporary compatibility entrypoint" — same signature, same return
+// type, no behavior change. The forward-looking path is
+// `Models.completeSimple()` on a `createModels()` instance (models.d.ts:82),
+// which is a structural refactor deferred to a future ticket.
+import { completeSimple } from "@earendil-works/pi-ai/compat";
 import { createLogger } from "../core/logger.js";
 
 const log = createLogger("llm-call");
 
 // ── Test-only injection point ────────────────────────────────────────────────
 //
-// Production code calls `completeSimple` directly from pi-ai. For
-// behavioral tests (timeout, signal abort, retry behavior), we need
-// to stub completeSimple without going through a real LLM provider.
-// The injection is opt-in: production behavior is identical unless
+// Production code calls `completeSimple` directly from pi-ai (via the
+// /compat subpath on v0.80+). For behavioral tests (timeout, signal abort,
+// retry behavior), we need to stub completeSimple without going through a
+// real LLM provider. The injection is opt-in: production behavior is
+// identical unless
 // `__setCompleteSimpleForTest` is called. The setter is intentionally
 // a module-private mutation (not a parameter on callLlm) because
 // adding test-only parameters to the public API would pollute the

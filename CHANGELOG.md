@@ -29,11 +29,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`src/lib/ai/llm-call.ts` ported to pi-ai v0.80 (P0-8 Path A).**
+  Import path changed from `"@earendil-works/pi-ai"` to
+  `"@earendil-works/pi-ai/compat"` — `completeSimple` was moved out of
+  the top-level export in v0.80.0. The `/compat` subpath is a
+  "Temporary compatibility entrypoint" with identical signature and
+  return type, so no consumer-visible behavior changes. Forward-looking
+  replacement is `Models.completeSimple()` on a `createModels()`
+  instance (`models.d.ts:82`); that refactor is a separate deferred
+  ticket.
+- `package.json` peerDep floor for `@earendil-works/pi-ai` bumped
+  `>=0.77.0` → `>=0.80.0`. Same bump needed for the other three
+  `@earendil-works/*` peer deps when their consumers are touched.
+- `docs/HOOKS-AND-WHISPERS-AUDIT.md` lines 60 and 133 corrected. The
+  "Broken on pi-ai v0.80" framing was inaccurate — `completeSimple` was
+  not removed, only relocated. P0-8 is the fix.
 - `src/lib/ai/AGENTS.md` lines 18, 31 corrected from `streamSimple` to
   `completeSimple` to match current code (was drift, not aspirational).
 - `docs/HOOKS-AND-WHISPERS-AUDIT.md` marked `forward-looking` (describes
   target state for the enforcement-loop pipeline; reconcile to `current`
-  when P0-8 ships).
+  when the enforcement-loop pipeline ships).
 
 ### Fixed
 

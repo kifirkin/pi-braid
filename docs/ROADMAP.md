@@ -823,36 +823,36 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
     sub-tasks (one commit should land all of them; partial migrations
     are not safe):
 
-    - [ ] Bump peer-dep floor in `package.json`: `>=0.77.0` → `>=0.80.0`.
-    - [ ] **Minimum-change path (recommended for v0.80 compat):** in
+    - [x] Bump peer-dep floor in `package.json`: `>=0.77.0` → `>=0.80.0`.
+    - [x] **Minimum-change path (recommended for v0.80 compat):** in
       `src/lib/ai/llm-call.ts`, change the import path from
       `"@earendil-works/pi-ai"` to `"@earendil-works/pi-ai/compat"`.
       `completeSimple` is still exported from `/compat` in pi-ai
       0.80.2 with the same signature (free function
       `(model, context, options) => Promise<AssistantMessage>`);
       only the import path moves. This emits a deprecation warning
-      but does not break. ~1 line changed.
+      but does not break. ~1 line changed. **Shipped in v3.1.**
     - [ ] **Future cleanup (separate ticket):** the `compat` subpath
       is marked deprecated. The intended path is to consume
       `completeSimple` as a method on the `Models` interface
       (`pi-ai/dist/models.d.ts:82`, accessed via `createModels()`).
       That requires holding a `Models` instance somewhere braid-
       accessible. Defer until `compat` is removed upstream.
-    - [ ] `__setCompleteSimpleForTest` injection hook signature
+    - [x] `__setCompleteSimpleForTest` injection hook signature
       unchanged (still a free function; only the import path moved).
-    - [ ] Behavioral tests in
+    - [x] Behavioral tests in
       `test/runtime/lib/test-call-llm-behavior.mjs` should pass
       without modification (the stub function shape is identical).
-    - [ ] Update CHANGELOG entry under `[Unreleased]` documenting
+    - [x] Update CHANGELOG entry under `[Unreleased]` documenting
       the import-path change. Note that any out-of-tree consumer of
       `lib/ai/llm-call.ts` is unaffected (the public API of
       `callLlm` does not change).
-    - [ ] Reconcile `docs/HOOKS-AND-WHISPERS-AUDIT.md` — currently
+    - [x] Reconcile `docs/HOOKS-AND-WHISPERS-AUDIT.md` — currently
       marked `forward-looking`. Once the port lands, change the
       `llm-call.ts` row in the LLM call patterns table from
       `streamSimple` (forward-looking) to `completeSimple` (current),
       and flip the doc's status marker to `current`.
-    - [ ] Run full test suite, verify 76/76+ still pass.
+    - [x] Run full test suite, verify 76/76+ still pass.
     - [ ] Coordinate with pi-braid-contrib's release (it already
       depends on `^0.80`).
 
@@ -882,7 +882,7 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
 
 | Tier | Count | Total effort estimate |
 |---|---|---|
-| **P0 Critical** | 7 items | ~3-5 dev days |
+| **P0 Critical** | 8 items | ~3-5 dev days |
 | **P1 Contract / Arch** | 8 items | ~5-8 dev days |
 | **P2 High-effort** | 11 items | ~15-25 dev days |
 | **P3 Polish** | 25 items | ~5-8 dev days |
@@ -1775,17 +1775,92 @@ the heartbeat-scheduler monkey-patch to be safe.
 
   **Test verification:** 64/64 pass. tsc clean.
 
-## Final autonomous-pass tally (v1.0 - v3.0)
+- **v3.1** (2026-06-27): **P0-8 Path A** complete — pi-ai v0.80
+  minimum-change port. The doc-discipline layer (v3.0) caught the
+  first-pass drift at commit time (`463bb690` corrected the ROADMAP
+  before any code change). This commit ships the actual code change.
 
-**23 commits. 56 files changed. ~1180 insertions, ~1100 deletions
+  **Background:**
+
+  pi-ai v0.80.0 moved `completeSimple` out of the top-level
+  `@earendil-works/pi-ai` export. The free function still exists at
+  the `/compat` subpath (`compat.d.ts:64`) with identical signature
+  — a "Temporary compatibility entrypoint" that emits a deprecation
+  warning. The forward-looking path is `Models.completeSimple()` on a
+  `createModels()` instance (`models.d.ts:82`); that's a structural
+  refactor (hold a `Models` instance, delegate auth resolution through
+  it) and is a separate ticket.
+
+  **What shipped:**
+
+  1. `src/lib/ai/llm-call.ts` — changed line 29 import from
+     `"@earendil-works/pi-ai"` to `"@earendil-works/pi-ai/compat"`.
+     Updated the surrounding comment to document the relocation.
+     No behavior change. The `__setCompleteSimpleForTest` injection
+     hook signature is unchanged (the stub function shape is
+     identical between top-level and `/compat`).
+
+  2. `package.json` — bumped peerDep floor for
+     `@earendil-works/pi-ai` from `>=0.77.0` to `>=0.80.0`. The
+     other three `@earendil-works/*` peer deps stay at `>=0.77.0`
+     (no API breakage in their consumed surface).
+
+  3. `docs/HOOKS-AND-WHISPERS-AUDIT.md` — fixed two factual errors
+     the discipline layer surfaced:
+     - Line 60: changed "Wraps `pi.getModel()` + `streamSimple`.
+       **Broken on pi-ai v0.80.**" to accurate text describing
+       the actual wrapper (now `/compat`-imported `completeSimple`).
+     - Line 133: changed "`completeSimple` was removed in v0.80"
+       to accurate text (relocated, not removed; `Models.completeSimple()`
+       is the forward-looking replacement). The previous text would
+       have been a misleading falsehood now that the port ships.
+
+  4. `CHANGELOG.md` — `[Unreleased]` ### Changed entry documenting
+     the import-path change. Notes that any out-of-tree consumer of
+     `lib/ai/llm-call.ts` is unaffected (the public API of `callLlm`
+     does not change).
+
+  5. `docs/ROADMAP.md` — sub-task checkboxes flipped, P0 count
+     updated (7 → 8), this v3.1 entry added.
+
+  **What this enables:**
+
+  - pi-braid now runs on pi-ai v0.80.x (the latest line). The
+    deprecation warning on `completeSimple` is acceptable until
+    upstream removes the `/compat` subpath.
+  - The future-cleanup ticket (Models instance refactor) can be
+    tracked separately. It is NOT required for v0.80 compatibility.
+
+  **What this does NOT do (out of scope):**
+
+  - **The `Models`-instance refactor.** Braid has no `Models`
+    instance today — it uses `pi.getModel()` (per
+    `HOOKS-AND-WHISPERS-AUDIT.md` row 60) and calls
+    `completeSimple` directly. Adopting `Models.completeSimple()`
+    means threading a `Models` instance through every LLM
+    consumer. This is a real refactor and is tracked as a separate
+    deferred ticket.
+  - **The other three `@earendil-works/*` peer deps.** `pi-coding-agent`,
+    `pi-agent-core`, `pi-tui` remain at `>=0.77.0`. Bumping them is
+    out of scope for the LLM call port; if their consumers break on
+    0.80+, that's a separate ticket.
+  - **`pi-braid-contrib` release coordination.** pi-braid-contrib
+    already depends on `^0.80`, so no change needed there.
+
+  **Test verification:** 76/76 pass on `@earendil-works/pi-ai@0.80.2`.
+  `tsc --noEmit` clean. `check:docs` + `check:doc-drift` green.
+
+## Final autonomous-pass tally (v1.0 - v3.1)
+
+**24 commits. 56 files changed. ~1180 insertions, ~1100 deletions
 (most of the deletions are ROADMAP.md itself, which was
 folded in from 5 prior audit documents). 1 regression shipped
 in v1.8 and fixed in v1.8.1.
 
-**45 of 51 actionable items shipped** (P3-19 partial
+**46 of 51 actionable items shipped** (P3-19 partial
 — textResult/textParts now properly typed; full sweep
 of 245 `: any` annotations is a separate P2-class
-effort). All test suites pass (65/65):
+effort). All test suites pass (76/76):
 
 - `tsc --noEmit` — clean
 - `test-no-module-level-let.mjs` — 213 files, 0 violations
@@ -1802,14 +1877,16 @@ effort). All test suites pass (65/65):
 - `test-dreamer.mjs` — 11/11 (v1.8.1: was 8/11 due to v1.8 regression)
 - `test-session-signals-per-signal.mjs` — 14/14 (v2.8)
 - `test-critic-cost.mjs` — 9/9 (v3.0)
+- `test-call-llm-behavior.mjs` — clean (v3.1: pi-ai v0.80.2 install)
 
 ### Shipped items by priority tier
 
-**P0 (7 of 7):** DR-C-1 ctx.whisper migrations, P0-2 scratchpad
+**P0 (8 of 8):** DR-C-1 ctx.whisper migrations, P0-2 scratchpad
 disk-write surfacing, P0-3 episodic twin surfacing, P0-4
 archive_done atomic delete, P0-5 extractOutputText JSON
 fallback, P0-6 enforcement_violation amplification fix,
-P0-7 SIGNAL_RETENTION_TURNS=3.
+P0-7 SIGNAL_RETENTION_TURNS=3, P0-8 pi-ai v0.80 port (Path A,
+compat import swap — v3.1).
 
 **P1 (5 of 8):** P1-1 state migration in context-lifecycle,
 P1-4 (EW-7.3) suppressNudges at sendTrackedMessage,

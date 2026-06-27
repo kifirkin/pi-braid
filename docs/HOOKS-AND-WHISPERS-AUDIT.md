@@ -57,7 +57,7 @@ Bypassing the trunk (calling `pi.sendMessage` directly) is the documented anti-p
 
 | Layer | Function | Where | Notes |
 |---|---|---|---|
-| Low-level | `callLlm` | `lib/ai/llm-call.ts` | Wraps `pi.getModel()` + `streamSimple`. **Broken on pi-ai v0.80.** |
+| Low-level | `callLlm` | `lib/ai/llm-call.ts` | Wraps `pi.getModel()` + `completeSimple` (imported from `@earendil-works/pi-ai/compat` on v0.80+). Abort, retry, structured-output parsing handled internally. |
 | Classifier | `classify` | `lib/ai/text-classifier.ts` | Utility-first via `critic-gate`. |
 | Post-loop | `postLoopClassify` | `lib/ai/post-loop-classify.ts` | Bundles 4 guarantees: signal thread, abort demotion, 8s timeout, `onFailure` fallback. **Recommended for any post-loop work.** |
 | Background judge | verification-judge | `extensions/enforcement/verification-judge.ts` | Asynchronous judge pipeline. |
@@ -130,7 +130,7 @@ What's **missing**: a policy that, on the next user input, reads SessionHealthSt
 3. **No rotate-vs-checkout policy.** Mechanisms exist; the decision logic does not.
 4. **Layer 3 of session-recovery unwritten.** The consumer of SessionHealthState that says "this session is broken, do something" is the missing piece.
 5. **`postLoopClassify` under-adopted.** Most turn_end handlers bypass the wrapper, leaving the four guarantees unapplied.
-6. **pi-ai v0.80 port required.** `completeSimple` was removed in v0.80; replaced by `stream`/`streamSimple` (per-provider modules). Porting `lib/ai/llm-call.ts` is structural and affects every LLM consumer.
+6. **pi-ai v0.80 port — minimum-change shipped (P0-8).** `completeSimple` was moved out of the top-level `@earendil-works/pi-ai` export in v0.80.0; it now lives at the `/compat` subpath (`compat.d.ts:64`) as a "Temporary compatibility entrypoint" with identical signature. The forward-looking replacement is `Models.completeSimple()` on a `createModels()` instance (`models.d.ts:82`); that path is a structural refactor (hold a `Models` instance, delegate auth resolution through it) and is deferred to a separate ticket. Current state: `src/lib/ai/llm-call.ts:29` imports from `/compat`; peerDep floor is `>=0.80.0`.
 
 ## Cross-reference
 
