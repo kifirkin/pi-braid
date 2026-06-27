@@ -10,6 +10,47 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`braid.enforcement.nudgeConfigs` settings block (EW-7.11).**
+  Per-NudgeType cooldowns, escalation thresholds, and deduplication
+  are now user-tunable without forking. Shape:
+  ```json
+  {
+    "braid": {
+      "enforcement": {
+        "nudgeConfigs": {
+          "validation": { "baseCooldownMs": 30000 },
+          "malformed": { "deduplicate": false }
+        }
+      }
+    }
+  }
+  ```
+  All fields are optional (partial overrides). The previously-dead
+  `customConfig` parameter on the `NudgeManager` constructor is now
+  wired: `getNudgeManager(ctx)` reads + validates settings on every
+  access and passes the result through.
+  - `src/lib/config/braid-settings.ts`: `getRawNudgeConfigOverrides()`
+    reads `braid.enforcement.nudgeConfigs` as an unvalidated
+    `Record<string, unknown>`. Validation lives next to the schema
+    (in nudge-manager) to keep the type knowledge in one place.
+  - `src/extensions/enforcement/nudge-manager.ts`:
+    - `validateNudgeConfig(type, cfg)`: per-entry validator. Drops
+      invalid fields from the parsed result but keeps valid ones
+      (defense in depth: one bad field doesn't lose the whole
+      entry). Returns `{valid, errors, parsed}`.
+    - `parseNudgeConfigOverrides(raw)`: two-layer filter —
+      unknown NudgeType keys dropped (with `log.warn`), per-entry
+      validation drops bad fields, result is always usable.
+    - `getNudgeManager(ctx)` now calls
+      `parseNudgeConfigOverrides(getRawNudgeConfigOverrides())`
+      and passes the result to the `NudgeManager` constructor.
+  - `test/runtime/lib/test-enforcement-config.mjs` (new, 18
+    subtests): pins both the wire-up (source-level grep) and the
+    validation behavior (runtime import of compiled
+    `validateNudgeConfig` + `parseNudgeConfigOverrides`).
+  Test count: 78 → 79 passing. tsc clean. `check:docs` +
+  `check:doc-drift` green.
+
 - **Doc discipline layer** (DR-NEW-DOC-DISCIPLINE). Every `.md` file in
   `docs/`, every `src/**/AGENTS.md`, and every top-level `*.md` now
   carries a `<!-- status: ... -->` marker (`current`, `forward-looking`,

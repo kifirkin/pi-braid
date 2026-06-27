@@ -47,24 +47,18 @@ item from this handoff (P1-5).
 
 ## What's next (priority order)
 
-1. **EW-7.11** — `braid.enforcement` settings block (config plumbing).
-   Valuable now that EW-7.2 settled; tunable cooldowns become meaningful.
-   The `NudgeManager` constructor already accepts `customConfig`; the gap
-   is plumbing it from `settings.json` through a `validateNudgeConfig`
-   helper into the per-session `getNudgeManager(ctx)` factory. Minimum-
-   change scope (per P0-8 Path A pattern).
-2. **P3-7 / EW-7.12** — prefix naming convention (policy decision; needs
+1. **P3-7 / EW-7.12** — prefix naming convention (policy decision; needs
    user input).
-3. **P2-10 / Q13** — large-file splits (`memory-agent-bridge`,
+2. **P2-10 / Q13** — large-file splits (`memory-agent-bridge`,
    `timer`, `session-recall`, `latent-activator`). Explicitly deferred;
    trigger condition was partial-met by DR-M-8 (scratchpadExecute split).
-4. **Future Models-instance refactor** — `Models.completeSimple()` on a
+3. **Future Models-instance refactor** — `Models.completeSimple()` on a
    `createModels()` instance. Deferred until upstream removes the
    `/compat` subpath from `@earendil-works/pi-ai`.
 
-The roadmap tally: **48 of 51 actionable items shipped** (was 47 before
-P1-5). The 3 remaining items above all need user input or a policy
-decision.
+The roadmap tally: **49 of 51 actionable items shipped** (was 48
+before EW-7.11 / P2-5 in v3.3). The 3 remaining items above all
+need user input, a policy decision, or upstream API stabilization.
 
 **Note on P1-4 / EW-7.3:** shipped in v2.3 (June 18) via the wrapper
 approach at `src/lib/utils/injection-tracker.ts:232` — every
@@ -73,6 +67,16 @@ audit flagged) now respects `braid.suppressNudges` without per-site
 checks. Pinned by `test/runtime/lib/test-suppress-nudges-applied.mjs`
 (5/5 passing). The HANDOFF priority list above does not include P1-4
 because it is already shipped.
+
+**Note on EW-7.11 / P2-5:** shipped in v3.3 (this conversation) via
+the minimum-change path: extended `BraidConfig` schema with an
+`enforcement.nudgeConfigs` block, added `validateNudgeConfig(type, cfg)`
++ `parseNudgeConfigOverrides(raw)` helpers in `nudge-manager.ts`,
+wired the previously-dead `customConfig` hook on `NudgeManager` to
+the settings reader. Pinned by `test-enforcement-config.mjs`
+(18/18 subtests). Two-layer validation: unknown NudgeType keys
+dropped with a warning; per-entry validation drops bad fields but
+preserves valid ones (defense in depth).
 
 ## How to navigate this codebase
 

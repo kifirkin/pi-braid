@@ -736,7 +736,7 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
 | P2-2 | [DR-M-8](#dr-m-8) split `scratchpadExecute` into per-action handlers | Hard | `scratchpad/index.ts:472-825` |
 | P2-3 | [EW-7.4](#44-ew-74-extract-classifier-offline-helper--medium--easy) extract `classifier-offline` helper | Easy | new `lib/reasoning/classifier-offline.ts` + 3 sites |
 | P2-4 | [EW-7.9](#49-ew-79-make-session-signals-bundle-per-signal--medium--medium) make Session Signals bundle per-signal | Medium | `turn-end-handler.ts:362-365` |
-| P2-5 | [EW-7.11](#411-ew-711-add-braidenforcement-settings-block--high--medium) add `braid.enforcement` settings block | Medium | new config plumbing + NudgeManager |
+| P2-5 | [EW-7.11](#411-ew-711-add-braidenforcement-settings-block--high--medium) add `braid.enforcement` settings block | Medium | `lib/config/braid-settings.ts`, `nudge-manager.ts`, 1 test |  ✅ Shipped in v3.3 |
 | P2-6 | [EW-7.13](#413-ew-713-add-per-source-priority-aware-caps--medium--medium) add per-source priority-aware caps | Medium | `turn-dedup.ts` + `WHISPER_CAPS` |
 | P2-7 | [DR-H-9](#dr-h-9) cache drift-classifier results by input hash | Medium | `topic-drift/index.ts` + cache module |
 | P2-8 | [DR-L-5](#dr-l-5) batch scratchpad writes via `file-mutation-queue` | Medium | `scratchpad/persistence.ts` |
@@ -1958,18 +1958,84 @@ the heartbeat-scheduler monkey-patch to be safe.
   with 7 subtests on `test-timer-single-process-assumption`;
   now 10 subtests, +3). `tsc --noEmit` clean. `check:docs` +
   `check:doc-drift` green.
+- **v3.3** (2026-06-27): **EW-7.11 / P2-5** complete — `braid.enforcement`
+  settings block. The `NudgeManager` constructor's `customConfig`
+  parameter was a dead hook (no caller passed anything); per-type
+  cooldowns were hardcoded in `DEFAULT_NUDGE_CONFIGS` with no user
+  override path. Power users (long-running sessions, custom tool
+  mixes) were locked into defaults.
 
-## Final autonomous-pass tally (v1.0 - v3.2)
+  **What shipped:**
+
+  1. `src/lib/config/braid-settings.ts`: extended `BraidConfig` with
+     an optional `enforcement.nudgeConfigs` block, added
+     `getRawNudgeConfigOverrides()` that reads the block as an
+     unvalidated `Record<string, unknown>`. Validation lives next
+     to the schema (in nudge-manager) so the type knowledge stays
+     in one place.
+  2. `src/extensions/enforcement/nudge-manager.ts`:
+     - `validateNudgeConfig(type, cfg)` — per-entry validator.
+       Returns `{valid, errors, parsed}`. Drops invalid fields from
+       `parsed` but keeps valid ones (defense in depth: one bad
+       field doesn't lose the whole entry). Logs errors via
+       `log.warn`; never throws.
+     - `parseNudgeConfigOverrides(raw)` — two-layer filter. Unknown
+       NudgeType keys dropped (with `log.warn`); per-entry
+       validation drops bad fields; result is always usable (empty
+       on full failure).
+     - `getNudgeManager(ctx)` now calls
+       `parseNudgeConfigOverrides(getRawNudgeConfigOverrides())`
+       on every access and passes the result to the `NudgeManager`
+       constructor. Previously-dead `customConfig` hook is now
+       wired.
+  3. `test/runtime/lib/test-enforcement-config.mjs` (new, 18
+     subtests): pins BOTH the wire-up contract (source-level grep:
+     settings export + interface field + nudge-manager imports +
+     exports + getNudgeManager wiring) AND the validation behavior
+     (runtime import of compiled `validateNudgeConfig` +
+     `parseNudgeConfigOverrides`).
+
+  **Validation rules (final):**
+  - cfg must be a plain object (not null, not array).
+  - Keys must be valid NudgeType values (`validation`,
+    `recordFailure`, `malformed`, `memory`, `scratchpad`,
+    `context`, `sessionSignals`).
+  - Per-entry keys must be valid `NudgeConfig` field names
+    (`baseCooldownMs`, `escalateAfter`, `deduplicate`).
+  - `deduplicate` must be boolean.
+  - `baseCooldownMs` and `escalateAfter` must be non-negative
+    integers.
+  - Invalid fields are dropped; valid fields in the same entry
+    are preserved.
+  - Unknown NudgeTypes and fully-invalid entries are dropped with
+    a warning; valid entries in the same block still apply.
+
+  **What this does NOT do (out of scope):**
+  - **Critical-message bypass:** the off-switch suppresses ALL
+    messages including critical ones; that behavior is unchanged.
+  - **EW-7.13** (per-source priority-aware caps) is a separate
+    item. Unchanged.
+  - **EW-7.14** (TUI surface of `nudgeSuppressedCount`) is a
+    separate item. Unchanged.
+  - **P3-7 / EW-7.12** (prefix naming convention) — policy
+    decision. Unchanged.
+
+  **Test verification:** 79/79 pass (was 78 before this commit;
+  +1 test file `test-enforcement-config.mjs` with 18 subtests).
+  `tsc --noEmit` clean. `check:docs` + `check:doc-drift` green.
+
+## Final autonomous-pass tally (v1.0 - v3.3)
 
 **24 commits. 56 files changed. ~1180 insertions, ~1100 deletions
 (most of the deletions are ROADMAP.md itself, which was
 folded in from 5 prior audit documents). 1 regression shipped
 in v1.8 and fixed in v1.8.1.
 
-**47 of 51 actionable items shipped** (P3-19 partial
-— textResult/textParts now properly typed; full sweep
-of 245 `: any` annotations is a separate P2-class
-effort). All test suites pass (77/77):
+**48 of 51 actionable items shipped** (47 as of v3.2;
+EW-7.11 / P2-5 added in v3.3; P3-19 partial — textResult/
+textParts now properly typed; full sweep of 245 `: any`
+annotations is a separate P2-class effort). All test
+suites pass (79/79):
 
 - `tsc --noEmit` — clean
 - `test-no-module-level-let.mjs` — 213 files, 0 violations
@@ -2030,24 +2096,14 @@ P3-25 cost-report module (v3.0).
 EW-7.4 (P2-3), EW-7.5 (P3-1), EW-7.6 (P0-7),
 EW-7.7 (P3-2), EW-7.8 (P3-3), EW-7.9 (P2-4),
 EW-7.10 (P3-4), EW-7.13 (P2-6), EW-7.14 (P3-5),
-EW-7.15 (P3-6), **EW-7.2 (P1-5 — shipped)**. EW-7.11 and
-EW-7.12 (P3-7) remain deferred.
+EW-7.15 (P3-6), **EW-7.2 (P1-5 — shipped)**,
+**EW-7.11 / P2-5 (shipped v3.3)**. EW-7.12 (P3-7)
+remains deferred.
 
 ### Remaining 6 items (deferred)
 
 The remaining items are:
 
-- **P1-3 / DR-C-4** (timer closure-captured state) —
-  document the migration boundary or thread ctx through.
-  Architectural decision best made with user input.
-- **P1-5 / EW-7.2** (14 unwired NudgeTypes) — **shipped**.
-  Wired: `malformed`, `recordFailure`. Routed via L2 sub-signal
-  table: `memory`, `scratchpad`, `context` (each gets its own
-  tuned cooldown). Deleted as dead/false-promise: `lazy`, `claim`,
-  `toolDiversity`, `exploreBeforeAct`, `phaseValidation`, `toolError`,
-  `judge`, `contextTool`, `dangerousCommand`. Cross-cutting test
-  `test-nudgetype-wiring.mjs` enforces the "every NudgeType has a
-  caller" contract going forward.
 - **P2-7 / DR-H-9** (drift-classifier cache) — *partially
   unblocked* by v3.0: Q17's hash cache is already in place
   via `text-classifier.ts`, and v3.0's cost-report provides
@@ -2059,16 +2115,25 @@ The remaining items are:
   deferred by the original Q13 decision; lowest value item.
 - **P3-7 / EW-7.12** (prefix naming convention) — policy
   decision best made with user input.
-- **EW-7.11** (braid.enforcement settings block) — requires
-  config plumbing + validation design decisions.
 
-All six of these require user input or a policy decision.
+All three of these require user input or a policy decision.
 P2-10 is explicitly deferred. P2-7 (cache TTL sizing) is now
 *unblocked* by v3.0's cost-report layer: the report provides
 the per-call cost baseline that informs a TTL choice, though
 the actual implementation still requires a design call (how
 aggressive to be with caching, what to do on cache eviction,
 etc.).
+
+For the historical context: **P1-3** (timer closure-captured
+state, v3.2), **P1-5 / EW-7.2** (14 unwired NudgeTypes, v3.2),
+and **EW-7.11 / P2-5** (braid.enforcement settings block, v3.3)
+were each listed in an earlier version of this section as
+"remaining" before being shipped. The current 3 items above
+are the same items that were remaining as of the v3.2 tally,
+minus EW-7.11 (which shipped via the minimum-change path:
+extend `BraidConfig` schema + add `validateNudgeConfig` helper +
+wire the previously-dead `customConfig` hook on
+`NudgeManager`).
 
 These are listed in the P1/P2/P3 tables above and remain
 actionable for a future sprint.
