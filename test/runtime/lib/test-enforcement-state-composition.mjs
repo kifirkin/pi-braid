@@ -71,7 +71,7 @@ const actualCount = actualKeys.length;
 
 // ── Baseline (update when adding intentional new keys) ─────────────────────
 
-const BASELINE_COUNT = 66;
+const BASELINE_COUNT = 65;
 
 const SENTINEL_KEYS = {
   "tool-tracking-state": ["totalToolCalls", "uniqueToolsUsed", "toolChain", "lastRecommendationType"],

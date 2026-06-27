@@ -336,24 +336,31 @@ Cooldown: 60 s (initial, dynamically adjusted 30–300 s). The
 
 ## 6. Audit findings
 
-### 6.1 NudgeType coverage gap
+### 6.1 NudgeType coverage gap _(resolved v3.3)_
 
-Of 16 `NudgeType` values, only `validation` and `scratchpad` are passed to
-`NudgeManager.shouldSendNudge()`. The other 14 have configs but **no
-callers**. This is intentional scaffolding for future enforcement features,
-but the configs create a *false impression* of a wired-up system. A new
-contributor reading `nudge-manager.ts` would assume e.g. `dangerousCommand`
-or `malformed` is rate-limited by NudgeManager — it is not.
+**Resolved 2026-06-27.** See §7.2 (shipped v3.3). The NudgeType union
+went from 16 members (2 wired, 14 scaffolding) to 7 members (all
+wired). The cross-cutting test
+`test/runtime/lib/test-nudgetype-wiring.mjs` enforces the "every
+NudgeType has a caller" contract going forward. The historical
+finding:
 
-The 14 unwired types fall into three categories:
+> Of 16 `NudgeType` values, only `validation` and `scratchpad` are passed to
+> `NudgeManager.shouldSendNudge()`. The other 14 have configs but **no
+> callers**. This is intentional scaffolding for future enforcement features,
+> but the configs create a *false impression* of a wired-up system. A new
+> contributor reading `nudge-manager.ts` would assume e.g. `dangerousCommand`
+> or `malformed` is rate-limited by NudgeManager — it is not.
+
+The 14 unwired types (resolved):
 
 - **Forward-looking** (`malformed`, `dangerousCommand`, `exploreBeforeAct`):
-  features planned but not implemented.
-- **Legacy** (`lazy`, `claim`): pre-LLM-judge heuristics that have been
-  replaced by the verification judge and the BPE policy engine.
+  `malformed` wired; `dangerousCommand` and `exploreBeforeAct` deleted
+  (no detection logic exists).
+- **Legacy** (`lazy`, `claim`): deleted (replaced by LLM judges).
 - **Implicit** (`context`, `contextTool`, `toolError`, `toolDiversity`,
-  `phaseValidation`, `judge`): could be wired up trivially because the
-  triggering logic already exists in the L2 bundle.
+  `phaseValidation`, `judge`): `context` wired via L2 sub-signal table;
+  rest deleted.
 
 ### 6.2 `checkBlocking` is a no-op
 
@@ -570,7 +577,7 @@ Each item below is **scored** for impact (high / medium / low) and effort
 
 **Estimated impact:** Eliminates a real amplification bug. Prevents MARS and auto-recovery from being triggered by advisory nudges.
 
-### 7.2 Wire up the 14 unwired NudgeType values — **HIGH / EASY**
+### 7.2 Wire up the 14 unwired NudgeType values — **HIGH / EASY** _(shipped v3.3)_
 
 **Problem:** 14 of 16 NudgeType configs are forward-looking scaffolding with no callers. The configs create a false impression of a wired system. Several have triggering logic that already exists in the L2 bundle and could be wired up with a 1-line change.
 
@@ -585,6 +592,35 @@ Each item below is **scored** for impact (high / medium / low) and effort
 - **`recordFailure`**: wrap `turn-analysis.ts:106-118` in `getNudgeManager(ctx).shouldSendNudge("recordFailure", msg)`.
 
 **Estimated impact:** Removes 14 false promises from the API. Either activates dormant code or clarifies what's planned.
+
+**Status:** Shipped in v3.3 (P1-5 / EW-7.2). The NudgeType union
+went from 16 members (2 wired, 14 scaffolding) to 7 members (all
+wired). Concrete changes:
+
+- Wired direct: `malformed` (10s cooldown, `detection/malformed.ts`
+  now rate-limits via NudgeManager) and `recordFailure` (20s,
+  `turn-analysis.ts:106-118` no longer uses the parallel
+  `state.lastNudgeTime + nudgeCooldownMs` for this path).
+- Wired via L2 sub-signal lookup table: `memory` (45s), `scratchpad`
+  (60s), `context` (90s, with subKey distinguishing `context-tokens`
+  vs `context-percent`). `turn-end-handler.ts` has a new
+  `L2_NUDGE_TYPE` map and `nudgeTypeForKey(key)` helper.
+- Deleted (no triggering logic, kept as false promises before):
+  `toolDiversity`, `lazy`, `claim`, `exploreBeforeAct`,
+  `phaseValidation`, `toolError`, `judge`, `contextTool`,
+  `dangerousCommand`. `dangerousCommand` was deleted (not kept as
+  scaffolding) — no detection exists, so the config would have
+  re-introduced the false promise this audit called out. Re-create
+  when detection ships.
+- Cross-cutting test: `test/runtime/lib/test-nudgetype-wiring.mjs`
+  (9 subtests) asserts every NudgeType has at least one caller.
+  Would have caught the original 14 unwired types.
+- State cleanup: `lastLazyNudgeTime` (dead field) removed from
+  `ErrorTrackingState`. `lastJudgeTime` moved from
+  `ErrorTrackingState` to `SessionState` (logical home with the
+  other verification-judge fields). Structural test baseline
+  `BASELINE_COUNT` updated 66 → 65.
+- Test count: 77 → 78 passing.
 
 ### 7.3 Apply `braid.suppressNudges` consistently — **HIGH / EASY**
 

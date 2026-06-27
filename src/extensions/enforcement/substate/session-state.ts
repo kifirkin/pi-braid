@@ -22,6 +22,8 @@ export interface SessionState {
   // Verification judge (runs in background)
   verificationJudgeRunning: boolean;
   lastVerificationJudgeTurn: number;
+  /** Wall-clock ms timestamp of the last judge run; used for minTimeGap. */
+  lastJudgeTime: number;
   lastCalibrationWhisperTime: number;
 
   // Topic drift
@@ -48,6 +50,7 @@ export function createSessionState(): SessionState {
     enforcementActive: true,
     verificationJudgeRunning: false,
     lastVerificationJudgeTurn: 0,
+    lastJudgeTime: 0,
     lastCalibrationWhisperTime: 0,
     _lastHeartbeatTick: 0,
     lastTurnDuration: 0,
@@ -66,6 +69,7 @@ export function resetSessionState(s: SessionState): void {
   s.lastUserMessage = "";
   s.verificationJudgeRunning = false;
   s.lastVerificationJudgeTurn = 0;
+  s.lastJudgeTime = 0;
   s.lastCalibrationWhisperTime = 0;
   s._lastHeartbeatTick = 0;
   s.lastTurnDuration = 0;

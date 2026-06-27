@@ -14,8 +14,6 @@ export interface ErrorTrackingState {
   escalationCounts: Record<string, number>;
   lastNudgeTime: number;
   nudgeCooldownMs: number;
-  lastLazyNudgeTime: number;
-  lastJudgeTime: number;
   nudgeSuppressedCount: number;
 }
 
@@ -27,8 +25,6 @@ export function createErrorTrackingState(): ErrorTrackingState {
     lastFailedToolTurn: -100,
     escalationCounts: {},
     lastNudgeTime: 0,
-    lastLazyNudgeTime: 0,
-    lastJudgeTime: 0,
     nudgeCooldownMs: ERROR_TRACKING_NUDGE_COOLDOWN_MS,
     nudgeSuppressedCount: 0,
   };
@@ -41,8 +37,6 @@ export function resetErrorTrackingState(s: ErrorTrackingState): void {
   s.lastFailedToolTurn = -100;
   s.escalationCounts = {};
   s.lastNudgeTime = 0;
-  s.lastLazyNudgeTime = 0;
-  s.lastJudgeTime = 0;
   s.nudgeSuppressedCount = 0;
 }
 

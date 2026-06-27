@@ -125,15 +125,20 @@ export function handleCriticalSignals(
   if (tac.erroredTools.size > 0 && !tac.state.hasRecordedFailure) {
     const turnsSinceError = tac.state.currentTurn - tac.state.lastFailedToolTurn;
     if (turnsSinceError >= FAILURE_THRESHOLD) {
-      const now = Date.now();
-      if (now - tac.state.lastNudgeTime > tac.state.nudgeCooldownMs) {
-        tac.state.lastNudgeTime = now;
+      // EW-7.2: rate-limit via NudgeManager. The session-level
+      // `hasRecordedFailure` flag remains (it ensures we tell the user
+      // at most once per session). The NudgeManager cooldown (20s)
+      // protects against firing too soon after a related nudge.
+      // See EW-7.8 for the longer-term plan to consolidate
+      // `lastNudgeTime + nudgeCooldownMs` into NudgeManager entirely.
+      const errorList = Array.from(tac.erroredTools).join(", ");
+      const message =
+        `${errorList} failed. Record this to avoid repeating: ` +
+        `memory_store(content="Error with ${errorList}: [what went wrong and fix]", tags=["error"])`;
+      const { shouldSend } = nudgeManager.shouldSendNudge("recordFailure", message);
+      if (shouldSend) {
         tac.state.hasRecordedFailure = true;
-        const errorList = Array.from(tac.erroredTools).join(", ");
-        tac.sendWhisper(
-          `${errorList} failed. Record this to avoid repeating: ` +
-            `memory_store(content="Error with ${errorList}: [what went wrong and fix]", tags=["error"])`,
-        );
+        tac.sendWhisper(message);
       }
     }
   }

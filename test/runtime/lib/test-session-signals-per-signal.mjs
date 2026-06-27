@@ -296,10 +296,13 @@ test("turn-end-handler uses per-signal gating loop (not single bundle call)", ()
     /for\s*\(\s*const\s+sig\s+of\s+sessionSignals\s*\)/,
     "turn-end-handler must iterate sessionSignals",
   );
+  // EW-7.2: per-signal gate now routes through a lookup table that
+  // resolves sig.key → {type, subKey}. The handler must consult this
+  // table (or equivalent) rather than hardcoding "sessionSignals".
   assert.match(
     handlerSrc,
-    /shouldSendNudge\(\s*"sessionSignals"[\s\S]*?sig\.key/s,
-    "per-signal shouldSendNudge call must pass sig.key as subKey",
+    /nudgeTypeForKey\(\s*sig\.key\s*\)/,
+    "handler must look up NudgeType per sig.key (EW-7.2)",
   );
   // Negative check: the old single-call pattern must be gone
   assert.ok(

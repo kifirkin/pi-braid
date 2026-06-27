@@ -16,7 +16,7 @@ import {
   handleCriticalSignals,
 } from "./turn-analysis.js";
 import { detectOrphanChains } from "./orphan-chains.js";
-import { getNudgeManager } from "../nudge-manager.js";
+import { getNudgeManager, type NudgeType } from "../nudge-manager.js";
 import { getState, ERROR_BURST_THRESHOLD, RECOVERY_GRACE_TURNS, markNudgeSent, shouldNudgeForMemory, markMemoryNudgeSent } from "../state.js";
 import { recordNudgeSuppressed, getNudgeAnalytics } from "../../../lib/reasoning/nudge-analytics.js";
 import { getStopReason, getMessageContent, getContextUsageFromEvent } from "../../../lib/state/extension-state.js";
@@ -34,6 +34,21 @@ import {
 } from "../../../lib/detection/context-thresholds.js";
 
 const log = createLogger("enforcement:turn-end");
+
+// EW-7.2: L2 sub-signals that have a dedicated NudgeType use the
+// type's own cooldown (memory: 45s, scratchpad: 60s, context: 90s).
+// Sub-signals without a dedicated type fall through to `sessionSignals`
+// with the subKey distinguishing them (think, localization).
+const L2_NUDGE_TYPE: Record<string, { type: NudgeType; subKey?: string }> = {
+  memory: { type: "memory" },
+  scratchpad: { type: "scratchpad" },
+  "context-tokens": { type: "context", subKey: "tokens" },
+  "context-percent": { type: "context", subKey: "percent" },
+};
+
+function nudgeTypeForKey(key: string): { type: NudgeType; subKey?: string } {
+  return L2_NUDGE_TYPE[key] ?? { type: "sessionSignals", subKey: key };
+}
 
 export async function dispatchTurnEndLoop(
   pi: ExtensionAPI,
@@ -393,10 +408,11 @@ export async function dispatchTurnEndLoop(
       const nudgeManager = getNudgeManager(ctx);
       const unsent: string[] = [];
       for (const sig of sessionSignals) {
+        const { type, subKey } = nudgeTypeForKey(sig.key);
         const { shouldSend } = nudgeManager.shouldSendNudge(
-          "sessionSignals",
+          type,
           sig.content,
-          sig.key,
+          subKey,
         );
         if (shouldSend) {
           unsent.push(sig.content);

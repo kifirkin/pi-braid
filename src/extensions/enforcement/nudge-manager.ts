@@ -17,26 +17,25 @@ import { getExtensionState } from "../../lib/state/extension-state.js";
 import { sendEnforcementWhisper } from "./whisper.js";
 
 // Nudge Types
+//
+// Every NudgeType in this union must have at least one caller of
+// `getNudgeManager(ctx).shouldSendNudge(<type>, ...)` somewhere in
+// src/. The cross-cutting test
+// `test/runtime/lib/test-nudgetype-wiring.mjs` enforces this contract.
+// If you add a type here, wire it up in the same commit; if you
+// remove one, delete both the union member and the config entry.
 
 export type NudgeType =
   | "validation"
-  | "memory"
   | "recordFailure"
-  | "toolError"
-  | "lazy"
-  | "claim"
-  | "toolDiversity"
-  | "exploreBeforeAct"
-  | "phaseValidation"
-  | "scratchpad"
   | "malformed"
-  | "dangerousCommand"
-  | "judge"
+  | "memory"
+  | "scratchpad"
   | "context"
-  | "contextTool"
   // EW-7.9: L2 "Session Signals" bundle. Each sub-signal gets its own
   // per-key history so adding/removing a signal doesn't re-arm the
-  // others. Pass subKey="memory" | "scratchpad-edit" | "think" | etc.
+  // others. Used for sub-signals without a dedicated NudgeType (think,
+  // localization).
   | "sessionSignals";
 
 export interface NudgeConfig {
@@ -48,25 +47,43 @@ export interface NudgeConfig {
   deduplicate: boolean;
 }
 
+// REMOVED NudgeTypes (EW-7.2):
+//   - `lazy`, `claim`: pre-LLM-judge heuristics replaced by
+//     verification judge and BPE policy engine. The matching
+//     `lastLazyNudgeTime` field on ErrorTrackingState is dead and
+//     removed in this change.
+//   - `toolDiversity`: dead flag (`toolDiversityNudged`) already
+//     removed from ToolTrackingState in v1.2; the NudgeType config
+//     followed in this change.
+//   - `exploreBeforeAct`, `phaseValidation`: blocking was downgraded
+//     to passthrough (see `handlers/blocking.ts:42-49`); no triggering
+//     logic remains.
+//   - `toolError`: no caller; tool-error rate-limiting is handled by
+//     `consecutiveErrorTurns` (error burst detection) directly.
+//   - `judge`: the verification judge uses its own state
+//     (`verificationJudgeRunning`, `lastJudgeTime`,
+//     `lastVerificationJudgeTurn` on VerificationJudgeState) — no
+//     caller in NudgeManager path.
+//   - `contextTool`: no caller. The agent's context-tool usage is
+//     observed via `lastContextCheckTurn` (not as a nudge).
+//   - `dangerousCommand`: no detection exists. Adding this type
+//     without triggering logic would re-introduce the false promise
+//     EW-7.2 was created to fix. Re-create when detection exists.
+
 export const DEFAULT_NUDGE_CONFIGS: Record<NudgeType, NudgeConfig> = {
   validation: { baseCooldownMs: 20_000, escalateAfter: 3, deduplicate: true },
-  memory: { baseCooldownMs: 45_000, escalateAfter: 2, deduplicate: false },
   recordFailure: { baseCooldownMs: 20_000, escalateAfter: 1, deduplicate: true },
-  toolError: { baseCooldownMs: 15_000, escalateAfter: 2, deduplicate: true },
-  lazy: { baseCooldownMs: 15_000, escalateAfter: 2, deduplicate: false },
-  claim: { baseCooldownMs: 20_000, escalateAfter: 2, deduplicate: true },
-  toolDiversity: { baseCooldownMs: 60_000, escalateAfter: 1, deduplicate: true },
-  exploreBeforeAct: { baseCooldownMs: 30_000, escalateAfter: 2, deduplicate: true },
-  phaseValidation: { baseCooldownMs: 15_000, escalateAfter: 3, deduplicate: true },
-  scratchpad: { baseCooldownMs: 60_000, escalateAfter: 2, deduplicate: true },
   malformed: { baseCooldownMs: 10_000, escalateAfter: 1, deduplicate: false },
-  dangerousCommand: { baseCooldownMs: 5_000, escalateAfter: 1, deduplicate: false },
-  judge: { baseCooldownMs: 30_000, escalateAfter: 2, deduplicate: true },
+  // L2 bundle sub-signal cooldowns (each sub-signal gets its own
+  // history entry via the subKey parameter). These are wired in
+  // Phase 5 (ROADMAP P1-5 / EW-7.2).
+  memory: { baseCooldownMs: 45_000, escalateAfter: 2, deduplicate: false },
+  scratchpad: { baseCooldownMs: 60_000, escalateAfter: 2, deduplicate: true },
+  // Context bundle covers both `context-tokens` and `context-percent`
+  // sub-signals. subKey distinguishes them; both share this config.
   context: { baseCooldownMs: 90_000, escalateAfter: 2, deduplicate: true },
-  contextTool: { baseCooldownMs: 120_000, escalateAfter: 3, deduplicate: true },
-  // EW-7.9: per-signal gating for the L2 bundle. Each subKey has its
-  // own history entry; the 60s cooldown matches the original
-  // "scratchpad" gate that the bundle used before per-signal splitting.
+  // EW-7.9: fallback for L2 sub-signals without a dedicated NudgeType
+  // (`think`, `localization`). 60s matches the prior bundle-wide cooldown.
   sessionSignals: { baseCooldownMs: 60_000, escalateAfter: 2, deduplicate: true },
 };
 

@@ -527,18 +527,36 @@ triggers the error-recurrence advice next turn.
 **Fix:** In `whisper.ts:51-58`, only emit `enforcement_violation` when
 `critical: true`.
 
-### 4.2 EW-7.2. Wire up the 14 unwired NudgeType values — HIGH / EASY
+### 4.2 EW-7.2. Wire up the 14 unwired NudgeType values — HIGH / EASY _(shipped v3.3)_
 
 **Problem:** Of 16 `NudgeType` configs, only `validation` and `scratchpad`
 have callers. The other 14 create a false impression.
 
 **Fix:** For each: wire it up, or delete it. Specific:
-- `malformed`: wrap `detection/malformed.ts:24` in `getNudgeManager("malformed")`. Right shape.
+- `malformed`: wrap `detection/malformed.ts:24` in `getNudgeManager("malformed")`. Right shape. ✅
 - `dangerousCommand`: keep as scaffolding, mark with TODO comment.
-- `lazy`, `claim`: delete (replaced by LLM judges).
-- `toolDiversity`: wire or delete the dead flag.
-- `exploreBeforeAct`, `phaseValidation`, `judge`, `context`, `contextTool`, `toolError`, `memory`: trigger logic exists in L2 bundle; wire up or delete.
-- `recordFailure`: wrap `turn-analysis.ts:106-118` in `getNudgeManager("recordFailure")`.
+- `lazy`, `claim`: delete (replaced by LLM judges). ✅
+- `toolDiversity`: wire or delete the dead flag. ✅ (deleted — flag already removed in v1.2)
+- `exploreBeforeAct`, `phaseValidation`, `judge`, `context`, `contextTool`, `toolError`, `memory`: trigger logic exists in L2 bundle; wire up or delete. ✅ (`memory`, `scratchpad`, `context` wired via L2 sub-signal table; rest deleted)
+- `recordFailure`: wrap `turn-analysis.ts:106-118` in `getNudgeManager("recordFailure")`. ✅
+
+**Status:** Shipped. NudgeType union went from 16 members (2 wired,
+14 scaffolding) to 7 members (all wired). The 9 deletions:
+`toolDiversity`, `lazy`, `claim`, `exploreBeforeAct`, `phaseValidation`,
+`toolError`, `judge`, `contextTool`, `dangerousCommand`. The 2 new
+direct wirings: `malformed`, `recordFailure`. The 3 L2 sub-signal
+wirings: `memory`, `scratchpad`, `context` (via `L2_NUDGE_TYPE`
+lookup table in `turn-end-handler.ts`).
+
+Cross-cutting test `test-nudgetype-wiring.mjs` (9 subtests) enforces
+the contract going forward: every NudgeType in `DEFAULT_NUDGE_CONFIGS`
+must have at least one caller. Future additions without a caller will
+fail CI.
+
+Also: `lastLazyNudgeTime` (dead field on ErrorTrackingState) removed.
+`lastJudgeTime` moved from ErrorTrackingState to SessionState where
+it belongs with the other verification-judge fields. Structural test
+baseline updated 66 → 65.
 
 ### 4.3 EW-7.3. Apply `braid.suppressNudges` consistently — HIGH / EASY
 
@@ -2012,8 +2030,8 @@ P3-25 cost-report module (v3.0).
 EW-7.4 (P2-3), EW-7.5 (P3-1), EW-7.6 (P0-7),
 EW-7.7 (P3-2), EW-7.8 (P3-3), EW-7.9 (P2-4),
 EW-7.10 (P3-4), EW-7.13 (P2-6), EW-7.14 (P3-5),
-EW-7.15 (P3-6). (EW-7.2 = P1-5, EW-7.11, EW-7.12 = P3-7
-remain deferred.)
+EW-7.15 (P3-6), **EW-7.2 (P1-5 — shipped)**. EW-7.11 and
+EW-7.12 (P3-7) remain deferred.
 
 ### Remaining 6 items (deferred)
 
@@ -2022,9 +2040,14 @@ The remaining items are:
 - **P1-3 / DR-C-4** (timer closure-captured state) —
   document the migration boundary or thread ctx through.
   Architectural decision best made with user input.
-- **P1-5 / EW-7.2** (14 unwired NudgeTypes) — requires
-  design decisions per type (some should be deleted, some
-  wired, some deferred as future features).
+- **P1-5 / EW-7.2** (14 unwired NudgeTypes) — **shipped**.
+  Wired: `malformed`, `recordFailure`. Routed via L2 sub-signal
+  table: `memory`, `scratchpad`, `context` (each gets its own
+  tuned cooldown). Deleted as dead/false-promise: `lazy`, `claim`,
+  `toolDiversity`, `exploreBeforeAct`, `phaseValidation`, `toolError`,
+  `judge`, `contextTool`, `dangerousCommand`. Cross-cutting test
+  `test-nudgetype-wiring.mjs` enforces the "every NudgeType has a
+  caller" contract going forward.
 - **P2-7 / DR-H-9** (drift-classifier cache) — *partially
   unblocked* by v3.0: Q17's hash cache is already in place
   via `text-classifier.ts`, and v3.0's cost-report provides

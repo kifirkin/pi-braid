@@ -29,6 +29,37 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **P1-5 / EW-7.2 — NudgeType wiring contract.** Of the 16 NudgeType
+  values in `DEFAULT_NUDGE_CONFIGS`, 14 were forward-looking scaffolding
+  with no callers — a false impression of a wired system. Resolved:
+  - Wired: `malformed` (10s cooldown; `detection/malformed.ts:24` now
+    rate-limits via NudgeManager) and `recordFailure` (20s cooldown;
+    `turn-analysis.ts:106-118` no longer uses the parallel
+    `state.lastNudgeTime + nudgeCooldownMs` mechanism for this path).
+  - Wired via L2 sub-signal routing: `memory`, `scratchpad`, `context`
+    now use their own NudgeType configs (45s/60s/90s) instead of
+    routing through `sessionSignals`. `turn-end-handler.ts` got a
+    `L2_NUDGE_TYPE` lookup table mapping `sig.key` →
+    `{type, subKey}`. Sub-signals without a dedicated NudgeType
+    (`think`, `localization`) fall through to `sessionSignals` with
+    the subKey preserved.
+  - Deleted (no triggering logic, no callers — kept as false promises
+    per EW-7.2): `lazy`, `claim`, `toolDiversity`, `exploreBeforeAct`,
+    `phaseValidation`, `toolError`, `judge`, `contextTool`,
+    `dangerousCommand`. Each removal documented in
+    `nudge-manager.ts` with the rationale for future readers.
+  - State cleanup: `lastLazyNudgeTime` (dead field) removed from
+    `ErrorTrackingState`. `lastJudgeTime` moved from
+    `ErrorTrackingState` to `SessionState` where it logically belongs
+    (with the other verification-judge fields). Structural test
+    baseline updated 66 → 65.
+  - Cross-cutting test: `test-nudgetype-wiring.mjs` (new, 9 subtests)
+    asserts every NudgeType in `DEFAULT_NUDGE_CONFIGS` has at least
+    one caller. Would have caught the original 14 unwired types.
+  Test count: 77 → 78 passing. Remaining NudgeTypes in the union:
+  `validation`, `recordFailure`, `malformed`, `memory`, `scratchpad`,
+  `context`, `sessionSignals`.
+
 - **Timer extension factory call counter (P1-3 / DR-C-4 runtime
   check).** Added `getTimerExtensionFactoryState()` to
   `src/lib/state/global-state.ts` and wired it into the factory body
