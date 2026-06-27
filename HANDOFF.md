@@ -17,8 +17,10 @@ The work is in a known-good state as of this writing.
 84f27f4d feat(ai): port llm-call.ts to pi-ai v0.80 — compat import path (P0-8 Path A)
 ```
 
-24 unpushed commits on `main` ahead of origin/main. Latest commit
-(8c51c9ae) shipped the #1 priority item from this handoff (P1-5).
+2 unpushed commits on `main` ahead of origin/main (8c51c9ae P1-5 +
+c48d4ae6 handoff refresh). The earlier 22 of 24 were pushed in
+parallel sessions. Latest commit (8c51c9ae) shipped the #1 priority
+item from this handoff (P1-5).
 
 ## State of the codebase
 
@@ -45,26 +47,32 @@ The work is in a known-good state as of this writing.
 
 ## What's next (priority order)
 
-1. **P1-4 / EW-7.3** — apply `braid.suppressNudges` consistently across
-   11 missed sites (`handlers/register-message-end.ts:41, 57, 67, 107,
-   203`; `handlers/turn-end-handler.ts:189, 340, 362`;
-   `detection/malformed.ts:24` (now wrapped via the new
-   NudgeManager gate); `detection/verification.ts:40`;
-   `handlers/turn-analysis.ts:65, 91, 106`). HIGH/EASY per audit.
-2. **EW-7.11** — `braid.enforcement` settings block (config plumbing).
+1. **EW-7.11** — `braid.enforcement` settings block (config plumbing).
    Valuable now that EW-7.2 settled; tunable cooldowns become meaningful.
-3. **P3-7 / EW-7.12** — prefix naming convention (policy decision; needs
+   The `NudgeManager` constructor already accepts `customConfig`; the gap
+   is plumbing it from `settings.json` through a `validateNudgeConfig`
+   helper into the per-session `getNudgeManager(ctx)` factory. Minimum-
+   change scope (per P0-8 Path A pattern).
+2. **P3-7 / EW-7.12** — prefix naming convention (policy decision; needs
    user input).
-4. **P2-10 / Q13** — large-file splits (`memory-agent-bridge`,
+3. **P2-10 / Q13** — large-file splits (`memory-agent-bridge`,
    `timer`, `session-recall`, `latent-activator`). Explicitly deferred;
    trigger condition was partial-met by DR-M-8 (scratchpadExecute split).
-5. **Future Models-instance refactor** — `Models.completeSimple()` on a
+4. **Future Models-instance refactor** — `Models.completeSimple()` on a
    `createModels()` instance. Deferred until upstream removes the
    `/compat` subpath from `@earendil-works/pi-ai`.
 
 The roadmap tally: **48 of 51 actionable items shipped** (was 47 before
 P1-5). The 3 remaining items above all need user input or a policy
 decision.
+
+**Note on P1-4 / EW-7.3:** shipped in v2.3 (June 18) via the wrapper
+approach at `src/lib/utils/injection-tracker.ts:232` — every
+`sendTrackedMessage` caller (20+ sites including all 11 the original
+audit flagged) now respects `braid.suppressNudges` without per-site
+checks. Pinned by `test/runtime/lib/test-suppress-nudges-applied.mjs`
+(5/5 passing). The HANDOFF priority list above does not include P1-4
+because it is already shipped.
 
 ## How to navigate this codebase
 
@@ -137,9 +145,10 @@ new findings.
    (8 layer-boundary + 1 stale test ref). Not caused by this
    session's work. Decision pending: fix, defer, or carve out
    `ALLOWED_BOUNDARY_OVERRIDES`.
-3. **No `git push` yet** — 23 commits are local-only. The receiving
-   agent should pull from origin or push to make this transfer
-   durable.
+3. **No `git push` yet** — 2 commits are local-only (8c51c9ae + c48d4ae6
+   from the P1-5 ship + handoff refresh). The receiving agent should
+   push to make this transfer durable, or pull the latest and start a
+   new branch.
 
 ## Quick-start commands
 

@@ -722,8 +722,8 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
 | P1-1 | [DR-C-2](#dr-c-2) migrate `_policyState`/`_detectorState` to per-session | Medium | `context-lifecycle/index.ts:78-79` + state.ts |
 | P1-2 | [DR-C-3](#dr-c-3) fix AGENTS.md self-contradiction (line 146) | Easy | `lib/state/AGENTS.md`, `docs/STATE-POLICY.md` |
 | P1-3 | [DR-C-4](#dr-c-4) document or migrate timer closure-captured state | Medium | `timer/index.ts:347-465` |  ✅ Shipped in v3.2 |
-| P1-4 | [EW-7.3](#43-ew-73-apply-braidsuppressnudges-consistently--high--easy) apply `braid.suppressNudges` consistently | Medium | 11 sites across enforcement/ |
-| P1-5 | [EW-7.2](#42-ew-72-wire-up-the-14-unwired-nudgetype-values--high--easy) wire up or delete 14 unwired NudgeTypes | Medium | `nudge-manager.ts` + 8 call sites |
+| P1-4 | [EW-7.3](#43-ew-73-apply-braidsuppressnudges-consistently--high--easy) apply `braid.suppressNudges` consistently | Medium | `lib/utils/injection-tracker.ts:232` (wrapper) |  ✅ Shipped in v2.3 |
+| P1-5 | [EW-7.2](#42-ew-72-wire-up-the-14-unwired-nudgetype-values--high--easy) wire up or delete 14 unwired NudgeTypes | Medium | `nudge-manager.ts` + 4 wired call sites; 9 deleted |  ✅ Shipped in v3.2 |
 | P1-6 | [DR-H-7](#dr-h-7) fix `relevanceReason` substring match | Easy | `memory-agent-bridge/index.ts:153-156` |
 | P1-7 | [DR-H-2](#dr-h-2) fix `explore_paths` tool description | Easy | `memory-agent-bridge/explore-paths.ts:71` |
 | P1-8 | [DR-H-6](#dr-h-6) don't synthesize fake `CognitiveMemoryEntry` from episode | Easy | `memory-agent-bridge/index.ts:340-368` |
