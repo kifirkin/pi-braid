@@ -29,6 +29,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Timer extension factory call counter (P1-3 / DR-C-4 runtime
+  check).** Added `getTimerExtensionFactoryState()` to
+  `src/lib/state/global-state.ts` and wired it into the factory body
+  of `src/extensions/scheduling/timer/index.ts`. Increments the
+  counter on every `timerExtension(pi)` call and logs a `log.warn`
+  when the count exceeds 1, citing the DR-C-4 single-process-per-
+  session assumption documented in the top-of-file comment block.
+  The `_timerExtensionFactoryState` let at `global-state.ts:279` is
+  the 28th documented exception in the no-module-level-let
+  contract. The `test-timer-single-process-assumption.mjs`
+  enforcement test grew from 7 to 10 subtests.
+
 - **`src/lib/ai/llm-call.ts` ported to pi-ai v0.80 (P0-8 Path A).**
   Import path changed from `"@earendil-works/pi-ai"` to
   `"@earendil-works/pi-ai/compat"` — `completeSimple` was moved out of

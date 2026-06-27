@@ -99,6 +99,7 @@ The exception list is enforced by `test/runtime/lib/test-no-module-level-let.mjs
 | `global-state.ts:118` | `_nudgeAnalyticsFallback` | Encapsulated; only `getNudgeAnalyticsFallback()` exported. |
 | `global-state.ts:144` | `_cognitiveMemoryInstance` | Encapsulated; only `getCognitiveMemoryInstance()` exported. |
 | `global-state.ts:172` | `_postLoopTimeoutMs` | Encapsulated; only `getPostLoopTimeoutMs()` / `setPostLoopTimeoutMs()` exported. Defaulted from `DEFAULT_POST_LOOP_TIMEOUT_MS` (30_000). Tunable so the post-loop timeout can change without code edits. |
+| `global-state.ts:279` | `_timerExtensionFactoryState` | Encapsulated; only `getTimerExtensionFactoryState()` exported. Used by `extensions/scheduling/timer/index.ts` to count factory invocations and warn when the DR-C-4 single-process-per-session assumption is violated (see the comment block at timer/index.ts:16-41). |
 
 ### D. Logger / framework config (process-global by design)
 
@@ -135,6 +136,7 @@ The exception list is enforced by `test/runtime/lib/test-no-module-level-let.mjs
 | 2026-06-13 | First Q5 audit | 7 sites migrated to `getExtensionState`. |
 | 2026-06-17 | Second Q5 audit | 2 additional sites (`nudge-analytics`, `memory singleton`) moved to `global-state.ts`. |
 | 2026-06-17 | `test-no-module-level-let.mjs` added | 27 documented exceptions enumerated. Test enforces the policy. |
+| 2026-06-27 | DR-C-4 runtime check added | `_timerExtensionFactoryState` added (28 documented exceptions). Process-global counter for the timer extension factory; logs a warning when the single-process-per-session assumption is violated. |
 
 ## Work Guidance
 
@@ -147,7 +149,7 @@ The exception list is enforced by `test/runtime/lib/test-no-module-level-let.mjs
 
 - `npm run typecheck` - any new `let` at module scope in `lib/` is suspicious; review the State Policy table.
 - `test/runtime/lib/test-enforcement-state-composition.mjs` - state factory contracts.
-- The `test-no-module-level-let.mjs` lint test (added in Q15) scans `src/extensions/` and `src/lib/` for new `let` declarations and asserts that the 27 documented exceptions (in the table above) are the only ones.
+- The `test-no-module-level-let.mjs` lint test (added in Q15) scans `src/extensions/` and `src/lib/` for new `let` declarations and asserts that the 28 documented exceptions (in the table above) are the only ones.
 
 ## Child DOX Index
 

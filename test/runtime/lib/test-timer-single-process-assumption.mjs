@@ -135,6 +135,48 @@ await test("ensurePoller is the lazy initializer", () => {
   );
 });
 
+// ── Runtime check: factory-call counter (promised in top-of-file comment) ───
+
+await test("timer imports getTimerExtensionFactoryState from global-state", () => {
+  // The runtime check that fulfills the comment's promise lives in
+  // global-state.ts (per the no-module-level-let contract). The timer
+  // module must import it.
+  assert.match(
+    src,
+    /import\s*\{[^}]*getTimerExtensionFactoryState[^}]*\}\s*from\s*["'].*global-state/,
+    "timer must import getTimerExtensionFactoryState from global-state.ts",
+  );
+});
+
+await test("factory body increments the counter", () => {
+  // The first call should increment; the second call should log a warning.
+  assert.match(
+    src,
+    /getTimerExtensionFactoryState\s*\(\s*\)/,
+    "factory body must call getTimerExtensionFactoryState()",
+  );
+  assert.match(
+    src,
+    /\.callCount\s*\+=\s*1|\.callCount\+\+/,
+    "factory body must increment .callCount",
+  );
+});
+
+await test("factory body warns on callCount > 1", () => {
+  // The whole point of the counter: log a warning when the assumption
+  // is violated (process-wide double-registration).
+  assert.match(
+    src,
+    /callCount\s*>\s*1/,
+    "factory body must check callCount > 1 and log a warning",
+  );
+  assert.match(
+    src,
+    /log\.warn|DR-C-4/,
+    "factory body must reference DR-C-4 in the warning",
+  );
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) {
   process.exit(1);

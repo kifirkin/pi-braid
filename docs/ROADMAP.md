@@ -703,7 +703,7 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
 |---|---|---|---|
 | P1-1 | [DR-C-2](#dr-c-2) migrate `_policyState`/`_detectorState` to per-session | Medium | `context-lifecycle/index.ts:78-79` + state.ts |
 | P1-2 | [DR-C-3](#dr-c-3) fix AGENTS.md self-contradiction (line 146) | Easy | `lib/state/AGENTS.md`, `docs/STATE-POLICY.md` |
-| P1-3 | [DR-C-4](#dr-c-4) document or migrate timer closure-captured state | Medium | `timer/index.ts:347-465` |
+| P1-3 | [DR-C-4](#dr-c-4) document or migrate timer closure-captured state | Medium | `timer/index.ts:347-465` |  ✅ Shipped in v3.2 |
 | P1-4 | [EW-7.3](#43-ew-73-apply-braidsuppressnudges-consistently--high--easy) apply `braid.suppressNudges` consistently | Medium | 11 sites across enforcement/ |
 | P1-5 | [EW-7.2](#42-ew-72-wire-up-the-14-unwired-nudgetype-values--high--easy) wire up or delete 14 unwired NudgeTypes | Medium | `nudge-manager.ts` + 8 call sites |
 | P1-6 | [DR-H-7](#dr-h-7) fix `relevanceReason` substring match | Easy | `memory-agent-bridge/index.ts:153-156` |
@@ -1850,17 +1850,108 @@ the heartbeat-scheduler monkey-patch to be safe.
   **Test verification:** 76/76 pass on `@earendil-works/pi-ai@0.80.2`.
   `tsc --noEmit` clean. `check:docs` + `check:doc-drift` green.
 
-## Final autonomous-pass tally (v1.0 - v3.1)
+- **v3.2** (2026-06-27): **P1-3 / DR-C-4** runtime check shipped —
+  timer extension factory call counter warns when the
+  single-process-per-session assumption is violated.
+
+  **Background:**
+
+  The previous agent shipped the substantive fix for DR-C-4 in
+  earlier sessions: a top-of-file docstring documenting the
+  assumption (lines 16-41), migration of the closure-captured
+  `sessionId` to a `sessionState` object that the
+  `createTimerTool()` factory can mutate via reference, and an
+  enforcement test (`test-timer-single-process-assumption.mjs`)
+  that pins the documentation. That work is sound.
+
+  What's missing: the comment block promised "A debug-mode
+  counter (`_extensionFactoryCallCount`) at the bottom of this
+  file logs a warning if `timerExtension(pi)` is called more than
+  once in the same process." The counter was never actually
+  implemented — only the documentation promised it. This commit
+  closes that gap.
+
+  **What shipped:**
+
+  1. `src/lib/state/global-state.ts` — added the
+     `TimerExtensionFactoryState` interface, the
+     `getTimerExtensionFactoryState()` getter (lazy init), and the
+     `resetTimerExtensionFactoryState()` test helper. Follows the
+     existing rotation/nudge-analytics pattern. The encapsulated
+     `let _timerExtensionFactoryState` at line 279 is now the 28th
+     documented exception in the no-module-level-let contract.
+
+  2. `src/extensions/scheduling/timer/index.ts` — the factory body
+     now increments the counter on every `timerExtension(pi)` call
+     and logs a `log.warn` when the count exceeds 1, citing
+     DR-C-4 and pointing the reader to the migration path in the
+     top-of-file comment block. The warning fires before any
+     state mutation, so a single message in the log is enough to
+     diagnose the violation in dev/CI.
+
+  3. `test/runtime/lib/test-timer-single-process-assumption.mjs`
+     — 3 new subtests pinning the runtime check:
+     - Imports `getTimerExtensionFactoryState` from global-state
+     - Increments `.callCount` in the factory body
+     - Logs a warning referencing `DR-C-4` when `callCount > 1`
+     The test now covers 10 subtests (was 7).
+
+  4. `test/runtime/lib/test-no-module-level-let.mjs` — added
+     `_timerExtensionFactoryState` (line 279) to the
+     `EXEMPT_LINES` Category C list.
+
+  5. `src/lib/state/AGENTS.md` — added the new exception to the
+     "Encapsulated lets in `global-state.ts`" table (Category C)
+     with justification. Updated the migration history row to
+     note 28 documented exceptions (was 27).
+
+  6. `CHANGELOG.md` — `[Unreleased]` entry.
+
+  **What this enables:**
+
+  - **Early-warning in dev/CI**: if anyone accidentally
+    double-registers the timer extension, a `log.warn` fires
+    immediately, not at session-end or on first bug report.
+  - **The comment's promise is fulfilled**: the docstring no
+    longer references a counter that doesn't exist. Future
+    contributors who read the doc see working code, not fiction.
+  - **Path to migration is now visible**: when multi-session-
+    per-process becomes a real requirement, the counter
+    identifies the violation precisely (which call site, which
+    session), making the migration to `getExtensionState` a
+    targeted fix rather than a hunt.
+
+  **What this does NOT do (out of scope):**
+
+  - **The `getExtensionState` migration itself.** Migrating
+    `poller` and `sessionState` to `getExtensionState(ctx, ...)`
+    requires adding a setter to `extension-state.ts` or a custom
+    WeakMap (per the comment block). That's a structural change
+    to the state API and is tracked as a separate deferred
+    ticket. The runtime check is sufficient for the current
+    single-session-per-process reality.
+  - **Other extensions with the same pattern.** The same
+    `let`-in-factory-closure pattern may exist in other
+    extensions. This commit only addresses the timer (the
+    specific ROADMAP item). A wider audit would be a separate
+    ticket.
+
+  **Test verification:** 77/77 pass (was 77 before this commit
+  with 7 subtests on `test-timer-single-process-assumption`;
+  now 10 subtests, +3). `tsc --noEmit` clean. `check:docs` +
+  `check:doc-drift` green.
+
+## Final autonomous-pass tally (v1.0 - v3.2)
 
 **24 commits. 56 files changed. ~1180 insertions, ~1100 deletions
 (most of the deletions are ROADMAP.md itself, which was
 folded in from 5 prior audit documents). 1 regression shipped
 in v1.8 and fixed in v1.8.1.
 
-**46 of 51 actionable items shipped** (P3-19 partial
+**47 of 51 actionable items shipped** (P3-19 partial
 — textResult/textParts now properly typed; full sweep
 of 245 `: any` annotations is a separate P2-class
-effort). All test suites pass (76/76):
+effort). All test suites pass (77/77):
 
 - `tsc --noEmit` — clean
 - `test-no-module-level-let.mjs` — 213 files, 0 violations
@@ -1888,7 +1979,8 @@ fallback, P0-6 enforcement_violation amplification fix,
 P0-7 SIGNAL_RETENTION_TURNS=3, P0-8 pi-ai v0.80 port (Path A,
 compat import swap — v3.1).
 
-**P1 (5 of 8):** P1-1 state migration in context-lifecycle,
+**P1 (6 of 8):** P1-1 state migration in context-lifecycle,
+P1-3 (DR-C-4) timer single-process-per-session runtime check (v3.2),
 P1-4 (EW-7.3) suppressNudges at sendTrackedMessage,
 P1-6 relevanceReason substring match, P1-7 explore_paths
 description, P1-8 recall_get fake entry discriminator.

@@ -49,6 +49,7 @@ import { createLogger } from "../../../lib/core/logger.js";
 import { Type } from "typebox";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { getSessionIdSafe } from "../../../lib/state/extension-state.js";
+import { getTimerExtensionFactoryState } from "../../../lib/state/global-state.js";
 
 import { BRAID_INJECTED, BRAID_SOURCE } from "../../../lib/constants/injection-details.js";
 import type { ScheduledTimer } from "../../../lib/events/timer-types.js";
@@ -475,6 +476,22 @@ function createTimerTool(sessionState: { id: string; resolved: boolean }): ToolD
 }
 
 export default function timerExtension(pi: ExtensionAPI): void {
+  // DR-C-4 runtime check: count factory invocations and warn if the
+  // single-process-per-session assumption is violated. The counter lives
+  // in global-state.ts (not as a module-level let here) so the
+  // no-module-level-let contract is satisfied. See the top-of-file
+  // comment block (lines 16-41) for the full assumption + migration path.
+  const factoryState = getTimerExtensionFactoryState();
+  factoryState.callCount += 1;
+  if (factoryState.callCount > 1) {
+    log.warn(
+      `[timer] DR-C-4: timerExtension(pi) called ${factoryState.callCount} times in this process. ` +
+        `The single-process-per-session assumption is violated; ` +
+        `poller/sessionState closures may conflict across sessions. ` +
+        `See src/extensions/scheduling/timer/index.ts:16-41 for the migration path.`,
+    );
+  }
+
   // sessionId is determined lazily on first tool call. We register a
   // session_start handler to capture it eagerly.
   // Wrapped in a state object so the createTimerTool() factory can

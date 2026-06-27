@@ -254,3 +254,46 @@ export function resetLlmCallListeners(): void {
   _llmErrorListener = null;
   _llmSuccessListener = null;
 }
+
+// ── Timer Extension Factory Counter (timer/index.ts) ─────────────────────────
+//
+// ROADMAP DR-C-4 documents that the timer extension factory closes over a
+// `poller` and `sessionState` variable, which is correct for the standard
+// pi lifecycle (one process per session) but breaks under multi-session-
+// per-process. The comment block in timer/index.ts:16-41 promises a
+// debug-mode counter that logs a warning if `timerExtension(pi)` is called
+// more than once.
+//
+// The counter lives here (not as a module-level let in timer/index.ts) so
+// the no-module-level-let contract is satisfied. The factory call counter
+// is process-global by definition (it tracks process-wide extension
+// registration), so global-state.ts is the right home.
+export interface TimerExtensionFactoryState {
+  callCount: number;
+}
+
+function createDefaultTimerExtensionFactoryState(): TimerExtensionFactoryState {
+  return { callCount: 0 };
+}
+
+let _timerExtensionFactoryState: TimerExtensionFactoryState | undefined;
+
+/**
+ * Get the shared timer-extension-factory counter.
+ *
+ * The timer extension increments this on every `timerExtension(pi)` call
+ * and logs a warning when the count exceeds 1 (signaling an accidental
+ * double-registration that would break the single-process-per-session
+ * assumption under DR-C-4).
+ */
+export function getTimerExtensionFactoryState(): TimerExtensionFactoryState {
+  if (!_timerExtensionFactoryState) {
+    _timerExtensionFactoryState = createDefaultTimerExtensionFactoryState();
+  }
+  return _timerExtensionFactoryState;
+}
+
+/** Reset the counter. Test helper. */
+export function resetTimerExtensionFactoryState(): void {
+  _timerExtensionFactoryState = undefined;
+}
