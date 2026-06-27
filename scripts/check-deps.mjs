@@ -49,6 +49,20 @@ const ALLOWED_BOUNDARY_OVERRIDES = [
   "ext/cognitive → ext/enforcement",
   // analytics → reasoning: Analytics surfaces reasoning stability in get_session_metrics
   "ext/heartbeat → ext/cognitive",
+  // metacognition → memory: finalize handler writes learnings via addEpisode/addPrinciple
+  "ext/cognitive → ext/memory",
+  // input-polisher → context-manager: input-polisher reads isCompactionActive to skip polish when compacting
+  "ext/core → ext/memory",
+  // prompt-builder → session-health: prompt includes session health snapshot
+  "ext/core → ext/enforcement",
+  // register-session-compact → timer: enforcement handler integrates scheduling on session compact
+  "ext/enforcement → ext/scheduling",
+  // heartbeat-scheduler → session-health: heartbeat monitors session health for drift detection
+  "ext/heartbeat → ext/enforcement",
+  // context-lifecycle/context-compress → timer: context management triggers/removes session timers
+  "ext/memory → ext/scheduling",
+  // health-maintenance → session-health: self-management reads session health for maintenance decisions
+  "ext/self → ext/enforcement",
 ];
 
 // ── File collection ────────────────────────────────────────────────────────
