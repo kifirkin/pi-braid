@@ -37,7 +37,6 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const STATE_PATH = join(ROOT, "src/extensions/memory/context-lifecycle/state.ts");
-const INDEX_PATH = join(ROOT, "src/extensions/memory/context-lifecycle/index.js");
 const INDEX_TS = join(ROOT, "src/extensions/memory/context-lifecycle/index.ts");
 const DIST_STATE = join(ROOT, "dist/extensions/memory/context-lifecycle/state.js");
 const DIST_INDEX = join(ROOT, "dist/extensions/memory/context-lifecycle/index.js");

@@ -58,7 +58,7 @@ const EXEMPT_LINES = [
   { file: "src/lib/enforcement/turn-dedup.ts", line: 107, pattern: "let _state" },
 
   // ── B. Test-injectable function slots ─────────────────────────────────
-  { file: "src/lib/ai/llm-call.ts", line: 61, pattern: "let _completeSimple" },
+  { file: "src/lib/ai/llm-call.ts", line: 68, pattern: "let _completeSimple" },
   { file: "src/lib/utils/id.ts", line: 29, pattern: "let _randomSuffix" },
   { file: "src/lib/utils/id.ts", line: 33, pattern: "let _counter" },
   { file: "src/lib/utils/id.ts", line: 35, pattern: "let _idGenerator" },
@@ -88,7 +88,7 @@ const EXEMPT_LINES = [
   { file: "src/lib/detection/degradation-detector.ts", line: 63, pattern: "let _global" },
   { file: "src/lib/detection/topic-drift-detector.ts", line: 66, pattern: "let _ctx" },
   { file: "src/lib/events/timer-bus.ts", line: 22, pattern: "let pendingReminders" },
-  { file: "src/lib/ai/llm-call.ts", line: 86, pattern: "let rateLimitCooldownUntil" },
+  { file: "src/lib/ai/llm-call.ts", line: 93, pattern: "let rateLimitCooldownUntil" },
 
   // ── F. Mutable config values (tunable parameters) ─────────────────────
   { file: "src/lib/reasoning/advice-tracker.ts", line: 47, pattern: "export let dreamerCooldownMs" },
