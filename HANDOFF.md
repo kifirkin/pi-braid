@@ -1,6 +1,6 @@
 <!-- status: historical -->
 <!-- Created: 2026-06-27 for fresh-session transfer -->
-<!-- Superseded by next handoff after P1-5 / EW-7.2 shipped -->
+<!-- Superseded by next handoff after EW-7.11 / P2-5 shipped (v3.3) -->
 
 # pi-braid session handoff
 
@@ -10,23 +10,24 @@ The work is in a known-good state as of this writing.
 ## Where we are (last 5 commits)
 
 ```
+5dd41236 docs: EW-7.11 / v3.3 — CHANGELOG entry, ROADMAP v3.3 section, HANDOFF refresh
+3cdeaf19 feat(enforcement): EW-7.11 — braid.enforcement settings block + validation helper
+5862b8ff docs(roadmap): mark P1-4 + P1-5 shipped; refresh HANDOFF priority list
 8c51c9ae feat(enforcement): wire up NudgeTypes — resolve 14 unwired configs (P1-5 / EW-7.2)
 7eabe6fa docs(handoff): add HANDOFF.md for fresh-session transfer; update AGENTS child DOX index
-64fb1a78 fix(file-mutation-queue): atomic write-temp-then-rename + race coverage
-97419dfe feat(timer): DR-C-4 runtime check — factory call counter warns on assumption violation (P1-3)
-84f27f4d feat(ai): port llm-call.ts to pi-ai v0.80 — compat import path (P0-8 Path A)
 ```
 
-2 unpushed commits on `main` ahead of origin/main (8c51c9ae P1-5 +
-c48d4ae6 handoff refresh). The earlier 22 of 24 were pushed in
-parallel sessions. Latest commit (8c51c9ae) shipped the #1 priority
-item from this handoff (P1-5).
+5 unpushed commits on `main` ahead of origin/main. Latest commits
+shipped EW-7.11 / P2-5 (v3.3): the previously-dead `customConfig` hook
+on `NudgeManager` is now wired to settings.json via the
+`braid.enforcement.nudgeConfigs` block + `validateNudgeConfig` helper.
 
 ## State of the codebase
 
 - **Typecheck**: `npm run typecheck` → clean
-- **Tests**: `npm run test` → **78/78 pass** (was 77 before
-  test-nudgetype-wiring.mjs added)
+- **Tests**: `npm run test` → **79/79 pass** (was 78 before
+  test-enforcement-config.mjs added — 18 subtests pinning both
+  wire-up and validation behavior)
 - **Doc discipline**: `npm run check:docs` → ✅ 58 in-scope docs have
   status markers; `npm run check:doc-drift` → ✅ No current-state drift
 - **No-module-level-let**: `node test/runtime/lib/test-no-module-level-let.mjs`
@@ -38,6 +39,9 @@ item from this handoff (P1-5).
 
 | Commit | Item | What it does |
 |---|---|---|
+| `5dd41236` | v3.3 docs | CHANGELOG entry + ROADMAP v3.3 section + HANDOFF priority refresh for EW-7.11 |
+| `3cdeaf19` | **EW-7.11 / P2-5** | `braid.enforcement.nudgeConfigs` settings block + `validateNudgeConfig(type, cfg)` + `parseNudgeConfigOverrides(raw)` + wire the previously-dead `customConfig` hook on `NudgeManager` to settings. New `test-enforcement-config.mjs` (18 subtests) pins both wire-up (grep) and validation behavior (runtime). |
+| `5862b8ff` | doc discipline | ROADMAP P1 table: ✅ Shipped in v2.3 (P1-4) + ✅ Shipped in v3.2 (P1-5); HANDOFF priority list refresh; unpushed count 23 → 2 fix |
 | `8c51c9ae` | **P1-5 / EW-7.2** | Wire up NudgeTypes — 14 unwired configs resolved. Wired direct: `malformed`, `recordFailure`. Wired via L2 sub-signal table: `memory`, `scratchpad`, `context`. Deleted (dead/false-promise): `toolDiversity`, `lazy`, `claim`, `exploreBeforeAct`, `phaseValidation`, `toolError`, `judge`, `contextTool`, `dangerousCommand`. New `test-nudgetype-wiring.mjs` enforces the "every NudgeType has a caller" contract going forward. Also: `lastLazyNudgeTime` dead field removed; `lastJudgeTime` moved from ErrorTrackingState to SessionState where it belongs. |
 | `2dfa827a` | DR-NEW-DOC-DISCIPLINE | Status markers on every in-scope `.md`; `check-doc-drift.mjs` enforces pi-ai v0.80 surface names |
 | `463bb690` | P0-8 doc correction | ROADMAP rewritten to reflect `/compat` path is the minimum-change port |
@@ -149,10 +153,11 @@ new findings.
    (8 layer-boundary + 1 stale test ref). Not caused by this
    session's work. Decision pending: fix, defer, or carve out
    `ALLOWED_BOUNDARY_OVERRIDES`.
-3. **No `git push` yet** — 2 commits are local-only (8c51c9ae + c48d4ae6
-   from the P1-5 ship + handoff refresh). The receiving agent should
-   push to make this transfer durable, or pull the latest and start a
-   new branch.
+3. **No `git push` yet** — 5 commits are local-only (8c51c9ae +
+   c48d4ae6 + 5862b8ff + 3cdeaf19 + 5dd41236 — P1-5 ship, handoff
+   refresh, doc discipline, EW-7.11 source, EW-7.11 docs). The
+   receiving agent should push to make this transfer durable, or pull
+   the latest and start a new branch.
 
 ## Quick-start commands
 
