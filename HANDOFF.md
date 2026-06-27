@@ -17,8 +17,8 @@ a411f8f1   docs(handoff): refresh for EW-7.11 / v3.3 — last 5 commits, tally 4
 3cdeaf19   feat(enforcement): EW-7.11 — braid.enforcement settings block + validation helper
 ```
 
-The `main` branch may be ahead of `origin/main` by [N] commits pending
-push (see "Known limitations" §3 below for the decision log).
+`main` is in sync with `origin/main`. v3.4 has been pushed
+upstream; the v3.3 → v3.4 transfer is durable.
 
 v3.4 ships the HANDOFF's "Known limitations" §1 and §2 — stale
 EXEMPT_LINES line numbers + check-deps pre-existing violations are
@@ -160,12 +160,10 @@ All three known limitations from the prior handoff are now resolved:
    the 1 stale test ref (`test-context-lifecycle-state.mjs` pointing
    at `src/.js`) was the dead `INDEX_PATH` removed in `efd2b9b6`.
    `ci:check` is now fully green.
-3. **No `git push` yet** — N commits are local-only on `main`
-   ahead of `origin/main`. The current session pushed them to make
-   the v3.4 transfer durable; if this HANDOFF was refreshed after
-   a successful push, the count is 0. If not, the next agent
-   should `git push` to make the transfer durable, or `git pull`
-   and start a new branch.
+3. **Push status** — v3.4 commits are pushed to `origin/main`
+   (as of 2026-06-27). `main` is in sync with upstream; the
+   v3.3 → v3.4 transfer is durable. The next agent inherits
+   the state described in this HANDOFF directly.
 
 ## Quick-start commands
 
