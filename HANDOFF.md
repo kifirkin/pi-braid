@@ -1,28 +1,30 @@
-<!-- status: current -->
+<!-- status: historical -->
 <!-- Created: 2026-06-27 for fresh-session transfer -->
+<!-- Superseded by next handoff after P1-5 / EW-7.2 shipped -->
 
 # pi-braid session handoff
 
 This file exists for a fresh agent session to pick up cleanly.
 The work is in a known-good state as of this writing.
 
-## Where we are (last 4 commits)
+## Where we are (last 5 commits)
 
 ```
+8c51c9ae feat(enforcement): wire up NudgeTypes — resolve 14 unwired configs (P1-5 / EW-7.2)
+7eabe6fa docs(handoff): add HANDOFF.md for fresh-session transfer; update AGENTS child DOX index
 64fb1a78 fix(file-mutation-queue): atomic write-temp-then-rename + race coverage
 97419dfe feat(timer): DR-C-4 runtime check — factory call counter warns on assumption violation (P1-3)
 84f27f4d feat(ai): port llm-call.ts to pi-ai v0.80 — compat import path (P0-8 Path A)
-463bb690 docs(roadmap): correct P0-8 — pi-ai v0.80 minimum-change path is /compat, not stream refactor
-2dfa827a feat(docs): doc discipline layer — status markers + drift gate (DR-NEW-DOC-DISCIPLINE)
 ```
 
-23 unpushed commits on `main` ahead of origin/main.
+24 unpushed commits on `main` ahead of origin/main. Latest commit
+(8c51c9ae) shipped the #1 priority item from this handoff (P1-5).
 
 ## State of the codebase
 
 - **Typecheck**: `npm run typecheck` → clean
-- **Tests**: `npm run test` → **77/77 pass** (including the new
-  `test-file-mutation-queue-race.mjs` at slot 37)
+- **Tests**: `npm run test` → **78/78 pass** (was 77 before
+  test-nudgetype-wiring.mjs added)
 - **Doc discipline**: `npm run check:docs` → ✅ 58 in-scope docs have
   status markers; `npm run check:doc-drift` → ✅ No current-state drift
 - **No-module-level-let**: `node test/runtime/lib/test-no-module-level-let.mjs`
@@ -34,6 +36,7 @@ The work is in a known-good state as of this writing.
 
 | Commit | Item | What it does |
 |---|---|---|
+| `8c51c9ae` | **P1-5 / EW-7.2** | Wire up NudgeTypes — 14 unwired configs resolved. Wired direct: `malformed`, `recordFailure`. Wired via L2 sub-signal table: `memory`, `scratchpad`, `context`. Deleted (dead/false-promise): `toolDiversity`, `lazy`, `claim`, `exploreBeforeAct`, `phaseValidation`, `toolError`, `judge`, `contextTool`, `dangerousCommand`. New `test-nudgetype-wiring.mjs` enforces the "every NudgeType has a caller" contract going forward. Also: `lastLazyNudgeTime` dead field removed; `lastJudgeTime` moved from ErrorTrackingState to SessionState where it belongs. |
 | `2dfa827a` | DR-NEW-DOC-DISCIPLINE | Status markers on every in-scope `.md`; `check-doc-drift.mjs` enforces pi-ai v0.80 surface names |
 | `463bb690` | P0-8 doc correction | ROADMAP rewritten to reflect `/compat` path is the minimum-change port |
 | `84f27f4d` | P0-8 Path A | pi-ai v0.80 port: 1-line import swap to `/compat` + peerDep bump + HOOKS-AND-WHISPERS-AUDIT fix + CHANGELOG |
@@ -42,11 +45,14 @@ The work is in a known-good state as of this writing.
 
 ## What's next (priority order)
 
-1. **P1-5 / EW-7.2** — 14 unwired `NudgeType` values in `DEFAULT_NUDGE_CONFIGS`.
-   Each requires a wire-vs-delete decision. See
-   `docs/ENFORCEMENT-WHISPER-CONTENT-AUDIT.md` §3 for the catalog.
+1. **P1-4 / EW-7.3** — apply `braid.suppressNudges` consistently across
+   11 missed sites (`handlers/register-message-end.ts:41, 57, 67, 107,
+   203`; `handlers/turn-end-handler.ts:189, 340, 362`;
+   `detection/malformed.ts:24` (now wrapped via the new
+   NudgeManager gate); `detection/verification.ts:40`;
+   `handlers/turn-analysis.ts:65, 91, 106`). HIGH/EASY per audit.
 2. **EW-7.11** — `braid.enforcement` settings block (config plumbing).
-   Valuable once EW-7.2 settles.
+   Valuable now that EW-7.2 settled; tunable cooldowns become meaningful.
 3. **P3-7 / EW-7.12** — prefix naming convention (policy decision; needs
    user input).
 4. **P2-10 / Q13** — large-file splits (`memory-agent-bridge`,
@@ -56,8 +62,9 @@ The work is in a known-good state as of this writing.
    `createModels()` instance. Deferred until upstream removes the
    `/compat` subpath from `@earendil-works/pi-ai`.
 
-The roadmap tally: **47 of 51 actionable items shipped**. The 4
-remaining items above all need user input or a policy decision.
+The roadmap tally: **48 of 51 actionable items shipped** (was 47 before
+P1-5). The 3 remaining items above all need user input or a policy
+decision.
 
 ## How to navigate this codebase
 
