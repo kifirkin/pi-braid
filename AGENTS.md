@@ -131,6 +131,7 @@ is in `docs/archive/TOOL-INVENTORY-AUDIT.md` (archived 2026-06-17 — see `docs/
 | `src/lib/` | Library subsystems (13 subdirs, all have AGENTS.md) | [src/lib/AGENTS.md](src/lib/AGENTS.md) |
 | `src/loader/` | Extension loader + subagent API | [src/loader/AGENTS.md](src/loader/AGENTS.md) |
 | `docs/` | Reference docs: `ROADMAP.md` (actionable), `CODE-QUALITY-REMEDIATION-PLAN.md` (shipped record), `ENFORCEMENT-WHISPER-CONTENT-AUDIT.md` (whisper catalog), `FRAGILE-HEURISTICS-INVENTORY.md`, `STATE-POLICY.md`, `ARXIV-CITATIONS-AUDIT.md`. 4 superseded audits in `archive/`. See `docs/README.md`. | (no AGENTS.md - durable reference) |
+| `HANDOFF.md` | Fresh-session transfer document. State-of-codebase summary, last 5 commits, verification commands, priority queue. Written for an agent with no prior context. | (no AGENTS.md - ephemeral transfer aid, refresh per session) |
 | `test/` | Test harness; no AGENTS.md needed (tests are leaf) | (no AGENTS.md) |
 | `scripts/` | Build/lint helpers; leaf | (no AGENTS.md) |
 | `evaluation/` | Benchmarks (JS only post-2026-06-10); leaf | (no AGENTS.md) |
