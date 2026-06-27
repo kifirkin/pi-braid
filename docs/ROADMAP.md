@@ -695,7 +695,7 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
 | P0-5 | [DR-H-3](#dr-h-3) skip drift detection when `extractOutputText` falls through | Easy | `topic-drift/index.ts:158-164` |
 | P0-6 | [EW-7.1](#41-ew-71-fix-enforcement_violation--tool_error-amplification--high--easy) fix `enforcement_violation → tool_error` amplification | Easy | `whisper.ts:51-58` |
 | P0-7 | [EW-7.6](#46-ew-76-fix-enforcementsignals-pruning-vs-mars-lookback--medium--easy) fix MARS lookback pruning collision | Easy | `signals.ts:49-57` |
-| P0-8 | [DR-NEW-v0.80](#dr-new-v080-pi-ai-v080-port) pi-ai v0.80 port — `completeSimple` relocated from top-level export to `Models` interface method | Medium | `lib/ai/llm-call.ts`, peer-deps, 1 test, 2 docs |
+| P0-8 | [DR-NEW-v0.80](#dr-new-v080-pi-ai-v080-port) pi-ai v0.80 port — top-level `completeSimple` import relocated to `@earendil-works/pi-ai/compat` | Easy | `lib/ai/llm-call.ts`, peer-deps, 1 test, CHANGELOG |
 
 ### 6.2 P1 — Contract / architectural (this session, ~5-8 dev days)
 
@@ -824,37 +824,54 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
     are not safe):
 
     - [ ] Bump peer-dep floor in `package.json`: `>=0.77.0` → `>=0.80.0`.
-    - [ ] Migrate `src/lib/ai/llm-call.ts`: top-level
-      `import { completeSimple } from "@earendil-works/pi-ai"` →
-      method on the `Models` interface (verified that
-      `completeSimple` exists in pi-ai 0.80.2 at
-      `dist/models.d.ts:82`; relocation, not removal).
-    - [ ] Update `__setCompleteSimpleForTest` injection hook in
-      `llm-call.ts` to take a method-shaped stub (model, context,
-      options) → AssistantMessage rather than a free function.
-    - [ ] Update behavioral tests in
-      `test/runtime/lib/test-call-llm-behavior.mjs` to match the new
-      injection shape.
-    - [ ] Reconcile `src/lib/ai/AGENTS.md` — already marked
-      `current` and references `completeSimple` (the post-0.77
-      `streamSimple` references were fixed in the v3.1 doc-discipline
-      pass).
+    - [ ] **Minimum-change path (recommended for v0.80 compat):** in
+      `src/lib/ai/llm-call.ts`, change the import path from
+      `"@earendil-works/pi-ai"` to `"@earendil-works/pi-ai/compat"`.
+      `completeSimple` is still exported from `/compat` in pi-ai
+      0.80.2 with the same signature (free function
+      `(model, context, options) => Promise<AssistantMessage>`);
+      only the import path moves. This emits a deprecation warning
+      but does not break. ~1 line changed.
+    - [ ] **Future cleanup (separate ticket):** the `compat` subpath
+      is marked deprecated. The intended path is to consume
+      `completeSimple` as a method on the `Models` interface
+      (`pi-ai/dist/models.d.ts:82`, accessed via `createModels()`).
+      That requires holding a `Models` instance somewhere braid-
+      accessible. Defer until `compat` is removed upstream.
+    - [ ] `__setCompleteSimpleForTest` injection hook signature
+      unchanged (still a free function; only the import path moved).
+    - [ ] Behavioral tests in
+      `test/runtime/lib/test-call-llm-behavior.mjs` should pass
+      without modification (the stub function shape is identical).
+    - [ ] Update CHANGELOG entry under `[Unreleased]` documenting
+      the import-path change. Note that any out-of-tree consumer of
+      `lib/ai/llm-call.ts` is unaffected (the public API of
+      `callLlm` does not change).
     - [ ] Reconcile `docs/HOOKS-AND-WHISPERS-AUDIT.md` — currently
-      marked `forward-looking`; once the port lands, change the table
-      row for `llm-call.ts` to `current` (it'll then describe shipped
-      behavior).
-    - [ ] Add CHANGELOG entry under `[Unreleased]` documenting the
-      migration (call out the import-shape change for any out-of-tree
-      consumers of `lib/ai/llm-call.ts`).
+      marked `forward-looking`. Once the port lands, change the
+      `llm-call.ts` row in the LLM call patterns table from
+      `streamSimple` (forward-looking) to `completeSimple` (current),
+      and flip the doc's status marker to `current`.
     - [ ] Run full test suite, verify 76/76+ still pass.
-    - [ ] Update pi-braid-contrib to point at the new pi-braid release
-      (or coordinate with its release).
+    - [ ] Coordinate with pi-braid-contrib's release (it already
+      depends on `^0.80`).
 
-    Verified scope (2026-06-23):
+    Verified scope (2026-06-27):
+    - `completeSimple` IS still exported from `@earendil-works/pi-ai/compat`
+      in pi-ai 0.80.2 (verified at
+      `pi-braid-contrib/node_modules/@earendil-works/pi-ai/dist/compat.d.ts`).
+      The top-level root export of `completeSimple` was removed; the
+      `compat` re-export remains. The Models-interface method
+      (`models.d.ts:82`) is the intended future path but not required
+      for v0.80 compat.
     - 13 source files import from `@earendil-works/pi-ai`. Only
       `lib/ai/llm-call.ts` consumes a runtime API (the rest are
       `type` imports of `Api`, `Model`, `Context`, or the
       `StringEnum` utility which is unchanged across 0.77 → 0.80).
+    - `check-doc-drift.mjs` TRACKED_NAMES still relevant for future
+      cleanup: `Models`, `createModels`, `streamSimple` are doc-only
+      (in the forward-looking audit). Once the future cleanup lands,
+      add them to src/.
     - 2 docs reference `streamSimple`; both flagged by
       `check-doc-drift.mjs` and reconciled (audit marked
       `forward-looking`, AGENTS.md corrected to `completeSimple`).
