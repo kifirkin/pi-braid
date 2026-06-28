@@ -10,6 +10,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`## Instance` block at top of system prompt (v3.5).** Replaces
+  scattered env info (root/cwd/os/datetime previously split between
+  `l1-environment.ts` and section 6 of the prompt-builder) with a
+  single concise block at the very top. Surfaces:
+  - Agent identity (`Braid vX.Y.Z` over `pi-core vA.B.C`)
+  - Environment (`Root`, `Cwd`, `OS`, `Now`)
+  - Tree-style extension listing (grouped by module, per-extension
+    tool counts, always-on tagged)
+  - Aggregate counts (tools, skills, memory)
+  The block is the agent's at-a-glance view of "what's loaded and
+  where it came from" — no `braid-reference` skill needed; the tree
+  IS the documentation. Mirror of what `pi-reference` does for
+  pi-core. New module: `src/extensions/core/prompt-builder/instance-composition.ts`.
+  Test: `test/runtime/lib/test-instance-composition.mjs` (9/9 subtests).
+- **Tool provenance tracking.** New module
+  `src/lib/state/tool-provenance.ts` records `toolName → extensionId`
+  as extensions load. The loader (`src/loader/loader.ts`) populates
+  the registry by diffing `pi.getAllTools()` before/after each
+  extension runs. Used by the Instance block to show per-extension
+  tool counts. Foundation for future "what extension registered
+  this tool" queries.
 - **`braid.enforcement.nudgeConfigs` settings block (EW-7.11).**
   Per-NudgeType cooldowns, escalation thresholds, and deduplication
   are now user-tunable without forking. Shape:

@@ -55,6 +55,8 @@ const ALLOWED_BOUNDARY_OVERRIDES = [
   "ext/core → ext/memory",
   // prompt-builder → session-health: prompt includes session health snapshot
   "ext/core → ext/enforcement",
+  // instance-composition → manifest: prompt-builder renders the extension tree from the manifest
+  "ext/core → ext/manifest.ts",
   // register-session-compact → timer: enforcement handler integrates scheduling on session compact
   "ext/enforcement → ext/scheduling",
   // heartbeat-scheduler → session-health: heartbeat monitors session health for drift detection

@@ -1,4 +1,5 @@
 import { deliverPastInsights } from "../../../lib/memory/past-insights.js";
+import { getCognitiveMemory } from "../../../lib/memory/index.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 import { getAgentDir, loadProjectContextFiles } from "@earendil-works/pi-coding-agent";
 
@@ -39,6 +40,8 @@ import {
   reconstructMemorySection,
   resetMemorySectionCache,
 } from "./memory-section.js";
+import { instanceSection } from "./instance-composition.js";
+import { getModuleStates } from "../../../loader/loader.js";
 
 /**
  * Prompt Builder - Reconstruction from Structured Data
@@ -261,7 +264,32 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     // Build the prompt as a flat list of sections. Every section is a
     // `PromptSection`; the top-level handler never touches raw strings
     // or arrays of strings.
+    // 0. Instance composition block (top-level, stable per session).
+    //    Replaces scattered env info (root/cwd/os/datetime) with a single
+    //    concise block at the very top. Tool provenance comes from the
+    //    loader (src/lib/state/tool-provenance.ts).
+    //    See instance-composition.ts for the full design.
+    const moduleStates = getModuleStates(ctx);
+    const enabledIds = Object.entries(moduleStates)
+      .filter(([, s]) => s.enabled)
+      .map(([id]) => id);
+    const skills = event.systemPromptOptions?.skills ?? [];
+    let memoryCount = 0;
+    try {
+      const memory = getCognitiveMemory();
+      try { await memory.init(); } catch { /* already init'd or non-fatal */ }
+      memoryCount = memory.getAll(3).length;
+    } catch { /* memory unavailable - non-fatal */ }
+    const inst = await instanceSection({
+      enabledIds,
+      skillCount: skills.length,
+      memoryCount,
+    });
+
     const sections: PromptSection[] = [
+      // 0. Instance composition (top of prompt, stable per session)
+      inst,
+
       // 1. Custom identity (THE key difference from native)
       simpleSection("identity", IDENTITY_INTRO),
 

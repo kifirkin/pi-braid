@@ -21,6 +21,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../lib/core/logger.js";
+import { recordToolRegistration } from "../lib/state/tool-provenance.js";
 
 import {
   MANIFEST,
@@ -244,6 +245,13 @@ export async function loadModules(pi: ExtensionAPI, envOverride?: string): Promi
 
   const ordered = topologicalSort(enabled);
 
+  // Track tool provenance: capture the set of tools registered before
+  // each extension runs, so any new tools appearing after the run are
+  // attributed to that extension. This is the "wrap pi.registerTool"
+  // pattern without actually wrapping - pi-core's getAllTools() returns
+  // the cumulative list, so diffing before/after is sufficient.
+  const toolsBefore = new Set(pi.getAllTools().map((t) => t.name));
+
   for (const extId of ordered) {
     const entry = getEntry(extId);
     if (!entry) {
@@ -254,6 +262,14 @@ export async function loadModules(pi: ExtensionAPI, envOverride?: string): Promi
       await entry.fn(pi);
       total++;
       loaded.push({ id: extId, desc: entry.desc });
+      // Record provenance: any tool not seen before is from this extension.
+      const toolsAfter = pi.getAllTools();
+      for (const tool of toolsAfter) {
+        if (!toolsBefore.has(tool.name)) {
+          recordToolRegistration(tool.name, extId);
+          toolsBefore.add(tool.name);
+        }
+      }
     } catch (err) {
       skipped.push({ id: extId, reason: (err as Error).message });
       log.error(`Failed to load ${extId}: ${(err as Error).message}`);
