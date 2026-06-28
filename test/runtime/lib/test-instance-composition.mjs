@@ -138,6 +138,30 @@ test("instance-composition shows tool counts per extension", () => {
   );
 });
 
+test("instance-composition labels unmatched tools as 'external' (not pi-core)", () => {
+  // Tools not attributed to any braid manifest entry (contrib + pi-core
+  // built-ins) are surfaced as a separate 'external' group. Earlier the
+  // label was 'pi-core: N built-in tool(s)' which was misleading once
+  // pi-braid-contrib started showing up there.
+  const content = readFileSync(FILES.instanceComp, "utf-8");
+  assert.ok(
+    content.includes("externalTools"),
+    "Instance block must use externalTools field name (was coreTools)",
+  );
+  assert.ok(
+    !content.includes("coreTools"),
+    "Instance block must not retain the old coreTools name",
+  );
+  assert.ok(
+    content.includes("external:"),
+    "Instance block must render the 'external:' group label",
+  );
+  assert.ok(
+    content.includes("pi-core + contrib"),
+    "Instance block must annotate external as 'pi-core + contrib'",
+  );
+});
+
 test("loader records tool provenance after each extension loads", () => {
   const content = readFileSync(FILES.loader, "utf-8");
   assert.ok(

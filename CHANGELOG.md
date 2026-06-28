@@ -31,6 +31,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   extension runs. Used by the Instance block to show per-extension
   tool counts. Foundation for future "what extension registered
   this tool" queries.
+- **`braid.contrib.<name>` settings.json filter.** The contrib
+  package's `index.ts` now reads `braid.contrib.<name>` from
+  `~/.pi/agent/settings.json` to decide which contrib extensions
+  to load. Default: enabled. To disable, set to `false`. To enable
+  an extension that's commented out in the contrib loader, set to
+  `true`. Example:
+  ```json
+  {
+    "braid": {
+      "contrib": {
+        "browser": false,
+        "vision": false
+      }
+    }
+  }
+  ```
+  Disabled extensions are simply not loaded — their tools are not
+  registered, so they don't appear in the agent's tool list or the
+  Instance block. Unknown names are ignored with a stderr warning.
+  The contrib package refactor lives in
+  `pi-braid-contrib` (sibling project, not in this repo).
 - **`braid.enforcement.nudgeConfigs` settings block (EW-7.11).**
   Per-NudgeType cooldowns, escalation thresholds, and deduplication
   are now user-tunable without forking. Shape:

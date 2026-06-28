@@ -64,8 +64,8 @@ interface InstanceData {
       tools: string[];
     }>;
   }>;
-  /** Tools that pi-core registered (not attributed to any extension). */
-  coreTools: string[];
+  /** Tools registered outside the braid manifest (contrib + pi-core built-ins). */
+  externalTools: string[];
   /** Total skill count, if available. */
   skillCount: number;
   /** Total memory entry count, if available. */
@@ -155,7 +155,7 @@ function buildModulesData(
   enabledIds: Set<string>,
 ): {
   modules: InstanceData["modules"];
-  coreTools: string[];
+  externalTools: string[];
 } {
   const provenance = getToolProvenance();
   const toolCounts = new Map<string, number>();
@@ -164,9 +164,9 @@ function buildModulesData(
   }
   // Tools not attributed to any extension (pi-core built-ins)
   const allExtensions = new Set(MANIFEST.map((e) => e.id));
-  const coreTools: string[] = [];
+  const externalTools: string[] = [];
   for (const [toolName, extId] of provenance) {
-    if (!allExtensions.has(extId)) coreTools.push(toolName);
+    if (!allExtensions.has(extId)) externalTools.push(toolName);
   }
 
   const moduleNames = getModuleNames();
@@ -200,7 +200,7 @@ function buildModulesData(
     return a.name.localeCompare(b.name);
   });
 
-  return { modules, coreTools };
+  return { modules, externalTools };
 }
 
 // ── Main builder ────────────────────────────────────────────────────────────
@@ -231,7 +231,7 @@ export async function instanceSection(ctx: InstanceContext): Promise<PromptSecti
   };
 
   const enabledIds = new Set(ctx.enabledIds);
-  const { modules, coreTools } = buildModulesData(enabledIds);
+  const { modules, externalTools } = buildModulesData(enabledIds);
 
   const data: InstanceData = {
     braidVersion: braid.version,
@@ -240,7 +240,7 @@ export async function instanceSection(ctx: InstanceContext): Promise<PromptSecti
     machine,
     now: new Date().toISOString(),
     modules,
-    coreTools,
+    externalTools,
     skillCount: ctx.skillCount,
     memoryCount: ctx.memoryCount,
   };
@@ -271,7 +271,7 @@ function renderInstance(d: InstanceData): string {
   const totalTools = d.modules.reduce(
     (sum, m) => sum + m.extensions.reduce((s, e) => s + e.tools.length, 0),
     0,
-  ) + d.coreTools.length;
+  ) + d.externalTools.length;
 
   lines.push("");
   lines.push(
@@ -292,8 +292,10 @@ function renderInstance(d: InstanceData): string {
     }
   }
 
-  if (d.coreTools.length > 0) {
-    lines.push(`  pi-core: ${d.coreTools.length} built-in tool${d.coreTools.length === 1 ? "" : "s"}`);
+  if (d.externalTools.length > 0) {
+    lines.push(
+      `  external: ${d.externalTools.length} tool${d.externalTools.length === 1 ? "" : "s"} (pi-core + contrib)`,
+    );
   }
 
   // Aggregate counts
