@@ -113,15 +113,22 @@ test("instance-composition groups extensions by module", () => {
     content.includes("getModuleNames"),
     "instance-composition must use getModuleNames for module iteration",
   );
-  // Tree-shape: per-extension template literal in the renderer
+  // Module-level paths are rendered under the extensions directory
+  // (compact: one line per module listing all extension ids inline).
   assert.ok(
-    content.includes("${ext.id}"),
-    "Instance block must render per-extension tree entries",
+    content.includes("mod.name"),
+    "Instance block must reference module name when rendering paths",
   );
-  // Tree indentation: 4-space indent for extension leaves
+  // Path-segment "src/extensions/" must be present (the actual ${mod.name}
+  // interpolation isn't a literal in the source, so we check the prefix).
+  const hasExtPathPrefix = /src\/extensions\/\$\{/.test(content);
   assert.ok(
-    content.includes("    - ${ext.id}"),
-    "Instance block must use 4-space indented tree leaves",
+    hasExtPathPrefix,
+    "Instance block must use template literal with src/extensions/ prefix",
+  );
+  assert.ok(
+    content.includes(".join(\", \")"),
+    "Instance block must list extension ids inline per module",
   );
 });
 
@@ -131,10 +138,25 @@ test("instance-composition shows tool counts per extension", () => {
     content.includes("getToolProvenance"),
     "instance-composition must use tool provenance",
   );
-  // Tool count badge: [N tool(s)] or [N tools]
+  // Tool count is in the header line `Extensions (X/Y loaded, N tools)`.
+  // We replaced per-extension badges with this single aggregate.
   assert.ok(
-    /\[N tool|\$\{count\} tool/.test(content) || /tool\$\{count === 1/.test(content),
-    "Instance block must show per-extension tool counts",
+    /Extensions \(\$\{totalEnabled\}\/\$\{totalExtensions\} loaded, \$\{totalTools\} tools\)/.test(content),
+    "Instance block must show aggregate tool count in header",
+  );
+});
+
+test("instance-composition ends with a discovery note for source inspection", () => {
+  // The discovery note is what makes the agent naturally inspect
+  // extension source rather than asking the user.
+  const content = readFileSync(FILES.instanceComp, "utf-8");
+  assert.ok(
+    content.includes("Discover:"),
+    "Instance block must end with a Discover: hint pointing at source paths",
+  );
+  assert.ok(
+    content.includes("read src/extensions"),
+    "Discover hint must reference the read tool against src/extensions paths",
   );
 });
 

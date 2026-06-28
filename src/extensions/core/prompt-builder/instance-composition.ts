@@ -275,21 +275,23 @@ function renderInstance(d: InstanceData): string {
 
   lines.push("");
   lines.push(
-    `Extensions (${totalEnabled}/${totalExtensions} enabled, ${totalTools} tools):`,
+    `Extensions (${totalEnabled}/${totalExtensions} loaded, ${totalTools} tools):`,
   );
 
+  // Module-level paths: `src/extensions/<module>/`. Per-extension paths
+  // are derivable as `src/extensions/<module>/<extId>/index.ts` but the
+  // module line keeps the prompt compact while still letting the agent
+  // grep/ls the module dir for specifics.
   for (const mod of d.modules) {
     const enabledExts = mod.extensions.filter((e) => e.enabled);
     if (enabledExts.length === 0) continue;
-    const modLabel = mod.name;
     const isAlwaysOn = enabledExts.every((e) => e.alwaysOn);
     const tag = isAlwaysOn ? "always-on" : "";
-    lines.push(`  ${modLabel}${tag ? ` (${tag})` : ""}:`);
-    for (const ext of enabledExts) {
-      const count = ext.tools.length;
-      const tools = count > 0 ? ` [${count} tool${count === 1 ? "" : "s"}]` : "";
-      lines.push(`    - ${ext.id}${tools}`);
-    }
+    const extIds = enabledExts.map((e) => e.id).join(", ");
+    const path = `src/extensions/${mod.name}/`;
+    lines.push(
+      `  ${path}${tag ? ` (${tag})` : ""}: ${extIds}`,
+    );
   }
 
   if (d.externalTools.length > 0) {
@@ -306,6 +308,14 @@ function renderInstance(d: InstanceData): string {
     lines.push("");
     lines.push(`Resources: ${counts.join(", ")}`);
   }
+
+  // Discovery hint: encourage the agent to read source on demand rather
+  // than asking the user. This is the "naturally discover as much as
+  // possible" affordance - one line at the end is enough.
+  lines.push("");
+  lines.push(
+    "→ Discover: `read` any path above (e.g. `read src/extensions/<module>/<ext>/index.ts`) to inspect an extension's source.",
+  );
 
   return lines.join("\n");
 }
