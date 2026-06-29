@@ -95,7 +95,7 @@ export async function projectDocsSection(
   }
 
   const lines: string[] = [
-    "Project documentation is your first knowledge in context. Use `read` on the files below before starting a task — they may include stale references or anticipated patterns, so cross-check before acting on time-sensitive claims.",
+    "Read project documentation files below carefully and cross-check before acting on time-sensitive claims.",
     "<available_project_docs>",
   ];
 
