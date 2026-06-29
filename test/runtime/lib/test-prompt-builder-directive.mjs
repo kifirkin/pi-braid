@@ -288,6 +288,52 @@ test("CONCISE_RESPONSES uses generalist vocabulary", () => {
   }
 });
 
+// ── DEFINITION_OF_DONE invariant (SPQ-1) ─────────────────────────────────
+
+test("DEFINITION_OF_DONE directive exists in identity.ts", () => {
+  assert.match(
+    identitySrc,
+    /export const DEFINITION_OF_DONE\s*=/,
+    "DEFINITION_OF_DONE must be exported from identity.ts",
+  );
+});
+
+test("DEFINITION_OF_DONE directive is rendered into the system prompt", () => {
+  assert.match(
+    promptBuilderSrc,
+    /simpleSection\(\s*["']invariant-definition-of-done["']\s*,\s*DEFINITION_OF_DONE\s*\)/,
+    "index.ts must render DEFINITION_OF_DONE via simpleSection(\"invariant-definition-of-done\", ...)",
+  );
+});
+
+test("DEFINITION_OF_DONE mentions the verification triple components", () => {
+  // Use (?:[^`\\]|\\.)* to handle escaped backticks inside the template literal
+  const m = identitySrc.match(/export const DEFINITION_OF_DONE\s*=\s*`((?:[^`\\]|\\.)*)`/);
+  assert.ok(m, "DEFINITION_OF_DONE must have a template literal value");
+  const literal = m[1];
+  // Must mention all three parts of the triple
+  assert.ok(/path/i.test(literal), "DEFINITION_OF_DONE must mention file path(s)");
+  assert.ok(/git log|last-modified|confirm.*change/i.test(literal),
+    "DEFINITION_OF_DONE must mention a command that confirms the change was applied");
+  assert.ok(/verif|test|typecheck|correctness/i.test(literal),
+    "DEFINITION_OF_DONE must mention a verification command");
+  // Must mention finalize as the gate
+  assert.ok(/finalize/i.test(literal), "DEFINITION_OF_DONE must reference finalize as the gate");
+});
+
+test("DEFINITION_OF_DONE has no meta-LLM references", () => {
+  const m = identitySrc.match(/export const DEFINITION_OF_DONE\s*=\s*`((?:[^`\\]|\\.)*)`/);
+  assert.ok(m, "DEFINITION_OF_DONE must have a template literal value");
+  const literal = m[1];
+  const metaLLMTerms = ["LLM", "language model", "thinking model", "training"];
+  for (const term of metaLLMTerms) {
+    assert.ok(
+      !literal.includes(term),
+      `DEFINITION_OF_DONE must not reference "${term}" (meta-LLM noise)`,
+    );
+  }
+});
+
 // ── Project docs pointer model (orthogonal, preserved from prior test) ──
 
 test("project docs use pointer-only model (no verbatim content injection)", () => {

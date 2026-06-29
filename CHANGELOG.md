@@ -10,6 +10,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Definition of Done invariant (SPQ-1)** — new system prompt
+  directive (`DEFINITION_OF_DONE` in `identity.ts`) requiring every
+  scratchpad `done` item to carry a verification triple before
+  `finalize`: the file path(s) modified, a command that confirms the
+  change was applied (e.g., `git log --oneline -1 -- src/file.ts`),
+  and a command that verifies correctness (e.g., `npm test`). The
+  agent must run those commands before finalizing. Identified as the
+  "single highest-leverage prompt change" in the 2026-06-29 12-point
+  system prompt review — prevents drift (claiming work is done
+  without evidence). Complements the runtime pre-flight check in
+  `finalize.ts` (which blocks on failed `verify()` calls) by extending
+  the discipline to all done items.
+
 - **Dynamic behavior modes restored** (TRUTH-SEEKING + 3). The
   3b4f108a commit deleted the contrast-mode system along with the
   static value statements. The dynamic modes are now back in a lean

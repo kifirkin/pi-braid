@@ -2401,7 +2401,7 @@ Each is actionable; status markers track progress.
 
 | ID | Proposal | Status | Notes |
 |---|---|---|---|
-| SPQ-1 | Definition of Done block: before `finalize`, every scratchpad `done` item gets `path` + `last-modified-cmd` + `verification-cmd` triple | not started | Called "single highest-leverage prompt change" |
+| SPQ-1 | Definition of Done block: before `finalize`, every scratchpad `done` item gets `path` + `last-modified-cmd` + `verification-cmd` triple | ✅ shipped | Added `DEFINITION_OF_DONE` invariant to identity.ts, wired as `invariant-definition-of-done` section. Called "single highest-leverage prompt change" |
 | SPQ-2 | Anti-convergence rule: "when 3 consecutive tool calls confirm your theory, re-open the question" | not started | Promote from buried insight to named rule |
 | SPQ-3 | Bind `verify` to milestones: required after each sub-goal marked done | not started | Currently optional |
 | SPQ-4 | Reconcile "skills are first knowledge" with "treat references as claims" | not started | Either skills carry freshness markers or ordering changes |

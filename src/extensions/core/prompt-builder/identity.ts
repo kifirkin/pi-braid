@@ -74,6 +74,16 @@ export const CONCISE_RESPONSES = `Provide concise responses alongside tool calls
 // with enough self-contained detail solves this.
 export const COMPACTION_SURVIVAL = `Keep your scratchpad (goal, plan, decisions, key learnings) and task list detailed enough that a future you could pick up your work cold. That future you is you, after the conversation compresses. Include file paths and reasoning so each entry is self-contained.`;
 
+// ── Definition of Done: verification triple before finalize (SPQ-1).
+// Origin: 2026-06-29 12-point system prompt review. Identified as the
+// single highest-leverage prompt change: prevents drift (claiming work is
+// done without evidence). The agent must attach a verification triple to
+// every scratchpad done item and run the checks before finalizing.
+// Complements the runtime pre-flight check in finalize.ts (which blocks on
+// failed verify() calls) by extending the discipline to all done items,
+// not just the last verify().
+export const DEFINITION_OF_DONE = `Before calling \`finalize\`, every scratchpad \`done\` item must carry a verification triple: the file path(s) you modified, a command that confirms the change was applied (e.g., \`git log --oneline -1 -- src/file.ts\`), and a command that verifies correctness (e.g., \`npm test\`, \`npm run typecheck\`). Run those commands before finalizing — if any fail, the item is not done.`;
+
 // ── Living documentation: agent-maintained doc hierarchy (inspired by DOX - agent0ai/dox).
 export const LIVING_DOCS = `Project guidelines are living contracts you maintain. Keep them synchronized with the project structure.`;
 

@@ -15,6 +15,7 @@ import {
   INTERACTION_STYLE,
   CONCISE_RESPONSES,
   COMPACTION_SURVIVAL,
+  DEFINITION_OF_DONE,
   LIVING_DOCS,
   MEMORY_AWARENESS,
 } from "./identity.js";
@@ -295,6 +296,12 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       // 1b. Compaction survival invariant - scratchpad + tasks must be self-contained
       //     so the agent can recover context after conversation compression
       simpleSection("invariant-compaction", COMPACTION_SURVIVAL),
+
+      // 1b-doD. Definition of Done invariant - every done item carries a
+      //     verification triple (path + last-modified-cmd + verification-cmd).
+      //     Prevents drift: the agent can't claim done without evidence.
+      //     SPQ-1 (2026-06-29 12-point review: "single highest-leverage prompt change").
+      simpleSection("invariant-definition-of-done", DEFINITION_OF_DONE),
 
       // 1c. Living documentation invariant - agent maintains AGENTS.md hierarchy
       //     Walk tree before edit, update docs after change (from DOX - agent0ai/dox)
