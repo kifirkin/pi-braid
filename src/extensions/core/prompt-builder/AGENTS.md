@@ -23,7 +23,8 @@ Every file in this folder either:
 | `identity.ts` | 4 framing constants: `IDENTITY_INTRO` (generalist identity), `INTERACTION_STYLE`, `COMPACTION_SURVIVAL`, `LIVING_DOCS`. |
 | `behavioral-guardrails.ts` | 11 value statements: 5 pre-existing (`SYCOPHANCY_RESISTANCE`, `STAKES_AWARENESS`, `EPISTEMIC_STABILITY`, `SURGICAL_PRECISION`, `BUDGET_AWARENESS`) + 5 new as of 2026-06-21 (`BROAD_PERSPECTIVE`, `STRATEGY_BEFORE_ACTION`, `REASONING_INTEGRITY`, `KNOWLEDGE_UNDER_PRESSURE`, `COMMUNICATION_QUALITY`) + 1 new as of 2026-06-22 (`EVIDENCE_GROUNDING`). |
 | `contrast-phrase-library.ts` | Maps enforcement `contrastMode` values to phrase arrays. Returns a `PromptSection`. |
-| `session-section.ts` | **v3.6** Session (volatile): PID, session elapsed, last-event, turns, tool-avg. Reads from `agent-environment/`. |
+| `instance-composition.ts` | **v3.7** Instance (consolidated): identity + env (root/cwd/os/hostname/now/pid) + session (elapsed/last-event/turns/tool-avg) + top-level pi extension packages with load-source tags. The pi-core version is discovered from the actually-running `pi` binary (not braid's local node_modules). |
+| `top-level-extensions.ts` | **v3.7** Discovery logic for top-level pi extension PACKAGES (anything with `"pi"` in `package.json`). Scans cwd, cwd-siblings, `~/.pi/agent/extensions/`, and `node_modules/<scope>/`. Each package classified with a load-source tag: `cwd` / `sibling-repo` / `user-global` / `npm`. |
 | `context-section.ts` | **v3.6** Context (conditional): context %, session health, memory count, steps-since-checkpoint. Returns `""` when nothing to surface. |
 | `skills-section.ts` | Skills XML formatting + per-skill metadata + fingerprint cache. Returns a `PromptSection`. |
 | `project-docs-section.ts` | Project docs (AGENTS.md / CLAUDE.md) pointer-only rendering as `<available_project_docs>` block. Mirrors the skills model. Includes fingerprint cache and `RESOURCES_DISCOVER` invalidation. |

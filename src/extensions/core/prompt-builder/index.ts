@@ -5,7 +5,6 @@ import { getAgentDir, loadProjectContextFiles } from "@earendil-works/pi-coding-
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { RESOURCES_DISCOVER } from "../../../lib/core/event-names.js";
-import { sessionSection } from "./session-section.js";
 import { gatherContextState, contextSection } from "./context-section.js";
 import { contrastSection } from "./contrast-phrase-library.js";
 import { deliverActiveSpecs } from "../../../lib/cognitive/openspec.js";
@@ -42,7 +41,6 @@ import {
   resetMemorySectionCache,
 } from "./memory-section.js";
 import { instanceSection } from "./instance-composition.js";
-import { getModuleStates } from "../../../loader/loader.js";
 
 /**
  * Prompt Builder - Reconstruction from Structured Data
@@ -245,9 +243,8 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     const toolNames = tools.map((t) => t.name);
     const hasRead = toolNames.includes("read");
 
-    // v3.6: L1 split into Session (volatile) + Context (conditional).
-    // The Instance block (v3.5) already owns the stable env info.
-    const session = await sessionSection(pi, ctx);
+    // v3.7: Session merged into Instance. Context (conditional)
+    // remains as the only other runtime block in the system prompt.
     const contextData = await gatherContextState(pi, ctx);
     const context = contextSection(contextData);
 
@@ -269,15 +266,8 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     // Build the prompt as a flat list of sections. Every section is a
     // `PromptSection`; the top-level handler never touches raw strings
     // or arrays of strings.
-    // 0. Instance composition block (top-level, stable per session).
-    //    Replaces scattered env info (root/cwd/os/datetime) with a single
-    //    concise block at the very top. Tool provenance comes from the
-    //    loader (src/lib/state/tool-provenance.ts).
-    //    See instance-composition.ts for the full design.
-    const moduleStates = getModuleStates(ctx);
-    const enabledIds = Object.entries(moduleStates)
-      .filter(([, s]) => s.enabled)
-      .map(([id]) => id);
+    // 0. Instance composition block (top-level, all env + session info
+    //    merged in v3.7). See instance-composition.ts for the design.
     const skills = event.systemPromptOptions?.skills ?? [];
     let memoryCount = 0;
     try {
@@ -285,8 +275,7 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       try { await memory.init(); } catch { /* already init'd or non-fatal */ }
       memoryCount = memory.getAll(3).length;
     } catch { /* memory unavailable - non-fatal */ }
-    const inst = await instanceSection({
-      enabledIds,
+    const inst = await instanceSection(pi, ctx, {
       skillCount: skills.length,
       memoryCount,
     });
@@ -367,18 +356,10 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       sections.push(simpleSection("memory", memorySection));
     }
 
-    // 5a. Session (volatile: PID, session time, turns, last event, tool avg)
-    sections.push(session);
-    // 5b. Context (conditional: context %, session health, memory, checkpoint)
+    // 5. Context (conditional: context %, session health, memory, checkpoint).
+    //    The Session block was merged into Instance in v3.7; section 6
+    //    (date + cwd) was dropped because Instance now owns those fields.
     sections.push(context);
-
-    // 6. Date and cwd
-    sections.push(
-      simpleSection(
-        "environment",
-        `Current time: ${new Date().toISOString()}\nCurrent working directory: ${cwd.replace(/\\/g, "/")}`,
-      ),
-    );
 
     // 7. Active contrast mode (truthfulness guardrails)
     sections.push(contrastSection(ps.activeContrastMode));
@@ -397,4 +378,4 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
   });
 }
 
-export { sessionSection, gatherContextState, contextSection };
+export { gatherContextState, contextSection };

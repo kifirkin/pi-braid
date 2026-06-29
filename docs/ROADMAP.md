@@ -2209,12 +2209,66 @@ the heartbeat-scheduler monkey-patch to be safe.
   (check:docs + check:doc-drift + check:deps + tsc + 81/81
   tests).
 
-## Final autonomous-pass tally (v1.0 - v3.6)
+- **v3.7** (2026-06-29): **Instance block rewrite — fix pi-core
+  version discovery + replace internal module tree with top-level
+  extension discovery + merge Session into Instance.** v3.6's
+  three-block architecture (`## Instance` stable, `## Session`
+  volatile, `## Context` conditional) shipped two issues observed
+  in the next session-start:
+  1. The `## Instance` block surfaced braid's internal module tree
+     (`src/extensions/<module>/...`), which leaked project-specific
+     implementation details into every system prompt. The user
+     wanted a pi-core TUI-style summary of top-level pi extension
+     PACKAGES (pi-braid, pi-braid-contrib, ...) with load-source
+     classification — not the internal structure of one package.
+  2. The pi-core version was reported incorrectly (`v0.77.0` when
+     the actually-running binary was `v0.80.2`). Root cause: the
+     discovery walked up from braid's `import.meta.url` and found
+     braid's local `node_modules` before the global installation.
 
-**27 commits. 61 files changed. ~1400 insertions, ~1105 deletions
+  v3.7 resolves both:
+  - **`top-level-extensions.ts`** (new module, ~170 LOC): scans
+    cwd, cwd-siblings, `~/.pi/agent/extensions/`, and
+    `node_modules/<scope>/` for packages with `"pi"` in
+    `package.json`. Each classified with a load-source tag:
+    `cwd` / `sibling-repo` / `user-global` / `npm`. Discovers
+    `pi-braid`, `pi-braid-contrib`, `pi-braid-skills`,
+    `pi-poorman-providers`, etc. depending on what's installed.
+  - **`instance-composition.ts`** (rewrite, ~360 LOC): renders
+    the consolidated Instance block with all env info (Root, Cwd,
+    OS, hostname, Now, PID), Session data (elapsed, last-event,
+    turns, tool-avg) MERGED in from the deleted Session block, and
+    the new top-level extension list. Pi-core version discovery
+    rewritten to use `which pi` + `realpathSync` + dual-strategy
+    walk (node_modules lookup for mise/npm-global layout, direct
+    package.json lookup for source/monorepo layout).
+  - **`session-section.ts`** (deleted, was ~80 LOC): the v3.6
+    Session block was merged into Instance. Data layer
+    (`agent-environment/gatherL1Environment()`) is unchanged; only
+    the renderer moved.
+  - **Section 6 of the prompt** (`environment` simpleSection with
+    Current time + cwd) was removed — Instance now owns those fields.
+
+  Renamed `test/runtime/lib/test-instance-composition.mjs` →
+  `test-instance-block.mjs`. The v3.5 module-tree contract was
+  obsolete; the new test pins top-level extension discovery, the
+  `which pi` discovery logic, the merged Instance block contents,
+  and the regression guards (session-section.ts and
+  l1-environment.ts remain deleted).
+
+  No numbered roadmap item; this is a bug-fix + architectural
+  cleanup driven by user observation of the previous session-start
+  state. The 49-of-51 actionable-items tally is unchanged.
+  **Test verification:** `npm run ci:check` → all green
+  (check:docs + check:doc-drift + check:deps + tsc + 81/81
+  tests).
+
+## Final autonomous-pass tally (v1.0 - v3.7)
+
+**28 commits. 63 files changed. ~1700 insertions, ~1180 deletions
 (most of the deletions are ROADMAP.md itself, which was
-folded in from 5 prior audit documents; v3.5/v3.6 added
-prompt-builder modules and 2 new tests, plus ROADMAP entry
+folded in from 5 prior audit documents; v3.5/v3.6/v3.7 added
+prompt-builder modules and 3 new tests, plus ROADMAP entry
 churn). 1 regression shipped in v1.8 and fixed in v1.8.1.
 
 **49 of 51 actionable items shipped** (48 as of v3.2;
@@ -2225,7 +2279,7 @@ do not add numbered items). All test
 suites pass (81/81):
 
 - `tsc --noEmit` — clean
-- `check-deps.mjs` — 0 violations across 228 src + 83 test files (v3.4 carve-out: 12 ALLOWED_BOUNDARY_OVERRIDES entries; v3.5 added 2 src + 1 test; v3.6 added 2 src - 1 deleted + 1 test)
+- `check-deps.mjs` — 0 violations across 229 src + 83 test files (v3.4 carve-out: 12 ALLOWED_BOUNDARY_OVERRIDES entries; v3.5 added 2 src + 1 test; v3.6 added 2 src - 1 deleted + 1 test; v3.7 added 2 src - 1 deleted + 1 test)
 - `test-no-module-level-let.mjs` — 225 files, 0 violations (28 documented exceptions; v3.2 added `_timerExtensionFactoryState`)
 - `test-no-console-outside-logger.mjs` — 213 files, 0 violations
 - `test-no-direct-pi-sendmessage.mjs` — 213 files, 0 violations

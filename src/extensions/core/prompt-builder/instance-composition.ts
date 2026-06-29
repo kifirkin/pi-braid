@@ -1,131 +1,166 @@
 /**
  * Instance Composition section for the prompt-builder.
  *
- * Renders a concise, tree-style "## Instance" block at the top of the
- * system prompt. Surfaces:
- *   - Agent identity + version (Braid over pi-core)
- *   - Runtime environment (root, cwd, os, datetime)
- *   - Extension tree (grouped by module, with per-extension tool counts)
- *   - Aggregate counts (total tools, skills, memory entries)
- *   - Skipped extensions (if any)
+ * Renders a concise, consolidated "## Instance" block at the very
+ * top of the system prompt. Surfaces:
+ *   - Agent identity + the actually-running pi-core version
+ *   - Runtime environment (root, cwd, os, hostname, now, pid)
+ *   - Session state (session elapsed, since-last-event, turn count,
+ *     tool-call average) — merged from the prior Session block
+ *   - Top-level pi extension PACKAGES (not internal modules) with
+ *     load-source classification (cwd / sibling / user-global / npm)
+ *   - Aggregate counts (total skills, memory entries)
+ *   - A discovery hint pointing at the read tool
  *
- * This block is the agent's at-a-glance view of "what's loaded and where
- * it came from." Replaces the scattered env info previously split
- * between agent-environment/index.ts and l1-environment.ts.
+ * This is the agent's at-a-glance view of "what is loaded and
+ * where it came from." The three-block system prompt architecture
+ * (v3.6) collapsed into two in v3.7:
+ *   - Instance (this block): all stable + volatile env / session
+ *     state, plus top-level pi extensions.
+ *   - Context: conditional context info (memory count, session
+ *     health, context %, checkpoint awareness) — only shown when
+ *     there is something to surface.
  *
- * Stable per session-start: does NOT include volatile session stats
- * (turns, elapsed, tool avg) — those live in the Session block.
- * Conditional context info (%, memory count, health) lives in Context.
+ * The split was driven by two concerns:
+ *   1. Braid internal modules (core / cognitive / memory / ...) are
+ *      project-specific info that leaks implementation details into
+ *      every system prompt. They were replaced by top-level pi
+ *      extension package discovery (pi-braid, pi-braid-contrib,
+ *      pi-braid-skills, ...) — the "what's loaded" question at the
+ *      right level of abstraction.
+ *   2. The prior "## Session" block (PID, session time, turns,
+ *      tool avg) was conceptually part of the same top-of-prompt
+ *      env summary; keeping it in a separate section diluted both
+ *      blocks. Merged into Instance so all env info lives together.
  *
- * Tool provenance comes from src/lib/state/tool-provenance.ts, which
- * the loader populates at extension-load time.
- *
- * Discovery: agent reads this on every turn; for full extension
- * details (e.g., "what does enforcement do?"), it consults the
- * source code directly via the read tool. No braid-reference skill
- * is needed — the Instance tree IS the documentation.
+ * Pi-core version discovery was rewritten in v3.7 to use the
+ * actually-running pi binary (resolved via `which pi`) rather than
+ * walking up from braid's `import.meta.url`. The old walk could
+ * find braid's local node_modules (often an outdated version)
+ * before the global installation that actually runs.
  */
 
-import { readFileSync, existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
+import { readFileSync, existsSync, realpathSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import * as os from "node:os";
 import type { PromptSection } from "./section.js";
-import { getToolProvenance } from "../../../lib/state/tool-provenance.js";
 import {
-  MANIFEST,
-  getModuleGroup,
-  getModuleNames,
-} from "../../../extensions/manifest.js";
+  discoverTopLevelExtensions,
+  type TopLevelExtension,
+} from "./top-level-extensions.js";
+import { gatherL1Environment, type L1EnvironmentData } from "../agent-environment/index.js";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+
+// ── Pi-core version discovery (use the actually-running binary) ─────────────
 
 interface PiVersionInfo {
   version: string;
   root: string;
+  /** Path to the resolved `pi` binary. */
+  binary: string;
 }
 
-interface InstanceData {
-  braidVersion: string;
-  braidRoot: string;
-  piVersionInfo: PiVersionInfo;
-  /** System info: platform, hostname, os type. */
-  machine: { platform: string; type: string; hostname: string };
-  /** Current ISO datetime, captured at section render. */
-  now: string;
-  /** Extensions grouped by module, with tool counts. */
-  modules: Array<{
-    name: string;
-    extensions: Array<{
-      id: string;
-      desc: string;
-      alwaysOn: boolean;
-      disabledByDefault: boolean;
-      enabled: boolean;
-      tools: string[];
-    }>;
-  }>;
-  /** Tools registered outside the braid manifest (contrib + pi-core built-ins). */
-  externalTools: string[];
-  /** Total skill count, if available. */
-  skillCount: number;
-  /** Total memory entry count, if available. */
-  memoryCount: number;
-}
-
-// ── Pi-core version discovery (mirrors pi-reference skill) ──────────────────
-
-const PI_PACKAGE_NAMES = ["@earendil-works/pi-coding-agent"];
-
-function discoverPiRootPath(): string {
+function discoverRunningPi(): PiVersionInfo {
+  // 1. `which pi` returns the actually-running binary. This is
+  //    ground truth — it is what the user invoked, regardless of
+  //    what braid's local node_modules has.
+  let binary = "";
   try {
-    const piPath = execSync("which pi 2>/dev/null || echo ''", {
+    binary = execSync("which pi 2>/dev/null || true", {
       encoding: "utf8",
       timeout: 5000,
     }).trim();
-    if (piPath && existsSync(piPath)) {
-      let dir = dirname(piPath);
-      for (let i = 0; i < 5; i++) {
-        const pkgPath = join(dir, "package.json");
-        if (existsSync(pkgPath)) {
-          const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
-          if (PI_PACKAGE_NAMES.includes(pkg.name)) return dir;
-        }
-        dir = dirname(dir);
-      }
-    }
   } catch {
-    // fall through to next strategy
+    binary = "";
   }
-  try {
-    let dir = dirname(fileURLToPath(import.meta.url));
-    for (let i = 0; i < 10; i++) {
-      for (const pkgName of PI_PACKAGE_NAMES) {
-        const [scope, name] = pkgName.split("/");
-        const candidate = join(dir, "node_modules", scope, name, "package.json");
-        if (existsSync(candidate)) {
+  if (!binary || !existsSync(binary)) {
+    // Fall back: walk up from process.argv[1] looking for the
+    // pi-coding-agent package. This works when invoked through
+    // node directly (e.g. `node /path/to/pi-coding-agent/dist/cli.js`).
+    let dir = "";
+    try {
+      const argv1 = process.argv[1];
+      if (argv1) dir = dirname(argv1);
+    } catch {
+      dir = "";
+    }
+    if (!dir) return { version: "unknown", root: "", binary: "" };
+    for (let i = 0; i < 8; i++) {
+      const candidate = join(dir, "package.json");
+      if (existsSync(candidate)) {
+        try {
           const pkg = JSON.parse(readFileSync(candidate, "utf8"));
-          if (pkg.name === pkgName) return dirname(candidate);
+          if (pkg.name === "@earendil-works/pi-coding-agent") {
+            return { version: pkg.version ?? "unknown", root: dir, binary: dir };
+          }
+        } catch {
+          // continue
         }
       }
-      const parent = resolve(dir, "..");
+      const parent = dirname(dir);
       if (parent === dir) break;
       dir = parent;
     }
-  } catch {
-    // fall through
+    return { version: "unknown", root: "", binary: "" };
   }
-  return "";
-}
-
-function readPiVersion(): PiVersionInfo {
-  const root = discoverPiRootPath();
-  if (!root) return { version: "unknown", root: "" };
+  // 2. Resolve any symlinks (mise installs `bin/pi` as a symlink to
+  //    `lib/node_modules/@earendil-works/pi-coding-agent/dist/cli.js`).
   try {
-    const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-    return { version: pkg.version ?? "unknown", root };
+    binary = realpathSync(binary);
   } catch {
-    return { version: "unknown", root };
+    // not a symlink, fall through
   }
+  // 3. Walk up from the binary looking for the pi-coding-agent
+  //    package. Two strategies per level:
+  //      a) `<dir>/node_modules/@earendil-works/pi-coding-agent/package.json`
+  //         (mise / npm global layout: the binary's sibling-parent
+  //         holds the package in its node_modules).
+  //      b) `<dir>/package.json` whose `name` field matches
+  //         (source / monorepo layout: the binary lives inside
+  //         the package itself).
+  let dir = dirname(binary);
+  for (let i = 0; i < 10; i++) {
+    // Strategy (a): node_modules lookup.
+    const nmCandidate = join(
+      dir,
+      "node_modules",
+      "@earendil-works",
+      "pi-coding-agent",
+      "package.json",
+    );
+    if (existsSync(nmCandidate)) {
+      try {
+        const pkg = JSON.parse(readFileSync(nmCandidate, "utf8"));
+        if (pkg.name === "@earendil-works/pi-coding-agent") {
+          return {
+            version: pkg.version ?? "unknown",
+            root: dirname(dirname(dirname(nmCandidate))),
+            binary,
+          };
+        }
+      } catch {
+        // continue
+      }
+    }
+    // Strategy (b): direct package.json lookup.
+    const directCandidate = join(dir, "package.json");
+    if (existsSync(directCandidate)) {
+      try {
+        const pkg = JSON.parse(readFileSync(directCandidate, "utf8"));
+        if (pkg.name === "@earendil-works/pi-coding-agent") {
+          return { version: pkg.version ?? "unknown", root: dir, binary };
+        }
+      } catch {
+        // continue
+      }
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return { version: "unknown", root: "", binary };
 }
 
 // ── Braid version discovery (this package) ──────────────────────────────────
@@ -139,7 +174,7 @@ function readBraidVersion(): { version: string; root: string } {
         const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
         if (pkg.name === "pi-braid") return { version: pkg.version ?? "unknown", root: dir };
       }
-      const parent = resolve(dir, "..");
+      const parent = dirname(dir);
       if (parent === dir) break;
       dir = parent;
     }
@@ -149,75 +184,44 @@ function readBraidVersion(): { version: string; root: string } {
   return { version: "unknown", root: process.cwd() };
 }
 
-// ── Module grouping with tool counts ────────────────────────────────────────
-
-function buildModulesData(
-  enabledIds: Set<string>,
-): {
-  modules: InstanceData["modules"];
-  externalTools: string[];
-} {
-  const provenance = getToolProvenance();
-  const toolCounts = new Map<string, number>();
-  for (const [toolName, extId] of provenance) {
-    toolCounts.set(extId, (toolCounts.get(extId) ?? 0) + 1);
-  }
-  // Tools not attributed to any extension (pi-core built-ins)
-  const allExtensions = new Set(MANIFEST.map((e) => e.id));
-  const externalTools: string[] = [];
-  for (const [toolName, extId] of provenance) {
-    if (!allExtensions.has(extId)) externalTools.push(toolName);
-  }
-
-  const moduleNames = getModuleNames();
-  const modules: InstanceData["modules"] = [];
-
-  for (const modName of moduleNames) {
-    const entries = getModuleGroup(modName);
-    if (entries.length === 0) continue;
-    const extensions = entries.map((e) => {
-      const tools = Array.from(provenance.entries())
-        .filter(([, src]) => src === e.id)
-        .map(([name]) => name)
-        .sort();
-      return {
-        id: e.id,
-        desc: e.desc,
-        alwaysOn: e.alwaysOn ?? false,
-        disabledByDefault: e.disabledByDefault ?? false,
-        enabled: enabledIds.has(e.id),
-        tools,
-      };
-    });
-    modules.push({ name: modName, extensions });
-  }
-
-  // Sort modules: alwaysOn first, then alphabetical
-  modules.sort((a, b) => {
-    const aAlways = a.extensions.every((e) => e.alwaysOn) ? 0 : 1;
-    const bAlways = b.extensions.every((e) => e.alwaysOn) ? 0 : 1;
-    if (aAlways !== bAlways) return aAlways - bAlways;
-    return a.name.localeCompare(b.name);
-  });
-
-  return { modules, externalTools };
-}
-
 // ── Main builder ────────────────────────────────────────────────────────────
 
 export interface InstanceContext {
-  /** Set of currently-enabled extension IDs (from loader state). */
-  enabledIds: string[];
   /** Skills available (from prompt-builder). */
   skillCount: number;
   /** Memory entries (from three-memory-stores). */
   memoryCount: number;
 }
 
-export async function instanceSection(ctx: InstanceContext): Promise<PromptSection> {
-  const piVersion = readPiVersion();
+interface InstanceData {
+  braidVersion: string;
+  braidRoot: string;
+  pi: PiVersionInfo;
+  /** System info: platform, hostname, os type. */
+  os: { platform: string; type: string; hostname: string };
+  /** Current working directory — separate from braidRoot because
+   *  the agent may have `cd`'d into a subproject. */
+  cwd: string;
+  /** Current ISO datetime, captured at section render. */
+  now: string;
+  /** Session state from `agent-environment/gatherL1Environment()`. */
+  session: L1EnvironmentData;
+  /** Top-level pi extension packages, ordered by discovery priority. */
+  topLevelExtensions: TopLevelExtension[];
+  skillCount: number;
+  memoryCount: number;
+}
+
+export async function instanceSection(
+  _pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  instanceCtx: InstanceContext,
+): Promise<PromptSection> {
+  const pi = discoverRunningPi();
   const braid = readBraidVersion();
-  const machine = {
+  const session = gatherL1Environment(_pi, ctx);
+  const topLevelExtensions = discoverTopLevelExtensions();
+  const osInfo = {
     platform:
       os.platform() === "win32"
         ? "Windows"
@@ -229,75 +233,63 @@ export async function instanceSection(ctx: InstanceContext): Promise<PromptSecti
     type: os.type(),
     hostname: os.hostname(),
   };
-
-  const enabledIds = new Set(ctx.enabledIds);
-  const { modules, externalTools } = buildModulesData(enabledIds);
-
   const data: InstanceData = {
     braidVersion: braid.version,
     braidRoot: braid.root,
-    piVersionInfo: piVersion,
-    machine,
+    pi,
+    os: osInfo,
+    cwd: process.cwd(),
     now: new Date().toISOString(),
-    modules,
-    externalTools,
-    skillCount: ctx.skillCount,
-    memoryCount: ctx.memoryCount,
+    session,
+    topLevelExtensions,
+    skillCount: instanceCtx.skillCount,
+    memoryCount: instanceCtx.memoryCount,
   };
-
   return {
     name: "instance",
     render: () => renderInstance(data),
   };
 }
 
+// ── Renderer ────────────────────────────────────────────────────────────────
+
 function renderInstance(d: InstanceData): string {
   const lines: string[] = [];
   lines.push("## Instance");
   lines.push(
-    `Agent: Braid v${d.braidVersion} (over pi-core v${d.piVersionInfo.version})`,
+    `Agent: Braid v${d.braidVersion} (over pi-core v${d.pi.version})`,
   );
+
+  // Env: root, cwd, os, hostname, now, pid. All at the top.
   lines.push(`Root: ${d.braidRoot}`);
-  lines.push(`Cwd: ${process.cwd()}`);
-  lines.push(`OS: ${d.machine.platform} (${d.machine.type})`);
+  if (d.cwd !== d.braidRoot) {
+    lines.push(`Cwd: ${d.cwd}`);
+  }
+  lines.push(`OS: ${d.os.platform} (${d.os.type}) hostname=${d.os.hostname}`);
   lines.push(`Now: ${d.now}`);
+  lines.push(`PID: ${d.session.pid}`);
 
-  // Extension tree
-  const totalEnabled = d.modules.reduce(
-    (sum, m) => sum + m.extensions.filter((e) => e.enabled).length,
-    0,
-  );
-  const totalExtensions = d.modules.reduce((sum, m) => sum + m.extensions.length, 0);
-  const totalTools = d.modules.reduce(
-    (sum, m) => sum + m.extensions.reduce((s, e) => s + e.tools.length, 0),
-    0,
-  ) + d.externalTools.length;
-
-  lines.push("");
+  // Session: elapsed, last event, turns, tool avg.
   lines.push(
-    `Extensions (${totalEnabled}/${totalExtensions} loaded, ${totalTools} tools):`,
+    `Session: ${formatMs(d.session.sessionElapsedMs)} elapsed, last event ${formatMs(d.session.sinceLastEventMs)} ago, ${d.session.turnCount} turn${d.session.turnCount === 1 ? "" : "s"}`,
   );
-
-  // Module-level paths: `src/extensions/<module>/`. Per-extension paths
-  // are derivable as `src/extensions/<module>/<extId>/index.ts` but the
-  // module line keeps the prompt compact while still letting the agent
-  // grep/ls the module dir for specifics.
-  for (const mod of d.modules) {
-    const enabledExts = mod.extensions.filter((e) => e.enabled);
-    if (enabledExts.length === 0) continue;
-    const isAlwaysOn = enabledExts.every((e) => e.alwaysOn);
-    const tag = isAlwaysOn ? "always-on" : "";
-    const extIds = enabledExts.map((e) => e.id).join(", ");
-    const path = `src/extensions/${mod.name}/`;
-    lines.push(
-      `  ${path}${tag ? ` (${tag})` : ""}: ${extIds}`,
-    );
+  if (d.session.avgToolTimeMs > 0) {
+    lines.push(`Tool avg: ${d.session.avgToolTimeMs}ms`);
   }
 
-  if (d.externalTools.length > 0) {
+  // Top-level pi extensions (the user's preferred style: concise
+  // summary of pi extension packages with load-source tags, NOT
+  // braid's internal module tree).
+  if (d.topLevelExtensions.length > 0) {
+    lines.push("");
     lines.push(
-      `  external: ${d.externalTools.length} tool${d.externalTools.length === 1 ? "" : "s"} (pi-core + contrib)`,
+      `Pi extensions (${d.topLevelExtensions.length} loaded):`,
     );
+    for (const ext of d.topLevelExtensions) {
+      const tag = sourceTag(ext.source);
+      const rel = relativeToCwd(ext.root, d.cwd);
+      lines.push(`  ${ext.name} v${ext.version}  ${rel}  (${tag})`);
+    }
   }
 
   // Aggregate counts
@@ -309,13 +301,47 @@ function renderInstance(d: InstanceData): string {
     lines.push(`Resources: ${counts.join(", ")}`);
   }
 
-  // Discovery hint: encourage the agent to read source on demand rather
-  // than asking the user. This is the "naturally discover as much as
-  // possible" affordance - one line at the end is enough.
+  // Discovery hint: read source on demand. One line at the end is
+  // enough — the system prompt is not a directory listing.
   lines.push("");
   lines.push(
-    "→ Discover: `read` any path above (e.g. `read src/extensions/<module>/<ext>/index.ts`) to inspect an extension's source.",
+    "→ Discover: `read` any path above (e.g. `read <extension-root>/index.ts`) to inspect an extension's source.",
   );
 
   return lines.join("\n");
+}
+
+function sourceTag(s: TopLevelExtension["source"]): string {
+  switch (s) {
+    case "cwd":
+      return "cwd";
+    case "sibling":
+      return "sibling-repo";
+    case "user-global":
+      return "user-global";
+    case "npm":
+      return "npm";
+  }
+}
+
+/**
+ * Render a path relative to cwd when possible, else absolute.
+ * Keeps the Instance block readable when extensions live next to
+ * the cwd project (the common case).
+ */
+function relativeToCwd(p: string, cwd: string): string {
+  if (p === cwd) return ".";
+  if (p.startsWith(cwd + "/")) return p.slice(cwd.length + 1);
+  return p;
+}
+
+function formatMs(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  if (m < 60) return `${m}m ${rem}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
 }

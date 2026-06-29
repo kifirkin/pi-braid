@@ -203,6 +203,45 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   relevant. New tests: `test/runtime/lib/test-l1-split.mjs` (11
   subtests). Test count: 80 → 81.
 
+- **Instance block rewrite + Session merge (v3.7).** v3.6's three-block
+  architecture (`## Instance` stable, `## Session` volatile,
+  `## Context` conditional) had two issues observed in production:
+  1. The `## Instance` block surfaced braid's internal module tree
+     (`src/extensions/<module>/...`), which leaked project-specific
+     implementation details into every system prompt. The user wanted
+     a pi-core TUI-style summary of top-level pi extension PACKAGES
+     (pi-braid, pi-braid-contrib, ...) with load-source classification.
+  2. The pi-core version was reported incorrectly (showed `v0.77.0`
+     when the actually-running binary was `v0.80.2`). Root cause: the
+     discovery walked up from braid's `import.meta.url` and found
+     braid's local `node_modules` before the global installation.
+
+  v3.7 resolves both:
+  - **`top-level-extensions.ts`** (new module): discovers top-level
+    pi extension packages (anything with `"pi"` in `package.json`)
+    from cwd, cwd-siblings, `~/.pi/agent/extensions/`, and
+    `node_modules/<scope>/`. Each package classified with a
+    load-source tag: `cwd` / `sibling-repo` / `user-global` / `npm`.
+  - **`instance-composition.ts`** (rewritten): now renders the
+    consolidated Instance block with all env info (Root, Cwd, OS,
+    hostname, Now, PID), Session data (elapsed, last-event, turns,
+    tool-avg) MERGED in from the deleted Session block, and the new
+    top-level extension list. Pi-core version discovery rewritten to
+    use `which pi` + symlink resolution + dual-strategy walk
+    (`node_modules/<scope>/<pkg>/package.json` for mise/npm-global,
+    `<dir>/package.json` for source/monorepo layouts).
+  - **`session-section.ts`** (deleted): the v3.6 Session block was
+    merged into Instance. All session data still comes from
+    `agent-environment/gatherL1Environment()` (the data layer is
+    unchanged; only the renderer changed).
+  - **Section 6 of the prompt** (`environment` simpleSection with
+    Current time + cwd) was removed — Instance now owns those fields.
+
+  Removed: `src/extensions/core/prompt-builder/session-section.ts`.
+  Renamed `test/runtime/lib/test-instance-composition.mjs` →
+  `test-instance-block.mjs` (the v3.5 module-tree contract was
+  obsolete). Test count: 81 (same; new test replaces old).
+
 ### Fixed
 
 - **Post-loop classifier timeout bumped 5s → 8s → 30s.** User report:

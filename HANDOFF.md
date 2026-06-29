@@ -1,16 +1,17 @@
 <!-- status: current -->
 <!-- Created: 2026-06-27 for fresh-session transfer -->
-<!-- Refreshed for v3.6 (L1 split) — 2026-06-29 -->
+<!-- Refreshed for v3.7 (Instance rewrite + Session merge) — 2026-06-29 -->
 
 # pi-braid session handoff
 
 This file exists for a fresh agent session to pick up cleanly.
 The work is in a known-good state as of this writing.
 
-## Where we are (last 6 commits)
+## Where we are (last 7 commits)
 
 ```
-<new>      refactor(prompt-builder): split L1 into Session + Context blocks (v3.6)
+<new>      refactor(prompt-builder): Instance rewrite + top-level extensions (v3.7)
+e3ec932d   refactor(prompt-builder): split L1 env into Session + Context blocks (v3.6)
 f47ddea6   docs(handoff): refresh for v3.5 - Instance block + contrib filter + browser disable
 001ddc8c   fix(loader): tool provenance via Proxy wrapper, not getAllTools diff
 bbf70c12   feat(prompt-builder): Instance block v3.5 - module paths + discovery note
@@ -18,34 +19,47 @@ bbf70c12   feat(prompt-builder): Instance block v3.5 - module paths + discovery 
 111b12d8   feat(prompt-builder): Instance composition block + tool provenance (v3.5)
 ```
 
-The v3.5 → v3.6 transfer is in flight (v3.5 already pushed;
-v3.6 will be 1 new commit). Push the v3.6 commit when ready.
+The v3.6 → v3.7 transfer is in flight (v3.6 already pushed;
+v3.7 will be 1 new commit). Push the v3.7 commit when ready.
 
-v3.5 + v3.6 together complete the system-prompt cleanup plan:
+v3.5 → v3.7 together complete the system-prompt cleanup plan:
 - **v3.5** ships the `## Instance` block at the top of every system
   prompt (agent identity, env, extension tree) + tool provenance
   + contrib settings.json filter.
-- **v3.6** completes the L1 split: `## Session` (volatile: PID,
-  session time, turns, last event, tool avg) and `## Context`
+- **v3.6** split the L1 block into `## Session` (volatile: PID,
+  session time, turns, last event, tool avg) + `## Context`
   (conditional: context %, session health, memory count, checkpoint
-  awareness) replace the monolithic `l1-environment.ts`.
+  awareness).
+- **v3.7** rewrites the Instance block to fix two production
+  issues observed at session-start: (1) pi-core version was
+  reported as `v0.77.0` when the actually-running binary was
+  `v0.80.2` — fixed by rewriting the discovery to use `which pi`
+  + symlink resolution + dual-strategy walk; (2) the Instance
+  block leaked braid's internal module tree (`src/extensions/
+  <module>/...`) — replaced with top-level pi extension PACKAGE
+  discovery (pi-braid, pi-braid-contrib, pi-braid-skills,
+  pi-poorman-providers, ...) with load-source classification.
+  Also: the v3.6 Session block was merged back into Instance
+  (all env info now lives together at the top of the prompt).
 
 ## State of the codebase
 
 - **CI**: `npm run ci:check` → ✅ all green (check:docs + check:doc-drift + check:deps + tsc + 81/81 tests)
-- **Tests**: `npm run test` → **81/81 pass** (was 80; added test-l1-split.mjs with 11 subtests)
+- **Tests**: `npm run test` → **81/81 pass** (was 80 after v3.5; 81 after v3.6; 81 after v3.7 — replaced test-instance-composition.mjs with test-instance-block.mjs at 17 subtests)
 - **Typecheck**: `npm run typecheck` → clean
 - **Doc discipline**: `npm run check:docs` → ✅; `npm run check:doc-drift` → ✅
-- **check-deps**: `node scripts/check-deps.mjs` → ✅ 0 violations (228 src + 83 test files)
-- **pi-ai version**: `0.80.2` installed
-- **Working tree**: clean (v3.6 uncommitted; pi-braid-contrib has staged-but-uncommitted change to `index.ts` for the contrib filter)
+- **check-deps**: `node scripts/check-deps.mjs` → ✅ 0 violations (229 src + 83 test files)
+- **pi-ai version**: `0.80.2` installed (now correctly surfaced in Instance block via `which pi`)
+- **Working tree**: clean (v3.7 uncommitted; pi-braid-contrib has staged-but-uncommitted change to `index.ts` for the contrib filter)
 - **User-space settings**: `~/.pi/agent/settings.json` now has `braid.contrib.browser: false`. The contrib package's `index.ts` reads this and skips loading the browser extension entirely. Re-enable by deleting the `braid.contrib` block.
 
 ## What just shipped (this conversation)
 
 | Commit | Item | What it does |
 |---|---|---|
-| `<new>` | v3.6 L1 split | `src/extensions/core/prompt-builder/{session-section,context-section}.ts` (new). `l1-environment.ts` (deleted, 275 LOC). `agent-environment/index.ts` no longer exports `formatL1EnvironmentSection`. The L1 block is now two focused sections: `## Session` (volatile: PID, session time, turns, last event, tool avg — always shown) and `## Context` (conditional: context %, session health, memory count, steps since checkpoint — only shown when something to surface; returns `""` otherwise). Pinned by `test/runtime/lib/test-l1-split.mjs` (11 subtests). No consumer-visible behavior change. |
+| `<new>` | v3.7 Instance rewrite | `src/extensions/core/prompt-builder/top-level-extensions.ts` (new, ~170 LOC): discovers top-level pi extension PACKAGES from cwd, cwd-siblings, `~/.pi/agent/extensions/`, and `node_modules/<scope>/`. Each classified `cwd` / `sibling-repo` / `user-global` / `npm`. `instance-composition.ts` (rewritten, ~360 LOC): consolidated Instance block — all env (Root, Cwd, OS, hostname, Now, PID) + Session data (elapsed, last-event, turns, tool-avg) MERGED in from the deleted Session block + top-level extension list. Pi-core version discovery rewritten to use `which pi` + `realpathSync` + dual-strategy walk (fixes the `v0.77.0` vs `v0.80.2` bug). `session-section.ts` (deleted). Section 6 of the prompt (Current time + cwd) removed — Instance owns those fields. Test: `test-instance-block.mjs` (17 subtests) replaces `test-instance-composition.mjs`. |
+| `e3ec932d` | v3.6 L1 split | `src/extensions/core/prompt-builder/{session-section,context-section}.ts` (new). `l1-environment.ts` (deleted, 275 LOC). The L1 block became two focused sections: `## Session` (volatile: PID, session time, turns, last event, tool avg — always shown) and `## Context` (conditional: context %, session health, memory count, steps since checkpoint — only shown when something to surface; returns `""` otherwise). Pinned by `test/runtime/lib/test-l1-split.mjs` (11 subtests). **The Session block was merged back into Instance in v3.7**, so `session-section.ts` no longer exists. |
+| `f47ddea6` | v3.5 HANDOFF | Pre-v3.6 HANDOFF refresh capturing post-push reality. |
 | `f47ddea6` | v3.5 HANDOFF | Pre-v3.6 HANDOFF refresh capturing post-push reality. |
 | `001ddc8c` | v3.5 fix | `src/loader/loader.ts`: tool provenance now via a Proxy that wraps `pi.registerTool` per extension, instead of calling `pi.getAllTools()` during loading. The previous diff approach hit "Extension runtime not initialized" in pi-core (a regression introduced in 111b12d8); this restores `pi -a` to a clean start. |
 | `bbf70c12` | v3.5 polish | `src/extensions/core/prompt-builder/instance-composition.ts`: per-extension indented entries → module-level lines with inline extension ids (1 line per module + module root path) + one-line discovery hint at the bottom pointing the agent at the read tool. Compact + discoverable. |
