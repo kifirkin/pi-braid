@@ -2462,3 +2462,60 @@ Each is actionable; status markers track progress.
 | ID | Proposal | Shipped in | Notes |
 |---|---|---|---|
 | — | Dynamic behavior modes (TRUTH-SEEKING + 3) | 709950c9 | Restored lean version of deleted contrast-mode system |
+
+### Advanced Proposals (2026-06-29, post-restore)
+
+<!-- status: forward-looking -->
+
+Three connected proposals raised after the behavior-mode restoration.
+All three build on existing braid infrastructure.
+
+#### BINEVAL: Binary Question Evaluation (BQ)
+
+Source: arXiv:2606.27226 (Cho et al., 2026) — "Ask, Don't Judge:
+Binary Questions for Interpretable LLM Evaluation and Self-Improvement"
+
+| ID | Proposal | Status | Notes |
+|---|---|---|---|
+| BQ-1 | Decompose `verify` into atomic binary questions | not started | Instead of holistic "is this correct?", generate 3-5 binary questions per criterion. Each answered independently by utility model. Aggregate into calibrated score. More reliable than holistic judgment, transparent per-question feedback. |
+| BQ-2 | Binary question substrate for `postLoopClassify` (DCP-1) | not started | Replace single holistic classification call with decomposed binary questions. Same utility model, better discrimination of borderline cases. Avoids ceiling effects. |
+| BQ-3 | Binary questions for Definition of Done (SPQ-1) | not started | "Does each done item have a path?" "Does verification pass?" "Are there unaddressed failures?" — naturally binary, naturally decomposed. |
+| BQ-4 | Iterative prompt optimization via question feedback | not started | The paper shows the same question-level feedback improves prompts iteratively. Maps to braid's prompt evolution — behavior-modes, identity framings, enforcement nudges could all be optimized via BINEVAL-style feedback loops. |
+
+Architecture fit: braid already has `verify`, `verify_claim`, the utility
+model for classification, and `postLoopClassify` (proposed in DCP-1).
+BINEVAL is the *method* — binary question decomposition — that makes these
+more reliable and debuggable. Training-free, task-agnostic, works with
+existing utility model calls.
+
+#### Max-Power Model Routing Tier (MPM)
+
+| ID | Proposal | Status | Notes |
+|---|---|---|---|
+| MPM-1 | Third routing tier for deep reasoning | not started | Currently: session model (fast) + utility model (medium). Missing: max-power model for genuinely hard `think`/`verify`/`hypothesize` calls. Automatic routing based on complexity/stakes. ~50 LOC in think-budget.ts + scoring.ts. |
+| MPM-2 | Automatic model selection in braid tools | not started | Tools (think, verify, hypothesize, finalize) automatically select model tier. Session model for routine reads/edits. Utility model for classification/verification. Max-power for deep reasoning, root-cause analysis, architectural decisions. |
+
+Architecture fit: `think-budget.ts` already has complexity→depth routing.
+Adding a model-tier dimension (which model to call) is orthogonal to the
+depth dimension (how much to think). The routing policy would be:
+low complexity → session model, medium → utility model, high → max-power
+model. Stakes modifier: irreversible actions bump up a tier.
+
+#### Automatic Session Continuation (ASC)
+
+| ID | Proposal | Status | Notes |
+|---|---|---|---|
+| ASC-1 | Finalization logic on `SESSION_SHUTDOWN` | not started | Write a finalization summary (in-flight work, next priorities, uncommitted state) to a durable surface on session end. Infrastructure exists: `SESSION_SHUTDOWN` event fires, scratchpad survives (tool-backed), memory stores persist (file-backed), episodes are cross-session. Missing: the finalization trigger that says "session is ending, persist in-flight state for seamless pickup." |
+| ASC-2 | Fresh instance auto-pickup | not started | On `before_agent_start`, a new braid instance reads the finalization summary from the prior session and re-orient automatically. No manual HANDOFF.md needed. The system is already *almost* capable of this — scratchpad, memory, episodes all persist. The missing piece is the finalization write + the startup read. |
+| ASC-3 | Auto-detect updated braid version on startup | not started | When a new braid instance starts, detect if the running version differs from the prior session's version (via pi-core version in Instance block). If updated, surface what changed (CHANGELOG diff) so the agent knows what's new. |
+
+Architecture fit: `SESSION_SHUTDOWN` is already handled by 7 extensions
+(enforcement cleanup, memory-bridge stats, three-memory-stores persist,
+timer cancel, health-maintenance, analytics, heartbeat-scheduler).
+Adding a finalization handler is one more listener. The startup read
+fits into the existing `before_agent_start` handler in prompt-builder.
+
+The key insight from the user: "system already capable of almost
+automatically storing and picking up everything needed on the fly" —
+the pieces are there, they just need the finalization trigger + the
+startup read to close the loop.
