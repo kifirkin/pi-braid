@@ -4,40 +4,46 @@
  * Renders a concise, consolidated "## Instance" block at the very
  * top of the system prompt. Surfaces:
  *   - Agent identity + the actually-running pi-core version
- *   - Runtime environment (root, cwd, os, hostname, now, pid)
- *   - Session state (session elapsed, since-last-event, turn count,
- *     tool-call average) — merged from the prior Session block
- *   - Top-level pi extension PACKAGES (not internal modules) with
- *     load-source classification (cwd / sibling / user-global / npm)
+ *   - Runtime environment: pi-core root (npm package folder), cwd,
+ *     userland settings dir (~/.pi/agent), os/hostname/now/pid
+ *   - Session: id + elapsed + last-event + turn count + tool avg
+ *   - Top-level pi extension PACKAGES read from pi-core's settings
+ *     `packages` field (the real runtime configuration), tagged
+ *     `project` or `user-global` by scope
  *   - Aggregate counts (total skills, memory entries)
- *   - A discovery hint pointing at the read tool
+ *   - A generic discovery hint pointing at the read tool
  *
  * This is the agent's at-a-glance view of "what is loaded and
- * where it came from." The three-block system prompt architecture
- * (v3.6) collapsed into two in v3.7:
- *   - Instance (this block): all stable + volatile env / session
- *     state, plus top-level pi extensions.
- *   - Context: conditional context info (memory count, session
- *     health, context %, checkpoint awareness) — only shown when
- *     there is something to surface.
+ * where it came from." Three corrections since v3.7:
  *
- * The split was driven by two concerns:
- *   1. Braid internal modules (core / cognitive / memory / ...) are
- *      project-specific info that leaks implementation details into
- *      every system prompt. They were replaced by top-level pi
- *      extension package discovery (pi-braid, pi-braid-contrib,
- *      pi-braid-skills, ...) — the "what's loaded" question at the
- *      right level of abstraction.
- *   2. The prior "## Session" block (PID, session time, turns,
- *      tool avg) was conceptually part of the same top-of-prompt
- *      env summary; keeping it in a separate section diluted both
- *      blocks. Merged into Instance so all env info lives together.
+ *   1. Root points at the pi-core npm package folder (where the
+ *      agent is hosted), not at braid's source. The v3.7 wording
+ *      used braidRoot, which leaked the development cwd into the
+ *      prompt and made "Root" mean the wrong thing for anyone
+ *      using pi without braid.
+ *
+ *   2. Cwd is now always rendered as its own line. Previously it
+ *      was suppressed when equal to braidRoot, which hid the
+ *      agent's actual working directory from any agent running
+ *      from a project subdir.
+ *
+ *   3. Top-level extension discovery now reads the `packages`
+ *      field from pi-core's settings files (the actual runtime
+ *      configuration), instead of scanning cwd/sibling directories.
+ *      The old sibling-walk over-discovered unrelated packages
+ *      (e.g. `@saibolla/ada` showed up just because it was a
+ *      sibling repo with a `pi` field) and under-discovered npm
+ *      packages + skill packs that the user had actually configured.
+ *      Source tags now distinguish `project` (cwd/.pi/settings.json)
+ *      from `user-global` (~/.pi/agent/settings.json), matching
+ *      pi-core's own precedence model.
  *
  * Pi-core version discovery was rewritten in v3.7 to use the
- * actually-running pi binary (resolved via `which pi`) rather than
- * walking up from braid's `import.meta.url`. The old walk could
- * find braid's local node_modules (often an outdated version)
- * before the global installation that actually runs.
+ * actually-running pi binary (resolved via PATH walk + `which pi`
+ * fallback) rather than walking up from braid's `import.meta.url`.
+ * The old walk could find braid's local node_modules (often an
+ * outdated version) before the global installation that actually
+ * runs.
  */
 
 import { execSync } from "node:child_process";
@@ -45,6 +51,7 @@ import { readFileSync, existsSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as os from "node:os";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { PromptSection } from "./section.js";
 import {
   discoverTopLevelExtensions,
@@ -214,15 +221,22 @@ export interface InstanceContext {
 
 interface InstanceData {
   braidVersion: string;
-  braidRoot: string;
+  /** Resolved pi-core info (version + npm package folder). */
   pi: PiVersionInfo;
+  /** Userland pi settings directory (~/.pi/agent or
+   *  PI_CODING_AGENT_DIR override). The agent uses this to find
+   *  its own settings, skills, memory, and session files. */
+  settingsDir: string;
   /** System info: platform, hostname, os type. */
   os: { platform: string; type: string; hostname: string };
-  /** Current working directory — separate from braidRoot because
-   *  the agent may have `cd`'d into a subproject. */
+  /** Current working directory — where the user invoked `pi` from. */
   cwd: string;
   /** Current ISO datetime, captured at section render. */
   now: string;
+  /** Session id (pi-core session manager). The agent uses this
+   *  to read the raw session file or invoke the session-recall
+   *  tool. Format: short hex id or UUID. */
+  sessionId: string;
   /** Session state from `agent-environment/gatherL1Environment()`. */
   session: L1EnvironmentData;
   /** Top-level pi extension packages, ordered by discovery priority. */
@@ -254,11 +268,12 @@ export async function instanceSection(
   };
   const data: InstanceData = {
     braidVersion: braid.version,
-    braidRoot: braid.root,
     pi,
+    settingsDir: getAgentDir(),
     os: osInfo,
     cwd: process.cwd(),
     now: new Date().toISOString(),
+    sessionId: ctx.sessionManager?.getSessionId() ?? "",
     session,
     topLevelExtensions,
     skillCount: instanceCtx.skillCount,
@@ -279,33 +294,46 @@ function renderInstance(d: InstanceData): string {
     `Agent: Braid v${d.braidVersion} (over pi-core v${d.pi.version})`,
   );
 
-  // Env: root, cwd, os, hostname, now, pid. All at the top.
-  lines.push(`Root: ${d.braidRoot}`);
-  if (d.cwd !== d.braidRoot) {
-    lines.push(`Cwd: ${d.cwd}`);
-  }
+  // Runtime locations. Each is a distinct concept:
+  //   - Root:   the pi-core npm package folder (where the agent is hosted).
+  //   - Cwd:    where the user invoked `pi` from (their project).
+  //   - Settings: the userland pi settings dir (settings.json, skills, memory,
+  //             sessions). Override via PI_CODING_AGENT_DIR.
+  lines.push(`Root: ${d.pi.root || "(unknown)"}`);
+  lines.push(`Cwd: ${d.cwd}`);
+  lines.push(`Settings: ${d.settingsDir}`);
+
+  // OS + now + pid — environment snapshot.
   lines.push(`OS: ${d.os.platform} (${d.os.type}) hostname=${d.os.hostname}`);
   lines.push(`Now: ${d.now}`);
   lines.push(`PID: ${d.session.pid}`);
 
-  // Session: elapsed, last event, turns, tool avg.
-  lines.push(
-    `Session: ${formatMs(d.session.sessionElapsedMs)} elapsed, last event ${formatMs(d.session.sinceLastEventMs)} ago, ${d.session.turnCount} turn${d.session.turnCount === 1 ? "" : "s"}`,
+  // Session: id is the discovery hook (read the raw session file or
+  // invoke the session-recall tool); elapsed/last-event/turns are
+  // volatile session stats.
+  const sessionParts: string[] = [];
+  if (d.sessionId) sessionParts.push(d.sessionId);
+  sessionParts.push(
+    `${formatMs(d.session.sessionElapsedMs)} elapsed`,
+    `last event ${formatMs(d.session.sinceLastEventMs)} ago`,
+    `${d.session.turnCount} turn${d.session.turnCount === 1 ? "" : "s"}`,
   );
+  lines.push(`Session: ${sessionParts.join(", ")}`);
   if (d.session.avgToolTimeMs > 0) {
     lines.push(`Tool avg: ${d.session.avgToolTimeMs}ms`);
   }
 
-  // Top-level pi extensions (the user's preferred style: concise
-  // summary of pi extension packages with load-source tags, NOT
-  // braid's internal module tree).
+  // Top-level pi extension PACKAGES (read from pi-core's `packages`
+  // settings field — the real runtime configuration). Each is tagged
+  // with the settings scope that owns the entry so the agent can
+  // edit the right file when adding/removing a package.
   if (d.topLevelExtensions.length > 0) {
     lines.push("");
     lines.push(
       `Pi extensions (${d.topLevelExtensions.length} loaded):`,
     );
     for (const ext of d.topLevelExtensions) {
-      const tag = sourceTag(ext.source);
+      const tag = ext.source;
       const rel = relativeToCwd(ext.root, d.cwd);
       lines.push(`  ${ext.name} v${ext.version}  ${rel}  (${tag})`);
     }
@@ -320,27 +348,22 @@ function renderInstance(d: InstanceData): string {
     lines.push(`Resources: ${counts.join(", ")}`);
   }
 
-  // Discovery hint: read source on demand. One line at the end is
-  // enough — the system prompt is not a directory listing.
+  // Discovery hint: the prompt is not a directory listing. Every path
+  // above is `read`-able on demand; tools reach the wider runtime
+  // (~/.pi/agent, <pi-core>/docs, sibling repos via the file system).
   lines.push("");
   lines.push(
-    "→ Discover: `read` any path above (e.g. `read <extension-root>/index.ts`) to inspect an extension's source.",
+    "Discover on demand: `read` any path above to inspect its source; the file tools (`bash`, `grep`, `find`, `ls`) reach the wider runtime including ~/.pi/agent and the pi-core package.",
   );
 
   return lines.join("\n");
 }
 
 function sourceTag(s: TopLevelExtension["source"]): string {
-  switch (s) {
-    case "cwd":
-      return "cwd";
-    case "sibling":
-      return "sibling-repo";
-    case "user-global":
-      return "user-global";
-    case "npm":
-      return "npm";
-  }
+  // Retained as a single point of source-tag normalization in case
+  // future discovery emits more granular tags (e.g. `npm` vs
+  // `local-path` within `user-global`). Currently a no-op pass-through.
+  return s;
 }
 
 /**

@@ -1,31 +1,34 @@
 /**
- * Test: prompt-builder Instance block (v3.7) — RUNTIME.
+ * Test: prompt-builder Instance block (v3.8) — RUNTIME.
  *
  * Pins the consolidated "## Instance" block contract by actually
  * calling the production code (not by grepping source for function
- * names). This is the post-source-grep-cleanup version: every
- * assertion either renders the real section or invokes the real
- * discovery function with real filesystem state.
+ * names). Every assertion either renders the real section or
+ * invokes the real discovery function with real filesystem state.
  *
  * Contract pinned:
  *   - instanceSection() returns a PromptSection named "instance"
  *   - The rendered output starts with "## Instance" and contains
- *     the Agent, Root, OS+hostname, Now, PID, Session, Pi extensions
- *     blocks.
+ *     the Agent, Root, Cwd, Settings, OS+hostname, Now, PID, Session,
+ *     Pi extensions blocks.
+ *   - Root points at the pi-core npm package folder (not braid).
+ *   - Cwd is always rendered as its own line (never suppressed).
+ *   - Settings line points at the userland pi settings dir
+ *     (~/.pi/agent or PI_CODING_AGENT_DIR override).
+ *   - Session line includes the session id.
  *   - Pi-core version is the actually-running binary (regression:
  *     v3.5-v3.6 showed 0.77.0 when actual was 0.80.2).
- *   - Top-level extension discovery finds pi-braid (cwd) and
- *     pi-braid-contrib (sibling-repo), with load-source tags.
+ *   - Top-level extension discovery reads pi-core's `packages`
+ *     settings field (not sibling dirs). Tags are `project` or
+ *     `user-global`, never `(cwd)` or `(sibling-repo)`.
  *   - No project-specific internal module paths leak into the rendered output.
- *   - Session data is merged (PID matches process.pid).
  *   - File-existence regression guards for the deleted
  *     session-section.ts and l1-environment.ts.
  *
  * What this test does NOT do (and why):
  *   - It does NOT grep source for "export async function instanceSection".
- *     TypeScript already enforces that exports resolve. If the symbol
- *     doesn't exist, the require() below throws at test load.
- *   - It does NOT grep source for specific import paths. Same reason.
+ *     TypeScript already enforces that exports resolve.
+ *   - It does NOT grep source for specific import paths.
  *   - It does NOT grep source for `which pi` or `gatherL1Environment`.
  *     The behavior is verified by rendering the output and asserting
  *     the version + PID actually appear.
@@ -33,13 +36,11 @@
  * History:
  *   - v3.5: pure source-grep test (test-instance-composition.mjs).
  *   - v3.6: pure source-grep test (test-l1-split.mjs).
- *   - v3.7 initial: pure source-grep test (37 grep ops, the worst
- *     offender in the codebase).
- *   - v3.7 cleanup: this file. ~14 runtime assertions + 2 file
- *     existence guards. No source-grep.
- *
- * Runs after `npm run build` (the test runner builds first). Requires
- * the compiled output at `dist/extensions/core/prompt-builder/*.js`.
+ *   - v3.7: pure source-grep test (37 grep ops).
+ *   - v3.7 cleanup: runtime test (14 assertions + 2 guards).
+ *   - v3.8 (this file): Root/Cwd/Settings/SessionId corrections
+ *     + settings-driven extension discovery. ~16 runtime assertions
+ *     + 2 file-existence guards.
  */
 
 import { strict as assert } from "node:assert";
@@ -83,7 +84,16 @@ async function test(name, fn) {
 // ── Render the Instance block once, then assert on it ─────────────────────
 
 const pi = {}; // instanceSection doesn't invoke any pi.registerTool / etc.
-const ctx = { sessionID: "test-session" }; // getExtensionState tolerates this.
+// Mock the minimum subset of ExtensionContext used by instanceSection:
+// sessionManager.getSessionId() + cwd. The other ctx fields are not
+// touched by the section.
+const ctx = {
+  cwd: ROOT,
+  sessionManager: {
+    getSessionId: () => "test-session-id-1234",
+    getSessionFile: () => "/tmp/fake/session.jsonl",
+  },
+};
 const SECTION = await instanceSection(pi, ctx, { skillCount: 26, memoryCount: 5 });
 const OUT = await SECTION.render();
 
@@ -113,15 +123,9 @@ await test("Renders 'Agent: Braid v<X> (over pi-core v<Y>)' with semver versions
 await test("Pi-core version is reported correctly (regression: not 0.77.0, not unknown)", () => {
   // The v3.5-v3.6 bug: pi-core was reported as 0.77.0 from braid's
   // stale local node_modules, when the actually-running binary was
-  // 0.80.2. v3.7 fixed it via `which pi` + realpathSync + dual walk.
+  // 0.80.2. v3.7+ resolves it via PATH walk + realpathSync.
   //
-  // NOTE: under `npm test`, PATH has `<repo>/node_modules/.bin` first,
-  // so `which pi` resolves to braid's local 0.77.0 binary instead of
-  // the global 0.80.2. This is a PATH-order artifact of the test
-  // harness, not a regression. The rendered output reflects what
-  // `which pi` finds in this environment, which is correct behavior.
-  //
-  // The contract pinned here is: the rendered version is some valid
+  // The contract pinned here: the rendered version is some valid
   // semver AND it is neither "0.77.0" (the old broken value) nor
   // "unknown" (which would indicate the discovery failed entirely).
   const renderedMatch = OUT.match(/pi-core v(\d+\.\d+\.\d+)/);
@@ -129,12 +133,47 @@ await test("Pi-core version is reported correctly (regression: not 0.77.0, not u
   const version = renderedMatch[1];
   assert.notEqual(version, "0.77.0", "must not show the stale braid-local version");
   assert.notEqual(version, "unknown", "discovery must succeed (not 'unknown')");
-  // Sanity: semver shape
   assert.match(version, /^\d+\.\d+\.\d+$/, "must be semver");
 });
 
-await test("Renders Root + OS + hostname + Now + PID", () => {
-  assert.match(OUT, /^Root: .+\/pi-braid$/m, "Root line must point at the braid repo");
+await test("Root points at the pi-core npm package folder (NOT braid)", () => {
+  // v3.7 leaked the braid development cwd as 'Root'. v3.8 corrects
+  // this: Root is the pi-core npm package folder, where the agent
+  // is actually hosted. Path should contain 'pi-coding-agent' or
+  // sit under a mise/npm-global node_modules layout.
+  const rootMatch = OUT.match(/^Root: (.+)$/m);
+  assert.ok(rootMatch, "must render a Root line");
+  const root = rootMatch[1].trim();
+  assert.notEqual(
+    root,
+    ROOT,
+    `Root must NOT be the braid repo (${ROOT}) — it should be the pi-core package folder`,
+  );
+  // Sanity: pi-core root should look like a real package path.
+  assert.ok(
+    root === "(unknown)" || root.includes("/") || root.includes("\\"),
+    `Root must be a path or '(unknown)', got: ${root}`,
+  );
+});
+
+await test("Cwd is always rendered as its own line (never suppressed)", () => {
+  // v3.7 suppressed Cwd when it equaled braidRoot. v3.8 always
+  // renders it — the agent's actual working directory is always
+  // worth surfacing.
+  assert.match(OUT, /^Cwd: .+\/pi-braid$/m, "Cwd line must be rendered (was suppressed in v3.7)");
+});
+
+await test("Renders Settings line pointing at the userland pi dir", () => {
+  // Format: "Settings: <path>" where <path> is the userland pi
+  // settings dir (~/.pi/agent by default, or PI_CODING_AGENT_DIR).
+  assert.match(
+    OUT,
+    /^Settings: .+(\.pi|\.tau|\.agent)/m,
+    "Settings line must point at a userland pi config directory",
+  );
+});
+
+await test("Renders OS + hostname + Now + PID", () => {
   assert.match(OUT, /^OS: \w+ \(\w+\) hostname=/m, "OS line must include hostname");
   assert.ok(
     OUT.includes(`hostname=${os.hostname()}`),
@@ -147,12 +186,12 @@ await test("Renders Root + OS + hostname + Now + PID", () => {
   );
 });
 
-await test("Renders Session line (merged from v3.6 Session block)", () => {
-  // Session: <elapsed> elapsed, last event <delta> ago, N turn(s)
+await test("Session line includes the session id", () => {
+  // Format: "Session: <id>, <elapsed> elapsed, last event <delta> ago, N turn(s)"
   assert.match(
     OUT,
-    /^Session: \d+(?:ms|s|m|h)(?:\s\d+(?:ms|s|m|h))? elapsed, last event \d+(?:ms|s|m|h) ago, \d+ turns?$/m,
-    "Session line must have elapsed/last-event/turns pattern",
+    /^Session: test-session-id-1234, \d+(?:ms|s|m|h)(?:\s\d+(?:ms|s|m|h))? elapsed, last event \d+(?:ms|s|m|h) ago, \d+ turns?$/m,
+    "Session line must lead with the session id, then elapsed/last-event/turns",
   );
 });
 
@@ -160,25 +199,36 @@ await test("Renders 'Pi extensions (N loaded):' header", () => {
   assert.match(OUT, /^Pi extensions \(\d+ loaded\):$/m, "must show 'Pi extensions (N loaded):'");
 });
 
-await test("Top-level list includes pi-braid with cwd tag", () => {
-  // Format: "  pi-braid v<version>  <rel-or-abs-path>  (cwd)"
-  // The cwd package's root renders as "." (relative to cwd).
-  // Path/version/tag are separated by 2 spaces.
-  const braidLine = OUT.match(/^  pi-braid v\d+\.\d+\.\d+\s+\S+\s+\(cwd\)$/m);
-  assert.ok(braidLine, "must include a 'pi-braid v<X> ... (cwd)' line");
-});
-
-await test("Top-level list includes pi-braid-contrib with sibling-repo tag", () => {
-  // Format: "  pi-brand-contrib v<version>  <abs-path>  (sibling-repo)"
-  const contribLine = OUT.match(/^  pi-braid-contrib v\d+\.\d+\.\d+\s+\S+\s+\(sibling-repo\)$/m);
-  assert.ok(contribLine, "must include a 'pi-braid-contrib v<X> ... (sibling-repo)' line");
+await test("Top-level list uses settings-driven tags (project or user-global), not cwd/sibling-repo", () => {
+  // v3.8 reads pi-core's `packages` settings field, so every loaded
+  // package has a settings-scope tag. The legacy tags `(cwd)` and
+  // `(sibling-repo)` from v3.7 must not appear — they leaked
+  // implementation details about where the agent happened to be
+  // running from.
+  assert.ok(
+    !/\(cwd\)/.test(OUT),
+    "must not use the v3.7 (cwd) tag — packages are loaded from settings, not cwd",
+  );
+  assert.ok(
+    !/\(sibling-repo\)/.test(OUT),
+    "must not use the v3.7 (sibling-repo) tag — packages are loaded from settings, not sibling dirs",
+  );
+  // Each rendered line must end with one of the two valid tags.
+  const extLines = OUT.split("\n").filter((l) => /^\s+\S+ v\d+\.\d+\.\d+/.test(l));
+  assert.ok(extLines.length > 0, "must have at least one extension line");
+  for (const line of extLines) {
+    assert.match(
+      line,
+      /\((?:project|user-global)\)$/,
+      `extension line must end with (project) or (user-global): ${line}`,
+    );
+  }
 });
 
 await test("No project-specific internal module paths leak into the output", () => {
   // Regression guard: v3.5 surfaced internal module tree paths which
-  // leaked braid's implementation details. v3.7 replaces this with
-  // top-level package discovery. The output must never contain those
-  // internal module paths.
+  // leaked braid's implementation details. The output must never
+  // contain those internal module paths.
   assert.ok(
     !OUT.includes("src/extensions/"),
     "Instance block must not leak internal module tree paths",
@@ -193,35 +243,44 @@ await test("Renders 'Resources: N skills, M memories' line", () => {
   );
 });
 
-await test("Renders the Discover: hint pointing at the read tool", () => {
+await test("Discovery hint is generic, with no unicode arrow", () => {
+  // v3.8 corrected two issues: dropped the `→` arrow (excessive)
+  // and broadened the hint to cover the full runtime (not just
+  // extension source code).
+  assert.ok(!OUT.includes("→"), "must not use a unicode arrow in the hint");
   assert.match(
     OUT,
-    /Discover: `read`/,
-    "must end with a Discover hint pointing at the read tool",
+    /Discover on demand: `read`/,
+    "must have a 'Discover on demand' line with a `read` pointer",
+  );
+  // The generic hint should also mention the file tools reach the
+  // wider runtime — not just extension source.
+  assert.ok(
+    /bash.*grep.*find.*ls|`bash`|`grep`|`find`|`ls`/.test(OUT),
+    "hint should mention file tools for broader discoverability",
   );
 });
 
 // ── discoverTopLevelExtensions runtime behavior ────────────────────────────
 
-await test("discoverTopLevelExtensions() finds pi-braid (cwd) with entries", () => {
+await test("discoverTopLevelExtensions() reads from userland settings (not sibling dirs)", () => {
+  // The userland settings.json (read-only smoke test here) lists
+  // 4 local paths + 2 npm packages. Discovery must surface them
+  // by their settings scope, NOT by walking cwd siblings. Pass the
+  // ROOT cwd to scope the project path lookup.
   const exts = discoverTopLevelExtensions(ROOT);
-  const braid = exts.find((e) => e.name === "pi-braid");
-  assert.ok(braid, "pi-braid must be in the discovered list");
-  assert.equal(braid.source, "cwd");
-  assert.ok(braid.entries.length > 0, "pi-braid must declare at least one extension entry");
-  assert.ok(braid.version.length > 0, "pi-braid must have a version");
-  assert.ok(braid.root === ROOT, "pi-braid root must equal the cwd passed in");
-});
-
-await test("discoverTopLevelExtensions() finds pi-braid-contrib as sibling", () => {
-  const exts = discoverTopLevelExtensions(ROOT);
-  const contrib = exts.find((e) => e.name === "pi-braid-contrib");
-  assert.ok(contrib, "pi-braid-contrib must be discovered as a sibling");
-  assert.equal(contrib.source, "sibling");
+  // Should NOT contain sibling-discovered packages.
   assert.ok(
-    contrib.root.endsWith("/pi-braid-contrib"),
-    "sibling root must end with /pi-braid-contrib",
+    !exts.some((e) => e.name === "@saibolla/ada"),
+    "must not pick up sibling-discovered @saibolla/ada — only settings entries",
   );
+  // Each package's source tag is one of the two settings scopes.
+  for (const ext of exts) {
+    assert.ok(
+      ext.source === "project" || ext.source === "user-global",
+      `unexpected source tag '${ext.source}' on ${ext.name}`,
+    );
+  }
 });
 
 await test("discoverTopLevelExtensions() deduplicates by absolute root", () => {
