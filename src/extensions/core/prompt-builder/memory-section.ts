@@ -1,36 +1,38 @@
 /**
  * Memory section for the prompt-builder.
  *
- * Surfaces persisted memory state as a pointer block so the agent knows
- * what it has available before starting work. Mirrors the skills and
- * project-docs pattern: directive-first, then a `<available_memories>`
- * block with counts and a few recent entries, no content injection.
+ * Surfaces persisted + session-scoped memory state as a pointer block so
+ * the agent knows what it has available before starting work. Mirrors the
+ * skills and project-docs pattern: directive-first, then a
+ * `<available_memories>` block with self-closing `<store>` entries that
+ * carry their discoverability info (name + count + path or scope).
  *
- * What is surfaced (read from on-disk canonical paths):
- *   - Episodes:   EPISODES_FILE (JSONL). Count + last 3 task summaries.
- *   - Semantic:   SEMANTIC_MEMORY_FILE (JSON). Count + type breakdown.
- *   - Heuristics: NOT surfaced here. Heuristics are session-scoped in
- *                 memory (three-memory-stores MemoryStoresState) and
- *                 are not persisted across sessions. The agent can
- *                 discover them via `memory` action=heuristics_list
- *                 when relevant.
+ * Per-entry convention (matches skills and project-docs 1:1):
+ *   - `<store name="..." count="N" path="..." />` for persisted stores
+ *     (episodes, semantic). Path is the on-disk canonical location so the
+ *     agent can `read` the file or invoke `memory` and find the data.
+ *   - `<store name="heuristics" scope="session" />` for the session-scoped
+ *     store. No path because heuristics don't persist.
  *
- * Empty state: returns "" so the section is omitted entirely.
+ * What is NOT in the block (mirrors skills):
+ *   - Per-episode task snippets — the data quality is dominated by the
+ *     `session_outcome` placeholder sentinel and never tells the agent
+ *     anything actionable. Details live in the file; the agent reads it
+ *     on demand or invokes `memory` action=episodes_search.
+ *   - Aggregate outcome stats (success/failure/partial counts) — vanity
+ *     metrics. If the agent cares, it queries; if it doesn't, the line
+ *     is just decoration.
+ *   - Per-type breakdown of semantic memories — same reason.
+ *
+ * Empty state: still renders the directive + 3 self-closing `<store>`
+ * entries (counts will be 0). Tells the agent the stores exist as
+ * concepts; counts let it see at a glance whether there's anything to
+ * recall. Rendering at 0 mirrors skills' "Skills (0 available): ...".
  *
  * Cache: rendered string is cached by a fingerprint derived from the
- * underlying file paths + sizes. Invalidated on `RESOURCES_DISCOVER`
- * (mirrors the skills-section and project-docs-section invalidation
- * pattern) so the next before_agent_start re-reads after /reload or
- * session replacement.
- *
- * Why pointer-only (not content injection):
- *   - The same pattern that worked for skills and project docs.
- *   - The agent already has 90%+ of its tool calls on bash/read/edit;
- *     a visible block listing "you have N episodes, here are 3" is
- *     enough to flip the model from "ignore memory" to "recall first".
- *   - Full content injection would re-bloat the prompt (the 506-call
- *     evidence: cross-session memory was effectively invisible even
- *     though a past-insights whisper fires once per session).
+ * underlying file paths + mtime + size. Invalidated on `RESOURCES_DISCOVER`
+ * (mirrors the skills and project-docs invalidation pattern) so the next
+ * before_agent_start re-reads after /reload or session replacement.
  */
 
 import { readFile, stat } from "node:fs/promises";
@@ -46,7 +48,7 @@ const log = createLogger("prompt-builder:memory-section");
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
-/** Episode shape as serialized in EPISODES_FILE (subset used for the pointer). */
+/** Episode shape as serialized in EPISODES_FILE (subset used for the count). */
 interface EpisodeLine {
   id?: string;
   task?: string;
@@ -68,15 +70,8 @@ interface SemanticFileShape {
 
 /** Aggregated view of persisted memory state, used to render the block. */
 interface MemorySnapshot {
-  episodes: {
-    count: number;
-    recent: EpisodeLine[];
-    outcomes: { success: number; failure: number; partial: number };
-  };
-  semantic: {
-    count: number;
-    byType: Record<string, number>;
-  };
+  episodes: { count: number };
+  semantic: { count: number };
 }
 
 interface MemorySectionCacheState {
@@ -84,53 +79,19 @@ interface MemorySectionCacheState {
   section?: string;
 }
 
-// ── File readers ────────────────────────────────────────────────────────────
-
-/** Parse the last N episodes from a JSONL file. Returns [] on any error. */
-async function readRecentEpisodes(filePath: string, n: number): Promise<EpisodeLine[]> {
-  try {
-    const content = await readFile(filePath, "utf-8");
-    const lines = content.split("\n").filter((l) => l.trim());
-    const out: EpisodeLine[] = [];
-    // Walk from the end - episodes are appended chronologically.
-    for (let i = lines.length - 1; i >= 0 && out.length < n; i--) {
-      try {
-        const ep = JSON.parse(lines[i]);
-        if (ep && typeof ep === "object" && ep.task) {
-          out.push(ep as EpisodeLine);
-        }
-      } catch {
-        /* skip malformed line */
-      }
-    }
-    return out;
-  } catch (e) {
-    if ((e as { code?: string }).code !== "ENOENT") {
-      log.warn(`readRecentEpisodes(${filePath}) failed: ${e}`);
-    }
-    return [];
-  }
-}
+// ── File readers (counts only — no content surfaced to the prompt) ─────────
 
 /** Count total episodes by streaming the JSONL. Best-effort. */
-async function countEpisodes(filePath: string): Promise<{
-  count: number;
-  outcomes: { success: number; failure: number; partial: number };
-}> {
-  const outcomes = { success: 0, failure: 0, partial: 0 };
+async function countEpisodes(filePath: string): Promise<number> {
   let count = 0;
   try {
     const content = await readFile(filePath, "utf-8");
     const lines = content.split("\n").filter((l) => l.trim());
     for (const line of lines) {
       try {
-        const ep = JSON.parse(line) as { task?: unknown; outcome?: unknown } | null;
+        const ep = JSON.parse(line) as { task?: unknown } | null;
         if (ep && typeof ep === "object" && ep.task) {
           count++;
-          const o = ep.outcome;
-          if (o === "success" || o === "failure" || o === "partial") {
-            outcomes[o]++;
-          }
         }
       } catch {
         /* skip */
@@ -141,7 +102,7 @@ async function countEpisodes(filePath: string): Promise<{
       log.warn(`countEpisodes(${filePath}) failed: ${e}`);
     }
   }
-  return { count, outcomes };
+  return count;
 }
 
 /** Read the semantic store; return empty shape on any error. */
@@ -160,28 +121,14 @@ async function readSemantic(filePath: string): Promise<SemanticFileShape> {
 // ── Snapshot ────────────────────────────────────────────────────────────────
 
 async function buildMemorySnapshot(): Promise<MemorySnapshot> {
-  const [episodeStats, recent, semanticFile] = await Promise.all([
+  const [episodesCount, semanticFile] = await Promise.all([
     countEpisodes(EPISODES_FILE),
-    readRecentEpisodes(EPISODES_FILE, 3),
     readSemantic(SEMANTIC_MEMORY_FILE),
   ]);
 
-  const byType: Record<string, number> = {};
-  for (const m of semanticFile.memories ?? []) {
-    const t = m.type ?? "unknown";
-    byType[t] = (byType[t] ?? 0) + 1;
-  }
-
   return {
-    episodes: {
-      count: episodeStats.count,
-      recent,
-      outcomes: episodeStats.outcomes,
-    },
-    semantic: {
-      count: semanticFile.memories?.length ?? 0,
-      byType,
-    },
+    episodes: { count: episodesCount },
+    semantic: { count: semanticFile.memories?.length ?? 0 },
   };
 }
 
@@ -189,7 +136,7 @@ async function buildMemorySnapshot(): Promise<MemorySnapshot> {
 
 /**
  * Stable fingerprint of the persisted memory state. Uses file paths +
- * mtime+size so the cache invalidates when the on-disk stores change.
+ * mtime + size so the cache invalidates when the on-disk stores change.
  * Cheap stat calls; no content reads.
  */
 async function fingerprintMemoryFiles(): Promise<string> {
@@ -217,71 +164,22 @@ function escapeXml(str: string): string {
     .replace(/'/g, "&apos;");
 }
 
-function formatOutcome(outcome: string | undefined): string {
-  if (outcome === "success") return "✅";
-  if (outcome === "failure") return "❌";
-  return "⚠️";
-}
-
+/**
+ * Render the `<available_memories>` block + a one-line directive.
+ * Self-closing `<store>` entries carry name + count + path (or scope).
+ * This is the uniform pointer style used by skills and project-docs.
+ */
 function renderMemoryBlock(snapshot: MemorySnapshot): string {
   const { episodes, semantic } = snapshot;
 
-  // Empty state - skip the section entirely.
-  if (episodes.count === 0 && semantic.count === 0) {
-    return "";
-  }
-
   const lines: string[] = [
-    "Memory is your first knowledge in context. Before non-trivial work, recall from past sessions and evolved heuristics — you have seen similar tasks before. The `memory` tool covers recall (semantic), episodes (case-based), and heuristics (procedural rules).",
+    "Memory (episodes, semantic, heuristics): use `memory` to recall before non-trivial work. Stores live at the paths below; read or query on demand.",
     "<available_memories>",
+    `  <store name="episodes" count="${episodes.count}" path="${escapeXml(EPISODES_FILE)}" />`,
+    `  <store name="semantic" count="${semantic.count}" path="${escapeXml(SEMANTIC_MEMORY_FILE)}" />`,
+    `  <store name="heuristics" scope="session" />`,
+    "</available_memories>",
   ];
-
-  // Episodes block
-  lines.push("  <store name=\"episodes\">");
-  lines.push(`    <count>${episodes.count}</count>`);
-  if (episodes.outcomes.success + episodes.outcomes.failure + episodes.outcomes.partial > 0) {
-    lines.push(
-      `    <outcomes>success:${episodes.outcomes.success} failure:${episodes.outcomes.failure} partial:${episodes.outcomes.partial}</outcomes>`,
-    );
-  }
-  if (episodes.recent.length > 0) {
-    lines.push("    <recent>");
-    for (const ep of episodes.recent) {
-      const taskSnippet = (ep.task ?? "").slice(0, 100);
-      // Skip project tag if missing or "unknown" - noisy default not worth rendering.
-      const projectTag =
-        ep.project && ep.project !== "unknown" ? ` [${ep.project}]` : "";
-      const ageDays =
-        ep.timestamp && Date.now() - ep.timestamp > 0
-          ? Math.floor((Date.now() - ep.timestamp) / 86_400_000)
-          : null;
-      const ageTag = ageDays != null ? ` (${ageDays}d ago)` : "";
-      lines.push(
-        `      <episode outcome="${escapeXml(ep.outcome ?? "unknown")}"${projectTag}${ageTag}>${escapeXml(taskSnippet)}</episode>`,
-      );
-    }
-    lines.push("    </recent>");
-  }
-  lines.push("  </store>");
-
-  // Semantic block
-  lines.push("  <store name=\"semantic\">");
-  lines.push(`    <count>${semantic.count}</count>`);
-  if (Object.keys(semantic.byType).length > 0) {
-    const typeList = Object.entries(semantic.byType)
-      .sort((a, b) => b[1] - a[1])
-      .map(([t, n]) => `${t}:${n}`)
-      .join(", ");
-    lines.push(`    <by_type>${escapeXml(typeList)}</by_type>`);
-  }
-  lines.push("  </store>");
-
-  // Heuristics pointer (session-scoped, not persisted)
-  lines.push("  <store name=\"heuristics\" scope=\"session\">");
-  lines.push("    Heuristics accumulate within the current session and are NOT persisted across sessions. Query via `memory` action=heuristics_list to see what applies.");
-  lines.push("  </store>");
-
-  lines.push("</available_memories>");
   return lines.join("\n");
 }
 

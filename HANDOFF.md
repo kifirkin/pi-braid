@@ -1,6 +1,7 @@
 <!-- status: current -->
 <!-- Created: 2026-06-27 for fresh-session transfer -->
 <!-- Refreshed for skills block compression (priority #2 done) + v3.8/think-tool working-tree state — 2026-06-29 -->
+<!-- Refreshed for v3.9 pointer-block unification (skills + project-docs + memory all self-closing 1:1) — 2026-06-29 -->
 
 # pi-braid session handoff
 
