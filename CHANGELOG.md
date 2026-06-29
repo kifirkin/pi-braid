@@ -8,6 +8,37 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Memory + project-docs pointer blocks now mirror the skills section 1:1**
+  (v3.9). The system prompt previously had three pointer blocks (skills,
+  project docs, memory) with three different visual conventions that had
+  drifted apart over the v3.5 → v3.8 evolution. This refactor unifies
+  them under the skills model's lean philosophy: directive-first sentence
+  + `<available_*>` block of self-closing attribute-only entries
+  (name + count/location/path).
+  - `memory-section.ts`: dropped `<outcomes>` vanity stats, the per-episode
+    `<recent>` block (dominated by the `session_outcome` placeholder
+    sentinel — never informative), per-type `<by_type>` breakdown, and
+    the verbose heuristics prose. Three self-closing stores now: episodes
+    (with `count` + `path`), semantic (with `count` + `path`), heuristics
+    (`scope="session"` only, no path). Always renders, even when all counts
+    are 0 — mirrors skills' "Skills (0 available): ..." so the agent knows
+    stores exist as concepts. ~30% smaller per-turn surface.
+  - `project-docs-section.ts`: dropped redundant `<description>` (a literal
+    tautology with the wrapping directive on every doc) and the weak
+    `<lines>` signal. Sections TOC kept as `sections="..."` attribute
+    (capped at 6) because it's a genuine pre-read navigation aid. ~40%
+    smaller per-turn surface.
+  - `skills-section.ts`: untouched — already lean from `fd4b8269`.
+  Tests in `test/runtime/core/test-memory-section.mjs` updated to match
+  the new contract (8/8 subtests: self-closing shape, no `<recent>` /
+  `<outcomes>` / `<by_type>` / `<episode>` / `<description>` surface,
+  cache + invalidation behavior). `test-prompt-builder-values.mjs`
+  unchanged — its existing project-docs pointer-model assertions still
+  pass (no content injection, `<available_project_docs>` referenced,
+  required exports present).
+
 ### Added
 
 - **`## Instance` block at top of system prompt (v3.5).** Replaces
@@ -242,7 +273,159 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `test-instance-block.mjs` (the v3.5 module-tree contract was
   obsolete). Test count: 81 (same; new test replaces old).
 
+- **Instance block Root/Cwd/Settings + settings-driven extensions (v3.8).**
+  v3.7 shipped three remaining issues observed in the next session:
+  1. `Root:` leaked the braid development cwd into every system prompt
+     — for any agent running through braid, "Root" was braid's source
+     directory instead of the pi-core npm package folder where the
+     agent is actually hosted. Re-pointed at `discoverRunningPi().root`.
+  2. `Cwd:` was suppressed when it equaled `braidRoot`, hiding the
+     agent's actual working directory in the common case where the
+     user invokes `pi` from a project directory. Now always rendered.
+  3. Top-level extension discovery scanned cwd siblings, picking up
+     unrelated packages (e.g. `@saibolla/ada` surfaced as a sibling
+     repo that happened to have `pi` in its package.json) and
+     under-discovering packages that were actually configured
+     (`pi-braid-skills`, `npm:pi-smart-fetch`). The agent couldn't
+     trust the list as a real runtime inventory.
+
+  v3.8 resolves all three:
+  - **`top-level-extensions.ts`** (rewritten): reads pi-core's
+    `packages` field from `<cwd>/.pi/settings.json` (project) and
+    `~/.pi/agent/settings.json` (user-global) — the actual runtime
+    configuration. Project wins on collision, matching pi-core's
+    `DefaultPackageManager.resolve()` precedence. Resolves `npm:`
+    specs via `npm root -g`; resolves local paths in place. Source
+    tags: `project` / `user-global`. Accepts any package that
+    declares a `pi` field with at least one resource (extensions,
+    skills, or prompts) — pure skill packs like `pi-braid-skills`
+    now surface alongside extension providers.
+  - **`instance-composition.ts`** (rewritten):
+    - `Root:` now points at the pi-core npm package folder.
+    - `Cwd:` is always rendered.
+    - New `Settings: ~/.pi/agent` line (or `PI_CODING_AGENT_DIR`
+      override) — the userland settings dir is the agent's main
+      discovery hub (settings.json, skills, memory, sessions).
+    - Session line leads with the session id (so the agent can
+      read the raw session file or invoke the session-recall tool)
+      followed by elapsed/last-event/turns/tool-avg.
+    - Discovery hint: dropped the `→` unicode arrow, broadened
+      from "extension source code" to "the wider runtime" — file
+      tools (`bash`, `grep`, `find`, `ls`) reach `~/.pi/agent` and
+      the pi-core package, not just the listed extension paths.
+
+  Test: `test/runtime/lib/test-instance-block.mjs` rewritten from
+  17 to 19 subtests covering the Root/Cwd/Settings lines, session
+  id rendering, and the settings-driven discovery contract. Test
+  count: 81 (same).
+
+- **memory-agent-bridge: nudge broader search on empty episodes.**
+  When `memory action=episodes_search` returns zero hits, the
+  response now ends with "Consider trying broader search."
+  pointing the agent at `recall_search` (semantic similarity) as
+  the next move. One-line UX improvement, no behavior change
+  beyond the agent-facing message. Originated from a user
+  observation that empty search results usually mean the query was
+  too narrow, not that no relevant memory exists.
+
 ### Fixed
+
+- **Post-compaction stack overflow + re-entrancy guard (enforcement).**
+  Live trace: two `Maximum call stack size exceeded` errors fired
+  right after the `[compaction]` summary, then a third 180s later
+  when the agent manually called the scratchpad tool.
+
+  Root cause: the `session_compact` handler synchronously called
+  `callScratchpadTool(ctx, {action: "read"})` followed by two
+  `sendEnforcementWhisper(...)` calls. The scratchpad tool wrapper
+  in pi-core fires `tool_call` / `tool_execution_end` synchronously,
+  and the timer extension's `tool_execution_end` handler invokes
+  `fireExpired()` which can synchronously call `pi.sendMessage` with
+  `triggerTurn: true` for any timer that expired at the same moment.
+  That synchronous chain re-entered the handler (or other handlers)
+  and overflowed the V8 stack before the existing
+  `MAX_REENTRY_DEPTH=1` guard in `injection-tracker.ts` got a
+  chance to defer.
+
+  Fix (3 layers):
+  1. Per-session `inHandler` re-entrancy guard in
+     `enforcement/handlers/register-session-compact.ts` (mirrors the
+     `inBeforeAgentStart` pattern from `context-lifecycle`, keyed via
+     `getExtensionState` on `sessionManager.getSessionFile()` so a
+     previous session's stale flag cannot poison the next session).
+  2. Scratchpad read + whisper delivery deferred via `queueMicrotask`
+     so the handler returns synchronously. State writes
+     (`lastCompactionTurn`, `contextNudgeSent`, etc.) stay
+     synchronous because downstream handlers read them on the same
+     tick. Errors inside the microtask are logged, not propagated.
+  3. `MAX_REENTRY_DEPTH` bumped 1 → 3 in `injection-tracker.ts`
+     with a detailed comment explaining why the runtime + 25+
+     extensions + the session_compact chain need that headroom.
+
+  Test: `test/runtime/lib/test-session-compact-reentrancy.mjs` (new,
+  8 subtests) pins the synchronous-return property, the deferred
+  microtask side-effects, the per-session guard, and source-level
+  invariants on both modified files. Test count: 81 → 89.
+
+- **Think-tool single source of truth + all 7 prior bugs (cognitive).**
+  Seven bugs identified in the prior session's think-tool
+  investigation, all addressed via one structural change: the
+  schema enum and internal defaults now reference const arrays in
+  `think-budget.ts`.
+
+  - `THINK_TYPES` const array — schema enum references it. Currently
+    holds 10 entries (`observation`, `planning`, `execution`,
+    `reflection`, `conclusion`, `debugging`, `design`, `analysis`,
+    `insight`, `research`); adding a new allowed value is now a
+    one-line change in one file.
+  - `DEPTH_LEVELS` const array — schema enum references it.
+  - `ODAR_DEPTH_LEVELS` const array — vocabulary aligned with
+    `complexityToDepth` return type.
+  - `DEFAULT_THINK_TYPE` const — replaces the literal `"insight"`
+    that was duplicated across the schema default and the execute
+    path.
+
+  Bug fixes:
+  - **B1** (type enum restrictive): `analysis`, `insight`, `research`
+    added to `THINK_TYPES`.
+  - **B2** (default `'insight'` not in enum): `'insight'` added to
+    `THINK_TYPES`; schema default references the const.
+  - **B3** (latent fix): `complexityToDepth` previously returned
+    `"standard"` which was in neither schema nor `DEPTH_BUDGETS`,
+    so `getBudget("standard")` silently fell back to 512 tokens
+    (the `quick` budget). Now returns `"medium"` which resolves
+    correctly to 1024 tokens. The fallback no longer silently
+    under-allocates.
+  - **B4** (depth silently overridden by complexity): execute()
+    now uses explicit precedence — `explicit depth > complexity >
+    auto > quick` — and appends a `routingNote` to the depth line
+    when an override happens (e.g.
+    `Depth: deep (extended reasoning) (explicit depth wins over
+    complexity=0.5)`).
+  - **B5** (sparse tool description): expanded with required fields,
+    `parent_id` chaining, depth vocabulary, complexity interaction,
+    long-observation auto-estimation, type semantics, outcome
+    feedback.
+  - **B6** (auto_depth description wrong): doc now matches behavior
+    (hidden default for observations > 30 chars is documented).
+  - **B7** (complexity description wrong): doc now accurate
+    (complexity is never auto-estimated — only depth is, via
+    `estimateComplexity`).
+
+  Description polish (folded into the same commit per "no reverts"):
+  tool description went from a 7-clause / ~140-word block with
+  quotes, parentheses, and slashes, to a 5-clause / ~95-word block
+  with zero quotes, zero parens, zero slashes. The em-dash
+  delimiter serves as the typographic break between the level list
+  and its purpose: "Use quick, medium, or deep — for ODAR routing;
+  minimal, low, high, or max — for finer control." `promptSnippet`
+  also expanded to mention `parent_id` / `depth` / `complexity`.
+
+  Test count unchanged (89). The think tool had no regression tests
+  prior to this commit; the schema + execute changes were validated
+  by a 19-step verification script during investigation (since
+  deleted — the discipline is now committed to single source of
+  truth).
 
 - **Post-loop classifier timeout bumped 5s → 8s → 30s.** User report:
   `Error: 02:51:02.723 ERROR [llm-call] LLM error: This operation was aborted`
