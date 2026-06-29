@@ -2279,7 +2279,7 @@ do not add numbered items). All test
 suites pass (81/81):
 
 - `tsc --noEmit` — clean
-- `check-deps.mjs` — 0 violations across 229 src + 83 test files (v3.4 carve-out: 12 ALLOWED_BOUNDARY_OVERRIDES entries; v3.5 added 2 src + 1 test; v3.6 added 2 src - 1 deleted + 1 test; v3.7 added 2 src - 1 deleted + 1 test)
+- `check-deps.mjs` — 0 violations across 228 src + 83 test files (v3.4 carve-out: 12 ALLOWED_BOUNDARY_OVERRIDES entries; v3.5 added 2 src + 1 test; v3.6 added 2 src - 1 deleted + 1 test; v3.7 added 1 src - 1 deleted + 1 test - 2 deleted = net 0 src - 1 test was reverted because test-instance-block.mjs replaced both deleted tests in a single new file → tally still 228 src + 83 test)
 - `test-no-module-level-let.mjs` — 225 files, 0 violations (28 documented exceptions; v3.2 added `_timerExtensionFactoryState`)
 - `test-no-console-outside-logger.mjs` — 213 files, 0 violations
 - `test-no-direct-pi-sendmessage.mjs` — 213 files, 0 violations
