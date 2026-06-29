@@ -757,7 +757,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
               limit,
               deriveProjectId(ctx?.cwd ?? ""),
             );
-            if (episodes.length === 0) return textResult("No relevant episodes found.");
+            if (episodes.length === 0) return textResult("No relevant episodes found. Consider trying broader search.");
 
             const lines: string[] = [`Found ${episodes.length} relevant episodes:\n`];
             for (const ep of episodes) {
