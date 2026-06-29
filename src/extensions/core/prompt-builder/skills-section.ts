@@ -1,48 +1,27 @@
 /**
  * Skills section for the prompt-builder.
  *
- * Formats the resolved skill set as a `<available_skills>` block with
- * braid-specific enhancements (`<lines>` and `<sections>` per skill).
+ * Formats the resolved skill set as a `<available_skills>` block.
  *
- * Mirrors the native pi format (one <skill> entry per resolved skill
- * with name, description, and location) plus braid enhancements: each
- * entry also carries `<lines>` and `<sections>` so the agent can size
- * up a skill before reading the full file. No relevance scoring, no
- * cap, no hidden list - every skill the loader produced is here, so
- * the agent can always `read` any of them on demand. Skills with
- * `disable-model-invocation: true` are excluded, matching native.
+ * Each entry has name, description, and location - mirroring native
+ * pi's format. No per-skill file reads, no line counts, no section
+ * lists: the agent already knows how to `read` a SKILL.md, and 400
+ * lines is cheap to read on demand. Keeping the block terse matters
+ * more than embedding metadata the agent will rarely consult.
+ *
+ * No relevance scoring, no cap, no hidden list - every skill the
+ * loader produced is here, so the agent can always `read` any of
+ * them on demand. Skills with `disable-model-invocation: true` are
+ * excluded, matching native.
  *
  * Cache: the rendered string is cached per-skill-set fingerprint so
- * we don't re-read every SKILL.md on every turn. Invalidated when
- * the set of loaded skills changes (e.g. after /reload or session
- * start) via `resetSkillsSectionCache()`.
+ * we don't re-render on every turn. Invalidated when the set of
+ * loaded skills changes (e.g. after /reload or session start) via
+ * `resetSkillsSectionCache()`.
  */
 
-import { readFile } from "node:fs/promises";
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import type { PromptSection } from "./section.js";
-
-/** Skill metadata: line count and section headings. */
-interface SkillMeta {
-  totalLines: number;
-  sections: string[];
-}
-
-/** Count lines and extract `## / ###` section headings from a SKILL.md. */
-async function getSkillMeta(skill: Skill): Promise<SkillMeta> {
-  try {
-    const content = await readFile(skill.filePath, "utf-8");
-    const lines = content.split("\n");
-    const sections: string[] = [];
-    for (const line of lines) {
-      const match = line.match(/^#{2,3}\s+(.+)$/);
-      if (match) sections.push(match[1].trim());
-    }
-    return { totalLines: lines.length, sections: sections.slice(0, 8) };
-  } catch {
-    return { totalLines: 0, sections: [] };
-  }
-}
 
 function escapeXml(str: string): string {
   return str
@@ -67,21 +46,14 @@ export async function skillsSection(skills: Skill[]): Promise<PromptSection> {
       const sorted = [...visibleSkills].sort((a, b) => a.name.localeCompare(b.name));
 
       const lines = [
-        "Skills are your first knowledge in context. Read all of the relevant ones with `read` tool before starting a task.",
+        `Skills (${sorted.length} available): use \`read <location>\` to inspect a SKILL.md when relevant. Descriptions live in the files, not in this block.`,
         "<available_skills>",
       ];
 
       for (const skill of sorted) {
-        const meta = await getSkillMeta(skill);
-        lines.push("  <skill>");
-        lines.push(`    <name>${escapeXml(skill.name)}</name>`);
-        lines.push(`    <description>${escapeXml(skill.description)}</description>`);
-        lines.push(`    <location>${escapeXml(skill.filePath)}</location>`);
-        lines.push(`    <lines>${meta.totalLines}</lines>`);
-        if (meta.sections.length > 0) {
-          lines.push(`    <sections>${meta.sections.join(" | ")}</sections>`);
-        }
-        lines.push("  </skill>");
+        lines.push(
+          `  <skill name="${escapeXml(skill.name)}" location="${escapeXml(skill.filePath)}" />`,
+        );
       }
 
       lines.push("</available_skills>");
