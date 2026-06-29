@@ -1,28 +1,35 @@
 <!-- status: current -->
 <!-- Created: 2026-06-27 for fresh-session transfer -->
-<!-- Refreshed for v3.7 (Instance rewrite + Session merge) — 2026-06-29 -->
+<!-- Refreshed for skills block compression (priority #2 done) + v3.8/think-tool working-tree state — 2026-06-29 -->
 
 # pi-braid session handoff
 
 This file exists for a fresh agent session to pick up cleanly.
 The work is in a known-good state as of this writing.
 
-## Where we are (last 7 commits)
+## Where we are (last 8 commits)
 
 ```
-<new>      refactor(prompt-builder): Instance rewrite + top-level extensions (v3.7)
+fd4b8269   refactor(prompt-builder): compress <available_skills> block
+<new>      fix(prompt-builder): Instance Root/Cwd/Settings + settings-driven extensions (v3.8)
+c6184f27   refactor(prompt-builder): Instance rewrite + top-level extensions (v3.7)
 e3ec932d   refactor(prompt-builder): split L1 env into Session + Context blocks (v3.6)
 f47ddea6   docs(handoff): refresh for v3.5 - Instance block + contrib filter + browser disable
 001ddc8c   fix(loader): tool provenance via Proxy wrapper, not getAllTools diff
 bbf70c12   feat(prompt-builder): Instance block v3.5 - module paths + discovery note
 43231798   feat(prompt-builder): external tools group + contrib settings.json filter (v3.5 cont.)
-111b12d8   feat(prompt-builder): Instance composition block + tool provenance (v3.5)
 ```
 
-The v3.6 → v3.7 transfer is in flight (v3.6 already pushed;
-v3.7 will be 1 new commit). Push the v3.7 commit when ready.
+`fd4b8269` (skills compression, this conversation) is **committed locally,
+NOT pushed**. Push alongside the v3.8 commit when both are ready.
 
-v3.5 → v3.7 together complete the system-prompt cleanup plan:
+The v3.7 → v3.8 transfer is in flight (v3.7 already pushed;
+v3.8 is 1 new commit, working-tree changes already drafted).
+Two additional clusters of uncommitted working-tree work also
+remain — see the think-tool patches priority below and the
+"019f1435" session reference.
+
+v3.5 → v3.8 together complete the system-prompt cleanup plan:
 - **v3.5** ships the `## Instance` block at the top of every system
   prompt (agent identity, env, extension tree) + tool provenance
   + contrib settings.json filter.
@@ -41,23 +48,39 @@ v3.5 → v3.7 together complete the system-prompt cleanup plan:
   pi-poorman-providers, ...) with load-source classification.
   Also: the v3.6 Session block was merged back into Instance
   (all env info now lives together at the top of the prompt).
+- **v3.8** corrects three remaining issues from v3.7: (1) `Root:`
+  pointed at the braid development cwd instead of the pi-core
+  npm package folder (where the agent is hosted); (2) `Cwd:`
+  was suppressed when it equaled braidRoot, hiding the agent's
+  actual working directory in the common case; (3) top-level
+  extension discovery scanned cwd siblings, picking up unrelated
+  packages (e.g. `@saibolla/ada`) and missing configured ones
+  (e.g. `pi-braid-skills`, `npm:pi-smart-fetch`). v3.8 reads
+  pi-core's `packages` settings field (the real runtime
+  configuration) and adds a `Settings: ~/.pi/agent` line +
+  session id for the agent's discoverability hooks.
 
 ## State of the codebase
 
 - **CI**: `npm run ci:check` → ✅ all green (check:docs + check:doc-drift + check:deps + tsc + 81/81 tests)
-- **Tests**: `npm run test` → **81/81 pass** (was 80 after v3.5; 81 after v3.6; 81 after v3.7 — replaced test-instance-composition.mjs with test-instance-block.mjs at 17 subtests)
+- **Tests**: `npm run test` → **81/81 pass** (was 80 after v3.5; 81 after v3.6; 81 after v3.7; 81 after v3.8 — extended test-instance-block.mjs from 17 to 19 subtests covering Root/Cwd/Settings lines + settings-driven discovery)
 - **Typecheck**: `npm run typecheck` → clean
 - **Doc discipline**: `npm run check:docs` → ✅; `npm run check:doc-drift` → ✅
 - **check-deps**: `node scripts/check-deps.mjs` → ✅ 0 violations (229 src + 83 test files)
 - **pi-ai version**: `0.80.2` installed (now correctly surfaced in Instance block via `which pi`)
-- **Working tree**: clean (v3.7 uncommitted; pi-braid-contrib has staged-but-uncommitted change to `index.ts` for the contrib filter)
+- **Working tree**: NOT clean. Three uncommitted clusters:
+  - `fd4b8269` (skills block compression) — committed locally, **not pushed**
+  - v3.8 Instance corrections — working-tree changes drafted (per `<new>` row in commits list), need commit + push
+  - think-tool patches (`think.ts`, `think-budget.ts`) — partial work from session `019f1435`, audit against the 5 bugs and finish or revert before commit
 - **User-space settings**: `~/.pi/agent/settings.json` now has `braid.contrib.browser: false`. The contrib package's `index.ts` reads this and skips loading the browser extension entirely. Re-enable by deleting the `braid.contrib` block.
 
 ## What just shipped (this conversation)
 
 | Commit | Item | What it does |
 |---|---|---|
-| `<new>` | v3.7 Instance rewrite | `src/extensions/core/prompt-builder/top-level-extensions.ts` (new, ~170 LOC): discovers top-level pi extension PACKAGES from cwd, cwd-siblings, `~/.pi/agent/extensions/`, and `node_modules/<scope>/`. Each classified `cwd` / `sibling-repo` / `user-global` / `npm`. `instance-composition.ts` (rewritten, ~360 LOC): consolidated Instance block — all env (Root, Cwd, OS, hostname, Now, PID) + Session data (elapsed, last-event, turns, tool-avg) MERGED in from the deleted Session block + top-level extension list. Pi-core version discovery rewritten to use `which pi` + `realpathSync` + dual-strategy walk (fixes the `v0.77.0` vs `v0.80.2` bug). `session-section.ts` (deleted). Section 6 of the prompt (Current time + cwd) removed — Instance owns those fields. Test: `test-instance-block.mjs` (17 subtests) replaces `test-instance-composition.mjs`. |
+| `fd4b8269` | Skills block compression (priority #2 done) | `src/extensions/core/prompt-builder/skills-section.ts`: drops per-skill `<lines>` and `<sections>` braid enhancements and the `getSkillMeta` per-skill `readFile`. Render format is now `<skill name=... location=... />` self-closing tags only, with a count preamble. No descriptions — the agent reads SKILL.md on demand. Block shrinks from ~10500 chars / ~2600 tokens to ~3000 chars / ~750 tokens for the 24 default skills (~72% reduction). Pre-amble rewritten from "Skills are first knowledge, read all relevant ones before starting a task" (self-defeating — the block itself was the cost of scanning for relevance) to "use `read <location>` when relevant". Resolves HANDOFF priority #2 from the prior session. |
+| `<new>` | v3.8 Instance corrections | `src/extensions/core/prompt-builder/top-level-extensions.ts` (rewritten): discovers top-level pi extension PACKAGES by reading pi-core's `packages` field from `<cwd>/.pi/settings.json` (project) and `~/.pi/agent/settings.json` (user-global). Project wins on collision. Resolves `npm:` specs via `npm root -g`; resolves local paths in place. Source tags: `project` / `user-global`. Accepts any package with a `pi` field (extensions, skills, or prompts) — pure skill packs like `pi-braid-skills` now surface. `instance-composition.ts` (rewritten): `Root:` now points at the pi-core npm package folder (`discoverRunningPi().root`); `Cwd:` always rendered (was suppressed when equal to braidRoot); new `Settings: ~/.pi/agent` line (the userland discovery hub); Session line leads with the session id so the agent can read the raw session file or invoke the session-recall tool; discovery hint drops the `→` arrow and broadens to cover the wider runtime (file tools reach `~/.pi/agent` and the pi-core package). Test: `test-instance-block.mjs` extended from 17 to 19 subtests. |
+| `c6184f27` | v3.7 Instance rewrite | `src/extensions/core/prompt-builder/top-level-extensions.ts` (new, ~170 LOC): discovers top-level pi extension PACKAGES from cwd, cwd-siblings, `~/.pi/agent/extensions/`, and `node_modules/<scope>/`. Each classified `cwd` / `sibling-repo` / `user-global` / `npm`. `instance-composition.ts` (rewritten, ~360 LOC): consolidated Instance block — all env (Root, Cwd, OS, hostname, Now, PID) + Session data (elapsed, last-event, turns, tool-avg) MERGED in from the deleted Session block + top-level extension list. Pi-core version discovery rewritten to use `which pi` + `realpathSync` + dual-strategy walk (fixes the `v0.77.0` vs `v0.80.2` bug). `session-section.ts` (deleted). Section 6 of the prompt (Current time + cwd) removed — Instance owns those fields. Test: `test-instance-block.mjs` (17 subtests) replaces `test-instance-composition.mjs`. |
 | `e3ec932d` | v3.6 L1 split | `src/extensions/core/prompt-builder/{session-section,context-section}.ts` (new). `l1-environment.ts` (deleted, 275 LOC). The L1 block became two focused sections: `## Session` (volatile: PID, session time, turns, last event, tool avg — always shown) and `## Context` (conditional: context %, session health, memory count, steps since checkpoint — only shown when something to surface; returns `""` otherwise). Pinned by `test/runtime/lib/test-l1-split.mjs` (11 subtests). **The Session block was merged back into Instance in v3.7**, so `session-section.ts` no longer exists. |
 | `f47ddea6` | v3.5 HANDOFF | Pre-v3.6 HANDOFF refresh capturing post-push reality. |
 | `f47ddea6` | v3.5 HANDOFF | Pre-v3.6 HANDOFF refresh capturing post-push reality. |
@@ -69,7 +92,26 @@ v3.5 → v3.7 together complete the system-prompt cleanup plan:
 
 ## What's next (priority order)
 
-1. **Orchestrator extension (subagent handoff + healthcheck).** User
+The two open working-tree clusters come FIRST, before new feature work.
+After those, the orchestrator extension is the next autonomous push.
+
+1. **Push `fd4b8269` (skills compression) and the v3.8 commit.**
+   Both are local-only. v3.8 has working-tree changes drafted; commit,
+   push, then `fd4b8269` if not pushed already. Verify `origin/main`
+   is in sync after.
+2. **Finish or revert the think-tool patches (`think.ts`,
+   `think-budget.ts`) from session `019f1435`.** Five bugs were
+   surfaced with file:line citations: (a) `type: "analysis"`
+   rejected — enum too restrictive at think.ts:64-72; (b) internal
+   default "insight" not in schema enum (latent inconsistency);
+   (c) `complexityToDepth` returns "standard" not in schema enum;
+   (d) `depth` silently overridden by `complexity`; (e) tool
+   description missing required-field + enum info + parent_id
+   semantics. Audit the current diff against the 5 bugs. Either
+   the diff correctly fixes all five (commit + push), or it
+   partially fixes some (finish the rest), or it doesn't (revert
+   to a known-good state and start over).
+3. **Orchestrator extension (subagent handoff + healthcheck).** User
    asked 2026-06-28 for: a `/transfer` command + lead flag + sleep
    mode + self-verification/healthcheck that runs on session-start.
    - **Minimum viable first commit (~150 LOC):**
@@ -85,30 +127,20 @@ v3.5 → v3.7 together complete the system-prompt cleanup plan:
      `/lead` and `/follow` commands; sleep-mode behavior on
      session-start. tmux-based parallel visibility is a second
      iteration.
-2. **Skill compression (commit 5 of v3.5 plan).** Skills section:
-   drop `<description>`, add `hint:` frontmatter field (one-line
-   "when to read this skill" cue). This is a separate migration
-   that touches external skill files (~26 local skills + the
-   skills-repo skills). Could ship as a single commit (frontmatter
-   migration + skills-section.ts change) or as 3 commits (one for
-   the skills-section.ts renderer change, one for the local skills,
-   one for the skills-repo skills).
-3. **P3-7 / EW-7.12** — prefix naming convention (policy decision;
+4. **P3-7 / EW-7.12** — prefix naming convention (policy decision;
    needs user input).
-4. **P2-10 / Q13** — large-file splits (`memory-agent-bridge`,
+5. **P2-10 / Q13** — large-file splits (`memory-agent-bridge`,
    `timer`, `session-recall`, `latent-activator`). Explicitly
    deferred; trigger condition was partial-met by DR-M-8
    (scratchpadExecute split).
-5. **P2-7 / DR-H-9** — drift-classifier cache (prompt collapse 3→1
+6. **P2-7 / DR-H-9** — drift-classifier cache (prompt collapse 3→1
    multi-label). Partially unblocked by v3.0 cost-report but the
    prompt-merge design call needs user input.
 
-The roadmap tally: **49 of 51 actionable items shipped**. The 4
-remaining items all need user input, a policy decision, or upstream
-API stabilization. The next autonomous push (after this HANDOFF is
-written) is likely none — `ci:check` is fully green, all known
-limitations from the prior handoff are resolved, and the remaining
-items are explicitly deferred awaiting decisions.
+The roadmap tally: **50 of 51 actionable items shipped** (skills
+compression was priority #2 from the prior session, shipped in
+`fd4b8269`). The remaining items (4–6) all need user input, a
+policy decision, or upstream API stabilization.
 
 **Note on P1-4 / EW-7.3:** shipped in v2.3 (June 18) via the wrapper
 approach at `src/lib/utils/injection-tracker.ts:232` — every
