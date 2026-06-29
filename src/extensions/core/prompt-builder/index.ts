@@ -18,6 +18,7 @@ import {
   LIVING_DOCS,
   MEMORY_AWARENESS,
 } from "./identity.js";
+import { behaviorModeSection } from "./behavior-modes.js";
 import {
   reconstructSkillsSection,
   resetSkillsSectionCache,
@@ -70,11 +71,13 @@ import { getExtensionState } from "../../../lib/state/extension-state.js";
 
 interface PromptBuilderState {
   insightsSent: boolean;
+  activeBehaviorMode: string;
 }
 
 function getPromptState(ctx: ExtensionContext): PromptBuilderState {
   return getExtensionState(ctx, "prompt-builder", () => ({
     insightsSent: false,
+    activeBehaviorMode: "TRUTH-SEEKING",
   }));
 }
 const KNOWN_SNIPPETS: Record<string, string> = {
@@ -197,6 +200,19 @@ async function projectContextSection(cwd: string, ctx: ExtensionContext): Promis
 export default function promptBuilderExtension(pi: ExtensionAPI) {
   // L1 state is now gathered per-request, not global
 
+  // Listen for enforcement_signals events — enforcement emits these on
+  // every turn_end and session_compact with the current behavior mode.
+  // The prompt-builder stores the mode and renders it in the next prompt.
+  // Uses registerSessionStartHandler so the listener has access to the
+  // per-session ExtensionContext (needed for getExtensionState).
+  registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event, ctx) => {
+    const ps = getPromptState(ctx);
+    pi.events.on("enforcement_signals", (data: unknown) => {
+      const d = data as { contrastMode?: string };
+      if (d.contrastMode) ps.activeBehaviorMode = d.contrastMode;
+    });
+  });
+
   // ── resources_discover: invalidate skills, project-docs, memory caches ──
   // When resources are re-discovered (e.g. /reload, or session replacement),
   // pi re-resolves skills and project context. We invalidate our format
@@ -266,13 +282,15 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       simpleSection("identity", IDENTITY_INTRO),
 
       // 1a. Output directive (concise responses alongside tool calls).
-      //     Replaces the 8-value set that lived in behavioral-guardrails.ts
-      //     (deleted 2026-06-29). The values were bloat: verifier tools
-      //     (verify, verify_claim, finalize) carry the rigor that the old
-      //     value statements used to enjoin. The single directive pins the
-      //     WHEN of output (concise text alongside tool calls) without
-      //     spelling out meta-LLM failure modes in the prompt.
+      //     Pairs with the dynamic behavior-mode section below.
       simpleSection("value-concise-responses", CONCISE_RESPONSES),
+
+      // 1a-behavior. Dynamic behavior mode — surfaces the right directive
+      //     based on enforcement state (TRUTH-SEEKING by default, shifts to
+      //     CORRECTION / EPISTEMIC-CALIBRATION / TOOL-RELIABILITY when the
+      //     enforcement system detects the corresponding pattern).
+      //     Restored 2026-06-29 after being deleted in 3b4f108a.
+      behaviorModeSection(ps.activeBehaviorMode),
 
       // 1b. Compaction survival invariant - scratchpad + tasks must be self-contained
       //     so the agent can recover context after conversation compression

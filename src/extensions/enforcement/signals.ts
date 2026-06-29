@@ -77,26 +77,17 @@ export function pruneSignals(currentTurn: number): number {
   return deleted;
 }
 
-// ── RepE Contrast Mode Detection (P0.3) ────────────────────────────────────────
-// Determines which RepE contrast mode should be active based on enforcement state.
-// Originally consumed by contrast-phrase-library.ts (deleted 2026-06-29) which
-// rendered truthfulness guardrails into §8 of the system prompt based on the
-// active mode.
+// ── Behavior Mode Detection (P0.3) ───────────────────────────────────────────
+// Determines which behavior mode should be active based on enforcement state.
+// Consumed by turn-end-handler.ts and register-session-compact.ts, which emit
+// `enforcement_signals { contrastMode }`. The prompt-builder listens and renders
+// the active mode via `behaviorModeSection()` in behavior-modes.ts.
 //
-// TODO: review and research — 2026-06-29
-// After the guardrails removal, this function is no longer consumed by the
-// prompt-builder (the listener and contrast-phrase-library are gone). Kept
-// because:
-//   1. It encodes a useful enforcement-state → mode mapping (errors →
-//      TOOL-RELIABILITY, overflow recovery → EPISTEMIC-CALIBRATION, edit-
-//      without-think → CORRECTION, default → TRUTH-SEEKING).
-//   2. The mode taxonomy may be reusable for future routing — whisper
-//      injection keyed on mode, test fixtures, enforcement dashboards.
-//   3. The two emission sites (turn-end-handler.ts, register-session-compact.ts)
-//      still fire `enforcement_signals { contrastMode }` but nothing listens.
-//      Either wire a new consumer or delete the emissions + this function.
+// Restored 2026-06-29 after being briefly deleted in 3b4f108a. The lean
+// successor (behavior-modes.ts) replaces both the 8 static value statements
+// (behavioral-guardrails.ts) and the 6-phrase contrast library
+// (contrast-phrase-library.ts) with 4 modes × 1-2 directives each.
 //
-// Decision: keep for now, surface for review in next session.
 // Priority: errors > overflow > correction-edits > default.
 // Modes: TRUTH-SEEKING | TOOL-RELIABILITY | CORRECTION | EPISTEMIC-CALIBRATION.
 

@@ -24,7 +24,7 @@ import { type TurnState } from "../types.js";
 import { validateTurn } from "../validation.js";
 import { sendEnforcementWhisper } from "../whisper.js";
 import { knownFiles, loadFileContent } from "../similarity.js";
-import { enforcementSignals, pruneSignals, SIGNAL_KEYS } from "../signals.js";
+import { enforcementSignals, determineContrastMode, pruneSignals, SIGNAL_KEYS } from "../signals.js";
 import {
   USAGE_WHISPER_CRITICAL,
   USAGE_FIRED_RESET_BELOW,
@@ -388,6 +388,14 @@ export async function dispatchTurnEndLoop(
   if (isBurst) {
     sessionSignals.length = 0;
   }
+
+  // ── Signal emission ─────────────────────────────────────────────────────
+  // Emit behavior mode so prompt-builder can render the active directive.
+  // The mode is determined by enforcement state (errors, overflow, edits
+  // without think) and defaults to TRUTH-SEEKING.
+  pi.events.emit("enforcement_signals", {
+    contrastMode: determineContrastMode(ctx),
+  });
 
   // Clean up stale enforcement signals (kept for cross-turn MARS readback)
   if (sessionSignals.length > 0) {

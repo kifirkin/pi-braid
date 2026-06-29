@@ -29,7 +29,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { onEvent } from "../../../lib/events/event-types.js";
 import { sendEnforcementWhisper } from "../whisper.js";
 import { getState } from "../state.js";
-import { enforcementSignals, SIGNAL_KEYS } from "../signals.js";
+import { enforcementSignals, determineContrastMode, SIGNAL_KEYS } from "../signals.js";
 import { createLogger } from "../../../lib/core/logger.js";
 import { callScratchpadTool, getExtensionState } from "../../../lib/state/extension-state.js";
 import * as timerMod from "../../scheduling/timer/index.js";
@@ -181,6 +181,9 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
                 text: `${unpersisted.length} key learning(s) not yet persisted`,
                 acted: false,
               };
+              pi.events.emit("enforcement_signals", {
+                contrastMode: determineContrastMode(ctx),
+              });
             }
 
             // Always send re-orientation whisper after compaction so the agent

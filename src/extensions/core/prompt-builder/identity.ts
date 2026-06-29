@@ -5,13 +5,15 @@
  * "You are an expert coding assistant operating inside pi..." intro.
  *
  * History:
- *   - Previously also housed value statements (behavioral-guardrails.ts,
- *     deleted 2026-06-29) and active-contrast phrases (contrast-phrase-
- *     library.ts, deleted 2026-06-29). Both were bloat — values are
- *     now implicit (the agent uses verify/verify_claim tools when
- *     verification matters; the prompt doesn't need to spell out the
- *     meta-LLM failure modes), and contrast modes had no remaining
- *     consumer after the deletion.
+ *   - Previously housed value statements (behavioral-guardrails.ts, 8
+ *     research-cited values) and contrast phrases (contrast-phrase-library.ts,
+ *     6 phrases + 4 mode defs). Both were deleted 2026-06-29 as bloat, then
+ *     the dynamic behavior-mode system was restored the same day in a leaner
+ *     form (behavior-modes.ts: 4 modes × 1-2 directives each, wired to
+ *     enforcement signals via determineContrastMode). The static value
+ *     statements stay deleted — verifier tools (verify, verify_claim,
+ *     finalize) carry that rigor. The dynamic modes are the improvement:
+ *     right directive at the right time instead of all directives always.
  *   - CONCISE_RESPONSES (added 2026-06-29) replaces COMMUNICATION_QUALITY.
  *     Single sentence, lives next to INTERACTION_STYLE (which covers
  *     output *structure*; CONCISE_RESPONSES covers output *when*).

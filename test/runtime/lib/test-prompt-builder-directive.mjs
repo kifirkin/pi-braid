@@ -1,34 +1,30 @@
 /**
- * Test: prompt-builder output directive contract.
+ * Test: prompt-builder output directive + behavior-modes contract.
  *
- * Replaces test-prompt-builder-values.mjs (renamed 2026-06-29 after the
- * value-statement layer was deleted along with behavioral-guardrails.ts
- * and contrast-phrase-library.ts).
+ * Originally replaced test-prompt-builder-values.mjs (2026-06-29 after the
+ * value-statement layer was deleted). Updated 2026-06-29 after the dynamic
+ * behavior-mode system was restored in behavior-modes.ts.
  *
- * Pins two contracts:
+ * Pins three contracts:
  *
- *   1. The single concise-responses directive:
- *      - Exists as a constant in identity.ts
- *      - Is rendered into the system prompt via simpleSection
- *      - Is one declarative sentence (matches the documented terseness principle)
- *      - Has no meta-LLM references (preserves the spirit of the old
- *        meta-LLM-noise guard — the directive speaks to the agent, not
- *        to LLM failure modes)
- *      - Uses generalist vocabulary (no 'bug', 'refactor', 'patch')
+ *   1. The single concise-responses directive (CONCISE_RESPONSES in identity.ts):
+ *      - Exists as a constant, rendered into the system prompt
+ *      - Is one declarative sentence, no meta-LLM references, generalist vocabulary
  *
- *   2. Orthogonal contracts that lived in the old test but are unrelated
- *      to the values-vs-behaviors decision (kept so refactors of those
- *      files don't silently break the contract):
+ *   2. Dynamic behavior modes (behavior-modes.ts):
+ *      - File exists, exports behaviorModeSection + MODES + DEFAULT_MODE
+ *      - 4 modes defined: TRUTH-SEEKING, CORRECTION, EPISTEMIC-CALIBRATION, TOOL-RELIABILITY
+ *      - Each mode has 1-2 directives (lean, not the old 6-phrase library)
+ *      - Default mode is TRUTH-SEEKING
+ *      - Rendered into the system prompt via behaviorModeSection()
+ *      - Enforcement signals wiring: turn-end-handler emits contrastMode
+ *      - The old static value sections are NOT rendered (they stay deleted)
+ *
+ *   3. Orthogonal contracts from the prior test:
  *      - Project docs use pointer-only model
  *      - project-docs-section.ts exports the right API
  *      - RESOURCES_DISCOVER invalidates both skills and project-docs caches
  *      - IDENTITY_INTRO is generalist (not software-architect) framing
- *
- * This is a source-level contract test. It's stable to wording changes
- * but catches:
- *   - removal of the directive (regression)
- *   - removal from the rendered prompt (regression)
- *   - drift back to multi-sentence or software-only vocabulary
  */
 
 import { strict as assert } from "node:assert";
@@ -40,7 +36,10 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
 const FILES = {
   identity: join(ROOT, "src/extensions/core/prompt-builder/identity.ts"),
+  behaviorModes: join(ROOT, "src/extensions/core/prompt-builder/behavior-modes.ts"),
   promptBuilder: join(ROOT, "src/extensions/core/prompt-builder/index.ts"),
+  turnEndHandler: join(ROOT, "src/extensions/enforcement/handlers/turn-end-handler.ts"),
+  signals: join(ROOT, "src/extensions/enforcement/signals.ts"),
   projDocs: join(ROOT, "src/extensions/core/prompt-builder/project-docs-section.ts"),
 };
 
@@ -49,10 +48,13 @@ for (const [name, path] of Object.entries(FILES)) {
 }
 
 const identitySrc = readFileSync(FILES.identity, "utf-8");
+const behaviorModesSrc = readFileSync(FILES.behaviorModes, "utf-8");
 const promptBuilderSrc = readFileSync(FILES.promptBuilder, "utf-8");
+const turnEndHandlerSrc = readFileSync(FILES.turnEndHandler, "utf-8");
+const signalsSrc = readFileSync(FILES.signals, "utf-8");
 const projDocsSrc = readFileSync(FILES.projDocs, "utf-8");
 
-console.log("=== prompt-builder output directive contract ===\n");
+console.log("=== prompt-builder directive + behavior-modes contract ===\n");
 
 let passed = 0;
 let failed = 0;
@@ -67,19 +69,19 @@ function test(name, fn) {
   }
 }
 
-// ── Deleted files stay deleted (regression guard) ─────────────────────────
-// Paths are built inside the test fns (not in a top-level FILES const) so
-// check-deps doesn't flag them as stale source references. The assertion
-// is `!existsSync(...)` so it's pinning absence, not presence.
+// ── Old deleted files stay deleted (regression guard) ────────────────────
+// The old 8-value static layer and 6-phrase contrast library are gone.
+// The lean successor is behavior-modes.ts (4 modes × 1-2 directives).
+// These guard against accidentally restoring the bloated versions.
 
 test("behavioral-guardrails.ts is deleted (regression guard)", () => {
   const guardrailsPath = join(ROOT, "src/extensions/core/prompt-builder/behavioral-guardrails.ts");
-  assert.ok(!existsSync(guardrailsPath), "behavioral-guardrails.ts must stay deleted");
+  assert.ok(!existsSync(guardrailsPath), "behavioral-guardrails.ts must stay deleted (replaced by behavior-modes.ts)");
 });
 
 test("contrast-phrase-library.ts is deleted (regression guard)", () => {
   const contrastPath = join(ROOT, "src/extensions/core/prompt-builder/contrast-phrase-library.ts");
-  assert.ok(!existsSync(contrastPath), "contrast-phrase-library.ts must stay deleted");
+  assert.ok(!existsSync(contrastPath), "contrast-phrase-library.ts must stay deleted (replaced by behavior-modes.ts)");
 });
 
 test("prompt-builder no longer imports from the deleted files", () => {
@@ -108,6 +110,120 @@ test("prompt-builder no longer references the deleted value sections", () => {
     assert.ok(
       !promptBuilderSrc.includes(sec),
       `index.ts must not render ${sec} (deleted with the value-statement layer)`,
+    );
+  }
+});
+
+// ── Behavior modes (restored dynamic system) ───────────────────────────────
+
+test("behavior-modes.ts exists and exports the right API", () => {
+  assert.ok(existsSync(FILES.behaviorModes), `behavior-modes.ts must exist at ${FILES.behaviorModes}`);
+  assert.match(behaviorModesSrc, /export\s+function\s+behaviorModeSection/);
+  assert.match(behaviorModesSrc, /export\s+\{\s*MODES\s*,\s*DEFAULT_MODE\s*\}/);
+  assert.match(behaviorModesSrc, /export\s+type\s+\{\s*ModeDef\s*\}/);
+});
+
+test("4 behavior modes are defined", () => {
+  const requiredModes = ["TRUTH-SEEKING", "CORRECTION", "EPISTEMIC-CALIBRATION", "TOOL-RELIABILITY"];
+  for (const mode of requiredModes) {
+    assert.match(
+      behaviorModesSrc,
+      new RegExp(`"${mode}"\\s*:`),
+      `MODES must define the ${mode} mode`,
+    );
+  }
+});
+
+test("default mode is TRUTH-SEEKING", () => {
+  assert.match(
+    behaviorModesSrc,
+    /DEFAULT_MODE\s*=\s*MODES\["TRUTH-SEEKING"\]/,
+    "DEFAULT_MODE must be TRUTH-SEEKING",
+  );
+});
+
+test("each mode has 1-2 directives (lean, not the old 6-phrase library)", () => {
+  // Extract each mode's directives array and count entries.
+  // The old contrast-phrase-library had up to 3 phrases per mode.
+  // The lean successor should have 1-2.
+  const modeBlocks = behaviorModesSrc.matchAll(/"([A-Z-]+)":\s*\{[\s\S]*?directives:\s*\[([\s\S]*?)\]\s*\}/g);
+  for (const m of modeBlocks) {
+    const modeName = m[1];
+    const directivesContent = m[2];
+    // Count the number of string entries (backtick or quote delimited)
+    const directiveCount = (directivesContent.match(/`[^`]+`|"[^"]+"/g) || []).length;
+    assert.ok(
+      directiveCount >= 1 && directiveCount <= 2,
+      `${modeName} mode has ${directiveCount} directives; expected 1-2 (lean successor, not the old 3-phrase library)`,
+    );
+  }
+});
+
+test("behavior-modes has no meta-LLM references in directive text", () => {
+  // Check only the directive string literals (backtick-delimited), not comments.
+  // The file's explanatory comments may reference LLM concepts for maintainers;
+  // the prompt text itself must not.
+  const directives = behaviorModesSrc.matchAll(/`([^`]+)`/g);
+  const metaLLMTerms = ["LLM", "language model", "thinking model", "training data"];
+  for (const m of directives) {
+    const text = m[1];
+    // Skip comments (if a backtick string contains '//' it's likely a comment example)
+    for (const term of metaLLMTerms) {
+      assert.ok(
+        !text.includes(term),
+        `behavior-modes directive must not reference "${term}": "${text.slice(0, 60)}..."`,
+      );
+    }
+  }
+});
+
+test("behavior mode section is rendered into the system prompt", () => {
+  assert.match(
+    promptBuilderSrc,
+    /behaviorModeSection\(ps\.activeBehaviorMode\)/,
+    "index.ts must render behaviorModeSection with the active mode from state",
+  );
+});
+
+test("prompt-builder listens for enforcement_signals with contrastMode", () => {
+  assert.match(
+    promptBuilderSrc,
+    /pi\.events\.on\(["']enforcement_signals["']/,
+    "index.ts must listen for enforcement_signals events",
+  );
+  assert.match(
+    promptBuilderSrc,
+    /contrastMode/,
+    "index.ts must read contrastMode from the event data",
+  );
+  assert.match(
+    promptBuilderSrc,
+    /activeBehaviorMode/,
+    "index.ts must store the mode in activeBehaviorMode state",
+  );
+});
+
+test("turn-end-handler emits contrastMode via enforcement_signals", () => {
+  assert.match(
+    turnEndHandlerSrc,
+    /import\s+\{[^}]*determineContrastMode[^}]*\}\s+from\s+["']\.\.\/signals\.js["']/,
+    "turn-end-handler must import determineContrastMode",
+  );
+  assert.match(
+    turnEndHandlerSrc,
+    /pi\.events\.emit\s*\(\s*["']enforcement_signals["'][\s\S]*?contrastMode:\s*determineContrastMode/,
+    "turn-end-handler must emit contrastMode via enforcement_signals",
+  );
+});
+
+test("signals.ts exports determineContrastMode and documents the 4 modes", () => {
+  assert.match(signalsSrc, /export\s+function\s+determineContrastMode/);
+  // All 4 mode names should appear as return values
+  const modes = ["TRUTH-SEEKING", "TOOL-RELIABILITY", "EPISTEMIC-CALIBRATION", "CORRECTION"];
+  for (const mode of modes) {
+    assert.ok(
+      signalsSrc.includes(`return "${mode}"`),
+      `determineContrastMode must return "${mode}" for the corresponding condition`,
     );
   }
 });

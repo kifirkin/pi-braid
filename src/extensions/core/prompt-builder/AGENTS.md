@@ -21,7 +21,8 @@ Every file in this folder either:
 |---|---|
 | `index.ts` | Main handler. Wires `before_agent_start`, calls the 3 `deliver*` functions, composes the final prompt. |
 | `section.ts` | The `PromptSection` primitive + `composeSections` joiner + `simpleSection`, `linesSection`, `headingSection` builders. |
-| `identity.ts` | Framing constants: `IDENTITY_INTRO` (generalist identity), `INTERACTION_STYLE` (output *structure*), `CONCISE_RESPONSES` (output *when* — replaces `COMMUNICATION_QUALITY` deleted 2026-06-29), `COMPACTION_SURVIVAL`, `LIVING_DOCS`, `MEMORY_AWARENESS`. |
+| `identity.ts` | Framing constants: `IDENTITY_INTRO` (generalist identity), `INTERACTION_STYLE` (output *structure*), `CONCISE_RESPONSES` (output *when*), `COMPACTION_SURVIVAL`, `LIVING_DOCS`, `MEMORY_AWARENESS`. |
+| `behavior-modes.ts` | **Restored 2026-06-29** Dynamic behavior modes: 4 modes (TRUTH-SEEKING, CORRECTION, EPISTEMIC-CALIBRATION, TOOL-RELIABILITY) × 1-2 directives each. Wired to enforcement signals via `determineContrastMode()`. Replaces the deleted `behavioral-guardrails.ts` (8 static values) and `contrast-phrase-library.ts` (6 phrases + 4 mode defs). Lean successor: right directive at the right time instead of all directives always. |
 | `instance-composition.ts` | **v3.8** Instance (consolidated): agent identity + pi-core version + root (pi-core npm package folder) + cwd + userland settings dir + os/hostname/now/pid + session (id + elapsed/last-event/turns/tool-avg) + top-level pi extension packages (settings-driven, scope-tagged `project` or `user-global`). |
 | `top-level-extensions.ts` | **v3.8** Discovery logic for top-level pi extension PACKAGES. Reads pi-core's `packages` field from `<cwd>/.pi/settings.json` (project) and `~/.pi/agent/settings.json` (user-global); project wins on collision. Resolves `npm:` specs via `npm root -g`; resolves local paths in place. Source tags: `project` / `user-global`. |
 | `context-section.ts` | **v3.6** Context (conditional): context %, session health, memory count, steps-since-checkpoint. Returns `""` when nothing to surface. |
@@ -39,15 +40,15 @@ This folder holds the **shared identity layer** — IDENTITY framings, not proje
 
 Each identity constant is one declarative sentence, framed as WHO the agent IS (not "do X" or "don't do Y"). Identity framings integrate more cleanly than behavioral rules and adapt better to context.
 
-### Historical: values layer (deleted 2026-06-29)
+### Historical: values layer (deleted 2026-06-29, modes restored same day)
 
-The prompt-builder previously held an 8-value statement layer in `behavioral-guardrails.ts` (EPISTEMIC_INTEGRITY, BROAD_PERSPECTIVE, EVIDENCE_GROUNDING, SURGICAL_PRECISION, STRATEGY_AND_DRIFT, SYCOPHANCY_RESISTANCE, KNOWLEDGE_UNDER_PRESSURE, COMMUNICATION_QUALITY) plus a runtime contrast-mode injection via `contrast-phrase-library.ts`. Both files were deleted 2026-06-29 because:
+The prompt-builder previously held an 8-value statement layer in `behavioral-guardrails.ts` plus a runtime contrast-mode injection via `contrast-phrase-library.ts`. Both files were deleted 2026-06-29 as bloat, then the dynamic behavior-mode system was **restored the same day** in a leaner form (`behavior-modes.ts`).
 
-1. The values were bloat — they spelled out meta-LLM failure modes (sycophancy, reasoning instability, authority pressure) in the prompt itself, when the agent has `verify`, `verify_claim`, `hypothesize`, and `finalize` tools that carry that rigor.
-2. The contrast mode taxonomy (`TRUTH-SEEKING | TOOL-RELIABILITY | CORRECTION | EPISTEMIC-CALIBRATION`) is preserved in `determineContrastMode()` in `src/extensions/enforcement/signals.ts` with a TODO for review — the function is no longer consumed by the prompt-builder (the listener is gone), but kept in case the taxonomy is reused for whisper injection, test fixtures, or future routing.
-3. The two emission sites that fired `enforcement_signals { contrastMode }` (`turn-end-handler.ts`, `register-session-compact.ts`) were reduced to dead-code paths and the contrast mode emission was dropped. The remaining signal structure (unpersisted learnings, etc.) is unchanged.
+What stayed deleted: the 8 static value statements (EPISTEMIC_INTEGRITY, BROAD_PERSPECTIVE, etc.). Verifier tools (`verify`, `verify_claim`, `finalize`) carry that rigor.
 
-`CONCISE_RESPONSES` is the single replacement: it covers the only thing the value layer was concretely load-bearing for (output *when* — concise text alongside tool calls). The verifier tools carry the rigor that `SYCOPHANCY_RESISTANCE` / `EPISTEMIC_INTEGRITY` / `EVIDENCE_GROUNDING` used to enjoin.
+What was restored: the 4-mode dynamic system (TRUTH-SEEKING / CORRECTION / EPISTEMIC-CALIBRATION / TOOL-RELIABILITY) that surfaces the right directive based on enforcement state. The lean version has 1-2 directives per mode (down from 3 phrases per mode in the old library), no research citations in the prompt text, and no meta-LLM terminology.
+
+The `determineContrastMode()` function in `src/extensions/enforcement/signals.ts` is consumed again by `turn-end-handler.ts` and `register-session-compact.ts`, which emit `enforcement_signals { contrastMode }`. The prompt-builder listens via `registerSessionStartHandler` and stores the mode in session state.
 
 ### The `PromptSection` contract
 
@@ -112,7 +113,7 @@ Identity constants live in `identity.ts` and are wired into `index.ts` via `simp
 
 If all five pass, add a new constant to `identity.ts`, wire it via `simpleSection("value-<name>", CONST)`, and add a source-level test in `test/runtime/lib/test-prompt-builder-directive.mjs`.
 
-**Note (2026-06-29):** the previous value-statement layer (`behavioral-guardrails.ts`, 8 constants) was deleted. New identity framings should follow the lean precedent — one constant, one sentence, generalist — not the 8-value research-citation style the deleted file used.
+**Note (2026-06-29):** the previous value-statement layer (`behavioral-guardrails.ts`, 8 constants) was deleted and replaced with a dynamic behavior-mode system (`behavior-modes.ts`, 4 modes × 1-2 directives). New identity framings should follow the lean precedent — one constant, one sentence, generalist — not the 8-value research-citation style the deleted file used. For dynamic directives that should change based on enforcement state, add a mode to `behavior-modes.ts` instead.
 
 ### Adding a new whisper
 
