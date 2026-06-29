@@ -21,9 +21,7 @@ Every file in this folder either:
 |---|---|
 | `index.ts` | Main handler. Wires `before_agent_start`, calls the 3 `deliver*` functions, composes the final prompt. |
 | `section.ts` | The `PromptSection` primitive + `composeSections` joiner + `simpleSection`, `linesSection`, `headingSection` builders. |
-| `identity.ts` | 4 framing constants: `IDENTITY_INTRO` (generalist identity), `INTERACTION_STYLE`, `COMPACTION_SURVIVAL`, `LIVING_DOCS`. |
-| `behavioral-guardrails.ts` | 11 value statements: 5 pre-existing (`SYCOPHANCY_RESISTANCE`, `STAKES_AWARENESS`, `EPISTEMIC_STABILITY`, `SURGICAL_PRECISION`, `BUDGET_AWARENESS`) + 5 new as of 2026-06-21 (`BROAD_PERSPECTIVE`, `STRATEGY_BEFORE_ACTION`, `REASONING_INTEGRITY`, `KNOWLEDGE_UNDER_PRESSURE`, `COMMUNICATION_QUALITY`) + 1 new as of 2026-06-22 (`EVIDENCE_GROUNDING`). |
-| `contrast-phrase-library.ts` | Maps enforcement `contrastMode` values to phrase arrays. Returns a `PromptSection`. |
+| `identity.ts` | Framing constants: `IDENTITY_INTRO` (generalist identity), `INTERACTION_STYLE` (output *structure*), `CONCISE_RESPONSES` (output *when* — replaces `COMMUNICATION_QUALITY` deleted 2026-06-29), `COMPACTION_SURVIVAL`, `LIVING_DOCS`, `MEMORY_AWARENESS`. |
 | `instance-composition.ts` | **v3.8** Instance (consolidated): agent identity + pi-core version + root (pi-core npm package folder) + cwd + userland settings dir + os/hostname/now/pid + session (id + elapsed/last-event/turns/tool-avg) + top-level pi extension packages (settings-driven, scope-tagged `project` or `user-global`). |
 | `top-level-extensions.ts` | **v3.8** Discovery logic for top-level pi extension PACKAGES. Reads pi-core's `packages` field from `<cwd>/.pi/settings.json` (project) and `~/.pi/agent/settings.json` (user-global); project wins on collision. Resolves `npm:` specs via `npm root -g`; resolves local paths in place. Source tags: `project` / `user-global`. |
 | `context-section.ts` | **v3.6** Context (conditional): context %, session health, memory count, steps-since-checkpoint. Returns `""` when nothing to surface. |
@@ -32,18 +30,24 @@ Every file in this folder either:
 
 ## Local Contracts
 
-### Values vs behaviors (architectural split, 2026-06-21)
+### Identity vs behaviors (architectural split)
 
-This folder holds the **shared identity layer** — VALUES, not project-specific behaviors. The split:
+This folder holds the **shared identity layer** — IDENTITY framings, not project-specific behaviors. The split:
 
-- **Values (live here):** Identity-level statements that shape HOW the agent reasons and approaches problems. Generalist, applicable across all projects. Examples: `BROAD_PERSPECTIVE`, `REASONING_INTEGRITY`, `SYCOPHANCY_RESISTANCE`.
+- **Identity framings (live here):** Generalist statements about WHO the agent is and HOW it expresses output. Apply across all projects. Examples: `IDENTITY_INTRO`, `INTERACTION_STYLE`, `CONCISE_RESPONSES`.
 - **Behaviors (live in each project's AGENTS.md):** Concrete rules specific to that repo. Examples: "no `console.*` outside `lib/core/logger`", "use `sendTrackedMessage` for agent-bound messages", "use `getExtensionState(ctx, key, factory)` for per-session state". These would be project-specific baggage in the shared prompt and would drift the agent's identity toward whichever project is currently active.
 
-Each value is one declarative sentence, framed as WHO the agent IS (not "do X" or "don't do Y"). Identity framings integrate more cleanly than behavioral rules and adapt better to context.
+Each identity constant is one declarative sentence, framed as WHO the agent IS (not "do X" or "don't do Y"). Identity framings integrate more cleanly than behavioral rules and adapt better to context.
 
-### Research provenance (not in the prompt itself)
+### Historical: values layer (deleted 2026-06-29)
 
-The value statements are research-backed. The agent doesn't need to know about LLM failure modes — it just needs to embody the values. The provenance lives in `behavioral-guardrails.ts` comments for future maintainers.
+The prompt-builder previously held an 8-value statement layer in `behavioral-guardrails.ts` (EPISTEMIC_INTEGRITY, BROAD_PERSPECTIVE, EVIDENCE_GROUNDING, SURGICAL_PRECISION, STRATEGY_AND_DRIFT, SYCOPHANCY_RESISTANCE, KNOWLEDGE_UNDER_PRESSURE, COMMUNICATION_QUALITY) plus a runtime contrast-mode injection via `contrast-phrase-library.ts`. Both files were deleted 2026-06-29 because:
+
+1. The values were bloat — they spelled out meta-LLM failure modes (sycophancy, reasoning instability, authority pressure) in the prompt itself, when the agent has `verify`, `verify_claim`, `hypothesize`, and `finalize` tools that carry that rigor.
+2. The contrast mode taxonomy (`TRUTH-SEEKING | TOOL-RELIABILITY | CORRECTION | EPISTEMIC-CALIBRATION`) is preserved in `determineContrastMode()` in `src/extensions/enforcement/signals.ts` with a TODO for review — the function is no longer consumed by the prompt-builder (the listener is gone), but kept in case the taxonomy is reused for whisper injection, test fixtures, or future routing.
+3. The two emission sites that fired `enforcement_signals { contrastMode }` (`turn-end-handler.ts`, `register-session-compact.ts`) were reduced to dead-code paths and the contrast mode emission was dropped. The remaining signal structure (unpersisted learnings, etc.) is unchanged.
+
+`CONCISE_RESPONSES` is the single replacement: it covers the only thing the value layer was concretely load-bearing for (output *when* — concise text alongside tool calls). The verifier tools carry the rigor that `SYCOPHANCY_RESISTANCE` / `EPISTEMIC_INTEGRITY` / `EVIDENCE_GROUNDING` used to enjoin.
 
 ### The `PromptSection` contract
 
@@ -96,16 +100,19 @@ const newPrompt = await composeSections(sections, "\n\n", dedupSet);
 3. Add it to the main handler's section list (between identity/guardrails and the footer)
 4. Update the table above
 
-### Adding a new value statement
+### Adding a new identity framing
 
-Values are identity-level, not project-specific. Before adding a new value, ask:
+Identity constants live in `identity.ts` and are wired into `index.ts` via `simpleSection`. The pre-flight check before adding one:
 
-1. Is this a **value** (how to think/approach) or a **behavior** (concrete rule for this project)? If behavior → goes in project AGENTS.md, not here.
-2. Is it **generalist** (applies across domains) or domain-narrow (only software, only research, etc.)? Narrow values drift the identity.
-3. Can it be expressed as one declarative sentence? If not, it's probably two values compressed.
-4. Does it duplicate an existing value? If yes, sharpen the existing one instead.
+1. Is this an **identity** framing (who the agent is / how it expresses) or a **behavior** (concrete rule for this project)? If behavior → goes in project AGENTS.md, not here.
+2. Is it **generalist** (applies across domains) or domain-narrow? Narrow framings drift the identity.
+3. Can it be expressed as one declarative sentence? If not, it's probably two framings compressed.
+4. Does it duplicate an existing framing? If yes, sharpen the existing one instead.
+5. Can the desired behavior be achieved with a tool call instead? (Verifier tools like `verify`, `verify_claim`, `finalize` carry rigor that identity framings used to enjoin. Don't restate tool capabilities as identity.)
 
-If all four pass, add a new constant to `behavioral-guardrails.ts` (with a research-source comment), wire it into `index.ts` via `simpleSection("value-<name>", VALUE)`, and add a source-level test pinning the contract.
+If all five pass, add a new constant to `identity.ts`, wire it via `simpleSection("value-<name>", CONST)`, and add a source-level test in `test/runtime/lib/test-prompt-builder-directive.mjs`.
+
+**Note (2026-06-29):** the previous value-statement layer (`behavioral-guardrails.ts`, 8 constants) was deleted. New identity framings should follow the lean precedent — one constant, one sentence, generalist — not the 8-value research-citation style the deleted file used.
 
 ### Adding a new whisper
 

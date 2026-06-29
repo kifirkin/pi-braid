@@ -79,7 +79,24 @@ export function pruneSignals(currentTurn: number): number {
 
 // ── RepE Contrast Mode Detection (P0.3) ────────────────────────────────────────
 // Determines which RepE contrast mode should be active based on enforcement state.
-// Emitted with enforcement_signals event → prompt-builder renders active mode in §8.
+// Originally consumed by contrast-phrase-library.ts (deleted 2026-06-29) which
+// rendered truthfulness guardrails into §8 of the system prompt based on the
+// active mode.
+//
+// TODO: review and research — 2026-06-29
+// After the guardrails removal, this function is no longer consumed by the
+// prompt-builder (the listener and contrast-phrase-library are gone). Kept
+// because:
+//   1. It encodes a useful enforcement-state → mode mapping (errors →
+//      TOOL-RELIABILITY, overflow recovery → EPISTEMIC-CALIBRATION, edit-
+//      without-think → CORRECTION, default → TRUTH-SEEKING).
+//   2. The mode taxonomy may be reusable for future routing — whisper
+//      injection keyed on mode, test fixtures, enforcement dashboards.
+//   3. The two emission sites (turn-end-handler.ts, register-session-compact.ts)
+//      still fire `enforcement_signals { contrastMode }` but nothing listens.
+//      Either wire a new consumer or delete the emissions + this function.
+//
+// Decision: keep for now, surface for review in next session.
 // Priority: errors > overflow > correction-edits > default.
 // Modes: TRUTH-SEEKING | TOOL-RELIABILITY | CORRECTION | EPISTEMIC-CALIBRATION.
 

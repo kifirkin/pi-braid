@@ -6,7 +6,6 @@ import { getAgentDir, loadProjectContextFiles } from "@earendil-works/pi-coding-
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { RESOURCES_DISCOVER } from "../../../lib/core/event-names.js";
 import { gatherContextState, contextSection } from "./context-section.js";
-import { contrastSection } from "./contrast-phrase-library.js";
 import { deliverActiveSpecs } from "../../../lib/cognitive/openspec.js";
 import { deliverRelevantHints } from "../../../lib/cognitive/hints.js";
 import type { PromptSection } from "./section.js";
@@ -14,20 +13,11 @@ import { linesSection, simpleSection, composeSections } from "./section.js";
 import {
   IDENTITY_INTRO,
   INTERACTION_STYLE,
+  CONCISE_RESPONSES,
   COMPACTION_SURVIVAL,
   LIVING_DOCS,
   MEMORY_AWARENESS,
 } from "./identity.js";
-import {
-  SYCOPHANCY_RESISTANCE,
-  EPISTEMIC_INTEGRITY,
-  SURGICAL_PRECISION,
-  STRATEGY_AND_DRIFT,
-  BROAD_PERSPECTIVE,
-  KNOWLEDGE_UNDER_PRESSURE,
-  COMMUNICATION_QUALITY,
-  EVIDENCE_GROUNDING,
-} from "./behavioral-guardrails.js";
 import {
   reconstructSkillsSection,
   resetSkillsSectionCache,
@@ -79,13 +69,11 @@ import { instanceSection } from "./instance-composition.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 
 interface PromptBuilderState {
-  activeContrastMode: string;
   insightsSent: boolean;
 }
 
 function getPromptState(ctx: ExtensionContext): PromptBuilderState {
   return getExtensionState(ctx, "prompt-builder", () => ({
-    activeContrastMode: "TRUTH-SEEKING",
     insightsSent: false,
   }));
 }
@@ -209,16 +197,6 @@ async function projectContextSection(cwd: string, ctx: ExtensionContext): Promis
 export default function promptBuilderExtension(pi: ExtensionAPI) {
   // L1 state is now gathered per-request, not global
 
-  // 4b: Listen for enforcement_signals events - replaces direct coupling via module-level singleton.
-  // enforcement emits these on every turn_end and session_compact.
-  registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event, ctx) => {
-    const ps = getPromptState(ctx);
-    pi.events.on("enforcement_signals", (data: unknown) => {
-      const d = data as { contrastMode?: string };
-      if (d.contrastMode) ps.activeContrastMode = d.contrastMode;
-    });
-  });
-
   // ── resources_discover: invalidate skills, project-docs, memory caches ──
   // When resources are re-discovered (e.g. /reload, or session replacement),
   // pi re-resolves skills and project context. We invalidate our format
@@ -287,21 +265,14 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       // 1. Custom identity (THE key difference from native)
       simpleSection("identity", IDENTITY_INTRO),
 
-      // 1a. Value statements (identity-level directives).
-      //     8 values as of 2026-06-23 (compressed from 11). See
-      //     behavioral-guardrails.ts for the value-evolution log.
-      //     Order matches the file's "how-to-think → how-to-approach →
-      //     how-to-respond-under-pressure → how-to-express" thesis.
-      //     Project-specific behaviors live in each project's AGENTS.md, not here.
-      //     See behavioral-guardrails.ts for the values-vs-behaviors architectural split.
-      simpleSection("value-epistemic-integrity", EPISTEMIC_INTEGRITY),
-      simpleSection("value-broad-perspective", BROAD_PERSPECTIVE),
-      simpleSection("value-evidence-grounding", EVIDENCE_GROUNDING),
-      simpleSection("value-surgical-precision", SURGICAL_PRECISION),
-      simpleSection("value-strategy-and-drift", STRATEGY_AND_DRIFT),
-      simpleSection("value-sycophancy-resistance", SYCOPHANCY_RESISTANCE),
-      simpleSection("value-knowledge-under-pressure", KNOWLEDGE_UNDER_PRESSURE),
-      simpleSection("value-communication-quality", COMMUNICATION_QUALITY),
+      // 1a. Output directive (concise responses alongside tool calls).
+      //     Replaces the 8-value set that lived in behavioral-guardrails.ts
+      //     (deleted 2026-06-29). The values were bloat: verifier tools
+      //     (verify, verify_claim, finalize) carry the rigor that the old
+      //     value statements used to enjoin. The single directive pins the
+      //     WHEN of output (concise text alongside tool calls) without
+      //     spelling out meta-LLM failure modes in the prompt.
+      simpleSection("value-concise-responses", CONCISE_RESPONSES),
 
       // 1b. Compaction survival invariant - scratchpad + tasks must be self-contained
       //     so the agent can recover context after conversation compression
@@ -360,9 +331,6 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     //    The Session block was merged into Instance in v3.7; section 6
     //    (date + cwd) was dropped because Instance now owns those fields.
     sections.push(context);
-
-    // 7. Active contrast mode (truthfulness guardrails)
-    sections.push(contrastSection(ps.activeContrastMode));
 
     // 9: Preserve appendSystemPrompt from pi-native. Deduplicated against
     // everything above via the dedup set; user-provided append content that

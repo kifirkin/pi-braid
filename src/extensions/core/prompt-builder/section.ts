@@ -20,9 +20,10 @@
  * which pattern to follow. This file makes the contract explicit.
  *
  * The primitive is intentionally small. Helpers like `linesSection`
- * and `headingSection` are layered on top in the consuming files
- * (see contrast-phrase-library.ts and the upcoming Phase 1 refactors
- * of the other section builders).
+ * and `headingSection` are layered on top in the consuming files.
+ *
+ * Note (2026-06-29): contrast-phrase-library.ts was deleted with the
+ * value-statement layer; no remaining consumer uses it.
  */
 
 /**

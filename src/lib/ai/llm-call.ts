@@ -1,13 +1,14 @@
 /**
  * [stakes-invariant] - 2026-06-23: STAKES_AWARENESS was removed from the
- * agent's prompt (see behavioral-guardrails.ts) because it was a meta-
- * directive about the evaluation pipeline, not about agent behavior. The
- * invariant it encoded is preserved HERE: this module and the rest of
- * lib/ai/ must never include downstream-stakes signals in the LLM call
- * context. The judge (whether human, LLM-as-judge, or programmatic)
+ * agent's prompt (was in behavioral-guardrails.ts, deleted 2026-06-29
+ * along with the entire value-statement layer) because it was a meta-
+ * directive about the evaluation pipeline, not about agent behavior.
+ * The invariant it encoded is preserved HERE: this module and the rest
+ * of lib/ai/ must never include downstream-stakes signals in the LLM
+ * call context. The judge (whether human, LLM-as-judge, or programmatic)
  * evaluates pure correctness; the agent being judged sees no signal
  * about what the judgment is for. The test-arxiv-citations.mjs and
- * test-prompt-builder-values.mjs suites verify the agent-side invariant.
+ * test-prompt-builder-directive.mjs suites verify the agent-side invariant.
  *
  * Wraps pi-ai's completeSimple with a two-tier retry strategy:
  *

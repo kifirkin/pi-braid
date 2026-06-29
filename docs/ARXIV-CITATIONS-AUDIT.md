@@ -33,7 +33,7 @@ The first audit pass used `curl -I` (HEAD) and got 404 for the 4 IDs 2604.19768,
 - `src/lib/store/belief-store.ts:10` — arXiv:2604.14401 (Credo, Lu et al.)
 - `src/extensions/cognitive/sycophancy-detector/index.ts:7-8` — arXiv:2604.00478 (Silicon Mirror, Shah), arXiv:2604.19117
 - `src/extensions/core/prompt-builder/index.ts:141` — arXiv:2604.19768 (Bakhshi)
-- `src/extensions/core/prompt-builder/behavioral-guardrails.ts:9-11` — arXiv:2604.19117, 2604.15224, 2604.14881
+- ~~`src/extensions/core/prompt-builder/behavioral-guardrails.ts:9-11`~~ — deleted 2026-06-29 with the entire value-statement layer; citations no longer in the codebase.
 
 ## Process recommendation
 
