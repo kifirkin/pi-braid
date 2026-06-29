@@ -2386,3 +2386,79 @@ The remaining active documents (`ENFORCEMENT-WHISPER-CONTENT-AUDIT.md`,
 `CODE-QUALITY-REMEDIATION-PLAN.md`, `FRAGILE-HEURISTICS-INVENTORY.md`,
 `STATE-POLICY.md`, `ARXIV-CITATIONS-AUDIT.md`) retain their full content
 as historical/reference material.
+
+---
+
+## Session-Derived Proposals (2026-06-28/29)
+
+<!-- status: forward-looking -->
+
+Proposals raised during conversation sessions but not yet captured in the
+P0/P1/P2/P3 tables above. Recovered from session JSONL files to prevent loss.
+Each is actionable; status markers track progress.
+
+### System Prompt Quality (SPQ)
+
+| ID | Proposal | Status | Notes |
+|---|---|---|---|
+| SPQ-1 | Definition of Done block: before `finalize`, every scratchpad `done` item gets `path` + `last-modified-cmd` + `verification-cmd` triple | not started | Called "single highest-leverage prompt change" |
+| SPQ-2 | Anti-convergence rule: "when 3 consecutive tool calls confirm your theory, re-open the question" | not started | Promote from buried insight to named rule |
+| SPQ-3 | Bind `verify` to milestones: required after each sub-goal marked done | not started | Currently optional |
+| SPQ-4 | Reconcile "skills are first knowledge" with "treat references as claims" | not started | Either skills carry freshness markers or ordering changes |
+| SPQ-5 | Heuristics persistence across sessions | not started | Currently session-scoped; rules vanish on session end |
+| SPQ-6 | Remove MiniMax launch paragraph from system prompt | not started | Marketing text in the prompt |
+| SPQ-7 | Replace `generalist` with specific operational identity | not started | E.g. "Braid refuses to finalize without diff-level evidence" |
+| SPQ-8 | Post-finalize drift-detection: re-derive unfinished items, diff against claim | not started | Catches missed work |
+| SPQ-9 | `think()` tool discipline: "think when irreversible, not for routine reads" | not started | Replace "max thinking effort" line |
+| SPQ-10 | `<>` tag leak fix | not started | Internal thinking tags leaking into rendered output |
+| SPQ-11 | Memory section "little additions" | not started | User-flagged, details not yet specified |
+| SPQ-12 | "Other things possibly need review" | not started | User-flagged, details not yet specified |
+
+### Durable Continuation Pipeline (DCP)
+
+| ID | Proposal | Status | Notes |
+|---|---|---|---|
+| DCP-1 | Wire `postLoopClassify` into turn-end handler | not started | ~30 LOC, utility model, cheapest first move |
+| DCP-2 | Compose postLoopClassify + mars-reflector + reflection-consolidator | not started | ~150-200 LOC, single turn-end pipeline |
+| DCP-3 | End-of-turn reflect + save state pipeline | not started | classify → reflect → consolidate → write to stores |
+| DCP-4 | "Max-power model" routing tier for think/verify/hypothesize | not started | ~50 LOC, third routing tier |
+| DCP-5 | Subagent self-testing via evolver.ts | not started | Heartbeat tick + diff of last N changes + test contract |
+
+### Tool/Feature Proposals (TFP)
+
+| ID | Proposal | Status | Notes |
+|---|---|---|---|
+| TFP-1 | Orchestrator extension (`/transfer`, `/healthcheck`, `/lead`, `/follow`) | not started | User-requested 2026-06-28; ~150 LOC MVP |
+| TFP-2 | Rename `think` to `reason` (or add alias) | not started | Three paths proposed, user never chose |
+| TFP-3 | `modulesList` tool — surface module states to agent | not started | Enabled/disabled/loaded |
+| TFP-4 | Surface tool provenance to agent | not started | Foundation laid (tool-provenance.ts), not queryable |
+| TFP-5 | `determineContrastMode` review | not started | TODO in signals.ts; function now consumed again |
+| TFP-6 | Self-reflection module (LLM-backed, subagent testing) | not started | Described as "huge" |
+| TFP-7 | Cross-process agent communication | not started | Main spawns healthcheck, gathers status |
+
+### Test Cleanup Backlog (TCB)
+
+| ID | Proposal | Status | Notes |
+|---|---|---|---|
+| TCB-1 | `check-deps.mjs` `getFileLayer` regex bug | not started | Captures `.ts` as group name; should be `[^/.]+` |
+| TCB-2 | `check-deps.mjs` `ALLOWED_BOUNDARY_OVERRIDES` structured data | not started | Uses `→` unicode strings; should be objects |
+| TCB-3 | `test-no-module-level-let.mjs` `EXEMPT_LINES` drift | not started | Manual line numbers drift on llm-call.ts edits |
+| TCB-4 | `test-prompt-builder-*.mjs` brittle source-grep | not started | Regex/contains assertions on source text |
+| TCB-5 | `test-prompt-builder-values.mjs` hardcoded 8 value names | not started | Should derive from behavioral-guardrails export (now deleted; adapt) |
+| TCB-6 | "Test as lint via source grep" approach | not started | Find better substrate or document brittleness |
+| TCB-7 | Reduce source-grep tests across codebase | not started | Worst offenders identified (test-enforcement 17 ops, etc.) |
+| TCB-8 | `pi-braid-presentation` test pattern | not started | Test files that grep source for substrings |
+
+### Documentation Gaps (DG)
+
+| ID | Proposal | Status | Notes |
+|---|---|---|---|
+| DG-1 | Settings.json example doc | not started | Document `braid.contrib.<name>` and `braid.modules` |
+| DG-2 | SKILL.md frontmatter description trim | not started | ~3700 chars savings across 25 skills |
+| DG-3 | `project-docs-section.ts` compression | not started | Same `<lines>`/`<sections>` anti-pattern as skills-section |
+
+### Shipped from this batch
+
+| ID | Proposal | Shipped in | Notes |
+|---|---|---|---|
+| — | Dynamic behavior modes (TRUTH-SEEKING + 3) | 709950c9 | Restored lean version of deleted contrast-mode system |

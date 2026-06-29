@@ -8,7 +8,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Dynamic behavior modes restored** (TRUTH-SEEKING + 3). The
+  3b4f108a commit deleted the contrast-mode system along with the
+  static value statements. The dynamic modes are now back in a lean
+  form (`behavior-modes.ts`, 132 LOC vs the old 265 combined). 4
+  modes × 1-2 directives each, wired to enforcement signals via
+  `determineContrastMode()`. The agent gets TRUTH-SEEKING by default,
+  TOOL-RELIABILITY on error bursts, CORRECTION when editing without
+  thinking, EPISTEMIC-CALIBRATION during overflow recovery. The 8
+  static value statements stay deleted (verifier tools carry that
+  rigor).
+
 ### Changed
+
+- **CHANGELOG fix**: corrected bogus test count "81 → 89" to "81
+  (8 new subtests within the test file)".
 
 - **Memory + project-docs pointer blocks now mirror the skills section 1:1**
   (v3.9). The system prompt previously had three pointer blocks (skills,
@@ -365,7 +381,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Test: `test/runtime/lib/test-session-compact-reentrancy.mjs` (new,
   8 subtests) pins the synchronous-return property, the deferred
   microtask side-effects, the per-session guard, and source-level
-  invariants on both modified files. Test count: 81 → 89.
+  invariants on both modified files. Test count: 81 (8 new subtests
+  within the test file, not 8 new files).
 
 - **Think-tool single source of truth + all 7 prior bugs (cognitive).**
   Seven bugs identified in the prior session's think-tool
