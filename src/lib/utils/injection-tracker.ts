@@ -56,11 +56,27 @@ let _activeSessionId: string | undefined;
 // Incremented before pi.sendMessage, decremented after. If depth > MAX_REENTRY_DEPTH,
 // the message is dispatched via queueMicrotask to break the synchronous chain.
 let _sendDepth = 0;
-// MAX_REENTRY_DEPTH = 1: only allow 1 synchronous pi.sendMessage call before
-// deferring to microtask. With ~25 extensions each registering before_agent_start
-// hooks, the runtime re-entry depth can far exceed 2 if every nested call is
-// allowed through. 1 is the safe floor - anything deeper is unsafe.
-const MAX_REENTRY_DEPTH = 1;
+// MAX_REENTRY_DEPTH = 3 (was 1, bumped 2026-06-29 after the post-compaction
+// stack-overflow trace):
+//   The previous value of 1 assumed the runtime + extension hooks fit in a
+//   single synchronous frame. In practice:
+//     - pi-core's tool dispatch occupies 2-3 frames (TOOL_CALL → execute →
+//       TOOL_EXECUTION_END).
+//     - 25+ extensions each register `before_agent_start` hooks that all
+//       run synchronously when the runtime fires one.
+//     - The session_compact handler in enforcement calls `callScratchpadTool`
+//       (which fires TOOL_CALL/TOOL_EXECUTION_END through pi-core's wrapper)
+//       and `sendEnforcementWhisper` twice. Each pi.sendMessage can fire
+//       before_agent_start synchronously, adding to the depth.
+//   With depth=1, the second-level call (which is the first extension-level
+//   sendTrackedMessage in the chain) defers — but the runtime itself can
+//   already be at depth 2-3, so the first extension call may not even
+//   reach the check before the runtime overflows. depth=3 gives the
+//   runtime + first extension call + first nested call enough headroom
+//   to defer cleanly.
+//   Anything deeper than 3 indicates a real re-entrancy bug — deferring
+//   later won't help, the stack is already too deep.
+const MAX_REENTRY_DEPTH = 3;
 
 
 /**
