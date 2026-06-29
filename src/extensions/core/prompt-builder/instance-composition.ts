@@ -63,17 +63,36 @@ interface PiVersionInfo {
 }
 
 function discoverRunningPi(): PiVersionInfo {
-  // 1. `which pi` returns the actually-running binary. This is
-  //    ground truth — it is what the user invoked, regardless of
-  //    what braid's local node_modules has.
+  // 1. Find the actually-running `pi` binary. We DON'T just call
+  //    `which pi` because that follows PATH order and can return a
+  //    stale binary from a sibling repo's `node_modules/.bin` (e.g.
+  //    when running tests from inside the pi-braid repo, npm puts
+  //    `<repo>/node_modules/.bin` first in PATH and `which pi` then
+  //    resolves to braid's old pinned 0.77.0 binary instead of the
+  //    user's actually-installed 0.80.2). Instead, walk PATH manually
+  //    and skip any entry containing `/node_modules/.bin/` — those
+  //    are project-local installs and almost always stale relative
+  //    to the user's mise/npm-global install.
+  const PATH_DIRS = (process.env.PATH ?? "").split(":");
   let binary = "";
-  try {
-    binary = execSync("which pi 2>/dev/null || true", {
-      encoding: "utf8",
-      timeout: 5000,
-    }).trim();
-  } catch {
-    binary = "";
+  for (const dir of PATH_DIRS) {
+    const candidate = join(dir, "pi");
+    if (!existsSync(candidate)) continue;
+    if (candidate.includes("/node_modules/.bin/")) continue;
+    binary = candidate;
+    break;
+  }
+  // Fallback to `which pi` if PATH walking didn't find anything
+  // (e.g. PATH is unset or unusual shell).
+  if (!binary) {
+    try {
+      binary = execSync("which pi 2>/dev/null || true", {
+        encoding: "utf8",
+        timeout: 5000,
+      }).trim();
+    } catch {
+      binary = "";
+    }
   }
   if (!binary || !existsSync(binary)) {
     // Fall back: walk up from process.argv[1] looking for the

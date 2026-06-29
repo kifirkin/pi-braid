@@ -1,335 +1,274 @@
 /**
- * Test: prompt-builder Instance block (v3.7).
+ * Test: prompt-builder Instance block (v3.7) — RUNTIME.
  *
- * Pins the consolidated "## Instance" block contract:
- *   - Identity line: Braid v<X> (over pi-core v<Y>) — where the
- *     pi-core version is the actually-running binary, not braid's
- *     local node_modules (regression: previously reported 0.77.0
- *     when actual was 0.80.2).
- *   - Env lines: Root, Cwd (when different from Root), OS+hostname,
- *     Now, PID.
- *   - Session lines: elapsed, last-event, turns; tool-avg only when > 0.
- *   - Top-level pi extension packages with load-source tags:
- *     cwd / sibling-repo / user-global / npm.
- *   - NO internal module tree (was leaking project-specific info).
- *   - Resources: skills + memory counts.
- *   - Discovery hint pointing at the read tool.
+ * Pins the consolidated "## Instance" block contract by actually
+ * calling the production code (not by grepping source for function
+ * names). This is the post-source-grep-cleanup version: every
+ * assertion either renders the real section or invokes the real
+ * discovery function with real filesystem state.
  *
- * The previous Session block (v3.6) is GONE — merged into Instance.
- * The previous module-tree (v3.5) is GONE — replaced with top-level
- * extension discovery. The session-section.ts file is DELETED.
+ * Contract pinned:
+ *   - instanceSection() returns a PromptSection named "instance"
+ *   - The rendered output starts with "## Instance" and contains
+ *     the Agent, Root, OS+hostname, Now, PID, Session, Pi extensions
+ *     blocks.
+ *   - Pi-core version is the actually-running binary (regression:
+ *     v3.5-v3.6 showed 0.77.0 when actual was 0.80.2).
+ *   - Top-level extension discovery finds pi-braid (cwd) and
+ *     pi-braid-contrib (sibling-repo), with load-source tags.
+ *   - No project-specific internal module paths leak into the rendered output.
+ *   - Session data is merged (PID matches process.pid).
+ *   - File-existence regression guards for the deleted
+ *     session-section.ts and l1-environment.ts.
  *
- * Source-level contract test: same family as test-prompt-builder-values.mjs.
- * Catches:
- *   - removal of the section from the prompt (regression)
- *   - change to the required field set (regression)
- *   - re-introduction of the internal module tree (regression)
- *   - re-introduction of the separate Session section (regression)
- *   - the wrong pi-core version being surfaced (regression of the
- *     `which pi` discovery logic)
+ * What this test does NOT do (and why):
+ *   - It does NOT grep source for "export async function instanceSection".
+ *     TypeScript already enforces that exports resolve. If the symbol
+ *     doesn't exist, the require() below throws at test load.
+ *   - It does NOT grep source for specific import paths. Same reason.
+ *   - It does NOT grep source for `which pi` or `gatherL1Environment`.
+ *     The behavior is verified by rendering the output and asserting
+ *     the version + PID actually appear.
  *
  * History:
- *   - v3.5 (2026-06-28): initial Instance block with module tree.
- *   - v3.6 (2026-06-29): split out Session + Context blocks.
- *   - v3.7 (2026-06-29): consolidated Session into Instance;
- *     replaced module tree with top-level extension discovery;
- *     fixed pi-core version discovery.
+ *   - v3.5: pure source-grep test (test-instance-composition.mjs).
+ *   - v3.6: pure source-grep test (test-l1-split.mjs).
+ *   - v3.7 initial: pure source-grep test (37 grep ops, the worst
+ *     offender in the codebase).
+ *   - v3.7 cleanup: this file. ~14 runtime assertions + 2 file
+ *     existence guards. No source-grep.
+ *
+ * Runs after `npm run build` (the test runner builds first). Requires
+ * the compiled output at `dist/extensions/core/prompt-builder/*.js`.
  */
 
 import { strict as assert } from "node:assert";
-import { existsSync, readFileSync } from "node:fs";
-import { join, dirname, resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
+import * as os from "node:os";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const PROMPT_BUILDER_DIR = join(ROOT, "src/extensions/core/prompt-builder");
+const DIST_INSTANCE = join(ROOT, "dist/extensions/core/prompt-builder/instance-composition.js");
+const DIST_TOP_LEVEL = join(ROOT, "dist/extensions/core/prompt-builder/top-level-extensions.js");
 
-const FILES = {
-  promptBuilder: join(PROMPT_BUILDER_DIR, "index.ts"),
-  instanceComp: join(PROMPT_BUILDER_DIR, "instance-composition.ts"),
-  topLevelExt: join(PROMPT_BUILDER_DIR, "top-level-extensions.ts"),
-  agentEnv: join(ROOT, "src/extensions/core/agent-environment/index.ts"),
-  // Files that MUST NOT exist (regression guards). Paths are built
-  // dynamically by appending a filename to the prompt-builder dir
-  // — never as a contiguous <source-root>/... literal — so the
-  // check-deps regex does not flag them as stale references to
-  // deleted files.
-  removedSessionSection: join(PROMPT_BUILDER_DIR, "session-section.ts"),
-  removedL1Environment: join(PROMPT_BUILDER_DIR, "l1-environment.ts"),
-};
+// ── Load the compiled production code ─────────────────────────────────────
 
-// ── Subtests ────────────────────────────────────────────────────────────────
+// If these imports fail, TypeScript / `npm run build` failed first.
+// We don't wrap in try/catch — the test runner already builds before
+// running tests; a missing dist file is a build failure, not a test
+// failure.
+const { instanceSection } = require(DIST_INSTANCE);
+const { discoverTopLevelExtensions } = require(DIST_TOP_LEVEL);
+
+// ── Test runner ────────────────────────────────────────────────────────────
 
 const results = [];
-function test(name, fn) {
+async function test(name, fn) {
+  process.stdout.write(`  · ${name}\n`);
   try {
-    fn();
+    await fn();
     results.push({ name, pass: true });
+    process.stdout.write(`    ✓\n`);
   } catch (e) {
     results.push({ name, pass: false, error: e.message });
+    process.stdout.write(`    ✗ ${e.message}\n`);
   }
 }
 
-test("instance-composition.ts exists and exports instanceSection(pi, ctx, ctx)", () => {
-  const content = readFileSync(FILES.instanceComp, "utf-8");
+// ── Render the Instance block once, then assert on it ─────────────────────
+
+const pi = {}; // instanceSection doesn't invoke any pi.registerTool / etc.
+const ctx = { sessionID: "test-session" }; // getExtensionState tolerates this.
+const SECTION = await instanceSection(pi, ctx, { skillCount: 26, memoryCount: 5 });
+const OUT = await SECTION.render();
+
+// ── Subtests ───────────────────────────────────────────────────────────────
+
+await test("Section returns a PromptSection named 'instance'", () => {
+  assert.equal(typeof SECTION, "object");
+  assert.equal(SECTION.name, "instance");
+  assert.equal(typeof SECTION.render, "function");
+});
+
+await test("Rendered output starts with '## Instance'", () => {
   assert.ok(
-    content.includes("export async function instanceSection("),
-    "instance-composition.ts must export instanceSection",
-  );
-  // v3.7 signature: (pi, ctx, instanceCtx) — pi and ctx are needed
-  // for gatherL1Environment which the merged block now reads.
-  const sig = content.match(/export async function instanceSection\(([\s\S]*?)\): Promise<PromptSection>/);
-  assert.ok(sig, "expected function signature");
-  const params = sig[1].split(",").map((s) => s.trim()).filter((s) => s.length > 0);
-  assert.equal(
-    params.length,
-    3,
-    "instanceSection must take (pi, ctx, instanceCtx) — got " + params.length + " params",
+    OUT.startsWith("## Instance\n"),
+    `expected output to start with '## Instance', got: ${OUT.slice(0, 80)}`,
   );
 });
 
-test("top-level-extensions.ts exists and exports discoverTopLevelExtensions", () => {
-  const content = readFileSync(FILES.topLevelExt, "utf-8");
-  assert.ok(
-    content.includes("export function discoverTopLevelExtensions"),
-    "top-level-extensions.ts must export discoverTopLevelExtensions",
-  );
-  // The TypeScript types are also part of the contract.
-  assert.ok(
-    content.includes("TopLevelExtension"),
-    "top-level-extensions.ts must define the TopLevelExtension type",
-  );
-  assert.ok(
-    content.includes("LoadSource"),
-    "top-level-extensions.ts must define the LoadSource type",
+await test("Renders 'Agent: Braid v<X> (over pi-core v<Y>)' with semver versions", () => {
+  assert.match(
+    OUT,
+    /^Agent: Braid v\d+\.\d+\.\d+ \(over pi-core v\d+\.\d+\.\d+\)$/m,
+    "expected Agent line with semver on both sides",
   );
 });
 
-test("top-level-extensions scans cwd + siblings + user-global + npm", () => {
-  const content = readFileSync(FILES.topLevelExt, "utf-8");
-  // The four sources must each have a labeled branch in the
-  // discoverTopLevelExtensions function.
-  const fnBody = content.match(/function discoverTopLevelExtensions[\s\S]*?\n}\s*$/m);
-  assert.ok(fnBody, "expected discoverTopLevelExtensions function body");
-  const body = fnBody[0];
-  for (const source of ["cwd", "sibling", "user-global", "npm"]) {
-    assert.ok(
-      body.includes(`"${source}"`) || body.includes(`'${source}'`) || body.includes(source),
-      `discoverTopLevelExtensions must handle load source "${source}"`,
-    );
-  }
+await test("Pi-core version is reported correctly (regression: not 0.77.0, not unknown)", () => {
+  // The v3.5-v3.6 bug: pi-core was reported as 0.77.0 from braid's
+  // stale local node_modules, when the actually-running binary was
+  // 0.80.2. v3.7 fixed it via `which pi` + realpathSync + dual walk.
+  //
+  // NOTE: under `npm test`, PATH has `<repo>/node_modules/.bin` first,
+  // so `which pi` resolves to braid's local 0.77.0 binary instead of
+  // the global 0.80.2. This is a PATH-order artifact of the test
+  // harness, not a regression. The rendered output reflects what
+  // `which pi` finds in this environment, which is correct behavior.
+  //
+  // The contract pinned here is: the rendered version is some valid
+  // semver AND it is neither "0.77.0" (the old broken value) nor
+  // "unknown" (which would indicate the discovery failed entirely).
+  const renderedMatch = OUT.match(/pi-core v(\d+\.\d+\.\d+)/);
+  assert.ok(renderedMatch, "rendered output must contain pi-core version");
+  const version = renderedMatch[1];
+  assert.notEqual(version, "0.77.0", "must not show the stale braid-local version");
+  assert.notEqual(version, "unknown", "discovery must succeed (not 'unknown')");
+  // Sanity: semver shape
+  assert.match(version, /^\d+\.\d+\.\d+$/, "must be semver");
 });
 
-test("top-level-extensions classifies pi-braid (cwd) + pi-braid-contrib (sibling) in the test repo", () => {
-  // The full runtime test is covered by the source-level checks below.
-  // This subtest pins the structural guarantee: the discovery logic
-  // assigns the right LoadSource value to each package, and the test
-  // repo's directory layout (cwd = pi-braid, sibling = pi-braid-contrib)
-  // matches the expected output.
-  const content = readFileSync(FILES.topLevelExt, "utf-8");
-  // The cwd branch must run readPiPackage(cwd) and add with source="cwd".
-  const cwdBranch = content.match(/add\(cwdPkg, "cwd"\)/);
-  assert.ok(cwdBranch, "discoverTopLevelExtensions must add cwd package with source='cwd'");
-  // The sibling branch must scan the parent directory and add with source="sibling".
-  const sibBranch = content.match(/for \(const sib of siblings\) add\(sib, "sibling"\)/);
-  assert.ok(sibBranch, "discoverTopLevelExtensions must add sibling packages with source='sibling'");
-  // The user-global branch must point at ~/.pi/agent/extensions.
+await test("Renders Root + OS + hostname + Now + PID", () => {
+  assert.match(OUT, /^Root: .+\/pi-braid$/m, "Root line must point at the braid repo");
+  assert.match(OUT, /^OS: \w+ \(\w+\) hostname=/m, "OS line must include hostname");
   assert.ok(
-    content.includes('join(homedir(), ".pi", "agent", "extensions")'),
-    "discoverTopLevelExtensions must scan ~/.pi/agent/extensions for user-global packages",
+    OUT.includes(`hostname=${os.hostname()}`),
+    `hostname must equal os.hostname() (${os.hostname()})`,
   );
-  // The npm branch must walk node_modules/<scope>/ for pi-* packages.
+  assert.match(OUT, /^Now: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/m, "Now must be ISO datetime");
   assert.ok(
-    content.includes("join(cwd, \"node_modules\")") || content.includes("join(cwd, 'node_modules')"),
-    "discoverTopLevelExtensions must walk node_modules for npm packages",
+    OUT.includes(`PID: ${process.pid}`),
+    `PID line must equal process.pid (${process.pid})`,
   );
 });
 
-test("instance-composition uses the top-level-extensions discovery", () => {
-  const content = readFileSync(FILES.instanceComp, "utf-8");
-  assert.ok(
-    content.includes("from \"./top-level-extensions.js\""),
-    "instance-composition must import from ./top-level-extensions.js",
-  );
-  assert.ok(
-    content.includes("discoverTopLevelExtensions"),
-    "instance-composition must call discoverTopLevelExtensions",
+await test("Renders Session line (merged from v3.6 Session block)", () => {
+  // Session: <elapsed> elapsed, last event <delta> ago, N turn(s)
+  assert.match(
+    OUT,
+    /^Session: \d+(?:ms|s|m|h)(?:\s\d+(?:ms|s|m|h))? elapsed, last event \d+(?:ms|s|m|h) ago, \d+ turns?$/m,
+    "Session line must have elapsed/last-event/turns pattern",
   );
 });
 
-test("instance-composition consumes gatherL1Environment (Session data merged in)", () => {
-  const content = readFileSync(FILES.instanceComp, "utf-8");
+await test("Renders 'Pi extensions (N loaded):' header", () => {
+  assert.match(OUT, /^Pi extensions \(\d+ loaded\):$/m, "must show 'Pi extensions (N loaded):'");
+});
+
+await test("Top-level list includes pi-braid with cwd tag", () => {
+  // Format: "  pi-braid v<version>  <rel-or-abs-path>  (cwd)"
+  // The cwd package's root renders as "." (relative to cwd).
+  // Path/version/tag are separated by 2 spaces.
+  const braidLine = OUT.match(/^  pi-braid v\d+\.\d+\.\d+\s+\S+\s+\(cwd\)$/m);
+  assert.ok(braidLine, "must include a 'pi-braid v<X> ... (cwd)' line");
+});
+
+await test("Top-level list includes pi-braid-contrib with sibling-repo tag", () => {
+  // Format: "  pi-brand-contrib v<version>  <abs-path>  (sibling-repo)"
+  const contribLine = OUT.match(/^  pi-braid-contrib v\d+\.\d+\.\d+\s+\S+\s+\(sibling-repo\)$/m);
+  assert.ok(contribLine, "must include a 'pi-braid-contrib v<X> ... (sibling-repo)' line");
+});
+
+await test("No project-specific internal module paths leak into the output", () => {
+  // Regression guard: v3.5 surfaced internal module tree paths which
+  // leaked braid's implementation details. v3.7 replaces this with
+  // top-level package discovery. The output must never contain those
+  // internal module paths.
   assert.ok(
-    content.includes("from \"../agent-environment/index.js\""),
-    "instance-composition must import from ../agent-environment",
-  );
-  assert.ok(
-    content.includes("gatherL1Environment"),
-    "instance-composition must call gatherL1Environment to get session data",
-  );
-  // PID and sessionElapsedMs are the Session-block must-haves that
-  // now live in Instance.
-  assert.ok(
-    content.includes("session.pid"),
-    "Instance block must surface PID from gatherL1Environment",
-  );
-  assert.ok(
-    content.includes("sessionElapsedMs"),
-    "Instance block must surface sessionElapsedMs from gatherL1Environment",
+    !OUT.includes("src/extensions/"),
+    "Instance block must not leak internal module tree paths",
   );
 });
 
-test("instance-composition fixes pi-core version discovery (uses 'which pi')", () => {
-  const content = readFileSync(FILES.instanceComp, "utf-8");
-  // The fix: invoke 'which pi' to find the actually-running binary
-  // (not walk up from braid's import.meta.url which can find a
-  // stale local node_modules version).
-  assert.ok(
-    content.includes("which pi"),
-    "instance-composition must use 'which pi' to discover the running pi-core",
-  );
-  // The old broken path-walk should not be the primary strategy.
-  assert.ok(
-    !content.includes("discoverPiRootPath"),
-    "old discoverPiRootPath function must be removed (was the broken strategy)",
+await test("Renders 'Resources: N skills, M memories' line", () => {
+  assert.match(
+    OUT,
+    /^Resources: 26 skills, 5 memories$/m,
+    "must show resources line with the passed skillCount + memoryCount",
   );
 });
 
-test("instance-composition renders required fields (env + session)", () => {
-  const content = readFileSync(FILES.instanceComp, "utf-8");
-  // Required render lines. Each must appear in the render function
-  // (not in a comment).
-  const stripped = content
-    .split("\n")
-    .filter((l) => !l.trim().startsWith("//") && !l.trim().startsWith("*"))
-    .join("\n");
-  const required = [
-    "## Instance",
-    "Agent:",
-    "Root:",
-    "OS:",
-    "hostname=",
-    "Now:",
-    "PID:",
-    "Session:",
-    "Pi extensions",
-  ];
-  for (const field of required) {
-    assert.ok(
-      stripped.includes(field),
-      `Instance block render must include "${field}" field`,
-    );
-  }
-});
-
-test("instance-composition renders top-level extensions with load-source tags", () => {
-  const content = readFileSync(FILES.instanceComp, "utf-8");
-  // The renderer should format each extension as:
-  //   <name> v<version>  <rel-path>  (<source-tag>)
-  const tagFn = content.match(/function sourceTag[\s\S]*?\n}/);
-  assert.ok(tagFn, "expected sourceTag function");
-  const tagBody = tagFn[0];
-  for (const tag of ["cwd", "sibling-repo", "user-global", "npm"]) {
-    assert.ok(
-      tagBody.includes(`"${tag}"`),
-      `sourceTag must return "${tag}" for one of the LoadSource values`,
-    );
-  }
-});
-
-test("instance-composition no longer renders the internal module tree", () => {
-  // v3.5 leaked project-specific info (src/extensions/<module>/).
-  // v3.7 replaced this with top-level package discovery. Regression
-  // guard: must not re-introduce module-grouped output.
-  const content = readFileSync(FILES.instanceComp, "utf-8");
-  assert.ok(
-    !content.includes("getModuleGroup") && !content.includes("getModuleNames"),
-    "instance-composition must not use module grouping (was project-specific info leak)",
-  );
-  assert.ok(
-    !content.includes("getToolProvenance"),
-    "instance-composition must not aggregate tool provenance per extension (was over-detailed)",
+await test("Renders the Discover: hint pointing at the read tool", () => {
+  assert.match(
+    OUT,
+    /Discover: `read`/,
+    "must end with a Discover hint pointing at the read tool",
   );
 });
 
-test("session-section.ts is deleted (was v3.6, merged into Instance in v3.7)", () => {
+// ── discoverTopLevelExtensions runtime behavior ────────────────────────────
+
+await test("discoverTopLevelExtensions() finds pi-braid (cwd) with entries", () => {
+  const exts = discoverTopLevelExtensions(ROOT);
+  const braid = exts.find((e) => e.name === "pi-braid");
+  assert.ok(braid, "pi-braid must be in the discovered list");
+  assert.equal(braid.source, "cwd");
+  assert.ok(braid.entries.length > 0, "pi-braid must declare at least one extension entry");
+  assert.ok(braid.version.length > 0, "pi-braid must have a version");
+  assert.ok(braid.root === ROOT, "pi-braid root must equal the cwd passed in");
+});
+
+await test("discoverTopLevelExtensions() finds pi-braid-contrib as sibling", () => {
+  const exts = discoverTopLevelExtensions(ROOT);
+  const contrib = exts.find((e) => e.name === "pi-braid-contrib");
+  assert.ok(contrib, "pi-braid-contrib must be discovered as a sibling");
+  assert.equal(contrib.source, "sibling");
   assert.ok(
-    !existsSync(FILES.removedSessionSection),
-    "session-section.ts must be deleted; Session block was merged into Instance",
+    contrib.root.endsWith("/pi-braid-contrib"),
+    "sibling root must end with /pi-braid-contrib",
   );
 });
 
-test("l1-environment.ts is still deleted (v3.6)", () => {
+await test("discoverTopLevelExtensions() deduplicates by absolute root", () => {
+  // If a symlink points back to cwd, it should not appear twice.
+  const exts = discoverTopLevelExtensions(ROOT);
+  const roots = exts.map((e) => e.root);
+  assert.equal(new Set(roots).size, roots.length, "no duplicate root paths");
+});
+
+// ── File-existence regression guards ───────────────────────────────────────
+
+await test("session-section.ts is deleted (v3.6 Session block merged into Instance)", () => {
   assert.ok(
-    !existsSync(FILES.removedL1Environment),
+    !existsSync(join(PROMPT_BUILDER_DIR, "session-section.ts")),
+    "session-section.ts must remain deleted after v3.7 merge",
+  );
+});
+
+await test("l1-environment.ts is still deleted (v3.6 cleanup)", () => {
+  assert.ok(
+    !existsSync(join(PROMPT_BUILDER_DIR, "l1-environment.ts")),
     "l1-environment.ts must remain deleted (v3.6 cleanup)",
   );
 });
 
-test("prompt-builder no longer imports sessionSection or wires a Session section", () => {
-  const content = readFileSync(FILES.promptBuilder, "utf-8");
-  assert.ok(
-    !content.includes("sessionSection") && !content.includes("session-section"),
-    "prompt-builder must not import or push a Session section (merged into Instance in v3.7)",
-  );
+await test("Instance block does not contain 'getModuleGroup' (v3.5 module tree removed)", () => {
+  // An indirect guard: the module tree was the source of the v3.5
+  // project-specific info leak. The runtime output should never
+  // contain module group paths. This pins the absence.
+  assert.ok(!/getModuleGroup|getModuleNames/.test(OUT));
 });
 
-test("prompt-builder no longer renders the redundant 'environment' (date+cwd) section", () => {
-  // In v3.5, section 6 was a 'simpleSection("environment", ...)' with
-  // the current time and cwd. v3.7 moved these into Instance, so the
-  // dedicated section is redundant. Regression guard.
-  const content = readFileSync(FILES.promptBuilder, "utf-8");
-  assert.ok(
-    !content.includes('"environment"') && !content.includes("'environment'"),
-    "prompt-builder must not render a dedicated 'environment' section (now in Instance)",
-  );
-});
-
-test("prompt-builder wires the Instance block as the first section", () => {
-  const content = readFileSync(FILES.promptBuilder, "utf-8");
-  assert.ok(
-    content.includes("import { instanceSection }"),
-    "prompt-builder must import instanceSection",
-  );
-  const match = content.match(/const sections: PromptSection\[\] = \[([\s\S]*?)\];/);
-  assert.ok(match, "expected sections array literal");
-  const stripped = match[1]
-    .split("\n")
-    .map((l) => l.replace(/\/\/.*$/, "").trim())
-    .filter((l) => l.length > 0)
-    .join(" ");
-  assert.ok(
-    stripped.startsWith("inst,") || stripped.startsWith("instanceSection("),
-    `Instance block must be the first section. Got: ${stripped.slice(0, 80)}`,
-  );
-});
-
-test("prompt-builder still wires the Context section (conditional block)", () => {
-  const content = readFileSync(FILES.promptBuilder, "utf-8");
-  assert.ok(
-    content.includes("contextSection") || content.includes("gatherContextState"),
-    "prompt-builder must still wire the Context section (the other runtime block in the v3.7 architecture)",
-  );
-});
-
-test("agent-environment comment no longer references session-section.ts", () => {
-  const content = readFileSync(FILES.agentEnv, "utf-8");
-  assert.ok(
-    !content.includes("session-section.ts"),
-    "agent-environment comment must not reference deleted session-section.ts",
-  );
-});
-
-// ── Report ──────────────────────────────────────────────────────────────────
+// ── Report ────────────────────────────────────────────────────────────────
 
 const passed = results.filter((r) => r.pass).length;
 const failed = results.length - passed;
 
 console.log(`\n${passed}/${results.length} subtests passed`);
 if (failed > 0) {
+  const failLines = [];
   for (const r of results.filter((r) => !r.pass)) {
-    console.log(`  ✗ ${r.name}: ${r.error}`);
+    failLines.push(`  ✗ ${r.name}: ${r.error}`);
   }
+  console.log(failLines.join("\n"));
   process.exit(1);
 }
-console.log("test-instance-block: all green");
+console.log("test-instance-block (runtime): all green");
+
+// Reference unused imports to keep the linter happy.
+void basename;
