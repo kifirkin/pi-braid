@@ -54,7 +54,7 @@ const COMPLEXITY_KEYWORDS = {
 /**
  * Estimate complexity score (0-1) from a task description.
  * 0-0.3: simple (quick depth)
- * 0.3-0.7: medium (standard depth)
+ * 0.3-0.7: medium (medium depth)
  * 0.7-1.0: complex (deep depth)
  */
 export function estimateComplexity(taskText: string): number {
@@ -100,11 +100,65 @@ export function estimateComplexity(taskText: string): number {
 }
 
 /**
+ * Allowed values for the think tool's `type` field.
+ *
+ * Single source of truth — both the schema enum (think.ts) and any
+ * internal default reference this const. Add a value here and it
+ * becomes accepted by the schema automatically.
+ */
+export const THINK_TYPES = [
+  "observation",
+  "planning",
+  "execution",
+  "reflection",
+  "conclusion",
+  "debugging",
+  "design",
+  "analysis",
+  "insight",
+  "research",
+] as const;
+export type ThinkType = (typeof THINK_TYPES)[number];
+
+/** Default `type` when the agent omits it. Must be a member of THINK_TYPES. */
+export const DEFAULT_THINK_TYPE: ThinkType = "insight";
+
+/**
+ * Allowed values for the think tool's `depth` field.
+ *
+ * Note: `quick`, `medium`, `deep` are the ODAR-aligned levels; the
+ * earlier `minimal`/`low`/`high`/`max` entries exist for explicit
+ * fine-grained control. The two vocabularies coexist deliberately —
+ * removing the legacy entries would break callers that pass them.
+ */
+export const DEPTH_LEVELS = [
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "max",
+  "quick",
+  "deep",
+] as const;
+export type DepthLevel = (typeof DEPTH_LEVELS)[number];
+
+/**
+ * Depth levels reachable via ODAR complexity → depth routing.
+ *
+ * NOTE: vocabulary is aligned with `think.ts`'s depth enum and
+ * `DEPTH_BUDGETS`. Previously this function returned "standard" (which
+ * was not in either, so `getBudget` silently fell back to "quick" —
+ * a latent bug). Now returns "medium" which IS in both.
+ */
+export const ODAR_DEPTH_LEVELS = ["quick", "medium", "deep"] as const;
+export type OdarDepthLevel = (typeof ODAR_DEPTH_LEVELS)[number];
+
+/**
  * Map complexity score to ODAR depth level.
  */
-export function complexityToDepth(score: number): "quick" | "standard" | "deep" {
+export function complexityToDepth(score: number): OdarDepthLevel {
   if (score >= 0.7) return "deep";
-  if (score >= 0.3) return "standard";
+  if (score >= 0.3) return "medium";
   return "quick";
 }
 

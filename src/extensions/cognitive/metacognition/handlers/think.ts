@@ -6,7 +6,16 @@ import { Type } from "typebox";
 import type { ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { callLlm } from "../../../../lib/ai/llm-call.js";
 import { resolveUtilityModel } from "../../../../lib/ai/model-resolver.js";
-import { estimateComplexity, complexityToDepth, getBudget, getCalibrationStats, computeCalibrationError } from "./think-budget.js";
+import {
+  estimateComplexity,
+  complexityToDepth,
+  getBudget,
+  getCalibrationStats,
+  computeCalibrationError,
+  THINK_TYPES,
+  DEFAULT_THINK_TYPE,
+  DEPTH_LEVELS,
+} from "./think-budget.js";
 import { criticGate } from "../../../../lib/ai/critic-gate.js";
 import { getExtensionState } from "../../../../lib/state/extension-state.js";
 import { createLogger } from "../../../../lib/core/logger.js";
@@ -64,16 +73,8 @@ const thinkSchema = Type.Object({
   ),
   type: Type.Optional(
     Type.String({
-      description: "Type of thinking",
-      enum: [
-        "observation",
-        "planning",
-        "execution",
-        "reflection",
-        "conclusion",
-        "debugging",
-        "design",
-      ],
+      description: `Type of thinking. One of: ${THINK_TYPES.join(", ")}. Defaults to "${DEFAULT_THINK_TYPE}" if omitted. Tags the entry for later filtering; does not change tool behavior.`,
+      enum: [...THINK_TYPES],
     }),
   ),
   observation: Type.Optional(Type.String({ description: "What you observed or decided to do" })),
@@ -85,14 +86,18 @@ const thinkSchema = Type.Object({
   tags: Type.Optional(Type.Array(Type.String(), { description: "Tags for categorization" })),
   depth: Type.Optional(
     Type.String({
-      enum: ["minimal", "low", "medium", "high", "max", "quick", "deep"],
-      description: "Analysis depth",
+      enum: [...DEPTH_LEVELS],
+      description:
+        `Analysis depth. Allowed: minimal, low, quick, medium, high, max, deep. ` +
+        `If omitted, defaults to "quick" or auto-routes via observation/complexity. ` +
+        `When set explicitly, depth wins over complexity (the complexity value is then ignored and noted in the output).`,
     }),
   ),
   complexity: Type.Optional(
     Type.Number({
       description:
-        "Task complexity 0-1 (auto-estimated from observation if omitted). Used for ODAR Fast/Slow routing: 0-0.3=quick, 0.3-0.7=standard, 0.7+=deep.",
+        `Task complexity 0-1, used for ODAR Fast/Slow routing: 0-0.3=quick, 0.3-0.7=medium, 0.7+=deep. ` +
+        `Ignored when an explicit depth is set. Note: complexity itself is NOT auto-estimated — only depth is (via the observation text) — so passing complexity is the only way to drive routing without auto-estimation kicking in for long observations.`,
       minimum: 0,
       maximum: 1,
     }),
@@ -100,7 +105,10 @@ const thinkSchema = Type.Object({
   auto_depth: Type.Optional(
     Type.Boolean({
       description:
-        "Auto-select depth from complexity estimation (recommended when depth is not explicit). Default: false.",
+        `Force auto-estimation of depth from the observation, even for short observations. ` +
+        `Has no effect if either depth or complexity is already set. ` +
+        `Note: long observations (> 30 chars) auto-estimate even without auto_depth=true — there is a hidden default that routes them via ODAR. ` +
+        `Set auto_depth=false and pass a short observation if you want the tool to use depth="quick" with no routing.`,
     }),
   ),
   ask_utility_model: Type.Optional(
@@ -218,9 +226,14 @@ export function createThinkTool(): ToolDefinition<any, any, any> {
   return {
     name: "think" as const,
     label: "Think",
-    promptSnippet: "Record structured thinking with decision, observation, and reason",
     description:
-      "Record structured reasoning before irreversible actions or complex multi-component decisions.",
+      `Think before irreversible or multi-component decisions. Required: decision. Recommended: observation, reason, confidence 0-1. ` +
+      `parent_id links a prior thought_id. Process supervision flags contradictions. ` +
+      `depth sets the thinking budget. Use quick, medium, or deep — for ODAR routing; minimal, low, high, or max — for finer control. deep triggers fresh-eyes review. Explicit depth wins over complexity 0-1; long observations auto-route. ` +
+      `type is a tag, with default insight. ` +
+      `outcome, success or failure, feeds calibration when show_chain=true.`,
+    promptSnippet:
+      "Record structured thinking with decision, observation, reason, and optional parent_id/depth/complexity",
     parameters: thinkSchema,
     execute: async (
       _toolCallId: string,
@@ -233,17 +246,31 @@ export function createThinkTool(): ToolDefinition<any, any, any> {
       const decision = params.decision ?? "";
       const reason = params.reason ?? "";
       const thoughtId = params.thought_id ?? crypto.randomUUID();
-      // ODAR Fast/Slow routing: complexity → depth
-      let depth = params.depth ?? "quick";
-      if (params.complexity !== undefined) {
+      // Depth resolution precedence: explicit depth > complexity > auto > "quick"
+      //
+      // - Explicit depth: respects agent intent (no surprise override).
+      // - Complexity:    agent-controlled value, mapped to a depth level.
+      // - Auto:          estimate from observation. Also fires implicitly
+      //                  for long observations (> 30 chars) without auto_depth.
+      // - Quick:         default for trivial / unanalyzed entries.
+      let depth: string;
+      let routingNote = "";
+      if (params.depth) {
+        depth = params.depth;
+        if (params.complexity !== undefined) {
+          routingNote = ` (explicit depth wins over complexity=${params.complexity})`;
+        }
+      } else if (params.complexity !== undefined) {
         depth = complexityToDepth(params.complexity);
-      } else if (params.auto_depth || (!params.depth && observation.length > 30)) {
-        // Auto-estimate when: auto_depth=true, OR depth not provided AND task has substance
+        routingNote = ` (routed via complexity=${params.complexity})`;
+      } else if (params.auto_depth || observation.length > 30) {
+        // Auto-estimate when: auto_depth=true, OR task has substance (>30 chars)
         const estimated = estimateComplexity(observation);
         depth = complexityToDepth(estimated);
-        log.debug(
-          `ODAR: auto depth ${depth} (complexity=${estimated.toFixed(2)}, len=${observation.length})`,
-        );
+        routingNote = ` (auto-estimated: complexity=${estimated.toFixed(2)}, len=${observation.length})`;
+        log.debug(`ODAR: auto depth ${depth} (complexity=${estimated.toFixed(2)}, len=${observation.length})`);
+      } else {
+        depth = "quick";
       }
       const budget = getBudget(depth);
       const useDeepReview = params.ask_utility_model === true || depth === "deep";
@@ -257,7 +284,7 @@ export function createThinkTool(): ToolDefinition<any, any, any> {
         const record: ThoughtRecord = {
           id: thoughtId,
           parentId: params.parent_id ?? null,
-          type: params.type ?? "insight",
+          type: params.type ?? DEFAULT_THINK_TYPE,
           observation,
           decision,
           reason,
@@ -291,15 +318,13 @@ export function createThinkTool(): ToolDefinition<any, any, any> {
       if (params.alternatives) result.alternatives = params.alternatives;
       result.outcome = "pending";
 
+      const type = params.type ?? DEFAULT_THINK_TYPE;
       const lines: string[] = [
-        `Thinking recorded (${params.type ?? "insight"}):`,
+        `Thinking recorded (${type}):`,
         `- Observed: ${observation}`,
         `- Decided: ${decision}`,
         reason ? `- Reason: ${reason}` : "",
-        `- Depth: ${depth} (${budget.guidance})`,
-        params.auto_depth || params.complexity !== undefined
-          ? `- Routing: ODAR auto (${params.complexity !== undefined ? `complexity=${params.complexity}` : "auto-estimated"})`
-          : "",
+        `- Depth: ${depth} (${budget.guidance})${routingNote}`,
         `- ID: ${thoughtId}${params.parent_id ? `\n- Parent: ${params.parent_id}` : ""}`,
       ].filter(Boolean);
 
