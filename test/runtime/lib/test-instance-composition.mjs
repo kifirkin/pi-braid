@@ -184,20 +184,24 @@ test("instance-composition labels unmatched tools as 'external' (not pi-core)", 
   );
 });
 
-test("loader records tool provenance after each extension loads", () => {
+test("loader records tool provenance via registerTool wrapper", () => {
+  // The wrapForProvenance function intercepts pi.registerTool and
+  // records the (toolName, extensionId) pair. The wrapper exists
+  // because calling pi.getAllTools() during extension loading triggers
+  // 'Extension runtime not initialized' in pi-core. The wrapper is a
+  // passive observer pattern that doesn't depend on runtime state.
   const content = readFileSync(FILES.loader, "utf-8");
   assert.ok(
     content.includes("recordToolRegistration"),
     "loader must call recordToolRegistration",
   );
   assert.ok(
-    content.includes("getAllTools"),
-    "loader must use getAllTools to detect new tools",
+    content.includes("wrapForProvenance"),
+    "loader must use wrapForProvenance to attribute tools to extensions",
   );
-  // Diff-before/after pattern: toolsBefore Set
   assert.ok(
-    content.includes("toolsBefore"),
-    "loader must use before/after diff pattern for tool provenance",
+    content.includes("new Proxy"),
+    "loader must use a Proxy to intercept registerTool without modifying pi",
   );
 });
 

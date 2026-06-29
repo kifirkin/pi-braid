@@ -72,6 +72,39 @@ function getLoaderState(): ModuleLoaderState {
   return _loaderState;
 }
 
+// ──── Tool provenance wrapping ───────────────────────────────────────────────
+
+/**
+ * Returns a wrapper around `pi` where `registerTool` records the
+ * registering extension id into the tool-provenance map. Other
+ * methods pass through unchanged.
+ *
+ * The wrapper exists because calling `pi.getAllTools()` during
+ * extension loading triggers "Extension runtime not initialized" in
+ * pi-core (it's an action method that requires the runtime to be
+ * ready). The previous before/after diff approach hit this; wrapping
+ * `registerTool` is a passive observer pattern that doesn't depend
+ * on runtime state.
+ */
+function wrapForProvenance(pi: ExtensionAPI, extId: string): ExtensionAPI {
+  const origRegister = (pi as unknown as { registerTool: (t: unknown) => unknown })
+    .registerTool.bind(pi) as (t: unknown) => unknown;
+  return new Proxy(pi as unknown as object, {
+    get(target, prop, receiver) {
+      if (prop === "registerTool") {
+        return (tool: unknown) => {
+          const name = (tool as { name?: string })?.name;
+          if (typeof name === "string" && name.length > 0) {
+            recordToolRegistration(name, extId);
+          }
+          return origRegister(tool);
+        };
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  }) as unknown as ExtensionAPI;
+}
+
 // ──── Pi settings.json persistence ───────────────────────────────────────────
 
 function readSettingsFile(path: string): Record<string, unknown> {
@@ -245,13 +278,6 @@ export async function loadModules(pi: ExtensionAPI, envOverride?: string): Promi
 
   const ordered = topologicalSort(enabled);
 
-  // Track tool provenance: capture the set of tools registered before
-  // each extension runs, so any new tools appearing after the run are
-  // attributed to that extension. This is the "wrap pi.registerTool"
-  // pattern without actually wrapping - pi-core's getAllTools() returns
-  // the cumulative list, so diffing before/after is sufficient.
-  const toolsBefore = new Set(pi.getAllTools().map((t) => t.name));
-
   for (const extId of ordered) {
     const entry = getEntry(extId);
     if (!entry) {
@@ -259,17 +285,15 @@ export async function loadModules(pi: ExtensionAPI, envOverride?: string): Promi
       continue;
     }
     try {
-      await entry.fn(pi);
+      // Wrap pi.registerTool so the extension's tool registrations
+      // are attributed to this extension id in the provenance map.
+      // Calling pi.getAllTools() during loading triggers
+      // "Extension runtime not initialized" in pi-core - the wrap
+      // approach avoids that entirely.
+      const extPi = wrapForProvenance(pi, extId);
+      await entry.fn(extPi);
       total++;
       loaded.push({ id: extId, desc: entry.desc });
-      // Record provenance: any tool not seen before is from this extension.
-      const toolsAfter = pi.getAllTools();
-      for (const tool of toolsAfter) {
-        if (!toolsBefore.has(tool.name)) {
-          recordToolRegistration(tool.name, extId);
-          toolsBefore.add(tool.name);
-        }
-      }
     } catch (err) {
       skipped.push({ id: extId, reason: (err as Error).message });
       log.error(`Failed to load ${extId}: ${(err as Error).message}`);
