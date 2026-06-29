@@ -23,7 +23,8 @@ Every file in this folder either:
 | `identity.ts` | 4 framing constants: `IDENTITY_INTRO` (generalist identity), `INTERACTION_STYLE`, `COMPACTION_SURVIVAL`, `LIVING_DOCS`. |
 | `behavioral-guardrails.ts` | 11 value statements: 5 pre-existing (`SYCOPHANCY_RESISTANCE`, `STAKES_AWARENESS`, `EPISTEMIC_STABILITY`, `SURGICAL_PRECISION`, `BUDGET_AWARENESS`) + 5 new as of 2026-06-21 (`BROAD_PERSPECTIVE`, `STRATEGY_BEFORE_ACTION`, `REASONING_INTEGRITY`, `KNOWLEDGE_UNDER_PRESSURE`, `COMMUNICATION_QUALITY`) + 1 new as of 2026-06-22 (`EVIDENCE_GROUNDING`). |
 | `contrast-phrase-library.ts` | Maps enforcement `contrastMode` values to phrase arrays. Returns a `PromptSection`. |
-| `l1-environment.ts` | L1 state gather + render. Returns a `PromptSection`. Reads from `agent-environment/`. |
+| `session-section.ts` | **v3.6** Session (volatile): PID, session elapsed, last-event, turns, tool-avg. Reads from `agent-environment/`. |
+| `context-section.ts` | **v3.6** Context (conditional): context %, session health, memory count, steps-since-checkpoint. Returns `""` when nothing to surface. |
 | `skills-section.ts` | Skills XML formatting + per-skill metadata + fingerprint cache. Returns a `PromptSection`. |
 | `project-docs-section.ts` | Project docs (AGENTS.md / CLAUDE.md) pointer-only rendering as `<available_project_docs>` block. Mirrors the skills model. Includes fingerprint cache and `RESOURCES_DISCOVER` invalidation. |
 

@@ -109,27 +109,10 @@ export function gatherL1Environment(
   };
 }
 
-export function formatL1EnvironmentSection(data: L1EnvironmentData): string {
-  const minutes = Math.floor(data.sessionElapsedMs / 60000);
-  const seconds = Math.floor((data.sessionElapsedMs % 60000) / 1000);
-  const sinceLast = Math.round(data.sinceLastEventMs / 1000);
-
-  const lines: string[] = [];
-  lines.push("");
-
-  // Machine info
-  lines.push("## System State");
-  lines.push(`- PID: ${data.pid} (${data.machine.platform})`);
-  lines.push(`- Machine: ${data.machine.platform} (${data.machine.hostname})`);
-  lines.push(`- Session: ${minutes}m ${seconds}s`);
-  lines.push(`- Last event: ${sinceLast}s ago`);
-  lines.push(`- Turns: ${data.turnCount}`);
-  if (data.avgToolTimeMs > 0) {
-    lines.push(`- Tool avg: ${data.avgToolTimeMs}ms`);
-  }
-
-  return lines.join("\n");
-}
+// `formatL1EnvironmentSection` removed in v3.6 — superseded by
+// `sessionSection()` in prompt-builder/session-section.ts, which
+// renders the same volatile data with the machine/hostname lines
+// dropped (now in the Instance block).
 
 // =============================================================================
 // Extension registration

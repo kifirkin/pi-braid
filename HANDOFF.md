@@ -1,52 +1,56 @@
 <!-- status: current -->
 <!-- Created: 2026-06-27 for fresh-session transfer -->
-<!-- Refreshed for v3.5 (Instance block + contrib filter + browser disable) -->
+<!-- Refreshed for v3.6 (L1 split) — 2026-06-29 -->
 
 # pi-braid session handoff
 
 This file exists for a fresh agent session to pick up cleanly.
 The work is in a known-good state as of this writing.
 
-## Where we are (last 5 commits)
+## Where we are (last 6 commits)
 
 ```
+<new>      refactor(prompt-builder): split L1 into Session + Context blocks (v3.6)
+f47ddea6   docs(handoff): refresh for v3.5 - Instance block + contrib filter + browser disable
 001ddc8c   fix(loader): tool provenance via Proxy wrapper, not getAllTools diff
 bbf70c12   feat(prompt-builder): Instance block v3.5 - module paths + discovery note
 43231798   feat(prompt-builder): external tools group + contrib settings.json filter (v3.5 cont.)
 111b12d8   feat(prompt-builder): Instance composition block + tool provenance (v3.5)
-<new>      docs(handoff): HANDOFF refresh for v3.5 (this commit)
 ```
 
-`main` has 5 unpushed commits on v3.5 (Instance block, tool provenance,
-contrib filter, browser disable, loader Proxy fix). The v3.4 → v3.5
-transfer is in flight; push when ready.
+The v3.5 → v3.6 transfer is in flight (v3.5 already pushed;
+v3.6 will be 1 new commit). Push the v3.6 commit when ready.
 
-v3.5 ships a single architectural piece: a concise "## Instance" block
-at the top of every system prompt, surfacing agent identity, env, and
-the loaded extension tree. Foundation for future "what extension
-registered this tool" queries (tool provenance) and a settings.json
-mechanism to disable contrib extensions per-name (browser off).
+v3.5 + v3.6 together complete the system-prompt cleanup plan:
+- **v3.5** ships the `## Instance` block at the top of every system
+  prompt (agent identity, env, extension tree) + tool provenance
+  + contrib settings.json filter.
+- **v3.6** completes the L1 split: `## Session` (volatile: PID,
+  session time, turns, last event, tool avg) and `## Context`
+  (conditional: context %, session health, memory count, checkpoint
+  awareness) replace the monolithic `l1-environment.ts`.
 
 ## State of the codebase
 
-- **CI**: `npm run ci:check` → ✅ all green (check:docs + check:doc-drift + check:deps + tsc + 80/80 tests)
-- **Tests**: `npm run test` → **80/80 pass** (was 79; added test-instance-composition.mjs)
+- **CI**: `npm run ci:check` → ✅ all green (check:docs + check:doc-drift + check:deps + tsc + 81/81 tests)
+- **Tests**: `npm run test` → **81/81 pass** (was 80; added test-l1-split.mjs with 11 subtests)
 - **Typecheck**: `npm run typecheck` → clean
 - **Doc discipline**: `npm run check:docs` → ✅; `npm run check:doc-drift` → ✅
-- **check-deps**: `node scripts/check-deps.mjs` → ✅ 0 violations
+- **check-deps**: `node scripts/check-deps.mjs` → ✅ 0 violations (228 src + 83 test files)
 - **pi-ai version**: `0.80.2` installed
-- **Working tree**: clean (in pi-braid; pi-braid-contrib has staged-but-uncommitted change to `index.ts` for the contrib filter)
+- **Working tree**: clean (v3.6 uncommitted; pi-braid-contrib has staged-but-uncommitted change to `index.ts` for the contrib filter)
 - **User-space settings**: `~/.pi/agent/settings.json` now has `braid.contrib.browser: false`. The contrib package's `index.ts` reads this and skips loading the browser extension entirely. Re-enable by deleting the `braid.contrib` block.
 
 ## What just shipped (this conversation)
 
 | Commit | Item | What it does |
 |---|---|---|
+| `<new>` | v3.6 L1 split | `src/extensions/core/prompt-builder/{session-section,context-section}.ts` (new). `l1-environment.ts` (deleted, 275 LOC). `agent-environment/index.ts` no longer exports `formatL1EnvironmentSection`. The L1 block is now two focused sections: `## Session` (volatile: PID, session time, turns, last event, tool avg — always shown) and `## Context` (conditional: context %, session health, memory count, steps since checkpoint — only shown when something to surface; returns `""` otherwise). Pinned by `test/runtime/lib/test-l1-split.mjs` (11 subtests). No consumer-visible behavior change. |
+| `f47ddea6` | v3.5 HANDOFF | Pre-v3.6 HANDOFF refresh capturing post-push reality. |
 | `001ddc8c` | v3.5 fix | `src/loader/loader.ts`: tool provenance now via a Proxy that wraps `pi.registerTool` per extension, instead of calling `pi.getAllTools()` during loading. The previous diff approach hit "Extension runtime not initialized" in pi-core (a regression introduced in 111b12d8); this restores `pi -a` to a clean start. |
 | `bbf70c12` | v3.5 polish | `src/extensions/core/prompt-builder/instance-composition.ts`: per-extension indented entries → module-level lines with inline extension ids (1 line per module + module root path) + one-line discovery hint at the bottom pointing the agent at the read tool. Compact + discoverable. |
 | `43231798` | v3.5 label fix | `src/extensions/core/prompt-builder/instance-composition.ts`: `coreTools` field → `externalTools` field. The label `pi-core: N built-in tool(s)` was misleading once pi-braid-contrib started showing up there; new label is `external: N tools (pi-core + contrib)`. |
 | `111b12d8` | v3.5 foundation | New `## Instance` block at top of system prompt (concise: agent version, env, extension tree grouped by module with per-extension tool counts, totals). New `src/lib/state/tool-provenance.ts` records `toolName → extensionId`. Companion change in `pi-braid-contrib/index.ts` (sibling repo, staged-but-uncommitted) reads `braid.contrib.<name>` from `~/.pi/agent/settings.json` to skip disabled extensions. Browser now disabled. |
-| `<new>` | v3.5 docs | This HANDOFF refresh + CHANGELOG entries. |
 | (sibling) | contrib filter | `pi-braid-contrib/index.ts` (sibling repo, not in this commit) refactored to read `braid.contrib.<name>` from `~/.pi/agent/settings.json`. Default: enabled. To disable, set to `false`. Format: `{"braid": {"contrib": {"browser": false}}}`. The change is staged but not committed in contrib — user has other uncommitted work there. |
 
 ## What's next (priority order)
@@ -67,10 +71,14 @@ mechanism to disable contrib extensions per-name (browser off).
      `/lead` and `/follow` commands; sleep-mode behavior on
      session-start. tmux-based parallel visibility is a second
      iteration.
-2. **Skill compression + L1 split (commit 4 of v3.5 plan).** Skills
-   section: drop description, add `hint:` frontmatter field.
-   L1 env: split into stable `## Instance` (done) / volatile Session /
-   conditional Context. ~50 LOC. Mechanical.
+2. **Skill compression (commit 5 of v3.5 plan).** Skills section:
+   drop `<description>`, add `hint:` frontmatter field (one-line
+   "when to read this skill" cue). This is a separate migration
+   that touches external skill files (~26 local skills + the
+   skills-repo skills). Could ship as a single commit (frontmatter
+   migration + skills-section.ts change) or as 3 commits (one for
+   the skills-section.ts renderer change, one for the local skills,
+   one for the skills-repo skills).
 3. **P3-7 / EW-7.12** — prefix naming convention (policy decision;
    needs user input).
 4. **P2-10 / Q13** — large-file splits (`memory-agent-bridge`,

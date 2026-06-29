@@ -5,7 +5,8 @@ import { getAgentDir, loadProjectContextFiles } from "@earendil-works/pi-coding-
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { RESOURCES_DISCOVER } from "../../../lib/core/event-names.js";
-import { gatherL1State, l1EnvSection } from "./l1-environment.js";
+import { sessionSection } from "./session-section.js";
+import { gatherContextState, contextSection } from "./context-section.js";
 import { contrastSection } from "./contrast-phrase-library.js";
 import { deliverActiveSpecs } from "../../../lib/cognitive/openspec.js";
 import { deliverRelevantHints } from "../../../lib/cognitive/hints.js";
@@ -244,7 +245,11 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     const toolNames = tools.map((t) => t.name);
     const hasRead = toolNames.includes("read");
 
-    const l1Env = await gatherL1State(pi, ctx);
+    // v3.6: L1 split into Session (volatile) + Context (conditional).
+    // The Instance block (v3.5) already owns the stable env info.
+    const session = await sessionSection(pi, ctx);
+    const contextData = await gatherContextState(pi, ctx);
+    const context = contextSection(contextData);
 
     // 5. Supplemental context (past insights, hints, OpenSpec specs) →
     // offloaded to steer whispers (once per session). Avoids per-turn disk
@@ -362,8 +367,10 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       sections.push(simpleSection("memory", memorySection));
     }
 
-    // 5. L1 environmental state
-    sections.push(l1EnvSection(l1Env));
+    // 5a. Session (volatile: PID, session time, turns, last event, tool avg)
+    sections.push(session);
+    // 5b. Context (conditional: context %, session health, memory, checkpoint)
+    sections.push(context);
 
     // 6. Date and cwd
     sections.push(
@@ -390,4 +397,4 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
   });
 }
 
-export { gatherL1State, l1EnvSection };
+export { sessionSection, gatherContextState, contextSection };

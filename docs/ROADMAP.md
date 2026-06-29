@@ -2113,20 +2113,119 @@ the heartbeat-scheduler monkey-patch to be safe.
   tests). `check-deps` reports 0 violations across 225 src +
   81 test files (was 9: 8 boundary + 1 stale ref).
 
-## Final autonomous-pass tally (v1.0 - v3.4)
+- **v3.5** (2026-06-28): **System-prompt cleanup + contrib bridge**
+  — the v3.5 plan was 5 focused commits. Together they
+  consolidate the agent's self-view in the system prompt and add
+  a contrib filter for pi-braid-contrib.
 
-**26 commits. 58 files changed. ~1190 insertions, ~1105 deletions
+  1. **`## Instance` block at top of system prompt** (commit
+     `111b12d8`). The pre-v3.5 prompt scattered env info
+     (`Root`/`Cwd`/`OS`/`Now`/agent version) across `l1-environment.ts`
+     and section 6 of the prompt-builder. The Instance block
+     surfaces them as a single concise block at the very top of
+     the prompt, with a tree-style extension listing (grouped by
+     module, per-extension tool counts) and aggregate counts
+     (tools, skills, memory). The block is the agent's at-a-glance
+     view of "what's loaded and where it came from" — no
+     `braid-reference` skill needed. New module:
+     `src/extensions/core/prompt-builder/instance-composition.ts`.
+     Test: `test-instance-composition.mjs` (9 subtests).
+  2. **Tool provenance tracking** (same commit). New module
+     `src/lib/state/tool-provenance.ts` records
+     `toolName → extensionId` as extensions load. The loader
+     initially populated the registry by diffing `pi.getAllTools()`
+     before/after each extension; this hit a runtime
+     initialization bug (commit `001ddc8c` switched to a `Proxy`
+     wrapper that intercepts `pi.registerTool` without depending
+     on runtime state). Used by the Instance block to show
+     per-extension tool counts.
+  3. **External tools group + contrib settings.json filter**
+     (commit `43231798`). The Instance block now distinguishes
+     contrib-vs-pi-core tools via the provenance registry,
+     labeling unattributed tools as `external: (pi-core + contrib)`
+     with a count. The contrib package's `index.ts` reads
+     `braid.contrib.<name>` from `~/.pi/agent/settings.json` to
+     decide which contrib extensions to load (default: enabled;
+     set to `false` to disable). Disabled extensions are simply
+     not loaded — their tools are not registered, so they don't
+     appear in the agent's tool list or the Instance block.
+  4. **Module paths + discovery note in Instance block** (commit
+     `bbf70c12`). The Instance block now lists the actual
+     `src/extensions/<module>/` path per module, and ends with
+     a `Discover: read src/extensions/<path>` hint that makes
+     the agent naturally inspect extension source rather than
+     asking the user. Module grouping uses
+     `getModuleGroup()` / `getModuleNames()` from the manifest.
+  5. **HANDOFF refresh** (commit `f47ddea6`). Post-push reality
+     captured: tally 49 → 50, tests 79 → 80.
+
+  No numbered roadmap item; this is architectural cleanup of
+  the prompt + contrib bridge. **Test verification:** `npm run
+  ci:check` → all green (check:docs + check:doc-drift + check:deps
+  + tsc + 80/80 tests). Test count: 79 → 80 (+1
+  `test-instance-composition.mjs`).
+
+- **v3.6** (2026-06-29): **L1 environment split into Session +
+  Context blocks.** The v3.5 Instance block moved stable env
+  info (`Root`/`Cwd`/`OS`/`Now`/agent version) out of the
+  monolithic `l1-environment.ts`. v3.6 completes the split by
+  separating the remaining two state categories into their own
+  sections:
+
+  - **`## Session`** (volatile, always shown) — PID, session
+    elapsed time, since-last-event, turn count, tool-call
+    average. Source: `agent-environment/gatherL1Environment()`.
+    New module: `src/extensions/core/prompt-builder/session-section.ts`.
+  - **`## Context`** (conditional, only shown when something to
+    surface) — context-usage % (when > 75%), session health
+    (when non-healthy), memory count (when > 0), steps since
+    last checkpoint (when > 0). Renders `""` when nothing
+    matches; the "## Context" header never appears empty in the
+    prompt. New module:
+    `src/extensions/core/prompt-builder/context-section.ts`.
+
+  Removed: `src/extensions/core/prompt-builder/l1-environment.ts`
+  (was 275 LOC; all state-gathering moved into the new sections
+  and all formatting now lives next to its data). The
+  `formatL1EnvironmentSection` formatter in `agent-environment`
+  was also removed (session-section does its own formatting).
+  No consumer-visible behavior change for the agent — the
+  rendered prompt now has clearer section boundaries, no longer
+  shows `Machine:` / `Hostname:` inside the L1 block (those are
+  in Instance), and the conditional Context block only appears
+  when relevant. New test:
+  `test/runtime/lib/test-l1-split.mjs` (11 subtests). Test count:
+  80 → 81.
+
+  The skill-compression piece of the v3.5 plan (drop
+  `<description>`, add `hint:` frontmatter field) is deferred
+  to a future commit — it's a separate migration that touches
+  external skill files and was identified as "deferred" in the
+  HANDOFF priority list.
+
+  No numbered roadmap item; this is architectural cleanup. The
+  49-of-51 actionable-items tally is unchanged.
+  **Test verification:** `npm run ci:check` → all green
+  (check:docs + check:doc-drift + check:deps + tsc + 81/81
+  tests).
+
+## Final autonomous-pass tally (v1.0 - v3.6)
+
+**27 commits. 61 files changed. ~1400 insertions, ~1105 deletions
 (most of the deletions are ROADMAP.md itself, which was
-folded in from 5 prior audit documents). 1 regression shipped
-in v1.8 and fixed in v1.8.1.
+folded in from 5 prior audit documents; v3.5/v3.6 added
+prompt-builder modules and 2 new tests, plus ROADMAP entry
+churn). 1 regression shipped in v1.8 and fixed in v1.8.1.
 
 **49 of 51 actionable items shipped** (48 as of v3.2;
 EW-7.11 / P2-5 added in v3.3; v3.4 is maintenance and does
-not change the numbered tally). All test
-suites pass (79/79):
+not change the numbered tally; v3.5 (Instance block + contrib
+filter) and v3.6 (L1 split) are architectural cleanups that
+do not add numbered items). All test
+suites pass (81/81):
 
 - `tsc --noEmit` — clean
-- `check-deps.mjs` — 0 violations across 225 src + 81 test files (v3.4 carve-out: 12 ALLOWED_BOUNDARY_OVERRIDES entries)
+- `check-deps.mjs` — 0 violations across 228 src + 83 test files (v3.4 carve-out: 12 ALLOWED_BOUNDARY_OVERRIDES entries; v3.5 added 2 src + 1 test; v3.6 added 2 src - 1 deleted + 1 test)
 - `test-no-module-level-let.mjs` — 225 files, 0 violations (28 documented exceptions; v3.2 added `_timerExtensionFactoryState`)
 - `test-no-console-outside-logger.mjs` — 213 files, 0 violations
 - `test-no-direct-pi-sendmessage.mjs` — 213 files, 0 violations

@@ -176,6 +176,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   target state for the enforcement-loop pipeline; reconcile to `current`
   when the enforcement-loop pipeline ships).
 
+- **L1 environment split into Session + Context blocks (v3.6).**
+  The monolithic `l1-environment.ts` mixed three categories of state
+  (stable env, volatile session, conditional context) into a single
+  "## System State" block. The v3.5 Instance block moved the stable
+  env info (`Root`, `Cwd`, `OS`, `Now`, agent version, extension
+  tree) to its own section; v3.6 completes the split by separating
+  the remaining two categories:
+  - **`## Session`** (volatile, always shown) — PID, session elapsed
+    time, since-last-event, turn count, tool-call average. Source:
+    `agent-environment/gatherL1Environment()`.
+  - **`## Context`** (conditional, only shown when something to
+    surface) — context-usage % (when > 75%), session health (when
+    non-healthy), memory count (when > 0), steps since last
+    checkpoint (when > 0). Renders `""` when nothing matches; the
+    "## Context" header never appears empty in the prompt.
+  Removed: `src/extensions/core/prompt-builder/l1-environment.ts`
+  (was 275 LOC; all state-gathering moved into the new sections
+  and all formatting now lives next to its data). The
+  `formatL1EnvironmentSection` formatter in `agent-environment` was
+  also removed (session-section does its own formatting). No
+  consumer-visible behavior change for the agent — the rendered
+  prompt now has clearer section boundaries, no longer shows
+  "Machine:" / "Hostname:" inside the L1 block (those are in
+  Instance), and the conditional Context block only appears when
+  relevant. New tests: `test/runtime/lib/test-l1-split.mjs` (11
+  subtests). Test count: 80 → 81.
+
 ### Fixed
 
 - **Post-loop classifier timeout bumped 5s → 8s → 30s.** User report:
