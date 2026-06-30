@@ -2263,6 +2263,45 @@ the heartbeat-scheduler monkey-patch to be safe.
   (check:docs + check:doc-drift + check:deps + tsc + 81/81
   tests).
 
+- **v3.8** (2026-06-29): **Instance block — collect Root/Cwd/Settings
+  from pi API + settings-driven extension loading.** d3e04c69. Adds
+  Session ID, timing, and turn data to Instance. Root/Cwd/Settings
+  from pi API (not OS env scraping). Extension loading from
+  settings.json#extensions (not sibling-scan).
+  **Test verification:** 81/81, typecheck, check-deps all clean.
+
+- **v3.9** (2026-06-29): **Prompt-section unification — skills +
+  project-docs + memory pointer blocks consolidated, `<recent>`
+  block removed.** f7f08d18. All `<available_X>` blocks now follow
+  same pattern with descriptions in the files. Prompt reduced ~15
+  lines per turn.
+  **Test verification:** 81/81, typecheck, check-deps all clean.
+
+- **SPQ-1** (2026-06-29): **Definition of Done invariant — scratchpad
+  `done` items require verification triples before finalize.**
+  51f8787e. NEW constant in identity.ts, wired into prompt-builder,
+  tested in test-prompt-builder-directive.mjs.
+  **Test verification:** 81/81, typecheck, check-deps all clean.
+
+- **v3.10** (2026-06-30): **Comprehensive session + ESC + docs
+  hygiene.** 13 commits across this session:
+  - **ESC abort handling** (f36a57ba): 3 bugs fixed in callLlm retry
+    loop — abortable sleep, signal check before retry,
+    combineSignals listener cleanup. All timeouts 2-30s → 60-120s.
+    claim-tracker signal threading fixed.
+  - **Session lifecycle** (f324849e): SESSION_START discoverability
+    (before first turn) + SESSION_SHUTDOWN resumption writer.
+    Turn-end-hygiene → context-usage-only.
+  - **Subagent RPC infrastructure** (296d90b2, 9e1c25f9): Python RPC
+    client, input-polisher PI_CODING_AGENT_DIR fix, skill rewrites,
+    SIGINT forwarding + --verbose flag.
+  - **Doc hygiene** (6 commits): AGENTS.md tool count 42→22+12,
+    ROADMAP file sizes + scratchpad refs updated, README.md phantom
+    pipeline diagram → accurate extension map.
+  **Test verification:** 81/81, typecheck, check-deps all clean.
+  Pre-existing test-instance-block.mjs failure (v3.7 cwd tag
+  regression — unrelated to v3.10 changes).
+
 ## Final autonomous-pass tally (v1.0 - v3.9 + SPQ-1)
 
 **28 commits. 63 files changed. ~1700 insertions, ~1180 deletions
