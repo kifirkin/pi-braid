@@ -8,10 +8,10 @@
 
 | Doc | Purpose | Last update |
 |---|---|---|
-| [`ROADMAP.md`](ROADMAP.md) | **Primary actionable roadmap.** Consolidated improvement list with 51 items (P0–P3), 36 new findings from deep review, 15 EW-7 proposals, 25 P3 polish items. Replaces the 4 archived audits. | 2026-06-17 |
-| [`CODE-QUALITY-REMEDIATION-PLAN.md`](CODE-QUALITY-REMEDIATION-PLAN.md) | Authoritative record of the 6 remediation rounds (Q1–Q15) that have shipped. Headline numbers (52 tests pass, 0 unused identifiers, 0 module-level let violations beyond the 28 documented exceptions) are authoritative. | 2026-06-17 |
-| [`ENFORCEMENT-WHISPER-CONTENT-AUDIT.md`](ENFORCEMENT-WHISPER-CONTENT-AUDIT.md) | Full inventory of all 35 whisper templates with trigger conditions, file:line, message templates, and the 15 EW-7 proposals. The §3 catalog is a useful reference even though the actionable items are now in ROADMAP §4. | 2026-06-17 |
-| [`FRAGILE-HEURISTICS-INVENTORY.md`](FRAGILE-HEURISTICS-INVENTORY.md) | Full 76-heuristic catalog classified A/B/C/D. Of 29 A+B flagged for LLM replacement, 15 have shipped and 14 remain. | 2026-06-14 |
+| [`ROADMAP.md`](ROADMAP.md) | **Primary actionable roadmap.** Consolidated improvement list with 51 items (P0–P3, 45 full + 1 partial shipped), 36 new findings from deep review, 15 EW-7 proposals. Replaces the 4 archived audits. | 2026-06-30 |
+| [`CODE-QUALITY-REMEDIATION-PLAN.md`](CODE-QUALITY-REMEDIATION-PLAN.md) | Historical record of the 6 remediation rounds (Q1–Q15). Headline numbers reflect the state at the time of each round (current: 81/81 tests, 227 src + 83 test files, 28 documented exceptions). | 2026-06-17 |
+| [`ENFORCEMENT-WHISPER-CONTENT-AUDIT.md`](ENFORCEMENT-WHISPER-CONTENT-AUDIT.md) | Full inventory of all 35 whisper templates with trigger conditions, file:line, message templates, and the 15 EW-7 proposals. The §3 catalog is a reference; actionable items are in ROADMAP §4. | 2026-06-17 |
+| [`FRAGILE-HEURISTICS-INVENTORY.md`](FRAGILE-HEURISTICS-INVENTORY.md) | Full 76-heuristic catalog classified A/B/C/D. Of 29 A+B flagged for LLM replacement, 15 have shipped and 14 remain (shipped count may be stale — verify against code). | 2026-06-14 |
 | [`STATE-POLICY.md`](STATE-POLICY.md) | Design narrative for state lifetimes. Operational policy is in `src/lib/state/AGENTS.md`. | 2026-06-17 |
 | [`ARXIV-CITATIONS-AUDIT.md`](ARXIV-CITATIONS-AUDIT.md) | All 7 cited papers verified, no changes needed. Test in `test-arxiv-citations.mjs`. | 2026-06-15 |
 
