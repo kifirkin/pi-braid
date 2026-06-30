@@ -96,19 +96,18 @@ drift surfaces emerge.
 
 ## Tool Inventory
 
-42 tools are registered across extensions. The full audit with
-overlap analysis, out-of-scope candidates, and consolidation plan
-is in `docs/archive/TOOL-INVENTORY-AUDIT.md` (archived 2026-06-17 — see `docs/ROADMAP.md` for current state). Key points:
+22 tools are registered by braid extensions plus ~12 from pi-core
+built-ins (read, write, edit, bash, grep, find, ls, sleep, web_fetch,
+batch_web_fetch, analyze_image, etc.). The May 2026 audit
+(`docs/archive/TOOL-INVENTORY-AUDIT.md`) is archived; its actionable
+items have been folded into ROADMAP.md. Key ongoing concerns:
 
 - **In scope** (braid's value-add): cognitive, metacognition, memory,
   context management, error tracking, health, behavior, timer. Keep these.
-- **Out of scope** (debug/research affordances): `prompt_preview`,
-  `time_status`, `set_ab_variant`, `context_signal`. Candidate removal.
-- **CRUD-shaped (consolidation candidates)**: `error_*` (4), `timer_*`
-  (3), `verify_claim`/`verify_decomposition`,
-  `check_topic_drift`/`reset_topic_anchors`, `session_search`/`session_query`.
-  Each can be one tool with actions. The `memory_recall` + `memory_episodes` +
-  `memory_heuristics` consolidation (→ `memory` tool) is already done.
+- **CRUD-shaped consolidation**: some tools are better as action-based
+  APIs within fewer tool surfaces. The `memory_recall` + `memory_episodes` +
+  `memory_heuristics` → `memory` consolidation is already done.
+  `verify_claim`/`verify_decomposition` could merge into `verify`.
 - **scratchpad vs task**: both track progress but serve different
   purposes. scratchpad = structured state (goal/plan/decisions/learnings
   with priority + persistence + recycling). task = simple TODO list
