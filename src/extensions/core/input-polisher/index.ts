@@ -102,7 +102,9 @@ const DEFAULT_CONFIG: PolisherConfig = {
 // ============================================================================
 
 const SETTINGS_KEY = "preprocessorEnabled";
-const CONFIG_DIR = join(homedir(), ".pi", "agent");
+const CONFIG_DIR = process.env.PI_CODING_AGENT_DIR
+  ? process.env.PI_CODING_AGENT_DIR
+  : join(homedir(), ".pi", "agent");
 const SETTINGS_FILE = join(CONFIG_DIR, "settings.json");
 
 function loadGlobalSetting<T>(key: string, defaultValue: T): T {
