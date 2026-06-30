@@ -369,10 +369,14 @@ function sourceTag(s: TopLevelExtension["source"]): string {
 /**
  * Render a path relative to cwd when possible, else absolute.
  * Keeps the Instance block readable when extensions live next to
- * the cwd project (the common case).
+ * the cwd project (the common case). When the extension IS the
+ * cwd (e.g. pi-braid loaded from the project being worked on),
+ * return the absolute path — not "." — so the agent can `read`
+ * or `grep` the location with the same string it sees elsewhere
+ * in the prompt.
  */
 function relativeToCwd(p: string, cwd: string): string {
-  if (p === cwd) return ".";
+  if (p === cwd) return p + " (cwd)";
   if (p.startsWith(cwd + "/")) return p.slice(cwd.length + 1);
   return p;
 }
