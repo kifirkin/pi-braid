@@ -14,7 +14,7 @@ Metacognitive extension suite for [pi-coding-agent](https://github.com/mariozech
 pi-braid extends pi with a suite of cognitive extensions:
 
 - **Enforcement** - belief policy engine, structured signal delivery (L1-L3), sycophancy detection, verification nudges, behavioral pattern evolution
-- **Memory** - dual-store memory system: semantic (cognitive-memory) + episodic (three-memory-stores) with cross-search
+- **Memory** - multi-store memory system: cognitive memory (semantic + episodic + heuristic via `memory-agent-bridge`), context lifecycle (S-MMU proposals, compaction, rotation), cross-session recall, scratchpad task tracking, and workspace snapshots — all with cross-search
 - **Reasoning** - topic drift detection, bidirectional verification, claim tracking, contradiction detection
 - **Self-improvement** - heuristic evolution, dreamer (offline consolidation), SOP extraction, degradation detection, reflection
 - **Session management** - context lifecycle (proposals, compaction, rotation), scratchpad task tracking
@@ -74,7 +74,7 @@ pi -e /path/to/pi-braid
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/) ≥ 20
-- [pi-coding-agent](https://github.com/mariozechner/pi-coding-agent) ≥ 0.70.0
+- [pi-coding-agent](https://github.com/mariozechner/pi-coding-agent) ≥ 0.77.0
 
 ## Configuration
 
@@ -149,7 +149,7 @@ See [AGENTS.md](AGENTS.md) for the extension inventory and [docs/](docs/) for de
 ```bash
 npm run typecheck   # TypeScript check
 npm run build       # Compile to dist/
-npm run test        # Build + run 61 runtime tests
+npm run test        # Build + run 83 runtime tests
 npm run lint        # ESLint
 npm run format      # Prettier
 ```
