@@ -9,6 +9,8 @@ Usage:
     python3 subagent-rpc.py task.md
     python3 subagent-rpc.py task.md --provider a0-venice --model deepseek-v4-flash
     python3 subagent-rpc.py task.md --no-extensions --provider openrouter --model "google/gemini-flash-latest"
+    python3 subagent-rpc.py task.md --verbose  # show events on stderr
+    python3 subagent-rpc.py task.md --timeout 300  # longer timeout
 
 Environment:
     PI_CODING_AGENT_DIR — Override agent directory (for custom settings).
@@ -30,6 +32,34 @@ import select
 import tempfile
 import shutil
 import atexit
+import signal
+
+
+# --- SIGINT forwarding ---
+
+_current_subagent = None
+
+def _forward_sigint(signum, frame):
+    """Forward Ctrl+C to the subagent as an abort signal."""
+    global _current_subagent
+    if _current_subagent is not None:
+        proc, verbose = _current_subagent
+        if proc.poll() is None:
+            if verbose:
+                print("[subagent] User interrupt — sending abort...", file=sys.stderr)
+            try:
+                send_command(proc, {"type": "abort"})
+            except:
+                pass
+            time.sleep(0.5)
+            try:
+                proc.terminate()
+                proc.wait(timeout=2)
+            except:
+                proc.kill()
+    sys.exit(130)
+
+signal.signal(signal.SIGINT, _forward_sigint)
 
 
 # --- Temp settings dir management ---
@@ -94,7 +124,7 @@ def handle_extension_ui(proc, event):
 
 
 def run_subagent(prompt_text, provider=None, model=None, extensions=True,
-                 tools=None, timeout=120, env_overrides=None):
+                 tools=None, timeout=120, env_overrides=None, verbose=False):
     """Run a pi subagent in RPC mode and return the assistant's text response.
     
     Args:
@@ -105,9 +135,11 @@ def run_subagent(prompt_text, provider=None, model=None, extensions=True,
         tools: Comma-separated tool list (only with --no-extensions).
         timeout: Max seconds to wait for completion.
         env_overrides: Dict of extra environment variables.
+        verbose: If True, print progress and events to stderr as they arrive.
     
     Returns:
-        The assistant's text response (str).
+        The assistant's text response (str). Always returns a string; empty
+        on timeout or error.
     """
     # Always use temp settings to disable input-polisher
     base_settings = os.path.expanduser("~/.pi/agent/settings.json")
@@ -135,17 +167,27 @@ def run_subagent(prompt_text, provider=None, model=None, extensions=True,
     if model:
         cmd.extend(["--model", model])
     
+    if verbose:
+        print(f"[subagent] Cmd: {' '.join(cmd)}", file=sys.stderr)
+        print(f"[subagent] Env: PI_CODING_AGENT_DIR={temp_pi_dir}", file=sys.stderr)
+    
     proc = subprocess.Popen(
         cmd,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.PIPE if not verbose else None,
         text=True,
         bufsize=1,
         env=env
     )
     
+    # Register for SIGINT forwarding
+    global _current_subagent
+    _current_subagent = (proc, verbose)
+    
     # Send the prompt
+    if verbose:
+        print(f"[subagent] Sending prompt ({len(prompt_text)} chars)...", file=sys.stderr)
     send_command(proc, {"type": "prompt", "message": prompt_text})
     
     # Read events
@@ -154,6 +196,8 @@ def run_subagent(prompt_text, provider=None, model=None, extensions=True,
     
     while True:
         if time.time() - started > timeout:
+            if verbose:
+                print(f"[subagent] Timeout ({timeout}s) — sending abort...", file=sys.stderr)
             send_command(proc, {"type": "abort"})
             time.sleep(1)
             proc.kill()
@@ -182,13 +226,23 @@ def run_subagent(prompt_text, provider=None, model=None, extensions=True,
         event_type = event.get("type", "")
         
         if event_type == "extension_ui_request":
+            if verbose:
+                print(f"[subagent] UI request: {event.get('method', '?')} "
+                      f"({event.get('methodMeta', {}).get('title', 'no title')})",
+                      file=sys.stderr)
             handle_extension_ui(proc, event)
             continue
         
         if event_type == "message_update":
             delta = event.get("assistantMessageEvent", {})
             if delta.get("type") == "text_delta":
-                full_text += delta.get("delta", "")
+                chunk = delta.get("delta", "")
+                full_text += chunk
+                if verbose:
+                    print(chunk, end="", file=sys.stderr, flush=True)
+            elif verbose:
+                print(f"[subagent] message_update: {delta.get('type', '?')}",
+                      file=sys.stderr)
         
         if event_type == "agent_end":
             break
@@ -234,6 +288,8 @@ def main():
                         help="Comma-separated tool list (with --no-extensions)")
     parser.add_argument("--timeout", type=int, default=120,
                         help="Timeout in seconds (default: 120)")
+    parser.add_argument("--verbose", "-v", action="store_true",
+                        help="Show progress and events on stderr")
     args = parser.parse_args()
     
     # If prompt is a file path, read it
@@ -249,7 +305,8 @@ def main():
         model=args.model,
         extensions=not args.no_extensions,
         tools=args.tools,
-        timeout=args.timeout
+        timeout=args.timeout,
+        verbose=args.verbose
     )
     
     print(result)
