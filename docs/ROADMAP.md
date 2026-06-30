@@ -2310,11 +2310,13 @@ folded in from 5 prior audit documents; v3.5/v3.6/v3.7 added
 prompt-builder modules and 3 new tests, plus ROADMAP entry
 churn). 1 regression shipped in v1.8 and fixed in v1.8.1.
 
-**49 of 51 actionable items shipped** (48 as of v3.2;
-EW-7.11 / P2-5 added in v3.3; v3.4 is maintenance and does
-not change the numbered tally; v3.5 (Instance block + contrib
-filter) and v3.6 (L1 split) are architectural cleanups that
-do not add numbered items). All test
+v3.10 added 13 more commits (ESC handling, session lifecycle,
+subagent RPC, doc hygiene) — see version entry above for
+details.
+
+**45 full + 1 partial of 51 actionable items shipped** (P1-2 verified as
+no-op, not counted in shipped; Q16/Q17 shipped as infrastructure items
+not in the P-tier tally). All test
 suites pass (81/81):
 
 - `tsc --noEmit` — clean
@@ -2375,12 +2377,12 @@ P3-17 (DR-L-3) state(ctx) migration (v2.9), P3-18 (DR-L-4)
 dead re-exports (v2.9), P3-19 partial, P3-20 through P3-24,
 P3-25 cost-report module (v3.0).
 
-**EW items (12 of 15):** EW-7.1 (P0-6), EW-7.3 (P1-4),
+**EW items (14 of 15):** EW-7.1 (P0-6), EW-7.3 (P1-4),
 EW-7.4 (P2-3), EW-7.5 (P3-1), EW-7.6 (P0-7),
 EW-7.7 (P3-2), EW-7.8 (P3-3), EW-7.9 (P2-4),
 EW-7.10 (P3-4), EW-7.13 (P2-6), EW-7.14 (P3-5),
-EW-7.15 (P3-6), **EW-7.2 (P1-5 — shipped)**,
-**EW-7.11 / P2-5 (shipped v3.3)**. EW-7.12 (P3-7)
+EW-7.15 (P3-6), EW-7.2 (P1-5 — shipped),
+EW-7.11 / P2-5 (shipped v3.3). EW-7.12 (P3-7)
 remains deferred.
 
 ### Remaining 6 items (deferred)
