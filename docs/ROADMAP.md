@@ -143,7 +143,7 @@ state** so we don't redo work.
 
 ## New findings from deep review
 
-This section lists 36 findings from a deep source-code review of all 181
+This section lists 36 findings from a deep source-code review of all 226
 TypeScript files in `src/`, executed as part of compiling this roadmap.
 Each item has file:line, severity, impact, and fix path.
 
@@ -2263,7 +2263,7 @@ the heartbeat-scheduler monkey-patch to be safe.
   (check:docs + check:doc-drift + check:deps + tsc + 81/81
   tests).
 
-## Final autonomous-pass tally (v1.0 - v3.7)
+## Final autonomous-pass tally (v1.0 - v3.9 + SPQ-1)
 
 **28 commits. 63 files changed. ~1700 insertions, ~1180 deletions
 (most of the deletions are ROADMAP.md itself, which was
@@ -2279,7 +2279,7 @@ do not add numbered items). All test
 suites pass (81/81):
 
 - `tsc --noEmit` — clean
-- `check-deps.mjs` — 0 violations across 228 src + 83 test files (v3.4 carve-out: 12 ALLOWED_BOUNDARY_OVERRIDES entries; v3.5 added 2 src + 1 test; v3.6 added 2 src - 1 deleted + 1 test; v3.7 added 1 src - 1 deleted + 1 test - 2 deleted = net 0 src - 1 test was reverted because test-instance-block.mjs replaced both deleted tests in a single new file → tally still 228 src + 83 test)
+- `check-deps.mjs` — 0 violations across 227 src + 83 test files (v3.4 carve-out: 12 ALLOWED_BOUNDARY_OVERRIDES entries; v3.5 added 2 src + 1 test; v3.6 added 2 src - 1 deleted + 1 test; v3.7 added 1 src - 1 deleted + 1 test - 2 deleted = net 0 src - 1 test was reverted because test-instance-block.mjs replaced both deleted tests in a single new file; v3.9+ added 1 src (subagent-rpc scripts) → tally 227 src + 83 test)
 - `test-no-module-level-let.mjs` — 225 files, 0 violations (28 documented exceptions; v3.2 added `_timerExtensionFactoryState`)
 - `test-no-console-outside-logger.mjs` — 213 files, 0 violations
 - `test-no-direct-pi-sendmessage.mjs` — 213 files, 0 violations
@@ -2305,22 +2305,24 @@ fallback, P0-6 enforcement_violation amplification fix,
 P0-7 SIGNAL_RETENTION_TURNS=3, P0-8 pi-ai v0.80 port (Path A,
 compat import swap — v3.1).
 
-**P1 (6 of 8):** P1-1 state migration in context-lifecycle,
+**P1 (7 of 8):** P1-1 state migration in context-lifecycle,
 P1-3 (DR-C-4) timer single-process-per-session runtime check (v3.2),
 P1-4 (EW-7.3) suppressNudges at sendTrackedMessage,
+P1-5 (EW-7.2) NudgeType wiring (v3.2),
 P1-6 relevanceReason substring match, P1-7 explore_paths
 description, P1-8 recall_get fake entry discriminator.
 (P1-2 verified as no-op in v1.9 — line text already
 matched the corrected count, no code change needed.)
 
-**P2 (6 of 11):** P2-1 typed-adapter pattern (full 6 sites
+**P2 (7 of 11):** P2-1 typed-adapter pattern (full 6 sites
 now covered in v2.6), P2-2 scratchpad split into handler
 groups, P2-3 (EW-7.4) classifier-offline helper, P2-4
-(EW-7.9) session signals per-signal gating, P2-6 (EW-7.13)
+(EW-7.9) session signals per-signal gating, P2-5 (EW-7.11)
+braid.enforcement settings (v3.3), P2-6 (EW-7.13)
 per-source priority-aware caps, P2-11 B-class fallbacks
 (tierPolicy infrastructure).
 
-**P3 (22 full + 1 partial of 25):** P3-1 (EW-7.5) checkBlocking
+**P3 (23 full + 1 partial of 25):** P3-1 (EW-7.5) checkBlocking
 cleanup, P3-2 (EW-7.7) SIGNAL_KEYS, P3-3 (EW-7.8)
 nudgeCooldownMs constant, P3-4 (EW-7.10) localizationRisk
 rename, P3-5 (EW-7.14) nudgeSuppressedCount TUI, P3-6
@@ -2352,13 +2354,22 @@ The remaining items are:
   the per-call USD baseline. The remaining work is the
   prompt-collapse optimization (3 yes/no classifiers → 1
   multi-label) and TTL tuning — both require design calls.
+- **P2-8** (context-lifecycle re-entrancy guard) — needs
+  design call on re-entrancy depth limits and handler
+  deferral strategy.
+- **P2-9** (scratchpad pipe-delimited parsing) — needs
+  decision on whether to deprecate the legacy pipe-delimited
+  format or keep it as a backward-compat layer.
 - **P2-10 / Q13** (large-file splits: memory-agent-bridge,
   timer, session-recall, latent-activator) — explicitly
   deferred by the original Q13 decision; lowest value item.
 - **P3-7 / EW-7.12** (prefix naming convention) — policy
   decision best made with user input.
+- **P3-19** (partial: think budget allocation) — partially
+  shipped; remaining work needs design call on budget
+  allocation strategy.
 
-All three of these require user input or a policy decision.
+All of these require user input or a policy decision.
 P2-10 is explicitly deferred. P2-7 (cache TTL sizing) is now
 *unblocked* by v3.0's cost-report layer: the report provides
 the per-call cost baseline that informs a TTL choice, though
