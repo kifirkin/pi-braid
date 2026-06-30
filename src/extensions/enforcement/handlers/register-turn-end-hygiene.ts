@@ -35,20 +35,23 @@ import {
 
 const log = createLogger("enforcement:turn-end-hygiene");
 
-// ── Discoverability state (session-scoped via WeakMap) ──────────────────────
+// ── Discoverability state (session-scoped, keyed by cwd) ────────────────────
+// WeakMap on ctx doesn't survive ctx replacement between turns.
+// Use a plain Map keyed by cwd (stable per session).
 
 interface DiscoverabilityState {
   scratchpadSurfaced: boolean;
   memorySurfaced: boolean;
 }
 
-const discoverabilityStates = new WeakMap<ExtensionContext, DiscoverabilityState>();
+const discoverabilityStates = new Map<string, DiscoverabilityState>();
 
 function getDiscoverabilityState(ctx: ExtensionContext): DiscoverabilityState {
-  let state = discoverabilityStates.get(ctx);
+  const cwd = (ctx as { cwd?: string }).cwd ?? "default";
+  let state = discoverabilityStates.get(cwd);
   if (!state) {
     state = { scratchpadSurfaced: false, memorySurfaced: false };
-    discoverabilityStates.set(ctx, state);
+    discoverabilityStates.set(cwd, state);
   }
   return state;
 }
