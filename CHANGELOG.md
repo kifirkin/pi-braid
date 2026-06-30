@@ -8,6 +8,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **Path leak audit** — fixed hardcoded `/Users/kifir/...` absolute paths
+  in `test-self-evolution-loop.mjs` (4 sites) and `test-behavioral-drift.mjs`
+  (1 site), replaced with relative `../../../src/...` paths. Fixed
+  hardcoded `~/projects/agents/pi-braid` fallback in `subagent-rpc.py`
+  (now computed from script location). Fixed comment example in
+  `top-level-extensions.ts`. Added `*.log` to `.gitignore`.
+- **Verified no hardcoded credentials** — grep scan across all source
+  files found zero API keys, tokens, or secrets. Session HTML exports
+  already gitignored. Prompt builder only exposes Root/Cwd/Settings
+  (intentional context).
+
+### Docs
+
+- **README.md** — removed marketing tagline, skills count 15→25+,
+  BRAID_MODULES section rewritten to match flat-manifest reality,
+  extension table restructured to match actual manifest (7 categories,
+  no duplicates, no pi-core builtins misattributed to braid),
+  `error-capture`→`error-tracking`.
+- **HOOKS-AND-WHISPERS-AUDIT.md** — `forward-looking`→`current`.
+- **ROADMAP.md** — removed 2 extra status markers in proposal sections.
+- **docs/README.md** — updated stale references (tally, test count,
+  exception count).
+
 ### Added
 
 - **Definition of Done invariant (SPQ-1)** — new system prompt
