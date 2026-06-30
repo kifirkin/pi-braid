@@ -33,6 +33,8 @@ import { registerToolResultHandler } from "./handlers/register-tool-result.js";
 import { registerSessionCompactHandler } from "./handlers/register-session-compact.js";
 import { registerAutoRetryEndHandler } from "./handlers/register-auto-retry-end.js";
 import { registerSessionShutdownHandler } from "./handlers/register-session-shutdown.js";
+import { registerSessionShutdownResumption } from "./handlers/register-session-shutdown-resumption.js";
+import { registerSessionStartDiscoverability } from "./handlers/register-session-start-discoverability.js";
 import { registerTurnEndHygiene } from "./handlers/register-turn-end-hygiene.js";
 import { driftHandler } from "./handlers/analysis/drift-handler.js";
 import { bpeHandler, setLastRecommendationType } from "./handlers/analysis/bpe-handler.js";
@@ -61,6 +63,7 @@ export function registerHandlers(pi: ExtensionAPI): void {
 
   registerInputHandler(pi);
   registerSessionStart(pi);
+  registerSessionStartDiscoverability(pi);
   registerToolCallHandler(pi);
 
   // Clear the turn-scoped whisper dedup registry at the start of each
@@ -78,6 +81,7 @@ function registerCompactAndSessionHandlers(pi: ExtensionAPI): void {
   registerSessionCompactHandler(pi);
   registerAutoRetryEndHandler(pi);
   registerSessionShutdownHandler(pi);
+  registerSessionShutdownResumption(pi);
 
   // ── turn_end: individual analysis handlers (split from dispatch-turn-end-analysis) ──
   registerTurnEndHandler("enforcement-drift", 100, async (event, ctx) => {
