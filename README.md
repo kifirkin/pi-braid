@@ -11,35 +11,49 @@ Metacognitive extension suite for [pi-coding-agent](https://github.com/mariozech
 
 ## What It Does
 
-pi-braid extends pi with a layered cognitive architecture:
+pi-braid extends pi with a suite of cognitive extensions:
 
-- **Enforcement** - belief policy engine, structured signal delivery (L1-L3 severity), sycophancy detection, verification nudges
+- **Enforcement** - belief policy engine, structured signal delivery (L1-L3), sycophancy detection, verification nudges, behavioral pattern evolution
 - **Memory** - dual-store memory system: semantic (cognitive-memory) + episodic (three-memory-stores) with cross-search
-- **Reasoning** - reasoning quality metrics, topic drift detection, bidirectional verification
-- **Self-improvement** - heuristic evolution, dreamer (offline consolidation), SOP extraction, degradation detection
-- **Session management** - context lifecycle (S-MMU), auto-finalize at 90%, scratchpad task tracking
-- **Utilities** - healthcheck, timers, system monitoring, web research, code search
+- **Reasoning** - topic drift detection, bidirectional verification, claim tracking, contradiction detection
+- **Self-improvement** - heuristic evolution, dreamer (offline consolidation), SOP extraction, degradation detection, reflection
+- **Session management** - context lifecycle (proposals, compaction, rotation), scratchpad task tracking
+- **Utilities** - healthcheck, timers, system monitoring, web research, workspace snapshots
 
-The agent doesn't just execute tools - it reflects, remembers, and adapts.
+The agent doesn't just execute tools — it reflects, remembers, and adapts across turns.
 
-## Architecture
+## Extension Map
+
+The following diagram shows how braid's extensions relate to each other and to the pi base agent:
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    pi-coding-agent                   │
-│                  (base agent loop)                   │
-├─────────────────────────────────────────────────────┤
-│  prompt-builder  │  polyfill  │  user-msg-preproc   │
-├──────────┬───────┴────────────┴──────────────────────┤
-│enforcement│  cognitive-systems  │  metacognition     │
-│(signals)  │  (memory, explore)  │  (think, verify)   │
-├──────────┴─────────────────────┴────────────────────┤
-│  heartbeat-scheduler  │  context-lifecycle (S-MMU)   │
-├───────────────────────┴─────────────────────────────┤
-│  three-memory-stores  │  cognitive-memory  │  dreamer│
-├───────────────────────┴───────────────────┴─────────┤
-│  analytics  │  retry  │  error-capture  │  watchdog  │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────┐
+│            pi-coding-agent               │
+│         (base agent loop + tools)        │
+├──────────────────────────────────────────┤
+│   prompt-builder (system prompt)         │
+├──────────────┬───────────────────────────┤
+│  enforcement │  metacognition            │
+│  (signals,   │  (think, verify,          │
+│   drift,     │   hypothesize, finalize)  │
+│   reflection)│                           │
+├──────────────┴───────────────────────────┤
+│  memory-agent-bridge                     │
+│  (memory_store, memory, conflict_qa,     │
+│   explore_paths, session)                │
+├──────────────────────────────────────────┤
+│  three-memory-stores  │  context-lifecycle│
+│  (episodes/heuristics)│  (S-MMU proposals)│
+├──────────────┬───────────────────────────┤
+│heartbeat-    │  scratchpad               │
+│scheduler     │  (task tracking)           │
+│(budgets,     │  workspace-snapshot        │
+│ auto-finalize)│  timer                    │
+├──────────────┴───────────────────────────┤
+│  session-recall  │  health-maintenance   │
+│  error-tracking  │  latent-activator     │
+│  watchdog        │  analytics            │
+└──────────────────────────────────────────┘
 ```
 
 ## Installation
@@ -78,40 +92,42 @@ All braid-specific data is stored under `~/.pi/agent/braid/`.
 
 ### Module System
 
-Extensions are grouped into modules that can be toggled:
+Some extensions can be toggled via the `BRAID_MODULES` environment variable:
 
 ```bash
 # Enable all (default)
 export BRAID_MODULES="all"
 
 # Enable specific modules
-export BRAID_MODULES="core,cognitive,memory,retry"
+export BRAID_MODULES="core,cognitive,memory,heartbeat"
 ```
 
-See [pi-braid-docs](https://github.com/earendil-works/pi-braid-docs) for the full documentation (extracted to separate repo).
+See [AGENTS.md](AGENTS.md) for the extension inventory and [docs/](docs/) for detailed documentation.
 
 ## Bundled Skills
 
-15 skills ship with pi-braid, covering code search, documentation, visual creation, research, and more. See [skills/](skills/) for the full list.
+15 skills are available (shipped separately in [pi-braid-skills](https://github.com/kifirkin/pi-braid-skills)). See the skill descriptions in the system prompt's `<available_skills>` block for the full list.
 
 ## Extension Overview
 
 | Category      | Extension           | Purpose                                                         |
 | ------------- | ------------------- | --------------------------------------------------------------- |
-| **Cognitive** | enforcement         | Belief policy engine, structured signals, sycophancy detection  |
-|               | cognitive-systems   | Memory recall, `explore_paths`, `hypothesize`, `memory_*` tools |
-|               | metacognition       | `think`, `verify`, `hypothesize`, `scratchpad`                  |
-|               | reasoning           | Reasoning quality metrics                                       |
-| **Memory**    | three-memory-stores | Episodic, heuristic, and tool-reliability persistence           |
-|               | context-lifecycle   | S-MMU context management with proposal system                   |
-|               | session-recall      | Cross-session context recall                                    |
-|               | context-manager     | Compaction, rotation, archive, pruning                          |
-| **Heartbeat** | heartbeat-scheduler | Token budgets, auto-finalize, dreamer, recaller, evolver        |
-|               | analytics           | Session metrics, A/B variants, tool reliability                 |
-| **Core**      | prompt-builder      | System prompt construction with cognitive context               |
-|               | polyfill            | Settings and keybindings compatibility                          |
-|               | scratchpad          | Structured session memory and task management                   |
-| **Retry**     | retry               | Error capture, retry state management                           |
+| **Cognitive** | enforcement         | Belief policy engine, structured signals, sycophancy detection, BPE, MARS, dreamer, reflection |
+|               | metacognition       | `think`, `verify`, `hypothesize`, `finalize`, `verify_claim`, `topic_drift`                    |
+| **Memory**    | three-memory-stores | Episodic, heuristic, and tool-reliability persistence                                           |
+|               | memory-agent-bridge | `memory_store`, `memory`, `conflict_qa`, `explore_paths` tools                                  |
+|               | context-lifecycle   | S-MMU context management with proposal system (`context_proposals`)                             |
+|               | context-manager     | Compaction, rotation, archive, pruning                                                         |
+|               | session-recall      | Cross-session context recall (`session` tool)                                                   |
+|               | scratchpad          | Structured session memory and task management (`scratchpad` tool)                               |
+|               | workspace-snapshot  | Workspace state capture and restore (`workspace_snapshot` tool)                                 |
+| **Heartbeat** | heartbeat-scheduler | Token budgets, auto-finalize, dreamer, recaller, evolver, behavioral drift                      |
+|               | analytics           | Session metrics, A/B variants, tool reliability                                                 |
+| **Core**      | prompt-builder      | System prompt construction with cognitive context, behavior modes, skills, memory sections       |
+|               | input-polisher      | User message classification and editing                                                         |
+| **System**    | health-maintenance  | Health checks, session health tool, error tracking, degradation detection                       |
+|               | timer               | Non-blocking timers for session tasks                                                           |
+|               | watchdog            | Session streaming state cleanup                                                                 |
 |               | error-capture       | Error classification and persistence                            |
 | **Tools**     | healthcheck         | System diagnostics                                              |
 |               | timer               | Async timers with reminder delivery                             |
