@@ -44,7 +44,7 @@ console.log("\n[3] Source analysis - behavioral drift module structure");
 {
   const fs = await import("fs");
   const src = fs.readFileSync(
-    "/Users/kifir/projects/agents/pi-braid/src/extensions/heartbeat/heartbeat-scheduler/modules/behavioral-drift.ts",
+    "../../../src/extensions/heartbeat/heartbeat-scheduler/modules/behavioral-drift.ts",
     "utf-8",
   );
 

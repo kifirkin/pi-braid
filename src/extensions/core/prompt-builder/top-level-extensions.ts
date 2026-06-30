@@ -18,7 +18,7 @@
  *
  * Each `packages` entry can be either:
  *
- *   - An absolute local path, e.g. `/Users/kifir/projects/agents/pi-braid`.
+ *   - An absolute local path (e.g. a development checkout).
  *     Resolved by reading `<path>/package.json` and inspecting the
  *     `pi` field for declared extension / skill / prompt entries.
  *

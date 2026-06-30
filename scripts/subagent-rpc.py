@@ -153,8 +153,10 @@ def run_subagent(prompt_text, provider=None, model=None, extensions=True,
     cmd = ["pi", "--mode", "rpc", "--no-session"]
     
     if extensions:
+        # Resolve braid root relative to this script's location
+        script_dir = os.path.dirname(os.path.abspath(__file__))
         braid_root = os.environ.get("BRAID_ROOT",
-            os.path.expanduser("~/projects/agents/pi-braid"))
+            os.path.dirname(script_dir))
         cmd.extend(["-e", braid_root])
     else:
         cmd.append("--no-extensions")

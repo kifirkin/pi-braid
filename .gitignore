@@ -20,8 +20,9 @@ test/runtime/results/
 # Archives
 .archive/
 
-# OS
+# OS / temp
 .DS_Store
+*.log
 
 # Editor
 .vscode/

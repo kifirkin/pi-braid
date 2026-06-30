@@ -20,7 +20,7 @@ console.log("\n[1] Trajectory enrichment - ToolTracking type");
 {
   // Verify the ToolTracking interface includes trajectory field
   const typesSrc = readFileSync(
-    "/Users/kifir/projects/agents/pi-braid/src/extensions/heartbeat/heartbeat-scheduler/types.ts",
+    "../../../src/extensions/heartbeat/heartbeat-scheduler/types.ts",
     "utf-8",
   );
   assert.ok(typesSrc.includes("trajectory"), "ToolTracking should have trajectory field");
@@ -31,7 +31,7 @@ console.log("\n[1] Trajectory enrichment - ToolTracking type");
 
   // Verify tool_result listener exists in heartbeat
   const heartbeatSrc = readFileSync(
-    "/Users/kifir/projects/agents/pi-braid/src/extensions/heartbeat/heartbeat-scheduler/index.ts",
+    "../../../src/extensions/heartbeat/heartbeat-scheduler/index.ts",
     "utf-8",
   );
   assert.ok(
@@ -63,7 +63,7 @@ console.log("\n[2] Consolidation hint writing");
 
   // Verify the consolidation channel imports braid-paths
   const consolSrc = readFileSync(
-    "/Users/kifir/projects/agents/pi-braid/src/lib/events/consolidation-channel.ts",
+    "../../../src/lib/events/consolidation-channel.ts",
     "utf-8",
   );
   assert.ok(
@@ -119,7 +119,7 @@ console.log("\n[3] Hint loading with relevance filtering");
 {
   // Hint pipeline lives in its own file after the whisper-conversion refactor.
   const hintsSrc = readFileSync(
-    "/Users/kifir/projects/agents/pi-braid/src/lib/cognitive/hints.ts",
+    "../../../src/lib/cognitive/hints.ts",
     "utf-8",
   );
 
