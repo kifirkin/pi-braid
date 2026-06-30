@@ -30,7 +30,7 @@ export interface CriticGateOptions {
   fallback: () => string | Promise<string>;
   /** Max tokens for the classify call (default: 5). */
   maxTokens?: number;
-  /** Timeout in ms (default: 3000). */
+  /** Timeout in ms (default: 60_000). ESC/signal is the primary cancel path; timeout is a fallback. */
   timeoutMs?: number;
   /**
    * Tier policy passed through to classify(). P2-11: B-class
@@ -67,7 +67,7 @@ export async function criticGate(
 ): Promise<CriticGateResult> {
   const result = await classify(ctx, opts.criteria, opts.input, {
     maxTokens: opts.maxTokens ?? 5,
-    timeoutMs: opts.timeoutMs ?? 3000,
+    timeoutMs: opts.timeoutMs ?? 60_000,
     label: opts.name,
     fallback: opts.fallback,
     tierPolicy: opts.tierPolicy,

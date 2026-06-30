@@ -130,7 +130,7 @@ async function classifyTaskKeywords(text: string, _ctx?: any): Promise<string[]>
           userPrompt: `Extract keywords from: "${text.slice(0, 500)}"`,
         },
         {},
-        { timeoutMs: 2000 },
+        { timeoutMs: 60_000 },
       );
       if (result.label) {
         classifierKeywords = result.label

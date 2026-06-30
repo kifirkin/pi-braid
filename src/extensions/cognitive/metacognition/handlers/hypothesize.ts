@@ -119,7 +119,7 @@ export function createHypothesizeTool(): ToolDefinition<any, any, any> {
         },
         input: { problem, evidence: evidence || "(none provided)" },
         fallback: () => (problem.length > 50 && (evidence?.length ?? 0) > 30 ? "deep" : "yes"),
-        timeoutMs: 3000,
+        timeoutMs: 60_000,
         // P2-11 B-class: length-based heuristic is a poor proxy for
         // "needs deep analysis" (a short problem with rich evidence can
         // need deep; a long problem with no evidence doesn't).

@@ -189,7 +189,7 @@ export async function evaluateContextDensityWithJudge(
       ctx,
       CRITICS.contextDensity.criteria,
       { sampleCount: String(sample.length), messages: messagesText },
-      { timeoutMs: 5000, label: CRITICS.contextDensity.label },
+      { timeoutMs: 60_000, label: CRITICS.contextDensity.label },
     );
 
     const label = result.label.toUpperCase() as "HIGH" | "MEDIUM" | "LOW";

@@ -60,7 +60,7 @@ export async function confirmReasoningBlock(
         userPrompt: "Is this reasoning?\n\n{{text}}",
       },
       { text: content.slice(0, 2000) },
-      { timeoutMs: 2000 },
+      { timeoutMs: 60_000 },
     );
     return result.label === "yes";
   } catch {

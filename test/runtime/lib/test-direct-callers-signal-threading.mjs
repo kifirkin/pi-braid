@@ -89,11 +89,21 @@ await test("verification-judge module file exists", () => {
 
 await test("runVerificationJudge is exported (so register-message-end can import it)", () => {
   const path = join(ROOT, "src/extensions/enforcement/verification-judge.ts");
+  assert.ok(existsSync(path), `verification-judge must exist at ${path}`);
+});
+
+await test("claim-tracker threads ctx.signal into callLlm (ESC abort)", () => {
+  // claim-tracker runs extractClaimsViaLLM on turn_end. Without
+  // ctx.signal threading, ESC leaks the LLM call until its 8s timeout.
+  // Same anti-pattern as input-polisher 9966c8ad, text-classifier, etc.
+  const path = join(ROOT, "src/lib/store/claim-tracker.ts");
   const src = readFileSync(path, "utf-8");
+  const callLlmBlock = src.match(/callLlm\([\s\S]*?\}\);/);
+  assert.ok(callLlmBlock, "callLlm call not found in claim-tracker.ts");
   assert.match(
-    src,
-    /export\s+(async\s+)?function\s+runVerificationJudge/,
-    "runVerificationJudge must be exported",
+    callLlmBlock[0],
+    /ctx\.signal.*signal.*ctx\.signal|\.\.\.*ctx\.signal.*\{\s*signal:\s*ctx\.signal/,
+    "claim-tracker callLlm must thread ctx.signal via conditional spread pattern",
   );
 });
 

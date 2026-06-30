@@ -101,7 +101,7 @@ async function detectLoop(state: LoopDetectionState, ctx: ExtensionContext): Pro
       CRITICS.toolLoopDetected.criteria,
       { toolSequences: toolSequences.slice(0, 2000) },
       {
-        timeoutMs: 5000,
+        timeoutMs: 60_000,
         label: CRITICS.toolLoopDetected.label,
         fallback: () => toolLoopFallback(toolSequences),
         tierPolicy: "fallback-only",

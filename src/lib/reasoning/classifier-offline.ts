@@ -62,7 +62,7 @@ export type ClassifyWithOfflineOptions = Omit<ClassifierOptions, "fallback"> & {
  *
  * @example
  *   const r = await classifyWithOffline(ctx, CRITICS.topicDivergence.criteria, input, {
- *     timeoutMs: 5000,
+ *     timeoutMs: 60_000,
  *     fallback: () => "no",
  *   });
  *   if (r.classifierDown) {

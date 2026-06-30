@@ -348,7 +348,7 @@ export function createThinkTool(): ToolDefinition<any, any, any> {
             const keywords = ["refactor", "delete", "remove", "redesign", "migrate", "replace", "significant", "critical", "architecture", "breaking"];
             return keywords.some((kw) => (decision + " " + (reason || "")).toLowerCase().includes(kw)) ? "deep" : "yes";
           },
-          timeoutMs: 3000,
+          timeoutMs: 60_000,
           // P2-11 B-class: keyword-list heuristic misses many decisions that
           // warrant review (any non-listed architectural decision gets "yes"
           // i.e. skipped). tierPolicy: fallback-only downweights to 0.5

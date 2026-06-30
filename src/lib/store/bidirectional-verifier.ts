@@ -230,7 +230,7 @@ export async function classifyRequirementStrength(
       CRITICS.instructionStrength.criteria,
       { body },
       {
-        timeoutMs: 5000,
+        timeoutMs: 60_000,
         label: CRITICS.instructionStrength.label,
         fallback: () => instructionStrengthFallback(body),
       },

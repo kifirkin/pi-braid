@@ -329,7 +329,7 @@ export async function checkResponseForResolution(
     CRITICS.conflictResolution.criteria,
     { text: truncated },
     {
-      timeoutMs: 5000,
+      timeoutMs: 60_000,
       label: "Conflict Resolution",
       // Q9: keyword overlap heuristic misses nuanced resolution. Always use LLM.
       tierPolicy: "always-llm",

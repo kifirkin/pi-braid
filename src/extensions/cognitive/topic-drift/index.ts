@@ -107,19 +107,19 @@ async function detectDriftWithCritics(
         ctx,
         CRITICS.topicCoverage.criteria,
         { original: truncOriginal, response: truncOutput },
-        { timeoutMs: 5000, label: CRITICS.topicCoverage.label, fallback: topicDriftFallback },
+        { timeoutMs: 60_000, label: CRITICS.topicCoverage.label, fallback: topicDriftFallback },
       ),
       classifyWithOffline(
         ctx,
         CRITICS.topicDivergence.criteria,
         { original: truncOriginal, response: truncOutput },
-        { timeoutMs: 5000, label: CRITICS.topicDivergence.label, fallback: topicDriftFallback },
+        { timeoutMs: 60_000, label: CRITICS.topicDivergence.label, fallback: topicDriftFallback },
       ),
       classifyWithOffline(
         ctx,
         CRITICS.topicCompleteness.criteria,
         { original: truncOriginal, response: truncOutput },
-        { timeoutMs: 5000, label: CRITICS.topicCompleteness.label, fallback: topicDriftFallback },
+        { timeoutMs: 60_000, label: CRITICS.topicCompleteness.label, fallback: topicDriftFallback },
       ),
     ]);
 

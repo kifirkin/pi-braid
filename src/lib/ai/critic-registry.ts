@@ -25,7 +25,7 @@
  *
  *   const result = await classify(ctx, CRITICS.topicCoverage.criteria,
  *     { original: req, response: resp },
- *     { timeoutMs: 5000, fallback: CRITICS.topicCoverage.fallback },
+ *     { timeoutMs: 60_000, fallback: CRITICS.topicCoverage.fallback },
  *   );
  */
 
@@ -130,7 +130,7 @@ export const CRITICS = {
         "Proposed subtasks:\n- {{subtasks}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   /**
@@ -155,7 +155,7 @@ export const CRITICS = {
         "Recent assistant activity:\n{{text}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   /**
@@ -195,7 +195,7 @@ export const CRITICS = {
         "</text>",
     },
     options: {
-      timeoutMs: 5000,
+      timeoutMs: 60_000,
       // Multi-class critic: model returns a hyphenated pattern name, not
       // yes/no. The validLabels whitelist is passed through to
       // normalizeLabel so labels like "Read-Edit-Bash" (invented on the
@@ -244,7 +244,7 @@ export const CRITICS = {
         "Context: {{context}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   /** Is the claim sufficiently supported by the context? */
@@ -263,7 +263,7 @@ export const CRITICS = {
         "Context: {{context}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   /** Does the claim contain unwarranted certainty (overconfidence)? */
@@ -283,7 +283,7 @@ export const CRITICS = {
         "Available context: {{context}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   /**
@@ -312,7 +312,7 @@ export const CRITICS = {
         "Recent tool usage (most recent first):\n{{toolSequences}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -336,7 +336,7 @@ export const CRITICS = {
         "Evidence B: {{evidenceB}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   /**
@@ -369,7 +369,7 @@ export const CRITICS = {
         "Solution approach: {{solution}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -392,7 +392,7 @@ export const CRITICS = {
         "Subtasks:\n{{subtasks}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -423,7 +423,7 @@ export const CRITICS = {
         "Steps:\n{{steps}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   /**
@@ -457,7 +457,7 @@ export const CRITICS = {
         "Context sample ({{sampleCount}} messages):\n{{messages}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   /**
@@ -486,7 +486,7 @@ export const CRITICS = {
         "Message count: {{messageCount}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   /**
@@ -518,7 +518,7 @@ export const CRITICS = {
         "Recent agent outputs:\n{{outputSamples}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   /**
@@ -555,7 +555,7 @@ export const CRITICS = {
         "Content snippet: {{content}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -585,7 +585,7 @@ export const CRITICS = {
         "{{errorMsg}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   /** Legacy fallback for error type classification. */
@@ -612,7 +612,7 @@ export const CRITICS = {
         "{{body}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   /** Legacy fallback for instruction strength. */
@@ -646,7 +646,7 @@ export const CRITICS = {
         "{{cmd}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   /** Legacy fallback for command type classification. */
@@ -675,7 +675,7 @@ export const CRITICS = {
         "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
         "<text>\n{{text}}\n</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   /** Is this text well-written with correct grammar/spelling/structure? */
@@ -691,7 +691,7 @@ export const CRITICS = {
         "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
         "<text>\n{{text}}\n</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   /** Is this message clearly written and coherent? */
@@ -707,7 +707,7 @@ export const CRITICS = {
         "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
         "<text>\n{{text}}\n</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   /** Does this message contain vague or ambiguous requests? */
@@ -724,7 +724,7 @@ export const CRITICS = {
         "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
         "<text>\n{{text}}\n</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   // inputCodeHeavyFallback doesn't need to import from the input-polisher.
@@ -764,7 +764,7 @@ export const CRITICS = {
         "Hint: {{hint}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   /** Heuristic fallback: reject very short hints and obvious generic templates. */
@@ -795,7 +795,7 @@ export const CRITICS = {
         "{{text}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   /**
@@ -826,7 +826,7 @@ export const CRITICS = {
         "{{text}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
   // complianceFramingFallback was previously defined here but is not
   // called anywhere (replaced by direct LLM-only call sites in
@@ -854,7 +854,7 @@ export const CRITICS = {
         "{{sentence}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   /** Legacy fallback for polarity detection. */
@@ -881,7 +881,7 @@ export const CRITICS = {
         "{{sentence}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   /** Legacy fallback for entity extraction. */
@@ -909,7 +909,7 @@ export const CRITICS = {
         "{{text}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   /** Legacy fallback for sycophancy tactics detection. */
@@ -935,7 +935,7 @@ export const CRITICS = {
         "{{text}}\n" +
         "</text>",
     },
-    options: { timeoutMs: 5000 },
+    options: { timeoutMs: 60_000 },
   } satisfies CriticDef,
 
   /** Legacy fallback for VbC detection. */

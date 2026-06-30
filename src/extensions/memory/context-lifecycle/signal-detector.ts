@@ -77,7 +77,7 @@ async function detectTopic(text: string, ctx: ExtensionContext): Promise<string>
       ctx,
       CRITICS.topicClassification.criteria,
       { text: text.slice(0, 1500) },
-      { timeoutMs: 3000, fallback: () => "general" },
+      { timeoutMs: 60_000, fallback: () => "general" },
     );
     const label = result.label.trim().toLowerCase();
     return VALID_TOPICS.has(label) ? label : "general";

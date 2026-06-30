@@ -378,6 +378,59 @@ await test("callLlm: successful stub returns { text } (sanity check injection wi
   }, null);
 });
 
+// ── callLlm: ESC during retry backoff aborts immediately ─────────────────────
+//
+// The sleep() between retries must respect the abort signal. Without
+// this, pressing ESC during a 5-60s backoff leaves the sleep running —
+// the retry fires after the delay, then hangs until the new timeout.
+// With the fix, ESC fires → sleep resolves → retry loop checks signal
+// → returns error immediately.
+
+await test("callLlm: ESC during retry backoff aborts quickly (not after backoff)", async () => {
+  await withStub(async () => {
+    // Stub that always fails with a transient error to trigger retries.
+    let callCount = 0;
+    __setCompleteSimpleForTest(async (_model, _context, options) => {
+      callCount++;
+      // Simulate a transient error on every attempt.
+      // The retry loop will sleep for backoffDelay(1) = ~5s.
+      // ESC should fire during that sleep and abort.
+      return {
+        role: "assistant",
+        content: [],
+        api: "anthropic-messages",
+        provider: "anthropic",
+        model: "stub",
+        usage: { input: 0, output: 0, totalTokens: 0 },
+        stopReason: "error",
+        errorMessage: "service_unavailable: rate limit exceeded",
+        timestamp: Date.now(),
+      };
+    });
+
+    const controller = new AbortController();
+    const start = Date.now();
+    const promise = callLlm(stubModel, "fake-key", "sys", "u", {
+      timeoutMs: 60_000,
+      signal: controller.signal,
+      maxRetries: 3,
+      sdkRetries: 0,
+    });
+    // Fire ESC after the first call fails (during backoff sleep).
+    // The first call fails almost instantly (stub returns immediately).
+    // Then sleep(~5s) starts. We abort after 50ms.
+    setTimeout(() => controller.abort(), 50);
+    const result = await promise;
+    const elapsed = Date.now() - start;
+    assert.ok("error" in result, "ESC during backoff must produce error");
+    assert.ok(
+      elapsed < 2_000,
+      `ESC during backoff should abort quickly; took ${elapsed}ms (backoff is ~5s)`,
+    );
+    assert.ok(callCount === 1, `should have made exactly 1 call before ESC; made ${callCount}`);
+  }, null);
+});
+
 // ── Summary ──────────────────────────────────────────────────────────────────
 
 console.log(`\n${passed} passed, ${failed} failed`);

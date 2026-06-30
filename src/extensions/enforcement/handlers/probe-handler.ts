@@ -150,7 +150,7 @@ export async function classifyCommandType(
       CRITICS.commandType.criteria,
       { cmd },
       {
-        timeoutMs: 3000,
+        timeoutMs: 60_000,
         label: CRITICS.commandType.label,
         // Q9: heuristic misses chmod 777, mkfs, dd if=, curl | sh. Always use LLM.
         tierPolicy: "always-llm",

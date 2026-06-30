@@ -57,7 +57,7 @@ async function classifyRetryError(
       CRITICS.errorType.criteria,
       { errorMsg },
       {
-        timeoutMs: 5000,
+        timeoutMs: 60_000,
         label: CRITICS.errorType.label,
         fallback: () => errorTypeFallback(errorMsg),
       },

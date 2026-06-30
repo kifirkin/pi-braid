@@ -96,8 +96,13 @@ async function extractClaimsViaLLM(
 
     const result = await callLlm(model, apiKey, EXTRACTION_SYSTEM_PROMPT, truncated, {
       temperature: 0.1,
-      timeoutMs: 8000,
+      timeoutMs: 120_000,
       maxRetries: 0,
+      // Thread ctx.signal so ESC / session shutdown aborts the claim
+      // extraction cleanly instead of leaking until the 8s timeout.
+      // Same anti-pattern fix as input-polisher 9966c8ad,
+      // text-classifier, and verification-judge.
+      ...(ctx.signal ? { signal: ctx.signal } : {}),
     });
 
     if ("error" in result) return []; // LLM call failed - return empty (no claims)
@@ -151,7 +156,7 @@ async function extractClaimsViaClassify(
         CRITICS.entityExtraction.criteria,
         { sentence },
         {
-          timeoutMs: 3000,
+          timeoutMs: 60_000,
           label: CRITICS.entityExtraction.label,
           // Q9: ENTITY_VERBS regex misses most entities. Always use LLM.
           tierPolicy: "always-llm",
@@ -165,7 +170,7 @@ async function extractClaimsViaClassify(
         CRITICS.polarityDetection.criteria,
         { sentence },
         {
-          timeoutMs: 3000,
+          timeoutMs: 60_000,
           label: CRITICS.polarityDetection.label,
           // Q9: negation-word list breaks on double-negation. Always use LLM.
           tierPolicy: "always-llm",
@@ -240,7 +245,7 @@ export async function claimsContradict(a: Claim, b: Claim, ctx: ExtensionContext
       CRITICS.claimContradiction.criteria,
       { claim: claimText.slice(0, 500), context: contextText.slice(0, 500) },
       {
-        timeoutMs: 5000,
+        timeoutMs: 60_000,
         label: CRITICS.claimContradiction.label,
         // Q9: heuristic negation-word overlap has many false positives. Always LLM.
         tierPolicy: "always-llm",

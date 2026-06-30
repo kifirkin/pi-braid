@@ -194,7 +194,7 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
       };
 
       const result = await runVerificationJudge(ctx, judgeCtx, {
-        timeoutMs: 30000,
+        timeoutMs: 120_000,
         // Thread ctx.signal so ESC / session shutdown aborts the
         // judge cleanly. The MESSAGE_END handler runs while the
         // session is still active (subsequent assistant messages

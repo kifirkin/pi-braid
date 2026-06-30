@@ -265,6 +265,16 @@ export async function callLlm(
         return { error: "Rate-limit cooldown active" };
       }
 
+      // ── ESC check: if the external signal already fired (e.g. during
+      // backoff sleep), don't attempt another call. Without this, the
+      // retry loop continues after abortable sleep resolves early, but
+      // combineSignals returns only the timeout signal (s1 already
+      // aborted → returns s2), so the next attempt hangs until timeout.
+      if (signal?.aborted) {
+        log.debug("LLM call aborted (signal fired before retry attempt)");
+        return { error: "Request was aborted" };
+      }
+
       // Use AbortSignal for timeout instead of Promise.race - avoids orphaned timer
       const timeoutController = new AbortController();
       const timeoutId = setTimeout(
@@ -276,6 +286,21 @@ export async function callLlm(
       const combinedSignal = signal
         ? combineSignals(signal, timeoutController.signal)
         : timeoutController.signal;
+
+      // Helper: clean up timeout + combined signal listeners after
+      // each attempt. Aborting timeoutController triggers combineSignals'
+      // built-in listener removal (onAbort removes itself from both
+      // parent signals). Without this, stale listeners accumulate on
+      // the external signal across retries — a listener leak.
+      const cleanupAttempt = (): void => {
+        clearTimeout(timeoutId);
+        // Abort the timeout controller to trigger combineSignals cleanup.
+        // The combined controller is already abandoned (we have the result),
+        // so aborting it is harmless.
+        if (!timeoutController.signal.aborted) {
+          timeoutController.abort();
+        }
+      };
 
       try {
         // Build options object first so we can cast 'reasoning'
@@ -310,7 +335,7 @@ export async function callLlm(
           toCompleteSimpleOptions(simpleOptions),
         );
 
-        clearTimeout(timeoutId);
+        cleanupAttempt();
 
         if (result.errorMessage) {
           if (attempt <= maxRetries && isTransientError(result.errorMessage)) {
@@ -324,7 +349,9 @@ export async function callLlm(
               rateLimitCooldownUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
             }
 
-            await sleep(delay);
+            // Pass signal so ESC during backoff aborts the retry
+            // instead of letting it fire after the delay.
+            await sleep(delay, signal);
             continue;
           }
 
@@ -404,7 +431,7 @@ export async function callLlm(
             : undefined,
         };
       } catch (err) {
-        clearTimeout(timeoutId);
+        cleanupAttempt();
         const message = err instanceof Error ? err.message : String(err);
         const isTimeout =
           message.includes("timeout") ||
@@ -416,7 +443,8 @@ export async function callLlm(
             `LLM error (attempt ${attempt}/${maxRetries + 1}), ` +
               `retrying in ${delay}ms: ${message}`,
           );
-          await sleep(delay);
+          // Pass signal so ESC during backoff aborts the retry.
+          await sleep(delay, signal);
           continue;
         }
         // Demote to debug when an external signal (ESC / session shutdown)
@@ -562,6 +590,26 @@ function backoffDelay(attempt: number): number {
   return Math.min(jitter, 60_000);
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+/**
+ * Abortable sleep. Resolves immediately if signal fires during the wait.
+ *
+ * Without this, pressing ESC during a retry backoff (5-60s) would
+ * leave the sleep running — the retry would fire after the backoff,
+ * then hang until the new timeout fires. The signal was only checked
+ * at the next combineSignals call, not during the backoff itself.
+ */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) return new Promise((r) => setTimeout(r, ms));
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
