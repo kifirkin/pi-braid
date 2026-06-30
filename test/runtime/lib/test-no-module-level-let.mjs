@@ -4,7 +4,7 @@
  * Locks Q5 (module-level let migration). The pattern:
  *   - Use getExtensionState(ctx, "key", factory) for per-session state.
  *   - Use global-state.ts getters for process-global state.
- *   - Module-level `let` is banned except for the 27 documented exceptions
+ *   - Module-level `let` is banned except for the 28 documented exceptions
  *     (organized in 6 categories A–F: re-entry guards, test injectors,
  *     encapsulated global-state, logger config, session-state mirrors,
  *     tunable config). See src/lib/state/AGENTS.md "Documented exceptions"
