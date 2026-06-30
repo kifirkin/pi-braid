@@ -97,9 +97,9 @@ state** so we don't redo work.
 
 | Item | Stale because |
 |---|---|
-| File sizes (805, 747, 660, 655, 596, 578, 576, 525, 514) | Splits happened in Round 6. Current sizes: scratchpad 898, memory-agent-bridge 813, session-recall 552, timer 539, latent-activator 296, topic-drift 424. |
+| File sizes (805, 747, 660, 655, 596, 578, 576, 525, 514) | Splits happened in Round 6. Current sizes (2026-06-30): scratchpad 648, memory-agent-bridge 960, session-recall 563, timer 581, latent-activator 296, topic-drift 481. |
 | "Decision: defer Q13" | Triggers the doc listed (new contributor lost, flaky test, cross-section refactor) — DR-M-8 from this review argues one trigger IS met (scratchpad's 400-line `scratchpadExecute`). |
-| "memory-agent-bridge (805) — no sub-module boundary" | The tool itself is still monolithic; the file size has only dropped 1 line. The "no boundary" assessment remains valid. |
+| "memory-agent-bridge (805) — no sub-module boundary" | The tool is still monolithic; file size grew from 805→960 as features were added. The "no boundary" assessment remains valid. |
 
 ### 2.3 Stale from `FRAGILE-HEURISTICS-INVENTORY.md`
 
@@ -261,7 +261,7 @@ explicitly at line 348 and add a runtime assertion, or (b) move `poller`,
 **Files:** 8 sites
 
 Documented in `CASTS-AUDIT.md` (4):
-- `extensions/memory/scratchpad/index.ts:897`
+- `extensions/memory/scratchpad/index.ts:442` (was 897 in pre-refactor file)
 - `extensions/cognitive/metacognition/handlers/claim-verification.ts:277`
 - `extensions/memory/scratchpad/persistence.ts:190`
 - `lib/utils/extension-utils.ts:37`
@@ -381,7 +381,7 @@ Fix: match against a normalized project identifier (use
 #### DR-H-8. `findByIdOrText` in scratchpad iterates twice
 
 **Severity:** Medium (perf)
-**File:** `extensions/memory/scratchpad/index.ts:135-145`
+**File:** `extensions/memory/scratchpad/index.ts:34` (imported from `scratchpad.ts`)
 
 Two `findIndex` passes. Could be one pass.
 
@@ -401,33 +401,33 @@ the 3 yes/no classifiers into one multi-label prompt.
 
 #### DR-M-1. `scratchpadClean` always writes to disk even when nothing pruned
 
-**File:** `extensions/memory/scratchpad/index.ts:97-150`. Track
+**File:** `extensions/memory/scratchpad/index.ts:38,101` (imported from `scratchpad.ts`). Track
 `total_pruned > 0` and only `mutateAndSave` if true.
 
 #### DR-M-2. `capPush` return value unused
 
-**File:** `extensions/memory/scratchpad/index.ts:120-126`. Either use the
+**File:** `extensions/memory/scratchpad/index.ts:31` (imported from `scratchpad.ts`). Either use the
 excess count in user-visible responses or change return type to void.
 
 #### DR-M-3. Pipe-delimited parsing for `add_decision`/`add_constraint`/`add_learning` silently truncates on `|`
 
-**File:** `extensions/memory/scratchpad/index.ts:540-685`. Drop pipe
+**File:** `extensions/memory/scratchpad/index.ts:386,638` (description fields). Drop pipe
 parsing entirely; use separate schema params.
 
 #### DR-M-4. `archive_done` swallows file errors with `// Best-effort archive`
 
-**File:** `extensions/memory/scratchpad/index.ts:786-789`. If archive write
+**File:** `extensions/memory/scratchpad/index.ts:598` (`case "archive_done"`). If archive write
 fails, items are deleted from `pad.done` anyway. Silent data loss. Don't
 delete on archive failure.
 
 #### DR-M-5. `elevate_to_goal` accepts `successCriteria` and ignores it
 
-**File:** `extensions/memory/scratchpad/index.ts:712-715`. Dead code.
+**File:** `extensions/memory/scratchpad/index.ts:399,441,557` (schema + usage). Dead code.
 Implement storage or remove from schema.
 
 #### DR-M-6. Scratchpad schema declares `constraint_id` never read
 
-**File:** `extensions/memory/scratchpad/index.ts:415`. `remove_constraint`
+**File:** `extensions/memory/scratchpad/index.ts:357,526` (schema + case). `remove_constraint`
 uses `text`, not `params.constraint_id`. Other `remove_*` actions use
 `params.id`. Inconsistent.
 
@@ -439,7 +439,7 @@ merged is zero.
 
 #### DR-M-8. `scratchpadExecute` is 400+ lines with 20 switch cases
 
-**File:** `extensions/memory/scratchpad/index.ts:472-825`. Each case has its
+**File:** `extensions/memory/scratchpad/index.ts:432-648` (`scratchpadExecute` fn). Each case has its
 own subtle logic, error paths inline. Q13 trigger condition partially met
 ("refactor requires touching multiple unrelated sections"). Split by action
 type, mirror metacognition's `handlers/` pattern.
@@ -484,7 +484,7 @@ import and export the legacy functions. Deprecate in favor of
 
 #### DR-L-5. `mutateAndSave` does synchronous disk writes on every mutation
 
-**File:** `extensions/memory/scratchpad/index.ts:239-242`. Every scratchpad
+**File:** `extensions/memory/scratchpad/index.ts:241-243` (`formatContinueDigest`). Every scratchpad
 mutation triggers disk write. Use `file-mutation-queue.ts` for batching.
 
 #### DR-L-6. Many `: any` annotations remain
@@ -709,7 +709,7 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
 | P0-1 | [DR-C-1](#dr-c-1) fix `ctx.whisper` violations | Medium | 20+ files + heartbeat-scheduler refactor |
 | P0-2 | [DR-H-4](#dr-h-4) surface scratchpad disk-write failure | Easy | `scratchpad/persistence.ts:217` |
 | P0-3 | [DR-H-5](#dr-h-5) surface three-memory-stores episodic twin failure | Easy | `memory-agent-bridge/index.ts:104-110` |
-| P0-4 | [DR-M-4](#dr-m-4) don't delete from `pad.done` if archive failed | Easy | `scratchpad/index.ts:786-789` |
+| P0-4 | [DR-M-4](#dr-m-4) don't delete from `pad.done` if archive failed | Easy | `scratchpad/index.ts:598` |
 | P0-5 | [DR-H-3](#dr-h-3) skip drift detection when `extractOutputText` falls through | Easy | `topic-drift/index.ts:158-164` |
 | P0-6 | [EW-7.1](#41-ew-71-fix-enforcement_violation--tool_error-amplification--high--easy) fix `enforcement_violation → tool_error` amplification | Easy | `whisper.ts:51-58` |
 | P0-7 | [EW-7.6](#46-ew-76-fix-enforcementsignals-pruning-vs-mars-lookback--medium--easy) fix MARS lookback pruning collision | Easy | `signals.ts:49-57` |
@@ -733,14 +733,14 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
 | # | Item | Effort | Files |
 |---|---|---|---|
 | P2-1 | [DR-H-1](#dr-h-1) apply typed-adapter pattern to all 10 casts | Medium | 6 files |
-| P2-2 | [DR-M-8](#dr-m-8) split `scratchpadExecute` into per-action handlers | Hard | `scratchpad/index.ts:472-825` |
+| P2-2 | [DR-M-8](#dr-m-8) split `scratchpadExecute` into per-action handlers | Hard | `scratchpad/index.ts:432-648` |
 | P2-3 | [EW-7.4](#44-ew-74-extract-classifier-offline-helper--medium--easy) extract `classifier-offline` helper | Easy | new `lib/reasoning/classifier-offline.ts` + 3 sites |
 | P2-4 | [EW-7.9](#49-ew-79-make-session-signals-bundle-per-signal--medium--medium) make Session Signals bundle per-signal | Medium | `turn-end-handler.ts:362-365` |
 | P2-5 | [EW-7.11](#411-ew-711-add-braidenforcement-settings-block--high--medium) add `braid.enforcement` settings block | Medium | `lib/config/braid-settings.ts`, `nudge-manager.ts`, 1 test |  ✅ Shipped in v3.3 |
 | P2-6 | [EW-7.13](#413-ew-713-add-per-source-priority-aware-caps--medium--medium) add per-source priority-aware caps | Medium | `turn-dedup.ts` + `WHISPER_CAPS` |
 | P2-7 | [DR-H-9](#dr-h-9) cache drift-classifier results by input hash | Medium | `topic-drift/index.ts` + cache module |
 | P2-8 | [DR-L-5](#dr-l-5) batch scratchpad writes via `file-mutation-queue` | Medium | `scratchpad/persistence.ts` |
-| P2-9 | [DR-M-3](#dr-m-3) drop pipe-delimited parsing for scratchpad actions | Easy | `scratchpad/index.ts:540-685` |
+| P2-9 | [DR-M-3](#dr-m-3) drop pipe-delimited parsing for scratchpad actions | Easy | `scratchpad/index.ts:386,638` |
 | P2-10 | Q13 split memory-agent-bridge, timer, session-recall, latent-activator | Hard | 4 large files |
 | P2-11 | FR replace 7 B-class fallbacks still pending | Medium | `critic-registry.ts` + tierPolicy |
 
@@ -755,9 +755,9 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
 | P3-5 | [EW-7.14](#414-ew-714-surface-nudgesuppressedcount-in-tui--low--easy) surface `nudgeSuppressedCount` in TUI | Easy | `turn-end-handler.ts:232` |
 | P3-6 | [EW-7.15](#415-ew-715-document-burst-suppression-scope--low--easy) document burst-suppression scope | Easy | `turn-end-handler.ts:347-349` |
 | P3-7 | [EW-7.12](#412-ew-712-establish-prefix-naming-convention--low--medium) establish prefix naming convention | Easy (doc) + Medium (migrate) | all whisper sites |
-| P3-8 | [DR-M-1](#dr-m-1) skip `mutateAndSave` when nothing pruned | Easy | `scratchpad/index.ts:97-150` |
-| P3-9 | [DR-M-2](#dr-m-2) use or drop `capPush` return value | Easy | `scratchpad/index.ts:120-126` |
-| P3-10 | [DR-M-5](#dr-m-5) implement or remove `successCriteria` in `elevate_to_goal` | Easy | `scratchpad/index.ts:712-715` |
+| P3-8 | [DR-M-1](#dr-m-1) skip `mutateAndSave` when nothing pruned | Easy | `scratchpad/index.ts:38,101` (imported) |
+| P3-9 | [DR-M-2](#dr-m-2) use or drop `capPush` return value | Easy | `scratchpad/index.ts:31` (imported) |
+| P3-10 | [DR-M-5](#dr-m-5) implement or remove `successCriteria` in `elevate_to_goal` | Easy | `scratchpad/index.ts:399,441,557` |
 | P3-11 | [DR-M-6](#dr-m-6) use `params.constraint_id` in `remove_constraint` | Easy | `scratchpad/index.ts` |
 | P3-12 | [DR-M-7](#dr-m-7) limit consolidated memory growth + log sources merged | Easy | `memory-agent-bridge/index.ts:91-97` |
 | P3-13 | [DR-M-9](#dr-m-9) fix misleading "ttl=" in episodes_search provenance | Easy | `memory-agent-bridge/index.ts:413-416` |
@@ -770,7 +770,7 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
 | P3-20 | [DR-L-7](#dr-l-7) return summary counts not full arrays in `context_proposals.stats` | Easy | `context-lifecycle/index.ts:722-730` |
 | P3-21 | [DR-L-8](#dr-l-8) use `getSessionIdSafe` in heartbeat-scheduler checkpoint | Easy | `heartbeat-scheduler/index.ts:241` |
 | P3-22 | [DR-L-9](#dr-l-9) define typed wrapper for `getCognitiveMemoryInstance` | Easy | `lib/memory/index.ts:78` |
-| P3-23 | [DR-H-8](#dr-h-8) single-pass `findByIdOrText` | Easy | `scratchpad/index.ts:135-145` |
+| P3-23 | [DR-H-8](#dr-h-8) single-pass `findByIdOrText` | Easy | `scratchpad/index.ts:34` (imported) |
 | P3-24 | TI verify and delete orphan `tasks.json` file (if not done) | Easy | filesystem |
 | P3-25 | FR Q16+Q17 cost analysis and caching strategy for tier-2 LLM calls | Hard | new |
 
