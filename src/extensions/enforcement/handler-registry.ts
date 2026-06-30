@@ -33,6 +33,7 @@ import { registerToolResultHandler } from "./handlers/register-tool-result.js";
 import { registerSessionCompactHandler } from "./handlers/register-session-compact.js";
 import { registerAutoRetryEndHandler } from "./handlers/register-auto-retry-end.js";
 import { registerSessionShutdownHandler } from "./handlers/register-session-shutdown.js";
+import { registerTurnEndHygiene } from "./handlers/register-turn-end-hygiene.js";
 import { driftHandler } from "./handlers/analysis/drift-handler.js";
 import { bpeHandler, setLastRecommendationType } from "./handlers/analysis/bpe-handler.js";
 import { marsHandler } from "./handlers/analysis/mars-handler.js";
@@ -180,6 +181,9 @@ function registerCompactAndSessionHandlers(pi: ExtensionAPI): void {
       log,
     );
   });
+
+  // ── turn_end: context hygiene + discoverability (lowest priority) ──
+  registerTurnEndHygiene(pi);
 
   // ── turn_end: coordinator dispatch ──
   onEvent(pi, TURN_END, async (event: any, ctx: any) => {
