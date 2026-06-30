@@ -68,6 +68,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   pass (no content injection, `<available_project_docs>` referenced,
   required exports present).
 
+### Fixed
+
+- **Instance block: extension paths are always rendered as usable paths,
+  never bare `.`** (v3.10). When the agent runs from a project whose
+  package is also a loaded top-level extension (e.g. `pi-braid` when
+  `cwd = /Users/kifir/projects/agents/pi-braid`), `relativeToCwd()`
+  previously collapsed the extension root to `.` — useless for `read`
+  or `grep`. The fix returns the absolute path in that case, matching
+  the convention used for the other loaded extensions. New subtest
+  in `test/runtime/lib/test-instance-block.mjs` pins the contract:
+  no extension line may have an empty or `.` path field.
+
 ### Added
 
 - **`## Instance` block at top of system prompt (v3.5).** Replaces

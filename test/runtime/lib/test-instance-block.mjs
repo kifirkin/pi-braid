@@ -199,6 +199,28 @@ await test("Renders 'Pi extensions (N loaded):' header", () => {
   assert.match(OUT, /^Pi extensions \(\d+ loaded\):$/m, "must show 'Pi extensions (N loaded):'");
 });
 
+await test("Extension paths are rendered as full paths (never bare '.')", () => {
+  // Regression: v3.8 rendered the cwd-relative path '.' for
+  // extensions loaded from cwd (e.g. pi-braid when the agent runs
+  // from the braid repo). That's not a useful path — the agent
+  // can't `read` or `grep` '.'. The contract is: every extension
+  // line shows either a relative subpath (e.g. 'extensions/foo')
+  // or an absolute path. A bare '.' is never acceptable.
+  const extLines = OUT.split("\n").filter((l) => /^\s+\S+ v\d+\.\d+\.\d+/.test(l));
+  assert.ok(extLines.length > 0, "must have at least one extension line");
+  for (const line of extLines) {
+    // Strip leading indent, name, version, and trailing (source) tag.
+    // What's left is the path field. Must not be empty or '.'.
+    const m = line.match(/^\s+\S+\s+v\S+\s+(\S.*?)\s+\((?:project|user-global)\)\s*$/);
+    assert.ok(m, `could not parse extension line: ${JSON.stringify(line)}`);
+    const pathField = m[1].trim();
+    assert.ok(
+      pathField.length > 0 && pathField !== ".",
+      `extension path must be a usable path, not '.' or empty: ${JSON.stringify(line)}`,
+    );
+  }
+});
+
 await test("Top-level list uses settings-driven tags (project or user-global), not cwd/sibling-repo", () => {
   // v3.8 reads pi-core's `packages` settings field, so every loaded
   // package has a settings-scope tag. The legacy tags `(cwd)` and
