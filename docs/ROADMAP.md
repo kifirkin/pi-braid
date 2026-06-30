@@ -2443,8 +2443,6 @@ as historical/reference material.
 
 ## Session-Derived Proposals (2026-06-28/29)
 
-<!-- status: forward-looking -->
-
 Proposals raised during conversation sessions but not yet captured in the
 P0/P1/P2/P3 tables above. Recovered from session JSONL files to prevent loss.
 Each is actionable; status markers track progress.
@@ -2516,8 +2514,6 @@ Each is actionable; status markers track progress.
 | — | Dynamic behavior modes (TRUTH-SEEKING + 3) | 709950c9 | Restored lean version of deleted contrast-mode system |
 
 ### Advanced Proposals (2026-06-29, post-restore)
-
-<!-- status: forward-looking -->
 
 Three connected proposals raised after the behavior-mode restoration.
 All three build on existing braid infrastructure.

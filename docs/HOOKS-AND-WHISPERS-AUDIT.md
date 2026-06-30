@@ -1,4 +1,4 @@
-<!-- status: forward-looking -->
+<!-- status: current -->
 
 # Hooks & Whispers Audit — 2026-06-23
 
