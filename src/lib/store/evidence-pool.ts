@@ -264,6 +264,97 @@ export async function classifyConflictsWithLLM(
   }
 }
 
+/**
+ * Detect semantically similar evidence pairs missed by the heuristic
+ * token-overlap pre-filter (< 0.3). Uses classify() with CRITICS.evidenceConflict
+ * to check if evidence about the same topic (but different wording) contradicts.
+ *
+ * Limited to MAX_SEMANTIC_CHECKS_PER_TURN (10) per call. Only checks pairs with
+ * overlap between SEMANTIC_OVERLAP_MIN (0.1) and SEMANTIC_OVERLAP_MAX (0.3) —
+ * pairs below 0.1 are considered truly unrelated.
+ *
+ * Returns newly detected conflicts.
+ */
+export async function detectSemanticConflicts(
+  ctx: ExtensionContext,
+  limit = MAX_SEMANTIC_CHECKS_PER_TURN,
+): Promise<Conflict[]> {
+  const state = getState(ctx);
+  const evidence = state.evidence;
+  const newConflicts: Conflict[] = [];
+
+  // Collect candidate pairs with overlap in the semantic gap zone
+  const candidates: Array<{ a: Evidence; b: Evidence; overlap: number }> = [];
+  for (let i = 0; i < evidence.length; i++) {
+    for (let j = i + 1; j < evidence.length; j++) {
+      const a = evidence[i];
+      const b = evidence[j];
+
+      if (a.source === b.source) continue;
+
+      const overlap = tokenOverlap(a.normalized, b.normalized);
+      if (overlap < SEMANTIC_OVERLAP_MIN || overlap >= SEMANTIC_OVERLAP_MAX) continue;
+
+      const reliabilityDiff = Math.abs(a.reliability - b.reliability);
+      if (reliabilityDiff < 0.02) continue;
+
+      const existing = state.conflicts.find(
+        (c) =>
+          c.for.some((e) => e.id === a.id || e.id === b.id) ||
+          c.against.some((e) => e.id === a.id || e.id === b.id),
+      );
+      if (existing) continue;
+
+      candidates.push({ a, b, overlap });
+    }
+  }
+
+  // Sort by overlap descending — most likely related first
+  candidates.sort((a, b) => b.overlap - a.overlap);
+
+  const toCheck = candidates.slice(0, limit);
+
+  for (const { a, b, overlap } of toCheck) {
+    try {
+      const evidenceA = a.claim;
+      const evidenceB = b.claim;
+
+      const result = await classify(
+        ctx,
+        CRITICS.evidenceConflict.criteria,
+        { evidenceA, evidenceB },
+        {
+          timeoutMs: 60_000,
+          label: `semantic-${CRITICS.evidenceConflict.label}`,
+          tierPolicy: "always-llm",
+        },
+      );
+
+      if (result.label !== "yes") continue;
+
+      // LLM confirmed these semantically similar claims contradict
+      const forEvidence = a.reliability > b.reliability ? [a] : [b];
+      const againstEvidence = a.reliability > b.reliability ? [b] : [a];
+
+      const conflict: Conflict = {
+        id: nextId("c"),
+        claim: `${a.claim.slice(0, 40)}... vs ${b.claim.slice(0, 40)}...`,
+        for: forEvidence,
+        against: againstEvidence,
+        verdict: "unresolved",
+        detectedAt: Date.now(),
+        classification: "direct",
+      };
+      state.conflicts.push(conflict);
+      newConflicts.push(conflict);
+    } catch {
+      // Per-pair errors are non-fatal
+    }
+  }
+
+  return newConflicts;
+}
+
 // ── Public API ──────────────────────────────────────────────────────────────
 
 /**
@@ -457,6 +548,25 @@ export function detectConflicts(ctx: ExtensionContext): Conflict[] {
 
   return newConflicts;
 }
+
+/**
+ * Maximum semantic conflict checks per turn. Prevents O(N²) LLM cost when
+ * the evidence pool is large. Only the most promising pairs (highest overlap)
+ * are checked in each call.
+ */
+const MAX_SEMANTIC_CHECKS_PER_TURN = 10;
+
+/**
+ * Minimum token overlap for semantic conflict detection. Evidence pairs with
+ * overlap below this threshold are considered unrelated and skipped.
+ */
+const SEMANTIC_OVERLAP_MIN = 0.1;
+
+/**
+ * Maximum token overlap for semantic conflict detection. Pairs above this
+ * threshold are already caught by the heuristic detectConflicts().
+ */
+const SEMANTIC_OVERLAP_MAX = 0.3;
 
 /** Detect conflicts for a single new evidence entry */
 function detectConflictsFor(ctx: ExtensionContext, evidenceId: string): Conflict[] {

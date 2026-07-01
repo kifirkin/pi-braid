@@ -11,6 +11,7 @@ import {
   resolveConflict,
   pruneResolvedEvidence,
   classifyConflictsWithLLM,
+  detectSemanticConflicts,
 } from "../../../lib/store/evidence-pool.js";
 import {
   processConflicts as processConflictQAs,
@@ -69,6 +70,11 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
       if (newConflicts.length > 0) {
         classifyConflictsWithLLM(ctx, newConflicts).catch(() => {});
       }
+
+      // Non-blocking semantic conflict detection: catch evidence pairs that
+      // the 30% token-overlap heuristic pre-filter missed (same topic,
+      // different wording). Limited to 10 LLM checks per turn.
+      detectSemanticConflicts(ctx).catch(() => {});
 
       const newQAs = processConflictQAs(ctx);
       for (const qa of newQAs) {
