@@ -1,5 +1,5 @@
 /**
- * SOP Extractor - Trajectory → Structured SOP Conversion
+ * SOP Extractor - Trajectory -> Structured SOP Conversion
  *
  * Analyzes tool call trajectories from successful task completions and
  * extracts three-tier SOPs (Strategic / Functional / Atomic) for
@@ -82,7 +82,7 @@ const TOOL_CATEGORIES: Record<string, string> = {
   finalize: "complete",
 };
 
-/** Map of tool → what phase of work it typically represents */
+/** Map of tool -> what phase of work it typically represents */
 const TOOL_PHASES: Record<string, string> = {
   read: "understand",
   grep: "understand",
@@ -306,14 +306,14 @@ export async function extractSOP(input: ExtractionInput): Promise<ExtractedSOP> 
       continue;
     }
     if (repeatCount > 1) {
-      atomicSteps[atomicSteps.length - 1] = `${lastTool} ×${repeatCount}`;
+      atomicSteps[atomicSteps.length - 1] = `${lastTool} x${repeatCount}`;
     }
     atomicSteps.push(t.toolName);
     lastTool = t.toolName;
     repeatCount = 1;
   }
   if (repeatCount > 1) {
-    atomicSteps[atomicSteps.length - 1] = `${lastTool} ×${repeatCount}`;
+    atomicSteps[atomicSteps.length - 1] = `${lastTool} x${repeatCount}`;
   }
 
   const sop: ExtractedSOP = {

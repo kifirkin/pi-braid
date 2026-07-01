@@ -159,7 +159,7 @@ function generateQuestionCandidates(conflict: Conflict): QuestionCandidate[] {
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
-// _qaRegistry: PROCESS-GLOBAL map of QA ID → ConflictQA. Conflict
+// _qaRegistry: PROCESS-GLOBAL map of QA ID -> ConflictQA. Conflict
 // resolution is per-session (reads from per-session evidence pool),
 // but the QA records persist across sessions for cross-session
 // analytics. Not a leak risk.
@@ -365,7 +365,7 @@ export function getQAStats(_ctx: unknown) {
  * Used by cognitive-systems via `import { resolveQA as resolveConflictQA }`.
  */
 export function resolveQA(_ctx: unknown, qaId: string, verdict: string): void {
-  // Look up QA to bridge qa-xxx → c-xxx ID space
+  // Look up QA to bridge qa-xxx -> c-xxx ID space
   const qa = _qaRegistry.get(qaId);
   if (!qa) return;
 

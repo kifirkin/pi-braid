@@ -109,7 +109,7 @@ export function gatherL1Environment(
   };
 }
 
-// `formatL1EnvironmentSection` removed in v3.6 — superseded by
+// `formatL1EnvironmentSection` removed in v3.6 -- superseded by
 // `instanceSection()` in prompt-builder/instance-composition.ts, which
 // renders the same volatile data with the machine/hostname lines
 // dropped (now in the Instance block).

@@ -1,5 +1,5 @@
 /**
- * Nudge Analytics - shared helpers for enforcement ↔ analytics decoupling.
+ * Nudge Analytics - shared helpers for enforcement <-> analytics decoupling.
  *
  * Both enforcement and heartbeat/analytics import from here instead of directly
  * coupling across modules. If heartbeat is disabled (BRAID_MODULES=-heartbeat),

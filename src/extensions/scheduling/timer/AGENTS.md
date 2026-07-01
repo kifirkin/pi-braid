@@ -54,7 +54,7 @@ The whisper survives compaction (via `_braidInjected`), matching the `[enforceme
 
 ## Busy guard
 
-The 1s `setInterval` poller bails while the agent is mid-tool-execution. This prevents whisper injection during a tool call, which was the root cause of the post-compaction stack overflow (whisper → synchronous re-entry → stack overflow).
+The 1s `setInterval` poller bails while the agent is mid-tool-execution. This prevents whisper injection during a tool call, which was the root cause of the post-compaction stack overflow (whisper -> synchronous re-entry -> stack overflow).
 
 **Busy guard lifecycle (current design):**
 
@@ -70,9 +70,9 @@ An earlier design used `TURN_END` to clear busy. This had a bug: a long-running 
 
 The correct guard is per-tool-execution:
 
-- `tool_call` → busy=true (tool is starting)
-- `tool_execution_end` → busy=false (tool returned) + fire expired timers
-- `turn_end` → busy=false + fire expired timers (safety net for turns with no tools)
+- `tool_call` -> busy=true (tool is starting)
+- `tool_execution_end` -> busy=false (tool returned) + fire expired timers
+- `turn_end` -> busy=false + fire expired timers (safety net for turns with no tools)
 
 This is still safe against the post-compaction stack overflow because it blocks whisper injection only during actual tool execution, not during LLM thinking (which can't chain into synchronous re-entry).
 

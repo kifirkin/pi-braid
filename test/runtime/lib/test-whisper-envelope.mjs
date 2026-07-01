@@ -12,7 +12,7 @@
  * FIX:
  *   - Add `lib/utils/whisper-format.ts` with `formatWhisperEnvelope` and
  *     `applyWhisperEnvelope` helpers. The envelope is
- *     `[braid-whisper · <subsystem>]` (subsystem = first source segment).
+ *     `[braid-whisper - <subsystem>]` (subsystem = first source segment).
  *   - `sendTrackedMessage` (the trunk) calls `applyWhisperEnvelope` so
  *     every system-injected message - 30+ call sites across
  *     enforcement, memory, timer, drift, dreamer, etc. - automatically
@@ -82,29 +82,29 @@ function test(name, fn) {
 test("formatWhisperEnvelope uses the source's first segment as subsystem", () => {
   assert.equal(
     formatWhisperEnvelope("enforcement/whisper"),
-    "[braid-whisper · enforcement]",
+    "[braid-whisper - enforcement]",
     "enforcement/whisper should produce the enforcement subsystem tag",
   );
   assert.equal(
     formatWhisperEnvelope("memory/context-manager"),
-    "[braid-whisper · memory]",
+    "[braid-whisper - memory]",
     "memory/context-manager should produce the memory subsystem tag",
   );
   assert.equal(
     formatWhisperEnvelope("timer/fire"),
-    "[braid-whisper · timer]",
+    "[braid-whisper - timer]",
     "timer/fire should produce the timer subsystem tag",
   );
   assert.equal(
     formatWhisperEnvelope("cognitive/sycophancy-detector"),
-    "[braid-whisper · cognitive]",
+    "[braid-whisper - cognitive]",
     "cognitive/* should produce the cognitive subsystem tag",
   );
 });
 
 test("formatWhisperEnvelope falls back to 'system' for empty/bare source", () => {
-  assert.equal(formatWhisperEnvelope(""), "[braid-whisper · system]");
-  assert.equal(formatWhisperEnvelope("unknown"), "[braid-whisper · unknown]");
+  assert.equal(formatWhisperEnvelope(""), "[braid-whisper - system]");
+  assert.equal(formatWhisperEnvelope("unknown"), "[braid-whisper - unknown]");
 });
 
 test("applyWhisperEnvelope prepends the envelope to the first text element", () => {
@@ -112,7 +112,7 @@ test("applyWhisperEnvelope prepends the envelope to the first text element", () 
   applyWhisperEnvelope(content, "enforcement/whisper");
   assert.equal(
     content[0].text,
-    "[braid-whisper · enforcement] Error burst detected: 3 consecutive errors.",
+    "[braid-whisper - enforcement] Error burst detected: 3 consecutive errors.",
   );
 });
 
@@ -121,7 +121,7 @@ test("applyWhisperEnvelope mutates the existing text in place", () => {
   const before = content;
   applyWhisperEnvelope(content, "memory/three-memory-stores");
   assert.strictEqual(content, before, "should mutate the same array reference");
-  assert.match(content[0].text, /^\[braid-whisper · memory\] /);
+  assert.match(content[0].text, /^\[braid-whisper - memory\] /);
 });
 
 test("applyWhisperEnvelope handles empty content array", () => {
@@ -129,7 +129,7 @@ test("applyWhisperEnvelope handles empty content array", () => {
   applyWhisperEnvelope(content, "enforcement/whisper");
   assert.equal(content.length, 1, "should prepend a new text element");
   assert.equal(content[0].type, "text");
-  assert.equal(content[0].text, "[braid-whisper · enforcement] ");
+  assert.equal(content[0].text, "[braid-whisper - enforcement] ");
 });
 
 test("applyWhisperEnvelope handles content with no text element", () => {
@@ -137,7 +137,7 @@ test("applyWhisperEnvelope handles content with no text element", () => {
   applyWhisperEnvelope(content, "memory/context-manager");
   assert.equal(content.length, 2, "should prepend a new text element");
   assert.equal(content[0].type, "text");
-  assert.equal(content[0].text, "[braid-whisper · memory] ");
+  assert.equal(content[0].text, "[braid-whisper - memory] ");
   assert.equal(content[1].type, "image");
 });
 
@@ -148,7 +148,7 @@ test("applyWhisperEnvelope preserves body-level sub-tags like [dream] or [recall
   applyWhisperEnvelope(content, "enforcement/dreamer");
   assert.equal(
     content[0].text,
-    "[braid-whisper · enforcement] [dream] Likely to get stuck in edit loop.",
+    "[braid-whisper - enforcement] [dream] Likely to get stuck in edit loop.",
     "sub-tag should be preserved after the universal envelope",
   );
 });
@@ -285,7 +285,7 @@ test("the new envelope still contains the bare subsystem name as a substring", (
   );
   // Sanity: the canonical new filter pattern is also a substring.
   assert.ok(
-    envelope.includes("[braid-whisper · enforcement]"),
+    envelope.includes("[braid-whisper - enforcement]"),
     `envelope '${envelope}' must contain the canonical new pattern`,
   );
 });

@@ -2,7 +2,7 @@
  * Episode Types - shared experience record definitions.
  *
  * Extracted from extensions/memory/three-memory-stores/types.ts so that
- * lib/utils/sop-suggestion.ts can import types without creating a lib→ext dependency.
+ * lib/utils/sop-suggestion.ts can import types without creating a lib->ext dependency.
  * Extensions that use Episode should import from here, not from each other.
  */
 
@@ -20,7 +20,7 @@ export interface Episode {
   project: string;
   /** Session ID - enables cross-session contamination filtering. */
   sessionId: string;
-  /** Quality score 0-1 (Decocted Experience 2604.03213): outcome × tool diversity × reasoning density. */
+  /** Quality score 0-1 (Decocted Experience 2604.03213): outcome x tool diversity x reasoning density. */
   quality?: number;
   /** Strategic SOP (high-level): Overall strategy used. */
   strategicSOP?: string;

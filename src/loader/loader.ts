@@ -1,7 +1,7 @@
 /**
  * Extension loader - flat loading with runtime toggling.
  *
- * Config sources (priority: high → low):
+ * Config sources (priority: high -> low):
  *   1. Runtime subagent API - /modules-toggle, /modules-enable, /modules-disable
  *   2. Pi's native settings - `braid.modules` property in ~/.pi/agent/settings.json
  *   3. Environment variable - BRAID_MODULES (+id to enable, -id to disable)
@@ -203,7 +203,7 @@ export function resolveEnabledExtensions(envOverride?: string): ResolvedConfig {
     return { enabled, source: "runtime-api" };
   }
 
-  // Priority 2: Pi's settings.json → braid.modules
+  // Priority 2: Pi's settings.json -> braid.modules
   const settingsOverrides = readModuleOverridesFromSettings();
   if (Object.keys(settingsOverrides).length > 0) {
     const enabled: string[] = [];

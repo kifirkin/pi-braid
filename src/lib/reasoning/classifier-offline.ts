@@ -8,7 +8,7 @@
  *
  * The pattern:
  *   1. Call classify() with timeout/fallback
- *   2. Check the result's `tier` — "failed" means the LLM call did not
+ *   2. Check the result's `tier` -- "failed" means the LLM call did not
  *      produce a usable answer
  *   3. If "failed", return the safe default value + flag `classifierDown:true`
  *   4. The caller surfaces the offline state to the agent (via whisper or
@@ -52,7 +52,7 @@ export type ClassifyWithOfflineOptions = Omit<ClassifierOptions, "fallback"> & {
  * Run a classifier and capture the offline state. The caller passes a
  * `fallback` that returns the safe default value when the LLM call fails
  * (e.g. the conservative "no drift" verdict). The helper never silently
- * swallows failures — `classifierDown` is always set when `tier === "failed"`.
+ * swallows failures -- `classifierDown` is always set when `tier === "failed"`.
  *
  * @param ctx          The ExtensionContext (for classify() LLM call)
  * @param criteria     The classifier criteria (systemPrompt + userPrompt) for classify()

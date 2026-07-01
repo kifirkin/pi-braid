@@ -9,7 +9,7 @@
  *   whispers (memory, hints, drift, dreamer, timer, etc.) still
  *   reached the agent.
  *
- * FIX: Move the check to the universal entry point — sendTrackedMessage.
+ * FIX: Move the check to the universal entry point -- sendTrackedMessage.
  * All 20+ callers now respect the off-switch without each site needing
  * its own check. The pre-existing checks in sendEnforcementWhisper and
  * the 3 analytics sites are now redundant (the wrapper checks first)

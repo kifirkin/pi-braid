@@ -10,7 +10,7 @@
  * - Generates criteria heuristically if not provided
  * - Three verification dimensions: syntax, semantic, result
  * - Records verification in state for finalize pre-flight check
- * - If issues found and confidence < threshold → blocks finalize + returns issues
+ * - If issues found and confidence < threshold -> blocks finalize + returns issues
  */
 
 import { Type } from "typebox";
@@ -114,7 +114,7 @@ function autoDetectTarget(
 
     if (!text || text.length < 50) continue;
 
-    // Simple heuristic: code blocks → code, lists of steps → plan, narrative → reasoning
+    // Simple heuristic: code blocks -> code, lists of steps -> plan, narrative -> reasoning
     const codeBlockCount = (text.match(/```[\s\S]*?```/g) ?? []).length;
     const hasCodeBlocks = codeBlockCount > 0;
     const hasPlanMarkers = /\d+\.\s+\w+|first|then|finally|step\s+\d/i.test(text);
@@ -423,14 +423,14 @@ export function createVerifyTool(): ToolDefinition<any, any, any> {
       if (uniqueIssues.length > 0) {
         lines.push("\nIssues:");
         for (const issue of uniqueIssues.slice(0, 10)) {
-          lines.push(`  • ${issue}`);
+          lines.push(`  * ${issue}`);
         }
       }
 
       if (suggestions.length > 0) {
         lines.push("\nSuggestions:");
         for (const s of suggestions.slice(0, 5)) {
-          lines.push(`  → ${s}`);
+          lines.push(`  -> ${s}`);
         }
       }
 

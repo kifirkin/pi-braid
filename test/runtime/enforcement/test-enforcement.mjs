@@ -151,7 +151,7 @@ console.log("\n[5] index.ts - thin wrapper");
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// [6] Phase 3.3: Dynamic imports → Static imports
+// [6] Phase 3.3: Dynamic imports -> Static imports
 // All heavy modules are now statically imported. The original 17 dynamic
 // imports in enforcement directory are fully eliminated (0 remaining).
 // ═══════════════════════════════════════════════════════════════════════

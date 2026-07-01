@@ -109,7 +109,7 @@ assert.ok(existsSync(distPath), `dist nudge-manager.js must exist at ${distPath}
 const { validateNudgeConfig, parseNudgeConfigOverrides, DEFAULT_NUDGE_CONFIGS } =
   await import(distPath);
 
-// Subtest 8: validateNudgeConfig — valid input returns parsed + no errors
+// Subtest 8: validateNudgeConfig -- valid input returns parsed + no errors
 {
   const r = validateNudgeConfig("validation", {
     baseCooldownMs: 30000,
@@ -123,14 +123,14 @@ const { validateNudgeConfig, parseNudgeConfigOverrides, DEFAULT_NUDGE_CONFIGS } 
   assert.equal(r.parsed.deduplicate, false);
 }
 
-// Subtest 9: validateNudgeConfig — empty object is valid (no overrides)
+// Subtest 9: validateNudgeConfig -- empty object is valid (no overrides)
 {
   const r = validateNudgeConfig("validation", {});
   assert.equal(r.valid, true);
   assert.deepEqual(r.parsed, {});
 }
 
-// Subtest 10: validateNudgeConfig — negative cooldown rejected, valid field preserved
+// Subtest 10: validateNudgeConfig -- negative cooldown rejected, valid field preserved
 {
   const r = validateNudgeConfig("validation", {
     baseCooldownMs: -100,
@@ -142,7 +142,7 @@ const { validateNudgeConfig, parseNudgeConfigOverrides, DEFAULT_NUDGE_CONFIGS } 
   assert.ok(r.errors.some((e) => e.includes("baseCooldownMs")), "should error on baseCooldownMs");
 }
 
-// Subtest 11: validateNudgeConfig — wrong type rejected
+// Subtest 11: validateNudgeConfig -- wrong type rejected
 {
   const r = validateNudgeConfig("validation", { deduplicate: "yes" });
   assert.equal(r.valid, false);
@@ -150,14 +150,14 @@ const { validateNudgeConfig, parseNudgeConfigOverrides, DEFAULT_NUDGE_CONFIGS } 
   assert.ok(r.errors.some((e) => e.includes("must be a boolean")));
 }
 
-// Subtest 12: validateNudgeConfig — non-integer rejected
+// Subtest 12: validateNudgeConfig -- non-integer rejected
 {
   const r = validateNudgeConfig("validation", { baseCooldownMs: 1.5 });
   assert.equal(r.valid, false);
   assert.equal(r.parsed.baseCooldownMs, undefined);
 }
 
-// Subtest 13: validateNudgeConfig — unknown field rejected, valid preserved
+// Subtest 13: validateNudgeConfig -- unknown field rejected, valid preserved
 {
   const r = validateNudgeConfig("validation", {
     fooBar: 42,
@@ -168,7 +168,7 @@ const { validateNudgeConfig, parseNudgeConfigOverrides, DEFAULT_NUDGE_CONFIGS } 
   assert.ok(r.errors.some((e) => e.includes("not a valid field")));
 }
 
-// Subtest 14: validateNudgeConfig — null/array cfg rejected
+// Subtest 14: validateNudgeConfig -- null/array cfg rejected
 {
   const r1 = validateNudgeConfig("validation", null);
   assert.equal(r1.valid, false);
@@ -176,7 +176,7 @@ const { validateNudgeConfig, parseNudgeConfigOverrides, DEFAULT_NUDGE_CONFIGS } 
   assert.equal(r2.valid, false);
 }
 
-// Subtest 15: parseNudgeConfigOverrides — filters unknown types
+// Subtest 15: parseNudgeConfigOverrides -- filters unknown types
 {
   const r = parseNudgeConfigOverrides({
     validation: { baseCooldownMs: 30000 },
@@ -186,7 +186,7 @@ const { validateNudgeConfig, parseNudgeConfigOverrides, DEFAULT_NUDGE_CONFIGS } 
   assert.equal(r.bogusType, undefined, "unknown type should be dropped");
 }
 
-// Subtest 16: parseNudgeConfigOverrides — drops fully-invalid entries
+// Subtest 16: parseNudgeConfigOverrides -- drops fully-invalid entries
 {
   const r = parseNudgeConfigOverrides({
     malformed: "not an object",
@@ -194,7 +194,7 @@ const { validateNudgeConfig, parseNudgeConfigOverrides, DEFAULT_NUDGE_CONFIGS } 
   assert.equal(r.malformed, undefined);
 }
 
-// Subtest 17: parseNudgeConfigOverrides — empty input returns empty object
+// Subtest 17: parseNudgeConfigOverrides -- empty input returns empty object
 {
   assert.deepEqual(parseNudgeConfigOverrides({}), {});
 }
@@ -223,8 +223,8 @@ console.log("  ✓ nudge-manager imports getRawNudgeConfigOverrides");
 console.log("  ✓ nudge-manager exports validateNudgeConfig");
 console.log("  ✓ nudge-manager exports parseNudgeConfigOverrides");
 console.log("  ✓ getNudgeManager passes overrides to constructor");
-console.log("  ✓ validateNudgeConfig: valid input → parsed");
-console.log("  ✓ validateNudgeConfig: empty object → valid");
+console.log("  ✓ validateNudgeConfig: valid input -> parsed");
+console.log("  ✓ validateNudgeConfig: empty object -> valid");
 console.log("  ✓ validateNudgeConfig: invalid field dropped, sibling preserved");
 console.log("  ✓ validateNudgeConfig: wrong type rejected");
 console.log("  ✓ validateNudgeConfig: non-integer rejected");
@@ -232,7 +232,7 @@ console.log("  ✓ validateNudgeConfig: unknown field rejected");
 console.log("  ✓ validateNudgeConfig: null/array cfg rejected");
 console.log("  ✓ parseNudgeConfigOverrides: filters unknown types");
 console.log("  ✓ parseNudgeConfigOverrides: drops fully-invalid entries");
-console.log("  ✓ parseNudgeConfigOverrides: empty input → empty object");
+console.log("  ✓ parseNudgeConfigOverrides: empty input -> empty object");
 console.log("  ✓ DEFAULT_NUDGE_CONFIGS covers all 7 NudgeTypes");
 console.log("18 passed, 0 failed");
 console.log("=== EW-7.11 enforcement settings tests passed ===");

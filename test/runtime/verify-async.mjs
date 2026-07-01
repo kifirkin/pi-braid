@@ -1,5 +1,5 @@
 /**
- * Runtime verification tests for sync→async conversion
+ * Runtime verification tests for sync->async conversion
  *
  * Run with: node --experimental-vm-modules --loader ts-node/esm test/runtime/verify-async.mjs
  * Or compile first: npx tsc --outDir dist && node test/runtime/verify-async.cjs

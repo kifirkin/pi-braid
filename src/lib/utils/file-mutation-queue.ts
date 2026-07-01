@@ -16,7 +16,7 @@ const _log = createLogger("file-mutation-queue");
 
 /**
  * Generate a unique temp suffix so concurrent temp files (if any) never collide.
- * Uses 8 bytes of randomness → 2^64 keyspace; collision probability is
+ * Uses 8 bytes of randomness -> 2^64 keyspace; collision probability is
  * negligible for any single machine.
  */
 function tempSuffix(): string {
@@ -70,7 +70,7 @@ export class FileMutationQueue {
 
     // New queue entry. If a queue for this path already exists (because a
     // processQueue is in flight), reuse it so the running loop picks up
-    // our entry — this prevents a second processQueue from racing the first.
+    // our entry -- this prevents a second processQueue from racing the first.
     if (!this.queues.has(path)) this.queues.set(path, []);
     const queue = this.queues.get(path)!;
     const entry: QueueEntry = { data, queuedAt: Date.now(), resolve: () => {} };
@@ -78,7 +78,7 @@ export class FileMutationQueue {
 
     // Schedule processing: next microtask for single writes, or immediately when deep.
     // If processing is already in flight for this path, the running loop will
-    // pick up our entry via the shared queue — no reschedule needed.
+    // pick up our entry via the shared queue -- no reschedule needed.
     if (queue.length === 1 && !this.processing.has(path)) {
       setTimeout(() => this.processQueue(path), 0);
     } else if (queue.length > this.options.maxQueueDepth && !this.processing.has(path)) {
@@ -118,7 +118,7 @@ export class FileMutationQueue {
     // processing this path will (via the shared queue) be picked up by
     // our running while-loop. Without this guard, an external
     // setTimeout(processQueue, 0) or a write() that exceeds maxQueueDepth
-    // would start a SECOND processQueue that races with us — corrupting
+    // would start a SECOND processQueue that races with us -- corrupting
     // the file with two concurrent writeFile calls on the same path.
     if (this.processing.has(path)) return;
     const queue = this.queues.get(path);
@@ -137,7 +137,7 @@ export class FileMutationQueue {
           await mkdir(dirname(path), { recursive: true });
           // Atomic write: serialize to a uniquely-named temp file, then
           // rename over the target. Readers either see the old file
-          // (pre-rename) or the new one (post-rename) — never a half-written
+          // (pre-rename) or the new one (post-rename) -- never a half-written
           // mix. This is defense-in-depth against any future race we miss
           // at the queue level (e.g., a process kill mid-write).
           const tmpPath = `${path}${tempSuffix()}`;
@@ -150,7 +150,7 @@ export class FileMutationQueue {
           try {
             await unlink(`${path}${tempSuffix()}`);
           } catch {
-            // ignore — temp file may not exist if writeFile failed before creating it
+            // ignore -- temp file may not exist if writeFile failed before creating it
           }
           entry.resolve(); // Don't hang
         }

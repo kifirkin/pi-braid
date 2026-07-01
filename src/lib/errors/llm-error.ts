@@ -20,7 +20,7 @@
  *   - auth:           401 / invalid_api_key. Token / credential issue.
  *   - unknown:        catch-all. Treated as transient for safety.
  *
- * The classifier is intentionally tolerant — it inspects both the error
+ * The classifier is intentionally tolerant -- it inspects both the error
  * message string AND any status code on the error object. This is
  * necessary because different providers (Anthropic, OpenAI, etc.) format
  * their errors differently.
@@ -180,7 +180,7 @@ function makeError(category: LlmErrorCategory, raw: unknown, extras: Partial<Cla
 export function classifyLlmError(err: unknown): ClassifiedLlmError {
   if (err == null) return makeError("unknown", err);
 
-  // Abort detection first — the user cancelled or the session shut down.
+  // Abort detection first -- the user cancelled or the session shut down.
   if (typeof err === "object" && err !== null) {
     const e = err as Record<string, unknown>;
     if (e.name === "AbortError" || e.aborted === true) {

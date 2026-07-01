@@ -110,7 +110,7 @@ function getActiveBehaviors(): AtomicBehavior[] {
 /**
  * Note: prior versions of this file had `generateLatentActivation`,
  * `hasComplianceFraming`, `hasComplianceFramingWithJudge`, and
- * `inferBehaviorsFromTask` (a 14-keyword task→behavior map + 10-keyword
+ * `inferBehaviorsFromTask` (a 14-keyword task->behavior map + 10-keyword
  * compliance list). All four were dead code: exported but never
  * called from anywhere. The behavior auto-inference was explicitly
  * disabled ("Behavior inference disabled - use manual behavior tool

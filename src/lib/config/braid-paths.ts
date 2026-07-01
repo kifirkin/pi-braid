@@ -7,7 +7,7 @@
  * Directory layout:
  *   ~/.pi/
  *   ├── agent/
- *   │   ├── braid/              ← ALL braid data
+ *   │   ├── braid/              <- ALL braid data
  *   │   │   ├── memory/
  *   │   │   │   ├── semantic.json      (lib/memory: semantic + episodic memories)
  *   │   │   │   ├── episodes.jsonl    (three-memory-stores: retrospective episodes)
@@ -25,8 +25,8 @@
  *       └── memory.json          (lib/memory legacy path - kept for migration compat)
  *
  * Paths NOT under braid/ (appropriate elsewhere):
- *   - ~/.pi/agent/settings.json       → pi-native config location
- *   - ~/.pi/agent/sessions/         → pi-native session storage
+ *   - ~/.pi/agent/settings.json       -> pi-native config location
+ *   - ~/.pi/agent/sessions/         -> pi-native session storage
  */
 
 import * as path from "node:path";

@@ -223,7 +223,7 @@ export function registerContextPruningHandler(pi: ExtensionAPI): void {
         filtered = applyPruningWorkflow(pruningState, messages);
         const pruned = beforeCount - filtered.length;
         if (pruned > 0) {
-          log.info(`context: pruned ${pruned}/${beforeCount} messages → ${filtered.length} remain`);
+          log.info(`context: pruned ${pruned}/${beforeCount} messages -> ${filtered.length} remain`);
           addEvidence(
             ctx,
             "context_pruned",
@@ -300,11 +300,11 @@ export function registerContextPruningHandler(pi: ExtensionAPI): void {
         if (stats.messagesOut < stats.messagesIn) {
           summarized = compressed;
           log.debug(
-            `context: semantic compress ${stats.messagesIn}→${stats.messagesOut} ` +
+            `context: semantic compress ${stats.messagesIn}->${stats.messagesOut} ` +
               `(${stats.unitsCollapsed} collapsed, ${stats.unitsDropped} dropped)`,
           );
         }
-        // Wire compression stats into heartbeat density tracking (BCR → analytics loop)
+        // Wire compression stats into heartbeat density tracking (BCR -> analytics loop)
         updateContextDensity(
           ctx as ExtensionContext,
           1 - stats.messagesOut / Math.max(stats.messagesIn, 1),
@@ -331,7 +331,7 @@ export function registerContextPruningHandler(pi: ExtensionAPI): void {
 
       if (cleanedCount > 0) {
         log.info(
-          `context: removed ${cleanedCount} hidden retry triggers → ${cleaned.length} messages`,
+          `context: removed ${cleanedCount} hidden retry triggers -> ${cleaned.length} messages`,
         );
       }
 

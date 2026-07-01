@@ -97,15 +97,15 @@ There are two audiences. Pick the channel that matches:
 | Audience | Sees | Channels |
 |---|---|---|
 | **User** (the human in the TUI) | TUI notifications, persistent UI, in-memory log buffer (via `/logs`) | `ctx.ui.notify`, `ctx.ui.setStatus`, `ctx.ui.setWidget`, `log.*` (routes to `ctx.ui.notify` when ctx is bound) |
-| **Agent** (the LLM in its next turn) | Injected messages, exactly as if the system said them | `sendTrackedMessage` — the **only** path |
+| **Agent** (the LLM in its next turn) | Injected messages, exactly as if the system said them | `sendTrackedMessage` -- the **only** path |
 
 Rules:
 
-1. **`ctx.ui.notify(msg, severity)`** — use for user-facing notifications tied to user-initiated actions (tool result confirmations). Severity: `info` / `warning` / `error`. Appears as a TUI notification. **This is the correct native API for user-facing messages.**
-2. **`ctx.ui.setStatus(key, text)` / `ctx.ui.setWidget(key, lines)`** — use for persistent state the user should see across renders. Footer indicator, content above/below editor. For ongoing operations ("compaction in progress", "X nudges suppressed").
-3. **`log.*` (createLogger)** — the abstraction handles routing. When a session ctx is bound (via `setLoggerContext` from `src/index.ts` on session_start), log lines route to `ctx.ui.notify`. When unbound (lib/ code, pre-session-start), they go to the in-memory buffer (retrievable via `/logs`). The TUI is never corrupted. **The 206 existing call sites need no changes** — the abstraction routes transparently. Do not put "consider X" / "you should Y" advice here — the agent cannot read scrollback.
-4. **`console.*`** — **suppressed by default** in third-party extensions. Will corrupt TUI rendering. Use only via `/logs level <X>` for explicit debug sessions.
-5. **`sendTrackedMessage(pi, params, options, meta, bypass?)`** — the **only** path for messages the agent will read on its next turn. Set `bypassFloodCap: true` ONLY for correctness-critical wake-ups (timer fires, post-compaction resume, overflow recovery exhausted).
+1. **`ctx.ui.notify(msg, severity)`** -- use for user-facing notifications tied to user-initiated actions (tool result confirmations). Severity: `info` / `warning` / `error`. Appears as a TUI notification. **This is the correct native API for user-facing messages.**
+2. **`ctx.ui.setStatus(key, text)` / `ctx.ui.setWidget(key, lines)`** -- use for persistent state the user should see across renders. Footer indicator, content above/below editor. For ongoing operations ("compaction in progress", "X nudges suppressed").
+3. **`log.*` (createLogger)** -- the abstraction handles routing. When a session ctx is bound (via `setLoggerContext` from `src/index.ts` on session_start), log lines route to `ctx.ui.notify`. When unbound (lib/ code, pre-session-start), they go to the in-memory buffer (retrievable via `/logs`). The TUI is never corrupted. **The 206 existing call sites need no changes** -- the abstraction routes transparently. Do not put "consider X" / "you should Y" advice here -- the agent cannot read scrollback.
+4. **`console.*`** -- **suppressed by default** in third-party extensions. Will corrupt TUI rendering. Use only via `/logs level <X>` for explicit debug sessions.
+5. **`sendTrackedMessage(pi, params, options, meta, bypass?)`** -- the **only** path for messages the agent will read on its next turn. Set `bypassFloodCap: true` ONLY for correctness-critical wake-ups (timer fires, post-compaction resume, overflow recovery exhausted).
 6. **Never** call `pi.sendMessage(...)` directly outside `src/lib/utils/injection-tracker.ts`.
 
 Common anti-pattern: putting actionable advice in `log.warn`. The agent cannot see scrollback. If the message contains "consider X" or names a tool the agent can call, it belongs in `sendTrackedMessage`.

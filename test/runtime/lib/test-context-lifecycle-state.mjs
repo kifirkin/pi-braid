@@ -19,7 +19,7 @@
  *
  * This test verifies:
  *   1. `createState()` initializes `policyEngine` and `detector`.
- *   2. State is per-session: different ctx → different state.
+ *   2. State is per-session: different ctx -> different state.
  *   3. Source-level: the module-level consts are gone from index.ts,
  *      and the per-session fields are present in state.ts.
  *   4. Source-level: all 12+ call sites in index.ts reference
@@ -91,7 +91,7 @@ await test("createState() initializes policyEngine and detector", async () => {
   assert.ok(Array.isArray(s.detector.pendingSignals), "detector has pendingSignals array");
 });
 
-await test("state() is per-session (different ctx → different state)", async () => {
+await test("state() is per-session (different ctx -> different state)", async () => {
   const { _getState } = await import(DIST_STATE);
   const ctxA = makeCtx("test-session-A");
   const ctxB = makeCtx("test-session-B");

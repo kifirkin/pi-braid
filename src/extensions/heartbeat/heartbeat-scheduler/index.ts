@@ -89,7 +89,7 @@ export function formatSOPForWhisper(episode: Episode): string {
   }
 
   if (episode.atomicSOP && episode.atomicSOP.length > 0) {
-    parts.push(`**Tools**: ${episode.atomicSOP.join(" → ")}`);
+    parts.push(`**Tools**: ${episode.atomicSOP.join(" -> ")}`);
   }
 
   return parts.length > 0 ? parts.join("\n\n") : `SOP for: ${episode.task.slice(0, 100)}`;

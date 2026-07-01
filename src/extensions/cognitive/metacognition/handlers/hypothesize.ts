@@ -41,7 +41,7 @@ function buildPrompt(params: {
       "Rank hypotheses by likelihood (most likely first). Use numbered headings (Hypothesis 1, Hypothesis 2, etc.).",
     tree:
       "Present hypotheses as a causal tree showing root cause relationships. " +
-      "Use indentation: Level-A causes → Level-B causes → Level-C hypotheses. " +
+      "Use indentation: Level-A causes -> Level-B causes -> Level-C hypotheses. " +
       "Label each node with its causal chain.",
     list:
       "Present hypotheses as a flat numbered list. Each hypothesis is independent. " +

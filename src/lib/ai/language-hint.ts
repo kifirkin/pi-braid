@@ -4,8 +4,8 @@
  * Session-scoped via ExtensionContext. All stateful functions take ctx.
  *
  * Flow:
- * 1. Preprocessor detects language → setLanguage(ctx, code, name)
- * 2. Enforcement reads on session_start → getReplyInstruction(ctx) → inject into system prompt
+ * 1. Preprocessor detects language -> setLanguage(ctx, code, name)
+ * 2. Enforcement reads on session_start -> getReplyInstruction(ctx) -> inject into system prompt
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";

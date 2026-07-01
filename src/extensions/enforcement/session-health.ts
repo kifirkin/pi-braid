@@ -6,19 +6,19 @@
  *
  * State machine:
  *   healthy
- *     ├── (1+ transient) → healthy        (auto-cleared after N healthy turns)
- *     ├── (1 balance)     → balance       (no auto-clear; user must act)
- *     ├── (3+ transient)  → degraded      (cleared after 10 healthy turns)
- *     ├── (context_window)→ context_overflow  (cleared after compaction)
- *     ├── (auth)          → auth          (no auto-clear; user must act)
- *     └── (abort)         → aborted       (cleared on next turn_start)
+ *     ├── (1+ transient) -> healthy        (auto-cleared after N healthy turns)
+ *     ├── (1 balance)     -> balance       (no auto-clear; user must act)
+ *     ├── (3+ transient)  -> degraded      (cleared after 10 healthy turns)
+ *     ├── (context_window)-> context_overflow  (cleared after compaction)
+ *     ├── (auth)          -> auth          (no auto-clear; user must act)
+ *     └── (abort)         -> aborted       (cleared on next turn_start)
  *
  * The state is per-session via getExtensionState. Consumers read it via
  * getSessionHealth(ctx); updates happen via recordLlmError / recordLlmSuccess
  * or explicit setSessionHealthMode.
  *
  * Layer 2 of the session-recovery proposal (2026-06-23). Skips the
- * recovery handler (Layer 3) — the state is populated, but the consumer
+ * recovery handler (Layer 3) -- the state is populated, but the consumer
  * of the state is downstream code (consolidation gate in heartbeat,
  * the L1 environment hook, the session_health tool).
  */
@@ -71,9 +71,9 @@ const DEFAULT_STATE: SessionHealthState = {
   providerSuccessCount: 0,
 };
 
-const DEGRADED_THRESHOLD = 3; // N consecutive transient errors → degraded
+const DEGRADED_THRESHOLD = 3; // N consecutive transient errors -> degraded
 const HEALTHY_CLEAR_TURNS = 10; // N healthy turns to leave degraded
-const BALANCE_CLEAR_MS = 5 * 60 * 1000; // 5 min without balance error → try healthy
+const BALANCE_CLEAR_MS = 5 * 60 * 1000; // 5 min without balance error -> try healthy
 
 export function getSessionHealth(ctx: ExtensionContext): SessionHealthState {
   return getExtensionState<SessionHealthState>(ctx, "session-health", () => ({
@@ -93,7 +93,7 @@ export function recordLlmError(ctx: ExtensionContext, err: ClassifiedLlmError): 
 
   // Mode transitions driven by error category. Terminal categories
   // (balance, auth, context_window) jump immediately. Transient errors
-  // accumulate. Abort is informational — does not change mode.
+  // accumulate. Abort is informational -- does not change mode.
   switch (err.category) {
     case "balance":
       s.mode = "balance";
@@ -137,7 +137,7 @@ export function recordLlmSuccess(ctx: ExtensionContext): void {
       s.lastError = undefined;
     }
   }
-  // Balance and auth do NOT auto-clear on success — the user must act
+  // Balance and auth do NOT auto-clear on success -- the user must act
   // (top up, fix key). The next successful LLM call proves the provider
   // is back, but a single success after a long outage is not enough
   // evidence to leave balance mode. The session_health tool exposes
@@ -164,7 +164,7 @@ export function setSessionHealthMode(
 
 /**
  * Periodically re-check the balance-mode exit condition. The 5-minute
- * cooldown is conservative — if no balance error has fired in 5 minutes,
+ * cooldown is conservative -- if no balance error has fired in 5 minutes,
  * the provider probably has credit again. Hooked from enforcement's
  * session_start handler.
  */
@@ -174,7 +174,7 @@ export function tickSessionHealth(ctx: ExtensionContext): void {
   if (!s.firstErrorAt) return;
   if (Date.now() - s.firstErrorAt < BALANCE_CLEAR_MS) return;
   // Time has passed without another balance error. Probe by clearing
-  // the error window — the next LLM call will either succeed (moving
+  // the error window -- the next LLM call will either succeed (moving
   // to healthy via recordLlmSuccess) or fail (re-entering balance).
   s.firstErrorAt = undefined;
   s.lastError = undefined;

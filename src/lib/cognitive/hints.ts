@@ -102,7 +102,7 @@ async function loadConsolidatedHints(currentProject?: string): Promise<string[]>
     // Take the 3 most recent, render as readable strings
     return deduped.slice(-3).map((h) => {
       const task = (h.task ?? "unknown").slice(0, 80);
-      const steps = (h.steps as string[]).slice(0, 3).join(" → ");
+      const steps = (h.steps as string[]).slice(0, 3).join(" -> ");
       return `When working on "${task}": ${steps}`;
     });
   } catch {

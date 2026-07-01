@@ -18,7 +18,7 @@ and result parsing.
 | `post-loop-classify.ts` | Thin wrapper around `classify()` bundling the 4 post-loop guarantees (signal thread, abort demotion, 8s default timeout, caller-supplied onFailure fallback). Use this for `agent_end` / post-loop LLM calls. |
 | `language-hint.ts` | Detects the language of input text (used to route language-specific processing). |
 | `llm-call.ts` | Low-level wrapper around `pi.getModel()` + `completeSimple`. Handles abort, retry, and structured output parsing. |
-| `model-resolver.ts` | Resolves model by alias (e.g., "utility" → cheapest model). |
+| `model-resolver.ts` | Resolves model by alias (e.g., "utility" -> cheapest model). |
 
 ## Local Contracts
 

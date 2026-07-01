@@ -138,7 +138,7 @@ function formatLog(
     const meta = [isHead ? "HEAD" : null, label ? `tag: ${label}` : null]
       .filter(Boolean)
       .join(", ");
-    const marker = isHead ? "*" : role === "USER" ? "•" : "|";
+    const marker = isHead ? "*" : role === "USER" ? "*" : "|";
     lines.push(`${marker} ${entry.id}${meta ? ` (${meta})` : ""} [${role}] ${body}`);
   });
 
@@ -166,7 +166,7 @@ function formatLog(
     steps++;
   }
 
-  const hud = `[Context] Usage: ${usageStr} · Segment: ${steps} steps since '${nearestTag}'`;
+  const hud = `[Context] Usage: ${usageStr} - Segment: ${steps} steps since '${nearestTag}'`;
   return hud + "\n" + (lines.join("\n") || "(empty)");
 }
 
@@ -275,7 +275,7 @@ export function registerContextNavigate(pi: ExtensionAPI): void {
         };
         // FIX (2026-06-23): only abort after a successful branchWithSummary.
         // Previously the abort ran unconditionally, which killed the turn
-        // even when the checkout had failed — leaving the session in a
+        // even when the checkout had failed -- leaving the session in a
         // half-checked-out state. The 402 in the bug-report log followed
         // from this corruption.
         ctx.abort();

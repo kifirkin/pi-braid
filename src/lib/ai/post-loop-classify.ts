@@ -13,7 +13,7 @@
  *   get them wrong:
  *
  *     1. ESC / session-shutdown abort propagation
- *        - Inherited from classify() → tryModelCall → callLlm which
+ *        - Inherited from classify() -> tryModelCall -> callLlm which
  *          already threads ctx.signal. No work needed here.
  *     2. Abort demotion in callLlm
  *        - Inherited from the 2026-06-21 fix to llm-call.ts. No
@@ -26,7 +26,7 @@
  *          safe default. THIS IS THE PRIMARY ADDED VALUE.
  *     4. 30s timeout
  *        - Post-loop work runs when the session model is busy with
- *          finalization. 3s → 5s → 8s → 30s through four rounds of
+ *          finalization. 3s -> 5s -> 8s -> 30s through four rounds of
  *          tuning; 30s is the current default. Total worst-case
  *          when both tiers run is 60s, which is at the upper end
  *          of "a minute or more" the user reported being OK with.
@@ -180,7 +180,7 @@ export async function postLoopClassify<T extends string = string>(
     if (!options.silent) {
       log.debug(
         `[post-loop-classify] LLM tiers failed (label="${options.label ?? "?"}", ` +
-          `latencyMs=${result.latencyMs}), using onFailure → "${fallbackLabel}"`,
+          `latencyMs=${result.latencyMs}), using onFailure -> "${fallbackLabel}"`,
       );
     }
     return {

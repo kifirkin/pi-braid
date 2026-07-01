@@ -10,7 +10,7 @@
  *
  * FIX:
  *   - Add PER_SOURCE_CAP_OVERRIDES: Record<string, number>
- *   - Default enforcement/whisper → 3 (was 2)
+ *   - Default enforcement/whisper -> 3 (was 2)
  *   - Add getPerSourceCap(source) accessor
  *   - tryWhisper uses the override-aware cap for both critical and
  *     non-critical paths

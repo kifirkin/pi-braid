@@ -3,7 +3,7 @@
  *
  * Paper: 2604.14475 Evo-MedAgent
  * Key finding: Episode memory outperforms single memory.
- * MCQ accuracy 0.68 → 0.79.
+ * MCQ accuracy 0.68 -> 0.79.
  */
 
 import { createLogger } from "../../../lib/core/logger.js";
@@ -18,13 +18,13 @@ const log = createLogger("three-memory-stores:episodes");
  * may have been written by a previous code path that double-encoded
  * unicode (BUG-M3). The agent-facing `recall_search` and `episodes_search`
  * displays otherwise show literal `\u2192` instead of the real character
- * `→`. Applied at load time AND at write time (in `addEpisode`) so both
+ * `->`. Applied at load time AND at write time (in `addEpisode`) so both
  * existing data files and new writes are healed.
  *
  * The previous implementation used `JSON.parse('"' + s + '"')` for safety
  * (verify round-trip changes the value before accepting). That approach
  * silently FAILED for any string containing raw newline/control characters
- * — which is the common case for task and solution fields that contain
+ * -- which is the common case for task and solution fields that contain
  * multi-line text. JSON.parse throws on raw \n inside string literals.
  * The sanitizer returned the input unchanged, so the literal `\u2192`
  * remained in agent-facing output.
@@ -127,7 +127,7 @@ export function condenseInsights(episode: Episode, maxTokens = 150): string {
         : "PARTIAL";
   const toolSummary =
     episode.toolSequence.length > 0
-      ? `[${episode.toolSequence.slice(0, 5).join(" → ")}${episode.toolSequence.length > 5 ? ` (+${episode.toolSequence.length - 5} more)` : ""}]`
+      ? `[${episode.toolSequence.slice(0, 5).join(" -> ")}${episode.toolSequence.length > 5 ? ` (+${episode.toolSequence.length - 5} more)` : ""}]`
       : "";
 
   const insight = episode.solution
@@ -137,7 +137,7 @@ export function condenseInsights(episode: Episode, maxTokens = 150): string {
     .slice(0, 3)
     .join(". ");
 
-  const condensed = `• ${episode.task.slice(0, 80)} [${outcomeLabel}] ${toolSummary}\n  Insight: ${insight.slice(0, maxTokens * 3)}`;
+  const condensed = `* ${episode.task.slice(0, 80)} [${outcomeLabel}] ${toolSummary}\n  Insight: ${insight.slice(0, maxTokens * 3)}`;
   return condensed.length > maxTokens * 4 ? condensed.slice(0, maxTokens * 4) + "..." : condensed;
 }
 

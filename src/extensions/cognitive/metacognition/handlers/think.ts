@@ -97,7 +97,7 @@ const thinkSchema = Type.Object({
     Type.Number({
       description:
         `Task complexity 0-1, used for ODAR Fast/Slow routing: 0-0.3=quick, 0.3-0.7=medium, 0.7+=deep. ` +
-        `Ignored when an explicit depth is set. Note: complexity itself is NOT auto-estimated — only depth is (via the observation text) — so passing complexity is the only way to drive routing without auto-estimation kicking in for long observations.`,
+        `Ignored when an explicit depth is set. Note: complexity itself is NOT auto-estimated -- only depth is (via the observation text) -- so passing complexity is the only way to drive routing without auto-estimation kicking in for long observations.`,
       minimum: 0,
       maximum: 1,
     }),
@@ -107,7 +107,7 @@ const thinkSchema = Type.Object({
       description:
         `Force auto-estimation of depth from the observation, even for short observations. ` +
         `Has no effect if either depth or complexity is already set. ` +
-        `Note: long observations (> 30 chars) auto-estimate even without auto_depth=true — there is a hidden default that routes them via ODAR. ` +
+        `Note: long observations (> 30 chars) auto-estimate even without auto_depth=true -- there is a hidden default that routes them via ODAR. ` +
         `Set auto_depth=false and pass a short observation if you want the tool to use depth="quick" with no routing.`,
     }),
   ),
@@ -214,7 +214,7 @@ export function stepConsistencyCheck(
     current.confidence < 0.3
   ) {
     issues.push(
-      `Confidence drop: ${Math.round(parent.confidence * 100)}% → ${Math.round(current.confidence * 100)}%`,
+      `Confidence drop: ${Math.round(parent.confidence * 100)}% -> ${Math.round(current.confidence * 100)}%`,
     );
   }
   return issues;
@@ -229,7 +229,7 @@ export function createThinkTool(): ToolDefinition<any, any, any> {
     description:
       `Think before irreversible or multi-component decisions. Required: decision. Recommended: observation, reason, confidence 0-1. ` +
       `parent_id links a prior thought_id. Process supervision flags contradictions. ` +
-      `depth sets the thinking budget. Use quick, medium, or deep — for ODAR routing; minimal, low, high, or max — for finer control. deep triggers fresh-eyes review. Explicit depth wins over complexity 0-1; long observations auto-route. ` +
+      `depth sets the thinking budget. Use quick, medium, or deep -- for ODAR routing; minimal, low, high, or max -- for finer control. deep triggers fresh-eyes review. Explicit depth wins over complexity 0-1; long observations auto-route. ` +
       `type is a tag, with default insight. ` +
       `outcome, success or failure, feeds calibration when show_chain=true.`,
     promptSnippet:
@@ -417,7 +417,7 @@ export function createThinkTool(): ToolDefinition<any, any, any> {
       if (consistencyIssues.length > 0) {
         lines.push("", "⚠️ Consistency check:");
         for (const issue of consistencyIssues) {
-          lines.push(`  • ${issue.slice(0, 120)}`);
+          lines.push(`  * ${issue.slice(0, 120)}`);
         }
       }
 

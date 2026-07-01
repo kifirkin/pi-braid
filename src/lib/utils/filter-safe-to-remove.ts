@@ -3,7 +3,7 @@
 //
 // Currently exposes only one entry point: `filterSafeToRemove` (heuristic).
 // The earlier `assessBatchRemovability` (LLM-batch) export was dead code
-// — no caller imported it. Removed in 2026-06-13 (TASK-4.4). If a future
+// -- no caller imported it. Removed in 2026-06-13 (TASK-4.4). If a future
 // caller wants the LLM-batch path, re-introduce it as an opt-in parameter
 // to `filterSafeToRemove({ useLLMJudge: true, ctx })`.
 

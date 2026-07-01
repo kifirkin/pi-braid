@@ -45,7 +45,7 @@ function listDirs(base) {
  * the manifest convention is that ID = directory name.
  *
  * Top-level categories (e.g., `src/extensions/cognitive/`) are NOT
- * extensions themselves — they are namespaces containing sub-extensions.
+ * extensions themselves -- they are namespaces containing sub-extensions.
  * An extension is one of:
  *   - A top-level subdir of `src/extensions/` with its own `index.ts`
  *   - A nested subdir whose parent namespace has no `index.ts`

@@ -4,7 +4,7 @@
  * Tests:
  * - normalizeLabel(): prefix matching, case insensitivity, edge cases
  * - replacePlaceholders(): single-pass regex, no recursive substitution
- * - classify() tier fallback: utility → session → heuristic
+ * - classify() tier fallback: utility -> session -> heuristic
  * - Latency logging
  *
  * The classify() function requires a full pi ExtensionContext with modelRegistry,
@@ -75,12 +75,12 @@ console.log("\n[1b] normalizeLabel() - validLabels whitelist (trajectoryPattern 
 assert.strictEqual(
   normalizeLabel("Read-Edit-Bash"),
   null,
-  '"Read-Edit-Bash" with no validLabels → null (multi-class needs whitelist)',
+  '"Read-Edit-Bash" with no validLabels -> null (multi-class needs whitelist)',
 );
 assert.strictEqual(
   normalizeLabel("Repeated-Test"),
   null,
-  '"Repeated-Test" with no validLabels → null',
+  '"Repeated-Test" with no validLabels -> null',
 );
 
 // With validLabels: whitelisted labels are accepted
@@ -100,7 +100,7 @@ for (const label of patternLabels) {
   assert.strictEqual(
     normalizeLabel(label, patternLabels),
     label.toLowerCase(),
-    `"${label}" in validLabels → accepted (lowercased)`,
+    `"${label}" in validLabels -> accepted (lowercased)`,
   );
 }
 
@@ -109,26 +109,26 @@ for (const label of patternLabels) {
 assert.strictEqual(
   normalizeLabel("repeated-test", patternLabels),
   "repeated-test",
-  '"repeated-test" (lowercase, in validLabels) → accepted',
+  '"repeated-test" (lowercase, in validLabels) -> accepted',
 );
 assert.strictEqual(
   normalizeLabel("REPEATED-TEST", patternLabels),
   "repeated-test",
-  '"REPEATED-TEST" (uppercase, in validLabels) → accepted (lowercased)',
+  '"REPEATED-TEST" (uppercase, in validLabels) -> accepted (lowercased)',
 );
 
 // Non-whitelisted hyphenated label: not in the list, not yes/no
 assert.strictEqual(
   normalizeLabel("Read-Edit-Bash", patternLabels.slice(0, 5)),
   null,
-  '"Read-Edit-Bash" NOT in narrower validLabels → null (whitelist enforced)',
+  '"Read-Edit-Bash" NOT in narrower validLabels -> null (whitelist enforced)',
 );
 
 // Trailing punctuation: model sometimes adds "." or "," 
 assert.strictEqual(
   normalizeLabel("Repeated-Test.", patternLabels),
   null,
-  '"Repeated-Test." with trailing period → null (whitelist is exact-match)',
+  '"Repeated-Test." with trailing period -> null (whitelist is exact-match)',
 );
 
 // yes/no still work in the multi-class path (defensive fallback for
@@ -136,19 +136,19 @@ assert.strictEqual(
 assert.strictEqual(
   normalizeLabel("yes", patternLabels),
   "yes",
-  '"yes" in multi-class path → still accepted (yes/no fallback)',
+  '"yes" in multi-class path -> still accepted (yes/no fallback)',
 );
 assert.strictEqual(
   normalizeLabel("no", patternLabels),
   "no",
-  '"no" in multi-class path → still accepted (yes/no fallback)',
+  '"no" in multi-class path -> still accepted (yes/no fallback)',
 );
 
 // Empty validLabels array: behave like no validLabels (binary fallback)
 assert.strictEqual(
   normalizeLabel("Read-Edit-Bash", []),
   null,
-  'empty validLabels array → binary fallback (Read-Edit-Bash → null)',
+  'empty validLabels array -> binary fallback (Read-Edit-Bash -> null)',
 );
 
 console.log("  ✅ validLabels whitelist verified for trajectoryPattern critic");
@@ -161,7 +161,7 @@ console.log("\n[2] replacePlaceholders() - template interpolation...");
 assert.strictEqual(
   replacePlaceholders("Is this {{text}}?", { text: "code" }),
   "Is this code?",
-  '{{text}} → "code"',
+  '{{text}} -> "code"',
 );
 
 // Multiple placeholders

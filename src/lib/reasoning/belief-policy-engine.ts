@@ -6,7 +6,7 @@
  *
  * Flow:
  * 1. All subsystems emit signals to the BeliefPolicyEngine
- * 2. Policy rules evaluate signal history → actionable recommendations
+ * 2. Policy rules evaluate signal history -> actionable recommendations
  * 3. Recommendations flow back to enforcement as coherent whispers
  *
  * Based on: ROADMAP-v1.0-FULL.md P2.4 Belief Policy Engine
@@ -113,7 +113,7 @@ export function emitSignal(
  *
  * Compound beliefs are higher-level inferences derived from
  * multiple signal sources - e.g., "stability:declining" +
- * "tool-use:overuse" → "reasoning:scattered".
+ * "tool-use:overuse" -> "reasoning:scattered".
  */
 export function inferBeliefs(ctx: ExtensionContext): void {
   const state = getState(ctx);
@@ -122,7 +122,7 @@ export function inferBeliefs(ctx: ExtensionContext): void {
 
   const now = Date.now();
 
-  // Compound: stability:declining + tool-use:overuse → reasoning:scattered
+  // Compound: stability:declining + tool-use:overuse -> reasoning:scattered
   const hasStabilityDecline =
     signals.filter(
       (s) => s.source === "stability" && (s.type === "decline" || s.type === "predicted-decline"),
@@ -144,7 +144,7 @@ export function inferBeliefs(ctx: ExtensionContext): void {
     }
   }
 
-  // Compound: topic:drifted + tool-use:overuse → focus:degraded
+  // Compound: topic:drifted + tool-use:overuse -> focus:degraded
   const hasTopicDrift =
     signals.filter((s) => s.source === "topic-drift" && s.type === "detected").length >= 2;
   if (hasTopicDrift && hasToolOveruse) {
@@ -162,7 +162,7 @@ export function inferBeliefs(ctx: ExtensionContext): void {
     }
   }
 
-  // Compound: calibration:miscalibrated + stability:declining → confidence:overconfident
+  // Compound: calibration:miscalibrated + stability:declining -> confidence:overconfident
   const hasCalError =
     signals.filter((s) => s.source === "calibration" && s.type === "high-error").length >= 2;
   if (hasCalError && hasStabilityDecline) {
@@ -180,7 +180,7 @@ export function inferBeliefs(ctx: ExtensionContext): void {
     }
   }
 
-  // Compound: conflict present + reasoning declining → epistemic:uncertain
+  // Compound: conflict present + reasoning declining -> epistemic:uncertain
   const hasConflicts =
     signals.filter((s) => s.source === "conflict" && s.type !== "resolved").length >= 3;
   if (hasConflicts && hasStabilityDecline) {
@@ -310,7 +310,7 @@ export function getSignals(ctx: ExtensionContext, count = 20): SystemSignal[] {
 }
 
 // ── D0: Outcome Tracking ───────────────────────────────────────────────
-// Closes the feedback loop: recommendations → action → outcome → adaption
+// Closes the feedback loop: recommendations -> action -> outcome -> adaption
 
 interface OutcomeEntry {
   type: string;
@@ -352,10 +352,10 @@ export function reportRecommendationOutcome(
     const ratio = entry.effective / total;
     // Adjust recommendationCooldownMs dynamically
     if (ratio > 0.7) {
-      // Highly effective → reduce cooldown (suggest more often)
+      // Highly effective -> reduce cooldown (suggest more often)
       state.recommendationCooldownMs = Math.max(10_000, state.recommendationCooldownMs - 2_000);
     } else if (ratio < 0.3) {
-      // Ineffective → increase cooldown (suggest less often)
+      // Ineffective -> increase cooldown (suggest less often)
       state.recommendationCooldownMs = Math.min(120_000, state.recommendationCooldownMs + 5_000);
     }
   }

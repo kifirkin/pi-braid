@@ -25,8 +25,8 @@
  *      `inBeforeAgentStart` pattern from context-lifecycle).
  *   2. The scratchpad read + whisper delivery side-effects are deferred
  *      via `queueMicrotask` so the handler returns synchronously. This
- *      is the KEY fix — by the time pi-core's synchronous event chain
- *      (TOOL_EXECUTION_END → fireExpired → pi.sendMessage) wants to fire,
+ *      is the KEY fix -- by the time pi-core's synchronous event chain
+ *      (TOOL_EXECUTION_END -> fireExpired -> pi.sendMessage) wants to fire,
  *      we have already returned and the call stack is short.
  *   3. State writes (lastCompactionTurn, etc.) stay synchronous because
  *      downstream handlers (turn_end, message_end) read them on the
@@ -45,7 +45,7 @@ const { registerSessionCompactHandler } = await import(
   "../../../dist/extensions/enforcement/handlers/register-session-compact.js"
 );
 
-// Import the turn-dedup reset helper — the whisper flood cap is
+// Import the turn-dedup reset helper -- the whisper flood cap is
 // process-global state. Without resetting between tests, the cap from
 // previous tests in the same process suppresses our whispers.
 const { _resetForTests: resetDedup, beginTurn } = await import(

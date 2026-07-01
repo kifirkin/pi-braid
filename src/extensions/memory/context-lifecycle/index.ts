@@ -81,7 +81,7 @@ const CONTEXT_MGMT_TOOLS = new Set([
 const MAX_OUTCOMES = 100;
 const OUTCOME_TTL_MS = 30 * 60 * 1000;
 
-// Outcome interface now lives in ./state.ts (extracted to break the state↔helpers cycle)
+// Outcome interface now lives in ./state.ts (extracted to break the state<->helpers cycle)
 
 function evictOldOutcomes(s: ContextLifecycleState): void {
   const now = Date.now();
@@ -158,7 +158,7 @@ function sendCompactNudge(pi: ExtensionAPI, evaluated: EvaluatedAction, usage: n
   // while freeing working context. Compact is the last resort.
   const pipelineMsg =
     usage >= 80
-      ? `Context at ${Math.round(usage)}%. Pipeline: context_tag → context_checkout → context_archive → compact (last resort).`
+      ? `Context at ${Math.round(usage)}%. Pipeline: context_tag -> context_checkout -> context_archive -> compact (last resort).`
       : `Context at ${Math.round(usage)}%. Tag with context_tag, then context_checkout to branch with a summary.`;
 
   sendTrackedMessage(
@@ -372,14 +372,14 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
   });
 
   // ── before_agent_start ──────────────────────────────────────────────────
-  // R-CCAM loop: Retrieval → Cognition → Control → Action
+  // R-CCAM loop: Retrieval -> Cognition -> Control -> Action
   pi.on("before_agent_start", async (_event: unknown, ctx: ExtensionContext) => {
     // ── RE-ENTRANCY GUARD ────────────────────────────────────────────────
-    // If sendTrackedMessage → pi.sendMessage(steer) fires before_agent_start
+    // If sendTrackedMessage -> pi.sendMessage(steer) fires before_agent_start
     // synchronously, prevent unbounded recursion. Without this guard, a
     // nudge that triggers a steer can create a loop:
-    //   before_agent_start → sendCompactNudge → sendTrackedMessage →
-    //   pi.sendMessage(steer) → before_agent_start → ... (stack overflow)
+    //   before_agent_start -> sendCompactNudge -> sendTrackedMessage ->
+    //   pi.sendMessage(steer) -> before_agent_start -> ... (stack overflow)
     const reentrancy = getExtensionState<ReentrancyState>(ctx, "context-lifecycle/reentrancy", () => ({
       inBeforeAgentStart: false,
     }));

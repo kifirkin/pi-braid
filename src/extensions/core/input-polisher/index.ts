@@ -31,10 +31,10 @@ function getIsCompactionActive(): boolean {
  * - Messages during active compaction
  *
  * Two-step flow for manual mode:
- * 1. User submits input → polisher runs → updates editor with cleaned text
- * 2. User presses Enter again → no polishing, text goes straight to LLM
- * 3. Next user message → polishing runs again
- * 4. On error or no-change → message goes through immediately
+ * 1. User submits input -> polisher runs -> updates editor with cleaned text
+ * 2. User presses Enter again -> no polishing, text goes straight to LLM
+ * 3. Next user message -> polishing runs again
+ * 4. On error or no-change -> message goes through immediately
  *
  * Auto-confirm mode (disableConfirmations: true in settings):
  *   Message is sent immediately after polishing - no two-step flow.
@@ -184,24 +184,24 @@ function generateDiffLines(original: string, cleaned: string): string[] {
 
   // Show deletions first (red -)
   for (const line of deletions.slice(0, 5)) {
-    const truncated = line.length > 60 ? `${line.slice(0, 60)}…` : line;
+    const truncated = line.length > 60 ? `${line.slice(0, 60)}...` : line;
     lines.push(`  ${colors.red("-")} ${truncated}`);
   }
 
   // Then additions (green +)
   for (const line of additions.slice(0, 5)) {
-    const truncated = line.length > 60 ? `${line.slice(0, 60)}…` : line;
+    const truncated = line.length > 60 ? `${line.slice(0, 60)}...` : line;
     lines.push(`  ${colors.green("+")} ${truncated}`);
   }
 
   // Show truncation indicator if needed
   const totalChanges = deletions.length + additions.length;
   if (deletions.length + additions.length > 10) {
-    lines.push(`  ${colors.dim("…")} ${totalChanges} total changes`);
+    lines.push(`  ${colors.dim("...")} ${totalChanges} total changes`);
   }
 
   lines.push("");
-  lines.push(`  ${original.length} → ${cleaned.length} chars`);
+  lines.push(`  ${original.length} -> ${cleaned.length} chars`);
   lines.push(`  ${colors.green("✓")} Press Enter to send`);
 
   return lines;
@@ -335,7 +335,7 @@ async function processMessage(
     if (cleaned && cleaned !== original && cleaned.length > 0) {
       state.polishedCount++;
 
-      // Detect input language → set language hint for reply instruction
+      // Detect input language -> set language hint for reply instruction
       const lang = detectLanguage(original);
       setLanguage(ctx, lang.code, lang.name);
 
@@ -437,7 +437,7 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
     }
 
     // Skip polishing when images are attached - the image data can't
-    // be preserved through a "handled" → re-submit cycle
+    // be preserved through a "handled" -> re-submit cycle
     if (event.images && event.images.length > 0) {
       state.skippedCount++;
       return { action: "continue" };
@@ -457,8 +457,8 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
     }
 
     // Skip long/copy-pasted text by newline count.
-    // Short messages (few newlines) = user's own typing → polish.
-    // Many newlines = copy-pasted content → skip polishing.
+    // Short messages (few newlines) = user's own typing -> polish.
+    // Many newlines = copy-pasted content -> skip polishing.
     const newlineCount = (original.match(/\n/g) || []).length;
     if (newlineCount > state.config.maxNewlines) {
       state.skippedCount++;

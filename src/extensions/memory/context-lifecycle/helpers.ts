@@ -129,9 +129,9 @@ export function formatDuration(ms: number): string {
 
 /**
  * Interpolate template placeholders in a message:
- * - {percent} → current context usage %
- * - {tokens} → current context tokens (in K)
- * - {<key>}   → arbitrary signal data field
+ * - {percent} -> current context usage %
+ * - {tokens} -> current context tokens (in K)
+ * - {<key>}   -> arbitrary signal data field
  */
 export function interpolateMessage(
     message: string,

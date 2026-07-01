@@ -5,7 +5,7 @@
  *   L2 "Session Signals" was bundled into a single string and gated
  *   by `shouldSendNudge("scratchpad", bundled)`. Adding one new L2 line
  *   (e.g. a memory nudge on top of an existing scratchpad nudge) changed
- *   the bundle's hash, which re-armed the entire bundle — previously
+ *   the bundle's hash, which re-armed the entire bundle -- previously
  *   suppressed signals would fire again as soon as anything else was
  *   added. This made the L2 bundle unreliable in long sessions.
  *
@@ -92,7 +92,7 @@ test("different subKeys have independent cooldown history", () => {
   // T=110_000 (within 60s of last memory fire)
   const a2 = nm.shouldSendNudge("sessionSignals", "memory nudge content", "memory", 110_000);
   assert.equal(a2.shouldSend, false, "memory cooldown blocks repeat");
-  // Signal B at T=110_000 — independent history, passes immediately
+  // Signal B at T=110_000 -- independent history, passes immediately
   const b1 = nm.shouldSendNudge(
     "sessionSignals",
     "scratchpad nudge content",
@@ -134,7 +134,7 @@ test("different subKeys have independent dedup history", () => {
     true,
     "scratchpad signal re-fires with new content (cross-subKey independence)",
   );
-  // Same content "m1" for memory at T=999_999 — should dedup within
+  // Same content "m1" for memory at T=999_999 -- should dedup within
   // memory's own subKey history.
   const memoryRepeat = nm.shouldSendNudge(
     "sessionSignals",
@@ -153,7 +153,7 @@ test("legacy 2-arg call still works (backward compat)", () => {
   const nm = new NudgeManager();
   const r1 = nm.shouldSendNudge("sessionSignals", "no-subKey content", undefined, 100_000);
   assert.equal(r1.shouldSend, true);
-  // Same content + same effective key ("sessionSignals" alone) → deduped
+  // Same content + same effective key ("sessionSignals" alone) -> deduped
   const r2 = nm.shouldSendNudge(
     "sessionSignals",
     "no-subKey content",
@@ -173,7 +173,7 @@ test("without subKey, two callers share history (legacy behavior)", () => {
     nm.shouldSendNudge("sessionSignals", "alpha", undefined, 100_000).shouldSend,
     true,
   );
-  // Different content but same key (no subKey → key="sessionSignals")
+  // Different content but same key (no subKey -> key="sessionSignals")
   const r = nm.shouldSendNudge("sessionSignals", "beta", undefined, 110_000);
   // Cooldown blocks (within 60s of last fire)
   assert.equal(r.shouldSend, false, "cooldown blocks subsequent 2-arg calls");
@@ -245,7 +245,7 @@ test("the bug: previously-suppressed signal is NOT re-armed by new signals", () 
   );
   // Old bundle behavior: memory would have been re-armed on Turn 2 by
   // scratchpad's presence in the bundled string. Now memory is
-  // decoupled — adding scratchpad does not touch memory's history.
+  // decoupled -- adding scratchpad does not touch memory's history.
 });
 
 // ── Source-level contract: handler uses per-signal gating ───────────────
@@ -290,14 +290,14 @@ test("turn-end-handler pushes {key, content} per sub-signal (not raw strings)", 
 
 test("turn-end-handler uses per-signal gating loop (not single bundle call)", () => {
   // The handler must loop through sessionSignals and call shouldSendNudge
-  // per signal — NOT a single call with the concatenated bundle.
+  // per signal -- NOT a single call with the concatenated bundle.
   assert.match(
     handlerSrc,
     /for\s*\(\s*const\s+sig\s+of\s+sessionSignals\s*\)/,
     "turn-end-handler must iterate sessionSignals",
   );
   // EW-7.2: per-signal gate now routes through a lookup table that
-  // resolves sig.key → {type, subKey}. The handler must consult this
+  // resolves sig.key -> {type, subKey}. The handler must consult this
   // table (or equivalent) rather than hardcoding "sessionSignals".
   assert.match(
     handlerSrc,

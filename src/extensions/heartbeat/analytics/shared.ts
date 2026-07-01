@@ -62,7 +62,7 @@ export interface AnalyticsState {
   lastAddictionCheck: number;
   /** Set of last-emitted warning signatures to suppress duplicate identical reports. */
   lastAddictionSignatures: string[];
-  /** Pending tool calls awaiting execution_end (toolCallId → {toolName, startTime}).
+  /** Pending tool calls awaiting execution_end (toolCallId -> {toolName, startTime}).
    *  Session-scoped to prevent cross-session contamination if session_start timing varies. */
   pendingToolCalls: Map<string, { toolName: string; startTime: number }>;
   /** Unique tool types used in the current turn (per-turn deduplication for addiction).

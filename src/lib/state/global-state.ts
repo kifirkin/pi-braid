@@ -12,7 +12,7 @@
  * Prefer getExtensionState() for per-session state.
  */
 
-// ── Custom Model Keys (polyfill ↔ model-resolver) ─────────────────────────────
+// ── Custom Model Keys (polyfill <-> model-resolver) ─────────────────────────────
 
 const _customModelKeys = new Map<string, string>();
 
@@ -168,7 +168,7 @@ export function getCognitiveMemoryInstance(): unknown {
  *   - 3s (pre-2026-06-21): too tight under session-end load.
  *   - 5s (2026-06-21 fix): improvement, still tight for slow models.
  *   - 8s (2026-06-21 follow-up): still hit by very slow paths.
- *   - 30s (2026-06-22 → 2026-06-23): still hit by slowest paths and
+ *   - 30s (2026-06-22 -> 2026-06-23): still hit by slowest paths and
  *     session-end backpressure.
  *   - 600s / 10min (2026-06-23): user request - "completely remove
  *     timeouts (or make huge one like 10 minutes) but keep proper

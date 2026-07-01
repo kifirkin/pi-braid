@@ -326,7 +326,7 @@ export async function dispatchTurnEndLoop(
           key: "context-tokens",
           content:
             `Context at ${Math.round(usageTokens / 1000)}K tokens (${Math.round(usagePercent)}%). ` +
-            `Pipeline: context_navigate(action="tag") → context_compress(action="archive") → compact (last resort).`,
+            `Pipeline: context_navigate(action="tag") -> context_compress(action="archive") -> compact (last resort).`,
         });
       } else if (usageTokens >= USAGE_TOKENS_SOFT) {
         markNudgeSent(getState(ctx), getState(ctx).currentTurn);
@@ -355,8 +355,8 @@ export async function dispatchTurnEndLoop(
       sessionSignals.push({
         key: "context-percent",
         content:
-          `Context at ${pct}%. Pipeline: context_navigate(action="tag") → ` +
-          `context_compress(action="archive") → compact (last resort). Tag your position first.`,
+          `Context at ${pct}%. Pipeline: context_navigate(action="tag") -> ` +
+          `context_compress(action="archive") -> compact (last resort). Tag your position first.`,
       });
     } else if (usagePercent >= USAGE_WHISPER_CRITICAL) {
       sessionSignals.push({

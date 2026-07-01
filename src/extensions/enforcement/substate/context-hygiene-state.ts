@@ -125,7 +125,7 @@ export function getContextNudgeMessage(usagePercent: number, usageTokens: number
   if (usageTokens >= USAGE_TOKENS_WARNING) {
     return (
       `Context at ${Math.round(usageTokens / 1000)}K tokens (${Math.round(usagePercent)}%). ` +
-      `Pipeline: context_navigate(action="tag") → context_compress(action="archive") → compact (last resort).`
+      `Pipeline: context_navigate(action="tag") -> context_compress(action="archive") -> compact (last resort).`
     );
   }
   if (usageTokens >= USAGE_TOKENS_SOFT) {
@@ -136,8 +136,8 @@ export function getContextNudgeMessage(usagePercent: number, usageTokens: number
   }
   if (usagePercent >= USAGE_COMPACT_MEDIUM) {
     return (
-      `Context at ${Math.round(usagePercent)}%. Pipeline: context_navigate(action="tag") → ` +
-      `context_compress(action="archive") → compact (last resort). Tag your position first.`
+      `Context at ${Math.round(usagePercent)}%. Pipeline: context_navigate(action="tag") -> ` +
+      `context_compress(action="archive") -> compact (last resort). Tag your position first.`
     );
   }
   if (usagePercent >= USAGE_WHISPER_CRITICAL) {

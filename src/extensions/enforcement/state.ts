@@ -6,7 +6,7 @@
  * Sub-state files do NOT import state.ts (avoids circular dependency).
  *
  * ENFORCEMENT_PARAMS and EnforcementState live in `enforcement-types.ts`
- * to break the state.ts ↔ session-state.ts cycle.
+ * to break the state.ts <-> session-state.ts cycle.
  *
  * Sub-state files:
  *   tool-tracking-state.ts      - tool usage, edit tracking, calibration

@@ -70,17 +70,17 @@ export interface ClassifierOptions {
    * Each strategy defines which LLM tiers to try and in what order.
    * All strategies start with heuristic (tier 1) if applicable.
    *
-   *   "balanced" (default): utility → session → max-power
+   *   "balanced" (default): utility -> session -> max-power
    *     Good default: cheap utility first, session as backup, max-power as last resort.
    *
-   *   "quality": session → utility → max-power
+   *   "quality": session -> utility -> max-power
    *     Prefer quality: try the session (conversation) model first since it may
    *     already be powerful, utility as cheap fallback, max-power as safety net.
    *
-   *   "speed": utility → session
+   *   "speed": utility -> session
    *     Fastest path: skip max-power entirely. Identical to current default behavior.
    *
-   *   "max": max-power → session → utility
+   *   "max": max-power -> session -> utility
    *     Maximum quality: try the configured max-power model first, then session,
    *     then utility as last resort. Requires /max-power-model to be configured.
    */
@@ -164,10 +164,10 @@ function buildTierOrder(
  * returns something ambiguous or isn't provided do we consult LLM tiers.
  *
  * Tier flow by modelPreference (see ClassifierOptions for details):
- *   "balanced" (default): heuristic → utility → session → max-power
- *   "quality":            heuristic → session → utility → max-power
- *   "speed":              heuristic → utility → session
- *   "max":                heuristic → max-power → session → utility
+ *   "balanced" (default): heuristic -> utility -> session -> max-power
+ *   "quality":            heuristic -> session -> utility -> max-power
+ *   "speed":              heuristic -> utility -> session
+ *   "max":                heuristic -> max-power -> session -> utility
  *
  * @param ctx - Extension context for model resolution + API keys.
  * @param criteria - Prompt templates (system + user with {{key}} placeholders).
@@ -238,7 +238,7 @@ export async function classify(
     // Previously the check was `=== "yes" || === "no"` which silently
     // dropped fallbacks returning labels like "positive"/"negative",
     // "rate_limit"/"server_error", "SHALL"/"MUST"/"SHOULD"/"MAY",
-    // "STABLE"/"DEGRADED", "pipeline"/"loop"/"info"/"edit" — and
+    // "STABLE"/"DEGRADED", "pipeline"/"loop"/"info"/"edit" -- and
     // consulted the LLM anyway, defeating the "fast and free" promise
     // of tier 1 for ~30% of critics.
     //
@@ -334,7 +334,7 @@ export async function classify(
     if (result && result.ok) {
       const latency = Date.now() - start;
       log.debug(
-        `[text-classifier] TIER ${tierNum} (${tier.name} → ${tier.model.id}): "${result.label}" ${latency}ms`,
+        `[text-classifier] TIER ${tierNum} (${tier.name} -> ${tier.model.id}): "${result.label}" ${latency}ms`,
       );
       if (options?.label) recordCriticCall(options.label, tier.name, latency, result.usage);
       // Q17: cache the result for future identical calls within TTL

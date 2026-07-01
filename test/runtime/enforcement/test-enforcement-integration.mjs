@@ -2,10 +2,10 @@
  * Enforcement Integration Tests - validates the enforcement pipeline end-to-end.
  *
  * Tests that sub-modules work together to detect bad behavior patterns:
- * 1. Error burst detection: 8+ consecutive errors → burst triggers
- * 2. Tool call tracking across multiple turns → drift detection fires
- * 3. Calibration whispers: high prediction error → calibration signal
- * 4. Signal → belief → policy recommendation pipeline
+ * 1. Error burst detection: 8+ consecutive errors -> burst triggers
+ * 2. Tool call tracking across multiple turns -> drift detection fires
+ * 3. Calibration whispers: high prediction error -> calibration signal
+ * 4. Signal -> belief -> policy recommendation pipeline
  *
  * Run: node test/runtime/test-enforcement-integration.mjs
  */
@@ -314,10 +314,10 @@ console.log("\n[4] Calibration - high prediction error detection");
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Section 5: Signal → Belief → Policy recommendation pipeline
+// Section 5: Signal -> Belief -> Policy recommendation pipeline
 // ═══════════════════════════════════════════════════════════════════════
 
-console.log("\n[5] Signal → Belief → Policy recommendation pipeline");
+console.log("\n[5] Signal -> Belief -> Policy recommendation pipeline");
 
 {
   // We need ctx for getExtensionState. Build a minimal fake.
@@ -486,7 +486,7 @@ console.log("\n[6] Cross-turn drift detection simulation");
     // Semantic drift: Jaccard between task words and last 3 turn words
     // Task: {fix, type, errors, typescript, enforcement, module}
     // Turns: {weather, today, book, flight, tokyo, best, hiking, trails, near, city}
-    // Jaccard = 0 → semanticDrift = true (0 < 0.15)
+    // Jaccard = 0 -> semanticDrift = true (0 < 0.15)
     assert.ok(result.drifted, `expected drift, got: reason=${result.reason}`);
   });
 

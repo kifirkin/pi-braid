@@ -149,6 +149,6 @@ export function recordSummarization(ctx: ExtensionContext, block: any, tokensSav
   state.lastSummaryTurn = state.localTurnCount;
   state.chainDepth = Math.max(state.chainDepth, block.messages.length);
   log.debug(
-    `Reasoning summarized: ${block.messages.length} steps → ${Math.round(tokensSaved)} tokens saved`,
+    `Reasoning summarized: ${block.messages.length} steps -> ${Math.round(tokensSaved)} tokens saved`,
   );
 }

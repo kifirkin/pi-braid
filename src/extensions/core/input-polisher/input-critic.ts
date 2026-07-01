@@ -1,8 +1,8 @@
 /**
- * Input Critic — pre-classification for input-polisher.
+ * Input Critic -- pre-classification for input-polisher.
  *
  * PRIMARY PATH: consolidated LLM call via consolidated-input-critic.ts
- *   (single JSON response for all 4 dimensions — ~75% fewer LLM calls).
+ *   (single JSON response for all 4 dimensions -- ~75% fewer LLM calls).
  *
  * FALLBACK PATH: 4 parallel classify() calls with individual critics.
  *   Only used when the consolidated path fails entirely (model error,

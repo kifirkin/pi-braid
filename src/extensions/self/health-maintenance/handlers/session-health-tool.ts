@@ -12,7 +12,7 @@
  *               The user has topped up, fixed the key, or otherwise
  *               resolved the upstream issue. Clears the error window.
  *
- * Recovery is intentionally explicit — automatic recovery on next LLM
+ * Recovery is intentionally explicit -- automatic recovery on next LLM
  * success is also wired (via recordLlmSuccess), but for terminal modes
  * (balance, auth) the user must signal they have acted before the agent
  * resumes normal work. This is the only way the agent learns that a

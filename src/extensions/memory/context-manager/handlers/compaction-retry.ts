@@ -73,7 +73,7 @@ export async function handleOverflowFailure(
               "",
               overflowRetryState.attempt === 0
                 ? "Retrying with more aggressive compaction..."
-                : `Retrying with keep ≤${reducedKeep} tokens...`,
+                : `Retrying with keep <=${reducedKeep} tokens...`,
               "",
               "If this persists:",
               "1. Switch to a larger-context model",

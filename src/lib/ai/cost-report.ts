@@ -64,7 +64,7 @@ export interface CriticCostReport {
     costUsd: number;
     /**
      * Estimated savings from cache hits. Computed as
-     * `cacheCount × averageLLMCallCost`, where the average is taken
+     * `cacheCount x averageLLMCallCost`, where the average is taken
      * over all non-cache LLM tiers in the report. This is an
      * approximation: a cache hit avoids whatever the average LLM
      * call would have cost, regardless of which specific critic

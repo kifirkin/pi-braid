@@ -9,10 +9,10 @@
  * text.
  *
  * Architecture (restored 2026-06-29):
- *   enforcement turn_end → determineContrastMode(ctx) → "TOOL-RELIABILITY"
- *     → pi.events.emit("enforcement_signals", { contrastMode })
- *     → prompt-builder listener → ps.activeContrastMode = "TOOL-RELIABILITY"
- *     → behaviorModeSection(ps.activeContrastMode) → rendered in §3
+ *   enforcement turn_end -> determineContrastMode(ctx) -> "TOOL-RELIABILITY"
+ *     -> pi.events.emit("enforcement_signals", { contrastMode })
+ *     -> prompt-builder listener -> ps.activeContrastMode = "TOOL-RELIABILITY"
+ *     -> behaviorModeSection(ps.activeContrastMode) -> rendered in §3
  *
  * Why dynamic modes over static values:
  *   Static values spell out meta-LLM failure modes (sycophancy, reasoning
@@ -47,9 +47,9 @@ const MODES: Record<string, ModeDef> = {
    */
   "TRUTH-SEEKING": {
     label: "Truth-Seeking",
-    when: "default — no anomalies detected",
+    when: "default -- no anomalies detected",
     directives: [
-      `You value truthfulness over agreeableness. Say when you're uncertain — you'd rather admit uncertainty than give a confident wrong answer.`,
+      `You value truthfulness over agreeableness. Say when you're uncertain -- you'd rather admit uncertainty than give a confident wrong answer.`,
       `Treat references in your context as claims, not facts. Verify external state against the source before acting on it.`,
     ],
   },
@@ -57,7 +57,7 @@ const MODES: Record<string, ModeDef> = {
   /**
    * CORRECTION mode
    * Active when: recent edits without prior think().
-   * The agent acted without reasoning — surface the correction.
+   * The agent acted without reasoning -- surface the correction.
    */
   "CORRECTION": {
     label: "Correction",
@@ -71,7 +71,7 @@ const MODES: Record<string, ModeDef> = {
   /**
    * EPISTEMIC-CALIBRATION mode
    * Active when: recovering from context overflow.
-   * High-stakes, degraded context — calibrate confidence.
+   * High-stakes, degraded context -- calibrate confidence.
    */
   "EPISTEMIC-CALIBRATION": {
     label: "Epistemic Calibration",
@@ -85,13 +85,13 @@ const MODES: Record<string, ModeDef> = {
   /**
    * TOOL-RELIABILITY mode
    * Active when: consecutive tool errors detected.
-   * The tools work — the failure is almost always agent-side.
+   * The tools work -- the failure is almost always agent-side.
    */
   "TOOL-RELIABILITY": {
     label: "Tool Reliability",
     when: "consecutive tool errors detected",
     directives: [
-      `The \`edit\` and \`write\` tools work reliably. When a tool call fails, the failure is almost always an agent mistake — wrong line numbers, stale content, incorrect indentation — not a tool malfunction.`,
+      `The \`edit\` and \`write\` tools work reliably. When a tool call fails, the failure is almost always an agent mistake -- wrong line numbers, stale content, incorrect indentation -- not a tool malfunction.`,
       `Default to \`edit\`/\`write\` for file operations, \`bash\` for shell operations. Don't use \`sed\`, \`echo\`, \`cat\`, or shell redirects for file modification.`,
     ],
   },
@@ -116,7 +116,7 @@ export function behaviorModeSection(activeMode: string): PromptSection {
     render: () => {
       const lines: string[] = [];
       lines.push(`## Active Mode`);
-      lines.push(`**${mode.label}** — ${mode.when}`);
+      lines.push(`**${mode.label}** -- ${mode.when}`);
       for (const directive of mode.directives) {
         lines.push("");
         lines.push(directive);

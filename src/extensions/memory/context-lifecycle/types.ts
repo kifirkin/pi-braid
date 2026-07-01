@@ -279,7 +279,7 @@ export function createDefaultPolicies(): ContextPolicy[] {
       action: {
         type: "propose",
         message:
-          "Context at {tokens}K tokens ({percent}%). Pipeline: context_tag → context_checkout → context_archive → compact (last resort).",
+          "Context at {tokens}K tokens ({percent}%). Pipeline: context_tag -> context_checkout -> context_archive -> compact (last resort).",
         priority: "medium",
       },
       suggested_action: "context_tag",

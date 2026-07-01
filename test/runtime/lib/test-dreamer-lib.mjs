@@ -22,7 +22,7 @@ describe("simulatePaths", () => {
   });
 
   it("returns predicted paths from historical sequences", () => {
-    // Use ≥ MIN_SAMPLE_FOR_PREDICTION transitions to satisfy the sample-size guard.
+    // Use >= MIN_SAMPLE_FOR_PREDICTION transitions to satisfy the sample-size guard.
     const history = Array.from({ length: 6 }, () => ["read", "edit", "read"]);
     const paths = simulatePaths(["read"], history);
     assert.ok(paths.length > 0, "should return predicted paths");
@@ -30,7 +30,7 @@ describe("simulatePaths", () => {
   });
 
   it("returns [] when sample is below MIN_SAMPLE_FOR_PREDICTION", () => {
-    // With only 3 observations of read→*, the predictor bails (insufficient
+    // With only 3 observations of read->*, the predictor bails (insufficient
     // data). This is the small-sample fix.
     const history = [
       ["read", "edit", "read"],
@@ -63,7 +63,7 @@ describe("simulatePaths", () => {
   });
 
   it("classifies high self-loop rate as stuck", () => {
-    // If "edit" always transitions to "edit" again → outcome should be "stuck"
+    // If "edit" always transitions to "edit" again -> outcome should be "stuck"
     const history = Array.from({ length: 10 }, () => ["edit", "edit"]);
     const paths = simulatePaths(["edit"], history);
     const stuck = paths.find((p) => p.outcome === "stuck");
@@ -71,7 +71,7 @@ describe("simulatePaths", () => {
   });
 
   it("classifies moderate self-loop rate as failure", () => {
-    // If "edit" transitions to "edit" ~40% of the time → outcome "failure"
+    // If "edit" transitions to "edit" ~40% of the time -> outcome "failure"
     const history = [
       ...Array.from({ length: 4 }, () => ["edit", "edit"]),
       ...Array.from({ length: 6 }, () => ["edit", "read"]),

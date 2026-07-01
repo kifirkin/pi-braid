@@ -5,7 +5,7 @@
  * AGENTS.md / CLAUDE.md file as a self-closing `<doc>` entry that carries
  * the discoverability pair (name + location).
  *
- * NO content is injected into the system prompt — the agent reads full
+ * NO content is injected into the system prompt -- the agent reads full
  * content on demand via the `read` tool, matching the skills convention
  * (descriptions live in the file, not in the pointer block).
  *
@@ -15,11 +15,11 @@
  *      reference events that haven't happened, or may contain forward
  *      references to anticipated patterns. Verbatim injection primes the
  *      agent to pattern-match against those references when parsing
- *      ambiguous external output (e.g., scraped DOM data — see the
+ *      ambiguous external output (e.g., scraped DOM data -- see the
  *      June 22 hacking-a0 phantom-reply incident).
  *
  *   2. The skills section has been using the pointer model since Braid
- *      started. It works — the agent reads full skill content on demand.
+ *      started. It works -- the agent reads full skill content on demand.
  *      Project docs follow the same proven pattern.
  *
  *   3. Token cost: a 33KB AGENTS.md injected on every turn is far more

@@ -6,10 +6,10 @@
  * HISTORY:
  *   The original NudgeType union had 16 members but only 2 had callers
  *   (validation, scratchpad). The other 14 were forward-looking
- *   scaffolding — configs without triggering logic, creating a false
+ *   scaffolding -- configs without triggering logic, creating a false
  *   impression of a wired-up system. A new contributor reading
  *   `nudge-manager.ts` would assume e.g. `dangerousCommand` or
- *   `malformed` was rate-limited by NudgeManager — it was not.
+ *   `malformed` was rate-limited by NudgeManager -- it was not.
  *
  *   This test pins the contract: every NudgeType has at least one
  *   caller. If you add a new NudgeType, you must wire it up in the
@@ -23,7 +23,7 @@
  *     is intentionally permissive (substring match on the type string)
  *     to allow both direct calls and template-built calls. If a type
  *     is constructed dynamically (e.g. `types[i]`), that pattern
- *     needs a manual override comment in the source — see
+ *     needs a manual override comment in the source -- see
  *     `MANUAL_OVERRIDES` below.
  *
  *   - Tests, dist/, and node_modules are excluded.
@@ -104,7 +104,7 @@ for (const file of srcFiles) {
       callersByType[type].push(`${file} (direct)`);
       continue;
     }
-    // Pattern (b): lookup table — the type appears as a key (quoted or
+    // Pattern (b): lookup table -- the type appears as a key (quoted or
     // bare identifier) in an object literal whose value starts with `{`.
     // Catches both `"memory": { type: "memory" }` and `memory: { type: "memory" }`.
     // The file association (must contain a shouldSendNudge call) proves intent.
@@ -140,7 +140,7 @@ check("NudgeType union is non-empty", () => {
 });
 
 check(`NudgeType union has ${nudgeTypes.length} members`, () => {
-  // Sanity check — catches accidental deletions.
+  // Sanity check -- catches accidental deletions.
   assert.ok(nudgeTypes.length >= 5, `expected >=5 NudgeType members, got ${nudgeTypes.length}`);
 });
 

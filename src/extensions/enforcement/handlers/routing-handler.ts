@@ -77,7 +77,7 @@ const INTENT_TOOLS: ToolMapping[] = [
   },
 ];
 
-// ── Topic → TaskIntent mapping ───────────────────────────────────────────────
+// ── Topic -> TaskIntent mapping ───────────────────────────────────────────────
 
 /** Map CRITICS.topicClassification labels to routing TaskIntents. */
 const TOPIC_TO_INTENT: Record<string, TaskIntent> = {

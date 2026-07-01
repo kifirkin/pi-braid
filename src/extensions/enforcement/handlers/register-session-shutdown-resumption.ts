@@ -8,7 +8,7 @@
  *   - Timestamp and session metadata
  *
  * This file is read by the SESSION_START discoverability handler on the
- * next session to provide a "resume here" signal — not auto-loading,
+ * next session to provide a "resume here" signal -- not auto-loading,
  * but discoverability so the agent knows prior work exists.
  *
  * File location: ~/.pi/agent/braid/sessions/<projectSlug>/resume.json
@@ -75,7 +75,7 @@ export function registerSessionShutdownResumption(pi: ExtensionAPI): void {
               content: l.content ?? l.text ?? "",
             }));
         } catch {
-          // scratchpad parse error — non-fatal
+          // scratchpad parse error -- non-fatal
         }
       }
 
@@ -93,7 +93,7 @@ export function registerSessionShutdownResumption(pi: ExtensionAPI): void {
           .filter((l) => l.trim())
           .map((l) => l.slice(3)); // strip status codes
       } catch {
-        // not a git repo or git not available — skip
+        // not a git repo or git not available -- skip
       }
 
       // Get session stats from enforcement state

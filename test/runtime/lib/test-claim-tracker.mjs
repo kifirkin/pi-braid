@@ -53,21 +53,21 @@ describe("Contradiction Detection (async, heuristic fallback)", () => {
   it("ignores same polarity (not a contradiction)", async () => {
     const claimA = makeClaim("api", "supports pagination", "positive", 1);
     const claimB = makeClaim("api", "is well designed", "positive", 5);
-    // Same polarity → early return false
+    // Same polarity -> early return false
     assert.ok(!(await claimsContradict(claimA, claimB, undefined)));
   });
 
   it("ignores different entities", async () => {
     const claimA = makeClaim("api", "supports pagination", "positive", 1);
     const claimB = makeClaim("database", "does not support pagination", "negative", 5);
-    // Different entity → early return false
+    // Different entity -> early return false
     assert.ok(!(await claimsContradict(claimA, claimB, undefined)));
   });
 
   it("requires sufficient token overlap", async () => {
     const claimA = makeClaim("api", "supports pagination", "positive", 1);
     const claimB = makeClaim("api", "does not work with python", "negative", 5);
-    // Low token overlap → different topic, not a contradiction
+    // Low token overlap -> different topic, not a contradiction
     assert.ok(!(await claimsContradict(claimA, claimB, undefined)));
   });
 

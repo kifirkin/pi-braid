@@ -63,8 +63,8 @@ describe("critic-cache (Q17)", () => {
       const a = getCacheKey("label", "sys1", "user");
       const b = getCacheKey("label", "sys2", "user");
       const c = getCacheKey("label", "sys1", "user2");
-      assert.notEqual(a, b, "different system prompts → different keys");
-      assert.notEqual(a, c, "different user prompts → different keys");
+      assert.notEqual(a, b, "different system prompts -> different keys");
+      assert.notEqual(a, c, "different user prompts -> different keys");
     });
 
     it("uses the NUL separator to avoid label/prompt collisions", () => {

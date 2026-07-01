@@ -100,7 +100,7 @@ export async function criticGate(
     };
   }
 
-  // Default: "yes" → proceed with normal depth
+  // Default: "yes" -> proceed with normal depth
   return {
     shouldProceed: true,
     suggestedDepth: "normal",

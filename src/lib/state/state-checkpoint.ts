@@ -266,14 +266,14 @@ export async function heartbeatCheckpointTick(
   };
 
   if (isDegradedFlag) {
-    // Degraded → auto-rollback
+    // Degraded -> auto-rollback
     const rb = await autoRollback(ctx, sessionId);
     if (rb.restored) {
       result.rollbackPerformed = true;
       result.message = rb.note;
     }
   } else {
-    // Clean → checkpoint
+    // Clean -> checkpoint
     const cp = await createCheckpoint(ctx, turnCount, sessionId);
     if (cp) {
       result.checkpointCreated = true;

@@ -5,7 +5,7 @@
  *   - Use getExtensionState(ctx, "key", factory) for per-session state.
  *   - Use global-state.ts getters for process-global state.
  *   - Module-level `let` is banned except for the 29 documented exceptions
- *     (organized in 7 categories A–F: re-entry guards, lazy-load guards,
+ *     (organized in 7 categories A-F: re-entry guards, lazy-load guards,
  *     test injectors, encapsulated global-state, logger config,
  *     session-state mirrors, mutable config). See src/lib/state/AGENTS.md
  *     encapsulated global-state, logger config, session-state mirrors,

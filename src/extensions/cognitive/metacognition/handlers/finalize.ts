@@ -2,7 +2,7 @@
 // Records task outcome, triggers R5 memory cascade, and signals loop termination.
 // Auto-proceed chains to next pending task from scratchpad.
 // Records calibration when confidence is provided.
-// R5: On task completion, cascade episodic → semantic memory.
+// R5: On task completion, cascade episodic -> semantic memory.
 // Pre-flight: checks if recent verify() passed, blocks finalization if unresolved issues remain.
 
 import { Type } from "typebox";
@@ -18,7 +18,7 @@ const log = createLogger("finalize");
 // ── R5: Record task completion to episodic memory ──────────────────────────────
 // Stores completed task as an episode so the agent can retrieve similar past
 // solutions via retrieveEpisodes(). Currently episodic-only; the full
-// cascade (episodic → semantic → procedural) is future work.
+// cascade (episodic -> semantic -> procedural) is future work.
 // retrieve similar past solutions on future tasks via retrieveEpisodes().
 async function recordToMemory(
   ctx: ExtensionContext | undefined,
@@ -60,7 +60,7 @@ async function recordToMemory(
     log.info(`R5: Recorded episode ${episode.id} (${outcome}) for: ${summary.slice(0, 60)}`);
 
     // R6: Feed successful outcomes into consolidation pipeline for hint generation.
-    // This closes the loop: finalize → episode → consolidation → prompt hints.
+    // This closes the loop: finalize -> episode -> consolidation -> prompt hints.
     if (completed) {
       try {
         const result = await executeConsolidation({

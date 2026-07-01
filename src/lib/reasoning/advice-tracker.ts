@@ -6,8 +6,8 @@
  * and adjusts thresholds to reduce noise over time.
  *
  * Feedback loop:
- *   1. Advice emitted → recorded with prediction + turn
- *   2. N turns later → check if prediction was correct
+ *   1. Advice emitted -> recorded with prediction + turn
+ *   2. N turns later -> check if prediction was correct
  *   3. Update accuracy metrics
  *   4. Adjust source thresholds if accuracy drops below 0.5
  */

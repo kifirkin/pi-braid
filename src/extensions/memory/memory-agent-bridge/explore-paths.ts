@@ -175,7 +175,7 @@ export function createExplorePathsTool() {
           if (found.length > 0) {
             for (const { candidate, foundPath } of found) {
               const relPath = foundPath.replace(PROJECT_ROOT + "/", "");
-              localResults.push(`✅ "${candidate}" → ${relPath}`);
+              localResults.push(`✅ "${candidate}" -> ${relPath}`);
               const preview = await readFileHead(foundPath);
               const previewLines = preview.split("\n").slice(0, 15);
               localResults.push("```");

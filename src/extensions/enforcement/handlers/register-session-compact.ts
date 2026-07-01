@@ -7,7 +7,7 @@
  *   synchronously from the session_compact handler. The scratchpad tool
  *   wrapper in pi-core fires `tool_call` / `tool_execution_end` synchronously,
  *   and the timer extension's `tool_execution_end` handler calls
- *   `fireExpired()` — which can synchronously invoke `pi.sendMessage` with
+ *   `fireExpired()` -- which can synchronously invoke `pi.sendMessage` with
  *   `triggerTurn: true` for any timer that expired at that exact moment.
  *   That synchronous chain can re-enter our handler (or other handlers) and
  *   overflow the V8 stack before the existing `MAX_REENTRY_DEPTH = 1` guard
@@ -42,8 +42,8 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
 
     // ── Re-entrancy guard ────────────────────────────────────────────────
     // Without this guard, a synchronous re-entry into the session_compact
-    // handler chain (e.g., from TOOL_EXECUTION_END → fireExpired → sendMessage
-    // → before_agent_start → session_compact) can overflow the stack before
+    // handler chain (e.g., from TOOL_EXECUTION_END -> fireExpired -> sendMessage
+    // -> before_agent_start -> session_compact) can overflow the stack before
     // MAX_REENTRY_DEPTH in injection-tracker.ts has a chance to defer. See
     // file-level comment for the full failure mode.
     //
@@ -130,7 +130,7 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
       // The scratchpad read + whisper delivery must NOT run synchronously
       // from the session_compact handler. Reasons:
       //
-      //   1. callScratchpadTool invokes ctx.tools.scratchpad — pi-core's
+      //   1. callScratchpadTool invokes ctx.tools.scratchpad -- pi-core's
       //      wrapper fires `tool_call` / `tool_execution_end` synchronously
       //      around the tool's execute. The timer extension's
       //      tool_execution_end handler calls `fireExpired()`, which can
@@ -145,7 +145,7 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
       // queueMicrotask defers the side-effects until the current synchronous
       // call stack has unwound. Microtasks run before the next macrotask,
       // so the whispers still arrive before the next turn / event loop
-      // iteration — the agent and user see them with no observable delay.
+      // iteration -- the agent and user see them with no observable delay.
       // The downside (a single microtask of latency) is acceptable: the
       // user already sees the [compaction] summary from LLM summarization
       // at this point, so a tick-later whisper is not noticeable.

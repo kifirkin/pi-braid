@@ -144,7 +144,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
       "Supports optional `keep` to preserve recent N messages. Auto-resumes after completion. " +
       "action=archive: compress a range of messages into a topic summary (like context_archive). " +
       "Range can be specified via startIndex/endIndex, startTag/endTag, range ('80%'), or keepRecentTurns (N). " +
-      "Action=deep_clean: tag + archive before tag + compact — one-shot context hygiene. " +
+      "Action=deep_clean: tag + archive before tag + compact -- one-shot context hygiene. " +
       "Original messages preserved in session file. " +
       "IMPORTANT: do NOT call this tool in the same parallel batch as other tools. " +
       "ctx.compact() aborts the current turn, which discards any pending tool " +
@@ -408,7 +408,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
             `  Estimated freed: ~${Math.round(estimatedFreed / 1024)}K tokens`,
           );
           feedbackLines.push(
-            `  Before: ${usageBefore.percent.toFixed(1)}% → estimated after: ${estimatedAfterPct.toFixed(1)}%`,
+            `  Before: ${usageBefore.percent.toFixed(1)}% -> estimated after: ${estimatedAfterPct.toFixed(1)}%`,
           );
         }
 
@@ -503,7 +503,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
                   `**Deep clean triggered.**`,
                   `  1. Tagged '${tagName}' at current position`,
                   `  2. Archived ${count} messages before tag`,
-                  `  3. Compaction triggered — agent will resume after compression${usageLine}`,
+                  `  3. Compaction triggered -- agent will resume after compression${usageLine}`,
                   "",
                   `Topic: ${topic}`,
                 ].join("\n"),

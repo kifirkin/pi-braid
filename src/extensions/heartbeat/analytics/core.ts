@@ -59,7 +59,7 @@ export function getToolSequences(s: AnalyticsState, minLength = 2, minSupport = 
   const sequences = new Map<string, { count: number; successCount: number }>();
 
   for (let i = 0; i < s.toolCallSequence.length - minLength + 1; i++) {
-    const pattern = s.toolCallSequence.slice(i, i + minLength).join(" → ");
+    const pattern = s.toolCallSequence.slice(i, i + minLength).join(" -> ");
     const existing = sequences.get(pattern) || { count: 0, successCount: 0 };
     existing.count++;
     existing.successCount += s.toolMetrics.has(s.toolCallSequence[i]) ? 0.9 : 0.5;

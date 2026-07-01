@@ -44,7 +44,7 @@ import { instanceSection } from "./instance-composition.js";
  * - Tools: pi.getAllTools() (with promptSnippet)
  * - Skills: skillsSection() re-formats skills from
  *   event.systemPromptOptions.skills (the fully resolved list pi built via its
- *   package manager — includes user, project, AND package skills). This is the
+ *   package manager -- includes user, project, AND package skills). This is the
  *   canonical pattern from pi's own docs: extensions should not re-discover
  *   skills; they should reformat what pi already loaded.
  * - Project docs: projectDocsSection() re-formats AGENTS.md / CLAUDE.md files
@@ -201,7 +201,7 @@ async function projectContextSection(cwd: string, ctx: ExtensionContext): Promis
 export default function promptBuilderExtension(pi: ExtensionAPI) {
   // L1 state is now gathered per-request, not global
 
-  // Listen for enforcement_signals events — enforcement emits these on
+  // Listen for enforcement_signals events -- enforcement emits these on
   // every turn_end and session_compact with the current behavior mode.
   // The prompt-builder stores the mode and renders it in the next prompt.
   // Uses registerSessionStartHandler so the listener has access to the
@@ -243,7 +243,7 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     const contextData = await gatherContextState(pi, ctx);
     const context = contextSection(contextData);
 
-    // 5. Supplemental context (past insights, hints, OpenSpec specs) →
+    // 5. Supplemental context (past insights, hints, OpenSpec specs) ->
     // offloaded to steer whispers (once per session). Avoids per-turn disk
     // I/O and system prompt bloat for context the agent can re-load via
     // `read` if needed.
@@ -286,7 +286,7 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       //     Pairs with the dynamic behavior-mode section below.
       simpleSection("value-concise-responses", CONCISE_RESPONSES),
 
-      // 1a-behavior. Dynamic behavior mode — surfaces the right directive
+      // 1a-behavior. Dynamic behavior mode -- surfaces the right directive
       //     based on enforcement state (TRUTH-SEEKING by default, shifts to
       //     CORRECTION / EPISTEMIC-CALIBRATION / TOOL-RELIABILITY when the
       //     enforcement system detects the corresponding pattern).
@@ -322,7 +322,7 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
 
     // 3. Skills (only when the read tool is available)
     if (hasRead) {
-      // Use skills resolved by pi's full resource loader — this includes
+      // Use skills resolved by pi's full resource loader -- this includes
       // package skills (e.g. pi-braid-skills), user/project skill dirs,
       // .agents/skills, and CLI --skill paths. We only re-format with
       // description+location metadata from the loaded Skill objects; we do

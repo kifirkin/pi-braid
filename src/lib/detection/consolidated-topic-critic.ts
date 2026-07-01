@@ -1,16 +1,16 @@
 /**
- * Consolidated Topic Critic — single LLM call for all 3 topic-drift checks.
+ * Consolidated Topic Critic -- single LLM call for all 3 topic-drift checks.
  *
  * Replaces 3 parallel classify() calls (topicCoverage, topicDivergence,
  * topicCompleteness) with one structured-output LLM call that returns all
  * three verdicts as JSON. Falls back to conservative heuristic fallbacks
- * (topicDriftFallback → "no" for all dimensions) on failure.
+ * (topicDriftFallback -> "no" for all dimensions) on failure.
  *
  * Benefits:
- *   - 3× fewer LLM calls → ~66% latency reduction at turn_end
+ *   - 3x fewer LLM calls -> ~66% latency reduction at turn_end
  *   - Single system prompt shared across all three dimensions
  *   - Model can cross-reference dimensions (e.g., divergence vs coverage)
- *   - Same return interface — drop-in replacement for both call sites
+ *   - Same return interface -- drop-in replacement for both call sites
  *     (lib/detection/topic-drift-detector.ts and the extension handler)
  */
 
@@ -63,7 +63,7 @@ export interface ConsolidatedTopicResult {
 // ── Main Function ────────────────────────────────────────────────────────────
 
 /**
- * Consolidated topic critique — single LLM call for all 3 drift dimensions.
+ * Consolidated topic critique -- single LLM call for all 3 drift dimensions.
  *
  * Fallback strategy (graceful degradation):
  *   1. Try utility model with consolidated JSON prompt
@@ -86,7 +86,7 @@ export async function consolidatedTopicCritique(
     const latency = Date.now() - start;
     log.debug(`[consolidated-topic] OK ${latency}ms: ${JSON.stringify(verdict)}`);
     return {
-      // coverage="no" → bad (does NOT address request), so invert coversTopic
+      // coverage="no" -> bad (does NOT address request), so invert coversTopic
       coverage: verdict.coversTopic,
       divergence: verdict.hasDiverged,
       completeness: verdict.isComplete,

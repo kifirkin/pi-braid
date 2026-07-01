@@ -345,7 +345,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
               }
               if (snippets.length === 0) continue;
               results.push(
-                `**${date}** · \`${project}\` · ${count} match${count > 1 ? "es" : ""}\n` +
+                `**${date}** - \`${project}\` - ${count} match${count > 1 ? "es" : ""}\n` +
                   `Session: \`${filePath}\`\n` +
                   snippets.join("\n"),
               );

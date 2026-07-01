@@ -22,7 +22,7 @@ Every file in this folder either:
 | `index.ts` | Main handler. Wires `before_agent_start`, calls the 3 `deliver*` functions, composes the final prompt. |
 | `section.ts` | The `PromptSection` primitive + `composeSections` joiner + `simpleSection`, `linesSection`, `headingSection` builders. |
 | `identity.ts` | Framing constants: `IDENTITY_INTRO` (generalist identity), `INTERACTION_STYLE` (output *structure*), `CONCISE_RESPONSES` (output *when*), `COMPACTION_SURVIVAL`, `DEFINITION_OF_DONE` (SPQ-1: verification triple before finalize), `LIVING_DOCS`, `MEMORY_AWARENESS`. |
-| `behavior-modes.ts` | **Restored 2026-06-29** Dynamic behavior modes: 4 modes (TRUTH-SEEKING, CORRECTION, EPISTEMIC-CALIBRATION, TOOL-RELIABILITY) × 1-2 directives each. Wired to enforcement signals via `determineContrastMode()`. Replaces the deleted `behavioral-guardrails.ts` (8 static values) and `contrast-phrase-library.ts` (6 phrases + 4 mode defs). Lean successor: right directive at the right time instead of all directives always. |
+| `behavior-modes.ts` | **Restored 2026-06-29** Dynamic behavior modes: 4 modes (TRUTH-SEEKING, CORRECTION, EPISTEMIC-CALIBRATION, TOOL-RELIABILITY) x 1-2 directives each. Wired to enforcement signals via `determineContrastMode()`. Replaces the deleted `behavioral-guardrails.ts` (8 static values) and `contrast-phrase-library.ts` (6 phrases + 4 mode defs). Lean successor: right directive at the right time instead of all directives always. |
 | `instance-composition.ts` | **v3.8** Instance (consolidated): agent identity + pi-core version + root (pi-core npm package folder) + cwd + userland settings dir + os/hostname/now/pid + session (id + elapsed/last-event/turns/tool-avg) + top-level pi extension packages (settings-driven, scope-tagged `project` or `user-global`). |
 | `top-level-extensions.ts` | **v3.8** Discovery logic for top-level pi extension PACKAGES. Reads pi-core's `packages` field from `<cwd>/.pi/settings.json` (project) and `~/.pi/agent/settings.json` (user-global); project wins on collision. Resolves `npm:` specs via `npm root -g`; resolves local paths in place. Source tags: `project` / `user-global`. |
 | `context-section.ts` | **v3.6** Context (conditional): context %, session health, memory count, steps-since-checkpoint. Returns `""` when nothing to surface. |
@@ -33,7 +33,7 @@ Every file in this folder either:
 
 ### Identity vs behaviors (architectural split)
 
-This folder holds the **shared identity layer** — IDENTITY framings, not project-specific behaviors. The split:
+This folder holds the **shared identity layer** -- IDENTITY framings, not project-specific behaviors. The split:
 
 - **Identity framings (live here):** Generalist statements about WHO the agent is and HOW it expresses output. Apply across all projects. Examples: `IDENTITY_INTRO`, `INTERACTION_STYLE`, `CONCISE_RESPONSES`.
 - **Behaviors (live in each project's AGENTS.md):** Concrete rules specific to that repo. Examples: "no `console.*` outside `lib/core/logger`", "use `sendTrackedMessage` for agent-bound messages", "use `getExtensionState(ctx, key, factory)` for per-session state". These would be project-specific baggage in the shared prompt and would drift the agent's identity toward whichever project is currently active.
@@ -105,7 +105,7 @@ const newPrompt = await composeSections(sections, "\n\n", dedupSet);
 
 Identity constants live in `identity.ts` and are wired into `index.ts` via `simpleSection`. The pre-flight check before adding one:
 
-1. Is this an **identity** framing (who the agent is / how it expresses) or a **behavior** (concrete rule for this project)? If behavior → goes in project AGENTS.md, not here.
+1. Is this an **identity** framing (who the agent is / how it expresses) or a **behavior** (concrete rule for this project)? If behavior -> goes in project AGENTS.md, not here.
 2. Is it **generalist** (applies across domains) or domain-narrow? Narrow framings drift the identity.
 3. Can it be expressed as one declarative sentence? If not, it's probably two framings compressed.
 4. Does it duplicate an existing framing? If yes, sharpen the existing one instead.
@@ -113,7 +113,7 @@ Identity constants live in `identity.ts` and are wired into `index.ts` via `simp
 
 If all five pass, add a new constant to `identity.ts`, wire it via `simpleSection("value-<name>", CONST)`, and add a source-level test in `test/runtime/lib/test-prompt-builder-directive.mjs`.
 
-**Note (2026-06-29):** the previous value-statement layer (`behavioral-guardrails.ts`, 8 constants) was deleted and replaced with a dynamic behavior-mode system (`behavior-modes.ts`, 4 modes × 1-2 directives). New identity framings should follow the lean precedent — one constant, one sentence, generalist — not the 8-value research-citation style the deleted file used. For dynamic directives that should change based on enforcement state, add a mode to `behavior-modes.ts` instead.
+**Note (2026-06-29):** the previous value-statement layer (`behavioral-guardrails.ts`, 8 constants) was deleted and replaced with a dynamic behavior-mode system (`behavior-modes.ts`, 4 modes x 1-2 directives). New identity framings should follow the lean precedent -- one constant, one sentence, generalist -- not the 8-value research-citation style the deleted file used. For dynamic directives that should change based on enforcement state, add a mode to `behavior-modes.ts` instead.
 
 ### Adding a new whisper
 

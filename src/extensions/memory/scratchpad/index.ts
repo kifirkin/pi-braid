@@ -197,7 +197,7 @@ export function formatScratchpad(
 }
 
 /**
- * Resumption digest for "continue" — the focused summary a fresh session
+ * Resumption digest for "continue" -- the focused summary a fresh session
  * needs to pick up work without reading the entire scratchpad.
  *
  * Shows:

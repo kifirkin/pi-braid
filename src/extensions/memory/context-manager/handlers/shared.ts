@@ -134,7 +134,7 @@ export const COMPACTION_RETRY_CUSTOM_TYPE = "__compaction_retry_trigger";
 // FIX (2026-06-23): resolveTarget previously returned the raw input string
 // when no match was found. This let `context_navigate` checkout pass a
 // non-existent target to sm.branchWithSummary(), which fails upstream with
-// "Entry not found" — and the tool then called ctx.abort(), killing the
+// "Entry not found" -- and the tool then called ctx.abort(), killing the
 // turn with a half-checked-out session. The 402 in the log followed from
 // the broken session state (the agent's next LLM call hit a provider
 // that was either out of balance or rejecting the corrupt session).

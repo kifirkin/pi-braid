@@ -91,7 +91,7 @@ export function scratchpadClean(pad: TaskScratchpad): RecycleStats {
 
 /**
  * Append an item to an array, evicting the oldest items if the array
- * exceeds the cap. Eviction is silent (no return value) — observable
+ * exceeds the cap. Eviction is silent (no return value) -- observable
  * pruning stats are computed by `scratchpadClean()` for the
  * `note_compact` action. Callers can use `scratchpadClean()` after a
  * batch of writes if they need an eviction count.

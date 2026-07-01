@@ -6,7 +6,7 @@
  *
  * Pattern: per-process module-level state. The provenance is built
  * once at session-start by the loader (loader.ts) and is read-only
- * after that. Cross-session state is fine here — tool registration
+ * after that. Cross-session state is fine here -- tool registration
  * is determined by config, not by per-session data.
  *
  * Invariant: every entry has both a tool name and an extension id.
@@ -17,7 +17,7 @@
 
 const _provenance = new Map<string, string>();
 
-/** Get the shared tool provenance map (tool name → extension id). */
+/** Get the shared tool provenance map (tool name -> extension id). */
 export function getToolProvenance(): Map<string, string> {
   return _provenance;
 }

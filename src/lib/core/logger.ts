@@ -2,9 +2,9 @@
  * Logger - Unified logging for pi-braid extensions
  *
  * Respects the pi Extension API:
- * - No ctx bound (load time, lib code) → in-memory buffer only by default
+ * - No ctx bound (load time, lib code) -> in-memory buffer only by default
  *   (console writes are suppressed to protect TUI rendering)
- * - ctx bound via setLoggerContext() → log lines route to ctx.ui.notify
+ * - ctx bound via setLoggerContext() -> log lines route to ctx.ui.notify
  *   so the user sees them as TUI notifications, not stdout pollution
  * - The in-memory buffer is ALWAYS populated regardless of ctx binding
  *   (retrieve via /logs slash command or formatLogBuffer())
@@ -15,10 +15,10 @@
  *   log.info("Progress update");
  *
  * Routing logic when ctx is bound:
- *   log.error  → ctx.ui.notify(msg, "error")
- *   log.warn   → ctx.ui.notify(msg, "warning")
- *   log.info   → ctx.ui.notify(msg, "info")
- *   log.debug  → ctx.ui.notify(msg, "info")  // debug is informational when visible
+ *   log.error  -> ctx.ui.notify(msg, "error")
+ *   log.warn   -> ctx.ui.notify(msg, "warning")
+ *   log.info   -> ctx.ui.notify(msg, "info")
+ *   log.debug  -> ctx.ui.notify(msg, "info")  // debug is informational when visible
  *
  * The /logs slash command and the in-memory buffer remain available
  * even when ctx is bound, for debugging sessions.

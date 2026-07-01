@@ -2,8 +2,8 @@
  * Enforcement types - shared interfaces and constants.
  *
  * This file exists to break the circular dependency between
- * state.ts ↔ session-state.ts (via ENFORCEMENT_PARAMS) and
- * state.ts ↔ verification-judge-state.ts (via EnforcementState).
+ * state.ts <-> session-state.ts (via ENFORCEMENT_PARAMS) and
+ * state.ts <-> verification-judge-state.ts (via EnforcementState).
  *
  * Both sub-state files can import from here without creating cycles.
  *

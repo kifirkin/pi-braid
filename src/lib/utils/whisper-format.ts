@@ -2,7 +2,7 @@
  * Whisper Envelope - Universal prefix for system-injected messages.
  *
  * Every message sent via `sendTrackedMessage` is wrapped with a
- * `[braid-whisper · <subsystem>]` envelope so the agent can reliably
+ * `[braid-whisper - <subsystem>]` envelope so the agent can reliably
  * distinguish system-injected signals from human user input.
  *
  * Why this exists (see docs/ENFORCEMENT-WHISPER-CONTENT-AUDIT.md §6.12):
@@ -33,11 +33,11 @@
  *
  *   Filters that matched the bare subsystem name (e.g. `grep enforcement`
  *   or `grep memory`) still work - "enforcement" is a substring of
- *   "[braid-whisper · enforcement]".
+ *   "[braid-whisper - enforcement]".
  *
  *   Filters that matched the old bracket-wrapped prefix
  *   (e.g. `grep '\[enforcement\]'`) need to be updated to the new
- *   canonical form: `grep '\[braid-whisper · enforcement\]'` or the
+ *   canonical form: `grep '\[braid-whisper - enforcement\]'` or the
  *   bare substring `grep enforcement`.
  *
  *   Body-level sub-tags (the audit's proposed `[<subsystem>-<event>]`
@@ -47,14 +47,14 @@
 
 /**
  * Format the universal envelope line for a given source.
- * Returns "[braid-whisper · <subsystem>]" with no trailing whitespace.
+ * Returns "[braid-whisper - <subsystem>]" with no trailing whitespace.
  *
  * The subsystem is the first segment of the source path. If the source
  * is empty or has no "/", the literal "system" is used as the fallback.
  */
 export function formatWhisperEnvelope(source: string): string {
   const subsystem = source.split("/")[0] || "system";
-  return `[braid-whisper · ${subsystem}]`;
+  return `[braid-whisper - ${subsystem}]`;
 }
 
 /**
@@ -68,7 +68,7 @@ export function formatWhisperEnvelope(source: string): string {
  * Example:
  *   Input:  [{ type: "text", text: "Error burst detected" }]
  *   Source: "enforcement/whisper"
- *   After:  [{ type: "text", text: "[braid-whisper · enforcement] Error burst detected" }]
+ *   After:  [{ type: "text", text: "[braid-whisper - enforcement] Error burst detected" }]
  */
 export function applyWhisperEnvelope(
   content: { type: string; text?: string }[],

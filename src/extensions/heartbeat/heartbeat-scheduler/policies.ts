@@ -143,7 +143,7 @@ export function createDefaultPolicies(
           _firedThresholds.clear();
         }
 
-        // Threshold ladder: soft → advisory → warning → critical
+        // Threshold ladder: soft -> advisory -> warning -> critical
         // Each threshold fires ONCE until usage resets below USAGE_FIRED_RESET_BELOW
         // Pipeline taught fully at critical level; lighter hints below that.
         const thresholds: Array<{ pct: number; priority: "low" | "medium" | "high"; msg: string }> =
@@ -166,7 +166,7 @@ export function createDefaultPolicies(
             {
               pct: USAGE_WHISPER_CRITICAL,
               priority: "high",
-              msg: `CRITICAL: Context at ${USAGE_WHISPER_CRITICAL}%. Pipeline: context_tag → context_checkout → context_archive → compact (last resort).`,
+              msg: `CRITICAL: Context at ${USAGE_WHISPER_CRITICAL}%. Pipeline: context_tag -> context_checkout -> context_archive -> compact (last resort).`,
             },
           ];
 

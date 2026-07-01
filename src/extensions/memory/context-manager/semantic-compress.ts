@@ -271,7 +271,7 @@ export function semanticCompress(
         processed = [processed[processed.length - 1]];
       }
     } else if (unit.type === "reasoning" && unit.messages.length > reasoningCollapseLen) {
-      // Reasoning unit: keep first + last (problem → solution)
+      // Reasoning unit: keep first + last (problem -> solution)
       // For long-term: also trim if the first+last alone are long
       const kept = [unit.messages[0], unit.messages[unit.messages.length - 1]];
       if (compressionLevel === "long-term" && kept.length > 1) {
@@ -305,7 +305,7 @@ export function semanticCompress(
 
   log.debug(
     `semantic-compress[${compressionLevel ?? "standard"}]: ` +
-      `${messages.length} msgs → ${compressed.length} msgs ` +
+      `${messages.length} msgs -> ${compressed.length} msgs ` +
       `(${unitsPreserved} preserved, ${unitsCollapsed} collapsed, ${unitsDropped} dropped)`,
   );
 

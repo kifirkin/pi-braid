@@ -1,8 +1,8 @@
 /**
  * Test: Self-Evolution Loop - trajectory enrichment, hint persistence, prompt injection
  *
- * Tests the closed loop: tool_result → trajectory → SOP extraction → consolidation
- * → hint writing → hint pruning → prompt loading.
+ * Tests the closed loop: tool_result -> trajectory -> SOP extraction -> consolidation
+ * -> hint writing -> hint pruning -> prompt loading.
  */
 
 import assert from "node:assert/strict";

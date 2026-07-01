@@ -239,10 +239,10 @@ function migrateScratchpad(data: Record<string, unknown>): TaskScratchpad {
 /**
  * Append a state checkpoint to the events.jsonl log.
  * Each line is a JSON object: { ts, state }
- * Concurrent sessions both append — no overwrites.
+ * Concurrent sessions both append -- no overwrites.
  *
  * Uses fs.appendFile for atomic append. No read-modify-write race
- * because we never read the file before writing — we just append.
+ * because we never read the file before writing -- we just append.
  * The file mutation queue is bypassed intentionally: append-only
  * logs can't race with themselves (POSIX pwrite is atomic for
  * writes under PIPE_BUF, and our JSONL lines are <4KB).
@@ -292,7 +292,7 @@ export async function loadScratchpadFromDisk(projectSlug: string): Promise<TaskS
       const data = event.state as unknown as Record<string, unknown>;
       return migrateScratchpad(data);
     }
-    // events file exists but is empty — treat as no data
+    // events file exists but is empty -- treat as no data
     return null;
   } catch (err) {
     const code = (err as NodeJS.ErrnoException)?.code;
@@ -328,12 +328,12 @@ export async function loadScratchpadFromDisk(projectSlug: string): Promise<TaskS
         return migrated;
       } catch (legacyErr) {
         const legacyCode = (legacyErr as NodeJS.ErrnoException)?.code;
-        if (legacyCode === "ENOENT") return null; // No data at all — first session
+        if (legacyCode === "ENOENT") return null; // No data at all -- first session
         throw legacyErr;
       }
     }
 
-    // Non-ENOENT error — re-throw for the caller to handle
+    // Non-ENOENT error -- re-throw for the caller to handle
     throw err;
   }
 }

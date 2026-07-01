@@ -5,7 +5,7 @@
  * Uses consolidated single-LLM-call critique as primary path,
  * falling back to three parallel classifyWithOffline() calls.
  *
- * Three-tier fallback: heuristic → utility model → session model.
+ * Three-tier fallback: heuristic -> utility model -> session model.
  * Heuristic fallback (conservative: no drift) when no LLM available.
  *
  * Replaces the previous implementation that used stop-word filtering
@@ -60,7 +60,7 @@ const DRIFT_THRESHOLD = 0.5;
  * Primary path: single callLlm() returning coverage/divergence/completeness.
  * Fallback: three parallel classifyWithOffline() calls.
  *
- * Consensus: 2/3 negative signals → drift confirmed.
+ * Consensus: 2/3 negative signals -> drift confirmed.
  *
  * @param ctx - Extension context (for classify() LLM calls)
  * @param original - The original user request
@@ -100,7 +100,7 @@ async function detectDriftWithCritics(
     const consolidated = await consolidatedTopicCritique(truncOriginal, truncOutput, ctx);
 
     if (!consolidated.classifierDown) {
-      // Consolidated succeeded — use its verdicts directly
+      // Consolidated succeeded -- use its verdicts directly
       const coverageBad = !consolidated.coverage;
       const diverged = consolidated.divergence;
       const incomplete = !consolidated.completeness;
@@ -120,7 +120,7 @@ async function detectDriftWithCritics(
       log.debug(
         `[topic-drift] Consolidated: coverage=${consolidated.coverage}, ` +
           `divergence=${consolidated.divergence}, completeness=${consolidated.completeness} ` +
-          `→ drifted=${drifted}`,
+          `-> drifted=${drifted}`,
       );
 
       return { drifted, similarity, missingAnchors, classifierDown: false };
@@ -133,7 +133,7 @@ async function detectDriftWithCritics(
   try {
     log.debug("[topic-drift] Consolidated call failed, falling back to 3-parallel");
     // EW-7.4: classifyWithOffline() captures the offline state per
-    // classifier. "all 3 down" → classifierDown = true (same logic as
+    // classifier. "all 3 down" -> classifierDown = true (same logic as
     // before, but the offline check is now on the helper's return value
     // instead of the raw tier field).
     const [coverageResult, divergenceResult, completenessResult] = await Promise.allSettled([
@@ -176,9 +176,9 @@ async function detectDriftWithCritics(
     );
 
     // Interpret critics:
-    //   coverage="no"  → response does NOT address the request (bad)
-    //   divergence="yes" → response shifted to different topic (bad)
-    //   completeness="no" → response misses key topics (bad)
+    //   coverage="no"  -> response does NOT address the request (bad)
+    //   divergence="yes" -> response shifted to different topic (bad)
+    //   completeness="no" -> response misses key topics (bad)
     const coverageBad = coverageValue?.value === "no";
     const diverged = divergenceValue?.value === "yes";
     const incomplete = completenessValue?.value === "no";
@@ -205,7 +205,7 @@ async function detectDriftWithCritics(
       `[topic-drift] Critics: coverage=${coverageValue?.value}/${coverageValue?.tier}, ` +
         `divergence=${divergenceValue?.value}/${divergenceValue?.tier}, ` +
         `completeness=${completenessValue?.value}/${completenessValue?.tier} ` +
-        `→ drifted=${drifted} classifierDown=${classifierDown}`,
+        `-> drifted=${drifted} classifierDown=${classifierDown}`,
     );
 
     return { drifted, similarity, missingAnchors, classifierDown };

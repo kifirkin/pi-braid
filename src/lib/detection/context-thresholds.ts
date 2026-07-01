@@ -46,7 +46,7 @@ export const USAGE_TOKENS_SOFT = 30_000;
 /** Advisory: tag position, consider archiving completed work. */
 export const USAGE_TOKENS_ADVISORY = 50_000;
 
-/** Warning: context growing - suggest tag → checkout → archive pipeline. */
+/** Warning: context growing - suggest tag -> checkout -> archive pipeline. */
 export const USAGE_TOKENS_WARNING = 75_000;
 
 /** Above this, percentage thresholds take over naturally. */
@@ -56,16 +56,16 @@ export const USAGE_TOKENS_CRITICAL = 100_000;
 // DENSITY THRESHOLDS (signal/noise ratio, 0-1)
 // ═════════════════════════════════════════════════════════════════════════════
 
-/** Below this → "low density" signal emitted → suggest pruning. */
+/** Below this -> "low density" signal emitted -> suggest pruning. */
 export const DENSITY_LOW = 0.4;
 
-/** Below this → high-priority density whisper. */
+/** Below this -> high-priority density whisper. */
 export const DENSITY_VERY_LOW = 0.25;
 
-/** Above this (when token ratio also high) → "high density" signal. */
+/** Above this (when token ratio also high) -> "high density" signal. */
 export const DENSITY_HIGH = 0.7;
 
-/** Token ratio above this → large-context whisper fires alongside density checks. */
+/** Token ratio above this -> large-context whisper fires alongside density checks. */
 export const TOKEN_RATIO_LARGE_CONTEXT = 0.6;
 
 /** Analytics: emit context_full event when density exceeds this (NOT usage). */

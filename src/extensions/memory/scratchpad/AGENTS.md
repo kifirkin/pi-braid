@@ -124,7 +124,7 @@ All four fields are optional. Useful for "show me recent plan items" or
 
 The scratchpad uses an append-only JSONL log (`events.jsonl`) to eliminate
 concurrent-write races. Multiple agent sessions can append state checkpoints
-simultaneously — no overwrites, no data loss. Each line is a full-state
+simultaneously -- no overwrites, no data loss. Each line is a full-state
 snapshot; the last line is the effective state on load.
 
 This is the preferred pattern for any future feature that needs to share
@@ -133,7 +133,7 @@ read-modify-write race inherent in single-file overwrite strategies.
 
 The legacy `latest.json` (single overwritten file) was replaced in commit
 `0fa63d66`. If `events.jsonl` doesn't exist but `latest.json` does, it is
-automatically migrated on the first load — the legacy file becomes the
+automatically migrated on the first load -- the legacy file becomes the
 first checkpoint in the append-only log.
 
 ## Migration

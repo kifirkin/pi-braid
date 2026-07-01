@@ -15,14 +15,14 @@
  *     store. No path because heuristics don't persist.
  *
  * What is NOT in the block (mirrors skills):
- *   - Per-episode task snippets — the data quality is dominated by the
+ *   - Per-episode task snippets -- the data quality is dominated by the
  *     `session_outcome` placeholder sentinel and never tells the agent
  *     anything actionable. Details live in the file; the agent reads it
  *     on demand or invokes `memory` action=episodes_search.
- *   - Aggregate outcome stats (success/failure/partial counts) — vanity
+ *   - Aggregate outcome stats (success/failure/partial counts) -- vanity
  *     metrics. If the agent cares, it queries; if it doesn't, the line
  *     is just decoration.
- *   - Per-type breakdown of semantic memories — same reason.
+ *   - Per-type breakdown of semantic memories -- same reason.
  *
  * Empty state: still renders the directive + 3 self-closing `<store>`
  * entries (counts will be 0). Tells the agent the stores exist as
@@ -79,7 +79,7 @@ interface MemorySectionCacheState {
   section?: string;
 }
 
-// ── File readers (counts only — no content surfaced to the prompt) ─────────
+// ── File readers (counts only -- no content surfaced to the prompt) ─────────
 
 /** Count total episodes by streaming the JSONL. Best-effort. */
 async function countEpisodes(filePath: string): Promise<number> {

@@ -66,7 +66,7 @@ export interface NudgeConfig {
 //     `consecutiveErrorTurns` (error burst detection) directly.
 //   - `judge`: the verification judge uses its own state
 //     (`verificationJudgeRunning`, `lastJudgeTime`,
-//     `lastVerificationJudgeTurn` on VerificationJudgeState) — no
+//     `lastVerificationJudgeTurn` on VerificationJudgeState) -- no
 //     caller in NudgeManager path.
 //   - `contextTool`: no caller. The agent's context-tool usage is
 //     observed via `lastContextCheckTurn` (not as a nudge).
@@ -251,7 +251,7 @@ export class NudgeManager {
   // EW-7.9: history is keyed by composite `${type}:${subKey ?? ""}` so
   // a single NudgeType can have independent cooldown + dedup slots per
   // sub-signal. When subKey is omitted, the key reduces to just the
-  // type — preserving the original single-slot-per-type behavior.
+  // type -- preserving the original single-slot-per-type behavior.
   private history: Map<string, NudgeHistory> = new Map();
   private readonly config: Record<NudgeType, NudgeConfig>;
 
@@ -271,7 +271,7 @@ export class NudgeManager {
    * Decide whether to send a nudge.
    *
    * @param type   Nudge category (cooldown + dedup config bucket).
-   * @param message  The full message text — used for hash dedup.
+   * @param message  The full message text -- used for hash dedup.
    * @param subKey  Optional. When set, isolates this call's history
    *                from other sub-signals of the same type. Without
    *                subKey, the call shares history with all other

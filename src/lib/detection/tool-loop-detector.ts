@@ -200,7 +200,7 @@ export function detectToolLoop(state: ToolLoopState): ToolLoopResult {
 // event handler) that record calls incrementally. This helper is for
 // callers (the dreamer) that have a complete sequence at hand and
 // don't need cross-turn state. Same threshold, same window, same
-// message — just no cooldown or history trim.
+// message -- just no cooldown or history trim.
 
 export interface StatelessLoopResult {
   isLoop: boolean;

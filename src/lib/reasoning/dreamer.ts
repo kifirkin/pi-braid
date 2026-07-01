@@ -102,7 +102,7 @@ export function simulatePaths(
       if (nextTotal < MIN_SAMPLE_FOR_PREDICTION) {
         outcome = "success";
       } else {
-        // If next step leads to high-frequency same-tool transitions → stuck
+        // If next step leads to high-frequency same-tool transitions -> stuck
         const selfLoopRate = (nextNext.get(nextTool) ?? 0) / nextTotal;
         if (selfLoopRate > 0.5) {
           outcome = "stuck";
@@ -191,7 +191,7 @@ export function dream(
     const pct = (worst.probability * 100).toFixed(0);
     const conf = confidenceLabel(worst.probability);
     return {
-      message: `[dream] Likely to get stuck in ${worst.sequence.slice(-2).join("→")} loop (prob: ${pct}%, confidence: ${conf}). Consider: verify approach or ask for clarification.`,
+      message: `[dream] Likely to get stuck in ${worst.sequence.slice(-2).join("->")} loop (prob: ${pct}%, confidence: ${conf}). Consider: verify approach or ask for clarification.`,
       priority: 7,
       action: "Call think(type='reflection') to verify approach.",
       confidence: worst.probability,
@@ -205,7 +205,7 @@ export function dream(
     const pct = (worst.probability * 100).toFixed(0);
     const conf = confidenceLabel(worst.probability);
     return {
-      message: `[dream] Historical pattern suggests failure path: ${worst.sequence.slice(-2).join("→")} (prob: ${pct}%, confidence: ${conf}). Consider: run tests before more edits.`,
+      message: `[dream] Historical pattern suggests failure path: ${worst.sequence.slice(-2).join("->")} (prob: ${pct}%, confidence: ${conf}). Consider: run tests before more edits.`,
       priority: 6,
       action: "Run verification before proceeding.",
       confidence: worst.probability,

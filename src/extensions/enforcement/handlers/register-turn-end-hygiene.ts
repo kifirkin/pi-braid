@@ -2,7 +2,7 @@
  * register-turn-end-hygiene - Context hygiene on every turn_end.
  *
  * Fires on EVERY turn_end (not just when tools were called):
- *   1. Checks context usage — if high, emit hygiene whispers
+ *   1. Checks context usage -- if high, emit hygiene whispers
  *   2. At aggressive thresholds (>90% or >100K tokens), auto-compacts
  *      with a pre-save safety net (flush scratchpad + write resume.json)
  *      to guarantee zero data loss.
@@ -75,7 +75,7 @@ function saveStateBeforeCompact(cwd: string, ctx: ExtensionContext): void {
           .slice(-5)
           .map((d: any) => ({ id: d.id ?? "", text: d.text ?? d.content ?? "" }));
       } catch {
-        // scratchpad parse error — non-fatal
+        // scratchpad parse error -- non-fatal
       }
     }
 
@@ -185,16 +185,16 @@ function checkContextUsage(
       ctx,
       `Auto-compacting: context at ${Math.round(usagePercent)}% ` +
         `(${Math.round(usageTokens / 1000)}K tokens). ` +
-        `State saved — resuming after compact.`,
+        `State saved -- resuming after compact.`,
     );
 
     // Defer ctx.compact() to after handler returns (ctx.compact() aborts
-    // the agent loop — setTimeout(0) ensures the handler exits first).
+    // the agent loop -- setTimeout(0) ensures the handler exits first).
     setTimeout(() => {
       try {
         ctx.compact({ customInstructions: "Keep the most recent 10 messages." });
       } catch {
-        // agent already disconnected — non-fatal
+        // agent already disconnected -- non-fatal
       }
     }, 0);
     return;
@@ -209,7 +209,7 @@ function checkContextUsage(
       pi,
       ctx,
       `Context at ${Math.round(usageTokens / 1000)}K tokens (${Math.round(usagePercent)}%). ` +
-        `Pipeline: context_navigate(action="tag") → context_compress(action="archive") → compact (last resort).`,
+        `Pipeline: context_navigate(action="tag") -> context_compress(action="archive") -> compact (last resort).`,
     );
     return;
   }
@@ -231,8 +231,8 @@ function checkContextUsage(
     sendEnforcementWhisper(
       pi,
       ctx,
-      `Context at ${Math.round(usagePercent)}%. Pipeline: context_navigate(action="tag") → ` +
-        `context_compress(action="archive") → compact (last resort). Tag your position first.`,
+      `Context at ${Math.round(usagePercent)}%. Pipeline: context_navigate(action="tag") -> ` +
+        `context_compress(action="archive") -> compact (last resort). Tag your position first.`,
     );
     return;
   }
@@ -253,7 +253,7 @@ function checkContextUsage(
 /**
  * Register the turn-end hygiene handler.
  *
- * Priority 5 (low — runs after all analysis and enforcement handlers,
+ * Priority 5 (low -- runs after all analysis and enforcement handlers,
  * so context hygiene signals arrive last, as a closing reminder).
  * Auto-compacts at aggressive thresholds with pre-save safety.
  */
@@ -266,5 +266,5 @@ export function registerTurnEndHygiene(pi: ExtensionAPI): void {
     }
   });
 
-  log.debug("turn-end-hygiene registered (priority 5) — auto-compact at ≥90% or ≥100K tokens, 15-turn cooldown");
+  log.debug("turn-end-hygiene registered (priority 5) -- auto-compact at >=90% or >=100K tokens, 15-turn cooldown");
 }

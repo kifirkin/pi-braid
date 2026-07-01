@@ -53,7 +53,7 @@ export function sendEnforcementWhisper(
   // Emit via event bus. ROADMAP P0-6 / EW-7.1: only emit as a violation
   // when actually critical. Advisory nudges were propagating as `tool_error`
   // events (via register-session-start), which then triggered MARS
-  // error-recurrence and auto-recovery on the next turn — amplifying a
+  // error-recurrence and auto-recovery on the next turn -- amplifying a
   // benign advisory into an error burst.
   if (critical) {
     try {
@@ -70,7 +70,7 @@ export function sendEnforcementWhisper(
 
   // Tag all enforcement whispers with customType="enforcement" so the agent
   // knows these are system-generated signals, not human messages.
-  // The universal "[braid-whisper · enforcement]" envelope is applied by
+  // The universal "[braid-whisper - enforcement]" envelope is applied by
   // `sendTrackedMessage` (the trunk) so this wrapper just passes the raw
   // message through. See `lib/utils/whisper-format.ts` for the full design.
   sendTrackedMessage(

@@ -38,7 +38,7 @@ function readImports(filePath) {
   const src = readFileSync(filePath, "utf-8");
   // Match import statements that target a relative path.
   // Skips: type-only imports (we still want to catch them but treat
-  // them as type-only — not runtime circular dep risk).
+  // them as type-only -- not runtime circular dep risk).
   const importRe = /import\s+(?:type\s+)?{?[^}]*}?\s+from\s+["']([^"']+)["']/g;
   const imports = [];
   let m;
@@ -96,7 +96,7 @@ console.log("\nTest 2: `state.ts` imports sub-state factories (downward referenc
     `state.ts should import from at least 7 sub-state files. Found ${substateImports.length}.`,
   );
   console.log(
-    `✅ PASS: state.ts imports ${substateImports.length} sub-state module(s) (expected ≥7)`,
+    `✅ PASS: state.ts imports ${substateImports.length} sub-state module(s) (expected >=7)`,
   );
 }
 
@@ -137,7 +137,7 @@ console.log("\nTest 4: Sub-state files that need EnforcementState/ENFORCEMENT_PA
     assert.ok(
       typesImports.length > 0,
       `${file.replace(ROOT + "/", "")} references EnforcementState/ENFORCEMENT_PARAMS in code ` +
-        `but does not import from enforcement-types.ts. It should — that's the file's only purpose.`,
+        `but does not import from enforcement-types.ts. It should -- that's the file's only purpose.`,
     );
   }
   assert.ok(

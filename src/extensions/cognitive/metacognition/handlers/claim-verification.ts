@@ -3,7 +3,7 @@
  *
  * Cross-checks agent claims against retrieved context and verifies task
  * decomposition coverage. Uses the triple-critic LLM classification system
- * with three-tier fallback (heuristic → utility model → session model).
+ * with three-tier fallback (heuristic -> utility model -> session model).
  *
  * These tools are co-located with `verify` in this directory because they
  * share the "verification" concept; they are registered from

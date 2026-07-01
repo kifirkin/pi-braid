@@ -13,6 +13,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // We resolve the project root by walking up from this file's location:
-//   src/lib/config/project-paths.ts  →  3 levels up  →  <project_root>
+//   src/lib/config/project-paths.ts  ->  3 levels up  ->  <project_root>
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const PROJECT_ROOT = join(HERE, "..", "..", "..");

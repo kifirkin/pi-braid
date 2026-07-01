@@ -18,7 +18,7 @@ export interface PolicyRule {
 }
 
 export const POLICY_RULES: PolicyRule[] = [
-  // Rule 1: Consecutive stability decline → reasoning collapse warning
+  // Rule 1: Consecutive stability decline -> reasoning collapse warning
   {
     name: "stability_decline",
     evaluate(signals, _beliefs): PolicyRecommendation[] {
@@ -32,7 +32,7 @@ export const POLICY_RULES: PolicyRule[] = [
             id: `pr-${Date.now()}-sd`,
             type: "stability_decline",
             priority: Math.min(9, 5 + stabilitySignals.length),
-            message: `[stability] Reasoning coherence declining (overlap: ${trend[0]?.toFixed(1)} → ${trend[2]?.toFixed(1)}). Consider: step back and verify assumptions.`,
+            message: `[stability] Reasoning coherence declining (overlap: ${trend[0]?.toFixed(1)} -> ${trend[2]?.toFixed(1)}). Consider: step back and verify assumptions.`,
             beliefs: ["stability:declining", "reasoning:possible-collapse"],
             timestamp: Date.now(),
           },
@@ -42,7 +42,7 @@ export const POLICY_RULES: PolicyRule[] = [
     },
   },
 
-  // Rule 2: Unresolved conflicts accumulate → epistemic debt warning
+  // Rule 2: Unresolved conflicts accumulate -> epistemic debt warning
   {
     name: "conflict_accumulation",
     evaluate(signals, _beliefs): PolicyRecommendation[] {
@@ -64,7 +64,7 @@ export const POLICY_RULES: PolicyRule[] = [
     },
   },
 
-  // Rule 3: Topic drift + tool overuse → scatter warning
+  // Rule 3: Topic drift + tool overuse -> scatter warning
   {
     name: "drift_plus_scatter",
     evaluate(signals, _beliefs): PolicyRecommendation[] {
@@ -87,7 +87,7 @@ export const POLICY_RULES: PolicyRule[] = [
     },
   },
 
-  // Rule 4: Calibration error high → confidence miscalibration
+  // Rule 4: Calibration error high -> confidence miscalibration
   {
     name: "calibration_error",
     evaluate(signals, _beliefs): PolicyRecommendation[] {
@@ -122,7 +122,7 @@ export const POLICY_RULES: PolicyRule[] = [
   // whisper alongside the detector's `## Tool Loop Detected ...` for the
   // same condition. See ROADMAP DR-NEW (tool-loop-detector consolidation).
 
-  // Rule 6: Reasoning decline + conflict → believe carefully
+  // Rule 6: Reasoning decline + conflict -> believe carefully
   {
     name: "reasoning_plus_conflict",
     evaluate(signals, _beliefs): PolicyRecommendation[] {

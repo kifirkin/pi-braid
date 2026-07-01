@@ -450,8 +450,8 @@ export async function handleAddLearning(
       resultText:
         `Invalid category: "${rawCategory}". ` +
         `Valid: ${VALID_LEARNING_CATEGORIES.join(", ")}. ` +
-        `Common aliases: bug/defect→root_cause, insight/idiom→pattern, ` +
-        `solution/patch→fix, rule/requirement→constraint, fact/codefact→codebase_fact. ` +
+        `Common aliases: bug/defect->root_cause, insight/idiom->pattern, ` +
+        `solution/patch->fix, rule/requirement->constraint, fact/codefact->codebase_fact. ` +
         `Tip: use the explicit 'category' and 'content' fields to avoid pipe-format confusion.`,
     };
   }

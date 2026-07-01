@@ -3,7 +3,7 @@
  *
  * The key insight: discoverability must fire BEFORE the first turn, not after.
  * When the agent reloads (fresh pi instance), turn-end handlers fire only
- * after the first turn completes — by then the agent has already responded
+ * after the first turn completes -- by then the agent has already responded
  * without knowing about scratchpad, memory, or episodes.
  *
  * This handler runs in SessionPhase.Background (fire-and-forget, non-blocking)
@@ -67,7 +67,7 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
             if (hasGoal || openPlans > 0) {
               signals.push(
                 `Prior scratchpad data exists for this project (${openPlans} open plan items). ` +
-                  `Use \`scratchpad action=continue\` to resume — it returns goal + open plan + recent context in one call.`,
+                  `Use \`scratchpad action=continue\` to resume -- it returns goal + open plan + recent context in one call.`,
               );
             }
           }

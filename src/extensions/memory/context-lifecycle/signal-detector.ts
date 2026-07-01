@@ -62,7 +62,7 @@ function hashContent(text: string): string {
 
 /**
  * Classify the current work topic via CRITICS.topicClassification.
- * Replaces the previous hardcoded TOPIC_KEYWORDS map (8 topics × 5-8
+ * Replaces the previous hardcoded TOPIC_KEYWORDS map (8 topics x 5-8
  * keywords each) which produced too many false negatives - phrases
  * like "investigate why the parser fails" matched nothing, and
  * "investigate" appeared in both exploration and debugging lists
@@ -129,7 +129,7 @@ export async function detectSignals(
   // Session navigation detection
   if (state.entryCount > 0 && newEntryCount < state.entryCount - 2) {
     log.warn(
-      `Session navigation detected: ${state.entryCount} → ${newEntryCount} entries, resetting`,
+      `Session navigation detected: ${state.entryCount} -> ${newEntryCount} entries, resetting`,
     );
     resetDetectorState(state);
   }

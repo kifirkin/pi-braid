@@ -5,7 +5,7 @@
  *
  * Each entry carries the discoverability triple (name + description + location)
  * so the agent can pattern-match relevant skills without reading every SKILL.md.
- * Descriptions come from skill frontmatter (already loaded by pi-core) — no
+ * Descriptions come from skill frontmatter (already loaded by pi-core) -- no
  * extra file reads for the pointer block. The agent reads the full SKILL.md
  * on demand when a description matches the current task.
  *
@@ -35,10 +35,10 @@ function escapeXml(str: string): string {
 /**
  * Normalize a skill description for safe, compact rendering in the pointer
  * block. Handles:
- *   - Unicode dashes (em, en, etc.) → ASCII `-`
- *   - Smart single/double quotes → ASCII `'` / `"`
- *   - Special spaces → regular space
- *   - Arrows → `->`
+ *   - Unicode dashes (em, en, etc.) -> ASCII `-`
+ *   - Smart single/double quotes -> ASCII `'` / `"`
+ *   - Special spaces -> regular space
+ *   - Arrows -> `->`
  *   - Truncates to MAX_DESC_LEN characters (word-boundary aware)
  *
  * Mirrors pi-core's normalizeForFuzzyMatch patterns, plus arrow handling.
@@ -89,7 +89,7 @@ export async function skillsSection(skills: Skill[]): Promise<PromptSection> {
       const sorted = [...visibleSkills].sort((a, b) => a.name.localeCompare(b.name));
 
       const lines = [
-        `Skills (${sorted.length} available): procedural guides for specialized domains. Before starting a task, scan the skills below. If a skill's description matches your current work, \`read <location>\` the full SKILL.md and follow its instructions. Skills are not optional hints — they contain executable procedures.`,
+        `Skills (${sorted.length} available): procedural guides for specialized domains. Before starting a task, scan the skills below. If a skill's description matches your current work, \`read <location>\` the full SKILL.md and follow its instructions. Skills are not optional hints -- they contain executable procedures.`,
         "<available_skills>",
       ];
 

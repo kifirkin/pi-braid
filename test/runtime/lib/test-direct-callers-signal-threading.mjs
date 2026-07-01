@@ -3,7 +3,7 @@
  *
  * BACKGROUND (2026-06-21 follow-up):
  *   The 2026-06-21 ESC fix (test-classifier-abort-handling.mjs)
- *   established the contract that classify() → tryModelCall() →
+ *   established the contract that classify() -> tryModelCall() ->
  *   callLlm() threads ctx.signal through. That covers ~80% of
  *   braid's LLM call sites because most go through classify().
  *

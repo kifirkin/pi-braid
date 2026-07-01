@@ -7,7 +7,7 @@
  * Background (ROADMAP P0-1 / DR-C-1):
  *   The heartbeat tick handler aggregates all module whispers via
  *   ModuleContext.whisper() into a per-tick buffer and flushes via
- *   sendTrackedMessage — honoring the per-source flood cap and
+ *   sendTrackedMessage -- honoring the per-source flood cap and
  *   injection tracking. Calling ctx.whisper directly bypasses the
  *   cap and tracking.
  *
@@ -67,7 +67,7 @@ for (const file of walk(MODULES_DIR)) {
     // Allow empty lines (caught by trimmed === "" but no .whisper on them).
     if (trimmed === "") continue;
 
-    // The forbidden pattern: ctx.whisper( — direct call to the
+    // The forbidden pattern: ctx.whisper( -- direct call to the
     // ExtensionContext whisper method. The right pattern is
     // context.whisper( (the ModuleContext method) which we don't flag.
     if (!/\bctx\.whisper\s*\(/.test(line)) continue;

@@ -4,7 +4,7 @@
  *
  * HISTORY (2026-06-15):
  *   Parallel audit agent found literal "\\u2192" strings in
- *   episodes.jsonl (the right arrow character → was double-encoded).
+ *   episodes.jsonl (the right arrow character -> was double-encoded).
  *   The recall_search / episodes_search displays showed the literal
  *   escape sequence instead of the real character. Root cause: a
  *   previous code path called JSON.stringify on data that already
@@ -131,7 +131,7 @@ function unescapeUnicodeIfDoubleEncoded(s) {
   );
 }
 
-test("decodes a literal \\u2192 escape to real → character", () => {
+test("decodes a literal \\u2192 escape to real -> character", () => {
   // Build a string that contains the LITERAL 6-character sequence
   // \u2192 (backslash, u, 2, 1, 9, 2) - this is what a double-encoded
   // JSON file would have on disk. String.raw avoids JS's own escape
@@ -145,7 +145,7 @@ test("decodes a literal \\u2192 escape to real → character", () => {
 });
 
 test("leaves clean strings alone", () => {
-  const clean = "The path is a → b (already real character)";
+  const clean = "The path is a -> b (already real character)";
   assert.strictEqual(unescapeUnicodeIfDoubleEncoded(clean), clean);
 });
 

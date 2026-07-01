@@ -14,7 +14,7 @@
  *   1. `createMemoryBridgeStats` returns a fresh state.
  *   2. `recordMemoryToolCall(ctx, tool)` increments the counter and
  *      tracks per-tool breakdown.
- *   3. State is per-session (different ctx → different state).
+ *   3. State is per-session (different ctx -> different state).
  *   4. Source-level: each memory_* tool's execute calls
  *      `recordMemoryToolCall` and the session_end hook is registered.
  *   5. No-ctx calls are safe (no crash, no increment).
@@ -87,7 +87,7 @@ await test("recordMemoryToolCall increments counter and per-tool breakdown", asy
   assert.ok(typeof stats.lastCallAt === "number" && stats.lastCallAt >= stats.firstCallAt, "lastCallAt set");
 });
 
-await test("stats are per-session (different ctx → different state)", async () => {
+await test("stats are per-session (different ctx -> different state)", async () => {
   const { getMemoryBridgeStats, recordMemoryToolCall } = await import(DIST_PATH);
   const ctxA = makeCtx("test-session-A");
   const ctxB = makeCtx("test-session-B");

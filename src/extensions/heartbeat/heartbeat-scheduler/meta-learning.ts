@@ -50,7 +50,7 @@ export function updateMetaLearning(state: HeartbeatState): void {
           ml.tickInterval - META_LEARNING.intervalStep,
         );
         log.info(
-          `Effectiveness ${(avgEffectiveness * 100).toFixed(0)}% → speeding up interval to ${ml.tickInterval}`,
+          `Effectiveness ${(avgEffectiveness * 100).toFixed(0)}% -> speeding up interval to ${ml.tickInterval}`,
         );
       } else if (
         avgEffectiveness <= META_LEARNING.slowDownThreshold &&
@@ -61,7 +61,7 @@ export function updateMetaLearning(state: HeartbeatState): void {
           ml.tickInterval + META_LEARNING.intervalStep,
         );
         log.info(
-          `Effectiveness ${(avgEffectiveness * 100).toFixed(0)}% → slowing down interval to ${ml.tickInterval}`,
+          `Effectiveness ${(avgEffectiveness * 100).toFixed(0)}% -> slowing down interval to ${ml.tickInterval}`,
         );
       }
 

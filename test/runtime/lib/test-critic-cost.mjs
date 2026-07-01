@@ -6,9 +6,9 @@
  * estimates.
  *
  * What this pins:
- *   1. Pure-function behavior: same input → same output.
+ *   1. Pure-function behavior: same input -> same output.
  *   2. Token math: input/output at default pricing ($3/M, $15/M).
- *   3. Cache savings estimate: `cacheHits × avgLLMCallCost`.
+ *   3. Cache savings estimate: `cacheHits x avgLLMCallCost`.
  *   4. Edge cases: empty stats, no LLM tiers (no cache savings),
  *      per-critic and aggregate totals.
  *   5. formatCriticCostReport() produces valid Markdown.
@@ -41,8 +41,8 @@ describe("critic cost report (P3-25)", () => {
     resetCriticStats();
 
     // Tier 2 (utility) call: 1000 input + 100 output at default rates.
-    //   input:  1000 / 1000 × $0.003 = $0.003
-    //   output:  100 / 1000 × $0.015 = $0.0015
+    //   input:  1000 / 1000 x $0.003 = $0.003
+    //   output:  100 / 1000 x $0.015 = $0.0015
     //   total = $0.0045
     recordCriticCall("alpha", "utility", 200, { input: 1000, output: 100 });
 
@@ -62,7 +62,7 @@ describe("critic cost report (P3-25)", () => {
     resetCriticStats();
 
     recordCriticCall("alpha", "utility", 100, { input: 1000, output: 100 }); // $0.0045
-    recordCriticCall("beta", "session", 2000, { input: 4000, output: 200 }); // 4000/1000 × 0.003 + 200/1000 × 0.015 = $0.012 + $0.003 = $0.015
+    recordCriticCall("beta", "session", 2000, { input: 4000, output: 200 }); // 4000/1000 x 0.003 + 200/1000 x 0.015 = $0.012 + $0.003 = $0.015
 
     const stats = getCriticStats();
     const report = computeCriticCost(stats);
@@ -78,7 +78,7 @@ describe("critic cost report (P3-25)", () => {
     assert.equal(report.totals.outputTokens, 300);
   });
 
-  it("computes cache savings as cacheHits × avgLLMCallCost", () => {
+  it("computes cache savings as cacheHits x avgLLMCallCost", () => {
     resetCriticStats();
 
     // 2 LLM calls (utility) at $0.0045 each = $0.009 total, avg $0.0045.
@@ -93,7 +93,7 @@ describe("critic cost report (P3-25)", () => {
     const report = computeCriticCost(stats);
 
     assert.equal(report.totals.cacheHits, 3);
-    // avgLLM = 0.009 / 2 = 0.0045; savings = 3 × 0.0045 = $0.0135
+    // avgLLM = 0.009 / 2 = 0.0045; savings = 3 x 0.0045 = $0.0135
     const expectedSavings = 3 * 0.0045;
     assert.ok(
       Math.abs(report.totals.cacheSavingsUsd - expectedSavings) < 1e-9,
@@ -136,14 +136,14 @@ describe("critic cost report (P3-25)", () => {
     recordCriticCall("alpha", "utility", 100, { input: 1000, output: 100 });
 
     const customPricing = {
-      inputPer1kUsd: 0.01, // 10× default
-      outputPer1kUsd: 0.03, // 2× default
+      inputPer1kUsd: 0.01, // 10x default
+      outputPer1kUsd: 0.03, // 2x default
     };
 
     const stats = getCriticStats();
     const report = computeCriticCost(stats, customPricing);
 
-    // 1000/1000 × 0.01 + 100/1000 × 0.03 = $0.01 + $0.003 = $0.013
+    // 1000/1000 x 0.01 + 100/1000 x 0.03 = $0.01 + $0.003 = $0.013
     const expected = 0.013;
     assert.ok(
       Math.abs(report.perCritic["alpha"].totalCostUsd - expected) < 1e-9,

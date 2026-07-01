@@ -10,7 +10,7 @@
  * when the model is unavailable.
  *
  * Contradiction detection uses classify() with CRITICS.claimContradiction
- * for three-tier fallback (heuristic → utility → session).
+ * for three-tier fallback (heuristic -> utility -> session).
  *
  * Replaces the previous implementation that maintained 4 regex patterns,
  * 25 negation words, 18 contradiction pairs, and a verb-stem map - all
@@ -356,13 +356,13 @@ export function formatContradictionWhisper(
 
   for (const c of items) {
     lines.push(
-      `  • Turn ${c.old.turn}: "${c.new.entity} ${c.old.claim.slice(0, 40)}"`,
-      `    → Turn ${c.new.turn}: "${c.new.entity} ${c.new.claim.slice(0, 40)}" (contradicts)`,
+      `  * Turn ${c.old.turn}: "${c.new.entity} ${c.old.claim.slice(0, 40)}"`,
+      `    -> Turn ${c.new.turn}: "${c.new.entity} ${c.new.claim.slice(0, 40)}" (contradicts)`,
     );
   }
 
   if (contradictions.length > limit) {
-    lines.push(`  … and ${contradictions.length - limit} more`);
+    lines.push(`  ... and ${contradictions.length - limit} more`);
   }
 
   return lines.join("\n");

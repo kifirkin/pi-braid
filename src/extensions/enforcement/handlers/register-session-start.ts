@@ -74,7 +74,7 @@ export function registerSessionStart(pi: ExtensionAPI): void {
               content: [
                 {
                   type: "text",
-                  text: `Context at ${Math.round(event.usagePercent)}%. Consider context_navigate(action="tag") → context_compress(action="archive").`,
+                  text: `Context at ${Math.round(event.usagePercent)}%. Consider context_navigate(action="tag") -> context_compress(action="archive").`,
                 },
               ],
             },

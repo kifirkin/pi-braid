@@ -136,7 +136,7 @@ export const CRITICS = {
   /**
    * Classify the current work topic from assistant text.
    * Used by context-lifecycle/signal-detector to detect topic shifts.
-   * Replaces the hardcoded TOPIC_KEYWORDS keyword map (8 topics × 5-8
+   * Replaces the hardcoded TOPIC_KEYWORDS keyword map (8 topics x 5-8
    * keywords each) which produced too many false negatives.
    * Answer with ONE topic label: implementation, debugging, refactoring,
    * testing, exploration, documentation, planning, verification, or general.

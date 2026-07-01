@@ -14,13 +14,13 @@
  * copies + state references instead of git refs.
  *
  * Architecture:
- *   capture() → snapshot v1 → file copies + position + state ref
+ *   capture() -> snapshot v1 -> file copies + position + state ref
  *     (agent continues working)
- *   capture() → snapshot v2 → file copies + position + state ref
+ *   capture() -> snapshot v2 -> file copies + position + state ref
  *     (agent can navigate between snapshots)
- *   diff(snapId) → what changed between snap v1 and now
- *   list() → all snapshots with metadata
- *   restore(snapId) → preview + apply file copies
+ *   diff(snapId) -> what changed between snap v1 and now
+ *   list() -> all snapshots with metadata
+ *   restore(snapId) -> preview + apply file copies
  *     (auth preserved: ~/.pi/ files excluded)
  */
 
@@ -77,7 +77,7 @@ export interface WorkspaceSnapshotMeta {
 
 export interface WorkspaceSnapshot {
   meta: WorkspaceSnapshotMeta;
-  /** Map of file path → content (base64-encoded for binary safety) */
+  /** Map of file path -> content (base64-encoded for binary safety) */
   files: Record<string, string>;
 }
 

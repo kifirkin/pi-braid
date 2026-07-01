@@ -36,7 +36,7 @@ export interface SessionState {
 
   // Conflict resolution tracking - IDs of pending conflicts and when they were detected
   pendingConflictIds: string[];
-  /** Turn number when each conflict was first detected (conflictId → turn) */
+  /** Turn number when each conflict was first detected (conflictId -> turn) */
   conflictDetectionTurn: Map<string, number>;
 }
 

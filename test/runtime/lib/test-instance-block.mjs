@@ -1,5 +1,5 @@
 /**
- * Test: prompt-builder Instance block (v3.8) — RUNTIME.
+ * Test: prompt-builder Instance block (v3.8) -- RUNTIME.
  *
  * Pins the consolidated "## Instance" block contract by actually
  * calling the production code (not by grepping source for function
@@ -60,7 +60,7 @@ const DIST_TOP_LEVEL = join(ROOT, "dist/extensions/core/prompt-builder/top-level
 // ── Load the compiled production code ─────────────────────────────────────
 
 // If these imports fail, TypeScript / `npm run build` failed first.
-// We don't wrap in try/catch — the test runner already builds before
+// We don't wrap in try/catch -- the test runner already builds before
 // running tests; a missing dist file is a build failure, not a test
 // failure.
 const { instanceSection } = require(DIST_INSTANCE);
@@ -70,7 +70,7 @@ const { discoverTopLevelExtensions } = require(DIST_TOP_LEVEL);
 
 const results = [];
 async function test(name, fn) {
-  process.stdout.write(`  · ${name}\n`);
+  process.stdout.write(`  - ${name}\n`);
   try {
     await fn();
     results.push({ name, pass: true });
@@ -147,7 +147,7 @@ await test("Root points at the pi-core npm package folder (NOT braid)", () => {
   assert.notEqual(
     root,
     ROOT,
-    `Root must NOT be the braid repo (${ROOT}) — it should be the pi-core package folder`,
+    `Root must NOT be the braid repo (${ROOT}) -- it should be the pi-core package folder`,
   );
   // Sanity: pi-core root should look like a real package path.
   assert.ok(
@@ -158,7 +158,7 @@ await test("Root points at the pi-core npm package folder (NOT braid)", () => {
 
 await test("Cwd is always rendered as its own line (never suppressed)", () => {
   // v3.7 suppressed Cwd when it equaled braidRoot. v3.8 always
-  // renders it — the agent's actual working directory is always
+  // renders it -- the agent's actual working directory is always
   // worth surfacing.
   assert.match(OUT, /^Cwd: .+\/pi-braid$/m, "Cwd line must be rendered (was suppressed in v3.7)");
 });
@@ -202,7 +202,7 @@ await test("Renders 'Pi extensions (N loaded):' header", () => {
 await test("Extension paths are rendered as full paths (never bare '.')", () => {
   // Regression: v3.8 rendered the cwd-relative path '.' for
   // extensions loaded from cwd (e.g. pi-braid when the agent runs
-  // from the braid repo). That's not a useful path — the agent
+  // from the braid repo). That's not a useful path -- the agent
   // can't `read` or `grep` '.'. The contract is: every extension
   // line shows either a relative subpath (e.g. 'extensions/foo')
   // or an absolute path. A bare '.' is never acceptable.
@@ -228,7 +228,7 @@ await test("Top-level list uses source tags (cwd, project, or user-global), not 
   // legacy (sibling-repo) tag from v3.7 must not appear.
   assert.ok(
     !/\(sibling-repo\)/.test(OUT),
-    "must not use the v3.7 (sibling-repo) tag — packages are loaded from settings, not sibling dirs",
+    "must not use the v3.7 (sibling-repo) tag -- packages are loaded from settings, not sibling dirs",
   );
   // Each rendered line must end with one of the valid source tags.
   const extLines = OUT.split("\n").filter((l) => /^\s+\S+ v\d+\.\d+\.\d+/.test(l));
@@ -261,17 +261,17 @@ await test("Renders 'Resources: N skills, M memories' line", () => {
 });
 
 await test("Discovery hint is generic, with no unicode arrow", () => {
-  // v3.8 corrected two issues: dropped the `→` arrow (excessive)
+  // v3.8 corrected two issues: dropped the `->` arrow (excessive)
   // and broadened the hint to cover the full runtime (not just
   // extension source code).
-  assert.ok(!OUT.includes("→"), "must not use a unicode arrow in the hint");
+  assert.ok(!OUT.includes("->"), "must not use a unicode arrow in the hint");
   assert.match(
     OUT,
     /Discover on demand: `read`/,
     "must have a 'Discover on demand' line with a `read` pointer",
   );
   // The generic hint should also mention the file tools reach the
-  // wider runtime — not just extension source.
+  // wider runtime -- not just extension source.
   assert.ok(
     /bash.*grep.*find.*ls|`bash`|`grep`|`find`|`ls`/.test(OUT),
     "hint should mention file tools for broader discoverability",
@@ -289,7 +289,7 @@ await test("discoverTopLevelExtensions() reads from userland settings (not sibli
   // Should NOT contain sibling-discovered packages.
   assert.ok(
     !exts.some((e) => e.name === "@saibolla/ada"),
-    "must not pick up sibling-discovered @saibolla/ada — only settings entries",
+    "must not pick up sibling-discovered @saibolla/ada -- only settings entries",
   );
   // Each package's source tag is one of the two settings scopes.
   for (const ext of exts) {

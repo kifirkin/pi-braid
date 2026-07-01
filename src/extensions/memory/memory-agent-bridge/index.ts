@@ -343,7 +343,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
     return parts.join(", ");
   }
 
-  /** Project identifier from cwd, e.g. /foo/bar/baz → "bar/baz". */
+  /** Project identifier from cwd, e.g. /foo/bar/baz -> "bar/baz". */
   function deriveProjectId(cwd: string): string {
     const parts = cwd.replace(/\\/g, "/").split("/").filter(Boolean);
     if (parts.length < 2) return cwd || "unknown";
@@ -778,7 +778,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
               lines.push(
                 `   Solution: ${ep.solution.slice(0, 500)}${ep.solution.length > 500 ? "..." : ""}`,
               );
-              lines.push(`   Tools: ${ep.toolSequence.join(" → ")}`);
+              lines.push(`   Tools: ${ep.toolSequence.join(" -> ")}`);
               lines.push(`   Similarity: ${(ep.similarity * 100).toFixed(0)}%`);
               lines.push("");
             }
@@ -828,7 +828,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
             const lines: string[] = [`Heuristics (${rules.length} total):\n`];
             for (const rule of rules) {
               lines.push(`[${rule.priority.toFixed(2)}] ${rule.condition}`);
-              lines.push(`   → ${rule.action}`);
+              lines.push(`   -> ${rule.action}`);
               lines.push(
                 `   Success rate: ${(rule.successRate * 100).toFixed(0)}% (${rule.uses} uses)`,
               );
@@ -846,7 +846,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
             if (!state) return textResult("Error: three-memory-stores not available");
             const rule = addHeuristicRule(state, params.condition, params.action_text);
             return textResult(
-              `Heuristic added: "${params.condition}" → "${params.action_text}" [${rule.id}]`,
+              `Heuristic added: "${params.condition}" -> "${params.action_text}" [${rule.id}]`,
             );
           }
           case "heuristics_evolve": {
@@ -942,7 +942,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
       if (action === "resolve") {
         if (!qa_id || !verdict) return textResult("Error: qa_id and verdict required");
         resolveConflictQA(ctx, qa_id, verdict);
-        return textResult(`Conflict QA resolved: ${qa_id} → "${verdict}"`);
+        return textResult(`Conflict QA resolved: ${qa_id} -> "${verdict}"`);
       }
 
       if (action === "search") {

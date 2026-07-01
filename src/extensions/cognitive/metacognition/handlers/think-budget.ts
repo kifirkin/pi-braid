@@ -9,7 +9,7 @@
  *
  * The complexity score uses keyword counting (high/medium technical
  * terms), length signal, multi-step indicators, and question count.
- * Not a learned routing algorithm — heuristic. Research reference:
+ * Not a learned routing algorithm -- heuristic. Research reference:
  * docs/research/braid-loop-research.md (Improvement 3: Fast/Slow
  * System Routing). Saves 30-60% tokens on simple tasks by routing
  * to fast system.
@@ -91,7 +91,7 @@ export function estimateComplexity(taskText: string): number {
   if (stepIndicators > 3) score += 0.15;
   else if (stepIndicators > 1) score += 0.08;
 
-  // Question marks (uncertainty → possibly complex)
+  // Question marks (uncertainty -> possibly complex)
   const questions = (taskText.match(/\?/g) ?? []).length;
   if (questions > 2) score += 0.05;
 
@@ -102,7 +102,7 @@ export function estimateComplexity(taskText: string): number {
 /**
  * Allowed values for the think tool's `type` field.
  *
- * Single source of truth — both the schema enum (think.ts) and any
+ * Single source of truth -- both the schema enum (think.ts) and any
  * internal default reference this const. Add a value here and it
  * becomes accepted by the schema automatically.
  */
@@ -128,7 +128,7 @@ export const DEFAULT_THINK_TYPE: ThinkType = "insight";
  *
  * Note: `quick`, `medium`, `deep` are the ODAR-aligned levels; the
  * earlier `minimal`/`low`/`high`/`max` entries exist for explicit
- * fine-grained control. The two vocabularies coexist deliberately —
+ * fine-grained control. The two vocabularies coexist deliberately --
  * removing the legacy entries would break callers that pass them.
  */
 export const DEPTH_LEVELS = [
@@ -143,11 +143,11 @@ export const DEPTH_LEVELS = [
 export type DepthLevel = (typeof DEPTH_LEVELS)[number];
 
 /**
- * Depth levels reachable via ODAR complexity → depth routing.
+ * Depth levels reachable via ODAR complexity -> depth routing.
  *
  * NOTE: vocabulary is aligned with `think.ts`'s depth enum and
  * `DEPTH_BUDGETS`. Previously this function returned "standard" (which
- * was not in either, so `getBudget` silently fell back to "quick" —
+ * was not in either, so `getBudget` silently fell back to "quick" --
  * a latent bug). Now returns "medium" which IS in both.
  */
 export const ODAR_DEPTH_LEVELS = ["quick", "medium", "deep"] as const;
@@ -192,7 +192,7 @@ export function getCalibrationStats(state: CalibrationStateSlice): { error: numb
 
 // ── Depth Budgets ─────────────────────────────────────────────────────────────
 
-/** Per-step effort calibration: depth → (maxTokens, guidance) */
+/** Per-step effort calibration: depth -> (maxTokens, guidance) */
 const DEPTH_BUDGETS: Record<string, { tokens: number; guidance: string }> = {
   minimal: { tokens: 128, guidance: "One-line summary only." },
   low: { tokens: 256, guidance: "Brief: 1-2 sentences." },

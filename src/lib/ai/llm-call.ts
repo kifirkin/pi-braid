@@ -15,7 +15,7 @@
  * Tier 1 - Provider SDK: Handles fast transient blips (quick network drops)
  *           via completeSimple's maxRetries (default: 1 SDK-level retry).
  * Tier 2 - This module: Handles sustained rate limits with longer backoff
- *           (5s → 15s → 30s → 60s) so the provider gets real cooldown time.
+ *           (5s -> 15s -> 30s -> 60s) so the provider gets real cooldown time.
  *
  * A rate-limit circuit breaker skips calls for 60s after a 429 to avoid
  * cascading failures during provider congestion.
@@ -29,7 +29,7 @@
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
 // pi-ai v0.80 moved `completeSimple` out of the top-level export.
 // It's still available at the `/compat` subpath (compat.d.ts:64) as a
-// "Temporary compatibility entrypoint" — same signature, same return
+// "Temporary compatibility entrypoint" -- same signature, same return
 // type, no behavior change. The forward-looking path is
 // `Models.completeSimple()` on a `createModels()` instance (models.d.ts:82),
 // which is a structural refactor deferred to a future ticket.
@@ -239,7 +239,7 @@ export async function callLlm(
     options.maxTokens ?? Math.min(Math.max(1000, Math.floor(userPrompt.length / 8)), 4000);
   // 10-minute default (was 30s). Aborts should be signal-driven (ESC,
   // session shutdown), not timeout-driven. A timeout here is a fallback
-  // for orphaned calls (caller crashed, signal never fired) — not the
+  // for orphaned calls (caller crashed, signal never fired) -- not the
   // normal cancellation path. Callers can still pass a tighter
   // timeoutMs if they want a hard ceiling.
   const timeoutMs = options.timeoutMs ?? 600_000;
@@ -269,7 +269,7 @@ export async function callLlm(
       // backoff sleep), don't attempt another call. Without this, the
       // retry loop continues after abortable sleep resolves early, but
       // combineSignals returns only the timeout signal (s1 already
-      // aborted → returns s2), so the next attempt hangs until timeout.
+      // aborted -> returns s2), so the next attempt hangs until timeout.
       if (signal?.aborted) {
         log.debug("LLM call aborted (signal fired before retry attempt)");
         return { error: "Request was aborted" };
@@ -291,7 +291,7 @@ export async function callLlm(
       // each attempt. Aborting timeoutController triggers combineSignals'
       // built-in listener removal (onAbort removes itself from both
       // parent signals). Without this, stale listeners accumulate on
-      // the external signal across retries — a listener leak.
+      // the external signal across retries -- a listener leak.
       const cleanupAttempt = (): void => {
         clearTimeout(timeoutId);
         // Abort the timeout controller to trigger combineSignals cleanup.
@@ -554,8 +554,8 @@ function matchesTransientOnly(message: string): boolean {
 
 /**
  * Compute exponential backoff delay.
- * attempt 1 → 5s, attempt 2 → 15s, attempt 3 → 30s, attempt 4 → 60s
- * With ±20% jitter. Capped at 60s.
+ * attempt 1 -> 5s, attempt 2 -> 15s, attempt 3 -> 30s, attempt 4 -> 60s
+ * With +/-20% jitter. Capped at 60s.
  */
 /**
  * Cast our locally-typed `simpleOptions` (which permits
@@ -594,7 +594,7 @@ function backoffDelay(attempt: number): number {
  * Abortable sleep. Resolves immediately if signal fires during the wait.
  *
  * Without this, pressing ESC during a retry backoff (5-60s) would
- * leave the sleep running — the retry would fire after the backoff,
+ * leave the sleep running -- the retry would fire after the backoff,
  * then hang until the new timeout fires. The signal was only checked
  * at the next combineSignals call, not during the backoff itself.
  */

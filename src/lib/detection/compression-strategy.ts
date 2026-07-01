@@ -4,7 +4,7 @@
  *
  * Levels:
  *   short-term  - pruning: remove noise, collapse repetitions (BCR)
- *   medium-term - reasoning summarization: chains → conclusions
+ *   medium-term - reasoning summarization: chains -> conclusions
  *   long-term   - episodic: extract patterns to memory
  *
  * Compression level determination uses an LLM judge via classify() with
@@ -136,7 +136,7 @@ export async function determineCompressionLevel(
     };
   }
 
-  // Fallback: late session / high density → compress
+  // Fallback: late session / high density -> compress
   if (opts.turnCount >= 80 || density.density >= 0.7) {
     return {
       level: "long-term",
@@ -144,7 +144,7 @@ export async function determineCompressionLevel(
       turnsSinceCompression: opts.turnsSinceCompression,
       reason:
         opts.turnCount >= 80
-          ? "Late session (≥80 turns) - extract to episodic memory."
+          ? "Late session (>=80 turns) - extract to episodic memory."
           : `High density (${Math.round(density.density * 100)}%) - aggressive compression.`,
       estimatedSavings: 0.65,
     };

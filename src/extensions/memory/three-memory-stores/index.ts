@@ -3,7 +3,7 @@
  *
  * Paper: 2604.14475 Evo-MedAgent
  * Key finding: Three complementary stores (Episodes + Heuristics + ToolReliability)
- * outperform single memory. MCQ accuracy 0.68 → 0.79.
+ * outperform single memory. MCQ accuracy 0.68 -> 0.79.
  *
  * Architecture:
  * 1. Retrospective Episodes - case-based reasoning from past tasks (episodes.ts)
@@ -393,7 +393,7 @@ function inferTaskType(_ctx: ExtensionContext, _toolName: string): string {
  * sequences that may have been written by a previous code path that
  * double-encoded unicode (BUG-M3). The agent-facing `recall_search` and
  * `episodes_search` displays otherwise show literal `\u2192` instead of
- * the real character `→`. We apply this at load time so existing data
+ * the real character `->`. We apply this at load time so existing data
  * files are healed without requiring a destructive migration.
  *
  * Moved to episodes.ts in 2026-06-17: both the load-time sanitizer

@@ -77,7 +77,7 @@ function discoverRunningPi(): PiVersionInfo {
   //    `<repo>/node_modules/.bin` first in PATH and `which pi` then
   //    resolves to braid's old pinned 0.77.0 binary instead of the
   //    user's actually-installed 0.80.2). Instead, walk PATH manually
-  //    and skip any entry containing `/node_modules/.bin/` — those
+  //    and skip any entry containing `/node_modules/.bin/` -- those
   //    are project-local installs and almost always stale relative
   //    to the user's mise/npm-global install.
   const PATH_DIRS = (process.env.PATH ?? "").split(":");
@@ -229,7 +229,7 @@ interface InstanceData {
   settingsDir: string;
   /** System info: platform, hostname, os type. */
   os: { platform: string; type: string; hostname: string };
-  /** Current working directory — where the user invoked `pi` from. */
+  /** Current working directory -- where the user invoked `pi` from. */
   cwd: string;
   /** Current ISO datetime, captured at section render. */
   now: string;
@@ -303,7 +303,7 @@ function renderInstance(d: InstanceData): string {
   lines.push(`Cwd: ${d.cwd}`);
   lines.push(`Settings: ${d.settingsDir}`);
 
-  // OS + now + pid — environment snapshot.
+  // OS + now + pid -- environment snapshot.
   lines.push(`OS: ${d.os.platform} (${d.os.type}) hostname=${d.os.hostname}`);
   lines.push(`Now: ${d.now}`);
   lines.push(`PID: ${d.session.pid}`);
@@ -324,7 +324,7 @@ function renderInstance(d: InstanceData): string {
   }
 
   // Top-level pi extension PACKAGES (read from pi-core's `packages`
-  // settings field — the real runtime configuration). Each is tagged
+  // settings field -- the real runtime configuration). Each is tagged
   // with the settings scope that owns the entry so the agent can
   // edit the right file when adding/removing a package.
   if (d.topLevelExtensions.length > 0) {
@@ -371,7 +371,7 @@ function sourceTag(s: TopLevelExtension["source"]): string {
  * Keeps the Instance block readable when extensions live next to
  * the cwd project (the common case). When the extension IS the
  * cwd (e.g. pi-braid loaded from the project being worked on),
- * return the absolute path — not "." — so the agent can `read`
+ * return the absolute path -- not "." -- so the agent can `read`
  * or `grep` the location with the same string it sees elsewhere
  * in the prompt.
  */

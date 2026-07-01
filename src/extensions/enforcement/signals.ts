@@ -86,7 +86,7 @@ export function pruneSignals(currentTurn: number): number {
 // Restored 2026-06-29 after being briefly deleted in 3b4f108a. The lean
 // successor (behavior-modes.ts) replaces both the 8 static value statements
 // (behavioral-guardrails.ts) and the 6-phrase contrast library
-// (contrast-phrase-library.ts) with 4 modes × 1-2 directives each.
+// (contrast-phrase-library.ts) with 4 modes x 1-2 directives each.
 //
 // Priority: errors > overflow > correction-edits > default.
 // Modes: TRUTH-SEEKING | TOOL-RELIABILITY | CORRECTION | EPISTEMIC-CALIBRATION.
@@ -94,14 +94,14 @@ export function pruneSignals(currentTurn: number): number {
 export function determineContrastMode(ctx: ExtensionContext): string {
   const state = getState(ctx);
 
-  // Priority 1: Error burst → TOOL RELIABILITY
+  // Priority 1: Error burst -> TOOL RELIABILITY
   if (state.consecutiveErrorTurns >= 1) return "TOOL-RELIABILITY";
 
-  // Priority 2: Overflow recovery → EPISTEMIC CALIBRATION
+  // Priority 2: Overflow recovery -> EPISTEMIC CALIBRATION
   const inOverflowRecovery = state.currentTurn - state.overflowRecently < RECOVERY_GRACE_TURNS;
   if (state.overflowRecently > 0 && inOverflowRecovery) return "EPISTEMIC-CALIBRATION";
 
-  // Priority 3: Edit without think recently → CORRECTION
+  // Priority 3: Edit without think recently -> CORRECTION
   const recentEditsWithoutThink = state.toolChain.recentEditWithoutThink.filter(
     (turn: number) => state.currentTurn - turn <= 3,
   );

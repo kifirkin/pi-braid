@@ -108,7 +108,7 @@ await test("detectToolLoop returns isLoop=true at exactly 8 consecutive", async 
 await test("detectToolLoop only counts the tail (interruption breaks streak)", async () => {
   const m = await import(DIST_PATH);
   const s = m.createToolLoopState();
-  // 7 reads, 1 bash, 7 more reads → tail is 7, not 14
+  // 7 reads, 1 bash, 7 more reads -> tail is 7, not 14
   for (let i = 0; i < 7; i++) m.recordToolCall(s, "read");
   m.recordToolCall(s, "bash");
   for (let i = 0; i < 7; i++) m.recordToolCall(s, "read");
@@ -198,7 +198,7 @@ await test("detectToolLoopFromSequence detects at threshold", async () => {
 
 await test("detectToolLoopFromSequence caps at WINDOW (long sequences still detect)", async () => {
   const m = await import(DIST_PATH);
-  // 20 reads - only last 12 considered, last 8 are reads → loop
+  // 20 reads - only last 12 considered, last 8 are reads -> loop
   const r = m.detectToolLoopFromSequence(new Array(20).fill("read"));
   assert.strictEqual(r.isLoop, true);
   assert.strictEqual(r.count, 12, "tail of 12 reads (capped to WINDOW)");

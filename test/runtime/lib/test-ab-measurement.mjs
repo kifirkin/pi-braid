@@ -114,14 +114,14 @@ console.log("\nTest 1: computeSessionOutcome returns success for healthy session
 {
   const state = createAnalyticsState("control");
   assert.equal(computeSessionOutcome(state), "success", "Clean session should be success");
-  console.log("✅ PASS: Clean session → success");
+  console.log("✅ PASS: Clean session -> success");
 }
 
 console.log("\nTest 2: computeSessionOutcome returns partial for degraded session");
 {
   const state = createAnalyticsState("control", { wasDegraded: true });
   assert.equal(computeSessionOutcome(state), "partial", "Degraded session should be partial");
-  console.log("✅ PASS: Degraded → partial");
+  console.log("✅ PASS: Degraded -> partial");
 }
 
 console.log("\nTest 3: computeSessionOutcome returns failure for degraded + high error rate");
@@ -132,8 +132,8 @@ console.log("\nTest 3: computeSessionOutcome returns failure for degraded + high
     toolMetrics: new Map([["read", metrics]]),
     toolCallSequence: Array(10).fill("read"),
   });
-  assert.equal(computeSessionOutcome(state), "failure", "Degraded + high error rate → failure");
-  console.log("✅ PASS: Degraded + high error rate → failure");
+  assert.equal(computeSessionOutcome(state), "failure", "Degraded + high error rate -> failure");
+  console.log("✅ PASS: Degraded + high error rate -> failure");
 }
 
 console.log("\nTest 4: computeSessionOutcome returns partial for high error rate but not degraded");
@@ -145,7 +145,7 @@ console.log("\nTest 4: computeSessionOutcome returns partial for high error rate
     toolCallSequence: Array(10).fill("read"),
   });
   assert.equal(computeSessionOutcome(state), "partial", "High error rate alone should be partial");
-  console.log("✅ PASS: High error rate only → partial");
+  console.log("✅ PASS: High error rate only -> partial");
 }
 
 console.log("\nTest 5: loadAnalyticsByVariant groups sessions by variant");

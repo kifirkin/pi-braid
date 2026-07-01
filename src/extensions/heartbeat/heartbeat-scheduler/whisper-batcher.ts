@@ -3,7 +3,7 @@
  *
  * During a heartbeat tick, multiple cognitive modules may want to
  * whisper to the agent. If we just forward them through ctx.whisper,
- * the agent gets N separate messages — which is both noisy and
+ * the agent gets N separate messages -- which is both noisy and
  * expensive (each message becomes a turn boundary in the agent's
  * context).
  *

@@ -4,7 +4,7 @@
  * Infrastructure for selecting, scoring, and scheduling experiences
  * for consolidation from episodic memory into reusable patterns.
  *
- * Scoring is heuristic (quality × value × confidence × novelty).
+ * Scoring is heuristic (quality x value x confidence x novelty).
  * Weight update (LoRA/MEMIT) is not implemented - this queues experience
  * data for potential future training pipelines.
  */
@@ -300,8 +300,8 @@ export async function processConsolidationTick(ctx: ExtensionContext): Promise<v
   );
 
   // Write high-confidence SOPs as behavioral hints for prompt injection.
-  // This closes the self-evolution loop: successful patterns → persistent
-  // hints → injected into future sessions → agent benefits from experience.
+  // This closes the self-evolution loop: successful patterns -> persistent
+  // hints -> injected into future sessions -> agent benefits from experience.
   // Cap at 20 hints, prune stale ones older than 30 days.
   // Quality gate: skip hints whose steps are generic debugging clichés.
   if (

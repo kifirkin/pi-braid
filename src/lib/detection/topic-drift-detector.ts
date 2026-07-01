@@ -3,7 +3,7 @@
  *
  * Detects when the conversation has drifted from its original task context.
  * Uses the triple-critic LLM classification system (lib/critic-registry.ts)
- * with three-tier fallback: heuristic → utility model → session model.
+ * with three-tier fallback: heuristic -> utility model -> session model.
  *
  * The class API (setTaskContext, addTurn, check, generateWhisper, reset)
  * is preserved for backward compatibility. Only the internal detection
@@ -11,7 +11,7 @@
  *
  * Drift detection flow:
  *   1. Three parallel classify() calls (topicCoverage, topicDivergence, topicCompleteness)
- *   2. Consensus: 2/3 critics agree → drift confirmed
+ *   2. Consensus: 2/3 critics agree -> drift confirmed
  *   3. Heuristic fallback (conservative: assume no drift) when LLM is unavailable
  *
  * Whisper message format:
@@ -108,7 +108,7 @@ export class TopicDriftDetector {
    *
    * Uses triple-critic LLM classification:
    *   1. Three parallel classify() calls (coverage, divergence, completeness)
-   *   2. Consensus: 2/3 critics agree → drift confirmed
+   *   2. Consensus: 2/3 critics agree -> drift confirmed
    *   3. Falls back to conservative heuristic when LLM unavailable
    *
    * Now returns a Promise to support async classify() calls.
@@ -166,7 +166,7 @@ export class TopicDriftDetector {
         );
 
         if (!consolidated.classifierDown) {
-          // Consolidated succeeded — use its verdicts directly
+          // Consolidated succeeded -- use its verdicts directly
           drifted = !consolidated.coverage || consolidated.divergence || !consolidated.completeness;
           const negativeVotes = [
             !consolidated.coverage,
@@ -239,7 +239,7 @@ export class TopicDriftDetector {
             `[topic-drift] Critics: coverage=${coverageResult?.label}/${coverageResult?.tier}, ` +
               `divergence=${divergenceResult?.label}/${divergenceResult?.tier}, ` +
               `completeness=${completenessResult?.label}/${completenessResult?.tier} ` +
-              `→ drifted=${drifted} classifierDown=${classifierDown}`,
+              `-> drifted=${drifted} classifierDown=${classifierDown}`,
           );
         } catch {
           // LLM call failed - conservative fallback (no drift)

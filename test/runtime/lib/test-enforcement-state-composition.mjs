@@ -30,11 +30,11 @@
  * that class of bug by asserting:
  *
  *   1. The total number of keys in `createState()` matches a baseline.
- *      (Adding a new key to a sub-state fails the test → must update.)
+ *      (Adding a new key to a sub-state fails the test -> must update.)
  *   2. A sentinel key from each sub-state interface is present.
  *
- * If a duplicate key is added, count drops below baseline → test fails.
- * If a new key is added, count rises above baseline → test fails.
+ * If a duplicate key is added, count drops below baseline -> test fails.
+ * If a new key is added, count rises above baseline -> test fails.
  * Both cases require explicit acknowledgment, which is the right friction.
  *
  * Updating the baseline: when you intentionally add a new key to a

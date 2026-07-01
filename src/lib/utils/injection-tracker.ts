@@ -39,7 +39,7 @@ interface InjectionBucket {
   maxInjections: number;
 }
 
-// ── Module-level state (PROCESS-GLOBAL — see extension-state.ts header) ────────
+// ── Module-level state (PROCESS-GLOBAL -- see extension-state.ts header) ────────
 // _buckets: keyed by sessionId, so it IS effectively session-scoped despite
 //   living at module level. Cleared via `registerSessionCleanup` on SESSION_END.
 // _activeSessionId: pointer to the most recent sessionId; fallback for callers
@@ -51,8 +51,8 @@ let _activeSessionId: string | undefined;
 
 // ── Re-entry depth tracking for sendTrackedMessage ───────────────────────────
 // Prevents unbounded recursion when pi.sendMessage(steer) triggers synchronous
-// event chains (e.g., before_agent_start → sendCompactNudge → sendTrackedMessage
-// → pi.sendMessage → before_agent_start ...).
+// event chains (e.g., before_agent_start -> sendCompactNudge -> sendTrackedMessage
+// -> pi.sendMessage -> before_agent_start ...).
 // Incremented before pi.sendMessage, decremented after. If depth > MAX_REENTRY_DEPTH,
 // the message is dispatched via queueMicrotask to break the synchronous chain.
 let _sendDepth = 0;
@@ -60,7 +60,7 @@ let _sendDepth = 0;
 // stack-overflow trace):
 //   The previous value of 1 assumed the runtime + extension hooks fit in a
 //   single synchronous frame. In practice:
-//     - pi-core's tool dispatch occupies 2-3 frames (TOOL_CALL → execute →
+//     - pi-core's tool dispatch occupies 2-3 frames (TOOL_CALL -> execute ->
 //       TOOL_EXECUTION_END).
 //     - 25+ extensions each register `before_agent_start` hooks that all
 //       run synchronously when the runtime fires one.
@@ -69,12 +69,12 @@ let _sendDepth = 0;
 //       and `sendEnforcementWhisper` twice. Each pi.sendMessage can fire
 //       before_agent_start synchronously, adding to the depth.
 //   With depth=1, the second-level call (which is the first extension-level
-//   sendTrackedMessage in the chain) defers — but the runtime itself can
+//   sendTrackedMessage in the chain) defers -- but the runtime itself can
 //   already be at depth 2-3, so the first extension call may not even
 //   reach the check before the runtime overflows. depth=3 gives the
 //   runtime + first extension call + first nested call enough headroom
 //   to defer cleanly.
-//   Anything deeper than 3 indicates a real re-entrancy bug — deferring
+//   Anything deeper than 3 indicates a real re-entrancy bug -- deferring
 //   later won't help, the stack is already too deep.
 const MAX_REENTRY_DEPTH = 3;
 

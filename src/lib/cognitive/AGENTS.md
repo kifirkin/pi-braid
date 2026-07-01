@@ -11,12 +11,12 @@ namespace-level placement triggered check-deps warnings.
 
 **Files:**
 
-- `hints.ts` — `deliverRelevantHints()` function. Reads
+- `hints.ts` -- `deliverRelevantHints()` function. Reads
   `~/.pi/agent/braid/hints/consolidated.jsonl` and delivers
   project-relevant hints via `sendTrackedMessage`. Used by
   `prompt-builder` (the `hints` section of the system prompt).
 
-- `openspec.ts` — `deliverActiveSpecs()` function. Reads the
+- `openspec.ts` -- `deliverActiveSpecs()` function. Reads the
   `openspec/` directory and delivers active spec summaries.
   Used by `prompt-builder` (the `openspec` section of the
   system prompt).

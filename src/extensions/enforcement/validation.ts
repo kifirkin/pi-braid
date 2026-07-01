@@ -45,7 +45,7 @@ function checkSemanticRepetition(
 
   if (repetitions >= warnThreshold) {
     // Build a contextual message instead of raw tool names
-    const tools = currentTools.join(" → ");
+    const tools = currentTools.join(" -> ");
     // If the sequence contains only cheap/repeatable tools, be softer
     const allRepeatable = currentTools.every((t) => LEGIT_REPEATABLE.has(t));
     if (allRepeatable) {

@@ -11,7 +11,7 @@ the wake-up policy.
 | File | Purpose |
 |---|---|
 | `state.ts` | Composed session-scoped state. Re-exports `ENFORCEMENT_PARAMS` and `EnforcementState` from `enforcement-types.ts`. |
-| `enforcement-types.ts` | The shared `ENFORCEMENT_PARAMS` and `EnforcementState` definitions. **Lives outside `state.ts` to break the circular dep** that would otherwise form between `state.ts ↔ session-state.ts ↔ verification-judge-state.ts`. |
+| `enforcement-types.ts` | The shared `ENFORCEMENT_PARAMS` and `EnforcementState` definitions. **Lives outside `state.ts` to break the circular dep** that would otherwise form between `state.ts <-> session-state.ts <-> verification-judge-state.ts`. |
 | `session-state.ts` | Per-turn tracking, config, topic-drift detector. |
 | `whisper.ts` | The `sendTrackedMessage` wrapper with the whisper cap and metadata. |
 | `judge-utils.ts` | Helpers for the verification judge. |

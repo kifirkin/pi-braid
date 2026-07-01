@@ -96,10 +96,10 @@ function clearProcessedCompacts(sessionId: string, leafId: string): void {
 // message is NOT in the rebuilt chat snapshot.
 //
 // Fix:
-//  1. input event → capture user's message text (TUI queues it after)
-//  2. session_compact → pre-append to sessionManager + intercept appendMessage
-//  3. compaction_end → rebuildChatFromMessages() sees user's message in session ✅
-//  4. flushCompactionQueue → session.prompt() → appendMessage intercept SKIPS duplicate
+//  1. input event -> capture user's message text (TUI queues it after)
+//  2. session_compact -> pre-append to sessionManager + intercept appendMessage
+//  3. compaction_end -> rebuildChatFromMessages() sees user's message in session ✅
+//  4. flushCompactionQueue -> session.prompt() -> appendMessage intercept SKIPS duplicate
 //  5. Agent turn fires ✅ (session.prompt() triggers agent-loop normally)
 //
 // The intercept works by wrapping sessionManager.appendMessage to detect when
@@ -399,7 +399,7 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
           if (scStats.messagesOut < scStats.messagesIn) {
             log.info(
               `[context-manager] Semantic compress[${compressionLevel}]: ` +
-                `${scStats.messagesIn}→${scStats.messagesOut} msgs ` +
+                `${scStats.messagesIn}->${scStats.messagesOut} msgs ` +
                 `(${scStats.unitsCollapsed} collapsed, ${scStats.unitsDropped} dropped)`,
             );
             (prep as Preparation).messagesToSummarize = compressed;
@@ -471,7 +471,7 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
       // FIX: Pre-append the user's queued message to sessionManager BEFORE
       // compaction_end fires (which triggers TUI's rebuildChatFromMessages).
       // Intercept appendMessage to skip the duplicate from flushCompactionQueue's
-      // session.prompt() → message_end → appendMessage call.
+      // session.prompt() -> message_end -> appendMessage call.
       const st = getInterceptState(ctx);
       if (st.queuedDuringCompaction) {
         const sm = getFullSessionManager(ctx);
@@ -504,8 +504,8 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
             // stale intercept on subsequent turns. Without this, appendMessage
             // calls go through without being intercepted, causing the flushCompactionQueue
             // message to create a DUPLICATE entry in sessionManager (logged to file,
-            // but TUI rebuilds from a snapshot taken before session_compact → message
-            // missing from TUI → "lost" message despite being in file).
+            // but TUI rebuilds from a snapshot taken before session_compact -> message
+            // missing from TUI -> "lost" message despite being in file).
             clearInterceptState(ctx);
           }
         }
@@ -516,7 +516,7 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
       }
 
       // NOTE: Do NOT inject a resume steer here.
-      // The user's queued message (from flushCompactionQueue → session.prompt())
+      // The user's queued message (from flushCompactionQueue -> session.prompt())
       // IS the resume mechanism. It triggers message_start events, gets persisted
       // in sessionManager, and renders in the TUI. The steer from agent.steer()
       // is delivered via agent-loop _steeringMessages, never emits message_start/
@@ -573,7 +573,7 @@ export function registerCompactionEndHandler(pi: ExtensionAPI): void {
 
         // CRITICAL: Always clear intercept state on compaction_end, regardless of outcome.
         // The intercept was set in session_compact to skip the duplicate from
-        // flushCompactionQueue's session.prompt() → message_end → appendMessage call.
+        // flushCompactionQueue's session.prompt() -> message_end -> appendMessage call.
         // If we don't clear it, future appendMessage calls get intercepted incorrectly,
         // breaking session persistence for all subsequent messages.
         tryRestoreAppendMessage(pi, _ctx);

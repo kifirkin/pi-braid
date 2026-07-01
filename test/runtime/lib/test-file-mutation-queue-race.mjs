@@ -7,7 +7,7 @@
  * the START of processing. While the while-loop was awaiting writeFile,
  * a new write() call saw no existing queue, created a fresh one, and
  * scheduled a SECOND setTimeout(processQueue, 0). When that fired,
- * processQueue ran concurrently with the first — two writeFile calls on
+ * processQueue ran concurrently with the first -- two writeFile calls on
  * the same path simultaneously, leaving the file with one valid JSON
  * followed by mid-write truncation followed by another JSON.
  *
@@ -85,7 +85,7 @@ function cleanup(dir) {
   }
 }
 
-// ── Test 3: REGRESSION — fire-and-forget writes never corrupt the file ────
+// ── Test 3: REGRESSION -- fire-and-forget writes never corrupt the file ────
 //
 // This is the actual corruption scenario from the bug report. Without the
 // fix, ~70% of intermediate file states were invalid JSON. With the fix,
@@ -127,7 +127,7 @@ function cleanup(dir) {
     }
 
     for (let i = 1; i <= ITERATIONS; i++) {
-      // Fire and forget — don't await, so multiple processQueue calls overlap
+      // Fire and forget -- don't await, so multiple processQueue calls overlap
       q.write(path, makePayload(i)).catch(() => {});
       // Yield enough to let writeFile actually start
       await new Promise((r) => setImmediate(r));
@@ -147,18 +147,18 @@ function cleanup(dir) {
     assert.equal(
       invalidCount,
       0,
-      `file was invalid ${invalidCount}/${invalidCount + validCount} times during concurrent writes — race condition present`,
+      `file was invalid ${invalidCount}/${invalidCount + validCount} times during concurrent writes -- race condition present`,
     );
 
     console.log(
-      `✓ Test 3: ${ITERATIONS} concurrent writes — 0/${validCount + invalidCount} invalid (regression guard)`,
+      `✓ Test 3: ${ITERATIONS} concurrent writes -- 0/${validCount + invalidCount} invalid (regression guard)`,
     );
   } finally {
     cleanup(dir);
   }
 }
 
-// ── Test 4: atomic write — readers always see complete file ───────────────
+// ── Test 4: atomic write -- readers always see complete file ───────────────
 //
 // Defense-in-depth: even if the queue had another race we missed,
 // write-then-rename means a reader either sees the old file or the new one,
@@ -202,7 +202,7 @@ function cleanup(dir) {
   try {
     const q = new FileMutationQueue({ dedupMs: 100, maxQueueDepth: 100 });
 
-    // Three writes within dedup window — only last should win
+    // Three writes within dedup window -- only last should win
     await q.write(path, { value: 1 });
     await q.write(path, { value: 2 });
     await q.write(path, { value: 3 });
@@ -296,7 +296,7 @@ function cleanup(dir) {
     const final = JSON.parse(readFileSync(path, "utf-8"));
     assert.ok(final.v >= 1 && final.v <= 4, "final write is one of the four");
 
-    console.log(`✓ Test 7: in-flight racing — 0 invalid across ${observed.length} samples`);
+    console.log(`✓ Test 7: in-flight racing -- 0 invalid across ${observed.length} samples`);
   } finally {
     cleanup(dir);
   }

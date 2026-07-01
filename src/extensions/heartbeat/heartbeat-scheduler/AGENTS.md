@@ -35,13 +35,13 @@ decomposed into sub-modules for clarity and testability:
 
 ```
 register_session_start
-  → registerSessionStartHandler (queues until first session_start)
-  → on session_start: init policy engine, register eventBus listeners
+  -> registerSessionStartHandler (queues until first session_start)
+  -> on session_start: init policy engine, register eventBus listeners
 
 turn_end (every N turns, controlled by meta-learning.ts)
-  → for each enabled module: module.tick(turnState, context)
-  → if module requests whisper: sendTrackedMessage (priority from module)
-  → aggregate emitted events to eventBus (heartbeat_tick, sop_suggestion, etc.)
+  -> for each enabled module: module.tick(turnState, context)
+  -> if module requests whisper: sendTrackedMessage (priority from module)
+  -> aggregate emitted events to eventBus (heartbeat_tick, sop_suggestion, etc.)
 ```
 
 Tick interval is adaptive: starts at every 5 turns, increases to every

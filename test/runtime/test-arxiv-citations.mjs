@@ -3,7 +3,7 @@
  *
  * HISTORY (see docs/ARXIV-CITATIONS-AUDIT.md, 2026-06-15):
  *   The codebase contained 4 fabricated arXiv citations
- *   (2604.19768, 2604.19117, 2604.15224, 2604.14881) — all
+ *   (2604.19768, 2604.19117, 2604.15224, 2604.14881) -- all
  *   returned HTTP 404 from arxiv.org. They had been hallucinated
  *   by a language model at some point in the codebase's history.
  *
@@ -72,7 +72,7 @@ const unreachable = results.filter(r => r.ok === null);
 if (broken.length > 0) {
   console.error("\n❌ BROKEN arXiv citations (HTTP non-200):");
   for (const b of broken) {
-    console.error(`  - arXiv:${b.id} → HTTP ${b.status}`);
+    console.error(`  - arXiv:${b.id} -> HTTP ${b.status}`);
   }
   assert.equal(
     broken.length,

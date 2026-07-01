@@ -67,11 +67,11 @@ export function resolveUtilityModel(ctx: ExtensionContext): Model<Api> | undefin
  * Get the configured max-power model for accuracy-critical tasks.
  * Priority:
  *   1. Custom maxPowerModel setting (from /max-power-model command or settings.json)
- *   2. Fall back to undefined (not configured — callers fall through to session model)
+ *   2. Fall back to undefined (not configured -- callers fall through to session model)
  *
  * The max-power model is activated by modelPreference strategies:
- *   - "balanced" (default): tries it AFTER utility → session
- *   - "quality": tries it AFTER session → utility
+ *   - "balanced" (default): tries it AFTER utility -> session
+ *   - "quality": tries it AFTER session -> utility
  *   - "max": tries it FIRST
  *   - "speed": never tries it
  */

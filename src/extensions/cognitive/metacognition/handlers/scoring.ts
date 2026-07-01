@@ -119,7 +119,7 @@ function scoreEvidencePool(
     };
     const sourceWeight = sourceWeights[evidence.source] ?? 0.5;
 
-    // Evidence score: overlap × reliability × recency boost
+    // Evidence score: overlap x reliability x recency boost
     const evidenceScore = overlap * sourceWeight * evidence.reliability + recencyBoost;
     totalEvidenceScore += evidenceScore;
     evidenceCount++;
@@ -150,7 +150,7 @@ function extractEvidences(block: string): { evidenceFor: string[]; evidenceAgain
   if (forMatch) {
     forMatch[1]
       .split(/\n/)
-      .map((l) => l.replace(/^[-*•]\s*/, "").trim())
+      .map((l) => l.replace(/^[-**]\s*/, "").trim())
       .filter((l) => l.length > 5)
       .forEach((l) => evidenceFor.push(l));
   }
@@ -161,7 +161,7 @@ function extractEvidences(block: string): { evidenceFor: string[]; evidenceAgain
   if (againstMatch) {
     againstMatch[1]
       .split(/\n/)
-      .map((l) => l.replace(/^[-*•]\s*/, "").trim())
+      .map((l) => l.replace(/^[-**]\s*/, "").trim())
       .filter((l) => l.length > 5)
       .forEach((l) => evidenceAgainst.push(l));
   }

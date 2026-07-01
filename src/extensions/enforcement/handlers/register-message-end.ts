@@ -1,5 +1,5 @@
 /**
- * register-message-end - Conflict detection → message analysis → verification judge.
+ * register-message-end - Conflict detection -> message analysis -> verification judge.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -66,7 +66,7 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
 
       // Non-blocking LLM re-classification: upgrade heuristic "implication"
       // conflicts to "direct" when the triple-critic system detects a
-      // real contradiction. Runs in background — does not await.
+      // real contradiction. Runs in background -- does not await.
       if (newConflicts.length > 0) {
         classifyConflictsWithLLM(ctx, newConflicts).catch(() => {});
       }
@@ -79,7 +79,7 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
       const newQAs = processConflictQAs(ctx);
       for (const qa of newQAs) {
         sendEnforcementWhisper(pi, ctx, formatConflictWhisper(qa));
-        // Bridge qa-xxx → c-xxx ID space: store conflictId so resolveConflict() can find it
+        // Bridge qa-xxx -> c-xxx ID space: store conflictId so resolveConflict() can find it
         const cId = qa.conflictId || qa.id;
         if (!getState(ctx).pendingConflictIds.includes(cId)) {
           getState(ctx).pendingConflictIds.push(cId);

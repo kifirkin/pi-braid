@@ -102,8 +102,8 @@ describe("Whisper cap invariants", () => {
 
 // ── Source-priority mapping (the fix) ─────────────────────────────────────
 
-describe("Timer source → priority mapping (post-fix)", () => {
-  it("FIX: timer/fire → critical (bypasses high cap, only per-source capped)", () => {
+describe("Timer source -> priority mapping (post-fix)", () => {
+  it("FIX: timer/fire -> critical (bypasses high cap, only per-source capped)", () => {
     assert.equal(priorityFromSource("timer/fire", { triggerTurn: true }), "critical");
   });
 
@@ -156,7 +156,7 @@ describe("Timer fire end-to-end through sendTrackedMessage", () => {
     const pi = makeMockPi();
     fireTimerWhisper(pi);
     const timerSent = pi.sent.filter((m) => m.params.customType === "timer");
-    assert.equal(timerSent.length, 1, "fresh turn → timer reaches runtime");
+    assert.equal(timerSent.length, 1, "fresh turn -> timer reaches runtime");
     assert.equal(timerSent[0].options.triggerTurn, true, "triggerTurn preserved");
   });
 
@@ -255,7 +255,7 @@ describe("Timer fire end-to-end through sendTrackedMessage", () => {
   });
 });
 
-// ── Backup channel: timer-bus → heartbeat-scheduler ───────────────────────
+// ── Backup channel: timer-bus -> heartbeat-scheduler ───────────────────────
 
 describe("Timer bus backup channel", () => {
   it("emitTimerReminder pushes; drainTimerReminders reads once", () => {

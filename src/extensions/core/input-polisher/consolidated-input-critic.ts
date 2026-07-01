@@ -1,15 +1,15 @@
 /**
- * Consolidated Input Critic — single LLM call for all 4 input quality checks.
+ * Consolidated Input Critic -- single LLM call for all 4 input quality checks.
  *
  * Replaces 4 parallel classify() calls (code-heavy, well-written, clarity,
  * ambiguity) with one structured-output LLM call that returns all four
  * verdicts as JSON. Falls back to individual heuristic fallbacks on failure.
  *
  * Benefits:
- *   - 4× fewer LLM calls → ~75% latency reduction, ~75% cost reduction
+ *   - 4x fewer LLM calls -> ~75% latency reduction, ~75% cost reduction
  *   - Single system prompt shared across all dimensions
  *   - Model can cross-reference dimensions (e.g., code is never "well-written")
- *   - Same CritiqueResult interface — drop-in replacement for input-critic.ts
+ *   - Same CritiqueResult interface -- drop-in replacement for input-critic.ts
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -58,7 +58,7 @@ interface ConsolidatedVerdict {
 // ── Main Function ────────────────────────────────────────────────────────────
 
 /**
- * Consolidated critique — single LLM call for all 4 dimensions.
+ * Consolidated critique -- single LLM call for all 4 dimensions.
  *
  * Fallback strategy (graceful degradation):
  *   1. Try utility model with consolidated JSON prompt

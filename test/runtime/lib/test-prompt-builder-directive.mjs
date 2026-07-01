@@ -71,7 +71,7 @@ function test(name, fn) {
 
 // ── Old deleted files stay deleted (regression guard) ────────────────────
 // The old 8-value static layer and 6-phrase contrast library are gone.
-// The lean successor is behavior-modes.ts (4 modes × 1-2 directives).
+// The lean successor is behavior-modes.ts (4 modes x 1-2 directives).
 // These guard against accidentally restoring the bloated versions.
 
 test("behavioral-guardrails.ts is deleted (regression guard)", () => {

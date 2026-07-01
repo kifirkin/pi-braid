@@ -51,7 +51,7 @@ const log = createLogger("enforcement");
 // Handler registration metadata was previously exported as
 // HANDLER_REGISTRATIONS (an array of {event, method, handler} entries
 // hand-coded to mirror actual registerTurnEndHandler calls). It was
-// removed in 2026-06-13 (TASK-1.8 / Q6 — user decided to remove
+// removed in 2026-06-13 (TASK-1.8 / Q6 -- user decided to remove
 // the fragile thing). If a structural test is later needed, replace
 // with runtime introspection of the live event bus.
 
@@ -88,7 +88,7 @@ function registerCompactAndSessionHandlers(pi: ExtensionAPI): void {
     await driftHandler(pi, event, ctx);
   });
 
-  // ── turn_end: degradation→checkpoint rollback (before analysis handlers) ──
+  // ── turn_end: degradation->checkpoint rollback (before analysis handlers) ──
   // heartbeatCheckpointTick runs every ~60s; this catches degradation between beats.
   registerTurnEndHandler("degradation-rollback", 99, async (_event, ctx) => {
     if (!getState(ctx).enforcementActive) return;

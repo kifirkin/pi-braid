@@ -6,8 +6,8 @@
  *   needed by every post-loop LLM call site:
  *     1. ctx.signal threads through to callLlm (ESC propagation)
  *     2. abort log demoted to debug when external signal aborted
- *     3. tier === "failed" → caller-supplied fallback (NOT "unknown")
- *     4. 30s default timeout (was 3s → 5s → 8s → 30s through four
+ *     3. tier === "failed" -> caller-supplied fallback (NOT "unknown")
+ *     4. 30s default timeout (was 3s -> 5s -> 8s -> 30s through four
  *        rounds of tuning; 30s is at the upper end of "a minute or
  *        more" the user reported being OK with).
  *
@@ -108,7 +108,7 @@ await test("DEFAULT_POST_LOOP_TIMEOUT_MS is 600000 in global-state.ts (latest tu
   );
   assert.ok(m, "DEFAULT_POST_LOOP_TIMEOUT_MS must be exported from global-state.ts");
   const value = parseInt(m[1].replace(/_/g, ""), 10);
-  // History: 3000 → 5000 → 8000 → 30000 → 600000. The current value
+  // History: 3000 -> 5000 -> 8000 -> 30000 -> 600000. The current value
   // (600_000 = 10min) reflects the user's 2026-06-23 request: "make
   // huge one like 10 minutes but keep proper esc key handling".
   // Aborts are signal-driven; the timeout is a fallback for orphaned
@@ -116,7 +116,7 @@ await test("DEFAULT_POST_LOOP_TIMEOUT_MS is 600000 in global-state.ts (latest tu
   assert.strictEqual(
     value,
     600000,
-    `DEFAULT_POST_LOOP_TIMEOUT_MS must be 600000 (was 3s→5s→8s→30s→600s). Got: ${value}`,
+    `DEFAULT_POST_LOOP_TIMEOUT_MS must be 600000 (was 3s->5s->8s->30s->600s). Got: ${value}`,
   );
 });
 

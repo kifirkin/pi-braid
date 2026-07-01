@@ -1,5 +1,5 @@
 /**
- * Test: SOP Extractor - trajectory → structured SOP conversion.
+ * Test: SOP Extractor - trajectory -> structured SOP conversion.
  *
  * Runtime tests importing from dist/lib/utils/sop-extractor.js.
  *
@@ -86,7 +86,7 @@ describe("SOP Extractor", () => {
       solution: "Ran tests",
       outcome: "success",
     });
-    assert.ok(sop.atomicSOP.some((s) => s.includes("×")));
+    assert.ok(sop.atomicSOP.some((s) => s.includes("x")));
   });
 
   it("works with write-read-bash pattern", async () => {

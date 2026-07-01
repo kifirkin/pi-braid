@@ -1,21 +1,21 @@
 /**
  * Evidence Pool - Tracks knowledge from multiple sources with conflict detection.
  * Uses the triple-critic LLM classification system for evidence conflict
- * detection with three-tier fallback (heuristic → utility → session).
+ * detection with three-tier fallback (heuristic -> utility -> session).
  *
  * XoT (Cross-observational Thinking) two-stage decomposition:
  *   Stage 1 - Evidence Explanation: classify conflicts via classify() + CRITICS.evidenceConflict
  *   Stage 2 - Faithful Reasoning: acknowledgment generation (formatConflictMessage)
  *
  * Flow:
- * 1. memory (recall_search), web search, docs reading, code execution → addEvidence()
- * 2. tool_result → addEvidence() (calibration tracking)
- * 3. message_end → detectConflicts() (heuristic O(N²) pre-filter) →
+ * 1. memory (recall_search), web search, docs reading, code execution -> addEvidence()
+ * 2. tool_result -> addEvidence() (calibration tracking)
+ * 3. message_end -> detectConflicts() (heuristic O(N^2) pre-filter) ->
  *    classifyConflictsWithLLM() (async triple-critic LLM re-classification)
- * 4. conflict-qa → Stage 2: question generation + enforcement whisper
+ * 4. conflict-qa -> Stage 2: question generation + enforcement whisper
  *
  * Conflict detection is a two-phase process:
- *   Phase 1 (sync): O(N²) token-overlap heuristic pre-filter + classifyConflict()
+ *   Phase 1 (sync): O(N^2) token-overlap heuristic pre-filter + classifyConflict()
  *   Phase 2 (async): classifyConflictViaCritic() with classify() + CRITICS.evidenceConflict
  *     upgrades "implication" conflicts to "direct" when LLM detects a real contradiction.
  *
@@ -111,7 +111,7 @@ export interface Evidence {
   source: EvidenceSource;
   confidence: number; // Caller-provided confidence (0-1)
   confidenceType: EvidenceConfidenceType;
-  reliability: number; // Computed: SOURCE_RELIABILITY[source] × confidence
+  reliability: number; // Computed: SOURCE_RELIABILITY[source] x confidence
   /** Project path where this evidence was created. Used for provenance tagging (HaluMem, 2511.03506). */
   project: string;
   timestamp: number;
@@ -258,7 +258,7 @@ export function classifyConflict(
  * the heuristic classifyConflict() result.
  *
  * This is the function that the deprecated classifyConflict() JSDoc
- * tells callers to use — it was referenced in a comment but never
+ * tells callers to use -- it was referenced in a comment but never
  * implemented until 2026-07-01.
  */
 export async function classifyConflictViaCritic(
@@ -284,7 +284,7 @@ export async function classifyConflictViaCritic(
 
     if (result.label === "yes") return "direct";
   } catch {
-    // LLM failure — fall through to heuristic
+    // LLM failure -- fall through to heuristic
   }
 
   return classifyConflict(forEvidence, againstEvidence);
@@ -292,7 +292,7 @@ export async function classifyConflictViaCritic(
 
 /**
  * Re-classify all unresolved conflicts using the triple-critic LLM system.
- * Runs in the background — does not block the caller. Conflicts where the
+ * Runs in the background -- does not block the caller. Conflicts where the
  * LLM detects a direct contradiction get upgraded from "implication" to
  * "direct".
  */
@@ -321,7 +321,7 @@ export async function classifyConflictsWithLLM(
  * to check if evidence about the same topic (but different wording) contradicts.
  *
  * Limited to MAX_SEMANTIC_CHECKS_PER_TURN (10) per call. Only checks pairs with
- * overlap between SEMANTIC_OVERLAP_MIN (0.1) and SEMANTIC_OVERLAP_MAX (0.3) —
+ * overlap between SEMANTIC_OVERLAP_MIN (0.1) and SEMANTIC_OVERLAP_MAX (0.3) --
  * pairs below 0.1 are considered truly unrelated.
  *
  * Returns newly detected conflicts.
@@ -360,7 +360,7 @@ export async function detectSemanticConflicts(
     }
   }
 
-  // Sort by overlap descending — most likely related first
+  // Sort by overlap descending -- most likely related first
   candidates.sort((a, b) => b.overlap - a.overlap);
 
   const toCheck = candidates.slice(0, limit);
@@ -411,7 +411,7 @@ export async function detectSemanticConflicts(
 
 /**
  * Add evidence to the pool from a knowledge source.
- * Reliability is computed as: SOURCE_RELIABILITY[source] × confidence.
+ * Reliability is computed as: SOURCE_RELIABILITY[source] x confidence.
  */
 export function addEvidence(
   ctx: ExtensionContext,
@@ -437,7 +437,7 @@ export function addEvidence(
   };
   state.evidence.push(evidence);
 
-  // Cleanup old evidence (>50 entries → keep last 30)
+  // Cleanup old evidence (>50 entries -> keep last 30)
   if (state.evidence.length > 50) {
     state.evidence = state.evidence.slice(-30);
   }
@@ -548,7 +548,7 @@ export function resolveConflict(
 /**
  * Detect conflicts among all evidence in the pool.
  * Uses triple-critic LLM classification (XoT Stage 1) with heuristic token-overlap
- * as a cheap pre-filter to avoid O(N²) LLM calls for unrelated evidence pairs.
+ * as a cheap pre-filter to avoid O(N^2) LLM calls for unrelated evidence pairs.
  *
  * Returns newly detected conflicts.
  */
@@ -607,7 +607,7 @@ export function detectConflicts(ctx: ExtensionContext): Conflict[] {
 }
 
 /**
- * Maximum semantic conflict checks per turn. Prevents O(N²) LLM cost when
+ * Maximum semantic conflict checks per turn. Prevents O(N^2) LLM cost when
  * the evidence pool is large. Only the most promising pairs (highest overlap)
  * are checked in each call.
  */

@@ -6,14 +6,14 @@
  * from past experiences without explicit retrieval commands.
  *
  * Flow:
- *   turn_start → extract task keywords from user message
- *             → query episodic memory for relevant episodes
- *             → extract SOPs from matching episodes
- *             → inject top SOPs as hint messages
+ *   turn_start -> extract task keywords from user message
+ *             -> query episodic memory for relevant episodes
+ *             -> extract SOPs from matching episodes
+ *             -> inject top SOPs as hint messages
  *
  * This implements the "suggestion" half of the consolidation pipeline:
  *   Phase 1: Extraction (sop-extractor.ts) ✓
- *   Phase 2: Retrieval + Suggestion ← you are here
+ *   Phase 2: Retrieval + Suggestion <- you are here
  *   Phase 3: Periodic consolidation (consolidation-channel.ts) ✓
  *
  * Phase 2.4 improvements:
@@ -107,7 +107,7 @@ export function getSuggestionFeedback(ctx: ExtensionContext): ReadonlyArray<Sugg
  * enhancement for high-value keywords when available.
  *
  * The classifier extracts task-relevant phrases that stopword filtering
- * misses - e.g., "split the tools.ts into focused files" → the classifier
+ * misses - e.g., "split the tools.ts into focused files" -> the classifier
  * catches "tools.ts" and "split into focused files" as keywords.
  */
 async function classifyTaskKeywords(text: string, _ctx?: any): Promise<string[]> {

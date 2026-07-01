@@ -259,7 +259,7 @@ await test("callLlm: timeout error is logged at DEBUG level (universal abort dem
     );
     assert.ok(
       debugAbortLogs.length >= 1,
-      `expected ≥1 debug abort log; got ${debugAbortLogs.length}. All logs: ${JSON.stringify(logs)}`,
+      `expected >=1 debug abort log; got ${debugAbortLogs.length}. All logs: ${JSON.stringify(logs)}`,
     );
   }, null);
 });
@@ -320,7 +320,7 @@ await test("callLlm: external-signal abort is demoted to DEBUG (not ERROR)", asy
     );
     assert.ok(
       debugLogs.length >= 1,
-      `external abort must produce ≥1 DEBUG log mentioning the abort; got: ${JSON.stringify(llmCallLogs)}`,
+      `external abort must produce >=1 DEBUG log mentioning the abort; got: ${JSON.stringify(llmCallLogs)}`,
     );
   }, null);
 });
@@ -381,10 +381,10 @@ await test("callLlm: successful stub returns { text } (sanity check injection wi
 // ── callLlm: ESC during retry backoff aborts immediately ─────────────────────
 //
 // The sleep() between retries must respect the abort signal. Without
-// this, pressing ESC during a 5-60s backoff leaves the sleep running —
+// this, pressing ESC during a 5-60s backoff leaves the sleep running --
 // the retry fires after the delay, then hangs until the new timeout.
-// With the fix, ESC fires → sleep resolves → retry loop checks signal
-// → returns error immediately.
+// With the fix, ESC fires -> sleep resolves -> retry loop checks signal
+// -> returns error immediately.
 
 await test("callLlm: ESC during retry backoff aborts quickly (not after backoff)", async () => {
   await withStub(async () => {

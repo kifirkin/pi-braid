@@ -62,7 +62,7 @@ const log = createLogger("timer");
 export type { ScheduledTimer };
 
 /**
- * Per-session timer store. Outer map: sessionId → (inner map: timerId → timer).
+ * Per-session timer store. Outer map: sessionId -> (inner map: timerId -> timer).
  *
  * Module-level singleton - this is the global registry. Each session's timers
  * live in their own inner map, so cross-session operations are impossible.
@@ -228,7 +228,7 @@ export function clearSessionTimers(sessionId: string): number {
 }
 
 // ── Fire Handlers (via shared bus) ───────────────────────────────────
-// We import the shared bus to bridge timer fires → heartbeat surfacing
+// We import the shared bus to bridge timer fires -> heartbeat surfacing
 import { emitTimerReminder } from "../../../lib/events/timer-bus.js";
 import {
   TURN_END,
@@ -256,7 +256,7 @@ import {
 // the closure-scoped timerManager and fireTimer in this file).
 
 function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
-  emitTimerReminder(timer); // → heartbeat bus → agent reminder on next tick
+  emitTimerReminder(timer); // -> heartbeat bus -> agent reminder on next tick
 
   // (Previously emitted eventBus.emit({ type: "timer_fire", ... }) here.
   // Removed in fresh-eyes audit 2026-06-11: no listener was ever registered
@@ -274,7 +274,7 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
   //
   //   wake: true (default for user/agent-scheduled timers AND
   //         post-compaction auto-resume)
-  //     → pi.sendMessage({ customType, content, display: true }, { triggerTurn: true })
+  //     -> pi.sendMessage({ customType, content, display: true }, { triggerTurn: true })
   //     A CustomMessage (whisper-style in TUI, distinguishable from
   //     user input) that wakes the agent. Per SDK docs:
   //     'sendUserMessage ... sends an actual user message that appears
@@ -296,7 +296,7 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
   //     to avoid the SDK's own deferral that ignores mid-tool state.
   //
   //   wake: false (silent reminder, used for background heartbeats etc.)
-  //     → sendTrackedMessage (custom-message whisper, per-source cap applies)
+  //     -> sendTrackedMessage (custom-message whisper, per-source cap applies)
   //     Whisper is visible in TUI and survives compaction (via
   //     _braidInjected) but does NOT force a new turn.
   //
@@ -536,9 +536,9 @@ export default function timerExtension(pi: ExtensionAPI): void {
   // for turn_end (which might be minutes away if the LLM is thinking).
   //
   // The correct guard is per-tool-execution:
-  // - tool_call (before tool runs) → busy=true
-  // - tool_execution_end (after tool returns) → busy=false
-  // - turn_end → busy=false (safety net for turns with no tool calls)
+  // - tool_call (before tool runs) -> busy=true
+  // - tool_execution_end (after tool returns) -> busy=false
+  // - turn_end -> busy=false (safety net for turns with no tool calls)
   //
   // This is still safe against the post-compaction stack overflow because
   // it blocks whisper injection only during actual tool execution, not

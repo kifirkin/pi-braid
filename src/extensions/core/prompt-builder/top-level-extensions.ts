@@ -4,7 +4,7 @@
  * Discovers pi extension PACKAGES (directories with a package.json
  * that declares a `pi` field) by reading the configured `packages`
  * field of pi-core's settings files. This is the source of truth
- * for what is actually loaded at runtime — NOT a directory walk
+ * for what is actually loaded at runtime -- NOT a directory walk
  * over cwd/siblings (which over-discovered unrelated packages like
  * sibling repos that happen to have `pi` in their package.json).
  *
@@ -27,7 +27,7 @@
  *     and checking each scope directory for a matching package.
  *
  *   - A git source, e.g. `git:github.com/user/repo`. Out of scope
- *     for this discoverer — if the package's runtime path is
+ *     for this discoverer -- if the package's runtime path is
  *     discoverable via the same `npm`/`local` logic after install,
  *     it surfaces; otherwise it is silently skipped (consistent
  *     with the "best-effort, no failure surface" policy).
@@ -90,7 +90,7 @@ interface ResolvedPackage {
 
 /**
  * Read and parse a JSON settings file. Returns an empty object on
- * any failure (missing, unreadable, malformed) — settings reads
+ * any failure (missing, unreadable, malformed) -- settings reads
  * are best-effort, never throw into the prompt builder.
  */
 function readSettings(filePath: string): SettingsFile {
@@ -130,8 +130,8 @@ function readPackageEntries(
  * not pi packages (e.g. a plain node_modules dep with no `pi`
  * field).
  *
- * We accept any pi-resource declaration — extensions, skills,
- * prompts, or themes — because all four are equally "what the user
+ * We accept any pi-resource declaration -- extensions, skills,
+ * prompts, or themes -- because all four are equally "what the user
  * configured pi to load". Filtering to only extension providers
  * would hide pure skill packs (e.g. `pi-braid-skills`) from the
  * prompt even though they ship real, loadable runtime content.
@@ -184,10 +184,10 @@ function basename(p: string): string {
  * source is unsupported or cannot be located on disk.
  *
  * Supported shapes:
- *   - `npm:<spec>` (e.g. `npm:pi-smart-fetch`) — looks in the global
+ *   - `npm:<spec>` (e.g. `npm:pi-smart-fetch`) -- looks in the global
  *     npm root (`npm root -g`), under each scoped directory.
- *   - absolute local path (starts with `/`) — used as-is.
- *   - relative local path — resolved relative to `cwd`.
+ *   - absolute local path (starts with `/`) -- used as-is.
+ *   - relative local path -- resolved relative to `cwd`.
  */
 function resolveEntryToPackage(
   source: string,
@@ -197,7 +197,7 @@ function resolveEntryToPackage(
   const trimmed = source.trim();
   if (!trimmed) return null;
 
-  // npm:<spec> — find in global node_modules.
+  // npm:<spec> -- find in global node_modules.
   if (trimmed.startsWith("npm:")) {
     const spec = trimmed.slice("npm:".length).trim();
     const at = spec.lastIndexOf("@");
@@ -257,7 +257,7 @@ function findNpmPackageDir(
   if (!globalRoot) return null;
   if (!existsSync(globalRoot)) return null;
 
-  // Scoped package: @scope/name → look under globalRoot/@scope/name.
+  // Scoped package: @scope/name -> look under globalRoot/@scope/name.
   if (name.startsWith("@")) {
     const dir = join(globalRoot, name);
     return packageDirMatches(dir, version) ? dir : null;
@@ -316,7 +316,7 @@ function packageDirMatches(
  * Resolve the global npm root via `npm root -g`. Returns null if
  * the command fails or produces no output. Cached after first
  * successful call so the (slow) `npm root -g` invocation runs at
- * most once per process — the value never changes inside one
+ * most once per process -- the value never changes inside one
  * pi session.
  *
  * Implemented as an IIFE-wrapped closure so the cache `let`
@@ -349,7 +349,7 @@ const getGlobalNpmRoot = ((): (() => string | null) => {
  * Walks both settings scopes (project, then user-global) in pi's
  * own precedence order, dedupes by absolute root path (project
  * wins over user-global on collision), and returns the resolved
- * packages. Unresolved entries are silently skipped — a missing
+ * packages. Unresolved entries are silently skipped -- a missing
  * package should never surface as "unknown" in the prompt.
  *
  * Settings-file paths:
