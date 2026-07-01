@@ -111,7 +111,13 @@ detailed documentation.
 
 ## Bundled Skills
 
-More than 25 skills are available (shipped separately in [pi-braid-skills](https://github.com/kifirkin/pi-braid-skills)). See the skill descriptions in the system prompt's `<available_skills>` block for the full list.
+pi-braid ships with 7 core skills (software-engineer, pi-reference, meta-improvement, healthcheck, tone-quality, agent-testing, subagent) loaded via pi's default skill discovery mechanism.
+
+Additional skill packs:
+- [pi-braid-skills](https://github.com/kifirkin/pi-braid-skills) — 8 general-purpose development skills (code-search, code-refactoring, documentation, dox, openspec, process-control, research, vcs-tools)
+- [pi-braid-contrib](https://github.com/earendil-works/pi-braid-contrib) — 9 niche/creative skills (adversarial-engagement, design-system, paper-writer, twitter, visual-creator, visual-validator, meme, looping-clanker, socratic-irony)
+
+See the skill descriptions in the system prompt's `<available_skills>` block for the full list.
 
 ## Extension Overview
 
@@ -157,7 +163,7 @@ section and are always available. The table above covers only braid-registered e
 ```bash
 npm run typecheck   # TypeScript check
 npm run build       # Compile to dist/
-npm run test        # Build + run 83 runtime tests
+npm run test        # Build + run 81 runtime tests
 npm run lint        # ESLint
 npm run format      # Prettier
 ```

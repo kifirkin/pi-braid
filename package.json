@@ -17,7 +17,8 @@
     "AGENTS.md",
     "CONTRIBUTING.md",
     "CHANGELOG.md",
-    "tsconfig.json"
+    "tsconfig.json",
+    "skills/"
   ],
   "repository": {
     "type": "git",
@@ -30,6 +31,9 @@
   "pi": {
     "extensions": [
       "./src/index.ts"
+    ],
+    "skills": [
+      "./skills"
     ]
   },
   "scripts": {
