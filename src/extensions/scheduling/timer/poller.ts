@@ -58,7 +58,15 @@ export class TimerPoller {
     if (this.busy) return; // bail - defer fire to next non-busy tick or TURN_END
     const expired = this.onCheckExpired(this.sessionId, Date.now());
     for (const timer of expired) {
-      this.onFire(timer, pi);
+      // Defer fire to next macrotask to break synchronous chain from setInterval
+      // into pi-core's sendMessage(triggerTurn:true) → _runAgentPrompt → tool dispatch.
+      // Without this, a poller fire during an agent turn (or immediately after compaction)
+      // can chain into pi-core's synchronous tool dispatch and overflow the V8 stack.
+      // The one-tick delay is acceptable: the timer already expired, and the agent
+      // will wake up on the next tick.
+      setTimeout(() => {
+        this.onFire(timer, pi);
+      }, 0);
     }
   }
 
