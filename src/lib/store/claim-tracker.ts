@@ -158,6 +158,7 @@ async function extractClaimsViaClassify(
         {
           timeoutMs: 60_000,
           label: CRITICS.entityExtraction.label,
+          modelPreference: "quality",
           // Q9: ENTITY_VERBS regex misses most entities. Always use LLM.
           tierPolicy: "always-llm",
         },
@@ -172,6 +173,7 @@ async function extractClaimsViaClassify(
         {
           timeoutMs: 60_000,
           label: CRITICS.polarityDetection.label,
+          modelPreference: "quality",
           // Q9: negation-word list breaks on double-negation. Always use LLM.
           tierPolicy: "always-llm",
         },
@@ -247,6 +249,7 @@ export async function claimsContradict(a: Claim, b: Claim, ctx: ExtensionContext
       {
         timeoutMs: 60_000,
         label: CRITICS.claimContradiction.label,
+        modelPreference: "quality",
         // Q9: heuristic negation-word overlap has many false positives. Always LLM.
         tierPolicy: "always-llm",
       },

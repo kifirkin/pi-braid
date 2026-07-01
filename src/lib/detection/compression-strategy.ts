@@ -80,6 +80,7 @@ export async function determineCompressionLevel(
             reasoningDepth: opts.reasoningChainDepth,
             messageCount: opts.messageCount,
           }),
+        modelPreference: "quality",
         tierPolicy: "fallback-only",
       },
     );

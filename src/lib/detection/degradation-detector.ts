@@ -388,6 +388,7 @@ export async function checkQualitativeDegradation(
         // downweights to 0.5 confidence so the consumer can act on the
         // degraded signal.
         fallback: () => qualitativeDegradationFallback(),
+        modelPreference: "quality",
         tierPolicy: "fallback-only",
       },
     );
