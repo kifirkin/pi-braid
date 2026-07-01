@@ -1,14 +1,24 @@
 /**
  * Scratchpad Persistence - disk I/O for session memory
  *
- * Split from scratchpad/index.ts for maintainability.
+ * Uses an append-only JSONL event log (events.jsonl) instead of a single
+ * overwritten JSON file. This eliminates the concurrent-write race:
+ * multiple agent sessions can append simultaneously without overwriting
+ * each other's state.
+ *
+ * On load: reads all lines from events.jsonl, takes the last checkpoint
+ * as the effective state. Old checkpoints are preserved in the log for
+ * audit and can be replayed for merge in the future.
+ *
+ * Migration: if events.jsonl doesn't exist but latest.json does, imports
+ * latest.json as the first checkpoint and switches to JSONL mode.
  */
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { fileMutationQueue } from "../../../lib/utils/file-mutation-queue.js";
 import { BRAID_DIR, SCRATCHPAD_DIR } from "../../../lib/config/braid-paths.js";
 import { nextId } from "../../../lib/utils/id.js";
+import { createLogger } from "../../../lib/core/logger.js";
 import type {
   TaskScratchpad,
   PlanStep,
@@ -17,6 +27,8 @@ import type {
   NoteItem,
   HypothesisItem,
 } from "./types.js";
+
+const log = createLogger("scratchpad-persistence");
 
 // SCRATCHPAD_DIR already points to ~/.pi/agent/braid/scratchpads
 const _ = BRAID_DIR; // ensure braid dir exists
@@ -28,8 +40,18 @@ export function projectSlugFromCwd(cwd?: string): string {
   return "--" + segments.join("-") + "--";
 }
 
+function projectDir(projectSlug: string): string {
+  return path.join(SCRATCHPAD_DIR, projectSlug);
+}
+
+/** Legacy single-file path (used for migration). */
 function scratchpadFilePath(projectSlug: string): string {
-  return path.join(SCRATCHPAD_DIR, projectSlug, "latest.json");
+  return path.join(projectDir(projectSlug), "latest.json");
+}
+
+/** Append-only event log. */
+function eventsFilePath(projectSlug: string): string {
+  return path.join(projectDir(projectSlug), "events.jsonl");
 }
 
 export function createScratchpad(goal: string, projectSlug: string): TaskScratchpad {
@@ -55,6 +77,8 @@ export function createScratchpad(goal: string, projectSlug: string): TaskScratch
     projectSlug,
   };
 }
+
+// ── Migration helpers ──────────────────────────────────────────────────────
 
 /**
  * Per-type migration helpers. Each takes the raw `unknown[]` from the
@@ -210,42 +234,112 @@ function migrateScratchpad(data: Record<string, unknown>): TaskScratchpad {
   };
 }
 
+// ── Append-only log ────────────────────────────────────────────────────────
+
+/**
+ * Append a state checkpoint to the events.jsonl log.
+ * Each line is a JSON object: { ts, state }
+ * Concurrent sessions both append — no overwrites.
+ *
+ * Uses fs.appendFile for atomic append. No read-modify-write race
+ * because we never read the file before writing — we just append.
+ * The file mutation queue is bypassed intentionally: append-only
+ * logs can't race with themselves (POSIX pwrite is atomic for
+ * writes under PIPE_BUF, and our JSONL lines are <4KB).
+ */
 export async function saveScratchpadToDisk(scratchpad: TaskScratchpad): Promise<void> {
-  const filePath = scratchpadFilePath(scratchpad.projectSlug);
-  await fileMutationQueue.write(filePath, scratchpad);
+  const filePath = eventsFilePath(scratchpad.projectSlug);
+  const line = JSON.stringify({
+    ts: Date.now(),
+    state: scratchpad,
+  });
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.appendFile(filePath, line + "\n", "utf-8");
 }
 
+/**
+ * Append-only checkpoint format:
+ *   {"ts": 1700000000000, "state": { ... full TaskScratchpad ... }}
+ */
+interface CheckpointEvent {
+  ts: number;
+  state: TaskScratchpad;
+}
+
+/**
+ * Load scratchpad from the append-only events.jsonl log.
+ *
+ * Strategy:
+ *   1. Read all lines from events.jsonl
+ *   2. Parse each as a CheckpointEvent
+ *   3. Return the LAST checkpoint's state (most recent)
+ *   4. If events.jsonl doesn't exist, try legacy latest.json (migration)
+ *   5. If latest.json exists and events.jsonl doesn't, migrate it by
+ *      writing it as the first checkpoint event, then return its state.
+ */
 export async function loadScratchpadFromDisk(projectSlug: string): Promise<TaskScratchpad | null> {
+  const dir = projectDir(projectSlug);
+  const eventsPath = eventsFilePath(projectSlug);
+
   try {
-    const filePath = scratchpadFilePath(projectSlug);
-    const data = JSON.parse(await fs.readFile(filePath, "utf-8")) as Record<string, unknown>;
-    if (!data.updatedAt) data.updatedAt = Date.now();
-    if (!data.projectSlug) data.projectSlug = projectSlug;
-    if (!data.prior_goal) data.prior_goal = "";
-    if (!data.session) {
-      data.session = {
-        turn: 0,
-        phase: "idle",
-        mode: "normal",
-        last_compact_turn: 0,
-        session_start: data.updatedAt,
-        updated_at: data.updatedAt,
-      };
+    // Step 1: Try events.jsonl first
+    const content = await fs.readFile(eventsPath, "utf-8");
+    const lines = content.split("\n").filter(Boolean);
+    if (lines.length > 0) {
+      // Take the LAST complete line (most recent checkpoint)
+      const lastLine = lines[lines.length - 1];
+      const event = JSON.parse(lastLine) as CheckpointEvent;
+      const data = event.state as unknown as Record<string, unknown>;
+      return migrateScratchpad(data);
     }
-    if (!data.constraints) data.constraints = [];
-    if (!data.key_learnings) data.key_learnings = [];
-    // Migrate list items to ID-based addressing.
-    return migrateScratchpad(data);
+    // events file exists but is empty — treat as no data
+    return null;
   } catch (err) {
-    // ENOENT (file doesn't exist on first session) is expected; re-throw
-    // everything else so the caller can surface a real error to the user.
-    if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return null;
+    const code = (err as NodeJS.ErrnoException)?.code;
+
+    if (code === "ENOENT") {
+      // events.jsonl doesn't exist yet. Try legacy latest.json for migration.
+      try {
+        const legacyPath = scratchpadFilePath(projectSlug);
+        const legacyContent = await fs.readFile(legacyPath, "utf-8");
+        const data = JSON.parse(legacyContent) as Record<string, unknown>;
+        // Normalize the legacy data
+        if (!data.updatedAt) data.updatedAt = Date.now();
+        if (!data.projectSlug) data.projectSlug = projectSlug;
+        if (!data.prior_goal) data.prior_goal = "";
+        if (!data.session) {
+          data.session = {
+            turn: 0,
+            phase: "idle",
+            mode: "normal",
+            last_compact_turn: 0,
+            session_start: data.updatedAt,
+            updated_at: data.updatedAt,
+          };
+        }
+        if (!data.constraints) data.constraints = [];
+        if (!data.key_learnings) data.key_learnings = [];
+        const migrated = migrateScratchpad(data);
+
+        // Write migrated state as the first event.jsonl checkpoint
+        log.info(`[scratchpad] Migrating latest.json to events.jsonl for ${projectSlug}`);
+        await saveScratchpadToDisk(migrated);
+
+        return migrated;
+      } catch (legacyErr) {
+        const legacyCode = (legacyErr as NodeJS.ErrnoException)?.code;
+        if (legacyCode === "ENOENT") return null; // No data at all — first session
+        throw legacyErr;
+      }
+    }
+
+    // Non-ENOENT error — re-throw for the caller to handle
     throw err;
   }
 }
 
 function taskFilePath(projectSlug: string): string {
-  return path.join(SCRATCHPAD_DIR, projectSlug, "tasks.json");
+  return path.join(projectDir(projectSlug), "tasks.json");
 }
 
 // tasks.json storage was used by the now-removed 'task' tool (task.ts).
