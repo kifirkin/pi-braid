@@ -73,7 +73,7 @@ brought in.
 | R3 | `BRAID_MODULES="core,cognitive,memory,retry"` example | Partially fixed: changed to `"core,cognitive,memory,heartbeat"`. `core` and `cognitive` still don't resolve. `heartbeat` is a real module group; only it works. |
 | R4 | Extension table listed `cognitive-systems`, `retry`, `error-capture` | Partially fixed. `cognitive-systems` and `retry` removed. `error-capture` still listed (actual name is `error-tracking`). |
 | R5 | Table included tools that pi-core provides (healthcheck, observatory, diff, research, system-monitor) as if they were braid's | Unchanged. These are pi-core builtins, not registered by any braid extension. |
-| R6 | "Requires pi-coding-agent ≥ 0.70.0" | Fixed: now `≥ 0.77.0` matching package.json. |
+| R6 | "Requires pi-coding-agent ≥ 0.70.0" | Fixed: now `≥ 0.80.0` matching package.json. |
 | R7 | "61 runtime tests" | Fixed: now `83 runtime tests`. |
 | R8 | "dual-store memory system" | Superseded by the "What It Does" rewrite which describes the memory tree more accurately. |
 | R9 | Module system described as a grouping abstraction | Still present. AGENTS.md explicitly says "There is no module-grouping abstraction — just a flat list." |

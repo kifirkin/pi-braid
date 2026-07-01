@@ -72,7 +72,7 @@ pi -e /path/to/pi-braid
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/) ≥ 20
-- [pi-coding-agent](https://github.com/mariozechner/pi-coding-agent) ≥ 0.77.0
+- [pi-coding-agent](https://github.com/mariozechner/pi-coding-agent) ≥ 0.80.0
 
 ## Configuration
 

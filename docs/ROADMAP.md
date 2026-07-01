@@ -1820,8 +1820,9 @@ the heartbeat-scheduler monkey-patch to be safe.
 
   2. `package.json` — bumped peerDep floor for
      `@earendil-works/pi-ai` from `>=0.77.0` to `>=0.80.0`. The
-     other three `@earendil-works/*` peer deps stay at `>=0.77.0`
-     (no API breakage in their consumed surface).
+     other three `@earendil-works/*` peer deps were also bumped to
+     `>=0.80.0` for consistency (no API breakage in their consumed
+     surface).
 
   3. `docs/HOOKS-AND-WHISPERS-AUDIT.md` — fixed two factual errors
      the discipline layer surfaced:
@@ -1859,9 +1860,8 @@ the heartbeat-scheduler monkey-patch to be safe.
     consumer. This is a real refactor and is tracked as a separate
     deferred ticket.
   - **The other three `@earendil-works/*` peer deps.** `pi-coding-agent`,
-    `pi-agent-core`, `pi-tui` remain at `>=0.77.0`. Bumping them is
-    out of scope for the LLM call port; if their consumers break on
-    0.80+, that's a separate ticket.
+    `pi-agent-core`, `pi-tui` were bumped to `>=0.80.0` for
+    consistency alongside the pi-ai port.
   - **`pi-braid-contrib` release coordination.** pi-braid-contrib
     already depends on `^0.80`, so no change needed there.
 
