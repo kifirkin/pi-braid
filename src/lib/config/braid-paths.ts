@@ -54,6 +54,9 @@ export const HEALTHCHECK_DIR = path.join(BRAID, "healthcheck");
 /** lib/memory semantic + episodic store */
 export const SEMANTIC_MEMORY_FILE = path.join(MEMORY_DIR, "semantic.json");
 
+/** Evidence pool: cross-session evidence + conflict persistence */
+export const EVIDENCE_POOL_FILE = path.join(BRAID, "evidence-pool.json");
+
 /** Legacy path for lib/memory (kept for graceful migration) */
 export const LEGACY_MEMORY_FILE = path.join(PI, "memory", "memory.json");
 

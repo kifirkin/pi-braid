@@ -4,8 +4,10 @@
  * Locks Q5 (module-level let migration). The pattern:
  *   - Use getExtensionState(ctx, "key", factory) for per-session state.
  *   - Use global-state.ts getters for process-global state.
- *   - Module-level `let` is banned except for the 28 documented exceptions
- *     (organized in 6 categories A–F: re-entry guards, test injectors,
+ *   - Module-level `let` is banned except for the 29 documented exceptions
+ *     (organized in 7 categories A–F: re-entry guards, lazy-load guards,
+ *     test injectors, encapsulated global-state, logger config,
+ *     session-state mirrors, mutable config). See src/lib/state/AGENTS.md
  *     encapsulated global-state, logger config, session-state mirrors,
  *     tunable config). See src/lib/state/AGENTS.md "Documented exceptions"
  *     table for the full list with justifications.
@@ -56,6 +58,9 @@ const EXEMPT_LINES = [
   { file: "src/lib/utils/injection-tracker.ts", line: 50, pattern: "let _activeSessionId" },
   { file: "src/lib/utils/injection-tracker.ts", line: 58, pattern: "let _sendDepth" },
   { file: "src/lib/enforcement/turn-dedup.ts", line: 107, pattern: "let _state" },
+
+  // ── A2. Lazy-load guards ───────────────────────────────────────────
+  { file: "src/lib/store/evidence-pool.ts", line: 38, pattern: "let loadedFromDisk" },
 
   // ── B. Test-injectable function slots ─────────────────────────────────
   { file: "src/lib/ai/llm-call.ts", line: 68, pattern: "let _completeSimple" },

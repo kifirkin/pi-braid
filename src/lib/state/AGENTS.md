@@ -84,6 +84,12 @@ The exception list is enforced by `test/runtime/lib/test-no-module-level-let.mjs
 | `injection-tracker.ts:56` | `_sendDepth` | Re-entry guard. Incremented before `pi.sendMessage`, decremented after. |
 | `enforcement/turn-dedup.ts:84` | `_state` | Per-turn dedup state; sync access from event handlers. |
 
+### A2. Lazy-load guards (disk-backed persistence init)
+
+| File | Symbol | Justification |
+|---|---|---|
+| `lib/store/evidence-pool.ts:38` | `loadedFromDisk` | `async-storage` cache-load guard. Prevents re-reading the evidence pool JSON file on every `getState()` call. Fires once on first access, merges disk state into session scoped state, then no-ops. No ctx available at the time of the async init call. |
+
 ### B. Test-injectable function slots (intentionally mutable for test isolation)
 
 | File | Symbol | Justification |
@@ -137,6 +143,7 @@ The exception list is enforced by `test/runtime/lib/test-no-module-level-let.mjs
 | 2026-06-17 | Second Q5 audit | 2 additional sites (`nudge-analytics`, `memory singleton`) moved to `global-state.ts`. |
 | 2026-06-17 | `test-no-module-level-let.mjs` added | 27 documented exceptions enumerated. Test enforces the policy. |
 | 2026-06-27 | DR-C-4 runtime check added | `_timerExtensionFactoryState` added (28 documented exceptions). Process-global counter for the timer extension factory; logs a warning when the single-process-per-session assumption is violated. |
+| 2026-07-01 | GAP #3: cross-session evidence pool persistence | `loadedFromDisk` added (29 documented exceptions). Async-storage lazy-load guard for the evidence pool JSON file. |
 
 ## Work Guidance
 

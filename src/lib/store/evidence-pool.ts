@@ -30,6 +30,55 @@ import { getExtensionState } from "../state/extension-state.js";
 import { STOP_WORDS, CRITICS } from "../ai/critic-registry.js";
 import { classify } from "../ai/text-classifier.js";
 import { nextId } from "../utils/id.js";
+import { loadState, saveState, saveStateImmediate } from "../state/async-storage.js";
+import { EVIDENCE_POOL_FILE } from "../config/braid-paths.js";
+
+// ── Cross-session persistence ────────────────────────────────────────────────
+
+let loadedFromDisk = false;
+
+function loadFromDisk(ctx: ExtensionContext): void {
+  if (loadedFromDisk) return;
+  loadedFromDisk = true;
+  loadState<EvidencePoolState>(EVIDENCE_POOL_FILE).then((diskState) => {
+    if (!diskState) return;
+    const raw = getExtensionState(ctx, "evidence-pool", () => ({
+      evidence: [],
+      conflicts: [],
+      lastCleanup: Date.now(),
+    }));
+    const state = raw as unknown as EvidencePoolState;
+    // Merge: prefer in-memory evidence (current session) over disk
+    // but keep unresolved conflicts from previous sessions.
+    const existingIds = new Set(state.evidence.map((e) => e.id));
+    for (const e of diskState.evidence) {
+      if (!existingIds.has(e.id)) {
+        state.evidence.push(e);
+        existingIds.add(e.id);
+      }
+    }
+    const existingConflictIds = new Set(state.conflicts.map((c) => c.id));
+    for (const c of diskState.conflicts) {
+      if (!existingConflictIds.has(c.id)) {
+        state.conflicts.push(c);
+        existingConflictIds.add(c.id);
+      }
+    }
+    if (diskState.lastCleanup > state.lastCleanup) {
+      state.lastCleanup = diskState.lastCleanup;
+    }
+  }).catch(() => {
+    // File doesn't exist yet - first session, no persistence needed
+  });
+}
+
+function persistState(state: EvidencePoolState): void {
+  saveState(EVIDENCE_POOL_FILE, {
+    evidence: state.evidence,
+    conflicts: state.conflicts,
+    lastCleanup: state.lastCleanup,
+  });
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -91,6 +140,7 @@ export interface EvidencePoolState {
 // ── State factory ────────────────────────────────────────────────────────────
 
 function getState(ctx: ExtensionContext): EvidencePoolState {
+  loadFromDisk(ctx);
   return getExtensionState(ctx, "evidence-pool", () => ({
     evidence: [],
     conflicts: [],
@@ -395,6 +445,8 @@ export function addEvidence(
   // Check for conflicts with this new evidence
   detectConflictsFor(ctx, evidence.id);
 
+  persistState(state);
+
   return evidence.id;
 }
 
@@ -490,6 +542,7 @@ export function resolveConflict(
   conflict.verdict = verdict;
   conflict.resolvedBy = resolvedBy;
   conflict.resolvedAt = Date.now();
+  persistState(state);
 }
 
 /**
@@ -547,6 +600,8 @@ export function detectConflicts(ctx: ExtensionContext): Conflict[] {
   if (state.conflicts.length > 20) {
     state.conflicts = state.conflicts.slice(-10);
   }
+
+  persistState(state);
 
   return newConflicts;
 }
@@ -661,7 +716,9 @@ export function pruneResolvedEvidence(ctx: ExtensionContext): number {
   }
   const before = state.evidence.length;
   state.evidence = state.evidence.filter((e) => activeEvidenceIds.has(e.id));
-  return before - state.evidence.length;
+  const removed = before - state.evidence.length;
+  persistState(state);
+  return removed;
 }
 
 /**
@@ -671,4 +728,5 @@ export function clearEvidence(ctx: ExtensionContext): void {
   const state = getState(ctx);
   state.evidence = [];
   state.conflicts = [];
+  persistState(state);
 }
