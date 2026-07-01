@@ -1,8 +1,28 @@
-<!-- status: forward-looking -->
+<!-- status: current -->
 
 # Context Management Tool Improvements
 
-**Status**: proposal (based on long-session experience in pi-braid)
+**Status**: current (implemented 2026-07-02)
+
+## Implementation
+
+All proposed feature changes are implemented in
+`src/extensions/memory/context-manager/handlers/tools/context-compress.ts`:
+
+| Feature | Params | Status |
+|---------|--------|--------|
+| Tag-based archive range | `startTag`, `endTag` | Done |
+| Percentage-based range | `range: "80%"` | Done |
+| Archive feedback (token savings) | Auto-reported | Done |
+| Keep-recent-turns shortcut | `keepRecentTurns: 20` | Done |
+| Deep-clean meta-action | `action: "deep_clean"` | Done |
+| Auto-execute proposals | See context_proposals | Not implemented (separate tool) |
+
+### Contributors
+
+- 2026-07-02: All 5 implementable features added to context_compress.
+  Auto-execute proposals (context_proposals auto-apply) deferred — that
+  tool has different semantics and needs separate design.
 
 ## Observed Problems
 
