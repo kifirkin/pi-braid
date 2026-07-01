@@ -11,6 +11,7 @@
  */
 
 import { createLogger } from "../core/logger.js";
+import type { ContextUsage } from "@earendil-works/pi-coding-agent";
 
 const log = createLogger("belief-store");
 
@@ -60,6 +61,8 @@ export interface PolicyContext {
   lastTool?: string;
   lastError?: string;
   cwd: string;
+  /** Get current context usage. Populated by the heartbeat scheduler's tick(). */
+  getContextUsage?: () => ContextUsage | undefined;
 }
 
 // ── Belief Store ─────────────────────────────────────────────────────────────

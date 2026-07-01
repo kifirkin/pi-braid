@@ -1,22 +1,32 @@
 /**
  * Session Start Queue - phased lazy loading of session_start handlers.
  *
- * Problem: 14+ extensions register synchronous session_start handlers.
- * All fire sequentially when a session starts, blocking startup.
+ * Uses a WeakMap keyed by the pi runtime so each reload gets a fresh queue.
+ * The old pi object is GC'd (along with its queue) when pi-core invalidates
+ * the runtime — no more handler accumulation across reloads.
  *
- * Solution: Batch into phases:
+ * Problem this solves (2026-07-02 fix):
+ *   The previous implementation used module-level `handlers: Handler[]` and
+ *   `initialized: boolean`. The `initialized` flag only guarded the single
+ *   `pi.on(SESSION_START)` registration — it did NOT guard `handlers.push()`.
+ *   So every reload re-ran every extension's default function, appending
+ *   another handler entry. After N reloads, session_start fired N times.
+ *   Affected: 14+ extensions using registerSessionStartHandler, including
+ *   the discoverability handler that emits resume hints (3 whispers per
+ *   session_start → 6, 9, 12... after repeated reloads).
+ *
+ * Solution:
+ *   - `slots = new WeakMap<object, Slot>()` — each pi runtime owns its queue.
+ *     A fresh pi (post-reload) gets a fresh queue; the old one is GC'd.
+ *   - Dedupe by name within the per-pi list (mirrors turn-end-coordinator's
+ *     behavior). Same extension re-registering on the same runtime replaces.
+ *   - The `pi.on(SESSION_START)` listener is attached once per runtime
+ *     (lazily, on first registerSessionStartHandler call for that pi).
+ *
+ * Phases:
  *   Phase 1 (CoreInit) - sequential, critical for agent operation
  *   Phase 2 (MemoryState) - parallel await-all, state loading
  *   Phase 3 (Background) - fire-and-forget, non-critical
- *
- * Usage (in any extension):
- *   import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
- *   registerSessionStartHandler(pi, SessionPhase.CoreInit, async (_event, ctx) => {
- *     // handler logic
- *   });
- *
- * The first call to registerSessionStartHandler() also registers the single
- * pi.on(SESSION_START) listener that runs all phased handlers.
  */
 
 import { createLogger } from "../core/logger.js";
@@ -40,12 +50,65 @@ interface Handler {
   fn: (event: any, ctx: any) => Promise<void>;
 }
 
-const handlers: Handler[] = [];
-let initialized = false;
+interface Slot {
+  handlers: Handler[];
+  coordinatorAttached: boolean;
+}
+
+/** Per-runtime slots keyed by the `pi` extension API object. */
+const slots = new WeakMap<object, Slot>();
+
+function getOrCreateSlot(pi: object): Slot {
+  let slot = slots.get(pi);
+  if (!slot) {
+    slot = { handlers: [], coordinatorAttached: false };
+    slots.set(pi, slot);
+  }
+  return slot;
+}
+
+async function runPhases(handlers: Handler[], event: any, ctx: any): Promise<void> {
+  const startMs = Date.now();
+
+  // ── Phase 1: CoreInit (sequential, blocking) ──
+  const phase1 = handlers.filter((h) => h.phase === SessionPhase.CoreInit);
+  for (const h of phase1) {
+    try {
+      await h.fn(event, ctx);
+    } catch (err) {
+      _log.error(`[session-start] Phase1 error in "${h.name}":`, err);
+    }
+  }
+
+  // ── Phase 2: MemoryState (parallel await-all) ──
+  const phase2 = handlers
+    .filter((h) => h.phase === SessionPhase.MemoryState)
+    .map((h) =>
+      h.fn(event, ctx).catch((err: Error) => {
+        _log.error(`[session-start] Phase2 error in "${h.name}":`, err);
+      }),
+    );
+  await Promise.allSettled(phase2);
+
+  // ── Phase 3: Background (fire-and-forget) ──
+  const backgroundHandlers = handlers.filter((h) => h.phase === SessionPhase.Background);
+  for (const h of backgroundHandlers) {
+    h.fn(event, ctx).catch((err: Error) => {
+      _log.error(`[session-start] Phase3 error in "${h.name}":`, err);
+    });
+  }
+
+  const elapsed = Date.now() - startMs;
+  _log.debug(
+    `[session-start] Phases complete in ${elapsed}ms ` +
+      `(P1:${phase1.length}, P2:${phase2.length}, P3:${backgroundHandlers.length})`,
+  );
+}
 
 /**
  * Register a session_start handler with a specific phase.
- * The coordinator's pi.on(SESSION_START) is registered lazily on first call.
+ * The coordinator's pi.on(SESSION_START) is registered lazily on first call
+ * per runtime. Dedupes by name within the same runtime (last registration wins).
  */
 export function registerSessionStartHandler(
   pi: any,
@@ -53,48 +116,23 @@ export function registerSessionStartHandler(
   fn: (event: any, ctx: any) => Promise<void>,
   name?: string,
 ): void {
-  handlers.push({ phase, fn, name: name || fn.name || `handler-${handlers.length}` });
+  const slot = getOrCreateSlot(pi);
+  const n = name || fn.name || `handler-${slot.handlers.length}`;
 
-  if (!initialized) {
-    initialized = true;
+  // Dedupe by name within this runtime (mirrors turn-end-coordinator pattern)
+  const existing = slot.handlers.findIndex((h) => h.name === n);
+  const entry: Handler = { phase, fn, name: n };
+  if (existing >= 0) {
+    slot.handlers[existing] = entry;
+  } else {
+    slot.handlers.push(entry);
+  }
+
+  // Attach coordinator once per runtime
+  if (!slot.coordinatorAttached) {
+    slot.coordinatorAttached = true;
     pi.on(SESSION_START, async (event: any, ctx: any) => {
-      const startMs = Date.now();
-
-      // ── Phase 1: CoreInit (sequential, blocking) ──
-      const phase1 = handlers.filter((h) => h.phase === SessionPhase.CoreInit);
-      for (const h of phase1) {
-        try {
-          await h.fn(event, ctx);
-        } catch (err) {
-          _log.error(`[session-start] Phase1 error in "${h.name}":`, err);
-        }
-      }
-
-      // ── Phase 2: MemoryState (parallel await-all) ──
-      const phase2 = handlers
-        .filter((h) => h.phase === SessionPhase.MemoryState)
-        .map((h) =>
-          h.fn(event, ctx).catch((err: Error) => {
-            _log.error(`[session-start] Phase2 error in "${h.name}":`, err);
-          }),
-        );
-      // Phase 2 already wraps each handler with .catch() so individual
-      // failures are logged and don't block siblings. allSettled adds
-      // belt-and-suspenders against any handler that throws synchronously.
-      await Promise.allSettled(phase2);
-
-      // ── Phase 3: Background (fire-and-forget) ──
-      for (const h of handlers.filter((h) => h.phase === SessionPhase.Background)) {
-        h.fn(event, ctx).catch((err: Error) => {
-          _log.error(`[session-start] Phase3 error in "${h.name}":`, err);
-        });
-      }
-
-      const elapsed = Date.now() - startMs;
-      _log.debug(
-        `[session-start] Phases complete in ${elapsed}ms ` +
-          `(P1:${phase1.length}, P2:${phase2.length}, P3:${handlers.length - phase1.length - phase2.length})`,
-      );
+      await runPhases(slot.handlers, event, ctx);
     });
   }
 }

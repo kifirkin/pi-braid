@@ -8,7 +8,6 @@
 
 import type { Policy, PolicyContext, BeliefStore } from "../../../lib/store/belief-store.js";
 import type { ToolTracking } from "./types.js";
-import type { ContextUsage } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../../../lib/core/logger.js";
 import {
   USAGE_WHISPER_SOFT,
@@ -44,7 +43,6 @@ export function createDefaultPolicies(
   getToolTracking: () => ToolTracking,
   onSignal: (type: string, data: Record<string, unknown>) => void,
   sendWhisper: (msg: string) => void,
-  getContextUsage: () => ContextUsage | undefined,
   sendSteerMessage: (msg: string) => void,
 ): Policy[] {
   return [
@@ -133,8 +131,8 @@ export function createDefaultPolicies(
       enabled: true,
       lastActivated: 0,
       trigger: async () => true,
-      action: async (_ctx: PolicyContext) => {
-        const usage = getContextUsage();
+      action: async (policyCtx: PolicyContext) => {
+        const usage = policyCtx.getContextUsage?.();
         if (!usage || usage.percent === null) return;
         const { percent, tokens, contextWindow } = usage;
 

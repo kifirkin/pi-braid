@@ -153,6 +153,7 @@ function tick(
         turnNumber: state.policyTurnCount,
         toolStats: new Map(),
         cwd: ctx.cwd ?? ".",
+        getContextUsage: () => ctx.getContextUsage(),
       };
       engine
         .evaluate(policyCtx)
@@ -477,7 +478,6 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
             log.warn(`[heartbeat] policy whisper failed: ${err}`);
           }
         },
-        () => ctx.getContextUsage(),
         (msg: string) => {
           sendTrackedMessage(
             pi,
