@@ -9,8 +9,15 @@
  *
  * Flow:
  * 1. memory (recall_search), web search, docs reading, code execution → addEvidence()
- * 2. message_end → detectConflicts() → XoT Stage 1 classification
- * 3. conflict-qa → Stage 2: question generation + enforcement whisper
+ * 2. tool_result → addEvidence() (calibration tracking)
+ * 3. message_end → detectConflicts() (heuristic O(N²) pre-filter) →
+ *    classifyConflictsWithLLM() (async triple-critic LLM re-classification)
+ * 4. conflict-qa → Stage 2: question generation + enforcement whisper
+ *
+ * Conflict detection is a two-phase process:
+ *   Phase 1 (sync): O(N²) token-overlap heuristic pre-filter + classifyConflict()
+ *   Phase 2 (async): classifyConflictViaCritic() with classify() + CRITICS.evidenceConflict
+ *     upgrades "implication" conflicts to "direct" when LLM detects a real contradiction.
  *
  * Replaces the previous implementation that maintained a local STOP_WORDS
  * copy (80+ words) and used raw token-overlap thresholds for conflict detection.
@@ -20,7 +27,8 @@
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../state/extension-state.js";
-import { STOP_WORDS } from "../ai/critic-registry.js";
+import { STOP_WORDS, CRITICS } from "../ai/critic-registry.js";
+import { classify } from "../ai/text-classifier.js";
 import { nextId } from "../utils/id.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -188,6 +196,72 @@ export function classifyConflict(
 
   // Default: implication-based (one claim may logically contradict another)
   return "implication";
+}
+
+/**
+ * Classify a conflict using the triple-critic LLM system.
+ *
+ * The async replacement for classifyConflict(). Uses classify() with
+ * CRITICS.evidenceConflict to determine if two pieces of evidence
+ * directly contradict each other. When the LLM says "yes", returns
+ * "direct". When the LLM says "no" or is unavailable, falls back to
+ * the heuristic classifyConflict() result.
+ *
+ * This is the function that the deprecated classifyConflict() JSDoc
+ * tells callers to use — it was referenced in a comment but never
+ * implemented until 2026-07-01.
+ */
+export async function classifyConflictViaCritic(
+  forEvidence: Evidence[],
+  againstEvidence: Evidence[],
+  ctx: ExtensionContext,
+): Promise<ConflictClassification> {
+  const evidenceA = forEvidence.map((e) => e.claim).join("; ");
+  const evidenceB = againstEvidence.map((e) => e.claim).join("; ");
+
+  try {
+    const result = await classify(
+      ctx,
+      CRITICS.evidenceConflict.criteria,
+      { evidenceA, evidenceB },
+      {
+        timeoutMs: 60_000,
+        label: CRITICS.evidenceConflict.label,
+        tierPolicy: "always-llm",
+      },
+    );
+
+    if (result.label === "yes") return "direct";
+  } catch {
+    // LLM failure — fall through to heuristic
+  }
+
+  return classifyConflict(forEvidence, againstEvidence);
+}
+
+/**
+ * Re-classify all unresolved conflicts using the triple-critic LLM system.
+ * Runs in the background — does not block the caller. Conflicts where the
+ * LLM detects a direct contradiction get upgraded from "implication" to
+ * "direct".
+ */
+export async function classifyConflictsWithLLM(
+  ctx: ExtensionContext,
+  conflicts: Conflict[],
+): Promise<void> {
+  for (const conflict of conflicts) {
+    if (conflict.verdict !== "unresolved") continue;
+    if (conflict.classification === "direct") continue; // already classified
+
+    try {
+      const llmResult = await classifyConflictViaCritic(conflict.for, conflict.against, ctx);
+      if (llmResult === "direct") {
+        conflict.classification = llmResult;
+      }
+    } catch {
+      // Per-conflict errors are non-fatal
+    }
+  }
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────

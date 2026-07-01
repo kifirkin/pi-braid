@@ -10,6 +10,7 @@ import {
   formatConflictMessage,
   resolveConflict,
   pruneResolvedEvidence,
+  classifyConflictsWithLLM,
 } from "../../../lib/store/evidence-pool.js";
 import {
   processConflicts as processConflictQAs,
@@ -60,6 +61,13 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
           `[conflict] ${unresolved.length} unresolved source conflicts. ` +
             `Consider resolving: memory_store content with conflict_verified tag.`,
         );
+      }
+
+      // Non-blocking LLM re-classification: upgrade heuristic "implication"
+      // conflicts to "direct" when the triple-critic system detects a
+      // real contradiction. Runs in background — does not await.
+      if (newConflicts.length > 0) {
+        classifyConflictsWithLLM(ctx, newConflicts).catch(() => {});
       }
 
       const newQAs = processConflictQAs(ctx);
