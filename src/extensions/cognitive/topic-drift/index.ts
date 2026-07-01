@@ -2,8 +2,8 @@
  * @fileoverview Topic Drift Detector.
  *
  * Detects when agent output diverges from the original user request.
- * Uses the triple-critic LLM classification system with three parallel
- * classify() calls: topicCoverage, topicDivergence, topicCompleteness.
+ * Uses consolidated single-LLM-call critique as primary path,
+ * falling back to three parallel classifyWithOffline() calls.
  *
  * Three-tier fallback: heuristic → utility model → session model.
  * Heuristic fallback (conservative: no drift) when no LLM available.
@@ -17,12 +17,12 @@ import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../../../lib/core/logger.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
-import { classify } from "../../../lib/ai/text-classifier.js";
 import { classifyWithOffline } from "../../../lib/reasoning/classifier-offline.js";
 import { CRITICS } from "../../../lib/ai/critic-registry.js";
 import { onEvent } from "../../../lib/events/event-types.js";
 import { ANCHOR_TURNS_BEFORE_RESET } from "../../../lib/constants/session-thresholds.js";
 import { topicDriftFallback } from "../../../lib/ai/critic-fallbacks.js";
+import { consolidatedTopicCritique } from "../../../lib/detection/consolidated-topic-critic.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { BRAID_INJECTED, BRAID_SOURCE } from "../../../lib/constants/injection-details.js";
 
@@ -55,12 +55,10 @@ const DRIFT_THRESHOLD = 0.5;
 // ── Core logic (triple-critic) ──────────────────────────────────────────────
 
 /**
- * Detect topic drift using triple-critic LLM classification.
+ * Detect topic drift using consolidated single-LLM-call critique.
  *
- * Runs three parallel classify() calls:
- *   coverage:     Does the response address the original request?
- *   divergence:   Has the response shifted to a different topic?
- *   completeness: Does the response cover all key topics?
+ * Primary path: single callLlm() returning coverage/divergence/completeness.
+ * Fallback: three parallel classifyWithOffline() calls.
  *
  * Consensus: 2/3 negative signals → drift confirmed.
  *
@@ -96,8 +94,44 @@ async function detectDriftWithCritics(
     return { drifted: false, similarity: 1.0, missingAnchors: [] };
   }
 
+  // ── PRIMARY PATH: consolidated single-LLM-call ────────────────────────
   let classifierDown = false;
   try {
+    const consolidated = await consolidatedTopicCritique(truncOriginal, truncOutput, ctx);
+
+    if (!consolidated.classifierDown) {
+      // Consolidated succeeded — use its verdicts directly
+      const coverageBad = !consolidated.coverage;
+      const diverged = consolidated.divergence;
+      const incomplete = !consolidated.completeness;
+      const negativeVotes = [coverageBad, diverged, incomplete].filter(Boolean).length;
+      const drifted = negativeVotes >= 2;
+      const similarity = drifted ? 0.3 : 0.8;
+
+      const missingAnchors: string[] = [];
+      if (drifted) {
+        const clues: string[] = [];
+        if (coverageBad) clues.push("coverage");
+        if (diverged) clues.push("divergence");
+        if (incomplete) clues.push("incomplete");
+        missingAnchors.push(...clues);
+      }
+
+      log.debug(
+        `[topic-drift] Consolidated: coverage=${consolidated.coverage}, ` +
+          `divergence=${consolidated.divergence}, completeness=${consolidated.completeness} ` +
+          `→ drifted=${drifted}`,
+      );
+
+      return { drifted, similarity, missingAnchors, classifierDown: false };
+    }
+  } catch {
+    // Fall through to 3-parallel path
+  }
+
+  // ── FALLBACK PATH: 3 parallel classifyWithOffline() calls ────────────
+  try {
+    log.debug("[topic-drift] Consolidated call failed, falling back to 3-parallel");
     // EW-7.4: classifyWithOffline() captures the offline state per
     // classifier. "all 3 down" → classifierDown = true (same logic as
     // before, but the offline check is now on the helper's return value

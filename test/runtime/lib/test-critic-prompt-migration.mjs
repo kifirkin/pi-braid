@@ -57,15 +57,14 @@ function test(name, fn) {
 // sync with critic-registry.ts. To check coverage:
 //
 //   grep -c 'You are a binary text classifier' src/lib/ai/critic-registry.ts
-//   = 32 (32 critics)
+//   = 31 (31 critics)
 const MIGRATED_CRITICS = [
   // Topic drift (3)
   "topicCoverage",
   "topicDivergence",
   "topicCompleteness",
-  // Decomposition (2)
+  // Decomposition (1)
   "decompositionCoverage",
-  "decompositionComplete",
   // Topic classification (2)
   "topicClassification",
   "trajectoryPattern",
@@ -196,27 +195,27 @@ for (const criticName of MIGRATED_CRITICS) {
 
 // ── All critics migrated ────────────────────────────────────────────
 
-test("All 32 critics are migrated (no stragglers in the old pattern)", () => {
-  // This assertion pins the count: 32 migrated, 0 not migrated.
-  // If you add a 33rd critic, add it to MIGRATED_CRITICS AND
+test("All 31 critics are migrated (no stragglers in the old pattern)", () => {
+  // This assertion pins the count: 31 migrated, 0 not migrated.
+  // If you add a 32nd critic, add it to MIGRATED_CRITICS AND
   // verify it actually has the new pattern (the per-critic tests
   // above will catch a half-migration).
   assert.strictEqual(
     MIGRATED_CRITICS.length,
-    32,
-    "MIGRATED_CRITICS list should have exactly 32 entries (all critics)",
+    31,
+    "MIGRATED_CRITICS list should have exactly 31 entries (all critics)",
   );
 });
 
-test("critic-registry.ts has 32 'binary text classifier' system prompts", () => {
+test("critic-registry.ts has 31 'binary text classifier' system prompts", () => {
   // Sanity check: the count of "binary text classifier" occurrences
   // should match the MIGRATED_CRITICS length. If you add a critic
   // but forget to migrate it, this test fails.
   const occurrences = (src.match(/You are a binary text classifier/g) || []).length;
   assert.strictEqual(
     occurrences,
-    32,
-    `critic-registry.ts should have 32 'binary text classifier' system prompts, found ${occurrences}`,
+    31,
+    `critic-registry.ts should have 31 'binary text classifier' system prompts, found ${occurrences}`,
   );
 });
 

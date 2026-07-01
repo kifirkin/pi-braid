@@ -376,24 +376,7 @@ export const CRITICS = {
   // Decomposition Coverage
   // ═══════════════════════════════════════════════════════════════════════
 
-  /** Do subtasks fully cover the parent task? */
-  decompositionComplete: {
-    label: "Decomposition Coverage",
-    criteria: {
-      systemPrompt:
-        "You are a binary text classifier. You do one thing: " +
-        "look at text inside <text> tags and decide if it matches a criterion.",
-      userPrompt:
-        "Your task: determine if the set of subtasks fully covers all aspects of the parent " +
-        "task without gaps. A minor missing detail is okay. A significant missing requirement is a gap.\n" +
-        "Reply with exactly one word: yes or no. No explanation, no punctuation, no other text.\n\n" +
-        "<text>\n" +
-        "Parent task: {{parentTask}}\n" +
-        "Subtasks:\n{{subtasks}}\n" +
-        "</text>",
-    },
-    options: { timeoutMs: 60_000 },
-  } satisfies CriticDef,
+
 
   // ═══════════════════════════════════════════════════════════════════════
   // Hint Quality Filter
