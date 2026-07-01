@@ -3,11 +3,11 @@
  *
  * Formats the resolved skill set as a `<available_skills>` block.
  *
- * Each entry has name, description, and location - mirroring native
- * pi's format. No per-skill file reads, no line counts, no section
- * lists: the agent already knows how to `read` a SKILL.md, and 400
- * lines is cheap to read on demand. Keeping the block terse matters
- * more than embedding metadata the agent will rarely consult.
+ * Each entry carries the discoverability triple (name + description + location)
+ * so the agent can pattern-match relevant skills without reading every SKILL.md.
+ * Descriptions come from skill frontmatter (already loaded by pi-core) — no
+ * extra file reads for the pointer block. The agent reads the full SKILL.md
+ * on demand when a description matches the current task.
  *
  * No relevance scoring, no cap, no hidden list - every skill the
  * loader produced is here, so the agent can always `read` any of
@@ -32,6 +32,49 @@ function escapeXml(str: string): string {
     .replace(/'/g, "&apos;");
 }
 
+/**
+ * Normalize a skill description for safe, compact rendering in the pointer
+ * block. Handles:
+ *   - Unicode dashes (em, en, etc.) → ASCII `-`
+ *   - Smart single/double quotes → ASCII `'` / `"`
+ *   - Special spaces → regular space
+ *   - Arrows → `->`
+ *   - Truncates to MAX_DESC_LEN characters (word-boundary aware)
+ *
+ * Mirrors pi-core's normalizeForFuzzyMatch patterns, plus arrow handling.
+ */
+const MAX_DESC_LEN = 200;
+
+function normalizeDescription(raw: string): string {
+  let s = raw
+    .normalize("NFKC")
+    // Smart quotes
+    .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+    // Dashes
+    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, "-")
+    // Special spaces
+    .replace(/[\u00A0\u2002-\u200A\u202F\u205F\u3000]/g, " ")
+    // Arrows
+    .replace(/[\u2190-\u2199\u21D0-\u21D9\u27A1]/g, "->")
+    // Collapse multiple spaces (from replacements)
+    .replace(/  +/g, " ")
+    .trim();
+
+  // Truncate at word boundary
+  if (s.length > MAX_DESC_LEN) {
+    const truncated = s.slice(0, MAX_DESC_LEN);
+    const lastSpace = truncated.lastIndexOf(" ");
+    if (lastSpace > MAX_DESC_LEN * 0.6) {
+      s = truncated.slice(0, lastSpace) + "...";
+    } else {
+      s = truncated + "...";
+    }
+  }
+
+  return s;
+}
+
 /** Build the `<available_skills>` section. Returns empty string if no skills. */
 export async function skillsSection(skills: Skill[]): Promise<PromptSection> {
   return {
@@ -46,13 +89,13 @@ export async function skillsSection(skills: Skill[]): Promise<PromptSection> {
       const sorted = [...visibleSkills].sort((a, b) => a.name.localeCompare(b.name));
 
       const lines = [
-        `Skills (${sorted.length} available): use \`read <location>\` to inspect a SKILL.md when relevant. Descriptions live in the files, not in this block.`,
+        `Skills (${sorted.length} available): procedural guides for specialized domains. Before starting a task, scan the skills below. If a skill's description matches your current work, \`read <location>\` the full SKILL.md and follow its instructions. Skills are not optional hints — they contain executable procedures.`,
         "<available_skills>",
       ];
 
       for (const skill of sorted) {
         lines.push(
-          `  <skill name="${escapeXml(skill.name)}" location="${escapeXml(skill.filePath)}" />`,
+          `  <skill name="${escapeXml(skill.name)}" description="${escapeXml(normalizeDescription(skill.description))}" location="${escapeXml(skill.filePath)}" />`,
         );
       }
 

@@ -325,9 +325,10 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       // Use skills resolved by pi's full resource loader — this includes
       // package skills (e.g. pi-braid-skills), user/project skill dirs,
       // .agents/skills, and CLI --skill paths. We only re-format with
-      // braid's line-count/section metadata; we do NOT re-discover skills
-      // ourselves and we do NOT cap or filter them. Every skill is listed
-      // with its full path so the agent can `read` any of them on demand.
+      // description+location metadata from the loaded Skill objects; we do
+      // NOT re-discover skills ourselves and we do NOT cap or filter them.
+      // Every skill is listed with its domain description and full path so
+      // the agent can pattern-match and `read` any of them on demand.
       const skillsText = await reconstructSkillsSection(
         event.systemPromptOptions?.skills ?? [],
         ctx,
