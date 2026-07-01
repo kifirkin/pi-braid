@@ -12,7 +12,7 @@
  */
 
 import { callLlm } from "../ai/llm-call.js";
-import { resolveUtilityModel } from "../ai/model-resolver.js";
+import { resolveUtilityModel, resolveMaxPowerModel } from "../ai/model-resolver.js";
 import { createLogger } from "../core/logger.js";
 import { recordCriticCall } from "./critic-stats.js";
 import { getCacheKey, getCachedResult, setCachedResult } from "./critic-cache.js";
@@ -33,12 +33,12 @@ export interface ClassifierCriteria {
 export interface ClassificationResult {
   /** Parsed label - "yes" | "no" | fallback value. */
   label: string;
-  /** Confidence estimate: utility=0.9, session=0.6, heuristic=0.7, failed=0. */
+  /** Confidence estimate: utility=0.9, session=0.6, max-power=0.95, heuristic=0.7, failed=0. */
   confidence: number;
   /** Raw model output text. */
   raw: string;
   /** Which tier produced this result. */
-  tier: "utility" | "session" | "heuristic" | "failed" | "cache";
+  tier: "utility" | "session" | "max-power" | "heuristic" | "failed" | "cache";
   /** Latency in milliseconds. */
   latencyMs: number;
 }
@@ -66,6 +66,26 @@ export interface ClassifierOptions {
   /** Optional human-readable label for runtime observability (critic-stats tracking). */
   label?: string;
   /**
+   * Model preference selects the tier ORDERING strategy.
+   * Each strategy defines which LLM tiers to try and in what order.
+   * All strategies start with heuristic (tier 1) if applicable.
+   *
+   *   "balanced" (default): utility → session → max-power
+   *     Good default: cheap utility first, session as backup, max-power as last resort.
+   *
+   *   "quality": session → utility → max-power
+   *     Prefer quality: try the session (conversation) model first since it may
+   *     already be powerful, utility as cheap fallback, max-power as safety net.
+   *
+   *   "speed": utility → session
+   *     Fastest path: skip max-power entirely. Identical to current default behavior.
+   *
+   *   "max": max-power → session → utility
+   *     Maximum quality: try the configured max-power model first, then session,
+   *     then utility as last resort. Requires /max-power-model to be configured.
+   */
+  modelPreference?: "balanced" | "quality" | "speed" | "max";
+  /**
    * Best-effort mode: shorter timeout, demote failure warns to debug.
    * Use for post-loop / session-end analysis where the result is nice-to-have
    * and aborts are expected (the session signal cascades to in-flight calls
@@ -77,18 +97,82 @@ export interface ClassifierOptions {
   bestEffort?: boolean;
 }
 
+// ── Tier Descriptor ────────────────────────────────────────────────────────
+
+/** A single tier in the LLM fallback chain with model eagerly resolved. */
+interface TierDescriptor {
+  name: "utility" | "session" | "max-power";
+  model: import("@earendil-works/pi-ai").Model<import("@earendil-works/pi-ai").Api> | undefined;
+  confidence: number;
+}
+
+/**
+ * Build the ordered list of LLM tiers based on the modelPreference strategy.
+ * Each strategy defines which models to try and in what order.
+ * The heuristic (tier 1) is always evaluated before this function is called.
+ */
+function buildTierOrder(
+  modelPreference: NonNullable<ClassifierOptions["modelPreference"]>,
+  ctx: ExtensionContext,
+): TierDescriptor[] {
+  // Resolve models eagerly
+  const utility = resolveUtilityModel(ctx);
+  const session = ctx.model;
+  const maxPower = resolveMaxPowerModel(ctx);
+
+  type TierBuilder = () => TierDescriptor[];
+
+  const strategies: Record<string, TierBuilder> = {
+    balanced: () => [
+      { name: "utility", model: utility, confidence: 0.9 },
+      { name: "session", model: session, confidence: 0.6 },
+      ...(maxPower
+        ? [{ name: "max-power" as const, model: maxPower, confidence: 0.95 }]
+        : []),
+    ],
+    quality: () => [
+      { name: "session", model: session, confidence: 0.6 },
+      { name: "utility", model: utility, confidence: 0.9 },
+      ...(maxPower
+        ? [{ name: "max-power" as const, model: maxPower, confidence: 0.95 }]
+        : []),
+    ],
+    speed: () => [
+      { name: "utility", model: utility, confidence: 0.9 },
+      { name: "session", model: session, confidence: 0.6 },
+    ],
+    max: () => [
+      ...(maxPower
+        ? [{ name: "max-power" as const, model: maxPower, confidence: 0.95 }]
+        : []),
+      { name: "session", model: session, confidence: 0.6 },
+      { name: "utility", model: utility, confidence: 0.9 },
+    ],
+  };
+
+  const builder = strategies[modelPreference] ?? strategies.balanced;
+  // Filter out entries where the model is unavailable
+  return builder().filter((t) => t.model !== undefined);
+}
+
 // ── Classify ─────────────────────────────────────────────────────────────────
 
 /**
- * Classify text using the three-tier fallback system (heuristic-first).
+ * Classify text using the four-tier fallback system (heuristic-first).
  *
  * Tier 1 (heuristic) runs first - it's fast and free. Only if the heuristic
  * returns something ambiguous or isn't provided do we consult LLM tiers.
  *
+ * Tier flow by modelPreference (see ClassifierOptions for details):
+ *   "balanced" (default): heuristic → utility → session → max-power
+ *   "quality":            heuristic → session → utility → max-power
+ *   "speed":              heuristic → utility → session
+ *   "max":                heuristic → max-power → session → utility
+ *
  * @param ctx - Extension context for model resolution + API keys.
  * @param criteria - Prompt templates (system + user with {{key}} placeholders).
  * @param substitutions - Key-value pairs to replace `{{key}}` in prompts.
- * @param options - Optional: maxTokens, timeoutMs, heuristic fallback.
+ * @param options - Optional: maxTokens, timeoutMs, heuristic fallback, modelPreference.
  * @returns ClassificationResult with label, confidence, tier, and latency.
  */
 export async function classify(
@@ -223,63 +307,22 @@ export async function classify(
     }
   }
 
-  // ── Tier 2: Configured utility model ────────────────────────────────────
-  const utilityModel = resolveUtilityModel(ctx);
-  let tier2FailureReason: string | null = null;
-  if (utilityModel) {
-    const tier1 = await tryModelCall(
-      ctx,
-      utilityModel,
-      criteria.systemPrompt,
-      userMessage,
-      maxTokens,
-      timeoutMs,
-      0, // maxRetries: 0 - classify calls should fail fast, not retry
-      options?.validLabels,
-    );
-    if (tier1 && tier1.ok) {
-      const latency = Date.now() - start;
-      log.debug(
-        `[text-classifier] TIER 2 (utility → ${utilityModel.id}): "${tier1.label}" ${latency}ms`,
-      );
-      if (options?.label) recordCriticCall(options.label, "utility", latency, tier1.usage);
-      // Q17: cache the result for future identical calls within TTL
-      if (options?.label) {
-        setCachedResult(
-          getCacheKey(options.label, criteria.systemPrompt, userMessage),
-          {
-            label: tier1.label,
-            confidence: 0.9,
-            raw: tier1.raw,
-            tier: "utility",
-            latencyMs: latency,
-          },
-        );
-      }
-      return {
-        label: tier1.label,
-        confidence: 0.9,
-        raw: tier1.raw,
-        tier: "utility",
-        latencyMs: latency,
-      };
-    }
-    // Capture the actual failure reason so the WARN line tells the
-    // user WHY the tier failed, not just THAT it failed. The user
-    // shouldn't have to dig into /logs to find out.
-    tier2FailureReason = tier1 && !tier1.ok ? tier1.reason : "unknown failure";
-    logTierFailure(
-      `TIER 2 failed (utility model '${utilityModel.id}'): ${tier2FailureReason}. Falling to TIER 3.`,
-    );
-  }
+  // ── LLM Tier loop: strategy-driven ordering ─────────────────────────────
+  // Build the ordered list of model tiers based on modelPreference strategy.
+  // Each tier is tried in sequence; the first success wins.
+  const tierOrder = buildTierOrder(options?.modelPreference ?? "balanced", ctx);
+  const failureReasons: string[] = [];
 
-  // ── Tier 3: Session model ───────────────────────────────────────────────
-  const sessionModel = ctx.model;
-  let tier3FailureReason: string | null = null;
-  if (sessionModel) {
-    const tier2 = await tryModelCall(
+  for (const [tierIndex, tier] of tierOrder.entries()) {
+    const tierNum = tierIndex + 2; // LLM tiers start at 2 (tier 1 = heuristic)
+    if (!tier.model) {
+      failureReasons.push(`TIER ${tierNum} (${tier.name}): no model configured`);
+      continue;
+    }
+
+    const result = await tryModelCall(
       ctx,
-      sessionModel,
+      tier.model,
       criteria.systemPrompt,
       userMessage,
       maxTokens,
@@ -287,44 +330,44 @@ export async function classify(
       0, // maxRetries: 0 - classify calls should fail fast, not retry
       options?.validLabels,
     );
-    if (tier2 && tier2.ok) {
+
+    if (result && result.ok) {
       const latency = Date.now() - start;
       log.debug(
-        `[text-classifier] TIER 3 (session → ${sessionModel.id}): "${tier2.label}" ${latency}ms`,
+        `[text-classifier] TIER ${tierNum} (${tier.name} → ${tier.model.id}): "${result.label}" ${latency}ms`,
       );
-      if (options?.label) recordCriticCall(options.label, "session", latency, tier2.usage);
+      if (options?.label) recordCriticCall(options.label, tier.name, latency, result.usage);
       // Q17: cache the result for future identical calls within TTL
       if (options?.label) {
         setCachedResult(
           getCacheKey(options.label, criteria.systemPrompt, userMessage),
           {
-            label: tier2.label,
-            confidence: 0.6,
-            raw: tier2.raw,
-            tier: "session",
+            label: result.label,
+            confidence: tier.confidence,
+            raw: result.raw,
+            tier: tier.name,
             latencyMs: latency,
           },
         );
       }
       return {
-        label: tier2.label,
-        confidence: 0.6,
-        raw: tier2.raw,
-        tier: "session",
+        label: result.label,
+        confidence: tier.confidence,
+        raw: result.raw,
+        tier: tier.name,
         latencyMs: latency,
       };
     }
-    tier3FailureReason = tier2 && !tier2.ok ? tier2.reason : "unknown failure";
-    logTierFailure(
-      `TIER 3 failed (session model '${sessionModel.id}'): ${tier3FailureReason}.`,
-    );
+
+    const reason = result && !result.ok ? result.reason : "unknown failure";
+    failureReasons.push(`TIER ${tierNum} (${tier.name} '${tier.model.id}'): ${reason}`);
+    logTierFailure(`TIER ${tierNum} failed (${tier.name} model '${tier.model.id}'): ${reason}.`);
   }
 
   const latency = Date.now() - start;
   const allFailedMsg =
     `ALL TIERS FAILED - returning "unknown" ${latency}ms. ` +
-    `TIER 2: ${tier2FailureReason ?? "no utility model configured"}. ` +
-    `TIER 3: ${tier3FailureReason ?? "no session model"}.`;
+    failureReasons.join(" ");
   logTierFailure(allFailedMsg);
   if (options?.label) recordCriticCall(options.label, "failed", latency);
   return { label: "unknown", confidence: 0, raw: "", tier: "failed", latencyMs: latency };

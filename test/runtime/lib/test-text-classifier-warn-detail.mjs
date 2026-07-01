@@ -15,13 +15,13 @@
  *   - tryModelCall now returns { ok: false, reason: string } on
  *     failure (with the actual callLlm error, throw message, or
  *     "unparseable label" text)
- *   - classify() captures the reason in tier2FailureReason /
- *     tier3FailureReason
+ *   - classify() captures the reason in a failureReasons array
+ *     (replaced hardcoded tier2FailureReason/tier3FailureReason
+ *     when the dynamic tier loop was introduced for modelPreference
+ *     strategies)
  *   - The WARN messages inline the reason:
- *     [text-classifier] TIER 2 failed (utility model 'X'): <reason>. Falling to TIER 3.
- *     [text-classifier] TIER 3 failed (session model 'Y'): <reason>.
- *   - The "ALL TIERS FAILED" message also includes the captured
- *     reasons so the user sees both at once.
+ *     [text-classifier] TIER N failed (tier.name model 'model.id'): <reason>.
+ *   - The "ALL TIERS FAILED" message includes all captured reasons.
  *
  * This test pins the contract at the source level.
  */
@@ -153,44 +153,38 @@ test("tryModelCall catch block returns { ok: false, reason: 'threw: ...' }", () 
 
 // ── classify() captures reasons and includes them in WARN ───────────────
 
-test("classify() declares tier2FailureReason and tier3FailureReason", () => {
+// With the dynamic tier loop (modelPreference strategies), the old
+// hardcoded tier2FailureReason/tier3FailureReason variables are replaced
+// by a `failureReasons: string[]` array populated in the loop body.
+// Each tier captures its reason inline and the ALL TIERS FAILED message
+// includes all captured reasons.
+
+test("classify() declares failureReasons array before the loop", () => {
   assert.match(
     src,
-    /let tier2FailureReason: string \| null = null/,
-    "classify() must declare tier2FailureReason before the TIER 2 call",
-  );
-  assert.match(
-    src,
-    /let tier3FailureReason: string \| null = null/,
-    "classify() must declare tier3FailureReason before the TIER 3 call",
+    /const failureReasons: string\[\] = \[\];/,
+    "classify() must declare failureReasons array before the TIER loop",
   );
 });
 
-test("classify() captures tier2 reason from tryModelCall result", () => {
+test("classify() captures failure reason from tryModelCall result", () => {
   assert.match(
     src,
-    /tier2FailureReason = tier1 && !tier1\.ok \? tier1\.reason : "unknown failure"/,
-    "TIER 2 failure must capture the actual reason (with 'unknown failure' fallback)",
+    /const reason = result && !result\.ok \? result\.reason : "unknown failure";/,
+    "TIER failure must capture the actual reason (with 'unknown failure' fallback)",
   );
 });
 
-test("classify() captures tier3 reason from tryModelCall result", () => {
-  assert.match(
-    src,
-    /tier3FailureReason = tier2 && !tier2\.ok \? tier2\.reason : "unknown failure"/,
-    "TIER 3 failure must capture the actual reason (with 'unknown failure' fallback)",
-  );
-});
-
-test("TIER 2 warn includes the actual reason inline (not behind /logs)", () => {
-  // 2026-06-17: TIER 2/3 warns now go through a logTierFailure helper
+test("TIER warn includes the actual reason inline (not behind /logs)", () => {
+  // 2026-06-17: TIER warns now go through a logTierFailure helper
   // that demotes to log.debug when bestEffort is set or the failure
   // was an abort. The reason-inline contract is preserved: the helper
-  // is called with a string template that includes the failure reason.
+  // is called with a string template that includes the tier name,
+  // model ID, and failure reason.
   assert.match(
     src,
-    /logTierFailure\(\s*`TIER 2 failed \(utility model '\$\{utilityModel\.id\}'\): \$\{tier2FailureReason\}\. Falling to TIER 3\.[`\s,)]/,
-    "TIER 2 warn must inline the reason: logTierFailure('TIER 2 failed (utility model X): <reason>. Falling to TIER 3.')",
+    /logTierFailure\(`TIER \$\{tierNum\} failed \(\$\{tier\.name\} model '\$\{tier\.model\.id\}'\): \$\{reason\}\.`\)/,
+    "TIER warn must inline the reason: logTierFailure('TIER N failed (tier.name model \\'model.id\\'): <reason>.')",
   );
   // Verify the helper does emit log.warn (not just log.debug) for
   // the non-bestEffort, non-abort case.
@@ -201,24 +195,11 @@ test("TIER 2 warn includes the actual reason inline (not behind /logs)", () => {
   );
 });
 
-test("TIER 3 warn includes the actual reason inline", () => {
+test("ALL TIERS FAILED warn includes all captured reasons for the operator", () => {
   assert.match(
     src,
-    /logTierFailure\(\s*`TIER 3 failed \(session model '\$\{sessionModel\.id\}'\): \$\{tier3FailureReason\}\.[`\s,)]/,
-    "TIER 3 warn must inline the reason: logTierFailure('TIER 3 failed (session model Y): <reason>.')",
-  );
-});
-
-test("ALL TIERS FAILED warn includes both reasons for the operator", () => {
-  assert.match(
-    src,
-    /TIER 2: \$\{tier2FailureReason \?\? "no utility model configured"\}/,
-    "ALL TIERS FAILED message must include TIER 2 reason with a 'no utility model configured' fallback",
-  );
-  assert.match(
-    src,
-    /TIER 3: \$\{tier3FailureReason \?\? "no session model"\}/,
-    "ALL TIERS FAILED message must include TIER 3 reason with a 'no session model' fallback",
+    /failureReasons\.join\(" "\);/,
+    "ALL TIERS FAILED message must join failureReasons by space",
   );
 });
 

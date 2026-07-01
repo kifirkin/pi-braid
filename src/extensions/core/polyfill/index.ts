@@ -17,15 +17,16 @@ import * as os from "node:os";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { ModelSelectorComponent, SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { Model, Api } from "@earendil-works/pi-ai";
-import { resolveUtilityModel, resolveVisionModel } from "../../../lib/ai/model-resolver.js";
+import { resolveUtilityModel, resolveVisionModel, resolveMaxPowerModel } from "../../../lib/ai/model-resolver.js";
 import { onEvent } from "../../../lib/events/event-types.js";
 import { registerSessionCleanup } from "../../../lib/state/extension-state.js";
 
-/** Custom settings keys managed by /utility-model and /vision-model commands */
+/** Custom settings keys managed by /utility-model, /vision-model, and /max-power-model commands */
 import {
   getCustomModelKeys,
   UTILITY_MODEL_KEY,
   VISION_MODEL_KEY,
+  MAX_POWER_MODEL_KEY,
 } from "../../../lib/state/global-state.js";
 
 interface SessionManagerLike {
@@ -97,7 +98,7 @@ async function loadCustomKeysFromDisk(): Promise<void> {
     const content = await fs.readFile(SETTINGS_PATH, "utf-8");
     const settings = JSON.parse(content);
     const map = getCustomModelKeys();
-    for (const key of [VISION_MODEL_KEY, UTILITY_MODEL_KEY]) {
+    for (const key of [VISION_MODEL_KEY, UTILITY_MODEL_KEY, MAX_POWER_MODEL_KEY]) {
       if (typeof settings[key] === "string" && settings[key]) {
         map.set(key, settings[key]);
       }
@@ -223,6 +224,47 @@ export default function polyfillExtension(pi: ExtensionAPI) {
       }
       await setModelSetting(VISION_MODEL_KEY, text);
       ctx.ui.notify(`Vision model set to: ${model.id}`, "info");
+    },
+  });
+
+  // ── Max-power model command ─────────────────────────────────────────
+  pi.registerCommand("max-power-model", {
+    description:
+      "Set or show the max-power model for accuracy-critical tasks. " +
+      "No args = show current setting. Configure a stronger model for " +
+      "modelPreference: \"max\" or \"balanced\" strategies. " +
+      "Examples: /max-power-model provider/model-id, /max-power-model clear",
+    handler: async (args, ctx) => {
+      if (!args || args.trim() === "") {
+        if (ctx.hasUI) {
+          await openModelSelectorUI(ctx, MAX_POWER_MODEL_KEY, "Max-Power", null, resolveMaxPowerModel);
+        } else {
+          const model = resolveMaxPowerModel(ctx);
+          ctx.ui.notify(
+            `Max-power model: ${model?.id ?? "none (not configured)"}`,
+            model ? "info" : "warning",
+          );
+        }
+        return;
+      }
+
+      const text = args.trim();
+      if (text === "clear" || text === "reset") {
+        await clearModelSetting(MAX_POWER_MODEL_KEY);
+        ctx.ui.notify("Max-power model cleared (will not be used in tier fallback)", "info");
+        return;
+      }
+
+      const model = resolveModelPattern(ctx, text);
+      if (!model) {
+        ctx.ui.notify(`Model not found: ${text}`, "error");
+        return;
+      }
+      await setModelSetting(MAX_POWER_MODEL_KEY, text);
+      ctx.ui.notify(
+        `Max-power model set to: ${model.id} (use modelPreference: "max" to activate)`,
+        "info",
+      );
     },
   });
 }

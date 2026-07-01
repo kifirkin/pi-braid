@@ -171,44 +171,40 @@ describe("critic-cache (Q17)", () => {
   });
 
   describe("text-classifier integration (source-level)", () => {
-    it("checks the cache after Tier 1 and before Tier 2", () => {
+    it("checks the cache after Tier 1 and before the LLM tier loop", () => {
       const src = readFileSync(
         join(ROOT, "src/lib/ai/text-classifier.ts"),
         "utf-8",
       );
       // The cache check should come AFTER the heuristic (Tier 1) block
-      // and BEFORE the utility model (Tier 2) block.
+      // and BEFORE the LLM tier loop inside classify().
       const heuristicEnd = src.indexOf("TIER 1 skipped (tierPolicy=always-llm)");
       const cacheCheck = src.indexOf("getCachedResult(");
-      // The file header has "Tier 2: Configured utility model" in a
-      // docstring; we need the BLOCK comment, not the header docstring.
-      // The block uses em-dash and box-drawing chars.
-      const tier2Start = src.indexOf("\u2500\u2500 Tier 2: Configured utility model");
+      // Use the inline comment that marks the LLM tier loop inside classify()
+      // (not the buildTierOrder() function definition, which appears earlier)
+      const tierLoopStart = src.indexOf("LLM Tier loop: strategy-driven ordering");
       assert.ok(heuristicEnd !== -1, "Tier 1 block must be present");
       assert.ok(cacheCheck !== -1, "cache check must be present");
-      assert.ok(tier2Start !== -1, "Tier 2 block must be present");
+      assert.ok(tierLoopStart !== -1, "LLM tier loop must be present in classify()");
       assert.ok(heuristicEnd < cacheCheck, "cache check must come after Tier 1");
-      assert.ok(cacheCheck < tier2Start, "cache check must come before Tier 2");
+      assert.ok(cacheCheck < tierLoopStart, "cache check must come before LLM tier loop");
     });
 
-    it("caches the result on Tier 2 and Tier 3 success", () => {
+    it("caches the result on LLM tier success", () => {
       const src = readFileSync(
         join(ROOT, "src/lib/ai/text-classifier.ts"),
         "utf-8",
       );
-      // After recordCriticCall for "utility" tier, there should be a
-      // setCachedResult call. Same for "session" tier.
-      const utilityCall = src.indexOf('recordCriticCall(options.label, "utility"');
-      const utilityCache = src.indexOf("setCachedResult(", utilityCall);
-      const sessionCall = src.indexOf('recordCriticCall(options.label, "session"');
-      const sessionCache = src.indexOf("setCachedResult(", sessionCall);
+      // After recordCriticCall in the loop, there should be a
+      // setCachedResult call. The loop body has:
+      //   recordCriticCall(options.label, tier.name, ...)
+      //   setCachedResult(...)
+      const recordCall = src.indexOf("recordCriticCall(options.label, tier.name");
+      const cacheCall = src.indexOf("setCachedResult(", recordCall);
 
-      assert.ok(utilityCall !== -1, "utility recordCriticCall must be present");
-      assert.ok(utilityCache !== -1, "utility must be cached (Q17)");
-      assert.ok(utilityCache > utilityCall, "cache must come after recordCriticCall");
-      assert.ok(sessionCall !== -1, "session recordCriticCall must be present");
-      assert.ok(sessionCache !== -1, "session must be cached (Q17)");
-      assert.ok(sessionCache > sessionCall, "cache must come after recordCriticCall");
+      assert.ok(recordCall !== -1, "recordCriticCall with tier.name must be present");
+      assert.ok(cacheCall !== -1, "setCachedResult must be present after recordCriticCall");
+      assert.ok(cacheCall > recordCall, "cache must come after recordCriticCall");
     });
 
     it("bypasses the cache when tierPolicy is always-llm", () => {

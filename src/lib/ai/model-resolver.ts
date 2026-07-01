@@ -8,7 +8,7 @@
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Model, Api } from "@earendil-works/pi-ai";
-import { getCustomModelKey, UTILITY_MODEL_KEY, VISION_MODEL_KEY } from "../state/global-state.js";
+import { getCustomModelKey, UTILITY_MODEL_KEY, VISION_MODEL_KEY, MAX_POWER_MODEL_KEY } from "../state/global-state.js";
 
 /**
  * Resolve a model from a pattern like "provider/model-id" or just "model-id".
@@ -56,6 +56,27 @@ export function resolveVisionModel(ctx: ExtensionContext): Model<Api> | undefine
  */
 export function resolveUtilityModel(ctx: ExtensionContext): Model<Api> | undefined {
   const customPattern = getCustomModelKey(UTILITY_MODEL_KEY);
+  if (customPattern) {
+    const resolved = resolveFromPattern(ctx, customPattern);
+    if (resolved) return resolved;
+  }
+  return undefined;
+}
+
+/**
+ * Get the configured max-power model for accuracy-critical tasks.
+ * Priority:
+ *   1. Custom maxPowerModel setting (from /max-power-model command or settings.json)
+ *   2. Fall back to undefined (not configured — callers fall through to session model)
+ *
+ * The max-power model is activated by modelPreference strategies:
+ *   - "balanced" (default): tries it AFTER utility → session
+ *   - "quality": tries it AFTER session → utility
+ *   - "max": tries it FIRST
+ *   - "speed": never tries it
+ */
+export function resolveMaxPowerModel(ctx: ExtensionContext): Model<Api> | undefined {
+  const customPattern = getCustomModelKey(MAX_POWER_MODEL_KEY);
   if (customPattern) {
     const resolved = resolveFromPattern(ctx, customPattern);
     if (resolved) return resolved;

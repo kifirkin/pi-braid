@@ -39,6 +39,7 @@ export function setCustomModelKey(key: string, value: string): void {
 
 export const VISION_MODEL_KEY = "visionModel";
 export const UTILITY_MODEL_KEY = "utilityModel";
+export const MAX_POWER_MODEL_KEY = "maxPowerModel";
 
 // ── Rotation State (rotation.ts) ─────────────────────────────────────────────
 

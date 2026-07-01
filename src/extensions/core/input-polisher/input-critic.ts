@@ -1,25 +1,23 @@
 /**
- * Input Critic - Utility-model pre-classification for input-polisher.
+ * Input Critic — pre-classification for input-polisher.
  *
- * Thin wrapper that runs the five input-polisher critics (registered
- * centrally in lib/ai/critic-registry.ts) in parallel and assembles a
- * CritiqueResult for the polisher's processMessage() handler.
+ * PRIMARY PATH: consolidated LLM call via consolidated-input-critic.ts
+ *   (single JSON response for all 4 dimensions — ~75% fewer LLM calls).
  *
- * Each check is a lightweight yes/no classification call to the configured
- * utility model (or session model fallback). Heuristic fallbacks are also
- * defined in the critic registry as Tier 1 graceful degradation.
+ * FALLBACK PATH: 4 parallel classify() calls with individual critics.
+ *   Only used when the consolidated path fails entirely (model error,
+ *   JSON parse failure). This preserves backward compatibility and
+ *   ensures the polisher never blocks on a model failure.
  *
- * Centralizing the criteria + fallbacks in critic-registry.ts means:
- * - Every classify() call is automatically tracked in lib/ai/critic-stats.ts
- *   (per-critic call counts, tier distribution, latency).
- * - The criteria are discoverable in one place.
- * - Other extensions can reuse the same critics if needed.
+ * The parallel path still uses the central critic-registry.ts definitions
+ * for runtime observability (critic-stats tracking, per-critic call counts).
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { classify, type ClassificationResult } from "../../../lib/ai/text-classifier.js";
 import { CRITICS } from "../../../lib/ai/critic-registry.js";
 import { inputCodeHeavyFallback } from "../../../lib/ai/critic-fallbacks.js";
+import { consolidatedCritiqueInput } from "./consolidated-input-critic.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -53,7 +51,17 @@ export interface CritiqueResult {
  * five use heuristics (~0.03ms).
  */
 export async function critiqueInput(text: string, ctx: ExtensionContext): Promise<CritiqueResult> {
-	// Truncate very long text to keep prompt tokens reasonable
+	// PRIMARY PATH: consolidated single-LLM-call (4 dimensions in one JSON response)
+	try {
+		const result = await consolidatedCritiqueInput(text, ctx);
+		if (result.tier !== "failed") {
+			return result;
+		}
+	} catch {
+		// Fall through to parallel path
+	}
+
+	// FALLBACK PATH: 4 parallel classify() calls with individual critics
 	const truncated = text.length > 2000 ? text.slice(0, 2000) + "..." : text;
 
 	const [codeSettled, wellWrittenSettled, claritySettled, ambiguitySettled] = await Promise.allSettled([
@@ -104,13 +112,6 @@ export async function critiqueInput(text: string, ctx: ExtensionContext): Promis
 	const ambiguityResult = unwrap(ambiguitySettled);
 
 	// Determine the overall tier (lowest-confidence across all four).
-	// The 4 tiers in priority order (highest signal first):
-	//   utility  - configured utility model succeeded
-	//   session  - session model succeeded
-	//   heuristic - heuristic fallback succeeded
-	//   failed   - all tiers failed, label is "unknown"
-	// If ANY check failed and NONE succeeded, overall = "failed".
-	// Otherwise the lowest tier that produced a result wins.
 	const tiers = [codeResult?.tier, wellWrittenResult?.tier, clarityResult?.tier, ambiguityResult?.tier];
 	const anySucceeded = tiers.some(t => t === "utility" || t === "session" || t === "heuristic");
 	const overallTier: "utility" | "session" | "heuristic" | "failed" = !anySucceeded
