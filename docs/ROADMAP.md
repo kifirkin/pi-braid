@@ -3,6 +3,9 @@
 # pi-braid Improvement Roadmap
 
 **Compiled:** 2026-06-17
+**Last reconciled:** 2026-07-02 — headline numbers (81 tests pass, 25 skills,
+31 critics) updated. Detailed item-level status is partially stale; many
+P1/P2 items shipped since compilation. See commits from 2026-06-17 onward.
 **Status:** Living document. Re-run after each remediation round.
 **Source audits:** All `docs/*.md` documents as of 2026-06-17 + deep review findings from this session.
 
@@ -30,7 +33,7 @@ plus 36 new findings from a deep source-code review. Read this first.
   templates are in that doc. Keep it as a reference.
 - `docs/CODE-QUALITY-REMEDIATION-PLAN.md` — the authoritative record of
   the 6 rounds of remediation (Q1–Q15) that have shipped. The headline
-  numbers (52 tests pass, 0 unused identifiers, 0 module-level let
+  numbers (81 tests pass, 0 unused identifiers, 0 module-level let
   violations beyond the 28 documented exceptions) are authoritative.
 - `docs/FRAGILE-HEURISTICS-INVENTORY.md` — full 76-heuristic catalog
   classified A/B/C/D. Of the 29 A+B flagged for LLM replacement, 15 have
