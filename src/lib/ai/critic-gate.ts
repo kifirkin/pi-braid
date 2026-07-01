@@ -40,6 +40,12 @@ export interface CriticGateOptions {
    * Tier 1 entirely.
    */
   tierPolicy?: "prefer-heuristic" | "fallback-only" | "always-llm";
+  /**
+   * Model preference for tier ordering strategy, passed through to classify().
+   * Use "quality" for accuracy-sensitive pre-checks (session first, then
+   * utility, then max-power as last resort).
+   */
+  modelPreference?: "balanced" | "quality" | "speed" | "max";
 }
 
 export interface CriticGateResult {
@@ -71,6 +77,7 @@ export async function criticGate(
     label: opts.name,
     fallback: opts.fallback,
     tierPolicy: opts.tierPolicy,
+    modelPreference: opts.modelPreference,
   });
 
   const label = result.label;

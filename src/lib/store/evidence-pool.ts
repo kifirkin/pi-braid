@@ -228,6 +228,7 @@ export async function classifyConflictViaCritic(
         timeoutMs: 60_000,
         label: CRITICS.evidenceConflict.label,
         tierPolicy: "always-llm",
+        modelPreference: "quality",
       },
     );
 
@@ -327,6 +328,7 @@ export async function detectSemanticConflicts(
           timeoutMs: 60_000,
           label: `semantic-${CRITICS.evidenceConflict.label}`,
           tierPolicy: "always-llm",
+          modelPreference: "quality",
         },
       );
 

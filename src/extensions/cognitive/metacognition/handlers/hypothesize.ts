@@ -126,6 +126,7 @@ export function createHypothesizeTool(): ToolDefinition<any, any, any> {
         // tierPolicy: fallback-only downweights to 0.5 confidence so
         // the Tier 2 LLM has the final say.
         tierPolicy: "fallback-only",
+        modelPreference: "quality",
       });
 
       if (!gate.shouldProceed) {

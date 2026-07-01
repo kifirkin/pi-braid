@@ -24,6 +24,7 @@ import { classify } from "../ai/text-classifier.js";
 import { CRITICS } from "../ai/critic-registry.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { topicDriftFallback } from "../ai/critic-fallbacks.js";
+import { consolidatedTopicCritique } from "./consolidated-topic-critic.js";
 
 const _log = createLogger("topic-drift");
 
@@ -153,83 +154,100 @@ export class TopicDriftDetector {
     let reason = "semantic_drift";
     let severity: "subtle" | "moderate" | "strong" = "subtle";
     let classifierDown = false;
+    let classifierFromConsolidated = false;
 
     if (_ctx) {
       try {
-        const [coverageSettled, divergenceSettled, completenessSettled] = await Promise.allSettled([
-          classify(
-            _ctx,
-            CRITICS.topicCoverage.criteria,
-            { original: this.taskContext, response: currentText },
-            { timeoutMs: 60_000, label: CRITICS.topicCoverage.label, fallback: topicDriftFallback },
-          ),
-          classify(
-            _ctx,
-            CRITICS.topicDivergence.criteria,
-            { original: this.taskContext, response: currentText },
-            { timeoutMs: 60_000, label: CRITICS.topicDivergence.label, fallback: topicDriftFallback },
-          ),
-          classify(
-            _ctx,
-            CRITICS.topicCompleteness.criteria,
-            { original: this.taskContext, response: currentText },
-            { timeoutMs: 60_000, label: CRITICS.topicCompleteness.label, fallback: topicDriftFallback },
-          ),
-        ]);
-
-        // Unwrap allSettled: a failed call becomes null (treated as 'no vote').
-        const unwrap = (r: PromiseSettledResult<Awaited<ReturnType<typeof classify>>>) =>
-          r.status === "fulfilled" ? r.value : null;
-        const coverageResult = unwrap(coverageSettled);
-        const divergenceResult = unwrap(divergenceSettled);
-        const completenessResult = unwrap(completenessSettled);
-
-        // Detect the "all classifiers failed" case. If every result is
-        // tier === "failed", the LLM signal is unreliable; we cannot
-        // trust the "no drift" default. Surface this so consumers can
-        // emit a "detector offline" whisper instead of the usual one.
-        // (Same anti-pattern as input-polisher 9966c8ad: never silently
-        // default to "no problem" when the classifier is down.)
-        const allTiers = [coverageResult, divergenceResult, completenessResult];
-        classifierDown = allTiers.every(
-          (r) => r === null || r.tier === "failed",
+        // PRIMARY PATH: consolidated single-LLM-call (3 dimensions in one JSON response)
+        const consolidated = await consolidatedTopicCritique(
+          this.taskContext,
+          currentText,
+          _ctx,
         );
 
-        // Consensus: 2/3 critics agree → drift confirmed
-        const driftedVotes = allTiers.filter((r) => r?.label === "yes").length;
-
-        // coverage="yes" means coverage is BAD (does NOT address request)
-        // divergence="yes" means divergence (has shifted)
-        // completeness="no" means incomplete
-        const coverageBad = coverageResult?.label === "no";
-        const diverged = divergenceResult?.label === "yes";
-        const incomplete = completenessResult?.label === "no";
-        const negativeVotes = [coverageBad, diverged, incomplete].filter(Boolean).length;
-
-        drifted = negativeVotes >= 2;
-
-        if (drifted) {
-          // Confidence-weighted severity
-          const hasHeuristic = allTiers.some((r) => r?.tier === "heuristic");
-          severity = hasHeuristic ? "subtle" : driftedVotes >= 3 ? "strong" : "moderate";
+        if (!consolidated.classifierDown) {
+          // Consolidated succeeded — use its verdicts directly
+          drifted = !consolidated.coverage || consolidated.divergence || !consolidated.completeness;
+          const negativeVotes = [
+            !consolidated.coverage,
+            consolidated.divergence,
+            !consolidated.completeness,
+          ].filter(Boolean).length;
+          severity = negativeVotes >= 3 ? "strong" : negativeVotes >= 2 ? "moderate" : "subtle";
+          reason = drifted ? "semantic_drift" : "on_topic";
+          // Skip the 3-parallel fallback
+          classifierFromConsolidated = true;
         }
-
-        if (classifierDown) {
-          reason = "classifier_unavailable";
-        }
-
-        _log.debug(
-          `[topic-drift] Critics: coverage=${coverageResult?.label}/${coverageResult?.tier}, ` +
-            `divergence=${divergenceResult?.label}/${divergenceResult?.tier}, ` +
-            `completeness=${completenessResult?.label}/${completenessResult?.tier} ` +
-            `→ drifted=${drifted} classifierDown=${classifierDown}`,
-        );
       } catch {
-        // LLM call failed - conservative fallback (no drift)
-        drifted = false;
-        severity = "subtle";
-        reason = "too_short";
-        classifierDown = true;
+        // Fall through to 3-parallel path
+      }
+
+      if (!classifierFromConsolidated) {
+        // FALLBACK PATH: 3 parallel classify() calls with individual critics
+        try {
+          const [coverageSettled, divergenceSettled, completenessSettled] = await Promise.allSettled([
+            classify(
+              _ctx,
+              CRITICS.topicCoverage.criteria,
+              { original: this.taskContext, response: currentText },
+              { timeoutMs: 60_000, label: CRITICS.topicCoverage.label, fallback: topicDriftFallback },
+            ),
+            classify(
+              _ctx,
+              CRITICS.topicDivergence.criteria,
+              { original: this.taskContext, response: currentText },
+              { timeoutMs: 60_000, label: CRITICS.topicDivergence.label, fallback: topicDriftFallback },
+            ),
+            classify(
+              _ctx,
+              CRITICS.topicCompleteness.criteria,
+              { original: this.taskContext, response: currentText },
+              { timeoutMs: 60_000, label: CRITICS.topicCompleteness.label, fallback: topicDriftFallback },
+            ),
+          ]);
+
+          // Unwrap allSettled: a failed call becomes null (treated as 'no vote').
+          const unwrap = (r: PromiseSettledResult<Awaited<ReturnType<typeof classify>>>) =>
+            r.status === "fulfilled" ? r.value : null;
+          const coverageResult = unwrap(coverageSettled);
+          const divergenceResult = unwrap(divergenceSettled);
+          const completenessResult = unwrap(completenessSettled);
+
+          const allTiers = [coverageResult, divergenceResult, completenessResult];
+          classifierDown = allTiers.every(
+            (r) => r === null || r.tier === "failed",
+          );
+
+          const driftedVotes = allTiers.filter((r) => r?.label === "yes").length;
+          const coverageBad = coverageResult?.label === "no";
+          const diverged = divergenceResult?.label === "yes";
+          const incomplete = completenessResult?.label === "no";
+          const negativeVotes = [coverageBad, diverged, incomplete].filter(Boolean).length;
+
+          drifted = negativeVotes >= 2;
+
+          if (drifted) {
+            const hasHeuristic = allTiers.some((r) => r?.tier === "heuristic");
+            severity = hasHeuristic ? "subtle" : driftedVotes >= 3 ? "strong" : "moderate";
+          }
+
+          if (classifierDown) {
+            reason = "classifier_unavailable";
+          }
+
+          _log.debug(
+            `[topic-drift] Critics: coverage=${coverageResult?.label}/${coverageResult?.tier}, ` +
+              `divergence=${divergenceResult?.label}/${divergenceResult?.tier}, ` +
+              `completeness=${completenessResult?.label}/${completenessResult?.tier} ` +
+              `→ drifted=${drifted} classifierDown=${classifierDown}`,
+          );
+        } catch {
+          // LLM call failed - conservative fallback (no drift)
+          drifted = false;
+          severity = "subtle";
+          reason = "too_short";
+          classifierDown = true;
+        }
       }
     } else {
       // No ctx available - use Jaccard similarity heuristic
