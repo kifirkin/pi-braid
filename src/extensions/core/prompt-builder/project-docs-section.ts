@@ -3,7 +3,7 @@
  *
  * Mirrors the skills model: a `<available_project_docs>` block listing each
  * AGENTS.md / CLAUDE.md file as a self-closing `<doc>` entry that carries
- * the discoverability triple (name + location + sections TOC).
+ * the discoverability pair (name + location).
  *
  * NO content is injected into the system prompt — the agent reads full
  * content on demand via the `read` tool, matching the skills convention
@@ -26,11 +26,12 @@
  *      expensive than a ~400-byte pointer block + occasional re-reads.
  *
  * Pointer-block shape (uniform with skills):
- *   <doc name="AGENTS.md" location="/abs/path/AGENTS.md" sections="... | ..." />
+ *   <doc name="AGENTS.md" location="/abs/path/AGENTS.md" />
  *
- * Sections list is the only piece of inline metadata kept — a pre-read TOC
- * that helps the agent decide where to look first in a 100+ line file.
- * Capped at MAX_SECTIONS to stay lean; longer files: `read` the file.
+ * Previously carried a `sections` attribute (pre-read TOC), which required
+ * a file read per cache-miss render. Removed to match the skills pointer
+ * block and eliminate the filesystem dependency. Agent uses the `read` tool
+ * to inspect file content on demand, same as skills.
  *
  * Cache: rendered string is cached per file-set fingerprint so we don't
  * re-read every AGENTS.md on every turn. Invalidated by
@@ -38,7 +39,6 @@
  * skills-section invalidation pattern).
  */
 
-import { readFile } from "node:fs/promises";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 
@@ -48,33 +48,11 @@ export interface ProjectContextFile {
   content: string;
 }
 
-/** Metadata extracted from a project doc, for the pointer block. */
-interface ProjectDocMeta {
-  sections: string[];
-}
-
-const MAX_SECTIONS = 6;
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function basename(p: string): string {
   const idx = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
   return idx >= 0 ? p.slice(idx + 1) : p;
-}
-
-/** Extract `## / ###` section headings from a project doc. Capped at MAX_SECTIONS. */
-async function getProjectDocMeta(filePath: string): Promise<ProjectDocMeta> {
-  try {
-    const content = await readFile(filePath, "utf-8");
-    const lines = content.split("\n");
-    const sections: string[] = [];
-    for (const line of lines) {
-      const match = line.match(/^#{2,3}\s+(.+)$/);
-      if (match) sections.push(match[1].trim());
-      if (sections.length >= MAX_SECTIONS) break;
-    }
-    return { sections };
-  } catch {
-    return { sections: [] };
-  }
 }
 
 function escapeXml(str: string): string {
@@ -100,13 +78,8 @@ export async function projectDocsSection(
   ];
 
   for (const file of contextFiles) {
-    const meta = await getProjectDocMeta(file.path);
-    const sectionsAttr =
-      meta.sections.length > 0
-        ? ` sections="${escapeXml(meta.sections.join(" | "))}"`
-        : "";
     lines.push(
-      `  <doc name="${escapeXml(basename(file.path))}" location="${escapeXml(file.path)}"${sectionsAttr} />`,
+      `  <doc name="${escapeXml(basename(file.path))}" location="${escapeXml(file.path)}" />`,
     );
   }
 
