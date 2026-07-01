@@ -65,6 +65,8 @@ const ALLOWED_BOUNDARY_OVERRIDES = [
   "ext/memory → ext/scheduling",
   // health-maintenance → session-health: self-management reads session health for maintenance decisions
   "ext/self → ext/enforcement",
+  // enforcement → memory: ESC handlers read/write scratchpad persistence for session lifecycle resumption
+  "ext/enforcement → ext/memory",
 ];
 
 // ── File collection ────────────────────────────────────────────────────────

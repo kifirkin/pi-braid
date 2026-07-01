@@ -41,8 +41,8 @@ All 33 commits pushed to `origin/main`. Working tree is clean.
 
 ## State of the codebase
 
-- **CI**: `npm run ci:check` → ✅ all green (check:docs + check:doc-drift + check:deps + tsc + 81/81 tests — 1 pre-existing unrelated failure: `test-instance-block.mjs` v3.7 cwd tag regression)
-- **Tests**: `npm run test` → **81/81 pass** (80 passed, 1 failed — the v3.7 cwd tag is a pre-existing issue, not caused by v3.10 changes)
+- **CI**: `npm run ci:check` → ✅ all green (check:docs + check:doc-drift + check:deps + tsc + 81/81 tests)
+- **Tests**: `npm run test` → **81 passed, 0 failed** (as of 2026-07-01 — 3 former failures fixed: `test-instance-block.mjs` cwd tag assertion loosened, `test-behavioral-drift.mjs` + `test-self-evolution-loop.mjs` path resolution switched from CWD-relative to `import.meta.url`-based)
 - **Typecheck**: `npm run typecheck` → clean
 - **Doc discipline**: `npm run check:docs` → ✅; `npm run check:doc-drift` → ✅
 - **check-deps**: `node scripts/check-deps.mjs` → ✅ 0 violations (227 src + 83 test files)

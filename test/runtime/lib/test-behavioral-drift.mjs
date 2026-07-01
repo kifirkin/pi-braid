@@ -44,7 +44,7 @@ console.log("\n[3] Source analysis - behavioral drift module structure");
 {
   const fs = await import("fs");
   const src = fs.readFileSync(
-    "../../../src/extensions/heartbeat/heartbeat-scheduler/modules/behavioral-drift.ts",
+    new URL("../../../src/extensions/heartbeat/heartbeat-scheduler/modules/behavioral-drift.ts", import.meta.url),
     "utf-8",
   );
 

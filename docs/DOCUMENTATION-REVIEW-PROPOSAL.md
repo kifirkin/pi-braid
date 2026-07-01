@@ -3,25 +3,29 @@
 
 # pi-braid Documentation Review Proposal
 
-> Proposal for a subagent to systematically audit and remediate pi-braid's
-> self-presentation. Not an action plan — this identifies what needs review
-> and why, scoped for a focused agent session.
+Scope: identify the documentation issues found in a 2026-06-30 audit of
+the pi-braid repository, organized so a focused agent session can address
+each in turn. The state of the codebase is the source of truth; the
+documents are the object being audited.
 
 ---
 
-## 1. Why this is needed
+## 1. Context
 
-pi-braid's documentation has drifted from its codebase. The main README
-describes an architecture that doesn't exist (layered pipeline, phantom
-extensions), references a skills directory that was extracted to another
-repo, and provides an example of the module system that is non-functional.
-Forward-looking audit documents mix inventories of current state with
-proposals for future changes, making it unclear what's true today vs what's
-planned. The automated drift detector only tracks 5 API names — far too
-narrow to catch the structural claims that are wrong.
+A session-level audit of the markdown surface (61 files across
+top-level, src/, docs/, evaluation/) found these categories of
+discrepancy between the docs and the codebase:
 
-A systematic documentation review is needed before any new public
-presentation can be grounded in what the code actually implements.
+- Claims in the main README that don't match the manifest or package.json
+- A drift-detection script whose tracked-name set is too narrow to catch
+  the actual drift
+- Three "forward-looking" reference docs that are mostly inventories of
+  current state
+- A long roadmap with shipped items and pending items interleaved
+
+Some of the README issues were addressed in the same session that
+produced this proposal. The state recorded below is the state at the end
+of that work.
 
 ---
 
@@ -41,183 +45,178 @@ presentation can be grounded in what the code actually implements.
 **Top-level project docs (5):** README.md, AGENTS.md, CONTRIBUTING.md,
 CHANGELOG.md, HANDOFF.md
 
-**Source AGENTS.md (43):** One per subsystem directory under src/ —
-all currently marked `current`.
+**Source AGENTS.md (43):** One per subsystem directory under src/ — all
+currently marked `current`.
 
 **Reference docs (12):** Under docs/ — ROADMAP.md (actionable),
 CODE-QUALITY-REMEDIATION-PLAN.md (shipped record),
 ENFORCEMENT-WHISPER-CONTENT-AUDIT.md (whisper catalog),
-FRAGILE-HEURISTICS-INVENTORY.md (heuristic catalog), HOOKS-AND-WHISPERS-AUDIT.md
-(event hook map), STATE-POLICY.md (state design), ARXIV-CITATIONS-AUDIT.md,
-docs/README.md. Plus 4 archived in archive/.
+FRAGILE-HEURISTICS-INVENTORY.md (heuristic catalog),
+HOOKS-AND-WHISPERS-AUDIT.md (event hook map), STATE-POLICY.md (state
+design), ARXIV-CITATIONS-AUDIT.md, docs/README.md. Plus 4 archived in
+archive/.
 
-**Evaluation docs (9):** evaluation/README.md + 8 result reports with no
-status markers. Out of scope of the current doc discipline but could be
+**Evaluation docs (9):** evaluation/README.md + 8 result reports with
+no status markers. Outside the current doc discipline but could be
 brought in.
 
 ---
 
-## 3. Issues found per document
+## 3. Issues by document
 
-### 3.1 README.md — Critical (status: `current`, needs `→ remediation`)
+### 3.1 README.md
 
-This is the highest-priority document. It is marked `current` but contains
-multiple statements that are false or misleading:
+| # | Claim | State at end of audit |
+|---|-------|------------------------|
+| R1 | Architecture diagram showed a layered pipeline with a "cognitive-systems" block | Diagram rewritten; layering is still implied but no longer names a nonexistent block. |
+| R2 | "15 skills ship with pi-braid... see skills/" | Redirected to pi-braid-skills repo. The count "15" is now stale (current count is 25). |
+| R3 | `BRAID_MODULES="core,cognitive,memory,retry"` example | Partially fixed: changed to `"core,cognitive,memory,heartbeat"`. `core` and `cognitive` still don't resolve. `heartbeat` is a real module group; only it works. |
+| R4 | Extension table listed `cognitive-systems`, `retry`, `error-capture` | Partially fixed. `cognitive-systems` and `retry` removed. `error-capture` still listed (actual name is `error-tracking`). |
+| R5 | Table included tools that pi-core provides (healthcheck, observatory, diff, research, system-monitor) as if they were braid's | Unchanged. These are pi-core builtins, not registered by any braid extension. |
+| R6 | "Requires pi-coding-agent ≥ 0.70.0" | Fixed: now `≥ 0.77.0` matching package.json. |
+| R7 | "61 runtime tests" | Fixed: now `83 runtime tests`. |
+| R8 | "dual-store memory system" | Superseded by the "What It Does" rewrite which describes the memory tree more accurately. |
+| R9 | Module system described as a grouping abstraction | Still present. AGENTS.md explicitly says "There is no module-grouping abstraction — just a flat list." |
+| R10 | Tagline "The agent doesn't just execute tools — it reflects, remembers, and adapts across turns." | Unchanged. Marketing language. |
 
-| # | Claim | Problem | Type |
-|---|-------|---------|------|
-| R1 | Architecture diagram shows layered pipeline (enforcement→cognitive-systems→metacognition→heartbeat→memory→analytics) | The actual dependency graph is a star around agent-environment + independent satellites. No pipeline, no layering. `cognitive-systems` does not exist as a unit. | **Architectural misrepresentation** |
-| R2 | "15 skills ship with pi-braid… See skills/ for the full list" | No `skills/` directory exists. Skills are in a separate repo (pi-braid-skills, 25 directories). | **Broken reference** |
-| R3 | `BRAID_MODULES="core,cognitive,memory,retry"` example | Verified: `core`, `cognitive`, `retry` resolve to zero extensions. Only `memory` works. The example would load 5 memory extensions — not what the user intended. | **Non-functional example** |
-| R4 | Extension overview table lists `cognitive-systems`, `retry`, `error-capture` | `cognitive-systems` doesn't exist. `retry` doesn't exist. `error-capture` is named `error-tracking`. | **Phantom extensions** |
-| R5 | Table lists healthcheck, observatory, diff, research, system-monitor, assistant, feedback, evolve, rate-limiter, verification as braid tools | These are pi-core builtins, not registered by any braid extension. | **Scope inflation** |
-| R6 | "Requires pi-coding-agent ≥ 0.70.0" | package.json says `>= 0.77.0`. | **Stale version** |
-| R7 | "npm run test — Build + run 61 runtime tests" | Actual count is 82 test files. | **Stale metric** |
-| R8 | "dual-store memory system" | Actually 5 extensions (three-memory-stores, session-recall, context-manager, context-lifecycle, memory-agent-bridge) + cognitive memory. Under-describes the architecture. | **Oversimplification** |
-| R9 | Module system described as grouping abstraction | AGENTS.md explicitly says "There is no module-grouping abstraction — just a flat list." Only 7/25 extensions have a `module` field. | **Architectural misrepresentation** |
-
-**Suggested status:** `forward-looking` until remediated.
-
-### 3.2 ROADMAP.md — Medium (status: `forward-looking`, 2533 lines)
+### 3.2 ROADMAP.md (status: `forward-looking`, 2533 lines)
 
 | # | Issue |
 |---|-------|
-| M1 | 3 extra `<!-- status: forward-looking -->` markers inside body (lines 824, 2405, 2479). Violates "one marker near the top" convention. |
-| M2 | 6 of 51 items still pending — but most require user input, not code changes. The actionable items may be exhausted. Needs pruning: either mark remaining items as deferred/obsolete, or scope-lock them. |
-| M3 | Shipped items section (2299+) lists 8/8 P0, 7/8 P1, 7/11 P2, 23/25 P3 shipped. But many P0/P1 items in the priority tables (lines 705-730) lack ✅ markers — you have to cross-reference the shipped section. |
-| M4 | At 2533 lines this is too long for a roadmap. Consider splitting: shipped items → CODE-QUALITY-REMEDIATION-PLAN.md, pending items → shorter living roadmap. |
+| M1 | 3 extra `<!-- status: forward-looking -->` markers inside body (lines 824, 2405, 2479). Violates "one marker near the top" convention defined in `AGENTS.md`. |
+| M2 | 6 of 51 items still pending; most require user input rather than code changes. The actionable items are largely exhausted. |
+| M3 | The shipped-items section (line 2299+) lists `✅ Shipped` for items in the P0/P1/P2/P3 tables. But the priority tables themselves (lines 705-730) don't show those checkmarks. Reader has to cross-reference. |
+| M4 | At 2533 lines, the document is too long for a roadmap. Shipped items belong in CODE-QUALITY-REMEDIATION-PLAN.md. |
 
-### 3.3 Forward-looking reference docs — Medium
+### 3.3 Forward-looking reference docs
 
 **ENFORCEMENT-WHISPER-CONTENT-AUDIT.md** (status: `forward-looking`):
-- Content is ~70% inventory of current whisper templates (current-state)
-  and ~30% EW-7 proposals (forward-looking). The status marker doesn't
-  distinguish these two functions.
-- **Recommendation:** Split into two documents or mark as `current` with
-  an explicit "Proposals" section.
+Content is ~70% inventory of current whisper templates and ~30% EW-7
+proposals. The single status marker doesn't distinguish the two
+functions. Recommendation: split, or mark as `current` with a "Proposals"
+section.
 
 **FRAGILE-HEURISTICS-INVENTORY.md** (status: `forward-looking`):
-- Same hybrid issue: 76-heuristic catalog (current-state inventory) + A/B
-  flags for replacement (forward-looking).
-- Of 29 A+B flagged, 15 have shipped and 14 remain. The shipped count
-  should be updated.
+Same hybrid structure: 76-heuristic catalog (current-state) + A/B flags
+for replacement (forward-looking). Of 29 A+B flagged, 15 have shipped
+and 14 remain. The shipped count should be updated.
 
 **HOOKS-AND-WHISPERS-AUDIT.md** (status: `forward-looking`):
-- This is purely an inventory of current event subscriptions and whisper
-  emission sites. No proposals or future-state claims. Should be `current`.
+Pure inventory of current event subscriptions and whisper emission
+sites. No proposals. The status marker is wrong; it should be `current`.
 
-### 3.4 AGENTS.md files — Minor (all status: `current`)
-
-| # | Issue |
-|---|-------|
-| A1 | `src/lib/state/AGENTS.md` had a self-contradiction (line 133 says "27 documented exceptions", line 146 says "4"). P1-2 in ROADMAP says this was "verified as no-op in v1.9 — line text already matched." **Needs verification that this is actually fixed.** |
-| A2 | 43 AGENTS.md files, all `current`. No automated check verifies that their content actually matches the code they describe — only the narrow 5-name drift check exists. |
-
-### 3.5 Doc discipline infrastructure — Medium
+### 3.4 AGENTS.md files (all status: `current`)
 
 | # | Issue |
 |---|-------|
-| D1 | Drift checker (`scripts/check-doc-drift.mjs`) only tracks 5 API names (completeSimple, streamSimple, __setCompleteSimpleForTest, createModels, Models). This catches only pi-ai v0.80 migration drift. Broader structural claims (extension tables, architecture diagrams, module system) have zero automated guard. |
-| D2 | No script checks README.md claims against actual code. The `check-doc-status.mjs` only checks that status markers exist — not that the content is accurate. |
-| D3 | `evaluation/README.md` and result reports have no status markers. If the doc discipline is meant to cover all .md files, they should be included or explicitly excluded. |
+| A1 | `src/lib/state/AGENTS.md` had a self-contradiction (line 133: "27 documented exceptions"; line 146: "4 documented exceptions"). P1-2 in ROADMAP says "verified as no-op in v1.9 — line text already matched." Verification not yet done. |
+| A2 | 43 AGENTS.md files, all `current`. The drift checker doesn't verify their content matches the code they describe. |
+
+### 3.5 Doc discipline infrastructure
+
+| # | Issue |
+|---|-------|
+| D1 | `scripts/check-doc-drift.mjs` only tracks 5 API names (completeSimple, streamSimple, __setCompleteSimpleForTest, createModels, Models). It catches the pi-ai v0.80 migration drift and nothing else. README extension IDs, the module system, the skills claim — none of these are covered. |
+| D2 | `scripts/check-doc-status.mjs` only checks that status markers exist. It does not check that the content is accurate. |
+| D3 | `evaluation/README.md` and result reports have no status markers. The doc discipline is ambiguous about whether `evaluation/` is in scope. |
 
 ---
 
-## 4. Proposed review plan
+## 4. Work plan
 
-The work breaks into phases. Each phase is scoped for a subagent session.
+### Phase 1: README.md
 
-### Phase 1: README.md remediation (~1 session, ~40 tool calls)
+Files touched: `README.md` (1).
 
-**Goal:** Make README.md accurately describe the current codebase.
+Actions:
+1. Fix the `BRAID_MODULES` example to use only references that resolve.
+   Verified working examples: `+heartbeat`, `-enforcement`, `memory`,
+   `+heartbeat,-enforcement`. The strings `core` and `cognitive` resolve
+   to nothing.
+2. Rename `error-capture` to `error-tracking` in the extension table.
+3. Decide on the Tools / Infra / System categories. Currently they mix
+   braid-registered tools with pi-core builtins. Either remove the
+   pi-core items or label them as inherited.
+4. Update the skills count from "15" to whatever the current count is
+   (or describe the count as approximate).
+5. Drop the "reflects, remembers, and adapts" tagline, or move it
+   somewhere less prominent.
 
-**Actions:**
-1. Replace architecture diagram with one that matches actual dependency
-   structure (star around agent-environment + independent satellites)
-2. Remove skills claim or redirect to pi-braid-skills repo with correct count
-3. Fix module system example to use actual valid references
-   (e.g., `BRAID_MODULES="+heartbeat,-enforcement"`)
-4. Rewrite extension overview table:
-   - Remove phantom extensions (cognitive-systems, retry, error-capture)
-   - Add missing alwaysOn extensions (input-polisher, agent-environment, workspace-snapshot)
-   - Remove tools provided by pi-core (healthcheck, observatory, diff, etc.)
-   - Add actual module labels from manifest
-5. Fix peer dependency version to match package.json
-6. Update test count (or remove the number — use a relative reference)
-7. Update "What It Does" bullets to accurately describe the 5-group architecture
-   (alwaysOn infra, agent-environment-dependent, memory tree, heartbeat, independent leaves)
+Verification:
+- `node -e "import {MANIFEST, getModuleNames} from './dist/extensions/manifest.js'"`
+  to validate each entry in the table.
+- `node -e "import {expandRef, getEntry, getModuleGroup} from './dist/extensions/manifest.js'"`
+  to test each `BRAID_MODULES` value cited in the README.
+- `grep -c "registerTool" src/extensions/*/index.ts` to verify the
+  braid-registered tool list.
 
-**Verification:**
-- `node -e "import {MANIFEST} from './dist/extensions/manifest.js'; ..."` to validate
-  each extension claim
-- `grep -c` on test files to get actual count
-- Cross-reference each tool in the table against actual `registerTool` calls
+### Phase 2: Forward-looking reference docs
 
-### Phase 2: Forward-looking doc audit (~1 session, ~30 tool calls)
+Files touched: 4 in `docs/`.
 
-**Goal:** Clarify which parts of audit docs are current-state vs planned.
+Actions:
+1. Change `HOOKS-AND-WHISPERS-AUDIT.md` status to `current`.
+2. Update shipped counts in `FRAGILE-HEURISTICS-INVENTORY.md` (15 of
+   29 A+B shipped → check the actual current state).
+3. Decide on structure for `ENFORCEMENT-WHISPER-CONTENT-AUDIT.md`:
+   either split into two docs, or keep one with a per-section status
+   convention.
+4. In `ROADMAP.md`:
+   - Remove the 3 extra status markers at lines 824, 2405, 2479.
+   - Decide whether to fold shipped items into
+     `CODE-QUALITY-REMEDIATION-PLAN.md` and shorten the roadmap.
+   - For each of the 6 remaining items, decide if they should remain
+     in the roadmap or be archived.
 
-**Actions:**
-1. **HOOKS-AND-WHISPERS-AUDIT.md:** Change status from `forward-looking` to
-   `current`. It's a pure inventory with no proposals.
-2. **ENFORCEMENT-WHISPER-CONTENT-AUDIT.md:** Either:
-   - Add a second status marker separating §3 (catalog, current) from §7
-     (proposals, forward-looking), or
-   - Split into two docs, or
-   - Mark as `current` and add a note that §7 are proposals
-3. **FRAGILE-HEURISTICS-INVENTORY.md:** Update shipped count (15 of 29 → check
-   actual current state). Consider splitting inventory from proposals.
-4. **ROADMAP.md:**
-   - Remove duplicate status markers
-   - Add ✅ markers to shipped items in the P0/P1/P2/P3 tables
-   - Review the 6 remaining items — are they still valid? Can any be closed?
-   - Consider splitting shipped items to CODE-QUALITY-REMEDIATION-PLAN.md
+### Phase 3: AGENTS.md verification
 
-### Phase 3: AGENTS.md verification (~1 session, ~30 tool calls)
+Files touched: 10-15 in `src/`.
 
-**Goal:** Verify that all `current` AGENTS.md files are factually accurate.
+Actions:
+1. Read `src/lib/state/AGENTS.md` lines 133 and 146 to verify the
+   P1-2 fix claim. If the contradiction is still there, fix it.
+2. Spot-check 5-10 other AGENTS.md files for claims that don't match
+   the code in their directory.
 
-**Actions:**
-1. Verify `src/lib/state/AGENTS.md` self-contradiction fix (line 146 vs 133)
-2. Spot-check 5-10 AGENTS.md files for claims about their subsystem
-3. Verify each extension's AGENTS.md description matches its actual
-   tool registrations and event handlers
+### Phase 4: Drift checker expansion
 
-### Phase 4: Doc discipline expansion (~1 session, ~20 tool calls)
+Files touched: `scripts/check-doc-drift.mjs`, possibly
+`scripts/check-doc-status.mjs`.
 
-**Goal:** Expand automated checks to catch the structural issues.
-
-**Actions:**
-1. Extend `check-doc-drift.mjs` to track structural claims:
-   - Extension IDs listed in README must exist in MANIFEST
-   - Tool names claimed as braid's must match actual `registerTool` calls
-2. Add `evaluation/README.md` to the doc discipline scope (add status marker)
-3. Consider a script that checks README extension table against MANIFEST
-   entries
+Actions:
+1. Add structural checks:
+   - Extension IDs named in `README.md` must exist in `MANIFEST`.
+   - The strings cited in the `BRAID_MODULES` example must resolve.
+2. Add `evaluation/README.md` to the doc discipline (or explicitly
+   exclude it).
 
 ---
 
-## 5. Effort estimate
+## 5. Outstanding items from the parallel session
 
-| Phase | Files touched | Tool calls | Risk | Depends on |
-|-------|--------------|------------|------|------------|
-| P1: README.md | 1 file | ~40 | Medium — needs architectural understanding | None |
-| P2: Forward-looking audit | 4-5 files | ~30 | Low — mostly status markers | P1 (some claims cross-reference README) |
-| P3: AGENTS.md verification | 10-15 files | ~30 | Low — spot-check pattern | None |
-| P4: Doc discipline | 2-3 files + scripts | ~20 | Medium — requires understanding drift checker | P1, P3 (to know what to track) |
+Items the parallel agent has already addressed during this audit:
+- Peer dependency version (R6) — fixed
+- Test count (R7) — fixed
+- Skills claim (R2) — partially fixed (link redirected, count not updated)
+- Extension table (R4) — partially fixed (2 of 3 phantoms removed)
+- Architecture diagram (R1) — partially fixed (cognitive-systems block removed)
 
-**Total:** ~4 sessions, ~120 tool calls.
+Items still outstanding from the audit:
+- R3 (module example still partially broken)
+- R5 (pi-core tools still mixed in)
+- R9 (module-system description still misleading)
+- R10 (tagline)
+- All of §3.2, §3.3, §3.4, §3.5
 
 ---
 
-## 6. Quick wins (can be done in <10 tool calls)
+## 6. Effort
 
-These are the highest-ROI individual fixes:
+| Phase | Files | Tool calls | Risk |
+|-------|-------|------------|------|
+| P1: README.md | 1 | ~40 | Medium — needs to choose between editing or rewriting sections |
+| P2: Forward-looking docs | 4-5 | ~30 | Low |
+| P3: AGENTS.md verification | 10-15 | ~30 | Low |
+| P4: Drift checker | 2-3 | ~20 | Medium |
 
-1. **README.md peer dep version** — one line change (`0.70.0` → `0.77.0`)
-2. **README.md test count** — one line change (`61` → `82`)
-3. **README.md skills link** — remove `skills/` link, point to pi-braid-skills repo
-4. **HOOKS-AND-WHISPERS-AUDIT.md** — change status to `current`
-5. **ROADMAP.md** — remove 3 duplicate status markers
-6. **README.md module example** — replace with working example
-   (e.g., `BRAID_MODULES="+heartbeat,-enforcement"`)
+Approximate total: ~4 sessions, ~120 tool calls.

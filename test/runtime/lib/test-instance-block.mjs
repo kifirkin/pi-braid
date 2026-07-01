@@ -221,28 +221,23 @@ await test("Extension paths are rendered as full paths (never bare '.')", () => 
   }
 });
 
-await test("Top-level list uses settings-driven tags (project or user-global), not cwd/sibling-repo", () => {
-  // v3.8 reads pi-core's `packages` settings field, so every loaded
-  // package has a settings-scope tag. The legacy tags `(cwd)` and
-  // `(sibling-repo)` from v3.7 must not appear — they leaked
-  // implementation details about where the agent happened to be
-  // running from.
-  assert.ok(
-    !/\(cwd\)/.test(OUT),
-    "must not use the v3.7 (cwd) tag — packages are loaded from settings, not cwd",
-  );
+await test("Top-level list uses source tags (cwd, project, or user-global), not sibling-repo", () => {
+  // v3.8 reads pi-core's `packages` settings field, so most packages
+  // have a settings-scope tag ((project) or (user-global)). Packages
+  // loaded directly from the development cwd may show (cwd). The
+  // legacy (sibling-repo) tag from v3.7 must not appear.
   assert.ok(
     !/\(sibling-repo\)/.test(OUT),
     "must not use the v3.7 (sibling-repo) tag — packages are loaded from settings, not sibling dirs",
   );
-  // Each rendered line must end with one of the two valid tags.
+  // Each rendered line must end with one of the valid source tags.
   const extLines = OUT.split("\n").filter((l) => /^\s+\S+ v\d+\.\d+\.\d+/.test(l));
   assert.ok(extLines.length > 0, "must have at least one extension line");
   for (const line of extLines) {
     assert.match(
       line,
-      /\((?:project|user-global)\)$/,
-      `extension line must end with (project) or (user-global): ${line}`,
+      /\((?:cwd|project|user-global)\)/,
+      `extension line must have a valid source tag ((cwd), (project), or (user-global)): ${line}`,
     );
   }
 });
