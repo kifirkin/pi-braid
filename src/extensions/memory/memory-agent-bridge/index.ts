@@ -616,7 +616,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
               }
             }
             if (lines.length === 0) {
-              lines.push("No matching memories found.");
+              lines.push("No matching memories found. Consisder broader trying search.");
             }
             return {
               content: [{ type: "text", text: lines.join("\n") }],
