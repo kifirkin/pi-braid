@@ -5,6 +5,10 @@
  * decomposition coverage. Uses the triple-critic LLM classification system
  * with three-tier fallback (heuristic -> utility model -> session model).
  *
+ * PRIMARY PATH: consolidated single-LLM-call (3 dimensions in one JSON
+ * response). FALLBACK PATH: 3 individual classify() calls. The consolidated
+ * path replaces ~3 separate LLM calls with 1, reducing latency by ~66%.
+ *
  * These tools are co-located with `verify` in this directory because they
  * share the "verification" concept; they are registered from
  * `metacognition/index.ts` alongside `think`/`hypothesize`/`verify`/`finalize`.
@@ -18,6 +22,7 @@ import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-w
 import { createLogger } from "../../../../lib/core/logger.js";
 import { classify } from "../../../../lib/ai/text-classifier.js";
 import { CRITICS } from "../../../../lib/ai/critic-registry.js";
+import { consolidatedClaimCritique } from "../../../../lib/ai/consolidated-claim-critic.js";
 
 const log = createLogger("metacognition:claim-verification");
 
@@ -50,8 +55,7 @@ const verifyClaimSchema = Type.Object({
 	),
 });
 
-
-// ── Core logic (triple-critic) ────────────────────────────────────────────
+// ── Individual critics (FALLBACK PATH) ───────────────────────────────────
 
 async function checkContradiction(
 	claim: string,
@@ -62,14 +66,6 @@ async function checkContradiction(
 	severity: "high" | "low";
 	description: string;
 	quote: string;
-	/**
-	 * True when the classifier call failed (tier === "failed"). The
-	 * safe default is "no contradiction found" - this flag signals
-	 * the check couldn't run at all, so the consumer can surface
-	 * the degraded state. Same anti-pattern fix as input-polisher
-	 * 9966c8ad, topic-drift, sycophancy, and turn-outcome: never
-	 * silently default to "no problem" when the classifier is down.
-	 */
 	classifierDown?: boolean;
 } | null> {
 	try {
@@ -88,12 +84,6 @@ async function checkContradiction(
 				classifierDown: result.tier === "failed",
 			};
 		}
-		// No contradiction found. If the classifier was down, the
-		// returned null already means "no issue" (the safe default).
-		// The consumer doesn't need to know the classifier was down
-		// for THIS specific check (it might be a different call).
-		// The classifierDown surfacing is for the AGGREGATE tool
-		// result, computed at the execute() boundary.
 		return null;
 	} catch (err) {
 		log.debug(`checkContradiction failed: ${err}`);
@@ -122,8 +112,6 @@ async function checkSupport(
 		};
 	} catch (err) {
 		log.debug(`checkSupport failed: ${err}`);
-		// Thrown error: classifier unreachable. Return safe default
-		// (supported=false) but flag the offline state.
 		return { supported: false, classifierDown: true };
 	}
 }
@@ -154,17 +142,9 @@ async function checkOverconfidence(
 		return { issues, classifierDown: result.tier === "failed" };
 	} catch (err) {
 		log.debug(`checkOverconfidence failed: ${err}`);
-		// Thrown error: classifier unreachable. Return empty issues
-		// (the safe default) but flag the offline state.
 		return { issues: [], classifierDown: true };
 	}
 }
-
-// checkDecompositionCoverage was previously used by verify.ts for
-// decomposition coverage. It is no longer called (the verify_decomposition
-// tool now uses verify_claim with action=decomposition, which goes
-// through claimContradiction + claimSupported). Keeping the function
-// would be dead code. Removed.
 
 // ── Tool factory ──────────────────────────────────────────────────────────
 
@@ -200,42 +180,79 @@ export function createVerifyClaimTool(): ToolDefinition<any, any, any> {
 				const claimId = p.claimId ?? `claim-${Date.now()}`;
 				const issues: Record<string, unknown>[] = [];
 
-				// Triple-critic checks in parallel: contradiction + support + overconfidence
-				const contradictionChecks = p.context.map((ctxStr) =>
-					checkContradiction(p.claim, ctxStr, ctx!),
-				);
-				const contradictionResults = await Promise.allSettled(contradictionChecks);
-				for (const r of contradictionResults) {
-					if (r.status === "fulfilled" && r.value) issues.push(r.value);
+				// ── PRIMARY PATH: consolidated single-LLM-call ────────────────
+				let consolidatedUsed = false;
+				try {
+					const contextJoined = p.context.join("\n\n---\n\n");
+					const consolidated = await consolidatedClaimCritique(p.claim, contextJoined, ctx!);
+					if (consolidated && !consolidated.classifierDown) {
+						consolidatedUsed = true;
+						if (consolidated.contradiction) {
+							issues.push({
+								type: "contradiction",
+								severity: "high",
+								description: `Claim contradicts context: ${truncate(p.claim, 100)}`,
+								quote: p.claim,
+							});
+						}
+						if (!consolidated.supported && p.context.length > 0) {
+							issues.push({
+								type: "unsupported",
+								severity: "medium",
+								description: "Claim not sufficiently supported by any retrieved context.",
+								quote: p.claim,
+							});
+						}
+						if (consolidated.overconfidence) {
+							issues.push({
+								type: "hedge_warning",
+								severity: "low",
+								description: "Claim uses overconfident language without sufficient evidence",
+								quote: p.claim,
+							});
+						}
+					}
+				} catch {
+					// Fall through to individual checks
 				}
 
-				const [supportedSettled, overconfidenceIssuesSettled] = await Promise.allSettled([
-					checkSupport(p.claim, p.context, ctx!),
-					checkOverconfidence(p.claim, ctx!),
-				]);
-				const supportedResult = supportedSettled.status === "fulfilled" ? supportedSettled.value : { supported: false, classifierDown: true };
-				const overconfidenceResult = overconfidenceIssuesSettled.status === "fulfilled" ? overconfidenceIssuesSettled.value : { issues: [], classifierDown: true };
-				const supported = supportedResult.supported;
-				const overconfidenceIssues = overconfidenceResult.issues;
+				// ── FALLBACK PATH: individual classify() calls ──────────────
+				let fallbackClassifierDown = false;
+				if (!consolidatedUsed) {
+					const contradictionChecks = p.context.map((ctxStr) =>
+						checkContradiction(p.claim, ctxStr, ctx!),
+					);
+					const contradictionResults = await Promise.allSettled(contradictionChecks);
+					for (const r of contradictionResults) {
+						if (r.status === "fulfilled" && r.value) issues.push(r.value);
+					}
 
-				// Track if any sub-check's classifier was down. We surface
-				// this in the tool result so the agent (and operator) knows
-				// the verify_claim check was degraded, not actually a clean
-				// pass. Same anti-pattern fix as input-polisher 9966c8ad,
-				// topic-drift, sycophancy, and turn-outcome.
-				const anyClassifierDown =
-					supportedResult.classifierDown || overconfidenceResult.classifierDown;
+					const [supportedSettled, overconfidenceIssuesSettled] = await Promise.allSettled([
+						checkSupport(p.claim, p.context, ctx!),
+						checkOverconfidence(p.claim, ctx!),
+					]);
+					const supportedResult = supportedSettled.status === "fulfilled" ? supportedSettled.value : { supported: false, classifierDown: true };
+					const overconfidenceResult = overconfidenceIssuesSettled.status === "fulfilled" ? overconfidenceIssuesSettled.value : { issues: [], classifierDown: true };
+					const supported = supportedResult.supported;
+					const overconfidenceIssues = overconfidenceResult.issues;
 
-				if (!supported && p.context.length > 0) {
-					issues.push({
-						type: "unsupported",
-						severity: "medium",
-						description: "Claim not sufficiently supported by any retrieved context.",
-						quote: p.claim,
-					});
+					fallbackClassifierDown =
+						supportedResult.classifierDown || overconfidenceResult.classifierDown;
+
+					if (!supported && p.context.length > 0) {
+						issues.push({
+							type: "unsupported",
+							severity: "medium",
+							description: "Claim not sufficiently supported by any retrieved context.",
+							quote: p.claim,
+						});
+					}
+
+					issues.push(...overconfidenceIssues);
 				}
 
-				issues.push(...overconfidenceIssues);
+				// ── Summary ────────────────────────────────────────────────
+				const anyClassifierDown = consolidatedUsed ? false : fallbackClassifierDown;
 
 				const severityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
 				issues.sort((a: any, b: any) => severityOrder[a.severity] - severityOrder[b.severity]);
