@@ -8,6 +8,34 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **ROADMAP tally reconciliation (session-3):** The tier-tally headers
+  were stale relative to the item lists. P2 narrative already listed
+  P2-3 / EW-7.4 (classifier-offline helper) as shipped but the P2
+  table row had no `Shipped in vX.Y` marker and the P2 tally still
+  said `8 of 11`. P3-7 / EW-7.12 was listed as shipped in the P3
+  narrative and in the `Items shipped since last ROADMAP revision`
+  list but the EW tally text contradicted itself (`14 of 15` with
+  `EW-7.12 remains deferred`). Three header edits + one table-row
+  marker + one contradiction-removal. Actual shipped counts unchanged
+  (P2-3 and P3-7 were already counted in the `45+1` narrative). The
+  roster numbers — P2 9/11, P3 25/25, EW 15/15 — now match what the
+  rest of the file has been claiming for months.
+
+- **P3-25 cost report surfaced (session-3):** The critic-stats
+  pipeline (per-critic + tier + token tracking) and
+  `computeCriticCost()` / `formatCriticCostReport()` have been in
+  place since v1.x but had no production consumer. Wired a compact
+  `formatCriticCostSection()` helper into `formatCurrentSession()` so
+  the `/analytics:current` command now shows total $ across input +
+  output tokens, cache-hit savings, and the top-3 most-expensive
+  critics. Full per-critic table (`formatCriticCostReport()`) is
+  re-exported for callers that need the breakdown. ROADMAP P3-25
+  header still says `not started` (tally didn't bump) — the
+  instrumentation was done, only the surfacing was missing; corrected
+  to reflect that the work is `live, visible` end-to-end.
+
 ### Security
 
 - **Path leak audit** — fixed hardcoded `/Users/kifir/...` absolute paths

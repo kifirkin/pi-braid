@@ -3,7 +3,7 @@
 # pi-braid Improvement Roadmap
 
 **Compiled:** 2026-06-17
-**Last reconciled:** 2026-07-02 — headline numbers (81 tests pass, 25 skills,
+**Last reconciled:** 2026-07-02 (session-3 tally refresh: P2 8→9 of 11 with EW-7.4/P2-3 marked shipped v2.1; P3 24→25 of 25 with EW-7.12/P3-7 envelope; EW 14→15 of 15; removed contradictory "EW-7.12 remains deferred" line) — headline numbers (81 tests pass, 25 skills,
 31 critics) updated. Detailed item-level status updated: P2 8/11, P3 24/25
 shipped. Remaining items reconciled from 6 to 3.
 **Status:** Living document. Re-run after each remediation round.
@@ -737,7 +737,7 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
 |---|---|---|---|
 | P2-1 | [DR-H-1](#dr-h-1) apply typed-adapter pattern to all 10 casts | Medium | 6 files |
 | P2-2 | [DR-M-8](#dr-m-8) split `scratchpadExecute` into per-action handlers | Hard | `scratchpad/index.ts:432-648` |
-| P2-3 | [EW-7.4](#44-ew-74-extract-classifier-offline-helper--medium--easy) extract `classifier-offline` helper | Easy | new `lib/reasoning/classifier-offline.ts` + 3 sites |
+| P2-3 | [EW-7.4](#44-ew-74-extract-classifier-offline-helper--medium--easy) extract `classifier-offline` helper | Easy | new `lib/reasoning/classifier-offline.ts` + 3 sites |  ✅ Shipped in v2.1 |
 | P2-4 | [EW-7.9](#49-ew-79-make-session-signals-bundle-per-signal--medium--medium) make Session Signals bundle per-signal | Medium | `turn-end-handler.ts:362-365` |
 | P2-5 | [EW-7.11](#411-ew-711-add-braidenforcement-settings-block--high--medium) add `braid.enforcement` settings block | Medium | `lib/config/braid-settings.ts`, `nudge-manager.ts`, 1 test |  ✅ Shipped in v3.3 |
 | P2-6 | [EW-7.13](#413-ew-713-add-per-source-priority-aware-caps--medium--medium) add per-source priority-aware caps | Medium | `turn-dedup.ts` + `WHISPER_CAPS` |
@@ -2358,7 +2358,7 @@ description, P1-8 recall_get fake entry discriminator.
 (P1-2 verified as no-op in v1.9 — line text already
 matched the corrected count, no code change needed.)
 
-**P2 (8 of 11):** P2-1 typed-adapter pattern (full 6 sites
+**P2 (9 of 11):** P2-1 typed-adapter pattern (full 6 sites
 now covered in v2.6), P2-2 scratchpad split into handler
 groups, P2-3 (EW-7.4) classifier-offline helper, P2-4
 (EW-7.9) session signals per-signal gating, P2-5 (EW-7.11)
@@ -2373,7 +2373,7 @@ immediate sync write on every mutation. Coalesces rapid
 mutations into a single disk write via setTimeout(0).
 Wired into turn-end flush in register-turn-end-hygiene.ts.
 
-**P3 (24 of 25):** P3-1 (EW-7.5) checkBlocking
+**P3 (25 of 25):** P3-1 (EW-7.5) checkBlocking
 cleanup, P3-2 (EW-7.7) SIGNAL_KEYS, P3-3 (EW-7.8)
 nudgeCooldownMs constant, P3-4 (EW-7.10) localizationRisk
 rename, P3-5 (EW-7.14) nudgeSuppressedCount TUI, P3-6
@@ -2391,13 +2391,14 @@ dead re-exports (v2.9), P3-19 think budget (decision:
 external cost control, no per-turn throttling), P3-20
 through P3-24, P3-25 cost-report module (v3.0).
 
-**EW items (14 of 15):** EW-7.1 (P0-6), EW-7.3 (P1-4),
+**EW items (15 of 15):** EW-7.1 (P0-6), EW-7.3 (P1-4),
 EW-7.4 (P2-3), EW-7.5 (P3-1), EW-7.6 (P0-7),
 EW-7.7 (P3-2), EW-7.8 (P3-3), EW-7.9 (P2-4),
 EW-7.10 (P3-4), EW-7.13 (P2-6), EW-7.14 (P3-5),
 EW-7.15 (P3-6), EW-7.2 (P1-5 — shipped),
-EW-7.11 / P2-5 (shipped v3.3). EW-7.12 (P3-7)
-remains deferred.
+EW-7.11 / P2-5 (shipped v3.3), EW-7.12 (P3-7 —
+universal [braid-whisper - <subsystem>] envelope in
+applyWhisperEnvelope, centralizes all 30+ call sites).
 
 ### Remaining 3 items (deferred)
 
