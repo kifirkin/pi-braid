@@ -70,13 +70,19 @@ const actualKeys = Object.keys(state).sort();
 const actualCount = actualKeys.length;
 
 // ── Baseline (update when adding intentional new keys) ─────────────────────
+//
+// ROADMAP session 2026-07-02: 5 nudge-tracking fields added to support
+// per-turn think/finalize/verify/startup enforcement (see EW-7.2 sub-signal
+// wiring in turn-end-handler.ts). Bumped 65 -> 70. New sentinels added
+// under error-tracking-state (where the per-turn nudge counters live) and
+// session-state (startupPlanShown drives PLANNING mode via determineContrastMode).
 
-const BASELINE_COUNT = 65;
+const BASELINE_COUNT = 70;
 
 const SENTINEL_KEYS = {
   "tool-tracking-state": ["totalToolCalls", "uniqueToolsUsed", "toolChain", "lastRecommendationType"],
-  "error-tracking-state": ["consecutiveErrorTurns", "lastFailedToolTurn", "validationFailures"],
-  "session-state": ["currentTurn", "turnHistory", "originalRequest", "driftDetector"],
+  "error-tracking-state": ["consecutiveErrorTurns", "lastFailedToolTurn", "validationFailures", "lastFinalizeNudge", "lastVerifyNudge", "lastThinkPerTurnNudge", "lastStartupNudge"],
+  "session-state": ["currentTurn", "turnHistory", "originalRequest", "driftDetector", "startupPlanShown"],
   "memory-hygiene-state": ["lastMemoryCall", "turnsSinceMemory", "memoryNudgeSent"],
   "scratchpad-state": ["lastScratchpadNudgeTurn", "claimsWithoutVerification", "verificationsDone"],
   "context-hygiene-state": ["contextNudgeSent", "lastCompactionTurn", "overflowRecently"],

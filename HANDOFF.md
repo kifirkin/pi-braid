@@ -218,7 +218,7 @@ All known limitations from the prior handoff are now resolved:
 4. ~~**Think-tool partial patches**~~ — **RESOLVED** in `ee5fae44`. All 7 bugs fixed.
 5. ~~**Skills compression unpushed**~~ — **RESOLVED**. `fd4b8269` pushed with the rest.
 
-**Current known limitation:** `test-instance-block.mjs` has 1 pre-existing failure (v3.7 cwd tag regression — pi-core v0.80.2's `getCwd()` returns a relative path or empty string in some contexts). This is a pi-core issue, not a braid issue. The test was updated to 19 subtests in v3.8 but the cwd tag assertion remains fragile.
+~~**Current known limitation:** `test-instance-block.mjs` has 1 pre-existing failure (v3.7 cwd tag regression — pi-core v0.80.2's `getCwd()` returns a relative path or empty string in some contexts).~~ — **RESOLVED** in 2026-07-02 session. The test passes on pi-core v0.80.3.
 
 ## Quick-start commands
 
@@ -246,7 +246,7 @@ Two investigations resolved in this session, plus a documentation overhaul:
 
 ### Shipped (commits in this session)
 
-1. **`322d2c43`** — SCOPES identity framing + INTERACTION_STYLE markup-discipline clause + lean CORRECTION directive. See `src/extensions/core/prompt-builder/identity.ts:SCOPES` and the 4th sentence of `INTERACTION_STYLE`. The principle: "every artifact belongs to a scope; default to the narrowest one that satisfies the purpose, broaden only when lifetime / audience / portability demand it." No path lists — discoverability over memorization. 36/36 prompt-builder tests pass; 79/81 full-suite pass (two pre-existing failures unrelated to prompt-builder work).
+1. **`322d2c43`** — SCOPES identity framing + INTERACTION_STYLE markup-discipline clause + lean CORRECTION directive. See `src/extensions/core/prompt-builder/identity.ts:SCOPES` and the 4th sentence of `INTERACTION_STYLE`. The principle: "every artifact belongs to a scope; default to the narrowest one that satisfies the purpose, broaden only when lifetime / audience / portability demand it." No path lists — discoverability over memorization. 36/36 prompt-builder tests pass; 81/81 full-suite pass.
 
 2. **Doc overhaul (this HANDOFF update, plus uncommitted doc work)**:
    - `README.md` rewritten — user-first with fast-start config example + "what you get" table + setup quicklinks
@@ -267,3 +267,40 @@ Two investigations resolved in this session, plus a documentation overhaul:
 - `SPQ-10` and `SPQ-11` from ROADMAP.
 
 Read the main body of this HANDOFF.md for the broader v3.7→v3.10 context. Welcome.
+
+---
+
+## Postscript — 2026-07-02 deep-invest session
+
+Shipped in this session (to be committed):
+
+1. **Fix: test-enforcement-state-composition.mjs baseline** — `BASELINE_COUNT` 65 → 70.
+   5 nudge-tracking fields added since the last baseline bump per-turn
+   think/finalize/verify/startup enforcement (EW-7.2 sub-signal wiring).
+   Sentinel keys updated for error-tracking-state and session-state.
+
+2. **Fix: tool-loop-detector.ts recordTurnEnd bug** — `recordTurnEnd` was not
+   creating a new `perTurn` entry, so `detectToolLoop` always returned false
+   in production (`perTurn.length` never exceeded 1). Also added ordered
+   `history: string[]` field for tail-run detection (N consecutive same-tool
+   calls within a single turn). The stateful `detectToolLoop` now has two
+   detection paths: tail-run (intra-turn, primary) and cross-turn (fallback).
+   All 18 subtests in test-tool-loop-detector.mjs now pass.
+
+3. **HANDOFF update** — "Known limitations" section: the stale
+   test-instance-block.mjs entry was resolved (passes on pi-core v0.80.3).
+   Test count bumped from 79→81 in the v3.10 postscript.
+
+### Verified
+
+- `npm test` → **81/81 passed, 0 failed** (both previously-failing tests green)
+- `npm run typecheck` → clean
+- `npm run check:docs` → ✅
+
+### D-57 enforcement-bloat inventory (investigated, deferred)
+
+The full classification of turn-end-handler.ts whispers into static
+(instruction → move to tool descriptions) vs runtime (keep as detection)
+was completed and stored in scratchpad as decision D-58. The
+classified inventory is ready for the next session to begin the
+partial migration. See scratchpad `action=continue` for the full memo.

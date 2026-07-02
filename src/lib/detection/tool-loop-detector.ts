@@ -85,6 +85,11 @@ export interface ToolLoopState {
    *  preserves turn boundaries, preventing false positives from same-tool
    *  calls in different turns appearing adjacent after other tools age out. */
   perTurn: Set<string>[];
+  /** Ordered flat history of tool calls (last TOOL_LOOP_WINDOW entries).
+   *  Used for tail-run detection: N consecutive same-tool calls whether
+   *  within a single turn or across turns. Pushed by recordToolCall,
+   *  shifted when exceeding WINDOW. */
+  history: string[];
   /** Turn index when we last emitted a loop whisper. -1 if never. */
   lastFiredAtTurn: number;
   /** Monotonically increasing turn counter for cooldown math. */
@@ -103,6 +108,7 @@ export interface ToolLoopResult {
 export function createToolLoopState(): ToolLoopState {
   return {
     perTurn: [],
+    history: [],
     lastFiredAtTurn: -1,
     turnCount: 0,
   };
@@ -134,14 +140,37 @@ export function recordToolCall(state: ToolLoopState, toolName: string): void {
     const removed = state.perTurn.pop()!;
     totalTools -= removed.size;
   }
+  // Push to ordered history for tail-run detection
+  state.history.push(toolName);
+  if (state.history.length > TOOL_LOOP_WINDOW) {
+    state.history.shift();
+  }
 }
 
 /**
  * Record the end of a turn. Call this from the turn_end handler to
  * bump the counter and open a new turn for the next round of tool calls.
+ *
+ * BUGFIX 2026-07-02: was only bumping turnCount without creating a new
+ * perTurn entry, so perTurn.length never exceeded 1 and detectToolLoop
+ * returned false on every call -- effectively dead code in production.
+ * Now also pushes a fresh turn entry so the next tool_call handler's
+ * recordToolCall adds to the new turn's set. History is NOT rotated
+ * here (recordToolCall handles that), but perTurn entries are trimmed.
  */
 export function recordTurnEnd(state: ToolLoopState): void {
   state.turnCount++;
+  // Open a new turn for the next round of tool calls (matching docstring).
+  state.perTurn.unshift(new Set<string>());
+  // Trim perTurn to keep tool counts within WINDOW
+  let totalTools = 0;
+  for (const turn of state.perTurn) {
+    totalTools += turn.size;
+  }
+  while (totalTools > TOOL_LOOP_WINDOW && state.perTurn.length > 1) {
+    const removed = state.perTurn.pop()!;
+    totalTools -= removed.size;
+  }
 }
 
 /**
@@ -174,12 +203,17 @@ export function markLoopFired(state: ToolLoopState): void {
 // ── Detection (the unified verdict) ────────────────────────────────────────
 
 /**
- * Detect a tool loop across recent turns.
+ * Detect a tool loop. Uses TWO detection paths:
  *
- * Uses per-turn tool sets to count how many consecutive turns the same
- * tool appears in. If the same tool appears in TOOL_LOOP_THRESHOLD+
- * consecutive turns, and it is the ONLY tool in at least 2 of those
- * turns, it is flagged as a loop.
+ * 1. Tail-run (intra-turn): checks the ordered `history` array for N
+ *    consecutive same-tool calls. Catches the common `read*8` loop even
+ *    when all calls happen in a single turn. This is the primary path;
+ *    the test suite and the stateless detectToolLoopFromSequence share
+ *    the same tail-run semantics.
+ *
+ * 2. Cross-turn (inter-turn): checks perTurn sets for the same tool
+ *    appearing in N consecutive turns. Catches loops where the agent
+ *    calls different tools but always returns to the same one.
  *
  * Returns:
  *   { isLoop: true, tool, count, message } when a loop is detected.
@@ -194,11 +228,39 @@ export function detectToolLoop(state: ToolLoopState): ToolLoopResult {
     return { isLoop: false, tool: "", count: 0, message: "" };
   }
 
+  // ── Path 1: Tail-run detection (ordered history) ────────────────────────
+  // Count consecutive same-tool calls at the end of the history array.
+  // This matches the stateless detectToolLoopFromSequence semantics.
+  if (state.history.length >= TOOL_LOOP_THRESHOLD) {
+    const last = state.history[state.history.length - 1];
+    let count = 1;
+    for (let i = state.history.length - 2; i >= 0; i--) {
+      if (state.history[i] === last) count++;
+      else break;
+    }
+    if (count >= TOOL_LOOP_THRESHOLD) {
+      return {
+        isLoop: true,
+        tool: last,
+        count,
+        message:
+          `## Tool Loop Detected\n\n` +
+          `- **Repetition**: Called \`${last}\` ${count} times in a row with no progress.` +
+          `\n\n**Suggested actions:**\n` +
+          `1. Use \`think()\` to re-evaluate your approach\n` +
+          `2. Check if the problem has changed - you may be solving the wrong issue\n` +
+          `3. Consider breaking the task into smaller steps\n` +
+          `4. Use the \`memory\` tool to find past solutions to similar problems`,
+      };
+    }
+  }
+
+  // ── Path 2: Cross-turn detection (perTurn sets) ─────────────────────────
+  // Only relevant when the agent spans multiple turns with the same tool.
   if (state.perTurn.length < 2) {
     return { isLoop: false, tool: "", count: 0, message: "" };
   }
 
-  // Find the most-called tool across recent turns
   const toolTurnCounts = new Map<string, { turnCount: number; exclusiveTurns: number }>();
   for (const turn of state.perTurn) {
     for (const tool of turn) {
@@ -213,7 +275,6 @@ export function detectToolLoop(state: ToolLoopState): ToolLoopResult {
     }
   }
 
-  // Find the tool with the highest turn count
   let bestTool = "";
   let bestCount = 0;
   let bestExclusive = 0;
@@ -229,7 +290,6 @@ export function detectToolLoop(state: ToolLoopState): ToolLoopResult {
     return { isLoop: false, tool: "", count: 0, message: "" };
   }
 
-  // Check consecutive streak: does the best tool appear in the last N turns?
   let consecutiveTurns = 0;
   for (const turn of state.perTurn) {
     if (turn.has(bestTool)) {
