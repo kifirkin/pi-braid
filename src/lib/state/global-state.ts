@@ -298,3 +298,29 @@ export function getTimerExtensionFactoryState(): TimerExtensionFactoryState {
 export function resetTimerExtensionFactoryState(): void {
   _timerExtensionFactoryState = undefined;
 }
+
+// ── Discoverability dedup (survives /reload module re-evaluation) ──────────────
+// The discoverability handler in enforcement runs on every session_start and
+// emits a bundled whisper with prior-session hints. On /reload, the extension
+// module IS re-evaluated (so module-level Set in the handler doesn't persist).
+// This global-state slot lets the dedup Set survive across reloads within the
+// same process.
+
+let _shownDiscoveryBundles: Set<string> | undefined;
+
+/**
+ * Get the shared discoverability dedup set. Created lazily on first access.
+ * The Set contains the bundled text of already-shown discoverability whispers.
+ * A fresh `pi` process starts with an empty Set (everything is "new").
+ */
+export function getShownDiscoveryBundles(): Set<string> {
+  if (!_shownDiscoveryBundles) {
+    _shownDiscoveryBundles = new Set<string>();
+  }
+  return _shownDiscoveryBundles;
+}
+
+/** Reset the dedup set. Test helper. */
+export function resetShownDiscoveryBundles(): void {
+  _shownDiscoveryBundles = undefined;
+}

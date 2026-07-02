@@ -31,24 +31,11 @@ import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/se
 import { sendEnforcementWhisper } from "../whisper.js";
 import { getState } from "../state.js";
 import { enforcementSignals } from "../signals.js";
+import { getShownDiscoveryBundles } from "../../../lib/state/global-state.js";
 import { SCRATCHPAD_DIR, EPISODES_FILE, SEMANTIC_MEMORY_FILE, AGENT } from "../../../lib/config/braid-paths.js";
 import { projectSlugFromCwd } from "../../memory/scratchpad/persistence.js";
 
 const log = createLogger("enforcement:session-start-discoverability");
-
-// ── Process-level dedup for discoverability whispers ────────────────────────
-// Prevents re-emitting the same discoverability text across /reload calls.
-// The Set persists in module memory (same process), so the whisper fires at
-// most once per `pi` process lifetime. A fresh `pi` process starts with an
-// empty Set, showing discoverability once for the new lifecycle.
-//
-// Why this isn't a session-scoped signal: the discoverability handler runs
-// on every session_start, including /reload. The disk-backed state (scratchpad,
-// episodes, resume) doesn't change during a reload, so the text is identical.
-// Without process-level dedup, every reload re-emits the same bundle.
-// `sendEnforcementWhisper` doesn't go through NudgeManager (no per-NudgeType
-// cooldown or hash dedup), so there's no other dedup layer to catch it.
-const _shownDiscoveryBundles = new Set<string>();
 
 /**
  * Register the SESSION_START discoverability handler.
@@ -186,13 +173,15 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
       // The braid-whisper prefix is added by the trunk (sendTrackedMessage),
       // so we just join the body-level signals with newlines.
       //
-      // Process-level dedup: `_shownDiscoveryBundles` tracks already-shown
-      // texts across reloads. Same process → same Set → identical text is
-      // skipped. Fresh `pi` process → empty Set → shows once.
+      // Process-level dedup: `getShownDiscoveryBundles()` returns a Set stored
+      // in global-state.ts (library module, never re-evaluated on /reload).
+      // Same process → same Set → identical text is skipped.
+      // Fresh `pi` process → empty Set → shows once.
       if (signals.length > 0) {
+        const shown = getShownDiscoveryBundles();
         const bundled = signals.join("\n");
-        if (!_shownDiscoveryBundles.has(bundled)) {
-          _shownDiscoveryBundles.add(bundled);
+        if (!shown.has(bundled)) {
+          shown.add(bundled);
           sendEnforcementWhisper(pi, ctx, bundled);
         } else {
           log.debug(`[discoverability] Skipping already-shown bundle (${signals.length} signals)`);

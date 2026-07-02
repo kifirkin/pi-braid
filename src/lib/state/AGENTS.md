@@ -106,6 +106,7 @@ The exception list is enforced by `test/runtime/lib/test-no-module-level-let.mjs
 | `global-state.ts:144` | `_cognitiveMemoryInstance` | Encapsulated; only `getCognitiveMemoryInstance()` exported. |
 | `global-state.ts:172` | `_postLoopTimeoutMs` | Encapsulated; only `getPostLoopTimeoutMs()` / `setPostLoopTimeoutMs()` exported. Defaulted from `DEFAULT_POST_LOOP_TIMEOUT_MS` (30_000). Tunable so the post-loop timeout can change without code edits. |
 | `global-state.ts:279` | `_timerExtensionFactoryState` | Encapsulated; only `getTimerExtensionFactoryState()` exported. Used by `extensions/scheduling/timer/index.ts` to count factory invocations and warn when the DR-C-4 single-process-per-session assumption is violated (see the comment block at timer/index.ts:16-41). |
+| `global-state.ts:309` | `_shownDiscoveryBundles` | Encapsulated; only `getShownDiscoveryBundles()` / `resetShownDiscoveryBundles()` exported. Used by `extensions/enforcement/handlers/register-session-start-discoverability.ts` to dedup the bundled discoverability whisper across /reload calls within the same process. The extension module is re-evaluated on /reload, so a module-level Set there would be lost. |
 
 ### D. Logger / framework config (process-global by design)
 
@@ -144,6 +145,7 @@ The exception list is enforced by `test/runtime/lib/test-no-module-level-let.mjs
 | 2026-06-17 | `test-no-module-level-let.mjs` added | 27 documented exceptions enumerated. Test enforces the policy. |
 | 2026-06-27 | DR-C-4 runtime check added | `_timerExtensionFactoryState` added (28 documented exceptions). Process-global counter for the timer extension factory; logs a warning when the single-process-per-session assumption is violated. |
 | 2026-07-01 | GAP #3: cross-session evidence pool persistence | `loadedFromDisk` added (29 documented exceptions). Async-storage lazy-load guard for the evidence pool JSON file. |
+| 2026-07-02 | /reload discoverability dedup | `_shownDiscoveryBundles` added (30 documented exceptions). Process-global Set in global-state.ts prevents the bundled discoverability whisper from re-firing on /reload. Extension module is re-evaluated on /reload, so a module-level Set would be lost. |
 
 ## Work Guidance
 

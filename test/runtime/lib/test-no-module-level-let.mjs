@@ -99,6 +99,9 @@ const EXEMPT_LINES = [
   { file: "src/lib/reasoning/advice-tracker.ts", line: 47, pattern: "export let dreamerCooldownMs" },
   { file: "src/lib/reasoning/advice-tracker.ts", line: 50, pattern: "export let marsOveruseMultiplier" },
   { file: "src/lib/reasoning/advice-tracker.ts", line: 60, pattern: "let _idCounter" },
+
+  // ── G. Discoverability dedup (process-global, survives /reload) ─────────
+  { file: "src/lib/state/global-state.ts", line: 309, pattern: "let _shownDiscoveryBundles" },
 ];
 
 // Build a set of "file:line" pairs for quick lookup.
