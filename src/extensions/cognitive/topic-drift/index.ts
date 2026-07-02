@@ -2,26 +2,23 @@
  * @fileoverview Topic Drift Detector.
  *
  * Detects when agent output diverges from the original user request.
- * Uses consolidated single-LLM-call critique as primary path,
- * falling back to three parallel classifyWithOffline() calls.
+ * Uses consolidated single-LLM-call critique returning coverage,
+ * divergence, and completeness in one structured JSON response.
  *
- * Three-tier fallback: heuristic -> utility model -> session model.
- * Heuristic fallback (conservative: no drift) when no LLM available.
+ * Model tier strategy (in consolidatedTopicCritique):
+ *   session -> utility -> max-power -> conservative defaults.
  *
- * Replaces the previous implementation that used stop-word filtering
- * and token-overlap heuristics. The exported function signatures are
- * preserved for backward compatibility - callers unchanged.
+ * The 3-parallel classifyWithOffline fallback was removed in P2-7
+ * because the consolidated call covers the same model tiers and
+ * produces equivalent defaults when all LLM tiers are down.
  */
 
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../../../lib/core/logger.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
-import { classifyWithOffline } from "../../../lib/reasoning/classifier-offline.js";
-import { CRITICS } from "../../../lib/ai/critic-registry.js";
 import { onEvent } from "../../../lib/events/event-types.js";
 import { ANCHOR_TURNS_BEFORE_RESET } from "../../../lib/constants/session-thresholds.js";
-import { topicDriftFallback } from "../../../lib/ai/critic-fallbacks.js";
 import { consolidatedTopicCritique } from "../../../lib/detection/consolidated-topic-critic.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { BRAID_INJECTED, BRAID_SOURCE } from "../../../lib/constants/injection-details.js";
@@ -52,20 +49,29 @@ const DRIFT_THRESHOLD = 0.5;
 // ANCHOR_TURNS_BEFORE_RESET is now imported from
 // lib/constants/session-thresholds.ts. See that file for the source of truth.
 
-// ── Core logic (triple-critic) ──────────────────────────────────────────────
+// ── Core logic (consolidated critic) ─────────────────────────────────────────
 
 /**
  * Detect topic drift using consolidated single-LLM-call critique.
  *
- * Primary path: single callLlm() returning coverage/divergence/completeness.
- * Fallback: three parallel classifyWithOffline() calls.
+ * Uses a single LLM call returning structured JSON with all three
+ * verdicts (coverage, divergence, completeness). No 3-parallel
+ * fallback needed because the consolidated call already tries all
+ * available model tiers (session, utility, max-power) before
+ * falling back to conservative defaults.
  *
  * Consensus: 2/3 negative signals -> drift confirmed.
+ *
+ * ROADMAP P2-7 / DR-H-9: the 3-parallel fallback was removed because
+ * the consolidated call covers the same model tiers and produces the
+ * same conservative defaults when all LLM tiers fail. The only edge
+ * case (transient error on the consolidated call) is handled by the
+ * consolidated call's own tier retry — no information is lost.
  *
  * @param ctx - Extension context (for classify() LLM calls)
  * @param original - The original user request
  * @param output - The agent's response text
- * @returns drift verdict with fallback similarity and missing topics
+ * @returns drift verdict with similarity and missing topics
  */
 async function detectDriftWithCritics(
   ctx: ExtensionContext,
@@ -76,12 +82,10 @@ async function detectDriftWithCritics(
   similarity: number;
   missingAnchors: string[];
   /**
-   * True when all three classifier calls failed (tier === "failed" on
-   * every result). Same anti-pattern fix as the lib version in
-   * lib/detection/topic-drift-detector.ts (commit b25006f3):
-   * never silently default to "no problem" when the classifier is
-   * down. Surface the offline state to the agent (via tool result)
-   * and to the operator (via the /logs command).
+   * True when the consolidated critic call failed on all 3 model
+   * tiers. Never silently default to "no problem" when the
+   * classifier is down. Surface the offline state to the agent
+   * (via tool result) and to the operator (via the /logs command).
    */
   classifierDown?: boolean;
 }> {
@@ -94,106 +98,24 @@ async function detectDriftWithCritics(
     return { drifted: false, similarity: 1.0, missingAnchors: [] };
   }
 
-  // ── PRIMARY PATH: consolidated single-LLM-call ────────────────────────
-  let classifierDown = false;
+  // ── SINGLE PATH: consolidated single-LLM-call ─────────────────────────
+  // The consolidated call tries session -> utility -> max-power model
+  // tiers. If all fail, it returns conservative defaults with
+  // classifierDown=true. No 3-parallel fallback needed (P2-7).
   try {
     const consolidated = await consolidatedTopicCritique(truncOriginal, truncOutput, ctx);
 
-    if (!consolidated.classifierDown) {
-      // Consolidated succeeded -- use its verdicts directly
-      const coverageBad = !consolidated.coverage;
-      const diverged = consolidated.divergence;
-      const incomplete = !consolidated.completeness;
-      const negativeVotes = [coverageBad, diverged, incomplete].filter(Boolean).length;
-      const drifted = negativeVotes >= 2;
-      const similarity = drifted ? 0.3 : 0.8;
-
-      const missingAnchors: string[] = [];
-      if (drifted) {
-        const clues: string[] = [];
-        if (coverageBad) clues.push("coverage");
-        if (diverged) clues.push("divergence");
-        if (incomplete) clues.push("incomplete");
-        missingAnchors.push(...clues);
-      }
-
-      log.debug(
-        `[topic-drift] Consolidated: coverage=${consolidated.coverage}, ` +
-          `divergence=${consolidated.divergence}, completeness=${consolidated.completeness} ` +
-          `-> drifted=${drifted}`,
-      );
-
-      return { drifted, similarity, missingAnchors, classifierDown: false };
-    }
-  } catch {
-    // Fall through to 3-parallel path
-  }
-
-  // ── FALLBACK PATH: 3 parallel classifyWithOffline() calls ────────────
-  try {
-    log.debug("[topic-drift] Consolidated call failed, falling back to 3-parallel");
-    // EW-7.4: classifyWithOffline() captures the offline state per
-    // classifier. "all 3 down" -> classifierDown = true (same logic as
-    // before, but the offline check is now on the helper's return value
-    // instead of the raw tier field).
-    const [coverageResult, divergenceResult, completenessResult] = await Promise.allSettled([
-      classifyWithOffline(
-        ctx,
-        CRITICS.topicCoverage.criteria,
-        { original: truncOriginal, response: truncOutput },
-        { timeoutMs: 60_000, label: CRITICS.topicCoverage.label, fallback: topicDriftFallback },
-      ),
-      classifyWithOffline(
-        ctx,
-        CRITICS.topicDivergence.criteria,
-        { original: truncOriginal, response: truncOutput },
-        { timeoutMs: 60_000, label: CRITICS.topicDivergence.label, fallback: topicDriftFallback },
-      ),
-      classifyWithOffline(
-        ctx,
-        CRITICS.topicCompleteness.criteria,
-        { original: truncOriginal, response: truncOutput },
-        { timeoutMs: 60_000, label: CRITICS.topicCompleteness.label, fallback: topicDriftFallback },
-      ),
-    ]);
-
-    // Unwrap allSettled: failed calls become safe defaults.
-    const unwrap = (
-      r: PromiseSettledResult<Awaited<ReturnType<typeof classifyWithOffline>>>,
-    ) => (r.status === "fulfilled" ? r.value : null);
-    const coverageValue = unwrap(coverageResult);
-    const divergenceValue = unwrap(divergenceResult);
-    const completenessValue = unwrap(completenessResult);
-
-    // Detect the "all classifiers failed" case. If every result is
-    // classifierDown (or null), the LLM signal is unreliable and
-    // we cannot trust the "no drift" default. Surface this so the
-    // consumer can include a "drift detector offline" hint in the
-    // tool result and the operator can see the degraded state.
-    const allValues = [coverageValue, divergenceValue, completenessValue];
-    classifierDown = allValues.every(
-      (r) => r === null || r.classifierDown,
-    );
-
-    // Interpret critics:
-    //   coverage="no"  -> response does NOT address the request (bad)
-    //   divergence="yes" -> response shifted to different topic (bad)
-    //   completeness="no" -> response misses key topics (bad)
-    const coverageBad = coverageValue?.value === "no";
-    const diverged = divergenceValue?.value === "yes";
-    const incomplete = completenessValue?.value === "no";
+    // Derive verdicts regardless of classifierDown state — the
+    // consolidated call returns reasonable defaults even when down.
+    const coverageBad = !consolidated.coverage;
+    const diverged = consolidated.divergence;
+    const incomplete = !consolidated.completeness;
     const negativeVotes = [coverageBad, diverged, incomplete].filter(Boolean).length;
-
     const drifted = negativeVotes >= 2;
-
-    // Compute similarity proxy: 0.3 if drifted, 0.8 if not (heuristic estimate)
     const similarity = drifted ? 0.3 : 0.8;
 
-    // Collect missing anchors from the completeness critic when drifted
     const missingAnchors: string[] = [];
     if (drifted) {
-      // We don't get specific missing anchors from critics (they're yes/no classifiers).
-      // Return a qualitative description instead.
       const clues: string[] = [];
       if (coverageBad) clues.push("coverage");
       if (diverged) clues.push("divergence");
@@ -202,16 +124,19 @@ async function detectDriftWithCritics(
     }
 
     log.debug(
-      `[topic-drift] Critics: coverage=${coverageValue?.value}/${coverageValue?.tier}, ` +
-        `divergence=${divergenceValue?.value}/${divergenceValue?.tier}, ` +
-        `completeness=${completenessValue?.value}/${completenessValue?.tier} ` +
-        `-> drifted=${drifted} classifierDown=${classifierDown}`,
+      `[topic-drift] Consolidated: coverage=${consolidated.coverage}, ` +
+        `divergence=${consolidated.divergence}, completeness=${consolidated.completeness} ` +
+        `-> drifted=${drifted} classifierDown=${consolidated.classifierDown}`,
     );
 
-    return { drifted, similarity, missingAnchors, classifierDown };
+    return {
+      drifted,
+      similarity,
+      missingAnchors,
+      classifierDown: consolidated.classifierDown,
+    };
   } catch (err) {
-    log.warn(`[topic-drift] Critic call failed, assuming no drift: ${err}`);
-    classifierDown = true;
+    log.warn(`[topic-drift] Consolidated call failed: ${err}`);
     return { drifted: false, similarity: 1.0, missingAnchors: [], classifierDown: true };
   }
 }
@@ -310,7 +235,7 @@ const topicDriftSchema = Type.Object({
 // ── Extension ──────────────────────────────────────────────────────────────
 
 export default function topicDriftExtension(pi: ExtensionAPI) {
-  log.info("Topic drift detector registering (triple-critic)");
+  log.info("Topic drift detector registering (consolidated critic)");
 
   // ── Event listeners ────────────────────────────────────────────────────
 
@@ -336,7 +261,7 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
       const output = extractOutputText(event);
       if (output.length < 50) return;
 
-      // Use triple-critic detection (async, with LLM)
+      // Use consolidated critic detection (async, with LLM)
       const result = await detectDriftWithCritics(ctx, state.originalRequest, output);
 
       // Surface the "drift detector offline" case as a soft whisper

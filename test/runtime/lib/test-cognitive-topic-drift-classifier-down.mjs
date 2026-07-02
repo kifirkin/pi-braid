@@ -79,26 +79,19 @@ test("detectDriftWithCritics initializes classifierDown = false", () => {
   );
 });
 
-test("detectDriftWithCritics sets classifierDown when all results are down", () => {
-  // Check the fallback section of the function (3-parallel path)
-  const fallbackSection = src.match(
-    /FALLBACK PATH[\s\S]*?allValues\.every\([\s\S]*?\);/,
-  );
-  assert.ok(fallbackSection, "Fallback section with allValues.every not found");
-  const body = fallbackSection[0];
-  // After EW-7.4 migration to classifyWithOffline(), the offline
-  // signal is exposed as result.classifierDown (not the raw tier).
-  // The aggregation logic is identical (.every on the offline flag).
+test("detectDriftWithCritics propagates classifierDown from consolidated critic", () => {
+  // The consolidated call returns classifierDown when all model tiers fail.
+  // detectDriftWithCritics propagates it directly in the return.
   assert.match(
-    body,
-    /r === null \|\| r\.classifierDown/,
-    "Function must detect all-failed case via .every on classifierDown (EW-7.4 migration)",
+    src,
+    /classifierDown: consolidated\.classifierDown/,
+    "Function must propagate classifierDown from consolidatedTopicCritique result",
   );
-  // Check the fallback section calls classifyWithOffline
+  // The consolidated critic is called, not the old 3-parallel fallback
   assert.match(
-    body,
-    /classifyWithOffline\(/,
-    "detectDriftWithCritics should call classifyWithOffline() (EW-7.4 migration)",
+    src,
+    /consolidatedTopicCritique\(/,
+    "detectDriftWithCritics uses consolidatedTopicCritique (P2-7, no 3-parallel fallback)",
   );
 });
 
@@ -112,8 +105,8 @@ test("detectDriftWithCritics catch block sets classifierDown = true", () => {
 test("detectDriftWithCritics return includes classifierDown in the success path", () => {
   assert.match(
     src,
-    /return \{ drifted, similarity, missingAnchors, classifierDown \}/,
-    "Success-path return must include classifierDown",
+    /return \{[\s\S]*?classifierDown: consolidated\.classifierDown[\s\S]*?\};/,
+    "Success-path return must include classifierDown from consolidated result",
   );
 });
 
@@ -216,10 +209,11 @@ test("topic_drift tool recommendations adapt when classifierDown (manual verify)
 });
 
 test("debug log includes classifierDown flag for observability", () => {
-  const fallbackSection = src.match(
-    /FALLBACK PATH[\s\S]*?classifierDown=\$\{classifierDown\}/,
+  assert.match(
+    src,
+    /classifierDown=\$\{consolidated\.classifierDown\}/,
+    "Debug log must include classifierDown from consolidated result",
   );
-  assert.ok(fallbackSection, "Debug log with classifierDown not found in fallback section");
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
