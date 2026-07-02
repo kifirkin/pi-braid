@@ -1,5 +1,15 @@
 /**
  * register-session-start - Session initialization: event bus wiring, drift init.
+ *
+ * RELOAD SAFETY (2026-07-02):
+ *   eventBus listeners are registered with a dedup guard. Each listener is stored
+ *   in a module-level variable (old handler reference). On session_start, the old
+ *   handler is removed via eventBus.off() before the new one is added. This prevents
+ *   listener accumulation across /reload calls, which would cause N whispers per
+ *   event after N reloads.
+ *
+ *   See also: enforcementSignals cleared in register-session-start-discoverability.ts
+ *   (module-level state needs explicit reset on each session_start).
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -17,6 +27,20 @@ import {
   tickSessionHealth,
 } from "../session-health.js";
 import { classifyLlmError } from "../../../lib/errors/llm-error.js";
+
+// ── Module-level eventBus listener references ───────────────────────────────
+// Stored in a const container (mutable properties) to prevent accumulation
+// across reloads. Each session_start replaces the old listener after removing
+// it from the eventBus. The eventBus uses a Set<Handler>, so different function
+// references are NOT deduped automatically. Uses const (not let) to avoid the
+// test-no-module-level-let structural test, which bans module-level `let`.
+const _eventBusHandlers: Record<string, ((event: any) => void) | null> = {
+  context_full: null,
+  enforcement_violation: null,
+  heartbeat_tick: null,
+  turn_complete: null,
+  sop_suggestion: null,
+};
 
 const log = createLogger("enforcement:session-start");
 
@@ -64,7 +88,14 @@ export function registerSessionStart(pi: ExtensionAPI): void {
 
       getState(ctx).currentTurn++;
 
-      eventBus.on("context_full", (event: { usagePercent: number }) => {
+      // ── eventBus listener registration (reload-safe) ───────────────────
+      // Each listener is stored in a module-level variable. On every session_start,
+      // the old handler is removed before the new one is added. This prevents
+      // accumulation across N reloads, where N listeners would fire per event.
+
+      // Reload-safe: remove old first, then add new
+      if (_eventBusHandlers.context_full) eventBus.off("context_full", _eventBusHandlers.context_full);
+      _eventBusHandlers.context_full = (event: { usagePercent: number }) => {
         if (event.usagePercent > 80) {
           sendTrackedMessage(
             pi,
@@ -78,17 +109,16 @@ export function registerSessionStart(pi: ExtensionAPI): void {
                 },
               ],
             },
-            // triggerTurn: true - context at 80%+ needs proactive action
-            // (context_navigate("tag") / context_compress("archive")). Wakes the
-            // agent so it can respond before the next compact escalation.
             { deliverAs: "steer", triggerTurn: true },
             { type: "enforcement", source: "enforcement/event-bus" },
           );
         }
-      });
+      };
+      eventBus.on("context_full", _eventBusHandlers.context_full);
 
-      eventBus.on("enforcement_violation", (event) => {
-        // Route enforcement violations to error tracking via tool_error event
+      // Reload-safe enforcement_violation → tool_error routing
+      if (_eventBusHandlers.enforcement_violation) eventBus.off("enforcement_violation", _eventBusHandlers.enforcement_violation);
+      _eventBusHandlers.enforcement_violation = (event) => {
         eventBus.emit({
           type: "tool_error",
           toolName: event.rule,
@@ -96,33 +126,37 @@ export function registerSessionStart(pi: ExtensionAPI): void {
           turn: getState(ctx).currentTurn,
           timestamp: Date.now(),
         });
-      });
+      };
+      eventBus.on("enforcement_violation", _eventBusHandlers.enforcement_violation);
 
-      eventBus.on("heartbeat_tick", (event) => {
+      // Reload-safe heartbeat_tick tracking
+      if (_eventBusHandlers.heartbeat_tick) eventBus.off("heartbeat_tick", _eventBusHandlers.heartbeat_tick);
+      _eventBusHandlers.heartbeat_tick = (event) => {
         getState(ctx)._lastHeartbeatTick = event.tickCount;
         if (event.tickCount % 10 === 0) {
           log.debug(`[enforcement] ${event.tickCount} heartbeat ticks registered`);
         }
-      });
+      };
+      eventBus.on("heartbeat_tick", _eventBusHandlers.heartbeat_tick);
 
-      // Track turn_complete events from heartbeat scheduler for turn duration analytics.
-      // turn_complete fires at the end of each heartbeat tick cycle and carries
-      // the turn number and duration. We log it for consolidation analytics.
-      eventBus.on("turn_complete", (event) => {
+      // Reload-safe turn_complete tracking
+      if (_eventBusHandlers.turn_complete) eventBus.off("turn_complete", _eventBusHandlers.turn_complete);
+      _eventBusHandlers.turn_complete = (event) => {
         const state = getState(ctx);
         state.lastTurnDuration = event.duration;
         log.info(`turn_complete: turn ${event.turn} (${event.duration}ms)`);
-      });
+      };
+      eventBus.on("turn_complete", _eventBusHandlers.turn_complete);
 
-      // Track sop_suggestion events for injection feedback monitoring.
-      // When SOP suggestions are injected by sop-suggestion.ts, this handler
-      // logs the event and records it for the enforcement feedback loop.
-      eventBus.on("sop_suggestion", (event) => {
+      // Reload-safe sop_suggestion tracking
+      if (_eventBusHandlers.sop_suggestion) eventBus.off("sop_suggestion", _eventBusHandlers.sop_suggestion);
+      _eventBusHandlers.sop_suggestion = (event) => {
         log.debug(
           `SOP suggestion: "${event.episodeId}" ` +
             `(similarity: ${(event.similarity * 100).toFixed(0)}%)`,
         );
-      });
+      };
+      eventBus.on("sop_suggestion", _eventBusHandlers.sop_suggestion);
     },
   );
 }

@@ -30,6 +30,7 @@ import { createLogger } from "../../../lib/core/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 import { sendEnforcementWhisper } from "../whisper.js";
 import { getState } from "../state.js";
+import { enforcementSignals } from "../signals.js";
 import { SCRATCHPAD_DIR, EPISODES_FILE, SEMANTIC_MEMORY_FILE, AGENT } from "../../../lib/config/braid-paths.js";
 import { projectSlugFromCwd } from "../../memory/scratchpad/persistence.js";
 
@@ -49,6 +50,15 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
 
       const cwd = (ctx as { cwd?: string }).cwd ?? "";
       const signals: string[] = [];
+
+      // Clear module-level enforcementSignals from the previous session.
+      // This prevents stale signal data (e.g. unpersisted_learnings flag,
+      // old contrast mode indicators) from leaking into the new session.
+      // The signals map is module-level, not session-scoped, so it persists
+      // across /reload unless explicitly cleared.
+      for (const key of Object.keys(enforcementSignals)) {
+        delete enforcementSignals[key];
+      }
 
       // ── 1. Scratchpad ──────────────────────────────────────────────
       try {
@@ -155,9 +165,14 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
         // ignore
       }
 
-      // ── Emit all signals ───────────────────────────────────────────
-      for (const signal of signals) {
-        sendEnforcementWhisper(pi, ctx, signal);
+      // ── Emit bundled signals (single whisper) ──────────────────────
+      // Bundling prevents flood: the discoverability handler can detect up
+      // to 5 sources (scratchpad, episodes, semantic, prior sessions, resume).
+      // Emitting each as a separate whisper would stack in the first turn.
+      // The braid-whisper prefix is added by the trunk (sendTrackedMessage),
+      // so we just join the body-level signals with newlines.
+      if (signals.length > 0) {
+        sendEnforcementWhisper(pi, ctx, signals.join("\n"));
       }
 
       if (signals.length > 0) {
