@@ -1,5 +1,5 @@
 <!-- status: current -->
-<!-- Updated 2026-06-29: prompt-builder pointer blocks unified v3.9 (skills + project-docs + memory). -->
+<!-- Updated 2026-07-02: project-docs + memory pointer blocks converted to plain text (no XML tags). Skills keep XML. -->
 
 # src/extensions/core/prompt-builder/ - System Prompt Composition
 
@@ -27,7 +27,7 @@ Every file in this folder either:
 | `top-level-extensions.ts` | **v3.8** Discovery logic for top-level pi extension PACKAGES. Reads pi-core's `packages` field from `<cwd>/.pi/settings.json` (project) and `~/.pi/agent/settings.json` (user-global); project wins on collision. Resolves `npm:` specs via `npm root -g`; resolves local paths in place. Source tags: `project` / `user-global`. |
 | `context-section.ts` | **v3.6** Context (conditional): context %, session health, memory count, steps-since-checkpoint. Returns `""` when nothing to surface. |
 | `skills-section.ts` | Skills XML formatting + per-skill metadata + fingerprint cache. Returns a `PromptSection`. |
-| `project-docs-section.ts` | Project docs (AGENTS.md / CLAUDE.md) pointer-only rendering as `<available_project_docs>` block. Mirrors the skills model. Includes fingerprint cache and `RESOURCES_DISCOVER` invalidation. |
+| `project-docs-section.ts` | Project docs (AGENTS.md / CLAUDE.md) pointer-only rendering as plain-text bullets (`- <basename> at <path>`). Mirrors the skills discoverability model but uses plain text (no XML tags) so the system prompt stays prose. Includes fingerprint cache and `RESOURCES_DISCOVER` invalidation. |
 
 ## Local Contracts
 

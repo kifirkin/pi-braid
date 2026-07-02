@@ -61,6 +61,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Top-level project-docs + memory pointer blocks now plain text**
+  (was `<available_*>` XML envelopes). The system prompt is prose;
+  wrapping a 2-column pointer list (name + path) in self-closing
+  `<doc>` / `<store>` tags with attribute escaping was ceremony the
+  model had to parse around. Both blocks now render as plain-text
+  bullets (`- <basename> at <path>` / `- <store>: <count> entries at
+  <path>`), reading identically to a human and the model with no
+  escape function needed for filesystem paths.
+  - `project-docs-section.ts`: `<available_project_docs>` envelope
+    and `<doc ... />` self-closing entries replaced with plain-text
+    bullets. `escapeXml` helper removed (no longer needed).
+  - `memory-section.ts`: `<available_memories>` envelope and three
+    `<store ... />` self-closing entries replaced with plain-text
+    bullets. Heuristics line is now `- heuristics: session-scoped
+    (no on-disk file)` (was `<store scope="session" />`).
+  - `skills-section.ts`: untouched — still uses XML self-closing
+    `<skill ... />` entries (different shape, kept for now).
+  Tests in `test/runtime/core/test-memory-section.mjs` rewritten to
+  match the plain-text contract (8/8 subtests: directive + 3 pointer
+  lines, no angle brackets anywhere, no `<store>` / `<doc>` tags,
+  cache + invalidation behavior). `test-prompt-builder-directive.mjs`
+  project-docs pointer-model assertion still passes — `reconstructProjectDocsSection`
+  is the canonical reference and the function is unchanged.
+
 - **CHANGELOG fix**: corrected bogus test count "81 → 89" to "81
   (8 new subtests within the test file)".
 

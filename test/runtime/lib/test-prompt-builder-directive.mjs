@@ -465,8 +465,8 @@ test("CORRECTION mode stays at 1-2 directives (lean, not the old 3-phrase librar
 
 test("project docs use pointer-only model (no verbatim content injection)", () => {
   // The prompt-builder must NOT inject AGENTS.md / CLAUDE.md content
-  // directly into the system prompt. Instead it lists them as a
-  // `<available_project_docs>` block; the agent reads full content
+  // directly into the system prompt. Instead it lists them as plain-text
+  // pointer lines (`- <basename> at <path>`); the agent reads full content
   // on demand via the `read` tool. Mirrors the skills model.
   //
   // Regression guard: the old `<project_context>` / `<project_instructions>`
@@ -483,7 +483,7 @@ test("project docs use pointer-only model (no verbatim content injection)", () =
   // The new pointer block must be referenced.
   assert.match(
     promptBuilderSrc,
-    /reconstructProjectDocsSection|<available_project_docs>/,
+    /reconstructProjectDocsSection/,
     "prompt-builder must use the new project-docs pointer model",
   );
 });

@@ -1,9 +1,9 @@
 /**
  * Project docs section for the prompt-builder.
  *
- * Mirrors the skills model: a `<available_project_docs>` block listing each
- * AGENTS.md / CLAUDE.md file as a self-closing `<doc>` entry that carries
- * the discoverability pair (name + location).
+ * Renders AGENTS.md / CLAUDE.md files as plain-text pointer lines (no XML
+ * tags). Each file becomes a single `- <basename> at <path>` line under
+ * the discoverability directive.
  *
  * NO content is injected into the system prompt -- the agent reads full
  * content on demand via the `read` tool, matching the skills convention
@@ -25,8 +25,13 @@
  *   3. Token cost: a 33KB AGENTS.md injected on every turn is far more
  *      expensive than a ~400-byte pointer block + occasional re-reads.
  *
- * Pointer-block shape (uniform with skills):
- *   <doc name="AGENTS.md" location="/abs/path/AGENTS.md" />
+ * Why plain text (not the previous `<doc ... />` self-closing XML form):
+ *
+ *   The system prompt is prose. Injecting XML-style tags with attribute
+ *   escapes for an unstructured list of two columns (name + location)
+ *   is ceremony that the model has to parse around. Plain-text bullets
+ *   read the same to a human and to the model, with no escape function
+ *   needed for filesystem paths.
  *
  * Previously carried a `sections` attribute (pre-read TOC), which required
  * a file read per cache-miss render. Removed to match the skills pointer
@@ -55,16 +60,17 @@ function basename(p: string): string {
   return idx >= 0 ? p.slice(idx + 1) : p;
 }
 
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
-
-/** Build the `<available_project_docs>` section. Returns empty string if no docs. */
+/**
+ * Build the project-docs pointer section as plain text.
+ * Returns empty string if no docs.
+ *
+ * Shape:
+ *   Read project documentation files below carefully and cross-check
+ *   before acting on time-sensitive claims.
+ *
+ *   - AGENTS.md at /abs/path/AGENTS.md
+ *   - CLAUDE.md at /abs/path/CLAUDE.md
+ */
 export async function projectDocsSection(
   contextFiles: readonly ProjectContextFile[],
 ): Promise<string> {
@@ -74,16 +80,13 @@ export async function projectDocsSection(
 
   const lines: string[] = [
     "Read project documentation files below carefully and cross-check before acting on time-sensitive claims.",
-    "<available_project_docs>",
+    "",
   ];
 
   for (const file of contextFiles) {
-    lines.push(
-      `  <doc name="${escapeXml(basename(file.path))}" location="${escapeXml(file.path)}" />`,
-    );
+    lines.push(`- ${basename(file.path)} at ${file.path}`);
   }
 
-  lines.push("</available_project_docs>");
   return lines.join("\n");
 }
 

@@ -1,20 +1,24 @@
 /**
  * Memory section for the prompt-builder.
  *
- * Surfaces persisted + session-scoped memory state as a pointer block so
- * the agent knows what it has available before starting work. Mirrors the
- * skills and project-docs pattern: directive-first, then a
- * `<available_memories>` block with self-closing `<store>` entries that
- * carry their discoverability info (name + count + path or scope).
+ * Surfaces persisted + session-scoped memory state as plain-text pointer
+ * lines so the agent knows what it has available before starting work.
+ * Same shape as the project-docs pointer block: a one-line directive,
+ * then one `- <store>: <count> entries at <path>` line per store.
  *
- * Per-entry convention (matches skills and project-docs 1:1):
- *   - `<store name="..." count="N" path="..." />` for persisted stores
- *     (episodes, semantic). Path is the on-disk canonical location so the
- *     agent can `read` the file or invoke `memory` and find the data.
- *   - `<store name="heuristics" scope="session" />` for the session-scoped
- *     store. No path because heuristics don't persist.
+ * Per-entry convention:
+ *   - `episodes` and `semantic` show count + path (persisted stores).
+ *     Path is the on-disk canonical location so the agent can `read` the
+ *     file or invoke `memory` and find the data.
+ *   - `heuristics` is session-scoped, no path -- heuristics don't persist.
  *
- * What is NOT in the block (mirrors skills):
+ * Why plain text (not the previous `<store name="..." count="N" path="..." />`
+ * self-closing XML form): the system prompt is prose. The XML form needed
+ * an escape function for filesystem paths and attribute-balancing logic;
+ * the plain-text form reads the same to the model and to a human with
+ * zero ceremony. Project-docs uses the same plain-text shape.
+ *
+ * What is NOT surfaced (mirrors skills):
  *   - Per-episode task snippets -- the data quality is dominated by the
  *     `session_outcome` placeholder sentinel and never tells the agent
  *     anything actionable. Details live in the file; the agent reads it
@@ -24,10 +28,10 @@
  *     is just decoration.
  *   - Per-type breakdown of semantic memories -- same reason.
  *
- * Empty state: still renders the directive + 3 self-closing `<store>`
- * entries (counts will be 0). Tells the agent the stores exist as
- * concepts; counts let it see at a glance whether there's anything to
- * recall. Rendering at 0 mirrors skills' "Skills (0 available): ...".
+ * Empty state: still renders the directive + 3 pointer lines (counts will
+ * be 0). Tells the agent the stores exist as concepts; counts let it see
+ * at a glance whether there's anything to recall. Mirrors skills' "Skills
+ * (0 available): ...".
  *
  * Cache: rendered string is cached by a fingerprint derived from the
  * underlying file paths + mtime + size. Invalidated on `RESOURCES_DISCOVER`
@@ -155,30 +159,20 @@ async function fingerprintMemoryFiles(): Promise<string> {
 
 // ── Section render ─────────────────────────────────────────────────────────
 
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
-
 /**
- * Render the `<available_memories>` block + a one-line directive.
- * Self-closing `<store>` entries carry name + count + path (or scope).
- * This is the uniform pointer style used by skills and project-docs.
+ * Render the memory pointer section as plain text + a one-line directive.
+ * One `- <store>: <count> entries at <path>` line per store. Heuristics
+ * is session-scoped and has no path. Same shape as the project-docs block.
  */
 function renderMemoryBlock(snapshot: MemorySnapshot): string {
   const { episodes, semantic } = snapshot;
 
   const lines: string[] = [
     "Memory (episodes, semantic, heuristics): use `memory` to recall before non-trivial work. Stores live at the paths below; read or query on demand.",
-    "<available_memories>",
-    `  <store name="episodes" count="${episodes.count}" path="${escapeXml(EPISODES_FILE)}" />`,
-    `  <store name="semantic" count="${semantic.count}" path="${escapeXml(SEMANTIC_MEMORY_FILE)}" />`,
-    `  <store name="heuristics" scope="session" />`,
-    "</available_memories>",
+    "",
+    `- episodes: ${episodes.count} entries at ${EPISODES_FILE}`,
+    `- semantic: ${semantic.count} entries at ${SEMANTIC_MEMORY_FILE}`,
+    `- heuristics: session-scoped (no on-disk file)`,
   ];
   return lines.join("\n");
 }
