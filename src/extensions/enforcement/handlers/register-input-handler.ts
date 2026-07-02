@@ -30,6 +30,9 @@ export function registerInputHandler(pi: ExtensionAPI): void {
 
     setLanguage(ctx, lang.code, lang.name);
     getState(ctx).lastUserMessage = text;
+    if (!getState(ctx).originalRequest) {
+      getState(ctx).originalRequest = text;
+    }
     updateProblemContext(ctx, text);
   });
 }

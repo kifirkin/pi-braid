@@ -198,7 +198,7 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
       }
 
       const judgeCtx: any = {
-        userRequest: getState(ctx).originalRequest,
+        userRequest: getState(ctx).originalRequest || getState(ctx).lastUserMessage || "",
         toolsUsed: Array.from(getState(ctx).uniqueToolsUsed),
         toolLog,
         hasCodeChanges: getState(ctx).hasCodeChanges,
