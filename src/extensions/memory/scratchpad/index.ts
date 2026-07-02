@@ -383,12 +383,12 @@ const scratchpadParams = Type.Object({
   category: Type.Optional(
     Type.String({
       description:
-        "Category for add_learning (alternative to pipe-delimited text). One of: root_cause, pattern, fix, constraint, codebase_fact (aliases accepted).",
+        "Category for add_learning. One of: root_cause, pattern, fix, constraint, codebase_fact (aliases accepted).",
     }),
   ),
   content: Type.Optional(
     Type.String({
-      description: "Learning content for add_learning (alternative to pipe-delimited text).",
+      description: "Learning content for add_learning.",
     }),
   ),
   scope: Type.Optional(
@@ -532,7 +532,6 @@ async function scratchpadExecute(
     case "add_learning": {
       const r = await handleAddLearning(
         pad,
-        text,
         params.category as string | undefined,
         params.content as string | undefined,
         params.scope as string[] | undefined,
@@ -637,7 +636,7 @@ function createScratchpadTool(): ToolDefinition<any, any, any> {
       "Common actions: set_goal, add_plan, mark_done, add_note, add_decision, add_learning, continue, read. " +
       "The `continue` action returns a focused resumption digest (goal + open plan + recent context); `read` gives the full picture, or accept a `filter` for targeted inspection of long lists. " +
       "Long-session hygiene: `remove_plan/remove_note/remove_decision/remove_hypothesis` (by id), `clear_done`, `archive_done` (moves done to disk). " +
-      "For add_learning, prefer explicit 'category' + 'content' fields over pipe-delimited text. " +
+      "For add_learning, use the explicit 'category' + 'content' fields. " +
       "Plan items (added via add_plan, completed via mark_done) serve as the task list. " +
       "Use this scratchpad for project-scoped work - do NOT use the SDK's separate 'task' tool for the same purpose.",
     parameters: scratchpadParams,

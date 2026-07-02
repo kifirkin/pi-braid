@@ -450,43 +450,22 @@ export async function handleRemoveConstraint(
 
 export async function handleAddLearning(
   pad: TaskScratchpad,
-  text: string,
   explicitCategory: string | undefined,
   explicitContent: string | undefined,
   explicitScope: string[] | undefined,
 ): Promise<HandlerResult> {
-  // Two accepted formats (prefer the explicit fields):
-  //   1. Explicit: category + content + scope
-  //   2. Legacy pipe-delimited text: "category|content|scope1,scope2"
-  let rawCategory: string;
-  let content: string;
-  let scope: string[];
-
-  if (explicitCategory || explicitContent) {
-    rawCategory = (explicitCategory ?? "").trim();
-    content = (explicitContent ?? "").trim();
-    scope = Array.isArray(explicitScope) ? explicitScope : [];
-    if (!rawCategory || !content) {
-      return {
-        resultText:
-          `add_learning requires both 'category' and 'content'. ` +
-          `Got: category=${JSON.stringify(explicitCategory)}, content=${JSON.stringify(explicitContent)}. ` +
-          `Valid categories: ${VALID_LEARNING_CATEGORIES.join(", ")} (aliases accepted).`,
-      };
-    }
-  } else {
-    const parts = text.split("|").map((s) => s.trim());
-    rawCategory = parts[0] ?? "";
-    content = (parts[1] || parts[0] || "").trim();
-    scope = parts[2] ? parts[2].split(",").map((s) => s.trim()).filter(Boolean) : [];
-    if (!rawCategory) {
-      return {
-        resultText:
-          `Invalid add_learning format. Provide 'category' and 'content' as separate fields, ` +
-          `or use pipe-delimited text: "category|content|scope". ` +
-          `Valid categories: ${VALID_LEARNING_CATEGORIES.join(", ")} (aliases accepted).`,
-      };
-    }
+  // Single format: explicit category + content + scope.
+  // Legacy pipe-delimited text format removed in P2-9 (2026-07-02).
+  const rawCategory = (explicitCategory ?? "").trim();
+  const content = (explicitContent ?? "").trim();
+  const scope = Array.isArray(explicitScope) ? explicitScope : [];
+  if (!rawCategory || !content) {
+    return {
+      resultText:
+        `add_learning requires both 'category' and 'content'. ` +
+        `Got: category=${JSON.stringify(explicitCategory)}, content=${JSON.stringify(explicitContent)}. ` +
+        `Valid categories: ${VALID_LEARNING_CATEGORIES.join(", ")} (aliases accepted).`,
+    };
   }
 
   const category = resolveCategory(rawCategory);
@@ -496,8 +475,7 @@ export async function handleAddLearning(
         `Invalid category: "${rawCategory}". ` +
         `Valid: ${VALID_LEARNING_CATEGORIES.join(", ")}. ` +
         `Common aliases: bug/defect->root_cause, insight/idiom->pattern, ` +
-        `solution/patch->fix, rule/requirement->constraint, fact/codefact->codebase_fact. ` +
-        `Tip: use the explicit 'category' and 'content' fields to avoid pipe-format confusion.`,
+        `solution/patch->fix, rule/requirement->constraint, fact/codefact->codebase_fact.`,
     };
   }
 
