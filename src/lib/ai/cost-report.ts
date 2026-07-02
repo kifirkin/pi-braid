@@ -1,6 +1,12 @@
 /**
  * Cost Report - aggregate token-usage stats into USD cost estimates.
  *
+ * NOTE: This module is defined but never called from production code.
+ * It is only exercised by test/runtime/lib/test-critic-cost.mjs.
+ * The critic-stats pipeline logs token counts but no consumer
+ * converts them to USD estimates. Kept for future cost-tracking
+ * integration.
+ *
  * Q16 added per-critic token tracking (input + output) to critic-stats.
  * This module is the consumer of that data: given a `CriticStats`
  * snapshot and a `CriticPricing` rate table, compute a structured

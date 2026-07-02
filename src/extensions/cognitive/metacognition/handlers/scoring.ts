@@ -255,6 +255,7 @@ export function scoreHypothesisOutput(
 }
 
 // Backward-compatible alias: returns heuristic score as `score` (no evidence pool ctx available in tests)
+/** @deprecated Use scoreHypothesisOutput instead. Kept to avoid breaking imports but never called. */
 export function scoreHypothesis(
   llmOutput: string,
   evid?: string,
@@ -271,7 +272,6 @@ export function scoreHypothesis(
   return {
     annotated: result.annotated,
     scores: result.scored,
-    // Backward compat: use heuristic score as primary score (tests expect heuristic-only behavior)
     score: first?.heuristicScore ?? 0.5,
     signals: first?.signals ?? [],
     title: first?.title ?? "",

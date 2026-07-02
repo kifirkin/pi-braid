@@ -357,6 +357,11 @@ export function createTurnMetrics(
  * where numeric metrics look fine but output quality is poor (confused
  * reasoning, shallow analysis, repeated mistakes).
  *
+ * NOTE: This function is defined but never called. The degradation
+ * detector currently uses heuristic-only paths (error rate, context
+ * density). The LLM-based qualitative check was planned but not
+ * wired. Kept for future integration.
+ *
  * Uses classify() with the qualitativeDegradation critic. Falls back
  * to "STABLE" when LLM is unavailable.
  *

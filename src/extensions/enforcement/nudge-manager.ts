@@ -346,6 +346,11 @@ export class NudgeManager {
 
 /**
  * Smart nudge wrapper for sendEnforcementWhisper.
+ *
+ * NOTE: This function is defined but never called. The enforcement system
+ * dispatches whispers directly via sendEnforcementWhisper() in turn-end-handler.ts,
+ * bypassing this wrapper. Kept for future use if nudge-manager gaines adaptive
+ * rate-limiting or escalation logic.
  */
 export function sendSmartNudge(
   pi: ExtensionAPI,

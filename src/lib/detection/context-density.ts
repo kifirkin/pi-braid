@@ -142,6 +142,10 @@ export function evaluateContextDensity(ctx: ExtensionContext): DensityResult {
  * Call this when you need a deeper understanding of context quality
  * (e.g., before deciding whether to compress or archive).
  *
+ * NOTE: Defined but never called. The context-density heuristic path
+ * (evaluateContextDensity) is used instead. Kept for future wiring
+ * when LLM-based density assessment is needed.
+ *
  * @param ctx - ExtensionContext
  * @returns DensityResult with an additional judgeLabel field
  */
