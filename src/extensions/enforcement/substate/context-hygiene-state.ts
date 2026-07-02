@@ -12,6 +12,16 @@ export interface ScratchpadState {
   claimsDetectedThisTurn: boolean;
   claimsWithoutVerification: number;
   verificationsDone: number;
+  // Per-turn think-before-edit nudge cooldown
+  lastThinkPerTurnNudge: number;
+  // Startup nudge: first 3 turns without scratchpad goal
+  lastStartupNudge: number;
+  // Whether the startup-plan whisper was sent (drives PLANNING mode)
+  startupPlanShown: boolean;
+  // Finalize enforcement nudge
+  lastFinalizeNudge: number;
+  // Verify enforcement nudge
+  lastVerifyNudge: number;
 }
 
 export function createScratchpadState(): ScratchpadState {
@@ -20,6 +30,11 @@ export function createScratchpadState(): ScratchpadState {
     claimsDetectedThisTurn: false,
     claimsWithoutVerification: 0,
     verificationsDone: 0,
+    lastThinkPerTurnNudge: -100,
+    lastStartupNudge: -100,
+    startupPlanShown: false,
+    lastFinalizeNudge: -100,
+    lastVerifyNudge: -100,
   };
 }
 
@@ -28,6 +43,11 @@ export function resetScratchpadState(s: ScratchpadState): void {
   s.claimsDetectedThisTurn = false;
   s.claimsWithoutVerification = 0;
   s.verificationsDone = 0;
+  s.lastThinkPerTurnNudge = -100;
+  s.lastStartupNudge = -100;
+  s.startupPlanShown = false;
+  s.lastFinalizeNudge = -100;
+  s.lastVerifyNudge = -100;
 }
 
 // ── Context Hygiene sub-state ──────────────────────────────────────────────

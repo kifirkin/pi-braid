@@ -44,6 +44,10 @@ const L2_NUDGE_TYPE: Record<string, { type: NudgeType; subKey?: string }> = {
   scratchpad: { type: "scratchpad" },
   "context-tokens": { type: "context", subKey: "tokens" },
   "context-percent": { type: "context", subKey: "percent" },
+  think: { type: "sessionSignals", subKey: "think" },
+  startup: { type: "sessionSignals", subKey: "startup" },
+  finalize: { type: "sessionSignals", subKey: "finalize" },
+  verify: { type: "sessionSignals", subKey: "verify" },
 };
 
 function nudgeTypeForKey(key: string): { type: NudgeType; subKey?: string } {
@@ -258,12 +262,32 @@ export async function dispatchTurnEndLoop(
         : `Complex turn (${actualTools.length} tools) without scratchpad`;
       sessionSignals.push({
         key: "scratchpad",
-        content: `${reason}. Consider updating scratchpad(action="add_note", text="...")`,
+        content: `${reason}. Use scratchpad(action="add_note", text="...") to track progress.`,
       });
     }
   }
 
-  // Think tool enforcement - widened: fires on (a) no think ever called by turn 5,
+  // Startup signal: first 3 turns without scratchpad goal/plan
+  // Fires when the agent is making tool calls but hasn't set a goal via scratchpad.
+  // Sets startupPlanShown so determineContrastMode can surface PLANNING mode.
+  if (!hadErrors && !inOverflowRecovery && getState(ctx).currentTurn <= 3 && actualTools.length > 0) {
+    const usedScratchpad = scratchpadUpdated;
+    if (usedScratchpad) {
+      getState(ctx).startupPlanShown = false;
+    } else {
+      const startupCooldown = 2;
+      if (getState(ctx).currentTurn - getState(ctx).lastStartupNudge >= startupCooldown) {
+        getState(ctx).lastStartupNudge = getState(ctx).currentTurn;
+        getState(ctx).startupPlanShown = true;
+        sessionSignals.push({
+          key: "startup",
+          content: `First tool calls without a plan. Use scratchpad(action="set_goal", text="...") to capture your objective, then scratchpad(action="add_plan", text="...") to break it into steps.`,
+        });
+      }
+    }
+  }
+
+  // Think tool enforcement - session level: fires on (a) no think ever called by turn 5,
   // or (b) high-stakes actions (edit/write/finalize) without prior think this session
   const madeHighStakesAction = actualTools.some((t: string) =>
     ["edit", "write", "finalize"].includes(t),
@@ -276,9 +300,67 @@ export async function dispatchTurnEndLoop(
     sessionSignals.push({
       key: "think",
       content: madeHighStakesAction
-        ? `High-stakes action without prior think(). Consider think(observation, decision, reason) before the next change.`
-        : `${getState(ctx).currentTurn} turns without think() - consider think(observation, decision, reason) to track reasoning`,
+        ? `High-stakes action without prior think(). Call think(observation, decision, reason) before the next change.`
+        : `${getState(ctx).currentTurn} turns without think() - call think(observation, decision, reason) to track reasoning`,
     });
+  }
+
+  // Per-turn think-before-edit enforcement
+  // Fires when edit/write is used in this turn but think was NOT called in this turn.
+  // Uses a 3-turn cooldown (faster than the session-level 5-turn check above).
+  if (!hadErrors && !inOverflowRecovery && getState(ctx).currentTurn >= 2) {
+    const madeEditThisTurn = actualTools.some((t: string) => ["edit", "write"].includes(t));
+    const thinkCalledThisTurn = getState(ctx).toolChain.lastThinkCall === getState(ctx).currentTurn;
+    if (madeEditThisTurn && !thinkCalledThisTurn) {
+      const perTurnCooldown = 3;
+      if (getState(ctx).currentTurn - getState(ctx).lastThinkPerTurnNudge >= perTurnCooldown) {
+        getState(ctx).lastThinkPerTurnNudge = getState(ctx).currentTurn;
+        sessionSignals.push({
+          key: "think",
+          content: `Edit in this turn without think(). Call think(observation, decision, reason) before editing to trace your reasoning.`,
+        });
+      }
+    }
+  }
+
+  // Finalize enforcement
+  // Fires when a turn has significant work (edit/write, or plans marked done)
+  // but finalize was not called. Uses a 5-turn cooldown.
+  if (!hadErrors && !inOverflowRecovery && getState(ctx).currentTurn >= 3) {
+    const hasCompletionWork = actualTools.some((t: string) =>
+      ["edit", "write", "finalize"].includes(t),
+    );
+    const calledFinalize = actualTools.includes("finalize");
+    if (hasCompletionWork && !calledFinalize) {
+      const finalizeCooldown = 5;
+      if (getState(ctx).currentTurn - getState(ctx).lastFinalizeNudge >= finalizeCooldown) {
+        getState(ctx).lastFinalizeNudge = getState(ctx).currentTurn;
+        sessionSignals.push({
+          key: "finalize",
+          content: `Work appears complete but finalize was not called. Use finalize(completed=true, summary="...") to mark the task done and record what was accomplished.`,
+        });
+      }
+    }
+  }
+
+  // Verify enforcement
+  // Fires when code was changed (edit/write) but verify was not called in the same turn.
+  // Uses a 5-turn cooldown.
+  if (!hadErrors && !inOverflowRecovery) {
+    const madeCodeChange = actualTools.some((t: string) => ["edit", "write"].includes(t));
+    const calledVerify = actualTools.some((t: string) =>
+      ["verify", "verify_claim"].includes(t),
+    );
+    if (madeCodeChange && !calledVerify) {
+      const verifyCooldown = 5;
+      if (getState(ctx).currentTurn - getState(ctx).lastVerifyNudge >= verifyCooldown) {
+        getState(ctx).lastVerifyNudge = getState(ctx).currentTurn;
+        sessionSignals.push({
+          key: "verify",
+          content: `Code changed without verification. Use verify(target="code", criteria=[...]) to check your changes before moving on.`,
+        });
+      }
+    }
   }
 
   // Context usage signal: agent called one of the real context tools

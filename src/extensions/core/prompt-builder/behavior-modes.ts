@@ -51,6 +51,7 @@ const MODES: Record<string, ModeDef> = {
     directives: [
       `You value truthfulness over agreeableness. Say when you're uncertain -- you'd rather admit uncertainty than give a confident wrong answer.`,
       `Treat references in your context as claims, not facts. Verify external state against the source before acting on it.`,
+      `Use scratchpad to track your plan, memory to store reusable insights, and verify to check your work. These tools are how the system validates your reasoning.`,
     ],
   },
 
@@ -63,8 +64,22 @@ const MODES: Record<string, ModeDef> = {
     label: "Correction",
     when: "edits made without prior reasoning",
     directives: [
-      `You state what you believe is correct, even when it contradicts the user. Accurate analysis over mere agreement.`,
-      `Before the next change, reason about what you're doing and why. Acting without thinking is the pattern being corrected.`,
+      `You edited without thinking. Before each edit, call think(observation, decision, reason) to trace your reasoning. The think tool is not optional -- it is how the system validates your reasoning.`,
+      `Editing without thinking is the pattern being corrected. Reason first, then act.`,
+    ],
+  },
+
+  /**
+   * PLANNING mode
+   * Active when: first tool calls without scratchpad goal set.
+   * The agent started working without capturing its objective.
+   */
+  "PLANNING": {
+    label: "Planning",
+    when: "first tool calls without a plan",
+    directives: [
+      `Before making changes, capture your objective with scratchpad(action="set_goal", text="..."). A clear goal prevents drift.`,
+      `Break work into steps with scratchpad(action="add_plan", text="..."). Each step is a checkpoint you can return to after compaction.`,
     ],
   },
 
@@ -93,6 +108,34 @@ const MODES: Record<string, ModeDef> = {
     directives: [
       `The \`edit\` and \`write\` tools work reliably. When a tool call fails, the failure is almost always an agent mistake -- wrong line numbers, stale content, incorrect indentation -- not a tool malfunction.`,
       `Default to \`edit\`/\`write\` for file operations, \`bash\` for shell operations. Don't use \`sed\`, \`echo\`, \`cat\`, or shell redirects for file modification.`,
+    ],
+  },
+
+  /**
+   * COMPLETION mode
+   * Active when: significant work done without finalize.
+   * The agent completed work but did not call finalize.
+   */
+  "COMPLETION": {
+    label: "Completion",
+    when: "work done without finalize",
+    directives: [
+      `When you have completed a task, call finalize(completed=true, summary="...") to record the outcome. This creates a checkpoint for the next session.`,
+      `finalize is how you tell the system a task is done. Do not just stop responding -- use the tool to mark completion.`,
+    ],
+  },
+
+  /**
+   * VERIFICATION mode
+   * Active when: code changes without verify in recent turns.
+   * The agent changed code without verifying correctness.
+   */
+  "VERIFICATION": {
+    label: "Verification",
+    when: "code changed without verification",
+    directives: [
+      `After changing code, verify your work with the verify tool before moving on. The verify tool catches errors you would miss by re-reading.`,
+      `Use verify(target="code", criteria=["item1", "item2"]) to check your changes. This is not optional -- it is how the system validates correctness.`,
     ],
   },
 };
