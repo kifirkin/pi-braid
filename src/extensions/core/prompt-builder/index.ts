@@ -19,6 +19,7 @@ import {
   LIVING_DOCS,
   MEMORY_AWARENESS,
   SCOPES,
+  FRAMEWORK_CONFIG_FIRST,
 } from "./identity.js";
 import { behaviorModeSection } from "./behavior-modes.js";
 import {
@@ -320,6 +321,12 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       //     based (no path lists) so the agent discovers concrete locations
       //     at the moment of need via read/ls/find.
       simpleSection("invariant-scopes", SCOPES),
+
+      // 1f. Framework Config First — before overriding internals,
+      //     check the framework's official configuration API.
+      //     Origin: 2026-07-02 reveal.js disableLayout discovery.
+      //     Generic: applies to any system with a public surface.
+      simpleSection("invariant-framework-config-first", FRAMEWORK_CONFIG_FIRST),
 
       // 8. Interaction style
       simpleSection("interaction-style", INTERACTION_STYLE),

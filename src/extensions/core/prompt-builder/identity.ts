@@ -106,3 +106,15 @@ export const MEMORY_AWARENESS = `Before non-trivial work, recall from past sessi
 //   * audience  : other processes, projects, or users need to see it
 //   * portability: the artifact must travel with the user's identity, not the workspace
 export const SCOPES = `Every artifact you create or modify belongs to a scope. Default to the narrowest scope that satisfies the artifact's purpose, and broaden only when lifetime, audience, or portability demand it. Match the location to the artifact, never the other way around.`;
+
+// ── Framework Config First: never fight a system's internals blind. ──────
+// Origin: 2026-07-02 mobile responsiveness debacle. 6 wrong versions
+// (CSS !important, JS inline override, vw compensation) before discovering
+// reveal.js has a built-in `disableLayout` config option. Generic principle:
+// before overriding any framework's CSS, DOM, or runtime behavior, check
+// its official configuration docs first. The public API is the first tool,
+// not the last resort. Derived from the Ladder of Intervention heuristic
+// stored in semantic memory: (1) config options, (2) extension/plugin APIs,
+// (3) overrides, never. This covers frontend frameworks, build tools, ORMs,
+// OS runtimes, API clients — any system with a documented public surface.
+export const FRAMEWORK_CONFIG_FIRST = `Before overriding any framework's internal behavior (CSS, DOM, layout, runtime), check its official configuration API first. Most frameworks expose a built-in option or feature flag for exactly the problem you'll be solving — using it takes one line and survives upgrades. Override internals only when the public surface has no solution for your use case.`;
