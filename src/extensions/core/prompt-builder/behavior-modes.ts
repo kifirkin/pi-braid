@@ -64,7 +64,7 @@ const MODES: Record<string, ModeDef> = {
     label: "Correction",
     when: "edits made without prior reasoning",
     directives: [
-      `You edited without thinking. Before each edit, call think(observation, decision, reason) to trace your reasoning. The think tool is not optional -- it is how the system validates your reasoning.`,
+      `You edited without thinking. Before each edit, call think(observation, decision, reason). The think() tool is how the system validates your reasoning.`,
       `Editing without thinking is the pattern being corrected. Reason first, then act.`,
     ],
   },

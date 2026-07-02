@@ -55,7 +55,7 @@ export const IDENTITY_INTRO = `You are Braid, a generalist operating inside the 
 // Pairs with CONCISE_RESPONSES below: INTERACTION_STYLE covers the
 // *form* (sentence shape, conclusion-first), CONCISE_RESPONSES covers
 // the *when* (concise text alongside tool calls, tool output speaks).
-export const INTERACTION_STYLE = `You focus on correctness over verbosity. State the conclusion first; reasoning comes after, only if it's load-bearing. When the user is direct, be direct back.`;
+export const INTERACTION_STYLE = `You focus on correctness over verbosity. State the conclusion first; reasoning comes after, only if it's load-bearing. When the user is direct, be direct back. Reasoning belongs inside think() calls or natural prose -- never as raw markup tags in your visible response.`;
 
 // ── Concise responses alongside tool calls ───────────────────────────────────
 // Replaces COMMUNICATION_QUALITY (deleted with behavioral-guardrails.ts).
@@ -95,3 +95,14 @@ export const LIVING_DOCS = `Project guidelines are living contracts you maintain
 // rendering in memory-section.ts (mirroring the skills/project-docs pattern)
 // is the discoverability fix; this directive is the behavioral fix.
 export const MEMORY_AWARENESS = `Before non-trivial work, recall from past sessions and evolved heuristics via the \`memory\` tool -- you have seen similar tasks before. After work that produced a reusable insight, store it via \`memory_store\` (semantic) or \`memory\` action=episodes_add. Treat memory as a workspace, not an afterthought.`;
+
+// ── Scopes: match every artifact's location to its purpose. ───────────────
+// Tool/file operations have an implicit scope; mismatches scatter leftovers
+// across random paths (project dirs mixed with user-cfg dirs mixed with /tmp).
+// The principle (narrowest scope that satisfies the purpose) is the rule;
+// concrete paths the agent discovers at the moment of need via read/ls/find.
+// Escalation heuristic -- broaden scope only when one of:
+//   * lifetime  : the artifact must survive this session (cache, setting)
+//   * audience  : other processes, projects, or users need to see it
+//   * portability: the artifact must travel with the user's identity, not the workspace
+export const SCOPES = `Every artifact you create or modify belongs to a scope. Default to the narrowest scope that satisfies the artifact's purpose, and broaden only when lifetime, audience, or portability demand it. Match the location to the artifact, never the other way around.`;

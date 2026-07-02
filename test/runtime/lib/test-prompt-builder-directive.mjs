@@ -334,6 +334,133 @@ test("DEFINITION_OF_DONE has no meta-LLM references", () => {
   }
 });
 
+// ── INTERACTION_STYLE: markup-discipline clause (added 2026-07-02) ───
+
+test("INTERACTION_STYLE contains the markup-discipline clause", () => {
+  // The 2026-07-02 extension added a 4th sentence: reasoning belongs inside
+  // think() calls or natural prose, never as raw markup tags in the visible
+  // response. Pin the clause so future edits don't quietly remove it.
+  const m = identitySrc.match(/export const INTERACTION_STYLE\s*=\s*`((?:[^`\\]|\\.)*)`/);
+  assert.ok(m, "INTERACTION_STYLE must have a template literal value");
+  const literal = m[1];
+  assert.ok(/think\(\)/i.test(literal), "INTERACTION_STYLE must reference think()");
+  assert.ok(/markup/i.test(literal), "INTERACTION_STYLE must mention markup");
+  assert.ok(/visible response/i.test(literal), "INTERACTION_STYLE must specify 'visible response'");
+});
+
+test("INTERACTION_STYLE has no meta-LLM references", () => {
+  const m = identitySrc.match(/export const INTERACTION_STYLE\s*=\s*`((?:[^`\\]|\\.)*)`/);
+  assert.ok(m, "INTERACTION_STYLE must have a template literal value");
+  const literal = m[1];
+  const metaLLMTerms = ["LLM", "language model", "thinking model", "training"];
+  for (const term of metaLLMTerms) {
+    assert.ok(
+      !literal.includes(term),
+      `INTERACTION_STYLE must not reference "${term}" (meta-LLM noise)`,
+    );
+  }
+});
+
+// ── SCOPES: artifact-location heuristic (added 2026-07-02) ─────────────
+
+test("SCOPES directive exists in identity.ts", () => {
+  assert.match(
+    identitySrc,
+    /export const SCOPES\s*=/,
+    "SCOPES must be exported from identity.ts",
+  );
+});
+
+test("SCOPES directive is rendered into the system prompt", () => {
+  assert.match(
+    promptBuilderSrc,
+    /simpleSection\(\s*["']invariant-scopes["']\s*,\s*SCOPES\s*\)/,
+    "index.ts must render SCOPES via simpleSection(\"invariant-scopes\", ...)",
+  );
+});
+
+test("SCOPES is principled and short (3 sentences max)", () => {
+  // SCOPES enumerates lifetime / audience / portability as escalation
+  // heuristics and ends with a memorable closer. 3 sentences is the
+  // expected ceiling; longer drifts toward catalog.
+  const m = identitySrc.match(/export const SCOPES\s*=\s*`((?:[^`\\]|\\.)*)`/);
+  assert.ok(m, "SCOPES must have a template literal value");
+  const literal = m[1].trim();
+  const sentenceEnders = (literal.match(/[.!?](?:\s|$)/g) || []).length;
+  assert.ok(
+    sentenceEnders <= 3,
+    `SCOPES has ${sentenceEnders} sentences; expected <= 3 (principle + heuristic + closer)`,
+  );
+});
+
+test("SCOPES has no example paths in the directive text", () => {
+  // Discoverability principle: no `~/.pi`, no `/tmp`, no `/etc`, no
+  // `~/.config` in the directive text. Concrete paths belong in the
+  // agent's discovery (via read/ls/find), not in the identity framing.
+  const m = identitySrc.match(/export const SCOPES\s*=\s*`((?:[^`\\]|\\.)*)`/);
+  assert.ok(m, "SCOPES must have a template literal value");
+  const literal = m[1];
+  const forbiddenPaths = ["/tmp", "/etc", "/var", "~/.pi", "~/.config", "~/.cache", "~/.local"];
+  for (const p of forbiddenPaths) {
+    assert.ok(
+      !literal.includes(p),
+      `SCOPES must not enumerate path "${p}" (discoverability: agent finds concrete paths at the moment of need)`,
+    );
+  }
+});
+
+test("SCOPES mentions the escalation heuristic (lifetime / audience / portability)", () => {
+  const m = identitySrc.match(/export const SCOPES\s*=\s*`((?:[^`\\]|\\.)*)`/);
+  assert.ok(m, "SCOPES must have a template literal value");
+  const literal = m[1];
+  assert.ok(/lifetime/i.test(literal), "SCOPES must mention lifetime as escalation criterion");
+  assert.ok(/audience/i.test(literal), "SCOPES must mention audience as escalation criterion");
+  assert.ok(/portability/i.test(literal), "SCOPES must mention portability as escalation criterion");
+});
+
+test("SCOPES has no meta-LLM references", () => {
+  const m = identitySrc.match(/export const SCOPES\s*=\s*`((?:[^`\\]|\\.)*)`/);
+  assert.ok(m, "SCOPES must have a template literal value");
+  const literal = m[1];
+  const metaLLMTerms = ["LLM", "language model", "thinking model", "training"];
+  for (const term of metaLLMTerms) {
+    assert.ok(
+      !literal.includes(term),
+      `SCOPES must not reference "${term}" (meta-LLM noise)`,
+    );
+  }
+});
+
+// ── CORRECTION mode: markup-discipline reminder (extended 2026-07-02) ───
+
+test("CORRECTION mode directive references think() with the canonical signature", () => {
+  // Pin the canonical call form so the directive keeps showing the exact
+  // tool invocation the agent needs (observation / decision / reason).
+  // The markup-discipline warning lives in INTERACTION_STYLE alone; the
+  // CORRECTION directive stays lean and focused on the missing call.
+  const modeMatch = behaviorModesSrc.match(/"CORRECTION":\s*\{[\s\S]*?directives:\s*\[([\s\S]*?)\][\s\S]*?\}/);
+  assert.ok(modeMatch, "CORRECTION mode must be defined");
+  const directives = modeMatch[1];
+  assert.ok(/think\(observation, decision, reason\)/.test(directives),
+    "CORRECTION first directive must reference think(observation, decision, reason)");
+  assert.ok(/think\(\) tool/.test(directives),
+    "CORRECTION first directive must name 'think() tool' to anchor the call reference");
+});
+
+test("CORRECTION mode stays at 1-2 directives (lean, not the old 3-phrase library)", () => {
+  // Pin the existing lean invariant for CORRECTION specifically -- the
+  // 2026-07-02 extension rewrites the first directive's content but must
+  // not push it past 2 directives.
+  const modeMatch = behaviorModesSrc.match(/"CORRECTION":\s*\{[\s\S]*?directives:\s*\[([\s\S]*?)\][\s\S]*?\}/);
+  assert.ok(modeMatch, "CORRECTION mode must be defined");
+  const directives = modeMatch[1];
+  const directiveCount = (directives.match(/`[^`]+`|"[^"]+"/g) || []).length;
+  assert.ok(
+    directiveCount >= 1 && directiveCount <= 2,
+    `CORRECTION mode has ${directiveCount} directives; expected 1-2 (lean)`,
+  );
+});
+
 // ── Project docs pointer model (orthogonal, preserved from prior test) ──
 
 test("project docs use pointer-only model (no verbatim content injection)", () => {

@@ -18,6 +18,7 @@ import {
   DEFINITION_OF_DONE,
   LIVING_DOCS,
   MEMORY_AWARENESS,
+  SCOPES,
 } from "./identity.js";
 import { behaviorModeSection } from "./behavior-modes.js";
 import {
@@ -312,6 +313,13 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       //     (2026-06-22 audit). Pairs with the memory pointer block rendered
       //     later in section 4b.
       simpleSection("invariant-memory", MEMORY_AWARENESS),
+
+      // 1e. Scopes directive - match every artifact's location to its purpose;
+      //     default to the narrowest scope that satisfies the purpose, broaden
+      //     only when lifetime / audience / portability demand it. Principle-
+      //     based (no path lists) so the agent discovers concrete locations
+      //     at the moment of need via read/ls/find.
+      simpleSection("invariant-scopes", SCOPES),
 
       // 8. Interaction style
       simpleSection("interaction-style", INTERACTION_STYLE),
