@@ -17,7 +17,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { callLlm } from "../../lib/ai/llm-call.js";
-import { resolveUtilityModel } from "../../lib/ai/model-resolver.js";
+import { resolveUtilityModel, resolveMaxPowerModel } from "../../lib/ai/model-resolver.js";
 import { createLogger } from "../../lib/core/logger.js";
 import { topicDriftFallback } from "../../lib/ai/critic-fallbacks.js";
 
@@ -65,10 +65,11 @@ export interface ConsolidatedTopicResult {
 /**
  * Consolidated topic critique -- single LLM call for all 3 drift dimensions.
  *
- * Fallback strategy (graceful degradation):
- *   1. Try utility model with consolidated JSON prompt
- *   2. If utility fails, try session model
- *   3. If both fail, use conservative defaults (no drift detected)
+ * Model tier strategy (modelPreference: "quality"):
+ *   1. Try session model (cheap, may already be powerful)
+ *   2. If session fails, try utility model
+ *   3. If both fail, try max-power model (accuracy-critical safety net)
+ *   4. If all fail, use conservative defaults (no drift detected)
  */
 export async function consolidatedTopicCritique(
   original: string,
@@ -107,7 +108,8 @@ export async function consolidatedTopicCritique(
 // ── Internal Helpers ─────────────────────────────────────────────────────────
 
 /**
- * Try the consolidated LLM call with utility model, then session model.
+ * Try the consolidated LLM call with quality tier ordering:
+ * session model first, then utility, then max-power as safety net.
  */
 async function tryConsolidatedCall(
   original: string,
@@ -119,17 +121,24 @@ async function tryConsolidatedCall(
     .replace("{{original}}", original)
     .replace("{{response}}", response);
 
-  // Try utility model first
+  // Tier 1: session model (conversation model, may already be powerful)
+  const sessionModel = ctx.model;
+  if (sessionModel) {
+    const result = await tryModel(userMessage, ctx, sessionModel, startMs);
+    if (result) return result;
+  }
+
+  // Tier 2: utility model (cheap fallback)
   const utilityModel = resolveUtilityModel(ctx);
   if (utilityModel) {
     const result = await tryModel(userMessage, ctx, utilityModel, startMs);
     if (result) return result;
   }
 
-  // Fall through to session model
-  const sessionModel = ctx.model;
-  if (sessionModel) {
-    const result = await tryModel(userMessage, ctx, sessionModel, startMs);
+  // Tier 3: max-power model (accuracy-critical safety net)
+  const maxPowerModel = resolveMaxPowerModel(ctx);
+  if (maxPowerModel) {
+    const result = await tryModel(userMessage, ctx, maxPowerModel, startMs);
     if (result) return result;
   }
 
