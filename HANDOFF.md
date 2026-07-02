@@ -237,3 +237,33 @@ grep -A 1 "^| P1-5\|^| EW-7.11" docs/ROADMAP.md | head -10
 ```
 
 Welcome. Pick up where the last session left off.
+
+---
+
+## Postscript — 2026-07-02 session
+
+Two investigations resolved in this session, plus a documentation overhaul:
+
+### Shipped (commits in this session)
+
+1. **`322d2c43`** — SCOPES identity framing + INTERACTION_STYLE markup-discipline clause + lean CORRECTION directive. See `src/extensions/core/prompt-builder/identity.ts:SCOPES` and the 4th sentence of `INTERACTION_STYLE`. The principle: "every artifact belongs to a scope; default to the narrowest one that satisfies the purpose, broaden only when lifetime / audience / portability demand it." No path lists — discoverability over memorization. 36/36 prompt-builder tests pass; 79/81 full-suite pass (two pre-existing failures unrelated to prompt-builder work).
+
+2. **Doc overhaul (this HANDOFF update, plus uncommitted doc work)**:
+   - `README.md` rewritten — user-first with fast-start config example + "what you get" table + setup quicklinks
+   - `docs/SETUP.md` (new, ~280 lines) — canonical setup reference: 5 install paths (user-global / project / `-e` flag / direct path / git-URL via npm), bundled skills + companion packs, full config reference, module toggling, storage, troubleshooting
+   - `CONTRIBUTING.md` rewritten — pure-contributor focus; cross-links to SETUP.md for dev environment; adds dox-framework reminder + commit-message prefix conventions
+   - `HANDOFF.md` (this file) updated with this postscript
+
+### State of doc hygiene
+
+- All top-level `*.md` have `<!-- status: -->` markers.
+- `docs/SETUP.md` is the new canonical setup doc; the install snippet in `README.md` is intentionally compressed with "see SETUP.md for full setup reference" as the cross-link.
+- `CONTRIBUTING.md` no longer duplicates setup content — it stays focused on contributing workflow.
+
+### What to look at next
+
+- `docs/ROADMAP.md` P0/P1 priorities (45 full + 1 partial of 51 shipped; remaining items need user input — see §What's next in main body).
+- The orchestrator extension work (mentioned in main body above).
+- `SPQ-10` and `SPQ-11` from ROADMAP.
+
+Read the main body of this HANDOFF.md for the broader v3.7→v3.10 context. Welcome.

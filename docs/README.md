@@ -8,6 +8,7 @@
 
 | Doc | Purpose | Last update |
 |---|---|---|
+| [`SETUP.md`](SETUP.md) | **Canonical setup reference for braid users.** Install paths (5 options), skills setup, full config schema, module toggling, storage, troubleshooting. Replaces scattered install snippets. | 2026-07-02 |
 | [`ROADMAP.md`](ROADMAP.md) | **Primary actionable roadmap.** Consolidated improvement list with 51 items (P0–P3, 45 full + 1 partial shipped), 36 new findings from deep review, 15 EW-7 proposals. Replaces the 4 archived audits. | 2026-06-30 |
 | [`CODE-QUALITY-REMEDIATION-PLAN.md`](CODE-QUALITY-REMEDIATION-PLAN.md) | Historical record of the 6 remediation rounds (Q1–Q15). Headline numbers reflect the state at the time of each round (current: 81/81 tests, 227 src + 83 test files, 28 documented exceptions). | 2026-06-17 |
 | [`ENFORCEMENT-WHISPER-CONTENT-AUDIT.md`](ENFORCEMENT-WHISPER-CONTENT-AUDIT.md) | Full inventory of all 35 whisper templates with trigger conditions, file:line, message templates, and the 15 EW-7 proposals. The §3 catalog is a reference; actionable items are in ROADMAP §4. | 2026-06-17 |

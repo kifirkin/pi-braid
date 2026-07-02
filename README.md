@@ -4,173 +4,211 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue.svg)](https://www.typescriptlang.org/)
+[![pi-coding-agent ≥ 0.80](https://img.shields.io/badge/pi--coding--agent-%E2%89%A50.80-blueviolet)](https://github.com/mariozechner/pi-coding-agent)
 
 Metacognitive extension suite for [pi-coding-agent](https://github.com/mariozechner/pi-coding-agent). Adds enforcement, memory, reasoning, self-improvement, and structured cognitive signals on top of the base agent session.
 
 > **⚠️ Early-stage software.** APIs may change. Not production-hardened.
 
-## What It Does
+---
 
-pi-braid extends pi with a suite of cognitive extensions:
+## What it does
 
-- **Enforcement** - belief policy engine, structured signal delivery (L1-L3), sycophancy detection, verification nudges, behavioral pattern evolution
-- **Memory** - multi-store memory system: cognitive memory (semantic + episodic + heuristic via `memory-agent-bridge`), context lifecycle (S-MMU proposals, compaction, rotation), cross-session recall, scratchpad task tracking, and workspace snapshots — all with cross-search
-- **Reasoning** - topic drift detection, bidirectional verification, claim tracking, contradiction detection
-- **Self-improvement** - heuristic evolution, dreamer (offline consolidation), SOP extraction, degradation detection, reflection
-- **Session management** - context lifecycle (proposals, compaction, rotation), scratchpad task tracking
-- **Utilities** - healthcheck, timers, system monitoring, web research, workspace snapshots
+pi-braid extends pi with a metacognitive layer:
 
-## Extension Map
+- **Enforcement** — belief-policy engine, structured signal delivery (L1–L3), sycophancy detection, verification nudges, behavioral pattern evolution
+- **Memory** — three-store recall (semantic + episodic + heuristic), cross-session context, scratchpad task tracking, workspace snapshots, conflict resolution
+- **Reasoning** — topic-drift detection, bidirectional verification, claim tracking, contradiction detection
+- **Self-improvement** — heuristic evolution, dreamer (offline consolidation), SOP extraction, degradation detection, reflection
+- **Utilities** — healthcheck, timers, system monitoring, web research, context lifecycle (S-MMU proposals, compaction, rotation)
 
-The following diagram shows how braid's extensions relate to each other and to the pi base agent:
+It runs as a pi *extension package* — install once, use everywhere on your pi session.
 
-```
-┌──────────────────────────────────────────┐
-│            pi-coding-agent               │
-│         (base agent loop + tools)        │
-├──────────────────────────────────────────┤
-│   prompt-builder (system prompt)         │
-├──────────────┬───────────────────────────┤
-│  enforcement │  metacognition            │
-│  (signals,   │  (think, verify,          │
-│   drift,     │   hypothesize, finalize)  │
-│   reflection)│                           │
-├──────────────┴───────────────────────────┤
-│  memory-agent-bridge                     │
-│  (memory_store, memory, conflict_qa,     │
-│   explore_paths, session)                │
-├──────────────────────────────────────────┤
-│  three-memory-stores  │  context-lifecycle│
-│  (episodes/heuristics)│  (S-MMU proposals)│
-├──────────────┬───────────────────────────┤
-│heartbeat-    │  scratchpad               │
-│scheduler     │  (task tracking)           │
-│(budgets,     │  workspace-snapshot        │
-│ auto-finalize)│  timer                    │
-├──────────────┴───────────────────────────┤
-│  session-recall  │  health-maintenance   │
-│  error-tracking  │  latent-activator     │
-│  watchdog        │  analytics            │
-└──────────────────────────────────────────┘
-```
+---
 
-## Installation
+## Fast start (TL;DR)
 
 ```bash
-# Clone
-git clone https://github.com/kifirkin/pi-braid.git
-cd pi-braid
-npm install
+# 1. Clone
+git clone https://github.com/kifirkin/pi-braid.git ~/pi-braid
+cd ~/pi-braid && npm install && npm run build
 
-# Build
-npm run build
+# 2. Register with pi (one-time, user-global)
+echo '{ "packages": ["file:~/pi-braid"] }' > ~/.pi/agent/settings.json
 
-# Run with pi
-pi -e /path/to/pi-braid
+# 3. Use pi as normal — braid loads automatically
+pi
 ```
 
-### Prerequisites
+That's it. To enable pi-braid only for one project, see [docs/SETUP.md](docs/SETUP.md) § Project-scoped install.
 
-- [Node.js](https://nodejs.org/) ≥ 20
-- [pi-coding-agent](https://github.com/mariozechner/pi-coding-agent) ≥ 0.80.0
+For the full setup reference (per-project installs, skills, module toggles, troubleshooting), see **[`docs/SETUP.md`](docs/SETUP.md)**.
+
+---
+
+## How it fits pi
+
+pi loads extensions from a `packages` entry in `<cwd>/.pi/settings.json` (project) or `~/.pi/agent/settings.json` (user-global). braid is a regular extension package — point pi at it via `file:` or `git+https:` spec.
+
+```
+┌────────────────────────────────────────────┐
+│              pi-coding-agent               │
+│         (base agent loop + tools)          │
+├────────────────────────────────────────────┤
+│   prompt-builder (system prompt)           │
+├──────────────┬─────────────────────────────┤
+│  enforcement │  metacognition              │
+│  (signals,   │  (think, verify,            │
+│   drift,     │   hypothesize, finalize)    │
+│   reflection)│                             │
+├──────────────┴─────────────────────────────┤
+│  memory-agent-bridge                       │
+│  (memory_store, memory, conflict_qa,       │
+│   explore_paths, session)                  │
+├────────────────────────────────────────────┤
+│  three-memory-stores │ context-lifecycle   │
+│  (episodes/heuristics)│ (S-MMU proposals)  │
+├──────────────┬─────────────────────────────┤
+│ heartbeat-   │  scratchpad                 │
+│ scheduler    │  workspace-snapshot         │
+│ (budgets,    │  timer                      │
+│  auto-finalize)│                           │
+├──────────────┴─────────────────────────────┤
+│  session-recall  │  health-maintenance     │
+│  error-tracking  │  latent-activator       │
+│  watchdog        │  analytics              │
+└────────────────────────────────────────────┘
+```
+
+---
+
+## What you get
+
+Every extension is opt-in but defaults on. See [`src/extensions/manifest.ts`](src/extensions/manifest.ts) for the flat list. Highlights:
+
+| Tool / Extension            | What it adds                                                                                  |
+| --------------------------- | --------------------------------------------------------------------------------------------- |
+| `think`, `verify`, `hypothesize`, `finalize` | Metacognitive tools (always-on). Use `think` for non-trivial reflection; `verify` to check work; `finalize` to close a task with evidence. |
+| `scratchpad`                | Goal/plan/decision/learning tracker that survives context compaction                          |
+| `memory`, `memory_store`, `conflict_qa` | Three-store recall (episodes / semantic / heuristics) cross-searched; conflict resolution between sources |
+| `session`                   | Cross-session context recall (search / query past sessions)                                   |
+| `context_compress`, `context_inspect`, `context_navigate` | S-MMU-style context management                                  |
+| `topic_drift`               | Anchor tracking + drift detection                                                             |
+| `behavior`                  | Activate / deactivate behavior patterns                                                      |
+| `timer`                     | Non-blocking session-scoped timers                                                            |
+| `workspace_snapshot`        | Capture / diff / restore workspace state for time-travel debugging                            |
+| `system_monitor`            | CPU / memory / disk metrics                                                                   |
+| `healthcheck`               | Diagnostic across all tools (recursive smoke tests)                                           |
+| `web_fetch`, `batch_web_fetch`, `analyze_image` | Tool affordances for the agent and subagents                                       |
+
+Plus ~12 pi-core built-ins (read, write, edit, bash, grep, find, ls, sleep, …) always available.
+
+---
 
 ## Configuration
 
-pi-braid reads settings from `~/.pi/agent/settings.json` under the `braid` key:
+### Module toggling
+
+braid's loader follows a **four-tier precedence** (high → low):
+
+1. Runtime API (`/modules-toggle`, `/modules-enable`, `/modules-disable`)
+2. `~/.pi/agent/settings.json` → `braid.modules`
+3. `BRAID_MODULES` env var
+4. Defaults — all non-opt-in extensions enabled
+
+#### `BRAID_MODULES` env var
+
+```bash
+unset BRAID_MODULES                # default: all non-opt-in extensions
+
+export BRAID_MODULES="all,-error-tracking"    # everything except one
+export BRAID_MODULES="-enforcement"           # disable enforcement group
+export BRAID_MODULES="+heartbeat"             # enable the heartbeat group (opt-in)
+```
+
+A ref can be either an **extension id** (`enforcement`, `error-tracking`) or a **module group name** (`heartbeat`, `core`, `memory`). Prefixes: `+` to enable, `-` to disable.
+
+#### Persistent settings
+
+In `~/.pi/agent/settings.json`:
 
 ```json
 {
   "braid": {
-    "suppressNudges": false
+    "modules": {
+      "enforcement": true,
+      "error-tracking": false,
+      "heartbeat": true
+    }
   }
 }
 ```
 
-All braid-specific data is stored under `~/.pi/agent/braid/`.
+Settings win over env var; runtime API wins over settings.
 
-### Module System
+### Storage
 
-There is **no module-grouping abstraction** — the manifest is a flat list.
-The `module` field on certain entries is a label for toggling groups via
-`BRAID_MODULES`:
+All braid-specific data goes under `~/.pi/agent/braid/`. Use the constants in [`src/lib/config/braid-paths.ts`](src/lib/config/braid-paths.ts) — never hardcode paths.
 
-```bash
-# Default — all non-opt-in extensions enabled
-unset BRAID_MODULES
+---
 
-# Toggle individual extensions: +name to enable, -name to disable
-export BRAID_MODULES="all,-error-tracking"
-export BRAID_MODULES="-enforcement"
+## Bundled skills
 
-# Group toggle (only works for entries with a `module` field)
-export BRAID_MODULES="+heartbeat"     # enable heartbeat extensions
-```
+braid ships 7 skills (rendered in the system prompt's `<available_skills>` block):
 
-See [AGENTS.md](AGENTS.md) for the extension inventory and [docs/](docs/) for
-detailed documentation.
+- **software-engineer** — debug → fix → verify, implement → decompose → execute, review → …
+- **tone-quality** — write meaningful text that humans and agents actually read
+- **pi-reference** — complete reference for pi's SDK, extension API, settings, RPC
+- **healthcheck** — run agent self-diagnostic
+- **meta-improvement** — create new skills, run self-improving experiments
+- **agent-testing** — programmatic agent behavior testing
+- **subagent** — spawn / monitor / coordinate pi subagents
 
-## Bundled Skills
+### Optional companion packs
 
-pi-braid ships with 7 core skills (software-engineer, pi-reference, meta-improvement, healthcheck, tone-quality, agent-testing, subagent) loaded via pi's default skill discovery mechanism.
-
-Additional skill packs:
 - [pi-braid-skills](https://github.com/kifirkin/pi-braid-skills) — 8 general-purpose development skills (code-search, code-refactoring, documentation, dox, openspec, process-control, research, vcs-tools)
 - [pi-braid-contrib](https://github.com/earendil-works/pi-braid-contrib) — 9 niche/creative skills (adversarial-engagement, design-system, paper-writer, twitter, visual-creator, visual-validator, meme, looping-clanker, socratic-irony)
 
-See the skill descriptions in the system prompt's `<available_skills>` block for the full list.
+To install either pack:
 
-## Extension Overview
+```bash
+git clone https://github.com/kifirkin/pi-braid-skills ~/pi-braid-skills
+echo '{ "packages": ["file:~/pi-braid", "file:~/pi-braid-skills"] }' > ~/.pi/agent/settings.json
+```
 
-All extensions are registered via a flat manifest at `src/extensions/manifest.ts`. The `module` field on each entry is a convenience label for group toggling (e.g. `BRAID_MODULES=+heartbeat`) — it has no structural role in the directory tree.
+See [docs/SETUP.md](docs/SETUP.md) § Skills for more.
 
-| Category      | Extension              | Purpose                                                    |
-| ------------- | ---------------------- | ---------------------------------------------------------- |
-| **Core**      | polyfill               | pi API polyfills, vision model config                      |
-| _(always-on)_ | metacognition          | `think`, `hypothesize`, `finalize`, `verify` tools         |
-|               | scratchpad             | `scratchpad` tool                                          |
-|               | input-polisher         | Input proofreading & translation                           |
-|               | prompt-builder         | System prompt assembly                                     |
-|               | agent-environment      | Time/status L1 context injection                           |
-|               | workspace-snapshot     | `workspace_snapshot` tool — capture/list/diff/restore      |
-| **Cognitive** | reasoning              | Reasoning quality detector, verify-before-done nudge       |
-|               | topic-drift            | `topic_drift` tool — anchor tracking                       |
-|               | sycophancy-detector    | Contrast-based sycophancy detection                        |
-|               | turn-outcome           | Turn outcome loop detection                                |
-| **Enforcement**| enforcement           | RepE-based behavioral enforcement, turn validation         |
-| **Memory**    | three-memory-stores    | Episodic, heuristic, tool-reliability persistence          |
-|               | memory-agent-bridge    | `memory_store`, `memory`, `conflict_qa`, `explore_paths`   |
-|               | session-recall         | `session` tool — cross-session context recall              |
-|               | context-manager        | `context_compress`, `context_inspect`, `context_navigate`  |
-|               | context-lifecycle      | `context_proposals` — S-MMU context management             |
-|               | scratchpad             | `scratchpad` task tracking (always-on, listed above)       |
-|               | workspace-snapshot     | `workspace_snapshot` (always-on, listed above)             |
-| **Heartbeat** | heartbeat-scheduler    | Token budgets, auto-finalize, dreamer, recaller, evolver   |
-|               | analytics              | Session metrics, A/B variants, tool reliability            |
-| **System**    | timer                  | Non-blocking timers for session tasks                      |
-|               | auto-recovery          | Auto-recovery from hangs                                   |
-|               | latent-activator       | `behavior` tool — behavior pattern activation              |
-|               | watchdog _(opt-in)_    | Session monitoring and error alerting                      |
-|               | health-maintenance _(opt-in)_ | Health-based checkpointing, degradation detection    |
-|               | error-tracking _(opt-in)_     | Error logging: `error_list`, `error_get`            |
+---
 
-**Note on pi-core builtins:** The base agent provides several tools regardless of braid:
-`healthcheck`, `observatory`, `diff`, `research`, `system_monitor`, `read_document`,
-`render_pdf_page`, and others. These are listed in the system prompt's `Available tools`
-section and are always available. The table above covers only braid-registered extensions.
+## Documentation
+
+| Doc                                          | For                                                |
+| -------------------------------------------- | -------------------------------------------------- |
+| [`docs/SETUP.md`](docs/SETUP.md)             | **First-time setup, install paths, troubleshooting** |
+| [`AGENTS.md`](AGENTS.md)                     | Repository structure, DOX contract, conventions     |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md)         | Development setup, code style, PR workflow, release |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md)         | Active roadmap + shipped items                      |
+| [`docs/README.md`](docs/README.md)           | Reference index for `docs/`                         |
+| [`HANDOFF.md`](HANDOFF.md)                   | Fresh-session transfer document (refresh per session) |
+| [`CHANGELOG.md`](CHANGELOG.md)               | Release notes                                      |
+
+---
 
 ## Development
 
 ```bash
+git clone https://github.com/kifirkin/pi-braid.git
+cd pi-braid
+npm install
 npm run typecheck   # TypeScript check
 npm run build       # Compile to dist/
 npm run test        # Build + run 81 runtime tests
 npm run lint        # ESLint
-npm run format      # Prettier
 ```
 
-For the full development guide, see [AGENTS.md](AGENTS.md).
+For the full development guide — extension anatomy, manifest model, testing bar, release process — see **[`CONTRIBUTING.md`](CONTRIBUTING.md)** and **[`AGENTS.md`](AGENTS.md)**.
 
-Documentation has been extracted to a separate repository ([pi-braid-docs](https://github.com/earendil-works/pi-braid-docs)) to keep the codebase lean.
+---
 
 ## License
 
