@@ -56,7 +56,7 @@ const ROOT = join(__dirname, "..", "..", "..");
 const distPath = join(ROOT, "dist", "extensions", "enforcement", "state.js");
 if (!existsSync(distPath)) {
   console.log(
-    "⚠️  dist/extensions/enforcement/state.js not found.\n" +
+    "[warn]  dist/extensions/enforcement/state.js not found.\n" +
       "Run `npm run build` first. Skipping enforcement state composition test.",
   );
   process.exit(0);
@@ -100,7 +100,7 @@ console.log("Test 1: Key count matches baseline (no silent overlap)");
       `no duplicates). Got ${actualCount}. If you intentionally added a new key, ` +
       `update BASELINE_COUNT and SENTINEL_KEYS in this test.`,
   );
-  console.log(`✅ PASS: ${actualCount} keys, matches baseline`);
+  console.log(`[ok] PASS: ${actualCount} keys, matches baseline`);
 }
 
 console.log("\nTest 2: Sentinel key from each sub-state is present");
@@ -113,7 +113,7 @@ console.log("\nTest 2: Sentinel key from each sub-state is present");
           `This means the sub-state factory is not being called, or the key was renamed.`,
       );
     }
-    console.log(`  ✅ ${source}: ${sentinels.length}/${sentinels.length} sentinels present`);
+    console.log(`  [ok] ${source}: ${sentinels.length}/${sentinels.length} sentinels present`);
   }
 }
 
@@ -129,7 +129,7 @@ console.log("\nTest 3: No Map/Set values are undefined or null after constructio
       `Map/Set key '${k}' is ${state[k]} after construction. Factory should initialize it.`,
     );
   }
-  console.log(`  ✅ ${mapOrSetKeys.length} Map/Set keys all initialized`);
+  console.log(`  [ok] ${mapOrSetKeys.length} Map/Set keys all initialized`);
 }
 
 console.log("\n🎯 All enforcement state composition tests passed!");

@@ -21,10 +21,10 @@ function test(name, fn) {
   try {
     fn();
     passed++;
-    console.log(`  ✅ ${name}`);
+    console.log(`  [ok] ${name}`);
   } catch (e) {
     failed++;
-    console.log(`  ❌ ${name}: ${e.message}`);
+    console.log(`  [fail] ${name}: ${e.message}`);
   }
 }
 

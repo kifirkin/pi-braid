@@ -23,8 +23,8 @@ const EXPECTED_BRAID = path.join(EXPECTED_AGENT, "braid");
 let passed = 0;
 let failed = 0;
 function test(name, fn) {
-  try { fn(); passed++; console.log(`  ✅ ${name}`); }
-  catch (e) { failed++; console.log(`  ❌ ${name}: ${e.message}`); }
+  try { fn(); passed++; console.log(`  [ok] ${name}`); }
+  catch (e) { failed++; console.log(`  [fail] ${name}: ${e.message}`); }
 }
 
 console.log("braid-paths test\n");

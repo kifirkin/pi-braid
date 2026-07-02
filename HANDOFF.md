@@ -122,21 +122,18 @@ This session also produced:
    (user-flagged, details not yet specified). Both marked "not started"
    in ROADMAP.
 
-4. **P3-7 / EW-7.12** — prefix naming convention (policy decision;
-   needs user input).
-
-5. **P2-10 / Q13** — large-file splits (`memory-agent-bridge`,
+4. **P2-10 / Q13** — large-file splits (`memory-agent-bridge`,
    `timer`, `session-recall`, `latent-activator`). Explicitly
    deferred; trigger condition was partial-met by DR-M-8
    (scratchpadExecute split).
 
-6. **P2-7 / DR-H-9** — drift-classifier cache (prompt collapse 3→1
-   multi-label). Partially unblocked by v3.0 cost-report but the
-   prompt-merge design call needs user input.
+5. **P2-7 / DR-H-9** — drift-classifier cache (prompt collapse 3→1
+   multi-label). Cache part shipped (critic-cache.ts wired in
+   text-classifier.ts). Prompt-merge design call needs user input.
 
-The roadmap tally: **45 full + 1 partial of 51 actionable items shipped**
-(P1-2 verified as no-op, not counted in shipped). The remaining items
-(4–6) all need user input, a policy decision, or upstream API
+The roadmap tally: **47 full of 51 actionable items shipped**
+(P1-2 verified as no-op, not counted in shipped). Remaining items
+(4–5) all need user input, a policy decision, or upstream API
 stabilization. SPQ-10/11 and the orchestrator extension are additional
 items not in the P-tier tally.
 

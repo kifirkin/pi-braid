@@ -414,7 +414,7 @@ export function createVerifyTool(): ToolDefinition<any, any, any> {
 
       // Format output
       const lines: string[] = [];
-      const verdict = passed ? "✅ PASSED" : `❌ ${uniqueIssues.length} issue(s) found`;
+      const verdict = passed ? "[ok] PASSED" : `[fail] ${uniqueIssues.length} issue(s) found`;
       lines.push(
         `[verify] ${verdict} (confidence: ${(confidence * 100).toFixed(0)}%, ${result.verificationMs}ms)`,
       );

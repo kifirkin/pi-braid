@@ -100,7 +100,7 @@ export default function contextManagerExtension(pi: ExtensionAPI): void {
   registerNavAgentEndRetry(pi);
   registerAgentEndRetryHandler(pi);
   registerAutoRetryEndHandler(pi);
-  // ⚠️ DISABLED: causes session corruption via concurrent file writes during streaming.
+  // [warn] DISABLED: causes session corruption via concurrent file writes during streaming.
   // registerContextPruningHandler(pi); // <- "context" event return value is ignored by pi
   registerRotationHandlers(pi);
   registerSessionShutdownHandler(pi);

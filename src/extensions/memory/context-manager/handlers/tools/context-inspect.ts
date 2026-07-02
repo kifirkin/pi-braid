@@ -66,7 +66,7 @@ export function registerContextInspect(pi: ExtensionAPI): void {
 
       // ── QUICK: 5-line summary ─────────────────────────────────────
       if (detail === "quick") {
-        const scoreIcon = hygieneScore >= 0.8 ? "✓" : hygieneScore >= 0.5 ? "⚠" : "✗";
+        const scoreIcon = hygieneScore >= 0.8 ? "[v]" : hygieneScore >= 0.5 ? "[warn]" : "[x]";
         const topRec = audit.recommendations
           .filter((r: any) => r.priority === "high" || r.priority === "medium")
           .slice(0, 1);
@@ -98,7 +98,7 @@ export function registerContextInspect(pi: ExtensionAPI): void {
       // ── DETAILED / FULL: Full audit report ─────────────────────────
       if (detail === "detailed" || detail === "full") {
         const incRecs = params.includeRecommendations ?? true;
-        const scoreEmoji = hygieneScore >= 0.8 ? "✓" : hygieneScore >= 0.5 ? "⚠" : "✗";
+        const scoreEmoji = hygieneScore >= 0.8 ? "[v]" : hygieneScore >= 0.5 ? "[warn]" : "[x]";
         lines.push("## Context Audit Report");
         lines.push("\n### Usage Statistics");
         lines.push(
@@ -118,7 +118,7 @@ export function registerContextInspect(pi: ExtensionAPI): void {
         if (incRecs && audit.recommendations.length > 0) {
           lines.push("\n### Recommendations");
           for (const rec of audit.recommendations) {
-            const icon = rec.priority === "high" ? "🔴" : rec.priority === "medium" ? "🟡" : "🟢";
+            const icon = rec.priority === "high" ? "[high]" : rec.priority === "medium" ? "[med]" : "[low]";
             lines.push(`${icon} **[${rec.priority.toUpperCase()}]** ${rec.action}`);
             lines.push(`   └─ ${rec.reason}`);
           }
@@ -167,7 +167,7 @@ export function registerContextInspect(pi: ExtensionAPI): void {
           `**Auto-pruned:** ${getCmState(ctx).pruningState.stats.totalPruned} messages (${getCmState(ctx).pruningState.stats.totalProcessed} total processed)`,
         );
         if (topCandidates.length === 0) {
-          lines.push("\n✓ No prune candidates found (session is clean)");
+          lines.push("\n[v] No prune candidates found (session is clean)");
         } else {
           lines.push(`\n${formatPruneCandidates(topCandidates)}`);
         }

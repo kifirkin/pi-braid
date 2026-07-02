@@ -32,7 +32,7 @@ for (const file of files) {
         totalFailed += parseInt(match[2]);
       }
     }
-    console.log(`✅ ${file}${resultLine ? " - " + resultLine.trim() : ""}`);
+    console.log(`[ok] ${file}${resultLine ? " - " + resultLine.trim() : ""}`);
   } catch (err) {
     const stderr = err.stderr?.toString() || "";
     const stdout = err.stdout?.toString() || "";
@@ -47,7 +47,7 @@ for (const file of files) {
       }
     }
     totalFailed++;
-    console.log(`❌ ${file} - FAILED`);
+    console.log(`[fail] ${file} - FAILED`);
     if (output.length > 0) {
       console.log(output.split("\n").slice(-5).join("\n"));
     }

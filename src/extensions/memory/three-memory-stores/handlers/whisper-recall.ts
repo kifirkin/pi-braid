@@ -75,7 +75,7 @@ export function whisperRecall(
 
   const lines: string[] = [`[recall] ${title}`];
   for (const ep of filtered.slice(0, 2) as Episode[]) {
-    const icon = ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
+    const icon = ep.outcome === "success" ? "[ok]" : ep.outcome === "failure" ? "[fail]" : "[warn]";
     const _richEp = ep as RichEpisode;
     const crossMark = _richEp._crossSession ? " [CROSS-SESSION]" : "";
     const conf =

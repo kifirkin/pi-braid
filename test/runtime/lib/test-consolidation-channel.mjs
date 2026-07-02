@@ -67,4 +67,4 @@ describe("Consolidation Channel", () => {
   });
 });
 
-console.log("✅ Consolidation Channel tests complete");
+console.log("[ok] Consolidation Channel tests complete");

@@ -238,11 +238,11 @@ export function scoreHypothesisOutput(
 
     const forLine =
       s.evidenceFor && s.evidenceFor.length > 0
-        ? `\n   ✅ Confirm: ${s.evidenceFor.slice(0, 2).join("; ")}`
+        ? `\n   [ok] Confirm: ${s.evidenceFor.slice(0, 2).join("; ")}`
         : "";
     const againstLine =
       s.evidenceAgainst && s.evidenceAgainst.length > 0
-        ? `\n   ❌ Disprove: ${s.evidenceAgainst.slice(0, 2).join("; ")}`
+        ? `\n   [fail] Disprove: ${s.evidenceAgainst.slice(0, 2).join("; ")}`
         : "";
 
     annotated +=

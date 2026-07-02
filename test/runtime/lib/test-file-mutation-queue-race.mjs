@@ -61,7 +61,7 @@ function cleanup(dir) {
     await q.flushAll();
     const parsed = JSON.parse(readFileSync(path, "utf-8"));
     assert.equal(parsed.a, 1, "basic write should round-trip");
-    console.log("✓ Test 1: basic round-trip produces valid JSON");
+    console.log("[v] Test 1: basic round-trip produces valid JSON");
   } finally {
     cleanup(dir);
   }
@@ -79,7 +79,7 @@ function cleanup(dir) {
     await q.flushAll();
     const parsed = JSON.parse(readFileSync(path, "utf-8"));
     assert.equal(parsed.value, 9, "last write should win");
-    console.log("✓ Test 2: last-write-wins after sequential writes");
+    console.log("[v] Test 2: last-write-wins after sequential writes");
   } finally {
     cleanup(dir);
   }
@@ -151,7 +151,7 @@ function cleanup(dir) {
     );
 
     console.log(
-      `✓ Test 3: ${ITERATIONS} concurrent writes -- 0/${validCount + invalidCount} invalid (regression guard)`,
+      `[v] Test 3: ${ITERATIONS} concurrent writes -- 0/${validCount + invalidCount} invalid (regression guard)`,
     );
   } finally {
     cleanup(dir);
@@ -189,7 +189,7 @@ function cleanup(dir) {
     assert.ok(typeof parsed.payload === "string", "payload should be a string");
     assert.ok(parsed.payload.length > 0, "payload should not be empty");
 
-    console.log("✓ Test 4: atomic write produces complete files (no truncation)");
+    console.log("[v] Test 4: atomic write produces complete files (no truncation)");
   } finally {
     cleanup(dir);
   }
@@ -211,7 +211,7 @@ function cleanup(dir) {
     const parsed = JSON.parse(readFileSync(path, "utf-8"));
     assert.equal(parsed.value, 3, "last write within dedup window should win");
 
-    console.log("✓ Test 5: dedup behavior preserved");
+    console.log("[v] Test 5: dedup behavior preserved");
   } finally {
     cleanup(dir);
   }
@@ -251,7 +251,7 @@ function cleanup(dir) {
     assert.equal(a.id, 29, "PATH_A last write wins");
     assert.equal(b.id, 29, "PATH_B last write wins");
 
-    console.log("✓ Test 6: parallel writes to different paths don't interfere");
+    console.log("[v] Test 6: parallel writes to different paths don't interfere");
   } finally {
     cleanup(dir);
   }
@@ -296,10 +296,10 @@ function cleanup(dir) {
     const final = JSON.parse(readFileSync(path, "utf-8"));
     assert.ok(final.v >= 1 && final.v <= 4, "final write is one of the four");
 
-    console.log(`✓ Test 7: in-flight racing -- 0 invalid across ${observed.length} samples`);
+    console.log(`[v] Test 7: in-flight racing -- 0 invalid across ${observed.length} samples`);
   } finally {
     cleanup(dir);
   }
 }
 
-console.log("\n✓✓✓ All FileMutationQueue race tests passed.");
+console.log("\n[v][v][v] All FileMutationQueue race tests passed.");

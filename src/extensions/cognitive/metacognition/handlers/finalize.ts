@@ -264,7 +264,7 @@ finalize(completed=true, summary="Fixed the bug", tasksRemaining=["write tests"]
               content: [
                 {
                   type: "text" as const,
-                  text: `**⚠️ FINALIZE BLOCKED - verify() found unresolved issues**
+                  text: `**[warn] FINALIZE BLOCKED - verify() found unresolved issues**
 
 Last verification (${Math.round(elapsedMs / 1000)}s ago):
 - Target: ${lastVerification.target}
@@ -308,7 +308,7 @@ Run \`verify()\` again after fixing the issues, or set \`completed: true\` to fi
       if (nextWork) {
         messages.push(`\n📋 **Next pending task:** ${nextWork.description}`);
         if (params.autoProceed) {
-          messages.push(`\n✅ Auto-proceeding to next task...`);
+          messages.push(`\n[ok] Auto-proceeding to next task...`);
           setTimeout(() => {
             sendNextTask?.(nextWork.description);
           }, 500);
@@ -316,7 +316,7 @@ Run \`verify()\` again after fixing the issues, or set \`completed: true\` to fi
           messages.push(`\n💡 Set \`autoProceed: true\` to continue automatically.`);
         }
       } else {
-        messages.push(`\n✅ No pending tasks remaining.`);
+        messages.push(`\n[ok] No pending tasks remaining.`);
       }
 
       messages.push("");

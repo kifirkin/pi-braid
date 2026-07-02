@@ -170,7 +170,7 @@ export function formatVerificationNudge(result: VerificationVerdict): string {
   if (result.issues.length > 0) {
     lines.push("\n**Issues:**");
     for (const issue of result.issues) {
-      const prefix = issue.severity === "critical" ? "🔴" : issue.severity === "high" ? "🟠" : "🟡";
+      const prefix = issue.severity === "critical" ? "[high]" : issue.severity === "high" ? "[warn]" : "[med]";
       lines.push(`- ${prefix} [${issue.category}] ${issue.description}`);
     }
   }

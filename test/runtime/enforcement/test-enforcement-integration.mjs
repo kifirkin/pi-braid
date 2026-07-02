@@ -22,12 +22,12 @@ function test(name, fn) {
   const result = fn();
   if (result instanceof Promise) {
     _asyncTests.push(
-      result.then(() => { passed++; console.log(`  ✅ ${name}`); })
-            .catch((e) => { failed++; console.log(`  ❌ ${name}: ${e.message}`); })
+      result.then(() => { passed++; console.log(`  [ok] ${name}`); })
+            .catch((e) => { failed++; console.log(`  [fail] ${name}: ${e.message}`); })
     );
   } else {
     passed++;
-    console.log(`  ✅ ${name}`);
+    console.log(`  [ok] ${name}`);
   }
 }
 async function flushTests() {

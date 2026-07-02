@@ -100,4 +100,4 @@ describe("debounce", () => {
   });
 });
 
-console.log("✅ Extension-utils tests complete");
+console.log("[ok] Extension-utils tests complete");

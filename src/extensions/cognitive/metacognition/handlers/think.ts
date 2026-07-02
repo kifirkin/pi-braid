@@ -165,7 +165,7 @@ function buildChainSummary(thoughts: ThoughtRecord[]): string {
   const root = thoughts.filter((t) => !t.parentId);
 
   function render(t: ThoughtRecord, indent: string): string {
-    const outcomeBadge = t.outcome === "success" ? "✅" : t.outcome === "failure" ? "❌" : "⏳";
+    const outcomeBadge = t.outcome === "success" ? "[ok]" : t.outcome === "failure" ? "[fail]" : "[wait]";
     const conf = t.confidence !== null ? ` [${Math.round(t.confidence * 100)}%]` : "";
     const budget = `${t.tokensUsed}/${t.tokensBudget} tokens`;
     const line = `${indent}${outcomeBadge} ${t.type}: ${t.decision.slice(0, 60)}${conf} (${budget})`;
@@ -416,7 +416,7 @@ export function createThinkTool(): ToolDefinition<any, any, any> {
       }
       // Process Supervision: inject consistency check results
       if (consistencyIssues.length > 0) {
-        lines.push("", "⚠️ Consistency check:");
+        lines.push("", "[warn] Consistency check:");
         for (const issue of consistencyIssues) {
           lines.push(`  * ${issue.slice(0, 120)}`);
         }

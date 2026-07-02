@@ -1,7 +1,7 @@
 /**
  * Extension State - Session-Scoped State Management
  *
- * ⚠️ This is the ONLY sanctioned state holder for extension runtime data.
+ * [warn] This is the ONLY sanctioned state holder for extension runtime data.
  *    The `AGENTS.md` contract forbids module-level `let` mutable state
  *    because it leaks across sessions when pi runs multiple sessions in
  *    one process. If you need a per-extension state object, use

@@ -370,7 +370,7 @@ async function openModelSelectorUI(
         // Warn if a non-vision model was picked for the vision role
         if (scopeFilter && !hasImageInput(model as { input?: unknown })) {
           ctx.ui.notify(
-            `⚠ ${model.id} does not support image input. Vision analysis may fail.`,
+            `[warn] ${model.id} does not support image input. Vision analysis may fail.`,
             "warning",
           );
         }

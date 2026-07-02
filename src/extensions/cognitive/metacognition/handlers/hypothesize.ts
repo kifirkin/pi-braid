@@ -134,7 +134,7 @@ export function createHypothesizeTool(): ToolDefinition<any, any, any> {
           content: [
             {
               type: "text" as const,
-              text: `🔍 **Problem**: ${problem.slice(0, 200)}${problem.length > 200 ? "..." : ""}\n\n` +
+              text: `[?] **Problem**: ${problem.slice(0, 200)}${problem.length > 200 ? "..." : ""}\n\n` +
                 (evidence ? `**Evidence**: ${evidence.slice(0, 200)}${evidence.length > 200 ? "..." : ""}\n\n` : "") +
                 `**Gate decision**: ${gate.message}\n\n` +
                 `**Hypothesis generation skipped** - the input lacks sufficient specific evidence for meaningful root-cause analysis. ` +

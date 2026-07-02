@@ -93,9 +93,53 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   pass (no content injection, `<available_project_docs>` referenced,
   required exports present).
 
+### Added
+
+- **P0 #B: Consolidated claim verification** (3 critics → 1 multi-label
+  call). New `src/lib/ai/consolidated-claim-critic.ts` replaces three
+  separate binary critics with a single multi-label LLM call. Verified
+  consolidated output: coverage, divergence, completeness verdicts in
+  one pass. Research doc: `docs/P0-B-CRITIC-CONSOLIDATION.md`.
+- **FRAMEWORK_CONFIG_FIRST invariant** in prompt builder. When both
+  `frameworkConfig` and `settings.json` define the same setting,
+  frameworkConfig wins. Documented in identity.ts as an invariant.
+- **SCOPES identity framing** — principle-based scope awareness:
+  "every artifact belongs to a scope; default to the narrowest one
+  that satisfies the purpose." No path lists — discoverability over
+  memorization.
+
+### Changed
+
+- **D-57 phase 1: Enriched 5 cognitive tool descriptions** with static
+  instruction guidance previously emitted as L2 whispers. Descriptions
+  for `think`, `finalize`, `verify`, `scratchpad`, `memory_store` now
+  carry usage guidance the agent sees each tool call.
+- **D-57 phase 2: Removed 7 redundant static-instruction L2 whispers**
+  from `turn-end-handler.ts`. The guidance is now carried by tool
+  descriptions instead of runtime whispers. Remaining whispers are
+  runtime-only (error bursts, tool loops, context overflow).
+- **P2-9: Dropped pipe-delimited parsing** for `scratchpad add_learning`.
+  The explicit `category`, `content`, `scope` fields are now the sole
+  supported interface. Removed unused `text` parameter from
+  `handleAddLearning()`.
+- **P2-8: Batch scratchpad writes via debounced queue.**
+  `mutateAndSave` in `scratchpad/utils.ts` now coalesces rapid
+  mutations into a single disk write via `setTimeout(0)`. Added
+  `flushPendingScratchpadWrites()` for turn-end guarantee, wired into
+  `register-turn-end-hygiene.ts`. 3 new module-level `let` variables
+  documented as exceptions (AGENTS.md: 30→33).
+- **Stripped unicode/emoji characters from 93 source and test files.**
+  Replaced `✅❌⚠️🔴🟡🟢🔄⬜📄✗✓` with plain-text alternatives
+  (`[ok]`, `[fail]`, `[warn]`, `[high]`, `[med]`, `[low]`, `[..]`,
+  `[ ]`, `[file]`, `[x]`, `[v]`). Reduces context bloat from
+  decorative characters that were being rendered literally in agent
+  tool results.
+- **ROADMAP tally reconciled:** P2 7→8 of 11, P3 23+1→24 of 25.
+  Remaining items section updated (6→3, P2-8/P2-9/P3-7/P3-19 removed).
+
 ### Fixed
 
-- **Instance block: extension paths are always rendered as usable paths,
+- **Instance block: extension paths are always rendered as usable paths
   never bare `.`** (v3.10). When the agent runs from a project whose
   package is also a loaded top-level extension (e.g. `pi-braid` when
   `cwd = /Users/kifir/projects/agents/pi-braid`), `relativeToCwd()`

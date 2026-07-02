@@ -60,7 +60,7 @@ assert.strictEqual(normalizeLabel("notable"), null, '"notable" - "no" isn\'t a w
 assert.strictEqual(normalizeLabel("No!"), "no", '"No!" prefix with exclamation');
 assert.strictEqual(normalizeLabel("Yes?"), "yes", '"Yes?" prefix with question');
 
-console.log("  ✅ 15/15 normalizeLabel assertions passed");
+console.log("  [ok] 15/15 normalizeLabel assertions passed");
 
 // ─── normalizeLabel() - multi-class path via validLabels ──────────────────────
 
@@ -151,7 +151,7 @@ assert.strictEqual(
   'empty validLabels array -> binary fallback (Read-Edit-Bash -> null)',
 );
 
-console.log("  ✅ validLabels whitelist verified for trajectoryPattern critic");
+console.log("  [ok] validLabels whitelist verified for trajectoryPattern critic");
 
 // ─── replacePlaceholders() ────────────────────────────────────────────────────
 
@@ -213,7 +213,7 @@ assert.strictEqual(
   'empty substitution value',
 );
 
-console.log("  ✅ 9/9 replacePlaceholders assertions passed");
+console.log("  [ok] 9/9 replacePlaceholders assertions passed");
 
 // ─── classify() exports ───────────────────────────────────────────────────────
 
@@ -241,9 +241,9 @@ assert.ok(src.includes("Tier 3:"), "Tier 3 comment present");
 assert.ok(src.includes("latencyMs"), "latencyMs in ClassificationResult");
 assert.ok(src.includes("${latency}ms"), "latency logging present");
 
-console.log("  ✅ classify() exports verified");
-console.log("  ✅ Three-tier fallback structure verified");
-console.log("  ✅ Latency logging verified");
+console.log("  [ok] classify() exports verified");
+console.log("  [ok] Three-tier fallback structure verified");
+console.log("  [ok] Latency logging verified");
 
 // ─── Summary ──────────────────────────────────────────────────────────────────
 

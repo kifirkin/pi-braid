@@ -202,7 +202,7 @@ function generateDiffLines(original: string, cleaned: string): string[] {
 
   lines.push("");
   lines.push(`  ${original.length} -> ${cleaned.length} chars`);
-  lines.push(`  ${colors.green("✓")} Press Enter to send`);
+  lines.push(`  ${colors.green("[v]")} Press Enter to send`);
 
   return lines;
 }
@@ -272,7 +272,7 @@ async function processMessage(
       resolve({ action: "continue" });
       return;
     }
-    ctx.ui.setStatus("input-polisher", `⏳ Polishing with ${model.id}...`);
+    ctx.ui.setStatus("input-polisher", `[wait] Polishing with ${model.id}...`);
 
     const apiKey = await ctx.modelRegistry.getApiKeyForProvider(model.provider);
     if (!apiKey) {
@@ -355,7 +355,7 @@ async function processMessage(
       // Two-step flow: replace in input field, user presses Enter to send
       state.polishingExhausted = true;
       state.polishedText = cleaned;
-      ctx.ui.setStatus("input-polisher", "✓ Polished - press Enter to send");
+      ctx.ui.setStatus("input-polisher", "[v] Polished - press Enter to send");
       resolve({ action: "handled" });
     } else {
       state.skippedCount++;
@@ -367,7 +367,7 @@ async function processMessage(
     state.skippedCount++;
     const origPreview = original.length > 100 ? `${original.slice(0, 100)}...` : original;
     const errorMsg = err instanceof Error ? err.message : "Unknown error";
-    ctx.ui.setStatus("input-polisher", "❌ Polishing error!");
+    ctx.ui.setStatus("input-polisher", "[fail] Polishing error!");
     ctx.ui.notify(`Error on: "${origPreview}" - ${errorMsg}`, "error");
     resolve({ action: "continue" });
   } finally {
@@ -389,7 +389,7 @@ function processQueue(ctx: ExtensionContext) {
   processMessage(next.text, ctx, next.resolve);
 
   if (state.queue.length > 0) {
-    ctx.ui.setStatus("input-polisher", `⏳ Queue: ${state.queue.length + 1} messages...`);
+    ctx.ui.setStatus("input-polisher", `[wait] Queue: ${state.queue.length + 1} messages...`);
   }
 }
 
@@ -410,7 +410,7 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
     // these are urgent interruptions or continuations, not new messages.
     if (event.streamingBehavior) {
       state.skippedCount++;
-      ctx.ui.setStatus("input-polisher", "✓ Streaming input - skipping polish");
+      ctx.ui.setStatus("input-polisher", "[v] Streaming input - skipping polish");
       state.polishingExhausted = true;
       state.polishedText = original;
       return { action: "continue" };
@@ -429,7 +429,7 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
 
     if (original.length < state.config.minLength) {
       state.skippedCount++;
-      ctx.ui.setStatus("input-polisher", "✓ Short message - press Enter to send");
+      ctx.ui.setStatus("input-polisher", "[v] Short message - press Enter to send");
       ctx.ui.setEditorText(original);
       state.polishingExhausted = true;
       state.polishedText = original;
@@ -463,7 +463,7 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
     if (newlineCount > state.config.maxNewlines) {
       state.skippedCount++;
       log.debug(`Skipped long text (${newlineCount} newlines > ${state.config.maxNewlines} max)`);
-      ctx.ui.setStatus("input-polisher", "✓ Text too long to polish - press Enter to send");
+      ctx.ui.setStatus("input-polisher", "[v] Text too long to polish - press Enter to send");
       ctx.ui.setEditorText(original);
       state.polishingExhausted = true;
       state.polishedText = original;
@@ -471,7 +471,7 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
     }
 
     // Show loading before classification
-    ctx.ui.setStatus("input-polisher", "⏳ Classifying input...");
+    ctx.ui.setStatus("input-polisher", "[wait] Classifying input...");
 
     // Input critic: classify input with utility model (or heuristic fallback)
     const critique = await critiqueInput(original, ctx);
@@ -483,7 +483,7 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
       // recover on subsequent inputs once the LLM is back.
       state.skippedCount++;
       log.warn("Input classifier failed (all tiers down) - skipping polish");
-      ctx.ui.setStatus("input-polisher", "⚠ Classifier unavailable - press Enter to send");
+      ctx.ui.setStatus("input-polisher", "[warn] Classifier unavailable - press Enter to send");
       ctx.ui.setEditorText(original);
       state.polishingExhausted = true;
       state.polishedText = original;
@@ -491,7 +491,7 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
     }
     if (critique.isCode || (critique.isWellWritten && critique.isClear)) {
       state.skippedCount++;
-      ctx.ui.setStatus("input-polisher", "✓ Text already clean - press Enter to send");
+      ctx.ui.setStatus("input-polisher", "[v] Text already clean - press Enter to send");
       ctx.ui.notify(
         "Text was not modified. Press Enter to send, or edit and press Enter again.",
         "info",
@@ -504,7 +504,7 @@ export default function inputPolisherExtension(pi: ExtensionAPI) {
 
     if (state.isProcessing) {
       const queuePosition = state.queue.length + 1;
-      ctx.ui.setStatus("input-polisher", `⏳ Queue: ${queuePosition} messages waiting...`);
+      ctx.ui.setStatus("input-polisher", `[wait] Queue: ${queuePosition} messages waiting...`);
 
       return new Promise<InputEventResult>((resolve) => {
         state.queue.push({

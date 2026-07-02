@@ -41,7 +41,7 @@ export function registerAutoRetryEndHandler(pi: ExtensionAPI): void {
       sendEnforcementWhisper(
         pi,
         ctx,
-        `## ⚠️ ${msg}\n\nStore for reference: memory_store(content="API error: ${finalError}", tags=["error", "api"])`,
+        `## [warn] ${msg}\n\nStore for reference: memory_store(content="API error: ${finalError}", tags=["error", "api"])`,
       );
     }
   });

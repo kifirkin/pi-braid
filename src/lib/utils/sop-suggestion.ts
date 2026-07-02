@@ -12,9 +12,9 @@
  *             -> inject top SOPs as hint messages
  *
  * This implements the "suggestion" half of the consolidation pipeline:
- *   Phase 1: Extraction (sop-extractor.ts) ✓
+ *   Phase 1: Extraction (sop-extractor.ts) [v]
  *   Phase 2: Retrieval + Suggestion <- you are here
- *   Phase 3: Periodic consolidation (consolidation-channel.ts) ✓
+ *   Phase 3: Periodic consolidation (consolidation-channel.ts) [v]
  *
  * Phase 2.4 improvements:
  * - Config object replaced with hardcoded constants

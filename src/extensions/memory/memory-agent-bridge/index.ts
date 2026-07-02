@@ -610,7 +610,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
               lines.push(`Found ${episodeResults.length} related episodes:`);
               for (const ep of episodeResults) {
                 const icon =
-                  ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
+                  ep.outcome === "success" ? "[ok]" : ep.outcome === "failure" ? "[fail]" : "[warn]";
                 const sol = ep.solution ? ` Solution: ${ep.solution}` : "";
                 lines.push(
                   `  ${icon} [episodic] ${ep.task}${sol} (similarity: ${ep.similarity.toFixed(2)})`,
@@ -657,7 +657,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
                   lines.push(`Recent episodes (${threeMem.episodes.length} total):`);
                   for (const ep of recent) {
                     const icon =
-                      ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
+                      ep.outcome === "success" ? "[ok]" : ep.outcome === "failure" ? "[fail]" : "[warn]";
                     const time = new Date(ep.timestamp).toLocaleDateString();
                     lines.push(`  ${icon} [id:${ep.id}] ${time} - ${ep.task.slice(0, 60)}`);
                   }
@@ -764,7 +764,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
             const lines: string[] = [`Found ${episodes.length} relevant episodes:\n`];
             for (const ep of episodes) {
               const outcomeIcon =
-                ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
+                ep.outcome === "success" ? "[ok]" : ep.outcome === "failure" ? "[fail]" : "[warn]";
               const ageMinutes = Math.round((Date.now() - ep.timestamp) / 60000);
               const provenance = `[MEMORY project=${ep.project || "unknown"} age=${ageMinutes}m ago]`;
               const confTag =
@@ -792,7 +792,7 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
             const lines: string[] = [`Episodes (${state.episodes.length} total):\n`];
             for (const ep of state.episodes.slice(-10).reverse()) {
               const outcomeIcon =
-                ep.outcome === "success" ? "✅" : ep.outcome === "failure" ? "❌" : "⚠️";
+                ep.outcome === "success" ? "[ok]" : ep.outcome === "failure" ? "[fail]" : "[warn]";
               lines.push(`${outcomeIcon} ${ep.task.slice(0, 60)}...`);
             }
             return textResult(lines.join("\n"));

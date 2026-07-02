@@ -21,7 +21,7 @@ console.log("\n[1] Module exports");
   assert.ok(behavioralDriftModule.priority < 1, "priority should be < 1");
   assert.equal(typeof behavioralDriftModule.shouldActivate, "function", "shouldActivate should be a function");
   assert.equal(typeof behavioralDriftModule.activate, "function", "activate should be a function");
-  console.log("  ✅ Module exports correct");
+  console.log("  [ok] Module exports correct");
 }
 
 console.log("\n[2] shouldActivate gating");
@@ -37,7 +37,7 @@ console.log("\n[2] shouldActivate gating");
   // Should activate after baseline window on modulo turns
   const activeCtx = { turnCount: 15, toolCallsSinceLastTick: ["read", "edit"] };
   assert.ok(behavioralDriftModule.shouldActivate(activeCtx), "should activate after baseline on modulo turns");
-  console.log("  ✅ shouldActivate gating correct");
+  console.log("  [ok] shouldActivate gating correct");
 }
 
 console.log("\n[3] Source analysis - behavioral drift module structure");
@@ -62,7 +62,7 @@ console.log("\n[3] Source analysis - behavioral drift module structure");
   // Verify freshness: 10-turn baseline, 20-call recent window
   assert.ok(src.includes("10"), "baseline window should reference 10 turns");
   assert.ok(src.includes("0.25"), "drift threshold should be 0.25");
-  console.log("  ✅ Module structure verified via source analysis");
+  console.log("  [ok] Module structure verified via source analysis");
 }
 
 console.log("\n==================================================");

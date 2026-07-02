@@ -15,7 +15,7 @@ const src = readFileSync(join(ROOT, "src/extensions/self/latent-activator/index.
 	const toolNames = toolMatches.map((m) => m[1]);
 	console.log(`  Registered tools: ${toolNames.length} (${toolNames.join(", ")})`);
 	assert.ok(toolNames.length >= 1, `expected at least 1 tool, got ${toolNames.length}`);
-	console.log("  ✅ All assertions passed");
+	console.log("  [ok] All assertions passed");
 }
 
 console.log("\n=== Results: All latent-activator tests passed ===");

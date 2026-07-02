@@ -116,4 +116,4 @@ describe("context-density", () => {
   });
 });
 
-console.log("✅ Lib modules tests complete");
+console.log("[ok] Lib modules tests complete");

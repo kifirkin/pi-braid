@@ -115,4 +115,4 @@ describe("Whisper Formatting", () => {
   });
 });
 
-console.log("✅ claim-tracker tests complete");
+console.log("[ok] claim-tracker tests complete");

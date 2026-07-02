@@ -125,7 +125,7 @@ assert.ok(
   "formatLogBuffer must be exported (for the /logs slash command)",
 );
 
-console.log("✅ logger.ts contract: _consoleMinLevel='none' (TUI-safe), ConsoleLogLevel includes 'none', all 4 levels routed, buffer always populated.");
+console.log("[ok] logger.ts contract: _consoleMinLevel='none' (TUI-safe), ConsoleLogLevel includes 'none', all 4 levels routed, buffer always populated.");
 
 // ── 9. setLoggerContext API + ctx.ui.notify routing ───────────────────────
 
@@ -189,4 +189,4 @@ assert.ok(
   "src/index.ts must use the SESSION_SHUTDOWN constant (not raw 'session_shutdown' string)",
 );
 
-console.log("✅ setLoggerContext API + session_start binding verified.");
+console.log("[ok] setLoggerContext API + session_start binding verified.");

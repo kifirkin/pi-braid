@@ -149,9 +149,9 @@ export function formatScratchpad(
     lines.push("\nPlan:");
     for (let i = 0; i < filteredPlan.length; i++) {
       const step = filteredPlan[i];
-      const status = step.doneTurn > 0 ? "✅" : step.startTurn > 0 ? "🔄" : "⬜";
+      const status = step.doneTurn > 0 ? "[ok]" : step.startTurn > 0 ? "[..]" : "[ ]";
       const budget = step.budgetCalls ? `/${step.budgetCalls}` : "";
-      const over = step.budgetCalls && step.spentCalls > step.budgetCalls ? " ⚠" : "";
+      const over = step.budgetCalls && step.spentCalls > step.budgetCalls ? " [warn]" : "";
       lines.push(`  ${i + 1}. ${status} ${step.text} [${step.spentCalls}${budget} calls${over}] (${step.id})`);
     }
   }
@@ -160,7 +160,7 @@ export function formatScratchpad(
   const filteredDone = applyListFilter(pad.done);
   if (filteredDone.length > 0) {
     lines.push(`\nDone (${filteredDone.length}${filter ? ` of ${pad.done.length}` : ""}):`);
-    for (const d of filteredDone) lines.push(`  ✅ ${d.text} (${d.id})`);
+    for (const d of filteredDone) lines.push(`  [ok] ${d.text} (${d.id})`);
   }
 
   // Decisions
@@ -228,7 +228,7 @@ export function formatContinueDigest(pad: TaskScratchpad): string {
     lines.push(`## Open plan (${openPlan.length})`);
     for (let i = 0; i < openPlan.length; i++) {
       const step = openPlan[i];
-      const status = step.startTurn > 0 ? "🔄" : "⬜";
+      const status = step.startTurn > 0 ? "[..]" : "[ ]";
       const budget = step.budgetCalls ? ` [budget: ${step.budgetCalls}]` : "";
       lines.push(`  ${i + 1}. ${status} ${step.text}${budget}`);
     }
@@ -242,7 +242,7 @@ export function formatContinueDigest(pad: TaskScratchpad): string {
   if (pad.done.length > 0) {
     const lastDone = pad.done.slice(-3);
     lines.push(`## Recently completed`);
-    for (const d of lastDone) lines.push(`  ✅ ${d.text}`);
+    for (const d of lastDone) lines.push(`  [ok] ${d.text}`);
     lines.push("");
   }
 

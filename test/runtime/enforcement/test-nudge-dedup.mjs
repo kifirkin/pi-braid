@@ -59,7 +59,7 @@ console.log("Test 1: First nudge at threshold - should fire");
   assert.strictEqual(result.nudge, true, "First nudge should fire");
   recordNudge(state);
   assert.strictEqual(state.nudgeCount, 1);
-  console.log("✅ PASS: First nudge fires");
+  console.log("[ok] PASS: First nudge fires");
 }
 
 console.log("\nTest 2: Same turn - should suppress");
@@ -70,7 +70,7 @@ console.log("\nTest 2: Same turn - should suppress");
   const result = shouldNudge(state);
   assert.strictEqual(result.nudge, false, "Should not nudge same turn");
   assert.strictEqual(result.reason, "already-nudged-this-turn");
-  console.log("✅ PASS: Same-turn suppression works");
+  console.log("[ok] PASS: Same-turn suppression works");
 }
 
 console.log("\nTest 3: Action taken, within cooldown - should suppress");
@@ -83,7 +83,7 @@ console.log("\nTest 3: Action taken, within cooldown - should suppress");
   const result = shouldNudge(state);
   assert.strictEqual(result.nudge, false, "Should suppress after action");
   assert.strictEqual(result.reason, "action-taken-cooldown");
-  console.log("✅ PASS: Action-taken cooldown works");
+  console.log("[ok] PASS: Action-taken cooldown works");
 }
 
 console.log("\nTest 4: Action taken, cooldown expired - should fire");
@@ -95,7 +95,7 @@ console.log("\nTest 4: Action taken, cooldown expired - should fire");
   state.actionTaken = true;
   const result = shouldNudge(state);
   assert.strictEqual(result.nudge, true, "Should fire after cooldown expires");
-  console.log("✅ PASS: Cooldown expiry works");
+  console.log("[ok] PASS: Cooldown expiry works");
 }
 
 console.log("\nTest 5: finalize resets all nudge state");
@@ -116,7 +116,7 @@ console.log("\nTest 5: finalize resets all nudge state");
 
   assert.strictEqual(state.nudgeCount, 0);
   assert.strictEqual(state.turnsSinceRotation, 0);
-  console.log("✅ PASS: Finalize reset works");
+  console.log("[ok] PASS: Finalize reset works");
 }
 
 console.log("\n🎯 All nudge deduplication tests passed!");

@@ -58,7 +58,7 @@ for (const file of walk(SRC)) {
 }
 
 if (violations.length > 0) {
-  console.log("\n✗ Raw `console.*` calls found outside logger module:\n");
+  console.log("\n[x] Raw `console.*` calls found outside logger module:\n");
   for (const v of violations) {
     console.log(`  ${v.file}:${v.line}: ${v.text}`);
   }
@@ -68,4 +68,4 @@ if (violations.length > 0) {
   process.exit(1);
 }
 
-console.log(`✓ No raw console.* calls outside logger. (${scanned} files scanned)`);
+console.log(`[v] No raw console.* calls outside logger. (${scanned} files scanned)`);

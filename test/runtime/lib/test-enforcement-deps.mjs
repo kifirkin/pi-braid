@@ -68,7 +68,7 @@ console.log("Test 1: No sub-state file imports from `state.ts`");
     );
     if (stateImports.length > 0) {
       console.log(
-        `  ✗ ${file.replace(ROOT + "/", "")} imports from "${stateImports[0].path}"`,
+        `  [x] ${file.replace(ROOT + "/", "")} imports from "${stateImports[0].path}"`,
       );
       violations++;
     }
@@ -81,7 +81,7 @@ console.log("Test 1: No sub-state file imports from `state.ts`");
       `to enforcement-types.ts and import from there instead.`,
   );
   console.log(
-    `✅ PASS: ${substateFiles.length} sub-state file(s) checked, none import from state.ts`,
+    `[ok] PASS: ${substateFiles.length} sub-state file(s) checked, none import from state.ts`,
   );
 }
 
@@ -96,7 +96,7 @@ console.log("\nTest 2: `state.ts` imports sub-state factories (downward referenc
     `state.ts should import from at least 7 sub-state files. Found ${substateImports.length}.`,
   );
   console.log(
-    `✅ PASS: state.ts imports ${substateImports.length} sub-state module(s) (expected >=7)`,
+    `[ok] PASS: state.ts imports ${substateImports.length} sub-state module(s) (expected >=7)`,
   );
 }
 
@@ -112,7 +112,7 @@ console.log("\nTest 3: `state.ts` imports shared types from `enforcement-types.t
       `Found 0 imports.`,
   );
   console.log(
-    `✅ PASS: state.ts imports enforcement-types.ts (${typesImports.length} import statement(s))`,
+    `[ok] PASS: state.ts imports enforcement-types.ts (${typesImports.length} import statement(s))`,
   );
 }
 
@@ -146,7 +146,7 @@ console.log("\nTest 4: Sub-state files that need EnforcementState/ENFORCEMENT_PA
       `Found 0. Test may be vacuous.`,
   );
   console.log(
-    `✅ PASS: ${checkedCount} sub-state file(s) that need shared types import from enforcement-types.ts`,
+    `[ok] PASS: ${checkedCount} sub-state file(s) that need shared types import from enforcement-types.ts`,
   );
 }
 

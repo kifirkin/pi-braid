@@ -344,4 +344,4 @@ describe("D0 Dreamer Module", () => {
   });
 });
 
-console.log("✅ D0 dreamer tests complete");
+console.log("[ok] D0 dreamer tests complete");

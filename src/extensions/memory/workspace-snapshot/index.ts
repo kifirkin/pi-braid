@@ -182,7 +182,7 @@ async function handleCapture(
 
   return {
     text: [
-      `✅ Snapshot **${meta.id}**: ${reason}`,
+      `[ok] Snapshot **${meta.id}**: ${reason}`,
       `   ${meta.fileCount} file(s) captured`,
       meta.context ? `   Context: "${meta.context.goal}" (${meta.context.planStepCount} plan steps, ${meta.context.decisionCount} decisions, ${meta.context.learningCount} learnings)` : "",
       meta.sessionTag ? `   Session tag: **${meta.sessionTag}**` : "",
@@ -380,7 +380,7 @@ async function handlePreview(id: string | undefined, cwd: string): Promise<Actio
       ...(skipped.length > 0
         ? [
             "",
-            `⚠️ **${skipped.length}** file(s) skipped (outside workspace or excluded):`,
+            `[warn] **${skipped.length}** file(s) skipped (outside workspace or excluded):`,
             ...skipped.map((f: string) => `- \`${f}\``),
           ]
         : []),
@@ -428,12 +428,12 @@ async function handleRestore(id: string | undefined, cwd: string): Promise<Actio
 
   return {
     text: [
-      `✅ Restored **${toRestore.length}** file(s) from **${meta.id}** (${meta.reason}):`,
+      `[ok] Restored **${toRestore.length}** file(s) from **${meta.id}** (${meta.reason}):`,
       "",
       ...toRestore.map(
         (d) => `- \`${d.filePath}\` - ${d.status === "modified" ? "reverted" : "created"}`,
       ),
-      skipped.length > 0 ? `⚠️ ${skipped.length} file(s) skipped (security policy)` : "",
+      skipped.length > 0 ? `[warn] ${skipped.length} file(s) skipped (security policy)` : "",
       "",
       "**History preserved** - this snapshot is still available. Capture a new one after verifying the restore.",
     ].join("\n"),

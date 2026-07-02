@@ -88,7 +88,7 @@ for (const file of walk(SRC)) {
 }
 
 if (violations.length > 0) {
-  console.error("❌ Found Promise.all with LLM calls. Use Promise.allSettled:");
+  console.error("[fail] Found Promise.all with LLM calls. Use Promise.allSettled:");
   for (const v of violations) {
     console.error(`  ${v.file}:${v.line}  ${v.snippet}`);
   }
@@ -100,6 +100,6 @@ if (violations.length > 0) {
 }
 
 console.log(
-  `✅ Promise.allSettled pattern: scanned ${scanned.length} files, 0 violations.`,
+  `[ok] Promise.allSettled pattern: scanned ${scanned.length} files, 0 violations.`,
 );
 console.log("    (all LLM-fanout Promise.all blocks use allSettled)");

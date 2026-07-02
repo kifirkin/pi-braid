@@ -284,7 +284,7 @@ export function registerRotationHandlers(pi: ExtensionAPI): void {
             {
               type: "text" as const,
               text: [
-                "## 🔄 Session Rotated",
+                "## [..] Session Rotated",
                 "",
                 `Rotation #${state.rotationCount} completed at task boundary.`,
                 "Key context has been preserved in memory stores.",

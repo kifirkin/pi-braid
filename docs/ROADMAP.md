@@ -4,8 +4,8 @@
 
 **Compiled:** 2026-06-17
 **Last reconciled:** 2026-07-02 — headline numbers (81 tests pass, 25 skills,
-31 critics) updated. Detailed item-level status is partially stale; many
-P1/P2 items shipped since compilation. See commits from 2026-06-17 onward.
+31 critics) updated. Detailed item-level status updated: P2 8/11, P3 24/25
+shipped. Remaining items reconciled from 6 to 3.
 **Status:** Living document. Re-run after each remediation round.
 **Source audits:** All `docs/*.md` documents as of 2026-06-17 + deep review findings from this session.
 
@@ -742,8 +742,8 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
 | P2-5 | [EW-7.11](#411-ew-711-add-braidenforcement-settings-block--high--medium) add `braid.enforcement` settings block | Medium | `lib/config/braid-settings.ts`, `nudge-manager.ts`, 1 test |  ✅ Shipped in v3.3 |
 | P2-6 | [EW-7.13](#413-ew-713-add-per-source-priority-aware-caps--medium--medium) add per-source priority-aware caps | Medium | `turn-dedup.ts` + `WHISPER_CAPS` |
 | P2-7 | [DR-H-9](#dr-h-9) cache drift-classifier results by input hash | Medium | `topic-drift/index.ts` + cache module |
-| P2-8 | [DR-L-5](#dr-l-5) batch scratchpad writes via `file-mutation-queue` | Medium | `scratchpad/persistence.ts` |
-| P2-9 | [DR-M-3](#dr-m-3) drop pipe-delimited parsing for scratchpad actions | Easy | `scratchpad/index.ts:386,638` |
+| P2-8 | [DR-L-5](#dr-l-5) batch scratchpad writes via debounced queue | Medium | `scratchpad/utils.ts` |  ✅ Shipped 2026-07-02 |
+| P2-9 | [DR-M-3](#dr-m-3) drop pipe-delimited parsing for scratchpad actions | Easy | `scratchpad/index.ts:386,638` |  ✅ Shipped 2026-07-02 |
 | P2-10 | Q13 split memory-agent-bridge, timer, session-recall, latent-activator | Hard | 4 large files |
 | P2-11 | FR replace 7 B-class fallbacks still pending | Medium | `critic-registry.ts` + tierPolicy |
 
@@ -757,7 +757,7 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
 | P3-4 | [EW-7.10](#410-ew-710-make-_localizationrisk-a-regular-field--low--easy) rename `_localizationRisk` | Easy | 3 sites |
 | P3-5 | [EW-7.14](#414-ew-714-surface-nudgesuppressedcount-in-tui--low--easy) surface `nudgeSuppressedCount` in TUI | Easy | `turn-end-handler.ts:232` |
 | P3-6 | [EW-7.15](#415-ew-715-document-burst-suppression-scope--low--easy) document burst-suppression scope | Easy | `turn-end-handler.ts:347-349` |
-| P3-7 | [EW-7.12](#412-ew-712-establish-prefix-naming-convention--low--medium) establish prefix naming convention | Easy (doc) + Medium (migrate) | all whisper sites |
+| P3-7 | [EW-7.12](#412-ew-712-establish-prefix-naming-convention--low--medium) establish prefix naming convention | Easy (doc) + Medium (migrate) | all whisper sites |  ✅ Shipped (universal envelope in `applyWhisperEnvelope`) |
 | P3-8 | [DR-M-1](#dr-m-1) skip `mutateAndSave` when nothing pruned | Easy | `scratchpad/index.ts:38,101` (imported) |
 | P3-9 | [DR-M-2](#dr-m-2) use or drop `capPush` return value | Easy | `scratchpad/index.ts:31` (imported) |
 | P3-10 | [DR-M-5](#dr-m-5) implement or remove `successCriteria` in `elevate_to_goal` | Easy | `scratchpad/index.ts:399,441,557` |
@@ -2358,27 +2358,38 @@ description, P1-8 recall_get fake entry discriminator.
 (P1-2 verified as no-op in v1.9 — line text already
 matched the corrected count, no code change needed.)
 
-**P2 (7 of 11):** P2-1 typed-adapter pattern (full 6 sites
+**P2 (8 of 11):** P2-1 typed-adapter pattern (full 6 sites
 now covered in v2.6), P2-2 scratchpad split into handler
 groups, P2-3 (EW-7.4) classifier-offline helper, P2-4
 (EW-7.9) session signals per-signal gating, P2-5 (EW-7.11)
 braid.enforcement settings (v3.3), P2-6 (EW-7.13)
-per-source priority-aware caps, P2-11 B-class fallbacks
+per-source priority-aware caps, P2-9 scratchpad
+pipe-delimited parsing dropped, P2-11 B-class fallbacks
 (tierPolicy infrastructure).
 
-**P3 (23 full + 1 partial of 25):** P3-1 (EW-7.5) checkBlocking
+**P2-8 (batch scratchpad writes):** shipped 2026-07-02.
+Debounced write queue in scratchpad/utils.ts replaces
+immediate sync write on every mutation. Coalesces rapid
+mutations into a single disk write via setTimeout(0).
+Wired into turn-end flush in register-turn-end-hygiene.ts.
+
+**P3 (24 of 25):** P3-1 (EW-7.5) checkBlocking
 cleanup, P3-2 (EW-7.7) SIGNAL_KEYS, P3-3 (EW-7.8)
 nudgeCooldownMs constant, P3-4 (EW-7.10) localizationRisk
 rename, P3-5 (EW-7.14) nudgeSuppressedCount TUI, P3-6
-(EW-7.15) burst-suppression docs, P3-8 (DR-M-1) skip
+(EW-7.15) burst-suppression docs, P3-7 (EW-7.12) prefix
+naming convention (universal [braid-whisper - <subsystem>]
+envelope already applied by applyWhisperEnvelope in
+sendTrackedMessage), P3-8 (DR-M-1) skip
 mutateAndSave, P3-9 (DR-M-2) capPush void return (v2.9),
 P3-10 (DR-M-5) successCriteria, P3-11 (DR-M-6) constraint_id,
 P3-12 (DR-M-7) consolidated memory cap, P3-13 (DR-M-9) ttl
 provenance, P3-14 (DR-M-10) addEvidence dedup, P3-15
 (DR-L-1) fireHandlers, P3-16 (DR-L-2) getSessionIdSafe,
 P3-17 (DR-L-3) state(ctx) migration (v2.9), P3-18 (DR-L-4)
-dead re-exports (v2.9), P3-19 partial, P3-20 through P3-24,
-P3-25 cost-report module (v3.0).
+dead re-exports (v2.9), P3-19 think budget (decision:
+external cost control, no per-turn throttling), P3-20
+through P3-24, P3-25 cost-report module (v3.0).
 
 **EW items (14 of 15):** EW-7.1 (P0-6), EW-7.3 (P1-4),
 EW-7.4 (P2-3), EW-7.5 (P3-1), EW-7.6 (P0-7),
@@ -2388,38 +2399,23 @@ EW-7.15 (P3-6), EW-7.2 (P1-5 — shipped),
 EW-7.11 / P2-5 (shipped v3.3). EW-7.12 (P3-7)
 remains deferred.
 
-### Remaining 6 items (deferred)
+### Remaining 3 items (deferred)
 
 The remaining items are:
 
-- **P2-7 / DR-H-9** (drift-classifier cache) — *partially
-  unblocked* by v3.0: Q17's hash cache is already in place
-  via `text-classifier.ts`, and v3.0's cost-report provides
-  the per-call USD baseline. The remaining work is the
-  prompt-collapse optimization (3 yes/no classifiers → 1
-  multi-label) and TTL tuning — both require design calls.
-- **P2-8** (context-lifecycle re-entrancy guard) — needs
-  design call on re-entrancy depth limits and handler
-  deferral strategy.
-- **P2-9** (scratchpad pipe-delimited parsing) — needs
-  decision on whether to deprecate the legacy pipe-delimited
-  format or keep it as a backward-compat layer.
+- **P2-7 / DR-H-9** (drift-classifier cache) — cache part
+  shipped (critic-cache.ts, wired in text-classifier.ts).
+  Remaining: prompt-collapse optimization (3 yes/no
+  classifiers → 1 multi-label) — needs design call.
 - **P2-10 / Q13** (large-file splits: memory-agent-bridge,
   timer, session-recall, latent-activator) — explicitly
   deferred by the original Q13 decision; lowest value item.
-- **P3-7 / EW-7.12** (prefix naming convention) — policy
-  decision best made with user input.
-- **P3-19** (partial: think budget allocation) — partially
-  shipped; remaining work needs design call on budget
-  allocation strategy.
 
-All of these require user input or a policy decision.
-P2-10 is explicitly deferred. P2-7 (cache TTL sizing) is now
-*unblocked* by v3.0's cost-report layer: the report provides
-the per-call cost baseline that informs a TTL choice, though
-the actual implementation still requires a design call (how
-aggressive to be with caching, what to do on cache eviction,
-etc.).
+Items shipped since last ROADMAP revision:
+- **P2-8:** batch scratchpad writes (debounced queue in utils.ts)
+- **P2-9:** scratchpad pipe-delimited parsing dropped
+- **P3-7:** prefix naming convention (universal envelope already in place)
+- **P3-19:** think budget allocation (decision: external cost control)
 
 For the historical context: **P1-3** (timer closure-captured
 state, v3.2), **P1-5 / EW-7.2** (14 unwired NudgeTypes, v3.2),

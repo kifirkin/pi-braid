@@ -169,4 +169,4 @@ describe("turn-end-coordinator", () => {
   });
 });
 
-console.log("✅ Lib pure function tests complete");
+console.log("[ok] Lib pure function tests complete");

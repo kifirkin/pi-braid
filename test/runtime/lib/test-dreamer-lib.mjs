@@ -88,4 +88,4 @@ describe("resetDreamer", () => {
   });
 });
 
-console.log("✅ Dreamer lib tests complete");
+console.log("[ok] Dreamer lib tests complete");

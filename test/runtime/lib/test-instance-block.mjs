@@ -74,10 +74,10 @@ async function test(name, fn) {
   try {
     await fn();
     results.push({ name, pass: true });
-    process.stdout.write(`    ✓\n`);
+    process.stdout.write(`    [v]\n`);
   } catch (e) {
     results.push({ name, pass: false, error: e.message });
-    process.stdout.write(`    ✗ ${e.message}\n`);
+    process.stdout.write(`    [x] ${e.message}\n`);
   }
 }
 
@@ -339,7 +339,7 @@ console.log(`\n${passed}/${results.length} subtests passed`);
 if (failed > 0) {
   const failLines = [];
   for (const r of results.filter((r) => !r.pass)) {
-    failLines.push(`  ✗ ${r.name}: ${r.error}`);
+    failLines.push(`  [x] ${r.name}: ${r.error}`);
   }
   console.log(failLines.join("\n"));
   process.exit(1);

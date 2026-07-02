@@ -32,10 +32,10 @@ let passed = 0;
 let failed = 0;
 const check = (cond, msg) => {
   if (cond) {
-    console.log(`  ✓ ${msg}`);
+    console.log(`  [v] ${msg}`);
     passed++;
   } else {
-    console.log(`  ✗ ${msg}`);
+    console.log(`  [x] ${msg}`);
     failed++;
   }
 };

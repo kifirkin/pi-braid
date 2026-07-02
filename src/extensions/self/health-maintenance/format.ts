@@ -36,7 +36,7 @@ export function formatHealthMaintenanceOutput(result: HealthMaintenanceResult): 
         lines.push(`- Avg Error Rate: ${(m.avgErrorRate * 100)?.toFixed(1)}%`);
         lines.push(`- Avg Tool Success: ${m.avgToolSuccess?.toFixed(1)}%`);
         lines.push("");
-        lines.push(`**Status:** ${m.degraded ? "🔴 DEGRADED" : "🟢 HEALTHY"}`);
+        lines.push(`**Status:** ${m.degraded ? "[high] DEGRADED" : "[low] HEALTHY"}`);
       }
 
       if (data?.metacognition) {
@@ -64,7 +64,7 @@ export function formatHealthMaintenanceOutput(result: HealthMaintenanceResult): 
       const data = result.data as CheckData;
       lines.push("# Degradation Check");
       lines.push("");
-      lines.push(`**Degraded:** ${data?.degraded ? "🔴 YES" : "🟢 NO"}`);
+      lines.push(`**Degraded:** ${data?.degraded ? "[high] YES" : "[low] NO"}`);
       break;
     }
 
@@ -75,7 +75,7 @@ export function formatHealthMaintenanceOutput(result: HealthMaintenanceResult): 
     case "benchmark": {
       lines.push(`# ${result.action.toUpperCase()}`);
       lines.push("");
-      lines.push(result.success ? "✅ Success" : "❌ Failed");
+      lines.push(result.success ? "[ok] Success" : "[fail] Failed");
       if (result.error) {
         lines.push(`**Error:** ${result.error}`);
       }

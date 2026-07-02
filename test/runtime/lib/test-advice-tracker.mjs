@@ -115,4 +115,4 @@ describe("Advice Tracking", () => {
   });
 });
 
-console.log("✅ Advice tracker tests complete");
+console.log("[ok] Advice tracker tests complete");

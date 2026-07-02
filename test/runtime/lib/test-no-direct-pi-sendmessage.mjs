@@ -58,7 +58,7 @@ for (const file of walk(SRC)) {
 }
 
 if (violations.length > 0) {
-  console.log("\n✗ Direct `pi.sendMessage(` calls found outside injection-tracker:\n");
+  console.log("\n[x] Direct `pi.sendMessage(` calls found outside injection-tracker:\n");
   for (const v of violations) {
     console.log(`  ${v.file}:${v.line}: ${v.text}`);
   }
@@ -68,4 +68,4 @@ if (violations.length > 0) {
   process.exit(1);
 }
 
-console.log(`✓ No direct pi.sendMessage() calls outside injection-tracker. (${scanned} files scanned)`);
+console.log(`[v] No direct pi.sendMessage() calls outside injection-tracker. (${scanned} files scanned)`);

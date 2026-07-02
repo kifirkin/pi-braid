@@ -575,14 +575,14 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
         case "list": {
           if (pending.length === 0) {
             return {
-              content: [{ type: "text" as const, text: "✓ No pending proposals." }],
+              content: [{ type: "text" as const, text: "[v] No pending proposals." }],
               details: { pending: 0 },
             };
           }
 
           const lines = pending.map((p) => {
             const age = Date.now() - p.created_at;
-            const icon = p.priority === "high" ? "🔴" : p.priority === "medium" ? "🟡" : "🟢";
+            const icon = p.priority === "high" ? "[high]" : p.priority === "medium" ? "[med]" : "[low]";
             return `${icon} **${p.id}** (${p.priority}) ${p.message}\n  └─ ${formatDuration(age)} ago`;
           });
 
@@ -627,7 +627,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
           });
 
           return {
-            content: [{ type: "text" as const, text: `✓ Approved **${id}**: ${proposal.message}` }],
+            content: [{ type: "text" as const, text: `[v] Approved **${id}**: ${proposal.message}` }],
             details: { approved: id, proposal },
           };
         }
@@ -662,7 +662,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
           });
 
           return {
-            content: [{ type: "text" as const, text: `✗ Rejected **${id}**.` }],
+            content: [{ type: "text" as const, text: `[x] Rejected **${id}**.` }],
             details: { rejected: id },
           };
         }

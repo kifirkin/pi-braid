@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 
 let passed = 0;
 let failed = 0;
-const check = (cond, msg) => cond ? (passed++, console.log("  ✅ "+msg)) : (failed++, console.log("  ❌ "+msg));
+const check = (cond, msg) => cond ? (passed++, console.log("  [ok] "+msg)) : (failed++, console.log("  [fail] "+msg));
 
 // ── 1. Trajectory enrichment in ToolTracking type ────────────────────────────
 
@@ -48,7 +48,7 @@ console.log("\n[1] Trajectory enrichment - ToolTracking type");
     heartbeatSrc.includes("enrichedTrajectory"),
     "agent_end should use enriched trajectory for SOP extraction",
   );
-  console.log("  ✅ Trajectory enrichment wired in heartbeat");
+  console.log("  [ok] Trajectory enrichment wired in heartbeat");
 }
 
 // ── 2. Consolidation hint writing ────────────────────────────────────────────
@@ -110,7 +110,7 @@ console.log("\n[2] Consolidation hint writing");
     `high-quality episode should score well: got ${highScore.consolidationScore.toFixed(2)}`,
   );
 
-  console.log("  ✅ Consolidation hint writing logic verified");
+  console.log("  [ok] Consolidation hint writing logic verified");
 }
 
 // ── 3. Hint pruning in prompt-builder ─────────────────────────────────────────
@@ -141,7 +141,7 @@ console.log("\n[3] Hint loading with relevance filtering");
     "should have heuristic fallback for hint relevance",
   );
 
-  console.log("  ✅ Hint system: load + relevance filter + whisper delivery");
+  console.log("  [ok] Hint system: load + relevance filter + whisper delivery");
 }
 
 // ── 4. End-to-end: write test hints, verify loadConsolidatedHints parses them ─
@@ -189,7 +189,7 @@ console.log("\n[4] E2E hint file parsing");
 
   // Cleanup
   rmSync(testDir, { recursive: true, force: true });
-  console.log("  ✅ E2E hint parsing: freshness filtering works correctly");
+  console.log("  [ok] E2E hint parsing: freshness filtering works correctly");
 }
 
 // ── 5. Braid paths constant ──────────────────────────────────────────────────
@@ -205,7 +205,7 @@ console.log("\n[5] CONSOLIDATED_HINTS_FILE path");
     CONSOLIDATED_HINTS_FILE.endsWith("consolidated-hints.jsonl"),
     "hints file should be consolidated-hints.jsonl",
   );
-  console.log(`  ✅ Hints file path: ${CONSOLIDATED_HINTS_FILE}`);
+  console.log(`  [ok] Hints file path: ${CONSOLIDATED_HINTS_FILE}`);
 }
 
 // ── Summary ──────────────────────────────────────────────────────────────────

@@ -68,7 +68,7 @@ export async function handleOverflowFailure(
           {
             type: "text" as const,
             text: [
-              `## ⚠️ Context overflow recovery failed (attempt ${overflowRetryState.attempt + 1}/${OVERFLOW_RETRY_MAX_ATTEMPTS})`,
+              `## [warn] Context overflow recovery failed (attempt ${overflowRetryState.attempt + 1}/${OVERFLOW_RETRY_MAX_ATTEMPTS})`,
               errMsg,
               "",
               overflowRetryState.attempt === 0
@@ -101,7 +101,7 @@ export async function handleOverflowFailure(
         {
           type: "text" as const,
           text: [
-            "## ⚠️ Context overflow recovery exhausted",
+            "## [warn] Context overflow recovery exhausted",
             errMsg,
             "",
             `After ${OVERFLOW_RETRY_MAX_ATTEMPTS} attempts, compaction cannot reduce context enough.`,
@@ -153,7 +153,7 @@ export async function handleTransientError(
         content: [
           {
             type: "text" as const,
-            text: `⚠️ Server overload (${errMsg}). Auto-retrying... (${compactionRetryState.attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})`,
+            text: `[warn] Server overload (${errMsg}). Auto-retrying... (${compactionRetryState.attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})`,
           },
         ],
         display: true,
@@ -173,7 +173,7 @@ export async function handleTransientError(
       content: [
         {
           type: "text" as const,
-          text: `⚠️ Auto-compaction failed after retries (server overload): ${errMsg}`,
+          text: `[warn] Auto-compaction failed after retries (server overload): ${errMsg}`,
         },
       ],
       display: true,
@@ -211,7 +211,7 @@ export async function handleContextWindowError(
         {
           type: "text" as const,
           text: [
-            "## ⚠️ Session too large",
+            "## [warn] Session too large",
             errMsg,
             "",
             "The session cannot be compacted because it exceeds the model's context limit.",
@@ -261,7 +261,7 @@ export async function handleThresholdFailure(
         content: [
           {
             type: "text" as const,
-            text: `⚠️ Compaction failed (${errMsg}). Auto-retrying... (${compactionRetryState.attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})`,
+            text: `[warn] Compaction failed (${errMsg}). Auto-retrying... (${compactionRetryState.attempt}/${COMPACTION_RETRY_MAX_ATTEMPTS})`,
           },
         ],
         display: true,
@@ -282,7 +282,7 @@ export async function handleThresholdFailure(
         {
           type: "text" as const,
           text: [
-            "## ⚠️ Auto-compaction failed permanently",
+            "## [warn] Auto-compaction failed permanently",
             errMsg,
             "",
             "Consider: `compact` manually, `context_checkout` with backup, or storing learnings in memory.",

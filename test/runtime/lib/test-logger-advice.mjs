@@ -119,4 +119,4 @@ describe("advice-tracker thresholds", () => {
   });
 });
 
-console.log("✅ Logger + advice tracker tests complete");
+console.log("[ok] Logger + advice tracker tests complete");

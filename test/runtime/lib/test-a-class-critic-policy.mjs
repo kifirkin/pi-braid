@@ -87,7 +87,7 @@ for (const file of walk(SRC)) {
 }
 
 if (violations.length > 0) {
-  console.error("❌ A-class critic fallbacks still being used as fallbacks. Use tierPolicy: 'always-llm':");
+  console.error("[fail] A-class critic fallbacks still being used as fallbacks. Use tierPolicy: 'always-llm':");
   for (const v of violations) {
     console.error(`  ${v.file}: ${v.fallback} (${v.count}x)`);
   }
@@ -99,6 +99,6 @@ if (violations.length > 0) {
 }
 
 console.log(
-  `✅ A-class critic policy: scanned ${scanned} files, 0 violations across ${A_CLASS_FALLBACKS.length} fallbacks.`,
+  `[ok] A-class critic policy: scanned ${scanned} files, 0 violations across ${A_CLASS_FALLBACKS.length} fallbacks.`,
 );
 console.log("    (all A-class heuristic fallbacks converted to tierPolicy: 'always-llm')");

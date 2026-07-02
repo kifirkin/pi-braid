@@ -10,8 +10,8 @@ import * as fsSync from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
-const PASS = "\x1b[32m✓\x1b[0m";
-const FAIL = "\x1b[31m✗\x1b[0m";
+const PASS = "\x1b[32m[v]\x1b[0m";
+const FAIL = "\x1b[31m[x]\x1b[0m";
 
 let passed = 0;
 let failed = 0;

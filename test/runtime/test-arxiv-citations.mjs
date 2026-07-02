@@ -70,7 +70,7 @@ const broken = results.filter(r => r.ok === false);
 const unreachable = results.filter(r => r.ok === null);
 
 if (broken.length > 0) {
-  console.error("\n❌ BROKEN arXiv citations (HTTP non-200):");
+  console.error("\n[fail] BROKEN arXiv citations (HTTP non-200):");
   for (const b of broken) {
     console.error(`  - arXiv:${b.id} -> HTTP ${b.status}`);
   }
@@ -83,13 +83,13 @@ if (broken.length > 0) {
 }
 
 if (unreachable.length > 0) {
-  console.warn("\n⚠ arxiv.org unreachable for some IDs (network error, test skipped):");
+  console.warn("\n[warn] arxiv.org unreachable for some IDs (network error, test skipped):");
   for (const u of unreachable) {
     console.warn(`  - arXiv:${u.id}: ${u.error}`);
   }
 }
 
 console.log(
-  `\n✅ arXiv citation check: ${cited.size} cited, ${results.length - broken.length} resolve, ` +
+  `\n[ok] arXiv citation check: ${cited.size} cited, ${results.length - broken.length} resolve, ` +
     `${broken.length} broken.`,
 );

@@ -69,4 +69,4 @@ describe("State Reset", () => {
   });
 });
 
-console.log("✅ Bidirectional verifier tests complete");
+console.log("[ok] Bidirectional verifier tests complete");

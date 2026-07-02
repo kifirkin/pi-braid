@@ -147,7 +147,7 @@ let hasDrift = false;
 if (orphans.length > 0) {
   hasDrift = true;
   console.log(
-    `\n⚠️  ${orphans.length} extension directory(ies) exist on disk but are NOT in manifest.ts:\n`,
+    `\n[warn]  ${orphans.length} extension directory(ies) exist on disk but are NOT in manifest.ts:\n`,
   );
   for (const o of orphans) {
     console.log(`  + ${o.id}    (${o.path})`);
@@ -157,7 +157,7 @@ if (orphans.length > 0) {
 if (dangling.length > 0) {
   hasDrift = true;
   console.log(
-    `\n⚠️  ${dangling.length} manifest.ts ID(s) point to directories that do NOT exist:\n`,
+    `\n[warn]  ${dangling.length} manifest.ts ID(s) point to directories that do NOT exist:\n`,
   );
   for (const d of dangling) {
     console.log(`  - ${d}`);
@@ -167,7 +167,7 @@ if (dangling.length > 0) {
 if (missingImports.length > 0) {
   hasDrift = true;
   console.log(
-    `\n⚠️  ${missingImports.length} extension directory(ies) have no ` +
+    `\n[warn]  ${missingImports.length} extension directory(ies) have no ` +
       `matching import statement in manifest.ts:\n`,
   );
   for (const p of missingImports) {
@@ -184,6 +184,6 @@ if (hasDrift) {
 }
 
 console.log(
-  `✅ Manifest is consistent: ${discovered.length} extension directory(ies) ` +
+  `[ok] Manifest is consistent: ${discovered.length} extension directory(ies) ` +
     `match ${manifestIds.length} manifest entry(ies) with ${manifestImports.length} import(s).`,
 );

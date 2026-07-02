@@ -21,7 +21,7 @@ export function isSkipped(name) {
   if (!entry) return false;
   const expired = new Date(entry.expiry) < new Date();
   if (expired) {
-    console.error(`⚠️  SKIP EXPIRED: "${name}" - expired ${entry.expiry}, fix or extend`);
+    console.error(`[warn]  SKIP EXPIRED: "${name}" - expired ${entry.expiry}, fix or extend`);
   }
   return true;
 }

@@ -147,11 +147,11 @@ function test(name, fn) {
   return Promise.resolve()
     .then(fn)
     .then(() => {
-      console.log(`  ✓ ${name}`);
+      console.log(`  [v] ${name}`);
       passed++;
     })
     .catch((e) => {
-      console.log(`  ✗ ${name}: ${e.message}`);
+      console.log(`  [x] ${name}: ${e.message}`);
       failed++;
     });
 }

@@ -72,7 +72,7 @@ assert.ok(
   "Default confidence should be dynamic (0.7 or 0.5 based on tierPolicy)",
 );
 
-console.log("✅ text-classifier tierPolicy contract locked:");
+console.log("[ok] text-classifier tierPolicy contract locked:");
 console.log("    - always-llm skips tier 1");
 console.log("    - fallback-only uses tier 1 with 0.5 confidence");
 console.log("    - prefer-heuristic uses tier 1 with 0.7 confidence");

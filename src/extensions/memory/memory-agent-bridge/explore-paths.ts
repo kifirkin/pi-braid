@@ -150,7 +150,7 @@ export function createExplorePathsTool() {
               localResults.push(
                 grepResult
                   .split("\n")
-                  .map((f) => `  📄 ${f}`)
+                  .map((f) => `  [file] ${f}`)
                   .join("\n"),
               );
               localResults.push("(first 3 matches shown)");
@@ -175,7 +175,7 @@ export function createExplorePathsTool() {
           if (found.length > 0) {
             for (const { candidate, foundPath } of found) {
               const relPath = foundPath.replace(PROJECT_ROOT + "/", "");
-              localResults.push(`✅ "${candidate}" -> ${relPath}`);
+              localResults.push(`[ok] "${candidate}" -> ${relPath}`);
               const preview = await readFileHead(foundPath);
               const previewLines = preview.split("\n").slice(0, 15);
               localResults.push("```");
@@ -185,7 +185,7 @@ export function createExplorePathsTool() {
           }
           if (notFound.length > 0) {
             for (const { candidate } of notFound) {
-              localResults.push(`❌ "${candidate}" not found in project`);
+              localResults.push(`[fail] "${candidate}" not found in project`);
             }
           }
         }

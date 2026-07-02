@@ -42,10 +42,10 @@ let failed = 0;
 function test(name, fn) {
   try {
     fn();
-    console.log(`  ✓ ${name}`);
+    console.log(`  [v] ${name}`);
     passed++;
   } catch (e) {
-    console.log(`  ✗ ${name}: ${e.message}`);
+    console.log(`  [x] ${name}: ${e.message}`);
     failed++;
   }
 }

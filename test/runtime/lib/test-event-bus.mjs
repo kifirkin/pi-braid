@@ -98,4 +98,4 @@ describe("Event Bus", () => {
   });
 });
 
-console.log("✅ Event bus tests complete");
+console.log("[ok] Event bus tests complete");

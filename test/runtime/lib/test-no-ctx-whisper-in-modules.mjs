@@ -77,7 +77,7 @@ for (const file of walk(MODULES_DIR)) {
 }
 
 if (violations.length > 0) {
-  console.log("\n✗ Direct `ctx.whisper(` calls found in heartbeat-scheduler modules:\n");
+  console.log("\n[x] Direct `ctx.whisper(` calls found in heartbeat-scheduler modules:\n");
   for (const v of violations) {
     console.log(`  ${v.file}:${v.line}: ${v.text}`);
   }
@@ -89,5 +89,5 @@ if (violations.length > 0) {
 }
 
 console.log(
-  `✓ No direct ctx.whisper() calls in heartbeat-scheduler modules. (${scanned} files scanned)`,
+  `[v] No direct ctx.whisper() calls in heartbeat-scheduler modules. (${scanned} files scanned)`,
 );

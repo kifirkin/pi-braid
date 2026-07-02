@@ -98,9 +98,9 @@ function clearProcessedCompacts(sessionId: string, leafId: string): void {
 // Fix:
 //  1. input event -> capture user's message text (TUI queues it after)
 //  2. session_compact -> pre-append to sessionManager + intercept appendMessage
-//  3. compaction_end -> rebuildChatFromMessages() sees user's message in session ✅
+//  3. compaction_end -> rebuildChatFromMessages() sees user's message in session [ok]
 //  4. flushCompactionQueue -> session.prompt() -> appendMessage intercept SKIPS duplicate
-//  5. Agent turn fires ✅ (session.prompt() triggers agent-loop normally)
+//  5. Agent turn fires [ok] (session.prompt() triggers agent-loop normally)
 //
 // The intercept works by wrapping sessionManager.appendMessage to detect when
 // flushCompactionQueue's session.prompt() fires (it calls appendMessage via the

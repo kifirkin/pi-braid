@@ -163,7 +163,7 @@ export function registerAutoRetryEndHandler(pi: ExtensionAPI): void {
               {
                 type: "text" as const,
                 text: [
-                  "## ⚠️ API retry failed after " + attempt + " attempt(s)",
+                  "## [warn] API retry failed after " + attempt + " attempt(s)",
                   finalError ?? "Unknown error",
                   "",
                   "The API kept returning errors despite retries. Possible causes:",

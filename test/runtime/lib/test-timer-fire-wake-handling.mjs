@@ -56,10 +56,10 @@ const failures = [];
 function test(name, fn) {
   try {
     fn();
-    console.log(`  ✓ ${name}`);
+    console.log(`  [v] ${name}`);
     passed++;
   } catch (e) {
-    console.log(`  ✗ ${name}: ${e.message}`);
+    console.log(`  [x] ${name}: ${e.message}`);
     failures.push({ name, error: e.message });
     failed++;
   }
