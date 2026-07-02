@@ -36,6 +36,20 @@ import { projectSlugFromCwd } from "../../memory/scratchpad/persistence.js";
 
 const log = createLogger("enforcement:session-start-discoverability");
 
+// ── Process-level dedup for discoverability whispers ────────────────────────
+// Prevents re-emitting the same discoverability text across /reload calls.
+// The Set persists in module memory (same process), so the whisper fires at
+// most once per `pi` process lifetime. A fresh `pi` process starts with an
+// empty Set, showing discoverability once for the new lifecycle.
+//
+// Why this isn't a session-scoped signal: the discoverability handler runs
+// on every session_start, including /reload. The disk-backed state (scratchpad,
+// episodes, resume) doesn't change during a reload, so the text is identical.
+// Without process-level dedup, every reload re-emits the same bundle.
+// `sendEnforcementWhisper` doesn't go through NudgeManager (no per-NudgeType
+// cooldown or hash dedup), so there's no other dedup layer to catch it.
+const _shownDiscoveryBundles = new Set<string>();
+
 /**
  * Register the SESSION_START discoverability handler.
  *
@@ -165,14 +179,24 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
         // ignore
       }
 
-      // ── Emit bundled signals (single whisper) ──────────────────────
+      // ── Emit bundled signals (single whisper, process-level dedup) ─
       // Bundling prevents flood: the discoverability handler can detect up
       // to 5 sources (scratchpad, episodes, semantic, prior sessions, resume).
       // Emitting each as a separate whisper would stack in the first turn.
       // The braid-whisper prefix is added by the trunk (sendTrackedMessage),
       // so we just join the body-level signals with newlines.
+      //
+      // Process-level dedup: `_shownDiscoveryBundles` tracks already-shown
+      // texts across reloads. Same process → same Set → identical text is
+      // skipped. Fresh `pi` process → empty Set → shows once.
       if (signals.length > 0) {
-        sendEnforcementWhisper(pi, ctx, signals.join("\n"));
+        const bundled = signals.join("\n");
+        if (!_shownDiscoveryBundles.has(bundled)) {
+          _shownDiscoveryBundles.add(bundled);
+          sendEnforcementWhisper(pi, ctx, bundled);
+        } else {
+          log.debug(`[discoverability] Skipping already-shown bundle (${signals.length} signals)`);
+        }
       }
 
       if (signals.length > 0) {
