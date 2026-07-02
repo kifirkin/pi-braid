@@ -251,18 +251,16 @@ export async function dispatchTurnEndLoop(
   const inOverflowRecovery =
     getState(ctx).currentTurn - getState(ctx).overflowRecently < RECOVERY_GRACE_TURNS;
 
+  // D-57: memory usage is a static instruction — covered by memory_store tool description
+  // and MEMORY_AWARENESS system prompt. Keep the state counter for analytics but
+  // suppress the repetitive whisper.
   if (
     !hadErrors &&
     !inOverflowRecovery &&
     shouldNudgeForMemory(getState(ctx), getState(ctx).currentTurn, 20)
   ) {
     markMemoryNudgeSent(getState(ctx));
-    sessionSignals.push({
-      key: "memory",
-      content:
-        "Code changed but nothing stored. Capture the key pattern or fix: " +
-        'memory_store(content="...", tags=["pattern", "fix"])',
-    });
+    // whisper suppressed — instruction lives in tool description
   }
 
   // Scratchpad signal - widened: fires on (a) write/edit without scratchpad,
@@ -270,17 +268,13 @@ export async function dispatchTurnEndLoop(
   const madeFileChanges = actualTools.some((t: string) => ["edit", "write"].includes(t));
   const isComplexTurn = actualTools.length >= 3;
   const needsScratchpad = (madeFileChanges || isComplexTurn) && !scratchpadUpdated;
+  // D-57: scratchpad usage is a static instruction — covered by scratchpad tool description.
+  // Keep cooldown tracking for potential future use but suppress the repetitive whisper.
   if (!hadErrors && !inOverflowRecovery && needsScratchpad) {
-    const cooldown = madeFileChanges ? 8 : 15; // Tighter for file changes, relaxed for complexity
+    const cooldown = madeFileChanges ? 8 : 15;
     if (getState(ctx).currentTurn - getState(ctx).lastScratchpadNudgeTurn >= cooldown) {
       getState(ctx).lastScratchpadNudgeTurn = getState(ctx).currentTurn;
-      const reason = madeFileChanges
-        ? "Code changed without updating scratchpad"
-        : `Complex turn (${actualTools.length} tools) without scratchpad`;
-      sessionSignals.push({
-        key: "scratchpad",
-        content: `${reason}. Use scratchpad(action="add_note", text="...") to track progress.`,
-      });
+      // whisper suppressed — instruction lives in tool description
     }
   }
 
@@ -296,10 +290,8 @@ export async function dispatchTurnEndLoop(
       if (getState(ctx).currentTurn - getState(ctx).lastStartupNudge >= startupCooldown) {
         getState(ctx).lastStartupNudge = getState(ctx).currentTurn;
         getState(ctx).startupPlanShown = true;
-        sessionSignals.push({
-          key: "startup",
-          content: `First tool calls without a plan. Use scratchpad(action="set_goal", text="...") to capture your objective, then scratchpad(action="add_plan", text="...") to break it into steps.`,
-        });
+        // D-57: startup whisper suppressed — instruction lives in scratchpad tool description.
+        // startupPlanShown state kept for determineContrastMode PLANNING mode.
       }
     }
   }
@@ -313,13 +305,11 @@ export async function dispatchTurnEndLoop(
   const thinkNeeded =
     (noThinkThisSession && getState(ctx).currentTurn >= 5 && getState(ctx).currentTurn % 5 === 0) ||
     (madeHighStakesAction && noThinkThisSession && getState(ctx).currentTurn >= 3);
+  // D-57: think usage is a static instruction — covered by think tool description
+  // ("Required before editing, writing files, or making high-stakes changes").
+  // Keep the detection logic for potential analytics but suppress the whisper.
   if (!hadErrors && !inOverflowRecovery && thinkNeeded) {
-    sessionSignals.push({
-      key: "think",
-      content: madeHighStakesAction
-        ? `High-stakes action without prior think(). Call think(observation, decision, reason) before the next change.`
-        : `${getState(ctx).currentTurn} turns without think() - call think(observation, decision, reason) to track reasoning`,
-    });
+    // whisper suppressed — instruction lives in tool description
   }
 
   // Per-turn think-before-edit enforcement
@@ -332,10 +322,7 @@ export async function dispatchTurnEndLoop(
       const perTurnCooldown = 3;
       if (getState(ctx).currentTurn - getState(ctx).lastThinkPerTurnNudge >= perTurnCooldown) {
         getState(ctx).lastThinkPerTurnNudge = getState(ctx).currentTurn;
-        sessionSignals.push({
-          key: "think",
-          content: `Edit in this turn without think(). Call think(observation, decision, reason) before editing to trace your reasoning.`,
-        });
+        // D-57: per-turn think whisper suppressed — instruction lives in tool description
       }
     }
   }
@@ -352,10 +339,7 @@ export async function dispatchTurnEndLoop(
       const finalizeCooldown = 5;
       if (getState(ctx).currentTurn - getState(ctx).lastFinalizeNudge >= finalizeCooldown) {
         getState(ctx).lastFinalizeNudge = getState(ctx).currentTurn;
-        sessionSignals.push({
-          key: "finalize",
-          content: `Work appears complete but finalize was not called. Use finalize(completed=true, summary="...") to mark the task done and record what was accomplished.`,
-        });
+        // D-57: finalize whisper suppressed — instruction lives in tool description
       }
     }
   }
@@ -372,10 +356,7 @@ export async function dispatchTurnEndLoop(
       const verifyCooldown = 5;
       if (getState(ctx).currentTurn - getState(ctx).lastVerifyNudge >= verifyCooldown) {
         getState(ctx).lastVerifyNudge = getState(ctx).currentTurn;
-        sessionSignals.push({
-          key: "verify",
-          content: `Code changed without verification. Use verify(target="code", criteria=[...]) to check your changes before moving on.`,
-        });
+        // D-57: verify whisper suppressed — instruction lives in tool description
       }
     }
   }

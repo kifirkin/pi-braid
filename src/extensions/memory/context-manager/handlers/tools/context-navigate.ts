@@ -177,6 +177,8 @@ export function registerContextNavigate(pi: ExtensionAPI): void {
     promptSnippet: "View history, navigate to a point, or create a save point",
     description:
       "Navigate session history. " +
+      "Pipeline: tag your position before archival — use action=tag to create a save point, " +
+      "then call context_compress(action='archive') to compress older messages. " +
       "action=log: view conversation history with milestones (like context_log). " +
       "action=checkout: navigate to any point in history, optionally tagging current position first (like context_checkout). " +
       "action=tag: create a named save point (like context_tag).",

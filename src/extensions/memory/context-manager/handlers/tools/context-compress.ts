@@ -140,6 +140,8 @@ export function registerContextCompress(pi: ExtensionAPI): void {
     promptSnippet: "Free context space by compaction or archiving",
     description:
       "Free up context space by compaction or archiving. " +
+      "Pipeline (recommended order): (1) tag your position with context_navigate(action='tag'), " +
+      "(2) archive with context_compress(action='archive'), (3) compact only as last resort since it's destructive. " +
       "action=compact: remove obsolete/duplicate entries (like context_compact). " +
       "Supports optional `keep` to preserve recent N messages. Auto-resumes after completion. " +
       "action=archive: compress a range of messages into a topic summary (like context_archive). " +
