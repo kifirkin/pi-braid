@@ -151,7 +151,9 @@ export default function cognitiveMemoryExtension(pi: ExtensionAPI) {
     label: "Store Memory",
     promptSnippet: "Store information in long-term memory",
     description:
-      "Persist insights, patterns, and errors to long-term memory - use when saving findings for cross-session recall. Supports structured content, memory linking, and TTL-based expiration.",
+      "Persist insights, patterns, and errors to long-term memory - use when saving findings for cross-session recall. " +
+      "Call this after discovering a reusable pattern, fixing a subtle bug, learning a project convention, or identifying a root cause. " +
+      "Memory persists across sessions and feeds semantic recall. Supports structured content, memory linking, and TTL-based expiration.",
     parameters: Type.Object({
       content: Type.String({
         description: "The information to remember (can be JSON for structured content)",

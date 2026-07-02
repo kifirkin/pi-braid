@@ -227,7 +227,8 @@ export function createThinkTool(): ToolDefinition<any, any, any> {
     name: "think" as const,
     label: "Think",
     description:
-      `Think before irreversible or multi-component decisions. Required: decision. Recommended: observation, reason, confidence 0-1. ` +
+      `Think before irreversible or multi-component decisions. Required before editing, writing files, or making high-stakes changes. ` +
+      `Required: decision. Recommended: observation, reason, confidence 0-1. ` +
       `parent_id links a prior thought_id. Process supervision flags contradictions. ` +
       `depth sets the thinking budget. Use quick, medium, or deep -- for ODAR routing; minimal, low, high, or max -- for finer control. deep triggers fresh-eyes review. Explicit depth wins over complexity 0-1; long observations auto-route. ` +
       `type is a tag, with default insight. ` +
