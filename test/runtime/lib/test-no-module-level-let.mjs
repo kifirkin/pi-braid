@@ -107,6 +107,9 @@ const EXEMPT_LINES = [
   { file: "src/extensions/memory/scratchpad/utils.ts", line: 214, pattern: "let _pendingPad" },
   { file: "src/extensions/memory/scratchpad/utils.ts", line: 215, pattern: "let _flushTimer" },
   { file: "src/extensions/memory/scratchpad/utils.ts", line: 216, pattern: "let _lastError" },
+
+  // ── I. Search backend cache (process-global, no ctx during tool exec) ────
+  { file: "src/extensions/memory/session-recall/search.ts", line: 58, pattern: "let _cachedBackend" },
 ];
 
 // Build a set of "file:line" pairs for quick lookup.

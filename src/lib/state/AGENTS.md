@@ -142,6 +142,12 @@ The exception list is enforced by `test/runtime/lib/test-no-module-level-let.mjs
 |---|---|---|
 | `scratchpad/utils.ts:214-216` | `_pendingPad`, `_flushTimer`, `_lastError` | Debounced scratchpad write queue. Process-global by design: coalesces rapid mutations from any session to the same events.jsonl file. Not per-session because the queue's purpose is to batch writes across all handlers. See ROADMAP P2-8 / DR-L-5. |
 
+### I. Search backend cache (process-global, no ctx during tool exec)
+
+| File | Symbol | Justification |
+|---|---|---|
+| `session-recall/search.ts:58` | `_cachedBackend` | Cached search backend detection result (rg/grep/node). Process-global by design: survives across calls within the same process. There's no ctx during tool execution (the tool execute callback doesn't receive ctx with sessionKey), so getExtensionState is not available. |
+
 ### Migration history
 
 | Date | Action | Result |
@@ -153,6 +159,7 @@ The exception list is enforced by `test/runtime/lib/test-no-module-level-let.mjs
 | 2026-07-01 | GAP #3: cross-session evidence pool persistence | `loadedFromDisk` added (29 documented exceptions). Async-storage lazy-load guard for the evidence pool JSON file. |
 | 2026-07-02 | /reload discoverability dedup | `_shownDiscoveryBundles` added (30 documented exceptions). Process-global Set in global-state.ts prevents the bundled discoverability whisper from re-firing on /reload. Extension module is re-evaluated on /reload, so a module-level Set would be lost. |
 | 2026-07-02 | P2-8 scratchpad write debounce | `_pendingPad`, `_flushTimer`, `_lastError` added (33 documented exceptions). Module-level let in scratchpad/utils.ts for the debounced write queue. Process-global by design: coalesces writes from all handlers to the same events.jsonl file. |
+| 2026-07-02 | P2-10 session-recall split | `_cachedBackend` added (34 documented exceptions). Module-level let in session-recall/search.ts for cached search backend detection. No ctx during tool execution. |
 
 ## Work Guidance
 
@@ -165,7 +172,7 @@ The exception list is enforced by `test/runtime/lib/test-no-module-level-let.mjs
 
 - `npm run typecheck` - any new `let` at module scope in `lib/` is suspicious; review the State Policy table.
 - `test/runtime/lib/test-enforcement-state-composition.mjs` - state factory contracts.
-- The `test-no-module-level-let.mjs` lint test (added in Q15) scans `src/extensions/` and `src/lib/` for new `let` declarations and asserts that the 33 documented exceptions (in the table above) are the only ones.
+- The `test-no-module-level-let.mjs` lint test (added in Q15) scans `src/extensions/` and `src/lib/` for new `let` declarations and asserts that the 34 documented exceptions (in the table above) are the only ones.
 
 ## Child DOX Index
 

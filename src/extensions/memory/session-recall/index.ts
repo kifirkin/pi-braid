@@ -1,7 +1,3 @@
-import { createLogger } from "../../../lib/core/logger.js";
-import { safeSessionManagerTyped } from "../../../lib/state/extension-state.js";
-
-const log = createLogger("session-recall");
 /**
  * Session Recall Extension
  *
@@ -15,39 +11,40 @@ const log = createLogger("session-recall");
  *    Use after session_search to get detailed information.
  *
  * Storage: ~/.pi/agent/sessions/ (auto-discovered)
+ *
+ * Split into:
+ *   - search.ts — grep-based keyword search (rg/grep/node backends)
+ *   - query.ts — LLM-driven session analysis
+ *   - text-utils.ts — text extraction and token estimation helpers
+ *   - index.ts — extension factory and tool registration
  */
+
+import { createLogger } from "../../../lib/core/logger.js";
+import { safeSessionManagerTyped } from "../../../lib/state/extension-state.js";
+
+const log = createLogger("session-recall");
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { Model } from "@earendil-works/pi-ai";
 import { callLlm } from "../../../lib/ai/llm-call.js";
 import { resolveUtilityModel } from "../../../lib/ai/model-resolver.js";
 import { Type } from "typebox";
-import { execFileSync } from "node:child_process";
-import { readdir, readFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename } from "node:path";
 import { asyncExists } from "../../../lib/utils/async-fs.js";
-import { homedir } from "node:os";
-import { AGENT } from "../../../lib/config/braid-paths.js";
 import * as import_textUtils from "./text-utils.js";
+import { getSessionsDir, projectFromPath, dateFromPath, searchFiles, searchLines, MAX_SEARCH_RESULTS, MAX_SNIPPETS_PER_SESSION } from "./search.js";
+import { loadSessionMessages, serializeSession, QUERY_SYSTEM_PROMPT } from "./query.js";
+import { onEvent } from "../../../lib/events/event-types.js";
+import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
+import { TURN_END } from "../../../lib/core/event-names.js";
 
 // Local re-exports so internal callers can use the short names.
 const extractMessageText = import_textUtils.extractMessageText;
 const snippetAround = import_textUtils.snippetAround;
 const estimateTokens = import_textUtils.estimateTokens;
 
-// Config
+// ── Schemas ───────────────────────────────────────────────────────────────────
 
-
-
-
-
-// ── Default config (file loading was dead code - removed) ──
-
-// Schemas
-
-// Consolidated session schema (was sessionSearchSchema + sessionQuerySchema).
-// action=search: keyword search across past sessions (grep-based, no LLM)
-// action=query:  LLM-driven analysis of a specific session file
 const sessionSchema = Type.Object({
   action: Type.Union([Type.Literal("search"), Type.Literal("query")], {
     description: "Action: search | query",
@@ -67,223 +64,14 @@ const sessionSchema = Type.Object({
   ),
 });
 
-// Helpers
-
-function getSessionsDir(): string {
-  return join(AGENT, "sessions");
-}
-
-function projectFromPath(sessionPath: string): string {
-  const match = sessionPath.match(/sessions[/\\](--.*?--)[/\\]/);
-  if (!match || !match[1]) return "~";
-  let encoded = match[1].slice(2, -2);
-  const homeEncoded = homedir()
-    .replace(/^[/\\]/, "")
-    .replace(/[/\\:]/g, "-");
-  if (encoded.startsWith(homeEncoded + "-")) {
-    encoded = encoded.slice(homeEncoded.length + 1);
-  } else if (encoded === homeEncoded) {
-    return "~";
-  }
-  return encoded.replace(/-/g, "/") || "~";
-}
-
-function dateFromPath(sessionPath: string): string {
-  const match = sessionPath.match(/(\d{4}-\d{2}-\d{2})T/);
-  return match?.[1] ?? "unknown";
-}
-
-// extractMessageText, snippetAround, estimateTokens are imported from
-// ./text-utils.js (see top of file). Local re-exports of snippetAround
-// and estimateTokens as `const` aliases preserve the short names.
-
-const MAX_SEARCH_RESULTS = 10;
-const MAX_SNIPPETS_PER_SESSION = 3;
-
-// Search
-
-type SearchBackend = "rg" | "grep" | "node";
-import { getExtensionState } from "../../../lib/state/extension-state.js";
-import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { onEvent } from "../../../lib/events/event-types.js";
-import { TURN_END } from "../../../lib/core/event-names.js";
-
-function getRecallState(ctx?: ExtensionContext): { cachedBackend: SearchBackend | undefined } {
-  if (ctx) return getExtensionState(ctx, "session-recall", () => ({ cachedBackend: undefined }));
-  return _default;
-}
-const _default: { cachedBackend: SearchBackend | undefined } = { cachedBackend: undefined };
-
-function getSearchBackend(): SearchBackend {
-  const s = getRecallState();
-  if (s.cachedBackend !== undefined) return s.cachedBackend;
-  for (const cmd of ["rg", "grep"] as const) {
-    try {
-      execFileSync(cmd, ["--version"], { stdio: "ignore", timeout: 5000 });
-      s.cachedBackend = cmd;
-      return cmd;
-    } catch {
-      /* try next */
-    }
-  }
-  s.cachedBackend = "node";
-  return "node";
-}
-
-async function walkJsonlFiles(dir: string): Promise<string[]> {
-  const results: string[] = [];
-  async function walk(d: string) {
-    let entries;
-    try {
-      entries = await readdir(d, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      const full = join(d, entry.name);
-      if (entry.isDirectory()) await walk(full);
-      else if (entry.name.endsWith(".jsonl")) results.push(full);
-    }
-  }
-  await walk(dir);
-  return results;
-}
-
-interface FileMatchCount {
-  path: string;
-  count: number;
-}
-
-async function searchFiles(
-  query: string,
-  sessionsDir: string,
-  timeout = 10000,
-): Promise<FileMatchCount[]> {
-  const backend = getSearchBackend();
-
-  if (backend === "rg") {
-    try {
-      const output = execFileSync("rg", ["-i", "-c", "-F", query, sessionsDir], {
-        encoding: "utf-8",
-        timeout,
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-      return parseCountOutput(output);
-    } catch (err: any) {
-      if (err.status === 1) return [];
-    }
-  }
-
-  if (backend === "grep") {
-    try {
-      const output = execFileSync(
-        "grep",
-        ["-r", "-i", "-c", "-F", "--include=*.jsonl", query, sessionsDir],
-        { encoding: "utf-8", timeout, stdio: ["pipe", "pipe", "pipe"] },
-      );
-      return parseCountOutput(output);
-    } catch (err: any) {
-      if (err.status === 1) return [];
-    }
-  }
-
-  // Node fallback
-  return nodeSearchFiles(query, sessionsDir);
-}
-
-function parseCountOutput(output: string): FileMatchCount[] {
-  return output
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      const lastColon = line.lastIndexOf(":");
-      return { path: line.slice(0, lastColon), count: parseInt(line.slice(lastColon + 1), 10) };
-    });
-}
-
-async function nodeSearchFiles(query: string, sessionsDir: string): Promise<FileMatchCount[]> {
-  const files = await walkJsonlFiles(sessionsDir);
-  const results: FileMatchCount[] = [];
-  const lowerQuery = query.toLowerCase();
-
-  for (const filePath of files) {
-    try {
-      const content = await readFile(filePath, "utf-8");
-      let count = 0;
-      for (const line of content.split("\n")) {
-        if (line.toLowerCase().includes(lowerQuery)) count++;
-      }
-      if (count > 0) results.push({ path: filePath, count });
-    } catch {
-      /* skip bad files */
-    }
-    /* Non-fatal: session restore failed */
-  }
-
-  return results;
-}
-
-async function searchLines(query: string, filePath: string, limit: number): Promise<string[]> {
-  const results: string[] = [];
-  const lowerQuery = query.toLowerCase();
-
-  try {
-    const content = await readFile(filePath, "utf-8");
-    for (const line of content.split("\n")) {
-      if (line.toLowerCase().includes(lowerQuery)) {
-        results.push(line);
-        if (results.length >= limit) break;
-      }
-    }
-  } catch {
-    /* skip */
-  }
-
-  return results;
-}
-
-// Session Loading (for query)
-
-async function loadSessionMessages(
-  sessionPath: string,
-): Promise<Array<{ role: string; content: string }>> {
-  const messages: Array<{ role: string; content: string }> = [];
-
-  try {
-    const content = await readFile(sessionPath, "utf-8");
-    for (const line of content.split("\n")) {
-      if (!line.trim()) continue;
-      const msg = extractMessageText(line);
-      if (msg) messages.push({ role: msg.role, content: msg.text });
-    }
-  } catch {
-    /* skip */
-  }
-
-  return messages;
-}
-
-function serializeSession(messages: Array<{ role: string; content: string }>): string {
-  return messages.map((m) => `[${m.role}]\n${m.content}`).join("\n\n");
-}
-
-// Extension
-
-const QUERY_SYSTEM_PROMPT = `You are analyzing a past pi coding assistant conversation.
-Answer the user's question based on the conversation transcript.
-Be specific and reference relevant parts of the conversation.
-If the conversation doesn't contain enough information, say so.`;
+// ── Extension ─────────────────────────────────────────────────────────────────
 
 export default function sessionRecallExtension(pi: ExtensionAPI) {
-  // Track the current model for use in tools (extension tools don't receive ctx via _ctx)
   let currentModel: Model<any> | undefined;
   pi.on("model_select", (event) => {
     currentModel = event.model;
   });
 
-  // Consolidated session tool (was session_search + session_query)
   pi.registerTool({
     name: "session",
     label: "Session",
@@ -402,8 +190,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
                 details: { empty: true },
               };
             }
-            const ctx = _ctx; // eslint-disable-line @typescript-eslint/no-unused-vars
-            // Get model from ctx (runtime) with fallback to cached model_select event
+            const ctx = _ctx;
             const baseModel = resolveUtilityModel(ctx) ?? ctx?.model ?? currentModel;
             const model = baseModel;
             const contextWindow = model?.contextWindow ?? 200000;
@@ -438,16 +225,6 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
                 : "";
               const llmResult = await callLlm(model, apiKey, QUERY_SYSTEM_PROMPT, userMessage, {
                 timeoutMs: 180_000,
-                // Thread the tool's execute signal so ESC during a
-                // session query aborts cleanly. The tool's `signal`
-                // is the canonical cancel path; without this the
-                // query runs to completion (or its 3-minute timeout)
-                // even after the user cancels the agent turn. Note:
-                // we prefer the tool's signal here over ctx.signal
-                // because the tool's signal is the user's cancel
-                // intent for THIS tool call (e.g. ESC during a long
-                // session query), whereas ctx.signal may be the
-                // session-level cancel.
                 ...(signal ? { signal } : {}),
               });
               if ("error" in llmResult) {
@@ -497,18 +274,14 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
       }
     },
   });
+
   // ── R6: Mid-Task Auto Recall ────────────────────────────────────────
-  // Fires once per session (on first tool execution). Uses actual task text
-  // from the first user message (not tool names) and requires strong relevance
-  // (>=5 matches + same project) to avoid flooding the agent with noise.
   let midTaskRecallDone = false;
 
   onEvent(pi, TURN_END, async (_event: unknown, ctx: any) => {
     if (midTaskRecallDone) return;
     midTaskRecallDone = true;
 
-    // Extract first user message as task context
-    // Use safeSessionManagerTyped to avoid assertActive() crash on stale ctx
     const manager = safeSessionManagerTyped(ctx);
     const entries = manager?.getBranch?.();
     if (!entries || entries.length === 0) return;
@@ -534,7 +307,6 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
 
     try {
       const results = await searchFiles(taskText, sessionsDir);
-      // Only surface if strongly relevant: >=5 matches AND same project directory
       const projectId = ctx?.cwd ? basename(ctx.cwd) : "";
       const strongMatches = results.filter(
         (r) => r.count >= 5 && (!projectId || r.path.includes(projectId)),
