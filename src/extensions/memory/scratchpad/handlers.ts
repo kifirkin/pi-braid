@@ -31,7 +31,7 @@ import type {
   SessionPhase,
   TaskScratchpad,
 } from "./types.js";
-import { formatScratchpad, formatContinueDigest } from "./index.js";
+import { formatScratchpad, formatContinueDigest } from "./format.js";
 import {
   capPush,
   generateConstraintId,

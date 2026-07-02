@@ -25,6 +25,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const TYPES = join(ROOT, "src/extensions/memory/scratchpad/types.ts");
 const PERSISTENCE = join(ROOT, "src/extensions/memory/scratchpad/persistence.ts");
 const INDEX = join(ROOT, "src/extensions/memory/scratchpad/index.ts");
+const FORMAT = join(ROOT, "src/extensions/memory/scratchpad/format.ts");
 const HANDLERS = join(ROOT, "src/extensions/memory/scratchpad/handlers.ts");
 const UTILS = join(ROOT, "src/extensions/memory/scratchpad/utils.ts");
 
@@ -111,7 +112,7 @@ console.log("\n[4] archive_done writes to archive.jsonl");
 
 console.log("\n[5] Read filter support");
 {
-  const src = readFileSync(INDEX, "utf-8");
+  const src = readFileSync(FORMAT, "utf-8");
   check(/formatScratchpad[\s\S]*?filter\?:/m.test(src), "formatScratchpad accepts filter param");
   check(/applyListFilter/.test(src), "formatScratchpad has applyListFilter helper");
   check(/filter\?\.ids/.test(src), "Filter supports ids");
@@ -124,21 +125,20 @@ console.log("\n[5.5] continue action for session resumption");
 {
   const src = readFileSync(INDEX, "utf-8");
   check(src.includes('Type.Literal("continue")'), 'continue action registered');
-  check(/function formatContinueDigest/.test(src), "formatContinueDigest function exists");
+  // formatContinueDigest is re-exported from format.ts
+  check(src.includes("export * from \"./format.js\""), "formatContinueDigest re-exported from format.ts");
   check(/case "continue":/.test(src), 'continue case in switch statement');
-  // The continue digest should include goal, open plan, recent done,
-  // recent decisions, recent notes. NOT the full done list.
-  // Grep for the function body using balanced-brace match via manual slice.
-  const digestStart = src.indexOf("export function formatContinueDigest");
+  // The continue digest body is in format.ts
+  const fmtSrc = readFileSync(FORMAT, "utf-8");
+  const digestStart = fmtSrc.indexOf("export function formatContinueDigest");
   check(digestStart >= 0, "formatContinueDigest function found");
   if (digestStart >= 0) {
-    // Find the matching closing brace: walk forward, tracking depth.
     let depth = 0;
-    let i = src.indexOf("{", digestStart);
+    let i = fmtSrc.indexOf("{", digestStart);
     let endIdx = -1;
-    for (; i < src.length; i++) {
-      if (src[i] === "{") depth++;
-      else if (src[i] === "}") {
+    for (; i < fmtSrc.length; i++) {
+      if (fmtSrc[i] === "{") depth++;
+      else if (fmtSrc[i] === "}") {
         depth--;
         if (depth === 0) {
           endIdx = i;
@@ -147,7 +147,7 @@ console.log("\n[5.5] continue action for session resumption");
       }
     }
     check(endIdx > digestStart, "formatContinueDigest has matching closing brace");
-    const digestBody = endIdx > 0 ? src.slice(digestStart, endIdx) : "";
+    const digestBody = endIdx > 0 ? fmtSrc.slice(digestStart, endIdx) : "";
     check(digestBody.length > 100, "formatContinueDigest body has substantial content");
     check(digestBody.includes("Open plan"), "Digest includes 'Open plan' section");
     check(digestBody.includes("Recently completed"), "Digest includes 'Recently completed' section");
