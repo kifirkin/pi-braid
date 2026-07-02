@@ -75,6 +75,11 @@ export async function handleSetGoal(
   text: string,
   priorGoal: string,
 ): Promise<HandlerResult> {
+  if (!text.trim()) {
+    return {
+      resultText: "set_goal requires non-empty 'text' describing the objective.",
+    };
+  }
   if (pad.goal && pad.goal !== "Untitled" && pad.goal !== text) {
     pad.prior_goal = pad.goal;
   }
@@ -93,6 +98,11 @@ export async function handleAddPlan(
   pad: TaskScratchpad,
   text: string,
 ): Promise<HandlerResult> {
+  if (!text.trim()) {
+    return {
+      resultText: "add_plan requires non-empty 'text' describing the step.",
+    };
+  }
   // Parse optional budget field [budget:N]
   let budgetCalls: number | undefined;
   let planText = text;
@@ -128,24 +138,39 @@ export async function handleMarkDone(
   const target = idOrText ?? text;
   const step = pad.plan.find((s) => s.id === target || s.text === target);
   const now = Date.now();
-  let doneItem: DoneItem;
   if (step) {
     step.doneTurn = pad.session.turn;
-    doneItem = {
+    const doneItem: DoneItem = {
       id: nextId("dn"),
       text: step.text,
       turn: pad.session.turn,
       addedAt: now,
     };
-  } else {
-    // Fallback: just add to done (no plan step matched)
-    doneItem = {
-      id: nextId("dn"),
-      text,
-      turn: pad.session.turn,
-      addedAt: now,
+    capPush(pad.done, doneItem, RECYCLE.MAX_DONE);
+    const saveError = await mutateAndSave(pad);
+    return {
+      resultText: `Completed: ${doneItem.text} (id: ${doneItem.id})`,
+      saveError: saveError ?? undefined,
     };
   }
+  // Fallback: id provided but no matching plan step
+  if (idOrText) {
+    return {
+      resultText: `Plan step not found: ${idOrText}. Use scratchpad read to list available steps.`,
+    };
+  }
+  // Fallback: text match only (legacy), add to done directly
+  if (!text.trim()) {
+    return {
+      resultText: "mark_done requires an 'id' (from add_plan) or 'text' (matching a plan step).",
+    };
+  }
+  const doneItem: DoneItem = {
+    id: nextId("dn"),
+    text,
+    turn: pad.session.turn,
+    addedAt: now,
+  };
   capPush(pad.done, doneItem, RECYCLE.MAX_DONE);
   const saveError = await mutateAndSave(pad);
   return {
@@ -202,6 +227,11 @@ export async function handleAddDecision(
   pad: TaskScratchpad,
   text: string,
 ): Promise<HandlerResult> {
+  if (!text.trim()) {
+    return {
+      resultText: "add_decision requires non-empty 'text' describing the decision.",
+    };
+  }
   // Parse optional reason: "decision|reason"
   let decisionText = text;
   let reason: string | undefined;
@@ -228,6 +258,11 @@ export async function handleAddHypothesis(
   pad: TaskScratchpad,
   text: string,
 ): Promise<HandlerResult> {
+  if (!text.trim()) {
+    return {
+      resultText: "add_hypothesis requires non-empty 'text' describing the hypothesis.",
+    };
+  }
   const hyp: HypothesisItem = {
     id: nextId("hp"),
     text,
@@ -246,6 +281,11 @@ export async function handleAddNote(
   pad: TaskScratchpad,
   text: string,
 ): Promise<HandlerResult> {
+  if (!text.trim()) {
+    return {
+      resultText: "add_note requires non-empty 'text' describing the note.",
+    };
+  }
   const note: NoteItem = {
     id: nextId("nt"),
     text,
@@ -365,6 +405,11 @@ export async function handleAddConstraint(
   text: string,
   expires_in_ms: number | undefined,
 ): Promise<HandlerResult> {
+  if (!text.trim()) {
+    return {
+      resultText: "add_constraint requires non-empty 'text' in format 'type|description'.",
+    };
+  }
   // Format: "type|description"
   const [type, ...descParts] = text.split("|");
   const desc = descParts.join("|") || type;
