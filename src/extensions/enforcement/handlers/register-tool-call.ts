@@ -10,6 +10,10 @@ import { checkLocalizationRisk, recordFileTouch } from "../../../lib/store/bidir
 import { knownFiles } from "../similarity.js";
 import { getState, recordThink, incrementToolsSinceReflection } from "../state.js";
 import { TOOL_CALL } from "../../../lib/core/event-names.js";
+import {
+  recordToolCall as recordLoopToolCall,
+  getToolLoopState,
+} from "../../../lib/detection/tool-loop-detector.js";
 
 export function registerToolCallHandler(pi: ExtensionAPI): void {
   onEvent(pi, TOOL_CALL, async (event: any, ctx: ExtensionContext) => {
@@ -23,6 +27,10 @@ export function registerToolCallHandler(pi: ExtensionAPI): void {
     if (!toolName || !toolName.trim()) return undefined;
 
     recordToolCall(toolName, ctx);
+
+    // Record tool call for tool-loop-detector (per-turn tool sets)
+    const loopState = getToolLoopState(ctx);
+    recordLoopToolCall(loopState, toolName);
     recordToolInput(toolName, input, getState(ctx));
 
     if (toolName === "bash") {

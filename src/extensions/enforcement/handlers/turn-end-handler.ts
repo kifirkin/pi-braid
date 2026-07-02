@@ -19,6 +19,12 @@ import { detectOrphanChains } from "./orphan-chains.js";
 import { getNudgeManager, type NudgeType } from "../nudge-manager.js";
 import { getState, ERROR_BURST_THRESHOLD, RECOVERY_GRACE_TURNS, markNudgeSent, shouldNudgeForMemory, markMemoryNudgeSent } from "../state.js";
 import { recordNudgeSuppressed, getNudgeAnalytics } from "../../../lib/reasoning/nudge-analytics.js";
+import {
+  recordTurnEnd,
+  detectToolLoop,
+  getToolLoopState,
+  markLoopFired,
+} from "../../../lib/detection/tool-loop-detector.js";
 import { getStopReason, getMessageContent, getContextUsageFromEvent } from "../../../lib/state/extension-state.js";
 import { type TurnState } from "../types.js";
 import { validateTurn } from "../validation.js";
@@ -87,6 +93,17 @@ export async function dispatchTurnEndLoop(
     getState(ctx).consecutiveErrorTurns = 0;
   }
   const isBurst = getState(ctx).consecutiveErrorTurns >= ERROR_BURST_THRESHOLD;
+
+  // ── Tool loop detection (per-turn tool sets) ───────────────────────────
+  if (!isBurst) {
+    const loopState = getToolLoopState(ctx);
+    recordTurnEnd(loopState);
+    const loopResult = detectToolLoop(loopState);
+    if (loopResult.isLoop) {
+      markLoopFired(loopState);
+      sendEnforcementWhisper(pi, ctx, loopResult.message, true);
+    }
+  }
 
   // ── Context overflow detection ─────────────────────────────────────────
   const msgContent = getMessageContent(event.message);

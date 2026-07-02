@@ -80,8 +80,11 @@ export const TOOL_LOOP_COOLDOWN_TURNS = 8;
 // ── Types ───────────────────────────────────────────────────────────────────
 
 export interface ToolLoopState {
-  /** Last WINDOW tool names, most recent last. */
-  history: string[];
+  /** Tool sets per turn, most recent turn first. Each entry is the set of
+   *  tool names called in that turn. Using sets instead of a flat history
+   *  preserves turn boundaries, preventing false positives from same-tool
+   *  calls in different turns appearing adjacent after other tools age out. */
+  perTurn: Set<string>[];
   /** Turn index when we last emitted a loop whisper. -1 if never. */
   lastFiredAtTurn: number;
   /** Monotonically increasing turn counter for cooldown math. */
@@ -99,7 +102,7 @@ export interface ToolLoopResult {
 
 export function createToolLoopState(): ToolLoopState {
   return {
-    history: [],
+    perTurn: [],
     lastFiredAtTurn: -1,
     turnCount: 0,
   };
@@ -113,22 +116,50 @@ export function getToolLoopState(ctx: ExtensionContext): ToolLoopState {
 
 /**
  * Record a tool invocation. Call this from the tool_call event handler
- * with the tool name. Trims history to WINDOW.
+ * with the tool name. Adds the tool to the current (most recent) turn's
+ * tool set. If no turn has started yet, creates one.
  */
 export function recordToolCall(state: ToolLoopState, toolName: string): void {
   if (!toolName) return;
-  state.history.push(toolName);
-  if (state.history.length > TOOL_LOOP_WINDOW) {
-    state.history.shift();
+  if (state.perTurn.length === 0) {
+    state.perTurn.push(new Set<string>());
+  }
+  state.perTurn[0].add(toolName);
+  // Trim perTurn to keep tool counts within WINDOW
+  let totalTools = 0;
+  for (const turn of state.perTurn) {
+    totalTools += turn.size;
+  }
+  while (totalTools > TOOL_LOOP_WINDOW && state.perTurn.length > 1) {
+    const removed = state.perTurn.pop()!;
+    totalTools -= removed.size;
   }
 }
 
 /**
  * Record the end of a turn. Call this from the turn_end handler to
- * bump the counter used for cooldown comparison.
+ * bump the counter and open a new turn for the next round of tool calls.
  */
 export function recordTurnEnd(state: ToolLoopState): void {
   state.turnCount++;
+}
+
+/**
+ * Mark the start of a new turn. Call this at the beginning of each turn
+ * (before any tool calls) to create a fresh tool set. Separated from
+ * recordTurnEnd so the tool_call handler can add to the new turn's set.
+ */
+export function recordTurnStart(state: ToolLoopState): void {
+  state.perTurn.unshift(new Set<string>());
+  // Trim perTurn to keep tool counts within WINDOW
+  let totalTools = 0;
+  for (const turn of state.perTurn) {
+    totalTools += turn.size;
+  }
+  while (totalTools > TOOL_LOOP_WINDOW && state.perTurn.length > 1) {
+    const removed = state.perTurn.pop()!;
+    totalTools -= removed.size;
+  }
 }
 
 /**
@@ -143,12 +174,15 @@ export function markLoopFired(state: ToolLoopState): void {
 // ── Detection (the unified verdict) ────────────────────────────────────────
 
 /**
- * Detect a tool loop in the recent history.
+ * Detect a tool loop across recent turns.
+ *
+ * Uses per-turn tool sets to count how many consecutive turns the same
+ * tool appears in. If the same tool appears in TOOL_LOOP_THRESHOLD+
+ * consecutive turns, and it is the ONLY tool in at least 2 of those
+ * turns, it is flagged as a loop.
  *
  * Returns:
- *   { isLoop: true, tool, count, message } when the same tool has been
- *     called TOOL_LOOP_THRESHOLD+ times consecutively AND we are not
- *     in cooldown from a recent emission.
+ *   { isLoop: true, tool, count, message } when a loop is detected.
  *   { isLoop: false, tool: "", count: 0, message: "" } otherwise.
  *
  * The message is the unified whisper body. Consumers can either emit
@@ -156,37 +190,70 @@ export function markLoopFired(state: ToolLoopState): void {
  */
 export function detectToolLoop(state: ToolLoopState): ToolLoopResult {
   // Cooldown gate. Only applies once we've fired at least once
-  // (lastFiredAtTurn = -1 means "never fired"). Otherwise a fresh state
-  // would have diff = 0 - (-1) = 1, which is < 8, suppressing the very
-  // first legitimate loop detection.
   if (state.lastFiredAtTurn >= 0 && state.turnCount - state.lastFiredAtTurn < TOOL_LOOP_COOLDOWN_TURNS) {
     return { isLoop: false, tool: "", count: 0, message: "" };
   }
 
-  if (state.history.length < TOOL_LOOP_THRESHOLD) {
+  if (state.perTurn.length < 2) {
     return { isLoop: false, tool: "", count: 0, message: "" };
   }
 
-  // Count the consecutive tail of the most-recent tool name
-  const last = state.history[state.history.length - 1];
-  let count = 1;
-  for (let i = state.history.length - 2; i >= 0; i--) {
-    if (state.history[i] === last) count++;
-    else break;
+  // Find the most-called tool across recent turns
+  const toolTurnCounts = new Map<string, { turnCount: number; exclusiveTurns: number }>();
+  for (const turn of state.perTurn) {
+    for (const tool of turn) {
+      if (!toolTurnCounts.has(tool)) {
+        toolTurnCounts.set(tool, { turnCount: 0, exclusiveTurns: 0 });
+      }
+      const entry = toolTurnCounts.get(tool)!;
+      entry.turnCount++;
+      if (turn.size === 1) {
+        entry.exclusiveTurns++;
+      }
+    }
   }
 
-  if (count < TOOL_LOOP_THRESHOLD) {
+  // Find the tool with the highest turn count
+  let bestTool = "";
+  let bestCount = 0;
+  let bestExclusive = 0;
+  for (const [tool, counts] of toolTurnCounts) {
+    if (counts.turnCount > bestCount) {
+      bestTool = tool;
+      bestCount = counts.turnCount;
+      bestExclusive = counts.exclusiveTurns;
+    }
+  }
+
+  if (bestCount < TOOL_LOOP_THRESHOLD) {
+    return { isLoop: false, tool: "", count: 0, message: "" };
+  }
+
+  // Check consecutive streak: does the best tool appear in the last N turns?
+  let consecutiveTurns = 0;
+  for (const turn of state.perTurn) {
+    if (turn.has(bestTool)) {
+      consecutiveTurns++;
+    } else {
+      break;
+    }
+  }
+
+  if (consecutiveTurns < TOOL_LOOP_THRESHOLD) {
     return { isLoop: false, tool: "", count: 0, message: "" };
   }
 
   return {
     isLoop: true,
-    tool: last,
-    count,
+    tool: bestTool,
+    count: consecutiveTurns,
     message:
       `## Tool Loop Detected\n\n` +
-      `- **Repetition**: Called \`${last}\` ${count} times in a row with no progress.\n\n` +
-      `**Suggested actions:**\n` +
+      `- **Repetition**: Called \`${bestTool}\` in ${consecutiveTurns} consecutive turns.` +
+      (bestExclusive >= 2
+        ? ` In ${bestExclusive} of those turns, it was the only tool called.`
+        : ``) +
+      `\n\n**Suggested actions:**\n` +
       `1. Use \`think()\` to re-evaluate your approach\n` +
       `2. Check if the problem has changed - you may be solving the wrong issue\n` +
       `3. Consider breaking the task into smaller steps\n` +
@@ -237,4 +304,30 @@ export function detectToolLoopFromSequence(sequence: string[]): StatelessLoopRes
       `3. Consider breaking the task into smaller steps\n` +
       `4. Use the \`memory\` tool to find past solutions to similar problems`,
   };
+}
+
+// ── Helper: build per-turn sequence from raw tool log for stateless path ──
+//
+// Turns a flat tool name array (e.g. from a dreamer trace) into the
+// per-turn format consumed by detectToolLoop(). Each turn boundary is
+// marked by a new array -- callers pass `null` in the flat sequence to
+// indicate a turn boundary.
+
+export function groupByTurn(flatSequence: (string | null)[]): Set<string>[] {
+  const perTurn: Set<string>[] = [];
+  let current = new Set<string>();
+  for (const entry of flatSequence) {
+    if (entry === null) {
+      if (current.size > 0) {
+        perTurn.push(current);
+        current = new Set<string>();
+      }
+    } else {
+      current.add(entry);
+    }
+  }
+  if (current.size > 0) {
+    perTurn.push(current);
+  }
+  return perTurn;
 }
