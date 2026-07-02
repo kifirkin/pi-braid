@@ -102,6 +102,11 @@ const EXEMPT_LINES = [
 
   // ── G. Discoverability dedup (process-global, survives /reload) ─────────
   { file: "src/lib/state/global-state.ts", line: 309, pattern: "let _shownDiscoveryBundles" },
+
+  // ── H. Scratchpad write queue (debounced, process-global) ───────────────
+  { file: "src/extensions/memory/scratchpad/utils.ts", line: 214, pattern: "let _pendingPad" },
+  { file: "src/extensions/memory/scratchpad/utils.ts", line: 215, pattern: "let _flushTimer" },
+  { file: "src/extensions/memory/scratchpad/utils.ts", line: 216, pattern: "let _lastError" },
 ];
 
 // Build a set of "file:line" pairs for quick lookup.
@@ -137,7 +142,7 @@ for (const file of walk(SRC)) {
 }
 
 if (violations.length > 0) {
-  console.log("\n✗ Module-level `let` violations found:\n");
+  console.log("\n[x] Module-level `let` violations found:\n");
   for (const v of violations) {
     console.log(`  ${v.file}:${v.line}: ${v.text}`);
   }
@@ -149,4 +154,4 @@ if (violations.length > 0) {
   process.exit(1);
 }
 
-console.log(`✓ No module-level let violations outside documented exceptions. (${scanned} files scanned)`);
+console.log(`[v] No module-level let violations outside documented exceptions. (${scanned} files scanned)`);

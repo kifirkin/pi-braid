@@ -136,6 +136,12 @@ The exception list is enforced by `test/runtime/lib/test-no-module-level-let.mjs
 | `lib/reasoning/advice-tracker.ts:47,50` | `dreamerCooldownMs`, `marsOveruseMultiplier` | Tunable parameters, adjusted by accuracy feedback. |
 | `lib/reasoning/advice-tracker.ts:60` | `_idCounter` | ID generator counter. |
 
+### H. Scratchpad write queue (debounced, process-global)
+
+| File | Symbol | Justification |
+|---|---|---|
+| `scratchpad/utils.ts:214-216` | `_pendingPad`, `_flushTimer`, `_lastError` | Debounced scratchpad write queue. Process-global by design: coalesces rapid mutations from any session to the same events.jsonl file. Not per-session because the queue's purpose is to batch writes across all handlers. See ROADMAP P2-8 / DR-L-5. |
+
 ### Migration history
 
 | Date | Action | Result |
@@ -146,6 +152,7 @@ The exception list is enforced by `test/runtime/lib/test-no-module-level-let.mjs
 | 2026-06-27 | DR-C-4 runtime check added | `_timerExtensionFactoryState` added (28 documented exceptions). Process-global counter for the timer extension factory; logs a warning when the single-process-per-session assumption is violated. |
 | 2026-07-01 | GAP #3: cross-session evidence pool persistence | `loadedFromDisk` added (29 documented exceptions). Async-storage lazy-load guard for the evidence pool JSON file. |
 | 2026-07-02 | /reload discoverability dedup | `_shownDiscoveryBundles` added (30 documented exceptions). Process-global Set in global-state.ts prevents the bundled discoverability whisper from re-firing on /reload. Extension module is re-evaluated on /reload, so a module-level Set would be lost. |
+| 2026-07-02 | P2-8 scratchpad write debounce | `_pendingPad`, `_flushTimer`, `_lastError` added (33 documented exceptions). Module-level let in scratchpad/utils.ts for the debounced write queue. Process-global by design: coalesces writes from all handlers to the same events.jsonl file. |
 
 ## Work Guidance
 
@@ -158,7 +165,7 @@ The exception list is enforced by `test/runtime/lib/test-no-module-level-let.mjs
 
 - `npm run typecheck` - any new `let` at module scope in `lib/` is suspicious; review the State Policy table.
 - `test/runtime/lib/test-enforcement-state-composition.mjs` - state factory contracts.
-- The `test-no-module-level-let.mjs` lint test (added in Q15) scans `src/extensions/` and `src/lib/` for new `let` declarations and asserts that the 28 documented exceptions (in the table above) are the only ones.
+- The `test-no-module-level-let.mjs` lint test (added in Q15) scans `src/extensions/` and `src/lib/` for new `let` declarations and asserts that the 33 documented exceptions (in the table above) are the only ones.
 
 ## Child DOX Index
 

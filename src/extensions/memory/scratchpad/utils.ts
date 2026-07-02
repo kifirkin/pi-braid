@@ -195,23 +195,89 @@ export function resolveCategory(raw: string): LearningCategory | null {
 // ── Persistence helper ──────────────────────────────────────────────────
 
 /**
- * Persist the pad to disk. Returns null on success, or a user-facing
- * warning string on failure. The in-memory pad is mutated (updatedAt
- * bumped) regardless; only the disk write can fail.
+ * Debounced write queue for scratchpad persistence.
+ *
+ * ROADMAP P2-8 / DR-L-5: batch rapid mutations into a single disk write.
+ * When a handler calls mutateAndSave, we schedule a flush on the next
+ * microtask tick (via setTimeout 0). If another mutateAndSave arrives
+ * before the flush fires, we update the pending pad reference instead of
+ * scheduling a second write. The final flush writes the latest state once.
+ *
+ * On turn-end, register-turn-end-hygiene.ts calls flushPendingScratchpadWrites()
+ * to guarantee the pad is on disk before the next turn begins.
+ *
+ * Trade-off: disk write errors surface on the NEXT mutateAndSave call
+ * (or on flushPendingScratchpadWrites), not the current one. Acceptable
+ * since write failures are rare and the error surface is the same.
+ */
+
+let _pendingPad: TaskScratchpad | null = null;
+let _flushTimer: ReturnType<typeof setTimeout> | null = null;
+let _lastError: string | null = null;
+
+/**
+ * Flush the pending pad to disk. Called by the debounce timer and by
+ * flushPendingScratchpadWrites(). Captures the latest pad state.
+ */
+async function doFlush(): Promise<void> {
+  _flushTimer = null;
+  const pad = _pendingPad;
+  _pendingPad = null;
+  if (!pad) return;
+  try {
+    await saveScratchpadToDisk(pad);
+    _lastError = null;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    _lastError = `Disk write failed: ${msg}. Your changes are in memory only and will be lost on restart.`;
+  }
+}
+
+/**
+ * Persist the pad to disk (debounced). Returns null on success, or a
+ * user-facing warning string on failure. Multiple rapid calls are
+ * coalesced into a single disk write. The in-memory pad is mutated
+ * (updatedAt bumped) regardless; only the disk write can fail.
+ *
+ * If a previous write failed, this call returns the error from that
+ * failed write (so it surfaces to the user). A successful flush clears
+ * the error state.
  */
 export async function mutateAndSave(
   scratchpad: TaskScratchpad,
 ): Promise<string | null> {
   scratchpad.updatedAt = Date.now();
-  try {
-    await saveScratchpadToDisk(scratchpad);
-    return null;
-  } catch (err) {
-    // ROADMAP P0-2 / DR-H-4: surface disk-write failures. Previously silent.
-    // The in-memory pad is still updated; the user's next session will lose
-    // these changes. Return the error so the caller can append a hint to the
-    // tool result.
-    const msg = err instanceof Error ? err.message : String(err);
-    return `⚠️ Disk write failed: ${msg}. Your changes are in memory only and will be lost on restart.`;
+  _pendingPad = scratchpad;
+
+  // Schedule a flush if not already pending
+  if (!_flushTimer) {
+    _flushTimer = setTimeout(doFlush, 0);
   }
+
+  // Surface any error from the previous flush
+  if (_lastError) {
+    const err = _lastError;
+    _lastError = null;
+    return err;
+  }
+
+  return null;
+}
+
+/**
+ * Force-flush any pending scratchpad write. Returns last error or null.
+ * Call from turn-end handlers to guarantee the pad is on disk before
+ * the next turn begins.
+ */
+export async function flushPendingScratchpadWrites(): Promise<string | null> {
+  if (_flushTimer) {
+    clearTimeout(_flushTimer);
+  }
+  await doFlush();
+  if (_lastError) {
+    const err = _lastError;
+    _lastError = null;
+    return err;
+  }
+  return null;
 }

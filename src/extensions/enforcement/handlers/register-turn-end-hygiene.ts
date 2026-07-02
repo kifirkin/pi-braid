@@ -30,6 +30,7 @@ import { getContextUsageFromEvent } from "../../../lib/state/extension-state.js"
 import { fileMutationQueue } from "../../../lib/utils/file-mutation-queue.js";
 import { SCRATCHPAD_DIR } from "../../../lib/config/braid-paths.js";
 import { projectSlugFromCwd } from "../../memory/scratchpad/persistence.js";
+import { flushPendingScratchpadWrites } from "../../memory/scratchpad/utils.js";
 import {
   USAGE_TOKENS_SOFT,
   USAGE_TOKENS_WARNING,
@@ -49,8 +50,9 @@ const log = createLogger("enforcement:turn-end-hygiene");
 
 function saveStateBeforeCompact(cwd: string, ctx: ExtensionContext): void {
   try {
-    // 1. Flush file mutation queue (ensures scratchpad is on disk)
+    // 1. Flush file mutation queue + scratchpad debounced queue
     fileMutationQueue.flushAll().catch(() => {});
+    flushPendingScratchpadWrites().catch(() => {});
   } catch {
     // non-fatal
   }
