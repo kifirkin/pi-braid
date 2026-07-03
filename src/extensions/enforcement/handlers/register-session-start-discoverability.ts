@@ -30,7 +30,7 @@ import { createLogger } from "../../../lib/core/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 import { sendEnforcementWhisper } from "../whisper.js";
 import { getState } from "../state.js";
-import { enforcementSignals } from "../signals.js";
+import { enforcementSignals, type EnforcementSignalEntry } from "../signals.js";
 import { getShownDiscoveryBundles } from "../../../lib/state/global-state.js";
 import { SCRATCHPAD_DIR, EPISODES_FILE, SEMANTIC_MEMORY_FILE, AGENT } from "../../../lib/config/braid-paths.js";
 import { projectSlugFromCwd } from "../../memory/scratchpad/persistence.js";
@@ -58,7 +58,7 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
       // The signals map is module-level, not session-scoped, so it persists
       // across /reload unless explicitly cleared.
       for (const key of Object.keys(enforcementSignals)) {
-        delete enforcementSignals[key];
+        delete (enforcementSignals as Record<string, EnforcementSignalEntry>)[key];
       }
 
       // ── 1. Scratchpad ──────────────────────────────────────────────

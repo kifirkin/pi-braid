@@ -39,24 +39,37 @@ export interface EnforcementSignalEntry {
 const SIGNAL_RETENTION_TURNS = 3;
 
 /**
- * ROADMAP EW-7.7: known signal keys. The map is also keyed by dynamic
- * keys (e.g. `memory`, `scratchpad` from bundle-sub-signal callers), so
- * the type is widened to `string` at the storage layer. This const is
- * the source of truth for the literal keys that appear in multiple
- * files. Using a typo in a literal (`enforcementSignals["unpersisted-
- * lernings"]`) compiles silently; future compile-time enforcement can
- * be added by switching the storage to a branded key type.
+ * Known enforcement signal keys. Allows compile-time checking at static
+ * call sites while preserving a downcast escape hatch for the dynamic
+ * message-analysis pipeline (register-message-end.ts keys from
+ * analyzeMessage).
+ *
+ * Use `(enforcementSignals as Record<string, EnforcementSignalEntry>)`
+ * when the key is genuinely runtime-dynamic.
  */
-export const SIGNAL_KEYS = {
+export type EnforcementSignalKey =
+  | "probe"
+  | "routing"
+  | "stability"
+  | "unpersisted_learnings";
+
+/**
+ * Source-of-truth map for signal keys that appear in multiple files.
+ * Using a typo in a literal (`SIGNAL_KEYS.unpersisted_lernings`) now
+ * fails at compile time.
+ */
+export const SIGNAL_KEYS: Record<string, EnforcementSignalKey> = {
   unpersisted_learnings: "unpersisted_learnings",
 } as const;
 
 
 /**
  * L1 enforcement signals for prompt-builder surfacing.
- * Keyed by semantic type (memory, scratchpad, context_high, etc.)
+ * Keyed by semantic type (probe, routing, stability,
+ * unpersisted_learnings). Dynamic keys from message-analysis use a
+ * downcast escape hatch.
  */
-export const enforcementSignals: Record<string, EnforcementSignalEntry> = {} as Record<string, EnforcementSignalEntry>;
+export const enforcementSignals: Partial<Record<EnforcementSignalKey, EnforcementSignalEntry>> = {};
 
 /**
  * Prune enforcement signals whose `turn` is more than
@@ -68,9 +81,10 @@ export const enforcementSignals: Record<string, EnforcementSignalEntry> = {} as 
 export function pruneSignals(currentTurn: number): number {
   const cutoff = currentTurn - SIGNAL_RETENTION_TURNS;
   let deleted = 0;
-  for (const key of Object.keys(enforcementSignals)) {
-    if (enforcementSignals[key].turn < cutoff) {
-      delete enforcementSignals[key];
+  const signals = enforcementSignals as Record<string, EnforcementSignalEntry>;
+  for (const key of Object.keys(signals)) {
+    if (signals[key].turn < cutoff) {
+      delete signals[key];
       deleted++;
     }
   }

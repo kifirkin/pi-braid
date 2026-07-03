@@ -156,7 +156,7 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
     >;
     for (const [key, signal] of Object.entries(signalEntries)) {
       if (signal?.text) {
-        enforcementSignals[key] = signal;
+        (enforcementSignals as Record<string, { turn: number; text: string; acted: boolean }>)[key] = signal;
         if (key === "stability") {
           emitSignal(ctx, "stability", "decline", "warn", false, {
             overlap: signal.text.match(/overlap=([0-9.]+)/)?.[1] ?? 0,
