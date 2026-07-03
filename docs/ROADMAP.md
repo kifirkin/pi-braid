@@ -738,9 +738,9 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
 | P2-1 | [DR-H-1](#dr-h-1) apply typed-adapter pattern to all 10 casts | Medium | 6 files |
 | P2-2 | [DR-M-8](#dr-m-8) split `scratchpadExecute` into per-action handlers | Hard | `scratchpad/index.ts:432-648` |
 | P2-3 | [EW-7.4](#44-ew-74-extract-classifier-offline-helper--medium--easy) extract `classifier-offline` helper | Easy | new `lib/reasoning/classifier-offline.ts` + 3 sites |  ✅ Shipped in v2.1 |
-| P2-4 | [EW-7.9](#49-ew-79-make-session-signals-bundle-per-signal--medium--medium) make Session Signals bundle per-signal | Medium | `turn-end-handler.ts:362-365` |
+| P2-4 | [EW-7.9](#49-ew-79-make-session-signals-bundle-per-signal--medium--medium) make Session Signals bundle per-signal | Medium | `turn-end-handler.ts:362-365` |  ✅ Shipped in v2.8 |
 | P2-5 | [EW-7.11](#411-ew-711-add-braidenforcement-settings-block--high--medium) add `braid.enforcement` settings block | Medium | `lib/config/braid-settings.ts`, `nudge-manager.ts`, 1 test |  ✅ Shipped in v3.3 |
-| P2-6 | [EW-7.13](#413-ew-713-add-per-source-priority-aware-caps--medium--medium) add per-source priority-aware caps | Medium | `turn-dedup.ts` + `WHISPER_CAPS` |
+| P2-6 | [EW-7.13](#413-ew-713-add-per-source-priority-aware-caps--medium--medium) add per-source priority-aware caps | Medium | `turn-dedup.ts` + `WHISPER_CAPS` |  ✅ Shipped in v2.5 |
 | P2-7 | [DR-H-9](#dr-h-9) cache drift-classifier results by input hash | Medium | `topic-drift/index.ts` + cache module |
 | P2-8 | [DR-L-5](#dr-l-5) batch scratchpad writes via debounced queue | Medium | `scratchpad/utils.ts` |  ✅ Shipped 2026-07-02 |
 | P2-9 | [DR-M-3](#dr-m-3) drop pipe-delimited parsing for scratchpad actions | Easy | `scratchpad/index.ts:386,638` |  ✅ Shipped 2026-07-02 |
@@ -752,7 +752,7 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
 | # | Item | Effort | Files |
 |---|---|---|---|
 | P3-1 | [EW-7.5](#45-ew-75-clean-up-checkblocking-dead-tracking--medium--easy) clean up `checkBlocking` dead tracking | Easy | `blocking.ts` + state |
-| P3-2 | [EW-7.7](#47-ew-77-type-the-enforcementsignals-keys--medium--easy) type `enforcementSignals` keys | Easy | `signals.ts` |
+| P3-2 | [EW-7.7](#47-ew-77-type-the-enforcementsignals-keys--medium--easy) type `enforcementSignals` keys | Easy | `signals.ts` |  ✅ Shipped 2026-07-03 |
 | P3-3 | [EW-7.8](#48-ew-78-promote-nudgecooldownms-to-constants-or-remove--low--easy) promote `nudgeCooldownMs` to constants or remove | Easy | `error-tracking-state.ts` |
 | P3-4 | [EW-7.10](#410-ew-710-make-_localizationrisk-a-regular-field--low--easy) rename `_localizationRisk` | Easy | 3 sites |
 | P3-5 | [EW-7.14](#414-ew-714-surface-nudgesuppressedcount-in-tui--low--easy) surface `nudgeSuppressedCount` in TUI | Easy | `turn-end-handler.ts:232` |
