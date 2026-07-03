@@ -1,5 +1,5 @@
 <!-- status: current -->
-<!-- Updated 2026-07-02: project-docs + memory pointer blocks converted to plain text (no XML tags). Skills keep XML. -->
+<!-- Updated 2026-07-03: project-docs + memory + runtime-context unified under one `## Context` heading. Skills keep XML; project-docs + memory now plain text. -->
 
 # src/extensions/core/prompt-builder/ - System Prompt Composition
 
@@ -25,9 +25,10 @@ Every file in this folder either:
 | `behavior-modes.ts` | **Restored 2026-06-29** Dynamic behavior modes: 4 modes (TRUTH-SEEKING, CORRECTION, EPISTEMIC-CALIBRATION, TOOL-RELIABILITY) x 1-2 directives each. Wired to enforcement signals via `determineContrastMode()`. Replaces the deleted `behavioral-guardrails.ts` (8 static values) and `contrast-phrase-library.ts` (6 phrases + 4 mode defs). Lean successor: right directive at the right time instead of all directives always. |
 | `instance-composition.ts` | **v3.8** Instance (consolidated): agent identity + pi-core version + root (pi-core npm package folder) + cwd + userland settings dir + os/hostname/now/pid + session (id + elapsed/last-event/turns/tool-avg) + top-level pi extension packages (settings-driven, scope-tagged `project` or `user-global`). |
 | `top-level-extensions.ts` | **v3.8** Discovery logic for top-level pi extension PACKAGES. Reads pi-core's `packages` field from `<cwd>/.pi/settings.json` (project) and `~/.pi/agent/settings.json` (user-global); project wins on collision. Resolves `npm:` specs via `npm root -g`; resolves local paths in place. Source tags: `project` / `user-global`. |
-| `context-section.ts` | **v3.6** Context (conditional): context %, session health, memory count, steps-since-checkpoint. Returns `""` when nothing to surface. |
 | `skills-section.ts` | Skills XML formatting + per-skill metadata + fingerprint cache. Returns a `PromptSection`. |
 | `project-docs-section.ts` | Project docs (AGENTS.md / CLAUDE.md) pointer-only rendering as plain-text bullets (`- <basename> at <path>`). Mirrors the skills discoverability model but uses plain text (no XML tags) so the system prompt stays prose. Includes fingerprint cache and `RESOURCES_DISCOVER` invalidation. |
+| `memory-section.ts` | Memory store pointer block (episodes + semantic + heuristics) as plain-text bullets (`- episodes: N entries at PATH`). Mirrors project-docs. Includes file-fingerprint cache and `RESOURCES_DISCOVER` invalidation. |
+| `context-section.ts` | **v3.6** body fragment for the unified `## Context` block: context %, session health, memory count, steps-since-checkpoint. Returns `""` when nothing to surface. *Does not own the heading*; the prompt-builder composer (`index.ts`) joins this with the project-docs and memory bodies under one `## Context` heading. |
 
 ## Local Contracts
 

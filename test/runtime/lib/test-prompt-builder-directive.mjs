@@ -511,6 +511,73 @@ test("RESOURCES_DISCOVER invalidates both skills and project-docs caches", () =>
   assert.match(handler, /resetProjectDocsSectionCache/);
 });
 
+// ── Unified ## Context block (project-docs + memory + runtime context) ─────
+
+test("prompt-builder composes project-docs + memory + runtime-context under one `## Context` heading", () => {
+  // The 2026-07-02 plain-text cleanup removed the XML envelopes around
+  // project-docs and memory pointer blocks, leaving them as headerless
+  // bullet lists. The `## Context` heading was reserved in v3.6 by
+  // context-section for runtime context alone. This composer finishes
+  // the unification intent by joining all three siblings under one
+  // markdown heading.
+  assert.match(
+    promptBuilderSrc,
+    /headingSection\(\s*["']context["']\s*,\s*["']Context["']\s*,/,
+    'prompt-builder must use headingSection("context", "Context", ...) for the unified block',
+  );
+});
+
+test("prompt-builder no longer pushes project-docs or memory as separate simpleSections", () => {
+  // Pre-unification: project-docs and memory were each `simpleSection`
+  // with their own directive line as a body. After unification they are
+  // fragments inside the headingSection and pushed once. The legacy
+  // `simpleSection("project-docs", ...)` / `simpleSection("memory", ...)`
+  // call sites should be gone.
+  assert.ok(
+    !/simpleSection\(\s*["']project-docs["']\s*,/.test(promptBuilderSrc),
+    "project-docs must not be its own simpleSection; it joins the unified `## Context` heading",
+  );
+  assert.ok(
+    !/simpleSection\(\s*["']memory["']\s*,/.test(promptBuilderSrc),
+    "memory must not be its own simpleSection; it joins the unified `## Context` heading",
+  );
+});
+
+test("contextSection emits body only (no `## Context` heading prefix)", () => {
+  // The heading is owned by the prompt-builder composer (index.ts), not by
+  // context-section. This pins the body-only contract so the fragment
+  // doesn't re-introduce the heading under the unified wrapper.
+  const contextSectionSrc = readFileSync(
+    join(ROOT, "src/extensions/core/prompt-builder/context-section.ts"),
+    "utf-8",
+  );
+  // Match the inner render() body of contextSection (the PromptSection returned).
+  // We pin the absence of a literal "## Context" string anywhere except comments.
+  const codeOnly = contextSectionSrc
+    .split("\n")
+    .filter((l) => !l.trim().startsWith("*") && !l.trim().startsWith("//"))
+    .join("\n");
+  assert.ok(
+    !/["']## Context["']/.test(codeOnly),
+    'contextSection code must NOT emit "## Context" (the composer owns the heading now)',
+  );
+});
+
+test("`## Context` heading appears exactly once per prompt render", () => {
+  // Regression guard against double-heading after unification: with three
+  // sibling fragments filtered into one headingSection, the final prompt
+  // must contain exactly one `## Context` heading line.
+  // We assert against the static composition (the regex finds the
+  // headingSection call site and counts it).
+  const headingCalls = promptBuilderSrc.match(
+    /headingSection\(\s*["']context["']\s*,\s*["']Context["']\s*,/g,
+  );
+  assert.ok(
+    headingCalls && headingCalls.length === 1,
+    `prompt-builder must call headingSection("context", "Context", ...) exactly once; found ${headingCalls?.length ?? 0}`,
+  );
+});
+
 // ── IDENTITY: generalist frame (orthogonal, preserved from prior test) ───
 
 test("IDENTITY_INTRO is generalist (not software-architect) framing", () => {

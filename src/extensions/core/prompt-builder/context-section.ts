@@ -1,16 +1,27 @@
 /**
- * Context section for the prompt-builder.
+ * Context body fragment for the prompt-builder.
  *
- * Renders a "## Context" block with conditional context info:
+ * Renders the *body* of the runtime context bullets (no heading):
  *   - Context-usage percentage (only when > 75%)
  *   - Session health (only when non-healthy; full recovery message
  *     still travels via the whisper channel)
  *   - Memory count (only when > 0)
  *   - Steps since last checkpoint (only when > 0)
  *
- * The block is omitted entirely when nothing matches, so the
- * "## Context" heading does not appear in the prompt unless there
- * is something to surface.
+ * Returns "" when nothing matches; the prompt-builder composes this
+ * fragment with `project-docs-section` and `memory-section` under a
+ * single `## Context` heading (see index.ts). The heading itself is
+ * owned by the composer, not by this fragment, so the three sibling
+ * context-flavored sections render as one coherent markdown block
+ * instead of three orphaned bullets.
+ *
+ * Background: the standalone `## Context` heading was reserved in
+ * v3.6 and used in isolation when the runtime context had something
+ * to surface. After the 2026-07-02 plain-text cleanup of
+ * `<available_project_docs>` and `<available_memories>`, the other
+ * two context-flavored blocks lost their XML envelopes and were left
+ * as headerless bullet lists. This fragment now contributes to the
+ * unified `## Context` block instead of owning its own heading.
  *
  * Differs from Instance (stable per session-start) and Session
  * (volatile session stats). The three-block split landed in v3.6;
@@ -128,11 +139,14 @@ export function contextSection(data: ContextData): PromptSection {
         );
       }
 
-      // Omit the block entirely when nothing to surface. The
-      // simpleSection wrapper will drop the empty section, so we
-      // return "" here.
+      // Omit the body entirely when nothing to surface. The composer
+      // (index.ts) joins this fragment with project-docs and memory
+      // bodies; an empty fragment is filtered out before the
+      // unified `## Context` heading is applied. Returning the bullets
+      // without a heading lets the parent composer own the heading
+      // so all three sibling fragments share one markdown heading.
       if (lines.length === 0) return "";
-      return ["## Context", ...lines].join("\n");
+      return lines.join("\n");
     },
   };
 }

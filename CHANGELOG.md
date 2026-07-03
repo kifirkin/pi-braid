@@ -8,6 +8,58 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Prompt builder: project-docs + memory + runtime-context unified
+  under one `## Context` heading.** Previously the three
+  context-flavored blocks were each their own `simpleSection`:
+  - `project-docs-section.ts` rendered as `- AGENTS.md at /...`
+    with a thin lead-in directive line;
+  - `memory-section.ts` rendered as `- episodes: N entries at PATH`
+    with a thin directive line;
+  - `context-section.ts` rendered as `## Context\n- Context: 80%`
+    conditional runtime context.
+
+  After the 2026-07-02 plain-text cleanup
+  (`6c5d03e4 Prompt builder: project-docs + memory pointer blocks
+  now plain text`), the two pointer blocks lost their XML envelopes
+  and were left as headerless bullet lists while the runtime-context
+  block kept its own `## Context` heading — three structurally
+  inconsistent siblings. The `## Context` heading was reserved in
+  v3.6 by `context-section.ts` and never extended to wrap the other
+  two. This change finishes that intent:
+
+  - `context-section.ts` now emits body fragments only (no heading
+    prefix). The composer owns the heading.
+  - `prompt-builder/index.ts` joins the three fragment bodies
+    (`projectContextSection.render()` + `reconstructMemorySection(ctx)`
+    + `context.render()`) into a single `headingSection("context",
+    "Context", body)`.
+  - The block — heading included — is omitted when every fragment
+    is empty (preserving the v3.6 "no empty heading" invariant).
+
+  Live render after the change:
+
+      ## Context
+
+      Memory (episodes, semantic, heuristics): use `memory` to recall before non-trivial work. ...
+
+      - episodes: N entries at /Users/.../episodes.jsonl
+      - semantic: N entries at /Users/.../semantic.json
+      - heuristics: session-scoped (no on-disk file)
+
+      Read project documentation files below carefully and cross-check before acting on time-sensitive claims.
+
+      - AGENTS.md at /Users/.../AGENTS.md
+
+      - Context: 80%   (only when > 75% etc.)
+
+  Net: one coherent `## Context` markdown block instead of three
+  orphaned lists. Skill blocks still use XML self-closing `<skill
+  ... />` (different shape, kept as-is). Tests
+  (`test-prompt-builder-directive.mjs`) pin the unified wiring and
+  guard against regressions.
+
 ### Fixed
 
 - **ROADMAP tally reconciliation (session-3):** The tier-tally headers

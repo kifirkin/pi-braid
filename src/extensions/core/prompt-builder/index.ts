@@ -9,7 +9,7 @@ import { gatherContextState, contextSection } from "./context-section.js";
 import { deliverActiveSpecs } from "../../../lib/cognitive/openspec.js";
 import { deliverRelevantHints } from "../../../lib/cognitive/hints.js";
 import type { PromptSection } from "./section.js";
-import { linesSection, simpleSection, composeSections } from "./section.js";
+import { linesSection, simpleSection, headingSection, composeSections } from "./section.js";
 import {
   IDENTITY_INTRO,
   INTERACTION_STYLE,
@@ -351,27 +351,27 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       if (skillsText) sections.push(simpleSection("skills", skillsText));
     }
 
-    // 4. Project context (pointer-only; agent reads full content on demand)
-    // Render ahead of append so it goes into the dedup set before the user
-    // append can be checked against it.
-    const projectDocs = await (await projectContextSection(cwd, ctx)).render();
-    if (projectDocs) {
-      sections.push(simpleSection("project-docs", projectDocs));
-    }
-
-    // 4b. Memory pointer block (episodes + semantic; heuristics noted as session-scoped).
-    //    Mirrors the skills and project-docs discoverability pattern. Empty
-    //    state returns "" so the section is omitted entirely. Cached per
-    //    file fingerprint; invalidated on RESOURCES_DISCOVER.
-    const memorySection = await reconstructMemorySection(ctx);
-    if (memorySection) {
-      sections.push(simpleSection("memory", memorySection));
-    }
-
-    // 5. Context (conditional: context %, session health, memory, checkpoint).
-    //    The Session block was merged into Instance in v3.7; section 6
-    //    (date + cwd) was dropped because Instance now owns those fields.
-    sections.push(context);
+    // 4. Unified `## Context` block (project-docs + memory + runtime context).
+    //    The heading was reserved in v3.6 by context-section for runtime
+    //    context, but the sibling pointer blocks (project docs, memory) used
+    //    to wrap themselves in their own XML envelopes (`<available_*>...`)
+    //    and so didn't need a markdown heading. After the 2026-07-02 plain-text
+    //    cleanup, those envelopes are gone and the two blocks are headerless
+    //    bullets. This composer finishes the unification intent by wrapping
+    //    all three siblings under one markdown heading.
+    //
+    //    Order preserved from the previous three-push layout:
+    //      project-docs -> memory -> runtime-context
+    //    Empty fragments are filtered (headingSection itself drops empty
+    //    bodies, so the whole block -- heading included -- is omitted when
+    //    nothing is left).
+    const contextFragments = [
+      await (await projectContextSection(cwd, ctx)).render(),
+      await reconstructMemorySection(ctx),
+      await context.render(),
+    ].filter((s) => s && s.trim() !== "");
+    const contextBlock = contextFragments.join("\n\n");
+    sections.push(headingSection("context", "Context", contextBlock));
 
     // 9: Preserve appendSystemPrompt from pi-native. Deduplicated against
     // everything above via the dedup set; user-provided append content that
