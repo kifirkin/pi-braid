@@ -7,9 +7,25 @@ import type { ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding
 import { callLlm } from "../../../../lib/ai/llm-call.js";
 import { resolveUtilityModel } from "../../../../lib/ai/model-resolver.js";
 import { criticGate } from "../../../../lib/ai/critic-gate.js";
+import { classify } from "../../../../lib/ai/text-classifier.js";
+import { CRITICS } from "../../../../lib/ai/critic-registry.js";
 import { scoreHypothesisOutput } from "./scoring.js";
 
 import { withMeta } from "../../../../lib/types/standard-result.js";
+
+/**
+ * P2-11 B-class: preserve the 4 regex dimension checks as the Tier 1 fallback
+ * for hypothesis signal detection. The LLM path enhances when the heuristic
+ * returns "none" or when the agent needs richer signal analysis.
+ */
+function hypothesisSignalFallback(text: string): string {
+  const signals: string[] = [];
+  if (/verify|check|test|confirm|reproduce/i.test(text)) signals.push("verification-plan");
+  if (/because|caused by|due to|root cause|underlying/i.test(text)) signals.push("causal-reasoning");
+  if (/proper|maintainable|clean|refactor|fix.*properly/i.test(text)) signals.push("proper-solution");
+  if (/edge case|boundary|corner case|failure mode/i.test(text)) signals.push("edge-case-aware");
+  return signals.length > 0 ? signals.join(", ") : "none";
+}
 
 
 
@@ -178,6 +194,34 @@ export function createHypothesizeTool(): ToolDefinition<any, any, any> {
 
         // Score hypotheses with heuristic signals + evidence pool
         const { scored, annotated } = scoreHypothesisOutput(text, evidence, ctx ?? undefined);
+
+        // P2-11 B-class: enhance signal detection with LLM when heuristic fails
+        // (tierPolicy: fallback-only means the heuristic fires first with 0.5 confidence,
+        // and the LLM path covers edge cases the regexes miss).
+        try {
+          const signalResult = await classify(
+            ctx,
+            CRITICS.hypothesisSignals.criteria,
+            { hypothesisText: text },
+            {
+              label: CRITICS.hypothesisSignals.label,
+              fallback: () => hypothesisSignalFallback(text),
+              tierPolicy: "fallback-only",
+            },
+          );
+          if (signalResult.label && signalResult.label !== "none") {
+            const llmSignals = signalResult.label.split(",").map((s: string) => s.trim());
+            for (const s of scored) {
+              for (const ls of llmSignals) {
+                if (!s.signals.includes(ls)) {
+                  s.signals.push(ls);
+                }
+              }
+            }
+          }
+        } catch {
+          // Swallow: signal enhancement is best-effort, heuristic results are sufficient
+        }
 
         return withMeta(
           {

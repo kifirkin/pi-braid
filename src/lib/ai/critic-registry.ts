@@ -922,4 +922,38 @@ export const CRITICS = {
   } satisfies CriticDef,
 
   /** Legacy fallback for VbC detection. */
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Hypothesis Signals - scoring.ts dimension detection
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Identify which reasoning patterns are present in a debugging hypothesis.
+   * Replaces 4 B-class regex dimension checks in scoreHeuristic().
+   * Returns comma-separated signal names or "none".
+   */
+  hypothesisSignals: {
+    label: "Hypothesis Signals",
+    criteria: {
+      systemPrompt:
+        "You are a text classifier that identifies reasoning patterns in debugging hypotheses.",
+      userPrompt:
+        "Analyze the hypothesis text below and identify which of these reasoning patterns are present:\n" +
+        "- verification-plan: mentions verifying, checking, testing, confirming, or reproducing\n" +
+        "- causal-reasoning: explains root cause, causal mechanism, or why something happened\n" +
+        "- proper-solution: proposes a proper fix vs workaround (clean, refactor, maintainable, proper)\n" +
+        "- edge-case-aware: considers boundary conditions, corner cases, or failure modes\n\n" +
+        "Reply with ONE line: comma-separated list of present patterns, or 'none' if none apply.\n" +
+        "Example: 'verification-plan, causal-reasoning'\n\n" +
+        "<text>\n" +
+        "{{hypothesisText}}\n" +
+        "</text>",
+    },
+    options: { timeoutMs: 60_000 },
+  } satisfies CriticDef,
+
+  /**
+   * Legacy fallback for hypothesis signal detection.
+   * Preserves the 4 regex dimension checks from scoreHeuristic().
+   */
 } as const;
