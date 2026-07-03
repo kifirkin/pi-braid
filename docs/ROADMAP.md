@@ -3,9 +3,7 @@
 # pi-braid Improvement Roadmap
 
 **Compiled:** 2026-06-17
-**Last reconciled:** 2026-07-02 (session-3 tally refresh: P2 8→9 of 11 with EW-7.4/P2-3 marked shipped v2.1; P3 24→25 of 25 with EW-7.12/P3-7 envelope; EW 14→15 of 15; removed contradictory "EW-7.12 remains deferred" line) — headline numbers (81 tests pass, 25 skills,
-31 critics) updated. Detailed item-level status updated: P2 8/11, P3 24/25
-shipped. Remaining items reconciled from 6 to 3.
+**Last reconciled:** 2026-07-03 (session-4: added shipped markers to P0 table, P2-10d memory-agent-bridge split shipped, P2-10/P2-11 table markers updated, P-ORCH orchestrator proposal added §6.5) Remaining items reconciled from 6 to 3.
 **Status:** Living document. Re-run after each remediation round.
 **Source audits:** All `docs/*.md` documents as of 2026-06-17 + deep review findings from this session.
 
@@ -707,16 +705,16 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
 
 ### 6.1 P0 — Critical bugs (ship before next release, ~3-5 dev days)
 
-| # | Item | Effort | Files |
-|---|---|---|---|
-| P0-1 | [DR-C-1](#dr-c-1) fix `ctx.whisper` violations | Medium | 20+ files + heartbeat-scheduler refactor |
-| P0-2 | [DR-H-4](#dr-h-4) surface scratchpad disk-write failure | Easy | `scratchpad/persistence.ts:217` |
-| P0-3 | [DR-H-5](#dr-h-5) surface three-memory-stores episodic twin failure | Easy | `memory-agent-bridge/index.ts:104-110` |
-| P0-4 | [DR-M-4](#dr-m-4) don't delete from `pad.done` if archive failed | Easy | `scratchpad/index.ts:598` |
-| P0-5 | [DR-H-3](#dr-h-3) skip drift detection when `extractOutputText` falls through | Easy | `topic-drift/index.ts:158-164` |
-| P0-6 | [EW-7.1](#41-ew-71-fix-enforcement_violation--tool_error-amplification--high--easy) fix `enforcement_violation → tool_error` amplification | Easy | `whisper.ts:51-58` |
-| P0-7 | [EW-7.6](#46-ew-76-fix-enforcementsignals-pruning-vs-mars-lookback--medium--easy) fix MARS lookback pruning collision | Easy | `signals.ts:49-57` |
-| P0-8 | [DR-NEW-v0.80](#dr-new-v080-pi-ai-v080-port) pi-ai v0.80 port — top-level `completeSimple` import relocated to `@earendil-works/pi-ai/compat` | Easy | `lib/ai/llm-call.ts`, peer-deps, 1 test, CHANGELOG |
+| # | Item | Effort | Files | Status |
+|---|---|---|---|---|
+| P0-1 | [DR-C-1](#dr-c-1) fix `ctx.whisper` violations | Medium | 20+ files + heartbeat-scheduler refactor |  ✅ Shipped v1.8 (substantially complete) |
+| P0-2 | [DR-H-4](#dr-h-4) surface scratchpad disk-write failure | Easy | `scratchpad/persistence.ts:217` |  ✅ Shipped v1.1 |
+| P0-3 | [DR-H-5](#dr-h-5) surface three-memory-stores episodic twin failure | Easy | `memory-agent-bridge/index.ts:104-110` → now `memory-store-tool.ts` |  ✅ Shipped v1.1 |
+| P0-4 | [DR-M-4](#dr-m-4) don't delete from `pad.done` if archive failed | Easy | `scratchpad/index.ts:598` |  ✅ Shipped v1.1 |
+| P0-5 | [DR-H-3](#dr-h-3) skip drift detection when `extractOutputText` falls through | Easy | `topic-drift/index.ts:158-164` |  ✅ Shipped v1.1 |
+| P0-6 | [EW-7.1](#41-ew-71-fix-enforcement_violation--tool_error-amplification--high--easy) fix `enforcement_violation → tool_error` amplification | Easy | `whisper.ts:51-58` |  ✅ Shipped v1.1 |
+| P0-7 | [EW-7.6](#46-ew-76-fix-enforcementsignals-pruning-vs-mars-lookback--medium--easy) fix MARS lookback pruning collision | Easy | `signals.ts:49-57` |  ✅ Shipped v1.1 |
+| P0-8 | [DR-NEW-v0.80](#dr-new-v080-pi-ai-v080-port) pi-ai v0.80 port — top-level `completeSimple` import relocated to `@earendil-works/pi-ai/compat` | Easy | `lib/ai/llm-call.ts`, peer-deps, 1 test, CHANGELOG |  ✅ Shipped v3.1 |
 
 ### 6.2 P1 — Contract / architectural (this session, ~5-8 dev days)
 
@@ -744,8 +742,8 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
 | P2-7 | [DR-H-9](#dr-h-9) cache drift-classifier results by input hash | Medium | `topic-drift/index.ts` + cache module |
 | P2-8 | [DR-L-5](#dr-l-5) batch scratchpad writes via debounced queue | Medium | `scratchpad/utils.ts` |  ✅ Shipped 2026-07-02 |
 | P2-9 | [DR-M-3](#dr-m-3) drop pipe-delimited parsing for scratchpad actions | Easy | `scratchpad/index.ts:386,638` |  ✅ Shipped 2026-07-02 |
-| P2-10 | Q13 split memory-agent-bridge, timer, session-recall, latent-activator | Hard | 4 large files |
-| P2-11 | FR replace 7 B-class fallbacks still pending | Medium | `critic-registry.ts` + tierPolicy |
+| P2-10 | Q13 split memory-agent-bridge, timer, session-recall, latent-activator | Hard | 4 large files |  ✅ 3 of 4 splits done: timer (P2-10c v2.10), memory-agent-bridge (P2-10d 2026-07-03), session-recall (earlier). latent-activator remains. |
+| P2-11 | FR replace 7 B-class fallbacks still pending | Medium | `critic-registry.ts` + tierPolicy |  ✅ Shipped v2.7 |
 
 ### 6.4 P3 — Polish and cleanup (when capacity allows, ~5-8 dev days)
 
@@ -776,6 +774,16 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
 | P3-23 | [DR-H-8](#dr-h-8) single-pass `findByIdOrText` | Easy | `scratchpad/index.ts:34` (imported) |
 | P3-24 | TI verify and delete orphan `tasks.json` file (if not done) | Easy | filesystem |
 | P3-25 | FR Q16+Q17 cost analysis and caching strategy for tier-2 LLM calls | Hard | new |
+
+### 6.5 Proposals needing decisions
+
+Items below need a yes/no decision before work can begin. They are
+spec'd at the architecture/proposal level but blocked on user input.
+
+| # | Item | Effort | Spec / Reference |
+|---|---|---|---|
+| P2-7 | [DR-H-9](#dr-h-9) cache drift-classifier results by input hash | Medium | `topic-drift/index.ts` + cache module — prompt-merge design approach needs user call |
+| P-ORCH | **Orchestrator extension** — `/healthcheck` command, lead/follow session management, sleep mode, `/transfer` subagent handoff | ~150 LOC first commit + ~250 LOC follow-up | HANDOFF.md §What's next. User-requested 2026-06-28. First commit: `src/extensions/orchestrator/index.ts` + state + test |
 
 ---
 
@@ -2358,7 +2366,7 @@ description, P1-8 recall_get fake entry discriminator.
 (P1-2 verified as no-op in v1.9 — line text already
 matched the corrected count, no code change needed.)
 
-**P2 (9 of 11):** P2-1 typed-adapter pattern (full 6 sites
+**P2 (10 of 11):** P2-1 typed-adapter pattern (full 6 sites
 now covered in v2.6), P2-2 scratchpad split into handler
 groups, P2-3 (EW-7.4) classifier-offline helper, P2-4
 (EW-7.9) session signals per-signal gating, P2-5 (EW-7.11)
