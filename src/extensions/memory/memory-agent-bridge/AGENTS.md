@@ -9,10 +9,13 @@ storage layer).
 
 ## Architecture
 
-| File               | Purpose                                                              |
-| ------------------ | -------------------------------------------------------------------- |
-| `index.ts`         | Extension entry point; tool registrations and event handlers         |
-| `explore-paths.ts` | The `explore_paths` tool: parallel sub-agent exploration             |
+| File                   | Purpose                                                              |
+| ---------------------- | -------------------------------------------------------------------- |
+| `index.ts`             | Extension entry point; MemoryBridgeStats, SESSION_SHUTDOWN, tool wiring |
+| `explore-paths.ts`     | The `explore_paths` tool: parallel sub-agent exploration             |
+| `memory-store-tool.ts` | The `memory_store` tool: persist insights to long-term memory        |
+| `memory-tool.ts`       | The unified `memory` tool: recall, episodes, heuristics (9 actions)  |
+| `conflict-qa-tool.ts`  | The `conflict_qa` tool: view/resolve knowledge conflicts              |
 
 ## What this extension owns
 

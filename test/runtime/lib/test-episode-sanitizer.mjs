@@ -38,6 +38,10 @@ const MEMORY_BRIDGE_SRC = readFileSync(
   join(ROOT, "src/extensions/memory/memory-agent-bridge/index.ts"),
   "utf-8",
 );
+const MEMORY_TOOL_SRC = readFileSync(
+  join(ROOT, "src/extensions/memory/memory-agent-bridge/memory-tool.ts"),
+  "utf-8",
+);
 const STORE_SRC = readFileSync(EPISODES_SRC_PATH, "utf-8");
 
 console.log("=== Episode sanitizer (BUG-M3) + BUG-M2 regression ===\n");
@@ -100,13 +104,17 @@ test("addEpisode calls sanitizeEpisode before storing (BUG-M3 write-time hardeni
 
 // ── Source-level: BUG-M2 since/until filter applied to episodes ──────────
 
+  // The since/until filter in recall_search now lives in memory-tool.ts
+  // (extracted from index.ts in P2-10d). Check both files for the pattern.
 test("BUG-M2: since/until filter is applied to episode results", () => {
+  // The filter apply pattern may have type annotations (ep: { timestamp: number })
+  // in the extracted memory-tool.ts. Match the structural pattern flexibly.
   const filterPattern =
-    /retrieveByRUMS\([\s\S]*?\)\.filter\(\(ep\) => \{\s*if \(since && ep\.timestamp < since\)/;
-  assert.match(
-    MEMORY_BRIDGE_SRC,
-    filterPattern,
-    "BUG-M2 fix: episodes must be filtered by since/until after retrieveByRUMS",
+    /retrieveByRUMS\([\s\S]*?\)\.filter\([^)]*\)\s*=>\s*\{[\s\S]*?if \(since && ep\.timestamp < since\)/;
+  assert.ok(
+    filterPattern.test(MEMORY_BRIDGE_SRC) || filterPattern.test(MEMORY_TOOL_SRC),
+    "BUG-M2 fix: episodes must be filtered by since/until after retrieveByRUMS " +
+      "(expected in index.ts or memory-tool.ts)",
   );
 });
 

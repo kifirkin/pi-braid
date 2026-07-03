@@ -28,9 +28,13 @@ import { fileURLToPath } from "node:url";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const BRIDGE_PATH = join(ROOT, "src/extensions/memory/memory-agent-bridge/index.ts");
 const DIST_PATH = join(ROOT, "dist/extensions/memory/memory-agent-bridge/index.js");
+const STORE_TOOL_PATH = join(ROOT, "src/extensions/memory/memory-agent-bridge/memory-store-tool.ts");
+const MEMORY_TOOL_PATH = join(ROOT, "src/extensions/memory/memory-agent-bridge/memory-tool.ts");
 
 assert.ok(existsSync(BRIDGE_PATH), "memory-agent-bridge source must exist");
 const bridgeSrc = readFileSync(BRIDGE_PATH, "utf-8");
+const storeToolSrc = readFileSync(STORE_TOOL_PATH, "utf-8");
+const memoryToolSrc = readFileSync(MEMORY_TOOL_PATH, "utf-8");
 
 console.log("=== memory-bridge stats tests ===\n");
 
@@ -143,18 +147,18 @@ await test("memory-agent-bridge exports stats helpers", () => {
 });
 
 await test("memory_store tool's execute records the call", () => {
-  // Find the memory_store tool block by looking for the call inside its
-  // execute body. We do a structural check, not a body-grep.
+  // memory_store tool is now in ./memory-store-tool.ts (P2-10d split).
   assert.match(
-    bridgeSrc,
+    storeToolSrc,
     /name:\s*"memory_store"[\s\S]*?execute:\s*async[\s\S]*?recordMemoryToolCall\(\s*ctx\s*,\s*"memory_store"\s*\)/,
     "memory_store execute must call recordMemoryToolCall(ctx, 'memory_store')",
   );
 });
 
 await test("unified memory tool's execute records per-action calls", () => {
+  // memory tool is now in ./memory-tool.ts (P2-10d split).
   assert.match(
-    bridgeSrc,
+    memoryToolSrc,
     /name:\s*"memory"[\s\S]*?execute:\s*async[\s\S]*?recordMemoryToolCall\(\s*ctx\s*,\s*`memory:\$/,
     "unified memory execute must call recordMemoryToolCall(ctx, `memory:${action}`)",
   );
