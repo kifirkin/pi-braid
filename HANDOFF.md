@@ -301,3 +301,53 @@ The full classification of turn-end-handler.ts whispers into static
 was completed and stored in scratchpad as decision D-58. The
 classified inventory is ready for the next session to begin the
 partial migration. See scratchpad `action=continue` for the full memo.
+
+---
+
+## Postscript — 2026-07-03 mechanical sweep + task spec
+
+### Shipped this session (2 commits)
+
+| Commit | Item | Kind |
+|---|---|---|
+| `9819bbe2` | **P3-2** — type enforcementSignals keys (`EnforcementSignalKey` union) | Code |
+| `5047c672` | ROADMAP markers: P2-4 shipped v2.8, P2-6 shipped v2.5, P3-2 shipped 2026-07-03 | Doc |
+
+### Discoveries made
+
+- **P2-4 (EW-7.9 per-signal gating):** Already shipped in v2.8
+  (`1c8d0b18`). Per-signal subKey gating in `turn-end-handler.ts`,
+  `L2_NUDGE_TYPE` map, independent `shouldSendNudge` per signal with
+  subKey. Just needed ROADMAP marker.
+- **P2-6 (EW-7.13 per-source caps):** Already shipped in v2.5
+  (`1628211d`). `PER_SOURCE_CAP_OVERRIDES` in `turn-dedup.ts`. Just
+  needed ROADMAP marker.
+- **P2-11 (7 B-class fallbacks):** NOT a quick flag change. These are
+  regex-based heuristics (scoring dimensions, plan detection,
+  semantic-compress, sop-suggestion) across 5-6 files needing full
+  `classify()` LLM calls. Research-heavy per-file.
+- **P2-10d (memory-agent-bridge split):** Last Q13 split target.
+  962 lines, explore-paths.ts (227 lines) already extracted. ~735
+  remaining LOC with 4 tool registrations + helpers.
+
+### Detailed task specs for next session
+
+Two independent tasks ready to pick up. Full specs in scratchpad notes:
+
+1. **P2-10d** — Split `memory-agent-bridge/index.ts` into 3 extracted
+   files (`memory-store-tool.ts`, `memory-tool.ts`, `conflict-qa-tool.ts`
+   following the factory-function pattern from `explore-paths.ts`). See
+   scratchpad note `nt-mr4uiog6-7c0aa1` for file-by-file breakdown.
+
+2. **P2-11** — Replace 7 B-class fragile heuristics with LLM
+   `classify()` calls using `tierPolicy: "fallback-only"` pattern
+   (confidence 0.5). See scratchpad note `nt-mr4uiog6-7d8170` for
+   the per-heuristic breakdown across 5-6 files.
+
+### Verified
+
+- `npm test` → **81/81 passed, 0 failed**
+- `npm run typecheck` → clean
+- `npm run check:docs` → ✅ (65 docs all valid)
+- `npm run check:doc-drift` → ✅ (no current-state drift)
+- Working tree: **CLEAN**, all on `origin/main`
