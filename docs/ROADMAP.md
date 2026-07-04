@@ -98,8 +98,8 @@ state** so we don't redo work.
 
 | Item | Stale because |
 |---|---|
-| File sizes (805, 747, 660, 655, 596, 578, 576, 525, 514) | Splits happened in Round 6. Current sizes (2026-06-30): scratchpad 648, memory-agent-bridge 960, session-recall 563, timer 581, latent-activator 296, topic-drift 481. |
-| "Decision: defer Q13" | Triggers the doc listed (new contributor lost, flaky test, cross-section refactor) — DR-M-8 from this review argues one trigger IS met (scratchpad's 400-line `scratchpadExecute`). |
+| File sizes (805, 747, 660, 655, 596, 578, 576, 525, 514) | Splits happened in Round 6. Current sizes (2026-07-04): scratchpad 265 (dispatch table, P2-2), memory-agent-bridge 960, session-recall 563, timer 581, latent-activator 296, topic-drift 481. |
+| "Decision: defer Q13" | Triggers the doc listed (new contributor lost, flaky test, cross-section refactor) — DR-M-8 argument is now moot: `scratchpadExecute` was refactored into dispatch table (P2-2, 2026-07-04). |
 | "memory-agent-bridge (805) — no sub-module boundary" | The tool is still monolithic; file size grew from 805→960 as features were added. The "no boundary" assessment remains valid. |
 
 ### 2.3 Stale from `FRAGILE-HEURISTICS-INVENTORY.md`
@@ -440,10 +440,14 @@ merged is zero.
 
 #### DR-M-8. `scratchpadExecute` is 400+ lines with 20 switch cases
 
-**File:** `extensions/memory/scratchpad/index.ts:432-648` (`scratchpadExecute` fn). Each case has its
-own subtle logic, error paths inline. Q13 trigger condition partially met
-("refactor requires touching multiple unrelated sections"). Split by action
-type, mirror metacognition's `handlers/` pattern.
+**✅ Resolved 2026-07-04.**
+
+**File:** `extensions/memory/scratchpad/index.ts:432-648` was 452 lines.
+Replaced the `switch` with `ACTION_DISPATCH: Record<string, ActionFn>` in
+handlers.ts. Each action now maps to a uniform
+`(pad, params, text, idOrText, priorGoal)` signature. The router in
+index.ts is 5 lines; all per-action logic (552→603 lines) lives in
+handlers.ts. Mirroring metacognition's `handlers/` pattern is complete.
 
 #### DR-M-9. `episodes_search` builds a "provenance" string the LLM has to parse
 
@@ -694,7 +698,8 @@ From `CODE-QUALITY-REMEDIATION-PLAN.md`:
 The 4 unsplit large `index.ts` files (`memory-agent-bridge`, `timer`,
 `session-recall`, `latent-activator`) are still deferred. The
 `scratchpadExecute` function in `extensions/memory/scratchpad/index.ts`
-(DR-M-8) is now a stronger candidate because the Q13 trigger condition
+(DR-M-8) was resolved 2026-07-04 (dispatch table in handlers.ts,
+index.ts 452→265 lines). The Q13 trigger condition
 ("refactor requires touching multiple unrelated sections") is met.
 
 The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q13-split-index-statusmd).

@@ -124,8 +124,8 @@ This session also produced:
 
 4. **P2-10 / Q13** — large-file splits (`memory-agent-bridge`,
    `timer`, `session-recall`, `latent-activator`). Explicitly
-   deferred; trigger condition was partial-met by DR-M-8
-   (scratchpadExecute split).
+   ✅ resolved by DR-M-8 (now complete: scratchpadExecute dispatch
+   table in handlers.ts, 2026-07-04).
 
 5. **P2-7 / DR-H-9** — drift-classifier cache (prompt collapse 3→1
    multi-label). Cache part shipped (critic-cache.ts wired in

@@ -5,10 +5,12 @@
 ## Rationale
 
 Four files in the extension layer exceed maintainable size thresholds.
-The `scratchpadExecute` dispatch function (DR-M-8) also qualifies as a
-refactoring target. Splitting improves testability, reduces cognitive
-load per file, and matches the `handlers/` pattern already established
-by metacognition, context-manager, and enforcement.
+The `scratchpadExecute` dispatch function (DR-M-8) also qualified as a
+refactoring target and has been resolved (2026-07-04: dispatch table
+in handlers.ts replaces the switch, index.ts -187 lines). Splitting
+improves testability, reduces cognitive load per file, and matches the
+`handlers/` pattern already established by metacognition,
+context-manager, and enforcement.
 
 ## Candidates
 
@@ -17,7 +19,7 @@ by metacognition, context-manager, and enforcement.
 | `memory-agent-bridge/index.ts` | 963 | Split into types + stats + 6 handler files |
 | `timer/index.ts` | 581 | Extract TimerManager class + types + helpers |
 | `session-recall/index.ts` | 564 | Extract LLM query + search logic from factory |
-| `scratchpad/index.ts` | 650 | Extract formatters + schemas from dispatch |
+| `scratchpad/index.ts` | 650 → 265 | ✅ DR-M-8 resolved 2026-07-04: dispatch table in handlers.ts replaces 200-line switch. No further split needed. |
 | `latent-activator/index.ts` | 296 | **No split needed** (under 300 lines) |
 
 ## Implementation Order

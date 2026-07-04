@@ -10,6 +10,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **P2-2: scratchpadExecute dispatch table.** Replaced the 200-line
+  switch statement with `ACTION_DISPATCH: Record<string, ActionFn>`
+  in handlers.ts. Each action maps to a uniform
+  `(pad, params, text, idOrText, priorGoal)` signature, eliminating
+  repetitive boilerplate. The router in index.ts is now 5 lines.
+  (handlers.ts +51, index.ts -187 lines)
+
 - **Prompt builder: project-docs + memory + runtime-context unified
   under one `## Context` heading.** Previously the three
   context-flavored blocks were each their own `simpleSection`:
