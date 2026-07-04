@@ -24,12 +24,16 @@ import type { Skill } from "@earendil-works/pi-coding-agent";
 import type { PromptSection } from "./section.js";
 
 function escapeXml(str: string): string {
+  // Only escape characters that are REQUIRED for XML attribute safety
+  // when the attribute is delimited by double quotes:
+  //   &, <, >, "
+  // NOTE: ' (single quote) does NOT need escaping inside "-delimited attributes.
+  // Removing it avoids confusing &apos; entities in the agent's system prompt.
   return str
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+    .replace(/"/g, "&quot;");
 }
 
 /**
@@ -38,12 +42,15 @@ function escapeXml(str: string): string {
  *   - Unicode dashes (em, en, etc.) -> ASCII `-`
  *   - Smart single/double quotes -> ASCII `'` / `"`
  *   - Special spaces -> regular space
- *   - Arrows -> `->`
+ *   - Arrows: kept as Unicode (no replacement — `->` and `=>` both contain `>`
+ *     which XML-escapes to `&gt;`; Unicode arrows pass through untouched)
+ *   - Unicode ellipsis (...) -> ASCII `...`
  *   - Truncates to MAX_DESC_LEN characters (word-boundary aware)
  *
  * Mirrors pi-core's normalizeForFuzzyMatch patterns, plus arrow handling.
+ * The result must be safe for XML attribute values after escapeXml().
  */
-const MAX_DESC_LEN = 200;
+const MAX_DESC_LEN = 280;
 
 function normalizeDescription(raw: string): string {
   let s = raw
@@ -55,8 +62,14 @@ function normalizeDescription(raw: string): string {
     .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, "-")
     // Special spaces
     .replace(/[\u00A0\u2002-\u200A\u202F\u205F\u3000]/g, " ")
-    // Arrows
-    .replace(/[\u2190-\u2199\u21D0-\u21D9\u27A1]/g, "->")
+    // Arrows: kept as Unicode. No replacement — `->`/`=>` contain `>`
+    // which escapeXml would turn into `&gt;`. Unicode arrows (→, ⇒, etc.)
+    // pass through escapeXml untouched since they're not XML-special chars.
+    // Note: the regex is commented out, not removed, to preserve the
+    // original intent for any future reader.
+    // .replace(/[\u2190-\u2199\u21D0-\u21D9\u27A1]/g, "->")
+    // Unicode ellipsis -> ASCII three dots
+    .replace(/[\u2026]/g, "...")
     // Collapse multiple spaces (from replacements)
     .replace(/  +/g, " ")
     .trim();
