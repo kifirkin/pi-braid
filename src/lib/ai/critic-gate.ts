@@ -18,6 +18,18 @@
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { classify } from "./text-classifier.js";
+import type { CriticTier } from "./critic-stats.js";
+
+/**
+ * Normalize a classify() tier for critic-gate consumption.
+ * Maps "gate" and "cache" to "heuristic" since they represent the same
+ * semantic level (fast, cheap, no LLM generation).
+ */
+function normalizeTier(tier: string): CriticTier {
+  if (tier === "failed") return "heuristic";
+  if (tier === "gate" || tier === "cache") return "heuristic";
+  return tier as CriticTier;
+}
 
 export interface CriticGateOptions {
   /** Human-readable label for observability (critic-stats). */
@@ -55,8 +67,8 @@ export interface CriticGateResult {
   suggestedDepth: "deep" | "normal" | "skip";
   /** Descriptive message for the agent if skipped. */
   message: string;
-  /** Which tier the decision came from. */
-  tier: "utility" | "session" | "max-power" | "heuristic" | "failed" | "cache";
+  /** Which tier the decision came from (normalized: "gate" and "cache" map to "heuristic"). */
+  tier: CriticTier;
 }
 
 /**
@@ -87,7 +99,7 @@ export async function criticGate(
       shouldProceed: false,
       suggestedDepth: "skip",
       message: `[critic-gate] ${opts.name}: skipped (${result.tier})`,
-      tier: result.tier === "failed" ? "heuristic" : result.tier,
+      tier: normalizeTier(result.tier),
     };
   }
 
@@ -96,7 +108,7 @@ export async function criticGate(
       shouldProceed: true,
       suggestedDepth: "deep",
       message: `[critic-gate] ${opts.name}: deep analysis requested (${result.tier})`,
-      tier: result.tier === "failed" ? "heuristic" : result.tier,
+      tier: normalizeTier(result.tier),
     };
   }
 
@@ -105,6 +117,6 @@ export async function criticGate(
     shouldProceed: true,
     suggestedDepth: "normal",
     message: `[critic-gate] ${opts.name}: proceeding (${result.tier})`,
-    tier: result.tier === "failed" ? "heuristic" : result.tier,
+    tier: normalizeTier(result.tier),
   };
 }

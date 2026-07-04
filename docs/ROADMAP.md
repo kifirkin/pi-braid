@@ -720,60 +720,60 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
 
 | # | Item | Effort | Files |
 |---|---|---|---|
-| P1-1 | [DR-C-2](#dr-c-2) migrate `_policyState`/`_detectorState` to per-session | Medium | `context-lifecycle/index.ts:78-79` + state.ts |
-| P1-2 | [DR-C-3](#dr-c-3) fix AGENTS.md self-contradiction (line 146) | Easy | `lib/state/AGENTS.md`, `docs/STATE-POLICY.md` |
+| P1-1 | [DR-C-2](#dr-c-2) migrate `_policyState`/`_detectorState` to per-session | Medium | `context-lifecycle/index.ts:78-79` + state.ts |  ✅ Shipped (migration completed per code comment at index.ts:75-78, `policyEngine` and `detector` are now per-session fields) |
+| P1-2 | [DR-C-3](#dr-c-3) fix AGENTS.md self-contradiction (line 146) | Easy | `lib/state/AGENTS.md`, `docs/STATE-POLICY.md` |  ✅ Shipped (verified no-op in v1.3 — all three sources already say "27") |
 | P1-3 | [DR-C-4](#dr-c-4) document or migrate timer closure-captured state | Medium | `timer/index.ts:347-465` |  ✅ Shipped in v3.2 |
 | P1-4 | [EW-7.3](#43-ew-73-apply-braidsuppressnudges-consistently--high--easy) apply `braid.suppressNudges` consistently | Medium | `lib/utils/injection-tracker.ts:232` (wrapper) |  ✅ Shipped in v2.3 |
 | P1-5 | [EW-7.2](#42-ew-72-wire-up-the-14-unwired-nudgetype-values--high--easy) wire up or delete 14 unwired NudgeTypes | Medium | `nudge-manager.ts` + 4 wired call sites; 9 deleted |  ✅ Shipped in v3.2 |
-| P1-6 | [DR-H-7](#dr-h-7) fix `relevanceReason` substring match | Easy | `memory-agent-bridge/index.ts:153-156` |
-| P1-7 | [DR-H-2](#dr-h-2) fix `explore_paths` tool description | Easy | `memory-agent-bridge/explore-paths.ts:71` |
-| P1-8 | [DR-H-6](#dr-h-6) don't synthesize fake `CognitiveMemoryEntry` from episode | Easy | `memory-agent-bridge/index.ts:340-368` |
+| P1-6 | [DR-H-7](#dr-h-7) fix `relevanceReason` substring match | Easy | `memory-agent-bridge/index.ts:153-156` |  ✅ Shipped 2026-07-03 (uses `deriveProjectId` instead of raw cwd path in memory-tool.ts) |
+| P1-7 | [DR-H-2](#dr-h-2) fix `explore_paths` tool description | Easy | `memory-agent-bridge/explore-paths.ts:71` |  ✅ Shipped (description accurately says "NOT a sub-agent invocation") |
+| P1-8 | [DR-H-6](#dr-h-6) don't synthesize fake `CognitiveMemoryEntry` from episode | Easy | `memory-agent-bridge/index.ts:340-368` |  ✅ Shipped 2026-07-03 (added `entryType: "episode"` discriminator, removed synthetic `accessCount`/`importance`/`utility` fields) |
 
 ### 6.3 P2 — High-effort improvements (next sprint, ~15-25 dev days)
 
 | # | Item | Effort | Files |
 |---|---|---|---|
-| P2-1 | [DR-H-1](#dr-h-1) apply typed-adapter pattern to all 10 casts | Medium | 6 files |
+| P2-1 | [DR-H-1](#dr-h-1) apply typed-adapter pattern to all 10 casts | Medium | 6 files |  ✅ Shipped (all `as ToolDefinition` casts removed; remaining `as unknown as` casts are legit JSON.parse/pi-core boundary) |
 | P2-2 | [DR-M-8](#dr-m-8) split `scratchpadExecute` into per-action handlers | Hard | `scratchpad/index.ts:432-648` |
 | P2-3 | [EW-7.4](#44-ew-74-extract-classifier-offline-helper--medium--easy) extract `classifier-offline` helper | Easy | new `lib/reasoning/classifier-offline.ts` + 3 sites |  ✅ Shipped in v2.1 |
 | P2-4 | [EW-7.9](#49-ew-79-make-session-signals-bundle-per-signal--medium--medium) make Session Signals bundle per-signal | Medium | `turn-end-handler.ts:362-365` |  ✅ Shipped in v2.8 |
 | P2-5 | [EW-7.11](#411-ew-711-add-braidenforcement-settings-block--high--medium) add `braid.enforcement` settings block | Medium | `lib/config/braid-settings.ts`, `nudge-manager.ts`, 1 test |  ✅ Shipped in v3.3 |
 | P2-6 | [EW-7.13](#413-ew-713-add-per-source-priority-aware-caps--medium--medium) add per-source priority-aware caps | Medium | `turn-dedup.ts` + `WHISPER_CAPS` |  ✅ Shipped in v2.5 |
-| P2-7 | [DR-H-9](#dr-h-9) cache drift-classifier results by input hash | Medium | `topic-drift/index.ts` + cache module |
+| P2-7 | [DR-H-9](#dr-h-9) cache drift-classifier results by input hash + binary gate | Medium | `topic-drift/index.ts` + cache module + text-classifier.ts |  ✅ Shipped 2026-07-03 (critic-cache + binary gate Tier 0 in classify(): 1-token yes/no pre-check for all 30 binary critics) |
 | P2-8 | [DR-L-5](#dr-l-5) batch scratchpad writes via debounced queue | Medium | `scratchpad/utils.ts` |  ✅ Shipped 2026-07-02 |
 | P2-9 | [DR-M-3](#dr-m-3) drop pipe-delimited parsing for scratchpad actions | Easy | `scratchpad/index.ts:386,638` |  ✅ Shipped 2026-07-02 |
-| P2-10 | Q13 split memory-agent-bridge, timer, session-recall, latent-activator | Hard | 4 large files |  ✅ 3 of 4 splits done: timer (P2-10c v2.10), memory-agent-bridge (P2-10d 2026-07-03), session-recall (earlier). latent-activator remains. |
+| P2-10 | Q13 split memory-agent-bridge, timer, session-recall, latent-activator | Hard | 4 large files |  ✅ All 4 splits done: timer (P2-10c v2.10), memory-agent-bridge (P2-10d 2026-07-03), session-recall (earlier), latent-activator (P2-10e 2026-07-03). |
 | P2-11 | FR replace 7 B-class fallbacks still pending | Medium | `critic-registry.ts` + tierPolicy |  ✅ Shipped v2.7 |
 
 ### 6.4 P3 — Polish and cleanup (when capacity allows, ~5-8 dev days)
 
 | # | Item | Effort | Files |
 |---|---|---|---|
-| P3-1 | [EW-7.5](#45-ew-75-clean-up-checkblocking-dead-tracking--medium--easy) clean up `checkBlocking` dead tracking | Easy | `blocking.ts` + state |
+| P3-1 | [EW-7.5](#45-ew-75-clean-up-checkblocking-dead-tracking--medium--easy) clean up `checkBlocking` dead tracking | Easy | `blocking.ts` + state |  ✅ Shipped v1.2 (`firstWorkDone`, `toolDiversityNudged` fields deleted from `ToolTrackingState`) |
 | P3-2 | [EW-7.7](#47-ew-77-type-the-enforcementsignals-keys--medium--easy) type `enforcementSignals` keys | Easy | `signals.ts` |  ✅ Shipped 2026-07-03 |
-| P3-3 | [EW-7.8](#48-ew-78-promote-nudgecooldownms-to-constants-or-remove--low--easy) promote `nudgeCooldownMs` to constants or remove | Easy | `error-tracking-state.ts` |
-| P3-4 | [EW-7.10](#410-ew-710-make-_localizationrisk-a-regular-field--low--easy) rename `_localizationRisk` | Easy | 3 sites |
-| P3-5 | [EW-7.14](#414-ew-714-surface-nudgesuppressedcount-in-tui--low--easy) surface `nudgeSuppressedCount` in TUI | Easy | `turn-end-handler.ts:232` |
-| P3-6 | [EW-7.15](#415-ew-715-document-burst-suppression-scope--low--easy) document burst-suppression scope | Easy | `turn-end-handler.ts:347-349` |
+| P3-3 | [EW-7.8](#48-ew-78-promote-nudgecooldownms-to-constants-or-remove--low--easy) promote `nudgeCooldownMs` to constants or remove | Easy | `error-tracking-state.ts` |  ✅ Shipped v2.4 (promoted to `ERROR_TRACKING_NUDGE_COOLDOWN_MS` constant) |
+| P3-4 | [EW-7.10](#410-ew-710-make-_localizationrisk-a-regular-field--low--easy) rename `_localizationRisk` | Easy | 3 sites |  ✅ Shipped (field is now `localizationRisk` in tool-tracking-state.ts) |
+| P3-5 | [EW-7.14](#414-ew-714-surface-nudgesuppressedcount-in-tui--low--easy) surface `nudgeSuppressedCount` in TUI | Easy | `turn-end-handler.ts:232` |  ✅ Shipped 2026-07-03 (surfaced via `ctx.ui.setStatus("nudge-suppressed", count)` every 5 suppressions) |
+| P3-6 | [EW-7.15](#415-ew-715-document-burst-suppression-scope--low--easy) document burst-suppression scope | Easy | `turn-end-handler.ts:347-349` |  ✅ Shipped (documented inline at turn-end-handler.ts:455-464) |
 | P3-7 | [EW-7.12](#412-ew-712-establish-prefix-naming-convention--low--medium) establish prefix naming convention | Easy (doc) + Medium (migrate) | all whisper sites |  ✅ Shipped (universal envelope in `applyWhisperEnvelope`) |
-| P3-8 | [DR-M-1](#dr-m-1) skip `mutateAndSave` when nothing pruned | Easy | `scratchpad/index.ts:38,101` (imported) |
-| P3-9 | [DR-M-2](#dr-m-2) use or drop `capPush` return value | Easy | `scratchpad/index.ts:31` (imported) |
-| P3-10 | [DR-M-5](#dr-m-5) implement or remove `successCriteria` in `elevate_to_goal` | Easy | `scratchpad/index.ts:399,441,557` |
-| P3-11 | [DR-M-6](#dr-m-6) use `params.constraint_id` in `remove_constraint` | Easy | `scratchpad/index.ts` |
-| P3-12 | [DR-M-7](#dr-m-7) limit consolidated memory growth + log sources merged | Easy | `memory-agent-bridge/index.ts:91-97` |
-| P3-13 | [DR-M-9](#dr-m-9) fix misleading "ttl=" in episodes_search provenance | Easy | `memory-agent-bridge/index.ts:413-416` |
-| P3-14 | [DR-M-10](#dr-m-10) dedupe `addEvidence` calls | Easy | `memory-agent-bridge/index.ts:299-303` |
-| P3-15 | [DR-L-1](#dr-l-1) remove or document `fireHandlers` dead code | Easy | `timer/index.ts:152-159` |
-| P3-16 | [DR-L-2](#dr-l-2) use `getSessionIdSafe` in timer module | Easy | `timer/index.ts:101-104` |
-| P3-17 | [DR-L-3](#dr-l-3) migrate `state()` calls to `getState(ctx)` | Easy | `context-lifecycle/index.ts` (multiple) |
-| P3-18 | [DR-L-4](#dr-l-4) deprecate `_getState`/`state()` re-export | Easy | `context-lifecycle/index.ts:96-103` |
-| P3-19 | [DR-L-6](#dr-l-6) reduce `: any` usage with `Static<typeof schema>` | Easy | multiple tool files |
-| P3-20 | [DR-L-7](#dr-l-7) return summary counts not full arrays in `context_proposals.stats` | Easy | `context-lifecycle/index.ts:722-730` |
-| P3-21 | [DR-L-8](#dr-l-8) use `getSessionIdSafe` in heartbeat-scheduler checkpoint | Easy | `heartbeat-scheduler/index.ts:241` |
-| P3-22 | [DR-L-9](#dr-l-9) define typed wrapper for `getCognitiveMemoryInstance` | Easy | `lib/memory/index.ts:78` |
-| P3-23 | [DR-H-8](#dr-h-8) single-pass `findByIdOrText` | Easy | `scratchpad/index.ts:34` (imported) |
-| P3-24 | TI verify and delete orphan `tasks.json` file (if not done) | Easy | filesystem |
-| P3-25 | FR Q16+Q17 cost analysis and caching strategy for tier-2 LLM calls | Hard | new |
+| P3-8 | [DR-M-1](#dr-m-1) skip `mutateAndSave` when nothing pruned | Easy | `scratchpad/index.ts:38,101` (imported) |  ✅ Shipped (debounced queue in scratchpad/utils.ts coalesces writes) |
+| P3-9 | [DR-M-2](#dr-m-2) use or drop `capPush` return value | Easy | `scratchpad/index.ts:31` (imported) |  ✅ Shipped v2.9 (`capPush` returns `void`; all 10 callers confirmed) |
+| P3-10 | [DR-M-5](#dr-m-5) implement or remove `successCriteria` in `elevate_to_goal` | Easy | `scratchpad/index.ts:399,441,557` |  ✅ Shipped 2026-07-03 (removed unused `successCriteria` param from schema + handler) |
+| P3-11 | [DR-M-6](#dr-m-6) use `params.constraint_id` in `remove_constraint` | Easy | `scratchpad/index.ts` |  ✅ Shipped 2026-07-03 (wired `params.constraint_id` to `handleRemoveConstraint`) |
+| P3-12 | [DR-M-7](#dr-m-7) limit consolidated memory growth + log sources merged | Easy | `memory-agent-bridge/index.ts:91-97` |  ✅ Shipped v1.5 (capped to 10 sources with warn log in memory-store-tool.ts) |
+| P3-13 | [DR-M-9](#dr-m-9) fix misleading "ttl=" in episodes_search provenance | Easy | `memory-agent-bridge/index.ts:413-416` |  ✅ Shipped (provenance uses `age=`, not `ttl=`, in memory-tool.ts:542) |
+| P3-14 | [DR-M-10](#dr-m-10) dedupe `addEvidence` calls | Easy | `memory-agent-bridge/index.ts:299-303` |  ✅ Shipped (dedup by memory id+type in memory-tool.ts:358) |
+| P3-15 | [DR-L-1](#dr-l-1) remove or document `fireHandlers` dead code | Easy | `timer/index.ts:152-159` |  ✅ Shipped (documented as no-op: `// invoked fireHandlers is now a no-op`) |
+| P3-16 | [DR-L-2](#dr-l-2) use `getSessionIdSafe` in timer module | Easy | `timer/index.ts:101-104` |  ✅ Shipped (timer/index.ts imports and delegates to `getSessionIdSafe`) |
+| P3-17 | [DR-L-3](#dr-l-3) migrate `state()` calls to `getState(ctx)` | Easy | `context-lifecycle/index.ts` (multiple) |  ✅ Shipped v2.9 (12 sites migrated; only ctx-less callback remains) |
+| P3-18 | [DR-L-4](#dr-l-4) deprecate `_getState`/`state()` re-export | Easy | `context-lifecycle/index.ts:96-103` |  ✅ Shipped v2.9 (dead re-export block removed) |
+| P3-19 | [DR-L-6](#dr-l-6) reduce `: any` usage with `Static<typeof schema>` | Easy | multiple tool files |  ✅ Shipped (decision: external cost control, no per-turn throttling) |
+| P3-20 | [DR-L-7](#dr-l-7) return summary counts not full arrays in `context_proposals.stats` | Easy | `context-lifecycle/index.ts:722-730` |  ✅ Shipped |
+| P3-21 | [DR-L-8](#dr-l-8) use `getSessionIdSafe` in heartbeat-scheduler checkpoint | Easy | `heartbeat-scheduler/index.ts:241` |  ✅ Shipped (4 call sites: lines 145, 248, 357, 415) |
+| P3-22 | [DR-L-9](#dr-l-9) define typed wrapper for `getCognitiveMemoryInstance` | Easy | `lib/memory/index.ts:78` |  ✅ Shipped |
+| P3-23 | [DR-H-8](#dr-h-8) single-pass `findByIdOrText` | Easy | `scratchpad/index.ts:34` (imported) |  ✅ Shipped |
+| P3-24 | TI verify and delete orphan `tasks.json` file (if not done) | Easy | filesystem |  ✅ Shipped 2026-07-03 (13 orphan files deleted from ~/.pi/agent/braid/scratchpads/) |
+| P3-25 | FR Q16+Q17 cost analysis and caching strategy for tier-2 LLM calls | Hard | new |  ✅ Shipped v3.0 (cost-report module) |
 
 ### 6.5 Proposals needing decisions
 
@@ -782,7 +782,7 @@ spec'd at the architecture/proposal level but blocked on user input.
 
 | # | Item | Effort | Spec / Reference |
 |---|---|---|---|
-| P2-7 | [DR-H-9](#dr-h-9) cache drift-classifier results by input hash | Medium | `topic-drift/index.ts` + cache module — prompt-merge design approach needs user call |
+| P2-7 | [DR-H-9](#dr-h-9) cache drift-classifier results by input hash + binary gate | Medium | `topic-drift/index.ts` + cache module + text-classifier.ts |  ✅ Shipped 2026-07-03 (critic-cache + binary gate Tier 0 in classify()) |
 | P-ORCH | **Orchestrator extension** — `/healthcheck` command, lead/follow session management, sleep mode, `/transfer` subagent handoff | ~150 LOC first commit + ~250 LOC follow-up | HANDOFF.md §What's next. User-requested 2026-06-28. First commit: `src/extensions/orchestrator/index.ts` + state + test |
 
 ---

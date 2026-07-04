@@ -43,6 +43,17 @@ framework works WITH biases, not against them.
   disabled (the auto-activate code was removed in the 0.3.0 audit).
   The agent must explicitly call the tool.
 
+## File structure
+
+| File | Purpose |
+|------|---------|
+| `index.ts` | Extension factory, tool registration, schema, session handler, re-exports |
+| `state.ts` | State management: `getActivatorState`, `activateBehavior`, `deactivateBehavior`, `getActiveBehaviors`, `MAX_ACTIVE_BEHAVIORS` |
+| `signals.ts` | Latent signals: `LATENT_SIGNALS` — activation prompts per behavior |
+| `mixes.ts` | Behavior mixes: `BEHAVIOR_MIXES` — scenario combos for `action="mix"` |
+| `types.ts` | `AtomicBehavior` union type (38 patterns) |
+| `AGENTS.md` | This file — agent-maintained documentation |
+
 ## Local Contracts
 
 - **Session-scoped**: behaviors reset on `session_start`.

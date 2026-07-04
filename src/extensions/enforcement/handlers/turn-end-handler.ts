@@ -231,10 +231,19 @@ export async function dispatchTurnEndLoop(
   const abVariant = getNudgeAnalytics(ctx).abVariant;
   const suppressNudges = abVariant === "no_nudges";
   if (suppressNudges) {
-    getState(ctx).nudgeSuppressedCount = (getState(ctx).nudgeSuppressedCount || 0) + 1;
+    const count = (getState(ctx).nudgeSuppressedCount || 0) + 1;
+    getState(ctx).nudgeSuppressedCount = count;
     recordNudgeSuppressed(ctx);
-    if (getState(ctx).nudgeSuppressedCount === 1) {
+    if (count === 1) {
       log.debug("Nudge suppression active - L2 signals will be collected but not delivered");
+    }
+    // EW-7.14 / P3-5: surface count to TUI every 5 suppressions
+    if (count % 5 === 0) {
+      try {
+        ctx.ui.setStatus("nudge-suppressed", `${count}`);
+      } catch {
+        /* TUI not available */
+      }
     }
   }
 

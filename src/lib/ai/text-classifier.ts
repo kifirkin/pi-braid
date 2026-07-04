@@ -1,14 +1,19 @@
 /**
  * Text Classifier - lightweight classification with configurable utility model.
  *
- * Three-tier fallback (heuristic-first):
+ * Five-tier fallback (logit-probe first):
+ *   Tier 0 (binary gate): Ultra-cheap yes/no pre-check via maxTokens=1, temperature=0.
+ *           Cost: 1 output token. Returns the model's argmax prediction for yes/no.
+ *           Falls through on any non-yes/no response. Enabled via binaryGate: true.
  *   Tier 1: Heuristic fallback callback (caller-provided). Fast, free.
  *           If it returns a clear "yes"/"no", use it with 0.7 confidence.
  *   Tier 2: Configured utility model (if set via /utility-model or settings.json)
- *   Tier 3: Session model (ctx.model) with minimal token budget
+ *   Tier 3: Session model (ctx.model)
+ *   Tier 4: Max-power model (if configured via /max-power-model)
  *
- * The heuristic tier is preferred because it's instant and costs nothing.
- * LLM tiers are only consulted when the heuristic can't decide.
+ * The heuristic tier is preferred over LLM because it's instant and costs nothing.
+ * The binary gate is preferred over heuristic because it costs 1 token and gives
+ * a calibrated LLM judgment (not a fragile regex).
  */
 
 import { callLlm } from "../ai/llm-call.js";
@@ -38,7 +43,7 @@ export interface ClassificationResult {
   /** Raw model output text. */
   raw: string;
   /** Which tier produced this result. */
-  tier: "utility" | "session" | "max-power" | "heuristic" | "failed" | "cache";
+  tier: "utility" | "session" | "max-power" | "heuristic" | "failed" | "cache" | "gate";
   /** Latency in milliseconds. */
   latencyMs: number;
 }
@@ -57,6 +62,17 @@ export interface ClassifierOptions {
    *    where a wrong heuristic answer is worse than an LLM cost.
    */
   tierPolicy?: "prefer-heuristic" | "fallback-only" | "always-llm";
+  /**
+   * Enable Tier 0 binary gate: ultra-cheap yes/no pre-check via maxTokens=1, temperature=0.
+   * Cost: 1 output token per call (vs ~30-50 for full cascade). Returns the model's argmax
+   * prediction on the first forward pass. Falls through to the existing cascade on any
+   * non-yes/no response. Only effective for binary (yes/no) classifiers.
+   *
+   * Based on research: logit-probing / logprob-based classification (arXiv 2407.01122,
+   * arcturus-labs.com 2025). For binary decisions, the model's first-token logits encode
+   * the full classification — no need to generate 30+ tokens of structured output.
+   */
+  binaryGate?: boolean;
   /**
    * Optional whitelist of valid labels. If set and the heuristic returns a label
    * NOT in this set, fall through to the LLM. Useful for multi-class classifiers
@@ -155,6 +171,74 @@ function buildTierOrder(
   return builder().filter((t) => t.model !== undefined);
 }
 
+// ── Binary Gate (Tier 0) ─────────────────────────────────────────────────────
+
+/**
+ * Tier 0: Binary gate — ultra-cheap yes/no pre-check.
+ *
+ * For binary classification, the model's first-token logits already encode the
+ * full decision. We don't need 30-50 tokens of structured output — just 1 token
+ * at temperature=0 gives the model's argmax prediction.
+ *
+ * Based on research:
+ *   - "Calibrated Large Language Models for Binary Question Answering" (2407.01122)
+ *   - Logit probing / logprob-based classification (arcturus-labs.com 2025)
+ *   - Token-level probability estimation (ericjinks.com 2025)
+ *
+ * Strategy:
+ *   1. Try the utility model first (cheapest available)
+ *   2. Fall back to the session model
+ *   3. If neither produces a clear yes/no, return null → falls through to existing cascade
+ *
+ * Cost: 1 output token on success (vs ~30-50 for full cascade).
+ * Timeout: 10s per model (fast failure is better than waiting).
+ */
+async function binaryGate(
+  ctx: ExtensionContext,
+  systemPrompt: string,
+  userMessage: string,
+  signal: AbortSignal | undefined,
+): Promise<string | null> {
+  // Try utility model first, session as fallback
+  const utilityModel = resolveUtilityModel(ctx);
+  const models = [
+    { name: "utility", model: utilityModel },
+    { name: "session", model: ctx.model },
+  ].filter((m) => m.model !== undefined);
+
+  for (const { name, model } of models) {
+    try {
+      const apiKey = await ctx.modelRegistry.getApiKeyForProvider(model!.provider);
+      if (!apiKey) continue;
+
+      const result = await callLlm(model!, apiKey, systemPrompt, userMessage, {
+        maxTokens: 1,
+        temperature: 0,
+        reasoning: "off",
+        timeoutMs: 10_000,
+        ...(signal ? { signal } : {}),
+      });
+
+      if ("error" in result) {
+        log.debug(`[text-classifier] binary gate (${name}) error: ${result.error}`);
+        continue;
+      }
+
+      const raw = result.text.trim().toLowerCase();
+      if (raw === "yes" || raw === "no") {
+        log.debug(`[text-classifier] binary gate (${name}): "${raw}" (1 token)`);
+        return raw;
+      }
+
+      log.debug(`[text-classifier] binary gate (${name}) ambiguous: "${raw}"`);
+    } catch (e) {
+      log.debug(`[text-classifier] binary gate (${name}) threw: ${(e as Error).message}`);
+    }
+  }
+
+  return null;
+}
+
 // ── Classify ─────────────────────────────────────────────────────────────────
 
 /**
@@ -227,6 +311,43 @@ export async function classify(
 
   // Build prompts (needed early for LLM tiers)
   const userMessage = replacePlaceholders(criteria.userPrompt, substitutions);
+
+  // ── Tier 0: Binary gate (ultra-cheap, 1 token) ───────────────────────────
+  // For binary yes/no classifiers, the model's first-token logits at
+  // temperature=0 give the argmax prediction for the cost of 1 output token.
+  // Falls through to the heuristic + LLM cascade on any non-yes/no response.
+  //
+  // Default: enabled for all binary (yes/no) classifiers. Disabled for
+  // multi-class classifiers (those with validLabels) since the gate only
+  // handles yes/no. Callers can explicitly set binaryGate: false to opt out.
+  const opts = options;
+  const useBinaryGate = opts?.binaryGate ?? (!opts?.validLabels || (opts.validLabels?.length ?? 0) === 0);
+  if (useBinaryGate && opts?.tierPolicy !== "always-llm") {
+    const gateLabel = await binaryGate(ctx, criteria.systemPrompt, userMessage, ctx.signal);
+    if (gateLabel) {
+      const latency = Date.now() - start;
+      log.debug(
+        `[text-classifier] TIER 0 (binary gate): "${gateLabel}" ${latency}ms (1 token)`,
+      );
+      if (opts?.label) recordCriticCall(opts.label, "gate", latency);
+      // Cache the binary gate result so subsequent identical calls
+      // skip the gate entirely (cache hit returns instantly).
+      if (opts?.label) {
+        setCachedResult(
+          getCacheKey(opts.label, criteria.systemPrompt, userMessage),
+          { label: gateLabel, confidence: 0.5, raw: gateLabel, tier: "gate", latencyMs: latency },
+        );
+      }
+      return {
+        label: gateLabel,
+        confidence: 0.5,
+        raw: gateLabel,
+        tier: "gate",
+        latencyMs: latency,
+      };
+    }
+    log.debug("[text-classifier] TIER 0 (binary gate) ambiguous, falling to TIER 1");
+  }
 
   // ── Tier 1: Heuristic fallback (fast, no LLM cost) ──────────────────────
   // Skipped entirely when tierPolicy === "always-llm" (accuracy-critical

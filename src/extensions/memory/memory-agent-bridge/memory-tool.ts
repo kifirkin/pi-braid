@@ -64,7 +64,7 @@ function relevanceReason(r: {
   else if (r.relevance > 0.4) parts.push("moderate-match");
   else parts.push("low-match");
   if (r.memory.utility > 0.7) parts.push("high-utility");
-  if (r.currentProject && r.memory.tags.some((t) => t.includes(r.currentProject!))) {
+  if (r.currentProject && r.memory.tags.some((t) => t.includes(deriveProjectId(r.currentProject!)))) {
     parts.push("same-project");
   }
   if (r.memory.accessCount > 5) parts.push("frequent");
@@ -476,16 +476,13 @@ export function createMemoryTool(
                     ],
                     details: {
                       found: true,
+                      entryType: "episode", // P1-8 / DR-H-6: explicit discriminator, not a synthesized CognitiveMemoryEntry
                       memory: {
                         id: ep.id,
                         content: `${ep.task}: ${ep.solution}`,
                         type: "episodic",
                         tags: ep.tags ?? [],
                         timestamp: ep.timestamp,
-                        accessCount: 0,
-                        lastAccessed: 0,
-                        importance: 0.5,
-                        utility: 0.5,
                       },
                     },
                   };

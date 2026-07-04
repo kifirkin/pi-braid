@@ -434,18 +434,18 @@ export async function handleAddConstraint(
 
 export async function handleRemoveConstraint(
   pad: TaskScratchpad,
-  text: string,
+  constraintId: string,
 ): Promise<HandlerResult> {
-  const idx = pad.constraints.findIndex((c) => c.id === text);
+  const idx = pad.constraints.findIndex((c) => c.id === constraintId);
   if (idx >= 0) {
     pad.constraints.splice(idx, 1);
     const saveError = await mutateAndSave(pad);
     return {
-      resultText: `Constraint removed: ${text}`,
+      resultText: `Constraint removed: ${constraintId}`,
       saveError: saveError ?? undefined,
     };
   }
-  return { resultText: `Constraint not found: ${text}` };
+  return { resultText: `Constraint not found: ${constraintId}` };
 }
 
 export async function handleAddLearning(
@@ -539,7 +539,6 @@ export async function handleUpdateSession(
 export async function handleElevateToGoal(
   pad: TaskScratchpad,
   text: string,
-  _successCriteria: string[] | undefined,
 ): Promise<HandlerResult> {
   if (text) {
     if (pad.goal && pad.goal !== "Untitled") pad.prior_goal = pad.goal;

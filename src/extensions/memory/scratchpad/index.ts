@@ -200,7 +200,6 @@ const scratchpadParams = Type.Object({
       description: "Optional scope tags for add_learning (file paths, areas, etc.).",
     }),
   ),
-  successCriteria: Type.Optional(Type.Array(Type.String(), { description: "Success criteria" })),
   constraint_id: Type.Optional(Type.String({ description: "Constraint ID" })),
   expires_in_ms: Type.Optional(Type.Number({ description: "TTL in ms for constraint expiry" })),
   // ID for targeted removal of plan/note/decision/hypothesis items.
@@ -242,7 +241,6 @@ async function scratchpadExecute(
 ): Promise<AgentToolResult<unknown>> {
   const action = params.action as string;
   const text = (params.text as string) ?? "";
-  const successCriteria = params.successCriteria as string[] | undefined;
   const expires_in_ms = params.expires_in_ms as number | undefined;
   const idOrText = (params.id as string | undefined) ?? text;
 
@@ -328,7 +326,8 @@ async function scratchpadExecute(
       break;
     }
     case "remove_constraint": {
-      const r = await handleRemoveConstraint(pad, text);
+      const constraintId = (params.constraint_id as string | undefined) ?? text;
+      const r = await handleRemoveConstraint(pad, constraintId);
       resultText = r.resultText;
       lastSaveError = r.saveError ?? null;
       break;
@@ -357,7 +356,7 @@ async function scratchpadExecute(
       break;
     }
     case "elevate_to_goal": {
-      const r = await handleElevateToGoal(pad, text, successCriteria);
+      const r = await handleElevateToGoal(pad, text);
       resultText = r.resultText;
       lastSaveError = r.saveError ?? null;
       break;
