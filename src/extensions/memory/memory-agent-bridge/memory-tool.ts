@@ -122,9 +122,9 @@ export function createMemoryTool(
     promptSnippet: "Unified memory: recall, episodes, heuristics",
     description:
       "Unified memory access across three domains: " +
-      "(1) recall_* - semantic search over the unified cognitive memory (also cross-searches episodes); " +
-      "(2) episodes_* - case-based reasoning from past task episodes; " +
-      "(3) heuristics_* - view and evolve the procedural behavior rules. " +
+      "1: recall_* - semantic search over the unified cognitive memory (also cross-searches episodes); " +
+      "2: episodes_* - case-based reasoning from past task episodes; " +
+      "3: heuristics_* - view and evolve the procedural behavior rules. " +
       "Common actions: recall_search (semantic query, cross-searches episodes), " +
       "episodes_search (case-based reasoning from past tasks), " +
       "episodes_add (record what you just learned), " +

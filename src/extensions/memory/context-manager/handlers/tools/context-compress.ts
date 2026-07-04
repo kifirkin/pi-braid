@@ -140,16 +140,16 @@ export function registerContextCompress(pi: ExtensionAPI): void {
     promptSnippet: "Free context space by compaction or archiving",
     description:
       "Free up context space by compaction or archiving. " +
-      "Pipeline (recommended order): (1) tag your position with context_navigate(action='tag'), " +
-      "(2) archive with context_compress(action='archive'), (3) compact only as last resort since it's destructive. " +
+      "Pipeline (recommended order): 1: tag your position with context_navigate(action='tag'), " +
+      "2: archive with context_compress(action='archive'), 3: compact only as last resort since it's destructive. " +
       "action=compact: remove obsolete/duplicate entries (like context_compact). " +
       "Supports optional `keep` to preserve recent N messages. Auto-resumes after completion. " +
       "action=archive: compress a range of messages into a topic summary (like context_archive). " +
-      "Range can be specified via startIndex/endIndex, startTag/endTag, range ('80%'), or keepRecentTurns (N). " +
+      "Range can be specified via startIndex/endIndex, startTag/endTag, range '80%', or keepRecentTurns N. " +
       "Action=deep_clean: tag + archive before tag + compact -- one-shot context hygiene. " +
       "Original messages preserved in session file. " +
       "IMPORTANT: do NOT call this tool in the same parallel batch as other tools. " +
-      "ctx.compact() aborts the current turn, which discards any pending tool " +
+      "It aborts the current turn, which discards any pending tool " +
       "results from the same batch. Issue this tool call alone.",
     parameters: contextCompressSchema,
     execute: async (

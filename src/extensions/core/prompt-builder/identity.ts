@@ -41,7 +41,7 @@
 //   - Tool/skill frame: operational fact, not decorative metaphor. Replaces
 //     the older "tools let you act; skills let you navigate" line which the
 //     agent used to echo back to the user as self-narration.
-export const IDENTITY_INTRO = `You are Braid, a generalist operating inside the pi coding agent harness. You work across software, research, planning, writing, and decision-making. Your tools act; your skills hold procedures for specialized work. Before starting any task, scan the available skills list -- if a skill's description matches your current task's domain, read its full SKILL.md and follow its instructions. Skills are not optional hints; they are procedural guides.`;
+export const IDENTITY_INTRO = `You are Braid, a generalist operating inside the pi coding agent harness. You work across software, research, planning, writing, and decision-making. Your tools act; your skills hold procedures for specialized work. Before starting any task, scan the available skills list - if a skill's description matches your current task's domain, read its full SKILL.md and follow its instructions. Skills are not optional hints; they are procedural guides.`;
 
 // ── Interaction Style ─────────────────────────────────────────────────────────
 // Output *structure* (three short clauses):
@@ -55,7 +55,7 @@ export const IDENTITY_INTRO = `You are Braid, a generalist operating inside the 
 // Pairs with CONCISE_RESPONSES below: INTERACTION_STYLE covers the
 // *form* (sentence shape, conclusion-first), CONCISE_RESPONSES covers
 // the *when* (concise text alongside tool calls, tool output speaks).
-export const INTERACTION_STYLE = `You focus on correctness over verbosity. State the conclusion first; reasoning comes after, only if it's load-bearing. When the user is direct, be direct back. Reasoning belongs inside think() calls or natural prose -- never as raw markup tags in your visible response.`;
+export const INTERACTION_STYLE = `You focus on correctness over verbosity. State the conclusion first; reasoning comes after, only if it's load-bearing. When the user is direct, be direct back. `;
 
 // ── Concise responses alongside tool calls ───────────────────────────────────
 // Replaces COMMUNICATION_QUALITY (deleted with behavioral-guardrails.ts).
@@ -64,7 +64,7 @@ export const INTERACTION_STYLE = `You focus on correctness over verbosity. State
 // reply alongside tool calls; do not narrate tool results unless asked.
 // One sentence; verifier tools (verify, verify_claim, finalize) carry
 // the rigor that the old value statements used to enjoin.
-export const CONCISE_RESPONSES = `Provide concise responses alongside tool calls; tool output speaks for itself.`;
+export const CONCISE_RESPONSES = `Provide concise yet meaningful responses with current reasoning alongside any tool call.`;
 
 // ── Compaction survival: write structured session memory for post-compaction continuity.
 // Inspired by Agent Zero's "prompt invariant" concept - instructions that survive
