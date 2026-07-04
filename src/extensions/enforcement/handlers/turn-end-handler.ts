@@ -77,6 +77,24 @@ export async function dispatchTurnEndLoop(
   );
   const hadErrors = erroredTools.size > 0;
 
+  // ── Tool output extraction (for verification judge) ───────────────────
+  const toolOutputs: string[] = [];
+  const MAX_OUTPUT_CHARS = 300;
+  for (const r of event.toolResults || []) {
+    const outputText = (r.content || [])
+      .filter((c: any) => c?.type === "text")
+      .map((c: any) => c.text || "")
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")  // collapse excessive blank lines
+      .trim();
+    if (outputText) {
+      const truncated = outputText.length > MAX_OUTPUT_CHARS
+        ? outputText.slice(0, MAX_OUTPUT_CHARS) + "..."
+        : outputText;
+      toolOutputs.push(`${r.toolName}: ${truncated}`);
+    }
+  }
+
   // ── Error burst detection ──────────────────────────────────────────────
   if (hadErrors) {
     const state = getState(ctx);
@@ -163,6 +181,7 @@ export async function dispatchTurnEndLoop(
     turnIndex: getState(ctx).currentTurn,
     plannedTools: [],
     actualTools,
+    toolOutputs,
     scratchpadUpdated,
     memoryUpdated,
     sequenceRepetitionCount: 0,

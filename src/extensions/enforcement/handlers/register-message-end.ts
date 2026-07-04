@@ -193,7 +193,12 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
       const toolLog: string[] = [];
       for (const [, turn] of getState(ctx).turnHistory) {
         if (turn.actualTools.length > 0) {
-          toolLog.push(`Turn ${turn.turnIndex}: [${turn.actualTools.join(", ")}]`);
+          const toolLine = `Turn ${turn.turnIndex}: [${turn.actualTools.join(", ")}]`;
+          // Include truncated tool output so the verification judge can see actual results
+          const outputLines = (turn.toolOutputs || []).slice(0, 8); // limit to 8 outputs per turn
+          toolLog.push(toolLine + (outputLines.length > 0
+            ? "\n" + outputLines.map(o => `  -> ${o}`).join("\n")
+            : ""));
         }
       }
 

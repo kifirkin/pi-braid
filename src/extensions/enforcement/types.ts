@@ -24,6 +24,10 @@ export interface TurnState {
   turnIndex: number;
   plannedTools: string[];
   actualTools: string[];
+  /** Truncated output summaries for verification-relevant tools (bash, verify, edit/write).
+   *  Each entry: "toolName: <first ~300 chars of output>".
+   *  Used by the verification judge at MESSAGE_END to see actual tool results. */
+  toolOutputs: string[];
   scratchpadUpdated: boolean;
   memoryUpdated: boolean;
   sequenceRepetitionCount: number;
