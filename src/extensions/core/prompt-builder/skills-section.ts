@@ -23,46 +23,37 @@
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import type { PromptSection } from "./section.js";
 
-function escapeXml(str: string): string {
-  // Only escape characters that are REQUIRED for XML attribute safety
-  // when the attribute is delimited by double quotes:
-  //   &, <, >, "
-  // NOTE: ' (single quote) does NOT need escaping inside "-delimited attributes.
-  // Removing it avoids confusing &apos; entities in the agent's system prompt.
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+function escapeAttr(str: string): string {
+  // Only escape " to prevent breaking the "-delimited XML attribute.
+  // All other XML-unsafe characters (&, <, >) are valid in XML attribute
+  // values and are already stripped/replaced by normalizeDescription().
+  // We avoid HTML entities entirely — the agent reads this as plain text.
+  return str.replace(/"/g, "'");
 }
 
 /**
- * Normalize a skill description for safe, compact rendering in the pointer
- * block. Handles:
+ * Aggressively normalize a skill description for the pointer block.
+ * Handles:
+ *   - NFKC normalization (decomposes fancy Unicode)
  *   - Unicode dashes (em, en, etc.) -> ASCII `-`
  *   - Smart single/double quotes -> ASCII `'` / `"`
  *   - Special spaces -> regular space
- *   - Arrows: kept as Unicode (no replacement — `->` and `=>` both contain `>`
- *     which XML-escapes to `&gt;`; Unicode arrows pass through untouched)
- *   - Unicode ellipsis (...) -> ASCII `...`
- *   - Truncates beyond SOFT_LIMIT (prefers sentence boundary, falls back
- *     to word boundary)
+ *   - Unicode ellipsis -> ASCII `...`
+ *   - XML-unsafe characters stripped/replaced BEFORE escapeXml runs,
+ *     so the agent never sees HTML entities (`&amp;`, `&lt;`, `&gt;`, `&quot;`)
+ *   - Arrows kept as Unicode (no ASCII `->` that would produce `&gt;`)
+ *   - Truncation beyond SOFT_LIMIT with sentence/word boundary awareness
  *
- * Mirrors pi-core's normalizeForFuzzyMatch patterns, plus arrow handling.
- * The result must be safe for XML attribute values after escapeXml().
+ * Mirrors pi-core's normalizeForFuzzyMatch patterns plus XML safety.
  */
 
-/**
- * Target description length. A little extra is OK — SOFT_LIMIT is the
- * hard cap. When truncation is needed, we prefer sentence boundaries
- * (`.`, `!`, `?`) over word boundaries, keeping complete sentences.
- */
 const MAX_DESC_LEN = 280;
 const SOFT_LIMIT = 320;
 
 function normalizeDescription(raw: string): string {
   let s = raw
     .normalize("NFKC")
+    // ── Unicode normalization ──────────────────────────────────────
     // Smart quotes
     .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
     .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
@@ -70,15 +61,16 @@ function normalizeDescription(raw: string): string {
     .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, "-")
     // Special spaces
     .replace(/[\u00A0\u2002-\u200A\u202F\u205F\u3000]/g, " ")
-    // Arrows: kept as Unicode. No replacement — `->`/`=>` contain `>`
-    // which escapeXml would turn into `&gt;`. Unicode arrows (→, ⇒, etc.)
-    // pass through escapeXml untouched since they're not XML-special chars.
-    // Note: the regex is commented out, not removed, to preserve the
-    // original intent for any future reader.
-    // .replace(/[\u2190-\u2199\u21D0-\u21D9\u27A1]/g, "->")
-    // Unicode ellipsis -> ASCII three dots
+    // Unicode ellipsis -> ASCII ...
     .replace(/[\u2026]/g, "...")
-    // Collapse multiple spaces (from replacements)
+    // ── XML-unsafe character cleanup ───────────────────────────────
+    // These would otherwise become &amp; &lt; &gt; &quot; after escapeXml().
+    // The agent reads the raw text and shouldn't see HTML entities.
+    .replace(/&/g, "and")           // & -> and (never belongs in plain text)
+    .replace(/[<>]/g, "")           // strip < > (not useful in descriptions)
+    .replace(/"/g, "'")            // " -> ' (safe inside "-delimited attrs)
+    // ── Final cleanup ──────────────────────────────────────────────
+    // Collapse multiple spaces
     .replace(/  +/g, " ")
     .trim();
 
@@ -129,7 +121,7 @@ export async function skillsSection(skills: Skill[]): Promise<PromptSection> {
 
       for (const skill of sorted) {
         lines.push(
-          `  <skill name="${escapeXml(skill.name)}" description="${escapeXml(normalizeDescription(skill.description))}" location="${escapeXml(skill.filePath)}" />`,
+          `  <skill name="${escapeAttr(skill.name)}" description="${escapeAttr(normalizeDescription(skill.description))}" location="${escapeAttr(skill.filePath)}" />`,
         );
       }
 

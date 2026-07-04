@@ -173,6 +173,7 @@ async function extractClaimsViaClassify(
         {
           timeoutMs: 60_000,
           label: CRITICS.polarityDetection.label,
+          validLabels: ["positive", "negative", "neutral"],
           modelPreference: "quality",
           // Q9: negation-word list breaks on double-negation. Always use LLM.
           tierPolicy: "always-llm",
