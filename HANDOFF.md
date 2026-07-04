@@ -386,7 +386,7 @@ Anti-bloat applies to **static surfaces**: code, system prompt, skills content, 
 
 ### Shipped
 
-**`f0223b71`** — polish(system-prompt): tighten discoverability directives, fix test assertion, add context-hygiene signal
+**`5960bfa9`** — polish(system-prompt): tighten discoverability directives, fix test assertion, add context-hygiene signal
 
 Four changes:
 
