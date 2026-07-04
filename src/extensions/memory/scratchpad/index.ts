@@ -38,55 +38,9 @@ export {
   LEARNING_CATEGORY_ALIASES,
   mutateAndSave,
 } from "./utils.js";
-// Import handler functions for local use (and re-export them).
-import {
-  handleRead,
-  handleContinue,
-  handleSetGoal,
-  handleAddPlan,
-  handleMarkDone,
-  handleAddDecision,
-  handleAddHypothesis,
-  handleAddNote,
-  handleAddConstraint,
-  handleRemoveConstraint,
-  handleAddLearning,
-  handlePersistLearnings,
-  handleNoteCompact,
-  handleUpdateSession,
-  handleElevateToGoal,
-  handleElevateToPlan,
-  handleRemovePlan,
-  handleRemoveNote,
-  handleRemoveDecision,
-  handleRemoveHypothesis,
-  handleClearDone,
-  handleArchiveDone,
-} from "./handlers.js";
-export {
-  handleRead,
-  handleContinue,
-  handleSetGoal,
-  handleAddPlan,
-  handleMarkDone,
-  handleAddDecision,
-  handleAddHypothesis,
-  handleAddNote,
-  handleAddConstraint,
-  handleRemoveConstraint,
-  handleAddLearning,
-  handlePersistLearnings,
-  handleNoteCompact,
-  handleUpdateSession,
-  handleElevateToGoal,
-  handleElevateToPlan,
-  handleRemovePlan,
-  handleRemoveNote,
-  handleRemoveDecision,
-  handleRemoveHypothesis,
-  handleClearDone,
-  handleArchiveDone,
-} from "./handlers.js";
+// Import dispatch table from handlers.ts (per-action logic is co-located there).
+import { ACTION_DISPATCH } from "./handlers.js";
+export { ACTION_DISPATCH } from "./handlers.js";
 
 import type {
   TaskScratchpad,
@@ -241,7 +195,6 @@ async function scratchpadExecute(
 ): Promise<AgentToolResult<unknown>> {
   const action = params.action as string;
   const text = (params.text as string) ?? "";
-  const expires_in_ms = params.expires_in_ms as number | undefined;
   const idOrText = (params.id as string | undefined) ?? text;
 
   const pad = await getOrCreateScratchpad(ctx);
@@ -257,154 +210,14 @@ async function scratchpadExecute(
   let resultText = "";
   let lastSaveError: string | null = null;
 
-  // ── Route to handler ──────────────────────────────────────────────
-  switch (action) {
-    case "read": {
-      resultText = handleRead(
-        pad,
-        params.filter as
-          | {
-              ids?: string[];
-              sinceTurn?: number;
-              untilTurn?: number;
-              category?: string;
-              limit?: number;
-            }
-          | undefined,
-      ).resultText;
-      break;
-    }
-    case "continue":
-      resultText = handleContinue(pad).resultText;
-      break;
-    case "set_goal": {
-      const r = await handleSetGoal(pad, text, priorGoal);
-      resultText = r.resultText;
-      lastSaveError = r.saveError ?? null;
-      break;
-    }
-    case "add_plan": {
-      const r = await handleAddPlan(pad, text);
-      resultText = r.resultText;
-      lastSaveError = r.saveError ?? null;
-      break;
-    }
-    case "mark_done": {
-      const r = await handleMarkDone(pad, text, idOrText);
-      resultText = r.resultText;
-      lastSaveError = r.saveError ?? null;
-      break;
-    }
-    case "add_decision": {
-      const r = await handleAddDecision(pad, text);
-      resultText = r.resultText;
-      lastSaveError = r.saveError ?? null;
-      break;
-    }
-    case "add_hypothesis": {
-      const r = await handleAddHypothesis(pad, text);
-      resultText = r.resultText;
-      lastSaveError = r.saveError ?? null;
-      break;
-    }
-    case "add_note": {
-      const r = await handleAddNote(pad, text);
-      resultText = r.resultText;
-      lastSaveError = r.saveError ?? null;
-      break;
-    }
-    case "update_session": {
-      const r = await handleUpdateSession(pad, params);
-      resultText = r.resultText;
-      lastSaveError = r.saveError ?? null;
-      break;
-    }
-    case "add_constraint": {
-      const r = await handleAddConstraint(pad, text, expires_in_ms);
-      resultText = r.resultText;
-      lastSaveError = r.saveError ?? null;
-      break;
-    }
-    case "remove_constraint": {
-      const constraintId = (params.constraint_id as string | undefined) ?? text;
-      const r = await handleRemoveConstraint(pad, constraintId);
-      resultText = r.resultText;
-      lastSaveError = r.saveError ?? null;
-      break;
-    }
-    case "add_learning": {
-      const r = await handleAddLearning(
-        pad,
-        params.category as string | undefined,
-        params.content as string | undefined,
-        params.scope as string[] | undefined,
-      );
-      resultText = r.resultText;
-      lastSaveError = r.saveError ?? null;
-      break;
-    }
-    case "persist_learnings": {
-      const r = await handlePersistLearnings(pad);
-      resultText = r.resultText;
-      lastSaveError = r.saveError ?? null;
-      break;
-    }
-    case "note_compact": {
-      const r = await handleNoteCompact(pad);
-      resultText = r.resultText;
-      lastSaveError = r.saveError ?? null;
-      break;
-    }
-    case "elevate_to_goal": {
-      const r = await handleElevateToGoal(pad, text);
-      resultText = r.resultText;
-      lastSaveError = r.saveError ?? null;
-      break;
-    }
-    case "elevate_to_plan": {
-      const r = await handleElevateToPlan(pad, text);
-      resultText = r.resultText;
-      lastSaveError = r.saveError ?? null;
-      break;
-    }
-    case "remove_plan": {
-      const r = await handleRemovePlan(pad, idOrText);
-      resultText = r.resultText;
-      lastSaveError = r.saveError ?? null;
-      break;
-    }
-    case "remove_note": {
-      const r = await handleRemoveNote(pad, idOrText);
-      resultText = r.resultText;
-      lastSaveError = r.saveError ?? null;
-      break;
-    }
-    case "remove_decision": {
-      const r = await handleRemoveDecision(pad, idOrText);
-      resultText = r.resultText;
-      lastSaveError = r.saveError ?? null;
-      break;
-    }
-    case "remove_hypothesis": {
-      const r = await handleRemoveHypothesis(pad, idOrText);
-      resultText = r.resultText;
-      lastSaveError = r.saveError ?? null;
-      break;
-    }
-    case "clear_done": {
-      const r = await handleClearDone(pad);
-      resultText = r.resultText;
-      lastSaveError = r.saveError ?? null;
-      break;
-    }
-    case "archive_done": {
-      const r = await handleArchiveDone(pad);
-      resultText = r.resultText;
-      lastSaveError = r.saveError ?? null;
-      break;
-    }
-    default:
-      resultText = `Unknown action: ${action}. Use: read, continue, set_goal, add_plan, mark_done, add_decision, add_hypothesis, add_note, update_session, add_constraint, remove_constraint, add_learning, persist_learnings, note_compact, elevate_to_goal, elevate_to_plan, remove_plan, remove_note, remove_decision, remove_hypothesis, clear_done, archive_done. For task management, use the 'task' tool.`;
+  // ── Route to handler via dispatch table ───────────────────────────
+  const handler = ACTION_DISPATCH[action];
+  if (handler) {
+    const r = await handler(pad, params, text, idOrText, priorGoal);
+    resultText = r.resultText;
+    lastSaveError = r.saveError ?? null;
+  } else {
+    resultText = `Unknown action: ${action}. Use: read, continue, set_goal, add_plan, mark_done, add_decision, add_hypothesis, add_note, update_session, add_constraint, remove_constraint, add_learning, persist_learnings, note_compact, elevate_to_goal, elevate_to_plan, remove_plan, remove_note, remove_decision, remove_hypothesis, clear_done, archive_done. For task management, use the 'task' tool.`;
   }
 
   // ROADMAP P0-2 / DR-H-4: append disk-write error to result if the most

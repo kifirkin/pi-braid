@@ -550,3 +550,54 @@ export async function handleElevateToGoal(
     saveError: saveError ?? undefined,
   };
 }
+
+// ── Dispatch Table ────────────────────────────────────────────────────────
+//
+// Replaces a ~200-line switch in scratchpadExecute (index.ts) with a
+// uniform dispatch lookup. Each entry maps an action name to a function
+// with the canonical (pad, params, text, idOrText, priorGoal) signature.
+// Extra params (filter, expires_in_ms, category, etc.) are extracted from
+// the raw params Record inside each dispatch function body.
+
+export type ActionFn = (
+  pad: TaskScratchpad,
+  params: Record<string, unknown>,
+  text: string,
+  idOrText: string,
+  priorGoal: string,
+) => HandlerResult | Promise<HandlerResult>;
+
+export const ACTION_DISPATCH: Record<string, ActionFn> = {
+  read: (p, params) => handleRead(p, params.filter as any),
+  continue: (p) => handleContinue(p),
+  set_goal: (p, params, text, _idOrText, priorGoal) => handleSetGoal(p, text, priorGoal),
+  add_plan: (p, _params, text) => handleAddPlan(p, text),
+  mark_done: (p, _params, text, idOrText) => handleMarkDone(p, text, idOrText),
+  add_decision: (p, _params, text) => handleAddDecision(p, text),
+  add_hypothesis: (p, _params, text) => handleAddHypothesis(p, text),
+  add_note: (p, _params, text) => handleAddNote(p, text),
+  update_session: (p, params) => handleUpdateSession(p, params),
+  add_constraint: (p, params, text) =>
+    handleAddConstraint(p, text, params.expires_in_ms as number | undefined),
+  remove_constraint: (p, params, text) => {
+    const constraintId = (params.constraint_id as string | undefined) ?? text;
+    return handleRemoveConstraint(p, constraintId);
+  },
+  add_learning: (p, params) =>
+    handleAddLearning(
+      p,
+      params.category as string | undefined,
+      params.content as string | undefined,
+      params.scope as string[] | undefined,
+    ),
+  persist_learnings: (p) => handlePersistLearnings(p),
+  note_compact: (p) => handleNoteCompact(p),
+  elevate_to_goal: (p, _params, text) => handleElevateToGoal(p, text),
+  elevate_to_plan: (p, _params, text) => handleElevateToPlan(p, text),
+  remove_plan: (p, _params, _text, idOrText) => handleRemovePlan(p, idOrText),
+  remove_note: (p, _params, _text, idOrText) => handleRemoveNote(p, idOrText),
+  remove_decision: (p, _params, _text, idOrText) => handleRemoveDecision(p, idOrText),
+  remove_hypothesis: (p, _params, _text, idOrText) => handleRemoveHypothesis(p, idOrText),
+  clear_done: (p) => handleClearDone(p),
+  archive_done: (p) => handleArchiveDone(p),
+};

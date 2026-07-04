@@ -127,7 +127,7 @@ console.log("\n[5.5] continue action for session resumption");
   check(src.includes('Type.Literal("continue")'), 'continue action registered');
   // formatContinueDigest is re-exported from format.ts
   check(src.includes("export * from \"./format.js\""), "formatContinueDigest re-exported from format.ts");
-  check(/case "continue":/.test(src), 'continue case in switch statement');
+  check(/ACTION_DISPATCH\[action\]/.test(src), 'dispatch table in router (replaces switch)');
   // The continue digest body is in format.ts
   const fmtSrc = readFileSync(FORMAT, "utf-8");
   const digestStart = fmtSrc.indexOf("export function formatContinueDigest");

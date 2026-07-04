@@ -734,7 +734,7 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
 | # | Item | Effort | Files |
 |---|---|---|---|
 | P2-1 | [DR-H-1](#dr-h-1) apply typed-adapter pattern to all 10 casts | Medium | 6 files |  ✅ Shipped (all `as ToolDefinition` casts removed; remaining `as unknown as` casts are legit JSON.parse/pi-core boundary) |
-| P2-2 | [DR-M-8](#dr-m-8) split `scratchpadExecute` into per-action handlers | Hard | `scratchpad/index.ts:432-648` |
+| P2-2 | [DR-M-8](#dr-m-8) split `scratchpadExecute` into per-action handlers | Hard | `scratchpad/index.ts:432-648` |  ✅ Shipped 2026-07-04 (dispatch table in handlers.ts replaces 200-line switch, 81/81 tests pass) |
 | P2-3 | [EW-7.4](#44-ew-74-extract-classifier-offline-helper--medium--easy) extract `classifier-offline` helper | Easy | new `lib/reasoning/classifier-offline.ts` + 3 sites |  ✅ Shipped in v2.1 |
 | P2-4 | [EW-7.9](#49-ew-79-make-session-signals-bundle-per-signal--medium--medium) make Session Signals bundle per-signal | Medium | `turn-end-handler.ts:362-365` |  ✅ Shipped in v2.8 |
 | P2-5 | [EW-7.11](#411-ew-711-add-braidenforcement-settings-block--high--medium) add `braid.enforcement` settings block | Medium | `lib/config/braid-settings.ts`, `nudge-manager.ts`, 1 test |  ✅ Shipped in v3.3 |
@@ -2366,14 +2366,14 @@ description, P1-8 recall_get fake entry discriminator.
 (P1-2 verified as no-op in v1.9 — line text already
 matched the corrected count, no code change needed.)
 
-**P2 (10 of 11):** P2-1 typed-adapter pattern (full 6 sites
-now covered in v2.6), P2-2 scratchpad split into handler
-groups, P2-3 (EW-7.4) classifier-offline helper, P2-4
-(EW-7.9) session signals per-signal gating, P2-5 (EW-7.11)
-braid.enforcement settings (v3.3), P2-6 (EW-7.13)
-per-source priority-aware caps, P2-9 scratchpad
-pipe-delimited parsing dropped, P2-11 B-class fallbacks
-(tierPolicy infrastructure).
+**P2 (11 of 11):** P2-1 typed-adapter pattern (full 6 sites
+now covered in v2.6), P2-2 scratchpad swapped 200-line switch
+for dispatch table (handlers.ts, 2026-07-04), P2-3 (EW-7.4)
+classifier-offline helper, P2-4 (EW-7.9) session signals
+per-signal gating, P2-5 (EW-7.11) braid.enforcement settings
+(v3.3), P2-6 (EW-7.13) per-source priority-aware caps,
+P2-9 scratchpad pipe-delimited parsing dropped, P2-11
+B-class fallbacks (tierPolicy infrastructure).
 
 **P2-8 (batch scratchpad writes):** shipped 2026-07-02.
 Debounced write queue in scratchpad/utils.ts replaces
