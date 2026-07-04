@@ -334,18 +334,21 @@ test("DEFINITION_OF_DONE has no meta-LLM references", () => {
   }
 });
 
-// ── INTERACTION_STYLE: markup-discipline clause (added 2026-07-02) ───
+// ── INTERACTION_STYLE: output structure (3 sentences, no markup clause) ───
+// The 2026-07-04 cleanup removed the markup-discipline 4th sentence because
+// naming "markup tags" in the prompt put the concept in the agent's context
+// every turn, making the problem worse. The fix is in the think tool description
+// instead: "Deeply reason with structured think() call before any decisions."
 
-test("INTERACTION_STYLE contains the markup-discipline clause", () => {
-  // The 2026-07-02 extension added a 4th sentence: reasoning belongs inside
-  // think() calls or natural prose, never as raw markup tags in the visible
-  // response. Pin the clause so future edits don't quietly remove it.
+test("INTERACTION_STYLE is 3 sentences (conclusion-first, directness)", () => {
   const m = identitySrc.match(/export const INTERACTION_STYLE\s*=\s*`((?:[^`\\]|\\.)*)`/);
   assert.ok(m, "INTERACTION_STYLE must have a template literal value");
-  const literal = m[1];
-  assert.ok(/think\(\)/i.test(literal), "INTERACTION_STYLE must reference think()");
-  assert.ok(/markup/i.test(literal), "INTERACTION_STYLE must mention markup");
-  assert.ok(/visible response/i.test(literal), "INTERACTION_STYLE must specify 'visible response'");
+  const literal = m[1].trim();
+  const sentenceEnders = (literal.match(/[.!?](?:\s|$)/g) || []).length;
+  assert.ok(
+    sentenceEnders === 3,
+    `INTERACTION_STYLE has ${sentenceEnders} sentences; expected exactly 3 (correctness, conclusion-first, directness)`,
+  );
 });
 
 test("INTERACTION_STYLE has no meta-LLM references", () => {

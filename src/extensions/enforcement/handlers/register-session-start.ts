@@ -29,18 +29,26 @@ import {
 import { classifyLlmError } from "../../../lib/errors/llm-error.js";
 
 // ── Module-level eventBus listener references ───────────────────────────────
-// Stored in a const container (mutable properties) to prevent accumulation
-// across reloads. Each session_start replaces the old listener after removing
-// it from the eventBus. The eventBus uses a Set<Handler>, so different function
-// references are NOT deduped automatically. Uses const (not let) to avoid the
-// test-no-module-level-let structural test, which bans module-level `let`.
-const _eventBusHandlers: Record<string, ((event: any) => void) | null> = {
-  context_full: null,
-  enforcement_violation: null,
-  heartbeat_tick: null,
-  turn_complete: null,
-  sop_suggestion: null,
-};
+// Stored in globalThis (process-global) to survive module re-evaluation on /reload.
+// Each session_start replaces the old listener after removing it from the eventBus.
+// The eventBus uses a Set<Handler>, so different function references are NOT deduped
+// automatically. Without this guard, N reloads produce N listeners per event.
+//
+// Key: process-global, not module-global. Module-level `const` or `let` is re-created
+// on /reload (extension module tree is re-evaluated), so all old handler refs are lost.
+function getEventBusHandlers(): Record<string, ((event: any) => void) | null> {
+  const KEY = "__braid_eventbus_handlers";
+  if (!(globalThis as any)[KEY]) {
+    (globalThis as any)[KEY] = {
+      context_full: null,
+      enforcement_violation: null,
+      heartbeat_tick: null,
+      turn_complete: null,
+      sop_suggestion: null,
+    };
+  }
+  return (globalThis as any)[KEY];
+}
 
 const log = createLogger("enforcement:session-start");
 
@@ -93,9 +101,11 @@ export function registerSessionStart(pi: ExtensionAPI): void {
       // the old handler is removed before the new one is added. This prevents
       // accumulation across N reloads, where N listeners would fire per event.
 
+      const h = getEventBusHandlers();
+
       // Reload-safe: remove old first, then add new
-      if (_eventBusHandlers.context_full) eventBus.off("context_full", _eventBusHandlers.context_full);
-      _eventBusHandlers.context_full = (event: { usagePercent: number }) => {
+      if (h.context_full) eventBus.off("context_full", h.context_full);
+      h.context_full = (event: { usagePercent: number }) => {
         if (event.usagePercent > 80) {
           sendTrackedMessage(
             pi,
@@ -114,11 +124,11 @@ export function registerSessionStart(pi: ExtensionAPI): void {
           );
         }
       };
-      eventBus.on("context_full", _eventBusHandlers.context_full);
+      eventBus.on("context_full", h.context_full);
 
       // Reload-safe enforcement_violation → tool_error routing
-      if (_eventBusHandlers.enforcement_violation) eventBus.off("enforcement_violation", _eventBusHandlers.enforcement_violation);
-      _eventBusHandlers.enforcement_violation = (event) => {
+      if (h.enforcement_violation) eventBus.off("enforcement_violation", h.enforcement_violation);
+      h.enforcement_violation = (event) => {
         eventBus.emit({
           type: "tool_error",
           toolName: event.rule,
@@ -127,36 +137,36 @@ export function registerSessionStart(pi: ExtensionAPI): void {
           timestamp: Date.now(),
         });
       };
-      eventBus.on("enforcement_violation", _eventBusHandlers.enforcement_violation);
+      eventBus.on("enforcement_violation", h.enforcement_violation);
 
       // Reload-safe heartbeat_tick tracking
-      if (_eventBusHandlers.heartbeat_tick) eventBus.off("heartbeat_tick", _eventBusHandlers.heartbeat_tick);
-      _eventBusHandlers.heartbeat_tick = (event) => {
+      if (h.heartbeat_tick) eventBus.off("heartbeat_tick", h.heartbeat_tick);
+      h.heartbeat_tick = (event) => {
         getState(ctx)._lastHeartbeatTick = event.tickCount;
         if (event.tickCount % 10 === 0) {
           log.debug(`[enforcement] ${event.tickCount} heartbeat ticks registered`);
         }
       };
-      eventBus.on("heartbeat_tick", _eventBusHandlers.heartbeat_tick);
+      eventBus.on("heartbeat_tick", h.heartbeat_tick);
 
       // Reload-safe turn_complete tracking
-      if (_eventBusHandlers.turn_complete) eventBus.off("turn_complete", _eventBusHandlers.turn_complete);
-      _eventBusHandlers.turn_complete = (event) => {
+      if (h.turn_complete) eventBus.off("turn_complete", h.turn_complete);
+      h.turn_complete = (event) => {
         const state = getState(ctx);
         state.lastTurnDuration = event.duration;
         log.info(`turn_complete: turn ${event.turn} (${event.duration}ms)`);
       };
-      eventBus.on("turn_complete", _eventBusHandlers.turn_complete);
+      eventBus.on("turn_complete", h.turn_complete);
 
       // Reload-safe sop_suggestion tracking
-      if (_eventBusHandlers.sop_suggestion) eventBus.off("sop_suggestion", _eventBusHandlers.sop_suggestion);
-      _eventBusHandlers.sop_suggestion = (event) => {
+      if (h.sop_suggestion) eventBus.off("sop_suggestion", h.sop_suggestion);
+      h.sop_suggestion = (event) => {
         log.debug(
           `SOP suggestion: "${event.episodeId}" ` +
             `(similarity: ${(event.similarity * 100).toFixed(0)}%)`,
         );
       };
-      eventBus.on("sop_suggestion", _eventBusHandlers.sop_suggestion);
+      eventBus.on("sop_suggestion", h.sop_suggestion);
     },
   );
 }

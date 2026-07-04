@@ -306,21 +306,33 @@ export function resetTimerExtensionFactoryState(): void {
 // This global-state slot lets the dedup Set survive across reloads within the
 // same process.
 
-let _shownDiscoveryBundles: Set<string> | undefined;
+// ── Discoverability dedup (survives /reload module re-evaluation) ──────────────
+// The discoverability handler in enforcement runs on every session_start and
+// emits a bundled whisper with prior-session hints. On /reload, the extension
+// module IS re-evaluated (so module-level `let` in the handler doesn't persist).
+// _This_ module is also in the extension import tree, so a module-level `let`
+// here would also be lost on reload. We use `globalThis` instead, which is the
+// Node.js process global and survives any module re-evaluation.
+//
+// Key: process-global (not module-global). A fresh `pi` process starts with
+// an empty Set (everything is "new"). Within the same process, the Set persists
+// across any number of /reload calls.
+
+const _GLOBAL_KEY = "__braid_discoverability_shown";
 
 /**
  * Get the shared discoverability dedup set. Created lazily on first access.
- * The Set contains the bundled text of already-shown discoverability whispers.
- * A fresh `pi` process starts with an empty Set (everything is "new").
+ * The Set is stored in `globalThis` (process-global) so it survives module
+ * re-evaluation on /reload.
  */
 export function getShownDiscoveryBundles(): Set<string> {
-  if (!_shownDiscoveryBundles) {
-    _shownDiscoveryBundles = new Set<string>();
+  if (!(globalThis as any)[_GLOBAL_KEY]) {
+    (globalThis as any)[_GLOBAL_KEY] = new Set<string>();
   }
-  return _shownDiscoveryBundles;
+  return (globalThis as any)[_GLOBAL_KEY];
 }
 
 /** Reset the dedup set. Test helper. */
 export function resetShownDiscoveryBundles(): void {
-  _shownDiscoveryBundles = undefined;
+  delete (globalThis as any)[_GLOBAL_KEY];
 }
