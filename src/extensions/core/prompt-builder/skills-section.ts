@@ -115,7 +115,7 @@ export async function skillsSection(skills: Skill[]): Promise<PromptSection> {
       const sorted = [...visibleSkills].sort((a, b) => a.name.localeCompare(b.name));
 
       const lines = [
-        `Skills (${sorted.length} available): procedural guides for specialized domains. Before starting a task, scan the skills below. If a skill's description matches your current work, \`read <location>\` the full SKILL.md and follow its instructions. Skills are not optional hints -- they contain executable procedures.`,
+        `Skills (${sorted.length} available): procedural guides for specialized domains. Before starting a task in a domain covered by a skill below, read that skill first. Skills are executable procedures, not optional hints. \`read <location>\` the matching SKILL.md and follow its instructions.`,
         "<available_skills>",
       ];
 

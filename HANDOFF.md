@@ -351,3 +351,65 @@ Two independent tasks ready to pick up. Full specs in scratchpad notes:
 - `npm run check:docs` → ✅ (65 docs all valid)
 - `npm run check:doc-drift` → ✅ (no current-state drift)
 - Working tree: **CLEAN**, all on `origin/main`
+
+---
+
+## Postscript — 2026-07-04 RESOURCE_DISCOVERY + test cleanup
+
+### Shipped
+
+**`77bb0cb4`** — feat(identity): add RESOURCE_DISCOVERY invariant, generalize IDENTITY_INTRO, strip prose-pinning tests
+
+Three changes in one commit:
+
+1. **`RESOURCE_DISCOVERY`** — new identity invariant codifying the pointer-on-demand pattern for all grounded knowledge (skills, project docs, memory, runtime extensions, framework APIs, external state). Two-sentence principle: "When a description matches your work, read the source — using the right resource beats working without it. Pointers describe what something claims to be — verify against the source when correctness matters." Defined in `src/extensions/core/prompt-builder/identity.ts`, wired via `simpleSection("invariant-resource-discovery", RESOURCE_DISCOVERY)` in `index.ts`.
+
+2. **`IDENTITY_INTRO` generalized** — the skills-specific "read its full SKILL.md" sentence was replaced with a general resource-scanning instruction: "scan the available resources (skills, project docs, memory, runtime extensions); if a pointer's description matches your work, read its source on demand." The persona emphasis stays: "skills hold procedures for specialized work — not optional hints."
+
+3. **All text-prose tests removed** — `test-prompt-builder-directive.mjs` rewritten from 47+ tests (mostly pinning sentence counts, exact phrases, meta-LLM term scans, vocabulary) to 26 wiring/structural tests (existence, exports, simpleSection rendering, regression guards, structural counts). The system prompt is freeform prose the author can evolve; the wiring is the durable contract.
+
+### Anti-bloat scope clarified
+
+Anti-bloat applies to **static surfaces**: code, system prompt, skills content, project docs content. It does NOT apply to the agent's chat session context — the agent should be eager about reading pointers when their descriptions match the work. Documented in `src/extensions/core/prompt-builder/AGENTS.md`.
+
+### Verified
+
+- `npm test` → **80/81 passed** (1 pre-existing environment-dependent failure in `test-instance-block.mjs`: "Root points at the pi-core npm package folder" — not related to this change)
+- `npm run typecheck` → clean
+- `npm run check:docs` → ✅
+- `npm run check:doc-drift` → ✅
+- Working tree: **CLEAN**, all on `origin/main`
+
+---
+
+## Postscript — 2026-07-04 discoverability polish + test fix
+
+### Shipped
+
+**`f0223b71`** — polish(system-prompt): tighten discoverability directives, fix test assertion, add context-hygiene signal
+
+Four changes:
+
+1. **IDENTITY_INTRO rephrased** — more directive: "read the skills that cover your current domain. Skills prevent wasted effort and mistakes. Then scan project docs, memory, and runtime extensions; read any resource whose scope overlaps with your work before acting." (`src/extensions/core/prompt-builder/identity.ts`)
+
+2. **Project-docs header tightened** — "Read project documentation files below before modifying code in the areas they describe. Cross-check references against source code." (`project-docs-section.ts`)
+
+3. **Skills header tightened** — more directive: "read that skill first. Skills are executable procedures, not optional hints." (`skills-section.ts`)
+
+4. **Context hygiene signal added** — 6th discoverability signal in session-start handler, reminding the agent about `context_inspect`, `context_compress`, `workspace_snapshot` for state preservation. (`register-session-start-discoverability.ts`)
+
+### Bug fix
+
+- **test-instance-block.mjs** — Root→Core label mismatch: the Instance block renders `Core:` (not `Root:`) since v3.8, but the test was still asserting against the old `Root:` regex. Fixed: 20/20 subtests pass (was 18/20).
+
+### D-58 status updated
+
+- `test-tool-loop-detector.mjs`: **18/18 passed** (no longer failing)
+- `test-enforcement-state-composition.mjs`: **all passed** (BASELINE_COUNT already correct)
+- Both D-58 test-drift observations are **resolved** by prior commits.
+
+### Verified
+
+- `npm test` → **81/81 passed** (test-instance-block.mjs now passing)
+- `npm run typecheck` → clean
+- Working tree: **CLEAN**, all on `origin/main`

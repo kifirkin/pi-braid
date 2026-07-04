@@ -65,8 +65,8 @@ function basename(p: string): string {
  * Returns empty string if no docs.
  *
  * Shape:
- *   Read project documentation files below carefully and cross-check
- *   before acting on time-sensitive claims.
+ *   Read project documentation files below before modifying code in the areas they describe.
+ *   Cross-check references against source code.
  *
  *   - AGENTS.md at /abs/path/AGENTS.md
  *   - CLAUDE.md at /abs/path/CLAUDE.md
@@ -79,7 +79,7 @@ export async function projectDocsSection(
   }
 
   const lines: string[] = [
-    "Read project documentation files below carefully and cross-check before acting on time-sensitive claims.",
+    "Read project documentation files below before modifying code in the areas they describe. Cross-check references against source code.",
     "",
   ];
 

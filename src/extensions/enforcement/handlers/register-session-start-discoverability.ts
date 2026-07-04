@@ -12,10 +12,13 @@
  *   2. Episodes file with content
  *   3. Semantic memory file with content
  *   4. Prior session .jsonl files (session-recall)
+ *   5. Resume file from prior session shutdown
+ *   6. (Always when prior state exists) Context hygiene & preservation tip
  *
  * For each that exists, it emits a whisper so the agent knows to use
  * `scratchpad action=continue`, `memory action=recall_search`, or
- * `session action=search` before starting new work.
+ * `session action=search` before starting new work, plus context management
+ * and state preservation tools for ongoing session hygiene.
  *
  * This is environmental discoverability: the agent's environment makes
  * its own state visible, rather than hiding it behind tool calls the
@@ -166,9 +169,22 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
         // ignore
       }
 
+      // ── 6. Context hygiene & state preservation tip ────────────────
+      // Forward-looking guidance: when prior state exists, remind the agent
+      // how to manage context and preserve state against crashes.
+      // Shown only when there's prior state to manage (other signals exist).
+      if (signals.length > 0) {
+        signals.push(
+          `Session state auto-preserves: scratchpad saves to disk, shutdown writes a resume file. ` +
+            `Monitor context with \`context_inspect\`, archive with \`context_compress\` when near capacity, ` +
+            `and capture workspace files with \`workspace_snapshot(action=\'capture\')\`. ` +
+            `These surfaces survive crashes.`,
+        );
+      }
+
       // ── Emit bundled signals (single whisper, process-level dedup) ─
       // Bundling prevents flood: the discoverability handler can detect up
-      // to 5 sources (scratchpad, episodes, semantic, prior sessions, resume).
+      // to 6 sources (scratchpad, episodes, semantic, prior sessions, resume, context tip).
       // Emitting each as a separate whisper would stack in the first turn.
       // The braid-whisper prefix is added by the trunk (sendTrackedMessage),
       // so we just join the body-level signals with newlines.

@@ -136,23 +136,23 @@ await test("Pi-core version is reported correctly (regression: not 0.77.0, not u
   assert.match(version, /^\d+\.\d+\.\d+$/, "must be semver");
 });
 
-await test("Root points at the pi-core npm package folder (NOT braid)", () => {
-  // v3.7 leaked the braid development cwd as 'Root'. v3.8 corrects
-  // this: Root is the pi-core npm package folder, where the agent
-  // is actually hosted. Path should contain 'pi-coding-agent' or
-  // sit under a mise/npm-global node_modules layout.
-  const rootMatch = OUT.match(/^Root: (.+)$/m);
-  assert.ok(rootMatch, "must render a Root line");
-  const root = rootMatch[1].trim();
+await test("Core points at the pi-core npm package folder (NOT braid)", () => {
+  // v3.7 leaked the braid development cwd as 'Root'. v3.8 corrected
+  // this and renamed the label to 'Core': the pi-core npm package
+  // folder where the agent is actually hosted. Path should contain
+  // 'pi-coding-agent' or sit under a mise/npm-global node_modules layout.
+  const coreMatch = OUT.match(/^Core: (.+)$/m);
+  assert.ok(coreMatch, "must render a Core line");
+  const core = coreMatch[1].trim();
   assert.notEqual(
-    root,
+    core,
     ROOT,
-    `Root must NOT be the braid repo (${ROOT}) -- it should be the pi-core package folder`,
+    `Core must NOT be the braid repo (${ROOT}) -- it should be the pi-core package folder`,
   );
   // Sanity: pi-core root should look like a real package path.
   assert.ok(
-    root === "(unknown)" || root.includes("/") || root.includes("\\"),
-    `Root must be a path or '(unknown)', got: ${root}`,
+    core === "(unknown)" || core.includes("/") || core.includes("\\"),
+    `Core must be a path or '(unknown)', got: ${core}`,
   );
 });
 

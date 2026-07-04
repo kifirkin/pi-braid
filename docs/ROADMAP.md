@@ -3,7 +3,7 @@
 # pi-braid Improvement Roadmap
 
 **Compiled:** 2026-06-17
-**Last reconciled:** 2026-07-03 (session-4: added shipped markers to P0 table, P2-10d memory-agent-bridge split shipped, P2-10/P2-11 table markers updated, P-ORCH orchestrator proposal added §6.5) Remaining items reconciled from 6 to 3.
+**Last reconciled:** 2026-07-04 (session-5: test-instance-block.mjs Root→Core fix, discoverability polish pass, D-58 status verified resolved) Remaining items reconciled from 3 to 0.
 **Status:** Living document. Re-run after each remediation round.
 **Source audits:** All `docs/*.md` documents as of 2026-06-17 + deep review findings from this session.
 
