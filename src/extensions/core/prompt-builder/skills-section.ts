@@ -45,12 +45,20 @@ function escapeXml(str: string): string {
  *   - Arrows: kept as Unicode (no replacement — `->` and `=>` both contain `>`
  *     which XML-escapes to `&gt;`; Unicode arrows pass through untouched)
  *   - Unicode ellipsis (...) -> ASCII `...`
- *   - Truncates to MAX_DESC_LEN characters (word-boundary aware)
+ *   - Truncates beyond SOFT_LIMIT (prefers sentence boundary, falls back
+ *     to word boundary)
  *
  * Mirrors pi-core's normalizeForFuzzyMatch patterns, plus arrow handling.
  * The result must be safe for XML attribute values after escapeXml().
  */
+
+/**
+ * Target description length. A little extra is OK — SOFT_LIMIT is the
+ * hard cap. When truncation is needed, we prefer sentence boundaries
+ * (`.`, `!`, `?`) over word boundaries, keeping complete sentences.
+ */
 const MAX_DESC_LEN = 280;
+const SOFT_LIMIT = 320;
 
 function normalizeDescription(raw: string): string {
   let s = raw
@@ -74,14 +82,27 @@ function normalizeDescription(raw: string): string {
     .replace(/  +/g, " ")
     .trim();
 
-  // Truncate at word boundary
-  if (s.length > MAX_DESC_LEN) {
-    const truncated = s.slice(0, MAX_DESC_LEN);
-    const lastSpace = truncated.lastIndexOf(" ");
-    if (lastSpace > MAX_DESC_LEN * 0.6) {
-      s = truncated.slice(0, lastSpace) + "...";
+  // Soft cap: allow up to SOFT_LIMIT without truncation.
+  // Only truncate beyond that, preferring sentence boundaries.
+  if (s.length > SOFT_LIMIT) {
+    // Try sentence boundary first (within the first MAX_DESC_LEN chars)
+    const candidate = s.slice(0, MAX_DESC_LEN + 1);
+    const sentenceEnd = Math.max(
+      candidate.lastIndexOf(". "),
+      candidate.lastIndexOf("! "),
+      candidate.lastIndexOf("? "),
+    );
+    if (sentenceEnd > MAX_DESC_LEN * 0.5) {
+      // Cut at sentence boundary — no ellipsis needed, sentence ends naturally
+      s = s.slice(0, sentenceEnd + 1);
     } else {
-      s = truncated + "...";
+      // Fall back to word boundary
+      const lastSpace = candidate.lastIndexOf(" ");
+      if (lastSpace > MAX_DESC_LEN * 0.5) {
+        s = s.slice(0, lastSpace) + "...";
+      } else {
+        s = s.slice(0, MAX_DESC_LEN) + "...";
+      }
     }
   }
 
