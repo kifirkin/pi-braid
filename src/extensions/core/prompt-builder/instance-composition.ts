@@ -299,7 +299,7 @@ function renderInstance(d: InstanceData): string {
   //   - Cwd:    where the user invoked `pi` from (their project).
   //   - Settings: the userland pi settings dir (settings.json, skills, memory,
   //             sessions). Override via PI_CODING_AGENT_DIR.
-  lines.push(`Root: ${d.pi.root || "(unknown)"}`);
+  lines.push(`Core: ${d.pi.root || "(unknown)"}`);
   lines.push(`Cwd: ${d.cwd}`);
   lines.push(`Settings: ${d.settingsDir}`);
 
