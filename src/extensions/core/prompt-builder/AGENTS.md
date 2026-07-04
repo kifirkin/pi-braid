@@ -21,7 +21,7 @@ Every file in this folder either:
 |---|---|
 | `index.ts` | Main handler. Wires `before_agent_start`, calls the 3 `deliver*` functions, composes the final prompt. |
 | `section.ts` | The `PromptSection` primitive + `composeSections` joiner + `simpleSection`, `linesSection`, `headingSection` builders. |
-| `identity.ts` | Framing constants: `IDENTITY_INTRO` (generalist identity), `INTERACTION_STYLE` (output *structure* + markup discipline), `CONCISE_RESPONSES` (output *when*), `COMPACTION_SURVIVAL`, `DEFINITION_OF_DONE` (SPQ-1: verification triple before finalize), `LIVING_DOCS`, `MEMORY_AWARENESS`, `SCOPES` (artifact-scope heuristic -- narrowest scope that satisfies purpose). |
+| `identity.ts` | Framing constants: `IDENTITY_INTRO` (generalist identity), `INTERACTION_STYLE` (output *structure* + markup discipline), `CONCISE_RESPONSES` (output *when*), `COMPACTION_SURVIVAL`, `DEFINITION_OF_DONE` (SPQ-1: verification triple before finalize), `LIVING_DOCS`, `MEMORY_AWARENESS`, `SCOPES` (artifact-scope heuristic -- narrowest scope that satisfies purpose), `FRAMEWORK_CONFIG_FIRST` (config API before overrides), `RESOURCE_DISCOVERY` (pointer-on-demand for skills, docs, memory, runtime, framework APIs, external state; verify against source when correctness matters). |
 | `behavior-modes.ts` | **Restored 2026-06-29** Dynamic behavior modes: 4 modes (TRUTH-SEEKING, CORRECTION, EPISTEMIC-CALIBRATION, TOOL-RELIABILITY) x 1-2 directives each. Wired to enforcement signals via `determineContrastMode()`. Replaces the deleted `behavioral-guardrails.ts` (8 static values) and `contrast-phrase-library.ts` (6 phrases + 4 mode defs). Lean successor: right directive at the right time instead of all directives always. |
 | `instance-composition.ts` | **v3.8** Instance (consolidated): agent identity + pi-core version + root (pi-core npm package folder) + cwd + userland settings dir + os/hostname/now/pid + session (id + elapsed/last-event/turns/tool-avg) + top-level pi extension packages (settings-driven, scope-tagged `project` or `user-global`). |
 | `top-level-extensions.ts` | **v3.8** Discovery logic for top-level pi extension PACKAGES. Reads pi-core's `packages` field from `<cwd>/.pi/settings.json` (project) and `~/.pi/agent/settings.json` (user-global); project wins on collision. Resolves `npm:` specs via `npm root -g`; resolves local paths in place. Source tags: `project` / `user-global`. |
@@ -51,7 +51,11 @@ What was restored: the 4-mode dynamic system (TRUTH-SEEKING / CORRECTION / EPIST
 
 The `determineContrastMode()` function in `src/extensions/enforcement/signals.ts` is consumed again by `turn-end-handler.ts` and `register-session-compact.ts`, which emit `enforcement_signals { contrastMode }`. The prompt-builder listens via `registerSessionStartHandler` and stores the mode in session state.
 
-### The `PromptSection` contract
+### Anti-bloat scope (clarified 2026-07-04)
+
+Anti-bloat applies to the **static surfaces**: code, the system prompt, skill content, project docs content. It does NOT apply to the agent's chat session context -- the agent should be eager about reading pointers when their descriptions match the work. `RESOURCE_DISCOVERY` codifies this: pointer-on-demand + verify-against-source.
+
+The system prompt is freeform prose the author can evolve. Tests in `test/runtime/lib/test-prompt-builder-directive.mjs` are **structural/wiring only** (existence, exports, simpleSection wiring, regression guards, structural counts). Tests that previously pinned sentence counts, exact phrases, meta-LLM term scans, and vocabulary were removed (2026-07-04) per the user clarification that prose-pinning tests are idiotic.
 
 Every section helper that contributes to the system prompt follows one rule:
 

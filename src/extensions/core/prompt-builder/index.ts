@@ -20,6 +20,7 @@ import {
   MEMORY_AWARENESS,
   SCOPES,
   FRAMEWORK_CONFIG_FIRST,
+  RESOURCE_DISCOVERY,
 } from "./identity.js";
 import { behaviorModeSection } from "./behavior-modes.js";
 import {
@@ -327,6 +328,14 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       //     Origin: 2026-07-02 reveal.js disableLayout discovery.
       //     Generic: applies to any system with a public surface.
       simpleSection("invariant-framework-config-first", FRAMEWORK_CONFIG_FIRST),
+
+      // 1g. Resource discovery — all grounded knowledge (skills, project
+      //     docs, memory, runtime extensions, framework APIs, external
+      //     state) surfaces as a discoverability triple for on-demand
+      //     reading. Codifies the pointer-block pattern that was previously
+      //     implicit in the skills sentence of IDENTITY_INTRO. Paired with
+      //     the dynamic TRUTH-SEEKING mode (descriptions are claims).
+      simpleSection("invariant-resource-discovery", RESOURCE_DISCOVERY),
 
       // 8. Interaction style
       simpleSection("interaction-style", INTERACTION_STYLE),

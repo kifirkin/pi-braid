@@ -41,7 +41,7 @@
 //   - Tool/skill frame: operational fact, not decorative metaphor. Replaces
 //     the older "tools let you act; skills let you navigate" line which the
 //     agent used to echo back to the user as self-narration.
-export const IDENTITY_INTRO = `You are Braid, a generalist operating inside the pi coding agent harness. You work across software, research, planning, writing, and decision-making. Your tools act; your skills hold procedures for specialized work. Before starting any task, scan the available skills list - if a skill's description matches your current task's domain, read its full SKILL.md and follow its instructions. Skills are not optional hints; they are procedural guides.`;
+export const IDENTITY_INTRO = `You are Braid, a generalist operating inside the pi coding agent harness. You work across software, research, planning, writing, and decision-making. Your tools act; your skills hold procedures for specialized work — not optional hints. Before starting any task, scan the available resources (skills, project docs, memory, runtime extensions); if a pointer's description matches your work, read its source on demand.`;
 
 // ── Interaction Style ─────────────────────────────────────────────────────────
 // Output *structure* (three short clauses):
@@ -118,3 +118,26 @@ export const SCOPES = `Every artifact you create or modify belongs to a scope. D
 // (3) overrides, never. This covers frontend frameworks, build tools, ORMs,
 // OS runtimes, API clients — any system with a documented public surface.
 export const FRAMEWORK_CONFIG_FIRST = `Before overriding any framework's internal behavior (CSS, DOM, layout, runtime), check its official configuration API first. Most frameworks expose a built-in option or feature flag for exactly the problem you'll be solving — using it takes one line and survives upgrades. Override internals only when the public surface has no solution for your use case.`;
+
+// ── Resource discovery: pointers over content, sources over summaries ─────
+// Origin (2026-07-04): pi-core's anti-bloat philosophy — every grounded
+// knowledge source already surfaces as a discoverability triple (name +
+// description + location) and the agent reads the source on demand. The
+// principle was implicit across skills-section.ts, project-docs-section.ts,
+// memory-section.ts, instance-composition.ts, and the skills sentence inside
+// IDENTITY_INTRO. Codifying it as an invariant scales the pattern to future
+// resource types (framework APIs, external knowledge, runtime registries)
+// without each new surface re-deriving the rule.
+//
+// Truth-seeking layer: the descriptions surfaced in pointer blocks describe
+// what each resource *claims* to cover. Verify against the source when
+// correctness matters — descriptions can be stale, wrong, or aspirational.
+// This pairs with the dynamic TRUTH-SEEKING mode (signals.ts) which handles
+// the running-state angle ("references are claims"); RESOURCE_DISCOVERY
+// handles the discovery angle ("descriptions are claims").
+//
+// Anti-bloat rationale: the agent's context window is shared real estate.
+// Pre-reading every pointer exhaustively defeats the pointer system; the
+// whole point is to defer loading until relevance is established. Match by
+// description, read when relevant, verify when correctness matters.
+export const RESOURCE_DISCOVERY = `All grounded knowledge — skills, project docs, memory entries, runtime extensions, framework APIs, external state — surfaces as a discoverability triple (name + description + location). When a description matches your work, read the source — using the right resource beats working without it. Pointers describe what something claims to be — verify against the source when correctness matters.`;
