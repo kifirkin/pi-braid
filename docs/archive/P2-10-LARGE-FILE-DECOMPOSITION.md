@@ -1,6 +1,7 @@
-<!-- status: forward-looking -->
+<!-- status: historical -->
+<!-- archived: 2026-07-04. All 4 file splits shipped (timer, memory-agent-bridge, session-recall, latent-activator) per ROADMAP §2.2. Original at docs/P2-10-LARGE-FILE-DECOMPOSITION.md. -->
 
-# P2-10 / Q13: Large-File Decomposition Plan
+# P2-10 / Q13: Large-File Decomposition Plan (Archived)
 
 ## Rationale
 

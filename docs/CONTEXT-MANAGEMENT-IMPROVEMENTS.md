@@ -1,8 +1,9 @@
-<!-- status: current -->
+<!-- status: historical -->
+<!-- archived: 2026-07-04. All implementable features shipped in context_compress tool. Auto-execute proposals deferred to separate context_proposals design. -->
 
 # Context Management Tool Improvements
 
-**Status**: current (implemented 2026-07-02)
+**Status**: historical (all implementable features shipped 2026-07-02)
 
 ## Implementation
 

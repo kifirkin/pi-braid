@@ -11,6 +11,7 @@
 | [`SETUP.md`](SETUP.md) | **Canonical setup reference for braid users.** Install paths (5 options), skills setup, full config schema, module toggling, storage, troubleshooting. Replaces scattered install snippets. | 2026-07-02 |
 | [`ROADMAP.md`](ROADMAP.md) | **Primary actionable roadmap.** Consolidated improvement list with 51 items (P0–P3, 45 full + 1 partial shipped), 36 new findings from deep review, 15 EW-7 proposals. Replaces the 4 archived audits. | 2026-06-30 |
 | [`CODE-QUALITY-REMEDIATION-PLAN.md`](CODE-QUALITY-REMEDIATION-PLAN.md) | Historical record of the 6 remediation rounds (Q1–Q15). Headline numbers reflect the state at the time of each round (current: 81/81 tests, 227 src + 83 test files, 28 documented exceptions). | 2026-06-17 |
+| [`CONTEXT-MANAGEMENT-IMPROVEMENTS.md`](CONTEXT-MANAGEMENT-IMPROVEMENTS.md) | **(Historical)** Design narrative for context_compress features — all implementable items shipped 2026-07-02. Auto-execute proposals deferred to separate context_proposals design. | 2026-07-04 |
 | [`ENFORCEMENT-WHISPER-CONTENT-AUDIT.md`](ENFORCEMENT-WHISPER-CONTENT-AUDIT.md) | Full inventory of all 35 whisper templates with trigger conditions, file:line, message templates, and the 15 EW-7 proposals. The §3 catalog is a reference; actionable items are in ROADMAP §4. | 2026-06-17 |
 | [`FRAGILE-HEURISTICS-INVENTORY.md`](FRAGILE-HEURISTICS-INVENTORY.md) | Full 76-heuristic catalog classified A/B/C/D. Of 29 A+B flagged for LLM replacement, 15 have shipped and 14 remain (shipped count may be stale — verify against code). | 2026-06-14 |
 | [`STATE-POLICY.md`](STATE-POLICY.md) | Design narrative for state lifetimes. Operational policy is in `src/lib/state/AGENTS.md`. | 2026-06-17 |
@@ -28,6 +29,7 @@ top of each file for details and the relevant ROADMAP section.
 | `archive/TOOL-INVENTORY-AUDIT.md` | Most cut/merge recommendations shipped; orphan `tasks.json` may still need cleanup | ROADMAP §2.1, P3-24 |
 | `archive/Q13-SPLIT-INDEX-STATUS.md` | Deferral decision still in effect but file sizes are stale | ROADMAP §2.2, §5.3, P2-10 |
 | `archive/WHISPER-AND-LOGGING-AUDIT.md` | Delivery-mechanism audit superseded by ENFORCEMENT-WHISPER-CONTENT-AUDIT.md + the new `ctx.whisper` finding | ROADMAP §2.4, §3.1 DR-C-1 |
+| [`archive/P2-10-LARGE-FILE-DECOMPOSITION.md`](archive/P2-10-LARGE-FILE-DECOMPOSITION.md) | All 4 file splits shipped: timer, memory-agent-bridge, session-recall, latent-activator | ROADMAP §2.2 |
 
 ## How docs/ is organized
 
@@ -36,15 +38,17 @@ docs/
 ├── README.md                          ← you are here
 ├── ROADMAP.md                         ← start here
 ├── CODE-QUALITY-REMEDIATION-PLAN.md   ← what we shipped
+├── CONTEXT-MANAGEMENT-IMPROVEMENTS.md  ← (historical) context_compress design record
 ├── ENFORCEMENT-WHISPER-CONTENT-AUDIT.md  ← whisper catalog (reference)
 ├── FRAGILE-HEURISTICS-INVENTORY.md    ← heuristic catalog (reference)
 ├── STATE-POLICY.md                    ← state design narrative
 ├── ARXIV-CITATIONS-AUDIT.md           ← citation verification
-└── archive/                           ← superseded audits (preserved)
+└── archive/                           ← superseded audits + shipped plans (preserved)
     ├── CASTS-AUDIT.md
     ├── TOOL-INVENTORY-AUDIT.md
     ├── Q13-SPLIT-INDEX-STATUS.md
-    └── WHISPER-AND-LOGGING-AUDIT.md
+    ├── WHISPER-AND-LOGGING-AUDIT.md
+    └── P2-10-LARGE-FILE-DECOMPOSITION.md  ← (all 4 file splits shipped)
 ```
 
 ## Conventions
