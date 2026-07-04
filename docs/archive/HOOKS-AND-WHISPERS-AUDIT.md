@@ -1,6 +1,7 @@
-<!-- status: current -->
+<!-- status: historical -->
+<!-- archived: 2026-07-04. Event/whisper mapping complete. No further action derived from this document; event surface tracked via code. -->
 
-# Hooks & Whispers Audit — 2026-06-23
+# Hooks & Whispers Audit — 2026-06-23 (Archived)
 
 > Companion to the session-management enforcement task. Maps every pi
 > event subscription, every whisper emission site, and the existing

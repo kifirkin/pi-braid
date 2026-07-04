@@ -1,6 +1,7 @@
-<!-- status: current -->
+<!-- status: historical -->
+<!-- archived: 2026-07-04. Design narrative — operational policy at src/lib/state/AGENTS.md is the source of truth. -->
 
-# State Policy — Design Document
+# State Policy — Design Document (Archived)
 
 **Status:** Active. Last revised 2026-06-17.
 **Source of truth:** `src/lib/state/AGENTS.md`. This document explains the *why* behind the policy in narrative form.

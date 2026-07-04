@@ -1,8 +1,7 @@
-<!-- status: forward-looking -->
-<!-- Created: 2026-06-30 -->
-<!-- Source papers: arXiv:2606.09498 (Self-Harness), arXiv:2606.00476 (Faithfulness Gap) -->
+<!-- status: historical -->
+<!-- archived: 2026-07-04. Research-backed proposals. No implementation timeline or committed workstream. Preserved for reference if research-driven improvements are revisited. -->
 
-# Self-Evolution Proposal: From Research to Braid Improvements
+# Self-Evolution Proposal: From Research to Braid Improvements (Archived)
 
 > **Scope.** A grounded analysis of two recent arXiv papers (2606.09498
 > "Self-Harness" and 2606.00476 "Faithfulness Gap in LLM Agents") and

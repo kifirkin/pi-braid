@@ -5,7 +5,7 @@
  * `[braid-whisper - <subsystem>]` envelope so the agent can reliably
  * distinguish system-injected signals from human user input.
  *
- * Why this exists (see docs/ENFORCEMENT-WHISPER-CONTENT-AUDIT.md §6.12):
+ * Why this exists (see docs/archive/ENFORCEMENT-WHISPER-CONTENT-AUDIT.md §6.12):
  *   - ~30% of system whispers had no prefix at all ("Context at 80%.",
  *     "## Session Size Notice", "VbC correction: ...")
  *   - The rest had inconsistent prefixes ("[enforcement]", "[Quality]",

@@ -1,7 +1,7 @@
 /**
  * Test: arXiv citations in src/ resolve to real papers.
  *
- * HISTORY (see docs/ARXIV-CITATIONS-AUDIT.md, 2026-06-15):
+ * HISTORY (see docs/archive/ARXIV-CITATIONS-AUDIT.md, 2026-06-15):
  *   The codebase contained 4 fabricated arXiv citations
  *   (2604.19768, 2604.19117, 2604.15224, 2604.14881) -- all
  *   returned HTTP 404 from arxiv.org. They had been hallucinated
@@ -78,7 +78,7 @@ if (broken.length > 0) {
     broken.length,
     0,
     `Found ${broken.length} broken arXiv citations. Remove or replace them. ` +
-      `See docs/ARXIV-CITATIONS-AUDIT.md for the audit.`,
+      `See docs/archive/ARXIV-CITATIONS-AUDIT.md for the audit.`,
   );
 }
 

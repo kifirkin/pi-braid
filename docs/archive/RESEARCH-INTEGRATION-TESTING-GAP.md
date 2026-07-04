@@ -1,6 +1,7 @@
-<!-- status: forward-looking -->
+<!-- status: historical -->
+<!-- archived: 2026-07-04. Research finding with no implementation plan. Key insight (tool-loop-detector silently dead) was addressed directly. -->
 
-# Research: Integration Testing Gap — When Unit Tests Pass but Production Breaks
+# Research: Integration Testing Gap — When Unit Tests Pass but Production Breaks (Archived)
 
 **Date:** 2026-07-02
 **Source:** Deep session reflection across 60+ pi-braid session files

@@ -6,7 +6,7 @@
  *    because it leaks across sessions when pi runs multiple sessions in
  *    one process. If you need a per-extension state object, use
  *    `getExtensionState(ctx, "key", factory)`. See
- *    `docs/CODE-QUALITY-REMEDIATION-PLAN.md` TASK-2.1 for the audit
+ *    `docs/archive/CODE-QUALITY-REMEDIATION-PLAN.md` TASK-2.1 for the audit
  *    of violations and the migration plan.
  *
  * Problem: module-level `const state = {}` is process-global. If pi ever runs

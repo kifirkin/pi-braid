@@ -1,6 +1,7 @@
-<!-- status: current -->
+<!-- status: historical -->
+<!-- archived: 2026-07-04. All 7 citations verified, no changes needed. Companion test at test/test-arxiv-citations.mjs continues to enforce. -->
 
-# arXiv Citations Audit
+# arXiv Citations Audit (Archived)
 
 **Date:** 2026-06-15
 **Method:** HTTP GET against `arxiv.org/abs/<id>` for each unique arXiv ID referenced in `src/`.

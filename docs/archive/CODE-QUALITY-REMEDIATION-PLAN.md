@@ -1,6 +1,7 @@
-<!-- status: current -->
+<!-- status: historical -->
+<!-- archived: 2026-07-04. Complete record of 6 remediation rounds (Q1-Q15). All shipped. Historical reference only. -->
 
-# Code Quality Remediation — Final Status
+# Code Quality Remediation — Final Status (Archived)
 
 **Last updated:** 2026-06-16 (continued after first wrap)
 **Status:** Six rounds of fixes shipped after initial wrap. Misplaced namespace files relocated, check-deps false positives fixed, all stale test refs resolved.

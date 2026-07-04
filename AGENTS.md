@@ -129,7 +129,7 @@ items have been folded into ROADMAP.md. Key ongoing concerns:
 | `src/extensions/self/` | Self-management (health, error-tracking, watchdog, etc.) | [src/extensions/self/AGENTS.md](src/extensions/self/AGENTS.md) |
 | `src/lib/` | Library subsystems (13 subdirs, all have AGENTS.md) | [src/lib/AGENTS.md](src/lib/AGENTS.md) |
 | `src/loader/` | Extension loader + subagent API | [src/loader/AGENTS.md](src/loader/AGENTS.md) |
-| `docs/` | Reference docs: `ROADMAP.md` (actionable), `CODE-QUALITY-REMEDIATION-PLAN.md` (shipped record), `ENFORCEMENT-WHISPER-CONTENT-AUDIT.md` (whisper catalog), `FRAGILE-HEURISTICS-INVENTORY.md`, `STATE-POLICY.md`, `ARXIV-CITATIONS-AUDIT.md`. 4 superseded audits in `archive/`. See `docs/README.md`. | (no AGENTS.md - durable reference) |
+| `docs/` | Reference docs: `ROADMAP.md` (actionable), `SETUP.md`, `FRAGILE-HEURISTICS-INVENTORY.md`, `P0-B-CRITIC-CONSOLIDATION.md`. Archived audits + shipped plans in `docs/archive/` (9 docs). See `docs/README.md`. | (no AGENTS.md - durable reference) |
 | `HANDOFF.md` | Fresh-session transfer document. State-of-codebase summary, last 5 commits, verification commands, priority queue. Written for an agent with no prior context. | (no AGENTS.md - ephemeral transfer aid, refresh per session) |
 | `test/` | Test harness; no AGENTS.md needed (tests are leaf) | (no AGENTS.md) |
 | `scripts/` | Build/lint helpers; leaf | (no AGENTS.md) |

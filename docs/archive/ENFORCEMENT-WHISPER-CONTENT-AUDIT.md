@@ -1,6 +1,7 @@
-<!-- status: forward-looking -->
+<!-- status: historical -->
+<!-- archived: 2026-07-04. Full whisper catalog + 15 EW-7 proposals — all actionable items reproduced in ROADMAP §4. Catalog preserved for historical reference. -->
 
-# Enforcement Whisper Content & Taxonomy Audit
+# Enforcement Whisper Content & Taxonomy Audit (Archived)
 
 **Date:** 2026-06-17
 **Scope:** The full set of agent-readable whisper messages produced by the

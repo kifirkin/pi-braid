@@ -1,7 +1,7 @@
-<!-- status: forward-looking -->
-<!-- Created: 2026-06-30 -->
+<!-- status: historical -->
+<!-- archived: 2026-07-04. Proposal doc — items tracked via ROADMAP and subsequent doc sessions if still actionable. -->
 
-# pi-braid Documentation Review Proposal
+# pi-braid Documentation Review Proposal (Archived)
 
 Scope: identify the documentation issues found in a 2026-06-30 audit of
 the pi-braid repository, organized so a focused agent session can address

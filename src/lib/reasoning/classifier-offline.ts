@@ -3,7 +3,7 @@
  *
  * Centralizes the "LLM judge failed, surface offline state" pattern that
  * was duplicated in three classifiers (topic-drift, turn-outcome,
- * sycophancy). Per the CODE-QUALITY-REMEDIATION-PLAN.md D-10 decision:
+ * sycophancy). Per the archive/CODE-QUALITY-REMEDIATION-PLAN.md D-10 decision:
  * never silently default to "no problem" when the classifier is down.
  *
  * The pattern:
