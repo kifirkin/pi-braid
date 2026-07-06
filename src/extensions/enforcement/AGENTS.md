@@ -22,6 +22,7 @@ the wake-up policy.
 | `verification-judge.ts` | The verification judge - runs in background. |
 | `verification-judge-state.ts` | Judge/calibration helpers. |
 | `handler-registry.ts` | Thin orchestrator that wires all handlers. |
+| `register-tool-result-formatting.ts` | MI-3 Structured Output Catalyst — wraps read/grep/find/ls outputs in structured header format (opt-in). |
 | `event-types.ts` | Types for events that flow through the enforcement layer. |
 | `*-state.ts` | Sub-state files (tool-tracking, error-tracking, memory-hygiene, context-hygiene, scratchpad, thought-chain). Each owns its slice of the composed state. |
 

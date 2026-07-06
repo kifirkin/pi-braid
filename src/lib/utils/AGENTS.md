@@ -17,6 +17,7 @@ Misc utilities that don't fit a more specific subdir.
 | `sop-suggestion.ts` | Suggests SOPs based on repeated patterns. |
 | `error-guard.ts` | Wraps handler errors with logging and recovery. |
 | `async-fs.ts` | Async filesystem primitives (`asyncExists`). Replaces duplicate `existsSync` checks. |
+| `format-tool-result.ts` | MI-3 Structured Output Catalyst — wraps tool output in consistent TOOL/STATUS/RESULT header format. MDA research (2601.21996) backing. |
 
 ## Local Contracts
 

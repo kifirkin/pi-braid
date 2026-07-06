@@ -119,28 +119,20 @@ never explicitly triggered.
 "## Active Mode: Truth-Seeking"
 **ROADMAP intersection**: None — new item
 
-### MI-3: Structured Output Catalyst for Tool Results
+### MI-3: Structured Output Catalyst for Tool Results ✅ SHIPPED
 
-**Impact**: Medium — Based on MDA (2601.21996) finding that repetitive
-structural data (LaTeX, XML) catalyzes induction head formation. Tool
-outputs are currently free-form text.
+**Commit**: (pending — see `git log` in this session)
 
-**What to do**:
-- Add a `formatToolResult` function in `src/lib/utils/` that wraps tool
-  output in a consistent structured format:
-  ```
-  TOOL: <name>
-  STATUS: success|error
-  RESULT: <first-line summary>
-  ---
-  <full output>
-  ```
-- Apply to `read`, `grep`, `find`, `ls` outputs (the tools that produce
-  the most structured data).
-- Make it opt-in via a tool option or flag.
+**Implementation**:
+- `src/lib/utils/format-tool-result.ts` — `formatToolResult()` utility that
+  prepends `TOOL: <name>\nSTATUS: success|error\nRESULT: <summary>\n---`
+  to tool output text blocks.
+- `src/extensions/enforcement/handlers/register-tool-result-formatting.ts` —
+  `tool_result` event handler using pi-core's middleware chaining to modify
+  content before delivery to the agent.
+- Opt-in via `structuredToolOutput: true` in pi settings.json. Disabled by
+  default to preserve existing behavior.
 
-**Effort**: ~3-4 hours (create formatter, wire into tool output paths, test)
-**Verification**: `read` output includes `TOOL: read` header in structured format
 **Research backing**: MDA (2601.21996), IRCoT (2212.10509), CRL (2602.10437)
 **ROADMAP intersection**: None — new item
 
@@ -241,22 +233,6 @@ it explicit unlocks composable, typed event handling across all extensions.
 **Research backing**: None (architecture pattern)
 **ROADMAP intersection**: None — new
 
-### SI-2: Compliance Theater Paper Submission to arXiv
-
-**Impact**: Medium — The paper is already arXiv-ready (11 pages, 4 studies,
-5 models). Publishing establishes the research foundation.
-
-**What to do**:
-- Review the paper for the methodological issues found in the Apr 9 session
-  (mixed sample sizes, success rate inflation in Table 1)
-- Fix the issues, add missing statistical tests
-- Submit to arXiv
-
-**Effort**: ~1-2 days (review, fix, submit)
-**Verification**: arXiv ID returned
-**Research backing**: Full paper at `~/projects/vibe/llm-compliance-theater/paper/main.pdf`
-**ROADMAP intersection**: None — new
-
 ---
 
 ## Priority Matrix
@@ -273,7 +249,6 @@ it explicit unlocks composable, typed event handling across all extensions.
 | LP-2 | Bidirectional Verifier | High | 1.5-2d | ★★★ | Large |
 | LP-3 | Memory Leak Prevention | Medium-High | 1.5d | ★★★ | Large |
 | SI-1 | Heartbeat Event Bus | High | 3-4d | ★★ | Strategic |
-| SI-2 | arXiv Submission | Medium | 1-2d | ★★★ | Strategic |
 
 ---
 
@@ -289,14 +264,13 @@ it explicit unlocks composable, typed event handling across all extensions.
 5. MI-2: Add Truth-Seeking signal to CONTRAST detection (~2h)
 
 **Sprint 3** (large projects, start with LP-1):
-6. LP-1: Self-Harness Loop (~2-3d) — the highest-impact unimplemented proposal
-7. MI-3: Structured Output Catalyst (~3-4h)
+6. MI-3: Structured Output Catalyst (~3-4h) ✅ SHIPPED
+7. LP-1: Self-Harness Loop (~2-3d) — the highest-impact unimplemented proposal
 8. LP-2: Bidirectional Verifier (~1.5-2d)
 
 **Sprint 4** (remaining):
 9. LP-3: Memory Leak Prevention (~1.5d)
-10. SI-2: arXiv Submission (~1-2d)
-11. SI-1: Heartbeat Event Bus (~3-4d)
+10. SI-1: Heartbeat Event Bus (~3-4d)
 
 ---
 

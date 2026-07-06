@@ -30,6 +30,7 @@ import { registerSessionStart } from "./handlers/register-session-start.js";
 import { registerToolCallHandler } from "./handlers/register-tool-call.js";
 import { registerMessageEndHandler } from "./handlers/register-message-end.js";
 import { registerToolResultHandler } from "./handlers/register-tool-result.js";
+import { registerToolResultFormatting } from "./handlers/register-tool-result-formatting.js";
 import { registerSessionCompactHandler } from "./handlers/register-session-compact.js";
 import { registerAutoRetryEndHandler } from "./handlers/register-auto-retry-end.js";
 import { registerSessionShutdownHandler } from "./handlers/register-session-shutdown.js";
@@ -73,6 +74,7 @@ export function registerHandlers(pi: ExtensionAPI): void {
     beginTurn();
   });
   registerMessageEndHandler(pi);
+  registerToolResultFormatting(pi);
   registerToolResultHandler(pi);
   registerCompactAndSessionHandlers(pi);
 }
