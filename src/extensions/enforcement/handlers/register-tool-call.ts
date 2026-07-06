@@ -7,6 +7,8 @@ import { onEvent } from "../../../lib/events/event-types.js";
 import { checkBlocking } from "./blocking.js";
 import { recordToolCall, recordToolInput, recordBashDetails } from "./tool-tracker.js";
 import { checkLocalizationRisk, recordFileTouch } from "../../../lib/store/bidirectional-verifier.js";
+import { checkCoordination, recordCoordinationEdit } from "../../../lib/verification/coordination-checker.js";
+import { traceForward } from "../../../lib/verification/forward-tracer.js";
 import { knownFiles } from "../similarity.js";
 import { getState, recordThink, incrementToolsSinceReflection } from "../state.js";
 import { TOOL_CALL } from "../../../lib/core/event-names.js";
@@ -43,10 +45,22 @@ export function registerToolCallHandler(pi: ExtensionAPI): void {
       const fp = (input?.path as string) ?? (input?.target as string) ?? "";
       if (fp) {
         recordFileTouch(ctx, fp, getState(ctx).currentTurn, true);
+        recordCoordinationEdit(ctx, fp, getState(ctx).currentTurn);
+
+        // Localization risk check
         const risk = checkLocalizationRisk(ctx, fp, getState(ctx).currentTurn);
         if (risk) {
           getState(ctx).localizationRisk = risk;
         }
+
+        // Coordination check: warn if editing a generator without updating derived files
+        const coordWarnings = checkCoordination(ctx, fp, getState(ctx).currentTurn);
+        if (coordWarnings.length > 0) {
+          getState(ctx).localizationRisk = coordWarnings[0].message;
+        }
+
+        // Forward trace (fire-and-forget): log downstream consumers
+        traceForward(fp, ctx.cwd, 10).then(() => {}).catch(() => {});
       }
     }
 

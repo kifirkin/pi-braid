@@ -1,6 +1,6 @@
 <!-- status: current -->
 <!-- Created: 2026-07-06 for fresh-session transfer -->
-<!-- LP-1 Phase 2+3 complete: Harness Proposal + Validation -->
+<!-- LP-1 Phase 2+3 + LP-2 complete: Harness Proposal + Validation + Bidirectional Verifier -->
 
 # pi-braid session handoff
 
@@ -12,17 +12,17 @@ The work is in a known-good state as of this writing.
 - **Sprint 1**: Shipped (QW-1 contrast phrases, QW-2 PLANNING mode, QW-3 COMPLETION shutdown)
 - **Sprint 2**: Shipped (MI-1 MARS principle+procedure reflection, MI-2 Truth-Seeking signal)
 - **Sprint 3**: Shipped — LP-1 Phase 1 (failure trace + weakness miner), D-57 closure, MI-3, LP-1 Phase 2 (Harness Proposal)
-- **Sprint 4**: Shipped — LP-1 Phase 3 (Proposal Validation)
+- **Sprint 4**: Shipped — LP-1 Phase 3 (Proposal Validation), LP-2 (Bidirectional Verifier)
 - **Extra**: 3 system-prompt behavioral-verification fixes (existence-only tests → behavioral checks)
 - **Working tree**: **CLEAN**
-- **Tests**: 83/83 pass (+1 new: test-harness-validator.mjs)
+- **Tests**: 84/84 pass (+1 new: test-lp2-verification.mjs)
 - **Typecheck**: Clean
 
 ## State of the codebase
 
 - **CI**: `npm run ci:check` → ✅ all green (check:docs + check:doc-drift + tsc + 82/82 tests)
   - Note: `check:deps` has 2 pre-existing violations (mars-reflector.ts imports from ext/ — not from this change)
-- **Tests**: `npm run test` → **83 passed, 0 failed**
+- **Tests**: `npm run test` → **84 passed, 0 failed**
 - **Typecheck**: `npm run typecheck` → clean
 - **Doc discipline**: `npm run check:docs` → ✅ 68/68; `npm run check:doc-drift` → ✅
 - **Working tree**: **CLEAN**. 0 uncommitted, 0 untracked.
@@ -110,9 +110,15 @@ The work is in a known-good state as of this writing.
 - **Test**: `test-harness-validator.mjs` — 32 structural assertions
 - **Impact**: 83/83 tests pass, typecheck clean
 
-### LP-2: Bidirectional Verifier
-- Forward Trace + Backward Check for cross-file coordination
-- Effort: ~1.5-2 days
+### LP-2: Bidirectional Verifier ✅ SHIPPED
+- **3 new modules** in `src/lib/verification/`:
+  - `forward-tracer.ts` — import-graph analysis to find downstream consumers of edited files
+  - `backward-checker.ts` — LLM-as-judge to check if a fix propagates to the symptom
+  - `coordination-checker.ts` — tracks derived-from relationships (generator -> generated), warns on stale derived files
+- **Public API**: `src/lib/verification/index.ts` with `checkAll()` convenience function
+- **Wired into `register-tool-call.ts`**: coordination check + forward trace on every edit/write
+- **Test**: `test-lp2-verification.mjs` — 54 structural + behavioral assertions (forward tracer with fixture, coordination checker static analysis)
+- **Impact**: 84/84 tests pass, typecheck clean
 
 ### LP-3: Memory Leak Prevention
 - Cross-project session isolation with provenance tracking
