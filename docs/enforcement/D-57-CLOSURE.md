@@ -1,6 +1,6 @@
 # D-57: Enforcement Whistle Audit — Closure Report
 
-<!-- status: closed -->
+<!-- status: historical -->
 <!-- Generated: 2026-07-06 -->
 <!-- Commits: 7a9ff662 (phase 2), 86bbdaa3 (tool-loop fix), 29f24543 (per-turn sets) -->
 

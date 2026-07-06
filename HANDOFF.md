@@ -11,11 +11,12 @@ The work is in a known-good state as of this writing.
 
 - **Sprint 1**: Shipped (QW-1 contrast phrases, QW-2 PLANNING mode, QW-3 COMPLETION shutdown)
 - **Sprint 2**: Shipped (MI-1 MARS principle+procedure reflection, MI-2 Truth-Seeking signal)
-- **Working tree**: CLEAN
+- **Sprint 3**: In progress — LP-1 Phase 1 shipped (failure trace collector + weakness miner), D-57 closure, MI-3 shipped
+- **Working tree**: 4 files modified (harness/ new, evolver.ts, D-57-CLOSURE.md, HANDOFF.md, IMPROVEMENT-PROPOSALS.md)
 - **Tests**: 81/81 pass
 - **Typecheck**: Clean
 
-Working tree is **CLEAN**. All commits pushed to `origin/main`.
+Working tree is **DIRTY** with 4 files changed. Uncommitted new files in `src/lib/harness/`.
 
 ## State of the codebase
 
@@ -68,17 +69,23 @@ Working tree is **CLEAN**. All commits pushed to `origin/main`.
 - `ARCHAEOLOGY-FINDINGS.md` — 457-line, 11-section archaeology report
 - `docs/proposals/IMPROVEMENT-PROPOSALS.md` — 11 proposals across 4 tiers
 
-## What's next (Sprint 2)
+## What's next (Sprint 3)
 
-### LP-1: Self-Harness Loop (longer-term)
-- Automated harness improvement via Weakness Mining → Proposal → Pareto validation
-- Paper shows 53-60% relative improvement on held-out tasks
-- Effort: ~2-3 days
+### LP-1 Phase 1 ✅ SHIPPED
+- Failure trace collector + weakness miner wired into heartbeat evolver
+- Collects from tool-loop-detector, error-tracking, validation failures
+- Clusters by type+tool, computes severity, surfaces via whisper
+- Files: `src/lib/harness/` (types.ts, failure-trace-collector.ts, weakness-miner.ts, index.ts, AGENTS.md)
+- Inspired by Opik's trace→test-suite pipeline
 
-### MI-3: Structured Output Catalyst for Tool Results
-- Based on MDA (2601.21996) finding that repetitive structural data catalyzes induction head formation
-- Add `formatToolResult` function that wraps tool output in consistent structured format
-- Effort: ~3-4 hours (see `docs/proposals/IMPROVEMENT-PROPOSALS.md`)
+### LP-1 Phase 2-3 (remaining)
+- **Harness Proposal**: Generate candidate edits from weakness clusters
+- **Proposal Validation**: Run candidates on evaluation benchmark with Pareto non-regression
+- Effort: ~1-2 days
+
+### MI-3 ✅ SHIPPED
+- Structured Output Catalyst for tool results (committed in Sprint 3)
+- See `src/lib/utils/format-tool-result.ts`
 
 ## Key reference docs
 

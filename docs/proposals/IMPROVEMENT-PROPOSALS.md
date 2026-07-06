@@ -148,10 +148,18 @@ Weakness Mining → Harness Proposal → Proposal Validation with Pareto
 non-regression. pi-braid already has the infrastructure (evaluation
 framework, prompt-builder, enforcement signals).
 
-**What to do**:
-1. **Weakness Mining**: Create a module that clusters failed evaluation
-   traces by failure signature (terminal cause, agent mechanism, causal
-   status). Use existing `evaluation/` benchmark infrastructure.
+**Phase 1 shipped** (`2026-07-06`):
+- `src/lib/harness/types.ts` — shared types: `FailureSignature`, `WeaknessCluster`, `HarnessState`
+- `src/lib/harness/failure-trace-collector.ts` — passive observer, collects from tool-loop-detector,
+  error-tracking, validation failures
+- `src/lib/harness/weakness-miner.ts` — pure clustering: groups by type+tool, computes severity
+  from frequency/count/recency, surfaces via `summarizeClusters()`
+- `src/lib/harness/index.ts` — public API
+- Wired into `heartbeat-scheduler/modules/evolver.ts` — collects + mines on evolver activation
+- Inspired by Opik's trace→test-suite pipeline
+
+**What remains (Phase 2-3)**:
+1. **Weakness Mining** ✅ Phase 1 complete
 2. **Harness Proposal**: The same model (in a proposer role) generates K
    parallel candidate edits to the system prompt, tool descriptions, or
    behavior modes. Each candidate is (a) grounded in a specific failure
@@ -245,7 +253,7 @@ it explicit unlocks composable, typed event handling across all extensions.
 | MI-1 | Upgrade MARS | High | 4-6h | ★★★★ | Moderate |
 | MI-2 | Truth-Seeking signal | Medium | 2h | ★★★ | Moderate |
 | MI-3 | Structured Output Catalyst | Medium | 3-4h | ★★★ | Moderate |
-| LP-1 | Self-Harness Loop | Highest | 2-3d | ★★★★ | Large |
+| LP-1 | Self-Harness Loop (Phase 1 ✅) | Highest | 2-3d | ★★★★ | Large |
 | LP-2 | Bidirectional Verifier | High | 1.5-2d | ★★★ | Large |
 | LP-3 | Memory Leak Prevention | Medium-High | 1.5d | ★★★ | Large |
 | SI-1 | Heartbeat Event Bus | High | 3-4d | ★★ | Strategic |

@@ -9,6 +9,12 @@ import type { CognitiveModule } from "../types.js";
 import { createLogger } from "../../../../lib/core/logger.js";
 import { getMemoryState } from "../state.js";
 import { isDegraded } from "../../../../lib/detection/degradation-detector.js";
+import {
+  collectAllFailureSignatures,
+  getHarnessState,
+  mineWeaknesses,
+  summarizeClusters,
+} from "../../../../lib/harness/index.js";
 
 const log = createLogger("heartbeat:evolver");
 
@@ -46,13 +52,36 @@ export const evolverModule: CognitiveModule = {
       }
     }
 
+    // ── Self-Harness: Collect failure signatures, mine weaknesses ──────
+    const collected = collectAllFailureSignatures(context.ctx);
+    const harnessState = getHarnessState(context.ctx);
+
+    if (harnessState.totalCollected > 0 && context.turnCount - harnessState.lastMiningTurn >= 20) {
+      const clusters = mineWeaknesses(harnessState.signatures, context.turnCount);
+      harnessState.clusters = clusters;
+      harnessState.lastMiningTurn = context.turnCount;
+      harnessState.hasMined = true;
+
+      const summary = summarizeClusters(clusters);
+      const actionableCount = clusters.filter((c) => c.severity >= 0.5).length;
+
+      log.info(
+        `Weakness mining: ${clusters.length} clusters, ${actionableCount} actionable ` +
+        `(${harnessState.totalCollected} total signatures)`,
+      );
+
+      context.whisper(summary, { category: "cognitive" });
+    }
+
     log.info(
       `Evolver: archived session (${context.turnCount} turns, ` +
-        `${memState.heuristics.filter((h) => h.uses > 0).length}/${memState.heuristics.length} heuristics used)`,
+        `${memState.heuristics.filter((h) => h.uses > 0).length}/${memState.heuristics.length} heuristics used, ` +
+        `${harnessState.totalCollected} failure signatures collected)`,
     );
 
     context.whisper(
-      `Meta-learning: session archived. ${memState.heuristics.filter((h) => h.uses > 0).length}/${memState.heuristics.length} heuristics applied. ${memState.heuristics.length} total active.`,
+      `Meta-learning: session archived. ${memState.heuristics.filter((h) => h.uses > 0).length}/${memState.heuristics.length} heuristics applied. ` +
+      `${harnessState.totalCollected} failure signatures. ${harnessState.clusters.length} weakness clusters.`,
       { category: "cognitive" },
     );
   },
