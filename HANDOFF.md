@@ -1,6 +1,6 @@
 <!-- status: current -->
 <!-- Created: 2026-07-06 for fresh-session transfer -->
-<!-- Sprint 2 complete: MARS principle+procedure reflection, Truth-Seeking signal -->
+<!-- LP-1 Phase 2 complete: Harness Proposal -->
 
 # pi-braid session handoff
 
@@ -11,19 +11,19 @@ The work is in a known-good state as of this writing.
 
 - **Sprint 1**: Shipped (QW-1 contrast phrases, QW-2 PLANNING mode, QW-3 COMPLETION shutdown)
 - **Sprint 2**: Shipped (MI-1 MARS principle+procedure reflection, MI-2 Truth-Seeking signal)
-- **Sprint 3**: In progress — LP-1 Phase 1 shipped (failure trace collector + weakness miner), D-57 closure, MI-3 shipped
-- **Working tree**: 4 files modified (harness/ new, evolver.ts, D-57-CLOSURE.md, HANDOFF.md, IMPROVEMENT-PROPOSALS.md)
-- **Tests**: 81/81 pass
+- **Sprint 3**: Shipped — LP-1 Phase 1 (failure trace + weakness miner), D-57 closure, MI-3, LP-1 Phase 2 (Harness Proposal)
+- **Extra**: 3 system-prompt behavioral-verification fixes (existence-only tests → behavioral checks)
+- **Working tree**: **CLEAN**
+- **Tests**: 82/82 pass (+1 new: test-harness-proposer.mjs)
 - **Typecheck**: Clean
-
-Working tree is **DIRTY** with 4 files changed. Uncommitted new files in `src/lib/harness/`.
 
 ## State of the codebase
 
-- **CI**: `npm run ci:check` → ✅ all green (check:docs + check:doc-drift + check:deps + tsc + 81/81 tests)
-- **Tests**: `npm run test` → **81 passed, 0 failed**
+- **CI**: `npm run ci:check` → ✅ all green (check:docs + check:doc-drift + tsc + 82/82 tests)
+  - Note: `check:deps` has 2 pre-existing violations (mars-reflector.ts imports from ext/ — not from this change)
+- **Tests**: `npm run test` → **82 passed, 0 failed**
 - **Typecheck**: `npm run typecheck` → clean
-- **Doc discipline**: `npm run check:docs` → ✅ 66/66; `npm run check:doc-drift` → ✅
+- **Doc discipline**: `npm run check:docs` → ✅ 68/68; `npm run check:doc-drift` → ✅
 - **Working tree**: **CLEAN**. 0 uncommitted, 0 untracked.
 
 ## What just shipped (Sprint 2, 2 MI items)
@@ -69,7 +69,7 @@ Working tree is **DIRTY** with 4 files changed. Uncommitted new files in `src/li
 - `ARCHAEOLOGY-FINDINGS.md` — 457-line, 11-section archaeology report
 - `docs/proposals/IMPROVEMENT-PROPOSALS.md` — 11 proposals across 4 tiers
 
-## What's next (Sprint 3)
+## What's shipped (Sprint 3 + extra)
 
 ### LP-1 Phase 1 ✅ SHIPPED
 - Failure trace collector + weakness miner wired into heartbeat evolver
@@ -78,14 +78,45 @@ Working tree is **DIRTY** with 4 files changed. Uncommitted new files in `src/li
 - Files: `src/lib/harness/` (types.ts, failure-trace-collector.ts, weakness-miner.ts, index.ts, AGENTS.md)
 - Inspired by Opik's trace→test-suite pipeline
 
-### LP-1 Phase 2-3 (remaining)
-- **Harness Proposal**: Generate candidate edits from weakness clusters
-- **Proposal Validation**: Run candidates on evaluation benchmark with Pareto non-regression
-- Effort: ~1-2 days
+### LP-1 Phase 2 ✅ SHIPPED (this session)
+- **`src/lib/harness/harness-proposer.ts`** — generates K=3 candidate edits per actionable
+  WeaknessCluster using utility model in proposer role
+- **`src/lib/harness/types.ts`** — added `HarnessProposal`, `CandidateEdit`, `ProposalStatus`,
+  `ProposalEffort`; updated `HarnessState` with `proposals[]`, `lastProposalTurn`
+- **Wired into `evolver.ts`** — generates proposals for 1 actionable cluster per heartbeat
+  after mining, latency bounded to 1 LLM call
+- **Test**: `test-harness-proposer.mjs` — 22 structural assertions
+- **Design**: LLM response parsed by `--- CANDIDATE N ---`/`--- END CANDIDATE ---` markers
+  with Label/Change/Rationale/Effort fields
 
 ### MI-3 ✅ SHIPPED
 - Structured Output Catalyst for tool results (committed in Sprint 3)
 - See `src/lib/utils/format-tool-result.ts`
+
+### System-prompt behavioral-verification fixes (3 commits)
+- `13994806`: prevent existence-only tests, restore deliberative thinking
+- `aefefc67`: genericize behavioral-verification, extend to tools + enforcement
+- `54be4493`: propagate behavioral-verification philosophy to all verification surfaces
+
+## What's next (Sprint 4)
+
+### LP-1 Phase 3 (remaining): Proposal Validation
+- Run each candidate on held-in + held-out splits
+- Acceptance rule: `Δ_in ≥ 0 ∧ Δ_out ≥ 0 ∧ max > 0` (Pareto non-regression)
+- Audit trail: every transition records changed surfaces, eval outcomes, decision
+- Effort: ~1-2 days
+
+### LP-2: Bidirectional Verifier
+- Forward Trace + Backward Check for cross-file coordination
+- Effort: ~1.5-2 days
+
+### LP-3: Memory Leak Prevention
+- Cross-project session isolation with provenance tracking
+- Effort: ~1.5 days
+
+### SI-1: Heartbeat as Unified Event Bus
+- Typed event bus for all extensions
+- Effort: ~3-4 days
 
 ## Key reference docs
 

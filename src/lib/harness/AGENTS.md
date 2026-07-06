@@ -15,7 +15,8 @@ improvement on held-out tasks) and Opik's trace→test-suite pipeline.
 | `types.ts` | Shared types: `FailureSignature`, `WeaknessCluster`, `HarnessState` |
 | `failure-trace-collector.ts` | Passive observer: reads failure signatures from existing detectors |
 | `weakness-miner.ts` | Pure clustering: groups similar signatures, outputs actionable clusters |
-| `index.ts` | Public API |
+| `index.ts` | Public API — Phase 1-2 |
+| `harness-proposer.ts` | Phase 2: generates candidate edits from weakness clusters using utility model |
 
 ## Data Flow
 
@@ -30,7 +31,11 @@ WeaknessMiner (pure function, produces WeaknessCluster[])
     │
     ├──► Whisper (agent-visible summary via summarizeClusters)
     │
-    └──► Stored in HarnessState for future Harness Proposal (Phase 2)
+    ├──► Harness Proposer (Phase 2): generates K=3 candidate edits per actionable cluster
+    │     via utility model in proposer role. Stored in HarnessState.proposals[].
+    │     Runs in evolver heartbeat, 1 cluster per tick (latency bounded).
+    │
+    └──► Stored in HarnessState for Proposal Validation (Phase 3)
 ```
 
 ## Failure Sources
@@ -54,11 +59,15 @@ WeaknessMiner (pure function, produces WeaknessCluster[])
 ## Wire Points
 
 - **Heartbeat evolver module**: calls `collectAllFailureSignatures()` then
-  `mineWeaknesses()` on activation, surfaces via `whisper()`.
-- **Future**: Turn-end handler can trigger on-demand collection.
+  `mineWeaknesses()` on activation, surfaces via `whisper()`. For actionable
+  clusters without proposals, calls `generateAllPendingProposals()` (max 1 per
+  tick to keep latency bounded).
+- **Future**: Turn-end handler can trigger on-demand collection or proposal
+  generation for higher-priority clusters.
 
 ## Verification
 
 - `npm run typecheck` passes
 - `npm test` passes
 - Unit tests in `test/` (TBD) verify clustering logic with fixture data
+- Unit tests for proposer (TBD) verify response parsing with fixture LLM output

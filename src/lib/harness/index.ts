@@ -1,7 +1,7 @@
 /**
  * Self-Harness Loop (LP-1) — Public API
  *
- * Phase 1: Failure Trace Collection + Weakness Mining
+ * Phase 1-2: Failure Trace Collection + Weakness Mining + Harness Proposal
  *
  * Usage:
  *   import { collectAllFailureSignatures, mineWeaknesses, summarizeClusters } from "../lib/harness/index.js";
@@ -22,6 +22,10 @@ export type {
   WeaknessCluster,
   HarnessTargetSurface,
   HarnessState,
+  HarnessProposal,
+  CandidateEdit,
+  ProposalStatus,
+  ProposalEffort,
 } from "./types.js";
 
 export { createHarnessState } from "./types.js";
@@ -44,3 +48,10 @@ export {
   mineWeaknesses,
   summarizeClusters,
 } from "./weakness-miner.js";
+
+// ── Harness Proposer ────────────────────────────────────────────────────────
+
+export {
+  generateProposal,
+  generateAllPendingProposals,
+} from "./harness-proposer.js";

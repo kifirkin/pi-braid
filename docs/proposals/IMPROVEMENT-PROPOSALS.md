@@ -158,12 +158,24 @@ framework, prompt-builder, enforcement signals).
 - Wired into `heartbeat-scheduler/modules/evolver.ts` — collects + mines on evolver activation
 - Inspired by Opik's trace→test-suite pipeline
 
-**What remains (Phase 2-3)**:
-1. **Weakness Mining** ✅ Phase 1 complete
-2. **Harness Proposal**: The same model (in a proposer role) generates K
-   parallel candidate edits to the system prompt, tool descriptions, or
-   behavior modes. Each candidate is (a) grounded in a specific failure
-   cluster, (b) targeted at a declared editable surface, (c) minimal.
+**Phase 1 shipped** (`2026-07-06`): Failure trace collection + weakness mining
+**Phase 2 shipped** (`2026-07-06`): Harness Proposal
+
+### What was built in Phase 2
+- `src/lib/harness/harness-proposer.ts` — proposer module:
+  - `generateProposal(ctx, cluster, turn)` — one LLM call per cluster,
+    generates K=3 candidate edits with labels, change text, rationale, effort
+  - `generateAllPendingProposals(ctx, clusters, proposals, turn, max)` —
+    processes pending clusters in severity order, max 1 per call
+  - `parseCandidates()` — parses LLM response with `--- CANDIDATE N ---`/
+    `--- END CANDIDATE ---` markers, extracts Label/Change/Rationale/Effort
+- `src/lib/harness/types.ts` — added `HarnessProposal`, `CandidateEdit`,
+  `ProposalStatus`, `ProposalEffort` types; updated `HarnessState.proposals[]`
+- Wired into `evolver.ts`: generates proposals for 1 actionable cluster
+  per heartbeat after mining (latency bounded to 1 LLM call)
+- `test-harness-proposer.mjs` — 22 structural assertions
+
+**What remains (Phase 3)**
 3. **Proposal Validation**: Run each candidate on held-in + held-out splits.
    Acceptance rule: `Δ_in ≥ 0 ∧ Δ_out ≥ 0 ∧ max > 0` (Pareto non-regression).
 4. **Audit Trail**: Every transition records (changed surfaces, eval
@@ -253,7 +265,7 @@ it explicit unlocks composable, typed event handling across all extensions.
 | MI-1 | Upgrade MARS | High | 4-6h | ★★★★ | Moderate |
 | MI-2 | Truth-Seeking signal | Medium | 2h | ★★★ | Moderate |
 | MI-3 | Structured Output Catalyst | Medium | 3-4h | ★★★ | Moderate |
-| LP-1 | Self-Harness Loop (Phase 1 ✅) | Highest | 2-3d | ★★★★ | Large |
+| LP-1 | Self-Harness Loop (Phase 1+2 ✅) | Highest | 2-3d | ★★★★ | Large |
 | LP-2 | Bidirectional Verifier | High | 1.5-2d | ★★★ | Large |
 | LP-3 | Memory Leak Prevention | Medium-High | 1.5d | ★★★ | Large |
 | SI-1 | Heartbeat Event Bus | High | 3-4d | ★★ | Strategic |

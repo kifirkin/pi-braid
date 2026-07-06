@@ -14,6 +14,7 @@ import {
   getHarnessState,
   mineWeaknesses,
   summarizeClusters,
+  generateAllPendingProposals,
 } from "../../../../lib/harness/index.js";
 
 const log = createLogger("heartbeat:evolver");
@@ -71,6 +72,45 @@ export const evolverModule: CognitiveModule = {
       );
 
       context.whisper(summary, { category: "cognitive" });
+
+      // ── Harness Proposal Generation (Phase 2) ──────────────────────────
+      // Generate proposals for up to 1 actionable cluster per heartbeat.
+      // This keeps latency bounded — the LLM call for proposal generation
+      // is the only slow operation in the evolver.
+      if (actionableCount > 0 && context.turnCount - harnessState.lastProposalTurn >= 20) {
+        const newProposals = await generateAllPendingProposals(
+          context.ctx,
+          clusters,
+          harnessState.proposals,
+          context.turnCount,
+          1, // maxClusters: 1 per heartbeat to keep latency reasonable
+        );
+
+        if (newProposals.length > 0) {
+          harnessState.proposals.push(...newProposals);
+          harnessState.lastProposalTurn = context.turnCount;
+
+          const totalCandidates = newProposals.reduce(
+            (sum, p) => sum + p.candidates.length, 0
+          );
+
+          log.info(
+            `Generated ${newProposals.length} proposal(s) with ${totalCandidates} candidate(s)`,
+          );
+
+          // Mark processed clusters so they aren't re-proposed
+          for (const prop of newProposals) {
+            const cluster = clusters.find((c) => c.id === prop.clusterId);
+            if (cluster) cluster.hasProposal = true;
+          }
+
+          context.whisper(
+            `Self-Harness: generated ${newProposals.length} proposal(s) ` +
+            `(${totalCandidates} candidate edits). Use memory to review proposals.`,
+            { category: "cognitive" },
+          );
+        }
+      }
     }
 
     log.info(
