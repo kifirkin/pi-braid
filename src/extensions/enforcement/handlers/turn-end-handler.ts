@@ -312,20 +312,20 @@ export async function dispatchTurnEndLoop(
     }
   }
 
-  // Startup signal: first 3 turns without scratchpad goal/plan
-  // Fires when the agent is making tool calls but hasn't set a goal via scratchpad.
-  // Sets startupPlanShown so determineContrastMode can surface PLANNING mode.
-  if (!hadErrors && !inOverflowRecovery && getState(ctx).currentTurn <= 3 && actualTools.length > 0) {
-    const usedScratchpad = scratchpadUpdated;
-    if (usedScratchpad) {
-      getState(ctx).startupPlanShown = false;
+  // Planning signal: tool calls without scratchpad goal at any turn.
+  // Increments toolsSinceLastPlan when the agent makes tool calls without
+  // setting a scratchpad goal. Resets when scratchpad is used.
+  // drives determineContrastMode PLANNING mode via toolsSinceLastPlan >= 3.
+  if (!hadErrors && !inOverflowRecovery && actualTools.length > 0) {
+    if (scratchpadUpdated) {
+      getState(ctx).toolsSinceLastPlan = 0;
     } else {
-      const startupCooldown = 2;
-      if (getState(ctx).currentTurn - getState(ctx).lastStartupNudge >= startupCooldown) {
-        getState(ctx).lastStartupNudge = getState(ctx).currentTurn;
-        getState(ctx).startupPlanShown = true;
-        // D-57: startup whisper suppressed — instruction lives in scratchpad tool description.
-        // startupPlanShown state kept for determineContrastMode PLANNING mode.
+      // Only increment if the agent actually did work (not just read/ls)
+      const workTools = actualTools.filter((t: string) =>
+        !["read", "ls", "grep", "find", "memory"].includes(t),
+      );
+      if (workTools.length > 0) {
+        getState(ctx).toolsSinceLastPlan += 1;
       }
     }
   }

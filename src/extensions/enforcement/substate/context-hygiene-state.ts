@@ -18,6 +18,8 @@ export interface ScratchpadState {
   lastStartupNudge: number;
   // Whether the startup-plan whisper was sent (drives PLANNING mode)
   startupPlanShown: boolean;
+  // Tools called since last scratchpad goal was set (drives PLANNING mode at any turn)
+  toolsSinceLastPlan: number;
   // Finalize enforcement nudge
   lastFinalizeNudge: number;
   // Verify enforcement nudge
@@ -33,6 +35,7 @@ export function createScratchpadState(): ScratchpadState {
     lastThinkPerTurnNudge: -100,
     lastStartupNudge: -100,
     startupPlanShown: false,
+    toolsSinceLastPlan: 0,
     lastFinalizeNudge: -100,
     lastVerifyNudge: -100,
   };
@@ -46,6 +49,7 @@ export function resetScratchpadState(s: ScratchpadState): void {
   s.lastThinkPerTurnNudge = -100;
   s.lastStartupNudge = -100;
   s.startupPlanShown = false;
+  s.toolsSinceLastPlan = 0;
   s.lastFinalizeNudge = -100;
   s.lastVerifyNudge = -100;
 }

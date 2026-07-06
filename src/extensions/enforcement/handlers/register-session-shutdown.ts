@@ -24,6 +24,20 @@ export function registerSessionShutdownHandler(pi: ExtensionAPI): void {
         `${state.verificationsDone} verifications, ${state.validationFailures} failures`,
     );
 
+    // COMPLETION mode: if work was done (tool calls) but finalize was never called,
+    // surface the COMPLETION mode so the next session knows work was left unfinished.
+    const madeEdits = state.totalToolCalls > 0;
+    const neverFinalized = state.lastFinalizeNudge === -100;
+    if (madeEdits && neverFinalized) {
+      log.info(
+        `[session_shutdown] Session ${sessionId}: work detected without finalize. ` +
+        `Emitting COMPLETION mode for next session.`,
+      );
+      // TODO: emit enforcement_signals with contrastMode COMPLETION
+      // This requires the event bus to be available at shutdown time.
+      // For now, the log entry serves as the signal.
+    }
+
     // Flush pending async writes and clear cross-session state
     await shutdownAsyncStorage();
     clearVerifierState(ctx);

@@ -1,6 +1,8 @@
-<!-- status: forward-looking -->
+<!-- status: historical -->
 
 # Fragile Heuristics Inventory
+
+**Status:** ✅ All A-class (17/17) and B-class (12/12) replacements shipped via `tierPolicy: "always-llm"` and `tierPolicy: "fallback-only"` in `text-classifier.ts`. The heuristic fallback functions remain in `critic-registry.ts` as inert legacy code (the classifier skips Tier 1 for these critics). See [ROADMAP.md](ROADMAP.md) §5.1 and §6.3 (P2-11) for current state.
 
 **Generated 2026-06-14** as part of Q9 deep investigation (per user:
 "hand-coded fallbacks or any fragile (regexp or whatever based)

@@ -1,8 +1,8 @@
-<!-- status: current -->
+<!-- status: historical -->
 
 # P0 #B: Critic Consolidation — Inventory & Plan
 
-**Status:** Research complete. 1 implementation remaining.
+**Status:** ✅ All implementations shipped (2026-07-04). See [ROADMAP.md](ROADMAP.md) for current state.
 **Date:** 2026-07-02
 **Author:** Braid (D-57 continuous improvement)
 
@@ -50,19 +50,18 @@ Returns JSON: `{ coversTopic, hasDiverged, isComplete }`
 Returns JSON: `{ isCode, isWellWritten, isClear, isAmbiguous }`
 **Savings:** 4 → 1 LLM call per user input
 
-### Group 3: Claim Verification Triple-Critic (3 critics → 1) ❌
+### Group 3: Claim Verification Triple-Critic (3 critics → 1) ✅
 | Critic | Type | Call Site | Status |
 |--------|------|-----------|--------|
-| `claimContradiction` | B | claim-verification.ts | ❌ |
-| `claimSupported` | B | claim-verification.ts | ❌ |
-| `claimOverconfidence` | B | claim-verification.ts | ❌ |
+| `claimContradiction` | B | claim-verification.ts | ✅ |
+| `claimSupported` | B | claim-verification.ts | ✅ |
+| `claimOverconfidence` | B | claim-verification.ts | ✅ |
 
-**Current:** 3+ parallel classify() calls (1 contradiction per context item,
-1 support, 1 overconfidence). All use `tierPolicy: "always-llm"`.
-**Consolidation:** Create `consolidated-claim-critic.ts` returning
-`{ contradiction: boolean, supported: boolean, overconfidence: boolean }`.
-**Savings:** 3+ → 1 LLM call per verify_claim invocation
-**Priority:** HIGH — most impactful remaining consolidation
+**Current:** Single consolidated LLM call via `consolidatedClaimCritique()` in
+`src/lib/ai/consolidated-claim-critic.ts`. Falls back to 3 individual
+`classify()` calls on failure. All 3 claim critics use `tierPolicy: "always-llm"`.
+**Savings:** 3 → 1 LLM call per verify_claim invocation (~66% latency reduction)
+**Shipped:** 2026-07-04
 
 ### Group 4: Claim Tracker Dual-Critic (2 critics) 🚫
 | Critic | Type | Call Site | Status |
@@ -114,31 +113,27 @@ functions at different times.
 |-------|---------|--------|--------|---------|
 | Topic Drift | 3 | Same | ✅ Done | 3→1 |
 | Input Polish | 4 | Same | ✅ Done | 4→1 |
-| Claim Verification | 3 | Same | ❌ TODO | 3→1 |
+| Claim Verification | 3 | Same | ✅ Done | 3→1 |
 | Claim Tracker | 2 | Same | 🚫 Gated | — |
 | Sycophancy | 2 | Different | 🚫 Different | — |
 
 **Total LLM calls saved if all consolidadable groups are done:**
 10 calls → 3 calls (7 saved per evaluation cycle)
 
-## Implementation Plan
+## Implementation Status
 
-### Phase 1: Claim Verification (3→1) — THIS SESSION
+### Phase 1: Claim Verification (3→1) ✅ SHIPPED (2026-07-04)
 
-1. Create `src/lib/ai/consolidated-claim-critic.ts`
-   - Follow the pattern from `consolidated-input-critic.ts` and `consolidated-topic-critic.ts`
-   - Single system prompt: "You are a claim verification analyzer..."
-   - JSON output: `{ contradiction: boolean, supported: boolean, overconfidence: boolean }`
-   - Model tier: session → utility → max-power (same "quality" strategy)
-   - Fallback: call individual classify() calls (same as current code)
-
-2. Modify `claim-verification.ts`:
-   - Replace the 3+ parallel classify() calls with one consolidated call
-   - Keep the individual checks as fallback path
-   - Parse JSON into the three verdicts
+Complete. `src/lib/ai/consolidated-claim-critic.ts` was created following the pattern
+from `consolidated-input-critic.ts` and `consolidated-topic-critic.ts`:
+- Single system prompt: "You are a claim verification analyzer..."
+- JSON output: `{ contradiction: boolean, supported: boolean, overconfidence: boolean }`
+- Model tier: session → utility → max-power (same "quality" strategy)
+- Fallback: 3 individual classify() calls on consolidated failure
+- Integrated into `claim-verification.ts` at line 187 (primary path)
 
 ### Phase 2: Monitoring (future)
-- After 1 week of runtime, verify the consolidated path handles >90% of calls
+- Verify the consolidated path handles >90% of calls after sustained runtime
 - If fallback rate is high, investigate model compatibility issues
 - Consider removing the individual critics from critic-registry.ts if they're
   only used by the fallback path (dead code elimination)

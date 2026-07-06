@@ -23,6 +23,7 @@ import {
   RESOURCE_DISCOVERY,
 } from "./identity.js";
 import { behaviorModeSection } from "./behavior-modes.js";
+import { ALL_CONTRAST_PHRASES } from "./contrast-phrases.js";
 import {
   reconstructSkillsSection,
   resetSkillsSectionCache,
@@ -339,6 +340,11 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
 
       // 8. Interaction style
       simpleSection("interaction-style", INTERACTION_STYLE),
+
+      // 9. Contrast phrases -- RepE-style text-space behavioral steering.
+      //     Restored 2026-07-06 after being deleted as collateral damage.
+      //     Rendered as a group before the closing sections.
+      linesSection("contrast-phrases", ALL_CONTRAST_PHRASES),
     ];
 
     // 2. Available tools

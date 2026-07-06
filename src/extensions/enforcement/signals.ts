@@ -121,10 +121,10 @@ export function determineContrastMode(ctx: ExtensionContext): string {
   );
   if (recentEditsWithoutThink.length > 0) return "CORRECTION";
 
-  // Priority 4: Startup (first 3 turns without scratchpad) -> PLANNING
-  // Uses lastStartupNudge as proxy: if a startup nudge was sent this turn or last,
-  // the agent is still in the startup phase without planning.
-  if (state.currentTurn <= 3 && state.startupPlanShown) return "PLANNING";
+  // Priority 4: No plan set in 3+ tool calls -> PLANNING
+  // Detects the "tool-calling-without-direction" pattern at any turn.
+  // toolsSinceLastPlan is incremented each tool call and reset when scratchpad is used.
+  if (state.toolsSinceLastPlan >= 3) return "PLANNING";
 
   // Priority 5: Code changed without verify -> VERIFICATION
   if (state.currentTurn - state.lastVerifyNudge <= 3) return "VERIFICATION";
