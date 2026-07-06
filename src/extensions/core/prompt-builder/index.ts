@@ -21,6 +21,7 @@ import {
   SCOPES,
   FRAMEWORK_CONFIG_FIRST,
   RESOURCE_DISCOVERY,
+  BEHAVIORAL_VERIFICATION,
 } from "./identity.js";
 import { behaviorModeSection } from "./behavior-modes.js";
 import { ALL_CONTRAST_PHRASES } from "./contrast-phrases.js";
@@ -337,6 +338,14 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       //     implicit in the skills sentence of IDENTITY_INTRO. Paired with
       //     the dynamic TRUTH-SEEKING mode (descriptions are claims).
       simpleSection("invariant-resource-discovery", RESOURCE_DISCOVERY),
+
+      // 1h. Behavioral verification — tests must guard failure modes, not
+      //     existence. Prevents the "dumb test" pattern (existence assertions
+      //     that pass the checklist but test nothing). Origin: 2026-07-06
+      //     user feedback. Framed as an identity invariant rather than a
+      //     directive to avoid the compliance theater trap (see
+      //     ARCHAEOLOGY-FINDINGS.md section 4).
+      simpleSection("invariant-behavioral-verification", BEHAVIORAL_VERIFICATION),
 
       // 8. Interaction style
       simpleSection("interaction-style", INTERACTION_STYLE),
