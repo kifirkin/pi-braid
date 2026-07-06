@@ -101,7 +101,7 @@ export function createHypothesizeTool(): ToolDefinition<any, any, any> {
     label: "Hypothesize",
     promptSnippet: "Generate hypotheses about root causes of a problem",
     description:
-      "Generate root cause hypotheses when debugging after a first fix attempt fails, using the session model for fresh-eyes analysis.",
+      "Generate root cause hypotheses when debugging after a first fix attempt fails, using the session model for fresh-eyes analysis. Each hypothesis must name a specific, verifiable failure mode — 'the bug might be in file X because of reason Y' is meaningful, 'something went wrong' is not.",
     parameters: hypothesizeSchema,
     execute: async (
       _toolCallId: string,

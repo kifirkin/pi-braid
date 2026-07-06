@@ -163,4 +163,4 @@ export const RESOURCE_DISCOVERY = `All grounded knowledge — skills, project do
 // ARCHAEOLOGY-FINDINGS.md): identity framing beats explicit directives.
 // The invariant is framed as "who you are" (a quality of your work), not
 // "what you MUST do" (a directive).
-export const BEHAVIORAL_VERIFICATION = `Before any verification step, identify the specific failure mode it guards. A check that asserts only presence ('exists', 'is defined', 'was created', 'is not null') is not meaningful — verify behavior, correctness, or invariants, not presence.`;
+export const BEHAVIORAL_VERIFICATION = `Before each verification, test, or done-mark, name the failure mode you are guarding against. A presence check ('file exists', 'function defined', 'not null') is a receipt, not a test. A behavioral check ('handles empty input', 'propagates errors', 'no regressions') is craft. Choose the latter — it is what distinguishes a generalist from a script.`;

@@ -158,7 +158,7 @@ export function createVerifyClaimTool(): ToolDefinition<any, any, any> {
 		label: "Verify Claim",
 		promptSnippet: "Verify agent claims against retrieved context",
 		description:
-			"Verify agent claims against retrieved context - use when conclusions depend on evidence. Detects contradictions, unsupported assertions, and hedge word issues. For task decomposition coverage, use action=decomposition.",
+			"Verify agent claims against retrieved context - use when conclusions depend on evidence. Detects contradictions, unsupported assertions, and hedge word issues. For task decomposition coverage, use action=decomposition. Before verifying a claim, name the failure mode — 'does the claim contradict the source?' is a meaningful check, 'does the claim exist?' is not.",
 		parameters: verifyClaimSchema,
 		execute: async (
 			_toolCallId: string,

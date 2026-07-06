@@ -232,7 +232,8 @@ export function createThinkTool(): ToolDefinition<any, any, any> {
       `parent_id links a prior thought_id. Process supervision flags contradictions. ` +
       `depth sets the thinking budget. Use quick, medium, or deep -- for ODAR routing; minimal, low, high, or max -- for finer control. deep triggers fresh-eyes review. Explicit depth wins over complexity 0-1; long observations auto-route. ` +
       `type is a tag, with default insight. ` +
-      `outcome, success or failure, feeds calibration when show_chain=true.`,
+      `outcome, success or failure, feeds calibration when show_chain=true. ` +
+      `Before verifying, think about what failure mode you are checking for — presence checks are receipts, behavioral checks are craft.`,
     promptSnippet:
       "Record structured thinking with decision, observation, reason, and optional parent_id/depth/complexity",
     parameters: thinkSchema,
