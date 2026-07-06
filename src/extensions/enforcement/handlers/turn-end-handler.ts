@@ -119,7 +119,13 @@ export async function dispatchTurnEndLoop(
     const loopResult = detectToolLoop(loopState);
     if (loopResult.isLoop) {
       markLoopFired(loopState);
-      sendEnforcementWhisper(pi, ctx, loopResult.message, true);
+      // BUGFIX 2026-07-06: tool-loop whispers must NOT trigger a new turn.
+      // `triggerTurn: false` keeps the violation event for MARS/analytics
+      // but prevents pi-core from starting a new LLM turn. Without this,
+      // a tool-loop whisper creates turn N+1, which also loops, creating
+      // turn N+2 -- a cascade that inflates the turn count and floods the
+      // session. The agent sees the warning on its next natural turn.
+      sendEnforcementWhisper(pi, ctx, loopResult.message, true, { triggerTurn: false });
     }
   }
 
