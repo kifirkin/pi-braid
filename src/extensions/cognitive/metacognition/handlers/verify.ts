@@ -282,7 +282,7 @@ export function createVerifyTool(): ToolDefinition<any, any, any> {
     label: "Verify",
     promptSnippet: "Verify code, reasoning, or tool results before finalization",
     description:
-      "Verify code, reasoning, or results after writing code or when uncertain about an approach to catch errors early. Call after every edit or write to check changes before moving on. Provide specific criteria for targeted checks.",
+      "Verify code, reasoning, or results after writing code or when uncertain about an approach to catch errors early. Call after every edit or write to check changes before moving on. Provide specific criteria for targeted checks. Before each verification, name the failure mode it guards — 'does the file exist?' is not a meaningful check, 'does the function handle empty input?' is.",
 
     parameters: Type.Object(
       {

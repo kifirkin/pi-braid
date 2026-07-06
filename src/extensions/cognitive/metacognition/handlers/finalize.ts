@@ -224,7 +224,7 @@ export function createFinalizeTool(callbacks: FinalizeCallbacks = {}): ToolDefin
     name: "finalize" as const,
     label: "Finalize",
     promptSnippet: "Mark the current task as complete and trigger review",
-    description: `Mark a task complete and record it to session memory. Must call at the end of every task or significant subtask — never finish work without finalizing. Checks recent verify() result and blocks if unresolved issues remain. After finalize, respond with text only (no tool calls) to end the agent loop cleanly.`,
+    description: `Mark a task complete and record it to session memory. Must call at the end of every task or significant subtask — never finish work without finalizing. Checks recent verify() result and blocks if unresolved issues remain. The verification triple on each done item must guard specific failure modes — 'file was modified' is not a meaningful check, 'behavior changed as expected' is. After finalize, respond with text only (no tool calls) to end the agent loop cleanly.`,
     parameters: finalizeSchema,
     execute: async (
       _toolCallId: string,

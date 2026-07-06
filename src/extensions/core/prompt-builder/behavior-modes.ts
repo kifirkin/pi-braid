@@ -136,6 +136,7 @@ const MODES: Record<string, ModeDef> = {
     directives: [
       `After changing code, verify your work with the verify tool before moving on. The verify tool catches errors you would miss by re-reading.`,
       `Use verify(target="code", criteria=["item1", "item2"]) to check your changes. This is not optional -- it is how the system validates correctness.`,
+      `Before each verification, name the failure mode it guards. 'Does the file exist?' is not a meaningful check — 'Does the function handle empty input?' is. Verify behavior, not presence.`,
     ],
   },
 };

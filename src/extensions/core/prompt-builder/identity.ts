@@ -151,15 +151,16 @@ export const FRAMEWORK_CONFIG_FIRST = `Before overriding any framework's interna
 // description, read when relevant, verify when correctness matters.
 export const RESOURCE_DISCOVERY = `All grounded knowledge — skills, project docs, memory entries, runtime extensions, framework APIs, external state — surfaces as a discoverability triple (name + description + location). When a description matches your work, read the source — using the right resource beats working without it. Pointers describe what something claims to be — verify against the source when correctness matters.`;
 
-// ── Behavioral Verification: tests must guard failure modes, not existence ──
-// Origin: 2026-07-06 user feedback: "we constantly hitting ... writing tests
-// testing literally that functions exists in files. thats awefull."
+// ── Behavioral Verification: guard failure modes, not presence ──────────────
+// Origin: 2026-07-06 user feedback about existence-only test assertions.
 // Root cause: the "verify everything" directive produces compliance behavior
-// (existence assertions) because the model defaults to the path of least
-// resistance that satisfies the checklist. The fix is a behavioral invariant
-// that names the specific failure mode: existence checks are not meaningful
-// tests. This pairs with the compliance theater finding (section 4 of
+// (presence checks) because the model defaults to the path of least resistance
+// that satisfies the checklist. The fix is a behavioral invariant that names
+// the specific failure mode: presence assertions are not meaningful verification.
+// Genericized 2026-07-06 from test-only to cover all verification steps
+// (tests, verify tool, finalize checks, validation).
+// This pairs with the compliance theater finding (section 4 of
 // ARCHAEOLOGY-FINDINGS.md): identity framing beats explicit directives.
 // The invariant is framed as "who you are" (a quality of your work), not
 // "what you MUST do" (a directive).
-export const BEHAVIORAL_VERIFICATION = `Before writing a test, identify the specific failure mode it guards. A test that asserts only existence ('function is defined', 'file exports X') is not meaningful — verify behavior, not presence.`;
+export const BEHAVIORAL_VERIFICATION = `Before any verification step, identify the specific failure mode it guards. A check that asserts only presence ('exists', 'is defined', 'was created', 'is not null') is not meaningful — verify behavior, correctness, or invariants, not presence.`;
