@@ -151,6 +151,49 @@ export interface HarnessProposal {
 
 // ── Harness State ───────────────────────────────────────────────────────────
 
+// ── Validation Types ─────────────────────────────────────────────────────────
+
+/**
+ * Score pair from a validation evaluation.
+ * Each score is in range [-1, 1]:
+ *   - 1 = fully fixes (held-in) / no regression (held-out)
+ *   0  = no change
+ *   -1 = makes worse (held-in) / causes regression (held-out)
+ */
+export interface ValidationEval {
+  /** Score for held-in failures: does the change fix the original weakness? */
+  heldInScore: number;
+  /** Score for held-out failures: does the change cause regressions elsewhere? */
+  heldOutScore: number;
+  /** Rationale explaining the scores */
+  rationale: string;
+}
+
+/**
+ * Result of validating a single candidate edit against the failure evidence.
+ * Records the full audit trail for later inspection.
+ */
+export interface ValidationResult {
+  /** Unique identifier for this validation result */
+  id: string;
+  /** The proposal this validation is for */
+  proposalId: string;
+  /** The candidate edit this validation is for */
+  candidateId: string;
+  /** Cluster ID the proposal addresses */
+  clusterId: string;
+  /** Evaluation scores */
+  evalResult: ValidationEval;
+  /** Whether the candidate passes the Pareto acceptance rule */
+  accepted: boolean;
+  /** Turn when this validation was performed */
+  validationTurn: number;
+  /** Human-readable decision rationale */
+  decisionRationale: string;
+  /** ISO timestamp of when this was recorded */
+  timestamp: string;
+}
+
 /**
  * Persistent state for the Self-Harness Loop module.
  * Stored in extension state via getExtensionState.
@@ -162,10 +205,14 @@ export interface HarnessState {
   clusters: WeaknessCluster[];
   /** Harness proposals generated from actionable clusters */
   proposals: HarnessProposal[];
+  /** Validation results for candidates across proposals */
+  validationResults: ValidationResult[];
   /** Turn when the last mining occurred */
   lastMiningTurn: number;
   /** Turn when the last proposal generation occurred */
   lastProposalTurn: number;
+  /** Turn when the last validation occurred */
+  lastValidationTurn: number;
   /** Total signatures collected (monotonically increasing) */
   totalCollected: number;
   /** Whether mining has been run at least once */
@@ -181,10 +228,15 @@ export function createHarnessState(): HarnessState {
     signatures: [],
     clusters: [],
     proposals: [],
+    validationResults: [],
     lastMiningTurn: -1,
     lastProposalTurn: -1,
+    lastValidationTurn: -1,
     totalCollected: 0,
     hasMined: false,
     seenPatterns: [],
   };
 }
+
+// ── Factory ─────────────────────────────────────────────────────────────────
+

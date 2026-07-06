@@ -26,6 +26,8 @@ export type {
   CandidateEdit,
   ProposalStatus,
   ProposalEffort,
+  ValidationEval,
+  ValidationResult,
 } from "./types.js";
 
 export { createHarnessState } from "./types.js";
@@ -55,3 +57,12 @@ export {
   generateProposal,
   generateAllPendingProposals,
 } from "./harness-proposer.js";
+
+// ── Harness Validator ───────────────────────────────────────────────────────
+
+export {
+  validateCandidate,
+  validateProposal,
+  generateAllPendingValidations,
+  applyParetoAcceptance,
+} from "./harness-validator.js";

@@ -15,6 +15,7 @@ import {
   mineWeaknesses,
   summarizeClusters,
   generateAllPendingProposals,
+  generateAllPendingValidations,
 } from "../../../../lib/harness/index.js";
 
 const log = createLogger("heartbeat:evolver");
@@ -106,9 +107,44 @@ export const evolverModule: CognitiveModule = {
 
           context.whisper(
             `Self-Harness: generated ${newProposals.length} proposal(s) ` +
-            `(${totalCandidates} candidate edits). Use memory to review proposals.`,
+            `(${totalCandidates} candidate edits). Validating candidates...`,
             { category: "cognitive" },
           );
+
+          // ── Harness Proposal Validation (Phase 3) ──────────────────────────
+          // Validate pending candidates. Kept at 1 proposal per tick to bound
+          // latency (each candidate costs 1 LLM call).
+          if (context.turnCount - harnessState.lastValidationTurn >= 10) {
+            const validationResults = await generateAllPendingValidations(
+              context.ctx,
+              harnessState.proposals,
+              harnessState.validationResults,
+              harnessState.clusters,
+              context.turnCount,
+              1, // maxProposals: 1 per heartbeat
+            );
+
+            if (validationResults.length > 0) {
+              harnessState.validationResults.push(...validationResults);
+              harnessState.lastValidationTurn = context.turnCount;
+
+              const accepted = validationResults.filter((r) => r.accepted);
+              const rejected = validationResults.filter((r) => !r.accepted);
+
+              log.info(
+                `Validation: ${accepted.length} accepted, ${rejected.length} rejected ` +
+                `(total: ${harnessState.validationResults.length} results)`,
+              );
+
+              if (accepted.length > 0) {
+                context.whisper(
+                  `Self-Harness: ${accepted.length} candidate(s) ACCEPTED. ` +
+                  `Apply via: update target surfaces.`,
+                  { category: "cognitive" },
+                );
+              }
+            }
+          }
         }
       }
     }

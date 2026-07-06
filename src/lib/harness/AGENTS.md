@@ -12,11 +12,12 @@ improvement on held-out tasks) and Opik's trace→test-suite pipeline.
 
 | File | Role |
 |------|------|
-| `types.ts` | Shared types: `FailureSignature`, `WeaknessCluster`, `HarnessState` |
+| `types.ts` | Shared types: `FailureSignature`, `WeaknessCluster`, `HarnessState`, `ValidationEval`, `ValidationResult` |
 | `failure-trace-collector.ts` | Passive observer: reads failure signatures from existing detectors |
 | `weakness-miner.ts` | Pure clustering: groups similar signatures, outputs actionable clusters |
-| `index.ts` | Public API — Phase 1-2 |
+| `index.ts` | Public API — Phases 1-3 |
 | `harness-proposer.ts` | Phase 2: generates candidate edits from weakness clusters using utility model |
+| `harness-validator.ts` | Phase 3: evaluates candidates via LLM-as-judge (held-in + held-out), Pareto acceptance, audit trail |
 
 ## Data Flow
 
@@ -35,7 +36,13 @@ WeaknessMiner (pure function, produces WeaknessCluster[])
     │     via utility model in proposer role. Stored in HarnessState.proposals[].
     │     Runs in evolver heartbeat, 1 cluster per tick (latency bounded).
     │
-    └──► Stored in HarnessState for Proposal Validation (Phase 3)
+    │
+    ├──► Harness Validator (Phase 3): evaluates each candidate against held-in
+    │     (own cluster's sigs) and held-out (other clusters' sigs) via LLM-as-judge.
+    │     Applies Pareto non-regression (Δ_in ≥ 0 ∧ Δ_out ≥ 0 ∧ max > 0).
+    │     Records full audit trail. Runs in evolver heartbeat after proposal generation.
+    │
+    └──► Stored in HarnessState (signatures + clusters + proposals + validationResults)
 ```
 
 ## Failure Sources
