@@ -11,7 +11,8 @@ extensions.
 |---|---|
 | `dreamer.ts` | Loop prediction - uses Markov chains to predict whether the agent is stuck. Min sample size 5; current-sequence loop detection. |
 | `belief-policy-engine.ts` | Updates belief states and chooses policy actions based on evidence. |
-| `mars-reflector.ts` | MARS (Memory-Augmented Reflection) - multi-attempt reflection strategy. |
+| `tool-usage-analyzer.ts` | Tool usage frequency analyzer (formerly mars-reflector). Statistical thresholding for overuse/error/stability patterns. |
+| `mars-reflector.ts` | MARS (Memory-Augmented Reflection) - principle+procedure reflection on task completion. |
 | `reasoning-summary.ts` | Summarizes the agent's reasoning for memory consolidation. |
 | `reasoning-metrics.ts` | Metrics about reasoning quality. |
 | `advice-tracker.ts` | Tracks the history of advice/nudges given to the agent. |

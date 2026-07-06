@@ -1,210 +1,386 @@
 /**
- * Tool Usage Frequency Analyzer
+ * MARS (Memory-Augmented Reflection) — principle + procedure reflection.
  *
- * Analyzes agent tool usage patterns over a session and generates heuristic
- * advice when a tool is used disproportionately or errors recur.
- * Not based on any specific paper - simple statistical thresholding.
+ * Based on MARS (2601.11974) which introduces two reflection types:
+ *   1. Principle reflection: After task completion, extract general rules
+ *      ("what should I follow to avoid errors?") → store as heuristics.
+ *   2. Procedure reflection: After successful task, extract steps that
+ *      led to success → store as episodic memory.
  *
- * Trigger: adaptive (not fixed N turns) - check on every turn_end.
- * Only whispers if actionable advice exists.
+ * Triggers: on task completion (finalize called with completed=true, or
+ * significant work done without finalize). Not every turn — the original
+ * MARS paper fires reflection only at episode boundaries.
+ *
+ * The old statistical tool-usage frequency analyzer was renamed to
+ * `tool-usage-analyzer.ts`. This file implements the actual MARS paper.
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { getExtensionState, hasExtensionState } from "../state/extension-state.js";
-import { marsOveruseMultiplier as dynamicOveruseMultiplier } from "../reasoning/advice-tracker.js";
+import { createLogger } from "../core/logger.js";
+import { getMemoryState } from "../../extensions/heartbeat/heartbeat-scheduler/state.js";
+import {
+  addPrinciple,
+  addEpisode,
+} from "../../extensions/memory/three-memory-stores/index.js";
 
-// ── Types ───────────────────────────────────────────────────────────────────
+const log = createLogger("mars");
 
-export interface SessionPattern {
-  toolDistribution: Map<string, number>;
-  errorTypes: Map<string, number>;
-  confidenceTrend: number[];
-  stabilityTrend: number[];
-  errorRate: number;
-  consecutiveErrors: number;
+// ── Types ──────────────────────────────────────────────────────────────────
+
+/** A single reflection produced by MARS. */
+export interface MARSReflection {
+  /** Principle (heuristic rule) or procedure (episodic steps). */
+  type: "principle" | "procedure";
+  /** The reflection content — the principle rule or procedure steps. */
+  content: string;
+  /** Model confidence (0-1) based on pattern strength. */
+  confidence: number;
+  /** Context summary for the task that triggered this reflection. */
+  taskContext: string;
 }
 
-export interface MARSAdvice {
-  type: "tool_overuse" | "error_recurrence" | "confidence_decline" | "stability_decline";
-  message: string;
-  severity: "info" | "warn";
+/** Session data snapshot for the reflection to analyze. */
+export interface SessionSnapshot {
+  toolsUsed: string[];
+  uniqueToolCount: number;
+  totalToolCalls: number;
+  errorCount: number;
+  thinkCalls: number;
+  scratchpadCalls: number;
+  verifyCalls: number;
+  editCalls: number;
+  writeCalls: number;
+  finalizeCalled: boolean;
+  turnCount: number;
 }
 
-// ── State factory ──────────────────────────────────────────────────────────────
+// ── Constants ──────────────────────────────────────────────────────────────
 
-interface MARSState {
-  patternSnapshot: SessionPattern | null;
-  lastAdviceAt: number;
-  adviceCooldownMs: number;
-}
+/** Minimum tool calls before reflection is meaningful. */
+const MIN_TOOL_CALLS_FOR_REFLECTION = 5;
 
-function getState(ctx: ExtensionContext): MARSState {
-  return getExtensionState(ctx, "mars-reflector", () => ({
-    patternSnapshot: null,
-    lastAdviceAt: 0,
-    adviceCooldownMs: 60_000, // 60s between advice
-  }));
-}
+/** Minimum session turns before reflection fires. */
+const MIN_TURNS_FOR_REFLECTION = 3;
 
-// ── Constants ────────────────────────────────────────────────────────────────//
+/** Confidence boost for a strong pattern (multiple data points). */
+const STRONG_PATTERN_CONFIDENCE = 0.85;
 
-/** First N calls of each tool = learning phase, not flagged as pattern */
-const LEARNING_PHASE_CALLS = 5;
+/** Moderate pattern confidence. */
+const MODERATE_PATTERN_CONFIDENCE = 0.6;
+
+/** Weak pattern confidence. */
+const WEAK_PATTERN_CONFIDENCE = 0.4;
+
+// ── Public API ─────────────────────────────────────────────────────────────
 
 /**
- * Overuse multiplier. Starts at 3, dynamically adjusted by advice tracker.
- * Accessed via live `let` export from advice-tracker.js.
- */
-const OVERUSE_MULTIPLIER = dynamicOveruseMultiplier;
-
-/** Flag as overused only if success rate below this threshold */
-const MIN_SUCCESS_RATE_FOR_OVERUSE = 0.5;
-
-// ── Pattern analysis ──────────────────────────────────────────────────────────
-
-/** Build current session pattern from enforcement state */
-export function buildPattern(ctx: ExtensionContext): SessionPattern {
-  // Get pattern from enforcement state if available
-  const eState = hasExtensionState(ctx, "enforcement")
-    ? getExtensionState(
-        ctx,
-        "enforcement",
-        () => ({ consecutiveErrorTurns: 0 }) as Record<string, unknown>,
-      )
-    : null;
-  if (!eState) {
-    return {
-      toolDistribution: new Map(),
-      errorTypes: new Map(),
-      confidenceTrend: [],
-      stabilityTrend: [],
-      errorRate: 0,
-      consecutiveErrors: 0,
-    };
-  }
-
-  // Build tool distribution
-  const toolDist = new Map<string, number>();
-  for (const tool of (eState.toolLog as string[]) || []) {
-    toolDist.set(tool, (toolDist.get(tool) || 0) + 1);
-  }
-
-  // Build stability trend from recent stability signals
-  const stabilityTrend: number[] = [];
-  const signals =
-    (eState as { enforcementSignals?: Record<string, unknown> }).enforcementSignals || {};
-  for (const [, signal] of Object.entries(signals)) {
-    const s = signal as { turn?: number; text?: string };
-    if (s?.turn !== undefined && s?.text?.includes("[stability]")) {
-      const match = s.text.match(/overlap=([0-9.]+)/);
-      if (match) stabilityTrend.push(parseFloat(match[1]));
-    }
-  }
-
-  return {
-    toolDistribution: toolDist,
-    errorTypes: new Map(),
-    confidenceTrend: [],
-    stabilityTrend,
-    errorRate: 0,
-    consecutiveErrors: (eState as { consecutiveErrors?: number }).consecutiveErrors || 0,
-  };
-}
-
-/**
- * Generate actionable advice based on pattern.
+ * Analyze the session snapshot and produce principle reflections.
+ * Principle reflections are general rules extracted from failure/success
+ * patterns: "After editing, always verify" or "Use think before edits."
  *
- * Smart over-use detection:
- * 1. Learning phase: first LEARNING_PHASE_CALLS of each tool = normal (not flagged)
- * 2. Success-adjusted: only flag if tool is failing AND overused
- * 3. Frequency-based: flag only if count > average * OVERUSE_MULTIPLIER
+ * @param ctx - Extension context
+ * @param session - Session snapshot at task completion
+ * @returns Array of principle reflections
  */
-export function generateAdvice(
-  current: SessionPattern,
-  previous: SessionPattern | null,
-  toolSuccessRates?: Map<string, number>,
-): MARSAdvice | null {
-  // Tool over-reliance: one tool > OVERUSE_MULTIPLIER * average AND failing
-  // AND not in learning phase (first N calls)
-  if (current.toolDistribution.size > 0) {
-    const total = [...current.toolDistribution.values()].reduce((a, b) => a + b, 0);
-    const avgPerTool = total / current.toolDistribution.size;
+export function reflectPrinciples(
+  ctx: ExtensionContext,
+  session: SessionSnapshot,
+): MARSReflection[] {
+  const principles: MARSReflection[] = [];
+  const taskContext = buildTaskContext(session);
 
-    for (const [tool, count] of current.toolDistribution) {
-      // Learning phase: first N calls = normal behavior
-      if (count <= LEARNING_PHASE_CALLS) continue;
+  if (session.totalToolCalls < MIN_TOOL_CALLS_FOR_REFLECTION) return principles;
 
-      // Frequency check: flag only if significantly above average
-      const isOverused = count > avgPerTool * OVERUSE_MULTIPLIER;
-      if (!isOverused) continue;
+  // Pattern: edits without prior think
+  if (session.editCalls > 0 && session.thinkCalls === 0) {
+    principles.push({
+      type: "principle",
+      content: "Before editing files, call think(observation, decision, reason) to validate your reasoning first. Editing without thinking is the most common source of wasted turns.",
+      confidence: session.editCalls > 3 ? STRONG_PATTERN_CONFIDENCE : MODERATE_PATTERN_CONFIDENCE,
+      taskContext,
+    });
+  }
 
-      // Success check: flag only if tool is failing (not just being used a lot)
-      const successRate = toolSuccessRates?.get(tool) ?? 1.0;
-      const isFailing = successRate < MIN_SUCCESS_RATE_FOR_OVERUSE;
+  // Pattern: edits without verification
+  if (session.editCalls + session.writeCalls > 0 && session.verifyCalls === 0) {
+    principles.push({
+      type: "principle",
+      content: "After changing code, run verify(target=\"code\", criteria=[\"...\", \"...\"]) before moving on. Verification catches errors that rereading would miss.",
+      confidence: session.editCalls + session.writeCalls > 3
+        ? STRONG_PATTERN_CONFIDENCE
+        : MODERATE_PATTERN_CONFIDENCE,
+      taskContext,
+    });
+  }
 
-      // Only flag if both overused AND failing, or severely overused (>10x average)
-      const severeOveruse = count > avgPerTool * 10;
-      if (isOverused && (isFailing || severeOveruse)) {
-        const successStr = toolSuccessRates ? `${Math.round(successRate * 100)}% success` : "";
-        const suggestion = isFailing
-          ? "Consider: alternative tools, grep/find vs bash, or step back to verify approach."
-          : "Verify this is intentional before continuing.";
-        return {
-          type: "tool_overuse",
-          message: `[mars] ${tool} used ${count}/${total} times (${Math.round((count / total) * 100)}%${successStr ? `, ${successStr}` : ""}). ${suggestion}`,
-          severity: "warn",
-        };
-      }
+  // Pattern: work without scratchpad
+  if (session.totalToolCalls > 5 && session.scratchpadCalls === 0) {
+    principles.push({
+      type: "principle",
+      content: "Before starting work, set a goal with scratchpad(action=\"set_goal\", text=\"...\") and break it into steps with scratchpad(action=\"add_plan\", text=\"...\"). A clear plan prevents drift and enables session resumption.",
+      confidence: session.totalToolCalls > 10 ? STRONG_PATTERN_CONFIDENCE : WEAK_PATTERN_CONFIDENCE,
+      taskContext,
+    });
+  }
+
+  // Pattern: high error rate
+  if (session.errorCount > 0 && session.totalToolCalls > 0) {
+    const errorRate = session.errorCount / session.totalToolCalls;
+    if (errorRate > 0.3) {
+      principles.push({
+        type: "principle",
+        content: "When tool errors recur, step back and think(type=\"reflection\") to identify the root cause. The tools work reliably — the failure is almost always an agent mistake: wrong arguments, stale content, or incorrect indentation.",
+        confidence: errorRate > 0.5 ? STRONG_PATTERN_CONFIDENCE : MODERATE_PATTERN_CONFIDENCE,
+        taskContext,
+      });
     }
   }
 
-  // Error recurrence: same error type 3+ times
-  if (current.consecutiveErrors >= 3) {
-    return {
-      type: "error_recurrence",
-      message: `[mars] ${current.consecutiveErrors} consecutive errors detected. Consider: think(type="reflection") to identify root cause before continuing.`,
-      severity: "warn",
-    };
+  // Pattern: narrow tool diversity (over-reliance on a single tool category)
+  if (session.uniqueToolCount <= 3 && session.totalToolCalls >= 8) {
+    principles.push({
+      type: "principle",
+      content: `Used only ${session.uniqueToolCount} unique tools across ${session.totalToolCalls} calls. Consider a broader approach: grep/find for code search, read for context, think for reasoning — each tool serves a different purpose.`,
+      confidence: MODERATE_PATTERN_CONFIDENCE,
+      taskContext,
+    });
   }
 
-  // Stability decline: trend going down
-  if (previous && current.stabilityTrend.length > 2 && previous.stabilityTrend.length > 2) {
-    const prevAvg = previous.stabilityTrend.slice(-3).reduce((a, b) => a + b, 0) / 3;
-    const currAvg = current.stabilityTrend.slice(-3).reduce((a, b) => a + b, 0) / 3;
-    if (currAvg < prevAvg * 0.7) {
-      return {
-        type: "stability_decline",
-        message: `[mars] Response quality declining (avg stability ${currAvg.toFixed(2)} vs ${prevAvg.toFixed(2)} earlier). Consider refocusing on the original task.`,
-        severity: "info",
-      };
+  return principles;
+}
+
+/**
+ * Analyze the session snapshot and produce procedure reflections.
+ * Procedure reflections capture the concrete steps that led to success,
+ * stored as episodic memory for cross-session retrieval.
+ *
+ * @param ctx - Extension context
+ * @param session - Session snapshot at task completion
+ * @returns Array of procedure reflections
+ */
+export function reflectProcedures(
+  ctx: ExtensionContext,
+  session: SessionSnapshot,
+): MARSReflection[] {
+  const procedures: MARSReflection[] = [];
+  const taskContext = buildTaskContext(session);
+
+  if (session.totalToolCalls < MIN_TOOL_CALLS_FOR_REFLECTION) return procedures;
+
+  // Classify task type based on tool distribution
+  const taskType = classifyTaskType(session);
+
+  // Build a procedure from the tool sequence
+  const procedureSteps = buildProcedureDescription(session, taskType);
+  if (procedureSteps) {
+    procedures.push({
+      type: "procedure",
+      content: procedureSteps,
+      confidence: session.finalizeCalled ? MODERATE_PATTERN_CONFIDENCE : WEAK_PATTERN_CONFIDENCE,
+      taskContext,
+    });
+  }
+
+  return procedures;
+}
+
+/**
+ * Full reflection pass — runs both principle and procedure reflection
+ * and stores the results to heuristics/episodic memory. This is the
+ * main entry point for the mars-handler.
+ *
+ * @param ctx - Extension context
+ * @param session - Session snapshot at task completion
+ * @returns Array of all reflections produced
+ */
+export function reflectOnTaskCompletion(
+  ctx: ExtensionContext,
+  session: SessionSnapshot,
+): MARSReflection[] {
+  if (session.totalToolCalls < MIN_TOOL_CALLS_FOR_REFLECTION) return [];
+  if (session.turnCount < MIN_TURNS_FOR_REFLECTION) return [];
+
+  const reflections: MARSReflection[] = [];
+
+  // Principle reflections
+  const principles = reflectPrinciples(ctx, session);
+  for (const p of principles) {
+    log.info(`Principle reflection: "${p.content.slice(0, 80)}..." (confidence=${p.confidence})`);
+    storePrinciple(ctx, p);
+  }
+  reflections.push(...principles);
+
+  // Procedure reflections — only on actual completion
+  if (session.finalizeCalled) {
+    const procedures = reflectProcedures(ctx, session);
+    for (const p of procedures) {
+      log.info(`Procedure reflection: "${p.content.slice(0, 80)}..." (confidence=${p.confidence})`);
+      storeProcedure(ctx, p);
     }
+    reflections.push(...procedures);
   }
 
-  return null;
+  return reflections;
 }
 
-/** Check if MARS should give advice on this turn */
-export function shouldAdvise(ctx: ExtensionContext): MARSAdvice | null {
-  const state = getState(ctx);
-  const now = Date.now();
+// ── Storage ────────────────────────────────────────────────────────────────
 
-  // Cooldown check
-  if (now - state.lastAdviceAt < state.adviceCooldownMs) return null;
+/**
+ * Store a principle reflection as a heuristic rule via the three-memory-stores.
+ * Principles with sufficient confidence are added as heuristics; evolver.ts
+ * will boost/discount them over time based on actual usage.
+ */
+function storePrinciple(ctx: ExtensionContext, reflection: MARSReflection): void {
+  if (reflection.confidence < WEAK_PATTERN_CONFIDENCE) return;
 
-  const current = buildPattern(ctx);
-  const advice = generateAdvice(current, state.patternSnapshot);
-
-  if (advice) {
-    state.lastAdviceAt = now;
-    state.patternSnapshot = current;
+  const memState = getMemoryState(ctx);
+  if (!memState) {
+    log.debug("Cannot store principle: no memory state available");
+    return;
   }
 
-  return advice;
+  const condition = extractCondition(reflection.content);
+  addPrinciple(memState, reflection.content, condition);
+  log.info(`Stored principle "${reflection.content.slice(0, 60)}..." as heuristic [condition=${condition}]`);
 }
 
-/** Reset MARS state for a new session */
-export function resetMARS(ctx: ExtensionContext): void {
-  const state = getState(ctx);
-  state.patternSnapshot = null;
-  state.lastAdviceAt = 0;
+/**
+ * Store a procedure reflection as an episodic memory entry.
+ * Procedures are stored with tags for cross-session retrieval.
+ */
+function storeProcedure(ctx: ExtensionContext, reflection: MARSReflection): void {
+  const memState = getMemoryState(ctx);
+  if (!memState) {
+    log.debug("Cannot store procedure: no memory state available");
+    return;
+  }
+
+  const tags = extractProcedureTags(reflection.taskContext);
+  addEpisode(
+    memState,
+    reflection.taskContext,
+    reflection.content,
+    "success",
+    [],
+    [...tags, "mars-reflection", "procedure"],
+  );
+  log.info(`Stored procedure for "${reflection.taskContext.slice(0, 60)}..." as episode`);
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Build a human-readable task context string from the session snapshot.
+ */
+function buildTaskContext(session: SessionSnapshot): string {
+  if (session.toolsUsed.length === 0) return "empty session";
+
+  // Use the last 3 unique tools as a signature
+  const uniqueTools = [...new Set(session.toolsUsed.slice(-10))].slice(0, 5);
+  const toolStr = uniqueTools.join(", ");
+
+  return `${session.totalToolCalls} tool calls, ${session.uniqueToolCount} unique tools (${toolStr}), ${session.turnCount} turns, ${session.errorCount} errors`;
+}
+
+/**
+ * Classify the task type based on tool distribution.
+ */
+function classifyTaskType(session: SessionSnapshot): string {
+  const hasCodeTools = session.editCalls > 0 || session.writeCalls > 0;
+  const hasVerifyTools = session.verifyCalls > 0;
+  const hasSearchTools = session.toolsUsed.some((t) =>
+    ["grep", "find", "read"].includes(t),
+  );
+  const hasBrowserTools = session.toolsUsed.some((t) =>
+    ["browser_navigate", "browser_snapshot"].includes(t),
+  );
+
+  if (hasCodeTools && hasVerifyTools) return "code-change-with-verification";
+  if (hasCodeTools) return "code-change";
+  if (hasBrowserTools) return "web-research";
+  if (hasSearchTools && !hasCodeTools) return "code-exploration";
+  if (hasSearchTools) return "research";
+  return "general";
+}
+
+/**
+ * Build a procedure description from the session tool usage pattern.
+ */
+function buildProcedureDescription(session: SessionSnapshot, taskType: string): string | null {
+  const steps: string[] = [];
+
+  switch (taskType) {
+    case "code-change-with-verification":
+      steps.push("1. Understand the problem (read error, grep for symptom)");
+      steps.push("2. Plan the fix (think about root cause, consider alternatives)");
+      steps.push("3. Edit the fix (use edit/write for targeted changes)");
+      steps.push("4. Verify correctness (use verify tool to check)");
+      steps.push("5. Confirm completion (run tests, call finalize)");
+      break;
+
+    case "code-change":
+      steps.push("1. Read the relevant files to understand current state");
+      steps.push("2. Think about the approach and alternatives");
+      steps.push("3. Make the code change (edit/write)");
+      steps.push("4. Verify the change before moving on");
+      break;
+
+    case "web-research":
+      steps.push("1. Navigate to the source (browser_navigate)");
+      steps.push("2. Extract relevant content (browser_*)");
+      steps.push("3. Synthesize findings into structured notes");
+      break;
+
+    case "code-exploration":
+      steps.push("1. Search for relevant symbols/types (grep/find)");
+      steps.push("2. Read the files to understand structure (read)");
+      steps.push("3. Map dependencies and interfaces");
+      break;
+
+    case "research":
+      steps.push("1. Fetch the source material (web_fetch/read)");
+      steps.push("2. Extract key claims and evidence");
+      steps.push("3. Verify claims against multiple sources");
+      break;
+
+    default:
+      return null;
+  }
+
+  return `Procedure for ${taskType}:\n${steps.join("\n")}`;
+}
+
+/**
+ * Extract a heuristic condition from a principle's content.
+ * The condition is used by the recaller to match against current context.
+ */
+function extractCondition(principleContent: string): string {
+  // Extract key action-oriented phrases
+  const patterns = [
+    /(before\s+\w+)/i,
+    /(after\s+\w+)/i,
+    /(when\s+\w+)/i,
+    /(\w+\s+is\s+the most common)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = principleContent.match(pattern);
+    if (match) return match[1].toLowerCase();
+  }
+
+  // Fallback: use first meaningful verb phrase
+  const firstSentence = principleContent.split(/[.!]/)[0];
+  return firstSentence.slice(0, 60).toLowerCase();
+}
+
+/**
+ * Extract tags from the task context for episodic storage.
+ */
+function extractProcedureTags(taskContext: string): string[] {
+  const tags: string[] = [];
+  if (taskContext.includes("error")) tags.push("error-recovery");
+  if (taskContext.includes("code")) tags.push("code");
+  if (taskContext.includes("research")) tags.push("research");
+  if (/unique|diverse/.test(taskContext)) tags.push("tool-usage");
+  return tags;
 }

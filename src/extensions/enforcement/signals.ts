@@ -30,7 +30,7 @@ export interface EnforcementSignalEntry {
  * How many turns behind `currentTurn` an entry can be before eviction.
  *
  * ROADMAP P0-7 / EW-7.6: was 1. Bumped to 3 to cover MARS lookback
- * (`mars-reflector.ts:175` uses `stabilityTrend.slice(-3)` to detect a
+ * (`tool-usage-analyzer.ts` uses `stabilityTrend.slice(-3)` to detect a
  * stability_decline pattern). With retention=1, the trend is incomplete
  * by the time MARS is supposed to fire - effectively dead code. The
  * prompt-builder's RepE contrast consumer still works fine with the
@@ -51,6 +51,7 @@ export type EnforcementSignalKey =
   | "probe"
   | "routing"
   | "stability"
+  | "truth_seeking_trigger"
   | "unpersisted_learnings";
 
 /**
@@ -60,6 +61,7 @@ export type EnforcementSignalKey =
  */
 export const SIGNAL_KEYS: Record<string, EnforcementSignalKey> = {
   unpersisted_learnings: "unpersisted_learnings",
+  truth_seeking_trigger: "truth_seeking_trigger",
 } as const;
 
 
@@ -131,6 +133,12 @@ export function determineContrastMode(ctx: ExtensionContext): string {
 
   // Priority 6: Work done without finalize -> COMPLETION
   if (state.currentTurn - state.lastFinalizeNudge <= 3) return "COMPLETION";
+
+  // Priority 7: Truth-seeking trigger (verify_claim/conflict_qa used) -> TRUTH-SEEKING
+  // Surfaces TRUTH-SEEKING mode explicitly when the agent uses verification tools,
+  // confirming the correct epistemic stance.
+  const tsSignal = enforcementSignals[SIGNAL_KEYS.truth_seeking_trigger];
+  if (tsSignal && state.currentTurn - tsSignal.turn <= 1) return "TRUTH-SEEKING";
 
   // Default: TRUTH-SEEKING
   return "TRUTH-SEEKING";

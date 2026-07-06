@@ -1,17 +1,19 @@
 <!-- status: current -->
 <!-- Created: 2026-07-06 for fresh-session transfer -->
-<!-- Sprint 1 complete: contrast phrases restored, PLANNING broadened, COMPLETION shutdown -->
+<!-- Sprint 2 complete: MARS principle+procedure reflection, Truth-Seeking signal -->
 
 # pi-braid session handoff
 
 This file exists for a fresh agent session to pick up cleanly.
 The work is in a known-good state as of this writing.
 
-## Last commit
+## Current state
 
-```
-52503f34   Sprint 1: contrast phrases restored, PLANNING mode broadened, COMPLETION shutdown detection
-```
+- **Sprint 1**: Shipped (QW-1 contrast phrases, QW-2 PLANNING mode, QW-3 COMPLETION shutdown)
+- **Sprint 2**: Shipped (MI-1 MARS principle+procedure reflection, MI-2 Truth-Seeking signal)
+- **Working tree**: CLEAN
+- **Tests**: 81/81 pass
+- **Typecheck**: Clean
 
 Working tree is **CLEAN**. All commits pushed to `origin/main`.
 
@@ -22,6 +24,23 @@ Working tree is **CLEAN**. All commits pushed to `origin/main`.
 - **Typecheck**: `npm run typecheck` → clean
 - **Doc discipline**: `npm run check:docs` → ✅ 66/66; `npm run check:doc-drift` → ✅
 - **Working tree**: **CLEAN**. 0 uncommitted, 0 untracked.
+
+## What just shipped (Sprint 2, 2 MI items)
+
+### MI-1: MARS upgrade to principle+procedure reflection
+- **Renamed**: `mars-reflector.ts` → `tool-usage-analyzer.ts` (accurate name for the statistical tool-usage analyzer)
+- **New file**: `src/lib/reasoning/mars-reflector.ts` — implements MARS paper (2601.11974) two reflection types:
+  - **Principle reflection**: After task completion, extracts general rules ("before editing, call think()", "after changes, run verify()") and stores as heuristics via `addPrinciple()`
+  - **Procedure reflection**: After successful task, captures concrete steps ("Procedure for code-change: 1. Understand, 2. Plan, 3. Edit, 4. Verify") and stores as episodes via `addEpisode()`
+- **Wired**: `mars-handler.ts` now calls `reflectOnTaskCompletion()` on finalize or every 10 turns
+- **Storage**: Principles go to `three-memory-stores` heuristics (evolver.ts boosts/discounts over time); procedures go to episodic memory
+- **Papers**: MARS (2601.11974), ACE (2510.04618)
+
+### MI-2: Truth-Seeking signal for CONTRAST mode detection
+- **Added**: `truth_seeking_trigger` signal key in `signals.ts`
+- **Detection**: `turn-end-handler.ts` sets the signal when `verify_claim`/`conflict_qa` is used
+- **Surfacing**: `determineContrastMode()` checks this signal at priority 7 (before the default), confirming TRUTH-SEEKING mode explicitly when verification tools are used
+- **Why**: Affirms the correct epistemic stance — the agent is being truth-seeking by verifying claims
 
 ## What just shipped (Sprint 1, 3 quick wins)
 
@@ -51,21 +70,15 @@ Working tree is **CLEAN**. All commits pushed to `origin/main`.
 
 ## What's next (Sprint 2)
 
-### MI-1: Upgrade MARS to full principle+procedure reflection
-- Current `mars-reflector.ts` (210 lines) is a statistical tool-usage analyzer, not a real MARS implementation
-- Needs: rename to `tool-usage-analyzer.ts`, create new `mars-reflector.ts` with MARS paper's two reflection types
-- Papers: MARS (2601.11974), ACE (2510.04618)
-- Effort: ~4-6 hours
-
-### MI-2: Add Truth-Seeking signal to CONTRAST mode detection
-- TRUTH-SEEKING is the default mode but has no dedicated trigger signal
-- Wire `verify_claim` / `conflict_qa` tool calls to briefly surface TRUTH-SEEKING mode explicitly
-- Effort: ~2 hours
-
 ### LP-1: Self-Harness Loop (longer-term)
 - Automated harness improvement via Weakness Mining → Proposal → Pareto validation
 - Paper shows 53-60% relative improvement on held-out tasks
 - Effort: ~2-3 days
+
+### MI-3: Structured Output Catalyst for Tool Results
+- Based on MDA (2601.21996) finding that repetitive structural data catalyzes induction head formation
+- Add `formatToolResult` function that wraps tool output in consistent structured format
+- Effort: ~3-4 hours (see `docs/proposals/IMPROVEMENT-PROPOSALS.md`)
 
 ## Key reference docs
 

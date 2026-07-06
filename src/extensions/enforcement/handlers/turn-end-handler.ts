@@ -170,6 +170,20 @@ export async function dispatchTurnEndLoop(
     ["memory_store", "memory"].includes(t),
   );
 
+  // ── Truth-seeking trigger: verify_claim/conflict_qa usage ───────────────
+  // MI-2: When the agent uses verification tools, briefly surface TRUTH-SEEKING
+  // mode explicitly, confirming the correct epistemic stance.
+  const truthTools = actualTools.filter((t: string) =>
+    ["verify_claim", "conflict_qa"].includes(t),
+  );
+  if (truthTools.length > 0) {
+    enforcementSignals[SIGNAL_KEYS.truth_seeking_trigger] = {
+      turn: getState(ctx).currentTurn,
+      text: `Truth-seeking triggered by ${truthTools.join(", ")}`,
+      acted: true,
+    };
+  }
+
   if (memoryUpdated && enforcementSignals[SIGNAL_KEYS.unpersisted_learnings]) {
     delete enforcementSignals[SIGNAL_KEYS.unpersisted_learnings];
   }
