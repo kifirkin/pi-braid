@@ -26,23 +26,6 @@ The work is in a known-good state as of this writing.
 - **Doc discipline**: `npm run check:docs` → ✅ 68/68; `npm run check:doc-drift` → ✅
 - **Working tree**: **CLEAN**. 0 uncommitted, 0 untracked.
 
-## What just shipped (Sprint 2, 2 MI items)
-
-### MI-1: MARS upgrade to principle+procedure reflection
-- **Renamed**: `mars-reflector.ts` → `tool-usage-analyzer.ts` (accurate name for the statistical tool-usage analyzer)
-- **New file**: `src/lib/reasoning/mars-reflector.ts` — implements MARS paper (2601.11974) two reflection types:
-  - **Principle reflection**: After task completion, extracts general rules ("before editing, call think()", "after changes, run verify()") and stores as heuristics via `addPrinciple()`
-  - **Procedure reflection**: After successful task, captures concrete steps ("Procedure for code-change: 1. Understand, 2. Plan, 3. Edit, 4. Verify") and stores as episodes via `addEpisode()`
-- **Wired**: `mars-handler.ts` now calls `reflectOnTaskCompletion()` on finalize or every 10 turns
-- **Storage**: Principles go to `three-memory-stores` heuristics (evolver.ts boosts/discounts over time); procedures go to episodic memory
-- **Papers**: MARS (2601.11974), ACE (2510.04618)
-
-### MI-2: Truth-Seeking signal for CONTRAST mode detection
-- **Added**: `truth_seeking_trigger` signal key in `signals.ts`
-- **Detection**: `turn-end-handler.ts` sets the signal when `verify_claim`/`conflict_qa` is used
-- **Surfacing**: `determineContrastMode()` checks this signal at priority 7 (before the default), confirming TRUTH-SEEKING mode explicitly when verification tools are used
-- **Why**: Affirms the correct epistemic stance — the agent is being truth-seeking by verifying claims
-
 ## What just shipped (Sprint 1, 3 quick wins)
 
 ### QW-1: Restore contrast phrase library
@@ -68,6 +51,23 @@ The work is in a known-good state as of this writing.
 ### Supporting files
 - `ARCHAEOLOGY-FINDINGS.md` — 457-line, 11-section archaeology report
 - `docs/proposals/IMPROVEMENT-PROPOSALS.md` — 11 proposals across 4 tiers
+
+## What just shipped (Sprint 2, 2 MI items)
+
+### MI-1: MARS upgrade to principle+procedure reflection
+- **Renamed**: `mars-reflector.ts` → `tool-usage-analyzer.ts` (accurate name for the statistical tool-usage analyzer)
+- **New file**: `src/lib/reasoning/mars-reflector.ts` — implements MARS paper (2601.11974) two reflection types:
+  - **Principle reflection**: After task completion, extracts general rules ("before editing, call think()", "after changes, run verify()") and stores as heuristics via `addPrinciple()`
+  - **Procedure reflection**: After successful task, captures concrete steps ("Procedure for code-change: 1. Understand, 2. Plan, 3. Edit, 4. Verify") and stores as episodes via `addEpisode()`
+- **Wired**: `mars-handler.ts` now calls `reflectOnTaskCompletion()` on finalize or every 10 turns
+- **Storage**: Principles go to `three-memory-stores` heuristics (evolver.ts boosts/discounts over time); procedures go to episodic memory
+- **Papers**: MARS (2601.11974), ACE (2510.04618)
+
+### MI-2: Truth-Seeking signal for CONTRAST mode detection
+- **Added**: `truth_seeking_trigger` signal key in `signals.ts`
+- **Detection**: `turn-end-handler.ts` sets the signal when `verify_claim`/`conflict_qa` is used
+- **Surfacing**: `determineContrastMode()` checks this signal at priority 7 (before the default), confirming TRUTH-SEEKING mode explicitly when verification tools are used
+- **Why**: Affirms the correct epistemic stance — the agent is being truth-seeking by verifying claims
 
 ## What's shipped (Sprint 3 + extra)
 

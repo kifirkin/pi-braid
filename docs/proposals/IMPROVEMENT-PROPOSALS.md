@@ -285,12 +285,15 @@ it explicit unlocks composable, typed event handling across all extensions.
 
 **Sprint 3** (large projects, start with LP-1):
 6. MI-3: Structured Output Catalyst (~3-4h) ✅ SHIPPED
-7. LP-1: Self-Harness Loop (~2-3d) — the highest-impact unimplemented proposal
-8. LP-2: Bidirectional Verifier (~1.5-2d)
+7. LP-1 Phase 1+2: Self-Harness Loop (~1.5d) ✅ SHIPPED (weakness mining + harness proposal)
+8. D-57: Enforcement whisper audit ✅ SHIPPED
+9. System-prompt behavioral-verification fixes (3 commits) ✅ SHIPPED
 
 **Sprint 4** (remaining):
-9. LP-3: Memory Leak Prevention (~1.5d)
-10. SI-1: Heartbeat Event Bus (~3-4d)
+10. LP-1 Phase 3: Proposal Validation (~1-2d) — run candidates on eval with Pareto non-regression
+11. LP-2: Bidirectional Verifier (~1.5-2d)
+12. LP-3: Memory Leak Prevention (~1.5d)
+13. SI-1: Heartbeat Event Bus (~3-4d)
 
 ---
 
