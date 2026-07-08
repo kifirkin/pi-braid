@@ -89,6 +89,11 @@ export interface SopSuggestionEvent {
   timestamp: number;
 }
 
+export interface EnforcementSignalsEvent {
+  type: "enforcement_signals";
+  contrastMode: string;
+}
+
 export type AgentEvent =
   | TimerEvent
   | MemoryEvictEvent
@@ -98,7 +103,8 @@ export type AgentEvent =
   | HeartbeatTickEvent
   | ToolErrorEvent
   | AnalyticsAlertEvent
-  | SopSuggestionEvent;
+  | SopSuggestionEvent
+  | EnforcementSignalsEvent;
 
 type Handler<T extends AgentEvent = AgentEvent> = (event: T) => void;
 

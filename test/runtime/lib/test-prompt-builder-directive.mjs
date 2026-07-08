@@ -138,7 +138,7 @@ test("behavior mode section is rendered into the system prompt", () => {
 });
 
 test("prompt-builder listens for enforcement_signals with contrastMode", () => {
-  assert.match(promptBuilderSrc, /pi\.events\.on\(["']enforcement_signals["']/);
+  assert.match(promptBuilderSrc, /eventBus\.on\(["']enforcement_signals["']/);
   assert.match(promptBuilderSrc, /contrastMode/);
   assert.match(promptBuilderSrc, /activeBehaviorMode/);
 });
@@ -151,7 +151,7 @@ test("turn-end-handler emits contrastMode via enforcement_signals", () => {
   );
   assert.match(
     turnEndHandlerSrc,
-    /pi\.events\.emit\s*\(\s*["']enforcement_signals["'][\s\S]*?contrastMode:\s*determineContrastMode/,
+    /eventBus\.emit\s*\(\s*\{\s*type:\s*["']enforcement_signals["'][\s\S]*?contrastMode:\s*determineContrastMode/,
     "turn-end-handler must emit contrastMode via enforcement_signals",
   );
 });

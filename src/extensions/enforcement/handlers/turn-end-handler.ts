@@ -9,6 +9,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../../../lib/core/logger.js";
+import { eventBus } from "../../../lib/events/event-bus.js";
 import { detectMissingVerification, recordCodeChange } from "../detection/verification.js";
 import {
   type TurnAnalysisContext,
@@ -521,7 +522,8 @@ export async function dispatchTurnEndLoop(
   // Emit behavior mode so prompt-builder can render the active directive.
   // The mode is determined by enforcement state (errors, overflow, edits
   // without think) and defaults to TRUTH-SEEKING.
-  pi.events.emit("enforcement_signals", {
+  eventBus.emit({
+    type: "enforcement_signals",
     contrastMode: determineContrastMode(ctx),
   });
 

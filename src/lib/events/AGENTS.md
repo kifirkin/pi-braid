@@ -9,7 +9,7 @@ communication that doesn't fit pi core's event model.
 
 | File | Purpose |
 |---|---|
-| `event-bus.ts` | Process-global event bus (`eventBus.on/off/emit`). Use for cross-cutting events that span multiple extensions. |
+| `event-bus.ts` | Process-global event bus (`eventBus.on/off/emit`). 9 typed event types: `timer_fire`, `memory_evict`, `turn_complete`, `context_full`, `enforcement_violation`, `heartbeat_tick`, `tool_error`, `analytics_alert`, `sop_suggestion`, `enforcement_signals`. Use for cross-cutting events that span multiple extensions. |
 | `event-types.ts` | Type definitions for events on the bus. |
 | `consolidation-channel.ts` | The channel between enforcement and consolidation logic. Carries "things that should be remembered". |
 | `timer-bus.ts` | Channel for timer-related cross-extension communication. |

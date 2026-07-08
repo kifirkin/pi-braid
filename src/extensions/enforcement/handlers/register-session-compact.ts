@@ -27,6 +27,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { onEvent } from "../../../lib/events/event-types.js";
+import { eventBus } from "../../../lib/events/event-bus.js";
 import { sendEnforcementWhisper } from "../whisper.js";
 import { getState } from "../state.js";
 import { enforcementSignals, determineContrastMode, SIGNAL_KEYS } from "../signals.js";
@@ -181,7 +182,8 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
                 text: `${unpersisted.length} key learning(s) not yet persisted`,
                 acted: false,
               };
-              pi.events.emit("enforcement_signals", {
+              eventBus.emit({
+                type: "enforcement_signals",
                 contrastMode: determineContrastMode(ctx),
               });
             }

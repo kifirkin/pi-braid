@@ -5,6 +5,7 @@ import { getAgentDir, loadProjectContextFiles } from "@earendil-works/pi-coding-
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { RESOURCES_DISCOVER } from "../../../lib/core/event-names.js";
+import { eventBus } from "../../../lib/events/event-bus.js";
 import { gatherContextState, contextSection } from "./context-section.js";
 import { deliverActiveSpecs } from "../../../lib/cognitive/openspec.js";
 import { deliverRelevantHints } from "../../../lib/cognitive/hints.js";
@@ -214,7 +215,7 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
   // per-session ExtensionContext (needed for getExtensionState).
   registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event, ctx) => {
     const ps = getPromptState(ctx);
-    pi.events.on("enforcement_signals", (data: unknown) => {
+    eventBus.on("enforcement_signals", (data: unknown) => {
       const d = data as { contrastMode?: string };
       if (d.contrastMode) ps.activeBehaviorMode = d.contrastMode;
     });
