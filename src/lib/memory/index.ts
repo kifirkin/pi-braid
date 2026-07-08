@@ -139,6 +139,46 @@ export class CognitiveMemory {
     return memories.filter((m) => !m.expiresAt || m.expiresAt > now);
   }
 
+  // ── Conflict Detection (LP-3) ────────────────────────────────────────────
+
+  /**
+   * Find existing entries from a different project whose content overlaps
+   * significantly with the given content. Used by memory_store to surface
+   * cross-project conflicts.
+   * Returns at most one entry per conflicting project.
+   */
+  findCrossProjectConflicts(
+    content: string,
+    projectId: string | undefined,
+  ): Array<{ conflict: CognitiveMemoryEntry; overlap: number }> {
+    if (!projectId) return [];
+    const words = content.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
+    if (words.length === 0) return [];
+
+    const seenProjects = new Set<string>();
+    const results: Array<{ conflict: CognitiveMemoryEntry; overlap: number }> = [];
+
+    for (const m of this.memoryStore.memories) {
+      if (!m.projectId || m.projectId === projectId) continue;
+      if (seenProjects.has(m.projectId)) continue;
+
+      const mWords = m.content.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
+      if (mWords.length === 0) continue;
+
+      const wordSet = new Set(words);
+      let overlap = 0;
+      for (const w of mWords) {
+        if (wordSet.has(w)) overlap++;
+      }
+      const overlapRatio = overlap / Math.max(words.length, 1);
+      if (overlapRatio > 0.3) {
+        seenProjects.add(m.projectId);
+        results.push({ conflict: m, overlap: overlapRatio });
+      }
+    }
+    return results;
+  }
+
   // ── Store ──────────────────────────────────────────────────────────────
 
   async store(
@@ -151,6 +191,8 @@ export class CognitiveMemory {
       context?: MemoryContext;
       related?: MemoryLink[];
       ttl?: number;
+      /** Project identifier for session isolation. Derived from ctx.cwd by the caller. */
+      projectId?: string;
     },
   ): Promise<CognitiveMemoryEntry> {
     const importance = options?.importance ?? 0.5;
@@ -178,6 +220,7 @@ export class CognitiveMemory {
       context: options?.context,
       related: options?.related,
       expiresAt: options?.ttl ? Date.now() + options.ttl : undefined,
+      projectId: options?.projectId,
     };
 
     this.memoryStore.memories.push(memory);
@@ -220,8 +263,20 @@ export class CognitiveMemory {
       type?: CognitiveMemoryType;
       limit?: number;
       tags?: string[];
-      /** Boost memories tagged with this project path (provenance). */
+      /**
+       * Project path for provenance-aware filtering.
+       * When set, recall filters to entries with matching projectId
+       * (or no projectId — legacy entries pre-LP-3).
+       * Use deriveProjectIdFromCwd(cwd) to produce the normalized form.
+       */
       currentProject?: string;
+      /**
+       * Project scope for recall.
+       * - "current" (default when currentProject is set): only include entries
+       *   from the current project (or legacy entries without projectId).
+       * - "all": include all entries regardless of project.
+       */
+      projectScope?: "current" | "all";
       /** Penalize memories from a different session (cross-session contamination guard). */
       currentSessionId?: string;
       /** Number of times a memory was accessed before - higher = more useful. */
@@ -237,6 +292,17 @@ export class CognitiveMemory {
     for (const memory of this.filterExpired(this.memoryStore.memories)) {
       if (options?.type && memory.type !== options.type) continue;
       if (options?.tags?.length && !options.tags.some((t) => memory.tags.includes(t))) continue;
+
+      // LP-3: Project-scoped isolation — skip entries from other projects
+      // unless projectScope is "all" or the entry has no projectId (legacy).
+      if (
+        options?.currentProject &&
+        options?.projectScope !== "all" &&
+        memory.projectId &&
+        memory.projectId !== options.currentProject
+      ) {
+        continue;
+      }
 
       const contentLower = memory.content.toLowerCase();
       let matches = 0;
@@ -258,9 +324,13 @@ export class CognitiveMemory {
         const freshnessFactor = Math.pow(0.5, ageMs / HALF_LIFE_MS);
         let adjustedRelevance = relevance * (0.4 + 0.6 * freshnessFactor);
 
-        // Context-aware boosts
-        if (options?.currentProject && memory.tags.some((t) => t.includes(options.currentProject!))) {
-          adjustedRelevance *= 1.3; // +30% for same-project memories
+        // LP-3: Context-aware boost for same-project entries (legacy tag-based match)
+        if (options?.currentProject && memory.projectId === options.currentProject) {
+          adjustedRelevance *= 1.3; // +30% for same-project memories (provenance match)
+        }
+        // Fallback boost for entries tagged with project path (pre-LP-3 legacy)
+        if (options?.currentProject && !memory.projectId && memory.tags.some((t) => t.includes(options.currentProject!))) {
+          adjustedRelevance *= 1.3; // +30% for same-project tag match
         }
         if (options?.currentSessionId && memory.context?.error) {
           // Memories with error context from the current session are highly relevant

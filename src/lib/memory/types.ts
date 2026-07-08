@@ -62,6 +62,13 @@ export interface CognitiveMemoryEntry {
   related?: MemoryLink[];
   /** Optional TTL in milliseconds (0 = no expiration) */
   expiresAt?: number;
+
+  /**
+   * Project identifier for session isolation (provenance tracking).
+   * Set automatically from ctx.cwd when stored via memory_store.
+   * Empty/undefined = legacy entry (pre-LP-3) — included in all queries.
+   */
+  projectId?: string;
 }
 
 // Storage format

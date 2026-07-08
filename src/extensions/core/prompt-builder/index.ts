@@ -18,6 +18,7 @@ import {
   DEFINITION_OF_DONE,
   LIVING_DOCS,
   MEMORY_AWARENESS,
+  MEMORY_ISOLATION,
   SCOPES,
   FRAMEWORK_CONFIG_FIRST,
   RESOURCE_DISCOVERY,
@@ -317,6 +318,7 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       //     (2026-06-22 audit). Pairs with the memory pointer block rendered
       //     later in section 4b.
       simpleSection("invariant-memory", MEMORY_AWARENESS),
+      simpleSection("invariant-memory-isolation", MEMORY_ISOLATION),
 
       // 1e. Scopes directive - match every artifact's location to its purpose;
       //     default to the narrowest scope that satisfies the purpose, broaden

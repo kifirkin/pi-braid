@@ -11,6 +11,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { CognitiveMemory, CognitiveMemoryType } from "../../../lib/memory/index.js";
+import { deriveProjectIdFromCwd } from "../../../lib/memory/past-insights.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { createLogger } from "../../../lib/core/logger.js";
 import type { MemoryStoresState } from "../three-memory-stores/index.js";
@@ -136,12 +137,19 @@ export function createMemoryStoreTool(
           }
         }
 
+        // LP-3: Derive projectId from ctx.cwd for provenance tracking,
+        // enabling cross-project session isolation.
+        const projectId = ctx && typeof ctx.cwd === "string"
+          ? deriveProjectIdFromCwd(ctx.cwd)
+          : undefined;
+
         const m = await memory.store(consolidatedContent, params.memoryType as CognitiveMemoryType, {
           tags: params.tags,
           importance: params.importance,
           source: params.source,
           ttl: params.ttl,
           related: related.length > 0 ? related : undefined,
+          projectId,
         });
 
         // When storing episodic type, also add to three-memory-stores
@@ -184,18 +192,32 @@ export function createMemoryStoreTool(
           }
         }
 
+        // LP-3: Check for cross-project content conflicts.
+        // When the same insight exists from a different project, surface it
+        // so the agent can decide whether the cross-project knowledge is
+        // relevant or a memory-hallucination risk (HaluMem 2511.03506).
+        const conflicts = memory.findCrossProjectConflicts(consolidatedContent, projectId);
+        const conflictInfo = conflicts.length > 0
+          ? conflicts.map((c) => `[${c.conflict.projectId}] ${c.conflict.content.slice(0, 120)} (overlap: ${(c.overlap * 100).toFixed(0)}%)`)
+          : undefined;
+
         // ROADMAP P3-12: include merged source IDs in the response so
         // the user has visibility into the consolidation.
         const storedResponse: {
           content: Array<{ type: "text"; text: string }>;
-          details: { id: string; stored: boolean; merged_from?: string[] };
+          details: { id: string; stored: boolean; merged_from?: string[]; projectId?: string; crossProjectConflicts?: string[] };
         } = {
           content: [{ type: "text" as const, text: `Stored memory ${m.id} (${params.memoryType})` }],
-          details: { id: m.id, stored: true },
+          details: { id: m.id, stored: true, projectId },
         };
         if (mergedSourceIds.length > 0) {
           storedResponse.details.merged_from = mergedSourceIds;
           storedResponse.content[0]!.text += ` (merged from ${mergedSourceIds.length} source(s))`;
+        }
+        if (conflictInfo && conflictInfo.length > 0) {
+          storedResponse.details.crossProjectConflicts = conflictInfo;
+          storedResponse.content[0]!.text += `\n⚠ Cross-project conflict: Similar memory exists from ${conflictInfo.length} other project(s):\n` +
+            conflictInfo.map((c: string) => `  - ${c}`).join("\n");
         }
         return storedResponse;
       } catch (e) {

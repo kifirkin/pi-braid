@@ -16,6 +16,7 @@ import {
   formatMemoryEntry,
   formatMemoryTimestamp,
 } from "../../../lib/memory/index.js";
+import { deriveProjectIdFromCwd } from "../../../lib/memory/past-insights.js";
 import { addEvidence } from "../../../lib/store/evidence-pool.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
 import { createLogger } from "../../../lib/core/logger.js";
@@ -75,11 +76,12 @@ function relevanceReason(r: {
   return parts.join(", ");
 }
 
-/** Project identifier from cwd, e.g. /foo/bar/baz -> "bar/baz". */
+/**
+ * Project identifier from cwd, e.g. /foo/bar/baz -> "bar/baz".
+ * Delegates to shared deriveProjectIdFromCwd in past-insights.ts.
+ */
 function deriveProjectId(cwd: string): string {
-  const parts = cwd.replace(/\\/g, "/").split("/").filter(Boolean);
-  if (parts.length < 2) return cwd || "unknown";
-  return parts.slice(-2).join("/");
+  return deriveProjectIdFromCwd(cwd);
 }
 
 /** Returns the three-memory-stores state, or null if unavailable. */
@@ -166,6 +168,13 @@ export function createMemoryTool(
       tags: Type.Optional(
         Type.Array(Type.String(), { description: "Tag filter (recall_search)" }),
       ),
+      projectScope: Type.Optional(
+        StringEnum(["current", "all"], {
+          description:
+            "Project scope for recall. 'current' (default) = only entries from this project. " +
+            "'all' = include entries from all projects. LP-3 cross-project isolation.",
+        }),
+      ),
       since: Type.Optional(
         Type.String({
           description:
@@ -242,6 +251,7 @@ export function createMemoryTool(
         query?: string;
         memoryType?: string;
         tags?: string[];
+        projectScope?: string;
         since?: string;
         until?: string;
         full?: boolean;
@@ -293,6 +303,7 @@ export function createMemoryTool(
               limit: params.limit,
               tags: params.tags,
               currentProject,
+              projectScope: params.projectScope as "current" | "all" | undefined,
               currentSessionId: sessionId,
               accessBoost: 5,
             });
@@ -407,7 +418,14 @@ export function createMemoryTool(
           }
           case "recall_list": {
             const limit = params.limit ?? 20;
-            const memories = memory.getAll(limit);
+            const currentProject = ctx && typeof ctx.cwd === "string"
+              ? deriveProjectIdFromCwd(ctx.cwd)
+              : undefined;
+            const allMemories = memory.getAll(limit);
+            // LP-3: Filter to current project entries (or legacy entries without projectId)
+            const memories = currentProject
+              ? allMemories.filter((m: CognitiveMemoryEntry) => !m.projectId || m.projectId === currentProject)
+              : allMemories;
             const showFull = params.full ?? false;
             const lines: string[] = [];
             if (memories.length > 0) {

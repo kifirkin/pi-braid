@@ -105,6 +105,13 @@ export const LIVING_DOCS = `Project guidelines are living contracts you maintain
 // is the discoverability fix; this directive is the behavioral fix.
 export const MEMORY_AWARENESS = `Before non-trivial work, recall from past sessions and evolved heuristics via the \`memory\` tool -- you have seen similar tasks before. After work that produced a reusable insight, store it via \`memory_store\` (semantic) or \`memory\` action=episodes_add. Treat memory as a workspace, not an afterthought.`;
 
+// ── Memory isolation: cross-project session isolation (LP-3) ─────────────────
+// Origin: LP-3 (Memory Leak Prevention). Every memory entry is tagged with
+// a projectId derived from ctx.cwd. recall_search and recall_list filter to
+// the current project by default. Use projectScope="all" to search across
+// projects. This prevents cross-project contamination (HaluMem 2511.03506).
+export const MEMORY_ISOLATION = `Memory entries are tagged by project. Only retrieve entries from the current project unless explicitly asked (use projectScope="all").`;
+
 // ── Scopes: match every artifact's location to its purpose. ───────────────
 // Tool/file operations have an implicit scope; mismatches scatter leftovers
 // across random paths (project dirs mixed with user-cfg dirs mixed with /tmp).
