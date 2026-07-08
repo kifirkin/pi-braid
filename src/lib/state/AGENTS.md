@@ -106,6 +106,7 @@ The exception list is enforced by `test/runtime/lib/test-no-module-level-let.mjs
 | `global-state.ts:144` | `_cognitiveMemoryInstance` | Encapsulated; only `getCognitiveMemoryInstance()` exported. |
 | `global-state.ts:172` | `_postLoopTimeoutMs` | Encapsulated; only `getPostLoopTimeoutMs()` / `setPostLoopTimeoutMs()` exported. Defaulted from `DEFAULT_POST_LOOP_TIMEOUT_MS` (30_000). Tunable so the post-loop timeout can change without code edits. |
 | `global-state.ts:279` | `_timerExtensionFactoryState` | Encapsulated; only `getTimerExtensionFactoryState()` exported. Used by `extensions/scheduling/timer/index.ts` to count factory invocations and warn when the DR-C-4 single-process-per-session assumption is violated (see the comment block at timer/index.ts:16-41). |
+| `global-state.ts:175` | `_modelsInstance` | Encapsulated; only `getModelsInstance()` / `setModelsInstance()` / `resetModelsInstance()` exported. Holds the process-global pi-ai `Models` instance (created by `lib/ai/models-init.ts` at startup) to replace the deprecated `@earendil-works/pi-ai/compat` import path. |
 | `global-state.ts:309` | `_shownDiscoveryBundles` | Encapsulated; only `getShownDiscoveryBundles()` / `resetShownDiscoveryBundles()` exported. Used by `extensions/enforcement/handlers/register-session-start-discoverability.ts` to dedup the bundled discoverability whisper across /reload calls within the same process. The extension module is re-evaluated on /reload, so a module-level Set there would be lost. |
 
 ### D. Logger / framework config (process-global by design)

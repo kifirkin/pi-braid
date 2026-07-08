@@ -154,6 +154,41 @@ export function getCognitiveMemoryInstance(): unknown {
   return _cognitiveMemoryInstance;
 }
 
+// ── pi-ai Models Instance (models-init.ts → llm-call.ts) ───────────────────
+//
+// pi-ai v0.80 moved `completeSimple` from the top-level export to the
+// `/compat` subpath (deprecated). The forward-looking API is
+// `createModels()` → `Models.completeSimple()`. This slot holds the
+// process-global Models instance created by models-init.ts so that
+// llm-call.ts can use it without importing from the compat subpath.
+//
+// When the compat subpath is removed upstream, delete the compat import
+// fallback in llm-call.ts and use getModels() exclusively.
+//
+// Opaque type pattern (same as CognitiveMemoryInstance): the slot
+// declaration avoids importing the heavy pi-ai Models type.
+
+export interface ModelsInstance {
+  readonly _brand: unique symbol;
+}
+
+let _modelsInstance: unknown = null;
+
+/** Set the shared pi-ai Models instance (called once at startup). */
+export function setModelsInstance(instance: unknown): void {
+  _modelsInstance = instance;
+}
+
+/** Get the shared pi-ai Models instance (or null if not yet initialized). */
+export function getModelsInstance(): unknown {
+  return _modelsInstance;
+}
+
+/** Reset the models instance. Test helper. */
+export function resetModelsInstance(): void {
+  _modelsInstance = null;
+}
+
 // ── Post-Loop Timeout (post-loop-classify.ts) ──────────────────────────────
 
 /**

@@ -29,11 +29,15 @@
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
 // pi-ai v0.80 moved `completeSimple` out of the top-level export.
 // It's still available at the `/compat` subpath (compat.d.ts:64) as a
-// "Temporary compatibility entrypoint" -- same signature, same return
-// type, no behavior change. The forward-looking path is
-// `Models.completeSimple()` on a `createModels()` instance (models.d.ts:82),
-// which is a structural refactor deferred to a future ticket.
+// "Temporary compatibility entrypoint". The forward-looking path is
+// `Models.completeSimple()` on a `createModels()` instance (models.d.ts:82).
+//
+// This module uses the lazily-initialized Models instance from
+// models-init.ts when available, falling back to the compat import.
+// When the compat subpath is removed upstream, delete the fallback import
+// and use getModels() exclusively.
 import { completeSimple } from "@earendil-works/pi-ai/compat";
+import { getModelsInstance } from "../state/global-state.js";
 import { createLogger } from "../core/logger.js";
 
 const log = createLogger("llm-call");
@@ -66,7 +70,39 @@ const log = createLogger("llm-call");
 // module in the same process - which is fine for the test runner we
 // use (one process per .mjs file via spawnSync).
 
-let _completeSimple = completeSimple;
+/**
+ * Get the current completeSimple implementation.
+ * Prefers the Models instance (from models-init.ts) when available,
+ * falling back to the compat import. This ensures forward-compatibility
+ * when the compat subpath is removed upstream.
+ *
+ * The Models instance is created at startup by the extension loader
+ * (loader.ts: initModels()). If it hasn't been initialized yet (e.g.,
+ * during early module loading), the compat fallback is used.
+ */
+/**
+ * Get the current completeSimple implementation.
+ * Prefers the Models instance (from models-init.ts) when available,
+ * falling back to the compat import. This ensures forward-compatibility
+ * when the compat subpath is removed upstream.
+ */
+function getCompleteSimple(): typeof completeSimple {
+  const models = getModelsInstance();
+  if (models && typeof (models as any).completeSimple === "function") {
+    return (models as any).completeSimple.bind(models);
+  }
+  return completeSimple;
+}
+
+// The _completeSimple slot is a lazy getter that resolves on each call.
+// This allows the Models instance to be initialized after module load
+// (by loader.ts's initModels()) while still being used at runtime.
+// The test setter overrides it with a stub for behavioral testing.
+let _completeSimpleOverride: typeof completeSimple | null = null;
+
+function _resolveCompleteSimple(): typeof completeSimple {
+  return _completeSimpleOverride ?? getCompleteSimple();
+}
 
 /**
  * @internal Test-only: override completeSimple for behavioral testing.
@@ -76,7 +112,7 @@ let _completeSimple = completeSimple;
 export function __setCompleteSimpleForTest(
   fn: typeof completeSimple | null,
 ): void {
-  _completeSimple = fn ?? completeSimple;
+  _completeSimpleOverride = fn ?? null;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -329,7 +365,7 @@ export async function callLlm(
         if (options.reasoning !== undefined) {
           simpleOptions.reasoning = options.reasoning;
         }
-        const result = await _completeSimple(
+        const result = await _resolveCompleteSimple()(
           model as Model<Api>,
           context,
           toCompleteSimpleOptions(simpleOptions),

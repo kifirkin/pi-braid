@@ -76,6 +76,7 @@ const EXEMPT_LINES = [
   { file: "src/lib/state/global-state.ts", line: 226, pattern: "let _llmErrorListener" },
   { file: "src/lib/state/global-state.ts", line: 227, pattern: "let _llmSuccessListener" },
   { file: "src/lib/state/global-state.ts", line: 279, pattern: "let _timerExtensionFactoryState" },
+  { file: "src/lib/state/global-state.ts", line: 175, pattern: "let _modelsInstance" },
 
   // ── D. Logger / framework config (process-global) ─────────────────────
   { file: "src/lib/core/logger.ts", line: 73, pattern: "let _boundContext" },

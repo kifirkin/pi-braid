@@ -21,6 +21,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../lib/core/logger.js";
+import { initModels } from "../lib/ai/models-init.js";
 import { recordToolRegistration } from "../lib/state/tool-provenance.js";
 
 import {
@@ -269,6 +270,11 @@ export interface LoadReport {
 export async function loadModules(pi: ExtensionAPI, envOverride?: string): Promise<LoadReport> {
   const state = getLoaderState();
   const { enabled, source } = resolveEnabledExtensions(envOverride);
+
+  // Initialize the pi-ai Models instance before loading extensions.
+  // This replaces the deprecated compat import path in llm-call.ts.
+  await initModels();
+
   const loaded: LoadReport["loaded"] = [];
   const skipped: LoadReport["skipped"] = [];
   let total = 0;
