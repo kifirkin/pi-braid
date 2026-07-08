@@ -388,7 +388,7 @@ If you must use explicit directives, frame them through an identity. The identit
 | Braid research compendium | `vibe/llm-compliance-theater/braid-research/` | 36 synthetic docs |
 | Compliance theater paper | `vibe/llm-compliance-theater/paper/` | main.pdf, main.tex |
 | Research synthesis | `vibe/implicit-framing/RESEARCH_SYNTHESIS.md` | Full experiment results |
-| Archived docs | `pi-braid/docs/archive/` | 14 archived proposals (9+5) |
+| Archived docs | `../pi-braid-evaluation/docs-archive/` | 14 archived proposals (moved to eval project) |
 
 ## 9. Session Archaeology Summary
 
@@ -441,7 +441,7 @@ If you must use explicit directives, frame them through an identity. The identit
 
 ## 11. Key Archived Proposal: Self-Evolution (from Self-Harness paper)
 
-The most detailed unimplemented proposal lives in `docs/archive/SELF-EVOLUTION-PROPOSAL.md` (archived Jul 4).
+The most detailed unimplemented proposal lives in `../pi-braid-evaluation/docs-archive/SELF-EVOLUTION-PROPOSAL.md` (archived Jul 4, moved to eval project).
 
 **Paper A: Self-Harness** (Zhang et al., arXiv:2606.09498, 8 Jun 2026)
 - Three-stage loop: Weakness Mining → Harness Proposal → Proposal Validation

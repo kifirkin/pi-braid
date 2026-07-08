@@ -99,7 +99,7 @@ drift surfaces emerge.
 22 tools are registered by braid extensions plus ~12 from pi-core
 built-ins (read, write, edit, bash, grep, find, ls, sleep, web_fetch,
 batch_web_fetch, analyze_image, etc.). The May 2026 audit
-(`docs/archive/TOOL-INVENTORY-AUDIT.md`) is archived; its actionable
+(`../pi-braid-evaluation/docs-archive/TOOL-INVENTORY-AUDIT.md`) is archived; its actionable
 items have been folded into ROADMAP.md. Key ongoing concerns:
 
 - **In scope** (braid's value-add): cognitive, metacognition, memory,
@@ -129,15 +129,15 @@ items have been folded into ROADMAP.md. Key ongoing concerns:
 | `src/extensions/self/` | Self-management (health, error-tracking, watchdog, etc.) | [src/extensions/self/AGENTS.md](src/extensions/self/AGENTS.md) |
 | `src/lib/` | Library subsystems (13 subdirs, all have AGENTS.md) | [src/lib/AGENTS.md](src/lib/AGENTS.md) |
 | `src/loader/` | Extension loader + subagent API | [src/loader/AGENTS.md](src/loader/AGENTS.md) |
-| `docs/` | Reference docs: `ROADMAP.md` (actionable), `SETUP.md`, `FRAGILE-HEURISTICS-INVENTORY.md`, `P0-B-CRITIC-CONSOLIDATION.md`. Archived audits + shipped plans in `docs/archive/` (9 docs). See `docs/README.md`. | (no AGENTS.md - durable reference) |
+| `docs/` | Reference docs: `ROADMAP.md` (actionable), `SETUP.md`, `FRAGILE-HEURISTICS-INVENTORY.md`, `P0-B-CRITIC-CONSOLIDATION.md`. Archived audits moved to `../pi-braid-evaluation/docs-archive/`. See `docs/README.md`. | (no AGENTS.md - durable reference) |
 | `HANDOFF.md` | Fresh-session transfer document. State-of-codebase summary, last 5 commits, verification commands, priority queue. Written for an agent with no prior context. | (no AGENTS.md - ephemeral transfer aid, refresh per session) |
 | `test/` | Test harness; no AGENTS.md needed (tests are leaf) | (no AGENTS.md) |
 | `scripts/` | Build/lint helpers; leaf | (no AGENTS.md) |
-| `evaluation/` | Benchmarks (JS only post-2026-06-10); leaf | (no AGENTS.md) |
+| `../pi-braid-evaluation/` | Benchmarks, test harnesses, results (separate project) | (no AGENTS.md) |
 
 ## User Preferences (durable)
 
 - **Prefer implementing, improving, or fixing over removal.** Only remove truly dead code (unreferenced, deprecated with no path forward). This is a hard project rule.
-- **Braid is a value-add layer over pi core.** Out-of-scope tools (debug/research affordances) get flagged in the plan but not auto-removed. See `docs/archive/TOOL-INVENTORY-AUDIT.md` (archived 2026-06-17) and the current state in `docs/ROADMAP.md`.
+- **Braid is a value-add layer over pi core.** Out-of-scope tools (debug/research affordances) get flagged in the plan but not auto-removed. See `../pi-braid-evaluation/docs-archive/TOOL-INVENTORY-AUDIT.md` (archived 2026-06-17) and the current state in `docs/ROADMAP.md`.
 - **Test-based lint over ESLint custom rules.** Q15 was deferred. Use scan-style test files (e.g., `test-promise-allsettled-pattern.mjs`) as the linting substrate. ESLint setup is a separate project.
 - **Module-level `let` is banned for stateful data.** Use `getExtensionState(ctx, key, factory)` for per-session state, `global-state.ts` for process-global. The 28 documented exceptions live in `src/lib/state/AGENTS.md`.

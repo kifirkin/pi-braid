@@ -25,38 +25,38 @@ plus 36 new findings from a deep source-code review. Read this first.
 
 ## Companion documents
 
-- `docs/archive/ENFORCEMENT-WHISPER-CONTENT-AUDIT.md` — full inventory of all 35
+- `../pi-braid-evaluation/docs-archive/ENFORCEMENT-WHISPER-CONTENT-AUDIT.md` — full inventory of all 35
   whisper templates (the §3 catalog). The actionable items are in §3 of
   this ROADMAP, but the complete trigger conditions, file:line, and
   templates are in that doc. Keep it as a reference.
-- `docs/archive/CODE-QUALITY-REMEDIATION-PLAN.md` — the authoritative record of
+- `../pi-braid-evaluation/docs-archive/CODE-QUALITY-REMEDIATION-PLAN.md` — the authoritative record of
   the 6 rounds of remediation (Q1–Q15) that have shipped. The headline
   numbers (81 tests pass, 0 unused identifiers, 0 module-level let
   violations beyond the 28 documented exceptions) are authoritative.
 - `docs/FRAGILE-HEURISTICS-INVENTORY.md` — full 76-heuristic catalog
   classified A/B/C/D. Of the 29 A+B flagged for LLM replacement, 15 have
   shipped and 14 remain (see [§5.1](#51-fragile-heuristics-status)).
-- `docs/archive/STATE-POLICY.md` — design narrative for state lifetimes.
+- `../pi-braid-evaluation/docs-archive/STATE-POLICY.md` — design narrative for state lifetimes.
   Operational policy is in `src/lib/state/AGENTS.md`.
-- `docs/archive/ARXIV-CITATIONS-AUDIT.md` — all 7 cited papers verified, no
+- `../pi-braid-evaluation/docs-archive/ARXIV-CITATIONS-AUDIT.md` — all 7 cited papers verified, no
   changes needed. Test in `test-arxiv-citations.mjs`.
 
 ## Archived documents
 
-The following prior audits are preserved at `docs/archive/<filename>` for
+The following prior audits are preserved at `../pi-braid-evaluation/docs-archive/<filename>` for
 historical reference. Their content is folded into this roadmap; their
 recommendations are either shipped, deferred, or superseded by ROADMAP
 items.
 
-- `archive/CASTS-AUDIT.md` — original cast-cleanup. Superseded: actual
+- `../pi-braid-evaluation/docs-archive/CASTS-AUDIT.md` — original cast-cleanup. Superseded: actual
   cast count is 10 (4 documented + 6 missed). See [§3 DR-H-1](#dr-h-1).
-- `archive/TOOL-INVENTORY-AUDIT.md` — 30→25 tool cut. Most
+- `../pi-braid-evaluation/docs-archive/TOOL-INVENTORY-AUDIT.md` — 30→25 tool cut. Most
   recommendations shipped; current state is in `extensions/manifest.ts`.
   See [§2.1](#21-stale-from-tool-inventory-auditmd).
-- `archive/Q13-SPLIT-INDEX-STATUS.md` — deferral decision for splitting
+- `../pi-braid-evaluation/docs-archive/Q13-SPLIT-INDEX-STATUS.md` — deferral decision for splitting
   4 large `index.ts` files. Decision still in effect. See [§5.3](#53-q13-status).
-- `archive/WHISPER-AND-LOGGING-AUDIT.md` — delivery-mechanism audit.
-  Superseded by `archive/ENFORCEMENT-WHISPER-CONTENT-AUDIT.md` (newer, more
+- `../pi-braid-evaluation/docs-archive/WHISPER-AND-LOGGING-AUDIT.md` — delivery-mechanism audit.
+  Superseded by `../pi-braid-evaluation/docs-archive/ENFORCEMENT-WHISPER-CONTENT-AUDIT.md` (newer, more
   thorough) plus [§3 DR-C-1](#dr-c-1) finding the 20+ `ctx.whisper`
   contract violation.
 
@@ -117,7 +117,7 @@ state** so we don't redo work.
 | "37 callsites of `sendTrackedMessage`" | archive/ENFORCEMENT-WHISPER-CONTENT-AUDIT.md (3 days later) says "33+". Cross-doc number drift; the lower is more current. |
 | "Two delivery APIs" framing | True but incomplete — DR-C-1 found a **third path**: `ctx.whisper?.()` used 20+ times across heartbeat-scheduler and topic-drift, plus monkey-patched in heartbeat-scheduler/index.ts:209-273. The audit's contract ("sendTrackedMessage is the only path") is violated in practice. |
 
-### 2.5 Stale / contradicted from `archive/STATE-POLICY.md`
+### 2.5 Stale / contradicted from `../pi-braid-evaluation/docs-archive/STATE-POLICY.md`
 
 | Item | Stale / contradicted because |
 |---|---|
@@ -134,9 +134,9 @@ state** so we don't redo work.
 
 | Doc | Status |
 |---|---|
-| `archive/ENFORCEMENT-WHISPER-CONTENT-AUDIT.md` (2026-06-17) | Authoritative for this round. All 15 proposals in §7 are valid and reproduced in this ROADMAP as [§4](#enforcement-whisper-content-audit-7-proposals). |
-| `archive/CODE-QUALITY-REMEDIATION-PLAN.md` (2026-06-17) | Authoritative for what's been done in the 6 remediation rounds. |
-| `archive/ARXIV-CITATIONS-AUDIT.md` (2026-06-15) | All 7 citations verified; no changes needed. |
+| `../pi-braid-evaluation/docs-archive/ENFORCEMENT-WHISPER-CONTENT-AUDIT.md` (2026-06-17) | Authoritative for this round. All 15 proposals in §7 are valid and reproduced in this ROADMAP as [§4](#enforcement-whisper-content-audit-7-proposals). |
+| `../pi-braid-evaluation/docs-archive/CODE-QUALITY-REMEDIATION-PLAN.md` (2026-06-17) | Authoritative for what's been done in the 6 remediation rounds. |
+| `../pi-braid-evaluation/docs-archive/ARXIV-CITATIONS-AUDIT.md` (2026-06-15) | All 7 citations verified; no changes needed. |
 | `test-arxiv-citations.mjs` | Already in place per AR-§"Automated check". |
 | `test-no-console-outside-logger.mjs` | The WHISPER-AND-LOGGING-AUDIT finding it pins is still valid (0 raw `console.*` outside logger). |
 
@@ -218,10 +218,10 @@ and `getExtensionState(ctx, "context-lifecycle-detector", ...)`. The
 
 Future contributor reading AGENTS.md will see "4" on line 146 (the
 lint-test description) and "27" on line 133 (the audit history). Same
-self-contradiction in `docs/archive/archive/STATE-POLICY.md:63`.
+self-contradiction in `../pi-braid-evaluation/docs-archive/STATE-POLICY.md:63`.
 
 Fix: update line 146 to "asserts that the 27 documented exceptions are the
-only ones." Fix `archive/archive/STATE-POLICY.md:63` to match.
+only ones." Fix `../pi-braid-evaluation/docs-archive/STATE-POLICY.md:63` to match.
 
 #### DR-C-4. Timer extension closure-captures `sessionId` and `poller` as single-instance state
 
@@ -520,7 +520,7 @@ Conflates project with session. Use `getSessionIdSafe(ctx) ?? ctx.cwd`.
 All 15 items from the ENFORCEMENT-WHISPER-CONTENT-AUDIT §7 are valid and
 current. Reproduced here for the consolidated roadmap. For full context
 (inventory of all 35 whisper templates, supporting structures, dedup
-system), see `docs/archive/ENFORCEMENT-WHISPER-CONTENT-AUDIT.md`.
+system), see `../pi-braid-evaluation/docs-archive/ENFORCEMENT-WHISPER-CONTENT-AUDIT.md`.
 
 ### 4.1 EW-7.1. Fix `enforcement_violation → tool_error` amplification — HIGH / EASY
 
@@ -685,7 +685,7 @@ replacement; the work is broken up across the relevant call sites.
 
 ### 5.2 Cost and caching open questions
 
-From `archive/CODE-QUALITY-REMEDIATION-PLAN.md`:
+From `../pi-braid-evaluation/docs-archive/CODE-QUALITY-REMEDIATION-PLAN.md`:
 
 - **Q16: Tier 2 cost budget.** What's the per-turn LLM spend limit? Not
   measured. Should be analyzed before the remaining 14 A+B conversions
@@ -726,7 +726,7 @@ The line counts in the original Q13 doc are stale; see [§2.2](#22-stale-from-q1
 | # | Item | Effort | Files |
 |---|---|---|---|
 | P1-1 | [DR-C-2](#dr-c-2) migrate `_policyState`/`_detectorState` to per-session | Medium | `context-lifecycle/index.ts:78-79` + state.ts |  ✅ Shipped (migration completed per code comment at index.ts:75-78, `policyEngine` and `detector` are now per-session fields) |
-| P1-2 | [DR-C-3](#dr-c-3) fix AGENTS.md self-contradiction (line 146) | Easy | `lib/state/AGENTS.md`, `docs/archive/STATE-POLICY.md` |  ✅ Shipped (verified no-op in v1.3 — all three sources already say "27") |
+| P1-2 | [DR-C-3](#dr-c-3) fix AGENTS.md self-contradiction (line 146) | Easy | `lib/state/AGENTS.md`, `../pi-braid-evaluation/docs-archive/STATE-POLICY.md` |  ✅ Shipped (verified no-op in v1.3 — all three sources already say "27") |
 | P1-3 | [DR-C-4](#dr-c-4) document or migrate timer closure-captured state | Medium | `timer/index.ts:347-465` |  ✅ Shipped in v3.2 |
 | P1-4 | [EW-7.3](#43-ew-73-apply-braidsuppressnudges-consistently--high--easy) apply `braid.suppressNudges` consistently | Medium | `lib/utils/injection-tracker.ts:232` (wrapper) |  ✅ Shipped in v2.3 |
 | P1-5 | [EW-7.2](#42-ew-72-wire-up-the-14-unwired-nudgetype-values--high--easy) wire up or delete 14 unwired NudgeTypes | Medium | `nudge-manager.ts` + 4 wired call sites; 9 deleted |  ✅ Shipped in v3.2 |
@@ -797,7 +797,7 @@ spec'd at the architecture/proposal level but blocked on user input.
 1. **Update `CASTS-AUDIT.md`** to also count `as ToolDefinition` casts.
    The current "4 real casts" is incorrect — actual count is 10. (DR-H-1)
 
-2. **Update `archive/STATE-POLICY.md` and `src/lib/state/AGENTS.md`** to use a
+2. **Update `../pi-braid-evaluation/docs-archive/STATE-POLICY.md` and `src/lib/state/AGENTS.md`** to use a
    consistent exception count (27). Currently three places disagree.
    (DR-C-3)
 
@@ -821,7 +821,7 @@ spec'd at the architecture/proposal level but blocked on user input.
 
 7. **Reconcile the three audit counts** for `sendTrackedMessage`
    callsites. The numbers in `WHISPER-AND-LOGGING-AUDIT.md` (37) and
-   `archive/ENFORCEMENT-WHISPER-CONTENT-AUDIT.md` (33+) disagree with a current
+   `../pi-braid-evaluation/docs-archive/ENFORCEMENT-WHISPER-CONTENT-AUDIT.md` (33+) disagree with a current
    grep (~23). Pick one canonical count and update all docs.
 
 8. **Update cross-references** in the following files to point to
@@ -829,11 +829,11 @@ spec'd at the architecture/proposal level but blocked on user input.
    - `AGENTS.md` (root) — child DOX index
    - `CHANGELOG.md` — historical reference to `docs/TOOL-INVENTORY-AUDIT.md` (left as-is, it's a release-time record)
    - `test/runtime/lib/test-no-console-outside-logger.mjs:11` — comment
-   - `docs/archive/ENFORCEMENT-WHISPER-CONTENT-AUDIT.md` — 4 references to
-     `docs/archive/WHISPER-AND-LOGGING-AUDIT.md` (now in archive)
-   - `docs/archive/STATE-POLICY.md` — Q13 reference (now archived) + the "4
+   - `../pi-braid-evaluation/docs-archive/ENFORCEMENT-WHISPER-CONTENT-AUDIT.md` — 4 references to
+     `../pi-braid-evaluation/docs-archive/WHISPER-AND-LOGGING-AUDIT.md` (now in archive)
+   - `../pi-braid-evaluation/docs-archive/STATE-POLICY.md` — Q13 reference (now archived) + the "4
      documented exceptions" bug (corrected to 27)
-   - `docs/archive/CODE-QUALITY-REMEDIATION-PLAN.md` — 4 references to archived docs
+   - `../pi-braid-evaluation/docs-archive/CODE-QUALITY-REMEDIATION-PLAN.md` — 4 references to archived docs
 
 9. **[DR-NEW-DOC-DISCIPLINE] Doc discipline layer** (shipped in v3.1).
    Every doc in `docs/`, every `src/**/AGENTS.md`, and every top-level
@@ -881,7 +881,7 @@ spec'd at the architecture/proposal level but blocked on user input.
       the import-path change. Note that any out-of-tree consumer of
       `lib/ai/llm-call.ts` is unaffected (the public API of
       `callLlm` does not change).
-    - [x] Reconcile `docs/archive/HOOKS-AND-WHISPERS-AUDIT.md` — currently
+    - [x] Reconcile `../pi-braid-evaluation/docs-archive/HOOKS-AND-WHISPERS-AUDIT.md` — currently
       marked `forward-looking`. Once the port lands, change the
       `llm-call.ts` row in the LLM call patterns table from
       `streamSimple` (forward-looking) to `completeSimple` (current),
@@ -1108,7 +1108,7 @@ the heartbeat-scheduler monkey-patch to be safe.
   P2-class effort (would need per-extension review).
 
   **P1-2 (DR-C-3) verified no-op.** The v1.0 ROADMAP
-  described `AGENTS.md:146` and `archive/archive/STATE-POLICY.md:63` as
+  described `AGENTS.md:146` and `../pi-braid-evaluation/docs-archive/STATE-POLICY.md:63` as
   saying "4 documented exceptions" while the actual count
   is 27. **The "4" text does not exist in the current
   files.** AGENTS.md:133, AGENTS.md:146, and
@@ -1840,7 +1840,7 @@ the heartbeat-scheduler monkey-patch to be safe.
      `>=0.80.0` for consistency (no API breakage in their consumed
      surface).
 
-  3. `docs/archive/HOOKS-AND-WHISPERS-AUDIT.md` — fixed two factual errors
+  3. `../pi-braid-evaluation/docs-archive/HOOKS-AND-WHISPERS-AUDIT.md` — fixed two factual errors
      the discipline layer surfaced:
      - Line 60: changed "Wraps `pi.getModel()` + `streamSimple`.
        **Broken on pi-ai v0.80.**" to accurate text describing
@@ -1870,7 +1870,7 @@ the heartbeat-scheduler monkey-patch to be safe.
 
   - **The `Models`-instance refactor.** Braid has no `Models`
     instance today — it uses `pi.getModel()` (per
-    `archive/HOOKS-AND-WHISPERS-AUDIT.md` row 60) and calls
+    `../pi-braid-evaluation/docs-archive/HOOKS-AND-WHISPERS-AUDIT.md` row 60) and calls
     `completeSimple` directly. Adopting `Models.completeSimple()`
     means threading a `Models` instance through every LLM
     consumer. This is a real refactor and is tracked as a separate
@@ -2447,9 +2447,9 @@ actionable for a future sprint.
 - **Future revisions:** bump when P0 ships; when half of P1 ships; etc.
 
 This document supersedes the actionable sections of the archived audits.
-The remaining active documents (`archive/ENFORCEMENT-WHISPER-CONTENT-AUDIT.md`,
-`archive/CODE-QUALITY-REMEDIATION-PLAN.md`, `FRAGILE-HEURISTICS-INVENTORY.md`,
-`archive/STATE-POLICY.md`, `archive/ARXIV-CITATIONS-AUDIT.md`) retain their full content
+The remaining active documents (`../pi-braid-evaluation/docs-archive/ENFORCEMENT-WHISPER-CONTENT-AUDIT.md`,
+`../pi-braid-evaluation/docs-archive/CODE-QUALITY-REMEDIATION-PLAN.md`, `FRAGILE-HEURISTICS-INVENTORY.md`,
+`../pi-braid-evaluation/docs-archive/STATE-POLICY.md`, `../pi-braid-evaluation/docs-archive/ARXIV-CITATIONS-AUDIT.md`) retain their full content
 as historical/reference material.
 
 ---

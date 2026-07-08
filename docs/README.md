@@ -13,28 +13,29 @@
 | [`FRAGILE-HEURISTICS-INVENTORY.md`](FRAGILE-HEURISTICS-INVENTORY.md) | Full 76-heuristic catalog classified A/B/C/D. 14 of 29 A+B flagged items remain for LLM replacement. | 2026-06-14 |
 | [`P0-B-CRITIC-CONSOLIDATION.md`](P0-B-CRITIC-CONSOLIDATION.md) | Critic consolidation inventory and plan. 1 implementation remaining (standalone critics). | 2026-07-02 |
 
-## Archived documents (in `archive/`)
+## Archived documents (moved to `../pi-braid-evaluation/docs-archive/`)
 
-These are preserved for historical reference only. Their actionable
-content has been folded into ROADMAP.md or is otherwise complete.
-See the archive notice at the top of each file.
+Historical auditing and proposals, moved to the evaluation project for reference.
+All actionable content has been folded into ROADMAP.md.
 
 | Doc | Why archived | Replaced by |
 |---|---|---|
-| `archive/CASTS-AUDIT.md` | Audit missed 6 `as ToolDefinition` casts | ROADMAP §3.2 DR-H-1 |
-| `archive/TOOL-INVENTORY-AUDIT.md` | Most cut/merge recommendations shipped | ROADMAP §2.1, P3-24 |
-| `archive/Q13-SPLIT-INDEX-STATUS.md` | Deferral decision still in effect but sizes stale | ROADMAP §2.2, P2-10 |
-| `archive/WHISPER-AND-LOGGING-AUDIT.md` | Superseded by enforcement whisper audit | ROADMAP §2.4, DR-C-1 |
-| `archive/P2-10-LARGE-FILE-DECOMPOSITION.md` | All 4 file splits shipped | ROADMAP §2.2 |
-| `archive/CODE-QUALITY-REMEDIATION-PLAN.md` | Complete record — all 6 remediation rounds shipped | ROADMAP (CR-N items) |
-| `archive/STATE-POLICY.md` | Design narrative; operational policy at `src/lib/state/AGENTS.md` | `src/lib/state/AGENTS.md` |
-| `archive/ENFORCEMENT-WHISPER-CONTENT-AUDIT.md` | Full catalog preserved; 15 EW-7 proposals tracked in ROADMAP §4 | ROADMAP §4 |
-| `archive/HOOKS-AND-WHISPERS-AUDIT.md` | Completed event/whisper mapping | (code is source of truth) |
-| `archive/ARXIV-CITATIONS-AUDIT.md` | All 7 citations verified, no changes needed | `test/test-arxiv-citations.mjs` |
-| `archive/DOCUMENTATION-REVIEW-PROPOSAL.md` | Proposal doc; items tracked via subsequent sessions | ROADMAP + doc sessions |
-| `archive/RESEARCH-INTEGRATION-TESTING-GAP.md` | Research finding; key insight addressed directly | (code is source of truth) |
-| `archive/SELF-EVOLUTION-PROPOSAL.md` | Research-backed proposals; no committed workstream | (research reference) |
-| `archive/CONTEXT-MANAGEMENT-IMPROVEMENTS.md` | All implementable context_compress features shipped | `context_compress` tool |
+| `docs-archive/CASTS-AUDIT.md` | Audit missed 6 `as ToolDefinition` casts | ROADMAP §3.2 DR-H-1 |
+| `docs-archive/TOOL-INVENTORY-AUDIT.md` | Most cut/merge recommendations shipped | ROADMAP §2.1, P3-24 |
+| `docs-archive/Q13-SPLIT-INDEX-STATUS.md` | Deferral decision still in effect but sizes stale | ROADMAP §2.2, P2-10 |
+| `docs-archive/WHISPER-AND-LOGGING-AUDIT.md` | Superseded by enforcement whisper audit | ROADMAP §2.4, DR-C-1 |
+| `docs-archive/P2-10-LARGE-FILE-DECOMPOSITION.md` | All 4 file splits shipped | ROADMAP §2.2 |
+| `docs-archive/CODE-QUALITY-REMEDIATION-PLAN.md` | Complete record — all 6 remediation rounds shipped | ROADMAP (CR-N items) |
+| `docs-archive/STATE-POLICY.md` | Design narrative; operational policy at `src/lib/state/AGENTS.md` | `src/lib/state/AGENTS.md` |
+| `docs-archive/ENFORCEMENT-WHISPER-CONTENT-AUDIT.md` | Full catalog preserved; 15 EW-7 proposals tracked in ROADMAP §4 | ROADMAP §4 |
+| `docs-archive/HOOKS-AND-WHISPERS-AUDIT.md` | Completed event/whisper mapping | (code is source of truth) |
+| `docs-archive/ARXIV-CITATIONS-AUDIT.md` | All 7 citations verified, no changes needed | `test/test-arxiv-citations.mjs` |
+| `docs-archive/DOCUMENTATION-REVIEW-PROPOSAL.md` | Proposal doc; items tracked via subsequent sessions | ROADMAP + doc sessions |
+| `docs-archive/RESEARCH-INTEGRATION-TESTING-GAP.md` | Research finding; key insight addressed directly | (code is source of truth) |
+| `docs-archive/SELF-EVOLUTION-PROPOSAL.md` | Research-backed proposals; no committed workstream | (research reference) |
+| `docs-archive/CONTEXT-MANAGEMENT-IMPROVEMENTS.md` | All implementable context_compress features shipped | `context_compress` tool |
+
+> **Note:** Archived docs moved to `../pi-braid-evaluation/docs-archive/`. Preserved as-is for historical reference.
 
 ## How docs/ is organized
 
@@ -46,28 +47,16 @@ docs/
 ├── P0-B-CRITIC-CONSOLIDATION.md        ← critic consolidation (1 item remaining)
 └── archive/                            ← completed audits + shipped plans (preserved)
     ├── CASTS-AUDIT.md
-    ├── TOOL-INVENTORY-AUDIT.md
-    ├── Q13-SPLIT-INDEX-STATUS.md
-    ├── WHISPER-AND-LOGGING-AUDIT.md
-    ├── P2-10-LARGE-FILE-DECOMPOSITION.md
-    ├── CODE-QUALITY-REMEDIATION-PLAN.md
-    ├── STATE-POLICY.md
-    ├── ENFORCEMENT-WHISPER-CONTENT-AUDIT.md
-    ├── HOOKS-AND-WHISPERS-AUDIT.md
-    ├── ARXIV-CITATIONS-AUDIT.md
-    ├── CONTEXT-MANAGEMENT-IMPROVEMENTS.md
-    ├── DOCUMENTATION-REVIEW-PROPOSAL.md
-    ├── RESEARCH-INTEGRATION-TESTING-GAP.md
-    └── SELF-EVOLUTION-PROPOSAL.md
+    (moved to ../pi-braid-evaluation/docs-archive/)
 ```
 
 ## Conventions
 
 - **`docs/`** is a durable reference folder, NOT a DOX subtree. Each
   document is independent; there is no `AGENTS.md` here.
-- All cross-references between docs use relative paths. When archiving
-  a doc, update references in remaining docs (the convention is
-  `docs/archive/<name>` for archived, `docs/<name>` for active).
+- All cross-references between docs use relative paths. Archived docs
+  moved to `../pi-braid-evaluation/docs-archive/`. Update references in
+  remaining docs when moving.
 - Test files that cite archived docs should be updated to point to the
   new location OR to the ROADMAP if the citation is no longer
   relevant.

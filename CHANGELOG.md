@@ -786,7 +786,7 @@ silent regressions that were missed by typecheck and tests.
 
 ### Removed
 
-- **All Python** (11 files): 8 in `evaluation/`, 1 in `scripts/`,
+- **All Python** (11 files): 8 in `evaluation/` (moved to ../pi-braid-evaluation/), 1 in `scripts/`,
   2 in `test/`. The project is now pure JS/TS.
 - **22 skill files** moved to the separate `pi-braid-skills` package.
 - **31 nonsensical test files** (test-features, quick-benchmark,
@@ -794,7 +794,7 @@ silent regressions that were missed by typecheck and tests.
   that were testing nothing - either 0 real assertions, or assertions
   on file existence, or reimplementations of algorithms. Tests went
   from 68 → 34; all remaining are real regression tests.
-- **3 shell scripts** in `evaluation/` (duplicate `.mjs` versions).
+- **3 shell scripts** in `evaluation/` (moved to ../pi-braid-evaluation/, duplicate `.mjs` versions).
 - **`docs/TOOL-INVENTORY-AUDIT.md`** - a working document for the
   consolidation work, not durable documentation.
 - **`src/extensions/core/prompt-builder/preview.ts`** (184 lines) -

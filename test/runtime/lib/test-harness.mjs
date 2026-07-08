@@ -1,5 +1,5 @@
 /**
- * Runtime test for evaluation/test-harness.mjs
+ * Runtime test for the harness module (evaluation/test-harness.mjs, moved to ../pi-braid-evaluation/)
  * Tests extractCode, executeCode, and argument parsing without calling pi.
  */
 
