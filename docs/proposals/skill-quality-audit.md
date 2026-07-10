@@ -1,3 +1,5 @@
+<!-- status: forward-looking -->
+
 # Skill quality audit: tier-0 pipeline
 
 > **Status:** Proposal

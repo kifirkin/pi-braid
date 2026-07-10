@@ -1,3 +1,5 @@
+<!-- status: forward-looking -->
+
 # Skill discovery: semantic matching + usage signal
 
 > **Status:** Proposal
