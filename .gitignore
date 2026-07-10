@@ -34,5 +34,4 @@ pi-session-*
 
 # Session HTML exports
 pi-session-*.html
-*.html
 .DS_Store

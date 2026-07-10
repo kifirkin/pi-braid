@@ -19,7 +19,7 @@ Verify your environment:
 
 ```bash
 npm run typecheck   # tsc --noEmit, no output is success
-npm run test        # 81+ runtime tests
+npm run test        # 84 runtime tests
 npm run check:deps  # layer-boundary check
 npm run check:docs  # every .md has a status marker
 npm run check:doc-drift  # no API references in 'current' docs that aren't in code
@@ -34,7 +34,7 @@ npm run ci:check    # all of the above in one shot
 | --------------------- | ---------------------------------------- |
 | `npm run typecheck`   | TypeScript check (no emit)               |
 | `npm run build`       | Compile to `dist/`                       |
-| `npm run test`        | Build + run runtime tests                |
+| `npm run test`        | Build + run 84 runtime tests                |
 | `npm run lint`        | ESLint check                             |
 | `npm run format`      | Prettier formatting                      |
 | `npm run clean`       | Remove build artifacts                   |

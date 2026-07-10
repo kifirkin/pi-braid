@@ -202,7 +202,7 @@ cd pi-braid
 npm install
 npm run typecheck   # TypeScript check
 npm run build       # Compile to dist/
-npm run test        # Build + run 81 runtime tests
+npm run test        # Build + run 84 runtime tests
 npm run lint        # ESLint
 ```
 
