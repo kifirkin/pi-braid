@@ -6,11 +6,6 @@ dist/
 # TypeScript incremental build
 *.tsbuildinfo
 
-# Evaluation results (non-deterministic, machine-specific)
-evaluation/results/
-evaluation/results/**/results/
-evaluation/**/*.json
-
 # Test results
 test/runtime/results/
 

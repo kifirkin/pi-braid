@@ -4,7 +4,6 @@
 
 # Development/test (not for consumers)
 test/
-evaluation/
 scripts/
 
 # Internal config files (not for consumers)

@@ -50,7 +50,7 @@ The work is in a known-good state as of this writing.
 - **Why**: Catches "work done without marking complete" at session boundary
 
 ### Supporting files
-- `ARCHAEOLOGY-FINDINGS.md` — 457-line, 11-section archaeology report
+- `docs/ARCHAEOLOGY-FINDINGS.md` — 457-line, 11-section archaeology report
 - `docs/proposals/IMPROVEMENT-PROPOSALS.md` — 11 proposals across 4 tiers
 
 ## What just shipped (Sprint 2, 2 MI items)
@@ -132,7 +132,7 @@ The work is in a known-good state as of this writing.
 
 | Document | What it contains |
 |----------|-----------------|
-| `ARCHAEOLOGY-FINDINGS.md` | Full prompt evolution timeline, lost features, research findings, session archaeology |
+| `docs/ARCHAEOLOGY-FINDINGS.md` | Full prompt evolution timeline, lost features, research findings, session archaeology |
 | `docs/proposals/IMPROVEMENT-PROPOSALS.md` | 11 prioritized proposals with file paths, effort estimates, verification criteria |
 | `docs/ROADMAP.md` | Current actionable roadmap (all P0 shipped, P1/P2/P3 remaining) |
 | `AGENTS.md` (root) | Binding work contract; read first |

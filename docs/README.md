@@ -9,8 +9,9 @@
 | Doc | Purpose | Last update |
 |---|---|---|
 | [`SETUP.md`](SETUP.md) | **Canonical setup reference for braid users.** Install paths (5 options), skills setup, full config schema, module toggling, storage, troubleshooting. | 2026-07-02 |
-| [`ROADMAP.md`](ROADMAP.md) | **Primary actionable roadmap.** Consolidated improvement list with remaining P0-P3 items. Archived proposals and completed audits live in `archive/`. | 2026-06-30 |
+| [`ROADMAP.md`](ROADMAP.md) | **Primary actionable roadmap.** Consolidated improvement list. Archived proposals moved to `../pi-braid-evaluation/docs-archive/`. | 2026-06-30 |
 | [`FRAGILE-HEURISTICS-INVENTORY.md`](FRAGILE-HEURISTICS-INVENTORY.md) | Full 76-heuristic catalog classified A/B/C/D. 14 of 29 A+B flagged items remain for LLM replacement. | 2026-06-14 |
+| [`ARCHAEOLOGY-FINDINGS.md`](ARCHAEOLOGY-FINDINGS.md) | Full prompt evolution timeline, lost features, research findings, session archaeology. | 2026-07-06 |
 | [`P0-B-CRITIC-CONSOLIDATION.md`](P0-B-CRITIC-CONSOLIDATION.md) | Critic consolidation inventory and plan. 1 implementation remaining (standalone critics). | 2026-07-02 |
 
 ## Archived documents (moved to `../pi-braid-evaluation/docs-archive/`)
@@ -43,11 +44,15 @@ All actionable content has been folded into ROADMAP.md.
 docs/
 ├── README.md                           ← you are here
 ├── ROADMAP.md                          ← start here
+├── SETUP.md                            ← canonical setup reference
 ├── FRAGILE-HEURISTICS-INVENTORY.md     ← heuristic catalog (14 items remaining)
-├── P0-B-CRITIC-CONSOLIDATION.md        ← critic consolidation (1 item remaining)
-└── archive/                            ← completed audits + shipped plans (preserved)
-    ├── CASTS-AUDIT.md
-    (moved to ../pi-braid-evaluation/docs-archive/)
+├── P0-B-CRITIC-CONSOLIDATION.md        ← critic consolidation
+├── ARCHAEOLOGY-FINDINGS.md             ← prompt evolution, research findings
+├── enforcement/                        ← enforcement audit docs
+│   └── D-57-CLOSURE.md
+├── proposals/                          ← improvement proposals
+│   └── IMPROVEMENT-PROPOSALS.md
+└── (archived audits moved to ../pi-braid-evaluation/docs-archive/)
 ```
 
 ## Conventions
