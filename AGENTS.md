@@ -44,9 +44,26 @@ The `module` field is set on sub-extensions that should be toggled as a group
 ```bash
 npm run typecheck  # TypeScript check only
 npm run build      # Compile to dist/
-npm run test       # Build + run runtime tests
+npm run test       # Build + run 84 runtime tests
 npm run clean      # Remove dist/ and .tsbuildinfo
+npm run check:docs && npm run check:doc-drift  # Doc discipline check
+memory action=recall_search query="braid"       # Surface past insights
+scratchpad action=continue                      # Resume goal + plan
 ```
+
+## Key Reference Docs
+
+| Doc | What it contains |
+|-----|-----------------|
+| `docs/SETUP.md` | First-time setup, install paths, troubleshooting |
+| `docs/ROADMAP.md` | Current actionable roadmap (2 active items) |
+| `docs/HISTORY.md` | Consolidated project history, shipped sprints, archived roadmap |
+| `docs/ARCHAEOLOGY-FINDINGS.md` | Prompt evolution timeline, lost features, research findings |
+| `docs/FRAGILE-HEURISTICS-INVENTORY.md` | 76-heuristic catalog (14 A+B items remain) |
+| `src/extensions/core/prompt-builder/identity.ts` | All 8 invariants + interaction style |
+| `src/extensions/core/prompt-builder/behavior-modes.ts` | 8 behavior modes (all wired) |
+| `src/extensions/enforcement/signals.ts` | `determineContrastMode()` — 6 priority tiers |
+| `../pi-braid-evaluation/docs-archive/` | Archived audits and historical proposals |
 
 ## State Management
 

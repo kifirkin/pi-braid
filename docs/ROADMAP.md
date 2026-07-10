@@ -22,6 +22,30 @@
   `^0.80` peers. Ensure version compatibility before tagging a new
   braid release.
 
+### P3 — investigation: verification judge false positive on finalize
+
+- [ ] **Analyze enforcement whisper verification judge false-positive pattern.**
+  The verification judge fires after `finalize()`, flagging the agent's
+  text response as "unverified" because the verification evidence lives
+  in the tool call log, not in the response text. This is a recurring
+  false positive.
+  
+  **Root cause**: The verification judge checks the *text response* for
+  verification claims, but the agent's verification is done via tool
+  calls (`npm run test`, `npm run typecheck`) whose results are in the
+  tool execution trace, not in the closing text.
+  
+  **Possible solutions to investigate**:
+  1. Verification judge should check the tool call log for
+     `verify`/`bash` with test commands rather than the text response
+  2. Agent should include a verification evidence block in the text
+     response after finalize
+  3. Suppress verification judge on finalize-d turns (the tool is
+     designed for this)
+  4. Make verification judge a configurable behavior mode
+  
+  **Scope**: enforcement whisper, verification judge, finalize tool
+
 ## Companion documents
 
 - [`docs/FRAGILE-HEURISTICS-INVENTORY.md`](FRAGILE-HEURISTICS-INVENTORY.md) — 76-heuristic catalog (14 A+B items remain for LLM replacement)
