@@ -67,6 +67,8 @@
   **Scope**: finalize tool, scratchpad handler, event bus types,
   max-power model routing in callLlm
   
+  **Proposal**: `docs/proposals/finalization-practices.md`
+  
   **Root cause**: The verification judge checks the *text response* for
   verification claims, but the agent's verification is done via tool
   calls (`npm run test`, `npm run typecheck`) whose results are in the
