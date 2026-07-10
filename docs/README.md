@@ -9,11 +9,8 @@
 | Doc | Purpose | Last update |
 |---|---|---|
 | [`SETUP.md`](SETUP.md) | **Canonical setup reference for braid users.** Install paths (5 options), skills setup, full config schema, module toggling, storage, troubleshooting. | 2026-07-02 |
-| [`ROADMAP.md`](ROADMAP.md) | **Primary actionable roadmap.** Consolidated improvement list. Archived proposals moved to `../pi-braid-evaluation/docs-archive/`. | 2026-06-30 |
-| [`FRAGILE-HEURISTICS-INVENTORY.md`](FRAGILE-HEURISTICS-INVENTORY.md) | Full 76-heuristic catalog classified A/B/C/D. 14 of 29 A+B flagged items remain for LLM replacement. | 2026-06-14 |
-| [`ARCHAEOLOGY-FINDINGS.md`](ARCHAEOLOGY-FINDINGS.md) | Full prompt evolution timeline, lost features, research findings, session archaeology. | 2026-07-06 |
-| [`HISTORY.md`](HISTORY.md) | Consolidated project history, sprint milestones, archived roadmap content. | 2026-07-10 |
-| [`P0-B-CRITIC-CONSOLIDATION.md`](P0-B-CRITIC-CONSOLIDATION.md) | Critic consolidation inventory and plan. 1 implementation remaining (standalone critics). | 2026-07-02 |
+| [`ROADMAP.md`](ROADMAP.md) | **Active items only** (3 items: P1 compat, P3 release, P3 investigation). | 2026-07-10 |
+| [`HISTORY.md`](HISTORY.md) | Consolidated project history — sprints, archived roadmap, fragile heuristics, critic consolidation, archaeology, proposals, D-57. | 2026-07-10 |
 
 ## Archived documents (moved to `../pi-braid-evaluation/docs-archive/`)
 
@@ -44,14 +41,9 @@ All actionable content has been folded into ROADMAP.md.
 ```
 docs/
 ├── README.md                           ← you are here
-├── ROADMAP.md                          ← active items (2 remaining)
+├── ROADMAP.md                          ← active items (3 remaining)
 ├── SETUP.md                            ← canonical setup reference
-├── HISTORY.md                          ← shipped sprints, archived roadmap
-├── FRAGILE-HEURISTICS-INVENTORY.md     ← heuristic catalog (14 items remaining)
-├── P0-B-CRITIC-CONSOLIDATION.md        ← critic consolidation
-├── ARCHAEOLOGY-FINDINGS.md             ← prompt evolution, research findings
-├── enforcement/D-57-CLOSURE.md         ← enforcement audit closure
-├── proposals/IMPROVEMENT-PROPOSALS.md  ← improvement proposals
+├── HISTORY.md                          ← sprints, archived roadmap, research
 └── (archived audits → ../pi-braid-evaluation/docs-archive/)
 ```
 

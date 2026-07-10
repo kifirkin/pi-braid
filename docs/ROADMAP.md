@@ -48,8 +48,7 @@
 
 ## Companion documents
 
-- [`docs/FRAGILE-HEURISTICS-INVENTORY.md`](FRAGILE-HEURISTICS-INVENTORY.md) — 76-heuristic catalog (14 A+B items remain for LLM replacement)
-- [`docs/ARCHAEOLOGY-FINDINGS.md`](ARCHAEOLOGY-FINDINGS.md) — prompt evolution timeline, research findings
+- [`docs/HISTORY.md`](HISTORY.md) — consolidated history including fragile heuristics, archaeology, proposals, and D-57
 - `../pi-braid-evaluation/docs-archive/` — all completed audits and shipped proposals (historical reference)
 
 ## History

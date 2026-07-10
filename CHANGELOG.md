@@ -210,7 +210,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   call). New `src/lib/ai/consolidated-claim-critic.ts` replaces three
   separate binary critics with a single multi-label LLM call. Verified
   consolidated output: coverage, divergence, completeness verdicts in
-  one pass. Research doc: `docs/P0-B-CRITIC-CONSOLIDATION.md`.
+  one pass. Research doc: `docs/HISTORY.md` (Critic Consolidation section).
 - **FRAMEWORK_CONFIG_FIRST invariant** in prompt builder. When both
   `frameworkConfig` and `settings.json` define the same setting,
   frameworkConfig wins. Documented in identity.ts as an invariant.

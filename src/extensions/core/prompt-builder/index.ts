@@ -347,7 +347,7 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       //     that pass the checklist but test nothing). Origin: 2026-07-06
       //     user feedback. Framed as an identity invariant rather than a
       //     directive to avoid the compliance theater trap (see
-      //     ARCHAEOLOGY-FINDINGS.md section 4).
+      //     docs/HISTORY.md § Archaeology section 4).
       simpleSection("invariant-behavioral-verification", BEHAVIORAL_VERIFICATION),
 
       // 8. Interaction style

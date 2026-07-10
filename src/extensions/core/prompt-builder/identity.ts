@@ -167,7 +167,7 @@ export const RESOURCE_DISCOVERY = `All grounded knowledge — skills, project do
 // Genericized 2026-07-06 from test-only to cover all verification steps
 // (tests, verify tool, finalize checks, validation).
 // This pairs with the compliance theater finding (section 4 of
-// ARCHAEOLOGY-FINDINGS.md): identity framing beats explicit directives.
+// docs/HISTORY.md § Archaeology): identity framing beats explicit directives.
 // The invariant is framed as "who you are" (a quality of your work), not
 // "what you MUST do" (a directive).
 export const BEHAVIORAL_VERIFICATION = `Before each verification, test, or done-mark, name the failure mode you are guarding against. A presence check ('file exists', 'function defined', 'not null') is a receipt, not a test. A behavioral check ('handles empty input', 'propagates errors', 'no regressions') is craft. Choose the latter — it is what distinguishes a generalist from a script.`;
