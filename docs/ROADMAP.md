@@ -29,6 +29,43 @@
   text response as "unverified" because the verification evidence lives
   in the tool call log, not in the response text. This is a recurring
   false positive.
+
+### P3 — investigation: finalization practices + scratchpad auto-cleanup
+
+- [ ] **Design better finalization practices.** Current issues:
+  
+  1. **Scratchpad not cleaned on finalize** — `finalize` records an episode
+     and triggers consolidation, but doesn't clear done items from the
+     scratchpad. Stale plan items accumulate until someone notices. The
+     fix: `finalize` should call `handleClearDone(pad)` on the scratchpad
+     state after recording to memory. It already has access to the
+     scratchpad extension state (reads `taskStore` for auto-proceed).
+  
+  2. **Max-power model for automatic operations** — Finalize, consolidation,
+     MARS reflection, SOP extraction, and memory consolidation are
+     automatic system operations that run once per task, not once per turn.
+     They should use the max-power model (expensive, thorough, high quality)
+     because:
+     - They produce episodes and SOPs stored in memory and reused across
+       sessions — quality directly impacts future retrieval
+     - They run ~1/task, not ~10/turn — cost is amortized
+     - The agent's per-turn tool calls (think, verify, scratchpad) are the
+       hot path and should use the session model (cheap, fast)
+  
+     Currently, `finalize` uses the session model via `callLlm` (which
+     resolves to the session model). The `recordToMemory` function uses
+     `addEpisode` and `addPrinciple` which are local operations, but
+     `extractStrategicSOP` and `extractFunctionalSOP` are trivial
+     implementations that don't use LLM at all.
+  
+  3. **Event-driven scratchpad cleanup** — Instead of finalize calling
+     scratchpad internals directly (tight coupling), emit a
+     `TaskCompletedEvent` on the event bus. The scratchpad extension
+     listens and auto-archives done items. This is the cleaner
+     architectural fix.
+  
+  **Scope**: finalize tool, scratchpad handler, event bus types,
+  max-power model routing in callLlm
   
   **Root cause**: The verification judge checks the *text response* for
   verification claims, but the agent's verification is done via tool
