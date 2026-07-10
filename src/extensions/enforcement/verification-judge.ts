@@ -27,10 +27,16 @@ Rules:
 - fail = work doesn't match, significant shortcuts, or claims without evidence
 - Be strict - the agent should verify changes before declaring done
 - If user request is missing or empty, evaluate the agent's last response and tool execution log to infer the task. Check: did the agent make concrete changes? Did it verify them? Does the response have specific claims without evidence?
+- **CRITICAL: Verification evidence is in the TOOL EXECUTION LOG, not just the text response.**
+  The agent runs tests, typechecks, and builds via bash tool calls. Look for these commands
+  in the tool log: \`npm test\`, \`npm run typecheck\`, \`npm run build\`, \`tsc\`, \`jest\`, \`vitest\`,
+  or any output containing "PASS", "FAIL", "error TS", "tests passed", "typecheck clean".
+  If the tool log shows successful verification commands, the work IS verified even if the
+  text response doesn't mention it.
 
 Examples:
 {"verdict":"fail","confidence":90,"summary":"Agent deleted auth middleware without running tests","issues":[{"severity":"critical","category":"unverified","description":"No test run after deleting src/auth/middleware.ts"}],"unverifiedChanges":true}
-{"verdict":"pass","confidence":85,"summary":"Agent implemented the requested sort function and verified with test suite","issues":[],"unverifiedChanges":false}
+{"verdict":"pass","confidence":92,"summary":"Agent implemented the requested sort function and ran \`npm test\` (tool log shows 81/81 tests passing) — verification evidence is in the tool execution trace, not the response text","issues":[],"unverifiedChanges":false}
 {"verdict":"warn","confidence":70,"summary":"Agent made changes and claims they work but didn't run verification","issues":[{"severity":"high","category":"unverified","description":"edit/write tool used but no test or validation command run"}],"unverifiedChanges":true}`;
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";

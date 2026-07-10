@@ -30,6 +30,38 @@ import { MESSAGE_END } from "../../../lib/core/event-names.js";
 
 const log = createLogger("enforcement:message-end");
 
+/**
+ * Scan tool outputs for evidence that verification was run.
+ * Checks for test/typecheck/build commands in the turn history tool outputs.
+ * More granular than just checking if bash was ever used.
+ */
+function checkToolOutputsForVerification(state: any): boolean {
+  const VERIFICATION_PATTERNS = [
+    /tests?\s+passed/i,
+    /tests?\s+fail/i,
+    /error\s+TS\d+/i,
+    /typecheck\s+clean/i,
+    /\d+\/\d+\s+tests?/i,
+    /PASS/i,
+    /FAIL/i,
+    /npm\s+(test|run\s+(test|typecheck|build|check))/i,
+    /vitest/i,
+    /jest/i,
+    /tsc\s+/i,
+    /all\s+checks?\s+passed/i,
+  ];
+
+  for (const [, turn] of state.turnHistory) {
+    const outputs = turn.toolOutputs || [];
+    for (const output of outputs) {
+      for (const pattern of VERIFICATION_PATTERNS) {
+        if (pattern.test(output)) return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function registerMessageEndHandler(pi: ExtensionAPI): void {
   onEvent(pi, MESSAGE_END, async (event: any, ctx: any) => {
     if (!getState(ctx).enforcementActive) return;
@@ -173,7 +205,9 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
 
     if (getState(ctx).verificationJudgeRunning) return;
 
-    const userHasBash = Array.from(getState(ctx).uniqueToolsUsed).includes("bash");
+    // Check tool outputs for verification evidence (test/typecheck/build commands)
+    // More granular than just checking if bash was ever used
+    const hasVerificationEvidence = checkToolOutputsForVerification(getState(ctx));
     const currentTurn = getState(ctx).currentTurn;
     const turnsSinceLastJudge = currentTurn - getState(ctx).lastVerificationJudgeTurn;
     const timeSinceLastJudge = Date.now() - getState(ctx).lastJudgeTime;
@@ -207,7 +241,7 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
         toolsUsed: Array.from(getState(ctx).uniqueToolsUsed),
         toolLog,
         hasCodeChanges: getState(ctx).hasCodeChanges,
-        hasVerification: userHasBash,
+        hasVerification: hasVerificationEvidence,
         lastResponse: fullContent,
         thinking: thinkingContent,
       };

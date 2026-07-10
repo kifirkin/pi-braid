@@ -12,6 +12,8 @@ import { createLogger } from "../../../../lib/core/logger.js";
 import { getLastVerification } from "./verify.js";
 import { addEpisode, addPrinciple } from "../../../memory/three-memory-stores/index.js";
 import { executeConsolidation } from "../../../../lib/events/consolidation-channel.js";
+import { handleClearDone } from "../../../memory/scratchpad/handlers.js";
+import type { TaskScratchpad } from "../../../memory/scratchpad/types.js";
 
 const log = createLogger("finalize");
 
@@ -184,26 +186,43 @@ const finalizeSchema = Type.Object({
 });
 
 /**
- * Find the next pending task from scratchpad's task store.
- * Returns the first incomplete task, or null if none.
+ * Find the next pending task from scratchpad's plan items.
+ * Returns the first incomplete plan step, or null if none.
  */
-async function findNextWork(
+function findNextWork(
   ctx?: ExtensionContext,
-): Promise<{ id: string; description: string } | null> {
+): { id: string; description: string } | null {
   if (!ctx) return null;
 
   try {
-    const scratchpad = getExtensionState<any>(ctx, "scratchpad", () => null);
-    if (!scratchpad?.taskStore?.tasks) return null;
-
-    const pending = scratchpad.taskStore.tasks.find(
-      (t: any) => t.status === "pending" || t.status === "in_progress",
+    const cache = getExtensionState<{ pad: TaskScratchpad | null }>(
+      ctx, "scratchpad-cache", () => ({ pad: null }),
     );
+    if (!cache?.pad) return null;
+
+    const pending = cache.pad.plan.find((p) => p.doneTurn === 0);
     if (!pending) return null;
 
-    return { id: pending.id, description: pending.text || pending.description || pending.id };
+    return { id: pending.id, description: pending.text };
   } catch {
     return null;
+  }
+}
+
+/**
+ * Clear done items from scratchpad after successful finalize.
+ * Fire-and-forget: failures are logged but not surfaced.
+ */
+async function clearScratchpadDone(ctx: ExtensionContext): Promise<void> {
+  try {
+    const cache = getExtensionState<{ pad: TaskScratchpad | null }>(
+      ctx, "scratchpad-cache", () => ({ pad: null }),
+    );
+    if (cache?.pad) {
+      await handleClearDone(cache.pad);
+    }
+  } catch {
+    // best-effort
   }
 }
 
@@ -297,6 +316,11 @@ Run \`verify()\` again after fixing the issues, or set \`completed: true\` to fi
       // Fire-and-forget: record to memory asynchronously (don't block tool result on I/O)
       recordToMemory(_ctx, params.summary, params.completed).catch(() => {});
 
+      // Fire-and-forget: clear done items from scratchpad after successful finalize
+      if (_ctx && params.completed) {
+        clearScratchpadDone(_ctx).catch(() => {});
+      }
+
       const status = params.completed ? "Task completed" : "Task incomplete";
       const messages: string[] = [status, `Summary: ${params.summary}`];
 
@@ -304,7 +328,7 @@ Run \`verify()\` again after fixing the issues, or set \`completed: true\` to fi
         messages.push(`\nFollow-up needed: ${params.tasksRemaining.join(", ")}`);
       }
 
-      const nextWork = await findNextWork(_ctx);
+      const nextWork = findNextWork(_ctx);
       if (nextWork) {
         messages.push(`\n📋 **Next pending task:** ${nextWork.description}`);
         if (params.autoProceed) {
