@@ -32,12 +32,22 @@ import type { Api, Context, Model } from "@earendil-works/pi-ai";
 // "Temporary compatibility entrypoint". The forward-looking path is
 // `Models.completeSimple()` on a `createModels()` instance (models.d.ts:82).
 //
-// This module uses the lazily-initialized Models instance from
-// models-init.ts when available, falling back to the compat import.
-// When the compat subpath is removed upstream, delete the fallback import
-// and use getModels() exclusively.
+// We REMAIN on the compat import because custom providers (a0venice,
+// openrouter-custom) are registered via pi.registerProvider() which goes
+// through pi-core's modelRegistry, not the Models instance. The compat
+// path uses the same modelRegistry so it finds them. The Models instance
+// (created by initModels() in models-init.ts) has its own providers Map
+// and only contains built-in providers from pi-ai/providers/all.js.
+//
+// The Models instance DOES have a setProvider() method (models.d.ts:86)
+// and pi-ai exports createProvider() to build Provider objects. The
+// correct migration path is:
+//   1. Update pi-braid-providers to also call models.setProvider() with
+//      the same provider configs, using createProvider() from pi-ai.
+//   2. Once pi-braid-providers registers on the Models instance, delete
+//      the compat import and switch to getModels() exclusively.
+// See: src/lib/ai/AGENTS.md, docs/ROADMAP.md (P1 compat cleanup).
 import { completeSimple } from "@earendil-works/pi-ai/compat";
-import { getModelsInstance } from "../state/global-state.js";
 import { createLogger } from "../core/logger.js";
 
 const log = createLogger("llm-call");
@@ -70,38 +80,13 @@ const log = createLogger("llm-call");
 // module in the same process - which is fine for the test runner we
 // use (one process per .mjs file via spawnSync).
 
-/**
- * Get the current completeSimple implementation.
- * Prefers the Models instance (from models-init.ts) when available,
- * falling back to the compat import. This ensures forward-compatibility
- * when the compat subpath is removed upstream.
- *
- * The Models instance is created at startup by the extension loader
- * (loader.ts: initModels()). If it hasn't been initialized yet (e.g.,
- * during early module loading), the compat fallback is used.
- */
-/**
- * Get the current completeSimple implementation.
- * Prefers the Models instance (from models-init.ts) when available,
- * falling back to the compat import. This ensures forward-compatibility
- * when the compat subpath is removed upstream.
- */
-function getCompleteSimple(): typeof completeSimple {
-  const models = getModelsInstance();
-  if (models && typeof (models as any).completeSimple === "function") {
-    return (models as any).completeSimple.bind(models);
-  }
-  return completeSimple;
-}
-
-// The _completeSimple slot is a lazy getter that resolves on each call.
-// This allows the Models instance to be initialized after module load
-// (by loader.ts's initModels()) while still being used at runtime.
-// The test setter overrides it with a stub for behavioral testing.
+// The _completeSimple override slot is for test injection only.
+// Production code always uses the compat import (see the module-level
+// comment for why we stay on compat).
 let _completeSimpleOverride: typeof completeSimple | null = null;
 
 function _resolveCompleteSimple(): typeof completeSimple {
-  return _completeSimpleOverride ?? getCompleteSimple();
+  return _completeSimpleOverride ?? completeSimple;
 }
 
 /**
