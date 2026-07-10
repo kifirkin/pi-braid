@@ -188,8 +188,8 @@ See [docs/SETUP.md](docs/SETUP.md) § Skills for more.
 | [`AGENTS.md`](AGENTS.md)                     | Repository structure, DOX contract, conventions     |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md)         | Development setup, code style, PR workflow, release |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md)         | Active roadmap + shipped items                      |
-| [`docs/README.md`](docs/README.md)           | Reference index for `docs/`                         |
-| [`HANDOFF.md`](HANDOFF.md)                   | Fresh-session transfer document (refresh per session) |
+| [`docs/HISTORY.md`](docs/HISTORY.md)           | Consolidated project history, archived roadmap, research |
+| [`CHANGELOG.md`](CHANGELOG.md)                   | Fresh-session transfer document (refresh per session) |
 | [`CHANGELOG.md`](CHANGELOG.md)               | Release notes                                      |
 
 ---
