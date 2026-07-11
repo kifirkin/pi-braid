@@ -20,7 +20,6 @@
  */
 
 import { strict as assert } from "node:assert";
-import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -30,13 +29,6 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const { PER_SOURCE_CAP, PER_SOURCE_CAP_OVERRIDES, getPerSourceCap, tryWhisper, beginTurn, _resetForTests } = await import(
   "../../../dist/lib/enforcement/turn-dedup.js"
 );
-
-assert.ok(
-  existsSync(join(ROOT, "src/lib/enforcement/turn-dedup.ts")),
-  "turn-dedup.ts must exist",
-);
-
-const src = readFileSync(join(ROOT, "src/lib/enforcement/turn-dedup.ts"), "utf-8");
 
 console.log("=== EW-7.13 per-source cap overrides ===\n");
 
@@ -122,22 +114,6 @@ test("non-override source still has cap = 2", () => {
     tryWhisper("high", "regular-source"),
     false,
     "3rd should be suppressed (default cap = 2)",
-  );
-});
-
-test("tryWhisper uses getPerSourceCap for critical priority too", () => {
-  // The source-level check verifies the function uses the override-aware
-  // cap. The runtime check above (5th test) covers non-critical. For
-  // critical, we just verify the source contains the right call.
-  assert.match(
-    src,
-    /if \(priority === "critical"\)[\s\S]*?getPerSourceCap\(source\)/,
-    "critical path must use getPerSourceCap(source)",
-  );
-  assert.match(
-    src,
-    /const sourceCap = getPerSourceCap\(source\);[\s\S]*?if \(sourceCount >= sourceCap\)/,
-    "non-critical path must use getPerSourceCap(source)",
   );
 });
 

@@ -224,27 +224,6 @@ const { classify } = await import(
 );
 assert.strictEqual(typeof classify, "function", "classify() is a function");
 
-// Verify the exported types exist via source inspection
-const { readFileSync } = await import("node:fs");
-const src = readFileSync(join(ROOT, "src", "lib", "ai", "text-classifier.ts"), "utf-8");
-
-assert.ok(src.includes("export interface ClassificationResult"), "ClassificationResult exported");
-assert.ok(src.includes("export interface ClassifierCriteria"), "ClassifierCriteria exported");
-assert.ok(src.includes("export interface ClassifierOptions"), "ClassifierOptions exported");
-
-// Verify the three-tier fallback structure exists
-assert.ok(src.includes("Tier 1:"), "Tier 1 comment present");
-assert.ok(src.includes("Tier 2:"), "Tier 2 comment present");
-assert.ok(src.includes("Tier 3:"), "Tier 3 comment present");
-
-// Verify latency logging
-assert.ok(src.includes("latencyMs"), "latencyMs in ClassificationResult");
-assert.ok(src.includes("${latency}ms"), "latency logging present");
-
-console.log("  [ok] classify() exports verified");
-console.log("  [ok] Three-tier fallback structure verified");
-console.log("  [ok] Latency logging verified");
-
 // ─── Summary ──────────────────────────────────────────────────────────────────
 
 console.log("\n======================================================");

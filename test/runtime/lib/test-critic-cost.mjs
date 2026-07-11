@@ -19,7 +19,6 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -175,18 +174,7 @@ describe("critic cost report (P3-25)", () => {
     assert.ok(md.includes("Cache hits: 0"));
   });
 
-  it("source-level: cost-report.ts exists with expected API", () => {
-    const costReportPath = join(ROOT, "src", "lib", "ai", "cost-report.ts");
-    assert.ok(existsSync(costReportPath), `${costReportPath} should exist`);
-    const src = readFileSync(costReportPath, "utf8");
-    assert.ok(src.includes("export function computeCriticCost"));
-    assert.ok(src.includes("export function formatCriticCostReport"));
-    assert.ok(src.includes("export const DEFAULT_PRICING"));
-    assert.ok(src.includes("export interface CriticPricing"));
-    assert.ok(src.includes("export interface CriticCostReport"));
-  });
-
-  it("source-level: DEFAULT_PRICING matches documented Sonnet-tier defaults", () => {
+  it("DEFAULT_PRICING matches documented Sonnet-tier defaults", () => {
     assert.equal(DEFAULT_PRICING.inputPer1kUsd, 0.003);
     assert.equal(DEFAULT_PRICING.outputPer1kUsd, 0.015);
   });

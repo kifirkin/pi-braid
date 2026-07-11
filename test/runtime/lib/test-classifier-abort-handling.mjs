@@ -62,22 +62,6 @@ function test(name, fn) {
     });
 }
 
-// ── Smoke: source files exist ────────────────────────────────────────────────
-
-await test("text-classifier.ts exists", () => {
-  assert.ok(
-    existsSync(join(ROOT, "src/lib/ai/text-classifier.ts")),
-    "text-classifier.ts must exist",
-  );
-});
-
-await test("sop-extractor.ts exists", () => {
-  assert.ok(
-    existsSync(join(ROOT, "src/lib/utils/sop-extractor.ts")),
-    "sop-extractor.ts must exist",
-  );
-});
-
 // ── Behavioral: classify() threads ctx.signal through to callLlm ─────────────
 //
 // We invoke classify() with a stubbed callLlm (via __setCompleteSimpleForTest).

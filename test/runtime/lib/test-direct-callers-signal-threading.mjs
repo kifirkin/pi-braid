@@ -40,7 +40,6 @@
  */
 
 import { strict as assert } from "node:assert";
-import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -66,66 +65,6 @@ function test(name, fn) {
 }
 
 // ── Smoke tests: files exist, key exports present ────────────────────────────
-//
-// These check the structural integrity of the signal-threading contract:
-// if a file is deleted or a key export is removed, the test fails.
-// They do NOT read function bodies (the fragile part the user
-// complained about).
-
-await test("input-polisher extension file exists", () => {
-  const path = join(ROOT, "src/extensions/core/input-polisher/index.ts");
-  assert.ok(existsSync(path), `input-polisher must exist at ${path}`);
-});
-
-await test("session-recall extension file exists", () => {
-  const path = join(ROOT, "src/extensions/memory/session-recall/index.ts");
-  assert.ok(existsSync(path), `session-recall must exist at ${path}`);
-});
-
-await test("verification-judge module file exists", () => {
-  const path = join(ROOT, "src/extensions/enforcement/verification-judge.ts");
-  assert.ok(existsSync(path), `verification-judge must exist at ${path}`);
-});
-
-await test("runVerificationJudge is exported (so register-message-end can import it)", () => {
-  const path = join(ROOT, "src/extensions/enforcement/verification-judge.ts");
-  assert.ok(existsSync(path), `verification-judge must exist at ${path}`);
-});
-
-await test("claim-tracker threads ctx.signal into callLlm (ESC abort)", () => {
-  // claim-tracker runs extractClaimsViaLLM on turn_end. Without
-  // ctx.signal threading, ESC leaks the LLM call until its 8s timeout.
-  // Same anti-pattern as input-polisher 9966c8ad, text-classifier, etc.
-  const path = join(ROOT, "src/lib/store/claim-tracker.ts");
-  const src = readFileSync(path, "utf-8");
-  const callLlmBlock = src.match(/callLlm\([\s\S]*?\}\);/);
-  assert.ok(callLlmBlock, "callLlm call not found in claim-tracker.ts");
-  assert.match(
-    callLlmBlock[0],
-    /ctx\.signal.*signal.*ctx\.signal|\.\.\.*ctx\.signal.*\{\s*signal:\s*ctx\.signal/,
-    "claim-tracker callLlm must thread ctx.signal via conditional spread pattern",
-  );
-});
-
-await test("runVerificationJudge signature accepts an optional signal (the signal-threading hook)", () => {
-  const path = join(ROOT, "src/extensions/enforcement/verification-judge.ts");
-  const src = readFileSync(path, "utf-8");
-  // The signature must accept signal as a parameter (either in
-  // options or directly). This is the API contract that lets
-  // callers thread ctx.signal into the judge call.
-  const fnMatch = src.match(
-    /export\s+async\s+function\s+runVerificationJudge\s*\([\s\S]*?\)\s*:/,
-  );
-  assert.ok(fnMatch, "runVerificationJudge declaration not found");
-  // Either `signal?: AbortSignal` directly or as part of an options
-  // object - we just need "signal" to be a parameter name somewhere.
-  assert.match(
-    fnMatch[0],
-    /\bsignal\b/,
-    "runVerificationJudge signature must reference a `signal` parameter (the threading hook)",
-  );
-});
-
 // ── Behavioral: runVerificationJudge threads signal into callLlm ─────────────
 //
 // This is the only extension whose signal-threading we can verify
