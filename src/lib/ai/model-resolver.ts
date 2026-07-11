@@ -9,6 +9,8 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Model, Api } from "@earendil-works/pi-ai";
 import { getCustomModelKey, UTILITY_MODEL_KEY, VISION_MODEL_KEY, MAX_POWER_MODEL_KEY } from "../state/global-state.js";
+import { callLlm } from "./llm-call.js";
+import type { LlmCallOptions } from "./llm-call.js";
 
 /**
  * Resolve a model from a pattern like "provider/model-id" or just "model-id".
@@ -82,4 +84,74 @@ export function resolveMaxPowerModel(ctx: ExtensionContext): Model<Api> | undefi
     if (resolved) return resolved;
   }
   return undefined;
+}
+
+// ── Model Chain (try models in priority order) ───────────────────────────────
+
+/**
+ * A resolver function that returns a model or undefined.
+ * Used by tryModelChain to lazily resolve models in priority order.
+ */
+export type ModelResolver = () => Model<Api> | undefined;
+
+/**
+ * Try models in priority order, returning the first successful response.
+ *
+ * Each resolver is a lazy callback — models are resolved on demand, not
+ * eagerly. This is important because the max-power model may not be
+ * configured (resolveMaxPowerModel returns undefined), and the session
+ * model (ctx.model) is always available.
+ *
+ * The chain short-circuits on the first success: if the max-power model
+ * returns a valid response, cheaper models are never called.
+ *
+ * @example
+ *   // Try max-power first, fall back to utility, then session
+ *   const result = await tryModelChain(ctx, [
+ *     () => resolveMaxPowerModel(ctx),
+ *     () => resolveUtilityModel(ctx),
+ *     () => ctx.model,
+ *   ], systemPrompt, userPrompt, { temperature: 0.1 });
+ *
+ * @example
+ *   // Fallback-only: utility first, then session, max-power only on error
+ *   const result = await tryModelChain(ctx, [
+ *     () => resolveUtilityModel(ctx),
+ *     () => ctx.model,
+ *     () => resolveMaxPowerModel(ctx),
+ *   ], systemPrompt, userPrompt, { signal });
+ *
+ * @param ctx - Extension context (for API key resolution)
+ * @param resolvers - Ordered list of model resolver callbacks
+ * @param systemPrompt - System prompt for the LLM call
+ * @param userPrompt - User message for the LLM call
+ * @param options - Optional callLlm options (temperature, signal, etc.)
+ * @returns First successful result, or the last error if all fail
+ */
+export async function tryModelChain(
+  ctx: ExtensionContext,
+  resolvers: ModelResolver[],
+  systemPrompt: string,
+  userPrompt: string,
+  options: LlmCallOptions = {},
+): Promise<{ text: string; stopReason?: string; usage?: { input?: number; output?: number; totalTokens?: number } } | { error: string }> {
+  if (resolvers.length === 0) return { error: "No model resolvers provided" };
+
+  let lastError: string | undefined;
+
+  for (const resolve of resolvers) {
+    const model = resolve();
+    if (!model) continue;
+
+    const apiKey = await ctx.modelRegistry.getApiKeyForProvider(model.provider).catch(() => null);
+    if (!apiKey) continue;
+
+    const result = await callLlm(model, apiKey, systemPrompt, userPrompt, options);
+
+    if (!("error" in result)) return result;
+
+    lastError = result.error;
+  }
+
+  return { error: lastError ?? "All models in chain failed" };
 }

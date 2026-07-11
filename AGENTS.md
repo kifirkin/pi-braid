@@ -144,8 +144,7 @@ items have been folded into ROADMAP.md. Key ongoing concerns:
 | `src/extensions/self/` | Self-management (health, error-tracking, watchdog, etc.) | [src/extensions/self/AGENTS.md](src/extensions/self/AGENTS.md) |
 | `src/lib/` | Library subsystems (13 subdirs, all have AGENTS.md) | [src/lib/AGENTS.md](src/lib/AGENTS.md) |
 | `src/loader/` | Extension loader + subagent API | [src/loader/AGENTS.md](src/loader/AGENTS.md) |
-| `docs/` | Reference docs: `ROADMAP.md` (3 active items), `SETUP.md` (setup reference), `HISTORY.md` (consolidated history). All historical audits archived at `../pi-braid-evaluation/docs-archive/`. | (no AGENTS.md - durable reference) |
-| `HANDOFF.md` | Fresh-session transfer document. State-of-codebase summary, last 5 commits, verification commands, priority queue. Written for an agent with no prior context. | (no AGENTS.md - ephemeral transfer aid, refresh per session) |
+| `docs/` | Reference docs: `ROADMAP.md` (1 active item), `SETUP.md` (setup reference), `HISTORY.md` (consolidated history). All historical audits archived at `../pi-braid-evaluation/docs-archive/`. | (no AGENTS.md - durable reference) |
 | `test/` | Test harness; no AGENTS.md needed (tests are leaf) | (no AGENTS.md) |
 | `scripts/` | Build/lint/test helpers (5 active scripts); leaf | (no AGENTS.md) |
 | `../pi-braid-evaluation/` | Benchmarks, session mining, results (separate project) | (no AGENTS.md) |

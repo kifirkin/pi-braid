@@ -4,8 +4,7 @@
 
 import { Type } from "typebox";
 import type { ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { callLlm } from "../../../../lib/ai/llm-call.js";
-import { resolveUtilityModel } from "../../../../lib/ai/model-resolver.js";
+import { resolveUtilityModel, resolveMaxPowerModel, tryModelChain } from "../../../../lib/ai/model-resolver.js";
 import {
   estimateComplexity,
   complexityToDepth,
@@ -367,13 +366,12 @@ export function createThinkTool(): ToolDefinition<any, any, any> {
               .replace("{decision}", decision)
               .replace("{reason}", reason);
 
-            // Prefer utility model (cheaper for review), fall back to session model
-            const utilityModel = resolveUtilityModel(ctx);
-            const reviewModel = utilityModel ?? ctx.model;
-            const apiKey = await ctx.modelRegistry.getApiKeyForProvider(reviewModel.provider);
-            const llmResult = await callLlm(
-              reviewModel,
-              apiKey,
+            // Try max-power first (accuracy-critical review), then utility, then session
+            const llmResult = await tryModelChain(ctx, [
+              () => resolveMaxPowerModel(ctx),
+              () => resolveUtilityModel(ctx),
+              () => ctx.model,
+            ],
               "You are a sharp, critical thinker who reviews the reasoning of other agents.",
               prompt,
               {

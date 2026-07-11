@@ -15,8 +15,7 @@
 
 import { Type } from "typebox";
 import type { ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { callLlm } from "../../../../lib/ai/llm-call.js";
-import { resolveUtilityModel } from "../../../../lib/ai/model-resolver.js";
+import { resolveUtilityModel, resolveMaxPowerModel, tryModelChain } from "../../../../lib/ai/model-resolver.js";
 import { getExtensionState } from "../../../../lib/state/extension-state.js";
 import { createLogger } from "../../../../lib/core/logger.js";
 import { extractJson } from "../../../../lib/utils/extract-json.js";
@@ -207,9 +206,8 @@ Only report real issues. If everything looks correct, set issues to [].
 Do not invent problems that are not supported by the text.`;
 
   try {
-    const utilModel = resolveUtilityModel(ctx);
-    if (!ctx.model && !utilModel) {
-      // Model unavailable - cannot run LLM verification. Return neutral confidence
+    if (!ctx.model && !resolveUtilityModel(ctx) && !resolveMaxPowerModel(ctx)) {
+      // No model available - cannot run LLM verification. Return neutral confidence
       // so the caller's heuristic confidence is not dragged down.
       return {
         issues: [],
@@ -217,10 +215,12 @@ Do not invent problems that are not supported by the text.`;
         confidence: 1.0,
       };
     }
-    // Prefer utility model (cheaper for verification), fall back to session model
-    const verifyModel = utilModel ?? ctx.model!;
-    const apiKey = await ctx.modelRegistry.getApiKeyForProvider(verifyModel.provider);
-    const llmResult = await callLlm(verifyModel, apiKey, "", prompt, {
+    // Try max-power first (accuracy-critical), then utility, then session
+    const llmResult = await tryModelChain(ctx, [
+      () => resolveMaxPowerModel(ctx),
+      () => resolveUtilityModel(ctx),
+      () => ctx.model,
+    ], "", prompt, {
       temperature: 0.1,
       signal,
     });

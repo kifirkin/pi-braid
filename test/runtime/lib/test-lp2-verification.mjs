@@ -63,7 +63,7 @@ const bcSource = readFileSync(join(ROOT, FILES[1]), "utf-8");
 
 assert(bcSource.includes("export async function backwardCheck"), "backward-checker: backwardCheck exported");
 assert(bcSource.includes("BackwardCheckResult"), "backward-checker: BackwardCheckResult type");
-assert(bcSource.includes("callLlm("), "backward-checker: uses callLlm");
+assert(bcSource.includes("tryModelChain"), "backward-checker: uses tryModelChain");
 assert(bcSource.includes("resolveUtilityModel"), "backward-checker: uses resolveUtilityModel");
 assert(bcSource.includes('"passes"'), "backward-checker: expects passes field in JSON");
 assert(bcSource.includes('"confidence"'), "backward-checker: expects confidence field in JSON");

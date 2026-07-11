@@ -4,8 +4,7 @@
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { callLlm } from "../../../../lib/ai/llm-call.js";
-import { resolveUtilityModel } from "../../../../lib/ai/model-resolver.js";
+import { resolveUtilityModel, resolveMaxPowerModel, tryModelChain } from "../../../../lib/ai/model-resolver.js";
 import { criticGate } from "../../../../lib/ai/critic-gate.js";
 import { classify } from "../../../../lib/ai/text-classifier.js";
 import { CRITICS } from "../../../../lib/ai/critic-registry.js";
@@ -165,13 +164,12 @@ export function createHypothesizeTool(): ToolDefinition<any, any, any> {
       try {
         const prompt = buildPrompt({ problem, evidence, maxHypotheses: gate.suggestedDepth === "deep" ? Math.max(maxHypotheses, 5) : maxHypotheses, format, verificationPlan });
 
-        // Prefer utility model (cheaper), fall back to session model
-        const utilityModel = resolveUtilityModel(ctx);
-        const hypoModel = utilityModel ?? ctx.model;
-        const apiKey = await ctx.modelRegistry.getApiKeyForProvider(hypoModel.provider);
-        const llmResult = await callLlm(
-          hypoModel,
-          apiKey,
+        // Try max-power first (accuracy-critical), then utility, then session
+        const llmResult = await tryModelChain(ctx, [
+          () => resolveMaxPowerModel(ctx),
+          () => resolveUtilityModel(ctx),
+          () => ctx.model,
+        ],
           "You are an expert debugging assistant that analyzes problems and generates testable hypotheses.",
           prompt,
           { temperature: 0.3, signal },

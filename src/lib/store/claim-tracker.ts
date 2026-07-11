@@ -17,8 +17,7 @@
  * of which needed constant maintenance and were inherently fragile.
  */
 
-import { callLlm } from "../ai/llm-call.js";
-import { resolveUtilityModel } from "../ai/model-resolver.js";
+import { resolveUtilityModel, resolveMaxPowerModel, tryModelChain } from "../ai/model-resolver.js";
 import { getExtensionState } from "../state/extension-state.js";
 import { classify } from "../ai/text-classifier.js";
 import { CRITICS, ENTITY_VERBS } from "../ai/critic-registry.js";
@@ -86,15 +85,14 @@ async function extractClaimsViaLLM(
 
   // ── LLM extraction (primary path) ──────────────────────────────────────
   try {
-    // Prefer utility model (cheaper for extraction), fall back to session model
-    const utilityModel = resolveUtilityModel(ctx);
-    const model = utilityModel ?? ctx.model;
-    if (!model) return []; // no LLM available - return empty (no claims)
-
-    const apiKey = await ctx.modelRegistry.getApiKeyForProvider(model.provider);
-    if (!apiKey) return []; // no API key - return empty (no claims)
-
-    const result = await callLlm(model, apiKey, EXTRACTION_SYSTEM_PROMPT, truncated, {
+    // Fallback-only chain: utility (cheapest) → session → max-power (safety net)
+    // Claim extraction runs every turn, so max-power is NEVER the default.
+    // It only activates when cheaper models fail.
+    const result = await tryModelChain(ctx, [
+      () => resolveUtilityModel(ctx),
+      () => ctx.model,
+      () => resolveMaxPowerModel(ctx),
+    ], EXTRACTION_SYSTEM_PROMPT, truncated, {
       temperature: 0.1,
       timeoutMs: 120_000,
       maxRetries: 0,

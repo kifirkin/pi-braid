@@ -20,8 +20,7 @@
 
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { callLlm as sharedCallLlm } from "../../lib/ai/llm-call.js";
-import { resolveUtilityModel } from "../../lib/ai/model-resolver.js";
+import { resolveUtilityModel, resolveMaxPowerModel, tryModelChain } from "../../lib/ai/model-resolver.js";
 import type { LlmCallOptions } from "../../lib/ai/llm-call.js";
 
 export type { LlmCallOptions };
@@ -53,6 +52,18 @@ export function getJudgeModel(ctx: ExtensionContext): Model<Api> | undefined {
  * rate-limit circuit breaker.
  *
  * Resolves model via getJudgeModel() and API key automatically.
+ *
+ * Tier fallback (max-power as safety net):
+ *   1. Utility model (if configured — cheapest, fastest for judgment)
+ *   2. Session model (fallback when no utility model is set)
+ *   3. Max-power model (if configured — accuracy-critical safety net,
+ *      only called when the primary model fails or returns an error)
+ *
+ * The max-power tier is a fallback-only: it is NEVER called on every
+ * request. It only activates when the cheaper primary model errors
+ * out (network failure, rate limit, bad response), preventing cost
+ * flooding while providing a safety net for accuracy-critical judgment
+ * tasks like the verification judge.
  */
 export async function callLlm(
   ctx: ExtensionContext,
@@ -60,16 +71,17 @@ export async function callLlm(
   userPrompt: string,
   options: LlmCallOptions = {},
 ): Promise<{ text: string } | { error: string }> {
-  // Prefer utility model if configured (cheaper, faster for judgment tasks)
-  const utilityModel = resolveUtilityModel(ctx);
-  const model = utilityModel ?? getJudgeModel(ctx);
-  if (!model) return { error: "No model available" };
-
-  const apiKey = await ctx.modelRegistry.getApiKeyForProvider(model.provider);
-  if (!apiKey) return { error: "No API key available" };
-
-  return sharedCallLlm(model, apiKey, systemPrompt, userPrompt, options);
+  // Fallback-only chain: utility (cheapest) → session → max-power (safety net)
+  // The max-power model is NEVER called on every request. It only activates
+  // when the cheaper models fail (network error, rate limit, bad response).
+  // This is the "balanced" modelPreference strategy.
+  return tryModelChain(ctx, [
+    () => resolveUtilityModel(ctx),
+    () => getJudgeModel(ctx),
+    () => resolveMaxPowerModel(ctx),
+  ], systemPrompt, userPrompt, options);
 }
+
 
 /**
  * Extract and clean JSON from LLM output.
