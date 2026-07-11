@@ -19,6 +19,10 @@ import { Type, type Static } from "typebox";
 import { createLogger } from "../../../lib/core/logger.js";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 import { getExtensionState, getCachedSessionManager } from "../../../lib/state/extension-state.js";
+import { getSessionManager } from "../../../lib/state/session-manager.js";
+import { loadScratchpadFromDisk, projectSlugFromCwd } from "../../memory/scratchpad/persistence.js";
+import { handleUpdateSession } from "../../memory/scratchpad/handlers.js";
+import type { SessionPhase as ScratchpadPhase } from "../../memory/scratchpad/types.js";
 import { eventBus } from "../../../lib/events/event-bus.js";
 
 import {
@@ -288,7 +292,12 @@ function executeAction(
   }
 }
 
-function queueProposal(evaluated: EvaluatedAction, ctx: ExtensionContext, branchLength: number): void {
+async function queueProposal(
+  evaluated: EvaluatedAction,
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  branchLength: number,
+): Promise<void> {
   if (evaluated.action.type !== "propose") return;
 
   // ── Rate limiting: prevent proposal spam ────────────────────────────────
@@ -339,6 +348,83 @@ function queueProposal(evaluated: EvaluatedAction, ctx: ExtensionContext, branch
     proposal,
   );
   log.debug(`Created proposal: ${proposal.id}`);
+
+  // ── Phase boundary enforcement: upgrade topic_shift and task_boundary
+  // proposals to enforcement whispers with auto-tagging. This ensures the
+  // agent preserves context before switching between investigation,
+  // implementation, and verification phases.
+  if (evaluated.signal?.type === "topic_shift" || evaluated.signal?.type === "task_boundary") {
+    const signalType = evaluated.signal.type;
+    const signalData = evaluated.signal.data || {};
+
+    // Auto-tag current position
+    let tagName = "";
+    if (signalType === "topic_shift") {
+      const to = (signalData.to as string) || "next-phase";
+      tagName = `before-${to}`;
+    } else {
+      tagName = `before-task-boundary`;
+    }
+
+    try {
+      const sessionManager = getSessionManager(ctx);
+      const leafId = sessionManager.getLeafId();
+      sessionManager.setLabel(leafId, tagName);
+      log.info(`Auto-tagged position as "${tagName}" on ${signalType} signal`);
+    } catch (err) {
+      log.debug(`Auto-tag failed (non-fatal): ${err}`);
+    }
+
+    // Auto-set SessionPhase in scratchpad when topic_shift is detected
+    if (signalType === "topic_shift") {
+      const to = (signalData.to as string) || "";
+      const phaseMap: Record<string, ScratchpadPhase> = {
+        exploration: "exploring",
+        implementation: "implementing",
+        verification: "verifying",
+        debugging: "debugging",
+        documentation: "documenting",
+        planning: "planning",
+        testing: "verifying",
+        refactoring: "implementing",
+      };
+      const newPhase = phaseMap[to];
+      if (newPhase) {
+        try {
+          const cwd = (ctx as { cwd?: string }).cwd ?? "";
+          const slug = projectSlugFromCwd(cwd);
+          const pad = await loadScratchpadFromDisk(slug);
+          if (pad) {
+            await handleUpdateSession(pad, { phase: newPhase, turn: state(ctx).turnCount });
+            log.info(`Auto-set scratchpad phase to "${newPhase}"`);
+          }
+        } catch (err) {
+          log.debug(`Auto-set SessionPhase failed (non-fatal): ${err}`);
+        }
+      }
+    }
+
+    // Send enforcement whisper with triggerTurn to wake the agent
+    const msg =
+      signalType === "topic_shift"
+        ? `**Phase transition detected:** from "${(signalData.from as string) || "previous"}" to "${(signalData.to as string) || "next"}".\n\n` +
+          `Auto-tagged position as \`${tagName}\`. Use \`context_navigate(action="checkout", target="${tagName}")\` to return to this point.\n\n` +
+          `Update your scratchpad phase: \`scratchpad(action="update_session", phase="${(signalData.to as string) || "implementing"}")\`.\n\n` +
+          `Consider archiving the previous phase with \`context_compress(action="archive", topic="${(signalData.from as string) || "previous"}")\` to free context.`
+        : `**Task boundary detected** (explore → implement → verify pattern).\n\n` +
+          `Auto-tagged position as \`${tagName}\`. Consider archiving the current phase with \`context_compress(action="archive")\` before proceeding.`;
+
+    sendTrackedMessage(
+      pi,
+      {
+        customType: "context-lifecycle",
+        content: [{ type: "text" as const, text: msg }],
+        display: true,
+      },
+      { deliverAs: "steer", triggerTurn: true },
+      { type: "context", source: "context-lifecycle/phase-boundary-enforcement" },
+    );
+  }
 }
 
 // ── Extension Factory ────────────────────────────────────────────────────────
@@ -467,7 +553,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 
       // ── ACTION: Execute or queue ───────────────────────────────────
       if (ev.action.type === "propose") {
-        queueProposal(ev, ctx, branch.length);
+        await queueProposal(ev, pi, ctx, branch.length);
       } else if (ev.action.type === "compact" && ev.canExecute) {
         // ── ESCALATION GATE ──────────────────────────────────────────
         // If the agent has ignored 3+ compaction nudges and context is
