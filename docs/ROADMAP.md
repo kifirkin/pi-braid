@@ -145,9 +145,9 @@ so the agent never loses work between phases.
 6. No initial request complexity analysis to gate enforcement
 
 **Planned changes (Tier 1 — quick wins, 0 new LLM calls):**
-- [ ] Upgrade topic-shift proposals to enforcement whispers with triggerTurn
-- [ ] Auto-set SessionPhase from tool patterns (reuse topic classification)
-- [ ] Auto-tag position before phase transitions (context_navigate action="tag")
+- [x] Upgrade topic-shift proposals to enforcement whispers with triggerTurn
+- [x] Auto-set SessionPhase from tool patterns (reuse topic classification)
+- [x] Auto-tag position before phase transitions (context_navigate action="tag")
 
 **Planned changes (Tier 2 — moderate, heuristic-only):**
 - [ ] Phase-aware enforcement: detect investigation→implementation transition
