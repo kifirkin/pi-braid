@@ -58,15 +58,20 @@ export class TimerPoller {
     if (this.busy) return; // bail - defer fire to next non-busy tick or TURN_END
     const expired = this.onCheckExpired(this.sessionId, Date.now());
     for (const timer of expired) {
-      // Defer fire to next macrotask to break synchronous chain from setInterval
-      // into pi-core's sendMessage(triggerTurn:true) -> _runAgentPrompt -> tool dispatch.
-      // Without this, a poller fire during an agent turn (or immediately after compaction)
-      // can chain into pi-core's synchronous tool dispatch and overflow the V8 stack.
-      // The one-tick delay is acceptable: the timer already expired, and the agent
-      // will wake up on the next tick.
-      setTimeout(() => {
+      // Defer fire to after the current synchronous stack unwinds to break
+      // the synchronous chain from setInterval into pi-core's
+      // sendMessage(triggerTurn:true) -> _runAgentPrompt -> tool dispatch.
+      // Without this, a poller fire during an agent turn (or immediately after
+      // compaction) can chain into pi-core's synchronous tool dispatch and
+      // overflow the V8 stack.
+      //
+      // queueMicrotask runs after the current JS context completes but before
+      // the next macrotask -- zero-latency deferral without the 1ms timer
+      // overhead of setTimeout(0). The one-tick delay is acceptable: the timer
+      // already expired, and the agent will wake up on the next tick.
+      queueMicrotask(() => {
         this.onFire(timer, pi);
-      }, 0);
+      });
     }
   }
 
@@ -74,12 +79,36 @@ export class TimerPoller {
     return this.pollHandle !== null;
   }
 
-  /** Fire any expired timers now (called from TOOL_EXECUTION_END / TURN_END). */
+  /** Fire any expired timers now (called from TOOL_EXECUTION_END / TURN_END).
+   *
+   * Each fire is deferred to after the current synchronous stack unwinds
+   * (via queueMicrotask) to break the synchronous chain from
+   * TOOL_EXECUTION_END -> fireExpired -> fireTimer ->
+   * sendTrackedMessage(triggerTurn:true) -> pi.sendMessage -> synchronous
+   * agent turn -> tool dispatch -> TOOL_EXECUTION_END -> ...
+   *
+   * Without this guard, a timer that fires during TOOL_EXECUTION_END can
+   * re-enter the tool dispatch loop and overflow the V8 stack. The poll()
+   * method (setInterval callback) already has this guard; fireExpired()
+   * was missed in the previous fix round (2026-06-29).
+   *
+   * The one-tick delay is acceptable: the timer already expired, and the
+   * deferred fire will be caught on the next tick. The return value is
+   * returned immediately (before the deferred fires) so callers can still
+   * inspect which timers are about to fire.
+   */
   fireExpired(): ScheduledTimer[] {
     if (!this.piRef) return [];
     const expired = this.onCheckExpired(this.sessionId, Date.now());
+    const pi = this.piRef;
     for (const timer of expired) {
-      this.onFire(timer, this.piRef);
+      // Defer fire to after the current synchronous stack unwinds to break
+      // the synchronous chain from TOOL_EXECUTION_END / TURN_END into
+      // pi-core's sendMessage -> synchronous agent turn -> tool dispatch.
+      // Same pattern as poll().
+      queueMicrotask(() => {
+        this.onFire(timer, pi);
+      });
     }
     return expired;
   }

@@ -69,10 +69,10 @@ import { getExtensionState } from "../state/extension-state.js";
 // ── Constants (single source of truth) ──────────────────────────────────────
 
 /** Minimum consecutive same-tool calls in the recent history to flag. */
-export const TOOL_LOOP_THRESHOLD = 8;
+export const TOOL_LOOP_THRESHOLD = 16;
 
-/** How many recent tools to retain in the rolling window. */
-export const TOOL_LOOP_WINDOW = 12;
+/** How many recent tools to retain in the rolling window. Must be >= TOOL_LOOP_THRESHOLD + 1. */
+export const TOOL_LOOP_WINDOW = 20;
 
 /** Minimum turns between successive loop whispers. */
 export const TOOL_LOOP_COOLDOWN_TURNS = 8;

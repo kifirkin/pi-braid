@@ -191,10 +191,11 @@ function sendCompactNudge(pi: ExtensionAPI, evaluated: EvaluatedAction, usage: n
 }
 
 /**
- * Execute auto-compaction with pre-scheduled resume timer.
+ * Execute auto-compaction.
  * This is the escalation path: when the agent ignores compaction nudges,
- * we auto-trigger the same timer+compact pattern that context_compact tool uses.
- * The timer fires after compaction completes and resumes the agent.
+ * we auto-trigger compaction. The agent loop automatically continues after
+ * compaction completes (pi-core's _runAutoCompaction() returns `true` →
+ * agent.continue()). No resume timer is needed.
  */
 async function executeAutoCompact(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
   try {
@@ -211,12 +212,11 @@ async function executeAutoCompact(pi: ExtensionAPI, ctx: ExtensionContext): Prom
         "anonymous";
       timerMod.cancelTimersByTag(sessionId, "compaction-resume");
       timerMod.cancelTimersByTag(sessionId, "auto-compaction-resume");
-      // NOTE: We intentionally do NOT call scheduleTimer() here. The
-      // session_compact handler in register-session-compact.ts cancels the
-      // resume tag immediately, so any timer created in this scope would be
-      // cancelled before it ever fires. Instead, the handler schedules a
-      // FRESH resume timer after compaction completes, when the session is
-      // in a known state.
+      // NOTE: We do NOT call scheduleTimer() here. The compaction-resume
+      // timer was removed in 2026-07-11 because pi-core's agent loop
+      // automatically continues after compaction (_runAutoCompaction()
+      // returns `true` → agent.continue()). The 3-minute fallback timer
+      // was firing as spurious noise that the agent ignored.
     } catch {
       log.warn("Timer unavailable for auto-compaction - agent must type to resume");
     }

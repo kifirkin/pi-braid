@@ -59,6 +59,66 @@ export { budgetModule };
 
 const log = createLogger("heartbeat");
 
+// ── Delayed Whisper Buffer ───────────────────────────────────────────────────
+// Per-session buffer for heartbeat whispers. Instead of delivering whispers
+// immediately (which puts them between turns, creating conversational adjacency
+// confusion), we buffer them here and flush on the next before_agent_start.
+// This way the agent sees whispers as part of the turn context, not as
+// standalone messages that could be confused with user input.
+//
+// Keyed by sessionId (from getSessionIdSafe). Cleaned up on session_shutdown.
+interface WhisperBufferEntry {
+  message: string;
+  priority: string;
+  source: string;
+}
+const _heartbeatWhisperBuffer = new Map<string, WhisperBufferEntry[]>();
+
+function bufferHeartbeatWhisper(
+  sessionId: string,
+  message: string,
+  priority: string,
+  source: string,
+): void {
+  if (!_heartbeatWhisperBuffer.has(sessionId)) {
+    _heartbeatWhisperBuffer.set(sessionId, []);
+  }
+  _heartbeatWhisperBuffer.get(sessionId)!.push({ message, priority, source });
+}
+
+function flushDelayedWhispers(sessionId: string, pi: ExtensionAPI): void {
+  const buffer = _heartbeatWhisperBuffer.get(sessionId);
+  if (!buffer || buffer.length === 0) return;
+  const batch = buffer.splice(0);
+  // Aggregate all buffered whispers into one message per priority tier
+  const groups = new Map<string, string[]>();
+  for (const entry of batch) {
+    const p = entry.priority;
+    if (!groups.has(p)) groups.set(p, []);
+    groups.get(p)!.push(entry.message);
+  }
+  for (const [priority, messages] of groups) {
+    const text = messages.length === 1
+      ? messages[0]
+      : `[Heartbeat Summary]\n${messages.map((m, i) => `${i + 1}. ${m}`).join("\n")}`;
+    try {
+      sendTrackedMessage(
+        pi,
+        {
+          customType: "heartbeat",
+          content: [{ type: "text" as const, text }],
+          display: true,
+          details: { [BRAID_INJECTED]: true, [BRAID_SOURCE]: "heartbeat/delayed" },
+        },
+        { deliverAs: "steer", triggerTurn: false },
+        { type: "heartbeat", source: "heartbeat/delayed" },
+      );
+    } catch (err) {
+      log.warn(`[heartbeat] delayed whisper flush failed: ${err}`);
+    }
+  }
+}
+
 // ── Message Interpolation ───────────────────────────────────────────────────
 
 /** Replace {placeholder} in message with values from context dict. */
@@ -287,21 +347,8 @@ function tick(
       // directly (not yet migrated), they go through the original
       // sendTrackedMessage channel so they still get batched + flood-capped.
       const sendFn = (msg: string, opts?: { category?: string; priority?: string }) => {
-        try {
-          sendTrackedMessage(
-            _pi,
-            {
-              customType: "heartbeat",
-              content: [{ type: "text" as const, text: msg }],
-              display: true,
-              details: { [BRAID_INJECTED]: true, [BRAID_SOURCE]: "heartbeat/whisper-batcher" },
-            },
-            { deliverAs: "steer", triggerTurn: false },
-            { type: "heartbeat", source: "heartbeat/whisper-batcher" },
-          );
-        } catch (err) {
-          log.warn(`[heartbeat] whisper flush failed: ${err}`);
-        }
+        const sid = getSessionIdSafe(ctx) ?? "anonymous";
+        bufferHeartbeatWhisper(sid, msg, opts?.priority ?? "low", "heartbeat/whisper-batcher");
       };
       flushWhisperBuffer(whisperBuffer, sendFn);
     });
@@ -342,6 +389,16 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     if (state.turnCount % interval !== 0) return;
 
     tick(pi, state, config, ctx);
+  });
+
+  // ── Event: before_agent_start - flush delayed whispers ────────────
+  // Deliver buffered heartbeat whispers as part of the turn context,
+  // not as standalone messages between turns. This prevents the
+  // conversational adjacency confusion where the agent treats a
+  // between-turn whisper as user input.
+  pi.on("before_agent_start", (_event: unknown, ctx: ExtensionContext) => {
+    const sid = getSessionIdSafe(ctx) ?? "anonymous";
+    flushDelayedWhispers(sid, pi);
   });
 
   // ── Event: tool_call ──────────────────────────────────────────────
@@ -461,22 +518,16 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
         // tracking) instead of ctx.whisper. The per-tick aggregation
         // (whisperBuffer) is for module whispers; policy whispers are
         // signal-triggered and fire independently of the tick.
+        //
+        // BUGFIX 2026-07-11: policy whispers are now buffered and
+        // delivered on the next before_agent_start instead of
+        // immediately. This prevents conversational adjacency confusion
+        // (the agent treating a between-turn whisper as user input).
+        // The auto-finalize callback (below) still delivers immediately
+        // because it uses triggerTurn:true and is time-critical.
         (msg: string) => {
-          try {
-            sendTrackedMessage(
-              pi,
-              {
-                customType: "heartbeat",
-                content: [{ type: "text" as const, text: msg }],
-                display: true,
-                details: { [BRAID_INJECTED]: true, [BRAID_SOURCE]: "heartbeat/policy" },
-              },
-              { deliverAs: "steer", triggerTurn: false },
-              { type: "heartbeat", source: "heartbeat/policy" },
-            );
-          } catch (err) {
-            log.warn(`[heartbeat] policy whisper failed: ${err}`);
-          }
+          const sid = getSessionIdSafe(ctx) ?? "anonymous";
+          bufferHeartbeatWhisper(sid, msg, "medium", "heartbeat/policy");
         },
         (msg: string) => {
           sendTrackedMessage(
@@ -670,6 +721,9 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 
   pi.on(SESSION_SHUTDOWN, async (_event: any, ctx: ExtensionContext) => {
     cleanupSession(ctx.cwd);
+    // Clean up per-session whisper buffer
+    const sid = getSessionIdSafe(ctx) ?? "anonymous";
+    _heartbeatWhisperBuffer.delete(sid);
     log.info("Heartbeat scheduler shutting down");
   });
 

@@ -10,7 +10,7 @@ All exported from `extensions/tools/timer/index.ts`:
 
 | Function                                      | Purpose                                                                                                                              |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `scheduleTimer(delayMs, reason, tag?, wake?)` | Schedule a timer. Returns timer ID. `wake=true` makes the fire whisper auto-resume the agent (used by post-compaction resume timer). |
+| `scheduleTimer(delayMs, reason, tag?, wake?)` | Schedule a timer. Returns timer ID. `wake=true` makes the fire whisper auto-resume the agent. |
 | `cancelTimer(id)`                             | Cancel a timer by ID.                                                                                                                |
 | `cancelTimersByTag(tag)`                      | Cancel all timers matching a tag. Returns count cancelled.                                                                           |
 | `onTimerFire(handler)`                        | Subscribe to fire events. Returns unsubscribe function.                                                                              |
@@ -24,17 +24,17 @@ All exported from `extensions/tools/timer/index.ts`:
 
 **Default is `wake: true`.** This is the principle: if the user (or the agent) scheduled a timer, they expect to be woken when it fires. Pass `wake: false` explicitly for silent reminders.
 
-The post-compaction stack overflow was caused by `triggerTurn: true` firing **mid-tool-execution**. The fix is the **busy guard** (below), not removing the auto-resume. The resume path needs auto-resume; user timers want it.
+The post-compaction stack overflow was caused by `triggerTurn: true` firing **mid-tool-execution**. The fix is the **busy guard** (below). The compaction-resume timer was removed in 2026-07-11 because pi-core's agent loop automatically continues after compaction; the 3-minute fallback timer was firing as spurious noise.
 
 ## Tag conventions
 
-| Tag                      | Set by                           | Cancelled on                                                  |
-| ------------------------ | -------------------------------- | ------------------------------------------------------------- |
-| `compaction-resume`      | `context_compress` tool          | New `context_compress`, new `auto-compact`, `session_compact` |
-| `auto-compaction-resume` | `context-lifecycle` auto-compact | New `context_compress`, new `auto-compact`, `session_compact` |
+| Tag                      | Set by         | Cancelled on                                                  | Notes                                                           |
+| ------------------------ | -------------- | ------------------------------------------------------------- | --------------------------------------------------------------- |
+| `compaction-resume`      | (removed)      | `context_compress`, `auto-compact`, `session_compact`         | Timer removed 2026-07-11; agent loop auto-continues on its own |
+| `auto-compaction-resume` | (removed)      | `context_compress`, `auto-compact`, `session_compact`         | (same as above)                                                 |
 | `<user-tag>`             | `timer` action=set               | `timer` action=cancel only                                    |
 
-**Always cancel stale resume tags** when scheduling a new one - the `timers` Map is process-global and never garbage-collected. Without explicit cancellation, an old resume timer can fire during a later, unrelated TURN_END and produce a misplaced `[timer]` whisper (the "strange order" issue).
+**Always cancel stale resume tags** - the `timers` Map is process-global and never garbage-collected. Without explicit cancellation, an old resume timer can fire during a later, unrelated TURN_END and produce a misplaced `[timer]` whisper (the "strange order" issue). The compaction-resume timer was removed in 2026-07-11, but the cancellation code remains as a safety measure to clean up any timers scheduled before the removal.
 
 ## Whisper contract
 
