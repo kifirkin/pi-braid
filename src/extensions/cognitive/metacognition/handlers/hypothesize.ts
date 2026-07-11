@@ -11,6 +11,9 @@ import { CRITICS } from "../../../../lib/ai/critic-registry.js";
 import { scoreHypothesisOutput } from "./scoring.js";
 
 import { withMeta } from "../../../../lib/types/standard-result.js";
+import { createLogger } from "../../../../lib/core/logger.js";
+
+const log = createLogger("hypothesize");
 
 /**
  * P2-11 B-class: preserve the 4 regex dimension checks as the Tier 1 fallback
@@ -176,17 +179,52 @@ export function createHypothesizeTool(): ToolDefinition<any, any, any> {
         );
 
         if ("error" in llmResult) {
-          throw new Error(`hypothesize: session model error: ${llmResult.error}`);
+          // Graceful degradation: all models in chain failed.
+          // Log the error and return a fallback response instead of crashing.
+          log.debug(`hypothesize: all models failed: ${llmResult.error}`);
+          return withMeta(
+            {
+              content: [
+                {
+                  type: "text" as const,
+                  text:
+                    `## Hypothesis Generation Unavailable\n\n` +
+                    `All available models failed to generate hypotheses for this problem.\n` +
+                    `**Error:** ${llmResult.error}\n\n` +
+                    `Try again later, or provide more specific evidence to narrow the search space.`,
+                },
+              ],
+              details: { problem, evidence: evidence ?? "", skipped: true, reason: llmResult.error },
+            },
+            { confidence: 0, alternativesConsidered: 0 },
+          );
         }
 
         const text = llmResult.text.trim();
 
         if (!text) {
-          throw new Error(
-            `hypothesize: session model returned empty response. ` +
-              `Model: "${ctx.model.id}". ` +
-              `The model may be unavailable or the prompt was rejected. ` +
-              `Try again with a more specific problem statement.`,
+          // Graceful degradation: model returned empty text.
+          // This is a transient model issue (overload, content rejection, timeout).
+          // Return a fallback instead of crashing the tool.
+          log.debug(`hypothesize: model returned empty text (model=${ctx.model.id})`);
+          return withMeta(
+            {
+              content: [
+                {
+                  type: "text" as const,
+                  text:
+                    `## Hypothesis Generation Returned Empty\n\n` +
+                    `The model (${ctx.model.id}) returned an empty response. ` +
+                    `This is usually a transient issue (model overload, content policy, or timeout).\n\n` +
+                    `**Suggestions:**\n` +
+                    `1. Try again — the model may be recovering from a transient error\n` +
+                    `2. Narrow the problem statement to reduce token count\n` +
+                    `3. Use \`think()\` to manually reason about root causes`,
+                },
+              ],
+              details: { problem, evidence: evidence ?? "", skipped: true, reason: "empty_response" },
+            },
+            { confidence: 0, alternativesConsidered: 0 },
           );
         }
 

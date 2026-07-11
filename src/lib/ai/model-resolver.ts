@@ -148,9 +148,9 @@ export async function tryModelChain(
 
     const result = await callLlm(model, apiKey, systemPrompt, userPrompt, options);
 
-    if (!("error" in result)) return result;
+    if (!("error" in result) && result.text.trim().length > 0) return result;
 
-    lastError = result.error;
+    lastError = "error" in result ? result.error : "Empty response from model";
   }
 
   return { error: lastError ?? "All models in chain failed" };
