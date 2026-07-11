@@ -12,10 +12,16 @@ import { traceForward } from "../../../lib/verification/forward-tracer.js";
 import { knownFiles } from "../similarity.js";
 import { getState, recordThink, incrementToolsSinceReflection } from "../state.js";
 import { TOOL_CALL } from "../../../lib/core/event-names.js";
+import { createLogger } from "../../../lib/core/logger.js";
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
+import * as path from "node:path";
+import * as os from "node:os";
 import {
   recordToolCall as recordLoopToolCall,
   getToolLoopState,
 } from "../../../lib/detection/tool-loop-detector.js";
+
+const log = createLogger("enforcement:tool-call");
 
 export function registerToolCallHandler(pi: ExtensionAPI): void {
   onEvent(pi, TOOL_CALL, async (event: any, ctx: ExtensionContext) => {
@@ -83,6 +89,37 @@ export function registerToolCallHandler(pi: ExtensionAPI): void {
 
     if (toolName === "finalize") {
       getState(ctx).pendingFinalize = true;
+    }
+
+    // ── Cross-session tag persistence ──────────────────────────────────
+    // When context_navigate(action="tag") creates a tag, also persist it to
+    // ~/.pi/agent/braid/tags/<project-slug>.json so tags survive across sessions.
+    if (toolName === "context_navigate" && input?.action === "tag" && input?.name) {
+      try {
+        const cwd = (ctx as { cwd?: string }).cwd ?? "";
+        const slug = cwd.split("/").filter(Boolean).join("-") || "default";
+        const tagsDir = path.join(os.homedir(), ".pi", "agent", "braid", "tags");
+        if (!existsSync(tagsDir)) mkdirSync(tagsDir, { recursive: true });
+        const tagsFile = path.join(tagsDir, `${slug}.json`);
+
+        let tags: Record<string, { turn: number; timestamp: number }> = {};
+        if (existsSync(tagsFile)) {
+          try {
+            tags = JSON.parse(readFileSync(tagsFile, "utf-8"));
+          } catch {
+            tags = {};
+          }
+        }
+
+        tags[input.name as string] = {
+          turn: getState(ctx).currentTurn,
+          timestamp: Date.now(),
+        };
+        writeFileSync(tagsFile, JSON.stringify(tags, null, 2), "utf-8");
+        log.debug(`Persisted tag "${input.name}" to ${tagsFile}`);
+      } catch {
+        // non-fatal
+      }
     }
 
     if (toolName === "think") {

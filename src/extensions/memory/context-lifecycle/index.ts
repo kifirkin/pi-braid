@@ -17,6 +17,9 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { Type, type Static } from "typebox";
 
 import { createLogger } from "../../../lib/core/logger.js";
+import { existsSync, readFileSync } from "node:fs";
+import * as path from "node:path";
+import * as os from "node:os";
 import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/session-start-queue.js";
 import { getExtensionState, getCachedSessionManager } from "../../../lib/state/extension-state.js";
 import { getSessionManager } from "../../../lib/state/session-manager.js";
@@ -633,6 +636,70 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
       state(ctx).ignoredCompactNudges = 0;
       state(ctx).compactNudgeActive = false;
       log.debug(`Context management tool "${toolName}" called - reset compaction escalation`);
+    }
+
+    // ── Auto-navigate back to investigation checkpoint ─────────────────
+    // When the agent finalizes a task, check if there are tagged checkpoints
+    // from the investigation phase and suggest navigating back.
+    if (toolName === "finalize") {
+      try {
+        const sm = getSessionManager(ctx);
+        const branch = sm.getBranch();
+        // Find tags with "before-" prefix in the session
+        const tags: string[] = [];
+        for (const entry of branch) {
+          try {
+            const label = sm.getLabel(entry.id);
+            if (label && label.startsWith("before-")) {
+              tags.push(label);
+            }
+          } catch {
+            // entry may not have a label
+          }
+        }
+
+        // Also check cross-session tags from persistent file
+        const cwd = (ctx as { cwd?: string }).cwd ?? "";
+        const slug = cwd.split("/").filter(Boolean).join("-") || "default";
+        const tagsFile = path.join(
+          os.homedir(), ".pi", "agent", "braid", "tags", `${slug}.json`,
+        );
+        let fileTags: string[] = [];
+        try {
+          if (existsSync(tagsFile)) {
+            const content = readFileSync(tagsFile, "utf-8");
+            fileTags = Object.keys(JSON.parse(content)).filter((t) => t.startsWith("before-"));
+          }
+        } catch {
+          // non-fatal
+        }
+
+        const allTags = [...new Set([...tags, ...fileTags])];
+        if (allTags.length > 0) {
+          const tagList = allTags.slice(0, 3).map((t) => `\`${t}\``).join(", ");
+          sendTrackedMessage(
+            pi,
+            {
+              customType: "context-lifecycle",
+              content: [
+                {
+                  type: "text" as const,
+                  text:
+                    `Task finalized. Previous investigation checkpoints found: ${tagList}.\n\n` +
+                    `Navigate back to review: \`context_navigate(action="checkout", target="${allTags[0]}")\`\n` +
+                    `Use \`context_compress(action="archive")\` to free context before starting the next phase.`,
+                },
+              ],
+              display: true,
+            },
+            { deliverAs: "steer", triggerTurn: false },
+            { type: "context", source: "context-lifecycle/navigate-back-suggestion" },
+          );
+          log.info(`Suggested navigating back to checkpoint: ${allTags[0]}`);
+        }
+      } catch {
+        // non-fatal
+      }
     }
   });
 

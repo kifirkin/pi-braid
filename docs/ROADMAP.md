@@ -155,8 +155,14 @@ so the agent never loses work between phases.
 
 **Planned changes (Tier 3 — significant, 1 new LLM call per session):**
 - [x] Initial request complexity classifier (CRITICS.initialRequestComplexity)
-- [ ] Auto-navigate back to investigation checkpoint after implementation
+- [x] Auto-navigate back to investigation checkpoint after implementation
 - [ ] Escalation for ignored proposals (mirror compaction escalation pattern)
+
+### Cross-session features
+
+- [x] **Cross-session tag persistence**: Tags created via `context_navigate(action="tag")` are
+  persisted to `~/.pi/agent/braid/tags/<slug>.json` and surfaced on SESSION_START.
+  Tags survive process restarts and compaction.
 
 ## Companion documents
 

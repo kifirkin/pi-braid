@@ -169,7 +169,28 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
         // ignore
       }
 
-      // ── 6. Context hygiene & state preservation tip ────────────────
+      // ── 6. Cross-session tags from prior sessions ─────────────────
+      try {
+        const slug = projectSlugFromCwd(cwd);
+        const tagsFile = path.join(
+          os.homedir(), ".pi", "agent", "braid", "tags", `${slug}.json`,
+        );
+        if (existsSync(tagsFile)) {
+          const content = readFileSync(tagsFile, "utf-8");
+          const tags = JSON.parse(content);
+          const tagNames = Object.keys(tags);
+          if (tagNames.length > 0) {
+            signals.push(
+              `Cross-session tags available: ${tagNames.slice(0, 5).join(", ")}${tagNames.length > 5 ? ` +${tagNames.length - 5} more` : ""}. ` +
+                `Use \`context_navigate(action="checkout", target="<tag-name>")\` to navigate to a tagged position.`,
+            );
+          }
+        }
+      } catch {
+        // ignore
+      }
+
+      // ── 7. Context hygiene & state preservation tip ────────────────
       // Forward-looking guidance: when prior state exists, remind the agent
       // how to manage context and preserve state against crashes.
       // Shown only when there's prior state to manage (other signals exist).
