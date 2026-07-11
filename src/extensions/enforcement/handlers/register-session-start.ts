@@ -19,6 +19,8 @@ import { eventBus } from "../../../lib/events/event-bus.js";
 import { cacheSessionManager, getSessionStartTask } from "../../../lib/state/extension-state.js";
 import { getState } from "../state.js";
 import { createLogger } from "../../../lib/core/logger.js";
+import { classify } from "../../../lib/ai/text-classifier.js";
+import { CRITICS } from "../../../lib/ai/critic-registry.js";
 import { setLlmCallListeners } from "../../../lib/ai/llm-call.js";
 import {
   recordLlmError,
@@ -95,6 +97,38 @@ export function registerSessionStart(pi: ExtensionAPI): void {
       }
 
       getState(ctx).currentTurn++;
+
+      // ── Classify initial request complexity (fire-and-forget) ──────────
+      // Determines whether phase-boundary enforcement should be active.
+      // Complex tasks get full enforcement; simple tasks skip it to avoid noise.
+      if (task) {
+        classify(
+          ctx,
+          CRITICS.initialRequestComplexity.criteria,
+          { request: task.slice(0, 1500) },
+          {
+            timeoutMs: 30_000,
+            fallback: () => "moderate",
+            tierPolicy: "fallback-only",
+          },
+        )
+          .then((result) => {
+            const label = result.label.trim().toLowerCase();
+            if (["simple", "moderate", "complex"].includes(label)) {
+              getState(ctx).taskComplexity = label as "simple" | "moderate" | "complex";
+              log.info(
+                `[complexity] Initial request classified as "${label}"` +
+                  (label === "simple"
+                    ? " — phase-boundary enforcement will be minimal"
+                    : " — phase-boundary enforcement active"),
+              );
+            }
+          })
+          .catch(() => {
+            // Non-fatal: default to moderate if classifier fails
+            getState(ctx).taskComplexity = "moderate";
+          });
+      }
 
       // ── eventBus listener registration (reload-safe) ───────────────────
       // Each listener is stored in a module-level variable. On every session_start,

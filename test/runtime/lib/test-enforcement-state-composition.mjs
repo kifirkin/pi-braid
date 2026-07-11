@@ -77,14 +77,14 @@ const actualCount = actualKeys.length;
 // under error-tracking-state (where the per-turn nudge counters live) and
 // session-state (startupPlanShown drives PLANNING mode via determineContrastMode).
 
-const BASELINE_COUNT = 74;
+const BASELINE_COUNT = 75;
 
 const SENTINEL_KEYS = {
   "tool-tracking-state": ["totalToolCalls", "uniqueToolsUsed", "toolChain", "lastRecommendationType"],
   "error-tracking-state": ["consecutiveErrorTurns", "lastFailedToolTurn", "validationFailures", "lastFinalizeNudge", "lastVerifyNudge", "lastThinkPerTurnNudge", "lastStartupNudge"],
   "session-state": ["currentTurn", "turnHistory", "originalRequest", "driftDetector", "startupPlanShown"],
   "memory-hygiene-state": ["lastMemoryCall", "turnsSinceMemory", "memoryNudgeSent"],
-  "scratchpad-state": ["lastScratchpadNudgeTurn", "claimsWithoutVerification", "verificationsDone", "toolsSinceLastPlan", "lastInvestigationToolTurn", "lastPhaseNudgeTurn", "consecutiveInvestigationTurns"],
+  "scratchpad-state": ["lastScratchpadNudgeTurn", "claimsWithoutVerification", "verificationsDone", "toolsSinceLastPlan", "lastInvestigationToolTurn", "lastPhaseNudgeTurn", "consecutiveInvestigationTurns", "taskComplexity"],
   "context-hygiene-state": ["contextNudgeSent", "lastCompactionTurn", "overflowRecently"],
   "thought-chain-state": ["silentTurns", "thoughtChains", "toolsSinceReflection"],
 };

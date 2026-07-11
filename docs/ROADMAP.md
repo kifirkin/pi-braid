@@ -154,7 +154,7 @@ so the agent never loses work between phases.
 - [x] Finalize enforcement after verify_claim + structured markdown response
 
 **Planned changes (Tier 3 — significant, 1 new LLM call per session):**
-- [ ] Initial request complexity classifier (CRITICS.initialRequestComplexity)
+- [x] Initial request complexity classifier (CRITICS.initialRequestComplexity)
 - [ ] Auto-navigate back to investigation checkpoint after implementation
 - [ ] Escalation for ignored proposals (mirror compaction escalation pattern)
 

@@ -433,13 +433,15 @@ export async function dispatchTurnEndLoop(
   }
 
   // Detect transition: was investigating for 3+ turns, now implementing,
-  // and hasn't used a phase management tool recently
+  // and hasn't used a phase management tool recently.
+  // Skip for simple tasks to avoid noise.
   if (
     !hadErrors &&
     !inOverflowRecovery &&
     usedImplementation &&
     !usedPhaseTool &&
-    getState(ctx).consecutiveInvestigationTurns >= 3
+    getState(ctx).consecutiveInvestigationTurns >= 3 &&
+    getState(ctx).taskComplexity !== "simple"
   ) {
     const phaseCooldown = 8;
     if (getState(ctx).currentTurn - getState(ctx).lastPhaseNudgeTurn >= phaseCooldown) {

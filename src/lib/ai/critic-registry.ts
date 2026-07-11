@@ -956,4 +956,40 @@ export const CRITICS = {
    * Legacy fallback for hypothesis signal detection.
    * Preserves the 4 regex dimension checks from scoreHeuristic().
    */
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Session Navigation - task complexity classification
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Classify the initial user request to determine if it's complex enough to
+   * warrant phase-boundary enforcement. Runs once per session on SESSION_START.
+   * Returns "simple", "moderate", or "complex".
+   *
+   * - simple: 1-2 steps, no research needed, single tool type
+   * - moderate: multiple steps, may need investigation before implementation
+   * - complex: multi-phase task requiring investigation, implementation,
+   *   verification, and documentation across multiple files
+   */
+  initialRequestComplexity: {
+    label: "Initial Request Complexity",
+    criteria: {
+      systemPrompt:
+        "You are a task complexity classifier. You classify user requests into " +
+        "three levels: simple, moderate, or complex.",
+      userPrompt:
+        "Classify this user request by its complexity:\n\n" +
+        "{{request}}\n\n" +
+        "Rules:\n" +
+        "- SIMPLE: 1-2 steps, single file/tool, no research needed. " +
+        "Examples: 'fix a typo', 'run the tests', 'explain this function'\n" +
+        "- MODERATE: multiple steps, may need investigation before implementation. " +
+        "Examples: 'implement a new feature', 'refactor a module', 'fix a bug I found'\n" +
+        "- COMPLEX: multi-phase task requiring investigation, implementation, " +
+        "verification, and documentation. Multiple files, multiple areas. " +
+        "Examples: 'build a new service', 'migrate the database', 'redesign the auth system'\n\n" +
+        "Reply with exactly one word: simple, moderate, or complex. No explanation.",
+    },
+    options: { timeoutMs: 30_000 },
+  } satisfies CriticDef,
 } as const;

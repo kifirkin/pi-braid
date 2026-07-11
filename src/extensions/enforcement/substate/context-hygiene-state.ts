@@ -28,6 +28,8 @@ export interface ScratchpadState {
   lastInvestigationToolTurn: number;
   lastPhaseNudgeTurn: number;
   consecutiveInvestigationTurns: number;
+  // Task complexity from initial request classifier (set on SESSION_START)
+  taskComplexity: "simple" | "moderate" | "complex" | "unknown";
 }
 
 export function createScratchpadState(): ScratchpadState {
@@ -45,6 +47,7 @@ export function createScratchpadState(): ScratchpadState {
     lastInvestigationToolTurn: -100,
     lastPhaseNudgeTurn: -100,
     consecutiveInvestigationTurns: 0,
+    taskComplexity: "unknown",
   };
 }
 
@@ -62,6 +65,7 @@ export function resetScratchpadState(s: ScratchpadState): void {
   s.lastInvestigationToolTurn = -100;
   s.lastPhaseNudgeTurn = -100;
   s.consecutiveInvestigationTurns = 0;
+  s.taskComplexity = "unknown";
 }
 
 // ── Context Hygiene sub-state ──────────────────────────────────────────────
