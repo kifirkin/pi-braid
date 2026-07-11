@@ -150,7 +150,7 @@ so the agent never loses work between phases.
 - [x] Auto-tag position before phase transitions (context_navigate action="tag")
 
 **Planned changes (Tier 2 — moderate, heuristic-only):**
-- [ ] Phase-aware enforcement: detect investigation→implementation transition
+- [x] Phase-aware enforcement: detect investigation→implementation transition
 - [ ] Finalize enforcement after verify_claim + structured markdown response
 
 **Planned changes (Tier 3 — significant, 1 new LLM call per session):**

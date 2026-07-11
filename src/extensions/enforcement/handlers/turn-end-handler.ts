@@ -410,7 +410,54 @@ export async function dispatchTurnEndLoop(
     }
   }
 
-  // Context usage signal: agent called one of the real context tools
+  // ── Phase-aware enforcement: detect investigation→implementation transition ──
+  // When the agent has been investigating (read/grep/find/etc.) for 3+ consecutive
+  // turns and then switches to implementation (edit/write) without tagging position
+  // or finalizing, fire a phase-boundary whisper.
+  const INVESTIGATION_TOOLS = new Set([
+    "read", "grep", "find", "ls", "bash", "web_fetch", "browser_navigate",
+    "read_document", "analyze_image", "render_pdf_page", "codebase",
+  ]);
+  const IMPLEMENTATION_TOOLS = new Set(["edit", "write"]);
+  const PHASE_TOOLS = new Set(["context_navigate", "context_compress", "finalize"]);
+
+  const usedInvestigation = actualTools.some((t) => INVESTIGATION_TOOLS.has(t));
+  const usedImplementation = actualTools.some((t) => IMPLEMENTATION_TOOLS.has(t));
+  const usedPhaseTool = actualTools.some((t) => PHASE_TOOLS.has(t));
+
+  if (usedInvestigation) {
+    getState(ctx).lastInvestigationToolTurn = getState(ctx).currentTurn;
+    getState(ctx).consecutiveInvestigationTurns++;
+  } else {
+    getState(ctx).consecutiveInvestigationTurns = 0;
+  }
+
+  // Detect transition: was investigating for 3+ turns, now implementing,
+  // and hasn't used a phase management tool recently
+  if (
+    !hadErrors &&
+    !inOverflowRecovery &&
+    usedImplementation &&
+    !usedPhaseTool &&
+    getState(ctx).consecutiveInvestigationTurns >= 3
+  ) {
+    const phaseCooldown = 8;
+    if (getState(ctx).currentTurn - getState(ctx).lastPhaseNudgeTurn >= phaseCooldown) {
+      getState(ctx).lastPhaseNudgeTurn = getState(ctx).currentTurn;
+      sendEnforcementWhisper(
+        pi,
+        ctx,
+        `**Phase transition detected:** You were investigating for ${getState(ctx).consecutiveInvestigationTurns} turns and are now implementing.\n\n` +
+          `Tag your position first: \`context_navigate(action="tag", name="before-implementation")\`\n` +
+          `Then archive the investigation: \`context_compress(action="archive", topic="investigation")\`\n` +
+          `This preserves your investigation summary so you can navigate back to it later.`,
+        true,
+        { triggerTurn: true },
+      );
+    }
+  }
+
+  // Context usage signal: agent called one of the realk to it later.`,\n        true,\n        { triggerTurn: true },\n      );\n    }\n  }\n\n  // Context usage signal: agent called one of the real context tools", 0}]
   // (consolidated from the old context_tag/context_log/context_checkout/
   // context_prune/context_audit sub-action names).
   const contextToolNames = new Set([

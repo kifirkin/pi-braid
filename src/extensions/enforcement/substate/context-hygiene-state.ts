@@ -24,6 +24,10 @@ export interface ScratchpadState {
   lastFinalizeNudge: number;
   // Verify enforcement nudge
   lastVerifyNudge: number;
+  // Phase-aware enforcement: tracks investigation→implementation transitions
+  lastInvestigationToolTurn: number;
+  lastPhaseNudgeTurn: number;
+  consecutiveInvestigationTurns: number;
 }
 
 export function createScratchpadState(): ScratchpadState {
@@ -38,6 +42,9 @@ export function createScratchpadState(): ScratchpadState {
     toolsSinceLastPlan: 0,
     lastFinalizeNudge: -100,
     lastVerifyNudge: -100,
+    lastInvestigationToolTurn: -100,
+    lastPhaseNudgeTurn: -100,
+    consecutiveInvestigationTurns: 0,
   };
 }
 
@@ -52,6 +59,9 @@ export function resetScratchpadState(s: ScratchpadState): void {
   s.toolsSinceLastPlan = 0;
   s.lastFinalizeNudge = -100;
   s.lastVerifyNudge = -100;
+  s.lastInvestigationToolTurn = -100;
+  s.lastPhaseNudgeTurn = -100;
+  s.consecutiveInvestigationTurns = 0;
 }
 
 // ── Context Hygiene sub-state ──────────────────────────────────────────────
