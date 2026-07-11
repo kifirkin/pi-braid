@@ -122,6 +122,42 @@
   
   **Proposal**: `docs/proposals/finalization-practices.md` (deferred)
 
+### P3 — session navigation enforcement for long-running tasks
+
+**Status:** Investigation complete, hypothesize fix shipped. Implementation pending.
+
+**Goal:** Enforce session navigation (context_tag, context_archive, finalize)
+at phase boundaries — investigation→implementation, research→verification —
+so the agent never loses work between phases.
+
+**Current state (2026-07-11):**
+- [x] **Investigation**: Read 15+ source files across enforcement, context-lifecycle,
+  metacognition, scratchpad, session-recall. Full analysis in session transcript.
+- [x] **hypothesize fix**: `tryModelChain` now treats empty text as failure (continues
+  to next resolver). hypothesize.ts gracefully degrades instead of throwing.
+
+**Key gaps identified:**
+1. Phase transitions are proposed (custom entries), not enforced (whispers)
+2. No auto-tagging of position before phase changes
+3. No detection of investigation→implementation transition
+4. No finalize enforcement after verify_claim + structured response
+5. SessionPhase type exists in scratchpad but never auto-set
+6. No initial request complexity analysis to gate enforcement
+
+**Planned changes (Tier 1 — quick wins, 0 new LLM calls):**
+- [ ] Upgrade topic-shift proposals to enforcement whispers with triggerTurn
+- [ ] Auto-set SessionPhase from tool patterns (reuse topic classification)
+- [ ] Auto-tag position before phase transitions (context_navigate action="tag")
+
+**Planned changes (Tier 2 — moderate, heuristic-only):**
+- [ ] Phase-aware enforcement: detect investigation→implementation transition
+- [ ] Finalize enforcement after verify_claim + structured markdown response
+
+**Planned changes (Tier 3 — significant, 1 new LLM call per session):**
+- [ ] Initial request complexity classifier (CRITICS.initialRequestComplexity)
+- [ ] Auto-navigate back to investigation checkpoint after implementation
+- [ ] Escalation for ignored proposals (mirror compaction escalation pattern)
+
 ## Companion documents
 
 - [`docs/HISTORY.md`](HISTORY.md) — consolidated history including fragile heuristics, archaeology, proposals, and D-57
