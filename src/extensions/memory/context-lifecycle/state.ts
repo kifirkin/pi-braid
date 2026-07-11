@@ -55,6 +55,11 @@ export interface ContextLifecycleState {
     compactNudgeActive: boolean;
     /** Whether the agent called a context management tool since the last nudge check */
     agentActedOnContext: boolean;
+    // ── Navigation proposal escalation (mirrors compaction escalation) ──
+    /** How many navigation proposals (topic_shift/task_boundary) the agent has ignored */
+    ignoredNavigationProposals: number;
+    /** Turn number when we last sent a navigation enforcement whisper */
+    lastNavigationWhisperTurn: number;
     // ── Policy + detector (migrated 2026-06-22, was DR-C-2) ─────────────────
     /**
      * The signal-policy engine state: cooldowns, policies, governance.
@@ -81,6 +86,8 @@ export function createState(): ContextLifecycleState {
         outcomes: [],
         ignoredCompactNudges: 0,
         lastCompactNudgeTurn: 0,
+        ignoredNavigationProposals: 0,
+        lastNavigationWhisperTurn: 0,
         lastCompactNudgeUsage: 0,
         compactNudgeActive: false,
         agentActedOnContext: false,

@@ -427,6 +427,9 @@ async function queueProposal(
       { deliverAs: "steer", triggerTurn: true },
       { type: "context", source: "context-lifecycle/phase-boundary-enforcement" },
     );
+
+    // Track navigation whisper for escalation monitoring
+    state(ctx).lastNavigationWhisperTurn = state(ctx).turnCount;
   }
 }
 
@@ -506,6 +509,60 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
         );
       }
     }
+    // ── NAVIGATION PROPOSAL ESCALATION ─────────────────────────────────────
+    // Mirror the compaction escalation pattern: if the agent ignores
+    // navigation enforcement whispers, increment the count and escalate.
+    // The enforcement whisper is sent from queueProposal() with triggerTurn.
+    // If the agent ignores 3+ whispers, auto-tag and send a stronger message.
+    if (state(ctx).lastNavigationWhisperTurn > 0) {
+      if (state(ctx).agentActedOnContext) {
+        state(ctx).ignoredNavigationProposals = 0;
+        log.debug("Navigation proposal acknowledged - agent used a context management tool");
+      } else if (state(ctx).turnCount - state(ctx).lastNavigationWhisperTurn > 0) {
+        state(ctx).ignoredNavigationProposals++;
+        log.info(
+          `Navigation proposal ignored (${state(ctx).ignoredNavigationProposals}/3)`,
+        );
+
+        // Escalate: after 3 ignored proposals, auto-tag and send stronger whisper
+        if (state(ctx).ignoredNavigationProposals >= 3) {
+          state(ctx).ignoredNavigationProposals = 0;
+          state(ctx).lastNavigationWhisperTurn = 0;
+
+          // Auto-tag position
+          try {
+            const sm = getSessionManager(ctx);
+            const leafId = sm.getLeafId();
+            sm.setLabel(leafId, `auto-tag-${state(ctx).turnCount}`);
+            log.info(`Auto-tagged position on escalation (turn ${state(ctx).turnCount})`);
+          } catch {
+            // non-fatal
+          }
+
+          sendTrackedMessage(
+            pi,
+            {
+              customType: "context-lifecycle",
+              content: [
+                {
+                  type: "text" as const,
+                  text:
+                    `## ⚡ Navigation enforcement escalated\n\n` +
+                    `Navigation proposals were ignored ${COMPACT_ESCALATION_THRESHOLD} times. ` +
+                    `Auto-tagged current position.\n\n` +
+                    `Use \`context_compress(action="archive")\` to free context before continuing.\n` +
+                    `Use \`context_navigate(action="checkout", target="auto-tag-${state(ctx).turnCount}")\` to return to this point.`,
+                },
+              ],
+              display: true,
+            },
+            { deliverAs: "steer", triggerTurn: true },
+            { type: "context", source: "context-lifecycle/navigation-escalation" },
+          );
+        }
+      }
+    }
+
     // Reset agent action flag for this turn
     state(ctx).agentActedOnContext = false;
 
@@ -635,7 +692,8 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
       state(ctx).agentActedOnContext = true;
       state(ctx).ignoredCompactNudges = 0;
       state(ctx).compactNudgeActive = false;
-      log.debug(`Context management tool "${toolName}" called - reset compaction escalation`);
+      state(ctx).ignoredNavigationProposals = 0;
+      log.debug(`Context management tool "${toolName}" called - reset compaction and navigation escalation`);
     }
 
     // ── Auto-navigate back to investigation checkpoint ─────────────────

@@ -156,7 +156,7 @@ so the agent never loses work between phases.
 **Planned changes (Tier 3 — significant, 1 new LLM call per session):**
 - [x] Initial request complexity classifier (CRITICS.initialRequestComplexity)
 - [x] Auto-navigate back to investigation checkpoint after implementation
-- [ ] Escalation for ignored proposals (mirror compaction escalation pattern)
+- [x] Escalation for ignored proposals (mirror compaction escalation pattern)
 
 ### Cross-session features
 
