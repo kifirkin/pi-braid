@@ -12,8 +12,9 @@ import { createLogger } from "../../../../lib/core/logger.js";
 import { getLastVerification } from "./verify.js";
 import { addEpisode, addPrinciple } from "../../../memory/three-memory-stores/index.js";
 import { executeConsolidation } from "../../../../lib/events/consolidation-channel.js";
-import { handleClearDone } from "../../../memory/scratchpad/handlers.js";
+import { handleArchiveDone } from "../../../memory/scratchpad/handlers.js";
 import type { TaskScratchpad } from "../../../memory/scratchpad/types.js";
+import { getSessionManager } from "../../../../lib/state/session-manager.js";
 
 const log = createLogger("finalize");
 
@@ -181,7 +182,9 @@ const finalizeSchema = Type.Object({
   summary: Type.String({ description: "Brief summary of what was accomplished" }),
   tasksRemaining: Type.Optional(Type.Array(Type.String(), { description: "Follow-up tasks" })),
   autoProceed: Type.Optional(
-    Type.Boolean({ description: "Automatically propose next pending work on finalize" }),
+    Type.Boolean({
+      description: "Automatically propose next pending work on finalize. Defaults to true when there are pending tasks.",
+    }),
   ),
 });
 
@@ -210,17 +213,60 @@ function findNextWork(
 }
 
 /**
- * Clear done items from scratchpad after successful finalize.
+ * Find unpersisted learnings in the scratchpad.
+ * Returns the count of learnings with persisted===false, or null if scratchpad unavailable.
+ */
+function findUnpersistedLearnings(ctx?: ExtensionContext): number | null {
+  if (!ctx) return null;
+  try {
+    const cache = getExtensionState<{ pad: TaskScratchpad | null }>(
+      ctx, "scratchpad-cache", () => ({ pad: null }),
+    );
+    if (!cache?.pad) return null;
+    const unpersisted = cache.pad.key_learnings.filter((l) => !l.persisted);
+    return unpersisted.length > 0 ? unpersisted.length : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Archive done items to disk and clear from scratchpad after successful finalize.
+ * Uses handleArchiveDone (append-only JSONL) instead of handleClearDone (wipe)
+ * so the done history survives across sessions.
  * Fire-and-forget: failures are logged but not surfaced.
  */
-async function clearScratchpadDone(ctx: ExtensionContext): Promise<void> {
+async function archiveScratchpadDone(ctx: ExtensionContext): Promise<void> {
   try {
     const cache = getExtensionState<{ pad: TaskScratchpad | null }>(
       ctx, "scratchpad-cache", () => ({ pad: null }),
     );
     if (cache?.pad) {
-      await handleClearDone(cache.pad);
+      await handleArchiveDone(cache.pad);
     }
+  } catch {
+    // best-effort
+  }
+}
+
+/**
+ * Auto-tag current session position after successful finalize.
+ * Creates a named checkpoint so the agent can navigate back to this point.
+ * Tag name derived from summary prefix (first 40 chars, sanitized).
+ * Fire-and-forget: failures are logged but not surfaced.
+ */
+async function autoTagPosition(ctx: ExtensionContext, summary: string): Promise<void> {
+  try {
+    const tagName = "after-" + summary
+      .slice(0, 40)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48);
+    const sm = getSessionManager(ctx);
+    const leafId = sm.getLeafId();
+    sm.setLabel(leafId, tagName);
+    log.info(`Auto-tagged position as "${tagName}" on finalize`);
   } catch {
     // best-effort
   }
@@ -243,7 +289,7 @@ export function createFinalizeTool(callbacks: FinalizeCallbacks = {}): ToolDefin
     name: "finalize" as const,
     label: "Finalize",
     promptSnippet: "Mark the current task as complete and trigger review",
-    description: `Mark a task complete and record it to session memory. Must call at the end of every task or significant subtask — never finish work without finalizing. Checks recent verify() result and blocks if unresolved issues remain. The verification triple on each done item must guard specific failure modes — 'file was modified' is not a meaningful check, 'behavior changed as expected' is. After finalize, respond with text only (no tool calls) to end the agent loop cleanly.`,
+    description: `Mark a task complete and record it to session memory. Must call at the end of every task or significant subtask — never finish work without finalizing. Checks recent verify() result and blocks if unresolved issues remain. The verification triple on each done item must guard specific failure modes — 'file was modified' is not a meaningful check, 'behavior changed as expected' is. After finalize, respond with text only (no tool calls) to end the agent loop cleanly.\n\nAutomation (all fire-and-forget):\n- Archives done items to disk (append-only JSONL, survives across sessions)\n- Auto-tags current session position for navigation back to this point\n- Auto-proceeds to next pending task by default (set autoProceed=false to disable)\n- Reports unpersisted learnings that need memory_store`,
     parameters: finalizeSchema,
     execute: async (
       _toolCallId: string,
@@ -316,9 +362,10 @@ Run \`verify()\` again after fixing the issues, or set \`completed: true\` to fi
       // Fire-and-forget: record to memory asynchronously (don't block tool result on I/O)
       recordToMemory(_ctx, params.summary, params.completed).catch(() => {});
 
-      // Fire-and-forget: clear done items from scratchpad after successful finalize
+      // Fire-and-forget: archive done items and auto-tag position after successful finalize
       if (_ctx && params.completed) {
-        clearScratchpadDone(_ctx).catch(() => {});
+        archiveScratchpadDone(_ctx).catch(() => {});
+        autoTagPosition(_ctx, params.summary).catch(() => {});
       }
 
       const status = params.completed ? "Task completed" : "Task incomplete";
@@ -329,15 +376,23 @@ Run \`verify()\` again after fixing the issues, or set \`completed: true\` to fi
       }
 
       const nextWork = findNextWork(_ctx);
+      const unpersistedLearnings = findUnpersistedLearnings(_ctx);
+
+      if (unpersistedLearnings) {
+        messages.push(`\n📚 **${unpersistedLearnings} unpersisted learning(s).** Store them with \`memory_store(content=..., memoryType=..., tags=...)\` to preserve across sessions.`);
+      }
+
       if (nextWork) {
         messages.push(`\n📋 **Next pending task:** ${nextWork.description}`);
-        if (params.autoProceed) {
+        // autoProceed defaults to true when there are pending tasks
+        const shouldAutoProceed = params.autoProceed !== undefined ? params.autoProceed : true;
+        if (shouldAutoProceed) {
           messages.push(`\n[ok] Auto-proceeding to next task...`);
           setTimeout(() => {
             sendNextTask?.(nextWork.description);
           }, 500);
         } else {
-          messages.push(`\n💡 Set \`autoProceed: true\` to continue automatically.`);
+          messages.push(`\n🛑 Auto-proceed disabled.`);
         }
       } else {
         messages.push(`\n[ok] No pending tasks remaining.`);
