@@ -201,6 +201,40 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
     const turnState = getState(ctx).turnHistory.get(getState(ctx).currentTurn);
     if (turnState) {
       detectMalformedToolCalls(textContent, pi, ctx);
+
+      // ── Finalize enforcement after verify_claim + structured response ──
+      // When the agent calls verify_claim/conflict_qa and produces a structured
+      // markdown response (headings, lists, code blocks) but doesn't call
+      // finalize, suggest recording the phase.
+      const usedVerificationTools = turnState.actualTools.some((t: string) =>
+        ["verify_claim", "conflict_qa"].includes(t),
+      );
+      const calledFinalize = turnState.actualTools.includes("finalize");
+      const hasStructuredMarkdown = /^#{1,6}\s|^[*-]\s|^\d+\.\s|```/.test(textContent);
+
+      if (
+        usedVerificationTools &&
+        !calledFinalize &&
+        hasStructuredMarkdown &&
+        textContent.length > 200
+      ) {
+        const finalizeAfterVerifyCooldown = 10;
+        if (
+          getState(ctx).currentTurn - getState(ctx).lastFinalizeNudge >=
+          finalizeAfterVerifyCooldown
+        ) {
+          getState(ctx).lastFinalizeNudge = getState(ctx).currentTurn;
+          sendEnforcementWhisper(
+            pi,
+            ctx,
+            `**Research summary detected** after verify_claim/conflict_qa analysis.\n\n` +
+              `Consider calling \`finalize(completed=true, summary="...")\` to record this phase ` +
+              `before moving on. This preserves your findings across sessions and compaction.`,
+            false,
+            { triggerTurn: false },
+          );
+        }
+      }
     }
 
     if (getState(ctx).verificationJudgeRunning) return;

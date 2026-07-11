@@ -151,7 +151,7 @@ so the agent never loses work between phases.
 
 **Planned changes (Tier 2 — moderate, heuristic-only):**
 - [x] Phase-aware enforcement: detect investigation→implementation transition
-- [ ] Finalize enforcement after verify_claim + structured markdown response
+- [x] Finalize enforcement after verify_claim + structured markdown response
 
 **Planned changes (Tier 3 — significant, 1 new LLM call per session):**
 - [ ] Initial request complexity classifier (CRITICS.initialRequestComplexity)
