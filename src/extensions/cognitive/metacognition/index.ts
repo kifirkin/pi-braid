@@ -13,7 +13,6 @@ import { createHypothesizeTool } from "./handlers/hypothesize.js";
 import { createFinalizeTool } from "./handlers/finalize.js";
 import { createVerifyTool } from "./handlers/verify.js";
 import { registerClaimVerificationTools } from "./handlers/claim-verification.js";
-import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { TOOL_EXECUTION_END } from "../../../lib/core/event-names.js";
 
 interface MetaMetrics {
@@ -56,20 +55,6 @@ export default function metacognitionExtension(pi: ExtensionAPI) {
     createFinalizeTool({
       onFinalize: (_summary, _completed) => {
         // Logging handled by the finalize tool's own execution
-      },
-      sendNextTask: (description) => {
-        sendTrackedMessage(
-          pi,
-          {
-            customType: "metacognition",
-            content: [
-              { type: "text" as const, text: `[system] Continue with next task: ${description}` },
-            ],
-            display: true,
-          },
-          { deliverAs: "steer", triggerTurn: true },
-          { type: "other", source: "metacognition/next-task" },
-        );
       },
       recordCalibration,
     }),

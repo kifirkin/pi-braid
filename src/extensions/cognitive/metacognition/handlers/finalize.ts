@@ -274,7 +274,6 @@ async function autoTagPosition(ctx: ExtensionContext, summary: string): Promise<
 
 export interface FinalizeCallbacks {
   onFinalize?: (summary: string, completed: boolean) => void;
-  sendNextTask?: (description: string) => void;
   recordCalibration?: (
     ctx: ExtensionContext,
     confidence: number,
@@ -283,7 +282,7 @@ export interface FinalizeCallbacks {
 }
 
 export function createFinalizeTool(callbacks: FinalizeCallbacks = {}): ToolDefinition<any, any, any> {
-  const { onFinalize, sendNextTask, recordCalibration } = callbacks;
+  const { onFinalize, recordCalibration } = callbacks;
 
   return {
     name: "finalize" as const,
@@ -384,16 +383,7 @@ Run \`verify()\` again after fixing the issues, or set \`completed: true\` to fi
 
       if (nextWork) {
         messages.push(`\n📋 **Next pending task:** ${nextWork.description}`);
-        // autoProceed defaults to true when there are pending tasks
-        const shouldAutoProceed = params.autoProceed !== undefined ? params.autoProceed : true;
-        if (shouldAutoProceed) {
-          messages.push(`\n[ok] Auto-proceeding to next task...`);
-          setTimeout(() => {
-            sendNextTask?.(nextWork.description);
-          }, 500);
-        } else {
-          messages.push(`\n🛑 Auto-proceed disabled.`);
-        }
+        messages.push(`\n[ok] Auto-proceed to next task.`);
       } else {
         messages.push(`\n[ok] No pending tasks remaining.`);
       }
