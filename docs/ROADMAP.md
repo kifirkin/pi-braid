@@ -74,23 +74,33 @@
      items from the scratchpad so they don't accumulate.
      (`src/extensions/cognitive/metacognition/handlers/finalize.ts`)
   
-- [ ] **Sub-item 2: Max-power model for automatic operations.**
-  **Investigation findings:**
-  - `resolveMaxPowerModel()` already exists in `model-resolver.ts` and
-    is used by `consolidated-input-critic.ts` and
-    `consolidated-topic-critic.ts` as Tier 3 fallback.
-  - The ROADMAP's claim that "finalize uses the session model via
-    callLlm" is partially outdated: `finalize.ts` itself doesn't call
-    LLM directly. LLM calls happen in the consolidation pipeline
-    (heartbeat-triggered via `processConsolidationTick`) and the
-    verification judge (MESSAGE_END-triggered via `runVerificationJudge`).
-  - The verification judge uses `getJudgeModel()` which falls back to
-    `resolveUtilityModel()` → session model. Adding max-power routing
-    to the verification judge would require a try-model chain similar
-    to `consolidated-input-critic.ts`.
-  - **Deferred:** This is a tuning optimization, not a bug fix. The
-    max-power infrastructure is in place; wiring it into the judge
-    requires a design decision about model tier ordering.
+- [x] **Sub-item 2: Max-power model for automatic operations — SHIPPED.**
+  **Changes made (2026-07-11):**
+  1. **Created `tryModelChain()` shared helper** in `model-resolver.ts`
+     — accepts lazy resolver callbacks, short-circuits on first success.
+     Handles API key resolution and null models transparently.
+     (`src/lib/ai/model-resolver.ts`)
+  2. **Wired into verification judge** via `judge-utils.ts:callLlm()` —
+     utility → session → max-power (fallback-only, max-power only on
+     error). Prevents flooding on MESSAGE_END.
+     (`src/extensions/enforcement/judge-utils.ts`)
+  3. **Wired into verify, hypothesize, think, backward-checker** —
+     max-power FIRST → utility → session. These are accuracy-critical
+     and explicitly invoked, so defaulting to the expensive model is
+     appropriate.
+     (`src/extensions/cognitive/metacognition/handlers/verify.ts`,
+     `hypothesize.ts`, `think.ts`,
+     `src/lib/verification/backward-checker.ts`)
+  4. **Wired into claim-tracker** — utility → session → max-power
+     (fallback-only, runs every turn).
+     (`src/lib/store/claim-tracker.ts`)
+  5. **Excluded from session-recall** (token-heavy, 180s timeout) and
+     **input-polisher** (not accuracy-critical).
+  
+  **Strategy per caller:**
+  - max-power FIRST: verify, hypothesize, think, backward-checker
+  - fallback-only: judge-utils (verification judge), claim-tracker
+  - excluded: session-recall, input-polisher
   
 - [ ] **Sub-item 3: Event-driven scratchpad cleanup.**
   **Investigation findings:**
