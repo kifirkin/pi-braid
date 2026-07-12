@@ -46,6 +46,13 @@ export interface ModuleContext {
   silentTurns: number;
   metadata: Record<string, unknown>;
   /**
+   * AbortSignal that fires on session_shutdown. Modules that make LLM
+   * calls (via callLlm or classify) MUST thread this signal through to
+   * prevent orphaned calls from running for their full timeout after the
+   * session ends. Created per-tick in the heartbeat tick handler.
+   */
+  abortSignal?: AbortSignal;
+  /**
    * ROADMAP P0-1 / DR-C-1: prefer `whisper()` over `ctx.whisper?.()`.
    * The heartbeat tick handler batches all module whispers into one
    * aggregated message and flushes via sendTrackedMessage, which

@@ -221,6 +221,7 @@ export async function generateProposal(
   ctx: ExtensionContext,
   cluster: WeaknessCluster,
   currentTurn: number,
+  signal?: AbortSignal,
 ): Promise<HarnessProposal | null> {
   if (cluster.severity < ACTIONABLE_SEVERITY) {
     log.debug(`Skipping low-severity cluster: ${cluster.label} (${cluster.severity.toFixed(2)})`);
@@ -270,6 +271,7 @@ export async function generateProposal(
       {
         maxTokens: PROPOSER_MAX_TOKENS,
         timeoutMs: PROPOSER_TIMEOUT_MS,
+        ...(signal ? { signal } : {}),
       },
     );
 
@@ -324,6 +326,7 @@ export async function generateAllPendingProposals(
   existingProposals: HarnessProposal[],
   currentTurn: number,
   maxClusters: number = 1,
+  signal?: AbortSignal,
 ): Promise<HarnessProposal[]> {
   const processedClusterIds = new Set(existingProposals.map((p) => p.clusterId));
 
@@ -341,7 +344,7 @@ export async function generateAllPendingProposals(
   const proposals: HarnessProposal[] = [];
 
   for (const cluster of pendingClusters) {
-    const proposal = await generateProposal(ctx, cluster, currentTurn);
+    const proposal = await generateProposal(ctx, cluster, currentTurn, signal);
     if (proposal) {
       proposals.push(proposal);
     }

@@ -85,6 +85,7 @@ export const evolverModule: CognitiveModule = {
           harnessState.proposals,
           context.turnCount,
           1, // maxClusters: 1 per heartbeat to keep latency reasonable
+          context.abortSignal,
         );
 
         if (newProposals.length > 0) {
@@ -122,6 +123,7 @@ export const evolverModule: CognitiveModule = {
               harnessState.clusters,
               context.turnCount,
               1, // maxProposals: 1 per heartbeat
+              context.abortSignal,
             );
 
             if (validationResults.length > 0) {

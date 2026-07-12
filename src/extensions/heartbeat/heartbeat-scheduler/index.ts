@@ -234,9 +234,25 @@ function tick(
   // handler flushes them via sendTrackedMessage.
   const whisperBuffer: Array<{ message: string; priority: string }> = [];
 
+  // ── Per-tick AbortController for ESC propagation ─────────────────
+  // Create a fresh AbortController for this tick. Modules that make
+  // LLM calls (evolver -> harness proposer/validator) thread this
+  // signal through to callLlm. On session_shutdown, the controller
+  // is aborted, cancelling any in-flight LLM calls. This prevents
+  // orphaned calls from running for their full timeout (10m default)
+  // after the session ends.
+  const tickController = new AbortController();
+  const abortState = getExtensionState<{ controller: AbortController | null }>(
+    ctx,
+    "heartbeat-abort",
+    () => ({ controller: null }),
+  );
+  abortState.controller = tickController;
+
   // Build module context from heartbeat state
   const moduleContext: ModuleContext = {
     ctx,
+    abortSignal: tickController.signal,
     turnCount: state.turnCount,
     lastActivation: state.lastActivation,
     sessionAge: state.turnCount,
@@ -724,6 +740,16 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     // Clean up per-session whisper buffer
     const sid = getSessionIdSafe(ctx) ?? "anonymous";
     _heartbeatWhisperBuffer.delete(sid);
+    // Abort any in-flight heartbeat LLM calls (ESC for background tasks)
+    const abortCtl = getExtensionState<{ controller: AbortController | null }>(
+      ctx,
+      "heartbeat-abort",
+      () => ({ controller: null }),
+    );
+    if (abortCtl.controller) {
+      abortCtl.controller.abort();
+      abortCtl.controller = null;
+    }
     log.info("Heartbeat scheduler shutting down");
   });
 

@@ -265,6 +265,7 @@ export async function validateCandidate(
   candidate: CandidateEdit,
   allClusters: WeaknessCluster[],
   currentTurn: number,
+  signal?: AbortSignal,
 ): Promise<ValidationResult | null> {
   // Find the cluster this proposal addresses
   const cluster = allClusters.find((c) => c.id === proposal.clusterId);
@@ -316,6 +317,7 @@ export async function validateCandidate(
       {
         maxTokens: VALIDATOR_MAX_TOKENS,
         timeoutMs: VALIDATOR_TIMEOUT_MS,
+        ...(signal ? { signal } : {}),
       },
     );
 
@@ -409,6 +411,7 @@ export async function validateProposal(
   proposal: HarnessProposal,
   allClusters: WeaknessCluster[],
   currentTurn: number,
+  signal?: AbortSignal,
 ): Promise<ValidationResult[]> {
   if (proposal.candidates.length === 0) {
     log.info(`No candidates to validate in proposal ${proposal.id}`);
@@ -424,6 +427,7 @@ export async function validateProposal(
       candidate,
       allClusters,
       currentTurn,
+      signal,
     );
     if (result) {
       results.push(result);
@@ -463,6 +467,7 @@ export async function generateAllPendingValidations(
   allClusters: WeaknessCluster[],
   currentTurn: number,
   maxProposals: number = 1,
+  signal?: AbortSignal,
 ): Promise<ValidationResult[]> {
   const validatedCandidateIds = new Set(existingResults.map((r) => r.candidateId));
 
@@ -485,7 +490,7 @@ export async function generateAllPendingValidations(
   const results: ValidationResult[] = [];
 
   for (const proposal of pendingProposals) {
-    const proposalResults = await validateProposal(ctx, proposal, allClusters, currentTurn);
+    const proposalResults = await validateProposal(ctx, proposal, allClusters, currentTurn, signal);
     results.push(...proposalResults);
   }
 
