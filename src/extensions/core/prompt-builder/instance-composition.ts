@@ -487,21 +487,23 @@ function renderInstance(d: InstanceData): string {
     }
   }
 
-  // Other Pi instances running on the system
-  // Group: current instance first, then other instances sorted by PID.
-  // This gives the agent at-a-glance awareness of other Pi sessions,
-  // their projects, and how long they've been running.
-  if (d.otherPiInstances.length > 1) {
+  // Other Pi instances in the same working directory
+  // Filters to only PIDs whose cwd matches the current session's cwd.
+  // This surfaces concurrent Pi sessions on the same project without
+  // the noise of unrelated Pi instances elsewhere on the system.
+  const sameDirInstances = d.otherPiInstances.filter(
+    (i) => i.cwd === d.cwd,
+  );
+  if (sameDirInstances.length > 1) {
     lines.push("");
-    const otherCount = d.otherPiInstances.filter((i) => !i.isCurrent).length;
+    const otherCount = sameDirInstances.filter((i) => !i.isCurrent).length;
     lines.push(
-      `Pi instances (${otherCount} other${otherCount === 1 ? "" : "s"}):`,
+      `Pi instances (${otherCount} other${otherCount === 1 ? "" : "s"}) in cwd:`,
     );
-    for (const inst of d.otherPiInstances) {
+    for (const inst of sameDirInstances) {
       const marker = inst.isCurrent ? "  ← current" : "";
-      const rel = relativeToCwd(inst.cwd, d.cwd);
       lines.push(
-        `  PID ${inst.pid}  ${rel}  ${inst.elapsed}  ${inst.tty}${marker}`,
+        `  PID ${inst.pid}  ${inst.elapsed}  ${inst.tty}${marker}`,
       );
     }
   }
