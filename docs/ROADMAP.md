@@ -6,16 +6,6 @@
 
 ## Active items
 
-### P1 — compat subpath cleanup
-
-- [ ] **Migrate from compat import to Models interface.**
-  `llm-call.ts` currently imports from `@earendil-works/pi-ai/compat`
-  (deprecated subpath). The Models holder infrastructure exists
-  (`src/lib/state/global-state.ts` getModels/setModels,
-  `src/lib/ai/models-init.ts` initModels). The remaining work is to
-  switch `llm-call.ts` from the compat fallback to the Models instance.
-  See `src/lib/ai/AGENTS.md` for the design.
-
 ### P3 — release coordination
 
 - [x] **Investigated: pi-braid-contrib compatibility.**
@@ -102,25 +92,23 @@
   - fallback-only: judge-utils (verification judge), claim-tracker
   - excluded: session-recall, input-polisher
   
-- [ ] **Sub-item 3: Event-driven scratchpad cleanup.**
-  **Investigation findings:**
-  - pi-core's `ExtensionAPI` does not expose a public `emit()` method
-    for extensions to broadcast custom events. The `onEvent` helper
-    wraps `pi.on()` for receiving events, but there's no equivalent
-    `emitEvent` for sending.
-  - The direct-call approach (sub-item 1 fix) is the pragmatic solution
-    given the current event system. It's no different from how finalize
-    already calls `addEpisode()` and `addPrinciple()` from the
-    three-memory-stores module.
-  - **Future work:** If pi-core adds `pi.events.emit()` or a similar
-    broadcast mechanism, migrate the scratchpad cleanup to an
-    event-driven model. Until then, the direct call is the correct
-    pattern.
+- [x] **Sub-item 3: Finalize enforcements baked into the tool itself.**
+  **CLOSED: Event-driven approach superseded.** Instead of waiting for pi-core
+  to expose an `emit()` API, enforcement checks are baked directly into the
+  finalize handler's execute function. Implemented 2026-07-13:
   
-  **Scope**: finalize tool, scratchpad handler, event bus types,
-  max-power model routing in callLlm
+  1. **Unresolved conflicts check** — warns if `getUnresolvedConflicts()`
+     returns > 0 entries, suggesting the agent resolve them before finalizing.
+     Advisory, not blocking (conflicts may be acceptable).
+  2. **Stronger unpersisted learnings warning** — explicitly warns that
+     learnings "will be lost on shutdown" instead of a passive suggestion.
   
-  **Proposal**: `docs/proposals/finalization-practices.md` (deferred)
+  **Also added (register-message-end.ts):**
+  3. **Text-only response after work detection** — when the agent responds
+     with text only (no tool calls) after 2+ turns of edits/writes without
+     calling finalize, sends an enforcement whisper suggesting finalize.
+     Catches the "wrapped up but forgot to finalize" pattern.
+     Uses a 10-turn cooldown via lastFinalizeNudge.
 
 ### P3 — session navigation enforcement for long-running tasks
 
@@ -175,3 +163,16 @@ The full 2,500+ line roadmap was consolidated here on 2026-07-10.
 Every shipped item was verified: 84/84 tests pass, typecheck clean,
 doc checks clean (55/55). Historical content preserved at
 `../pi-braid-evaluation/docs-archive/`.
+
+## Archived items
+
+### P1 — compat subpath cleanup (archived 2026-07-13)
+
+**Status:** Won't fix. The compat import from `@earendil-works/pi-ai/compat`
+works correctly and the migration path is fully documented in the source
+(`src/lib/ai/llm-call.ts` module-level comment). The migration requires
+cross-repo changes to pi-braid-providers (registering custom providers on the
+Models instance via `createProvider()` + `setProvider()`), which risks breaking
+custom provider registrations (a0venice, openrouter-custom). The documented
+migration path serves as sufficient documentation for any future maintainer.
+The code comment at `src/lib/ai/llm-call.ts:31-53` describes the exact steps.

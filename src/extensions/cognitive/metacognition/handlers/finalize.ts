@@ -15,6 +15,7 @@ import { executeConsolidation } from "../../../../lib/events/consolidation-chann
 import { handleArchiveDone } from "../../../memory/scratchpad/handlers.js";
 import type { TaskScratchpad } from "../../../memory/scratchpad/types.js";
 import { getSessionManager } from "../../../../lib/state/session-manager.js";
+import { getUnresolvedConflicts } from "../../../../lib/store/evidence-pool.js";
 
 const log = createLogger("finalize");
 
@@ -377,8 +378,24 @@ Run \`verify()\` again after fixing the issues, or set \`completed: true\` to fi
       const nextWork = findNextWork(_ctx);
       const unpersistedLearnings = findUnpersistedLearnings(_ctx);
 
+      // ── Pre-flight: check for unresolved conflicts ──────────────────────
+      if (_ctx) {
+        const unresolved = getUnresolvedConflicts(_ctx);
+        if (unresolved.length > 0) {
+          messages.push(
+            `\n⚠️ **${unresolved.length} unresolved source conflict(s).** ` +
+            `Resolve with \`conflict_qa(action="resolve", ...)\` before they ` +
+            `accumulate across sessions.`
+          );
+        }
+      }
+
       if (unpersistedLearnings) {
-        messages.push(`\n📚 **${unpersistedLearnings} unpersisted learning(s).** Store them with \`memory_store(content=..., memoryType=..., tags=...)\` to preserve across sessions.`);
+        messages.push(
+          `\n📚 **${unpersistedLearnings} unpersisted learning(s).** ` +
+          `Call \`memory_store(content=..., memoryType=..., tags=...)\` ` +
+          `now to preserve them across sessions — they will be lost on shutdown.`
+        );
       }
 
       if (nextWork) {

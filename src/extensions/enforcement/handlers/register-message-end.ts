@@ -235,6 +235,49 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
           );
         }
       }
+
+      // ── Finalize enforcement: text-only response after significant work ──
+      // When the agent responds with text only (no tool calls) after a series
+      // of edits/writes without calling finalize, suggest recording completion.
+      // This catches the pattern where the agent wraps up with a summary but
+      // forgets to call finalize, unlike the turn-end handler's per-turn nudge
+      // (which was suppressed by D-57 as a static instruction).
+      const isTextOnly = turnState.actualTools.length === 0;
+      if (isTextOnly && textContent.length > 200) {
+        let recentWorkTurns = 0;
+        let recentHasFinalize = false;
+        const currentT = getState(ctx).currentTurn;
+        // Look back up to 5 turns for significant work
+        for (let i = 1; i <= 5; i++) {
+          const prev = getState(ctx).turnHistory.get(currentT - i);
+          if (prev) {
+            if (prev.actualTools.includes("finalize")) {
+              recentHasFinalize = true;
+              break;
+            }
+            if (prev.actualTools.some((t: string) => ["edit", "write"].includes(t))) {
+              recentWorkTurns++;
+            }
+          }
+        }
+
+        if (recentWorkTurns >= 2 && !recentHasFinalize) {
+          const finalizeCooldown = 10;
+          if (currentT - getState(ctx).lastFinalizeNudge >= finalizeCooldown) {
+            getState(ctx).lastFinalizeNudge = currentT;
+            sendEnforcementWhisper(
+              pi,
+              ctx,
+              `**Work completed without finalize.** You made changes across ${recentWorkTurns} turns and responded with a summary, but did not call \`finalize()\`.\n\n` +
+                `Call \`finalize(completed=true, summary="...")\` to record this work ` +
+                `across sessions. Without finalize, this progress may be lost on ` +
+                `session shutdown.`,
+              false,
+              { triggerTurn: false },
+            );
+          }
+        }
+      }
     }
 
     if (getState(ctx).verificationJudgeRunning) return;
