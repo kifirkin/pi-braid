@@ -16,6 +16,7 @@ import { Type } from "typebox";
 import type { CompactOptions, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { analyzeSession } from "../../analysis.js";
 import * as timerMod from "../../../../scheduling/timer/index.js";
+import { getState } from "../../../../enforcement/state.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -207,6 +208,14 @@ export function registerContextCompress(pi: ExtensionAPI): void {
 
           setTimeout(() => {
             try {
+              // Signal to session_compact handler that this is agent-initiated
+              // compaction (via context_compress tool), so it should auto-resume.
+              // If user typed /compress, this flag is NOT set.
+              try {
+                getState(ctx).autoResumeAfterCompaction = true;
+              } catch {
+                // Non-fatal - enforcement state unavailable
+              }
               ctx.compact(options);
             } catch {
               // Agent already disconnected - non-fatal
@@ -486,6 +495,13 @@ export function registerContextCompress(pi: ExtensionAPI): void {
           const options: CompactOptions = {};
           setTimeout(() => {
             try {
+              // Signal to session_compact handler that this is agent-initiated
+              // compaction (via context_compress tool), so it should auto-resume.
+              try {
+                getState(ctx).autoResumeAfterCompaction = true;
+              } catch {
+                // Non-fatal - enforcement state unavailable
+              }
               ctx.compact(options);
             } catch {
               // Non-fatal

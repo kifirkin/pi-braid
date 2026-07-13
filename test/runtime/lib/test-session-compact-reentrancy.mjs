@@ -171,7 +171,7 @@ describe("session_compact handler", () => {
     attachState(ctx, makeFakeState());
 
     // Synchronously call the handler without awaiting yet.
-    const handlerPromise = handler({}, ctx);
+    const handlerPromise = handler({ reason: "threshold" }, ctx);
 
     // During the handler's synchronous body, nothing should have happened.
     assert.equal(
@@ -208,8 +208,8 @@ describe("session_compact handler", () => {
     const ctxB = makeFakeCtx("session-B");
     attachState(ctxB, makeFakeState());
 
-    const promiseA = handler({}, ctxA);
-    const promiseB = handler({}, ctxB);
+    const promiseA = handler({ reason: "threshold" }, ctxA);
+    const promiseB = handler({ reason: "threshold" }, ctxB);
 
     await promiseA;
     await promiseB;
@@ -223,7 +223,7 @@ describe("session_compact handler", () => {
     const ctx = makeFakeCtx("test-reorient-wake");
     attachState(ctx, makeFakeState());
 
-    await handler({}, ctx);
+    await handler({ reason: "threshold" }, ctx);
     await flushMicrotasks();
 
     // With empty learnings, exactly one whisper (the re-orient) fires.
@@ -245,7 +245,7 @@ describe("session_compact handler", () => {
     });
     attachState(ctx, makeFakeState());
 
-    await handler({}, ctx);
+    await handler({ reason: "threshold" }, ctx);
     await flushMicrotasks();
 
     assert.equal(pi.sent.length, 2, "two whispers fire when unpersisted learnings exist");
@@ -264,7 +264,7 @@ describe("session_compact handler", () => {
     };
 
     // Must not throw.
-    await handler({}, ctx);
+    await handler({ reason: "threshold" }, ctx);
     await flushMicrotasks();
 
     assert.equal(ctx.calls.scratchpad, 1, "scratchpad was attempted");
@@ -280,7 +280,7 @@ describe("session_compact handler", () => {
 
   it("FIX: state resets happen synchronously during handler execution", async () => {
     const ctx = makeFakeCtx("test-state-resets");
-    await handler({}, ctx);
+    await handler({ reason: "threshold" }, ctx);
 
     // State resets are synchronous - applied before the handler returns.
     // Verify by checking that getState(ctx) returns a valid state object

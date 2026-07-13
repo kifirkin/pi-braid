@@ -77,6 +77,15 @@ export interface ContextHygieneState {
   overflowRecently: number;
   contextCheckInterval: number;
   contextAuditThreshold: number;
+  /**
+   * Flag set by the context_compress tool before triggering compaction.
+   * The session_compact handler checks this flag to determine whether to
+   * auto-resume the agent (triggerTurn: true) after compaction.
+   * - If true (set by tool): auto-resume (agent-initiated compaction)
+   * - If false (unset): reason: "manual" means user typed /compress → skip
+   *   reason: "threshold"|"overflow" means auto-compaction → auto-resume anyway
+   */
+  autoResumeAfterCompaction: boolean;
 }
 
 export function createContextHygieneState(): ContextHygieneState {
@@ -87,6 +96,7 @@ export function createContextHygieneState(): ContextHygieneState {
     overflowRecently: 0,
     contextCheckInterval: 34,
     contextAuditThreshold: 0.66,
+    autoResumeAfterCompaction: false,
   };
 }
 
@@ -95,6 +105,7 @@ export function resetContextHygieneState(s: ContextHygieneState): void {
   s.lastContextCheckTurn = 0;
   s.lastCompactionTurn = 0;
   s.overflowRecently = 0;
+  s.autoResumeAfterCompaction = false;
   s.contextCheckInterval = 34;
   s.contextAuditThreshold = 0.66;
 }

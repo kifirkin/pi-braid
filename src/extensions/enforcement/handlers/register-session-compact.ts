@@ -103,6 +103,24 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
       // Delivered via queueMicrotask to avoid stack overflow from synchronous
       // re-entry (see file-level comment). Uses triggerTurn: true so the agent
       // wakes up and continues its loop automatically.
+      //
+      // Auto-resume logic:
+      //   - reason === "threshold" | "overflow": auto-compaction, always auto-resume
+      //   - reason === "manual": check autoResumeAfterCompaction flag
+      //     - Flag set (by context_compress tool): agent-initiated, auto-resume
+      //     - Flag not set: user typed /compress, skip auto-resume
+      const shouldAutoResume =
+        _event.reason === "threshold" ||
+        _event.reason === "overflow" ||
+        getState(ctx).autoResumeAfterCompaction;
+      // Clear the flag immediately (one-shot)
+      getState(ctx).autoResumeAfterCompaction = false;
+
+      if (!shouldAutoResume) {
+        log.debug("session_compact: user-initiated compaction (/compress), skipping auto-resume");
+        return;
+      }
+
       queueMicrotask(() => {
         void (async () => {
           try {
