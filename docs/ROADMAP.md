@@ -152,6 +152,113 @@ so the agent never loses work between phases.
   persisted to `~/.pi/agent/braid/tags/<slug>.json` and surfaced on SESSION_START.
   Tags survive process restarts and compaction.
 
+### P3 — session batch analysis tools
+
+**Status:** Epic A (batch) shipped. Epic B (analyze) designed. Epic C (stats) scoped.
+
+**Goal:** Mine 3 months of session data (318M, 318 braid sessions) for insights about
+prompt effectiveness, behavior patterns, and failure modes.
+
+**Epic A — `session action="batch"` — SHIPPED (2026-07-13, commit 36a0a724).**
+Grep aggregation across all sessions by project and month, with timeline and top-N sessions.
+No LLM, fast. Filters: `pattern` (required), `project` (defaults to cwd), `since` (optional date),
+`limit` (max sessions, default 10).
+Output: human-readable text (TUI-friendly) + structured `details` (following the `think` tool
+pattern: `content` for human, `details` for agent).
+
+**Epic B — `session action="analyze"` — DESIGNED.**
+Multi-session LLM analysis. Accepts `sessionPaths: string[]`, `question: string`, `sample?: number`.
+Per-session: parse JSONL → extract structured events (tool calls, verification judge verdicts,
+behavior modes, finalize calls, errors, whispers) → compress to 1-2K token summary.
+All summaries + question → main model (max context window).
+Progressive batching for large sample sizes.
+
+**Epic C — `session action="stats"` — SCOPED.**
+Session statistics overview. Total sessions, by project, date range, average size. No LLM, fast.
+
+### P3 — scratchpad real-time cross-instance sync
+
+**Status:** Designed. Implementation pending.
+
+**Goal:** Enable multiple pi instances to share a project-wide scratchpad in near-real-time.
+An agent in one terminal can see plan items marked done by an agent in another terminal.
+
+**Current architecture:**
+- `getOrCreateScratchpad()` in `index.ts` — caches pad on first load, never reloads from disk
+- `mutateAndSave()` in `utils.ts` — debounced write via `setTimeout(0)`
+- `flushPendingScratchpadWrites()` — force-flush on turn-end (called by `register-turn-end-hygiene.ts`)
+- JSONL is append-only, safe for concurrent writes (no overwrite race)
+
+**Design:**
+1. **`index.ts:getOrCreateScratchpad()`** — reload from disk on every tool call, merge with local
+   in-memory state. Merge strategy: disk's plan items (shared), local's notes/decisions (ephemeral).
+2. **`utils.ts:mutateAndSave()`** — add immediate flush option (skip debounce) for real-time writes.
+3. **Coordination protocol:** Agent A marks done → saves → Agent B reloads → sees updated plan.
+   `finalize()` calls `mark_done` + `flushPendingScratchpadWrites()`.
+
+**Key design decisions (from 2026-07-13 discussion):**
+- JSONL append-only provides safe concurrent writes without locks
+- Last-writer-wins per field merge strategy
+- Plan items are shared (visible to all agents)
+- Notes/decisions/learnings are local (per-agent ephemeral)
+- No polling needed — reload-before-read is sufficient
+
+### P3 — multi-agent coordination research (DEFERRED)
+
+**Status:** Deferred. Research needed before implementation.
+
+**Goal:** Research best approaches for concurrent scratchpad access, conflict resolution,
+and cross-instance validation for the claim/conflict pipeline.
+
+**Open questions:**
+- Polling alternatives to reload-before-read (file watchers? inotify?)
+- Concurrent validation for claim/conflict pipeline (how to prevent two agents from
+  claiming the same task)
+- Conflict resolution for simultaneous edits
+- Best approach for cross-instance communication without a central server
+
+### P3 — system architecture deep dive (COMPLETED 2026-07-13)
+
+**Findings:** Complete system architecture map produced. Key learnings:
+
+**Data flow:**
+```
+User Input → Input Polisher → Prompt Builder → LLM → Tool Execution → Enforcement → Output
+                                   ↑                           ↓
+                             Context Lifecycle           Memory System
+                             (auto-compact,              (session recall,
+                              proposals)                  scratchpad, memory_store)
+```
+
+**Key subsystems (all in `src/extensions/`):**
+| Category | Sub-extensions | Role |
+|---|---|---|
+| `core/` | polyfill, agent-environment, prompt-builder, input-polisher | What LLM sees |
+| `cognitive/` | metacognition, reasoning, sycophancy-detector, tool-safety, topic-drift, turn-outcome | Thinking + reasoning |
+| `memory/` | three-memory-stores, memory-agent-bridge, session-recall, context-manager, context-lifecycle, scratchpad, workspace-snapshot | Remembering + persistence |
+| `enforcement/` | (1 root + detection/handlers/substate) | Turn pipeline |
+| `self/` | health-maintenance, error-tracking, watchdog, auto-recovery, latent-activator | Self-management |
+| `heartbeat/` | heartbeat-scheduler, analytics | Background proactive |
+
+**State management (from `src/lib/state/AGENTS.md`):**
+- Per-extension, per-session: `getExtensionState(ctx, key, factory)`
+- Process-global: `global-state.ts` (with explicit cache invalidation)
+- Module-level `let` is banned except for documented exceptions
+- The scratchpad uses `getExtensionState(ctx, "scratchpad-cache", ...)` — session-scoped
+
+**Whisper delivery:**
+- `sendTrackedMessage(pi, params, options, meta)` — the ONLY path for agent-bound messages
+- `triggerTurn: true` — enforcement-critical (wakes agent)
+- `triggerTurn: false` — advisory (agent sees on next turn)
+- `log.*` routes to TUI when ctx is bound, to in-memory buffer when unbound
+
+**Shipped improvements (this session, 2026-07-13):**
+- [x] INTERACTION_STYLE cycle completed: "understand before you act" now includes the
+  stopping condition ("then decide what to change and change it")
+- [x] Behavior mode transition logging in TUI (log.info on mode change)
+- [x] Verification judge regex heuristic removed — LLM evaluates tool log directly
+- [x] `session action="batch"` — grep aggregation across all sessions
+
 ## Companion documents
 
 - [`docs/HISTORY.md`](HISTORY.md) — consolidated history including fragile heuristics, archaeology, proposals, and D-57
