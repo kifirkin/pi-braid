@@ -38,7 +38,6 @@ export interface BackwardCheckResult {
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const BACKWARD_CHECK_MAX_TOKENS = 1024;
-const BACKWARD_CHECK_TIMEOUT_MS = 30_000;
 
 // ── Prompt Building ────────────────────────────────────────────────────────
 
@@ -163,7 +162,12 @@ export async function backwardCheck(
       () => ctx.model,
     ], systemPrompt, userPrompt, {
       maxTokens: BACKWARD_CHECK_MAX_TOKENS,
-      timeoutMs: BACKWARD_CHECK_TIMEOUT_MS,
+      // Thread ctx.signal so ESC / session shutdown aborts the backward
+      // check cleanly instead of leaking until the 30s timeout fires.
+      // Without this, pressing ESC mid-turn only cancels the main LLM
+      // call — the backward check keeps running, output is cut off and
+      // lost at the timeout boundary.
+      ...(ctx.signal ? { signal: ctx.signal } : {}),
     });
 
     if ("error" in result) {
