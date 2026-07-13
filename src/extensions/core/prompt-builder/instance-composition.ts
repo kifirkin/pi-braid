@@ -46,7 +46,7 @@
  * runs.
  */
 
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, existsSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -210,6 +210,150 @@ function readBraidVersion(): { version: string; root: string } {
   return { version: "unknown", root: process.cwd() };
 }
 
+// ── Other Pi instances discovery ───────────────────────────────────────────
+// Discovers all `pi` processes running on the system (including the current
+// one) and their working directories. Uses `ps` + `lsof` on macOS/Linux.
+// Results are cached with a short TTL to avoid repeated `lsof` calls.
+
+interface OtherPiInstance {
+  pid: number;
+  cwd: string;
+  /** Elapsed time formatted as a human-readable string (e.g. "5h 25m"). */
+  elapsed: string;
+  /** Terminal the process is attached to (e.g. "ttys002"). */
+  tty: string;
+  /** Whether this is the current process. */
+  isCurrent: boolean;
+}
+
+const CACHE_TTL_MS = 5_000;
+let _otherPiCache: { data: OtherPiInstance[]; timestamp: number } | null = null;
+
+function discoverOtherPiInstances(): OtherPiInstance[] {
+  const now = Date.now();
+  if (_otherPiCache && now - _otherPiCache.timestamp < CACHE_TTL_MS) {
+    return _otherPiCache.data;
+  }
+
+  const instances: OtherPiInstance[] = [];
+  const currentPid = process.pid;
+
+  try {
+    // Step 1: Find all `pi` processes via `ps`. We match the exact command
+    // name "pi" (not grep, not "pi-braid", not "pi-coding-agent").
+    const psOut = spawnSync(
+      "ps",
+      ["-eo", "pid=,etime=,tty=,comm=", "-o", "command="],
+      { encoding: "utf8", timeout: 5000 },
+    );
+    if (psOut.status !== 0) return [];
+
+    const lines = psOut.stdout.trim().split("\n");
+    const piPids: number[] = [];
+    const piLines: Map<number, { elapsed: string; tty: string }> = new Map();
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const parts = trimmed.split(/\s+/);
+      if (parts.length < 4) continue;
+
+      const pid = parseInt(parts[0], 10);
+      if (isNaN(pid)) continue;
+
+      const elapsed = parts[1];
+      const tty = parts[2];
+      const comm = parts[3];
+      const command = parts.slice(4).join(" ");
+
+      // Match either bare "pi" command or "node ... pi" invocation
+      const isPiProcess =
+        comm === "pi" ||
+        command.includes("pi-coding-agent") ||
+        command.includes("/pi");
+
+      if (isPiProcess) {
+        piPids.push(pid);
+        piLines.set(pid, { elapsed, tty });
+      }
+    }
+
+    // Step 2: For each Pi process, get its cwd via `lsof`.
+    // Batch all PIDs into a single `lsof` call for efficiency.
+    if (piPids.length > 0) {
+      const pidList = piPids.join(",");
+      const lsofOut = spawnSync(
+        "lsof",
+        ["-a", "-p", pidList, "-d", "cwd", "-F", "n"],
+        { encoding: "utf8", timeout: 5000 },
+      );
+
+      if (lsofOut.status === 0) {
+        // Parse lsof output: each entry has a 'p<PID>' line followed by
+        // 'fcwd' and 'n<path>' lines. We want the 'n<path>' after 'fcwd'.
+        const lsofLines = lsofOut.stdout.split("\n");
+        let currentPidEntry = 0;
+        let afterCwd = false;
+
+        for (const line of lsofLines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+
+          if (trimmed.startsWith("p")) {
+            currentPidEntry = parseInt(trimmed.slice(1), 10) || 0;
+            afterCwd = false;
+          } else if (trimmed === "fcwd") {
+            afterCwd = true;
+          } else if (afterCwd && trimmed.startsWith("n")) {
+            const cwd = trimmed.slice(1);
+            const info = piLines.get(currentPidEntry);
+            if (info) {
+              instances.push({
+                pid: currentPidEntry,
+                cwd,
+                elapsed: info.elapsed,
+                tty: info.tty,
+                isCurrent: currentPidEntry === currentPid,
+              });
+            }
+            afterCwd = false;
+            currentPidEntry = 0;
+          }
+        }
+      }
+
+      // Fallback: for PIDs where lsof didn't return a cwd (e.g. permission
+      // denied), still add them with unknown cwd.
+      for (const pid of piPids) {
+        if (!instances.find((i) => i.pid === pid)) {
+          const info = piLines.get(pid);
+          if (info) {
+            instances.push({
+              pid,
+              cwd: "(unknown)",
+              elapsed: info.elapsed,
+              tty: info.tty,
+              isCurrent: pid === currentPid,
+            });
+          }
+        }
+      }
+    }
+  } catch {
+    // Non-fatal - instance discovery is a best-effort bonus
+  }
+
+  // Sort: current instance first, then by PID ascending
+  instances.sort((a, b) => {
+    if (a.isCurrent) return -1;
+    if (b.isCurrent) return 1;
+    return a.pid - b.pid;
+  });
+
+  _otherPiCache = { data: instances, timestamp: now };
+  return instances;
+}
+
 // ── Main builder ────────────────────────────────────────────────────────────
 
 export interface InstanceContext {
@@ -241,6 +385,8 @@ interface InstanceData {
   session: L1EnvironmentData;
   /** Top-level pi extension packages, ordered by discovery priority. */
   topLevelExtensions: TopLevelExtension[];
+  /** Other Pi instances running on the system (discovered via ps + lsof). */
+  otherPiInstances: OtherPiInstance[];
   skillCount: number;
   memoryCount: number;
 }
@@ -266,6 +412,7 @@ export async function instanceSection(
     type: os.type(),
     hostname: os.hostname(),
   };
+  const otherPiInstances = discoverOtherPiInstances();
   const data: InstanceData = {
     braidVersion: braid.version,
     pi,
@@ -276,6 +423,7 @@ export async function instanceSection(
     sessionId: ctx.sessionManager?.getSessionId() ?? "",
     session,
     topLevelExtensions,
+    otherPiInstances,
     skillCount: instanceCtx.skillCount,
     memoryCount: instanceCtx.memoryCount,
   };
@@ -336,6 +484,25 @@ function renderInstance(d: InstanceData): string {
       const tag = ext.source;
       const rel = relativeToCwd(ext.root, d.cwd);
       lines.push(`  ${ext.name} v${ext.version}  ${rel}  (${tag})`);
+    }
+  }
+
+  // Other Pi instances running on the system
+  // Group: current instance first, then other instances sorted by PID.
+  // This gives the agent at-a-glance awareness of other Pi sessions,
+  // their projects, and how long they've been running.
+  if (d.otherPiInstances.length > 1) {
+    lines.push("");
+    const otherCount = d.otherPiInstances.filter((i) => !i.isCurrent).length;
+    lines.push(
+      `Pi instances (${otherCount} other${otherCount === 1 ? "" : "s"}):`,
+    );
+    for (const inst of d.otherPiInstances) {
+      const marker = inst.isCurrent ? "  ← current" : "";
+      const rel = relativeToCwd(inst.cwd, d.cwd);
+      lines.push(
+        `  PID ${inst.pid}  ${rel}  ${inst.elapsed}  ${inst.tty}${marker}`,
+      );
     }
   }
 
