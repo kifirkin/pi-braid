@@ -79,8 +79,6 @@ export interface JudgeContext {
   toolLog: string[];
   /** Has code been modified (edit/write) */
   hasCodeChanges: boolean;
-  /** Has verification been run (bash with test commands) */
-  hasVerification: boolean;
   /** Agent's last response text (for claim detection) */
   lastResponse: string;
   /** Agent's thinking/reasoning text (if available) */
@@ -108,7 +106,7 @@ function buildVerificationPrompt(context: JudgeContext): string {
   }
 
   sections.push(`## CODE CHANGES: ${context.hasCodeChanges ? "YES" : "NO"}`);
-  sections.push(`## VERIFICATION RUN: ${context.hasVerification ? "YES" : "NO"}`);
+  // (Verification evidence comes from the TOOL EXECUTION LOG above, not a boolean)
   sections.push("");
 
   if (context.thinking) {

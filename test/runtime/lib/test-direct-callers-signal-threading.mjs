@@ -214,7 +214,7 @@ await test("runVerificationJudge aborts when options.signal fires (behavioral)",
     const start = Date.now();
     const promise = runVerificationJudge(
       fakeCtx,
-      { userRequest: "test", toolsUsed: [], toolLog: [], hasCodeChanges: false, hasVerification: false, lastResponse: "", thinking: "" },
+      { userRequest: "test", toolsUsed: [], toolLog: [], hasCodeChanges: false, lastResponse: "", thinking: "" },
       { timeoutMs: 60_000, signal: controller.signal },
     );
     // Fire signal shortly after the call starts - simulates ESC
