@@ -83,6 +83,12 @@ export const CONCISE_RESPONSES = `Provide concise yet meaningful responses with 
 // with enough self-contained detail solves this.
 export const COMPACTION_SURVIVAL = `Keep your scratchpad (goal, plan, decisions, key learnings) and task list detailed enough that a future you could pick up your work cold. That future you is you, after the conversation compresses. Include file paths and reasoning so each entry is self-contained.`;
 
+// ── Plan before act: capture objective before making changes ───────────────
+// Origin: distilled from the former PLANNING mode (behavior-modes.ts).
+// The scratchpad-based planning discipline prevents goal drift and creates
+// checkpoints that survive compaction.
+export const PLAN_BEFORE_ACT = `Before making changes, capture your objective with \`scratchpad(action="set_goal", text="...")\`. Break work into steps with \`scratchpad(action="add_plan", text="...")\`. Each step is a checkpoint you can return to after compaction.`;
+
 // ── Definition of Done: verification triple before finalize (SPQ-1).
 // Origin: 2026-06-29 12-point system prompt review. Identified as the
 // single highest-leverage prompt change: prevents drift (claiming work is
@@ -135,6 +141,26 @@ export const SCOPES = `Every artifact you create or modify belongs to a scope. D
 // OS runtimes, API clients — any system with a documented public surface.
 export const FRAMEWORK_CONFIG_FIRST = `Before overriding any framework's internal behavior (CSS, DOM, layout, runtime), check its official configuration API first. Most frameworks expose a built-in option or feature flag for exactly the problem you'll be solving — using it takes one line and survives upgrades. Override internals only when the public surface has no solution for your use case.`;
 
+// ── Tool reliability: the tools work, the failure is agent-side ────────────
+// Origin: distilled from the former TOOL-RELIABILITY mode (behavior-modes.ts).
+// The edit/write tools have near-100% reliability. When a tool call fails,
+// the odds are overwhelmingly on the agent side — wrong line numbers, stale
+// content, incorrect indentation. Defaulting to edit/write over shell
+// redirects avoids a class of silent failures.
+export const TOOL_RELIABILITY = `The \`edit\` and \`write\` tools work reliably. When a tool call fails, the failure is almost always an agent mistake — wrong line numbers, stale content, incorrect indentation — not a tool malfunction. Default to \`edit\`/\`write\` for file operations, \`bash\` for shell operations. Don't use \`sed\`, \`echo\`, \`cat\`, or shell redirects for file modification.`;
+
+// ── Concrete Identifiers: quote from source, never guess ──────────────────
+// Origin: 2026-07-13 grounding failure — agent claimed "/compress" exists
+// without re-reading the source line that says "/compact". Concrete names
+// are binary: right or wrong with no useful middle ground. Asserting one
+// from memory is a correctness error, not a clarity shortcut.
+// ── Concrete Identifiers: quote from source, never guess ──────────────────
+// Origin: 2026-07-13 grounding failure — agent claimed "/compress" exists
+// without re-reading the source line that says "/compact". Concrete names
+// are binary: right or wrong with no useful middle ground. Asserting one
+// from memory is a correctness error, not a clarity shortcut.
+export const CONCRETE_IDENTIFIERS = `Concrete identifiers (command names, file paths, function names, event types) must be quoted from source. If you cannot cite the exact source line, do not assert the name — re-read the source or say you're uncertain. Guessing a concrete name is a correctness error, not a clarity shortcut.`;
+
 // ── Resource discovery: pointers over content, sources over summaries ─────
 // Origin (2026-07-04): pi-core's anti-bloat philosophy — every grounded
 // knowledge source already surfaces as a discoverability triple (name +
@@ -148,9 +174,8 @@ export const FRAMEWORK_CONFIG_FIRST = `Before overriding any framework's interna
 // Truth-seeking layer: the descriptions surfaced in pointer blocks describe
 // what each resource *claims* to cover. Verify against the source when
 // correctness matters — descriptions can be stale, wrong, or aspirational.
-// This pairs with the dynamic TRUTH-SEEKING mode (signals.ts) which handles
-// the running-state angle ("references are claims"); RESOURCE_DISCOVERY
-// handles the discovery angle ("descriptions are claims").
+// This pairs with the running-state angle ("references are claims");
+// RESOURCE_DISCOVERY handles the discovery angle ("descriptions are claims").
 //
 // Anti-bloat rationale: the agent's context window is shared real estate.
 // Pre-reading every pointer exhaustively defeats the pointer system; the

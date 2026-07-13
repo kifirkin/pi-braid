@@ -82,7 +82,7 @@ export interface WeaknessCluster {
  * to fix systemic weaknesses.
  */
 export type HarnessTargetSurface =
-  | "system-prompt"         // identity.ts, behavior-modes.ts
+  | "system-prompt"         // identity.ts invariants
   | "tool-description"      // Individual tool descriptions
   | "enforcement-signal"    // Enforcement signal thresholds/logic
   | "heuristic"             // Heuristic rules (via evolver)

@@ -15,7 +15,7 @@ import { registerHandlers } from "./handler-registry.js";
 
 const log = createLogger("enforcement");
 
-export { enforcementSignals, determineContrastMode, pruneSignals } from "./signals.js";
+export { enforcementSignals, pruneSignals } from "./signals.js";
 
 import { createLogger } from "../../lib/core/logger.js";
 

@@ -5,7 +5,6 @@ import { getAgentDir, loadProjectContextFiles } from "@earendil-works/pi-coding-
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { RESOURCES_DISCOVER } from "../../../lib/core/event-names.js";
-import { eventBus } from "../../../lib/events/event-bus.js";
 import { gatherContextState, contextSection } from "./context-section.js";
 import { deliverActiveSpecs } from "../../../lib/cognitive/openspec.js";
 import { deliverRelevantHints } from "../../../lib/cognitive/hints.js";
@@ -16,16 +15,18 @@ import {
   INTERACTION_STYLE,
   CONCISE_RESPONSES,
   COMPACTION_SURVIVAL,
+  PLAN_BEFORE_ACT,
   DEFINITION_OF_DONE,
   LIVING_DOCS,
   MEMORY_AWARENESS,
   MEMORY_ISOLATION,
   SCOPES,
   FRAMEWORK_CONFIG_FIRST,
+  CONCRETE_IDENTIFIERS,
+  TOOL_RELIABILITY,
   RESOURCE_DISCOVERY,
   BEHAVIORAL_VERIFICATION,
 } from "./identity.js";
-import { behaviorModeSection } from "./behavior-modes.js";
 import { ALL_CONTRAST_PHRASES } from "./contrast-phrases.js";
 import {
   reconstructSkillsSection,
@@ -79,13 +80,11 @@ import { getExtensionState } from "../../../lib/state/extension-state.js";
 
 interface PromptBuilderState {
   insightsSent: boolean;
-  activeBehaviorMode: string;
 }
 
 function getPromptState(ctx: ExtensionContext): PromptBuilderState {
   return getExtensionState(ctx, "prompt-builder", () => ({
     insightsSent: false,
-    activeBehaviorMode: "TRUTH-SEEKING",
   }));
 }
 const KNOWN_SNIPPETS: Record<string, string> = {
@@ -208,17 +207,14 @@ async function projectContextSection(cwd: string, ctx: ExtensionContext): Promis
 export default function promptBuilderExtension(pi: ExtensionAPI) {
   // L1 state is now gathered per-request, not global
 
-  // Listen for enforcement_signals events -- enforcement emits these on
-  // every turn_end and session_compact with the current behavior mode.
-  // The prompt-builder stores the mode and renders it in the next prompt.
-  // Uses registerSessionStartHandler so the listener has access to the
-  // per-session ExtensionContext (needed for getExtensionState).
+  // Context: tools, skills, memories, runtime extensions, project docs, memory ──
+  // Fetched once per session, cached afterwards (session-scoped state).
+  // Uses registerSessionStartHandler so the state is available before the
+  // first prompt is built.
   registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event, ctx) => {
     const ps = getPromptState(ctx);
-    eventBus.on("enforcement_signals", (data: unknown) => {
-      const d = data as { contrastMode?: string };
-      if (d.contrastMode) ps.activeBehaviorMode = d.contrastMode;
-    });
+    // No enforcement_signals listener needed — behavior modes were removed
+    // in 2026-07-13. All directives are now static identity invariants.
   });
 
   // ── resources_discover: invalidate skills, project-docs, memory caches ──
@@ -290,19 +286,12 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       simpleSection("identity", IDENTITY_INTRO),
 
       // 1a. Output directive (concise responses alongside tool calls).
-      //     Pairs with the dynamic behavior-mode section below.
       simpleSection("value-concise-responses", CONCISE_RESPONSES),
-
-      // 1a-behavior. Dynamic behavior mode -- surfaces the right directive
-      //     based on enforcement state (TRUTH-SEEKING by default, shifts to
-      //     CORRECTION / EPISTEMIC-CALIBRATION / TOOL-RELIABILITY when the
-      //     enforcement system detects the corresponding pattern).
-      //     Restored 2026-06-29 after being deleted in 3b4f108a.
-      behaviorModeSection(ps.activeBehaviorMode),
 
       // 1b. Compaction survival invariant - scratchpad + tasks must be self-contained
       //     so the agent can recover context after conversation compression
       simpleSection("invariant-compaction", COMPACTION_SURVIVAL),
+      simpleSection("invariant-plan-before-act", PLAN_BEFORE_ACT),
 
       // 1b-doD. Definition of Done invariant - every done item carries a
       //     verification triple (path + last-modified-cmd + verification-cmd).
@@ -338,9 +327,18 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       //     docs, memory, runtime extensions, framework APIs, external
       //     state) surfaces as a discoverability triple for on-demand
       //     reading. Codifies the pointer-block pattern that was previously
-      //     implicit in the skills sentence of IDENTITY_INTRO. Paired with
-      //     the dynamic TRUTH-SEEKING mode (descriptions are claims).
+      //     implicit in the skills sentence of IDENTITY_INTRO.
       simpleSection("invariant-resource-discovery", RESOURCE_DISCOVERY),
+
+      // 1g-concrete. Concrete identifiers — quote from source, never guess.
+      //     Origin: 2026-07-13 grounding failure. Concrete names are binary:
+      //     right or wrong with no useful middle ground.
+      simpleSection("invariant-concrete-identifiers", CONCRETE_IDENTIFIERS),
+
+      // 1g-tool. Tool reliability — the edit/write tools work reliably.
+      //     When a tool call fails, check the agent's input, not the tool.
+      //     Default to edit/write, not shell redirects.
+      simpleSection("invariant-tool-reliability", TOOL_RELIABILITY),
 
       // 1h. Behavioral verification — tests must guard failure modes, not
       //     existence. Prevents the "dumb test" pattern (existence assertions

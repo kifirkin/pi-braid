@@ -91,7 +91,6 @@ export interface SopSuggestionEvent {
 
 export interface EnforcementSignalsEvent {
   type: "enforcement_signals";
-  contrastMode: string;
 }
 
 export type AgentEvent =

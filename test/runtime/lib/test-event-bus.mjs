@@ -99,15 +99,15 @@ describe("Event Bus", () => {
 
   it("should support enforcement_signals event type", () => {
     const received = [];
-    const handler = (event) => received.push(event.contrastMode);
+    const handler = (event) => received.push(event.type);
 
     eventBus.on("enforcement_signals", handler);
-    eventBus.emit({ type: "enforcement_signals", contrastMode: "TRUTH-SEEKING" });
-    eventBus.emit({ type: "enforcement_signals", contrastMode: "PLANNING" });
+    eventBus.emit({ type: "enforcement_signals" });
+    eventBus.emit({ type: "enforcement_signals" });
 
     assert.equal(received.length, 2);
-    assert.equal(received[0], "TRUTH-SEEKING");
-    assert.equal(received[1], "PLANNING");
+    assert.equal(received[0], "enforcement_signals");
+    assert.equal(received[1], "enforcement_signals");
 
     eventBus.off("enforcement_signals", handler);
   });

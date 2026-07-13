@@ -24,8 +24,10 @@ export function registerSessionShutdownHandler(pi: ExtensionAPI): void {
         `${state.verificationsDone} verifications, ${state.validationFailures} failures`,
     );
 
-    // COMPLETION mode: if work was done (tool calls) but finalize was never called,
-    // surface the COMPLETION mode so the next session knows work was left unfinished.
+    // COMPLETION detection: if work was done (tool calls) but finalize was never called,
+    // surface a hint so the next session knows work was left unfinished.
+    // (The COMPLETION behavior mode was removed in 2026-07-13; the detection logic
+    // remains for future use or for a direct whisper.)
     const madeEdits = state.totalToolCalls > 0;
     const neverFinalized = state.lastFinalizeNudge === -100;
     if (madeEdits && neverFinalized) {

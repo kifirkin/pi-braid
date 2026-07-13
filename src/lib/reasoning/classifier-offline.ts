@@ -107,7 +107,7 @@ export const CLASSIFIER_OFFLINE_WHISPERS = {
     "Continue with caution - manually verify you are not in a tool-repetition pattern.",
   sycophancy:
     "[sycophancy] Classifier unavailable - could not check sycophancy risk this turn. " +
-    "Continue with the TRUTH-SEEKING behavior mode if it was active.",
+    "Continue with the default truth-seeking behavior if it was active.",
   turnOutcome:
     "[turn-outcome] Loop classifier unavailable this turn. " +
     "Tool-error-burst detection still ran (heuristic).",

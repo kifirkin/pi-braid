@@ -90,13 +90,49 @@ function flushDelayedWhispers(sessionId: string, pi: ExtensionAPI): void {
   const buffer = _heartbeatWhisperBuffer.get(sessionId);
   if (!buffer || buffer.length === 0) return;
   const batch = buffer.splice(0);
-  // Aggregate all buffered whispers into one message per priority tier
-  const groups = new Map<string, string[]>();
+
+  // ── Deduplicate near-duplicate messages ────────────────────────────────
+  // Extract a semantic type key from each message. Messages of the same type
+  // (e.g., "Context at 40%..." and "Context at 50%...") are collapsed to one.
+  // This prevents the Heartbeat Summary from listing 9 near-identical messages
+  // about context percentages with slightly different token counts.
+  function dedupKey(message: string): string {
+    // Context percentage messages: "Context at 40%. context_tag..."
+    if (/^Context at \d+%/.test(message)) return "context-percentage";
+    // Duplicate count messages: "39 near-duplicate messages..."
+    if (/^\d+ near-duplicate messages/.test(message)) return "duplicate-count";
+    // Context density messages
+    if (/^Low context density/.test(message)) return "density-low";
+    if (/^High density/.test(message)) return "density-high";
+    if (/^Context density still low/.test(message)) return "density-low-persistent";
+    // Proactive projection messages
+    if (/^\[proactive\]/.test(message)) return "proactive-projection";
+    // Degradation messages
+    if (/^Degradation detected/.test(message)) return "degradation";
+    // Fallback: use first 80 chars
+    return message.slice(0, 80);
+  }
+  interface DedupEntry {
+    message: string;
+    priority: string;
+  }
+  const deduped: DedupEntry[] = [];
+  const seen = new Set<string>();
   for (const entry of batch) {
+    const key = dedupKey(entry.message);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push({ message: entry.message, priority: entry.priority });
+  }
+
+  // ── Aggregate by priority tier ──────────────────────────────────────────
+  const groups = new Map<string, string[]>();
+  for (const entry of deduped) {
     const p = entry.priority;
     if (!groups.has(p)) groups.set(p, []);
     groups.get(p)!.push(entry.message);
   }
+
   for (const [priority, messages] of groups) {
     const text = messages.length === 1
       ? messages[0]

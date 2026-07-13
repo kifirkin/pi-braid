@@ -14,12 +14,7 @@
  *
  * Use `pruneSignals(currentTurn)` from the TURN_END handler to enforce
  * the turn-keyed invariant.
- */
-
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { getState, RECOVERY_GRACE_TURNS } from "./state.js";
-
-/** A single signal entry keyed by semantic type */
+ /** A single signal entry keyed by semantic type */
 export interface EnforcementSignalEntry {
   turn: number;
   text: string;
@@ -93,53 +88,9 @@ export function pruneSignals(currentTurn: number): number {
   return deleted;
 }
 
-// ── Behavior Mode Detection (P0.3) ───────────────────────────────────────────
-// Determines which behavior mode should be active based on enforcement state.
-// Consumed by turn-end-handler.ts and register-session-compact.ts, which emit
-// `enforcement_signals { contrastMode }`. The prompt-builder listens and renders
-// the active mode via `behaviorModeSection()` in behavior-modes.ts.
-//
-// Restored 2026-06-29 after being briefly deleted in 3b4f108a. The lean
-// successor (behavior-modes.ts) replaces both the 8 static value statements
-// (behavioral-guardrails.ts) and the 6-phrase contrast library
-// (contrast-phrase-library.ts) with 4 modes x 1-2 directives each.
-//
-// Priority: errors > overflow > correction-edits > default.
-// Modes: TRUTH-SEEKING | TOOL-RELIABILITY | CORRECTION | EPISTEMIC-CALIBRATION.
-
-export function determineContrastMode(ctx: ExtensionContext): string {
-  const state = getState(ctx);
-
-  // Priority 1: Error burst -> TOOL RELIABILITY
-  if (state.consecutiveErrorTurns >= 1) return "TOOL-RELIABILITY";
-
-  // Priority 2: Overflow recovery -> EPISTEMIC CALIBRATION
-  const inOverflowRecovery = state.currentTurn - state.overflowRecently < RECOVERY_GRACE_TURNS;
-  if (state.overflowRecently > 0 && inOverflowRecovery) return "EPISTEMIC-CALIBRATION";
-
-  // Priority 3: Edit without think recently -> CORRECTION
-  const recentEditsWithoutThink = state.toolChain.recentEditWithoutThink.filter(
-    (turn: number) => state.currentTurn - turn <= 3,
-  );
-  if (recentEditsWithoutThink.length > 0) return "CORRECTION";
-
-  // Priority 4: No plan set in 3+ tool calls -> PLANNING
-  // Detects the "tool-calling-without-direction" pattern at any turn.
-  // toolsSinceLastPlan is incremented each tool call and reset when scratchpad is used.
-  if (state.toolsSinceLastPlan >= 3) return "PLANNING";
-
-  // Priority 5: Code changed without verify -> VERIFICATION
-  if (state.currentTurn - state.lastVerifyNudge <= 3) return "VERIFICATION";
-
-  // Priority 6: Work done without finalize -> COMPLETION
-  if (state.currentTurn - state.lastFinalizeNudge <= 3) return "COMPLETION";
-
-  // Priority 7: Truth-seeking trigger (verify_claim/conflict_qa used) -> TRUTH-SEEKING
-  // Surfaces TRUTH-SEEKING mode explicitly when the agent uses verification tools,
-  // confirming the correct epistemic stance.
-  const tsSignal = enforcementSignals[SIGNAL_KEYS.truth_seeking_trigger];
-  if (tsSignal && state.currentTurn - tsSignal.turn <= 1) return "TRUTH-SEEKING";
-
-  // Default: TRUTH-SEEKING
-  return "TRUTH-SEEKING";
-}
+// ── Behavior Mode Detection (removed 2026-07-13) ──────────────────────────
+// The dynamic behavior-modes system was removed. All directives are now
+// static invariants in identity.ts. The determineContrastMode function was
+// deleted. The enforcementSignals, SIGNAL_KEYS, and pruneSignals remain
+// for use by handler files.
+// ──────────────────────────────────────────────────────────────────────────

@@ -246,12 +246,12 @@ export function createDefaultPolicies(): ContextPolicy[] {
       id: "tokens-soft",
       name: "Token-count: soft preventive whisper",
       priority: 99,
-      cooldown_ms: 120_000,
+      cooldown_ms: 300_000,
       trigger: { type: "context_usage_tokens", threshold: USAGE_TOKENS_SOFT },
       action: {
         type: "propose",
         message:
-          "Context at ~{tokens}K tokens. Consider pruning old tool results (context_prune dry-run).",
+          "Context at ~{tokens} tokens. Consider pruning old tool results (context_prune dry-run).",
         priority: "low",
       },
       suggested_action: "context_prune",
@@ -260,12 +260,12 @@ export function createDefaultPolicies(): ContextPolicy[] {
       id: "tokens-advisory",
       name: "Token-count: advisory - tag and consider archiving",
       priority: 98,
-      cooldown_ms: 120_000,
+      cooldown_ms: 300_000,
       trigger: { type: "context_usage_tokens", threshold: USAGE_TOKENS_ADVISORY },
       action: {
         type: "propose",
         message:
-          "Context grew past {tokens}K tokens. Tag your position (context_tag), then consider context_archive or context_checkout to branch.",
+          "Context grew past {tokens} tokens. Tag your position (context_tag), then consider context_archive or context_checkout to branch.",
         priority: "medium",
       },
       suggested_action: "context_tag",
@@ -274,12 +274,12 @@ export function createDefaultPolicies(): ContextPolicy[] {
       id: "tokens-warning",
       name: "Token-count: warning - suggest full pipeline",
       priority: 97,
-      cooldown_ms: 120_000,
+      cooldown_ms: 300_000,
       trigger: { type: "context_usage_tokens", threshold: USAGE_TOKENS_WARNING },
       action: {
         type: "propose",
         message:
-          "Context at {tokens}K tokens ({percent}%). Pipeline: context_tag -> context_checkout -> context_archive -> compact (last resort).",
+          "Context at {tokens} tokens ({percent}%). Pipeline: context_tag -> context_checkout -> context_archive -> compact (last resort).",
         priority: "medium",
       },
       suggested_action: "context_tag",

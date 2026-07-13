@@ -9,7 +9,6 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../../../lib/core/logger.js";
-import { eventBus } from "../../../lib/events/event-bus.js";
 import { detectMissingVerification, recordCodeChange } from "../detection/verification.js";
 import {
   type TurnAnalysisContext,
@@ -31,7 +30,7 @@ import { type TurnState } from "../types.js";
 import { validateTurn } from "../validation.js";
 import { sendEnforcementWhisper } from "../whisper.js";
 import { knownFiles, loadFileContent } from "../similarity.js";
-import { enforcementSignals, determineContrastMode, pruneSignals, SIGNAL_KEYS } from "../signals.js";
+import { enforcementSignals, pruneSignals, SIGNAL_KEYS } from "../signals.js";
 import {
   USAGE_WHISPER_CRITICAL,
   USAGE_FIRED_RESET_BELOW,
@@ -41,10 +40,6 @@ import {
 } from "../../../lib/detection/context-thresholds.js";
 
 const log = createLogger("enforcement:turn-end");
-
-// Track last behavior mode for transition logging. Module-level is fine
-// for this logging concern — it's not decision-critical state.
-let _lastBehaviorMode: string | null = null;
 
 // EW-7.2: L2 sub-signals that have a dedicated NudgeType use the
 // type's own cooldown (memory: 45s, scratchpad: 60s, context: 90s).
@@ -334,7 +329,7 @@ export async function dispatchTurnEndLoop(
   // Planning signal: tool calls without scratchpad goal at any turn.
   // Increments toolsSinceLastPlan when the agent makes tool calls without
   // setting a scratchpad goal. Resets when scratchpad is used.
-  // drives determineContrastMode PLANNING mode via toolsSinceLastPlan >= 3.
+  // (Formerly drove the PLANNING behavior mode, which was removed in 2026-07-13.)
   if (!hadErrors && !inOverflowRecovery && actualTools.length > 0) {
     if (scratchpadUpdated) {
       getState(ctx).toolsSinceLastPlan = 0;
@@ -570,20 +565,6 @@ export async function dispatchTurnEndLoop(
   if (isBurst) {
     sessionSignals.length = 0;
   }
-
-  // ── Signal emission ─────────────────────────────────────────────────────
-  // Emit behavior mode so prompt-builder can render the active directive.
-  // The mode is determined by enforcement state (errors, overflow, edits
-  // without think) and defaults to TRUTH-SEEKING.
-  const newMode = determineContrastMode(ctx);
-  if (newMode !== _lastBehaviorMode) {
-    log.info(`[behavior] Mode: ${newMode}`);
-    _lastBehaviorMode = newMode;
-  }
-  eventBus.emit({
-    type: "enforcement_signals",
-    contrastMode: newMode,
-  });
 
   // Clean up stale enforcement signals (kept for cross-turn MARS readback)
   if (sessionSignals.length > 0) {
