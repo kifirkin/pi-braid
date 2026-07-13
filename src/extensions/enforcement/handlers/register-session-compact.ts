@@ -1,5 +1,5 @@
 /**
- * register-session-compact - Hygiene reset after context compaction.
+ * register-session-compact - Hygiene reset + re-orientation whisper after compaction.
  *
  * Re-entrancy guard + deferred side-effects (added 2026-06-29, see
  * post-compaction stack overflow trace):
@@ -23,6 +23,19 @@
  *      next tick, and any pi.sendMessage calls happen on a fresh stack.
  *   3. State writes (lastCompactionTurn, etc.) stay synchronous because
  *      downstream handlers (turn_end, message_end) read them.
+ *
+ * IMPORTANT: session_compact vs compaction_end
+ *   Pi-core's session_compact event IS dispatched to extension handlers
+ *   (via this._extensionRunner.emit()). The compaction_end event is emitted
+ *   via this._emit() which only reaches internal listeners (TUI) — NOT
+ *   extension handlers. So the re-orientation whisper MUST be delivered
+ *   on session_compact. It fires during compaction (after LLM summarization,
+ *   before bookkeeping/TUI rebuild), which is functionally equivalent to
+ *   "after compaction completes" for the agent's purposes.
+ *
+ * See agent-session.js for the emit paths:
+ *   - session_compact:  _extensionRunner.emit()  (lines 1417, 1660)
+ *   - compaction_end:   this._emit()             (lines 1432, 1674)
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -42,15 +55,6 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
     if (!getState(ctx).enforcementActive) return;
 
     // ── Re-entrancy guard ────────────────────────────────────────────────
-    // Without this guard, a synchronous re-entry into the session_compact
-    // handler chain (e.g., from TOOL_EXECUTION_END -> fireExpired -> sendMessage
-    // -> before_agent_start -> session_compact) can overflow the stack before
-    // MAX_REENTRY_DEPTH in injection-tracker.ts has a chance to defer. See
-    // file-level comment for the full failure mode.
-    //
-    // Per-session flag (mirrors context-lifecycle's `inBeforeAgentStart`).
-    // getExtensionState keys on sessionManager.getSessionFile() so a stale
-    // `true` from a previous session can't poison the next session's guard.
     const reentrancy = getExtensionState<{ inHandler: boolean }>(
       ctx,
       "enforcement/session-compact-reentrancy",
@@ -65,36 +69,22 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
     try {
       const compactTurn = getState(ctx).currentTurn;
 
-    // Cancel any stale compaction-resume timer from a previous cycle.
-    // These timers were scheduled by earlier versions of this handler
-    // as a fallback safety net (3-min wake-up after compaction). The
-    // timer is now REMOVED because pi-core's agent loop automatically
-    // continues after compaction: _runAutoCompaction() returns `true`,
-    // which keeps the loop running via agent.continue(). The continuation
-    // whisper mechanism ([braid-whisper - enforcement]) properly delivers
-    // the next turn. The 3-minute timer was firing as a spurious wake-up
-    // that the agent ignored. See the 2026-07-11 removal commit.
-    //
-    // We still cancel stale timers here to clean up any that were
-    // scheduled before this change.
-    try {
-      const sessionId =
-        (ctx as { sessionManager?: { getSessionId?: () => string } })?.sessionManager?.getSessionId?.() ??
-        "anonymous";
-      const cancelled =
-        timerMod.cancelTimersByTag(sessionId, "compaction-resume") +
-        timerMod.cancelTimersByTag(sessionId, "auto-compaction-resume");
-      if (cancelled > 0) {
-        log.debug(`Cancelled ${cancelled} stale compaction resume timer(s)`);
+      // Cancel any stale compaction-resume timer from a previous cycle.
+      try {
+        const sessionId =
+          (ctx as { sessionManager?: { getSessionId?: () => string } })?.sessionManager?.getSessionId?.() ??
+          "anonymous";
+        const cancelled =
+          timerMod.cancelTimersByTag(sessionId, "compaction-resume") +
+          timerMod.cancelTimersByTag(sessionId, "auto-compaction-resume");
+        if (cancelled > 0) {
+          log.debug(`Cancelled ${cancelled} stale compaction resume timer(s)`);
+        }
+      } catch {
+        // Non-fatal - timer module unavailable
       }
-    } catch {
-      // Non-fatal - timer module unavailable
-    }
 
-    // ── Sync state writes ──────────────────────────────────────────────
-      // These MUST run synchronously because downstream handlers (turn_end,
-      // message_end) read them on the same tick. Moving them to the
-      // microtask would create a window where they appear stale.
+      // ── Sync state writes ──────────────────────────────────────────────
       try {
         getState(ctx).contextNudgeSent = false;
         getState(ctx).lastContextCheckTurn = getState(ctx).currentTurn;
@@ -109,93 +99,64 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
         log.debug("session_compact handler: enforcement state access failed (stale ctx?)");
       }
 
-    } finally {
-      reentrancy.inHandler = false;
-    }
-  });
+      // ── Deferred: re-orientation whisper with agent wake-up ─────────────
+      // Delivered via queueMicrotask to avoid stack overflow from synchronous
+      // re-entry (see file-level comment). Uses triggerTurn: true so the agent
+      // wakes up and continues its loop automatically.
+      queueMicrotask(() => {
+        void (async () => {
+          try {
+            const scratchpadResult = await callScratchpadTool(ctx, { action: "read" });
+            const details = scratchpadResult?.details;
+            const learnings = details?.key_learnings ?? [];
+            const unpersisted = learnings.filter((l: any) => !l.persisted);
 
-  // ── Compaction End: deliver post-compaction whisper with agent wake-up ───
-  // The re-orientation whisper is moved from session_compact to compaction_end
-  // so it arrives AFTER compaction fully completes (not during). The whisper
-  // uses triggerTurn: true so the agent actually wakes up and continues its
-  // loop automatically, instead of leaving the user to manually type "continue".
-  //
-  // Previously (before 2026-07-13):
-  //   - The whisper was sent on session_compact (during compaction, before
-  //     the TUI compaction summary) with triggerTurn: false
-  //   - The agent never woke up after compaction
-  //   - The context_compress tool result misleadingly said "agent will resume
-  //     after compression" but the agent was still in its turn
-  //
-  // Now:
-  //   - The tool result says "Compaction scheduled. Agent will resume
-  //     automatically after compaction completes."
-  //   - The whisper is sent on compaction_end (after compaction is fully done)
-  //     with triggerTurn: true so the agent wakes up
-  onEvent(pi, "compaction_end", async (event: any, ctx: ExtensionContext) => {
-    // queueMicrotask is still used to defer the scratchpad read + whisper
-    // delivery, preventing synchronous re-entry into pi-core's event chain.
-    if (!getState(ctx).enforcementActive) return;
-    if (!event.result) {
-      // Only send wake-up on successful compaction. Failed/aborted compaction
-      // is handled by the retry handlers in compaction-retry.ts.
-      return;
-    }
+            // Unpersisted learnings advisory (no wake-up needed)
+            if (unpersisted.length > 0) {
+              sendEnforcementWhisper(
+                pi,
+                ctx,
+                `Context compacted at turn ${compactTurn}. ` +
+                  `${unpersisted.length} key learning(s) not yet persisted:\n\n` +
+                  unpersisted
+                    .map(
+                      (l: any) =>
+                        `- memory_store(content="${l.content}", memoryType="insight", tags=["${l.category}", "session"])`,
+                    )
+                    .join("\n") +
+                  `\n\nPersist them now.`,
+              );
+              enforcementSignals[SIGNAL_KEYS.unpersisted_learnings] = {
+                turn: getState(ctx).currentTurn,
+                text: `${unpersisted.length} key learning(s) not yet persisted`,
+                acted: false,
+              };
+              eventBus.emit({
+                type: "enforcement_signals",
+                contrastMode: determineContrastMode(ctx),
+              });
+            }
 
-    const compactTurn = getState(ctx).currentTurn;
-
-    queueMicrotask(() => {
-      void (async () => {
-        try {
-          const scratchpadResult = await callScratchpadTool(ctx, { action: "read" });
-          const details = scratchpadResult?.details;
-          const learnings = details?.key_learnings ?? [];
-          const unpersisted = learnings.filter((l: any) => !l.persisted);
-
-          // Send unpersisted learnings whisper (advisory, no wake-up needed)
-          if (unpersisted.length > 0) {
+            // Re-orientation whisper with triggerTurn: true wakes the agent
             sendEnforcementWhisper(
               pi,
               ctx,
               `Context compacted at turn ${compactTurn}. ` +
-                `${unpersisted.length} key learning(s) not yet persisted:\n\n` +
-                unpersisted
-                  .map(
-                    (l: any) =>
-                      `- memory_store(content="${l.content}", memoryType="insight", tags=["${l.category}", "session"])`,
-                  )
-                  .join("\n") +
-                `\n\nPersist them now.`,
+                `Re-orient: read scratchpad for goal/plan/learnings, then check next pending task. ` +
+                `These surfaces survive compaction - continue from there.`,
+              false,
+              { triggerTurn: true },
             );
-            enforcementSignals[SIGNAL_KEYS.unpersisted_learnings] = {
-              turn: getState(ctx).currentTurn,
-              text: `${unpersisted.length} key learning(s) not yet persisted`,
-              acted: false,
-            };
-            eventBus.emit({
-              type: "enforcement_signals",
-              contrastMode: determineContrastMode(ctx),
-            });
+          } catch (err) {
+            log.debug(
+              "session_compact handler: side-effects failed (stale ctx?):",
+              (err as Error)?.message,
+            );
           }
-
-          // Send re-orientation whisper with triggerTurn: true so the agent
-          // wakes up and continues its loop automatically.
-          sendEnforcementWhisper(
-            pi,
-            ctx,
-            `Context compacted at turn ${compactTurn}. ` +
-              `Re-orient: read scratchpad for goal/plan/learnings, then check next pending task. ` +
-              `These surfaces survive compaction - continue from there.`,
-            false, // not critical
-            { triggerTurn: true }, // wake the agent
-          );
-        } catch (err) {
-          log.debug(
-            "compaction_end handler: side-effects failed (stale ctx?):",
-            (err as Error)?.message,
-          );
-        }
-      })();
-    });
+        })();
+      });
+    } finally {
+      reentrancy.inHandler = false;
+    }
   });
 }
