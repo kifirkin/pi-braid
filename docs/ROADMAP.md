@@ -152,7 +152,46 @@ so the agent never loses work between phases.
   persisted to `~/.pi/agent/braid/tags/<slug>.json` and surfaced on SESSION_START.
   Tags survive process restarts and compaction.
 
-### P3 — session batch analysis tools
+### P3 — this session (2026-07-13)
+
+**Implemented:**
+- [x] **Post-compaction auto-resume** — `e6466868`. Moved re-orientation whisper
+  back to `session_compact` with `triggerTurn: true` after discovering `compaction_end`
+  is emitted via `this._emit()` (internal listeners only, not extensions).
+- [x] **Auto-resume suppression for /compact** — `6f549d57`. `autoResumeAfterCompaction`
+  flag set by `context_compress` tool, checked in `session_compact` handler. If user
+  types `/compact`, flag is unset → whisper suppressed.
+- [x] **Backward-checker ctx.signal** — `3aa5ba4d`. Replaced fixed 30s timeout with
+  ctx.signal so ESC/shutdown aborts the check cleanly.
+- [x] **Instance block expansion** — `d46d870a`, `6e39dfaa`. Shows other Pi instances
+  in same cwd with PID, elapsed time, terminal, and "← current" marker.
+- [x] **INTERACTION_STYLE cycle completed** — `56df3c7d`. "understand before you act"
+  now includes the stopping condition ("then decide what to change and change it"),
+  preventing the infinite analysis loop caused by commit 13994806.
+- [x] **Finalize enforcements** — `1beb8ae0`. Three enforcements baked into the
+  finalize tool: unresolved conflicts check (advisory), stronger unpersisted learnings
+  warning (explicit "will be lost on shutdown"), and text-only response after work
+  detection in register-message-end.ts (whisper suggesting finalize).
+- [x] **CONCRETE_IDENTIFIERS invariant** — `2ae8fa59`. Prevents grounding failures
+  by requiring concrete names (commands, paths, functions, event types) to be quoted
+  from source. Never guess a concrete identifier.
+- [x] **Remove behavior-modes system** — `2ae8fa59`. Deleted behavior-modes.ts,
+  determineContrastMode, contrastMode signals. Distilled PLAN_BEFORE_ACT and
+  TOOL_RELIABILITY directives into static identity invariants.
+- [x] **Remove meaningless tests** — `2ae8fa59`. Deleted test-prompt-builder-directive.mjs
+  (regex-matched source code strings — tests trivia, not behavior).
+
+**Dismissed with reasons:**
+- [x] **Whisper on `compaction_end`** — `compaction_end` is emitted via `this._emit()`
+  (internal/TUI only), not `_extensionRunner.emit()`. Extensions never receive it.
+  Reverted to `session_compact` with `triggerTurn: true`.
+- [x] **Timer-based auto-resume** — Causes max call stack errors. Replaced with
+  synchronous flag + event-driven approach.
+- [x] **Dynamic behavior modes** — Added complexity (7 modes, signal routing, listener,
+  state machine) for directives that are mostly evergreen. Distilled into static
+  identity invariants.
+- [x] **test-prompt-builder-directive.mjs** — Regex-matching source code strings tests
+  nothing real. Removed.
 
 **Status:** Epic A (batch) shipped. Epic B (analyze) designed. Epic C (stats) scoped.
 
