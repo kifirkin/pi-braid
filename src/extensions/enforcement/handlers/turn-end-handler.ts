@@ -42,6 +42,10 @@ import {
 
 const log = createLogger("enforcement:turn-end");
 
+// Track last behavior mode for transition logging. Module-level is fine
+// for this logging concern — it's not decision-critical state.
+let _lastBehaviorMode: string | null = null;
+
 // EW-7.2: L2 sub-signals that have a dedicated NudgeType use the
 // type's own cooldown (memory: 45s, scratchpad: 60s, context: 90s).
 // Sub-signals without a dedicated type fall through to `sessionSignals`
@@ -571,9 +575,14 @@ export async function dispatchTurnEndLoop(
   // Emit behavior mode so prompt-builder can render the active directive.
   // The mode is determined by enforcement state (errors, overflow, edits
   // without think) and defaults to TRUTH-SEEKING.
+  const newMode = determineContrastMode(ctx);
+  if (newMode !== _lastBehaviorMode) {
+    log.info(`[behavior] Mode: ${newMode}`);
+    _lastBehaviorMode = newMode;
+  }
   eventBus.emit({
     type: "enforcement_signals",
-    contrastMode: determineContrastMode(ctx),
+    contrastMode: newMode,
   });
 
   // Clean up stale enforcement signals (kept for cross-turn MARS readback)

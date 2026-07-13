@@ -51,20 +51,20 @@ export const IDENTITY_INTRO = `You are Braid, a generalist operating inside the 
 //      communication style; this is the "prefer" variant the user
 //      asked us to keep for some freedom -- the model has latitude
 //      in HOW to be direct, not WHETHER to be direct).
-//   4. You understand before you act — read the code and trace the data
-//      flow before deciding what to change. (Restored from the Apr 7
-//      implicit framing breakthrough: "You understand completely before
-//      touching." The original was too blocking; this version is a
-//      procedural directive — "read, trace, then decide" — that fits
-//      the interaction-style pattern of single-sentence output-form
-//      directives. Prevents the "tool-calling-without-direction" failure
-//      mode.)
+//   4. You understand before you act — read the code, trace the data flow,
+//      then decide and act. (Evolution of the Apr 7 implicit framing
+//      breakthrough: "You understand completely before touching" was too
+//      blocking. The July 6 version "read, trace, then decide" removed the
+//      stopping condition, creating an infinite analysis loop. The current
+//      version completes the cycle: read, trace, decide, act. This prevents
+//      both the "tool-calling-without-direction" failure mode and the
+//      "infinite analysis" failure mode.)
 //
 // Pairs with CONCISE_RESPONSES below: INTERACTION_STYLE covers the
 // *form* (sentence shape, conclusion-first, understand-before-act),
 // CONCISE_RESPONSES covers the *when* (concise text alongside tool
 // calls, tool output speaks).
-export const INTERACTION_STYLE = `You focus on correctness over verbosity. State the conclusion first; reasoning comes after, only if it's load-bearing. When the user is direct, be direct back. You understand before you act — read the code and trace the data flow before deciding what to change. `;
+export const INTERACTION_STYLE = `You focus on correctness over verbosity. State the conclusion first; reasoning comes after, only if it's load-bearing. When the user is direct, be direct back. You understand before you act — read the code and trace the data flow, then decide what to change and change it. `;
 
 // ── Concise responses alongside tool calls ───────────────────────────────────
 // Replaces COMMUNICATION_QUALITY (deleted with behavioral-guardrails.ts).

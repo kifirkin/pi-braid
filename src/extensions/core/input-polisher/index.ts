@@ -255,6 +255,7 @@ async function processMessage(
 ) {
   const state = getState(ctx);
   state.isProcessing = true;
+  log.debug(`processMessage: starting (${original.length} chars)`);
 
   try {
     // Use utility model for polishing if configured, fall back to session model
@@ -315,10 +316,23 @@ async function processMessage(
     if ("error" in result) {
       state.errorCount++;
       state.skippedCount++;
-      const origPreview = original.length > 100 ? `${original.slice(0, 100)}...` : original;
-      ctx.ui.setStatus("input-polisher", "⏱️ Polishing error!");
-      ctx.ui.notify(`Error on: "${origPreview}"`, "warning");
-      resolve({ action: "continue" });
+      const errorMsg = result.error;
+      const isAbort = ctx.signal?.aborted === true;
+      const isTimeout = /timeout|timed/i.test(errorMsg);
+      let reason: string;
+      if (isAbort) {
+        reason = "ESC cancelled";
+      } else if (isTimeout) {
+        reason = "timeout";
+      } else {
+        reason = errorMsg;
+      }
+      log.warn(`Polishing failed: ${reason} (model=${model.id}, error=${errorMsg})`);
+      ctx.ui.setStatus("input-polisher", `[fail] ${reason} - text unchanged, press Enter to send`);
+      ctx.ui.setEditorText(original);
+      state.polishingExhausted = true;
+      state.polishedText = original;
+      resolve({ action: "handled" });
       return;
     }
 
@@ -334,6 +348,7 @@ async function processMessage(
 
     if (cleaned && cleaned !== original && cleaned.length > 0) {
       state.polishedCount++;
+      log.debug(`Polishing succeeded: ${original.length} -> ${cleaned.length} chars`);
 
       // Detect input language -> set language hint for reply instruction
       const lang = detectLanguage(original);
@@ -359,17 +374,30 @@ async function processMessage(
       resolve({ action: "handled" });
     } else {
       state.skippedCount++;
+      log.debug(`Polishing: no change (${original.length} chars)`);
       // No change needed - proceed normally, flag stays false for next message
       resolve({ action: "continue" });
     }
   } catch (err: unknown) {
     state.errorCount++;
     state.skippedCount++;
-    const origPreview = original.length > 100 ? `${original.slice(0, 100)}...` : original;
     const errorMsg = err instanceof Error ? err.message : "Unknown error";
-    ctx.ui.setStatus("input-polisher", "[fail] Polishing error!");
-    ctx.ui.notify(`Error on: "${origPreview}" - ${errorMsg}`, "error");
-    resolve({ action: "continue" });
+    const isAbort = ctx.signal?.aborted === true;
+    const isTimeout = /timeout|timed/i.test(errorMsg);
+    let reason: string;
+    if (isAbort) {
+      reason = "ESC cancelled";
+    } else if (isTimeout) {
+      reason = "timeout";
+    } else {
+      reason = errorMsg;
+    }
+    log.warn(`Polishing threw: ${reason} (error=${errorMsg})`);
+    ctx.ui.setStatus("input-polisher", `[fail] ${reason} - text unchanged, press Enter to send`);
+    ctx.ui.setEditorText(original);
+    state.polishingExhausted = true;
+    state.polishedText = original;
+    resolve({ action: "handled" });
   } finally {
     // Guarantee queue advances even if an unhandled exception occurred.
     // Without this, state.isProcessing stays true and the queue deadlocks.
