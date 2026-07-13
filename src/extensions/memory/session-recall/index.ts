@@ -46,8 +46,8 @@ const estimateTokens = import_textUtils.estimateTokens;
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
 const sessionSchema = Type.Object({
-  action: Type.Union([Type.Literal("search"), Type.Literal("query")], {
-    description: "Action: search | query",
+  action: Type.Union([Type.Literal("search"), Type.Literal("query"), Type.Literal("batch")], {
+    description: "Action: search | query | batch",
   }),
   // search-only
   query: Type.Optional(
@@ -61,6 +61,19 @@ const sessionSchema = Type.Object({
   ),
   question: Type.Optional(
     Type.String({ description: "What to ask about the session (action=query)" }),
+  ),
+  // batch-only
+  pattern: Type.Optional(
+    Type.String({ description: "Pattern to search for across all sessions (action=batch)" }),
+  ),
+  project: Type.Optional(
+    Type.String({ description: "Filter by project directory (default: current cwd). Use 'all' for all projects." }),
+  ),
+  since: Type.Optional(
+    Type.String({ description: "Only include sessions since this date (YYYY-MM-DD). Optional." }),
+  ),
+  limit: Type.Optional(
+    Type.Number({ description: "Max sessions in output (default: 10). Use 0 for all." }),
   ),
 });
 
@@ -79,7 +92,8 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
     description:
       "Access past session history. " +
       "Use action=search with query to find sessions matching keywords (plain-text grep, no LLM). " +
-      "Use action=query with sessionPath + question to analyze a specific session (LLM-driven).",
+      "Use action=query with sessionPath + question to analyze a specific session (LLM-driven). " +
+      "Use action=batch with pattern to aggregate matches across all sessions (no LLM, fast).",
     parameters: sessionSchema,
     execute: async (
       _toolCallId,
@@ -262,8 +276,151 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
               };
             }
           }
+          case "batch": {
+            if (!params.pattern) {
+              return {
+                content: [{ type: "text" as const, text: "action=batch requires 'pattern' parameter" }],
+                details: { error: true, action: "batch" },
+              };
+            }
+            const sessionsDir = getSessionsDir();
+            if (!(await asyncExists(sessionsDir))) {
+              return {
+                content: [{ type: "text" as const, text: "No sessions directory found." }],
+                details: { error: true, matchCount: 0 },
+              };
+            }
+            const allMatches = await searchFiles(params.pattern, sessionsDir);
+            if (allMatches.length === 0) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: `No sessions found matching "${params.pattern}".`,
+                  },
+                ],
+                details: { matchCount: 0, pattern: params.pattern },
+              };
+            }
+
+            // Apply project filter (default to current cwd)
+            const projectFilter = params.project === "all"
+              ? null
+              : (params.project ?? (_ctx?.cwd ? basename(_ctx.cwd) : null));
+            let filtered = allMatches;
+            if (projectFilter) {
+              filtered = allMatches.filter((m) => m.path.includes(projectFilter));
+            }
+
+            // Apply since filter (YYYY-MM-DD)
+            if (params.since) {
+              const sinceTs = new Date(params.since + "T00:00:00.000Z").getTime();
+              if (!isNaN(sinceTs)) {
+                filtered = filtered.filter((m) => {
+                  const dateStr = dateFromPath(m.path);
+                  if (!dateStr || dateStr === "unknown") return false;
+                  return new Date(dateStr + "T00:00:00.000Z").getTime() >= sinceTs;
+                });
+              }
+            }
+
+            if (filtered.length === 0) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: `No sessions found matching "${params.pattern}" with the given filters.`,
+                  },
+                ],
+                details: { matchCount: 0, pattern: params.pattern },
+              };
+            }
+
+            // Sort by match count descending
+            filtered.sort((a, b) => b.count - a.count || a.path.localeCompare(b.path));
+
+            // Aggregate by project
+            const byProject: Record<string, number> = {};
+            for (const m of filtered) {
+              const proj = projectFromPath(m.path);
+              byProject[proj] = (byProject[proj] || 0) + m.count;
+            }
+
+            // Aggregate by month
+            const byMonth: Record<string, number> = {};
+            for (const m of filtered) {
+              const dateStr = dateFromPath(m.path);
+              if (dateStr && dateStr !== "unknown") {
+                const month = dateStr.slice(0, 7); // YYYY-MM
+                byMonth[month] = (byMonth[month] || 0) + m.count;
+              }
+            }
+
+            // Total matches
+            const totalMatches = filtered.reduce((sum, m) => sum + m.count, 0);
+
+            // Top N sessions
+            const limit = params.limit ?? 10;
+            const topSessions = limit > 0 ? filtered.slice(0, limit) : filtered;
+
+            // Build output
+            const lines: string[] = [
+              `## Batch: "${params.pattern}"`,
+              ``,//
+              `**Total matches:** ${totalMatches} in ${filtered.length} session${filtered.length === 1 ? "" : "s"}`,
+              ``,//
+            ];
+
+            // By project
+            const projectEntries = Object.entries(byProject).sort((a, b) => b[1] - a[1]);
+            lines.push("**By project:**");
+            for (const [proj, count] of projectEntries) {
+              lines.push(`  ${proj}: ${count}`);
+            }
+            lines.push("");
+
+            // By month (timeline)
+            const monthEntries = Object.entries(byMonth).sort((a, b) => a[0].localeCompare(b[0]));
+            lines.push("**By month:**");
+            for (const [month, count] of monthEntries) {
+              lines.push(`  ${month}: ${count}`);
+            }
+            lines.push("");
+
+            // Top sessions
+            lines.push("**Top sessions:**");
+            for (const m of topSessions) {
+              const date = dateFromPath(m.path);
+              const proj = projectFromPath(m.path);
+              lines.push(`  ${date} ${proj}: ${m.count} matches`);
+              lines.push(`    ${m.path}`);
+            }
+
+            return {
+              content: [{ type: "text" as const, text: lines.join("\n") }],
+              details: {
+                action: "batch",
+                pattern: params.pattern,
+                totalMatches,
+                sessionCount: filtered.length,
+                byProject: projectEntries,
+                byMonth: monthEntries,
+                topSessions: topSessions.map((m) => ({
+                  path: m.path,
+                  date: dateFromPath(m.path),
+                  project: projectFromPath(m.path),
+                  matches: m.count,
+                })),
+                appliedFilters: {
+                  project: projectFilter,
+                  since: params.since ?? null,
+                  limit,
+                },
+              },
+            };
+          }
           default:
-            throw new Error(`Unknown session action: ${params?.action}. Use: search, query.`);
+            throw new Error(`Unknown session action: ${params?.action}. Use: search, query, batch.`);
         }
       } catch (err) {
         log.error(`session tool failed: ${err}`);
