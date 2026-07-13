@@ -151,7 +151,7 @@ test("turn-end-handler emits contrastMode via enforcement_signals", () => {
   );
   assert.match(
     turnEndHandlerSrc,
-    /eventBus\.emit\s*\(\s*\{\s*type:\s*["']enforcement_signals["'][\s\S]*?contrastMode:\s*determineContrastMode/,
+    /eventBus\.emit\s*\(\s*\{\s*type:\s*["']enforcement_signals["'][\s\S]*?contrastMode:\s*newMode/,
     "turn-end-handler must emit contrastMode via enforcement_signals",
   );
 });
