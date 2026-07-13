@@ -109,88 +109,93 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
         log.debug("session_compact handler: enforcement state access failed (stale ctx?)");
       }
 
-      // ── Deferred side-effects ─────────────────────────────────────────
-      // The scratchpad read + whisper delivery must NOT run synchronously
-      // from the session_compact handler. Reasons:
-      //
-      //   1. callScratchpadTool invokes ctx.tools.scratchpad -- pi-core's
-      //      wrapper fires `tool_call` / `tool_execution_end` synchronously
-      //      around the tool's execute. The timer extension's
-      //      tool_execution_end handler calls `fireExpired()`, which can
-      //      synchronously invoke pi.sendMessage with triggerTurn: true
-      //      for any timer that expired in the same moment.
-      //   2. sendEnforcementWhisper synchronously calls pi.sendMessage,
-      //      which can synchronously fire before_agent_start.
-      //   3. Both of these can re-enter our own handler (or context-
-      //      manager's session_compact handler) and overflow the stack
-      //      before the existing MAX_REENTRY_DEPTH=1 guard catches it.
-      //
-      // queueMicrotask defers the side-effects until the current synchronous
-      // call stack has unwound. Microtasks run before the next macrotask,
-      // so the whispers still arrive before the next turn / event loop
-      // iteration -- the agent and user see them with no observable delay.
-      // The downside (a single microtask of latency) is acceptable: the
-      // user already sees the [compaction] summary from LLM summarization
-      // at this point, so a tick-later whisper is not noticeable.
-      //
-      // CRITICAL: this is fire-and-forget. We do NOT await it from the
-      // outer handler because that would push the await back onto the
-      // same call stack we're trying to unwind. The errors inside the
-      // microtask are logged but not propagated.
-      queueMicrotask(() => {
-        void (async () => {
-          try {
-            const scratchpadResult = await callScratchpadTool(ctx, { action: "read" });
-            const details = scratchpadResult?.details;
-            const learnings = details?.key_learnings ?? [];
-            const unpersisted = learnings.filter((l: any) => !l.persisted);
+    } finally {
+      reentrancy.inHandler = false;
+    }
+  });
 
-            if (unpersisted.length > 0) {
-              sendEnforcementWhisper(
-                pi,
-                ctx,
-                `Context compacted at turn ${compactTurn}. ` +
-                  `${unpersisted.length} key learning(s) not yet persisted:\n\n` +
-                  unpersisted
-                    .map(
-                      (l: any) =>
-                        `- memory_store(content="${l.content}", memoryType="insight", tags=["${l.category}", "session"])`,
-                    )
-                    .join("\n") +
-                  `\n\nPersist them now.`,
-              );
-              enforcementSignals[SIGNAL_KEYS.unpersisted_learnings] = {
-                turn: getState(ctx).currentTurn,
-                text: `${unpersisted.length} key learning(s) not yet persisted`,
-                acted: false,
-              };
-              eventBus.emit({
-                type: "enforcement_signals",
-                contrastMode: determineContrastMode(ctx),
-              });
-            }
+  // ── Compaction End: deliver post-compaction whisper with agent wake-up ───
+  // The re-orientation whisper is moved from session_compact to compaction_end
+  // so it arrives AFTER compaction fully completes (not during). The whisper
+  // uses triggerTurn: true so the agent actually wakes up and continues its
+  // loop automatically, instead of leaving the user to manually type "continue".
+  //
+  // Previously (before 2026-07-13):
+  //   - The whisper was sent on session_compact (during compaction, before
+  //     the TUI compaction summary) with triggerTurn: false
+  //   - The agent never woke up after compaction
+  //   - The context_compress tool result misleadingly said "agent will resume
+  //     after compression" but the agent was still in its turn
+  //
+  // Now:
+  //   - The tool result says "Compaction scheduled. Agent will resume
+  //     automatically after compaction completes."
+  //   - The whisper is sent on compaction_end (after compaction is fully done)
+  //     with triggerTurn: true so the agent wakes up
+  onEvent(pi, "compaction_end", async (event: any, ctx: ExtensionContext) => {
+    // queueMicrotask is still used to defer the scratchpad read + whisper
+    // delivery, preventing synchronous re-entry into pi-core's event chain.
+    if (!getState(ctx).enforcementActive) return;
+    if (!event.result) {
+      // Only send wake-up on successful compaction. Failed/aborted compaction
+      // is handled by the retry handlers in compaction-retry.ts.
+      return;
+    }
 
-            // Always send re-orientation whisper after compaction so the agent
-            // knows to recover context from persisted surfaces (scratchpad, task tool).
-            // This is the "prompt invariant" in action - the scratchpad survives
-            // compaction because it's tool-backed, not conversation-backed.
+    const compactTurn = getState(ctx).currentTurn;
+
+    queueMicrotask(() => {
+      void (async () => {
+        try {
+          const scratchpadResult = await callScratchpadTool(ctx, { action: "read" });
+          const details = scratchpadResult?.details;
+          const learnings = details?.key_learnings ?? [];
+          const unpersisted = learnings.filter((l: any) => !l.persisted);
+
+          // Send unpersisted learnings whisper (advisory, no wake-up needed)
+          if (unpersisted.length > 0) {
             sendEnforcementWhisper(
               pi,
               ctx,
               `Context compacted at turn ${compactTurn}. ` +
-                `Re-orient: read scratchpad for goal/plan/learnings, then check next pending task. ` +
-                `These surfaces survive compaction - continue from there.`,
+                `${unpersisted.length} key learning(s) not yet persisted:\n\n` +
+                unpersisted
+                  .map(
+                    (l: any) =>
+                      `- memory_store(content="${l.content}", memoryType="insight", tags=["${l.category}", "session"])`,
+                  )
+                  .join("\n") +
+                `\n\nPersist them now.`,
             );
-          } catch (err) {
-            log.debug(
-              "session_compact handler: deferred side-effects failed (stale ctx?):",
-              (err as Error)?.message,
-            );
+            enforcementSignals[SIGNAL_KEYS.unpersisted_learnings] = {
+              turn: getState(ctx).currentTurn,
+              text: `${unpersisted.length} key learning(s) not yet persisted`,
+              acted: false,
+            };
+            eventBus.emit({
+              type: "enforcement_signals",
+              contrastMode: determineContrastMode(ctx),
+            });
           }
-        })();
-      });
-    } finally {
-      reentrancy.inHandler = false;
-    }
+
+          // Send re-orientation whisper with triggerTurn: true so the agent
+          // wakes up and continues its loop automatically.
+          sendEnforcementWhisper(
+            pi,
+            ctx,
+            `Context compacted at turn ${compactTurn}. ` +
+              `Re-orient: read scratchpad for goal/plan/learnings, then check next pending task. ` +
+              `These surfaces survive compaction - continue from there.`,
+            false, // not critical
+            { triggerTurn: true }, // wake the agent
+          );
+        } catch (err) {
+          log.debug(
+            "compaction_end handler: side-effects failed (stale ctx?):",
+            (err as Error)?.message,
+          );
+        }
+      })();
+    });
   });
 }
