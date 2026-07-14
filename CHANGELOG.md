@@ -8,6 +8,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **session action="stats": session statistics overview.** Adds `stats`
+  action to the session tool with aggregation: total sessions, total size,
+  by project, by month timeline, average session size, top N sessions by
+  size. Filters: project, since, until, limit. No LLM, fast.
+  (commit 9b8e1d28)
+
 ### Changed
 
 - **P2-2: scratchpadExecute dispatch table.** Replaced the 200-line
