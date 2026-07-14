@@ -1,16 +1,24 @@
 ---
 name: subagent
-description: "Spawn, monitor, and coordinate pi instances as subagents. Covers: RPC-based task delegation, parallel fan-out/fan-in, result extraction, and error recovery. Activate when a task benefits from isolated context windows, parallel execution, or delegating to a specialized agent configuration."
+description: "Spawn, monitor, and coordinate pi instances as subagents. Covers: RPC-based task delegation, parallel fan-out/fan-in, result extraction, session resumption, and error recovery. Activate when a task benefits from isolated context windows, parallel execution, or delegating to a specialized agent configuration."
 ---
 
 # Subagent Orchestration
 
 Delegate work to separate pi processes. Each subagent gets its own context window, tools, and lifecycle — isolated from your session.
 
-**Path convention**: All commands below use `$PI_EXTENSION_PATH` for your extension installation path. Set it once:
+**Finding bundled scripts**: This skill ships with `subagent-rpc.py` in the same directory. The skill's location is available in the prompt context as `<location>`. Resolve the script path relative to `<skill_dir>` (the directory containing SKILL.md):
 
 ```bash
-PI_EXTENSION_PATH="${PI_EXTENSION_PATH:-/path/to/your-extension}"
+# If skill is installed at ~/.pi/agent/skills/subagent/SKILL.md:
+SKILL_DIR=~/.pi/agent/skills/subagent
+python3 "$SKILL_DIR/subagent-rpc.py" "Your task here"
+```
+
+If you're in the Braid project, the skill is at `skills/subagent/`:
+
+```bash
+python3 skills/subagent/subagent-rpc.py "Your task here"
 ```
 
 ---
@@ -35,24 +43,28 @@ PI_EXTENSION_PATH="${PI_EXTENSION_PATH:-/path/to/your-extension}"
 
 Spawn pi in RPC mode as a subprocess. Send JSON commands on stdin, read events from stdout. Best for: extracting structured results, benchmarks, tasks with a clear done condition.
 
-**Quick spawn** (via the Python RPC client):
+**Quick spawn** (via the bundled Python RPC client):
 
 ```bash
-python3 $PI_EXTENSION_PATH/scripts/subagent-rpc.py task.md
+python3 <skill_dir>/subagent-rpc.py "Your task description here"
 ```
 
-Write the task prompt to `task.md` first. The client handles the RPC protocol, extension UI requests, and output extraction.
-
-**With a specific model** (discover available models first with `pi --list-models`):
+Or write the task to a file:
 
 ```bash
-python3 $PI_EXTENSION_PATH/scripts/subagent-rpc.py task.md --provider <provider> --model <model>
+python3 <skill_dir>/subagent-rpc.py task.md
+```
+
+**With a specific model**:
+
+```bash
+python3 <skill_dir>/subagent-rpc.py task.md --provider a0venice --model deepseek-v4-flash
 ```
 
 **Without extensions** (lean, uses pi-core built-in providers only):
 
 ```bash
-python3 $PI_EXTENSION_PATH/scripts/subagent-rpc.py task.md \
+python3 <skill_dir>/subagent-rpc.py task.md \
   --no-extensions --provider openrouter --model "google/gemini-flash-latest"
 ```
 
@@ -63,15 +75,15 @@ Spawn pi as a tmux session. Send input via `send-keys`, read output via `capture
 ```bash
 SOCKET=/tmp/pi-tmux-sockets/pi.sock
 mkdir -p $(dirname $SOCKET)
+SKILL_DIR=<skill_dir>
 
 # Spawn — MUST use temp PI_CODING_AGENT_DIR with preprocessorEnabled=false
 # to prevent input-polisher from blocking in non-interactive contexts.
 TEMP_PI_DIR=$(mktemp -d)
-cat ~/.pi/agent/settings.json | python3 -c \
-  "import json,sys; d=json.load(sys.stdin); d['preprocessorEnabled']=False; json.dump(d, open('$TEMP_PI_DIR/settings.json','w'), indent=2)"
+python3 -c "import json; d=json.load(open('$HOME/.pi/agent/settings.json')); d['preprocessorEnabled']=False; json.dump(d, open('$TEMP_PI_DIR/settings.json','w'), indent=2)"
 
 tmux -S $SOCKET new-session -d -s "worker-1" \
-  "cd $PI_EXTENSION_PATH && PI_CODING_AGENT_DIR=$TEMP_PI_DIR pi -e $PI_EXTENSION_PATH --no-session 2>&1 | tee /tmp/worker-1.log"
+  "cd $PWD && PI_CODING_AGENT_DIR=$TEMP_PI_DIR pi --no-session 2>&1 | tee /tmp/worker-1.log"
 
 # Send task
 tmux -S $SOCKET send-keys -t "worker-1:0.0" 'Implement the foo module in src/foo.ts' Enter
@@ -100,11 +112,112 @@ rm -rf $TEMP_PI_DIR
 
 ---
 
+## Session Resumption
+
+Subagents normally start from scratch (fresh context). To resume from a previous session:
+
+### Resume most recent session
+
+```bash
+python3 <skill_dir>/subagent-rpc.py "Continue the analysis" --resume
+```
+
+This uses pi's `-c` flag to continue the most recent session.
+
+### Resume a specific session
+
+```bash
+python3 <skill_dir>/subagent-rpc.py "Continue the analysis" --session ~/.pi/agent/sessions/.../session.jsonl
+```
+
+### Fork a session into a new file
+
+```bash
+# Fork from the CLI before spawning
+pi --fork <session-path> --session <new-session-path>
+
+# Then spawn the subagent with the forked session
+python3 <skill_dir>/subagent-rpc.py "Continue the analysis" --session <new-session-path>
+```
+
+### RPC commands for session management
+
+When using the RPC protocol directly (not via the Python client), you can manage sessions with these commands:
+
+```json
+{"type": "new_session", "parentSession": "<session-path>"}
+{"type": "switch_session", "sessionPath": "<session-path>"}
+{"type": "fork", "entryId": "<entry-id>"}
+{"type": "clone"}
+{"type": "get_session_stats"}
+{"type": "get_entries"}
+{"type": "get_tree"}
+{"type": "get_messages"}
+{"type": "export_html", "outputPath": "/tmp/session.html"}
+```
+
+---
+
+## Event Stream (What Happens Inside)
+
+With `--verbose`, the bundled RPC client prints the event stream to stderr:
+
+```
+[subagent] Cmd: pi --mode rpc --no-session -e /path/to/braid --provider a0venice --model deepseek-v4-flash
+[subagent] Env: PI_CODING_AGENT_DIR=/tmp/pi-subagent-xxxxxx
+[subagent] Sending prompt (54 chars)...
+[subagent] message_update: thinking_start
+[subagent] message_update: thinking_delta     (one per thinking chunk, may be many)
+[subagent] message_update: toolcall_start
+[subagent] message_update: toolcall_delta     (one per tool call argument chunk)
+[subagent] message_update: toolcall_end
+[subagent] message_update: thinking_end
+[subagent] message_update: text_start
+[subagent] message_update: text_delta         (output text chunks — accumulate these)
+[subagent] message_update: text_end
+[subagent] UI request: notify (no title)      (fire-and-forget, ignored)
+[subagent] # Final assistant text printed to stdout
+[subagent] Timeout (120s) — sending abort...
+```
+
+### Event types
+
+| Event | Meaning | What to do |
+|-------|---------|-----------|
+| `thinking_start` | Model started thinking | Reset thinking buffer |
+| `thinking_delta` | Thinking chunk | Append to thinking buffer |
+| `thinking_end` | Thinking complete | Thinking buffer is ready |
+| `toolcall_start` | Model wants to call a tool | Reset tool buffer |
+| `toolcall_delta` | Tool call argument chunk | Append to tool buffer |
+| `toolcall_end` | Tool call arguments complete | Parse and execute tool |
+| `text_start` | Model started producing text | Reset text buffer |
+| `text_delta` | Text chunk | Append to text buffer |
+| `text_end` | Text complete | Text buffer is the final output |
+| `agent_end` | Agent turn finished | Extract final message |
+| `extension_ui_request` | Extension wants UI interaction | Auto-cancelled by client |
+| `agent_settled` | All agent activity complete | Task is done |
+
+### System prompt visibility
+
+**The system prompt is NOT exposed through the RPC protocol.** It is constructed by the prompt-builder extension and sent directly to the LLM. It does not appear in session messages or the event stream.
+
+To see the system prompt after a session:
+
+1. Use `export_html` to get a full session export (includes reconstructed conversation):
+   ```bash
+   # After the subagent finishes, send an export command
+   echo '{"type": "export_html", "outputPath": "/tmp/session.html"}' | \
+     PI_CODING_AGENT_DIR=$TEMP_PI_DIR pi --mode rpc ...
+   ```
+2. The HTML export includes the full conversation but is formatted for human reading, not structured parsing.
+
+---
+
 ## Critical: Input Polisher Workaround
 
 Extensions like `input-polisher` intercept user prompts in RPC mode. It classifies the input, then returns `{ action: "handled" }` and waits for a second Enter press — which never comes in headless mode. This causes the prompt to silently never reach the model.
 
-**Solution**: The Python RPC client (`subagent-rpc.py`) automatically creates a temp `PI_CODING_AGENT_DIR` with `preprocessorEnabled: false` in settings.json. This disables the input polisher for the subagent session.
+**Solution**: The bundled Python RPC client (`subagent-rpc.py`) automatically creates a temp `PI_CODING_AGENT_DIR` with `preprocessorEnabled: false` in settings.json. This disables the input polisher for the subagent session.
 
 If you're writing your own RPC client or using tmux, you must do this manually:
 
@@ -115,8 +228,6 @@ export PI_CODING_AGENT_DIR="$TEMP_PI_DIR"
 # ... spawn pi ...
 # Clean up: rm -rf $TEMP_PI_DIR
 ```
-
-**Note**: The input-polisher reads settings from `PI_CODING_AGENT_DIR` (fixed in v3.10+, previously hardcoded to `~/.pi/agent/settings.json`). If running an older version, you must temporarily edit `~/.pi/agent/settings.json` directly.
 
 ---
 
@@ -142,9 +253,9 @@ Return a JSON list of gaps with endpoint and missing validation type.
 EOF
 
 # Run in parallel (background)
-# Use --provider/--model matching your setup (check `pi --list-models`)
+SKILL_DIR=<skill_dir>
 for i in 1 2 3; do
-  python3 $PI_EXTENSION_PATH/scripts/subagent-rpc.py \
+  python3 "$SKILL_DIR/subagent-rpc.py" \
     /tmp/task-$i.md \
     > /tmp/result-$i.txt 2>&1 &
 done
@@ -165,15 +276,14 @@ done
 
 When the Python client doesn't cover your needs, interact with RPC directly.
 
-**Start pi** (always use temp settings with preprocessorEnabled=false):
+**Start pi** (always use temp settings with `preprocessorEnabled=false`):
 
 ```bash
 TEMP_PI_DIR=$(mktemp -d)
 python3 -c "import json; d=json.load(open('$HOME/.pi/agent/settings.json')); d['preprocessorEnabled']=False; json.dump(d, open('$TEMP_PI_DIR/settings.json','w'), indent=2)"
 
 PI_CODING_AGENT_DIR=$TEMP_PI_DIR pi --mode rpc --no-session \
-  -e $PI_EXTENSION_PATH \
-  --provider <provider> --model <model>  # see `pi --list-models`
+  --provider a0venice --model deepseek-v4-flash
 ```
 
 **Send a task** (stdin):
@@ -220,7 +330,7 @@ Different tasks benefit from different tool sets and models.
 ### Lean subagent (fast, cheap, no extensions)
 
 ```bash
-python3 $PI_EXTENSION_PATH/scripts/subagent-rpc.py task.md \
+python3 <skill_dir>/subagent-rpc.py task.md \
   --no-extensions --provider openrouter --model "google/gemini-flash-latest" \
   --tools read,bash,edit,write,find,grep
 ```
@@ -232,8 +342,8 @@ Use for: simple code tasks, file transformations, grep-heavy analysis.
 ### Full subagent (with extensions)
 
 ```bash
-python3 $PI_EXTENSION_PATH/scripts/subagent-rpc.py task.md \
-  --provider <provider> --model <model>  # see `pi --list-models`
+python3 <skill_dir>/subagent-rpc.py task.md \
+  --provider a0venice --model deepseek-v4-flash
 ```
 
 Use for: complex reasoning, multi-step tasks, tasks needing memory/tools from extensions.
@@ -241,24 +351,11 @@ Use for: complex reasoning, multi-step tasks, tasks needing memory/tools from ex
 ### Research subagent (web access)
 
 ```bash
-python3 $PI_EXTENSION_PATH/scripts/subagent-rpc.py task.md \
-  --provider <provider> --model <model> \
+python3 <skill_dir>/subagent-rpc.py task.md \
   --tools read,bash,write,web_fetch
 ```
 
 Use for: literature review, fact-checking, web research.
-
----
-
-## Discovering Available Models
-
-Before spawning a subagent, check which models are available:
-
-```bash
-pi --list-models 2>/dev/null | grep -v "Warning\|INFO"
-```
-
-Pick a cheap/fast model for trivial tasks, a stronger model for complex reasoning. The `--provider` and `--model` flags control which LLM the subagent uses.
 
 ---
 
@@ -357,17 +454,20 @@ done
 
 ---
 
-## Existing Infrastructure
+## Bundled Files
 
-| Component           | Path                        | Purpose                                        |
-| ------------------- | --------------------------- | ---------------------------------------------- |
-| Python RPC client   | `scripts/subagent-rpc.py`   | Full RPC client with UI handling + temp settings |
-| RPC protocol docs   | pi `docs/rpc.md`            | Full RPC command/event reference               |
+| File               | Purpose                                        |
+| ------------------ | ---------------------------------------------- |
+| `SKILL.md`         | This skill file (loaded by pi)                 |
+| `subagent-rpc.py`  | Python RPC client with UI handling + temp settings |
+| `package.json`     | npm package metadata for sharing               |
+| `README.md`        | Standalone usage documentation                 |
 
 ---
 
-## Known Issues (2026-06-30)
+## Known Issues
 
 - **`--print` / `-p` mode**: Does not work with extension packages loaded. The process exits immediately without calling the model. Use `--mode rpc` instead.
 - **Model patterns**: Model names with `~` prefix (e.g. `~google/gemini-flash-latest`) require the model registry from extensions. Without extensions, use the bare model ID.
-- **Custom providers**: Provider extension packages register custom providers (e.g. Venice, OpenRouter-compatible proxies, etc.). Without the relevant extension loaded, only pi-core built-in providers (anthropic, openai, google, openrouter) are available. Use `pi --list-models` to see what's available in your setup.
+- **Custom providers**: Provider extension packages register custom providers (e.g. Venice, OpenRouter-compatible proxies, etc.). Without the relevant extension loaded, only pi-core built-in providers (anthropic, openai, google, openrouter) are available.
+- **System prompt**: Not exposed through the RPC protocol. Use `export_html` for a human-readable session export.

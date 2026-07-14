@@ -124,7 +124,8 @@ def handle_extension_ui(proc, event):
 
 
 def run_subagent(prompt_text, provider=None, model=None, extensions=True,
-                 tools=None, timeout=120, env_overrides=None, verbose=False):
+                 tools=None, timeout=120, env_overrides=None, verbose=False,
+                 session=None, resume=False):
     """Run a pi subagent in RPC mode and return the assistant's text response.
     
     Args:
@@ -136,6 +137,8 @@ def run_subagent(prompt_text, provider=None, model=None, extensions=True,
         timeout: Max seconds to wait for completion.
         env_overrides: Dict of extra environment variables.
         verbose: If True, print progress and events to stderr as they arrive.
+        session: Session file path or ID to resume from (e.g., --session <path>).
+        resume: If True, continue the most recent session (-c flag).
     
     Returns:
         The assistant's text response (str). Always returns a string; empty
@@ -150,7 +153,14 @@ def run_subagent(prompt_text, provider=None, model=None, extensions=True,
     if env_overrides:
         env.update(env_overrides)
     
-    cmd = ["pi", "--mode", "rpc", "--no-session"]
+    cmd = ["pi", "--mode", "rpc"]
+    
+    if session:
+        cmd.extend(["--session", session])
+    elif resume:
+        cmd.append("-c")
+    else:
+        cmd.append("--no-session")
     
     if extensions:
         # Resolve braid root relative to this script's location
@@ -286,6 +296,10 @@ def main():
                         help="Model name/pattern (e.g. deepseek-v4-flash)")
     parser.add_argument("--no-extensions", action="store_true",
                         help="Disable pi-braid extensions (use built-in providers only)")
+    parser.add_argument("--session", default=None,
+                        help="Session file path or ID to resume from")
+    parser.add_argument("--resume", "-c", action="store_true",
+                        help="Continue the most recent session")
     parser.add_argument("--tools", default=None,
                         help="Comma-separated tool list (with --no-extensions)")
     parser.add_argument("--timeout", type=int, default=120,
@@ -308,7 +322,9 @@ def main():
         extensions=not args.no_extensions,
         tools=args.tools,
         timeout=args.timeout,
-        verbose=args.verbose
+        verbose=args.verbose,
+        session=args.session,
+        resume=args.resume
     )
     
     print(result)

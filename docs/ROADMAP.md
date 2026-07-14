@@ -147,6 +147,26 @@ User Input → Input Polisher → Prompt Builder → LLM → Tool Execution → 
 - `triggerTurn: false` — advisory (agent sees on next turn)
 - `log.*` routes to TUI when ctx is bound, to in-memory buffer when unbound
 
+### P3 — full Braid critical review (BACKLOG)
+
+**Status:** Not started. High priority.
+
+**Scope:** Full honest deep maximum critical review of Braid itself. Every subsystem,
+skill, doc, and convention. Identify:
+- Dead code, unused exports, orphaned modules
+- Stale/wrong documentation (skills, AGENTS.md, ROADMAP, CHANGELOG)
+- Over-engineered or under-engineered components
+- Missing test coverage
+- Architectural debt or unnecessary complexity
+- Skill gaps (missing or misleading SKILL.md files)
+- Duplicate or conflicting conventions
+- Performance bottlenecks
+- Security hardening opportunities
+
+**Method:** Subagent-assisted. Spawn subagents to explore each subsystem,
+cross-reference against docs, and report findings. Human reviews the findings
+and prioritizes fixes.
+
 ## Companion documents
 
 - [`docs/HISTORY.md`](HISTORY.md) — consolidated history including fragile heuristics, archaeology, proposals, and D-57
