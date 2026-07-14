@@ -1,7 +1,7 @@
 /**
  * Session Recall Extension
  *
- * Two tools for searching and querying past pi sessions:
+ * Four tools for searching, querying, analyzing, and getting stats on past pi sessions:
  *
  * Tools:
  * 1. session_search - Find relevant past sessions by keywords.
@@ -10,7 +10,10 @@
  * 2. session_query - Deep dive into a specific session.
  *    Use after session_search to get detailed information.
  *
- * 3. session_stats - Aggregate session statistics (count, size, by project/month).
+ * 3. session_analyze - Multi-session LLM analysis.
+ *    Use to compare patterns across sessions.
+ *
+ * 4. session_stats - Aggregate session statistics (count, size, by project/month).
  *    No LLM, fast.
  *
  * Storage: ~/.pi/agent/sessions/ (auto-discovered)
@@ -37,6 +40,7 @@ import { asyncExists } from "../../../lib/utils/async-fs.js";
 import * as import_textUtils from "./text-utils.js";
 import { getSessionsDir, projectFromPath, dateFromPath, searchFiles, searchLines, walkJsonlFiles, MAX_SEARCH_RESULTS, MAX_SNIPPETS_PER_SESSION } from "./search.js";
 import { loadSessionMessages, serializeSession, QUERY_SYSTEM_PROMPT } from "./query.js";
+import { summarizeSession, buildAnalysisInput, ANALYZE_SYSTEM_PROMPT } from "./analyze.js";
 import { onEvent } from "../../../lib/events/event-types.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { TURN_END } from "../../../lib/core/event-names.js";
@@ -49,8 +53,8 @@ const estimateTokens = import_textUtils.estimateTokens;
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
 const sessionSchema = Type.Object({
-  action: Type.Union([Type.Literal("search"), Type.Literal("query"), Type.Literal("batch"), Type.Literal("stats")], {
-    description: "Action: search | query | batch | stats",
+  action: Type.Union([Type.Literal("search"), Type.Literal("query"), Type.Literal("batch"), Type.Literal("stats"), Type.Literal("analyze")], {
+    description: "Action: search | query | batch | stats | analyze",
   }),
   // search-only
   query: Type.Optional(
@@ -64,6 +68,13 @@ const sessionSchema = Type.Object({
   ),
   question: Type.Optional(
     Type.String({ description: "What to ask about the session (action=query)" }),
+  ),
+  // analyze-only
+  sessionPaths: Type.Optional(
+    Type.Array(Type.String(), { description: "Session file paths to analyze (action=analyze)" }),
+  ),
+  sample: Type.Optional(
+    Type.Number({ description: "Max sessions to sample when analyzing (action=analyze, default: all)" }),
   ),
   // batch-only
   pattern: Type.Optional(
@@ -94,11 +105,12 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "session",
     label: "Session",
-    promptSnippet: "Search past sessions, query a session, or get session statistics",
+    promptSnippet: "Search past sessions, query a session, analyze multiple sessions, or get session statistics",
     description:
       "Access past session history. " +
       "Use action=search with query to find sessions matching keywords (plain-text grep, no LLM). " +
       "Use action=query with sessionPath + question to analyze a specific session (LLM-driven). " +
+      "Use action=analyze with sessionPaths + question to analyze multiple sessions (LLM-driven). " +
       "Use action=batch with pattern to aggregate matches across all sessions (no LLM, fast). " +
       "Use action=stats for session statistics overview (no LLM, fast).",
     parameters: sessionSchema,
@@ -426,6 +438,157 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
               },
             };
           }
+          case "analyze": {
+            if (!params.sessionPaths || !Array.isArray(params.sessionPaths) || params.sessionPaths.length === 0) {
+              return {
+                content: [{ type: "text" as const, text: "action=analyze requires 'sessionPaths' (array of session file paths) and 'question'" }],
+                details: { error: true, action: "analyze" },
+              };
+            }
+            if (!params.question) {
+              return {
+                content: [{ type: "text" as const, text: "action=analyze requires 'question' parameter" }],
+                details: { error: true, action: "analyze" },
+              };
+            }
+
+            // Validate paths exist
+            const validPaths: string[] = [];
+            for (const p of params.sessionPaths) {
+              if (await asyncExists(p)) {
+                validPaths.push(p);
+              }
+            }
+
+            if (validPaths.length === 0) {
+              return {
+                content: [{ type: "text" as const, text: "None of the provided session paths exist." }],
+                details: { error: true, action: "analyze", providedPaths: params.sessionPaths },
+              };
+            }
+
+            // Apply sampling
+            let pathsToAnalyze = validPaths;
+            if (params.sample && params.sample > 0 && params.sample < validPaths.length) {
+              // Shuffle and take sample
+              const shuffled = [...validPaths].sort(() => Math.random() - 0.5);
+              pathsToAnalyze = shuffled.slice(0, params.sample);
+            }
+
+            // Build summaries for each session
+            const summaries: Array<{ path: string; date: string; project: string; compressed: string }> = [];
+            const errors: string[] = [];
+
+            for (const sessionPath of pathsToAnalyze) {
+              try {
+                const project = projectFromPath(sessionPath);
+                const date = dateFromPath(sessionPath);
+                const summary = await summarizeSession(sessionPath, project, date);
+                summaries.push({
+                  path: sessionPath,
+                  date: summary.date,
+                  project: summary.project,
+                  compressed: summary.compressed,
+                });
+              } catch (err) {
+                errors.push(`Failed to summarize ${sessionPath}: ${err}`);
+              }
+            }
+
+            if (summaries.length === 0) {
+              return {
+                content: [{ type: "text" as const, text: "Failed to summarize any sessions." }],
+                details: { error: true, action: "analyze", errors },
+              };
+            }
+
+            // Prepare LLM input
+            const ctx = _ctx;
+            const baseModel = resolveUtilityModel(ctx) ?? ctx?.model ?? currentModel;
+            const model = baseModel;
+            const contextWindow = model?.contextWindow ?? 200000;
+            const tokenBudget = Math.floor(contextWindow * 0.8);
+
+            const { text: analysisInput, windowed } = buildAnalysisInput(
+              summaries.map((s) => ({
+                path: s.path,
+                date: s.date,
+                project: s.project,
+                messageCount: 0,
+                turnCount: 0,
+                events: [],
+                toolsUsed: [],
+                errorCount: 0,
+                compressed: s.compressed,
+              })),
+              params.question,
+              tokenBudget - estimateTokens(ANALYZE_SYSTEM_PROMPT) - 5000, // reserve 5K for response
+            );
+
+            if (analysisInput.length === 0) {
+              return {
+                content: [{ type: "text" as const, text: "Analysis input is empty after windowing." }],
+                details: { error: true, action: "analyze" },
+              };
+            }
+
+            // Call LLM for analysis
+            try {
+              const apiKey = ctx?.modelRegistry
+                ? await ctx.modelRegistry.getApiKeyForProvider(model.provider)
+                : "";
+              const llmResult = await callLlm(model, apiKey, ANALYZE_SYSTEM_PROMPT, analysisInput, {
+                timeoutMs: 300_000,
+                ...(signal ? { signal } : {}),
+              });
+
+              if ("error" in llmResult) {
+                return {
+                  content: [{ type: "text" as const, text: `Analysis failed: ${llmResult.error}` }],
+                  details: { error: true, action: "analyze" },
+                };
+              }
+
+              const answer = llmResult.text;
+              if (!answer) {
+                return {
+                  content: [{ type: "text" as const, text: "LLM returned empty response." }],
+                  details: { error: true, action: "analyze" },
+                };
+              }
+
+              const windowNote = windowed ? " (windowed — some sessions omitted due to context limits)" : "";
+              const errorNote = errors.length > 0 ? `\n\n**Warnings:** ${errors.length} session(s) failed to load.` : "";
+
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: `**Analysis of ${summaries.length} session${summaries.length === 1 ? "" : "s"}**${windowNote}${errorNote}\n\n---\n\n${answer}\n\n*Analyzed by ${model.id} (${model.provider})*`,
+                  },
+                ],
+                details: {
+                  action: "analyze",
+                  question: params.question,
+                  sessionCount: summaries.length,
+                  totalRequested: params.sessionPaths.length,
+                  validCount: validPaths.length,
+                  windowed,
+                  errors: errors.length > 0 ? errors : undefined,
+                  sessions: summaries.map((s) => ({
+                    path: s.path,
+                    date: s.date,
+                    project: s.project,
+                  })),
+                },
+              };
+            } catch (err) {
+              return {
+                content: [{ type: "text" as const, text: `Error analyzing sessions: ${err}` }],
+                details: { error: true, action: "analyze" },
+              };
+            }
+          }
           case "stats": {
             const sessionsDir = getSessionsDir();
             if (!(await asyncExists(sessionsDir))) {
@@ -581,7 +744,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
             };
           }
           default:
-            throw new Error(`Unknown session action: ${params?.action}. Use: search, query, batch, stats.`);
+            throw new Error(`Unknown session action: ${params?.action}. Use: search, query, batch, stats, analyze.`);
         }
       } catch (err) {
         log.error(`session tool failed: ${err}`);
