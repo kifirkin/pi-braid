@@ -19,43 +19,51 @@ Complete reference for pi's architecture, configuration, and internals.
 
 Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details).
 
-## Documentation Index (relative to `<root>/docs/`)
+## Documentation Index (relative to `<root>/docs/` or `<root>/`)
 
-| Topic              | Path                                    |
-| ------------------ | --------------------------------------- |
-| Extensions         | `extensions.md`, `examples/extensions/` |
-| Themes             | `themes.md`                             |
-| Skills             | `skills.md`                             |
-| Prompt Templates   | `prompt-templates.md`                   |
-| TUI Components     | `tui.md`                                |
-| Keybindings        | `keybindings.md`                        |
-| SDK                | `sdk.md`                                |
-| Custom Providers   | `custom-provider.md`                    |
-| Adding Models      | `models.md`                             |
-| Package Overview   | `packages.md`                           |
-| RPC Mode           | `rpc.md`                                |
-| Session Management | `session.md`                            |
-| Settings           | `settings.md`                           |
+| Topic              | Path                                        |
+| ------------------ | ------------------------------------------- |
+| Extensions         | `docs/extensions.md`, `examples/extensions/`|
+| Themes             | `docs/themes.md`                            |
+| Skills             | `docs/skills.md`                            |
+| Prompt Templates   | `docs/prompt-templates.md`                  |
+| TUI Components     | `docs/tui.md`                               |
+| Keybindings        | `docs/keybindings.md`                       |
+| SDK                | `docs/sdk.md`                               |
+| Custom Providers   | `docs/custom-provider.md`                   |
+| Adding Models      | `docs/models.md`                            |
+| Package Overview   | `docs/packages.md`                          |
+| RPC Mode           | `docs/rpc.md`                               |
+| Session Management | `docs/sessions.md`                          |
+| Settings           | `docs/settings.md`                          |
+| Compaction         | `docs/compaction.md`                        |
 
 ## Directory Structure
 
 ```
 ~/.pi/                        # Agent home directory
 ├── agent/
-│   ├── settings.json         # Global settings (overridden per-project)
+│   ├── settings.json         # Global settings (model, provider, api keys)
 │   ├── auth.json             # API keys and OAuth tokens
-│   ├── extensions/           # Installed extensions
-│   └── skills/               # User-installed skills
-├── memory/                   # Short-term conversation memory
-└── snapshots/                # Agent state snapshots
+│   ├── extensions/           # Installed extensions (symlinked or copied)
+│   ├── skills/               # User-installed skills
+│   ├── sessions/             # Session JSONL files (by project dir)
+│   ├── braid/                # Braid-specific data (memory, etc.)
+│   ├── git/                  # Git integration data
+│   ├── trust.json            # Project trust decisions
+│   └── npm/                  # NPM-related data
+├── screenshots/              # Terminal screenshots
+└── test-logs-br3/            # Test logs (if applicable)
 ```
 
 ## Key Paths
 
 | Path                        | Purpose                                   |
 | --------------------------- | ----------------------------------------- |
-| `~/.pi/agent/settings.json` | Global settings (model, tools, etc.)      |
+| `~/.pi/agent/settings.json` | Global settings (model, provider, api keys)|
 | `~/.pi/agent/auth.json`     | API keys and OAuth credentials            |
+| `~/.pi/agent/sessions/`     | Session JSONL files, organized by project  |
+| `~/.pi/agent/skills/`       | User-installed skills (SKILL.md files)     |
 | `<cwd>/.pi/settings.json`   | Project-local settings (overrides global) |
 
 ## Environment Variables
