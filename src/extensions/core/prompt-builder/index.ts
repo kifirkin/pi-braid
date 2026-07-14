@@ -204,7 +204,10 @@ async function projectContextSection(cwd: string, ctx: ExtensionContext): Promis
 
 // ── Main Extension ───────────────────────────────────────────────────────────
 
+import { createPromptInspectTool } from "./inspect.js";
+
 export default function promptBuilderExtension(pi: ExtensionAPI) {
+  pi.registerTool(createPromptInspectTool());
   // L1 state is now gathered per-request, not global
 
   // Context: tools, skills, memories, runtime extensions, project docs, memory ──

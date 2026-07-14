@@ -193,7 +193,8 @@ def run_subagent(prompt_text, provider=None, model=None, extensions=True,
     
     if verbose:
         print(f"[subagent] Cmd: {' '.join(cmd)}", file=sys.stderr)
-        print(f"[subagent] Env: PI_CODING_AGENT_DIR={temp_pi_dir}", file=sys.stderr)
+        if not use_json:
+            print(f"[subagent] Env: PI_CODING_AGENT_DIR={temp_pi_dir}", file=sys.stderr)
     
     proc = subprocess.Popen(
         cmd,
@@ -315,14 +316,14 @@ def run_subagent(prompt_text, provider=None, model=None, extensions=True,
             time.sleep(0.5)
             ready, _, _ = select.select([proc.stdout], [], [], 2.0)
             if ready:
-            line = proc.stdout.readline()
-            if line:
-                try:
-                    resp = json.loads(line.strip())
-                    if resp.get("success"):
-                        full_text = resp.get("data", {}).get("text", "")
-                except:
-                    pass
+                line = proc.stdout.readline()
+                if line:
+                    try:
+                        resp = json.loads(line.strip())
+                        if resp.get("success"):
+                            full_text = resp.get("data", {}).get("text", "")
+                    except:
+                        pass
     
     # Clean up
     try:
