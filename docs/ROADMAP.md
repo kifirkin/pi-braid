@@ -49,7 +49,7 @@
 
 ### P3 — session analysis tools
 
-**Status:** Epic A (batch) shipped. Epic B (analyze) designed. Epic C (stats) scoped.
+**Status:** Epic A (batch) shipped. Epic B (analyze) designed. Epic C (stats) shipped.
 
 **Goal:** Mine 3 months of session data (318M, 318 braid sessions) for insights about
 prompt effectiveness, behavior patterns, and failure modes.
@@ -68,8 +68,8 @@ behavior modes, finalize calls, errors, whispers) → compress to 1-2K token sum
 All summaries + question → main model (max context window).
 Progressive batching for large sample sizes.
 
-**Epic C — `session action="stats"` — SCOPED.**
-Session statistics overview. Total sessions, by project, date range, average size. No LLM, fast.
+**Epic C — `session action="stats"` — SHIPPED (2026-07-14, commit 9b8e1d28).**
+Session statistics overview. Total sessions, by project, date range, average size, top sessions by size. No LLM, fast. Supports filters: project, since, until, limit.
 
 ### P3 — scratchpad real-time cross-instance sync
 
