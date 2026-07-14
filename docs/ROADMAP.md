@@ -147,6 +147,51 @@ User Input → Input Polisher → Prompt Builder → LLM → Tool Execution → 
 - `triggerTurn: false` — advisory (agent sees on next turn)
 - `log.*` routes to TUI when ctx is bound, to in-memory buffer when unbound
 
+### P3 — braid-whisper hint investigation (BACKLOG)
+
+**Status:** Not started.
+
+**Problem:** The `[braid-whisper - prompt-builder] [hint]` whisper fires every `/reload`
+and delivers generic/meaningless hints like "When working on 'session_outcome': Use memory
+for other -> Read files to understand current state -> Use think for other".
+
+**Root cause (identified):** Hints are consolidated from past session outcomes in
+`~/.pi/agent/braid/consolidated-hints.jsonl` (20 entries). The `deliverRelevantHints()`
+function in `src/lib/cognitive/hints.ts` runs on every `before_agent_start` (i.e., every
+`/reload`). The utility model (if available) or a heuristic fallback scores hints against
+the current task. The "session_outcome" hint has `project: "unknown"` and a generic
+strategy that matches too broadly.
+
+**Needs:**
+- Investigate why hints fire on every `/reload` (should be once-per-session?)
+- Determine if the utility model scoring is actually running or if it's the heuristic
+  fallback producing false positives
+- Consider: suppress hints on `/reload`, only deliver on fresh session start
+- Consider: remove hints entirely if they provide no measurable value
+
+### P3 — system prompt visibility investigation (BACKLOG)
+
+**Status:** Not started.
+
+**Problem:** The fully constructed system prompt is not visible anywhere. It is built
+by `prompt-builder` (sections: identity, guidelines, skills, context, append) and
+returned via `event.reply({ systemPrompt })` to pi-core, which sends it directly to
+the LLM. It is NOT stored in session files (no `"role":"system"` entry in JSONL)
+and NOT exposed via the RPC protocol's event stream.
+
+**Current visibility options:**
+- `--mode json` `agent_end` event has `messages[]` but no system prompt
+- `--mode rpc` has no `system_prompt` event type
+- Session JSONL files have no `"role":"system"` entry
+- The prompt-builder `render()` functions produce the sections but they're assembled
+  and returned to pi-core, never logged or dumped
+
+**Needs:**
+- Add a debug endpoint or whisper that dumps the assembled system prompt
+- Or: add a `--debug-prompt` CLI flag that prints the system prompt before starting
+- Or: store the system prompt in the session file as a `system` entry
+- Primary use case: reflecting on the full prompt to debug prompt-builder changes
+
 ### P3 — full Braid critical review (BACKLOG)
 
 **Status:** Not started. High priority.

@@ -125,8 +125,12 @@ def handle_extension_ui(proc, event):
 
 def run_subagent(prompt_text, provider=None, model=None, extensions=True,
                  tools=None, timeout=120, env_overrides=None, verbose=False,
-                 session=None, resume=False):
-    """Run a pi subagent in RPC mode and return the assistant's text response.
+                 session=None, resume=False, json_mode=False):
+    """Run a pi subagent and return the assistant's text response.
+    
+    Uses --mode json by default (simpler, no input-polisher blocking).
+    Falls back to --mode rpc if session/resume is needed (--mode json
+    doesn't support session resumption).
     
     Args:
         prompt_text: The task prompt string.
@@ -139,28 +143,36 @@ def run_subagent(prompt_text, provider=None, model=None, extensions=True,
         verbose: If True, print progress and events to stderr as they arrive.
         session: Session file path or ID to resume from (e.g., --session <path>).
         resume: If True, continue the most recent session (-c flag).
+        json_mode: If True, use --mode json (simpler, default). If False, use
+                   --mode rpc (needed for session resumption).
     
     Returns:
         The assistant's text response (str). Always returns a string; empty
         on timeout or error.
     """
-    # Always use temp settings to disable input-polisher
-    base_settings = os.path.expanduser("~/.pi/agent/settings.json")
-    temp_pi_dir = create_temp_settings(base_settings)
+    # --mode json avoids input-polisher blocking entirely (prompt is CLI arg,
+    # not stdin RPC command). --mode rpc needs temp settings to disable it.
+    use_json = json_mode and not session and not resume
     
     env = os.environ.copy()
-    env["PI_CODING_AGENT_DIR"] = temp_pi_dir
+    if not use_json:
+        # Temp settings only needed for RPC mode (input-polisher workaround)
+        base_settings = os.path.expanduser("~/.pi/agent/settings.json")
+        temp_pi_dir = create_temp_settings(base_settings)
+        env["PI_CODING_AGENT_DIR"] = temp_pi_dir
     if env_overrides:
         env.update(env_overrides)
     
-    cmd = ["pi", "--mode", "rpc"]
-    
-    if session:
-        cmd.extend(["--session", session])
-    elif resume:
-        cmd.append("-c")
+    if use_json:
+        cmd = ["pi", "--mode", "json", prompt_text]
     else:
-        cmd.append("--no-session")
+        cmd = ["pi", "--mode", "rpc"]
+        if session:
+            cmd.extend(["--session", session])
+        elif resume:
+            cmd.append("-c")
+        else:
+            cmd.append("--no-session")
     
     if extensions:
         # Resolve braid root relative to this script's location
@@ -197,74 +209,112 @@ def run_subagent(prompt_text, provider=None, model=None, extensions=True,
     global _current_subagent
     _current_subagent = (proc, verbose)
     
-    # Send the prompt
-    if verbose:
-        print(f"[subagent] Sending prompt ({len(prompt_text)} chars)...", file=sys.stderr)
-    send_command(proc, {"type": "prompt", "message": prompt_text})
-    
-    # Read events
-    full_text = ""
     started = time.time()
     
-    while True:
-        if time.time() - started > timeout:
-            if verbose:
-                print(f"[subagent] Timeout ({timeout}s) — sending abort...", file=sys.stderr)
-            send_command(proc, {"type": "abort"})
-            time.sleep(1)
-            proc.kill()
-            break
-        
-        if proc.poll() is not None:
-            break
-        
-        ready, _, _ = select.select([proc.stdout], [], [], 1.0)
-        if not ready:
-            continue
-        
-        line = proc.stdout.readline()
-        if not line:
-            break
-        
-        line = line.strip()
-        if not line:
-            continue
-        
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        
-        event_type = event.get("type", "")
-        
-        if event_type == "extension_ui_request":
-            if verbose:
-                print(f"[subagent] UI request: {event.get('method', '?')} "
-                      f"({event.get('methodMeta', {}).get('title', 'no title')})",
-                      file=sys.stderr)
-            handle_extension_ui(proc, event)
-            continue
-        
-        if event_type == "message_update":
-            delta = event.get("assistantMessageEvent", {})
-            if delta.get("type") == "text_delta":
-                chunk = delta.get("delta", "")
-                full_text += chunk
+    if use_json:
+        # JSON mode: prompt is a CLI argument, no stdin protocol needed.
+        # Events are JSONL on stdout. Parse agent_end for final text.
+        full_text = ""
+        all_lines = []
+        while True:
+            if time.time() - started > timeout:
                 if verbose:
-                    print(chunk, end="", file=sys.stderr, flush=True)
-            elif verbose:
-                print(f"[subagent] message_update: {delta.get('type', '?')}",
-                      file=sys.stderr)
+                    print(f"[subagent] Timeout ({timeout}s)", file=sys.stderr)
+                proc.kill()
+                break
+            if proc.poll() is not None:
+                break
+            ready, _, _ = select.select([proc.stdout], [], [], 1.0)
+            if not ready:
+                continue
+            line = proc.stdout.readline()
+            if not line:
+                break
+            all_lines.append(line)
+            if verbose:
+                print(line.rstrip(), file=sys.stderr)
         
-        if event_type == "agent_end":
-            break
-    
-    # Fallback: try get_last_assistant_text if we captured nothing
-    if not full_text and proc.poll() is None:
-        send_command(proc, {"type": "get_last_assistant_text"})
-        time.sleep(0.5)
-        ready, _, _ = select.select([proc.stdout], [], [], 2.0)
-        if ready:
+        # Parse agent_end event for final assistant text
+        for line in all_lines:
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if event.get("type") == "agent_end":
+                for m in reversed(event.get("messages", [])):
+                    if m.get("role") == "assistant":
+                        for c in m.get("content", []):
+                            if c.get("type") == "text":
+                                full_text = c["text"]
+                                break
+                        break
+                break
+    else:
+        # RPC mode: send prompt via stdin, read events from stdout
+        if verbose:
+            print(f"[subagent] Sending prompt ({len(prompt_text)} chars)...", file=sys.stderr)
+        send_command(proc, {"type": "prompt", "message": prompt_text})
+        
+        full_text = ""
+        while True:
+            if time.time() - started > timeout:
+                if verbose:
+                    print(f"[subagent] Timeout ({timeout}s) — sending abort...", file=sys.stderr)
+                send_command(proc, {"type": "abort"})
+                time.sleep(1)
+                proc.kill()
+                break
+            
+            if proc.poll() is not None:
+                break
+            
+            ready, _, _ = select.select([proc.stdout], [], [], 1.0)
+            if not ready:
+                continue
+            
+            line = proc.stdout.readline()
+            if not line:
+                break
+            
+            line = line.strip()
+            if not line:
+                continue
+            
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            
+            event_type = event.get("type", "")
+            
+            if event_type == "extension_ui_request":
+                if verbose:
+                    print(f"[subagent] UI request: {event.get('method', '?')} "
+                          f"({event.get('methodMeta', {}).get('title', 'no title')})",
+                          file=sys.stderr)
+                handle_extension_ui(proc, event)
+                continue
+            
+            if event_type == "message_update":
+                delta = event.get("assistantMessageEvent", {})
+                if delta.get("type") == "text_delta":
+                    chunk = delta.get("delta", "")
+                    full_text += chunk
+                    if verbose:
+                        print(chunk, end="", file=sys.stderr, flush=True)
+                elif verbose:
+                    print(f"[subagent] message_update: {delta.get('type', '?')}",
+                          file=sys.stderr)
+            
+            if event_type == "agent_end":
+                break
+        
+        # Fallback: try get_last_assistant_text if we captured nothing
+        if not full_text and proc.poll() is None:
+            send_command(proc, {"type": "get_last_assistant_text"})
+            time.sleep(0.5)
+            ready, _, _ = select.select([proc.stdout], [], [], 2.0)
+            if ready:
             line = proc.stdout.readline()
             if line:
                 try:
@@ -302,6 +352,10 @@ def main():
                         help="Continue the most recent session")
     parser.add_argument("--tools", default=None,
                         help="Comma-separated tool list (with --no-extensions)")
+    parser.add_argument("--json-mode", action="store_true",
+                        help="Use --mode json (simpler, default when no --session/--resume)")
+    parser.add_argument("--rpc-mode", action="store_true",
+                        help="Use --mode rpc (needed for --session/--resume)")
     parser.add_argument("--timeout", type=int, default=120,
                         help="Timeout in seconds (default: 120)")
     parser.add_argument("--verbose", "-v", action="store_true",
@@ -315,6 +369,9 @@ def main():
     else:
         prompt_text = args.prompt
     
+    # Default to json-mode unless --rpc-mode, --session, or --resume
+    json_mode = args.json_mode or (not args.rpc_mode and not args.session and not args.resume)
+    
     result = run_subagent(
         prompt_text,
         provider=args.provider,
@@ -324,7 +381,8 @@ def main():
         timeout=args.timeout,
         verbose=args.verbose,
         session=args.session,
-        resume=args.resume
+        resume=args.resume,
+        json_mode=json_mode
     )
     
     print(result)

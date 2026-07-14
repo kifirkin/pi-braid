@@ -1,11 +1,32 @@
 ---
 name: subagent
-description: "Spawn, monitor, and coordinate pi instances as subagents. Covers: RPC-based task delegation, parallel fan-out/fan-in, result extraction, session resumption, and error recovery. Activate when a task benefits from isolated context windows, parallel execution, or delegating to a specialized agent configuration."
+description: "Spawn, monitor, and coordinate pi instances as subagents. Covers: JSON-mode subprocess, RPC-based task delegation, parallel fan-out/fan-in, result extraction, session resumption, and error recovery. Activate when a task benefits from isolated context windows, parallel execution, or delegating to a specialized agent configuration."
 ---
 
 # Subagent Orchestration
 
 Delegate work to separate pi processes. Each subagent gets its own context window, tools, and lifecycle — isolated from your session.
+
+## Pi Modes Overview
+
+Pi has four modes, each suited for different subagent scenarios:
+
+| Mode | Command | Best For |
+|------|---------|----------|
+| **Interactive** | `pi` (default) | TUI, human-in-the-loop, long tasks |
+| **JSON** | `pi --mode json "prompt"` | **One-shot subagent tasks** (simplest, no stdin protocol) |
+| **RPC** | `pi --mode rpc` | Multi-turn interaction, session resumption, structured control |
+| **Print** | `pi -p "prompt"` or `echo "prompt" \| pi -p` | Simple output, piped input |
+
+**JSON mode** (`--mode json`) is the recommended default for subagent spawning:
+- Prompt is a CLI argument — no input-polisher blocking (no temp settings needed)
+- No stdin protocol — no extension UI dialogs to handle
+- Output is JSONL — parse `agent_end.messages` for the final assistant text
+
+**RPC mode** (`--mode rpc`) is needed when:
+- Session resumption (`--session`, `--resume`, `-c`)
+- Multi-turn interaction (steer, follow_up, abort)
+- Fine-grained event control (thinking, tool calls, UI requests)
 
 **Finding bundled scripts**: This skill ships with `subagent-rpc.py` in the same directory. The skill's location is available in the prompt context as `<location>`. Resolve the script path relative to `<skill_dir>` (the directory containing SKILL.md):
 
@@ -37,13 +58,13 @@ python3 skills/subagent/subagent-rpc.py "Your task here"
 
 ---
 
-## Two Modes
+## Three Modes
 
-### Mode 1: RPC Subprocess (structured, recommended)
+### Mode 1: JSON Subprocess (simple, recommended for most tasks)
 
-Spawn pi in RPC mode as a subprocess. Send JSON commands on stdin, read events from stdout. Best for: extracting structured results, benchmarks, tasks with a clear done condition.
+Spawn pi in JSON mode as a subprocess. Prompt is a CLI argument, output is JSONL on stdout. Best for: one-shot tasks, benchmarks, extracting structured results.
 
-**Quick spawn** (via the bundled Python RPC client):
+**Quick spawn** (via the bundled Python RPC client, uses `--mode json` by default):
 
 ```bash
 python3 <skill_dir>/subagent-rpc.py "Your task description here"
@@ -68,7 +89,41 @@ python3 <skill_dir>/subagent-rpc.py task.md \
   --no-extensions --provider openrouter --model "google/gemini-flash-latest"
 ```
 
-### Mode 2: tmux Session (interactive, for long-running tasks)
+**Raw JSON mode (no Python client needed):**
+
+```bash
+pi --mode json "Your task" 2>/dev/null | python3 -c "
+import json, sys
+for line in sys.stdin:
+    e = json.loads(line)
+    if e.get('type') == 'agent_end':
+        for m in reversed(e.get('messages', [])):
+            if m.get('role') == 'assistant':
+                for c in m.get('content', []):
+                    if c.get('type') == 'text': print(c['text'])
+                break
+        break
+"
+```
+
+### Mode 2: RPC Subprocess (structured, for session resumption)
+
+Spawn pi in RPC mode as a subprocess. Send JSON commands on stdin, read events from stdout. Best for: session resumption, multi-turn interaction, fine-grained event control.
+
+**Use `--rpc-mode` flag:**
+
+```bash
+python3 <skill_dir>/subagent-rpc.py task.md --rpc-mode
+```
+
+**Session resumption:**
+
+```bash
+python3 <skill_dir>/subagent-rpc.py "Continue the analysis" --session ~/.pi/agent/sessions/.../session.jsonl --rpc-mode
+python3 <skill_dir>/subagent-rpc.py "Continue the analysis" --resume --rpc-mode
+```
+
+### Mode 3: tmux Session (interactive, for long-running tasks)
 
 Spawn pi as a tmux session. Send input via `send-keys`, read output via `capture-pane`. Best for: long tasks, tasks needing monitoring, interactive debugging by a subagent.
 
@@ -103,11 +158,14 @@ rm -rf $TEMP_PI_DIR
 
 | Need                             | Mode           |
 | -------------------------------- | -------------- |
-| Structured result extraction     | RPC subprocess |
-| Benchmark / automated testing    | RPC subprocess |
+| Simple one-shot task             | JSON subprocess |
+| Structured result extraction     | JSON subprocess |
+| Benchmark / automated testing    | JSON subprocess |
+| Session resumption               | RPC subprocess  |
+| Multi-turn interaction           | RPC subprocess  |
 | Long task (>5 min)               | tmux session   |
 | Want to monitor progress         | tmux session   |
-| Parallel fan-out with collection | RPC subprocess |
+| Parallel fan-out with collection | JSON subprocess |
 | Interactive subagent             | tmux session   |
 
 ---
