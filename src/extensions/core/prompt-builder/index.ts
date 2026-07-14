@@ -267,6 +267,9 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     // 0. Instance composition block (top-level, all env + session info
     //    merged in v3.7). See instance-composition.ts for the design.
     const skills = event.systemPromptOptions?.skills ?? [];
+    // Extract unique base directories from loaded skill file paths so the
+    // Instance block can show where skills are loaded from (not just the count).
+    const skillDirs = [...new Set(skills.map((s) => s.baseDir).filter(Boolean))];
     let memoryCount = 0;
     try {
       const memory = getCognitiveMemory();
@@ -275,6 +278,7 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     } catch { /* memory unavailable - non-fatal */ }
     const inst = await instanceSection(pi, ctx, {
       skillCount: skills.length,
+      skillDirs,
       memoryCount,
     });
 

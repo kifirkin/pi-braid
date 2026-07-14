@@ -359,6 +359,9 @@ function discoverOtherPiInstances(): OtherPiInstance[] {
 export interface InstanceContext {
   /** Skills available (from prompt-builder). */
   skillCount: number;
+  /** Unique base directories for loaded skills (from skill file paths).
+   *  Defaults to [] when not provided. */
+  skillDirs?: string[];
   /** Memory entries (from three-memory-stores). */
   memoryCount: number;
 }
@@ -388,6 +391,8 @@ interface InstanceData {
   /** Other Pi instances running on the system (discovered via ps + lsof). */
   otherPiInstances: OtherPiInstance[];
   skillCount: number;
+  /** Unique base directories for loaded skills. */
+  skillDirs: string[];
   memoryCount: number;
 }
 
@@ -425,6 +430,7 @@ export async function instanceSection(
     topLevelExtensions,
     otherPiInstances,
     skillCount: instanceCtx.skillCount,
+    skillDirs: instanceCtx.skillDirs ?? [],
     memoryCount: instanceCtx.memoryCount,
   };
   return {
@@ -508,9 +514,13 @@ function renderInstance(d: InstanceData): string {
     }
   }
 
-  // Aggregate counts
+  // Aggregate counts with paths
   const counts: string[] = [];
-  if (d.skillCount > 0) counts.push(`${d.skillCount} skill${d.skillCount === 1 ? "" : "s"}`);
+  if (d.skillCount > 0) {
+    const dirs = relativeToCwdList(d.skillDirs, d.cwd);
+    const dirInfo = dirs.length > 0 ? ` from ${dirs.join(", ")}` : "";
+    counts.push(`${d.skillCount} skill${d.skillCount === 1 ? "" : "s"}${dirInfo}`);
+  }
   if (d.memoryCount > 0) counts.push(`${d.memoryCount} memor${d.memoryCount === 1 ? "y" : "ies"}`);
   if (counts.length > 0) {
     lines.push("");
@@ -548,6 +558,23 @@ function relativeToCwd(p: string, cwd: string): string {
   if (p === cwd) return p + " (cwd)";
   if (p.startsWith(cwd + "/")) return p.slice(cwd.length + 1);
   return p;
+}
+
+/**
+ * Render a list of paths relative to cwd, deduplicating identical
+ * entries. Used for showing skill directories and other multi-source
+ * paths in the Instance block.
+ */
+function relativeToCwdList(paths: string[], cwd: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const p of paths) {
+    const rel = relativeToCwd(p, cwd);
+    if (seen.has(rel)) continue;
+    seen.add(rel);
+    out.push(rel);
+  }
+  return out;
 }
 
 function formatMs(ms: number): string {
