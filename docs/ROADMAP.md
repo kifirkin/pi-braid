@@ -49,7 +49,7 @@
 
 ### P3 — session analysis tools
 
-**Status:** Epic A (batch) shipped. Epic B (analyze) designed. Epic C (stats) shipped.
+**Status:** Epic A (batch) shipped. Epic B (analyze) shipped. Epic C (stats) shipped.
 
 **Goal:** Mine 3 months of session data (318M, 318 braid sessions) for insights about
 prompt effectiveness, behavior patterns, and failure modes.
@@ -61,12 +61,12 @@ No LLM, fast. Filters: `pattern` (required), `project` (defaults to cwd), `since
 Output: human-readable text (TUI-friendly) + structured `details` (following the `think` tool
 pattern: `content` for human, `details` for agent).
 
-**Epic B — `session action="analyze"` — DESIGNED.**
+**Epic B — `session action="analyze"` — SHIPPED (2026-07-14, commit 69dbb6bf).**
 Multi-session LLM analysis. Accepts `sessionPaths: string[]`, `question: string`, `sample?: number`.
-Per-session: parse JSONL → extract structured events (tool calls, verification judge verdicts,
-behavior modes, finalize calls, errors, whispers) → compress to 1-2K token summary.
-All summaries + question → main model (max context window).
-Progressive batching for large sample sizes.
+Per-session: parse JSONL → extract structured events (tool calls, verify, finalize, errors,
+thinking, messages) via `analyze.ts` → compress to 1-2K token structured summary.
+All summaries + question → main model with context-window windowing.
+Progressive batching for large sample sizes. Output: human-readable text + structured details.
 
 **Epic C — `session action="stats"` — SHIPPED (2026-07-14, commit 9b8e1d28).**
 Session statistics overview. Total sessions, by project, date range, average size, top sessions by size. No LLM, fast. Supports filters: project, since, until, limit.

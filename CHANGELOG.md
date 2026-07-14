@@ -16,6 +16,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   size. Filters: project, since, until, limit. No LLM, fast.
   (commit 9b8e1d28)
 
+- **session action="analyze": multi-session LLM analysis.** Adds `analyze`
+  action to the session tool with structured event extraction from JSONL,
+  session compression to 1-2K token summaries, and LLM-powered analysis.
+  Accepts `sessionPaths: string[]`, `question: string`, `sample?: number`.
+  Progressive batching with context-window windowing.
+  (commit 69dbb6bf, new file analyze.ts)
+
 ### Changed
 
 - **P2-2: scratchpadExecute dispatch table.** Replaced the 200-line
