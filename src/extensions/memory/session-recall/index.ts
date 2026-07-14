@@ -10,6 +10,9 @@
  * 2. session_query - Deep dive into a specific session.
  *    Use after session_search to get detailed information.
  *
+ * 3. session_stats - Aggregate session statistics (count, size, by project/month).
+ *    No LLM, fast.
+ *
  * Storage: ~/.pi/agent/sessions/ (auto-discovered)
  *
  * Split into:
@@ -32,7 +35,7 @@ import { Type } from "typebox";
 import { basename } from "node:path";
 import { asyncExists } from "../../../lib/utils/async-fs.js";
 import * as import_textUtils from "./text-utils.js";
-import { getSessionsDir, projectFromPath, dateFromPath, searchFiles, searchLines, MAX_SEARCH_RESULTS, MAX_SNIPPETS_PER_SESSION } from "./search.js";
+import { getSessionsDir, projectFromPath, dateFromPath, searchFiles, searchLines, walkJsonlFiles, MAX_SEARCH_RESULTS, MAX_SNIPPETS_PER_SESSION } from "./search.js";
 import { loadSessionMessages, serializeSession, QUERY_SYSTEM_PROMPT } from "./query.js";
 import { onEvent } from "../../../lib/events/event-types.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
@@ -46,8 +49,8 @@ const estimateTokens = import_textUtils.estimateTokens;
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
 const sessionSchema = Type.Object({
-  action: Type.Union([Type.Literal("search"), Type.Literal("query"), Type.Literal("batch")], {
-    description: "Action: search | query | batch",
+  action: Type.Union([Type.Literal("search"), Type.Literal("query"), Type.Literal("batch"), Type.Literal("stats")], {
+    description: "Action: search | query | batch | stats",
   }),
   // search-only
   query: Type.Optional(
@@ -72,6 +75,9 @@ const sessionSchema = Type.Object({
   since: Type.Optional(
     Type.String({ description: "Only include sessions since this date (YYYY-MM-DD). Optional." }),
   ),
+  until: Type.Optional(
+    Type.String({ description: "Only include sessions until this date (YYYY-MM-DD). Optional." }),
+  ),
   limit: Type.Optional(
     Type.Number({ description: "Max sessions in output (default: 10). Use 0 for all." }),
   ),
@@ -88,12 +94,13 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "session",
     label: "Session",
-    promptSnippet: "Search past sessions or query a specific session",
+    promptSnippet: "Search past sessions, query a session, or get session statistics",
     description:
       "Access past session history. " +
       "Use action=search with query to find sessions matching keywords (plain-text grep, no LLM). " +
       "Use action=query with sessionPath + question to analyze a specific session (LLM-driven). " +
-      "Use action=batch with pattern to aggregate matches across all sessions (no LLM, fast).",
+      "Use action=batch with pattern to aggregate matches across all sessions (no LLM, fast). " +
+      "Use action=stats for session statistics overview (no LLM, fast).",
     parameters: sessionSchema,
     execute: async (
       _toolCallId,
@@ -419,8 +426,162 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
               },
             };
           }
+          case "stats": {
+            const sessionsDir = getSessionsDir();
+            if (!(await asyncExists(sessionsDir))) {
+              return {
+                content: [{ type: "text" as const, text: "No sessions directory found." }],
+                details: { error: true, matchCount: 0 },
+              };
+            }
+
+            const allFiles = await walkJsonlFiles(sessionsDir);
+            if (allFiles.length === 0) {
+              return {
+                content: [{ type: "text" as const, text: "No session files found." }],
+                details: { sessionCount: 0 },
+              };
+            }
+
+            // Apply filters
+            const projectFilter = params.project === "all"
+              ? null
+              : (params.project ?? null);
+
+            const sinceTs = params.since
+              ? new Date(params.since + "T00:00:00.000Z").getTime()
+              : null;
+            const untilTs = params.until
+              ? new Date(params.until + "T23:59:59.999Z").getTime()
+              : null;
+
+            // Stat each file: size, project, date
+            const { stat } = await import("node:fs/promises");
+            const sessionStats: Array<{ path: string; size: number; project: string; date: string }> = [];
+            let totalSize = 0;
+
+            for (const filePath of allFiles) {
+              // Apply project filter
+              if (projectFilter && !filePath.includes(projectFilter)) continue;
+
+              const dateStr = dateFromPath(filePath);
+
+              // Apply date filters
+              if (dateStr === "unknown") continue;
+              const fileTs = new Date(dateStr + "T00:00:00.000Z").getTime();
+              if (sinceTs && fileTs < sinceTs) continue;
+              if (untilTs && fileTs > untilTs) continue;
+
+              let size = 0;
+              try {
+                const st = await stat(filePath);
+                size = st.size;
+              } catch {
+                // skip unreadable files
+                continue;
+              }
+
+              const project = projectFromPath(filePath);
+              totalSize += size;
+              sessionStats.push({ path: filePath, size, project, date: dateStr });
+            }
+
+            if (sessionStats.length === 0) {
+              return {
+                content: [{ type: "text" as const, text: "No session files match the given filters." }],
+                details: { sessionCount: 0 },
+              };
+            }
+
+            // Aggregate by project
+            const byProject: Record<string, { count: number; size: number }> = {};
+            for (const s of sessionStats) {
+              if (!byProject[s.project]) byProject[s.project] = { count: 0, size: 0 };
+              byProject[s.project].count++;
+              byProject[s.project].size += s.size;
+            }
+
+            // Aggregate by month
+            const byMonth: Record<string, { count: number; size: number }> = {};
+            for (const s of sessionStats) {
+              const month = s.date.slice(0, 7);
+              if (!byMonth[month]) byMonth[month] = { count: 0, size: 0 };
+              byMonth[month].count++;
+              byMonth[month].size += s.size;
+            }
+
+            // Sort top sessions by size descending
+            const limit = params.limit ?? 10;
+            const topSessions = [...sessionStats].sort((a, b) => b.size - a.size).slice(0, limit);
+
+            // Format size helper
+            function formatSize(bytes: number): string {
+              if (bytes < 1024) return `${bytes} B`;
+              if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+              return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+            }
+
+            const avgSize = sessionStats.length > 0 ? totalSize / sessionStats.length : 0;
+
+            // Build output
+            const lines: string[] = [
+              `## Session Statistics`,
+              ``,//
+              `**Total sessions:** ${sessionStats.length}`,
+              `**Total size:** ${formatSize(totalSize)}`,
+              `**Average session size:** ${formatSize(avgSize)}`,
+              ``,//
+            ];
+
+            // By project
+            const projectEntries = Object.entries(byProject).sort((a, b) => b[1].count - a[1].count);
+            lines.push("**By project:**");
+            for (const [proj, stats] of projectEntries) {
+              lines.push(`  ${proj}: ${stats.count} session${stats.count === 1 ? "" : "s"}, ${formatSize(stats.size)}`);
+            }
+            lines.push("");
+
+            // By month (timeline)
+            const monthEntries = Object.entries(byMonth).sort((a, b) => a[0].localeCompare(b[0]));
+            lines.push("**By month (timeline):**");
+            for (const [month, stats] of monthEntries) {
+              lines.push(`  ${month}: ${stats.count} session${stats.count === 1 ? "" : "s"}, ${formatSize(stats.size)}`);
+            }
+            lines.push("");
+
+            // Top sessions by size
+            lines.push(`**Top ${topSessions.length} session${topSessions.length === 1 ? "" : "s"} by size:**`);
+            for (const s of topSessions) {
+              lines.push(`  ${s.date} ${s.project}: ${formatSize(s.size)}`);
+              lines.push(`    ${s.path}`);
+            }
+
+            return {
+              content: [{ type: "text" as const, text: lines.join("\n") }],
+              details: {
+                action: "stats",
+                sessionCount: sessionStats.length,
+                totalSize,
+                avgSize: Math.round(avgSize),
+                byProject: projectEntries.map(([project, st]) => ({ project, count: st.count, size: st.size })),
+                byMonth: monthEntries.map(([month, st]) => ({ month, count: st.count, size: st.size })),
+                topSessions: topSessions.map((s) => ({
+                  path: s.path,
+                  date: s.date,
+                  project: s.project,
+                  size: s.size,
+                })),
+                appliedFilters: {
+                  project: projectFilter,
+                  since: params.since ?? null,
+                  until: params.until ?? null,
+                  limit,
+                },
+              },
+            };
+          }
           default:
-            throw new Error(`Unknown session action: ${params?.action}. Use: search, query, batch.`);
+            throw new Error(`Unknown session action: ${params?.action}. Use: search, query, batch, stats.`);
         }
       } catch (err) {
         log.error(`session tool failed: ${err}`);

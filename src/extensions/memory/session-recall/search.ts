@@ -74,7 +74,7 @@ export function getSearchBackend(): SearchBackend {
 
 // ── File discovery ────────────────────────────────────────────────────────────
 
-async function walkJsonlFiles(dir: string): Promise<string[]> {
+export async function walkJsonlFiles(dir: string): Promise<string[]> {
   const results: string[] = [];
   async function walk(d: string) {
     let entries;
