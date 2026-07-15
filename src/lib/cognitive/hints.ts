@@ -42,6 +42,7 @@ interface ParsedHint {
   createdAt?: number;
   score?: number;
   project?: string;
+  strategy?: string;
 }
 
 /**
@@ -72,7 +73,13 @@ async function loadConsolidatedHints(currentProject?: string): Promise<string[]>
 
     const sameProject = currentProject
       ? parsed.filter(
-          (h) => !h.project || h.project === currentProject || h.project === "unknown",
+          (h) =>
+            !h.project ||
+            h.project === currentProject ||
+            // Unknown-project hints must score >= 80 to avoid generic noise
+            // (e.g. "session_outcome" with generic steps). Same-project hints
+            // have no score threshold — they're contextually relevant.
+            (h.project === "unknown" && (h.score ?? 0) >= 80),
         )
       : parsed;
     const crossProject = currentProject
@@ -100,8 +107,16 @@ async function loadConsolidatedHints(currentProject?: string): Promise<string[]>
       .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
 
     // Take the 3 most recent, render as readable strings
+    // Render the strategy/task description rather than just the raw steps,
+    // which are often generic tool names. The task field contains the
+    // actual high-level summary written by the consolidation process.
     return deduped.slice(-3).map((h) => {
-      const task = (h.task ?? "unknown").slice(0, 80);
+      const task = (h.task ?? "").slice(0, 120);
+      const strategy = (h.strategy ?? "").slice(0, 200);
+      // Prefer the strategy field (richer prose) over the raw steps list
+      if (strategy && strategy.length > task.length) {
+        return `When working on "${task}": ${strategy}`;
+      }
       const steps = (h.steps as string[]).slice(0, 3).join(" -> ");
       return `When working on "${task}": ${steps}`;
     });
@@ -178,11 +193,12 @@ async function filterRelevantHints(hints: string[], ctx: ExtensionContext): Prom
         { hint, currentTask },
         {
           timeoutMs: 60_000,
-          // Q9 B-class: hintRelevanceFallback is permissive (accepts
-          // most hints). tierPolicy: fallback-only downweights to 0.5
-          // confidence so the consumer can tell the heuristic was used.
+          // Q9 B-class: prefer-heuristic runs the regex fallback first
+          // (fast path for obvious rejections), but if it returns "yes",
+          // the utility model verifies — rejecting generic hints that the
+          // permissive regex would otherwise let through.
           fallback: () => hintRelevanceFallback(hint, currentTask),
-          tierPolicy: "fallback-only",
+          tierPolicy: "prefer-heuristic",
         },
       ),
     ),
