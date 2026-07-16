@@ -371,3 +371,45 @@ export function getShownDiscoveryBundles(): Set<string> {
 export function resetShownDiscoveryBundles(): void {
   delete (globalThis as any)[_GLOBAL_KEY];
 }
+
+// ── Per-signal dedup (more robust than bundle dedup) ──────────────────────
+// Bundle-text dedup misses when ANY dynamic content in the bundle changes
+// (openPlans count, goal slice, tag list, etc.). Per-signal dedup tracks
+// individual signal TYPES (semantic keys), so the same signal type is
+// skipped on re-emission even if its content varies.
+// Used by register-session-start-discoverability.ts (2026-07-16 fix).
+
+const _GLOBAL_SIGNAL_KEY = "__braid_shown_signal_types";
+
+/** Signal type identifiers used by the discoverability handler.
+ *  These are the dedup keys — keep them stable across releases. */
+export type DiscoverySignalType =
+  | "scratchpad_prior"
+  | "memory_prior"
+  | "sessions_prior"
+  | "resume"
+  | "tags_prior"
+  | "context_hygiene_tip";
+
+/** Get the shared shown-signal-types set (process-global, survives /reload). */
+export function getShownSignals(): Set<DiscoverySignalType> {
+  if (!(globalThis as any)[_GLOBAL_SIGNAL_KEY]) {
+    (globalThis as any)[_GLOBAL_SIGNAL_KEY] = new Set<DiscoverySignalType>();
+  }
+  return (globalThis as any)[_GLOBAL_SIGNAL_KEY];
+}
+
+/** Reset the shown-signal set. Test helper. */
+export function resetShownSignals(): void {
+  delete (globalThis as any)[_GLOBAL_SIGNAL_KEY];
+}
+
+/** Check if a signal type has been shown in this process. */
+export function isSignalShown(t: DiscoverySignalType): boolean {
+  return getShownSignals().has(t);
+}
+
+/** Mark a signal type as shown in this process. */
+export function markSignalShown(t: DiscoverySignalType): void {
+  getShownSignals().add(t);
+}

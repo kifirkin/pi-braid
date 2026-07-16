@@ -34,7 +34,7 @@ import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/se
 import { sendEnforcementWhisper } from "../whisper.js";
 import { getState } from "../state.js";
 import { enforcementSignals, type EnforcementSignalEntry } from "../signals.js";
-import { getShownDiscoveryBundles } from "../../../lib/state/global-state.js";
+import { isSignalShown, markSignalShown, type DiscoverySignalType } from "../../../lib/state/global-state.js";
 import { SCRATCHPAD_DIR, EPISODES_FILE, SEMANTIC_MEMORY_FILE, AGENT } from "../../../lib/config/braid-paths.js";
 import { projectSlugFromCwd } from "../../memory/scratchpad/persistence.js";
 
@@ -53,7 +53,12 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
       if (!getState(ctx).enforcementActive) return;
 
       const cwd = (ctx as { cwd?: string }).cwd ?? "";
-      const signals: string[] = [];
+      // Signal TYPE is the dedup key (stable across content changes).
+      // TEXT carries the user-facing content (may have dynamic fields like
+      // openPlans count, goal slice). This separation is what fixes the
+      // "duplicate whisper on /reload" bug: the old bundle-text dedup
+      // missed whenever ANY dynamic field changed.
+      const signals: Array<{ type: DiscoverySignalType; text: string }> = [];
 
       // Clear module-level enforcementSignals from the previous session.
       // This prevents stale signal data (e.g. unpersisted_learnings flag,
@@ -79,10 +84,12 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
               ? parsed.plans.filter((p: any) => !p.done).length
               : 0;
             if (hasGoal || openPlans > 0) {
-              signals.push(
-                `Prior scratchpad data exists for this project (${openPlans} open plan items). ` +
+              signals.push({
+                type: "scratchpad_prior",
+                text:
+                  `Prior scratchpad data exists for this project (${openPlans} open plan items). ` +
                   `Use \`scratchpad action=continue\` to resume -- it returns goal + open plan + recent context in one call.`,
-              );
+              });
             }
           }
         }
@@ -118,10 +125,12 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
         const sources: string[] = [];
         if (hasEpisodes) sources.push("episodes");
         if (hasSemantic) sources.push("semantic memory");
-        signals.push(
-          `Prior ${sources.join(" and ")} available. Use \`memory action=recall_search\` with a relevant query ` +
+        signals.push({
+          type: "memory_prior",
+          text:
+            `Prior ${sources.join(" and ")} available. Use \`memory action=recall_search\` with a relevant query ` +
             `to surface insights from past sessions before starting new work.`,
-        );
+        });
       }
 
       // ── 4. Prior session files ─────────────────────────────────────
@@ -133,10 +142,12 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
             (e) => e.isFile() && e.name.endsWith(".jsonl"),
           ).length;
           if (jsonlCount > 0) {
-            signals.push(
-              `${jsonlCount} prior session${jsonlCount > 1 ? "s" : ""} on record. ` +
+            signals.push({
+              type: "sessions_prior",
+              text:
+                `${jsonlCount} prior session${jsonlCount > 1 ? "s" : ""} on record. ` +
                 `Use \`session action=search\` with keywords to find relevant past work.`,
-            );
+            });
           }
         }
       } catch {
@@ -159,10 +170,12 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
             if (parsed.goal) parts.push(`goal: "${String(parsed.goal).slice(0, 80)}"`);
             if (openCount > 0) parts.push(`${openCount} open plan items`);
             if (uncommitted > 0) parts.push(`${uncommitted} uncommitted file${uncommitted > 1 ? "s" : ""}`);
-            signals.push(
-              `Prior session left ${parts.join(", ")}. ` +
+            signals.push({
+              type: "resume",
+              text:
+                `Prior session left ${parts.join(", ")}. ` +
                 `Use \`scratchpad action=continue\` to resume the full context.`,
-            );
+            });
           }
         }
       } catch {
@@ -180,10 +193,12 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
           const tags = JSON.parse(content);
           const tagNames = Object.keys(tags);
           if (tagNames.length > 0) {
-            signals.push(
-              `Cross-session tags available: ${tagNames.slice(0, 5).join(", ")}${tagNames.length > 5 ? ` +${tagNames.length - 5} more` : ""}. ` +
+            signals.push({
+              type: "tags_prior",
+              text:
+                `Cross-session tags available: ${tagNames.slice(0, 5).join(", ")}${tagNames.length > 5 ? ` +${tagNames.length - 5} more` : ""}. ` +
                 `Use \`context_navigate(action="checkout", target="<tag-name>")\` to navigate to a tagged position.`,
-            );
+            });
           }
         }
       } catch {
@@ -195,38 +210,38 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
       // how to manage context and preserve state against crashes.
       // Shown only when there's prior state to manage (other signals exist).
       if (signals.length > 0) {
-        signals.push(
-          `Session state auto-preserves: scratchpad saves to disk, shutdown writes a resume file. ` +
+        signals.push({
+          type: "context_hygiene_tip",
+          text:
+            `Session state auto-preserves: scratchpad saves to disk, shutdown writes a resume file. ` +
             `Monitor context with \`context_inspect\`, archive with \`context_compress\` when near capacity, ` +
             `and capture workspace files with \`workspace_snapshot(action=\'capture\')\`. ` +
             `These surfaces survive crashes.`,
-        );
+        });
       }
 
-      // ── Emit bundled signals (single whisper, process-level dedup) ─
-      // Bundling prevents flood: the discoverability handler can detect up
-      // to 6 sources (scratchpad, episodes, semantic, prior sessions, resume, context tip).
-      // Emitting each as a separate whisper would stack in the first turn.
-      // The braid-whisper prefix is added by the trunk (sendTrackedMessage),
-      // so we just join the body-level signals with newlines.
+      // ── Per-signal dedup (fixes "duplicate on /reload" bug) ───────────
+      // Each signal TYPE is a stable key in `getShownSignals()` (process-global,
+      // survives /reload via globalThis). Only UNSEEN signal TYPES are bundled.
+      // Old bundle-text dedup missed when ANY dynamic content changed
+      // (openPlans count, goal slice prefix, tag list) — the bundle string
+      // would vary, the Set.has check would miss, and the full bundle would
+      // fire again. Per-signal dedup is stable across content variations.
       //
-      // Process-level dedup: `getShownDiscoveryBundles()` returns a Set stored
-      // in global-state.ts (library module, never re-evaluated on /reload).
-      // Same process → same Set → identical text is skipped.
-      // Fresh `pi` process → empty Set → shows once.
-      if (signals.length > 0) {
-        const shown = getShownDiscoveryBundles();
-        const bundled = signals.join("\n");
-        if (!shown.has(bundled)) {
-          shown.add(bundled);
-          sendEnforcementWhisper(pi, ctx, bundled);
-        } else {
-          log.debug(`[discoverability] Skipping already-shown bundle (${signals.length} signals)`);
+      // Example: `scratchpad_prior` shown once with 3 open plans. Agent adds
+      // another plan (4 open plans). Old dedup: bundle text mismatches → fires
+      // again. New dedup: signal TYPE "scratchpad_prior" still in set → skip.
+      const unseenSignals = signals.filter((s) => !isSignalShown(s.type));
+      if (unseenSignals.length > 0) {
+        const bundled = unseenSignals.map((s) => s.text).join("\n");
+        for (const s of unseenSignals) {
+          markSignalShown(s.type);
         }
-      }
-
-      if (signals.length > 0) {
-        log.info(`[discoverability] ${signals.length} signal(s) emitted for ${cwd}`);
+        sendEnforcementWhisper(pi, ctx, bundled);
+        log.debug(
+          `[discoverability] ${unseenSignals.length}/${signals.length} new signal(s) emitted for ${cwd} ` +
+            `(${signals.length - unseenSignals.length} already shown)`,
+        );
       }
     },
     "session-start-discoverability",
