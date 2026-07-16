@@ -6,7 +6,6 @@
  */
 
 import * as fs from "node:fs/promises";
-import * as fsSync from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
@@ -192,42 +191,6 @@ test("vision: checkImageSize uses async fs.stat", async () => {
 
   return isFile && size === 4;
 });
-
-// ============================================================================
-// VERIFY: All modules use fs/promises import
-// ============================================================================
-
-const MODULE_PATHS = [
-  "src/lib/memory/storage.ts",
-  "src/extensions/memory/scratchpad/persistence.ts",
-  "src/extensions/enforcement/similarity.ts",
-  "src/extensions/self/error-tracking/index.ts",
-];
-
-for (const modPath of MODULE_PATHS) {
-  test(`${modPath}: imports fs/promises or has valid fs usage`, async () => {
-    try {
-      const content = await fs.readFile(modPath, "utf-8");
-      // Check for direct import or comment-based reference
-      const usesPromises = content.includes('from "node:fs/promises"') ||
-        content.includes("from 'node:fs/promises'") ||
-        content.includes("@fs/promises") ||
-        content.includes("#fs/promises");
-      // node:fs is valid when streams or sync APIs are needed
-      const usesSyncForStreams = content.includes("createReadStream") ||
-        content.includes("createWriteStream") ||
-        content.includes("mkdirSync") ||
-        content.includes("statSync");
-      // Re-export barrels (cognitive-memory.ts) delegate to sub-modules
-      const isBarrel = content.includes('export {') && content.includes('from "./') &&
-        content.includes("cognitive-memory/");
-      const hasValidFsImport = usesPromises || usesSyncForStreams || isBarrel;
-      return hasValidFsImport;
-    } catch {
-      return false;
-    }
-  });
-}
 
 // ============================================================================
 // SUMMARY

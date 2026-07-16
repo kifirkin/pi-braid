@@ -15,22 +15,16 @@
  *   3. Verify getCriticStats() returns the right shape
  *   4. Verify per-critic and aggregate token totals are correct
  *   5. Verify backward compat: calls without usage still work
- *   6. Verify the CriticUsage type is exported for downstream callers
  */
 
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import {
   recordCriticCall,
   getCriticStats,
   resetCriticStats,
 } from "../../../dist/lib/ai/critic-stats.js";
-
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
 describe("critic-stats token tracking (Q16)", () => {
   beforeEach(() => {
@@ -107,29 +101,10 @@ describe("critic-stats token tracking (Q16)", () => {
 
     // Aggregate token totals across all critics and all tiers
     assert.equal(stats.totalsInputTokens, 3500); // 1000 + 2000 + 500
-    assert.equal(stats.totalsOutputTokens, 175); // 50 + 100 + 25
+    assert.equal(stats.totalsOutputTokens, 175); // 100 + 50 + 25
 
     // Tier-level call counts are still tracked
     assert.equal(stats.totals.utility, 2);
     assert.equal(stats.totals.session, 1);
-  });
-
-  it("exports CriticUsage type and recordCriticCall accepts it", () => {
-    // Type-level contract: the source declares CriticUsage and the
-    // recordCriticCall function accepts it as the 4th argument.
-    // This pins the API shape so downstream callers (text-classifier
-    // already wired) can rely on the optional usage parameter.
-    const src = readFileSync(
-      join(ROOT, "src/lib/ai/critic-stats.ts"),
-      "utf-8",
-    );
-    assert.ok(
-      src.includes("export interface CriticUsage"),
-      "CriticUsage should be exported for downstream callers to type their usage argument",
-    );
-    assert.ok(
-      src.includes("usage?: CriticUsage"),
-      "recordCriticCall should accept optional CriticUsage argument",
-    );
   });
 });

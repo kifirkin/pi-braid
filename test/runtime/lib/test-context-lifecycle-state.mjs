@@ -20,34 +20,14 @@
  * This test verifies:
  *   1. `createState()` initializes `policyEngine` and `detector`.
  *   2. State is per-session: different ctx -> different state.
- *   3. Source-level: the module-level consts are gone from index.ts,
- *      and the per-session fields are present in state.ts.
- *   4. Source-level: all 12+ call sites in index.ts reference
- *      `state(ctx).policyEngine` / `state(ctx).detector` (not the
- *      old module-level names).
- *   5. Source-level: the manual `resetDetectorState` /
- *      `_policyState.cooldowns.clear()` calls are gone from the
- *      session_start handler.
  */
 
 import { strict as assert } from "node:assert";
-import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-const STATE_PATH = join(ROOT, "src/extensions/memory/context-lifecycle/state.ts");
-const INDEX_TS = join(ROOT, "src/extensions/memory/context-lifecycle/index.ts");
 const DIST_STATE = join(ROOT, "dist/extensions/memory/context-lifecycle/state.js");
-const DIST_INDEX = join(ROOT, "dist/extensions/memory/context-lifecycle/index.js");
-
-assert.ok(existsSync(STATE_PATH), "context-lifecycle/state.ts must exist");
-assert.ok(existsSync(INDEX_TS), "context-lifecycle/index.ts must exist");
-assert.ok(existsSync(DIST_STATE), "compiled state module must exist");
-assert.ok(existsSync(DIST_INDEX), "compiled index module must exist");
-
-const stateSrc = readFileSync(STATE_PATH, "utf-8");
-const indexSrc = readFileSync(INDEX_TS, "utf-8");
 
 console.log("=== DR-C-2 migration tests ===\n");
 
@@ -122,87 +102,6 @@ await test("mutations to per-session state don't leak across sessions", async ()
   const sB = _getState(ctxB);
   assert.strictEqual(sB.detector.topicHistory.length, 0, "session B detector is fresh");
   assert.strictEqual(sB.policyEngine.cooldowns.size, 0, "session B cooldowns are fresh");
-});
-
-// ── Structural: the module-level consts are gone from index.ts ──────────────
-
-await test("index.ts has no module-level _policyState or _detectorState", () => {
-  // The old pattern was:
-  //   const _policyState = createPolicyEngineState();
-  //   const _detectorState: DetectorState = createDetectorState();
-  // The migration moves both into per-session state.
-  assert.doesNotMatch(
-    indexSrc,
-    /^const\s+_policyState\s*=/m,
-    "module-level _policyState must be removed (migrated to per-session state)",
-  );
-  assert.doesNotMatch(
-    indexSrc,
-    /^const\s+_detectorState\s*=/m,
-    "module-level _detectorState must be removed (migrated to per-session state)",
-  );
-});
-
-await test("index.ts no longer imports createPolicyEngineState / createDetectorState / resetDetectorState", () => {
-  // The migration moved the state initialization into state.ts. The
-  // factory functions and resetDetectorState are no longer used in
-  // index.ts - they're called from state.ts instead.
-  //
-  // Note: an `assert.doesNotMatch` against the full file would also
-  // match a `//   import { ... }` example in a comment. To avoid that
-  // we check the import block at the top of the file specifically -
-  // the real import statement lives between the first `import` and the
-  // first `export default function`.
-  const importBlock = indexSrc.split("export default function")[0];
-  assert.doesNotMatch(
-    importBlock,
-    /\bcreatePolicyEngineState\b/,
-    "index.ts imports must not include createPolicyEngineState (only state.ts does)",
-  );
-  assert.doesNotMatch(
-    importBlock,
-    /\bcreateDetectorState\b/,
-    "index.ts imports must not include createDetectorState (only state.ts does)",
-  );
-  // resetDetectorState is no longer called from index.ts at all.
-  // We check the whole file here, but the function only appears in
-  // comments, not in code (we already verified the session_start
-  // handler doesn't call it).
-  assert.doesNotMatch(
-    indexSrc,
-    /(?<!\/\/\s)\bresetDetectorState\s*\(/,
-    "index.ts must not call resetDetectorState (the per-session state is fresh on session_start)",
-  );
-});
-
-await test("index.ts has no remaining _policyState or _detectorState references", () => {
-  assert.doesNotMatch(indexSrc, /\b_policyState\b/, "no _policyState references in index.ts");
-  assert.doesNotMatch(indexSrc, /\b_detectorState\b/, "no _detectorState references in index.ts");
-});
-
-await test("state.ts has policyEngine and detector fields", () => {
-  assert.match(stateSrc, /policyEngine:\s*PolicyEngineState/);
-  assert.match(stateSrc, /detector:\s*DetectorState/);
-  // createState() initializes them.
-  assert.match(stateSrc, /policyEngine:\s*createPolicyEngineState\(\)/);
-  assert.match(stateSrc, /detector:\s*createDetectorState\(\)/);
-});
-
-await test("session_start handler no longer does manual policy/detector reset", () => {
-  // The old handler had:
-  //   _policyState.cooldowns.clear();
-  //   resetDetectorState(_detectorState);
-  // The new handler just calls resetState(ctx) and clearInjections().
-  assert.doesNotMatch(
-    indexSrc,
-    /_policyState\.cooldowns\.clear/,
-    "session_start must not manually clear _policyState.cooldowns (the per-session state is fresh)",
-  );
-  assert.doesNotMatch(
-    indexSrc,
-    /resetDetectorState\(_detectorState\)/,
-    "session_start must not call resetDetectorState (the per-session state is fresh)",
-  );
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

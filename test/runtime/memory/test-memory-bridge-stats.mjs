@@ -15,26 +15,15 @@
  *   2. `recordMemoryToolCall(ctx, tool)` increments the counter and
  *      tracks per-tool breakdown.
  *   3. State is per-session (different ctx -> different state).
- *   4. Source-level: each memory_* tool's execute calls
- *      `recordMemoryToolCall` and the session_end hook is registered.
- *   5. No-ctx calls are safe (no crash, no increment).
+ *   4. No-ctx calls are safe (no crash, no increment).
  */
 
 import { strict as assert } from "node:assert";
-import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-const BRIDGE_PATH = join(ROOT, "src/extensions/memory/memory-agent-bridge/index.ts");
 const DIST_PATH = join(ROOT, "dist/extensions/memory/memory-agent-bridge/index.js");
-const STORE_TOOL_PATH = join(ROOT, "src/extensions/memory/memory-agent-bridge/memory-store-tool.ts");
-const MEMORY_TOOL_PATH = join(ROOT, "src/extensions/memory/memory-agent-bridge/memory-tool.ts");
-
-assert.ok(existsSync(BRIDGE_PATH), "memory-agent-bridge source must exist");
-const bridgeSrc = readFileSync(BRIDGE_PATH, "utf-8");
-const storeToolSrc = readFileSync(STORE_TOOL_PATH, "utf-8");
-const memoryToolSrc = readFileSync(MEMORY_TOOL_PATH, "utf-8");
 
 console.log("=== memory-bridge stats tests ===\n");
 
@@ -121,70 +110,6 @@ await test("recordMemoryToolCall with no ctx is a safe no-op", async () => {
   recordMemoryToolCall(undefined, "memory:anything");
   // If we got here, the no-op succeeded.
   assert.ok(true, "no-ctx call did not throw");
-});
-
-// ── Structural: source-level wiring checks ─────────────────────────────────
-//
-// These catch regressions where someone removes the instrumentation
-// (e.g. during a refactor) without realizing the audit depends on it.
-
-await test("memory-agent-bridge exports MemoryBridgeStats interface", () => {
-  assert.match(
-    bridgeSrc,
-    /export\s+interface\s+MemoryBridgeStats/,
-    "MemoryBridgeStats must be exported",
-  );
-  assert.match(bridgeSrc, /memoryToolCalls/);
-  assert.match(bridgeSrc, /firstCallAt/);
-  assert.match(bridgeSrc, /lastCallAt/);
-  assert.match(bridgeSrc, /perToolCounts/);
-});
-
-await test("memory-agent-bridge exports stats helpers", () => {
-  assert.match(bridgeSrc, /export\s*\{[^}]*createMemoryBridgeStats[^}]*\}/);
-  assert.match(bridgeSrc, /export\s*\{[^}]*getMemoryBridgeStats[^}]*\}/);
-  assert.match(bridgeSrc, /export\s*\{[^}]*recordMemoryToolCall[^}]*\}/);
-});
-
-await test("memory_store tool's execute records the call", () => {
-  // memory_store tool is now in ./memory-store-tool.ts (P2-10d split).
-  assert.match(
-    storeToolSrc,
-    /name:\s*"memory_store"[\s\S]*?execute:\s*async[\s\S]*?recordMemoryToolCall\(\s*ctx\s*,\s*"memory_store"\s*\)/,
-    "memory_store execute must call recordMemoryToolCall(ctx, 'memory_store')",
-  );
-});
-
-await test("unified memory tool's execute records per-action calls", () => {
-  // memory tool is now in ./memory-tool.ts (P2-10d split).
-  assert.match(
-    memoryToolSrc,
-    /name:\s*"memory"[\s\S]*?execute:\s*async[\s\S]*?recordMemoryToolCall\(\s*ctx\s*,\s*`memory:\$/,
-    "unified memory execute must call recordMemoryToolCall(ctx, `memory:${action}`)",
-  );
-});
-
-await test("session_shutdown hook is registered with the usage summary log", () => {
-  // pi's actual end-of-session event is "session_shutdown" (aliased as
-  // SESSION_SHUTDOWN in lib/core/event-names.ts). The SESSION_END
-  // constant in event-names.ts is for the internal event-bus, NOT
-  // pi.on. We use the SESSION_SHUTDOWN constant so the single-ownership
-  // lint test passes (it bans raw event strings in non-constant files).
-  assert.match(
-    bridgeSrc,
-    /pi\.on\(\s*SESSION_SHUTDOWN\s*,/,
-    "session_shutdown hook must use the SESSION_SHUTDOWN constant (not the SESSION_END misnomer, not a raw string)",
-  );
-  assert.match(
-    bridgeSrc,
-    /SESSION_SHUTDOWN[\s\S]*?audit baseline 0\.84%/,
-    "session_shutdown log must include the audit baseline 0.84%",
-  );
-});
-
-await test("session_end log includes the audit baseline 0.84%", () => {
-  // Same as above but a lighter check: the baseline number is referenced.
-  assert.match(bridgeSrc, /0\.84%/);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

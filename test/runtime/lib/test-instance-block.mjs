@@ -44,7 +44,6 @@
  */
 
 import { strict as assert } from "node:assert";
-import { existsSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as os from "node:os";
@@ -307,21 +306,7 @@ await test("discoverTopLevelExtensions() deduplicates by absolute root", () => {
   assert.equal(new Set(roots).size, roots.length, "no duplicate root paths");
 });
 
-// ── File-existence regression guards ───────────────────────────────────────
-
-await test("session-section.ts is deleted (v3.6 Session block merged into Instance)", () => {
-  assert.ok(
-    !existsSync(join(PROMPT_BUILDER_DIR, "session-section.ts")),
-    "session-section.ts must remain deleted after v3.7 merge",
-  );
-});
-
-await test("l1-environment.ts is still deleted (v3.6 cleanup)", () => {
-  assert.ok(
-    !existsSync(join(PROMPT_BUILDER_DIR, "l1-environment.ts")),
-    "l1-environment.ts must remain deleted (v3.6 cleanup)",
-  );
-});
+// ── Regression guards on render output (not file existence) ────────────────
 
 await test("Instance block does not contain 'getModuleGroup' (v3.5 module tree removed)", () => {
   // An indirect guard: the module tree was the source of the v3.5

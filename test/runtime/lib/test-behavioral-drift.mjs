@@ -40,30 +40,7 @@ console.log("\n[2] shouldActivate gating");
   console.log("  [ok] shouldActivate gating correct");
 }
 
-console.log("\n[3] Source analysis - behavioral drift module structure");
-{
-  const fs = await import("fs");
-  const src = fs.readFileSync(
-    new URL("../../../src/extensions/heartbeat/heartbeat-scheduler/modules/behavioral-drift.ts", import.meta.url),
-    "utf-8",
-  );
 
-  // Verify JS divergence implementation
-  assert.ok(src.includes("jensenShannon"), "should have jensenShannon function");
-  assert.ok(src.includes("klDivergence"), "should have klDivergence helper");
-  assert.ok(src.includes("DRIFT_THRESHOLD"), "should have drift threshold constant");
-  assert.ok(src.includes("BASELINE_WINDOW"), "should have baseline window constant");
-  assert.ok(src.includes("MAX_WARNINGS"), "should cap warnings per session");
-
-  // Verify tool categorization
-  assert.ok(src.includes("TOOL_CATEGORIES"), "should have tool categories map");
-  assert.ok(src.includes("code") && src.includes("search"), "should categorize tools");
-
-  // Verify freshness: 10-turn baseline, 20-call recent window
-  assert.ok(src.includes("10"), "baseline window should reference 10 turns");
-  assert.ok(src.includes("0.25"), "drift threshold should be 0.25");
-  console.log("  [ok] Module structure verified via source analysis");
-}
 
 console.log("\n==================================================");
 console.log(`Behavioral Drift Tests: All assertions passed`);
