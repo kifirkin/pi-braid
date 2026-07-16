@@ -324,6 +324,17 @@ async function openModelSelectorUI(
   // won't persist to disk. We call pi.setModel() below for proper persistence.
   const settingsManager = SettingsManager.inMemory();
 
+  // ── pi 0.80.8 compat: ModelSelectorComponent 4th param changed from ───────
+  // ModelRegistry to ModelRuntime. The extension context only exposes
+  // ModelRegistry, but ModelRegistry stores the runtime as a private field.
+  // Access it via (modelRegistry as any).runtime to keep the selector working.
+  // See: pi-coding-agent CHANGELOG — "ModelRegistry no longer has a public
+  // constructor" and "ModelRuntime is the canonical model/auth facade."
+  const modelRuntime =
+    typeof (modelRegistry as any).getAvailableSnapshot === "function"
+      ? modelRegistry
+      : (modelRegistry as any).runtime;
+
   // Build sorted scoped model list
   // Priority: selected model first, then same provider, then others
   const currentRoleModel = resolveFn(ctx as ExtensionContext);
@@ -362,7 +373,7 @@ async function openModelSelectorUI(
       tui,
       currentRoleModel,
       settingsManager,
-      modelRegistry,
+      modelRuntime,
       scopedModels,
       async (model) => {
         selectedModel = model;

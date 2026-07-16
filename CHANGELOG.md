@@ -8,6 +8,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Adapt `/max-power-model`, `/utility-model`, `/vision-model` to pi 0.80.8
+  `ModelSelectorComponent` constructor change.** The 4th parameter changed from
+  `ModelRegistry` to `ModelRuntime`. The extension context only exposes
+  `ModelRegistry`, so braid now accesses the private `ModelRegistry.runtime`
+  field to get the `ModelRuntime` instance. Without this fix, these commands
+  would crash with `TypeError: modelRuntime.getAvailableSnapshot is not a
+  function` when opened in interactive (TUI) mode.
+  (polyfill/index.ts)
+
 ### Added
 
 - **session action="stats": session statistics overview.** Adds `stats`
