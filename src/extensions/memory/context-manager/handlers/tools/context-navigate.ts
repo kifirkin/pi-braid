@@ -44,7 +44,7 @@ export const contextNavigateSchema = Type.Object({
   ),
   backupTag: Type.Optional(
     Type.String({
-      description: "Tag name for current position before checkout. Only used with action=checkout.",
+      description: "Custom tag name for current position before checkout. If omitted, auto-tags as 'before-<target>'. Only used with action=checkout.",
     }),
   ),
   // tag params
@@ -180,7 +180,8 @@ export function registerContextNavigate(pi: ExtensionAPI): void {
       "Pipeline: tag your position before archival — use action=tag to create a save point, " +
       "then call context_compress(action='archive') to compress older messages. " +
       "action=log: view conversation history with milestones (like context_log). " +
-      "action=checkout: navigate to any point in history, optionally tagging current position first (like context_checkout). " +
+      "action=checkout: navigate to any point in history. Auto-tags the current position as 'before-<target>' and captures recent context into the branch summary. " +
+      "Provide a `message` describing what you're going to do at the target. " +
       "action=tag: create a named save point (like context_tag).",
     parameters: contextNavigateSchema,
     execute: async (
@@ -199,7 +200,7 @@ export function registerContextNavigate(pi: ExtensionAPI): void {
         if (typeof result === "object" && "error" in result) {
           return { content: [{ type: "text" as const, text: result.text }], details: { action, error: true } };
         }
-        return { content: [{ type: "text" as const, text: result }], details: { action } };
+        return { content: [{ type: "text" as const, text: result }], details: { action, nextStep: result.includes("(empty)") ? undefined : { tool: "context_navigate", action: "checkout", note: "pick a target from log output" } } };
       }
 
       // ── CHECKOUT ────────────────────────────────────────────────────
@@ -262,12 +263,63 @@ export function registerContextNavigate(pi: ExtensionAPI): void {
             details: { action, noop: true },
           };
         }
-        if (params.backupTag && currentLeaf) {
-          sm.appendLabelChange(currentLeaf, params.backupTag);
+        // Auto-tag current position if no backupTag provided (ensures a return point)
+        const tagName = params.backupTag || `before-${params.target}`;
+        if (currentLeaf) {
+          // Only tag if not already tagged with this name
+          const existingTag = sm.getLabel(currentLeaf);
+          if (!existingTag) {
+            sm.appendLabelChange(currentLeaf, tagName);
+          }
         }
+
+        // Smart auto-capture: select the most useful content from the current branch
+        // Priority: finalize results > last user message > last assistant message
+        const branch = sm.getBranch();
+        const messageEntries = branch.filter((e: any) => e.type === "message" && e.message?.role);
+
+        // 1. Most recent finalize tool result (highest value — summarizes what was accomplished)
+        const finalizeResult = [...messageEntries]
+          .reverse()
+          .find((e: any) => e.message.role === "toolResult" && e.message.toolName === "finalize");
+        const finalizeSummary = finalizeResult
+          ? typeof finalizeResult.message.content === "string"
+            ? finalizeResult.message.content.slice(0, 200).replace(/\n/g, " ")
+            : ""
+          : null;
+
+        // 2. Last user message (task context — what was being worked on)
+        const lastUserMessage = [...messageEntries]
+          .reverse()
+          .find((e: any) => e.message.role === "user");
+        const userSummary = lastUserMessage
+          ? typeof lastUserMessage.message.content === "string"
+            ? lastUserMessage.message.content.slice(0, 150).replace(/\n/g, " ")
+            : "(non-text user message)"
+          : null;
+
+        // 3. Last assistant message (current thinking — what was being considered)
+        const lastAssistantMessage = [...messageEntries]
+          .reverse()
+          .find((e: any) => e.message.role === "assistant");
+        const assistantSummary = lastAssistantMessage
+          ? typeof lastAssistantMessage.message.content === "string"
+            ? lastAssistantMessage.message.content.slice(0, 150).replace(/\n/g, " ")
+            : "(non-text assistant message)"
+          : null;
+
+        const contextParts: string[] = [];
+        if (finalizeSummary) contextParts.push(`[finalize] ${finalizeSummary}`);
+        if (userSummary) contextParts.push(`[task] ${userSummary}`);
+        if (assistantSummary) contextParts.push(`[thinking] ${assistantSummary}`);
+
         const currentLabel = currentLeaf ? sm.getLabel(currentLeaf) : undefined;
         const origin = currentLabel ? `tag: ${currentLabel}` : currentLeaf || "unknown";
-        const enriched = `(summary from ${origin})\n${params.message}`;
+        const enriched = [
+          `Checkout from: ${origin}`,
+          ...(contextParts.length > 0 ? contextParts : ["(no recent context)"]),
+          `Follow-up: ${params.message}`,
+        ].join("\n");
         const newId = sm.branchWithSummary(targetId, enriched);
         getCmState(ctx).checkoutParams = {
           target: params.target,
@@ -283,7 +335,14 @@ export function registerContextNavigate(pi: ExtensionAPI): void {
         ctx.abort();
         return {
           content: [{ type: "text" as const, text: `Checking out ${params.target}...` }],
-          details: { action, checkout: true, newId },
+          details: {
+            action,
+            checkout: true,
+            newId,
+            tagName,
+            origin,
+            nextStep: { tool: "context_inspect", detail: "quick" },
+          },
         };
       }
 
@@ -318,7 +377,7 @@ export function registerContextNavigate(pi: ExtensionAPI): void {
         sm.appendLabelChange(targetId, params.name);
         return {
           content: [{ type: "text" as const, text: `Created tag '${params.name}' at ${targetId}` }],
-          details: { action, tag: params.name, targetId },
+          details: { action, tag: params.name, targetId, nextStep: { tool: "context_compress", action: "archive", beforeTag: params.name } },
         };
       }
 

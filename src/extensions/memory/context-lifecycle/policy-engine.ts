@@ -265,8 +265,8 @@ export function evaluateDensityPolicies(_ctx: ExtensionContext, signals: Semanti
       context_density_low: {
         priority: 65,
         message:
-          "Context density low. Noisy: {noise} | Signal: {signal}. Consider context_prune().",
-        suggested_action: "context_prune",
+          "Context density low. Noisy: {noise} | Signal: {signal}. Consider context_compress(action='compact').",
+        suggested_action: "context_compress",
         min_confidence: 0.5,
       },
       context_density_high: {
@@ -278,8 +278,8 @@ export function evaluateDensityPolicies(_ctx: ExtensionContext, signals: Semanti
       },
       context_duplicates: {
         priority: 62,
-        message: "{count} near-duplicate messages. context_prune() to remove.",
-        suggested_action: "context_prune",
+        message: "{count} near-duplicate messages. context_compress(action='compact') to remove.",
+        suggested_action: "context_compress",
         min_confidence: 0.5,
       },
     };

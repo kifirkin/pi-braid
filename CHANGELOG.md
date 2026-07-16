@@ -10,6 +10,37 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Context navigation pipeline in system prompt.** Added tool-availability-guarded
+  guidelines for context_navigate, context_compress, context_inspect, and
+  context_proposals to the tools section, following pi-core's pattern.
+  Guidelines include: tagging discipline, threshold-based compression
+  (archive > 50%, compact > 70%), and the tag → archive → inspect pipeline.
+- **Checkout auto-summary with smart content selection.** When checking out via
+  context_navigate(action='checkout'), the tool now auto-tags the current
+  position as 'before-<target>' and selectively captures the most useful
+  context: finalize results (highest priority), last user message (task
+  context), and last assistant message (current thinking). The summary is
+  structured as `Checkout from: ... [finalize] ... [task] ... [thinking] ...
+  Follow-up: ...`.
+- **Pipeline-aware nextStep in tool details.** All context tools now return
+  `nextStep` in their `details` output guiding the agent to the next pipeline
+  action: tag → archive → inspect → continue.
+
+### Changed
+
+- **Identity blocks restructured under ## Identity heading.** The 5 identity
+  blocks (intro, work ethic, self-management, communication, epistemic stance)
+  are now composed under a single `## Identity` heading instead of 5 orphan
+  paragraphs.
+- **Stale context_prune references updated.** Heartbeat whisper, policy engine
+  templates, and policy definitions all now reference `context_compress`
+  instead of the legacy `context_prune` tool.
+
+### Removed
+
+- **docs/CONTEXT-NAVIGATION-PIPELINE.md** deleted. Pipeline wisdom is now
+  embedded in tool implementations and system prompt guidelines.
+
 - **Contrib extraction plan: workspace_snapshot.** Audited all tools for
   extraction candidates into [pi-braid-contrib](https://github.com/earendil-works/pi-braid-contrib).
   `workspace_snapshot` is the primary candidate (self-contained tool with

@@ -286,7 +286,7 @@ export const contextHygieneModule: CognitiveModule = {
       context.whisper(
         density.duplicates +
           " near-duplicate messages in context. " +
-          "Consider: context_prune() to remove redundant context.",
+          "Consider: context_compress(action='compact') to remove redundant context.",
         { category: "cognitive", priority: "medium" },
       );
     }

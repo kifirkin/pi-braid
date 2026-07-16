@@ -839,7 +839,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 
           return {
             content: [{ type: "text" as const, text: `[v] Approved **${id}**: ${proposal.message}` }],
-            details: { approved: id, proposal },
+            details: { approved: id, proposal, nextStep: { tool: "context_inspect", detail: "quick" } },
           };
         }
 

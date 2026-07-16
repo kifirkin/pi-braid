@@ -251,10 +251,10 @@ export function createDefaultPolicies(): ContextPolicy[] {
       action: {
         type: "propose",
         message:
-          "Context at ~{tokens} tokens. Consider pruning old tool results (context_prune dry-run).",
+          "Context at ~{tokens} tokens. Consider compacting old tool results (context_compress action='compact').",
         priority: "low",
       },
-      suggested_action: "context_prune",
+      suggested_action: "context_compress",
     },
     {
       id: "tokens-advisory",
@@ -358,10 +358,10 @@ export function createDefaultPolicies(): ContextPolicy[] {
       action: {
         type: "propose",
         message:
-          "Context density low. Noisy: {noise} | Signal: {signal}. Consider context_prune().",
+          "Context density low. Noisy: {noise} | Signal: {signal}. Consider context_compress(action='compact').",
         priority: "medium",
       },
-      suggested_action: "context_prune",
+      suggested_action: "context_compress",
       min_confidence: 0.5,
     },
     {
@@ -387,10 +387,10 @@ export function createDefaultPolicies(): ContextPolicy[] {
       trigger: { type: "signal", signal: "context_duplicates" },
       action: {
         type: "propose",
-        message: "{count} near-duplicate messages. context_prune() to remove.",
+        message: "{count} near-duplicate messages. context_compress(action='compact') to remove.",
         priority: "medium",
       },
-      suggested_action: "context_prune",
+      suggested_action: "context_compress",
       min_confidence: 0.5,
     },
 

@@ -81,6 +81,11 @@ export function registerContextInspect(pi: ExtensionAPI): void {
         if (topRec.length > 0) {
           lines.push(`**Top action:** ${topRec[0].action} - ${topRec[0].reason}`);
         }
+        const hygieneAction = hygieneScore < 0.5
+          ? { tool: "context_compress", action: "archive", reason: "hygiene score below 50%" }
+          : hygieneScore < 0.8
+            ? { tool: "context_navigate", action: "tag", name: "before-cleanup", reason: "hygiene score below 80%" }
+            : undefined;
         return {
           content: [{ type: "text" as const, text: lines.join("\n") }],
           details: {
@@ -91,6 +96,8 @@ export function registerContextInspect(pi: ExtensionAPI): void {
             hygieneScore,
             pruneCandidates: audit.candidates.length,
             topRecommendation: topRec[0]?.action ?? null,
+            hygieneAction,
+            nextStep: hygieneAction ? { tool: hygieneAction.tool, note: hygieneAction.reason } : undefined,
           },
         };
       }
@@ -182,6 +189,9 @@ export function registerContextInspect(pi: ExtensionAPI): void {
               reason: c.reason,
             })),
             stats: getCmState(ctx).pruningState.stats,
+            nextStep: candidates.length > 0
+              ? { tool: "context_compress", action: "compact", note: `${candidates.length} prune candidates available` }
+              : undefined,
           },
         };
       }

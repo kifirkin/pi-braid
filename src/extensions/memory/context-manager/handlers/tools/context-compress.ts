@@ -180,6 +180,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
                   `  Keep recent: ${params?.keep ?? "auto"}`,
                   ``,
                   `Agent will resume automatically after compaction completes.`,
+                  `Run context_inspect(detail='quick') after resume to verify.`,
                 ].join("\n"),
               },
             ],
@@ -187,6 +188,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
               action,
               compactionTriggered: true,
               keep: params?.keep ?? "auto",
+              nextStep: { tool: "context_inspect", detail: "quick", note: "after auto-resume" },
             },
           };
 
@@ -444,6 +446,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
             estimatedFreedTokens: usageBefore
               ? Math.round((usageBefore.tokens * count) / Math.max(sessionLength, 1))
               : undefined,
+            nextStep: { tool: "context_inspect", detail: "quick" },
           },
         };
       }
@@ -524,6 +527,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
                   `  3. Compaction scheduled${usageLine}`,
                   "",
                   `Agent will resume automatically after compaction completes.`,
+                  `Run context_inspect(detail='quick') after resume to verify.`,
                   "",
                   `Topic: ${topic}`,
                 ].join("\n"),
@@ -535,6 +539,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
               archived: count,
               compactionTriggered: true,
               topic,
+              nextStep: { tool: "context_inspect", detail: "quick", note: "after auto-resume" },
             },
           };
         } catch (e: any) {
