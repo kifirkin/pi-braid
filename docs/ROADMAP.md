@@ -212,6 +212,64 @@ skill, doc, and convention. Identify:
 cross-reference against docs, and report findings. Human reviews the findings
 and prioritizes fixes.
 
+### P3 — enforcement whisper deduplication (BACKLOG)
+
+**Status:** Not started.
+
+**Problem:** The `[braid-whisper - enforcement]` discoverability whisper
+(`src/extensions/enforcement/handlers/register-session-start-discoverability.ts`)
+appears to duplicate in the same `pi` session. The bundle includes up to 7
+signals (scratchpad, episodes, semantic, prior sessions, resume, cross-session
+tags, context hygiene tip) — when ANY signal content changes (e.g., the
+`${openPlans} open plan items` count, `parts.join(", ")` from the resume file,
+tag names list, goal text), the full bundle string changes and the
+`globalThis["__braid_discoverability_shown"]` dedup misses.
+
+Symptoms observed:
+- Whisper visible immediately after `pi` startup with `0 open plan items`
+- Same whisper visible again after `/reload` if the scratchpad was modified
+  between reloads (count changes → bundle string changes → dedup miss)
+- Same whisper visible if the bundle fires BOTH on SESSION_START AND on some
+  re-emitting path (need to confirm with timing log)
+- Same pattern likely affects other `[braid-whisper - <source>]` families:
+  heartbeat analytics, three-memory-stores recall, tool-loop nudges,
+  enforcement turning-point advisories
+
+**Root cause hypotheses:**
+1. Bundle dedup is exact-string-match on the joined signal text. Any dynamic
+   content (counts, dates, slice(0,80) of goal text) bypasses dedup.
+2. The `globalThis` Set key is namespaced by plugin but not by signal content.
+   A per-signal dedup would catch individual repeats better.
+3. The SESSION_START coordinator fires once per pi runtime (2026-07-02 fix),
+   but the Background phase is fire-and-forget — if the handler throws or
+   yields before the dedup check, a retry path could re-fire (need timing log).
+
+**Proposed fixes (ranked by impact/cost):**
+1. **Per-signal dedup.** Track which individual signal TEXT-prefixes were
+   shown (e.g., Set<signalType>) and only add NEW signals to the bundle.
+   This handles dynamic content changes correctly — if `prior scratchpad`
+   shown once, never show again even if `openPlans` count changes.
+   Cost: ~20 lines in `register-session-start-discoverability.ts`.
+2. **Bundle hash instead of exact match.** Hash the signal TYPE structure
+   (not the content) and dedup on hash. Content variations don't trigger
+   duplicates. Cost: ~15 lines.
+3. **Show-once-per-process flag for the entire bundle.** Coarse but simple:
+   if ANY discoverability signal was shown this process, skip the rest.
+   Cost: 3 lines. But users who genuinely need the hint on a fresh task
+   miss it after /reload.
+4. **Audit other `[braid-whisper - <source>]` families for the same pattern.**
+   Likely candidates: heartbeat (whisper cadence), three-memory-stores
+   (recall re-fire on /reload), tool-loop detector (escalation chain),
+   enforcement turning-point advisories (per-source dedup checks).
+
+**Needs:**
+- Add timing log to `register-session-start-discoverability.ts` to confirm
+  if SESSION_START fires multiple times per session or if dedup misses on
+  bundle-string changes
+- Audit other enforcement whisper sources for the same pattern
+- Implement per-signal dedup (option 1) — highest impact, lowest cost
+- Update `getShownDiscoveryBundles()` → `getShownSignals()` semantic
+
 ## Companion documents
 
 - [`docs/HISTORY.md`](HISTORY.md) — consolidated history including fragile heuristics, archaeology, proposals, and D-57
