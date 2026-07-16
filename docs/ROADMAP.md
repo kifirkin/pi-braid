@@ -230,6 +230,25 @@ being in the tool log, just scrolled out of the 50-entry window.
 - Hybrid: git history + tool log excerpts + last-N-turn sliding window
 - Track: how often does the judge actually fire? What's the false positive rate?
 
+**Related: compaction summary format loses speaker attribution.**
+When compaction happens, the output is a flat narrative. Questions, statements,
+and decisions from different speakers are merged without attribution markers.
+This caused the agent to misattribute its own question ("Want me to implement
+one of these fixes?") as the user's question after compaction.
+
+There are 3 compaction paths, each with different control:
+1. **`context_compress` tool** (agent-initiated, via `/compact` or agent call) —
+   agent controls the `summary` parameter. Fix: write summaries with explicit
+   speaker labels (`<user>...</user>` / `<agent>...</agent>` blocks).
+2. **Auto-compact** (pi-core, context threshold reached) — pi-core generates
+   the summary. Braid cannot control the format.
+3. **Overflow force-compact** (pi-core, critical context) — same as #2.
+
+For paths 2 and 3, braid could listen to `session_compact` and emit a
+supplementary whisper that re-contextualizes the compaction with proper
+speaker attribution. This would overlay the missing structure onto
+pi-core's native compact message.
+
 ### P3 — full Braid critical review (BACKLOG)
 
 **Status:** Not started. High priority.
