@@ -456,6 +456,193 @@ doc checks clean (55/55). Historical content preserved at
 
 ## Archived items
 
+### P3 — context hygiene & system prompt refinement (2026-07-16)
+
+**Status:** Investigation phase. Root cause analysis needed.
+
+**Problem space:** Context grows unboundedly. The agent has tools to manage
+it (compact, navigate, inspect, prune) but lacks clear guidelines on when
+to use which. Tool descriptions and system prompt guidelines are redundant
+in places, missing in others. The result: the agent rarely uses these tools
+proactively, and context bloat drives up token costs and judge false positives.
+
+#### Sub-problem 1: Tool descriptions vs system prompt guidelines overlap
+
+The system prompt has two layers that describe tools:
+1. **`toolsSection()`** — lists every tool with a `promptSnippet` / first sentence
+   of description, plus generic guidelines ("Prefer clear, direct responses")
+2. **Each tool's own `description`** — visible to the model when it decides
+   which tool to call
+
+These layers are redundant. The tool description already says what it does.
+The system prompt's tool list should be a *pointer* (name + one-liner), not
+a re-description. The guidelines should cover *when to use which tool*
+(e.g., "Use context_navigate for exploration, context_compress to free space").
+
+**Action:**
+- Review pi-core's own tool descriptions and system prompt tool listing
+  pattern (pi's `_rebuildSystemPrompt` + `system-prompt.js`)
+- Audit braid's `toolsSection()` against pi-core's pattern
+- Move usage guidance out of tool descriptions into a dedicated
+  "Context management strategy" guideline block
+- Eliminate redundancy between tool `description` and `promptSnippet`
+
+#### Sub-problem 2: Context navigation vs compaction — could navigate replace compact?
+
+`context_navigate` (log → tag → checkout) lets the agent move through history.
+`context_compress` (compact → archive → deep_clean) frees token space.
+
+These are complementary: navigate is *exploration* (see what happened),
+compress is *reclamation* (free space for new work). But the agent often
+reaches for compress when it really needs navigate, and vice versa.
+
+**Question:** Could `context_navigate(action='checkout')` with a good tag
+structure replace the need for compaction entirely? If the agent can always
+jump back to a known-good state, does it need to destroy history?
+
+**Constraints:**
+- pi-core auto-compacts at context threshold regardless of braid's preferences
+- Overflow force-compact is non-negotiable (pi-core needs the space)
+- But the agent-initiated `context_compress` could be de-emphasized in favor
+  of `context_navigate` + better tagging discipline
+
+**Action:**
+- Design a tagging discipline that makes navigate-as-primary viable
+- Add a guideline: "Tag milestones with context_navigate(action='tag').
+  Use context_compress only when pi-core warns about context limits."
+- Test: can the agent complete a full session using only navigate without
+  ever hitting the auto-compact threshold?
+
+#### Sub-problem 3: Lightweight tool-pruning via whisper
+
+braid already has:
+- `context_inspect` (audit context health)
+- `context_compress` (remove obsolete/duplicate entries)
+- `pruning.ts` (remove duplicate tool outputs based on content hash)
+- Heartbeat whisper (context usage percentage)
+
+What's missing: a lightweight whisper that tells the agent *which specific
+redundant content* to prune, not just that context is high. The agent should
+be able to act on the whisper directly.
+
+**Proposal:**
+- Add a context-hygiene whisper that fires at 50%/70%/85% context usage
+- The whisper includes: current context %, top 3 prune candidates from
+  context_inspect, and a suggested action ("context_compress(action='compact',
+  keep=10)" or "context_navigate(action='tag', name='before-cleanup')")
+- The whisper uses `triggerTurn: false` (advisory, not interruptive)
+- Integrate with existing heartbeat cadence to avoid duplication
+
+**Action:**
+- Add context-hygiene whisper to heartbeat-scheduler
+- Include: context %, prune candidate count, suggested tool call
+- Test: does the agent act on the whisper? Does it reduce context bloat?
+
+#### Sub-problem 4: Session resume flooding
+
+`pi --session <session_id>` (or `pi --resume`) triggers a full SESSION_START
+event, which fires the discoverability whisper bundle (scratchpad, memory,
+sessions, resume, tags, context hygiene). This creates a flood of context
+at resume time — the agent sees the same discoverability bundle it already
+saw before the session was interrupted.
+
+**Root cause:** The discoverability handler fires on SESSION_START, which
+runs on both fresh start AND resume. The per-signal dedup (`isSignalShown()`)
+uses `globalThis` — process-global state that survives /reload but NOT
+process restart. Between `pi --session` invocations, the process dies and
+`globalThis` resets, so all signals appear "new" again.
+
+**Proposed fixes:**
+1. Persist `shownSignals` to disk (append-only JSONL, same pattern as
+   scratchpad) so they survive process restart
+2. On resume, skip the discoverability bundle entirely (the agent already
+   knows the environment from the previous session)
+3. Or: reduce the bundle to a single line on resume ("Resuming session. Use
+   scratchpad to see prior state.")
+
+**Action:**
+- Investigate: how does `pi --session` trigger SESSION_START vs fresh start?
+- Implement fix: persist shown signals, or skip bundle on resume
+
+### P3 — compaction speaker attribution (2026-07-16)
+
+**Status:** Design phase. Not implemented.
+
+**Problem:** When compaction happens, the output is a flat narrative.
+Questions, statements, and decisions from different speakers (user vs agent)
+are merged without attribution markers. This causes the agent to misattribute
+its own questions as the user's after compaction — a confusion that compounds
+over multiple compaction cycles.
+
+**Three compaction paths, three levels of control:**
+
+1. **`context_compress` tool** (agent-initiated, via agent call or `/compact`) —
+   agent controls the `summary` parameter. Fix: write summaries with explicit
+   speaker labels (`<user>...</user>` / `<agent>...</agent>` blocks).
+2. **Auto-compact** (pi-core, context threshold reached) — pi-core generates
+   the summary. Braid cannot control the format.
+3. **Overflow force-compact** (pi-core, critical context) — same as #2.
+
+**For paths 2 and 3:** braid can listen to `session_compact` and emit a
+supplementary whisper that re-contextualizes the compaction with proper
+speaker attribution, overlaying the missing structure onto pi-core's native
+compact message.
+
+**Action:**
+1. Update `context_compress` tool to write summaries with speaker labels
+2. Add `session_compact` listener that emits a re-attribution whisper
+3. Test with all three compaction paths
+
+### P3 — input polisher extraction & identity improvement (2026-07-16)
+
+**Status:** Investigation phase.
+
+#### Extraction to contrib
+
+The input polisher (`src/extensions/core/input-polisher/`) is a standalone
+extension that hooks the `input` event. It has no dependency on braid's
+enforcement or metacognitive systems. It's a strong candidate for contrib.
+
+**Dependencies to resolve:**
+- `lib/ai/llm-call.ts` — LLM call for polishing (contrib can use pi's own
+  `callLlm` or reimplement a simpler version)
+- `lib/ai/model-resolver.ts` — utility model resolution (can be replaced with
+  direct `ctx.model` access for the simpler contrib version)
+- `lib/ai/language-hint.ts` — language detection (lightweight, can inline)
+- `lib/state/extension-state.ts` — session-scoped state (replace with simple Map)
+- `lib/core/logger.ts` — contrib has its own logger
+- `input-critic.ts`, `consolidated-input-critic.ts` — input classification
+  logic (must be extracted alongside)
+
+**Action:**
+1. Create standalone input-polisher in pi-braid-contrib
+2. Replace braid-internal deps with standalone equivalents
+3. Register in contrib's EXTENSIONS map
+4. Test syntax + basic flow
+
+#### Identity improvement: proactive user input validation
+
+Beyond proofreading, the input polisher should detect when user input could
+contain mistakes that would invert expectations. This is a design research
+question:
+
+- What kinds of mistakes invert expectations? (e.g., "delete the production
+  DB" vs "delete the staging DB", wrong file paths, contradictory instructions)
+- How should braid's identity interact with this? (nudge vs block vs ask)
+- What's the pi+braid way? (whisper with triggerTurn:true for critical,
+  advisory nudge for minor)
+
+**Proposal:** Add a second stage to the input polisher that runs a lightweight
+semantic check on the user's input. If the check detects a high-risk pattern
+(e.g., dangerous commands, contradictory requirements, underspecified
+destructive operations), the polisher emits a whisper before the agent
+processes the input.
+
+**Action:**
+- Research: what patterns are worth detecting?
+- Design: whisper format, trigger conditions, false positive mitigation
+- Implement: second stage in input polisher (or new lightweight extension)
+
 ### P3 — forward-looking proposals (consolidated 2026-07-16 from docs/proposals/)
 
 **Status:** Forward-looking. Not implemented.
