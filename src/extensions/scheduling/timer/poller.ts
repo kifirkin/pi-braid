@@ -65,13 +65,15 @@ export class TimerPoller {
       // compaction) can chain into pi-core's synchronous tool dispatch and
       // overflow the V8 stack.
       //
-      // queueMicrotask runs after the current JS context completes but before
-      // the next macrotask -- zero-latency deferral without the 1ms timer
-      // overhead of setTimeout(0). The one-tick delay is acceptable: the timer
-      // already expired, and the agent will wake up on the next tick.
-      queueMicrotask(() => {
+      // setTimeout(0) creates a macrotask boundary: the current call stack
+      // fully unwinds before the deferred fire runs. This is critical because
+      // onFire calls sendTrackedMessage(triggerTurn:true) → pi.sendMessage →
+      // _runAgentPrompt, which is synchronous when isStreaming is false.
+      // queueMicrotask does NOT break the stack — microtasks run in the same
+      // event loop turn, so the stack can still overflow.
+      setTimeout(() => {
         this.onFire(timer, pi);
-      });
+      }, 0);
     }
   }
 
@@ -82,7 +84,7 @@ export class TimerPoller {
   /** Fire any expired timers now (called from TOOL_EXECUTION_END / TURN_END).
    *
    * Each fire is deferred to after the current synchronous stack unwinds
-   * (via queueMicrotask) to break the synchronous chain from
+   * (via setTimeout(0)) to break the synchronous chain from
    * TOOL_EXECUTION_END -> fireExpired -> fireTimer ->
    * sendTrackedMessage(triggerTurn:true) -> pi.sendMessage -> synchronous
    * agent turn -> tool dispatch -> TOOL_EXECUTION_END -> ...
@@ -105,10 +107,10 @@ export class TimerPoller {
       // Defer fire to after the current synchronous stack unwinds to break
       // the synchronous chain from TOOL_EXECUTION_END / TURN_END into
       // pi-core's sendMessage -> synchronous agent turn -> tool dispatch.
-      // Same pattern as poll().
-      queueMicrotask(() => {
+      // Same pattern as poll() — setTimeout(0) for macrotask boundary.
+      setTimeout(() => {
         this.onFire(timer, pi);
-      });
+      }, 0);
     }
     return expired;
   }

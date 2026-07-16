@@ -18,9 +18,10 @@
  *      pattern from context-lifecycle) bails early if session_compact
  *      fires twice synchronously.
  *   2. The scratchpad read + whisper delivery side-effects are deferred
- *      via `queueMicrotask` so the handler returns synchronously. The
- *      pi-core event dispatch then completes, microtasks fire on the
- *      next tick, and any pi.sendMessage calls happen on a fresh stack.
+ *      via `setTimeout(0)` so the handler returns synchronously. The
+ *      pi-core event dispatch then completes, the macrotask fires on
+ *      the next event loop turn (stack fully unwound), and any
+ *      pi.sendMessage calls happen on a fresh stack.
  *   3. State writes (lastCompactionTurn, etc.) stay synchronous because
  *      downstream handlers (turn_end, message_end) read them.
  *
@@ -100,9 +101,15 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
       }
 
       // ── Deferred: re-orientation whisper with agent wake-up ─────────────
-      // Delivered via queueMicrotask to avoid stack overflow from synchronous
-      // re-entry (see file-level comment). Uses triggerTurn: true so the agent
-      // wakes up and continues its loop automatically.
+      // Deferred via setTimeout(0) to avoid stack overflow from synchronous
+      // re-entry (see file-level comment). setTimeout(0) creates a macrotask
+      // boundary — the call stack fully unwinds before the deferred work runs.
+      // queueMicrotask was used previously but does NOT break the stack:
+      // microtasks run in the same event loop turn, so synchronous chains
+      // (callScratchpadTool → tool_call → TOOL_EXECUTION_END → handlers →
+      // sendTrackedMessage → pi.sendMessage → _runAgentPrompt → ...) can
+      // still overflow. Uses triggerTurn: true so the agent wakes up and
+      // continues its loop automatically.
       //
       // Auto-resume logic:
       //   - reason === "threshold" | "overflow": auto-compaction, always auto-resume
@@ -121,7 +128,7 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
         return;
       }
 
-      queueMicrotask(() => {
+      setTimeout(() => {
         void (async () => {
           try {
             const scratchpadResult = await callScratchpadTool(ctx, { action: "read" });

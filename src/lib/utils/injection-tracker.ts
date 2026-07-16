@@ -53,30 +53,28 @@ let _activeSessionId: string | undefined;
 // Prevents unbounded recursion when pi.sendMessage(steer) triggers synchronous
 // event chains (e.g., before_agent_start -> sendCompactNudge -> sendTrackedMessage
 // -> pi.sendMessage -> before_agent_start ...).
-// Incremented before pi.sendMessage, decremented after. If depth > MAX_REENTRY_DEPTH,
-// the message is dispatched via queueMicrotask to break the synchronous chain.
+// Incremented before pi.sendMessage, decremented after. If depth >= MAX_REENTRY_DEPTH,
+// the message is dispatched via setTimeout(0) to break the synchronous chain.
+//
+// IMPORTANT: setTimeout(0) is used instead of queueMicrotask because microtasks
+// run in the same event loop turn — the call stack does NOT unwind between
+// microtasks. If each deferred microtask triggers another synchronous chain
+// (before_agent_start → 25+ hooks → sendTrackedMessage → pi.sendMessage →
+// _runAgentPrompt → ...), the stack still overflows. setTimeout(0) creates a
+// real macrotask boundary: the stack fully unwinds before the deferred send.
 let _sendDepth = 0;
-// MAX_REENTRY_DEPTH = 3 (was 1, bumped 2026-06-29 after the post-compaction
-// stack-overflow trace):
-//   The previous value of 1 assumed the runtime + extension hooks fit in a
-//   single synchronous frame. In practice:
-//     - pi-core's tool dispatch occupies 2-3 frames (TOOL_CALL -> execute ->
-//       TOOL_EXECUTION_END).
-//     - 25+ extensions each register `before_agent_start` hooks that all
-//       run synchronously when the runtime fires one.
-//     - The session_compact handler in enforcement calls `callScratchpadTool`
-//       (which fires TOOL_CALL/TOOL_EXECUTION_END through pi-core's wrapper)
-//       and `sendEnforcementWhisper` twice. Each pi.sendMessage can fire
-//       before_agent_start synchronously, adding to the depth.
-//   With depth=1, the second-level call (which is the first extension-level
-//   sendTrackedMessage in the chain) defers -- but the runtime itself can
-//   already be at depth 2-3, so the first extension call may not even
-//   reach the check before the runtime overflows. depth=3 gives the
-//   runtime + first extension call + first nested call enough headroom
-//   to defer cleanly.
-//   Anything deeper than 3 indicates a real re-entrancy bug -- deferring
-//   later won't help, the stack is already too deep.
-const MAX_REENTRY_DEPTH = 3;
+// MAX_REENTRY_DEPTH = 1: The first sendTrackedMessage call goes through
+// synchronously (depth 0 → 1). Any re-entrant send (depth >= 1) is deferred
+// via setTimeout(0), breaking the synchronous chain at the macrotask boundary.
+//
+// This fixes the recurring post-compaction stack overflow: after compaction,
+// the agent wakes up and calls tools (e.g., scratchpad). The tool_call/
+// tool_execution_end events fire synchronously, and any handler that sends
+// a triggerTurn:true whisper creates a recursive _runAgentPrompt call.
+// With MAX_REENTRY_DEPTH=1, the first whisper goes through, but any
+// re-entrant whisper triggered by the synchronous before_agent_start hooks
+// is deferred to a new macrotask — the stack unwinds first.
+const MAX_REENTRY_DEPTH = 1;
 
 
 /**
@@ -307,18 +305,28 @@ export function sendTrackedMessage(
   }
 
   if (_sendDepth >= MAX_REENTRY_DEPTH) {
-    // Break synchronous re-entry by deferring to microtask.
-    // This prevents stack overflow when pi.sendMessage(steer) triggers
-    // a synchronous before_agent_start that calls sendTrackedMessage again.
-    // The runtime's own re-entry depth (across extension hooks) is not visible
-    // to this counter, so we keep MAX_REENTRY_DEPTH conservative (1) to stop
-    // the chain before it can grow during a tool execution.
+    // Break synchronous re-entry by deferring to a MACROTASK (setTimeout 0).
+    // queueMicrotask does NOT break the call stack — all microtasks run in
+    // the same event loop turn before the next macrotask. If each deferred
+    // microtask triggers another synchronous chain (before_agent_start →
+    // 25+ extension hooks → sendTrackedMessage → pi.sendMessage →
+    // _runAgentPrompt → ...), the stack still overflows.
+    //
+    // setTimeout(0) creates a real macrotask boundary: the current call
+    // stack fully unwinds before the deferred send runs, breaking the
+    // synchronous re-entry chain at the root.
+    //
+    // This is the fix for the recurring "Maximum call stack size exceeded"
+    // error that happened every time the agent called scratchpad after
+    // compaction: the post-compaction agent turn fires tool_call/
+    // tool_execution_end events synchronously, and any handler that sends
+    // a triggerTurn:true whisper creates a recursive _runAgentPrompt call.
     log.warn(
-      `sendTrackedMessage re-entry depth ${_sendDepth}/${MAX_REENTRY_DEPTH} - deferring to microtask`,
+      `sendTrackedMessage re-entry depth ${_sendDepth}/${MAX_REENTRY_DEPTH} - deferring to setTimeout(0)`,
     );
-    queueMicrotask(() => {
+    setTimeout(() => {
       pi.sendMessage(params, options);
-    });
+    }, 0);
     return;
   }
 

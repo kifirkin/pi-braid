@@ -22,9 +22,10 @@
  * FIX (2026-06-29, 3 layers):
  *   1. Per-session `inHandler` re-entrancy guard
  *   2. The scratchpad read + whisper delivery side-effects are deferred
- *      via `queueMicrotask` so the handler returns synchronously.
+ *      via `setTimeout(0)` so the handler returns synchronously.
  *   3. State writes (lastCompactionTurn, etc.) stay synchronous.
- *   + Bumped MAX_REENTRY_DEPTH from 1 to 3 in injection-tracker.ts.
+ *   + MAX_REENTRY_DEPTH=1 with setTimeout(0) (microtasks don't break the
+ *     call stack; setTimeout creates a macrotask boundary).
  *
  * ARCHITECTURE CLARIFICATION (2026-07-13):
  *   The re-orientation whisper is delivered on `session_compact`, NOT
@@ -151,6 +152,17 @@ async function flushMicrotasks(rounds = 10) {
   }
 }
 
+// Wait for setTimeout(0) macrotasks to fire. The session_compact handler
+// now defers side-effects via setTimeout(0) (not queueMicrotask) to break
+// the synchronous call stack. We need to wait for the macrotask queue.
+async function flushMacrotasks(rounds = 5) {
+  for (let i = 0; i < rounds; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  // Also flush any microtasks that the macrotask may have scheduled
+  await flushMicrotasks();
+}
+
 // ── Tests: session_compact handler ─────────────────────────────────────────
 
 describe("session_compact handler", () => {
@@ -195,7 +207,7 @@ describe("session_compact handler", () => {
     // The scratchpad was called (microtask fired), but the deferred
     // async work (the IIFE inside queueMicrotask) is still pending.
     // We need to flush microtasks to complete it.
-    await flushMicrotasks();
+    await flushMacrotasks();
 
     // Now the deferred whisper should have fired.
     assert.equal(pi.sent.length, 1, "re-orient whisper must fire from deferred microtask");
@@ -213,7 +225,7 @@ describe("session_compact handler", () => {
 
     await promiseA;
     await promiseB;
-    await flushMicrotasks();
+    await flushMacrotasks();
 
     // Both should complete without errors.
     assert.equal(pi.sent.length, 2, "both sessions should fire their re-orient whispers");
@@ -224,7 +236,7 @@ describe("session_compact handler", () => {
     attachState(ctx, makeFakeState());
 
     await handler({ reason: "threshold" }, ctx);
-    await flushMicrotasks();
+    await flushMacrotasks();
 
     // With empty learnings, exactly one whisper (the re-orient) fires.
     assert.equal(pi.sent.length, 1, "exactly one whisper (re-orient) must fire");
@@ -246,7 +258,7 @@ describe("session_compact handler", () => {
     attachState(ctx, makeFakeState());
 
     await handler({ reason: "threshold" }, ctx);
-    await flushMicrotasks();
+    await flushMacrotasks();
 
     assert.equal(pi.sent.length, 2, "two whispers fire when unpersisted learnings exist");
     // First whisper: unpersisted learnings (no triggerTurn override → defaults to false)
@@ -265,7 +277,7 @@ describe("session_compact handler", () => {
 
     // Must not throw.
     await handler({ reason: "threshold" }, ctx);
-    await flushMicrotasks();
+    await flushMacrotasks();
 
     assert.equal(ctx.calls.scratchpad, 1, "scratchpad was attempted");
     // callScratchpadTool's internal catch returns undefined, so the
@@ -325,17 +337,17 @@ describe("session_compact handler source invariants", () => {
       "compaction_end handler must NOT be registered (event doesn't reach extensions)",
     );
 
-    // The handler body should have queueMicrotask for deferred side-effects
+    // The handler body should have setTimeout for deferred side-effects
     assert.ok(
-      src.includes("queueMicrotask"),
-      "session_compact handler must use queueMicrotask to defer side-effects",
+      src.includes("setTimeout("),
+      "session_compact handler must use setTimeout(0) to defer side-effects",
     );
-    // callScratchpadTool must be inside the queueMicrotask
-    const microtaskStart = src.indexOf("queueMicrotask(");
+    // callScratchpadTool must be inside the setTimeout
+    const setTimeoutStart = src.indexOf("setTimeout(() => {");
     const scratchpadCall = src.indexOf("callScratchpadTool(ctx");
     assert.ok(
-      microtaskStart !== -1 && scratchpadCall !== -1 && scratchpadCall > microtaskStart,
-      "callScratchpadTool must be inside the deferred microtask, not synchronous",
+      setTimeoutStart !== -1 && scratchpadCall !== -1 && scratchpadCall > setTimeoutStart,
+      "callScratchpadTool must be inside the deferred setTimeout, not synchronous",
     );
 
     // The re-entrancy guard must be present.
@@ -355,7 +367,7 @@ describe("session_compact handler source invariants", () => {
     );
   });
 
-  it("FIX: MAX_REENTRY_DEPTH bumped from 1 to 3", async () => {
+  it("FIX: MAX_REENTRY_DEPTH is 1 with setTimeout(0) for stack safety", async () => {
     const fs = await import("node:fs");
     const path = await import("node:path");
     const { fileURLToPath } = await import("node:url");
@@ -375,12 +387,16 @@ describe("session_compact handler source invariants", () => {
     );
 
     assert.ok(
-      /const MAX_REENTRY_DEPTH\s*=\s*3\b/.test(src),
-      "MAX_REENTRY_DEPTH must be bumped from 1 to 3",
+      /const MAX_REENTRY_DEPTH\s*=\s*1\b/.test(src),
+      "MAX_REENTRY_DEPTH must be 1 (first send synchronous, re-entrant deferred)",
     );
     assert.ok(
-      !/const MAX_REENTRY_DEPTH\s*=\s*1\b/.test(src),
-      "MAX_REENTRY_DEPTH must NOT be 1",
+      !/const MAX_REENTRY_DEPTH\s*=\s*3\b/.test(src),
+      "MAX_REENTRY_DEPTH must NOT be 3 (was too permissive, stack overflowed)",
+    );
+    assert.ok(
+      src.includes("setTimeout("),
+      "re-entry guard must use setTimeout(0) not queueMicrotask",
     );
   });
 });
