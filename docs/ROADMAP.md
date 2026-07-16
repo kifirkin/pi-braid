@@ -323,6 +323,133 @@ Symptoms observed:
 - Verify timing: add log to confirm SESSION_START does NOT fire multiple
   times per session (separate from dedup hypothesis).
 
+### P3 — pi-core compatibility refactoring (2026-07-16)
+
+**Status:** Planned. Root cause analysis complete.
+
+**Goal:** Make braid resilient to pi-core updates and leverage new pi-core features
+(deferred tool loading) to reduce prompt bloat.
+
+#### Problem: 20+ tools registered eagerly
+
+braid registers all 20+ tools on every session. The model sees every tool
+definition in the system prompt, even tools it rarely uses (context management,
+memory, session analysis). This wastes prompt tokens and creates noise.
+
+pi-core 0.80.7+ introduced `pi.setActiveTools()` for deferred/dynamic tool
+loading. Models with native support (Anthropic 4.5+, OpenAI GPT-5.4+) preserve
+the cached prompt prefix and load definitions at the tool-result position.
+Other models use a fallback that still reduces initial prompt size.
+
+**Proposed active set:**
+- **Always active** (10): `think`, `verify`, `hypothesize`, `finalize`,
+  `scratchpad`, `topic_drift`, `workspace_snapshot`, `timer`, `behavior`, `sleep`
+- **Deferred** (10+): `context_inspect`, `context_compress`, `context_navigate`,
+  `memory`, `memory_store`, `conflict_qa`, `explore_paths`, `session`,
+  `prompt_inspect`, `error`, `health_maintenance`, `web_fetch`, `batch_web_fetch`
+
+**Implementation plan:**
+1. Categorize all tools into active vs deferred groups
+2. Create a loader mechanism (e.g., `search_tools` or group activation via
+   pi.setActiveTools())
+3. Activate tool groups on demand (e.g., using `context_inspect` activates
+   `context_compress` + `context_navigate`)
+4. Test with both native deferred-loading models and fallback models
+
+#### Problem: Polyfill fragility (`as any` pattern)
+
+The `polyfill/index.ts` accesses `(modelRegistry as any).runtime` to get the
+`ModelRuntime` instance. This is a private field access — it breaks when
+pi-core renames or restructures internal fields. The 0.80.8 fix was exactly
+this: `ModelSelectorComponent`'s 4th param changed from `ModelRegistry` to
+`ModelRuntime`.
+
+**Implementation plan:**
+1. Extract version detection from `instance-composition.ts` into
+   `src/lib/state/pi-version.ts` (reusable, testable)
+2. Build a `VersionGate` that maps pi-core version → polyfills needed;
+   falls back to a warning log for unknown versions
+3. Replace `(modelRegistry as any).runtime` with version-gated access
+4. Add `/braid-status` command showing: pi-core version, active polyfills,
+   active tool count, deferred tool count
+
+#### 0.80.8 → 0.80.9 diff analysis (2026-07-16)
+
+**Verdict: No breaking changes.** The pi-core types diff shows:
+- `extension-api.d.ts` — unchanged (no API surface changes)
+- `extension-context.d.ts` — unchanged (no context changes)
+- `extension-events.d.ts` — unchanged (no event changes)
+- `model-config.d.ts` — adds `deferredToolsMode: "kimi"` field in 5 places
+  (purely additive, optional)
+- `agent-session-runtime.d.ts` — no diff
+- `model-resolver.d.ts` — no diff
+- `index.d.ts` (public exports) — no diff
+
+Only change: `deferredToolsMode` type for Kimi K3 deferred tool loading.
+Completely optional — braid doesn't use it. No action needed for 0.80.9.
+
+### P3 — contrib extraction (2026-07-16)
+
+**Status:** Planned. Extraction plan documented.
+
+**Goal:** Extract generic tools from braid into
+[pi-braid-contrib](https://github.com/earendil-works/pi-braid-contrib)
+so they're available to non-braid pi users.
+
+**Principle:** Generic tools belong in contrib. Braid-specific tools (those
+that depend on braid's internal state, enforcement, or metacognitive
+infrastructure) stay in braid. The boundary: *"would this tool be useful
+ to a pi user who doesn't run braid?"*
+
+#### Tier 1: Extract now
+
+| Tool | File | Dependencies to resolve |
+|------|------|------------------------|
+| `workspace_snapshot` | `src/extensions/memory/workspace-snapshot/index.ts` | `lib/state/workspace-snapshot.ts` (434 lines, inline), `bidirectional-verifier.ts` (simplify to caller-passed file list), `logger.ts` (contrib has own), `braid-paths.ts` (use `~/.pi/agent/braid/snapshots/` directly), `extension-state.ts` (replace with simple Map) |
+| `timer` | `src/extensions/scheduling/timer/index.ts` | `extension-state.ts` (session-scoped state — replace with simple session-scoped Map), `logger.ts` (contrib logger) |
+
+#### Tier 2: Extract after refactoring
+
+| Tool | Prerequisite |
+|------|-------------|
+| `behavior` | Split enforcement dependency out |
+| `web_fetch` / `batch_web_fetch` | `lib/ai/model-resolver.ts` (vision model), `logger.ts` |
+
+#### Tier 3: Keep in braid (braid-specific)
+
+`think`, `verify`, `hypothesize`, `finalize`, `scratchpad`, `memory`,
+`memory_store`, `conflict_qa`, `explore_paths`, `session`,
+`context_inspect`, `context_compress`, `context_navigate`, `prompt_inspect`,
+`topic_drift`, `error`, `health_maintenance`
+
+#### Workspace snapshot — detailed extraction plan
+
+**Current architecture (in braid):**
+```
+workspace-snapshot/index.ts
+  ├── import { captureSnapshot, ... } from lib/state/workspace-snapshot.ts
+  │   ├── import { BRAID_DIR } from lib/config/braid-paths.ts
+  │   ├── import { createLogger } from lib/core/logger.ts
+  │   ├── import { callScratchpadTool, ... } from lib/state/extension-state.ts
+  │   └── import { ExtensionContext } from @earendil-works/pi-coding-agent
+  └── import { getVerifierState } from lib/store/bidirectional-verifier.ts
+```
+
+**Target architecture (in contrib):**
+```
+workspace-snapshot/index.ts
+  ├── import { createLogger } from ../logger.ts (contrib's own logger)
+  ├── import { ExtensionContext } from @earendil-works/pi-coding-agent
+  └── (inline snapshot logic, or extract to workspace-snapshot/lib.ts)
+```
+
+**Changes needed:**
+1. Replace `braid-paths.ts` → hardcoded `~/.pi/agent/braid/snapshots/`
+2. Replace `bidirectional-verifier.ts` → caller-passed `files[]` parameter
+3. Replace `extension-state.ts` → simple Map keyed on session ID
+4. Replace `createLogger` → contrib's logger
+5. Inline workspace-snapshot.ts core logic (434 lines)
+
 ## Companion documents
 
 - [`docs/HISTORY.md`](HISTORY.md) — consolidated history including fragile heuristics, archaeology, proposals, and D-57
@@ -336,6 +463,54 @@ doc checks clean (55/55). Historical content preserved at
 `../pi-braid-evaluation/docs-archive/`.
 
 ## Archived items
+
+### P3 — forward-looking proposals (consolidated 2026-07-16 from docs/proposals/)
+
+**Status:** Forward-looking. Not implemented.
+
+Three proposals consolidated from `docs/proposals/` (directory deleted).
+
+#### Proposal 1: Better finalization practices
+
+**Problem:** `finalize` doesn't clean up scratchpad (done items accumulate), uses
+wrong model tier for system operations (session model instead of max-power), and
+emits no event bus signal for other extensions to react.
+
+**Proposed flow:**
+1. Emit `TaskCompletedEvent` on event bus after `recordToMemory`
+2. Scratchpad listens for event → auto-archive done items
+3. Consolidation pipeline uses max-power model instead of session model
+4. MARS reflection triggers on event instead of `actualTools.includes("finalize")`
+
+#### Proposal 2: Skill discovery — semantic matching + usage signal
+
+**Problem:** Skills are discovered by substring match on `description`. No
+mechanism suggests the *set* of skills relevant to a task before work starts.
+No signal separates repeatedly-useful skills from one-shot drafts.
+
+**Proposed:**
+1. Token matcher: extract nouns/verbs from user request, compute word-overlap
+   score with skill names+descriptions, return top 5
+2. Inject ranked skill list as a "Relevant skills" block before the standard
+   skill-read instruction
+3. Usage tracker: at session end, log which skills were read. Repeatedly useful
+   skills float to the top automatically.
+
+#### Proposal 3: Skill quality audit — tier-0 pipeline
+
+**Problem:** 24 skills exist, many written in one session and never revisited.
+No process for catching stale guidance, broken cross-references, or skills that
+were useful once but misleading in other contexts.
+
+**Proposed procedure (add to meta-improvement skill):**
+1. Inventory: collect all SKILL.md frontmatter, identify missing fields
+2. Cross-reference check: verify `see-also` links are reciprocal
+3. Command verification: extract and test shell commands from skills
+4. Session usage check: query memory store for 30-day usage
+5. Promotion gate: tier-0 with ≥2 successful outcomes → promote to tier-1
+6. Report: write audit report to `docs/audit/SKILL-AUDIT-<date>.md`
+
+---
 
 ### P1 — compat subpath cleanup (archived 2026-07-13)
 

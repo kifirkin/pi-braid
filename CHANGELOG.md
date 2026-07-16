@@ -8,6 +8,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Contrib extraction plan: workspace_snapshot.** Audited all tools for
+  extraction candidates into [pi-braid-contrib](https://github.com/earendil-works/pi-braid-contrib).
+  `workspace_snapshot` is the primary candidate (self-contained tool with
+  clear interface). Dependencies to resolve: `lib/state/workspace-snapshot.ts`
+  (434 lines), `bidirectional-verifier.ts` (file tracking — can be simplified
+  to caller-passed file list). Next candidates: `timer` (generic utility),
+  `behavior` (standalone, but needs enforcement split). See `docs/ROADMAP.md § P3 — contrib extraction`.
+
+- **pi-core 0.80.9 compatibility audit.** Reviewed changelog: no breaking
+  changes affecting braid. New features (Kimi K3, deferred/dynamic tool
+  loading) are unused. peerDependencies `>=0.80.0` already cover 0.80.9.
+
 ### Changed
 
 - **Consolidated system prompt from 17 identity directives into 5 identity

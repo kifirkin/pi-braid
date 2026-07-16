@@ -4,9 +4,9 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue.svg)](https://www.typescriptlang.org/)
-[![pi-coding-agent ≥ 0.80](https://img.shields.io/badge/pi--coding--agent-%E2%89%A50.80-blueviolet)](https://github.com/mariozechner/pi-coding-agent)
+[![pi-coding-agent ≥ 0.80](https://img.shields.io/badge/pi--coding--agent-%E2%89%A50.80-blueviolet)](https://github.com/earendil-works/pi-coding-agent)
 
-Metacognitive extension suite for [pi-coding-agent](https://github.com/mariozechner/pi-coding-agent). Adds enforcement, memory, reasoning, self-improvement, and structured cognitive signals on top of the base agent session.
+Metacognitive extension suite for [pi-coding-agent](https://github.com/earendil-works/pi-coding-agent). Adds enforcement, memory, reasoning, self-improvement, and structured cognitive signals on top of the base agent session.
 
 > **⚠️ Early-stage software.** APIs may change. Not production-hardened.
 
