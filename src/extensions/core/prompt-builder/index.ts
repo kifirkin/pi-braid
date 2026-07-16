@@ -12,22 +12,11 @@ import type { PromptSection } from "./section.js";
 import { linesSection, simpleSection, headingSection, composeSections } from "./section.js";
 import {
   IDENTITY_INTRO,
-  INTERACTION_STYLE,
-  CONCISE_RESPONSES,
-  COMPACTION_SURVIVAL,
-  PLAN_BEFORE_ACT,
-  DEFINITION_OF_DONE,
-  LIVING_DOCS,
-  MEMORY_AWARENESS,
-  MEMORY_ISOLATION,
-  SCOPES,
-  FRAMEWORK_CONFIG_FIRST,
-  CONCRETE_IDENTIFIERS,
-  TOOL_RELIABILITY,
-  RESOURCE_DISCOVERY,
-  BEHAVIORAL_VERIFICATION,
+  WORK_ETHIC,
+  SELF_MANAGEMENT,
+  COMMUNICATION,
+  EPISTEMIC_STANCE,
 } from "./identity.js";
-import { ALL_CONTRAST_PHRASES } from "./contrast-phrases.js";
 import {
   reconstructSkillsSection,
   resetSkillsSectionCache,
@@ -289,79 +278,12 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       // 0. Instance composition (top of prompt, stable per session)
       inst,
 
-      // 1. Custom identity (THE key difference from native)
+      // 1. Identity: who Braid is (5 consolidated blocks replacing 17 directives)
       simpleSection("identity", IDENTITY_INTRO),
-
-      // 1a. Output directive (concise responses alongside tool calls).
-      simpleSection("value-concise-responses", CONCISE_RESPONSES),
-
-      // 1b. Compaction survival invariant - scratchpad + tasks must be self-contained
-      //     so the agent can recover context after conversation compression
-      simpleSection("invariant-compaction", COMPACTION_SURVIVAL),
-      simpleSection("invariant-plan-before-act", PLAN_BEFORE_ACT),
-
-      // 1b-doD. Definition of Done invariant - every done item carries a
-      //     verification triple (path + last-modified-cmd + verification-cmd).
-      //     Prevents drift: the agent can't claim done without evidence.
-      //     SPQ-1 (2026-06-29 12-point review: "single highest-leverage prompt change").
-      simpleSection("invariant-definition-of-done", DEFINITION_OF_DONE),
-
-      // 1c. Living documentation invariant - agent maintains AGENTS.md hierarchy
-      //     Walk tree before edit, update docs after change (from DOX - agent0ai/dox)
-      simpleSection("invariant-living-docs", LIVING_DOCS),
-
-      // 1d. Memory awareness directive - recall before non-trivial work, store
-      //     reusable findings after. Behavioral fix for the 0.84%-usage problem
-      //     (2026-06-22 audit). Pairs with the memory pointer block rendered
-      //     later in section 4b.
-      simpleSection("invariant-memory", MEMORY_AWARENESS),
-      simpleSection("invariant-memory-isolation", MEMORY_ISOLATION),
-
-      // 1e. Scopes directive - match every artifact's location to its purpose;
-      //     default to the narrowest scope that satisfies the purpose, broaden
-      //     only when lifetime / audience / portability demand it. Principle-
-      //     based (no path lists) so the agent discovers concrete locations
-      //     at the moment of need via read/ls/find.
-      simpleSection("invariant-scopes", SCOPES),
-
-      // 1f. Framework Config First — before overriding internals,
-      //     check the framework's official configuration API.
-      //     Origin: 2026-07-02 reveal.js disableLayout discovery.
-      //     Generic: applies to any system with a public surface.
-      simpleSection("invariant-framework-config-first", FRAMEWORK_CONFIG_FIRST),
-
-      // 1g. Resource discovery — all grounded knowledge (skills, project
-      //     docs, memory, runtime extensions, framework APIs, external
-      //     state) surfaces as a discoverability triple for on-demand
-      //     reading. Codifies the pointer-block pattern that was previously
-      //     implicit in the skills sentence of IDENTITY_INTRO.
-      simpleSection("invariant-resource-discovery", RESOURCE_DISCOVERY),
-
-      // 1g-concrete. Concrete identifiers — quote from source, never guess.
-      //     Origin: 2026-07-13 grounding failure. Concrete names are binary:
-      //     right or wrong with no useful middle ground.
-      simpleSection("invariant-concrete-identifiers", CONCRETE_IDENTIFIERS),
-
-      // 1g-tool. Tool reliability — the edit/write tools work reliably.
-      //     When a tool call fails, check the agent's input, not the tool.
-      //     Default to edit/write, not shell redirects.
-      simpleSection("invariant-tool-reliability", TOOL_RELIABILITY),
-
-      // 1h. Behavioral verification — tests must guard failure modes, not
-      //     existence. Prevents the "dumb test" pattern (existence assertions
-      //     that pass the checklist but test nothing). Origin: 2026-07-06
-      //     user feedback. Framed as an identity invariant rather than a
-      //     directive to avoid the compliance theater trap (see
-      //     docs/HISTORY.md § Archaeology section 4).
-      simpleSection("invariant-behavioral-verification", BEHAVIORAL_VERIFICATION),
-
-      // 8. Interaction style
-      simpleSection("interaction-style", INTERACTION_STYLE),
-
-      // 9. Contrast phrases -- RepE-style text-space behavioral steering.
-      //     Restored 2026-07-06 after being deleted as collateral damage.
-      //     Rendered as a group before the closing sections.
-      linesSection("contrast-phrases", ALL_CONTRAST_PHRASES),
+      simpleSection("ethic-work", WORK_ETHIC),
+      simpleSection("ethic-self-management", SELF_MANAGEMENT),
+      simpleSection("ethic-communication", COMMUNICATION),
+      simpleSection("ethic-epistemic", EPISTEMIC_STANCE),
     ];
 
     // 2. Available tools

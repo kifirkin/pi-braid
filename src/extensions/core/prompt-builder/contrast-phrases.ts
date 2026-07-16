@@ -34,3 +34,10 @@ export const ALL_CONTRAST_PHRASES = [
   EPISTEMIC_STABILITY,
   KNOWLEDGE_BOUNDARY,
 ] as const;
+
+/**
+ * Consolidated epistemic stance for the prompt-builder identity block.
+ * Replaces the standalone 4-phrase group with a single identity trait.
+ * Imported by index.ts for the consolidated identity assembly.
+ */
+export { EPISTEMIC_STANCE } from "./identity.js";
