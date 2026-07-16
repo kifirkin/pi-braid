@@ -198,9 +198,9 @@ and NOT exposed via the RPC protocol's event stream.
 - Or: store the system prompt in the session file as a `system` entry
 - Primary use case: reflecting on the full prompt to debug prompt-builder changes
 
-### P3 — verification judge false positive fix (BACKLOG, 2026-07-16)
+### P3 — verification judge false positive fix (SHIPPED, 2026-07-16)
 
-**Status:** Root cause identified. Fix design ready. Deeper investigation planned.
+**Status:** Immediate fix shipped. Deeper investigation deferred.
 
 **Problem:** The LLM-based verification judge fires false positives when the
 agent's verification evidence (test runs, typechecks, builds) scrolls out of
@@ -215,15 +215,7 @@ Confirmed by archaeology: the judge fired at 98% confidence claiming "no
 verification evidence" despite `npm test` (58/58) and `npm run typecheck`
 being in the tool log, just scrolled out of the 50-entry window.
 
-**Immediate fix (small effort, high impact):**
-- Add git history (`git log --oneline -5`) to the judge context. If the judge
-  sees a commit that touches the changed files, that's stronger evidence than
-  any tool output. The agent already commits and pushes — the git log is the
-  ground truth.
-- Location: `src/extensions/enforcement/verification-judge.ts` — add git
-  history to the `JudgeContext` and `buildVerificationPrompt()`.
-
-**Deeper investigation (roadmap):**
+**Deeper investigation (roadmap, deferred):**
 - Multi-round analysis: if the tool log is too long for a single window, the
   judge should request more context in a second round (focused on gaps)
 - Chunked analysis: split tool log into chunks, analyze each, then aggregate

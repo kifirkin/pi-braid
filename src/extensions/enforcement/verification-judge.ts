@@ -14,6 +14,8 @@
  */
 const VERIFICATION_JUDGE_SYSTEM_PROMPT = `Evaluate whether the agent's work matches the user's request.
 
+Git history (recent commits) is provided as verification evidence that survives across reloads and compactions. If the GIT HISTORY section shows commits that match the changed files, that is strong evidence the work was completed and verified -- even if the tool log has been truncated.
+
 Output a JSON object with exactly these fields:
 - verdict: "pass" | "warn" | "fail"
 - confidence: number 0-100
@@ -83,6 +85,8 @@ export interface JudgeContext {
   lastResponse: string;
   /** Agent's thinking/reasoning text (if available) */
   thinking: string;
+  /** Recent git history (git log --oneline -5) for verification evidence across reloads/compactions */
+  gitHistory?: string;
 }
 
 /**
@@ -112,6 +116,12 @@ function buildVerificationPrompt(context: JudgeContext): string {
   if (context.thinking) {
     sections.push("## AGENT REASONING (thinking blocks)");
     sections.push(context.thinking);
+    sections.push("");
+  }
+
+  if (context.gitHistory) {
+    sections.push("## GIT HISTORY (recent commits)");
+    sections.push(context.gitHistory);
     sections.push("");
   }
 

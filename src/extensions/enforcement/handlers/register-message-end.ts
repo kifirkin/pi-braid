@@ -27,6 +27,7 @@ import { runVerificationJudge, formatVerificationNudge } from "../verification-j
 import { enforcementSignals } from "../signals.js";
 import { createLogger } from "../../../lib/core/logger.js";
 import { MESSAGE_END } from "../../../lib/core/event-names.js";
+import { execSync } from "node:child_process";
 
 const log = createLogger("enforcement:message-end");
 
@@ -279,11 +280,25 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
         }
       }
 
+      // Capture git history for the judge so it has verification evidence
+      // that survives across reloads and compactions (tool log is truncated).
+      let gitHistory: string | undefined;
+      try {
+        gitHistory = execSync("git log --oneline -5 --no-merges", {
+          encoding: "utf-8",
+          timeout: 3000,
+          stdio: ["ignore", "pipe", "pipe"],
+        }).trim() || undefined;
+      } catch {
+        // Not a git repo or git unavailable — judge will work without it
+      }
+
       const judgeCtx: any = {
         userRequest: getState(ctx).originalRequest || getState(ctx).lastUserMessage || "",
         toolsUsed: Array.from(getState(ctx).uniqueToolsUsed),
         toolLog,
         hasCodeChanges: getState(ctx).hasCodeChanges,
+        gitHistory,
         lastResponse: fullContent,
         thinking: thinkingContent,
       };

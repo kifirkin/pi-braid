@@ -39,6 +39,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Verification judge false positive: add git history context.** The judge's
+  tool log window (30 entries) was too narrow — verification evidence (test
+  runs, typechecks) scrolled out of view after ~5 turns, and after a
+  reload/compaction it was lost entirely. The judge now receives
+  `git log --oneline -5` as a `## GIT HISTORY` section in its analysis prompt,
+  and the system prompt instructs it to treat commits as strong verification
+  evidence (they survive across reloads). The git history capture is wrapped
+  in try/catch — non-git repos work without it.
+  (verification-judge.ts, register-message-end.ts)
+
 - **Adapt `/max-power-model`, `/utility-model`, `/vision-model` to pi 0.80.8
   `ModelSelectorComponent` constructor change.** The 4th parameter changed from
   `ModelRegistry` to `ModelRuntime`. The extension context only exposes
