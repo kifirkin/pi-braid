@@ -23,6 +23,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Progressive batching with context-window windowing.
   (commit 69dbb6bf, new file analyze.ts)
 
+### Fixed
+
+- **Consume pi 0.79.10+ `session_compact.willRetry` metadata.** The
+  enforcement handler at `register-session-compact.ts` now gates auto-resume
+  on `!_event.willRetry`, preventing the agent from being woken during
+  overflow recovery (where pi retries the aborted turn automatically).
+  Waking during overflow recovery risked re-entering the pre-compaction
+  tool_call → TOOL_EXECUTION_END chain that the `setTimeout(0)` deferral
+  was added to prevent.
+  (register-session-compact.ts, new test file
+  test-session-compact-event-metadata.mjs)
+
 ### Changed
 
 - **P2-2: scratchpadExecute dispatch table.** Replaced the 200-line

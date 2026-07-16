@@ -111,20 +111,31 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
       // still overflow. Uses triggerTurn: true so the agent wakes up and
       // continues its loop automatically.
       //
-      // Auto-resume logic:
-      //   - reason === "threshold" | "overflow": auto-compaction, always auto-resume
-      //   - reason === "manual": check autoResumeAfterCompaction flag
-      //     - Flag set (by context_compress tool): agent-initiated, auto-resume
-      //     - Flag not set: user typed /compress, skip auto-resume
+      // Auto-resume logic (pi 0.79.10+ added `reason` and `willRetry` to
+      // session_compact events so extensions can distinguish flows):
+      //   - willRetry === true:  overflow recovery — pi WILL retry the aborted
+      //     turn automatically after compaction. Skip auto-resume; the retry
+      //     IS the resume mechanism. Waking again would risk re-entering the
+      //     pre-compaction tool_call → TOOL_EXECUTION_END chain this handler
+      //     was patched to defer (see stack-overflow comment above).
+      //   - reason === "threshold" | "overflow" (willRetry false): auto-compaction,
+      //     auto-resume.
+      //   - reason === "manual": check autoResumeAfterCompaction flag:
+      //     - Flag set (by context_compress tool): agent-initiated, auto-resume.
+      //     - Flag not set: user typed /compress, skip auto-resume.
       const shouldAutoResume =
-        _event.reason === "threshold" ||
-        _event.reason === "overflow" ||
-        getState(ctx).autoResumeAfterCompaction;
+        !_event.willRetry &&
+        (_event.reason === "threshold" ||
+          _event.reason === "overflow" ||
+          getState(ctx).autoResumeAfterCompaction);
       // Clear the flag immediately (one-shot)
       getState(ctx).autoResumeAfterCompaction = false;
 
       if (!shouldAutoResume) {
-        log.debug("session_compact: user-initiated compaction (/compress), skipping auto-resume");
+        log.debug(
+          `session_compact: skipping auto-resume ` +
+            `(reason=${_event.reason ?? "unknown"}, willRetry=${!!_event.willRetry})`,
+        );
         return;
       }
 
