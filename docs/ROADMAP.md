@@ -16,35 +16,48 @@
 
 ## P0 — Philosophical foundation (must be right first)
 
-### P0-1: Prompt review & soul.md
+### P0-1: System prompt structure research (replaces soul.md)
 
-**Why P0:** Every prompt, guideline, and tool description in braid encodes assumptions about what braid is. If those assumptions are inconsistent, no amount of feature work fixes the agent's behavior. The identity blocks are currently behavioral directives ("do X, do Y") — not a character. The prompts don't guard against the same patterns of mistakes LLMs make (recency bias, confirmation bias, pattern matching over reasoning). This must be settled before any prompt-level work.
+**Why P0:** Every prompt, guideline, and tool description in braid encodes assumptions about what braid is. If those assumptions are inconsistent, no amount of feature work fixes the agent's behavior. The identity blocks, guidelines, and tool descriptions are the agent's operating system — they need to be structured for clarity, not just stuffed with directives.
 
-**Scope:** Audit every prompt in the system against a consistent philosophical framework:
+**2026-07-16 update:** Soul.md approach deemed excessive. The goal is empirical research into prompt structure, not philosophical grounding. What matters: does the structure measurably improve agent behavior? Pi's philosophy ("primitives, not features", minimal core, identity-driven) provides a design direction, but the structure must be validated experimentally.
 
-| Prompt | Location | Lines | Current weakness |
-|--------|----------|-------|-----------------|
-| Identity blocks (5) | `identity.ts` | ~1500 chars | Behavioral directives, not character |
-| Tools section | `prompt-builder/index.ts` | ~80 lines | Redundant with tool descriptions |
-| Guidelines | `prompt-builder/index.ts` | ~20 lines | Generic, no strategy |
-| think tool | `handlers/think.ts` | ~50 lines (schema) | Parameter-heavy, no "when to use" |
-| verify tool | `handlers/verify.ts` | ~30 lines | Overlaps with finalize |
-| hypothesize tool | `handlers/hypothesize.ts` | ~20 lines | Good promptSnippet, weak description |
-| finalize tool | `handlers/finalize.ts` | ~30 lines | Good overall |
-| verification judge | `enforcement/verification-judge.ts` | ~100 lines | False positive pattern documented |
-| context_compress | `context-compress.ts` | ~20 lines | Good pipeline description |
-| context_navigate | `context-navigate.ts` | ~20 lines | Good, but no "when to use vs compress" |
-| context_inspect | `context-inspect.ts` | ~20 lines | Good |
-| Skills (7) | `skills/*/SKILL.md` | varies | Uneven quality |
+**Current state (post 2026-07-16 session):**
+- Identity blocks consolidated from 17 directives to 5 character traits under `## Identity` heading
+- Guidelines extracted into separate section before tools (pi-core pattern)
+- Context navigation pipeline guidelines added with tool-availability guards
+- Tool descriptions updated with "when to use" framing
+- Each guideline family is a separate sub-function (file tools, communication, context navigation)
 
-**Method:**
-1. Write `soul.md` — a grounding document that defines braid's philosophy. Not what to do, but why. Core principles: truth-first epistemology, minimalism (pi way), precision over speed, identity over directives.
-2. Review every prompt against soul.md. Flag inconsistencies.
-3. Rewrite identity blocks as character traits, not rule checklists.
-4. Rewrite tool descriptions with "when to use" guidance, not just "what it does."
-5. Add cognition tool guidelines: "Use think for exploration, verify for confirmation, hypothesize for debugging, finalize for closure."
+**Grounding research questions:**
 
-**Deliverable:** `docs/soul.md` + updated `identity.ts` + updated tool descriptions.
+1. **Does guidelines-before-tools improve agent behavior?** pi-core's native pattern puts guidelines before tools. Braid now matches this. Hypothesis: guidelines seen first prime the agent's approach before the tool listing creates option bias. Test: A/B comparison with old ordering using standardized task set.
+
+2. **Does identity framing beat directive lists?** The archaeology finding suggests identity framing ("You are...") outperforms explicit directives ("Do X..."). Hypothesis: the 5 identity blocks produce better behavioral coverage than the original 17 directives. Test: measure behavioral compliance in standardized scenarios with both prompt versions.
+
+3. **What is the optimal guideline density?** Too many guidelines create cognitive load; too few leave gaps. Hypothesis: 8-12 guidelines organized into 3 families (file tools, communication, context navigation) is the sweet spot. Test: vary guideline count and measure agent task completion quality.
+
+4. **Does the context navigation pipeline reduce agent-initiated compaction?** Hypothesis: with clear pipeline guidelines and nextStep details, the agent uses navigate instead of compress. Test: measure compress:checkout ratio before and after pipeline introduction.
+
+**Experimental design:**
+
+1. **Baseline capture:** Run a standardized task set (10 tasks across 3 domains) with the current prompt. Record: task completion rate, tool usage patterns, turns-to-completion, verification judge pass rate.
+
+2. **Variant A — Structure:** Identity → Guidelines → Tools (current). Same content, different ordering. Measure against baseline.
+
+3. **Variant B — Density:** Strip guidelines to 5 essentials. Measure against baseline.
+
+4. **Variant C — Identity reframe:** Rewrite identity blocks as pure character (no behavioral directives). Move all behavioral content to guidelines. Measure against baseline.
+
+5. **Analysis:** For each variant, compute: behavioral compliance (did the agent follow the guidelines?), tool efficiency (right tool for the job?), output quality (verification judge pass rate).
+
+**Success criteria:**
+1. At least one variant shows statistically significant improvement over baseline on verification judge pass rate
+2. Tool efficiency improves (fewer unnecessary bash calls, more targeted tool usage)
+3. Agent-initiated compress calls drop by >50% with pipeline structure
+4. Results are reproducible across 3+ trials per variant
+
+**Deliverable:** Research report in `docs/RESEARCH-prompt-structure.md` + updated prompt based on findings.
 
 ---
 
@@ -253,11 +266,13 @@ Audit heartbeat, three-memory-stores, tool-loop, and enforcement whisper familie
 ### Multi-agent coordination research
 Concurrent scratchpad access, conflict resolution, cross-instance communication. Requires scratchpad sync (P3-3) to be implemented first.
 
+### System prompt structure research (P0-1)
+Empirical investigation into optimal prompt structure: identity framing vs directive lists, guideline density, ordering effects (guidelines before tools), and context navigation pipeline effectiveness. See P0-1 for full experimental design. High value: could produce measurable improvements in agent behavior across all tasks.
+
 ---
 
 ## Companion documents
 
-- [`docs/soul.md`](soul.md) — **proposed.** Braid's philosophical foundation. Not yet written.
 - [`docs/HISTORY.md`](HISTORY.md) — consolidated history including fragile heuristics, archaeology, proposals, and D-57
 - `../pi-braid-evaluation/docs-archive/` — all completed audits and shipped proposals (historical reference)
 - [`CHANGELOG.md`](../CHANGELOG.md) — release notes
