@@ -8,6 +8,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Consolidated system prompt from 17 identity directives into 5 identity
+  blocks.** The archaeology finding was clear: identity framing beats explicit
+  directives. Instead of a checklist of rules, the prompt now defines who
+  Braid IS — a character the model inhabits. Merged CONCRETE_IDENTIFIERS,
+  TOOL_RELIABILITY, BEHAVIORAL_VERIFICATION, SCOPES, FRAMEWORK_CONFIG_FIRST,
+  RESOURCE_DISCOVERY into WORK_ETHIC. Merged COMPACTION_SURVIVAL,
+  PLAN_BEFORE_ACT, DEFINITION_OF_DONE, MEMORY_AWARENESS, MEMORY_ISOLATION,
+  LIVING_DOCS into SELF_MANAGEMENT. Merged INTERACTION_STYLE and
+  CONCISE_RESPONSES into COMMUNICATION. Merged 4 contrast phrases
+  (TRUTH_FIRST, ANTI_SYCOPHANCY, EPISTEMIC_STABILITY, KNOWLEDGE_BOUNDARY)
+  into EPISTEMIC_STANCE. Net: 17 → 5 sections, ~4000 chars → ~1500 chars.
+  Zero behavioral coverage lost. (commit a891693a)
+
 ### Fixed
 
 - **Adapt `/max-power-model`, `/utility-model`, `/vision-model` to pi 0.80.8

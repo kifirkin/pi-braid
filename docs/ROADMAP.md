@@ -198,6 +198,38 @@ and NOT exposed via the RPC protocol's event stream.
 - Or: store the system prompt in the session file as a `system` entry
 - Primary use case: reflecting on the full prompt to debug prompt-builder changes
 
+### P3 — verification judge false positive fix (BACKLOG, 2026-07-16)
+
+**Status:** Root cause identified. Fix design ready. Deeper investigation planned.
+
+**Problem:** The LLM-based verification judge fires false positives when the
+agent's verification evidence (test runs, typechecks, builds) scrolls out of
+the turnHistory window. The judge receives a tool log truncated to 50 entries,
+300 chars per output, 8 outputs per turn. When verification commands happened
+more than ~5 turns ago, they're missing from the window and the judge fixates
+on the most recent tool calls (e.g., scratchpad planning).
+
+**Root cause:** LLM recency bias in the judge. The judge's tool log window is
+too narrow — it misses verification evidence that's more than a few turns old.
+Confirmed by archaeology: the judge fired at 98% confidence claiming "no
+verification evidence" despite `npm test` (58/58) and `npm run typecheck`
+being in the tool log, just scrolled out of the 50-entry window.
+
+**Immediate fix (small effort, high impact):**
+- Add git history (`git log --oneline -5`) to the judge context. If the judge
+  sees a commit that touches the changed files, that's stronger evidence than
+  any tool output. The agent already commits and pushes — the git log is the
+  ground truth.
+- Location: `src/extensions/enforcement/verification-judge.ts` — add git
+  history to the `JudgeContext` and `buildVerificationPrompt()`.
+
+**Deeper investigation (roadmap):**
+- Multi-round analysis: if the tool log is too long for a single window, the
+  judge should request more context in a second round (focused on gaps)
+- Chunked analysis: split tool log into chunks, analyze each, then aggregate
+- Hybrid: git history + tool log excerpts + last-N-turn sliding window
+- Track: how often does the judge actually fire? What's the false positive rate?
+
 ### P3 — full Braid critical review (BACKLOG)
 
 **Status:** Not started. High priority.
