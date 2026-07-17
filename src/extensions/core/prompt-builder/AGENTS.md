@@ -28,7 +28,7 @@ Every file in this folder either:
 | `skills-section.ts` | Skills XML formatting + per-skill metadata + fingerprint cache. Returns a `PromptSection`. |
 | `project-docs-section.ts` | Project docs (AGENTS.md / CLAUDE.md) pointer-only rendering as plain-text bullets (`- <basename> at <path>`). Mirrors the skills discoverability model but uses plain text (no XML tags) so the system prompt stays prose. Includes fingerprint cache and `RESOURCES_DISCOVER` invalidation. |
 | `memory-section.ts` | Memory store pointer block (episodes + semantic + heuristics) as plain-text bullets (`- episodes: N entries at PATH`). Mirrors project-docs. Includes file-fingerprint cache and `RESOURCES_DISCOVER` invalidation. |
-| `context-section.ts` | **v3.6** body fragment for the unified `## Context` block: context %, session health, memory count, steps-since-checkpoint. Returns `""` when nothing to surface. *Does not own the heading*; the prompt-builder composer (`index.ts`) joins this with the project-docs and memory bodies under one `## Context` heading. |
+| `context-section.ts` | **v3.6** body fragment for the unified context block: context %, session health, memory count, steps-since-checkpoint. Returns `""` when nothing to surface. Composer (`index.ts`) joins this with project-docs and memory bodies. No heading. |
 
 ## Local Contracts
 

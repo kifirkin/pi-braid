@@ -162,22 +162,17 @@ function contextNavigationGuidelines(toolNames: string[]): string[] {
   }
 
   lines.push("");
-  lines.push("### Context management strategy");
   if (hasContextNavigate) {
-    lines.push("- Use context_navigate(action='tag') to save your position before major work. Good tags describe what you're about to do (before-refactor-X), not what you've done (checkpoint-3).");
-    lines.push("- Use context_navigate(action='checkout') to jump to a tagged position when exploring a branch.");
-    lines.push("- Use context_navigate(action='log') when lost in history to see the session tree.");
+    lines.push("Use context_navigate to save positions, checkout to jump tags, log for history.");
   }
   if (hasContextCompress) {
-    lines.push("- Use context_compress(action='archive') to free space when context > 50%. Use action='compact' only as last resort (context > 70%).");
-    lines.push("- Pipeline: tag → archive → inspect. After any context management operation, verify with context_inspect(detail='quick').");
+    lines.push("Use context_compress to free space: archive when > 50%, compact as last resort (> 70%). Pipeline: tag \u2192 archive \u2192 inspect.");
   }
   if (hasContextInspect) {
-    lines.push("- Use context_inspect(detail='quick') for a 5-line health check after any context operation.");
-    lines.push("- Use context_inspect(detail='prune') when the session feels bloated to find candidates for removal.");
+    lines.push("Use context_inspect for health checks: quick for summary, prune for bloat detection.");
   }
   if (hasContextProposals) {
-    lines.push("- Use context_proposals(action='list') to see pending auto-generated suggestions for context improvement.");
+    lines.push("Use context_proposals to review pending auto-suggestions.");
   }
   return lines;
 }
@@ -330,8 +325,8 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       // 0. Instance composition (top of prompt, stable per session)
       inst,
 
-      // 1. Identity: who Braid is (5 consolidated blocks under one heading)
-      headingSection("identity", "Identity", [
+      // 1. Identity: who Braid is (5 consolidated blocks, no heading)
+      simpleSection("identity", [
         IDENTITY_INTRO,
         WORK_ETHIC,
         SELF_MANAGEMENT,
@@ -363,27 +358,15 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       if (skillsText) sections.push(simpleSection("skills", skillsText));
     }
 
-    // 4. Unified `## Context` block (project-docs + memory + runtime context).
-    //    The heading was reserved in v3.6 by context-section for runtime
-    //    context, but the sibling pointer blocks (project docs, memory) used
-    //    to wrap themselves in their own XML envelopes (`<available_*>...`)
-    //    and so didn't need a markdown heading. After the 2026-07-02 plain-text
-    //    cleanup, those envelopes are gone and the two blocks are headerless
-    //    bullets. This composer finishes the unification intent by wrapping
-    //    all three siblings under one markdown heading.
-    //
-    //    Order preserved from the previous three-push layout:
-    //      project-docs -> memory -> runtime-context
-    //    Empty fragments are filtered (headingSection itself drops empty
-    //    bodies, so the whole block -- heading included -- is omitted when
-    //    nothing is left).
+    // 4. Unified context block (project-docs + memory + runtime context).
+    //    No heading — plain text, like the rest of the prompt.
     const contextFragments = [
       await (await projectContextSection(cwd, ctx)).render(),
       await reconstructMemorySection(ctx),
       await context.render(),
     ].filter((s) => s && s.trim() !== "");
     const contextBlock = contextFragments.join("\n\n");
-    sections.push(headingSection("context", "Context", contextBlock));
+    sections.push(simpleSection("context", contextBlock));
 
     // 9: Preserve appendSystemPrompt from pi-native. Deduplicated against
     // everything above via the dedup set; user-provided append content that

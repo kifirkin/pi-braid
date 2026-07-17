@@ -1,8 +1,8 @@
 /**
  * Instance Composition section for the prompt-builder.
  *
- * Renders a concise, consolidated "## Instance" block at the very
- * top of the system prompt. Surfaces:
+ * Renders a concise, consolidated instance block at the very
+ * top of the system prompt (no heading, plain text). Surfaces:
  *   - Agent identity + the actually-running pi-core version
  *   - Runtime environment: pi-core root (npm package folder), cwd,
  *     userland settings dir (~/.pi/agent), os/hostname/now/pid
@@ -443,7 +443,6 @@ export async function instanceSection(
 
 function renderInstance(d: InstanceData): string {
   const lines: string[] = [];
-  lines.push("## Instance");
   lines.push(
     `Agent: Braid v${d.braidVersion} (over pi-core v${d.pi.version})`,
   );
