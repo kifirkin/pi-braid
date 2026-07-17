@@ -35,6 +35,9 @@ Rules:
   or any output containing "PASS", "FAIL", "error TS", "tests passed", "typecheck clean".
   If the tool log shows successful verification commands, the work IS verified even if the
   text response doesn't mention it.
+- **VERIFICATION HISTORY** section (if present) contains ALL verification-relevant commands
+  from the full session, not just the last 30 tool log entries. This is the definitive source
+  for verification evidence. Use it over the TOOL EXECUTION LOG when both are present.
 
 Examples:
 {"verdict":"fail","confidence":90,"summary":"Agent deleted auth middleware without running tests","issues":[{"severity":"critical","category":"unverified","description":"No test run after deleting src/auth/middleware.ts"}],"unverifiedChanges":true}
@@ -87,6 +90,14 @@ export interface JudgeContext {
   thinking: string;
   /** Recent git history (git log --oneline -5) for verification evidence across reloads/compactions */
   gitHistory?: string;
+  /**
+   * Verification-relevant commands and results extracted from the FULL turn
+   * history (not just the last 30 tool log entries). Captures ALL npm test,
+   * tsc, npm run build, jest, etc. calls with their results. This ensures
+   * the judge sees verification evidence even on long sessions where the
+   * tool log has been truncated.
+   */
+  verificationHistory?: string;
 }
 
 /**
@@ -116,6 +127,12 @@ function buildVerificationPrompt(context: JudgeContext): string {
   if (context.thinking) {
     sections.push("## AGENT REASONING (thinking blocks)");
     sections.push(context.thinking);
+    sections.push("");
+  }
+
+  if (context.verificationHistory) {
+    sections.push("## VERIFICATION HISTORY (all verification commands across full session)");
+    sections.push(context.verificationHistory);
     sections.push("");
   }
 

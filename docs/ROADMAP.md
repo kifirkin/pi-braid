@@ -284,13 +284,16 @@ context_inspect(detail='quick')                        → verify health
 
 ### P2-2: Verification judge deeper fix
 
-**Why P2:** The immediate fix (git history context) is shipped but the deeper problem (50-entry tool log window) remains. Requires P0 identity to be settled (judge should embody braid's truth-first epistemology).
+**Status: SHIPPED 2026-07-17.**
 
-**Deeper investigation:**
-- Multi-round analysis: if tool log too long, request more context in second round
-- Chunked analysis: split into chunks, analyze each, aggregate
-- Hybrid: git history + tool log excerpts + sliding window
-- Track false positive rate
+**Why P2:** The immediate fix (git history context) is shipped but the deeper problem (50-entry tool log window) remains. The judge only sees the last 30 tool log entries, missing early verification evidence on long sessions.
+
+**Fix implemented (hybrid approach):**
+- Added `verificationHistory` field to `JudgeContext` — extracts ALL verification-relevant commands (`npm test`, `tsc`, `npm run build`, `jest`, `vitest`) with their output results from the FULL turn history (up to 50 turns), not just the last 30 entries.
+- The judge sees both: the last 30 tool log entries (for recent context) AND the full verification history (for definitive verification evidence).
+- The system prompt instructs the judge to prefer the VERIFICATION HISTORY section over the TOOL EXECUTION LOG when both are present.
+
+**Verification:** 42/42 tests pass, typecheck clean.
 
 ---
 
@@ -363,8 +366,12 @@ context_inspect(detail='quick')                        → verify health
 **Status:** Fix #1 shipped. Option #4 (audit other whisper families) in BACKLOG.
 
 ### Session resume flooding (P1-3)
-**Commit:** (pending)
+**Commit:** ac33d44a, 38af313d
 **Status:** Per-project disk-persisted shown-signals. 42/42 tests pass.
+
+### Verification judge deeper fix (P2-2)
+**Commit:** (pending)
+**Status:** Hybrid verification history — full session verification commands + last 30 tool log entries. 42/42 tests pass.
 
 ### System architecture deep dive
 **Status:** Complete. Key findings documented in HISTORY.md.
