@@ -174,7 +174,6 @@ export function createDefaultPolicies(
             sendWhisper(
               `${msg} (${tokens?.toLocaleString()} / ${contextWindow?.toLocaleString()} tokens, ${percent?.toFixed(1)}%)`,
             );
-            log.warn(`Token warning: ${percent?.toFixed(1)}% (${tokens}/${contextWindow} tokens)`);
             if (pct === USAGE_WHISPER_CRITICAL) {
               const finalizationMessage =
                 `[heartbeat] Context critical at ${percent?.toFixed(1)}%. ` +
