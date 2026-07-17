@@ -28,6 +28,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **P0-2: Clean identity structure, removed markdown headings, minimalized context strategy.**
+  IDENTITY_INTRO separated into 4 clean paragraphs (braid identity, pi philosophy,
+  braid role, resource discovery). Removed `## Instance`, `## Identity`, `## Context`
+  headings — plain text throughout. Context management strategy: 8 bullet points → 4
+  concise lines matching pi's minimal style.
+
 - **P0-2: Philosophical deepening of identity blocks.** All 5 identity
   blocks in identity.ts were deepened with principled framings grounded
   in pi's philosophy (minimal harness, every 'no' is an open door) and
