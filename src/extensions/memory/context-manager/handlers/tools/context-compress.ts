@@ -430,8 +430,37 @@ export function registerContextCompress(pi: ExtensionAPI): void {
 
         feedbackLines.push(
           "",
-          "The summary will be visible in context. Original messages are preserved in session file.",
+          "Compaction will auto-resume after completion.",
         );
+
+        // Trigger actual compaction to free the space (not just estimate).
+        // The compact action will remove the archived messages; the summary
+        // is preserved as a session metadata entry.
+        try {
+          // Cancel any stale resume timer from a previous compaction cycle.
+          const sessionId =
+            (ctx as { sessionManager?: { getSessionId?: () => string } })?.sessionManager?.getSessionId?.() ??
+            "anonymous";
+          timerMod.cancelTimersByTag(sessionId, "compaction-resume");
+          timerMod.cancelTimersByTag(sessionId, "auto-compaction-resume");
+        } catch {
+          // Non-fatal - timer unavailable
+        }
+
+        setTimeout(() => {
+          try {
+            // Signal to session_compact handler that this is agent-initiated
+            // compaction (via context_compress tool), so it should auto-resume.
+            try {
+              getState(ctx).autoResumeAfterCompaction = true;
+            } catch {
+              // Non-fatal - enforcement state unavailable
+            }
+            ctx.compact({});
+          } catch {
+            // Agent already disconnected - non-fatal
+          }
+        }, 0);
 
         return {
           content: [
@@ -449,7 +478,8 @@ export function registerContextCompress(pi: ExtensionAPI): void {
             estimatedFreedTokens: usageBefore
               ? Math.round((usageBefore.tokens * count) / Math.max(sessionLength, 1))
               : undefined,
-            nextStep: { tool: "context_inspect", detail: "quick" },
+            compactionTriggered: true,
+            nextStep: { tool: "context_inspect", detail: "quick", note: "after auto-resume" },
           },
         };
       }
