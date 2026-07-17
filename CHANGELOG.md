@@ -28,6 +28,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Compaction speaker attribution (P1-2).** Three paths fixed:
+  1. `context_compress` tool description and summary parameter now instruct
+     the agent to write speaker-labeled summaries (<user>...</user> /
+     <agent>...</agent>) to prevent misattribution after compaction.
+  2. Re-orientation whisper after auto-compact now includes a note about
+     speaker labels — directs the agent to use the scratchpad (which
+     preserves speaker context) instead of relying on compaction summary
+     attribution.
+  3. Overflow path covered by the same whisper (same handler).
 - **Identity blocks restructured under ## Identity heading.** The 5 identity
   blocks (intro, work ethic, self-management, communication, epistemic stance)
   are now composed under a single `## Identity` heading instead of 5 orphan

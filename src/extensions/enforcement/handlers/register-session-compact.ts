@@ -173,11 +173,17 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
             }
 
             // Re-orientation whisper with triggerTurn: true wakes the agent
+            // Includes speaker attribution guidance: after compaction, the summary
+            // may lack explicit speaker labels. The agent should use the scratchpad
+            // (which preserves speaker context) to re-orient rather than relying on
+            // the compaction summary's implicit attribution.
             sendEnforcementWhisper(
               pi,
               ctx,
               `Context compacted at turn ${compactTurn}. ` +
                 `Re-orient: read scratchpad for goal/plan/learnings, then check next pending task. ` +
+                `Note: compaction summaries may lack speaker labels — use the scratchpad ` +
+                `(which preserves speaker context) to distinguish who said what. ` +
                 `These surfaces survive compaction - continue from there.`,
               false,
               { triggerTurn: true },

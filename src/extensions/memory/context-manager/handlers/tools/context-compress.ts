@@ -122,7 +122,8 @@ export const contextCompressSchema = Type.Object({
   summary: Type.Optional(
     Type.String({
       description:
-        "Comprehensive summary of what was accomplished. Required for action=archive and action=deep_clean.",
+        "Comprehensive summary of what was accomplished. Required for action=archive and action=deep_clean. " +
+        "Use explicit speaker labels (<user>...</user> / <agent>...</agent>) to prevent misattribution after compaction.",
     }),
   ),
   // deep_clean params
@@ -138,7 +139,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "context_compress",
     label: "Context Compress",
-    promptSnippet: "Free context space by compaction or archiving",
+    promptSnippet: "Free context space by compaction or archiving. Use speaker labels (<user>/<agent>) in summaries to prevent misattribution.",
     description:
       "Free up context space by compaction or archiving. " +
       "Pipeline (recommended order): 1: tag your position with context_navigate(action='tag'), " +
@@ -151,7 +152,9 @@ export function registerContextCompress(pi: ExtensionAPI): void {
       "Original messages preserved in session file. " +
       "IMPORTANT: do NOT call this tool in the same parallel batch as other tools. " +
       "It aborts the current turn, which discards any pending tool " +
-      "results from the same batch. Issue this tool call alone.",
+      "results from the same batch. Issue this tool call alone. " +
+      "When writing summaries for archive/deep_clean, use explicit speaker labels " +
+      "(<user>...</user> / <agent>...</agent>) to prevent misattribution after compaction.",
     parameters: contextCompressSchema,
     execute: async (
       _toolCallId: string,

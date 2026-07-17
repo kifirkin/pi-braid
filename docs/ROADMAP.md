@@ -16,11 +16,21 @@
 
 ## P0 — Philosophical foundation (must be right first)
 
-### P0-1: System prompt structure research (replaces soul.md)
+### P0-1: System prompt structure research — evidence-based session mining
 
 **Why P0:** Every prompt, guideline, and tool description in braid encodes assumptions about what braid is. If those assumptions are inconsistent, no amount of feature work fixes the agent's behavior. The identity blocks, guidelines, and tool descriptions are the agent's operating system — they need to be structured for clarity, not just stuffed with directives.
 
-**2026-07-16 update:** Soul.md approach deemed excessive. The goal is empirical research into prompt structure, not philosophical grounding. What matters: does the structure measurably improve agent behavior? Pi's philosophy ("primitives, not features", minimal core, identity-driven) provides a design direction, but the structure must be validated experimentally.
+**2026-07-17 update — Methodology pivot:** The original approach (synthetic A/B testing with subagents and standardized task sets) was discarded. Rationale: synthetic tasks create artificial scenarios that don't reflect real usage patterns. The real signal is in the existing session corpus — 333 sessions, 327MB, spanning April 21 to July 17, 2026. This corpus naturally captures multiple prompt versions:
+
+| Period | Prompt version | Key change |
+|--------|---------------|------------|
+| ~Apr 21 – ~Jun 10 | Original | 17 standalone directives, no identity section, guidelines inline |
+| ~Jun 10 – ~Jun 20 | Consolidated identity | 5 identity blocks under `## Identity` heading (a891693a) |
+| ~Jun 20 – ~Jul 1 | Guidelines extracted | Guidelines moved before tools, separate sub-functions (e3e6e43b) |
+| ~Jul 1 – Jul 16 | Pipeline added | Context navigation pipeline with tool-availability guards (53f97c8e) |
+| Jul 16+ | Current | Pipeline wisdom embedded in code, checkout auto-summary |
+
+Each version boundary is a natural experiment. The corpus lets us compare the same user (you) interacting with the same agent (braid) under different prompt structures, and infer what works from indirect behavioral signals.
 
 **Current state (post 2026-07-16 session):**
 - Identity blocks consolidated from 17 directives to 5 character traits under `## Identity` heading
@@ -28,36 +38,95 @@
 - Context navigation pipeline guidelines added with tool-availability guards
 - Tool descriptions updated with "when to use" framing
 - Each guideline family is a separate sub-function (file tools, communication, context navigation)
+- Pipeline wisdom embedded in tool implementations (nextStep in details)
+- Checkout auto-summary with smart content selection
 
-**Grounding research questions:**
+**Methodology — indirect evidence mining instead of A/B testing**
 
-1. **Does guidelines-before-tools improve agent behavior?** pi-core's native pattern puts guidelines before tools. Braid now matches this. Hypothesis: guidelines seen first prime the agent's approach before the tool listing creates option bias. Test: A/B comparison with old ordering using standardized task set.
+Rather than running synthetic tasks, we mine the session corpus for indirect signals that reveal prompt structure effectiveness:
 
-2. **Does identity framing beat directive lists?** The archaeology finding suggests identity framing ("You are...") outperforms explicit directives ("Do X..."). Hypothesis: the 5 identity blocks produce better behavioral coverage than the original 17 directives. Test: measure behavioral compliance in standardized scenarios with both prompt versions.
+| Signal | What it reveals | How to detect |
+|--------|----------------|---------------|
+| **User corrections** | Where the prompt led the agent astray | Patterns: "no", "actually", "that's not right", "I meant", user rewrites the agent's output |
+| **User tone shifts** | Friction points, frustration, impatience | Patterns: shortened responses, directive tone, repetition of same request, "just do X", dismissive language |
+| **Agent self-corrections** | Prompt-induced confusion, uncertainty | Patterns: "actually, let me...", "wait", "on second thought", backtracking, abandoned tool chains |
+| **Agent tool usage patterns** | What the prompt prioritizes (or doesn't) | Tool call frequency, tool selection bias, unnecessary bash vs targeted tool usage, premature task switching |
+| **Agent planning depth** | Whether the prompt encourages structured thinking | `think` tool usage frequency, scratchpad detail level, plan item granularity, verification before action |
+| **Verification judge outcomes** | Quality trends over time | Pass/fail rate per prompt version, false positive rate, types of failures caught vs missed |
+| **Compaction patterns** | Context management behavior | compress:checkout ratio, agent-initiated compress frequency, context threshold at compress time |
+| **Task completion patterns** | What the prompt enables vs hinders | Session length, turns-to-completion, abandoned tasks, multi-step task success rate |
 
-3. **What is the optimal guideline density?** Too many guidelines create cognitive load; too few leave gaps. Hypothesis: 8-12 guidelines organized into 3 families (file tools, communication, context navigation) is the sweet spot. Test: vary guideline count and measure agent task completion quality.
+**Research questions (reformulated for session mining):**
 
-4. **Does the context navigation pipeline reduce agent-initiated compaction?** Hypothesis: with clear pipeline guidelines and nextStep details, the agent uses navigate instead of compress. Test: measure compress:checkout ratio before and after pipeline introduction.
+1. **Does guidelines-before-tools improve agent behavior?** Compare sessions before vs after commit e3e6e43b. Look for: reduction in unnecessary bash calls, more targeted tool selection, fewer user corrections about tool misuse. The natural experiment: the same agent, same user, same project — only the prompt structure changed.
 
-**Experimental design:**
+2. **Does identity framing beat directive lists?** Compare sessions before vs after commit a891693a (17 directives → 5 identity blocks). Look for: fewer user corrections about agent behavior, fewer agent self-corrections, smoother task progression. The archaeology finding says identity works — but does the session data confirm it?
 
-1. **Baseline capture:** Run a standardized task set (10 tasks across 3 domains) with the current prompt. Record: task completion rate, tool usage patterns, turns-to-completion, verification judge pass rate.
+3. **What is the optimal guideline density?** The prompt went from ~0 guidelines (inline) to ~12 (3 families) to ~8 (condensed). Compare cohorts. Look for: correlation between guideline density and user correction rate, agent self-correction rate, task completion rate. Too many guidelines create cognitive load; too few leave gaps.
 
-2. **Variant A — Structure:** Identity → Guidelines → Tools (current). Same content, different ordering. Measure against baseline.
+4. **Does the context navigation pipeline reduce agent-initiated compaction?** Compare sessions before vs after commit 53f97c8e. Measure compress:checkout ratio. Does the pipeline actually change behavior, or is it just documentation?
 
-3. **Variant B — Density:** Strip guidelines to 5 essentials. Measure against baseline.
+5. **What's the relationship between prompt structure and session quality?** Across all 333 sessions, can we predict session quality (user satisfaction, task completion, verification pass rate) from prompt structure? This is the meta-question that ties everything together.
 
-4. **Variant C — Identity reframe:** Rewrite identity blocks as pure character (no behavioral directives). Move all behavioral content to guidelines. Measure against baseline.
+**Analysis pipeline:**
 
-5. **Analysis:** For each variant, compute: behavioral compliance (did the agent follow the guidelines?), tool efficiency (right tool for the job?), output quality (verification judge pass rate).
+1. **Cohort definition** — Tag each session by the prompt version active at its timestamp. Build 4-5 cohorts.
+
+2. **Signal extraction per cohort** — For each cohort, run:
+   - `session action=analyze` with targeted questions (did the user correct the agent? how many times? what kind?)
+   - `session action=batch` for pattern matching on specific signals (correction phrases, tool usage patterns, compaction events)
+   - `session action=search` for keyword-based signal discovery
+   - Episodes search for recurring patterns
+
+3. **Cross-cohort comparison** — Compare signal frequencies across cohorts. Which prompt version has the lowest correction rate? Highest task completion rate? Best verification outcomes?
+
+4. **Signal correlation** — Do multiple signals agree? (e.g., lower correction rate + higher task completion + better verification = strong evidence). Do they conflict? (e.g., fewer corrections but more abandoned tasks = prompt makes agent less assertive, which is bad).
+
+5. **Qualitative deep dive** — For the most and least effective prompt versions, read representative sessions. What does the interaction *feel* like? The quantitative signals tell you what happened; the qualitative tells you why.
+
+6. **Synthesis** — What specifically worked? (e.g., "identity blocks reduced corrections about tone by 40%" not "identity framing is better"). The deliverable is actionable findings, not philosophy.
 
 **Success criteria:**
-1. At least one variant shows statistically significant improvement over baseline on verification judge pass rate
-2. Tool efficiency improves (fewer unnecessary bash calls, more targeted tool usage)
-3. Agent-initiated compress calls drop by >50% with pipeline structure
-4. Results are reproducible across 3+ trials per variant
+1. Each prompt version cohort has at least 20 analyzable sessions (enough for signal comparison)
+2. At least 3 signals show statistically distinguishable differences between cohorts
+3. At least 1 actionable finding that directly informs a prompt improvement (not "identity is better" but "the WORK_ETHIC block causes agent to over-explain — trim to 2 sentences")
+4. Findings are grounded in specific session excerpts, not abstract reasoning
+5. The research produces a concrete prompt diff that improves the next session
 
-**Deliverable:** Research report in `docs/RESEARCH-prompt-structure.md` + updated prompt based on findings.
+**Extension — braid's internal system prompts review:**
+
+P0-1's scope extends beyond the agent system prompt to braid's own internal prompts. These 9 prompts are themselves subject to the same quality concerns — they're directive lists where identity framing might work better:
+
+| Prompt | File | Current style |
+|--------|------|---------------|
+| Verification judge | `enforcement/verification-judge.ts` | Directive list — "Evaluate whether..." |
+| Input polisher | `core/input-polisher/consolidated-input-critic.ts` | Directive list — "Polish user input..." |
+| Session analyze | `memory/session-recall/analyze.ts` | Directive list — "You are analyzing..." (partial identity) |
+| Session query | `memory/session-recall/query.ts` | Directive list — "You are analyzing..." (partial identity) |
+| Fresh eyes (think) | `cognitive/metacognition/handlers/think.ts` | Identity-framed — "You are a sharp, critical thinker..." |
+| Backward checker | `lib/verification/backward-checker.ts` | Directive list — "Check if..." |
+| Claim critic | `lib/ai/consolidated-claim-critic.ts` | Directive list — "Evaluate truthfulness..." |
+| Harness proposer | `lib/harness/harness-proposer.ts` | Directive list — "Generate test harness..." |
+| Harness validator | `lib/harness/harness-validator.ts` | Directive list — "Validate test harness..." |
+
+**Research questions for internal prompts:**
+
+1. **Does identity framing improve internal prompt effectiveness?** The fresh eyes prompt (identity-framed) is the outlier — does it produce better output than the directive-list prompts? If so, can we reframe the others?
+
+2. **What's the relationship between internal prompt quality and agent behavior?** If the verification judge's prompt is weak, it produces false positives/negatives, which degrades the agent's feedback loop. The internal prompts are the agent's operating system — they need the same care as the surface prompt.
+
+3. **Can the session corpus reveal internal prompt issues?** Verification judge false positives (like flagging documentation-only changes as unverified) are visible in sessions. The rate of such false positives across prompt versions is measurable.
+
+**Methodology:** The same session-mining approach applies. The verification judge's output is visible in sessions — we can measure its false positive rate, the types of issues it flags, and how its behavior changed across versions. The other internal prompts are less visible externally but can be evaluated through their outputs (analysis quality, suggestion quality, etc.).
+
+**Deliverable:** Research report in `docs/RESEARCH-prompt-structure.md` containing:
+- Cohort definitions and session counts
+- Signal extraction methodology and raw results
+- Cross-cohort comparison with signal agreement analysis
+- Representative session excerpts for each finding
+- Actionable prompt diff with expected impact
+- Updated prompt based on findings
+- **Addendum: Internal prompts audit** — current state of each internal prompt, assessment of directive-list vs identity-framing effectiveness, recommended reframes for top 3 candidates
 
 ---
 
@@ -267,7 +336,7 @@ Audit heartbeat, three-memory-stores, tool-loop, and enforcement whisper familie
 Concurrent scratchpad access, conflict resolution, cross-instance communication. Requires scratchpad sync (P3-3) to be implemented first.
 
 ### System prompt structure research (P0-1)
-Empirical investigation into optimal prompt structure: identity framing vs directive lists, guideline density, ordering effects (guidelines before tools), and context navigation pipeline effectiveness. See P0-1 for full experimental design. High value: could produce measurable improvements in agent behavior across all tasks.
+Session-mining investigation into optimal prompt structure: identity framing vs directive lists, guideline density, ordering effects (guidelines before tools), and context navigation pipeline effectiveness. See P0-1 for the session-mining methodology. High value: could produce measurable improvements in agent behavior across all tasks.
 
 ---
 
